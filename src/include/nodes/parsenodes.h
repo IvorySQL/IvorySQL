@@ -92,7 +92,10 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
 #define ACL_CREATE		(1<<9)	/* for namespaces and databases */
 #define ACL_CREATE_TEMP (1<<10) /* for databases */
 #define ACL_CONNECT		(1<<11) /* for databases */
-#define N_ACL_RIGHTS	12		/* 1 plus the last 1<<x */
+#define ACL_READ		(1<<12) /* for variables */
+#define ACL_WRITE		(1<<13) /* for variables */
+#define N_ACL_RIGHTS	14		/* 1 plus the last 1<<x */
+
 #define ACL_NO_RIGHTS	0
 /* Currently, SELECT ... FOR [KEY] UPDATE/SHARE requires UPDATE privileges */
 #define ACL_SELECT_FOR_UPDATE	ACL_UPDATE
@@ -222,10 +225,12 @@ typedef struct TypeName
 	Oid			typeOid;		/* type identified by OID */
 	bool		setof;			/* is a set? */
 	bool		pct_type;		/* %TYPE specified? */
+	bool		pct_rowtype;	/* %ROWTYPE specified */
 	List	   *typmods;		/* type modifier expression(s) */
 	int32		typemod;		/* prespecified type modifier */
 	List	   *arrayBounds;	/* array bounds */
 	int			location;		/* token location, or -1 if unknown */
+	Oid			t_pkgoid;
 } TypeName;
 
 /*
@@ -1836,7 +1841,9 @@ typedef enum ObjectType
 	OBJECT_TSTEMPLATE,
 	OBJECT_TYPE,
 	OBJECT_USER_MAPPING,
-	OBJECT_VIEW
+	OBJECT_VIEW,
+	OBJECT_PACKAGE,
+	OBJECT_VARIABLE
 } ObjectType;
 
 /* ----------------------
@@ -2696,6 +2703,7 @@ typedef struct CreateDomainStmt
 	NodeTag		type;
 	List	   *domainname;		/* qualified name (list of String) */
 	TypeName   *typeName;		/* the base type */
+	TypeName   *retName;		/* return clause for Strongly typed Ref Cursor */
 	CollateClause *collClause;	/* untransformed COLLATE spec, if any */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
 } CreateDomainStmt;
@@ -2832,8 +2840,11 @@ typedef struct DeclareCursorStmt
 {
 	NodeTag		type;
 	char	   *portalname;		/* name of the portal (cursor) */
+	bool		pct_type;		/* %TYPE specified? */
 	int			options;		/* bitmask of options (see above) */
 	Node	   *query;			/* the query (see comments above) */
+	List	   *params;			/* cursor parameters */
+	char	   *sourcedesc;
 } DeclareCursorStmt;
 
 /* ----------------------
@@ -2971,7 +2982,38 @@ typedef struct CreateFunctionStmt
 	TypeName   *returnType;		/* the return type */
 	List	   *options;		/* a list of DefElem */
 	Node	   *sql_body;
+	char		proaccess;
 } CreateFunctionStmt;
+
+/* ----------------------
+ *		Create pacakge Statement--add by lanke
+ * ----------------------
+ */
+typedef struct CreatePackageStmt
+{
+	NodeTag		type;
+	bool		replace;
+	bool		isbody;
+	bool		secdef;
+	List	   *name;
+	List	   *elems;
+	char	   *specsrc;
+	char	   *bodysrc;
+	Node	   *initializer;	/* pointer to initializer for easy access. */
+} CreatePackageStmt;
+
+/* ----------------------
+ *		Create pacakge Statement--add by lanke
+ * ----------------------
+ */
+typedef struct VarStmt
+{
+	NodeTag		type;
+	char	   *varname;
+	TypeName   *varType;
+	Node	   *defexpr;		/* raw default expr, or NULL if not given */
+} VarStmt;
+
 
 typedef enum FunctionParameterMode
 {

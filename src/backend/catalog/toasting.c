@@ -266,7 +266,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   true,
 										   true,
 										   OIDOldToast,
-										   NULL);
+										   NULL,
+										   NON_PACKAGE_MEMBER);
 	Assert(toast_relid != InvalidOid);
 
 	/* make the toast relation visible, else table_open will fail */

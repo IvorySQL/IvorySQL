@@ -5,29 +5,29 @@ BEGIN
   COPY copy1 TO stdout;
 END;
 $$;
-ERROR:  cannot COPY to/from client in PL/pgSQL
-CONTEXT:  PL/pgSQL function inline_code_block line 3 at SQL statement
+ERROR:  cannot COPY to/from client in PL/iSQL
+CONTEXT:  PL/iSQL function inline_code_block line 3 at SQL statement
 DO LANGUAGE plisql $$
 BEGIN
   COPY copy1 FROM stdin;
 END;
 $$;
-ERROR:  cannot COPY to/from client in PL/pgSQL
-CONTEXT:  PL/pgSQL function inline_code_block line 3 at SQL statement
+ERROR:  cannot COPY to/from client in PL/iSQL
+CONTEXT:  PL/iSQL function inline_code_block line 3 at SQL statement
 DO LANGUAGE plisql $$
 BEGIN
   EXECUTE 'COPY copy1 TO stdout';
 END;
 $$;
-ERROR:  cannot COPY to/from client in PL/pgSQL
-CONTEXT:  PL/pgSQL function inline_code_block line 3 at EXECUTE
+ERROR:  cannot COPY to/from client in PL/iSQL
+CONTEXT:  PL/iSQL function inline_code_block line 3 at EXECUTE
 DO LANGUAGE plisql $$
 BEGIN
   EXECUTE 'COPY copy1 FROM stdin';
 END;
 $$;
-ERROR:  cannot COPY to/from client in PL/pgSQL
-CONTEXT:  PL/pgSQL function inline_code_block line 3 at EXECUTE
+ERROR:  cannot COPY to/from client in PL/iSQL
+CONTEXT:  PL/iSQL function inline_code_block line 3 at EXECUTE
 -- Valid cases
 -- COPY FROM
 DO LANGUAGE plisql $$

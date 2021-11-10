@@ -11,6 +11,9 @@
 #define VARIABLE_H
 
 #include "utils/guc.h"
+#include "catalog/objectaddress.h"
+#include "catalog/pg_variable.h"
+
 
 
 extern bool check_datestyle(char **newval, void **extra, GucSource source);
@@ -34,5 +37,11 @@ extern void assign_session_authorization(const char *newval, void *extra);
 extern bool check_role(char **newval, void **extra, GucSource source);
 extern void assign_role(const char *newval, void *extra);
 extern const char *show_role(void);
+
+extern ObjectAddress CreateVariable(ParseState *pstate, VarStmt *stmt, bool replace, bool isbody);
+extern ObjectAddress CreateCursor(ParseState *pstate, DeclareCursorStmt *cur, bool isbody);
+
+extern void RemoveVariable(Oid varid);
+extern char *get_variable_name(Oid varid, bool missing_ok);
 
 #endif							/* VARIABLE_H */

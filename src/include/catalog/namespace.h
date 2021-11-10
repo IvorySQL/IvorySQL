@@ -64,6 +64,17 @@ typedef struct OverrideSearchPath
 } OverrideSearchPath;
 
 /*
+ * Struct for qualified name of call a functions
+ */
+typedef struct QualifiedName
+{
+	char	   *dbname;
+	char	   *schema;
+	char	   *package;
+	char	   *func;
+} QualifiedName;
+
+/*
  * Option flag bits for RangeVarGetRelidExtended().
  */
 typedef enum RVROption
@@ -92,9 +103,15 @@ extern void RangeVarAdjustRelationPersistence(RangeVar *newRelation, Oid nspid);
 extern Oid	RelnameGetRelid(const char *relname);
 extern bool RelationIsVisible(Oid relid);
 
+extern Oid	LookupVariable(const char *nspname, const char *varname,
+						   bool missing_ok);
 extern Oid	TypenameGetTypid(const char *typname);
 extern Oid	TypenameGetTypidExtended(const char *typname, bool temp_ok);
 extern bool TypeIsVisible(Oid typid);
+
+extern int	ExtractQualifiedName(List *names, QualifiedName *qu);
+
+extern Oid	HandleQualifiedName(List *names, char **funcname, bool missing_ok);
 
 extern FuncCandidateList FuncnameGetCandidates(List *names,
 											   int nargs, List *argnames,

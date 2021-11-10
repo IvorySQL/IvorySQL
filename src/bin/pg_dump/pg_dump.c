@@ -308,7 +308,7 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
-
+static char *getPkgSource(PackageInfo *pkginfo, bool isbody, char *pkgsrc);
 
 int
 main(int argc, char **argv)
@@ -4622,6 +4622,243 @@ dumpSubscription(Archive *fout, const SubscriptionInfo *subinfo)
 }
 
 /*
+ * getPackages:
+ *	  read all packages in the system catalogs and return them in the
+ * PackageInfo* structure
+ *
+ */
+PackageInfo *
+getPackages(Archive *fout)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i;
+	PQExpBuffer query;
+	PackageInfo *pkginfo;
+	int			i_tableoid;
+	int			i_pkgoid;
+	int			i_pkgname;
+	int			i_pkgnamespace;
+	int			i_rolname;
+	int			i_pkgspec;
+	int			i_pkgbody;
+	int			i_pkgacl;
+	int			i_rpkgacl;
+	int			i_initpkgacl;
+	int			i_initrpkgacl;
+
+
+	if (fout->remoteVersion < 130001)
+		return NULL;
+
+	query = createPQExpBuffer();
+
+	PQExpBuffer acl_subquery = createPQExpBuffer();
+	PQExpBuffer racl_subquery = createPQExpBuffer();
+	PQExpBuffer initacl_subquery = createPQExpBuffer();
+	PQExpBuffer initracl_subquery = createPQExpBuffer();
+
+	buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
+					initracl_subquery, "p.pkgacl", "p.pkgowner",
+					"pip.initprivs", "'P'", false);
+
+	/*
+	 * we fetch all namespaces including system ones, so that every object we
+	 * read in can be linked to a containing namespace.
+	 */
+	appendPQExpBuffer(query, "SELECT p.tableoid, p.oid, pkgname, pkgnamespace, "
+					  "(%s pkgowner) AS rolname, "
+					  "pkgspec, pkgbody, "
+					  "%s AS pkgacl, "
+					  "%s AS rpkgacl, "
+					  "%s AS initpkgacl, "
+					  "%s AS initrpkgacl "
+					  "FROM pg_package p "
+					  "JOIN pg_namespace n ON n.oid = p.pkgnamespace "
+					  "LEFT JOIN pg_init_privs pip ON "
+					  "(p.oid = pip.objoid "
+					  "AND pip.classoid = 'pg_package'::regclass "
+					  "AND pip.objsubid = 0) ",
+					  username_subquery,
+					  acl_subquery->data,
+					  racl_subquery->data,
+					  initacl_subquery->data,
+					  initracl_subquery->data);
+
+	destroyPQExpBuffer(acl_subquery);
+	destroyPQExpBuffer(racl_subquery);
+	destroyPQExpBuffer(initacl_subquery);
+	destroyPQExpBuffer(initracl_subquery);
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+
+	pkginfo = (PackageInfo *) pg_malloc(ntups * sizeof(PackageInfo));
+
+	i_tableoid = PQfnumber(res, "tableoid");
+	i_pkgoid = PQfnumber(res, "oid");
+	i_pkgname = PQfnumber(res, "pkgname");
+	i_pkgnamespace = PQfnumber(res, "pkgnamespace");
+	i_rolname = PQfnumber(res, "rolname");
+	i_pkgspec = PQfnumber(res, "pkgspec");
+	i_pkgbody = PQfnumber(res, "pkgbody");
+	i_pkgacl = PQfnumber(res, "pkgacl");
+	i_rpkgacl = PQfnumber(res, "rpkgacl");
+	i_initpkgacl = PQfnumber(res, "initpkgacl");
+	i_initrpkgacl = PQfnumber(res, "initrpkgacl");
+
+	for (i = 0; i < ntups; i++)
+	{
+		pkginfo[i].dobj.objType = DO_PACKAGE;
+		pkginfo[i].dobj.catId.tableoid = atooid(PQgetvalue(res, i, i_tableoid));
+		pkginfo[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_pkgoid));
+		AssignDumpId(&pkginfo[i].dobj);
+		pkginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_pkgname));
+		pkginfo[i].dobj.namespace =
+			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
+		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
+		pkginfo[i].pkgspec = pg_strdup(PQgetvalue(res, i, i_pkgspec));
+		if (PQgetisnull(res, i, i_pkgbody))
+			pkginfo[i].pkgbody = NULL;
+		else
+			pkginfo[i].pkgbody = pg_strdup(PQgetvalue(res, i, i_pkgbody));
+		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
+		pkginfo[i].rpkgacl = pg_strdup(PQgetvalue(res, i, i_rpkgacl));
+		pkginfo[i].initpkgacl = pg_strdup(PQgetvalue(res, i, i_initpkgacl));
+		pkginfo[i].initrpkgacl = pg_strdup(PQgetvalue(res, i, i_initrpkgacl));
+
+		/*
+		 * Do not try to dump ACL if the ACL is empty or the default.
+		 *
+		 * This is useful because, for some schemas/objects, the only
+		 * component we are going to try and dump is the ACL and if we can
+		 * remove that then 'dump' goes to zero/false and we don't consider
+		 * this object for dumping at all later on.
+		 */
+		if (PQgetisnull(res, i, i_pkgacl) && PQgetisnull(res, i, i_rpkgacl) &&
+			PQgetisnull(res, i, i_initpkgacl) &&
+			PQgetisnull(res, i, i_initrpkgacl))
+			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
+
+		if (strlen(pkginfo[i].rolname) == 0)
+			pg_log_warning("owner of package \"%s\" appears to be invalid",
+						   pkginfo[i].dobj.name);
+	}
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return pkginfo;
+}
+
+/*
+ * dumpPackage
+ *	  writes out to fout the queries to recreate a user-defined package
+ */
+static void
+dumpPackage(Archive *fout, PackageInfo *pkginfo)
+{
+	DumpOptions *dopt = fout->dopt;
+	PQExpBuffer q;
+	PQExpBuffer delq;
+	char	   *qpkgname;
+	char	   *pkgsrc;
+
+	/* Skip if not to be dumped */
+	if (!pkginfo->dobj.dump || fout->remoteVersion < 130001)
+		return;
+
+	q = createPQExpBuffer();
+	delq = createPQExpBuffer();
+
+	qpkgname = pg_strdup(fmtId(pkginfo->dobj.name));
+
+	appendPQExpBuffer(delq, "DROP PACKAGE %s;\n", qpkgname);
+
+	if (pkginfo->pkgspec)
+	{
+		pkgsrc = getPkgSource(pkginfo, false, pkginfo->pkgspec);
+		appendPQExpBuffer(q, "%s;\n", pkgsrc);
+		pfree(pkgsrc);
+	}
+
+	if (pkginfo->pkgbody)
+	{
+		pkgsrc = getPkgSource(pkginfo, true, pkginfo->pkgbody);
+		appendPQExpBuffer(q, "%s;\n", pkgsrc);
+		pfree(pkgsrc);
+	}
+
+	if (dopt->binary_upgrade)
+		binary_upgrade_extension_member(q, &pkginfo->dobj,
+										"PACKAGE", qpkgname, NULL);
+
+	if (pkginfo->dobj.dump & DUMP_COMPONENT_DEFINITION)
+		ArchiveEntry(fout, pkginfo->dobj.catId, pkginfo->dobj.dumpId,
+					 ARCHIVE_OPTS(.tag = pkginfo->dobj.name,
+								  .namespace = pkginfo->dobj.namespace->dobj.name,
+								  .owner = pkginfo->rolname,
+								  .description = "PACKAGE",
+								  .section = SECTION_POST_DATA,
+								  .createStmt = q->data,
+								  .dropStmt = delq->data));
+
+	if (pkginfo->dobj.dump & DUMP_COMPONENT_ACL)
+		dumpACL(fout, pkginfo->dobj.dumpId, InvalidDumpId, "PACKAGE",
+				qpkgname, NULL, NULL,
+				pkginfo->rolname, pkginfo->pkgacl, pkginfo->rpkgacl,
+				pkginfo->initpkgacl, pkginfo->initrpkgacl);
+
+	free(qpkgname);
+
+	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(delq);
+}
+
+/*
+ * returns the package source with qualified package namespace. The package
+ * source in pg_package catalog may not have a schema qualified package name,
+ * which can cause problem later on when restoring the package. So we must use
+ * schema qualified name here.
+ */
+static char *
+getPkgSource(PackageInfo *pkginfo, bool isbody, char *pkgsrc)
+{
+	PQExpBuffer 	q;
+	char 		   *tok = NULL;
+
+	q = createPQExpBuffer();
+
+	if (isbody)
+		tok = strcasestr(pkgsrc, "body");
+	else
+		tok = strcasestr(pkgsrc, "package");
+
+	if (tok != NULL)
+	{
+		tok += (isbody? 4 : 7);
+		while (*tok != '\0' && isspace((unsigned char) *tok))
+			tok++;
+
+		appendBinaryPQExpBuffer(q, pkgsrc, tok - pkgsrc); /* first copy the initial string */
+		appendPQExpBufferStr(q, fmtQualifiedDumpable(pkginfo)); /* add qualified package name */
+
+		/* skip package name */
+		while (*tok != '\0' && !isspace((unsigned char) *tok))
+			tok++;
+
+		appendPQExpBufferStr(q, tok); /* add the rest of the string */
+	}
+
+	/* copy new constructed source */
+	tok = pstrdup(q->data);
+	destroyPQExpBuffer(q);
+
+	return tok;
+}
+
+/*
  * Given a "create query", append as many ALTER ... DEPENDS ON EXTENSION as
  * the object needs.
  */
@@ -5268,12 +5505,14 @@ getTypes(Archive *fout, int *numTypes)
 						  "LEFT JOIN pg_init_privs pip ON "
 						  "(t.oid = pip.objoid "
 						  "AND pip.classoid = 'pg_type'::regclass "
-						  "AND pip.objsubid = 0) ",
+						  "AND pip.objsubid = 0) "
+						  "%s",
 						  acl_subquery->data,
 						  racl_subquery->data,
 						  initacl_subquery->data,
 						  initracl_subquery->data,
-						  username_subquery);
+						  username_subquery,
+						  (fout->remoteVersion >= 130001)? " WHERE t.typaccess = 'n' " : "");
 
 		destroyPQExpBuffer(acl_subquery);
 		destroyPQExpBuffer(racl_subquery);
@@ -6162,11 +6401,13 @@ getFuncs(Archive *fout, int *numFuncs)
 		PQExpBuffer initacl_subquery = createPQExpBuffer();
 		PQExpBuffer initracl_subquery = createPQExpBuffer();
 		const char *not_agg_check;
+		const char *pkgfunc_check;
 
 		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 						initracl_subquery, "p.proacl", "p.proowner",
 						"pip.initprivs", "'f'", dopt->binary_upgrade);
 
+		pkgfunc_check = (fout->remoteVersion >= 130001 ? " proaccess = 'n' AND " : "");
 		not_agg_check = (fout->remoteVersion >= 110000 ? "p.prokind <> 'a'"
 						 : "NOT p.proisagg");
 
@@ -6184,7 +6425,7 @@ getFuncs(Archive *fout, int *numFuncs)
 						  "(p.oid = pip.objoid "
 						  "AND pip.classoid = 'pg_proc'::regclass "
 						  "AND pip.objsubid = 0) "
-						  "WHERE %s"
+						  "WHERE %s %s"
 						  "\n  AND NOT EXISTS (SELECT 1 FROM pg_depend "
 						  "WHERE classid = 'pg_proc'::regclass AND "
 						  "objid = p.oid AND deptype = 'i')"
@@ -6204,6 +6445,7 @@ getFuncs(Archive *fout, int *numFuncs)
 						  initacl_subquery->data,
 						  initracl_subquery->data,
 						  username_subquery,
+						  pkgfunc_check,
 						  not_agg_check,
 						  g_last_builtin_oid,
 						  g_last_builtin_oid);
@@ -6651,16 +6893,18 @@ getTables(Archive *fout, int *numTables)
 	 * composite type (pg_depend entries for columns of the composite type
 	 * link to the pg_class entry not the pg_type entry).
 	 */
-	appendPQExpBufferStr(query,
-						 "WHERE c.relkind IN ("
-						 CppAsString2(RELKIND_RELATION) ", "
-						 CppAsString2(RELKIND_SEQUENCE) ", "
-						 CppAsString2(RELKIND_VIEW) ", "
-						 CppAsString2(RELKIND_COMPOSITE_TYPE) ", "
-						 CppAsString2(RELKIND_MATVIEW) ", "
-						 CppAsString2(RELKIND_FOREIGN_TABLE) ", "
-						 CppAsString2(RELKIND_PARTITIONED_TABLE) ")\n"
-						 "ORDER BY c.oid");
+	appendPQExpBuffer(query,
+					  "WHERE c.relkind IN ("
+					  CppAsString2(RELKIND_RELATION) ", "
+					  CppAsString2(RELKIND_SEQUENCE) ", "
+					  CppAsString2(RELKIND_VIEW) ", "
+					  CppAsString2(RELKIND_COMPOSITE_TYPE) ", "
+					  CppAsString2(RELKIND_MATVIEW) ", "
+					  CppAsString2(RELKIND_FOREIGN_TABLE) ", "
+					  CppAsString2(RELKIND_PARTITIONED_TABLE) ")\n"
+					  "%s"
+					  "ORDER BY c.oid",
+					  (fout->remoteVersion >= 150000)? " AND (c.relnamespace NOT IN (select oid from pg_package))" : "");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -10338,6 +10582,9 @@ dumpDumpableObject(Archive *fout, const DumpableObject *dobj)
 		case DO_SUBSCRIPTION:
 			dumpSubscription(fout, (const SubscriptionInfo *) dobj);
 			break;
+		case DO_PACKAGE:
+			dumpPackage(fout, (PackageInfo *) dobj);
+			break;
 		case DO_PRE_DATA_BOUNDARY:
 		case DO_POST_DATA_BOUNDARY:
 			/* never dumped, nothing to do */
@@ -10758,8 +11005,9 @@ dumpRangeType(Archive *fout, const TypeInfo *tyinfo)
 					  "FROM pg_catalog.pg_range r, pg_catalog.pg_type st, "
 					  "     pg_catalog.pg_opclass opc "
 					  "WHERE st.oid = rngsubtype AND opc.oid = rngsubopc AND "
-					  "rngtypid = '%u'",
-					  tyinfo->dobj.catId.oid);
+					  "rngtypid = '%u' %s",
+					  tyinfo->dobj.catId.oid,
+					  (fout->remoteVersion >= 130001)? " AND st.typaccess = 'n' " : "");
 
 	res = ExecuteSqlQueryForSingleRow(fout, query->data);
 
@@ -11016,8 +11264,10 @@ dumpBaseType(Archive *fout, const TypeInfo *tyinfo)
 							 "pg_catalog.pg_get_expr(typdefaultbin, 'pg_catalog.pg_type'::pg_catalog.regclass) AS typdefaultbin, typdefault ");
 
 	appendPQExpBuffer(query, "FROM pg_catalog.pg_type "
-					  "WHERE oid = '%u'::pg_catalog.oid",
-					  tyinfo->dobj.catId.oid);
+					  "WHERE oid = '%u'::pg_catalog.oid"
+					  "%s",
+					  tyinfo->dobj.catId.oid,
+					  (fout->remoteVersion >= 130001)? " AND typaccess = 'n' " : "");
 
 	res = ExecuteSqlQueryForSingleRow(fout, query->data);
 
@@ -11224,8 +11474,10 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 						  "THEN t.typcollation ELSE 0 END AS typcollation "
 						  "FROM pg_catalog.pg_type t "
 						  "LEFT JOIN pg_catalog.pg_type u ON (t.typbasetype = u.oid) "
-						  "WHERE t.oid = '%u'::pg_catalog.oid",
-						  tyinfo->dobj.catId.oid);
+						  "WHERE t.oid = '%u'::pg_catalog.oid"
+						  "%s",
+						  tyinfo->dobj.catId.oid,
+						  (fout->remoteVersion >= 130001)? " AND t.typaccess = 'n' " : "");
 	}
 	else
 	{
@@ -11410,8 +11662,10 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 						  "JOIN pg_catalog.pg_attribute a ON a.attrelid = ct.typrelid "
 						  "LEFT JOIN pg_catalog.pg_type at ON at.oid = a.atttypid "
 						  "WHERE ct.oid = '%u'::pg_catalog.oid "
+						  "%s"
 						  "ORDER BY a.attnum ",
-						  tyinfo->dobj.catId.oid);
+						  tyinfo->dobj.catId.oid,
+						  (fout->remoteVersion >= 130001)? " AND ct.typaccess = 'n' " : "");
 	}
 	else
 	{
@@ -12139,8 +12393,10 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	appendPQExpBuffer(query,
 					  "FROM pg_catalog.pg_proc p, pg_catalog.pg_language l\n"
 					  "WHERE p.oid = '%u'::pg_catalog.oid "
-					  "AND l.oid = p.prolang",
-					  finfo->dobj.catId.oid);
+					  "AND l.oid = p.prolang"
+					  "%s",
+					  finfo->dobj.catId.oid,
+					  (fout->remoteVersion >= 130001) ? " AND proaccess = 'n' " : "");
 
 	res = ExecuteSqlQueryForSingleRow(fout, query->data);
 
@@ -18561,6 +18817,7 @@ addBoundaryDependencies(DumpableObject **dobjs, int numObjs,
 			case DO_PUBLICATION_REL:
 			case DO_PUBLICATION_REL_IN_SCHEMA:
 			case DO_SUBSCRIPTION:
+			case DO_PACKAGE:
 				/* Post-data objects: must come after the post-data boundary */
 				addObjectDependency(dobj, postDataBound->dumpId);
 				break;

@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * plisql.h		- Definitions for the PL/pgSQL
+ * plisql.h		- Definitions for the PL/iSQL
  *			  procedural language
  *
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
@@ -42,7 +42,8 @@ typedef enum PLiSQL_nsitem_type
 {
 	PLISQL_NSTYPE_LABEL,		/* block label */
 	PLISQL_NSTYPE_VAR,			/* scalar variable */
-	PLISQL_NSTYPE_REC			/* composite variable */
+	PLISQL_NSTYPE_REC,			/* composite variable */
+	PLISQL_NSTYPE_REFCURSOR     /* ref cursor */
 } PLiSQL_nsitem_type;
 
 /*
@@ -64,7 +65,8 @@ typedef enum PLiSQL_datum_type
 	PLISQL_DTYPE_ROW,
 	PLISQL_DTYPE_REC,
 	PLISQL_DTYPE_RECFIELD,
-	PLISQL_DTYPE_PROMISE
+	PLISQL_DTYPE_PROMISE,
+	PLISQL_DTYPE_REFCURSOR
 } PLiSQL_datum_type;
 
 /*
@@ -316,6 +318,8 @@ typedef struct PLiSQL_var
 	PLiSQL_expr *default_val;
 	/* end of PLiSQL_variable fields */
 
+	Oid			pkgoid;			/* Oid of the package */
+	int			pkgdno;
 	PLiSQL_type *datatype;
 
 	/*
@@ -370,6 +374,9 @@ typedef struct PLiSQL_row
 	PLiSQL_expr *default_val;
 	/* end of PLiSQL_variable fields */
 
+	Oid			pkgoid;			/* Oid of the package */
+	int			pkgdno;
+
 	/*
 	 * rowtupdesc is only set up if we might need to convert the row into a
 	 * composite datum, which currently only happens for OUT parameters.
@@ -379,6 +386,7 @@ typedef struct PLiSQL_row
 
 	int			nfields;
 	char	  **fieldnames;
+	PLiSQL_expr **arg_defval;
 	int		   *varnos;
 } PLiSQL_row;
 
@@ -395,6 +403,9 @@ typedef struct PLiSQL_rec
 	bool		notnull;
 	PLiSQL_expr *default_val;
 	/* end of PLiSQL_variable fields */
+
+	Oid			pkgoid;			/* Oid of the package */
+	int			pkgdno;
 
 	/*
 	 * Note: for non-RECORD cases, we may from time to time re-look-up the
@@ -920,6 +931,7 @@ typedef struct PLiSQL_stmt_dynexecute
  */
 typedef struct PLiSQL_func_hashkey
 {
+	Oid			pkgOid;
 	Oid			funcOid;
 
 	bool		isTrigger;		/* true if called as a DML trigger */
@@ -966,6 +978,7 @@ typedef struct PLiSQL_function
 {
 	char	   *fn_signature;
 	Oid			fn_oid;
+	Oid			fn_pkg;
 	TransactionId fn_xmin;
 	ItemPointerData fn_tid;
 	PLiSQL_trigtype fn_is_trigger;
@@ -1012,7 +1025,58 @@ typedef struct PLiSQL_function
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
 	unsigned long use_count;
+	bool		hasPkgRefrences; /* does this function make any refrence to a package. */
 } PLiSQL_function;
+
+typedef enum
+{
+	FUNCTION,
+	PROCEDURE,
+	VARIABLE
+} PkgElemType;
+
+typedef struct PLiSQL_package_elem
+{
+	PkgElemType type;
+	int			count;
+	Oid			oid;
+	char	   *name;
+	char	   *src;
+} PLiSQL_package_elem;
+
+/*
+ * Complete compiled package
+ */
+typedef struct PLiSQL_package
+{
+	Oid			pkgoid;
+	char	   *pkgname;
+	char	   *pkgnsp;
+
+	MemoryContext pkgctx;
+	TransactionId xmin;
+	ItemPointerData tid;
+
+	int			nfuncs;
+	PLiSQL_function **funcs;
+	PLiSQL_function *initializer;
+	bool		isinitcomp;
+	bool		isinitexec;
+
+	/* the datums representing the package variables */
+	struct PLiSQL_nsitem *ns;
+	int			ndatums;
+	PLiSQL_datum **datums;
+
+} PLiSQL_package;
+
+typedef struct PackageHashEnt
+{
+	Oid			key;
+	PLiSQL_package *pkg;
+} PackageHashEnt;
+
+extern PLiSQL_package *curr_pkg;
 
 /*
  * Runtime execution data
@@ -1091,6 +1155,7 @@ typedef struct PLiSQL_execstate
 	const char *err_text;		/* additional state info */
 
 	void	   *plugin_info;	/* reserved for use by optional plugin */
+	char	   *pkg_name;		/* add package name for this execution */
 } PLiSQL_execstate;
 
 /*
@@ -1320,5 +1385,18 @@ extern void plisql_scanner_finish(void);
  * Externs in gram.y
  */
 extern int	plisql_yyparse(void);
+
+/*
+ * Package related functions
+ */
+extern PLiSQL_package *plisql_compile_package(Oid pkgOid, bool forValidator);
+extern void plisql_package_exec_init(PLiSQL_package *pkg, bool nonatomic);
+extern void package_HashTableInit(void);
+extern PLiSQL_package *package_HashTablelookup(Oid pkgOid);
+extern void package_HashTablelInsert(PLiSQL_package *pkg, Oid pkgOid);
+extern void package_HashTableDelete(PLiSQL_package *pkg);
+extern PLiSQL_datum *lookup_package_var(PLiSQL_package *pkg, Oid vartype,
+										 char *varname);
+extern void delete_package_state_oid(Oid pkgoid);
 
 #endif							/* PLISQL_H */

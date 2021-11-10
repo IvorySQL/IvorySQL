@@ -31,6 +31,7 @@ typedef enum
 {
 	PSCAN_SEMICOLON,			/* found command-ending semicolon */
 	PSCAN_BACKSLASH,			/* found backslash command */
+	PSCAN_SLASH,				/* found slash command for plisql */
 	PSCAN_INCOMPLETE,			/* end of line, SQL statement incomplete */
 	PSCAN_EOL					/* end of line, SQL possibly complete */
 } PsqlScanResult;

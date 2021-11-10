@@ -50,9 +50,13 @@
 #include "nodes/pathnodes.h"
 #include "optimizer/optimizer.h"
 #include "parser/parse_agg.h"
+#include "parser/parse_coerce.h"
+#include "parser/parse_collate.h"
+#include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_node.h"
 #include "parser/parse_oper.h"
+#include "parser/parse_type.h"
 #include "parser/parser.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
@@ -488,6 +492,8 @@ static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
+static void get_function_arguments(FunctionParameter *funcparam,
+								   deparse_context *context);
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -9497,6 +9503,10 @@ get_rule_expr(Node *node, deparse_context *context,
 			get_tablefunc((TableFunc *) node, context, showimplicit);
 			break;
 
+		case T_FunctionParameter:
+			get_function_arguments((FunctionParameter *) node, context);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
@@ -12050,4 +12060,76 @@ get_range_partbound_string(List *bound_datums)
 	appendStringInfoChar(buf, ')');
 
 	return buf->data;
+}
+
+/*
+ * append the func argument to the buf with its arg modes and defaults.
+ */
+static void
+get_function_arguments(FunctionParameter *funcparam, deparse_context *context)
+{
+	Oid			typid = 0;
+	int32		typmod = -1;
+	StringInfo	buf = context->buf;
+
+	/* For our purposes here, a defaulted mode spec is identical to IN */       
+	if (funcparam->mode == FUNC_PARAM_DEFAULT)                                           
+		funcparam->mode = FUNC_PARAM_IN;
+
+	/* add name */
+	appendStringInfo(buf, "%s ", funcparam->name);
+
+	/* add arg modes */
+	switch (funcparam->mode)
+	{
+		case FUNC_PARAM_IN:		/* its default, so no need to add it */
+			break;
+
+		case FUNC_PARAM_OUT:
+			appendStringInfoString(buf, " OUT ");
+			break;
+
+		case FUNC_PARAM_INOUT:
+			appendStringInfoString(buf, " INOUT ");
+			break;
+
+		default:				/* keep compiler happy! */
+			elog(ERROR, "should not happen");
+	}
+
+	/* add arg type */
+	typenameTypeIdAndMod(NULL, funcparam->argType, &typid, &typmod);
+	appendStringInfoString(buf, format_type_with_typemod(typid, typmod));
+
+	/* add default values, if any. */
+	if (funcparam->defexpr)
+	{
+		char	   *varstr = NULL;
+		Node	   *cooked_default = NULL;
+		Oid			typcollation;
+		ParseState *pstate = make_parsestate(NULL);
+
+		typcollation = get_typcollation(typid);
+
+		cooked_default = transformExpr(pstate, funcparam->defexpr,
+									   EXPR_KIND_VARIABLE_DEFAULT);
+		cooked_default = coerce_to_specific_type(pstate,
+												 cooked_default, typid, "DEFAULT");
+		assign_expr_collations(pstate, cooked_default);
+
+		/* get the string from the expr */
+		varstr = deparse_expression(cooked_default, NIL, false, false);
+
+		/* add to buffer */
+		appendStringInfo(buf, " := %s\n", deparse_expression(cooked_default, NIL, false, false));
+	}
+}
+
+/*
+ * deparse and append a Query struct to the buffer.
+ */
+void
+pg_deparse_query(Query *query, StringInfo buf)
+{
+	get_query_def(query, buf, NIL, NULL, 0x0001, 0, 0);
 }

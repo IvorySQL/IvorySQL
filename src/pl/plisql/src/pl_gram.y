@@ -23,6 +23,7 @@
 #include "parser/scanner.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
+#include "utils/syscache.h"
 
 #include "plisql.h"
 
@@ -165,12 +166,13 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 		PLiSQL_diag_item		*diagitem;
 		PLiSQL_stmt_fetch		*fetch;
 		PLiSQL_case_when		*casewhen;
+		PLiSQL_stmt_block		*stmt_block;
 }
 
-%type <declhdr> decl_sect
+%type <declhdr> decl_sect decl_sect_block
 %type <varname> decl_varname
 %type <boolean>	decl_const decl_notnull exit_type
-%type <expr>	decl_defval decl_cursor_query
+%type <expr>	decl_defval decl_cursor_query cursor_defparam
 %type <dtype>	decl_datatype
 %type <oid>		decl_collate
 %type <datum>	decl_cursor_args
@@ -192,7 +194,8 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 
 %type <list>	proc_sect stmt_elsifs stmt_else
 %type <loop_body>	loop_body
-%type <stmt>	proc_stmt pl_block
+%type <stmt_block>	pl_block_body
+%type <stmt>	proc_stmt pl_block pl_block_internal
 %type <stmt>	stmt_assign stmt_if stmt_loop stmt_while stmt_exit
 %type <stmt>	stmt_return stmt_raise stmt_assert stmt_execsql
 %type <stmt>	stmt_dynexecute stmt_for stmt_perform stmt_call stmt_getdiag
@@ -221,6 +224,9 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 
 %type <keyword>	unreserved_keyword
 
+%type <list>	record_attr_list
+%type <datum>	record_attr
+%type <expr>	decl_rec_defval
 
 /*
  * Basic non-keyword token types.  These are hard-wired into the core lexer.
@@ -327,6 +333,8 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 %token <keyword>	K_PRIOR
 %token <keyword>	K_QUERY
 %token <keyword>	K_RAISE
+%token <keyword>	K_RECORD
+%token <keyword>	K_REF
 %token <keyword>	K_RELATIVE
 %token <keyword>	K_RETURN
 %token <keyword>	K_RETURNED_SQLSTATE
@@ -405,55 +413,97 @@ option_value : T_WORD
 opt_semi		:
 				| ';'
 				;
-
-pl_block		: decl_sect K_BEGIN proc_sect exception_sect K_END opt_label
+pl_block		: decl_sect pl_block_body
+					{
+						$2->lineno		= plisql_location_to_lineno(@2);
+						$2->n_initvars = $1.n_initvars;
+						$2->initvarnos = $1.initvarnos;
+						$$ = (PLiSQL_stmt *)$2;
+						check_labels($1.label, $2->label, @2);
+					}
+				;
+pl_block_body	: K_BEGIN proc_sect exception_sect K_END opt_label
 					{
 						PLiSQL_stmt_block *new;
-
 						new = palloc0(sizeof(PLiSQL_stmt_block));
-
 						new->cmd_type	= PLISQL_STMT_BLOCK;
-						new->lineno		= plisql_location_to_lineno(@2);
 						new->stmtid		= ++plisql_curr_compile->nstatements;
-						new->label		= $1.label;
-						new->n_initvars = $1.n_initvars;
-						new->initvarnos = $1.initvarnos;
-						new->body		= $3;
-						new->exceptions	= $4;
-
-						check_labels($1.label, $6, @6);
+						new->body		= $2;
+						new->exceptions	= $3;
+						new->label		= $5;
+						$$ = new;
+					}
+				;
+pl_block_internal: opt_block_label decl_start decl_sect_block pl_block_body
+					{
+						PLiSQL_stmt_block *new;
+						new = palloc0(sizeof(PLiSQL_stmt_block));
+						new 			= $4;
+						new->label		= $1;
+						new->n_initvars = $3.n_initvars;
+						new->initvarnos = $3.initvarnos;
 						plisql_ns_pop();
-
+						$$ = (PLiSQL_stmt *)new;
+					}
+				| opt_block_label decl_start pl_block_body
+					{
+						PLiSQL_stmt_block *new;
+						new = palloc0(sizeof(PLiSQL_stmt_block));
+						new                     = $3;
+						new->label              = $1;
+						plisql_ns_pop();
+						$$ = (PLiSQL_stmt *)new;
+					}
+				| opt_block_label pl_block_body
+					{
+						PLiSQL_stmt_block *new;
+						new = palloc0(sizeof(PLiSQL_stmt_block));
+						new             = $2;
+						new->label      = $1;
+						plisql_ns_pop();
 						$$ = (PLiSQL_stmt *)new;
 					}
 				;
-
-
-decl_sect		: opt_block_label
-					{
-						/* done with decls, so resume identifier lookup */
-						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
-						$$.label	  = $1;
-						$$.n_initvars = 0;
-						$$.initvarnos = NULL;
-					}
-				| opt_block_label decl_start
+decl_sect_block		: decl_stmts
 					{
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
-						$$.label	  = $1;
-						$$.n_initvars = 0;
-						$$.initvarnos = NULL;
-					}
-				| opt_block_label decl_start decl_stmts
-					{
-						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
-						$$.label	  = $1;
-						/* Remember variables declared in decl_stmts */
 						$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
 					}
+decl_sect		: opt_block_label decl_or_not decl_stmts
+					{
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+						$$.label	  = $1;
+						$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
+					}
+				| opt_block_label
+					{
+						$$.label	  = $1;
+						$$.n_initvars = 0;
+						$$.initvarnos = NULL;
+					}
 				;
-
 decl_start		: K_DECLARE
+					{
+						/* Forget any variables created before block */
+						plisql_add_initdatums(NULL);
+						/*
+						 * Disable scanner lookup of identifiers while
+						 * we process the decl_stmts
+						 */
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
+					}
+				;
+decl_or_not		: K_DECLARE
+					{
+						/* Forget any variables created before block */
+						plisql_add_initdatums(NULL);
+						/*
+						 * Disable scanner lookup of identifiers while
+						 * we process the decl_stmts
+						 */
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
+					}
+				|
 					{
 						/* Forget any variables created before block */
 						plisql_add_initdatums(NULL);
@@ -470,21 +520,7 @@ decl_stmts		: decl_stmts decl_stmt
 				;
 
 decl_stmt		: decl_statement
-				| K_DECLARE
-					{
-						/* We allow useless extra DECLAREs */
-					}
-				| LESS_LESS any_identifier GREATER_GREATER
-					{
-						/*
-						 * Throw a helpful error if user tries to put block
-						 * label just before BEGIN, instead of before DECLARE.
-						 */
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("block label must be placed before DECLARE, not after"),
-								 parser_errposition(@1)));
-					}
+
 				;
 
 decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull decl_defval
@@ -530,8 +566,8 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						plisql_ns_additem($4->itemtype,
 										   $4->itemno, $1.name);
 					}
-				| decl_varname opt_scrollable K_CURSOR
-					{ plisql_ns_push($1.name, PLISQL_LABEL_OTHER); }
+				| K_CURSOR decl_varname opt_scrollable
+					{ plisql_ns_push($2.name, PLISQL_LABEL_OTHER); }
 				  decl_cursor_args decl_is_for decl_cursor_query
 					{
 						PLiSQL_var *new;
@@ -544,7 +580,7 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						plisql_ns_pop();
 
 						new = (PLiSQL_var *)
-							plisql_build_variable($1.name, $1.lineno,
+							plisql_build_variable($2.name, $2.lineno,
 												   plisql_build_datatype(REFCURSOROID,
 																		  -1,
 																		  InvalidOid,
@@ -579,7 +615,131 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 							new->cursor_explicit_argrow = -1;
 						else
 							new->cursor_explicit_argrow = $5->dno;
-						new->cursor_options = CURSOR_OPT_FAST_PLAN | $2;
+						new->cursor_options = CURSOR_OPT_FAST_PLAN | $3;
+						if (OidIsValid(new->pkgoid))
+							new->cursor_options |= CURSOR_OPT_HOLD;
+					}
+				| K_CURSOR decl_varname K_RETURN decl_datatype ';'
+					{
+						PLiSQL_var 	*new;
+						PLiSQL_expr 	*curname_def;
+						char		  	buf[1024];
+						char		  	*cp1;
+						char		  	*cp2;
+
+						new = (PLiSQL_var *)
+							plisql_build_variable($2.name, $2.lineno,
+												 plisql_build_datatype(REFCURSOROID,
+																		-1,
+																		InvalidOid,
+																		NULL),
+												 true);
+						curname_def = palloc0(sizeof(PLiSQL_expr));
+						strcpy(buf, "SELECT ");
+						cp1 = new->refname;
+						cp2 = buf + strlen(buf);
+
+						if (strchr(cp1, '\\') != NULL)
+							*cp2++ = ESCAPE_STRING_SYNTAX;
+						*cp2++ = '\'';
+						while (*cp1)
+						{
+							if (SQL_STR_DOUBLE(*cp1, true))
+								*cp2++ = *cp1;
+							*cp2++ = *cp1++;
+						}
+						strcpy(cp2, "'::pg_catalog.refcursor");
+						curname_def->query = pstrdup(buf);
+						new->default_val = curname_def;
+						new->cursor_explicit_expr = NULL;
+						new->cursor_explicit_argrow = -1;
+					}
+				| K_CURSOR decl_varname K_RETURN decl_datatype decl_is_for decl_cursor_query
+					{
+						PLiSQL_var 	*new;
+						PLiSQL_var 	*ret;
+						PLiSQL_expr 	*curname_def;
+						char		  	buf[1024];
+						char		  	*cp1;
+						char		  	*cp2;
+						char			*typname;
+
+						ret = (PLiSQL_var *)plisql_build_variable($2.name, $2.lineno, $4, true);
+						typname = ret->datatype->typname;
+
+						new = (PLiSQL_var *)
+							plisql_build_variable($2.name, $2.lineno,
+												 plisql_build_datatype(REFCURSOROID,
+																		-1,
+																		InvalidOid,
+																		NULL),
+												 true);
+						curname_def = palloc0(sizeof(PLiSQL_expr));
+						strcpy(buf, "SELECT ");
+						cp1 = new->refname;
+						cp2 = buf + strlen(buf);
+
+						if (strchr(cp1, '\\') != NULL)
+							*cp2++ = ESCAPE_STRING_SYNTAX;
+						*cp2++ = '\'';
+						while (*cp1)
+						{
+							if (SQL_STR_DOUBLE(*cp1, true))
+								*cp2++ = *cp1;
+							*cp2++ = *cp1++;
+						}
+						strcpy(cp2, "'::pg_catalog.refcursor");
+						curname_def->query = pstrdup(buf);
+						new->default_val = curname_def;
+						new->cursor_explicit_expr = $6;
+						new->cursor_explicit_argrow = -1;
+
+						if (!strstr(new->cursor_explicit_expr->query, typname))
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+										errmsg("different number of columns between cursor SELECT statement and return value.")));
+					}
+				| K_TYPE decl_varname K_IS K_RECORD '(' record_attr_list ')' ';'
+					{
+						PLiSQL_row *new;
+						int i;
+						ListCell *l;
+
+						new = palloc0(sizeof(PLiSQL_row));
+						new->dtype = PLISQL_DTYPE_ROW;
+						new->refname = pstrdup($2.name);
+						new->lineno = plisql_location_to_lineno(@1);
+						new->rowtupdesc = NULL;
+						new->nfields = list_length($6);
+						new->fieldnames = palloc(new->nfields * sizeof(char *));
+						new->arg_defval = palloc(new->nfields * sizeof(PLiSQL_expr *));
+						new->varnos = palloc(new->nfields * sizeof(int));
+
+						i = 0;
+						foreach (l, $6)
+						{
+							PLiSQL_variable *arg = (PLiSQL_variable *) lfirst(l);
+							Assert(!arg->isconst);
+							new->fieldnames[i] = arg->refname;
+							new->arg_defval[i] = arg->default_val;
+							new->varnos[i] = arg->dno;
+							i++;
+						}
+						list_free($6);
+
+						plisql_adddatum((PLiSQL_datum *) new);
+						plisql_ns_additem(PLISQL_NSTYPE_REC, new->dno, new->refname);
+					}
+				| K_TYPE decl_varname K_IS K_REF K_CURSOR ';'
+					{
+						PLiSQL_row *new;
+						new = palloc0(sizeof(PLiSQL_row));
+						new->dtype = PLISQL_DTYPE_REFCURSOR;
+						new->refname = pstrdup($2.name);
+						new->lineno = plisql_location_to_lineno(@1);
+
+						plisql_adddatum((PLiSQL_datum *) new);
+						plisql_ns_additem(PLISQL_NSTYPE_REFCURSOR, new->dno, new->refname);
 					}
 				;
 
@@ -594,6 +754,27 @@ opt_scrollable :
 				| K_SCROLL
 					{
 						$$ = CURSOR_OPT_SCROLL;
+					}
+				;
+
+record_attr_list : record_attr
+					{
+						$$ = list_make1($1);
+					}
+				| record_attr_list ',' record_attr
+					{
+						$$ = lappend($1, $3);
+					}
+				;
+
+record_attr		: decl_varname decl_datatype decl_notnull decl_rec_defval
+					{
+						PLiSQL_variable	*var;
+
+						var = plisql_build_variable($1.name, $1.lineno, $2, true);
+						var->notnull = $3;
+						var->default_val = $4;
+						$$ = (PLiSQL_datum *) var;
 					}
 				;
 
@@ -620,6 +801,7 @@ decl_cursor_args :
 						new->rowtupdesc = NULL;
 						new->nfields = list_length($2);
 						new->fieldnames = palloc(new->nfields * sizeof(char *));
+						new->arg_defval = palloc(new->nfields * sizeof(PLiSQL_expr *));
 						new->varnos = palloc(new->nfields * sizeof(int));
 
 						i = 0;
@@ -628,6 +810,7 @@ decl_cursor_args :
 							PLiSQL_variable *arg = (PLiSQL_variable *) lfirst(l);
 							Assert(!arg->isconst);
 							new->fieldnames[i] = arg->refname;
+							new->arg_defval[i] = arg->default_val;
 							new->varnos[i] = arg->dno;
 							i++;
 						}
@@ -653,6 +836,13 @@ decl_cursor_arg : decl_varname decl_datatype
 						$$ = (PLiSQL_datum *)
 							plisql_build_variable($1.name, $1.lineno,
 												   $2, true);
+					}
+				 | decl_varname decl_datatype cursor_defparam
+					{
+						PLiSQL_variable	*var;
+						var = plisql_build_variable($1.name, $1.lineno, $2, true);
+						var->default_val = $3;
+						$$ = (PLiSQL_datum *) var;
 					}
 				;
 
@@ -824,6 +1014,28 @@ decl_defval		: ';'
 					}
 				;
 
+cursor_defparam : decl_defkey
+					{
+						int endtok;
+						$$ = read_sql_expression2(',', ')', ")", &endtok);
+						plisql_push_back_token(endtok);
+					}
+				;
+
+decl_rec_defval	:
+					{
+						$$ = NULL;
+					}
+				| decl_defkey
+					{
+						int tok;
+
+						$$ = read_sql_expression2(',', ')', ")", &tok);
+
+						plisql_push_back_token(tok);
+					}
+				;
+
 decl_defkey		: assign_operator
 				| K_DEFAULT
 				;
@@ -849,7 +1061,7 @@ proc_sect		:
 					}
 				;
 
-proc_stmt		: pl_block ';'
+proc_stmt		: pl_block_internal ';'
 						{ $$ = $1; }
 				| stmt_assign
 						{ $$ = $1; }
@@ -2009,7 +2221,33 @@ stmt_execsql	: K_IMPORT
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							word_is_not_variable(&($1), @1);
-						$$ = make_execsql_stmt(T_WORD, @1);
+						if (tok == '(' || tok == ';')
+						{
+							PLiSQL_stmt_call *new;
+							PLiSQL_stmt_execsql *execstmt;
+							char *query;
+
+							new = palloc0(sizeof(PLiSQL_stmt_call));
+							new->cmd_type = PLISQL_STMT_CALL;
+							new->lineno = plisql_location_to_lineno(@1);
+							new->stmtid = ++plisql_curr_compile->nstatements;
+
+							execstmt = (PLiSQL_stmt_execsql *)
+												make_execsql_stmt(T_WORD, @1);
+							new->expr = execstmt->sqlstmt;
+							pfree(execstmt);
+
+							query = psprintf("CALL %s", new->expr->query);
+							pfree(new->expr->query); /* free existing buffer */
+							new->expr->query = query; /* assign new query */
+
+							new->is_call = true;
+							$$ = (PLiSQL_stmt *)new;
+						}
+						else
+						{
+							$$ = make_execsql_stmt(T_WORD, @1);
+						}
 					}
 				| T_CWORD
 					{
@@ -2020,7 +2258,33 @@ stmt_execsql	: K_IMPORT
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							cword_is_not_variable(&($1), @1);
-						$$ = make_execsql_stmt(T_CWORD, @1);
+						if (tok == '(' || tok == ';')
+						{
+							PLiSQL_stmt_call *new;
+							PLiSQL_stmt_execsql *execstmt;
+							char *query;
+
+							new = palloc0(sizeof(PLiSQL_stmt_call));
+							new->cmd_type = PLISQL_STMT_CALL;
+							new->lineno = plisql_location_to_lineno(@1);
+							new->stmtid = ++plisql_curr_compile->nstatements;
+
+							execstmt = (PLiSQL_stmt_execsql *)
+											make_execsql_stmt(T_CWORD, @1);
+							new->expr = execstmt->sqlstmt;
+							pfree(execstmt);
+
+							query = psprintf("CALL %s", new->expr->query);
+							pfree(new->expr->query); /* free existing buffer */
+							new->expr->query = query; /* assign new query */
+
+							new->is_call = true;
+							$$ = (PLiSQL_stmt *)new;
+						}
+						else
+						{
+							$$ = make_execsql_stmt(T_CWORD, @1);
+						}
 					}
 				;
 
@@ -2091,7 +2355,9 @@ stmt_dynexecute : K_EXECUTE
 stmt_open		: K_OPEN cursor_variable
 					{
 						PLiSQL_stmt_open *new;
+						PLiSQL_var *var = (PLiSQL_var *) $2;
 						int				  tok;
+						bool			  read_exp_expr;
 
 						new = palloc0(sizeof(PLiSQL_stmt_open));
 						new->cmd_type = PLISQL_STMT_OPEN;
@@ -2099,8 +2365,15 @@ stmt_open		: K_OPEN cursor_variable
 						new->stmtid = ++plisql_curr_compile->nstatements;
 						new->curvar = $2->dno;
 						new->cursor_options = CURSOR_OPT_FAST_PLAN;
+						read_exp_expr = (var->cursor_explicit_expr == NULL);
+						if (OidIsValid(var->pkgoid))
+						{
+							new->cursor_options |= CURSOR_OPT_HOLD;
+							if (var->datatype->typoid == REFCURSOROID && var->pkgdno == -1)
+								read_exp_expr = (var->cursor_explicit_expr != NULL);
+						}
 
-						if ($2->cursor_explicit_expr == NULL)
+						if (read_exp_expr)
 						{
 							/* be nice if we could use opt_scrollable here */
 							tok = yylex();
@@ -2285,11 +2558,14 @@ cursor_variable	: T_DATUM
 									 parser_errposition(@1)));
 
 						if (((PLiSQL_var *) $1.datum)->datatype->typoid != REFCURSOROID)
-							ereport(ERROR,
-									(errcode(ERRCODE_DATATYPE_MISMATCH),
-									 errmsg("variable \"%s\" must be of type cursor or refcursor",
-											((PLiSQL_var *) $1.datum)->refname),
-									 parser_errposition(@1)));
+						{
+							if (((PLiSQL_var *) $1.datum)->datatype->typtype != 'd')
+								ereport(ERROR,
+										(errcode(ERRCODE_DATATYPE_MISMATCH),
+										errmsg("variable \"%s\" must be of type cursor or refcursor",
+												((PLiSQL_var *) $1.datum)->refname),
+										parser_errposition(@1)));
+						}
 						$$ = (PLiSQL_var *) $1.datum;
 					}
 				| T_WORD
@@ -2513,7 +2789,6 @@ unreserved_keyword	:
 				| K_CONSTRAINT_NAME
 				| K_CONTINUE
 				| K_CURRENT
-				| K_CURSOR
 				| K_DATATYPE
 				| K_DEBUG
 				| K_DEFAULT
@@ -2555,6 +2830,7 @@ unreserved_keyword	:
 				| K_PRIOR
 				| K_QUERY
 				| K_RAISE
+				| K_RECORD
 				| K_RELATIVE
 				| K_RETURN
 				| K_RETURNED_SQLSTATE
@@ -2570,7 +2846,6 @@ unreserved_keyword	:
 				| K_STACKED
 				| K_TABLE
 				| K_TABLE_NAME
-				| K_TYPE
 				| K_USE_COLUMN
 				| K_USE_VARIABLE
 				| K_VARIABLE_CONFLICT
@@ -2808,9 +3083,7 @@ read_datatype(int tok)
 	int					startlocation;
 	PLiSQL_type		*result;
 	int					parenlevel = 0;
-
-	/* Should only be called while parsing DECLARE sections */
-	Assert(plisql_IdentifierLookup == IDENTIFIER_LOOKUP_DECLARE);
+	PLiSQL_nsitem 		*rcns = NULL;
 
 	/* Often there will be a lookahead token, but if not, get one */
 	if (tok == YYEMPTY)
@@ -2840,9 +3113,71 @@ read_datatype(int tok)
 			else if (tok_is_keyword(tok, &yylval,
 									K_ROWTYPE, "rowtype"))
 			{
+				PLiSQL_nsitem *ns;
+
+				ns = plisql_ns_lookup(plisql_ns_top(), false, dtname, NULL, NULL, NULL);
+				if (ns && ns->itemtype == PLISQL_NSTYPE_VAR)
+				{
+					PLiSQL_var *var = (PLiSQL_var *)plisql_Datums[ns->itemno];
+					if (var && var->datatype && var->datatype->typoid == REFCURSOROID)
+					{
+						return plisql_build_datatype(RECORDOID, -1, InvalidOid, NULL);
+					}
+				}
 				result = plisql_parse_wordrowtype(dtname);
 				if (result)
 					return result;
+			}
+		}
+		else if (curr_pkg && curr_pkg->isinitcomp)  /* handle the record type defined in package */
+		{
+			Oid 		typid = InvalidOid;
+
+			typid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+									PointerGetDatum(dtname),
+									ObjectIdGetDatum(curr_pkg->pkgoid));
+			if (OidIsValid(typid))
+			{
+				result = plisql_build_datatype(typid, -1, startlocation,
+												typeStringToTypeName(dtname));
+				if (result)
+				{
+					plisql_push_back_token(tok);
+					return result;
+				}
+			}
+		}
+		else
+		{
+			rcns = plisql_ns_lookup(plisql_ns_top(), false, dtname, NULL, NULL, NULL);
+
+			/* handle the record type defined in PL block */
+			if (rcns && rcns->itemtype == PLISQL_NSTYPE_REC)
+			{
+				PLiSQL_row *rtype = (PLiSQL_row *) plisql_Datums[rcns->itemno];
+				if (rtype && rtype->dtype == PLISQL_DTYPE_ROW)
+				{
+					result = plisql_build_datatype(RECORDOID, -1, InvalidOid, NULL);
+					if (result)
+					{
+						plisql_push_back_token(tok);
+						return result;
+					}
+				}
+			}
+			/* handle the ref cursor type defined in PL block */
+			if (rcns && rcns->itemtype == PLISQL_NSTYPE_REFCURSOR)
+			{
+				PLiSQL_row *rtype = (PLiSQL_row *) plisql_Datums[rcns->itemno];
+				if (rtype && rtype->dtype == PLISQL_DTYPE_REFCURSOR)
+				{
+					result = plisql_build_datatype(REFCURSOROID, -1, InvalidOid, NULL);
+					if (result)
+					{
+						plisql_push_back_token(tok);
+						return result;
+					}
+				}
 			}
 		}
 	}
@@ -3720,6 +4055,11 @@ parse_datatype(const char *string, int location)
 
 	/* Let the main parser try to parse it under standard SQL rules */
 	typeName = typeStringToTypeName(string);
+
+	/* Add the pkgoid in TypeName structure */
+	if (plisql_curr_compile->fn_pkg)
+		typeName->t_pkgoid = plisql_curr_compile->fn_pkg;
+
 	typenameTypeIdAndMod(NULL, typeName, &type_id, &typmod);
 
 	/* Restore former ereport callback */
@@ -3773,11 +4113,12 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	int			tok;
 	int			argc;
 	char	  **argv;
+	PLiSQL_expr **arg_defval;
 	StringInfoData ds;
 	bool		any_named = false;
 
 	tok = yylex();
-	if (cursor->cursor_explicit_argrow < 0)
+	if (cursor->cursor_explicit_argrow <= 0)
 	{
 		/* No arguments expected */
 		if (tok == '(')
@@ -3806,6 +4147,7 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	 */
 	row = (PLiSQL_row *) plisql_Datums[cursor->cursor_explicit_argrow];
 	argv = (char **) palloc0(row->nfields * sizeof(char *));
+	arg_defval = (PLiSQL_expr **) palloc0(row->nfields * sizeof(PLiSQL_expr *));
 
 	for (argc = 0; argc < row->nfields; argc++)
 	{
@@ -3880,6 +4222,7 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 								  NULL, &endtoken);
 
 		argv[argpos] = item->query;
+		arg_defval[argpos] = row->arg_defval[argpos];
 
 		if (endtoken == ')' && !(argc == row->nfields - 1))
 			ereport(ERROR,
@@ -3906,7 +4249,14 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 		 * Because named notation allows permutated argument lists, include
 		 * the parameter name for meaningful runtime errors.
 		 */
-		appendStringInfoString(&ds, argv[argc]);
+		if (argv[argc] != NULL && arg_defval[argc] != NULL)
+		{
+			resetStringInfo(&ds);
+			appendStringInfoString(&ds, arg_defval[argc]->query);
+		}
+		else
+			appendStringInfoString(&ds, argv[argc]);
+
 		if (any_named)
 			appendStringInfo(&ds, " AS %s",
 							 quote_identifier(row->fieldnames[argc]));

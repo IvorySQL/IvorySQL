@@ -526,7 +526,9 @@ typedef enum NodeTag
 	T_SupportRequestSelectivity,	/* in nodes/supportnodes.h */
 	T_SupportRequestCost,		/* in nodes/supportnodes.h */
 	T_SupportRequestRows,		/* in nodes/supportnodes.h */
-	T_SupportRequestIndexCondition	/* in nodes/supportnodes.h */
+	T_SupportRequestIndexCondition, /* in nodes/supportnodes.h */
+	T_CreatePackageStmt,		/* in nodes/parsenodes.h */
+	T_VarStmt					/* in nodes/parsenodes.h */
 } NodeTag;
 
 /*
@@ -847,6 +849,6 @@ typedef enum LimitOption
 	LIMIT_OPTION_COUNT,			/* FETCH FIRST... ONLY */
 	LIMIT_OPTION_WITH_TIES,		/* FETCH FIRST... WITH TIES */
 	LIMIT_OPTION_DEFAULT,		/* No limit present */
-} LimitOption;
+}			LimitOption;
 
 #endif							/* NODES_H */

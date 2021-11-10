@@ -39,7 +39,10 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_variable.h"
+#include "catalog/pg_package.h"
 #include "commands/dbcommands.h"
+#include "commands/packagecmds.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -763,6 +766,60 @@ RelationIsVisible(Oid relid)
 	return visible;
 }
 
+/*
+ * When we know a variable name, then we can find variable simply
+ */
+Oid
+LookupVariable(const char *nspname, const char *varname, bool missing_ok)
+{
+	Oid			namespaceId;
+	Oid			varoid = InvalidOid;
+	ListCell   *l;
+
+	if (nspname)
+	{
+		namespaceId = LookupExplicitNamespace(nspname, missing_ok);
+		if (!OidIsValid(namespaceId))
+			return InvalidOid;
+
+		varoid = GetSysCacheOid2(VARIABLENAMENSP, Anum_pg_variable_oid,
+								 PointerGetDatum(varname),
+								 ObjectIdGetDatum(namespaceId));
+	}
+	else
+	{
+		/* search for it in search path */
+		recomputeNamespacePath();
+
+		foreach(l, activeSearchPath)
+		{
+			namespaceId = lfirst_oid(l);
+
+			varoid = GetSysCacheOid2(VARIABLENAMENSP, Anum_pg_variable_oid,
+									 PointerGetDatum(varname),
+									 ObjectIdGetDatum(namespaceId));
+
+			if (OidIsValid(varoid))
+				break;
+		}
+	}
+
+	if (!OidIsValid(varoid) && !missing_ok)
+	{
+		if (nspname)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("variable \"%s\".\"%s\" does not exist",
+							nspname, varname)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("variable \"%s\" does not exist",
+							varname)));
+	}
+
+	return varoid;
+}
 
 /*
  * TypenameGetTypid
@@ -873,6 +930,116 @@ TypeIsVisible(Oid typid)
 	return visible;
 }
 
+/*
+ * HandleQualifiedName
+ *		Handle the function's qualified-name and return the namespace id.
+ *
+ */
+Oid
+HandleQualifiedName(List *names, char **funcname, bool missing_ok)
+{
+	QualifiedName qu;
+	int         num;
+	char       *fname = NULL;
+	Oid         np_id;
+	Oid			pkgnamespaceId;
+
+	*funcname = NULL;
+	/* Extract the qualified names */
+	num = ExtractQualifiedName(names, &qu);
+	switch (num)
+	{
+		case 1:
+			fname = qu.func;
+			np_id = InvalidOid;
+			recomputeNamespacePath();
+			break;
+
+		case 2:
+			/* either schema.obj or pkg.obj */
+			fname = qu.func;
+
+			/* let try to find the package. */
+			np_id = get_package_oid(list_make1(linitial(names)), true);
+			if (OidIsValid(np_id))
+			{
+				/* Okay a package was found */
+				AclResult	aclresult;
+
+				aclresult = pg_package_aclcheck(np_id, GetUserId(), ACL_EXECUTE);
+				if (aclresult != ACLCHECK_OK)
+					aclcheck_error(aclresult, OBJECT_PACKAGE, qu.package);
+			}
+			else
+			{
+				/* no package was found, so let the system take care of the rest */
+				np_id = LookupExplicitNamespace(qu.schema, missing_ok);
+			}
+			break;
+
+		case 3:
+			fname = qu.func;
+
+			if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.dbname))) /* select schema.pkg.func() */
+			{
+				pkgnamespaceId = get_namespace_oid(qu.dbname, false);
+				np_id = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,						  
+													CStringGetDatum(qu.package),						  
+														ObjectIdGetDatum(pkgnamespaceId));
+				if (!OidIsValid(np_id))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_SCHEMA),
+				 				errmsg("package \"%s\" does not exist", qu.package)));
+			}
+			else  /* select db.schema.func() */
+			{
+
+				if (strcmp(qu.dbname, get_database_name(MyDatabaseId)) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("cross-database references are not implemented: %s",
+									NameListToString(names))));
+				else
+				{
+					np_id = LookupExplicitNamespace(qu.package, missing_ok);
+					if (!OidIsValid(np_id))
+						return InvalidOid;
+				}
+			}
+			break;
+
+		case 4:
+			fname = qu.func;
+
+			if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.schema)))
+			{
+				pkgnamespaceId = get_namespace_oid(qu.schema, false);
+				np_id = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,						  
+												CStringGetDatum(qu.package),					  
+														ObjectIdGetDatum(pkgnamespaceId));
+				if (!OidIsValid(np_id))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_SCHEMA),
+				 				errmsg("package \"%s\" does not exist", qu.package)));
+			}
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_SCHEMA),
+				 			errmsg("schema \"%s\" does not exist", qu.schema)));		
+
+			break;
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("improper qualified name (too many dotted names).")));
+			break;
+	}
+
+	*funcname = fname;
+	return np_id;
+}
+
 
 /*
  * FuncnameGetCandidates
@@ -953,7 +1120,6 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 {
 	FuncCandidateList resultList = NULL;
 	bool		any_special = false;
-	char	   *schemaname;
 	char	   *funcname;
 	Oid			namespaceId;
 	CatCList   *catlist;
@@ -962,22 +1128,11 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 	/* check for caller error */
 	Assert(nargs >= 0 || !(expand_variadic | expand_defaults));
 
-	/* deconstruct the name list */
-	DeconstructQualifiedName(names, &schemaname, &funcname);
-
-	if (schemaname)
-	{
-		/* use exact schema given */
-		namespaceId = LookupExplicitNamespace(schemaname, missing_ok);
-		if (!OidIsValid(namespaceId))
-			return NULL;
-	}
-	else
-	{
-		/* flag to indicate we need namespace search */
-		namespaceId = InvalidOid;
-		recomputeNamespacePath();
-	}
+	/* Handle the qualified-name and get namespaceId */
+	namespaceId = HandleQualifiedName(names, &funcname, missing_ok);
+	if (!OidIsValid(namespaceId) &&
+		list_length(names) >= 2)
+		return NULL;
 
 	/* Search syscache by name only */
 	catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
@@ -2895,6 +3050,64 @@ DeconstructQualifiedName(List *names,
 }
 
 /*
+ * ExtractQualifiedName
+ *		Given a possibly-qualified name expressed as a list of String nodes,
+ *		extract these qualified names.
+ */
+int
+ExtractQualifiedName(List *names, QualifiedName *qu)
+{
+	int len;
+
+	len = list_length(names);
+	
+	switch (len) // list_length(names
+	{
+		case 1:
+			qu->dbname = NULL;
+			qu->schema = NULL;
+			qu->package = NULL;
+			qu->func = strVal(linitial(names));
+			break;
+		case 2:
+			qu->dbname = NULL;
+			qu->schema = strVal(linitial(names));
+			qu->package = strVal(linitial(names));
+			qu->func = strVal(lsecond(names));	
+			break;
+		case 3:
+			qu->dbname = strVal(linitial(names));
+			qu->schema = strVal(lsecond(names));
+			qu->package = strVal(lsecond(names));
+			qu->func = strVal(lthird(names));	      
+			break;
+		case 4:
+			qu->dbname = strVal(linitial(names));
+			qu->schema = strVal(lsecond(names));
+			qu->package = strVal(lthird(names));
+			qu->func = strVal(lfourth(names));
+
+			/*
+			 * We check the catalog name and then ignore it.
+			 */
+			if (strcmp(qu->dbname, get_database_name(MyDatabaseId)) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cross-database references are not implemented: %s",
+								NameListToString(names))));
+			break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("improper qualified name (too many dotted names): %s",
+							NameListToString(names))));
+			break;
+	}
+
+	return len;
+}
+
+/*
  * LookupNamespaceNoError
  *		Look up a schema name.
  *
@@ -3497,6 +3710,13 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 	/* The remainder of activeSearchPath should match path->schemas. */
 	foreach(lcp, path->schemas)
 	{
+		/*
+		 * TODO: figure out a way to further optimize this check. It could
+		 * potentially slow down the system.
+		 */
+		if (OidIsValid(lfirst_oid(lcp)) &&
+			get_package_name(lfirst_oid(lcp), true) != NULL)
+			continue;
 		if (lc && lfirst_oid(lc) == lfirst_oid(lcp))
 			lc = lnext(activeSearchPath, lc);
 		else

@@ -155,4 +155,8 @@ extern int	defGetTypeLength(DefElem *def);
 extern List *defGetStringList(DefElem *def);
 extern void errorConflictingDefElem(DefElem *defel, ParseState *pstate) pg_attribute_noreturn();
 
+/* commands/packagecmds.c */
+extern ObjectAddress CreatePackage(ParseState *pstate, CreatePackageStmt *stmt);
+extern void DropPackageById(Oid packageOid);
+
 #endif							/* DEFREM_H */

@@ -604,7 +604,7 @@ check_declared_list(const char *name)
 }
 %}
 
-%expect 0
+%expect 2
 %name-prefix="base_yy"
 %locations
 

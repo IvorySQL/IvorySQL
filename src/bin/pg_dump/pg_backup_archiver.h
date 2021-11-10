@@ -446,6 +446,7 @@ extern void DeCloneArchive(ArchiveHandle *AH);
 
 extern int	TocIDRequired(ArchiveHandle *AH, DumpId id);
 TocEntry   *getTocEntryByDumpId(ArchiveHandle *AH, DumpId id);
+TocEntry   *getTocEntryByTag(ArchiveHandle *AH, const char *tag);
 extern bool checkSeek(FILE *fp);
 
 #define appendStringLiteralAHX(buf,str,AH) \

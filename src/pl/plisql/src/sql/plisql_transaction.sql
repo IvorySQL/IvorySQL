@@ -280,7 +280,7 @@ INSERT INTO test1 VALUES (1,'one'), (2,'two'), (3,'three');
 
 DO LANGUAGE plisql $$
 DECLARE
-    l_cur CURSOR FOR SELECT a FROM test1 ORDER BY 1 FOR UPDATE;
+    CURSOR l_cur FOR SELECT a FROM test1 ORDER BY 1 FOR UPDATE;
 BEGIN
     FOR r IN l_cur LOOP
       UPDATE test1 SET b = b || ' ' || b WHERE a = r.a;

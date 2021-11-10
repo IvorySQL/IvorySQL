@@ -66,6 +66,7 @@ make_parsestate(ParseState *parentParseState)
 		pstate->p_queryEnv = parentParseState->p_queryEnv;
 	}
 
+	pstate->p_pkgoid = InvalidOid;
 	return pstate;
 }
 

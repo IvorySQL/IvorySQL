@@ -1,5 +1,5 @@
 --
--- Tests for PL/pgSQL control structures
+-- Tests for PL/iSQL control structures
 --
 
 -- integer FOR loop

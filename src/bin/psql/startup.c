@@ -203,6 +203,7 @@ main(int argc, char *argv[])
 	SetVariable(pset.vars, "PROMPT1", DEFAULT_PROMPT1);
 	SetVariable(pset.vars, "PROMPT2", DEFAULT_PROMPT2);
 	SetVariable(pset.vars, "PROMPT3", DEFAULT_PROMPT3);
+	SetVariable(pset.vars, "PLISQL", DEFAULT_PLISQL); /* for plisql language */
 
 	parse_psql_options(argc, argv, &options);
 

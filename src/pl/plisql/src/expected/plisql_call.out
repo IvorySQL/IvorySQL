@@ -118,7 +118,7 @@ BEGIN
 END;
 $$;
 ERROR:  procedure parameter "b" is an output parameter but corresponding argument is not writable
-CONTEXT:  PL/pgSQL function inline_code_block line 6 at CALL
+CONTEXT:  PL/iSQL function inline_code_block line 6 at CALL
 DO
 LANGUAGE plisql
 $$

@@ -25,6 +25,13 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "commands/packagecmds.h"
+#include "catalog/pg_package.h"
+#include "commands/dbcommands.h"
+#include "miscadmin.h"
+
+
+
 
 static int32 typenameTypeMod(ParseState *pstate, const TypeName *typeName,
 							 Type typ);
@@ -152,44 +159,117 @@ LookupTypeNameExtended(ParseState *pstate,
 			/* this construct should never have an array indicator */
 			Assert(typeName->arrayBounds == NIL);
 
-			/* emit nuisance notice (intentionally not errposition'd) */
-			ereport(NOTICE,
-					(errmsg("type reference %s converted to %s",
-							TypeNameToString(typeName),
-							format_type_be(typoid))));
+			if (!(pstate && OidIsValid(pstate->p_pkgoid)))
+			{
+				/* emit nuisance notice (intentionally not errposition'd) */
+				ereport(NOTICE,
+						(errmsg("type reference %s converted to %s",
+								TypeNameToString(typeName),
+								format_type_be(typoid))));
+			}
 		}
 	}
 	else
 	{
 		/* Normal reference to a type name */
-		char	   *schemaname;
-		char	   *typname;
+		QualifiedName qu;
+		int			num;
 
-		/* deconstruct the name list */
-		DeconstructQualifiedName(typeName->names, &schemaname, &typname);
-
-		if (schemaname)
+		typoid = InvalidOid;
+		num = ExtractQualifiedName(typeName->names, &qu);
+		switch (num)
 		{
-			/* Look in specific schema only */
-			Oid			namespaceId;
-			ParseCallbackState pcbstate;
+			case 1:
+				{
+					/* Unqualified type name, so search the search path */
+					typoid = TypenameGetTypidExtended(qu.func, temp_ok);
 
-			setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
+					/* If the previous typoid is invalid, We need to check
+					 * whether it is a package's refcursor types.
+					 */
+					if (!OidIsValid(typoid))
+						if (typeName->t_pkgoid)
+							typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+												 PointerGetDatum(qu.func),
+												 ObjectIdGetDatum(typeName->t_pkgoid));
+				}
+				break;
+			case 2:
+				{
+					Oid			namespaceId;
+					ParseCallbackState pcbstate;
 
-			namespaceId = LookupExplicitNamespace(schemaname, missing_ok);
-			if (OidIsValid(namespaceId))
-				typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-										 PointerGetDatum(typname),
-										 ObjectIdGetDatum(namespaceId));
-			else
-				typoid = InvalidOid;
+					setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
+					namespaceId = get_package_oid(list_make1(linitial(typeName->names)), true);
+					if (OidIsValid(namespaceId))
+						typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+												 PointerGetDatum(qu.func),
+												 ObjectIdGetDatum(namespaceId));
+					else
+					{
+						/* Look in specific schema only */
+						namespaceId = LookupExplicitNamespace(qu.package, missing_ok);
+						if (OidIsValid(namespaceId))
+							typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+													 PointerGetDatum(qu.func),
+													 ObjectIdGetDatum(namespaceId));
+						else
+							typoid = InvalidOid;
+					}
+					cancel_parser_errposition_callback(&pcbstate);
+				}
+				break;
+			case 3:
+				if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.dbname)))	/* select
+																						 * schema.pkg.func() */
+				{
+					Oid			np_id;
 
-			cancel_parser_errposition_callback(&pcbstate);
-		}
-		else
-		{
-			/* Unqualified type name, so search the search path */
-			typoid = TypenameGetTypidExtended(typname, temp_ok);
+					np_id = get_package_oid(list_make1(lsecond(typeName->names)), true);
+					if (OidIsValid(np_id))
+						typoid = InvalidOid;
+				}
+				else			/* select db.schema.fun() */
+				{
+					if (strcmp(qu.dbname, get_database_name(MyDatabaseId)) != 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("cross-database references are not implemented.")));
+					else
+					{
+						/* Look in specific schema only */
+						Oid			namespaceId;
+						ParseCallbackState pcbstate;
+
+						setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
+
+						namespaceId = LookupExplicitNamespace(qu.package, missing_ok);
+						if (OidIsValid(namespaceId))
+							typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+													 PointerGetDatum(qu.func),
+													 ObjectIdGetDatum(namespaceId));
+						else
+							typoid = InvalidOid;
+
+						cancel_parser_errposition_callback(&pcbstate);
+					}
+				}
+				break;
+			case 4:
+				if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.schema)))
+				{
+					Oid			np_id;
+
+					np_id = get_package_oid(list_make1(lthird(typeName->names)), true);
+					if (OidIsValid(np_id))
+						typoid = InvalidOid;
+				}
+				break;
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("improper qualified name (too many dotted names).")));
+				break;
 		}
 
 		/* If an array reference, return the array type instead */
@@ -315,6 +395,38 @@ typenameTypeIdAndMod(ParseState *pstate, const TypeName *typeName,
 	tup = typenameType(pstate, typeName, typmod_p);
 	*typeid_p = ((Form_pg_type) GETSTRUCT(tup))->oid;
 	ReleaseSysCache(tup);
+}
+
+void
+LookupType(ParseState *pstate, const TypeName *typeName,
+					 Oid *typeid_p, int32 *typmod_p, bool missing_ok)
+{
+	Type		tup;
+
+	tup = LookupTypeName(NULL, typeName, typmod_p, missing_ok);
+	if (tup == NULL)
+	{
+		if (!missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("type \"%s\" does not exist",
+							TypeNameToString(typeName)),
+					 parser_errposition(pstate, typeName->location)));
+		*typeid_p = InvalidOid;
+	}
+	else
+	{
+		Form_pg_type typ = (Form_pg_type) GETSTRUCT(tup);
+
+		if (!typ->typisdefined)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("type \"%s\" is only a shell",
+							TypeNameToString(typeName)),
+					 parser_errposition(pstate, typeName->location)));
+		*typeid_p = typ->oid;
+		ReleaseSysCache(tup);
+	}
 }
 
 /*

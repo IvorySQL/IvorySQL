@@ -16,6 +16,8 @@
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
+#include "catalog/pg_variable.h"
+#include "catalog/pg_package.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -37,6 +39,8 @@
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 #include "utils/xml.h"
+#include "utils/syscache.h"
+
 
 /* GUC parameters */
 bool		Transform_null_equals = false;
@@ -504,6 +508,8 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 		case EXPR_KIND_COPY_WHERE:
 		case EXPR_KIND_GENERATED_COLUMN:
 		case EXPR_KIND_CYCLE_MARK:
+		case EXPR_KIND_VARIABLE_DEFAULT:
+
 			/* okay */
 			break;
 
@@ -783,6 +789,32 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					 errmsg("column reference \"%s\" is ambiguous",
 							NameListToString(cref->fields)),
 					 parser_errposition(pstate, cref->location)));
+	}
+
+	/*
+	 * still nothing found, try package function call. In oracle package
+	 * function can be called as "select pkg.func;". However at this point, we
+	 * don't want to throw any errors while checking for package elements, So
+	 * to avoid that we enclose the call within PG_TRY/CATCH. In case of any
+	 * errors, we let the existing system handle the errors.
+	 */
+	if (node == NULL && list_length(cref->fields) >= 2)
+	{
+		PG_TRY();
+		{
+			node = ParseFuncOrColumn(pstate,
+									 cref->fields,
+									 NIL,
+									 NULL,
+									 NULL,
+									 false,
+									 cref->location);
+		}
+		PG_CATCH();
+		{
+			node = NULL;
+		}
+		PG_END_TRY();
 	}
 
 	/*
@@ -1729,6 +1761,7 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 			break;
 		case EXPR_KIND_COLUMN_DEFAULT:
 		case EXPR_KIND_FUNCTION_DEFAULT:
+		case EXPR_KIND_VARIABLE_DEFAULT:
 			err = _("cannot use subquery in DEFAULT expression");
 			break;
 		case EXPR_KIND_INDEX_EXPRESSION:
@@ -3059,6 +3092,7 @@ ParseExprKindName(ParseExprKind exprKind)
 			return "CHECK";
 		case EXPR_KIND_COLUMN_DEFAULT:
 		case EXPR_KIND_FUNCTION_DEFAULT:
+		case EXPR_KIND_VARIABLE_DEFAULT:
 			return "DEFAULT";
 		case EXPR_KIND_INDEX_EXPRESSION:
 			return "index expression";

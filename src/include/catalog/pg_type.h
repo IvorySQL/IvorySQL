@@ -227,6 +227,9 @@ CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelati
 	 */
 	Oid			typcollation BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_collation);
 
+	/* package type's access modifier */
+	char		typaccess BKI_DEFAULT(n);
+
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 
 	/*
@@ -305,6 +308,14 @@ DECLARE_UNIQUE_INDEX(pg_type_typname_nsp_index, 2704, TypeNameNspIndexId, on pg_
 #define  TYPSTORAGE_EXTENDED	'x' /* fully toastable */
 #define  TYPSTORAGE_MAIN		'm' /* like 'x' but try to store inline */
 
+/*
+ * Symbolic values for typaccess column: these indicate the elements access
+ * modifiers such as PUBLIC or PRIVATE qualifiers.
+ */
+#define PACKAGE_MEMBER_PUBLIC	'u'
+#define PACKAGE_MEMBER_PRIVATE	'r'
+#define NON_PACKAGE_MEMBER		'n'
+
 /* Is a type OID a polymorphic pseudotype?	(Beware of multiple evaluation) */
 #define IsPolymorphicType(typid)  \
 	(IsPolymorphicTypeFamily1(typid) || \
@@ -376,7 +387,8 @@ extern ObjectAddress TypeCreate(Oid newTypeOid,
 								int32 typeMod,
 								int32 typNDims,
 								bool typeNotNull,
-								Oid typeCollation);
+								Oid typeCollation,
+								char typeaccess);
 
 extern void GenerateTypeDependencies(HeapTuple typeTuple,
 									 Relation typeCatalog,

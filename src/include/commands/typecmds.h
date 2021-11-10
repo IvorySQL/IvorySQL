@@ -57,5 +57,6 @@ extern Oid	AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 									   ObjectAddresses *objsMoved);
 
 extern ObjectAddress AlterType(AlterTypeStmt *stmt);
+extern ObjectAddress DefineRefCursor(ParseState *pstate, CreateDomainStmt *stmt, bool isbody);
 
 #endif							/* TYPECMDS_H */

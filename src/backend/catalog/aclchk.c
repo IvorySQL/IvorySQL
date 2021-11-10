@@ -48,6 +48,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
@@ -58,12 +59,15 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_variable.h"
+#include "catalog/pg_package.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
+#include "commands/packagecmds.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -112,6 +116,8 @@ static void ExecGrant_Largeobject(InternalGrant *grantStmt);
 static void ExecGrant_Namespace(InternalGrant *grantStmt);
 static void ExecGrant_Tablespace(InternalGrant *grantStmt);
 static void ExecGrant_Type(InternalGrant *grantStmt);
+static void ExecGrant_Package(InternalGrant *grantStmt);
+
 
 static void SetDefaultACLsInSchemas(InternalDefaultACL *iacls, List *nspnames);
 static void SetDefaultACL(InternalDefaultACL *iacls);
@@ -233,6 +239,9 @@ restrict_and_check_grant(bool is_grant, AclMode avail_goptions, bool all_privs,
 			break;
 		case OBJECT_FUNCTION:
 			whole_mask = ACL_ALL_RIGHTS_FUNCTION;
+			break;
+		case OBJECT_PACKAGE:
+			whole_mask = ACL_ALL_RIGHTS_PACKAGE;
 			break;
 		case OBJECT_LANGUAGE:
 			whole_mask = ACL_ALL_RIGHTS_LANGUAGE;
@@ -462,6 +471,10 @@ ExecuteGrantStmt(GrantStmt *stmt)
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for function");
 			break;
+		case OBJECT_PACKAGE:
+			all_privileges = ACL_ALL_RIGHTS_PACKAGE;
+			errormsg = gettext_noop("invalid privilege type %s for package");
+			break;
 		case OBJECT_LANGUAGE:
 			all_privileges = ACL_ALL_RIGHTS_LANGUAGE;
 			errormsg = gettext_noop("invalid privilege type %s for language");
@@ -588,6 +601,9 @@ ExecGrantStmt_oids(InternalGrant *istmt)
 		case OBJECT_ROUTINE:
 			ExecGrant_Function(istmt);
 			break;
+		case OBJECT_PACKAGE:
+			ExecGrant_Package(istmt);
+			break;
 		case OBJECT_LANGUAGE:
 			ExecGrant_Language(istmt);
 			break;
@@ -675,6 +691,16 @@ objectNamesToOids(ObjectType objtype, List *objnames)
 
 				funcid = LookupFuncWithArgs(OBJECT_FUNCTION, func, false);
 				objects = lappend_oid(objects, funcid);
+			}
+			break;
+		case OBJECT_PACKAGE:
+			foreach(cell, objnames)
+			{
+				List	   *pkgname = (List *) lfirst(cell);
+				Oid			relOid;
+
+				relOid = get_package_oid(castNode(List, pkgname), false);
+				objects = lappend_oid(objects, relOid);
 			}
 			break;
 		case OBJECT_LANGUAGE:
@@ -2572,6 +2598,130 @@ ExecGrant_Function(InternalGrant *istmt)
 
 	table_close(relation, RowExclusiveLock);
 }
+static void
+ExecGrant_Package(InternalGrant *istmt)
+{
+	Relation	relation;
+	ListCell   *cell;
+
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_PACKAGE;
+
+	relation = table_open(PackageRelationId, RowExclusiveLock);
+
+	foreach(cell, istmt->objects)
+	{
+		Oid			pkgId = lfirst_oid(cell);
+		Form_pg_package pg_package_tuple;
+		Datum		aclDatum;
+		bool		isNull;
+		AclMode		avail_goptions;
+		AclMode		this_privileges;
+		Acl		   *old_acl;
+		Acl		   *new_acl;
+		Oid			grantorId;
+		Oid			ownerId;
+		HeapTuple	tuple;
+		HeapTuple	newtuple;
+		Datum		values[Natts_pg_package];
+		bool		nulls[Natts_pg_package];
+		bool		replaces[Natts_pg_package];
+		int			noldmembers;
+		int			nnewmembers;
+		Oid		   *oldmembers;
+		Oid		   *newmembers;
+
+		tuple = SearchSysCache1(PACKAGEOID, ObjectIdGetDatum(pkgId));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for package %u", pkgId);
+
+		pg_package_tuple = (Form_pg_package) GETSTRUCT(tuple);
+
+		/*
+		 * Get owner ID and working copy of existing ACL. If there's no ACL,
+		 * substitute the proper default.
+		 */
+		ownerId = pg_package_tuple->pkgowner;
+		aclDatum = SysCacheGetAttr(PACKAGEOID, tuple, Anum_pg_package_pkgacl,
+								   &isNull);
+		if (isNull)
+		{
+			old_acl = acldefault(OBJECT_PACKAGE, ownerId);
+			/* There are no old member roles according to the catalogs */
+			noldmembers = 0;
+			oldmembers = NULL;
+		}
+		else
+		{
+			old_acl = DatumGetAclPCopy(aclDatum);
+			/* Get the roles mentioned in the existing ACL */
+			noldmembers = aclmembers(old_acl, &oldmembers);
+		}
+
+		/* Determine ID to do the grant as, and package grant options */
+		select_best_grantor(GetUserId(), istmt->privileges,
+							old_acl, ownerId,
+							&grantorId, &avail_goptions);
+
+		/*
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
+		 */
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, istmt->privileges,
+									 pkgId, grantorId, OBJECT_PACKAGE,
+									 NameStr(pg_package_tuple->pkgname),
+									 0, NULL);
+
+		/*
+		 * Generate new ACL.
+		 */
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
+									   grantorId, ownerId);
+
+		/*
+		 * We need the members of both old and new ACLs so we can correct the
+		 * shared dependency information.
+		 */
+		nnewmembers = aclmembers(new_acl, &newmembers);
+
+		/* finished building new ACL value, now insert it */
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+		MemSet(replaces, false, sizeof(replaces));
+
+		replaces[Anum_pg_package_pkgacl - 1] = true;
+		values[Anum_pg_package_pkgacl - 1] = PointerGetDatum(new_acl);
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
+									 nulls, replaces);
+
+		CatalogTupleUpdate(relation, &newtuple->t_self, newtuple);
+
+		/* Update initial privileges for extensions */
+		recordExtensionInitPriv(pkgId, PackageRelationId, 0, new_acl);
+
+		/* Update the shared dependency ACL info */
+		updateAclDependencies(PackageRelationId, pkgId, 0,
+							  ownerId,
+							  noldmembers, oldmembers,
+							  nnewmembers, newmembers);
+
+		ReleaseSysCache(tuple);
+
+		pfree(new_acl);
+
+		/* prevent error when processing duplicate objects */
+		CommandCounterIncrement();
+	}
+
+	table_close(relation, RowExclusiveLock);
+
+}
+
 
 static void
 ExecGrant_Language(InternalGrant *istmt)
@@ -3415,8 +3565,14 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TYPE:
 						msg = gettext_noop("permission denied for type %s");
 						break;
+					case OBJECT_VARIABLE:
+						msg = gettext_noop("permission denied for schema variable %s");
+						break;
 					case OBJECT_VIEW:
 						msg = gettext_noop("permission denied for view %s");
+						break;
+					case OBJECT_PACKAGE:
+						msg = gettext_noop("permission denied for package %s");
 						break;
 						/* these currently aren't used */
 					case OBJECT_ACCESS_METHOD:
@@ -3526,6 +3682,9 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TYPE:
 						msg = gettext_noop("must be owner of type %s");
 						break;
+					case OBJECT_VARIABLE:
+						msg = gettext_noop("must be owner of schema variable %s");
+						break;
 					case OBJECT_VIEW:
 						msg = gettext_noop("must be owner of view %s");
 						break;
@@ -3558,6 +3717,10 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TRIGGER:
 						msg = gettext_noop("must be owner of relation %s");
 						break;
+					case OBJECT_PACKAGE:
+						msg = gettext_noop("must be owner of package %s");
+						break;
+
 						/* these currently aren't used */
 					case OBJECT_ACCESS_METHOD:
 					case OBJECT_AMOP:
@@ -4401,6 +4564,78 @@ pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 }
 
 /*
+ * Exported routine for examining a user's privileges for a package
+ */
+AclMode
+pg_package_aclmask(Oid pkg_oid, Oid roleid, AclMode mask, AclMaskHow how)
+{
+	AclMode		result;
+	HeapTuple	tuple;
+	Datum		aclDatum;
+	bool		isNull;
+	Acl		   *acl;
+	Oid			ownerId;
+
+	Form_pg_package pkgForm;
+
+	/* Bypass permission checks for superusers */
+	if (superuser_arg(roleid))
+		return mask;
+
+	/*
+	 * Must get the type's tuple from pg_type
+	 */
+	tuple = SearchSysCache1(PACKAGEOID, ObjectIdGetDatum(pkg_oid));
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("package with OID %u does not exist",
+						pkg_oid)));
+	pkgForm = (Form_pg_package) GETSTRUCT(tuple);
+
+	/*
+	 * Now get the type's owner and ACL from the tuple
+	 */
+	ownerId = pkgForm->pkgowner;
+
+	aclDatum = SysCacheGetAttr(PACKAGEOID, tuple,
+							   Anum_pg_package_pkgacl, &isNull);
+	if (isNull)
+	{
+		/* No ACL, so build default ACL */
+		acl = acldefault(OBJECT_PACKAGE, ownerId);
+		aclDatum = (Datum) 0;
+	}
+	else
+	{
+		/* detoast rel's ACL if necessary */
+		acl = DatumGetAclP(aclDatum);
+	}
+
+	result = aclmask(acl, roleid, ownerId, mask, how);
+
+	/* if we have a detoasted copy, free it */
+	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
+		pfree(acl);
+
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * Exported routine for checking a user's access privileges to a variable
+ */
+AclResult
+pg_package_aclcheck(Oid pkg_oid, Oid roleid, AclMode mode)
+{
+	if (pg_package_aclmask(pkg_oid, roleid, mode, ACLMASK_ANY) != 0)
+		return ACLCHECK_OK;
+	else
+		return ACLCHECK_NO_PRIV;
+}
+
+/*
  * Exported routine for examining a user's privileges for a foreign
  * server.
  */
@@ -4917,6 +5152,30 @@ pg_proc_ownercheck(Oid proc_oid, Oid roleid)
 	return has_privs_of_role(roleid, ownerId);
 }
 
+bool
+pg_variable_ownercheck(Oid db_oid, Oid roleid)
+{
+	HeapTuple	tuple;
+	Oid			ownerId;
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	tuple = SearchSysCache1(VARIABLEOID, ObjectIdGetDatum(db_oid));
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("variable with OID %u does not exist", db_oid)));
+
+	ownerId = ((Form_pg_variable) GETSTRUCT(tuple))->varowner;
+
+	ReleaseSysCache(tuple);
+
+	return has_privs_of_role(roleid, ownerId);
+}
+
+
 /*
  * Ownership check for a procedural language (specified by OID)
  */
@@ -5431,6 +5690,33 @@ pg_statistics_object_ownercheck(Oid stat_oid, Oid roleid)
 }
 
 /*
+ * Ownership check for a package (specified by OID).
+ */
+bool
+pg_package_ownercheck(Oid pkgoid, Oid roleid)
+{
+	HeapTuple	tuple;
+	Oid			ownerId;
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	tuple = SearchSysCache1(PACKAGEOID, ObjectIdGetDatum(pkgoid));
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_FUNCTION),
+				 errmsg("package with OID %u does not exist", pkgoid)));
+
+	ownerId = ((Form_pg_package) GETSTRUCT(tuple))->pkgowner;
+
+	ReleaseSysCache(tuple);
+
+	return has_privs_of_role(roleid, ownerId);
+}
+
+
+/*
  * Check whether specified role has CREATEROLE privilege (or is a superuser)
  *
  * Note: roles do not have owners per se; instead we use this test in
@@ -5557,7 +5843,6 @@ get_user_default_acl(ObjectType objtype, Oid ownerId, Oid nsp_oid)
 		case OBJECT_SCHEMA:
 			defaclobjtype = DEFACLOBJ_NAMESPACE;
 			break;
-
 		default:
 			return NULL;
 	}
