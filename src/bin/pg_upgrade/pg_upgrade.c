@@ -377,7 +377,8 @@ create_new_objects(void)
 		 * tell pg_restore to drop and recreate it; otherwise we would fail to
 		 * propagate its database-level properties.
 		 */
-		if (strcmp(old_db->db_name, "postgres") == 0)
+		if (strcmp(old_db->db_name, "postgres") == 0 ||
+			strcmp(old_db->db_name, "ivorysql") == 0)
 			create_opts = "--clean --create";
 		else
 			create_opts = "--create";
