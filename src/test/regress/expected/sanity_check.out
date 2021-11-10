@@ -135,6 +135,7 @@ pg_namespace|t
 pg_opclass|t
 pg_operator|t
 pg_opfamily|t
+pg_package|t
 pg_partitioned_table|t
 pg_policy|t
 pg_proc|t
@@ -163,6 +164,7 @@ pg_ts_parser|t
 pg_ts_template|t
 pg_type|t
 pg_user_mapping|t
+pg_variable|t
 point_tbl|t
 polygon_tbl|t
 quad_box_tbl|t

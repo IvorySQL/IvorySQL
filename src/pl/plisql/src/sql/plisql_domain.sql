@@ -1,5 +1,5 @@
 --
--- Tests for PL/pgSQL's behavior with domain types
+-- Tests for PL/iSQL's behavior with domain types
 --
 
 CREATE DOMAIN booltrue AS bool CHECK (VALUE IS TRUE OR VALUE IS NULL);
@@ -198,7 +198,7 @@ SELECT * FROM test_assign_nnint_container(1,null,3);
 
 -- Since core system allows this:
 SELECT null::nnint_container;
--- so should PL/PgSQL
+-- so should PL/iSQL
 
 CREATE FUNCTION test_assign_nnint_container2(x int, y int, z int)
   RETURNS nnint_container AS $$

@@ -17,10 +17,14 @@
 
 #include <ctype.h>
 
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_variable.h"
+#include "commands/packagecmds.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
@@ -60,6 +64,7 @@ MemoryContext plisql_compile_tmp_cxt;
  * ----------
  */
 static HTAB *plisql_HashTable = NULL;
+static HTAB *packages_HashTable = NULL;
 
 typedef struct plisql_hashent
 {
@@ -122,8 +127,11 @@ static void plisql_HashTableInsert(PLiSQL_function *function,
 static void plisql_HashTableDelete(PLiSQL_function *function);
 static void delete_function(PLiSQL_function *func);
 
+static List *get_package_funcs_list(Oid pkgOid);
+static void delete_package_state(PLiSQL_package *pkg);
+
 /* ----------
- * plisql_compile		Make an execution tree for a PL/pgSQL function.
+ * plisql_compile		Make an execution tree for a PL/iSQL function.
  *
  * If forValidator is true, we're only compiling for validation purposes,
  * and so some checks are skipped.
@@ -170,9 +178,19 @@ recheck:
 
 	if (function)
 	{
-		/* We have a compiled function, but is it still valid? */
+		/*
+		 * We have a compiled function, but is it still valid?
+		 *
+		 * TODO: if the function is making any refrence to some package, make it
+		 * compile again to ensure it get's the latest copy of package state.
+		 * A package can update the package state at anytime, however the function
+		 * refrencing such packages will not know of it, until it recompiles.
+		 * current solution is not ideal but it works, until we find some more
+		 * eloquent solution.
+		 */
 		if (function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
-			ItemPointerEquals(&function->fn_tid, &procTup->t_self))
+			ItemPointerEquals(&function->fn_tid, &procTup->t_self) &&
+			!function->hasPkgRefrences)
 			function_valid = true;
 		else
 		{
@@ -318,7 +336,8 @@ do_compile(FunctionCallInfo fcinfo,
 	 * this when actually compiling functions for execution, for performance
 	 * reasons.
 	 */
-	plisql_check_syntax = forValidator;
+	if (!(curr_pkg && forValidator))
+		plisql_check_syntax = forValidator;
 
 	/*
 	 * Create the new function struct, if not done already.  The function
@@ -341,13 +360,14 @@ do_compile(FunctionCallInfo fcinfo,
 	 * per-function memory context, so it can be reclaimed easily.
 	 */
 	func_cxt = AllocSetContextCreate(TopMemoryContext,
-									 "PL/pgSQL function",
+									 "PL/iSQL function",
 									 ALLOCSET_DEFAULT_SIZES);
 	plisql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
 	function->fn_signature = format_procedure(fcinfo->flinfo->fn_oid);
 	MemoryContextSetIdentifier(func_cxt, function->fn_signature);
 	function->fn_oid = fcinfo->flinfo->fn_oid;
+	function->fn_pkg = 0;
 	function->fn_xmin = HeapTupleHeaderGetRawXmin(procTup->t_data);
 	function->fn_tid = procTup->t_self;
 	function->fn_input_collation = fcinfo->fncollation;
@@ -371,15 +391,87 @@ do_compile(FunctionCallInfo fcinfo,
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
 
+	/* set package Oid, if it belongs to a package */
+	if (procStruct->proaccess != NON_PACKAGE_MEMBER)
+		function->fn_pkg = procStruct->pronamespace;
+
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The
 	 * outermost namespace contains function parameters and other special
 	 * variables (such as FOUND), and is named after the function itself.
 	 */
 	plisql_ns_init();
-	plisql_ns_push(NameStr(procStruct->proname), PLISQL_LABEL_BLOCK);
-	plisql_DumpExecTree = false;
-	plisql_start_datums();
+
+	if (curr_pkg && !curr_pkg->isinitcomp &&
+		(function->fn_pkg == curr_pkg->pkgoid))
+	{
+		plisql_ns_push(curr_pkg->pkgname, PLISQL_LABEL_BLOCK);
+
+		plisql_DumpExecTree = false;
+		plisql_start_datums();
+
+		for (int i = 0; i < curr_pkg->ndatums; i++)
+		{
+			PLiSQL_datum *d = curr_pkg->datums[i];
+
+			switch (d->dtype)
+			{
+				case PLISQL_DTYPE_VAR:
+				case PLISQL_DTYPE_PROMISE:
+					{
+						PLiSQL_var *var = (PLiSQL_var *) d;
+
+						var->pkgoid = curr_pkg->pkgoid;
+						plisql_adddatum(d);
+						plisql_ns_additem(PLISQL_NSTYPE_VAR,
+										   var->dno,
+										   var->refname);
+					}
+					break;
+				case PLISQL_DTYPE_REC:
+					{
+						PLiSQL_rec *rec = (PLiSQL_rec *) d;
+
+						rec->pkgoid = curr_pkg->pkgoid;
+						plisql_adddatum(d);
+						plisql_ns_additem(PLISQL_NSTYPE_REC,
+										   rec->dno,
+										   rec->refname);
+					}
+					break;
+				case PLISQL_DTYPE_RECFIELD:
+					{
+						/*
+						 * PLiSQL_recfield *recfield = (PLiSQL_recfield *)
+						 * d;
+						 */
+
+						plisql_adddatum(d);
+					}
+					break;
+				case PLISQL_DTYPE_ROW:
+					{
+						plisql_adddatum(d);
+					}
+					break;
+				case PLISQL_DTYPE_REFCURSOR:
+					{
+						plisql_adddatum(d);
+					}
+					break;
+				default:
+					elog(ERROR, "not supported yet");
+			}
+		}
+
+		plisql_ns_push(NameStr(procStruct->proname), PLISQL_LABEL_BLOCK);
+	}
+	else
+	{
+		plisql_ns_push(NameStr(procStruct->proname), PLISQL_LABEL_BLOCK);
+		plisql_DumpExecTree = false;
+		plisql_start_datums();
+	}
 
 	switch (function->fn_is_trigger)
 	{
@@ -435,7 +527,7 @@ do_compile(FunctionCallInfo fcinfo,
 				if (argdtype->ttype == PLISQL_TTYPE_PSEUDO)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("PL/pgSQL functions cannot accept type %s",
+							 errmsg("PL/iSQL functions cannot accept type %s",
 									format_type_be(argtypeid))));
 
 				/*
@@ -561,7 +653,7 @@ do_compile(FunctionCallInfo fcinfo,
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("PL/pgSQL functions cannot return type %s",
+							 errmsg("PL/iSQL functions cannot return type %s",
 									format_type_be(rettypeid))));
 			}
 
@@ -818,7 +910,8 @@ do_compile(FunctionCallInfo fcinfo,
 	/*
 	 * add it to the hash table
 	 */
-	plisql_HashTableInsert(function, hashkey);
+	if (!(curr_pkg && forValidator))
+		plisql_HashTableInsert(function, hashkey);
 
 	/*
 	 * Pop the error context stack
@@ -883,7 +976,7 @@ plisql_compile_inline(char *proc_source)
 	 * its own memory context, so it can be reclaimed easily.
 	 */
 	func_cxt = AllocSetContextCreate(CurrentMemoryContext,
-									 "PL/pgSQL inline code context",
+									 "PL/iSQL inline code context",
 									 ALLOCSET_DEFAULT_SIZES);
 	plisql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
@@ -999,7 +1092,7 @@ plisql_compile_error_callback(void *arg)
 	}
 
 	if (plisql_error_funcname)
-		errcontext("compilation of PL/pgSQL function \"%s\" near line %d",
+		errcontext("compilation of PL/iSQL function \"%s\" near line %d",
 				   plisql_error_funcname, plisql_latest_lineno());
 }
 
@@ -1138,7 +1231,7 @@ plisql_post_column_ref(ParseState *pstate, ColumnRef *cref, Node *var)
 				(errcode(ERRCODE_AMBIGUOUS_COLUMN),
 				 errmsg("column reference \"%s\" is ambiguous",
 						NameListToString(cref->fields)),
-				 errdetail("It could refer to either a PL/pgSQL variable or a table column."),
+				 errdetail("It could refer to either a PL/iSQL variable or a table column."),
 				 parser_errposition(pstate, cref->location)));
 	}
 
@@ -1279,6 +1372,35 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 							name1, name2, name3,
 							&nnames);
 
+	if (nse == NULL && nnames_scalar >= 2)
+	{
+		char	   *qualname = psprintf("%s.%s", name1, name2);
+
+		nse = plisql_ns_lookup(expr->ns, false,
+								qualname, NULL, NULL,
+								&nnames);
+
+		/*
+		 * although we used qualified name for search because we put package
+		 * qualified variables as "pkg.var" string as one token. so nnames is
+		 * set to 2.
+		 */
+		nnames = 2;
+		pfree(qualname);
+	}
+	else if (nse == NULL && list_length(cref->fields) == 3)
+	{
+		/*
+		 * check to see if there is a reference to any package record/fields.
+		 */
+		char	*refname = NameListToString(list_make2(makeString((char *)name1),
+													   makeString((char *)name2)));
+		nse = plisql_ns_lookup(expr->ns, false,
+								refname, NULL, NULL,
+								&nnames);
+		nnames = 2;
+	}
+
 	if (nse == NULL)
 		return NULL;			/* name not known to plpgsql */
 
@@ -1417,6 +1539,7 @@ plisql_parse_word(char *word1, const char *yytxt, bool lookup,
 			switch (ns->itemtype)
 			{
 				case PLISQL_NSTYPE_VAR:
+				case PLISQL_NSTYPE_REFCURSOR:
 				case PLISQL_NSTYPE_REC:
 					wdatum->datum = plisql_Datums[ns->itemno];
 					wdatum->ident = word1;
@@ -1515,6 +1638,98 @@ plisql_parse_dblword(char *word1, char *word2,
 					break;
 			}
 		}
+		else
+		{
+			/*
+			 * Noting found in the current namespace above. See if its package
+			 * variable. If the word1 matches package and word2 a variable in
+			 * that package, then we build a variable in the current namespace
+			 * and point it to the package datum array.
+			 *
+			 * However, its possible that the referenced package has not been
+			 * compiled yet i.e. its the first reference to the package. In
+			 * that case package datum array will not be present and to make
+			 * that happen we need to compile the package.
+			 *
+			 * However, the nature of plpgsql parser is to not allow the
+			 * recur- sive compilation. Hence the local variable that we build
+			 * will hold the variable name and its type. we will store -1 as
+			 * the index for package variables index in its array, that we
+			 * will fill out during the execution part, where upon seeing that
+			 * a package was refrenced, we will  compile the package and fill
+			 * out the missing parts.
+			 */
+			Oid			pkgoid = InvalidOid;
+			Oid			typid;
+			int32		typmod;
+			Oid			typcol;
+			char	   *refname = NameListToString(idents);
+
+			pkgoid = get_package_oid(list_make1(makeString(word1)), true);
+			if (OidIsValid(pkgoid))
+			{
+				HeapTuple	vartup;
+
+				/* check if a variable of same name present in package */
+				vartup = SearchSysCache2(VARIABLENAMENSP, PointerGetDatum(word2), ObjectIdGetDatum(pkgoid));
+				if (HeapTupleIsValid(vartup))
+				{
+					Form_pg_variable varform = (Form_pg_variable) GETSTRUCT(vartup);
+					Datum		varaccess;
+					bool		isNull;
+					PLiSQL_var *var = NULL;
+					PLword		word;
+
+					varaccess = SysCacheGetAttr(VARIABLEOID, vartup,
+												Anum_pg_variable_varaccess,
+												&isNull);
+					if (!isNull && DatumGetChar(varaccess) == PACKAGE_MEMBER_PRIVATE)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								 errmsg("package private variable (\"%s\") is not accessible", NameListToString(idents))));
+
+					/* current function is making a refrence to a package.*/
+					plisql_curr_compile->hasPkgRefrences = true;
+
+					typid = varform->vartype;
+					typmod = varform->vartypmod;
+					typcol = varform->varcollation;
+					ReleaseSysCache(vartup);
+
+					/*
+					 * first see if we have already built and added a package
+					 * variable to local namespace.
+					 */
+					if (plisql_parse_word(refname, "", true, wdatum, &word))
+						var = (PLiSQL_var *) wdatum->datum;
+					else
+					{
+						/*
+						 * build a local variable for the package variable,
+						 * the varname will be in form of "pkg.var" string,
+						 * and the package array index for it would be set to
+						 * -1 below.
+						 */
+						var = (PLiSQL_var *) plisql_build_variable(refname, 0,
+																	 plisql_build_datatype(typid,
+																							typmod,
+																							typcol,
+																							NULL),
+																	 true);
+					}
+
+					var->pkgoid = pkgoid;
+					var->pkgdno = -1;
+					wdatum->datum = (PLiSQL_datum *) var;
+					wdatum->ident = NULL;
+					wdatum->quoted = false; /* not used */
+					wdatum->idents = idents;
+					return true;
+				}
+
+				/* fall through, nothing to be found here. */
+			}
+		}
 	}
 
 	/* Nothing found */
@@ -1535,6 +1750,10 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 	PLiSQL_nsitem *ns;
 	List	   *idents;
 	int			nnames;
+
+	idents = list_make3(makeString(word1),
+						makeString(word2),
+						makeString(word3));
 
 	/*
 	 * We should do nothing in DECLARE sections.  In SQL expressions, we need
@@ -1592,6 +1811,104 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 
 				default:
 					break;
+			}
+		}
+		else
+		{
+			/*
+			 * Noting found in the current namespace above. See if its package
+			 * variable. If the word1 matches package and word2 a variable in
+			 * that package, then we build a variable in the current namespace
+			 * and point it to the package datum array.
+			 *
+			 * However, its possible that the referenced package has not been
+			 * compiled yet i.e. its the first reference to the package. In
+			 * that case package datum array will not be present and to make
+			 * that happen we need to compile the package.
+			 *
+			 * However, the nature of plpgsql parser is to not allow the
+			 * recur- sive compilation. Hence the local variable that we build
+			 * will hold the variable name and its type. we will store -1 as
+			 * the index for package variables index in its array, that we
+			 * will fill out during the execution part, where upon seeing that
+			 * a package was refrenced, we will  compile the package and fill
+			 * out the missing parts.
+			 */
+			Oid			pkgoid = InvalidOid;
+			Oid			typid;
+			int32		typmod;
+			Oid			typcol;
+			char	   *refname = NameListToString(list_make2(makeString(word1), makeString(word2)));
+
+			pkgoid = get_package_oid(list_make1(makeString(word1)), true);
+			if (OidIsValid(pkgoid))
+			{
+				HeapTuple	vartup;
+
+				/* check if a variable of same name present in package */
+				vartup = SearchSysCache2(VARIABLENAMENSP, PointerGetDatum(word2), ObjectIdGetDatum(pkgoid));
+				if (HeapTupleIsValid(vartup))
+				{
+					Form_pg_variable varform = (Form_pg_variable) GETSTRUCT(vartup);
+					Datum		varaccess;
+					bool		isNull;
+					PLiSQL_var *var = NULL;
+					PLword		word;
+
+					varaccess = SysCacheGetAttr(VARIABLEOID, vartup,
+												Anum_pg_variable_varaccess,
+												&isNull);
+					if (!isNull && DatumGetChar(varaccess) == PACKAGE_MEMBER_PRIVATE)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								 errmsg("package private variable (\"%s\") is not accessible", NameListToString(idents))));
+
+					/* current function is making a refrence to a package.*/
+					plisql_curr_compile->hasPkgRefrences = true;
+
+					typid = varform->vartype;
+					typmod = varform->vartypmod;
+					typcol = varform->varcollation;
+					ReleaseSysCache(vartup);
+
+					/*
+					 * first see if we have already built and added a package
+					 * variable to local namespace.
+					 */
+					if (plisql_parse_word(refname, "", true, wdatum, &word))
+						var = (PLiSQL_var *) wdatum->datum;
+					else
+					{
+						/*
+						 * build a local variable for the package variable,
+						 * the varname will be in form of "pkg.var" string,
+						 * and the package array index for it would be set to
+						 * -1 below.
+						 */
+						var = (PLiSQL_var *) plisql_build_variable(refname, 0,
+																	 plisql_build_datatype(typid,
+																							typmod,
+																							typcol,
+																							NULL),
+																	 true);
+					}
+
+					PLiSQL_rec *rec;
+					PLiSQL_recfield *new;
+
+					rec = (PLiSQL_rec *) (plisql_Datums[var->dno]);
+					new = plisql_build_recfield(rec, word3);
+
+					var->pkgoid = pkgoid;
+					var->pkgdno = -1;
+					wdatum->datum = (PLiSQL_datum *) new;
+					wdatum->ident = NULL;
+					wdatum->quoted = false; /* not used */
+					wdatum->idents = idents;
+					return true;
+				}
+
+				/* fall through, nothing to be found here. */
 			}
 		}
 	}
@@ -1913,6 +2230,14 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
 					plisql_ns_additem(PLISQL_NSTYPE_VAR,
 									   var->dno,
 									   refname);
+
+				/* add package oid to var struct */
+				if (curr_pkg && curr_pkg->isinitcomp)
+				{
+					var->pkgoid = curr_pkg->pkgoid;
+					var->pkgdno = var->dno;
+				}
+
 				result = (PLiSQL_variable *) var;
 				break;
 			}
@@ -1924,6 +2249,46 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
 				rec = plisql_build_record(refname, lineno,
 										   dtype, dtype->typoid,
 										   add2namespace);
+
+				/*
+				 * While building a record/composite type for package
+				 * variables alse build the individual fields of that type. So
+				 * that these variables can be added to the package's datums
+				 * list for later access and manipulation.
+				 */
+				if (curr_pkg && curr_pkg->isinitcomp)
+				{
+					TypeCacheEntry *typentry;
+					TupleDesc	tupdesc;
+
+					rec->pkgoid = curr_pkg->pkgoid;
+					rec->pkgdno = rec->dno;
+					/* rec->pkgdno = rec->dno; */
+
+					if (dtype->typoid != RECORDOID)
+					{
+						typentry = lookup_type_cache(dtype->typoid,
+													 TYPECACHE_TUPDESC |
+													 TYPECACHE_DOMAIN_BASE_INFO);
+						if (typentry->typtype == TYPTYPE_DOMAIN)
+							typentry = lookup_type_cache(typentry->domainBaseType,
+														 TYPECACHE_TUPDESC);
+						if (typentry->tupDesc == NULL)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("type %s is not composite",
+											format_type_be(dtype->typoid))));
+
+						tupdesc = typentry->tupDesc;
+						for (int i = 0; i < tupdesc->natts; i++)
+						{
+							Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
+
+							plisql_build_recfield(rec, NameStr(attr->attname));
+						}
+					}
+				}
+
 				result = (PLiSQL_variable *) rec;
 				break;
 			}
@@ -2180,7 +2545,11 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 	}
 	else
 		typ->typisarray = false;
-	typ->atttypmod = typmod;
+	/* check its a user-define refcursor types */
+	if (typeStruct->typtype == 'd' && typeStruct->typbasetype == REFCURSOROID)
+		typ->atttypmod = typeStruct->typtypmod;
+	else
+		typ->atttypmod = typmod;
 
 	/*
 	 * If it's a named composite type (or domain over one), find the typcache
@@ -2457,6 +2826,10 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	/* Make sure any unused bytes of the struct are zero */
 	MemSet(hashkey, 0, sizeof(PLiSQL_func_hashkey));
 
+	/* set package Oid, if it belongs to a package */
+	if (procStruct->proaccess != NON_PACKAGE_MEMBER)
+		hashkey->pkgOid = procStruct->pronamespace;
+
 	/* get function OID */
 	hashkey->funcOid = fcinfo->flinfo->fn_oid;
 
@@ -2484,7 +2857,9 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	}
 
 	/* get input collation, if known */
-	hashkey->inputCollation = fcinfo->fncollation;
+	if (!OidIsValid(hashkey->pkgOid))	/*TODO: get proper collation information
+										 for package functions. */
+		hashkey->inputCollation = fcinfo->fncollation;
 
 	if (procStruct->pronargs > 0)
 	{
@@ -2653,4 +3028,403 @@ plisql_HashTableDelete(PLiSQL_function *function)
 
 	/* remove back link, which no longer points to allocated storage */
 	function->fn_hashkey = NULL;
+}
+
+/*
+ * This function compies the package. Compiling package includes compilation
+ * of all its elements such as variables, functions, procedures and constructor/
+ * initializer functions.
+ *
+ * returns the compiled in-memory state of the package.
+ */
+PLiSQL_package *
+plisql_compile_package(Oid pkgoid, bool forValidator)
+{
+	PLiSQL_package *pkgstate;
+	HeapTuple	tuple;
+	Form_pg_package pkgform;
+	MemoryContext pkgctx;
+	MemoryContext oldctx;
+
+	LOCAL_FCINFO(func_fcinfo, 0);
+	FmgrInfo	flinfo;
+	List	   *elems;
+	ListCell   *lc;
+	int			i = 0;
+
+	/*
+	 * Lookup the pg_package tuple by Oid; we'll need it in any case
+	 */
+	tuple = SearchSysCache1(PACKAGEOID, ObjectIdGetDatum(pkgoid));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for package %u", pkgoid);
+	pkgform = (Form_pg_package) GETSTRUCT(tuple);
+	pkgstate = package_HashTablelookup(pkgoid);
+	if (pkgstate)
+	{
+		/* We have a compiled package, but is it still valid? */
+		if (pkgstate->xmin == HeapTupleHeaderGetRawXmin(tuple->t_data) &&
+			ItemPointerEquals(&pkgstate->tid, &tuple->t_self))
+		{
+			/* we already have a valid compiled package, no need to recompile. */
+			ReleaseSysCache(tuple);
+			curr_pkg = pkgstate;
+			return pkgstate;
+		}
+		else
+		{
+			/*
+			 * A compiled package was found but not valid anymore. remove it
+			 * from the hashtable and attempt to re-compile.
+			 */
+			delete_package_state(pkgstate);
+		}
+	}
+
+	pkgctx = AllocSetContextCreate(TopMemoryContext,
+								   "PL/iSQL package",
+								   ALLOCSET_DEFAULT_SIZES);
+	oldctx = MemoryContextSwitchTo(pkgctx);
+
+	pkgstate = (PLiSQL_package *) palloc(sizeof(PLiSQL_package));
+	pkgstate->pkgoid = pkgoid;
+	pkgstate->pkgname = pstrdup(NameStr(pkgform->pkgname));
+	pkgstate->pkgnsp = get_namespace_name(pkgform->pkgnamespace);
+	pkgstate->pkgctx = pkgctx;
+	pkgstate->xmin = HeapTupleHeaderGetRawXmin(tuple->t_data);
+	pkgstate->tid = tuple->t_self;
+	pkgstate->isinitcomp = false;
+	pkgstate->isinitexec = false;
+	pkgstate->initializer = NULL;
+	curr_pkg = pkgstate;
+
+	elems = get_package_funcs_list(pkgoid);
+	pkgstate->nfuncs = list_length(elems);
+	pkgstate->funcs = palloc(sizeof(PLiSQL_function *) * pkgstate->nfuncs);
+
+	/*
+	 * first find the constructor function. Although it is be the last element
+	 * in the list, but just to make sure traverse the list to find it.
+	 */
+	foreach(lc, elems)
+	{
+		PLiSQL_package_elem *elem = lfirst(lc);
+
+		/* compile the function */
+		if (pg_strcasecmp(elem->name, pkgstate->pkgname) == 0)
+		{
+			MemSet(func_fcinfo, 0, SizeForFunctionCallInfo(0));
+			MemSet(&flinfo, 0, sizeof(flinfo));
+			func_fcinfo->flinfo = &flinfo;
+			flinfo.fn_oid = elem->oid;
+			flinfo.fn_mcxt = CurrentMemoryContext;
+
+			pkgstate->isinitcomp = true;
+			pkgstate->initializer = plisql_compile(func_fcinfo, forValidator);
+			pkgstate->isinitcomp = false;
+
+			break;
+		}
+	}
+
+	/* copy the package variables to package's inmemory state. */
+	pkgstate->ndatums = pkgstate->initializer->ndatums;
+	pkgstate->datums = pkgstate->initializer->datums;
+	pkgstate->ns = plisql_ns_top();
+
+	/*
+	 * compile all package functions. package construct is also included but
+	 * since we have just compiled it, it won't be compiled again and it
+	 * compiled state will be returned as is.
+	 */
+	foreach(lc, elems)
+	{
+		PLiSQL_package_elem *elem = lfirst(lc);
+
+		MemSet(func_fcinfo, 0, SizeForFunctionCallInfo(0));
+		MemSet(&flinfo, 0, sizeof(flinfo));
+		func_fcinfo->flinfo = &flinfo;
+		flinfo.fn_oid = elem->oid;
+		flinfo.fn_mcxt = CurrentMemoryContext;
+
+		/* compile state is not maintain while validation, so we need to skip it. */
+		if (forValidator && pg_strcasecmp(elem->name, pkgstate->pkgname) == 0)
+		{
+			pkgstate->funcs[i++] = pkgstate->initializer;
+			continue;
+		}
+
+		pkgstate->funcs[i++] = plisql_compile(func_fcinfo, forValidator);
+	}
+
+	/* add compiled state to the hash table. */
+	if (!forValidator)
+		package_HashTablelInsert(pkgstate, pkgoid);
+	MemoryContextSwitchTo(oldctx);
+	ReleaseSysCache(tuple);
+	return pkgstate;
+}
+
+/*
+ * This function executes the package constructor/initializer function. The
+ * initializer is only executed once when a first reference to the package is
+ * made.
+ */
+void
+plisql_package_exec_init(PLiSQL_package *pkg, bool nonatomic)
+{
+	if (!pkg->isinitexec &&
+		pkg->initializer != NULL)
+	{
+		LOCAL_FCINFO(func_fcinfo, 0);
+		FmgrInfo	flinfo;
+		ResourceOwner resOwner = NULL;
+
+		MemSet(func_fcinfo, 0, SizeForFunctionCallInfo(0));
+		MemSet(&flinfo, 0, sizeof(flinfo));
+		func_fcinfo->flinfo = &flinfo;
+		flinfo.fn_oid = pkg->initializer->fn_oid;
+		flinfo.fn_mcxt = CurrentMemoryContext;
+
+		resOwner = ResourceOwnerCreate(NULL, "PL/iSQL procedure resources");
+		PG_TRY();
+		{
+			plisql_exec_function(pkg->initializer, func_fcinfo,
+								  NULL, NULL, resOwner,
+								  !nonatomic);
+			pkg->isinitexec = true;
+		}
+		PG_CATCH();
+		{
+			pkg->isinitexec = false;
+		}
+		PG_END_TRY();
+	}
+}
+
+/*
+ * This function returns the list of all package functions and procedures.
+ *
+ * error is raised if function/procedure does not have any source or body.
+ */
+static List *
+get_package_funcs_list(Oid pkgOid)
+{
+	struct ScanKeyData key[1];
+	int			keycount;
+	Relation	rel;
+	TableScanDesc scan;
+	HeapTuple	tuple;
+	List	   *funcs = NIL;
+
+	keycount = 0;
+	ScanKeyInit(&key[keycount++],
+				Anum_pg_proc_pronamespace,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(pkgOid));
+
+	rel = table_open(ProcedureRelationId, AccessShareLock);
+	scan = table_beginscan_catalog(rel, keycount, key);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		PLiSQL_package_elem *elem;
+
+		bool		isnull;
+		Datum		srcdt;
+		Datum		namedt;
+		char	   *prosrc;
+		char	   *proname;
+
+		srcdt = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
+		if (isnull)
+			elog(ERROR, "null prosrc");
+		prosrc = TextDatumGetCString(srcdt);
+
+		namedt = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_proname, &isnull);
+		if (isnull)
+			elog(ERROR, "null proname");
+		proname = NameStr(*(DatumGetName(namedt)));
+
+		if (strlen(prosrc) == 0)
+			ereport(ERROR,
+					(errmsg("no defination for package element: %s", proname)));
+
+		elem = (PLiSQL_package_elem *) palloc(sizeof(PLiSQL_package_elem));
+		elem->type = FUNCTION;
+		elem->count++;
+		elem->oid = ((Form_pg_proc) GETSTRUCT(tuple))->oid;
+		elem->name = pstrdup(proname);
+		elem->src = pstrdup(prosrc);
+
+		funcs = lappend(funcs, elem);
+	}
+
+	table_endscan(scan);
+	table_close(rel, AccessShareLock);
+
+	return funcs;
+}
+
+/*
+ * Creates and initializes a hashtable for keeping the package compiled state.
+ *
+ * exported so we can call it from _PG_init()
+ */
+void
+package_HashTableInit(void)
+{
+	HASHCTL		ctl;
+
+	/* don't allow double-initialization */
+	Assert(packages_HashTable == NULL);
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(Oid);
+	ctl.entrysize = sizeof(PackageHashEnt);
+	packages_HashTable = hash_create("PLiSQL package hash",
+									 FUNCS_PER_USER,
+									 &ctl,
+									 HASH_ELEM | HASH_BLOBS);
+}
+
+/*
+ * lookup a package entry in the package hashtable.
+ */
+PLiSQL_package *
+package_HashTablelookup(Oid pkgOid)
+{
+	PackageHashEnt *hentry;
+
+	hentry = (PackageHashEnt *) hash_search(packages_HashTable,
+											&pkgOid,
+											HASH_FIND,
+											NULL);
+	if (hentry)
+		return hentry->pkg;
+	else
+		return NULL;
+}
+
+/*
+ * add a new entry to the package hashtable.
+ */
+void
+package_HashTablelInsert(PLiSQL_package *pkg, Oid pkgOid)
+{
+	PackageHashEnt *hentry;
+	bool		found;
+
+	hentry = (PackageHashEnt *) hash_search(packages_HashTable,
+											&pkgOid,
+											HASH_ENTER,
+											&found);
+	if (found)
+		elog(WARNING, "trying to insert a package that already exists");
+
+	hentry->pkg = pkg;
+}
+
+/*
+ * removed a package entry from the package hashtable.
+ */
+void
+package_HashTableDelete(PLiSQL_package *pkg)
+{
+	PackageHashEnt *hentry;
+
+	/* do nothing if not in table */
+	if (pkg && !OidIsValid(pkg->pkgoid))
+		return;
+
+	hentry = (PackageHashEnt *) hash_search(packages_HashTable,
+											&pkg->pkgoid,
+											HASH_REMOVE,
+											NULL);
+	if (hentry == NULL)
+		elog(WARNING, "trying to delete function that does not exist");
+}
+
+/*
+ * This function removes a given package state, by OID. This is usually serves
+ * as a callback to remove package state from DROP or Replace package commands.
+ */
+void
+delete_package_state_oid(Oid pkgoid)
+{
+	PLiSQL_package *pkg = package_HashTablelookup(pkgoid);
+	if (pkg != NULL)
+		delete_package_state(pkg);
+}
+
+
+/*
+ * This function removes a package from the package hashtable. It also removed
+ * all the compiled package elements from function hashtable.
+ */
+static void
+delete_package_state(PLiSQL_package *pkg)
+{
+	HASH_SEQ_STATUS status;
+	plisql_HashEnt *hentry;
+	int			i = 0;
+
+	/* remove function from hash table (might be done already) */
+	package_HashTableDelete(pkg);
+
+	/* remove all open cursors associated with the current package
+	 * from portals hashtable.
+	 */
+	PortalHashTableDeleteFromPkg(pkg->pkgname);
+
+	/*
+	 * remove all function associated with the current package from functions
+	 * hashtable also.
+	 */
+	hash_seq_init(&status, plisql_HashTable);
+	while ((hentry = (plisql_HashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		if (hentry->key.pkgOid == pkg->pkgoid)
+		{
+			hash_search(plisql_HashTable,
+						(void *) &hentry->key,
+						HASH_REMOVE,
+						NULL);
+		}
+	}
+
+	/* release package storage */
+	for (i = 0; i < pkg->nfuncs; i++)
+		pfree(pkg->funcs[i]);
+	pfree(pkg->funcs);
+}
+
+/*
+ * lookup in package datum array for given variable type and name. vartype
+ * just an optimization here, we only need to match the varname.
+ *
+ * If its a package variable being called from an independant PL construct then
+ * most likely it will be in the form of "pkg.var" string, while that package
+ * vars are only storing the "var" name string. So we only match the "var"
+ * part, not the while "pkg.var" string.
+ */
+PLiSQL_datum *
+lookup_package_var(PLiSQL_package *pkg, Oid vartype, char *varname)
+{
+	char	   *name;
+
+	/* if its a qualified name then try without qualification as well. */
+	if ((name = strstr(varname, ".")) != NULL)
+		name++;
+
+	for (int i = 0; i < pkg->ndatums; i++)
+	{
+		PLiSQL_var *var = ((PLiSQL_var *) pkg->datums[i]);
+
+		if ((var->datatype && var->datatype->typoid == vartype) &&
+			strcmp(var->refname, name) == 0)
+			return pkg->datums[i];
+	}
+
+	return NULL;
 }

@@ -1,5 +1,5 @@
 --
--- Tests for PL/pgSQL variable properties: CONSTANT, NOT NULL, initializers
+-- Tests for PL/iSQL variable properties: CONSTANT, NOT NULL, initializers
 --
 
 create type var_record as (f1 int4, f2 int4);

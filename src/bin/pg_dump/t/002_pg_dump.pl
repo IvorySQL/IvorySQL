@@ -3291,6 +3291,7 @@ my %tests = (
 						   pronargs,
 						   pronargdefaults,
 						   prorettype,
+						   proaccess,
 						   proargtypes,
 						   proallargtypes,
 						   proargmodes,
@@ -3323,6 +3324,7 @@ my %tests = (
 		\QGRANT SELECT(pronargs) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(pronargdefaults) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(prorettype) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
+		\QGRANT SELECT(proaccess) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(proargtypes) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(proallargtypes) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(proargmodes) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*

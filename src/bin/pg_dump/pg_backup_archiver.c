@@ -1868,6 +1868,25 @@ getTocEntryByDumpId(ArchiveHandle *AH, DumpId id)
 	return NULL;
 }
 
+TocEntry *
+getTocEntryByTag(ArchiveHandle *AH, const char *tag)
+{
+	DumpId		maxDumpId = AH->maxDumpId;
+	TocEntry   *te = NULL;
+
+	for (te = AH->toc->next; te != AH->toc; te = te->next)
+	{
+		/* this check is purely paranoia, maxDumpId should be correct */
+		if (te->dumpId <= 0 || te->dumpId > maxDumpId)
+			fatal("bad dumpId");
+
+		if (strcmp(te->tag, tag) == 0)
+			break;
+	}
+
+	return te;
+}
+
 int
 TocIDRequired(ArchiveHandle *AH, DumpId id)
 {
@@ -3411,7 +3430,8 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te)
 		strcmp(type, "SERVER") == 0 ||
 		strcmp(type, "PUBLICATION") == 0 ||
 		strcmp(type, "SUBSCRIPTION") == 0 ||
-		strcmp(type, "USER MAPPING") == 0)
+		strcmp(type, "USER MAPPING") == 0 ||
+		strcmp(type, "PACKAGE") == 0)
 	{
 		appendPQExpBuffer(buf, "%s ", type);
 		if (te->namespace && *te->namespace)
@@ -3587,7 +3607,8 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			strcmp(te->desc, "SERVER") == 0 ||
 			strcmp(te->desc, "STATISTICS") == 0 ||
 			strcmp(te->desc, "PUBLICATION") == 0 ||
-			strcmp(te->desc, "SUBSCRIPTION") == 0)
+			strcmp(te->desc, "SUBSCRIPTION") == 0 ||
+			strcmp(te->desc, "PACKAGE") == 0)
 		{
 			PQExpBuffer temp = createPQExpBuffer();
 

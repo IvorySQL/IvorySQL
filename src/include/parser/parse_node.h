@@ -80,6 +80,7 @@ typedef enum ParseExprKind
 	EXPR_KIND_COPY_WHERE,		/* WHERE condition in COPY FROM */
 	EXPR_KIND_GENERATED_COLUMN, /* generation expression for a column */
 	EXPR_KIND_CYCLE_MARK,		/* cycle mark value */
+	EXPR_KIND_VARIABLE_DEFAULT, /* default value for schema variable */
 } ParseExprKind;
 
 
@@ -222,6 +223,8 @@ struct ParseState
 	ParseParamRefHook p_paramref_hook;
 	CoerceParamHook p_coerce_param_hook;
 	void	   *p_ref_hook_state;	/* common passthrough link for above */
+
+	Oid			p_pkgoid;
 };
 
 /*

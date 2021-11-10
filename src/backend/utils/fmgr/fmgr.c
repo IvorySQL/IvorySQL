@@ -19,6 +19,7 @@
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_package.h"
 #include "executor/functions.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
@@ -148,7 +149,9 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 {
 	const FmgrBuiltin *fbp;
 	HeapTuple	procedureTuple;
+	HeapTuple	pkgTuple;
 	Form_pg_proc procedureStruct;
+	Form_pg_package	pkgStruct;
 	Datum		prosrcdatum;
 	bool		isnull;
 	char	   *prosrc;
@@ -187,6 +190,10 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	finfo->fn_strict = procedureStruct->proisstrict;
 	finfo->fn_retset = procedureStruct->proretset;
 
+	pkgTuple = SearchSysCache1(PACKAGEOID,ObjectIdGetDatum(procedureStruct->pronamespace));
+	if (HeapTupleIsValid(pkgTuple))
+		pkgStruct = (Form_pg_package)GETSTRUCT(pkgTuple);
+
 	/*
 	 * If it has prosecdef set, non-null proconfig, or if a plugin wants to
 	 * hook function entry/exit, use fmgr_security_definer call handler ---
@@ -202,7 +209,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	 * interesting function and have the right things happen.
 	 */
 	if (!ignore_security &&
-		(procedureStruct->prosecdef ||
+		((procedureStruct->prosecdef || (HeapTupleIsValid(pkgTuple) && pkgStruct->pkgsecdef))||
 		 !heap_attisnull(procedureTuple, Anum_pg_proc_proconfig, NULL) ||
 		 FmgrHookIsNeeded(functionId)))
 	{
@@ -210,6 +217,8 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 		finfo->fn_stats = TRACK_FUNC_ALL;	/* ie, never track */
 		finfo->fn_oid = functionId;
 		ReleaseSysCache(procedureTuple);
+		if (HeapTupleIsValid(pkgTuple))
+			ReleaseSysCache(pkgTuple);
 		return;
 	}
 
@@ -262,6 +271,8 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 
 	finfo->fn_oid = functionId;
 	ReleaseSysCache(procedureTuple);
+	if (HeapTupleIsValid(pkgTuple))
+		ReleaseSysCache(pkgTuple);
 }
 
 /*
@@ -668,7 +679,9 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 	if (!fcinfo->flinfo->fn_extra)
 	{
 		HeapTuple	tuple;
+		HeapTuple	pkgTuple;
 		Form_pg_proc procedureStruct;
+		Form_pg_package	pkgStruct;
 		Datum		datum;
 		bool		isnull;
 		MemoryContext oldcxt;
@@ -687,8 +700,14 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 				 fcinfo->flinfo->fn_oid);
 		procedureStruct = (Form_pg_proc) GETSTRUCT(tuple);
 
+		pkgTuple = SearchSysCache1(PACKAGEOID,ObjectIdGetDatum(procedureStruct->pronamespace));
+		if (HeapTupleIsValid(pkgTuple))
+			pkgStruct = (Form_pg_package)GETSTRUCT(pkgTuple);
+
 		if (procedureStruct->prosecdef)
 			fcache->userid = procedureStruct->proowner;
+		else if(HeapTupleIsValid(pkgTuple) && pkgStruct->pkgowner)
+			fcache->userid = pkgStruct->pkgowner;
 
 		datum = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_proconfig,
 								&isnull);
@@ -700,6 +719,8 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 		}
 
 		ReleaseSysCache(tuple);
+		if (HeapTupleIsValid(pkgTuple))
+			ReleaseSysCache(pkgTuple);
 
 		fcinfo->flinfo->fn_extra = fcache;
 	}

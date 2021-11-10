@@ -52,6 +52,7 @@
 #include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_trigger.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
@@ -59,6 +60,8 @@
 #include "nodes/nodeFuncs.h"
 #include "parser/gramparse.h"
 #include "parser/parser.h"
+#include "parser/parse_expr.h"
+#include "parser/parse_type.h"
 #include "storage/lmgr.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
@@ -202,11 +205,13 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 			   bool *deferrable, bool *initdeferred, bool *not_valid,
 			   bool *no_inherit, core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
+static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner);
+
 
 %}
 
 %pure-parser
-%expect 0
+%expect 2
 %name-prefix="base_yy"
 %locations
 
@@ -301,6 +306,18 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
+
+		/* HG constructs */
+		CreatePackageStmt
+		opt_initfunc
+		pl_block pl_block_internal pl_block_body proc_sect
+		decl_stmts decl_stmt decl_var
+		opt_block_label opt_label
+		stmt_if stmt_elsifs stmt_else
+		stmt_case case_when opt_case_when_list case_when_list opt_case_else
+		stmt_loop loop_body
+		exception_sect
+		expr_until_semi expr_until_when expr_until_then expr_until_loop
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -610,6 +627,17 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
+/* HG constructs */
+%type <list>	package_name opt_package_name createpack_spec_list
+				createpack_body_list pkg_func_name opt_func_args_with_defaults
+				OptRecordElementList RecordElementList
+%type <node>	createpack_spec_item createpack_body_item package_func_spec
+				package_var_spec package_func_defs package_var_body package_cur_spec
+				package_cur_body package_rec RecordElement package_refcursor
+%type <boolean> invoker_rights_clause
+%type <typnam>	package_var_type
+%type <boolean> return_or_not
+
 
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
@@ -698,7 +726,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	QUOTE
 
-	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFERENCES REFERENCING
+	RANGE READ REAL REASSIGN RECHECK RECORD RECURSIVE REF REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
 	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWS RULE
@@ -729,6 +757,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	ZONE
 
+	/* HG constructs */
+	AUTHID PACKAGE BODY ROWTYPE_P ELSIF EXCEPTION LOOP WHILE
+
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
  * list and so can never be entered directly.  The filter in parser.c
@@ -739,7 +770,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  * as NOT, at least with respect to their left-hand subexpression.
  * NULLS_LA and WITH_LA are needed to make the grammar LALR(1).
  */
-%token		NOT_LA NULLS_LA WITH_LA
+%token		NOT_LA NULLS_LA WITH_LA PACKAGE_BODY
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -958,6 +989,7 @@ stmt:
 			| CreateOpFamilyStmt
 			| CreatePublicationStmt
 			| AlterOpFamilyStmt
+			| CreatePackageStmt
 			| CreatePolicyStmt
 			| CreatePLangStmt
 			| CreateSchemaStmt
@@ -1038,6 +1070,13 @@ CallStmt:	CALL func_application
 				{
 					CallStmt *n = makeNode(CallStmt);
 					n->funccall = castNode(FuncCall, $2);
+					$$ = (Node *)n;
+				}
+			| CALL package_name	/* call a procedure with no parameters, without parentheses. */
+				{
+					CallStmt *n = makeNode(CallStmt);
+					n->funccall = castNode(FuncCall, makeFuncCall($2, NIL,
+											COERCE_EXPLICIT_CALL, @2));
 					$$ = (Node *)n;
 				}
 		;
@@ -6310,6 +6349,16 @@ DropStmt:	DROP object_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 					n->concurrent = true;
 					$$ = (Node *)n;
 				}
+			| DROP PACKAGE any_name_list
+				{
+					DropStmt *n = makeNode(DropStmt);
+					n->removeType = OBJECT_PACKAGE;
+					n->missing_ok = false;
+					n->objects = $3;
+					n->behavior = DROP_RESTRICT;
+					n->concurrent = false;
+					$$ = (Node *) n;
+				}
 		;
 
 /* object types taking any_name/any_name_list */
@@ -7039,6 +7088,14 @@ privilege_target:
 					n->objs = $2;
 					$$ = n;
 				}
+			| PACKAGE any_name_list
+				{
+					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					n->targtype = ACL_TARGET_OBJECT;
+					n->objtype = OBJECT_PACKAGE;
+					n->objs = $2;
+					$$ = n;
+				}
 			| DATABASE name_list
 				{
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
@@ -7124,6 +7181,14 @@ privilege_target:
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_PROCEDURE;
+					n->objs = $5;
+					$$ = n;
+				}
+			| ALL PACKAGE IN_P SCHEMA name_list
+				{
+					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
+					n->objtype = OBJECT_PACKAGE;
 					n->objs = $5;
 					$$ = n;
 				}
@@ -7468,6 +7533,576 @@ opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
 			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
 		;
 
+/*****************************************************************************
+ *
+ *		QUERY:
+ *
+ *		 TODO: complete syntax here.
+ *****************************************************************************/
+CreatePackageStmt:
+			CREATE opt_or_replace PACKAGE package_name invoker_rights_clause
+				as_is { packagestmt_context = true; }
+				createpack_spec_list END_P opt_package_name
+				{
+					CreatePackageStmt *n = makeNode(CreatePackageStmt);
+
+					n->replace = $2;
+					n->isbody = false;
+					n->secdef = $5;
+					n->name = $4;
+					n->specsrc = scanner_querytext(@1, @9 + 3, yyscanner);
+					n->elems = $8;
+					if ($10)
+						check_pkgname(llast(n->name),strVal(llast($10)),0);
+
+					packagestmt_context = false;
+					$$ = (Node *)n;
+				}
+			| CREATE opt_or_replace PACKAGE_BODY BODY package_name as_is
+				{ packagestmt_context = true; }
+				createpack_body_list opt_initfunc END_P opt_package_name
+				{
+					CreatePackageStmt *n = makeNode(CreatePackageStmt);
+
+					n->replace = $2;
+					n->isbody = true;
+					n->name = $5;
+					n->bodysrc = scanner_querytext(@1, @10 + 3, yyscanner);
+					n->elems = $8;
+					if ($9 != NULL)
+					{
+						CreateFunctionStmt *fn = (CreateFunctionStmt *) $9;
+						/* change initializer name to same as package name. */
+						fn->funcname = list_make1(llast(n->name));
+						n->elems = lappend(n->elems, $9);
+					}
+					n->initializer = $9;
+					if($11)
+						check_pkgname(llast(n->name), strVal(llast($11)),0);
+
+					packagestmt_context = false;
+					$$ = (Node *)n;
+				}
+		;
+
+package_name:
+		name	{ $$ = list_make1(makeString($1)); }
+		| ColId indirection
+				{
+					$$ = check_func_name(lcons(makeString($1), $2),
+										 yyscanner);
+				}
+		;
+
+opt_package_name:
+		package_name		{ $$ = $1; }
+		|					{ $$ = NULL; }
+		;
+
+opt_initfunc:
+		{ $$ = NULL; }
+		| BEGIN_P proc_sect exception_sect
+			{
+				CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+				char *body;
+
+				n->is_procedure = true;
+				//n->replace = $2;		/* TODO: inherit from CreatePackageStmt */
+				/* n->funcname is set in the main rule above. */
+				n->parameters = NIL;
+				n->returnType = NULL;
+				n->proaccess = PACKAGE_MEMBER_PRIVATE;
+				n->options = NIL;
+				n->options = lappend(n->options,
+				  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+				body = read_plsql_body(@1, yyscanner);
+				n->options = lappend(n->options,
+				  makeDefElem("as", (Node *)list_make1(makeString(body)), @1));
+
+				$$ = (Node *)n;
+			}
+		;
+
+createpack_spec_list:
+		createpack_spec_item						{ $$ = list_make1($1); }
+		| createpack_spec_list createpack_spec_item	{ $$ = lappend($1,$2); }
+		;
+
+createpack_spec_item:
+		package_func_spec ';'			{ $$ = $1; }
+		| package_var_spec ';'			{ $$ = $1; }
+		| package_var_body ';'			{ $$ = $1; }
+		| package_cur_spec ';'			{ $$ = $1; }
+		| package_cur_body ';'			{ $$ = $1; }
+		| package_rec ';'				{ $$ = $1; }
+		| package_refcursor ';'			{ $$ = $1; }
+		;
+
+createpack_body_list:
+		createpack_body_item						{ $$ = list_make1($1); }
+		| createpack_body_list createpack_body_item	{ $$ = lappend($1,$2); }
+		;
+
+createpack_body_item:
+		createpack_spec_item				{ $$ = $1; }
+		| package_func_defs ';'				{ $$ = $1; }
+		;
+
+package_func_spec:
+		FUNCTION pkg_func_name opt_func_args_with_defaults RETURN func_return
+			{
+				CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+				n->is_procedure = false;
+				//n->replace = $2;		// TODO: inherit from CreatePackageStmt
+				n->funcname = $2;
+				n->parameters = $3;
+				n->returnType = $5;
+				n->proaccess = PACKAGE_MEMBER_PUBLIC;
+				n->options = NIL;
+				n->options = lappend(n->options,
+				  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+				$$ = (Node *)n;
+			}
+		| PROCEDURE pkg_func_name opt_func_args_with_defaults
+			{
+				CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+				n->is_procedure = true;
+				//n->replace = $2;
+				n->funcname = $2;
+				n->parameters = $3;
+				n->returnType = NULL;
+				n->proaccess = PACKAGE_MEMBER_PUBLIC;
+				n->options = NIL;
+				n->options = lappend(n->options,
+				  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+				$$ = (Node *)n;
+			}
+		;
+
+package_func_defs:
+		FUNCTION pkg_func_name opt_func_args_with_defaults RETURN func_return as_is pl_block
+			{
+				CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+				char	*body = NULL;
+
+				n->is_procedure = false;
+				//n->replace = $2;		// TODO: inherit from CreatePackageStmt
+				n->funcname = $2;
+				n->parameters = $3;
+				n->returnType = $5;
+				n->proaccess = PACKAGE_MEMBER_PRIVATE;
+				n->options = NIL;
+				n->options = lappend(n->options,
+				  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+				body = read_plsql_body(@6 + 2, yyscanner);
+				if (body == NULL)
+				  elog(ERROR, "parse error");
+
+				n->options = lappend(n->options,
+				  makeDefElem("as", (Node *)list_make1(makeString(body)), @6 ));
+				$$ = (Node *) n;
+			}
+		| PROCEDURE pkg_func_name opt_func_args_with_defaults as_is pl_block
+			{
+				CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+				char	*body = NULL;
+
+				n->is_procedure = true;
+				//n->replace = $2;
+				n->funcname = $2;
+				n->parameters = $3;
+				n->returnType = NULL;
+				n->proaccess = PACKAGE_MEMBER_PRIVATE;
+				n->options = NIL;
+				n->options = lappend(n->options,
+				  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+				body = read_plsql_body(@4 + 2, yyscanner);
+				if (body == NULL)
+					elog(ERROR, "parse error");
+
+				n->options = lappend(n->options,
+				  makeDefElem("as", (Node *)list_make1(makeString(body)), @4));
+				$$ = (Node *)n;
+			}
+		;
+
+opt_func_args_with_defaults:
+		'(' func_args_with_defaults_list ')'		{ $$ = $2; }
+	//	| '(' ')'									{ $$ = NIL; }
+		| 											{ $$ = NIL; }
+		;
+
+package_var_spec:
+		IDENT package_var_type
+			{
+				VarStmt *var = makeNode(VarStmt);
+				var->varname = $1;
+				var->varType = $2;
+				var->defexpr = NULL;
+
+				$$ = (Node *) var;
+			}
+		| IDENT package_var_type '=' a_expr
+			{
+				VarStmt *var = makeNode(VarStmt);
+				var->varname = $1;
+				var->varType = $2;
+				var->defexpr = $4;;
+
+				$$ = (Node *) var;
+			}
+		| IDENT package_var_type COLON_EQUALS a_expr
+			{
+				VarStmt *var = makeNode(VarStmt);
+				var->varname = $1;
+				var->varType = $2;
+				var->defexpr = $4;;
+
+				$$ = (Node *) var;
+			}
+		;
+
+package_var_body:
+		 IDENT '=' a_expr
+			{
+				VarStmt *var = makeNode(VarStmt);
+				var->varname = $1;
+				var->varType = NULL;
+				var->defexpr = $3;
+
+				$$ = (Node *) var;
+			}
+		| IDENT COLON_EQUALS a_expr
+			{
+				VarStmt *var = makeNode(VarStmt);
+				var->varname = $1;
+				var->varType = NULL;
+				var->defexpr = $3;;
+
+				$$ = (Node *) var;
+			}
+		;
+
+package_cur_spec:
+		CURSOR cursor_name opt_func_args_with_defaults RETURN type_function_name '%' ROWTYPE_P
+			{
+				DeclareCursorStmt *n = makeNode(DeclareCursorStmt);
+				n->portalname = $2;
+				n->pct_type = false;
+				n->query = NULL;
+				n->params = $3;
+
+				$$ = (Node *)n;
+			}
+		;
+
+package_cur_body:
+		CURSOR cursor_name opt_func_args_with_defaults return_or_not IS SelectStmt
+			{
+				DeclareCursorStmt *n = makeNode(DeclareCursorStmt);
+				n->portalname = $2;
+				n->pct_type = $4;
+				n->query = $6;
+				n->params = $3;
+				n->sourcedesc = read_plsql_body(@5+2,yyscanner);
+				if (n->sourcedesc == NULL)
+					  elog(ERROR, "parse error");
+
+				$$ = (Node *)n;
+			}
+		;
+
+package_rec:
+		TYPE_P any_name IS RECORD '(' OptRecordElementList ')'
+			{
+				CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
+
+				/* can't use qualified_name, sigh */
+				n->typevar = makeRangeVarFromAnyName($2, @2, yyscanner);
+				n->coldeflist = $6;
+				$$ = (Node *)n;
+			}
+		;
+
+package_refcursor:
+		TYPE_P any_name IS REF CURSOR			/* Weakly Typed Ref Cursor */
+			{
+				CreateDomainStmt *refc = makeNode(CreateDomainStmt);
+				refc->domainname = $2;
+				refc->typeName = typeStringToTypeName("refcursor");
+				refc->retName = NULL;
+				refc->constraints = NULL;
+
+				$$ = (Node *)refc;
+			}
+		| TYPE_P any_name IS REF CURSOR RETURN
+			type_function_name '%' ROWTYPE_P 	/* Strongly Typed Ref Cursor */
+			{
+				CreateDomainStmt *refc = makeNode(CreateDomainStmt);
+				refc->domainname = $2;
+				refc->typeName = typeStringToTypeName("refcursor");
+				refc->constraints = NULL;
+				refc->retName = makeTypeNameFromNameList(list_make1(makeString($7)));
+				refc->retName->pct_rowtype = true;
+				refc->retName->location = @7;
+
+				$$ = (Node *)refc;
+			}
+		;
+
+OptRecordElementList:
+		RecordElementList						{ $$ = $1; }
+		| /*EMPTY*/								{ $$ = NIL; }
+		;
+
+RecordElementList:
+		RecordElement
+			{
+				$$ = list_make1($1);
+			}
+		| RecordElementList ',' RecordElement
+			{
+				$$ = lappend($1, $3);
+			}
+		;
+
+RecordElement: IDENT type_function_name attrs '%' TYPE_P
+			{
+				ColumnDef *n = makeNode(ColumnDef);
+				n->colname = $1;
+				n->typeName = makeTypeNameFromNameList(lcons(makeString($2), $3));
+				n->typeName->pct_type = true;
+				n->inhcount = 0;
+				n->is_local = true;
+				n->is_not_null = false;
+				n->is_from_type = false;
+				n->storage = 0;
+				n->raw_default = NULL;
+				n->cooked_default = NULL;
+				n->collClause = NULL;
+				n->collOid = InvalidOid;
+				n->constraints = NIL;
+				n->location = @1;
+				$$ = (Node *)n;
+			}
+		| IDENT Typename opt_collate_clause
+			{
+				ColumnDef *n = makeNode(ColumnDef);
+				n->colname = $1;
+				n->typeName = $2;
+				n->inhcount = 0;
+				n->is_local = true;
+				n->is_not_null = false;
+				n->is_from_type = false;
+				n->storage = 0;
+				n->raw_default = NULL;
+				n->cooked_default = NULL;
+				n->collClause = (CollateClause *) $3;
+				n->collOid = InvalidOid;
+				n->constraints = NIL;
+				n->location = @1;
+				$$ = (Node *)n;
+			}
+		;
+
+return_or_not:
+		RETURN type_function_name attrs '%' TYPE_P	{ $$ = true; }
+		| RETURN type_function_name '%' ROWTYPE_P		{ $$ = false; }
+		| RETURN type_function_name attrs '%' ROWTYPE_P	{ $$ = false; }
+		| { $$ = false; }
+		;
+
+package_var_type:
+		Typename								{ $$ = $1; }
+		| type_function_name attrs '%' TYPE_P
+			{
+				$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+				$$->pct_type = true;
+				$$->location = @1;
+			}
+		| type_function_name attrs '%' ROWTYPE_P
+			{
+				$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+				$$->pct_type = false;
+				$$->location = @1;
+			}
+		| type_function_name '%' ROWTYPE_P
+			{
+				$$ = makeTypeNameFromNameList(list_make1(makeString($1)));
+				$$->pct_rowtype = true;
+				// TODO: add pct_rowtype
+				$$->location = @1;
+			}
+		;
+
+as_is: AS | IS
+		;
+
+invoker_rights_clause:
+		AUTHID CURRENT_USER			{ $$ = false; }
+		| AUTHID DEFINER			{ $$ = true; }
+		| 							{ $$ = true; }
+		;
+
+
+/*
+ * PLSQL grammar rules. These rules are here only to determine the end location
+ * of a PLSQL block. At the end of a PLSQL block, the rules for FUNCTION or
+ * PROCEDURE rule above will extract the source of this block from backend
+ * scanner using read_sql_qry function.
+ */
+pl_block:  opt_block_label decl_sect pl_block_body
+		;
+
+pl_block_internal: opt_block_label DECLARE decl_stmts pl_block_body
+		| opt_block_label pl_block_body
+		;
+
+pl_block_body: BEGIN_P proc_sect exception_sect END_P opt_label
+		{ $$ = NULL; }
+		;
+
+exception_sect: EXCEPTION expr_until_when case_when_list
+		{ $$ = NULL; }
+		| { $$ = NULL; }
+		;
+
+decl_sect:
+		DECLARE decl_stmts
+		| decl_stmts
+		| {}
+		;
+
+decl_stmts: decl_stmts decl_stmt
+		| decl_stmt
+	;
+
+decl_stmt:
+		decl_var expr_until_semi
+		| package_func_spec ';'
+		| package_func_defs ';'
+		;
+
+decl_var: IDENT		{ $$ = NULL; }
+		| CURSOR	{ $$ = NULL; }
+		| TYPE_P	{ $$ = NULL; }
+	;
+
+opt_block_label:
+		{ $$ = NULL; }
+		| Op IDENT Op	{ $$ = NULL; } /* FIXME: check if Op is either "<<" or ">>" */
+		;
+
+opt_label:
+		{ $$ = NULL; }
+		| IDENT		{ $$ = NULL; }
+		;
+
+proc_sect:
+		proc_sect proc_stmt		{ $$ = NULL; }
+		| proc_stmt				{ $$ = NULL; }
+		;
+
+proc_stmt:
+		pl_block_internal ';'
+		| IDENT expr_until_semi
+		| opt_block_label stmt_special
+		| opt_block_label stmt_if
+		| opt_block_label stmt_case
+		| opt_block_label stmt_loop
+		;
+
+stmt_special:
+		SELECT expr_until_semi
+		| INSERT expr_until_semi
+		| DELETE_P expr_until_semi
+		| UPDATE expr_until_semi
+		| TRUNCATE expr_until_semi
+		| EXECUTE expr_until_semi
+		| type_func_name_keyword expr_until_semi
+		| RETURN expr_until_semi
+		| NULL_P ';'
+		| CALL expr_until_semi
+		| FETCH expr_until_semi
+		| COMMIT expr_until_semi
+		| ROLLBACK expr_until_semi
+		| MOVE expr_until_semi
+		| CLOSE expr_until_semi
+		| CONTINUE_P expr_until_semi
+		;
+
+stmt_if: IF_P expr_until_then proc_sect stmt_elsifs stmt_else END_P IF_P ';'
+			{ $$ = NULL; }
+		;
+
+stmt_elsifs:
+		{ $$ = NULL; }
+		| stmt_elsifs ELSIF expr_until_then proc_sect		{ $$ = NULL; }
+		;
+
+stmt_else:
+		{ $$ = NULL; }
+		| ELSE proc_sect	{ $$ = NULL; }
+		;
+
+stmt_case: CASE expr_until_when expr_until_then proc_sect opt_case_when_list
+				opt_case_else END_P CASE opt_label ';'
+			{ $$ = NULL; }
+		;
+
+opt_case_when_list:
+		{ $$ = NULL; }
+		| case_when_list		{ $$ = NULL; }
+		;
+
+case_when_list: case_when_list case_when	{ $$ = NULL; }
+		| case_when							{ $$ = NULL; }
+		;
+
+case_when: WHEN expr_until_then proc_sect	{ $$ = NULL; }
+		;
+
+opt_case_else:
+		{ $$ = NULL; }
+		| ELSE proc_sect					{ $$ = NULL; }
+		;
+
+stmt_loop: LOOP loop_body					{ $$ = NULL; }
+		| WHILE expr_until_loop loop_body	{ $$ = NULL; }
+		| FOR expr_until_loop loop_body		{ $$ = NULL; }
+		;
+
+loop_body: proc_sect END_P LOOP opt_label ';'
+		;
+
+expr_until_semi:
+		{
+			read_sql_until (';', ';', ';', ";", false, yyscanner);
+		}
+		;
+
+expr_until_then:
+		{
+			read_sql_until (THEN, THEN, ';', "THEN", false, yyscanner);
+		}
+		;
+
+expr_until_when:
+		{
+			read_sql_until (WHEN, WHEN, ';', "WHEN", false, yyscanner);
+		}
+		;
+
+expr_until_loop:
+		{
+			read_sql_until (LOOP, LOOP, ';', "LOOP", false, yyscanner);
+		}
+		;
 
 /*****************************************************************************
  *
@@ -7490,6 +8125,7 @@ CreateFunctionStmt:
 					n->funcname = $4;
 					n->parameters = $5;
 					n->returnType = $7;
+					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = $8;
 					n->sql_body = $9;
 					$$ = (Node *)n;
@@ -7504,6 +8140,7 @@ CreateFunctionStmt:
 					n->parameters = mergeTableFuncParameters($5, $9);
 					n->returnType = TableFuncTypeName($9);
 					n->returnType->location = @7;
+					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = $11;
 					n->sql_body = $12;
 					$$ = (Node *)n;
@@ -7517,6 +8154,7 @@ CreateFunctionStmt:
 					n->funcname = $4;
 					n->parameters = $5;
 					n->returnType = NULL;
+					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = $6;
 					n->sql_body = $7;
 					$$ = (Node *)n;
@@ -7530,8 +8168,112 @@ CreateFunctionStmt:
 					n->funcname = $4;
 					n->parameters = $5;
 					n->returnType = NULL;
+					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = $6;
 					n->sql_body = $7;
+					$$ = (Node *)n;
+				}
+			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
+			  RETURN func_return invoker_rights_clause as_is pl_block
+				{
+					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+					char	*body = NULL;
+
+					n->is_procedure = false;
+					n->replace = $2;
+					n->funcname = $4;
+					n->parameters = $5;
+					n->returnType = $7;
+					n->proaccess = NON_PACKAGE_MEMBER;
+					n->options = NIL;
+					n->options = lappend(n->options,
+					  makeDefElem("security", (Node *)makeInteger($8), @8));
+					n->options = lappend(n->options,
+					  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+					body = read_plsql_body(@9 + 2, yyscanner);
+					if (body == NULL)
+					  elog(ERROR, "parse error");
+
+					n->options = lappend(n->options,
+						makeDefElem("as", (Node *)list_make1(makeString(body)), @9));
+					$$ = (Node *)n;
+				}
+			| CREATE opt_or_replace FUNCTION package_name RETURN func_return
+			  invoker_rights_clause as_is pl_block
+				{
+					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+					char	*body = NULL;
+
+					n->is_procedure = false;
+					n->replace = $2;
+					n->funcname = $4;
+					n->parameters = NIL;
+					n->returnType = $6;
+					n->proaccess = NON_PACKAGE_MEMBER;
+					n->options = NIL;
+					n->options = lappend(n->options,
+					  makeDefElem("security", (Node *)makeInteger($7), @7));
+					n->options = lappend(n->options,
+					  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+					body = read_plsql_body(@8 + 2, yyscanner);
+					if (body == NULL)
+					  elog(ERROR, "parse error");
+
+					n->options = lappend(n->options,
+						makeDefElem("as", (Node *)list_make1(makeString(body)), @8));
+					$$ = (Node *)n;
+				}
+			| CREATE opt_or_replace PROCEDURE func_name func_args_with_defaults
+			  invoker_rights_clause as_is pl_block
+				{
+					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+					char	*body = NULL;
+
+					n->is_procedure = true;
+					n->replace = $2;
+					n->funcname = $4;
+					n->parameters = $5;
+					n->returnType = NULL;
+					n->proaccess = NON_PACKAGE_MEMBER;
+					n->options = NIL;
+					n->options = lappend(n->options,
+					  makeDefElem("security", (Node *)makeInteger($6), @6));
+					n->options = lappend(n->options,
+					  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+					body = read_plsql_body(@7 + 2, yyscanner);
+					if (body == NULL)
+						elog(ERROR, "parse error");
+
+					n->options = lappend(n->options,
+					  makeDefElem("as", (Node *)list_make1(makeString(body)), @7));
+					$$ = (Node *)n;
+				}
+			| CREATE opt_or_replace PROCEDURE package_name invoker_rights_clause as_is pl_block
+				{
+					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
+					char	*body = NULL;
+
+					n->is_procedure = true;
+					n->replace = $2;
+					n->funcname = $4;
+					n->parameters = NIL;
+					n->returnType = NULL;
+					n->proaccess = NON_PACKAGE_MEMBER;
+					n->options = NIL;
+					n->options = lappend(n->options,
+					  makeDefElem("security", (Node *)makeInteger($5), @5));
+					n->options = lappend(n->options,
+					  makeDefElem("language", (Node *)makeString("plisql"), @1));
+
+					body = read_plsql_body(@6 + 2, yyscanner);
+					if (body == NULL)
+						elog(ERROR, "parse error");
+
+					n->options = lappend(n->options,
+					  makeDefElem("as", (Node *)list_make1(makeString(body)), @6));
 					$$ = (Node *)n;
 				}
 		;
@@ -7825,6 +8567,7 @@ createfunc_opt_list:
 			| createfunc_opt_list createfunc_opt_item { $$ = lappend($1, $2); }
 	;
 
+
 /*
  * Options common to both CREATE FUNCTION and ALTER FUNCTION
  */
@@ -7903,7 +8646,7 @@ common_func_opt_item:
 createfunc_opt_item:
 			AS func_as
 				{
-					$$ = makeDefElem("as", (Node *)$2, @1);
+					$$ =  makeDefElem("as", (Node *)$2, @1);
 				}
 			| LANGUAGE NonReservedWord_or_Sconst
 				{
@@ -9578,6 +10321,15 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
+			| ALTER PACKAGE any_name OWNER TO RoleSpec
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_PACKAGE;
+					n->object = (Node *) $3;
+					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+
 		;
 
 
@@ -11256,9 +12008,12 @@ DeclareCursorStmt: DECLARE cursor_name cursor_options CURSOR opt_hold FOR Select
 				{
 					DeclareCursorStmt *n = makeNode(DeclareCursorStmt);
 					n->portalname = $2;
+					n->pct_type = false;
 					/* currently we always set FAST_PLAN option */
 					n->options = $3 | $5 | CURSOR_OPT_FAST_PLAN;
 					n->query = $7;
+					n->params = NIL;
+
 					$$ = (Node *)n;
 				}
 		;
@@ -15137,6 +15892,10 @@ func_name:	type_function_name
 					}
 		;
 
+pkg_func_name:	type_function_name
+			{ $$ = list_make1(makeString($1)); }
+;
+
 
 /*
  * Constants
@@ -15485,9 +16244,11 @@ unreserved_keyword:
 			| ATOMIC
 			| ATTACH
 			| ATTRIBUTE
+			| AUTHID
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
+			| BODY
 			| BREADTH
 			| BY
 			| CACHE
@@ -15544,12 +16305,14 @@ unreserved_keyword:
 			| DOUBLE_P
 			| DROP
 			| EACH
+			| ELSIF
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
 			| ENUM_P
 			| ESCAPE
 			| EVENT
+			| EXCEPTION
 			| EXCLUDE
 			| EXCLUDING
 			| EXCLUSIVE
@@ -15609,6 +16372,7 @@ unreserved_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
+			| LOOP
 			| MAPPING
 			| MATCH
 			| MATERIALIZED
@@ -15647,6 +16411,7 @@ unreserved_keyword:
 			| OVERRIDING
 			| OWNED
 			| OWNER
+			| PACKAGE
 			| PARALLEL
 			| PARSER
 			| PARTIAL
@@ -15671,6 +16436,7 @@ unreserved_keyword:
 			| READ
 			| REASSIGN
 			| RECHECK
+			| RECORD
 			| RECURSIVE
 			| REF
 			| REFERENCING
@@ -15694,6 +16460,7 @@ unreserved_keyword:
 			| ROUTINE
 			| ROUTINES
 			| ROWS
+			| ROWTYPE_P
 			| RULE
 			| SAVEPOINT
 			| SCHEMA
@@ -15763,6 +16530,7 @@ unreserved_keyword:
 			| VIEW
 			| VIEWS
 			| VOLATILE
+			| WHILE
 			| WHITESPACE_P
 			| WITHIN
 			| WITHOUT
@@ -15996,6 +16764,7 @@ bare_label_keyword:
 			| ATOMIC
 			| ATTACH
 			| ATTRIBUTE
+			| AUTHID
 			| AUTHORIZATION
 			| BACKWARD
 			| BEFORE
@@ -16004,6 +16773,7 @@ bare_label_keyword:
 			| BIGINT
 			| BINARY
 			| BIT
+			| BODY
 			| BOOLEAN_P
 			| BOTH
 			| BREADTH
@@ -16086,6 +16856,7 @@ bare_label_keyword:
 			| DROP
 			| EACH
 			| ELSE
+			| ELSIF
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
@@ -16093,6 +16864,7 @@ bare_label_keyword:
 			| ENUM_P
 			| ESCAPE
 			| EVENT
+			| EXCEPTION
 			| EXCLUDE
 			| EXCLUDING
 			| EXCLUSIVE
@@ -16176,6 +16948,7 @@ bare_label_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
+			| LOOP
 			| MAPPING
 			| MATCH
 			| MATERIALIZED
@@ -16225,6 +16998,7 @@ bare_label_keyword:
 			| OVERRIDING
 			| OWNED
 			| OWNER
+			| PACKAGE
 			| PARALLEL
 			| PARSER
 			| PARTIAL
@@ -16253,6 +17027,7 @@ bare_label_keyword:
 			| REAL
 			| REASSIGN
 			| RECHECK
+			| RECORD
 			| RECURSIVE
 			| REF
 			| REFERENCES
@@ -16279,6 +17054,7 @@ bare_label_keyword:
 			| ROUTINES
 			| ROW
 			| ROWS
+			| ROWTYPE_P
 			| RULE
 			| SAVEPOINT
 			| SCHEMA
@@ -16371,6 +17147,7 @@ bare_label_keyword:
 			| VIEWS
 			| VOLATILE
 			| WHEN
+			| WHILE
 			| WHITESPACE_P
 			| WORK
 			| WRAPPER
@@ -17262,3 +18039,22 @@ parser_init(base_yy_extra_type *yyext)
 {
 	yyext->parsetree = NIL;		/* in case grammar forgets to set it */
 }
+
+/*
+ * Check starting and ending package name match.
+ */
+static void
+check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner)
+{
+	char*		name_star;
+	name_star = strVal(pkgname);
+	if(end_name)
+	{
+		if (strcmp(name_star, end_name) != 0)
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("The package end name \"%s\" is different from the package \"%s\"",
+							end_name, name_star)));
+	}
+}
+

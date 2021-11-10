@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * pl_scanner.c
- *	  lexical scanning for PL/pgSQL
+ *	  lexical scanning for PL/iSQL
  *
  *
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group

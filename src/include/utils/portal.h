@@ -247,6 +247,7 @@ extern void PortalDefineQuery(Portal portal,
 extern PlannedStmt *PortalGetPrimaryStmt(Portal portal);
 extern void PortalCreateHoldStore(Portal portal);
 extern void PortalHashTableDeleteAll(void);
+extern void PortalHashTableDeleteFromPkg(char *pkgname);
 extern bool ThereAreNoReadyPortals(void);
 extern void HoldPinnedPortals(void);
 extern void ForgetPortalSnapshots(void);

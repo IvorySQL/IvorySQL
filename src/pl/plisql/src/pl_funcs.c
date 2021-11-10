@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * pl_funcs.c		- Misc functions for the PL/pgSQL
+ * pl_funcs.c		- Misc functions for the PL/iSQL
  *			  procedural language
  *
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
@@ -1600,7 +1600,7 @@ plisql_dumptree(PLiSQL_function *func)
 	int			i;
 	PLiSQL_datum *d;
 
-	printf("\nExecution tree of successfully compiled PL/pgSQL function %s:\n",
+	printf("\nExecution tree of successfully compiled PL/iSQL function %s:\n",
 		   func->fn_signature);
 
 	printf("\nFunction's data area:\n");

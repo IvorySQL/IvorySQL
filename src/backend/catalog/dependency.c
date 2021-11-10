@@ -45,6 +45,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
@@ -71,6 +72,7 @@
 #include "commands/sequence.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
+#include "commands/variable.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteRemove.h"
@@ -180,6 +182,8 @@ static const Oid object_classes[] = {
 	PublicationRelationId,		/* OCLASS_PUBLICATION */
 	PublicationRelRelationId,	/* OCLASS_PUBLICATION_REL */
 	SubscriptionRelationId,		/* OCLASS_SUBSCRIPTION */
+	PackageRelationId,			/* OCLASS_PACKAGE */
+	VariableRelationId,			/* OCLASS_VARIABLE */
 	TransformRelationId			/* OCLASS_TRANSFORM */
 };
 
@@ -1494,6 +1498,14 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_EVENT_TRIGGER:
 		case OCLASS_TRANSFORM:
 			DropObjectById(object);
+			break;
+
+		case OCLASS_PACKAGE:
+			DropPackageById(object->objectId);
+			break;
+
+		case OCLASS_VARIABLE:
+			RemoveVariable(object->objectId);
 			break;
 
 			/*
@@ -2869,8 +2881,15 @@ getObjectClass(const ObjectAddress *object)
 		case SubscriptionRelationId:
 			return OCLASS_SUBSCRIPTION;
 
+		case PackageRelationId:
+			return OCLASS_PACKAGE;
+
 		case TransformRelationId:
 			return OCLASS_TRANSFORM;
+
+		case VariableRelationId:
+			return OCLASS_VARIABLE;
+
 	}
 
 	/* shouldn't get here */

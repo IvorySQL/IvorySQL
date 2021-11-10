@@ -1,5 +1,5 @@
 --
--- Tests for plpgsql's handling of "simple" expressions
+-- Tests for plisql's handling of "simple" expressions
 --
 
 -- Check that changes to an inline-able function are handled correctly

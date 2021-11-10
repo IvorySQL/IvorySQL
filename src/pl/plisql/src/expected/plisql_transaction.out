@@ -53,12 +53,12 @@ SELECT * FROM test1;
 START TRANSACTION;
 CALL transaction_test1(9, 'error');
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
 COMMIT;
 START TRANSACTION;
 DO LANGUAGE plisql $$ BEGIN COMMIT; END $$;
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function inline_code_block line 1 at COMMIT
+CONTEXT:  PL/iSQL function inline_code_block line 1 at COMMIT
 COMMIT;
 TRUNCATE test1;
 -- not allowed in a function
@@ -79,7 +79,7 @@ END
 $$;
 SELECT transaction_test2();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function transaction_test2() line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test2() line 6 at COMMIT
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -96,9 +96,9 @@ END;
 $$;
 SELECT transaction_test3();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
 SQL statement "CALL transaction_test1(9, 'error')"
-PL/pgSQL function transaction_test3() line 3 at CALL
+PL/iSQL function transaction_test3() line 3 at CALL
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -115,9 +115,9 @@ END;
 $$;
 SELECT transaction_test4();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function inline_code_block line 1 at COMMIT
+CONTEXT:  PL/iSQL function inline_code_block line 1 at COMMIT
 SQL statement "DO LANGUAGE plisql $x$ BEGIN COMMIT; END $x$"
-PL/pgSQL function transaction_test4() line 3 at EXECUTE
+PL/iSQL function transaction_test4() line 3 at EXECUTE
 -- proconfig settings currently disallow transaction statements
 CREATE PROCEDURE transaction_test5()
 LANGUAGE plisql
@@ -129,7 +129,7 @@ END;
 $$;
 CALL transaction_test5();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function transaction_test5() line 3 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test5() line 3 at COMMIT
 -- SECURITY DEFINER currently disallow transaction statements
 CREATE PROCEDURE transaction_test5b()
 LANGUAGE plisql
@@ -141,7 +141,7 @@ END;
 $$;
 CALL transaction_test5b();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function transaction_test5b() line 3 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test5b() line 3 at COMMIT
 TRUNCATE test1;
 -- nested procedure calls
 CREATE PROCEDURE transaction_test6(c text)
@@ -190,9 +190,9 @@ END;
 $$;
 CALL transaction_test8();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/pgSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
 SQL statement "CALL transaction_test1(10, $x$baz$x$)"
-PL/pgSQL function transaction_test8() line 3 at EXECUTE
+PL/iSQL function transaction_test8() line 3 at EXECUTE
 -- commit inside cursor loop
 CREATE TABLE test2 (x int);
 INSERT INTO test2 VALUES (0), (1), (2), (3), (4);
@@ -237,7 +237,7 @@ END;
 $$;
 ERROR:  division by zero
 CONTEXT:  SQL statement "INSERT INTO test1 (a) VALUES (12/(r.x-2))"
-PL/pgSQL function inline_code_block line 6 at SQL statement
+PL/iSQL function inline_code_block line 6 at SQL statement
 SELECT * FROM test1;
   a  | b 
 -----+---
@@ -314,7 +314,7 @@ BEGIN
 END;
 $$;
 ERROR:  cannot perform transaction commands inside a cursor loop that is not read-only
-CONTEXT:  PL/pgSQL function inline_code_block line 7 at ROLLBACK
+CONTEXT:  PL/iSQL function inline_code_block line 7 at ROLLBACK
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -340,7 +340,7 @@ TRUNCATE test1;
 INSERT INTO test1 VALUES (1,'one'), (2,'two'), (3,'three');
 DO LANGUAGE plisql $$
 DECLARE
-    l_cur CURSOR FOR SELECT a FROM test1 ORDER BY 1 FOR UPDATE;
+    CURSOR l_cur FOR SELECT a FROM test1 ORDER BY 1 FOR UPDATE;
 BEGIN
     FOR r IN l_cur LOOP
       UPDATE test1 SET b = b || ' ' || b WHERE a = r.a;
@@ -402,7 +402,7 @@ BEGIN
 END;
 $$;
 ERROR:  cannot commit while a subtransaction is active
-CONTEXT:  PL/pgSQL function inline_code_block line 5 at COMMIT
+CONTEXT:  PL/iSQL function inline_code_block line 5 at COMMIT
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -424,7 +424,7 @@ BEGIN
 END;
 $$;
 ERROR:  cannot roll back while a subtransaction is active
-CONTEXT:  PL/pgSQL function inline_code_block line 5 at ROLLBACK
+CONTEXT:  PL/iSQL function inline_code_block line 5 at ROLLBACK
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -515,7 +515,7 @@ END;
 $$;
 ERROR:  duplicate key value violates unique constraint "test3_y_key"
 DETAIL:  Key (y)=(1) already exists.
-CONTEXT:  PL/pgSQL function inline_code_block line 9 at COMMIT
+CONTEXT:  PL/iSQL function inline_code_block line 9 at COMMIT
 SELECT * FROM test3;
  y 
 ---
@@ -537,7 +537,7 @@ $$;
 TRUNCATE test1;
 CALL cursor_fail_during_commit();
 ERROR:  division by zero
-CONTEXT:  PL/pgSQL function cursor_fail_during_commit() line 6 at COMMIT
+CONTEXT:  PL/iSQL function cursor_fail_during_commit() line 6 at COMMIT
 -- note that error occurs during first COMMIT, hence nothing is in test1
 SELECT count(*) FROM test1;
  count 
@@ -559,7 +559,7 @@ $$;
 TRUNCATE test1;
 CALL cursor_fail_during_rollback();
 ERROR:  division by zero
-CONTEXT:  PL/pgSQL function cursor_fail_during_rollback() line 6 at ROLLBACK
+CONTEXT:  PL/iSQL function cursor_fail_during_rollback() line 6 at ROLLBACK
 SELECT count(*) FROM test1;
  count 
 -------
@@ -594,21 +594,21 @@ END;
 $$;
 ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
 CONTEXT:  SQL statement "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
-PL/pgSQL function inline_code_block line 3 at SQL statement
+PL/iSQL function inline_code_block line 3 at SQL statement
 DO LANGUAGE plisql $$
 BEGIN
     SAVEPOINT foo;
 END;
 $$;
-ERROR:  unsupported transaction command in PL/pgSQL
-CONTEXT:  PL/pgSQL function inline_code_block line 3 at SQL statement
+ERROR:  unsupported transaction command in PL/iSQL
+CONTEXT:  PL/iSQL function inline_code_block line 3 at SQL statement
 DO LANGUAGE plisql $$
 BEGIN
     EXECUTE 'COMMIT';
 END;
 $$;
 ERROR:  EXECUTE of transaction commands is not implemented
-CONTEXT:  PL/pgSQL function inline_code_block line 3 at EXECUTE
+CONTEXT:  PL/iSQL function inline_code_block line 3 at EXECUTE
 -- snapshot handling test
 TRUNCATE test2;
 CREATE PROCEDURE transaction_test9()

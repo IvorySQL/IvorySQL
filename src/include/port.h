@@ -158,6 +158,7 @@ extern unsigned char pg_tolower(unsigned char ch);
 extern unsigned char pg_ascii_toupper(unsigned char ch);
 extern unsigned char pg_ascii_tolower(unsigned char ch);
 
+
 /*
  * Beginning in v12, we always replace snprintf() and friends with our own
  * implementation.  This symbol is no longer consulted by the core code,

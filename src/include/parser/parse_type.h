@@ -31,6 +31,8 @@ extern Type typenameType(ParseState *pstate, const TypeName *typeName,
 extern Oid	typenameTypeId(ParseState *pstate, const TypeName *typeName);
 extern void typenameTypeIdAndMod(ParseState *pstate, const TypeName *typeName,
 								 Oid *typeid_p, int32 *typmod_p);
+extern void LookupType(ParseState *pstate, const TypeName *typeName,
+					   Oid *typeid_p, int32 *typmod_p, bool missing_ok);
 
 extern char *TypeNameToString(const TypeName *typeName);
 extern char *TypeNameListToString(List *typenames);

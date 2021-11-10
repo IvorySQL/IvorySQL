@@ -314,8 +314,10 @@ _readDeclareCursorStmt(void)
 	READ_LOCALS(DeclareCursorStmt);
 
 	READ_STRING_FIELD(portalname);
+	READ_BOOL_FIELD(pct_type);
 	READ_INT_FIELD(options);
 	READ_NODE_FIELD(query);
+	READ_NODE_FIELD(params);
 
 	READ_DONE();
 }
