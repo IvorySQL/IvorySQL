@@ -630,6 +630,44 @@ PortalHashTableDeleteAll(void)
 }
 
 /*
+ * Delete a portal while drop package.
+ */
+void
+PortalHashTableDeleteFromPkg(char *pkgname)
+{
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+	char		porname[NAMEDATALEN];
+
+	if (PortalHashTable == NULL)
+		return;
+
+	hash_seq_init(&status, PortalHashTable);
+	while ((hentry = hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+		char		*tok = NULL;
+
+		MemSet(porname, 0, sizeof(porname));
+		strlcpy(porname, portal->name, NAMEDATALEN);
+		tok = strtok(porname, ".");
+
+		/* Can't close the active portal (the one running the command) */
+		if (portal->status == PORTAL_ACTIVE)
+			continue;
+
+		if (strcmp(tok, pkgname) == 0)
+		{
+			PortalDrop(portal, false);
+
+			/* Restart the iteration in case that led to other drops */
+			hash_seq_term(&status);
+			hash_seq_init(&status, PortalHashTable);
+		}
+	}
+}
+
+/*
  * "Hold" a portal.  Prepare it for access by later transactions.
  */
 static void

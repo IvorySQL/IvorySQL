@@ -239,7 +239,8 @@ Boot_CreateStmt:
 													  true,
 													  false,
 													  InvalidOid,
-													  NULL);
+													  NULL,
+													  NON_PACKAGE_MEMBER);
 						elog(DEBUG4, "relation created with OID %u", id);
 					}
 					do_end();

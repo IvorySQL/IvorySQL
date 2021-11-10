@@ -1223,8 +1223,10 @@ static bool
 _equalDeclareCursorStmt(const DeclareCursorStmt *a, const DeclareCursorStmt *b)
 {
 	COMPARE_STRING_FIELD(portalname);
+	COMPARE_SCALAR_FIELD(pct_type);
 	COMPARE_SCALAR_FIELD(options);
 	COMPARE_NODE_FIELD(query);
+	COMPARE_NODE_FIELD(params);
 
 	return true;
 }
@@ -1433,6 +1435,7 @@ _equalCreateFunctionStmt(const CreateFunctionStmt *a, const CreateFunctionStmt *
 	COMPARE_NODE_FIELD(returnType);
 	COMPARE_NODE_FIELD(options);
 	COMPARE_NODE_FIELD(sql_body);
+	COMPARE_SCALAR_FIELD(proaccess);
 
 	return true;
 }
@@ -3019,6 +3022,16 @@ _equalPartitionCmd(const PartitionCmd *a, const PartitionCmd *b)
 	return true;
 }
 
+static bool
+_equalVarStmt(const VarStmt *a, const VarStmt *b)
+{
+	COMPARE_STRING_FIELD(varname);
+	COMPARE_NODE_FIELD(varType);
+	COMPARE_NODE_FIELD(defexpr);
+
+	return true;
+}
+
 /*
  * Stuff from pg_list.h
  */
@@ -3855,6 +3868,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_PartitionCmd:
 			retval = _equalPartitionCmd(a, b);
+			break;
+		case T_VarStmt:
+			retval = _equalVarStmt(a, b);
 			break;
 
 		default:

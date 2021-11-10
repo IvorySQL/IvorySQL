@@ -20,7 +20,7 @@
 struct Plan;					/* avoid including plannodes.h here */
 struct PlannedStmt;
 
-
+extern void pg_deparse_query(Query *query, StringInfo buf);
 extern char *pg_get_indexdef_string(Oid indexrelid);
 extern char *pg_get_indexdef_columns(Oid indexrelid, bool pretty);
 

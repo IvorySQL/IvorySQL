@@ -24,7 +24,7 @@ alter table c_mutable add column f1 float8;
 -- (but if debug_discard_caches is on, it will succeed)
 select c_sillyaddone(42);
 ERROR:  type of parameter 4 (double precision) does not match that when preparing the plan (integer)
-CONTEXT:  PL/pgSQL function c_sillyaddone(integer) line 1 at RETURN
+CONTEXT:  PL/iSQL function c_sillyaddone(integer) line 1 at RETURN
 -- but it's OK if we force plan rebuilding
 discard plans;
 select c_sillyaddone(42);
@@ -56,7 +56,7 @@ select show_result_type('select 1 as a');
 select show_result_type('select 2.0 as a');
 ERROR:  type of parameter 5 (numeric) does not match that when preparing the plan (integer)
 CONTEXT:  SQL statement "select pg_typeof(r.a)"
-PL/pgSQL function show_result_type(text) line 7 at SQL statement
+PL/iSQL function show_result_type(text) line 7 at SQL statement
 -- but it's OK if we force plan rebuilding
 discard plans;
 select show_result_type('select 2.0 as a');

@@ -1,5 +1,5 @@
 --
--- Tests for PL/pgSQL handling of composite (record) variables
+-- Tests for PL/iSQL handling of composite (record) variables
 --
 
 create type two_int4s as (f1 int4, f2 int4);

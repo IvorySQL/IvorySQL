@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * pl_handler.c		- Handler for the PL/pgSQL
+ * pl_handler.c		- Handler for the PL/iSQL
  *			  procedural language
  *
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
@@ -18,6 +18,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/packagecmds.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "plisql.h"
@@ -30,6 +31,8 @@
 static bool plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plisql_extra_warnings_assign_hook(const char *newvalue, void *extra);
 static void plisql_extra_errors_assign_hook(const char *newvalue, void *extra);
+static Oid	package_by_funcid(Oid funcOid);
+static bool is_package_func(Oid funcOid, Oid *pkgOid);
 
 PG_MODULE_MAGIC;
 
@@ -51,6 +54,7 @@ char	   *plisql_extra_warnings_string = NULL;
 char	   *plisql_extra_errors_string = NULL;
 int			plisql_extra_warnings;
 int			plisql_extra_errors;
+PLiSQL_package *curr_pkg = NULL;
 
 /* Hook for plugins */
 PLiSQL_plugin **plisql_plugin_ptr = NULL;
@@ -146,6 +150,7 @@ _PG_init(void)
 {
 	/* Be sure we do initialization only once (should be redundant now) */
 	static bool inited = false;
+	remove_package_state *remove_pkgstate;
 
 	if (inited)
 		return;
@@ -153,7 +158,7 @@ _PG_init(void)
 	pg_bindtextdomain(TEXTDOMAIN);
 
 	DefineCustomEnumVariable("plisql.variable_conflict",
-							 gettext_noop("Sets handling of conflicts between PL/pgSQL variable names and table column names."),
+							 gettext_noop("Sets handling of conflicts between PL/iSQL variable names and table column names."),
 							 NULL,
 							 &plisql_variable_conflict,
 							 PLISQL_RESOLVE_ERROR,
@@ -200,11 +205,15 @@ _PG_init(void)
 	EmitWarningsOnPlaceholders("plisql");
 
 	plisql_HashTableInit();
+	package_HashTableInit();
 	RegisterXactCallback(plisql_xact_cb, NULL);
 	RegisterSubXactCallback(plisql_subxact_cb, NULL);
 
 	/* Set up a rendezvous point with optional instrumentation plugin */
 	plisql_plugin_ptr = (PLiSQL_plugin **) find_rendezvous_variable("PLiSQL_plugin");
+	remove_pkgstate = (remove_package_state *)
+						find_rendezvous_variable("remove_package_state");
+	*remove_pkgstate = &delete_package_state_oid;
 
 	inited = true;
 }
@@ -213,7 +222,7 @@ _PG_init(void)
  * plisql_call_handler
  *
  * The PostgreSQL function manager and trigger manager
- * call this function for execution of PL/pgSQL procedures.
+ * call this function for execution of PL/iSQL procedures.
  * ----------
  */
 PG_FUNCTION_INFO_V1(plisql_call_handler);
@@ -222,11 +231,12 @@ Datum
 plisql_call_handler(PG_FUNCTION_ARGS)
 {
 	bool		nonatomic;
-	PLiSQL_function *func;
+	PLiSQL_function *func = NULL;
 	PLiSQL_execstate *save_cur_estate;
 	ResourceOwner procedure_resowner;
 	volatile Datum retval = (Datum) 0;
 	int			rc;
+	Oid			pkgOid;
 
 	nonatomic = fcinfo->context &&
 		IsA(fcinfo->context, CallContext) &&
@@ -238,8 +248,23 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	if ((rc = SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0)) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
-	/* Find or compile the function */
-	func = plisql_compile(fcinfo, false);
+	if (is_package_func(fcinfo->flinfo->fn_oid, &pkgOid))
+	{
+		PLiSQL_package *pkg;
+
+		pkg = plisql_compile_package(pkgOid, false);
+
+		/* Find or compile the function */
+		func = plisql_compile(fcinfo, false);
+		plisql_package_exec_init(pkg, nonatomic);
+
+		curr_pkg = NULL;
+	}
+	else
+	{
+		/* Find or compile the function */
+		func = plisql_compile(fcinfo, false);
+	}
 
 	/* Must save and restore prior value of cur_estate */
 	save_cur_estate = func->cur_estate;
@@ -256,7 +281,7 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	 */
 	procedure_resowner =
 		(nonatomic && func->requires_procedure_resowner) ?
-		ResourceOwnerCreate(NULL, "PL/pgSQL procedure resources") : NULL;
+		ResourceOwnerCreate(NULL, "PL/iSQL procedure resources") : NULL;
 
 	PG_TRY();
 	{
@@ -360,7 +385,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	 */
 	simple_eval_estate = CreateExecutorState();
 	simple_eval_resowner =
-		ResourceOwnerCreate(NULL, "PL/pgSQL DO block simple expressions");
+		ResourceOwnerCreate(NULL, "PL/iSQL DO block simple expressions");
 
 	/* And run the function */
 	PG_TRY();
@@ -432,7 +457,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 /* ----------
  * plisql_validator
  *
- * This function attempts to validate a PL/pgSQL function at
+ * This function attempts to validate a PL/iSQL function at
  * CREATE FUNCTION time.
  * ----------
  */
@@ -477,7 +502,7 @@ plisql_validator(PG_FUNCTION_ARGS)
 				 !IsPolymorphicType(proc->prorettype))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("PL/pgSQL functions cannot return type %s",
+					 errmsg("PL/iSQL functions cannot return type %s",
 							format_type_be(proc->prorettype))));
 	}
 
@@ -493,7 +518,7 @@ plisql_validator(PG_FUNCTION_ARGS)
 				!IsPolymorphicType(argtypes[i]))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("PL/pgSQL functions cannot accept type %s",
+						 errmsg("PL/iSQL functions cannot accept type %s",
 								format_type_be(argtypes[i]))));
 		}
 	}
@@ -506,6 +531,7 @@ plisql_validator(PG_FUNCTION_ARGS)
 		int			rc;
 		TriggerData trigdata;
 		EventTriggerData etrigdata;
+		Oid			pkgOid;
 
 		/*
 		 * Connect to SPI manager (is this needed for compilation?)
@@ -536,7 +562,15 @@ plisql_validator(PG_FUNCTION_ARGS)
 		}
 
 		/* Test-compile the function */
-		plisql_compile(fake_fcinfo, true);
+		if (is_package_func(fake_fcinfo->flinfo->fn_oid, &pkgOid))
+		{
+			plisql_compile_package(pkgOid, true);
+			curr_pkg = NULL;
+		}
+		else
+		{
+			plisql_compile(fake_fcinfo, true);
+		}
 
 		/*
 		 * Disconnect from SPI manager
@@ -548,4 +582,48 @@ plisql_validator(PG_FUNCTION_ARGS)
 	ReleaseSysCache(tuple);
 
 	PG_RETURN_VOID();
+}
+
+/*
+ * See if the given function is member of a package.
+ *
+ * returns the package oid of the function if its a memeber of package. InvalidOid
+ * otherwise.
+ */
+static Oid
+package_by_funcid(Oid funcOid)
+{
+	Oid			pkgOid = 0;
+	Form_pg_proc proc;
+	HeapTuple	tuple;
+
+	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcOid));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for function %u", funcOid);
+
+	proc = (Form_pg_proc) GETSTRUCT(tuple);
+	if (OidIsValid(proc->pronamespace))
+	{
+		/* validate if package exists */
+		if (get_package_name(proc->pronamespace, true) == NULL)
+			pkgOid = InvalidOid;
+		else
+			pkgOid = proc->pronamespace;
+	}
+
+	ReleaseSysCache(tuple);
+	return pkgOid;
+}
+
+/*
+ * returns true if the given function is package function. false otherwise.
+ */
+static bool
+is_package_func(Oid funcOid, Oid *pkgOid)
+{
+	Oid			oid = package_by_funcid(funcOid);
+
+	if (pkgOid)
+		*pkgOid = oid;
+	return OidIsValid(oid);
 }

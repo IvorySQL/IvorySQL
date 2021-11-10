@@ -45,6 +45,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
@@ -61,14 +62,17 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_variable.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
+#include "commands/packagecmds.h"
 #include "commands/policy.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
+#include "commands/variable.h"
 #include "foreign/foreign.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -616,6 +620,20 @@ static const ObjectPropertyType ObjectProperty[] =
 		OBJECT_USER_MAPPING,
 		false
 	},
+	{
+		"packages",
+		PackageRelationId,
+		PackageObjectIndexId,
+		PACKAGEOID,
+		-1,						/* PROCNAMEARGSNSP also takes argument types */
+		Anum_pg_package_oid,
+		Anum_pg_package_pkgname,
+		Anum_pg_package_pkgnamespace,
+		Anum_pg_package_pkgowner,
+		Anum_pg_package_pkgacl,
+		OBJECT_PACKAGE,
+		true
+	},
 };
 
 /*
@@ -833,6 +851,14 @@ static const struct object_type_map
 	{
 		"subscription", OBJECT_SUBSCRIPTION
 	},
+	/* OCLASS_PACKAGE */
+	{
+		"package", OBJECT_PACKAGE
+	},
+	/* OCLASS_VARIABLE */
+	{
+		"variable", OBJECT_VARIABLE
+	},
 	/* OCLASS_TRANSFORM */
 	{
 		"transform", OBJECT_TRANSFORM
@@ -865,6 +891,7 @@ static ObjectAddress get_object_address_attrdef(ObjectType objtype,
 												bool missing_ok);
 static ObjectAddress get_object_address_type(ObjectType objtype,
 											 TypeName *typename, bool missing_ok);
+static ObjectAddress get_object_address_variable(List *object, bool missing_ok);
 static ObjectAddress get_object_address_opcf(ObjectType objtype, List *object,
 											 bool missing_ok);
 static ObjectAddress get_object_address_opf_member(ObjectType objtype,
@@ -877,6 +904,7 @@ static ObjectAddress get_object_address_publication_rel(List *object,
 														bool missing_ok);
 static ObjectAddress get_object_address_defacl(List *object,
 											   bool missing_ok);
+static ObjectAddress get_object_address_package(List *object, bool missing_ok);
 static const ObjectPropertyType *get_object_property_data(Oid class_id);
 
 static void getRelationDescription(StringInfo buffer, Oid relid,
@@ -945,7 +973,6 @@ get_object_address(ObjectType objtype, Node *object,
 		 * been processed that might require a do-over.
 		 */
 		inval_count = SharedInvalidMessageCounter;
-
 		/* Look up object address. */
 		switch (objtype)
 		{
@@ -1016,6 +1043,9 @@ get_object_address(ObjectType objtype, Node *object,
 			case OBJECT_TYPE:
 			case OBJECT_DOMAIN:
 				address = get_object_address_type(objtype, castNode(TypeName, object), missing_ok);
+				break;
+			case OBJECT_VARIABLE:
+				address = get_object_address_variable(castNode(List, object), missing_ok);
 				break;
 			case OBJECT_AGGREGATE:
 			case OBJECT_FUNCTION:
@@ -1127,6 +1157,9 @@ get_object_address(ObjectType objtype, Node *object,
 				address.objectId = get_statistics_object_oid(castNode(List, object),
 															 missing_ok);
 				address.objectSubId = 0;
+				break;
+			case OBJECT_PACKAGE:
+				address = get_object_address_package(castNode(List, object), missing_ok);
 				break;
 			default:
 				elog(ERROR, "unrecognized objtype: %d", (int) objtype);
@@ -2051,6 +2084,54 @@ not_found:
 }
 
 /*
+ * Find the ObjectAddress for a package relation.  The first element of
+ * the object parameter is the package name.
+ */
+static ObjectAddress
+get_object_address_package(List *object, bool missing_ok)
+{
+	ObjectAddress address;
+	Oid			packageoid;
+
+	ObjectAddressSet(address, PackageRelationId, InvalidOid);
+
+	packageoid = get_package_oid(object, missing_ok);
+
+	/* Find the publication relation mapping in syscache. */
+	address.objectId = packageoid;
+	if (!OidIsValid(address.objectId))
+	{
+		if (!missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("package \"%s\" does not exist",
+							NameListToString(object))));
+		return address;
+	}
+
+	return address;
+}
+
+/*
+ * Find the ObjectAddress for a schema variable
+ */
+static ObjectAddress
+get_object_address_variable(List *object, bool missing_ok)
+{
+	ObjectAddress address;
+	char	   *nspname = NULL;
+	char	   *varname = NULL;
+
+	ObjectAddressSet(address, VariableRelationId, InvalidOid);
+
+	DeconstructQualifiedName(object, &nspname, &varname);
+	address.objectId = LookupVariable(nspname, varname, missing_ok);
+
+	return address;
+}
+
+
+/*
  * Convert an array of TEXT into a List of string Values, as emitted by the
  * parser, which is what get_object_address uses as input.
  */
@@ -2267,6 +2348,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_TABCONSTRAINT:
 		case OBJECT_OPCLASS:
 		case OBJECT_OPFAMILY:
+		case OBJECT_VARIABLE:
 			objnode = (Node *) name;
 			break;
 		case OBJECT_ACCESS_METHOD:
@@ -2324,6 +2406,9 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 			}
 		case OBJECT_LARGEOBJECT:
 			/* already handled above */
+			break;
+		case OBJECT_PACKAGE:
+			objnode = (Node *) name;
 			break;
 			/* no default, to let compiler warn about missing case */
 	}
@@ -2571,6 +2656,16 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 			break;
 		case OBJECT_STATISTIC_EXT:
 			if (!pg_statistics_object_ownercheck(address.objectId, roleid))
+				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
+							   NameListToString(castNode(List, object)));
+			break;
+		case OBJECT_PACKAGE:
+			if (!pg_package_ownercheck(address.objectId, roleid))
+				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
+							   NameListToString(castNode(List, object)));
+			break;
+		case OBJECT_VARIABLE:
+			if (!pg_variable_ownercheck(address.objectId, roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
 							   NameListToString(castNode(List, object)));
 			break;
@@ -3913,6 +4008,38 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				break;
 			}
 
+		case OCLASS_PACKAGE:
+			{
+				appendStringInfo(&buffer, _("package %s"),
+								 get_package_name(object->objectId,
+												  false));
+
+				break;
+			}
+
+		case OCLASS_VARIABLE:
+			{
+				char	   *pkgname;
+				HeapTuple	tup;
+				Form_pg_variable varform;
+
+				tup = SearchSysCache1(VARIABLEOID, ObjectIdGetDatum(object->objectId));
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "cache lookup failed for schema variable %u",
+						 object->objectId);
+
+				varform = (Form_pg_variable) GETSTRUCT(tup);
+
+				pkgname = get_package_name(varform->varnamespace, false);
+
+				appendStringInfo(&buffer, _("schema variable %s"),
+								 quote_qualified_identifier(pkgname,
+															NameStr(varform->varname)));
+
+				ReleaseSysCache(tup);
+				break;
+			}
+
 		case OCLASS_TRANSFORM:
 			{
 				HeapTuple	trfTup;
@@ -4479,6 +4606,14 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 
 		case OCLASS_SUBSCRIPTION:
 			appendStringInfoString(&buffer, "subscription");
+			break;
+
+		case OCLASS_PACKAGE:
+			appendStringInfoString(&buffer, "package");
+			break;
+
+		case OCLASS_VARIABLE:
+			appendStringInfoString(&buffer, "variable");
 			break;
 
 		case OCLASS_TRANSFORM:
@@ -5724,6 +5859,35 @@ getObjectIdentityParts(const ObjectAddress *object,
 					if (objname)
 						*objname = list_make1(subname);
 				}
+				break;
+			}
+
+		case OCLASS_PACKAGE:
+			{
+				char	   *pkgname;
+
+				pkgname = get_package_name(object->objectId, false);
+				if (!pkgname)
+					elog(ERROR, "cache lookup failed for package %u",
+						 object->objectId);
+				appendStringInfoString(&buffer,
+									   quote_identifier(pkgname));
+				if (objname)
+					*objname = list_make1(pkgname);
+				break;
+			}
+
+		case OCLASS_VARIABLE:
+			{
+				char	   *varname;
+
+				varname = get_variable_name(object->objectId, false);
+				if (!varname)
+					elog(ERROR, "cache lookup failed for variable %u",
+						 object->objectId);
+				appendStringInfoString(&buffer, quote_identifier(varname));
+				if (objname)
+					*objname = list_make1(varname);
 				break;
 			}
 

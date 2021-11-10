@@ -55,7 +55,7 @@ NOTICE:  should see this
 NOTICE:  should see this only if -100 <> 0
 NOTICE:  should see this only if -100 fits in smallint
 ERROR:  -100 is less than zero
-CONTEXT:  PL/pgSQL function trap_zero_divide(integer) line 12 at RAISE
+CONTEXT:  PL/iSQL function trap_zero_divide(integer) line 12 at RAISE
 create table match_source as
   select x as id, x*10 as data, x/10 as ten from generate_series(1,100) x;
 create function trap_matching_test(int) returns int as $$
@@ -157,7 +157,7 @@ set statement_timeout to 1000;
 select trap_timeout();
 NOTICE:  nyeah nyeah, can't stop me
 ERROR:  end of function
-CONTEXT:  PL/pgSQL function trap_timeout() line 15 at RAISE
+CONTEXT:  PL/iSQL function trap_timeout() line 15 at RAISE
 rollback;
 -- Test for pass-by-ref values being stored in proper context
 create function test_variable_storage() returns text as $$

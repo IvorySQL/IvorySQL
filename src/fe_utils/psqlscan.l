@@ -63,6 +63,7 @@ typedef int YYSTYPE;
 #define LEXRES_EOL			0	/* end of input */
 #define LEXRES_SEMI			1	/* command-terminating semicolon found */
 #define LEXRES_BACKSLASH	2	/* backslash command start */
+#define LEXRES_SLASH		3	/* slash command for plisql */
 
 
 #define ECHO psqlscan_emit(cur_state, yytext, yyleng)
@@ -136,6 +137,7 @@ extern void psql_yyset_column(int column_no, yyscan_t yyscanner);
 %x xdolq
 %x xui
 %x xus
+%x xf
 
 /*
  * In order to make the world safe for Windows and Mac clients as well as
@@ -203,6 +205,7 @@ xbinside		[^']*
 /* Hexadecimal number */
 xhstart			[xX]{quote}
 xhinside		[^']*
+end_slash		[/]$
 
 /* National character */
 xnstart			[nN]{quote}
@@ -222,6 +225,10 @@ xeunicodefail	[\\](u[0-9A-Fa-f]{0,3}|U[0-9A-Fa-f]{0,7})
 xqstart			{quote}
 xqdouble		{quote}{quote}
 xqinside		[^']+
+/* for create compatibility function */
+as_or_is		([aA][sS])|([iI][sS])
+create_fun		{as_or_is}
+xfinside		[^ \n\r']+
 
 /* $foo$ style quotes ("dollar quoting")
  * The quoted string starts with $foo$ where "foo" is an optional string
@@ -422,6 +429,51 @@ other			.
 				}
 } /* <xc> */
 
+
+{create_fun}		{
+						char *str = pg_strdup(output_buf->data);
+						if (strcasestr(str,"CREATE") != NULL && (strcasestr(str,"PACKAGE") != NULL || (strcasestr(str,"FUNCTION") != NULL && (strcasestr(str,"RETURN") != NULL)) || 
+								strcasestr(str,"PROCEDURE")!= NULL) && strcasestr(str,"RETURNS") == NULL)
+							BEGIN(xf);
+						else
+							BEGIN(INITIAL);
+						ECHO;
+						pg_free(str);
+					}
+<xf>{
+{whitespace}	{
+					ECHO;
+				}
+{dolqdelim}		{
+					cur_state->dolqstart = pg_strdup("$$");
+					BEGIN(xdolq);
+					ECHO;
+				}
+{xqstart}		{
+					char *str = pg_strdup(output_buf->data);
+					char* fir;
+					if((fir=strcasestr(str,"AS")) != NULL || (fir=strcasestr(str,"IS")) != NULL)
+					{
+						int i = 0;
+
+						fir += 2;
+						while (fir[i]==' ' || fir[i]=='\t' || fir[i]=='\n'  || fir[i]=='\r' || fir[i]=='\f')
+							i++;
+						if (fir[i] == '\'' || fir[i] == '\0')
+							BEGIN(xq);
+					}
+					ECHO;
+				}
+^[/]			{
+					BEGIN(INITIAL);
+					cur_state->start_state = INITIAL;
+					return LEXRES_SLASH;
+				}
+{xfinside}		{
+					ECHO;
+				}
+}	/* <xf> */
+
 {xbstart}		{
 					BEGIN(xb);
 					ECHO;
@@ -587,7 +639,6 @@ other			.
 <xd,xui>{xdinside}	{
 					ECHO;
 				}
-
 {xufailed}	{
 					/* throw back all but the initial u/U */
 					yyless(1);
@@ -671,6 +722,11 @@ other			.
 					cur_state->start_state = YY_START;
 					return LEXRES_BACKSLASH;
 				}
+^[/]			{
+					cur_state->start_state = YY_START;
+					return LEXRES_SLASH;
+				}
+
 
 :{variable_char}+	{
 					/* Possible psql variable substitution */
@@ -1159,6 +1215,10 @@ psql_scan(PsqlScanState state,
 					result = PSCAN_INCOMPLETE;
 					*prompt = PROMPT_SINGLEQUOTE;
 					break;
+				case xf:
+					result = PSCAN_INCOMPLETE;
+					*prompt = PROMPT_DOLLARQUOTE;
+					break;
 				default:
 					/* can't get here */
 					fprintf(stderr, "invalid YY_START\n");
@@ -1171,6 +1231,10 @@ psql_scan(PsqlScanState state,
 			break;
 		case LEXRES_BACKSLASH:	/* backslash */
 			result = PSCAN_BACKSLASH;
+			*prompt = PROMPT_READY;
+			break;
+		case LEXRES_SLASH:	/* slash */
+			result = PSCAN_SLASH;
 			*prompt = PROMPT_READY;
 			break;
 		default:

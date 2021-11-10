@@ -47,6 +47,7 @@
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "catalog/toasting.h"
+#include "catalog/pg_package.h"
 #include "commands/cluster.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
@@ -679,8 +680,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 * drop, and mark stmt->relation as RELPERSISTENCE_TEMP if a temporary
 	 * namespace is selected.
 	 */
-	namespaceId =
-		RangeVarGetAndCheckCreationNamespace(stmt->relation, NoLock, NULL);
+	namespaceId = RangeVarGetAndCheckCreationNamespace(stmt->relation, NoLock, NULL);
 
 	/*
 	 * Security check: disallow creating temp tables from security-restricted
@@ -950,7 +950,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  allowSystemTableMods,
 										  false,
 										  InvalidOid,
-										  typaddress);
+										  typaddress,
+										  NON_PACKAGE_MEMBER);
 
 	/*
 	 * We must bump the command counter to make the newly-created relation
@@ -1211,6 +1212,193 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	if (stmt->constraints)
 		AddRelationNewConstraints(rel, NIL, stmt->constraints,
 								  true, true, false, queryString);
+
+	ObjectAddressSet(address, RelationRelationId, relationId);
+
+	/*
+	 * Clean up.  We keep lock on new relation (although it shouldn't be
+	 * visible to anyone else anyway, until commit).
+	 */
+	relation_close(rel, NoLock);
+
+	return address;
+}
+
+/* ----------------------------------------------------------------
+ * Create a record type in package.
+ * ----------------------------------------------------------------
+ */
+ObjectAddress
+DefineRecord(ParseState *pstate, CompositeTypeStmt *rec, bool isbody)
+{
+	char				relname[NAMEDATALEN];
+	Oid					namespaceId;
+	Oid					relationId;
+	Oid					ownerId;
+	Oid					old_type_oid;
+	Relation			rel;
+	TupleDesc			descriptor;
+	List	   		   *rawDefaults;
+	List	   		   *cookedDefaults;
+	ListCell   		   *listptr;
+	AttrNumber			attnum;
+	ObjectAddress 		address;
+	ObjectAddress 		typaddress;
+	ObjectAddress 		myself,
+						referenced;
+
+	CreateStmt *stmt = makeNode(CreateStmt);
+
+	/*
+	 * now set the parameters for keys/inheritance etc. All of these are
+	 * uninteresting for composite types...
+	 */
+	stmt->relation = rec->typevar;
+	stmt->tableElts = rec->coldeflist;
+	stmt->inhRelations = NIL;
+	stmt->constraints = NIL;
+	stmt->options = NIL;
+	stmt->oncommit = ONCOMMIT_NOOP;
+	stmt->tablespacename = NULL;
+	stmt->if_not_exists = false;
+
+	namespaceId = pstate->p_pkgoid;
+
+	strlcpy(relname, stmt->relation->relname, NAMEDATALEN);
+	ownerId = GetUserId();
+
+	old_type_oid =
+		GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+						CStringGetDatum(stmt->relation->relname),
+						ObjectIdGetDatum(namespaceId));
+	if (OidIsValid(old_type_oid))
+	{
+		if (!moveArrayTypeName(old_type_oid, stmt->relation->relname, namespaceId))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("type \"%s\" already exists", stmt->relation->relname)));
+	}
+
+	/*
+	 * Create a tuple descriptor from the relation schema.  Note that this
+	 * deals with column names, types, and NOT NULL constraints, but not
+	 * default values or CHECK constraints; we handle those below.
+	 */
+	descriptor = BuildDescForRelation(stmt->tableElts);
+
+	/*
+	 * Find columns with default values and prepare for insertion of the
+	 * defaults.  Pre-cooked (that is, inherited) defaults go into a list of
+	 * CookedConstraint structs that we'll pass to heap_create_with_catalog,
+	 * while raw defaults go into a list of RawColumnDefault structs that will
+	 * be processed by AddRelationNewConstraints.  (We can't deal with raw
+	 * expressions until we can do transformExpr.)
+	 *
+	 * We can set the atthasdef flags now in the tuple descriptor; this just
+	 * saves StoreAttrDefault from having to do an immediate update of the
+	 * pg_attribute rows.
+	 */
+	rawDefaults = NIL;
+	cookedDefaults = NIL;
+	attnum = 0;
+
+	foreach(listptr, stmt->tableElts)
+	{
+		ColumnDef  *colDef = lfirst(listptr);
+		Form_pg_attribute attr;
+
+		attnum++;
+		attr = TupleDescAttr(descriptor, attnum - 1);
+
+		if (colDef->raw_default != NULL)
+		{
+			RawColumnDefault *rawEnt;
+
+			Assert(colDef->cooked_default == NULL);
+
+			rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
+			rawEnt->attnum = attnum;
+			rawEnt->raw_default = colDef->raw_default;
+			rawEnt->missingMode = false;
+			rawEnt->generated = colDef->generated;
+			rawDefaults = lappend(rawDefaults, rawEnt);
+			attr->atthasdef = true;
+		}
+		else if (colDef->cooked_default != NULL)
+		{
+			CookedConstraint *cooked;
+
+			cooked = (CookedConstraint *) palloc(sizeof(CookedConstraint));
+			cooked->contype = CONSTR_DEFAULT;
+			cooked->conoid = InvalidOid;	/* until created */
+			cooked->name = NULL;
+			cooked->attnum = attnum;
+			cooked->expr = colDef->cooked_default;
+			cooked->skip_validation = false;
+			cooked->is_local = true;	/* not used for defaults */
+			cooked->inhcount = 0;	/* ditto */
+			cooked->is_no_inherit = false;
+			cookedDefaults = lappend(cookedDefaults, cooked);
+			attr->atthasdef = true;
+		}
+	}
+
+	/*
+	 * Create the relation.  Inherited defaults and constraints are passed in
+	 * for immediate handling --- since they don't need parsing, they can be
+	 * stored immediately.
+	 */
+	relationId = heap_create_with_catalog(relname,
+										  namespaceId,
+										  0,
+										  0,
+										  0,
+										  0,
+										  ownerId,
+										  0,
+										  descriptor,
+										  NIL,
+										  RELKIND_COMPOSITE_TYPE,
+										  'p',
+										  false,
+										  false,
+										  ONCOMMIT_NOOP,
+										  0,
+										  true,
+										  false,
+										  false,
+										  InvalidOid,
+										  &typaddress,
+										  isbody? PACKAGE_MEMBER_PRIVATE : PACKAGE_MEMBER_PUBLIC);
+
+	myself.classId = TypeRelationId;
+	myself.objectId = typaddress.objectId;
+	myself.objectSubId = 0;
+
+	referenced.classId = PackageRelationId;
+	referenced.objectId = namespaceId;
+	referenced.objectSubId = 0;
+
+	recordDependencyOn(&myself, &referenced, DEPENDENCY_AUTO);
+
+	/*
+	 * We must bump the command counter to make the newly-created relation
+	 * tuple visible for opening.
+	 */
+	CommandCounterIncrement();
+
+	/*
+	 * Open the new relation and acquire exclusive lock on it.  This isn't
+	 * really necessary for locking out other backends (since they can't see
+	 * the new rel anyway until we commit), but it keeps the lock manager from
+	 * complaining about deadlock risks.
+	 */
+	rel = relation_open(relationId, AccessExclusiveLock);
+
+	/*
+	 * Make column generation expressions visible for use by partitioning.
+	 */
+	CommandCounterIncrement();
 
 	ObjectAddressSet(address, RelationRelationId, relationId);
 
@@ -12169,6 +12357,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 			case OCLASS_PUBLICATION_REL:
 			case OCLASS_SUBSCRIPTION:
 			case OCLASS_TRANSFORM:
+			case OCLASS_PACKAGE:
+			case OCLASS_VARIABLE:
 
 				/*
 				 * We don't expect any of these sorts of objects to depend on

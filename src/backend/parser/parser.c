@@ -150,6 +150,9 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 		case USCONST:
 			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + *llocp);
 			break;
+		case PACKAGE:
+			cur_token_length = 7;
+			break;
 		default:
 			return cur_token;
 	}
@@ -184,7 +187,6 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 	*(yyextra->lookahead_end) = '\0';
 
 	yyextra->have_lookahead = true;
-
 	/* Replace cur_token if needed, based on lookahead */
 	switch (cur_token)
 	{
@@ -291,6 +293,12 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 			{
 				cur_token = SCONST;
 			}
+			break;
+
+			/* replace PACKAGE BODY with PACKAGE_BODY. */
+		case PACKAGE:
+			if (next_token == BODY)
+				cur_token = PACKAGE_BODY;
 			break;
 	}
 

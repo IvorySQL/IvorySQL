@@ -1896,7 +1896,7 @@ load_plpgsql(FILE *cmdfd)
 }
 
 /*
- * load PL/pgSQL server-side language
+ * load PL/iSQL server-side language
  */
 static void
 load_plisql(FILE *cmdfd)

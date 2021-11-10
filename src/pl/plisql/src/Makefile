@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------
 #
-# Makefile for the PL/pgSQL procedural language
+# Makefile for the PL/iSQL procedural language
 #
 # src/pl/plisql/src/Makefile
 #
@@ -10,7 +10,7 @@ subdir = src/pl/plisql/src
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-PGFILEDESC = "PL/pgSQL - procedural language"
+PGFILEDESC = "PL/iSQL - procedural language"
 
 # Shared library parameters
 NAME= plisql

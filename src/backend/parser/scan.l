@@ -142,6 +142,8 @@ static void check_escape_warning(core_yyscan_t yyscanner);
 extern int	core_yyget_column(yyscan_t yyscanner);
 extern void core_yyset_column(int column_no, yyscan_t yyscanner);
 
+bool packagestmt_context = false;
+
 %}
 
 %option reentrant
@@ -1246,6 +1248,134 @@ scanner_finish(core_yyscan_t yyscanner)
 		pfree(yyextra->literalbuf);
 }
 
+/*
+ * Read and return a text (between 'sloc' and 'eloc') from the scanner
+ * internal buffers.
+ */
+char *
+scanner_querytext(int sloc, int eloc, core_yyscan_t yyscanner)
+{
+	int len = eloc - sloc;
+	char *query = palloc(len + 1);
+
+	Assert (sloc >= 0);
+	Assert (eloc >= 0);
+	memcpy(query, yyextra->scanbuf + sloc, len);
+	query[len] = '\0';
+
+	return query;
+}
+
+/*
+ * Read and return a PLSQL body text (starting from 'sloc') from the scanner
+ * internal buffers.
+ */
+char *
+read_plsql_body(int sloc, core_yyscan_t yyscanner)
+{
+	char	   *query;
+	const char *start = yyextra->scanbuf + sloc;
+	char	   *endloc = yyextra->scanbuf + *yylloc + yyleng;
+	int			len = endloc - start;
+
+	query = palloc(len + 1);
+	memcpy(query, start, len);
+	query[len] = '\0';
+
+	return query;
+}
+
+/*
+ * Read a SQL construct until a given token/keyword is reached.
+ *
+ * until:		token code for expected terminator
+ * until2:		token code for alternate terminator (pass 0 if none)
+ * until3:		token code for another alternate terminator (pass 0 if none)
+ * expected:	text to use in complaining that terminator was not found
+ * isexpression: whether to say we're reading an "expression" or a "statement"
+ * valid_sql:   whether to check the syntax of the expr (prefixed with sqlstart)
+ * trim:		trim trailing whitespace
+ * startloc:	if not NULL, location of first token is stored at *startloc
+ * endtoken:	if not NULL, ending token is stored at *endtoken
+ *				(this is only interesting if until2 or until3 isn't zero)
+ */
+char *
+read_sql_until(int until,
+				int until2,
+				int until3,
+				const char *expected,
+				bool isexpression,
+				core_yyscan_t yyscanner)
+{
+	int					tok;
+	int					startlocation = -1;
+	int					parenlevel = 0;
+
+	YYLTYPE *yylloc_ = core_yyget_lloc(yyscanner);
+
+	for (;;)
+	{
+		tok = yylex(core_yyget_lval(yyscanner),
+						core_yyget_lloc(yyscanner),
+						yyscanner);
+		yylloc_ = core_yyget_lloc(yyscanner);
+
+		if (startlocation < 0)			/* remember loc of first token */
+		{
+			startlocation = *yylloc_;
+		}
+
+		if (tok == until && parenlevel == 0)
+			break;
+		if (tok == until2 && parenlevel == 0)
+			break;
+		if (tok == until3 && parenlevel == 0)
+			break;
+		if (tok == '(' || tok == '[')
+			parenlevel++;
+		else if (tok == ')' || tok == ']')
+		{
+			parenlevel--;
+			if (parenlevel < 0)
+				yyerror("mismatched parentheses");
+		}
+
+		/*
+		 * End of function definition is an error, and we don't expect to
+		 * hit a semicolon either (unless it's the until symbol, in which
+		 * case we should have fallen out above).
+		 */
+		if (tok == 0 || tok == ';')
+		{
+			if (parenlevel != 0)
+				yyerror("mismatched parentheses");
+			if (isexpression)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("missing \"%s\" at end of SQL expression",
+								expected),
+						 lexer_errposition()));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("missing \"%s\" at end of SQL statement",
+								expected),
+						 lexer_errposition()));
+		}
+	}
+
+
+	/* give helpful complaint about empty input */
+	if (startlocation > *yylloc_)
+	{
+		if (isexpression)
+			yyerror("missing expression");
+		else
+			yyerror("missing SQL statement");
+	}
+
+	return NULL;
+}
 
 static void
 addlit(char *ytext, int yleng, core_yyscan_t yyscanner)

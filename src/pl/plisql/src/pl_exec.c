@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * pl_exec.c		- Executor for the PL/pgSQL
+ * pl_exec.c		- Executor for the PL/iSQL
  *			  procedural language
  *
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
@@ -21,9 +21,11 @@
 #include "access/htup_details.h"
 #include "access/transam.h"
 #include "access/tupconvert.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "commands/packagecmds.h"
 #include "executor/execExpr.h"
 #include "executor/spi.h"
 #include "executor/tstoreReceiver.h"
@@ -447,6 +449,13 @@ static PLiSQL_variable *make_callstmt_target(PLiSQL_execstate *estate,
 											  PLiSQL_expr *expr);
 
 
+static void exec_package_vars(PLiSQL_execstate *estate, PLiSQL_function *func,
+							  bool init);
+static PLiSQL_datum *get_datum(PLiSQL_execstate *estate, int dno);
+static MemoryContext switchPkgContext(Oid oid);
+static MemoryContext getRelevantContext(Oid oid, MemoryContext orig);
+static PLiSQL_datum *lookup_package_datum(PLiSQL_execstate *estate, Oid pkgoid, int dno);
+
 /* ----------
  * plisql_exec_function	Called by the call handler for
  *				function execution.
@@ -486,6 +495,10 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	estate.procedure_resowner = procedure_resowner;
 	estate.atomic = atomic;
 
+	/* Setup this execution package's name if exist? */
+	if (OidIsValid(func->fn_pkg))
+		estate.pkg_name = get_package_name(func->fn_pkg, false);
+
 	/*
 	 * Setup error traceback support for ereport()
 	 */
@@ -500,6 +513,9 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	estate.err_text = gettext_noop("during initialization of execution state");
 	copy_plisql_datums(&estate, func);
 
+	/* add package variables to current execution state. */
+	exec_package_vars(&estate, func, true);
+
 	/*
 	 * Store the actual call argument values into the appropriate variables
 	 */
@@ -508,11 +524,11 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	{
 		int			n = func->fn_argvarnos[i];
 
-		switch (estate.datums[n]->dtype)
+		switch (get_datum(&estate, n)->dtype)
 		{
 			case PLISQL_DTYPE_VAR:
 				{
-					PLiSQL_var *var = (PLiSQL_var *) estate.datums[n];
+					PLiSQL_var *var = (PLiSQL_var *) get_datum(&estate, n);
 
 					assign_simple_var(&estate, var,
 									  fcinfo->args[i].value,
@@ -565,7 +581,7 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 
 			case PLISQL_DTYPE_REC:
 				{
-					PLiSQL_rec *rec = (PLiSQL_rec *) estate.datums[n];
+					PLiSQL_rec *rec = (PLiSQL_rec *) get_datum(&estate, n);
 
 					if (!fcinfo->args[i].isnull)
 					{
@@ -668,9 +684,21 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 				 * However, if we have a R/W expanded datum, we can just
 				 * transfer its ownership out to the upper context.
 				 */
-				estate.retval = SPI_datumTransfer(estate.retval,
-												  false,
-												  -1);
+				if (OidIsValid(estate.func->fn_pkg))
+				{
+					MemoryContext oldcxt;
+
+					oldcxt = switchPkgContext(estate.func->fn_pkg);
+					estate.retval = datumTransfer(estate.retval, false, -1);
+
+					MemoryContextSwitchTo(oldcxt);
+				}
+				else
+				{
+					estate.retval = SPI_datumTransfer(estate.retval,
+													  false,
+													  -1);
+				}
 			}
 			else
 			{
@@ -708,9 +736,19 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 						 * generic rowtype, so we don't really need to be
 						 * restrictive.  Pass back the generated result as-is.
 						 */
-						estate.retval = SPI_datumTransfer(estate.retval,
-														  false,
-														  -1);
+						if (OidIsValid(estate.func->fn_pkg))
+						{
+							MemoryContext oldcxt;
+
+							oldcxt = switchPkgContext(estate.func->fn_pkg);
+							estate.retval = datumTransfer(estate.retval, false, -1);
+
+							MemoryContextSwitchTo(oldcxt);
+						}
+						else
+							estate.retval = SPI_datumTransfer(estate.retval,
+															  false,
+															  -1);
 						break;
 					default:
 						/* shouldn't get here if retistuple is true ... */
@@ -737,9 +775,23 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 			 * upper executor context.
 			 */
 			if (!fcinfo->isnull && !func->fn_retbyval)
-				estate.retval = SPI_datumTransfer(estate.retval,
-												  false,
-												  func->fn_rettyplen);
+			{
+				if (OidIsValid(estate.func->fn_pkg))
+				{
+					MemoryContext oldcxt;
+
+					oldcxt = switchPkgContext(estate.func->fn_pkg);
+					estate.retval = datumTransfer(estate.retval, false, -1);
+
+					MemoryContextSwitchTo(oldcxt);
+				}
+				else
+				{
+					estate.retval = SPI_datumTransfer(estate.retval,
+													  false,
+													  func->fn_rettyplen);
+				}
+			}
 		}
 	}
 	else
@@ -862,9 +914,21 @@ coerce_function_result_tuple(PLiSQL_execstate *estate, TupleDesc tupdesc)
 			 * However, if we have a R/W expanded datum, we can just transfer
 			 * its ownership out to the upper executor context.
 			 */
-			estate->retval = SPI_datumTransfer(estate->retval,
-											   false,
-											   -1);
+			if (OidIsValid(estate->func->fn_pkg))
+			{
+				MemoryContext oldcxt;
+
+				oldcxt = switchPkgContext(estate->func->fn_pkg);
+				estate->retval = datumTransfer(estate->retval, false, -1);
+
+				MemoryContextSwitchTo(oldcxt);
+			}
+			else
+			{
+				estate->retval = SPI_datumTransfer(estate->retval,
+												   false,
+												   -1);
+			}
 		}
 	}
 	else
@@ -946,8 +1010,8 @@ plisql_exec_trigger(PLiSQL_function *func,
 	 */
 	tupdesc = RelationGetDescr(trigdata->tg_relation);
 
-	rec_new = (PLiSQL_rec *) (estate.datums[func->new_varno]);
-	rec_old = (PLiSQL_rec *) (estate.datums[func->old_varno]);
+	rec_new = (PLiSQL_rec *) (get_datum(&estate, func->new_varno));
+	rec_old = (PLiSQL_rec *) (get_datum(&estate, func->old_varno));
 
 	rec_new->erh = make_expanded_record_from_tupdesc(tupdesc,
 													 estate.datum_context);
@@ -1234,7 +1298,7 @@ plisql_exec_error_callback(void *arg)
 			 * translator: last %s is a phrase such as "during statement block
 			 * local variable initialization"
 			 */
-			errcontext("PL/pgSQL function %s line %d %s",
+			errcontext("PL/iSQL function %s line %d %s",
 					   estate->func->fn_signature,
 					   estate->err_stmt->lineno,
 					   _(estate->err_text));
@@ -1245,7 +1309,7 @@ plisql_exec_error_callback(void *arg)
 			 * translator: last %s is a phrase such as "while storing call
 			 * arguments into local variables"
 			 */
-			errcontext("PL/pgSQL function %s %s",
+			errcontext("PL/iSQL function %s %s",
 					   estate->func->fn_signature,
 					   _(estate->err_text));
 		}
@@ -1253,13 +1317,13 @@ plisql_exec_error_callback(void *arg)
 	else if (estate->err_stmt != NULL)
 	{
 		/* translator: last %s is a plpgsql statement type name */
-		errcontext("PL/pgSQL function %s line %d at %s",
+		errcontext("PL/iSQL function %s line %d at %s",
 				   estate->func->fn_signature,
 				   estate->err_stmt->lineno,
 				   plisql_stmt_typename(estate->err_stmt));
 	}
 	else
-		errcontext("PL/pgSQL function %s",
+		errcontext("PL/iSQL function %s",
 				   estate->func->fn_signature);
 }
 
@@ -1315,6 +1379,7 @@ copy_plisql_datums(PLiSQL_execstate *estate,
 				break;
 
 			case PLISQL_DTYPE_ROW:
+			case PLISQL_DTYPE_REFCURSOR:
 			case PLISQL_DTYPE_RECFIELD:
 
 				/*
@@ -1509,7 +1574,7 @@ get_stmt_mcontext(PLiSQL_execstate *estate)
 	{
 		estate->stmt_mcontext =
 			AllocSetContextCreate(estate->stmt_mcontext_parent,
-								  "PLpgSQL per-statement data",
+								  "PLiSQL per-statement data",
 								  ALLOCSET_DEFAULT_SIZES);
 	}
 	return estate->stmt_mcontext;
@@ -1635,7 +1700,7 @@ exec_stmt_block(PLiSQL_execstate *estate, PLiSQL_stmt_block *block)
 	for (i = 0; i < block->n_initvars; i++)
 	{
 		int			n = block->initvarnos[i];
-		PLiSQL_datum *datum = estate->datums[n];
+		PLiSQL_datum *datum = get_datum(estate, n);
 
 		/*
 		 * The set of dtypes handled here must match plisql_add_initdatums().
@@ -1858,10 +1923,10 @@ exec_stmt_block(PLiSQL_execstate *estate, PLiSQL_stmt_block *block)
 					PLiSQL_var *state_var;
 					PLiSQL_var *errm_var;
 
-					state_var = (PLiSQL_var *)
-						estate->datums[block->exceptions->sqlstate_varno];
-					errm_var = (PLiSQL_var *)
-						estate->datums[block->exceptions->sqlerrm_varno];
+					state_var = (PLiSQL_var *) get_datum(estate,
+											block->exceptions->sqlstate_varno);
+					errm_var = (PLiSQL_var *) get_datum(estate,
+											block->exceptions->sqlerrm_varno);
 
 					assign_text_var(estate, state_var,
 									unpack_sql_state(edata->sqlerrcode));
@@ -2120,7 +2185,7 @@ exec_stmt_assign(PLiSQL_execstate *estate, PLiSQL_stmt_assign *stmt)
 {
 	Assert(stmt->varno >= 0);
 
-	exec_assign_expr(estate, estate->datums[stmt->varno], stmt->expr);
+	exec_assign_expr(estate, get_datum(estate, stmt->varno), stmt->expr);
 
 	return PLISQL_RC_OK;
 }
@@ -2287,7 +2352,7 @@ make_callstmt_target(PLiSQL_execstate *estate, PLiSQL_expr *expr)
 	 * messages when something is wrong.
 	 */
 	numargs = get_func_arg_info(func_tuple, &argtypes, &argnames, &argmodes);
-
+	
 	ReleaseSysCache(func_tuple);
 
 	/*
@@ -2375,7 +2440,7 @@ exec_stmt_getdiag(PLiSQL_execstate *estate, PLiSQL_stmt_getdiag *stmt)
 	foreach(lc, stmt->diag_items)
 	{
 		PLiSQL_diag_item *diag_item = (PLiSQL_diag_item *) lfirst(lc);
-		PLiSQL_datum *var = estate->datums[diag_item->target];
+		PLiSQL_datum *var = get_datum(estate, diag_item->target);
 
 		switch (diag_item->kind)
 		{
@@ -2513,7 +2578,7 @@ exec_stmt_case(PLiSQL_execstate *estate, PLiSQL_stmt_case *stmt)
 		t_val = exec_eval_expr(estate, stmt->t_expr,
 							   &isnull, &t_typoid, &t_typmod);
 
-		t_var = (PLiSQL_var *) estate->datums[stmt->t_varno];
+		t_var = (PLiSQL_var *) get_datum(estate, stmt->t_varno);
 
 		/*
 		 * When expected datatype is different from real, change it. Note that
@@ -2650,7 +2715,7 @@ exec_stmt_fori(PLiSQL_execstate *estate, PLiSQL_stmt_fori *stmt)
 	bool		found = false;
 	int			rc = PLISQL_RC_OK;
 
-	var = (PLiSQL_var *) (estate->datums[stmt->var->dno]);
+	var = (PLiSQL_var *) (get_datum(estate, stmt->var->dno));
 
 	/*
 	 * Get the value of the lower bound
@@ -2824,7 +2889,7 @@ exec_stmt_forc(PLiSQL_execstate *estate, PLiSQL_stmt_forc *stmt)
 	 * that it's not in use currently.
 	 * ----------
 	 */
-	curvar = (PLiSQL_var *) (estate->datums[stmt->curvar]);
+	curvar = (PLiSQL_var *) (get_datum(estate, stmt->curvar));
 	if (!curvar->isnull)
 	{
 		MemoryContext oldcontext;
@@ -2870,7 +2935,7 @@ exec_stmt_forc(PLiSQL_execstate *estate, PLiSQL_stmt_forc *stmt)
 		set_args.into = true;
 		/* XXX historically this has not been STRICT */
 		set_args.target = (PLiSQL_variable *)
-			(estate->datums[curvar->cursor_explicit_argrow]);
+			(get_datum(estate, curvar->cursor_explicit_argrow));
 
 		if (exec_stmt_execsql(estate, &set_args) != PLISQL_RC_OK)
 			elog(ERROR, "open cursor failed during argument processing");
@@ -3003,7 +3068,7 @@ exec_stmt_foreach_a(PLiSQL_execstate *estate, PLiSQL_stmt_foreach_a *stmt)
 						stmt->slice, ARR_NDIM(arr))));
 
 	/* Set up the loop variable and see if it is of an array type */
-	loop_var = estate->datums[stmt->varno];
+	loop_var = get_datum(estate, stmt->varno);
 	if (loop_var->dtype == PLISQL_DTYPE_REC ||
 		loop_var->dtype == PLISQL_DTYPE_ROW)
 	{
@@ -3163,7 +3228,7 @@ exec_stmt_return(PLiSQL_execstate *estate, PLiSQL_stmt_return *stmt)
 	 */
 	if (stmt->retvarno >= 0)
 	{
-		PLiSQL_datum *retvar = estate->datums[stmt->retvarno];
+		PLiSQL_datum *retvar = get_datum(estate, stmt->retvarno);
 
 		switch (retvar->dtype)
 		{
@@ -3309,7 +3374,7 @@ exec_stmt_return_next(PLiSQL_execstate *estate,
 	 */
 	if (stmt->retvarno >= 0)
 	{
-		PLiSQL_datum *retvar = estate->datums[stmt->retvarno];
+		PLiSQL_datum *retvar = get_datum(estate, stmt->retvarno);
 
 		switch (retvar->dtype)
 		{
@@ -3993,7 +4058,7 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 		ctl.keysize = sizeof(plisql_CastHashKey);
 		ctl.entrysize = sizeof(plisql_CastHashEntry);
 		ctl.hcxt = CurrentMemoryContext;
-		estate->cast_hash = hash_create("PLpgSQL private cast cache",
+		estate->cast_hash = hash_create("PLiSQL private cast cache",
 										16, /* start small and extend */
 										&ctl,
 										HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
@@ -4006,12 +4071,12 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 		if (shared_cast_hash == NULL)
 		{
 			shared_cast_context = AllocSetContextCreate(TopMemoryContext,
-														"PLpgSQL cast info",
+														"PLiSQL cast info",
 														ALLOCSET_DEFAULT_SIZES);
 			ctl.keysize = sizeof(plisql_CastHashKey);
 			ctl.entrysize = sizeof(plisql_CastHashEntry);
 			ctl.hcxt = shared_cast_context;
-			shared_cast_hash = hash_create("PLpgSQL cast cache",
+			shared_cast_hash = hash_create("PLiSQL cast cache",
 										   16,	/* start small and extend */
 										   &ctl,
 										   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
@@ -4044,6 +4109,7 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 	estate->err_text = NULL;
 
 	estate->plugin_info = NULL;
+	estate->pkg_name = NULL;
 
 	/*
 	 * Create an EState and ExprContext for evaluation of simple expressions.
@@ -4124,6 +4190,24 @@ exec_prepare_plan(PLiSQL_execstate *estate,
 	expr->func = estate->func;
 
 	/*
+	 * exec_prepare_plan() searches for the function's and procedure's and it
+	 * uses the active search path to do so, If object qualification was not
+	 * present. such as public.func() or packagename.func(). So temporarily add
+	 * a package Oid to the search path. This will help the backend lookup functions
+	 * to locate function or procedure in the package first, which is desired
+	 * here.
+	 */
+	if (OidIsValid(estate->func->fn_pkg))
+	{
+		OverrideSearchPath *overridePath;
+		Oid pkgoid = estate->func->fn_pkg;
+
+		overridePath = GetOverrideSearchPath(CurrentMemoryContext);
+		overridePath->schemas = lcons_oid(pkgoid, overridePath->schemas);
+		PushOverrideSearchPath(overridePath);
+	}
+
+	/*
 	 * Generate and save the plan
 	 */
 	memset(&options, 0, sizeof(options));
@@ -4141,6 +4225,9 @@ exec_prepare_plan(PLiSQL_execstate *estate,
 
 	/* Check to see if it's a simple expression */
 	exec_simple_check_plan(estate, expr);
+
+	if (OidIsValid(estate->func->fn_pkg))
+		PopOverrideSearchPath();
 }
 
 
@@ -4274,13 +4361,13 @@ exec_stmt_execsql(PLiSQL_execstate *estate,
 		case SPI_ERROR_COPY:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot COPY to/from client in PL/pgSQL")));
+					 errmsg("cannot COPY to/from client in PL/iSQL")));
 			break;
 
 		case SPI_ERROR_TRANSACTION:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("unsupported transaction command in PL/pgSQL")));
+					 errmsg("unsupported transaction command in PL/iSQL")));
 			break;
 
 		default:
@@ -4306,7 +4393,7 @@ exec_stmt_execsql(PLiSQL_execstate *estate,
 					 errmsg("INTO used with a command that cannot return data")));
 
 		/* Fetch target's datum entry */
-		target = (PLiSQL_variable *) estate->datums[stmt->target->dno];
+		target = (PLiSQL_variable *) get_datum(estate, stmt->target->dno);
 
 		/*
 		 * If SELECT ... INTO specified STRICT, and the query didn't find
@@ -4462,7 +4549,7 @@ exec_stmt_dynexecute(PLiSQL_execstate *estate,
 		case SPI_ERROR_COPY:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot COPY to/from client in PL/pgSQL")));
+					 errmsg("cannot COPY to/from client in PL/iSQL")));
 			break;
 
 		case SPI_ERROR_TRANSACTION:
@@ -4602,17 +4689,18 @@ exec_stmt_open(PLiSQL_execstate *estate, PLiSQL_stmt_open *stmt)
 	char	   *curname = NULL;
 	PLiSQL_expr *query;
 	Portal		portal;
-	ParamListInfo paramLI;
+    ParamListInfo paramLI;
 
 	/* ----------
 	 * Get the cursor variable and if it has an assigned name, check
 	 * that it's not in use currently.
 	 * ----------
 	 */
-	curvar = (PLiSQL_var *) (estate->datums[stmt->curvar]);
+	curvar = (PLiSQL_var *) (get_datum(estate, stmt->curvar));
 	if (!curvar->isnull)
 	{
 		MemoryContext oldcontext;
+        Portal		opencur;
 
 		/* We only need stmt_mcontext to hold the cursor name string */
 		stmt_mcontext = get_stmt_mcontext(estate);
@@ -4620,10 +4708,19 @@ exec_stmt_open(PLiSQL_execstate *estate, PLiSQL_stmt_open *stmt)
 		curname = TextDatumGetCString(curvar->value);
 		MemoryContextSwitchTo(oldcontext);
 
-		if (SPI_cursor_find(curname) != NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_DUPLICATE_CURSOR),
-					 errmsg("cursor \"%s\" already in use", curname)));
+		if (estate->pkg_name != NULL && !strstr(curname, "<unnamed"))
+			curname = psprintf("%s.%s", estate->pkg_name, curname);
+
+		opencur = SPI_cursor_find(curname);
+		if (opencur != NULL)
+		{
+			if (OidIsValid(curvar->pkgoid))
+				SPI_cursor_close(opencur);
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_CURSOR),
+						errmsg("cursor \"%s\" already in use", curname)));
+		}
 	}
 
 	/* ----------
@@ -4697,7 +4794,7 @@ exec_stmt_open(PLiSQL_execstate *estate, PLiSQL_stmt_open *stmt)
 			set_args.into = true;
 			/* XXX historically this has not been STRICT */
 			set_args.target = (PLiSQL_variable *)
-				(estate->datums[curvar->cursor_explicit_argrow]);
+				(get_datum(estate, curvar->cursor_explicit_argrow));
 
 			if (exec_stmt_execsql(estate, &set_args) != PLISQL_RC_OK)
 				elog(ERROR, "open cursor failed during argument processing");
@@ -4765,7 +4862,7 @@ exec_stmt_fetch(PLiSQL_execstate *estate, PLiSQL_stmt_fetch *stmt)
 	 * Get the portal of the cursor by name
 	 * ----------
 	 */
-	curvar = (PLiSQL_var *) (estate->datums[stmt->curvar]);
+	curvar = (PLiSQL_var *) (get_datum(estate, stmt->curvar));
 	if (curvar->isnull)
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
@@ -4775,6 +4872,9 @@ exec_stmt_fetch(PLiSQL_execstate *estate, PLiSQL_stmt_fetch *stmt)
 	oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
 	curname = TextDatumGetCString(curvar->value);
 	MemoryContextSwitchTo(oldcontext);
+
+	if (estate->pkg_name != NULL && !strstr(curname, "<unnamed"))
+		curname = psprintf("%s.%s", estate->pkg_name, curname);
 
 	portal = SPI_cursor_find(curname);
 	if (portal == NULL)
@@ -4814,10 +4914,13 @@ exec_stmt_fetch(PLiSQL_execstate *estate, PLiSQL_stmt_fetch *stmt)
 		 * Set the target appropriately.
 		 * ----------
 		 */
-		target = (PLiSQL_variable *) estate->datums[stmt->target->dno];
-		if (n == 0)
-			exec_move_row(estate, target, NULL, tuptab->tupdesc);
-		else
+		target = (PLiSQL_variable *) get_datum(estate, stmt->target->dno);
+
+		/*
+		 * Oracle does not put anything in taget if no data is available. So
+		 * only move row if any data is available.
+		 */
+		if (n != 0)
 			exec_move_row(estate, target, tuptab->vals[0], tuptab->tupdesc);
 
 		exec_eval_cleanup(estate);
@@ -4853,7 +4956,7 @@ exec_stmt_close(PLiSQL_execstate *estate, PLiSQL_stmt_close *stmt)
 	 * Get the portal of the cursor by name
 	 * ----------
 	 */
-	curvar = (PLiSQL_var *) (estate->datums[stmt->curvar]);
+	curvar = (PLiSQL_var *) (get_datum(estate, stmt->curvar));
 	if (curvar->isnull)
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
@@ -4863,6 +4966,9 @@ exec_stmt_close(PLiSQL_execstate *estate, PLiSQL_stmt_close *stmt)
 	oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
 	curname = TextDatumGetCString(curvar->value);
 	MemoryContextSwitchTo(oldcontext);
+
+	if (estate->pkg_name != NULL && !strstr(curname, "<unnamed"))
+		curname = psprintf("%s.%s", estate->pkg_name, curname);
 
 	portal = SPI_cursor_find(curname);
 	if (portal == NULL)
@@ -5057,6 +5163,8 @@ exec_assign_value(PLiSQL_execstate *estate,
 				 */
 				if (!var->datatype->typbyval && !isNull)
 				{
+					MemoryContext ctx = switchPkgContext(var->pkgoid);
+
 					if (var->datatype->typisarray &&
 						!VARATT_IS_EXTERNAL_EXPANDED_RW(DatumGetPointer(newvalue)))
 					{
@@ -5072,6 +5180,8 @@ exec_assign_value(PLiSQL_execstate *estate,
 												 false,
 												 var->datatype->typlen);
 					}
+					if (ctx)
+						MemoryContextSwitchTo(ctx);
 				}
 
 				/*
@@ -5161,7 +5271,7 @@ exec_assign_value(PLiSQL_execstate *estate,
 				PLiSQL_rec *rec;
 				ExpandedRecordHeader *erh;
 
-				rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
+				rec = (PLiSQL_rec *) (get_datum(estate, recfield->recparentno));
 				erh = rec->erh;
 
 				/*
@@ -5335,7 +5445,7 @@ exec_eval_datum(PLiSQL_execstate *estate,
 				PLiSQL_rec *rec;
 				ExpandedRecordHeader *erh;
 
-				rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
+				rec = (PLiSQL_rec *) (get_datum(estate, recfield->recparentno));
 				erh = rec->erh;
 
 				/*
@@ -5426,7 +5536,7 @@ plisql_exec_get_datum_type(PLiSQL_execstate *estate,
 				PLiSQL_recfield *recfield = (PLiSQL_recfield *) datum;
 				PLiSQL_rec *rec;
 
-				rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
+				rec = (PLiSQL_rec *) (get_datum(estate, recfield->recparentno));
 
 				/*
 				 * If record variable is NULL, instantiate it if it has a
@@ -5517,7 +5627,7 @@ plisql_exec_get_datum_type_info(PLiSQL_execstate *estate,
 				PLiSQL_recfield *recfield = (PLiSQL_recfield *) datum;
 				PLiSQL_rec *rec;
 
-				rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
+				rec = (PLiSQL_rec *) (get_datum(estate, recfield->recparentno));
 
 				/*
 				 * If record variable is NULL, instantiate it if it has a
@@ -5794,7 +5904,7 @@ exec_for_query(PLiSQL_execstate *estate, PLiSQL_stmt_forq *stmt,
 	uint64		n;
 
 	/* Fetch loop variable's datum entry */
-	var = (PLiSQL_variable *) estate->datums[stmt->var->dno];
+	var = (PLiSQL_variable *) get_datum(estate, stmt->var->dno);
 
 	/*
 	 * Make sure the portal doesn't get closed by the user statements we
@@ -6264,7 +6374,7 @@ plisql_param_fetch(ParamListInfo params,
 	Assert(params->numParams == estate->ndatums);
 
 	/* now we can access the target datum */
-	datum = estate->datums[dno];
+	datum = get_datum(estate, dno);
 
 	/*
 	 * Since copyParamList() or SerializeParamList() will try to materialize
@@ -6302,7 +6412,7 @@ plisql_param_fetch(ParamListInfo params,
 					PLiSQL_recfield *recfield = (PLiSQL_recfield *) datum;
 					PLiSQL_rec *rec;
 
-					rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
+					rec = (PLiSQL_rec *) (get_datum(estate, recfield->recparentno));
 
 					/*
 					 * If record variable is NULL, don't risk anything.
@@ -6389,7 +6499,7 @@ plisql_param_compile(ParamListInfo params, Param *param,
 	Assert(dno >= 0 && dno < estate->ndatums);
 
 	/* now we can access the target datum */
-	datum = estate->datums[dno];
+	datum = get_datum(estate, dno);
 
 	scratch.opcode = EEOP_PARAM_CALLBACK;
 	scratch.resvalue = resv;
@@ -6459,7 +6569,7 @@ plisql_param_eval_var(ExprState *state, ExprEvalStep *op,
 	Assert(dno >= 0 && dno < estate->ndatums);
 
 	/* now we can access the target datum */
-	var = (PLiSQL_var *) estate->datums[dno];
+	var = (PLiSQL_var *) get_datum(estate, dno);
 	Assert(var->dtype == PLISQL_DTYPE_VAR);
 
 	/* inlined version of exec_eval_datum() */
@@ -6491,7 +6601,7 @@ plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 	Assert(dno >= 0 && dno < estate->ndatums);
 
 	/* now we can access the target datum */
-	var = (PLiSQL_var *) estate->datums[dno];
+	var = (PLiSQL_var *) get_datum(estate, dno);
 	Assert(var->dtype == PLISQL_DTYPE_VAR);
 
 	/*
@@ -6530,11 +6640,11 @@ plisql_param_eval_recfield(ExprState *state, ExprEvalStep *op,
 	Assert(dno >= 0 && dno < estate->ndatums);
 
 	/* now we can access the target datum */
-	recfield = (PLiSQL_recfield *) estate->datums[dno];
+	recfield = (PLiSQL_recfield *) get_datum(estate, dno);
 	Assert(recfield->dtype == PLISQL_DTYPE_RECFIELD);
 
 	/* inline the relevant part of exec_eval_datum */
-	rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
+	rec = (PLiSQL_rec *) (get_datum(estate, recfield->recparentno));
 	erh = rec->erh;
 
 	/*
@@ -6602,7 +6712,7 @@ plisql_param_eval_generic(ExprState *state, ExprEvalStep *op,
 	Assert(dno >= 0 && dno < estate->ndatums);
 
 	/* now we can access the target datum */
-	datum = estate->datums[dno];
+	datum = get_datum(estate, dno);
 
 	/* fetch datum's value */
 	exec_eval_datum(estate, datum,
@@ -6642,7 +6752,7 @@ plisql_param_eval_generic_ro(ExprState *state, ExprEvalStep *op,
 	Assert(dno >= 0 && dno < estate->ndatums);
 
 	/* now we can access the target datum */
-	datum = estate->datums[dno];
+	datum = get_datum(estate, dno);
 
 	/* fetch datum's value */
 	exec_eval_datum(estate, datum,
@@ -6784,10 +6894,13 @@ exec_move_row(PLiSQL_execstate *estate,
 		}
 		else
 		{
+			MemoryContext mc;
 			char	   *chunk;
+			PLiSQL_rec *rec = (PLiSQL_rec *) target;
 
-			chunk = eval_mcontext_alloc(estate,
-										td_natts * (sizeof(Datum) + sizeof(bool)));
+			mc = getRelevantContext(rec->pkgoid, get_eval_mcontext(estate));
+			chunk = MemoryContextAlloc(mc,
+									   td_natts * (sizeof(Datum) + sizeof(bool)));
 			values = (Datum *) chunk;
 			nulls = (bool *) (chunk + td_natts * sizeof(Datum));
 		}
@@ -6897,7 +7010,8 @@ make_expanded_record_for_rec(PLiSQL_execstate *estate,
 							 ExpandedRecordHeader *srcerh)
 {
 	ExpandedRecordHeader *newerh;
-	MemoryContext mcontext = get_eval_mcontext(estate);
+	MemoryContext mcontext = getRelevantContext(rec->pkgoid,
+												get_eval_mcontext(estate));
 
 	if (rec->rectypeid != RECORDOID)
 	{
@@ -7147,7 +7261,7 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 			Oid			valtype;
 			int32		valtypmod;
 
-			var = (PLiSQL_var *) (estate->datums[row->varnos[fnum]]);
+			var = (PLiSQL_var *) (get_datum(estate, row->varnos[fnum]));
 
 			while (anum < td_natts &&
 				   TupleDescAttr(tupdesc, anum)->attisdropped)
@@ -7291,7 +7405,7 @@ make_tuple_from_row(PLiSQL_execstate *estate,
 			continue;
 		}
 
-		exec_eval_datum(estate, estate->datums[row->varnos[i]],
+		exec_eval_datum(estate, get_datum(estate, row->varnos[i]),
 						&fieldtypeid, &fieldtypmod,
 						&dvalues[i], &nulls[i]);
 		if (fieldtypeid != TupleDescAttr(tupdesc, i)->atttypid)
@@ -7545,8 +7659,10 @@ exec_move_row_from_datum(PLiSQL_execstate *estate,
 			 */
 			if (rec->rectypeid == RECORDOID || rec->rectypeid == tupType)
 			{
+				PLiSQL_rec *rec = (PLiSQL_rec *) target;
 				ExpandedRecordHeader *newerh;
-				MemoryContext mcontext = get_eval_mcontext(estate);
+				MemoryContext mcontext = getRelevantContext(rec->pkgoid,
+													get_eval_mcontext(estate));
 
 				newerh = make_expanded_record_from_typeid(tupType, tupTypmod,
 														  mcontext);
@@ -7585,6 +7701,8 @@ exec_move_row_from_datum(PLiSQL_execstate *estate,
 static void
 instantiate_empty_record_variable(PLiSQL_execstate *estate, PLiSQL_rec *rec)
 {
+	MemoryContext mc;
+
 	Assert(rec->erh == NULL);	/* else caller error */
 
 	/* If declared type is RECORD, we can't instantiate */
@@ -7598,8 +7716,9 @@ instantiate_empty_record_variable(PLiSQL_execstate *estate, PLiSQL_rec *rec)
 	revalidate_rectypeid(rec);
 
 	/* OK, do it */
+	mc = getRelevantContext(rec->pkgoid, estate->datum_context);
 	rec->erh = make_expanded_record_from_typeid(rec->rectypeid, -1,
-												estate->datum_context);
+												mc);
 }
 
 /* ----------
@@ -8225,7 +8344,7 @@ exec_set_found(PLiSQL_execstate *estate, bool state)
 {
 	PLiSQL_var *var;
 
-	var = (PLiSQL_var *) (estate->datums[estate->found_varno]);
+	var = (PLiSQL_var *) (get_datum(estate, estate->found_varno));
 	assign_simple_var(estate, var, BoolGetDatum(state), false, false);
 }
 
@@ -8275,7 +8394,7 @@ plisql_create_econtext(PLiSQL_execstate *estate)
 		if (shared_simple_eval_resowner == NULL)
 			shared_simple_eval_resowner =
 				ResourceOwnerCreate(TopTransactionResourceOwner,
-									"PL/pgSQL simple expressions");
+									"PL/iSQL simple expressions");
 		estate->simple_eval_resowner = shared_simple_eval_resowner;
 	}
 
@@ -8418,6 +8537,10 @@ assign_simple_var(PLiSQL_execstate *estate, PLiSQL_var *var,
 	{
 		MemoryContext oldcxt;
 		Datum		detoasted;
+		PLiSQL_package *pkg = NULL;
+
+		if (OidIsValid(var->pkgoid))
+			pkg = package_HashTablelookup(var->pkgoid);
 
 		/*
 		 * Do the detoasting in the eval_mcontext to avoid long-term leakage
@@ -8425,15 +8548,18 @@ assign_simple_var(PLiSQL_execstate *estate, PLiSQL_var *var,
 		 * the detoasted datum to the function's main context, which is a
 		 * pain, but there's little choice.
 		 */
-		oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
+		if (pkg != NULL && OidIsValid(var->pkgoid))
+			oldcxt = MemoryContextSwitchTo(pkg->pkgctx);
+		else
+			oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
 		detoasted = PointerGetDatum(detoast_external_attr((struct varlena *) DatumGetPointer(newvalue)));
-		MemoryContextSwitchTo(oldcxt);
 		/* Now's a good time to not leak the input value if it's freeable */
 		if (freeable)
 			pfree(DatumGetPointer(newvalue));
 		/* Once we copy the value, it's definitely freeable */
 		newvalue = datumCopy(detoasted, false, -1);
 		freeable = true;
+		MemoryContextSwitchTo(oldcxt);
 		/* Can't clean up eval_mcontext here, but it'll happen before long */
 	}
 
@@ -8466,7 +8592,15 @@ assign_simple_var(PLiSQL_execstate *estate, PLiSQL_var *var,
 static void
 assign_text_var(PLiSQL_execstate *estate, PLiSQL_var *var, const char *str)
 {
+	MemoryContext ctx = NULL;
+
+	if (OidIsValid(var->pkgoid))
+		ctx = switchPkgContext(var->pkgoid);
+
 	assign_simple_var(estate, var, CStringGetTextDatum(str), false, true);
+
+	if (ctx)
+		MemoryContextSwitchTo(ctx);
 }
 
 /*
@@ -8476,10 +8610,14 @@ static void
 assign_record_var(PLiSQL_execstate *estate, PLiSQL_rec *rec,
 				  ExpandedRecordHeader *erh)
 {
+	MemoryContext mc;
+
 	Assert(rec->dtype == PLISQL_DTYPE_REC);
 
+	mc = getRelevantContext(rec->pkgoid, estate->datum_context);
+
 	/* Transfer new record object into datum_context */
-	TransferExpandedRecord(erh, estate->datum_context);
+	TransferExpandedRecord(erh, mc);
 
 	/* Free the old value ... */
 	if (rec->erh)
@@ -8663,7 +8801,7 @@ format_expr_params(PLiSQL_execstate *estate,
 		int32		paramtypmod;
 		PLiSQL_var *curvar;
 
-		curvar = (PLiSQL_var *) estate->datums[dno];
+		curvar = (PLiSQL_var *) get_datum(estate, dno);
 
 		exec_eval_datum(estate, (PLiSQL_datum *) curvar,
 						&paramtypeid, &paramtypmod,
@@ -8735,4 +8873,157 @@ format_preparedparamsdata(PLiSQL_execstate *estate,
 	MemoryContextSwitchTo(oldcontext);
 
 	return paramstr.data;
+}
+
+static void
+exec_package_vars(PLiSQL_execstate *estate, PLiSQL_function *func, bool init)
+{
+	if (func->fn_pkg == 0)
+		return;
+
+	PLiSQL_package *pkg = package_HashTablelookup(func->fn_pkg);
+
+	for (int i = 0; i < pkg->ndatums; i++)
+	{
+		int			n = i;
+
+		if (init)
+			estate->datums[n] = pkg->datums[n];
+		else
+			pkg->datums[n] = estate->datums[n];
+	}
+}
+
+/*
+ * get_datum:
+ * This function returns the datum no from either the estate (for function local
+ * variables or from package datums list, if a package variable.
+ */
+static PLiSQL_datum *
+get_datum(PLiSQL_execstate *estate, int dno)
+{
+	PLiSQL_datum *datum;
+
+	datum = estate->datums[dno];
+	switch (datum->dtype)
+	{
+		case PLISQL_DTYPE_VAR:
+		case PLISQL_DTYPE_REC:
+			{
+				PLiSQL_var *var;
+
+				var = (PLiSQL_var *) datum;
+				if (OidIsValid(var->pkgoid))
+					datum = lookup_package_datum(estate, var->pkgoid, dno);
+				else
+					datum = estate->datums[dno];
+			}
+			break;
+
+		case PLISQL_DTYPE_RECFIELD:
+			{
+				PLiSQL_recfield *recfield = (PLiSQL_recfield *) datum;
+				PLiSQL_rec *rec = (PLiSQL_rec *)
+									get_datum(estate, recfield->recparentno);
+				if (OidIsValid(rec->pkgoid))
+				{
+					PLiSQL_package *pkg = package_HashTablelookup(rec->pkgoid);
+					if (dno <= pkg->ndatums)
+					{
+						int i = 0;
+
+						for (i = rec->dno; i < pkg->ndatums; i++)
+						{
+							PLiSQL_recfield *precfield = (PLiSQL_recfield *) pkg->datums[i];
+
+							if (strcmp(recfield->fieldname, precfield->fieldname) == 0)
+								return pkg->datums[i];
+						}
+						datum = pkg->datums[dno];
+					}
+					else
+						datum = estate->datums[dno];
+				}
+			}
+			break;
+
+		/* fall through... */
+		default:
+			break;
+	}
+
+	Assert(datum != NULL);
+	return datum;
+}
+
+static PLiSQL_datum *
+lookup_package_datum(PLiSQL_execstate *estate, Oid pkgoid, int dno)
+{
+	PLiSQL_var *var = (PLiSQL_var *) estate->datums[dno];
+	PLiSQL_datum *datum;
+	PLiSQL_package *pkg;
+
+	pkg = package_HashTablelookup(pkgoid);
+	if (!pkg)
+	{
+		/*
+		 * since var->pkgoid is valid, we know that it belongs to a
+		 * package, however this package has not been compiled yet. So
+		 * compile it now and also execute the initializer/constructor
+		 * function.
+		 */
+		pkg = plisql_compile_package(pkgoid, false);
+		plisql_package_exec_init(pkg, true);
+	}
+
+	/*
+	 * var->pkgdno == -1 entails that a local variable was a built to
+	 * refere to the package variable, however the package was not not
+	 * availble as in a compiled state, hence it was set to -1. so that
+	 * during execution phase it can be set appropriatly after compilation
+	 * is done.
+	 */
+	if (var->pkgdno == -1)
+	{
+		datum = lookup_package_var(pkg, var->datatype->typoid, var->refname);
+		PLiSQL_var *pvar = (PLiSQL_var *) datum;
+
+		if (pvar)
+			var->pkgdno = pvar->dno;
+	}
+	else
+	{
+		/*
+		 * if the pkgdo was already set, that means the variables
+		 * referencing the package variables were built during the package
+		 * compilation and there pkgdo was alreasy set. In this case pkgdo
+		 * and dno will always be same.
+		 */
+		datum = pkg->datums[var->pkgdno];
+	}
+
+	return datum;
+}
+
+/* switch to given package context. */
+static MemoryContext
+switchPkgContext(Oid oid)
+{
+	MemoryContext ctx = getRelevantContext(oid, CurrentMemoryContext);
+
+	return MemoryContextSwitchTo(ctx);
+}
+
+/* get given package's context. */
+static MemoryContext
+getRelevantContext(Oid oid, MemoryContext orig)
+{
+	PLiSQL_package *pkg = NULL;
+
+	if (OidIsValid(oid))
+		pkg = package_HashTablelookup(oid);
+	if (pkg != NULL)
+		return pkg->pkgctx;
+
+	return orig;
 }

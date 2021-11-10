@@ -52,6 +52,13 @@ typedef enum OnCommitAction
 	ONCOMMIT_DROP				/* ON COMMIT DROP */
 } OnCommitAction;
 
+typedef enum VariableEOXAction
+{
+	VARIABLE_EOX_NOOP,			/* Do nothing */
+	VARIABLE_EOX_DROP,			/* ON TRANSACTION END DROP */
+	VARIABLE_EOX_RESET			/* ON TRANSACTION END RESET */
+} VariableEOXAction;
+
 /*
  * RangeVar - range variable, used in FROM clauses
  *

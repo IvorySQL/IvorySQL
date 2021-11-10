@@ -72,6 +72,8 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_variable.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_user_mapping.h"
 #include "lib/qunique.h"
 #include "utils/catcache.h"
@@ -991,6 +993,50 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		2
+	},
+	{VariableRelationId,		/* VARIABLENAMENSP */
+		VariableNameNspIndexId,
+		2,
+		{
+			Anum_pg_variable_varname,
+			Anum_pg_variable_varnamespace,
+			0,
+			0
+		},
+		8
+	},
+	{VariableRelationId,		/* VARIABLEOID */
+		VariableObjectIndexId,
+		1,
+		{
+			Anum_pg_variable_oid,
+			0,
+			0,
+			0
+		},
+		8
+	},
+	{PackageRelationId,			/* PACKAGEOID */
+		PackageObjectIndexId,
+		1,
+		{
+			Anum_pg_package_oid,
+			0,
+			0,
+			0
+		},
+		8
+	},
+	{PackageRelationId,			/* PACKAGENAMENSP */
+		PackageNameNspIndexId,
+		2,
+		{
+			Anum_pg_package_pkgname,
+			Anum_pg_package_pkgnamespace,
+			0,
+			0
+		},
+		8
 	}
 };
 

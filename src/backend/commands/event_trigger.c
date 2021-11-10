@@ -937,6 +937,8 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 {
 	switch (obtype)
 	{
+		case OBJECT_PACKAGE:
+		case OBJECT_VARIABLE:
 		case OBJECT_DATABASE:
 		case OBJECT_TABLESPACE:
 		case OBJECT_ROLE:
@@ -1011,6 +1013,8 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 {
 	switch (objclass)
 	{
+		case OCLASS_PACKAGE:
+		case OCLASS_VARIABLE:
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_ROLE:
@@ -2108,6 +2112,9 @@ stringify_grant_objtype(ObjectType objtype)
 			return "TABLESPACE";
 		case OBJECT_TYPE:
 			return "TYPE";
+		case OBJECT_PACKAGE:
+			return "PACKAGE";
+
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:
@@ -2144,6 +2151,7 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
+		case OBJECT_VARIABLE:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 	}
 
@@ -2190,6 +2198,8 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "TABLESPACES";
 		case OBJECT_TYPE:
 			return "TYPES";
+		case OBJECT_PACKAGE:
+			return "PACKAGE";
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:
@@ -2226,6 +2236,7 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
+		case OBJECT_VARIABLE:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 	}
 
