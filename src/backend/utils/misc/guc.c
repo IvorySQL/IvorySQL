@@ -383,6 +383,13 @@ static const struct config_enum_entry xmloption_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry nlslength_options[] = {
+	{"none", NLSLENGTH_NONE, false},
+	{"byte", NLSLENGTH_BYTE, false},
+	{"char", NLSLENGTH_CHAR, false},
+	{NULL, 0, false}
+};
+
 StaticAssertDecl(lengthof(xmloption_options) == (XMLOPTION_CONTENT + 2),
 				 "array length mismatch");
 
@@ -663,6 +670,7 @@ static char *recovery_target_lsn_string;
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
 
+int nls_length_semantics;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -4951,6 +4959,17 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&recovery_init_sync_method,
 		RECOVERY_INIT_SYNC_METHOD_FSYNC, recovery_init_sync_method_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"nls_length_semantics", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("create CHAR and VARCHAR2 columns using either byte or character length semantics."),
+			NULL,
+			GUC_REPORT
+		},
+		&nls_length_semantics,
+		NLSLENGTH_NONE, nlslength_options,
 		NULL, NULL, NULL
 	},
 

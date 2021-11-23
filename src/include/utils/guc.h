@@ -282,6 +282,15 @@ extern int	tcp_user_timeout;
 extern bool trace_sort;
 #endif
 
+extern int nls_length_semantics;
+
+typedef enum NlsLengthOptions
+{
+	NLSLENGTH_NONE,
+	NLSLENGTH_BYTE,
+	NLSLENGTH_CHAR
+} NlsLengthOptions;
+
 /*
  * Functions exported by guc.c
  */
