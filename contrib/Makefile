@@ -87,6 +87,8 @@ else
 ALWAYS_SUBDIRS += hstore_plpython jsonb_plpython ltree_plpython
 endif
 
+SUBDIRS += orafce
+
 # Missing:
 #		start-scripts	\ (does not have a makefile)
 
