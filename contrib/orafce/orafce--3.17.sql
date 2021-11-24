@@ -6177,3 +6177,10 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
+
+--oracle compatible functions, from_tz function
+CREATE FUNCTION oracle.from_tz(TIMESTAMP, TEXT)
+RETURNS cstring                
+AS 'MODULE_PATHNAME','ora_fromtz'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.from_tz(TIMESTAMP, TEXT) IS 'Convert timestamp value of specific time zone to a timestamp with a time zone value.';

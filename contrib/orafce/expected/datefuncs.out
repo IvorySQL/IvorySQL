@@ -1,0 +1,46 @@
+\set VERBOSITY terse
+SET client_encoding = utf8;
+set datestyle='ISO,MDY';
+set time zone 'PRC';
+select oracle.from_tz('2021-11-08 09:12:39','+16:00') from dual;
+ERROR:  timeszone must be between -16 and 16 
+select oracle.from_tz('2021-11-08 09:12:39','-12:00') from dual;
+          from_tz           
+----------------------------
+ 2021-11-08 09:12:39 -12:00
+(1 row)
+
+select oracle.from_tz('2021-11-08 09:12:39','Asia/Shanghai123123') from dual;
+ERROR:  times zone unrecognized
+select oracle.from_tz('2021-11-08 09:12:39','Asia/Shanghai') from dual;
+              from_tz              
+-----------------------------------
+ 2021-11-08 09:12:39 Asia/Shanghai
+(1 row)
+
+select oracle.from_tz('2021-11-08 09:12:39','SAST') from dual;
+         from_tz          
+--------------------------
+ 2021-11-08 09:12:39 SAST
+(1 row)
+
+select oracle.from_tz('2021-11-08 09:12:39','SAST123') from dual;
+ERROR:  times zone unrecognized
+select oracle.from_tz(NULL,'SAST') from dual;
+ from_tz 
+---------
+ 
+(1 row)
+
+select oracle.from_tz('2021-11-08 09:12:31',NULL) from dual;
+ from_tz 
+---------
+ 
+(1 row)
+
+select oracle.from_tz(NULL,NULL) from dual;
+ from_tz 
+---------
+ 
+(1 row)
+

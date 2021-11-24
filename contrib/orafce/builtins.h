@@ -301,4 +301,9 @@ extern PGDLLEXPORT Datum nvarchar2recv(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_replace_empty_strings(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_replace_null_strings(PG_FUNCTION_ARGS);
 
+/* from datefuncs.c*/
+extern PGDLLEXPORT Datum ora_fromtz(PG_FUNCTION_ARGS);
+
+
+
 #endif
