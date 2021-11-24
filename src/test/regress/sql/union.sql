@@ -540,3 +540,9 @@ select * from
    union all
    select *, 1 as x from int8_tbl b) ss
 where (x = 0) or (q1 >= q2 and q1 <= q2);
+
+--
+--check minus behavior
+--
+select * from generate_series(1, 3) g(i) minus select * from generate_series(1, 3) g(i) where i = 1;
+select * from generate_series(1, 3) g(i) minus select * from generate_series(3, 5) g(i);
