@@ -1629,6 +1629,9 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	int			sortcolindex;
 	int			tllen;
 
+	pstate->p_num = 0;
+	pstate->p_union_flag = false;
+
 	qry->commandType = CMD_SELECT;
 
 	/*
@@ -1693,6 +1696,9 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 					  transformSetOperationTree(pstate, stmt, true, NULL));
 	Assert(sostmt);
 	qry->setOperations = (Node *) sostmt;
+
+	if (pstate->p_type)
+		pfree(pstate->p_type);
 
 	/*
 	 * Re-find leftmost SELECT (now it's a sub-query in rangetable)
@@ -2039,6 +2045,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 		ListCell   *ltl;
 		ListCell   *rtl;
 		const char *context;
+		int	   num;
 		bool recursive = (pstate->p_parent_cte &&
 						  pstate->p_parent_cte->cterecursive);
 
@@ -2048,6 +2055,54 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 
 		op->op = stmt->op;
 		op->all = stmt->all;
+
+		/* record the type of the right child node of the previous level */
+		if (stmt->rarg->targetList && !pstate->p_parent_cte)
+		{
+			List		*temptargetlist = NIL;
+			ListCell	*r_tartempcell;
+			int 		 i;
+			int 		 len;
+			List		 *rtable = copyObject(pstate->p_rtable);
+
+			(void)transformSetOperationTree(pstate, copyObject(stmt->rarg),
+											false,
+											&temptargetlist);
+
+			pstate->p_rtable  =copyObject(rtable);
+			pstate->p_num = 0;
+			len = temptargetlist->length;
+			if (!pstate->p_type)
+			{
+				pstate->p_type = (Oid *)palloc(sizeof(Oid) * len);
+				MemSet(pstate->p_type, 0x0, sizeof(Oid) * len);
+			}
+
+			foreach (r_tartempcell, temptargetlist)
+			{
+				TargetEntry	   *tartle = (TargetEntry *) lfirst(r_tartempcell);
+				Node	   *tarcolnode = (Node *) tartle->expr;
+				Oid	   tarcoltype = exprType(tarcolnode);
+
+				if (IsA(tarcolnode, Const) && tarcoltype == UNKNOWNOID)
+				{
+					pstate->p_num++;
+					continue;
+				}
+				else
+				{
+					pstate->p_type[pstate->p_num++] = tarcoltype;
+					pstate->p_union_flag = true;
+				}
+			}
+
+			/* handle unknown type and value is null in pstate->p_type */
+			for (i = 0; i < len; i++)
+			{
+				if (!pstate->p_type[i])
+					pstate->p_type[i] = UNKNOWNOID;
+			}
+		}
 
 		/*
 		 * Recursively transform the left child node.
@@ -2090,6 +2145,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 		op->colTypmods = NIL;
 		op->colCollations = NIL;
 		op->groupClauses = NIL;
+		num = 0;
 		forboth(ltl, ltargetlist, rtl, rtargetlist)
 		{
 			TargetEntry *ltle = (TargetEntry *) lfirst(ltl);
@@ -2103,6 +2159,26 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 			Oid			rescoltype;
 			int32		rescoltypmod;
 			Oid			rescolcoll;
+
+			/*
+			 * If the left and right nodes are both null,
+			 * the coercion type is the type of the upper right child node.
+			 */
+			if (IsA(lcolnode, Const) && IsA(rcolnode, Const))
+			{
+				if (lcoltype == UNKNOWNOID && rcoltype ==UNKNOWNOID &&
+					pstate->p_union_flag && ((Const *)lcolnode)->constisnull &&
+					((Const *)rcolnode)->constisnull)
+				{
+					Oid 	tarptype = pstate->p_type[num];
+
+					lcolnode = coerce_to_target_type(pstate, lcolnode, lcoltype,
+													 tarptype, -1,
+													 COERCION_EXPLICIT,
+													 COERCE_EXPLICIT_CAST,
+													 ((Const *)lcolnode)->location);
+				}
+			}
 
 			/* select common type, same as CASE et al */
 			rescoltype = select_common_type(pstate,
@@ -2221,6 +2297,8 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 										 false);
 				*targetlist = lappend(*targetlist, restle);
 			}
+
+			num++;
 		}
 
 		return (Node *) op;
