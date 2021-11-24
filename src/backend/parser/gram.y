@@ -718,7 +718,8 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
-	MAPPING MATCH MATERIALIZED MAXVALUE METHOD MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
+	MAPPING MATCH MATERIALIZED MAXVALUE METHOD MINUS MINUTE_P MINVALUE MODE MODIFY
+	MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONE
 	NORMALIZE NORMALIZED
@@ -797,7 +798,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 
 /* Precedence: lowest to highest */
 %nonassoc	SET				/* see relation_expr_opt_alias */
-%left		UNION EXCEPT
+%left		UNION EXCEPT MINUS
 %left		INTERSECT
 %left		OR
 %left		AND
@@ -12464,6 +12465,10 @@ simple_select:
 				{
 					$$ = makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4);
 				}
+			| select_clause MINUS set_quantifier select_clause
+				{
+					$$ = makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4);
+				}
 		;
 
 /*
@@ -16894,6 +16899,7 @@ reserved_keyword:
 			| LIMIT
 			| LOCALTIME
 			| LOCALTIMESTAMP
+			| MINUS
 			| NOT
 			| NULL_P
 			| OFFSET
