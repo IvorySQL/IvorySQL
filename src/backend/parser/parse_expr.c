@@ -621,6 +621,27 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 											  &levels_up);
 				if (nsitem == NULL)
 				{
+					/*
+					 * Access the sequence as a column reference.
+					 * e.g : sequence.nextval = nextval('sequence').
+					 */
+					if (IsA(field2, String))
+					{
+						if (!strcmp(strVal(field2), "nextval") || !strcmp(strVal(field2), "currval"))
+						{
+							FuncCall	   *seq_func = NULL;
+							A_Const	   *n = makeNode(A_Const);
+
+							n->val.type = T_String;
+							n->val.val.str = strVal(field1);
+							n->location = cref->location;
+
+							seq_func = makeFuncCall(list_make2(makeString("pg_catalog"), makeString(strVal(field2))),
+													 list_make1(n), COERCE_EXPLICIT_CALL, cref->location);
+							return transformFuncCall(pstate, seq_func);
+						}
+					}
+
 					crerr = CRERR_NO_RTE;
 					break;
 				}
@@ -671,6 +692,27 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 											  &levels_up);
 				if (nsitem == NULL)
 				{
+					/*
+					 * In the schema, access the sequence as a column reference.
+					 * e.g : schema.sequence.nextval = nextval('schema.sequence').
+					 */
+					if (IsA(field3, String))
+					{
+						if (!strcmp(strVal(field3), "nextval") || !strcmp(strVal(field3), "currval"))
+						{
+							FuncCall	   *seq_func = NULL;
+							A_Const	   *n = makeNode(A_Const);
+
+							n->val.type = T_String;
+							n->val.val.str = psprintf("%s.%s", strVal(field1), strVal(field2));
+							n->location = cref->location;
+
+							seq_func = makeFuncCall(list_make2(makeString("pg_catalog"), makeString(strVal(field3))),
+													 list_make1(n), COERCE_EXPLICIT_CALL, cref->location);
+							return transformFuncCall(pstate, seq_func);
+						}
+					}
+
 					crerr = CRERR_NO_RTE;
 					break;
 				}
@@ -734,6 +776,27 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 											  &levels_up);
 				if (nsitem == NULL)
 				{
+					/*
+					 * In the database, access the sequence as a column reference.
+					 * e.g : db.schema.sequence.nextval = nextval('db.schema.sequence').
+					 */
+					if (IsA(field4, String))
+					{
+						if (!strcmp(strVal(field4), "nextval") || !strcmp(strVal(field4), "currval"))
+						{
+							FuncCall	   *seq_func = NULL;
+							A_Const	   *n = makeNode(A_Const);
+
+							n->val.type = T_String;
+							n->val.val.str = psprintf("%s.%s.%s", strVal(field1), strVal(field2), strVal(field3));
+							n->location = cref->location;
+
+							seq_func = makeFuncCall(list_make2(makeString("pg_catalog"), makeString(strVal(field4))),
+													 list_make1(n), COERCE_EXPLICIT_CALL, cref->location);
+							return transformFuncCall(pstate, seq_func);
+						}
+					}
+
 					crerr = CRERR_NO_RTE;
 					break;
 				}
