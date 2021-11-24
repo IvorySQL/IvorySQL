@@ -763,7 +763,7 @@ compute_function_attributes(ParseState *pstate,
 	{
 		DefElem    *defel = (DefElem *) lfirst(option);
 
-		if (strcmp(defel->defname, "as") == 0)
+		if (strcmp(defel->defname, "as") == 0 || strcmp(defel->defname, "is") == 0)
 		{
 			if (as_item)
 				ereport(ERROR,

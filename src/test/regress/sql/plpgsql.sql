@@ -4667,3 +4667,14 @@ BEGIN
   GET DIAGNOSTICS x = ROW_COUNT;
   RETURN;
 END; $$ LANGUAGE plpgsql;
+
+--
+--use IS keyword
+--
+create function test2(n1 int, n2 int) returns int
+is '
+begin
+    return n1 + n2;
+end;
+'language plpgsql;
+select test2(3,4);

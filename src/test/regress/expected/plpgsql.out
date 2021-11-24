@@ -5726,3 +5726,18 @@ END; $$ LANGUAGE plpgsql;
 ERROR:  "x" is not a scalar variable
 LINE 3:   GET DIAGNOSTICS x = ROW_COUNT;
                           ^
+--
+--use IS keyword
+--
+create function test2(n1 int, n2 int) returns int
+is '
+begin
+    return n1 + n2;
+end;
+'language plpgsql;
+select test2(3,4);
+ test2 
+-------
+     7
+(1 row)
+
