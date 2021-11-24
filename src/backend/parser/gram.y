@@ -609,6 +609,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <partboundspec> PartitionBoundSpec
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
+%type <list>	pg_alter_table_cmds ora_alter_table_cmds add_table_coldefs
+				modify_table_coldefs drop_table_coldefs
+%type <node>	add_table_coldef modify_table_coldef drop_table_coldef
 
 
 /*
@@ -681,7 +684,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
-	MAPPING MATCH MATERIALIZED MAXVALUE METHOD MINUTE_P MINVALUE MODE MONTH_P MOVE
+	MAPPING MATCH MATERIALIZED MAXVALUE METHOD MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONE
 	NORMALIZE NORMALIZED
@@ -2107,8 +2110,105 @@ AlterTableStmt:
 		;
 
 alter_table_cmds:
+			pg_alter_table_cmds						{ $$ = $1; }
+			| ora_alter_table_cmds					{ $$ = $1; }
+		;
+
+/* alter table column use postgresql syntax */
+pg_alter_table_cmds:
 			alter_table_cmd							{ $$ = list_make1($1); }
 			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
+		;
+
+/* alter table column use oracle syntax */
+ora_alter_table_cmds:
+			/* ALTER TABLE <name> ADD (<coldef[, coldef […]]>) */
+			ADD_P '(' add_table_coldefs ')'
+				{
+					$$ = $3;
+				}
+			/* ALTER TABLE <name> MODIFY (<colname> <typname> <alter_using>[,…] */
+			| MODIFY '(' modify_table_coldefs ')'
+				{
+					$$ = $3;
+				}
+			/* ALTER TABLE <name> DROP [column] (<colname> [, ...]) */
+			| DROP opt_column '(' drop_table_coldefs ')'
+				{
+					$$ = $4;
+				}
+		;
+
+add_table_coldefs:
+			add_table_coldef
+				{
+					$$ = list_make1($1);
+				}
+			| add_table_coldefs ',' add_table_coldef
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+add_table_coldef:
+			columnDef
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_AddColumn;
+					n->def = $1;
+					n->missing_ok = false;
+					$$ = (Node *)n;
+				}
+		;
+
+modify_table_coldefs:
+			modify_table_coldef
+				{
+					$$ = list_make1($1);
+				}
+			| modify_table_coldefs ',' modify_table_coldef
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+modify_table_coldef:
+			ColId Typename alter_using
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					ColumnDef *def = makeNode(ColumnDef);
+					n->subtype = AT_AlterColumnType;
+					n->name = $1;
+					n->def = (Node *) def;
+					/* We only use these fields of the ColumnDef node */
+					def->typeName = $2;
+					def->raw_default = $3;
+					def->location = @1;
+					$$ = (Node *)n;
+				}
+		;
+
+drop_table_coldefs:
+			drop_table_coldef
+				{
+					$$ = list_make1($1);
+				}
+			| drop_table_coldefs ',' drop_table_coldef
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+drop_table_coldef:
+			ColId
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_DropColumn;
+					n->name = $1;
+					n->behavior = DROP_RESTRICT;
+					n->missing_ok = true;
+					$$ = (Node *)n;
+				}
 		;
 
 partition_cmd:
@@ -15617,6 +15717,7 @@ unreserved_keyword:
 			| MINUTE_P
 			| MINVALUE
 			| MODE
+			| MODIFY
 			| MONTH_P
 			| MOVE
 			| NAME_P
@@ -16183,6 +16284,7 @@ bare_label_keyword:
 			| METHOD
 			| MINVALUE
 			| MODE
+			| MODIFY
 			| MOVE
 			| NAME_P
 			| NAMES
