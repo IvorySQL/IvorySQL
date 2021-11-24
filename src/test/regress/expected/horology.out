@@ -1600,7 +1600,7 @@ SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
 SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 - t.f1 AS minus
   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
   WHERE isfinite(d.f1)
-  ORDER BY minus, "timestamp", "interval";
+  ORDER BY "minus", "timestamp", "interval";
           timestamp           |           interval            |            minus             
 ------------------------------+-------------------------------+------------------------------
  Thu Jan 01 00:00:00 1970 PST | @ 34 years                    | Wed Jan 01 00:00:00 1936 PST
