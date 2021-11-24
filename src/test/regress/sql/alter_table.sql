@@ -2999,3 +2999,51 @@ insert into attach_parted_part1 values (2, 1);
 -- ...and doesn't when the partition is detached along with its own partition
 alter table target_parted detach partition attach_parted;
 insert into attach_parted_part1 values (2, 1);
+
+--
+--Test oracle alter attribute
+--
+--check oracle compatible syntax : alter table <name> add (<coldef[, coldef […]]>);
+create table tb_test1(id int, flg char(10));
+alter table tb_test1 add (name varchar);
+alter table tb_test1 add (adress varchar, num int, flg1 char);
+\d tb_test1
+
+--error case
+alter table tb_test1 add (name1);
+alter table tb_test1 add (varchar);
+
+--check oracle compatible syntax : alter table <name> modify (<colname> <typname> <alter_using>[,…];
+create table tb_test2(id int, flg char(10), num varchar);
+insert into tb_test2 values('1', 2, '3');
+alter table tb_test2 modify(id char);
+\d tb_test2
+
+alter table tb_test2 modify(id varchar, flg text);
+\d tb_test2
+
+alter table tb_test2 modify(flg int using 10, num char(20));
+\d tb_test2
+table tb_test2;
+
+alter table tb_test2 modify(flg int using 20, num int using 30);
+\d tb_test2
+table tb_test2;
+
+--error case
+alter table tb_test2 modify(flg char using);
+
+--check oralce compatible syntax : alter table <name> drop [column] (<colname> [, ...]);
+create table tb_test3(id int, flg1 char(10), flg2 char(11), flg3 char(12), flg4 char(13),
+						flg5 char(14), flg6 char(15));
+alter table tb_test3 drop column(id);
+\d tb_test3
+
+alter table tb_test3 drop column(flg1, flg2);
+\d tb_test3
+
+alter table tb_test3 drop(flg3);
+\d tb_test3
+
+alter table tb_test3 drop(flg4, flg5);
+\d tb_test3
