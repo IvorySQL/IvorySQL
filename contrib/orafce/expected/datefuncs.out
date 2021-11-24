@@ -44,3 +44,89 @@ select oracle.from_tz(NULL,NULL) from dual;
  
 (1 row)
 
+--numtodsinterval function
+select oracle.numtodsinterval(2147483647.1232131232,'day') from dual;
+ERROR:  interval out of range
+select oracle.numtodsinterval(2147483646.1232131232,'day') from dual;
+                 numtodsinterval                  
+--------------------------------------------------
+ @ 2147483646 days 2 hours 57 mins 25.607758 secs
+(1 row)
+
+select oracle.numtodsinterval(2147483647.1232131232,'hour') from dual;
+             numtodsinterval              
+------------------------------------------
+ @ 2147483647 hours 7 mins 23.567104 secs
+(1 row)
+
+select oracle.numtodsinterval(2147483648.1232131232,'hour') from dual;
+ERROR:  interval out of range
+select oracle.numtodsinterval(128849018879.1232131232,'minute') from dual;
+             numtodsinterval              
+------------------------------------------
+ @ 2147483647 hours 59 mins 7.393024 secs
+(1 row)
+
+select oracle.numtodsinterval(128849018880.1232131232,'minute') from dual;
+ERROR:  interval out of range
+select oracle.numtodsinterval(7730941132799.1232131232,'second') from dual;
+              numtodsinterval              
+-------------------------------------------
+ @ 2147483647 hours 59 mins 59.123456 secs
+(1 row)
+
+select oracle.numtodsinterval(7730941132800.1232131232,'second') from dual;
+ERROR:  interval out of range
+select oracle.numtodsinterval(NULL,'second') from dual;
+ numtodsinterval 
+-----------------
+ 
+(1 row)
+
+select oracle.numtodsinterval(7730941132800.1232131232,NULL) from dual;
+ numtodsinterval 
+-----------------
+ 
+(1 row)
+
+select oracle.numtodsinterval(NULL,NULL) from dual;
+ numtodsinterval 
+-----------------
+ 
+(1 row)
+
+--numtoyminterval function
+select oracle.numtoyminterval(178956970.1232131232,'year') from dual;
+                       numtoyminterval                       
+-------------------------------------------------------------
+ @ 178956970 years 1 mon 14 days 8 hours 33 mins 40.608 secs
+(1 row)
+
+select oracle.numtoyminterval(178956971.1232131232,'year') from dual;
+ERROR:  interval out of range
+select oracle.numtoyminterval(2147483646.1232131232,'month') from dual;
+                        numtoyminterval                        
+---------------------------------------------------------------
+ @ 178956970 years 6 mons 3 days 16 hours 42 mins 48.2688 secs
+(1 row)
+
+select oracle.numtoyminterval(2147483647.1232131232,'month') from dual;
+ERROR:  interval out of range
+select oracle.numtoyminterval(NULL,'month') from dual;
+ numtoyminterval 
+-----------------
+ 
+(1 row)
+
+select oracle.numtoyminterval(2147483647.1232131232,NULL) from dual;
+ numtoyminterval 
+-----------------
+ 
+(1 row)
+
+select oracle.numtoyminterval(NULL,NULL) from dual;
+ numtoyminterval 
+-----------------
+ 
+(1 row)
+
