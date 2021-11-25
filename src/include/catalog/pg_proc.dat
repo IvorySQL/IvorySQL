@@ -2621,6 +2621,10 @@
 { oid => '2649', descr => 'current clock time',
   proname => 'clock_timestamp', provolatile => 'v', prorettype => 'timestamptz',
   proargtypes => '', prosrc => 'clock_timestamp' },
+{ oid => '2137', descr => 'current system date',
+  proname => 'statement_sysdate', provolatile => 's',
+  prorettype => 'timestamp', proargtypes => '',
+  prosrc => 'statement_sysdate' },
 
 # OIDS 1300 - 1399
 

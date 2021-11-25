@@ -739,7 +739,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRIP_P
-	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSID SYSTEM_P
+	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTIMESTAMP
 
 	TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN
 	TIES TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM
@@ -15037,6 +15037,14 @@ func_expr_common_subexpr:
 											   COERCE_EXPLICIT_CALL,
 											   @1);
 				}
+			| SYSDATE
+				{
+					$$ = (Node *) makeFuncCall(SystemFuncName("statement_sysdate"), NIL, COERCE_SQL_SYNTAX, @1);
+				} 
+			| SYSTIMESTAMP
+				{
+					$$ = (Node *) makeFuncCall(SystemFuncName("statement_timestamp"), NIL, COERCE_SQL_SYNTAX, @1);
+				} 
 			| TREAT '(' a_expr AS Typename ')'
 				{
 					/* TREAT(expr AS target) converts expr of a particular type to target,
@@ -16756,6 +16764,8 @@ type_func_name_keyword:
 			| OVERLAPS
 			| RIGHT
 			| SIMILAR
+			| SYSDATE
+			| SYSTIMESTAMP
 			| TABLESAMPLE
 			| VERBOSE
 		;
@@ -17215,8 +17225,10 @@ bare_label_keyword:
 			| SUBSTRING
 			| SUPPORT
 			| SYMMETRIC
+			| SYSDATE
 			| SYSID
 			| SYSTEM_P
+			| SYSTIMESTAMP
 			| TABLE
 			| TABLES
 			| TABLESAMPLE

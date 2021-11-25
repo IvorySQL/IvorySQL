@@ -303,6 +303,7 @@ extern PGDLLEXPORT Datum orafce_replace_null_strings(PG_FUNCTION_ARGS);
 
 /* from datefuncs.c*/
 extern PGDLLEXPORT Datum ora_fromtz(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_systimestamp(PG_FUNCTION_ARGS);
 
 
 
