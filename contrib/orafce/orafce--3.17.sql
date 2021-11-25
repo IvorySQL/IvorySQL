@@ -313,6 +313,20 @@ $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE DOMAIN oracle.date AS timestamp(0);
 
+/* add at 20211124 */
+CREATE FUNCTION oracle.to_char("any")
+RETURNS TEXT
+AS 'MODULE_PATHNAME','orafce_to_varchar'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.to_char("any") IS 'Convert text type to string';
+
+/* to deal to_char(unknown) */
+CREATE FUNCTION oracle.to_char(text)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_varchar'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.to_char(text) IS 'Convert text to string';
+
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;

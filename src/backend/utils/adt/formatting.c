@@ -746,6 +746,7 @@ typedef enum
 	NUM_S,
 	NUM_TH,
 	NUM_V,
+	NUM_X,
 	NUM_b,
 	NUM_c,
 	NUM_d,
@@ -762,6 +763,7 @@ typedef enum
 	NUM_s,
 	NUM_th,
 	NUM_v,
+	NUM_x,
 
 	/* last */
 	_NUM_last_
@@ -915,6 +917,7 @@ static const KeyWord NUM_keywords[] = {
 	{"S", 1, NUM_S},
 	{"TH", 2, NUM_TH},			/* T */
 	{"V", 1, NUM_V},			/* V */
+	{"X", 1, NUM_X},			/* X */
 	{"b", 1, NUM_B},			/* b */
 	{"c", 1, NUM_C},			/* c */
 	{"d", 1, NUM_D},			/* d */
@@ -931,6 +934,7 @@ static const KeyWord NUM_keywords[] = {
 	{"s", 1, NUM_S},
 	{"th", 2, NUM_th},			/* t */
 	{"v", 1, NUM_V},			/* v */
+	{"x", 1, NUM_X},			/* X */
 
 	/* last */
 	{NULL, 0, 0}
@@ -976,11 +980,11 @@ static const int NUM_index[KeyWord_INDEX_SIZE] = {
 	-1, -1, -1, -1, -1, -1, -1, NUM_9, -1, -1,
 	-1, -1, -1, -1, -1, -1, NUM_B, NUM_C, NUM_D, NUM_E,
 	NUM_FM, NUM_G, -1, -1, -1, -1, NUM_L, NUM_MI, -1, -1,
-	NUM_PL, -1, NUM_RN, NUM_SG, NUM_TH, -1, NUM_V, -1, -1, -1,
+	NUM_PL, -1, NUM_RN, NUM_SG, NUM_TH, -1, NUM_V, -1, NUM_X, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, NUM_b, NUM_c,
 	NUM_d, NUM_e, NUM_fm, NUM_g, -1, -1, -1, -1, NUM_l, NUM_mi,
 	-1, -1, NUM_pl, -1, NUM_rn, NUM_sg, NUM_th, -1, NUM_v, -1,
-	-1, -1, -1, -1, -1, -1
+	NUM_x, -1, -1, -1, -1, -1
 
 	/*---- chars over 126 are skipped ----*/
 };
@@ -1309,6 +1313,10 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 						 errmsg("\"EEEE\" is incompatible with other formats"),
 						 errdetail("\"EEEE\" may only be used together with digit and decimal point patterns.")));
 			num->flag |= NUM_F_EEEE;
+			break;
+		case NUM_X:
+		case NUM_x:
+			++num->pre;
 			break;
 	}
 }
@@ -2140,6 +2148,62 @@ asc_toupper_z(const char *buff)
 
 /* asc_initcap_z is not currently needed */
 
+/* To supprot format 'xx' or 'XX' */
+static int64
+hex_to_dec(const char *buff, int len)
+{
+	int64 		i = 0,t = 0,sum = 0;
+	char		ch;
+
+	if((len < 16) || (len == 16 && buff[0] < '8'))
+	{
+		for(i = 0; i < len; i++)
+		{
+			ch = buff[i];
+			if(ch >= '0' && ch <='9')
+			{
+				t = ch - '0';
+			}
+			else if(ch <= 'F' && ch >= 'A')
+			{
+				t = ch - 'A' + 10;
+			}
+			else if(ch <= 'f' && ch >= 'a')
+			{
+				t = ch - 'a' + 10;
+			}
+			else
+			{
+			   ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("Please enter the correct hexadecimal number, for example '9f'.")));
+			}
+			sum = sum * 16 + t;
+		}
+	}
+	else
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("value \"%s\" is out of range!", buff)));
+	}
+	return sum;
+}
+
+static char *
+dec_to_hex(const char* buff)
+{
+	int64		a = 0;
+	char		buf[16];
+	char	   *str = NULL;
+
+	MemSet(buf, 0x0, sizeof(buf));
+	a = atol(buff);
+	sprintf(buf, "%lx", a);
+	str =  pstrdup(buf);
+	return str;
+}
+/*end*/
 
 /* ----------
  * Skip TM / th in FROM_CHAR
@@ -5998,6 +6062,44 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						}
 					}
 					break;
+				/* 
+				* supprot format 'xx' or 'XX',to_char(123,'xx')
+				*/
+				case NUM_X:
+				case NUM_x:
+				if(Np->is_to_char)
+				{
+					sprintf(Np->inout, "%s", dec_to_hex(Np->number));
+					if(Np->Num->pre >= strlen(Np->inout))
+					{
+						n += Np->Num->pre -1;
+					}
+					else
+					{
+						ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("arg is invalid!")));
+					}
+					Np->inout_p += strlen(Np->inout) - 1;
+					Np->number_p += strlen(Np->number_p) - 1;
+					break;
+				}
+				else
+				{
+					sprintf(Np->number, "%ld", hex_to_dec(Np->inout,input_len));
+					if(Np->Num->pre >= strlen(Np->number))
+					{
+						n += Np->Num->pre -1;
+					}
+					else
+					{
+						ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("arg is invalid!")));
+					}
+					Np->inout_p += strlen(Np->inout_p) - 1;
+					Np->number_p += strlen(Np->number) - 1;
+					break;
+				}
+				break;
 
 				default:
 					continue;
@@ -6354,9 +6456,14 @@ int4_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
-			numstr = (char *) palloc(Num.pre + Num.post + 2);
-			fill_str(numstr, '#', Num.pre + Num.post + 1);
-			*(numstr + Num.pre) = '.';
+			/* add by jinhuajian */
+			char *buf = text_to_cstring(fmt);
+			if(!(*buf == 'X' || *buf =='x'))
+			{
+				numstr = (char *) palloc(Num.pre + Num.post + 2);
+				fill_str(numstr, '#', Num.pre + Num.post + 1);
+				*(numstr + Num.pre) = '.';
+			}
 		}
 	}
 

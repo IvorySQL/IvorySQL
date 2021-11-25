@@ -11,6 +11,8 @@
 
 #include "orafce.h"
 #include "builtins.h"
+#include "utils/lsyscache.h"
+#include "catalog/pg_type.h"
 
 #if PG_VERSION_NUM < 130000
 
@@ -30,6 +32,7 @@ PG_FUNCTION_INFO_V1(orafce_to_multi_byte);
 PG_FUNCTION_INFO_V1(orafce_to_single_byte);
 PG_FUNCTION_INFO_V1(orafce_unistr);
 
+PG_FUNCTION_INFO_V1(orafce_to_varchar);
 static int getindex(const char **map, char *mbchar, int mblen);
 
 #if PG_VERSION_NUM < 130000
@@ -930,4 +933,30 @@ invalid_pair:
 	return 0;
 
 #endif
+}
+
+/* the orafce_to_varchar function supports other types of one parameter. */
+Datum
+orafce_to_varchar(PG_FUNCTION_ARGS)
+{
+	Datum	val;
+	Oid type = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+	if(type == VARCHAROID)
+	{
+		val = PG_GETARG_DATUM(0);
+	}
+	else
+	{
+		Oid 	typOutput;
+		bool	typIsVarlena;
+		Datum	val_str;
+		Datum	typelem = ObjectIdGetDatum(VARCHAROID);
+		Datum	typmod = Int32GetDatum(-1);
+		/* find output function based on oid */
+		getTypeOutputInfo(type, &typOutput, &typIsVarlena);
+		val_str = CStringGetDatum(OidOutputFunctionCall(typOutput, PG_GETARG_DATUM(0)));
+		val = DirectFunctionCall3(varcharin, val_str, typelem, typmod);
+	}
+	return val;
 }
