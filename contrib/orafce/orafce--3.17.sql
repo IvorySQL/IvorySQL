@@ -333,6 +333,18 @@ AS 'MODULE_PATHNAME','orafce_bin_to_num'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.bin_to_num("any") IS 'Converts a bit vector to its equivalent number.';
 
+CREATE FUNCTION oracle.to_binary_double(VARIADIC "any")
+RETURNS float8
+AS 'MODULE_PATHNAME','orafce_to_binary_double'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.to_binary_double("any") IS 'double precision';
+
+CREATE FUNCTION oracle.to_binary_float(VARIADIC "any")
+RETURNS float4
+AS 'MODULE_PATHNAME','orafce_to_binary_float'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.to_binary_float("any") IS 'signle precision';
+
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
