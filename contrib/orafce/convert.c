@@ -36,6 +36,8 @@ PG_FUNCTION_INFO_V1(orafce_to_varchar);
 PG_FUNCTION_INFO_V1(orafce_bin_to_num);
 PG_FUNCTION_INFO_V1(orafce_to_binary_float);
 PG_FUNCTION_INFO_V1(orafce_to_binary_double);
+PG_FUNCTION_INFO_V1(orafce_hex_to_decimal);
+
 Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 static int getindex(const char **map, char *mbchar, int mblen);
 char *orafce_type_to_cstring(Datum arg, Oid type);
@@ -1079,4 +1081,57 @@ orafce_to_binary_float(PG_FUNCTION_ARGS)
 	else
 		reval = PG_GETARG_DATUM(0);
 	return reval;
+}
+/* Convert hex to decimal integer */
+Datum
+orafce_hex_to_decimal(PG_FUNCTION_ARGS)
+{
+	text *hex = PG_GETARG_TEXT_P(0);
+	int64 decimal = 0;
+	int32 len, i, t = 0;
+	char *str = NULL, c, ch;
+
+	str = text_to_cstring(hex);
+	len = strlen(str);
+
+	/* check if hex number has prefix '0x' */
+	if (len > 2)
+	{
+		c = *(str + 1);
+		if(*str == '0' && (c == 'x' || c == 'X'))
+		{
+			str += 2;
+			len -= 2;
+		}
+	}
+
+	/* transfer hex to decimal number */
+	if((len < 16) || (len == 16 && str[0] < '8'))
+	{
+		for(i = 0; i < len; i++)
+		{
+			ch = str[i];
+			if(ch >= '0' && ch <= '9')
+				t = ch - '0';
+			else if(ch >= 'a' && ch <= 'f')
+				t = ch - 'a' + 10;
+			else if(ch >= 'A' && ch <= 'F')
+				t = ch - 'A' + 10;
+			else
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("invalid input character!")));
+			}
+			decimal = decimal * 16 + t;
+		}
+	}
+	else
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("value \"%s\" is out of range!,the valid value of the input parameter is 0-0x7FFFFFFFFFFFFFFF", str)));
+	}
+
+	PG_RETURN_INT64(decimal);
 }
