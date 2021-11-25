@@ -690,6 +690,14 @@ static char *recovery_target_lsn_string;
 char	   *role_string;
 
 int nls_length_semantics;
+int		compatible_db;
+
+
+static struct config_enum_entry compat_options[] = {
+	{"postgres", COMPATIBLE_NONE, false},
+	{"oracle", COMPATIBLE_ORA, false},
+	{NULL, 0, false}
+};
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -5023,6 +5031,18 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&nls_length_semantics,
 		NLSLENGTH_NONE, nlslength_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"compatible_mode", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("database compatible options."),
+			NULL,
+			GUC_REPORT
+		},
+		&compatible_db,
+		COMPATIBLE_NONE,
+		compat_options,
 		NULL, NULL, NULL
 	},
 
