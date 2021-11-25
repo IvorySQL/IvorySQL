@@ -5888,3 +5888,36 @@ generate_series_timestamptz(PG_FUNCTION_ARGS)
 		SRF_RETURN_DONE(funcctx);
 	}
 }
+
+/********************************************************************
+ *
+ * statement_sysdate
+ *
+ * Purpose:
+ *
+ * Returns system date with server time, it's not change, eUnless the 
+ * system date or time changes.
+ *
+ ********************************************************************/
+
+Datum
+statement_sysdate(PG_FUNCTION_ARGS)
+{
+	long		ts;
+	char		buff[30];
+	struct		tm *p_tm_time;
+	Datum		sysdate;
+
+	MemSet(buff, 0, 30*sizeof(char));
+
+	ts = time(NULL);
+	p_tm_time = localtime(&ts);
+
+	sprintf(buff, "%d-%d-%d %d:%d:%d", p_tm_time->tm_year+1900, p_tm_time->tm_mon+1, p_tm_time->tm_mday,
+		p_tm_time->tm_hour, p_tm_time->tm_min, p_tm_time->tm_sec);
+
+	sysdate = DirectFunctionCall3(timestamp_in, PointerGetDatum(buff), 
+						PointerGetDatum(0), PointerGetDatum(0));
+
+	PG_RETURN_TIMEADT(sysdate);
+}

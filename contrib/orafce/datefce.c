@@ -9,6 +9,8 @@
 #include <sys/time.h>
 #include "orafce.h"
 #include "builtins.h"
+#include <funcapi.h>
+
 
 #define ENABLE_INTERNATIONALIZED_WEEKDAY
 
@@ -1003,20 +1005,23 @@ ora_timestamp_round(PG_FUNCTION_ARGS)
 Datum
 orafce_sysdate(PG_FUNCTION_ARGS)
 {
-	Datum sysdate;
-	Datum sysdate_scaled;
+	long		ts;
+	char		buff[30];
+	struct		tm *p_tm_time;
+	Datum		sysdate;
 
+	MemSet(buff, 0, 30*sizeof(char));
 
-	sysdate = DirectFunctionCall2(timestamptz_zone,
-					CStringGetTextDatum(orafce_timezone),
-					TimestampTzGetDatum(GetCurrentStatementStartTimestamp()));
+	ts = time(NULL);
+	p_tm_time = localtime(&ts);
 
-	/* necessary to cast to timestamp(0) to emulate Oracle's date */
-	sysdate_scaled = DirectFunctionCall2(timestamp_scale,
-						sysdate,
-						Int32GetDatum(0));
+	sprintf(buff, "%d-%d-%d %d:%d:%d", p_tm_time->tm_year+1900, p_tm_time->tm_mon+1, p_tm_time->tm_mday,
+		p_tm_time->tm_hour, p_tm_time->tm_min, p_tm_time->tm_sec);
 
-	PG_RETURN_DATUM(sysdate_scaled);
+	sysdate = DirectFunctionCall3(timestamp_in, PointerGetDatum(buff), 
+						PointerGetDatum(0), PointerGetDatum(0));
+
+	PG_RETURN_TIMEADT(sysdate);
 }
 
 /********************************************************************

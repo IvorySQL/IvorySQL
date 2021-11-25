@@ -6206,3 +6206,10 @@ CREATE OR REPLACE FUNCTION oracle.numtoyminterval(numeric, text)
 RETURNS interval AS $$
   SELECT $1 * ('1' || $2)::interval
 $$ LANGUAGE sql IMMUTABLE STRICT;
+
+--systimestamp function
+CREATE FUNCTION oracle.systimestamp()
+RETURNS timestamptz
+AS 'MODULE_PATHNAME','ora_systimestamp'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.systimestamp() IS 'get the system timestamp';
