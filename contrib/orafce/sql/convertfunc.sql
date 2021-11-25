@@ -39,4 +39,11 @@ select oracle.to_binary_float(1.2::numeric);
 select oracle.to_binary_float(1.234567891e+200::numeric);
 select oracle.to_binary_float(NULL);
 
+select oracle.hex_to_decimal('11');
+select oracle.hex_to_decimal('0xffff');
+select oracle.hex_to_decimal('0xFFff');
+select oracle.hex_to_decimal('0x7fffffffffffffff');
+select oracle.hex_to_decimal('0x8fffffffffffffff');
+select oracle.hex_to_decimal(NULL);
+
 set compatible_mode to default;

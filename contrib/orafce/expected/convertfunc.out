@@ -180,4 +180,36 @@ select oracle.to_binary_float(NULL);
                 
 (1 row)
 
+select oracle.hex_to_decimal('11');
+ hex_to_decimal 
+----------------
+             17
+(1 row)
+
+select oracle.hex_to_decimal('0xffff');
+ hex_to_decimal 
+----------------
+          65535
+(1 row)
+
+select oracle.hex_to_decimal('0xFFff');
+ hex_to_decimal 
+----------------
+          65535
+(1 row)
+
+select oracle.hex_to_decimal('0x7fffffffffffffff');
+   hex_to_decimal    
+---------------------
+ 9223372036854775807
+(1 row)
+
+select oracle.hex_to_decimal('0x8fffffffffffffff');
+ERROR:  value "8fffffffffffffff" is out of range!,the valid value of the input parameter is 0-0x7FFFFFFFFFFFFFFF
+select oracle.hex_to_decimal(NULL);
+ hex_to_decimal 
+----------------
+               
+(1 row)
+
 set compatible_mode to default;
