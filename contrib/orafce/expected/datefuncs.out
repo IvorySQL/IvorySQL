@@ -130,3 +130,29 @@ select oracle.numtoyminterval(NULL,NULL) from dual;
  
 (1 row)
 
+--sys_extract_utc function
+select oracle.sys_extract_utc('2018-03-28 11:30:00.00 +09:00'::timestamptz) from dual;
+   sys_extract_utc   
+---------------------
+ 2018-03-28 02:30:00
+(1 row)
+
+select oracle.sys_extract_utc(NULL) from dual;
+ sys_extract_utc 
+-----------------
+ 
+(1 row)
+
+--sessiontimezone and dbtimezone function
+select oracle.sessiontimezone() from dual;
+ sessiontimezone 
+-----------------
+ PRC
+(1 row)
+
+select oracle.dbtimezone() from dual;
+ dbtimezone 
+------------
+ PRC
+(1 row)
+

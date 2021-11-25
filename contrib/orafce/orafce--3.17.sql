@@ -545,7 +545,7 @@ COMMENT ON FUNCTION oracle.sessiontimezone() IS 'Ruturns session time zone';
 
 CREATE FUNCTION oracle.dbtimezone()
 RETURNS text
-AS 'MODULE_PATHNAME','orafce_dbtimezone'
+AS 'MODULE_PATHNAME','orafce_sessiontimezone'
 LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION oracle.dbtimezone() IS 'Ruturns server time zone (orafce.timezone)';
 
@@ -6213,3 +6213,10 @@ RETURNS timestamptz
 AS 'MODULE_PATHNAME','ora_systimestamp'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION  oracle.systimestamp() IS 'get the system timestamp';
+
+--sys_extract_utc function
+CREATE FUNCTION oracle.sys_extract_utc(tm timestamptz)
+RETURNS timestamp              
+AS 'MODULE_PATHNAME','ora_sys_extract_utc'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE; 
+COMMENT ON FUNCTION  oracle.sys_extract_utc(timestamptz) IS 'extracts the UTC from a datetime value with time zone offset or time zone region name.';
