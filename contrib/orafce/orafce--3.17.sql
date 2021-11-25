@@ -6220,3 +6220,17 @@ RETURNS timestamp
 AS 'MODULE_PATHNAME','ora_sys_extract_utc'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE; 
 COMMENT ON FUNCTION  oracle.sys_extract_utc(timestamptz) IS 'extracts the UTC from a datetime value with time zone offset or time zone region name.';
+
+--days_between function
+CREATE FUNCTION oracle.days_between(TIMESTAMP, TIMESTAMP)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_days_between'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.days_between(TIMESTAMP, TIMESTAMP) IS 'The days difference between the two timestamp values';
+
+--days_between_tmtz function
+CREATE FUNCTION oracle.days_between_tmtz(TIMESTAMPTZ, TIMESTAMPTZ)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_days_between_tmtz'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.days_between_tmtz(TIMESTAMPTZ, TIMESTAMPTZ) IS 'The days difference between the two timestamptz values';

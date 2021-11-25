@@ -42,3 +42,19 @@ select oracle.sys_extract_utc(NULL) from dual;
 --sessiontimezone and dbtimezone function
 select oracle.sessiontimezone() from dual;
 select oracle.dbtimezone() from dual;
+
+--days_between function
+select oracle.days_between('2021-11-25 15:33:16'::timestamp,'2019-01-01 00:00:00'::timestamp) from dual;
+select oracle.days_between('2019-09-08 09:09:09'::timestamp,'2019-01-01 00:00:00'::timestamp) from dual;
+select oracle.days_between('2021-11-25 09:09:09'::timestamp,'2019-01-01 00:00:00'::timestamp) from dual;
+select oracle.days_between(NULL,'2019-01-01 00:00:00'::timestamp) from dual;
+select oracle.days_between('2019-09-08 09:09:09'::timestamp,NULL) from dual;
+select oracle.days_between(NULL,NULL) from dual;
+
+--days_between_tmtz function
+select oracle.days_between_tmtz('2019-09-08 09:09:09+08'::timestamptz,'2019-05-08 12:34:09+08'::timestamptz) from dual;
+select oracle.days_between_tmtz('2019-09-08 09:09:09+08'::timestamptz,'2019-05-08 12:34:09+09'::timestamptz) from dual;
+select oracle.days_between_tmtz('2019-09-08 09:09:09-08'::timestamptz,'2019-05-08 12:34:09+09'::timestamptz) from dual;
+select oracle.days_between_tmtz(NULL,'2019-05-08 12:34:09+08'::timestamptz) from dual;
+select oracle.days_between_tmtz('2019-09-08 09:09:09+08'::timestamptz,NULL) from dual;
+select oracle.days_between_tmtz(NULL,NULL) from dual;
