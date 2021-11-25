@@ -31,6 +31,7 @@
 
 PG_FUNCTION_INFO_V1(ora_fromtz);
 PG_FUNCTION_INFO_V1(ora_systimestamp);
+PG_FUNCTION_INFO_V1(ora_sys_extract_utc);
 
 
 static bool
@@ -187,5 +188,22 @@ Datum
 ora_systimestamp(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TIMESTAMPTZ(GetTimestamp());
+}
+
+/********************************************************************
+ *
+ * ora_sys_extract_utc
+ *
+ * Purpose:
+ *
+ * Returns the UTC time.
+ *
+ ********************************************************************/
+Datum
+ora_sys_extract_utc(PG_FUNCTION_ARGS)
+{
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
+
+	PG_RETURN_TIMESTAMPTZ(timestamp);
 }
 

@@ -34,3 +34,11 @@ select oracle.numtoyminterval(2147483647.1232131232,'month') from dual;
 select oracle.numtoyminterval(NULL,'month') from dual;
 select oracle.numtoyminterval(2147483647.1232131232,NULL) from dual;
 select oracle.numtoyminterval(NULL,NULL) from dual;
+
+--sys_extract_utc function
+select oracle.sys_extract_utc('2018-03-28 11:30:00.00 +09:00'::timestamptz) from dual;
+select oracle.sys_extract_utc(NULL) from dual;
+
+--sessiontimezone and dbtimezone function
+select oracle.sessiontimezone() from dual;
+select oracle.dbtimezone() from dual;
