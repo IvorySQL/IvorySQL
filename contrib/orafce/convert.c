@@ -34,6 +34,9 @@ PG_FUNCTION_INFO_V1(orafce_unistr);
 
 PG_FUNCTION_INFO_V1(orafce_to_varchar);
 PG_FUNCTION_INFO_V1(orafce_bin_to_num);
+PG_FUNCTION_INFO_V1(orafce_to_binary_float);
+PG_FUNCTION_INFO_V1(orafce_to_binary_double);
+Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 static int getindex(const char **map, char *mbchar, int mblen);
 char *orafce_type_to_cstring(Datum arg, Oid type);
 
@@ -1027,4 +1030,53 @@ orafce_bin_to_num (PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_INT64(num);
+}
+
+/* Find inout function by type OID and perform type conversion.*/
+Datum
+orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype)
+{
+	Oid 	typOutput;
+	Oid 	typInput;
+	Oid 	intypioparam;
+	bool	typIsVarlena;
+	char	*val_str;
+	Datum	str;
+
+	/* find output function based on oid */
+	getTypeOutputInfo(stype, &typOutput, &typIsVarlena);
+	val_str = OidOutputFunctionCall(typOutput, val);
+
+	/* find input function based on oid */
+	getTypeInputInfo(ttype, &typInput, &intypioparam);
+	str = OidInputFunctionCall(typInput, val_str, intypioparam, -1);
+	return str;
+}
+
+/* Converted to double precision floating point number. */
+Datum
+orafce_to_binary_double(PG_FUNCTION_ARGS)
+{
+	Datum reval;
+
+	Oid type = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	if(type != FLOAT8OID)
+		reval = orafce_sourcetype_to_targetype(PG_GETARG_DATUM(0), type, FLOAT8OID);
+	else
+		reval = PG_GETARG_DATUM(0);
+	return reval;
+}
+
+/* Converted to single-precision floating-point number. */
+Datum
+orafce_to_binary_float(PG_FUNCTION_ARGS)
+{
+	Datum reval;
+
+	Oid type = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	if(type != FLOAT4OID)
+		reval = orafce_sourcetype_to_targetype(PG_GETARG_DATUM(0), type, FLOAT4OID);
+	else
+		reval = PG_GETARG_DATUM(0);
+	return reval;
 }
