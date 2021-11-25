@@ -345,6 +345,11 @@ AS 'MODULE_PATHNAME','orafce_to_binary_float'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION  oracle.to_binary_float("any") IS 'signle precision';
 
+CREATE OR REPLACE FUNCTION oracle.hex_to_decimal(text)
+RETURNS int8
+AS 'MODULE_PATHNAME','orafce_hex_to_decimal'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
