@@ -6234,3 +6234,30 @@ RETURNS numeric
 AS 'MODULE_PATHNAME','ora_days_between_tmtz'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION  oracle.days_between_tmtz(TIMESTAMPTZ, TIMESTAMPTZ) IS 'The days difference between the two timestamptz values';
+
+--add_days_to_timestamp function
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(timestamp, numeric)
+RETURNS timestamp AS $$
+SELECT $1 + interval '1 day' * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(text, text)
+RETURNS timestamp AS $$
+SELECT $1::timestamp + interval '1 day' * $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(text, numeric)
+RETURNS timestamp AS $$
+SELECT $1::timestamp + interval '1 day' * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+--subtract function
+CREATE OR REPLACE FUNCTION oracle.subtract(timestamptz, numeric)
+RETURNS timestamptz AS $$
+SELECT $1 - interval '1 day' * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.subtract(timestamptz, timestamptz)
+RETURNS double precision AS $$
+SELECT date_part('epoch', ($1 OPERATOR(pg_catalog.-) $2)/3600/24);
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
