@@ -30,6 +30,8 @@
 
 
 PG_FUNCTION_INFO_V1(ora_fromtz);
+PG_FUNCTION_INFO_V1(ora_systimestamp);
+
 
 static bool
 valid_zone(char *tzname)
@@ -152,5 +154,38 @@ ora_fromtz(PG_FUNCTION_ARGS)
 		PG_RETURN_CSTRING(resval);
 }
 
+static
+TimestampTz GetTimestamp(void)
+{
+	TimestampTz result;
+	struct timeval tp;
 
+	gettimeofday(&tp, NULL);
+
+	result = (TimestampTz) tp.tv_sec -
+		((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
+
+#ifdef HAVE_INT64_TIMESTAMP
+	result = (result * USECS_PER_SEC) + tp.tv_usec;
+#else
+	result = result + (tp.tv_usec / 1000000.0);
+#endif
+
+	return result;
+}
+
+/********************************************************************
+ *
+ * ora_systimestamp
+ *
+ * Purpose:
+ *
+ * get the system timestamp.
+ *
+ ********************************************************************/
+Datum
+ora_systimestamp(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TIMESTAMPTZ(GetTimestamp());
+}
 
