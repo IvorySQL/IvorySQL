@@ -80,6 +80,8 @@ extern PGDLLEXPORT Datum orafce_to_single_byte(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_unistr(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_varchar(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_bin_to_num(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_to_binary_double(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_to_binary_float(PG_FUNCTION_ARGS);
 
 /* from datefce.c */
 extern PGDLLEXPORT Datum next_day(PG_FUNCTION_ARGS);

@@ -68,4 +68,116 @@ select oracle.bin_to_num(NULL,NULL,NULL);
            
 (1 row)
 
+select oracle.to_binary_double(2.5555::float8);
+ to_binary_double 
+------------------
+           2.5555
+(1 row)
+
+select oracle.to_binary_double(2.5555::real);
+ to_binary_double 
+------------------
+           2.5555
+(1 row)
+
+select oracle.to_binary_double('2'::oracle.varchar2);
+ to_binary_double 
+------------------
+                2
+(1 row)
+
+select oracle.to_binary_double(oracle.to_char(2.55555));
+ to_binary_double 
+------------------
+          2.55555
+(1 row)
+
+select oracle.to_binary_double('1.2');
+ to_binary_double 
+------------------
+              1.2
+(1 row)
+
+select oracle.to_binary_double('1.2'::text);
+ to_binary_double 
+------------------
+              1.2
+(1 row)
+
+select oracle.to_binary_double('1.2'::name);
+ to_binary_double 
+------------------
+              1.2
+(1 row)
+
+select oracle.to_binary_double(1.2::numeric);
+ to_binary_double 
+------------------
+              1.2
+(1 row)
+
+select oracle.to_binary_double(123456789123456789.45566::numeric);
+    to_binary_double    
+------------------------
+ 1.2345678912345678e+17
+(1 row)
+
+select oracle.to_binary_double(1.234567891e+200::numeric);
+ to_binary_double 
+------------------
+ 1.234567891e+200
+(1 row)
+
+select oracle.to_binary_double(1.234567891e+500::float);
+ERROR:  "123456789100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" is out of range for type double precision
+select oracle.to_binary_double(NULL);
+ to_binary_double 
+------------------
+                 
+(1 row)
+
+select oracle.to_binary_float(2.5555::float8);
+ to_binary_float 
+-----------------
+          2.5555
+(1 row)
+
+select oracle.to_binary_float(2.5555::real);
+ to_binary_float 
+-----------------
+          2.5555
+(1 row)
+
+select oracle.to_binary_float('1'::oracle.varchar2);
+ to_binary_float 
+-----------------
+               1
+(1 row)
+
+select oracle.to_binary_float('123'::text);
+ to_binary_float 
+-----------------
+             123
+(1 row)
+
+select oracle.to_binary_float('1.2'::name);
+ to_binary_float 
+-----------------
+             1.2
+(1 row)
+
+select oracle.to_binary_float(1.2::numeric);
+ to_binary_float 
+-----------------
+             1.2
+(1 row)
+
+select oracle.to_binary_float(1.234567891e+200::numeric);
+ERROR:  "123456789100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" is out of range for type real
+select oracle.to_binary_float(NULL);
+ to_binary_float 
+-----------------
+                
+(1 row)
+
 set compatible_mode to default;
