@@ -58,3 +58,16 @@ select oracle.days_between_tmtz('2019-09-08 09:09:09-08'::timestamptz,'2019-05-0
 select oracle.days_between_tmtz(NULL,'2019-05-08 12:34:09+08'::timestamptz) from dual;
 select oracle.days_between_tmtz('2019-09-08 09:09:09+08'::timestamptz,NULL) from dual;
 select oracle.days_between_tmtz(NULL,NULL) from dual;
+
+--add_days_to_timestamp function
+select oracle.add_days_to_timestamp('1009-09-15 09:00:00'::timestamp, '3267.123'::numeric) from dual;
+select oracle.add_days_to_timestamp(NULL, '3267.123'::numeric) from dual;
+select oracle.add_days_to_timestamp('1009-09-15 09:00:00'::timestamp, NULL) from dual;
+select oracle.add_days_to_timestamp(NULl, NULL) from dual;
+
+--subtract function
+select oracle.subtract('2019-11-25 16:51:20'::timestamp,'3267.123'::numeric) from dual;
+select oracle.subtract('2019-11-25 16:51:20'::timestamp, '2018-11-25 16:51:12'::timestamp) from dual;
+select oracle.subtract(NULL,'3267.123'::numeric) from dual;
+select oracle.subtract('2019-11-25 16:51:20'::timestamp,NULL) from dual;
+select oracle.subtract(NULL,NULL) from dual;
