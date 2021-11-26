@@ -29,11 +29,15 @@
 #include <funcapi.h>
 
 
+#define NUMBER_OF_TIME_ZONES 18
+
+
 PG_FUNCTION_INFO_V1(ora_fromtz);
 PG_FUNCTION_INFO_V1(ora_systimestamp);
 PG_FUNCTION_INFO_V1(ora_sys_extract_utc);
 PG_FUNCTION_INFO_V1(ora_days_between);
 PG_FUNCTION_INFO_V1(ora_days_between_tmtz);
+PG_FUNCTION_INFO_V1(new_time);
 
 
 
@@ -351,5 +355,154 @@ Datum ora_days_between_tmtz(PG_FUNCTION_ARGS)
 		return DirectFunctionCall1(float8_numeric, Float8GetDatum(f8_mondiff));
 	}
 
+}
+
+
+/********************************************************************
+ *
+ * FUnction:oratimestamptz2timestamp
+ *
+ * Description:recover timestamp with zone to timestamp without zone
+ *
+ * Return:timestamp with out zone
+ *
+ * Note:oracle compatible timestamp transfer
+ *
+ ********************************************************************/
+static Timestamp
+oratimestamptz2timestamp(TimestampTz timestamp)
+{
+	Timestamp	result;
+	struct pg_tm tt,
+			   *tm = &tt;
+	fsec_t		fsec;
+	int			tz;
+
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		result = timestamp;
+	else
+	{
+		if (timestamp2tm(timestamp, &tz, tm, &fsec, NULL, NULL) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+		if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+	}
+	return result;
+}
+
+
+/********************************************************************
+ *
+ * FUnction:new_time
+ *
+ * Description:convert the time in the specified time zone to another time zone
+ *
+ * Return:a new timestamp
+ *
+ * Note:there is olney support timestamp without time zone
+ *
+ ********************************************************************/
+Datum
+new_time(PG_FUNCTION_ARGS)
+{
+	TimestampTz timestamptz = PG_GETARG_TIMESTAMP(0);
+	text *arg1 = PG_GETARG_TEXT_P(1);
+	text *arg2 = PG_GETARG_TEXT_P(2);
+	int tz, i, zone1 = 0, zone2 = 0, tmp1 = 0, tmp2 = 0, day;
+	struct pg_tm tt, *tm = &tt;
+	fsec_t fsec;
+	const char *tzn = NULL;
+	char *pre_zone = NULL, *post_zone = NULL ;
+	char *zone[NUMBER_OF_TIME_ZONES] 	= {"ast", "adt", "bst", "bdt", "cst", "cdt", "est", "edt", "gmt", "hst", "hdt", "mst", "mdt", "nst", "pst", "pdt", "yst", "ydt"};
+	int zone_num[NUMBER_OF_TIME_ZONES] 	= {	  -4, 	 -3,   -11,   -10,    -6,    -5,    -5,    -4,     0,   -10,    -9,    -7,    -6,    -3,    -8,    -7,    -9,    -8};
+	Timestamp result;
+
+	Timestamp timestamp;
+
+	timestamp = oratimestamptz2timestamp(timestamptz);
+
+	/*ignore input parameter case*/
+	pre_zone = str_tolower(VARDATA_ANY(arg1), VARSIZE_ANY_EXHDR(arg1), PG_GET_COLLATION());
+	post_zone = str_tolower(VARDATA_ANY(arg2), VARSIZE_ANY_EXHDR(arg2), PG_GET_COLLATION());
+
+	//timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, pg_tzset("GMT"));
+	timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL);
+
+	for (i = 0; i < NUMBER_OF_TIME_ZONES; i++)
+    {
+		if (!strcmp(zone[i], pre_zone))
+		{
+			zone1 = zone_num[i];
+			tmp1 = 1;
+		}
+
+		if (!strcmp(zone[i], post_zone))
+		{
+			zone2 = zone_num[i];
+			tmp2 = 1;
+		}
+    }
+
+	if ((tmp1 == 0) || (tmp2 == 0))
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("illegal timezone!")));
+
+	/*transfer date into Julian day*/
+	day = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
+	tm->tm_hour = tm->tm_hour + zone2 - zone1;
+
+	/* if the zone is nst, there need to deal minutes, becaus nst is 3.5, is not 3 */
+	if (0 == strcmp("nst", post_zone))
+	{
+		if (tm->tm_min > 29)
+		{
+			tm->tm_min = tm->tm_min - 30;
+		}
+		else
+		{
+			tm->tm_min = tm->tm_min + 30;
+			tm->tm_hour = tm->tm_hour - 1;
+		}
+	}
+
+	if(0 == strcmp("nst",pre_zone))
+	{
+		if (tm->tm_min < 29)
+		{
+			tm->tm_min = tm->tm_min + 30;
+		}
+		else
+		{
+			tm->tm_min = tm->tm_min - 30;
+			tm->tm_hour = tm->tm_hour + 1;
+		}
+	}
+
+	/*if hour bigger than 24, or small than 0, need to change the day*/
+	if (tm->tm_hour >= 24)
+	{
+		tm->tm_hour -= 24;
+		day += 1;
+	}
+	else if (tm->tm_hour < 0)
+	{
+		tm->tm_hour += 24;
+		day -= 1;
+	}
+
+	/*transfer Julian day into date format*/
+	j2date(day, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
+	fsec = 0;
+	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMP(result);
 }
 

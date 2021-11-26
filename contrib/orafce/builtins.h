@@ -307,6 +307,7 @@ extern PGDLLEXPORT Datum ora_systimestamp(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_sys_extract_utc(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_days_between(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_days_between_tmtz(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum new_time(PG_FUNCTION_ARGS);
 
 
 

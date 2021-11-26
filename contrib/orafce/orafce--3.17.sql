@@ -6261,3 +6261,10 @@ CREATE OR REPLACE FUNCTION oracle.subtract(timestamptz, timestamptz)
 RETURNS double precision AS $$
 SELECT date_part('epoch', ($1 OPERATOR(pg_catalog.-) $2)/3600/24);
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+--new_time function
+CREATE FUNCTION oracle.new_time(timestamptz, text, text)
+RETURNS timestamp
+AS 'MODULE_PATHNAME','new_time'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.new_time(timestamptz, text, text) IS 'returns the date and time in time zone timezone2 when date and time in time zone timezone1 are date.';
