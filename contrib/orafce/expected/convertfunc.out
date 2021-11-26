@@ -368,4 +368,32 @@ select oracle.to_timestamp(NULL,NULL);
 select oracle.to_timestamp(1212457898999999999999);
 ERROR:  timestamp out of range: "1.21246e+21"
 CONTEXT:  SQL function "to_timestamp" statement 1
+select oracle.interval_to_seconds('3day');
+ interval_to_seconds 
+---------------------
+              259200
+(1 row)
+
+select oracle.interval_to_seconds('3hours');
+ interval_to_seconds 
+---------------------
+               10800
+(1 row)
+
+select oracle.interval_to_seconds('3day 3 hour 3second ');
+ interval_to_seconds 
+---------------------
+              270003
+(1 row)
+
+select oracle.interval_to_seconds(NULL);
+ interval_to_seconds 
+---------------------
+                    
+(1 row)
+
+select oracle.interval_to_seconds('P1Y');
+ERROR:  interval include month, it's not suitable to transfer to seconds!
+select oracle.interval_to_seconds('P1Y2M');
+ERROR:  interval include month, it's not suitable to transfer to seconds!
 set compatible_mode to default;
