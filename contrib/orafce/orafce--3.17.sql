@@ -375,6 +375,12 @@ RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME','orafce_to_timestamp_tz'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
+CREATE FUNCTION oracle.interval_to_seconds(value interval) 
+RETURNS float8
+AS 'MODULE_PATHNAME','orafce_interval_to_seconds'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.interval_to_seconds(interval) IS 'transfer interval format to seconds';
+
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
