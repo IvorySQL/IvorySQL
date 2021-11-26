@@ -96,6 +96,8 @@
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 #include "utils/pg_locale.h"
+#include "utils/varlena.h"
+#include "utils/guc.h"
 
 /* ----------
  * Convenience macros for error handling
@@ -6188,6 +6190,27 @@ do { \
 	SET_VARSIZE(result, len + VARHDRSZ); \
 } while (0)
 
+/* reverse the strings */
+static
+void strReverse(char *str)
+{
+	char	*start = str;
+	char	*end = NULL;
+	char	 temp;
+
+	if(str == NULL || *str == '\0')
+		return;
+	end = start + strlen(str) -1;
+	while(start < end)
+	{
+		temp = *start;
+		*start = *end;
+		*end = temp;
+		start++;
+		end--;
+	}
+}
+
 /* -------------------
  * NUMERIC to_number() (convert string to numeric)
  * -------------------
@@ -6206,20 +6229,235 @@ numeric_to_number(PG_FUNCTION_ARGS)
 	int			scale,
 				precision;
 
+	int 		val_len;
+	bool		fmt_have_separator = false;	/* whether the ',' separator format string */
+	bool		val_have_separator = false;	/* whether the ',' separator value string */
+	bool		money_fmt = false;			/* '.' and money format flags */
+	bool		money_val = false;			/* '.' and money parameter flags */
+	int			i,
+				j,
+				fmt_nondigit = 0,			/* number of separators in format string */
+				val_nondigit =0,			/* number of separators in value string */
+				val_digits = 0;				/* number of numeric characters in value string */
+	char	   *ch = NULL;
+	char	   *str0 = text_to_cstring(value);
+	char	   *str1 = text_to_cstring(fmt);
+
+	FORMAT_MATCH_FLAG	flag = FMT_GROUP_LAST_LEN_MATCH;
+	val_len = VARSIZE_ANY_EXHDR(value);
+
 	len = VARSIZE_ANY_EXHDR(fmt);
+
+	if(compatible_db == COMPATIBLE_ORA)
+	{
+
+		/* to match $ */
+		if((str0[0] == '$' && (str1[0] != '$' && str1[0] != 'L'))||(str1[0] == '$' && str0[0] != '$'))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("paramter is invalid,Please note the format!")));
+		if(str1[0] == 'L' && str0[0] == '$')
+		{
+			struct lconv *lconvert = PGLC_localeconv();
+			ch = (*lconvert->currency_symbol != '\0') ? lconvert->currency_symbol : "$";
+			if(strncmp("$", ch, 1))
+			{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("paramter is invalid,Please note the format!,local monetary is %s",ch)));
+			}
+		}
+
+		/* Determine whether the parameter and format have ‘,’
+		 * and calculate the number of ‘,’
+		 * and calculate the number of numeric characters in the parameter.
+		 */
+		for(i = 0; i < len; i++)
+		{
+			if(!(str1[i] != ',' || (str1[i] >= '9' && str1[i] <= '0')))
+			{
+				fmt_have_separator = 1;
+				fmt_nondigit++;
+			}
+			if(str1[i] == '.' && str1[0] == '$')
+				money_fmt = 1;
+		}
+		for(j = 0;j < val_len; j++)
+		{
+			if(!(str0[j] != ',' || (str0[j] >= '9' && str0[j] <= '0')))
+			{
+				val_have_separator = 1;
+				val_nondigit++;
+			}
+			if(str0[j] == '.' && str0[0] == '$')
+				money_val = 1;
+			if(str0[j] <= '9' && str0[j] >= '0')
+				val_digits++;
+		}
+
+		/* parameters and format strings are grouped by ‘,’
+		 * and the length of each group is calculated
+		 */
+		if(fmt_have_separator && val_have_separator)
+		{
+			List	*grouped_val;			/* parameter value is a string separated by separator ',' */
+			List	*grouped_fmt;			/* format string separated by the separator ',' */
+			ListCell	*val_group;			/* structure of each group after separation by parameter value */
+			ListCell	*fmt_group;			/* structure of each group after separation by parameter format */
+			int 	*val_group_len = NULL;	/* the length if each packet in the parameter string */
+			int 	*fmt_group_len = NULL;	/* the length if each packet in the format string */
+			int 	val_groups = 0,			/* number of record value groups */
+					fmt_groups= 0,			/* number of record format groups */
+					num1 = 0;
+
+			val_group_len = (int *)palloc((val_nondigit + 1) * sizeof(int*));
+			fmt_group_len = (int *)palloc((fmt_nondigit + 1) * sizeof(int*));
+			strReverse(str0);
+			strReverse(str1);
+			SplitIdentifierString(str0, ',', &grouped_val);
+			SplitIdentifierString(str1, ',', &grouped_fmt);
+			foreach(val_group, grouped_val)
+			{
+				char *value1 = (char*)lfirst(val_group);
+				val_group_len[val_groups++] = strlen(value1);
+			}
+			val_group_len[val_groups] = 0;
+			foreach(fmt_group, grouped_fmt)
+			{
+				char *fmt1 = (char*)lfirst(fmt_group);
+				fmt_group_len[fmt_groups++] = strlen(fmt1);
+			}
+			fmt_group_len[fmt_groups] = 0;
+
+			/* starting from the last set of lengths,there are three cases:
+			 * greater than,equal to,less than.
+			 */
+			if(fmt_group_len[0] >= val_digits)
+				flag = FMT_GROUP_LAST_LEN_MATCH;
+			else
+			{
+				if(fmt_group_len[0] > val_group_len[0])
+				{
+
+				/* the length of the last group of the format string
+				 * whether it matches the length of the integer group parameter string.
+				 */
+					for(i = 0; i < val_groups; i++)
+					{
+						num1 += val_group_len[i];
+						if(fmt_group_len[0] == num1)
+						{
+							flag = FMT_GROUP_LAST_LEN_MATCH;
+							break;
+						}
+					}
+					if(fmt_group_len[0] == num1)
+					{
+						for(j = i + 1; j < val_groups - 1; j++)
+						{
+							if(fmt_group_len[j - i] == 0)
+							{
+								flag = FMT_GROUP_NO_MATCH;
+								break;
+							}
+							if(fmt_group_len[j - i] != val_group_len[j])
+							{
+								flag = FMT_GROUP_NO_MATCH;
+								break;
+							}
+						}
+						if(j == val_groups - 1)
+						{
+							if(fmt_group_len[j - i] < val_group_len[j])
+								flag = FMT_GROUP_NO_MATCH;
+						}
+					}
+					else
+						flag = FMT_GROUP_LAST_NO_MATCH;
+				}
+				else if(fmt_group_len[0] == val_group_len[0])
+				{
+					for(i = 1; i< val_groups - 1; i++)
+					{
+						if(fmt_group_len[i] == 0)
+						{
+							flag = FMT_GROUP_NO_MATCH;
+							break;
+						}
+						if(fmt_group_len[i] != val_group_len[i])
+						{
+							flag = FMT_GROUP_NO_MATCH;
+							break;
+						}
+					}
+					if(i == val_groups - 1)
+					{
+						if(fmt_group_len[i] < val_group_len[i])
+							flag = FMT_GROUP_NO_MATCH;
+					}
+				}
+				else
+					flag = FMT_GROUP_LAST_LEN_NO_MATCH;
+			}
+			pfree(val_group_len);
+			pfree(fmt_group_len);
+		}
+		switch(flag)
+		{
+			case FMT_GROUP_NO_MATCH:
+			case FMT_GROUP_LAST_NO_MATCH:
+			case FMT_GROUP_LAST_LEN_NO_MATCH:
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("paramter is invalid,Please note the format is not match!")));
+				break;
+			default:
+				break;
+		}
+	}
 
 	if (len <= 0 || len >= INT_MAX / NUM_MAX_ITEM_SIZ)
 		PG_RETURN_NULL();
 
-	format = NUM_cache(len, &Num, fmt, &shouldFree);
+	/* reverse parameters and format strings,then deal it */
+	if(money_fmt && money_val)
+	{
+		text	*value2 = NULL;
+		text	*fmt2 = NULL;
 
-	numstr = (char *) palloc((len * NUM_MAX_ITEM_SIZ) + 1);
+		strReverse(str0);
+		strReverse(str1);
+		value2 = cstring_to_text(str0);
+		fmt2 = cstring_to_text(str1);
+		format = NUM_cache(len, &Num, fmt2, &shouldFree);
 
-	NUM_processor(format, &Num, VARDATA_ANY(value), numstr,
-				  VARSIZE_ANY_EXHDR(value), 0, 0, false, PG_GET_COLLATION());
+		numstr = (char *) palloc((len * NUM_MAX_ITEM_SIZ) + 1);
 
-	scale = Num.post;
-	precision = Num.pre + Num.multi + scale;
+		NUM_processor(format, &Num, VARDATA_ANY(value2), numstr,
+				VARSIZE_ANY_EXHDR(value2), 0, 0, false, PG_GET_COLLATION());
+
+		scale = Num.pre;
+		precision = Num.post + Num.multi + scale;
+		strReverse(numstr);
+	}
+	else
+	{
+		format = NUM_cache(len, &Num, fmt, &shouldFree);
+
+		numstr = (char *) palloc((len * NUM_MAX_ITEM_SIZ) + 1);
+
+		NUM_processor(format, &Num, VARDATA_ANY(value), numstr,
+					  VARSIZE_ANY_EXHDR(value), 0, 0, false, PG_GET_COLLATION());
+
+		scale = Num.post;
+		precision = Num.pre + Num.multi + scale;
+	}
+
+	/* to check the number of numeric characters in arguments and formats. */
+	if(val_digits > (Num.post + Num.pre))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("paramter is invalid,Please note the format!")));
 
 	if (shouldFree)
 		pfree(format);
@@ -6456,7 +6694,7 @@ int4_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
-			/* add by jinhuajian */
+			/* deal format 'X' or 'x' */
 			char *buf = text_to_cstring(fmt);
 			if(!(*buf == 'X' || *buf =='x'))
 			{
