@@ -75,4 +75,11 @@ select oracle.to_timestamp('2020/03/03 10:13:18 +5:00', 'YYYY/MM/DD HH:MI:SS TZH
 select oracle.to_timestamp(NULL,NULL);
 select oracle.to_timestamp(1212457898999999999999);
 
+select oracle.interval_to_seconds('3day');
+select oracle.interval_to_seconds('3hours');
+select oracle.interval_to_seconds('3day 3 hour 3second ');
+select oracle.interval_to_seconds(NULL);
+select oracle.interval_to_seconds('P1Y');
+select oracle.interval_to_seconds('P1Y2M');
+
 set compatible_mode to default;

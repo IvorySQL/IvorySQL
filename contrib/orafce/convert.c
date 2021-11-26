@@ -38,6 +38,7 @@ PG_FUNCTION_INFO_V1(orafce_to_binary_float);
 PG_FUNCTION_INFO_V1(orafce_to_binary_double);
 PG_FUNCTION_INFO_V1(orafce_hex_to_decimal);
 PG_FUNCTION_INFO_V1(orafce_to_timestamp_tz);
+PG_FUNCTION_INFO_V1(orafce_interval_to_seconds);
 
 Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 static int getindex(const char **map, char *mbchar, int mblen);
@@ -1146,4 +1147,29 @@ orafce_to_timestamp_tz(PG_FUNCTION_ARGS)
 								CStringGetDatum(text_to_cstring(arg)),
 								ObjectIdGetDatum(InvalidOid),
 								Int32GetDatum(-1));
+}
+
+/* the orafce_interval_to_seconds function converts intervals to seconds,but does not include months. */
+Datum
+orafce_interval_to_seconds(PG_FUNCTION_ARGS)
+{
+	Interval   *interval = PG_GETARG_INTERVAL_P(0);
+	float8		seconds, secs;
+	int32		days, months;
+	TimeOffset	times;
+
+	days = interval->day;
+	months = interval->month;
+	times = interval->time;
+	if(months != 0)
+	{
+		ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("interval include month, it's not suitable to transfer to seconds!")));
+	}
+
+	secs = (float8)times / USECS_PER_SEC;
+	seconds = days * SECS_PER_DAY + secs;
+
+	PG_RETURN_FLOAT8(seconds);
 }
