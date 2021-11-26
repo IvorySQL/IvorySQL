@@ -350,6 +350,11 @@ RETURNS int8
 AS 'MODULE_PATHNAME','orafce_hex_to_decimal'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION oracle.to_number(float)
+RETURNS numeric AS $$
+SELECT pg_catalog.to_number($1::text);
+$$ LANGUAGE SQL IMMUTABLE;
+
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
