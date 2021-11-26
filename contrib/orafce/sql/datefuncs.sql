@@ -71,3 +71,25 @@ select oracle.subtract('2019-11-25 16:51:20'::timestamp, '2018-11-25 16:51:12'::
 select oracle.subtract(NULL,'3267.123'::numeric) from dual;
 select oracle.subtract('2019-11-25 16:51:20'::timestamp,NULL) from dual;
 select oracle.subtract(NULL,NULL) from dual;
+
+--new_time function
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'AST', 'ADT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'BST', 'BDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'CST', 'CDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'EST', 'EDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'HST', 'HDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'MST', 'MDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'PST', 'PDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'YST', 'YDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'GMT', 'EDT') from dual;
+select oracle.new_time(timestamp '2020-12-12 17:45:18', 'NST', 'GMT') from dual;
+select oracle.new_time('2020-10-12 17:42:58 +08'::timestamptz, 'AST', 'ADT') from dual;
+select oracle.new_time('2020-11-12 17:42:58 +08'::timestamptz, 'BST', 'BDT') from dual;
+select oracle.new_time('2020-12-12 13:45:58 +08'::timestamptz, 'CST', 'CDT') from dual;
+select oracle.new_time('2020-10-12 13:45:18 +08'::timestamptz, 'EST', 'EDT') from dual;
+select oracle.new_time('2020-11-12 17:49:18 +08'::timestamptz, 'HST', 'HDT') from dual;
+select oracle.new_time('2020-12-12 17:49:28 +08'::timestamptz, 'MST', 'MDT') from dual;
+select oracle.new_time('2020-10-12 17:45:28 +08'::timestamptz, 'PST', 'PDT') from dual;
+select oracle.new_time('2020-10-12 16:45:18 +08'::timestamptz, 'YST', 'YDT') from dual;
+select oracle.new_time('2020-11-12 16:41:28 +08'::timestamptz, 'GMT', 'EDT') from dual;
+select oracle.new_time('2020-12-12 17:41:18 +08'::timestamptz, 'NST', 'GMT') from dual;
