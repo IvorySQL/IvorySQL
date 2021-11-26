@@ -809,8 +809,7 @@ SELECT (to_date('210514 12:13:44','DDMMYY HH24:MI:SS') - to_date('210114 10:13:4
 SELECT trunc(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
 SELECT round(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
 
-
-SET search_path TO default;
+SET search_path TO "$user",public,oracle;
 
 --
 -- Note: each Japanese character used below has display width of 2, otherwise 1.

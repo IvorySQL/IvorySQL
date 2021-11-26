@@ -149,13 +149,35 @@ bpchar_input(const char *s, size_t len, int32 atttypmod)
 			 * string, maxlen is the max number of CHARACTERS allowed for this
 			 * bpchar type, mbmaxlen is the length in BYTES of those chars.
 			 */
-			for (j = mbmaxlen; j < len; j++)
+			if (nls_length_semantics == NLSLENGTH_BYTE)
 			{
-				if (s[j] != ' ')
-					ereport(ERROR,
-							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character(%d)",
-									(int) maxlen)));
+				for (j = maxlen; j < len; j++)
+				{
+					if (s[j] != ' ')
+						ereport(ERROR,
+								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+								errmsg("value too long for type character(%d byte)", (int)maxlen)));
+				}
+			}
+			else if (nls_length_semantics == NLSLENGTH_CHAR)
+			{
+				for (j = mbmaxlen; j < len; j++)
+				{
+					if (s[j] != ' ')
+						ereport(ERROR,
+								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+								errmsg("value too long for type character(%d char)", (int)maxlen)));
+				}
+			}
+			else
+			{
+				for (j = mbmaxlen; j < len; j++)
+				{
+					if (s[j] != ' ')
+						ereport(ERROR,
+								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+								errmsg("value too long for type character(%d)", (int) maxlen)));
+				}
 			}
 
 			/*
@@ -166,10 +188,21 @@ bpchar_input(const char *s, size_t len, int32 atttypmod)
 		}
 		else
 		{
+			size_t		j;
 			/*
 			 * Now we set maxlen to the necessary byte length, not the number
 			 * of CHARACTERS!
 			 */
+			if (nls_length_semantics == NLSLENGTH_BYTE)
+			{
+				for (j = maxlen; j < len; j++)
+				{
+					if (s[j] != ' ')
+						ereport(ERROR,
+								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+								errmsg("value too long for type character(%d byte)", (int)maxlen)));
+				}
+			}
 			maxlen = len + (maxlen - charlen);
 		}
 	}
@@ -275,7 +308,8 @@ bpchar(PG_FUNCTION_ARGS)
 	int32		len;
 	char	   *r;
 	char	   *s;
-	int			i;
+	size_t		maxmblen;
+	size_t		i;
 	int			charlen;		/* number of characters in the input string +
 								 * VARHDRSZ */
 
@@ -290,6 +324,25 @@ bpchar(PG_FUNCTION_ARGS)
 
 	charlen = pg_mbstrlen_with_len(s, len);
 
+	maxmblen = pg_mbcharcliplen(s, len, maxlen);
+
+	if (nls_length_semantics == NLSLENGTH_CHAR)
+	{
+		if (charlen > maxlen)
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+				 errmsg("value too long for type character(%d char)", maxlen)));
+		}
+	}
+	else if (nls_length_semantics == NLSLENGTH_BYTE)
+	{
+		if (maxmblen > maxlen)
+			ereport(ERROR,
+					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+					 errmsg("value too long for type character(%d byte)", maxlen)));
+	}
+
 	/* No work if supplied data matches typmod already */
 	if (charlen == maxlen)
 		PG_RETURN_BPCHAR_P(source);
@@ -297,18 +350,13 @@ bpchar(PG_FUNCTION_ARGS)
 	if (charlen > maxlen)
 	{
 		/* Verify that extra characters are spaces, and clip them off */
-		size_t		maxmblen;
-
-		maxmblen = pg_mbcharcliplen(s, len, maxlen);
-
 		if (!isExplicit)
 		{
 			for (i = maxmblen; i < len; i++)
 				if (s[i] != ' ')
 					ereport(ERROR,
 							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character(%d)",
-									maxlen)));
+							 errmsg("value too long for type character(%d)", maxlen)));
 		}
 
 		len = maxmblen;
@@ -317,7 +365,8 @@ bpchar(PG_FUNCTION_ARGS)
 		 * At this point, maxlen is the necessary byte length, not the number
 		 * of CHARACTERS!
 		 */
-		maxlen = len;
+		if (nls_length_semantics == NLSLENGTH_CHAR || nls_length_semantics == NLSLENGTH_NONE)
+			maxlen = len;
 	}
 	else
 	{
@@ -325,10 +374,11 @@ bpchar(PG_FUNCTION_ARGS)
 		 * At this point, maxlen is the necessary byte length, not the number
 		 * of CHARACTERS!
 		 */
-		maxlen = len + (maxlen - charlen);
+		if (nls_length_semantics == NLSLENGTH_CHAR || nls_length_semantics == NLSLENGTH_NONE)
+			maxlen = len + (maxlen - charlen);
 	}
 
-	Assert(maxlen >= len);
+	Assert((nls_length_semantics == NLSLENGTH_BYTE) ? (maxlen >= len) : (true));
 
 	result = palloc(maxlen + VARHDRSZ);
 	SET_VARSIZE(result, maxlen + VARHDRSZ);
@@ -464,13 +514,35 @@ varchar_input(const char *s, size_t len, int32 atttypmod)
 		size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
 		size_t		j;
 
-		for (j = mbmaxlen; j < len; j++)
+		if (nls_length_semantics == NLSLENGTH_BYTE)
 		{
-			if (s[j] != ' ')
-				ereport(ERROR,
-						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-						 errmsg("value too long for type character varying(%d)",
-								(int) maxlen)));
+			for (j = maxlen; j < len; j++)
+			{
+				if (s[j] != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							 errmsg("value too long for type character varying(%d byte)", (int)maxlen)));
+			}
+		}
+		else if (nls_length_semantics == NLSLENGTH_CHAR)
+		{
+			for (j = mbmaxlen; j < len; j++)
+			{
+				if (s[j] != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							 errmsg("value too long for type character varying(%d char)", (int)maxlen)));
+			}
+		}
+		else
+		{
+			for (j = mbmaxlen; j < len; j++)
+			{
+				if (s[j] != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							errmsg("value too long for type character varying(%d)", (int) maxlen)));
+			}
 		}
 
 		len = mbmaxlen;
@@ -610,6 +682,7 @@ varchar(PG_FUNCTION_ARGS)
 				maxlen;
 	size_t		maxmblen;
 	int			i;
+	int			charlen;
 	char	   *s_data;
 
 	len = VARSIZE_ANY_EXHDR(source);
@@ -625,14 +698,34 @@ varchar(PG_FUNCTION_ARGS)
 	/* truncate multibyte string preserving multibyte boundary */
 	maxmblen = pg_mbcharcliplen(s_data, len, maxlen);
 
+	charlen = pg_mbstrlen_with_len(s_data, len);
+
+	if (nls_length_semantics == NLSLENGTH_BYTE)
+	{
+		if (maxlen < maxmblen)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+					 errmsg("value too long for type character varying(%d byte)", maxlen)));
+		}
+	}
+	else if (nls_length_semantics == NLSLENGTH_CHAR)
+	{
+		if (maxlen < charlen)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+					 errmsg("value too long for type character varying(%d char)", maxlen)));
+		}
+	}
+
 	if (!isExplicit)
 	{
 		for (i = maxmblen; i < len; i++)
 			if (s_data[i] != ' ')
 				ereport(ERROR,
 						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-						 errmsg("value too long for type character varying(%d)",
-								maxlen)));
+						 errmsg("value too long for type character varying(%d)", maxlen)));
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data,

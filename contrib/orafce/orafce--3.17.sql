@@ -1,6 +1,6 @@
 /* orafce--3.17.sql */
 
--- complain if script is sourced in psql, rather than via CREATE EXTENSION
+/* -- complain if script is sourced in psql, rather than via CREATE EXTENSION */
 \echo Use "CREATE EXTENSION orafce" to load this file. \quit
 
 CREATE FUNCTION pg_catalog.trunc(value date, fmt text)
@@ -273,7 +273,7 @@ AS 'MODULE_PATHNAME','ora_lnnvl'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
--- can't overwrite PostgreSQL functions!!!!
+/* -- can't overwrite PostgreSQL functions!!!! */
 
 CREATE SCHEMA oracle;
 
@@ -309,7 +309,7 @@ RETURNS text AS $$
 SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
 $$ LANGUAGE SQL IMMUTABLE;
 
---can't overwrite PostgreSQL DATE data type!!!
+/* --can't overwrite PostgreSQL DATE data type!!! */
 
 CREATE DOMAIN oracle.date AS timestamp(0);
 
@@ -2114,185 +2114,416 @@ CREATE AGGREGATE pg_catalog.median(double precision) (
 
 -- oracle.varchar2 type support
 
-CREATE FUNCTION varchar2in(cstring,oid,integer)
-RETURNS varchar2
+CREATE FUNCTION oracle.varchar2in(cstring,oid,integer)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','varchar2in'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2out(varchar2)
+CREATE FUNCTION oracle.varchar2out(oracle.varchar2)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','varchar2out'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2_transform(internal)
+CREATE FUNCTION oracle.varchar2_transform(internal)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_varchar_transform'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2recv(internal,oid,integer)
-RETURNS varchar2
+CREATE FUNCTION oracle.varchar2recv(internal,oid,integer)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','varchar2recv'
 LANGUAGE C
 STRICT
 STABLE;
 
-CREATE FUNCTION varchar2send(varchar2)
+CREATE FUNCTION oracle.varchar2send(oracle.varchar2)
 RETURNS bytea
 AS 'varcharsend'
 LANGUAGE internal
 STRICT
 STABLE;
 
-CREATE FUNCTION varchar2typmodin(cstring[])
+CREATE FUNCTION oracle.varchar2typmodin(cstring[])
 RETURNS integer
 AS 'varchartypmodin'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2typmodout(integer)
+CREATE FUNCTION oracle.varchar2typmodout(integer)
 RETURNS CSTRING
 AS 'varchartypmodout'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2(varchar2,integer,boolean)
-RETURNS varchar2
+CREATE FUNCTION oracle.varchar2(oracle.varchar2,integer,boolean)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','varchar2'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
 /* CREATE TYPE */
-CREATE TYPE varchar2 (
+CREATE TYPE oracle.varchar2 (
 internallength = VARIABLE,
-input = varchar2in,
-output = varchar2out,
-receive = varchar2recv,
-send = varchar2send,
+input = oracle.varchar2in,
+output = oracle.varchar2out,
+receive = oracle.varchar2recv,
+send = oracle.varchar2send,
 category = 'S',
-typmod_in = varchar2typmodin,
-typmod_out = varchar2typmodout,
+storage = 'extended',
+typmod_in = oracle.varchar2typmodin,
+typmod_out = oracle.varchar2typmodout,
 collatable = true
 );
 
-CREATE FUNCTION oracle.orafce_concat2(varchar2, varchar2)
-RETURNS varchar2
+CREATE FUNCTION oracle.orafce_concat2(oracle.varchar2, oracle.varchar2)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
 LANGUAGE C STABLE;
 
 /* CREATE CAST */
-CREATE CAST (varchar2 AS text)
+CREATE CAST (oracle.varchar2 AS text)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (text AS varchar2)
+CREATE CAST (text AS oracle.varchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS char)
+CREATE CAST (oracle.varchar2 AS char)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (char AS varchar2)
+CREATE CAST (char AS oracle.varchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS varchar)
+CREATE CAST (oracle.varchar2 AS varchar)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar AS varchar2)
+CREATE CAST (varchar AS oracle.varchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS varchar2)
-WITH FUNCTION varchar2(varchar2,integer,boolean)
+CREATE CAST (oracle.varchar2 AS oracle.varchar2)
+WITH FUNCTION oracle.varchar2(oracle.varchar2,integer,boolean)
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS real)
+CREATE CAST (oracle.varchar2 AS real)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (real AS varchar2)
+CREATE CAST (real AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS double precision)
+CREATE CAST (oracle.varchar2 AS double precision)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (double precision AS varchar2)
+CREATE CAST (double precision AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS integer)
+CREATE CAST (oracle.varchar2 AS integer)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (integer AS varchar2)
+CREATE CAST (integer AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS smallint)
+CREATE CAST (oracle.varchar2 AS smallint)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (smallint AS varchar2)
+CREATE CAST (smallint AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS bigint)
+CREATE CAST (oracle.varchar2 AS bigint)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (bigint AS varchar2)
+CREATE CAST (bigint AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS numeric)
+CREATE CAST (oracle.varchar2 AS numeric)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (numeric AS varchar2)
+CREATE CAST (numeric AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS date)
+CREATE CAST (oracle.varchar2 AS pg_catalog.date)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (date AS varchar2)
+CREATE CAST (pg_catalog.date AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS timestamp)
+CREATE CAST (oracle.varchar2 AS timestamp)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (timestamp AS varchar2)
+CREATE CAST (timestamp AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS interval)
+CREATE CAST (oracle.varchar2 AS interval)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (interval AS varchar2)
+CREATE CAST (interval AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
+
+/*
+ * Note - a procedure keyword is depraceted from PostgreSQL 11, but it used
+ * because older release doesn't know function.
+ *
+ */
+CREATE FUNCTION oracle.orafce_concat2(numeric, numeric)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(numeric, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, numeric)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(float4, float4)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(float4, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, float4)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(float8, float8)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(float8, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, float8)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(pg_catalog.date, pg_catalog.date)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(pg_catalog.date, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, pg_catalog.date)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(timestamp, timestamp)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(timestamp, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, timestamp)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(timestamptz, timestamptz)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(timestamptz, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, timestamptz)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(interval, interval)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(interval, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, interval)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = numeric, rightarg = numeric);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = float4, rightarg = float4);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = float8, rightarg = float8);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = pg_catalog.date, rightarg = pg_catalog.date);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = timestamp, rightarg = timestamp);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = timestamptz, rightarg = timestamptz);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = interval, rightarg = interval);
+
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = numeric, rightarg = text);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = float4, rightarg = text);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = float8, rightarg = text);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = pg_catalog.date, rightarg = text);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = timestamp, rightarg = text);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = timestamptz, rightarg = text);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = interval, rightarg = text);
+
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = text, rightarg = numeric);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = text, rightarg = float4);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = text, rightarg = float8);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = text, rightarg = pg_catalog.date);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = text, rightarg = timestamp);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = text, rightarg = timestamptz);
+
+/*-----------------------------------------------------------------
+  * add operator, avoid implicit cast
+  * begin
+  *-----------------------------------------------------------------
+  */
+/* equal */
+CREATE OR REPLACE FUNCTION oracle.varchar2_eq(oracle.varchar2, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1::text = $2::text;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.= (
+	LEFTARG   = oracle.varchar2,
+	RIGHTARG  = oracle.varchar2,
+	PROCEDURE = oracle.varchar2_eq,
+	COMMUTATOR = operator(oracle.=),
+	NEGATOR = operator(oracle.<>)
+);
+
+/* ne */
+CREATE OR REPLACE FUNCTION oracle.varchar2_ne(oracle.varchar2, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1::text != $2::text;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.<> (
+	LEFTARG   = oracle.varchar2,
+	RIGHTARG  = oracle.varchar2,
+	PROCEDURE = oracle.varchar2_ne,
+	COMMUTATOR = operator(oracle.<>),
+	NEGATOR = operator(oracle.=)
+);
+
+/* le and greate */
+/* le */
+CREATE OR REPLACE FUNCTION oracle.varchar2_le(oracle.varchar2, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1::text <= $2::text;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.varchar2_le,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+/* great */
+CREATE OR REPLACE FUNCTION oracle.varchar2_gt(oracle.varchar2, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1::text > $2::text;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.varchar2_gt,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+/* ge and letter */
+/* ge */
+CREATE OR REPLACE FUNCTION oracle.varchar2_ge(oracle.varchar2, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1::text >= $2::text;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.varchar2_ge,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+/* letter */
+CREATE OR REPLACE FUNCTION oracle.varchar2_lt(oracle.varchar2, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1::text < $2::text;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.varchar2_lt,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+/*-----------------------------------------------------------------
+  * add operator, avoid implicit cast
+  * end
+  *-----------------------------------------------------------------
+  */
 
 do $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 120000) THEN
-    ALTER FUNCTION varchar2(varchar2, integer, boolean) SUPPORT varchar2_transform;
+    ALTER FUNCTION oracle.varchar2(oracle.varchar2, integer, boolean) SUPPORT oracle.varchar2_transform;
   ELSE
     UPDATE pg_proc SET protransform= 'varchar2_transform'::regproc::oid WHERE proname='varchar2';
 
@@ -2307,29 +2538,29 @@ $$;
 -- string functions for varchar2 type
 -- these are 'byte' versions of corresponsing text/varchar functions
 
-CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer, integer) RETURNS varchar2
+CREATE OR REPLACE FUNCTION pg_catalog.substrb(oracle.varchar2, integer, integer) RETURNS oracle.varchar2
 AS 'bytea_substr'
 LANGUAGE internal
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+COMMENT ON FUNCTION pg_catalog.substrb(oracle.varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer) RETURNS varchar2
+CREATE OR REPLACE FUNCTION pg_catalog.substrb(oracle.varchar2, integer) RETURNS oracle.varchar2
 AS 'bytea_substr_no_len'
 LANGUAGE internal
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+COMMENT ON FUNCTION pg_catalog.substrb(oracle.varchar2, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.lengthb(varchar2) RETURNS integer
+CREATE OR REPLACE FUNCTION pg_catalog.lengthb(oracle.varchar2) RETURNS integer
 AS 'byteaoctetlen'
 LANGUAGE internal
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.lengthb(varchar2) IS 'returns byte length of the input varchar2 string';
+COMMENT ON FUNCTION pg_catalog.lengthb(oracle.varchar2) IS 'returns byte length of the input varchar2 string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.strposb(varchar2, varchar2) RETURNS integer
+CREATE OR REPLACE FUNCTION pg_catalog.strposb(oracle.varchar2, oracle.varchar2) RETURNS integer
 AS 'byteapos'
 LANGUAGE internal
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.strposb(varchar2, varchar2) IS 'returns the byte position of a specified string in the input varchar2 string';
+COMMENT ON FUNCTION pg_catalog.strposb(oracle.varchar2, oracle.varchar2) IS 'returns the byte position of a specified string in the input varchar2 string';
 
 -- oracle.nvarchar2 type support
 
@@ -2528,7 +2759,7 @@ $$;
  * because older release doesn't know function.
  *
  */
-CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = oracle.varchar2, rightarg = oracle.varchar2);
 CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
 
 /* PAD */
@@ -2558,7 +2789,7 @@ LANGUAGE 'c'
 STRICT  IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(char, integer, varchar2)
+CREATE FUNCTION oracle.lpad(char, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -2586,7 +2817,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, char)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -2607,7 +2838,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(text, integer, varchar2)
+CREATE FUNCTION oracle.lpad(text, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -2628,28 +2859,28 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, text)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, varchar2)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, nvarchar2)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
@@ -2663,7 +2894,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(nvarchar2, integer, varchar2)
+CREATE FUNCTION oracle.lpad(nvarchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -2683,6 +2914,771 @@ AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT IMMUTABLE
 ;
+
+/* -----------------------------------------------------------------
+  * --compatible numeric/float/float8 op varchar2
+  * --if you use implicit cast to implement this function.
+  * --you should iport bug about ambiguity problem when select some function.
+  * -----------------------------------------------------------------
+  */
+/* equal and unequal */
+/* equal */
+CREATE OR REPLACE FUNCTION oracle.varchar2_eq_numeric(oracle.varchar2, numeric)
+RETURNS bool AS $$
+SELECT $1::numeric = $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_eq_varchar2(numeric, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 = $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_eq_float4(oracle.varchar2, float4)
+RETURNS bool AS $$
+SELECT $1::float4 = $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_eq_varchar2(float4, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 = $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_eq_float8(oracle.varchar2, float8)
+RETURNS bool AS $$
+SELECT $1::float8 = $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_eq_varchar2(float8, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 = $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_eq_numeric,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_eq_varchar2,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_eq_float4,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_eq_varchar2,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_eq_float8,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_eq_varchar2,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+/* ne */
+CREATE OR REPLACE FUNCTION oracle.varchar2_ne_numeric(oracle.varchar2, numeric)
+RETURNS bool AS $$
+SELECT $1::numeric != $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_ne_varchar2(numeric, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 != $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_ne_float4(oracle.varchar2, float4)
+RETURNS bool AS $$
+SELECT $1::float4 != $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_ne_varchar2(float4, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 != $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_ne_float8(oracle.varchar2, float8)
+RETURNS bool AS $$
+SELECT $1::float8 != $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_ne_varchar2(float8, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 != $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_ne_numeric,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_ne_varchar2,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_ne_float4,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_ne_varchar2,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_ne_float8,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_ne_varchar2,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+/* le and greate */
+/* le */
+CREATE OR REPLACE FUNCTION oracle.varchar2_le_numeric(oracle.varchar2, numeric)
+RETURNS bool AS $$
+SELECT $1::numeric <= $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_le_varchar2(numeric, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 <= $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_le_float4(oracle.varchar2, float4)
+RETURNS bool AS $$
+SELECT $1::float4 <= $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_le_varchar2(float4, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 <= $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_le_float8(oracle.varchar2, float8)
+RETURNS bool AS $$
+SELECT $1::float8 <= $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_le_varchar2(float8, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 <= $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_le_numeric,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_le_varchar2,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_le_float4,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_le_varchar2,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_le_float8,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_le_varchar2,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+/* great */
+CREATE OR REPLACE FUNCTION oracle.varchar2_gt_numeric(oracle.varchar2, numeric)
+RETURNS bool AS $$
+SELECT $1::numeric > $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_gt_varchar2(numeric, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 > $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_gt_float4(oracle.varchar2, float4)
+RETURNS bool AS $$
+SELECT $1::float4 > $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_gt_varchar2(float4, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 > $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_gt_float8(oracle.varchar2, float8)
+RETURNS bool AS $$
+SELECT $1::float8 > $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_gt_varchar2(float8, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 > $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_gt_numeric,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_gt_varchar2,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_gt_float4,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_gt_varchar2,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_gt_float8,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_gt_varchar2,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+/* ge and letter */
+/* ge */
+CREATE OR REPLACE FUNCTION oracle.varchar2_ge_numeric(oracle.varchar2, numeric)
+RETURNS bool AS $$
+SELECT $1::numeric >= $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_ge_varchar2(numeric, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 >= $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_ge_float4(oracle.varchar2, float4)
+RETURNS bool AS $$
+SELECT $1::float4 >= $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_ge_varchar2(float4, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 >= $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_ge_float8(oracle.varchar2, float8)
+RETURNS bool AS $$
+SELECT $1::float8 >= $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_ge_varchar2(float8, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 >= $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_ge_numeric,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_ge_varchar2,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_ge_float4,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_ge_varchar2,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_ge_float8,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_ge_varchar2,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+/* letter */
+CREATE OR REPLACE FUNCTION oracle.varchar2_lt_numeric(oracle.varchar2, numeric)
+RETURNS bool AS $$
+SELECT $1::numeric < $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_lt_varchar2(numeric, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 < $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_lt_float4(oracle.varchar2, float4)
+RETURNS bool AS $$
+SELECT $1::float4 < $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_lt_varchar2(float4, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 < $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_lt_float8(oracle.varchar2, float8)
+RETURNS bool AS $$
+SELECT $1::float8 < $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_lt_varchar2(float8, oracle.varchar2)
+RETURNS bool AS $$
+SELECT $1 < $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_lt_numeric,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_lt_varchar2,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_lt_float4,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_lt_varchar2,
+   COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_lt_float8,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_lt_varchar2,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+/* add and subtract */
+/* add */
+CREATE OR REPLACE FUNCTION oracle.varchar2_add_numeric(oracle.varchar2, numeric)
+RETURNS numeric AS $$
+SELECT $1::numeric + $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_add_varchar2(numeric, oracle.varchar2)
+RETURNS numeric AS $$
+SELECT $1 + $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_add_float4(oracle.varchar2, float4)
+RETURNS float4 AS $$
+SELECT $1::float4 + $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_add_varchar2(float4, oracle.varchar2)
+RETURNS float4 AS $$
+SELECT $1 + $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_add_float8(oracle.varchar2, float8)
+RETURNS float8 AS $$
+SELECT $1::float8 + $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_add_varchar2(float8, oracle.varchar2)
+RETURNS float8 AS $$
+SELECT $1 + $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_add_numeric,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_add_varchar2,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_add_float4,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_add_varchar2,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_add_float8,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_add_varchar2,
+  COMMUTATOR = operator(oracle.+)
+);
+
+/* sub */
+CREATE OR REPLACE FUNCTION oracle.varchar2_sub_numeric(oracle.varchar2, numeric)
+RETURNS numeric AS $$
+SELECT $1::numeric - $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_sub_varchar2(numeric, oracle.varchar2)
+RETURNS numeric AS $$
+SELECT $1 - $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_sub_float4(oracle.varchar2, float4)
+RETURNS float4 AS $$
+SELECT $1::float4 - $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_sub_varchar2(float4, oracle.varchar2)
+RETURNS float4 AS $$
+SELECT $1 - $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_sub_float8(oracle.varchar2, float8)
+RETURNS float8 AS $$
+SELECT $1::float8 - $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_sub_varchar2(float8, oracle.varchar2)
+RETURNS float8 AS $$
+SELECT $1 - $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_sub_numeric
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_sub_varchar2
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_sub_float4
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_sub_varchar2
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_sub_float8
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_sub_varchar2
+);
+
+/* mul */
+CREATE OR REPLACE FUNCTION oracle.varchar2_mul_numeric(oracle.varchar2, numeric)
+RETURNS numeric AS $$
+SELECT $1::numeric * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_mul_varchar2(numeric, oracle.varchar2)
+RETURNS numeric AS $$
+SELECT $1 * $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_mul_float4(oracle.varchar2, float4)
+RETURNS float4 AS $$
+SELECT $1::float4 * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_mul_varchar2(float4, oracle.varchar2)
+RETURNS float4 AS $$
+SELECT $1 * $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_mul_float8(oracle.varchar2, float8)
+RETURNS float8 AS $$
+SELECT $1::float8 * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_mul_varchar2(float8, oracle.varchar2)
+RETURNS float8 AS $$
+SELECT $1 * $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_mul_numeric,
+  COMMUTATOR = operator(oracle.*)
+);
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_mul_varchar2,
+  COMMUTATOR = operator(oracle.*)
+);
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_mul_float4,
+  COMMUTATOR = operator(oracle.*)
+);
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_mul_varchar2,
+  COMMUTATOR = operator(oracle.*)
+);
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_mul_float8,
+  COMMUTATOR = operator(oracle.*)
+);
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_mul_varchar2,
+  COMMUTATOR = operator(oracle.*)
+);
+
+/* div */
+CREATE OR REPLACE FUNCTION oracle.varchar2_div_numeric(oracle.varchar2, numeric)
+RETURNS numeric AS $$
+SELECT $1::numeric / $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.numeric_div_varchar2(numeric, oracle.varchar2)
+RETURNS numeric AS $$
+SELECT $1 / $2::numeric;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_div_float4(oracle.varchar2, float4)
+RETURNS float4 AS $$
+SELECT $1::float4 / $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float4_div_varchar2(float4, oracle.varchar2)
+RETURNS float4 AS $$
+SELECT $1 / $2::float4;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.varchar2_div_float8(oracle.varchar2, float8)
+RETURNS float8 AS $$
+SELECT $1::float8 / $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.float8_div_varchar2(float8, oracle.varchar2)
+RETURNS float8 AS $$
+SELECT $1 / $2::float8;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle./ (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.varchar2_div_numeric
+);
+
+CREATE OPERATOR oracle./ (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.numeric_div_varchar2
+);
+
+CREATE OPERATOR oracle./ (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float4,
+  PROCEDURE = oracle.varchar2_div_float4
+);
+
+CREATE OPERATOR oracle./ (
+  LEFTARG   = float4,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float4_div_varchar2
+);
+
+CREATE OPERATOR oracle./ (
+  LEFTARG   = oracle.varchar2,
+  RIGHTARG  = float8,
+  PROCEDURE = oracle.varchar2_div_float8
+);
+
+CREATE OPERATOR oracle./ (
+  LEFTARG   = float8,
+  RIGHTARG  = oracle.varchar2,
+  PROCEDURE = oracle.float8_div_varchar2
+);
+/* end */
 
 /* RPAD family */
 
@@ -2709,7 +3705,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(char, integer, varchar2)
+CREATE FUNCTION oracle.rpad(char, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -2737,7 +3733,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, char)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -2758,7 +3754,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(text, integer, varchar2)
+CREATE FUNCTION oracle.rpad(text, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -2779,28 +3775,28 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, text)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, varchar2)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, nvarchar2)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
@@ -2814,7 +3810,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(nvarchar2, integer, varchar2)
+CREATE FUNCTION oracle.rpad(nvarchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -2862,7 +3858,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(char, varchar2)
+CREATE FUNCTION oracle.ltrim(char, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
@@ -2897,7 +3893,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(text, varchar2)
+CREATE FUNCTION oracle.ltrim(text, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
@@ -2918,35 +3914,35 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, char)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, text)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, text)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, varchar2)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, nvarchar2)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.ltrim($1, ' '::text) $$
 LANGUAGE SQL
@@ -2967,7 +3963,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(nvarchar2, varchar2)
+CREATE FUNCTION oracle.ltrim(nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
@@ -3003,7 +3999,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(char, varchar2)
+CREATE FUNCTION oracle.rtrim(char, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
@@ -3038,7 +4034,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(text, varchar2)
+CREATE FUNCTION oracle.rtrim(text, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
@@ -3059,35 +4055,35 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, char)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, char)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, text)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, text)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, varchar2)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, nvarchar2)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.rtrim($1, ' '::text) $$
 LANGUAGE SQL
@@ -3108,7 +4104,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(nvarchar2, varchar2)
+CREATE FUNCTION oracle.rtrim(nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
@@ -3144,7 +4140,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(char, varchar2)
+CREATE FUNCTION oracle.btrim(char, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
@@ -3179,7 +4175,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(text, varchar2)
+CREATE FUNCTION oracle.btrim(text, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
@@ -3200,35 +4196,35 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, char)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, char)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, text)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, text)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, varchar2)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, nvarchar2)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2)
+CREATE FUNCTION oracle.btrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
@@ -3249,7 +4245,7 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(nvarchar2, varchar2)
+CREATE FUNCTION oracle.btrim(nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal

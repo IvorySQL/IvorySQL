@@ -12,6 +12,7 @@
 #include "nodes/nodeFuncs.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "mb/pg_wchar.h"
 #include "fmgr.h"
 
@@ -52,9 +53,42 @@ varchar2_input(const char *s, size_t len, int32 atttypmod)
 	 * Perform the typmod check; error out if value too long for VARCHAR2
 	 */
 	if (atttypmod >= (int32) VARHDRSZ && len > maxlen)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("input value length is %zd; too long for type varchar2(%zd)", len , maxlen)));
+	{
+		/* Verify that extra characters are spaces, and clip them off */
+		size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
+		size_t		j;
+
+		if (nls_length_semantics == NLSLENGTH_BYTE)
+		{
+			for (j = maxlen; j < len; j++)
+			{
+				if (s[j] != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							 errmsg("value too long for type varchar2(%d byte)", (int)maxlen)));
+			}
+		}
+		else if (nls_length_semantics == NLSLENGTH_CHAR)
+		{
+			for (j = mbmaxlen; j < len; j++)
+			{
+				if (s[j] != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							 errmsg("value too long for type varchar2(%d char)", (int)maxlen)));
+			}
+		}
+		else
+		{
+			for (j = maxlen; j < len; j++)
+			{
+				if (s[j] != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							errmsg("value too long for type varchar2(%d)", (int) maxlen)));
+			}
+		}
+	}
 
 	result = (VarChar *) cstring_to_text_with_len(s, size2int(len));
 	return  result;
@@ -163,7 +197,9 @@ varchar2(PG_FUNCTION_ARGS)
 	bool		isExplicit = PG_GETARG_BOOL(2);
 	int32		len,
 				maxlen;
+	size_t		maxmblen;
 	char		*s_data;
+	int		charlen;
 
 	len = VARSIZE_ANY_EXHDR(source);
 	s_data = VARDATA_ANY(source);
@@ -173,13 +209,35 @@ varchar2(PG_FUNCTION_ARGS)
 	if (maxlen < 0 || len <= maxlen)
 		PG_RETURN_VARCHAR_P(source);
 
+	charlen = pg_mbstrlen_with_len(s_data, len);
+	if (nls_length_semantics == NLSLENGTH_CHAR)
+	{
+		if (charlen <= maxlen)
+			maxlen = charlen;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("value too long for type varchar2(%d char)", maxlen)));
+	}
+
+	maxmblen = pg_mbcharcliplen(s_data, len, maxlen);
+	if (nls_length_semantics == NLSLENGTH_CHAR)
+		maxlen = maxmblen;
+	else if (nls_length_semantics == NLSLENGTH_BYTE)
+	{
+		if (maxlen < maxmblen)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("value too long for type varchar2(%d byte)", maxlen)));
+	}
+
 	/* error out if value too long unless it's an explicit cast */
 	if (!isExplicit)
 	{
 		if (len > maxlen)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("input value length is %d; too long for type varchar2(%d)",len ,maxlen)));
+						errmsg("value too long for type varchar2(%d)", maxlen)));
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data,maxlen));
