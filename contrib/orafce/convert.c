@@ -33,7 +33,9 @@ PG_FUNCTION_INFO_V1(orafce_to_single_byte);
 PG_FUNCTION_INFO_V1(orafce_unistr);
 
 PG_FUNCTION_INFO_V1(orafce_to_varchar);
+PG_FUNCTION_INFO_V1(orafce_bin_to_num);
 static int getindex(const char **map, char *mbchar, int mblen);
+char *orafce_type_to_cstring(Datum arg, Oid type);
 
 #if PG_VERSION_NUM < 130000
 
@@ -959,4 +961,70 @@ orafce_to_varchar(PG_FUNCTION_ARGS)
 		val = DirectFunctionCall3(varcharin, val_str, typelem, typmod);
 	}
 	return val;
+}
+
+/* Converting input parameters to cstring types. */
+char *
+orafce_type_to_cstring(Datum arg, Oid type)
+{
+	Oid 	typOutput;
+	bool	typIsVarlena;
+
+	/*find output function based on oid*/
+	getTypeOutputInfo(type, &typOutput, &typIsVarlena);
+	return OidOutputFunctionCall(typOutput, arg);
+}
+
+/* Convert a string of binary numbers to decimal. */
+Datum
+orafce_bin_to_num (PG_FUNCTION_ARGS)
+{
+	int32 	nargs, i;
+	int64 	tmp;
+	int64 	num = 0;
+	int 	flag = 0;
+
+	nargs = PG_NARGS();
+	if (nargs > 63)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("binary value is out of range!")));
+	}
+
+	for (i = 0; i < nargs; i++)
+	{
+		char	*tmp1;
+		int 	j = 0;
+
+		Oid type = get_fn_expr_argtype(fcinfo->flinfo, i);
+		tmp1 = orafce_type_to_cstring(PG_GETARG_DATUM(i), type);
+		for(j = 0; j < strlen(tmp1); j++)
+		{
+			if((tmp1[j] <= '9' && tmp1[j] >= '0') || tmp1[j] == '.')
+			{
+				flag = 1;
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("Invalid binary number,each paramter must evaluate to 0 or 1!")));
+			}
+		}
+		if(flag == 1)
+		{
+			tmp = atoi(tmp1);
+			if ((tmp == 0) || (tmp == 1))
+				num = num * 2 + tmp;
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("Invalid binary number,each paramter must evaluate to 0 or 1!")));
+			}
+		}
+	}
+
+	PG_RETURN_INT64(num);
 }
