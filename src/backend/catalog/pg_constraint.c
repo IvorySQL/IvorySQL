@@ -31,6 +31,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -1291,7 +1292,7 @@ check_functional_grouping(Oid relid,
 
 	/* If the rel has no PK, then we can't prove functional dependency */
 	pkattnos = get_primary_key_attnos(relid, false, &constraintOid);
-	if (pkattnos == NULL)
+	if (pkattnos == NULL || compatible_db == COMPATIBLE_ORA)
 		return false;
 
 	/* Identify all the rel's columns that appear in grouping_columns */
