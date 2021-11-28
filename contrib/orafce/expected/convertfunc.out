@@ -212,4 +212,160 @@ select oracle.hex_to_decimal(NULL);
                
 (1 row)
 
+select oracle.to_timestamp_tz('2020-01-15');
+    to_timestamp_tz     
+------------------------
+ 2020-01-15 00:00:00+08
+(1 row)
+
+select oracle.to_timestamp_tz('2020-01-15'::text);
+    to_timestamp_tz     
+------------------------
+ 2020-01-15 00:00:00+08
+(1 row)
+
+select oracle.to_timestamp_tz('2019','yyyy');
+    to_timestamp_tz     
+------------------------
+ 2019-01-01 00:00:00+08
+(1 row)
+
+select oracle.to_timestamp_tz('2019-11','yyyy-mm');
+    to_timestamp_tz     
+------------------------
+ 2019-11-01 00:00:00+08
+(1 row)
+
+select oracle.to_timestamp_tz('2003/12/13 10:13:18 -8:00');
+    to_timestamp_tz     
+------------------------
+ 2003-12-14 02:13:18+08
+(1 row)
+
+select oracle.to_timestamp_tz('2003/12/13 10:13:18 +1:00');
+    to_timestamp_tz     
+------------------------
+ 2003-12-13 17:13:18+08
+(1 row)
+
+select oracle.to_timestamp_tz('2003/12/13 10:13:18 +7:00');
+    to_timestamp_tz     
+------------------------
+ 2003-12-13 11:13:18+08
+(1 row)
+
+select oracle.to_timestamp_tz('2019-11-25'::text,'yyyy-mm-dd HH24:MI:SS OF');
+    to_timestamp_tz     
+------------------------
+ 2019-11-25 00:00:00+08
+(1 row)
+
+select oracle.to_timestamp_tz('2019-11-25 13:38:00'::text,'yyyy-mm-dd HH24:MI:SS');
+    to_timestamp_tz     
+------------------------
+ 2019-11-25 13:38:00+08
+(1 row)
+
+select oracle.to_timestamp_tz('2019-11-29 14:17:00','YYYY-MM-DD HH24:MI:SS TZH:TZM');
+    to_timestamp_tz     
+------------------------
+ 2019-11-29 14:17:00+08
+(1 row)
+
+select oracle.to_timestamp_tz('2003/12/13 10:13:18 -8:00', 'YYYY/MM/DD HH:MI:SS TZH:TZM');
+    to_timestamp_tz     
+------------------------
+ 2003-12-14 02:13:18+08
+(1 row)
+
+select oracle.to_timestamp_tz('2019/12/13 10:13:18 -2:00', 'YYYY/MM/DD HH:MI:SS TZH:TZM');
+    to_timestamp_tz     
+------------------------
+ 2019-12-13 20:13:18+08
+(1 row)
+
+select oracle.to_timestamp_tz('2019/12/13 10:13:18 +5:00', 'YYYY/MM/DD HH:MI:SS TZH:TZM');
+    to_timestamp_tz     
+------------------------
+ 2019-12-13 13:13:18+08
+(1 row)
+
+select oracle.to_timestamp_tz(NULL);
+ to_timestamp_tz 
+-----------------
+ 
+(1 row)
+
+select oracle.to_timestamp(-12124579);
+    to_timestamp     
+---------------------
+ 1969-08-14 00:03:41
+(1 row)
+
+select oracle.to_timestamp(-1212457999999999999999999);
+ERROR:  timestamp out of range: "-1.21246e+24"
+CONTEXT:  SQL function "to_timestamp" statement 1
+select oracle.to_timestamp(12121212.55::float);
+      to_timestamp      
+------------------------
+ 1970-05-21 15:00:12.55
+(1 row)
+
+select oracle.to_timestamp(1212121212.55);
+      to_timestamp      
+------------------------
+ 2008-05-30 12:20:12.55
+(1 row)
+
+select oracle.to_timestamp(1212121212.55::real);
+    to_timestamp     
+---------------------
+ 2008-05-30 12:20:16
+(1 row)
+
+select oracle.to_timestamp(NULL);
+ to_timestamp 
+--------------
+ 
+(1 row)
+
+select oracle.to_timestamp(1212121212.55::numeric);
+      to_timestamp      
+------------------------
+ 2008-05-30 12:20:12.55
+(1 row)
+
+select oracle.to_timestamp('2019-11-29 14:17:00','YYYY-MM-DD HH24:MI:SS TZH:TZM');
+    to_timestamp     
+---------------------
+ 2019-11-29 14:17:00
+(1 row)
+
+select oracle.to_timestamp('2020/03/03 10:13:18 -8:00', 'YYYY/MM/DD HH:MI:SS TZH:TZM');
+    to_timestamp     
+---------------------
+ 2020-03-04 02:13:18
+(1 row)
+
+select oracle.to_timestamp('2020/03/03 10:13:18 -2:00', 'YYYY/MM/DD HH:MI:SS TZH:TZM');
+    to_timestamp     
+---------------------
+ 2020-03-03 20:13:18
+(1 row)
+
+select oracle.to_timestamp('2020/03/03 10:13:18 +5:00', 'YYYY/MM/DD HH:MI:SS TZH:TZM');
+    to_timestamp     
+---------------------
+ 2020-03-03 13:13:18
+(1 row)
+
+select oracle.to_timestamp(NULL,NULL);
+ to_timestamp 
+--------------
+ 
+(1 row)
+
+select oracle.to_timestamp(1212457898999999999999);
+ERROR:  timestamp out of range: "1.21246e+21"
+CONTEXT:  SQL function "to_timestamp" statement 1
 set compatible_mode to default;
