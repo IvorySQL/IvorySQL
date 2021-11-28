@@ -355,6 +355,26 @@ RETURNS numeric AS $$
 SELECT pg_catalog.to_number($1::text);
 $$ LANGUAGE SQL IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION oracle.to_timestamp(text ,text)
+RETURNS TIMESTAMP WITHOUT TIME ZONE
+AS $$ SELECT pg_catalog.to_timestamp($1,$2)::TIMESTAMP WITHOUT TIME ZONE; $$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.to_timestamp(double precision)
+RETURNS TIMESTAMP WITHOUT TIME ZONE
+AS $$ SELECT pg_catalog.to_timestamp($1)::TIMESTAMP WITHOUT TIME ZONE; $$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.to_timestamp_tz(text ,text)
+RETURNS TIMESTAMP WITH TIME ZONE
+AS $$ SELECT pg_catalog.to_timestamp($1,$2); $$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.to_timestamp_tz(text)
+RETURNS timestamp with time zone
+AS 'MODULE_PATHNAME','orafce_to_timestamp_tz'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;

@@ -37,6 +37,7 @@ PG_FUNCTION_INFO_V1(orafce_bin_to_num);
 PG_FUNCTION_INFO_V1(orafce_to_binary_float);
 PG_FUNCTION_INFO_V1(orafce_to_binary_double);
 PG_FUNCTION_INFO_V1(orafce_hex_to_decimal);
+PG_FUNCTION_INFO_V1(orafce_to_timestamp_tz);
 
 Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 static int getindex(const char **map, char *mbchar, int mblen);
@@ -1134,4 +1135,15 @@ orafce_hex_to_decimal(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_INT64(decimal);
+}
+
+/* to_timestamp_tz to supprot one parameter. */
+Datum
+orafce_to_timestamp_tz(PG_FUNCTION_ARGS)
+{
+	text	*arg = PG_GETARG_TEXT_PP(0);
+	return	DirectFunctionCall3(timestamptz_in,
+								CStringGetDatum(text_to_cstring(arg)),
+								ObjectIdGetDatum(InvalidOid),
+								Int32GetDatum(-1));
 }
