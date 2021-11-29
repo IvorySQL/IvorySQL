@@ -30,6 +30,7 @@
 #include "utils/datetime.h"
 #include "utils/memutils.h"
 #include "utils/tzparser.h"
+#include "utils/guc.h"
 
 static int	DecodeNumber(int flen, char *field, bool haveTextMonth,
 						 int fmask, int *tmask,
@@ -3110,6 +3111,18 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 	type = IGNORE_DTF;
 	ClearPgTm(tm, fsec);
 
+	/* deal the sign '+/-' */
+	if(compatible_db == COMPATIBLE_ORA)
+	{
+		for (i = 1; i < nf; i++)
+		{
+			if(*field[i] == '-' || *field[i] == '+')
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("arg is invalid!")));
+		}
+	}
+
 	/* read through list backwards to pick up units before values */
 	for (i = nf - 1; i >= 0; i--)
 	{
@@ -3118,6 +3131,18 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 			case DTK_TIME:
 				dterr = DecodeTime(field[i], fmask, range,
 								   &tmask, tm, fsec);
+
+				/* when sign is '-' */
+				if(compatible_db == COMPATIBLE_ORA)
+				{
+					if(*field[0] == '-')
+					{
+						tm->tm_hour = -tm->tm_hour;
+						tm->tm_min = -tm->tm_min;
+						tm->tm_sec = -tm->tm_sec;
+						*fsec = -(*fsec);
+					}
+				}
 				if (dterr)
 					return dterr;
 				type = DTK_DAY;
@@ -3520,12 +3545,25 @@ DecodeISO8601Interval(char *str,
 {
 	bool		datepart = true;
 	bool		havefield = false;
+	bool		flag = false;
 
 	*dtype = DTK_DELTA;
 	ClearPgTm(tm, fsec);
 
-	if (strlen(str) < 2 || str[0] != 'P')
-		return DTERR_BAD_FORMAT;
+	/* support sign '-' */
+	if(compatible_db == COMPATIBLE_ORA)
+	{
+		if(str[0] == '-')
+		{
+			str++;
+			flag = true;
+		}
+	}
+	else
+	{
+		if(strlen(str) < 2 || str[0] != 'P')
+			return DTERR_BAD_FORMAT;
+	}
 
 	str++;
 	while (*str)
@@ -3560,11 +3598,17 @@ DecodeISO8601Interval(char *str,
 			switch (unit)		/* before T: Y M W D */
 			{
 				case 'Y':
-					tm->tm_year += val;
-					tm->tm_mon += rint(fval * MONTHS_PER_YEAR);
+					if(flag)
+						tm->tm_year -= val;
+					else
+						tm->tm_year += val;
+					tm->tm_mon += (fval * MONTHS_PER_YEAR);
 					break;
 				case 'M':
-					tm->tm_mon += val;
+					if(flag)
+						tm->tm_mon -= val;
+					else
+						tm->tm_mon += val;
 					AdjustFractDays(fval, tm, fsec, DAYS_PER_MONTH);
 					break;
 				case 'W':
@@ -3572,7 +3616,10 @@ DecodeISO8601Interval(char *str,
 					AdjustFractDays(fval, tm, fsec, 7);
 					break;
 				case 'D':
-					tm->tm_mday += val;
+					if(flag)
+						tm->tm_mday -= val;
+					else
+						tm->tm_mday += val;
 					AdjustFractSeconds(fval, tm, fsec, SECS_PER_DAY);
 					break;
 				case 'T':		/* ISO 8601 4.4.3.3 Alternative Format / Basic */
@@ -3648,15 +3695,24 @@ DecodeISO8601Interval(char *str,
 			switch (unit)		/* after T: H M S */
 			{
 				case 'H':
-					tm->tm_hour += val;
+					if(flag)
+						tm->tm_hour -= val;
+					else
+						tm->tm_hour += val;
 					AdjustFractSeconds(fval, tm, fsec, SECS_PER_HOUR);
 					break;
 				case 'M':
-					tm->tm_min += val;
+					if(flag)
+						tm->tm_min -= val;
+					else
+						tm->tm_min += val;
 					AdjustFractSeconds(fval, tm, fsec, SECS_PER_MINUTE);
 					break;
 				case 'S':
-					tm->tm_sec += val;
+					if(flag)
+						tm->tm_sec -= val;
+					else
+						tm->tm_sec += val;
 					AdjustFractSeconds(fval, tm, fsec, 1);
 					break;
 				case '\0':		/* ISO 8601 4.4.3.3 Alternative Format */

@@ -381,6 +381,18 @@ AS 'MODULE_PATHNAME','orafce_interval_to_seconds'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.interval_to_seconds(interval) IS 'transfer interval format to seconds';
 
+CREATE FUNCTION oracle.to_yminterval(text)
+ RETURNS interval
+AS 'MODULE_PATHNAME','orafce_to_yminterval'
+ LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.to_yminterval(text) IS 'converts a interval datatype to an INTERVAL YEAR TO MONTH type';
+
+CREATE FUNCTION oracle.to_dsinterval(text)
+ RETURNS interval
+AS 'MODULE_PATHNAME','orafce_to_dsinterval'
+ LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.to_dsinterval(text) IS 'converts a interval datatype to an INTERVAL DAY TO SECOND type';
+
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
