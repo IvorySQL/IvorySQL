@@ -82,4 +82,34 @@ select oracle.interval_to_seconds(NULL);
 select oracle.interval_to_seconds('P1Y');
 select oracle.interval_to_seconds('P1Y2M');
 
+select oracle.to_yminterval('01-02');
+select oracle.to_yminterval('P1Y2M2D');
+select oracle.to_yminterval('P1Y');
+select oracle.to_yminterval('-P1Y2M');
+select oracle.to_yminterval('+P1Y1M');
+select oracle.to_yminterval('P1Y-2M2D');
+select oracle.to_yminterval(' 01 -  02');
+select oracle.to_yminterval(NULL);
+select oracle.to_yminterval('-01-02');
+select oracle.to_yminterval('+01-02');
+select oracle.to_yminterval('-01-02-03');
+
+select oracle.to_dsinterval('P1Y1M2D');
+select oracle.to_dsinterval('100 00:02:00');
+select oracle.to_dsinterval('100 00 :02 :00');
+select oracle.to_dsinterval('+100 00:02:00');
+select oracle.to_dsinterval(NULL);
+select oracle.to_dsinterval('100 -10:02:00');
+select oracle.to_dsinterval('100 +10:10:10');
+select oracle.to_dsinterval('P100DT5H');
+select oracle.to_dsinterval('+P100DT5H');
+select oracle.to_dsinterval('-100 10:00:00');
+select oracle.to_dsinterval('-P100DT5H');
+select oracle.to_dsinterval('-P100DT');
+select oracle.to_dsinterval('-P100D');
+select oracle.to_dsinterval('-P100DT20H');
+select oracle.to_dsinterval('-P100DT20S');
+select oracle.to_dsinterval('-P100DT20');
+select oracle.to_dsinterval('-P100DT20H2');
+
 set compatible_mode to default;
