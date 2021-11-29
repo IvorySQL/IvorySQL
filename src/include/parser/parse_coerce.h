@@ -65,6 +65,12 @@ extern int	parser_coercion_errposition(ParseState *pstate,
 										int coerce_location,
 										Node *input_expr);
 
+extern Oid	minmax_expr_select_common_type(ParseState *pstate, List *exprs,
+										const char *context, Node **which_expr);
+extern Node *minmax_expr_coerce_to_common_type(ParseState *pstate, Node *node,
+										Oid targetTypeId,
+										const char *context);
+
 extern Oid	select_common_type(ParseState *pstate, List *exprs,
 							   const char *context, Node **which_expr);
 extern Node *coerce_to_common_type(ParseState *pstate, Node *node,
