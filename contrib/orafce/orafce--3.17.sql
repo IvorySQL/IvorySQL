@@ -175,18 +175,6 @@ AS 'MODULE_PATHNAME','ora_to_date'
 LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to timestamp';
 
-CREATE FUNCTION to_multi_byte(str text)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_to_multi_byte'
-LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
-
-CREATE FUNCTION to_single_byte(str text)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_to_single_byte'
-LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
-
 CREATE FUNCTION bitand(bigint, bigint)
 RETURNS bigint
 AS $$ SELECT $1 & $2; $$
@@ -310,10 +298,20 @@ SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
 $$ LANGUAGE SQL IMMUTABLE;
 
 /* --can't overwrite PostgreSQL DATE data type!!! */
+CREATE FUNCTION oracle.to_multi_byte(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_multi_byte'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
+
+CREATE FUNCTION oracle.to_single_byte(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_single_byte'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
 
 CREATE DOMAIN oracle.date AS timestamp(0);
 
-/* add at 20211124 */
 CREATE FUNCTION oracle.to_char("any")
 RETURNS TEXT
 AS 'MODULE_PATHNAME','orafce_to_varchar'

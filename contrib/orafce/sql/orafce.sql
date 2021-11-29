@@ -592,6 +592,7 @@ SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 SELECT dump('2009-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 
+set search_path to oracle,"$user", public;
 -- Tests for to_multi_byte
 SELECT to_multi_byte('123$test');
 -- Check internal representation difference
@@ -604,6 +605,7 @@ SELECT to_single_byte('１２３＄ｔｅｓｔ');
 -- Check internal representation difference
 SELECT octet_length('ａｂｃ');
 SELECT octet_length(to_single_byte('ａｂｃ'));
+set search_path to default;
 
 -- Tests for round(TIMESTAMP WITH TIME ZONE)
 select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','YEAR') = '1991-01-01 00:00:00';

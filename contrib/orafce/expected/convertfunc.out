@@ -68,6 +68,77 @@ select oracle.bin_to_num(NULL,NULL,NULL);
            
 (1 row)
 
+select oracle.to_multi_byte('abc'::text);
+ to_multi_byte 
+---------------
+ ａｂｃ
+(1 row)
+
+select oracle.to_multi_byte('1.2'::text) ;
+ to_multi_byte 
+---------------
+ １．２
+(1 row)
+
+select oracle.to_multi_byte(1.2::float);
+ERROR:  function oracle.to_multi_byte(double precision) does not exist
+LINE 1: select oracle.to_multi_byte(1.2::float);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select oracle.to_multi_byte(1::int);
+ERROR:  function oracle.to_multi_byte(integer) does not exist
+LINE 1: select oracle.to_multi_byte(1::int);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select oracle.to_multi_byte(1.4::numeric);
+ERROR:  function oracle.to_multi_byte(numeric) does not exist
+LINE 1: select oracle.to_multi_byte(1.4::numeric);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select oracle.to_multi_byte('abc'::bpchar);
+ to_multi_byte 
+---------------
+ ａｂｃ
+(1 row)
+
+select oracle.to_multi_byte(6.4);
+ERROR:  function oracle.to_multi_byte(numeric) does not exist
+LINE 1: select oracle.to_multi_byte(6.4);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select oracle.to_multi_byte(NULL);
+ to_multi_byte 
+---------------
+ 
+(1 row)
+
+select oracle.to_single_byte('ａｂｃ');
+ to_single_byte 
+----------------
+ abc
+(1 row)
+
+select oracle.to_single_byte('１．２');
+ to_single_byte 
+----------------
+ 1.2
+(1 row)
+
+select oracle.to_single_byte(１．２);
+ERROR:  column "１．２" does not exist
+LINE 1: select oracle.to_single_byte(１．２);
+                                     ^
+select oracle.to_single_byte(3.4);
+ERROR:  function oracle.to_single_byte(numeric) does not exist
+LINE 1: select oracle.to_single_byte(3.4);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select oracle.to_single_byte(NULL);
+ to_single_byte 
+----------------
+ 
+(1 row)
+
 select oracle.to_binary_double(2.5555::float8);
  to_binary_double 
 ------------------
