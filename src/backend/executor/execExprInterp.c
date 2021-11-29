@@ -76,6 +76,7 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
+#include "utils/guc.h"
 
 /*
  * Use computed-goto-based opcode dispatch when computed gotos are available.
@@ -2961,7 +2962,16 @@ ExecEvalMinMax(ExprState *state, ExprEvalStep *op)
 	{
 		/* ignore NULL inputs */
 		if (nulls[off])
+		{
+			/* Returns null when any parameter is null */
+			if (compatible_db == COMPATIBLE_ORA)
+			{
+				*op->resvalue = false;
+				*op->resnull = true;
+				break;
+			}
 			continue;
+		}
 
 		if (*op->resnull)
 		{
