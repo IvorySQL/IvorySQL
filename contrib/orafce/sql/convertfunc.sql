@@ -17,6 +17,21 @@ select oracle.bin_to_num(3.2::float8,1::int4);
 select oracle.bin_to_num(NULL);
 select oracle.bin_to_num(NULL,NULL,NULL);
 
+select oracle.to_multi_byte('abc'::text);
+select oracle.to_multi_byte('1.2'::text) ;
+select oracle.to_multi_byte(1.2::float);
+select oracle.to_multi_byte(1::int);
+select oracle.to_multi_byte(1.4::numeric);
+select oracle.to_multi_byte('abc'::bpchar);
+select oracle.to_multi_byte(6.4);
+select oracle.to_multi_byte(NULL);
+
+select oracle.to_single_byte('ａｂｃ');
+select oracle.to_single_byte('１．２');
+select oracle.to_single_byte(１．２);
+select oracle.to_single_byte(3.4);
+select oracle.to_single_byte(NULL);
+
 select oracle.to_binary_double(2.5555::float8);
 select oracle.to_binary_double(2.5555::real);
 select oracle.to_binary_double('2'::oracle.varchar2);
