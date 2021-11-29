@@ -3066,7 +3066,7 @@ select pg_catalog.to_date('210514 12:13:44.55');
 select oracle.to_date('210514 12:13:44.55');
        to_date       
 ---------------------
- 2014-05-21 12:13:45
+ 2014-05-21 12:13:44
 (1 row)
 
 -- Tests for oracle.to_date(text,text)

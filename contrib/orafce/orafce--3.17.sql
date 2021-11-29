@@ -297,7 +297,6 @@ RETURNS text AS $$
 SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
 $$ LANGUAGE SQL IMMUTABLE;
 
-/* --can't overwrite PostgreSQL DATE data type!!! */
 CREATE FUNCTION oracle.to_multi_byte(str text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_multi_byte'
@@ -309,8 +308,6 @@ RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_single_byte'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
-
-CREATE DOMAIN oracle.date AS timestamp(0);
 
 CREATE FUNCTION oracle.to_char("any")
 RETURNS TEXT
@@ -391,104 +388,599 @@ AS 'MODULE_PATHNAME','orafce_to_dsinterval'
  LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_dsinterval(text) IS 'converts a interval datatype to an INTERVAL DAY TO SECOND type';
 
-CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
+/* compatible oracle's date */
+CREATE OR REPLACE FUNCTION oracle.ora_date_in(cstring)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME','ora_date_in'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.ora_date_out(oracle.date)
+RETURNS cstring
+AS 'MODULE_PATHNAME','ora_date_out'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.ora_date_recv(internal)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME','ora_date_recv'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.ora_date_send(oracle.date)
+RETURNS bytea
+AS 'MODULE_PATHNAME','ora_date_send'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+create type oracle.date(
+input = oracle.ora_date_in,
+output = oracle.ora_date_out,
+receive = oracle.ora_date_recv,
+send = oracle.ora_date_send,
+alignment = 'double',
+storage = 'plain',
+like = 'timestamp',
+category = 'D',
+preferred = false
+);
+
+/* oracle date's cast */
+CREATE CAST(timestamp as oracle.date) WITHOUT FUNCTION AS IMPLICIT; 
+create cast(oracle.date as timestamp) WITHOUT FUNCTION as IMPLICIT; 
+
+CREATE FUNCTION oracle.ora2pgdate(oracle.date)
+RETURNS pg_catalog.date
+AS 'select pg_catalog.date($1::timestamp)::pg_catalog.date'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.oradate2timestamptz(oracle.date)
+RETURNS timestamp with time zone
+AS 'select pg_catalog.timestamptz($1::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.oradate2time(oracle.date)
+RETURNS time without time zone 
+AS 'select pg_catalog.time($1::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.pg2oradate(pg_catalog.date)
+RETURNS oracle.date 
+AS 'select pg_catalog.timestamp($1::timestamp)::oracle.date'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.timestamptz2oradate(timestamptz)
+RETURNS oracle.date 
+AS 'select pg_catalog.timestamp($1::timestamp)::oracle.date'
+LANGUAGE SQL IMMUTABLE;
+
+
+create cast(pg_catalog.date as oracle.date) with function oracle.pg2oradate(pg_catalog.date) as implicit; 
+create cast(oracle.date as pg_catalog.date) with function oracle.ora2pgdate(oracle.date) as assignment; 
+create cast(oracle.date as timestamp with time zone) with function oracle.oradate2timestamptz(oracle.date) as implicit; 
+create cast(oracle.date as time without time zone) with function oracle.oradate2time(oracle.date) as assignment;
+create cast(timestamp with time zone as oracle.date) with function oracle.timestamptz2oradate(timestamptz) as assignment; 
+
+/* oracle date's operator */
+----------<=--------------
+--date_le_oradate(pg_catalog.date, oracle.date)
+CREATE FUNCTION oracle.date_le_oradate(pg_catalog.date, oracle.date)
+RETURNS bool
+AS 'select pg_catalog.date_le_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<= (procedure = oracle.date_le_oradate, leftarg = pg_catalog.date , rightarg = oracle.date);
+
+--oradate_le_timestamptz(oracle.date,timestamptz)
+CREATE FUNCTION oracle.oradate_le_timestamptz(oracle.date, timestamptz)
+RETURNS bool
+AS 'select pg_catalog.timestamp_le_timestamptz($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<= (procedure = oracle.oradate_le_timestamptz, leftarg = oracle.date , rightarg = timestamptz);
+
+--oradate_le_date(oracle.date, pg_catalog.date)
+CREATE FUNCTION oracle.oradate_le_date(oracle.date, pg_catalog.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_le_date($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<= (procedure = oracle.oradate_le_date, leftarg = oracle.date , rightarg = pg_catalog.date);
+
+--timestamptz_le_oradate(timestamptz,oracle.date)
+CREATE FUNCTION oracle.timestamptz_le_oradate(timestamptz, oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamptz_le_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<= (procedure = oracle.timestamptz_le_oradate, leftarg = timestamptz , rightarg = oracle.date);
+
+--oradate_le(oracle.date, oracle.date)
+CREATE FUNCTION oracle.oradate_le(oracle.date, oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_le($1::timestamp, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<= (procedure = oracle.oradate_le, leftarg = oracle.date , rightarg = oracle.date);
+
+----------<> --------------
+--timestamptz_ne_oradate(timestamptz, oracle.date)
+CREATE FUNCTION oracle.timestamptz_ne_oradate(timestamptz,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamptz_ne_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<> (procedure = oracle.timestamptz_ne_oradate, leftarg = timestamptz , rightarg = oracle.date);
+
+--oradate_ne(oracle.date,oracle.date)
+CREATE FUNCTION oracle.oradate_ne(oracle.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_ne($1::timestamp, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<> (procedure = oracle.oradate_ne, leftarg = oracle.date , rightarg = oracle.date);
+
+--pgdate_ne_oradate(pg_catalog.date, oracle.date)
+CREATE FUNCTION oracle.pgdate_ne_oradate(pg_catalog.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.date_ne_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<> (procedure = oracle.pgdate_ne_oradate, leftarg = pg_catalog.date , rightarg = oracle.date);
+
+--oradate_ne_date(oracle.date, pg_catalog.date)
+CREATE FUNCTION oracle.oradate_ne_date(oracle.date,pg_catalog.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_ne_date($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<> (procedure = oracle.oradate_ne_date, leftarg = oracle.date , rightarg = pg_catalog.date);
+
+--oradate_ne_timestamptz(oracle.date, timestamptz)
+CREATE FUNCTION oracle.oradate_ne_timestamptz(oracle.date, timestamptz)
+RETURNS bool
+AS 'select pg_catalog.timestamp_ne_timestamptz($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.<> (procedure = oracle.oradate_ne_timestamptz, leftarg = oracle.date , rightarg = timestamptz);
+
+----------=----------------
+--oradate_eq_timestamptz(oracle.date, timestamptz)
+CREATE FUNCTION oracle.oradate_eq_timestamptz(oracle.date, timestamptz)
+RETURNS bool
+AS 'select pg_catalog.timestamp_eq_timestamptz($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.= (procedure = oracle.oradate_eq_timestamptz, leftarg = oracle.date , rightarg = timestamptz);
+
+--timestamptz_eq_oradate(timestamptz, oracle.date)
+CREATE FUNCTION oracle.timestamptz_eq_oradate(timestamptz, oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamptz_eq_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.= (procedure = oracle.timestamptz_eq_oradate, leftarg = timestamptz, rightarg = oracle.date);
+
+--oradate_eq(oracle.date, oracle.date)
+CREATE FUNCTION oracle.oradate_eq(oracle.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_eq($1::timestamp, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.= (procedure = oracle.oradate_eq, leftarg = oracle.date, rightarg = oracle.date);
+
+CREATE FUNCTION oracle.timestamp_eq_oradate(timestamp,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_eq($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.= (procedure = oracle.timestamp_eq_oradate, leftarg = timestamp, rightarg = oracle.date);
+
+CREATE FUNCTION oracle.oradate_eq_timestamp(oracle.date,timestamp)
+RETURNS bool
+AS 'select pg_catalog.timestamp_eq($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.= (procedure = oracle.oradate_eq_timestamp, leftarg = oracle.date, rightarg = timestamp);
+
+--pgdate_eq_oradate(pg_catalog.date,oracle.date)
+CREATE FUNCTION oracle.pgdate_eq_oradate(pg_catalog.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.date_eq_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.= (procedure = oracle.pgdate_eq_oradate, leftarg = pg_catalog.date, rightarg = oracle.date);
+
+--oradate_eq_date(oracle.date, pg_catalog.date) 
+CREATE FUNCTION oracle.oradate_eq_date(oracle.date,pg_catalog.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_eq_date($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.= (procedure = oracle.oradate_eq_date, leftarg = oracle.date, rightarg = pg_catalog.date);
+ 
+---------->----------------
+--oradate_gt(oracle.date, oracle.date)
+CREATE FUNCTION oracle.oradate_gt(oracle.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_gt($1::timestamp, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.> (procedure = oracle.oradate_gt, leftarg = oracle.date, rightarg = oracle.date);
+
+--timestamptz_gt_oradate(timestamptz,oracle.date)
+CREATE FUNCTION oracle.timestamptz_gt_oradate(timestamptz,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamptz_gt_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.> (procedure = oracle.timestamptz_gt_oradate, leftarg = timestamptz, rightarg = oracle.date);
+
+--oradate_gt_timestamptz(oracle.date, timestamptz)
+CREATE FUNCTION oracle.oradate_gt_timestamptz(oracle.date, timestamptz)
+RETURNS bool
+AS 'select pg_catalog.timestamp_gt_timestamptz($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.> (procedure = oracle.oradate_gt_timestamptz, leftarg = oracle.date, rightarg = timestamptz);
+
+--oradate_gt_pgdate(oracle.date, pg_catalog.date)
+CREATE FUNCTION oracle.oradate_gt_pgdate(oracle.date,pg_catalog.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_gt_date($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.> (procedure = oracle.oradate_gt_pgdate, leftarg = oracle.date, rightarg = pg_catalog.date);
+
+--pgdate_gt_oradate(pg_catalog.date, oracle.date)
+CREATE FUNCTION oracle.pgdate_gt_oradate(pg_catalog.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.date_gt_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.> (procedure = oracle.pgdate_gt_oradate, leftarg = pg_catalog.date, rightarg = oracle.date);
+
+---------->=----------------
+--pgdate_ge_oradate(pg_catalog.date, oracle.date)
+CREATE FUNCTION oracle.pgdate_ge_oradate(pg_catalog.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.date_ge_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.>= (procedure = oracle.pgdate_ge_oradate, leftarg = pg_catalog.date, rightarg = oracle.date);
+
+--oradate_ge
+CREATE FUNCTION oracle.oradate_ge(oracle.date,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_ge($1::timestamp, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.>= (procedure = oracle.oradate_ge, leftarg = oracle.date, rightarg = oracle.date);
+
+--oradate_ge_pgdate
+CREATE FUNCTION oracle.oradate_ge_pgdate(oracle.date,pg_catalog.date)
+RETURNS bool
+AS 'select pg_catalog.timestamp_ge_date($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.>= (procedure = oracle.oradate_ge_pgdate, leftarg = oracle.date, rightarg = pg_catalog.date);
+
+--oradate_ge_timestamptz
+CREATE FUNCTION oracle.oradate_ge_timestamptz(oracle.date,timestamptz)
+RETURNS bool
+AS 'select pg_catalog.timestamp_ge_timestamptz($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.>= (procedure = oracle.oradate_ge_timestamptz, leftarg = oracle.date, rightarg = timestamptz);
+
+--timestamptz_ge_oradate
+CREATE FUNCTION oracle.timestamptz_ge_oradate(timestamptz,oracle.date)
+RETURNS bool
+AS 'select pg_catalog.timestamptz_ge_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.>= (procedure = oracle.timestamptz_ge_oradate, leftarg = timestamptz, rightarg = oracle.date);
+
+
+--+   oracle.date + interval
+CREATE OR REPLACE FUNCTION oracle.oradate_pl_interval(oracle.date, interval)
+RETURNS oracle.date
+AS 'SELECT pg_catalog.timestamp_pl_interval($1::timestamp, $2)::oracle.date'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = interval,
+  PROCEDURE = oracle.oradate_pl_interval
+);
+
+--+    interval + oracle.date
+CREATE OR REPLACE FUNCTION oracle.interval_pl_oradate(interval, oracle.date)
+RETURNS oracle.date AS $$ 
+	select $2 operator(oracle.+) $1;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = interval,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.interval_pl_oradate
+);
+
+--+   oracle.date + real
+CREATE OR REPLACE FUNCTION oracle.oradate_pl_float4(oracle.date, real)
+RETURNS oracle.date
+AS $$ SELECT $1 operator(oracle.+) interval '1 day' * $2 $$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = real,
+  PROCEDURE = oracle.oradate_pl_float4
+);
+
+--+     real  +  oracle.date
+CREATE OR REPLACE FUNCTION oracle.float4_pl_oradate(real, t oracle.date)
+RETURNS oracle.date
+AS 'SELECT $2 operator(oracle.+)  $1'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = real,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.float4_pl_oradate
+);
+
+--+  oracle.date + double precision
+CREATE OR REPLACE FUNCTION oracle.oradate_pl_float8(oracle.date, double precision)
+RETURNS oracle.date
+AS $$ SELECT $1 + interval '1 day' * $2 $$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = double precision,
+  PROCEDURE = oracle.oradate_pl_float8
+);
+
+--+  double precision + oracle.date
+CREATE OR REPLACE FUNCTION oracle.float8_pl_oradate(double precision, oracle.date)
+RETURNS oracle.date
+AS 'SELECT $2 operator(oracle.+) $1'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = double precision,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.float8_pl_oradate
+);
+
+--+   oracle.date + numeric
+CREATE OR REPLACE FUNCTION oracle.oradate_add_numeric(oracle.date, numeric)
+RETURNS oracle.date
+AS $$
+	SELECT $1 operator(oracle.+) interval '1 day' * $2;
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.oradate_add_numeric
+);
+
+--+   numeric + oracle.date
+CREATE OR REPLACE FUNCTION oracle.numeric_add_oradate(numeric, oracle.date)
+RETURNS oracle.date AS  $$
+	SELECT $2 operator(oracle.+) $1;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = numeric,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.numeric_add_oradate
+);
+
+--+   text + oracle.date
+CREATE OR REPLACE FUNCTION oracle.oradate_add_text(oracle.date, text)
+RETURNS oracle.date
+AS $$
+	SELECT $1 operator(oracle.+) $2::interval;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = text,
+  PROCEDURE = oracle.oradate_add_text
+);
+
+CREATE OR REPLACE FUNCTION oracle.text_add_oradate(text, oracle.date)
+RETURNS oracle.date
+AS $$
+	SELECT $2 operator(oracle.+) $1::interval;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = text,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.text_add_oradate
+);
+
+--+
+CREATE OR REPLACE FUNCTION oracle.oradate_add_integer(oracle.date, integer)
 RETURNS timestamp AS $$
 SELECT $1 + interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, integer)
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = integer,
+  PROCEDURE = oracle.oradate_add_integer
+);
+
+CREATE OR REPLACE FUNCTION oracle.integer_add_oradate(integer, oracle.date)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+SELECT $2 + interval '1 day' * $1;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,bigint)
-RETURNS timestamp AS $$
-SELECT $1 + interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = integer,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.integer_add_oradate
+);
 
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, bigint)
-RETURNS timestamp AS $$
-SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
+-- -    oracle.date - interval
+CREATE OR REPLACE FUNCTION oracle.oradate_mi_interval(oracle.date, interval)
+RETURNS oracle.date 
+AS 'select pg_catalog.timestamp_mi_interval($1::timestamp, $2)::oracle.date'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = interval,
+  PROCEDURE = oracle.oradate_mi_interval
+);
 
-CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,smallint)
-RETURNS timestamp AS $$
-SELECT $1 + interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, smallint)
-RETURNS timestamp AS $$
-SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,numeric)
-RETURNS timestamp AS $$
-SELECT $1 + interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, numeric)
-RETURNS timestamp AS $$
-SELECT $1 - interval '1 day' * $2;
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date,oracle.date)
+CREATE OR REPLACE FUNCTION oracle.oradatesubtract(oracle.date,oracle.date)
 RETURNS double precision AS $$
 SELECT date_part('epoch', ($1::timestamp - $2::timestamp)/3600/24);
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OPERATOR oracle.+ (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = INTEGER,
-  PROCEDURE = oracle.add_days_to_timestamp
-);
-
-CREATE OPERATOR oracle.- (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = INTEGER,
-  PROCEDURE = oracle.subtract
-);
-
-CREATE OPERATOR oracle.+ (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = bigint,
-  PROCEDURE = oracle.add_days_to_timestamp
-);
-
-CREATE OPERATOR oracle.- (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = bigint,
-  PROCEDURE = oracle.subtract
-);
-
-CREATE OPERATOR oracle.+ (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = smallint,
-  PROCEDURE = oracle.add_days_to_timestamp
-);
-
-CREATE OPERATOR oracle.- (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = smallint,
-  PROCEDURE = oracle.subtract
-);
-
-CREATE OPERATOR oracle.+ (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = numeric,
-  PROCEDURE = oracle.add_days_to_timestamp
-);
-
-CREATE OPERATOR oracle.- (
-  LEFTARG   = oracle.date,
-  RIGHTARG  = numeric,
-  PROCEDURE = oracle.subtract
-);
-
 CREATE OPERATOR oracle.- (
   LEFTARG   = oracle.date,
   RIGHTARG  = oracle.date,
-  PROCEDURE = oracle.subtract
+  PROCEDURE = oracle.oradatesubtract
 );
+
+-- -	oracle.date - oracle.date
+CREATE OR REPLACE FUNCTION oracle.oradate_mi(oracle.date, oracle.date)
+RETURNS interval 
+AS 	'select  pg_catalog.timestamp_mi($1::timestamp, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR pg_catalog.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.oradate_mi
+);
+
+-- -    oracle.date - numeric
+CREATE OR REPLACE FUNCTION oracle.oradate_mi_numeric(oracle.date, numeric)
+RETURNS oracle.date AS $$
+	SELECT $1 OPERATOR(oracle.-) interval '1 day' * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.oradate_mi_numeric
+);
+
+-- -     oracle.date - double precision
+CREATE OR REPLACE FUNCTION oracle.oradatedate_mi_float8(oracle.date, double precision)
+RETURNS oracle.date AS
+	$$SELECT $1 OPERATOR(oracle.-) interval '1 day' * $2$$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = double precision,
+  PROCEDURE = oracle.oradatedate_mi_float8
+);
+
+-- -     oracle.date - real
+CREATE OR REPLACE FUNCTION oracle.oradate_mi_float4(oracle.date, real)
+RETURNS oracle.date AS
+	$$SELECT $1 OPERATOR(oracle.-) interval '1 day' * $2$$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = real,
+  PROCEDURE = oracle.oradate_mi_float4
+);
+
+-- -
+CREATE OR REPLACE FUNCTION oracle.oradate_mi_integer(oracle.date, integer)
+RETURNS timestamp AS $$
+SELECT $1 OPERATOR(oracle.-) interval '1 day' * $2;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = integer,
+  PROCEDURE = oracle.oradate_mi_integer
+);
+
+-- <     timestamp with time zone + oracle.date
+CREATE OR REPLACE FUNCTION oracle.timestamptz_lt_oradate(timestamp with time zone, oracle.date)
+RETURNS boolean
+AS 'select pg_catalog.timestamptz_lt_timestamp($1, $2::timestamp)'
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = timestamptz,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.timestamptz_lt_oradate
+);
+
+-- <      pg_catalog.date < oracle.date
+CREATE OR REPLACE FUNCTION oracle.pgdate_lt_oradate(pg_catalog.date, oracle.date)
+RETURNS boolean
+AS 'select pg_catalog.date_lt_timestamp($1, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = pg_catalog.date,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.pgdate_lt_oradate
+);
+
+-- <      oracle.date < oracle.date
+CREATE OR REPLACE FUNCTION oracle.oradate_lt(oracle.date, oracle.date)
+RETURNS boolean
+AS 'select pg_catalog.timestamp_lt($1::timestamp, $2::timestamp)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.oradate_lt
+);
+
+-- <       oracle.date < pg_catalog.date
+CREATE OR REPLACE FUNCTION oracle.oradate_lt_pgdate(oracle.date, pg_catalog.date)
+RETURNS boolean
+AS 'select pg_catalog.timestamp_lt_date($1::timestamp, $2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = pg_catalog.date,
+  PROCEDURE = oracle.oradate_lt_pgdate
+);
+
+-- <       oracle.date < timestamp with time zone
+CREATE OR REPLACE FUNCTION oracle.oradate_lt_timestamptz(oracle.date, timestamp with time zone)
+RETURNS boolean
+AS 'select pg_catalog.timestamp_lt_timestamptz($1::timestamp, $2)'
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = timestamptz,
+  PROCEDURE = oracle.oradate_lt_timestamptz
+);
+
+-- operator class
+CREATE OPERATOR CLASS oradateops DEFAULT FOR TYPE oracle.date USING hash AS OPERATOR 1 oracle.=;
+
+CREATE FUNCTION oracle.ora_dateoperator(oracle.date,oracle.date) RETURNS int  AS $$
+BEGIN 
+	IF($1<$2) THEN
+		RETURN -1;
+	ELSIF($1>$2) THEN
+		RETURN 1;
+	END IF;
+		RETURN 0;
+END;
+$$
+language 'plpgsql' immutable;
+
+CREATE OPERATOR CLASS ora_dateops DEFAULT FOR TYPE oracle.date USING btree AS
+OPERATOR 1 oracle.<,
+OPERATOR 2 oracle.<=,
+OPERATOR 3 oracle.=,
+OPERATOR 4 oracle.>=,
+OPERATOR 5 oracle.>,
+FUNCTION 1 oracle.ora_dateoperator(oracle.date, oracle.date);
+
+CREATE FUNCTION oracle.to_char(oracle.date)
+RETURNS TEXT
+AS 'select oracle.to_char($1::timestamp)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.trunc(value oracle.date)
+RETURNS timestamp without time zone
+AS $$ SELECT pg_catalog.trunc($1::timestamp, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.trunc(value oracle.date) IS 'truncate date according to the specified format';
+
+CREATE FUNCTION oracle.round(value oracle.date)
+RETURNS timestamp without time zone
+AS $$ SELECT pg_catalog.round($1::timestamp, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.round(oracle.date) IS 'will round dates according to the specified format';
+
+-- oracle.date_trunc
+CREATE OR REPLACE FUNCTION oracle.date_trunc(text, oracle.date)
+RETURNS oracle.date AS
+	'SELECT pg_catalog.date_trunc($1, $2::timestamp)::oracle.date'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
 CREATE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
@@ -2357,6 +2849,14 @@ WITH INOUT
 AS IMPLICIT;
 
 CREATE CAST (timestamp AS oracle.varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (oracle.date AS oracle.varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (oracle.varchar2 AS oracle.date)
 WITH INOUT
 AS IMPLICIT;
 
@@ -6251,6 +6751,11 @@ RETURNS timestamp AS $$
 SELECT $1::timestamp + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
+RETURNS timestamp AS $$
+SELECT $1 + interval '1 day' * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
 --subtract function
 CREATE OR REPLACE FUNCTION oracle.subtract(timestamptz, numeric)
 RETURNS timestamptz AS $$
@@ -6268,3 +6773,22 @@ RETURNS timestamp
 AS 'MODULE_PATHNAME','new_time'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION  oracle.new_time(timestamptz, text, text) IS 'returns the date and time in time zone timezone2 when date and time in time zone timezone1 are date.';
+
+CREATE FUNCTION oracle.orafce_concat2(oracle.date, oracle.date)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(text, oracle.date)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+
+CREATE FUNCTION oracle.orafce_concat2(oracle.date, text)
+RETURNS oracle.varchar2
+AS 'select oracle.orafce_concat2($1::oracle.varchar2, $2::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE;
+ 
+CREATE OPERATOR oracle.|| (LEFTARG = oracle.date, RIGHTARG = oracle.date, PROCEDURE = oracle.orafce_concat2);
+CREATE OPERATOR oracle.|| (LEFTARG = text, RIGHTARG = oracle.date, PROCEDURE = oracle.orafce_concat2);
+CREATE OPERATOR oracle.|| (LEFTARG = oracle.date, RIGHTARG = text, PROCEDURE = oracle.orafce_concat2);

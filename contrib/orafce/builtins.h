@@ -309,6 +309,14 @@ extern PGDLLEXPORT Datum ora_days_between(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_days_between_tmtz(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum new_time(PG_FUNCTION_ARGS);
 
-
+/* from date.c, oracle date type */
+extern PGDLLEXPORT Datum ora_date_in(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_date_out(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_date_recv(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_date_send(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum timestamp_pl_float4(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum timestamp_pl_float8(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum timestamp_mi_float4(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum timestamp_mi_float8(PG_FUNCTION_ARGS);
 
 #endif
