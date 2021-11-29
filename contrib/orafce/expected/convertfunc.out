@@ -396,4 +396,140 @@ select oracle.interval_to_seconds('P1Y');
 ERROR:  interval include month, it's not suitable to transfer to seconds!
 select oracle.interval_to_seconds('P1Y2M');
 ERROR:  interval include month, it's not suitable to transfer to seconds!
+select oracle.to_yminterval('01-02');
+ to_yminterval 
+---------------
+ 1 year 2 mons
+(1 row)
+
+select oracle.to_yminterval('P1Y2M2D');
+ to_yminterval 
+---------------
+ 1 year 2 mons
+(1 row)
+
+select oracle.to_yminterval('P1Y');
+ to_yminterval 
+---------------
+ 1 year
+(1 row)
+
+select oracle.to_yminterval('-P1Y2M');
+  to_yminterval   
+------------------
+ -1 years -2 mons
+(1 row)
+
+select oracle.to_yminterval('+P1Y1M');
+ERROR:  invalid input syntax for type interval: "+P1Y1M"
+select oracle.to_yminterval('P1Y-2M2D');
+ to_yminterval 
+---------------
+ 10 mons
+(1 row)
+
+select oracle.to_yminterval(' 01 -  02');
+ to_yminterval 
+---------------
+ 1 year 2 mons
+(1 row)
+
+select oracle.to_yminterval(NULL);
+ to_yminterval 
+---------------
+ 
+(1 row)
+
+select oracle.to_yminterval('-01-02');
+  to_yminterval   
+------------------
+ -1 years -2 mons
+(1 row)
+
+select oracle.to_yminterval('+01-02');
+ to_yminterval 
+---------------
+ 1 year 2 mons
+(1 row)
+
+select oracle.to_yminterval('-01-02-03');
+ERROR:  parameter is invalid!
+select oracle.to_dsinterval('P1Y1M2D');
+ERROR:  parameter is invalid!
+select oracle.to_dsinterval('100 00:02:00');
+   to_dsinterval   
+-------------------
+ 100 days 00:02:00
+(1 row)
+
+select oracle.to_dsinterval('100 00 :02 :00');
+   to_dsinterval   
+-------------------
+ 100 days 00:02:00
+(1 row)
+
+select oracle.to_dsinterval('+100 00:02:00');
+   to_dsinterval   
+-------------------
+ 100 days 00:02:00
+(1 row)
+
+select oracle.to_dsinterval(NULL);
+ to_dsinterval 
+---------------
+ 
+(1 row)
+
+select oracle.to_dsinterval('100 -10:02:00');
+ERROR:  parameter is invalid!
+select oracle.to_dsinterval('100 +10:10:10');
+ERROR:  parameter is invalid!
+select oracle.to_dsinterval('P100DT5H');
+   to_dsinterval   
+-------------------
+ 100 days 05:00:00
+(1 row)
+
+select oracle.to_dsinterval('+P100DT5H');
+ERROR:  invalid input syntax for type interval: "+P100DT5H"
+select oracle.to_dsinterval('-100 10:00:00');
+    to_dsinterval    
+---------------------
+ -100 days -10:00:00
+(1 row)
+
+select oracle.to_dsinterval('-P100DT5H');
+    to_dsinterval    
+---------------------
+ -100 days -05:00:00
+(1 row)
+
+select oracle.to_dsinterval('-P100DT');
+ERROR:  parameter is invalid!
+select oracle.to_dsinterval('-P100D');
+ to_dsinterval 
+---------------
+ -100 days
+(1 row)
+
+select oracle.to_dsinterval('-P100DT20H');
+    to_dsinterval    
+---------------------
+ -100 days -20:00:00
+(1 row)
+
+select oracle.to_dsinterval('-P100DT20S');
+    to_dsinterval    
+---------------------
+ -100 days -00:00:20
+(1 row)
+
+select oracle.to_dsinterval('-P100DT20');
+ to_dsinterval 
+---------------
+ -100 days
+(1 row)
+
+select oracle.to_dsinterval('-P100DT20H2');
+ERROR:  invalid input syntax for type interval: "-P100DT20H2"
 set compatible_mode to default;

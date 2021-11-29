@@ -39,6 +39,8 @@ PG_FUNCTION_INFO_V1(orafce_to_binary_double);
 PG_FUNCTION_INFO_V1(orafce_hex_to_decimal);
 PG_FUNCTION_INFO_V1(orafce_to_timestamp_tz);
 PG_FUNCTION_INFO_V1(orafce_interval_to_seconds);
+PG_FUNCTION_INFO_V1(orafce_to_yminterval);
+PG_FUNCTION_INFO_V1(orafce_to_dsinterval);
 
 Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 static int getindex(const char **map, char *mbchar, int mblen);
@@ -1172,4 +1174,393 @@ orafce_interval_to_seconds(PG_FUNCTION_ARGS)
 	seconds = days * SECS_PER_DAY + secs;
 
 	PG_RETURN_FLOAT8(seconds);
+}
+
+/* the orafce_to_dsinterval converts a interval datatype to an INTERVAL YEAR TO MONTH type. */
+Datum
+orafce_to_yminterval(PG_FUNCTION_ARGS)
+{
+	text	   *arg = PG_GETARG_TEXT_PP(0);
+	char	   *buf = NULL;
+	char	   *buffer = NULL;
+	char	   *buffer1 = NULL;
+	int32		j = 0;
+	Interval   *result;
+	char		ch;
+	bool		flag = false;
+	bool		flag1 = false;
+	bool		flag2 = false;
+	int32		len = 0;
+
+	buf = text_to_cstring(arg);
+	len = strlen(buf);
+	if(*buf == '+' || *buf == '-')
+	{
+		ch = buf[0];
+		buf += 1;
+		flag1 = true;
+	}
+	if(*buf != 'P')
+	{
+		int 	    i = 0,num = 0;
+		char	   *str1 = NULL;
+		char	   *str2 = NULL;
+		char	   *buf4 = NULL;
+		text       *ret1, *ret2;
+		char	   *str3 = NULL;
+		int 		tmp = 0 ;
+		bool		flg = false;
+		bool		flg1 = false;
+
+		for(i = 0 ; i < strlen(buf); i++)
+		{
+			if(buf[i] == '-')
+				num++;
+			if((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '-' || buf[i] == ':' || buf[i]== ' ')
+				continue;
+			else
+				num++;
+		}
+		str1 = (char*)palloc(len + 1);
+		str2 = (char*)palloc(len + 1);
+		str3 = (char*)palloc(len + 1);
+
+		j = sscanf(buf, "%[ 0-9 ]-%[ 0-9 ]", str1, str2);
+
+		/* deal the second part,such as '02' or '02 - 03' */
+		for(i = 0; i < strlen(str2); i++)
+		{
+			if(str2[i] == ' ')
+			{
+				tmp = i;
+				break;
+			}
+		}
+		if(tmp)
+		{
+			for(i = tmp + 1; i < strlen(str2); i++)
+			{
+				if(str2[i] != ' ' && str2[i] != '\'')
+				{
+					flg1 = true;
+					break;
+				}
+			}
+		}
+
+		if(!(j == 2) || num > 1 || flg1)
+		{
+			pfree(str1);
+			pfree(str2);
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("parameter is invalid!")));
+		}
+		ret1 = DatumGetTextPP(DirectFunctionCall1(btrim1,
+								PointerGetDatum(cstring_to_text(str1))));
+		if(flg)
+			ret2 = DatumGetTextPP(DirectFunctionCall1(btrim1,
+									PointerGetDatum(cstring_to_text(str3))));
+		else
+			ret2 = DatumGetTextPP(DirectFunctionCall1(btrim1,
+									PointerGetDatum(cstring_to_text(str2))));
+
+		buf4 = (char*)palloc(len + 1);
+		if(flag1)
+			sprintf(buf4, "%c%s-%s" , ch, text_to_cstring(ret1), text_to_cstring(ret2));
+		else
+			sprintf(buf4, "%s-%s" , text_to_cstring(ret1), text_to_cstring(ret2));
+
+		buffer = (char *) palloc(strlen(buf4) + 1);
+		memcpy(buffer, buf4, strlen(buf4) + 1);
+		flag = true;
+		pfree(str1);
+		pfree(str2);
+		pfree(buf4);
+		pfree(str3);
+	}
+	if(*buf == 'P')
+	{
+		/* deal format P1Y2M3DT2H3M2S */
+		char	   *newstr = NULL;
+		int 		len1 = 0;
+		int 		tmp = 0 ,tmp1 = 0;
+
+		if(flag1)
+			buf -= 1;
+
+		/* intercept the part before M */
+		if(strchr(buf, 'M'))
+		{
+			newstr = strstr(buf, "M");
+			len1 = newstr - buf + 1;
+			for(j = 0; j< len1; j++)
+			{
+				if(buf[j] == 'T')
+				{
+					tmp = j;
+					break;
+				}
+			}
+			if(tmp)
+			{
+				if(strchr(buf, 'Y'))
+				{
+					for(j =0 ; j < tmp; j++)
+					{
+						if(buf[j] == 'Y')
+						{
+							tmp1 = j + 1;
+							break;
+						}
+					}
+				}
+				if(tmp1)
+				{
+					flag2 = true;
+					buffer1 = (char*)palloc(tmp1 + 1);
+					MemSet(buffer1, 0x00, (tmp1 + 1));
+				}
+			}
+			else
+			{
+				flag2 = true;
+				buffer1 = (char*)palloc(len1 + 1);
+				MemSet(buffer1, 0x00, (len1 + 1));
+				memcpy(buffer1, buf, len1);
+			}
+		}
+		else if(strchr(buf, 'Y'))
+		{
+			char	*nextstr = strstr(buf, "Y");
+			tmp 	= nextstr - buf + 1;
+			if(tmp)
+			{
+				flag2 = true;
+				buffer1 = (char*)palloc(tmp + 1);
+				MemSet(buffer1, 0x00, (tmp + 1));
+				memcpy(buffer1, buf, tmp);
+			}
+		}
+
+	}
+	if(flag)
+	{
+		result = DatumGetIntervalP(DirectFunctionCall3(interval_in,
+														CStringGetDatum(buffer),
+														ObjectIdGetDatum(InvalidOid),
+														Int32GetDatum(-1)));
+		pfree(buffer);
+	}
+	else
+	{
+		if(flag2)
+		{
+			buf = buffer1;
+			result = DatumGetIntervalP(DirectFunctionCall3(interval_in,
+															CStringGetDatum(buf),
+															ObjectIdGetDatum(InvalidOid),
+															Int32GetDatum(-1)));
+			pfree(buffer1);
+		}
+		else
+		{
+			result = DatumGetIntervalP(DirectFunctionCall3(interval_in,
+														CStringGetDatum(buf-1),
+														ObjectIdGetDatum(InvalidOid),
+														Int32GetDatum(-1)));
+			pfree(buf - 1);
+		}
+	}
+	PG_RETURN_INTERVAL_P(result);
+}
+
+/* converts a interval datatype to an INTERVAL DAY TO SECOND type. */
+Datum
+orafce_to_dsinterval(PG_FUNCTION_ARGS)
+{
+	text	   *arg = PG_GETARG_TEXT_PP(0);
+	char	   *buf = NULL;
+	char	   *buffer = NULL;
+	char	   *newbuf = NULL;
+	int32		j = 0;
+	Interval   *result;
+	char		ch;
+	bool		flag = false;
+	bool		flag1 = false;
+	bool		flag2 = true;
+	bool		flag4 = false;
+	bool		flag5 = false;
+	int32		len = 0;
+
+	buf = text_to_cstring(arg);
+	len = strlen(buf);
+	if(*buf == '+' || *buf == '-')
+	{
+		ch = buf[0];
+		buf += 1;
+		flag1 = true;
+	}
+	if(*buf != 'P')
+	{
+		char	   *buf1 = NULL;
+		char	   *buf2 = NULL;
+		char	   *buf3 = NULL;
+		char	   *buf4 = NULL;
+		text	   *ret1, *ret2, *ret3;
+		int			i = 0;
+
+		for(i = 0 ; i < strlen(buf); i++)
+		{
+			if((buf[i] >= '0' && buf[i] <= '9') || buf[i] == ':' || buf[i]== ' ')
+				continue;
+			else
+			{
+				flag5 = true;
+				break;
+			}
+		}
+		buf1 = (char*)palloc(strlen(buf) + 1);
+		buf2 = (char*)palloc(strlen(buf) + 1);
+		buf3 = (char*)palloc(strlen(buf) + 1);
+
+		j = sscanf(buf, "%[ 0-9 ]:%[ 0-9 ]:%[ 0-9.0-9 ]", buf1, buf2, buf3);
+		if(!(j == 3) || flag5)
+		{
+			pfree(buf1);
+			pfree(buf2);
+			pfree(buf3);
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("parameter is invalid!")));
+		}
+		ret1 = DatumGetTextPP(DirectFunctionCall1(btrim1,\
+									PointerGetDatum(cstring_to_text(buf1))));
+		ret2 = DatumGetTextPP(DirectFunctionCall1(btrim1,\
+									PointerGetDatum(cstring_to_text(buf2))));
+		ret3 = DatumGetTextPP(DirectFunctionCall1(btrim1,\
+									PointerGetDatum(cstring_to_text(buf3))));
+
+		buf4 = (char*)palloc(len + 1);
+		if(flag1)
+			sprintf(buf4,"%c%s:%s:%s", ch, text_to_cstring(ret1),\
+					text_to_cstring(ret2), text_to_cstring(ret3));
+		else
+			sprintf(buf4, "%s:%s:%s", text_to_cstring(ret1),\
+					text_to_cstring(ret2), text_to_cstring(ret3));
+		buffer = (char*) palloc(strlen(buf4) + 1);
+		memcpy(buffer, buf4, strlen(buf4) + 1);
+		flag = true;
+		pfree(buf1);
+		pfree(buf2);
+		pfree(buf3);
+		pfree(buf4);
+	}
+	if(*buf == 'P')
+	{
+		int 		i = 0,
+					len2 = 0;
+		int 		len3 = 0 ;
+		char	   *str = NULL;
+		char	   *newstr = NULL;
+		bool		flag3 = false;
+
+		if(flag1)
+			buf -= 1;
+
+		/*
+		 * check whether the parameters are standardized
+		 * Y/M is an invalid format character
+		 */
+		if(strchr(buf, 'T'))
+		{
+			str = strstr(buf, "T");
+			len2 = str - buf + 1;
+			for(i = 0; i < len2; i++)
+			{
+				if(buf[i] == 'Y' || buf[i] == 'M')
+				{
+					flag3 = true;
+					break;
+				}
+			}
+		}
+		else if(strchr(buf, 'D'))
+		{
+			str = strstr(buf, "D");
+			len2 = str - buf + 1;
+			for(i = 0; i < len2; i++)
+			{
+				if(buf[i] == 'Y' || buf[i] == 'M')
+				{
+					flag3 = true;
+					break;
+				}
+			}
+		}
+		else
+		{
+			flag3 = true;
+		}
+		len2 = strlen(buf);
+		if(buf[len2 - 1] == 'T')
+				flag3 = true;
+		if(flag3)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("parameter is invalid!")));
+
+		/*
+		 * if there is no H/M/S after T,the parameter is invalid
+		 * for example:-P100DT20,20 is an invalid parameter,intercept the part before T
+		 */
+		if(strstr(buf, "T"))
+		{
+			newstr = strstr(buf, "T");
+			for(i = 0;i < strlen(newstr); i++)
+			{
+				if(newstr[i] == 'H' || newstr[i] == 'M' || newstr[i] == 'S')
+				{
+					flag2 = false;
+					break;
+				}
+			}
+			if(flag2)
+			{
+				len3 = newstr - buf;
+				newbuf = (char*)palloc(len3 + 1);
+				MemSet(newbuf, 0x0, len3 + 1);
+				memcpy(newbuf, buf, len3);
+				flag4 = true;
+			}
+		}
+	}
+	if(flag)
+	{
+		result = DatumGetIntervalP(DirectFunctionCall3(interval_in,\
+														CStringGetDatum(buffer),
+														ObjectIdGetDatum(InvalidOid),
+														Int32GetDatum(-1)));
+		pfree(buffer);
+	}
+	else
+	{
+		if(flag2 && flag4)
+		{
+			result = DatumGetIntervalP(DirectFunctionCall3(interval_in,\
+										CStringGetDatum(newbuf) ,
+										ObjectIdGetDatum(InvalidOid),
+										Int32GetDatum(-1)));
+			pfree(newbuf);
+		}
+		else
+		{
+			result = DatumGetIntervalP(DirectFunctionCall3(interval_in,\
+										CStringGetDatum(buf) ,
+										ObjectIdGetDatum(InvalidOid),
+										Int32GetDatum(-1)));
+			pfree(buf);
+		}
+	}
+	PG_RETURN_INTERVAL_P(result);
 }
