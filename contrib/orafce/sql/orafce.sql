@@ -519,6 +519,7 @@ SELECT to_date('2009-01-02');
 
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
 SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::numeric(10, 8);
+SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
 SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);
 SELECT nanvl(12345::float8, 1), nanvl('NaN'::float8, 1);
@@ -531,6 +532,7 @@ SELECT nanvl(12345, '1'::char), nanvl('NaN', 1::char);
 SELECT nanvl(12345::float4, '1'::char), nanvl('NaN'::float4, '1'::char);
 SELECT nanvl(12345::float8, '1'::char), nanvl('NaN'::float8, '1'::char);
 SELECT nanvl(12345::numeric, '1'::char), nanvl('NaN'::numeric, '1'::char);
+SET search_path TO default;
 
 select dbms_assert.enquote_literal('some text '' some text');
 select dbms_assert.enquote_name('''"AAA');
