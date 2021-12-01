@@ -2533,6 +2533,7 @@ SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::
  2.30129808 | 2.50917773 | 0.99932930
 (1 row)
 
+SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
  nanvl | nanvl 
 -------+-------
@@ -2605,6 +2606,7 @@ SELECT nanvl(12345::numeric, '1'::char), nanvl('NaN'::numeric, '1'::char);
  12345 |     1
 (1 row)
 
+SET search_path TO default;
 select dbms_assert.enquote_literal('some text '' some text');
      enquote_literal      
 --------------------------
