@@ -2,6 +2,204 @@ set datestyle = ISO ,YMD;
 set timezone = 'Asia/Shanghai';
 set intervalstyle = postgres;
 set compatible_mode = 'oracle';
+select oracle.to_date('50-11-28 17:04:55','RR-MM-dd hh24:mi:ss');
+       to_date       
+---------------------
+ 1950-11-28 17:04:55
+(1 row)
+
+select oracle.to_date('50-11-28 17:04:55','YY-MM-dd hh24:mi:ss');
+       to_date       
+---------------------
+ 2050-11-28 17:04:55
+(1 row)
+
+select oracle.to_date('50-11-28','rr-MM-dd ');
+       to_date       
+---------------------
+ 1950-11-28 00:00:00
+(1 row)
+
+select oracle.to_date('50-11-28 ','YY-MM-dd hh24:mi:ss');
+       to_date       
+---------------------
+ 2050-11-28 00:00:00
+(1 row)
+
+select oracle.to_date('50-11-28 ','RR-MM-dd hh24:mi:ss');
+       to_date       
+---------------------
+ 1950-11-28 00:00:00
+(1 row)
+
+select oracle.to_date('50-11-28 ','RR-MM-dd ');
+       to_date       
+---------------------
+ 1950-11-28 00:00:00
+(1 row)
+
+select oracle.to_date(2454336, 'J');
+       to_date       
+---------------------
+ 2007-08-23 00:00:00
+(1 row)
+
+select oracle.to_date(2454336, 'j');
+       to_date       
+---------------------
+ 2007-08-23 00:00:00
+(1 row)
+
+select oracle.to_date('2019/11/22', 'yyyy-mm-dd');
+       to_date       
+---------------------
+ 2019-11-22 00:00:00
+(1 row)
+
+select oracle.to_date('20-11-28','YY-MM-dd hh24:mi:ss');
+       to_date       
+---------------------
+ 2020-11-28 00:00:00
+(1 row)
+
+select oracle.to_date('20-11-28 10:14:22','YY-MM-dd hh24:mi:ss');
+       to_date       
+---------------------
+ 2020-11-28 10:14:22
+(1 row)
+
+select oracle.to_date('2019/11/22');
+       to_date       
+---------------------
+ 2019-11-22 00:00:00
+(1 row)
+
+select oracle.to_date('2019/11/27 10:14:22');
+       to_date       
+---------------------
+ 2019-11-27 10:14:22
+(1 row)
+
+select oracle.to_date('120','rr');
+       to_date       
+---------------------
+ 0120-01-01 00:00:00
+(1 row)
+
+select oracle.to_date('120','RR');
+       to_date       
+---------------------
+ 0120-01-01 00:00:00
+(1 row)
+
+select oracle.to_date('2020','RR');
+       to_date       
+---------------------
+ 2020-01-01 00:00:00
+(1 row)
+
+select oracle.to_date(NULL);
+ to_date 
+---------
+ 
+(1 row)
+
+select oracle.to_date(NULL,NULL);
+ to_date 
+---------
+ 
+(1 row)
+
+--test SYYYY date type
+select oracle.to_date('07--4712-23 14:31:23', 'MM-SYYYY-DD HH24:MI:SS');
+       to_date        
+----------------------
+ -4712-07-23 14:31:23
+(1 row)
+
+select oracle.to_date('07-2019-23 14:31:23', 'MM-SYYYY-DD HH24:MI:SS');
+       to_date       
+---------------------
+ 2019-07-23 14:31:23
+(1 row)
+
+select oracle.to_date('9999-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+       to_date       
+---------------------
+ 9999-07-23 14:31:23
+(1 row)
+
+select oracle.to_date('-4712-07-23 14:31:23', 'syyyy-mm-dd hh24:mi:ss');
+       to_date        
+----------------------
+ -4712-07-23 14:31:23
+(1 row)
+
+select oracle.to_date('-1-07-23 14:31:23', 'syyyy-mm-dd hh24:mi:ss');
+       to_date        
+----------------------
+ -0001-07-23 14:31:23
+(1 row)
+
+select oracle.to_date('+2021-07-23 14:31:23', 'syyyy-mm-dd hh24:mi:ss');
+       to_date       
+---------------------
+ 2021-07-23 14:31:23
+(1 row)
+
+select oracle.to_date('07--2019-23', 'MM-SYYYY-DD');
+       to_date        
+----------------------
+ -2019-07-23 00:00:00
+(1 row)
+
+select oracle.to_date('-2019', 'SYYYY');
+       to_date        
+----------------------
+ -2019-01-01 00:00:00
+(1 row)
+
+select oracle.to_date('2019', 'syyyy');
+       to_date       
+---------------------
+ 2019-01-01 00:00:00
+(1 row)
+
+create table test1(d oracle.date);
+insert into test1 values (oracle.to_date('2009-12-2', 'syyyy-mm-dd'));
+insert into test1 values (oracle.to_date('-1452-12-2', 'syyyy-mm-dd'));
+select oracle.to_char(d, 'bcyyyy-mm-dd') from test1;
+   to_char    
+--------------
+ ad2009-12-02
+ bc1453-12-02
+(2 rows)
+
+select * from test1;
+          d           
+----------------------
+ 2009-12-02 00:00:00
+ -1452-12-02 00:00:00
+(2 rows)
+
+--error
+select oracle.to_date('-0-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+ERROR:  YEAR must be between -4713 and +9999, and not be 0
+CONTEXT:  SQL function "to_date" statement 1
+select oracle.to_date('-4713-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+ERROR:  YEAR must be between -4713 and +9999, and not be 0
+CONTEXT:  SQL function "to_date" statement 1
+select oracle.to_date('--2021-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+ERROR:  invalid value "--202" for "SYYYY"
+DETAIL:  Value must be an integer.
+CONTEXT:  SQL function "to_date" statement 1
+select oracle.to_date('10000-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+ERROR:  YEAR must be between -4713 and +9999, and not be 0
+CONTEXT:  SQL function "to_date" statement 1
+select oracle.to_date('-2021-07-23 14:31:23', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  negative YEAR must use SYYYY format
+CONTEXT:  SQL function "to_date" statement 1
+drop table test1;
 select oracle.bin_to_num(1,0,1);
  bin_to_num 
 ------------

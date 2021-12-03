@@ -51,7 +51,7 @@ extern int	pg_ultoa_n(uint32 l, char *a);
 extern int	pg_ulltoa_n(uint64 l, char *a);
 extern int	pg_ltoa(int32 l, char *a);
 extern int	pg_lltoa(int64 ll, char *a);
-extern char *pg_ultostr_zeropad(char *str, uint32 value, int32 minwidth);
+extern char *pg_ultostr_zeropad(char *str, int32 value, int32 minwidth);
 extern char *pg_ultostr(char *str, uint32 value);
 extern uint64 pg_strtouint64(const char *str, char **endptr, int base);
 
