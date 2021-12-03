@@ -1,0 +1,7 @@
+contact_links:
+  - name: Join IvorySQL Users mailing list
+    url: https://lists.ivorysql.org/postorius/lists/general.ivorysql.org/
+    about: General discussion area for IvorySQL users.
+  - name: Join IvorySQL Hackers mailing list
+    url: https://lists.ivorysql.org/postorius/lists/hackers.ivorysql.org/
+    about: Discussion of current development issues, problems, bugs, and proposed new features
