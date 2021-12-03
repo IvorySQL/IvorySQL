@@ -3942,7 +3942,13 @@ EncodeTimezone(char *str, int tz, int style)
 void
 EncodeDateOnly(struct pg_tm *tm, int style, char *str)
 {
+	int		width = 4;
+
 	Assert(tm->tm_mon >= 1 && tm->tm_mon <= MONTHS_PER_YEAR);
+
+	/* In oracle schema,if is BC data,width should be 5. */
+	if(compatible_db == COMPATIBLE_ORA && tm->tm_year <= 0)
+		width = 5;
 
 	switch (style)
 	{
@@ -3950,7 +3956,9 @@ EncodeDateOnly(struct pg_tm *tm, int style, char *str)
 		case USE_XSD_DATES:
 			/* compatible with ISO date formats */
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (tm->tm_year - 1) : -(tm->tm_year - 1)),
+									 width);
 			*str++ = '-';
 			str = pg_ultostr_zeropad(str, tm->tm_mon, 2);
 			*str++ = '-';
@@ -3973,7 +3981,9 @@ EncodeDateOnly(struct pg_tm *tm, int style, char *str)
 			}
 			*str++ = '/';
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (tm->tm_year - 1) : -(tm->tm_year - 1)),
+									 width);
 			break;
 
 		case USE_GERMAN_DATES:
@@ -3983,7 +3993,9 @@ EncodeDateOnly(struct pg_tm *tm, int style, char *str)
 			str = pg_ultostr_zeropad(str, tm->tm_mon, 2);
 			*str++ = '.';
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (tm->tm_year - 1) : -(tm->tm_year - 1)),
+									 width);
 			break;
 
 		case USE_POSTGRES_DATES:
@@ -4003,11 +4015,14 @@ EncodeDateOnly(struct pg_tm *tm, int style, char *str)
 			}
 			*str++ = '-';
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (tm->tm_year - 1) :  -(tm->tm_year - 1)),
+									 width);
 			break;
 	}
 
-	if (tm->tm_year <= 0)
+	/* In oracle schema, BC use '-' replace. */
+	if (tm->tm_year <= 0 && compatible_db != COMPATIBLE_ORA)
 	{
 		memcpy(str, " BC", 3);	/* Don't copy NUL */
 		str += 3;
@@ -4058,6 +4073,8 @@ void
 EncodeDateTime(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, const char *tzn, int style, char *str)
 {
 	int			day;
+	int			width = 4;
+	int			ym;
 
 	Assert(tm->tm_mon >= 1 && tm->tm_mon <= MONTHS_PER_YEAR);
 
@@ -4067,13 +4084,20 @@ EncodeDateTime(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, const char 
 	if (tm->tm_isdst < 0)
 		print_tz = false;
 
+	/* In oracle schema, if is BC data, width shoud be 5. */
+	if (compatible_db == COMPATIBLE_ORA && tm->tm_year <= 0)
+		width = 5;
+
 	switch (style)
 	{
 		case USE_ISO_DATES:
 		case USE_XSD_DATES:
 			/* Compatible with ISO-8601 date formats */
+			ym = tm->tm_year;
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (ym - 1) : -(ym - 1)),
+									 width);
 			*str++ = '-';
 			str = pg_ultostr_zeropad(str, tm->tm_mon, 2);
 			*str++ = '-';
@@ -4104,7 +4128,9 @@ EncodeDateTime(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, const char 
 			}
 			*str++ = '/';
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (tm->tm_year - 1) : -(tm->tm_year - 1)),
+									 width);
 			*str++ = ' ';
 			str = pg_ultostr_zeropad(str, tm->tm_hour, 2);
 			*str++ = ':';
@@ -4137,7 +4163,9 @@ EncodeDateTime(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, const char 
 			str = pg_ultostr_zeropad(str, tm->tm_mon, 2);
 			*str++ = '.';
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (tm->tm_year - 1) : -(tm->tm_year - 1)),
+									 width);
 			*str++ = ' ';
 			str = pg_ultostr_zeropad(str, tm->tm_hour, 2);
 			*str++ = ':';
@@ -4187,7 +4215,9 @@ EncodeDateTime(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, const char 
 			str = AppendTimestampSeconds(str, tm, fsec);
 			*str++ = ' ';
 			str = pg_ultostr_zeropad(str,
-									 (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
+									 (tm->tm_year > 0) ? tm->tm_year :
+									 ((compatible_db == COMPATIBLE_ORA) ? (tm->tm_year - 1) : -(tm->tm_year - 1)),
+									 width);
 
 			if (print_tz)
 			{
@@ -4211,7 +4241,8 @@ EncodeDateTime(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, const char 
 			break;
 	}
 
-	if (tm->tm_year <= 0)
+	/* In oracle schema, BC use '-' replace. */
+	if (tm->tm_year <= 0 && compatible_db != COMPATIBLE_ORA)
 	{
 		memcpy(str, " BC", 3);	/* Don't copy NUL */
 		str += 3;

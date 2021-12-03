@@ -422,8 +422,8 @@ preferred = false
 );
 
 /* oracle date's cast */
-CREATE CAST(timestamp as oracle.date) WITHOUT FUNCTION AS IMPLICIT; 
-create cast(oracle.date as timestamp) WITHOUT FUNCTION as IMPLICIT; 
+CREATE CAST(timestamp as oracle.date) WITH INOUT AS IMPLICIT; 
+create cast(oracle.date as timestamp) WITH INOUT AS IMPLICIT; 
 
 CREATE FUNCTION oracle.ora2pgdate(oracle.date)
 RETURNS pg_catalog.date
@@ -964,6 +964,13 @@ RETURNS TEXT
 AS 'select oracle.to_char($1::timestamp)'
 LANGUAGE SQL IMMUTABLE;
 
+/* support to_char(oracle.date,text) */
+CREATE OR REPLACE FUNCTION oracle.to_char(oracle.date, text)
+		RETURNS text
+		LANGUAGE internal
+		STABLE PARALLEL SAFE STRICT
+		AS $function$timestamptz_to_char$function$;
+
 CREATE FUNCTION oracle.trunc(value oracle.date)
 RETURNS timestamp without time zone
 AS $$ SELECT pg_catalog.trunc($1::timestamp, 'DDD'); $$
@@ -1015,6 +1022,16 @@ LANGUAGE SQL STABLE STRICT;
 CREATE OR REPLACE FUNCTION oracle.to_date(TEXT,TEXT)
 RETURNS oracle.date
 AS $$ SELECT TO_TIMESTAMP($1,$2)::oracle.date; $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.to_date(bigint, text)
+RETURNS oracle.date
+AS $$ SELECT pg_catalog.TO_TIMESTAMP($1::text,$2)::oracle.date; $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.to_date(timestamp, text)
+RETURNS oracle.date
+AS $$ SELECT pg_catalog.TO_TIMESTAMP($1::text,$2)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.to_char(timestamp)
