@@ -110,7 +110,8 @@ static ObjectAddress AddNewRelationType(const char *typeName,
 										char new_rel_kind,
 										Oid ownerid,
 										Oid new_row_type,
-										Oid new_array_type);
+										Oid new_array_type,
+										char relaccess);
 static void RelationRemoveInheritance(Oid relid);
 static Oid	StoreRelCheck(Relation rel, const char *ccname, Node *expr,
 						  bool is_validated, bool is_local, int inhcount,
@@ -1073,7 +1074,8 @@ AddNewRelationType(const char *typeName,
 				   char new_rel_kind,
 				   Oid ownerid,
 				   Oid new_row_type,
-				   Oid new_array_type)
+				   Oid new_array_type,
+				   char relaccess)
 {
 	return
 		TypeCreate(new_row_type,	/* optional predetermined OID */
@@ -1107,7 +1109,8 @@ AddNewRelationType(const char *typeName,
 				   -1,			/* typmod */
 				   0,			/* array dimensions for typBaseType */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* rowtypes never have a collation */
+				   InvalidOid,	/* rowtypes never have a collation */
+				   relaccess);
 }
 
 /* --------------------------------
@@ -1165,7 +1168,8 @@ heap_create_with_catalog(const char *relname,
 						 bool allow_system_table_mods,
 						 bool is_internal,
 						 Oid relrewrite,
-						 ObjectAddress *typaddress)
+						 ObjectAddress *typaddress,
+						 char relaccess)
 {
 	Relation	pg_class_desc;
 	Relation	new_rel_desc;
@@ -1349,7 +1353,8 @@ heap_create_with_catalog(const char *relname,
 										   relkind,
 										   ownerid,
 										   reltypeid,
-										   new_array_oid);
+										   new_array_oid,
+										   relaccess);
 		new_type_oid = new_type_addr.objectId;
 		if (typaddress)
 			*typaddress = new_type_addr;
@@ -1388,7 +1393,8 @@ heap_create_with_catalog(const char *relname,
 				   -1,			/* typmod */
 				   0,			/* array dimensions for typBaseType */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* rowtypes never have a collation */
+				   InvalidOid,	/* rowtypes never have a collation */
+				   relaccess);
 
 		pfree(relarrayname);
 	}

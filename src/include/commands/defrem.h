@@ -154,4 +154,8 @@ extern TypeName *defGetTypeName(DefElem *def);
 extern int	defGetTypeLength(DefElem *def);
 extern List *defGetStringList(DefElem *def);
 
+/* commands/packagecmds.c */
+extern ObjectAddress CreatePackage(ParseState *pstate, CreatePackageStmt *stmt);
+extern void DropPackageById(Oid packageOid);
+
 #endif							/* DEFREM_H */

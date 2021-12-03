@@ -23,6 +23,7 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
@@ -85,6 +86,7 @@ ProcedureCreate(const char *procedureName,
 				bool isStrict,
 				char volatility,
 				char parallel,
+				char proaccess,
 				oidvector *parameterTypes,
 				Datum allParameterTypes,
 				Datum parameterModes,
@@ -316,6 +318,7 @@ ProcedureCreate(const char *procedureName,
 	values[Anum_pg_proc_pronargs - 1] = UInt16GetDatum(parameterCount);
 	values[Anum_pg_proc_pronargdefaults - 1] = UInt16GetDatum(list_length(parameterDefaults));
 	values[Anum_pg_proc_prorettype - 1] = ObjectIdGetDatum(returnType);
+	values[Anum_pg_proc_proaccess - 1] = CharGetDatum(proaccess);
 	values[Anum_pg_proc_proargtypes - 1] = PointerGetDatum(parameterTypes);
 	if (allParameterTypes != PointerGetDatum(NULL))
 		values[Anum_pg_proc_proallargtypes - 1] = allParameterTypes;
@@ -368,6 +371,7 @@ ProcedureCreate(const char *procedureName,
 		Datum		proargnames;
 		bool		isnull;
 		const char *dropcmd;
+		char		oldproaccess;
 
 		if (!replace)
 			ereport(ERROR,
@@ -548,6 +552,12 @@ ProcedureCreate(const char *procedureName,
 			}
 		}
 
+		oldproaccess = DatumGetChar(SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
+													Anum_pg_proc_proaccess,
+													&isnull));
+		if (!isnull && oldproaccess == PACKAGE_MEMBER_PUBLIC)
+			replaces[Anum_pg_proc_proaccess - 1] = false;
+
 		/*
 		 * Do not change existing oid, ownership or permissions, either.  Note
 		 * dependency-update code below has to agree with this decision.
@@ -600,9 +610,18 @@ ProcedureCreate(const char *procedureName,
 
 	ObjectAddressSet(myself, ProcedureRelationId, retval);
 
-	/* dependency on namespace */
-	ObjectAddressSet(referenced, NamespaceRelationId, procNamespace);
-	add_exact_object_address(&referenced, addrs);
+	if (proaccess == NON_PACKAGE_MEMBER)
+	{
+		/* dependency on namespace */
+		ObjectAddressSet(referenced, NamespaceRelationId, procNamespace);
+		add_exact_object_address(&referenced, addrs);
+	}
+	else
+	{
+		/* dependency on package */
+		ObjectAddressSet(referenced, PackageRelationId, procNamespace);
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_AUTO);
+	}
 
 	/* dependency on implementation language */
 	ObjectAddressSet(referenced, LanguageRelationId, languageObjectId);
@@ -671,8 +690,19 @@ ProcedureCreate(const char *procedureName,
 
 	table_close(rel, RowExclusiveLock);
 
+	/*
+	 * FIXME: temporarily disable language validation, since plisql does not
+	 * understand the PLSQL syntax, so it will throw errors on such syntax.
+	 */
+	if (proaccess != NON_PACKAGE_MEMBER)
+	{
+		/* Advance command counter so new tuple can be seen by validator */
+		CommandCounterIncrement();
+	}
+
 	/* Verify function body */
-	if (OidIsValid(languageValidator))
+	if (OidIsValid(languageValidator) &&
+		proaccess == NON_PACKAGE_MEMBER)
 	{
 		ArrayType  *set_items = NULL;
 		int			save_nestlevel = 0;

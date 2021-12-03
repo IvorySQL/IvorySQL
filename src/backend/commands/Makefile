@@ -42,6 +42,7 @@ OBJS = \
 	matview.o \
 	opclasscmds.o \
 	operatorcmds.o \
+	packagecmds.o \
 	policy.o \
 	portalcmds.o \
 	prepare.o \
@@ -60,6 +61,7 @@ OBJS = \
 	user.o \
 	vacuum.o \
 	variable.o \
+	variablecmd.o \
 	view.o
 
 include $(top_srcdir)/src/backend/common.mk

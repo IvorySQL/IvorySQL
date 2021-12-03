@@ -282,6 +282,24 @@ extern int	tcp_user_timeout;
 extern bool trace_sort;
 #endif
 
+extern int nls_length_semantics;
+extern int		compatible_db;
+
+
+typedef enum NlsLengthOptions
+{
+	NLSLENGTH_NONE,
+	NLSLENGTH_BYTE,
+	NLSLENGTH_CHAR
+} NlsLengthOptions;
+
+typedef enum
+{
+	COMPATIBLE_NONE,
+	COMPATIBLE_ORA
+} CompatOpt;
+
+
 /*
  * Functions exported by guc.c
  */

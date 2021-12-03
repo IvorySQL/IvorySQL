@@ -729,8 +729,9 @@ interpret_func_support(DefElem *defel)
 static void
 compute_function_attributes(ParseState *pstate,
 							bool is_procedure,
+							char proaccess,
 							List *options,
-							List **as,
+							List **as_or_is,
 							char **language,
 							Node **transform,
 							bool *windowfunc_p,
@@ -745,7 +746,7 @@ compute_function_attributes(ParseState *pstate,
 							char *parallel_p)
 {
 	ListCell   *option;
-	DefElem    *as_item = NULL;
+	DefElem    *as_or_is_item = NULL;
 	DefElem    *language_item = NULL;
 	DefElem    *transform_item = NULL;
 	DefElem    *windowfunc_item = NULL;
@@ -763,14 +764,14 @@ compute_function_attributes(ParseState *pstate,
 	{
 		DefElem    *defel = (DefElem *) lfirst(option);
 
-		if (strcmp(defel->defname, "as") == 0 || strcmp(defel->defname, "is") == 0)
+		if ((strcmp(defel->defname, "as") == 0) || (strcmp(defel->defname, "is") == 0))
 		{
-			if (as_item)
+			if (as_or_is_item)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options"),
 						 parser_errposition(pstate, defel->location)));
-			as_item = defel;
+			as_or_is_item = defel;
 		}
 		else if (strcmp(defel->defname, "language") == 0)
 		{
@@ -825,8 +826,19 @@ compute_function_attributes(ParseState *pstate,
 				 defel->defname);
 	}
 
-	if (as_item)
-		*as = (List *) as_item->arg;
+	/* process required items */
+	if (as_or_is_item)
+		*as_or_is = (List *) as_or_is_item->arg;
+	else
+	{
+		if (proaccess != NON_PACKAGE_MEMBER &&
+			proaccess != PACKAGE_MEMBER_PUBLIC)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("no function body specified")));
+		*as_or_is = NIL;		/* keep compiler quiet */
+	}
+
 	if (language_item)
 		*language = strVal(language_item->arg);
 	if (transform_item)
@@ -1072,21 +1084,29 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	Oid			prosupport;
 	HeapTuple	languageTuple;
 	Form_pg_language languageStruct;
-	List	   *as_clause;
+	List	   *as_or_is_clause;
 	char		parallel;
 
-	/* Convert list of names to a name and namespace */
-	namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
-													&funcname);
+	if (OidIsValid(pstate->p_pkgoid))
+	{
+		funcname = strVal(lsecond(stmt->funcname));
+		namespaceId = pstate->p_pkgoid;
+	}
+	else
+	{
+		/* Convert list of names to a name and namespace */
+		namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
+														&funcname);
 
-	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_CREATE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, OBJECT_SCHEMA,
-					   get_namespace_name(namespaceId));
+		/* Check we have creation rights in target namespace */
+		aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_SCHEMA,
+						   get_namespace_name(namespaceId));
+	}
 
 	/* Set default attributes */
-	as_clause = NIL;
+	as_or_is_clause = NIL;
 	language = NULL;
 	isWindowFunc = false;
 	isStrict = false;
@@ -1102,8 +1122,9 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	/* Extract non-default attributes from stmt->options list */
 	compute_function_attributes(pstate,
 								stmt->is_procedure,
+								stmt->proaccess,
 								stmt->options,
-								&as_clause, &language, &transformDefElem,
+								&as_or_is_clause, &language, &transformDefElem,
 								&isWindowFunc, &volatility,
 								&isStrict, &security, &isLeakProof,
 								&proconfig, &procost, &prorows,
@@ -1250,10 +1271,17 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		trftypes = NULL;
 	}
 
-	interpret_AS_clause(languageOid, language, funcname, as_clause, stmt->sql_body,
-						parameterTypes_list, inParameterNames_list,
-						&prosrc_str, &probin_str, &prosqlbody,
-						pstate->p_sourcetext);
+	if (stmt->proaccess == PACKAGE_MEMBER_PUBLIC)
+	{
+		prosrc_str = "";
+		probin_str = "";
+		prosqlbody = NULL;
+	}
+	else
+		interpret_AS_clause(languageOid, language, funcname, as_or_is_clause, stmt->sql_body,
+							parameterTypes_list, inParameterNames_list,
+							&prosrc_str, &probin_str, &prosqlbody,
+							pstate->p_sourcetext);
 
 	/*
 	 * Set default values for COST and ROWS depending on other parameters;
@@ -1302,6 +1330,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 						   isStrict,
 						   volatility,
 						   parallel,
+						   stmt->proaccess,
 						   parameterTypes,
 						   PointerGetDatum(allParameterTypes),
 						   PointerGetDatum(parameterModes),

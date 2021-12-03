@@ -81,7 +81,8 @@ typedef enum
 	DO_POLICY,
 	DO_PUBLICATION,
 	DO_PUBLICATION_REL,
-	DO_SUBSCRIPTION
+	DO_SUBSCRIPTION,
+	DO_PACKAGE
 } DumpableObjectType;
 
 /* component types of an object which can be selected for dumping */
@@ -644,6 +645,18 @@ typedef struct _SubscriptionInfo
 	char	   *subpublications;
 } SubscriptionInfo;
 
+typedef struct _packageInfo
+{
+	DumpableObject dobj;
+	char	   *rolname;		/* name of owner, or empty string */
+	char	   *pkgspec;
+	char	   *pkgbody;
+	char	   *pkgacl;
+	char	   *rpkgacl;
+	char	   *initpkgacl;
+	char	   *initrpkgacl;
+} PackageInfo;
+
 /*
  * We build an array of these with an entry for each object that is an
  * extension member according to pg_depend.
@@ -735,5 +748,6 @@ extern PublicationInfo *getPublications(Archive *fout,
 extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
+extern PackageInfo *getPackages(Archive *fout);
 
 #endif							/* PG_DUMP_H */

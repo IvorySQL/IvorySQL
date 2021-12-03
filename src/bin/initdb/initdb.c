@@ -263,9 +263,11 @@ static void setup_privileges(FILE *cmdfd);
 static void set_info_version(void);
 static void setup_schema(FILE *cmdfd);
 static void load_plpgsql(FILE *cmdfd);
+static void load_plisql(FILE *cmdfd);
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
 static void make_postgres(FILE *cmdfd);
+static void make_ivorysql(FILE *cmdfd);
 static void trapsig(int signum);
 static void check_ok(void);
 static char *escape_quotes(const char *src);
@@ -1894,6 +1896,15 @@ load_plpgsql(FILE *cmdfd)
 }
 
 /*
+ * load PL/iSQL server-side language
+ */
+static void
+load_plisql(FILE *cmdfd)
+{
+	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
+}
+
+/*
  * clean everything up in template1
  */
 static void
@@ -1951,6 +1962,23 @@ make_postgres(FILE *cmdfd)
 	static const char *const postgres_setup[] = {
 		"CREATE DATABASE postgres;\n\n",
 		"COMMENT ON DATABASE postgres IS 'default administrative connection database';\n\n",
+		NULL
+	};
+
+	for (line = postgres_setup; *line; line++)
+		PG_CMD_PUTS(*line);
+}
+
+/*
+ * copy template1 to ivorysql
+ */
+static void
+make_ivorysql(FILE *cmdfd)
+{
+	const char *const *line;
+	static const char *const postgres_setup[] = {
+		"CREATE DATABASE ivorysql;\n\n",
+		"COMMENT ON DATABASE ivorysql IS 'default administrative connection database';\n\n",
 		NULL
 	};
 
@@ -2900,11 +2928,15 @@ initialize_data_directory(void)
 
 	load_plpgsql(cmdfd);
 
+	load_plisql(cmdfd);
+
 	vacuum_db(cmdfd);
 
 	make_template0(cmdfd);
 
 	make_postgres(cmdfd);
+
+	make_ivorysql(cmdfd);
 
 	PG_CMD_CLOSE;
 

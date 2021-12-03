@@ -26,6 +26,7 @@
 #define DEFAULT_PROMPT1 "%/%R%x%# "
 #define DEFAULT_PROMPT2 "%/%R%x%# "
 #define DEFAULT_PROMPT3 ">> "
+#define DEFAULT_PLISQL "off"
 
 /*
  * Note: these enums should generally be chosen so that zero corresponds

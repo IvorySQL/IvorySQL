@@ -20,12 +20,16 @@
 #include "nodes/parsenodes.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
+#include "parser/parse_node.h"
+
 
 struct AlterTableUtilityContext;	/* avoid including tcop/utility.h here */
 
 
 extern ObjectAddress DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 									ObjectAddress *typaddress, const char *queryString);
+extern ObjectAddress DefineRecord(ParseState *pstate, CompositeTypeStmt *rec, bool isbody);
+
 
 extern void RemoveRelations(DropStmt *drop);
 

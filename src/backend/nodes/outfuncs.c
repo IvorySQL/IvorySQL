@@ -2817,8 +2817,10 @@ _outDeclareCursorStmt(StringInfo str, const DeclareCursorStmt *node)
 	WRITE_NODE_TYPE("DECLARECURSOR");
 
 	WRITE_STRING_FIELD(portalname);
+	WRITE_BOOL_FIELD(pct_type);
 	WRITE_INT_FIELD(options);
 	WRITE_NODE_FIELD(query);
+	WRITE_NODE_FIELD(params);
 }
 
 static void
@@ -3819,6 +3821,16 @@ _outPartitionRangeDatum(StringInfo str, const PartitionRangeDatum *node)
 	WRITE_LOCATION_FIELD(location);
 }
 
+static void
+_outVarStmt(StringInfo str, const VarStmt *node)
+{
+	WRITE_NODE_TYPE("VARSTMT");
+
+	WRITE_STRING_FIELD(varname);
+	WRITE_NODE_FIELD(varType);
+	WRITE_NODE_FIELD(defexpr);
+}
+
 /*
  * outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4518,6 +4530,9 @@ outNode(StringInfo str, const void *obj)
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
 				break;
+			case T_VarStmt:
+				_outVarStmt(str, obj);
+				break;
 
 			default:
 
@@ -4525,8 +4540,8 @@ outNode(StringInfo str, const void *obj)
 				 * This should be an ERROR, but it's too useful to be able to
 				 * dump structures that outNode only understands part of.
 				 */
-				elog(WARNING, "could not dump unrecognized node type: %d",
-					 (int) nodeTag(obj));
+				elog(WARNING, "could not dump unrecognized node type: %d:\n %s",
+					 (int) nodeTag(obj), str->data);
 				break;
 		}
 		appendStringInfoChar(str, '}');

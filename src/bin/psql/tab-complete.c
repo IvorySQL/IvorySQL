@@ -1063,6 +1063,7 @@ static const pgsql_thing_t words_after_create[] = {
 									 * a good idea. */
 	{"OR REPLACE", NULL, NULL, NULL, THING_NO_DROP | THING_NO_ALTER},
 	{"OWNED", NULL, NULL, NULL, THING_NO_CREATE | THING_NO_ALTER},	/* for DROP OWNED BY ... */
+	{"PACKAGE", NULL, NULL, NULL},
 	{"PARSER", Query_for_list_of_ts_parsers, NULL, NULL, THING_NO_SHOW},
 	{"POLICY", NULL, NULL, NULL},
 	{"PROCEDURE", NULL, NULL, Query_for_list_of_procedures},
@@ -1591,7 +1592,7 @@ psql_completion(const char *text, int start, int end)
 	/* complete with something you can create or replace */
 	else if (TailMatches("CREATE", "OR", "REPLACE"))
 		COMPLETE_WITH("FUNCTION", "PROCEDURE", "LANGUAGE", "RULE", "VIEW",
-					  "AGGREGATE", "TRANSFORM", "TRIGGER");
+					  "AGGREGATE", "TRANSFORM", "TRIGGER", "PACKAGE");
 
 /* DROP, but not DROP embedded in other commands */
 	/* complete with something you can drop */

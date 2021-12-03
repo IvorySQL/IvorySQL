@@ -180,6 +180,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateFunctionStmt:
 		case T_CreateOpClassStmt:
 		case T_CreateOpFamilyStmt:
+		case T_CreatePackageStmt:
 		case T_CreatePLangStmt:
 		case T_CreatePolicyStmt:
 		case T_CreatePublicationStmt:
@@ -1640,6 +1641,10 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = CreateFunction(pstate, (CreateFunctionStmt *) parsetree);
 				break;
 
+			case T_CreatePackageStmt:	/* CREATE PACKAGE */
+				address = CreatePackage(pstate, (CreatePackageStmt *) parsetree);
+				break;
+
 			case T_AlterFunctionStmt:	/* ALTER FUNCTION */
 				address = AlterFunction(pstate, (AlterFunctionStmt *) parsetree);
 				break;
@@ -2314,6 +2319,9 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 			tag = CMDTAG_ALTER_STATISTICS;
 			break;
+		case OBJECT_PACKAGE:
+			tag = CMDTAG_ALTER_PACKAGE;
+			break;
 		default:
 			tag = CMDTAG_UNKNOWN;
 			break;
@@ -2618,6 +2626,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_STATISTIC_EXT:
 					tag = CMDTAG_DROP_STATISTICS;
 					break;
+				case OBJECT_PACKAGE:
+					tag = CMDTAG_DROP_PACKAGE;
+					break;
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
@@ -2771,6 +2782,13 @@ CreateCommandTag(Node *parsetree)
 				tag = CMDTAG_CREATE_PROCEDURE;
 			else
 				tag = CMDTAG_CREATE_FUNCTION;
+			break;
+
+		case T_CreatePackageStmt:
+			if (((CreatePackageStmt *) parsetree)->isbody)
+				tag = CMDTAG_CREATE_PACKAGE_BODY;
+			else
+				tag = CMDTAG_CREATE_PACKAGE;
 			break;
 
 		case T_IndexStmt:

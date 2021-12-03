@@ -3456,8 +3456,10 @@ _copyDeclareCursorStmt(const DeclareCursorStmt *from)
 	DeclareCursorStmt *newnode = makeNode(DeclareCursorStmt);
 
 	COPY_STRING_FIELD(portalname);
+	COPY_SCALAR_FIELD(pct_type);
 	COPY_SCALAR_FIELD(options);
 	COPY_NODE_FIELD(query);
+	COPY_NODE_FIELD(params);
 
 	return newnode;
 }
@@ -3710,6 +3712,7 @@ _copyCreateFunctionStmt(const CreateFunctionStmt *from)
 	COPY_NODE_FIELD(returnType);
 	COPY_NODE_FIELD(options);
 	COPY_NODE_FIELD(sql_body);
+	COPY_SCALAR_FIELD(proaccess);
 
 	return newnode;
 }
