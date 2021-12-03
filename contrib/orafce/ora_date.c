@@ -26,6 +26,7 @@
 #include "utils/numeric.h"
 #include "port.h"
 #include "miscadmin.h"
+#include "utils/guc.h"
 
 
 
@@ -66,11 +67,28 @@ ora_date_in(PG_FUNCTION_ARGS)
 	char	   *field[MAXDATEFIELDS];
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[MAXDATELEN + MAXDATEFIELDS];
+	bool		flag = false;
+	char	   *str1;
 
-	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+	/* In oracle schema,support the negative sign before the year,skip sign '-' */
+	if(*str == '-' && compatible_db == COMPATIBLE_ORA)
+	{
+		str1 = (char*)palloc(strlen(str));
+		memcpy(str1, str + 1, strlen(str));
+		flag = true;
+		dterr = ParseDateTime(str1, workbuf, sizeof(workbuf),
 						  field, ftype, MAXDATEFIELDS, &nf);
+		pfree(str1);
+	}
+	else
+		dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+							  field, ftype, MAXDATEFIELDS, &nf);
 	if (dterr == 0)
 		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
+
+	/* deal the year,restore the negative sign of the year */
+	if(flag)
+		tm->tm_year = - tm->tm_year;
 	if (dterr == 5)
 		PG_RETURN_TIMESTAMP(DT_NOBEGIN+ 1);
 	if (dterr != 0)
@@ -123,7 +141,12 @@ ora_date_out(PG_FUNCTION_ARGS)
 	if (TIMESTAMP_NOT_FINITE(date))
 		EncodeSpecialTimestamp(date, buf);
 	else if (timestamp2tm(date, NULL, tm, &fsec, NULL, NULL) == 0)
+	{
+		/* IN oracle schema,support the negative sign before the year,deal year. */
+		if(tm->tm_year < 0 && compatible_db == COMPATIBLE_ORA)
+			tm->tm_year++;
 		EncodeDateTime(tm, 0, false, 0, NULL, DateStyle, buf);
+	}
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),

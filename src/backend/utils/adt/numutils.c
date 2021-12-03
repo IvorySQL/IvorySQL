@@ -21,6 +21,7 @@
 #include "common/int.h"
 #include "utils/builtins.h"
 #include "port/pg_bitutils.h"
+#include "utils/guc.h"
 
 /*
  * A table of all two-digit numbers. This is used to speed up decimal digit
@@ -560,25 +561,60 @@ pg_lltoa(int64 value, char *a)
  * result.
  */
 char *
-pg_ultostr_zeropad(char *str, uint32 value, int32 minwidth)
+//pg_ultostr_zeropad(char *str, uint32 value, int32 minwidth)
+/* Support the negative sign before the year,such as to_date(-4712-07-23 14:31:23', 'syyyy-mm-dd hh24:mi:ss) */
+pg_ultostr_zeropad(char *str, int32 value, int32 minwidth)
 {
 	int			len;
+	char	   *start = str;
+	char	   *end = &str[minwidth];
+	int32		num = value;
 
 	Assert(minwidth > 0);
 
-	if (value < 100 && minwidth == 2)	/* Short cut for common case */
+	/* When vlaue is a negative value, handle value. */
+	if(num < 0 && compatible_db == COMPATIBLE_ORA)
 	{
-		memcpy(str, DIGIT_TABLE + value * 2, 2);
-		return str + 2;
+		/*
+		 * Handle negative numbers in a special way.  We can't just write a '-'
+		 * prefix and reverse the sign as that would overflow for INT32_MIN.
+		 */
+		*start++ = '-';
+		minwidth--;
+
+		/*
+		 * Build the number starting at the last digit.  Here remainder will
+		 * be a negative number, so we must reverse the sign before adding '0'
+		 * in order to get the correct ASCII digit.
+		 */
+		while (minwidth--)
+		{
+			int32		oldval = num;
+			int32		remainder;
+
+			num /= 10;
+			remainder = oldval - num * 10;
+			start[minwidth] = '0' - remainder;
+		}
+
+		return end;
 	}
+	else
+	{
+		if (value < 100 && minwidth == 2)	/* Short cut for common case */
+		{
+			memcpy(str, DIGIT_TABLE + value * 2, 2);
+			return str + 2;
+		}
 
-	len = pg_ultoa_n(value, str);
-	if (len >= minwidth)
-		return str + len;
+		len = pg_ultoa_n(value, str);
+		if (len >= minwidth)
+			return str + len;
 
-	memmove(str + minwidth - len, str, len);
-	memset(str, '0', minwidth - len);
-	return str + minwidth;
+		memmove(str + minwidth - len, str, len);
+		memset(str, '0', minwidth - len);
+		return str + minwidth;
+	}
 }
 
 /*

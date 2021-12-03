@@ -3,6 +3,49 @@ set timezone = 'Asia/Shanghai';
 set intervalstyle = postgres;
 set compatible_mode = 'oracle';
 
+select oracle.to_date('50-11-28 17:04:55','RR-MM-dd hh24:mi:ss');
+select oracle.to_date('50-11-28 17:04:55','YY-MM-dd hh24:mi:ss');
+select oracle.to_date('50-11-28','rr-MM-dd ');
+select oracle.to_date('50-11-28 ','YY-MM-dd hh24:mi:ss');
+select oracle.to_date('50-11-28 ','RR-MM-dd hh24:mi:ss');
+select oracle.to_date('50-11-28 ','RR-MM-dd ');
+select oracle.to_date(2454336, 'J');
+select oracle.to_date(2454336, 'j');
+select oracle.to_date('2019/11/22', 'yyyy-mm-dd');
+select oracle.to_date('20-11-28','YY-MM-dd hh24:mi:ss');
+select oracle.to_date('20-11-28 10:14:22','YY-MM-dd hh24:mi:ss');
+select oracle.to_date('2019/11/22');
+select oracle.to_date('2019/11/27 10:14:22');
+select oracle.to_date('120','rr');
+select oracle.to_date('120','RR');
+select oracle.to_date('2020','RR');
+select oracle.to_date(NULL);
+select oracle.to_date(NULL,NULL);
+--test SYYYY date type
+select oracle.to_date('07--4712-23 14:31:23', 'MM-SYYYY-DD HH24:MI:SS');
+select oracle.to_date('07-2019-23 14:31:23', 'MM-SYYYY-DD HH24:MI:SS');
+select oracle.to_date('9999-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+select oracle.to_date('-4712-07-23 14:31:23', 'syyyy-mm-dd hh24:mi:ss');
+select oracle.to_date('-1-07-23 14:31:23', 'syyyy-mm-dd hh24:mi:ss');
+select oracle.to_date('+2021-07-23 14:31:23', 'syyyy-mm-dd hh24:mi:ss');
+select oracle.to_date('07--2019-23', 'MM-SYYYY-DD');
+select oracle.to_date('-2019', 'SYYYY');
+select oracle.to_date('2019', 'syyyy');
+
+create table test1(d oracle.date);
+insert into test1 values (oracle.to_date('2009-12-2', 'syyyy-mm-dd'));
+insert into test1 values (oracle.to_date('-1452-12-2', 'syyyy-mm-dd'));
+select oracle.to_char(d, 'bcyyyy-mm-dd') from test1;
+select * from test1;
+
+--error
+select oracle.to_date('-0-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+select oracle.to_date('-4713-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+select oracle.to_date('--2021-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+select oracle.to_date('10000-07-23 14:31:23', 'SYYYY-MM-DD HH24:MI:SS');
+select oracle.to_date('-2021-07-23 14:31:23', 'YYYY-MM-DD HH24:MI:SS');
+drop table test1;
+
 select oracle.bin_to_num(1,0,1);
 select oracle.bin_to_num('1.3'::text,'1.2'::name);
 select oracle.bin_to_num('1'::bpchar);
