@@ -40,7 +40,7 @@
 #include "utils/timestamp.h"
 #include "utils/xml.h"
 #include "utils/syscache.h"
-
+#include "utils/guc.h"
 
 /* GUC parameters */
 bool		Transform_null_equals = false;
@@ -2204,7 +2204,11 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 		newargs = lappend(newargs, newe);
 	}
 
-	newm->minmaxtype = select_common_type(pstate, newargs, funcname, NULL);
+	//newm->minmaxtype = select_common_type(pstate, newargs, funcname, NULL);
+	newm->minmaxtype = (compatible_db == COMPATIBLE_ORA) ?
+				minmax_expr_select_common_type(pstate, newargs, funcname, NULL)
+				:
+				select_common_type(pstate, newargs, funcname, NULL);
 	/* minmaxcollid and inputcollid will be set by parse_collate.c */
 
 	/* Convert arguments if necessary */
@@ -2213,7 +2217,15 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 		Node	   *e = (Node *) lfirst(args);
 		Node	   *newe;
 
-		newe = coerce_to_common_type(pstate, e,
+//		newe = coerce_to_common_type(pstate, e,
+//									 newm->minmaxtype,
+//									 funcname);
+		newe = (compatible_db == COMPATIBLE_ORA) ?
+				minmax_expr_coerce_to_common_type(pstate, e,
+									 newm->minmaxtype,
+									 funcname)
+				:
+				coerce_to_common_type(pstate, e,
 									 newm->minmaxtype,
 									 funcname);
 		newcoercedargs = lappend(newcoercedargs, newe);

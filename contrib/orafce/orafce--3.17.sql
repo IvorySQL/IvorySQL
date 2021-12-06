@@ -175,18 +175,6 @@ AS 'MODULE_PATHNAME','ora_to_date'
 LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to timestamp';
 
-CREATE FUNCTION to_multi_byte(str text)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_to_multi_byte'
-LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
-
-CREATE FUNCTION to_single_byte(str text)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_to_single_byte'
-LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
-
 CREATE FUNCTION bitand(bigint, bigint)
 RETURNS bigint
 AS $$ SELECT $1 & $2; $$
@@ -205,36 +193,6 @@ LANGUAGE sql IMMUTABLE STRICT;
 CREATE FUNCTION tanh(float8)
 RETURNS float8 AS
 $$ SELECT sinh($1) / cosh($1); $$
-LANGUAGE sql IMMUTABLE STRICT;
-
-CREATE FUNCTION nanvl(float4, float4)
-RETURNS float4 AS
-$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
-LANGUAGE sql IMMUTABLE STRICT;
-
-CREATE FUNCTION nanvl(float8, float8)
-RETURNS float8 AS
-$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
-LANGUAGE sql IMMUTABLE STRICT;
-
-CREATE FUNCTION nanvl(numeric, numeric)
-RETURNS numeric AS
-$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
-LANGUAGE sql IMMUTABLE STRICT;
-
-CREATE FUNCTION nanvl(float4, varchar)
-RETURNS float4 AS
-$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float4 ELSE $1 END; $$
-LANGUAGE sql IMMUTABLE STRICT;
-
-CREATE FUNCTION nanvl(float8, varchar)
-RETURNS float8 AS
-$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float8 ELSE $1 END; $$
-LANGUAGE sql IMMUTABLE STRICT;
-
-CREATE FUNCTION nanvl(numeric, varchar)
-RETURNS numeric AS
-$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::numeric ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE FUNCTION dump("any")
@@ -277,6 +235,36 @@ COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
 CREATE SCHEMA oracle;
 
+CREATE FUNCTION oracle.nanvl(float4, float4)
+RETURNS float4 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.nanvl(float8, float8)
+RETURNS float8 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.nanvl(numeric, numeric)
+RETURNS numeric AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.nanvl(float4, varchar)
+RETURNS float4 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float4 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.nanvl(float8, varchar)
+RETURNS float8 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float8 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.nanvl(numeric, varchar)
+RETURNS numeric AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::numeric ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
 CREATE FUNCTION oracle.substr(str text, start int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr2'
@@ -310,8 +298,98 @@ SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
 $$ LANGUAGE SQL IMMUTABLE;
 
 /* --can't overwrite PostgreSQL DATE data type!!! */
+CREATE FUNCTION oracle.to_multi_byte(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_multi_byte'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
+
+CREATE FUNCTION oracle.to_single_byte(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_single_byte'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
 
 CREATE DOMAIN oracle.date AS timestamp(0);
+
+CREATE FUNCTION oracle.to_char("any")
+RETURNS TEXT
+AS 'MODULE_PATHNAME','orafce_to_varchar'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.to_char("any") IS 'Convert text type to string';
+
+/* to deal to_char(unknown) */
+CREATE FUNCTION oracle.to_char(text)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_varchar'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.to_char(text) IS 'Convert text to string';
+
+CREATE FUNCTION oracle.bin_to_num(VARIADIC "any")
+RETURNS int8 
+AS 'MODULE_PATHNAME','orafce_bin_to_num'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.bin_to_num("any") IS 'Converts a bit vector to its equivalent number.';
+
+CREATE FUNCTION oracle.to_binary_double(VARIADIC "any")
+RETURNS float8
+AS 'MODULE_PATHNAME','orafce_to_binary_double'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.to_binary_double("any") IS 'double precision';
+
+CREATE FUNCTION oracle.to_binary_float(VARIADIC "any")
+RETURNS float4
+AS 'MODULE_PATHNAME','orafce_to_binary_float'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.to_binary_float("any") IS 'signle precision';
+
+CREATE OR REPLACE FUNCTION oracle.hex_to_decimal(text)
+RETURNS int8
+AS 'MODULE_PATHNAME','orafce_hex_to_decimal'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.to_number(float)
+RETURNS numeric AS $$
+SELECT pg_catalog.to_number($1::text);
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.to_timestamp(text ,text)
+RETURNS TIMESTAMP WITHOUT TIME ZONE
+AS $$ SELECT pg_catalog.to_timestamp($1,$2)::TIMESTAMP WITHOUT TIME ZONE; $$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.to_timestamp(double precision)
+RETURNS TIMESTAMP WITHOUT TIME ZONE
+AS $$ SELECT pg_catalog.to_timestamp($1)::TIMESTAMP WITHOUT TIME ZONE; $$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.to_timestamp_tz(text ,text)
+RETURNS TIMESTAMP WITH TIME ZONE
+AS $$ SELECT pg_catalog.to_timestamp($1,$2); $$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION oracle.to_timestamp_tz(text)
+RETURNS timestamp with time zone
+AS 'MODULE_PATHNAME','orafce_to_timestamp_tz'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION oracle.interval_to_seconds(value interval) 
+RETURNS float8
+AS 'MODULE_PATHNAME','orafce_interval_to_seconds'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.interval_to_seconds(interval) IS 'transfer interval format to seconds';
+
+CREATE FUNCTION oracle.to_yminterval(text)
+ RETURNS interval
+AS 'MODULE_PATHNAME','orafce_to_yminterval'
+ LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.to_yminterval(text) IS 'converts a interval datatype to an INTERVAL YEAR TO MONTH type';
+
+CREATE FUNCTION oracle.to_dsinterval(text)
+ RETURNS interval
+AS 'MODULE_PATHNAME','orafce_to_dsinterval'
+ LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.to_dsinterval(text) IS 'converts a interval datatype to an INTERVAL DAY TO SECOND type';
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$

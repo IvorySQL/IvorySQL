@@ -17,6 +17,14 @@
 #ifndef _FORMATTING_H_
 #define _FORMATTING_H_
 
+/* to support the compatibility of ',' and '.' */
+typedef enum
+{
+	FMT_GROUP_LAST_LEN_MATCH,
+	FMT_GROUP_NO_MATCH,
+	FMT_GROUP_LAST_LEN_NO_MATCH,
+	FMT_GROUP_LAST_NO_MATCH
+} FORMAT_MATCH_FLAG;
 
 extern char *str_tolower(const char *buff, size_t nbytes, Oid collid);
 extern char *str_toupper(const char *buff, size_t nbytes, Oid collid);

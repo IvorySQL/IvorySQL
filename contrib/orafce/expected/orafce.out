@@ -2533,6 +2533,7 @@ SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::
  2.30129808 | 2.50917773 | 0.99932930
 (1 row)
 
+SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
  nanvl | nanvl 
 -------+-------
@@ -2605,6 +2606,7 @@ SELECT nanvl(12345::numeric, '1'::char), nanvl('NaN'::numeric, '1'::char);
  12345 |     1
 (1 row)
 
+SET search_path TO default;
 select dbms_assert.enquote_literal('some text '' some text');
      enquote_literal      
 --------------------------
@@ -2845,6 +2847,7 @@ SELECT dump('2009-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
  t
 (1 row)
 
+set search_path to oracle,"$user", public;
 -- Tests for to_multi_byte
 SELECT to_multi_byte('123$test');
   to_multi_byte   
@@ -2891,6 +2894,7 @@ SELECT octet_length(to_single_byte('ａｂｃ'));
             3
 (1 row)
 
+set search_path to default;
 -- Tests for round(TIMESTAMP WITH TIME ZONE)
 select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','YEAR') = '1991-01-01 00:00:00';
  ?column? 
