@@ -2421,11 +2421,4 @@ CallStmtResultDesc(CallStmt *stmt)
 
 	return tupdesc;
 }
-iled for procedure %u", fexpr->funcid);
 
-	tupdesc = build_function_result_tupdesc_t(tuple);
-
-	ReleaseSysCache(tuple);
-
-	return tupdesc;
-}
