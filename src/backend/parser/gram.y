@@ -8749,10 +8749,6 @@ createfunc_opt_item:
 				{
 					$$ =  makeDefElem("as", (Node *)$2, @1);
 				}
-			| IS func_as
-				{
-					$$ = makeDefElem("is", (Node *)$2, @1);
-				}
 			| LANGUAGE NonReservedWord_or_Sconst
 				{
 					$$ = makeDefElem("language", (Node *)makeString($2), @1);
