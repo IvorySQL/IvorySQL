@@ -95,8 +95,8 @@ SELECT months_between ('2008-02-29', '2008-04-30');
 SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
 
 SET search_path TO oracle,"$user", public, pg_catalog;
-SELECT months_between (to_date ('2003/01/01 12:12:12', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
-SELECT months_between (to_date ('2003/07/01 10:11:11', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 10:12:12', 'yyyy/mm/dd h24:mi:ss'));
+SELECT oracle.months_between (oracle.to_date ('2003/01/01 12:12:12', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
+SELECT oracle.months_between (oracle.to_date ('2003/07/01 10:11:11', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 10:12:12', 'yyyy/mm/dd h24:mi:ss'));
 SELECT months_between (to_date ('2003/07/02 11:21:21', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/07/02 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
 SELECT months_between (to_timestamp ('2003/08/02 10:11:12', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/06/02 10:10:11', 'yyyy/mm/dd h24:mi:ss'));
 SELECT months_between ('2007-02-28 111111', '2007-04-30 112121');
