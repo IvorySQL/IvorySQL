@@ -38,6 +38,9 @@ PG_FUNCTION_INFO_V1(ora_sys_extract_utc);
 PG_FUNCTION_INFO_V1(ora_days_between);
 PG_FUNCTION_INFO_V1(ora_days_between_tmtz);
 PG_FUNCTION_INFO_V1(new_time);
+PG_FUNCTION_INFO_V1(months_betweentimestamptz);
+PG_FUNCTION_INFO_V1(oramonths_betweentimestamp);
+PG_FUNCTION_INFO_V1(oraadd_months);
 
 
 
@@ -505,4 +508,250 @@ new_time(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TIMESTAMP(result);
 }
+
+/********************************************************************
+ *
+ * FUnction:days_of_month
+ *
+ * Description:Calculate the number of days per month
+ *
+ * Return:the number of days per month.
+ *
+ ********************************************************************/
+static const int ora_month_days[] = {
+	31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+};
+
+static int
+oradays_of_month(int y, int m)
+{
+	int	days;
+
+	if (m < 0 || 12 < m)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("date out of range")));
+
+	days = ora_month_days[m - 1];
+	if (m == 2 && (y % 400 == 0 || (y % 4 == 0 && y % 100 != 0)))
+		days += 1;	/* February 29 in leap year */
+	return days;
+}
+
+/********************************************************************
+ *
+ * FUnction:months_betweentimestamptz
+ *
+ * Description:calculate time difference of two timestamp
+ *
+ * Return:Returns the number of months between timestamptz1 and timestamptz2. If
+ *        a fractional month is calculated, the months_between  function
+ *        calculates the fraction based on a 31-day month.
+ *
+ * Note:there is support timestamp without time zone adn timestamp with time zone,
+ * if the pramater is timestamp with time zone, there it not right
+ *
+ ********************************************************************/
+Datum
+months_betweentimestamptz(PG_FUNCTION_ARGS)
+{
+	TimestampTz tmtzrec1 = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz tmtzrec2 = PG_GETARG_TIMESTAMPTZ(1);
+
+	int tz1, tz2;
+	struct pg_tm tt1, *tm1 = &tt1;
+	struct pg_tm tt2, *tm2 = &tt2;
+	fsec_t fsec1, fsec2;
+	const char *tzn1, *tzn2;
+	float8 result;
+	Timestamp tmtz1 ;
+	Timestamp tmtz2 ;
+	float8 	time1, time2;
+
+	tmtz1 = oratimestamptz2timestamp(tmtzrec1);
+	tmtz2 = oratimestamptz2timestamp(tmtzrec2);
+
+	if (TIMESTAMP_NOT_FINITE(tmtz1) || TIMESTAMP_NOT_FINITE(tmtz2))
+	{
+		return DirectFunctionCall3(numeric_in,
+			CStringGetDatum("NaN"),
+			ObjectIdGetDatum(InvalidOid),
+			Int32GetDatum(-1));
+	}
+
+	if (timestamp2tm(tmtz1, &tz1, tm1, &fsec1, &tzn1, NULL) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				errmsg("timestamp out of range")));
+
+	if (timestamp2tm(tmtz2, &tz2, tm2, &fsec2, &tzn2, NULL) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				errmsg("timestamp out of range")));
+
+	time1 = (tm1->tm_mday*24*60*60 + tm1->tm_hour*60*60 + tm1->tm_min*60 + tm1->tm_sec);
+	time2 = (tm2->tm_mday*24*60*60 + tm2->tm_hour*60*60 + tm2->tm_min*60 + tm2->tm_sec);
+	time1 = ((time1 - time2)/(24*60*60*31));
+
+	/* Ignore day components for last days, or based on a 31-day month. */
+	if ((tm1->tm_mday == oradays_of_month(tm1->tm_year, tm1->tm_mon) && tm2->tm_mday == oradays_of_month(tm2->tm_year, tm2->tm_mon)) ||
+		(tm1->tm_mday == tm2->tm_mday))
+		result = (tm1->tm_year - tm2->tm_year) * 12 + (tm1->tm_mon - tm2->tm_mon);
+	else
+		result = (float8)((tm1->tm_year - tm2->tm_year) * 12 + (tm1->tm_mon - tm2->tm_mon)) + time1;
+
+	PG_RETURN_NUMERIC(
+		DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
+}
+
+/********************************************************************
+ *
+ * FUnction:oramonths_betweentimestamp
+ *
+ * Description:calculate time difference of two timestamp
+ *
+ * Return:Returns the number of months between timestamptz1 and timestamptz2. If
+ *        a fractional month is calculated, the months_between  function
+ *        calculates the fraction based on a 31-day month.
+ *
+ * Note:there is support timestamp without time zone adn timestamp with time zone,
+ * if the pramater is timestamp with time zone, there it not right
+ *
+ ********************************************************************/
+Datum
+oramonths_betweentimestamp(PG_FUNCTION_ARGS)
+{
+	Timestamp tms1 = PG_GETARG_TIMESTAMP(0);
+	Timestamp tms2 = PG_GETARG_TIMESTAMP(1);
+
+	int tz1, tz2;
+	struct pg_tm tt1, *tm1 = &tt1;
+	struct pg_tm tt2, *tm2 = &tt2;
+	fsec_t fsec1, fsec2;
+	const char *tzn1, *tzn2;
+	float8 result;
+	float8 	time1, time2;
+
+	if (TIMESTAMP_NOT_FINITE(tms1) || TIMESTAMP_NOT_FINITE(tms2))
+	{
+		return DirectFunctionCall3(numeric_in,
+			CStringGetDatum("NaN"),
+			ObjectIdGetDatum(InvalidOid),
+			Int32GetDatum(-1));
+	}
+
+	if (timestamp2tm(tms1, &tz1, tm1, &fsec1, &tzn1, NULL) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				errmsg("timestamp out of range")));
+
+	if (timestamp2tm(tms2, &tz2, tm2, &fsec2, &tzn2, NULL) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				errmsg("timestamp out of range")));
+
+	time1 = (tm1->tm_mday*24*60*60 + tm1->tm_hour*60*60 + tm1->tm_min*60 + tm1->tm_sec);
+	time2 = (tm2->tm_mday*24*60*60 + tm2->tm_hour*60*60 + tm2->tm_min*60 + tm2->tm_sec);
+	time1 = ((time1 - time2)/(24*60*60*31));
+
+	/* Ignore day components for last days, or based on a 31-day month. */
+	if ((tm1->tm_mday == oradays_of_month(tm1->tm_year, tm1->tm_mon) && tm2->tm_mday == oradays_of_month(tm2->tm_year, tm2->tm_mon)) ||
+		(tm1->tm_mday == tm2->tm_mday))
+		result = (tm1->tm_year - tm2->tm_year) * 12 + (tm1->tm_mon - tm2->tm_mon);
+	else
+		result = (float8)((tm1->tm_year - tm2->tm_year) * 12 + (tm1->tm_mon - tm2->tm_mon)) + time1;
+
+	PG_RETURN_NUMERIC(
+		DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
+}
+
+/********************************************************************
+ *
+ * oraadd_months
+ *
+ * Syntax:
+ *
+ * date oraadd_months(oracle.date day, int val)
+ *
+ * Purpose:
+ *
+ * Returns a date plus n months.
+ *
+ ********************************************************************/
+Datum
+oraadd_months(PG_FUNCTION_ARGS)
+{
+	Timestamp tmtzrec1 = PG_GETARG_TIMESTAMP(0);
+	int n = PG_GETARG_INT32(1);
+	DateADT day;
+	int y, m, d;
+	int	days;
+	DateADT resultday;
+	div_t	v;
+	bool	last_day;
+	struct  pg_tm tt,
+			*tm = &tt;
+	fsec_t	fsec;
+	Timestamp result;
+
+	timestamp2tm(tmtzrec1, NULL, tm, &fsec, NULL, NULL);
+	day = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) - POSTGRES_EPOCH_JDATE;
+	
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	y = tm->tm_year;
+	m = tm->tm_mon;
+	d = tm->tm_mday;
+	
+	last_day = (d == oradays_of_month(y, m));
+
+	v = div(y * 12 + m - 1 + n, 12);
+    y = v.quot;
+    if (y < 0)
+    {
+  		if(tm->tm_year > 0 && ((tm->tm_year - 1) * 12 + m + n) <= 0)
+			y = y-2;
+		else if(tm->tm_year < 0 && ((tm->tm_year + 1) * 12 - m + n) >= 0)
+			y++;
+		else if (tm->tm_year < 0 && (((tm->tm_year + 1) * 12 - m + n) < 0))
+			y--;
+    }
+	else if (y >= 0)
+	{
+		if (tm->tm_year < 0 && (((tm->tm_year + 1) * 12 - m + n) < 0) && (v.rem == 0))
+			y++;
+		else if (tm->tm_year < 0 && (((tm->tm_year + 1) * 12 - m + n) < 0) && (v.rem != 0))
+			y--;
+		else if(tm->tm_year < 0 && ((tm->tm_year + 1) * 12 - m + n) >= 0)
+			y++;
+		else if(tm->tm_year > 0 && ((tm->tm_year - 1) * 12 + m + n) < 0)
+			y = y-2;
+		else if(tm->tm_year > 0 && ((tm->tm_year - 1) * 12 + m + n) == 0)
+			y--;
+	}
+
+    m = v.rem + 1;
+
+    if (m <= 0)
+    	m = 12 + m;
+
+    days = oradays_of_month(y, m);
+    if (last_day || d > days)
+     	d = days;
+
+	resultday = date2j(y, m, d) - POSTGRES_EPOCH_JDATE;
+
+	j2date(resultday + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	
+	tm->tm_year = y;
+	tm->tm_mon = m;
+	tm->tm_mday = d;
+
+	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMP(result);
+}
+
 

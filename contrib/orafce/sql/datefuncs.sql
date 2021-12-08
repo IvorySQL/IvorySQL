@@ -93,3 +93,50 @@ select oracle.new_time('2020-10-12 17:45:28 +08'::timestamptz, 'PST', 'PDT') fro
 select oracle.new_time('2020-10-12 16:45:18 +08'::timestamptz, 'YST', 'YDT') from dual;
 select oracle.new_time('2020-11-12 16:41:28 +08'::timestamptz, 'GMT', 'EDT') from dual;
 select oracle.new_time('2020-12-12 17:41:18 +08'::timestamptz, 'NST', 'GMT') from dual;
+
+set compatible_mode to oracle ;
+--add_months function
+select oracle.add_months(oracle.date '2020-02-15',7) from dual;
+select oracle.add_months(oracle.date '2018-12-15',14) from dual;
+select oracle.add_months(oracle.date '2019-12-15',12) from dual;
+select oracle.add_months(oracle.date '0019-12-15',40) from dual;
+select oracle.add_months(timestamp '2020-02-15 12:12:09',7) from dual;
+select oracle.add_months(timestamp '2018-12-15 19:12:09',14) from dual;
+select oracle.add_months(timestamp '2018-12-15 19:12:09',12) from dual;
+select oracle.add_months(timestamp '2018-12-15 19:12:09',40) from dual;
+select oracle.add_months(timestamptz'2020-02-15 12:12:09 +08',7) from dual;
+select oracle.add_months(timestamptz'2018-12-15 12:12:09 +08',24) from dual;
+select oracle.add_months(timestamptz'2018-12-15 12:12:09 +08',100) from dual;
+select oracle.add_months(timestamptz'2018-12-15 12:12:09 +08',120) from dual;
+select oracle.add_months(oracle.date '-2020-02-15',7) from dual;
+select oracle.add_months(oracle.date '-2018-12-15',14) from dual;
+select oracle.add_months(oracle.date '-2019-12-15',12) from dual;
+select oracle.add_months(oracle.date '-0019-12-15',40) from dual;
+select oracle.add_months(oracle.date '-0002-12-15',40) from dual;
+select oracle.add_months(oracle.date '0002-12-15',-40) from dual;
+select oracle.add_months(oracle.date '-0002-12-15 12:14:15',40) from dual;
+select oracle.add_months(oracle.date '-0002-12-15 12:14:15',12) from dual;
+select oracle.add_months(oracle.date '-0002-12-15 12:14:15',13) from dual;
+select oracle.add_months(oracle.date '0002-12-15 10:02:09',-40) from dual;
+select oracle.add_months(oracle.date '0002-12-15 10:02:09',-23) from dual;
+select oracle.add_months(oracle.date '0002-12-15 10:02:09',-24) from dual;
+
+--months_between function
+select oracle.months_between(oracle.date '2020-03-15', oracle.date '2020-02-20') from dual;
+select oracle.months_between(oracle.date '2020-02-10', oracle.date '2020-05-20') from dual;
+select oracle.months_between(oracle.date '2021-11-10', oracle.date '2020-05-20') from dual;
+select oracle.months_between(oracle.date '2021-11-10', oracle.date '2008-05-20') from dual;
+select oracle.months_between(timestamp '2021-11-10 20:20:20', timestamp '2020-05-20 16:20:20') from dual;
+select oracle.months_between(timestamp '2022-05-15 20:20:20', timestamp '2020-01-20 19:20:20') from dual;
+select oracle.months_between(timestamp '2021-11-10 20:20:20', timestamp '2020-05-20 16:20:20') from dual;
+select oracle.months_between(timestamp '2020-11-10 20:20:20', timestamp '2025-05-20 16:20:20') from dual;
+select oracle.months_between(timestamptz '2021-11-10 20:20:20 +08', timestamptz '2020-05-20 16:20:20 +08') from dual;
+select oracle.months_between(timestamptz '2021-11-10 00:00:00 +08', timestamptz '2020-05-20 16:20:20 +08') from dual;
+select oracle.months_between(oracle.date '2021-11-10', timestamptz '2020-05-20 16:20:20 +08') from dual;
+select oracle.months_between(timestamptz '2020-01-10 01:00:00 +08', timestamptz '2028-05-19 16:25:20 +08') from dual;
+select oracle.months_between(timestamptz '2021-11-10 20:20:20 +05', timestamptz '2020-05-20 16:20:20 +03') from dual;
+select oracle.months_between(timestamptz '2008-01-31 11:32:11 +8', timestamptz '2008-02-29 11:12:12') from dual;
+select oracle.months_between(oracle.date '-2020-03-15', oracle.date '-2020-02-20') from dual;
+select oracle.months_between(oracle.date '-2020-02-10', oracle.date '-2020-05-20') from dual;
+select oracle.months_between(oracle.date '-2021-11-10', oracle.date '-2020-05-20') from dual;
+select oracle.months_between(oracle.date '-2021-11-10 12:12:30', oracle.date '-2008-05-20 13:15:12') from dual;
