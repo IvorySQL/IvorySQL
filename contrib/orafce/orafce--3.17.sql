@@ -1001,8 +1001,9 @@ LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE)
 RETURNS NUMERIC
-AS $$ SELECT pg_catalog.months_between($1::pg_catalog.date,$2::pg_catalog.date); $$
-LANGUAGE SQL IMMUTABLE STRICT;
+AS 'MODULE_PATHNAME','months_betweentimestamptz'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE) IS 'The months difference between the two timestamp values';
 
 CREATE FUNCTION oracle.next_day(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
@@ -6809,3 +6810,17 @@ LANGUAGE SQL IMMUTABLE;
 CREATE OPERATOR oracle.|| (LEFTARG = oracle.date, RIGHTARG = oracle.date, PROCEDURE = oracle.orafce_concat2);
 CREATE OPERATOR oracle.|| (LEFTARG = text, RIGHTARG = oracle.date, PROCEDURE = oracle.orafce_concat2);
 CREATE OPERATOR oracle.|| (LEFTARG = oracle.date, RIGHTARG = text, PROCEDURE = oracle.orafce_concat2);
+
+--months_between function
+CREATE FUNCTION oracle.months_between(oracle.date,oracle.date)
+RETURNS NUMERIC
+AS 'MODULE_PATHNAME','oramonths_betweentimestamp'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION  oracle.months_between(oracle.date,oracle.date) IS 'The months difference between the two oracle.date values';
+
+--add_months function
+CREATE FUNCTION oracle.add_months(day oracle.date, value int)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME', 'oraadd_months'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.add_months(day oracle.date, value int) IS 'returns oracle.date plus n months';

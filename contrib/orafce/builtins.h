@@ -318,5 +318,9 @@ extern PGDLLEXPORT Datum timestamp_pl_float4(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum timestamp_pl_float8(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum timestamp_mi_float4(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum timestamp_mi_float8(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum months_betweentimestamptz(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum oramonths_betweentimestamp(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum oraadd_months(PG_FUNCTION_ARGS);
+
 
 #endif
