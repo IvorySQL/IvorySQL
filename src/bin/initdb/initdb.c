@@ -116,6 +116,14 @@ static const char *const auth_methods_local[] = {
 };
 
 /*
+ * Compatibility options. Ideally this would be in a .h file, but it
+ * hardly seems worth the trouble.
+ */
+static const char *const compat_options[] = {
+	"postgres", "oracle", NULL
+};
+
+/*
  * these values are passed in by makefile defines
  */
 static char *share_path = NULL;
@@ -147,6 +155,7 @@ static bool data_checksums = false;
 static char *xlog_dir = NULL;
 static char *str_wal_segment_size_mb = NULL;
 static int	wal_segment_size_mb;
+static char *compatible_mode = NULL;
 
 
 /* internal vars */
@@ -277,6 +286,8 @@ static void check_locale_name(int category, const char *locale,
 							  char **canonname);
 static bool check_locale_encoding(const char *locale, int encoding);
 static void setlocales(void);
+static void check_compatible_mode(const char *option,
+								  const char *const *valid_options);
 static void usage(const char *progname);
 void		setup_pgdata(void);
 void		setup_bin_paths(const char *argv0);
@@ -1209,6 +1220,15 @@ setup_config(void)
 		conflines = replace_token(conflines,
 								  "#log_file_mode = 0600",
 								  "log_file_mode = 0640");
+	}
+
+	 /* set compatibility mode */
+	if (compatible_mode != NULL)
+	{
+		check_compatible_mode(compatible_mode, compat_options);
+		conflines = replace_token(conflines,
+								  "#compatible_mode = postgres",
+								  "compatible_mode = oracle");
 	}
 
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
@@ -2189,6 +2209,22 @@ setlocales(void)
 #endif
 }
 
+static void
+check_compatible_mode(const char *option, const char *const *valid_options)
+{
+	const char *const *p;
+
+	for (p = valid_options; *p; p++)
+	{
+		if (pg_strcasecmp(option, *p) == 0)
+			return;
+	}
+
+	pg_log_error("invalid option specified \"%s\" for compatible-mode",
+				 option);
+	exit(1);
+}
+
 /*
  * print help text
  */
@@ -2219,6 +2255,7 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
+	printf(_("  -c, --compatible-mode     compatibility mode (postgres (default), oracle)\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
 	printf(_("      --discard-caches      set debug_discard_caches=1\n"));
@@ -2906,6 +2943,7 @@ main(int argc, char *argv[])
 		{"data-checksums", no_argument, NULL, 'k'},
 		{"allow-group-access", no_argument, NULL, 'g'},
 		{"discard-caches", no_argument, NULL, 14},
+		{"compatible-mode", required_argument, NULL, 'c'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2947,7 +2985,7 @@ main(int argc, char *argv[])
 
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "A:dD:E:gkL:nNsST:U:WX:", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "A:dD:E:gkL:nNsST:U:WX:c:", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -3051,6 +3089,9 @@ main(int argc, char *argv[])
 				extra_options = psprintf("%s %s",
 										 extra_options,
 										 "-c debug_discard_caches=1");
+				break;
+			case 'c':
+				compatible_mode = pg_strdup(optarg);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
