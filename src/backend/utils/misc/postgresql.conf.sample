@@ -716,6 +716,9 @@
 # default configuration for text search
 #default_text_search_config = 'pg_catalog.simple'
 
+# default configuration for compatibility mode
+#compatible_mode = postgres		# postgres, oracle
+
 # - Shared Library Preloading -
 
 #local_preload_libraries = ''
