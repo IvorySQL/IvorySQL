@@ -658,3 +658,563 @@ select oracle.months_between(oracle.date '-2021-11-10 12:12:30', oracle.date '-2
  -150.323985215054
 (1 row)
 
+--trunc function
+select oracle.trunc(cast('2050-12-12' as oracle.date), 'SCC');
+        trunc        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2050-06-12' as oracle.date), 'SYYYY');
+        trunc        
+---------------------
+ 2050-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-28' as oracle.date), 'IYYY');
+        trunc        
+---------------------
+ 2019-12-30 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-28' as oracle.date), 'Q');
+        trunc        
+---------------------
+ 2020-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-09-27' as oracle.date), 'MONTH');
+        trunc        
+---------------------
+ 2020-09-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-03-15' as oracle.date), 'WW');
+        trunc        
+---------------------
+ 2020-03-11 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-28' as oracle.date), 'IW');
+        trunc        
+---------------------
+ 2020-02-24 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-23' as oracle.date), 'W');
+        trunc        
+---------------------
+ 2020-02-22 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-06-18' as oracle.date), 'DDD');
+        trunc        
+---------------------
+ 2020-06-18 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-29' as oracle.date), 'DAY');
+        trunc        
+---------------------
+ 2020-02-23 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2050-12-12 12:12:13' as oracle.date), 'SCC');
+        trunc        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2050-06-12 19:00:00' as oracle.date), 'SYYYY');
+        trunc        
+---------------------
+ 2050-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-28 20:00:00' as oracle.date), 'IYYY');
+        trunc        
+---------------------
+ 2019-12-30 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-28 21:01:09' as oracle.date), 'Q');
+        trunc        
+---------------------
+ 2020-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-09-27 22:10:12' as oracle.date), 'MONTH');
+        trunc        
+---------------------
+ 2020-09-01 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-03-15 23:15:36' as oracle.date), 'WW');
+        trunc        
+---------------------
+ 2020-03-11 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-28 09:11:12' as oracle.date), 'IW');
+        trunc        
+---------------------
+ 2020-02-24 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-23 14:20:18' as oracle.date), 'W');
+        trunc        
+---------------------
+ 2020-02-22 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-06-18 22:20:12' as oracle.date), 'DDD');
+        trunc        
+---------------------
+ 2020-06-18 00:00:00
+(1 row)
+
+select oracle.trunc(cast('2020-02-29 08:00:01' as oracle.date), 'DAY');
+        trunc        
+---------------------
+ 2020-02-23 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2051-12-12 12:00:00', 'SCC');
+        trunc        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2050-06-12 19:20:21', 'SYYYY');
+        trunc        
+---------------------
+ 2050-01-01 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-02-28 16:40:55', 'IYYY');
+        trunc        
+---------------------
+ 2019-12-30 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-07-28 19:16:12', 'Q');
+        trunc        
+---------------------
+ 2020-07-01 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-09-27 18:30:21', 'MONTH');
+        trunc        
+---------------------
+ 2020-09-01 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-03-15 12:12:19', 'WW');
+        trunc        
+---------------------
+ 2020-03-11 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-02-28 10:00:01', 'IW');
+        trunc        
+---------------------
+ 2020-02-24 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-02-23 12:12:14', 'W');
+        trunc        
+---------------------
+ 2020-02-22 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-06-18 13:12:18', 'DDD');
+        trunc        
+---------------------
+ 2020-06-18 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-02-29 14:40:20', 'DAY');
+        trunc        
+---------------------
+ 2020-02-23 00:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-02-29 11:40:20', 'HH');
+        trunc        
+---------------------
+ 2020-02-29 11:00:00
+(1 row)
+
+select oracle.trunc(timestamp '2020-02-29 18:40:20', 'MI');
+        trunc        
+---------------------
+ 2020-02-29 18:40:00
+(1 row)
+
+select oracle.trunc(timestamptz '2051-12-12 12:00:00 + 08', 'SCC');
+         trunc          
+------------------------
+ 2001-01-01 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2050-06-12 19:20:21 + 08', 'SYYYY');
+         trunc          
+------------------------
+ 2050-01-01 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-02-28 16:40:55 + 08', 'IYYY');
+         trunc          
+------------------------
+ 2019-12-30 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-02-28 19:16:12 + 08', 'Q');
+         trunc          
+------------------------
+ 2020-01-01 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-09-27 18:30:21 + 08', 'MONTH');
+         trunc          
+------------------------
+ 2020-09-01 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-03-15 12:12:19 + 08', 'WW');
+         trunc          
+------------------------
+ 2020-03-11 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-02-28 10:00:01 + 08', 'IW');
+         trunc          
+------------------------
+ 2020-02-24 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-02-23 12:12:14 + 08', 'W');
+         trunc          
+------------------------
+ 2020-02-22 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-06-18 13:12:18 + 08', 'DDD');
+         trunc          
+------------------------
+ 2020-06-18 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-02-29 14:40:20 + 08', 'DAY');
+         trunc          
+------------------------
+ 2020-02-23 00:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-02-29 11:40:20 + 08', 'HH');
+         trunc          
+------------------------
+ 2020-02-29 11:00:00+08
+(1 row)
+
+select oracle.trunc(timestamptz '2020-02-29 14:40:50 + 08', 'MI');
+         trunc          
+------------------------
+ 2020-02-29 14:40:00+08
+(1 row)
+
+--round function
+select oracle.round(cast('2012-12-12' as oracle.date), 'CC');
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2051-12-12' as oracle.date), 'SCC');
+        round        
+---------------------
+ 2101-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2050-12-12' as oracle.date), 'SYYYY');
+        round        
+---------------------
+ 2051-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2050-06-12' as oracle.date), 'IYYY');
+        round        
+---------------------
+ 2050-01-03 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-01-1'  as oracle.date), 'Q');
+        round        
+---------------------
+ 2020-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-02-15' as oracle.date), 'MONTH');
+        round        
+---------------------
+ 2020-02-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-02-29' as oracle.date), 'WW');
+        round        
+---------------------
+ 2020-02-26 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-03-15' as oracle.date), 'IW');
+        round        
+---------------------
+ 2020-03-16 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-02-28' as oracle.date), 'W');
+        round        
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-03-15' as oracle.date), 'DDD');
+        round        
+---------------------
+ 2020-03-15 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-06-18' as oracle.date), 'DAY');
+        round        
+---------------------
+ 2020-06-21 00:00:00
+(1 row)
+
+select oracle.round(cast('2012-12-12 12:13:15' as oracle.date), 'CC');
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2051-12-12 19:00:00' as oracle.date), 'SCC');
+        round        
+---------------------
+ 2101-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2050-12-12 20:00:00' as oracle.date), 'SYYYY');
+        round        
+---------------------
+ 2051-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2050-06-12 21:40:00' as oracle.date), 'IYYY');
+        round        
+---------------------
+ 2050-01-03 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-01-1 22:00:00'  as oracle.date), 'Q');
+        round        
+---------------------
+ 2020-01-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-02-15 23:57:09' as oracle.date), 'MONTH');
+        round        
+---------------------
+ 2020-02-01 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-02-29 11:11:00' as oracle.date), 'WW');
+        round        
+---------------------
+ 2020-02-26 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-03-15 09:05:21' as oracle.date), 'IW');
+        round        
+---------------------
+ 2020-03-16 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-02-28 21:11:01' as oracle.date), 'W');
+        round        
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-03-15 13:04:21' as oracle.date), 'DDD');
+        round        
+---------------------
+ 2020-03-16 00:00:00
+(1 row)
+
+select oracle.round(cast('2020-06-18 22:03:01' as oracle.date), 'DAY');
+        round        
+---------------------
+ 2020-06-21 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2012-12-12 12:00:00', 'CC');
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2050-12-12 12:00:00', 'SCC');
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2050-06-12 19:20:21', 'SYYYY');
+        round        
+---------------------
+ 2050-01-01 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2050-06-12 16:40:55', 'IYYY');
+        round        
+---------------------
+ 2050-01-03 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-02-16 19:16:12', 'Q');
+        round        
+---------------------
+ 2020-04-01 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-09-27 18:30:21', 'MONTH');
+        round        
+---------------------
+ 2020-10-01 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-03-15 12:12:19', 'WW');
+        round        
+---------------------
+ 2020-03-18 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-02-28 10:00:01', 'IW');
+        round        
+---------------------
+ 2020-03-02 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-02-23 12:12:14', 'W');
+        round        
+---------------------
+ 2020-02-22 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-06-18 13:12:18', 'DDD');
+        round        
+---------------------
+ 2020-06-19 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-02-29 14:40:20', 'DAY');
+        round        
+---------------------
+ 2020-03-01 00:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-02-29 11:40:20', 'HH');
+        round        
+---------------------
+ 2020-02-29 12:00:00
+(1 row)
+
+select oracle.round(timestamp '2020-02-29 14:40:20', 'MI');
+        round        
+---------------------
+ 2020-02-29 14:40:00
+(1 row)
+
+select oracle.round(timestamptz '2012-12-12 12:00:00 + 08', 'CC');
+         round          
+------------------------
+ 2001-01-01 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2050-12-12 12:00:00 + 08', 'SCC');
+         round          
+------------------------
+ 2001-01-01 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2051-12-12 12:00:00 + 08', 'SCC');
+         round          
+------------------------
+ 2101-01-01 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2050-06-12 19:20:21 + 08', 'SYYYY');
+         round          
+------------------------
+ 2050-01-01 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2050-06-12 16:40:55 + 08', 'IYYY');
+         round          
+------------------------
+ 2050-01-03 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-02-16 19:16:12 + 08', 'Q');
+         round          
+------------------------
+ 2020-04-01 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-09-27 18:30:21 + 08', 'MONTH');
+         round          
+------------------------
+ 2020-10-01 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-03-15 12:12:19 + 08', 'WW');
+         round          
+------------------------
+ 2020-03-18 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-02-28 10:00:01 + 08', 'IW');
+         round          
+------------------------
+ 2020-03-02 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-02-23 12:12:14 + 08', 'W');
+         round          
+------------------------
+ 2020-02-22 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-06-18 13:12:18 + 08', 'DDD');
+         round          
+------------------------
+ 2020-06-19 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-02-29 14:40:20 + 08', 'DAY');
+         round          
+------------------------
+ 2020-03-01 00:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-02-29 11:40:20 + 08', 'HH');
+         round          
+------------------------
+ 2020-02-29 12:00:00+08
+(1 row)
+
+select oracle.round(timestamptz '2020-06-18 14:40:20 + 08', 'MI');
+         round          
+------------------------
+ 2020-06-18 14:40:00+08
+(1 row)
+

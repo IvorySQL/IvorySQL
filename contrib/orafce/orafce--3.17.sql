@@ -971,18 +971,6 @@ CREATE OR REPLACE FUNCTION oracle.to_char(oracle.date, text)
 		STABLE PARALLEL SAFE STRICT
 		AS $function$timestamptz_to_char$function$;
 
-CREATE FUNCTION oracle.trunc(value oracle.date)
-RETURNS timestamp without time zone
-AS $$ SELECT pg_catalog.trunc($1::timestamp, 'DDD'); $$
-LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION oracle.trunc(value oracle.date) IS 'truncate date according to the specified format';
-
-CREATE FUNCTION oracle.round(value oracle.date)
-RETURNS timestamp without time zone
-AS $$ SELECT pg_catalog.round($1::timestamp, 'DDD'); $$
-LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION oracle.round(oracle.date) IS 'will round dates according to the specified format';
-
 -- oracle.date_trunc
 CREATE OR REPLACE FUNCTION oracle.date_trunc(text, oracle.date)
 RETURNS oracle.date AS
@@ -6824,3 +6812,77 @@ RETURNS oracle.date
 AS 'MODULE_PATHNAME', 'oraadd_months'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.add_months(day oracle.date, value int) IS 'returns oracle.date plus n months';
+
+--trunc function
+CREATE FUNCTION oracle.trunc(value timestamp with time zone, fmt text)
+RETURNS timestamp with time zone
+AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.trunc(timestamp with time zone, text) IS 'truncate date according to the specified format';
+
+CREATE FUNCTION oracle.trunc(value timestamp with time zone)
+RETURNS timestamp with time zone
+AS $$ SELECT oracle.trunc($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.trunc(timestamp with time zone) IS 'truncate date according to the specified format';
+
+CREATE FUNCTION oracle.trunc(value timestamp without time zone, fmt text)
+RETURNS timestamp without time zone
+AS 'MODULE_PATHNAME', 'ora_timestamp_trunc'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.trunc(timestamp without time zone, text) IS 'truncate date according to the specified format';
+
+CREATE FUNCTION oracle.trunc(value timestamp without time zone)
+RETURNS timestamp without time zone
+AS $$ SELECT oracle.trunc($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.trunc(timestamp without time zone) IS 'truncate date according to the specified format';
+
+CREATE FUNCTION oracle.trunc(value oracle.date, fmt text)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME', 'ora_timestamp_trunc'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.trunc(value oracle.date, fmt text) IS 'truncate oracle.date according to the specified format';
+
+CREATE FUNCTION oracle.trunc(value oracle.date)
+RETURNS oracle.date
+AS $$ SELECT oracle.trunc($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.trunc(value oracle.date) IS 'truncate oracle.date according to the specified format';
+
+--round function
+CREATE FUNCTION oracle.round(value timestamp with time zone, fmt text)
+RETURNS timestamp with time zone
+AS 'MODULE_PATHNAME','ora_timestamptz_round'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.round(timestamp with time zone, text) IS 'round dates according to the specified format';
+
+CREATE FUNCTION oracle.round(value timestamp with time zone)
+RETURNS timestamp with time zone
+AS $$ SELECT oracle.round($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.round(timestamp with time zone) IS 'will round dates according to the specified format';
+
+CREATE FUNCTION oracle.round(value timestamp without time zone, fmt text)
+RETURNS timestamp without time zone
+AS 'MODULE_PATHNAME','ora_timestamp_round'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.round(timestamp with time zone, text) IS 'round dates according to the specified format';
+
+CREATE FUNCTION oracle.round(value timestamp without time zone)
+RETURNS timestamp without time zone
+AS $$ SELECT oracle.round($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.round(timestamp without time zone) IS 'will round dates according to the specified format';
+
+CREATE FUNCTION oracle.round(value oracle.date, fmt text)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME','ora_timestamp_round'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.round(value oracle.date, fmt text) IS 'round oracle.date according to the specified format';
+
+CREATE FUNCTION oracle.round(value oracle.date)
+RETURNS oracle.date
+AS $$ SELECT oracle.round($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.round(value oracle.date) IS 'will round oracle.date according to the specified format';
