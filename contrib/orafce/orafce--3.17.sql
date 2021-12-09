@@ -984,7 +984,7 @@ LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.last_day(TIMESTAMPTZ)
 RETURNS TIMESTAMP
-AS $$ SELECT (date_trunc('MONTH', $1) + INTERVAL '1 MONTH - 1 day' + $1::time)::oracle.date; $$
+AS $$ SELECT (pg_catalog.date_trunc('MONTH', $1) + INTERVAL '1 MONTH' - INTERVAL '1 day' + $1::time)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE)
@@ -6886,3 +6886,21 @@ RETURNS oracle.date
 AS $$ SELECT oracle.round($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.round(value oracle.date) IS 'will round oracle.date according to the specified format';
+
+CREATE FUNCTION oracle.next_day(value oracle.date, weekday text)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME','ora_next_day'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.next_day (value oracle.date, weekday text) IS 'returns the first weekday that is greater than a date value';
+
+CREATE FUNCTION oracle.next_day(value oracle.date, weekday integer)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME', 'oranext_day_by_index'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.next_day(value oracle.date, weekday integer) IS 'returns the first weekday that is greater than a date value';
+
+CREATE FUNCTION oracle.last_day(oracle.date)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME', 'ora_last_day'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.last_day(oracle.date) IS 'returns last day of the month based on a date value';

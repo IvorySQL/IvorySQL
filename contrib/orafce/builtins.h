@@ -321,6 +321,9 @@ extern PGDLLEXPORT Datum timestamp_mi_float8(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum months_betweentimestamptz(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum oramonths_betweentimestamp(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum oraadd_months(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_next_day(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_last_day(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum oranext_day_by_index(PG_FUNCTION_ARGS);
 
 
 #endif
