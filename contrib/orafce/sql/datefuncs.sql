@@ -2,6 +2,7 @@
 SET client_encoding = utf8;
 set datestyle='ISO,MDY';
 set time zone 'PRC';
+set compatible_mode to oracle;
 
 select oracle.from_tz('2021-11-08 09:12:39','+16:00') from dual;
 select oracle.from_tz('2021-11-08 09:12:39','-12:00') from dual;
@@ -237,4 +238,56 @@ select oracle.round(timestamptz '2020-06-18 13:12:18 + 08', 'DDD');
 select oracle.round(timestamptz '2020-02-29 14:40:20 + 08', 'DAY');
 select oracle.round(timestamptz '2020-02-29 11:40:20 + 08', 'HH');
 select oracle.round(timestamptz '2020-06-18 14:40:20 + 08', 'MI');
+
+--next_day function
+SET search_path TO oracle,"$user", public, pg_catalog;
+select oracle.next_day(date '2020-02-15', 'Monday') from dual;
+select oracle.next_day(date '2020-02-29', 'Monday') from dual;
+select oracle.next_day(date '2020-06-14', 'Wednesday') from dual;
+select oracle.next_day(date '2020-07-20', 'Wednesday') from dual;
+select oracle.next_day(date '2020-09-15', 'Friday') from dual;
+select oracle.next_day(date '2020-09-22', 'Friday') from dual;
+select oracle.next_day(date '2020-02-15', 2) from dual;
+select oracle.next_day(date '2020-02-29', 2) from dual;
+select oracle.next_day(date '2020-06-14', 4) from dual;
+select oracle.next_day(date '2020-07-20', 4) from dual;
+select oracle.next_day(date '2020-09-15', 6) from dual;
+select oracle.next_day(date '2020-09-22', 6) from dual;
+select oracle.next_day(to_timestamp('2020-02-29 14:40:50', 'YYYY-MM-DD HH24:MI:SS'), 'Tuesday') from dual;
+select oracle.next_day(to_timestamp('2020-05-05 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 'thursday') from dual;
+select oracle.next_day(to_timestamp('2020-06-22 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 'Saturday') from dual;
+select oracle.next_day(to_timestamp('2020-07-01 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 'Sunday') from dual;
+select oracle.next_day(to_timestamp('2020-02-29 14:40:50', 'YYYY-MM-DD HH24:MI:SS'), 3) from dual;
+select oracle.next_day(to_timestamp('2020-05-05 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 5) from dual;
+select oracle.next_day(to_timestamp('2020-06-22 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 7) from dual;
+select oracle.next_day(to_timestamp('2020-07-01 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 1) from dual;
+select oracle.next_day('2020-02-29 14:40:50'::timestamptz, 'Tuesday') from dual;
+select oracle.next_day('2020-05-05 19:43:51'::timestamptz, 'thursday') from dual;
+select oracle.next_day('2020-06-22 19:43:51'::timestamptz, 'Saturday') from dual;
+select oracle.next_day('2020-07-01 19:43:51'::timestamptz, 'Sunday') from dual;
+select oracle.next_day('2020-02-29 14:40:50'::timestamptz, 3) from dual;
+select oracle.next_day('2020-05-05 19:43:51'::timestamptz, 5) from dual;
+select oracle.next_day('2020-06-22 19:43:51'::timestamptz, 7) from dual;
+select oracle.next_day('2020-07-01 19:43:51'::timestamptz, 1) from dual;
+
+--last_day function
+select oracle.last_day(date '2020-02-15');
+select oracle.last_day(date '2020-07-11');
+select oracle.last_day(date '2020-09-09');
+select oracle.last_day(date '2020-02-15');
+select oracle.last_day(date '2020-07-11');
+select oracle.last_day(date '2020-09-09');
+select oracle.last_day(date '2020-02-15');
+select oracle.last_day(date '2020-11-11');
+select oracle.last_day(date '2020-09-09');
+select oracle.last_day('2020-02-12 12:45:12'::timestamp) from dual;
+select oracle.last_day(timestamp '2020-05-17 13:27:19') from dual;
+select oracle.last_day(timestamp '2020-08-21 19:20:40') from dual;
+select oracle.last_day('2020-10-05 12:45:12 +08'::timestamptz) from dual;
+select oracle.last_day('2020-12-17 13:27:19 +08'::timestamptz) from dual;
+select oracle.last_day('2020-11-29 19:20:40 +08'::timestamptz) from dual;
+select oracle.last_day('-0001-3-1 13:27:19'::oracle.date) from dual;
+select oracle.last_day('-0001-4-1 13:27:19'::oracle.date) from dual;
+select oracle.last_day('-0001-2-1 13:27:19'::oracle.date) from dual;
+select oracle.last_day('-0004-2-1 13:27:19'::oracle.date) from dual;
 

@@ -109,6 +109,10 @@ PG_FUNCTION_INFO_V1(ora_timestamp_round);
 PG_FUNCTION_INFO_V1(orafce_sysdate);
 PG_FUNCTION_INFO_V1(orafce_sessiontimezone);
 PG_FUNCTION_INFO_V1(orafce_dbtimezone);
+PG_FUNCTION_INFO_V1(ora_next_day);
+PG_FUNCTION_INFO_V1(ora_last_day);
+PG_FUNCTION_INFO_V1(oranext_day_by_index);
+
 
 /*
  * Search const value in char array
@@ -1070,3 +1074,222 @@ orafce_dbtimezone(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TEXT_P(cstring_to_text(orafce_timezone));
 }
+
+/********************************************************************
+ *
+ * ora_next_day
+ *
+ * Syntax:
+ *
+ * oracle.date ora_next_day(oracle.date value, text)
+ *
+ * Purpose:
+ *
+ * Returns the date of the next day of the week
+ *
+ ********************************************************************/
+Datum
+ora_next_day(PG_FUNCTION_ARGS)
+{
+	DateADT day = 0;
+	Timestamp	dt = PG_GETARG_TIMESTAMP(0);
+	text *day_txt = PG_GETARG_TEXT_PP(1);
+	const char *str = VARDATA_ANY(day_txt);
+	int	len = VARSIZE_ANY_EXHDR(day_txt);
+	int off;
+	int d = -1;
+	struct pg_tm tt,
+			   *tm = &tt;
+	fsec_t		fsec;
+	bool	bcflg = false;
+	struct pg_tm tt1,
+				*newtm= &tt1;
+	Timestamp result;
+	
+	timestamp2tm(dt, NULL, tm, &fsec, NULL, NULL);
+
+	if (tm->tm_year < 0)
+	{
+		tm->tm_year++;
+		bcflg = true;
+	}
+	day = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) - POSTGRES_EPOCH_JDATE;
+
+#ifdef ENABLE_INTERNATIONALIZED_WEEKDAY
+	/* Check mru_weekdays first for performance. */
+	if (mru_weekdays)
+	{
+		if ((d = weekday_search(mru_weekdays, str, len)) >= 0)
+			goto found;
+		else
+			mru_weekdays = NULL;
+	}
+#endif
+
+	/*
+	 * Oracle uses only 3 heading characters of the input.
+	 * Ignore all trailing characters.
+	 */
+	if (len >= 3 && (d = ora_seq_prefix_search(str, ora_days, 3)) >= 0)
+		goto found;
+
+#ifdef ENABLE_INTERNATIONALIZED_WEEKDAY
+	do
+	{
+		int		i;
+		int		encoding = GetDatabaseEncoding();
+
+		for (i = 0; i < (int) lengthof(WEEKDAYS); i++)
+		{
+			if (encoding == WEEKDAYS[i].encoding)
+			{
+				if ((d = weekday_search(&WEEKDAYS[i], str, len)) >= 0)
+				{
+					mru_weekdays = &WEEKDAYS[i];
+					goto found;
+				}
+			}
+		}
+	} while(0);
+#endif
+
+	CHECK_SEQ_SEARCH(-1, "DAY/Day/day");
+
+found:
+	off = d - j2day(day+POSTGRES_EPOCH_JDATE);
+
+	if (off <= 0)
+		day += off + 7;
+	else
+		day += off;
+
+	j2date(day + POSTGRES_EPOCH_JDATE,  &(newtm->tm_year), &(newtm->tm_mon), &(newtm->tm_mday));
+	tm->tm_year = newtm->tm_year;
+	tm->tm_mon = newtm->tm_mon;
+	tm->tm_mday = newtm->tm_mday;
+
+	if (bcflg)
+		tm->tm_year--;
+	
+	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMP(result);
+
+}
+
+/********************************************************************
+ *
+ * oranext_day_by_index
+ *
+ * Syntax:
+ *
+ * oracle.date oranext_day_by_index(oracle.date value, integer)
+ *
+ * Purpose:
+ *
+ * Returns the date of the next day of the week
+ *
+ ********************************************************************/
+Datum
+oranext_day_by_index(PG_FUNCTION_ARGS)
+{
+	Timestamp dt = PG_GETARG_TIMESTAMP(0);
+	int		idx = PG_GETARG_INT32(1);
+	DateADT day;
+	int		off;
+	struct pg_tm tt,
+			   *tm = &tt;
+	fsec_t		fsec;
+	int y, m, d;
+	bool	bcflg = false;
+	Timestamp result;
+
+	timestamp2tm(dt, NULL, tm, &fsec, NULL, NULL);
+	
+	if (tm->tm_year < 0)
+	{
+		tm->tm_year++;
+		bcflg = true;
+	}
+	day = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) - POSTGRES_EPOCH_JDATE;
+
+	/*
+	 * off is 1..7 (Sun..Sat).
+	 *
+	 * TODO: It should be affected by NLS_TERRITORY. For example,
+	 * 1..7 should be interpreted as Mon..Sun in GERMAN.
+	 */
+	CHECK_SEQ_SEARCH((idx < 1 || 7 < idx) ? -1 : 0, "DAY/Day/day");
+
+	/* j2day returns 0..6 as Sun..Sat */
+	off = (idx - 1) - j2day(day+POSTGRES_EPOCH_JDATE);
+	
+	if (off <= 0)
+		day += off + 7;
+	else
+		day += off;
+
+	j2date(day + POSTGRES_EPOCH_JDATE,  &y, &m, &d);
+	tm->tm_year = y;
+	tm->tm_mon = m;
+	tm->tm_mday = d;
+	
+	if (bcflg)
+		tm->tm_year--;
+	
+	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMP(result);
+}
+
+/********************************************************************
+ *
+ * ora_last_day
+ *
+ * Syntax:
+ *
+ * oracle.date ora_last_day(oracle.date value)
+ *
+ * Purpose:
+ *
+ * Returns last day of the month based on a date value
+ *
+ ********************************************************************/
+Datum
+ora_last_day(PG_FUNCTION_ARGS)
+{
+	DateADT day = 0;
+	Timestamp	dt = PG_GETARG_TIMESTAMP(0);
+	int y, m, d;
+	struct pg_tm tt,
+			   *tm = &tt;
+	fsec_t		fsec;
+	Timestamp result;
+	DateADT resultday;
+	
+	timestamp2tm(dt, NULL, tm, &fsec, NULL, NULL);
+
+	day = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) - POSTGRES_EPOCH_JDATE;
+	
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	resultday = date2j(y, m+1, 1) - POSTGRES_EPOCH_JDATE;
+	j2date(resultday + POSTGRES_EPOCH_JDATE -1, &y, &m, &d);
+	
+	tm->tm_year = y;
+	tm->tm_mon = m;
+	tm->tm_mday = d;
+	
+	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMP(result);
+}
+
