@@ -471,7 +471,14 @@ _ora_date_round(DateADT day, int f)
 	{
 	CASE_fmt_CC
 		if (y > 0)
-			result = DATE2J((y/100)*100+(day < DATE2J((y/100)*100+50,1,1) ?1:101),1,1);
+		{
+			/* change 50 to 51, Because Oracle is more than 50 years old, 
+			 * it will be the first year of the next century, the date can be oracle.date, timestamp and timestamptz.
+			 * ie. select round('2050-01-01 00:00:00'::oracle.date, 'SCC') from dual; expect 2001-01-01 00:00:00
+			 * select round('2051-01-01 00:00:00'::oracle.date, 'SCC') from dual;  expect 2101-01-01 00:00:00
+			 */
+			result = DATE2J((y/100)*100+(day < DATE2J((y/100)*100+51,1,1) ?1:101),1,1);
+		}
 		else
 			result = DATE2J((y/100)*100+(day < DATE2J((y/100)*100-50+1,1,1) ?-99:1),1,1);
 		break;
