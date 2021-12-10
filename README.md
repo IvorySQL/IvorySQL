@@ -18,5 +18,7 @@ lists.ivorysql.org
 
 # Rules
 IvorySQL does not compete with community PostgreSQL but compliments it.
+
 100% compatible with PostgreSQL with added features and value.
+
 Everything that works on PostgreSQL works on IvorySQL
