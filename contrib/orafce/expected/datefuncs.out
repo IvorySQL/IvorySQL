@@ -1222,280 +1222,387 @@ select oracle.round(timestamptz '2020-06-18 14:40:20 + 08', 'MI');
 --next_day function
 SET search_path TO oracle,"$user", public, pg_catalog;
 select oracle.next_day(date '2020-02-15', 'Monday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-02-17 00:00:00
+ 2020-02-17 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-02-29', 'Monday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-03-02 00:00:00
+ 2020-03-02 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-06-14', 'Wednesday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-06-17 00:00:00
+ 2020-06-17 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-07-20', 'Wednesday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-07-22 00:00:00
+ 2020-07-22 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-09-15', 'Friday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-09-18 00:00:00
+ 2020-09-18 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-09-22', 'Friday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-09-25 00:00:00
+ 2020-09-25 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-02-15', 2) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-02-17 00:00:00
+ 2020-02-17 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-02-29', 2) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-03-02 00:00:00
+ 2020-03-02 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-06-14', 4) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-06-17 00:00:00
+ 2020-06-17 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-07-20', 4) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-07-22 00:00:00
+ 2020-07-22 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-09-15', 6) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-09-18 00:00:00
+ 2020-09-18 00:00:00
 (1 row)
 
 select oracle.next_day(date '2020-09-22', 6) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-09-25 00:00:00
+ 2020-09-25 00:00:00
+(1 row)
+
+select oracle.next_day(oracle.date '2020-02-15 12:10:10', 2) from dual;
+      next_day       
+---------------------
+ 2020-02-17 12:10:10
+(1 row)
+
+select oracle.next_day(oracle.date '2020-02-29 09:45:59', 3) from dual;
+      next_day       
+---------------------
+ 2020-03-03 09:45:59
+(1 row)
+
+select oracle.next_day(oracle.date '2020-06-14 01:20:12', 4) from dual;
+      next_day       
+---------------------
+ 2020-06-17 01:20:12
+(1 row)
+
+select oracle.next_day(oracle.date '2020-07-20 14:20:23', 5) from dual;
+      next_day       
+---------------------
+ 2020-07-23 14:20:23
+(1 row)
+
+select oracle.next_day(oracle.date '2020-09-15 05:19:43', 6) from dual;
+      next_day       
+---------------------
+ 2020-09-18 05:19:43
+(1 row)
+
+select oracle.next_day(oracle.date '2020-09-22 12:00:00', 7) from dual;
+      next_day       
+---------------------
+ 2020-09-26 12:00:00
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-02-29 14:40:50', 'YYYY-MM-DD HH24:MI:SS'), 'Tuesday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-03-03 14:40:50
+ 2020-03-03 14:40:50
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-05-05 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 'thursday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-05-07 19:43:51
+ 2020-05-07 19:43:51
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-06-22 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 'Saturday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-06-27 19:43:51
+ 2020-06-27 19:43:51
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-07-01 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 'Sunday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-07-05 19:43:51
+ 2020-07-05 19:43:51
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-02-29 14:40:50', 'YYYY-MM-DD HH24:MI:SS'), 3) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-03-03 14:40:50
+ 2020-03-03 14:40:50
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-05-05 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 5) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-05-07 19:43:51
+ 2020-05-07 19:43:51
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-06-22 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 7) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-06-27 19:43:51
+ 2020-06-27 19:43:51
 (1 row)
 
 select oracle.next_day(to_timestamp('2020-07-01 19:43:51', 'YYYY-MM-DD HH24:MI:SS'), 1) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-07-05 19:43:51
+ 2020-07-05 19:43:51
 (1 row)
 
 select oracle.next_day('2020-02-29 14:40:50'::timestamptz, 'Tuesday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-03-03 14:40:50
+ 2020-03-03 14:40:50
 (1 row)
 
 select oracle.next_day('2020-05-05 19:43:51'::timestamptz, 'thursday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-05-07 19:43:51
+ 2020-05-07 19:43:51
 (1 row)
 
 select oracle.next_day('2020-06-22 19:43:51'::timestamptz, 'Saturday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-06-27 19:43:51
+ 2020-06-27 19:43:51
 (1 row)
 
 select oracle.next_day('2020-07-01 19:43:51'::timestamptz, 'Sunday') from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-07-05 19:43:51
+ 2020-07-05 19:43:51
 (1 row)
 
 select oracle.next_day('2020-02-29 14:40:50'::timestamptz, 3) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-03-03 14:40:50
+ 2020-03-03 14:40:50
 (1 row)
 
 select oracle.next_day('2020-05-05 19:43:51'::timestamptz, 5) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-05-07 19:43:51
+ 2020-05-07 19:43:51
 (1 row)
 
 select oracle.next_day('2020-06-22 19:43:51'::timestamptz, 7) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-06-27 19:43:51
+ 2020-06-27 19:43:51
 (1 row)
 
 select oracle.next_day('2020-07-01 19:43:51'::timestamptz, 1) from dual;
-   next_day 	  
+      next_day       
 ---------------------
-2020-07-05 19:43:51
+ 2020-07-05 19:43:51
 (1 row)
 
 --last_day function
 select oracle.last_day(date '2020-02-15');
-   last_day 	  
+      last_day       
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
 
 select oracle.last_day(date '2020-07-11');
-   last_day 	  
+      last_day       
 ---------------------
-2020-07-31 00:00:00
+ 2020-07-31 00:00:00
 (1 row)
 
 select oracle.last_day(date '2020-09-09');
-   last_day 	  
+      last_day       
 ---------------------
-2020-09-30 00:00:00
+ 2020-09-30 00:00:00
 (1 row)
 
 select oracle.last_day(date '2020-02-15');
-   last_day 	  
+      last_day       
 ---------------------
-2020-02-01 00:00:00
-   
+ 2020-02-29 00:00:00
+(1 row)
+
 select oracle.last_day(date '2020-07-11');
-   last_day 	  
+      last_day       
 ---------------------
-2020-07-31 00:00:00
+ 2020-07-31 00:00:00
 (1 row)
 
 select oracle.last_day(date '2020-09-09');
-   last_day 	  
+      last_day       
 ---------------------
-2020-09-30 00:00:00
+ 2020-09-30 00:00:00
 (1 row)
 
 select oracle.last_day(date '2020-02-15');
-   last_day 	  
+      last_day       
 ---------------------
-2020-02-29 00:00:00
+ 2020-02-29 00:00:00
 (1 row)
 
 select oracle.last_day(date '2020-11-11');
-   last_day 	  
+      last_day       
 ---------------------
-2020-11-30 00:00:00
+ 2020-11-30 00:00:00
 (1 row)
 
 select oracle.last_day(date '2020-09-09');
-   last_day 	  
+      last_day       
 ---------------------
-2020-09-30 00:00:00
+ 2020-09-30 00:00:00
 (1 row)
 
 select oracle.last_day('2020-02-12 12:45:12'::timestamp) from dual;
-   last_day 	  
+      last_day       
 ---------------------
-2020-02-29 12:45:12
+ 2020-02-29 12:45:12
 (1 row)
 
 select oracle.last_day(timestamp '2020-05-17 13:27:19') from dual;
-   last_day 	  
+      last_day       
 ---------------------
-2020-05-31 13:27:19
+ 2020-05-31 13:27:19
 (1 row)
 
 select oracle.last_day(timestamp '2020-08-21 19:20:40') from dual;
-   last_day 	  
+      last_day       
 ---------------------
-2020-08-31 19:20:40
+ 2020-08-31 19:20:40
 (1 row)
 
 select oracle.last_day('2020-10-05 12:45:12 +08'::timestamptz) from dual;
-   last_day 	  
+      last_day       
 ---------------------
-2020-10-31 12:45:12
+ 2020-10-31 12:45:12
 (1 row)
 
 select oracle.last_day('2020-12-17 13:27:19 +08'::timestamptz) from dual;
-   last_day 	  
+      last_day       
 ---------------------
-2020-12-31 13:27:19
+ 2020-12-31 13:27:19
 (1 row)
 
 select oracle.last_day('2020-11-29 19:20:40 +08'::timestamptz) from dual;
-   last_day 	  
+      last_day       
 ---------------------
-2020-11-30 19:20:40
+ 2020-11-30 19:20:40
 (1 row)
 
 select oracle.last_day('-0001-3-1 13:27:19'::oracle.date) from dual;
-	last_day	   
+       last_day       
 ----------------------
--0001-03-31 13:27:19
+ -0001-03-31 13:27:19
 (1 row)
 
 select oracle.last_day('-0001-4-1 13:27:19'::oracle.date) from dual;
-	last_day	   
+       last_day       
 ----------------------
--0001-04-30 13:27:19
+ -0001-04-30 13:27:19
 (1 row)
 
 select oracle.last_day('-0001-2-1 13:27:19'::oracle.date) from dual;
-	last_day	   
+       last_day       
 ----------------------
--0001-02-28 13:27:19
+ -0001-02-28 13:27:19
 (1 row)
 
 select oracle.last_day('-0004-2-1 13:27:19'::oracle.date) from dual;
-	last_day	   
+       last_day       
 ----------------------
--0004-02-29 13:27:19
+ -0004-02-29 13:27:19
+(1 row)
+
+select oracle.last_day(oracle.date '2021-01-15 14:20:23');
+      last_day       
+---------------------
+ 2021-01-31 14:20:23
+(1 row)
+
+select oracle.last_day(oracle.date '2021-02-11 09:10:21');
+      last_day       
+---------------------
+ 2021-02-28 09:10:21
+(1 row)
+
+select oracle.last_day(oracle.date '2021-03-09 12:33:11');
+      last_day       
+---------------------
+ 2021-03-31 12:33:11
+(1 row)
+
+select oracle.last_day(oracle.date '2021-04-15 11:59:59');
+      last_day       
+---------------------
+ 2021-04-30 11:59:59
+(1 row)
+
+select oracle.last_day(oracle.date '2021-05-01 12:10:01');
+      last_day       
+---------------------
+ 2021-05-31 12:10:01
+(1 row)
+
+select oracle.last_day(oracle.date '2021-06-18 01:00:01');
+      last_day       
+---------------------
+ 2021-06-30 01:00:01
+(1 row)
+
+select oracle.last_day(oracle.date '2021-07-07 05:20:18');
+      last_day       
+---------------------
+ 2021-07-31 05:20:18
+(1 row)
+
+select oracle.last_day(oracle.date '2021-08-15 17:19:13');
+      last_day       
+---------------------
+ 2021-08-31 17:19:13
+(1 row)
+
+select oracle.last_day(oracle.date '2021-09-15 16:19:10');
+      last_day       
+---------------------
+ 2021-09-30 16:19:10
+(1 row)
+
+select oracle.last_day(oracle.date '2021-11-11 17:30:00');
+      last_day       
+---------------------
+ 2021-11-30 17:30:00
+(1 row)
+
+select oracle.last_day(oracle.date '2021-12-09 22:00:00');
+      last_day       
+---------------------
+ 2021-12-31 22:00:00
+(1 row)
 
