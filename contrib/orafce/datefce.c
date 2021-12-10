@@ -1266,25 +1266,16 @@ ora_last_day(PG_FUNCTION_ARGS)
 {
 	DateADT day = 0;
 	Timestamp	dt = PG_GETARG_TIMESTAMP(0);
-	int y, m, d;
 	struct pg_tm tt,
 			   *tm = &tt;
 	fsec_t		fsec;
 	Timestamp result;
-	DateADT resultday;
 	
 	timestamp2tm(dt, NULL, tm, &fsec, NULL, NULL);
 
-	day = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) - POSTGRES_EPOCH_JDATE;
-	
-	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
-	resultday = date2j(y, m+1, 1) - POSTGRES_EPOCH_JDATE;
-	j2date(resultday + POSTGRES_EPOCH_JDATE -1, &y, &m, &d);
-	
-	tm->tm_year = y;
-	tm->tm_mon = m;
-	tm->tm_mday = d;
-	
+	day = date2j(tm->tm_year, tm->tm_mon+1, 1) - 1;
+	j2date(day, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
+		
 	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
 		ereport(ERROR,
 			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
