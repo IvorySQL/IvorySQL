@@ -705,16 +705,16 @@ oraadd_months(PG_FUNCTION_ARGS)
 	last_day = (d == oradays_of_month(y, m));
 
 	v = div(y * 12 + m - 1 + n, 12);
-    y = v.quot;
-    if (y < 0)
-    {
-  		if(tm->tm_year > 0 && ((tm->tm_year - 1) * 12 + m + n) <= 0)
+	y = v.quot;
+	if (y < 0)
+	{
+			if(tm->tm_year > 0 && ((tm->tm_year - 1) * 12 + m + n) <= 0)
 			y = y-2;
 		else if(tm->tm_year < 0 && ((tm->tm_year + 1) * 12 - m + n) >= 0)
 			y++;
 		else if (tm->tm_year < 0 && (((tm->tm_year + 1) * 12 - m + n) < 0))
 			y--;
-    }
+	}
 	else if (y >= 0)
 	{
 		if (tm->tm_year < 0 && (((tm->tm_year + 1) * 12 - m + n) < 0) && (v.rem == 0))
@@ -729,14 +729,14 @@ oraadd_months(PG_FUNCTION_ARGS)
 			y--;
 	}
 
-    m = v.rem + 1;
+	m = v.rem + 1;
 
-    if (m <= 0)
-    	m = 12 + m;
+	if (m <= 0)
+		m = 12 + m;
 
-    days = oradays_of_month(y, m);
-    if (last_day || d > days)
-     	d = days;
+	days = oradays_of_month(y, m);
+	if (last_day || d > days)
+		d = days;
 
 	resultday = date2j(y, m, d) - POSTGRES_EPOCH_JDATE;
 
