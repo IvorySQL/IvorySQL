@@ -5240,6 +5240,51 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
+CREATE OR REPLACE FUNCTION oracle.length(text)
+RETURNS integer
+AS 'textlen'
+LANGUAGE internal IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(numeric)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(float4)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(float8)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(pg_catalog.date)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(oracle.date)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(timestamp)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(timestamptz)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.length(interval)
+RETURNS integer
+AS 'select oracle.length($1::oracle.varchar2)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
 GRANT USAGE ON SCHEMA plvdate TO PUBLIC;
