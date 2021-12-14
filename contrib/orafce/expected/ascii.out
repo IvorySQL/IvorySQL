@@ -1,0 +1,137 @@
+--Test For ascii
+set search_path = oracle, public;
+set datestyle to ISO,YMD;
+SELECT ascii(20199) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii(2019::int2) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii(201912::int4) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii(20191234::int8) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii(201956.99980855) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii(201956.999808::numeric) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii('1230') "ascii" FROM DUAL;
+ ascii 
+-------
+    49
+(1 row)
+
+SELECT ascii('I 8O lIKE AlPH: a b c') "ascii" FROM DUAL;
+ ascii 
+-------
+    73
+(1 row)
+
+SELECT ascii('AB 8O lIKE AlPH: a b c'::char(100)) "ascii" FROM DUAL;
+ ascii 
+-------
+    65
+(1 row)
+
+SELECT ascii('ab 8O lIKE AlPH: a b c'::varchar(100)) "ascii" FROM DUAL;
+ ascii 
+-------
+    97
+(1 row)
+
+SELECT ascii('cd 8O lIKE AlPH: a b c'::varchar2(100)) "ascii" FROM DUAL;
+ ascii 
+-------
+    99
+(1 row)
+
+SELECT ascii('i 8O lIKE AlPH: a b c'::nvarchar2(100)) "ascii" FROM DUAL;
+ ascii 
+-------
+   105
+(1 row)
+
+SELECT ascii('CD 8O lIKE AlPH: a b c'::text) "ascii" FROM DUAL;
+ ascii 
+-------
+    67
+(1 row)
+
+SELECT ascii(cast('合理adfad' as varchar(100))) "ascii" FROM DUAL;
+ ascii 
+-------
+ 21512
+(1 row)
+
+SELECT ascii(cast('合理adfad' as char(100))) "ascii" FROM DUAL;
+ ascii 
+-------
+ 21512
+(1 row)
+
+SELECT ascii('2019-12-12'::date) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii('2019-12-12'::timestamp) "ascii" FROM DUAL;
+ ascii 
+-------
+    50
+(1 row)
+
+SELECT ascii(null) FROM DUAL;
+ ascii 
+-------
+      
+(1 row)
+
+SELECT ascii('') FROM DUAL;
+ ascii 
+-------
+     0
+(1 row)
+
+SELECT ascii(' ') FROM DUAL;
+ ascii 
+-------
+    32
+(1 row)
+
+SELECT ascii(0::int) FROM DUAL;
+ ascii 
+-------
+    48
+(1 row)
+
+SELECT ascii(-1::int) FROM DUAL;
+ ascii 
+-------
+    45
+(1 row)
+
+reset search_path;
+reset datestyle;
