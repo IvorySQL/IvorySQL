@@ -6904,3 +6904,71 @@ RETURNS oracle.date
 AS 'MODULE_PATHNAME', 'ora_last_day'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.last_day(oracle.date) IS 'returns last day of the month based on a date value';
+
+--ascii function
+CREATE OR REPLACE FUNCTION oracle.ascii(oracle.varchar2)
+RETURNS integer
+AS 'ascii'
+LANGUAGE internal
+IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(oracle.varchar2) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(smallint)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(smallint) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(int)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(int) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(numeric)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(numeric) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(bigint)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(bigint) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(float4)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(float4) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(float8)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(float8) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(pg_catalog.date)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(pg_catalog.date) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(timestamp)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(timestamp) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(timestamptz)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(timestamptz) IS 'returns the decimal representation of the first character from string.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(interval)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(interval) IS 'returns the decimal representation of the first character from string.';
