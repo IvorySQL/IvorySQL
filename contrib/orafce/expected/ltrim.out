@@ -1,0 +1,261 @@
+set datestyle to ISO,YMD;
+set search_path to oracle, pg_catalog;
+SELECT ltrim(121232112, 21) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 32112
+(1 row)
+
+SELECT ltrim(121232112) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 121232112
+(1 row)
+
+SELECT ltrim(12312::int2, 21::int2) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 312
+(1 row)
+
+SELECT ltrim(1223112::int4, 21::int4) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 3112
+(1 row)
+
+SELECT ltrim(1223112::int4) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 1223112
+(1 row)
+
+SELECT ltrim(121232112::int8, 21::int8) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 32112
+(1 row)
+
+SELECT ltrim(2.13232112, 2.1) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 3232112
+(1 row)
+
+SELECT ltrim(2.13232112::numeric, 2.1::numeric) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 3232112
+(1 row)
+
+SELECT ltrim(2.13232112::numeric) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 2.13232112
+(1 row)
+
+SELECT ltrim('1213232112', '21') "LTRIM Example";
+ LTRIM Example 
+---------------
+ 3232112
+(1 row)
+
+SELECT ltrim('<=====>BROWNING<=====>', '<>=') "LTRIM Example";
+  LTRIM Example  
+-----------------
+ BROWNING<=====>
+(1 row)
+
+SELECT ltrim('   ab cdea  ') "LTRIM Example";
+ LTRIM Example 
+---------------
+ ab cdea  
+(1 row)
+
+SELECT ltrim('   ab cdea  '::char(4)) "LTRIM Example";
+ LTRIM Example 
+---------------
+ a
+(1 row)
+
+SELECT ltrim('   ab cdea  '::char(20)) "LTRIM Example";
+ LTRIM Example 
+---------------
+ ab cdea
+(1 row)
+
+SELECT length(ltrim('   ab cdea  '::char(20))) "LTRIM Example";
+ LTRIM Example 
+---------------
+             7
+(1 row)
+
+SELECT ltrim('   ab cdea  '::varchar2(20)) "LTRIM Example";
+ LTRIM Example 
+---------------
+ ab cdea  
+(1 row)
+
+SELECT ltrim('   ab cdea  '::text) "LTRIM Example";
+ LTRIM Example 
+---------------
+ ab cdea  
+(1 row)
+
+SELECT ltrim('<=====>BROWNING<=====>'::char(25), '<>='::char(3)) "LTRIM Example";
+   LTRIM Example    
+--------------------
+ BROWNING<=====>   
+(1 row)
+
+SELECT length(ltrim('<=====>BROWNING<=====>'::char(25), '<>='::char(3))) "LTRIM Example";
+ LTRIM Example 
+---------------
+            18
+(1 row)
+
+SELECT ltrim('<=====>BROWNING<=====>'::varchar(25), '<>='::varchar(5)) "LTRIM Example";
+  LTRIM Example  
+-----------------
+ BROWNING<=====>
+(1 row)
+
+SELECT ltrim('<=====>BROWNING<=====>'::varchar2(25), '<>='::varchar2(5)) "LTRIM Example";
+  LTRIM Example  
+-----------------
+ BROWNING<=====>
+(1 row)
+
+SELECT ltrim('<=====>BROWNING<=====>'::nvarchar2(25), '<>='::nvarchar2(5)) "LTRIM Example";
+  LTRIM Example  
+-----------------
+ BROWNING<=====>
+(1 row)
+
+SELECT ltrim('<=====>BROWNING<=====>'::text, '<>='::text) "LTRIM Example";
+  LTRIM Example  
+-----------------
+ BROWNING<=====>
+(1 row)
+
+SELECT ltrim('我的家我的梦'::varchar2(25), '我的家'::varchar2(9)) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 梦
+(1 row)
+
+SELECT ltrim('2019-12-12'::date, '2019-12-12'::date) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 
+(1 row)
+
+SELECT ltrim('2019-12-12'::timestamp, '2019-12-12'::timestamp) "LTRIM Example";
+ LTRIM Example 
+---------------
+ 
+(1 row)
+
+SELECT ltrim('2019-12-12'::date) "LTRIM Example";
+    LTRIM Example    
+---------------------
+ 2019-12-12 00:00:00
+(1 row)
+
+SELECT ltrim(null,'nu'::text);
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim('nu'::text,null);
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim(null,null);
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim('','');
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim('',' ');
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim(' ','');
+ ltrim 
+-------
+  
+(1 row)
+
+SELECT ltrim(' ',' ');
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim(null);
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim('');
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim(' ');
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim(0::int,0.99::numeric);
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim(-1::int,-1::int);
+ ltrim 
+-------
+ 
+(1 row)
+
+SELECT ltrim(0::int);
+ ltrim 
+-------
+ 0
+(1 row)
+
+SELECT ltrim(-5::int);
+ ltrim 
+-------
+ -5
+(1 row)
+
+SELECT ltrim(0.99::numeric);
+ ltrim 
+-------
+ 0.99
+(1 row)
+
+SELECT ltrim(-5.99::numeric);
+ ltrim 
+-------
+ -5.99
+(1 row)
+
+reset search_path;

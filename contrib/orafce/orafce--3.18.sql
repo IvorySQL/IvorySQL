@@ -5176,144 +5176,21 @@ STRICT IMMUTABLE
  *     significant for the trimming process.
  */
 
+CREATE FUNCTION oracle.ltrim("any", "any")
+RETURNS text
+AS 'MODULE_PATHNAME', 'ltrim_any2'
+LANGUAGE C STRICT IMMUTABLE;
+
+CREATE FUNCTION oracle.ltrim("any")
+RETURNS text
+AS 'MODULE_PATHNAME','ltrim_any1'
+LANGUAGE C STRICT IMMUTABLE;
+
 /* LTRIM family */
 CREATE FUNCTION oracle.ltrim(char, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(char, text)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(char, oracle.varchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(char, oracle.nvarchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(char)
-RETURNS text
-AS $$ SELECT oracle.ltrim($1, ' '::text) $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(text, char)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(text, text)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(text, oracle.varchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(text, oracle.nvarchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(text)
-RETURNS text
-AS $$ SELECT oracle.ltrim($1, ' '::text) $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.varchar2, char)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.varchar2, text)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.varchar2, oracle.varchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.varchar2, oracle.nvarchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.varchar2)
-RETURNS text
-AS $$ SELECT oracle.ltrim($1, ' '::text) $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, char)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, text)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, oracle.varchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, oracle.nvarchar2)
-RETURNS text
-AS 'ltrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.ltrim(oracle.nvarchar2)
-RETURNS text
-AS $$ SELECT oracle.ltrim($1, ' '::text) $$
-LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
