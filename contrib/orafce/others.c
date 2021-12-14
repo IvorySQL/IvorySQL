@@ -663,3 +663,41 @@ rtrim_any1(PG_FUNCTION_ARGS)
 
 	return DirectFunctionCall1Coll(rtrim1, collation, (Datum)string);
 }
+
+PG_FUNCTION_INFO_V1(ltrim_any2);
+Datum
+ltrim_any2(PG_FUNCTION_ARGS)
+{
+	text	   *string;
+	text	   *set;
+	Oid			collation = PG_GET_COLLATION();
+
+
+	collation = collation == InvalidOid ? DEFAULT_COLLATION_OID : collation;
+	string = (text *)orafce_sourcetype_to_targetype(
+				PG_GETARG_DATUM(0),
+				get_fn_expr_argtype(fcinfo->flinfo, 0),
+				TEXTOID);
+	set = (text *)orafce_sourcetype_to_targetype(
+				PG_GETARG_DATUM(1),
+				get_fn_expr_argtype(fcinfo->flinfo, 1),
+				TEXTOID);
+
+	return DirectFunctionCall2Coll(ltrim, collation, (Datum)string, (Datum)set);
+}
+
+PG_FUNCTION_INFO_V1(ltrim_any1);
+Datum
+ltrim_any1(PG_FUNCTION_ARGS)
+{
+	text	   *string;
+	Oid			collation =  PG_GET_COLLATION();
+
+	collation = collation == InvalidOid ? DEFAULT_COLLATION_OID : collation;
+	string = (text *)orafce_sourcetype_to_targetype(
+				PG_GETARG_DATUM(0),
+				get_fn_expr_argtype(fcinfo->flinfo, 0),
+				TEXTOID);
+
+	return DirectFunctionCall1Coll(ltrim1, collation, (Datum)string);
+}
