@@ -147,12 +147,13 @@ RETURNS numeric AS $$
 SELECT pg_catalog.to_number($1::text,$2::text);
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE FUNCTION oracle.bitand(bigint, bigint)
-RETURNS bigint
-AS $$ SELECT $1 & $2; $$
-LANGUAGE sql IMMUTABLE STRICT;
+CREATE FUNCTION pg_catalog.to_date(str text)
+RETURNS timestamp
+AS 'MODULE_PATHNAME','ora_to_date'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to timestamp';
 
-CREATE FUNCTION oracle.sinh(float8)
+CREATE FUNCTION sinh(float8)
 RETURNS float8 AS
 $$ SELECT (exp($1) - exp(-$1)) / 2; $$
 LANGUAGE sql IMMUTABLE STRICT;
@@ -206,6 +207,31 @@ COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 /* -- can't overwrite PostgreSQL functions!!!! */
 
 --CREATE SCHEMA oracle;
+
+CREATE FUNCTION oracle.bitand(int8, int8)
+RETURNS bigint
+AS $$ SELECT $1 & $2; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.bitand(text, text)
+RETURNS bigint
+AS $$ SELECT ($1::int8 & $2::int8); $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.bitand(numeric, numeric)
+RETURNS bigint
+AS $$ SELECT ($1::int8 & $2::int8); $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.bitand(float8, float8)
+RETURNS bigint
+AS $$ SELECT ($1::int8 & $2::int8); $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.bitand(bigint, bigint)
+RETURNS bigint
+AS $$ SELECT $1 & $2; $$
+LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.nanvl(float4, float4)
 RETURNS float4 AS
