@@ -1,0 +1,72 @@
+set search_path to oracle, pg_catalog;
+select listagg(i::text) from generate_series(1,3) g(i);
+ listagg 
+---------
+ 123
+(1 row)
+
+select listagg(i::text, ',') from generate_series(1,3) g(i);
+ listagg 
+---------
+ 1,2,3
+(1 row)
+
+create table test(id text, pid int);
+insert into test values('1',11), ('2',12), ('3',13), ('1',21), ('2',22);
+select listagg(id, ',') from test;
+  listagg  
+-----------
+ 1,2,3,1,2
+(1 row)
+
+select listagg(id, ',') from test group by id;
+ listagg 
+---------
+ 2,2
+ 3
+ 1,1
+(3 rows)
+
+select listagg(pid, '/') from test group by id;
+ERROR:  function listagg(integer, unknown) does not exist
+LINE 1: select listagg(pid, '/') from test group by id;
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select listagg(pid::text, '/') from test group by id;
+ listagg 
+---------
+ 12/22
+ 13
+ 11/21
+(3 rows)
+
+select listagg(id, '/')  over(partition by id) from test;
+ listagg 
+---------
+ 1/1
+ 1/1
+ 2/2
+ 2/2
+ 3
+(5 rows)
+
+select listagg(id, '/')  over(partition by pid) from test;
+ listagg 
+---------
+ 1
+ 2
+ 3
+ 1
+ 2
+(5 rows)
+
+select listagg(id, '/')  over(partition by id) from test group by id;
+ listagg 
+---------
+ 1
+ 2
+ 3
+(3 rows)
+
+drop table test;
+reset search_path;
