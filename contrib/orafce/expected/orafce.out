@@ -2381,12 +2381,14 @@ SELECT to_date('2009-01-02');
  2009-01-02 00:00:00
 (1 row)
 
+SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
  bitand | bitand | bitand 
 --------+--------+--------
       1 |      0 |      4
 (1 row)
 
+SET search_path TO default;
 SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::numeric(10, 8);
     sinh    |    cosh    |    tanh    
 ------------+------------+------------

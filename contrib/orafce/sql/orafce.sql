@@ -483,7 +483,9 @@ SELECT to_number(1210.73::numeric, 9999.99::numeric);
 
 SELECT to_date('2009-01-02');
 
+SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
+SET search_path TO default;
 SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::numeric(10, 8);
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
 SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);

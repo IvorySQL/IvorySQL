@@ -1,0 +1,188 @@
+set search_path to oracle, pg_catalog;
+select bitand(6,3);
+ bitand 
+--------
+      2
+(1 row)
+
+select bitand(110,101);
+ bitand 
+--------
+    100
+(1 row)
+
+select bitand(6.1::real,4.1::real);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.1::real,4.1::float);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.1::real,4.1::numeric);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.1::real,4::int);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.1::real,'4.3');
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6::int,4.1::real);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6::int,4.1::numeric);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6::int,4.1::float);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6::int,'4.1');
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.2::numeric,4.1::numeric);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.2::numeric,4.1::real);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.2::numeric,4.1::float);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.2::numeric,'4.1');
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.1,4.1);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand('6','4');
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand('6'::text,'4'::text);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(6.1::float,4.1::float);
+ bitand 
+--------
+      4
+(1 row)
+
+select bitand(NULL,'4.1');
+ bitand 
+--------
+       
+(1 row)
+
+select bitand(9223372036854775807,9223372036854775807.2) ;
+       bitand        
+---------------------
+ 9223372036854775807
+(1 row)
+
+select bitand(9223372036854775807,9223372036854775807.9) ;
+ERROR:  bigint out of range
+CONTEXT:  SQL function "bitand" statement 1
+select bitand(9223372036854775807,9223372036854775807);
+       bitand        
+---------------------
+ 9223372036854775807
+(1 row)
+
+select bitand(9223372036854775806.88::float4,9223372036854775805::float4);
+ERROR:  bigint out of range
+CONTEXT:  SQL function "bitand" statement 1
+select bitand(0,'4.1');
+ bitand 
+--------
+      0
+(1 row)
+
+select bitand(0,0);
+ bitand 
+--------
+      0
+(1 row)
+
+select bitand(NULL,NULL);
+ bitand 
+--------
+       
+(1 row)
+
+select bitand('abc'::text,'4.1');
+ERROR:  invalid input syntax for type bigint: "abc"
+CONTEXT:  SQL function "bitand" statement 1
+select bitand(922337203685477580755,9223372036854775807);
+ERROR:  bigint out of range
+CONTEXT:  SQL function "bitand" statement 1
+select bitand('6.1','4.1');
+ERROR:  invalid input syntax for type bigint: "6.1"
+CONTEXT:  SQL function "bitand" statement 1
+select bitand('6.1','4.1'::text);
+ERROR:  invalid input syntax for type bigint: "6.1"
+CONTEXT:  SQL function "bitand" statement 1
+select bitand('6.1'::name,'4.1'::text);
+ERROR:  invalid input syntax for type bigint: "6.1"
+CONTEXT:  SQL function "bitand" statement 1
+select bitand(6.2::numeric,'4.1'::text);
+ERROR:  function bitand(numeric, text) does not exist
+LINE 1: select bitand(6.2::numeric,'4.1'::text);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select bitand(6.1::real,'4.3'::text);
+ERROR:  function bitand(real, text) does not exist
+LINE 1: select bitand(6.1::real,'4.3'::text);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select bitand(6::int,'4.1'::text);
+ERROR:  function bitand(integer, text) does not exist
+LINE 1: select bitand(6::int,'4.1'::text);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+reset search_path;
