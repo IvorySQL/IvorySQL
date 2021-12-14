@@ -1,0 +1,93 @@
+set datestyle to ISO,YMD;
+set search_path to oracle, pg_catalog;
+select length('3day 3 hour 3second');
+ length 
+--------
+     19
+(1 row)
+
+select length(date'2021-12-09');
+ length 
+--------
+     19
+(1 row)
+
+select length(timestamp'2021-12-09 10:10:11');
+ length 
+--------
+     19
+(1 row)
+
+select length(timestamptz'2021-12-09 10:10:11+08');
+ length 
+--------
+     22
+(1 row)
+
+select length(12);
+ length 
+--------
+      2
+(1 row)
+
+select length(12.44);
+ length 
+--------
+      5
+(1 row)
+
+select length(12.4::real);
+ length 
+--------
+      4
+(1 row)
+
+select length(1244444.44666::float);
+ length 
+--------
+     13
+(1 row)
+
+select length('adc');
+ length 
+--------
+      3
+(1 row)
+
+select length('123abc'::text);
+ length 
+--------
+      6
+(1 row)
+
+select length(12.455555555555::float);
+ length 
+--------
+     15
+(1 row)
+
+select length('jmenuji se Pavel Stehule');
+ length 
+--------
+     24
+(1 row)
+
+select length('今天是个好日子');
+ length 
+--------
+      7
+(1 row)
+
+select length('あbb'::char(6));
+ length 
+--------
+      6
+(1 row)
+
+select length(''::char(6));
+ length 
+--------
+      6
+(1 row)
+
+reset search_path;
