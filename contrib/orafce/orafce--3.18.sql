@@ -6936,3 +6936,55 @@ AS 'byteaoctetlen'
 LANGUAGE internal
 STRICT IMMUTABLE;
 COMMENT ON FUNCTION oracle.lengthb(oracle.varchar2) IS 'returns byte length of the input varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(char) RETURNS integer
+AS 'byteaoctetlen'
+LANGUAGE internal STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(char) IS 'returns byte length of the input string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(text) RETURNS integer
+AS 'byteaoctetlen'
+LANGUAGE internal STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(text) IS 'returns byte length of the input string';
+
+--number
+CREATE OR REPLACE FUNCTION oracle.lengthb(bigint) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(bigint) IS 'returns byte length of the input string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(float4) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(float4) IS 'returns byte length of the input string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(float8) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(float8) IS 'returns byte length of the input string';
+
+--date time
+CREATE OR REPLACE FUNCTION oracle.lengthb(pg_catalog.date) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(pg_catalog.date) IS 'returns byte length of the input string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(oracle.date) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(oracle.date) IS 'returns byte length of the input string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(timestamp) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(timestamp) IS 'returns byte length of the input string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(timestamptz) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(timestamptz) IS 'returns byte length of the input string';
+
+CREATE OR REPLACE FUNCTION oracle.lengthb(interval) RETURNS integer
+AS 'select oracle.lengthb($1::text)'
+LANGUAGE SQL STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.lengthb(interval) IS 'returns byte length of the input string';
