@@ -1,0 +1,147 @@
+set datestyle to ISO,YMD;
+set search_path to oracle, pg_catalog;
+SELECT lengthb(192);
+ lengthb 
+---------
+       3
+(1 row)
+
+SELECT lengthb(192::int2);
+ lengthb 
+---------
+       3
+(1 row)
+
+SELECT lengthb(192::int4);
+ lengthb 
+---------
+       3
+(1 row)
+
+SELECT lengthb(192::int8);
+ lengthb 
+---------
+       3
+(1 row)
+
+SELECT lengthb(192.922);
+ lengthb 
+---------
+       7
+(1 row)
+
+SELECT lengthb(192.922::numeric);
+ lengthb 
+---------
+       7
+(1 row)
+
+SELECT lengthb('192');
+ lengthb 
+---------
+       3
+(1 row)
+
+SELECT lengthb('Highgo DB!');
+ lengthb 
+---------
+      10
+(1 row)
+
+SELECT lengthb('今天');
+ lengthb 
+---------
+       6
+(1 row)
+
+SELECT lengthb('Highgo DB!'::char(10));
+ lengthb 
+---------
+      10
+(1 row)
+
+SELECT lengthb('Highgo DB!'::char(20));
+ lengthb 
+---------
+      20
+(1 row)
+
+SELECT lengthb('Highgo DB!'::varchar(20));
+ lengthb 
+---------
+      10
+(1 row)
+
+SELECT lengthb('Highgo DB!'::varchar2(20));
+ lengthb 
+---------
+      10
+(1 row)
+
+SELECT lengthb('Highgo DB!'::nvarchar2(20));
+ lengthb 
+---------
+      10
+(1 row)
+
+SELECT lengthb('Highgo DB!'::text);
+ lengthb 
+---------
+      10
+(1 row)
+
+SELECT lengthb('今天'::text);
+ lengthb 
+---------
+       6
+(1 row)
+
+SELECT lengthb('今天是Monday'::char(20));
+ lengthb 
+---------
+      26
+(1 row)
+
+SELECT lengthb('2019-12-12'::date);
+ lengthb 
+---------
+      19
+(1 row)
+
+SELECT lengthb('2019-12-12'::timestamp);
+ lengthb 
+---------
+      19
+(1 row)
+
+SELECT lengthb(null);
+ lengthb 
+---------
+        
+(1 row)
+
+SELECT lengthb('');
+ lengthb 
+---------
+       0
+(1 row)
+
+SELECT lengthb(' ');
+ lengthb 
+---------
+       1
+(1 row)
+
+SELECT lengthb(0::int);
+ lengthb 
+---------
+       1
+(1 row)
+
+SELECT lengthb(-2::int);
+ lengthb 
+---------
+       2
+(1 row)
+
+reset search_path;
