@@ -708,7 +708,7 @@ oraadd_months(PG_FUNCTION_ARGS)
 	y = v.quot;
 	if (y < 0)
 	{
-			if(tm->tm_year > 0 && ((tm->tm_year - 1) * 12 + m + n) <= 0)
+		if(tm->tm_year > 0 && ((tm->tm_year - 1) * 12 + m + n) <= 0)
 			y = y-2;
 		else if(tm->tm_year < 0 && ((tm->tm_year + 1) * 12 - m + n) >= 0)
 			y++;
