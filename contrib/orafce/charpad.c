@@ -297,9 +297,9 @@ orafce_lpad(PG_FUNCTION_ARGS)
 Datum
 orafce_rpad(PG_FUNCTION_ARGS)
 {
-	text	*string1 = PG_GETARG_TEXT_PP(0);
-	int32	output_width = PG_GETARG_INT32(1);
-	text	*string2 = PG_GETARG_TEXT_PP(2);
+	text	*string1;
+	int32	output_width;
+	text	*string2;
 	text	*ret;
 	char	*ptr1,
 			*ptr2 = NULL,
@@ -320,16 +320,46 @@ orafce_rpad(PG_FUNCTION_ARGS)
 	bool	s2_operate = ON,
 			half_space = OFF,
 			init_ptr = ON;
+	int		nargs;
+	Oid		argoid1,argoid2,argoid3;
+
+	nargs = PG_NARGS();
+	if (nargs < 2)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("too few args.")));
+	if (nargs > 3)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("more args than function needed.")));
+
+	argoid1 = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	argoid2 = get_fn_expr_argtype(fcinfo->flinfo, 1);
+
+	if (BPCHAROID == argoid1 || TEXTOID == argoid1)
+		string1 = PG_GETARG_TEXT_P(0);
+	else
+		string1 = (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(0), argoid1, TEXTOID);
+	/* get byte-length of the 1st and 3rd argument strings */
+	s1blen = VARSIZE_ANY_EXHDR(string1);
+
+	output_width = (int32)DatumGetFloat8(orafce_sourcetype_to_targetype(PG_GETARG_DATUM(1), argoid2, FLOAT8OID));
+
+	if (nargs == 3)
+	{
+		argoid3 = get_fn_expr_argtype(fcinfo->flinfo, 2);
+		string2 =  (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(2), argoid3, TEXTOID);
+	}
+	else
+		string2 = cstring_to_text(" ");
+
+	s2blen = VARSIZE_ANY_EXHDR(string2);
 
 	/* validate output width (the 2nd argument) */
 	if (output_width < 0)
 		output_width = 0;
 	if (output_width > PAD_MAX)
 		output_width = PAD_MAX;
-
-	/* get byte-length of the 1st and 3rd argument strings */
-	s1blen = VARSIZE_ANY_EXHDR(string1);
-	s2blen = VARSIZE_ANY_EXHDR(string2);
 
 	/* validate the lengths */
 	if (s1blen < 0)
