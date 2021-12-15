@@ -1,6 +1,7 @@
 #include "postgres.h"
 #include <stdlib.h>
 #include <locale.h>
+#include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "fmgr.h"
@@ -623,4 +624,42 @@ ora_get_status(PG_FUNCTION_ARGS)
 #else
 	PG_RETURN_TEXT_P(cstring_to_text("Production"));
 #endif
+}
+
+PG_FUNCTION_INFO_V1(rtrim_any2);
+Datum
+rtrim_any2(PG_FUNCTION_ARGS)
+{
+	text	   *string;
+	text	   *set;
+	Oid			collation = PG_GET_COLLATION();
+
+
+	collation = collation == InvalidOid ? DEFAULT_COLLATION_OID : collation;
+	string = (text *)orafce_sourcetype_to_targetype(
+				PG_GETARG_DATUM(0),
+				get_fn_expr_argtype(fcinfo->flinfo, 0),
+				TEXTOID);
+	set = (text *)orafce_sourcetype_to_targetype(
+				PG_GETARG_DATUM(1),
+				get_fn_expr_argtype(fcinfo->flinfo, 1),
+				TEXTOID);
+
+	return DirectFunctionCall2Coll(rtrim, collation, (Datum)string, (Datum)set);
+}
+
+PG_FUNCTION_INFO_V1(rtrim_any1);
+Datum
+rtrim_any1(PG_FUNCTION_ARGS)
+{
+	text	   *string;
+	Oid			collation =  PG_GET_COLLATION();
+
+	collation = collation == InvalidOid ? DEFAULT_COLLATION_OID : collation;
+	string = (text *)orafce_sourcetype_to_targetype(
+				PG_GETARG_DATUM(0),
+				get_fn_expr_argtype(fcinfo->flinfo, 0),
+				TEXTOID);
+
+	return DirectFunctionCall1Coll(rtrim1, collation, (Datum)string);
 }

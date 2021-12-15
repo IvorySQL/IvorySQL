@@ -1,0 +1,250 @@
+--Test For rtrim
+set search_path to oracle, pg_catalog;
+set datestyle to ISO,YMD;
+SELECT rtrim(1231232112, 21) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 123123
+(1 row)
+
+SELECT rtrim(1231232112) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 1231232112
+(1 row)
+
+SELECT rtrim(12312::int2, 21::int2) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 123
+(1 row)
+
+SELECT rtrim(1232112::int4, 21::int4) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 123
+(1 row)
+
+SELECT rtrim(1232112::int4) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 1232112
+(1 row)
+
+SELECT rtrim(1231232112::int8, 21::int8) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 123123
+(1 row)
+
+SELECT rtrim(1231232.112, 2.1) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 123123
+(1 row)
+
+SELECT rtrim(1231232.112::numeric, 2.1::numeric) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 123123
+(1 row)
+
+SELECT rtrim(1231232.112::numeric) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 1231232.112
+(1 row)
+
+SELECT rtrim('1231232112', '21') "RTRIM Example";
+ RTRIM Example 
+---------------
+ 123123
+(1 row)
+
+SELECT rtrim('<=====>BROWNING<=====>', '<>=') "RTRIM Example";
+  RTRIM Example  
+-----------------
+ <=====>BROWNING
+(1 row)
+
+SELECT rtrim(' I like coffee !     ') "RTRIM Example";
+  RTRIM Example   
+------------------
+  I like coffee !
+(1 row)
+
+SELECT rtrim(' I like coffee !     '::char(5)) "RTRIM Example";
+ RTRIM Example 
+---------------
+  I li
+(1 row)
+
+SELECT rtrim(' I like coffee !     '::char(100)) "RTRIM Example";
+  RTRIM Example   
+------------------
+  I like coffee !
+(1 row)
+
+SELECT rtrim(' I like coffee !'::char(100)) "RTRIM Example";
+  RTRIM Example   
+------------------
+  I like coffee !
+(1 row)
+
+SELECT rtrim(' I like coffee !     '::text) "RTRIM Example";
+  RTRIM Example   
+------------------
+  I like coffee !
+(1 row)
+
+SELECT rtrim('<=====>BROWNING<=====>'::char(25), '<>='::char(3)) "RTRIM Example";
+       RTRIM Example       
+---------------------------
+ <=====>BROWNING<=====>   
+(1 row)
+
+SELECT rtrim('<=====>BROWNING<=====>'::varchar(25), '<>='::varchar(5)) "RTRIM Example";
+  RTRIM Example  
+-----------------
+ <=====>BROWNING
+(1 row)
+
+SELECT rtrim('<=====>BROWNING<=====>'::varchar2(25), '<>='::varchar2(5)) "RTRIM Example";
+  RTRIM Example  
+-----------------
+ <=====>BROWNING
+(1 row)
+
+SELECT rtrim('<=====>BROWNING<=====>'::nvarchar2(25), '<>='::nvarchar2(5)) "RTRIM Example";
+  RTRIM Example  
+-----------------
+ <=====>BROWNING
+(1 row)
+
+SELECT rtrim('<=====>BROWNING<=====>'::text, '<>='::text) "RTRIM Example";
+  RTRIM Example  
+-----------------
+ <=====>BROWNING
+(1 row)
+
+SELECT rtrim('我的家我的梦'::varchar2(25), '我的梦'::varchar2(9)) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 我的家
+(1 row)
+
+SELECT rtrim('2019-12-12'::date, '2019-12-12'::date) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 
+(1 row)
+
+SELECT rtrim('2019-12-12'::timestamp, '2019-12-12'::timestamp) "RTRIM Example";
+ RTRIM Example 
+---------------
+ 
+(1 row)
+
+SELECT rtrim('2019-12-12'::date) "RTRIM Example";
+    RTRIM Example    
+---------------------
+ 2019-12-12 00:00:00
+(1 row)
+
+SELECT rtrim(null,'nu'::text);
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim('nu'::text,null);
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim(null,null);
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim('','');
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim('',' ');
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim(' ','');
+ rtrim 
+-------
+  
+(1 row)
+
+SELECT rtrim(' ',' ');
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim(null);
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim('');
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim(' ');
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim(0::int,0.99::numeric);
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim(-1::int,-1::int);
+ rtrim 
+-------
+ 
+(1 row)
+
+SELECT rtrim(0::int);
+ rtrim 
+-------
+ 0
+(1 row)
+
+SELECT rtrim(-5::int);
+ rtrim 
+-------
+ -5
+(1 row)
+
+SELECT rtrim(0.99::numeric);
+ rtrim 
+-------
+ 0.99
+(1 row)
+
+SELECT rtrim(-5.99::numeric);
+ rtrim 
+-------
+ -5.99
+(1 row)
+
+reset search_path;

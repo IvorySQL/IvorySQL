@@ -5325,137 +5325,16 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(char, text)
+CREATE FUNCTION oracle.rtrim("any", "any")
 RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
+AS 'MODULE_PATHNAME', 'rtrim_any2'
+LANGUAGE C STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(char, oracle.varchar2)
+CREATE FUNCTION oracle.rtrim("any")
 RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(char, oracle.nvarchar2)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(char)
-RETURNS text
-AS $$ SELECT oracle.rtrim($1, ' '::text) $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(text, char)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(text, text)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(text, oracle.varchar2)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(text, oracle.nvarchar2)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(text)
-RETURNS text
-AS $$ SELECT oracle.rtrim($1, ' '::text) $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.varchar2, char)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.varchar2, text)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.varchar2, oracle.varchar2)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.varchar2, oracle.nvarchar2)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.varchar2)
-RETURNS text
-AS $$ SELECT oracle.rtrim($1, ' '::text) $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, char)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, text)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, oracle.varchar2)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, oracle.nvarchar2)
-RETURNS text
-AS 'rtrim'
-LANGUAGE internal
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rtrim(oracle.nvarchar2)
-RETURNS text
-AS $$ SELECT oracle.rtrim($1, ' '::text) $$
-LANGUAGE SQL
-STRICT IMMUTABLE
+AS 'MODULE_PATHNAME','rtrim_any1'
+LANGUAGE C STRICT IMMUTABLE
 ;
 
 /* BTRIM family */
