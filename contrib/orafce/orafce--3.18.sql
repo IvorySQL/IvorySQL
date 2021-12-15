@@ -5066,42 +5066,7 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(char, integer, oracle.varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_rpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rpad(char, integer, oracle.nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_rpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rpad(char, integer)
-RETURNS text
-AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
 CREATE FUNCTION oracle.rpad(text, integer, char)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_rpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, char)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_rpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -5115,80 +5080,87 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(text, integer, oracle.varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_rpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rpad(text, integer, oracle.nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_rpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
 CREATE FUNCTION oracle.rpad(text, integer)
 RETURNS text
-AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
-LANGUAGE SQL
+AS 'MODULE_PATHNAME','orafce_rpad'
+LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, text)
+CREATE FUNCTION oracle.rpad(text, text, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, oracle.varchar2)
+CREATE FUNCTION oracle.rpad(text, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, oracle.nvarchar2)
+CREATE FUNCTION oracle.rpad(text, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(oracle.varchar2, integer)
-RETURNS text
-AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, text)
+CREATE FUNCTION oracle.rpad(numeric, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, oracle.varchar2)
+CREATE FUNCTION oracle.rpad(float4, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, oracle.nvarchar2)
+CREATE FUNCTION oracle.rpad(float8, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer)
+CREATE FUNCTION oracle.rpad(pg_catalog.date, variadic "any")
 RETURNS text
-AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
-LANGUAGE SQL
+AS 'MODULE_PATHNAME','orafce_rpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.rpad(oracle.date, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_rpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.rpad(timestamp, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_rpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.rpad(timestamptz, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_rpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.rpad(interval, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_rpad'
+LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
