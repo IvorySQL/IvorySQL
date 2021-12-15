@@ -439,6 +439,73 @@ appendDatum(StringInfo str, const void *ptr, size_t length, int format)
 	}
 }
 
+/*
+ * orafce_strposb -
+ *	  Return the position of the specified substring.
+ *	  Implements the SQL POSITION() function.
+ */
+PG_FUNCTION_INFO_V1(orafce_strposb);
+Datum
+orafce_strposb(PG_FUNCTION_ARGS)
+{
+	text		*t1;
+	text		*t2;
+	int			pos;
+	int			px,
+				p;
+	int			len1,
+				len2;
+	char		*p1,
+				*p2;
+	int			nargs;
+	Oid			argoid1,argoid2;
+
+	nargs = PG_NARGS();
+	if (nargs < 2)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("too few args.")));
+	if (nargs > 2)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("more args than function needed.")));
+
+	argoid1 = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+	if (BPCHAROID == argoid1 || TEXTOID == argoid1)
+		t1 = PG_GETARG_TEXT_P(0);
+	else
+		t1 = (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(0), argoid1, TEXTOID);
+
+	argoid2 = get_fn_expr_argtype(fcinfo->flinfo, 1);
+	if (BPCHAROID == argoid2 || TEXTOID == argoid2)
+		t2 = PG_GETARG_TEXT_P(1);
+	else
+		t2 = (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(1), argoid2, TEXTOID);
+
+	len1 = VARSIZE_ANY_EXHDR(t1);
+	len2 = VARSIZE_ANY_EXHDR(t2);
+
+	if (len2 <= 0)
+		PG_RETURN_INT32(1);		/* result for empty pattern */
+
+	p1 = VARDATA_ANY(t1);
+	p2 = VARDATA_ANY(t2);
+
+	pos = 0;
+	px = (len1 - len2);
+	for (p = 0; p <= px; p++)
+	{
+		if ((*p2 == *p1) && (memcmp(p1, p2, len2) == 0))
+		{
+			pos = p + 1;
+			break;
+		}
+		p1++;
+	}
+
+	PG_RETURN_INT32(pos);
+}
 
 Datum
 orafce_dump(PG_FUNCTION_ARGS)
