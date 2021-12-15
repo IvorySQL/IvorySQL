@@ -29,13 +29,12 @@ typedef union vardata
 extern int ora_instr(text *txt, text *pattern, int start, int nth);
 extern int ora_mb_strlen(text *str, char **sizes, int **positions);
 extern int ora_mb_strlen1(text *str);
+extern Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 
 extern char *nls_date_format;
 extern char *orafce_timezone;
 
 extern bool orafce_varchar2_null_safe_concat;
-
-extern Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 
 /*
  * Version compatibility
@@ -51,8 +50,6 @@ extern Oid	equality_oper_funcid(Oid argtype);
 extern STRING_PTR_FIELD_TYPE ora_days[];
 
 extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], size_t max);
-
-extern Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 
 #ifdef _MSC_VER
 
