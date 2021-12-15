@@ -4171,42 +4171,14 @@ LANGUAGE 'c'
 STRICT  IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(char, integer, oracle.varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_lpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.lpad(char, integer, oracle.nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_lpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
 CREATE FUNCTION oracle.lpad(char, integer)
 RETURNS text
-AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
-LANGUAGE SQL
+AS 'MODULE_PATHNAME','orafce_lpad'
+LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
 CREATE FUNCTION oracle.lpad(text, integer, char)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_lpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, char)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_lpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -4220,80 +4192,87 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(text, integer, oracle.varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_lpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.lpad(text, integer, oracle.nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','orafce_lpad'
-LANGUAGE 'c'
-STRICT IMMUTABLE
-;
-
 CREATE FUNCTION oracle.lpad(text, integer)
 RETURNS text
-AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
-LANGUAGE SQL
+AS 'MODULE_PATHNAME','orafce_lpad'
+LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, text)
+CREATE FUNCTION oracle.lpad(text, text, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, oracle.varchar2)
+CREATE FUNCTION oracle.lpad(text, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, oracle.nvarchar2)
+CREATE FUNCTION oracle.lpad(text, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(oracle.varchar2, integer)
-RETURNS text
-AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
-LANGUAGE SQL
-STRICT IMMUTABLE
-;
-
-CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, text)
+CREATE FUNCTION oracle.lpad(numeric, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, oracle.varchar2)
+CREATE FUNCTION oracle.lpad(float4, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, oracle.nvarchar2)
+CREATE FUNCTION oracle.lpad(float8, variadic "any")
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer)
+CREATE FUNCTION oracle.lpad(pg_catalog.date, variadic "any")
 RETURNS text
-AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
-LANGUAGE SQL
+AS 'MODULE_PATHNAME','orafce_lpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.lpad(oracle.date, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_lpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.lpad(timestamp, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_lpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.lpad(timestamptz, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_lpad'
+LANGUAGE 'c'
+STRICT IMMUTABLE
+;
+
+CREATE FUNCTION oracle.lpad(interval, variadic "any")
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_lpad'
+LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
