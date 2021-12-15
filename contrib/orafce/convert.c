@@ -42,7 +42,6 @@ PG_FUNCTION_INFO_V1(orafce_interval_to_seconds);
 PG_FUNCTION_INFO_V1(orafce_to_yminterval);
 PG_FUNCTION_INFO_V1(orafce_to_dsinterval);
 
-Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
 static int getindex(const char **map, char *mbchar, int mblen);
 char *orafce_type_to_cstring(Datum arg, Oid type);
 

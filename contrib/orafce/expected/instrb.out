@@ -1,0 +1,435 @@
+--Test For instrb
+set search_path to oracle, pg_catalog;
+set datestyle to ISO,YMD;
+SELECT instrb(20121209,12::int, 1::text, 2, 4) "instrb";
+ERROR:  more args than function needed.
+SELECT instrb(20121209,12::int, 1::text, '2') "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(20121209,12::int, 1::text, 2, '4', 5) "instrb";
+ERROR:  more args than function needed.
+SELECT instrb(20121209) "instrb";
+ERROR:  function instrb(integer) does not exist
+LINE 1: SELECT instrb(20121209) "instrb";
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT instrb(20121209,12, 1, 2) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(20121209,12, 1) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(20121209,12) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(2012::int2,12::int2, 1::int2, 2::int2) "instrb";
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(2012::int2,12::int2, 1::int2) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(2012::int2,12::int2) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(20121209::int,12::int, 1.9::int, 2.99::int) "instrb";
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(20121209::int,12::int, 1.9::int) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(20121209::int,12::int) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(20121212::int8,1212::int8, 1.9::int8, 1.99::int8) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(20121212::int8,1212::int8, 1.9::int8) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(20121212::int8,1212::int8) "instrb";
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(201212.09::int,12.9::int, 1.9::numeric, 2.99::numeric) "instrb";
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(201212.12::numeric,12.12::numeric, 1.9::int, 1.99::int) "instrb";
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(201212.12::numeric,12.12::numeric, 1.9::numeric, 1.99::numeric) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(201212.12::numeric,12.12::numeric, 1.9::numeric) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(201212.12::numeric,12.12::numeric) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR','OR',5,2) "instrb";
+ instrb 
+--------
+     14
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR','OR',5) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR','OR') "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::char(20),'OR'::char(2),5::int,2::int) "instrb";
+ instrb 
+--------
+     14
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::char(20),'OR'::char(2),5::int) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::char(20),'OR'::char(2)) "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar,'OR'::varchar, -3::int, 2::int) "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar,'OR'::varchar, -3::int) "instrb";
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar,'OR'::varchar) "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar,'OTR'::varchar, -3::int, 2::int) "instrb";
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar2(20),'OR'::varchar2(5), 3::int, -2::int) "Instring";
+ERROR:  The fourth parameter must be positive.
+SELECT instrb('CORPORATE FLOOR'::varchar2(20),'OR'::varchar2(5), -3::int, 2::int) "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar2(20),'OR'::varchar2(5), -3.9::numeric, 2.9::numeric) "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar2(20),'OR'::varchar2(5), -3::int, 2.9::numeric) "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::varchar2(20),'OR'::varchar2(5), -3.9::numeric, 2::int) "instrb";
+ instrb 
+--------
+      2
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::nvarchar2,'OR'::nvarchar2, 3::int, 2::int) "instrb";
+ instrb 
+--------
+     14
+(1 row)
+
+SELECT instrb('CORPORATE FLOOR'::text,'OR'::text, 3::int, 2::int) "instrb";
+ instrb 
+--------
+     14
+(1 row)
+
+SELECT instrb('日日花前长病酒，花前月下举杯饮'::text,'花前'::varchar2(100),1::int,1::int) "instrb";
+ instrb 
+--------
+      7
+(1 row)
+
+SELECT instrb('日日花前长病酒，花前月下举杯饮'::varchar(100),'花前'::nvarchar2(100),1::int,2::int) "instrb";
+ instrb 
+--------
+     25
+(1 row)
+
+SELECT instrb(cast('CORPORATE FLOOR' as text), cast('OR' as text), 10::int, 2::int) "instrb";
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb('今天是Aa周一1'::nvarchar2(20),'周一'::text, 1::int, 1.99::numeric) "instrb";
+ instrb 
+--------
+     12
+(1 row)
+
+SELECT instrb('今天是Aa周一1'::nvarchar2(20),'周一'::text, 1.9::numeric, 1::int) "instrb";
+ instrb 
+--------
+     12
+(1 row)
+
+SELECT instrb('今天是Aa周一1'::nvarchar2(20),'周一'::text, 1.9::numeric, 1.99::numeric) "instrb";
+ instrb 
+--------
+     12
+(1 row)
+
+SELECT instrb('今天是Aa周一1'::nvarchar2(20),'周一'::text, 1.9::numeric) "instrb";
+ instrb 
+--------
+     12
+(1 row)
+
+SELECT instrb('今天是Aa周一1'::nvarchar2(20),'周一'::text) "instrb";
+ instrb 
+--------
+     12
+(1 row)
+
+SELECT instrb('2019-12-12'::date,'2019-12-12'::date, 1::int, 1::int) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('2019-12-12'::date,'2019-12-12'::date, 1.9::numeric, 1.99::numeric) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('2019-12-12'::date,'2019-12-12'::date, 1.99::numeric) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('2019-12-12'::date,'2019-12-12'::date) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('2019-12-12'::timestamp,'2019-12-12'::timestamp,1::int,1::int) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('2019-12-12'::timestamp,'2019-12-12'::timestamp,1.9::numeric,1.99::numeric) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('2019-12-12'::timestamp,'2019-12-12'::timestamp,1::int) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('2019-12-12'::timestamp,'2019-12-12'::timestamp) "instrb";
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb(null,null,null,null);
+ instrb 
+--------
+       
+(1 row)
+
+SELECT instrb(null,null,null);
+ instrb 
+--------
+       
+(1 row)
+
+SELECT instrb(null,null);
+ instrb 
+--------
+       
+(1 row)
+
+SELECT instrb('','',-2::int,1::int);
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb('','',-1::int,1::int);
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb('','',0::int,1::int);
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('','',2::int,1::int);
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(' ',' ',0::int,1::int);
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb(' ',' ',-1::int,1::int);
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('abcdCde'::varchar,'Cd'::text,0.99::numeric,1.99::numeric);
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb('abcdCde'::text,'Cd'::text,-1.99::numeric,1::int);
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb('abcdCde'::text,'Cd'::varchar2,-8.9::numeric,1::int);
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb('','',0::int);
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('','',-1::int);
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb('','',0.9::numeric);
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('','',-1.9::numeric);
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(' ',' ',0::int);
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb(' ',' ',-1::int);
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb('','');
+ instrb 
+--------
+      1
+(1 row)
+
+SELECT instrb(' ',' ');
+ instrb 
+--------
+      1
+(1 row)
+
+reset search_path;
