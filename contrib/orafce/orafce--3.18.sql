@@ -237,38 +237,6 @@ RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2::numeric ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION oracle.substr(str text, start int)
-RETURNS text
-AS 'MODULE_PATHNAME','oracle_substr2'
-LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION oracle.substr(text, int) IS 'Returns substring started on start_in to end';
-
-CREATE FUNCTION oracle.substr(str text, start int, len int)
-RETURNS text
-AS 'MODULE_PATHNAME','oracle_substr3'
-LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
-
-CREATE OR REPLACE FUNCTION oracle.substr(numeric,numeric)
-RETURNS text AS $$
-SELECT oracle.substr($1::text,trunc($2)::int);
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION oracle.substr(numeric,numeric,numeric)
-RETURNS text AS $$
-SELECT oracle.substr($1::text,trunc($2)::int,trunc($3)::int);
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION oracle.substr(varchar,numeric)
-RETURNS text AS $$
-SELECT oracle.substr($1,trunc($2)::int);
-$$ LANGUAGE SQL IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION oracle.substr(varchar,numeric,numeric)
-RETURNS text AS $$
-SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
-$$ LANGUAGE SQL IMMUTABLE;
-
 CREATE FUNCTION oracle.to_multi_byte(str text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_multi_byte'
@@ -7036,3 +7004,126 @@ RETURNS integer
 AS 'MODULE_PATHNAME','plvstr_instrb'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.instrb(interval, variadic "any") IS 'search string for substring uses bytes.';
+
+--substr function
+CREATE OR REPLACE FUNCTION oracle.substr(text, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','plvstr_substr3'
+LANGUAGE c
+IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.substr(text, integer, integer) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(text, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','plvstr_substr2'
+LANGUAGE c
+IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.substr(text, integer) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(text, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(text, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(text, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(text, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(numeric, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(numeric, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(numeric, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(numeric, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(float4, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(float4, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(float4, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(float4, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(float8, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(float8, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(float8, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(pg_catalog.date, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(pg_catalog.date, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(pg_catalog.date, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(pg_catalog.date, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(oracle.date, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(oracle.date, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(oracle.date, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(oracle.date, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(timestamp, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(timestamp, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(timestamp, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(timestamp, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(timestamptz, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(timestamptz, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(timestamptz, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(timestamptz, float8) IS 'Returns substring started on start_in to end.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(interval, float8, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int, pg_catalog.trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(interval, float8, float8) IS 'Returns substring started on start_in len chars.';
+
+CREATE OR REPLACE FUNCTION oracle.substr(interval, float8)
+RETURNS text
+AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substr(interval, float8) IS 'Returns substring started on start_in to end.';

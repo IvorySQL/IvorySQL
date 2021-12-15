@@ -200,6 +200,7 @@ varchar2(PG_FUNCTION_ARGS)
 	size_t		maxmblen;
 	char		*s_data;
 	int		charlen;
+	int		perstrlen = 0;
 
 	len = VARSIZE_ANY_EXHDR(source);
 	s_data = VARDATA_ANY(source);
@@ -238,6 +239,29 @@ varchar2(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("value too long for type varchar2(%d)", maxlen)));
+	}
+
+	/*
+	 * If typmod is not an integer multiple of a single character, we will
+	 * remove the extra.
+	 * e.g: '字符串'::varchar2(7), we will get typmod is to 6.
+	 */
+	if (nls_length_semantics == NLSLENGTH_NONE)
+	{
+		perstrlen = pg_mblen(s_data);
+		if (perstrlen > 1)
+		{
+			int		iscomplate = 0;
+			bool	iscomplate1 = false;
+
+			if (charlen * perstrlen == len)
+				iscomplate1 = true;
+
+			iscomplate = maxlen % perstrlen;
+
+			if (iscomplate != 0 && iscomplate1 == true)
+				maxlen -= iscomplate;
+		}
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data,maxlen));
