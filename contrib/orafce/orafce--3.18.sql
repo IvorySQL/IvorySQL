@@ -7127,3 +7127,128 @@ RETURNS text
 AS $$ SELECT oracle.substr($1::text, pg_catalog.trunc($2)::int) $$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(interval, float8) IS 'Returns substring started on start_in to end.';
+
+--substrb function
+CREATE OR REPLACE FUNCTION oracle.substrb(text, integer, integer) RETURNS oracle.varchar2
+AS 'MODULE_PATHNAME', 'ora_bytea_substr'
+LANGUAGE C
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.substrb(text, integer, integer) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(text, integer) RETURNS oracle.varchar2
+AS 'MODULE_PATHNAME',  'ora_bytea_substr_no_len'
+LANGUAGE C
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.substrb(text, integer) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(char, integer, integer) RETURNS oracle.varchar2
+AS 'MODULE_PATHNAME', 'ora_bytea_substr'
+LANGUAGE C
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.substrb(char, integer, integer) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(char, integer) RETURNS oracle.varchar2
+AS 'MODULE_PATHNAME', 'ora_bytea_substr_no_len'
+LANGUAGE C
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.substrb(char, integer) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(text, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(text, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(text, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(text, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(char, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(char, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(char, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(char, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(numeric, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(numeric, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(numeric, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(numeric, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(float4, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(float4, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(float4, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(float4, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(float8, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(float8, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(pg_catalog.date, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(pg_catalog.date, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(pg_catalog.date, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(pg_catalog.date, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(oracle.date, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(oracle.date, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(oracle.date, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(oracle.date, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(timestamp, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(timestamp, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(timestamp, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(timestamp, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(timestamptz, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(timestamptz, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(timestamptz, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(timestamptz, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(interval, float8, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int, trunc($3)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(interval, float8, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION oracle.substrb(interval, float8) RETURNS oracle.varchar2
+AS $$ SELECT oracle.substrb($1::text, trunc($2)::int) $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.substrb(interval, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';

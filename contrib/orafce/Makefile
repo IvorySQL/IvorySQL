@@ -9,7 +9,7 @@ DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 # make "all" the default target
 all:
 
-REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggregates nlssort dbms_random regexp_func ora_to_char convertfunc ora_to_number comparefunc null_relate_func datefuncs ascii vsize instrb substr
+REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggregates nlssort dbms_random regexp_func ora_to_char convertfunc ora_to_number comparefunc null_relate_func datefuncs ascii vsize instrb substr substrb
 
 #REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
 REGRESS_OPTS = --schedule=parallel_schedule --no-locale --encoding=utf8
