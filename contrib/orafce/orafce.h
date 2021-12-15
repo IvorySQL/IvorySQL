@@ -50,6 +50,8 @@ extern STRING_PTR_FIELD_TYPE ora_days[];
 
 extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], size_t max);
 
+extern Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
+
 #ifdef _MSC_VER
 
 #define int2size(v)			(size_t)(v)

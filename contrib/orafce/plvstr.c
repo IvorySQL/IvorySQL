@@ -43,6 +43,7 @@ PG_FUNCTION_INFO_V1(plvstr_substr3);
 PG_FUNCTION_INFO_V1(plvstr_instr2);
 PG_FUNCTION_INFO_V1(plvstr_instr3);
 PG_FUNCTION_INFO_V1(plvstr_instr4);
+PG_FUNCTION_INFO_V1(plvstr_instrb);
 PG_FUNCTION_INFO_V1(plvstr_betwn_i);
 PG_FUNCTION_INFO_V1(plvstr_betwn_c);
 PG_FUNCTION_INFO_V1(plvstr_swap);
@@ -462,6 +463,109 @@ plvstr_instr4 (PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(ora_instr(arg1, arg2, arg3, arg4));
 }
 
+/********************************************************************
+ *
+ * plvstr_instrb
+ *
+ * Purpose:
+ *
+ *  Instrb search string for substring uses bytes.
+ *
+ ********************************************************************/
+
+Datum plvstr_instrb(PG_FUNCTION_ARGS)
+{
+	text		*txt;
+	text		*pattern;
+	int32		 start, occurrence;
+	int			 len_txt, len_pat, nargs, beg, end, i, dx, retval = 0;
+	Oid			 argoid1,argoid2,argoid3,argoid4;
+
+	nargs = PG_NARGS();
+	if (nargs > 4)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("more args than function needed.")));
+
+	argoid1 = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	argoid2 = get_fn_expr_argtype(fcinfo->flinfo, 1);
+
+	if (BPCHAROID == argoid1 || TEXTOID == argoid1)
+		txt = PG_GETARG_TEXT_P(0);
+	else
+		txt = (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(0), argoid1, TEXTOID);
+
+	if (BPCHAROID == argoid2 || TEXTOID == argoid2)
+		pattern = PG_GETARG_TEXT_P(1);
+	else
+		pattern = (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(1), argoid2, TEXTOID);
+
+	/*set default  parameter*/
+	switch (nargs)
+	{
+		case 2:
+		{
+			start = 1;
+			occurrence = 1;
+			break;
+		}
+		case 3:
+		{
+			argoid3 = get_fn_expr_argtype(fcinfo->flinfo, 2);
+			start = DatumGetFloat8(orafce_sourcetype_to_targetype(PG_GETARG_DATUM(2), argoid3, FLOAT8OID));
+			occurrence = 1;
+			break;
+		}
+		default:
+		{
+			argoid3 = get_fn_expr_argtype(fcinfo->flinfo, 2);
+			start = DatumGetFloat8(orafce_sourcetype_to_targetype(PG_GETARG_DATUM(2), argoid3, FLOAT8OID));
+			argoid4 = get_fn_expr_argtype(fcinfo->flinfo, 3);
+			occurrence = DatumGetFloat8(orafce_sourcetype_to_targetype(PG_GETARG_DATUM(3), argoid4, FLOAT8OID));
+			break;
+		}
+	}
+
+	if (occurrence <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("The fourth parameter must be positive.")));
+
+	len_txt = VARSIZE_ANY_EXHDR(txt);
+	len_pat = VARSIZE_ANY_EXHDR(pattern);
+
+	if (start > 0)
+	{
+		dx = 1;
+		beg = start - 1;
+		end = len_txt - len_pat + 1;
+		if (beg >= end)
+			return 0;
+	}
+	else
+	{
+		dx = -1;
+		beg = Min(len_txt + start, len_txt - len_pat);
+		end = -1;
+		if (beg <= end)
+			return 0;
+	}
+
+	/*get the position according to matched result*/
+	for (i = beg; i != end; i += dx)
+	{
+		if (strncmp(VARDATA_ANY(txt) + i, VARDATA_ANY(pattern), len_pat) == 0)
+		{
+			if (--occurrence == 0)
+			{
+				retval = i + 1;
+				break;
+			}
+		}
+	}
+
+	PG_RETURN_INT32(retval);
+}
 
 /****************************************************************
  * PLVstr.is_prefix
