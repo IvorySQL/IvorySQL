@@ -1,0 +1,408 @@
+--Test For substrb
+set search_path to oracle, pg_catalog;
+set datestyle to ISO,YMD;
+SELECT substrb(21212, 2, 2) "substrb";
+ substrb 
+---------
+ 12
+(1 row)
+
+SELECT substrb(21212, 2) "substrb";
+ substrb 
+---------
+ 1212
+(1 row)
+
+SELECT substrb(21212::int2, 2::int2, 2::int2) "substrb";
+ substrb 
+---------
+ 12
+(1 row)
+
+SELECT substrb(21221212::int4, 21::int4, 2::int4) "substrb";
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb(21221212::int4, 21::int4) "substrb";
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb(21221212::int8, 21::int8, 2::int8) "substrb";
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb(20191212::int, 2.99::numeric, 2.99::numeric) "substrb";
+ substrb 
+---------
+ 01
+(1 row)
+
+SELECT substrb(20191212::int, 2::int, 2::int) "substrb";
+ substrb 
+---------
+ 01
+(1 row)
+
+SELECT substrb(201.91212::numeric, 3::int, 4::int) "substrb";
+ substrb 
+---------
+ 1.91
+(1 row)
+
+SELECT substrb(201.91212::numeric, 3.9::numeric, 4.99::numeric) "substrb";
+ substrb 
+---------
+ 1.91
+(1 row)
+
+SELECT substrb(201.91212::numeric, 3.9::numeric) "substrb";
+ substrb 
+---------
+ 1.91212
+(1 row)
+
+SELECT substrb('201912', '2', '4') "substrb";
+ substrb 
+---------
+ 0191
+(1 row)
+
+SELECT substrb('201912', '2') "substrb";
+ substrb 
+---------
+ 01912
+(1 row)
+
+SELECT substrb('abCdeFgh'::char(10), 1::int, 3::int) "substrb";
+ substrb 
+---------
+ abC
+(1 row)
+
+SELECT substrb('abCdeFgh'::char(10), 1::int, 8::int) "substrb";
+ substrb  
+----------
+ abCdeFgh
+(1 row)
+
+SELECT substrb('abCdeFgh'::char(10), 1::int, 10::int) "substrb";
+  substrb   
+------------
+ abCdeFgh  
+(1 row)
+
+SELECT substrb('abCdeFgh'::char(10), 2.99::numeric) "substrb";
+  substrb  
+-----------
+ bCdeFgh  
+(1 row)
+
+SELECT substrb('今天是个好日子'::varchar(30),7::int, 1::int) "substrb";
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('今天是个好日子'::varchar(30),7::int, 4::int) "substrb";
+ substrb 
+---------
+ 是
+(1 row)
+
+SELECT substrb('今天是个好日子'::varchar(30),7::int, 6::int) "substrb";
+ substrb 
+---------
+ 是个
+(1 row)
+
+SELECT substrb('今天是个好日子'::varchar(30),7::int, -1::int) "substrb";
+ERROR:  negative substring length not allowed
+SELECT substrb('今天是个好日子'::varchar(30),7.9::numeric, 6.99::numeric) "substrb";
+ substrb 
+---------
+ 是个
+(1 row)
+
+SELECT substrb('今天是周五'::varchar2(20), 1::int, 5::int) "substrb";
+ substrb 
+---------
+ 今
+(1 row)
+
+SELECT substrb('I like shopping'::nvarchar2(20),7::int, 4::int) "substrb";
+ substrb 
+---------
+  sho
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,0::int, 6::int) "substrb";
+ substrb 
+---------
+ 今天
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,0::int, 8.99::numeric) "substrb";
+ substrb 
+---------
+ 今天
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,0::int, 8::int) "substrb";
+ substrb 
+---------
+ 今天
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,0::int, 9::int) "substrb";
+ substrb 
+---------
+ 今天是
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,0::int) "substrb";
+    substrb     
+----------------
+ 今天是个好日子
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,-15::int,9::int) "substrb";
+ substrb 
+---------
+ 是个好
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,-15::int,11::int) "substrb";
+ substrb 
+---------
+ 是个好
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,-15::int,11.99::numeric) "substrb";
+ substrb 
+---------
+ 是个好
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,-15::int,12::int) "substrb";
+ substrb  
+----------
+ 是个好日
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,-15::int) "substrb";
+  substrb   
+------------
+ 是个好日子
+(1 row)
+
+SELECT substrb('abCdeFgh'::text, 2::int, 5::int) "substrb";
+ substrb 
+---------
+ bCdeF
+(1 row)
+
+SELECT substrb('今天是周五'::text, 1::int, 5::int) "substrb";
+ substrb 
+---------
+ 今
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,5::int) "substrb";
+  substrb   
+------------
+ 是个好日子
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,7::int) "substrb";
+  substrb   
+------------
+ 是个好日子
+(1 row)
+
+SELECT substrb('今天是个好日子'::text,7.9::numeric) "substrb";
+  substrb   
+------------
+ 是个好日子
+(1 row)
+
+SELECT substrb('abcDefGh'::text,5::int) "substrb";
+ substrb 
+---------
+ efGh
+(1 row)
+
+SELECT substrb('abcDefGh'::text,7::int) "substrb";
+ substrb 
+---------
+ Gh
+(1 row)
+
+SELECT substrb('2019-12-12'::date, 2::int, 2::int) "substrb";
+ substrb 
+---------
+ 01
+(1 row)
+
+SELECT substrb('2019-12-12'::date, 2.9::numeric, 2.99::numeric) "substrb";
+ substrb 
+---------
+ 01
+(1 row)
+
+SELECT substrb('2019-12-12'::date, 2.9::numeric) "substrb";
+      substrb       
+--------------------
+ 019-12-12 00:00:00
+(1 row)
+
+SELECT substrb('2019-12-12'::timestamp, 2::int, 2::int) "substrb";
+ substrb 
+---------
+ 01
+(1 row)
+
+SELECT substrb('2019-12-12'::timestamp, 2.9::numeric, 2.99::numeric) "substrb";
+ substrb 
+---------
+ 01
+(1 row)
+
+SELECT substrb('2019-12-12'::timestamp, 2.9::numeric) "substrb";
+      substrb       
+--------------------
+ 019-12-12 00:00:00
+(1 row)
+
+SELECT substrb(null,null,null);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb(null,null);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('',0::int,0::int);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('',-2::int,0::int);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('',-2::int,0.99::numeric);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('An apple',-20::int,30::int);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('An apple',-8::int,30::int);
+ substrb  
+----------
+ An apple
+(1 row)
+
+SELECT substrb('An apple',-7::int,30::int);
+ substrb 
+---------
+ n apple
+(1 row)
+
+SELECT substrb('An apple',-9::int,30::int);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('An apple',0::int,30::int);
+ substrb  
+----------
+ An apple
+(1 row)
+
+SELECT substrb('An apple',0.99::numeric,30::int);
+ substrb  
+----------
+ An apple
+(1 row)
+
+SELECT substrb('An apple',1.99::numeric,30::int);
+ substrb  
+----------
+ An apple
+(1 row)
+
+SELECT substrb('An apple',0::int,3.99::numeric);
+ substrb 
+---------
+ An 
+(1 row)
+
+SELECT substrb('An apple',0.99::numeric,3.99::numeric);
+ substrb 
+---------
+ An 
+(1 row)
+
+SELECT substrb('An apple',1.99::numeric,3.99::numeric);
+ substrb 
+---------
+ An 
+(1 row)
+
+SELECT substrb('',0::int);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('',-2::int);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb('',-1.99::numeric);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb(' ',0::int);
+ substrb 
+---------
+  
+(1 row)
+
+SELECT substrb(' ',-2::int);
+ substrb 
+---------
+ 
+(1 row)
+
+SELECT substrb(' ',-1.99::numeric);
+ substrb 
+---------
+  
+(1 row)
+
+reset search_path;

@@ -13,6 +13,7 @@
 
 
 #include "postgres.h"
+#include "access/detoast.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
 #include "string.h"
@@ -58,8 +59,14 @@ PG_FUNCTION_INFO_V1(plvchr_char_name);
 PG_FUNCTION_INFO_V1(oracle_substr2);
 PG_FUNCTION_INFO_V1(oracle_substr3);
 PG_FUNCTION_INFO_V1(orafce_vsize);
+PG_FUNCTION_INFO_V1(ora_bytea_substr);
+PG_FUNCTION_INFO_V1(ora_bytea_substr_no_len);
 
 static text *ora_substr(Datum str, int start, int len);
+static bytea * ora_bytea_substring(Datum str,
+										   int S,
+										   int L,
+										   bool length_not_specified);
 
 #define ora_substr_text(str, start, len) \
 	ora_substr(PointerGetDatum((str)), (start), (len))
@@ -108,6 +115,9 @@ if (VARSIZE_ANY_EXHDR(str) == 0) \
 		(errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
 		 errmsg("invalid parameter"), \
 		 errdetail(detail)));
+
+#define PG_STR_GET_BYTEA(str_) \
+	DatumGetByteaPP(DirectFunctionCall1(byteain, CStringGetDatum(str_)))
 
 
 #ifndef _pg_mblen
@@ -309,6 +319,127 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 	return 0;
 }
 
+/*
+ * ora_bytea_substr()
+ * Return a substring starting at the specified position.
+ *
+ * Input:
+ *	- string
+ *	- starting position (is one-based)
+ *	- string length (optional)
+ *
+ * If the starting position is negative, then return from the end of the string
+ * adjusting the length to be consistent with the "negative start" per SQL.
+ */
+Datum
+ora_bytea_substr(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BYTEA_P(ora_bytea_substring(PG_GETARG_DATUM(0),
+										  PG_GETARG_INT32(1),
+										  PG_GETARG_INT32(2),
+										  false));
+}
+
+/*
+ * ora_bytea_substr_no_len -
+ *	  Wrapper to avoid opr_sanity failure due to
+ *	  one function accepting a different number of args.
+ */
+Datum
+ora_bytea_substr_no_len(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BYTEA_P(ora_bytea_substring(PG_GETARG_DATUM(0),
+										  PG_GETARG_INT32(1),
+										  -1,
+										  true));
+}
+
+static bytea *
+ora_bytea_substring(Datum str,
+							int S,
+							int L,
+							bool length_not_specified)
+{
+	int			S1;				/* adjusted start position */
+	int			L1;				/* adjusted substring length */
+
+	/*start length is positive, but exceeds the length of the str.*/
+	if (((toast_raw_datum_size(str) - VARHDRSZ) < S) && (S > 0))
+		return PG_STR_GET_BYTEA("");
+	/*start length is negative, but less than the length of the str.*/
+	if (((toast_raw_datum_size(str) - VARHDRSZ) < (0 - S)) && (S < 0))
+		return PG_STR_GET_BYTEA("");
+
+	if (S == 0)
+		/* If position is 0, then it is treated as 1 */
+		S1 = 1;
+	else if (S < 0)
+		/* If position is negative, then counts backward from the end of char. */
+		S1 = toast_raw_datum_size(str) - VARHDRSZ + S;
+	else
+		/* If position is positive, then counts from the beginning of char to find the first character. */
+		S1 = S;
+
+	if (length_not_specified)
+	{
+		/*
+		 * Not passed a length - DatumGetByteaPSlice() grabs everything to the
+		 * end of the string if we pass it a negative value for length.
+		 */
+		L1 = -1;
+		if (S >= 0)
+			/* the starting position is decremented by 1. */
+			S1 = S1 - 1;
+	}
+	else
+	{
+		/* end position */
+		int			E = S + L;
+
+		/*
+		 * A negative value for L is the only way for the end position to be
+		 * before the start. SQL99 says to throw an error.
+		 */
+		if (E < S)
+			ereport(ERROR,
+					(errcode(ERRCODE_SUBSTRING_ERROR),
+					errmsg("negative substring length not allowed")));
+
+		if (S == 0)
+		{
+			/*
+			 * If the position is equal to 0, the starting position is 0.
+			 * The length is adjusted substring length.
+			 */
+			L1 = L;
+			S1 = S1 - 1;
+		}
+		else if (S < 0)
+		{
+			/*
+			 * If the position is negative, the starting position is adjusted position.
+			 * The length is adjusted substring length.
+			 */
+			L1 = L;
+		}
+		else
+		{
+			/*
+			 * If the position is positive, the length is that end position minus adjusted position.
+			 * the starting position is decremented by 1.
+			 */
+			L1 = E - S1;
+			S1 = S1 - 1;
+		}
+	}
+
+	/*
+	* If the start position is past the end of the string, SQL99 says to
+	* return a zero-length string -- DatumGetByteaPSlice() will do that for
+	* us. Convert to zero-based starting position
+	*/
+	return DatumGetByteaPSlice(str, S1, L1);
+}
 
 /****************************************************************
  * PLVstr.normalize
