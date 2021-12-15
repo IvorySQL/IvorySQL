@@ -6957,3 +6957,82 @@ RETURNS int4
 AS 'MODULE_PATHNAME','orafce_vsize'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.vsize("any") IS 'returns the number of bytes in the internal representation of expr';
+
+--instrb function
+CREATE OR REPLACE FUNCTION oracle.instrb(smallint, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(smallint, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(int, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(int, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(bigint, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(bigint, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(numeric, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(numeric, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(float4, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(float4, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(float8, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(float8, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(char, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(char, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(text, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(text, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(pg_catalog.date, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(pg_catalog.date, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(oracle.date, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(oracle.date, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(timestamp, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(timestamp, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(timestamptz, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(timestamptz, variadic "any") IS 'search string for substring uses bytes.';
+
+CREATE OR REPLACE FUNCTION oracle.instrb(interval, variadic "any")
+RETURNS integer
+AS 'MODULE_PATHNAME','plvstr_instrb'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.instrb(interval, variadic "any") IS 'search string for substring uses bytes.';
