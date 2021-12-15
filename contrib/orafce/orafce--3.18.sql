@@ -6927,6 +6927,12 @@ AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 COMMENT ON FUNCTION oracle.ascii(pg_catalog.date) IS 'returns the decimal representation of the first character from string.';
 
+CREATE OR REPLACE FUNCTION oracle.ascii(oracle.date)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(oracle.date) IS 'returns the decimal representation of the first character from string.';
+
 CREATE OR REPLACE FUNCTION oracle.ascii(timestamp)
 RETURNS integer
 AS 'select ascii($1::text)'
@@ -6944,3 +6950,10 @@ RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 COMMENT ON FUNCTION oracle.ascii(interval) IS 'returns the decimal representation of the first character from string.';
+
+--vsize function
+CREATE OR REPLACE FUNCTION oracle.vsize(var "any")
+RETURNS int4
+AS 'MODULE_PATHNAME','orafce_vsize'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION oracle.vsize("any") IS 'returns the number of bytes in the internal representation of expr';

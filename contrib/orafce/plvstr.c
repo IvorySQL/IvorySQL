@@ -17,6 +17,7 @@
 #include "utils/numeric.h"
 #include "string.h"
 #include "stdlib.h"
+#include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
@@ -55,11 +56,37 @@ PG_FUNCTION_INFO_V1(plvchr_char_name);
 
 PG_FUNCTION_INFO_V1(oracle_substr2);
 PG_FUNCTION_INFO_V1(oracle_substr3);
+PG_FUNCTION_INFO_V1(orafce_vsize);
 
 static text *ora_substr(Datum str, int start, int len);
 
 #define ora_substr_text(str, start, len) \
 	ora_substr(PointerGetDatum((str)), (start), (len))
+
+#define vsize_datum(attlen, attptr) \
+	vsize_datum_pointer(attlen, DatumGetPointer(attptr))
+
+/*
+ * vsize_datum_pointer by type calculate the number of bytes
+ * in the internal representation of expr.
+ *
+ */
+ #define vsize_datum_pointer(attlen, attptr) \
+( \
+	((attlen) > 0) ? \
+	( \
+		(attlen) \
+	) \
+	: (((attlen) == -1) ? \
+	( \
+		VARSIZE_ANY_EXHDR(attptr) \
+	) \
+	: \
+	( \
+		AssertMacro((attlen) == -2), \
+		strlen((char *) (attptr)) \
+	)) \
+)
 
 static const char* char_names[] = {
 	"NULL","SOH","STX","ETX","EOT","ENQ","ACK","DEL",
@@ -1155,6 +1182,39 @@ ora_concat3(text *str1, text *str2, text *str3)
 	return result;
 }
 
+/********************************************************************
+ *
+ * vsize
+ *
+ * Purpose:
+ *
+ *  VSIZE returns the number of bytes in the internal representation of expr.
+ *
+ ********************************************************************/
+
+Datum
+orafce_vsize(PG_FUNCTION_ARGS)
+{
+	Oid	exprtype;
+	int16	typlen;
+	Size	exprsize;
+	int32	result = 0;
+
+	exprtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	if (!OidIsValid(exprtype))
+		elog(ERROR, "could not determine data type of vsize() input");
+	exprtype = getBaseType(exprtype);
+	if (!OidIsValid(exprtype))
+		elog(ERROR, "could not get the basic type");
+
+	/* get the typlen of type in the table pg_type. */
+	typlen = get_typlen(exprtype);
+	/* calculate the number of bytes in the internal representation of expr. */
+	exprsize = vsize_datum(typlen, PG_GETARG_DATUM(0));
+	result = (int32) exprsize;
+
+	PG_RETURN_INT32(result);
+}
 
 /****************************************************************
  * PLVchr.swap
