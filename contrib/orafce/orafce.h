@@ -35,6 +35,8 @@ extern char *orafce_timezone;
 
 extern bool orafce_varchar2_null_safe_concat;
 
+extern Datum orafce_sourcetype_to_targetype(Datum val, Oid stype, Oid ttype);
+
 /*
  * Version compatibility
  */
