@@ -1,5 +1,5 @@
 MODULE_big = orafce
-OBJS= parse_keyword.o convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o orafce.o varchar2.o nvarchar2.o charpad.o charlen.o replace_empty_string.o datefuncs.o ora_date.o
+OBJS= parse_keyword.o convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o orafce.o varchar2.o nvarchar2.o charpad.o charlen.o replace_empty_string.o datefuncs.o ora_date.o number.o
 
 EXTENSION = orafce
 

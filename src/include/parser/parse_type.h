@@ -59,4 +59,8 @@ extern void parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, boo
 /* true if typeid is composite, or domain over composite, but not RECORD */
 #define ISCOMPLEX(typeid) (typeOrDomainTypeRelid(typeid) != InvalidOid)
 
+/* Hook for typname to get typemod in typenameTypeMod() */
+typedef int (*TypenameTypeModIn_hook_type) (int32 *tl);
+extern PGDLLIMPORT TypenameTypeModIn_hook_type TypenameTypeModIn_hook;
+
 #endif							/* PARSE_TYPE_H */
