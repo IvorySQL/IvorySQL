@@ -718,7 +718,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONE
 	NORMALIZE NORMALIZED
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
-	NULLS_P NUMERIC
+	NULLS_P NUMBER NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
@@ -13733,6 +13733,14 @@ GenericType:
 					$$->typmods = $2;
 					$$->location = @1;
 				}
+			| type_function_name attrs '(' '*' ',' a_expr ')'
+				{
+					Node		*scale;
+					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+					scale = makeIntConst(38, @4);
+					$$->typmods = list_make2(scale, $6);
+					$$->location = @1;
+				}
 			| type_function_name attrs opt_type_modifiers
 				{
 					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
@@ -13798,6 +13806,20 @@ Numeric:	INT_P
 			| NUMERIC opt_type_modifiers
 				{
 					$$ = SystemTypeName("numeric");
+					$$->typmods = $2;
+					$$->location = @1;
+				}
+			| NUMBER '(' '*' ',' a_expr ')'
+				{
+					Node		*scale;
+					$$ = CompatibleTypeName("number");
+					scale = makeIntConst(38, @3);
+					$$->typmods = list_make2(scale, $5);
+					$$->location = @1;
+				}
+			| NUMBER opt_type_modifiers
+				{
+					$$ = CompatibleTypeName("number");
 					$$->typmods = $2;
 					$$->location = @1;
 				}
@@ -16703,6 +16725,7 @@ col_name_keyword:
 			| NONE
 			| NORMALIZE
 			| NULLIF
+			| NUMBER
 			| NUMERIC
 			| OUT_P
 			| OVERLAY
@@ -17108,6 +17131,7 @@ bare_label_keyword:
 			| NULL_P
 			| NULLIF
 			| NULLS_P
+			| NUMBER
 			| NUMERIC
 			| OBJECT_P
 			| OF
@@ -17767,6 +17791,20 @@ SystemTypeName(char *name)
 	return makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
 											   makeString(name)));
 }
+
+/* CompatibleTypeName()
+ * Build a properly-qualified reference to a compatible built-in type.
+ *
+ * typmod is defaulted, but may be changed afterwards by caller.
+ * Likewise for the location.
+ */
+TypeName *
+CompatibleTypeName(char *name)
+{
+	return makeTypeNameFromNameList(list_make2(makeString("oracle"),
+											   makeString(name)));
+}
+
 
 /* doNegate()
  * Handle negation of a numeric constant.

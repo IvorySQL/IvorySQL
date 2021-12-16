@@ -43,6 +43,8 @@
 #include "utils/numeric.h"
 #include "utils/pg_lsn.h"
 #include "utils/sortsupport.h"
+#include "parser/parse_type.h"
+#include "access/printtup.h"
 
 /* ----------
  * Uncomment the following to enable compilation of dump_numeric()
@@ -1131,6 +1133,17 @@ numeric		(PG_FUNCTION_ARGS)
 	if (typmod < (int32) (VARHDRSZ))
 		PG_RETURN_NUMERIC(duplicate_numeric(num));
 
+	if (TypenameTypeModIn_hook && typmod > 0)
+	{
+		if ((typmod - (int32) (VARHDRSZ)) & 0x8000)
+		{
+			Datum		value;
+			scale = 0 - ((typmod - (int32) (VARHDRSZ)) & 0x7FFF);
+			value = DirectFunctionCall2(numeric_round, (Datum)num, (Datum)scale);
+			PG_RETURN_DATUM(value);
+		}
+	}
+
 	/*
 	 * Get the precision and scale out of the typmod value
 	 */
@@ -1177,6 +1190,23 @@ numeric		(PG_FUNCTION_ARGS)
 	PG_RETURN_NUMERIC(new);
 }
 
+int32 getnumerictypmodin(int32 *tl)
+{
+	int	typmod;
+	if (tl[0] < 1 || tl[0] > NUMERIC_MAX_PRECISION)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("NUMERIC precision %d must be between 1 and %d",
+						tl[0], NUMERIC_MAX_PRECISION)));
+	if (tl[1] < 0 || tl[1] > tl[0])
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("NUMERIC scale %d must be between 0 and precision %d",
+						tl[1], tl[0])));
+	typmod = ((tl[0] << 16) | tl[1]) + VARHDRSZ;
+	return typmod;
+}
+
 Datum
 numerictypmodin(PG_FUNCTION_ARGS)
 {
@@ -1189,17 +1219,14 @@ numerictypmodin(PG_FUNCTION_ARGS)
 
 	if (n == 2)
 	{
-		if (tl[0] < 1 || tl[0] > NUMERIC_MAX_PRECISION)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("NUMERIC precision %d must be between 1 and %d",
-							tl[0], NUMERIC_MAX_PRECISION)));
-		if (tl[1] < 0 || tl[1] > tl[0])
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("NUMERIC scale %d must be between 0 and precision %d",
-							tl[1], tl[0])));
-		typmod = ((tl[0] << 16) | tl[1]) + VARHDRSZ;
+		if (TypenameTypeModIn_hook)
+		{
+			typmod = (*TypenameTypeModIn_hook) (tl);
+		}
+		else
+		{
+			typmod = getnumerictypmodin(tl);
+		}
 	}
 	else if (n == 1)
 	{
@@ -7178,6 +7205,29 @@ get_str_from_var(const NumericVar *var)
 	 * terminate the string and return it
 	 */
 	*cp = '\0';
+
+	if (TypenameTypeModIn_hook)
+	{
+		int	len;
+		len = strlen(str);
+		if (len == 1 && str[len - 1] == '0')
+			return str;
+		if (NULL == strchr(str, '.'))
+			return str;
+		for (i = len - 1; i >= 0; i--)
+		{
+			if (str[i] == '0')
+				str[i] = '\0';
+			else if (str[i] == '.')
+			{
+				str[i] = '\0';
+				return str;
+			}
+			else
+				return str;
+		}
+	}
+
 	return str;
 }
 
