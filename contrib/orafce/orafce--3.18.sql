@@ -6985,3 +6985,1044 @@ CREATE OR REPLACE FUNCTION oracle.lengthb(interval) RETURNS integer
 AS 'select oracle.lengthb($1::text)'
 LANGUAGE SQL STRICT IMMUTABLE;
 COMMENT ON FUNCTION oracle.lengthb(interval) IS 'returns byte length of the input string';
+ 
+/* oracle.number type support */
+
+CREATE FUNCTION oracle.number_in(cstring,oid,integer)
+RETURNS oracle.number
+AS $$numeric_in$$
+LANGUAGE internal
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION oracle.number_out(oracle.number)
+RETURNS CSTRING
+AS 'MODULE_PATHNAME', 'number_out'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION oracle.number_recv(internal,oid,integer)
+RETURNS oracle.number
+AS $$numeric_recv$$
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.number_send(oracle.number)
+RETURNS bytea
+AS $$numeric_send$$
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.numbertypmodin(cstring[])
+RETURNS integer
+AS 'MODULE_PATHNAME', 'numbertypmodin'
+LANGUAGE C
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.numbertypmodout(integer)
+RETURNS cstring
+AS $$numerictypmodout$$
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.number(oracle.number,integer)
+RETURNS oracle.number
+AS 'MODULE_PATHNAME', 'number'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+/* CREATE TYPE */
+CREATE TYPE oracle.number (
+internallength = VARIABLE,
+input = oracle.number_in,
+output = oracle.number_out,
+receive = oracle.number_recv,
+send = oracle.number_send,
+category = 'N',
+storage = 'main',
+typmod_in = oracle.numbertypmodin,
+typmod_out = oracle.numbertypmodout,
+collatable = false
+);
+
+/* CREATE CAST */
+--int8/number implicit
+CREATE OR REPLACE FUNCTION oracle.number(bigint)
+RETURNS oracle.number
+AS $$int8_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (bigint AS oracle.number)
+WITH FUNCTION oracle.number(bigint)
+AS IMPLICIT;
+
+CREATE OR REPLACE FUNCTION oracle.int8(oracle.number)
+RETURNS bigint
+AS $$numeric_int8$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.number AS bigint)
+WITH FUNCTION oracle.int8(oracle.number)
+AS ASSIGNMENT;
+
+
+--int4/number implicit
+CREATE OR REPLACE FUNCTION oracle.number(int4)
+RETURNS oracle.number
+AS $$int4_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (int4 AS oracle.number)
+WITH FUNCTION oracle.number(int4)
+AS IMPLICIT;
+
+CREATE OR REPLACE FUNCTION oracle.int4(oracle.number)
+RETURNS int4
+AS $$numeric_int4$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.number AS int4)
+WITH FUNCTION oracle.int4(oracle.number)
+AS ASSIGNMENT;
+
+
+--int2/number implicit
+CREATE OR REPLACE FUNCTION oracle.number(int2)
+RETURNS oracle.number
+AS $$int2_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (int2 AS oracle.number)
+WITH FUNCTION oracle.number(int2)
+AS IMPLICIT;
+
+CREATE OR REPLACE FUNCTION oracle.int2(oracle.number)
+RETURNS int2
+AS $$numeric_int2$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.number AS int2)
+WITH FUNCTION oracle.int2(oracle.number)
+AS ASSIGNMENT;
+
+--double precision/number implicit
+CREATE OR REPLACE FUNCTION oracle.number(double precision)
+RETURNS oracle.number
+AS $$float8_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (double precision AS oracle.number)
+WITH FUNCTION oracle.number(double precision)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION oracle.float8(oracle.number)
+RETURNS double precision
+AS $$numeric_float8$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.number AS double precision)
+WITH FUNCTION oracle.float8(oracle.number)
+AS IMPLICIT;
+
+--real/number implicit
+CREATE OR REPLACE FUNCTION oracle.number(real)
+RETURNS oracle.number
+AS $$float4_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (real AS oracle.number)
+WITH FUNCTION oracle.number(real)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION oracle.float4(oracle.number)
+RETURNS real
+AS $$numeric_float4$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.number AS real)
+WITH FUNCTION oracle.float4(oracle.number)
+AS IMPLICIT;
+
+--money/number implicit
+CREATE OR REPLACE FUNCTION oracle.number(money)
+RETURNS oracle.number
+AS $$cash_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (money AS oracle.number)
+WITH FUNCTION oracle.number(money)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION oracle.money(oracle.number)
+RETURNS money
+AS $$numeric_cash$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.number AS money)
+WITH FUNCTION oracle.money(oracle.number)
+AS ASSIGNMENT;
+
+--number/number implicit
+CREATE CAST (oracle.number AS oracle.number)
+WITH FUNCTION oracle.number(oracle.number,integer)
+AS IMPLICIT;
+
+--jsonb/number implicit
+CREATE OR REPLACE FUNCTION oracle.number(jsonb)
+RETURNS oracle.number
+AS $$jsonb_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE CAST (jsonb AS oracle.number)
+WITH FUNCTION oracle.number(jsonb);
+
+--numeric/number implicit
+CREATE CAST (numeric AS oracle.number)
+WITHOUT FUNCTION
+AS ASSIGNMENT;
+
+CREATE CAST (oracle.number AS numeric)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+-----------------------------------------------------------------
+-- equal and unequal
+-----------------------------------------------------------------
+--equal
+CREATE OR REPLACE FUNCTION oracle.number_eq(oracle.number, oracle.number)
+RETURNS bool
+AS $$numeric_eq$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_eq,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+CREATE OR REPLACE FUNCTION numeric_eq_int4(numeric, int4)
+RETURNS bool
+AS $$SELECT numeric_eq($1, $2::numeric)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR = (
+  LEFTARG   = numeric,
+  RIGHTARG  = int4,
+  PROCEDURE = numeric_eq_int4,
+  COMMUTATOR = operator(=),
+  NEGATOR = operator(<>)
+);
+
+CREATE OR REPLACE FUNCTION oracle.number_eq_int4(oracle.number, int4)
+RETURNS bool
+AS $$SELECT oracle.number_eq($1, $2::oracle.number)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.= (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = int4,
+  PROCEDURE = oracle.number_eq_int4,
+  COMMUTATOR = operator(oracle.=),
+  NEGATOR = operator(oracle.<>)
+);
+
+--ne
+CREATE OR REPLACE FUNCTION oracle.number_ne(oracle.number, oracle.number)
+RETURNS bool
+AS $$numeric_ne$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_ne,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+CREATE OR REPLACE FUNCTION oracle.number_ne_int4(oracle.number, int4)
+RETURNS bool
+AS $$SELECT oracle.number_ne($1, $2::oracle.number)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.<> (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = int4,
+  PROCEDURE = oracle.number_ne_int4,
+  COMMUTATOR = operator(oracle.<>),
+  NEGATOR = operator(oracle.=)
+);
+
+-----------------------------------------------------------------
+--le and greate
+-----------------------------------------------------------------
+--le
+CREATE OR REPLACE FUNCTION oracle.number_le(oracle.number, oracle.number)
+RETURNS bool
+AS $$numeric_le$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_le,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.>)
+);
+
+--greater
+CREATE OR REPLACE FUNCTION oracle.number_gt(oracle.number, oracle.number)
+RETURNS bool
+AS $$numeric_gt$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_gt,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.<=)
+);
+
+-----------------------------------------------------------------
+--ge and letter
+-----------------------------------------------------------------
+--ge
+CREATE OR REPLACE FUNCTION oracle.number_ge(oracle.number, oracle.number)
+RETURNS bool
+AS $$numeric_ge$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_ge,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.<)
+);
+
+--letter
+CREATE OR REPLACE FUNCTION oracle.number_lt(oracle.number, oracle.number)
+RETURNS bool
+AS $$numeric_lt$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_lt,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.>=)
+);
+
+------------------------------------------------------------------
+--add and subtract
+------------------------------------------------------------------
+--add
+CREATE FUNCTION oracle.number_add(oracle.number,oracle.number)
+RETURNS oracle.number
+AS $$numeric_add$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.pg_lsn_pl_number(pg_lsn,oracle.number)
+RETURNS pg_lsn
+AS $$pg_lsn_pli$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.number_add_pg_lsn(oracle.number,pg_lsn)
+RETURNS pg_lsn AS $$
+SELECT numeric_pl_pg_lsn($1, $2);
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE FUNCTION oracle.number_uplus(oracle.number)
+RETURNS oracle.number
+AS $$numeric_uplus$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_add,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = pg_lsn,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.pg_lsn_pl_number,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = pg_lsn,
+  PROCEDURE = oracle.number_add_pg_lsn,
+  COMMUTATOR = operator(oracle.+)
+);
+
+CREATE OPERATOR oracle.+ (
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_uplus
+);
+
+--sub
+CREATE OR REPLACE FUNCTION oracle.number_sub(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_sub$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.pg_lsn_mi_number(pg_lsn, oracle.number)
+RETURNS pg_lsn
+AS $$pg_lsn_mii$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_uminus(oracle.number)
+RETURNS oracle.number
+AS $$numeric_uminus$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_sub
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = pg_lsn,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.pg_lsn_mi_number
+);
+
+CREATE OPERATOR oracle.- (
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_uminus
+);
+
+CREATE OR REPLACE FUNCTION int4_sub_numeric(int4, numeric)
+RETURNS numeric
+AS $$SELECT numeric_sub($1::numeric, $2)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR - (
+  LEFTARG   = int4,
+  RIGHTARG  = numeric,
+  PROCEDURE = int4_sub_numeric
+);
+
+--mul
+CREATE OR REPLACE FUNCTION oracle.number_mul(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_mul$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_mul,
+  COMMUTATOR = operator(oracle.*)
+);
+
+CREATE OR REPLACE FUNCTION numeric_mul_int4(numeric, int4)
+RETURNS numeric
+AS $$SELECT numeric_mul($1, $2::numeric)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR * (
+  LEFTARG   = numeric,
+  RIGHTARG  = int4,
+  PROCEDURE = numeric_mul_int4,
+  COMMUTATOR = operator(*)
+);
+
+CREATE OR REPLACE FUNCTION int4_mul_numeric(int4, numeric)
+RETURNS numeric
+AS $$SELECT numeric_mul($1::numeric, $2)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR * (
+  LEFTARG   = int4,
+  RIGHTARG  = numeric,
+  PROCEDURE = int4_mul_numeric,
+  COMMUTATOR = operator(*)
+);
+
+CREATE OR REPLACE FUNCTION oracle.int4_mul_number(int4, oracle.number)
+RETURNS oracle.number
+AS $$SELECT number_mul($1::oracle.number, $2)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.* (
+  LEFTARG   = int4,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.int4_mul_number,
+  COMMUTATOR = operator(oracle.*)
+);
+
+--div
+CREATE OR REPLACE FUNCTION oracle.number_div(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_div$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle./ (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_div,
+  COMMUTATOR = operator(oracle./)
+);
+
+CREATE OR REPLACE FUNCTION numeric_div_int4(numeric, int4)
+RETURNS numeric
+AS $$SELECT numeric_div($1, $2::numeric)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR / (
+  LEFTARG   = numeric,
+  RIGHTARG  = int4,
+  PROCEDURE = numeric_div_int4,
+  COMMUTATOR = operator(/)
+);
+
+--mod
+CREATE FUNCTION oracle.number_mod(oracle.number,oracle.number)
+RETURNS oracle.number
+AS $$numeric_mod$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.% (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_mod,
+  COMMUTATOR = operator(oracle.%)
+);
+
+--abs
+CREATE FUNCTION oracle.number_abs(oracle.number)
+RETURNS oracle.number
+AS $$numeric_abs$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.@ (
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_abs
+);
+
+--power
+CREATE FUNCTION oracle.number_power(oracle.number,oracle.number)
+RETURNS oracle.number
+AS $$numeric_power$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR oracle.^ (
+  LEFTARG   = oracle.number,
+  RIGHTARG  = oracle.number,
+  PROCEDURE = oracle.number_power,
+  COMMUTATOR = operator(oracle.^)
+);
+
+--end
+-----------------------------------------------------------------
+-- end
+-----------------------------------------------------------------
+/* create operator class */
+CREATE FUNCTION oracle.hash_number(oracle.number)
+RETURNS int4
+AS $$hash_numeric$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+--operator class
+CREATE OPERATOR CLASS oracle.number_bloom_ops
+FOR TYPE oracle.number
+USING brin AS
+	operator	1	oracle.< ( oracle.number, oracle.number ),
+	function	1	brin_bloom_opcinfo(internal),
+	function	2	brin_bloom_add_value(internal,internal,internal,internal),
+	function	3	brin_bloom_consistent(internal,internal,internal,int4),
+	function	4	brin_bloom_union(internal,internal,internal),
+	function	5	brin_bloom_options(internal),
+	function	11	oracle.hash_number(oracle.number)
+	;
+
+CREATE OPERATOR CLASS oracle.number_minmax_multi_ops
+FOR TYPE oracle.number
+USING brin AS
+	operator	1	oracle.< ( oracle.number, oracle.number ),
+	operator	2	oracle.<= ( oracle.number, oracle.number ),
+	operator	3	oracle.= ( oracle.number, oracle.number ),
+	operator	4	oracle.>= ( oracle.number, oracle.number ),
+	operator	5	oracle.> ( oracle.number, oracle.number ),
+	function	1	brin_minmax_multi_opcinfo(internal),
+	function	2	brin_minmax_multi_add_value(internal,internal,internal,internal),
+	function	3	brin_minmax_multi_consistent(internal,internal,internal,int4),
+	function	4	brin_minmax_multi_union(internal,internal,internal),
+	function	5	brin_minmax_multi_options(internal),
+	function	11	brin_minmax_multi_distance_numeric(internal,internal)
+	;
+
+CREATE OPERATOR CLASS oracle.number_minmax_ops
+DEFAULT FOR TYPE oracle.number
+USING brin AS
+	operator	1	oracle.< ( oracle.number, oracle.number ),
+	operator	2	oracle.<= ( oracle.number, oracle.number ),
+	operator	3	oracle.= ( oracle.number, oracle.number ),
+	operator	4	oracle.>= ( oracle.number, oracle.number ),
+	operator	5	oracle.> ( oracle.number, oracle.number ),
+	function	1	brin_minmax_opcinfo(internal),
+	function	2	brin_minmax_add_value(internal,internal,internal,internal),
+	function	3	brin_minmax_consistent(internal,internal,internal),
+	function	4	brin_minmax_union(internal,internal,internal)
+	;
+
+CREATE FUNCTION oracle.number_cmp(oracle.number, oracle.number)
+RETURNS int4
+AS $$numeric_cmp$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION pg_catalog.in_range(oracle.number, oracle.number, oracle.number, bool, bool)
+RETURNS bool
+AS $$in_range_numeric_numeric$$
+LANGUAGE internal
+IMMUTABLE;
+
+CREATE OPERATOR CLASS oracle.number_ops
+DEFAULT FOR TYPE oracle.number
+USING btree AS
+	operator	1	oracle.< ( oracle.number, oracle.number ),
+	operator	2	oracle.<= ( oracle.number, oracle.number ),
+	operator	3	oracle.= ( oracle.number, oracle.number ),
+	operator	4	oracle.>= ( oracle.number, oracle.number ),
+	operator	5	oracle.> ( oracle.number, oracle.number ),
+	function	1	oracle.number_cmp(oracle.number, oracle.number),
+	function	2	numeric_sortsupport(internal),
+	function	3	pg_catalog.in_range(oracle.number, oracle.number, oracle.number, bool, bool)
+	;
+
+CREATE FUNCTION oracle.hash_number_extended(oracle.number, int8)
+RETURNS int8
+AS $$hash_numeric_extended$$
+LANGUAGE internal
+IMMUTABLE;
+
+CREATE OPERATOR CLASS oracle.number_ops
+DEFAULT FOR TYPE oracle.number
+USING hash AS
+	operator	1	oracle.= ( oracle.number, oracle.number ),
+	function	1	oracle.hash_number(oracle.number),
+	function	2	oracle.hash_number_extended(oracle.number, int8)
+	;
+
+--operator family
+
+
+CREATE OR REPLACE FUNCTION oracle.round(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.round(float4, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.round(text)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric,  0)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.round(text, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(float4, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(text)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, 0)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(text, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.round(oracle.number, int)
+RETURNS oracle.number
+AS $$numeric_round$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.round(oracle.number)
+RETURNS oracle.number
+AS $$SELECT oracle.round($1, 0)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(oracle.number, int)
+RETURNS oracle.number
+AS $$numeric_trunc$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(oracle.number)
+RETURNS oracle.number
+AS $$SELECT oracle.trunc($1, 0)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.log(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_log$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.log(oracle.number)
+RETURNS oracle.number
+AS $$SELECT pg_catalog.log($1::numeric)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.log10(oracle.number)
+RETURNS oracle.number
+AS $$SELECT pg_catalog.log10($1::numeric)$$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.abs(oracle.number)
+RETURNS oracle.number
+AS $$numeric_abs$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.ln(oracle.number)
+RETURNS oracle.number
+AS $$numeric_ln$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.power(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_power$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.div(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_div_trunc$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.floor(oracle.number)
+RETURNS oracle.number
+AS $$numeric_floor$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.ceil(oracle.number)
+RETURNS oracle.number
+AS $$numeric_ceil$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.sign(oracle.number)
+RETURNS oracle.number
+AS $$numeric_sign$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.number_inc(oracle.number)
+RETURNS oracle.number
+AS $$numeric_inc$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.exp(oracle.number)
+RETURNS oracle.number
+AS $$numeric_exp$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.scale(oracle.number)
+RETURNS int4
+AS $$numeric_scale$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.scale(int4)
+RETURNS int4
+AS $$SELECT oracle.scale($1::oracle.number)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.min_scale(oracle.number)
+RETURNS int4
+AS $$numeric_min_scale$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.min_scale(int4)
+RETURNS int4
+AS $$SELECT oracle.min_scale($1::oracle.number)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trim_scale(oracle.number)
+RETURNS oracle.number
+AS $$numeric_trim_scale$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.trim_scale(int4)
+RETURNS oracle.number
+AS $$SELECT oracle.trim_scale($1::oracle.number)$$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.gcd(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_gcd$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.lcm(oracle.number, oracle.number)
+RETURNS oracle.number
+AS $$numeric_lcm$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.fac(oracle.number)
+RETURNS oracle.number
+AS $$numeric_fac$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.sqrt(oracle.number)
+RETURNS oracle.number
+AS $$numeric_sqrt$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.generate_series(oracle.number,oracle.number)
+RETURNS SETOF oracle.number
+AS $$generate_series_numeric$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.generate_series(oracle.number,oracle.number,oracle.number)
+RETURNS SETOF oracle.number
+AS $$generate_series_step_numeric$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+/* AGGREGATE FUNCTION */
+/* avg */
+CREATE OR REPLACE FUNCTION oracle.number_avg_accum(internal,oracle.number)
+RETURNS internal
+AS $$numeric_avg_accum$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_avg(internal)
+RETURNS oracle.number
+AS $$numeric_avg$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_avg_combine(internal,internal)
+RETURNS internal
+AS $$numeric_avg_combine$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_avg_serialize(internal)
+RETURNS bytea
+AS $$numeric_avg_serialize$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_avg_deserialize(bytea, internal)
+RETURNS internal
+AS $$numeric_avg_deserialize$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_accum_inv(internal,oracle.number)
+RETURNS internal
+AS $$numeric_accum_inv$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE AGGREGATE oracle.avg(oracle.number)
+(
+sfunc = oracle.number_avg_accum,
+stype = internal,
+finalfunc = oracle.number_avg,
+combinefunc = oracle.number_avg_combine,
+MSTYPE = internal,
+msfunc = oracle.number_avg_accum,
+minvfunc = oracle.number_accum_inv,
+MFINALFUNC = oracle.number_avg
+);
+
+/* max */
+CREATE OR REPLACE FUNCTION oracle.number_larger(oracle.number,oracle.number)
+RETURNS oracle.number
+AS $$numeric_larger$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE AGGREGATE oracle.max(oracle.number)
+(
+sfunc = oracle.number_larger,
+stype = oracle.number,
+combinefunc = oracle.number_larger
+);
+
+/* min */
+CREATE OR REPLACE FUNCTION oracle.number_smaller(oracle.number,oracle.number)
+RETURNS oracle.number
+AS $$numeric_smaller$$
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE AGGREGATE oracle.min(oracle.number)
+(
+sfunc = oracle.number_smaller,
+stype = oracle.number,
+combinefunc = oracle.number_smaller
+);
+
+/* stddev */
+CREATE OR REPLACE FUNCTION oracle.number_accum(internal,oracle.number)
+RETURNS internal
+AS $$numeric_accum$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_stddev_samp(internal)
+RETURNS oracle.number
+AS $$numeric_stddev_samp$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_combine(internal,internal)
+RETURNS internal
+AS $$numeric_combine$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_serialize(internal)
+RETURNS bytea
+AS $$numeric_serialize$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_deserialize(bytea, internal)
+RETURNS internal
+AS $$numeric_deserialize$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.number_accum_inv(internal,oracle.number)
+RETURNS internal
+AS $$numeric_accum_inv$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE AGGREGATE oracle.stddev(oracle.number)
+(
+sfunc = oracle.number_accum,
+stype = internal,
+finalfunc = oracle.number_stddev_samp,
+combinefunc = oracle.number_combine,
+MSTYPE = internal,
+serialfunc = oracle.number_serialize,
+deserialfunc = oracle.number_deserialize,
+msfunc = oracle.number_accum,
+minvfunc = oracle.number_accum_inv,
+MFINALFUNC = oracle.number_stddev_samp
+);
+
+/* VARIANCE */
+CREATE OR REPLACE FUNCTION oracle.number_var_samp(internal)
+RETURNS oracle.number
+AS $$numeric_var_samp$$
+LANGUAGE internal IMMUTABLE;
+
+CREATE OR REPLACE AGGREGATE oracle.variance(oracle.number)
+(
+sfunc = oracle.number_accum,
+stype = internal,
+finalfunc = oracle.number_var_samp,
+combinefunc = oracle.number_combine,
+MSTYPE = internal,
+serialfunc = oracle.number_serialize,
+deserialfunc = oracle.number_deserialize,
+msfunc = oracle.number_accum,
+minvfunc = oracle.number_accum_inv,
+MFINALFUNC = oracle.number_stddev_samp
+);
+
+/* to_char */
+CREATE OR REPLACE FUNCTION oracle.to_char(oracle.number, text)
+RETURNS text
+AS $$SELECT pg_catalog.to_char($1::numeric, $2)$$
+LANGUAGE sql STABLE PARALLEL SAFE STRICT;
+/* oracle.number type support */

@@ -30,7 +30,8 @@
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 
-
+/* Hook for typmod to get typename in typenameTypeMod() */
+TypenameTypeModIn_hook_type TypenameTypeModIn_hook = NULL;
 
 
 static int32 typenameTypeMod(ParseState *pstate, const TypeName *typeName,
