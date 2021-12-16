@@ -3681,6 +3681,10 @@ GetCommandLogLevel(Node *parsetree)
 			lev = LOGSTMT_DDL;
 			break;
 
+		case T_CreatePackageStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
 			/* already-planned queries */
 		case T_PlannedStmt:
 			{
