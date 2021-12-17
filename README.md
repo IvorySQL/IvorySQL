@@ -5,9 +5,9 @@
 
 # IvorySQL
 Open Source Oracle compatible PostgreSQL
-It is a supercharged open-source fork of PostgreSQ
+It is a supercharged open-source fork of PostgreSQL
 
-# Office Website
+# Official Website
 www.ivorysql.org
 
 # License
@@ -17,7 +17,7 @@ Apache 2.0
 lists.ivorysql.org
 
 # Rules
-IvorySQL does not compete with community PostgreSQL but compliments it.
+IvorySQL does not compete with community PostgreSQL, but, complements it.
 
 100% compatible with PostgreSQL with added features and value.
 
