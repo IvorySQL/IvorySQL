@@ -5,9 +5,9 @@
 
 # IvorySQL
 Open Source Oracle compatible PostgreSQL
-It is a supercharged open-source fork of PostgreSQ
+IvorySQL is a supercharged open-source fork of PostgreSQL
 
-# Office Website
+# Official Website
 www.ivorysql.org
 
 # License
