@@ -3072,6 +3072,28 @@ CREATE OPERATOR oracle.< (
   NEGATOR = operator(oracle.>=)
 );
 
+/* create operator class of varchar2 */
+CREATE OPERATOR CLASS oracle.varchar2_ops DEFAULT FOR TYPE oracle.varchar2 USING hash family text_ops AS OPERATOR 1 oracle.=;
+
+CREATE FUNCTION oracle.varchar2operator(oracle.varchar2, oracle.varchar2) RETURNS int AS $$
+BEGIN
+	IF($1<$2) THEN
+		RETURN -1;
+	ELSIF($1>$2) THEN
+		RETURN 1;
+	END IF;
+		RETURN 0;
+END;
+$$
+language 'plpgsql' immutable;
+
+CREATE OPERATOR CLASS oracle.varchar2_ops DEFAULT FOR TYPE oracle.varchar2 USING btree family text_ops AS
+OPERATOR 1 oracle.<,
+OPERATOR 2 oracle.<=,
+OPERATOR 3 oracle.=,
+OPERATOR 4 oracle.>=,
+OPERATOR 5 oracle.>,
+FUNCTION 1 oracle.varchar2operator(oracle.varchar2, oracle.varchar2);
 /*-----------------------------------------------------------------
   * add operator, avoid implicit cast
   * end

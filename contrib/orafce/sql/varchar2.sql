@@ -441,3 +441,8 @@ COPY basictestvarchar2 (testchar) FROM stdin;
 老师你好吗
 \.
 select * from basictestvarchar2;
+create table test_var(c1 varchar2, c2 varchar2);
+insert into test_var values('1', 'test1'),('1', 'test1'),('2', 'test1'),('2', 'test2');
+create table test_tmp(c1 varchar2, c2 varchar2);
+insert into test_tmp values('1', 'test1'),('2', 'test1');
+select * from test_var where(c1, c2) not in (select * from test_tmp);
