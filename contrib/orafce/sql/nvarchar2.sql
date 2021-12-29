@@ -1,6 +1,6 @@
 \set VERBOSITY terse
 SET client_encoding = utf8;
-
+set compatible_mode = 'oracle';
 --test for original string type
 drop table t2;
 drop table t3;
@@ -12,7 +12,6 @@ show nls_length_semantics;
 
 create table t2 (b varchar(6));
 create table t3 (c char(7));
-create table t4 (d nvarchar2(8));
 
 insert into t2 values('你好很快就分散吗');
 insert into t2 values('nlsttd');
@@ -24,7 +23,6 @@ select * from t3;
 drop table t2;
 drop table t3;
 
-set search_path to "$user", public, oracle ;
 
 --
 -- test type modifier related rules
@@ -91,8 +89,6 @@ SELECT NULL || 'hello'::varchar2 || NULL;
 set nls_length_semantics to byte;
 
 show nls_length_semantics;
-
-show search_path ;
 
 create table t2 (b varchar(6));
 \d+ t2
@@ -187,15 +183,10 @@ drop table t2;
 drop table t3;
 drop table t4;
 
-set search_path to "$user", public ;
-
-show search_path ;
-
 set nls_length_semantics to none;
 show nls_length_semantics;
 create table t2 (b varchar(6));
 create table t3 (c char(7));
-create table t4 (d nvarchar2(8));
 
 create table t22 (bb varchar(20));
 insert into t22 values ('你今天上学迟到');
@@ -239,10 +230,6 @@ END$$;
 
 drop table t2;
 drop table t3;
-
-set search_path to "$user", public, oracle ;
-
-show search_path ;
 
 set nls_length_semantics to byte;
 show nls_length_semantics;

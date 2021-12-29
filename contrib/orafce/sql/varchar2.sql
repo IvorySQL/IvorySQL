@@ -1,5 +1,6 @@
 \set VERBOSITY terse
 SET client_encoding = utf8;
+set compatible_mode = 'oracle';
 
 --test for nls_length_semantics and varchar2 type
 drop table t1;
@@ -10,7 +11,6 @@ drop table t22;
 drop table t33;
 show nls_length_semantics;
 
-create table t1 (a varchar2(5));
 create table t2 (b varchar(6));
 create table t3 (c char(7));
 
@@ -23,9 +23,6 @@ select * from t3;
 
 drop table t2;
 drop table t3;
-
-set search_path to "$user", public, oracle ;
-show search_path ;
 
 --
 -- test type modifier related rules
@@ -224,13 +221,8 @@ drop table t1;
 drop table t2;
 drop table t3;
 
-set search_path to "$user", public ;
-
-show search_path ;
-
 set nls_length_semantics to none;
 show nls_length_semantics;
-create table t1 (a varchar2(5));
 create table t2 (b varchar(6));
 create table t3 (c char(7));
 
@@ -276,10 +268,6 @@ END$$;
 
 drop table t2;
 drop table t3;
-
-set search_path to "$user", public, oracle ;
-
-show search_path ;
 
 set nls_length_semantics to byte;
 show nls_length_semantics;

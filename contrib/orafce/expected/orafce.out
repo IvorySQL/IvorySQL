@@ -2,115 +2,112 @@
 --
 -- test built-in date type oracle compatibility functions
 --
+set compatible_mode = 'oracle';
 SELECT add_months ('2003-08-01', 3);
- add_months 
-------------
- 2003-11-01
+     add_months      
+---------------------
+ 2003-11-01 00:00:00
 (1 row)
 
 SELECT add_months ('2003-08-01', -3);
- add_months 
-------------
- 2003-05-01
+     add_months      
+---------------------
+ 2003-05-01 00:00:00
 (1 row)
 
 SELECT add_months ('2003-08-21', -3);
- add_months 
-------------
- 2003-05-21
+     add_months      
+---------------------
+ 2003-05-21 00:00:00
 (1 row)
 
 SELECT add_months ('2003-01-31', 1);
- add_months 
-------------
- 2003-02-28
+     add_months      
+---------------------
+ 2003-02-28 00:00:00
 (1 row)
 
 SELECT add_months ('2008-02-28', 1);
- add_months 
-------------
- 2008-03-28
+     add_months      
+---------------------
+ 2008-03-28 00:00:00
 (1 row)
 
 SELECT add_months ('2008-02-29', 1);
- add_months 
-------------
- 2008-03-31
+     add_months      
+---------------------
+ 2008-03-31 00:00:00
 (1 row)
 
 SELECT add_months ('2008-01-31', 12);
- add_months 
-------------
- 2009-01-31
+     add_months      
+---------------------
+ 2009-01-31 00:00:00
 (1 row)
 
 SELECT add_months ('2008-01-31', -12);
- add_months 
-------------
- 2007-01-31
+     add_months      
+---------------------
+ 2007-01-31 00:00:00
 (1 row)
 
 SELECT add_months ('2008-01-31', 95903);
- add_months 
-------------
- 9999-12-31
+     add_months      
+---------------------
+ 9999-12-31 00:00:00
 (1 row)
 
 SELECT add_months ('2008-01-31', -80640);
-  add_months   
----------------
- 4712-01-31 BC
-(1 row)
-
+ERROR:  time zone displacement out of range: "-4712-01-31 00:00:00"
+CONTEXT:  SQL function "add_months" statement 1
 SELECT add_months ('03-21-2008',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
 SELECT add_months ('21-MAR-2008',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
 SELECT add_months ('21-MAR-08',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
 SELECT add_months ('2008-MAR-21',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
 SELECT add_months ('March 21,2008',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
 SELECT add_months('03/21/2008',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
 SELECT add_months('20080321',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
 SELECT add_months('080321',3);
- add_months 
-------------
- 2008-06-21
+     add_months      
+---------------------
+ 2008-06-21 00:00:00
 (1 row)
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT add_months ('2003-08-01 10:12:21', 3);
      add_months      
 ---------------------
@@ -166,11 +163,8 @@ SELECT add_months ('2008-01-31 12:12:12', 95903);
 (1 row)
 
 SELECT add_months ('2008-01-31 11:32:12', -80640);
-       add_months       
-------------------------
- 4712-01-31 11:32:12 BC
-(1 row)
-
+ERROR:  time zone displacement out of range: "-4712-01-31 11:32:12"
+CONTEXT:  SQL function "add_months" statement 1
 SELECT add_months ('03-21-2008 08:12:22',3);
      add_months      
 ---------------------
@@ -219,50 +213,48 @@ SELECT add_months('080321 121212',3);
  2008-06-21 12:12:12
 (1 row)
 
-SET search_path TO default;
 SELECT last_day(to_date('2003/03/15', 'yyyy/mm/dd'));
-  last_day  
-------------
- 2003-03-31
+      last_day       
+---------------------
+ 2003-03-31 00:00:00
 (1 row)
 
 SELECT last_day(to_date('2003/02/03', 'yyyy/mm/dd'));
-  last_day  
-------------
- 2003-02-28
+      last_day       
+---------------------
+ 2003-02-28 00:00:00
 (1 row)
 
 SELECT last_day(to_date('2004/02/03', 'yyyy/mm/dd'));
-  last_day  
-------------
- 2004-02-29
+      last_day       
+---------------------
+ 2004-02-29 00:00:00
 (1 row)
 
 SELECT last_day('1900-02-01');
-  last_day  
-------------
- 1900-02-28
+      last_day       
+---------------------
+ 1900-02-28 00:00:00
 (1 row)
 
 SELECT last_day('2000-02-01');
-  last_day  
-------------
- 2000-02-29
+      last_day       
+---------------------
+ 2000-02-29 00:00:00
 (1 row)
 
 SELECT last_day('2007-02-01');
-  last_day  
-------------
- 2007-02-28
+      last_day       
+---------------------
+ 2007-02-28 00:00:00
 (1 row)
 
 SELECT last_day('2008-02-01');
-  last_day  
-------------
- 2008-02-29
+      last_day       
+---------------------
+ 2008-02-29 00:00:00
 (1 row)
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT last_day(to_date('2003/03/15 11:12:21', 'yyyy/mm/dd hh:mi:ss'));
       last_day       
 ---------------------
@@ -305,50 +297,48 @@ SELECT last_day('2008-02-01 121212');
  2008-02-29 12:12:12
 (1 row)
 
-SET search_path TO default;
 SELECT next_day ('2003-08-01', 'TUESDAY');
-  next_day  
-------------
- 2003-08-05
+      next_day       
+---------------------
+ 2003-08-05 00:00:00
 (1 row)
 
 SELECT next_day ('2003-08-06', 'WEDNESDAY');
-  next_day  
-------------
- 2003-08-13
+      next_day       
+---------------------
+ 2003-08-13 00:00:00
 (1 row)
 
 SELECT next_day ('2003-08-06', 'SUNDAY');
-  next_day  
-------------
- 2003-08-10
+      next_day       
+---------------------
+ 2003-08-10 00:00:00
 (1 row)
 
 SELECT next_day ('2008-01-01', 'sun');
-  next_day  
-------------
- 2008-01-06
+      next_day       
+---------------------
+ 2008-01-06 00:00:00
 (1 row)
 
 SELECT next_day ('2008-01-01', 'sunAAA');
-  next_day  
-------------
- 2008-01-06
+      next_day       
+---------------------
+ 2008-01-06 00:00:00
 (1 row)
 
 SELECT next_day ('2008-01-01', 1);
-  next_day  
-------------
- 2008-01-06
+      next_day       
+---------------------
+ 2008-01-06 00:00:00
 (1 row)
 
 SELECT next_day ('2008-01-01', 7);
-  next_day  
-------------
- 2008-01-05
+      next_day       
+---------------------
+ 2008-01-05 00:00:00
 (1 row)
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT next_day ('2003-08-01 111211', 'TUESDAY');
       next_day       
 ---------------------
@@ -391,7 +381,7 @@ SELECT next_day ('2008-01-01 11:12:13', 7);
  2008-01-05 11:12:13
 (1 row)
 
-SET search_path TO default;
+set timezone to 'prc';
 SELECT months_between (to_date ('2003/01/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
   months_between   
 -------------------
@@ -446,7 +436,7 @@ SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
      0
 (1 row)
 
-SET search_path TO oracle,"$user", public, pg_catalog;
+reset  timezone;
 SELECT oracle.months_between (oracle.to_date ('2003/01/01 12:12:12', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
   months_between   
 -------------------
@@ -501,7 +491,6 @@ SELECT trunc(months_between('21-feb-2008 12:11:11', '2008-02-29 11:11:11'));
      0
 (1 row)
 
-SET search_path TO default;
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
  length | pack_message 
 --------+--------------
@@ -693,36 +682,6 @@ select dbms_pipe.unpack_message_text();
  unpack_message_text 
 ---------------------
  012345678901234-2
-(1 row)
-
-select dbms_pipe.pack_message(TO_DATE('2006-10-11', 'YYYY-MM-DD'));
- pack_message 
---------------
- 
-(1 row)
-
-select dbms_pipe.send_message('test_date');
- send_message 
---------------
-            0
-(1 row)
-
-select dbms_pipe.receive_message('test_date');
- receive_message 
------------------
-               0
-(1 row)
-
-select dbms_pipe.next_item_type();
- next_item_type 
-----------------
-             12
-(1 row)
-
-select dbms_pipe.unpack_message_date();
- unpack_message_date 
----------------------
- 2006-10-11
 (1 row)
 
 select dbms_pipe.pack_message(to_timestamp('2008-10-30 01:23:45', 'YYYY-MM-DD HH24:MI:SS'));
@@ -1014,7 +973,6 @@ select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Au
  t
 (1 row)
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 select next_day(to_date('01-Aug-03 101111', 'DD-MON-YY h24miss'), 'TUESDAY') = to_date ('05-Aug-03 101111', 'DD-MON-YY h24miss');
  ?column? 
 ----------
@@ -1033,7 +991,6 @@ select next_day(to_date('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY') =
  t
 (1 row)
 
-SET search_path TO default;
 select instr('Tech on the net', 'e') =2;
  ?column? 
 ----------
@@ -1865,103 +1822,6 @@ select decode(NULL, 12.001::numeric(5,3), 214748.3650::numeric(10,4), 12.002::nu
  999999.9999
 (1 row)
 
---For type 'date'
-select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date);
-   decode   
-------------
- 2012-12-20
-(1 row)
-
-select decode('2020-01-03'::date, '2020-01-01'::date,'2012-12-20'::date);
- decode 
---------
- 
-(1 row)
-
-select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2012-12-21'::date);
-   decode   
-------------
- 2012-12-20
-(1 row)
-
-select decode('2020-01-03'::date, '2020-01-01'::date,'2012-12-20'::date,'2012-12-21'::date);
-   decode   
-------------
- 2012-12-21
-(1 row)
-
-select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date);
-   decode   
-------------
- 2012-12-20
-(1 row)
-
-select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date);
- decode 
---------
- 
-(1 row)
-
-select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date,'2012-12-31'::date);
-   decode   
-------------
- 2012-12-20
-(1 row)
-
-select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date,'2012-12-31'::date);
-   decode   
-------------
- 2012-12-31
-(1 row)
-
-select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date);
-   decode   
-------------
- 2012-12-20
-(1 row)
-
-select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date);
- decode 
---------
- 
-(1 row)
-
-select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date,'2013-01-01'::date);
-   decode   
-------------
- 2012-12-20
-(1 row)
-
-select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date,'2013-01-01'::date);
-   decode   
-------------
- 2013-01-01
-(1 row)
-
-select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, NULL,'2012-12-21'::date);
-   decode   
-------------
- 2012-12-21
-(1 row)
-
-select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, '2020-01-02'::date,'2012-12-21'::date);
- decode 
---------
- 
-(1 row)
-
-select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, NULL,'2012-12-21'::date,'2012-12-31'::date);
-   decode   
-------------
- 2012-12-21
-(1 row)
-
-select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, '2020-01-02'::date,'2012-12-21'::date,'2012-12-31'::date);
-   decode   
-------------
- 2012-12-31
-(1 row)
-
 -- For type 'time'
 select decode('01:00:01'::time, '01:00:01'::time,'09:00:00'::time);
   decode  
@@ -2533,7 +2393,6 @@ SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::
  2.30129808 | 2.50917773 | 0.99932930
 (1 row)
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
  nanvl | nanvl 
 -------+-------
@@ -2606,7 +2465,6 @@ SELECT nanvl(12345::numeric, '1'::char), nanvl('NaN'::numeric, '1'::char);
  12345 |     1
 (1 row)
 
-SET search_path TO default;
 select dbms_assert.enquote_literal('some text '' some text');
      enquote_literal      
 --------------------------
@@ -2829,12 +2687,6 @@ SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
  t
 (1 row)
 
-SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
- t 
----
- t
-(1 row)
-
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
  t 
 ---
@@ -2847,7 +2699,6 @@ SELECT dump('2009-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
  t
 (1 row)
 
-set search_path to oracle,"$user", public;
 -- Tests for to_multi_byte
 SELECT to_multi_byte('123$test');
   to_multi_byte   
@@ -2894,7 +2745,6 @@ SELECT octet_length(to_single_byte('ａｂｃ'));
             3
 (1 row)
 
-set search_path to default;
 -- Tests for round(TIMESTAMP WITH TIME ZONE)
 select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','YEAR') = '1991-01-01 00:00:00';
  ?column? 
@@ -3057,12 +2907,6 @@ select to_date('210514 12:13:44+05:30');
 (1 row)
 
 set orafce.nls_date_format='DDMMYY HH24:MI:SS.MS';
-select pg_catalog.to_date('210514 12:13:44.55');
-        to_date         
-------------------------
- 2014-05-21 12:13:44.55
-(1 row)
-
 select oracle.to_date('210514 12:13:44.55');
        to_date       
 ---------------------
@@ -3070,7 +2914,6 @@ select oracle.to_date('210514 12:13:44.55');
 (1 row)
 
 -- Tests for oracle.to_date(text,text)
-SET search_path TO oracle,"$user", public, pg_catalog;
 select to_date('2014/04/25 10:13', 'YYYY/MM/DD HH:MI');
        to_date       
 ---------------------
@@ -3149,9 +2992,7 @@ select to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS');
  2014-05-21 12:13:44
 (1 row)
 
-SET search_path TO default;
 -- Tests for + operator with DATE and number(smallint,integer,bigint,numeric)
-SET search_path TO oracle,"$user", public, pg_catalog;
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') + 9::smallint;
       ?column?       
@@ -3328,9 +3169,7 @@ SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
  2014-01-02 12:00:00
 (1 row)
 
-SET search_path TO default;
 -- Tests for - operator with DATE and number(smallint,integer,bigint,numeric)
-SET search_path TO oracle,"$user", public, pg_catalog;
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9::smallint;
       ?column?       
@@ -3507,9 +3346,7 @@ SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') - 1.5;
  2013-12-30 12:00:00
 (1 row)
 
-SET search_path TO default;
 --Tests for oracle.to_char(timestamp)-used to set the DATE output format
-SET search_path TO oracle,"$user", public, pg_catalog;
 SET orafce.nls_date_format to default;
 select oracle.to_char(to_date('19-APR-16 21:41:48'));
        to_char       
@@ -3636,9 +3473,7 @@ select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'
  210514 12:13:44
 (1 row)
 
-SET search_path TO default;
 --Tests for oracle.-(oracle.date,oracle.date)
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT (to_date('2014-07-17 11:10:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
  numeric  
 ----------
@@ -3729,7 +3564,6 @@ SELECT round(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
  2014-05-22 00:00:00
 (1 row)
 
-SET search_path TO "$user",public,oracle;
 --
 -- Note: each Japanese character used below has display width of 2, otherwise 1.
 -- Note: each output string is surrounded by '|' for improved readability
@@ -4357,10 +4191,10 @@ WARNING:  Field "a" of table "trg_test" is empty string (replaced by NULL).
 INSERT INTO trg_test VALUES('AHOJ', NULL, '', '2020-01-01', 100);
 WARNING:  Field "c" of table "trg_test" is empty string (replaced by NULL).
 SELECT * FROM trg_test;
-  a   |  b  |  c   |     d      |  e  
-------+-----+------+------------+-----
- ***  |  10 | AHOJ | ***        | ***
- AHOJ | *** | ***  | 2020-01-01 | 100
+  a   |  b  |  c   |          d          |  e  
+------+-----+------+---------------------+-----
+ ***  |  10 | AHOJ | ***                 | ***
+ AHOJ | *** | ***  | 2020-01-01 00:00:00 | 100
 (2 rows)
 
 DELETE FROM trg_test;
@@ -4370,10 +4204,10 @@ CREATE TRIGGER trg_test_xx BEFORE INSERT OR UPDATE
 INSERT INTO trg_test VALUES(NULL, 10, 'AHOJ', NULL, NULL);
 INSERT INTO trg_test VALUES('AHOJ', NULL, NULL, '2020-01-01', 100);
 SELECT * FROM trg_test;
-  a   |  b  |  c   |     d      |  e  
-------+-----+------+------------+-----
-      |  10 | AHOJ | ***        | ***
- AHOJ | *** |      | 2020-01-01 | 100
+  a   |  b  |  c   |          d          |  e  
+------+-----+------+---------------------+-----
+      |  10 | AHOJ | ***                 | ***
+ AHOJ | *** |      | 2020-01-01 00:00:00 | 100
 (2 rows)
 
 DROP TABLE trg_test;

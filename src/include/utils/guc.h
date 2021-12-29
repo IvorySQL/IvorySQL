@@ -455,6 +455,8 @@ extern void assign_temp_tablespaces(const char *newval, void *extra);
 extern bool check_search_path(char **newval, void **extra, GucSource source);
 extern void assign_search_path(const char *newval, void *extra);
 
+extern void assign_compatible_db(const char *newval,void *extra);
+
 /* in access/transam/xlog.c */
 extern bool check_wal_buffers(int *newval, void **extra, GucSource source);
 extern void assign_xlog_sync_method(int new_sync_method, void *extra);

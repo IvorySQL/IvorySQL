@@ -1,7 +1,8 @@
 SET client_encoding = utf8;
 set datestyle='ISO,MDY';
 set time zone 'PRC';
-SET search_path TO oracle,"$user", public, pg_catalog;
+set compatible_mode = 'oracle';
+
 create table TBL_TEST(id int, dtime oracle.date);
 insert into TBL_TEST values (1, '1921-07-01');
 select * from TBL_TEST ;
@@ -386,11 +387,9 @@ SELECT date 'tomorrow' - date 'yesterday' AS "Two days";
 --
 -- epoch
 --
-set search_path to "$user", public;
 SELECT EXTRACT(EPOCH FROM DATE        '1970-01-01');     --  0
 SELECT EXTRACT(EPOCH FROM TIMESTAMP   '1970-01-01');     --  0
 SELECT EXTRACT(EPOCH FROM TIMESTAMPTZ '1970-01-01+00');  --  0
-SET search_path TO oracle,"$user", public, pg_catalog;
 --
 -- century
 --
@@ -404,9 +403,7 @@ SELECT EXTRACT(CENTURY FROM DATE '1900-12-31');    -- 19
 SELECT EXTRACT(CENTURY FROM DATE '1901-01-01');    -- 20
 SELECT EXTRACT(CENTURY FROM DATE '2000-12-31');    -- 20
 SELECT EXTRACT(CENTURY FROM DATE '2001-01-01');    -- 21
-set search_path to "$user", public;
 SELECT EXTRACT(CENTURY FROM CURRENT_DATE)>=21 AS True;     -- true
-SET search_path TO oracle,"$user", public, pg_catalog;
 --
 -- millennium
 --
@@ -432,9 +429,7 @@ SELECT EXTRACT(DECADE FROM DATE '0012-12-31 BC'); --  -2
 -- some other types:
 --
 -- on a timestamp.
-set search_path to "$user", public;
 SELECT EXTRACT(CENTURY FROM NOW())>=21 AS True;       -- true
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT EXTRACT(CENTURY FROM TIMESTAMP '1970-03-20 04:30:00.00000'); -- 20
 -- on an interval
 SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');  -- 1

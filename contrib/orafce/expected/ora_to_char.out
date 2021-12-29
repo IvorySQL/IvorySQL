@@ -1,6 +1,7 @@
 set datestyle = ISO ,YMD;
 set timezone = 'Asia/Shanghai';
 set intervalstyle = postgres;
+set compatible_mode = 'oracle';
 select to_char(123,'xx');
  to_char 
 ---------
@@ -72,13 +73,13 @@ select oracle.to_char(1234567890.12345);
 select oracle.to_char('4.00'::numeric);
  to_char 
 ---------
- 4.00
+ 4
 (1 row)
 
 select oracle.to_char('4.0010'::numeric);
  to_char 
 ---------
- 4.0010
+ 4.001
 (1 row)
 
 select oracle.to_char(INTERVAL '0-2' YEAR TO MONTH);

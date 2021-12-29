@@ -1,6 +1,6 @@
 -- Test for the regexp_*() function
 \set ECHO none
-SET search_path TO oracle,"$user", public, pg_catalog;
+set compatible_mode = 'oracle';
 ----
 -- Tests for REGEXP_LIKE()
 ----
