@@ -3633,7 +3633,8 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
-			Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+			if(compatible_db == COMPATIBLE_NONE)
+				Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
 			result->addCatalog = true;
 		}
 		schemas = list_delete_first(schemas);
@@ -4011,6 +4012,7 @@ recomputeNamespacePath(void)
 	Oid			firstNS;
 	bool		pathChanged;
 	MemoryContext oldcxt;
+	Oid			compatibleNS;
 
 	/* Do nothing if an override search spec is active. */
 	if (overrideStack)
@@ -4111,6 +4113,16 @@ recomputeNamespacePath(void)
 	 */
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+	/*
+	 *oracle namespace reference,for compatible
+	 */
+	if (compatible_db == COMPATIBLE_ORA)
+	{
+		compatibleNS = get_namespace_oid("oracle", true);
+		if (OidIsValid(compatibleNS))
+			if (linitial_oid(oidlist) != compatibleNS)
+				oidlist = lcons_oid(compatibleNS, oidlist);
+	}
 
 	if (OidIsValid(myTempNamespace) &&
 		!list_member_oid(oidlist, myTempNamespace))
@@ -4580,6 +4592,17 @@ assign_search_path(const char *newval, void *extra)
 	baseSearchPathValid = false;
 }
 
+/* assign_hook: do extra actions as needed */
+void
+assign_compatible_db(const char *newval, void *extra)
+{
+	/*
+	 * We mark the path as needing recomputation, but don't do anything until
+	 * it's needed.  This avoids trying to do database access during GUC
+	 * initialization, or outside a transaction.
+	 */
+	baseSearchPathValid = false;
+}
 /*
  * InitializeSearchPath: initialize module during InitPostgres.
  *

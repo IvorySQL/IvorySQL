@@ -5043,7 +5043,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		&compatible_db,
 		COMPATIBLE_NONE,
 		compat_options,
-		NULL, NULL, NULL
+		NULL, assign_compatible_db, NULL
 	},
 
 	/* End-of-list marker */
