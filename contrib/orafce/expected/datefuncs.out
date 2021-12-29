@@ -1220,7 +1220,6 @@ select oracle.round(timestamptz '2020-06-18 14:40:20 + 08', 'MI');
 (1 row)
 
 --next_day function
-SET search_path TO oracle,"$user", public, pg_catalog;
 select oracle.next_day(date '2020-02-15', 'Monday') from dual;
       next_day       
 ---------------------

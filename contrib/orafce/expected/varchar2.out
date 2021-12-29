@@ -1,5 +1,6 @@
 \set VERBOSITY terse
 SET client_encoding = utf8;
+set compatible_mode = 'oracle';
 --test for nls_length_semantics and varchar2 type
 drop table t1;
 ERROR:  table "t1" does not exist
@@ -19,8 +20,6 @@ show nls_length_semantics;
  none
 (1 row)
 
-create table t1 (a varchar2(5));
-ERROR:  type "varchar2" does not exist at character 20
 create table t2 (b varchar(6));
 create table t3 (c char(7));
 insert into t2 values('你好很快就分散吗');
@@ -43,13 +42,6 @@ select * from t3;
 
 drop table t2;
 drop table t3;
-set search_path to "$user", public, oracle ;
-show search_path ;
-       search_path       
--------------------------
- "$user", public, oracle
-(1 row)
-
 --
 -- test type modifier related rules
 --
@@ -475,13 +467,6 @@ select * from t3;
 drop table t1;
 drop table t2;
 drop table t3;
-set search_path to "$user", public ;
-show search_path ;
-   search_path   
------------------
- "$user", public
-(1 row)
-
 set nls_length_semantics to none;
 show nls_length_semantics;
  nls_length_semantics 
@@ -489,8 +474,6 @@ show nls_length_semantics;
  none
 (1 row)
 
-create table t1 (a varchar2(5));
-ERROR:  type "varchar2" does not exist at character 20
 create table t2 (b varchar(6));
 create table t3 (c char(7));
 create table t22 (bb varchar(20));
@@ -533,13 +516,6 @@ END$$;
 ERROR:  value too long for type character(7)
 drop table t2;
 drop table t3;
-set search_path to "$user", public, oracle ;
-show search_path ;
-       search_path       
--------------------------
- "$user", public, oracle
-(1 row)
-
 set nls_length_semantics to byte;
 show nls_length_semantics;
  nls_length_semantics 

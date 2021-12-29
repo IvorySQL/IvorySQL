@@ -1,4 +1,5 @@
 -- Tests for the aggregate listagg
+set compatible_mode = 'oracle';
 SELECT listagg(i::text) from generate_series(1,3) g(i);
 SELECT listagg(i::text, ',') from generate_series(1,3) g(i);
 SELECT coalesce(listagg(i::text), '<NULL>') from (SELECT ''::text) g(i);

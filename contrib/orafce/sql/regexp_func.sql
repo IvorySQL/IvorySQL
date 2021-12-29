@@ -5,7 +5,7 @@ SET client_encoding = utf8;
 \set VERBOSITY terse
 \set ECHO all
 
-SET search_path TO oracle,"$user", public, pg_catalog;
+set compatible_mode = 'oracle';
 
 ----
 -- Tests for REGEXP_LIKE()

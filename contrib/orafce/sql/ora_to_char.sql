@@ -1,6 +1,7 @@
 set datestyle = ISO ,YMD;
 set timezone = 'Asia/Shanghai';
 set intervalstyle = postgres;
+set compatible_mode = 'oracle';
 
 select to_char(123,'xx');
 select to_char(12367777,'xxx');
