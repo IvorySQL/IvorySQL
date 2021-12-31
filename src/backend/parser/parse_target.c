@@ -1957,6 +1957,13 @@ FigureColnameInternal(Node *node, char **name)
 		case T_XmlSerialize:
 			*name = "xmlserialize";
 			return 2;
+		case T_SysConnectPath:
+			*name = "sysconnectpath";
+			return 2;
+		case T_ConnectRoot:
+			*name = "connectroot";
+			return 2;
+
 		default:
 			break;
 	}

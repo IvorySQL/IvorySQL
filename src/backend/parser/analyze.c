@@ -94,6 +94,13 @@ static void transformLockingClause(ParseState *pstate, Query *qry,
 static bool test_raw_expression_coverage(Node *node, void *context);
 #endif
 
+static Node *transformHierarStmt(ParseState *pstate, SelectStmt *stmt);
+static List *qualifyTlistColumns(ParseState *pstate, List *targetList, char *relname);
+static Node *addLevelCol(ParseState *pstate, char *relname);
+static List *transformHierarTargetList(ParseState *pstate, bool subqryleft,
+									   List *targetList, char *relname);
+static List *fixupWhenAndSortClauses(ParseState *pstate, SelectStmt *stmt,
+									  SelectStmt *ctequery, char *relname);
 
 /*
  * parse_analyze
@@ -316,6 +323,14 @@ transformStmt(ParseState *pstate, Node *parseTree)
 		case T_SelectStmt:
 			{
 				SelectStmt *n = (SelectStmt *) parseTree;
+
+				/* Transform a Hierarchical Stmt into a CTE */
+				if (n->hierarClause)
+				{
+					Node	   *res = transformHierarStmt(pstate, n);
+
+					n = (SelectStmt *) res;
+				}
 
 				if (n->valuesLists)
 					result = transformValuesClause(pstate, n);
@@ -3538,6 +3553,294 @@ applyLockingClause(Query *qry, Index rtindex,
 	rc->waitPolicy = waitPolicy;
 	rc->pushedDown = pushedDown;
 	qry->rowMarks = lappend(qry->rowMarks, rc);
+}
+
+/*
+ * transformHierarStmt
+ *
+ * transform a Hierarchical Select statement into a CTE. Currently
+ * Hierarchical statement only supports PRIOR, LEVEL, CONNECT_BY_ROOT
+ * and SYS_CONNECT_BY_PATH. example:
+ * transform"
+ * SELECT LEVEL, SYS_CONNECT_BY_PATH(col, '/') FROM tab
+ * 	START WITH col =..
+ *  CONNECT BY PRIOR col = ...;
+ *
+ * To
+ *
+ * WITH cte_tab AS (
+ * 	SELECT 1 AS LEVEL, '/' || col as SYS_CONNECT_BY_PATH
+ *  UNION ALL
+ *  SELECT LEVEL + 1, cte_tab.SYS_CONNECT_BY_PATH || '/' || tab.col
+ * 		FROM tab, cte_tab
+ * ) SELECT LEVEL, SYS_CONNECT_BY_PATH FROM cte_tab;
+ *
+ */
+static Node *
+transformHierarStmt(ParseState *pstate, SelectStmt *stmt)
+{
+	RangeVar   *rv;
+	ParseState *ps = NULL;
+	ListCell   *lc;
+	CommonTableExpr *cte = makeNode(CommonTableExpr);
+	WithClause *withClause = makeNode(WithClause);
+	List	   *newCols = NIL;
+
+	SelectStmt *ctequery = makeNode(SelectStmt);
+	SelectStmt *ctequery_l = makeNode(SelectStmt);
+	SelectStmt *ctequery_r = makeNode(SelectStmt);
+
+	/* Setup the CTE subquery (anchor and recursive queries) */
+	ctequery->op = SETOP_UNION;
+	ctequery->all = true;
+	ctequery->larg = (SelectStmt *) ctequery_l;
+	ctequery->rarg = (SelectStmt *) ctequery_r;
+
+	/* Buildup a CTE name and fill up other info */
+	rv = (RangeVar *) linitial(stmt->fromClause);
+	cte->ctename = psprintf("cte_%s", rv->relname);
+	cte->ctequery = (Node *) ctequery;
+	cte->location = -1;
+	cte->aliascolnames = NIL;
+
+	withClause->ctes = list_make1(cte);
+	withClause->recursive = true;
+	withClause->location = -1;
+
+	/* transform targetlist */
+	ps = make_parsestate(pstate);
+	pstate->p_paramref_hook = ps->p_paramref_hook = NULL;
+
+	ctequery_l->fromClause = copyObject(stmt->fromClause);
+	ctequery_r->fromClause = copyObject(stmt->fromClause);
+	transformFromClause(ps, ctequery_l->fromClause);
+
+	ctequery_l->targetList = copyObject(stmt->targetList);
+	ctequery_r->targetList = copyObject(stmt->targetList);
+
+	/* transform left-hand operand of the cte subquery */
+	newCols = transformHierarTargetList(ps, true, ctequery_l->targetList, NULL);
+
+	/* Build and fill in the CTE's inner select's target list */
+	ctequery_l->intoClause = NULL;
+	ctequery_l->whereClause = NULL;
+	if (stmt->hierarClause != NULL &&
+		stmt->hierarClause->startWith)
+		ctequery_l->whereClause = copyObject(stmt->hierarClause->startWith->condition);
+
+	/*
+	 * make this recursive query's joining condition and adjust it as per
+	 * prior keyword
+	 */
+	ctequery_r->whereClause = copyObject(stmt->hierarClause->connectBy->condition);
+
+	newCols = list_concat_unique(newCols, fixupWhenAndSortClauses(ps, stmt, ctequery_r, rv->relname));
+
+	/* transform right-hand operand of the cte subquery */
+	transformHierarTargetList(ps, false, ctequery_r->targetList, rv->relname);
+
+	/*
+	 * append pseudo columns list to the target list while avoiding the
+	 * duplicity
+	 */
+	ctequery_l->targetList = list_concat_unique(ctequery_l->targetList, newCols);
+	ctequery_r->targetList = list_concat_unique(ctequery_r->targetList, newCols);
+
+	/* qualify the target list columns with appropriate relation */
+	ctequery_r->targetList = qualifyTlistColumns(ps, ctequery_r->targetList, rv->relname);
+
+	/* add CTE relation to the recursive query */
+	ctequery_r->fromClause = lappend(ctequery_r->fromClause,
+									 makeRangeVar(NULL, cte->ctename, -1));
+
+	/*
+	 * transform the target list of cte query. If there were any
+	 * pseudocolumns, they have been replaced with appropriate values and an
+	 * alias has been created if one was not given. we need to use add these
+	 * column alias here to refer to them.
+	 */
+	pstate->p_cterqry = true;
+	foreach(lc, stmt->targetList)
+	{
+		ResTarget  *res = (ResTarget *) lfirst(lc);
+
+		res->val = resolvePseudoColumns(pstate, (Node *) res->val, res, NULL, NULL);
+	}
+	pstate->p_cterqry = false;
+
+	/*
+	 * The select statement is now part of cte, and it needs to refer to the
+	 * cte in the from clause, instead of the actual table.
+	 */
+	rv->relname = pstrdup(cte->ctename);
+	stmt->withClause = withClause;
+	/* hierarClause is not needed anymore */
+	stmt->hierarClause = NULL;
+
+	return (Node *) stmt;
+}
+
+/*
+ * transformHierarTargetList
+ *		transforms the given target list to a cte acceptable list.
+ *
+ * find and replace pseudocolumn columns in the target list with the
+ * appropriate entries. The function returns a list of columns that
+ * were used in pseudo columns such as SYS_CONNECT_BY_PATH or
+ * CONNECT_BY_ROOT.
+ */
+static List *
+transformHierarTargetList(ParseState *pstate, bool subqryleft,
+						  List *targetList, char *relname)
+{
+	ListCell   *lc;
+	Node	   *result;
+	List	   *cols = NIL;
+
+	pstate->p_subqryleft = subqryleft;
+	foreach(lc, targetList)
+	{
+		ResTarget  *res = (ResTarget *) lfirst(lc);
+
+		if (IsA(res->val, ColumnRef))
+		{
+			ColumnRef  *cref = (ColumnRef *) res->val;
+
+			if (IsA(llast(cref->fields), A_Star))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("column expression via \"*\" is not supported for hierarchical statement"),
+						 parser_errposition(pstate, cref->location)));
+		}
+		else if (IsA(res->val, A_Indirection))
+		{
+			A_Indirection *ind = (A_Indirection *) res->val;
+			Node	   *result = transformExpr(pstate, ind->arg, EXPR_KIND_SELECT_TARGET);
+			int			location = exprLocation(result);
+
+			if (IsA(llast(ind->indirection), A_Star))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("column expression via \"*\" is not supported for hierarchical statement"),
+						 parser_errposition(pstate, location)));
+		}
+
+		pstate->p_ctehflags &= ~EXPR_FLAG_LEVEL;
+		resolvePseudoColumns(pstate, (Node *) res->val, res, relname, &cols);
+		if (pstate->p_ctehflags & EXPR_FLAG_LEVEL)
+			foreach_delete_current(targetList, lc);
+	}
+
+	result = addLevelCol(pstate, relname);
+	targetList = lappend(targetList, result);
+	return cols;
+}
+
+/*
+ * qualifyTlistColumns
+ *
+ * transform the target list columns and qualify them using the given
+ * 'relname', to remove any ambiguities that can come up from having same
+ * columns names in joined relations.
+ */
+static List *
+qualifyTlistColumns(ParseState *pstate, List *targetList, char *relname)
+{
+	ListCell   *lc;
+
+	Assert(relname != NULL);
+	foreach(lc, targetList)
+	{
+		ResTarget  *res = (ResTarget *) lfirst(lc);
+		ColumnRef  *cref = NULL;
+
+		if (res && !IsA(res->val, ColumnRef))
+			continue;
+
+		cref = (ColumnRef *) res->val;
+
+		/* qualify column by appending relname to it. */
+		if (list_length(cref->fields) == 1)
+			cref->fields = lcons(makeString(relname), cref->fields);
+	}
+
+	return targetList;
+}
+
+/*
+ * LEVEL is a bit different from other special columns. all LEVEL entries
+ * are removed from cte subquery's target list. It is then added once at
+ * the end of it and is then referenced in cte query.
+ */
+static Node *
+addLevelCol(ParseState *pstate, char *relname)
+{
+	ResTarget  *res = makeNode(ResTarget);
+	A_Const    *rexpr;
+
+	res->name = pstrdup("LEVEL");
+
+	rexpr = makeNode(A_Const);
+	rexpr->val.ival.type = T_Integer;
+	rexpr->val.ival.ival = 1;
+	rexpr->location = -1;
+
+	if (pstate->p_subqryleft)
+	{
+		res->val = (Node *) rexpr;
+	}
+	else
+	{
+		ColumnRef  *n = makeNode(ColumnRef);
+		A_Expr	   *aexpr = makeSimpleA_Expr(AEXPR_OP, "+",
+											 (Node *) n,
+											 (Node *) rexpr,
+											 -1);
+
+		n->fields = list_make1(makeString("LEVEL"));
+		n->location = -1;
+
+		if (relname)
+		{
+			char	   *name = psprintf("cte_%s", relname);
+
+			n->fields = lcons(makeString(name), n->fields);
+		}
+
+		res->val = (Node *) aexpr;
+	}
+	return (Node *) res;
+}
+
+static List *
+fixupWhenAndSortClauses(ParseState *pstate, SelectStmt *stmt,
+						 SelectStmt *ctequery, char *relname)
+{
+	List	   *cols = NIL;
+	ListCell   *lc;
+
+	/*
+	 * Add sort clause columns to the target list of cte. Only columns can be
+	 * listed in the sort clause, expresions (i.e. order by col+10) in sort
+	 * clause are not supported.
+	 */
+	foreach(lc, stmt->sortClause)
+	{
+		SortBy	   *sortby = (SortBy *) lfirst(lc);
+
+		resolvePseudoColumns(pstate, (Node *) sortby->node, NULL, relname, &cols);
+	}
+
+	/*
+	 * transform the where clause and qualify the join conditions with proper
+	 * relations. if a column in condition is preceded by PRIOR we qualify it
+	 * with the cte's name. All other columns are qualified with actual table
+	 * name.
+	 */
+	pstate->p_ctehflags |= EXPR_FLAG_WHERE;
+	resolvePseudoColumns(pstate, (Node *) ctequery->whereClause, NULL, relname, &cols);
+	pstate->p_ctehflags &= ~EXPR_FLAG_WHERE;
+	return cols;
 }
 
 /*

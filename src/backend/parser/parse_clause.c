@@ -1744,7 +1744,6 @@ transformWhereClause(ParseState *pstate, Node *clause,
 		return NULL;
 
 	qual = transformExpr(pstate, clause, exprKind);
-
 	qual = coerce_to_boolean(pstate, qual, constructName);
 
 	return qual;

@@ -21,6 +21,7 @@
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/print.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "parser/analyze.h"
@@ -304,6 +305,28 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 				result = (Node *) expr;
 				break;
 			}
+
+		case T_ConnectRoot:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("CONNECT_BY_ROOT can only be used cannot be used in current context"),
+					 parser_errposition(pstate,
+										((ConnectRoot *) expr)->location)));
+			break;
+		case T_SysConnectPath:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("SYS_CONNECT_BY_PATH can only be used cannot be used in current context"),
+					 parser_errposition(pstate,
+										((SysConnectPath *) expr)->location)));
+			break;
+		case T_PriorClause:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("PRIOR can only be used cannot be used in current context"),
+					 parser_errposition(pstate,
+										((PriorClause *) expr)->location)));
+			break;
 
 		default:
 			/* should not reach here */
@@ -3207,4 +3230,418 @@ ParseExprKindName(ParseExprKind exprKind)
 			 */
 	}
 	return "unrecognized expression kind";
+}
+
+/*
+ * resolvePseudoColumns
+ * 		transforms a pseudo or special column into it's equivalent cte form.
+ * The function depends on flags i.e:
+ * p_cterqry: indicates that transformation is for cte query.
+ * p_subqryleft: indicates that transformation is for left-hand operand of
+ * cte subquery.
+ * p_whereclause: indicates that a where clause column is being transformed.
+ *
+ * The transformation in general is like this:
+ * SELECT SYS_CONNECT_BY_PATH(col, '/') FROM TABLE is transformed to
+ *    if(p_subqryleft)
+ * 		SELECT '/' || col as 'SYS_CONNECT_BY_PATH' FROM TABLE
+ *    else
+ * 		SELECT cte.SYS_CONNECT_BY_PATH || '/' || TABLE.col FROM TABLE, cte
+ */
+Node *
+resolvePseudoColumns(ParseState *pstate, Node *expr, ResTarget *res,
+					 char *relname, List **cols)
+{
+	Node	   *result = NULL;
+
+	if (expr == NULL)
+		return result;
+
+	/* Guard against stack overflow due to overly complex expressions */
+	check_stack_depth();
+	switch (nodeTag(expr))
+	{
+		case T_ColumnRef:
+			{
+				ColumnRef  *cref = (ColumnRef *) expr;
+
+				if (list_length(cref->fields) == 1)
+				{
+					Node	   *field1 = (Node *) linitial(cref->fields);
+					char	   *colname = strVal(field1);
+
+					if (pstate->p_ctehflags & EXPR_FLAG_WHERE)
+					{
+						/*
+						 * p_whereclause is set to indicate that some columns
+						 * needs to be qualified with given relname.
+						 * specifically the columns in the where clause of the
+						 * cte.
+						 */
+						if (relname)
+							cref->fields = lcons(makeString(relname),
+												 cref->fields);
+						return (Node *) cref;
+					}
+
+					/*
+					 * LEVEL should be implemented as NodeTag like
+					 * SysConnectPath however, it's an unreserved keyword and
+					 * making it reserved keyword creates lot of trouble. So
+					 * for now using this crude way to handle this column for
+					 * hierarchical statement.
+					 */
+					if (strcasecmp(colname, "level") == 0)
+					{
+						pstate->p_ctehflags |= EXPR_FLAG_LEVEL;
+						if (pstate->p_cterqry)
+						{
+							ColumnRef  *n;
+
+							/* add column alias if not present */
+							if (res && res->name == NULL)
+								res->name = pstrdup("LEVEL");
+							n = makeNode(ColumnRef);
+							n->fields = list_make1(makeString(res->name));
+							return (Node *) n;
+						}
+					}
+					else
+					{
+						/* add column used in order-by clause to cols list */
+						if (cols != NULL)
+						{
+							ResTarget  *rt = makeNode(ResTarget);
+
+							rt->val = copyObject((Node *) cref);
+							*cols = lappend(*cols, rt);
+						}
+					}
+				}
+				result = (Node *) cref;
+			}
+			break;
+
+		case T_A_Const:
+			result = (Node *) expr;
+			break;
+
+		case T_A_Indirection:
+			{
+				A_Indirection *ind = (A_Indirection *) expr;
+
+				ind->arg = resolvePseudoColumns(pstate, ind->arg, res, relname, cols);
+				return (Node *) ind;
+			}
+			break;
+
+		case T_A_ArrayExpr:
+			{
+				A_ArrayExpr *a = (A_ArrayExpr *) expr;
+				List	   *elems = NIL;
+				ListCell   *element;
+
+				if (res && res->name == NULL)
+					res->name = FigureColname(expr);
+
+				foreach(element, a->elements)
+				{
+					Node	   *e = (Node *) lfirst(element);
+
+					elems = lappend(elems, resolvePseudoColumns(pstate, e, res, relname, cols));
+				}
+				a->elements = elems;
+				return (Node *) a;
+			}
+			break;
+
+		case T_A_Expr:
+			{
+				A_Expr	   *a = (A_Expr *) expr;
+
+				a->lexpr = resolvePseudoColumns(pstate, a->lexpr, res, relname, cols);
+				a->rexpr = resolvePseudoColumns(pstate, a->rexpr, res, relname, cols);
+
+				return (Node *) a;
+			}
+			break;
+
+		case T_BoolExpr:
+			{
+				ListCell   *lc;
+				BoolExpr   *b = (BoolExpr *) expr;
+				List	   *args = NIL;
+
+				foreach(lc, b->args)
+				{
+					Node	   *arg = (Node *) lfirst(lc);
+
+					args = lappend(args, resolvePseudoColumns(pstate, arg, res, relname, cols));
+				}
+				b->args = args;
+				return (Node *) b;
+			}
+			break;
+
+		case T_FuncCall:
+			{
+				FuncCall   *fn = (FuncCall *) expr;
+				List	   *targs = NIL;
+				ListCell   *args;
+
+				if (res && res->name == NULL)
+					res->name = FigureColname(expr);
+
+				foreach(args, fn->args)
+				{
+					Node	   *a = (Node *) lfirst(args);
+
+					targs = lappend(targs, resolvePseudoColumns(pstate, a, res, relname, cols));
+				}
+				fn->args = targs;
+				return (Node *) fn;
+			}
+			break;
+
+		case T_CaseExpr:
+			{
+				CaseExpr   *c = (CaseExpr *) expr;
+				ListCell   *l;
+
+				if (res && res->name == NULL)
+					res->name = FigureColname(expr);
+
+				c->arg = (Expr *) resolvePseudoColumns(pstate, (Node *) c->arg, res, relname, cols);
+				foreach(l, c->args)
+				{
+					CaseWhen   *w = lfirst_node(CaseWhen, l);
+
+					w->expr = (Expr *) resolvePseudoColumns(pstate, (Node *) w->expr, res, relname, cols);
+				}
+
+				c->defresult = (Expr *) resolvePseudoColumns(pstate, (Node *) c->defresult, res, relname, cols);
+				return (Node *) c;
+			}
+			break;
+
+		case T_CoalesceExpr:
+			{
+				CoalesceExpr *c = (CoalesceExpr *) expr;
+				List	   *args = NIL;
+				ListCell   *arg;
+
+				if (res && res->name == NULL)
+					res->name = FigureColname(expr);
+
+				foreach(arg, c->args)
+				{
+					Node	   *a = (Node *) lfirst(arg);
+
+					args = lappend(args, resolvePseudoColumns(pstate, a, res, relname, cols));
+				}
+				c->args = args;
+				return (Node *) c;
+			}
+			break;
+
+		case T_MinMaxExpr:
+			{
+				MinMaxExpr *m = (MinMaxExpr *) expr;
+				List	   *args = NIL;
+				ListCell   *arg;
+
+				if (res && res->name == NULL)
+					res->name = FigureColname(expr);
+
+				foreach(arg, m->args)
+				{
+					Node	   *e = (Node *) lfirst(arg);
+
+					args = lappend(args, resolvePseudoColumns(pstate, e, res, relname, cols));
+				}
+				m->args = args;
+				return (Node *) m;
+			}
+			break;
+
+		case T_NullTest:
+			{
+				NullTest   *n = (NullTest *) expr;
+
+				n->arg = (Expr *) resolvePseudoColumns(pstate, (Node *) n->arg, res, relname, cols);
+				return (Node *) n;
+			}
+			break;
+
+		case T_BooleanTest:
+			{
+				BooleanTest *b = (BooleanTest *) expr;
+
+				b->arg = (Expr *) resolvePseudoColumns(pstate, (Node *) b->arg, res, relname, cols);
+				return (Node *) b;
+			}
+			break;
+
+		case T_CaseTestExpr:
+		case T_Var:
+			{
+				result = (Node *) expr;
+				break;
+			}
+
+		case T_SysConnectPath:
+			{
+				ColumnRef  *cref;
+				SysConnectPath *n = (SysConnectPath *) expr;
+				A_Expr	   *rexpr = makeSimpleA_Expr(AEXPR_OP, "||",
+													 (Node *) n->chr,
+													 (Node *) n->expr,
+													 -1);
+
+				/* add column alias if not present */
+				if (res && res->name == NULL)
+					res->name = FigureColname(expr);
+
+				/* add column used in the SYS_CONNECT_BY_PATH to cols list */
+				if (cols != NULL)
+				{
+					ResTarget  *rt = makeNode(ResTarget);
+
+					rt->val = n->expr;
+					*cols = lappend(*cols, rt);
+				}
+
+				if (pstate->p_cterqry)
+				{
+					ColumnRef  *n = makeNode(ColumnRef);
+
+					n->fields = list_make1(makeString(res->name));
+
+					return (Node *) n;
+				}
+
+				cref = (ColumnRef *) n->expr;
+				if (relname)
+					cref->fields = lcons(makeString(relname),
+										 cref->fields);
+
+				if (pstate->p_subqryleft)
+				{
+					res->val = (Node *) rexpr;
+				}
+				else
+				{
+					ColumnRef  *lexpr = makeNode(ColumnRef);
+					A_Expr	   *aexpr = makeSimpleA_Expr(AEXPR_OP, "||",
+														 (Node *) lexpr,
+														 (Node *) rexpr,
+														 -1);
+
+					lexpr->fields = list_make1(makeString(res->name));
+					res->val = (Node *) aexpr;
+				}
+				result = NULL;
+			}
+			break;
+
+		case T_ConnectRoot:
+			{
+				ConnectRoot *n = (ConnectRoot *) expr;
+
+				/* add column alias if not present */
+				if (res && res->name == NULL)
+					res->name = FigureColname(expr);
+
+				/* add column used in the CONNECT_BY_ROOT to cols list */
+				if (cols != NULL)
+				{
+					ResTarget  *rt = makeNode(ResTarget);
+
+					rt->val = n->expr;
+					*cols = lappend(*cols, rt);
+				}
+
+				if (pstate->p_cterqry)
+				{
+					ColumnRef  *cref = makeNode(ColumnRef);
+
+					cref->fields = list_make1(makeString(res->name));
+
+					return (Node *) cref;
+				}
+
+				if (pstate->p_subqryleft)
+				{
+					res->val = (Node *) n->expr;
+				}
+				else
+				{
+					ColumnRef  *cref = (ColumnRef *) n->expr;
+
+					if (relname)
+					{
+						char	   *name = psprintf("cte_%s", relname);
+
+						cref->fields = lcons(makeString(name),
+											 cref->fields);
+						res->val = (Node *) cref;
+					}
+				}
+				result = NULL;
+			}
+			break;
+
+		case T_PriorClause:
+			{
+				PriorClause *n = (PriorClause *) expr;
+				ColumnRef  *cref = (ColumnRef *) n->expr;
+
+				/* add conditional columns to the target list */
+				if (cols != NULL)
+				{
+					ResTarget  *rt = makeNode(ResTarget);
+
+					rt->val = copyObject((Node *) cref);
+					*cols = lappend(*cols, rt);
+				}
+
+				if (relname)
+				{
+					char	   *name = psprintf("cte_%s", relname);
+
+					cref->fields = lcons(makeString(name),
+										 cref->fields);
+				}
+				return (Node *) cref;
+			}
+			break;
+
+		case T_ParamRef:
+		case T_TypeCast:
+		case T_CollateClause:
+		case T_MultiAssignRef:
+		case T_GroupingFunc:
+		case T_NamedArgExpr:
+		case T_SubLink:
+		case T_RowExpr:
+		case T_SQLValueFunction:
+		case T_XmlExpr:
+		case T_XmlSerialize:
+		case T_CurrentOfExpr:
+		case T_SetToDefault:
+			/* fall through */
+		default:
+			{
+				int			location = exprLocation(expr);
+
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("hierarchical statement cannot be used in current context"),
+						 parser_errposition(pstate, location)));
+				result = (Node *) NULL;
+			}
+			break;
+	}
+
+	return result;
 }
