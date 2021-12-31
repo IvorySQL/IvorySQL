@@ -1567,6 +1567,74 @@ typedef struct RawStmt
 	int			stmt_len;		/* length in bytes; 0 means "rest of string" */
 } RawStmt;
 
+typedef struct PriorClause
+{
+	NodeTag		type;
+	Node		*expr;
+	int			location;		/* token location, or -1 if unknown */
+} PriorClause;
+
+/*
+ * StartWith clause -
+ *	   representation of StartWith clause
+ *
+ */
+typedef struct StartWith
+{
+	NodeTag		type;
+	Node		*condition;
+} StartWith;
+
+/*
+ * ConnectBy clause -
+ *	   representation of ConnectBY clause
+ *
+ */
+typedef struct ConnectBy
+{
+	NodeTag		type;
+	Node		*condition;
+	StartWith	*startWith;
+	bool		nocycle;
+	int			prior;	/* -1 left is parent, 0 = not specified, 1 = right is parent */
+} ConnectBy;
+
+/*
+ * HierarchicalClause -
+ *	   representation of hierarchical clause
+ *
+ */
+typedef struct HierarClause
+{
+	NodeTag		type;
+	ConnectBy		*connectBy;
+	StartWith		*startWith;
+} HierarClause;
+
+/*
+ * SysConnectPath -
+ *		representation of SYS_CONNECT_BY_PATH
+ */
+typedef struct SysConnectPath
+{
+	NodeTag		type;
+	Node		*expr;
+	Node		*chr;
+	int			location;		/* token location, or -1 if unknown */
+} SysConnectPath;
+
+/*
+ * ConnectRoot -
+ *		representation of CONNECT_BY_ROOT
+ */
+typedef struct ConnectRoot
+{
+	NodeTag		type;
+	Node		*expr;
+	int			location;		/* token location, or -1 if unknown */
+} ConnectRoot;
+
+
 /*****************************************************************************
  *		Optimizable Statements
  *****************************************************************************/
@@ -1679,6 +1747,7 @@ typedef struct SelectStmt
 	LimitOption limitOption;	/* limit type */
 	List	   *lockingClause;	/* FOR UPDATE (list of LockingClause's) */
 	WithClause *withClause;		/* WITH clause */
+	HierarClause *hierarClause;	/* Hierarical clause */
 
 	/*
 	 * These fields are used only in upper-level SelectStmts.

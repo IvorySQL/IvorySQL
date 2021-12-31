@@ -3975,6 +3975,12 @@ raw_expression_tree_walker(Node *node,
 		case T_CommonTableExpr:
 			/* search_clause and cycle_clause are not interesting here */
 			return walker(((CommonTableExpr *) node)->ctequery, context);
+		case T_SysConnectPath:
+			return walker(((SysConnectPath *) node)->expr, context);
+		case T_ConnectRoot:
+			return walker(((ConnectRoot *) node)->expr, context);
+		case T_PriorClause:
+			return walker(((PriorClause *) node)->expr, context);
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));

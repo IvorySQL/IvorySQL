@@ -18,6 +18,10 @@
 #include "utils/queryenvironment.h"
 #include "utils/relcache.h"
 
+/* flags for hierarical query */
+#define EXPR_FLAG_LEVEL		0x0001	/* LEVEL clause */
+#define EXPR_FLAG_WHERE		0x0002	/* WHERE clause */
+
 
 /* Forward references for some structs declared below */
 typedef struct ParseState ParseState;
@@ -211,6 +215,11 @@ struct ParseState
 	bool		p_hasTargetSRFs;
 	bool		p_hasSubLinks;
 	bool		p_hasModifyingCTE;
+
+	/* Flags telling about things found in Hierarical query */
+	bool		p_subqryleft;	/* left-hand operand of the cte subquery */
+	bool		p_cterqry;		/* cte query */
+	int			p_ctehflags;	/* flags for hierarical query */
 
 	Node	   *p_last_srf;		/* most recent set-returning func/op found */
 

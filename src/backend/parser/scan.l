@@ -349,6 +349,7 @@ xcstop			\*+\/
 xcinside		[^*/]+
 
 digit			[0-9]
+connectby		[cC][oO][nN][nN][eE][cC][tT]
 ident_start		[A-Za-z\200-\377_]
 ident_cont		[A-Za-z\200-\377_0-9\$]
 
@@ -1120,6 +1121,17 @@ other			.
 					return process_integer_literal(yytext, yylval);
 				}
 
+{connectby}		{
+					char	   *ident;
+
+					SET_YYLLOC();
+
+					/* Convert to lower case, and truncate if necessary. */
+					ident = downcase_truncate_identifier(yytext, yyleng, true);
+					yylval->str = ident;
+
+					return CONNECT_P;
+				}
 
 {identifier}	{
 					int			kwnum;

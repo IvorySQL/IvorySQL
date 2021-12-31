@@ -3282,6 +3282,7 @@ _copySelectStmt(const SelectStmt *from)
 	COPY_SCALAR_FIELD(limitOption);
 	COPY_NODE_FIELD(lockingClause);
 	COPY_NODE_FIELD(withClause);
+	COPY_NODE_FIELD(hierarClause);
 	COPY_SCALAR_FIELD(op);
 	COPY_SCALAR_FIELD(all);
 	COPY_NODE_FIELD(larg);
@@ -4938,6 +4939,39 @@ _copyValue(const Value *from)
 	return newnode;
 }
 
+static SysConnectPath *
+_copySysConnectPath(const SysConnectPath *from)
+{
+	SysConnectPath *newnode = makeNode(SysConnectPath);
+
+	COPY_NODE_FIELD(expr);
+	COPY_NODE_FIELD(chr);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+static ConnectRoot *
+_copyConnectRoot(const ConnectRoot *from)
+{
+	ConnectRoot *newnode = makeNode(ConnectRoot);
+
+	COPY_NODE_FIELD(expr);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+static PriorClause *
+_copyPrior(const PriorClause *from)
+{
+	PriorClause *newnode = makeNode(PriorClause);
+
+	COPY_NODE_FIELD(expr);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
 
 static ForeignKeyCacheInfo *
 _copyForeignKeyCacheInfo(const ForeignKeyCacheInfo *from)
@@ -5877,6 +5911,16 @@ copyObjectImpl(const void *from)
 			 */
 		case T_ForeignKeyCacheInfo:
 			retval = _copyForeignKeyCacheInfo(from);
+			break;
+
+		case T_SysConnectPath:
+			retval = _copySysConnectPath(from);
+			break;
+		case T_ConnectRoot:
+			retval = _copyConnectRoot(from);
+			break;
+		case T_PriorClause:
+			retval = _copyPrior(from);
 			break;
 
 		default:

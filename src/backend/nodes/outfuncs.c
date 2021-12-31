@@ -2848,6 +2848,7 @@ _outSelectStmt(StringInfo str, const SelectStmt *node)
 	WRITE_ENUM_FIELD(limitOption, LimitOption);
 	WRITE_NODE_FIELD(lockingClause);
 	WRITE_NODE_FIELD(withClause);
+	WRITE_NODE_FIELD(hierarClause);
 	WRITE_ENUM_FIELD(op, SetOperation);
 	WRITE_BOOL_FIELD(all);
 	WRITE_NODE_FIELD(larg);
@@ -3202,6 +3203,34 @@ _outCTECycleClause(StringInfo str, const CTECycleClause *node)
 	WRITE_INT_FIELD(cycle_mark_typmod);
 	WRITE_OID_FIELD(cycle_mark_collation);
 	WRITE_OID_FIELD(cycle_mark_neop);
+}
+
+static void
+_outHierarClause(StringInfo str, const HierarClause *node)
+{
+	WRITE_NODE_TYPE("HIERARCLAUSE");
+
+	WRITE_NODE_FIELD(connectBy);
+	WRITE_NODE_FIELD(startWith);
+}
+
+static void
+_outConnectByClause(StringInfo str, const ConnectBy *node)
+{
+	WRITE_NODE_TYPE("CONNECTBY");
+
+	WRITE_NODE_FIELD(condition);
+	WRITE_NODE_FIELD(startWith);
+	WRITE_BOOL_FIELD(nocycle);
+	WRITE_INT_FIELD(prior);
+}
+
+static void
+_outStartWithClause(StringInfo str, const StartWith *node)
+{
+	WRITE_NODE_TYPE("STARTWITH");
+
+	WRITE_NODE_FIELD(condition);
 }
 
 static void
@@ -3833,6 +3862,34 @@ _outVarStmt(StringInfo str, const VarStmt *node)
 	WRITE_STRING_FIELD(varname);
 	WRITE_NODE_FIELD(varType);
 	WRITE_NODE_FIELD(defexpr);
+}
+
+static void
+_outPriorClause(StringInfo str, const PriorClause *node)
+{
+	WRITE_NODE_TYPE("PRIORCLAUSE");
+
+	WRITE_NODE_FIELD(expr);
+	WRITE_LOCATION_FIELD(location);
+}
+
+static void
+_outSysConnectPath(StringInfo str, const SysConnectPath *node)
+{
+	WRITE_NODE_TYPE("SYSCONNECTPATH");
+
+	WRITE_NODE_FIELD(expr);
+	WRITE_NODE_FIELD(chr);
+	WRITE_LOCATION_FIELD(location);
+}
+
+static void
+_outConnectRoot(StringInfo str, const ConnectRoot *node)
+{
+	WRITE_NODE_TYPE("CONNECTROOT");
+
+	WRITE_NODE_FIELD(expr);
+	WRITE_LOCATION_FIELD(location);
 }
 
 /*
@@ -4536,6 +4593,24 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_VarStmt:
 				_outVarStmt(str, obj);
+				break;
+			case T_HierarClause:
+				_outHierarClause(str, obj);
+				break;
+			case T_ConnectBy:
+				_outConnectByClause(str, obj);
+				break;
+			case T_StartWith:
+				_outStartWithClause(str, obj);
+				break;
+			case T_PriorClause:
+				_outPriorClause(str, obj);
+				break;
+			case T_SysConnectPath:
+				_outSysConnectPath(str, obj);
+				break;
+			case T_ConnectRoot:
+				_outConnectRoot(str, obj);
 				break;
 
 			default:
