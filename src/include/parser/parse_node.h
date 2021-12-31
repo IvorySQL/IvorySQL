@@ -212,6 +212,12 @@ struct ParseState
 	bool		p_hasSubLinks;
 	bool		p_hasModifyingCTE;
 
+	/* Flags telling about things found in Hierarical query */
+	bool		p_subqryleft;	/* left-hand operand of the cte subquery */
+	bool		p_cterqry;		/* cte query */
+	bool		p_level;
+	bool		p_whereclause;
+
 	Node	   *p_last_srf;		/* most recent set-returning func/op found */
 
 	/*

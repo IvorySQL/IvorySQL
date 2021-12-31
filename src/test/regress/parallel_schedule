@@ -11,7 +11,7 @@ test: test_setup
 # run tablespace by itself, and early, because it forces a checkpoint;
 # we'd prefer not to have checkpoints later in the tests because that
 # interferes with crash-recovery testing.
-test: packages plisql
+test: packages plisql select_hierar
 test: tablespace
 
 # ----------
