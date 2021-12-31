@@ -491,6 +491,12 @@ typedef enum NodeTag
 	T_VacuumRelation,
 	T_PublicationObjSpec,
 	T_PublicationTable,
+	T_HierarClause,
+	T_ConnectBy,
+	T_StartWith,
+	T_PriorClause,
+	T_SysConnectPath,
+	T_ConnectRoot,
 
 	/*
 	 * TAGS FOR REPLICATION GRAMMAR PARSE NODES (replnodes.h)
