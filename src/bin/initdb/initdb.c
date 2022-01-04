@@ -273,6 +273,7 @@ static void set_info_version(void);
 static void setup_schema(FILE *cmdfd);
 static void load_plpgsql(FILE *cmdfd);
 static void load_plisql(FILE *cmdfd);
+static void load_orafce(FILE *cmdfd);
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
 static void make_postgres(FILE *cmdfd);
@@ -1925,6 +1926,15 @@ load_plisql(FILE *cmdfd)
 }
 
 /*
+ * load orafce extension
+ */
+static void
+load_orafce(FILE *cmdfd)
+{
+	PG_CMD_PUTS("CREATE EXTENSION orafce;\n\n");
+}
+
+/*
  * clean everything up in template1
  */
 static void
@@ -2966,6 +2976,8 @@ initialize_data_directory(void)
 	load_plpgsql(cmdfd);
 
 	load_plisql(cmdfd);
+
+	load_orafce(cmdfd);
 
 	vacuum_db(cmdfd);
 
