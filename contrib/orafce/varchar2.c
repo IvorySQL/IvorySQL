@@ -213,9 +213,7 @@ varchar2(PG_FUNCTION_ARGS)
 	charlen = pg_mbstrlen_with_len(s_data, len);
 	if (nls_length_semantics == NLSLENGTH_CHAR)
 	{
-		if (charlen <= maxlen)
-			maxlen = charlen;
-		else
+		if (charlen > maxlen && !isExplicit)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("value too long for type varchar2(%d char)", maxlen)));
@@ -226,7 +224,7 @@ varchar2(PG_FUNCTION_ARGS)
 		maxlen = maxmblen;
 	else if (nls_length_semantics == NLSLENGTH_BYTE)
 	{
-		if (maxlen < maxmblen)
+		if (maxlen < maxmblen && !isExplicit)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("value too long for type varchar2(%d byte)", maxlen)));

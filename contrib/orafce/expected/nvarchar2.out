@@ -210,13 +210,13 @@ select * from t4;
 (2 rows)
 
 insert into t4 values('李老师你好吗');
-ERROR:  input value too long for type nvarchar2(8 byte)
 select * from t4;
-    d     
-----------
+      d       
+--------------
  nlsttdld
  你好
-(2 rows)
+ 李老师你好吗
+(3 rows)
 
 set nls_length_semantics to char;
 show nls_length_semantics;
@@ -271,12 +271,13 @@ insert into t3 values('小李老师你好再见');
 ERROR:  value too long for type character(7 char)
 insert into t4 values('nlsttdld');
 select * from t4;
-    d     
-----------
+      d       
+--------------
  nlsttdld
  你好
+ 李老师你好吗
  nlsttdld
-(3 rows)
+(4 rows)
 
 insert into t4 values('小张小李老师你好');
 select * from t4;
@@ -284,20 +285,22 @@ select * from t4;
 ------------------
  nlsttdld
  你好
+ 李老师你好吗
  nlsttdld
  小张小李老师你好
-(4 rows)
+(5 rows)
 
 insert into t4 values('小张小李老师你好吗');
-ERROR:  input value too long for type nvarchar2(8 char)
+ERROR:  input value too long for type nvarchar2(8)
 select * from t4;
         d         
 ------------------
  nlsttdld
  你好
+ 李老师你好吗
  nlsttdld
  小张小李老师你好
-(4 rows)
+(5 rows)
 
 drop table t2;
 drop table t3;
@@ -349,13 +352,13 @@ create table t4 (d nvarchar2(1));
  d      | nvarchar2(1) |           |          | 
 
 insert into t4 values('李');
-ERROR:  input value too long for type nvarchar2(1 byte)
 insert into t4 values('李老');
-ERROR:  input value too long for type nvarchar2(1 byte)
+ERROR:  input value too long for type nvarchar2(1)
 select * from t4;
- d 
----
-(0 rows)
+ d  
+----
+ 李
+(1 row)
 
 set nls_length_semantics to char;
 show nls_length_semantics;
@@ -384,12 +387,13 @@ select * from t3;
 
 insert into t4 values('李');
 insert into t4 values('李老');
-ERROR:  input value too long for type nvarchar2(1 char)
+ERROR:  input value too long for type nvarchar2(1)
 select * from t4;
  d  
 ----
  李
-(1 row)
+ 李
+(2 rows)
 
 drop table t2;
 drop table t3;
@@ -466,7 +470,11 @@ insert into t4 select dd from t44;
 select * from t4;
 $$ LANGUAGE sql;
 select test4();
-ERROR:  input value too long for type nvarchar2(8 byte)
+    test4     
+--------------
+ 今天什么天气
+(1 row)
+
 DO LANGUAGE PLPGSQL $$
 DECLARE
 	str varchar(6);
@@ -493,7 +501,7 @@ BEGIN
 	select d from t4 into str;
 	raise notice '%', str;
 END$$;
-ERROR:  input value too long for type nvarchar2(8 byte)
+NOTICE:  今天什么天气
 set nls_length_semantics to char;
 show nls_length_semantics;
  nls_length_semantics 
@@ -512,7 +520,7 @@ ERROR:  value too long for type character varying(6 char)
 select test3();
 ERROR:  value too long for type character(7 char)
 select test4();
-ERROR:  input value too long for type nvarchar2(8 char)
+ERROR:  input value too long for type nvarchar2(8)
 DO LANGUAGE PLPGSQL $$
 DECLARE
 	str varchar(6);
@@ -539,7 +547,7 @@ BEGIN
 	select d from t4 into str;
 	raise notice '%', str;
 END$$;
-ERROR:  input value too long for type nvarchar2(8 char)
+ERROR:  input value too long for type nvarchar2(8)
 drop table t2;
 drop table t3;
 drop table t4;
@@ -624,7 +632,7 @@ select * from basictestvarchar;
 set nls_length_semantics to char;
 COPY basictestnvarchar2 (testchar) FROM stdin;
 COPY basictestnvarchar2 (testchar) FROM stdin;
-ERROR:  input value too long for type nvarchar2(5 char)
+ERROR:  input value too long for type nvarchar2(5)
 select * from basictestnvarchar2;
  testchar 
 ----------
@@ -634,11 +642,11 @@ select * from basictestnvarchar2;
 set nls_length_semantics to byte;
 COPY basictestnvarchar2 (testchar) FROM stdin;
 COPY basictestnvarchar2 (testchar) FROM stdin;
-ERROR:  input value too long for type nvarchar2(5 byte)
 select * from basictestnvarchar2;
- testchar 
-----------
+  testchar  
+------------
  张老师
  张
-(2 rows)
+ 老师你好吗
+(3 rows)
 

@@ -57,27 +57,10 @@ nvarchar2_input(const char *s, size_t len, int32 atttypmod)
 		 */
 		size_t		mbmaxlen = pg_mbstrlen(s);
 
-		if (nls_length_semantics == NLSLENGTH_BYTE)
-		{
-			if (len > maxlen)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("input value too long for type nvarchar2(%zd byte)", maxlen)));
-		}
-		else if (nls_length_semantics == NLSLENGTH_CHAR)
-		{
-			if (mbmaxlen > maxlen)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("input value too long for type nvarchar2(%zd char)", maxlen)));
-		}
-		else
-		{
-			if (mbmaxlen > maxlen)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("input value too long for type nvarchar2(%zd)", maxlen)));
-		}
+		if (mbmaxlen > maxlen)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("input value too long for type nvarchar2(%zd)", maxlen)));
 	}
 
 	result = (VarChar *) cstring_to_text_with_len(s, size2int(len));
@@ -195,27 +178,10 @@ nvarchar2(PG_FUNCTION_ARGS)
 		 *
 		 * Remember - no blankspace truncation on implicit cast
 		 */
-		if (nls_length_semantics == NLSLENGTH_BYTE)
-		{
-			if (len > maxlen)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("input value too long for type nvarchar2(%d byte)", maxlen)));
-		}
-		else if (nls_length_semantics == NLSLENGTH_CHAR)
-		{
-			if (len > maxmblen)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("input value too long for type nvarchar2(%d char)", maxlen)));
-		}
-		else
-		{
-			if (len > maxmblen)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("input value too long for type nvarchar2(%d)", maxlen)));
-		}
+		if (len > maxmblen)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("input value too long for type nvarchar2(%d)", maxlen)));
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data, size2int(maxmblen)));
