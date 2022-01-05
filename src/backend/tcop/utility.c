@@ -2629,6 +2629,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_PACKAGE:
 					tag = CMDTAG_DROP_PACKAGE;
 					break;
+				case OBJECT_PACKAGE_BODY:
+					tag = CMDTAG_DROP_PACKAGE_BODY;
+					break;
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}

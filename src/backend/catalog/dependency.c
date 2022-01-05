@@ -1501,7 +1501,10 @@ doDeletion(const ObjectAddress *object, int flags)
 			break;
 
 		case OCLASS_PACKAGE:
-			DropPackageById(object->objectId);
+			if (object->objectSubId)
+				DropPackagebody(object->objectId);
+			else
+				DropPackageById(object->objectId);
 			break;
 
 		case OCLASS_VARIABLE:
@@ -2761,8 +2764,8 @@ free_object_addresses(ObjectAddresses *addrs)
 ObjectClass
 getObjectClass(const ObjectAddress *object)
 {
-	/* only pg_class entries can have nonzero objectSubId */
-	if (object->classId != RelationRelationId &&
+	/* only pg_class or pg_package entries can have nonzero objectSubId */
+	if (object->classId != RelationRelationId && object->classId != PackageRelationId &&
 		object->objectSubId != 0)
 		elog(ERROR, "invalid non-zero objectSubId for object class %u",
 			 object->classId);
