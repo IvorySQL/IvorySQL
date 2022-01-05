@@ -3620,6 +3620,7 @@ GetOverrideSearchPath(MemoryContext context)
 	OverrideSearchPath *result;
 	List	   *schemas;
 	MemoryContext oldcxt;
+	Oid			compatibleNS;
 
 	recomputeNamespacePath();
 
@@ -3627,10 +3628,16 @@ GetOverrideSearchPath(MemoryContext context)
 
 	result = (OverrideSearchPath *) palloc0(sizeof(OverrideSearchPath));
 	schemas = list_copy(activeSearchPath);
+	compatibleNS = get_namespace_oid("oracle", true);
 	while (schemas && linitial_oid(schemas) != activeCreationNamespace)
 	{
 		if (linitial_oid(schemas) == myTempNamespace)
 			result->addTemp = true;
+		else if(OidIsValid(compatibleNS) && linitial_oid(schemas) == compatibleNS)
+		{
+			schemas = list_delete_first(schemas);
+			continue;
+		}
 		else
 		{
 			result->addCatalog = true;
