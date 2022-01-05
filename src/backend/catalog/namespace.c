@@ -3633,8 +3633,6 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
-			if(compatible_db == COMPATIBLE_NONE)
-				Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
 			result->addCatalog = true;
 		}
 		schemas = list_delete_first(schemas);
@@ -4120,7 +4118,7 @@ recomputeNamespacePath(void)
 	{
 		compatibleNS = get_namespace_oid("oracle", true);
 		if (OidIsValid(compatibleNS))
-			if (linitial_oid(oidlist) != compatibleNS)
+			if (!list_member_oid(oidlist, compatibleNS))
 				oidlist = lcons_oid(compatibleNS, oidlist);
 	}
 
