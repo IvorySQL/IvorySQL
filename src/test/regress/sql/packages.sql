@@ -1486,3 +1486,39 @@ select tfunc(3);
 drop function tfunc;
 drop table test;
 
+--
+--Test DROP PACKAGE BODY feature
+--
+create or replace package pkgvar is
+	v_int int;
+    v_int_init int := 100;
+	function tf return int;
+end;
+/
+
+create or replace package body pkgvar is
+	v_int_priv int := 1000;
+	function tf return int as
+	begin
+		raise info 'function tf called';
+		return v_int_priv;
+	end;
+end;
+/
+select pkgvar.tf;
+
+DROP PACKAGE BODY pkgvar;
+
+select pkgvar.tf;
+DROP PACKAGE pkgvar;
+
+--test drop package body when there is no body infomation
+create or replace package pkgvar is
+	v_int int;
+    v_int_init int := 100;
+	function tf return int;
+end;
+/
+DROP PACKAGE BODY pkgvar;
+select pkgvar.tf;
+DROP PACKAGE pkgvar;

@@ -447,6 +447,8 @@ DropPackagebody(Oid packageOid)
 {
 	Relation	relation;
 	HeapTuple	tup;
+	Datum		srcdt;
+	bool		isnull;
 
 	relation = table_open(PackageRelationId, RowExclusiveLock);
 
@@ -454,11 +456,14 @@ DropPackagebody(Oid packageOid)
 						  ObjectIdGetDatum(packageOid));
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for package %u", packageOid);
+	srcdt = SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
+	if (isnull)
+		elog(ERROR, "The package body does not exist");
 	/* update package src attribute to null */
 	update_package_src(relation, tup, "");
 
 	/* remove packages private elements */
-	RemovePackageFunctions(packageOid, PACKAGE_MEMBER_PRIVATE, false);
+	RemovePackageFunctions(packageOid, PACKAGE_MEMBER_PRIVATE, true);
 	RemovePackageVariables(packageOid, PACKAGE_MEMBER_PRIVATE);
 	RemoveVariabletype(packageOid, PACKAGE_MEMBER_PRIVATE);
 
@@ -595,7 +600,6 @@ update_function_src(Relation rel, HeapTuple tuple, char *src)
 	newtuple = heap_modify_tuple(tuple, tupdesc, values, nulls, replaces);
 	CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
 
-	ReleaseSysCache(tuple);
 	heap_freetuple(newtuple);
 }
 
