@@ -1,5 +1,5 @@
 --Test For lpad
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT oracle.lpad(123, 20, 0);
 SELECT oracle.lpad(123, 20);
@@ -86,4 +86,4 @@ SELECT oracle.lpad(' ',3.99::numeric);
 SELECT oracle.lpad(' ',-3::int);
 SELECT oracle.lpad(' ',0::int);
 
-reset search_path;
+reset compatible_mode;

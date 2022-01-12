@@ -55,6 +55,7 @@ SELECT last_day('2000-02-01');
 SELECT last_day('2007-02-01');
 SELECT last_day('2008-02-01');
 
+
 SELECT last_day(to_date('2003/03/15 11:12:21', 'yyyy/mm/dd hh:mi:ss'));
 SELECT last_day(to_date('2003/02/03 10:21:32', 'yyyy/mm/dd hh:mi:ss'));
 SELECT last_day(to_date('2004/02/03 11:32:12', 'yyyy/mm/dd hh:mi:ss'));
@@ -62,6 +63,7 @@ SELECT last_day('1900-02-01 12:12:11');
 SELECT last_day('2000-02-01 121143');
 SELECT last_day('2007-02-01 12:21:33');
 SELECT last_day('2008-02-01 121212');
+
 
 SELECT next_day ('2003-08-01', 'TUESDAY');
 SELECT next_day ('2003-08-06', 'WEDNESDAY');
@@ -194,7 +196,9 @@ select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','MI') = '2004-10-
 select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'WEDNESDAY') =  to_date ('13-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Aug-03', 'DD-MON-YY');
-
+select next_day(to_date('01-Aug-03 101111', 'DD-MON-YY h24miss'), 'TUESDAY') = to_date ('05-Aug-03 101111', 'DD-MON-YY h24miss');
+select next_day(to_date('06-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS'), 'WEDNESDAY') = to_date ('13-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS');
+select next_day(to_date('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY') = to_date ('10-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS');
 select next_day(to_date('01-Aug-03 101111', 'DD-MON-YY h24miss'), 'TUESDAY') = to_date ('05-Aug-03 101111', 'DD-MON-YY h24miss');
 select next_day(to_date('06-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS'), 'WEDNESDAY') = to_date ('13-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS');
 select next_day(to_date('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY') = to_date ('10-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS');
@@ -483,9 +487,7 @@ SELECT to_number(1210.73::numeric, 9999.99::numeric);
 
 SELECT to_date('2009-01-02');
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
-SET search_path TO default;
 SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::numeric(10, 8);
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
 SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);
@@ -668,7 +670,6 @@ SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-01-01 00:00:00') + 1.5;
 SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
 
--- Tests for - operator with DATE and number(smallint,integer,bigint,numeric)
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9::smallint;
 SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
@@ -749,7 +750,6 @@ select oracle.to_char(oracle.to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI
 set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'));
 
---Tests for oracle.-(oracle.date,oracle.date)
 SELECT (to_date('2014-07-17 11:10:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
 SELECT (to_date('2014-07-17 13:14:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
 SELECT (to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
@@ -765,8 +765,6 @@ SELECT (to_date('14-Jul14 11:44:49' ,'YY-MonDD HH24:MI:SS') - to_date('14-Jan14 
 SELECT (to_date('210514 12:13:44','DDMMYY HH24:MI:SS') - to_date('210114 10:13:44','DDMMYY HH24:MI:SS'))::numeric(10,4);
 SELECT trunc(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
 SELECT round(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
-
-
 --
 -- Note: each Japanese character used below has display width of 2, otherwise 1.
 -- Note: each output string is surrounded by '|' for improved readability

@@ -1,5 +1,5 @@
 --Test For strposb
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT strposb(123456, 345) "pos in str";
 SELECT strposb(12345::int2, 345::int2) "pos in str";
@@ -28,4 +28,4 @@ SELECT strposb(-2::int,-2::int);
 SELECT strposb(0.99::numeric,0.99::numeric);
 SELECT strposb(-2.99::numeric,-2.89::numeric);
 
-reset search_path;
+reset compatible_mode;
