@@ -1,5 +1,5 @@
 set datestyle to ISO,YMD;
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 SELECT lengthb(192);
 SELECT lengthb(192::int2);
 SELECT lengthb(192::int4);
@@ -11,6 +11,7 @@ SELECT lengthb('192');
 SELECT lengthb('Highgo DB!');
 SELECT lengthb('今天');
 SELECT lengthb('Highgo DB!'::char(10));
+SELECT length('Highgo DB!'::char(20));
 SELECT lengthb('Highgo DB!'::char(20));
 SELECT lengthb('Highgo DB!'::varchar(20));
 SELECT lengthb('Highgo DB!'::varchar2(20));
@@ -27,4 +28,4 @@ SELECT lengthb(' ');
 SELECT lengthb(0::int);
 SELECT lengthb(-2::int);
 
-reset search_path;
+reset compatible_mode;

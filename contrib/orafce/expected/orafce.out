@@ -991,6 +991,24 @@ select next_day(to_date('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY') =
  t
 (1 row)
 
+select next_day(to_date('01-Aug-03 101111', 'DD-MON-YY h24miss'), 'TUESDAY') = to_date ('05-Aug-03 101111', 'DD-MON-YY h24miss');
+ ?column? 
+----------
+ t
+(1 row)
+
+select next_day(to_date('06-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS'), 'WEDNESDAY') = to_date ('13-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS');
+ ?column? 
+----------
+ t
+(1 row)
+
+select next_day(to_date('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY') = to_date ('10-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS');
+ ?column? 
+----------
+ t
+(1 row)
+
 select instr('Tech on the net', 'e') =2;
  ?column? 
 ----------
@@ -2381,14 +2399,12 @@ SELECT to_date('2009-01-02');
  2009-01-02 00:00:00
 (1 row)
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
  bitand | bitand | bitand 
 --------+--------+--------
       1 |      0 |      4
 (1 row)
 
-SET search_path TO default;
 SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::numeric(10, 8);
     sinh    |    cosh    |    tanh    
 ------------+------------+------------
@@ -3171,7 +3187,6 @@ SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
  2014-01-02 12:00:00
 (1 row)
 
--- Tests for - operator with DATE and number(smallint,integer,bigint,numeric)
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9::smallint;
       ?column?       
@@ -3475,7 +3490,6 @@ select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'
  210514 12:13:44
 (1 row)
 
---Tests for oracle.-(oracle.date,oracle.date)
 SELECT (to_date('2014-07-17 11:10:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
  numeric  
 ----------

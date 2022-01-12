@@ -37,7 +37,7 @@ orafce_lpad(PG_FUNCTION_ARGS)
 {
 	text	*string1;
 	int32	output_width;
-	text	*string2;
+	text	*string2 = cstring_to_text(" ");/* default pad space character. */
 	text	*ret;
 	char	*ptr1,
 			*ptr2 = NULL,
@@ -70,7 +70,7 @@ orafce_lpad(PG_FUNCTION_ARGS)
 				errmsg("too few args.")));
 	if (nargs > 3)
 		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 				errmsg("more args than function needed.")));
 
 	argoid1 = get_fn_expr_argtype(fcinfo->flinfo, 0);
@@ -90,8 +90,6 @@ orafce_lpad(PG_FUNCTION_ARGS)
 		argoid3 = get_fn_expr_argtype(fcinfo->flinfo, 2);
 		string2 =  (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(2), argoid3, TEXTOID);
 	}
-	else
-		string2 = cstring_to_text(" ");
 
 	s2blen = VARSIZE_ANY_EXHDR(string2);
 
@@ -101,11 +99,8 @@ orafce_lpad(PG_FUNCTION_ARGS)
 	if (output_width > PAD_MAX)
 		output_width = PAD_MAX;
 
-	/* validate the lengths */
-	if (s1blen < 0)
-		s1blen = 0;
-	if (s2blen < 0)
-		s2blen = 0;
+	Assert(s1blen >= 0 && s2blen >= 0);
+
 
 	/* if the filler length is zero disable filling */
 	if (s2blen == 0)
@@ -299,7 +294,7 @@ orafce_rpad(PG_FUNCTION_ARGS)
 {
 	text	*string1;
 	int32	output_width;
-	text	*string2;
+	text	*string2 = cstring_to_text(" ");/* default pad space character. */
 	text	*ret;
 	char	*ptr1,
 			*ptr2 = NULL,
@@ -330,7 +325,7 @@ orafce_rpad(PG_FUNCTION_ARGS)
 				errmsg("too few args.")));
 	if (nargs > 3)
 		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 				errmsg("more args than function needed.")));
 
 	argoid1 = get_fn_expr_argtype(fcinfo->flinfo, 0);
@@ -350,8 +345,6 @@ orafce_rpad(PG_FUNCTION_ARGS)
 		argoid3 = get_fn_expr_argtype(fcinfo->flinfo, 2);
 		string2 =  (text *)orafce_sourcetype_to_targetype(PG_GETARG_DATUM(2), argoid3, TEXTOID);
 	}
-	else
-		string2 = cstring_to_text(" ");
 
 	s2blen = VARSIZE_ANY_EXHDR(string2);
 
@@ -362,10 +355,7 @@ orafce_rpad(PG_FUNCTION_ARGS)
 		output_width = PAD_MAX;
 
 	/* validate the lengths */
-	if (s1blen < 0)
-		s1blen = 0;
-	if (s2blen < 0)
-		s2blen = 0;
+	Assert(s1blen >= 0 && s2blen >= 0);
 
 	/* if the filler length is zero disable filling */
 	if (s2blen == 0)

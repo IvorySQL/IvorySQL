@@ -1,4 +1,4 @@
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 select listagg(i::text) from generate_series(1,3) g(i);
 select listagg(i::text, ',') from generate_series(1,3) g(i);
 create table test(id text, pid int);
@@ -12,4 +12,4 @@ select listagg(id, '/')  over(partition by pid) from test;
 select listagg(id, '/')  over(partition by id) from test group by id;
 drop table test;
 
-reset search_path;
+reset compatible_mode;

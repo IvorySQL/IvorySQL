@@ -1,5 +1,5 @@
 set datestyle to ISO,YMD;
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 select length('3day 3 hour 3second');
  length 
 --------
@@ -90,4 +90,4 @@ select length(''::char(6));
       6
 (1 row)
 
-reset search_path;
+reset compatible_mode;

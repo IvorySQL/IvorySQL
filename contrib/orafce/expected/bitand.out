@@ -1,4 +1,4 @@
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 select bitand(6,3);
  bitand 
 --------
@@ -185,4 +185,4 @@ ERROR:  function bitand(integer, text) does not exist
 LINE 1: select bitand(6::int,'4.1'::text);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-reset search_path;
+reset compatible_mode;
