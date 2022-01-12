@@ -1,5 +1,5 @@
 --Test For ascii
-set search_path = oracle, public;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT ascii(20199) "ascii" FROM DUAL;
 SELECT ascii(2019::int2) "ascii" FROM DUAL;
@@ -26,5 +26,5 @@ SELECT ascii('') FROM DUAL;
 SELECT ascii(' ') FROM DUAL;
 SELECT ascii(0::int) FROM DUAL;
 SELECT ascii(-1::int) FROM DUAL;
-reset search_path;
+reset compatible_mode;
 reset datestyle;

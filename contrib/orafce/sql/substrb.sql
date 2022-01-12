@@ -1,5 +1,5 @@
 --Test For substrb
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT substrb(21212, 2, 2) "substrb";
 SELECT substrb(21212, 2) "substrb";
@@ -79,4 +79,4 @@ SELECT substrb(' ',0::int);
 SELECT substrb(' ',-2::int);
 SELECT substrb(' ',-1.99::numeric);
 
-reset search_path;
+reset compatible_mode;

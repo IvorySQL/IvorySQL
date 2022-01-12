@@ -1,5 +1,5 @@
 --Test For substr
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT substr(21212, 2, 2) "substr";
 SELECT substr(21212, 2) "substr";
@@ -77,4 +77,4 @@ SELECT substr(' ',0::int);
 SELECT substr(' ',-2::int);
 SELECT substr(' ',-1.99::numeric);
 
-reset search_path;
+reset compatible_mode;

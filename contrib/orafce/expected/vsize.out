@@ -1,5 +1,5 @@
 --Test For vsize
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT vsize(20199) "vsize";
  vsize 
@@ -199,4 +199,4 @@ SELECT vsize(-2.39::numeric);
      6
 (1 row)
 
-reset search_path;
+reset compatible_mode;

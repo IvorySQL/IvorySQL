@@ -1,5 +1,5 @@
 set datestyle to ISO,YMD;
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 SELECT btrim(121232112, 21) "BTRIM Example";
 SELECT btrim(121232112) "BTRIM Example";
 SELECT btrim(12312::int2, 21::int2) "BTRIM Example";
@@ -45,4 +45,4 @@ SELECT btrim(-5::int);
 SELECT btrim(0.99::numeric);
 SELECT btrim(-5.99::numeric);
 
-reset search_path;
+reset compatible_mode;

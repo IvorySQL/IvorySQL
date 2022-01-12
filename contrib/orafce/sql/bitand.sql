@@ -1,4 +1,4 @@
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 select bitand(6,3);
 select bitand(110,101);
 select bitand(6.1::real,4.1::real);
@@ -35,4 +35,4 @@ select bitand(6.2::numeric,'4.1'::text);
 select bitand(6.1::real,'4.3'::text);
 select bitand(6::int,'4.1'::text);
 
-reset search_path;
+reset compatible_mode;

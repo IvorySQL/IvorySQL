@@ -1,5 +1,5 @@
 --Test For rtrim
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT rtrim(1231232112, 21) "RTRIM Example";
  RTRIM Example 
@@ -247,4 +247,4 @@ SELECT rtrim(-5.99::numeric);
  -5.99
 (1 row)
 
-reset search_path;
+reset compatible_mode;

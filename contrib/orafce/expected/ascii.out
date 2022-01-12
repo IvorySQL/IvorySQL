@@ -1,5 +1,5 @@
 --Test For ascii
-set search_path = oracle, public;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT ascii(20199) "ascii" FROM DUAL;
  ascii 
@@ -133,5 +133,5 @@ SELECT ascii(-1::int) FROM DUAL;
     45
 (1 row)
 
-reset search_path;
+reset compatible_mode;
 reset datestyle;

@@ -1,5 +1,5 @@
 --Test For instrb
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT instrb(20121209,12::int, 1::text, 2, 4) "instrb";
 SELECT instrb(20121209,12::int, 1::text, '2') "instrb";
@@ -82,4 +82,4 @@ SELECT instrb(' ',' ',-1::int);
 SELECT instrb('','');
 SELECT instrb(' ',' ');
 
-reset search_path;
+reset compatible_mode;

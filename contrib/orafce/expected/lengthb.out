@@ -1,5 +1,5 @@
 set datestyle to ISO,YMD;
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 SELECT lengthb(192);
  lengthb 
 ---------
@@ -58,6 +58,12 @@ SELECT lengthb('Highgo DB!'::char(10));
  lengthb 
 ---------
       10
+(1 row)
+
+SELECT length('Highgo DB!'::char(20));
+ length 
+--------
+     20
 (1 row)
 
 SELECT lengthb('Highgo DB!'::char(20));
@@ -144,4 +150,4 @@ SELECT lengthb(-2::int);
        2
 (1 row)
 
-reset search_path;
+reset compatible_mode;

@@ -1,5 +1,5 @@
 --Test For rpad
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 set datestyle to ISO,YMD;
 SELECT oracle.rpad(123, 20, 0);
          rpad         
@@ -457,4 +457,4 @@ SELECT oracle.rpad(' ',0::int);
  
 (1 row)
 
-reset search_path;
+reset compatible_mode;

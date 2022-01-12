@@ -1,5 +1,5 @@
 set datestyle to ISO,YMD;
-set search_path to oracle, pg_catalog;
+set compatible_mode to 'oracle';
 SELECT ltrim(121232112, 21) "LTRIM Example";
 SELECT ltrim(121232112) "LTRIM Example";
 SELECT ltrim(12312::int2, 21::int2) "LTRIM Example";
@@ -44,4 +44,4 @@ SELECT ltrim(-5::int);
 SELECT ltrim(0.99::numeric);
 SELECT ltrim(-5.99::numeric);
 
-reset search_path;
+reset compatible_mode;

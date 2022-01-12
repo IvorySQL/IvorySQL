@@ -147,13 +147,7 @@ RETURNS numeric AS $$
 SELECT pg_catalog.to_number($1::text,$2::text);
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.to_date(str text)
-RETURNS timestamp
-AS 'MODULE_PATHNAME','ora_to_date'
-LANGUAGE C STABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to timestamp';
-
-CREATE FUNCTION sinh(float8)
+CREATE FUNCTION oracle.sinh(float8)
 RETURNS float8 AS
 $$ SELECT (exp($1) - exp(-$1)) / 2; $$
 LANGUAGE sql IMMUTABLE STRICT;
@@ -198,21 +192,13 @@ AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rvrs(text) IS 'Reverse string or part of string';
 
-CREATE FUNCTION pg_catalog.lnnvl(bool)
+CREATE FUNCTION oracle.lnnvl(bool)
 RETURNS bool
 AS 'MODULE_PATHNAME','ora_lnnvl'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
+COMMENT ON FUNCTION oracle.lnnvl(bool) IS '';
 
 /* -- can't overwrite PostgreSQL functions!!!! */
-
---CREATE SCHEMA oracle;
-
-CREATE FUNCTION oracle.bitand(int8, int8)
-RETURNS bigint
-AS $$ SELECT $1 & $2; $$
-LANGUAGE sql IMMUTABLE STRICT;
-
 CREATE FUNCTION oracle.bitand(text, text)
 RETURNS bigint
 AS $$ SELECT ($1::int8 & $2::int8); $$
@@ -974,7 +960,7 @@ CREATE FUNCTION oracle.to_date(str text)
 RETURNS oracle.date
 AS 'MODULE_PATHNAME','ora_to_date'
 LANGUAGE C STABLE STRICT;
-COMMENT ON FUNCTION oracle.to_date(text) IS 'Convert string to timestamp';
+COMMENT ON FUNCTION oracle.to_date(text) IS 'Convert string to oracle.date';
 
 CREATE OR REPLACE FUNCTION oracle.to_date(TEXT,TEXT)
 RETURNS oracle.date
@@ -6485,43 +6471,49 @@ CREATE OR REPLACE FUNCTION oracle.ascii(smallint)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(smallint) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(smallint) IS 'returns the decimal representation of the first character from smallint.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(int)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(int) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(int) IS 'returns the decimal representation of the first character from integer.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(numeric)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(numeric) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(numeric) IS 'returns the decimal representation of the first character from numeric.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(bigint)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(bigint) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(bigint) IS 'returns the decimal representation of the first character from bigint.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(float4)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(float4) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(float4) IS 'returns the decimal representation of the first character from float4.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(float8)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(float8) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(float8) IS 'returns the decimal representation of the first character from float8.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(pg_catalog.date)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(pg_catalog.date) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(pg_catalog.date) IS 'returns the decimal representation of the first character from pg date.';
+
+CREATE OR REPLACE FUNCTION oracle.ascii(oracle.date)
+RETURNS integer
+AS 'select ascii($1::text)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+COMMENT ON FUNCTION oracle.ascii(oracle.date) IS 'returns the decimal representation of the first character from oracle date.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(oracle.date)
 RETURNS integer
@@ -6533,19 +6525,19 @@ CREATE OR REPLACE FUNCTION oracle.ascii(timestamp)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(timestamp) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(timestamp) IS 'returns the decimal representation of the first character from timestamp.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(timestamptz)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(timestamptz) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(timestamptz) IS 'returns the decimal representation of the first character from timestamptz.';
 
 CREATE OR REPLACE FUNCTION oracle.ascii(interval)
 RETURNS integer
 AS 'select ascii($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
-COMMENT ON FUNCTION oracle.ascii(interval) IS 'returns the decimal representation of the first character from string.';
+COMMENT ON FUNCTION oracle.ascii(interval) IS 'returns the decimal representation of the first character from interval.';
 
 --vsize function
 CREATE OR REPLACE FUNCTION oracle.vsize(var "any")
@@ -6882,86 +6874,65 @@ LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substrb(interval, float8) IS 'extracts specified number of bytes from the input string starting at the specified byte position (1-based) and returns as a varchar2 string';
 
 --strposb function
-CREATE OR REPLACE FUNCTION oracle.strposb(text, variadic "any") RETURNS integer
-AS 'MODULE_PATHNAME', 'orafce_strposb'
-LANGUAGE C
-STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(text, variadic "any") IS 'returns the byte position of a specified string in the input string';
-
 CREATE OR REPLACE FUNCTION oracle.strposb(char, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
 COMMENT ON FUNCTION oracle.strposb(char, variadic "any") IS 'returns the byte position of a specified string in the input string';
 
+CREATE OR REPLACE FUNCTION oracle.strposb(text, variadic "any") RETURNS integer
+AS 'MODULE_PATHNAME', 'orafce_strposb'
+LANGUAGE C
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.strposb(text, variadic "any") IS 'returns the byte position of a specified string in the input string';
+
 CREATE OR REPLACE FUNCTION oracle.strposb(numeric, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(numeric, variadic "any") IS 'returns the byte position of a specified string in the input string';
+COMMENT ON FUNCTION oracle.strposb(numeric, variadic "any") IS 'returns the byte position of a specified string in the input numeric string';
 
 CREATE OR REPLACE FUNCTION oracle.strposb(float4, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(float4, variadic "any") IS 'returns the byte position of a specified string in the input string';
+COMMENT ON FUNCTION oracle.strposb(float4, variadic "any") IS 'returns the byte position of a specified string in the input float4''s string';
 
 CREATE OR REPLACE FUNCTION oracle.strposb(float8, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(float8, variadic "any") IS 'returns the byte position of a specified string in the input string';
+COMMENT ON FUNCTION oracle.strposb(float8, variadic "any") IS 'returns the byte position of a specified string in the input float8''s string';
 
 CREATE OR REPLACE FUNCTION oracle.strposb(pg_catalog.date, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(pg_catalog.date, variadic "any") IS 'returns the byte position of a specified string in the input string';
+COMMENT ON FUNCTION oracle.strposb(pg_catalog.date, variadic "any") IS 'returns the byte position of a specified string in the input date''s string';
+
+CREATE OR REPLACE FUNCTION oracle.strposb(oracle.date, variadic "any") RETURNS integer
+AS 'MODULE_PATHNAME', 'orafce_strposb'
+LANGUAGE C
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION oracle.strposb(oracle.date, variadic "any") IS 'returns the byte position of a specified string in the input date''s string';
 
 CREATE OR REPLACE FUNCTION oracle.strposb(timestamp, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(timestamp, variadic "any") IS 'returns the byte position of a specified string in the input string';
+COMMENT ON FUNCTION oracle.strposb(timestamp, variadic "any") IS 'returns the byte position of a specified string in the input timestamp''s string';
 
 CREATE OR REPLACE FUNCTION oracle.strposb(timestamptz, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(timestamp, variadic "any") IS 'returns the byte position of a specified string in the input string';
+COMMENT ON FUNCTION oracle.strposb(timestamp, variadic "any") IS 'returns the byte position of a specified string in the input timestamptz''s string';
 
 CREATE OR REPLACE FUNCTION oracle.strposb(interval, variadic "any") RETURNS integer
 AS 'MODULE_PATHNAME', 'orafce_strposb'
 LANGUAGE C
 STRICT IMMUTABLE;
 COMMENT ON FUNCTION oracle.strposb(interval, variadic "any") IS 'returns the byte position of a specified string in the input string';
-
--- string functions for varchar2 type
--- these are 'byte' versions of corresponsing text/varchar functions
-
-CREATE OR REPLACE FUNCTION oracle.substrb(oracle.varchar2, integer, integer) RETURNS oracle.varchar2
-AS 'bytea_substr'
-LANGUAGE internal
-STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.substrb(oracle.varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
-
-CREATE OR REPLACE FUNCTION oracle.substrb(oracle.varchar2, integer) RETURNS oracle.varchar2
-AS 'bytea_substr_no_len'
-LANGUAGE internal
-STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.substrb(oracle.varchar2, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
-
-CREATE OR REPLACE FUNCTION oracle.strposb(oracle.varchar2, oracle.varchar2) RETURNS integer
-AS 'byteapos'
-LANGUAGE internal
-STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.strposb(oracle.varchar2, oracle.varchar2) IS 'returns the byte position of a specified string in the input varchar2 string';
-
-CREATE OR REPLACE FUNCTION oracle.lengthb(oracle.varchar2) RETURNS integer
-AS 'byteaoctetlen'
-LANGUAGE internal
-STRICT IMMUTABLE;
-COMMENT ON FUNCTION oracle.lengthb(oracle.varchar2) IS 'returns byte length of the input varchar2 string';
 
 CREATE OR REPLACE FUNCTION oracle.lengthb(char) RETURNS integer
 AS 'byteaoctetlen'
