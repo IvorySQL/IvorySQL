@@ -1,7 +1,7 @@
 --
 -- NUMBER
 --
-SET search_path to "$user", public, oracle;
+SET compatible_mode to oracle;
 CREATE TABLE num_data (id int4, val number(210,10));
 CREATE TABLE num_exp_add (id1 int4, id2 int4, expected number(210,10));
 CREATE TABLE num_exp_sub (id1 int4, id2 int4, expected number(210,10));
@@ -733,50 +733,50 @@ SELECT x1, x2,
   x1 % x2 AS mod,
   div(x1, x2) AS div
 FROM v AS v1(x1), v AS v2(x2) WHERE x2 != 0;
-    x1     |    x2     |          quot           | mod |    div    
------------+-----------+-------------------------+-----+-----------
- 0         | 1         | 0                       | 0   | 0
- 1         | 1         | 1                       | 0   | 1
- -1        | 1         | -1                      | 0   | -1
- 4.2       | 1         | 4.2                     | 0.2 | 4
- Infinity  | 1         | Infinity                | NaN | Infinity
- -Infinity | 1         | -Infinity               | NaN | -Infinity
- NaN       | 1         | NaN                     | NaN | NaN
- 0         | -1        | 0                       | 0   | 0
- 1         | -1        | -1                      | 0   | -1
- -1        | -1        | 1                       | 0   | 1
- 4.2       | -1        | -4.2                    | 0.2 | -4
- Infinity  | -1        | -Infinity               | NaN | -Infinity
- -Infinity | -1        | Infinity                | NaN | Infinity
- NaN       | -1        | NaN                     | NaN | NaN
- 0         | 4.2       | 0                       | 0   | 0
- 1         | 4.2       | 0.23809523809523809524  | 1   | 0
- -1        | 4.2       | -0.23809523809523809524 | -1  | 0
- 4.2       | 4.2       | 1                       | 0   | 1
- Infinity  | 4.2       | Infinity                | NaN | Infinity
- -Infinity | 4.2       | -Infinity               | NaN | -Infinity
- NaN       | 4.2       | NaN                     | NaN | NaN
- 0         | Infinity  | 0                       | 0   | 0
- 1         | Infinity  | 0                       | 1   | 0
- -1        | Infinity  | 0                       | -1  | 0
- 4.2       | Infinity  | 0                       | 4.2 | 0
- Infinity  | Infinity  | NaN                     | NaN | NaN
- -Infinity | Infinity  | NaN                     | NaN | NaN
- NaN       | Infinity  | NaN                     | NaN | NaN
- 0         | -Infinity | 0                       | 0   | 0
- 1         | -Infinity | 0                       | 1   | 0
- -1        | -Infinity | 0                       | -1  | 0
- 4.2       | -Infinity | 0                       | 4.2 | 0
- Infinity  | -Infinity | NaN                     | NaN | NaN
- -Infinity | -Infinity | NaN                     | NaN | NaN
- NaN       | -Infinity | NaN                     | NaN | NaN
- 0         | NaN       | NaN                     | NaN | NaN
- 1         | NaN       | NaN                     | NaN | NaN
- -1        | NaN       | NaN                     | NaN | NaN
- 4.2       | NaN       | NaN                     | NaN | NaN
- Infinity  | NaN       | NaN                     | NaN | NaN
- -Infinity | NaN       | NaN                     | NaN | NaN
- NaN       | NaN       | NaN                     | NaN | NaN
+    x1     |    x2     |          quot           | mod  |    div    
+-----------+-----------+-------------------------+------+-----------
+ 0         | 1         | 0                       |    0 |         0
+ 1         | 1         | 1                       |    0 |         1
+ -1        | 1         | -1                      |    0 |        -1
+ 4.2       | 1         | 4.2                     |  0.2 |         4
+ Infinity  | 1         | Infinity                |  NaN |  Infinity
+ -Infinity | 1         | -Infinity               |  NaN | -Infinity
+ NaN       | 1         | NaN                     |  NaN |       NaN
+ 0         | -1        | 0                       |    0 |         0
+ 1         | -1        | -1                      |    0 |        -1
+ -1        | -1        | 1                       |    0 |         1
+ 4.2       | -1        | -4.2                    |  0.2 |        -4
+ Infinity  | -1        | -Infinity               |  NaN | -Infinity
+ -Infinity | -1        | Infinity                |  NaN |  Infinity
+ NaN       | -1        | NaN                     |  NaN |       NaN
+ 0         | 4.2       | 0                       |  0.0 |         0
+ 1         | 4.2       | 0.23809523809523809524  |  1.0 |         0
+ -1        | 4.2       | -0.23809523809523809524 | -1.0 |         0
+ 4.2       | 4.2       | 1                       |  0.0 |         1
+ Infinity  | 4.2       | Infinity                |  NaN |  Infinity
+ -Infinity | 4.2       | -Infinity               |  NaN | -Infinity
+ NaN       | 4.2       | NaN                     |  NaN |       NaN
+ 0         | Infinity  | 0                       |    0 |         0
+ 1         | Infinity  | 0                       |    1 |         0
+ -1        | Infinity  | 0                       |   -1 |         0
+ 4.2       | Infinity  | 0                       |  4.2 |         0
+ Infinity  | Infinity  | NaN                     |  NaN |       NaN
+ -Infinity | Infinity  | NaN                     |  NaN |       NaN
+ NaN       | Infinity  | NaN                     |  NaN |       NaN
+ 0         | -Infinity | 0                       |    0 |         0
+ 1         | -Infinity | 0                       |    1 |         0
+ -1        | -Infinity | 0                       |   -1 |         0
+ 4.2       | -Infinity | 0                       |  4.2 |         0
+ Infinity  | -Infinity | NaN                     |  NaN |       NaN
+ -Infinity | -Infinity | NaN                     |  NaN |       NaN
+ NaN       | -Infinity | NaN                     |  NaN |       NaN
+ 0         | NaN       | NaN                     |  NaN |       NaN
+ 1         | NaN       | NaN                     |  NaN |       NaN
+ -1        | NaN       | NaN                     |  NaN |       NaN
+ 4.2       | NaN       | NaN                     |  NaN |       NaN
+ Infinity  | NaN       | NaN                     |  NaN |       NaN
+ -Infinity | NaN       | NaN                     |  NaN |       NaN
+ NaN       | NaN       | NaN                     |  NaN |       NaN
 (42 rows)
 
 SELECT 'inf'::number / '0';
@@ -798,7 +798,7 @@ ERROR:  division by zero
 SELECT 'nan'::number % '0';
  ?column? 
 ----------
- NaN
+      NaN
 (1 row)
 
 SELECT '0'::number % '0';
@@ -2079,11 +2079,7 @@ SELECT to_number('34,50','999,99');
 (1 row)
 
 SELECT to_number('123,000','999G');
- to_number 
------------
-       123
-(1 row)
-
+ERROR:  paramter is invalid,Please note the format!
 SELECT to_number('123456','999G999');
  to_number 
 -----------
@@ -3042,13 +3038,13 @@ select min_scale(1e100);                 -- very big number
 select trim_scale(number 'NaN');
  trim_scale 
 ------------
- NaN
+        NaN
 (1 row)
 
 select trim_scale(number 'inf');
  trim_scale 
 ------------
- Infinity
+   Infinity
 (1 row)
 
 select trim_scale(1.120);
@@ -3060,7 +3056,7 @@ select trim_scale(1.120);
 select trim_scale(0);
  trim_scale 
 ------------
- 0
+          0
 (1 row)
 
 select trim_scale(0.00);

@@ -2,7 +2,7 @@
 -- NUMBER
 --
 
-SET search_path to "$user", public, oracle;
+SET compatible_mode to oracle;
 
 CREATE TABLE num_data (id int4, val number(210,10));
 CREATE TABLE num_exp_add (id1 int4, id2 int4, expected number(210,10));
