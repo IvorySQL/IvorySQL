@@ -890,7 +890,7 @@ CREATE OPERATOR oracle.< (
 );
 
 -- operator class
-CREATE OPERATOR CLASS oradateops DEFAULT FOR TYPE oracle.date USING hash AS OPERATOR 1 oracle.=;
+CREATE OPERATOR CLASS oracle.oradateops DEFAULT FOR TYPE oracle.date USING hash AS OPERATOR 1 oracle.=;
 
 CREATE FUNCTION oracle.ora_dateoperator(oracle.date,oracle.date) RETURNS int  AS $$
 BEGIN 
@@ -904,7 +904,7 @@ END;
 $$
 language 'plpgsql' immutable;
 
-CREATE OPERATOR CLASS ora_dateops DEFAULT FOR TYPE oracle.date USING btree AS
+CREATE OPERATOR CLASS oracle.ora_dateops DEFAULT FOR TYPE oracle.date USING btree AS
 OPERATOR 1 oracle.<,
 OPERATOR 2 oracle.<=,
 OPERATOR 3 oracle.=,
