@@ -1319,7 +1319,7 @@ SELECT a, ceil(a), ceiling(a), floor(a), round(a) FROM ceil_floor_round;
  9.4999999 | 10   |      10 | 9     | 9
  0         | 0    |       0 | 0     | 0
  0.0000001 | 1    |       1 | 0     | 0
- -0.000001 | 0    |      -0 | -1    | 0
+ -0.000001 | 0    |       0 | -1    | 0
 (7 rows)
 
 DROP TABLE ceil_floor_round;
@@ -3393,5 +3393,319 @@ select cast(2.049390153191920 as number(*,20)) from dual;
       number      
 ------------------
  2.04939015319192
+(1 row)
+
+SET compatible_mode to oracle;
+select 1+2::numeric;
+ ?column? 
+----------
+        3
+(1 row)
+
+select 1+2::number;
+ ?column? 
+----------
+ 3
+(1 row)
+
+select '1'+2::number;
+ ?column? 
+----------
+ 3
+(1 row)
+
+select '1'+2::numeric;
+ ?column? 
+----------
+        3
+(1 row)
+
+select 1-2::numeric;
+ ?column? 
+----------
+       -1
+(1 row)
+
+select 1-2::number;
+ ?column? 
+----------
+ -1
+(1 row)
+
+select '1'-2::number;
+ ?column? 
+----------
+ -1
+(1 row)
+
+select '1'-2::numeric;
+ ?column? 
+----------
+       -1
+(1 row)
+
+select 1*2::numeric;
+ ?column? 
+----------
+        2
+(1 row)
+
+select 1*2::number;
+ ?column? 
+----------
+ 2
+(1 row)
+
+select '1'*2::number;
+ ?column? 
+----------
+ 2
+(1 row)
+
+select '1'*2::numeric;
+ ?column? 
+----------
+        2
+(1 row)
+
+select 1/2::numeric;
+        ?column?        
+------------------------
+ 0.50000000000000000000
+(1 row)
+
+select 1/2::number;
+ ?column? 
+----------
+ 0.5
+(1 row)
+
+select '1'/2::number;
+ ?column? 
+----------
+ 0.5
+(1 row)
+
+select '1'/2::numeric;
+        ?column?        
+------------------------
+ 0.50000000000000000000
+(1 row)
+
+select 1=2::numeric;
+ ?column? 
+----------
+ f
+(1 row)
+
+select 1=2::number;
+ ?column? 
+----------
+ f
+(1 row)
+
+select '1'=2::number;
+ ?column? 
+----------
+ f
+(1 row)
+
+select '1'=2::numeric;
+ ?column? 
+----------
+ f
+(1 row)
+
+select 1<2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1<2::number;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'<2::number;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'<2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'::varchar2(1)<2::number;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'::varchar2(1)<2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'::nvarchar2(1)<2::number;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'::nvarchar2(1)<2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SET compatible_mode to postgres;
+select 1+2::numeric;
+ ?column? 
+----------
+        3
+(1 row)
+
+select 1+2::number;
+ ?column? 
+----------
+        3
+(1 row)
+
+select '1'+2::number;
+ ?column? 
+----------
+        3
+(1 row)
+
+select '1'+2::numeric;
+ ?column? 
+----------
+        3
+(1 row)
+
+select 1-2::numeric;
+ ?column? 
+----------
+       -1
+(1 row)
+
+select 1-2::number;
+ ?column? 
+----------
+       -1
+(1 row)
+
+select '1'-2::number;
+ ?column? 
+----------
+       -1
+(1 row)
+
+select '1'-2::numeric;
+ ?column? 
+----------
+       -1
+(1 row)
+
+select 1*2::numeric;
+ ?column? 
+----------
+        2
+(1 row)
+
+select 1*2::number;
+ ?column? 
+----------
+        2
+(1 row)
+
+select '1'*2::number;
+ ?column? 
+----------
+        2
+(1 row)
+
+select '1'*2::numeric;
+ ?column? 
+----------
+        2
+(1 row)
+
+select 1/2::numeric;
+        ?column?        
+------------------------
+ 0.50000000000000000000
+(1 row)
+
+select 1/2::number;
+        ?column?        
+------------------------
+ 0.50000000000000000000
+(1 row)
+
+select '1'/2::number;
+        ?column?        
+------------------------
+ 0.50000000000000000000
+(1 row)
+
+select '1'/2::numeric;
+        ?column?        
+------------------------
+ 0.50000000000000000000
+(1 row)
+
+select 1=2::numeric;
+ ?column? 
+----------
+ f
+(1 row)
+
+select 1=2::number;
+ ?column? 
+----------
+ f
+(1 row)
+
+select '1'=2::number;
+ ?column? 
+----------
+ f
+(1 row)
+
+select '1'=2::numeric;
+ ?column? 
+----------
+ f
+(1 row)
+
+select 1<2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1<2::number;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'<2::number;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '1'<2::numeric;
+ ?column? 
+----------
+ t
 (1 row)
 
