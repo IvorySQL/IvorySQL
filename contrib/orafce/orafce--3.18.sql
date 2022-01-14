@@ -6122,7 +6122,7 @@ IMMUTABLE;
 
 CREATE CAST (double precision AS oracle.number)
 WITH FUNCTION oracle.number(double precision)
-AS ASSIGNMENT;
+AS IMPLICIT;
 
 CREATE OR REPLACE FUNCTION oracle.float8(oracle.number)
 RETURNS double precision
@@ -6133,7 +6133,7 @@ IMMUTABLE;
 
 CREATE CAST (oracle.number AS double precision)
 WITH FUNCTION oracle.float8(oracle.number)
-AS IMPLICIT;
+AS ASSIGNMENT;
 
 --real/number implicit
 CREATE OR REPLACE FUNCTION oracle.number(real)
@@ -6145,7 +6145,7 @@ IMMUTABLE;
 
 CREATE CAST (real AS oracle.number)
 WITH FUNCTION oracle.number(real)
-AS ASSIGNMENT;
+AS IMPLICIT;
 
 CREATE OR REPLACE FUNCTION oracle.float4(oracle.number)
 RETURNS real
@@ -6156,7 +6156,7 @@ IMMUTABLE;
 
 CREATE CAST (oracle.number AS real)
 WITH FUNCTION oracle.float4(oracle.number)
-AS IMPLICIT;
+AS ASSIGNMENT;
 
 --money/number implicit
 CREATE OR REPLACE FUNCTION oracle.number(money)
@@ -6168,7 +6168,7 @@ IMMUTABLE;
 
 CREATE CAST (money AS oracle.number)
 WITH FUNCTION oracle.number(money)
-AS ASSIGNMENT;
+AS IMPLICIT;
 
 CREATE OR REPLACE FUNCTION oracle.money(oracle.number)
 RETURNS money
@@ -6195,7 +6195,8 @@ STRICT
 IMMUTABLE;
 
 CREATE CAST (jsonb AS oracle.number)
-WITH FUNCTION oracle.number(jsonb);
+WITH FUNCTION oracle.number(jsonb)
+AS IMPLICIT;
 
 --numeric/number implicit
 CREATE CAST (numeric AS oracle.number)

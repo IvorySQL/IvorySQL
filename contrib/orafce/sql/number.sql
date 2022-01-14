@@ -1410,3 +1410,67 @@ select cast(-8.0000000000000000 as number(*,20)) from dual;
 select cast(-80000000000000000 as number(*,20)) from dual;
 select cast(0.4830009440873890 as number(*,20)) from dual;
 select cast(2.049390153191920 as number(*,20)) from dual;
+
+
+SET compatible_mode to oracle;
+select 1+2::numeric;
+select 1+2::number;
+select '1'+2::number;
+select '1'+2::numeric;
+select 1-2::numeric;
+select 1-2::number;
+select '1'-2::number;
+select '1'-2::numeric;
+select 1*2::numeric;
+select 1*2::number;
+select '1'*2::number;
+select '1'*2::numeric;
+select 1/2::numeric;
+select 1/2::number;
+select '1'/2::number;
+select '1'/2::numeric;
+
+select 1=2::numeric;
+select 1=2::number;
+select '1'=2::number;
+select '1'=2::numeric;
+
+select 1<2::numeric;
+select 1<2::number;
+select '1'<2::number;
+select '1'<2::numeric;
+
+select '1'::varchar2(1)<2::number;
+select '1'::varchar2(1)<2::numeric;
+
+select '1'::nvarchar2(1)<2::number;
+select '1'::nvarchar2(1)<2::numeric;
+
+SET compatible_mode to postgres;
+
+select 1+2::numeric;
+select 1+2::number;
+select '1'+2::number;
+select '1'+2::numeric;
+select 1-2::numeric;
+select 1-2::number;
+select '1'-2::number;
+select '1'-2::numeric;
+select 1*2::numeric;
+select 1*2::number;
+select '1'*2::number;
+select '1'*2::numeric;
+select 1/2::numeric;
+select 1/2::number;
+select '1'/2::number;
+select '1'/2::numeric;
+
+select 1=2::numeric;
+select 1=2::number;
+select '1'=2::number;
+select '1'=2::numeric;
+
+select 1<2::numeric;
+select 1<2::number;
+select '1'<2::number;
+select '1'<2::numeric;
