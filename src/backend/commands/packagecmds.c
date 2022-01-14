@@ -467,6 +467,7 @@ DropPackagebody(Oid packageOid)
 	RemovePackageVariables(packageOid, PACKAGE_MEMBER_PRIVATE);
 	RemoveVariabletype(packageOid, PACKAGE_MEMBER_PRIVATE);
 
+	ReleaseSysCache(tup);
 	table_close(relation, RowExclusiveLock);
 }
 
@@ -627,7 +628,6 @@ update_package_src(Relation rel, HeapTuple tuple, char *src)
 	newtuple = heap_modify_tuple(tuple, tupdesc, values, nulls, replaces);
 	CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
 
-	ReleaseSysCache(tuple);
 	heap_freetuple(newtuple);
 }
 
