@@ -63,6 +63,7 @@ CreateVariable(ParseState *pstate, VarStmt *stmt, bool replace, bool isbody)
 	 */
 	if (stmt->varType)
 	{
+		Form_pg_type oldvar;
 		rel = table_open(TypeRelationId, RowExclusiveLock);
 
 		/* look for it in package variables */
@@ -80,8 +81,7 @@ CreateVariable(ParseState *pstate, VarStmt *stmt, bool replace, bool isbody)
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" does not exist", strVal(linitial(stmt->varType->names)))));
 
-		Form_pg_type oldvar = (Form_pg_type) GETSTRUCT(oldtup);
-
+		oldvar = (Form_pg_type) GETSTRUCT(oldtup);
 		typid = oldvar->oid;
 		typmod = oldvar->typtypmod;
 		variableoid = GetNewOidWithIndex(rel, TypeOidIndexId,
@@ -117,9 +117,9 @@ CreateVariable(ParseState *pstate, VarStmt *stmt, bool replace, bool isbody)
 							  varowner,
 							  collation,
 							  cooked_default,
-							  0,
-							  1,
-							  0,
+							  VARIABLE_EOX_NOOP,
+							  true,
+							  false,
 							  ispkg,
 							  replace,
 							  isbody);
@@ -204,7 +204,6 @@ CreateCursor(ParseState *pstate, DeclareCursorStmt *cur, bool isbody)
 	Oid			elemType = InvalidOid;
 	Oid			variableoid = InvalidOid;
 	ObjectAddress address;
-	ObjectAddress addr_cursor;
 	ObjectAddress myself,
 				referenced;
 	char	   *defaultValue = NULL;
@@ -307,21 +306,20 @@ CreateCursor(ParseState *pstate, DeclareCursorStmt *cur, bool isbody)
 								  CStringGetDatum(typename),
 								  ObjectIdGetDatum(namespaceid)
 		);
-	addr_cursor = VariableCreate(typename,
-								 namespaceid,
-								 variableoid,
-								 refoid,
-								 -1,
-								 GetUserId(),
-								 collation,
-								 cooked_default,
-								 0,
-								 1,
-								 0,
-								 1,
-								 1,
-								 0
-		);
+	(void) VariableCreate(typename,
+						  namespaceid,
+						  variableoid,
+						  refoid,
+						  -1,
+						  GetUserId(),
+						  collation,
+						  cooked_default,
+						  VARIABLE_EOX_NOOP,
+						  true,
+						  false,
+						  true,
+						  true,
+						  false);
 
 	/* prevent error when processing duplicate objects */
 	CommandCounterIncrement();

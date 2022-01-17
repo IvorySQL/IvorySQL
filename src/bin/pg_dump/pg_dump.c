@@ -4500,6 +4500,10 @@ getPackages(Archive *fout)
 	int			ntups;
 	int			i;
 	PQExpBuffer query;
+	PQExpBuffer acl_subquery;
+	PQExpBuffer racl_subquery;
+	PQExpBuffer initacl_subquery;
+	PQExpBuffer initracl_subquery;
 	PackageInfo *pkginfo;
 	int			i_tableoid;
 	int			i_pkgoid;
@@ -4518,11 +4522,10 @@ getPackages(Archive *fout)
 		return NULL;
 
 	query = createPQExpBuffer();
-
-	PQExpBuffer acl_subquery = createPQExpBuffer();
-	PQExpBuffer racl_subquery = createPQExpBuffer();
-	PQExpBuffer initacl_subquery = createPQExpBuffer();
-	PQExpBuffer initracl_subquery = createPQExpBuffer();
+	acl_subquery = createPQExpBuffer();
+	racl_subquery = createPQExpBuffer();
+	initacl_subquery = createPQExpBuffer();
+	initracl_subquery = createPQExpBuffer();
 
 	buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 					initracl_subquery, "p.pkgacl", "p.pkgowner", "'P'",

@@ -74,9 +74,9 @@ static void update_function_src(Relation rel, HeapTuple tuple, char *src);
 static char *build_cons_prosrc(ParseState *pstate, List *specelems, CreatePackageStmt *stmt);
 static CreateFunctionStmt *make_cons_stmt(CreatePackageStmt *stmt, char *prosrc);
 static char *get_func_src(CreateFunctionStmt *fn);
-static Oid	get_lang_validator();
+static Oid	get_lang_validator(void);
 static void	create_constructor(ParseState *pstate, CreatePackageStmt *stmt);
-static char *get_cursor_query(List	      *variables, DeclareCursorStmt *cur);
+static char *get_cursor_query(List *variables, DeclareCursorStmt *cur);
 static void update_package_src(Relation rel, HeapTuple tuple, char *src);
 
 
@@ -92,7 +92,7 @@ CreatePackage(ParseState *pstate, CreatePackageStmt *stmt)
 	char	   *pkgspec = NULL;
 	char	   *pkgbody = NULL;
 	Oid			namespaceId;
-	Oid			funcid;
+	Oid			funcid = InvalidOid;
 	Oid			languageValidator;
 	Oid			pkgoid;
 	ObjectAddress myself;
@@ -155,7 +155,9 @@ CreatePackage(ParseState *pstate, CreatePackageStmt *stmt)
 
 	/* call the validator function to validate package source. */
 	languageValidator = get_lang_validator();
-	if (OidIsValid(languageValidator) && stmt->isbody)
+	if (stmt->isbody &&
+		OidIsValid(languageValidator) &&
+		OidIsValid(funcid))
 		OidFunctionCall1(languageValidator, ObjectIdGetDatum(funcid));
 
 	return myself;
@@ -166,7 +168,6 @@ static void
 CreatePackageElems(ParseState *pstate, char *nspname, char *pkgname,
 				   List *pkgelements, bool replace, bool isbody)
 {
-	ObjectAddress addr;
 	ListCell   *lc;
 
 	foreach(lc, pkgelements)
@@ -187,35 +188,35 @@ CreatePackageElems(ParseState *pstate, char *nspname, char *pkgname,
 						stmt->replace = true;
 					else
 						stmt->replace = replace;
-					addr = CreateFunction(pstate, stmt);
+					(void) CreateFunction(pstate, stmt);
 				}
 				break;
 			case T_VarStmt:
 				{
 					VarStmt    *var = (VarStmt *) elem;
 
-					addr = CreateVariable(pstate, var, replace, isbody);
+					(void) CreateVariable(pstate, var, replace, isbody);
 				}
 				break;
 			case T_DeclareCursorStmt:
 				{
 					DeclareCursorStmt *cur = (DeclareCursorStmt *) elem;
 
-					addr = CreateCursor(pstate, cur, isbody);
+					(void) CreateCursor(pstate, cur, isbody);
 				}
 				break;
 			case T_CompositeTypeStmt:	/* TYPE IS RECORD */
 				{
 					CompositeTypeStmt *rec = (CompositeTypeStmt *) elem;
 
-					addr = DefineRecord(pstate, rec, isbody);
+					(void) DefineRecord(pstate, rec, isbody);
 				}
 				break;
 			case T_CreateDomainStmt:	/* REF CURSOR */
 				{
 					CreateDomainStmt *refcur = (CreateDomainStmt *) elem;
 
-					addr = DefineRefCursor(pstate, refcur, isbody);
+					(void) DefineRefCursor(pstate, refcur, isbody);
 				}
 				break;
 			default:
@@ -297,9 +298,6 @@ build_cons_prosrc(ParseState *pstate, List *specelems, CreatePackageStmt *stmt)
 			{
 				char	   *varstr = NULL;
 				Node	   *cooked_default = NULL;
-				Oid			typcollation;
-
-				typcollation = get_typcollation(typid);
 
 				cooked_default = transformExpr(pstate, var->defexpr,
 											   EXPR_KIND_VARIABLE_DEFAULT);
@@ -447,7 +445,6 @@ DropPackagebody(Oid packageOid)
 {
 	Relation	relation;
 	HeapTuple	tup;
-	Datum		srcdt;
 	bool		isnull;
 
 	relation = table_open(PackageRelationId, RowExclusiveLock);
@@ -456,7 +453,7 @@ DropPackagebody(Oid packageOid)
 						  ObjectIdGetDatum(packageOid));
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for package %u", packageOid);
-	srcdt = SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
+	(void) SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
 	if (isnull)
 		elog(ERROR, "The package body does not exist");
 	/* update package src attribute to null */
@@ -809,12 +806,10 @@ get_package_src(Oid packageid, bool spec_or_body, bool missing_ok)
 {
 	HeapTuple	tup;
 	char	   *pkgsrc = NULL;
-	Form_pg_package pkgform;
 	bool		isnull;
 	Datum		datum;
 
 	tup = SearchSysCache1(PACKAGEOID, ObjectIdGetDatum(packageid));
-
 	if (!HeapTupleIsValid(tup))
 	{
 		if (!missing_ok)
@@ -822,7 +817,6 @@ get_package_src(Oid packageid, bool spec_or_body, bool missing_ok)
 		return NULL;
 	}
 
-	pkgform = (Form_pg_package) GETSTRUCT(tup);
 	datum = SysCacheGetAttr(PACKAGEOID,
 							tup,
 							(spec_or_body ?
@@ -833,12 +827,11 @@ get_package_src(Oid packageid, bool spec_or_body, bool missing_ok)
 		pkgsrc = TextDatumGetCString(datum);
 
 	ReleaseSysCache(tup);
-
 	return pkgsrc;
 }
 
 static Oid
-get_lang_validator()
+get_lang_validator(void)
 {
 	char	   *language = "plisql";
 	HeapTuple	languageTuple;
@@ -927,7 +920,7 @@ create_constructor(ParseState *pstate, CreatePackageStmt *stmt)
 }
 
 static char *
-get_cursor_query(List	      *variables, DeclareCursorStmt *cur)
+get_cursor_query(List *variables, DeclareCursorStmt *cur)
 {
 	ListCell   *lc1;
 	StringInfoData buf;
