@@ -1844,6 +1844,8 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 			if (OidIsValid(pkgoid))
 			{
 				HeapTuple	vartup;
+				PLiSQL_rec *rec;
+				PLiSQL_recfield *new;
 
 				/* check if a variable of same name present in package */
 				vartup = SearchSysCache2(VARIABLENAMENSP, PointerGetDatum(word2), ObjectIdGetDatum(pkgoid));
@@ -1892,9 +1894,6 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 																							NULL),
 																	 true);
 					}
-
-					PLiSQL_rec *rec;
-					PLiSQL_recfield *new;
 
 					rec = (PLiSQL_rec *) (plisql_Datums[var->dno]);
 					new = plisql_build_recfield(rec, word3);

@@ -12106,10 +12106,7 @@ get_function_arguments(FunctionParameter *funcparam, deparse_context *context)
 	{
 		char	   *varstr = NULL;
 		Node	   *cooked_default = NULL;
-		Oid			typcollation;
 		ParseState *pstate = make_parsestate(NULL);
-
-		typcollation = get_typcollation(typid);
 
 		cooked_default = transformExpr(pstate, funcparam->defexpr,
 									   EXPR_KIND_VARIABLE_DEFAULT);
@@ -12121,7 +12118,7 @@ get_function_arguments(FunctionParameter *funcparam, deparse_context *context)
 		varstr = deparse_expression(cooked_default, NIL, false, false);
 
 		/* add to buffer */
-		appendStringInfo(buf, " := %s\n", deparse_expression(cooked_default, NIL, false, false));
+		appendStringInfo(buf, " := %s\n", varstr);
 	}
 }
 
