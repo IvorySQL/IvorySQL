@@ -77,6 +77,8 @@ static char *get_func_src(CreateFunctionStmt *fn);
 static Oid	get_lang_validator();
 static void	create_constructor(ParseState *pstate, CreatePackageStmt *stmt);
 static char *get_cursor_query(List	      *variables, DeclareCursorStmt *cur);
+static void update_package_src(Relation rel, HeapTuple tuple, char *src);
+
 
 
 /*
@@ -440,6 +442,34 @@ DropPackageById(Oid packageOid)
 		remove_pkgstate(packageOid);
 }
 
+void
+DropPackagebody(Oid packageOid)
+{
+	Relation	relation;
+	HeapTuple	tup;
+	Datum		srcdt;
+	bool		isnull;
+
+	relation = table_open(PackageRelationId, RowExclusiveLock);
+
+	tup = SearchSysCache1(PACKAGEOID,
+						  ObjectIdGetDatum(packageOid));
+	if (!HeapTupleIsValid(tup)) /* should not happen */
+		elog(ERROR, "cache lookup failed for package %u", packageOid);
+	srcdt = SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
+	if (isnull)
+		elog(ERROR, "The package body does not exist");
+	/* update package src attribute to null */
+	update_package_src(relation, tup, "");
+
+	/* remove packages private elements */
+	RemovePackageFunctions(packageOid, PACKAGE_MEMBER_PRIVATE, true);
+	RemovePackageVariables(packageOid, PACKAGE_MEMBER_PRIVATE);
+	RemoveVariabletype(packageOid, PACKAGE_MEMBER_PRIVATE);
+
+	ReleaseSysCache(tup);
+	table_close(relation, RowExclusiveLock);
+}
 
 /*
  * remove function and procedures of a given package.
@@ -571,7 +601,33 @@ update_function_src(Relation rel, HeapTuple tuple, char *src)
 	newtuple = heap_modify_tuple(tuple, tupdesc, values, nulls, replaces);
 	CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
 
-	ReleaseSysCache(tuple);
+	heap_freetuple(newtuple);
+}
+
+static void
+update_package_src(Relation rel, HeapTuple tuple, char *src)
+{
+	TupleDesc	tupdesc;
+	HeapTuple	newtuple;
+	bool		nulls[Natts_pg_package];
+	Datum		values[Natts_pg_package];
+	bool		replaces[Natts_pg_package];
+	int			i;
+
+	for (i = 0; i < Natts_pg_package; ++i)
+	{
+		nulls[i] = false;
+		values[i] = (Datum) 0;
+		replaces[i] = false;
+	}
+
+	values[Anum_pg_package_pkgbody - 1] = CStringGetTextDatum(src);
+	replaces[Anum_pg_package_pkgbody - 1] = true;
+
+	tupdesc = RelationGetDescr(rel);
+	newtuple = heap_modify_tuple(tuple, tupdesc, values, nulls, replaces);
+	CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
 	heap_freetuple(newtuple);
 }
 

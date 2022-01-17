@@ -6460,6 +6460,16 @@ DropStmt:	DROP object_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 					n->concurrent = false;
 					$$ = (Node *) n;
 				}
+			| DROP PACKAGE_BODY BODY any_name_list
+				{
+					DropStmt *n = makeNode(DropStmt);
+					n->removeType = OBJECT_PACKAGE_BODY;
+					n->missing_ok = false;
+					n->objects = $4;
+					n->behavior = DROP_RESTRICT;
+					n->concurrent = false;
+					$$ = (Node *) n;
+				}
 		;
 
 /* object types taking any_name/any_name_list */
