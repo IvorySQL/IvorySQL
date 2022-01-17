@@ -4599,7 +4599,7 @@ assign_search_path(const char *newval, void *extra)
 
 /* assign_hook: do extra actions as needed */
 void
-assign_compatible_db(const char *newval, void *extra)
+assign_compatible_db(int newval, void *extra)
 {
 	/*
 	 * We mark the path as needing recomputation, but don't do anything until

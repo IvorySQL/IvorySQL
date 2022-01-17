@@ -8078,7 +8078,7 @@ pl_block_body: BEGIN_P proc_sect exception_sect END_P opt_label
 		{ $$ = NULL; }
 		;
 
-exception_sect: EXCEPTION expr_until_when case_when_list
+exception_sect: EXCEPTION case_when_list
 		{ $$ = NULL; }
 		| { $$ = NULL; }
 		;

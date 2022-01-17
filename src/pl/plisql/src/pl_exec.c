@@ -8878,19 +8878,20 @@ format_preparedparamsdata(PLiSQL_execstate *estate,
 static void
 exec_package_vars(PLiSQL_execstate *estate, PLiSQL_function *func, bool init)
 {
+	PLiSQL_package *pkg;
+
 	if (func->fn_pkg == 0)
 		return;
 
-	PLiSQL_package *pkg = package_HashTablelookup(func->fn_pkg);
+	pkg = package_HashTablelookup(func->fn_pkg);
+	Assert(pkg != NULL);
 
 	for (int i = 0; i < pkg->ndatums; i++)
 	{
-		int			n = i;
-
 		if (init)
-			estate->datums[n] = pkg->datums[n];
+			estate->datums[i] = pkg->datums[i];
 		else
-			pkg->datums[n] = estate->datums[n];
+			pkg->datums[i] = estate->datums[i];
 	}
 }
 
@@ -8986,10 +8987,9 @@ lookup_package_datum(PLiSQL_execstate *estate, Oid pkgoid, int dno)
 	if (var->pkgdno == -1)
 	{
 		datum = lookup_package_var(pkg, var->datatype->typoid, var->refname);
-		PLiSQL_var *pvar = (PLiSQL_var *) datum;
 
-		if (pvar)
-			var->pkgdno = pvar->dno;
+		if (datum)
+			var->pkgdno = ((PLiSQL_var *) datum)->dno;
 	}
 	else
 	{
