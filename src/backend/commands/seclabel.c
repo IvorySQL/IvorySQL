@@ -92,6 +92,7 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
 		case OBJECT_PACKAGE:
+		case OBJECT_PACKAGE_BODY:
 		case OBJECT_VARIABLE:
 			return false;
 

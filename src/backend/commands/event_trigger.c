@@ -938,6 +938,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 	switch (obtype)
 	{
 		case OBJECT_PACKAGE:
+		case OBJECT_PACKAGE_BODY:
 		case OBJECT_VARIABLE:
 		case OBJECT_DATABASE:
 		case OBJECT_TABLESPACE:
@@ -2112,6 +2113,8 @@ stringify_grant_objtype(ObjectType objtype)
 			return "TYPE";
 		case OBJECT_PACKAGE:
 			return "PACKAGE";
+		case OBJECT_PACKAGE_BODY:
+			return "PACKAGE BODY";
 
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
@@ -2199,6 +2202,8 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "TYPES";
 		case OBJECT_PACKAGE:
 			return "PACKAGE";
+		case OBJECT_PACKAGE_BODY:
+			return "PACKAGE BODY";
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:

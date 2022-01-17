@@ -1843,7 +1843,8 @@ typedef enum ObjectType
 	OBJECT_USER_MAPPING,
 	OBJECT_VIEW,
 	OBJECT_PACKAGE,
-	OBJECT_VARIABLE
+	OBJECT_VARIABLE,
+	OBJECT_PACKAGE_BODY
 } ObjectType;
 
 /* ----------------------

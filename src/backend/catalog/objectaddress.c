@@ -860,6 +860,9 @@ static const struct object_type_map
 	{
 		"package", OBJECT_PACKAGE
 	},
+	{
+		"package body", OBJECT_PACKAGE_BODY
+	},
 	/* OCLASS_VARIABLE */
 	{
 		"variable", OBJECT_VARIABLE
@@ -911,7 +914,7 @@ static ObjectAddress get_object_address_publication_schema(List *object,
 														   bool missing_ok);
 static ObjectAddress get_object_address_defacl(List *object,
 											   bool missing_ok);
-static ObjectAddress get_object_address_package(List *object, bool missing_ok);
+static ObjectAddress get_object_address_package(List *object, bool missing_ok, bool remove_body);
 static const ObjectPropertyType *get_object_property_data(Oid class_id);
 
 static void getRelationDescription(StringInfo buffer, Oid relid,
@@ -1170,7 +1173,10 @@ get_object_address(ObjectType objtype, Node *object,
 				address.objectSubId = 0;
 				break;
 			case OBJECT_PACKAGE:
-				address = get_object_address_package(castNode(List, object), missing_ok);
+				address = get_object_address_package(castNode(List, object), missing_ok, false);
+				break;
+			case OBJECT_PACKAGE_BODY:
+				address = get_object_address_package(castNode(List, object), missing_ok, true);
 				break;
 			default:
 				elog(ERROR, "unrecognized objtype: %d", (int) objtype);
@@ -2142,12 +2148,15 @@ not_found:
  * the object parameter is the package name.
  */
 static ObjectAddress
-get_object_address_package(List *object, bool missing_ok)
+get_object_address_package(List *object, bool missing_ok, bool remove_body)
 {
 	ObjectAddress address;
 	Oid			packageoid;
 
-	ObjectAddressSet(address, PackageRelationId, InvalidOid);
+	if (remove_body)
+		ObjectAddressSubSet(address, PackageRelationId, InvalidOid,Anum_pg_package_pkgbody - 1);
+	else
+		ObjectAddressSubSet(address, PackageRelationId, InvalidOid, InvalidOid);
 
 	packageoid = get_package_oid(object, missing_ok);
 
@@ -2464,6 +2473,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 			/* already handled above */
 			break;
 		case OBJECT_PACKAGE:
+		case OBJECT_PACKAGE_BODY:
 			objnode = (Node *) name;
 			break;
 			/* no default, to let compiler warn about missing case */
@@ -2716,6 +2726,11 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 							   NameListToString(castNode(List, object)));
 			break;
 		case OBJECT_PACKAGE:
+			if (!pg_package_ownercheck(address.objectId, roleid))
+				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
+							   NameListToString(castNode(List, object)));
+			break;
+		case OBJECT_PACKAGE_BODY:
 			if (!pg_package_ownercheck(address.objectId, roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
 							   NameListToString(castNode(List, object)));
@@ -4734,7 +4749,10 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 			break;
 
 		case OCLASS_PACKAGE:
-			appendStringInfoString(&buffer, "package");
+			if (object->objectSubId)
+				appendStringInfoString(&buffer, "package body");
+			else
+				appendStringInfoString(&buffer, "package");
 			break;
 
 		case OCLASS_VARIABLE:

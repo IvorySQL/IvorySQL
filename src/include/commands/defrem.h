@@ -158,5 +158,7 @@ extern void errorConflictingDefElem(DefElem *defel, ParseState *pstate) pg_attri
 /* commands/packagecmds.c */
 extern ObjectAddress CreatePackage(ParseState *pstate, CreatePackageStmt *stmt);
 extern void DropPackageById(Oid packageOid);
+extern void DropPackagebody(Oid packageOid);
+
 
 #endif							/* DEFREM_H */
