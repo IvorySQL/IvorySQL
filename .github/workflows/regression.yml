@@ -49,3 +49,12 @@ jobs:
     - name: regression
       run: make check-world
 
+    - name: upload regression files
+      if: failure()
+      uses: actions/upload-artifact@v2
+      with:
+        name: results
+        path: |
+            src/test/regress/regression.diffs
+            src/test/regress/regression.out
+
