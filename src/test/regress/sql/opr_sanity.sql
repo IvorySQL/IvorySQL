@@ -80,7 +80,9 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.proname = p2.proname AND
     p1.pronargs = p2.pronargs AND
-    p1.proargtypes = p2.proargtypes order by p1.oid, p2.oid;
+    p1.proargtypes = p2.proargtypes AND
+    p1.pronamespace = 'pg_catalog'::regnamespace::oid AND
+    p2.pronamespace = 'pg_catalog'::regnamespace::oid ORDER BY p1.oid, p2.oid;
 
 -- Considering only built-in procs (prolang = 12), look for multiple uses
 -- of the same internal function (ie, matching prosrc fields).  It's OK to

@@ -102,64 +102,12 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.proname = p2.proname AND
     p1.pronargs = p2.pronargs AND
-    p1.proargtypes = p2.proargtypes order by p1.oid, p2.oid;
-  oid  |    proname     |  oid  |    proname     
--------+----------------+-------+----------------
-    89 | version        | 14232 | version
-   873 | lpad           | 14683 | lpad
-   874 | rpad           | 14819 | rpad
-   877 | substr         | 14241 | substr
-   877 | substr         | 15003 | substr
-   879 | lpad           | 14684 | lpad
-   880 | rpad           | 14820 | rpad
-   883 | substr         | 14242 | substr
-   883 | substr         | 15004 | substr
-  1158 | to_timestamp   | 13952 | to_timestamp
-  1317 | length         | 14842 | length
-  1318 | length         | 14841 | length
-  1598 | random         | 14383 | random
-  1778 | to_timestamp   | 13951 | to_timestamp
-  1780 | to_date        | 14097 | to_date
-  2284 | regexp_replace | 14935 | regexp_replace
-  2462 | sinh           | 13922 | sinh
-  2463 | cosh           | 13923 | cosh
-  2464 | tanh           | 13924 | tanh
-  3060 | left           | 14282 | left
-  3061 | right          | 14283 | right
-  6198 | unistr         | 14917 | unistr
- 13910 | instr          | 14243 | instr
- 13911 | instr          | 14244 | instr
- 13912 | instr          | 14245 | instr
- 13922 | sinh           |  2462 | sinh
- 13923 | cosh           |  2463 | cosh
- 13924 | tanh           |  2464 | tanh
- 13951 | to_timestamp   |  1778 | to_timestamp
- 13952 | to_timestamp   |  1158 | to_timestamp
- 14097 | to_date        |  1780 | to_date
- 14232 | version        |    89 | version
- 14241 | substr         |   877 | substr
- 14241 | substr         | 15003 | substr
- 14242 | substr         |   883 | substr
- 14242 | substr         | 15004 | substr
- 14243 | instr          | 13910 | instr
- 14244 | instr          | 13911 | instr
- 14245 | instr          | 13912 | instr
- 14282 | left           |  3060 | left
- 14283 | right          |  3061 | right
- 14383 | random         |  1598 | random
- 14683 | lpad           |   873 | lpad
- 14684 | lpad           |   879 | lpad
- 14819 | rpad           |   874 | rpad
- 14820 | rpad           |   880 | rpad
- 14841 | length         |  1318 | length
- 14842 | length         |  1317 | length
- 14917 | unistr         |  6198 | unistr
- 14935 | regexp_replace |  2284 | regexp_replace
- 15003 | substr         |   877 | substr
- 15003 | substr         | 14241 | substr
- 15004 | substr         |   883 | substr
- 15004 | substr         | 14242 | substr
-(54 rows)
+    p1.proargtypes = p2.proargtypes AND
+    p1.pronamespace = 'pg_catalog'::regnamespace::oid AND
+    p2.pronamespace = 'pg_catalog'::regnamespace::oid ORDER BY p1.oid, p2.oid;
+ oid | proname | oid | proname 
+-----+---------+-----+---------
+(0 rows)
 
 -- Considering only built-in procs (prolang = 12), look for multiple uses
 -- of the same internal function (ie, matching prosrc fields).  It's OK to
