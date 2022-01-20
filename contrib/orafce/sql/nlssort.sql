@@ -5,6 +5,7 @@ set compatible_mode = 'oracle';
 DROP DATABASE IF EXISTS regression_sort;
 CREATE DATABASE regression_sort WITH TEMPLATE = template0 ENCODING='SQL_ASCII' LC_COLLATE='C' LC_CTYPE='C';
 \c regression_sort
+DROP EXTENSION IF EXISTS orafce;
 SET client_min_messages = error;
 CREATE EXTENSION orafce;
 SET client_min_messages = default;
