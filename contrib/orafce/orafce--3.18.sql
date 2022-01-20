@@ -890,7 +890,14 @@ CREATE OPERATOR oracle.< (
 );
 
 -- operator class
-CREATE OPERATOR CLASS oracle.oradateops DEFAULT FOR TYPE oracle.date USING hash AS OPERATOR 1 oracle.=;
+CREATE OR REPLACE FUNCTION oracle.oradate_hash(oracle.date)
+RETURNS int
+AS $$ select pg_catalog.timestamp_hash($1::timestamp) $$
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
+
+CREATE OPERATOR CLASS oracle.ora_dateops DEFAULT FOR TYPE oracle.date USING hash
+ AS OPERATOR 1 oracle.=(oracle.date, oracle.date),
+ FUNCTION 1 oracle.oradate_hash(oracle.date);
 
 CREATE FUNCTION oracle.ora_dateoperator(oracle.date,oracle.date) RETURNS int  AS $$
 BEGIN 
@@ -3053,7 +3060,13 @@ CREATE OPERATOR oracle.< (
 );
 
 /* create operator class of varchar2 */
-CREATE OPERATOR CLASS oracle.varchar2_ops DEFAULT FOR TYPE oracle.varchar2 USING hash family text_ops AS OPERATOR 1 oracle.=;
+CREATE OR REPLACE FUNCTION oracle.varchar2_hash(oracle.varchar2)
+RETURNS int AS $$ select pg_catalog.hashvarlena($1); $$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR CLASS oracle.varchar2_ops DEFAULT FOR TYPE oracle.varchar2 USING hash
+ AS OPERATOR 1 oracle.=(oracle.varchar2,oracle.varchar2),
+ FUNCTION 1 oracle.varchar2_hash(oracle.varchar2);
 
 CREATE FUNCTION oracle.varchar2operator(oracle.varchar2, oracle.varchar2) RETURNS int AS $$
 BEGIN
@@ -3067,7 +3080,7 @@ END;
 $$
 language 'plpgsql' immutable;
 
-CREATE OPERATOR CLASS oracle.varchar2_ops DEFAULT FOR TYPE oracle.varchar2 USING btree family text_ops AS
+CREATE OPERATOR CLASS oracle.varchar2_ops DEFAULT FOR TYPE oracle.varchar2 USING btree AS
 OPERATOR 1 oracle.<,
 OPERATOR 2 oracle.<=,
 OPERATOR 3 oracle.=,
@@ -6680,7 +6693,7 @@ LANGUAGE internal
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.in_range(oracle.number, oracle.number, oracle.number, bool, bool)
+CREATE FUNCTION oracle.in_range(oracle.number, oracle.number, oracle.number, bool, bool)
 RETURNS bool
 AS $$in_range_numeric_numeric$$
 LANGUAGE internal
@@ -6696,7 +6709,7 @@ USING btree AS
 	operator	5	oracle.> ( oracle.number, oracle.number ),
 	function	1	oracle.number_cmp(oracle.number, oracle.number),
 	function	2	numeric_sortsupport(internal),
-	function	3	pg_catalog.in_range(oracle.number, oracle.number, oracle.number, bool, bool)
+	function	3	oracle.in_range(oracle.number, oracle.number, oracle.number, bool, bool)
 	;
 
 CREATE FUNCTION oracle.hash_number_extended(oracle.number, int8)
