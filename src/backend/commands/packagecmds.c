@@ -443,6 +443,7 @@ DropPackageById(Oid packageOid)
 void
 DropPackagebody(Oid packageOid)
 {
+	remove_package_state remove_pkgstate;
 	Relation	relation;
 	HeapTuple	tup;
 	bool		isnull;
@@ -466,6 +467,12 @@ DropPackagebody(Oid packageOid)
 
 	ReleaseSysCache(tup);
 	table_close(relation, RowExclusiveLock);
+
+	/* remove package state from PL hashtable, if any */
+	remove_pkgstate = (remove_package_state)
+						*find_rendezvous_variable("remove_package_state");
+	if (remove_pkgstate != NULL)
+		remove_pkgstate(packageOid);
 }
 
 /*
