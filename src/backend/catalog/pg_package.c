@@ -3,8 +3,7 @@
  * pg_package.c
  *		package
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
+ * Copyright (c) 2021-2022, IvorySQL
  *
  * IDENTIFICATION
  *		src/backend/catalog/pg_package.c

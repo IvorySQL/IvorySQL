@@ -1,6 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  *
+ * Portions Copyright (c) 2021-2022, IvorySQL
  * Copyright (c) 2001-2021, highgo compatible Group
  *
  *
