@@ -243,7 +243,8 @@ $node->command_checks_all(
 	[
 		'pg_amcheck', '--all', '--no-strict-names', '-S',
 		'public',     '-S',    'pg_catalog',        '-S',
-		'pg_toast',   '-S',    'information_schema',
+		'pg_toast',   '-S',    'information_schema', '-S',
+		'utl_file'
 	],
 	1,
 	[qr/^$/],
