@@ -1,11 +1,10 @@
 /*-------------------------------------------------------------------------
  *
  * packagecmds.c
- *
  *    Routines for CREATE and DROP packge commands and CREATE and DROP
  *    CAST commands.
  *
- *
+ * Copyright (c) 2021-2022, IvorySQL
  *
  * IDENTIFICATION
  *    src/backend/commands/packagecmds.c

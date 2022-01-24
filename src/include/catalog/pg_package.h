@@ -2,6 +2,9 @@
  *
  * pg_package.h
  *	  definition of package system catalog (pg_package)
+ *
+ * Copyright (c) 2021-2022, IvorySQL
+ *
  * src/include/catalog/pg_package.h
  *
  *-------------------------------------------------------------------------

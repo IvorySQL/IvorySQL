@@ -3,6 +3,7 @@
  * packagecmds.h
  *	  prototypes for packagecmds.c.
  *
+ * Copyright (c) 2021-2022, IvorySQL
  *
  * src/include/commands/packagecmds.h
  *
