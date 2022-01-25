@@ -1453,6 +1453,7 @@ as
 		open tref for select * from test where x = in_a;
 		fetch tref into trow;
 		raise info 'trow.x = %, trow.y = %', trow.x, trow.y;
+		close tref;
 		return trow.x;
 	end;
 end;
@@ -1462,6 +1463,7 @@ select pkg_ref.refunc(1);
 select pkg_ref.refunc(2);
 select pkg_ref.refunc(3);
 drop package pkg_ref;
+select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
 
 --
 --Test type ... is ref cursor in PL functions
@@ -1522,3 +1524,48 @@ end;
 DROP PACKAGE BODY pkgvar;
 select pkgvar.tf;
 DROP PACKAGE pkgvar;
+--close the opened cursor when drop package body
+create table test(x int, y varchar(100));
+insert into test values(1, 'One');
+insert into test values(2, 'Two');
+insert into test values(3, 'Three');
+
+create or replace package pkg is
+	CURSOR c1 IS SELECT x,y FROM test;
+	function c_open return int;
+	function c_fetch return int;
+end;
+/
+
+create or replace package body pkg is
+	function c_open return int as
+	begin
+		OPEN c1;
+		return 0;
+	end;
+
+	function c_fetch return int as
+		v_x  test.x%TYPE;
+		v_y  test.y%TYPE;
+	begin
+		LOOP
+            FETCH c1 INTO v_x, v_y;
+			EXIT WHEN NOT FOUND;
+			raise info '%, %', v_x, v_y;
+		END LOOP;
+
+		CLOSE c1;
+		return 0;
+	end;
+
+begin
+	raise info 'initializer';
+end;
+/
+select * from pg_cursors;
+select pkg.c_open();
+select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
+DROP PACKAGE BODY pkg;
+select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
+DROP TABLE test;
+DROP PACKAGE pkg;
