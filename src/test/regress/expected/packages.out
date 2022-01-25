@@ -1699,6 +1699,7 @@ as
 		open tref for select * from test where x = in_a;
 		fetch tref into trow;
 		raise info 'trow.x = %, trow.y = %', trow.x, trow.y;
+		close tref;
 		return trow.x;
 	end;
 end;
@@ -1725,6 +1726,11 @@ INFO:  trow.x = 3, trow.y = Three
 (1 row)
 
 drop package pkg_ref;
+select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
+ name | statement | is_holdable | is_binary | is_scrollable 
+------+-----------+-------------+-----------+---------------
+(0 rows)
+
 --
 --Test type ... is ref cursor in PL functions
 --
@@ -1804,3 +1810,65 @@ ERROR:  The package body does not exist
 select pkgvar.tf;
 ERROR:  no defination for package element: tf
 DROP PACKAGE pkgvar;
+--close the opened cursor when drop package body
+create table test(x int, y varchar(100));
+insert into test values(1, 'One');
+insert into test values(2, 'Two');
+insert into test values(3, 'Three');
+create or replace package pkg is
+	CURSOR c1 IS SELECT x,y FROM test;
+	function c_open return int;
+	function c_fetch return int;
+end;
+/
+create or replace package body pkg is
+	function c_open return int as
+	begin
+		OPEN c1;
+		return 0;
+	end;
+
+	function c_fetch return int as
+		v_x  test.x%TYPE;
+		v_y  test.y%TYPE;
+	begin
+		LOOP
+            FETCH c1 INTO v_x, v_y;
+			EXIT WHEN NOT FOUND;
+			raise info '%, %', v_x, v_y;
+		END LOOP;
+
+		CLOSE c1;
+		return 0;
+	end;
+
+begin
+	raise info 'initializer';
+end;
+/
+select * from pg_cursors;
+ name | statement | is_holdable | is_binary | is_scrollable | creation_time 
+------+-----------+-------------+-----------+---------------+---------------
+(0 rows)
+
+select pkg.c_open();
+INFO:  initializer
+ c_open 
+--------
+      0
+(1 row)
+
+select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
+  name  |      statement       | is_holdable | is_binary | is_scrollable 
+--------+----------------------+-------------+-----------+---------------
+ pkg.c1 | SELECT x,y FROM test | t           | f         | t
+(1 row)
+
+DROP PACKAGE BODY pkg;
+select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
+ name | statement | is_holdable | is_binary | is_scrollable 
+------+-----------+-------------+-----------+---------------
+(0 rows)
+
+DROP TABLE test;
+DROP PACKAGE pkg;
