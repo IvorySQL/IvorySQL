@@ -3,7 +3,7 @@
  * explain.c
  *	  Explain query execution plans
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1746,7 +1746,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_IndexOnlyScan:
 			show_scan_qual(((IndexOnlyScan *) plan)->indexqual,
 						   "Index Cond", planstate, ancestors, es);
-			if (((IndexOnlyScan *) plan)->indexqual)
+			if (((IndexOnlyScan *) plan)->recheckqual)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
 			show_scan_qual(((IndexOnlyScan *) plan)->indexorderby,
@@ -3127,11 +3127,14 @@ show_memoize_info(MemoizeState *mstate, List *ancestors, ExplainState *es)
 	if (es->format != EXPLAIN_FORMAT_TEXT)
 	{
 		ExplainPropertyText("Cache Key", keystr.data, es);
+		ExplainPropertyText("Cache Mode", mstate->binary_mode ? "binary" : "logical", es);
 	}
 	else
 	{
 		ExplainIndentText(es);
 		appendStringInfo(es->str, "Cache Key: %s\n", keystr.data);
+		ExplainIndentText(es);
+		appendStringInfo(es->str, "Cache Mode: %s\n", mstate->binary_mode ? "binary" : "logical");
 	}
 
 	pfree(keystr.data);

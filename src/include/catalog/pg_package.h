@@ -46,7 +46,7 @@ CATALOG(pg_package,564,PackageRelationId)
  * ----------------
  */
 typedef FormData_pg_package * Form_pg_package;
-DECLARE_TOAST(pg_package, 4544, 4545);
+DECLARE_TOAST(pg_package, 567, 568);
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_package_oid_index, 565, PackageObjectIndexId, on pg_package using btree(oid oid_ops));
 DECLARE_UNIQUE_INDEX(pg_package_pkgname_nsp_index, 566, PackageNameNspIndexId, on pg_package using btree(pkgname name_ops, pkgnamespace oid_ops));

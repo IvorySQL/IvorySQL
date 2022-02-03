@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test SCRAM authentication and TLS channel binding types
 
@@ -49,7 +49,7 @@ $node->start;
 
 # Configure server for SSL connections, with password handling.
 configure_test_server_for_ssl($node, $SERVERHOSTADDR, $SERVERHOSTCIDR,
-	"scram-sha-256", "pass", "scram-sha-256");
+	"scram-sha-256", 'password' => "pass", 'password_enc' => "scram-sha-256");
 switch_server_cert($node, 'server-cn-only');
 $ENV{PGPASSWORD} = "pass";
 $common_connstr =
@@ -95,9 +95,14 @@ $node->connect_fails(
 # because channel binding is not performed.  Note that ssl/client.key may
 # be used in a different test, so the name of this temporary client key
 # is chosen here to be unique.
-my $client_tmp_key = "ssl/client_scram_tmp.key";
-copy("ssl/client.key", $client_tmp_key);
-chmod 0600, $client_tmp_key;
+my $cert_tempdir = PostgreSQL::Test::Utils::tempdir();
+my $client_tmp_key = PostgreSQL::Test::Utils::perl2host("$cert_tempdir/client_scram.key");
+copy("ssl/client.key", "$cert_tempdir/client_scram.key")
+  or die
+  "couldn't copy ssl/client_key to $cert_tempdir/client_scram.key for permission change: $!";
+chmod 0600, "$cert_tempdir/client_scram.key"
+  or die "failed to change permissions on $cert_tempdir/client_scram.key: $!";
+$client_tmp_key =~ s!\\!/!g if $PostgreSQL::Test::Utils::windows_os;
 $node->connect_fails(
 	"sslcert=ssl/client.crt sslkey=$client_tmp_key sslrootcert=invalid hostaddr=$SERVERHOSTADDR dbname=certdb user=ssltestuser channel_binding=require",
 	"Cert authentication and channel_binding=require",
@@ -112,8 +117,5 @@ $node->connect_ok(
 	log_like => [
 		qr/connection authenticated: identity="ssltestuser" method=scram-sha-256/
 	]);
-
-# clean up
-unlink($client_tmp_key);
 
 done_testing($number_of_tests);

@@ -3,7 +3,7 @@
  *
  * Utilities for replaying WAL records.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlogutils.h
@@ -98,7 +98,9 @@ extern void wal_segment_open(XLogReaderState *state,
 extern void wal_segment_close(XLogReaderState *state);
 
 extern void XLogReadDetermineTimeline(XLogReaderState *state,
-									  XLogRecPtr wantPage, uint32 wantLength);
+									  XLogRecPtr wantPage,
+									  uint32 wantLength,
+									  TimeLineID currTLI);
 
 extern void WALReadRaiseError(WALReadError *errinfo);
 

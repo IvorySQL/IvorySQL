@@ -3,7 +3,7 @@
  * pg_publication.c
  *		publication C API manipulation
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -70,12 +70,18 @@ check_publication_add_relation(Relation targetrel)
 				 errdetail("This operation is not supported for system tables.")));
 
 	/* UNLOGGED and TEMP relations cannot be part of publication. */
-	if (!RelationIsPermanent(targetrel))
+	if (targetrel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("cannot add relation \"%s\" to publication",
 						RelationGetRelationName(targetrel)),
-				 errdetail("Temporary and unlogged relations cannot be replicated.")));
+				 errdetail("This operation is not supported for temporary tables.")));
+	else if (targetrel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot add relation \"%s\" to publication",
+						RelationGetRelationName(targetrel)),
+				 errdetail("This operation is not supported for unlogged tables.")));
 }
 
 /*
@@ -136,7 +142,7 @@ is_publishable_class(Oid relid, Form_pg_class reltuple)
  * the publication.
  */
 static List *
-filter_partitions(List *relids, List *schemarelids)
+filter_partitions(List *relids)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
@@ -155,16 +161,8 @@ filter_partitions(List *relids, List *schemarelids)
 		{
 			Oid			ancestor = lfirst_oid(lc2);
 
-			/*
-			 * Check if the parent table exists in the published table list.
-			 *
-			 * XXX As of now, we do this if the partition relation or the
-			 * partition relation's ancestor is present in schema publication
-			 * relations.
-			 */
-			if (list_member_oid(relids, ancestor) &&
-				(list_member_oid(schemarelids, relid) ||
-				 list_member_oid(schemarelids, ancestor)))
+			/* Check if the parent table exists in the published table list. */
+			if (list_member_oid(relids, ancestor))
 			{
 				skip = true;
 				break;
@@ -187,6 +185,36 @@ is_publishable_relation(Relation rel)
 	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel);
 }
 
+/*
+ * Returns true if any schema is associated with the publication, false if no
+ * schema is associated with the publication.
+ */
+bool
+is_schema_publication(Oid pubid)
+{
+	Relation	pubschsrel;
+	ScanKeyData scankey;
+	SysScanDesc scan;
+	HeapTuple	tup;
+	bool		result = false;
+
+	pubschsrel = table_open(PublicationNamespaceRelationId, AccessShareLock);
+	ScanKeyInit(&scankey,
+				Anum_pg_publication_namespace_pnpubid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(pubid));
+
+	scan = systable_beginscan(pubschsrel,
+							  PublicationNamespacePnnspidPnpubidIndexId,
+							  true, NULL, 1, &scankey);
+	tup = systable_getnext(scan);
+	result = HeapTupleIsValid(tup);
+
+	systable_endscan(scan);
+	table_close(pubschsrel, AccessShareLock);
+
+	return result;
+}
 
 /*
  * SQL-callable variant of the above
@@ -259,7 +287,7 @@ publication_add_relation(Oid pubid, PublicationRelInfo *targetrel,
 	Datum		values[Natts_pg_publication_rel];
 	bool		nulls[Natts_pg_publication_rel];
 	Oid			relid = RelationGetRelid(targetrel->relation);
-	Oid			prrelid;
+	Oid			pubreloid;
 	Publication *pub = GetPublication(pubid);
 	ObjectAddress myself,
 				referenced;
@@ -292,9 +320,9 @@ publication_add_relation(Oid pubid, PublicationRelInfo *targetrel,
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	prrelid = GetNewOidWithIndex(rel, PublicationRelObjectIndexId,
-								 Anum_pg_publication_rel_oid);
-	values[Anum_pg_publication_rel_oid - 1] = ObjectIdGetDatum(prrelid);
+	pubreloid = GetNewOidWithIndex(rel, PublicationRelObjectIndexId,
+								   Anum_pg_publication_rel_oid);
+	values[Anum_pg_publication_rel_oid - 1] = ObjectIdGetDatum(pubreloid);
 	values[Anum_pg_publication_rel_prpubid - 1] =
 		ObjectIdGetDatum(pubid);
 	values[Anum_pg_publication_rel_prrelid - 1] =
@@ -306,7 +334,8 @@ publication_add_relation(Oid pubid, PublicationRelInfo *targetrel,
 	CatalogTupleInsert(rel, tup);
 	heap_freetuple(tup);
 
-	ObjectAddressSet(myself, PublicationRelRelationId, prrelid);
+	/* Register dependencies as needed */
+	ObjectAddressSet(myself, PublicationRelRelationId, pubreloid);
 
 	/* Add dependency on the publication */
 	ObjectAddressSet(referenced, PublicationRelationId, pubid);
@@ -465,7 +494,7 @@ GetPublicationRelations(Oid pubid, PublicationPartOpt pub_partopt)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(pubid));
 
-	scan = systable_beginscan(pubrelsrel, PublicationRelPrrelidPrpubidIndexId,
+	scan = systable_beginscan(pubrelsrel, PublicationRelPrpubidIndexId,
 							  true, NULL, 1, &scankey);
 
 	result = NIL;
@@ -480,6 +509,10 @@ GetPublicationRelations(Oid pubid, PublicationPartOpt pub_partopt)
 
 	systable_endscan(scan);
 	table_close(pubrelsrel, AccessShareLock);
+
+	/* Now sort and de-duplicate the result list */
+	list_sort(result, list_oid_cmp);
+	list_deduplicate_oid(result);
 
 	return result;
 }
@@ -873,22 +906,17 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 															PUBLICATION_PART_ROOT :
 															PUBLICATION_PART_LEAF);
 			tables = list_concat_unique_oid(relids, schemarelids);
-			if (schemarelids && publication->pubviaroot)
-			{
-				/*
-				 * If the publication publishes partition changes via their
-				 * respective root partitioned tables, we must exclude
-				 * partitions in favor of including the root partitioned
-				 * tables. Otherwise, the function could return both the child
-				 * and parent tables which could cause data of the child table
-				 * to be double-published on the subscriber side.
-				 *
-				 * XXX As of now, we do this when a publication has associated
-				 * schema or for all tables publication. See
-				 * GetAllTablesPublicationRelations().
-				 */
-				tables = filter_partitions(tables, schemarelids);
-			}
+
+			/*
+			 * If the publication publishes partition changes via their
+			 * respective root partitioned tables, we must exclude partitions
+			 * in favor of including the root partitioned tables. Otherwise,
+			 * the function could return both the child and parent tables
+			 * which could cause data of the child table to be
+			 * double-published on the subscriber side.
+			 */
+			if (publication->pubviaroot)
+				tables = filter_partitions(tables);
 		}
 
 		funcctx->user_fctx = (void *) tables;

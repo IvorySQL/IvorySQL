@@ -4,7 +4,7 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/rel.h
@@ -155,10 +155,11 @@ typedef struct RelationData
 	List	   *rd_statlist;	/* list of OIDs of extended stats */
 
 	/* data managed by RelationGetIndexAttrBitmap: */
-	Bitmapset  *rd_indexattr;	/* identifies columns used in indexes */
+	bool		rd_attrsvalid;	/* are bitmaps of attrs valid? */
 	Bitmapset  *rd_keyattr;		/* cols that can be ref'd by foreign keys */
 	Bitmapset  *rd_pkattr;		/* cols included in primary key */
 	Bitmapset  *rd_idattr;		/* included in replica identity index */
+	Bitmapset  *rd_hotblockingattr;	/* cols blocking HOT update */
 
 	PublicationActions *rd_pubactions;	/* publication actions */
 

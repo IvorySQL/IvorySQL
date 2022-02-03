@@ -3,7 +3,7 @@
  * worker_internal.h
  *	  Internal headers shared by logical replication workers.
  *
- * Portions Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/worker_internal.h
  *
@@ -17,6 +17,7 @@
 #include "access/xlogdefs.h"
 #include "catalog/pg_subscription.h"
 #include "datatype/timestamp.h"
+#include "storage/fileset.h"
 #include "storage/lock.h"
 #include "storage/spin.h"
 

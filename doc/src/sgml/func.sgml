@@ -7353,10 +7353,26 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
 <!-- end re_syntax.n man page -->
 
    <sect3 id="posix-vs-xquery">
-   <title>Differences from XQuery (<literal>LIKE_REGEX</literal>)</title>
+   <title>Differences from SQL Standard and XQuery</title>
 
    <indexterm zone="posix-vs-xquery">
-    <primary><literal>LIKE_REGEX</literal></primary>
+    <primary>LIKE_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>OCCURRENCES_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>POSITION_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>SUBSTRING_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>TRANSLATE_REGEX</primary>
    </indexterm>
 
    <indexterm zone="posix-vs-xquery">
@@ -7364,16 +7380,75 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
    </indexterm>
 
     <para>
-     Since SQL:2008, the SQL standard includes
-     a <literal>LIKE_REGEX</literal> operator that performs pattern
+     Since SQL:2008, the SQL standard includes regular expression operators
+     and functions that performs pattern
      matching according to the XQuery regular expression
-     standard.  <productname>PostgreSQL</productname> does not yet
-     implement this operator, but you can get very similar behavior using
-     the <function>regexp_match()</function> function, since XQuery
-     regular expressions are quite close to the ARE syntax described above.
+     standard:
+     <itemizedlist>
+      <listitem><para><literal>LIKE_REGEX</literal></para></listitem>
+      <listitem><para><literal>OCCURRENCES_REGEX</literal></para></listitem>
+      <listitem><para><literal>POSITION_REGEX</literal></para></listitem>
+      <listitem><para><literal>SUBSTRING_REGEX</literal></para></listitem>
+      <listitem><para><literal>TRANSLATE_REGEX</literal></para></listitem>
+     </itemizedlist>
+     <productname>PostgreSQL</productname> does not currently implement these
+     operators and functions.  You can get approximately equivalent
+     functionality in each case as shown in <xref
+     linkend="functions-regexp-sql-table"/>.  (Various optional clauses on
+     both sides have been omitted in this table.)
+    </para>
+
+    <table id="functions-regexp-sql-table">
+     <title>Regular Expression Functions Equivalencies</title>
+
+     <tgroup cols="2">
+      <thead>
+       <row>
+        <entry>SQL standard</entry>
+        <entry>PostgreSQL</entry>
+       </row>
+      </thead>
+
+      <tbody>
+       <row>
+        <entry><literal><replaceable>string</replaceable> LIKE_REGEX <replaceable>pattern</replaceable></literal></entry>
+        <entry><literal>regexp_like(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal> or <literal><replaceable>string</replaceable> ~ <replaceable>pattern</replaceable></literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>OCCURRENCES_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable></literal></entry>
+        <entry><literal>regexp_count(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>POSITION_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable></literal></entry>
+        <entry><literal>regexp_instr(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>SUBSTRING_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable></literal></entry>
+        <entry><literal>regexp_substr(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>TRANSLATE_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable> WITH <replaceable>replacement</replaceable></literal></entry>
+        <entry><literal>regexp_replace(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>, <replaceable>replacement</replaceable>)</literal></entry>
+       </row>
+      </tbody>
+     </tgroup>
+    </table>
+
+    <para>
+     Regular expression functions similar to those provided by PostgreSQL are
+     also available in a number of other SQL implementations, whereas the
+     SQL-standard functions are not as widely implemented.  Some of the
+     details of the regular expression syntax will likely differ in each
+     implementation.
     </para>
 
     <para>
+     The SQL-standard operators and functions use XQuery regular expressions,
+     which are quite close to the ARE syntax described above.
      Notable differences between the existing POSIX-based
      regular-expression feature and XQuery regular expressions include:
 
@@ -10976,7 +11051,7 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
        </para>
        <para>
         Computes the center point.
-        Available for <type>box</type>, <type>lseg</type>, <type>path</type>,
+        Available for <type>box</type>, <type>lseg</type>,
         <type>polygon</type>, <type>circle</type>.
        </para>
        <para>
@@ -11042,8 +11117,6 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         (<type>point</type>, <type>line</type>),
         (<type>lseg</type>, <type>box</type>),
         (<type>lseg</type>, <type>lseg</type>),
-        (<type>lseg</type>, <type>line</type>),
-        (<type>line</type>, <type>box</type>),
         (<type>line</type>, <type>lseg</type>).
        </para>
        <para>
@@ -11063,7 +11136,6 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         of <type>point</type> with another geometric type, and for
         these additional pairs of types:
         (<type>box</type>, <type>lseg</type>),
-        (<type>box</type>, <type>line</type>),
         (<type>lseg</type>, <type>line</type>),
         (<type>polygon</type>, <type>circle</type>)
         (and the commutator cases).
@@ -12920,8 +12992,10 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         <returnvalue>tsvector</returnvalue>
        </para>
        <para>
-        Converts an array of lexemes to a <type>tsvector</type>.
-        The given strings are used as-is without further processing.
+        Converts an array of text strings to a <type>tsvector</type>.
+        The given strings are used as lexemes as-is, without further
+        processing.  Array elements must not be empty strings
+        or <literal>NULL</literal>.
        </para>
        <para>
         <literal>array_to_tsvector('{fat,cat,rat}'::text[])</literal>
@@ -13104,6 +13178,9 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         Assigns the specified <parameter>weight</parameter> to elements
         of the <parameter>vector</parameter> that are listed
         in <parameter>lexemes</parameter>.
+        The strings in <parameter>lexemes</parameter> are taken as lexemes
+        as-is, without further processing.  Strings that do not match any
+        lexeme in <parameter>vector</parameter> are ignored.
        </para>
        <para>
         <literal>setweight('fat:2,4 cat:3 rat:5,6B'::tsvector, 'A', '{cat,rat}')</literal>
@@ -13265,6 +13342,8 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
        <para>
         Removes any occurrence of the given <parameter>lexeme</parameter>
         from the <parameter>vector</parameter>.
+        The <parameter>lexeme</parameter> string is treated as a lexeme as-is,
+        without further processing.
        </para>
        <para>
         <literal>ts_delete('fat:2,4 cat:3 rat:5A'::tsvector, 'fat')</literal>
@@ -13281,6 +13360,9 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         Removes any occurrences of the lexemes
         in <parameter>lexemes</parameter>
         from the <parameter>vector</parameter>.
+        The strings in <parameter>lexemes</parameter> are taken as lexemes
+        as-is, without further processing.  Strings that do not match any
+        lexeme in <parameter>vector</parameter> are ignored.
        </para>
        <para>
         <literal>ts_delete('fat:2,4 cat:3 rat:5A'::tsvector, ARRAY['fat','rat'])</literal>
@@ -17635,24 +17717,37 @@ SELECT setval('myseq', 42, false);    <lineannotation>Next <function>nextval</fu
   <caution>
    <para>
     To avoid blocking concurrent transactions that obtain numbers from
-    the same sequence, a <function>nextval</function> operation is never
-    rolled back; that is, once a value has been fetched it is considered
-    used and will not be returned again.  This is true even if the
-    surrounding transaction later aborts, or if the calling query ends
-    up not using the value.  For example an <command>INSERT</command> with
+    the same sequence, the value obtained by <function>nextval</function>
+    is not reclaimed for re-use if the calling transaction later aborts.
+    This means that transaction aborts or database crashes can result in
+    gaps in the sequence of assigned values.  That can happen without a
+    transaction abort, too.  For example an <command>INSERT</command> with
     an <literal>ON CONFLICT</literal> clause will compute the to-be-inserted
     tuple, including doing any required <function>nextval</function>
     calls, before detecting any conflict that would cause it to follow
-    the <literal>ON CONFLICT</literal> rule instead.  Such cases will leave
-    unused <quote>holes</quote> in the sequence of assigned values.
+    the <literal>ON CONFLICT</literal> rule instead.
     Thus, <productname>PostgreSQL</productname> sequence
     objects <emphasis>cannot be used to obtain <quote>gapless</quote>
     sequences</emphasis>.
    </para>
 
    <para>
-    Likewise, any sequence state changes made by <function>setval</function>
-    are not undone if the transaction rolls back.
+    Likewise, sequence state changes made by <function>setval</function>
+    are immediately visible to other transactions, and are not undone if
+    the calling transaction rolls back.
+   </para>
+
+   <para>
+    If the database cluster crashes before committing a transaction
+    containing a <function>nextval</function>
+    or <function>setval</function> call, the sequence state change might
+    not have made its way to persistent storage, so that it is uncertain
+    whether the sequence will have its original or updated state after the
+    cluster restarts.  This is harmless for usage of the sequence within
+    the database, since other effects of uncommitted transactions will not
+    be visible either.  However, if you wish to use a sequence value for
+    persistent outside-the-database purposes, make sure that the
+    <function>nextval</function> call has been committed before doing so.
    </para>
   </caution>
 
@@ -22351,10 +22446,12 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
         format, <function>pg_current_logfile</function> without an argument
         returns the path of the file having the first format found in the
         ordered list: <literal>stderr</literal>,
-        <literal>csvlog</literal>.  <literal>NULL</literal> is returned
-        if no log file has any of these formats.
+        <literal>csvlog</literal>, <literal>jsonlog</literal>.
+        <literal>NULL</literal> is returned if no log file has any of these
+        formats.
         To request information about a specific log file format, supply
-        either <literal>csvlog</literal> or <literal>stderr</literal> as the
+        either <literal>csvlog</literal>, <literal>jsonlog</literal> or
+        <literal>stderr</literal> as the
         value of the optional parameter. The result is <literal>NULL</literal>
         if the log format requested is not configured in
         <xref linkend="guc-log-destination"/>.
@@ -25326,7 +25423,9 @@ SELECT collation for ('foo' COLLATE "de_DE");
        </para>
        <para>
         Requests to log the memory contexts of the backend with the
-        specified process ID.  These memory contexts will be logged at
+        specified process ID.  This function can send the request to
+        backends and auxiliary processes except logger and statistics
+        collector.  These memory contexts will be logged at
         <literal>LOG</literal> message level. They will appear in
         the server log based on the log configuration set
         (See <xref linkend="runtime-config-logging"/> for more information),
@@ -26425,7 +26524,8 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
        </para>
        <para>
         Looks up a replication origin by name and returns the internal ID. If
-        no such replication origin is found an error is thrown.
+        no such replication origin is found, <literal>NULL</literal> is
+        returned.
        </para></entry>
       </row>
 
@@ -27405,6 +27505,79 @@ SELECT convert_from(pg_read_binary_file('file_in_utf8.txt'), 'UTF8');
        <para>
         This function is restricted to superusers by default, but other users
         can be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_logicalsnapdir</primary>
+        </indexterm>
+        <function>pg_ls_logicalsnapdir</function> ()
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_logical/snapshots</filename>
+        directory. Filenames beginning with a dot, directories, and other
+        special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_logicalmapdir</primary>
+        </indexterm>
+        <function>pg_ls_logicalmapdir</function> ()
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_logical/mappings</filename>
+        directory. Filenames beginning with a dot, directories, and other
+        special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_replslotdir</primary>
+        </indexterm>
+        <function>pg_ls_replslotdir</function> ( <parameter>slot_name</parameter> <type>text</type> )
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_replslot/slot_name</filename>
+        directory, where <parameter>slot_name</parameter> is the name of the
+        replication slot provided as input of the function. Filenames beginning
+        with a dot, directories, and other special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
        </para></entry>
       </row>
      </tbody>

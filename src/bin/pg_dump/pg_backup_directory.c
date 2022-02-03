@@ -17,7 +17,7 @@
  *	sync.
  *
  *
- *	Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ *	Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *	Portions Copyright (c) 1994, Regents of the University of California
  *	Portions Copyright (c) 2000, Philip Warner
  *
@@ -369,7 +369,8 @@ _EndData(ArchiveHandle *AH, TocEntry *te)
 	lclContext *ctx = (lclContext *) AH->formatData;
 
 	/* Close the file */
-	cfclose(ctx->dataFH);
+	if (cfclose(ctx->dataFH) != 0)
+		fatal("could not close data file: %m");
 
 	ctx->dataFH = NULL;
 }
@@ -680,7 +681,8 @@ _EndBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
 	int			len;
 
 	/* Close the BLOB data file itself */
-	cfclose(ctx->dataFH);
+	if (cfclose(ctx->dataFH) != 0)
+		fatal("could not close blob data file: %m");
 	ctx->dataFH = NULL;
 
 	/* register the blob in blobs.toc */
@@ -699,7 +701,8 @@ _EndBlobs(ArchiveHandle *AH, TocEntry *te)
 {
 	lclContext *ctx = (lclContext *) AH->formatData;
 
-	cfclose(ctx->blobsTocFH);
+	if (cfclose(ctx->blobsTocFH) != 0)
+		fatal("could not close blobs TOC file: %m");
 	ctx->blobsTocFH = NULL;
 }
 

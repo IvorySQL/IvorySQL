@@ -3,7 +3,7 @@
  * verify_heapam.c
  *	  Functions to check postgresql heap relations for corruption
  *
- * Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  *	  contrib/amcheck/verify_heapam.c
  *-------------------------------------------------------------------------
@@ -29,6 +29,9 @@ PG_FUNCTION_INFO_V1(verify_heapam);
 
 /* The number of columns in tuples returned by verify_heapam */
 #define HEAPCHECK_RELATION_COLS 4
+
+/* The largest valid toast va_rawsize */
+#define VARLENA_SIZE_LIMIT 0x3FFFFFFF
 
 /*
  * Despite the name, we use this for reporting problems with both XIDs and
@@ -303,9 +306,7 @@ verify_heapam(PG_FUNCTION_ARGS)
 	/*
 	 * Check that a relation's relkind and access method are both supported.
 	 */
-	if (ctx.rel->rd_rel->relkind != RELKIND_RELATION &&
-		ctx.rel->rd_rel->relkind != RELKIND_MATVIEW &&
-		ctx.rel->rd_rel->relkind != RELKIND_TOASTVALUE &&
+	if (!RELKIND_HAS_TABLE_AM(ctx.rel->rd_rel->relkind) &&
 		ctx.rel->rd_rel->relkind != RELKIND_SEQUENCE)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1413,6 +1414,49 @@ check_tuple_attribute(HeapCheckContext *ctx)
 	 * Must copy attr into toast_pointer for alignment considerations
 	 */
 	VARATT_EXTERNAL_GET_POINTER(toast_pointer, attr);
+
+	/* Toasted attributes too large to be untoasted should never be stored */
+	if (toast_pointer.va_rawsize > VARLENA_SIZE_LIMIT)
+		report_corruption(ctx,
+						  psprintf("toast value %u rawsize %d exceeds limit %d",
+								   toast_pointer.va_valueid,
+								   toast_pointer.va_rawsize,
+								   VARLENA_SIZE_LIMIT));
+
+	if (VARATT_IS_COMPRESSED(&toast_pointer))
+	{
+		ToastCompressionId cmid;
+		bool		valid = false;
+
+		/* Compression should never expand the attribute */
+		if (VARATT_EXTERNAL_GET_EXTSIZE(toast_pointer) > toast_pointer.va_rawsize - VARHDRSZ)
+			report_corruption(ctx,
+							  psprintf("toast value %u external size %u exceeds maximum expected for rawsize %d",
+									   toast_pointer.va_valueid,
+									   VARATT_EXTERNAL_GET_EXTSIZE(toast_pointer),
+									   toast_pointer.va_rawsize));
+
+		/* Compressed attributes should have a valid compression method */
+		cmid = TOAST_COMPRESS_METHOD(&toast_pointer);
+		switch (cmid)
+		{
+			/* List of all valid compression method IDs */
+			case TOAST_PGLZ_COMPRESSION_ID:
+			case TOAST_LZ4_COMPRESSION_ID:
+				valid = true;
+				break;
+
+			/* Recognized but invalid compression method ID */
+			case TOAST_INVALID_COMPRESSION_ID:
+				break;
+
+			/* Intentionally no default here */
+		}
+		if (!valid)
+			report_corruption(ctx,
+							  psprintf("toast value %u has invalid compression method id %d",
+									   toast_pointer.va_valueid, cmid));
+	}
 
 	/* The tuple header better claim to contain toasted values */
 	if (!(infomask & HEAP_HASEXTERNAL))

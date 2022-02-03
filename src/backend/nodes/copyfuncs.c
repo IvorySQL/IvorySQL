@@ -11,7 +11,7 @@
  * be handled easily in a simple depth-first traversal.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -519,6 +519,7 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	 */
 	COPY_SCALAR_FIELD(indexid);
 	COPY_NODE_FIELD(indexqual);
+	COPY_NODE_FIELD(recheckqual);
 	COPY_NODE_FIELD(indexorderby);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
@@ -971,7 +972,9 @@ _copyMemoize(const Memoize *from)
 	COPY_POINTER_FIELD(collations, sizeof(Oid) * from->numKeys);
 	COPY_NODE_FIELD(param_exprs);
 	COPY_SCALAR_FIELD(singlerow);
+	COPY_SCALAR_FIELD(binary_mode);
 	COPY_SCALAR_FIELD(est_entries);
+	COPY_BITMAPSET_FIELD(keyparamids);
 
 	return newnode;
 }
@@ -2362,7 +2365,8 @@ _copyRestrictInfo(const RestrictInfo *from)
 	COPY_SCALAR_FIELD(right_bucketsize);
 	COPY_SCALAR_FIELD(left_mcvfreq);
 	COPY_SCALAR_FIELD(right_mcvfreq);
-	COPY_SCALAR_FIELD(hasheqoperator);
+	COPY_SCALAR_FIELD(left_hasheqoperator);
+	COPY_SCALAR_FIELD(right_hasheqoperator);
 
 	return newnode;
 }
@@ -2741,16 +2745,19 @@ _copyA_Const(const A_Const *from)
 		switch (nodeTag(&from->val))
 		{
 			case T_Integer:
-				COPY_SCALAR_FIELD(val.ival.val);
+				COPY_SCALAR_FIELD(val.ival.ival);
 				break;
 			case T_Float:
-				COPY_STRING_FIELD(val.fval.val);
+				COPY_STRING_FIELD(val.fval.fval);
+				break;
+			case T_Boolean:
+				COPY_SCALAR_FIELD(val.boolval.boolval);
 				break;
 			case T_String:
-				COPY_STRING_FIELD(val.sval.val);
+				COPY_STRING_FIELD(val.sval.sval);
 				break;
 			case T_BitString:
-				COPY_STRING_FIELD(val.bsval.val);
+				COPY_STRING_FIELD(val.bsval.bsval);
 				break;
 			default:
 				elog(ERROR, "unrecognized node type: %d",
@@ -3080,6 +3087,7 @@ _copyConstraint(const Constraint *from)
 	COPY_SCALAR_FIELD(fk_matchtype);
 	COPY_SCALAR_FIELD(fk_upd_action);
 	COPY_SCALAR_FIELD(fk_del_action);
+	COPY_NODE_FIELD(fk_del_set_cols);
 	COPY_NODE_FIELD(old_conpfeqop);
 	COPY_SCALAR_FIELD(old_pktable_oid);
 	COPY_SCALAR_FIELD(skip_validation);
@@ -4932,7 +4940,7 @@ _copyInteger(const Integer *from)
 {
 	Integer	   *newnode = makeNode(Integer);
 
-	COPY_SCALAR_FIELD(val);
+	COPY_SCALAR_FIELD(ival);
 
 	return newnode;
 }
@@ -4942,7 +4950,17 @@ _copyFloat(const Float *from)
 {
 	Float	   *newnode = makeNode(Float);
 
-	COPY_STRING_FIELD(val);
+	COPY_STRING_FIELD(fval);
+
+	return newnode;
+}
+
+static Boolean *
+_copyBoolean(const Boolean *from)
+{
+	Boolean	   *newnode = makeNode(Boolean);
+
+	COPY_SCALAR_FIELD(boolval);
 
 	return newnode;
 }
@@ -4952,7 +4970,7 @@ _copyString(const String *from)
 {
 	String	   *newnode = makeNode(String);
 
-	COPY_STRING_FIELD(val);
+	COPY_STRING_FIELD(sval);
 
 	return newnode;
 }
@@ -4962,7 +4980,7 @@ _copyBitString(const BitString *from)
 {
 	BitString   *newnode = makeNode(BitString);
 
-	COPY_STRING_FIELD(val);
+	COPY_STRING_FIELD(bsval);
 
 	return newnode;
 }
@@ -5353,6 +5371,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_Float:
 			retval = _copyFloat(from);
+			break;
+		case T_Boolean:
+			retval = _copyBoolean(from);
 			break;
 		case T_String:
 			retval = _copyString(from);

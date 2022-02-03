@@ -3,7 +3,7 @@
  * nbtdedup.c
  *	  Deduplicate or bottom-up delete items in Postgres btrees.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -348,6 +348,8 @@ _bt_bottomupdel_pass(Relation rel, Buffer buf, Relation heapRel,
 	 * concerning ourselves with avoiding work during the tableam call.  Our
 	 * role in costing the bottom-up deletion process is strictly advisory.
 	 */
+	delstate.irel = rel;
+	delstate.iblknum = BufferGetBlockNumber(buf);
 	delstate.bottomup = true;
 	delstate.bottomupfreespace = Max(BLCKSZ / 16, newitemsz);
 	delstate.ndeltids = 0;

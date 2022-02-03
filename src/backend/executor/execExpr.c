@@ -19,7 +19,7 @@
  *	and "Expression Evaluation" sections.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1465,7 +1465,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				/* find out the number of columns in the composite type */
 				tupDesc = lookup_rowtype_tupdesc(fstore->resulttype, -1);
 				ncolumns = tupDesc->natts;
-				DecrTupleDescRefCount(tupDesc);
+				ReleaseTupleDesc(tupDesc);
 
 				/* create workspace for column values */
 				values = (Datum *) palloc(sizeof(Datum) * ncolumns);
@@ -3137,6 +3137,8 @@ ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 					   ExprState *state, Datum *resv, bool *resnull)
 {
 	DomainConstraintRef *constraint_ref;
+	Datum	   *domainval = NULL;
+	bool	   *domainnull = NULL;
 	ListCell   *l;
 
 	scratch->d.domaincheck.resulttype = ctest->resulttype;
@@ -3183,8 +3185,6 @@ ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 	foreach(l, constraint_ref->constraints)
 	{
 		DomainConstraintState *con = (DomainConstraintState *) lfirst(l);
-		Datum	   *domainval = NULL;
-		bool	   *domainnull = NULL;
 		Datum	   *save_innermost_domainval;
 		bool	   *save_innermost_domainnull;
 

@@ -50,7 +50,7 @@
  * there is a window (caused by pgstat delay) on which a worker may choose a
  * table that was already vacuumed; this is a bug in the current design.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -127,7 +127,7 @@ int			autovacuum_multixact_freeze_max_age;
 double		autovacuum_vac_cost_delay;
 int			autovacuum_vac_cost_limit;
 
-int			Log_autovacuum_min_duration = -1;
+int			Log_autovacuum_min_duration = 600000;
 
 /* how long to keep pgstat data in the launcher, in milliseconds */
 #define STATS_READ_DELAY 1000
@@ -754,7 +754,8 @@ AutoVacLauncherMain(int argc, char *argv[])
 					dlist_push_head(&AutoVacuumShmem->av_freeWorkers,
 									&worker->wi_links);
 					AutoVacuumShmem->av_startingWorker = NULL;
-					elog(WARNING, "worker took too long to start; canceled");
+					ereport(WARNING,
+							errmsg("autovacuum worker took too long to start; canceled"));
 				}
 			}
 			else
@@ -966,10 +967,10 @@ rebuild_database_list(Oid newdb)
 	autovac_refresh_stats();
 
 	newcxt = AllocSetContextCreate(AutovacMemCxt,
-								   "AV dblist",
+								   "Autovacuum database list",
 								   ALLOCSET_DEFAULT_SIZES);
 	tmpcxt = AllocSetContextCreate(newcxt,
-								   "tmp AV dblist",
+								   "Autovacuum database list (tmp)",
 								   ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(tmpcxt);
 
@@ -992,7 +993,7 @@ rebuild_database_list(Oid newdb)
 	hctl.keysize = sizeof(Oid);
 	hctl.entrysize = sizeof(avl_dbase);
 	hctl.hcxt = tmpcxt;
-	dbhash = hash_create("db hash", 20, &hctl,	/* magic number here FIXME */
+	dbhash = hash_create("autovacuum db hash", 20, &hctl,	/* magic number here FIXME */
 						 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
 	/* start by inserting the new database */
@@ -1179,7 +1180,7 @@ do_start_worker(void)
 	 * allocated for the database list.
 	 */
 	tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
-								   "Start worker tmp cxt",
+								   "Autovacuum start worker (tmp)",
 								   ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(tmpcxt);
 
@@ -1981,7 +1982,7 @@ do_autovacuum(void)
 	 * relations to vacuum/analyze across transactions.
 	 */
 	AutovacMemCxt = AllocSetContextCreate(TopMemoryContext,
-										  "AV worker",
+										  "Autovacuum worker",
 										  ALLOCSET_DEFAULT_SIZES);
 	MemoryContextSwitchTo(AutovacMemCxt);
 

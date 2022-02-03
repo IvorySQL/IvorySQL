@@ -3,7 +3,7 @@
  * xlogreader.c
  *		Generic XLog reading facility
  *
- * Portions Copyright (c) 2013-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/backend/access/transam/xlogreader.c
@@ -467,7 +467,7 @@ restart:
 			 */
 			if (pageHeader->xlp_info & XLP_FIRST_IS_OVERWRITE_CONTRECORD)
 			{
-				state->overwrittenRecPtr = state->currRecPtr;
+				state->overwrittenRecPtr = RecPtr;
 				ResetDecoder(state);
 				RecPtr = targetPagePtr;
 				goto restart;

@@ -60,6 +60,7 @@ OBJS = \
 	typecmds.o \
 	user.o \
 	vacuum.o \
+	vacuumparallel.o \
 	variable.o \
 	variablecmd.o \
 	view.o

@@ -6,7 +6,7 @@
  *	   logical replication slots via SQL.
  *
  *
- * Copyright (c) 2012-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logicalfuncs.c
@@ -208,13 +208,12 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 	rsinfo->setDesc = p->tupdesc;
 
 	/*
-	 * Compute the current end-of-wal and maintain ThisTimeLineID.
-	 * RecoveryInProgress() will update ThisTimeLineID on promotion.
+	 * Compute the current end-of-wal.
 	 */
 	if (!RecoveryInProgress())
-		end_of_wal = GetFlushRecPtr();
+		end_of_wal = GetFlushRecPtr(NULL);
 	else
-		end_of_wal = GetXLogReplayRecPtr(&ThisTimeLineID);
+		end_of_wal = GetXLogReplayRecPtr(NULL);
 
 	ReplicationSlotAcquire(NameStr(*name), true);
 
@@ -277,7 +276,7 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 
 			record = XLogReadRecord(ctx->reader, &errm);
 			if (errm)
-				elog(ERROR, "%s", errm);
+				elog(ERROR, "could not find record for logical decoding: %s", errm);
 
 			/*
 			 * The {begin_txn,change,commit_txn}_wrapper callbacks above will

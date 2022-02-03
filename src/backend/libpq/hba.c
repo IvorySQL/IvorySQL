@@ -5,7 +5,7 @@
  *	  wherein you authenticate a user by seeing what IP address the system
  *	  says he comes from and choosing authentication method based on it).
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -500,7 +500,7 @@ tokenize_file(const char *filename, FILE *file, List **tok_lines, int elevel)
 		/* Collect the next input line, handling backslash continuations */
 		resetStringInfo(&buf);
 
-		while (pg_get_line_append(file, &buf))
+		while (pg_get_line_append(file, &buf, NULL))
 		{
 			/* Strip trailing newline, including \r in case we're on Windows */
 			buf.len = pg_strip_crlf(buf.data);

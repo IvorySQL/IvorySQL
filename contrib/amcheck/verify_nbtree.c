@@ -14,7 +14,7 @@
  * that every visible heap tuple has a matching index tuple.
  *
  *
- * Copyright (c) 2017-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/amcheck/verify_nbtree.c
@@ -32,6 +32,7 @@
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "commands/tablecmds.h"
+#include "common/pg_prng.h"
 #include "lib/bloomfilter.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
@@ -466,8 +467,8 @@ bt_check_every_level(Relation rel, Relation heaprel, bool heapkeyspace,
 		total_pages = RelationGetNumberOfBlocks(rel);
 		total_elems = Max(total_pages * (MaxTIDsPerBTreePage / 3),
 						  (int64) state->rel->rd_rel->reltuples);
-		/* Random seed relies on backend srandom() call to avoid repetition */
-		seed = random();
+		/* Generate a random seed to avoid repetition */
+		seed = pg_prng_uint64(&pg_global_prng_state);
 		/* Create Bloom filter to fingerprint index */
 		state->filter = bloom_create(total_elems, maintenance_work_mem, seed);
 		state->heaptuplespresent = 0;
@@ -1511,7 +1512,7 @@ bt_target_page_check(BtreeCheckState *state)
 	/*
 	 * Special case bt_child_highkey_check() call
 	 *
-	 * We don't pass an real downlink, but we've to finish the level
+	 * We don't pass a real downlink, but we've to finish the level
 	 * processing. If condition is satisfied, we've already processed all the
 	 * downlinks from the target level.  But there still might be pages to the
 	 * right of the child page pointer to by our rightmost downlink.  And they

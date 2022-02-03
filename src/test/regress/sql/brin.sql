@@ -509,3 +509,20 @@ SELECT * FROM brintest_3 WHERE b < '0';
 
 DROP TABLE brintest_3;
 RESET enable_seqscan;
+
+-- Test handling of index predicates - updating attributes in predicates
+-- should block HOT even for BRIN. We update a row that was not indexed
+-- due to the index predicate, and becomes indexable.
+CREATE TABLE brin_hot_2 (a int, b int);
+INSERT INTO brin_hot_2 VALUES (1, 100);
+CREATE INDEX ON brin_hot_2 USING brin (b) WHERE a = 2;
+
+UPDATE brin_hot_2 SET a = 2;
+
+EXPLAIN (COSTS OFF) SELECT * FROM brin_hot_2 WHERE a = 2 AND b = 100;
+SELECT COUNT(*) FROM brin_hot_2 WHERE a = 2 AND b = 100;
+
+SET enable_seqscan = off;
+
+EXPLAIN (COSTS OFF) SELECT * FROM brin_hot_2 WHERE a = 2 AND b = 100;
+SELECT COUNT(*) FROM brin_hot_2 WHERE a = 2 AND b = 100;

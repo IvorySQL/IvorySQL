@@ -3,7 +3,7 @@
  * file_fdw.c
  *		  foreign-data wrapper for server-side flat files (or programs).
  *
- * Copyright (c) 2010-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/file_fdw/file_fdw.c
@@ -1188,7 +1188,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 				 * Found a suitable tuple, so save it, replacing one old tuple
 				 * at random
 				 */
-				int			k = (int) (targrows * sampler_random_fract(rstate.randstate));
+				int			k = (int) (targrows * sampler_random_fract(&rstate.randstate));
 
 				Assert(k >= 0 && k < targrows);
 				heap_freetuple(rows[k]);

@@ -3,7 +3,7 @@
  * outfuncs.c
  *	  Output functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -580,6 +580,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 
 	WRITE_OID_FIELD(indexid);
 	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(recheckqual);
 	WRITE_NODE_FIELD(indexorderby);
 	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
@@ -866,7 +867,9 @@ _outMemoize(StringInfo str, const Memoize *node)
 	WRITE_OID_ARRAY(collations, node->numKeys);
 	WRITE_NODE_FIELD(param_exprs);
 	WRITE_BOOL_FIELD(singlerow);
+	WRITE_BOOL_FIELD(binary_mode);
 	WRITE_UINT_FIELD(est_entries);
+	WRITE_BITMAPSET_FIELD(keyparamids);
 }
 
 static void
@@ -1966,6 +1969,7 @@ _outMemoizePath(StringInfo str, const MemoizePath *node)
 	WRITE_NODE_FIELD(hash_operators);
 	WRITE_NODE_FIELD(param_exprs);
 	WRITE_BOOL_FIELD(singlerow);
+	WRITE_BOOL_FIELD(binary_mode);
 	WRITE_FLOAT_FIELD(calls, "%.0f");
 	WRITE_UINT_FIELD(est_entries);
 }
@@ -2565,7 +2569,8 @@ _outRestrictInfo(StringInfo str, const RestrictInfo *node)
 	WRITE_NODE_FIELD(right_em);
 	WRITE_BOOL_FIELD(outer_is_left);
 	WRITE_OID_FIELD(hashjoinoperator);
-	WRITE_OID_FIELD(hasheqoperator);
+	WRITE_OID_FIELD(left_hasheqoperator);
+	WRITE_OID_FIELD(right_hasheqoperator);
 }
 
 static void
@@ -3418,7 +3423,7 @@ _outA_Expr(StringInfo str, const A_Expr *node)
 static void
 _outInteger(StringInfo str, const Integer *node)
 {
-	appendStringInfo(str, "%d", node->val);
+	appendStringInfo(str, "%d", node->ival);
 }
 
 static void
@@ -3428,7 +3433,13 @@ _outFloat(StringInfo str, const Float *node)
 	 * We assume the value is a valid numeric literal and so does not
 	 * need quoting.
 	 */
-	appendStringInfoString(str, node->val);
+	appendStringInfoString(str, node->fval);
+}
+
+static void
+_outBoolean(StringInfo str, const Boolean *node)
+{
+	appendStringInfoString(str, node->boolval ? "true" : "false");
 }
 
 static void
@@ -3439,8 +3450,8 @@ _outString(StringInfo str, const String *node)
 	 * but we don't want it to do anything with an empty string.
 	 */
 	appendStringInfoChar(str, '"');
-	if (node->val[0] != '\0')
-		outToken(str, node->val);
+	if (node->sval[0] != '\0')
+		outToken(str, node->sval);
 	appendStringInfoChar(str, '"');
 }
 
@@ -3448,7 +3459,7 @@ static void
 _outBitString(StringInfo str, const BitString *node)
 {
 	/* internal representation already has leading 'b' */
-	appendStringInfoString(str, node->val);
+	appendStringInfoString(str, node->bsval);
 }
 
 static void
@@ -3733,6 +3744,7 @@ _outConstraint(StringInfo str, const Constraint *node)
 			WRITE_CHAR_FIELD(fk_matchtype);
 			WRITE_CHAR_FIELD(fk_upd_action);
 			WRITE_CHAR_FIELD(fk_del_action);
+			WRITE_NODE_FIELD(fk_del_set_cols);
 			WRITE_NODE_FIELD(old_conpfeqop);
 			WRITE_OID_FIELD(old_pktable_oid);
 			WRITE_BOOL_FIELD(skip_validation);
@@ -3852,6 +3864,8 @@ outNode(StringInfo str, const void *obj)
 		_outInteger(str, (Integer *) obj);
 	else if (IsA(obj, Float))
 		_outFloat(str, (Float *) obj);
+	else if (IsA(obj, Boolean))
+		_outBoolean(str, (Boolean *) obj);
 	else if (IsA(obj, String))
 		_outString(str, (String *) obj);
 	else if (IsA(obj, BitString))

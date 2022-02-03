@@ -3,7 +3,7 @@
  * auto_explain.c
  *
  *
- * Copyright (c) 2008-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/auto_explain/auto_explain.c
@@ -16,6 +16,7 @@
 
 #include "access/parallel.h"
 #include "commands/explain.h"
+#include "common/pg_prng.h"
 #include "executor/instrument.h"
 #include "jit/jit.h"
 #include "utils/guc.h"
@@ -275,8 +276,7 @@ explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	if (nesting_level == 0)
 	{
 		if (auto_explain_log_min_duration >= 0 && !IsParallelWorker())
-			current_query_sampled = (random() < auto_explain_sample_rate *
-									 ((double) MAX_RANDOM_VALUE + 1));
+			current_query_sampled = (pg_prng_double(&pg_global_prng_state) < auto_explain_sample_rate);
 		else
 			current_query_sampled = false;
 	}

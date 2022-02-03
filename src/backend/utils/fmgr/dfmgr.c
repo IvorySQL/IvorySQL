@@ -3,7 +3,7 @@
  * dfmgr.c
  *	  Dynamic function manager code.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -328,6 +328,21 @@ incompatible_module_error(const char *libname,
 						libname),
 				 errdetail("Server is version %d, library is version %s.",
 						   magic_data.version / 100, library_version)));
+	}
+
+	/*
+	 * Similarly, if the ABI extra field doesn't match, error out.  Other
+	 * fields below might also mismatch, but that isn't useful information if
+	 * you're using the wrong product altogether.
+	 */
+	if (strcmp(module_magic_data->abi_extra, magic_data.abi_extra) != 0)
+	{
+		ereport(ERROR,
+				(errmsg("incompatible library \"%s\": ABI mismatch",
+						libname),
+				 errdetail("Server has ABI \"%s\", library has \"%s\".",
+						   magic_data.abi_extra,
+						   module_magic_data->abi_extra)));
 	}
 
 	/*

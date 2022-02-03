@@ -2,7 +2,7 @@
  * logical.c
  *	   PostgreSQL logical decoding coordination
  *
- * Copyright (c) 2012-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/logical.c
@@ -202,7 +202,8 @@ StartupDecodingContext(List *output_plugin_options,
 	if (!ctx->reader)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
+				 errmsg("out of memory"),
+				 errdetail("Failed while allocating a WAL reading processor.")));
 
 	ctx->reorder = ReorderBufferAllocate();
 	ctx->snapshot_builder =
@@ -605,9 +606,9 @@ DecodingContextFindStartpoint(LogicalDecodingContext *ctx)
 		/* the read_page callback waits for new WAL */
 		record = XLogReadRecord(ctx->reader, &err);
 		if (err)
-			elog(ERROR, "%s", err);
+			elog(ERROR, "could not find logical decoding starting point: %s", err);
 		if (!record)
-			elog(ERROR, "no record found"); /* shouldn't happen */
+			elog(ERROR, "could not find logical decoding starting point");
 
 		LogicalDecodingProcessRecord(ctx, ctx->reader);
 

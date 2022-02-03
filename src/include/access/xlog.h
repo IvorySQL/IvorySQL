@@ -3,7 +3,7 @@
  *
  * PostgreSQL write-ahead log manager
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlog.h
@@ -28,8 +28,6 @@
 #define SYNC_METHOD_FSYNC_WRITETHROUGH	3
 #define SYNC_METHOD_OPEN_DSYNC	4	/* for O_DSYNC */
 extern int	sync_method;
-
-extern PGDLLIMPORT TimeLineID ThisTimeLineID;	/* current TLI */
 
 /*
  * Recovery target type.
@@ -262,8 +260,8 @@ extern XLogRecPtr XLogInsertRecord(struct XLogRecData *rdata,
 extern void XLogFlush(XLogRecPtr RecPtr);
 extern bool XLogBackgroundFlush(void);
 extern bool XLogNeedsFlush(XLogRecPtr RecPtr);
-extern int	XLogFileInit(XLogSegNo segno);
-extern int	XLogFileOpen(XLogSegNo segno);
+extern int	XLogFileInit(XLogSegNo segno, TimeLineID tli);
+extern int	XLogFileOpen(XLogSegNo segno, TimeLineID tli);
 
 extern void CheckXLogRemoved(XLogSegNo segno, TimeLineID tli);
 extern XLogSegNo XLogGetLastRemovedSegno(void);
@@ -274,7 +272,7 @@ extern void xlog_redo(XLogReaderState *record);
 extern void xlog_desc(StringInfo buf, XLogReaderState *record);
 extern const char *xlog_identify(uint8 info);
 
-extern void issue_xlog_fsync(int fd, XLogSegNo segno);
+extern void issue_xlog_fsync(int fd, XLogSegNo segno, TimeLineID tli);
 
 extern bool RecoveryInProgress(void);
 extern RecoveryState GetRecoveryState(void);
@@ -301,7 +299,6 @@ extern void BootStrapXLOG(void);
 extern void LocalProcessControlFile(bool reset);
 extern void StartupXLOG(void);
 extern void ShutdownXLOG(int code, Datum arg);
-extern void InitXLOGAccess(void);
 extern void CreateCheckPoint(int flags);
 extern bool CreateRestartPoint(int flags);
 extern WALAvailability GetWALAvailability(XLogRecPtr targetLSN);
@@ -312,7 +309,8 @@ extern void UpdateFullPageWrites(void);
 extern void GetFullPageWriteInfo(XLogRecPtr *RedoRecPtr_p, bool *doPageWrites_p);
 extern XLogRecPtr GetRedoRecPtr(void);
 extern XLogRecPtr GetInsertRecPtr(void);
-extern XLogRecPtr GetFlushRecPtr(void);
+extern XLogRecPtr GetFlushRecPtr(TimeLineID *insertTLI);
+extern TimeLineID GetWALInsertionTimeLine(void);
 extern XLogRecPtr GetLastImportantRecPtr(void);
 extern void RemovePromoteSignalFiles(void);
 

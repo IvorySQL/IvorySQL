@@ -3,7 +3,7 @@
  * parse_expr.c
  *	  handle expressions in parser
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -628,7 +628,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 							A_Const	   *n = makeNode(A_Const);
 
 							n->val.sval.type = T_String;
-							n->val.sval.val = strVal(field1);
+							n->val.sval.sval = strVal(field1);
 							n->location = cref->location;
 
 							seq_func = makeFuncCall(list_make2(makeString("pg_catalog"), makeString(strVal(field2))),
@@ -699,7 +699,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 							A_Const	   *n = makeNode(A_Const);
 
 							n->val.sval.type = T_String;
-							n->val.sval.val = psprintf("%s.%s", strVal(field1), strVal(field2));
+							n->val.sval.sval = psprintf("%s.%s", strVal(field1), strVal(field2));
 							n->location = cref->location;
 
 							seq_func = makeFuncCall(list_make2(makeString("pg_catalog"), makeString(strVal(field3))),
@@ -783,7 +783,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 							A_Const	   *n = makeNode(A_Const);
 
 							n->val.sval.type = T_String;
-							n->val.sval.val = psprintf("%s.%s.%s", strVal(field1), strVal(field2), strVal(field3));
+							n->val.sval.sval = psprintf("%s.%s.%s", strVal(field1), strVal(field2), strVal(field3));
 							n->location = cref->location;
 
 							seq_func = makeFuncCall(list_make2(makeString("pg_catalog"), makeString(strVal(field4))),

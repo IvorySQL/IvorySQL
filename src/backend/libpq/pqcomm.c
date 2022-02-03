@@ -17,7 +17,7 @@
  * the backend's "backend/libpq" is quite separate from "interfaces/libpq".
  * All that remains is similarities of names to trap the unwary...
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/libpq/pqcomm.c
@@ -277,15 +277,30 @@ socket_close(int code, Datum arg)
 		secure_close(MyProcPort);
 
 		/*
-		 * Formerly we did an explicit close() here, but it seems better to
-		 * leave the socket open until the process dies.  This allows clients
-		 * to perform a "synchronous close" if they care --- wait till the
-		 * transport layer reports connection closure, and you can be sure the
-		 * backend has exited.
+		 * On most platforms, we leave the socket open until the process dies.
+		 * This allows clients to perform a "synchronous close" if they care
+		 * --- wait till the transport layer reports connection closure, and
+		 * you can be sure the backend has exited.  Saves a kernel call, too.
 		 *
-		 * We do set sock to PGINVALID_SOCKET to prevent any further I/O,
-		 * though.
+		 * However, that does not work on Windows: if the kernel closes the
+		 * socket it will invoke an "abortive shutdown" that discards any data
+		 * not yet sent to the client.  (This is a flat-out violation of the
+		 * TCP RFCs, but count on Microsoft not to care about that.)  To get
+		 * the spec-compliant "graceful shutdown" behavior, we must invoke
+		 * closesocket() explicitly.  When using OpenSSL, it seems that clean
+		 * shutdown also requires an explicit shutdown() call.
+		 *
+		 * This code runs late enough during process shutdown that we should
+		 * have finished all externally-visible shutdown activities, so that
+		 * in principle it's good enough to act as a synchronous close on
+		 * Windows too.  But it's a lot more fragile than the other way.
 		 */
+#ifdef WIN32
+		shutdown(MyProcPort->sock, SD_SEND);
+		closesocket(MyProcPort->sock);
+#endif
+
+		/* In any case, set sock to PGINVALID_SOCKET to prevent further I/O */
 		MyProcPort->sock = PGINVALID_SOCKET;
 	}
 }
@@ -1141,6 +1156,18 @@ pq_discardbytes(size_t len)
 	return 0;
 }
 
+/* --------------------------------
+ *		pq_buffer_has_data		- is any buffered data available to read?
+ *
+ * This will *not* attempt to read more data.
+ * --------------------------------
+ */
+bool
+pq_buffer_has_data(void)
+{
+	return (PqRecvPointer < PqRecvLength);
+}
+
 
 /* --------------------------------
  *		pq_startmsgread - begin reading a message from the client.
@@ -1620,7 +1647,7 @@ pq_getkeepalivesidle(Port *port)
 	if (port->default_keepalives_idle == 0)
 	{
 #ifndef WIN32
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_idle);
+		socklen_t	size = sizeof(port->default_keepalives_idle);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, PG_TCP_KEEPALIVE_IDLE,
 					   (char *) &port->default_keepalives_idle,
@@ -1705,7 +1732,7 @@ pq_getkeepalivesinterval(Port *port)
 	if (port->default_keepalives_interval == 0)
 	{
 #ifndef WIN32
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_interval);
+		socklen_t	size = sizeof(port->default_keepalives_interval);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPINTVL,
 					   (char *) &port->default_keepalives_interval,
@@ -1788,7 +1815,7 @@ pq_getkeepalivescount(Port *port)
 
 	if (port->default_keepalives_count == 0)
 	{
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_count);
+		socklen_t	size = sizeof(port->default_keepalives_count);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPCNT,
 					   (char *) &port->default_keepalives_count,
@@ -1863,7 +1890,7 @@ pq_gettcpusertimeout(Port *port)
 
 	if (port->default_tcp_user_timeout == 0)
 	{
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_tcp_user_timeout);
+		socklen_t	size = sizeof(port->default_tcp_user_timeout);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_USER_TIMEOUT,
 					   (char *) &port->default_tcp_user_timeout,

@@ -6,7 +6,7 @@
  * gram.y
  *	  POSTGRESQL BISON rules/actions
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -144,6 +144,19 @@ typedef struct GroupClause
 	List   *list;
 } GroupClause;
 
+/* Private structs for the result of key_actions and key_action productions */
+typedef struct KeyAction
+{
+	char action;
+	List *cols;
+} KeyAction;
+
+typedef struct KeyActions
+{
+	KeyAction *updateAction;
+	KeyAction *deleteAction;
+} KeyActions;
+
 /* ConstraintAttributeSpec yields an integer bitmask of these flags: */
 #define CAS_NOT_DEFERRABLE			0x01
 #define CAS_DEFERRABLE				0x02
@@ -167,10 +180,10 @@ static Node *makeStringConst(char *str, int location);
 static Node *makeStringConstCast(char *str, int location, TypeName *typename);
 static Node *makeIntConst(int val, int location);
 static Node *makeFloatConst(char *str, int location);
+static Node *makeBoolAConst(bool state, int location);
 static Node *makeBitStringConst(char *str, int location);
 static Node *makeNullAConst(int location);
 static Node *makeAConst(Node *v, int location);
-static Node *makeBoolAConst(bool state, int location);
 static RoleSpec *makeRoleSpec(RoleSpecType type, int location);
 static void check_qualified_name(List *names, core_yyscan_t yyscanner);
 static List *check_func_name(List *names, core_yyscan_t yyscanner);
@@ -270,6 +283,8 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 	struct SelectLimit	*selectlimit;
 	SetQuantifier	 setquantifier;
 	struct GroupClause  *groupclause;
+	struct KeyActions	*keyactions;
+	struct KeyAction	*keyaction;
 }
 
 %type <node>	stmt toplevel_stmt schema_stmt routine_body_stmt
@@ -587,7 +602,9 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 %type <str>		column_compression opt_column_compression
 %type <list>	ColQualList
 %type <node>	ColConstraint ColConstraintElem ConstraintAttr
-%type <ival>	key_actions key_delete key_match key_update key_action
+%type <ival>	key_match
+%type <keyaction> key_delete key_update key_action
+%type <keyactions> key_actions
 %type <ival>	ConstraintAttributeSpec ConstraintAttributeElem
 %type <str>		ExistingIndex
 
@@ -1159,7 +1176,7 @@ AlterOptRoleElem:
 				}
 			| INHERIT
 				{
-					$$ = makeDefElem("inherit", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("inherit", (Node *)makeBoolean(true), @1);
 				}
 			| CONNECTION LIMIT SignedIconst
 				{
@@ -1182,36 +1199,36 @@ AlterOptRoleElem:
 					 * size of the main parser.
 					 */
 					if (strcmp($1, "superuser") == 0)
-						$$ = makeDefElem("superuser", (Node *)makeInteger(true), @1);
+						$$ = makeDefElem("superuser", (Node *)makeBoolean(true), @1);
 					else if (strcmp($1, "nosuperuser") == 0)
-						$$ = makeDefElem("superuser", (Node *)makeInteger(false), @1);
+						$$ = makeDefElem("superuser", (Node *)makeBoolean(false), @1);
 					else if (strcmp($1, "createrole") == 0)
-						$$ = makeDefElem("createrole", (Node *)makeInteger(true), @1);
+						$$ = makeDefElem("createrole", (Node *)makeBoolean(true), @1);
 					else if (strcmp($1, "nocreaterole") == 0)
-						$$ = makeDefElem("createrole", (Node *)makeInteger(false), @1);
+						$$ = makeDefElem("createrole", (Node *)makeBoolean(false), @1);
 					else if (strcmp($1, "replication") == 0)
-						$$ = makeDefElem("isreplication", (Node *)makeInteger(true), @1);
+						$$ = makeDefElem("isreplication", (Node *)makeBoolean(true), @1);
 					else if (strcmp($1, "noreplication") == 0)
-						$$ = makeDefElem("isreplication", (Node *)makeInteger(false), @1);
+						$$ = makeDefElem("isreplication", (Node *)makeBoolean(false), @1);
 					else if (strcmp($1, "createdb") == 0)
-						$$ = makeDefElem("createdb", (Node *)makeInteger(true), @1);
+						$$ = makeDefElem("createdb", (Node *)makeBoolean(true), @1);
 					else if (strcmp($1, "nocreatedb") == 0)
-						$$ = makeDefElem("createdb", (Node *)makeInteger(false), @1);
+						$$ = makeDefElem("createdb", (Node *)makeBoolean(false), @1);
 					else if (strcmp($1, "login") == 0)
-						$$ = makeDefElem("canlogin", (Node *)makeInteger(true), @1);
+						$$ = makeDefElem("canlogin", (Node *)makeBoolean(true), @1);
 					else if (strcmp($1, "nologin") == 0)
-						$$ = makeDefElem("canlogin", (Node *)makeInteger(false), @1);
+						$$ = makeDefElem("canlogin", (Node *)makeBoolean(false), @1);
 					else if (strcmp($1, "bypassrls") == 0)
-						$$ = makeDefElem("bypassrls", (Node *)makeInteger(true), @1);
+						$$ = makeDefElem("bypassrls", (Node *)makeBoolean(true), @1);
 					else if (strcmp($1, "nobypassrls") == 0)
-						$$ = makeDefElem("bypassrls", (Node *)makeInteger(false), @1);
+						$$ = makeDefElem("bypassrls", (Node *)makeBoolean(false), @1);
 					else if (strcmp($1, "noinherit") == 0)
 					{
 						/*
 						 * Note that INHERIT is a keyword, so it's handled by main parser, but
 						 * NOINHERIT is handled here.
 						 */
-						$$ = makeDefElem("inherit", (Node *)makeInteger(false), @1);
+						$$ = makeDefElem("inherit", (Node *)makeBoolean(false), @1);
 					}
 					else
 						ereport(ERROR,
@@ -1745,7 +1762,7 @@ zone_value:
 					if ($3 != NIL)
 					{
 						A_Const *n = (A_Const *) linitial($3);
-						if ((n->val.ival.val & ~(INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE))) != 0)
+						if ((n->val.ival.ival & ~(INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE))) != 0)
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("time zone interval must be HOUR or HOUR TO MINUTE"),
@@ -3298,7 +3315,7 @@ copy_opt_item:
 				}
 			| FREEZE
 				{
-					$$ = makeDefElem("freeze", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("freeze", (Node *)makeBoolean(true), @1);
 				}
 			| DELIMITER opt_as Sconst
 				{
@@ -3314,7 +3331,7 @@ copy_opt_item:
 				}
 			| HEADER_P
 				{
-					$$ = makeDefElem("header", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("header", (Node *)makeBoolean(true), @1);
 				}
 			| QUOTE opt_as Sconst
 				{
@@ -3830,8 +3847,9 @@ ColConstraintElem:
 					n->fk_attrs = NIL;
 					n->pk_attrs = $3;
 					n->fk_matchtype = $4;
-					n->fk_upd_action = (char) ($5 >> 8);
-					n->fk_del_action = (char) ($5 & 0xFF);
+					n->fk_upd_action = ($5)->updateAction->action;
+					n->fk_del_action = ($5)->deleteAction->action;
+					n->fk_del_set_cols = ($5)->deleteAction->cols;
 					n->skip_validation = false;
 					n->initially_valid = true;
 					$$ = (Node *)n;
@@ -4041,8 +4059,9 @@ ConstraintElem:
 					n->fk_attrs = $4;
 					n->pk_attrs = $8;
 					n->fk_matchtype = $9;
-					n->fk_upd_action = (char) ($10 >> 8);
-					n->fk_del_action = (char) ($10 & 0xFF);
+					n->fk_upd_action = ($10)->updateAction->action;
+					n->fk_del_action = ($10)->deleteAction->action;
+					n->fk_del_set_cols = ($10)->deleteAction->cols;
 					processCASbits($11, @11, "FOREIGN KEY",
 								   &n->deferrable, &n->initdeferred,
 								   &n->skip_validation, NULL,
@@ -4120,37 +4139,106 @@ OptWhereClause:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-/*
- * We combine the update and delete actions into one value temporarily
- * for simplicity of parsing, and then break them down again in the
- * calling production.  update is in the left 8 bits, delete in the right.
- * Note that NOACTION is the default.
- */
 key_actions:
 			key_update
-				{ $$ = ($1 << 8) | (FKCONSTR_ACTION_NOACTION & 0xFF); }
+				{
+					KeyActions *n = palloc(sizeof(KeyActions));
+					n->updateAction = $1;
+					n->deleteAction = palloc(sizeof(KeyAction));
+					n->deleteAction->action = FKCONSTR_ACTION_NOACTION;
+					n->deleteAction->cols = NIL;
+					$$ = n;
+				}
 			| key_delete
-				{ $$ = (FKCONSTR_ACTION_NOACTION << 8) | ($1 & 0xFF); }
+				{
+					KeyActions *n = palloc(sizeof(KeyActions));
+					n->updateAction = palloc(sizeof(KeyAction));
+					n->updateAction->action = FKCONSTR_ACTION_NOACTION;
+					n->updateAction->cols = NIL;
+					n->deleteAction = $1;
+					$$ = n;
+				}
 			| key_update key_delete
-				{ $$ = ($1 << 8) | ($2 & 0xFF); }
+				{
+					KeyActions *n = palloc(sizeof(KeyActions));
+					n->updateAction = $1;
+					n->deleteAction = $2;
+					$$ = n;
+				}
 			| key_delete key_update
-				{ $$ = ($2 << 8) | ($1 & 0xFF); }
+				{
+					KeyActions *n = palloc(sizeof(KeyActions));
+					n->updateAction = $2;
+					n->deleteAction = $1;
+					$$ = n;
+				}
 			| /*EMPTY*/
-				{ $$ = (FKCONSTR_ACTION_NOACTION << 8) | (FKCONSTR_ACTION_NOACTION & 0xFF); }
+				{
+					KeyActions *n = palloc(sizeof(KeyActions));
+					n->updateAction = palloc(sizeof(KeyAction));
+					n->updateAction->action = FKCONSTR_ACTION_NOACTION;
+					n->updateAction->cols = NIL;
+					n->deleteAction = palloc(sizeof(KeyAction));
+					n->deleteAction->action = FKCONSTR_ACTION_NOACTION;
+					n->deleteAction->cols = NIL;
+					$$ = n;
+				}
 		;
 
-key_update: ON UPDATE key_action		{ $$ = $3; }
+key_update: ON UPDATE key_action
+				{
+					if (($3)->cols)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("a column list with %s is only supported for ON DELETE actions",
+										($3)->action == FKCONSTR_ACTION_SETNULL ? "SET NULL" : "SET DEFAULT"),
+								 parser_errposition(@1)));
+					$$ = $3;
+				}
 		;
 
-key_delete: ON DELETE_P key_action		{ $$ = $3; }
+key_delete: ON DELETE_P key_action
+				{
+					$$ = $3;
+				}
 		;
 
 key_action:
-			NO ACTION					{ $$ = FKCONSTR_ACTION_NOACTION; }
-			| RESTRICT					{ $$ = FKCONSTR_ACTION_RESTRICT; }
-			| CASCADE					{ $$ = FKCONSTR_ACTION_CASCADE; }
-			| SET NULL_P				{ $$ = FKCONSTR_ACTION_SETNULL; }
-			| SET DEFAULT				{ $$ = FKCONSTR_ACTION_SETDEFAULT; }
+			NO ACTION
+				{
+					KeyAction *n = palloc(sizeof(KeyAction));
+					n->action = FKCONSTR_ACTION_NOACTION;
+					n->cols = NIL;
+					$$ = n;
+				}
+			| RESTRICT
+				{
+					KeyAction *n = palloc(sizeof(KeyAction));
+					n->action = FKCONSTR_ACTION_RESTRICT;
+					n->cols = NIL;
+					$$ = n;
+				}
+			| CASCADE
+				{
+					KeyAction *n = palloc(sizeof(KeyAction));
+					n->action = FKCONSTR_ACTION_CASCADE;
+					n->cols = NIL;
+					$$ = n;
+				}
+			| SET NULL_P opt_column_list
+				{
+					KeyAction *n = palloc(sizeof(KeyAction));
+					n->action = FKCONSTR_ACTION_SETNULL;
+					n->cols = $3;
+					$$ = n;
+				}
+			| SET DEFAULT opt_column_list
+				{
+					KeyAction *n = palloc(sizeof(KeyAction));
+					n->action = FKCONSTR_ACTION_SETDEFAULT;
+					n->cols = $3;
+					$$ = n;
+				}
 		;
 
 OptInherit: INHERITS '(' qualified_name_list ')'	{ $$ = $3; }
@@ -4551,11 +4639,11 @@ SeqOptElem: AS SimpleTypename
 				}
 			| CYCLE
 				{
-					$$ = makeDefElem("cycle", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("cycle", (Node *)makeBoolean(true), @1);
 				}
 			| NO CYCLE
 				{
-					$$ = makeDefElem("cycle", (Node *)makeInteger(false), @1);
+					$$ = makeDefElem("cycle", (Node *)makeBoolean(false), @1);
 				}
 			| INCREMENT opt_by NumericOnly
 				{
@@ -4791,7 +4879,7 @@ create_extension_opt_item:
 				}
 			| CASCADE
 				{
-					$$ = makeDefElem("cascade", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("cascade", (Node *)makeBoolean(true), @1);
 				}
 		;
 
@@ -8313,7 +8401,7 @@ CreateFunctionStmt:
 					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = NIL;
 					n->options = lappend(n->options,
-					  makeDefElem("security", (Node *)makeInteger($8), @8));
+					  makeDefElem("security", (Node *)makeBoolean($8), @8));
 					n->options = lappend(n->options,
 					  makeDefElem("language", (Node *)makeString("plisql"), @1));
 
@@ -8339,7 +8427,7 @@ CreateFunctionStmt:
 					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = NIL;
 					n->options = lappend(n->options,
-					  makeDefElem("security", (Node *)makeInteger($7), @7));
+					  makeDefElem("security", (Node *)makeBoolean($7), @7));
 					n->options = lappend(n->options,
 					  makeDefElem("language", (Node *)makeString("plisql"), @1));
 
@@ -8365,7 +8453,7 @@ CreateFunctionStmt:
 					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = NIL;
 					n->options = lappend(n->options,
-					  makeDefElem("security", (Node *)makeInteger($6), @6));
+					  makeDefElem("security", (Node *)makeBoolean($6), @6));
 					n->options = lappend(n->options,
 					  makeDefElem("language", (Node *)makeString("plisql"), @1));
 
@@ -8390,7 +8478,7 @@ CreateFunctionStmt:
 					n->proaccess = NON_PACKAGE_MEMBER;
 					n->options = NIL;
 					n->options = lappend(n->options,
-					  makeDefElem("security", (Node *)makeInteger($5), @5));
+					  makeDefElem("security", (Node *)makeBoolean($5), @5));
 					n->options = lappend(n->options,
 					  makeDefElem("language", (Node *)makeString("plisql"), @1));
 
@@ -8700,15 +8788,15 @@ createfunc_opt_list:
 common_func_opt_item:
 			CALLED ON NULL_P INPUT_P
 				{
-					$$ = makeDefElem("strict", (Node *)makeInteger(false), @1);
+					$$ = makeDefElem("strict", (Node *)makeBoolean(false), @1);
 				}
 			| RETURNS NULL_P ON NULL_P INPUT_P
 				{
-					$$ = makeDefElem("strict", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("strict", (Node *)makeBoolean(true), @1);
 				}
 			| STRICT_P
 				{
-					$$ = makeDefElem("strict", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("strict", (Node *)makeBoolean(true), @1);
 				}
 			| IMMUTABLE
 				{
@@ -8724,27 +8812,27 @@ common_func_opt_item:
 				}
 			| EXTERNAL SECURITY DEFINER
 				{
-					$$ = makeDefElem("security", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("security", (Node *)makeBoolean(true), @1);
 				}
 			| EXTERNAL SECURITY INVOKER
 				{
-					$$ = makeDefElem("security", (Node *)makeInteger(false), @1);
+					$$ = makeDefElem("security", (Node *)makeBoolean(false), @1);
 				}
 			| SECURITY DEFINER
 				{
-					$$ = makeDefElem("security", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("security", (Node *)makeBoolean(true), @1);
 				}
 			| SECURITY INVOKER
 				{
-					$$ = makeDefElem("security", (Node *)makeInteger(false), @1);
+					$$ = makeDefElem("security", (Node *)makeBoolean(false), @1);
 				}
 			| LEAKPROOF
 				{
-					$$ = makeDefElem("leakproof", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("leakproof", (Node *)makeBoolean(true), @1);
 				}
 			| NOT LEAKPROOF
 				{
-					$$ = makeDefElem("leakproof", (Node *)makeInteger(false), @1);
+					$$ = makeDefElem("leakproof", (Node *)makeBoolean(false), @1);
 				}
 			| COST NumericOnly
 				{
@@ -8784,7 +8872,7 @@ createfunc_opt_item:
 				}
 			| WINDOW
 				{
-					$$ = makeDefElem("window", (Node *)makeInteger(true), @1);
+					$$ = makeDefElem("window", (Node *)makeBoolean(true), @1);
 				}
 			| common_func_opt_item
 				{
@@ -10525,14 +10613,14 @@ PublicationObjSpec:
 			| ALL TABLES IN_P SCHEMA ColId
 				{
 					$$ = makeNode(PublicationObjSpec);
-					$$->pubobjtype = PUBLICATIONOBJ_REL_IN_SCHEMA;
+					$$->pubobjtype = PUBLICATIONOBJ_TABLES_IN_SCHEMA;
 					$$->name = $5;
 					$$->location = @5;
 				}
 			| ALL TABLES IN_P SCHEMA CURRENT_SCHEMA
 				{
 					$$ = makeNode(PublicationObjSpec);
-					$$->pubobjtype = PUBLICATIONOBJ_CURRSCHEMA;
+					$$->pubobjtype = PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA;
 					$$->location = @5;
 				}
 			| ColId
@@ -10603,7 +10691,7 @@ AlterPublicationStmt:
 					n->pubname = $3;
 					n->pubobjects = $5;
 					preprocess_pubobj_list(n->pubobjects, yyscanner);
-					n->action = DEFELEM_ADD;
+					n->action = AP_AddObjects;
 					$$ = (Node *)n;
 				}
 			| ALTER PUBLICATION name SET pub_obj_list
@@ -10612,7 +10700,7 @@ AlterPublicationStmt:
 					n->pubname = $3;
 					n->pubobjects = $5;
 					preprocess_pubobj_list(n->pubobjects, yyscanner);
-					n->action = DEFELEM_SET;
+					n->action = AP_SetObjects;
 					$$ = (Node *)n;
 				}
 			| ALTER PUBLICATION name DROP pub_obj_list
@@ -10621,7 +10709,7 @@ AlterPublicationStmt:
 					n->pubname = $3;
 					n->pubobjects = $5;
 					preprocess_pubobj_list(n->pubobjects, yyscanner);
-					n->action = DEFELEM_DROP;
+					n->action = AP_DropObjects;
 					$$ = (Node *)n;
 				}
 		;
@@ -10716,7 +10804,7 @@ AlterSubscriptionStmt:
 					n->kind = ALTER_SUBSCRIPTION_ENABLED;
 					n->subname = $3;
 					n->options = list_make1(makeDefElem("enabled",
-											(Node *)makeInteger(true), @1));
+											(Node *)makeBoolean(true), @1));
 					$$ = (Node *)n;
 				}
 			| ALTER SUBSCRIPTION name DISABLE_P
@@ -10726,7 +10814,7 @@ AlterSubscriptionStmt:
 					n->kind = ALTER_SUBSCRIPTION_ENABLED;
 					n->subname = $3;
 					n->options = list_make1(makeDefElem("enabled",
-											(Node *)makeInteger(false), @1));
+											(Node *)makeBoolean(false), @1));
 					$$ = (Node *)n;
 				}
 		;
@@ -13667,7 +13755,7 @@ xmltable_column_el:
 										(errcode(ERRCODE_SYNTAX_ERROR),
 										 errmsg("conflicting or redundant NULL / NOT NULL declarations for column \"%s\"", fc->colname),
 										 parser_errposition(defel->location)));
-							fc->is_not_null = intVal(defel->arg);
+							fc->is_not_null = boolVal(defel->arg);
 							nullability_seen = true;
 						}
 						else
@@ -13707,9 +13795,9 @@ xmltable_column_option_el:
 			| DEFAULT b_expr
 				{ $$ = makeDefElem("default", $2, @1); }
 			| NOT NULL_P
-				{ $$ = makeDefElem("is_not_null", (Node *) makeInteger(true), @1); }
+				{ $$ = makeDefElem("is_not_null", (Node *) makeBoolean(true), @1); }
 			| NULL_P
-				{ $$ = makeDefElem("is_not_null", (Node *) makeInteger(false), @1); }
+				{ $$ = makeDefElem("is_not_null", (Node *) makeBoolean(false), @1); }
 		;
 
 xml_namespace_list:
@@ -17521,7 +17609,7 @@ makeStringConst(char *str, int location)
 	A_Const *n = makeNode(A_Const);
 
 	n->val.sval.type = T_String;
-	n->val.sval.val = str;
+	n->val.sval.sval = str;
 	n->location = location;
 
    return (Node *)n;
@@ -17541,7 +17629,7 @@ makeIntConst(int val, int location)
 	A_Const *n = makeNode(A_Const);
 
 	n->val.ival.type = T_Integer;
-	n->val.ival.val = val;
+	n->val.ival.ival = val;
 	n->location = location;
 
    return (Node *)n;
@@ -17553,7 +17641,19 @@ makeFloatConst(char *str, int location)
 	A_Const *n = makeNode(A_Const);
 
 	n->val.fval.type = T_Float;
-	n->val.fval.val = str;
+	n->val.fval.fval = str;
+	n->location = location;
+
+   return (Node *)n;
+}
+
+static Node *
+makeBoolAConst(bool state, int location)
+{
+	A_Const *n = makeNode(A_Const);
+
+	n->val.boolval.type = T_Boolean;
+	n->val.boolval.boolval = state;
 	n->location = location;
 
    return (Node *)n;
@@ -17565,7 +17665,7 @@ makeBitStringConst(char *str, int location)
 	A_Const *n = makeNode(A_Const);
 
 	n->val.bsval.type = T_BitString;
-	n->val.bsval.val = str;
+	n->val.bsval.bsval = str;
 	n->location = location;
 
    return (Node *)n;
@@ -17590,31 +17690,20 @@ makeAConst(Node *v, int location)
 	switch (v->type)
 	{
 		case T_Float:
-			n = makeFloatConst(castNode(Float, v)->val, location);
+			n = makeFloatConst(castNode(Float, v)->fval, location);
 			break;
 
 		case T_Integer:
-			n = makeIntConst(castNode(Integer, v)->val, location);
+			n = makeIntConst(castNode(Integer, v)->ival, location);
 			break;
 
-		case T_String:
 		default:
-			n = makeStringConst(castNode(String, v)->val, location);
-			break;
+			/* currently not used */
+			Assert(false);
+			n = NULL;
 	}
 
 	return n;
-}
-
-/* makeBoolAConst()
- * Create an A_Const string node and put it inside a boolean cast.
- */
-static Node *
-makeBoolAConst(bool state, int location)
-{
-	return makeStringConstCast((state ? "t" : "f"),
-							   location,
-							   SystemTypeName("bool"));
 }
 
 /* makeRoleSpec
@@ -17917,7 +18006,7 @@ doNegate(Node *n, int location)
 
 		if (IsA(&con->val, Integer))
 		{
-			con->val.ival.val = -con->val.ival.val;
+			con->val.ival.ival = -con->val.ival.ival;
 			return n;
 		}
 		if (IsA(&con->val, Float))
@@ -17933,14 +18022,14 @@ doNegate(Node *n, int location)
 static void
 doNegateFloat(Float *v)
 {
-	char   *oldval = v->val;
+	char   *oldval = v->fval;
 
 	if (*oldval == '+')
 		oldval++;
 	if (*oldval == '-')
-		v->val = oldval+1;	/* just strip the '-' */
+		v->fval = oldval+1;	/* just strip the '-' */
 	else
-		v->val = psprintf("-%s", oldval);
+		v->fval = psprintf("-%s", oldval);
 }
 
 static Node *
@@ -18279,7 +18368,8 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 	if (pubobj->pubobjtype == PUBLICATIONOBJ_CONTINUATION)
 		ereport(ERROR,
 				errcode(ERRCODE_SYNTAX_ERROR),
-				errmsg("FOR TABLE/FOR ALL TABLES IN SCHEMA should be specified before the table/schema name(s)"),
+				errmsg("invalid publication object list"),
+				errdetail("One of TABLE or ALL TABLES IN SCHEMA must be specified before a standalone table or schema name."),
 				parser_errposition(pubobj->location));
 
 	foreach(cell, pubobjspec_list)
@@ -18301,23 +18391,24 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 			{
 				/* convert it to PublicationTable */
 				PublicationTable *pubtable = makeNode(PublicationTable);
-				pubtable->relation = makeRangeVar(NULL, pubobj->name,
-												  pubobj->location);
+
+				pubtable->relation =
+					makeRangeVar(NULL, pubobj->name, pubobj->location);
 				pubobj->pubtable = pubtable;
 				pubobj->name = NULL;
 			}
 		}
-		else if (pubobj->pubobjtype == PUBLICATIONOBJ_REL_IN_SCHEMA ||
-				 pubobj->pubobjtype == PUBLICATIONOBJ_CURRSCHEMA)
+		else if (pubobj->pubobjtype == PUBLICATIONOBJ_TABLES_IN_SCHEMA ||
+				 pubobj->pubobjtype == PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA)
 		{
 			/*
 			 * We can distinguish between the different type of schema
 			 * objects based on whether name and pubtable is set.
 			 */
 			if (pubobj->name)
-				pubobj->pubobjtype = PUBLICATIONOBJ_REL_IN_SCHEMA;
+				pubobj->pubobjtype = PUBLICATIONOBJ_TABLES_IN_SCHEMA;
 			else if (!pubobj->name && !pubobj->pubtable)
-				pubobj->pubobjtype = PUBLICATIONOBJ_CURRSCHEMA;
+				pubobj->pubobjtype = PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA;
 			else
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),

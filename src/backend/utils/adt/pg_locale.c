@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities
  *
- * Portions Copyright (c) 2002-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/pg_locale.c
  *
@@ -1068,7 +1068,7 @@ get_iso_localename(const char *winlocname)
 						LOCALE_NAME_MAX_LENGTH);
 
 	/*
-	 * If the lc_messages is already an Unix-style string, we have a direct
+	 * If the lc_messages is already a Unix-style string, we have a direct
 	 * match with LOCALE_SNAME, e.g. en-US, en_US.
 	 */
 	ret_val = GetLocaleInfoEx(wc_locale_name, LOCALE_SNAME, (LPWSTR) &buffer,
@@ -1454,8 +1454,6 @@ report_newlocale_failure(const char *localename)
  *
  * As a special optimization, the default/database collation returns 0.
  * Callers should then revert to the non-locale_t-enabled code path.
- * In fact, they shouldn't call this function at all when they are dealing
- * with the default locale.  That can save quite a bit in hotspots.
  * Also, callers should avoid calling this before going down a C/POSIX
  * fastpath, because such a fastpath should work even on platforms without
  * locale_t support in the C library.
@@ -1472,7 +1470,6 @@ pg_newlocale_from_collation(Oid collid)
 	/* Callers must pass a valid OID */
 	Assert(OidIsValid(collid));
 
-	/* Return 0 for "default" collation, just in case caller forgets */
 	if (collid == DEFAULT_COLLATION_OID)
 		return (pg_locale_t) 0;
 

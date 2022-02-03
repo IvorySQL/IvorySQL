@@ -150,6 +150,20 @@ DROP TABLE testpub_tbl4;
 
 -- fail - view
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_view;
+
+CREATE TEMPORARY TABLE testpub_temptbl(a int);
+-- fail - temporary table
+CREATE PUBLICATION testpub_fortemptbl FOR TABLE testpub_temptbl;
+DROP TABLE testpub_temptbl;
+
+CREATE UNLOGGED TABLE testpub_unloggedtbl(a int);
+-- fail - unlogged table
+CREATE PUBLICATION testpub_forunloggedtbl FOR TABLE testpub_unloggedtbl;
+DROP TABLE testpub_unloggedtbl;
+
+-- fail - system table
+CREATE PUBLICATION testpub_forsystemtbl FOR TABLE pg_publication;
+
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1, pub_test.testpub_nopk;
 RESET client_min_messages;
@@ -204,6 +218,21 @@ DROP PUBLICATION testpub2;
 DROP PUBLICATION testpub3;
 
 SET ROLE regress_publication_user;
+CREATE ROLE regress_publication_user3;
+GRANT regress_publication_user2 TO regress_publication_user3;
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION testpub4 FOR ALL TABLES IN SCHEMA pub_test;
+RESET client_min_messages;
+ALTER PUBLICATION testpub4 OWNER TO regress_publication_user3;
+SET ROLE regress_publication_user3;
+-- fail - new owner must be superuser
+ALTER PUBLICATION testpub4 owner to regress_publication_user2; -- fail
+ALTER PUBLICATION testpub4 owner to regress_publication_user; -- ok
+
+SET ROLE regress_publication_user;
+DROP PUBLICATION testpub4;
+DROP ROLE regress_publication_user3;
+
 REVOKE CREATE ON DATABASE regression FROM regress_publication_user2;
 
 DROP TABLE testpub_parted;
@@ -445,6 +474,10 @@ DROP PUBLICATION pub;
 CREATE PUBLICATION pub FOR TABLE sch2.tbl1_part1 WITH (PUBLISH_VIA_PARTITION_ROOT=1);
 SELECT * FROM pg_publication_tables;
 
+-- Table publication that includes both the parent table and the child table
+ALTER PUBLICATION pub ADD TABLE sch1.tbl1;
+SELECT * FROM pg_publication_tables;
+
 DROP PUBLICATION pub;
 -- Schema publication that does not include the schema that has the parent table
 CREATE PUBLICATION pub FOR ALL TABLES IN SCHEMA sch2 WITH (PUBLISH_VIA_PARTITION_ROOT=0);
@@ -453,6 +486,10 @@ SELECT * FROM pg_publication_tables;
 DROP PUBLICATION pub;
 -- Table publication that does not include the parent table
 CREATE PUBLICATION pub FOR TABLE sch2.tbl1_part1 WITH (PUBLISH_VIA_PARTITION_ROOT=0);
+SELECT * FROM pg_publication_tables;
+
+-- Table publication that includes both the parent table and the child table
+ALTER PUBLICATION pub ADD TABLE sch1.tbl1;
 SELECT * FROM pg_publication_tables;
 
 DROP PUBLICATION pub;

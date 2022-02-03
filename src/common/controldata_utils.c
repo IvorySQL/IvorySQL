@@ -4,7 +4,7 @@
  *		Common code for control data file output.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
@@ -167,6 +168,9 @@ update_controlfile(const char *DataDir,
 					 "pg_control is too large for atomic disk writes");
 	StaticAssertStmt(sizeof(ControlFileData) <= PG_CONTROL_FILE_SIZE,
 					 "sizeof(ControlFileData) exceeds PG_CONTROL_FILE_SIZE");
+
+	/* Update timestamp  */
+	ControlFile->time = (pg_time_t) time(NULL);
 
 	/* Recalculate CRC of control file */
 	INIT_CRC32C(ControlFile->crc);

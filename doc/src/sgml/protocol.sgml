@@ -1478,6 +1478,20 @@ SELCT 1/0;<!-- this typo is intentional -->
    </para>
 
    <para>
+    When <acronym>SSL</acronym> encryption can be performed, the server
+    is expected to send only the single <literal>S</literal> byte and then
+    wait for the frontend to initiate an <acronym>SSL</acronym> handshake.
+    If additional bytes are available to read at this point, it likely
+    means that a man-in-the-middle is attempting to perform a
+    buffer-stuffing attack
+    (<ulink url="https://www.postgresql.org/support/security/CVE-2021-23222/">CVE-2021-23222</ulink>).
+    Frontends should be coded either to read exactly one byte from the
+    socket before turning the socket over to their SSL library, or to
+    treat it as a protocol violation if they find they have read additional
+    bytes.
+   </para>
+
+   <para>
     An initial SSLRequest can also be used in a connection that is being
     opened to send a CancelRequest message.
    </para>
@@ -1537,6 +1551,20 @@ SELCT 1/0;<!-- this typo is intentional -->
     connection must be closed, but the frontend might choose to open a fresh
     connection and proceed without requesting <acronym>GSSAPI</acronym>
     encryption.
+   </para>
+
+   <para>
+    When <acronym>GSSAPI</acronym> encryption can be performed, the server
+    is expected to send only the single <literal>G</literal> byte and then
+    wait for the frontend to initiate a <acronym>GSSAPI</acronym> handshake.
+    If additional bytes are available to read at this point, it likely
+    means that a man-in-the-middle is attempting to perform a
+    buffer-stuffing attack
+    (<ulink url="https://www.postgresql.org/support/security/CVE-2021-23222/">CVE-2021-23222</ulink>).
+    Frontends should be coded either to read exactly one byte from the
+    socket before turning the socket over to their GSSAPI library, or to
+    treat it as a protocol violation if they find they have read additional
+    bytes.
    </para>
 
    <para>
@@ -2603,6 +2631,22 @@ The commands accepted in replication mode are:
        </varlistentry>
 
        <varlistentry>
+        <term><literal>TARGET</literal> <replaceable>'target'</replaceable></term>
+        <listitem>
+         <para>
+          Tells the server where to send the backup. If not specified,
+          the legacy base backup protocol will be used. Otherwise, the new
+          protocol will be used, as described below.
+         </para>
+
+         <para>
+          At present, the only supported value for this parameter is
+          <literal>client</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
         <term><literal>PROGRESS [ <replaceable class="parameter">boolean</replaceable> ]</literal></term>
         <listitem>
          <para>
@@ -2777,17 +2821,113 @@ The commands accepted in replication mode are:
 
      <para>
       After the second regular result set, one or more CopyOutResponse results
-      will be sent, one for the main data directory and one for each additional tablespace other
-      than <literal>pg_default</literal> and <literal>pg_global</literal>. The data in
-      the CopyOutResponse results will be a tar format (following the
-      <quote>ustar interchange format</quote> specified in the POSIX 1003.1-2008
-      standard) dump of the tablespace contents, except that the two trailing
-      blocks of zeroes specified in the standard are omitted.
-      After the tar data is complete, and if a backup manifest was requested,
-      another CopyOutResponse result is sent, containing the manifest data for the
-      current base backup. In any case, a final ordinary result set will be
-      sent, containing the WAL end position of the backup, in the same format as
-      the start position.
+      will be sent. If the <literal>TARGET</literal> option is not specified,
+      the legacy base backup protocol will be used. In this mode,
+      there will be one CopyOutResponse for the main directory, one for each
+      additional tablespace other than <literal>pg_default</literal> and
+      <literal>pg_global</literal>, and one for the backup manifested if
+      requested. The main data directory and any additional tablespaces will
+      be sent in tar format (following the <quote>ustar interchange
+      format</quote> specified in the POSIX 1003.1-2008 standard), and
+      the manifest will sent as a plain file.  Prior to
+      <literal>PostgreSQL</literal> 15, the server omitted the two trailing
+      blocks of zeroes specified in the standard, but this is no longer the
+      case.
+     </para>
+ 
+     <para>
+      New applications should specify the <literal>TARGET</literal> option.
+      When that option is used, a single CopyOutResponse will be sent, and
+      the payload of each CopyData message will contain a message in one of
+      the following formats:
+     </para>
+
+     <para>
+      <variablelist>
+
+      <varlistentry>
+        <term>new archive (B)</term>
+        <listitem><para><variablelist>
+          <varlistentry>
+            <term>Byte1('n')</term>
+            <listitem><para>
+              Identifes the messaage as indicating the start of a new archive.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>String</term>
+            <listitem><para>
+              The file name for this archive.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>String</term>
+            <listitem><para>
+              For the main data directory, an empty string. For other
+              tablespaces, the full path to the directory from which this
+              archive was created.
+            </para></listitem>
+          </varlistentry>
+        </variablelist></para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>manifest (B)</term>
+        <listitem><para><variablelist>
+          <varlistentry>
+            <term>Byte1('m')</term>
+            <listitem><para>
+              Identifes the message as indicating the start of the backup
+              manifest.
+            </para></listitem>
+          </varlistentry>
+        </variablelist></para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>archive or manifest data (B)</term>
+        <listitem><para><variablelist>
+          <varlistentry>
+            <term>Byte1('d')</term>
+            <listitem><para>
+              Identifes the message as containing archive or manifest data.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>Byte<replaceable>n</replaceable></term>
+            <listitem><para>
+              Data bytes.
+            </para></listitem>
+          </varlistentry>
+        </variablelist></para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>progress report (B)</term>
+        <listitem><para><variablelist>
+          <varlistentry>
+            <term>Byte1('p')</term>
+            <listitem><para>
+              Identifes the message as a progress report.
+            </para></listitem>
+          </varlistentry>
+          <varlistentry>
+            <term>Int64</term>
+            <listitem><para>
+              The number of bytes from the current tablespace for which
+              processing has been completed.
+            </para></listitem>
+          </varlistentry>
+        </variablelist></para></listitem>
+      </varlistentry>
+
+      </variablelist>
+     </para>
+
+     <para>
+      After the CopyOutResponse, or all such responses, have been sent, a
+      final ordinary result set will be sent, containing the WAL end position
+      of the backup, in the same format as the start position.
      </para>
 
      <para>
@@ -2986,13 +3126,25 @@ The commands accepted in replication mode are:
   </para>
 
   <para>
-   Every DML message contains an arbitrary relation ID, which can be mapped to
-   an ID in the Relation messages. The Relation messages describe the schema of the
-   given relation. The Relation message is sent for a given relation either
-   because it is the first time we send a DML message for given relation in the
-   current session or because the relation definition has changed since the
-   last Relation message was sent for it. The protocol assumes that the client
-   is capable of caching the metadata for as many relations as needed.
+   Every DML message contains a relation OID, identifying the publisher's
+   relation that was acted on.  Before the first DML message for a given
+   relation OID, a Relation message will be sent, describing the schema of
+   that relation.  Subsequently, a new Relation message will be sent if
+   the relation's definition has changed since the last Relation message
+   was sent for it.  (The protocol assumes that the client is capable of
+   remembering this metadata for as many relations as needed.)
+  </para>
+
+  <para>
+   Relation messages identify column types by their OIDs.  In the case
+   of a built-in type, it is assumed that the client can look up that
+   type OID locally, so no additional data is needed.  For a non-built-in
+   type OID, a Type message will be sent before the Relation message,
+   to provide the type name associated with that OID.  Thus, a client that
+   needs to specifically identify the types of relation columns should
+   cache the contents of Type messages, and first consult that cache to
+   see if the type OID is defined there.  If not, look up the type OID
+   locally.
   </para>
  </sect2>
 </sect1>

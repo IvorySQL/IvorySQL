@@ -3,7 +3,7 @@
  * subscriptioncmds.c
  *		subscription catalog manipulation functions
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -32,6 +32,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "pgstat.h"
 #include "replication/logicallauncher.h"
 #include "replication/origin.h"
 #include "replication/slot.h"
@@ -94,14 +95,15 @@ static void ReportSlotConnectionError(List *rstates, Oid subid, char *slotname, 
  *
  * Since not all options can be specified in both commands, this function
  * will report an error if mutually exclusive options are specified.
- *
- * Caller is expected to have cleared 'opts'.
  */
 static void
 parse_subscription_options(ParseState *pstate, List *stmt_options,
 						   bits32 supported_opts, SubOpts *opts)
 {
 	ListCell   *lc;
+
+	/* Start out with cleared opts. */
+	memset(opts, 0, sizeof(SubOpts));
 
 	/* caller must expect some option */
 	Assert(supported_opts != 0);
@@ -261,7 +263,6 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 	{
 		/* Check for incompatible options from the user. */
 		if (opts->enabled &&
-			IsSet(supported_opts, SUBOPT_ENABLED) &&
 			IsSet(opts->specified_opts, SUBOPT_ENABLED))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -270,7 +271,6 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 							"connect = false", "enabled = true")));
 
 		if (opts->create_slot &&
-			IsSet(supported_opts, SUBOPT_CREATE_SLOT) &&
 			IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -278,7 +278,6 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 							"connect = false", "create_slot = true")));
 
 		if (opts->copy_data &&
-			IsSet(supported_opts, SUBOPT_COPY_DATA) &&
 			IsSet(opts->specified_opts, SUBOPT_COPY_DATA))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -296,44 +295,39 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 	 * was used.
 	 */
 	if (!opts->slot_name &&
-		IsSet(supported_opts, SUBOPT_SLOT_NAME) &&
 		IsSet(opts->specified_opts, SUBOPT_SLOT_NAME))
 	{
-		if (opts->enabled &&
-			IsSet(supported_opts, SUBOPT_ENABLED) &&
-			IsSet(opts->specified_opts, SUBOPT_ENABLED))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("%s and %s are mutually exclusive options",
-							"slot_name = NONE", "enabled = true")));
+		if (opts->enabled)
+		{
+			if (IsSet(opts->specified_opts, SUBOPT_ENABLED))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("%s and %s are mutually exclusive options",
+								"slot_name = NONE", "enabled = true")));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("subscription with %s must also set %s",
+								"slot_name = NONE", "enabled = false")));
+		}
 
-		if (opts->create_slot &&
-			IsSet(supported_opts, SUBOPT_CREATE_SLOT) &&
-			IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("%s and %s are mutually exclusive options",
-							"slot_name = NONE", "create_slot = true")));
-
-		if (opts->enabled &&
-			IsSet(supported_opts, SUBOPT_ENABLED) &&
-			!IsSet(opts->specified_opts, SUBOPT_ENABLED))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("subscription with %s must also set %s",
-							"slot_name = NONE", "enabled = false")));
-
-		if (opts->create_slot &&
-			IsSet(supported_opts, SUBOPT_CREATE_SLOT) &&
-			!IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("subscription with %s must also set %s",
-							"slot_name = NONE", "create_slot = false")));
+		if (opts->create_slot)
+		{
+			if (IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("%s and %s are mutually exclusive options",
+								"slot_name = NONE", "create_slot = true")));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("subscription with %s must also set %s",
+								"slot_name = NONE", "create_slot = false")));
+		}
 	}
 }
 
@@ -1204,7 +1198,8 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	 * Since dropping a replication slot is not transactional, the replication
 	 * slot stays dropped even if the transaction rolls back.  So we cannot
 	 * run DROP SUBSCRIPTION inside a transaction block if dropping the
-	 * replication slot.
+	 * replication slot.  Also, in this case, we report a message for dropping
+	 * the subscription to the stats collector.
 	 *
 	 * XXX The command name should really be something like "DROP SUBSCRIPTION
 	 * of a subscription that is associated with a replication slot", but we
@@ -1377,6 +1372,18 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	}
 	PG_END_TRY();
 
+	/*
+	 * Send a message for dropping this subscription to the stats collector.
+	 * We can safely report dropping the subscription statistics here if the
+	 * subscription is associated with a replication slot since we cannot run
+	 * DROP SUBSCRIPTION inside a transaction block.  Subscription statistics
+	 * will be removed later by (auto)vacuum either if it's not associated
+	 * with a replication slot or if the message for dropping the subscription
+	 * gets lost.
+	 */
+	if (slotname)
+		pgstat_report_subscription_drop(subid);
+
 	table_close(rel, NoLock);
 }
 
@@ -1474,6 +1481,8 @@ AlterSubscriptionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 
 	InvokeObjectPostAlterHook(SubscriptionRelationId,
 							  form->oid, 0);
+
+	ApplyLauncherWakeupAtCommit();
 }
 
 /*
