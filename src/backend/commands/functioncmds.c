@@ -117,6 +117,10 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		rettype = typeTypeId(typtup);
 		ReleaseSysCache(typtup);
 	}
+	else if (returnType->t_pkgoid)
+	{
+		rettype = GetTypeOidByTypeName(returnType);
+	}
 	else
 	{
 		char	   *typnam = TypeNameToString(returnType);
@@ -1227,6 +1231,11 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	}
 	else if (stmt->returnType)
 	{
+		/* check if it's a package's functions */
+		if (stmt->proaccess == PACKAGE_MEMBER_PUBLIC ||
+			stmt->proaccess == PACKAGE_MEMBER_PRIVATE)
+			stmt->returnType->t_pkgoid = pstate->p_pkgoid;
+
 		/* explicit RETURNS clause */
 		compute_return_type(stmt->returnType, languageOid,
 							&prorettype, &returnsSet);

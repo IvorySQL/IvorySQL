@@ -920,3 +920,23 @@ parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok
 		ReleaseSysCache(tup);
 	}
 }
+
+/*
+ * Get the Oid of the custom type in the package
+ */
+Oid
+GetTypeOidByTypeName(const TypeName *tn)
+{
+	Oid			toid = InvalidOid;
+	char	   *typnam = TypeNameToString(tn);
+
+	toid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+						CStringGetDatum(typnam),
+						ObjectIdGetDatum(tn->t_pkgoid));
+	if (!OidIsValid(toid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type \"%s\" does not exist", typnam)));
+
+	return toid;
+}

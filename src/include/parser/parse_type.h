@@ -55,6 +55,7 @@ extern Oid	typeOrDomainTypeRelid(Oid type_id);
 
 extern TypeName *typeStringToTypeName(const char *str);
 extern void parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok);
+extern Oid GetTypeOidByTypeName(const TypeName *tn);
 
 /* true if typeid is composite, or domain over composite, but not RECORD */
 #define ISCOMPLEX(typeid) (typeOrDomainTypeRelid(typeid) != InvalidOid)

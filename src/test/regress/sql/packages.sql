@@ -1166,17 +1166,17 @@ drop package pkgvar;
 drop table if exists test;
 
 -- Test package function calls without package qualification within package
-create or replace function f4(x int) return int as
+create or replace function f1(x int) return int as
 begin
-	raise info 'function outter f4 called';
-	x := f1(1);
+	raise info 'function outter f1 called';
 	return 0;
 end;
 /
 
-create or replace function f1(x int) return int as
+create or replace function f4(x int) return int as
 begin
-	raise info 'function outter f1 called';
+	raise info 'function outter f4 called';
+	x := f1(1);
 	return 0;
 end;
 /
@@ -1569,3 +1569,14 @@ DROP PACKAGE BODY pkg;
 select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
 DROP TABLE test;
 DROP PACKAGE pkg;
+
+--
+-- support package function return the defined type
+--
+CREATE OR REPLACE PACKAGE example
+AS
+	TYPE extyp IS RECORD (a INT, b VARCHAR(100));
+	FUNCTION myfunc(x INT) RETURN extyp;
+end;
+/
+DROP PACKAGE example;
