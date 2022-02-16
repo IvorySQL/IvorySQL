@@ -1596,3 +1596,26 @@ END;
 select example.myfunc(2022);
 
 DROP PACKAGE example;
+
+--
+-- Test package array variable
+--
+CREATE OR REPLACE PACKAGE pkg IS
+  x int[] := array[1,2,3,4];
+  FUNCTION tfunc RETURN INT;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY pkg IS
+  FUNCTION tfunc RETURN INT AS
+  BEGIN
+    raise info 'current array values of var x: %', x;
+    x[1] := x[1] + 1;
+	x[4] := x[4] + 1;
+    RETURN x[1] + x[4];
+  END;
+END;
+/
+
+select pkg.tfunc;
+select pkg.tfunc;
+DROP PACKAGE pkg;
