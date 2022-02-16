@@ -5169,10 +5169,15 @@ exec_assign_value(PLiSQL_execstate *estate,
 					if (var->datatype->typisarray &&
 						!VARATT_IS_EXTERNAL_EXPANDED_RW(DatumGetPointer(newvalue)))
 					{
+						MemoryContext mc;
+
 						/* array and not already R/W, so apply expand_array */
+						mc = getRelevantContext(var->pkgoid,
+												estate->datum_context);
 						newvalue = expand_array(newvalue,
-												estate->datum_context,
+												mc,
 												NULL);
+
 					}
 					else
 					{
