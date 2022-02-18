@@ -203,6 +203,12 @@
 { oid => '5071', descr => 'convert xid8 to xid',
   proname => 'xid', prorettype => 'xid', proargtypes => 'xid8',
   prosrc => 'xid8toxid' },
+{ oid => '5097', descr => 'larger of two',
+  proname => 'xid8_larger', prorettype => 'xid8', proargtypes => 'xid8 xid8',
+  prosrc => 'xid8_larger' },
+{ oid => '5098', descr => 'smaller of two',
+  proname => 'xid8_smaller', prorettype => 'xid8', proargtypes => 'xid8 xid8',
+  prosrc => 'xid8_smaller' },
 { oid => '69',
   proname => 'cideq', proleakproof => 't', prorettype => 'bool',
   proargtypes => 'cid cid', prosrc => 'cideq' },
@@ -6100,6 +6106,11 @@
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{name,setting,unit,category,short_desc,extra_desc,context,vartype,source,min_val,max_val,enumvals,boot_val,reset_val,sourcefile,sourceline,pending_restart}',
   prosrc => 'show_all_settings' },
+
+{ oid => '8921', descr => 'return flags for specified GUC',
+  proname => 'pg_settings_get_flags', provolatile => 's', prorettype => '_text',
+  proargtypes => 'text', prosrc => 'pg_settings_get_flags' },
+
 { oid => '3329', descr => 'show config file settings',
   proname => 'pg_show_all_file_settings', prorows => '1000', proretset => 't',
   provolatile => 'v', prorettype => 'record', proargtypes => '',
@@ -6563,6 +6574,9 @@
 { oid => '4189', descr => 'maximum value of all pg_lsn input values',
   proname => 'max', prokind => 'a', proisstrict => 'f', prorettype => 'pg_lsn',
   proargtypes => 'pg_lsn', prosrc => 'aggregate_dummy' },
+{ oid => '5099', descr => 'maximum value of all xid8 input values',
+  proname => 'max', prokind => 'a', proisstrict => 'f', prorettype => 'xid8',
+  proargtypes => 'xid8', prosrc => 'aggregate_dummy' },
 
 { oid => '2131', descr => 'minimum value of all bigint input values',
   proname => 'min', prokind => 'a', proisstrict => 'f', prorettype => 'int8',
@@ -6630,6 +6644,9 @@
 { oid => '4190', descr => 'minimum value of all pg_lsn input values',
   proname => 'min', prokind => 'a', proisstrict => 'f', prorettype => 'pg_lsn',
   proargtypes => 'pg_lsn', prosrc => 'aggregate_dummy' },
+{ oid => '5100', descr => 'minimum value of all xid8 input values',
+  proname => 'min', prokind => 'a', proisstrict => 'f', prorettype => 'xid8',
+  proargtypes => 'xid8', prosrc => 'aggregate_dummy' },
 
 # count has two forms: count(any) and count(*)
 { oid => '2147',
@@ -11614,6 +11631,11 @@
   proname => 'pg_collation_actual_version', procost => '100',
   provolatile => 'v', prorettype => 'text', proargtypes => 'oid',
   prosrc => 'pg_collation_actual_version' },
+{ oid => '9167',
+  descr => 'get actual version of database collation from operating system',
+  proname => 'pg_database_collation_actual_version', procost => '100',
+  provolatile => 'v', prorettype => 'text', proargtypes => 'oid',
+  prosrc => 'pg_database_collation_actual_version' },
 
 # system management/monitoring related functions
 { oid => '3353', descr => 'list files in the log directory',

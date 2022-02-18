@@ -1441,9 +1441,16 @@ pgfdw_abort_cleanup(ConnCacheEntry *entry, const char *sql, bool toplevel)
 
 		entry->have_prep_stmt = false;
 		entry->have_error = false;
-		/* Also reset per-connection state */
-		memset(&entry->state, 0, sizeof(entry->state));
 	}
+
+	/*
+	 * If pendingAreq of the per-connection state is not NULL, it means that
+	 * an asynchronous fetch begun by fetch_more_data_begin() was not done
+	 * successfully and thus the per-connection state was not reset in
+	 * fetch_more_data(); in that case reset the per-connection state here.
+	 */
+	if (entry->state.pendingAreq)
+		memset(&entry->state, 0, sizeof(entry->state));
 
 	/* Disarm changing_xact_state if it all worked */
 	entry->changing_xact_state = false;
@@ -1501,12 +1508,7 @@ postgres_fdw_get_connections(PG_FUNCTION_ARGS)
 
 	/* If cache doesn't exist, we return no records */
 	if (!ConnectionHash)
-	{
-		/* clean up and return the tuplestore */
-		tuplestore_donestoring(tupstore);
-
 		PG_RETURN_VOID();
-	}
 
 	hash_seq_init(&scan, ConnectionHash);
 	while ((entry = (ConnCacheEntry *) hash_seq_search(&scan)))
@@ -1571,8 +1573,6 @@ postgres_fdw_get_connections(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	PG_RETURN_VOID();
 }

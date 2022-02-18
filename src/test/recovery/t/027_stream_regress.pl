@@ -3,13 +3,20 @@ use strict;
 use warnings;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
-use Test::More tests => 4;
+use Test::More;
 use File::Basename;
+
+if (PostgreSQL::Test::Utils::has_wal_read_bug)
+{
+	# We'd prefer to use Test::More->builder->todo_start, but the bug causes
+	# this test file to die(), not merely to fail.
+	plan skip_all => 'filesystem bug';
+}
 
 # Initialize primary node
 my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(allows_streaming => 1);
-$node_primary->adjust_conf('postgresql.conf', 'max_connections', '25', 1);
+$node_primary->adjust_conf('postgresql.conf', 'max_connections', '25');
 $node_primary->append_conf('postgresql.conf', 'max_prepared_transactions = 10');
 
 # WAL consistency checking is resource intensive so require opt-in with the
@@ -37,16 +44,19 @@ $node_standby_1->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby_1->append_conf('postgresql.conf',
     "primary_slot_name = standby_1");
+$node_standby_1->append_conf('postgresql.conf',
+	'max_standby_streaming_delay = 600s');
 $node_standby_1->start;
 
 my $dlpath = PostgreSQL::Test::Utils::perl2host(dirname($ENV{REGRESS_SHLIB}));
-my $outputdir = PostgreSQL::Test::Utils::perl2host($ENV{REGRESS_OUTPUTDIR});
+my $outputdir = PostgreSQL::Test::Utils::perl2host($PostgreSQL::Test::Utils::tmp_check);
 
 # Run the regression tests against the primary.
 my $extra_opts = $ENV{EXTRA_REGRESS_OPTS} || "";
 system_or_bail($ENV{PG_REGRESS} . " $extra_opts " .
 			   "--dlpath=\"$dlpath\" " .
 			   "--bindir= " .
+			   "--host=" . $node_primary->host . " " .
 			   "--port=" . $node_primary->port . " " .
 			   "--schedule=../regress/parallel_schedule " .
 			   "--max-concurrent-tests=20 " .
@@ -77,3 +87,5 @@ command_ok(
 
 $node_standby_1->stop;
 $node_primary->stop;
+
+done_testing();

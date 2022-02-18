@@ -1,3 +1,9 @@
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+
+\set regresslib :libdir '/regress' :dlsuffix
+
 --
 -- num_nulls()
 --
@@ -29,6 +35,38 @@ SELECT num_nulls(VARIADIC '{}'::int[]);
 -- should fail, one or more arguments is required
 SELECT num_nonnulls();
 SELECT num_nulls();
+
+--
+-- canonicalize_path()
+--
+
+CREATE FUNCTION test_canonicalize_path(text)
+   RETURNS text
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;
+
+SELECT test_canonicalize_path('/');
+SELECT test_canonicalize_path('/./abc/def/');
+SELECT test_canonicalize_path('/./../abc/def');
+SELECT test_canonicalize_path('/./../../abc/def/');
+SELECT test_canonicalize_path('/abc/.././def/ghi');
+SELECT test_canonicalize_path('/abc/./../def/ghi//');
+SELECT test_canonicalize_path('/abc/def/../..');
+SELECT test_canonicalize_path('/abc/def/../../..');
+SELECT test_canonicalize_path('/abc/def/../../../../ghi/jkl');
+SELECT test_canonicalize_path('.');
+SELECT test_canonicalize_path('./');
+SELECT test_canonicalize_path('./abc/..');
+SELECT test_canonicalize_path('abc/../');
+SELECT test_canonicalize_path('abc/../def');
+SELECT test_canonicalize_path('..');
+SELECT test_canonicalize_path('../abc/def');
+SELECT test_canonicalize_path('../abc/..');
+SELECT test_canonicalize_path('../abc/../def');
+SELECT test_canonicalize_path('../abc/../../def/ghi');
+SELECT test_canonicalize_path('./abc/./def/.');
+SELECT test_canonicalize_path('./abc/././def/.');
+SELECT test_canonicalize_path('./abc/./def/.././ghi/../../../jkl/mno');
 
 --
 -- pg_log_backend_memory_contexts()
@@ -129,6 +167,11 @@ SELECT * FROM tenk1 a JOIN tenk1 b ON a.unique1 = b.unique1
 WHERE my_int_eq(a.unique2, 42);
 
 -- With support function that knows it's int4eq, we get a different plan
+CREATE FUNCTION test_support_func(internal)
+    RETURNS internal
+    AS :'regresslib', 'test_support_func'
+    LANGUAGE C STRICT;
+
 ALTER FUNCTION my_int_eq(int, int) SUPPORT test_support_func;
 
 EXPLAIN (COSTS OFF)

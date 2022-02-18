@@ -14,6 +14,7 @@
 
 #include "access/htup_details.h"
 #include "access/xlog_internal.h"
+#include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -434,8 +435,6 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 	}
 
 	LWLockRelease(ReplicationSlotControlLock);
-
-	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
 }

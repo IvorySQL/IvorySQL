@@ -4,7 +4,7 @@
 use strict;
 use warnings;
 use PostgreSQL::Test::Utils;
-use Test::More tests => 7;
+use Test::More;
 
 use FindBin;
 use lib $FindBin::RealBin;
@@ -75,4 +75,4 @@ template1
 run_test('local');
 run_test('remote');
 
-exit(0);
+done_testing();

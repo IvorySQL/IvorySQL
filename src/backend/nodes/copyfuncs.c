@@ -3072,6 +3072,7 @@ _copyConstraint(const Constraint *from)
 	COPY_NODE_FIELD(raw_expr);
 	COPY_STRING_FIELD(cooked_expr);
 	COPY_SCALAR_FIELD(generated_when);
+	COPY_SCALAR_FIELD(nulls_not_distinct);
 	COPY_NODE_FIELD(keys);
 	COPY_NODE_FIELD(including);
 	COPY_NODE_FIELD(exclusions);
@@ -3666,6 +3667,7 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_SCALAR_FIELD(oldCreateSubid);
 	COPY_SCALAR_FIELD(oldFirstRelfilenodeSubid);
 	COPY_SCALAR_FIELD(unique);
+	COPY_SCALAR_FIELD(nulls_not_distinct);
 	COPY_SCALAR_FIELD(primary);
 	COPY_SCALAR_FIELD(isconstraint);
 	COPY_SCALAR_FIELD(deferrable);
@@ -4057,6 +4059,16 @@ _copyAlterDatabaseStmt(const AlterDatabaseStmt *from)
 
 	COPY_STRING_FIELD(dbname);
 	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
+static AlterDatabaseRefreshCollStmt *
+_copyAlterDatabaseRefreshCollStmt(const AlterDatabaseRefreshCollStmt *from)
+{
+	AlterDatabaseRefreshCollStmt *newnode = makeNode(AlterDatabaseRefreshCollStmt);
+
+	COPY_STRING_FIELD(dbname);
 
 	return newnode;
 }
@@ -5587,6 +5599,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_AlterDatabaseStmt:
 			retval = _copyAlterDatabaseStmt(from);
+			break;
+		case T_AlterDatabaseRefreshCollStmt:
+			retval = _copyAlterDatabaseRefreshCollStmt(from);
 			break;
 		case T_AlterDatabaseSetStmt:
 			retval = _copyAlterDatabaseSetStmt(from);

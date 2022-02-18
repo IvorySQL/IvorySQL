@@ -607,6 +607,7 @@ EndDirectModify_function
 EndForeignInsert_function
 EndForeignModify_function
 EndForeignScan_function
+EndOfWalRecoveryInfo
 EndSampleScan_function
 EnumItem
 EolType
@@ -969,7 +970,7 @@ GistHstoreOptions
 GistInetKey
 GistNSN
 GistOptBufferingMode
-GistSortedBuildPageState
+GistSortedBuildLevelState
 GistSplitUnion
 GistSplitVector
 GistTsVectorOptions
@@ -2945,6 +2946,7 @@ XLogRecordBlockCompressHeader
 XLogRecordBlockHeader
 XLogRecordBlockImageHeader
 XLogRecordBuffer
+XLogRecoveryCtlData
 XLogRedoAction
 XLogSegNo
 XLogSource

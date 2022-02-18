@@ -19,8 +19,8 @@
 #include <unistd.h>
 
 #include "access/htup_details.h"
-#include "access/xlog.h"
 #include "access/xlog_internal.h"
+#include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
@@ -252,7 +252,6 @@ pg_stop_backup_v2(PG_FUNCTION_ARGS)
 	values[0] = LSNGetDatum(stoppoint);
 
 	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
 }

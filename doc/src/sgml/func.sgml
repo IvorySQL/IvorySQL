@@ -3511,6 +3511,84 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>starts_with</primary>
+        </indexterm>
+        <function>starts_with</function> ( <parameter>string</parameter> <type>text</type>, <parameter>prefix</parameter> <type>text</type> )
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Returns true if <parameter>string</parameter> starts
+        with <parameter>prefix</parameter>.
+       </para>
+       <para>
+        <literal>starts_with('alphabet', 'alph')</literal>
+        <returnvalue>t</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm id="function-string-to-array">
+         <primary>string_to_array</primary>
+        </indexterm>
+        <function>string_to_array</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
+        <returnvalue>text[]</returnvalue>
+       </para>
+       <para>
+        Splits the <parameter>string</parameter> at occurrences
+        of <parameter>delimiter</parameter> and forms the resulting fields
+        into a <type>text</type> array.
+        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
+        each character in the <parameter>string</parameter> will become a
+        separate element in the array.
+        If <parameter>delimiter</parameter> is an empty string, then
+        the <parameter>string</parameter> is treated as a single field.
+        If <parameter>null_string</parameter> is supplied and is
+        not <literal>NULL</literal>, fields matching that string are
+        replaced by <literal>NULL</literal>.
+        See also <link linkend="function-array-to-string"><function>array_to_string</function></link>.
+       </para>
+       <para>
+        <literal>string_to_array('xx~~yy~~zz', '~~', 'yy')</literal>
+        <returnvalue>{xx,NULL,zz}</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>string_to_table</primary>
+        </indexterm>
+        <function>string_to_table</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
+        <returnvalue>setof text</returnvalue>
+       </para>
+       <para>
+        Splits the <parameter>string</parameter> at occurrences
+        of <parameter>delimiter</parameter> and returns the resulting fields
+        as a set of <type>text</type> rows.
+        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
+        each character in the <parameter>string</parameter> will become a
+        separate row of the result.
+        If <parameter>delimiter</parameter> is an empty string, then
+        the <parameter>string</parameter> is treated as a single field.
+        If <parameter>null_string</parameter> is supplied and is
+        not <literal>NULL</literal>, fields matching that string are
+        replaced by <literal>NULL</literal>.
+       </para>
+       <para>
+        <literal>string_to_table('xx~^~yy~^~zz', '~^~', 'yy')</literal>
+        <returnvalue></returnvalue>
+<programlisting>
+ xx
+ NULL
+ zz
+</programlisting>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>strpos</primary>
         </indexterm>
         <function>strpos</function> ( <parameter>string</parameter> <type>text</type>, <parameter>substring</parameter> <type>text</type> )
@@ -3553,83 +3631,6 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>substr('alphabet', 3, 2)</literal>
         <returnvalue>ph</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>starts_with</primary>
-        </indexterm>
-        <function>starts_with</function> ( <parameter>string</parameter> <type>text</type>, <parameter>prefix</parameter> <type>text</type> )
-        <returnvalue>boolean</returnvalue>
-       </para>
-       <para>
-        Returns true if <parameter>string</parameter> starts
-        with <parameter>prefix</parameter>.
-       </para>
-       <para>
-        <literal>starts_with('alphabet', 'alph')</literal>
-        <returnvalue>t</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>string_to_array</primary>
-        </indexterm>
-        <function>string_to_array</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
-        <returnvalue>text[]</returnvalue>
-       </para>
-       <para>
-        Splits the <parameter>string</parameter> at occurrences
-        of <parameter>delimiter</parameter> and forms the resulting fields
-        into a <type>text</type> array.
-        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
-        each character in the <parameter>string</parameter> will become a
-        separate element in the array.
-        If <parameter>delimiter</parameter> is an empty string, then
-        the <parameter>string</parameter> is treated as a single field.
-        If <parameter>null_string</parameter> is supplied and is
-        not <literal>NULL</literal>, fields matching that string are
-        replaced by <literal>NULL</literal>.
-       </para>
-       <para>
-        <literal>string_to_array('xx~~yy~~zz', '~~', 'yy')</literal>
-        <returnvalue>{xx,NULL,zz}</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>string_to_table</primary>
-        </indexterm>
-        <function>string_to_table</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
-        <returnvalue>setof text</returnvalue>
-       </para>
-       <para>
-        Splits the <parameter>string</parameter> at occurrences
-        of <parameter>delimiter</parameter> and returns the resulting fields
-        as a set of <type>text</type> rows.
-        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
-        each character in the <parameter>string</parameter> will become a
-        separate row of the result.
-        If <parameter>delimiter</parameter> is an empty string, then
-        the <parameter>string</parameter> is treated as a single field.
-        If <parameter>null_string</parameter> is supplied and is
-        not <literal>NULL</literal>, fields matching that string are
-        replaced by <literal>NULL</literal>.
-       </para>
-       <para>
-        <literal>string_to_table('xx~^~yy~^~zz', '~^~', 'yy')</literal>
-        <returnvalue></returnvalue>
-<programlisting>
- xx
- NULL
- zz
-</programlisting>
        </para></entry>
       </row>
 
@@ -18452,7 +18453,7 @@ SELECT NULLIF(value, '(none)') ...
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
+        <indexterm id="function-array-to-string">
          <primary>array_to_string</primary>
         </indexterm>
         <function>array_to_string</function> ( <parameter>array</parameter> <type>anyarray</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
@@ -18465,6 +18466,7 @@ SELECT NULLIF(value, '(none)') ...
         If <parameter>null_string</parameter> is given and is
         not <literal>NULL</literal>, then <literal>NULL</literal> array
         entries are represented by that string; otherwise, they are omitted.
+        See also <link linkend="function-string-to-array"><function>string_to_array</function></link>.
        </para>
        <para>
         <literal>array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')</literal>
@@ -18583,18 +18585,6 @@ SELECT NULLIF(value, '(none)') ...
      </tbody>
     </tgroup>
    </table>
-
-   <note>
-    <para>
-     There are two differences in the behavior of <function>string_to_array</function>
-     from pre-9.1 versions of <productname>PostgreSQL</productname>.
-     First, it will return an empty (zero-element) array rather
-     than <literal>NULL</literal> when the input string is of zero length.
-     Second, if the delimiter string is <literal>NULL</literal>, the function
-     splits the input into individual characters, rather than
-     returning <literal>NULL</literal> as before.
-    </para>
-   </note>
 
    <para>
     See also <xref linkend="functions-aggregate"/> about the aggregate
@@ -19983,7 +19973,7 @@ SELECT NULLIF(value, '(none)') ...
         values.  Available for any numeric, string, date/time, or enum type,
         as well as <type>inet</type>, <type>interval</type>,
         <type>money</type>, <type>oid</type>, <type>pg_lsn</type>,
-        <type>tid</type>,
+        <type>tid</type>, <type>xid8</type>,
         and arrays of any of these types.
        </para></entry>
        <entry>Yes</entry>
@@ -20002,7 +19992,7 @@ SELECT NULLIF(value, '(none)') ...
         values.  Available for any numeric, string, date/time, or enum type,
         as well as <type>inet</type>, <type>interval</type>,
         <type>money</type>, <type>oid</type>, <type>pg_lsn</type>,
-        <type>tid</type>,
+        <type>tid</type>, <type>xid8</type>,
         and arrays of any of these types.
        </para></entry>
        <entry>Yes</entry>
@@ -23872,6 +23862,43 @@ SELECT currval(pg_get_serial_sequence('sometable', 'id'));
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>pg_settings_get_flags</primary>
+        </indexterm>
+        <function>pg_settings_get_flags</function> ( <parameter>guc</parameter> <type>text</type> )
+        <returnvalue>text[]</returnvalue>
+       </para>
+       <para>
+        Returns an array of the flags associated with the given GUC, or
+        <literal>NULL</literal> if it does not exist. The result is
+        an empty array if the GUC exists but there are no flags to show.
+        Only the most useful flags are exposed, as of the following:
+        <simplelist>
+         <member>
+          <literal>EXPLAIN</literal>: parameters included in
+          <command>EXPLAIN (SETTINGS)</command> commands.
+         </member>
+         <member>
+          <literal>NO_SHOW_ALL</literal>: parameters excluded from
+          <command>SHOW ALL</command> commands.
+         </member>
+         <member>
+          <literal>NO_RESET_ALL</literal>: parameters excluded from
+          <command>RESET ALL</command> commands.
+         </member>
+         <member>
+          <literal>NOT_IN_SAMPLE</literal>: parameters not included in
+          <filename>postgresql.conf</filename> by default.
+         </member>
+         <member>
+          <literal>RUNTIME_COMPUTED</literal>: runtime-computed parameters.
+         </member>
+        </simplelist>
+       </para></entry>
+      </row>
+      
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>pg_tablespace_databases</primary>
         </indexterm>
         <function>pg_tablespace_databases</function> ( <parameter>tablespace</parameter> <type>oid</type> )
@@ -27037,6 +27064,24 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>pg_database_collation_actual_version</primary>
+        </indexterm>
+        <function>pg_database_collation_actual_version</function> ( <type>oid</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Returns the actual version of the database's collation as it is currently
+        installed in the operating system.  If this is different from the
+        value in
+        <structname>pg_database</structname>.<structfield>datcollversion</structfield>,
+        then objects depending on the collation might need to be rebuilt.  See
+        also <xref linkend="sql-alterdatabase"/>.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>pg_import_system_collations</primary>
         </indexterm>
         <function>pg_import_system_collations</function> ( <parameter>schema</parameter> <type>regnamespace</type> )
@@ -27380,6 +27425,79 @@ SELECT pg_size_pretty(sum(pg_relation_size(relid))) AS total_size
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>pg_ls_logicalmapdir</primary>
+        </indexterm>
+        <function>pg_ls_logicalmapdir</function> ()
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_logical/mappings</filename>
+        directory. Filenames beginning with a dot, directories, and other
+        special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_logicalsnapdir</primary>
+        </indexterm>
+        <function>pg_ls_logicalsnapdir</function> ()
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_logical/snapshots</filename>
+        directory. Filenames beginning with a dot, directories, and other
+        special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_replslotdir</primary>
+        </indexterm>
+        <function>pg_ls_replslotdir</function> ( <parameter>slot_name</parameter> <type>text</type> )
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_replslot/slot_name</filename>
+        directory, where <parameter>slot_name</parameter> is the name of the
+        replication slot provided as input of the function. Filenames beginning
+        with a dot, directories, and other special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>pg_ls_archive_statusdir</primary>
         </indexterm>
         <function>pg_ls_archive_statusdir</function> ()
@@ -27508,78 +27626,6 @@ SELECT convert_from(pg_read_binary_file('file_in_utf8.txt'), 'UTF8');
        </para></entry>
       </row>
 
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>pg_ls_logicalsnapdir</primary>
-        </indexterm>
-        <function>pg_ls_logicalsnapdir</function> ()
-        <returnvalue>setof record</returnvalue>
-        ( <parameter>name</parameter> <type>text</type>,
-        <parameter>size</parameter> <type>bigint</type>,
-        <parameter>modification</parameter> <type>timestamp with time zone</type> )
-       </para>
-       <para>
-        Returns the name, size, and last modification time (mtime) of each
-        ordinary file in the server's <filename>pg_logical/snapshots</filename>
-        directory. Filenames beginning with a dot, directories, and other
-        special files are excluded.
-       </para>
-       <para>
-        This function is restricted to superusers and members of
-        the <literal>pg_monitor</literal> role by default, but other users can
-        be granted EXECUTE to run the function.
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>pg_ls_logicalmapdir</primary>
-        </indexterm>
-        <function>pg_ls_logicalmapdir</function> ()
-        <returnvalue>setof record</returnvalue>
-        ( <parameter>name</parameter> <type>text</type>,
-        <parameter>size</parameter> <type>bigint</type>,
-        <parameter>modification</parameter> <type>timestamp with time zone</type> )
-       </para>
-       <para>
-        Returns the name, size, and last modification time (mtime) of each
-        ordinary file in the server's <filename>pg_logical/mappings</filename>
-        directory. Filenames beginning with a dot, directories, and other
-        special files are excluded.
-       </para>
-       <para>
-        This function is restricted to superusers and members of
-        the <literal>pg_monitor</literal> role by default, but other users can
-        be granted EXECUTE to run the function.
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>pg_ls_replslotdir</primary>
-        </indexterm>
-        <function>pg_ls_replslotdir</function> ( <parameter>slot_name</parameter> <type>text</type> )
-        <returnvalue>setof record</returnvalue>
-        ( <parameter>name</parameter> <type>text</type>,
-        <parameter>size</parameter> <type>bigint</type>,
-        <parameter>modification</parameter> <type>timestamp with time zone</type> )
-       </para>
-       <para>
-        Returns the name, size, and last modification time (mtime) of each
-        ordinary file in the server's <filename>pg_replslot/slot_name</filename>
-        directory, where <parameter>slot_name</parameter> is the name of the
-        replication slot provided as input of the function. Filenames beginning
-        with a dot, directories, and other special files are excluded.
-       </para>
-       <para>
-        This function is restricted to superusers and members of
-        the <literal>pg_monitor</literal> role by default, but other users can
-        be granted EXECUTE to run the function.
-       </para></entry>
-      </row>
      </tbody>
     </tgroup>
    </table>

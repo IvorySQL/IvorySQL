@@ -2368,7 +2368,7 @@ apply_dispatch(StringInfo s)
 
 	/*
 	 * Set the current command being applied. Since this function can be
-	 * called recusively when applying spooled changes, save the current
+	 * called recursively when applying spooled changes, save the current
 	 * command.
 	 */
 	saved_command = apply_error_callback_arg.command;
@@ -2587,8 +2587,8 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 	pgstat_report_activity(STATE_IDLE, NULL);
 
 	/*
-	 * Push apply error context callback. Fields will be filled during
-	 * applying a change.
+	 * Push apply error context callback. Fields will be filled while applying
+	 * a change.
 	 */
 	errcallback.callback = apply_error_callback;
 	errcallback.previous = error_context_stack;
@@ -2933,10 +2933,7 @@ maybe_reread_subscription(void)
 		proc_exit(0);
 	}
 
-	/*
-	 * Exit if the subscription was disabled. This normally should not happen
-	 * as the worker gets killed during ALTER SUBSCRIPTION ... DISABLE.
-	 */
+	/* Exit if the subscription was disabled. */
 	if (!newsub->enabled)
 	{
 		ereport(LOG,
@@ -3608,7 +3605,7 @@ ApplyWorkerMain(Datum main_arg)
 		}
 
 		ereport(DEBUG1,
-				(errmsg("logical replication apply worker for subscription \"%s\" two_phase is %s.",
+				(errmsg("logical replication apply worker for subscription \"%s\" two_phase is %s",
 						MySubscription->name,
 						MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_DISABLED ? "DISABLED" :
 						MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_PENDING ? "PENDING" :

@@ -327,6 +327,31 @@ sub install_path
 
 =pod
 
+=item $node->config_data($option)
+
+Return a string holding configuration data from pg_config, with $option
+being the option switch used with the pg_config command.
+
+=cut
+
+sub config_data
+{
+	my ($self, $option) = @_;
+	local %ENV = $self->_get_env();
+
+	my ($stdout, $stderr);
+	my $result =
+	  IPC::Run::run [ $self->installed_command('pg_config'), $option ],
+	  '>', \$stdout, '2>', \$stderr
+	  or die "could not execute pg_config";
+	chomp($stdout);
+	$stdout =~ s/\r$//;
+
+	return $stdout;
+}
+
+=pod
+
 =item $node->info()
 
 Return a string containing human-readable diagnostic information (paths, etc)
@@ -896,23 +921,40 @@ Note: if the node is already known stopped, this does nothing.
 However, if we think it's running and it's not, it's important for
 this to fail.  Otherwise, tests might fail to detect server crashes.
 
+With optional extra param fail_ok => 1, returns 0 for failure
+instead of bailing out.
+
 =cut
 
 sub stop
 {
-	my ($self, $mode) = @_;
-	my $port   = $self->port;
+	my ($self, $mode, %params) = @_;
 	my $pgdata = $self->data_dir;
 	my $name   = $self->name;
+	my $ret;
 
 	local %ENV = $self->_get_env();
 
 	$mode = 'fast' unless defined $mode;
-	return unless defined $self->{_pid};
+	return 1 unless defined $self->{_pid};
+
 	print "### Stopping node \"$name\" using mode $mode\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_ctl', '-D', $pgdata, '-m', $mode, 'stop');
+	$ret = PostgreSQL::Test::Utils::system_log('pg_ctl', '-D', $pgdata,
+		'-m', $mode, 'stop');
+
+	if ($ret != 0)
+	{
+		print "# pg_ctl stop failed: $ret\n";
+
+		# Check to see if we still have a postmaster or not.
+		$self->_update_pid(-1);
+
+		BAIL_OUT("pg_ctl stop failed") unless $params{fail_ok};
+		return 0;
+	}
+
 	$self->_update_pid(0);
-	return;
+	return 1;
 }
 
 =pod
@@ -1142,8 +1184,19 @@ sub _update_pid
 	if (open my $pidfile, '<', $self->data_dir . "/postmaster.pid")
 	{
 		chomp($self->{_pid} = <$pidfile>);
-		print "# Postmaster PID for node \"$name\" is $self->{_pid}\n";
 		close $pidfile;
+
+		# If we aren't sure what to expect, validate the PID using kill().
+		# This protects against stale PID files left by crashed postmasters.
+		if ($is_running == -1 && kill(0, $self->{_pid}) == 0)
+		{
+			print
+			  "# Stale postmaster.pid file for node \"$name\": PID $self->{_pid} no longer exists\n";
+			$self->{_pid} = undef;
+			return;
+		}
+
+		print "# Postmaster PID for node \"$name\" is $self->{_pid}\n";
 
 		# If we found a pidfile when there shouldn't be one, complain.
 		BAIL_OUT("postmaster.pid unexpectedly present") if $is_running == 0;
@@ -2161,8 +2214,11 @@ sub connect_ok
 
 	if (defined($params{expected_stdout}))
 	{
-		like($stdout, $params{expected_stdout}, "$test_name: matches");
+		like($stdout, $params{expected_stdout}, "$test_name: stdout matches");
 	}
+
+	is($stderr, "", "$test_name: no stderr");
+
 	if (@log_like or @log_unlike)
 	{
 		my $log_contents = PostgreSQL::Test::Utils::slurp_file($self->logfile, $log_location);

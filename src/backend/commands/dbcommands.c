@@ -36,6 +36,7 @@
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_subscription.h"
@@ -84,9 +85,9 @@ static void movedb_failure_callback(int code, Datum arg);
 static bool get_db_info(const char *name, LOCKMODE lockmode,
 						Oid *dbIdP, Oid *ownerIdP,
 						int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP,
-						Oid *dbLastSysOidP, TransactionId *dbFrozenXidP,
-						MultiXactId *dbMinMultiP,
-						Oid *dbTablespace, char **dbCollate, char **dbCtype);
+						TransactionId *dbFrozenXidP, MultiXactId *dbMinMultiP,
+						Oid *dbTablespace, char **dbCollate, char **dbCtype,
+						char **dbCollversion);
 static bool have_createdb_privilege(void);
 static void remove_dbtablespaces(Oid db_id);
 static bool check_db_file_conflict(Oid db_id);
@@ -106,9 +107,9 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			src_encoding = -1;
 	char	   *src_collate = NULL;
 	char	   *src_ctype = NULL;
+	char	   *src_collversion = NULL;
 	bool		src_istemplate;
 	bool		src_allowconn;
-	Oid			src_lastsysoid = InvalidOid;
 	TransactionId src_frozenxid = InvalidTransactionId;
 	MultiXactId src_minmxid = InvalidMultiXactId;
 	Oid			src_deftablespace;
@@ -117,7 +118,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	HeapTuple	tuple;
 	Datum		new_record[Natts_pg_database];
 	bool		new_record_nulls[Natts_pg_database];
-	Oid			dboid;
+	Oid			dboid = InvalidOid;
 	Oid			datdba;
 	ListCell   *option;
 	DefElem    *dtablespacename = NULL;
@@ -130,6 +131,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	DefElem    *distemplate = NULL;
 	DefElem    *dallowconnections = NULL;
 	DefElem    *dconnlimit = NULL;
+	DefElem    *dcollversion = NULL;
 	char	   *dbname = stmt->dbname;
 	char	   *dbowner = NULL;
 	const char *dbtemplate = NULL;
@@ -140,6 +142,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	bool		dbistemplate = false;
 	bool		dballowconnections = true;
 	int			dbconnlimit = -1;
+	char	   *dbcollversion = NULL;
 	int			notherbackends;
 	int			npreparedxacts;
 	createdb_failure_params fparms;
@@ -209,6 +212,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 				errorConflictingDefElem(defel, pstate);
 			dconnlimit = defel;
 		}
+		else if (strcmp(defel->defname, "collation_version") == 0)
+		{
+			if (dcollversion)
+				errorConflictingDefElem(defel, pstate);
+			dcollversion = defel;
+		}
 		else if (strcmp(defel->defname, "location") == 0)
 		{
 			ereport(WARNING,
@@ -216,6 +225,30 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errmsg("LOCATION is not supported anymore"),
 					 errhint("Consider using tablespaces instead."),
 					 parser_errposition(pstate, defel->location)));
+		}
+		else if (strcmp(defel->defname, "oid") == 0)
+		{
+			dboid = defGetInt32(defel);
+
+			/*
+			 * We don't normally permit new databases to be created with
+			 * system-assigned OIDs. pg_upgrade tries to preserve database
+			 * OIDs, so we can't allow any database to be created with an
+			 * OID that might be in use in a freshly-initialized cluster
+			 * created by some future version. We assume all such OIDs will
+			 * be from the system-managed OID range.
+			 *
+			 * As an exception, however, we permit any OID to be assigned when
+			 * allow_system_table_mods=on (so that initdb can assign system
+			 * OIDs to template0 and postgres) or when performing a binary
+			 * upgrade (so that pg_upgrade can preserve whatever OIDs it finds
+			 * in the source cluster).
+			 */
+			if (dboid < FirstNormalObjectId &&
+				!allowSystemTableMods && !IsBinaryUpgrade)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE)),
+						errmsg("OIDs less than %u are reserved for system objects", FirstNormalObjectId));
 		}
 		else
 			ereport(ERROR,
@@ -283,6 +316,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid connection limit: %d", dbconnlimit)));
 	}
+	if (dcollversion)
+		dbcollversion = defGetString(dcollversion);
 
 	/* obtain OID of proposed owner */
 	if (dbowner)
@@ -318,9 +353,9 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	if (!get_db_info(dbtemplate, ShareLock,
 					 &src_dboid, &src_owner, &src_encoding,
-					 &src_istemplate, &src_allowconn, &src_lastsysoid,
+					 &src_istemplate, &src_allowconn,
 					 &src_frozenxid, &src_minmxid, &src_deftablespace,
-					 &src_collate, &src_ctype))
+					 &src_collate, &src_ctype, &src_collversion))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("template database \"%s\" does not exist",
@@ -401,6 +436,52 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 							dbctype, src_ctype),
 					 errhint("Use the same LC_CTYPE as in the template database, or use template0 as template.")));
 	}
+
+	/*
+	 * If we got a collation version for the template database, check that it
+	 * matches the actual OS collation version.  Otherwise error; the user
+	 * needs to fix the template database first.  Don't complain if a
+	 * collation version was specified explicitly as a statement option; that
+	 * is used by pg_upgrade to reproduce the old state exactly.
+	 *
+	 * (If the template database has no collation version, then either the
+	 * platform/provider does not support collation versioning, or it's
+	 * template0, for which we stipulate that it does not contain
+	 * collation-using objects.)
+	 */
+	if (src_collversion && !dcollversion)
+	{
+		char	   *actual_versionstr;
+
+		actual_versionstr = get_collation_actual_version(COLLPROVIDER_LIBC, dbcollate);
+		if (!actual_versionstr)
+			ereport(ERROR,
+					(errmsg("template database \"%s\" has a collation version, but no actual collation version could be determined",
+							dbtemplate)));
+
+		if (strcmp(actual_versionstr, src_collversion) != 0)
+			ereport(ERROR,
+					(errmsg("template database \"%s\" has a collation version mismatch",
+							dbtemplate),
+					 errdetail("The template database was created using collation version %s, "
+							   "but the operating system provides version %s.",
+							   src_collversion, actual_versionstr),
+					 errhint("Rebuild all objects in the template database that use the default collation and run "
+							 "ALTER DATABASE %s REFRESH COLLATION VERSION, "
+							 "or build PostgreSQL with the right library version.",
+							 quote_identifier(dbtemplate))));
+	}
+
+	if (dbcollversion == NULL)
+		dbcollversion = src_collversion;
+
+	/*
+	 * Normally, we copy the collation version from the template database.
+	 * This last resort only applies if the template database does not have a
+	 * collation version, which is normally only the case for template0.
+	 */
+	if (dbcollversion == NULL)
+		dbcollversion = get_collation_actual_version(COLLPROVIDER_LIBC, dbcollate);
 
 	/* Resolve default tablespace for new database */
 	if (dtablespacename && dtablespacename->arg)
@@ -504,11 +585,34 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 */
 	pg_database_rel = table_open(DatabaseRelationId, RowExclusiveLock);
 
-	do
+	/*
+	 * If database OID is configured, check if the OID is already in use or
+	 * data directory already exists.
+	 */
+	if (OidIsValid(dboid))
 	{
-		dboid = GetNewOidWithIndex(pg_database_rel, DatabaseOidIndexId,
-								   Anum_pg_database_oid);
-	} while (check_db_file_conflict(dboid));
+		char	   *existing_dbname = get_database_name(dboid);
+
+		if (existing_dbname != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE)),
+					errmsg("database OID %u is already in use by database \"%s\"",
+						   dboid, existing_dbname));
+
+		if (check_db_file_conflict(dboid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE)),
+					errmsg("data directory with the specified OID %u already exists", dboid));
+	}
+	else
+	{
+		/* Select an OID for the new database if is not explicitly configured. */
+		do
+		{
+			dboid = GetNewOidWithIndex(pg_database_rel, DatabaseOidIndexId,
+									   Anum_pg_database_oid);
+		} while (check_db_file_conflict(dboid));
+	}
 
 	/*
 	 * Insert a new tuple into pg_database.  This establishes our ownership of
@@ -525,17 +629,18 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		DirectFunctionCall1(namein, CStringGetDatum(dbname));
 	new_record[Anum_pg_database_datdba - 1] = ObjectIdGetDatum(datdba);
 	new_record[Anum_pg_database_encoding - 1] = Int32GetDatum(encoding);
-	new_record[Anum_pg_database_datcollate - 1] =
-		DirectFunctionCall1(namein, CStringGetDatum(dbcollate));
-	new_record[Anum_pg_database_datctype - 1] =
-		DirectFunctionCall1(namein, CStringGetDatum(dbctype));
 	new_record[Anum_pg_database_datistemplate - 1] = BoolGetDatum(dbistemplate);
 	new_record[Anum_pg_database_datallowconn - 1] = BoolGetDatum(dballowconnections);
 	new_record[Anum_pg_database_datconnlimit - 1] = Int32GetDatum(dbconnlimit);
-	new_record[Anum_pg_database_datlastsysoid - 1] = ObjectIdGetDatum(src_lastsysoid);
 	new_record[Anum_pg_database_datfrozenxid - 1] = TransactionIdGetDatum(src_frozenxid);
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
+	new_record[Anum_pg_database_datcollate - 1] = CStringGetTextDatum(dbcollate);
+	new_record[Anum_pg_database_datctype - 1] = CStringGetTextDatum(dbctype);
+	if (dbcollversion)
+		new_record[Anum_pg_database_datcollversion - 1] = CStringGetTextDatum(dbcollversion);
+	else
+		new_record_nulls[Anum_pg_database_datcollversion - 1] = true;
 
 	/*
 	 * We deliberately set datacl to default (NULL), rather than copying it
@@ -955,11 +1060,14 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 
 	/*
 	 * Force a checkpoint to make sure the checkpointer has received the
-	 * message sent by ForgetDatabaseSyncRequests. On Windows, this also
-	 * ensures that background procs don't hold any open files, which would
-	 * cause rmdir() to fail.
+	 * message sent by ForgetDatabaseSyncRequests.
 	 */
 	RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
+
+#if defined(USE_BARRIER_SMGRRELEASE)
+	/* Close all smgr fds in all backends. */
+	WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
+#endif
 
 	/*
 	 * Remove all tablespace subdirs belonging to the database.
@@ -1114,7 +1222,7 @@ movedb(const char *dbname, const char *tblspcname)
 	pgdbrel = table_open(DatabaseRelationId, RowExclusiveLock);
 
 	if (!get_db_info(dbname, AccessExclusiveLock, &db_id, NULL, NULL,
-					 NULL, NULL, NULL, NULL, NULL, &src_tblspcoid, NULL, NULL))
+					 NULL, NULL, NULL, NULL, &src_tblspcoid, NULL, NULL, NULL))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("database \"%s\" does not exist", dbname)));
@@ -1208,6 +1316,11 @@ movedb(const char *dbname, const char *tblspcname)
 	 */
 	RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT
 					  | CHECKPOINT_FLUSH_ALL);
+
+#if defined(USE_BARRIER_SMGRRELEASE)
+	/* Close all smgr fds in all backends. */
+	WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
+#endif
 
 	/*
 	 * Now drop all buffers holding data of the target database; they should
@@ -1602,6 +1715,88 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 
 
 /*
+ * ALTER DATABASE name REFRESH COLLATION VERSION
+ */
+ObjectAddress
+AlterDatabaseRefreshColl(AlterDatabaseRefreshCollStmt *stmt)
+{
+	Relation	rel;
+	ScanKeyData scankey;
+	SysScanDesc scan;
+	Oid			db_id;
+	HeapTuple	tuple;
+	Form_pg_database datForm;
+	ObjectAddress address;
+	Datum		datum;
+	bool		isnull;
+	char	   *oldversion;
+	char	   *newversion;
+
+	rel = table_open(DatabaseRelationId, RowExclusiveLock);
+	ScanKeyInit(&scankey,
+				Anum_pg_database_datname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(stmt->dbname));
+	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
+							  NULL, 1, &scankey);
+	tuple = systable_getnext(scan);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database \"%s\" does not exist", stmt->dbname)));
+
+	datForm = (Form_pg_database) GETSTRUCT(tuple);
+	db_id = datForm->oid;
+
+	if (!pg_database_ownercheck(db_id, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
+					   stmt->dbname);
+
+	datum = heap_getattr(tuple, Anum_pg_database_datcollversion, RelationGetDescr(rel), &isnull);
+	oldversion = isnull ? NULL : TextDatumGetCString(datum);
+
+	datum = heap_getattr(tuple, Anum_pg_database_datcollate, RelationGetDescr(rel), &isnull);
+	Assert(!isnull);
+	newversion = get_collation_actual_version(COLLPROVIDER_LIBC, TextDatumGetCString(datum));
+
+	/* cannot change from NULL to non-NULL or vice versa */
+	if ((!oldversion && newversion) || (oldversion && !newversion))
+		elog(ERROR, "invalid collation version change");
+	else if (oldversion && newversion && strcmp(newversion, oldversion) != 0)
+	{
+		bool		nulls[Natts_pg_database] = {0};
+		bool		replaces[Natts_pg_database] = {0};
+		Datum		values[Natts_pg_database] = {0};
+
+		ereport(NOTICE,
+				(errmsg("changing version from %s to %s",
+						oldversion, newversion)));
+
+		values[Anum_pg_database_datcollversion - 1] = CStringGetTextDatum(newversion);
+		replaces[Anum_pg_database_datcollversion - 1] = true;
+
+		tuple = heap_modify_tuple(tuple, RelationGetDescr(rel),
+								  values, nulls, replaces);
+		CatalogTupleUpdate(rel, &tuple->t_self, tuple);
+		heap_freetuple(tuple);
+	}
+	else
+		ereport(NOTICE,
+				(errmsg("version has not changed")));
+
+	InvokeObjectPostAlterHook(DatabaseRelationId, db_id, 0);
+
+	ObjectAddressSet(address, DatabaseRelationId, db_id);
+
+	systable_endscan(scan);
+
+	table_close(rel, NoLock);
+
+	return address;
+}
+
+
+/*
  * ALTER DATABASE name SET ...
  */
 Oid
@@ -1743,6 +1938,34 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 }
 
 
+Datum
+pg_database_collation_actual_version(PG_FUNCTION_ARGS)
+{
+	Oid			dbid = PG_GETARG_OID(0);
+	HeapTuple	tp;
+	Datum		datum;
+	bool		isnull;
+	char	   *version;
+
+	tp = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(dbid));
+	if (!HeapTupleIsValid(tp))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("database with OID %u does not exist", dbid)));
+
+	datum = SysCacheGetAttr(DATABASEOID, tp, Anum_pg_database_datcollate, &isnull);
+	Assert(!isnull);
+	version = get_collation_actual_version(COLLPROVIDER_LIBC, TextDatumGetCString(datum));
+
+	ReleaseSysCache(tp);
+
+	if (version)
+		PG_RETURN_TEXT_P(cstring_to_text(version));
+	else
+		PG_RETURN_NULL();
+}
+
+
 /*
  * Helper functions
  */
@@ -1757,9 +1980,9 @@ static bool
 get_db_info(const char *name, LOCKMODE lockmode,
 			Oid *dbIdP, Oid *ownerIdP,
 			int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP,
-			Oid *dbLastSysOidP, TransactionId *dbFrozenXidP,
-			MultiXactId *dbMinMultiP,
-			Oid *dbTablespace, char **dbCollate, char **dbCtype)
+			TransactionId *dbFrozenXidP, MultiXactId *dbMinMultiP,
+			Oid *dbTablespace, char **dbCollate, char **dbCtype,
+			char **dbCollversion)
 {
 	bool		result = false;
 	Relation	relation;
@@ -1824,6 +2047,9 @@ get_db_info(const char *name, LOCKMODE lockmode,
 
 			if (strcmp(name, NameStr(dbform->datname)) == 0)
 			{
+				Datum		datum;
+				bool		isnull;
+
 				/* oid of the database */
 				if (dbIdP)
 					*dbIdP = dbOid;
@@ -1839,9 +2065,6 @@ get_db_info(const char *name, LOCKMODE lockmode,
 				/* allowing connections? */
 				if (dbAllowConnP)
 					*dbAllowConnP = dbform->datallowconn;
-				/* last system OID used in database */
-				if (dbLastSysOidP)
-					*dbLastSysOidP = dbform->datlastsysoid;
 				/* limit of frozen XIDs */
 				if (dbFrozenXidP)
 					*dbFrozenXidP = dbform->datfrozenxid;
@@ -1853,9 +2076,25 @@ get_db_info(const char *name, LOCKMODE lockmode,
 					*dbTablespace = dbform->dattablespace;
 				/* default locale settings for this database */
 				if (dbCollate)
-					*dbCollate = pstrdup(NameStr(dbform->datcollate));
+				{
+					datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datcollate, &isnull);
+					Assert(!isnull);
+					*dbCollate = TextDatumGetCString(datum);
+				}
 				if (dbCtype)
-					*dbCtype = pstrdup(NameStr(dbform->datctype));
+				{
+					datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datctype, &isnull);
+					Assert(!isnull);
+					*dbCtype = TextDatumGetCString(datum);
+				}
+				if (dbCollversion)
+				{
+					datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datcollversion, &isnull);
+					if (isnull)
+						*dbCollversion = NULL;
+					else
+						*dbCollversion = TextDatumGetCString(datum);
+				}
 				ReleaseSysCache(tuple);
 				result = true;
 				break;
@@ -2208,6 +2447,11 @@ dbase_redo(XLogReaderState *record)
 
 		/* Clean out the xlog relcache too */
 		XLogDropDatabase(xlrec->db_id);
+
+#if defined(USE_BARRIER_SMGRRELEASE)
+		/* Close all sgmr fds in all backends. */
+		WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
+#endif
 
 		for (i = 0; i < xlrec->ntablespaces; i++)
 		{

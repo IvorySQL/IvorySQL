@@ -260,6 +260,7 @@ TwoPhaseShmemInit(void)
 	{
 		GlobalTransaction gxacts;
 		int			i;
+		int			max_backends = GetMaxBackends();
 
 		Assert(!found);
 		TwoPhaseState->freeGXacts = NULL;
@@ -293,7 +294,7 @@ TwoPhaseShmemInit(void)
 			 * prepared transaction. Currently multixact.c uses that
 			 * technique.
 			 */
-			gxacts[i].dummyBackendId = MaxBackends + 1 + i;
+			gxacts[i].dummyBackendId = max_backends + 1 + i;
 		}
 	}
 	else
@@ -1073,6 +1074,9 @@ StartPrepare(GlobalTransaction gxact)
 	hdr.ninvalmsgs = xactGetCommittedInvalidationMessages(&invalmsgs,
 														  &hdr.initfileinval);
 	hdr.gidlen = strlen(gxact->gid) + 1;	/* Include '\0' */
+	/* EndPrepare will fill the origin data, if necessary */
+	hdr.origin_lsn = InvalidXLogRecPtr;
+	hdr.origin_timestamp = 0;
 
 	save_state_data(&hdr, sizeof(TwoPhaseFileHeader));
 	save_state_data(gxact->gid, hdr.gidlen);
@@ -1131,11 +1135,6 @@ EndPrepare(GlobalTransaction gxact)
 	{
 		hdr->origin_lsn = replorigin_session_origin_lsn;
 		hdr->origin_timestamp = replorigin_session_origin_timestamp;
-	}
-	else
-	{
-		hdr->origin_lsn = InvalidXLogRecPtr;
-		hdr->origin_timestamp = 0;
 	}
 
 	/*

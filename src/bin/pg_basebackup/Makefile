@@ -35,10 +35,15 @@ OBJS = \
 	streamutil.o \
 	walmethods.o
 
+# If you add or remove files here, also update Mkvcbuild.pm, which only knows
+# about OBJS, not BBOBJS, and thus has to be manually updated to stay in sync
+# with this list.
 BBOBJS = \
 	pg_basebackup.o \
 	bbstreamer_file.o \
+	bbstreamer_gzip.o \
 	bbstreamer_inject.o \
+	bbstreamer_lz4.o \
 	bbstreamer_tar.o
 
 all: pg_basebackup pg_receivewal pg_recvlogical

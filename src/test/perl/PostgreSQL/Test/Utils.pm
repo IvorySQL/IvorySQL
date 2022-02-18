@@ -142,7 +142,8 @@ BEGIN
 	# Must be set early
 	$windows_os = $Config{osname} eq 'MSWin32' || $Config{osname} eq 'msys';
 	# Check if this environment is MSYS2.
-	$is_msys2 = $^O eq 'msys' && `uname -or` =~ /^[2-9].*Msys/;
+	$is_msys2 = $windows_os && -x '/usr/bin/uname'  &&
+	  `uname -or` =~ /^[2-9].*Msys/;
 
 	if ($windows_os)
 	{
@@ -310,7 +311,7 @@ The returned path uses forward slashes but has no trailing slash.
 sub perl2host
 {
 	my ($subject) = @_;
-	return $subject unless $Config{osname} eq 'msys';
+	return $subject;
 	if ($is_msys2)
 	{
 		# get absolute, windows type path
@@ -347,6 +348,29 @@ sub perl2host
 	$dir =~ s!/$!!;
 	chdir $here;
 	return $dir . $leaf;
+}
+
+=pod
+
+=item has_wal_read_bug()
+
+Returns true if $tmp_check is subject to a sparc64+ext4 bug that causes WAL
+readers to see zeros if another process simultaneously wrote the same offsets.
+Consult this in tests that fail frequently on affected configurations.  The
+bug has made streaming standbys fail to advance, reporting corrupt WAL.  It
+has made COMMIT PREPARED fail with "could not read two-phase state from WAL".
+Non-WAL PostgreSQL reads haven't been affected, likely because those readers
+and writers have buffering systems in common.  See
+https://postgr.es/m/20220116210241.GC756210@rfd.leadboat.com for details.
+
+=cut
+
+sub has_wal_read_bug
+{
+	return
+	     $Config{osname} eq 'linux'
+	  && $Config{archname} =~ /^sparc/
+	  && !run_log([ qw(df -x ext4), $tmp_check ], '>', '/dev/null', '2>&1');
 }
 
 =pod

@@ -26,6 +26,14 @@
 #define GLOBALS_DUMP_FILE	"pg_upgrade_dump_globals.sql"
 #define DB_DUMP_FILE_MASK	"pg_upgrade_dump_%u.custom"
 
+/*
+ * Base directories that include all the files generated internally,
+ * from the root path of the new cluster.
+ */
+#define BASE_OUTPUTDIR		"pg_upgrade_output.d"
+#define LOG_OUTPUTDIR		BASE_OUTPUTDIR "/log"
+#define DUMP_OUTPUTDIR		BASE_OUTPUTDIR "/dump"
+
 #define DB_DUMP_LOG_FILE_MASK	"pg_upgrade_dump_%u.log"
 #define SERVER_LOG_FILE		"pg_upgrade_server.log"
 #define UTILITY_LOG_FILE	"pg_upgrade_utility.log"
@@ -145,8 +153,7 @@ typedef struct
 	const char *new_tablespace;
 	const char *old_tablespace_suffix;
 	const char *new_tablespace_suffix;
-	Oid			old_db_oid;
-	Oid			new_db_oid;
+	Oid			db_oid;
 	Oid			relfilenode;
 	/* the rest are used only for logging and error reporting */
 	char	   *nspname;		/* namespaces */
@@ -263,6 +270,10 @@ typedef struct
 	FILE	   *internal;		/* internal log FILE */
 	bool		verbose;		/* true -> be verbose in messages */
 	bool		retain;			/* retain log files on success */
+	/* Set of internal directories for output files */
+	char	   *basedir;		/* Base output directory */
+	char	   *dumpdir;		/* Dumps */
+	char	   *logdir;			/* Log files */
 } LogOpts;
 
 

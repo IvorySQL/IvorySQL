@@ -28,10 +28,12 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
            [ LOCALE [=] <replaceable class="parameter">locale</replaceable> ]
            [ LC_COLLATE [=] <replaceable class="parameter">lc_collate</replaceable> ]
            [ LC_CTYPE [=] <replaceable class="parameter">lc_ctype</replaceable> ]
+           [ COLLATION_VERSION = <replaceable>collation_version</replaceable> ]
            [ TABLESPACE [=] <replaceable class="parameter">tablespace_name</replaceable> ]
            [ ALLOW_CONNECTIONS [=] <replaceable class="parameter">allowconn</replaceable> ]
            [ CONNECTION LIMIT [=] <replaceable class="parameter">connlimit</replaceable> ]
-           [ IS_TEMPLATE [=] <replaceable class="parameter">istemplate</replaceable> ] ]
+           [ IS_TEMPLATE [=] <replaceable class="parameter">istemplate</replaceable> ]
+           [ OID [=] <replaceable class="parameter">oid</replaceable> ] ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -157,6 +159,26 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
        </para>
       </listitem>
      </varlistentry>
+
+     <varlistentry>
+      <term><replaceable>collation_version</replaceable></term>
+
+      <listitem>
+       <para>
+        Specifies the collation version string to store with the database.
+        Normally, this should be omitted, which will cause the version to be
+        computed from the actual version of the database collation as provided
+        by the operating system.  This option is intended to be used by
+        <command>pg_upgrade</command> for copying the version from an existing
+        installation.
+       </para>
+
+       <para>
+        See also <xref linkend="sql-alterdatabase"/> for how to handle
+        database collation version mismatches.
+       </para>
+     </listitem>
+    </varlistentry>
      <varlistentry>
       <term><replaceable class="parameter">tablespace_name</replaceable></term>
       <listitem>
@@ -203,6 +225,21 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
         </para>
        </listitem>
       </varlistentry>
+
+      <varlistentry>
+       <term><replaceable class="parameter">oid</replaceable></term>
+       <listitem>
+        <para>
+         The object identifier to be used for the new database. If this
+         parameter is not specified, the database will choose a suitable
+         OID automatically. This parameter is primarily intended for internal
+         use by <application>pg_upgrade</application>, and only
+         <application>pg_upgrade</application> can specify a value less
+         than 16384.
+        </para>
+       </listitem>
+      </varlistentry>
+
     </variablelist>
 
   <para>

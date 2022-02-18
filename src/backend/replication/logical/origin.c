@@ -74,6 +74,7 @@
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "access/xact.h"
+#include "access/xloginsert.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
 #include "funcapi.h"
@@ -1566,8 +1567,6 @@ pg_show_replication_origin_status(PG_FUNCTION_ARGS)
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
-
-	tuplestore_donestoring(tupstore);
 
 	LWLockRelease(ReplicationOriginLock);
 
