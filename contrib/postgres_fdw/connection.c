@@ -805,7 +805,8 @@ pgfdw_report_error(int elevel, PGresult *res, PGconn *conn,
 
 		ereport(elevel,
 				(errcode(sqlstate),
-				 message_primary ? errmsg_internal("%s", message_primary) :
+				 (message_primary != NULL && message_primary[0] != '\0') ?
+				 errmsg_internal("%s", message_primary) :
 				 errmsg("could not obtain message string for remote error"),
 				 message_detail ? errdetail_internal("%s", message_detail) : 0,
 				 message_hint ? errhint("%s", message_hint) : 0,
@@ -976,8 +977,17 @@ pgfdw_xact_callback(XactEvent event, void *arg)
 					{
 						entry->have_prep_stmt = false;
 						entry->have_error = false;
-						/* Also reset per-connection state */
-						memset(&entry->state, 0, sizeof(entry->state));
+
+						/*
+						 * If pendingAreq of the per-connection state is not
+						 * NULL, it means that an asynchronous fetch begun by
+						 * fetch_more_data_begin() was not done successfully
+						 * and thus the per-connection state was not reset in
+						 * fetch_more_data(); in that case reset the
+						 * per-connection state here.
+						 */
+						if (entry->state.pendingAreq)
+							memset(&entry->state, 0, sizeof(entry->state));
 					}
 
 					/* Disarm changing_xact_state if it all worked. */
@@ -1108,6 +1118,19 @@ pgfdw_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
 						 curlevel, curlevel);
 				if (!pgfdw_exec_cleanup_query(entry->conn, sql, false))
 					abort_cleanup_failure = true;
+				else
+				{
+					/*
+					 * If pendingAreq of the per-connection state is not NULL,
+					 * it means that an asynchronous fetch begun by
+					 * fetch_more_data_begin() was not done successfully and
+					 * thus the per-connection state was not reset in
+					 * fetch_more_data(); in that case reset the
+					 * per-connection state here.
+					 */
+					if (entry->state.pendingAreq)
+						memset(&entry->state, 0, sizeof(entry->state));
+				}
 			}
 
 			/* Disarm changing_xact_state if it all worked. */

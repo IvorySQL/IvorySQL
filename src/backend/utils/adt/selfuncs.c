@@ -3913,9 +3913,21 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
 	Oid			statOid = InvalidOid;
 	MVNDistinct *stats;
 	StatisticExtInfo *matched_info = NULL;
+	RangeTblEntry		*rte;
 
 	/* bail out immediately if the table has no extended statistics */
 	if (!rel->statlist)
+		return false;
+
+	/*
+	 * When dealing with regular inheritance trees, ignore extended stats
+	 * (which were built without data from child rels, and thus do not
+	 * represent them). For partitioned tables data there's no data in the
+	 * non-leaf relations, so we build stats only for the inheritance tree.
+	 * So for partitioned tables we do consider extended stats.
+	 */
+	rte = planner_rt_fetch(rel->relid, root);
+	if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
 		return false;
 
 	/* look for the ndistinct statistics object matching the most vars */
@@ -5222,6 +5234,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 		foreach(slist, onerel->statlist)
 		{
 			StatisticExtInfo *info = (StatisticExtInfo *) lfirst(slist);
+			RangeTblEntry	 *rte = planner_rt_fetch(onerel->relid, root);
 			ListCell   *expr_item;
 			int			pos;
 
@@ -5230,6 +5243,17 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 			 * from extended stats, or for an index in the preceding loop).
 			 */
 			if (vardata->statsTuple)
+				break;
+
+			/*
+			 * When dealing with regular inheritance trees, ignore extended
+			 * stats (which were built without data from child rels, and thus
+			 * do not represent them). For partitioned tables data there's no
+			 * data in the non-leaf relations, so we build stats only for the
+			 * inheritance tree. So for partitioned tables we do consider
+			 * extended stats.
+			 */
+			if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
 				break;
 
 			/* skip stats without per-expression stats */
