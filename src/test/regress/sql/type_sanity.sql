@@ -594,4 +594,6 @@ SELECT oid, typname, typtype, typelem, typarray, typarray
                     FROM pg_attribute a
                     WHERE a.atttypid=t.oid AND
                           a.attnum > 0 AND
-                          a.attrelid='tab_core_types'::regclass);
+                          a.attrelid='tab_core_types'::regclass)
+    -- Discard types added by orafce
+    AND NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='oracle');
