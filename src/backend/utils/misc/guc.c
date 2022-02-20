@@ -5056,7 +5056,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		{"nls_length_semantics", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("create CHAR and VARCHAR2 columns using either byte or character length semantics."),
 			NULL,
-			GUC_REPORT
+			GUC_REPORT | GUC_NOT_IN_SAMPLE
 		},
 		&nls_length_semantics,
 		NLSLENGTH_NONE, nlslength_options,

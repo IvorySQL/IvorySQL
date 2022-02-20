@@ -967,7 +967,7 @@ INSERT INTO dept VALUES (10,'R&D','ISB');
 INSERT INTO dept VALUES (20,'HeadOffice','China');
 INSERT INTO dept VALUES (30,'R&D 2','Canada');
 
-CREATE TABLE emp (
+CREATE TABLE emp_ (
     empno           NUMERIC(4) NOT NULL,
     ename           VARCHAR(10),
     job             VARCHAR(9),
@@ -1041,9 +1041,9 @@ IS
     ) RETURN NUMERIC
     IS
     BEGIN
-        SELECT sal INTO v_sal FROM emp WHERE empno = p_empno;
+        SELECT sal INTO v_sal FROM emp_ WHERE empno = p_empno;
         v_sal := v_sal + p_raise;
-        UPDATE emp SET sal = v_sal WHERE empno = p_empno;
+        UPDATE emp_ SET sal = v_sal WHERE empno = p_empno;
 
         RETURN v_sal;
     END;
@@ -1060,7 +1060,7 @@ IS
     )
     AS
     BEGIN
-        INSERT INTO emp (empno, ename, job, sal, hiredate, comm, mgr, deptno) VALUES (p_empno, p_ename, p_job, p_sal,p_hiredate, p_comm, p_mgr, p_deptno);
+        INSERT INTO emp_ (empno, ename, job, sal, hiredate, comm, mgr, deptno) VALUES (p_empno, p_ename, p_job, p_sal,p_hiredate, p_comm, p_mgr, p_deptno);
     END;
 
     PROCEDURE fire_emp (
@@ -1068,7 +1068,7 @@ IS
     )
     AS
     BEGIN
-        DELETE FROM emp WHERE empno = p_empno;
+        DELETE FROM emp_ WHERE empno = p_empno;
     END;
 END;
 /
@@ -1113,7 +1113,7 @@ AS
 		-- Call package procedure hire_emp
 		emp_admin.hire_emp (v_empno,v_ename,v_job,v_sal,v_hiredate,v_comm,v_mgr,v_deptno);
 
-        select count(*) into total_emp from emp;
+        select count(*) into total_emp from emp_;
 		raise notice 'total employees : %',total_emp;
 		return 0;
     END;
@@ -1125,7 +1125,7 @@ select public.emp_admin.get_dept_name(10);
 select emp_ops.add_emp(100,'SMITH','CLERK',7902,to_date('17-12-2018','dd-mm-yyyy'),800,NULL,20);
 
 drop table if exists dept;
-drop table if exists emp;
+drop table if exists emp_;
 drop table if exists jobhist;
 drop package emp_ops;
 drop package emp_admin;

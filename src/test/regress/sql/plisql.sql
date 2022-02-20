@@ -2,7 +2,7 @@
 --
 -- Test trigger
 --
-CREATE TABLE student(
+CREATE TABLE student_(
 	stu_id		int primary key,
 	stu_name	varchar(40),
 	age			int
@@ -27,13 +27,13 @@ END;
 
 -- create trigger
 CREATE TRIGGER delete_student_trigger
-	AFTER DELETE ON student
+	AFTER DELETE ON student_
 	FOR EACH ROW EXECUTE PROCEDURE student_delete_trigger();
 
 
-INSERT INTO student VALUES(1, 'Jane', 14);
-INSERT INTO student VALUES(2, 'Williams', 13);
-INSERT INTO student VALUES(3, 'Tony', 15);
+INSERT INTO student_ VALUES(1, 'Jane', 14);
+INSERT INTO student_ VALUES(2, 'Williams', 13);
+INSERT INTO student_ VALUES(3, 'Tony', 15);
 
 INSERT INTO score VALUES(1, 85, 75, to_date('23-05-2020', 'dd-mm-yyyy'));
 INSERT INTO score VALUES(1, 80, 73, to_date('04-09-2020', 'dd-mm-yyyy'));
@@ -44,17 +44,17 @@ INSERT INTO score VALUES(3, 86, 82, to_date('23-05-2020', 'dd-mm-yyyy'));
 
 SELECT * FROM score;
 
--- delete student Tony from student table
-DELETE FROM student WHERE stu_id = 3;
+-- delete student_ Tony from student_ table
+DELETE FROM student_ WHERE stu_id = 3;
 
 -- check score table
 SELECT * FROM score;
 
 -- clean up
-drop trigger delete_student_trigger on student;
+drop trigger delete_student_trigger on student_;
 drop function student_delete_trigger;
 drop table score;
-delete from student;
+delete from student_;
 
 
 
@@ -77,56 +77,56 @@ END;
 /
 
 CREATE TRIGGER log_student_trigger
-	AFTER INSERT OR DELETE OR UPDATE ON student
+	AFTER INSERT OR DELETE OR UPDATE ON student_
 	FOR STATEMENT EXECUTE PROCEDURE log_student_trigger();
 
 
-INSERT INTO student VALUES(1, 'Mark', 14), (2, 'Wade', 14);
+INSERT INTO student_ VALUES(1, 'Mark', 14), (2, 'Wade', 14);
 
-SELECT * FROM student;
-
-SELECT * FROM log_student;
-
-DELETE FROM log_student;
-UPDATE student set age = 15;
+SELECT * FROM student_;
 
 SELECT * FROM log_student;
 
 DELETE FROM log_student;
-UPDATE student set age = 16 where stu_id = 3;
+UPDATE student_ set age = 15;
+
+SELECT * FROM log_student;
+
+DELETE FROM log_student;
+UPDATE student_ set age = 16 where stu_id = 3;
 SELECT * FROM log_student;
 
 
-drop trigger log_student_trigger on student;
+drop trigger log_student_trigger on student_;
 delete from log_student;
-delete from student;
+delete from student_;
 
 --
 -- row-level trigger
 -- 
 CREATE TRIGGER log_student_trigger2
-	AFTER INSERT OR DELETE OR UPDATE ON student
+	AFTER INSERT OR DELETE OR UPDATE ON student_
 	FOR ROW EXECUTE PROCEDURE log_student_trigger();
 
-INSERT INTO student VALUES(1, 'Mark', 14), (2, 'Wade', 14);
+INSERT INTO student_ VALUES(1, 'Mark', 14), (2, 'Wade', 14);
 
 SELECT * from log_student;
 
 DELETE from log_student;
 
-UPDATE student set age = 15;
+UPDATE student_ set age = 15;
 
 SELECT * FROM log_student;
 
 DELETE FROM log_student;
-UPDATE student set age = 16 where stu_id = 3;
+UPDATE student_ set age = 16 where stu_id = 3;
 
 SELECT * FROM log_student;
 
-drop trigger log_student_trigger2 on student;
+drop trigger log_student_trigger2 on student_;
 drop function log_student_trigger;
 drop table log_student;
-drop table student;
+drop table student_;
 
 
 
@@ -544,7 +544,7 @@ drop table rc_test;
 --
 -- Test cursor with return clause
 --
-CREATE TABLE emp (    
+CREATE TABLE emp_ (    
 	empno           INTEGER NOT NULL,    
 	ename           VARCHAR(10),    
 	job             VARCHAR(9),    
@@ -555,15 +555,15 @@ CREATE TABLE emp (
 	deptno          NUMERIC(2) 
 );
 
-INSERT INTO emp VALUES(736,'SMITH','CLERK',7902,to_date('17-12-2018','dd-mm-yyyy'),800,NULL,20);
-INSERT INTO emp VALUES(749,'ALLEN','SALESMAN',7698,to_date('20-2-2018','dd-mm-yyyy'),1600,300,30);
+INSERT INTO emp_ VALUES(736,'SMITH','CLERK',7902,to_date('17-12-2018','dd-mm-yyyy'),800,NULL,20);
+INSERT INTO emp_ VALUES(749,'ALLEN','SALESMAN',7698,to_date('20-2-2018','dd-mm-yyyy'),1600,300,30);
 
 -- Test support Column Alias In Cursor
 create or replace function test_cur1(x int) return int
 as
    cursor emp_cur(x int)
    is
-    select empno, (sal+1000) salary from emp where empno = x; 
+    select empno, (sal+1000) salary from emp_ where empno = x; 
   	emp_rec emp_cur%rowtype;
 begin
 	open emp_cur(x); 
@@ -582,9 +582,9 @@ drop function test_cur1;
 --
 create or replace function test_cur2() return int
 as
-    cursor c2 return emp%rowtype
+    cursor c2 return emp_%rowtype
     is
-      select * from emp where empno = 736;
+      select * from emp_ where empno = 736;
     emp_rec c2%rowtype;
 begin
     open c2;
@@ -603,10 +603,10 @@ drop function test_cur2;
 --
 create or replace function test_cur3() return int
 as
-    CURSOR c1 RETURN emp%rowtype;
+    CURSOR c1 RETURN emp_%rowtype;
     emp_rec c1%rowtype;  
 begin
-    open c1 for select * from emp where empno = 736;
+    open c1 for select * from emp_ where empno = 736;
     fetch c1 into emp_rec;
     raise notice 'emp_id = %, emp_name = %, emp_salary = %', emp_rec.empno, emp_rec.ename, emp_rec.sal;
     close c1;
@@ -623,7 +623,7 @@ drop function test_cur3;
 create or replace procedure test_cur4()
 is  
 	cursor emp_cur(emp_id_in int := 736)  
-	is select * from emp where empno = emp_id_in;  
+	is select * from emp_ where empno = emp_id_in;  
 	emp_rec emp_cur%rowtype; 
 begin	
 	open emp_cur(emp_id_in);	
@@ -643,7 +643,7 @@ end;
 $$ language plisql;
 
 drop procedure test_cur4();
-drop table emp;
+drop table emp_;
 
 --
 -- EXECUTE ... INTO test
