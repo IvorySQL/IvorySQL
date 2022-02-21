@@ -92,6 +92,9 @@ SUBDIRS += orafce
 # Missing:
 #		start-scripts	\ (does not have a makefile)
 
+# install the ivy_module.config
+install:
+	+@cp $(srcdir)/ivy_module.config $(DESTDIR)$(datadir)/
 
 $(recurse)
 $(recurse_always)
