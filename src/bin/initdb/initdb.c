@@ -191,6 +191,12 @@ static const char *dynamic_shared_memory_type = NULL;
 static const char *default_timezone = NULL;
 
 /*
+ * IvorySQL defines
+ */
+#define IVY_LOAD_CONFIG_FILE_NAME "ivy_module.config"
+#define IVY_CONFIG_EXT_MARKER '@'
+
+/*
  * Warning messages for authentication methods
  */
 #define AUTHTRUST_WARNING \
@@ -275,6 +281,7 @@ static void set_info_version(void);
 static void setup_schema(FILE *cmdfd);
 static void load_plpgsql(FILE *cmdfd);
 static void load_plisql(FILE *cmdfd);
+static void load_ivy_modules(FILE *cmdfd);
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
 static void make_postgres(FILE *cmdfd);
@@ -290,6 +297,7 @@ static bool check_locale_encoding(const char *locale, int encoding);
 static void setlocales(void);
 static void check_compatible_mode(const char *option,
 								  const char *const *valid_options);
+static void remove_line_feed(char *str);
 static void usage(const char *progname);
 void		setup_pgdata(void);
 void		setup_bin_paths(const char *argv0);
@@ -1853,6 +1861,79 @@ load_plisql(FILE *cmdfd)
 	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
 }
 
+static void
+remove_line_feed(char *str)
+{
+	char *t;
+
+	if ((t = strchr(str, '\r')))
+		*t = '\0';
+
+	if ((t = strchr(str, '\n')))
+		*t = '\0';
+}
+
+static void
+load_ivy_modules(FILE *cmdfd)
+{
+	char  *conf_file;
+	char **conf_lines;
+	char **line;
+
+	printf(_("loading ivy contrib modules ...\n"));
+	fflush(stdout);
+
+	set_input(&conf_file, IVY_LOAD_CONFIG_FILE_NAME);
+	conf_lines = readfile(conf_file);
+	for (line = conf_lines; *line != NULL; line++)
+	{
+		char *file_or_ext = *line;
+		/*
+		 * Ignore empty or commented out lines
+		 */
+		if (*file_or_ext == '#' || *file_or_ext ==  '\0' ||
+				*file_or_ext == '\n' ||  *file_or_ext == '\r') /*no-oop*/
+		{
+			free(*line);
+			continue;
+		}
+
+		remove_line_feed(file_or_ext);
+
+		if (*file_or_ext == IVY_CONFIG_EXT_MARKER) /*extension*/
+		{
+			/* get rid of Marker character */
+			file_or_ext++;
+
+			printf(_("creating extension %s\n"), file_or_ext);
+			fflush(stdout);
+
+			PG_CMD_PRINTF("CREATE EXTENSION \"%s\";\n", file_or_ext);
+		}
+		else
+		{
+			static char *ivy_run_script_path;
+			char 	file_path[MAXPGPATH];
+
+			printf(_("executing %s\n"), file_or_ext);
+			fflush(stdout);
+
+			sprintf(file_path, "/contrib/%s",  file_or_ext);
+			set_input(&ivy_run_script_path, file_path);
+
+			check_input(ivy_run_script_path);
+			setup_run_file(cmdfd, ivy_run_script_path);
+		}
+		/*
+		 * Do RESET all in case come settings are
+		 left out by previous script
+		 */
+		PG_CMD_PUTS("RESET ALL;\n");
+		free(*line);
+	}
+	free(conf_file);
+	free(conf_lines);
+}
 /*
  * clean everything up in template1
  */
@@ -2917,6 +2998,8 @@ initialize_data_directory(void)
 	load_plpgsql(cmdfd);
 
 	load_plisql(cmdfd);
+
+	load_ivy_modules(cmdfd);
 
 	vacuum_db(cmdfd);
 
