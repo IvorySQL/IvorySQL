@@ -1166,17 +1166,17 @@ drop package pkgvar;
 drop table if exists test;
 
 -- Test package function calls without package qualification within package
-create or replace function f1(x int) return int as
-begin
-	raise info 'function outter f1 called';
-	return 0;
-end;
-/
-
 create or replace function f4(x int) return int as
 begin
 	raise info 'function outter f4 called';
 	x := f1(1);
+	return 0;
+end;
+/
+
+create or replace function f1(x int) return int as
+begin
+	raise info 'function outter f1 called';
 	return 0;
 end;
 /
@@ -1579,4 +1579,20 @@ AS
 	FUNCTION myfunc(x INT) RETURN extyp;
 end;
 /
+
+CREATE OR REPLACE PACKAGE BODY example
+AS
+	FUNCTION myfunc(x INT) RETURN extyp
+	AS
+		f_emp extyp;
+	BEGIN
+		f_emp.a := x;
+		f_emp.b := 'Hello IvorySQL!';
+		RETURN f_emp;
+	END;
+END;
+/
+
+select example.myfunc(2022);
+
 DROP PACKAGE example;

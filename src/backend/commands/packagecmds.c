@@ -520,6 +520,8 @@ RemovePackageFunctions(Oid packageOid, char proaccess, bool updatesrc)
 
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
+
+	CommandCounterIncrement();
 }
 
 
@@ -670,6 +672,8 @@ RemovePackageVariables(Oid packageOid, char varaccess)
 
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
+
+	CommandCounterIncrement();
 }
 
 /*
@@ -715,6 +719,8 @@ RemoveVariabletype(Oid packageOid, char typaccess)
 
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
+
+	CommandCounterIncrement();
 }
 
 
