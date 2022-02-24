@@ -96,6 +96,7 @@ CreatePackage(ParseState *pstate, CreatePackageStmt *stmt)
 	Oid			pkgoid;
 	ObjectAddress myself;
 	remove_package_state remove_pkgstate;
+	OverrideSearchPath *overridePath;
 
 	namespaceId = QualifiedNameGetCreationNamespace(stmt->name,
 													&packagename);
@@ -106,6 +107,14 @@ CreatePackage(ParseState *pstate, CreatePackageStmt *stmt)
 						   stmt->isbody, pkgspec, pkgbody, GetUserId(),
 						   stmt->secdef);
 	pstate->p_pkgoid = pkgoid;
+
+	/*
+	 * We add the package oid to search path implicitly
+	 * when we are creating package elements
+	 */
+	overridePath = GetOverrideSearchPath(CurrentMemoryContext);
+	overridePath->schemas = lcons_oid(pkgoid, overridePath->schemas);
+	PushOverrideSearchPath(overridePath);
 
 	/* remove package state from PL hashtable, if any */
 	remove_pkgstate = (remove_package_state)
@@ -135,6 +144,8 @@ CreatePackage(ParseState *pstate, CreatePackageStmt *stmt)
 
 	CreatePackageElems(pstate, get_namespace_name(namespaceId),
 					   packagename, stmt->elems, stmt->replace, stmt->isbody);
+
+	PopOverrideSearchPath();
 
 	/*
 	 * bump the command counter to make the newly-created package elements
@@ -520,7 +531,6 @@ RemovePackageFunctions(Oid packageOid, char proaccess, bool updatesrc)
 
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
-
 	CommandCounterIncrement();
 }
 
@@ -672,7 +682,6 @@ RemovePackageVariables(Oid packageOid, char varaccess)
 
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
-
 	CommandCounterIncrement();
 }
 
@@ -719,7 +728,6 @@ RemoveVariabletype(Oid packageOid, char typaccess)
 
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
-
 	CommandCounterIncrement();
 }
 
