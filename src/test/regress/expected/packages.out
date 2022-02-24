@@ -1872,3 +1872,31 @@ select name, statement, is_holdable, is_binary, is_scrollable from pg_cursors;
 
 DROP TABLE test;
 DROP PACKAGE pkg;
+--
+-- support package function return the defined type
+--
+CREATE OR REPLACE PACKAGE example
+AS
+	TYPE extyp IS RECORD (a INT, b VARCHAR(100));
+	FUNCTION myfunc(x INT) RETURN extyp;
+end;
+/
+CREATE OR REPLACE PACKAGE BODY example
+AS
+	FUNCTION myfunc(x INT) RETURN extyp
+	AS
+		f_emp extyp;
+	BEGIN
+		f_emp.a := x;
+		f_emp.b := 'Hello IvorySQL!';
+		RETURN f_emp;
+	END;
+END;
+/
+select example.myfunc(2022);
+          myfunc          
+--------------------------
+ (2022,"Hello IvorySQL!")
+(1 row)
+
+DROP PACKAGE example;
