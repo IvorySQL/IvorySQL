@@ -518,35 +518,13 @@ varchar_input(const char *s, size_t len, int32 atttypmod)
 		size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
 		size_t		j;
 
-		if (nls_length_semantics == NLSLENGTH_BYTE)
+		for (j = mbmaxlen; j < len; j++)
 		{
-			for (j = maxlen; j < len; j++)
-			{
-				if (s[j] != ' ')
-					ereport(ERROR,
-							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character varying(%d byte)", (int)maxlen)));
-			}
-		}
-		else if (nls_length_semantics == NLSLENGTH_CHAR)
-		{
-			for (j = mbmaxlen; j < len; j++)
-			{
-				if (s[j] != ' ')
-					ereport(ERROR,
-							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character varying(%d char)", (int)maxlen)));
-			}
-		}
-		else
-		{
-			for (j = mbmaxlen; j < len; j++)
-			{
-				if (s[j] != ' ')
-					ereport(ERROR,
-							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							errmsg("value too long for type character varying(%d)", (int) maxlen)));
-			}
+			if (s[j] != ' ')
+				ereport(ERROR,
+						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+						 errmsg("value too long for type character varying(%d)",
+								 (int) maxlen)));
 		}
 
 		len = mbmaxlen;
@@ -686,9 +664,7 @@ varchar(PG_FUNCTION_ARGS)
 				maxlen;
 	size_t		maxmblen;
 	int			i;
-	int			charlen;
 	char	   *s_data;
-	int			perstrlen = 0;
 
 	len = VARSIZE_ANY_EXHDR(source);
 	s_data = VARDATA_ANY(source);
@@ -703,63 +679,18 @@ varchar(PG_FUNCTION_ARGS)
 	/* truncate multibyte string preserving multibyte boundary */
 	maxmblen = pg_mbcharcliplen(s_data, len, maxlen);
 
-	charlen = pg_mbstrlen_with_len(s_data, len);
-
-	if (nls_length_semantics == NLSLENGTH_BYTE)
-	{
-		if (maxlen < maxmblen && !isExplicit)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("value too long for type character varying(%d byte)", maxlen)));
-		}
-		else
-			maxmblen = maxlen;
-	}
-	else if (nls_length_semantics == NLSLENGTH_CHAR)
-	{
-		if (maxlen < charlen && !isExplicit)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("value too long for type character varying(%d char)", maxlen)));
-		}
-	}
-
 	if (!isExplicit)
 	{
 		for (i = maxmblen; i < len; i++)
 			if (s_data[i] != ' ')
 				ereport(ERROR,
-						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-						 errmsg("value too long for type character varying(%d)", maxlen)));
-	}
-
-	/* Added these because 'Chinese character'::varchar(5) to 'Chinese character'::varchar(3),
-	 * display first Chinese character.
-	 */
-	if (nls_length_semantics == NLSLENGTH_BYTE && !isExplicit)
-	{
-		perstrlen = pg_mblen(s_data);
-		if (perstrlen > 1)
-		{
-			int iscomplate = 0;
-			bool iscomplate1 = false;
-
-			if (charlen * perstrlen == len)
-				iscomplate1 = true;
-
-			iscomplate = maxlen % perstrlen;
-
-			if (iscomplate1 == true)
-				maxmblen = maxlen - iscomplate;
-			else if (maxlen < maxmblen)
-				maxmblen = maxlen;
-		}
+						 (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+						  errmsg("value too long for type character varying(%d)",
+						 		 maxlen)));
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data,
-															 maxmblen));
+																	 maxmblen));
 }
 
 Datum
