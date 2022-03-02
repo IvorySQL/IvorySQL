@@ -147,14 +147,14 @@ select * from t2;
 (3 rows)
 
 insert into t2 values('你好吗');
-ERROR:  value too long for type character varying(6 byte)
 select * from t2;
    b    
 --------
  nlsttd
  n好t
  你好
-(3 rows)
+ 你好吗
+(4 rows)
 
 create table t3 (c char(7));
 \d+ t3
@@ -232,8 +232,9 @@ select * from t2;
  nlsttd
  n好t
  你好
+ 你好吗
  nlsttd
-(4 rows)
+(5 rows)
 
 insert into t2 values('你好吗李老师');
 select * from t2;
@@ -242,12 +243,13 @@ select * from t2;
  nlsttd
  n好t
  你好
+ 你好吗
  nlsttd
  你好吗李老师
-(5 rows)
+(6 rows)
 
 insert into t2 values('你好吗小李老师');
-ERROR:  value too long for type character varying(6 char)
+ERROR:  value too long for type character varying(6)
 insert into t3 values('nlsttdl');
 select * from t3;
     c    
@@ -320,13 +322,13 @@ create table t2 (b varchar(1));
  b      | character varying(1) |           |          | 
 
 insert into t2 values('李');
-ERROR:  value too long for type character varying(1 byte)
 insert into t2 values('李老');
-ERROR:  value too long for type character varying(1 byte)
+ERROR:  value too long for type character varying(1)
 select * from t2;
- b 
----
-(0 rows)
+ b  
+----
+ 李
+(1 row)
 
 create table t3 (c char(1));
 \d t3
@@ -369,12 +371,13 @@ show nls_length_semantics;
 
 insert into t2 values('李');
 insert into t2 values('李老');
-ERROR:  value too long for type character varying(1 char)
+ERROR:  value too long for type character varying(1)
 select * from t2;
  b  
 ----
  李
-(1 row)
+ 李
+(2 rows)
 
 insert into t3 values('李');
 insert into t3 values('李老');
@@ -458,7 +461,7 @@ create table t2 (b varchar(6));
 create table t3 (c char(7));
 create table t4 (d nvarchar2(8));
 select test2();
-ERROR:  value too long for type character varying(6 byte)
+ERROR:  value too long for type character varying(6)
 select test3();
 ERROR:  value too long for type character(7 byte)
 create table t44 (dd nvarchar2(20));
@@ -483,7 +486,7 @@ BEGIN
 	select b from t2 into str;
 	raise notice '%', str;
 END$$;
-ERROR:  value too long for type character varying(6 byte)
+ERROR:  value too long for type character varying(6)
 DO LANGUAGE PLPGSQL $$
 DECLARE
 	str char(7);
@@ -516,7 +519,7 @@ insert into t22 values ('今天的天气不好');
 insert into t33 values ('今天的天气好不好');
 insert into t44 values ('今天的天气好不好呢');
 select test2();
-ERROR:  value too long for type character varying(6 char)
+ERROR:  value too long for type character varying(6)
 select test3();
 ERROR:  value too long for type character(7 char)
 select test4();
@@ -529,7 +532,7 @@ BEGIN
 	select b from t2 into str;
 	raise notice '%', str;
 END$$;
-ERROR:  value too long for type character varying(6 char)
+ERROR:  value too long for type character varying(6)
 DO LANGUAGE PLPGSQL $$
 DECLARE
 	str char(7);
@@ -606,27 +609,29 @@ select * from basictestchar;
 set nls_length_semantics to char;
 COPY basictestvarchar (testchar) FROM stdin;
 COPY basictestvarchar (testchar) FROM stdin;
-ERROR:  value too long for type character varying(5 char)
+ERROR:  value too long for type character varying(5)
 select * from basictestvarchar;
- testchar 
-----------
+  testchar  
+------------
  张老师
  张
+ 老师你好吗
  张老师
-(3 rows)
+(4 rows)
 
 set nls_length_semantics to byte;
 COPY basictestvarchar (testchar) FROM stdin;
 COPY basictestvarchar (testchar) FROM stdin;
-ERROR:  value too long for type character varying(5 byte)
 select * from basictestvarchar;
- testchar 
-----------
+  testchar  
+------------
  张老师
  张
+ 老师你好吗
  张老师
  张
-(4 rows)
+ 老师你好吗
+(6 rows)
 
 -- Test copy
 set nls_length_semantics to char;

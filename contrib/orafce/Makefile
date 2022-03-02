@@ -1,5 +1,5 @@
 MODULE_big = orafce
-OBJS= parse_keyword.o convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o orafce.o varchar2.o nvarchar2.o charpad.o charlen.o replace_empty_string.o datefuncs.o ora_date.o number.o
+OBJS= parse_keyword.o convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o orafce.o varchar2.o nvarchar2.o charpad.o charlen.o replace_empty_string.o datefuncs.o ora_date.o number.o nchar.o nvarchar.o
 
 EXTENSION = orafce
 
@@ -9,7 +9,7 @@ DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 # make "all" the default target
 all:
 
-REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggregates nlssort dbms_random regexp_func ora_to_char convertfunc ora_to_number comparefunc null_relate_func datefuncs ascii vsize instrb substr substrb strposb lpad rpad rtrim ltrim btrim length lengthb bitand listagg number
+REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggregates nlssort dbms_random regexp_func ora_to_char convertfunc ora_to_number comparefunc null_relate_func datefuncs ascii vsize instrb substr substrb strposb lpad rpad rtrim ltrim btrim length lengthb bitand listagg number nchar nvarchar
 
 #REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
 REGRESS_OPTS = --schedule=$(srcdir)/parallel_schedule --no-locale --encoding=utf8

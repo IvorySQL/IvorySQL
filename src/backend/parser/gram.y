@@ -14037,7 +14037,10 @@ ConstCharacter:  CharacterWithLength
 
 CharacterWithLength:  character '(' Iconst ')'
 				{
-					$$ = SystemTypeName($1);
+					if (strcmp($1, "nchar") == 0 || strcmp($1, "nvarchar") == 0)
+						$$ = CompatibleTypeName($1);
+					else
+						$$ = SystemTypeName($1);
 					$$->typmods = list_make1(makeIntConst($3, @3));
 					$$->location = @1;
 				}
@@ -14045,9 +14048,12 @@ CharacterWithLength:  character '(' Iconst ')'
 
 CharacterWithoutLength:	 character
 				{
-					$$ = SystemTypeName($1);
+					if (strcmp($1, "nchar") == 0 || strcmp($1, "nvarchar") == 0)
+						$$ = CompatibleTypeName($1);
+					else
+						$$ = SystemTypeName($1);
 					/* char defaults to char(1), varchar to no limit */
-					if (strcmp($1, "bpchar") == 0)
+					if (strcmp($1, "bpchar") == 0 || strcmp($1, "nchar") == 0)
 						$$->typmods = list_make1(makeIntConst(1, -1));
 					$$->location = @1;
 				}
@@ -14064,7 +14070,7 @@ character:	CHARACTER opt_varying
 			| NATIONAL CHAR_P opt_varying
 										{ $$ = $3 ? "varchar": "bpchar"; }
 			| NCHAR opt_varying
-										{ $$ = $2 ? "varchar": "bpchar"; }
+										{ $$ = $2 ? "nvarchar": "nchar"; }
 		;
 
 opt_varying:
