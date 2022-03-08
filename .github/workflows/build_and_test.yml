@@ -1,0 +1,113 @@
+name: "Build and Test"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        container-os: [centos-7, centos-8]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build ${{ matrix.container-os }} Docker
+      if: ${{ matrix.container-os == 'centos-7' }}
+      run: |
+        docker build -t ivorysql-${{ matrix.container-os }}:latest -<<EOF
+        FROM    centos:7
+        RUN     yum update -y
+        RUN     rpm --import http://download.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-7
+        RUN     yum install -y epel-release centos-release-scl
+        RUN     yum groups mark install "Development Tools"
+        RUN     yum install -y \
+                  lcov uuid-devel readline-devel zlib-devel openssl-devel pam-devel \
+                  libxml2-devel libxslt-devel openldap-devel tcl-devel tk-devel python-devel \
+                  python3-devel lz4 lz4-devel cyrus-sasl-gssapi \
+                  llvm-toolset-7 llvm-toolset-7-llvm-devel llvm5.0-devel \
+                  libicu-devel e2fsprogs-devel selinux-policy systemd-devel \
+                  libuuid-devel cppcheck \
+                  perl-devel perl-ExtUtils-Embed perl-IPC-Run perl-Time-HiRes perl-Test-Simple
+
+        RUN localedef -i en_US -f UTF-8 en_US.UTF-8
+        RUN useradd -m -d /home/ivorysql ivorysql
+        EOF
+
+    - name: Build ${{ matrix.container-os }} Docker
+      if: ${{ matrix.container-os == 'centos-8' }}
+      run: |
+        docker build -t ivorysql-${{ matrix.container-os }}:latest -<<EOF
+        FROM    centos:8
+        RUN     cd /etc/yum.repos.d/ && sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+        RUN     dnf update -y
+        RUN     dnf install -y epel-release
+        RUN     dnf groupinstall -y "Development Tools"
+        RUN     dnf install -y \
+                  llvm-toolset llvm-devel lz4 lz4-devel lz4-libs clang-devel \
+                  krb5-devel libselinux-devel libxml2-devel cyrus-sasl-gssapi \
+                  libicu-devel e2fsprogs-devel selinux-policy systemd-devel \
+                  libxslt-devel openldap-devel openssl-devel pam-devel \
+                  libuuid-devel python3-devel readline-devel tcl-devel zlib-devel \
+                  perl perl-devel perl-ExtUtils-Embed
+        RUN 	dnf install -y --enablerepo=*ower*ools perl-IPC-Run perl-Time-HiRes perl-Test-Simple uuid-devel
+        RUN useradd -m -d /home/ivorysql ivorysql
+        EOF
+
+
+    - name: Create and Start iv-${{ matrix.container-os }}-container container
+      run: |
+        docker create -t -u ivorysql \
+                      --name iv-${{ matrix.container-os }}-container \
+                      -v ${GITHUB_WORKSPACE}:/IvorySQL \
+                      ivorysql-${{ matrix.container-os }} bash &&
+        docker start iv-${{ matrix.container-os }}-container
+
+    - name: configure - ${{ matrix.container-os }}
+      run: |
+        docker exec -u ivorysql \
+                  iv-${{ matrix.container-os }}-container bash -c "
+                    cp -r /IvorySQL /home/ivorysql/IvorySQL &&
+                    cd /home/ivorysql/IvorySQL &&
+                    ./configure \
+                      --enable-cassert --enable-debug --enable-rpath --with-tcl \
+                      --with-python --with-gssapi --with-pam --with-ldap \
+                      --with-openssl --with-libedit-preferred --with-uuid=e2fs \
+                      --with-ossp-uuid  --with-libxml --with-libxslt --with-perl
+                  "
+
+    - name: compile
+      run: |
+        docker exec -u ivorysql \
+                    iv-${{ matrix.container-os }}-container bash -c "
+                      cd /home/ivorysql/IvorySQL &&
+                      make
+                    "
+
+    - name: regression
+      run: |
+        docker exec -u ivorysql \
+                    iv-${{ matrix.container-os }}-container bash -c "
+                      cd /home/ivorysql/IvorySQL && make check-world
+                    "
+    - name: collect files
+      if: failure()
+      run: |
+        docker exec -u ivorysql \
+                    iv-${{ matrix.container-os }}-container bash -c "
+                    cd /home/ivorysql/IvorySQL &&
+                    find . \( -name "*.diffs" -or -name "regression.out" -or -path \*/tmp_check/log \) -print0 |
+                        xargs -0 tar -czf /IvorySQL/regression.tar.gz
+                    "
+
+    - name: upload regression files
+      if: failure()
+      uses: actions/upload-artifact@v2
+      with:
+        name: results
+        path: ${{ github.workspace }}/regression.tar.gz
+
+    - name: Cleanup
+      if: always()
+      run: |
+        docker stop iv-${{ matrix.container-os }}-container
