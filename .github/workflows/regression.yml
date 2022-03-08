@@ -49,12 +49,15 @@ jobs:
     - name: regression
       run: make check-world
 
+    - name: collect files
+      if: failure()
+      run: |
+          find . \( -name "*.diffs" -or -name "regression.out" -or -path \*/tmp_check/log \) -print0 |
+                xargs -0 tar -czf regression.tar.gz
+
     - name: upload regression files
       if: failure()
       uses: actions/upload-artifact@v2
       with:
         name: results
-        path: |
-            src/test/regress/regression.diffs
-            src/test/regress/regression.out
-
+        path: ${{ github.workspace }}/regression.tar.gz
