@@ -4254,3 +4254,31 @@ SELECT oracle.unistr('wrong: \U0000db99\U00000061');
 ERROR:  invalid Unicode surrogate pair
 SELECT oracle.unistr('wrong: \U002FFFFF');
 ERROR:  invalid Unicode escape value
+--
+-- test extended type in package
+--
+CREATE OR REPLACE PACKAGE ora_type AS
+FUNCTION tfunc(name VARCHAR2) RETURN NUMBER;
+END ora_type;
+/
+CREATE OR REPLACE PACKAGE BODY ora_type AS
+FUNCTION tfunc(name VARCHAR2) RETURN NUMBER
+AS
+Declare
+	sal NUMBER;
+BEGIN
+	sal := 1000.5;
+	raise info 'name is:%',name;
+	raise info 'salary is:%',sal;
+	return sal;
+END;
+END;
+/
+select ora_type.tfunc('SMITH');
+INFO:  name is:SMITH
+INFO:  salary is:1000.5
+ tfunc  
+--------
+ 1000.5
+(1 row)
+
