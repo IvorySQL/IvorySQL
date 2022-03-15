@@ -5,7 +5,7 @@ on:
 
 jobs:
   regression:
-    runs-on: self-hosted
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
         container-os: [centos-7, centos-8]
