@@ -17,10 +17,10 @@ jobs:
       run: |
         docker build -t ivorysql-${{ matrix.container-os }}:latest -<<EOF
         FROM    centos:7
-        RUN     yum update -y
         RUN     rpm --import http://download.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-7
         RUN     yum install -y epel-release centos-release-scl
         RUN     yum groups mark install "Development Tools"
+        RUN     yum groupinstall -y "Development Tools"
         RUN     yum install -y \
                   lcov uuid-devel readline-devel zlib-devel openssl-devel pam-devel \
                   libxml2-devel libxslt-devel openldap-devel tcl-devel tk-devel python-devel \
@@ -30,8 +30,8 @@ jobs:
                   libuuid-devel cppcheck \
                   perl-devel perl-ExtUtils-Embed perl-IPC-Run perl-Time-HiRes perl-Test-Simple
 
-        RUN localedef -i en_US -f UTF-8 en_US.UTF-8
-        RUN useradd -m -d /home/ivorysql ivorysql
+        RUN     localedef -i en_US -f UTF-8 en_US.UTF-8
+        RUN     useradd -m -d /home/ivorysql ivorysql
         EOF
 
     - name: Build ${{ matrix.container-os }} Docker
@@ -40,7 +40,6 @@ jobs:
         docker build -t ivorysql-${{ matrix.container-os }}:latest -<<EOF
         FROM    centos:8
         RUN     cd /etc/yum.repos.d/ && sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-        RUN     dnf update -y
         RUN     dnf install -y epel-release
         RUN     dnf groupinstall -y "Development Tools"
         RUN     dnf install -y \
@@ -50,8 +49,8 @@ jobs:
                   libxslt-devel openldap-devel openssl-devel pam-devel \
                   libuuid-devel python3-devel readline-devel tcl-devel zlib-devel \
                   perl perl-devel perl-ExtUtils-Embed
-        RUN 	dnf install -y --enablerepo=*ower*ools perl-IPC-Run perl-Time-HiRes perl-Test-Simple uuid-devel
-        RUN useradd -m -d /home/ivorysql ivorysql
+        RUN     dnf install -y --enablerepo=*ower*ools perl-IPC-Run perl-Time-HiRes perl-Test-Simple uuid-devel
+        RUN     useradd -m -d /home/ivorysql ivorysql
         EOF
 
 
@@ -59,7 +58,7 @@ jobs:
       run: |
         docker create -t -u ivorysql \
                       --name iv-${{ matrix.container-os }}-container \
-                      -v ${GITHUB_WORKSPACE}:/IvorySQL \
+                      -v ${GITHUB_WORKSPACE}:/IvorySQL:rw \
                       ivorysql-${{ matrix.container-os }} bash &&
         docker start iv-${{ matrix.container-os }}-container
 
@@ -67,7 +66,7 @@ jobs:
       run: |
         docker exec -u ivorysql \
                   iv-${{ matrix.container-os }}-container bash -c "
-                    cp -r /IvorySQL /home/ivorysql/IvorySQL &&
+                    tar -c --exclude .git* -C / IvorySQL | tar -x -C /home/ivorysql/ &&
                     cd /home/ivorysql/IvorySQL &&
                     ./configure \
                       --enable-cassert --enable-debug --enable-rpath --with-tcl \
@@ -80,8 +79,7 @@ jobs:
       run: |
         docker exec -u ivorysql \
                     iv-${{ matrix.container-os }}-container bash -c "
-                      cd /home/ivorysql/IvorySQL &&
-                      make
+                      cd /home/ivorysql/IvorySQL && make
                     "
 
     - name: regression
@@ -90,19 +88,20 @@ jobs:
                     iv-${{ matrix.container-os }}-container bash -c "
                       cd /home/ivorysql/IvorySQL && make check-world
                     "
+
     - name: collect files
       if: failure()
       run: |
-        docker exec -u ivorysql \
+        docker exec -u 0 \
                     iv-${{ matrix.container-os }}-container bash -c "
-                    cd /home/ivorysql/IvorySQL &&
-                    find . \( -name "*.diffs" -or -name "regression.out" -or -path \*/tmp_check/log \) -print0 |
-                        xargs -0 tar -czf /IvorySQL/regression.tar.gz
+                      cd /home/ivorysql/IvorySQL &&
+                      find . \( -name \*.diffs -or -name regression.out -or -path \*/tmp_check/log \) -print0 |
+                          xargs -0 tar -czf /IvorySQL/regression.tar.gz
                     "
 
     - name: upload regression files
       if: failure()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: results
         path: ${{ github.workspace }}/regression.tar.gz
