@@ -747,15 +747,14 @@ other			.
 					 * determine whether the character after q' is symmetrical
 					 * to the character before '.
 					 */
-					int 	 i;
 					bool 	 flag = false;
 					char 	*symstr = NULL;
-					char	*symstr1 = NULL;
 					int 	 first_symlen = 0;
-					int 	 next_symlen = 0;
+					int 	 last_symlen = 0;
 					int 	 symlen = 0;
 
 					symstr = litbufdup(yyscanner);
+
 					/* calculate the byte length of the first symmetric character */
 					first_symlen = pg_mblen(symstr);
 					symlen = strlen(symstr);
@@ -781,23 +780,14 @@ other			.
 
 					if (first_symlen > 1 && symlen >= first_symlen * 2)
 					{
-						symstr1 = symstr;
-						symstr1 = symstr1 + (symlen - first_symlen);
+						char *first = symstr;
+						char *last = first + (symlen - first_symlen);
 
-						/* calculate the byte length of the next symmetric character */
-						next_symlen = pg_mblen(symstr1);
-						if (first_symlen == next_symlen)
+						/* calculate the byte length of the last symmetric character */
+						last_symlen = pg_mblen(last);
+						if (first_symlen == last_symlen)
 						{
-							for(i = 0; i< first_symlen ; i++ )
-							{
-								if (symstr[i] == symstr[symlen - first_symlen + i])
-									flag = true;
-								else
-								{
-									flag = false;
-									break;
-								}
-							}
+							flag = (memcmp(first, last, first_symlen) == 0) ? true : false;
 						}
 					}
 
@@ -813,14 +803,14 @@ other			.
 						len = strlen(oldstr);
 						newstr = (char*)palloc(len + 1);
 						MemSet(newstr, 0x00, len + 1);
-						memcpy(newstr,oldstr + first_symlen,len - first_symlen - 1);
+						memcpy(newstr, oldstr + first_symlen, len - first_symlen * 2);
 						yylval->str = pstrdup(newstr);
 						pfree(newstr);
 						return SCONST;
 					}
 					else
 						addlit(yytext, yyleng, yyscanner);
-					}
+				}
 <xdq>{dosymstart} {
 					addlit(yytext, yyleng-1, yyscanner);
 					yyless(yyleng - 1);
