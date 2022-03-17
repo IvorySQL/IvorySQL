@@ -3620,7 +3620,6 @@ GetOverrideSearchPath(MemoryContext context)
 	OverrideSearchPath *result;
 	List	   *schemas;
 	MemoryContext oldcxt;
-	Oid	compatibleNS;
 
 	recomputeNamespacePath();
 
@@ -3628,8 +3627,7 @@ GetOverrideSearchPath(MemoryContext context)
 
 	result = (OverrideSearchPath *) palloc0(sizeof(OverrideSearchPath));
 	schemas = list_copy(activeSearchPath);
-	compatibleNS = get_namespace_oid("oracle", true);
-	while (schemas && (linitial_oid(schemas) != activeCreationNamespace && linitial_oid(schemas) != compatibleNS))
+	while (schemas && linitial_oid(schemas) != activeCreationNamespace)
 	{
 		if (linitial_oid(schemas) == myTempNamespace)
 			result->addTemp = true;
@@ -3759,6 +3757,7 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	List	   *oidlist;
 	Oid			firstNS;
 	MemoryContext oldcxt;
+	Oid	compatibleNS;
 
 	/*
 	 * Copy the list for safekeeping, and insert implicitly-searched
@@ -3786,6 +3785,16 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 
 	if (newpath->addTemp && OidIsValid(myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
+	/*
+	 *oracle namespace reference,for compatible
+	 */
+	if (compatible_db == COMPATIBLE_ORA)
+	{
+		compatibleNS = get_namespace_oid("oracle", true);
+		if (OidIsValid(compatibleNS) &&
+			!list_member_oid(oidlist, compatibleNS))
+			oidlist = lcons_oid(compatibleNS, oidlist);
+	}
 
 	/*
 	 * Build the new stack entry, then insert it at the head of the list.
