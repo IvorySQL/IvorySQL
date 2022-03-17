@@ -259,118 +259,118 @@ INSERT INTO entities (parent_entity, child_entity,val) VALUES ('bi', 'biv',10);
 SELECT parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity
-ORDER BY val;
+ORDER BY val, 1, 2;
  parent_entity | child_entity 
 ---------------+--------------
- abe           | abet
- abe           | abet
- abe           | abes
- abe           | abet
- abe           | abes
- abe           | abet
  abe           | abes
  abe           | abes
- ab            | abe
+ abe           | abes
+ abe           | abes
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ ab            | abc
+ ab            | abc
  ab            | abc
  ab            | abd
+ ab            | abd
+ ab            | abd
+ ab            | abe
+ ab            | abe
  ab            | abe
  bi            | biq
- bi            | biv
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- ab            | abe
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- b             | bg
- b             | bh
- b             | bg
- b             | bi
- a             | af
- b             | bh
- b             | bi
- a             | ax
+ bi            | biv
+ bi            | biv
+ bi            | biv
+ a             | ab
  a             | ab
  a             | af
+ a             | af
  a             | ax
- a             | ab
-               | b
+ a             | ax
+ b             | bg
+ b             | bg
+ b             | bh
+ b             | bh
+ b             | bi
+ b             | bi
                | a
+               | b
 (37 rows)
 
 SELECT parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity
-ORDER BY val+1;
+ORDER BY val+1, 1, 2;
  parent_entity | child_entity 
 ---------------+--------------
- abe           | abet
- abe           | abet
- abe           | abes
- abe           | abet
- abe           | abes
- abe           | abet
  abe           | abes
  abe           | abes
- ab            | abe
+ abe           | abes
+ abe           | abes
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ ab            | abc
+ ab            | abc
  ab            | abc
  ab            | abd
+ ab            | abd
+ ab            | abd
+ ab            | abe
+ ab            | abe
  ab            | abe
  bi            | biq
- bi            | biv
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- ab            | abe
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- b             | bg
- b             | bh
- b             | bg
- b             | bi
- a             | af
- b             | bh
- b             | bi
- a             | ax
+ bi            | biv
+ bi            | biv
+ bi            | biv
+ a             | ab
  a             | ab
  a             | af
+ a             | af
  a             | ax
- a             | ab
-               | b
+ a             | ax
+ b             | bg
+ b             | bg
+ b             | bh
+ b             | bh
+ b             | bi
+ b             | bi
                | a
+               | b
 (37 rows)
 
 -- test multiple PRIOR
 SELECT parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1;
+ORDER BY 1, 2;
  parent_entity | child_entity 
 ---------------+--------------
  a             | ab
- a             | ax
  a             | af
- ab            | abe
+ a             | ax
+ ab            | abc
  ab            | abc
  ab            | abd
- ab            | abe
- ab            | abc
  ab            | abd
- abe           | abet
+ ab            | abe
+ ab            | abe
  abe           | abes
- b             | bh
+ abe           | abet
  b             | bg
+ b             | bh
  b             | bi
- bi            | biv
+ bi            | biq
  bi            | biq
  bi            | biv
- bi            | biq
+ bi            | biv
                | a
                | b
 (20 rows)
@@ -379,20 +379,20 @@ SELECT parent_entity, child_entity
 FROM entities
 START WITH parent_entity is NULL
 CONNECT BY PRIOR child_entity = parent_entity
-ORDER BY 1;
+ORDER BY 1, 2;
  parent_entity | child_entity 
 ---------------+--------------
  a             | ab
- a             | ax
  a             | af
+ a             | ax
  ab            | abc
  ab            | abd
  ab            | abe
- abe           | abet
  abe           | abes
- b             | bi
+ abe           | abet
  b             | bg
  b             | bh
+ b             | bi
  bi            | biq
  bi            | biv
                | a
@@ -417,27 +417,27 @@ SELECT
   parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1;
+ORDER BY 1, 2;
  case connect by path | sysconnectpath | case connect by root | connectroot | LEVEL | parent_entity | child_entity 
 ----------------------+----------------+----------------------+-------------+-------+---------------+--------------
- Not Matched          | /bi/biv        | Not matched          | bi          |     2 | bi            | biv
- Not Matched          | /af            | Not matched          | af          |     1 | a             | af
- Not Matched          | /bi/biq        | Not matched          | bi          |     2 | bi            | biq
  Not Matched          | /a             | Not matched          | a           |     1 |               | a
- Not Matched          | /ax            | Not matched          | ax          |     1 | a             | ax
+ Not Matched          | /ab/abc        | match ab             | ab          |     2 | ab            | abc
+ Not Matched          | /ab/abd        | match ab             | ab          |     2 | ab            | abd
+ Not Matched          | /ab/abe        | match ab             | ab          |     2 | ab            | abe
  Not Matched          | /abc           | Not matched          | abc         |     1 | ab            | abc
  Not Matched          | /abd           | Not matched          | abd         |     1 | ab            | abd
  Not Matched          | /abe           | Not matched          | abe         |     1 | ab            | abe
  Not Matched          | /abes          | Not matched          | abes        |     1 | abe           | abes
+ Not Matched          | /af            | Not matched          | af          |     1 | a             | af
+ Not Matched          | /ax            | Not matched          | ax          |     1 | a             | ax
  Not Matched          | /b             | Not matched          | b           |     1 |               | b
  Not Matched          | /bg            | Not matched          | bg          |     1 | b             | bg
  Not Matched          | /bh            | Not matched          | bh          |     1 | b             | bh
  Not Matched          | /bi            | Not matched          | bi          |     1 | b             | bi
+ Not Matched          | /bi/biq        | Not matched          | bi          |     2 | bi            | biq
+ Not Matched          | /bi/biv        | Not matched          | bi          |     2 | bi            | biv
  Not Matched          | /biq           | Not matched          | biq         |     1 | bi            | biq
  Not Matched          | /biv           | Not matched          | biv         |     1 | bi            | biv
- Not Matched          | /ab/abc        | match ab             | ab          |     2 | ab            | abc
- Not Matched          | /ab/abd        | match ab             | ab          |     2 | ab            | abd
- Not Matched          | /ab/abe        | match ab             | ab          |     2 | ab            | abe
  match /ab            | /ab            | match ab             | ab          |     1 | a             | ab
  match /abet          | /abet          | match abet           | abet        |     1 | abe           | abet
 (20 rows)
@@ -457,7 +457,7 @@ SELECT
   parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1;
+ORDER BY 1, 2;
  func connect by path | func connect by root | LEVEL | parent_entity | child_entity 
 ----------------------+----------------------+-------+---------------+--------------
  /a                   | a                    |     1 |               | a
@@ -486,65 +486,65 @@ ORDER BY 1;
 SELECT ARRAY[['hello'],[ connect_by_root parent_entity]], child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1;
+ORDER BY 1, 2;
       array       | child_entity 
 ------------------+--------------
  {{hello},{a}}    | ab
- {{hello},{a}}    | ax
- {{hello},{a}}    | abd
  {{hello},{a}}    | abc
+ {{hello},{a}}    | abd
  {{hello},{a}}    | abe
  {{hello},{a}}    | af
- {{hello},{ab}}   | abe
+ {{hello},{a}}    | ax
  {{hello},{ab}}   | abc
  {{hello},{ab}}   | abd
+ {{hello},{ab}}   | abe
  {{hello},{abe}}  | abes
  {{hello},{abe}}  | abet
- {{hello},{b}}    | biv
  {{hello},{b}}    | bg
  {{hello},{b}}    | bh
  {{hello},{b}}    | bi
  {{hello},{b}}    | biq
+ {{hello},{b}}    | biv
  {{hello},{bi}}   | biq
  {{hello},{bi}}   | biv
- {{hello},{NULL}} | b
  {{hello},{NULL}} | a
+ {{hello},{NULL}} | b
 (20 rows)
 
 -- test coalesce
 SELECT COALESCE(connect_by_root parent_entity, 'nil'), child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1;
+ORDER BY 1, 2;
  coalesce | child_entity 
 ----------+--------------
  a        | ab
- a        | ax
- a        | abd
  a        | abc
+ a        | abd
  a        | abe
  a        | af
- ab       | abe
+ a        | ax
  ab       | abc
  ab       | abd
+ ab       | abe
  abe      | abes
  abe      | abet
- b        | biv
  b        | bg
  b        | bh
  b        | bi
  b        | biq
+ b        | biv
  bi       | biq
  bi       | biv
- nil      | b
  nil      | a
+ nil      | b
 (20 rows)
 
 -- test greatest
 SELECT GREATEST(connect_by_root parent_entity, child_entity), child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1;
+ORDER BY 1, 2;
  greatest | child_entity 
 ----------+--------------
  a        | a
@@ -573,27 +573,27 @@ ORDER BY 1;
 SELECT LEAST(connect_by_root parent_entity, child_entity), child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1;
+ORDER BY 1, 2;
  least | child_entity 
 -------+--------------
- a     | ax
+ a     | a
  a     | ab
- a     | af
  a     | abc
  a     | abd
- a     | a
  a     | abe
- ab    | abe
- ab    | abd
+ a     | af
+ a     | ax
  ab    | abc
- abe   | abet
+ ab    | abd
+ ab    | abe
  abe   | abes
- b     | biv
+ abe   | abet
  b     | b
  b     | bg
  b     | bh
  b     | bi
  b     | biq
+ b     | biv
  bi    | biq
  bi    | biv
 (20 rows)
