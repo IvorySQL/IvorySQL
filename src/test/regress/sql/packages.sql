@@ -1619,3 +1619,27 @@ END;
 select pkg.tfunc;
 select pkg.tfunc;
 DROP PACKAGE pkg;
+
+--
+-- support calling package functions without schema qualification
+-- for package created in pg_catalog
+--
+create or replace package pg_catalog.pkg
+is
+	function f return int;
+end;
+/
+
+create or replace package body pg_catalog.pkg
+is
+	function f return int
+	is
+	begin
+		return 10;
+	end;
+end;
+/
+
+select pkg.f();
+select pg_catalog.pkg.f();
+drop package pg_catalog.pkg;

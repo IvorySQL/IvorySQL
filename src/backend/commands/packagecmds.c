@@ -61,6 +61,7 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "miscadmin.h"
+#include "catalog/pg_namespace_d.h"
 
 
 static void CreatePackageElems(ParseState *pstate, char *nspname, char *pkgname,
@@ -758,7 +759,18 @@ get_package_oid(List *packagename, bool missing_ok)
 	else
 	{
 		ListCell   *l;
-		List	   *activeSearchPath = fetch_search_path(false);
+		List	   *activeSearchPath;
+		OverrideSearchPath *overridePath;
+
+		/*
+		 * In this case, we implicitly add the pg_catalog to search
+		 * patch to see if the pkg was created in pg_catalog schema
+		 */
+		overridePath = GetOverrideSearchPath(CurrentMemoryContext);
+		overridePath->schemas = lcons_oid(PG_CATALOG_NAMESPACE, overridePath->schemas);
+		PushOverrideSearchPath(overridePath);
+
+		activeSearchPath = fetch_search_path(false);
 
 		foreach(l, activeSearchPath)
 		{
@@ -774,6 +786,7 @@ get_package_oid(List *packagename, bool missing_ok)
 				break;
 		}
 
+		PopOverrideSearchPath();
 		list_free(activeSearchPath);
 	}
 
