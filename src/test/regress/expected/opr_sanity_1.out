@@ -992,16 +992,19 @@ WHERE c.castmethod = 'b' AND
     castsource     |    casttarget     | castfunc | castcontext 
 -------------------+-------------------+----------+-------------
  text              | character         |        0 | i
- xml               | text              |        0 | a
+ text              | oracle."nchar"    |        0 | i
  xml               | character         |        0 | a
  xml               | character varying |        0 | a
+ xml               | text              |        0 | a
  pg_node_tree      | text              |        0 | i
  cidr              | inet              |        0 | i
  character varying | character         |        0 | i
+ character varying | oracle."nchar"    |        0 | i
  pg_ndistinct      | bytea             |        0 | i
  pg_dependencies   | bytea             |        0 | i
  pg_mcv_list       | bytea             |        0 | i
-(10 rows)
+ oracle.nvarchar   | character         |        0 | i
+(13 rows)
 
 -- **************** pg_conversion ****************
 -- Look for illegal values in pg_conversion fields.
