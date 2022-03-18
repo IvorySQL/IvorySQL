@@ -984,3 +984,26 @@ SELECT oracle.unistr('wrong: \+2FFFFF');
 SELECT oracle.unistr('wrong: \udb99\u0061');
 SELECT oracle.unistr('wrong: \U0000db99\U00000061');
 SELECT oracle.unistr('wrong: \U002FFFFF');
+
+--
+-- test extended type in package
+--
+CREATE OR REPLACE PACKAGE ora_type AS
+FUNCTION tfunc(name VARCHAR2) RETURN NUMBER;
+END ora_type;
+/
+
+CREATE OR REPLACE PACKAGE BODY ora_type AS
+FUNCTION tfunc(name VARCHAR2) RETURN NUMBER
+AS
+Declare
+	sal NUMBER;
+BEGIN
+	sal := 1000.5;
+	raise info 'name is:%',name;
+	raise info 'salary is:%',sal;
+	return sal;
+END;
+END;
+/
+select ora_type.tfunc('SMITH');
