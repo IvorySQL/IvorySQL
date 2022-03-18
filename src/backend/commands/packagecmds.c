@@ -731,59 +731,6 @@ RemoveVariabletype(Oid packageOid, char typaccess)
 	CommandCounterIncrement();
 }
 
-
-/*
- * get_package_oid - given a package name, look up the OID
- *
- * If missing_ok is false, throw an error if name not found.  If true, just
- * return InvalidOid.
- */
-Oid
-get_package_oid(List *packagename, bool missing_ok)
-{
-	Oid			oid = InvalidOid;
-	char	   *schema;
-	char	   *package;
-	Oid			namespaceId;
-
-	DeconstructQualifiedName(packagename, &schema, &package);
-
-	if (schema)
-	{
-		namespaceId = get_namespace_oid(schema, false);
-		oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
-							  CStringGetDatum(package),
-							  ObjectIdGetDatum(namespaceId));
-	}
-	else
-	{
-		ListCell   *l;
-		List	   *activeSearchPath = fetch_search_path(false);
-
-		foreach(l, activeSearchPath)
-		{
-			namespaceId = lfirst_oid(l);
-
-			if (isTempNamespace(namespaceId))
-				continue;		/* do not look in temp namespace */
-
-			oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
-								  CStringGetDatum(package),
-								  ObjectIdGetDatum(namespaceId));
-			if (OidIsValid(oid))
-				break;
-		}
-
-		list_free(activeSearchPath);
-	}
-
-	if (!OidIsValid(oid) && !missing_ok)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("package \"%s\" does not exist", NameListToString(packagename))));
-	return oid;
-}
-
 /*
  * get_package_name - given a package OID, look up the name
  *
