@@ -61,7 +61,6 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "miscadmin.h"
-#include "catalog/pg_namespace_d.h"
 
 
 static void CreatePackageElems(ParseState *pstate, char *nspname, char *pkgname,
@@ -730,71 +729,6 @@ RemoveVariabletype(Oid packageOid, char typaccess)
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
 	CommandCounterIncrement();
-}
-
-
-/*
- * get_package_oid - given a package name, look up the OID
- *
- * If missing_ok is false, throw an error if name not found.  If true, just
- * return InvalidOid.
- */
-Oid
-get_package_oid(List *packagename, bool missing_ok)
-{
-	Oid			oid = InvalidOid;
-	char	   *schema;
-	char	   *package;
-	Oid			namespaceId;
-
-	DeconstructQualifiedName(packagename, &schema, &package);
-
-	if (schema)
-	{
-		namespaceId = get_namespace_oid(schema, false);
-		oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
-							  CStringGetDatum(package),
-							  ObjectIdGetDatum(namespaceId));
-	}
-	else
-	{
-		ListCell   *l;
-		List	   *activeSearchPath;
-		OverrideSearchPath *overridePath;
-
-		/*
-		 * In this case, we implicitly add the pg_catalog to search
-		 * patch to see if the pkg was created in pg_catalog schema
-		 */
-		overridePath = GetOverrideSearchPath(CurrentMemoryContext);
-		overridePath->schemas = lcons_oid(PG_CATALOG_NAMESPACE, overridePath->schemas);
-		PushOverrideSearchPath(overridePath);
-
-		activeSearchPath = fetch_search_path(false);
-
-		foreach(l, activeSearchPath)
-		{
-			namespaceId = lfirst_oid(l);
-
-			if (isTempNamespace(namespaceId))
-				continue;		/* do not look in temp namespace */
-
-			oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
-								  CStringGetDatum(package),
-								  ObjectIdGetDatum(namespaceId));
-			if (OidIsValid(oid))
-				break;
-		}
-
-		PopOverrideSearchPath();
-		list_free(activeSearchPath);
-	}
-
-	if (!OidIsValid(oid) && !missing_ok)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("package \"%s\" does not exist", NameListToString(packagename))));
-	return oid;
 }
 
 /*

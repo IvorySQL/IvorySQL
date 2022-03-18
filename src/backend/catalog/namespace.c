@@ -4002,6 +4002,58 @@ FindDefaultConversionProc(int32 for_encoding, int32 to_encoding)
 }
 
 /*
+ * get_package_oid - given a package name, look up the OID
+ *
+ * If missing_ok is false, throw an error if name not found.  If true, just
+ * return InvalidOid.
+ */
+Oid
+get_package_oid(List *packagename, bool missing_ok)
+{
+	Oid			oid = InvalidOid;
+	char	   *schema;
+	char	   *package;
+	Oid			namespaceId;
+	ListCell   *l;
+
+	DeconstructQualifiedName(packagename, &schema, &package);
+
+	if (schema)
+	{
+		namespaceId = get_namespace_oid(schema, false);
+		oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
+							  CStringGetDatum(package),
+							  ObjectIdGetDatum(namespaceId));
+	}
+	else
+	{
+		/* search for it in search path */
+		recomputeNamespacePath();
+
+		foreach(l, activeSearchPath)
+		{
+			namespaceId = lfirst_oid(l);
+
+			if (isTempNamespace(namespaceId))
+				continue;		/* do not look in temp namespace */
+
+			oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
+								  CStringGetDatum(package),
+								  ObjectIdGetDatum(namespaceId));
+			if (OidIsValid(oid))
+				break;
+		}
+	}
+
+	/* Not found in path */
+	if (!OidIsValid(oid) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("package \"%s\" does not exist", NameListToString(packagename))));
+	return oid;
+}
+
+/*
  * recomputeNamespacePath - recompute path derived variables if needed.
  */
 static void
