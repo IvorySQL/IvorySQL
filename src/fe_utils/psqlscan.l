@@ -140,6 +140,8 @@ extern void psql_yyset_column(int column_no, yyscan_t yyscanner);
 %x xus
 %x xf
 %x xdq
+%x plblock
+%x dec_cursor
 
 /*
  * In order to make the world safe for Windows and Mac clients as well as
@@ -207,7 +209,6 @@ xbinside		[^']*
 /* Hexadecimal byte string */
 xhstart			[xX]{quote}
 xhinside		[^']*
-end_slash		[/]$
 
 /* National character */
 xnstart			[nN]{quote}
@@ -231,6 +232,28 @@ xqinside		[^']+
 as_or_is		([aA][sS])|([iI][sS])
 create_fun		{as_or_is}
 xfinside		[^ \n\r']+
+
+/* DECLARE CURSOR combinations */
+declare_kw		[dD][eE][cC][lL][aA][rR][eE]
+cursor_kw		[cC][uU][rR][sS][oO][rR]
+binary_kw		[bB][iI][nN][aA][rR][yY]
+asensitive_kw	[aA][sS][eE][nN][sS][iI][tT][iI][vV][eE]
+insensitive_kw	[iI][nN][sS][eE][nN][sS][iI][tT][iI][vV][eE]
+scroll_kw		[sS][cC][rR][oO][lL][lL]
+noscroll_kw 	[nN][oO]{whitespace}+{scroll_kw}
+
+/* Transaction combinations */
+begin_kw		[bB][eE][gG][iI][nN]
+end_kw			[eE][nN][dD]
+case_kw  		[cC][aA][sS][eE]
+if_kw			[iI][fF]
+loop_kw 		[lL][oO][oO][pP]
+atomic_kw		[aA][tT][oO][mM][iI][cC]
+work_kw 		[wW][oO][rR][kK]
+transaction_kw	[tT][rR][aA][nN][sS][aA][cC][tT][iI][oO][nN]
+isolation_kw	[I][S][O][L][A][T][I][O][N]
+read_kw 		[rR][eE][aA][dD]
+not_deferrable	[nN][oO][tT]{whitespace}+[dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]
 
 /* $foo$ style quotes ("dollar quoting")
  * The quoted string starts with $foo$ where "foo" is an optional string
@@ -391,6 +414,162 @@ other			.
 		BEGIN(cur_state->start_state);
 %}
 
+{declare_kw}	{
+					ECHO;
+					BEGIN(dec_cursor);
+					cur_state->tokenstate = DECLARE;
+				}
+
+{begin_kw}		{
+					ECHO;
+					BEGIN(plblock);
+					cur_state->tokenstate = BEGIN_P;
+				}
+
+<dec_cursor>{
+
+{cursor_kw}		|
+{noscroll_kw}	|
+{scroll_kw}		|
+{binary_kw}		|
+{asensitive_kw}	|
+{insensitive_kw} {
+					ECHO;
+					if (cur_state->tokenstate == IDENT)
+						BEGIN(INITIAL);
+					else
+						BEGIN(plblock);
+				}
+
+{identifier}	{
+					if (cur_state->tokenstate == IDENT)
+						BEGIN(plblock);
+
+					cur_state->tokenstate = IDENT;
+					ECHO;
+				}
+{other}			{ /* eatup everything */
+					ECHO;
+				}
+} /*<dec_cursor>*/
+
+<plblock>{
+
+{declare_kw}	{
+					cur_state->tokenstate = DECLARE;
+					ECHO;
+				}
+
+{begin_kw}		{
+					cur_state->tokenstate = BEGIN_P;
+					ECHO;
+				}
+
+{end_kw}		{
+					cur_state->tokenstate = END_P;
+					ECHO;
+				}
+{atomic_kw}		{
+					if (cur_state->tokenstate == BEGIN_P)
+					{
+						/*
+						 * cur_state->begin_depth is only increased here
+						 * because it's expected in the {identifier} rule.
+						 */
+						cur_state->begin_depth++;
+						BEGIN(INITIAL);
+					}
+					ECHO;
+				}
+
+{work_kw} 			|
+{transaction_kw}	|
+{isolation_kw}		|
+{read_kw}			|
+{not_deferrable} 	|
+"\\"[;:]		{
+					/*
+					 * Terminate <plblock> state for one of the following:
+					 *
+					 * BEGIN;
+					 * BEGIN WORK...
+					 * BEGIN TRANSACTION...
+					 * BEGIN ISOLATION....
+					 * BEGIN READ...
+					 * BEGIN NOT DEFERRABLE;
+					 */
+
+					if (cur_state->tokenstate == BEGIN_P)
+					{
+						if (yytext[0] == '\\' && yytext[1] == ';')
+						{
+							psqlscan_emit(cur_state, yytext + 1, 1);
+							cur_state->identifier_count = 0;
+						}
+						else
+						{
+							ECHO;
+						}
+						cur_state->begin_depth = 0;
+						BEGIN(INITIAL);
+					}
+					else
+					{
+						ECHO;
+					}
+				}
+
+{identifier}	{
+					cur_state->tokenstate = IDENT;
+					ECHO;
+				}
+
+";"				{
+					/* handle "BEGIN;", statement */
+					if (cur_state->tokenstate == BEGIN_P)
+					{
+						ECHO;
+						BEGIN(INITIAL);
+						return LEXRES_SEMI;
+					}
+
+					/* try to differenciate between a "statement;" and "END;" */
+					if (cur_state->tokenstate == END_P)
+						cur_state->tokenstate = ENDSEMI;
+					else
+						cur_state->tokenstate = SEMICOLON;
+					ECHO;
+				}
+
+^[/]			{
+					/*
+					 * we terminate the block on '/'. However we also need
+					 * to ensure that it's terminating slash and not the
+					 * slash in middle of the statement or block like a
+					 * division operator. For this we ensure that we only
+					 * terminate when '/' comes after "END;" or "statement;"
+					 */
+					if (cur_state->tokenstate == SEMICOLON ||
+						cur_state->tokenstate == ENDSEMI)
+					{
+						cur_state->start_state = INITIAL;
+						BEGIN(INITIAL);
+						return LEXRES_SLASH;
+					}
+					ECHO;
+				}
+
+{whitespace}	{
+						ECHO;
+				}
+
+{other}			{
+					cur_state->tokenstate = None;
+					ECHO;
+				}
+
+} /*<plblock>*/
+
 {whitespace}	{
 					/*
 					 * Note that the whitespace rule includes both true
@@ -441,16 +620,17 @@ other			.
 } /* <xc> */
 
 
-{create_fun}		{
-						char *str = pg_strdup(output_buf->data);
-						if (strcasestr(str,"CREATE") != NULL && (strcasestr(str,"PACKAGE") != NULL || (strcasestr(str,"FUNCTION") != NULL && (strcasestr(str,"RETURN") != NULL)) || 
-								strcasestr(str,"PROCEDURE")!= NULL) && strcasestr(str,"RETURNS") == NULL)
-							BEGIN(xf);
-						else
-							BEGIN(INITIAL);
-						ECHO;
-						pg_free(str);
-					}
+
+{create_fun}	{
+					char *str = pg_strdup(output_buf->data);
+					if (strcasestr(str,"CREATE") != NULL && (strcasestr(str,"PACKAGE") != NULL || (strcasestr(str,"FUNCTION") != NULL && (strcasestr(str,"RETURN") != NULL)) ||
+							strcasestr(str,"PROCEDURE")!= NULL) && strcasestr(str,"RETURNS") == NULL)
+						BEGIN(xf);
+					else
+						BEGIN(INITIAL);
+					ECHO;
+					pg_free(str);
+				}
 <xf>{
 {whitespace}	{
 					ECHO;
@@ -1322,6 +1502,14 @@ psql_scan(PsqlScanState state,
 					result = PSCAN_INCOMPLETE;
 					*prompt = PROMPT_DOLLARQUOTE;
 					break;
+				case plblock:
+					result = PSCAN_INCOMPLETE;
+					*prompt = PROMPT_DOLLARQUOTE;
+					break;
+				case dec_cursor:
+					result = PSCAN_INCOMPLETE;
+					*prompt = PROMPT_DOLLARQUOTE;
+					break;
 				default:
 					/* can't get here */
 					fprintf(stderr, "invalid YY_START\n");
@@ -1396,6 +1584,7 @@ psql_scan_reset(PsqlScanState state)
 	state->dolqstart = NULL;
 	state->identifier_count = 0;
 	state->begin_depth = 0;
+	state->tokenstate = None;
 }
 
 /*

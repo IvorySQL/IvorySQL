@@ -75,6 +75,16 @@ typedef struct StackElem
 	struct StackElem *next;
 } StackElem;
 
+typedef enum {
+	None,
+	DECLARE,
+	BEGIN_P,
+	END_P,
+	IDENT,
+	SEMICOLON,
+	ENDSEMI,
+} TokenState;
+
 /*
  * All working state of the lexer must be stored in PsqlScanStateData
  * between calls.  This allows us to have multiple open lexer operations,
@@ -123,6 +133,7 @@ typedef struct PsqlScanStateData
 	int			identifier_count;	/* identifiers since start of statement */
 	char		identifiers[4]; /* records the first few identifiers */
 	int			begin_depth;	/* depth of begin/end pairs */
+	TokenState	tokenstate;		/* keep track of tokens processed. */
 
 	/*
 	 * Callback functions provided by the program making use of the lexer,

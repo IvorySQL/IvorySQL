@@ -144,6 +144,7 @@ extern int	core_yyget_column(yyscan_t yyscanner);
 extern void core_yyset_column(int column_no, yyscan_t yyscanner);
 
 bool packagestmt_context = false;
+bool anonblock_context = false;
 
 %}
 
@@ -1298,6 +1299,7 @@ scanner_yyerror(const char *message, core_yyscan_t yyscanner)
 {
 	const char *loc = yyextra->scanbuf + *yylloc;
 
+	anonblock_context = false;
 	if (*loc == YY_END_OF_BUFFER_CHAR)
 	{
 		ereport(ERROR,
@@ -1496,7 +1498,6 @@ read_sql_until(int until,
 						 lexer_errposition()));
 		}
 	}
-
 
 	/* give helpful complaint about empty input */
 	if (startlocation > *yylloc_)

@@ -12,7 +12,7 @@ subdir = src/interfaces
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS = libpq  ecpg
+SUBDIRS = libpq ecpg
 
 $(recurse)
 
