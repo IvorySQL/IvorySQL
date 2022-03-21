@@ -41,7 +41,7 @@ libpgfeutils.a: $(OBJS)
 	$(AR) $(AROPT) $@ $^
 
 psqlscan.c: FLEXFLAGS = -Cfe -p -p
-psqlscan.c: FLEX_NO_BACKUP=yes
+#psqlscan.c: FLEX_NO_BACKUP=yes
 psqlscan.c: FLEX_FIX_WARNING=yes
 
 distprep: psqlscan.c
