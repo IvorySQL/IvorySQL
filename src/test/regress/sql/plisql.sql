@@ -636,11 +636,10 @@ end;
 call test_cur4();
 
 -- test Do structure for CALL
-DO $$
 begin
 	call test_cur4();
 end;
-$$ language plisql;
+/
 
 drop procedure test_cur4();
 drop table emp;
@@ -941,21 +940,19 @@ drop function shadowtest(int);
 -- runtime extra checks
 set plisql.extra_warnings to 'too_many_rows';
 
-do $$
 declare x int;
 begin
   select v from generate_series(1,2) g(v) into x;
 end;
-$$ language plisql;
+/
 
 set plisql.extra_errors to 'too_many_rows';
 
-do $$
 declare x int;
 begin
   select v from generate_series(1,2) g(v) into x;
 end;
-$$ language plisql;
+/
 
 reset plisql.extra_errors;
 reset plisql.extra_warnings;
@@ -963,7 +960,6 @@ reset plisql.extra_warnings;
 
 set plisql.extra_warnings to 'strict_multi_assignment';
 
-do $$
 declare
   x int;
   y int;
@@ -971,12 +967,11 @@ begin
   select 1 into x, y;
   select 1,2 into x, y;
   select 1,2,3 into x, y;
-end
-$$ language plisql;
+end;
+/
 
 set plisql.extra_errors to 'strict_multi_assignment';
 
-do $$
 declare
   x int;
   y int;
@@ -984,9 +979,8 @@ begin
   select 1 into x, y;
   select 1,2 into x, y;
   select 1,2,3 into x, y;
-end
-$$ language plisql;
-
+end;
+/
 
 create table test_01(a int, b int, c int);
 
@@ -995,7 +989,6 @@ alter table test_01 drop column a;
 -- the check is active only when source table is not empty
 insert into test_01 values(10,20);
 
-do $$
 declare
   x int;
   y int;
@@ -1004,10 +997,9 @@ begin
   raise notice 'ok';
   select * from test_01 into x;    -- should to fail
 end;
-$$ language plisql;
+/
 
 
-do $$
 declare
   t test_01;
 begin
@@ -1015,15 +1007,14 @@ begin
   raise notice 'ok';
   select 1, 2, 3 into t; -- should fail;
 end;
-$$ language plisql;
+/
 
-do $$
 declare
   t test_01;
 begin
   select 1 into t; -- should fail;
 end;
-$$ language plisql;
+/
 
 drop table test_01;
 
@@ -1952,8 +1943,10 @@ drop function sql_to_date(integer) cascade;
 -- used in this session)
 
 begin;
-do $$ declare x text[]; begin x := '{1.23, 4.56}'::numeric[]; end $$;
-do $$ declare x text[]; begin x := '{1.23, 4.56}'::numeric[]; end $$;
+declare x text[]; begin x := '{1.23, 4.56}'::numeric[]; end;
+/
+declare x text[]; begin x := '{1.23, 4.56}'::numeric[]; end;
+/
 end;
 
 -- Test for consistent reporting of error context
@@ -2310,7 +2303,6 @@ drop table tb_cr;
 
 
 -- test PL label
-DO $$
 declare  
 	a int := 1;
 begin  
@@ -2328,7 +2320,7 @@ begin
 	  end loop loop_in;  
 	end loop loop_out;
 end;
-$$ language plisql;
+/
 
 -- test riase EXCEPTION
 create or replace function test_exp() return void 
@@ -2706,3 +2698,150 @@ select * from tab_p;
 drop procedure tpro2;
 drop procedure tpro1;
 drop table tab_p;
+
+--test various combinations for anonymous blocks
+DECLARE x CURSOR FOR SELECT * from pg_class;
+DECLARE x BINARY CURSOR FOR select * from pg_class;
+DECLARE x ASENSITIVE CURSOR FOR select * from pg_class;
+DECLARE x INSENSITIVE CURSOR FOR select * from pg_class;
+DECLARE x SCROLL CURSOR FOR select * from pg_class;
+DECLARE x NO SCROLL CURSOR FOR select * from pg_class;
+
+
+BEGIN; END;
+BEGIN WORK; END;
+BEGIN TRANSACTION;
+END;
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+END;
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+END;
+BEGIN READ WRITE;
+END;
+BEGIN NOT DEFERRABLE;
+END;
+
+DECLARE
+	x int;
+BEGIN
+	x := 10;
+	declare
+    x int;
+	begin
+    x := 11;
+    raise info 'x =>>> %', x;
+	end;
+  raise info 'x =>>> %', x;
+END;
+/
+
+begin
+  raise info 'x =>>> %', 0;
+  declare
+    x int;
+	 begin
+    x := 10;
+    raise info 'x =>>> %', x;
+  end;
+end;
+/
+
+declare
+a int := 10;
+b int := 2;
+begin
+a := a
+/ b;
+raise info 'a = %', a;
+end;
+/
+
+declare
+a int := 10;
+b int := 2;
+begin
+a := a
+/b;
+raise info 'a = %', a;
+end;
+/
+
+declare
+a int := 10;
+b int := 2;
+begin
+a := a
+/
+b;
+raise info 'a = %', a;
+end;
+/
+
+BEGIN
+  BEGIN
+    RAISE syntax_error;
+  EXCEPTION
+    WHEN syntax_error THEN
+      BEGIN
+        raise notice 'exception % thrown in inner block, reraising', sqlerrm;
+        RAISE;
+    EXCEPTION
+      WHEN OTHERS THEN
+        raise notice 'RIGHT - exception % caught in inner block', sqlerrm;
+    END;
+  END;
+EXCEPTION
+  WHEN OTHERS THEN
+    raise notice 'WRONG - exception % caught in outer block', sqlerrm;
+END;
+/
+
+declare
+  cursor c(r1 integer, r2 integer)
+       for select * from generate_series(r1,r2) i;
+  cursor c2
+       for select * from generate_series(41,43) i;
+begin
+  for r in c(5,7) loop
+    raise notice '% from %', r.i, c;
+  end loop;
+  -- again, to test if cursor was closed properly
+  for r in c(9,10) loop
+    raise notice '% from %', r.i, c;
+  end loop;
+  -- and test a parameterless cursor
+  for r in c2 loop
+    raise notice '% from %', r.i, c2;
+  end loop;
+  -- and try it with a hand-assigned name
+  raise notice 'after loop, c2 = %', c2;
+  c2 := 'special_name';
+  for r in c2 loop
+    raise notice '% from %', r.i, c2;
+  end loop;
+  raise notice 'after loop, c2 = %', c2;
+  -- and try it with a generated name
+  -- (which we can't show in the output because it's variable)
+  c2 := null;
+  for r in c2 loop
+    raise notice '%', r.i;
+  end loop;
+  raise notice 'after loop, c2 = %', c2;
+  return;
+end;
+/
+
+declare _sqlstate text;
+        _message text;
+        _context text;
+begin
+  perform zero_divide();
+exception when others then
+  get stacked diagnostics
+        _sqlstate = returned_sqlstate,
+        _message = message_text,
+        _context = pg_exception_context;
+  raise notice 'sqlstate: %, message: %, context: [%]',
+    _sqlstate, _message, replace(_context, E'\n', ' <- ');
+end;
+/

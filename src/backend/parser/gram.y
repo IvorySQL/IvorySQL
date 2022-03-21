@@ -311,8 +311,8 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
 
-		/* HG constructs */
-		CreatePackageStmt
+		/* IvorySQL constructs */
+		CreatePackageStmt AnonBlockStmt
 		opt_initfunc
 		pl_block pl_block_internal pl_block_body proc_sect
 		decl_stmts decl_stmt decl_var
@@ -784,6 +784,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
  * NULLS_LA and WITH_LA are needed to make the grammar LALR(1).
  */
 %token		NOT_LA NULLS_LA WITH_LA PACKAGE_BODY START_P CONNECT_P
+		ANONYMOUS_BLOCK
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -978,6 +979,7 @@ stmt:
 			| AlterTSDictionaryStmt
 			| AlterUserMappingStmt
 			| AnalyzeStmt
+			| AnonBlockStmt
 			| CallStmt
 			| CheckPointStmt
 			| ClosePortalStmt
@@ -8073,6 +8075,41 @@ invoker_rights_clause:
 		| 							{ $$ = true; }
 		;
 
+/*****************************************************************************
+ *
+ *		QUERY: Anonymous Blocks
+ *
+ *		[ DECLARE ]
+ *			[ statement ... ]
+ *		BEGIN
+ *			[ statement ... ]
+ *		END;
+ *****************************************************************************/
+AnonBlockStmt: ANONYMOUS_BLOCK decl_stmts pl_block_body
+			{
+				DoStmt *n = makeNode(DoStmt);
+				char *body = read_plsql_body(@1, yyscanner);
+
+				anonblock_context = false;
+				n->args = lappend(n->args,
+							makeDefElem("as", (Node *)makeString(body), @1));
+				n->args = lappend(n->args,
+							makeDefElem("language", (Node *)makeString("plisql"), @1));
+				$$ = (Node *)n;
+			}
+		| pl_block_body
+			{
+				DoStmt *n = makeNode(DoStmt);
+				char *body = read_plsql_body(@1, yyscanner);
+
+				anonblock_context = false;
+				n->args = lappend(n->args,
+							makeDefElem("as", (Node *)makeString(body), @1));
+				n->args = lappend(n->args,
+							makeDefElem("language", (Node *)makeString("plisql"), @1));
+				$$ = (Node *)n;
+			}
+		;
 
 /*
  * PLSQL grammar rules. These rules are here only to determine the end location
@@ -8084,11 +8121,15 @@ pl_block:  opt_block_label decl_sect pl_block_body
 		;
 
 pl_block_internal: opt_block_label DECLARE decl_stmts pl_block_body
+		| ANONYMOUS_BLOCK decl_stmts pl_block_body { $$ = NULL; }
 		| opt_block_label pl_block_body
 		;
 
 pl_block_body: BEGIN_P proc_sect exception_sect END_P opt_label
-		{ $$ = NULL; }
+		{
+			$$ = NULL;
+			anonblock_context = false;
+		}
 		;
 
 exception_sect: EXCEPTION case_when_list
@@ -8098,6 +8139,7 @@ exception_sect: EXCEPTION case_when_list
 
 decl_sect:
 		DECLARE decl_stmts
+		| ANONYMOUS_BLOCK decl_stmts
 		| decl_stmts
 		| {}
 		;

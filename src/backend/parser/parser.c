@@ -48,12 +48,14 @@ raw_parser(const char *str, RawParseMode mode)
 	/* initialize the flex scanner */
 	yyscanner = scanner_init(str, &yyextra.core_yy_extra,
 							 &ScanKeywords, ScanKeywordTokens);
+	yyextra.lookahead_l = NIL;
 
 	/* base_yylex() only needs us to initialize the lookahead token, if any */
 	if (mode == RAW_PARSE_DEFAULT)
 		yyextra.have_lookahead = false;
 	else
 	{
+		LookAheadToken *lt = NULL;
 		/* this array is indexed by RawParseMode enum */
 		static const int mode_token[] = {
 			0,					/* RAW_PARSE_DEFAULT */
@@ -64,10 +66,12 @@ raw_parser(const char *str, RawParseMode mode)
 			MODE_PLPGSQL_ASSIGN3	/* RAW_PARSE_PLPGSQL_ASSIGN3 */
 		};
 
+		lt = (LookAheadToken *) palloc0(sizeof(LookAheadToken));
+		yyextra.lookahead_l = lappend(yyextra.lookahead_l, lt);
 		yyextra.have_lookahead = true;
-		yyextra.lookahead_token = mode_token[mode];
-		yyextra.lookahead_yylloc = 0;
-		yyextra.lookahead_end = NULL;
+		lt->lookahead_token = mode_token[mode];
+		lt->lookahead_yylloc = 0;
+		lt->lookahead_end = NULL;
 	}
 
 	/* initialize the bison parser */
@@ -77,6 +81,7 @@ raw_parser(const char *str, RawParseMode mode)
 	yyresult = base_yyparse(yyscanner);
 
 	/* Clean up (release memory) */
+	yyextra.lookahead_l = NIL;
 	scanner_finish(yyscanner);
 
 	if (yyresult)				/* error */
@@ -115,16 +120,20 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 	int			next_token;
 	int			cur_token_length;
 	YYLTYPE		cur_yylloc;
+	LookAheadToken	   *lt;
 
 	/* Get next token --- we might already have it */
 	if (yyextra->have_lookahead)
 	{
-		cur_token = yyextra->lookahead_token;
-		lvalp->core_yystype = yyextra->lookahead_yylval;
-		*llocp = yyextra->lookahead_yylloc;
-		if (yyextra->lookahead_end)
-			*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
-		yyextra->have_lookahead = false;
+		lt = (LookAheadToken *) linitial(yyextra->lookahead_l);
+		cur_token = lt->lookahead_token;
+		lvalp->core_yystype = lt->lookahead_yylval;
+		*llocp = lt->lookahead_yylloc;
+		if (lt->lookahead_end)
+			*(lt->lookahead_end) = lt->lookahead_hold_char;
+
+		yyextra->lookahead_l = list_delete_first(yyextra->lookahead_l);
+		yyextra->have_lookahead = (list_length(yyextra->lookahead_l) > 0);
 	}
 	else
 		cur_token = core_yylex(&(lvalp->core_yystype), llocp, yyscanner);
@@ -159,18 +168,24 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 		case CONNECT_P:
 			cur_token_length = 7;
 			break;
+		case DECLARE:
+			cur_token_length = 7;
+			break;
 		default:
 			return cur_token;
 	}
+
+	lt = (LookAheadToken *) palloc0(sizeof(LookAheadToken));
+	yyextra->lookahead_l = lappend(yyextra->lookahead_l, lt);
 
 	/*
 	 * Identify end+1 of current token.  core_yylex() has temporarily stored a
 	 * '\0' here, and will undo that when we call it again.  We need to redo
 	 * it to fully revert the lookahead call for error reporting purposes.
 	 */
-	yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
+	lt->lookahead_end = yyextra->core_yy_extra.scanbuf +
 		*llocp + cur_token_length;
-	Assert(*(yyextra->lookahead_end) == '\0');
+	Assert(*(lt->lookahead_end) == '\0');
 
 	/*
 	 * Save and restore *llocp around the call.  It might look like we could
@@ -182,15 +197,15 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 	cur_yylloc = *llocp;
 
 	/* Get next token, saving outputs into lookahead variables */
-	next_token = core_yylex(&(yyextra->lookahead_yylval), llocp, yyscanner);
-	yyextra->lookahead_token = next_token;
-	yyextra->lookahead_yylloc = *llocp;
+	next_token = core_yylex(&(lt->lookahead_yylval), llocp, yyscanner);
+	lt->lookahead_token = next_token;
+	lt->lookahead_yylloc = *llocp;
 
 	*llocp = cur_yylloc;
 
 	/* Now revert the un-truncation of the current token */
-	yyextra->lookahead_hold_char = *(yyextra->lookahead_end);
-	*(yyextra->lookahead_end) = '\0';
+	lt->lookahead_hold_char = *(lt->lookahead_end);
+	*(lt->lookahead_end) = '\0';
 
 	yyextra->have_lookahead = true;
 	/* Replace cur_token if needed, based on lookahead */
@@ -244,10 +259,10 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 				cur_yylloc = *llocp;
 
 				/* Un-truncate current token so errors point to third token */
-				*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
+				*(lt->lookahead_end) = lt->lookahead_hold_char;
 
 				/* Get third token */
-				next_token = core_yylex(&(yyextra->lookahead_yylval),
+				next_token = core_yylex(&(lt->lookahead_yylval),
 										llocp, yyscanner);
 
 				/* If we throw error here, it will point to third token */
@@ -255,7 +270,7 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 					scanner_yyerror("UESCAPE must be followed by a simple string literal",
 									yyscanner);
 
-				escstr = yyextra->lookahead_yylval.str;
+				escstr = lt->lookahead_yylval.str;
 				if (strlen(escstr) != 1 || !check_uescapechar(escstr[0]))
 					scanner_yyerror("invalid Unicode escape character",
 									yyscanner);
@@ -317,6 +332,61 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 				cur_token = CONNECTBY;
 			else
 				cur_token = IDENT;
+			break;
+
+		case DECLARE:
+			{
+				if (anonblock_context)
+					break;
+
+				lt = (LookAheadToken *) palloc0(sizeof(LookAheadToken));
+				yyextra->lookahead_l = lappend(yyextra->lookahead_l, lt);
+
+				/* Again save and restore *llocp */
+				cur_yylloc = *llocp;
+
+				/* Un-truncate current token so errors point to third token */
+				lt->lookahead_end = yyextra->core_yy_extra.scanbuf + *llocp + cur_token_length;
+
+				/* Get third token */
+				next_token = core_yylex(&(lt->lookahead_yylval),
+										llocp, yyscanner);
+				lt->lookahead_token = next_token;
+				lt->lookahead_yylloc = *llocp;
+				yyextra->have_lookahead = true;
+
+				*llocp = cur_yylloc;
+				lt->lookahead_hold_char = *(lt->lookahead_end);
+				*(lt->lookahead_end) = '\0';
+
+				switch (next_token)
+				{
+					/* Identify DeclareCursorStmt combinations */
+					case NO:
+					case SCROLL:
+					case BINARY:
+					case ASENSITIVE:
+					case INSENSITIVE:
+					case CURSOR:
+						break;
+
+					/* Anything else is an anonymous block */
+					default:
+					{
+						cur_token = ANONYMOUS_BLOCK;
+						anonblock_context = true;
+
+						/*
+						 * We can't keep the third token in anonymous block
+						 * because after determining that it's an anonymous
+						 * block, we eatup everything in the production rules
+						 * and keeping it as a lookahread when it's already
+						 * been consumed, can cause unwanted issues.
+						 */
+						yyextra->lookahead_l = list_delete_last(yyextra->lookahead_l);
+					}
+				}
+			}
 			break;
 	}
 

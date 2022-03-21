@@ -28,6 +28,14 @@
  */
 #include "parser/gram.h"
 
+typedef struct
+{
+	int			lookahead_token;	/* one-token lookahead */
+	core_YYSTYPE lookahead_yylval;	/* yylval for lookahead token */
+	YYLTYPE		lookahead_yylloc;	/* yylloc for lookahead token */
+	char	   *lookahead_end;	/* end of current token */
+	char		lookahead_hold_char;	/* to be put back at *lookahead_end */
+} LookAheadToken;
 /*
  * The YY_EXTRA data that a flex scanner allows us to pass around.  Private
  * state needed for raw parsing/lexing goes here.
@@ -43,11 +51,7 @@ typedef struct base_yy_extra_type
 	 * State variables for base_yylex().
 	 */
 	bool		have_lookahead; /* is lookahead info valid? */
-	int			lookahead_token;	/* one-token lookahead */
-	core_YYSTYPE lookahead_yylval;	/* yylval for lookahead token */
-	YYLTYPE		lookahead_yylloc;	/* yylloc for lookahead token */
-	char	   *lookahead_end;	/* end of current token */
-	char		lookahead_hold_char;	/* to be put back at *lookahead_end */
+	List		*lookahead_l;
 
 	/*
 	 * State variables that belong to the grammar.
@@ -72,6 +76,7 @@ extern int	base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp,
 extern void parser_init(base_yy_extra_type *yyext);
 extern int	base_yyparse(core_yyscan_t yyscanner);
 extern bool packagestmt_context;
+extern bool anonblock_context;
 
 
 #endif							/* GRAMPARSE_H */
