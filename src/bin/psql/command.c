@@ -854,6 +854,15 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 						case 'n':
 							success = listPartitionedTables(&cmd[2], pattern, show_verbose);
 							break;
+						case 'K':
+						case 'k':
+							{
+								if (cmd[3] == 'g' || cmd[3] == 'G')
+									success = describePackages(pattern);
+								else
+									status = PSQL_CMD_UNKNOWN;
+							}
+							break;
 						default:
 							status = PSQL_CMD_UNKNOWN;
 							break;

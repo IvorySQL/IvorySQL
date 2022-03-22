@@ -1695,7 +1695,7 @@ psql_completion(const char *text, int start, int end)
 		"\\db", "\\dc", "\\dconfig", "\\dC", "\\dd", "\\ddp", "\\dD",
 		"\\des", "\\det", "\\deu", "\\dew", "\\dE", "\\df",
 		"\\dF", "\\dFd", "\\dFp", "\\dFt", "\\dg", "\\di", "\\dl", "\\dL",
-		"\\dm", "\\dn", "\\do", "\\dO", "\\dp", "\\dP", "\\dPi", "\\dPt",
+		"\\dm", "\\dn", "\\do", "\\dO", "\\dp", "\\dP", "\\dPi", "\\dPt", "\\dPKG",
 		"\\drds", "\\dRs", "\\dRp", "\\ds",
 		"\\dt", "\\dT", "\\dv", "\\du", "\\dx", "\\dX", "\\dy",
 		"\\echo", "\\edit", "\\ef", "\\elif", "\\else", "\\encoding",
@@ -4630,6 +4630,8 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_partitioned_indexes);
 	else if (TailMatchesCS("\\dPt*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_partitioned_tables);
+	else if (TailMatchesCS("\\dPKG"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_packages);
 	else if (TailMatchesCS("\\dP*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_partitioned_relations);
 	else if (TailMatchesCS("\\ds*"))
