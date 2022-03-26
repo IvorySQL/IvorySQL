@@ -3660,6 +3660,678 @@ CREATE OPERATOR oracle./ (
 );
 /* end */
 
+-- oracle.nchar type support
+
+CREATE FUNCTION oracle.ncharin(cstring,oid,integer)
+RETURNS oracle.nchar
+AS 'MODULE_PATHNAME','ncharin'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.ncharout(oracle.nchar)
+RETURNS CSTRING
+AS 'bpcharout'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.ncharrecv(internal,oid,integer)
+RETURNS oracle.nchar
+AS 'bpcharrecv'
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.ncharsend(oracle.nchar)
+RETURNS bytea
+AS 'bpcharsend'
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.nchartypmodin(cstring[])
+RETURNS integer
+AS 'bpchartypmodin'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.nchartypmodout(integer)
+RETURNS CSTRING
+AS 'bpchartypmodout'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.nchar(oracle.nchar,integer,boolean)
+RETURNS oracle.nchar
+AS 'MODULE_PATHNAME','nchar'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+/* CREATE TYPE */
+CREATE TYPE oracle.nchar (
+internallength = VARIABLE,
+input = oracle.ncharin,
+output = oracle.ncharout,
+receive = oracle.ncharrecv,
+send = oracle.ncharsend,
+category = 'S',
+storage = 'extended',
+typmod_in = oracle.nchartypmodin,
+typmod_out = oracle.nchartypmodout,
+collatable = true
+);
+
+/* CREATE CAST */
+/* text / nchar*/
+CREATE OR REPLACE FUNCTION oracle.nchartext(oracle.nchar)
+RETURNS text
+AS $$select text($1::bpchar)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.nchar AS text)
+WITH FUNCTION oracle.nchartext(oracle.nchar)
+AS IMPLICIT;
+
+CREATE CAST (text AS oracle.nchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* varchar / nchar*/
+CREATE CAST (oracle.nchar AS varchar)
+WITH FUNCTION oracle.nchartext(oracle.nchar)
+AS IMPLICIT;
+
+CREATE CAST (varchar AS oracle.nchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* "char" / nchar */
+CREATE OR REPLACE FUNCTION oracle.charnchar("char")
+RETURNS oracle.nchar
+AS $$select bpchar($1)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST ("char" AS oracle.nchar)
+WITH FUNCTION oracle.charnchar("char")
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION oracle.ncharchar(oracle.nchar)
+RETURNS "char"
+AS $$select char($1::text)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.nchar AS "char")
+WITH FUNCTION oracle.ncharchar(oracle.nchar)
+AS ASSIGNMENT;
+
+/* name / nchar */
+CREATE OR REPLACE FUNCTION oracle.namenchar(name)
+RETURNS oracle.nchar
+AS $$select bpchar($1)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (name AS oracle.nchar)
+WITH FUNCTION oracle.namenchar(name)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION oracle.ncharname(oracle.nchar)
+RETURNS name
+AS $$select name($1::bpchar)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.nchar AS name)
+WITH FUNCTION oracle.ncharname(oracle.nchar)
+AS IMPLICIT;
+
+/* bool / nchar */
+CREATE OR REPLACE FUNCTION oracle.boolnchar(bool)
+RETURNS oracle.nchar
+AS $$select text($1)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (bool AS oracle.nchar)
+WITH FUNCTION oracle.boolnchar(bool)
+AS ASSIGNMENT;
+
+CREATE CAST (oracle.nchar AS oracle.nchar)
+WITH FUNCTION oracle.nchar(oracle.nchar, integer, boolean)
+AS IMPLICIT;
+
+/* char / nchar */
+CREATE CAST (oracle.nchar AS bpchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (bpchar AS oracle.nchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* varchar2 / nchar */
+CREATE CAST (oracle.varchar2 AS oracle.nchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (oracle.nchar AS oracle.varchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* nvarchar2 / nchar */
+CREATE CAST (oracle.nvarchar2 AS oracle.nchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (oracle.nchar AS oracle.nvarchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+
+/* CREATE OPERATORS */
+
+/* equal */
+
+CREATE OR REPLACE FUNCTION oracle.nchareq(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar = $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.= (
+	LEFTARG   = oracle.nchar,
+	RIGHTARG  = oracle.nchar,
+	PROCEDURE = oracle.nchareq,
+	COMMUTATOR = operator(oracle.=),
+	NEGATOR = operator(oracle.<>)
+);
+
+/* ne */
+
+CREATE OR REPLACE FUNCTION oracle.ncharne(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar != $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.<> (
+	LEFTARG   = oracle.nchar,
+	RIGHTARG  = oracle.nchar,
+	PROCEDURE = oracle.ncharne,
+	COMMUTATOR = operator(oracle.<>),
+	NEGATOR = operator(oracle.=)
+);
+
+/* le and greate */
+/* le */
+CREATE OR REPLACE FUNCTION oracle.ncharle(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar <= $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.<= (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.ncharle,
+  COMMUTATOR = operator(oracle.>=),
+  NEGATOR = operator(oracle.>)
+);
+
+/* great */
+CREATE OR REPLACE FUNCTION oracle.nchargt(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar > $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.> (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.nchargt,
+  COMMUTATOR = operator(oracle.<),
+  NEGATOR = operator(oracle.<=)
+);
+
+/* ge and letter */
+/* ge */
+CREATE OR REPLACE FUNCTION oracle.ncharge(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar >= $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.>= (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.ncharge,
+  COMMUTATOR = operator(oracle.<=),
+  NEGATOR = operator(oracle.<)
+);
+
+/* letter */
+CREATE OR REPLACE FUNCTION oracle.ncharlt(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar < $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.< (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.ncharlt,
+  COMMUTATOR = operator(oracle.>),
+  NEGATOR = operator(oracle.>=)
+);
+
+CREATE OR REPLACE FUNCTION oracle.nchar_pattern_lt(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar ~<~ $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.~<~ (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.nchar_pattern_lt,
+  COMMUTATOR = operator(oracle.~>~),
+  NEGATOR = operator(oracle.~>=~)
+);
+
+CREATE OR REPLACE FUNCTION oracle.nchar_pattern_gt(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar ~>~ $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.~>~ (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.nchar_pattern_gt,
+  COMMUTATOR = operator(oracle.~<~),
+  NEGATOR = operator(oracle.~<=~)
+);
+
+CREATE OR REPLACE FUNCTION oracle.nchar_pattern_ge(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar ~>=~ $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.~>=~ (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.nchar_pattern_ge,
+  COMMUTATOR = operator(oracle.~<=~),
+  NEGATOR = operator(oracle.~<~)
+);
+
+CREATE OR REPLACE FUNCTION oracle.nchar_pattern_le(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT $1::bpchar ~<=~ $2::bpchar;
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.~<=~ (
+  LEFTARG   = oracle.nchar,
+  RIGHTARG  = oracle.nchar,
+  PROCEDURE = oracle.nchar_pattern_le,
+  COMMUTATOR = operator(oracle.~>=~),
+  NEGATOR = operator(oracle.~>~)
+);
+
+/* like */
+
+CREATE OR REPLACE FUNCTION oracle.ncharlike(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT bpcharlike($1::bpchar, $2::text);
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.~~ (
+	LEFTARG   = oracle.nchar,
+	RIGHTARG  = oracle.nchar,
+	PROCEDURE = oracle.ncharlike,
+	COMMUTATOR = operator(oracle.~~),
+	NEGATOR = operator(oracle.!~~)
+);
+
+/* unlike */
+
+CREATE OR REPLACE FUNCTION oracle.ncharnlike(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT bpcharnlike($1::bpchar, $2::text);
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.!~~ (
+	LEFTARG   = oracle.nchar,
+	RIGHTARG  = oracle.nchar,
+	PROCEDURE = oracle.ncharnlike,
+	COMMUTATOR = operator(oracle.!~~),
+	NEGATOR = operator(oracle.~~)
+);
+
+/* iclike */
+
+CREATE OR REPLACE FUNCTION oracle.nchariclike(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT bpchariclike($1::bpchar, $2::text);
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.~~* (
+	LEFTARG   = oracle.nchar,
+	RIGHTARG  = oracle.nchar,
+	PROCEDURE = oracle.nchariclike,
+	COMMUTATOR = operator(oracle.~~*),
+	NEGATOR = operator(oracle.!~~*)
+);
+
+/* icnlike */
+
+CREATE OR REPLACE FUNCTION oracle.ncharicnlike(oracle.nchar, oracle.nchar)
+RETURNS bool AS $$
+SELECT bpcharicnlike($1::bpchar, $2::text);
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+CREATE OPERATOR oracle.!~~* (
+	LEFTARG   = oracle.nchar,
+	RIGHTARG  = oracle.nchar,
+	PROCEDURE = oracle.ncharicnlike,
+	COMMUTATOR = operator(oracle.!~~*),
+	NEGATOR = operator(oracle.~~*)
+);
+
+--operator class and operator family
+
+CREATE FUNCTION oracle.ncharcmp(oracle.nchar, oracle.nchar)
+RETURNS int4
+AS $$bpcharcmp$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR CLASS oracle.nchar_ops
+DEFAULT FOR TYPE oracle.nchar
+USING btree AS
+	operator	1	oracle.< (oracle.nchar, oracle.nchar),
+	operator	2	oracle.<= (oracle.nchar, oracle.nchar),
+	operator	3	oracle.= (oracle.nchar, oracle.nchar),
+	operator	4	oracle.>= (oracle.nchar, oracle.nchar),
+	operator	5	oracle.> (oracle.nchar, oracle.nchar),
+	function	1	oracle.ncharcmp(oracle.nchar, oracle.nchar),
+	function	2	bpchar_sortsupport(internal),
+	function	4	btvarstrequalimage(oid)
+	;
+
+CREATE FUNCTION oracle.btnchar_pattern_cmp(oracle.nchar, oracle.nchar)
+RETURNS int4
+AS $$btbpchar_pattern_cmp$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR CLASS oracle.nchar_pattern_ops
+FOR TYPE oracle.nchar
+USING btree AS
+	operator	1	oracle.~<~ (oracle.nchar, oracle.nchar),
+	operator	2	oracle.~<=~ (oracle.nchar, oracle.nchar),
+	operator	3	oracle.= (oracle.nchar, oracle.nchar),
+	operator	4	oracle.~>=~ (oracle.nchar, oracle.nchar),
+	operator	5	oracle.~>~ (oracle.nchar, oracle.nchar),
+	function	1	oracle.btnchar_pattern_cmp(oracle.nchar, oracle.nchar),
+	function	2	btbpchar_pattern_sortsupport(internal),
+	function	4	btequalimage(oid)
+	;
+
+CREATE FUNCTION oracle.hashnchar(oracle.nchar)
+RETURNS int4
+AS $$hashbpchar$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.hashncharextended(oracle.nchar, bigint)
+RETURNS bigint
+AS $$hashbpcharextended$$
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE OPERATOR CLASS oracle.nchar_ops
+DEFAULT FOR TYPE oracle.nchar
+USING hash AS
+	operator	1	oracle.= (oracle.nchar, oracle.nchar),
+	function	1	oracle.hashnchar(oracle.nchar),
+	function	2	oracle.hashncharextended(oracle.nchar, bigint)
+	;
+
+CREATE OPERATOR CLASS oracle.nchar_pattern_ops
+FOR TYPE oracle.nchar
+USING hash AS
+	operator	1	oracle.= (oracle.nchar, oracle.nchar),
+	function	1	oracle.hashnchar(oracle.nchar),
+	function	2	oracle.hashncharextended(oracle.nchar, bigint)
+	;
+
+CREATE OPERATOR CLASS oracle.nchar_minmax_ops
+DEFAULT FOR TYPE oracle.nchar
+USING brin AS
+	operator	1	oracle.< (oracle.nchar, oracle.nchar),
+	operator	2	oracle.<= (oracle.nchar, oracle.nchar),
+	operator	3	oracle.= (oracle.nchar, oracle.nchar),
+	operator	4	oracle.>= (oracle.nchar, oracle.nchar),
+	operator	5	oracle.> (oracle.nchar, oracle.nchar),
+	function	1	brin_minmax_opcinfo(internal),
+	function	2	brin_minmax_add_value(internal,internal,internal,internal),
+	function	3	brin_minmax_consistent(internal,internal,internal),
+	function	4	brin_minmax_union(internal,internal,internal)
+	;
+
+CREATE OPERATOR CLASS oracle.nchar_bloom_ops
+FOR TYPE oracle.nchar
+USING brin AS
+	operator	1	oracle.= (oracle.nchar, oracle.nchar),
+	function	1	brin_bloom_opcinfo(internal),
+	function	2	brin_bloom_add_value(internal,internal,internal,internal),
+	function	3	brin_bloom_consistent(internal,internal,internal, int4),
+	function	4	brin_bloom_union(internal,internal,internal),
+	function	5	brin_bloom_options(internal),
+	function	11	oracle.hashnchar(oracle.nchar)
+	;
+
+-- oracle.nchar varying type support
+
+CREATE FUNCTION oracle.nvarcharin(cstring,oid,integer)
+RETURNS oracle.nvarchar
+AS 'MODULE_PATHNAME','nvarcharin'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.nvarcharout(oracle.nvarchar)
+RETURNS CSTRING
+AS 'varcharout'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.nvarcharrecv(internal,oid,integer)
+RETURNS oracle.nvarchar
+AS 'varcharrecv'
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.nvarcharsend(oracle.nvarchar)
+RETURNS bytea
+AS 'varcharsend'
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION oracle.nvarchartypmodin(cstring[])
+RETURNS integer
+AS 'varchartypmodin'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.nvarchartypmodout(integer)
+RETURNS CSTRING
+AS 'varchartypmodout'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION oracle.nvarchar(oracle.nvarchar,integer,boolean)
+RETURNS oracle.nvarchar
+AS 'MODULE_PATHNAME','nvarchar'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+/* CREATE TYPE */
+CREATE TYPE oracle.nvarchar (
+internallength = VARIABLE,
+input = oracle.nvarcharin,
+output = oracle.nvarcharout,
+receive = oracle.nvarcharrecv,
+send = oracle.nvarcharsend,
+category = 'S',
+storage = 'extended',
+typmod_in = oracle.nvarchartypmodin,
+typmod_out = oracle.nvarchartypmodout,
+collatable = true
+);
+
+/* CREATE CAST */
+CREATE OR REPLACE FUNCTION oracle.nvarcharregclass(oracle.nvarchar)
+RETURNS regclass
+AS $$select regclass($1::text)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.nvarchar AS regclass)
+WITH FUNCTION oracle.nvarcharregclass(oracle.nvarchar)
+AS IMPLICIT;
+
+/* text / nvarchar */
+CREATE CAST (oracle.nvarchar AS text)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (text AS oracle.nvarchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* bpchar / nvarchar */
+CREATE OR REPLACE FUNCTION oracle.bpcharnvarchar(bpchar)
+RETURNS oracle.nvarchar
+AS $$select text($1)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (bpchar AS oracle.nvarchar)
+WITH FUNCTION oracle.bpcharnvarchar(bpchar)
+AS IMPLICIT;
+
+CREATE CAST (oracle.nvarchar AS bpchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* "char" / nvarchar */
+CREATE OR REPLACE FUNCTION oracle.charnvarchar("char")
+RETURNS oracle.nvarchar
+AS $$select text($1)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST ("char" AS oracle.nvarchar)
+WITH FUNCTION oracle.charnvarchar("char")
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION oracle.nvarcharchar(oracle.nvarchar)
+RETURNS "char"
+AS $$select char($1::text)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.nvarchar AS "char")
+WITH FUNCTION oracle.nvarcharchar(oracle.nvarchar)
+AS ASSIGNMENT;
+
+/* name / nvarchar */
+CREATE OR REPLACE FUNCTION oracle.namenvarchar(name)
+RETURNS oracle.nvarchar
+AS $$select varchar($1)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (name AS oracle.nvarchar)
+WITH FUNCTION oracle.namenvarchar(name)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION oracle.nvarcharname(oracle.nvarchar)
+RETURNS name
+AS $$select name($1::varchar)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (oracle.nvarchar AS name)
+WITH FUNCTION oracle.nvarcharname(oracle.nvarchar)
+AS IMPLICIT;
+
+/* bool / nvarchar */
+CREATE OR REPLACE FUNCTION oracle.boolnvarchar(bool)
+RETURNS oracle.nvarchar
+AS $$select text($1)$$
+LANGUAGE SQL
+STRICT
+IMMUTABLE;
+
+CREATE CAST (bool AS oracle.nvarchar)
+WITH FUNCTION oracle.boolnvarchar(bool)
+AS ASSIGNMENT;
+
+CREATE CAST (oracle.nvarchar AS oracle.nvarchar)
+WITH FUNCTION oracle.nvarchar(oracle.nvarchar, integer, boolean)
+AS IMPLICIT;
+
+/* varchar2 / nvarchar */
+CREATE CAST (oracle.varchar2 AS oracle.nvarchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (oracle.nvarchar AS oracle.varchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* varchar / nvarchar */
+CREATE CAST (varchar AS oracle.nvarchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (oracle.nvarchar AS varchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+/* nvarchar2 / nvarchar */
+CREATE CAST (oracle.nvarchar2 AS oracle.nvarchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (oracle.nvarchar AS oracle.nvarchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
 /* PAD */
 
 /* LPAD family */
