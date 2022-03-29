@@ -2163,11 +2163,11 @@ select unreserved_test();
 
 create or replace function unreserved_test() returns int as $$
 declare
-  comment int := 21;
+  com int := 21;
 begin
-  comment := comment * 2;
+  com := com * 2;
   comment on function unreserved_test() is 'this is a test';
-  return comment;
+  return com;
 end
 $$ language plisql;
 
@@ -2658,3 +2658,51 @@ end;
 $$ language plisql;
 call set_test1();
 drop procedure set_test1;
+
+--
+-- support stand alone PL/iSQL procedures can calling
+-- another procedure from within without call keyword
+--
+CREATE OR REPLACE PROCEDURE pro1(in1 text)
+IS
+BEGIN
+	RAISE INFO 'pro1 => %', in1;
+END;
+/
+
+CREATE OR REPLACE PROCEDURE pro2(in2 text)
+IS
+BEGIN
+	pro1('Hello');
+	RAISE INFO 'pro2 => %', in2;
+END;
+/
+
+call pro2('IvorySQL');
+
+DROP PROCEDURE pro1;
+DROP PROCEDURE pro2;
+
+create table tab_p (a int, b text);
+
+create or replace procedure tpro1(x int, y text)
+is
+begin
+	insert into tab_p(a,b) values (x, y);
+end;
+/
+
+create or replace procedure tpro2(a int, b text)
+is
+begin
+	tpro1(a, b);
+end;
+/
+
+call tpro2(2022, 'IvorySQL Database');
+
+select * from tab_p;
+
+drop procedure tpro2;
+drop procedure tpro1;
+drop table tab_p;

@@ -271,17 +271,21 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 %token <keyword>	K_COLLATE
 %token <keyword>	K_COLUMN
 %token <keyword>	K_COLUMN_NAME
+%token <keyword>	K_COMMENT
 %token <keyword>	K_COMMIT
 %token <keyword>	K_CONSTANT
 %token <keyword>	K_CONSTRAINT
 %token <keyword>	K_CONSTRAINT_NAME
 %token <keyword>	K_CONTINUE
+%token <keyword>	K_COPY
+%token <keyword>	K_CREATE
 %token <keyword>	K_CURRENT
 %token <keyword>	K_CURSOR
 %token <keyword>	K_DATATYPE
 %token <keyword>	K_DEBUG
 %token <keyword>	K_DECLARE
 %token <keyword>	K_DEFAULT
+%token <keyword>	K_DELETE
 %token <keyword>	K_DETAIL
 %token <keyword>	K_DIAGNOSTICS
 %token <keyword>	K_DO
@@ -336,15 +340,19 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 %token <keyword>	K_RECORD
 %token <keyword>	K_REF
 %token <keyword>	K_RELATIVE
+%token <keyword>	K_RESET
 %token <keyword>	K_RETURN
 %token <keyword>	K_RETURNED_SQLSTATE
 %token <keyword>	K_REVERSE
 %token <keyword>	K_ROLLBACK
 %token <keyword>	K_ROW_COUNT
 %token <keyword>	K_ROWTYPE
+%token <keyword>	K_SAVEPOINT
 %token <keyword>	K_SCHEMA
 %token <keyword>	K_SCHEMA_NAME
 %token <keyword>	K_SCROLL
+%token <keyword>	K_SELECT
+%token <keyword>	K_SET
 %token <keyword>	K_SLICE
 %token <keyword>	K_SQLSTATE
 %token <keyword>	K_STACKED
@@ -354,6 +362,7 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 %token <keyword>	K_THEN
 %token <keyword>	K_TO
 %token <keyword>	K_TYPE
+%token <keyword>	K_UPDATE
 %token <keyword>	K_USE_COLUMN
 %token <keyword>	K_USE_VARIABLE
 %token <keyword>	K_USING
@@ -2212,6 +2221,78 @@ stmt_execsql	: K_IMPORT
 					{
 						$$ = make_execsql_stmt(K_INSERT, @1);
 					}
+				| K_SELECT
+					{
+						int 		tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_SELECT, @1);
+					}
+				| K_UPDATE
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_UPDATE, @1);
+					}
+				| K_DELETE
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_DELETE, @1);
+					}
+				| K_COMMENT
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_COMMENT, @1);
+					}
+				| K_COPY
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_COPY, @1);
+					}
+				| K_CREATE
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_CREATE, @1);
+					}
+				| K_RESET
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_RESET, @1);
+					}
+				| K_SET
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_SET, @1);
+					}
+				| K_SAVEPOINT
+					{
+						int			tok = -1;
+
+						tok = yylex();
+						plisql_push_back_token(tok);
+						$$ = make_execsql_stmt(K_SAVEPOINT, @1);
+					}
 				| T_WORD
 					{
 						int			tok;
@@ -2225,7 +2306,6 @@ stmt_execsql	: K_IMPORT
 						{
 							PLiSQL_stmt_call *new;
 							PLiSQL_stmt_execsql *execstmt;
-							char *query;
 
 							new = palloc0(sizeof(PLiSQL_stmt_call));
 							new->cmd_type = PLISQL_STMT_CALL;
@@ -2236,11 +2316,6 @@ stmt_execsql	: K_IMPORT
 												make_execsql_stmt(T_WORD, @1);
 							new->expr = execstmt->sqlstmt;
 							pfree(execstmt);
-
-							query = psprintf("CALL %s", new->expr->query);
-							pfree(new->expr->query); /* free existing buffer */
-							new->expr->query = query; /* assign new query */
-
 							new->is_call = true;
 							$$ = (PLiSQL_stmt *)new;
 						}
@@ -2262,7 +2337,6 @@ stmt_execsql	: K_IMPORT
 						{
 							PLiSQL_stmt_call *new;
 							PLiSQL_stmt_execsql *execstmt;
-							char *query;
 
 							new = palloc0(sizeof(PLiSQL_stmt_call));
 							new->cmd_type = PLISQL_STMT_CALL;
@@ -2273,11 +2347,6 @@ stmt_execsql	: K_IMPORT
 											make_execsql_stmt(T_CWORD, @1);
 							new->expr = execstmt->sqlstmt;
 							pfree(execstmt);
-
-							query = psprintf("CALL %s", new->expr->query);
-							pfree(new->expr->query); /* free existing buffer */
-							new->expr->query = query; /* assign new query */
-
 							new->is_call = true;
 							$$ = (PLiSQL_stmt *)new;
 						}
@@ -3366,6 +3435,16 @@ make_execsql_stmt(int firsttoken, int location)
 	/* trim any trailing whitespace, for neatness */
 	while (ds.len > 0 && scanner_isspace(ds.data[ds.len - 1]))
 		ds.data[--ds.len] = '\0';
+
+	/*
+	 * Identify T_WORD & T_CWORD as a PROCEDURE, at the same time
+	 * here we cannot distinguish whether it is a FUNCTION or a VARIABLE
+	 * if it is one of them, check_sql_expr will report an error
+	 */
+	if ((firsttoken == T_WORD || firsttoken ==T_CWORD) && tok == ';')
+	{
+		ds.data = psprintf("CALL %s", ds.data);
+	}
 
 	expr = palloc0(sizeof(PLiSQL_expr));
 	expr->query			= pstrdup(ds.data);

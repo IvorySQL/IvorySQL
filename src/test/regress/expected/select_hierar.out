@@ -417,29 +417,29 @@ SELECT
   parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1, 2;
+ORDER BY parent_entity;
  case connect by path | sysconnectpath | case connect by root | connectroot | LEVEL | parent_entity | child_entity 
 ----------------------+----------------+----------------------+-------------+-------+---------------+--------------
- Not Matched          | /a             | Not matched          | a           |     1 |               | a
- Not Matched          | /ab/abc        | match ab             | ab          |     2 | ab            | abc
- Not Matched          | /ab/abd        | match ab             | ab          |     2 | ab            | abd
+ match /ab            | /ab            | match ab             | ab          |     1 | a             | ab
+ Not Matched          | /ax            | Not matched          | ax          |     1 | a             | ax
+ Not Matched          | /af            | Not matched          | af          |     1 | a             | af
  Not Matched          | /ab/abe        | match ab             | ab          |     2 | ab            | abe
- Not Matched          | /abc           | Not matched          | abc         |     1 | ab            | abc
+ Not Matched          | /ab/abc        | match ab             | ab          |     2 | ab            | abc
  Not Matched          | /abd           | Not matched          | abd         |     1 | ab            | abd
  Not Matched          | /abe           | Not matched          | abe         |     1 | ab            | abe
+ Not Matched          | /abc           | Not matched          | abc         |     1 | ab            | abc
+ Not Matched          | /ab/abd        | match ab             | ab          |     2 | ab            | abd
+ match /abet          | /abet          | match abet           | abet        |     1 | abe           | abet
  Not Matched          | /abes          | Not matched          | abes        |     1 | abe           | abes
- Not Matched          | /af            | Not matched          | af          |     1 | a             | af
- Not Matched          | /ax            | Not matched          | ax          |     1 | a             | ax
- Not Matched          | /b             | Not matched          | b           |     1 |               | b
- Not Matched          | /bg            | Not matched          | bg          |     1 | b             | bg
  Not Matched          | /bh            | Not matched          | bh          |     1 | b             | bh
+ Not Matched          | /bg            | Not matched          | bg          |     1 | b             | bg
  Not Matched          | /bi            | Not matched          | bi          |     1 | b             | bi
- Not Matched          | /bi/biq        | Not matched          | bi          |     2 | bi            | biq
  Not Matched          | /bi/biv        | Not matched          | bi          |     2 | bi            | biv
  Not Matched          | /biq           | Not matched          | biq         |     1 | bi            | biq
  Not Matched          | /biv           | Not matched          | biv         |     1 | bi            | biv
- match /ab            | /ab            | match ab             | ab          |     1 | a             | ab
- match /abet          | /abet          | match abet           | abet        |     1 | abe           | abet
+ Not Matched          | /bi/biq        | Not matched          | bi          |     2 | bi            | biq
+ Not Matched          | /a             | Not matched          | a           |     1 |               | a
+ Not Matched          | /b             | Not matched          | b           |     1 |               | b
 (20 rows)
 
 -- test function call with hierarchical statement
