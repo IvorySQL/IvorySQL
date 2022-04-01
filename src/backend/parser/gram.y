@@ -14243,7 +14243,10 @@ ConstCharacter:  CharacterWithLength
 
 CharacterWithLength:  character '(' Iconst ')'
 				{
-					$$ = SystemTypeName($1);
+					if (strcmp($1, "nchar") == 0 || strcmp($1, "nvarchar") == 0)
+						$$ = CompatibleTypeName($1);
+					else
+						$$ = SystemTypeName($1);
 					$$->typmods = list_make1(makeIntConst($3, @3));
 					$$->location = @1;
 				}
@@ -14251,9 +14254,12 @@ CharacterWithLength:  character '(' Iconst ')'
 
 CharacterWithoutLength:	 character
 				{
-					$$ = SystemTypeName($1);
+					if (strcmp($1, "nchar") == 0 || strcmp($1, "nvarchar") == 0)
+						$$ = CompatibleTypeName($1);
+					else
+						$$ = SystemTypeName($1);
 					/* char defaults to char(1), varchar to no limit */
-					if (strcmp($1, "bpchar") == 0)
+					if (strcmp($1, "bpchar") == 0 || strcmp($1, "nchar") == 0)
 						$$->typmods = list_make1(makeIntConst(1, -1));
 					$$->location = @1;
 				}
@@ -14266,11 +14272,26 @@ character:	CHARACTER opt_varying
 			| VARCHAR
 										{ $$ = "varchar"; }
 			| NATIONAL CHARACTER opt_varying
-										{ $$ = $3 ? "varchar": "bpchar"; }
+				{
+					if (compatible_db == COMPATIBLE_ORA)
+						$$ = $3 ? "nvarchar": "nchar";
+					else
+						$$ = $3 ? "varchar": "bpchar";
+				}
 			| NATIONAL CHAR_P opt_varying
-										{ $$ = $3 ? "varchar": "bpchar"; }
+				{
+					if (compatible_db == COMPATIBLE_ORA)
+						$$ = $3 ? "nvarchar": "nchar";
+					else
+						$$ = $3 ? "varchar": "bpchar";
+				}
 			| NCHAR opt_varying
-										{ $$ = $2 ? "varchar": "bpchar"; }
+				{
+					if (compatible_db == COMPATIBLE_ORA)
+						$$ = $2 ? "nvarchar": "nchar";
+					else
+						$$ = $2 ? "varchar": "bpchar";
+				}
 		;
 
 opt_varying:
