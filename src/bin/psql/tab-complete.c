@@ -1105,6 +1105,11 @@ static const SchemaQuery Query_for_trigger_of_table = {
 "   FROM pg_catalog.pg_cursors "\
 "  WHERE name LIKE '%s'"
 
+#define Query_for_list_of_packages \
+" SELECT pkgname "\
+"   FROM pg_catalog.pg_package "\
+"  WHERE pkgname LIKE '%s'"
+
 /*
  * These object types were introduced later than our support cutoff of
  * server version 9.2.  We use the VersionedQuery infrastructure so that
@@ -1189,7 +1194,8 @@ static const pgsql_thing_t words_after_create[] = {
 									 * a good idea. */
 	{"OR REPLACE", NULL, NULL, NULL, NULL, THING_NO_DROP | THING_NO_ALTER},
 	{"OWNED", NULL, NULL, NULL, NULL, THING_NO_CREATE | THING_NO_ALTER},	/* for DROP OWNED BY ... */
-	{"PACKAGE", NULL, NULL, NULL, NULL},
+	{"PACKAGE",NULL,NULL,NULL /*Query_for_list_of_packages*/},
+	{"PACKAGE BODY", Query_for_list_of_packages, NULL, NULL, NULL, THING_NO_ALTER},
 	{"PARSER", NULL, NULL, &Query_for_list_of_ts_parsers, NULL, THING_NO_SHOW},
 	{"POLICY", NULL, NULL, NULL},
 	{"PROCEDURE", NULL, NULL, Query_for_list_of_procedures},
@@ -1649,7 +1655,7 @@ psql_completion(const char *text, int start, int end)
 		"\\db", "\\dc", "\\dC", "\\dd", "\\ddp", "\\dD",
 		"\\des", "\\det", "\\deu", "\\dew", "\\dE", "\\df",
 		"\\dF", "\\dFd", "\\dFp", "\\dFt", "\\dg", "\\di", "\\dl", "\\dL",
-		"\\dm", "\\dn", "\\do", "\\dO", "\\dp", "\\dP", "\\dPi", "\\dPt",
+		"\\dm", "\\dn", "\\do", "\\dO", "\\dp", "\\dP", "\\dPi", "\\dPt", "\\dPKG",
 		"\\drds", "\\dRs", "\\dRp", "\\ds",
 		"\\dt", "\\dT", "\\dv", "\\du", "\\dx", "\\dX", "\\dy",
 		"\\echo", "\\edit", "\\ef", "\\elif", "\\else", "\\encoding",
@@ -1731,7 +1737,7 @@ psql_completion(const char *text, int start, int end)
 	/* complete with something you can create or replace */
 	else if (TailMatches("CREATE", "OR", "REPLACE"))
 		COMPLETE_WITH("FUNCTION", "PROCEDURE", "LANGUAGE", "RULE", "VIEW",
-					  "AGGREGATE", "TRANSFORM", "TRIGGER", "PACKAGE");
+					  "AGGREGATE", "TRANSFORM", "TRIGGER", "PACKAGE", "PACKAGE BODY");
 
 /* DROP, but not DROP embedded in other commands */
 	/* complete with something you can drop */
@@ -1835,6 +1841,17 @@ psql_completion(const char *text, int start, int end)
 	else if (HeadMatches("ALTER", "SUBSCRIPTION", MatchAny) &&
 			 TailMatches("ADD|DROP|SET", "PUBLICATION", MatchAny, "WITH", "("))
 		COMPLETE_WITH("copy_data", "refresh");
+
+	/* ALTER IvorySQL Package */
+	else if (Matches("ALTER", "PACKAGE"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_packages);
+
+	else if (Matches("ALTER", "PACKAGE", MatchAnyExcept("BODY")))
+		COMPLETE_WITH("OWNER TO");
+
+	else if (Matches("ALTER", "PACKAGE", MatchAnyExcept("BODY"), "OWNER", "TO"))
+		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_roles,
+								 "SESSION_USER", "CURRENT_ROLE", "CURRENT_USER");
 
 	/* ALTER SCHEMA <name> */
 	else if (Matches("ALTER", "SCHEMA", MatchAny))
@@ -3356,6 +3373,36 @@ psql_completion(const char *text, int start, int end)
 			 TailMatches("EXECUTE", "FUNCTION|PROCEDURE"))
 		COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_functions);
 
+/* IvorySQL Packages */
+
+	else if (Matches("CREATE", "PACKAGE", "BODY") ||
+			 Matches("CREATE", "OR", "REPLACE", "PACKAGE", "BODY"))
+		 COMPLETE_WITH_QUERY(Query_for_list_of_packages);
+
+	else if (Matches("CREATE", "PACKAGE", "BODY", MatchAny) ||
+			 Matches("CREATE", "OR", "REPLACE", "PACKAGE", "BODY", MatchAny))
+		COMPLETE_WITH("IS");
+
+
+	else if (Matches("CREATE", "PACKAGE") ||
+			 Matches("CREATE", "OR", "REPLACE", "PACKAGE"))
+		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_packages,
+								 "BODY");
+
+	else if (Matches("CREATE", "PACKAGE", MatchAnyExcept("BODY")) ||
+			 Matches("CREATE", "OR", "REPLACE", "PACKAGE", MatchAnyExcept("BODY")))
+		COMPLETE_WITH("AUTHID", "IS");
+
+	else if ((HeadMatches("CREATE", "PACKAGE", MatchAnyExcept("BODY")) ||
+			  HeadMatches("CREATE", "OR", "REPLACE", "PACKAGE", MatchAnyExcept("BODY"))) &&
+			 TailMatches("AUTHID"))
+		COMPLETE_WITH("DEFINER", "CURRENT_USER");
+
+	else if ((HeadMatches("CREATE", "PACKAGE", MatchAnyExcept("BODY")) ||
+			  HeadMatches("CREATE", "OR", "REPLACE", "PACKAGE", MatchAnyExcept("BODY"))) &&
+			 TailMatches("AUTHID", "DEFINER|CURRENT_USER"))
+		COMPLETE_WITH("IS");
+
 /* DEALLOCATE */
 	else if (Matches("DEALLOCATE"))
 		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_prepared_statements,
@@ -3541,6 +3588,18 @@ psql_completion(const char *text, int start, int end)
 	}
 	else if (Matches("DROP", "TRANSFORM", "FOR", MatchAny, "LANGUAGE", MatchAny))
 		COMPLETE_WITH("CASCADE", "RESTRICT");
+
+	/*IvorySQL Packages**/
+	else if (Matches("DROP", "PACKAGE"))
+		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_packages,
+								 "BODY");
+
+	else if (Matches("DROP", "PACKAGE", "BODY"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_packages);
+
+	else if (Matches("DROP", "PACKAGE", "BODY", MatchAny))
+		COMPLETE_WITH("CASCADE");
+
 
 /* EXECUTE */
 	else if (Matches("EXECUTE"))
@@ -3753,6 +3812,8 @@ psql_completion(const char *text, int start, int end)
 			COMPLETE_WITH_QUERY(Query_for_list_of_languages);
 		else if (TailMatches("PROCEDURE"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_procedures);
+		else if (TailMatches("PACKAGE"))
+			COMPLETE_WITH_QUERY(Query_for_list_of_packages);
 		else if (TailMatches("ROUTINE"))
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_routines);
 		else if (TailMatches("SCHEMA"))
@@ -4376,6 +4437,8 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_partitioned_indexes);
 	else if (TailMatchesCS("\\dPt*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_partitioned_tables);
+	else if (TailMatchesCS("\\dPKG"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_packages);
 	else if (TailMatchesCS("\\dP*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_partitioned_relations);
 	else if (TailMatchesCS("\\ds*"))
@@ -4412,6 +4475,7 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_QUERY_VERBATIM(Query_for_list_of_encodings);
 	else if (TailMatchesCS("\\h|\\help"))
 		COMPLETE_WITH_LIST(sql_commands);
+
 	else if (TailMatchesCS("\\h|\\help", MatchAny))
 	{
 		if (TailMatches("DROP"))
