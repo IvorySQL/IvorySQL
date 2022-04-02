@@ -306,6 +306,13 @@ foreach my $row (@{ $catalog_data{pg_proc} })
 	}
 }
 
+# synonym OID lookup
+my %synonymoids;
+foreach my $row (@{ $catalog_data{pg_synonym} })
+{
+	$synonymoids{ $row->{synname} } = $row->{oid};
+}
+
 # tablespace OID lookup
 my %tablespaceoids;
 foreach my $row (@{ $catalog_data{pg_tablespace} })
@@ -395,6 +402,7 @@ my %lookup_kind = (
 	pg_operator    => \%operoids,
 	pg_opfamily    => \%opfoids,
 	pg_proc        => \%procoids,
+	pg_synonym     => \%synonymoids,
 	pg_tablespace  => \%tablespaceoids,
 	pg_ts_config   => \%tsconfigoids,
 	pg_ts_dict     => \%tsdictoids,

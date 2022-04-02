@@ -289,10 +289,10 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 		CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt
 		CreateAssertionStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
 		CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
-		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
+		CreatedbStmt CreateSynonymStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
 		DropOpClassStmt DropOpFamilyStmt DropStmt
 		DropCastStmt DropRoleStmt
-		DropdbStmt DropTableSpaceStmt
+		DropdbStmt DropSynonym DropTableSpaceStmt
 		DropTransformStmt
 		DropUserMappingStmt ExplainStmt FetchStmt
 		GrantStmt GrantRoleStmt ImportForeignSchemaStmt IndexStmt InsertStmt
@@ -351,7 +351,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 %type <list>	utility_option_list
 %type <node>	utility_option_arg
 %type <defelt>	drop_option
-%type <boolean>	opt_or_replace opt_no
+%type <boolean>	opt_or_replace opt_public opt_no
 				opt_grant_grant_option opt_grant_admin_option
 				opt_nowait opt_if_exists opt_with_data
 				opt_transaction_chain
@@ -400,7 +400,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 %type <node>	RowSecurityOptionalWithCheck RowSecurityOptionalExpr
 %type <list>	RowSecurityDefaultToRole RowSecurityOptionalToRole
 
-%type <str>		iso_level opt_encoding
+%type <str>		iso_level opt_encoding opt_dblink
 %type <rolespec> grantee
 %type <list>	grantee_list
 %type <accesspriv> privilege
@@ -666,6 +666,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 %token <ival>	ICONST PARAM
 %token			TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
 %token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS
+%token <str>	ATVAR
 
 /*
  * If you want to make any keyword changes, update the keyword table in
@@ -734,7 +735,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 
 	PARALLEL PARSER PARTIAL PARTITION PASSING PASSWORD PLACING PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
-	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
+	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLIC PUBLICATION
 
 	QUOTE
 
@@ -747,7 +748,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRIP_P
-	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTIMESTAMP
+	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYNONYM SYSDATE SYSID SYSTEM_P SYSTIMESTAMP
 
 	TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN
 	TIES TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM
@@ -1015,6 +1016,7 @@ stmt:
 			| CreateTrigStmt
 			| CreateEventTrigStmt
 			| CreateRoleStmt
+			| CreateSynonymStmt
 			| CreateUserStmt
 			| CreateUserMappingStmt
 			| CreatedbStmt
@@ -1030,6 +1032,7 @@ stmt:
 			| DropOwnedStmt
 			| DropStmt
 			| DropSubscriptionStmt
+			| DropSynonym
 			| DropTableSpaceStmt
 			| DropTransformStmt
 			| DropRoleStmt
@@ -1251,6 +1254,62 @@ CreateOptRoleElem:
 
 
 /*****************************************************************************
+*
+* QUERY:
+* 		Create synonym statements
+*
+*****************************************************************************/
+
+CreateSynonymStmt:
+		CREATE opt_or_replace opt_public SYNONYM qualified_name FOR qualified_name opt_dblink
+			{
+				char	*dblinkstr = NULL;
+				CreateSynonymStmt *n = makeNode(CreateSynonymStmt);
+				n->replace = $2;
+				n->synispub = $3;
+				n->synonym = $5;
+				n->object = $7;
+				dblinkstr = $8;
+				if (dblinkstr)
+				{
+					RangeVar	*objrangevar;
+					DefElem		*defelem;
+					CreateForeignTableStmt *foreigntblstmt = makeNode(CreateForeignTableStmt);
+					n->dblinkname = dblinkstr + 1;
+					$7->relpersistence = RELPERSISTENCE_PERMANENT;
+					foreigntblstmt->base.relation = $7;
+					foreigntblstmt->base.tableElts = NIL;
+					foreigntblstmt->base.inhRelations = NIL;
+					foreigntblstmt->base.ofTypename = NULL;
+					foreigntblstmt->base.constraints = NIL;
+					foreigntblstmt->base.options = NIL;
+					foreigntblstmt->base.oncommit = ONCOMMIT_NOOP;
+					foreigntblstmt->base.tablespacename = NULL;
+					foreigntblstmt->base.if_not_exists = false;
+					/* FDW-specific data */
+					foreigntblstmt->servername = dblinkstr + 1;
+					objrangevar = (RangeVar	*) $7;
+					defelem = makeDefElem("schema_name", (Node *) makeString("public"), @8);
+					foreigntblstmt->options = list_make1(defelem);
+					defelem = makeDefElem("table_name", (Node *) makeString(objrangevar->relname), @8);
+					foreigntblstmt->options = lappend(foreigntblstmt->options, defelem);
+					n->dblinkstmt = (Node *) foreigntblstmt;
+				}
+				$$ = (Node *)n;
+			}
+	;
+
+opt_public:
+		PUBLIC								{ $$ = true; }
+		| /*EMPTY*/ 						{ $$ = false; }
+	;
+
+opt_dblink:
+		ATVAR								{ $$ = $1; }
+		| /*EMPTY*/ 						{ $$ = NULL; }
+	;
+
+/*****************************************************************************
  *
  * Create a new Postgres DBMS user (role with implied login ability)
  *
@@ -1389,6 +1448,35 @@ DropRoleStmt:
 			;
 
 
+/*****************************************************************************
+ *
+ * Drop a synonym
+ *
+ * Drop a Synonym, if drop public synonym, must use drop public synonym XXX
+ * add by qinshiyu 2021.06.10
+ *
+ *****************************************************************************/
+
+DropSynonym:
+			DROP SYNONYM any_name_list
+				{
+					DropSynonymStmt *n = makeNode(DropSynonymStmt);
+					n->pubflg = false;
+					n->missing_ok = false;
+					n->synonym = $3;
+					$$ = (Node *)n;
+				}
+			| DROP PUBLIC SYNONYM any_name_list
+				{
+					DropSynonymStmt *n = makeNode(DropSynonymStmt);
+					n->pubflg = true;
+					n->missing_ok = false;
+					n->synonym = $4;
+					$$ = (Node *)n;
+				}
+			;
+
+			
 /*****************************************************************************
  *
  * Create a postgresql group (role without login ability)
@@ -10453,7 +10541,16 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
-
+			| ALTER opt_public SYNONYM any_name OWNER TO RoleSpec
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_SYNONYM;
+					n->relation = makeNode(RangeVar);
+					n->relation->inh = $2;
+					n->object = (Node *) $4;
+					n->newowner = $7;
+					$$ = (Node *)n;
+				}
 		;
 
 
@@ -15990,6 +16087,16 @@ columnref:	ColId
 				{
 					$$ = makeColumnRef($1, $2, @1, yyscanner);
 				}
+			| ATVAR indirection
+				{
+					char	*tmpstr;
+					Node	*n;
+					tmpstr = $1;
+					n = makeColumnRef(tmpstr + 1, $2, @1, yyscanner);
+					$$ = (Node *) makeA_Expr(AEXPR_OP, list_make1((Node *)makeString("@")), NULL,
+													n, @1);
+					
+				}
 		;
 
 indirection_el:
@@ -16711,6 +16818,7 @@ unreserved_keyword:
 			| PROCEDURE
 			| PROCEDURES
 			| PROGRAM
+			| PUBLIC
 			| PUBLICATION
 			| QUOTE
 			| RANGE
@@ -16776,6 +16884,7 @@ unreserved_keyword:
 			| STRIP_P
 			| SUBSCRIPTION
 			| SUPPORT
+			| SYNONYM
 			| SYSID
 			| SYSTEM_P
 			| TABLES
@@ -17313,6 +17422,7 @@ bare_label_keyword:
 			| PROCEDURE
 			| PROCEDURES
 			| PROGRAM
+			| PUBLIC
 			| PUBLICATION
 			| QUOTE
 			| RANGE
@@ -17389,6 +17499,7 @@ bare_label_keyword:
 			| SUBSTRING
 			| SUPPORT
 			| SYMMETRIC
+			| SYNONYM
 			| SYSDATE
 			| SYSID
 			| SYSTEM_P

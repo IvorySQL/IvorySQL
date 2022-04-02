@@ -82,7 +82,8 @@ typedef enum
 	DO_PUBLICATION,
 	DO_PUBLICATION_REL,
 	DO_SUBSCRIPTION,
-	DO_PACKAGE
+	DO_PACKAGE,
+	DO_SYNONYM
 } DumpableObjectType;
 
 /* component types of an object which can be selected for dumping */
@@ -668,6 +669,21 @@ typedef struct _extensionMemberId
 } ExtensionMemberId;
 
 /*
+ * The SynonymInfo struct is used to represent synonym.
+ */
+typedef struct _synonymInfo
+{
+	DumpableObject dobj;
+	char	   *synowner;		/* name of owner, or empty string */
+	char	   *synnamespace;
+	char	   *synname;
+	bool		synispub;
+	char	   *synobjschema;
+	char	   *synobjname;
+	char	   *synlink;
+} SynonymInfo;
+
+/*
  *	common utility functions
  */
 
@@ -749,5 +765,6 @@ extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
 extern PackageInfo *getPackages(Archive *fout);
+extern SynonymInfo *getSynonyms(Archive *fout);
 
 #endif							/* PG_DUMP_H */

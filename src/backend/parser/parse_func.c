@@ -270,6 +270,78 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							   &nvargs, &vatype,
 							   &declared_arg_types, &argdefaults);
 
+	/*
+	 * if the detail of the function not found,
+	 * look up whether it is a synonym in the pg_synonym.
+	 */
+	PG_TRY();
+	{
+		char	*fstname = NULL;
+		char	*lstname = NULL;
+		Node	*fstfunc;
+		Node	*lstfunc;
+
+		/* get the schema name and synonym name. */
+		if (fdresult != FUNCDETAIL_NORMAL)
+		{
+			if (list_length(funcname) == 1)
+			{
+				lstfunc = linitial(funcname);
+				Assert(IsA(lstfunc, String));
+				lstname = strVal(lstfunc);
+			}
+			else if (list_length(funcname) == 2)
+			{
+				fstfunc = linitial(funcname);
+				lstfunc = llast(funcname);
+				Assert(IsA(fstfunc, String));
+				Assert(IsA(lstfunc, String));
+				fstname = strVal(fstfunc);
+				lstname = strVal(lstfunc);
+			}
+		}
+
+		/* find the function name by synonym name. */
+		if (lstname)
+		{
+			Value	*fstval;
+			Value	*lstval;
+			bool	result;
+
+			/* find the function name corresponding to the synonym name and replace it. */
+			result = GetFuncnamesBySynnames(&fstname, &lstname);
+			if (result)
+			{
+				if (list_length(funcname) == 1)
+				{
+					funcname = list_delete(funcname, lstfunc);
+				}
+				else
+				{
+					funcname = list_delete(funcname, fstfunc);
+					funcname = list_delete(funcname, lstfunc);
+				}
+
+				fstval = makeString(fstname);
+				lstval = makeString(lstname);
+				funcname = list_make2(fstval, lstval);
+
+				/* replace function name again and reorganize the linked list. */
+				fdresult = func_get_detail(funcname, fargs, argnames, nargs,
+										   actual_arg_types,
+										   !func_variadic, true, proc_call,
+										   &funcid, &rettype, &retset,
+										   &nvargs, &vatype,
+										   &declared_arg_types, &argdefaults);
+			}
+		}
+	}
+	PG_CATCH();
+	{
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
 	cancel_parser_errposition_callback(&pcbstate);
 
 	/*

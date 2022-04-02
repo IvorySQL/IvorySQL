@@ -101,6 +101,8 @@ extern Oid	RangeVarGetAndCheckCreationNamespace(RangeVar *newRelation,
 												 Oid *existing_relation_id);
 extern void RangeVarAdjustRelationPersistence(RangeVar *newRelation, Oid nspid);
 extern Oid	RelnameGetRelid(const char *relname);
+extern Oid SynnameGetRelid(char *synname, char *synschemaname);
+extern bool GetFuncnamesBySynnames(char **synschema, char **synname);
 extern bool RelationIsVisible(Oid relid);
 
 extern Oid	LookupVariable(const char *nspname, const char *varname,

@@ -35,6 +35,8 @@
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_synonym.h"
+#include "catalog/pg_foreign_server.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/array.h"
@@ -46,6 +48,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "utils/memutils.h"
+#include "executor/nodeForeignscan.h"
 
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
@@ -1859,6 +1863,178 @@ get_relname_relid(const char *relname, Oid relnamespace)
 						   PointerGetDatum(relname),
 						   ObjectIdGetDatum(relnamespace));
 }
+
+/*************************************************************
+ * Funcname: LookupSynonyms
+ * Description: Look up synonyms by synname, synschema and synispub.
+ * Return: Oid
+ * Author: luotao
+ * Date: 2021.06.15
+ *************************************************************/
+Oid
+LookupSynonyms(char **synname, Oid *synschema, bool *reloidNotExistOk, Oid *mappingreloid)
+{
+	HeapTuple	tp;
+	Oid			synoid = InvalidOid;
+
+	/* find private synonyms firstly */
+	synoid = GetSysCacheOid3(SYNONYMNAMENSPPUB, Anum_pg_synonym_oid,
+						     PointerGetDatum(*synname),
+						     ObjectIdGetDatum(*synschema),
+						     BoolGetDatum(false));
+
+	/* find public synonyms secondly */
+	if (!OidIsValid(synoid))
+		synoid = GetSysCacheOid3(SYNONYMNAMENSPPUB, Anum_pg_synonym_oid,
+						     PointerGetDatum(*synname),
+						     ObjectIdGetDatum(*synschema),
+						     BoolGetDatum(true));
+
+	if (OidIsValid(synoid))
+	{
+		tp = SearchSysCache1(SYNONYMOID, ObjectIdGetDatum(synoid));
+		if (HeapTupleIsValid(tp))
+		{
+			Form_pg_synonym syntup = (Form_pg_synonym) GETSTRUCT(tp);
+			char			*tempobjschema;
+			Datum			objnamedatum;
+			bool			isnull;
+
+			tempobjschema = text_to_cstring(&(syntup->synobjschema));
+			*synschema = get_namespace_oid(tempobjschema, true);
+
+			objnamedatum = SysCacheGetAttr(SYNONYMOID, tp,
+										   Anum_pg_synonym_synobjname, &isnull);
+
+			if (isnull)
+			{
+				ReleaseSysCache(tp);
+				elog(ERROR, "null synobjname");
+			}
+
+			*synname = TextDatumGetCString(objnamedatum);
+			if (&(syntup->synlink))
+			{
+				HeapTuple		tup;
+				Form_pg_foreign_server	form;
+				Datum			dblinknamedatum;
+				char			*dblinkname = NULL;
+
+				dblinknamedatum = SysCacheGetAttr(SYNONYMOID, tp,
+												 		Anum_pg_synonym_synlink, &isnull);
+
+				/* no need to do anything for a NULL ACL */
+				if (!isnull)
+				{
+					dblinkname = TextDatumGetCString(dblinknamedatum);
+
+					tup = SearchSysCacheCopy1(FOREIGNSERVERNAME, CStringGetDatum(dblinkname));
+
+					if (!HeapTupleIsValid(tup))
+						ereport(ERROR,
+									(errcode(ERRCODE_UNDEFINED_OBJECT),
+									 errmsg("server \"%s\" does not exist", dblinkname)));
+
+					form = (Form_pg_foreign_server) GETSTRUCT(tup);
+
+					ExecForeignTableEletsScan(dblinkname, tempobjschema, *synname, form->srvowner, form->oid, reloidNotExistOk, mappingreloid);
+					heap_freetuple(tup);
+				}
+			}
+			ReleaseSysCache(tp);
+		}
+
+		return synoid;
+	}
+
+	return InvalidOid;
+}
+
+/*************************************************************
+ * Funcname: get_synname_relid
+ * Description: Given name and namespace of a synonym, look up the OID.
+ * Return: Oid, or InvalidOid if there is no such relation.
+ * Author: luotao
+ * Date: 2021.06.15
+ *************************************************************/
+Oid
+get_relid_by_synname(char **synname, char *synschemaname, Oid synnamespace)
+{
+	Oid			synoid;
+	bool		foundflag = false;
+	bool		reloidNotExistOk = false;
+	Oid			mappingreloid;
+
+	synoid = LookupSynonyms(synname, &synnamespace, &reloidNotExistOk, &mappingreloid);
+	while (synoid && !reloidNotExistOk)
+	{
+		foundflag = true;
+		synoid = LookupSynonyms(synname, &synnamespace, &reloidNotExistOk, &mappingreloid);
+	}
+
+	if (foundflag && !OidIsValid(synoid) && !reloidNotExistOk)
+	{
+		Oid		reloid;
+
+		reloid = GetSysCacheOid2(RELNAMENSP, Anum_pg_class_oid,
+							     PointerGetDatum(*synname),
+							     ObjectIdGetDatum(synnamespace));
+
+		if (!OidIsValid(reloid))
+		{
+			if (synschemaname)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_TABLE),
+						 errmsg("translation for synonym \"%s.%s\" is no longer valid",
+								synschemaname, *synname)));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_TABLE),
+						 errmsg("translation for synonym \"%s\" is no longer valid",
+								*synname)));
+		}
+
+		return reloid;
+	}
+
+	if (reloidNotExistOk)
+		return mappingreloid;
+
+	return InvalidOid;
+}
+
+/*************************************************************
+ * Funcname: get_funname_by_synname
+ * Description: Given name of a synonym, look up the function name.
+ *              Do not replace if there is no such function name.
+ * Return: bool
+ * Author: luotao
+ * Date: 2021.06.15
+ *************************************************************/
+bool
+get_funname_by_synname(char **synschema, char **synname, Oid synnamespace)
+{
+	Oid			synoid;
+	bool		foundflag = false;
+	bool		reloidNotExistOk = false;
+	Oid			mappingreloid;
+
+	synoid = LookupSynonyms(synname, &synnamespace, &reloidNotExistOk, &mappingreloid);
+	while (synoid)
+	{
+		foundflag = true;
+		synoid = LookupSynonyms(synname, &synnamespace, &reloidNotExistOk, &mappingreloid);
+	}
+
+	if (foundflag && !OidIsValid(synoid))
+	{
+		*synschema = get_namespace_name(synnamespace);
+		return true;
+	}
+
+	return false;
+}
+
 
 #ifdef NOT_USED
 /*

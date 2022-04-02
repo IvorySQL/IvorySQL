@@ -27,6 +27,8 @@
 #include "utils/syscache.h"
 #include "commands/packagecmds.h"
 #include "catalog/pg_package.h"
+#include "access/table.h"
+#include "catalog/pg_synonym.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 
@@ -46,8 +48,17 @@ Type
 LookupTypeName(ParseState *pstate, const TypeName *typeName,
 			   int32 *typmod_p, bool missing_ok)
 {
-	return LookupTypeNameExtended(pstate,
+	Type tup;
+	
+	tup =  LookupTypeNameExtended(pstate,
 								  typeName, typmod_p, true, missing_ok);
+
+	/* add begin by qinshiyu 2021.06.16 */
+	if (tup == NULL)
+		tup = LookupTypeNameFromSynonym(pstate, typeName, typmod_p, missing_ok);
+	/* add end by qinshiyu 2021.06.16 */
+
+	return tup;
 }
 
 /*
@@ -919,4 +930,155 @@ parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok
 		*typeid_p = typ->oid;
 		ReleaseSysCache(tup);
 	}
+}
+
+/************************************************************
+ * Funcname: LookupTypeNameFromSynonym
+ * Description: Look up the type name from the synonym name
+ * Return: Type
+ * Author: qingshiyu
+ * Date: 2021.06.10
+ ************************************************************/
+Type 
+LookupTypeNameFromSynonym(ParseState *pstate, const TypeName *typeName, int32 *typmod_p, bool missing_ok)
+{
+	Relation	pg_synonym_rel;
+	List   		*synnamelist = typeName->names;
+	char	   	*synname = NULL;
+	char		*schemaname = NULL;
+	Oid			scheamoid = InvalidOid;
+	HeapTuple	tuple = NULL;
+	bool		pubflg = false;
+	Form_pg_synonym synonymform = NULL;
+	const TypeName 	*temptypeName = NULL;
+	Form_pg_type formpgtype = NULL;
+	Type		tup;
+	
+	pg_synonym_rel = table_open(SynonymRelationId, RowExclusiveLock);
+
+	if (typeName->names == NIL)
+	{
+		table_close(pg_synonym_rel, NoLock);
+		return NULL;
+	}
+	else
+	{
+		DeconstructQualifiedName(typeName->names, &schemaname, &synname);
+		if (schemaname)
+			scheamoid = LookupExplicitNamespace(schemaname, missing_ok);
+		else
+			scheamoid = QualifiedNameGetCreationNamespace(synnamelist, &synname);
+	}
+
+	tuple = SearchSysCache3(SYNONYMNAMENSPPUB, PointerGetDatum(synname),
+								PointerGetDatum(scheamoid), PointerGetDatum(pubflg));
+
+	temptypeName = copyObject(typeName);
+
+	if (!HeapTupleIsValid(tuple))
+	{
+		pubflg = true;
+		tuple = SearchSysCache3(SYNONYMNAMENSPPUB, PointerGetDatum(synname),
+									PointerGetDatum(scheamoid), PointerGetDatum(pubflg));
+	}
+
+	if (!HeapTupleIsValid(tuple))
+	{
+		/*ereport(ERROR,
+			(errcode(ERRCODE_UNDEFINED_OBJECT),
+			 errmsg("type \"%s\" does not exist",
+					TypeNameToString(typeName)),
+			 parser_errposition(pstate, typeName->location)));*/
+		table_close(pg_synonym_rel, NoLock);
+		return NULL;
+	}
+	else
+	{	
+		synonymform = (Form_pg_synonym) GETSTRUCT(tuple);
+
+		if (synonymform != NULL)
+		{
+			Datum 	typeDatum;
+			bool	isnull;
+			char 	*typname;
+			Oid		CurUsrId;
+
+			CurUsrId = GetUserId();
+
+			if (synonymform->synowner != CurUsrId)
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("type \"%s\" does not exist",
+							TypeNameToString(typeName)),
+					 parser_errposition(pstate, temptypeName->location)));
+			}
+
+			/* get schema and type name */
+			typeDatum = SysCacheGetAttr(SYNONYMNAMENSPPUB, tuple,
+										  Anum_pg_synonym_synobjname, &isnull);
+
+			if (isnull)
+				elog(ERROR, "null synobjname");
+
+			typname = pstrdup(TextDatumGetCString(typeDatum));
+
+			/* judge the name list length */
+			
+			/* deconstruct the name list */
+			switch (list_length(temptypeName->names))
+			{
+				case 1:
+					strVal(linitial(temptypeName->names)) = typname;
+					break;
+				case 2:
+					strVal(lsecond(temptypeName->names)) = typname;
+					break;
+				case 3:
+					strVal(lthird(temptypeName->names)) = typname;
+					break;
+				default:
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("improper %%TYPE reference (too many dotted names): %s",
+									NameListToString(temptypeName->names)),
+							 parser_errposition(pstate, temptypeName->location)));
+					break;
+			}
+		}
+
+		tup = LookupTypeName(pstate, temptypeName, typmod_p, false);
+
+		if (tup == NULL)
+			tup = LookupTypeNameFromSynonym(pstate, temptypeName, typmod_p, missing_ok);
+
+		if (tup == NULL)
+		{
+			table_close(pg_synonym_rel, NoLock);
+			return NULL;
+		}
+
+		formpgtype = (Form_pg_type) GETSTRUCT(tup);
+
+		if (formpgtype != NULL)
+		{
+			/* the only support compsite type */
+			if (formpgtype->typtype == 'b' || formpgtype->typtype  == 'd'  
+				|| formpgtype->typtype  == 'e' || formpgtype->typtype  == 'p'
+				|| formpgtype->typtype  == 'r')
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type \"%s\" does not exist",
+						TypeNameToString(typeName)),
+				 parser_errposition(pstate, typeName->location)));
+			}
+		}
+	}
+
+	ReleaseSysCache(tuple);
+
+	table_close(pg_synonym_rel, NoLock);
+
+	return tup;
 }

@@ -243,6 +243,7 @@ RangeVarGetRelidExtended(const RangeVar *relation, LOCKMODE lockmode,
 {
 	uint64		inval_count;
 	Oid			relId;
+	Oid			synId2relId;
 	Oid			oldRelId = InvalidOid;
 	bool		retry = false;
 	bool		missing_ok = (flags & RVR_MISSING_OK) != 0;
@@ -337,6 +338,26 @@ RangeVarGetRelidExtended(const RangeVar *relation, LOCKMODE lockmode,
 			/* search the namespace path */
 			relId = RelnameGetRelid(relation->relname);
 		}
+
+		/* added begin by luotao on 2021/6/15 */
+		/*
+		 * Find whether it is a synonym in the pg_synonym,
+		 * if found, and return the oid of the object.
+		 */
+		PG_TRY();
+		{
+			if (!OidIsValid(relId))
+			{
+				synId2relId = SynnameGetRelid(relation->relname, relation->schemaname);
+				relId = synId2relId;
+			}
+		}
+		PG_CATCH();
+		{
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+		/* added end by luotao on 2021/6/15 */
 
 		/*
 		 * Invoke caller-supplied callback, if any.
@@ -701,6 +722,72 @@ RelnameGetRelid(const char *relname)
 	return InvalidOid;
 }
 
+/*************************************************************
+ * Funcname: SynnameGetRelid
+ * Description: Try to resolve an unqualified synonym name.
+ *			   Returns OID if relation found in search path, else InvalidOid.
+ * Return: Oid
+ * Author: luotao
+ * Date: 2021.06.10
+ *************************************************************/
+Oid
+SynnameGetRelid(char *synname, char *synschemaname)
+{
+	Oid			relid;
+	ListCell   *l;
+
+	recomputeNamespacePath();
+
+	/* determine whether it is a synonym searching the pg_synonym system table */
+	foreach(l, activeSearchPath)
+	{
+		Oid			namespaceId = lfirst_oid(l);
+		relid = get_relid_by_synname(&synname, synschemaname, namespaceId);
+		if (OidIsValid(relid))
+			return relid;
+	}
+
+	/* Not found in path */
+	return InvalidOid;
+}
+
+/*************************************************************
+ * Funcname: GetFuncnamesBySynnames
+ * Description: Try to resolve an unqualified synonym name.
+ *			   either replace the funcname if funcname found in search path, or do not.
+ * Return: bool
+ * Author: luotao
+ * Date: 2021.06.10
+ *************************************************************/
+bool
+GetFuncnamesBySynnames(char **synschema, char **synname)
+{
+	ListCell   *l;
+	bool       result;
+
+	/* Find in the given schema firstly. */
+	if (*synschema)
+	{
+		result = get_funname_by_synname(synschema, synname, get_namespace_oid(*synschema, true));
+		if (result)
+			return true;
+	}
+
+	recomputeNamespacePath();
+
+	/* determine whether it is a synonym searching the pg_synonym system table lastly. */
+	foreach(l, activeSearchPath)
+	{
+		Oid			namespaceId = lfirst_oid(l);
+
+		result = get_funname_by_synname(synschema, synname, namespaceId);
+		if (result)
+			return true;
+	}
+
+	/* Not found in path */
+	return false;
+}
 
 /*
  * RelationIsVisible
@@ -972,8 +1059,41 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 			}
 			else
 			{
-				/* no package was found, so let the system take care of the rest */
-				np_id = LookupExplicitNamespace(qu.schema, missing_ok);
+				/* added begin by luotao on 2022/03/31 */
+				bool	result = false;
+				char	*schemaname = NULL;
+
+				/* Try to resolve the names as synonyms. */
+				result = GetFuncnamesBySynnames(&schemaname, &qu.package);
+				if (result)
+				{
+					/* The object corresponding to the synonym was found. */
+					Value	*fstval;
+					Value	*lstval;
+
+					names = NULL;
+					fstval = makeString(qu.package);
+					lstval = makeString(qu.func);
+					names = list_make2(fstval, lstval);
+
+					/* let try to find the package again. */
+					np_id = get_package_oid(list_make1(linitial(names)), true);
+					if (OidIsValid(np_id))
+					{
+						/* Okay a package was found */
+						AclResult	aclresult;
+
+						aclresult = pg_package_aclcheck(np_id, GetUserId(), ACL_EXECUTE);
+						if (aclresult != ACLCHECK_OK)
+							aclcheck_error(aclresult, OBJECT_PACKAGE, qu.package);
+					}
+					else
+						/* no package was found, so let the system take care of the rest */
+						np_id = LookupExplicitNamespace(qu.schema, missing_ok);
+				}		/* added end by luotao on 2022/03/31 */
+				else
+					/* no package was found, so let the system take care of the rest */
+					np_id = LookupExplicitNamespace(qu.schema, missing_ok);
 			}
 			break;
 
@@ -987,9 +1107,42 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 													CStringGetDatum(qu.package),						  
 														ObjectIdGetDatum(pkgnamespaceId));
 				if (!OidIsValid(np_id))
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 				errmsg("package \"%s\" does not exist", qu.package)));
+				{
+					/* added begin by luotao on 2022/03/31 */
+					bool	result = false;
+
+					/* Try to resolve the names as synonyms. */
+					result = GetFuncnamesBySynnames(&qu.schema, &qu.package);
+					if (result)
+					{
+						/* The object corresponding to the synonym was found. */
+						Value	*fstval;
+						Value	*secval;
+						Value	*lstval;
+
+						names = NULL;
+						fstval = makeString(qu.schema);
+						secval = makeString(qu.package);
+						lstval = makeString(qu.func);
+						names = list_make3(fstval, secval, lstval);
+
+						/* let try to find the package again. */
+						np_id = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
+													CStringGetDatum(qu.package),
+														ObjectIdGetDatum(pkgnamespaceId));
+						if (!OidIsValid(np_id))
+						{
+							/* Package was not found */
+							ereport(ERROR,
+									(errcode(ERRCODE_UNDEFINED_SCHEMA),
+										errmsg("package \"%s\" does not exist", qu.package)));
+						}
+					}		/* added end by luotao on 2022/03/31 */
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_SCHEMA),
+									errmsg("package \"%s\" does not exist", qu.package)));
+				}
 			}
 			else  /* select db.schema.func() */
 			{
@@ -1018,14 +1171,49 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 												CStringGetDatum(qu.package),					  
 														ObjectIdGetDatum(pkgnamespaceId));
 				if (!OidIsValid(np_id))
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 				errmsg("package \"%s\" does not exist", qu.package)));
+				{
+					/* added begin by luotao on 2022/03/31 */
+					bool	result = false;
+
+					/* Try to resolve the names as synonyms. */
+					result = GetFuncnamesBySynnames(&qu.schema, &qu.package);
+					if (result)
+					{
+						/* The object corresponding to the synonym was found. */
+						Value	*fstval;
+						Value	*secval;
+						Value	*thdval;
+						Value	*lstval;
+
+						names = NULL;
+						fstval = makeString(qu.dbname);
+						secval = makeString(qu.schema);
+						thdval = makeString(qu.package);
+						lstval = makeString(qu.func);
+						names = list_make4(fstval, secval, thdval, lstval);
+
+						/* let try to find the package again. */
+						np_id = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
+													CStringGetDatum(qu.package),
+														ObjectIdGetDatum(pkgnamespaceId));
+						if (!OidIsValid(np_id))
+						{
+							/* Package was not found */
+							ereport(ERROR,
+									(errcode(ERRCODE_UNDEFINED_SCHEMA),
+										errmsg("package \"%s\" does not exist", qu.package)));
+						}
+					}		/* added end by luotao on 2022/03/31 */
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_SCHEMA),
+									errmsg("package \"%s\" does not exist", qu.package)));
+				}
 			}
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 			errmsg("schema \"%s\" does not exist", qu.schema)));		
+							errmsg("schema \"%s\" does not exist", qu.schema)));
 
 			break;
 
@@ -4021,6 +4209,11 @@ get_package_oid(List *packagename, bool missing_ok)
 	ListCell   *l;
 
 	DeconstructQualifiedName(packagename, &schema, &package);
+
+	if (schema == NULL && package == NULL)
+		ereport(ERROR,
+				 (errcode(ERRCODE_UNDEFINED_OBJECT),
+				  errmsg("null schema name or package name")));
 
 	if (schema)
 	{

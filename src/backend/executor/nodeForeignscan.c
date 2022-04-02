@@ -22,11 +22,18 @@
  */
 #include "postgres.h"
 
+#include "access/xact.h"
 #include "executor/executor.h"
 #include "executor/nodeForeignscan.h"
 #include "foreign/fdwapi.h"
+#include "foreign/foreign.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
+#include "parser/parse_type.h"
+#include "commands/tablecmds.h"
+#include "commands/defrem.h"
+#include "commands/event_trigger.h"
 
 static TupleTableSlot *ForeignNext(ForeignScanState *node);
 static bool ForeignRecheck(ForeignScanState *node, TupleTableSlot *slot);
@@ -286,6 +293,137 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 		fdwroutine->BeginForeignScan(scanstate, eflags);
 
 	return scanstate;
+}
+
+
+void
+ExecForeignTableEletsScan(const char *dblinkname,
+									 const char *schemaname,
+									 const char *relname,
+									 Oid srvowner,
+									 Oid srvoid,
+									 bool *reloidNotExistOk,
+									 Oid *mappingreloid)
+{
+	Oid				foreignserveroid;
+	FdwRoutine		*fdwroutine;
+	void			*voidres;
+	int				numattr;
+	char			*colname;
+	CreateStmt		*createmappingtblstmt;
+	int				i;
+	Oid				coltype;
+	ColumnDef		*coldef;
+	RangeVar		*rvar;
+	ObjectAddress	address;
+	CreateForeignTableStmt *createforeigntblstmt;
+	DefElem			*de1;
+	DefElem			*de2;
+
+	/*
+	 * create state structure
+	 */
+	foreignserveroid = get_foreign_server_oid(dblinkname, false);
+
+	fdwroutine = GetFdwRoutineByServerId(foreignserveroid);
+
+	voidres = fdwroutine->GetForeignObject(schemaname, relname, srvowner, srvoid, &numattr);
+
+	createmappingtblstmt = makeNode(CreateStmt);
+	createforeigntblstmt = makeNode(CreateForeignTableStmt);
+
+	for (i = 0; i < numattr; i++)
+	{
+		colname = fdwroutine->GetPGresAttDescName(voidres, i, &coltype);
+		if (colname)
+		{
+			Type		t;
+			char		*typename;
+
+			coldef = makeNode(ColumnDef);
+			coldef->colname = colname;
+			t = typeidType(coltype);
+			typename = typeTypeName(t);
+			coldef->typeName = typeStringToTypeName(typename);
+			coldef->compression = NULL;
+			coldef->inhcount = 0;
+			coldef->is_local = true;
+			coldef->is_not_null = false;
+			coldef->is_from_type = false;
+			coldef->storage = 0;
+			coldef->raw_default = NULL;
+			coldef->cooked_default = NULL;
+			coldef->collOid = InvalidOid;
+			coldef->fdwoptions = NIL;
+			coldef->location = -1;
+			createmappingtblstmt->tableElts = lappend(createmappingtblstmt->tableElts, (Node *)coldef);
+			ReleaseSysCache(t);
+		}
+	}
+
+	rvar = makeNode(RangeVar);
+
+	rvar->catalogname = NULL;
+	rvar->relname = psprintf("_dblink_%s_1", relname);
+	//rvar->relname = pstrdup(relname);
+	rvar->inh = true;
+	rvar->relpersistence = RELPERSISTENCE_TEMP;
+	rvar->alias = NULL;
+	rvar->location = -1;
+
+	createmappingtblstmt->relation = rvar;
+	createmappingtblstmt->inhRelations = NIL;
+	createmappingtblstmt->partspec = NULL;
+	createmappingtblstmt->ofTypename = NULL;
+	createmappingtblstmt->constraints = NIL;
+	createmappingtblstmt->accessMethod = NULL;
+	createmappingtblstmt->options = NIL;
+	createmappingtblstmt->oncommit = 0;
+	createmappingtblstmt->tablespacename = NULL;
+	createmappingtblstmt->if_not_exists = false;
+
+	address = DefineRemoteRelation(createmappingtblstmt,
+									 RELKIND_FOREIGN_TABLE,
+									 InvalidOid, NULL,
+									 NULL);
+
+	if (!OidIsValid(address.classId)   && OidIsValid(address.objectId))
+	{
+		*reloidNotExistOk = true;
+		*mappingreloid = address.objectId;
+		return;
+	}
+
+	de1 = makeNode(DefElem);
+	de2 = makeNode(DefElem);
+
+	de1->defnamespace = NULL;
+	de1->defname = pstrdup("schema_name");
+	de1->arg = (Node *) makeString("public");
+	de1->defaction = DEFELEM_UNSPEC;
+	de1->location = -1;
+	de2->defnamespace = NULL;
+	de2->defname = pstrdup("table_name");
+	//de2->arg = (Node *) makeString(rvar->relname);
+	de2->arg = (Node *) makeString(pstrdup(relname));
+	de2->defaction = DEFELEM_UNSPEC;
+	de2->location = -1;
+	createforeigntblstmt->base = *createmappingtblstmt;
+	createforeigntblstmt->servername = pstrdup(dblinkname);
+	createforeigntblstmt->options = list_make2(de1, de2);
+
+	CreateForeignTable(createforeigntblstmt,
+							address.objectId);
+
+	CommandCounterIncrement();
+
+	*reloidNotExistOk = true;
+	*mappingreloid = address.objectId;
+	//EventTriggerCollectSimpleCommand(address,
+	//										  secondaryObject,
+	//										  (Node *)createforeigntblstmt);
+
+	return;
 }
 
 /* ----------------------------------------------------------------

@@ -662,6 +662,7 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 		case OCLASS_PUBLICATION:
 		case OCLASS_PUBLICATION_REL:
 		case OCLASS_SUBSCRIPTION:
+		case OCLASS_SYNONYM:
 		case OCLASS_TRANSFORM:
 		case OCLASS_PACKAGE:
 		case OCLASS_VARIABLE:
@@ -917,7 +918,40 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 				return address;
 			}
 			break;
+		/* add begin by qinshiyu at 2021.06.24 */
+		case OBJECT_SYNONYM:
+			{
+				Relation	catalog;
+				Relation	relation;
+				Oid			classId;
+				ObjectAddress address;
 
+				address = get_synonym_address(stmt->objectType,
+											 stmt->object,
+											 stmt->relation,
+											 &relation,
+											 AccessExclusiveLock,
+											 false);
+				Assert(relation == NULL);
+				classId = address.classId;
+
+				/*
+				 * XXX - get_object_address returns Oid of pg_largeobject
+				 * catalog for OBJECT_LARGEOBJECT because of historical
+				 * reasons.  Fix up it here.
+				 */
+				if (classId == LargeObjectRelationId)
+					classId = LargeObjectMetadataRelationId;
+
+				catalog = table_open(classId, RowExclusiveLock);
+
+				AlterObjectOwner_internal(catalog, address.objectId, newowner);
+				table_close(catalog, RowExclusiveLock);
+
+				return address;
+			}
+			break;
+		/* add end by qinshiyu at 2021.06.24 */
 		default:
 			elog(ERROR, "unrecognized AlterOwnerStmt type: %d",
 				 (int) stmt->objectType);

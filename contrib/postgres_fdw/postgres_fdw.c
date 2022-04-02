@@ -336,6 +336,14 @@ static ForeignScan *postgresGetForeignPlan(PlannerInfo *root,
 										   List *scan_clauses,
 										   Plan *outer_plan);
 static void postgresBeginForeignScan(ForeignScanState *node, int eflags);
+static void *postgresGetForeignObject(const char *schemaname,
+												const char *relname,
+												Oid srvowner,
+												Oid srvoid,
+												int *numattr);
+static char *postgresGetPGresAttDescName(const void *pgresult,
+												int numAttributes,
+												Oid *coltype);
 static TupleTableSlot *postgresIterateForeignScan(ForeignScanState *node);
 static void postgresReScanForeignScan(ForeignScanState *node);
 static void postgresEndForeignScan(ForeignScanState *node);
@@ -556,6 +564,8 @@ postgres_fdw_handler(PG_FUNCTION_ARGS)
 	routine->GetForeignPaths = postgresGetForeignPaths;
 	routine->GetForeignPlan = postgresGetForeignPlan;
 	routine->BeginForeignScan = postgresBeginForeignScan;
+	routine->GetForeignObject = postgresGetForeignObject;
+	routine->GetPGresAttDescName = postgresGetPGresAttDescName;
 	routine->IterateForeignScan = postgresIterateForeignScan;
 	routine->ReScanForeignScan = postgresReScanForeignScan;
 	routine->EndForeignScan = postgresEndForeignScan;
@@ -1589,6 +1599,63 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Set the async-capable flag */
 	fsstate->async_capable = node->ss.ps.async_capable;
 }
+
+void *
+postgresGetForeignObject(const char *schemaname, const char *relname, Oid srvowner, Oid srvoid, int *numattr)
+{
+	UserMapping *user;
+	PGconn	   *fsconn;
+	PgFdwScanState *fsstate;
+	char		*query;
+	PGresult	*last_result;
+
+	/*
+	 * We'll save private state in node->fdw_state.
+	 */
+	fsstate = (PgFdwScanState *) palloc0(sizeof(PgFdwScanState));
+
+	/* Get info about foreign table. */
+	user = GetUserMapping(srvowner, srvoid);
+
+	/*
+	 * Get connection to the foreign server.  Connection manager will
+	 * establish new connection if necessary.
+	 */
+	fsconn = GetConnection(user, false, &fsstate->conn_state);
+
+	/* Assign a unique ID for my cursor */
+	fsstate->cursor_number = GetCursorNumber(fsstate->conn);
+	fsstate->cursor_exists = false;
+
+	query = palloc(strlen("SELECT * FROM .") + strlen(schemaname) + strlen(relname) + 10);
+	sprintf(query, "SELECT * FROM %s.%s", schemaname, relname);
+	fsstate->query = query;
+
+	last_result = PQexec(fsconn, fsstate->query);
+
+	*numattr = PQnfields(last_result);
+
+	pfree(fsstate);
+	ReleaseConnection(fsconn);
+
+	return (void *)last_result;
+}
+
+
+char *
+postgresGetPGresAttDescName(const void *pgresult, int numAttributes, Oid *coltype)
+{
+	PGresult *res;
+	char	*colname = NULL;
+
+	res = (PGresult *) pgresult;
+
+	colname = PQfname(res, numAttributes);
+	*coltype = PQftype(res, numAttributes);
+
+	return colname;
+}
+
 
 /*
  * postgresIterateForeignScan

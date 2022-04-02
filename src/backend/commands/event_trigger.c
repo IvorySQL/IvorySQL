@@ -943,6 +943,9 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_DATABASE:
 		case OBJECT_TABLESPACE:
 		case OBJECT_ROLE:
+		/* add begin by qinshiyu at 2021.06.24 */
+		case OBJECT_SYNONYM:
+		/* add end by qinshiyu at 2021.06.24 */
 			/* no support for global objects */
 			return false;
 		case OBJECT_EVENT_TRIGGER:
@@ -1019,6 +1022,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_ROLE:
+		case OCLASS_SYNONYM:
 			/* no support for global objects */
 			return false;
 		case OCLASS_EVENT_TRIGGER:
@@ -2117,6 +2121,8 @@ stringify_grant_objtype(ObjectType objtype)
 			return "PACKAGE";
 		case OBJECT_PACKAGE_BODY:
 			return "PACKAGE BODY";
+		case OBJECT_SYNONYM:
+			return "SYNONYM";
 
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
@@ -2205,6 +2211,8 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "PACKAGE";
 		case OBJECT_PACKAGE_BODY:
 			return "PACKAGE BODY";
+		case OBJECT_SYNONYM:
+			return "SYNONYMS";
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:

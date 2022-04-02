@@ -132,6 +132,7 @@ typedef enum ObjectClass
 	OCLASS_PUBLICATION,			/* pg_publication */
 	OCLASS_PUBLICATION_REL,		/* pg_publication_rel */
 	OCLASS_SUBSCRIPTION,		/* pg_subscription */
+	OCLASS_SYNONYM,				/* pg_synonym */
 	OCLASS_PACKAGE,				/* pg_package */
 	OCLASS_VARIABLE,			/* pg_variable */
 	OCLASS_TRANSFORM			/* pg_transform */
