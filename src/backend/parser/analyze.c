@@ -94,7 +94,7 @@ static Node *transformHierarStmt(ParseState *pstate, SelectStmt *stmt);
 static List *qualifyTlistColumns(ParseState *pstate, List *targetList, char *relname);
 static Node *addLevelCol(ParseState *pstate, char *relname);
 static List *transformHierarTargetList(ParseState *pstate, bool subqryleft,
-									   List *targetList, char *relname);
+									   List **tlist, char *relname);
 static List *fixupWhenAndSortClauses(ParseState *pstate, SelectStmt *stmt,
 									  SelectStmt *ctequery, char *relname);
 
@@ -3662,7 +3662,7 @@ transformHierarStmt(ParseState *pstate, SelectStmt *stmt)
 	ctequery_r->targetList = copyObject(stmt->targetList);
 
 	/* transform left-hand operand of the cte subquery */
-	newCols = transformHierarTargetList(ps, true, ctequery_l->targetList, NULL);
+	newCols = transformHierarTargetList(ps, true, &ctequery_l->targetList, NULL);
 
 	/* Build and fill in the CTE's inner select's target list */
 	ctequery_l->intoClause = NULL;
@@ -3680,7 +3680,7 @@ transformHierarStmt(ParseState *pstate, SelectStmt *stmt)
 	newCols = list_concat_unique(newCols, fixupWhenAndSortClauses(ps, stmt, ctequery_r, rv->relname));
 
 	/* transform right-hand operand of the cte subquery */
-	transformHierarTargetList(ps, false, ctequery_r->targetList, rv->relname);
+	transformHierarTargetList(ps, false, &ctequery_r->targetList, rv->relname);
 
 	/*
 	 * append pseudo columns list to the target list while avoiding the
@@ -3734,11 +3734,15 @@ transformHierarStmt(ParseState *pstate, SelectStmt *stmt)
  */
 static List *
 transformHierarTargetList(ParseState *pstate, bool subqryleft,
-						  List *targetList, char *relname)
+						  List **tlist, char *relname)
 {
 	ListCell   *lc;
 	Node	   *result;
 	List	   *cols = NIL;
+	List 	   *targetList = NIL;
+
+	if (tlist != NULL)
+		targetList = *tlist;
 
 	pstate->p_subqryleft = subqryleft;
 	foreach(lc, targetList)
@@ -3771,11 +3775,14 @@ transformHierarTargetList(ParseState *pstate, bool subqryleft,
 		pstate->p_ctehflags &= ~EXPR_FLAG_LEVEL;
 		resolvePseudoColumns(pstate, (Node *) res->val, res, relname, &cols);
 		if (pstate->p_ctehflags & EXPR_FLAG_LEVEL)
-			foreach_delete_current(targetList, lc);
+			targetList = foreach_delete_current(targetList, lc);
 	}
 
 	result = addLevelCol(pstate, relname);
 	targetList = lappend(targetList, result);
+
+	if (tlist != NULL)
+		*tlist = targetList;
 	return cols;
 }
 
