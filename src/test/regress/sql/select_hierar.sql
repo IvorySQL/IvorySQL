@@ -225,6 +225,13 @@ FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
 ORDER BY 1;
 
+-- test only level column in target list
+SELECT LEVEL, lpad(' ',level*3)||child_entity child_entity
+FROM entities
+START WITH parent_entity is NULL
+CONNECT BY PRIOR child_entity = parent_entity
+ORDER BY 1, 2;
+
 -- cleanup
 DROP TABLE IF EXISTS example;
 DROP TABLE IF EXISTS t_tab;

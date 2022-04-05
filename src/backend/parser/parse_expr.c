@@ -3302,12 +3302,14 @@ resolvePseudoColumns(ParseState *pstate, Node *expr, ResTarget *res,
 						if (pstate->p_cterqry)
 						{
 							ColumnRef  *n;
+							char	   *name = pstrdup("LEVEL");
 
 							/* add column alias if not present */
 							if (res && res->name == NULL)
-								res->name = pstrdup("LEVEL");
+								res->name = name;
+
 							n = makeNode(ColumnRef);
-							n->fields = list_make1(makeString(res->name));
+							n->fields = list_make1(makeString(name));
 							return (Node *) n;
 						}
 					}

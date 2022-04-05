@@ -598,6 +598,31 @@ ORDER BY 1;
  bi    | biv
 (20 rows)
 
+-- test only level column in target list
+SELECT LEVEL, lpad(' ',level*3)||child_entity child_entity
+FROM entities
+START WITH parent_entity is NULL
+CONNECT BY PRIOR child_entity = parent_entity
+ORDER BY 1, 2;
+ LEVEL |   child_entity   
+-------+------------------
+     1 |    a
+     1 |    b
+     2 |       ab
+     2 |       af
+     2 |       ax
+     2 |       bg
+     2 |       bh
+     2 |       bi
+     3 |          abc
+     3 |          abd
+     3 |          abe
+     3 |          biq
+     3 |          biv
+     4 |             abes
+     4 |             abet
+(15 rows)
+
 -- cleanup
 DROP TABLE IF EXISTS example;
 DROP TABLE IF EXISTS t_tab;
