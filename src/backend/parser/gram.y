@@ -8176,7 +8176,6 @@ proc_sect:
 
 proc_stmt:
 		pl_block_internal ';'
-		| IDENT expr_until_semi
 		| opt_block_label stmt_special
 		| opt_block_label stmt_if
 		| opt_block_label stmt_case
@@ -8200,6 +8199,10 @@ stmt_special:
 		| MOVE expr_until_semi
 		| CLOSE expr_until_semi
 		| CONTINUE_P expr_until_semi
+		| RESET expr_until_semi
+		| SET expr_until_semi
+		| IDENT expr_until_semi
+		| col_name_keyword expr_until_semi
 		;
 
 stmt_if: IF_P expr_until_then proc_sect stmt_elsifs stmt_else END_P IF_P ';'

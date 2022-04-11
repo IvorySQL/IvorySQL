@@ -631,11 +631,13 @@ other			.
 					ECHO;
 				}
 {dolqdelim}		{
+					/* Handle IS|AS $$ ... $$ case. */
 					cur_state->dolqstart = pg_strdup("$$");
 					BEGIN(xdolq);
 					ECHO;
 				}
 {xqstart}		{
+					/* Handle IS|AS $$ ... $$ case. */
 					char *str = pg_strdup(output_buf->data);
 					char* fir;
 					if((fir=strcasestr(str,"AS")) != NULL || (fir=strcasestr(str,"IS")) != NULL)
@@ -650,14 +652,17 @@ other			.
 					}
 					ECHO;
 				}
-^[/]			{
-					BEGIN(INITIAL);
-					cur_state->start_state = INITIAL;
-					return LEXRES_SLASH;
-				}
-{xfinside}		{
+{identifier}	|
+{other}			{
+					/*
+					 * Anything other then $$..$$ and '..', send it to
+					 * plblock state.
+					 */
+					cur_state->tokenstate = DECLARE;
+					BEGIN(plblock);
 					ECHO;
 				}
+
 }	/* <xf> */
 
 {xbstart}		{
