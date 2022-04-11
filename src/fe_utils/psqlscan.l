@@ -995,10 +995,6 @@ other			.
 					cur_state->start_state = YY_START;
 					return LEXRES_BACKSLASH;
 				}
-^[/]			{
-					cur_state->start_state = YY_START;
-					return LEXRES_SLASH;
-				}
 
 
 :{variable_char}+	{
