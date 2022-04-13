@@ -6,7 +6,6 @@
 
 use strict;
 use warnings;
-use Config;
 use File::Path qw(rmtree);
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -41,7 +40,24 @@ my @test_configuration = (
 		'decompress_program' => $ENV{'LZ4'},
 		'decompress_flags' => [ '-d' ],
 		'output_file' => 'base.tar',
-		'enabled' => check_pg_config("#define HAVE_LIBLZ4 1")
+		'enabled' => check_pg_config("#define USE_LZ4 1")
+	},
+	{
+		'compression_method' => 'zstd',
+		'backup_flags' => ['--compress', 'client-zstd:5'],
+		'backup_archive' => 'base.tar.zst',
+		'decompress_program' => $ENV{'ZSTD'},
+		'decompress_flags' => [ '-d' ],
+		'enabled' => check_pg_config("#define USE_ZSTD 1")
+	},
+	{
+		'compression_method' => 'parallel zstd',
+		'backup_flags' => ['--compress', 'client-zstd:workers=3'],
+		'backup_archive' => 'base.tar.zst',
+		'decompress_program' => $ENV{'ZSTD'},
+		'decompress_flags' => [ '-d' ],
+		'enabled' => check_pg_config("#define USE_ZSTD 1"),
+		'possibly_unsupported' => qr/could not set compression worker count to 3: Unsupported parameter/
 	}
 );
 
@@ -62,9 +78,27 @@ for my $tc (@test_configuration)
 			'pg_basebackup', '-D', $backup_path,
 			'-Xfetch', '--no-sync', '-cfast', '-Ft');
 		push @backup, @{$tc->{'backup_flags'}};
-		$primary->command_ok(\@backup,
-							 "client side backup, compression $method");
-
+		my $backup_stdout = '';
+		my $backup_stderr = '';
+		my $backup_result = $primary->run_log(\@backup, '>', \$backup_stdout,
+											  '2>', \$backup_stderr);
+		if ($backup_stdout ne '')
+		{
+			print "# standard output was:\n$backup_stdout";
+		}
+		if ($backup_stderr ne '')
+		{
+			print "# standard error was:\n$backup_stderr";
+		}
+		if (! $backup_result && $tc->{'possibly_unsupported'} &&
+			$backup_stderr =~ /$tc->{'possibly_unsupported'}/)
+		{
+			skip "compression with $method not supported by this build", 3;
+		}
+		else
+		{
+			ok($backup_result, "client side backup, compression $method");
+		}
 
 		# Verify that the we got the files we expected.
 		my $backup_files = join(',',
@@ -88,7 +122,7 @@ for my $tc (@test_configuration)
 
 		SKIP: {
 			my $tar = $ENV{TAR};
-			# don't check for a working tar here, to accomodate various odd
+			# don't check for a working tar here, to accommodate various odd
 			# cases such as AIX. If tar doesn't work the init_from_backup below
 			# will fail.
 			skip "no tar program available", 1

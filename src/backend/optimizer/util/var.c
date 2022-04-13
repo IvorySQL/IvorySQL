@@ -774,16 +774,13 @@ flatten_join_alias_vars_mutator(Node *node,
 			RowExpr    *rowexpr;
 			List	   *fields = NIL;
 			List	   *colnames = NIL;
-			AttrNumber	attnum;
 			ListCell   *lv;
 			ListCell   *ln;
 
-			attnum = 0;
 			Assert(list_length(rte->joinaliasvars) == list_length(rte->eref->colnames));
 			forboth(lv, rte->joinaliasvars, ln, rte->eref->colnames)
 			{
 				newvar = (Node *) lfirst(lv);
-				attnum++;
 				/* Ignore dropped columns */
 				if (newvar == NULL)
 					continue;
@@ -809,6 +806,7 @@ flatten_join_alias_vars_mutator(Node *node,
 			rowexpr->args = fields;
 			rowexpr->row_typeid = var->vartype;
 			rowexpr->row_format = COERCE_IMPLICIT_CAST;
+			/* vartype will always be RECORDOID, so we always need colnames */
 			rowexpr->colnames = colnames;
 			rowexpr->location = var->location;
 

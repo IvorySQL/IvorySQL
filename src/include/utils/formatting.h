@@ -26,6 +26,10 @@ typedef enum
 	FMT_GROUP_LAST_NO_MATCH
 } FORMAT_MATCH_FLAG;
 
+#define DCH_DATED	0x01
+#define DCH_TIMED	0x02
+#define DCH_ZONED	0x04
+
 extern char *str_tolower(const char *buff, size_t nbytes, Oid collid);
 extern char *str_toupper(const char *buff, size_t nbytes, Oid collid);
 extern char *str_initcap(const char *buff, size_t nbytes, Oid collid);
@@ -37,5 +41,6 @@ extern char *asc_initcap(const char *buff, size_t nbytes);
 extern Datum parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 							Oid *typid, int32 *typmod, int *tz,
 							bool *have_error);
+extern int datetime_format_flags(const char *fmt_str, bool *have_error);
 
 #endif

@@ -3,7 +3,7 @@
  * basebackup_lz4.c
  *	  Basebackup sink implementing lz4 compression.
  *
- * Portions Copyright (c) 2010-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/basebackup_lz4.c
@@ -12,13 +12,13 @@
  */
 #include "postgres.h"
 
-#ifdef HAVE_LIBLZ4
+#ifdef USE_LZ4
 #include <lz4frame.h>
 #endif
 
 #include "replication/basebackup_sink.h"
 
-#ifdef HAVE_LIBLZ4
+#ifdef USE_LZ4
 
 typedef struct bbsink_lz4
 {
@@ -56,27 +56,29 @@ const bbsink_ops bbsink_lz4_ops = {
 #endif
 
 /*
- * Create a new basebackup sink that performs lz4 compression using the
- * designated compression level.
+ * Create a new basebackup sink that performs lz4 compression.
  */
 bbsink *
-bbsink_lz4_new(bbsink *next, int compresslevel)
+bbsink_lz4_new(bbsink *next, pg_compress_specification *compress)
 {
-#ifndef HAVE_LIBLZ4
+#ifndef USE_LZ4
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("lz4 compression is not supported by this build")));
 	return NULL;				/* keep compiler quiet */
 #else
 	bbsink_lz4 *sink;
+	int		compresslevel;
 
 	Assert(next != NULL);
 
-	if (compresslevel < 0 || compresslevel > 12)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("lz4 compression level %d is out of range",
-						compresslevel)));
+	if ((compress->options & PG_COMPRESSION_OPTION_LEVEL) == 0)
+		compresslevel = 0;
+	else
+	{
+		compresslevel = compress->level;
+		Assert(compresslevel >= 1 && compresslevel <= 12);
+	}
 
 	sink = palloc0(sizeof(bbsink_lz4));
 	*((const bbsink_ops **) &sink->base.bbs_ops) = &bbsink_lz4_ops;
@@ -87,7 +89,7 @@ bbsink_lz4_new(bbsink *next, int compresslevel)
 #endif
 }
 
-#ifdef HAVE_LIBLZ4
+#ifdef USE_LZ4
 
 /*
  * Begin backup.
@@ -193,7 +195,7 @@ bbsink_lz4_archive_contents(bbsink *sink, size_t avail_in)
 	 * LZ4F_compressBound(), ask the next sink to process the data so that we
 	 * can empty the buffer.
 	 */
-	if ((mysink->base.bbs_next->bbs_buffer_length - mysink->bytes_written) <=
+	if ((mysink->base.bbs_next->bbs_buffer_length - mysink->bytes_written) <
 		avail_in_bound)
 	{
 		bbsink_archive_contents(sink->bbs_next, mysink->bytes_written);
@@ -238,7 +240,7 @@ bbsink_lz4_end_archive(bbsink *sink)
 
 	Assert(mysink->base.bbs_next->bbs_buffer_length >= lz4_footer_bound);
 
-	if ((mysink->base.bbs_next->bbs_buffer_length - mysink->bytes_written) <=
+	if ((mysink->base.bbs_next->bbs_buffer_length - mysink->bytes_written) <
 		lz4_footer_bound)
 	{
 		bbsink_archive_contents(sink->bbs_next, mysink->bytes_written);

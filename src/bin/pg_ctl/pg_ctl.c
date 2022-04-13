@@ -886,14 +886,10 @@ find_other_exec_or_die(const char *argv0, const char *target, const char *versio
 			strlcpy(full_path, progname, sizeof(full_path));
 
 		if (ret == -1)
-			write_stderr(_("The program \"%s\" is needed by %s but was not found in the\n"
-						   "same directory as \"%s\".\n"
-						   "Check your installation.\n"),
+			write_stderr(_("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"\n"),
 						 target, progname, full_path);
 		else
-			write_stderr(_("The program \"%s\" was found by \"%s\"\n"
-						   "but was not the same version as %s.\n"
-						   "Check your installation.\n"),
+			write_stderr(_("program \"%s\" was found by \"%s\" but was not the same version as %s\n"),
 						 target, full_path, progname);
 		exit(1);
 	}
@@ -1025,7 +1021,6 @@ static void
 do_stop(void)
 {
 	pgpid_t		pid;
-	struct stat statbuf;
 
 	pid = get_pgpid(false);
 
@@ -1058,20 +1053,6 @@ do_stop(void)
 	}
 	else
 	{
-		/*
-		 * If backup_label exists, an online backup is running. Warn the user
-		 * that smart shutdown will wait for it to finish. However, if the
-		 * server is in archive recovery, we're recovering from an online
-		 * backup instead of performing one.
-		 */
-		if (shutdown_mode == SMART_MODE &&
-			stat(backup_file, &statbuf) == 0 &&
-			get_control_dbstate() != DB_IN_ARCHIVE_RECOVERY)
-		{
-			print_msg(_("WARNING: online backup mode is active\n"
-						"Shutdown will not complete until pg_stop_backup() is called.\n\n"));
-		}
-
 		print_msg(_("waiting for server to shut down..."));
 
 		if (!wait_for_postmaster_stop())
@@ -1099,7 +1080,6 @@ static void
 do_restart(void)
 {
 	pgpid_t		pid;
-	struct stat statbuf;
 
 	pid = get_pgpid(false);
 
@@ -1132,20 +1112,6 @@ do_restart(void)
 			write_stderr(_("%s: could not send stop signal (PID: %ld): %s\n"), progname, pid,
 						 strerror(errno));
 			exit(1);
-		}
-
-		/*
-		 * If backup_label exists, an online backup is running. Warn the user
-		 * that smart shutdown will wait for it to finish. However, if the
-		 * server is in archive recovery, we're recovering from an online
-		 * backup instead of performing one.
-		 */
-		if (shutdown_mode == SMART_MODE &&
-			stat(backup_file, &statbuf) == 0 &&
-			get_control_dbstate() != DB_IN_ARCHIVE_RECOVERY)
-		{
-			print_msg(_("WARNING: online backup mode is active\n"
-						"Shutdown will not complete until pg_stop_backup() is called.\n\n"));
 		}
 
 		print_msg(_("waiting for server to shut down..."));

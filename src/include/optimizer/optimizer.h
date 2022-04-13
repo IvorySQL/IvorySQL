@@ -91,6 +91,7 @@ extern PGDLLIMPORT double cpu_index_tuple_cost;
 extern PGDLLIMPORT double cpu_operator_cost;
 extern PGDLLIMPORT double parallel_tuple_cost;
 extern PGDLLIMPORT double parallel_setup_cost;
+extern PGDLLIMPORT double recursive_worktable_factor;
 extern PGDLLIMPORT int effective_cache_size;
 
 extern double clamp_row_est(double nrows);
@@ -111,8 +112,8 @@ typedef enum
 }			ForceParallelMode;
 
 /* GUC parameters */
-extern int	force_parallel_mode;
-extern bool parallel_leader_participation;
+extern PGDLLIMPORT int force_parallel_mode;
+extern PGDLLIMPORT bool parallel_leader_participation;
 
 extern struct PlannedStmt *planner(Query *parse, const char *query_string,
 								   int cursorOptions,

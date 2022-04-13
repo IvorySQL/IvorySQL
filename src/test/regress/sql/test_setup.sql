@@ -10,6 +10,14 @@
 \set regresslib :libdir '/regress' :dlsuffix
 
 --
+-- synchronous_commit=off delays when hint bits may be set. Some plans change
+-- depending on the number of all-visible pages, which in turn can be
+-- influenced by the delayed hint bits. Force synchronous_commit=on to avoid
+-- that source of variability.
+--
+SET synchronous_commit = on;
+
+--
 -- Postgres formerly made the public schema read/write by default,
 -- and most of the core regression tests still expect that.
 --
@@ -244,6 +252,11 @@ CREATE FUNCTION ttdummy ()
     RETURNS trigger
     AS :'regresslib'
     LANGUAGE C;
+
+CREATE FUNCTION get_column_offset (oid[])
+    RETURNS int
+    AS :'regresslib'
+    LANGUAGE C STRICT STABLE PARALLEL SAFE;
 
 -- Use hand-rolled hash functions and operator classes to get predictable
 -- result on different machines.  The hash function for int4 simply returns

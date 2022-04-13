@@ -436,7 +436,7 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 		tuplesort_begin_index_btree(heap, index, buildstate->isunique,
 									buildstate->nulls_not_distinct,
 									maintenance_work_mem, coordinate,
-									false);
+									TUPLESORT_NONE);
 
 	/*
 	 * If building a unique index, put dead tuples in a second spool to keep
@@ -475,7 +475,7 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 		 */
 		buildstate->spool2->sortstate =
 			tuplesort_begin_index_btree(heap, index, false, false, work_mem,
-										coordinate2, false);
+										coordinate2, TUPLESORT_NONE);
 	}
 
 	/* Fill spool using either serial or parallel heap scan */
@@ -625,7 +625,7 @@ _bt_blnewpage(uint32 level)
 	_bt_pageinit(page, BLCKSZ);
 
 	/* Initialize BT opaque state */
-	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+	opaque = BTPageGetOpaque(page);
 	opaque->btpo_prev = opaque->btpo_next = P_NONE;
 	opaque->btpo_level = level;
 	opaque->btpo_flags = (level > 0) ? 0 : BTP_LEAF;
@@ -1000,9 +1000,9 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup,
 		Assert((BTreeTupleGetNAtts(state->btps_lowkey, wstate->index) <=
 				IndexRelationGetNumberOfKeyAttributes(wstate->index) &&
 				BTreeTupleGetNAtts(state->btps_lowkey, wstate->index) > 0) ||
-			   P_LEFTMOST((BTPageOpaque) PageGetSpecialPointer(opage)));
+			   P_LEFTMOST(BTPageGetOpaque(opage)));
 		Assert(BTreeTupleGetNAtts(state->btps_lowkey, wstate->index) == 0 ||
-			   !P_LEFTMOST((BTPageOpaque) PageGetSpecialPointer(opage)));
+			   !P_LEFTMOST(BTPageGetOpaque(opage)));
 		BTreeTupleSetDownLink(state->btps_lowkey, oblkno);
 		_bt_buildadd(wstate, state->btps_next, state->btps_lowkey, 0);
 		pfree(state->btps_lowkey);
@@ -1017,8 +1017,8 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup,
 		 * Set the sibling links for both pages.
 		 */
 		{
-			BTPageOpaque oopaque = (BTPageOpaque) PageGetSpecialPointer(opage);
-			BTPageOpaque nopaque = (BTPageOpaque) PageGetSpecialPointer(npage);
+			BTPageOpaque oopaque = BTPageGetOpaque(opage);
+			BTPageOpaque nopaque = BTPageGetOpaque(npage);
 
 			oopaque->btpo_next = nblkno;
 			nopaque->btpo_prev = oblkno;
@@ -1125,7 +1125,7 @@ _bt_uppershutdown(BTWriteState *wstate, BTPageState *state)
 		BTPageOpaque opaque;
 
 		blkno = s->btps_blkno;
-		opaque = (BTPageOpaque) PageGetSpecialPointer(s->btps_page);
+		opaque = BTPageGetOpaque(s->btps_page);
 
 		/*
 		 * We have to link the last page on this level to somewhere.
@@ -1939,7 +1939,7 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 													 btspool->isunique,
 													 btspool->nulls_not_distinct,
 													 sortmem, coordinate,
-													 false);
+													 TUPLESORT_NONE);
 
 	/*
 	 * Just as with serial case, there may be a second spool.  If so, a

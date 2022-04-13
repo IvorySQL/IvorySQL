@@ -6,8 +6,6 @@
 
 use strict;
 use warnings;
-use Cwd;
-use Config;
 use File::Path qw(rmtree);
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -30,7 +28,18 @@ my @test_configuration = (
 	{
 		'compression_method' => 'lz4',
 		'backup_flags' => ['--compress', 'server-lz4:5'],
-		'enabled' => check_pg_config("#define HAVE_LIBLZ4 1")
+		'enabled' => check_pg_config("#define USE_LZ4 1")
+	},
+	{
+		'compression_method' => 'zstd',
+		'backup_flags' => ['--compress', 'server-zstd:5'],
+		'enabled' => check_pg_config("#define USE_ZSTD 1")
+	},
+	{
+		'compression_method' => 'parallel zstd',
+		'backup_flags' => ['--compress', 'server-zstd:workers=3'],
+		'enabled' => check_pg_config("#define USE_ZSTD 1"),
+		'possibly_unsupported' => qr/could not set compression worker count to 3: Unsupported parameter/
 	}
 );
 
@@ -52,8 +61,27 @@ for my $tc (@test_configuration)
 		my @verify = ('pg_verifybackup', '-e', $backup_path);
 
 		# A backup with a valid compression method should work.
-		$primary->command_ok(\@backup,
-							 "backup done, compression method \"$method\"");
+		my $backup_stdout = '';
+		my $backup_stderr = '';
+		my $backup_result = $primary->run_log(\@backup, '>', \$backup_stdout,
+											  '2>', \$backup_stderr);
+		if ($backup_stdout ne '')
+		{
+			print "# standard output was:\n$backup_stdout";
+		}
+		if ($backup_stderr ne '')
+		{
+			print "# standard error was:\n$backup_stderr";
+		}
+		if (! $backup_result && $tc->{'possibly_unsupported'} &&
+			$backup_stderr =~ /$tc->{'possibly_unsupported'}/)
+		{
+			skip "compression with $method not supported by this build", 2;
+		}
+		else
+		{
+			ok($backup_result, "backup done, compression $method");
+		}
 
 		# Make sure that it verifies OK.
 		$primary->command_ok(\@verify,

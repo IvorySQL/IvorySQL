@@ -291,7 +291,7 @@ my @result =
 		 SELECT pg_switch_wal();
 		 CHECKPOINT;
 		 SELECT 'finished';",
-		timeout => '60'));
+		timeout => $PostgreSQL::Test::Utils::timeout_default));
 is($result[1], 'finished', 'check if checkpoint command is not blocked');
 
 $node_primary2->stop;
@@ -316,13 +316,16 @@ $node_primary3->append_conf(
 	max_wal_size = 2MB
 	log_checkpoints = yes
 	max_slot_wal_keep_size = 1MB
+
+	# temp debugging aid to analyze 019_replslot_limit failures
+	log_min_messages=debug3
 	));
 $node_primary3->start;
 $node_primary3->safe_psql('postgres',
 	"SELECT pg_create_physical_replication_slot('rep3')");
 # Take backup
 $backup_name = 'my_backup';
-$node_primary3->backup($backup_name);
+$node_primary3->backup($backup_name, backup_options => ['--verbose']);
 # Create standby
 my $node_standby3 = PostgreSQL::Test::Cluster->new('standby_3');
 $node_standby3->init_from_backup($node_primary3, $backup_name,
@@ -330,9 +333,47 @@ $node_standby3->init_from_backup($node_primary3, $backup_name,
 $node_standby3->append_conf('postgresql.conf', "primary_slot_name = 'rep3'");
 $node_standby3->start;
 $node_primary3->wait_for_catchup($node_standby3);
-my $senderpid = $node_primary3->safe_psql('postgres',
-	"SELECT pid FROM pg_stat_activity WHERE backend_type = 'walsender'");
+
+my $senderpid;
+
+# We've seen occasional cases where multiple walsender pids are active. It
+# could be that we're just observing process shutdown being slow. To collect
+# more information, retry a couple times, print a bit of debugging information
+# each iteration. Don't fail the test if retries find just one pid, the
+# buildfarm failures are too noisy.
+my $i = 0;
+while (1)
+{
+	my ($stdout, $stderr);
+
+	$senderpid = $node_primary3->safe_psql('postgres',
+	    "SELECT pid FROM pg_stat_activity WHERE backend_type = 'walsender'");
+
+	last if $senderpid =~ qr/^[0-9]+$/;
+
+	diag "multiple walsenders active in iteration $i";
+
+	# show information about all active connections
+	$node_primary3->psql('postgres',
+						 "\\a\\t\nSELECT * FROM pg_stat_activity",
+						 stdout => \$stdout, stderr => \$stderr);
+	diag $stdout, $stderr;
+
+	# unlikely that the problem would resolve after 15s, so give up at point
+	if ($i++ == 150)
+	{
+		# An immediate shutdown may hide evidence of a locking bug. If
+		# retrying didn't resolve the issue, shut down in fast mode.
+		$node_primary3->stop('fast');
+		$node_standby3->stop('fast');
+		die "could not determine walsender pid, can't continue";
+	}
+
+	usleep(100_000);
+}
+
 like($senderpid, qr/^[0-9]+$/, "have walsender pid $senderpid");
+
 my $receiverpid = $node_standby3->safe_psql('postgres',
 	"SELECT pid FROM pg_stat_activity WHERE backend_type = 'walreceiver'");
 like($receiverpid, qr/^[0-9]+$/, "have walreceiver pid $receiverpid");
@@ -343,7 +384,7 @@ $logstart = get_log_size($node_primary3);
 kill 'STOP', $senderpid, $receiverpid;
 advance_wal($node_primary3, 2);
 
-my $max_attempts = 180;
+my $max_attempts = $PostgreSQL::Test::Utils::timeout_default;
 while ($max_attempts-- >= 0)
 {
 	if (find_in_log(
@@ -366,7 +407,7 @@ $node_primary3->poll_query_until('postgres',
 	"lost")
   or die "timed out waiting for slot to be lost";
 
-$max_attempts = 180;
+$max_attempts = $PostgreSQL::Test::Utils::timeout_default;
 while ($max_attempts-- >= 0)
 {
 	if (find_in_log(

@@ -53,7 +53,7 @@ extern TimestampTz GetSnapshotCurrentTimestamp(void);
 extern TimestampTz GetOldSnapshotThresholdTimestamp(void);
 extern void SnapshotTooOldMagicForTest(void);
 
-extern bool FirstSnapshotSet;
+extern PGDLLIMPORT bool FirstSnapshotSet;
 
 extern PGDLLIMPORT TransactionId TransactionXmin;
 extern PGDLLIMPORT TransactionId RecentXmin;
@@ -135,6 +135,7 @@ extern bool XactHasExportedSnapshots(void);
 extern void DeleteAllExportedSnapshotFiles(void);
 extern void WaitForOlderSnapshots(TransactionId limitXmin, bool progress);
 extern bool ThereAreNoPriorRegisteredSnapshots(void);
+extern bool HaveRegisteredOrActiveSnapshot(void);
 extern bool TransactionIdLimitedForOldSnapshots(TransactionId recentXmin,
 												Relation relation,
 												TransactionId *limit_xid,

@@ -94,7 +94,7 @@ close $FH;
 my $in  = '';
 my $out = '';
 
-my $timer = timer(5);
+my $timer = timer($PostgreSQL::Test::Utils::timeout_default);
 
 my $h = $node->interactive_psql('postgres', \$in, \$out, $timer);
 
@@ -111,7 +111,7 @@ sub check_completion
 	# reset output collector
 	$out = "";
 	# restart per-command timer
-	$timer->start(5);
+	$timer->start($PostgreSQL::Test::Utils::timeout_default);
 	# send the data to be sent
 	$in .= $send;
 	# wait ...
@@ -338,6 +338,19 @@ check_completion(
 
 clear_line();
 
+# check timezone name completion
+check_completion(
+	"SET timezone TO am\t",
+	qr|'America/|,
+	"offer partial timezone name");
+
+check_completion(
+	"new_\t",
+	qr|New_York|,
+	"complete partial timezone name");
+
+clear_line();
+
 # check completion of a keyword offered in addition to object names;
 # such a keyword should obey COMP_KEYWORD_CASE
 foreach (
@@ -442,7 +455,7 @@ check_completion("blarg \t\t", qr//, "check completion failure path");
 clear_query();
 
 # send psql an explicit \q to shut it down, else pty won't close properly
-$timer->start(5);
+$timer->start($PostgreSQL::Test::Utils::timeout_default);
 $in .= "\\q\n";
 finish $h or die "psql returned $?";
 $timer->reset;

@@ -12,6 +12,9 @@
 
 #include "libpq-fe.h"
 
+/* For now, pg_upgrade does not use common/logging.c; use our own pg_fatal */
+#undef pg_fatal
+
 /* Use port in the private/dynamic port number range */
 #define DEF_PGUPORT			50432
 
@@ -171,6 +174,8 @@ typedef struct
 											 * path */
 	char	   *db_collate;
 	char	   *db_ctype;
+	char		db_collprovider;
+	char	   *db_iculocale;
 	int			db_encoding;
 	RelInfoArr	rel_arr;		/* array of all user relinfos */
 } DbInfo;
@@ -274,6 +279,7 @@ typedef struct
 	char	   *basedir;		/* Base output directory */
 	char	   *dumpdir;		/* Dumps */
 	char	   *logdir;			/* Log files */
+	bool		isatty;			/* is stdout a tty */
 } LogOpts;
 
 
@@ -427,7 +433,7 @@ void		pg_log(eLogType type, const char *fmt,...) pg_attribute_printf(2, 3);
 void		pg_fatal(const char *fmt,...) pg_attribute_printf(1, 2) pg_attribute_noreturn();
 void		end_progress_output(void);
 void		prep_status(const char *fmt,...) pg_attribute_printf(1, 2);
-void		check_ok(void);
+void		prep_status_progress(const char *fmt,...) pg_attribute_printf(1, 2);
 unsigned int str2uint(const char *str);
 
 

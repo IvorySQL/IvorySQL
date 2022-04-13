@@ -14,12 +14,23 @@ use File::Copy;
 use FindBin;
 use lib $FindBin::RealBin;
 
-use SSLServer;
+use SSL::Server;
 
 if ($ENV{with_ssl} ne 'openssl')
 {
 	plan skip_all => 'OpenSSL not supported by this build';
 }
+
+my $ssl_server = SSL::Server->new();
+sub sslkey
+{
+	return $ssl_server->sslkey(@_);
+}
+sub switch_server_cert
+{
+	$ssl_server->switch_server_cert(@_);
+}
+
 
 # This is the hostname used to connect to the server.
 my $SERVERHOSTADDR = '127.0.0.1';
@@ -46,9 +57,9 @@ $ENV{PGPORT} = $node->port;
 $node->start;
 
 # Configure server for SSL connections, with password handling.
-configure_test_server_for_ssl($node, $SERVERHOSTADDR, $SERVERHOSTCIDR,
+$ssl_server->configure_test_server_for_ssl($node, $SERVERHOSTADDR, $SERVERHOSTCIDR,
 	"scram-sha-256", 'password' => "pass", 'password_enc' => "scram-sha-256");
-switch_server_cert($node, 'server-cn-only');
+switch_server_cert($node, certfile => 'server-cn-only');
 $ENV{PGPASSWORD} = "pass";
 $common_connstr =
   "dbname=trustdb sslmode=require sslcert=invalid sslrootcert=invalid hostaddr=$SERVERHOSTADDR host=localhost";
@@ -94,7 +105,7 @@ $node->connect_fails(
 # be used in a different test, so the name of this temporary client key
 # is chosen here to be unique.
 my $cert_tempdir = PostgreSQL::Test::Utils::tempdir();
-my $client_tmp_key = PostgreSQL::Test::Utils::perl2host("$cert_tempdir/client_scram.key");
+my $client_tmp_key = "$cert_tempdir/client_scram.key";
 copy("ssl/client.key", "$cert_tempdir/client_scram.key")
   or die
   "couldn't copy ssl/client_key to $cert_tempdir/client_scram.key for permission change: $!";

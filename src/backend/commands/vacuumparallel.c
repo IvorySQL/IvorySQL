@@ -12,7 +12,7 @@
  * the memory space for storing dead items allocated in the DSM segment.  We
  * launch parallel worker processes at the start of parallel index
  * bulk-deletion and index cleanup and once all indexes are processed, the
- * parallel worker processes exit.  Each time we process indexes parallelly,
+ * parallel worker processes exit.  Each time we process indexes in parallel,
  * the parallel context is re-initialized so that the same DSM can be used for
  * multiple passes of index bulk-deletion and index cleanup.
  *
@@ -28,6 +28,7 @@
 
 #include "access/amapi.h"
 #include "access/table.h"
+#include "access/xact.h"
 #include "catalog/index.h"
 #include "commands/vacuum.h"
 #include "optimizer/paths.h"
@@ -35,6 +36,7 @@
 #include "storage/bufmgr.h"
 #include "tcop/tcopprot.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
 
 /*
  * DSM keys for parallel vacuum.  Unlike other parallel execution code, since

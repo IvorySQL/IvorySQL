@@ -245,7 +245,9 @@ extern WindowAggPath *create_windowagg_path(PlannerInfo *root,
 											Path *subpath,
 											PathTarget *target,
 											List *windowFuncs,
-											WindowClause *winclause);
+											WindowClause *winclause,
+											List *qual,
+											bool topwindow);
 extern SetOpPath *create_setop_path(PlannerInfo *root,
 									RelOptInfo *rel,
 									Path *subpath,
@@ -276,7 +278,7 @@ extern ModifyTablePath *create_modifytable_path(PlannerInfo *root,
 												List *updateColnosLists,
 												List *withCheckOptionLists, List *returningLists,
 												List *rowMarks, OnConflictExpr *onconflict,
-												int epqParam);
+												List *mergeActionLists, int epqParam);
 extern LimitPath *create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 									Path *subpath,
 									Node *limitOffset, Node *limitCount,

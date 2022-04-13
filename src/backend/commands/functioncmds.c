@@ -1354,6 +1354,8 @@ RemoveFunctionById(Oid funcOid)
 
 	table_close(relation, RowExclusiveLock);
 
+	pgstat_drop_function(funcOid);
+
 	/*
 	 * If there's a pg_aggregate tuple, delete that too.
 	 */

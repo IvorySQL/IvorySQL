@@ -62,6 +62,8 @@ clean distclean maintainer-clean:
 # ensure that changes in datadir propagate into object file
 initdb.o: initdb.c $(top_builddir)/src/Makefile.global
 
+export with_icu
+
 check:
 	$(prove_check)
 

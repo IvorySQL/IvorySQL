@@ -22,6 +22,7 @@
 #ifndef BBSTREAMER_H
 #define BBSTREAMER_H
 
+#include "common/compression.h"
 #include "lib/stringinfo.h"
 #include "pqexpbuffer.h"
 
@@ -200,15 +201,18 @@ bbstreamer_buffer_until(bbstreamer *streamer, const char **data, int *len,
  */
 extern bbstreamer *bbstreamer_plain_writer_new(char *pathname, FILE *file);
 extern bbstreamer *bbstreamer_gzip_writer_new(char *pathname, FILE *file,
-											  int compresslevel);
+											  pg_compress_specification *compress);
 extern bbstreamer *bbstreamer_extractor_new(const char *basepath,
 											const char *(*link_map) (const char *),
 											void (*report_output_file) (const char *));
 
 extern bbstreamer *bbstreamer_gzip_decompressor_new(bbstreamer *next);
 extern bbstreamer *bbstreamer_lz4_compressor_new(bbstreamer *next,
-												 int compresslevel);
+												 pg_compress_specification *compress);
 extern bbstreamer *bbstreamer_lz4_decompressor_new(bbstreamer *next);
+extern bbstreamer *bbstreamer_zstd_compressor_new(bbstreamer *next,
+												  pg_compress_specification *compress);
+extern bbstreamer *bbstreamer_zstd_decompressor_new(bbstreamer *next);
 extern bbstreamer *bbstreamer_tar_parser_new(bbstreamer *next);
 extern bbstreamer *bbstreamer_tar_terminator_new(bbstreamer *next);
 extern bbstreamer *bbstreamer_tar_archiver_new(bbstreamer *next);

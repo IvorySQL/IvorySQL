@@ -896,6 +896,18 @@ listAllDbs(const char *pattern, bool verbose)
 					  gettext_noop("Encoding"),
 					  gettext_noop("Collate"),
 					  gettext_noop("Ctype"));
+	if (pset.sversion >= 150000)
+		appendPQExpBuffer(&buf,
+						  "       d.daticulocale as \"%s\",\n"
+						  "       CASE d.datlocprovider WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"%s\",\n",
+						  gettext_noop("ICU Locale"),
+						  gettext_noop("Locale Provider"));
+	else
+		appendPQExpBuffer(&buf,
+						  "       d.datcollate as \"%s\",\n"
+						  "       'libc' AS \"%s\",\n",
+						  gettext_noop("ICU Locale"),
+						  gettext_noop("Locale Provider"));
 	appendPQExpBufferStr(&buf, "       ");
 	printACLColumn(&buf, "d.datacl");
 	if (verbose)
@@ -1676,8 +1688,6 @@ describeOneTableDetails(const char *schemaname,
 		if (!res)
 			goto error_return;
 
-		/* Footer information about a sequence */
-
 		/* Get the column that owns this sequence */
 		printfPQExpBuffer(&buf, "SELECT pg_catalog.quote_ident(nspname) || '.' ||"
 						  "\n   pg_catalog.quote_ident(relname) || '.' ||"
@@ -1720,8 +1730,12 @@ describeOneTableDetails(const char *schemaname,
 		}
 		PQclear(result);
 
-		printfPQExpBuffer(&title, _("Sequence \"%s.%s\""),
-						  schemaname, relationname);
+		if (tableinfo.relpersistence == 'u')
+			printfPQExpBuffer(&title, _("Unlogged sequence \"%s.%s\""),
+							  schemaname, relationname);
+		else
+			printfPQExpBuffer(&title, _("Sequence \"%s.%s\""),
+							  schemaname, relationname);
 
 		myopt.footers = footers;
 		myopt.topt.default_footer = false;
@@ -2879,17 +2893,29 @@ describeOneTableDetails(const char *schemaname,
 			{
 				printfPQExpBuffer(&buf,
 								  "SELECT pubname\n"
+								  "		, NULL\n"
+								  "		, NULL\n"
 								  "FROM pg_catalog.pg_publication p\n"
 								  "		JOIN pg_catalog.pg_publication_namespace pn ON p.oid = pn.pnpubid\n"
 								  "		JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.pnnspid\n"
 								  "WHERE pc.oid ='%s' and pg_catalog.pg_relation_is_publishable('%s')\n"
 								  "UNION\n"
 								  "SELECT pubname\n"
+								  "		, pg_get_expr(pr.prqual, c.oid)\n"
+								  "		, (CASE WHEN pr.prattrs IS NOT NULL THEN\n"
+								  "			(SELECT string_agg(attname, ', ')\n"
+								  "			  FROM pg_catalog.generate_series(0, pg_catalog.array_upper(pr.prattrs::pg_catalog.int2[], 1)) s,\n"
+								  "				   pg_catalog.pg_attribute\n"
+								  "			 WHERE attrelid = pr.prrelid AND attnum = prattrs[s])\n"
+								  "		   ELSE NULL END) "
 								  "FROM pg_catalog.pg_publication p\n"
 								  "		JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid\n"
+								  "		JOIN pg_catalog.pg_class c ON c.oid = pr.prrelid\n"
 								  "WHERE pr.prrelid = '%s'\n"
 								  "UNION\n"
 								  "SELECT pubname\n"
+								  "		, NULL\n"
+								  "		, NULL\n"
 								  "FROM pg_catalog.pg_publication p\n"
 								  "WHERE p.puballtables AND pg_catalog.pg_relation_is_publishable('%s')\n"
 								  "ORDER BY 1;",
@@ -2899,11 +2925,15 @@ describeOneTableDetails(const char *schemaname,
 			{
 				printfPQExpBuffer(&buf,
 								  "SELECT pubname\n"
+								  "		, NULL\n"
+								  "		, NULL\n"
 								  "FROM pg_catalog.pg_publication p\n"
 								  "JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid\n"
 								  "WHERE pr.prrelid = '%s'\n"
 								  "UNION ALL\n"
 								  "SELECT pubname\n"
+								  "		, NULL\n"
+								  "		, NULL\n"
 								  "FROM pg_catalog.pg_publication p\n"
 								  "WHERE p.puballtables AND pg_catalog.pg_relation_is_publishable('%s')\n"
 								  "ORDER BY 1;",
@@ -2924,6 +2954,16 @@ describeOneTableDetails(const char *schemaname,
 			{
 				printfPQExpBuffer(&buf, "    \"%s\"",
 								  PQgetvalue(result, i, 0));
+
+				/* column list (if any) */
+				if (!PQgetisnull(result, i, 2))
+					appendPQExpBuffer(&buf, " (%s)",
+									  PQgetvalue(result, i, 2));
+
+				/* row filter (if any) */
+				if (!PQgetisnull(result, i, 1))
+					appendPQExpBuffer(&buf, " WHERE %s",
+									  PQgetvalue(result, i, 1));
 
 				printTableAddFooter(&cont, buf.data);
 			}
@@ -3040,7 +3080,7 @@ describeOneTableDetails(const char *schemaname,
 		 * servers between v11 and v14, though these must still be shown to
 		 * the user.  So we use another property that is true for such
 		 * inherited triggers to avoid them being hidden, which is their
-		 * dependendence on another trigger.
+		 * dependence on another trigger.
 		 */
 		if (pset.sversion >= 110000 && pset.sversion < 150000)
 			appendPQExpBufferStr(&buf, "(NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D') \n"
@@ -4325,6 +4365,74 @@ listConversions(const char *pattern, bool verbose, bool showSystem)
 }
 
 /*
+ * \dconfig
+ *
+ * Describes configuration parameters.
+ */
+bool
+describeConfigurationParameters(const char *pattern, bool verbose,
+								bool showSystem)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	printQueryOpt myopt = pset.popt;
+
+	initPQExpBuffer(&buf);
+	printfPQExpBuffer(&buf,
+					  "SELECT s.name AS \"%s\", "
+					  "pg_catalog.current_setting(s.name) AS \"%s\"",
+					  gettext_noop("Parameter"),
+					  gettext_noop("Value"));
+
+	if (verbose)
+	{
+		appendPQExpBuffer(&buf,
+						  ", s.vartype AS \"%s\", s.context AS \"%s\", ",
+						  gettext_noop("Type"),
+						  gettext_noop("Context"));
+		if (pset.sversion >= 150000)
+			printACLColumn(&buf, "p.paracl");
+		else
+			appendPQExpBuffer(&buf, "NULL AS \"%s\"",
+							  gettext_noop("Access privileges"));
+	}
+
+	appendPQExpBufferStr(&buf, "\nFROM pg_catalog.pg_settings s\n");
+
+	if (verbose && pset.sversion >= 150000)
+		appendPQExpBufferStr(&buf,
+							 "  LEFT JOIN pg_catalog.pg_parameter_acl p\n"
+							 "  ON pg_catalog.lower(s.name) = p.parname\n");
+
+	if (pattern)
+		processSQLNamePattern(pset.db, &buf, pattern,
+							  false, false,
+							  NULL, "pg_catalog.lower(s.name)", NULL,
+							  NULL);
+	else
+		appendPQExpBufferStr(&buf, "WHERE s.source <> 'default'\n");
+
+	appendPQExpBufferStr(&buf, "ORDER BY 1;");
+
+	res = PSQLexec(buf.data);
+	termPQExpBuffer(&buf);
+	if (!res)
+		return false;
+
+	myopt.nullPrint = NULL;
+	if (pattern)
+		myopt.title = _("List of configuration parameters");
+	else
+		myopt.title = _("List of non-default configuration parameters");
+	myopt.translate_header = true;
+
+	printQuery(res, &myopt, pset.queryFout, false, pset.logfile);
+
+	PQclear(res);
+	return true;
+}
+
+/*
  * \dy
  *
  * Describes Event Triggers.
@@ -4614,7 +4722,7 @@ listCollations(const char *pattern, bool verbose, bool showSystem)
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
-	static const bool translate_columns[] = {false, false, false, false, false, true, false};
+	static const bool translate_columns[] = {false, false, false, false, false, false, true, false};
 
 	initPQExpBuffer(&buf);
 
@@ -4627,6 +4735,15 @@ listCollations(const char *pattern, bool verbose, bool showSystem)
 					  gettext_noop("Name"),
 					  gettext_noop("Collate"),
 					  gettext_noop("Ctype"));
+
+	if (pset.sversion >= 150000)
+		appendPQExpBuffer(&buf,
+						  ",\n       c.colliculocale AS \"%s\"",
+						  gettext_noop("ICU Locale"));
+	else
+		appendPQExpBuffer(&buf,
+						  ",\n       c.collcollate AS \"%s\"",
+						  gettext_noop("ICU Locale"));
 
 	if (pset.sversion >= 100000)
 		appendPQExpBuffer(&buf,
@@ -5855,8 +5972,8 @@ listPublications(const char *pattern)
  * Add footer to publication description.
  */
 static bool
-addFooterToPublicationDesc(PQExpBuffer buf, char *footermsg,
-						   bool singlecol, printTableContent *cont)
+addFooterToPublicationDesc(PQExpBuffer buf, const char *footermsg,
+						   bool as_schema, printTableContent *const cont)
 {
 	PGresult   *res;
 	int			count = 0;
@@ -5869,15 +5986,23 @@ addFooterToPublicationDesc(PQExpBuffer buf, char *footermsg,
 		count = PQntuples(res);
 
 	if (count > 0)
-		printTableAddFooter(cont, _(footermsg));
+		printTableAddFooter(cont, footermsg);
 
 	for (i = 0; i < count; i++)
 	{
-		if (!singlecol)
+		if (as_schema)
+			printfPQExpBuffer(buf, "    \"%s\"", PQgetvalue(res, i, 0));
+		else
+		{
 			printfPQExpBuffer(buf, "    \"%s.%s\"", PQgetvalue(res, i, 0),
 							  PQgetvalue(res, i, 1));
-		else
-			printfPQExpBuffer(buf, "    \"%s\"", PQgetvalue(res, i, 0));
+
+			if (!PQgetisnull(res, i, 3))
+				appendPQExpBuffer(buf, " (%s)", PQgetvalue(res, i, 3));
+
+			if (!PQgetisnull(res, i, 2))
+				appendPQExpBuffer(buf, " WHERE %s", PQgetvalue(res, i, 2));
+		}
 
 		printTableAddFooter(cont, buf->data);
 	}
@@ -6004,15 +6129,33 @@ describePublications(const char *pattern)
 		{
 			/* Get the tables for the specified publication */
 			printfPQExpBuffer(&buf,
-							  "SELECT n.nspname, c.relname\n"
-							  "FROM pg_catalog.pg_class c,\n"
+							  "SELECT n.nspname, c.relname");
+			if (pset.sversion >= 150000)
+			{
+				appendPQExpBufferStr(&buf,
+									 ", pg_get_expr(pr.prqual, c.oid)");
+				appendPQExpBufferStr(&buf,
+									 ", (CASE WHEN pr.prattrs IS NOT NULL THEN\n"
+									 "     pg_catalog.array_to_string("
+									 "      ARRAY(SELECT attname\n"
+									 "              FROM\n"
+									 "                pg_catalog.generate_series(0, pg_catalog.array_upper(pr.prattrs::pg_catalog.int2[], 1)) s,\n"
+									 "                pg_catalog.pg_attribute\n"
+									 "        WHERE attrelid = c.oid AND attnum = prattrs[s]), ', ')\n"
+									 "       ELSE NULL END)");
+			}
+			else
+				appendPQExpBufferStr(&buf,
+									 ", NULL, NULL");
+			appendPQExpBuffer(&buf,
+							  "\nFROM pg_catalog.pg_class c,\n"
 							  "     pg_catalog.pg_namespace n,\n"
 							  "     pg_catalog.pg_publication_rel pr\n"
 							  "WHERE c.relnamespace = n.oid\n"
 							  "  AND c.oid = pr.prrelid\n"
 							  "  AND pr.prpubid = '%s'\n"
 							  "ORDER BY 1,2", pubid);
-			if (!addFooterToPublicationDesc(&buf, "Tables:", false, &cont))
+			if (!addFooterToPublicationDesc(&buf, _("Tables:"), false, &cont))
 				goto error_return;
 
 			if (pset.sversion >= 150000)
@@ -6024,7 +6167,7 @@ describePublications(const char *pattern)
 								  "     JOIN pg_catalog.pg_publication_namespace pn ON n.oid = pn.pnnspid\n"
 								  "WHERE pn.pnpubid = '%s'\n"
 								  "ORDER BY 1", pubid);
-				if (!addFooterToPublicationDesc(&buf, "Tables from schemas:",
+				if (!addFooterToPublicationDesc(&buf, _("Tables from schemas:"),
 												true, &cont))
 					goto error_return;
 			}
@@ -6062,7 +6205,7 @@ describeSubscriptions(const char *pattern, bool verbose)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 	static const bool translate_columns[] = {false, false, false, false,
-	false, false, false, false, false};
+	false, false, false, false, false, false, false};
 
 	if (pset.sversion < 100000)
 	{
@@ -6096,17 +6239,25 @@ describeSubscriptions(const char *pattern, bool verbose)
 							  gettext_noop("Binary"),
 							  gettext_noop("Streaming"));
 
-		/* Two_phase is only supported in v15 and higher */
+		/* Two_phase and disable_on_error are only supported in v15 and higher */
 		if (pset.sversion >= 150000)
 			appendPQExpBuffer(&buf,
-							  ", subtwophasestate AS \"%s\"\n",
-							  gettext_noop("Two phase commit"));
+							  ", subtwophasestate AS \"%s\"\n"
+							  ", subdisableonerr AS \"%s\"\n",
+							  gettext_noop("Two phase commit"),
+							  gettext_noop("Disable on error"));
 
 		appendPQExpBuffer(&buf,
 						  ",  subsynccommit AS \"%s\"\n"
 						  ",  subconninfo AS \"%s\"\n",
 						  gettext_noop("Synchronous commit"),
 						  gettext_noop("Conninfo"));
+
+		/* Skip LSN is only supported in v15 and higher */
+		if (pset.sversion >= 150000)
+			appendPQExpBuffer(&buf,
+							  ", subskiplsn AS \"%s\"\n",
+							  gettext_noop("Skip LSN"));
 	}
 
 	/* Only display subscriptions in current database. */

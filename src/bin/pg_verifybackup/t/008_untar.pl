@@ -7,7 +7,6 @@
 
 use strict;
 use warnings;
-use Config;
 use File::Path qw(rmtree);
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -18,7 +17,6 @@ $primary->init(allows_streaming => 1);
 $primary->start;
 
 my $backup_path = $primary->backup_dir . '/server-backup';
-my $real_backup_path = PostgreSQL::Test::Utils::perl2host($backup_path);
 my $extract_path = $primary->backup_dir . '/extracted-backup';
 
 my @test_configuration = (
@@ -42,7 +40,15 @@ my @test_configuration = (
 		'backup_archive' => 'base.tar.lz4',
 		'decompress_program' => $ENV{'LZ4'},
 		'decompress_flags' => [ '-d', '-m'],
-		'enabled' => check_pg_config("#define HAVE_LIBLZ4 1")
+		'enabled' => check_pg_config("#define USE_LZ4 1")
+	},
+	{
+		'compression_method' => 'zstd',
+		'backup_flags' => ['--compress', 'server-zstd'],
+		'backup_archive' => 'base.tar.zst',
+		'decompress_program' => $ENV{'ZSTD'},
+		'decompress_flags' => [ '-d' ],
+		'enabled' => check_pg_config("#define USE_ZSTD 1")
 	}
 );
 
@@ -61,7 +67,7 @@ for my $tc (@test_configuration)
 		# Take a server-side backup.
 		my @backup = (
 			'pg_basebackup', '--no-sync', '-cfast', '--target',
-			"server:$real_backup_path", '-Xfetch'
+			"server:$backup_path", '-Xfetch'
 		);
 		push @backup, @{$tc->{'backup_flags'}};
 		$primary->command_ok(\@backup,
@@ -88,7 +94,7 @@ for my $tc (@test_configuration)
 
 		SKIP: {
 			my $tar = $ENV{TAR};
-			# don't check for a working tar here, to accomodate various odd
+			# don't check for a working tar here, to accommodate various odd
 			# cases such as AIX. If tar doesn't work the init_from_backup below
 			# will fail.
 			skip "no tar program available", 1
@@ -108,6 +114,7 @@ for my $tc (@test_configuration)
 		# Cleanup.
 		unlink($backup_path . '/backup_manifest');
 		unlink($backup_path . '/base.tar');
+		unlink($backup_path . '/' . $tc->{'backup_archive'});
 		rmtree($extract_path);
 	}
 }

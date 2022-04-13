@@ -22,6 +22,7 @@
 #include "access/timeline.h"
 #include "access/xlogrecovery.h"
 #include "access/xlog_internal.h"
+#include "access/xlogprefetcher.h"
 #include "access/xlogutils.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -79,6 +80,10 @@ typedef struct xl_invalid_page
 
 static HTAB *invalid_page_tab = NULL;
 
+static int
+read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
+						  int reqLen, XLogRecPtr targetRecPtr,
+						  char *cur_page, bool wait_for_wal);
 
 /* Report a reference to an invalid page */
 static void
@@ -355,14 +360,17 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 	RelFileNode rnode;
 	ForkNumber	forknum;
 	BlockNumber blkno;
+	Buffer		prefetch_buffer;
 	Page		page;
 	bool		zeromode;
 	bool		willinit;
 
-	if (!XLogRecGetBlockTag(record, block_id, &rnode, &forknum, &blkno))
+	if (!XLogRecGetBlockTagExtended(record, block_id, &rnode, &forknum, &blkno,
+									&prefetch_buffer))
 	{
 		/* Caller specified a bogus block_id */
-		elog(PANIC, "failed to locate backup block with ID %d", block_id);
+		elog(PANIC, "failed to locate backup block with ID %d in WAL record",
+			 block_id);
 	}
 
 	/*
@@ -370,7 +378,7 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 	 * going to initialize it. And vice versa.
 	 */
 	zeromode = (mode == RBM_ZERO_AND_LOCK || mode == RBM_ZERO_AND_CLEANUP_LOCK);
-	willinit = (record->blocks[block_id].flags & BKPBLOCK_WILL_INIT) != 0;
+	willinit = (XLogRecGetBlock(record, block_id)->flags & BKPBLOCK_WILL_INIT) != 0;
 	if (willinit && !zeromode)
 		elog(PANIC, "block with WILL_INIT flag in WAL record must be zeroed by redo routine");
 	if (!willinit && zeromode)
@@ -381,7 +389,8 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 	{
 		Assert(XLogRecHasBlockImage(record, block_id));
 		*buf = XLogReadBufferExtended(rnode, forknum, blkno,
-									  get_cleanup_lock ? RBM_ZERO_AND_CLEANUP_LOCK : RBM_ZERO_AND_LOCK);
+									  get_cleanup_lock ? RBM_ZERO_AND_CLEANUP_LOCK : RBM_ZERO_AND_LOCK,
+									  prefetch_buffer);
 		page = BufferGetPage(*buf);
 		if (!RestoreBlockImage(record, block_id, page))
 			elog(ERROR, "failed to restore block image");
@@ -410,7 +419,7 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 	}
 	else
 	{
-		*buf = XLogReadBufferExtended(rnode, forknum, blkno, mode);
+		*buf = XLogReadBufferExtended(rnode, forknum, blkno, mode, prefetch_buffer);
 		if (BufferIsValid(*buf))
 		{
 			if (mode != RBM_ZERO_AND_LOCK && mode != RBM_ZERO_AND_CLEANUP_LOCK)
@@ -450,6 +459,10 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
  * exist, and we don't check for all-zeroes.  Thus, no log entry is made
  * to imply that the page should be dropped or truncated later.
  *
+ * Optionally, recent_buffer can be used to provide a hint about the location
+ * of the page in the buffer pool; it does not have to be correct, but avoids
+ * a buffer mapping table probe if it is.
+ *
  * NB: A redo function should normally not call this directly. To get a page
  * to modify, use XLogReadBufferForRedoExtended instead. It is important that
  * all pages modified by a WAL record are registered in the WAL records, or
@@ -457,13 +470,23 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
  */
 Buffer
 XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
-					   BlockNumber blkno, ReadBufferMode mode)
+					   BlockNumber blkno, ReadBufferMode mode,
+					   Buffer recent_buffer)
 {
 	BlockNumber lastblock;
 	Buffer		buffer;
 	SMgrRelation smgr;
 
 	Assert(blkno != P_NEW);
+
+	/* Do we have a clue where the buffer might be already? */
+	if (BufferIsValid(recent_buffer) &&
+		mode == RBM_NORMAL &&
+		ReadRecentBuffer(rnode, forknum, blkno, recent_buffer))
+	{
+		buffer = recent_buffer;
+		goto recent_buffer_fast_path;
+	}
 
 	/* Open the relation at smgr level */
 	smgr = smgropen(rnode, InvalidBackendId);
@@ -484,7 +507,7 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 	{
 		/* page exists in file */
 		buffer = ReadBufferWithoutRelcache(rnode, forknum, blkno,
-										   mode, NULL);
+										   mode, NULL, true);
 	}
 	else
 	{
@@ -509,7 +532,7 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 				ReleaseBuffer(buffer);
 			}
 			buffer = ReadBufferWithoutRelcache(rnode, forknum,
-											   P_NEW, mode, NULL);
+											   P_NEW, mode, NULL, true);
 		}
 		while (BufferGetBlockNumber(buffer) < blkno);
 		/* Handle the corner case that P_NEW returns non-consecutive pages */
@@ -519,10 +542,11 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 				LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 			ReleaseBuffer(buffer);
 			buffer = ReadBufferWithoutRelcache(rnode, forknum, blkno,
-											   mode, NULL);
+											   mode, NULL, true);
 		}
 	}
 
+recent_buffer_fast_path:
 	if (mode == RBM_NORMAL)
 	{
 		/* check that page has been initialized */
@@ -852,6 +876,31 @@ int
 read_local_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr,
 					 int reqLen, XLogRecPtr targetRecPtr, char *cur_page)
 {
+	return read_local_xlog_page_guts(state, targetPagePtr, reqLen,
+									 targetRecPtr, cur_page, true);
+}
+
+/*
+ * Same as read_local_xlog_page except that it doesn't wait for future WAL
+ * to be available.
+ */
+int
+read_local_xlog_page_no_wait(XLogReaderState *state, XLogRecPtr targetPagePtr,
+							 int reqLen, XLogRecPtr targetRecPtr,
+							 char *cur_page)
+{
+	return read_local_xlog_page_guts(state, targetPagePtr, reqLen,
+									 targetRecPtr, cur_page, false);
+}
+
+/*
+ * Implementation of read_local_xlog_page and its no wait version.
+ */
+static int
+read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
+						  int reqLen, XLogRecPtr targetRecPtr,
+						  char *cur_page, bool wait_for_wal)
+{
 	XLogRecPtr	read_upto,
 				loc;
 	TimeLineID	tli;
@@ -904,6 +953,10 @@ read_local_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr,
 		{
 
 			if (loc <= read_upto)
+				break;
+
+			/* If asked, let's not wait for future WAL. */
+			if (!wait_for_wal)
 				break;
 
 			CHECK_FOR_INTERRUPTS();

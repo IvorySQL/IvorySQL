@@ -69,10 +69,10 @@ bbsink_server_new(bbsink *next, char *pathname)
 
 	/* Replication permission is not sufficient in this case. */
 	StartTransactionCommand();
-	if (!is_member_of_role(GetUserId(), ROLE_PG_WRITE_SERVER_FILES))
+	if (!has_privs_of_role(GetUserId(), ROLE_PG_WRITE_SERVER_FILES))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser or a member of the pg_write_server_files role to create server backup")));
+				 errmsg("must be superuser or a role with privileges of the pg_write_server_files role to create server backup")));
 	CommitTransactionCommand();
 
 	/*
@@ -195,9 +195,9 @@ bbsink_server_end_archive(bbsink *sink)
 
 	/*
 	 * We intentionally don't use data_sync_elevel here, because the server
-	 * shouldn't PANIC just because we can't guarantee the the backup has been
-	 * written down to disk. Running recovery won't fix anything in this case
-	 * anyway.
+	 * shouldn't PANIC just because we can't guarantee that the backup has
+	 * been written down to disk. Running recovery won't fix anything in this
+	 * case anyway.
 	 */
 	if (FileSync(mysink->file, WAIT_EVENT_BASEBACKUP_SYNC) < 0)
 		ereport(ERROR,

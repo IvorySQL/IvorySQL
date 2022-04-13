@@ -352,13 +352,6 @@ vacuum(List *relations, VacuumParams *params,
 				 errmsg("PROCESS_TOAST required with VACUUM FULL")));
 
 	/*
-	 * Send info about dead objects to the statistics collector, unless we are
-	 * in autovacuum --- autovacuum.c does this for itself.
-	 */
-	if ((params->options & VACOPT_VACUUM) && !IsAutoVacuumWorkerProcess())
-		pgstat_vacuum_stat();
-
-	/*
 	 * Create special memory context for cross-transaction storage.
 	 *
 	 * Since it is a child of PortalContext, it will go away eventually even
@@ -945,14 +938,22 @@ get_all_vacuum_rels(int options)
  * The output parameters are:
  * - oldestXmin is the Xid below which tuples deleted by any xact (that
  *   committed) should be considered DEAD, not just RECENTLY_DEAD.
- * - freezeLimit is the Xid below which all Xids are replaced by
- *	 FrozenTransactionId during vacuum.
- * - multiXactCutoff is the value below which all MultiXactIds are removed
- *   from Xmax.
+ * - oldestMxact is the Mxid below which MultiXacts are definitely not
+ *   seen as visible by any running transaction.
+ * - freezeLimit is the Xid below which all Xids are definitely replaced by
+ *   FrozenTransactionId during aggressive vacuums.
+ * - multiXactCutoff is the value below which all MultiXactIds are definitely
+ *   removed from Xmax during aggressive vacuums.
  *
  * Return value indicates if vacuumlazy.c caller should make its VACUUM
  * operation aggressive.  An aggressive VACUUM must advance relfrozenxid up to
- * FreezeLimit, and relminmxid up to multiXactCutoff.
+ * FreezeLimit (at a minimum), and relminmxid up to multiXactCutoff (at a
+ * minimum).
+ *
+ * oldestXmin and oldestMxact are the most recent values that can ever be
+ * passed to vac_update_relstats() as frozenxid and minmulti arguments by our
+ * vacuumlazy.c caller later on.  These values should be passed when it turns
+ * out that VACUUM will leave no unfrozen XIDs/XMIDs behind in the table.
  */
 bool
 vacuum_set_xid_limits(Relation rel,
@@ -961,6 +962,7 @@ vacuum_set_xid_limits(Relation rel,
 					  int multixact_freeze_min_age,
 					  int multixact_freeze_table_age,
 					  TransactionId *oldestXmin,
+					  MultiXactId *oldestMxact,
 					  TransactionId *freezeLimit,
 					  MultiXactId *multiXactCutoff)
 {
@@ -969,7 +971,6 @@ vacuum_set_xid_limits(Relation rel,
 	int			effective_multixact_freeze_max_age;
 	TransactionId limit;
 	TransactionId safeLimit;
-	MultiXactId oldestMxact;
 	MultiXactId mxactLimit;
 	MultiXactId safeMxactLimit;
 	int			freezetable;
@@ -1065,9 +1066,11 @@ vacuum_set_xid_limits(Relation rel,
 						 effective_multixact_freeze_max_age / 2);
 	Assert(mxid_freezemin >= 0);
 
+	/* Remember for caller */
+	*oldestMxact = GetOldestMultiXactId();
+
 	/* compute the cutoff multi, being careful to generate a valid value */
-	oldestMxact = GetOldestMultiXactId();
-	mxactLimit = oldestMxact - mxid_freezemin;
+	mxactLimit = *oldestMxact - mxid_freezemin;
 	if (mxactLimit < FirstMultiXactId)
 		mxactLimit = FirstMultiXactId;
 
@@ -1082,8 +1085,8 @@ vacuum_set_xid_limits(Relation rel,
 				(errmsg("oldest multixact is far in the past"),
 				 errhint("Close open transactions with multixacts soon to avoid wraparound problems.")));
 		/* Use the safe limit, unless an older mxact is still running */
-		if (MultiXactIdPrecedes(oldestMxact, safeMxactLimit))
-			mxactLimit = oldestMxact;
+		if (MultiXactIdPrecedes(*oldestMxact, safeMxactLimit))
+			mxactLimit = *oldestMxact;
 		else
 			mxactLimit = safeMxactLimit;
 	}
@@ -1330,7 +1333,11 @@ vac_update_relstats(Relation relation,
 	Relation	rd;
 	HeapTuple	ctup;
 	Form_pg_class pgcform;
-	bool		dirty;
+	bool		dirty,
+				futurexid,
+				futuremxid;
+	TransactionId oldfrozenxid;
+	MultiXactId oldminmulti;
 
 	rd = table_open(RelationRelationId, RowExclusiveLock);
 
@@ -1390,41 +1397,55 @@ vac_update_relstats(Relation relation,
 	 * Update relfrozenxid, unless caller passed InvalidTransactionId
 	 * indicating it has no new data.
 	 *
-	 * Ordinarily, we don't let relfrozenxid go backwards: if things are
-	 * working correctly, the only way the new frozenxid could be older would
-	 * be if a previous VACUUM was done with a tighter freeze_min_age, in
-	 * which case we don't want to forget the work it already did.  However,
-	 * if the stored relfrozenxid is "in the future", then it must be corrupt
-	 * and it seems best to overwrite it with the cutoff we used this time.
+	 * Ordinarily, we don't let relfrozenxid go backwards.  However, if the
+	 * stored relfrozenxid is "in the future" then it seems best to assume
+	 * it's corrupt, and overwrite with the oldest remaining XID in the table.
 	 * This should match vac_update_datfrozenxid() concerning what we consider
 	 * to be "in the future".
 	 */
+	oldfrozenxid = pgcform->relfrozenxid;
+	futurexid = false;
 	if (frozenxid_updated)
 		*frozenxid_updated = false;
-	if (TransactionIdIsNormal(frozenxid) &&
-		pgcform->relfrozenxid != frozenxid &&
-		(TransactionIdPrecedes(pgcform->relfrozenxid, frozenxid) ||
-		 TransactionIdPrecedes(ReadNextTransactionId(),
-							   pgcform->relfrozenxid)))
+	if (TransactionIdIsNormal(frozenxid) && oldfrozenxid != frozenxid)
 	{
-		if (frozenxid_updated)
-			*frozenxid_updated = true;
-		pgcform->relfrozenxid = frozenxid;
-		dirty = true;
+		bool	update = false;
+
+		if (TransactionIdPrecedes(oldfrozenxid, frozenxid))
+			update = true;
+		else if (TransactionIdPrecedes(ReadNextTransactionId(), oldfrozenxid))
+			futurexid = update = true;
+
+		if (update)
+		{
+			pgcform->relfrozenxid = frozenxid;
+			dirty = true;
+			if (frozenxid_updated)
+				*frozenxid_updated = true;
+		}
 	}
 
 	/* Similarly for relminmxid */
+	oldminmulti = pgcform->relminmxid;
+	futuremxid = false;
 	if (minmulti_updated)
 		*minmulti_updated = false;
-	if (MultiXactIdIsValid(minmulti) &&
-		pgcform->relminmxid != minmulti &&
-		(MultiXactIdPrecedes(pgcform->relminmxid, minmulti) ||
-		 MultiXactIdPrecedes(ReadNextMultiXactId(), pgcform->relminmxid)))
+	if (MultiXactIdIsValid(minmulti) && oldminmulti != minmulti)
 	{
-		if (minmulti_updated)
-			*minmulti_updated = true;
-		pgcform->relminmxid = minmulti;
-		dirty = true;
+		bool	update = false;
+
+		if (MultiXactIdPrecedes(oldminmulti, minmulti))
+			update = true;
+		else if (MultiXactIdPrecedes(ReadNextMultiXactId(), oldminmulti))
+			futuremxid = update = true;
+
+		if (update)
+		{
+			pgcform->relminmxid = minmulti;
+			dirty = true;
+			if (minmulti_updated)
+				*minmulti_updated = true;
+		}
 	}
 
 	/* If anything changed, write out the tuple. */
@@ -1432,6 +1453,19 @@ vac_update_relstats(Relation relation,
 		heap_inplace_update(rd, ctup);
 
 	table_close(rd, RowExclusiveLock);
+
+	if (futurexid)
+		ereport(WARNING,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg_internal("overwrote invalid relfrozenxid value %u with new value %u for table \"%s\"",
+								 oldfrozenxid, frozenxid,
+								 RelationGetRelationName(relation))));
+	if (futuremxid)
+		ereport(WARNING,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg_internal("overwrote invalid relminmxid value %u with new value %u for table \"%s\"",
+								 oldminmulti, minmulti,
+								 RelationGetRelationName(relation))));
 }
 
 

@@ -38,6 +38,7 @@
 #include "lib/stringinfo.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
+#include "port/pg_bitutils.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rangetypes.h"
@@ -1344,9 +1345,7 @@ range_agg_transfn(PG_FUNCTION_ARGS)
 
 	rngtypoid = get_fn_expr_argtype(fcinfo->flinfo, 1);
 	if (!type_is_range(rngtypoid))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("range_agg must be called with a range")));
+		elog(ERROR, "range_agg must be called with a range");
 
 	if (PG_ARGISNULL(0))
 		state = initArrayResult(rngtypoid, aggContext, false);
@@ -1362,6 +1361,9 @@ range_agg_transfn(PG_FUNCTION_ARGS)
 
 /*
  * range_agg_finalfn: use our internal array to merge touching ranges.
+ *
+ * Shared by range_agg_finalfn(anyrange) and
+ * multirange_agg_finalfn(anymultirange).
  */
 Datum
 range_agg_finalfn(PG_FUNCTION_ARGS)
@@ -1397,6 +1399,64 @@ range_agg_finalfn(PG_FUNCTION_ARGS)
 	PG_RETURN_MULTIRANGE_P(make_multirange(mltrngtypoid, typcache->rngtype, range_count, ranges));
 }
 
+/*
+ * multirange_agg_transfn: combine adjacent/overlapping multiranges.
+ *
+ * All we do here is gather the input multiranges' ranges into an array so
+ * that the finalfn can sort and combine them.
+ */
+Datum
+multirange_agg_transfn(PG_FUNCTION_ARGS)
+{
+	MemoryContext aggContext;
+	Oid			mltrngtypoid;
+	TypeCacheEntry *typcache;
+	TypeCacheEntry *rngtypcache;
+	ArrayBuildState *state;
+
+	if (!AggCheckCallContext(fcinfo, &aggContext))
+		elog(ERROR, "multirange_agg_transfn called in non-aggregate context");
+
+	mltrngtypoid = get_fn_expr_argtype(fcinfo->flinfo, 1);
+	if (!type_is_multirange(mltrngtypoid))
+		elog(ERROR, "range_agg must be called with a multirange");
+
+	typcache = multirange_get_typcache(fcinfo, mltrngtypoid);
+	rngtypcache = typcache->rngtype;
+
+	if (PG_ARGISNULL(0))
+		state = initArrayResult(rngtypcache->type_id, aggContext, false);
+	else
+		state = (ArrayBuildState *) PG_GETARG_POINTER(0);
+
+	/* skip NULLs */
+	if (!PG_ARGISNULL(1))
+	{
+		MultirangeType *current;
+		int32		range_count;
+		RangeType **ranges;
+
+		current = PG_GETARG_MULTIRANGE_P(1);
+		multirange_deserialize(rngtypcache, current, &range_count, &ranges);
+		if (range_count == 0)
+		{
+			/*
+			 * Add an empty range so we get an empty result (not a null result).
+			 */
+			accumArrayResult(state,
+							 RangeTypePGetDatum(make_empty_range(rngtypcache)),
+							 false, rngtypcache->type_id, aggContext);
+		}
+		else
+		{
+			for (int32 i = 0; i < range_count; i++)
+				accumArrayResult(state, RangeTypePGetDatum(ranges[i]), false, rngtypcache->type_id, aggContext);
+		}
+	}
+
+	PG_RETURN_POINTER(state);
+}
+
 Datum
 multirange_intersect_agg_transfn(PG_FUNCTION_ARGS)
 {
@@ -1415,9 +1475,7 @@ multirange_intersect_agg_transfn(PG_FUNCTION_ARGS)
 
 	mltrngtypoid = get_fn_expr_argtype(fcinfo->flinfo, 1);
 	if (!type_is_multirange(mltrngtypoid))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("range_intersect_agg must be called with a multirange")));
+		elog(ERROR, "range_intersect_agg must be called with a multirange");
 
 	typcache = multirange_get_typcache(fcinfo, mltrngtypoid);
 
@@ -2772,7 +2830,7 @@ hash_multirange(PG_FUNCTION_ARGS)
 		/* Merge hashes of flags and bounds */
 		range_hash = hash_uint32((uint32) flags);
 		range_hash ^= lower_hash;
-		range_hash = (range_hash << 1) | (range_hash >> 31);
+		range_hash = pg_rotate_left32(range_hash, 1);
 		range_hash ^= upper_hash;
 
 		/*

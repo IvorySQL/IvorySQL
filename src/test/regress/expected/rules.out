@@ -1347,6 +1347,12 @@ pg_hba_file_rules| SELECT a.line_number,
     a.options,
     a.error
    FROM pg_hba_file_rules() a(line_number, type, database, user_name, address, netmask, auth_method, options, error);
+pg_ident_file_mappings| SELECT a.line_number,
+    a.map_name,
+    a.sys_name,
+    a.pg_username,
+    a.error
+   FROM pg_ident_file_mappings() a(line_number, map_name, sys_name, pg_username, error);
 pg_indexes| SELECT n.nspname AS schemaname,
     c.relname AS tablename,
     i.relname AS indexname,
@@ -2005,6 +2011,17 @@ pg_stat_progress_vacuum| SELECT s.pid,
     s.param7 AS num_dead_tuples
    FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
+pg_stat_recovery_prefetch| SELECT s.stats_reset,
+    s.prefetch,
+    s.hit,
+    s.skip_init,
+    s.skip_new,
+    s.skip_fpw,
+    s.skip_rep,
+    s.wal_distance,
+    s.block_distance,
+    s.io_depth
+   FROM pg_stat_get_recovery_prefetch() s(stats_reset, prefetch, hit, skip_init, skip_new, skip_fpw, skip_rep, wal_distance, block_distance, io_depth);
 pg_stat_replication| SELECT s.pid,
     s.usesysid,
     u.rolname AS usename,
@@ -2072,24 +2089,13 @@ pg_stat_subscription| SELECT su.oid AS subid,
     st.latest_end_time
    FROM (pg_subscription su
      LEFT JOIN pg_stat_get_subscription(NULL::oid) st(subid, relid, pid, received_lsn, last_msg_send_time, last_msg_receipt_time, latest_end_lsn, latest_end_time) ON ((st.subid = su.oid)));
-pg_stat_subscription_workers| SELECT w.subid,
+pg_stat_subscription_stats| SELECT ss.subid,
     s.subname,
-    w.subrelid,
-    w.last_error_relid,
-    w.last_error_command,
-    w.last_error_xid,
-    w.last_error_count,
-    w.last_error_message,
-    w.last_error_time
-   FROM ( SELECT pg_subscription.oid AS subid,
-            NULL::oid AS relid
-           FROM pg_subscription
-        UNION ALL
-         SELECT pg_subscription_rel.srsubid AS subid,
-            pg_subscription_rel.srrelid AS relid
-           FROM pg_subscription_rel) sr,
-    (LATERAL pg_stat_get_subscription_worker(sr.subid, sr.relid) w(subid, subrelid, last_error_relid, last_error_command, last_error_xid, last_error_count, last_error_message, last_error_time)
-     JOIN pg_subscription s ON ((w.subid = s.oid)));
+    ss.apply_error_count,
+    ss.sync_error_count,
+    ss.stats_reset
+   FROM pg_subscription s,
+    LATERAL pg_stat_get_subscription_stats(s.oid) ss(subid, apply_error_count, sync_error_count, stats_reset);
 pg_stat_sys_indexes| SELECT pg_stat_all_indexes.relid,
     pg_stat_all_indexes.indexrelid,
     pg_stat_all_indexes.schemaname,
@@ -2272,19 +2278,24 @@ pg_statio_all_tables| SELECT c.oid AS relid,
     c.relname,
     (pg_stat_get_blocks_fetched(c.oid) - pg_stat_get_blocks_hit(c.oid)) AS heap_blks_read,
     pg_stat_get_blocks_hit(c.oid) AS heap_blks_hit,
-    (sum((pg_stat_get_blocks_fetched(i.indexrelid) - pg_stat_get_blocks_hit(i.indexrelid))))::bigint AS idx_blks_read,
-    (sum(pg_stat_get_blocks_hit(i.indexrelid)))::bigint AS idx_blks_hit,
+    i.idx_blks_read,
+    i.idx_blks_hit,
     (pg_stat_get_blocks_fetched(t.oid) - pg_stat_get_blocks_hit(t.oid)) AS toast_blks_read,
     pg_stat_get_blocks_hit(t.oid) AS toast_blks_hit,
-    (pg_stat_get_blocks_fetched(x.indexrelid) - pg_stat_get_blocks_hit(x.indexrelid)) AS tidx_blks_read,
-    pg_stat_get_blocks_hit(x.indexrelid) AS tidx_blks_hit
+    x.idx_blks_read AS tidx_blks_read,
+    x.idx_blks_hit AS tidx_blks_hit
    FROM ((((pg_class c
-     LEFT JOIN pg_index i ON ((c.oid = i.indrelid)))
      LEFT JOIN pg_class t ON ((c.reltoastrelid = t.oid)))
-     LEFT JOIN pg_index x ON ((t.oid = x.indrelid)))
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
-  WHERE (c.relkind = ANY (ARRAY['r'::"char", 't'::"char", 'm'::"char"]))
-  GROUP BY c.oid, n.nspname, c.relname, t.oid, x.indexrelid;
+     LEFT JOIN LATERAL ( SELECT (sum((pg_stat_get_blocks_fetched(pg_index.indexrelid) - pg_stat_get_blocks_hit(pg_index.indexrelid))))::bigint AS idx_blks_read,
+            (sum(pg_stat_get_blocks_hit(pg_index.indexrelid)))::bigint AS idx_blks_hit
+           FROM pg_index
+          WHERE (pg_index.indrelid = c.oid)) i ON (true))
+     LEFT JOIN LATERAL ( SELECT (sum((pg_stat_get_blocks_fetched(pg_index.indexrelid) - pg_stat_get_blocks_hit(pg_index.indexrelid))))::bigint AS idx_blks_read,
+            (sum(pg_stat_get_blocks_hit(pg_index.indexrelid)))::bigint AS idx_blks_hit
+           FROM pg_index
+          WHERE (pg_index.indrelid = t.oid)) x ON (true))
+  WHERE (c.relkind = ANY (ARRAY['r'::"char", 't'::"char", 'm'::"char"]));
 pg_statio_sys_indexes| SELECT pg_statio_all_indexes.relid,
     pg_statio_all_indexes.indexrelid,
     pg_statio_all_indexes.schemaname,
@@ -3474,6 +3485,38 @@ CREATE RULE rules_parted_table_insert AS ON INSERT to rules_parted_table
 ALTER RULE rules_parted_table_insert ON rules_parted_table RENAME TO rules_parted_table_insert_redirect;
 DROP TABLE rules_parted_table;
 --
+-- test MERGE
+--
+CREATE TABLE rule_merge1 (a int, b text);
+CREATE TABLE rule_merge2 (a int, b text);
+CREATE RULE rule1 AS ON INSERT TO rule_merge1
+	DO INSTEAD INSERT INTO rule_merge2 VALUES (NEW.*);
+CREATE RULE rule2 AS ON UPDATE TO rule_merge1
+	DO INSTEAD UPDATE rule_merge2 SET a = NEW.a, b = NEW.b
+	WHERE a = OLD.a;
+CREATE RULE rule3 AS ON DELETE TO rule_merge1
+	DO INSTEAD DELETE FROM rule_merge2 WHERE a = OLD.a;
+-- MERGE not supported for table with rules
+MERGE INTO rule_merge1 t USING (SELECT 1 AS a) s
+	ON t.a = s.a
+	WHEN MATCHED AND t.a < 2 THEN
+		UPDATE SET b = b || ' updated by merge'
+	WHEN MATCHED AND t.a > 2 THEN
+		DELETE
+	WHEN NOT MATCHED THEN
+		INSERT VALUES (s.a, '');
+ERROR:  cannot execute MERGE on relation "rule_merge1"
+DETAIL:  MERGE is not supported for relations with rules.
+-- should be ok with the other table though
+MERGE INTO rule_merge2 t USING (SELECT 1 AS a) s
+	ON t.a = s.a
+	WHEN MATCHED AND t.a < 2 THEN
+		UPDATE SET b = b || ' updated by merge'
+	WHEN MATCHED AND t.a > 2 THEN
+		DELETE
+	WHEN NOT MATCHED THEN
+		INSERT VALUES (s.a, '');
+--
 -- Test enabling/disabling
 --
 CREATE TABLE ruletest1 (a int);
@@ -3507,3 +3550,33 @@ SELECT * FROM ruletest2;
 
 DROP TABLE ruletest1;
 DROP TABLE ruletest2;
+--
+-- Test non-SELECT rule on security invoker view.
+-- Should use view owner's permissions.
+--
+CREATE USER regress_rule_user1;
+CREATE TABLE ruletest_t1 (x int);
+CREATE TABLE ruletest_t2 (x int);
+CREATE VIEW ruletest_v1 WITH (security_invoker=true) AS
+    SELECT * FROM ruletest_t1;
+GRANT INSERT ON ruletest_v1 TO regress_rule_user1;
+CREATE RULE rule1 AS ON INSERT TO ruletest_v1
+    DO INSTEAD INSERT INTO ruletest_t2 VALUES (NEW.*);
+SET SESSION AUTHORIZATION regress_rule_user1;
+INSERT INTO ruletest_v1 VALUES (1);
+RESET SESSION AUTHORIZATION;
+SELECT * FROM ruletest_t1;
+ x 
+---
+(0 rows)
+
+SELECT * FROM ruletest_t2;
+ x 
+---
+ 1
+(1 row)
+
+DROP VIEW ruletest_v1;
+DROP TABLE ruletest_t2;
+DROP TABLE ruletest_t1;
+DROP USER regress_rule_user1;

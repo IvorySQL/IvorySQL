@@ -73,10 +73,6 @@ static void truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 static void message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 							   XLogRecPtr message_lsn, bool transactional,
 							   const char *prefix, Size message_size, const char *message);
-static void sequence_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
-								XLogRecPtr sequence_lsn, Relation rel,
-								bool transactional,
-								int64 last_value, int64 log_cnt, bool is_called);
 
 /* streaming callbacks */
 static void stream_start_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
@@ -94,10 +90,6 @@ static void stream_change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn
 static void stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 									  XLogRecPtr message_lsn, bool transactional,
 									  const char *prefix, Size message_size, const char *message);
-static void stream_sequence_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
-									   XLogRecPtr sequence_lsn, Relation rel,
-									   bool transactional,
-									   int64 last_value, int64 log_cnt, bool is_called);
 static void stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 									   int nrelations, Relation relations[], ReorderBufferChange *change);
 
@@ -226,7 +218,6 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->reorder->apply_truncate = truncate_cb_wrapper;
 	ctx->reorder->commit = commit_cb_wrapper;
 	ctx->reorder->message = message_cb_wrapper;
-	ctx->reorder->sequence = sequence_cb_wrapper;
 
 	/*
 	 * To support streaming, we require start/stop/abort/commit/change
@@ -243,7 +234,6 @@ StartupDecodingContext(List *output_plugin_options,
 		(ctx->callbacks.stream_commit_cb != NULL) ||
 		(ctx->callbacks.stream_change_cb != NULL) ||
 		(ctx->callbacks.stream_message_cb != NULL) ||
-		(ctx->callbacks.stream_sequence_cb != NULL) ||
 		(ctx->callbacks.stream_truncate_cb != NULL);
 
 	/*
@@ -261,7 +251,6 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->reorder->stream_commit = stream_commit_cb_wrapper;
 	ctx->reorder->stream_change = stream_change_cb_wrapper;
 	ctx->reorder->stream_message = stream_message_cb_wrapper;
-	ctx->reorder->stream_sequence = stream_sequence_cb_wrapper;
 	ctx->reorder->stream_truncate = stream_truncate_cb_wrapper;
 
 
@@ -683,12 +672,14 @@ OutputPluginWrite(struct LogicalDecodingContext *ctx, bool last_write)
  * Update progress tracking (if supported).
  */
 void
-OutputPluginUpdateProgress(struct LogicalDecodingContext *ctx)
+OutputPluginUpdateProgress(struct LogicalDecodingContext *ctx,
+						   bool skipped_xact)
 {
 	if (!ctx->update_progress)
 		return;
 
-	ctx->update_progress(ctx, ctx->write_location, ctx->write_xid);
+	ctx->update_progress(ctx, ctx->write_location, ctx->write_xid,
+						 skipped_xact);
 }
 
 /*
@@ -1215,42 +1206,6 @@ message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 }
 
 static void
-sequence_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
-					XLogRecPtr sequence_lsn, Relation rel, bool transactional,
-					int64 last_value, int64 log_cnt, bool is_called)
-{
-	LogicalDecodingContext *ctx = cache->private_data;
-	LogicalErrorCallbackState state;
-	ErrorContextCallback errcallback;
-
-	Assert(!ctx->fast_forward);
-
-	if (ctx->callbacks.sequence_cb == NULL)
-		return;
-
-	/* Push callback + info on the error context stack */
-	state.ctx = ctx;
-	state.callback_name = "sequence";
-	state.report_location = sequence_lsn;
-	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
-	errcallback.previous = error_context_stack;
-	error_context_stack = &errcallback;
-
-	/* set output state */
-	ctx->accept_writes = true;
-	ctx->write_xid = txn != NULL ? txn->xid : InvalidTransactionId;
-	ctx->write_location = sequence_lsn;
-
-	/* do the actual work: call callback */
-	ctx->callbacks.sequence_cb(ctx, txn, sequence_lsn, rel, transactional,
-							   last_value, log_cnt, is_called);
-
-	/* Pop the error context stack */
-	error_context_stack = errcallback.previous;
-}
-
-static void
 stream_start_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 						XLogRecPtr first_lsn)
 {
@@ -1550,47 +1505,6 @@ stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	/* do the actual work: call callback */
 	ctx->callbacks.stream_message_cb(ctx, txn, message_lsn, transactional, prefix,
 									 message_size, message);
-
-	/* Pop the error context stack */
-	error_context_stack = errcallback.previous;
-}
-
-static void
-stream_sequence_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
-						   XLogRecPtr sequence_lsn, Relation rel,
-						   bool transactional,
-						   int64 last_value, int64 log_cnt, bool is_called)
-{
-	LogicalDecodingContext *ctx = cache->private_data;
-	LogicalErrorCallbackState state;
-	ErrorContextCallback errcallback;
-
-	Assert(!ctx->fast_forward);
-
-	/* We're only supposed to call this when streaming is supported. */
-	Assert(ctx->streaming);
-
-	/* this callback is optional */
-	if (ctx->callbacks.stream_sequence_cb == NULL)
-		return;
-
-	/* Push callback + info on the error context stack */
-	state.ctx = ctx;
-	state.callback_name = "stream_sequence";
-	state.report_location = sequence_lsn;
-	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
-	errcallback.previous = error_context_stack;
-	error_context_stack = &errcallback;
-
-	/* set output state */
-	ctx->accept_writes = true;
-	ctx->write_xid = txn != NULL ? txn->xid : InvalidTransactionId;
-	ctx->write_location = sequence_lsn;
-
-	/* do the actual work: call callback */
-	ctx->callbacks.sequence_cb(ctx, txn, sequence_lsn, rel, transactional,
-							   last_value, log_cnt, is_called);
 
 	/* Pop the error context stack */
 	error_context_stack = errcallback.previous;
@@ -1909,7 +1823,6 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 		 (long long) rb->totalTxns,
 		 (long long) rb->totalBytes);
 
-	namestrcpy(&repSlotStat.slotname, NameStr(ctx->slot->data.name));
 	repSlotStat.spill_txns = rb->spillTxns;
 	repSlotStat.spill_count = rb->spillCount;
 	repSlotStat.spill_bytes = rb->spillBytes;
@@ -1919,7 +1832,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	repSlotStat.total_txns = rb->totalTxns;
 	repSlotStat.total_bytes = rb->totalBytes;
 
-	pgstat_report_replslot(&repSlotStat);
+	pgstat_report_replslot(ctx->slot, &repSlotStat);
 
 	rb->spillTxns = 0;
 	rb->spillCount = 0;

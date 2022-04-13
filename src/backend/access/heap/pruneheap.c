@@ -69,7 +69,7 @@ typedef struct
 	/*
 	 * Tuple visibility is only computed once for each tuple, for correctness
 	 * and efficiency reasons; see comment in heap_page_prune() for
-	 * details. This is of type int8[,] intead of HTSV_Result[], so we can use
+	 * details. This is of type int8[,] instead of HTSV_Result[], so we can use
 	 * -1 to indicate no visibility has been computed, e.g. for LP_DEAD items.
 	 *
 	 * Same indexing as ->marked.
@@ -244,7 +244,9 @@ heap_page_prune_opt(Relation relation, Buffer buffer)
  * Prune and repair fragmentation in the specified page.
  *
  * Caller must have pin and buffer cleanup lock on the page.  Note that we
- * don't update the FSM information for page on caller's behalf.
+ * don't update the FSM information for page on caller's behalf.  Caller might
+ * also need to account for a reduction in the length of the line pointer
+ * array following array truncation by us.
  *
  * vistest is used to distinguish whether tuples are DEAD or RECENTLY_DEAD
  * (see heap_prune_satisfies_vacuum and

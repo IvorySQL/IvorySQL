@@ -16,8 +16,14 @@ if (PostgreSQL::Test::Utils::has_wal_read_bug)
 # Initialize primary node
 my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(allows_streaming => 1);
+
+# Increase some settings that Cluster->new makes too low by default.
 $node_primary->adjust_conf('postgresql.conf', 'max_connections', '25');
 $node_primary->append_conf('postgresql.conf', 'max_prepared_transactions = 10');
+# We'll stick with Cluster->new's small default shared_buffers, but since that
+# makes synchronized seqscans more probable, it risks changing the results of
+# some test queries.  Disable synchronized seqscans to prevent that.
+$node_primary->append_conf('postgresql.conf', 'synchronize_seqscans = off');
 
 # WAL consistency checking is resource intensive so require opt-in with the
 # PG_TEST_EXTRA environment variable.
@@ -48,20 +54,32 @@ $node_standby_1->append_conf('postgresql.conf',
 	'max_standby_streaming_delay = 600s');
 $node_standby_1->start;
 
-my $dlpath = PostgreSQL::Test::Utils::perl2host(dirname($ENV{REGRESS_SHLIB}));
-my $outputdir = PostgreSQL::Test::Utils::perl2host($PostgreSQL::Test::Utils::tmp_check);
+my $dlpath = dirname($ENV{REGRESS_SHLIB});
+my $outputdir = $PostgreSQL::Test::Utils::tmp_check;
 
 # Run the regression tests against the primary.
 my $extra_opts = $ENV{EXTRA_REGRESS_OPTS} || "";
-system_or_bail($ENV{PG_REGRESS} . " $extra_opts " .
-			   "--dlpath=\"$dlpath\" " .
-			   "--bindir= " .
-			   "--host=" . $node_primary->host . " " .
-			   "--port=" . $node_primary->port . " " .
-			   "--schedule=../regress/parallel_schedule " .
-			   "--max-concurrent-tests=20 " .
-			   "--inputdir=../regress " .
-			   "--outputdir=\"$outputdir\"");
+my $rc = system($ENV{PG_REGRESS} . " $extra_opts " .
+			    "--dlpath=\"$dlpath\" " .
+			    "--bindir= " .
+			    "--host=" . $node_primary->host . " " .
+			    "--port=" . $node_primary->port . " " .
+			    "--schedule=../regress/parallel_schedule " .
+			    "--max-concurrent-tests=20 " .
+			    "--inputdir=../regress " .
+			    "--outputdir=\"$outputdir\"");
+if ($rc != 0)
+{
+	# Dump out the regression diffs file, if there is one
+	my $diffs = "$outputdir/regression.diffs";
+	if (-e $diffs)
+	{
+		print "=== dumping $diffs ===\n";
+		print slurp_file($diffs);
+		print "=== EOF ===\n";
+	}
+}
+is($rc, 0, 'regression tests pass');
 
 # Clobber all sequences with their next value, so that we don't have
 # differences between nodes due to caching.

@@ -88,9 +88,8 @@ struct exclude_list_item
 static const char *excludeDirContents[] =
 {
 	/*
-	 * Skip temporary statistics files. PG_STAT_TMP_DIR must be skipped even
-	 * when stats_temp_directory is set because PGSS_TEXT_FILE is always
-	 * created there.
+	 * Skip temporary statistics files. PG_STAT_TMP_DIR must be skipped
+	 * because extensions like pg_stat_statements store data there.
 	 */
 	"pg_stat_tmp",				/* defined as PG_STAT_TMP_DIR */
 
@@ -140,9 +139,9 @@ static const struct exclude_list_item excludeFiles[] =
 	{"pg_internal.init", true}, /* defined as RELCACHE_INIT_FILENAME */
 
 	/*
-	 * If there's a backup_label or tablespace_map file, it belongs to a
-	 * backup started by the user with pg_start_backup().  It is *not* correct
-	 * for this backup.  Our backup_label is written later on separately.
+	 * If there is a backup_label or tablespace_map file, it indicates that
+	 * a recovery failed and this cluster probably can't be rewound, but
+	 * exclude them anyway if they are found.
 	 */
 	{"backup_label", false},	/* defined as BACKUP_LABEL_FILE */
 	{"tablespace_map", false},	/* defined as TABLESPACE_MAP */

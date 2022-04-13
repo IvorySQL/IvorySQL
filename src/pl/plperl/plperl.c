@@ -264,6 +264,7 @@ static plperl_proc_desc *compile_plperl_function(Oid fn_oid,
 
 static SV  *plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc, bool include_generated);
 static SV  *plperl_hash_from_datum(Datum attr);
+static void check_spi_usage_allowed(void);
 static SV  *plperl_ref_from_pg_array(Datum arg, Oid typid);
 static SV  *split_array(plperl_array_info *info, int first, int last, int nest);
 static SV  *make_array_ref(plperl_array_info *info, int first, int last);
@@ -455,7 +456,7 @@ _PG_init(void)
 							   PGC_SUSET, 0,
 							   NULL, NULL, NULL);
 
-	EmitWarningsOnPlaceholders("plperl");
+	MarkGUCPrefixReserved("plperl");
 
 	/*
 	 * Create hash tables.
@@ -1429,13 +1430,15 @@ plperl_sv_to_datum(SV *sv, Oid typid, int32 typmod,
 char *
 plperl_sv_to_literal(SV *sv, char *fqtypename)
 {
-	Datum		str = CStringGetDatum(fqtypename);
-	Oid			typid = DirectFunctionCall1(regtypein, str);
+	Oid			typid;
 	Oid			typoutput;
 	Datum		datum;
 	bool		typisvarlena,
 				isnull;
 
+	check_spi_usage_allowed();
+
+	typid = DirectFunctionCall1(regtypein, CStringGetDatum(fqtypename));
 	if (!OidIsValid(typid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -2414,12 +2417,15 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 	if (prodesc->fn_retisset)
 	{
 		/* Check context before allowing the call to go through */
-		if (!rsi || !IsA(rsi, ReturnSetInfo) ||
-			(rsi->allowedModes & SFRM_Materialize) == 0)
+		if (!rsi || !IsA(rsi, ReturnSetInfo))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("set-valued function called in context that "
-							"cannot accept a set")));
+					 errmsg("set-valued function called in context that cannot accept a set")));
+
+		if (!(rsi->allowedModes & SFRM_Materialize))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("materialize mode required, but it is not allowed in this context")));
 	}
 
 	activate_interpreter(prodesc->interp);
@@ -3094,6 +3100,21 @@ check_spi_usage_allowed(void)
 		/* simple croak as we don't want to involve PostgreSQL code */
 		croak("SPI functions can not be used in END blocks");
 	}
+
+	/*
+	 * Disallow SPI usage if we're not executing a fully-compiled plperl
+	 * function.  It might seem impossible to get here in that case, but there
+	 * are cases where Perl will try to execute code during compilation.  If
+	 * we proceed we are likely to crash trying to dereference the prodesc
+	 * pointer.  Working around that might be possible, but it seems unwise
+	 * because it'd allow code execution to happen while validating a
+	 * function, which is undesirable.
+	 */
+	if (current_call_data == NULL || current_call_data->prodesc == NULL)
+	{
+		/* simple croak as we don't want to involve PostgreSQL code */
+		croak("SPI functions can not be used during function compilation");
+	}
 }
 
 
@@ -3213,6 +3234,8 @@ void
 plperl_return_next(SV *sv)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
+
+	check_spi_usage_allowed();
 
 	PG_TRY();
 	{
@@ -3958,10 +3981,11 @@ plperl_spi_commit(void)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
 
+	check_spi_usage_allowed();
+
 	PG_TRY();
 	{
 		SPI_commit();
-		SPI_start_transaction();
 	}
 	PG_CATCH();
 	{
@@ -3983,10 +4007,11 @@ plperl_spi_rollback(void)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
 
+	check_spi_usage_allowed();
+
 	PG_TRY();
 	{
 		SPI_rollback();
-		SPI_start_transaction();
 	}
 	PG_CATCH();
 	{
@@ -4019,6 +4044,11 @@ plperl_util_elog(int level, SV *msg)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
 	char	   *volatile cmsg = NULL;
+
+	/*
+	 * We intentionally omit check_spi_usage_allowed() here, as this seems
+	 * safe to allow even in the contexts that that function rejects.
+	 */
 
 	PG_TRY();
 	{

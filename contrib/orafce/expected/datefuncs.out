@@ -61,7 +61,11 @@ select oracle.numtodsinterval(2147483647.1232131232,'hour') from dual;
 (1 row)
 
 select oracle.numtodsinterval(2147483648.1232131232,'hour') from dual;
-ERROR:  interval out of range
+             numtodsinterval              
+------------------------------------------
+ @ 2147483648 hours 7 mins 23.568128 secs
+(1 row)
+
 select oracle.numtodsinterval(128849018879.1232131232,'minute') from dual;
              numtodsinterval              
 ------------------------------------------
@@ -69,7 +73,11 @@ select oracle.numtodsinterval(128849018879.1232131232,'minute') from dual;
 (1 row)
 
 select oracle.numtodsinterval(128849018880.1232131232,'minute') from dual;
-ERROR:  interval out of range
+         numtodsinterval         
+---------------------------------
+ @ 2147483648 hours 7.39328 secs
+(1 row)
+
 select oracle.numtodsinterval(7730941132799.1232131232,'second') from dual;
               numtodsinterval              
 -------------------------------------------
@@ -77,7 +85,11 @@ select oracle.numtodsinterval(7730941132799.1232131232,'second') from dual;
 (1 row)
 
 select oracle.numtodsinterval(7730941132800.1232131232,'second') from dual;
-ERROR:  interval out of range
+         numtodsinterval         
+---------------------------------
+ @ 2147483648 hours 0.12288 secs
+(1 row)
+
 select oracle.numtodsinterval(NULL,'second') from dual;
  numtodsinterval 
 -----------------

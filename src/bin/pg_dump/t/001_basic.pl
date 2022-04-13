@@ -4,7 +4,6 @@
 use strict;
 use warnings;
 
-use Config;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -125,6 +124,22 @@ command_fails_like(
 	[ 'pg_dump', '-Z', '-1' ],
 	qr/\Qpg_dump: error: -Z\/--compress must be in range 0..9\E/,
 	'pg_dump: -Z/--compress must be in range');
+
+if (check_pg_config("#define HAVE_LIBZ 1"))
+{
+	command_fails_like(
+		[ 'pg_dump', '--compress', '1', '--format', 'tar' ],
+		qr/\Qpg_dump: error: compression is not supported by tar archive format\E/,
+		'pg_dump: compression is not supported by tar archive format');
+}
+else
+{
+	# --jobs > 1 forces an error with tar format.
+	command_fails_like(
+		[ 'pg_dump', '--compress', '1', '--format', 'tar', '-j3' ],
+		qr/\Qpg_dump: warning: requested compression not available in this installation -- archive will be uncompressed\E/,
+		'pg_dump: warning: compression not available in this installation');
+}
 
 command_fails_like(
 	[ 'pg_dump', '--extra-float-digits', '-16' ],

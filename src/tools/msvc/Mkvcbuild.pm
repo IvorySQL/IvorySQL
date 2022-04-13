@@ -124,7 +124,7 @@ sub mkvcbuild
 	}
 
 	our @pgcommonallfiles = qw(
-	  archive.c base64.c checksum_helper.c
+	  archive.c base64.c checksum_helper.c compression.c
 	  config_info.c controldata_utils.c d2s.c encnames.c exec.c
 	  f2s.c file_perm.c file_utils.c hashfn.c ip.c jsonapi.c
 	  keywords.c kwlookup.c link-canary.c md5_common.c
@@ -380,6 +380,7 @@ sub mkvcbuild
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_gzip.c');
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_inject.c');
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_lz4.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_zstd.c');
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_tar.c');
 	$pgbasebackup->AddLibrary('ws2_32.lib');
 

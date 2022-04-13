@@ -9,7 +9,6 @@ use warnings;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
-use Config;
 
 # Initialize primary node
 my $node_primary = PostgreSQL::Test::Cluster->new('primary');
@@ -32,11 +31,8 @@ $node_standby->init_from_backup($node_primary, $backup_name,
 $node_standby->append_conf('postgresql.conf', 'max_prepared_transactions=10');
 $node_standby->start;
 
-# To avoid hanging while expecting some specific input from a psql
-# instance being driven by us, add a timeout high enough that it
-# should never trigger even on very slow machines, unless something
-# is really wrong.
-my $psql_timeout = IPC::Run::timer(300);
+my $psql_timeout =
+  IPC::Run::timer(2 * $PostgreSQL::Test::Utils::timeout_default);
 
 # One psql to primary and standby each, for all queries. That allows
 # to check uncommitted changes being replicated and such.
@@ -182,9 +178,6 @@ sub send_query_and_wait
 	$$psql{run}->pump_nb();
 	while (1)
 	{
-		# See PostgreSQL::Test::Cluster.pm's psql()
-		$$psql{stdout} =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
-
 		last if $$psql{stdout} =~ /$untl/;
 
 		if ($psql_timeout->is_expired)

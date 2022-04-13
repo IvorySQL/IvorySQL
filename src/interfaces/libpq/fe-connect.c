@@ -1115,6 +1115,11 @@ connectOptions2(PGconn *conn)
 		{
 			if (ch->host)
 				free(ch->host);
+
+			/*
+			 * This bit selects the default host location.  If you change
+			 * this, see also pg_regress.
+			 */
 #ifdef HAVE_UNIX_SOCKETS
 			if (DEFAULT_PGSOCKET_DIR[0])
 			{
@@ -3685,7 +3690,7 @@ keep_going:						/* We will come back to here until there is
 				 * (and it seems some clients expect it to be empty after a
 				 * successful connection).
 				 */
-				resetPQExpBuffer(&conn->errorMessage);
+				pqClearConnErrorState(conn);
 
 				/* We are open for business! */
 				conn->status = CONNECTION_OK;
@@ -4231,7 +4236,7 @@ closePGconn(PGconn *conn)
 
 	/*
 	 * Close the connection, reset all transient state, flush I/O buffers.
-	 * Note that this includes clearing conn->errorMessage; we're no longer
+	 * Note that this includes clearing conn's error state; we're no longer
 	 * interested in any failures associated with the old connection, and we
 	 * want a clean slate for any new connection attempt.
 	 */
@@ -4241,7 +4246,7 @@ closePGconn(PGconn *conn)
 	conn->xactStatus = PQTRANS_IDLE;
 	conn->pipelineStatus = PQ_PIPELINE_OFF;
 	pqClearAsyncResult(conn);	/* deallocate result */
-	resetPQExpBuffer(&conn->errorMessage);
+	pqClearConnErrorState(conn);
 	release_conn_addrinfo(conn);
 
 	/* Reset all state obtained from server, too */
@@ -4276,8 +4281,7 @@ PQreset(PGconn *conn)
 		if (connectDBStart(conn) && connectDBComplete(conn))
 		{
 			/*
-			 * Notify event procs of successful reset.  We treat an event proc
-			 * failure as disabling the connection ... good idea?
+			 * Notify event procs of successful reset.
 			 */
 			int			i;
 
@@ -4286,15 +4290,8 @@ PQreset(PGconn *conn)
 				PGEventConnReset evt;
 
 				evt.conn = conn;
-				if (!conn->events[i].proc(PGEVT_CONNRESET, &evt,
-										  conn->events[i].passThrough))
-				{
-					conn->status = CONNECTION_BAD;
-					appendPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext("PGEventProc \"%s\" failed during PGEVT_CONNRESET event\n"),
-									  conn->events[i].name);
-					break;
-				}
+				(void) conn->events[i].proc(PGEVT_CONNRESET, &evt,
+											conn->events[i].passThrough);
 			}
 		}
 	}
@@ -4336,8 +4333,7 @@ PQresetPoll(PGconn *conn)
 		if (status == PGRES_POLLING_OK)
 		{
 			/*
-			 * Notify event procs of successful reset.  We treat an event proc
-			 * failure as disabling the connection ... good idea?
+			 * Notify event procs of successful reset.
 			 */
 			int			i;
 
@@ -4346,15 +4342,8 @@ PQresetPoll(PGconn *conn)
 				PGEventConnReset evt;
 
 				evt.conn = conn;
-				if (!conn->events[i].proc(PGEVT_CONNRESET, &evt,
-										  conn->events[i].passThrough))
-				{
-					conn->status = CONNECTION_BAD;
-					appendPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext("PGEventProc \"%s\" failed during PGEVT_CONNRESET event\n"),
-									  conn->events[i].name);
-					return PGRES_POLLING_FAILED;
-				}
+				(void) conn->events[i].proc(PGEVT_CONNRESET, &evt,
+											conn->events[i].passThrough);
 			}
 		}
 
@@ -4703,6 +4692,7 @@ PQrequestCancel(PGconn *conn)
 				"PQrequestCancel() -- connection is not open\n",
 				conn->errorMessage.maxlen);
 		conn->errorMessage.len = strlen(conn->errorMessage.data);
+		conn->errorReported = 0;
 
 		return false;
 	}
@@ -4722,7 +4712,10 @@ PQrequestCancel(PGconn *conn)
 	}
 
 	if (!r)
+	{
 		conn->errorMessage.len = strlen(conn->errorMessage.data);
+		conn->errorReported = 0;
+	}
 
 	return r;
 }
@@ -5252,7 +5245,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
  * Returns 0 on success, nonzero on failure.  On failure, if errorMessage
  * isn't null, also store an error message there.  (Note: the only reason
  * this function and related ones don't dump core on errorMessage == NULL
- * is the undocumented fact that printfPQExpBuffer does nothing when passed
+ * is the undocumented fact that appendPQExpBuffer does nothing when passed
  * a null PQExpBuffer pointer.)
  */
 static int

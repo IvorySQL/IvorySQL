@@ -204,6 +204,7 @@ main(int argc, char *argv[])
 	SetVariable(pset.vars, "PROMPT2", DEFAULT_PROMPT2);
 	SetVariable(pset.vars, "PROMPT3", DEFAULT_PROMPT3);
 	SetVariable(pset.vars, "PLISQL", DEFAULT_PLISQL); /* for plisql language */
+	SetVariableBool(pset.vars, "SHOW_ALL_RESULTS");
 
 	parse_psql_options(argc, argv, &options);
 
@@ -217,10 +218,7 @@ main(int argc, char *argv[])
 
 	/* Bail out if -1 was specified but will be ignored. */
 	if (options.single_txn && options.actions.head == NULL)
-	{
-		pg_log_fatal("-1 can only be used in non-interactive mode");
-		exit(EXIT_FAILURE);
-	}
+		pg_fatal("-1 can only be used in non-interactive mode");
 
 	if (!pset.popt.topt.fieldSep.separator &&
 		!pset.popt.topt.fieldSep.separator_zero)
@@ -343,11 +341,8 @@ main(int argc, char *argv[])
 	{
 		pset.logfile = fopen(options.logfilename, "a");
 		if (!pset.logfile)
-		{
-			pg_log_fatal("could not open log file \"%s\": %m",
-						 options.logfilename);
-			exit(EXIT_FAILURE);
-		}
+			pg_fatal("could not open log file \"%s\": %m",
+					 options.logfilename);
 	}
 
 	if (!options.no_psqlrc)
@@ -608,10 +603,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts *options)
 					}
 
 					if (!result)
-					{
-						pg_log_fatal("could not set printing parameter \"%s\"", value);
-						exit(EXIT_FAILURE);
-					}
+						pg_fatal("could not set printing parameter \"%s\"", value);
 
 					free(value);
 					break;
@@ -717,10 +709,10 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts *options)
 				break;
 			default:
 		unknown_option:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-						pset.progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.",
+								  pset.progname);
 				exit(EXIT_FAILURE);
-				break;
 		}
 	}
 
@@ -782,10 +774,7 @@ process_psqlrc(char *argv0)
 	char	   *envrc = getenv("PSQLRC");
 
 	if (find_my_exec(argv0, my_exec_path) < 0)
-	{
-		pg_log_fatal("could not find own program executable");
-		exit(EXIT_FAILURE);
-	}
+		pg_fatal("could not find own program executable");
 
 	get_etc_path(my_exec_path, etc_path);
 
@@ -1151,6 +1140,12 @@ verbosity_hook(const char *newval)
 	return true;
 }
 
+static bool
+show_all_results_hook(const char *newval)
+{
+	return ParseVariableBool(newval, "SHOW_ALL_RESULTS", &pset.show_all_results);
+}
+
 static char *
 show_context_substitute_hook(char *newval)
 {
@@ -1252,6 +1247,9 @@ EstablishVariableSpace(void)
 	SetVariableHooks(pset.vars, "VERBOSITY",
 					 verbosity_substitute_hook,
 					 verbosity_hook);
+	SetVariableHooks(pset.vars, "SHOW_ALL_RESULTS",
+					 bool_substitute_hook,
+					 show_all_results_hook);
 	SetVariableHooks(pset.vars, "SHOW_CONTEXT",
 					 show_context_substitute_hook,
 					 show_context_hook);

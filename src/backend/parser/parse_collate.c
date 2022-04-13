@@ -485,6 +485,7 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 		case T_FromExpr:
 		case T_OnConflictExpr:
 		case T_SortGroupClause:
+		case T_MergeAction:
 			(void) expression_tree_walker(node,
 										  assign_collations_walker,
 										  (void *) &loccontext);
@@ -689,6 +690,10 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 							(void) assign_collations_walker((Node *) sbsref->refassgnexpr,
 															&loccontext);
 						}
+						break;
+					case T_JsonExpr:
+						/* Context item and PASSING arguments are already
+						 * marked with collations in parse_expr.c. */
 						break;
 					default:
 

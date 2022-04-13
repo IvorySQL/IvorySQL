@@ -96,6 +96,7 @@ typedef struct _SPI_plan *SPIPlanPtr;
 #define SPI_OK_REL_REGISTER		15
 #define SPI_OK_REL_UNREGISTER	16
 #define SPI_OK_TD_REGISTER		17
+#define SPI_OK_MERGE			18
 
 #define SPI_OPT_NONATOMIC		(1 << 0)
 
@@ -205,7 +206,6 @@ extern void SPI_commit_and_chain(void);
 extern void SPI_rollback(void);
 extern void SPI_rollback_and_chain(void);
 
-extern void SPICleanup(void);
 extern void AtEOXact_SPI(bool isCommit);
 extern void AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid);
 extern bool SPI_inside_nonatomic_context(void);

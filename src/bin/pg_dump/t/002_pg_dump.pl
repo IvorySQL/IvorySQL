@@ -4,7 +4,6 @@
 use strict;
 use warnings;
 
-use Config;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -21,11 +20,21 @@ my $tempdir       = PostgreSQL::Test::Utils::tempdir;
 # test_key indicates that a given run should simply use the same
 # set of like/unlike tests as another run, and which run that is.
 #
+# compile_option indicates if the commands run depend on a compilation
+# option, if any.  This can be used to control if tests should be
+# skipped when a build dependency is not satisfied.
+#
 # dump_cmd is the pg_dump command to run, which is an array of
 # the full command and arguments to run.  Note that this is run
 # using $node->command_ok(), so the port does not need to be
 # specified and is pulled from $PGPORT, which is set by the
 # PostgreSQL::Test::Cluster system.
+#
+# compress_cmd is the utility command for (de)compression, if any.
+# Note that this should generally be used on pg_dump's output
+# either to generate a text file to run the through the tests, or
+# to test pg_restore's ability to parse manually compressed files
+# that otherwise pg_dump does not compress on its own (e.g. *.toc).
 #
 # restore_cmd is the pg_restore command to run, if any.  Note
 # that this should generally be used when the pg_dump goes to
@@ -54,6 +63,58 @@ my %pgdump_runs = (
 			"--file=$tempdir/binary_upgrade.sql",
 			"$tempdir/binary_upgrade.dump",
 		],
+	},
+
+	# Do not use --no-sync to give test coverage for data sync.
+	compression_gzip_custom => {
+		test_key       => 'compression',
+		compile_option => 'gzip',
+		dump_cmd       => [
+			'pg_dump',      '--format=custom',
+			'--compress=1', "--file=$tempdir/compression_gzip_custom.dump",
+			'postgres',
+		],
+		restore_cmd => [
+			'pg_restore',
+			"--file=$tempdir/compression_gzip_custom.sql",
+			"$tempdir/compression_gzip_custom.dump",
+		],
+	},
+
+	# Do not use --no-sync to give test coverage for data sync.
+	compression_gzip_dir => {
+		test_key       => 'compression',
+		compile_option => 'gzip',
+		dump_cmd       => [
+			'pg_dump',                              '--jobs=2',
+			'--format=directory',                   '--compress=1',
+			"--file=$tempdir/compression_gzip_dir", 'postgres',
+		],
+		# Give coverage for manually compressed blob.toc files during
+		# restore.
+		compress_cmd => {
+			program => $ENV{'GZIP_PROGRAM'},
+			args    => [ '-f', "$tempdir/compression_gzip_dir/blobs.toc", ],
+		},
+		restore_cmd => [
+			'pg_restore', '--jobs=2',
+			"--file=$tempdir/compression_gzip_dir.sql",
+			"$tempdir/compression_gzip_dir",
+		],
+	},
+
+	compression_gzip_plain => {
+		test_key       => 'compression',
+		compile_option => 'gzip',
+		dump_cmd       => [
+			'pg_dump', '--format=plain', '-Z1',
+			"--file=$tempdir/compression_gzip_plain.sql.gz", 'postgres',
+		],
+		# Decompress the generated file to run through the tests.
+		compress_cmd => {
+			program => $ENV{'GZIP_PROGRAM'},
+			args    => [ '-d', "$tempdir/compression_gzip_plain.sql.gz", ],
+		},
 	},
 	clean => {
 		dump_cmd => [
@@ -295,7 +356,8 @@ my %pgdump_runs = (
 			'--no-sync',
 			"--file=$tempdir/only_dump_test_table.sql",
 			'--table=dump_test.test_table',
-			'--lock-wait-timeout=1000000',
+			'--lock-wait-timeout='
+			  . (1000 * $PostgreSQL::Test::Utils::timeout_default),
 			'postgres',
 		],
 	},
@@ -424,6 +486,7 @@ my %full_runs = (
 	binary_upgrade           => 1,
 	clean                    => 1,
 	clean_if_exists          => 1,
+	compression              => 1,
 	createdb                 => 1,
 	defaults                 => 1,
 	exclude_dump_test_schema => 1,
@@ -2382,6 +2445,15 @@ my %tests = (
 		like => { %full_runs, section_post_data => 1, },
 	},
 
+	'CREATE PUBLICATION pub4' => {
+		create_order => 50,
+		create_sql   => 'CREATE PUBLICATION pub4;',
+		regexp => qr/^
+			\QCREATE PUBLICATION pub4 WITH (publish = 'insert, update, delete, truncate');\E
+			/xm,
+		like => { %full_runs, section_post_data => 1, },
+	},
+
 	'CREATE SUBSCRIPTION sub1' => {
 		create_order => 50,
 		create_sql   => 'CREATE SUBSCRIPTION sub1
@@ -2418,6 +2490,28 @@ my %tests = (
 		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	'ALTER PUBLICATION pub1 ADD TABLE test_sixth_table (col3, col2)' => {
+		create_order => 52,
+		create_sql =>
+		  'ALTER PUBLICATION pub1 ADD TABLE dump_test.test_sixth_table (col3, col2);',
+		regexp => qr/^
+			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_sixth_table (col2, col3);\E
+			/xm,
+		like => { %full_runs, section_post_data => 1, },
+		unlike => { exclude_dump_test_schema => 1, },
+	},
+
+	'ALTER PUBLICATION pub1 ADD TABLE test_seventh_table (col3, col2) WHERE (col1 = 1)' => {
+		create_order => 52,
+		create_sql =>
+		  'ALTER PUBLICATION pub1 ADD TABLE dump_test.test_seventh_table (col3, col2) WHERE (col1 = 1);',
+		regexp => qr/^
+			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_seventh_table (col2, col3) WHERE ((col1 = 1));\E
+			/xm,
+		like => { %full_runs, section_post_data => 1, },
+		unlike => { exclude_dump_test_schema => 1, },
+	},
+
 	'ALTER PUBLICATION pub3 ADD ALL TABLES IN SCHEMA dump_test' => {
 		create_order => 51,
 		create_sql =>
@@ -2437,6 +2531,31 @@ my %tests = (
 			\QALTER PUBLICATION pub3 ADD ALL TABLES IN SCHEMA public;\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
+	},
+
+	'ALTER PUBLICATION pub4 ADD TABLE test_table WHERE (col1 > 0);' => {
+		create_order => 51,
+		create_sql =>
+		  'ALTER PUBLICATION pub4 ADD TABLE dump_test.test_table WHERE (col1 > 0);',
+		regexp => qr/^
+			\QALTER PUBLICATION pub4 ADD TABLE ONLY dump_test.test_table WHERE ((col1 > 0));\E
+			/xm,
+		like => { %full_runs, section_post_data => 1, },
+		unlike => {
+			exclude_dump_test_schema => 1,
+			exclude_test_table       => 1,
+		},
+	},
+
+	'ALTER PUBLICATION pub4 ADD TABLE test_second_table WHERE (col2 = \'test\');' => {
+		create_order => 52,
+		create_sql =>
+		  'ALTER PUBLICATION pub4 ADD TABLE dump_test.test_second_table WHERE (col2 = \'test\');',
+		regexp => qr/^
+			\QALTER PUBLICATION pub4 ADD TABLE ONLY dump_test.test_second_table WHERE ((col2 = 'test'::text));\E
+			/xm,
+		like => { %full_runs, section_post_data => 1, },
+		unlike => { exclude_dump_test_schema => 1, },
 	},
 
 	'CREATE SCHEMA public' => {
@@ -2743,6 +2862,44 @@ my %tests = (
 		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	'CREATE TABLE test_sixth_table' => {
+		create_order => 6,
+		create_sql   => 'CREATE TABLE dump_test.test_sixth_table (
+						   col1 int,
+						   col2 text,
+						   col3 bytea
+					   );',
+		regexp => qr/^
+			\QCREATE TABLE dump_test.test_sixth_table (\E
+			\n\s+\Qcol1 integer,\E
+			\n\s+\Qcol2 text,\E
+			\n\s+\Qcol3 bytea\E
+			\n\);
+			/xm,
+		like =>
+		  { %full_runs, %dump_test_schema_runs, section_pre_data => 1, },
+		unlike => { exclude_dump_test_schema => 1, },
+	},
+
+	'CREATE TABLE test_seventh_table' => {
+		create_order => 6,
+		create_sql   => 'CREATE TABLE dump_test.test_seventh_table (
+						   col1 int,
+						   col2 text,
+						   col3 bytea
+					   );',
+		regexp => qr/^
+			\QCREATE TABLE dump_test.test_seventh_table (\E
+			\n\s+\Qcol1 integer,\E
+			\n\s+\Qcol2 text,\E
+			\n\s+\Qcol3 bytea\E
+			\n\);
+			/xm,
+		like =>
+		  { %full_runs, %dump_test_schema_runs, section_pre_data => 1, },
+		unlike => { exclude_dump_test_schema => 1, },
+	},
+
 	'CREATE TABLE test_table_identity' => {
 		create_order => 3,
 		create_sql   => 'CREATE TABLE dump_test.test_table_identity (
@@ -2972,6 +3129,7 @@ my %tests = (
 			binary_upgrade          => 1,
 			clean                   => 1,
 			clean_if_exists         => 1,
+			compression             => 1,
 			createdb                => 1,
 			defaults                => 1,
 			exclude_test_table      => 1,
@@ -3045,6 +3203,7 @@ my %tests = (
 			binary_upgrade           => 1,
 			clean                    => 1,
 			clean_if_exists          => 1,
+			compression              => 1,
 			createdb                 => 1,
 			defaults                 => 1,
 			exclude_dump_test_schema => 1,
@@ -3709,8 +3868,9 @@ if ($collation_check_stderr !~ /ERROR: /)
 	$collation_support = 1;
 }
 
-# Determine whether build supports LZ4.
-my $supports_lz4 = check_pg_config("#define HAVE_LIBLZ4 1");
+# Determine whether build supports LZ4 and gzip.
+my $supports_lz4  = check_pg_config("#define USE_LZ4 1");
+my $supports_gzip = check_pg_config("#define HAVE_LIBZ 1");
 
 # Create additional databases for mutations of schema public
 $node->psql('postgres', 'create database regress_pg_dump_test;');
@@ -3823,8 +3983,31 @@ foreach my $run (sort keys %pgdump_runs)
 	my $test_key = $run;
 	my $run_db   = 'postgres';
 
+	# Skip command-level tests for gzip if there is no support for it.
+	if (   defined($pgdump_runs{$run}->{compile_option})
+		&& $pgdump_runs{$run}->{compile_option} eq 'gzip'
+		&& !$supports_gzip)
+	{
+		note "$run: skipped due to no gzip support";
+		next;
+	}
+
 	$node->command_ok(\@{ $pgdump_runs{$run}->{dump_cmd} },
 		"$run: pg_dump runs");
+
+	if ($pgdump_runs{$run}->{compress_cmd})
+	{
+		my ($compress_cmd) = $pgdump_runs{$run}->{compress_cmd};
+		my $compress_program = $compress_cmd->{program};
+
+		# Skip the rest of the test if the compression program is
+		# not defined.
+		next if (!defined($compress_program) || $compress_program eq '');
+
+		my @full_compress_cmd =
+		  ($compress_cmd->{program}, @{ $compress_cmd->{args} });
+		command_ok(\@full_compress_cmd, "$run: compression commands");
+	}
 
 	if ($pgdump_runs{$run}->{restore_cmd})
 	{

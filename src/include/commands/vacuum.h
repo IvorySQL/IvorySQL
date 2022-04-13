@@ -252,17 +252,17 @@ typedef struct VacDeadItems
 
 /* GUC parameters */
 extern PGDLLIMPORT int default_statistics_target;	/* PGDLLIMPORT for PostGIS */
-extern int	vacuum_freeze_min_age;
-extern int	vacuum_freeze_table_age;
-extern int	vacuum_multixact_freeze_min_age;
-extern int	vacuum_multixact_freeze_table_age;
-extern int	vacuum_failsafe_age;
-extern int	vacuum_multixact_failsafe_age;
+extern PGDLLIMPORT int vacuum_freeze_min_age;
+extern PGDLLIMPORT int vacuum_freeze_table_age;
+extern PGDLLIMPORT int vacuum_multixact_freeze_min_age;
+extern PGDLLIMPORT int vacuum_multixact_freeze_table_age;
+extern PGDLLIMPORT int vacuum_failsafe_age;
+extern PGDLLIMPORT int vacuum_multixact_failsafe_age;
 
 /* Variables for cost-based parallel vacuum */
-extern pg_atomic_uint32 *VacuumSharedCostBalance;
-extern pg_atomic_uint32 *VacuumActiveNWorkers;
-extern int	VacuumCostBalanceLocal;
+extern PGDLLIMPORT pg_atomic_uint32 *VacuumSharedCostBalance;
+extern PGDLLIMPORT pg_atomic_uint32 *VacuumActiveNWorkers;
+extern PGDLLIMPORT int VacuumCostBalanceLocal;
 
 
 /* in commands/vacuum.c */
@@ -291,6 +291,7 @@ extern bool vacuum_set_xid_limits(Relation rel,
 								  int multixact_freeze_min_age,
 								  int multixact_freeze_table_age,
 								  TransactionId *oldestXmin,
+								  MultiXactId *oldestMxact,
 								  TransactionId *freezeLimit,
 								  MultiXactId *multiXactCutoff);
 extern bool vacuum_xid_failsafe_check(TransactionId relfrozenxid,

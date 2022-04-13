@@ -4,9 +4,6 @@
 use strict;
 use warnings;
 
-use Config;
-use Fcntl ':mode';
-use File::stat qw{lstat};
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -47,16 +44,7 @@ my $ctlcmd = [
 	'pg_ctl', 'start', '-D', "$tempdir/data", '-l',
 	"$PostgreSQL::Test::Utils::log_path/001_start_stop_server.log"
 ];
-if ($Config{osname} ne 'msys')
-{
-	command_like($ctlcmd, qr/done.*server started/s, 'pg_ctl start');
-}
-else
-{
-
-	# use the version of command_like that doesn't hang on Msys here
-	command_like_safe($ctlcmd, qr/done.*server started/s, 'pg_ctl start');
-}
+command_like($ctlcmd, qr/done.*server started/s, 'pg_ctl start');
 
 # sleep here is because Windows builds can't check postmaster.pid exactly,
 # so they may mistake a pre-existing postmaster.pid for one created by the

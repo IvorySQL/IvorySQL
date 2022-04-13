@@ -24,7 +24,6 @@ PostgreSQL::Test::Utils - helper module for writing PostgreSQL's C<prove> tests.
 
   # Miscellanea
   print "on Windows" if $PostgreSQL::Test::Utils::windows_os;
-  my $path = PostgreSQL::Test::Utils::perl2host($backup_dir);
   ok(check_mode_recursive($stream_dir, 0700, 0600),
     "check stream dir permissions");
   PostgreSQL::Test::Utils::system_log('pg_ctl', 'kill', 'QUIT', $slow_pid);
@@ -74,6 +73,7 @@ our @EXPORT = qw(
   system_log
   run_log
   run_command
+  pump_until
 
   command_ok
   command_fails
@@ -91,8 +91,8 @@ our @EXPORT = qw(
   $use_unix_sockets
 );
 
-our ($windows_os, $is_msys2, $use_unix_sockets, $tmp_check, $log_path,
-	$test_logfile);
+our ($windows_os, $is_msys2, $use_unix_sockets, $timeout_default,
+	$tmp_check, $log_path, $test_logfile);
 
 BEGIN
 {
@@ -157,6 +157,10 @@ BEGIN
 	# supported, but it can be overridden if desired.
 	$use_unix_sockets =
 	  (!$windows_os || defined $ENV{PG_TEST_USE_UNIX_SOCKETS});
+
+	$timeout_default = $ENV{PG_TEST_TIMEOUT_DEFAULT};
+	$timeout_default = 180
+	  if not defined $timeout_default or $timeout_default eq '';
 }
 
 =pod
@@ -297,61 +301,6 @@ sub tempdir_short
 
 =pod
 
-=item perl2host()
-
-Translate a virtual file name to a host file name.  Currently, this is a no-op
-except for the case of Perl=msys and host=mingw32.  The subject need not
-exist, but its parent or grandparent directory must exist unless cygpath is
-available.
-
-The returned path uses forward slashes but has no trailing slash.
-
-=cut
-
-sub perl2host
-{
-	my ($subject) = @_;
-	return $subject;
-	if ($is_msys2)
-	{
-		# get absolute, windows type path
-		my $path = qx{cygpath -a -m "$subject"};
-		if (!$?)
-		{
-			chomp $path;
-			$path =~ s!/$!!;
-			return $path if $path;
-		}
-		# fall through if this didn't work.
-	}
-	my $here = cwd;
-	my $leaf;
-	if (chdir $subject)
-	{
-		$leaf = '';
-	}
-	else
-	{
-		$leaf = '/' . basename $subject;
-		my $parent = dirname $subject;
-		if (!chdir $parent)
-		{
-			$leaf   = '/' . basename($parent) . $leaf;
-			$parent = dirname $parent;
-			chdir $parent or die "could not chdir \"$parent\": $!";
-		}
-	}
-
-	# this odd way of calling 'pwd -W' is the only way that seems to work.
-	my $dir = qx{sh -c "pwd -W"};
-	chomp $dir;
-	$dir =~ s!/$!!;
-	chdir $here;
-	return $dir . $leaf;
-}
-
-=pod
-
 =item has_wal_read_bug()
 
 Returns true if $tmp_check is subject to a sparc64+ext4 bug that causes WAL
@@ -457,10 +406,39 @@ sub run_command
 	my ($cmd) = @_;
 	my ($stdout, $stderr);
 	my $result = IPC::Run::run $cmd, '>', \$stdout, '2>', \$stderr;
-	foreach ($stderr, $stdout) { s/\r\n/\n/g if $Config{osname} eq 'msys'; }
 	chomp($stdout);
 	chomp($stderr);
 	return ($stdout, $stderr);
+}
+
+=pod
+
+=item pump_until(proc, timeout, stream, until)
+
+Pump until string is matched on the specified stream, or timeout occurs.
+
+=cut
+
+sub pump_until
+{
+	my ($proc, $timeout, $stream, $until) = @_;
+	$proc->pump_nb();
+	while (1)
+	{
+		last if $$stream =~ /$until/;
+		if ($timeout->is_expired)
+		{
+			diag("pump_until: timeout expired when searching for \"$until\" with stream: \"$$stream\"");
+			return 0;
+		}
+		if (not $proc->pumpable())
+		{
+			diag("pump_until: process terminated unexpectedly when searching for \"$until\" with stream: \"$$stream\"");
+			return 0;
+		}
+		$proc->pump();
+	}
+	return 1;
 }
 
 =pod
@@ -542,7 +520,6 @@ sub slurp_file
 	$contents = <$fh>;
 	close $fh;
 
-	$contents =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
 	return $contents;
 }
 
@@ -727,8 +704,6 @@ sub dir_symlink
 	my $newname = shift;
 	if ($windows_os)
 	{
-		$oldname = perl2host($oldname);
-		$newname = perl2host($newname);
 		$oldname =~ s,/,\\,g;
 		$newname =~ s,/,\\,g;
 		my $cmd = qq{mklink /j "$newname" "$oldname"};
@@ -902,7 +877,6 @@ sub command_like
 	my $result = IPC::Run::run $cmd, '>', \$stdout, '2>', \$stderr;
 	ok($result, "$test_name: exit code 0");
 	is($stderr, '', "$test_name: no stderr");
-	$stdout =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
 	like($stdout, $expected_stdout, "$test_name: matches");
 	return;
 }
@@ -955,7 +929,6 @@ sub command_fails_like
 	print("# Running: " . join(" ", @{$cmd}) . "\n");
 	my $result = IPC::Run::run $cmd, '>', \$stdout, '2>', \$stderr;
 	ok(!$result, "$test_name: exit code not 0");
-	$stderr =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
 	like($stderr, $expected_stderr, "$test_name: matches");
 	return;
 }
@@ -999,8 +972,6 @@ sub command_checks_all
 	die "command exited with signal " . ($ret & 127)
 	  if $ret & 127;
 	$ret = $ret >> 8;
-
-	foreach ($stderr, $stdout) { s/\r\n/\n/g if $Config{osname} eq 'msys'; }
 
 	# check status
 	ok($ret == $expected_ret,
