@@ -149,4 +149,4 @@ test: stats
 # ----------
 # compatible oracle q syntax tests
 # ----------
-test: qsyntax
+#test: qsyntax
