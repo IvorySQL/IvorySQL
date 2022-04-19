@@ -2223,74 +2223,38 @@ stmt_execsql	: K_IMPORT
 					}
 				| K_SELECT
 					{
-						int 		tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_SELECT, @1);
 					}
 				| K_UPDATE
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_UPDATE, @1);
 					}
 				| K_DELETE
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_DELETE, @1);
 					}
 				| K_COMMENT
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_COMMENT, @1);
 					}
 				| K_COPY
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_COPY, @1);
 					}
 				| K_CREATE
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_CREATE, @1);
 					}
 				| K_RESET
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_RESET, @1);
 					}
 				| K_SET
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_SET, @1);
 					}
 				| K_SAVEPOINT
 					{
-						int			tok = -1;
-
-						tok = yylex();
-						plisql_push_back_token(tok);
 						$$ = make_execsql_stmt(K_SAVEPOINT, @1);
 					}
 				| T_WORD
