@@ -457,6 +457,9 @@ DropPackagebody(Oid packageOid)
 	Relation	relation;
 	HeapTuple	tup;
 	bool		isnull;
+	char 		*tmp = NULL;
+	char		*bodytext = NULL;
+
 
 	relation = table_open(PackageRelationId, RowExclusiveLock);
 
@@ -464,14 +467,21 @@ DropPackagebody(Oid packageOid)
 						  ObjectIdGetDatum(packageOid));
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for package %u", packageOid);
-	(void) SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
+
+	tmp = SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
 	if (isnull)
-		elog(ERROR, "The package body does not exist");
+		elog(ERROR, "null pkgbody for package");
+
+	bodytext = TextDatumGetCString(tmp);
+	if (strcmp(bodytext, "") == 0)
+		elog(ERROR, "package body does not exist");
+
 	/* update package src attribute to null */
 	update_package_src(relation, tup, "");
 
-	/* remove packages private elements */
-	RemovePackageFunctions(packageOid, PACKAGE_MEMBER_PRIVATE, true);
+	/* remove package body elements */
+	RemovePackageFunctions(packageOid, PACKAGE_MEMBER_PUBLIC, true);
+	RemovePackageFunctions(packageOid, PACKAGE_MEMBER_PRIVATE, false);
 	RemovePackageVariables(packageOid, PACKAGE_MEMBER_PRIVATE);
 	RemoveVariabletype(packageOid, PACKAGE_MEMBER_PRIVATE);
 

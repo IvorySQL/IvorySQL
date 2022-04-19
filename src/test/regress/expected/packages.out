@@ -1785,18 +1785,60 @@ create or replace package body pkgvar is
 		raise info 'function tf called';
 		return v_int_priv;
 	end;
+	function tp return int as
+	begin
+		return v_int;
+	end;
 end;
 /
-select pkgvar.tf;
+select pkgvar.tf();
 INFO:  function tf called
   tf  
 ------
  1000
 (1 row)
 
+select pkgvar.tp();
+ tp 
+----
+   
+(1 row)
+
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
+ proname |                      prosrc                      
+---------+--------------------------------------------------
+ tf      |                                                 +
+         |         begin                                   +
+         |                 raise info 'function tf called';+
+         |                 return v_int_priv;              +
+         |         end;
+(1 row)
+
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
+ proname |            prosrc             
+---------+-------------------------------
+ tp      |                              +
+         |         begin                +
+         |                 return v_int;+
+         |         end;
+(1 row)
+
 DROP PACKAGE BODY pkgvar;
-select pkgvar.tf;
-ERROR:  no defination for package element: pkgvar
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
+ proname | prosrc 
+---------+--------
+ tf      | 
+(1 row)
+
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
+ proname | prosrc 
+---------+--------
+(0 rows)
+
+DROP PACKAGE BODY pkgvar;
+ERROR:  package body does not exist
+select pkgvar.tf();
+ERROR:  no defination for package element: tf
 DROP PACKAGE pkgvar;
 --test drop package body when there is no body infomation
 create or replace package pkgvar is
@@ -1806,7 +1848,7 @@ create or replace package pkgvar is
 end;
 /
 DROP PACKAGE BODY pkgvar;
-ERROR:  The package body does not exist
+ERROR:  null pkgbody for package
 select pkgvar.tf;
 ERROR:  no defination for package element: tf
 DROP PACKAGE pkgvar;
