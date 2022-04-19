@@ -1505,13 +1505,27 @@ create or replace package body pkgvar is
 		raise info 'function tf called';
 		return v_int_priv;
 	end;
+	function tp return int as
+	begin
+		return v_int;
+	end;
 end;
 /
-select pkgvar.tf;
+
+select pkgvar.tf();
+select pkgvar.tp();
+
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
 
 DROP PACKAGE BODY pkgvar;
 
-select pkgvar.tf;
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
+select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
+
+DROP PACKAGE BODY pkgvar;
+
+select pkgvar.tf();
 DROP PACKAGE pkgvar;
 
 --test drop package body when there is no body infomation
@@ -1524,6 +1538,7 @@ end;
 DROP PACKAGE BODY pkgvar;
 select pkgvar.tf;
 DROP PACKAGE pkgvar;
+
 --close the opened cursor when drop package body
 create table test(x int, y varchar(100));
 insert into test values(1, 'One');
