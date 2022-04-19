@@ -182,7 +182,7 @@ SELECT
   parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity AND PRIOR val = 50
-ORDER BY 1, 2;
+ORDER BY 5, 6, 7;
 
 -- test function call with hierarchical statement
 DROP FUNCTION IF EXISTS hier_func_test(x VARCHAR);
