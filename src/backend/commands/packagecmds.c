@@ -76,7 +76,7 @@ static char *get_func_src(CreateFunctionStmt *fn);
 static Oid	get_lang_validator(void);
 static void	create_constructor(ParseState *pstate, CreatePackageStmt *stmt);
 static char *get_cursor_query(List *variables, DeclareCursorStmt *cur);
-static void update_package_src(Relation rel, HeapTuple tuple, char *src);
+static void update_package_body(Relation rel, HeapTuple tuple);
 
 
 
@@ -457,9 +457,6 @@ DropPackagebody(Oid packageOid)
 	Relation	relation;
 	HeapTuple	tup;
 	bool		isnull;
-	char 		*tmp = NULL;
-	char		*bodytext = NULL;
-
 
 	relation = table_open(PackageRelationId, RowExclusiveLock);
 
@@ -468,16 +465,12 @@ DropPackagebody(Oid packageOid)
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for package %u", packageOid);
 
-	tmp = SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
+	(void)SysCacheGetAttr(PACKAGEOID, tup, Anum_pg_package_pkgbody, &isnull);
 	if (isnull)
-		elog(ERROR, "null pkgbody for package");
-
-	bodytext = TextDatumGetCString(tmp);
-	if (strcmp(bodytext, "") == 0)
 		elog(ERROR, "package body does not exist");
 
-	/* update package src attribute to null */
-	update_package_src(relation, tup, "");
+	/* mark the pkgbody column to null */
+	update_package_body(relation, tup);
 
 	/* remove package body elements */
 	RemovePackageFunctions(packageOid, PACKAGE_MEMBER_PUBLIC, true);
@@ -630,7 +623,7 @@ update_function_src(Relation rel, HeapTuple tuple, char *src)
 }
 
 static void
-update_package_src(Relation rel, HeapTuple tuple, char *src)
+update_package_body(Relation rel, HeapTuple tuple)
 {
 	TupleDesc	tupdesc;
 	HeapTuple	newtuple;
@@ -646,8 +639,8 @@ update_package_src(Relation rel, HeapTuple tuple, char *src)
 		replaces[i] = false;
 	}
 
-	values[Anum_pg_package_pkgbody - 1] = CStringGetTextDatum(src);
 	replaces[Anum_pg_package_pkgbody - 1] = true;
+	nulls[Anum_pg_package_pkgbody - 1] = true;
 
 	tupdesc = RelationGetDescr(rel);
 	newtuple = heap_modify_tuple(tuple, tupdesc, values, nulls, replaces);
