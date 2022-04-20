@@ -2249,6 +2249,7 @@ typedef enum ObjectType
 	OBJECT_SEQUENCE,
 	OBJECT_SUBSCRIPTION,
 	OBJECT_STATISTIC_EXT,
+	OBJECT_SYNONYM,
 	OBJECT_TABCONSTRAINT,
 	OBJECT_TABLE,
 	OBJECT_TABLESPACE,
@@ -2301,6 +2302,21 @@ typedef struct AlterTableStmt
 	ObjectType	objtype;		/* type of object */
 	bool		missing_ok;		/* skip error if table missing */
 } AlterTableStmt;
+
+/* ----------------------
+ *	Alter Synonym
+ * ----------------------
+ */
+typedef struct AlterSynonymStmt
+{
+	NodeTag		type;
+	RangeVar   *synonym;		/* synonym to work on */
+	bool		synispub;		/* is it a public synonym */
+	ObjectType	relkind;		/* type of object */
+	bool		missing_ok;		/* skip error if synonym missing */
+} AlterSynonymStmt;
+
+	
 
 typedef enum AlterTableType
 {
@@ -3053,6 +3069,18 @@ typedef struct CreateRoleStmt
 	List	   *options;		/* List of DefElem nodes */
 } CreateRoleStmt;
 
+typedef struct CreateSynonymStmt
+{
+	NodeTag		type;
+	bool		replace;		/* T => replace if already exists */
+	bool		synispub;		/* T => it is a public synonym */
+	RangeVar	*synonym;		/* the synonym to create */
+	RangeVar	*object;		/* the associated object to create */
+	char		*dblinkname;	/* linked database name */
+	Node		*dblinkstmt;	/* linked database struct */
+} CreateSynonymStmt;
+
+
 typedef struct AlterRoleStmt
 {
 	NodeTag		type;
@@ -3075,6 +3103,14 @@ typedef struct DropRoleStmt
 	List	   *roles;			/* List of roles to remove */
 	bool		missing_ok;		/* skip error if a role is missing? */
 } DropRoleStmt;
+
+typedef struct DropSynonymStmt
+{
+	NodeTag		type;
+	bool		pubflg;
+	List	   *synonym;			/* List of synonym to remove */
+	bool		missing_ok;		/* skip error if a synonym is missing? */
+} DropSynonymStmt;
 
 /* ----------------------
  *		{Create|Alter} SEQUENCE Statement

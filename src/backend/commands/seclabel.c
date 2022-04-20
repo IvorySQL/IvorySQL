@@ -95,6 +95,7 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_PACKAGE:
 		case OBJECT_PACKAGE_BODY:
 		case OBJECT_VARIABLE:
+		case OBJECT_SYNONYM:
 			return false;
 
 			/*

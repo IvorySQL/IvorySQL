@@ -1495,6 +1495,7 @@ heap_create_with_catalog(const char *relname,
 	return relid;
 }
 
+
 /*
  *		RelationRemoveInheritance
  *

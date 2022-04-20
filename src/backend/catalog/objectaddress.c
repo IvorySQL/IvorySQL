@@ -65,6 +65,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
 #include "catalog/pg_variable.h"
+#include "catalog/pg_synonym.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -634,6 +635,20 @@ static const ObjectPropertyType ObjectProperty[] =
 		Anum_pg_package_pkgowner,
 		Anum_pg_package_pkgacl,
 		OBJECT_PACKAGE,
+		true
+	},
+	{
+		"synony",
+		SynonymRelationId,
+		SynonymOidIndexId,
+		SYNONYMOID,
+		SYNONYMNAMENSPPUB,
+		Anum_pg_synonym_oid,
+		Anum_pg_synonym_synname,
+		Anum_pg_synonym_synnamespace,
+		Anum_pg_synonym_synowner,
+		InvalidAttrNumber,
+		OBJECT_SYNONYM,
 		true
 	},
 };
@@ -1267,6 +1282,124 @@ get_object_address(ObjectType objtype, Node *object,
 	/* Return the object address and the relation. */
 	*relp = relation;
 	return address;
+}
+
+/**********************************************
+* get_synonym_address
+* Description: get synonym address
+* Return: oid
+***********************************************/
+ObjectAddress
+get_synonym_address(ObjectType objtype, Node *object, RangeVar *var,
+				  Relation *relp, LOCKMODE lockmode, bool missing_ok)
+{
+   ObjectAddress address;
+   ObjectAddress old_address = {InvalidOid, InvalidOid, 0};
+   Relation    relation = NULL;
+   uint64	   inval_count;
+
+   /* Some kind of lock must be taken. */
+   Assert(lockmode != NoLock);
+
+   for (;;)
+   {
+	   /*
+		* Remember this value, so that, after looking up the object name and
+		* locking it, we can check whether any invalidation messages have
+		* been processed that might require a do-over.
+		*/
+	   inval_count = SharedInvalidMessageCounter;
+
+	   /* Look up object address. */
+	   switch (objtype)
+	   {
+		   case OBJECT_SYNONYM:
+			   address = get_object_address_synonym(castNode(List, object), var,
+															missing_ok);
+			   break;
+		   default:
+			   elog(ERROR, "unrecognized objtype: %d", (int) objtype);
+			   /* placate compiler, in case it thinks elog might return */
+			   address.classId = InvalidOid;
+			   address.objectId = InvalidOid;
+			   address.objectSubId = 0;
+	   }
+
+	   /*
+		* If we could not find the supplied object, return without locking.
+		*/
+	   if (!OidIsValid(address.objectId))
+	   {
+		   Assert(missing_ok);
+		   return address;
+	   }
+
+	   /*
+		* If we're retrying, see if we got the same answer as last time.  If
+		* so, we're done; if not, we locked the wrong thing, so give up our
+		* lock.
+		*/
+	   if (OidIsValid(old_address.classId))
+	   {
+		   if (old_address.classId == address.classId
+			   && old_address.objectId == address.objectId
+			   && old_address.objectSubId == address.objectSubId)
+			   break;
+		   if (old_address.classId != RelationRelationId)
+		   {
+			   if (IsSharedRelation(old_address.classId))
+				   UnlockSharedObject(old_address.classId,
+									  old_address.objectId,
+									  0, lockmode);
+			   else
+				   UnlockDatabaseObject(old_address.classId,
+										old_address.objectId,
+										0, lockmode);
+		   }
+	   }
+
+	   /*
+		* If we're dealing with a relation or attribute, then the relation is
+		* already locked.  Otherwise, we lock it now.
+		*/
+	   if (address.classId != RelationRelationId)
+	   {
+		   if (IsSharedRelation(address.classId))
+			   LockSharedObject(address.classId, address.objectId, 0,
+								lockmode);
+		   else
+			   LockDatabaseObject(address.classId, address.objectId, 0,
+								  lockmode);
+	   }
+
+	   /*
+		* At this point, we've resolved the name to an OID and locked the
+		* corresponding database object.  However, it's possible that by the
+		* time we acquire the lock on the object, concurrent DDL has modified
+		* the database in such a way that the name we originally looked up no
+		* longer resolves to that OID.
+		*
+		* We can be certain that this isn't an issue if (a) no shared
+		* invalidation messages have been processed or (b) we've locked a
+		* relation somewhere along the line.  All the relation name lookups
+		* in this module ultimately use RangeVarGetRelid() to acquire a
+		* relation lock, and that function protects against the same kinds of
+		* races we're worried about here.  Even when operating on a
+		* constraint, rule, or trigger, we still acquire AccessShareLock on
+		* the relation, which is enough to freeze out any concurrent DDL.
+		*
+		* In all other cases, however, it's possible that the name we looked
+		* up no longer refers to the object we locked, so we retry the lookup
+		* and see whether we get the same answer.
+		*/
+	   if (inval_count == SharedInvalidMessageCounter || relation != NULL)
+		   break;
+	   old_address = address;
+   }
+
+   /* Return the object address and the relation. */
+   *relp = relation;
+   return address;
 }
 
 /*
@@ -2396,6 +2529,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_OPCLASS:
 		case OBJECT_OPFAMILY:
 		case OBJECT_VARIABLE:
+		case OBJECT_SYNONYM:
 			objnode = (Node *) name;
 			break;
 		case OBJECT_ACCESS_METHOD:
@@ -4185,6 +4319,15 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				break;
 			}
 
+		case OCLASS_SYNONYM:
+			{
+				appendStringInfo(&buffer, _("synonym %s"),
+									 get_synonym_name(object->objectId,
+												false));
+
+				break;
+			}
+
 			/*
 			 * There's intentionally no default: case here; we want the
 			 * compiler to warn if a new OCLASS hasn't been handled above.
@@ -4211,6 +4354,41 @@ getObjectDescriptionOids(Oid classid, Oid objid)
 	address.objectSubId = 0;
 
 	return getObjectDescription(&address, false);
+}
+
+/**********************************************
+* get_object_address_synonym
+* Description: get synonym address
+* Return: oid
+***********************************************/
+ObjectAddress
+get_object_address_synonym(List *object, RangeVar *var, bool missing_ok)
+{
+	ObjectAddress address;
+	Oid			synonymoid;
+	bool		pubflg = false;
+
+	ObjectAddressSet(address, SynonymRelationId, InvalidOid);
+
+	/* there inh reperset public flg */
+	if (var != NULL)
+		pubflg = var->inh;  
+	
+	synonymoid = get_synonym_oid(object, pubflg, missing_ok);
+
+	/* Find the publication relation mapping in syscache. */
+	address.objectId = synonymoid;
+	if (!OidIsValid(address.objectId))
+	{
+		if (!missing_ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("package \"%s\" does not exist",
+							NameListToString(object))));
+		return address;
+	}
+
+	return address;
 }
 
 /*
@@ -4749,6 +4927,10 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 
 		case OCLASS_TRANSFORM:
 			appendStringInfoString(&buffer, "transform");
+			break;
+
+		case OCLASS_SYNONYM:
+			appendStringInfoString(&buffer, "synonym");
 			break;
 
 			/*
@@ -6043,6 +6225,20 @@ getObjectIdentityParts(const ObjectAddress *object,
 				appendStringInfoString(&buffer, quote_identifier(varname));
 				if (objname)
 					*objname = list_make1(varname);
+				break;
+			}
+
+		case OCLASS_SYNONYM:
+			{
+				char	   *synname;
+
+				synname = get_synonym_name(object->objectId, false);
+				if (!synname)
+					elog(ERROR, "cache lookup failed for synonym %u",
+						  object->objectId);
+				appendStringInfoString(&buffer, quote_identifier(synname));
+				if (objname)
+					*objname = list_make1(synname);
 				break;
 			}
 

@@ -315,6 +315,7 @@ static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
 static char *getPkgSource(PackageInfo *pkginfo, bool isbody, char *pkgsrc);
+static void dumpSynonym(Archive *fout, SynonymInfo *syninfo);
 
 int
 main(int argc, char **argv)
@@ -1662,6 +1663,36 @@ selectDumpableTable(TableInfo *tbinfo, Archive *fout)
 		simple_oid_list_member(&table_exclude_oids,
 							   tbinfo->dobj.catId.oid))
 		tbinfo->dobj.dump = DUMP_COMPONENT_NONE;
+}
+
+/*
+ * selectDumpableSynonym: policy-setting subroutine
+ *		Mark pg_synonym as to be dumped or not
+ */
+static void
+selectDumpableSynonym(SynonymInfo *syninfo, Archive *fout)
+{
+	if (checkExtensionMembership(&syninfo->dobj, fout))
+		return;					/* extension membership overrides all else */
+
+	/*
+	 * If specific tables are being dumped, dump just those tables; else, dump
+	 * according to the parent namespace's dump flag.
+	 */
+	if (table_include_oids.head != NULL)
+		syninfo->dobj.dump = simple_oid_list_member(&table_include_oids,
+												   syninfo->dobj.catId.oid) ?
+			DUMP_COMPONENT_ALL : DUMP_COMPONENT_NONE;
+	else
+		syninfo->dobj.dump = syninfo->dobj.namespace->dobj.dump_contains;
+
+	/*
+	 * In any case, a table can be excluded by an exclusion switch
+	 */
+	if (syninfo->dobj.dump &&
+		simple_oid_list_member(&table_exclude_oids,
+							   syninfo->dobj.catId.oid))
+		syninfo->dobj.dump = DUMP_COMPONENT_NONE;
 }
 
 /*
@@ -10100,6 +10131,9 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 		case DO_PACKAGE:
 			dumpPackage(fout, (PackageInfo *) dobj);
 			break;
+		case DO_SYNONYM:
+			dumpSynonym(fout, (SynonymInfo *) dobj);
+			break;
 		case DO_PRE_DATA_BOUNDARY:
 		case DO_POST_DATA_BOUNDARY:
 			/* never dumped, nothing to do */
@@ -18018,6 +18052,7 @@ addBoundaryDependencies(DumpableObject **dobjs, int numObjs,
 			case DO_FOREIGN_SERVER:
 			case DO_TRANSFORM:
 			case DO_BLOB:
+			case DO_SYNONYM:
 				/* Pre-data objects: must come before the pre-data boundary */
 				addObjectDependency(preDataBound, dobj->dumpId);
 				break;
@@ -18301,4 +18336,179 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 								fout->std_strings);
 	if (!res)
 		pg_log_warning("could not parse %s array", "reloptions");
+}
+
+
+/************************************************************
+ * getSynonyms
+ * Description: read all synonym in the system catalogs and 
+ * return them in the SynonymInfo* structure
+ * Return: SynonymInfo
+ ************************************************************/
+SynonymInfo *
+getSynonyms(Archive *fout)
+{
+	PGresult	*res;
+	int 		ntups;
+	int 		i;
+	PQExpBuffer query;
+	SynonymInfo *syninfo;
+	int 		i_tableoid;
+	int 		i_synoid;
+	int 		i_synname;
+	int 		i_synnamespace;
+	int 		i_synnamespace1;
+	int 		i_synownername;
+	int 		i_synispub;
+	int 		i_synobjschema;
+	int 		i_synobjname;
+	int 		i_synlink;
+
+	if (fout->remoteVersion < 120000)
+		return NULL;
+
+	query = createPQExpBuffer();
+
+	/* refclassid constraint is redundant but may speed the search */
+	appendPQExpBufferStr(query, "SELECT "
+						 "s.tableoid, s.oid, s.synname, s.synnamespace, n.nspname, u.usename, s.synispub, s.synobjschema, s.synobjname, s.synlink "
+						 "FROM pg_synonym s "
+						 "LEFT JOIN pg_namespace n ON s.synnamespace = n.oid "
+						 "LEFT JOIN pg_user u ON s.synowner = u.usesysid ");
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+
+	syninfo = (SynonymInfo *) pg_malloc(ntups * sizeof(SynonymInfo));
+		
+	i_tableoid = PQfnumber(res, "tableoid");
+	i_synoid = PQfnumber(res, "oid");
+	i_synname = PQfnumber(res, "synname");
+	i_synnamespace = PQfnumber(res, "synnamespace");
+	i_synnamespace1 = PQfnumber(res, "nspname");
+	i_synownername = PQfnumber(res, "usename");
+	i_synispub = PQfnumber(res, "synispub");
+	i_synobjschema = PQfnumber(res, "synobjschema");
+	i_synobjname = PQfnumber(res, "synobjname");
+	i_synlink = PQfnumber(res, "synlink");
+
+	for (i = 0; i < ntups; i++)
+	{
+		/* fill dobj info */
+		syninfo[i].dobj.objType = DO_SYNONYM;
+		syninfo[i].dobj.catId.tableoid = atooid(PQgetvalue(res, i, i_tableoid));
+		
+		syninfo[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_synoid));
+		AssignDumpId(&syninfo[i].dobj);
+		syninfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_synname));
+		syninfo[i].dobj.namespace =
+			findNamespace(atooid(PQgetvalue(res, i, i_synnamespace)));
+		/* there check the dump table is or not pg_synonym, if ok continue, else not dump */
+		selectDumpableSynonym(&syninfo[i], fout);
+
+		/* get every synonym infomation */
+		syninfo[i].synowner = pg_strdup(PQgetvalue(res, i, i_synownername));
+		syninfo[i].synnamespace = pg_strdup(PQgetvalue(res, i, i_synnamespace1));
+		syninfo[i].synname = pg_strdup(PQgetvalue(res, i, i_synname));		
+		if (strcmp(PQgetvalue(res, i, i_synispub), "t") == 0)
+			syninfo[i].synispub = true;
+		else
+			syninfo[i].synispub = false;
+
+		syninfo[i].synobjschema = pg_strdup(PQgetvalue(res, i, i_synobjschema));
+		syninfo[i].synobjname = pg_strdup(PQgetvalue(res, i, i_synobjname));
+		syninfo[i].synlink = pg_strdup(PQgetvalue(res, i, i_synlink));
+
+		if (PQgetisnull(res, i, i_synlink))
+			syninfo[i].synlink = NULL;
+		else
+			syninfo[i].synlink = pg_strdup(PQgetvalue(res, i, i_synlink));
+
+		if (strlen(syninfo[i].synowner) == 0)
+			pg_log_warning("owner of synonym \"%s\" appears to be invalid",
+						   syninfo[i].dobj.name);
+	}
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return syninfo;
+}
+
+
+/************************************************************
+ * dumpSynonym
+ * Description: writes out to fout the queries to recreate a 
+ * user-defined package
+ * Return: void
+ ************************************************************/
+static void
+dumpSynonym(Archive *fout, SynonymInfo *syninfo)
+{
+	DumpOptions *dopt = fout->dopt;
+	PQExpBuffer q;
+	PQExpBuffer delq;
+	char		*qsynname;
+
+	/* Skip if not to be dumped */
+	if (!syninfo->dobj.dump || fout->remoteVersion < 120000)
+		return;
+
+	q = createPQExpBuffer();
+	delq = createPQExpBuffer();
+
+	qsynname = pg_strdup(fmtId(syninfo->dobj.name));
+
+	if (syninfo->synispub)
+		appendPQExpBuffer(delq, "DROP PUBLIC SYNONYM %s;\n", qsynname);
+	else
+		appendPQExpBuffer(delq, "DROP SYNONYM %s;\n", qsynname);
+
+	if (syninfo->synispub)
+		appendPQExpBuffer(q, "CREATE PUBLIC SYNONYM ");
+	else
+		appendPQExpBuffer(q, "CREATE SYNONYM ");
+
+	if (syninfo->synnamespace)
+	{
+		appendPQExpBuffer(q, " %s.", syninfo->synnamespace);
+	}
+
+	if (syninfo->synname)
+		appendPQExpBuffer(q, "%s FOR ", syninfo->synname);
+
+	if (syninfo->synobjschema)
+	{
+		appendPQExpBuffer(q, " %s.", syninfo->synobjschema);
+	}
+
+	if (syninfo->synobjname)
+		appendPQExpBuffer(q, "%s ;\n", syninfo->synobjname);
+
+	if (syninfo->synispub)
+		appendPQExpBuffer(q, "ALTER PUBLIC SYNONYM %s.%s OWNER TO %s ;\n",
+							syninfo->synnamespace, syninfo->synname, syninfo->synowner);
+	else
+		appendPQExpBuffer(q, "ALTER SYNONYM %s.%s OWNER TO %s ;\n",
+							syninfo->synnamespace,  syninfo->synname, syninfo->synowner);
+
+	if (dopt->binary_upgrade)
+		binary_upgrade_extension_member(q, &syninfo->dobj,
+										"SYNONYM", qsynname, NULL);
+
+	if (syninfo->dobj.dump & DUMP_COMPONENT_DEFINITION)
+		ArchiveEntry(fout, syninfo->dobj.catId, syninfo->dobj.dumpId,
+					 ARCHIVE_OPTS(.tag = syninfo->dobj.name,
+								  .namespace = syninfo->dobj.namespace->dobj.name,
+								  .owner = syninfo->synowner,
+								  .description = "SYNONYM",
+								  .section = SECTION_PRE_DATA,
+								  .createStmt = q->data,
+								  .dropStmt = delq->data));
+
+	free(qsynname);
+
+	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(delq);
 }

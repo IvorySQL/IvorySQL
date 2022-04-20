@@ -1,0 +1,1060 @@
+/*
+ * test synonym
+ *
+ */
+create user usertest;
+grant create on database contrib_regression to usertest;
+set role to usertest;
+set compatible_mode to oracle ;
+create table test(id int, name text);
+insert into test values (1,'zhangsan'),(2,'lisi');
+insert into test values (5,'qianwu');
+insert into test values (6,'sunliu');
+insert into test values (7,'zhouqi');
+create synonym syntest for test;
+create public synonym syntest for test1;
+select * from syntest;
+ id |   name   
+----+----------
+  1 | zhangsan
+  2 | lisi
+  5 | qianwu
+  6 | sunliu
+  7 | zhouqi
+(5 rows)
+
+insert into syntest values (8,'wuba');
+select * from syntest;
+ id |   name   
+----+----------
+  1 | zhangsan
+  2 | lisi
+  5 | qianwu
+  6 | sunliu
+  7 | zhouqi
+  8 | wuba
+(6 rows)
+
+alter table syntest add column age int;
+select * from syntest;
+ id |   name   | age 
+----+----------+-----
+  1 | zhangsan |    
+  2 | lisi     |    
+  5 | qianwu   |    
+  6 | sunliu   |    
+  7 | zhouqi   |    
+  8 | wuba     |    
+(6 rows)
+
+create synonym syntest1 for syntest;
+create synonym syntest2 for syntest1;
+create synonym syntest3 for syntest2;
+select * from syntest3;
+ id |   name   | age 
+----+----------+-----
+  1 | zhangsan |    
+  2 | lisi     |    
+  5 | qianwu   |    
+  6 | sunliu   |    
+  7 | zhouqi   |    
+  8 | wuba     |    
+(6 rows)
+
+select * from syntest2;
+ id |   name   | age 
+----+----------+-----
+  1 | zhangsan |    
+  2 | lisi     |    
+  5 | qianwu   |    
+  6 | sunliu   |    
+  7 | zhouqi   |    
+  8 | wuba     |    
+(6 rows)
+
+select * from syntest1;
+ id |   name   | age 
+----+----------+-----
+  1 | zhangsan |    
+  2 | lisi     |    
+  5 | qianwu   |    
+  6 | sunliu   |    
+  7 | zhouqi   |    
+  8 | wuba     |    
+(6 rows)
+
+drop table test;
+select * from syntest;
+ERROR:  translation for synonym "test" is no longer valid
+LINE 1: select * from syntest;
+                      ^
+create table mytest(id int, name text);
+insert into mytest values (1,'zhangsan'),(2,'lisi');
+insert into mytest values (5,'qianwu');
+create view mytestview as select * from mytest where id < 4;
+create public synonym synviewtest for mytestview;
+create synonym synviewtest for mytestview;
+select * from synviewtest;
+ id |   name   
+----+----------
+  1 | zhangsan
+  2 | lisi
+(2 rows)
+
+drop view mytestview;
+select * from synviewtest;
+ERROR:  translation for synonym "mytestview" is no longer valid
+LINE 1: select * from synviewtest;
+                      ^
+create sequence serial start 100;
+select nextval('serial');
+ nextval 
+---------
+     100
+(1 row)
+
+select nextval('serial');
+ nextval 
+---------
+     101
+(1 row)
+
+create public synonym synseq for serial;
+select * from serial;
+ last_value | log_cnt | is_called 
+------------+---------+-----------
+        101 |      31 | t
+(1 row)
+
+select * from synseq;
+ last_value | log_cnt | is_called 
+------------+---------+-----------
+        101 |      31 | t
+(1 row)
+
+drop sequence serial;
+select * from synseq;
+ERROR:  translation for synonym "serial" is no longer valid
+LINE 1: select * from synseq;
+                      ^
+select * from user_synonyms;
+ schema_name | synonym_name | table_owner | table_schema_name | table_name | db_link 
+-------------+--------------+-------------+-------------------+------------+---------
+ public      | syntest      |             | public            | test       | 
+ public      | syntest1     |             | public            | syntest    | 
+ public      | syntest2     |             | public            | syntest1   | 
+ public      | syntest3     |             | public            | syntest2   | 
+ public      | synviewtest  |             | public            | mytestview | 
+(5 rows)
+
+select * from all_synonyms;
+  owner   | schema_name | synonym_name | table_owner | table_schema_name | table_name | db_link 
+----------+-------------+--------------+-------------+-------------------+------------+---------
+ usertest | public      | syntest      |             | public            | test       | 
+ usertest | public      | syntest      |             | public            | test1      | 
+ usertest | public      | syntest1     |             | public            | syntest    | 
+ usertest | public      | syntest2     |             | public            | syntest1   | 
+ usertest | public      | syntest3     |             | public            | syntest2   | 
+ usertest | public      | synviewtest  |             | public            | mytestview | 
+ usertest | public      | synviewtest  |             | public            | mytestview | 
+ usertest | public      | synseq       |             | public            | serial     | 
+(8 rows)
+
+create schema syntestuser;
+set search_path to "$user", public, syntestuser;
+create function testfunc1(id int)
+returns int
+as $$
+begin
+		return 11;
+end;
+$$ language plpgsql;
+create function syntestuser.testfunc1(id int)
+returns int
+as $$
+begin
+		return 12;
+end;
+$$ language plpgsql;
+create function testfunc1(id int, age int)
+returns int
+as $$
+begin
+		return 22;
+end;
+$$ language plpgsql;
+create synonym syntestuser.synfunc for syntestuser.testfunc1;
+create public synonym syntestuser.synfunc1 for syntestuser.testfunc1;
+ERROR:  error "syntestuser" schema, public synonyms only be created in "public" schema
+create public synonym synfunc1 for syntestuser.testfunc1;
+create public synonym synfunc2 for testfunc1;
+create synonym syntestuser.synfunc3 for testfunc1;
+create synonym synfunc4 for testfunc1;
+select synfunc(1);
+ testfunc1 
+-----------
+        12
+(1 row)
+
+select synfunc1(1);
+ testfunc1 
+-----------
+        12
+(1 row)
+
+select synfunc2(1);
+ testfunc1 
+-----------
+        11
+(1 row)
+
+select synfunc3(3);
+ testfunc1 
+-----------
+        11
+(1 row)
+
+select synfunc4(4);
+ testfunc1 
+-----------
+        11
+(1 row)
+
+drop function testfunc1(int);
+select synfunc(1);
+ testfunc1 
+-----------
+        12
+(1 row)
+
+select synfunc1(1);
+ testfunc1 
+-----------
+        12
+(1 row)
+
+select synfunc2(1);
+ERROR:  function public.testfunc1(integer) does not exist
+LINE 1: select synfunc2(1);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select synfunc3(3);
+ERROR:  function public.testfunc1(integer) does not exist
+LINE 1: select synfunc3(3);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select synfunc4(4);
+ERROR:  function public.testfunc1(integer) does not exist
+LINE 1: select synfunc4(4);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select synfunc(1,2);
+ERROR:  function syntestuser.testfunc1(integer, integer) does not exist
+LINE 1: select synfunc(1,2);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select synfunc1(1,2);
+ERROR:  function syntestuser.testfunc1(integer, integer) does not exist
+LINE 1: select synfunc1(1,2);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select synfunc2(1,2);
+ testfunc1 
+-----------
+        22
+(1 row)
+
+select synfunc3(3,2);
+ testfunc1 
+-----------
+        22
+(1 row)
+
+select synfunc4(4,2);
+ testfunc1 
+-----------
+        22
+(1 row)
+
+drop package pkg;
+ERROR:  package "pkg" does not exist
+create or replace package pkg is
+  x int;
+  y varchar := 'test';
+  
+  function tfunc(x int) return int;
+end;
+/
+create or replace package body pkg is
+  
+  function tfunc(x int) return int as
+  begin
+	return x;
+  end;
+end;
+/
+create synonym pkg_syn for pkg;
+create synonym syntestuser.pkg_syn1 for pkg;
+-- without schema qualification
+select pkg.tfunc(10);
+ tfunc 
+-------
+    10
+(1 row)
+
+select pkg_syn.tfunc(11);
+ tfunc 
+-------
+    11
+(1 row)
+
+select pkg_syn1.tfunc(12);
+ tfunc 
+-------
+    12
+(1 row)
+
+-- with schema qualification
+select public.pkg.tfunc(1001);
+ tfunc 
+-------
+  1001
+(1 row)
+
+select public.pkg_syn.tfunc(1002);
+ tfunc 
+-------
+  1002
+(1 row)
+
+select public.pkg_syn1.tfunc(1003);
+ tfunc 
+-------
+  1003
+(1 row)
+
+-- with database.schema qualification
+select contrib_regression.public.pkg.tfunc(101);
+ tfunc 
+-------
+   101
+(1 row)
+
+select contrib_regression.public.pkg_syn.tfunc(102);
+ tfunc 
+-------
+   102
+(1 row)
+
+select contrib_regression.public.pkg_syn1.tfunc(103);
+ tfunc 
+-------
+   103
+(1 row)
+
+drop package pkg;
+select pkg_syn.tfunc(10);
+ERROR:  schema "pkg_syn" does not exist
+LINE 1: select pkg_syn.tfunc(10);
+               ^
+select pkg_syn1.tfunc(10);
+ERROR:  schema "pkg_syn1" does not exist
+LINE 1: select pkg_syn1.tfunc(10);
+               ^
+create or replace synonym my617 for test;
+create or replace synonym my617 for test;
+create synonym my617 for test;
+ERROR:  synonym "my617" already exists with same name
+create or replace public synonym my617 for test;
+create or replace public synonym my617 for test;
+create public synonym my617 for test;
+ERROR:  synonym "my617" already exists with same name
+create materialized view materview1 as select * from mytest where id > 1;
+create materialized view materview2 as select * from mytest where id > 0;
+select * from materview1;
+ id |  name  
+----+--------
+  2 | lisi
+  5 | qianwu
+(2 rows)
+
+select * from materview2;
+ id |   name   
+----+----------
+  1 | zhangsan
+  2 | lisi
+  5 | qianwu
+(3 rows)
+
+create synonym synmaterview1 for materview1;
+create public synonym synmaterview1 for materview2;
+select * from synmaterview1;
+ id |  name  
+----+--------
+  2 | lisi
+  5 | qianwu
+(2 rows)
+
+drop materialized view materview1;
+select * from synmaterview1;
+ERROR:  translation for synonym "materview1" is no longer valid
+LINE 1: select * from synmaterview1;
+                      ^
+drop materialized view materview2;
+select * from synmaterview1;
+ERROR:  translation for synonym "materview1" is no longer valid
+LINE 1: select * from synmaterview1;
+                      ^
+create type bb as (id int, name text);
+create synonym mybb for bb;
+create synonym mybb1 for mybb;
+create synonym mybb2 for mybb1;
+create synonym mybb3 for mybb2;
+create table testbb (id mybb);
+create table testbb1 (id mybb1);
+create table testbb2 (id mybb2);
+create table testbb3 (id mybb3);
+insert into testbb values ((1, 'zhangsan'));
+insert into testbb1 values ((1, 'zhangsan'));
+insert into testbb2 values ((1, 'zhangsan')), ((2, 'lisi'));
+insert into testbb3 values ((1, 'zhangsan')), ((2, 'lisi'));
+select * from testbb;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from testbb1;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from testbb2;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+select * from testbb3;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+create synonym syntestbb for testbb;
+create synonym syntestbb1 for testbb1;
+create synonym syntestbb2 for testbb2;
+create synonym syntestbb3 for testbb3;
+--create synonym syntestbbn for syntestbb;
+select * from syntestbb;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from syntestbb1;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from syntestbb2;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+select * from syntestbb3;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+--select * from syntestbbn;
+create public synonym pubsyntestbb for testbb;
+create public synonym pubsyntestbb1 for testbb1;
+create public synonym pubsyntestbb2 for testbb2;
+create public synonym pubsyntestbb3 for testbb3;
+select * from pubsyntestbb;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from pubsyntestbb1;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from pubsyntestbb2;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+select * from pubsyntestbb3;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+create view viwtestbb as select * from testbb;
+create view viwtestbb1 as select * from testbb1;
+create view viwtestbb2 as select * from testbb2;
+create view viwtestbb3 as select * from testbb3;
+create synonym synviwtestbb for viwtestbb;
+create synonym synviwtestbb1 for viwtestbb1;
+create synonym synviwtestbb2 for viwtestbb2;
+create synonym synviwtestbb3 for viwtestbb3;
+select * from synviwtestbb;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from synviwtestbb1;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from synviwtestbb2;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+select * from synviwtestbb3;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+create materialized view matviwtestbb as select * from testbb;
+create materialized view matviwtestbb1 as select * from testbb1;
+create materialized view matviwtestbb2 as select * from testbb2;
+create materialized view matviwtestbb3 as select * from testbb3;
+create synonym matsynviwtestbb for matviwtestbb;
+create synonym matsynviwtestbb1 for matviwtestbb1;
+create synonym matsynviwtestbb2 for matviwtestbb2;
+create synonym matsynviwtestbb3 for matviwtestbb3;
+select * from matsynviwtestbb;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from matsynviwtestbb1;
+      id      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from matsynviwtestbb2;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+select * from matsynviwtestbb3;
+      id      
+--------------
+ (1,zhangsan)
+ (2,lisi)
+(2 rows)
+
+create sequence serial start 101;
+create synonym synserial for serial;
+select nextval('serial');
+ nextval 
+---------
+     101
+(1 row)
+
+select nextval('synserial');
+ nextval 
+---------
+     102
+(1 row)
+
+create function func1(ID mybb) returns mybb
+as $$
+declare
+	idd mybb;
+begin
+	idd := id;
+	return idd;
+end ;
+$$ language plpgsql;
+select func1((1, 'zhangsan'));
+    func1     
+--------------
+ (1,zhangsan)
+(1 row)
+
+select * from all_synonyms;
+  owner   | schema_name |   synonym_name   | table_owner | table_schema_name |  table_name   | db_link 
+----------+-------------+------------------+-------------+-------------------+---------------+---------
+ usertest | public      | syntest          |             | public            | test          | 
+ usertest | public      | syntest          |             | public            | test1         | 
+ usertest | public      | syntest1         |             | public            | syntest       | 
+ usertest | public      | syntest2         |             | public            | syntest1      | 
+ usertest | public      | syntest3         |             | public            | syntest2      | 
+ usertest | public      | synviewtest      |             | public            | mytestview    | 
+ usertest | public      | synviewtest      |             | public            | mytestview    | 
+ usertest | public      | synseq           | usertest    | public            | serial        | 
+ usertest | syntestuser | synfunc          |             | syntestuser       | testfunc1     | 
+ usertest | public      | synfunc1         |             | syntestuser       | testfunc1     | 
+ usertest | public      | synfunc2         |             | public            | testfunc1     | 
+ usertest | syntestuser | synfunc3         |             | public            | testfunc1     | 
+ usertest | public      | synfunc4         |             | public            | testfunc1     | 
+ usertest | public      | pkg_syn          |             | public            | pkg           | 
+ usertest | syntestuser | pkg_syn1         |             | public            | pkg           | 
+ usertest | public      | my617            |             | public            | test          | 
+ usertest | public      | my617            |             | public            | test          | 
+ usertest | public      | synmaterview1    |             | public            | materview1    | 
+ usertest | public      | synmaterview1    |             | public            | materview2    | 
+ usertest | public      | mybb             | usertest    | public            | bb            | 
+ usertest | public      | mybb1            |             | public            | mybb          | 
+ usertest | public      | mybb2            |             | public            | mybb1         | 
+ usertest | public      | mybb3            |             | public            | mybb2         | 
+ usertest | public      | syntestbb        | usertest    | public            | testbb        | 
+ usertest | public      | syntestbb1       | usertest    | public            | testbb1       | 
+ usertest | public      | syntestbb2       | usertest    | public            | testbb2       | 
+ usertest | public      | syntestbb3       | usertest    | public            | testbb3       | 
+ usertest | public      | pubsyntestbb     | usertest    | public            | testbb        | 
+ usertest | public      | pubsyntestbb1    | usertest    | public            | testbb1       | 
+ usertest | public      | pubsyntestbb2    | usertest    | public            | testbb2       | 
+ usertest | public      | pubsyntestbb3    | usertest    | public            | testbb3       | 
+ usertest | public      | synviwtestbb     | usertest    | public            | viwtestbb     | 
+ usertest | public      | synviwtestbb1    | usertest    | public            | viwtestbb1    | 
+ usertest | public      | synviwtestbb2    | usertest    | public            | viwtestbb2    | 
+ usertest | public      | synviwtestbb3    | usertest    | public            | viwtestbb3    | 
+ usertest | public      | matsynviwtestbb  | usertest    | public            | matviwtestbb  | 
+ usertest | public      | matsynviwtestbb1 | usertest    | public            | matviwtestbb1 | 
+ usertest | public      | matsynviwtestbb2 | usertest    | public            | matviwtestbb2 | 
+ usertest | public      | matsynviwtestbb3 | usertest    | public            | matviwtestbb3 | 
+ usertest | public      | synserial        | usertest    | public            | serial        | 
+(40 rows)
+
+set role to default;
+select * from dba_synonyms;
+  owner   | schema_name |   synonym_name   | table_owner | table_schema_name |  table_name   | db_link 
+----------+-------------+------------------+-------------+-------------------+---------------+---------
+ usertest | public      | synviwtestbb     | usertest    | public            | viwtestbb     | 
+ usertest | public      | synviwtestbb1    | usertest    | public            | viwtestbb1    | 
+ usertest | public      | synviwtestbb2    | usertest    | public            | viwtestbb2    | 
+ usertest | public      | mybb             | usertest    | public            | bb            | 
+ usertest | public      | pubsyntestbb     | usertest    | public            | testbb        | 
+ usertest | public      | syntestbb        | usertest    | public            | testbb        | 
+ usertest | public      | pubsyntestbb1    | usertest    | public            | testbb1       | 
+ usertest | public      | syntestbb1       | usertest    | public            | testbb1       | 
+ usertest | public      | pubsyntestbb2    | usertest    | public            | testbb2       | 
+ usertest | public      | syntestbb2       | usertest    | public            | testbb2       | 
+ usertest | public      | pubsyntestbb3    | usertest    | public            | testbb3       | 
+ usertest | public      | syntestbb3       | usertest    | public            | testbb3       | 
+ usertest | public      | synviwtestbb3    | usertest    | public            | viwtestbb3    | 
+ usertest | public      | matsynviwtestbb  | usertest    | public            | matviwtestbb  | 
+ usertest | public      | matsynviwtestbb2 | usertest    | public            | matviwtestbb2 | 
+ usertest | public      | matsynviwtestbb1 | usertest    | public            | matviwtestbb1 | 
+ usertest | public      | synserial        | usertest    | public            | serial        | 
+ usertest | public      | synseq           | usertest    | public            | serial        | 
+ usertest | public      | matsynviwtestbb3 | usertest    | public            | matviwtestbb3 | 
+ usertest | public      | syntest3         |             | public            | syntest2      | 
+ usertest | public      | syntest1         |             | public            | syntest       | 
+ usertest | public      | syntest2         |             | public            | syntest1      | 
+ usertest | public      | synmaterview1    |             | public            | materview1    | 
+ usertest | public      | mybb3            |             | public            | mybb2         | 
+ usertest | public      | mybb2            |             | public            | mybb1         | 
+ usertest | public      | my617            |             | public            | test          | 
+ usertest | public      | my617            |             | public            | test          | 
+ usertest | public      | syntest          |             | public            | test          | 
+ usertest | public      | synfunc4         |             | public            | testfunc1     | 
+ usertest | syntestuser | synfunc3         |             | public            | testfunc1     | 
+ usertest | public      | synfunc2         |             | public            | testfunc1     | 
+ usertest | public      | synviewtest      |             | public            | mytestview    | 
+ usertest | public      | synviewtest      |             | public            | mytestview    | 
+ usertest | public      | synfunc1         |             | syntestuser       | testfunc1     | 
+ usertest | syntestuser | synfunc          |             | syntestuser       | testfunc1     | 
+ usertest | syntestuser | pkg_syn1         |             | public            | pkg           | 
+ usertest | public      | pkg_syn          |             | public            | pkg           | 
+ usertest | public      | synmaterview1    |             | public            | materview2    | 
+ usertest | public      | mybb1            |             | public            | mybb          | 
+ usertest | public      | syntest          |             | public            | test1         | 
+(40 rows)
+
+set role to usertest;
+select * from user_synonyms;
+ schema_name |   synonym_name   | table_owner | table_schema_name |  table_name   | db_link 
+-------------+------------------+-------------+-------------------+---------------+---------
+ public      | syntest          |             | public            | test          | 
+ public      | syntest1         |             | public            | syntest       | 
+ public      | syntest2         |             | public            | syntest1      | 
+ public      | syntest3         |             | public            | syntest2      | 
+ public      | synviewtest      |             | public            | mytestview    | 
+ syntestuser | synfunc          |             | syntestuser       | testfunc1     | 
+ syntestuser | synfunc3         |             | public            | testfunc1     | 
+ public      | synfunc4         |             | public            | testfunc1     | 
+ public      | pkg_syn          |             | public            | pkg           | 
+ syntestuser | pkg_syn1         |             | public            | pkg           | 
+ public      | my617            |             | public            | test          | 
+ public      | synmaterview1    |             | public            | materview1    | 
+ public      | mybb             | usertest    | public            | bb            | 
+ public      | mybb1            |             | public            | mybb          | 
+ public      | mybb2            |             | public            | mybb1         | 
+ public      | mybb3            |             | public            | mybb2         | 
+ public      | syntestbb        | usertest    | public            | testbb        | 
+ public      | syntestbb1       | usertest    | public            | testbb1       | 
+ public      | syntestbb2       | usertest    | public            | testbb2       | 
+ public      | syntestbb3       | usertest    | public            | testbb3       | 
+ public      | synviwtestbb     | usertest    | public            | viwtestbb     | 
+ public      | synviwtestbb1    | usertest    | public            | viwtestbb1    | 
+ public      | synviwtestbb2    | usertest    | public            | viwtestbb2    | 
+ public      | synviwtestbb3    | usertest    | public            | viwtestbb3    | 
+ public      | matsynviwtestbb  | usertest    | public            | matviwtestbb  | 
+ public      | matsynviwtestbb1 | usertest    | public            | matviwtestbb1 | 
+ public      | matsynviwtestbb2 | usertest    | public            | matviwtestbb2 | 
+ public      | matsynviwtestbb3 | usertest    | public            | matviwtestbb3 | 
+ public      | synserial        | usertest    | public            | serial        | 
+(29 rows)
+
+create synonym synfunc1 for func1;
+select synfunc1((1, 'zhangsan'));
+    func1     
+--------------
+ (1,zhangsan)
+(1 row)
+
+do $$declare
+	idd mybb;
+begin
+	idd := (1, 'zhangsan');
+	raise notice '%', idd;
+end ;
+$$ language plpgsql;
+NOTICE:  (1,zhangsan)
+drop function func1;
+create domain aa as int;
+create synonym myaa for aa;
+create table testaa(id myaa);
+ERROR:  type "myaa" does not exist
+LINE 1: create table testaa(id myaa);
+                               ^
+select (1, 'zhangsan')::mybb;
+     row      
+--------------
+ (1,zhangsan)
+(1 row)
+
+select (2, 'zhangsanfeng')::mybb;
+       row        
+------------------
+ (2,zhangsanfeng)
+(1 row)
+
+drop synonym myaa;
+drop synonym mybb;
+drop synonym mybb1;
+drop synonym mybb2;
+drop synonym mybb3;
+drop synonym syntestbb;
+drop synonym syntestbb1;
+drop synonym syntestbb2;
+drop synonym syntestbb3;
+drop public synonym pubsyntestbb;
+drop public synonym pubsyntestbb1;
+drop public synonym pubsyntestbb2;
+drop public synonym pubsyntestbb3;
+drop view viwtestbb;
+drop view viwtestbb1;
+drop view viwtestbb2;
+drop view viwtestbb3;
+drop synonym synviwtestbb;
+drop synonym synviwtestbb1;
+drop synonym synviwtestbb2;
+drop synonym synviwtestbb3;
+drop materialized view matviwtestbb;
+drop materialized view matviwtestbb1;
+drop materialized view matviwtestbb2;
+drop materialized view matviwtestbb3;
+drop synonym matsynviwtestbb;
+drop synonym matsynviwtestbb1;
+drop synonym matsynviwtestbb2;
+drop synonym matsynviwtestbb3;
+--drop synonym syntestbbn;
+drop table testbb;
+drop table testbb1;
+drop table testbb2;
+drop table testbb3;
+drop sequence serial;
+drop synonym synserial;
+drop synonym synfunc1;
+drop type aa;
+drop type bb;
+set role to default;
+create user usr1;
+create user usr2;
+set role usr1;
+create table test(id int);
+set role usr2;
+create synonym syntesttb for test;
+select * from syntesttb;
+ERROR:  permission denied for table test
+set role to default ;
+grant select on public.test to usr2;
+set role usr2;
+select * from syntesttb;
+ id 
+----
+(0 rows)
+
+create view testview as select * from test;
+create synonym testsynview for testview;
+select * from testview;
+ id 
+----
+(0 rows)
+
+set role usr1;
+drop synonym syntesttb;
+ERROR:  The special synonym "syntesttb" to be deleted does not exist
+drop synonym testsynview;
+ERROR:  The special synonym "testsynview" to be deleted does not exist
+set role usr2;
+drop synonym syntesttb;
+drop synonym testsynview;
+set role to default ;
+drop view testview;
+drop table test;
+create type type_aa as(id int, name text);
+set role usr2;
+create public synonym testsyn for type_aa;
+create table testaaa(id testsyn);
+set role usr1;
+create table testaaa1(id testsyn);
+ERROR:  type "testsyn" does not exist
+LINE 1: create table testaaa1(id testsyn);
+                                 ^
+set role to default ;
+drop table testaaa ;
+drop type type_aa;
+--test priority
+create type typ_aa as(id int, name text);
+create table test(id int, name text, addr text);
+create synonym my_test_synonym for test;
+create public  synonym my_test_synonym for typ_aa;
+create table test_synonym(id my_test_synonym);
+insert into test_synonym values ((1, 'zhangsanfeng', 'wudangshan'));
+select * from test_synonym;
+             id              
+-----------------------------
+ (1,zhangsanfeng,wudangshan)
+(1 row)
+
+drop synonym my_test_synonym;
+create table test_synonympub(id my_test_synonym);
+insert into test_synonympub values ((1, 'zhangsanfeng'));
+select * from test_synonympub;
+        id        
+------------------
+ (1,zhangsanfeng)
+(1 row)
+
+drop public synonym my_test_synonym;
+drop table test_synonym;
+drop table test_synonympub;
+drop table test;
+drop type typ_aa;
+create table test(id int, name text, addr text);
+create table test1(id int, flg int);
+create view testview as select * from test;
+create public synonym test1_synonym for test1;
+create synonym test1_synonym for testview;
+select * from test1_synonym;
+ id | name | addr 
+----+------+------
+(0 rows)
+
+drop view testview;
+drop table test;
+drop table test1;
+drop synonym test1_synonym;
+drop public synonym test1_synonym;
+create user syntestuser;
+create user testuser;
+grant create on database contrib_regression to syntestuser;
+grant create on database contrib_regression to testuser;
+set role to syntestuser;
+create schema syntestuser1;
+create schema syntestuser2;
+create table syntestuser1.test (f1 int, f2 int);
+create table syntestuser2.test (f1 int, f2 text);
+create table syntestuser1.tbl (id int);
+create table syntestuser2.tbl (id int);
+create procedure syntestuser1.insert_data(a integer, b integer)
+language sql
+as $$
+insert into syntestuser1.tbl values (a);
+insert into syntestuser1.tbl values (b);
+$$;
+create procedure syntestuser2.insert_data(a integer, b integer)
+language sql
+as $$
+insert into syntestuser2.tbl values (a + b);
+$$;
+create public synonym syninsert_data1 for syntestuser1.insert_data;
+create synonym syninsert_data2 for syntestuser2.insert_data;
+create synonym mysyntest1 for syntestuser1.test;
+create public synonym mysyntest2 for syntestuser2.test;
+create synonym mysyntest3 for syntestuser1.test;
+create public synonym mysyntest3 for syntestuser2.test;
+select * from user_synonyms;
+ schema_name |  synonym_name   | table_owner | table_schema_name | table_name  | db_link 
+-------------+-----------------+-------------+-------------------+-------------+---------
+ public      | syninsert_data2 |             | syntestuser2      | insert_data | 
+ public      | mysyntest1      | syntestuser | syntestuser1      | test        | 
+ public      | mysyntest3      | syntestuser | syntestuser1      | test        | 
+(3 rows)
+
+insert into syntestuser1.test values (1,11), (2,22), (4,45);
+insert into syntestuser2.test values (1,'chengdu'), (2,'sichuan');
+select * from mysyntest1;
+ f1 | f2 
+----+----
+  1 | 11
+  2 | 22
+  4 | 45
+(3 rows)
+
+select * from mysyntest2;
+ f1 |   f2    
+----+---------
+  1 | chengdu
+  2 | sichuan
+(2 rows)
+
+select * from mysyntest3;
+ f1 | f2 
+----+----
+  1 | 11
+  2 | 22
+  4 | 45
+(3 rows)
+
+call syninsert_data1(1, 2);
+call syninsert_data2(1, 2);
+select * from syntestuser1.tbl;
+ id 
+----
+  1
+  2
+(2 rows)
+
+select * from syntestuser2.tbl;
+ id 
+----
+  3
+(1 row)
+
+grant select on syntestuser1.test to testuser;
+grant select on syntestuser2.test to testuser;
+grant usage on schema syntestuser1 to testuser;
+grant usage on schema syntestuser2 to testuser;
+grant all privileges on all TABLES in schema syntestuser1 to testuser;
+grant all privileges on all TABLES in schema syntestuser2 to testuser;
+set role to testuser;
+create synonym syninsert_data3 for syninsert_data1;
+create public synonym syninsert_data4 for syninsert_data2;
+create synonym mysyntest4 for syntestuser1.test;
+create public synonym mysyntest5 for syntestuser2.test;
+create synonym mysyntest6 for syntestuser1.test;
+create public synonym mysyntest6 for syntestuser2.test;
+select * from user_synonyms;
+ schema_name |  synonym_name   | table_owner | table_schema_name |   table_name    | db_link 
+-------------+-----------------+-------------+-------------------+-----------------+---------
+ public      | syninsert_data3 |             | public            | syninsert_data1 | 
+ public      | mysyntest4      | syntestuser | syntestuser1      | test            | 
+ public      | mysyntest6      | syntestuser | syntestuser1      | test            | 
+(3 rows)
+
+select * from mysyntest4;
+ f1 | f2 
+----+----
+  1 | 11
+  2 | 22
+  4 | 45
+(3 rows)
+
+select * from mysyntest5;
+ f1 |   f2    
+----+---------
+  1 | chengdu
+  2 | sichuan
+(2 rows)
+
+select * from mysyntest6;
+ f1 | f2 
+----+----
+  1 | 11
+  2 | 22
+  4 | 45
+(3 rows)
+
+select * from mysyntest1;
+ f1 | f2 
+----+----
+  1 | 11
+  2 | 22
+  4 | 45
+(3 rows)
+
+select * from mysyntest2;
+ f1 |   f2    
+----+---------
+  1 | chengdu
+  2 | sichuan
+(2 rows)
+
+select * from mysyntest3;
+ f1 | f2 
+----+----
+  1 | 11
+  2 | 22
+  4 | 45
+(3 rows)
+
+call syninsert_data1(1, 2);
+call syninsert_data2(1, 2);
+call syninsert_data3(1, 2);
+call syninsert_data4(1, 2);
+select * from syntestuser1.tbl;
+ id 
+----
+  1
+  2
+  1
+  2
+  1
+  2
+(6 rows)
+
+select * from syntestuser2.tbl;
+ id 
+----
+  3
+  3
+  3
+(3 rows)
+
+set role to default;

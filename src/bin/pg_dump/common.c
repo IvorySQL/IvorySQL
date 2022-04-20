@@ -265,7 +265,10 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 
 	pg_log_info("reading packages");
 	getPackages(fout);
-	
+
+	pg_log_info("reading synonyms");
+	getSynonyms(fout);
+
 	free(inhinfo);				/* not needed any longer */
 
 	*numTablesPtr = numTables;

@@ -1254,6 +1254,64 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	return address;
 }
 
+/*
+ * When querying for synonyms, we need to scan the external table to see if the target table already exists.
+ * If it exists, return the address of the existed relation directly. If it does not exist, need to create a new cataloged relation,
+ * and return the address of the new relation.
+ * The other arguments are used to extend the behavior for other cases:
+ * relkind: relkind to assign to the new relation
+ * ownerId: InvalidOid.
+ * typaddress: null.
+ * queryString: null.
+*/
+ObjectAddress
+DefineRemoteRelation(CreateStmt *stmt, char relkind, Oid ownerId,
+							ObjectAddress *typaddress, const char *queryString)
+{
+	char			relname[NAMEDATALEN];
+	Oid				namespaceId;
+	Oid				existing_relid;
+	Relation		pg_class_desc;
+	Oid				accessObjectId = InvalidOid;
+	ObjectAddress	address;
+
+	/*
+	 * Truncate relname to appropriate length (probably a waste of time, as
+	 * parser should have done this already).
+	 */
+	strlcpy(relname, stmt->relation->relname, NAMEDATALEN);
+
+	/*
+	 * Look up the namespace in which we are supposed to create the relation,
+	 * check we have permission to create there, lock it against concurrent
+	 * drop, and mark stmt->relation as RELPERSISTENCE_TEMP if a temporary
+	 * namespace is selected.
+	 */
+	namespaceId = RangeVarGetAndCheckCreationNamespace(stmt->relation, NoLock, NULL);
+
+	pg_class_desc = table_open(RelationRelationId, RowExclusiveLock);
+
+	/*
+	 * This would fail later on anyway, if the relation already exists.  But
+	 * by catching it here we can emit a nicer error message.
+	 */
+	existing_relid = get_relname_relid(relname, namespaceId);
+	table_close(pg_class_desc, RowExclusiveLock);
+	if (existing_relid != InvalidOid)
+		accessObjectId = existing_relid;
+	else
+		return DefineRelation(stmt, relkind, ownerId, typaddress, queryString);
+
+	if (OidIsValid(accessObjectId))
+	{
+		address.classId = InvalidOid;
+		address.objectId = accessObjectId;
+		address.objectSubId = 0;
+	}
+	return address;
+}
+
+
 /* ----------------------------------------------------------------
  * Create a record type in package.
  * ----------------------------------------------------------------
@@ -12876,6 +12934,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 			case OCLASS_TRANSFORM:
 			case OCLASS_PACKAGE:
 			case OCLASS_VARIABLE:
+			case OCLASS_SYNONYM:
 
 				/*
 				 * We don't expect any of these sorts of objects to depend on

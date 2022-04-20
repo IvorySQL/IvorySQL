@@ -412,6 +412,7 @@ real_junk		{real}{ident_start}
 
 param			\${integer}
 param_junk		\${integer}{ident_start}
+atvariable		[\@]{identifier}
 
 other			.
 
@@ -1172,6 +1173,12 @@ other			.
 {other}			{
 					SET_YYLLOC();
 					return yytext[0];
+				}
+
+{atvariable}	{
+					SET_YYLLOC();
+					yylval->str = pstrdup(yytext);
+					return ATVAR;
 				}
 
 <<EOF>>			{

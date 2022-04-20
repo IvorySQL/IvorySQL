@@ -72,6 +72,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "catalog/pg_synonym.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 ProcessUtility_hook_type ProcessUtility_hook = NULL;
@@ -161,6 +162,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterSeqStmt:
 		case T_AlterStatsStmt:
 		case T_AlterSubscriptionStmt:
+		case T_AlterSynonymStmt:
 		case T_AlterTSConfigurationStmt:
 		case T_AlterTSDictionaryStmt:
 		case T_AlterTableMoveAllStmt:
@@ -194,6 +196,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateStatsStmt:
 		case T_CreateStmt:
 		case T_CreateSubscriptionStmt:
+		case T_CreateSynonymStmt:
 		case T_CreateTableAsStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTransformStmt:
@@ -205,6 +208,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_DropRoleStmt:
 		case T_DropStmt:
 		case T_DropSubscriptionStmt:
+		case T_DropSynonymStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
 		case T_DropdbStmt:
@@ -1070,6 +1074,10 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				break;
 			}
 
+		case T_DropSynonymStmt:
+	           DropSynonym((DropSynonymStmt *) parsetree);
+	           break;
+
 		default:
 			/* All other statement types have event trigger support */
 			ProcessUtilitySlow(pstate, pstmt, queryString,
@@ -1902,6 +1910,10 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = AlterCollation((AlterCollationStmt *) parsetree);
 				break;
 
+			case T_CreateSynonymStmt:
+				address = CreateSynonym((CreateSynonymStmt *) parsetree);
+				break;
+
 			default:
 				elog(ERROR, "unrecognized node type: %d",
 					 (int) nodeTag(parsetree));
@@ -2330,6 +2342,9 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 			break;
 		case OBJECT_STATISTIC_EXT:
 			tag = CMDTAG_ALTER_STATISTICS;
+			break;
+		case OBJECT_SYNONYM:
+			tag = CMDTAG_ALTER_SYNONYM;
 			break;
 		case OBJECT_PACKAGE:
 			tag = CMDTAG_ALTER_PACKAGE;
@@ -3229,6 +3244,18 @@ CreateCommandTag(Node *parsetree)
 						break;
 				}
 			}
+			break;
+
+		case T_CreateSynonymStmt:
+	   	   tag = CMDTAG_CREATE_SYNONYM;
+   		   break;
+   
+  		case T_AlterSynonymStmt:
+   			tag = CMDTAG_ALTER_SYNONYM;
+   			break;
+
+		case T_DropSynonymStmt:
+			tag = CMDTAG_DROP_SYNONYM;
 			break;
 
 		default:

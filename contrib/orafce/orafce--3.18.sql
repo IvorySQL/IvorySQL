@@ -7449,3 +7449,71 @@ CREATE OR REPLACE FUNCTION oracle.trunc(text, int)
 RETURNS numeric
 AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
 LANGUAGE SQL IMMUTABLE STRICT;
+
+/* create dba_synonyms, all_synonyms and user_synonyms */
+CREATE OR REPLACE VIEW ORACLE.ALL_SYNONYMS(OWNER
+		,SCHEMA_NAME
+		,SYNONYM_NAME
+		,TABLE_OWNER
+		,TABLE_SCHEMA_NAME
+		,TABLE_NAME
+		,DB_LINK
+		)
+AS SELECT CAST(pg_get_userbyid(syn.synowner) AS text),
+    CAST(pnsp.nspname AS text),
+    CAST(syn.synname AS text),
+    CAST(pg_get_userbyid(c.relowner) AS text),
+    CAST(syn.synobjschema AS text),
+    CAST(syn.synobjname AS text),
+    CAST(syn.synlink AS text)
+   FROM pg_synonym syn
+     LEFT JOIN pg_namespace nsp ON nsp.nspname = syn.synobjschema
+     LEFT JOIN pg_class c ON c.relname = syn.synobjname AND c.relnamespace = nsp.oid
+     LEFT JOIN pg_namespace pnsp ON pnsp.oid = syn.synnamespace
+  WHERE (pnsp.nspname = 'public'::name OR pg_has_role(syn.synowner, 'USAGE'::text)) AND (pnsp.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name, 'pg_toast'::name]));
+
+REVOKE ALL ON ORACLE.ALL_SYNONYMS FROM PUBLIC;
+GRANT SELECT, REFERENCES ON ORACLE.ALL_SYNONYMS TO PUBLIC;
+
+CREATE OR REPLACE VIEW ORACLE.DBA_SYNONYMS(OWNER
+		,SCHEMA_NAME
+		,SYNONYM_NAME
+		,TABLE_OWNER
+		,TABLE_SCHEMA_NAME
+		,TABLE_NAME
+		,DB_LINK
+		)
+AS SELECT CAST(pg_get_userbyid(syn.synowner) AS text),
+    CAST(pnsp.nspname AS text),
+    CAST(syn.synname AS text),
+    CAST(pg_get_userbyid(c.relowner) AS text),
+    CAST(syn.synobjschema AS text),
+    CAST(syn.synobjname AS text),
+    CAST(syn.synlink AS text)
+   FROM pg_synonym syn
+     LEFT JOIN pg_namespace nsp ON nsp.nspname = syn.synobjschema
+     LEFT JOIN pg_class c ON c.relname = syn.synobjname AND c.relnamespace = nsp.oid
+     LEFT JOIN pg_namespace pnsp ON pnsp.oid = syn.synnamespace;
+
+CREATE OR REPLACE VIEW ORACLE.USER_SYNONYMS(SCHEMA_NAME
+		,SYNONYM_NAME
+		,TABLE_OWNER
+		,TABLE_SCHEMA_NAME
+		,TABLE_NAME
+		,DB_LINK
+		)
+AS SELECT CAST(pnsp.nspname AS text),
+    CAST(syn.synname AS text),
+    CAST(pg_get_userbyid(c.relowner) AS text),
+    CAST(syn.synobjschema AS text),
+    CAST(syn.synobjname AS text),
+    CAST(syn.synlink AS text)
+   FROM pg_synonym syn
+     LEFT JOIN pg_namespace nsp ON nsp.nspname = syn.synobjschema
+     LEFT JOIN pg_class c ON c.relname = syn.synobjname AND c.relnamespace = nsp.oid
+     LEFT JOIN pg_namespace pnsp ON pnsp.oid = syn.synnamespace
+  WHERE (pnsp.nspname = 'public'::name OR pg_has_role(syn.synowner, 'USAGE'::text)) AND (pnsp.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name, 'pg_toast'::name])) AND CAST(pg_get_userbyid(syn.synowner) AS text) = CAST("current_user"() AS text) AND (syn.synispub = 'f');
+
+REVOKE ALL ON ORACLE.USER_SYNONYMS FROM PUBLIC;
+GRANT SELECT, REFERENCES ON ORACLE.USER_SYNONYMS TO PUBLIC;
+

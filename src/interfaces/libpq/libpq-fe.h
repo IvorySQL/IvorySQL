@@ -567,6 +567,7 @@ extern int	PQsetResultAttrs(PGresult *res, int numAttributes, PGresAttDesc *attD
 extern void *PQresultAlloc(PGresult *res, size_t nBytes);
 extern size_t PQresultMemorySize(const PGresult *res);
 extern int	PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len);
+extern char *GetPGresAttDescName(const void *pgresult, int numAttributes);
 
 /* Quoting strings before inclusion in queries. */
 extern size_t PQescapeStringConn(PGconn *conn,
