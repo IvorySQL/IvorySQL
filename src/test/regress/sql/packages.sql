@@ -1491,15 +1491,18 @@ drop table test;
 --
 --Test DROP PACKAGE BODY feature
 --
-create or replace package pkgvar is
+create or replace package pkgvar
+is
 	v_int int;
     v_int_init int := 100;
 	function tf return int;
 end;
 /
 
-create or replace package body pkgvar is
+create or replace package body pkgvar
+is
 	v_int_priv int := 1000;
+	type rectype is record(a int, b text);
 	function tf return int as
 	begin
 		raise info 'function tf called';
@@ -1507,7 +1510,7 @@ create or replace package body pkgvar is
 	end;
 	function tp return int as
 	begin
-		return v_int;
+		return v_int_init;
 	end;
 end;
 /
@@ -1517,11 +1520,15 @@ select pkgvar.tp();
 
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
+select varname from pg_variable pv, pg_package pk where varnamespace = pk.oid;
+select typname from pg_type pt, pg_package pk where typtype = 'c' and typnamespace = pk.oid;
 
 DROP PACKAGE BODY pkgvar;
 
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
+select varname from pg_variable pv, pg_package pk where varnamespace = pk.oid;
+select typname from pg_type pt, pg_package pk where typtype = 'c' and typnamespace = pk.oid;
 
 DROP PACKAGE BODY pkgvar;
 

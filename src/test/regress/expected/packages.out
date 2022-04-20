@@ -1772,14 +1772,17 @@ drop table test;
 --
 --Test DROP PACKAGE BODY feature
 --
-create or replace package pkgvar is
+create or replace package pkgvar
+is
 	v_int int;
     v_int_init int := 100;
 	function tf return int;
 end;
 /
-create or replace package body pkgvar is
+create or replace package body pkgvar
+is
 	v_int_priv int := 1000;
+	type rectype is record(a int, b text);
 	function tf return int as
 	begin
 		raise info 'function tf called';
@@ -1787,7 +1790,7 @@ create or replace package body pkgvar is
 	end;
 	function tp return int as
 	begin
-		return v_int;
+		return v_int_init;
 	end;
 end;
 /
@@ -1799,9 +1802,9 @@ INFO:  function tf called
 (1 row)
 
 select pkgvar.tp();
- tp 
-----
-   
+ tp  
+-----
+ 100
 (1 row)
 
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
@@ -1815,12 +1818,26 @@ select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and 
 (1 row)
 
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
- proname |            prosrc             
----------+-------------------------------
- tp      |                              +
-         |         begin                +
-         |                 return v_int;+
+ proname |               prosrc               
+---------+------------------------------------
+ tp      |                                   +
+         |         begin                     +
+         |                 return v_int_init;+
          |         end;
+(1 row)
+
+select varname from pg_variable pv, pg_package pk where varnamespace = pk.oid;
+  varname   
+------------
+ v_int
+ v_int_init
+ v_int_priv
+(3 rows)
+
+select typname from pg_type pt, pg_package pk where typtype = 'c' and typnamespace = pk.oid;
+ typname 
+---------
+ rectype
 (1 row)
 
 DROP PACKAGE BODY pkgvar;
@@ -1833,6 +1850,18 @@ select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and 
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
  proname | prosrc 
 ---------+--------
+(0 rows)
+
+select varname from pg_variable pv, pg_package pk where varnamespace = pk.oid;
+  varname   
+------------
+ v_int
+ v_int_init
+(2 rows)
+
+select typname from pg_type pt, pg_package pk where typtype = 'c' and typnamespace = pk.oid;
+ typname 
+---------
 (0 rows)
 
 DROP PACKAGE BODY pkgvar;
@@ -1848,7 +1877,7 @@ create or replace package pkgvar is
 end;
 /
 DROP PACKAGE BODY pkgvar;
-ERROR:  null pkgbody for package
+ERROR:  package body does not exist
 select pkgvar.tf;
 ERROR:  no defination for package element: tf
 DROP PACKAGE pkgvar;
