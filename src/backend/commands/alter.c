@@ -918,7 +918,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 				return address;
 			}
 			break;
-		/* add begin by qinshiyu at 2021.06.24 */
+
 		case OBJECT_SYNONYM:
 			{
 				Relation	catalog;
@@ -951,7 +951,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 				return address;
 			}
 			break;
-		/* add end by qinshiyu at 2021.06.24 */
+
 		default:
 			elog(ERROR, "unrecognized AlterOwnerStmt type: %d",
 				 (int) stmt->objectType);

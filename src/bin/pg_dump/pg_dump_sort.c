@@ -1510,13 +1510,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 					 "POST-DATA BOUNDARY  (ID %d)",
 					 obj->dumpId);
 			return;
-		/* add begin by qinshiyu at 2021.06.21 */
 		case DO_SYNONYM:
 			snprintf(buf, bufsize,
 					 "SYNONYM  (ID %d)",
 					 obj->dumpId);
 			return;
-		/* add end by qinshiyu at 2021.06.21 */
 	}
 	/* shouldn't get here */
 	snprintf(buf, bufsize,

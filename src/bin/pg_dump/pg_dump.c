@@ -18906,7 +18906,7 @@ addBoundaryDependencies(DumpableObject **dobjs, int numObjs,
 			case DO_FOREIGN_SERVER:
 			case DO_TRANSFORM:
 			case DO_BLOB:
-			case DO_SYNONYM:  /*add by qinshiyu at 2021.06.21*/
+			case DO_SYNONYM:
 				/* Pre-data objects: must come before the pre-data boundary */
 				addObjectDependency(preDataBound, dobj->dumpId);
 				break;
@@ -19196,8 +19196,6 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
  * Description: read all synonym in the system catalogs and 
  * return them in the SynonymInfo* structure
  * Return: SynonymInfo
- * Author: qingshiyu
- * Date: 2021.06.21
  ************************************************************/
 SynonymInfo *
 getSynonyms(Archive *fout)
@@ -19299,8 +19297,6 @@ getSynonyms(Archive *fout)
  * Description: writes out to fout the queries to recreate a 
  * user-defined package
  * Return: void
- * Author: qingshiyu
- * Date: 2021.06.21
  ************************************************************/
 static void
 dumpSynonym(Archive *fout, SynonymInfo *syninfo)

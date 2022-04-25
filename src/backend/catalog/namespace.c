@@ -339,7 +339,6 @@ RangeVarGetRelidExtended(const RangeVar *relation, LOCKMODE lockmode,
 			relId = RelnameGetRelid(relation->relname);
 		}
 
-		/* added begin by luotao on 2021/6/15 */
 		/*
 		 * Find whether it is a synonym in the pg_synonym,
 		 * if found, and return the oid of the object.
@@ -357,7 +356,6 @@ RangeVarGetRelidExtended(const RangeVar *relation, LOCKMODE lockmode,
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
-		/* added end by luotao on 2021/6/15 */
 
 		/*
 		 * Invoke caller-supplied callback, if any.
@@ -727,8 +725,6 @@ RelnameGetRelid(const char *relname)
  * Description: Try to resolve an unqualified synonym name.
  *			   Returns OID if relation found in search path, else InvalidOid.
  * Return: Oid
- * Author: luotao
- * Date: 2021.06.10
  *************************************************************/
 Oid
 SynnameGetRelid(char *synname, char *synschemaname)
@@ -756,8 +752,6 @@ SynnameGetRelid(char *synname, char *synschemaname)
  * Description: Try to resolve an unqualified synonym name.
  *			   either replace the funcname if funcname found in search path, or do not.
  * Return: bool
- * Author: luotao
- * Date: 2021.06.10
  *************************************************************/
 bool
 GetFuncnamesBySynnames(char **synschema, char **synname)
@@ -1059,7 +1053,6 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 			}
 			else
 			{
-				/* added begin by luotao on 2022/03/31 */
 				bool	result = false;
 				char	*schemaname = NULL;
 
@@ -1090,7 +1083,7 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 					else
 						/* no package was found, so let the system take care of the rest */
 						np_id = LookupExplicitNamespace(qu.schema, missing_ok);
-				}		/* added end by luotao on 2022/03/31 */
+				}
 				else
 					/* no package was found, so let the system take care of the rest */
 					np_id = LookupExplicitNamespace(qu.schema, missing_ok);
@@ -1108,7 +1101,6 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 														ObjectIdGetDatum(pkgnamespaceId));
 				if (!OidIsValid(np_id))
 				{
-					/* added begin by luotao on 2022/03/31 */
 					bool	result = false;
 
 					/* Try to resolve the names as synonyms. */
@@ -1137,7 +1129,7 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 									(errcode(ERRCODE_UNDEFINED_SCHEMA),
 										errmsg("package \"%s\" does not exist", qu.package)));
 						}
-					}		/* added end by luotao on 2022/03/31 */
+					}
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -1172,7 +1164,6 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 														ObjectIdGetDatum(pkgnamespaceId));
 				if (!OidIsValid(np_id))
 				{
-					/* added begin by luotao on 2022/03/31 */
 					bool	result = false;
 
 					/* Try to resolve the names as synonyms. */
@@ -1203,7 +1194,7 @@ HandleQualifiedName(List *names, char **funcname, bool missing_ok)
 									(errcode(ERRCODE_UNDEFINED_SCHEMA),
 										errmsg("package \"%s\" does not exist", qu.package)));
 						}
-					}		/* added end by luotao on 2022/03/31 */
+					}
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_UNDEFINED_SCHEMA),

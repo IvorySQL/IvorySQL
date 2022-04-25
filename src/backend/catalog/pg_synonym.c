@@ -44,8 +44,6 @@
  * Funcname: CreateSynonym
  * Description: Execute a CREATE SYNONYM utility statement.
  * Return: ObjectAddress
- * Author: luotao
- * Date: 2021.06.10
  *************************************************************/
 ObjectAddress
 CreateSynonym(CreateSynonymStmt *stmt)
@@ -255,8 +253,6 @@ CreateSynonym(CreateSynonymStmt *stmt)
  * DROP SYNONYM
  * Description: drop synonym(s)
  * Return: void
- * Author: qingshiyu
- * Date: 2021.06.10
  ************************************************************/
 void
 DropSynonym(DropSynonymStmt *stmt)
@@ -368,8 +364,6 @@ DropSynonym(DropSynonymStmt *stmt)
  * GER SYNONYM OID
  * Description: get synonym oid
  * Return: oid
- * Author: qingshiyu
- * Date: 2021.06.24
  ************************************************************/
 Oid 
 get_synonym_oid(List *synnamelist, bool pubflg, bool missing_ok)
@@ -407,8 +401,6 @@ get_synonym_oid(List *synnamelist, bool pubflg, bool missing_ok)
  * Funcname: get_synonym_name
  * Description: given a OID, look up the synonym name
  * Return: string or null
- * Author: luotao
- * Date: 2022.03.31
  *************************************************************/
 /*
  * get_synonym_name - given a synonym OID, look up the name

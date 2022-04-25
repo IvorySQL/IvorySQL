@@ -1,6 +1,5 @@
 /*
  * test synonym
- * add at 2022.04.01
  *
  */
 create user usertest;
@@ -892,7 +891,6 @@ drop table test;
 drop table test1;
 drop synonym test1_synonym;
 drop public synonym test1_synonym;
---added by luotao on 2021/6/18
 create user syntestuser;
 create user testuser;
 grant create on database contrib_regression to syntestuser;

@@ -336,14 +336,11 @@ static ForeignScan *postgresGetForeignPlan(PlannerInfo *root,
 										   List *scan_clauses,
 										   Plan *outer_plan);
 static void postgresBeginForeignScan(ForeignScanState *node, int eflags);
-static void *postgresGetForeignObject(const char *schemaname,
-												const char *relname,
-												Oid srvowner,
-												Oid srvoid,
-												int *numattr);
-static char *postgresGetPGresAttDescName(const void *pgresult,
-												int numAttributes,
-												Oid *coltype);
+static member_foreign_Object *postgresGetForeignObject(const char *schemaname,
+														const char *relname,
+														Oid srvowner,
+														Oid srvoid,
+														int *numattr);
 static TupleTableSlot *postgresIterateForeignScan(ForeignScanState *node);
 static void postgresReScanForeignScan(ForeignScanState *node);
 static void postgresEndForeignScan(ForeignScanState *node);
@@ -565,7 +562,6 @@ postgres_fdw_handler(PG_FUNCTION_ARGS)
 	routine->GetForeignPlan = postgresGetForeignPlan;
 	routine->BeginForeignScan = postgresBeginForeignScan;
 	routine->GetForeignObject = postgresGetForeignObject;
-	routine->GetPGresAttDescName = postgresGetPGresAttDescName;
 	routine->IterateForeignScan = postgresIterateForeignScan;
 	routine->ReScanForeignScan = postgresReScanForeignScan;
 	routine->EndForeignScan = postgresEndForeignScan;
@@ -1600,7 +1596,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	fsstate->async_capable = node->ss.ps.async_capable;
 }
 
-void *
+member_foreign_Object *
 postgresGetForeignObject(const char *schemaname, const char *relname, Oid srvowner, Oid srvoid, int *numattr)
 {
 	UserMapping *user;
@@ -1608,6 +1604,8 @@ postgresGetForeignObject(const char *schemaname, const char *relname, Oid srvown
 	PgFdwScanState *fsstate;
 	char		*query;
 	PGresult	*last_result;
+	int			i;
+	member_foreign_Object	*foreign_obj;
 
 	/*
 	 * We'll save private state in node->fdw_state.
@@ -1635,27 +1633,31 @@ postgresGetForeignObject(const char *schemaname, const char *relname, Oid srvown
 
 	*numattr = PQnfields(last_result);
 
+	foreign_obj = (member_foreign_Object *)palloc(*numattr * sizeof(member_foreign_Object));
+
+	foreign_obj->colnames = (char **)palloc(*numattr * sizeof(char *));
+	foreign_obj->coltypes = (Oid *)palloc(*numattr * sizeof(Oid));
+
+	for (i = 0; i < *numattr; i++)
+	{
+		char	*tmpname;
+		tmpname = PQfname(last_result, i);
+		foreign_obj->colnames[i] = (char *)palloc(sizeof(char) * strlen(tmpname) + 1);
+		memset(foreign_obj->colnames[i], '\0', sizeof(char) * strlen(tmpname) + 1);
+		strcpy(foreign_obj->colnames[i], tmpname);
+		foreign_obj->coltypes[i] = PQftype(last_result, i);
+	}
+
+	pfree(fsstate->query);
 	pfree(fsstate);
+	if (last_result)
+		PQclear(last_result);
+	/* Release remote connection */
 	ReleaseConnection(fsconn);
+	fsconn = NULL;
 
-	return (void *)last_result;
+	return foreign_obj;
 }
-
-
-char *
-postgresGetPGresAttDescName(const void *pgresult, int numAttributes, Oid *coltype)
-{
-	PGresult *res;
-	char	*colname = NULL;
-
-	res = (PGresult *) pgresult;
-
-	colname = PQfname(res, numAttributes);
-	*coltype = PQftype(res, numAttributes);
-
-	return colname;
-}
-
 
 /*
  * postgresIterateForeignScan

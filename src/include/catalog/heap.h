@@ -84,30 +84,6 @@ extern Oid	heap_create_with_catalog(const char *relname,
 									 ObjectAddress *typaddress,
 									 char relaccess);
 
-extern Oid heap_create_with_remote_catalog(const char *relname,
-									 Oid relnamespace,
-									 Oid reltablespace,
-									 Oid relid,
-									 Oid reltypeid,
-									 Oid reloftypeid,
-									 Oid ownerid,
-									 Oid accessmtd,
-									 TupleDesc tupdesc,
-									 List *cooked_constraints,
-									 char relkind,
-									 char relpersistence,
-									 bool shared_relation,
-									 bool mapped_relation,
-									 OnCommitAction oncommit,
-									 Datum reloptions,
-									 bool use_user_acl,
-									 bool allow_system_table_mods,
-									 bool is_internal,
-									 Oid relrewrite,
-									 ObjectAddress *typaddress,
-									 char relaccess,
-									 Oid *accessObjectId);
-
 extern void heap_drop_with_catalog(Oid relid);
 
 extern void heap_truncate(List *relids);

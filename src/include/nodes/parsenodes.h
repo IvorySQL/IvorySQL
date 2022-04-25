@@ -3833,4 +3833,10 @@ typedef struct DropSubscriptionStmt
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
 } DropSubscriptionStmt;
 
+typedef struct
+{
+	char	**colnames;		/* colname name of table */
+	Oid		*coltypes;		/* coltype name of table */
+} member_foreign_Object;
+
 #endif							/* PARSENODES_H */

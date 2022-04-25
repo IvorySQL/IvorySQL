@@ -1868,8 +1868,6 @@ get_relname_relid(const char *relname, Oid relnamespace)
  * Funcname: LookupSynonyms
  * Description: Look up synonyms by synname, synschema and synispub.
  * Return: Oid
- * Author: luotao
- * Date: 2021.06.15
  *************************************************************/
 Oid
 LookupSynonyms(char **synname, Oid *synschema, bool *reloidNotExistOk, Oid *mappingreloid)
@@ -1954,8 +1952,6 @@ LookupSynonyms(char **synname, Oid *synschema, bool *reloidNotExistOk, Oid *mapp
  * Funcname: get_synname_relid
  * Description: Given name and namespace of a synonym, look up the OID.
  * Return: Oid, or InvalidOid if there is no such relation.
- * Author: luotao
- * Date: 2021.06.15
  *************************************************************/
 Oid
 get_relid_by_synname(char **synname, char *synschemaname, Oid synnamespace)
@@ -2008,8 +2004,6 @@ get_relid_by_synname(char **synname, char *synschemaname, Oid synnamespace)
  * Description: Given name of a synonym, look up the function name.
  *              Do not replace if there is no such function name.
  * Return: bool
- * Author: luotao
- * Date: 2021.06.15
  *************************************************************/
 bool
 get_funname_by_synname(char **synschema, char **synname, Oid synnamespace)

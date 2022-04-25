@@ -1453,7 +1453,6 @@ DropRoleStmt:
  * Drop a synonym
  *
  * Drop a Synonym, if drop public synonym, must use drop public synonym XXX
- * add by qinshiyu 2021.06.10
  *
  *****************************************************************************/
 

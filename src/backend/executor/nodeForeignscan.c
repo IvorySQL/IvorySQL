@@ -307,18 +307,16 @@ ExecForeignTableEletsScan(const char *dblinkname,
 {
 	Oid				foreignserveroid;
 	FdwRoutine		*fdwroutine;
-	void			*voidres;
 	int				numattr;
-	char			*colname;
 	CreateStmt		*createmappingtblstmt;
 	int				i;
-	Oid				coltype;
 	ColumnDef		*coldef;
 	RangeVar		*rvar;
 	ObjectAddress	address;
 	CreateForeignTableStmt *createforeigntblstmt;
 	DefElem			*de1;
 	DefElem			*de2;
+	member_foreign_Object	*objres;
 
 	/*
 	 * create state structure
@@ -327,22 +325,21 @@ ExecForeignTableEletsScan(const char *dblinkname,
 
 	fdwroutine = GetFdwRoutineByServerId(foreignserveroid);
 
-	voidres = fdwroutine->GetForeignObject(schemaname, relname, srvowner, srvoid, &numattr);
+	objres = fdwroutine->GetForeignObject(schemaname, relname, srvowner, srvoid, &numattr);
 
 	createmappingtblstmt = makeNode(CreateStmt);
 	createforeigntblstmt = makeNode(CreateForeignTableStmt);
 
 	for (i = 0; i < numattr; i++)
 	{
-		colname = fdwroutine->GetPGresAttDescName(voidres, i, &coltype);
-		if (colname)
+		if (objres->colnames[i])
 		{
 			Type		t;
 			char		*typename;
 
 			coldef = makeNode(ColumnDef);
-			coldef->colname = colname;
-			t = typeidType(coltype);
+			coldef->colname = objres->colnames[i];
+			t = typeidType(objres->coltypes[i]);
 			typename = typeTypeName(t);
 			coldef->typeName = typeStringToTypeName(typename);
 			coldef->compression = NULL;
@@ -365,7 +362,6 @@ ExecForeignTableEletsScan(const char *dblinkname,
 
 	rvar->catalogname = NULL;
 	rvar->relname = psprintf("_dblink_%s_1", relname);
-	//rvar->relname = pstrdup(relname);
 	rvar->inh = true;
 	rvar->relpersistence = RELPERSISTENCE_TEMP;
 	rvar->alias = NULL;
@@ -404,7 +400,6 @@ ExecForeignTableEletsScan(const char *dblinkname,
 	de1->location = -1;
 	de2->defnamespace = NULL;
 	de2->defname = pstrdup("table_name");
-	//de2->arg = (Node *) makeString(rvar->relname);
 	de2->arg = (Node *) makeString(pstrdup(relname));
 	de2->defaction = DEFELEM_UNSPEC;
 	de2->location = -1;
@@ -419,9 +414,6 @@ ExecForeignTableEletsScan(const char *dblinkname,
 
 	*reloidNotExistOk = true;
 	*mappingreloid = address.objectId;
-	//EventTriggerCollectSimpleCommand(address,
-	//										  secondaryObject,
-	//										  (Node *)createforeigntblstmt);
 
 	return;
 }

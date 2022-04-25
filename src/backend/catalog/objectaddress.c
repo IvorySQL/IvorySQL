@@ -1271,8 +1271,6 @@ get_object_address(ObjectType objtype, Node *object,
 * get_synonym_address
 * Description: get synonym address
 * Return: oid
-* Author: qingshiyu
-* Date: 2021.06.24
 ***********************************************/
 ObjectAddress
 get_synonym_address(ObjectType objtype, Node *object, RangeVar *var,
@@ -4257,8 +4255,6 @@ getObjectDescriptionOids(Oid classid, Oid objid)
 * get_object_address_synonym
 * Description: get synonym address
 * Return: oid
-* Author: qingshiyu
-* Date: 2021.06.24
 ***********************************************/
 ObjectAddress
 get_object_address_synonym(List *object, RangeVar *var, bool missing_ok)

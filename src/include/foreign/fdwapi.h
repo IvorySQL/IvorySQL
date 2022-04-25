@@ -52,15 +52,11 @@ typedef void (*ReScanForeignScan_function) (ForeignScanState *node);
 
 typedef void (*EndForeignScan_function) (ForeignScanState *node);
 
-typedef void *(*GetForeignObject_function) (const char *schemaname,
-													const char *relname,
-													Oid srvowner,
-													Oid srvoid,
-													int *numattr);
-
-typedef char *(*GetPGresAttDescName_function) (const void *voidres,
-													int numattr,
-													Oid *coltype);
+typedef member_foreign_Object *(*GetForeignObject_function) (const char *schemaname,
+															const char *relname,
+															Oid srvowner,
+															Oid srvoid,
+															int *numattr);
 
 typedef void (*GetForeignJoinPaths_function) (PlannerInfo *root,
 											  RelOptInfo *joinrel,
@@ -224,7 +220,6 @@ typedef struct FdwRoutine
 	ReScanForeignScan_function ReScanForeignScan;
 	EndForeignScan_function EndForeignScan;
 	GetForeignObject_function GetForeignObject;
-	GetPGresAttDescName_function GetPGresAttDescName;
 
 	/*
 	 * Remaining functions are optional.  Set the pointer to NULL for any that

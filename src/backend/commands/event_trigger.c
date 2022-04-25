@@ -943,9 +943,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_DATABASE:
 		case OBJECT_TABLESPACE:
 		case OBJECT_ROLE:
-		/* add begin by qinshiyu at 2021.06.24 */
 		case OBJECT_SYNONYM:
-		/* add end by qinshiyu at 2021.06.24 */
 			/* no support for global objects */
 			return false;
 		case OBJECT_EVENT_TRIGGER:

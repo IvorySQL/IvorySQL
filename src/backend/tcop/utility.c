@@ -1066,7 +1066,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				break;
 			}
 
-		/* added by qinshiyu on 2021/6/10 */
 		case T_DropSynonymStmt:
 	           DropSynonym((DropSynonymStmt *) parsetree);
 	           break;
@@ -1901,7 +1900,6 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = AlterCollation((AlterCollationStmt *) parsetree);
 				break;
 
-			/* added by luotao on 2021/6/9 */
 			case T_CreateSynonymStmt:
 				address = CreateSynonym((CreateSynonymStmt *) parsetree);
 				break;

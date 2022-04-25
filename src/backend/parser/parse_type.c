@@ -53,10 +53,8 @@ LookupTypeName(ParseState *pstate, const TypeName *typeName,
 	tup =  LookupTypeNameExtended(pstate,
 								  typeName, typmod_p, true, missing_ok);
 
-	/* add begin by qinshiyu 2021.06.16 */
 	if (tup == NULL)
 		tup = LookupTypeNameFromSynonym(pstate, typeName, typmod_p, missing_ok);
-	/* add end by qinshiyu 2021.06.16 */
 
 	return tup;
 }
@@ -936,8 +934,6 @@ parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok
  * Funcname: LookupTypeNameFromSynonym
  * Description: Look up the type name from the synonym name
  * Return: Type
- * Author: qingshiyu
- * Date: 2021.06.10
  ************************************************************/
 Type 
 LookupTypeNameFromSynonym(ParseState *pstate, const TypeName *typeName, int32 *typmod_p, bool missing_ok)
