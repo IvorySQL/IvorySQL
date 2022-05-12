@@ -544,7 +544,6 @@ end;
 create or replace function use_refcursor(rc refcursor) return int 
 as
 declare
-    rc refcursor;
     x record;
 begin
     rc := return_unnamed_refcursor();
@@ -1044,7 +1043,33 @@ set plisql.extra_errors to 'all';
 set plisql.extra_errors to 'none';
 -- test warnings when shadowing a variable
 set plisql.extra_warnings to 'shadowed_variables';
--- simple shadowing of input and output parameters
+-- simple shadowing of vars between blocks
+create or replace function shadowtest()
+	returns table (x int) as $$
+declare --block 1
+  in1 int;
+  out1 int;
+begin
+  declare --block 2
+    in1 int;
+    out1 int;
+  begin
+  end;
+end
+$$ language plisql;
+WARNING:  variable "in1" shadows a previously defined variable
+LINE 8:     in1 int;
+            ^
+WARNING:  variable "out1" shadows a previously defined variable
+LINE 9:     out1 int;
+            ^
+select shadowtest();
+ shadowtest 
+------------
+(0 rows)
+
+drop function shadowtest();
+-- duplicate var declaration with function parameter
 create or replace function shadowtest(in1 int)
 	returns table (out1 int) as $$
 declare
@@ -1053,18 +1078,9 @@ out1 int;
 begin
 end
 $$ language plisql;
-WARNING:  variable "in1" shadows a previously defined variable
+ERROR:  duplicate declaration at or near "in1"
 LINE 4: in1 int;
         ^
-WARNING:  variable "out1" shadows a previously defined variable
-LINE 5: out1 int;
-        ^
-select shadowtest(1);
- shadowtest 
-------------
-(0 rows)
-
-drop function shadowtest(int);
 -- shadowing in a second DECLARE block
 create or replace function shadowtest()
 	returns void as $$
@@ -1091,13 +1107,9 @@ begin
 	begin
 	end;
 end$$ language plisql;
-WARNING:  variable "in1" shadows a previously defined variable
+ERROR:  duplicate declaration at or near "in1"
 LINE 4: in1 int;
         ^
-WARNING:  variable "in1" shadows a previously defined variable
-LINE 7:  in1 int;
-         ^
-drop function shadowtest(int);
 -- shadowing in cursor definitions
 create or replace function shadowtest()
 	returns void as $$
@@ -1115,26 +1127,17 @@ set plisql.extra_errors to 'shadowed_variables';
 create or replace function shadowtest(f1 int)
 	returns boolean as $$
 declare f1 int; begin return 1; end $$ language plisql;
-ERROR:  variable "f1" shadows a previously defined variable
+ERROR:  duplicate declaration at or near "f1"
 LINE 3: declare f1 int; begin return 1; end $$ language plisql;
                 ^
-select shadowtest(1);
-ERROR:  function shadowtest(integer) does not exist
-LINE 1: select shadowtest(1);
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 reset plisql.extra_errors;
 reset plisql.extra_warnings;
 create or replace function shadowtest(f1 int)
 	returns boolean as $$
 declare f1 int; begin return 1; end $$ language plisql;
-select shadowtest(1);
- shadowtest 
-------------
- t
-(1 row)
-
-drop function shadowtest(int);
+ERROR:  duplicate declaration at or near "f1"
+LINE 3: declare f1 int; begin return 1; end $$ language plisql;
+                ^
 -- runtime extra checks
 set plisql.extra_warnings to 'too_many_rows';
 declare x int;
@@ -1387,9 +1390,8 @@ drop function sc_test();
 drop table tcur_tb;
 -- test qualified variable names
 create or replace function pl_qual_names (param1 int) return void as
-<<outerblock>>
 declare
-  param1 int := 1;
+  param2 int := 1;
 begin
   <<innerblock>>
   declare
@@ -1397,7 +1399,7 @@ begin
   begin
     raise notice 'param1 = %', param1;
     raise notice 'pl_qual_names.param1 = %', pl_qual_names.param1;
-    raise notice 'outerblock.param1 = %', outerblock.param1;
+    raise notice 'pl_qual_names.param2 = %', pl_qual_names.param2;
     raise notice 'innerblock.param1 = %', innerblock.param1;
   end;
 end;
@@ -1405,7 +1407,7 @@ end;
 select pl_qual_names(42);
 NOTICE:  param1 = 2
 NOTICE:  pl_qual_names.param1 = 42
-NOTICE:  outerblock.param1 = 1
+NOTICE:  pl_qual_names.param2 = 1
 NOTICE:  innerblock.param1 = 2
  pl_qual_names 
 ---------------

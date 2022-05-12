@@ -428,7 +428,21 @@ pl_block		: decl_sect pl_block_body
 						$2->n_initvars = $1.n_initvars;
 						$2->initvarnos = $1.initvarnos;
 						$$ = (PLiSQL_stmt *)$2;
-						check_labels($1.label, $2->label, @2);
+
+						/* Match END label with the function or procedure name. */
+						if ($2->label != NULL &&
+							strcasecmp(plisql_error_funcname, $2->label) != 0)
+							ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								errmsg("END identifier '%s' must match '%s'",
+										$2->label, plisql_error_funcname),
+								parser_errposition(@2)));
+
+						/*
+						 * ignore $1->label, because we only match the END label
+						 * with function/procedure name. The first block's label
+						 * is not used.
+						 */
 					}
 				;
 pl_block_body	: K_BEGIN proc_sect exception_sect K_END opt_label
@@ -478,19 +492,23 @@ decl_sect_block		: decl_stmts
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
 						$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
 					}
-decl_sect		: opt_block_label decl_or_not decl_stmts
+				;
+
+decl_sect		:  decl_or_not decl_stmts
 					{
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
-						$$.label	  = $1;
+						$$.label	  = NULL;
 						$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
 					}
-				| opt_block_label
+				|
 					{
-						$$.label	  = $1;
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+						$$.label	  = NULL;
 						$$.n_initvars = 0;
 						$$.initvarnos = NULL;
 					}
 				;
+
 decl_start		: K_DECLARE
 					{
 						/* Forget any variables created before block */
