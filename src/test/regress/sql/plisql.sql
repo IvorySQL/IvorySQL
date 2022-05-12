@@ -433,7 +433,6 @@ end;
 create or replace function use_refcursor(rc refcursor) return int 
 as
 declare
-    rc refcursor;
     x record;
 begin
     rc := return_unnamed_refcursor();
@@ -863,7 +862,25 @@ set plisql.extra_errors to 'none';
 
 set plisql.extra_warnings to 'shadowed_variables';
 
--- simple shadowing of input and output parameters
+-- simple shadowing of vars between blocks
+create or replace function shadowtest()
+	returns table (x int) as $$
+declare --block 1
+  in1 int;
+  out1 int;
+begin
+  declare --block 2
+    in1 int;
+    out1 int;
+  begin
+  end;
+end
+$$ language plisql;
+
+select shadowtest();
+drop function shadowtest();
+
+-- duplicate var declaration with function parameter
 create or replace function shadowtest(in1 int)
 	returns table (out1 int) as $$
 declare
@@ -873,9 +890,6 @@ begin
 end
 $$ language plisql;
 
-select shadowtest(1);
-
-drop function shadowtest(int);
 
 
 -- shadowing in a second DECLARE block
@@ -903,7 +917,6 @@ begin
 	begin
 	end;
 end$$ language plisql;
-drop function shadowtest(int);
 
 
 -- shadowing in cursor definitions
@@ -924,7 +937,6 @@ create or replace function shadowtest(f1 int)
 	returns boolean as $$
 declare f1 int; begin return 1; end $$ language plisql;
 
-select shadowtest(1);
 
 reset plisql.extra_errors;
 reset plisql.extra_warnings;
@@ -933,8 +945,6 @@ create or replace function shadowtest(f1 int)
 	returns boolean as $$
 declare f1 int; begin return 1; end $$ language plisql;
 
-select shadowtest(1);
-drop function shadowtest(int);
 
 
 -- runtime extra checks
@@ -1160,9 +1170,8 @@ drop table tcur_tb;
 -- test qualified variable names
 
 create or replace function pl_qual_names (param1 int) return void as
-<<outerblock>>
 declare
-  param1 int := 1;
+  param2 int := 1;
 begin
   <<innerblock>>
   declare
@@ -1170,7 +1179,7 @@ begin
   begin
     raise notice 'param1 = %', param1;
     raise notice 'pl_qual_names.param1 = %', pl_qual_names.param1;
-    raise notice 'outerblock.param1 = %', outerblock.param1;
+    raise notice 'pl_qual_names.param2 = %', pl_qual_names.param2;
     raise notice 'innerblock.param1 = %', innerblock.param1;
   end;
 end;

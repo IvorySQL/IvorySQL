@@ -877,6 +877,7 @@ do_compile(FunctionCallInfo fcinfo,
 	/*
 	 * Now parse the function's text
 	 */
+	plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
 	parse_rc = plisql_yyparse();
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
