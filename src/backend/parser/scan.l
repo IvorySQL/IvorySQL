@@ -825,6 +825,10 @@ other			.
 					addlit(yytext, yyleng, yyscanner);
 				}
 
+<xdq>{whitespace} {
+					addlitchar(yytext[0], yyscanner);
+				}
+
 <xdq>.			{
 					addlitchar(yytext[0], yyscanner);
 				}

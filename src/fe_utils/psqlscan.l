@@ -442,7 +442,12 @@ other			.
 					cur_state->tokenstate = IDENT;
 					ECHO;
 				}
-{other}			{ /* eatup everything */
+
+{whitespace}	{
+					ECHO;
+				}
+
+{other}			{	/* eatup everything */
 					ECHO;
 				}
 } /*<dec_cursor>*/
@@ -850,6 +855,9 @@ other			.
 					ECHO;
 				}
 <xdq>{dosymfailed} {
+					ECHO;
+				}
+<xdq>{whitespace} {
 					ECHO;
 				}
 <xdq>.			{
