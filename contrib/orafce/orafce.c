@@ -1,4 +1,5 @@
 #include "postgres.h"
+#include "miscadmin.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/guc.h"
@@ -12,6 +13,12 @@
 char  *nls_date_format = NULL;
 char  *orafce_timezone = NULL;
 
+/* Saved hook values in case of unload */
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
+
+/* Function declarations */
+static void process_shmem_request(void);
+
 void
 _PG_init(void)
 {
@@ -22,7 +29,8 @@ _PG_init(void)
 
 #endif
 
-	RequestAddinShmemSpace(SHMEMMSGSZ);
+	prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = process_shmem_request;
 
 	/* Define custom GUC variables. */
 	DefineCustomStringVariable("orafce.nls_date_format",
@@ -55,3 +63,17 @@ _PG_init(void)
 
 	EmitWarningsOnPlaceholders("orafce");
 }
+
+/*
+ * shmem_request hook: request additional shared resources.  We'll allocate or
+ * attach to the shared resources in pgss_shmem_startup().
+ */
+static void
+process_shmem_request(void)
+{
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	RequestAddinShmemSpace(SHMEMMSGSZ);
+}
+
