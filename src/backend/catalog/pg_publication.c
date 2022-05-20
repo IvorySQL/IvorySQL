@@ -378,9 +378,9 @@ publication_add_relation(Oid pubid, PublicationRelInfo *pri,
 	check_publication_add_relation(targetrel);
 
 	/*
-	 * Translate column names to attnums and make sure the column list contains
-	 * only allowed elements (no system or generated columns etc.). Also build
-	 * an array of attnums, for storing in the catalog.
+	 * Translate column names to attnums and make sure the column list
+	 * contains only allowed elements (no system or generated columns etc.).
+	 * Also build an array of attnums, for storing in the catalog.
 	 */
 	publication_translate_columns(pri->relation, pri->columns,
 								  &natts, &attarray);
@@ -555,11 +555,11 @@ pub_collist_to_bitmapset(Bitmapset *columns, Datum pubcols, MemoryContext mcxt)
 	ArrayType  *arr;
 	int			nelems;
 	int16	   *elems;
-	MemoryContext	oldcxt = NULL;
+	MemoryContext oldcxt = NULL;
 
 	/*
-	 * If an existing bitmap was provided, use it. Otherwise just use NULL
-	 * and build a new bitmap.
+	 * If an existing bitmap was provided, use it. Otherwise just use NULL and
+	 * build a new bitmap.
 	 */
 	if (columns)
 		result = columns;
@@ -1077,11 +1077,12 @@ get_publication_name(Oid pubid, bool missing_ok)
 }
 
 /*
- * Returns Oids of tables in a publication.
+ * Returns information of tables in a publication.
  */
 Datum
 pg_get_publication_tables(PG_FUNCTION_ARGS)
 {
+#define NUM_PUBLICATOIN_TABLES_ELEM	3
 	FuncCallContext *funcctx;
 	char	   *pubname = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	Publication *publication;
@@ -1090,6 +1091,7 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
+		TupleDesc	tupdesc;
 		MemoryContext oldcontext;
 
 		/* create a function context for cross-call persistence */
@@ -1136,6 +1138,16 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 				tables = filter_partitions(tables);
 		}
 
+		/* Construct a tuple descriptor for the result rows. */
+		tupdesc = CreateTemplateTupleDesc(NUM_PUBLICATOIN_TABLES_ELEM);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relid",
+						   OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "attrs",
+						   INT2VECTOROID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "qual",
+						   PG_NODE_TREEOID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 		funcctx->user_fctx = (void *) tables;
 
 		MemoryContextSwitchTo(oldcontext);
@@ -1147,9 +1159,47 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 
 	if (funcctx->call_cntr < list_length(tables))
 	{
+		HeapTuple	pubtuple = NULL;
+		HeapTuple	rettuple;
 		Oid			relid = list_nth_oid(tables, funcctx->call_cntr);
+		Datum		values[NUM_PUBLICATOIN_TABLES_ELEM];
+		bool		nulls[NUM_PUBLICATOIN_TABLES_ELEM];
 
-		SRF_RETURN_NEXT(funcctx, ObjectIdGetDatum(relid));
+		/*
+		 * Form tuple with appropriate data.
+		 */
+		MemSet(nulls, 0, sizeof(nulls));
+		MemSet(values, 0, sizeof(values));
+
+		publication = GetPublicationByName(pubname, false);
+
+		values[0] = ObjectIdGetDatum(relid);
+
+		pubtuple = SearchSysCacheCopy2(PUBLICATIONRELMAP,
+									   ObjectIdGetDatum(relid),
+									   ObjectIdGetDatum(publication->oid));
+
+		if (HeapTupleIsValid(pubtuple))
+		{
+			/* Lookup the column list attribute. */
+			values[1] = SysCacheGetAttr(PUBLICATIONRELMAP, pubtuple,
+										Anum_pg_publication_rel_prattrs,
+										&(nulls[1]));
+
+			/* Null indicates no filter. */
+			values[2] = SysCacheGetAttr(PUBLICATIONRELMAP, pubtuple,
+										Anum_pg_publication_rel_prqual,
+										&(nulls[2]));
+		}
+		else
+		{
+			nulls[1] = true;
+			nulls[2] = true;
+		}
+
+		rettuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(rettuple));
 	}
 
 	SRF_RETURN_DONE(funcctx);

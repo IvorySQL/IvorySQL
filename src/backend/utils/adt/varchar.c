@@ -837,7 +837,7 @@ bpchareq(PG_FUNCTION_ARGS)
 	bool		result;
 	Oid			collid = PG_GET_COLLATION();
 	bool		locale_is_c = false;
-	pg_locale_t	mylocale = 0;
+	pg_locale_t mylocale = 0;
 
 	check_collation_set(collid);
 
@@ -882,7 +882,7 @@ bpcharne(PG_FUNCTION_ARGS)
 	bool		result;
 	Oid			collid = PG_GET_COLLATION();
 	bool		locale_is_c = false;
-	pg_locale_t	mylocale = 0;
+	pg_locale_t mylocale = 0;
 
 	check_collation_set(collid);
 

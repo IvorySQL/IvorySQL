@@ -527,6 +527,15 @@ WHEN MATCHED AND t.balance = 199 OR s.balance > 100 THEN
 	UPDATE SET balance = t.balance + s.balance;
 SELECT * FROM wq_target;
 
+-- check source-side whole-row references
+BEGIN;
+MERGE INTO wq_target t
+USING wq_source s ON (t.tid = s.sid)
+WHEN matched and t = s or t.tid = s.sid THEN
+	UPDATE SET balance = t.balance + s.balance;
+SELECT * FROM wq_target;
+ROLLBACK;
+
 -- check if subqueries work in the conditions?
 MERGE INTO wq_target t
 USING wq_source s ON t.tid = s.sid
@@ -869,7 +878,7 @@ BEGIN
         EXECUTE 'explain (analyze, timing off, summary off, costs off) ' ||
 		  query
     LOOP
-        ln := regexp_replace(ln, 'Memory: \S*',  'Memory: xxx');
+        ln := regexp_replace(ln, '(Memory( Usage)?|Buckets|Batches): \S*',  '\1: xxx', 'g');
         RETURN NEXT ln;
     END LOOP;
 END;
@@ -910,6 +919,12 @@ WHEN MATCHED AND t.a >= 30 AND t.a <= 40 THEN
 	DELETE
 WHEN NOT MATCHED AND s.a < 20 THEN
 	INSERT VALUES (a, b)');
+
+-- nothing
+SELECT explain_merge('
+MERGE INTO ex_mtarget t USING ex_msource s ON t.a = s.a AND t.a < -1000
+WHEN MATCHED AND t.a < 10 THEN
+	DO NOTHING');
 
 DROP TABLE ex_msource, ex_mtarget;
 DROP FUNCTION explain_merge(text);

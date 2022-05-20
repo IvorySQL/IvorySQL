@@ -435,10 +435,10 @@ typedef struct XLogCtlInsert
 	bool		fullPageWrites;
 
 	/*
-	 * runningBackups is a counter indicating the number of backups currently in
-	 * progress. forcePageWrites is set to true when runningBackups is non-zero.
-	 * lastBackupStart is the latest checkpoint redo location used as a starting
-	 * point for an online backup.
+	 * runningBackups is a counter indicating the number of backups currently
+	 * in progress. forcePageWrites is set to true when runningBackups is
+	 * non-zero. lastBackupStart is the latest checkpoint redo location used
+	 * as a starting point for an online backup.
 	 */
 	int			runningBackups;
 	XLogRecPtr	lastBackupStart;
@@ -4540,9 +4540,9 @@ BootStrapXLOG(void)
 	checkPoint.nextMulti = FirstMultiXactId;
 	checkPoint.nextMultiOffset = 0;
 	checkPoint.oldestXid = FirstNormalTransactionId;
-	checkPoint.oldestXidDB = TemplateDbOid;
+	checkPoint.oldestXidDB = Template1DbOid;
 	checkPoint.oldestMulti = FirstMultiXactId;
-	checkPoint.oldestMultiDB = TemplateDbOid;
+	checkPoint.oldestMultiDB = Template1DbOid;
 	checkPoint.oldestCommitTsXid = InvalidTransactionId;
 	checkPoint.newestCommitTsXid = InvalidTransactionId;
 	checkPoint.time = (pg_time_t) time(NULL);
@@ -5307,14 +5307,14 @@ StartupXLOG(void)
 	 * When recovering from a backup (we are in recovery, and archive recovery
 	 * was requested), complain if we did not roll forward far enough to reach
 	 * the point where the database is consistent.  For regular online
-	 * backup-from-primary, that means reaching the end-of-backup WAL record (at
-	 * which point we reset backupStartPoint to be Invalid), for
+	 * backup-from-primary, that means reaching the end-of-backup WAL record
+	 * (at which point we reset backupStartPoint to be Invalid), for
 	 * backup-from-replica (which can't inject records into the WAL stream),
 	 * that point is when we reach the minRecoveryPoint in pg_control (which
-	 * we purposfully copy last when backing up from a replica).  For pg_rewind
-	 * (which creates a backup_label with a method of "pg_rewind") or
-	 * snapshot-style backups (which don't), backupEndRequired will be set to
-	 * false.
+	 * we purposefully copy last when backing up from a replica).  For
+	 * pg_rewind (which creates a backup_label with a method of "pg_rewind")
+	 * or snapshot-style backups (which don't), backupEndRequired will be set
+	 * to false.
 	 *
 	 * Note: it is indeed okay to look at the local variable
 	 * LocalMinRecoveryPoint here, even though ControlFile->minRecoveryPoint
@@ -5328,8 +5328,8 @@ StartupXLOG(void)
 		/*
 		 * Ran off end of WAL before reaching end-of-backup WAL record, or
 		 * minRecoveryPoint. That's a bad sign, indicating that you tried to
-		 * recover from an online backup but never called pg_backup_stop(),
-		 * or you didn't archive all the WAL needed.
+		 * recover from an online backup but never called pg_backup_stop(), or
+		 * you didn't archive all the WAL needed.
 		 */
 		if (ArchiveRecoveryRequested || ControlFile->backupEndRequired)
 		{
@@ -6921,6 +6921,9 @@ CreateRestartPoint(int flags)
 	XLogSegNo	_logSegNo;
 	TimestampTz xtime;
 
+	/* Concurrent checkpoint/restartpoint cannot happen */
+	Assert(!IsUnderPostmaster || MyBackendType == B_CHECKPOINTER);
+
 	/* Get a local copy of the last safe checkpoint record. */
 	SpinLockAcquire(&XLogCtl->info_lck);
 	lastCheckPointRecPtr = XLogCtl->lastCheckPointRecPtr;
@@ -7014,40 +7017,49 @@ CreateRestartPoint(int flags)
 	PriorRedoPtr = ControlFile->checkPointCopy.redo;
 
 	/*
-	 * Update pg_control, using current time.  Check that it still shows
-	 * DB_IN_ARCHIVE_RECOVERY state and an older checkpoint, else do nothing;
-	 * this is a quick hack to make sure nothing really bad happens if somehow
-	 * we get here after the end-of-recovery checkpoint.
+	 * Update pg_control, using current time.  Check that it still shows an
+	 * older checkpoint, else do nothing; this is a quick hack to make sure
+	 * nothing really bad happens if somehow we get here after the
+	 * end-of-recovery checkpoint.
 	 */
 	LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
-	if (ControlFile->state == DB_IN_ARCHIVE_RECOVERY &&
-		ControlFile->checkPointCopy.redo < lastCheckPoint.redo)
+	if (ControlFile->checkPointCopy.redo < lastCheckPoint.redo)
 	{
+		/*
+		 * Update the checkpoint information.  We do this even if the cluster
+		 * does not show DB_IN_ARCHIVE_RECOVERY to match with the set of WAL
+		 * segments recycled below.
+		 */
 		ControlFile->checkPoint = lastCheckPointRecPtr;
 		ControlFile->checkPointCopy = lastCheckPoint;
 
 		/*
-		 * Ensure minRecoveryPoint is past the checkpoint record.  Normally,
+		 * Ensure minRecoveryPoint is past the checkpoint record and update it
+		 * if the control file still shows DB_IN_ARCHIVE_RECOVERY.  Normally,
 		 * this will have happened already while writing out dirty buffers,
 		 * but not necessarily - e.g. because no buffers were dirtied.  We do
-		 * this because a backup performed in recovery uses minRecoveryPoint to
-		 * determine which WAL files must be included in the backup, and the
-		 * file (or files) containing the checkpoint record must be included,
-		 * at a minimum. Note that for an ordinary restart of recovery there's
-		 * no value in having the minimum recovery point any earlier than this
-		 * anyway, because redo will begin just after the checkpoint record.
+		 * this because a backup performed in recovery uses minRecoveryPoint
+		 * to determine which WAL files must be included in the backup, and
+		 * the file (or files) containing the checkpoint record must be
+		 * included, at a minimum.  Note that for an ordinary restart of
+		 * recovery there's no value in having the minimum recovery point any
+		 * earlier than this anyway, because redo will begin just after the
+		 * checkpoint record.
 		 */
-		if (ControlFile->minRecoveryPoint < lastCheckPointEndPtr)
+		if (ControlFile->state == DB_IN_ARCHIVE_RECOVERY)
 		{
-			ControlFile->minRecoveryPoint = lastCheckPointEndPtr;
-			ControlFile->minRecoveryPointTLI = lastCheckPoint.ThisTimeLineID;
+			if (ControlFile->minRecoveryPoint < lastCheckPointEndPtr)
+			{
+				ControlFile->minRecoveryPoint = lastCheckPointEndPtr;
+				ControlFile->minRecoveryPointTLI = lastCheckPoint.ThisTimeLineID;
 
-			/* update local copy */
-			LocalMinRecoveryPoint = ControlFile->minRecoveryPoint;
-			LocalMinRecoveryPointTLI = ControlFile->minRecoveryPointTLI;
+				/* update local copy */
+				LocalMinRecoveryPoint = ControlFile->minRecoveryPoint;
+				LocalMinRecoveryPointTLI = ControlFile->minRecoveryPointTLI;
+			}
+			if (flags & CHECKPOINT_IS_SHUTDOWN)
+				ControlFile->state = DB_SHUTDOWNED_IN_RECOVERY;
 		}
-		if (flags & CHECKPOINT_IS_SHUTDOWN)
-			ControlFile->state = DB_SHUTDOWNED_IN_RECOVERY;
 		UpdateControlFile();
 	}
 	LWLockRelease(ControlFileLock);
@@ -8469,8 +8481,8 @@ do_pg_backup_stop(char *labelfile, bool waitforarchive, TimeLineID *stoptli_p)
 	WALInsertLockAcquireExclusive();
 
 	/*
-	 * It is expected that each do_pg_backup_start() call is matched by exactly
-	 * one do_pg_backup_stop() call.
+	 * It is expected that each do_pg_backup_start() call is matched by
+	 * exactly one do_pg_backup_stop() call.
 	 */
 	Assert(XLogCtl->Insert.runningBackups > 0);
 	XLogCtl->Insert.runningBackups--;

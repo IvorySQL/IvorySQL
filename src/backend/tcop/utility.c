@@ -3766,7 +3766,6 @@ GetCommandLogLevel(Node *parsetree)
 						lev = LOGSTMT_ALL;
 						break;
 				}
-
 			}
 			break;
 

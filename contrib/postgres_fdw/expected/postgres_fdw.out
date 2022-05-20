@@ -10008,6 +10008,34 @@ SELECT COUNT(*) FROM ftable;
      2
 (1 row)
 
+-- Disable batch inserting into foreign tables with BEFORE ROW INSERT triggers
+-- even if the batch_size option is enabled.
+ALTER FOREIGN TABLE ftable OPTIONS ( SET batch_size '10' );
+CREATE TRIGGER trig_row_before BEFORE INSERT ON ftable
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO ftable VALUES (3), (4);
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Insert on public.ftable
+   Remote SQL: INSERT INTO public.batch_table(x) VALUES ($1)
+   Batch Size: 1
+   ->  Values Scan on "*VALUES*"
+         Output: "*VALUES*".column1
+(5 rows)
+
+INSERT INTO ftable VALUES (3), (4);
+NOTICE:  trig_row_before(23, skidoo) BEFORE ROW INSERT ON ftable
+NOTICE:  NEW: (3)
+NOTICE:  trig_row_before(23, skidoo) BEFORE ROW INSERT ON ftable
+NOTICE:  NEW: (4)
+SELECT COUNT(*) FROM ftable;
+ count 
+-------
+     4
+(1 row)
+
+-- Clean up
+DROP TRIGGER trig_row_before ON ftable;
 DROP FOREIGN TABLE ftable;
 DROP TABLE batch_table;
 -- Use partitioning
@@ -10706,6 +10734,72 @@ SELECT * FROM result_tbl ORDER BY a;
 (12 rows)
 
 DELETE FROM result_tbl;
+-- Disable async execution if we use gating Result nodes for pseudoconstant
+-- quals
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM async_pt WHERE CURRENT_USER = SESSION_USER;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Append
+   ->  Result
+         Output: async_pt_1.a, async_pt_1.b, async_pt_1.c
+         One-Time Filter: (CURRENT_USER = SESSION_USER)
+         ->  Foreign Scan on public.async_p1 async_pt_1
+               Output: async_pt_1.a, async_pt_1.b, async_pt_1.c
+               Remote SQL: SELECT a, b, c FROM public.base_tbl1
+   ->  Result
+         Output: async_pt_2.a, async_pt_2.b, async_pt_2.c
+         One-Time Filter: (CURRENT_USER = SESSION_USER)
+         ->  Foreign Scan on public.async_p2 async_pt_2
+               Output: async_pt_2.a, async_pt_2.b, async_pt_2.c
+               Remote SQL: SELECT a, b, c FROM public.base_tbl2
+   ->  Result
+         Output: async_pt_3.a, async_pt_3.b, async_pt_3.c
+         One-Time Filter: (CURRENT_USER = SESSION_USER)
+         ->  Seq Scan on public.async_p3 async_pt_3
+               Output: async_pt_3.a, async_pt_3.b, async_pt_3.c
+(18 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+(SELECT * FROM async_p1 WHERE CURRENT_USER = SESSION_USER)
+UNION ALL
+(SELECT * FROM async_p2 WHERE CURRENT_USER = SESSION_USER);
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Append
+   ->  Result
+         Output: async_p1.a, async_p1.b, async_p1.c
+         One-Time Filter: (CURRENT_USER = SESSION_USER)
+         ->  Foreign Scan on public.async_p1
+               Output: async_p1.a, async_p1.b, async_p1.c
+               Remote SQL: SELECT a, b, c FROM public.base_tbl1
+   ->  Result
+         Output: async_p2.a, async_p2.b, async_p2.c
+         One-Time Filter: (CURRENT_USER = SESSION_USER)
+         ->  Foreign Scan on public.async_p2
+               Output: async_p2.a, async_p2.b, async_p2.c
+               Remote SQL: SELECT a, b, c FROM public.base_tbl2
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ((SELECT * FROM async_p1 WHERE b < 10) UNION ALL (SELECT * FROM async_p2 WHERE b < 10)) s WHERE CURRENT_USER = SESSION_USER;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Append
+   ->  Result
+         Output: async_p1.a, async_p1.b, async_p1.c
+         One-Time Filter: (CURRENT_USER = SESSION_USER)
+         ->  Foreign Scan on public.async_p1
+               Output: async_p1.a, async_p1.b, async_p1.c
+               Remote SQL: SELECT a, b, c FROM public.base_tbl1 WHERE ((b < 10))
+   ->  Result
+         Output: async_p2.a, async_p2.b, async_p2.c
+         One-Time Filter: (CURRENT_USER = SESSION_USER)
+         ->  Foreign Scan on public.async_p2
+               Output: async_p2.a, async_p2.b, async_p2.c
+               Remote SQL: SELECT a, b, c FROM public.base_tbl2 WHERE ((b < 10))
+(13 rows)
+
 -- Test that pending requests are processed properly
 SET enable_mergejoin TO false;
 SET enable_hashjoin TO false;

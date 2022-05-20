@@ -563,7 +563,6 @@ compactify_tuples(itemIdCompact itemidbase, int nitems, Page page, bool presorte
 
 			/* update the line pointer to reference the new offset */
 			lp->lp_off = upper;
-
 		}
 
 		/* move the remaining tuples. */
@@ -669,7 +668,6 @@ compactify_tuples(itemIdCompact itemidbase, int nitems, Page page, bool presorte
 
 			/* update the line pointer to reference the new offset */
 			lp->lp_off = upper;
-
 		}
 
 		/* Copy the remaining chunk */
@@ -797,7 +795,7 @@ PageRepairFragmentation(Page page)
 	if (finalusedlp != nline)
 	{
 		/* The last line pointer is not the last used line pointer */
-		int		nunusedend = nline - finalusedlp;
+		int			nunusedend = nline - finalusedlp;
 
 		Assert(nunused >= nunusedend && nunusedend > 0);
 

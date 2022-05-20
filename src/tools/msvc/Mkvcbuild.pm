@@ -35,22 +35,22 @@ my $libpq;
 my @unlink_on_exit;
 
 # Set of variables for modules in contrib/ and src/test/modules/
-my $contrib_defines = {};
-my @contrib_uselibpq = ();
+my $contrib_defines        = {};
+my @contrib_uselibpq       = ();
 my @contrib_uselibpgport   = ();
 my @contrib_uselibpgcommon = ();
-my $contrib_extralibs     = { 'libpq_pipeline' => ['ws2_32.lib'] };
+my $contrib_extralibs      = { 'libpq_pipeline' => ['ws2_32.lib'] };
 my $contrib_extraincludes  = {};
 my $contrib_extrasource    = {};
-my @contrib_excludes = (
-	'bool_plperl',      'commit_ts',
-	'hstore_plperl',    'hstore_plpython',
-	'intagg',           'jsonb_plperl',
-	'jsonb_plpython',   'ltree_plpython',
-	'sepgsql',
-	'brin',             'test_extensions',
-	'test_misc',        'test_pg_dump',
-	'snapshot_too_old', 'unsafe_tests');
+my @contrib_excludes       = (
+	'bool_plperl',     'commit_ts',
+	'hstore_plperl',   'hstore_plpython',
+	'intagg',          'jsonb_plperl',
+	'jsonb_plpython',  'ltree_plpython',
+	'sepgsql',         'brin',
+	'test_extensions', 'test_misc',
+	'test_pg_dump',    'snapshot_too_old',
+	'unsafe_tests');
 
 # Set of variables for frontend modules
 my $frontend_defines = { 'initdb' => 'FRONTEND' };
@@ -284,6 +284,24 @@ sub mkvcbuild
 	$libpqwalreceiver->AddIncludeDir('src/interfaces/libpq');
 	$libpqwalreceiver->AddReference($postgres, $libpq);
 
+	my $libpq_testclient =
+	  $solution->AddProject('libpq_testclient', 'exe', 'misc',
+		'src/interfaces/libpq/test');
+	$libpq_testclient->AddFile(
+		'src/interfaces/libpq/test/libpq_testclient.c');
+	$libpq_testclient->AddIncludeDir('src/interfaces/libpq');
+	$libpq_testclient->AddReference($libpgport, $libpq);
+	$libpq_testclient->AddLibrary('ws2_32.lib');
+
+	my $libpq_uri_regress =
+	  $solution->AddProject('libpq_uri_regress', 'exe', 'misc',
+		'src/interfaces/libpq/test');
+	$libpq_uri_regress->AddFile(
+		'src/interfaces/libpq/test/libpq_uri_regress.c');
+	$libpq_uri_regress->AddIncludeDir('src/interfaces/libpq');
+	$libpq_uri_regress->AddReference($libpgport, $libpq);
+	$libpq_uri_regress->AddLibrary('ws2_32.lib');
+
 	my $pgoutput = $solution->AddProject('pgoutput', 'dll', '',
 		'src/backend/replication/pgoutput');
 	$pgoutput->AddReference($postgres);
@@ -448,7 +466,8 @@ sub mkvcbuild
 
 	if (!$solution->{options}->{openssl})
 	{
-		push @contrib_excludes, 'sslinfo', 'ssl_passphrase_callback', 'pgcrypto';
+		push @contrib_excludes, 'sslinfo', 'ssl_passphrase_callback',
+		  'pgcrypto';
 	}
 
 	if (!$solution->{options}->{uuid})
@@ -492,7 +511,8 @@ sub mkvcbuild
 
 		my $pymajorver = substr($pyver, 0, 1);
 
-		die "Python version $pyver is too old (version 3 or later is required)"
+		die
+		  "Python version $pyver is too old (version 3 or later is required)"
 		  if int($pymajorver) < 3;
 
 		my $plpython = $solution->AddProject('plpython' . $pymajorver,
@@ -910,7 +930,7 @@ sub AddTransformModule
 	# Add PL dependencies
 	$p->AddIncludeDir($pl_src);
 	$p->AddReference($pl_proj);
-	$p->AddIncludeDir($_) for @{$pl_proj->{includes}};
+	$p->AddIncludeDir($_) for @{ $pl_proj->{includes} };
 	foreach my $pl_lib (@{ $pl_proj->{libraries} })
 	{
 		$p->AddLibrary($pl_lib);
@@ -920,7 +940,7 @@ sub AddTransformModule
 	if ($type_proj)
 	{
 		$p->AddIncludeDir($type_src);
-		$p->AddIncludeDir($_) for @{$type_proj->{includes}};
+		$p->AddIncludeDir($_) for @{ $type_proj->{includes} };
 		foreach my $type_lib (@{ $type_proj->{libraries} })
 		{
 			$p->AddLibrary($type_lib);
@@ -934,9 +954,9 @@ sub AddTransformModule
 # Add a simple contrib project
 sub AddContrib
 {
-	my $subdir = shift;
-	my $n      = shift;
-	my $mf     = Project::read_file("$subdir/$n/Makefile");
+	my $subdir   = shift;
+	my $n        = shift;
+	my $mf       = Project::read_file("$subdir/$n/Makefile");
 	my @projects = ();
 
 	if ($mf =~ /^MODULE_big\s*=\s*(.*)$/mg)
@@ -972,7 +992,8 @@ sub AddContrib
 	}
 
 	# Process custom compiler flags
-	if ($mf =~ /^PG_CPPFLAGS\s*=\s*(.*)$/mg || $mf =~ /^override\s*CPPFLAGS\s*[+:]?=\s*(.*)$/mg)
+	if (   $mf =~ /^PG_CPPFLAGS\s*=\s*(.*)$/mg
+		|| $mf =~ /^override\s*CPPFLAGS\s*[+:]?=\s*(.*)$/mg)
 	{
 		foreach my $flag (split /\s+/, $1)
 		{

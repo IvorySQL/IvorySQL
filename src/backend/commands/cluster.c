@@ -232,7 +232,7 @@ cluster(ParseState *pstate, ClusterStmt *stmt, bool isTopLevel)
 	if (rel != NULL)
 	{
 		Assert(rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
-		check_index_is_clusterable(rel, indexOid, true, AccessShareLock);
+		check_index_is_clusterable(rel, indexOid, AccessShareLock);
 		rtcs = get_tables_to_cluster_partitioned(cluster_context, indexOid);
 
 		/* close relation, releasing lock on parent table */
@@ -310,6 +310,9 @@ void
 cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 {
 	Relation	OldHeap;
+	Oid			save_userid;
+	int			save_sec_context;
+	int			save_nestlevel;
 	bool		verbose = ((params->options & CLUOPT_VERBOSE) != 0);
 	bool		recheck = ((params->options & CLUOPT_RECHECK) != 0);
 
@@ -340,6 +343,16 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 	}
 
 	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations and
+	 * arrange to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(OldHeap->rd_rel->relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	save_nestlevel = NewGUCNestLevel();
+
+	/*
 	 * Since we may open a new transaction for each relation, we have to check
 	 * that the relation still is what we think it is.
 	 *
@@ -350,11 +363,10 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 	if (recheck)
 	{
 		/* Check that the user still owns the relation */
-		if (!pg_class_ownercheck(tableOid, GetUserId()))
+		if (!pg_class_ownercheck(tableOid, save_userid))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
-			pgstat_progress_end_command();
-			return;
+			goto out;
 		}
 
 		/*
@@ -369,8 +381,7 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 		if (RELATION_IS_OTHER_TEMP(OldHeap))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
-			pgstat_progress_end_command();
-			return;
+			goto out;
 		}
 
 		if (OidIsValid(indexOid))
@@ -381,8 +392,7 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 			if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(indexOid)))
 			{
 				relation_close(OldHeap, AccessExclusiveLock);
-				pgstat_progress_end_command();
-				return;
+				goto out;
 			}
 
 			/*
@@ -393,8 +403,7 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 				!get_index_isclustered(indexOid))
 			{
 				relation_close(OldHeap, AccessExclusiveLock);
-				pgstat_progress_end_command();
-				return;
+				goto out;
 			}
 		}
 	}
@@ -434,7 +443,7 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 
 	/* Check heap and index are valid to cluster on */
 	if (OidIsValid(indexOid))
-		check_index_is_clusterable(OldHeap, indexOid, recheck, AccessExclusiveLock);
+		check_index_is_clusterable(OldHeap, indexOid, AccessExclusiveLock);
 
 	/*
 	 * Quietly ignore the request if this is a materialized view which has not
@@ -447,8 +456,7 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 		!RelationIsPopulated(OldHeap))
 	{
 		relation_close(OldHeap, AccessExclusiveLock);
-		pgstat_progress_end_command();
-		return;
+		goto out;
 	}
 
 	Assert(OldHeap->rd_rel->relkind == RELKIND_RELATION ||
@@ -468,6 +476,13 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 
 	/* NB: rebuild_relation does table_close() on OldHeap */
 
+out:
+	/* Roll back any GUC changes executed by index functions */
+	AtEOXact_GUC(false, save_nestlevel);
+
+	/* Restore userid and security context */
+	SetUserIdAndSecContext(save_userid, save_sec_context);
+
 	pgstat_progress_end_command();
 }
 
@@ -480,7 +495,7 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
  * protection here.
  */
 void
-check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck, LOCKMODE lockmode)
+check_index_is_clusterable(Relation OldHeap, Oid indexOid, LOCKMODE lockmode)
 {
 	Relation	OldIndex;
 
@@ -1648,10 +1663,8 @@ get_tables_to_cluster(MemoryContext cluster_context)
  * Given an index on a partitioned table, return a list of RelToCluster for
  * all the children leaves tables/indexes.
  *
- * Caller must hold lock on the table containing the index.
- *
  * Like expand_vacuum_rel, but here caller must hold AccessExclusiveLock
- * on the table already.
+ * on the table containing the index.
  */
 static List *
 get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
@@ -1664,9 +1677,6 @@ get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
 	/* Do not lock the children until they're processed */
 	inhoids = find_all_inheritors(indexOid, NoLock, NULL);
 
-	/* Use a permanent memory context for the result list */
-	old_context = MemoryContextSwitchTo(cluster_context);
-
 	foreach(lc, inhoids)
 	{
 		Oid			indexrelid = lfirst_oid(lc);
@@ -1677,12 +1687,22 @@ get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
 		if (get_rel_relkind(indexrelid) != RELKIND_INDEX)
 			continue;
 
+		/* Silently skip partitions which the user has no access to. */
+		if (!pg_class_ownercheck(relid, GetUserId()) &&
+			(!pg_database_ownercheck(MyDatabaseId, GetUserId()) ||
+			 IsSharedRelation(relid)))
+			continue;
+
+		/* Use a permanent memory context for the result list */
+		old_context = MemoryContextSwitchTo(cluster_context);
+
 		rtc = (RelToCluster *) palloc(sizeof(RelToCluster));
 		rtc->tableOid = relid;
 		rtc->indexOid = indexrelid;
 		rtcs = lappend(rtcs, rtc);
+
+		MemoryContextSwitchTo(old_context);
 	}
 
-	MemoryContextSwitchTo(old_context);
 	return rtcs;
 }

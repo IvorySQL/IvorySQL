@@ -377,6 +377,7 @@ static int	connectDBStart(PGconn *conn);
 static int	connectDBComplete(PGconn *conn);
 static PGPing internal_ping(PGconn *conn);
 static PGconn *makeEmptyPGconn(void);
+static void pqFreeCommandQueue(PGcmdQueueEntry *queue);
 static bool fillPGconn(PGconn *conn, PQconninfoOption *connOptions);
 static void freePGconn(PGconn *conn);
 static void closePGconn(PGconn *conn);
@@ -461,6 +462,12 @@ pqDropConnection(PGconn *conn, bool flushInput)
 
 	/* Always discard any unsent data */
 	conn->outCount = 0;
+
+	/* Likewise, discard any pending pipelined commands */
+	pqFreeCommandQueue(conn->cmd_queue_head);
+	conn->cmd_queue_head = conn->cmd_queue_tail = NULL;
+	pqFreeCommandQueue(conn->cmd_queue_recycle);
+	conn->cmd_queue_recycle = NULL;
 
 	/* Free authentication/encryption state */
 #ifdef ENABLE_GSS
@@ -569,12 +576,6 @@ pqDropServerData(PGconn *conn)
 	}
 	conn->notifyHead = conn->notifyTail = NULL;
 
-	pqFreeCommandQueue(conn->cmd_queue_head);
-	conn->cmd_queue_head = conn->cmd_queue_tail = NULL;
-
-	pqFreeCommandQueue(conn->cmd_queue_recycle);
-	conn->cmd_queue_recycle = NULL;
-
 	/* Reset ParameterStatus data, as well as variables deduced from it */
 	pstatus = conn->pstatus;
 	while (pstatus != NULL)
@@ -664,7 +665,6 @@ PQconnectdbParams(const char *const *keywords,
 		(void) connectDBComplete(conn);
 
 	return conn;
-
 }
 
 /*

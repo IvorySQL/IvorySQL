@@ -173,6 +173,7 @@ extern PGDLLIMPORT char *DataDir;
 extern PGDLLIMPORT int data_directory_mode;
 
 extern PGDLLIMPORT int NBuffers;
+extern PGDLLIMPORT int MaxBackends;
 extern PGDLLIMPORT int MaxConnections;
 extern PGDLLIMPORT int max_worker_processes;
 extern PGDLLIMPORT int max_parallel_workers;
@@ -456,8 +457,6 @@ extern PGDLLIMPORT AuxProcType MyAuxProcType;
 /* in utils/init/postinit.c */
 extern void pg_split_opts(char **argv, int *argcp, const char *optstr);
 extern void InitializeMaxBackends(void);
-extern int	GetMaxBackends(void);
-extern void SetMaxBackends(int max_backends);
 extern void InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 						 Oid useroid, char *out_dbname, bool override_allow_connections);
 extern void BaseInit(void);
@@ -466,6 +465,7 @@ extern void BaseInit(void);
 extern PGDLLIMPORT bool IgnoreSystemIndexes;
 extern PGDLLIMPORT bool process_shared_preload_libraries_in_progress;
 extern PGDLLIMPORT bool process_shared_preload_libraries_done;
+extern PGDLLIMPORT bool process_shmem_requests_in_progress;
 extern PGDLLIMPORT char *session_preload_libraries_string;
 extern PGDLLIMPORT char *shared_preload_libraries_string;
 extern PGDLLIMPORT char *local_preload_libraries_string;
@@ -479,8 +479,12 @@ extern bool RecheckDataDirLockFile(void);
 extern void ValidatePgVersion(const char *path);
 extern void process_shared_preload_libraries(void);
 extern void process_session_preload_libraries(void);
+extern void process_shmem_requests(void);
 extern void pg_bindtextdomain(const char *domain);
 extern bool has_rolreplication(Oid roleid);
+
+typedef void (*shmem_request_hook_type) (void);
+extern PGDLLIMPORT shmem_request_hook_type shmem_request_hook;
 
 /* in executor/nodeHash.c */
 extern size_t get_hash_memory_limit(void);

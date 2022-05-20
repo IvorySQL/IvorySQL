@@ -1448,7 +1448,7 @@ export PG_OOM_ADJUST_VALUE=0
     server must be shut down to view this runtime-computed parameter.
     This might look like:
 <programlisting>
-$ <userinput>postgres -D $PGDATA -C shared_memory_size_in_huge_pages 2> /dev/null</userinput>
+$ <userinput>postgres -D $PGDATA -C shared_memory_size_in_huge_pages</userinput>
 3170
 $ <userinput>grep ^Hugepagesize /proc/meminfo</userinput>
 Hugepagesize:       2048 kB
@@ -2194,7 +2194,7 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    <acronym>TLS</acronym> protocol. <acronym>SSL</acronym> protocols are the
    precursors to <acronym>TLS</acronym> protocols, and the term
    <acronym>SSL</acronym> is still used for encrypted connections even though
-   <acronym>SSL</acronym> protocols are no longer supported. 
+   <acronym>SSL</acronym> protocols are no longer supported.
    <acronym>SSL</acronym> is used interchangeably with <acronym>TLS</acronym>
    in <productname>PostgreSQL</productname>.
 

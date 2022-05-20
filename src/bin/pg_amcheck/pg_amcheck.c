@@ -1074,17 +1074,17 @@ verify_btree_slot_handler(PGresult *res, PGconn *conn, void *context)
 
 	if (PQresultStatus(res) == PGRES_TUPLES_OK)
 	{
-		int                     ntups = PQntuples(res);
+		int			ntups = PQntuples(res);
 
 		if (ntups > 1)
 		{
 			/*
 			 * We expect the btree checking functions to return one void row
 			 * each, or zero rows if the check was skipped due to the object
-			 * being in the wrong state to be checked, so we should output some
-			 * sort of warning if we get anything more, not because it
-			 * indicates corruption, but because it suggests a mismatch between
-			 * amcheck and pg_amcheck versions.
+			 * being in the wrong state to be checked, so we should output
+			 * some sort of warning if we get anything more, not because it
+			 * indicates corruption, but because it suggests a mismatch
+			 * between amcheck and pg_amcheck versions.
 			 *
 			 * In conjunction with --progress, anything written to stderr at
 			 * this time would present strangely to the user without an extra
@@ -1308,10 +1308,17 @@ static void
 append_database_pattern(PatternInfoArray *pia, const char *pattern, int encoding)
 {
 	PQExpBufferData buf;
+	int			dotcnt;
 	PatternInfo *info = extend_pattern_info_array(pia);
 
 	initPQExpBuffer(&buf);
-	patternToSQLRegex(encoding, NULL, NULL, &buf, pattern, false);
+	patternToSQLRegex(encoding, NULL, NULL, &buf, pattern, false, false,
+					  &dotcnt);
+	if (dotcnt > 0)
+	{
+		pg_log_error("improper qualified name (too many dotted names): %s", pattern);
+		exit(2);
+	}
 	info->pattern = pattern;
 	info->db_regex = pstrdup(buf.data);
 
@@ -1332,12 +1339,19 @@ append_schema_pattern(PatternInfoArray *pia, const char *pattern, int encoding)
 {
 	PQExpBufferData dbbuf;
 	PQExpBufferData nspbuf;
+	int			dotcnt;
 	PatternInfo *info = extend_pattern_info_array(pia);
 
 	initPQExpBuffer(&dbbuf);
 	initPQExpBuffer(&nspbuf);
 
-	patternToSQLRegex(encoding, NULL, &dbbuf, &nspbuf, pattern, false);
+	patternToSQLRegex(encoding, NULL, &dbbuf, &nspbuf, pattern, false, false,
+					  &dotcnt);
+	if (dotcnt > 1)
+	{
+		pg_log_error("improper qualified name (too many dotted names): %s", pattern);
+		exit(2);
+	}
 	info->pattern = pattern;
 	if (dbbuf.data[0])
 	{
@@ -1369,13 +1383,20 @@ append_relation_pattern_helper(PatternInfoArray *pia, const char *pattern,
 	PQExpBufferData dbbuf;
 	PQExpBufferData nspbuf;
 	PQExpBufferData relbuf;
+	int			dotcnt;
 	PatternInfo *info = extend_pattern_info_array(pia);
 
 	initPQExpBuffer(&dbbuf);
 	initPQExpBuffer(&nspbuf);
 	initPQExpBuffer(&relbuf);
 
-	patternToSQLRegex(encoding, &dbbuf, &nspbuf, &relbuf, pattern, false);
+	patternToSQLRegex(encoding, &dbbuf, &nspbuf, &relbuf, pattern, false,
+					  false, &dotcnt);
+	if (dotcnt > 2)
+	{
+		pg_log_error("improper relation name (too many dotted names): %s", pattern);
+		exit(2);
+	}
 	info->pattern = pattern;
 	if (dbbuf.data[0])
 	{

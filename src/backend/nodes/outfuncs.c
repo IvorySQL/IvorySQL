@@ -124,11 +124,18 @@ static void outChar(StringInfo str, char c);
 			appendStringInfo(str, " %u", node->fldname[i]); \
 	} while(0)
 
+/*
+ * This macro supports the case that the field is NULL.  For the other array
+ * macros, that is currently not needed.
+ */
 #define WRITE_INDEX_ARRAY(fldname, len) \
 	do { \
 		appendStringInfoString(str, " :" CppAsString(fldname) " "); \
-		for (int i = 0; i < len; i++) \
-			appendStringInfo(str, " %u", node->fldname[i]); \
+		if (node->fldname) \
+			for (int i = 0; i < len; i++) \
+				appendStringInfo(str, " %u", node->fldname[i]); \
+		else \
+			appendStringInfoString(str, "<>"); \
 	} while(0)
 
 #define WRITE_INT_ARRAY(fldname, len) \
@@ -1792,15 +1799,15 @@ _outJsonValueExpr(StringInfo str, const JsonValueExpr *node)
 static void
 _outJsonConstructorExpr(StringInfo str, const JsonConstructorExpr *node)
 {
-	WRITE_NODE_TYPE("JSONCTOREXPR");
+	WRITE_NODE_TYPE("JSONCONSTRUCTOREXPR");
 
+	WRITE_ENUM_FIELD(type, JsonConstructorType);
 	WRITE_NODE_FIELD(args);
 	WRITE_NODE_FIELD(func);
 	WRITE_NODE_FIELD(coercion);
-	WRITE_INT_FIELD(type);
 	WRITE_NODE_FIELD(returning);
-	WRITE_BOOL_FIELD(unique);
 	WRITE_BOOL_FIELD(absent_on_null);
+	WRITE_BOOL_FIELD(unique);
 	WRITE_LOCATION_FIELD(location);
 }
 
@@ -1810,7 +1817,8 @@ _outJsonIsPredicate(StringInfo str, const JsonIsPredicate *node)
 	WRITE_NODE_TYPE("JSONISPREDICATE");
 
 	WRITE_NODE_FIELD(expr);
-	WRITE_ENUM_FIELD(value_type, JsonValueType);
+	WRITE_NODE_FIELD(format);
+	WRITE_ENUM_FIELD(item_type, JsonValueType);
 	WRITE_BOOL_FIELD(unique_keys);
 	WRITE_LOCATION_FIELD(location);
 }
@@ -1834,11 +1842,11 @@ _outJsonExpr(StringInfo str, const JsonExpr *node)
 	WRITE_NODE_FIELD(result_coercion);
 	WRITE_NODE_FIELD(format);
 	WRITE_NODE_FIELD(path_spec);
-	WRITE_NODE_FIELD(passing_values);
 	WRITE_NODE_FIELD(passing_names);
+	WRITE_NODE_FIELD(passing_values);
 	WRITE_NODE_FIELD(returning);
-	WRITE_NODE_FIELD(on_error);
 	WRITE_NODE_FIELD(on_empty);
+	WRITE_NODE_FIELD(on_error);
 	WRITE_NODE_FIELD(coercions);
 	WRITE_ENUM_FIELD(wrapper, JsonWrapper);
 	WRITE_BOOL_FIELD(omit_quotes);
@@ -1876,7 +1884,7 @@ _outJsonItemCoercions(StringInfo str, const JsonItemCoercions *node)
 static void
 _outJsonTableParent(StringInfo str, const JsonTableParent *node)
 {
-	WRITE_NODE_TYPE("JSONTABPNODE");
+	WRITE_NODE_TYPE("JSONTABLEPARENT");
 
 	WRITE_NODE_FIELD(path);
 	WRITE_STRING_FIELD(name);
@@ -1884,12 +1892,13 @@ _outJsonTableParent(StringInfo str, const JsonTableParent *node)
 	WRITE_BOOL_FIELD(outerJoin);
 	WRITE_INT_FIELD(colMin);
 	WRITE_INT_FIELD(colMax);
+	WRITE_BOOL_FIELD(errorOnError);
 }
 
 static void
 _outJsonTableSibling(StringInfo str, const JsonTableSibling *node)
 {
-	WRITE_NODE_TYPE("JSONTABSNODE");
+	WRITE_NODE_TYPE("JSONTABLESIBLING");
 
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
@@ -3637,8 +3646,8 @@ static void
 _outFloat(StringInfo str, const Float *node)
 {
 	/*
-	 * We assume the value is a valid numeric literal and so does not
-	 * need quoting.
+	 * We assume the value is a valid numeric literal and so does not need
+	 * quoting.
 	 */
 	appendStringInfoString(str, node->fval);
 }
@@ -3653,8 +3662,8 @@ static void
 _outString(StringInfo str, const String *node)
 {
 	/*
-	 * We use outToken to provide escaping of the string's content,
-	 * but we don't want it to do anything with an empty string.
+	 * We use outToken to provide escaping of the string's content, but we
+	 * don't want it to do anything with an empty string.
 	 */
 	appendStringInfoChar(str, '"');
 	if (node->sval[0] != '\0')

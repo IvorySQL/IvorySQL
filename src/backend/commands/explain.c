@@ -3833,7 +3833,7 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 			if (rte->tablefunc)
 				if (rte->tablefunc->functype == TFT_XMLTABLE)
 					objectname = "xmltable";
-				else /* Must be TFT_JSON_TABLE */
+				else			/* Must be TFT_JSON_TABLE */
 					objectname = "json_table";
 			else
 				objectname = NULL;
@@ -4068,10 +4068,30 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 			skipped_path = total - insert_path - update_path - delete_path;
 			Assert(skipped_path >= 0);
 
-			ExplainPropertyFloat("Tuples Inserted", NULL, insert_path, 0, es);
-			ExplainPropertyFloat("Tuples Updated", NULL, update_path, 0, es);
-			ExplainPropertyFloat("Tuples Deleted", NULL, delete_path, 0, es);
-			ExplainPropertyFloat("Tuples Skipped", NULL, skipped_path, 0, es);
+			if (es->format == EXPLAIN_FORMAT_TEXT)
+			{
+				if (total > 0)
+				{
+					ExplainIndentText(es);
+					appendStringInfoString(es->str, "Tuples:");
+					if (insert_path > 0)
+						appendStringInfo(es->str, " inserted=%.0f", insert_path);
+					if (update_path > 0)
+						appendStringInfo(es->str, " updated=%.0f", update_path);
+					if (delete_path > 0)
+						appendStringInfo(es->str, " deleted=%.0f", delete_path);
+					if (skipped_path > 0)
+						appendStringInfo(es->str, " skipped=%.0f", skipped_path);
+					appendStringInfoChar(es->str, '\n');
+				}
+			}
+			else
+			{
+				ExplainPropertyFloat("Tuples Inserted", NULL, insert_path, 0, es);
+				ExplainPropertyFloat("Tuples Updated", NULL, update_path, 0, es);
+				ExplainPropertyFloat("Tuples Deleted", NULL, delete_path, 0, es);
+				ExplainPropertyFloat("Tuples Skipped", NULL, skipped_path, 0, es);
+			}
 		}
 	}
 

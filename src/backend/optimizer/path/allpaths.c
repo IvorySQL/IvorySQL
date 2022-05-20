@@ -1777,17 +1777,18 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 			}
 
 			/*
-			 * When building a fractional path, determine a cheapest fractional
-			 * path for each child relation too. Looking at startup and total
-			 * costs is not enough, because the cheapest fractional path may be
-			 * dominated by two separate paths (one for startup, one for total).
+			 * When building a fractional path, determine a cheapest
+			 * fractional path for each child relation too. Looking at startup
+			 * and total costs is not enough, because the cheapest fractional
+			 * path may be dominated by two separate paths (one for startup,
+			 * one for total).
 			 *
 			 * When needed (building fractional path), determine the cheapest
 			 * fractional path too.
 			 */
 			if (root->tuple_fraction > 0)
 			{
-				double	path_fraction = (1.0 / root->tuple_fraction);
+				double		path_fraction = (1.0 / root->tuple_fraction);
 
 				cheapest_fractional =
 					get_cheapest_fractional_path_for_pathkeys(childrel->pathlist,
@@ -1796,8 +1797,8 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 															  path_fraction);
 
 				/*
-				 * If we found no path with matching pathkeys, use the cheapest
-				 * total path instead.
+				 * If we found no path with matching pathkeys, use the
+				 * cheapest total path instead.
 				 *
 				 * XXX We might consider partially sorted paths too (with an
 				 * incremental sort on top). But we'd have to build all the
@@ -2804,7 +2805,8 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	if (ndx >= list_length(cteroot->cte_plan_ids))
 		elog(ERROR, "could not find plan for CTE \"%s\"", rte->ctename);
 	plan_id = list_nth_int(cteroot->cte_plan_ids, ndx);
-	Assert(plan_id > 0);
+	if (plan_id <= 0)
+		elog(ERROR, "no plan was made for CTE \"%s\"", rte->ctename);
 	cteplan = (Plan *) list_nth(root->glob->subplans, plan_id - 1);
 
 	/* Mark rel with estimated output rows, width, etc */

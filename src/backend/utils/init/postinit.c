@@ -25,7 +25,6 @@
 #include "access/session.h"
 #include "access/sysattr.h"
 #include "access/tableam.h"
-#include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xloginsert.h"
@@ -67,9 +66,6 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/timeout.h"
-
-static int MaxBackends = 0;
-static int MaxBackendsInitialized = false;
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -433,6 +429,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		iculocale = NULL;
 
 	default_locale.provider = dbform->datlocprovider;
+
 	/*
 	 * Default locale is currently always deterministic.  Nondeterministic
 	 * locales currently don't support pattern matching, which would break a
@@ -553,49 +550,15 @@ pg_split_opts(char **argv, int *argcp, const char *optstr)
 void
 InitializeMaxBackends(void)
 {
+	Assert(MaxBackends == 0);
+
 	/* the extra unit accounts for the autovacuum launcher */
-	SetMaxBackends(MaxConnections + autovacuum_max_workers + 1 +
-		max_worker_processes + max_wal_senders);
-}
-
-/*
- * Safely retrieve the value of MaxBackends.
- *
- * Previously, MaxBackends was externally visible, but it was often used before
- * it was initialized (e.g., in preloaded libraries' _PG_init() functions).
- * Unfortunately, we cannot initialize MaxBackends before processing
- * shared_preload_libraries because the libraries sometimes alter GUCs that are
- * used to calculate its value.  Instead, we provide this function for accessing
- * MaxBackends, and we ERROR if someone calls it before it is initialized.
- */
-int
-GetMaxBackends(void)
-{
-	if (unlikely(!MaxBackendsInitialized))
-		elog(ERROR, "MaxBackends not yet initialized");
-
-	return MaxBackends;
-}
-
-/*
- * Set the value of MaxBackends.
- *
- * This should only be used by InitializeMaxBackends() and
- * restore_backend_variables().  If MaxBackends is already initialized or the
- * specified value is greater than the maximum, this will ERROR.
- */
-void
-SetMaxBackends(int max_backends)
-{
-	if (MaxBackendsInitialized)
-		elog(ERROR, "MaxBackends already initialized");
+	MaxBackends = MaxConnections + autovacuum_max_workers + 1 +
+		max_worker_processes + max_wal_senders;
 
 	/* internal error because the values were all checked previously */
-	if (max_backends > MAX_BACKENDS)
+	if (MaxBackends > MAX_BACKENDS)
 		elog(ERROR, "too many backends configured");
-
-	MaxBackends = max_backends;
-	MaxBackendsInitialized = true;
 }
 
 /*
@@ -642,8 +605,8 @@ BaseInit(void)
 	InitTemporaryFileAccess();
 
 	/*
-	 * Initialize local buffers for WAL record construction, in case we
-	 * ever try to insert XLOG.
+	 * Initialize local buffers for WAL record construction, in case we ever
+	 * try to insert XLOG.
 	 */
 	InitXLogInsert();
 
@@ -707,7 +670,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 
 	SharedInvalBackendInit(false);
 
-	if (MyBackendId > GetMaxBackends() || MyBackendId <= 0)
+	if (MyBackendId > MaxBackends || MyBackendId <= 0)
 		elog(FATAL, "bad backend ID: %d", MyBackendId);
 
 	/* Now that we have a BackendId, we can participate in ProcSignal */
@@ -731,10 +694,10 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	}
 
 	/*
-	 * If this is either a bootstrap process or a standalone backend, start
-	 * up the XLOG machinery, and register to have it closed down at exit.
-	 * In other cases, the startup process is responsible for starting up
-	 * the XLOG machinery, and the checkpointer for closing it down.
+	 * If this is either a bootstrap process or a standalone backend, start up
+	 * the XLOG machinery, and register to have it closed down at exit. In
+	 * other cases, the startup process is responsible for starting up the
+	 * XLOG machinery, and the checkpointer for closing it down.
 	 */
 	if (!IsUnderPostmaster)
 	{
@@ -945,7 +908,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	if (bootstrap)
 	{
-		MyDatabaseId = TemplateDbOid;
+		MyDatabaseId = Template1DbOid;
 		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
 	}
 	else if (in_dbname != NULL)
@@ -1094,6 +1057,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	}
 
 	SetDatabasePath(fullpath);
+	pfree(fullpath);
 
 	/*
 	 * It's now possible to do real access to the system catalogs.
@@ -1278,7 +1242,8 @@ ShutdownPostgres(int code, Datum arg)
 	 */
 #ifdef USE_ASSERT_CHECKING
 	{
-		int held_lwlocks = LWLockHeldCount();
+		int			held_lwlocks = LWLockHeldCount();
+
 		if (held_lwlocks)
 			elog(WARNING, "holding %d lwlocks at the end of ShutdownPostgres()",
 				 held_lwlocks);

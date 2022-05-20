@@ -229,6 +229,25 @@ ALTER TABLE clstrpart SET WITHOUT CLUSTER;
 ALTER TABLE clstrpart CLUSTER ON clstrpart_idx;
 DROP TABLE clstrpart;
 
+-- Ownership of partitions is checked
+CREATE TABLE ptnowner(i int unique) PARTITION BY LIST (i);
+CREATE INDEX ptnowner_i_idx ON ptnowner(i);
+CREATE TABLE ptnowner1 PARTITION OF ptnowner FOR VALUES IN (1);
+CREATE ROLE regress_ptnowner;
+CREATE TABLE ptnowner2 PARTITION OF ptnowner FOR VALUES IN (2);
+ALTER TABLE ptnowner1 OWNER TO regress_ptnowner;
+ALTER TABLE ptnowner OWNER TO regress_ptnowner;
+CREATE TEMP TABLE ptnowner_oldnodes AS
+  SELECT oid, relname, relfilenode FROM pg_partition_tree('ptnowner') AS tree
+  JOIN pg_class AS c ON c.oid=tree.relid;
+SET SESSION AUTHORIZATION regress_ptnowner;
+CLUSTER ptnowner USING ptnowner_i_idx;
+RESET SESSION AUTHORIZATION;
+SELECT a.relname, a.relfilenode=b.relfilenode FROM pg_class a
+  JOIN ptnowner_oldnodes b USING (oid) ORDER BY a.relname COLLATE "C";
+DROP TABLE ptnowner;
+DROP ROLE regress_ptnowner;
+
 -- Test CLUSTER with external tuplesorting
 
 create table clstr_4 as select * from tenk1;
@@ -265,6 +284,9 @@ COMMIT;
 
 -- and after clustering on clstr_expression_minus_a
 CLUSTER clstr_expression USING clstr_expression_minus_a;
+WITH rows AS
+  (SELECT ctid, lag(a) OVER (ORDER BY ctid) AS la, a FROM clstr_expression)
+SELECT * FROM rows WHERE la < a;
 BEGIN;
 SET LOCAL enable_seqscan = false;
 EXPLAIN (COSTS OFF) SELECT * FROM clstr_expression WHERE upper(b) = 'PREFIX3';
@@ -275,6 +297,9 @@ COMMIT;
 
 -- and after clustering on clstr_expression_upper_b
 CLUSTER clstr_expression USING clstr_expression_upper_b;
+WITH rows AS
+  (SELECT ctid, lag(b) OVER (ORDER BY ctid) AS lb, b FROM clstr_expression)
+SELECT * FROM rows WHERE upper(lb) > upper(b);
 BEGIN;
 SET LOCAL enable_seqscan = false;
 EXPLAIN (COSTS OFF) SELECT * FROM clstr_expression WHERE upper(b) = 'PREFIX3';

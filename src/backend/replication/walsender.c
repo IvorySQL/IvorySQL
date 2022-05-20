@@ -285,6 +285,21 @@ InitWalSender(void)
 	MarkPostmasterChildWalSender();
 	SendPostmasterSignal(PMSIGNAL_ADVANCE_STATE_MACHINE);
 
+	/*
+	 * If the client didn't specify a database to connect to, show in PGPROC
+	 * that our advertised xmin should affect vacuum horizons in all
+	 * databases.  This allows physical replication clients to send hot
+	 * standby feedback that will delay vacuum cleanup in all databases.
+	 */
+	if (MyDatabaseId == InvalidOid)
+	{
+		Assert(MyProc->xmin == InvalidTransactionId);
+		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+		MyProc->statusFlags |= PROC_AFFECTS_ALL_HORIZONS;
+		ProcGlobal->statusFlags[MyProc->pgxactoff] = MyProc->statusFlags;
+		LWLockRelease(ProcArrayLock);
+	}
+
 	/* Initialize empty timestamp buffer for lag tracking. */
 	lag_tracker = MemoryContextAllocZero(TopMemoryContext, sizeof(LagTracker));
 }
@@ -1000,7 +1015,6 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("unrecognized value for CREATE_REPLICATION_SLOT option \"%s\": \"%s\"",
 								defel->defname, action)));
-
 		}
 		else if (strcmp(defel->defname, "reserve_wal") == 0)
 		{
@@ -1468,14 +1482,20 @@ WalSndUpdateProgress(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId 
 {
 	static TimestampTz sendTime = 0;
 	TimestampTz now = GetCurrentTimestamp();
+	bool		pending_writes = false;
+	bool		end_xact = ctx->end_xact;
 
 	/*
 	 * Track lag no more than once per WALSND_LOGICAL_LAG_TRACK_INTERVAL_MS to
 	 * avoid flooding the lag tracker when we commit frequently.
+	 *
+	 * We don't have a mechanism to get the ack for any LSN other than end
+	 * xact LSN from the downstream. So, we track lag only for end of
+	 * transaction LSN.
 	 */
 #define WALSND_LOGICAL_LAG_TRACK_INTERVAL_MS	1000
-	if (TimestampDifferenceExceeds(sendTime, now,
-								   WALSND_LOGICAL_LAG_TRACK_INTERVAL_MS))
+	if (end_xact && TimestampDifferenceExceeds(sendTime, now,
+											   WALSND_LOGICAL_LAG_TRACK_INTERVAL_MS))
 	{
 		LagTrackerWrite(lsn, now);
 		sendTime = now;
@@ -1485,9 +1505,9 @@ WalSndUpdateProgress(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId 
 	 * When skipping empty transactions in synchronous replication, we send a
 	 * keepalive message to avoid delaying such transactions.
 	 *
-	 * It is okay to check sync_standbys_defined flag without lock here as
-	 * in the worst case we will just send an extra keepalive message when it
-	 * is really not required.
+	 * It is okay to check sync_standbys_defined flag without lock here as in
+	 * the worst case we will just send an extra keepalive message when it is
+	 * really not required.
 	 */
 	if (skipped_xact &&
 		SyncRepRequested() &&
@@ -1501,8 +1521,20 @@ WalSndUpdateProgress(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId 
 
 		/* If we have pending write here, make sure it's actually flushed */
 		if (pq_is_send_pending())
-			ProcessPendingWrites();
+			pending_writes = true;
 	}
+
+	/*
+	 * Process pending writes if any or try to send a keepalive if required.
+	 * We don't need to try sending keep alive messages at the transaction end
+	 * as that will be done at a later point in time. This is required only
+	 * for large transactions where we don't send any changes to the
+	 * downstream and the receiver can timeout due to that.
+	 */
+	if (pending_writes || (!end_xact &&
+						   now >= TimestampTzPlusMilliseconds(last_reply_timestamp,
+															  wal_sender_timeout / 2)))
+		ProcessPendingWrites();
 }
 
 /*

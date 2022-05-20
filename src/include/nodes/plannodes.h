@@ -121,7 +121,7 @@ typedef struct Plan
 	/*
 	 * planner's estimate of result size of this plan step
 	 */
-	Cardinality	plan_rows;		/* number of rows plan is expected to emit */
+	Cardinality plan_rows;		/* number of rows plan is expected to emit */
 	int			plan_width;		/* average row width in bytes */
 
 	/*
@@ -824,8 +824,9 @@ typedef struct Memoize
 	int			numKeys;		/* size of the two arrays below */
 
 	Oid		   *hashOperators;	/* hash operators for each key */
-	Oid		   *collations;		/* cache keys */
-	List	   *param_exprs;	/* exprs containing parameters */
+	Oid		   *collations;		/* collations for each key */
+	List	   *param_exprs;	/* cache keys in the form of exprs containing
+								 * parameters */
 	bool		singlerow;		/* true if the cache entry should be marked as
 								 * complete after we store the first tuple in
 								 * it. */
@@ -834,7 +835,7 @@ typedef struct Memoize
 	uint32		est_entries;	/* The maximum number of entries that the
 								 * planner expects will fit in the cache, or 0
 								 * if unknown */
-	Bitmapset   *keyparamids;	/* paramids from param_exprs */
+	Bitmapset  *keyparamids;	/* paramids from param_exprs */
 } Memoize;
 
 /* ----------------
@@ -1013,7 +1014,7 @@ typedef struct Hash
 	AttrNumber	skewColumn;		/* outer join key's column #, or zero */
 	bool		skewInherit;	/* is outer join rel an inheritance tree? */
 	/* all other info is in the parent HashJoin node */
-	Cardinality	rows_total;		/* estimate total rows if parallel_aware */
+	Cardinality rows_total;		/* estimate total rows if parallel_aware */
 } Hash;
 
 /* ----------------

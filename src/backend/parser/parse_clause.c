@@ -1445,21 +1445,6 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 									res_nscolumns + res_colindex);
 
 		/*
-		 * Check alias (AS clause), if any.
-		 */
-		if (j->alias)
-		{
-			if (j->alias->colnames != NIL)
-			{
-				if (list_length(j->alias->colnames) > list_length(res_colnames))
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("column alias list for \"%s\" has too many entries",
-									j->alias->aliasname)));
-			}
-		}
-
-		/*
 		 * Now build an RTE and nsitem for the result of the join.
 		 * res_nscolumns isn't totally done yet, but that's OK because
 		 * addRangeTableEntryForJoin doesn't examine it, only store a pointer.
@@ -2003,7 +1988,7 @@ findTargetlistEntrySQL92(ParseState *pstate, Node *node, List **tlist,
 	}
 	if (IsA(node, A_Const))
 	{
-		A_Const	   *aconst = castNode(A_Const, node);
+		A_Const    *aconst = castNode(A_Const, node);
 		int			targetlist_pos = 0;
 		int			target_pos;
 

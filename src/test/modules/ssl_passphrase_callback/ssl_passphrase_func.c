@@ -21,7 +21,6 @@
 PG_MODULE_MAGIC;
 
 void		_PG_init(void);
-void		_PG_fini(void);
 
 static char *ssl_passphrase = NULL;
 
@@ -55,12 +54,6 @@ _PG_init(void)
 		openssl_tls_init_hook = set_rot13;
 }
 
-void
-_PG_fini(void)
-{
-	/* do  nothing yet */
-}
-
 static void
 set_rot13(SSL_CTX *context, bool isServerStart)
 {
@@ -89,5 +82,4 @@ rot13_passphrase(char *buf, int size, int rwflag, void *userdata)
 	}
 
 	return strlen(buf);
-
 }

@@ -281,6 +281,9 @@ FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
 SELECT JSON_OBJECTAGG(k: v ABSENT ON NULL WITH UNIQUE KEYS RETURNING jsonb)
 FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
 
+SELECT JSON_OBJECTAGG(k: v ABSENT ON NULL WITH UNIQUE KEYS RETURNING jsonb)
+FROM (VALUES (1, 1), (0, NULL),(4, null), (5, null),(6, null),(2, 2)) foo(k, v);
+
 -- Test JSON_OBJECT deparsing
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT JSON_OBJECT('foo' : '1' FORMAT JSON, 'bar' : 'baz' RETURNING json);
@@ -291,6 +294,24 @@ SELECT JSON_OBJECT('foo' : '1' FORMAT JSON, 'bar' : 'baz' RETURNING json);
 \sv json_object_view
 
 DROP VIEW json_object_view;
+
+SELECT to_json(a) AS a, JSON_OBJECTAGG(k : v WITH UNIQUE KEYS) OVER (ORDER BY k)
+FROM (VALUES (1,1), (2,2)) a(k,v);
+
+SELECT to_json(a) AS a, JSON_OBJECTAGG(k : v WITH UNIQUE KEYS) OVER (ORDER BY k)
+FROM (VALUES (1,1), (1,2), (2,2)) a(k,v);
+
+SELECT to_json(a) AS a, JSON_OBJECTAGG(k : v ABSENT ON NULL WITH UNIQUE KEYS)
+   OVER (ORDER BY k)
+FROM (VALUES (1,1), (1,null), (2,2)) a(k,v);
+
+SELECT to_json(a) AS a, JSON_OBJECTAGG(k : v ABSENT ON NULL)
+OVER (ORDER BY k)
+FROM (VALUES (1,1), (1,null), (2,2)) a(k,v);
+
+SELECT to_json(a) AS a, JSON_OBJECTAGG(k : v ABSENT ON NULL)
+OVER (ORDER BY k RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+FROM (VALUES (1,1), (1,null), (2,2)) a(k,v);
 
 -- Test JSON_ARRAY deparsing
 EXPLAIN (VERBOSE, COSTS OFF)

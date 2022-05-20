@@ -93,7 +93,7 @@
  * ReorderBufferFinishPrepared.
  *
  * If the subscription has no tables then a two_phase tri-state PENDING is
- * left unchanged. This lets the user still do an ALTER TABLE REFRESH
+ * left unchanged. This lets the user still do an ALTER SUBSCRIPTION REFRESH
  * PUBLICATION which might otherwise be disallowed (see below).
  *
  * If ever a user needs to be aware of the tri-state value, they can fetch it
@@ -251,7 +251,7 @@ static MemoryContext LogicalStreamingContext = NULL;
 WalReceiverConn *LogRepWorkerWalRcvConn = NULL;
 
 Subscription *MySubscription = NULL;
-bool		MySubscriptionValid = false;
+static bool MySubscriptionValid = false;
 
 bool		in_remote_transaction = false;
 static XLogRecPtr remote_final_lsn = InvalidXLogRecPtr;
@@ -600,7 +600,6 @@ slot_fill_defaults(LogicalRepRelMapEntry *rel, EState *estate,
 			defmap[num_defaults] = attnum;
 			num_defaults++;
 		}
-
 	}
 
 	for (i = 0; i < num_defaults; i++)
@@ -1609,8 +1608,8 @@ GetRelationIdentityOrPK(Relation rel)
 static void
 TargetPrivilegesCheck(Relation rel, AclMode mode)
 {
-	Oid				relid;
-	AclResult		aclresult;
+	Oid			relid;
+	AclResult	aclresult;
 
 	relid = RelationGetRelid(rel);
 	aclresult = pg_class_aclcheck(relid, GetUserId(), mode);
@@ -2884,9 +2883,14 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 
 			/*
 			 * Force reporting to ensure long idle periods don't lead to
-			 * arbitrarily delayed stats.
+			 * arbitrarily delayed stats. Stats can only be reported outside
+			 * of (implicit or explicit) transactions. That shouldn't lead to
+			 * stats being delayed for long, because transactions are either
+			 * sent as a whole on commit or streamed. Streamed transactions
+			 * are spilled to disk and applied on commit.
 			 */
-			pgstat_report_stat(true);
+			if (!IsTransactionState())
+				pgstat_report_stat(true);
 		}
 	}
 

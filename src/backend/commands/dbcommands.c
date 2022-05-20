@@ -201,9 +201,9 @@ CreateDatabaseUsingWalLog(Oid src_dboid, Oid dst_dboid,
 		 *
 		 * We typically do not read relation data into shared_buffers without
 		 * holding a relation lock. It's unclear what could go wrong if we
-		 * skipped it in this case, because nobody can be modifying either
-		 * the source or destination database at this point, and we have locks
-		 * on both databases, too, but let's take the conservative route.
+		 * skipped it in this case, because nobody can be modifying either the
+		 * source or destination database at this point, and we have locks on
+		 * both databases, too, but let's take the conservative route.
 		 */
 		dstrelid.relId = srcrelid.relId = relinfo->reloid;
 		LockRelationId(&srcrelid, AccessShareLock);
@@ -217,6 +217,8 @@ CreateDatabaseUsingWalLog(Oid src_dboid, Oid dst_dboid,
 		UnlockRelationId(&dstrelid, AccessShareLock);
 	}
 
+	pfree(srcpath);
+	pfree(dstpath);
 	list_free_deep(rnodelist);
 }
 
@@ -272,9 +274,9 @@ ScanSourceDatabasePgClass(Oid tbid, Oid dbid, char *srcpath)
 
 	/*
 	 * We can't use a real relcache entry for a relation in some other
-	 * database, but since we're only going to access the fields related
-	 * to physical storage, a fake one is good enough. If we didn't do this
-	 * and used the smgr layer directly, we would have to worry about
+	 * database, but since we're only going to access the fields related to
+	 * physical storage, a fake one is good enough. If we didn't do this and
+	 * used the smgr layer directly, we would have to worry about
 	 * invalidations.
 	 */
 	rel = CreateFakeRelcacheEntry(rnode);
@@ -331,10 +333,10 @@ ScanSourceDatabasePgClassPage(Page page, Buffer buf, Oid tbid, Oid dbid,
 							  char *srcpath, List *rnodelist,
 							  Snapshot snapshot)
 {
-	BlockNumber		blkno = BufferGetBlockNumber(buf);
-	OffsetNumber	offnum;
-	OffsetNumber	maxoff;
-	HeapTupleData	tuple;
+	BlockNumber blkno = BufferGetBlockNumber(buf);
+	OffsetNumber offnum;
+	OffsetNumber maxoff;
+	HeapTupleData tuple;
 
 	maxoff = PageGetMaxOffsetNumber(page);
 
@@ -366,10 +368,10 @@ ScanSourceDatabasePgClassPage(Page page, Buffer buf, Oid tbid, Oid dbid,
 			CreateDBRelInfo *relinfo;
 
 			/*
-			 * ScanSourceDatabasePgClassTuple is in charge of constructing
-			 * a CreateDBRelInfo object for this tuple, but can also decide
-			 * that this tuple isn't something we need to copy. If we do need
-			 * to copy the relation, add it to the list.
+			 * ScanSourceDatabasePgClassTuple is in charge of constructing a
+			 * CreateDBRelInfo object for this tuple, but can also decide that
+			 * this tuple isn't something we need to copy. If we do need to
+			 * copy the relation, add it to the list.
 			 */
 			relinfo = ScanSourceDatabasePgClassTuple(&tuple, tbid, dbid,
 													 srcpath);
@@ -393,9 +395,9 @@ CreateDBRelInfo *
 ScanSourceDatabasePgClassTuple(HeapTupleData *tuple, Oid tbid, Oid dbid,
 							   char *srcpath)
 {
-	CreateDBRelInfo	   *relinfo;
-	Form_pg_class		classForm;
-	Oid					relfilenode = InvalidOid;
+	CreateDBRelInfo *relinfo;
+	Form_pg_class classForm;
+	Oid			relfilenode = InvalidOid;
 
 	classForm = (Form_pg_class) GETSTRUCT(tuple);
 
@@ -404,11 +406,11 @@ ScanSourceDatabasePgClassTuple(HeapTupleData *tuple, Oid tbid, Oid dbid,
 	 *
 	 * Shared objects don't need to be copied, because they are shared.
 	 * Objects without storage can't be copied, because there's nothing to
-	 * copy. Temporary relations don't need to be copied either, because
-	 * they are inaccessible outside of the session that created them,
-	 * which must be gone already, and couldn't connect to a different database
-	 * if it still existed. autovacuum will eventually remove the pg_class
-	 * entries as well.
+	 * copy. Temporary relations don't need to be copied either, because they
+	 * are inaccessible outside of the session that created them, which must
+	 * be gone already, and couldn't connect to a different database if it
+	 * still existed. autovacuum will eventually remove the pg_class entries
+	 * as well.
 	 */
 	if (classForm->reltablespace == GLOBALTABLESPACE_OID ||
 		!RELKIND_HAS_STORAGE(classForm->relkind) ||
@@ -628,6 +630,8 @@ CreateDatabaseUsingFileCopy(Oid src_dboid, Oid dst_dboid, Oid src_tsid,
 			(void) XLogInsert(RM_DBASE_ID,
 							  XLOG_DBASE_CREATE_FILE_COPY | XLR_SPECIAL_REL_UPDATE);
 		}
+		pfree(srcpath);
+		pfree(dstpath);
 	}
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
@@ -698,7 +702,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	DefElem    *dcollate = NULL;
 	DefElem    *dctype = NULL;
 	DefElem    *diculocale = NULL;
-	DefElem	   *dlocprovider = NULL;
+	DefElem    *dlocprovider = NULL;
 	DefElem    *distemplate = NULL;
 	DefElem    *dallowconnections = NULL;
 	DefElem    *dconnlimit = NULL;
@@ -820,10 +824,10 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 			/*
 			 * We don't normally permit new databases to be created with
 			 * system-assigned OIDs. pg_upgrade tries to preserve database
-			 * OIDs, so we can't allow any database to be created with an
-			 * OID that might be in use in a freshly-initialized cluster
-			 * created by some future version. We assume all such OIDs will
-			 * be from the system-managed OID range.
+			 * OIDs, so we can't allow any database to be created with an OID
+			 * that might be in use in a freshly-initialized cluster created
+			 * by some future version. We assume all such OIDs will be from
+			 * the system-managed OID range.
 			 *
 			 * As an exception, however, we permit any OID to be assigned when
 			 * allow_system_table_mods=on (so that initdb can assign system
@@ -1344,15 +1348,15 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	InvokeObjectPostCreateHook(DatabaseRelationId, dboid, 0);
 
 	/*
-	 * If we're going to be reading data for the to-be-created database
-	 * into shared_buffers, take a lock on it. Nobody should know that this
+	 * If we're going to be reading data for the to-be-created database into
+	 * shared_buffers, take a lock on it. Nobody should know that this
 	 * database exists yet, but it's good to maintain the invariant that a
 	 * lock an AccessExclusiveLock on the database is sufficient to drop all
 	 * of its buffers without worrying about more being read later.
 	 *
-	 * Note that we need to do this before entering the PG_ENSURE_ERROR_CLEANUP
-	 * block below, because createdb_failure_callback expects this lock to
-	 * be held already.
+	 * Note that we need to do this before entering the
+	 * PG_ENSURE_ERROR_CLEANUP block below, because createdb_failure_callback
+	 * expects this lock to be held already.
 	 */
 	if (dbstrategy == CREATEDB_WAL_LOG)
 		LockSharedObject(DatabaseRelationId, dboid, 0, AccessShareLock);
@@ -1683,10 +1687,8 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 	 */
 	RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 
-#if defined(USE_BARRIER_SMGRRELEASE)
 	/* Close all smgr fds in all backends. */
 	WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
-#endif
 
 	/*
 	 * Remove all tablespace subdirs belonging to the database.
@@ -1936,10 +1938,8 @@ movedb(const char *dbname, const char *tblspcname)
 	RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT
 					  | CHECKPOINT_FLUSH_ALL);
 
-#if defined(USE_BARRIER_SMGRRELEASE)
 	/* Close all smgr fds in all backends. */
 	WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
-#endif
 
 	/*
 	 * Now drop all buffers holding data of the target database; they should
@@ -2128,6 +2128,9 @@ movedb(const char *dbname, const char *tblspcname)
 	/* Now it's safe to release the database lock */
 	UnlockSharedObjectForSession(DatabaseRelationId, db_id, 0,
 								 AccessExclusiveLock);
+
+	pfree(src_dbpath);
+	pfree(dst_dbpath);
 }
 
 /* Error cleanup callback for movedb */
@@ -2141,6 +2144,8 @@ movedb_failure_callback(int code, Datum arg)
 	dstpath = GetDatabasePath(fparms->dest_dboid, fparms->dest_tsoid);
 
 	(void) rmtree(dstpath, true);
+
+	pfree(dstpath);
 }
 
 /*
@@ -3045,12 +3050,18 @@ dbase_redo(XLogReaderState *record)
 		 */
 		FlushDatabaseBuffers(xlrec->src_db_id);
 
+		/* Close all sgmr fds in all backends. */
+		WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
+
 		/*
 		 * Copy this subdirectory to the new location
 		 *
 		 * We don't need to copy subdirectories
 		 */
 		copydir(src_path, dst_path, false);
+
+		pfree(src_path);
+		pfree(dst_path);
 	}
 	else if (info == XLOG_DBASE_CREATE_WAL_LOG)
 	{
@@ -3063,6 +3074,7 @@ dbase_redo(XLogReaderState *record)
 		/* Create the database directory with the version file. */
 		CreateDirAndVersionFile(dbpath, xlrec->db_id, xlrec->tablespace_id,
 								true);
+		pfree(dbpath);
 	}
 	else if (info == XLOG_DBASE_DROP)
 	{
@@ -3098,10 +3110,8 @@ dbase_redo(XLogReaderState *record)
 		/* Clean out the xlog relcache too */
 		XLogDropDatabase(xlrec->db_id);
 
-#if defined(USE_BARRIER_SMGRRELEASE)
 		/* Close all sgmr fds in all backends. */
 		WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
-#endif
 
 		for (i = 0; i < xlrec->ntablespaces; i++)
 		{

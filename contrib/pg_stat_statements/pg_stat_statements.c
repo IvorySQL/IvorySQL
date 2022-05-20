@@ -252,6 +252,7 @@ static int	exec_nested_level = 0;
 static int	plan_nested_level = 0;
 
 /* Saved hook values in case of unload */
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static planner_hook_type prev_planner_hook = NULL;
@@ -305,7 +306,6 @@ static bool pgss_save;			/* whether to save stats across shutdown */
 /*---- Function declarations ----*/
 
 void		_PG_init(void);
-void		_PG_fini(void);
 
 PG_FUNCTION_INFO_V1(pg_stat_statements_reset);
 PG_FUNCTION_INFO_V1(pg_stat_statements_reset_1_7);
@@ -317,6 +317,7 @@ PG_FUNCTION_INFO_V1(pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(pg_stat_statements);
 PG_FUNCTION_INFO_V1(pg_stat_statements_info);
 
+static void pgss_shmem_request(void);
 static void pgss_shmem_startup(void);
 static void pgss_shmem_shutdown(int code, Datum arg);
 static void pgss_post_parse_analyze(ParseState *pstate, Query *query,
@@ -453,16 +454,10 @@ _PG_init(void)
 	MarkGUCPrefixReserved("pg_stat_statements");
 
 	/*
-	 * Request additional shared resources.  (These are no-ops if we're not in
-	 * the postmaster process.)  We'll allocate or attach to the shared
-	 * resources in pgss_shmem_startup().
-	 */
-	RequestAddinShmemSpace(pgss_memsize());
-	RequestNamedLWLockTranche("pg_stat_statements", 1);
-
-	/*
 	 * Install hooks.
 	 */
+	prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = pgss_shmem_request;
 	prev_shmem_startup_hook = shmem_startup_hook;
 	shmem_startup_hook = pgss_shmem_startup;
 	prev_post_parse_analyze_hook = post_parse_analyze_hook;
@@ -482,20 +477,17 @@ _PG_init(void)
 }
 
 /*
- * Module unload callback
+ * shmem_request hook: request additional shared resources.  We'll allocate or
+ * attach to the shared resources in pgss_shmem_startup().
  */
-void
-_PG_fini(void)
+static void
+pgss_shmem_request(void)
 {
-	/* Uninstall hooks. */
-	shmem_startup_hook = prev_shmem_startup_hook;
-	post_parse_analyze_hook = prev_post_parse_analyze_hook;
-	planner_hook = prev_planner_hook;
-	ExecutorStart_hook = prev_ExecutorStart;
-	ExecutorRun_hook = prev_ExecutorRun;
-	ExecutorFinish_hook = prev_ExecutorFinish;
-	ExecutorEnd_hook = prev_ExecutorEnd;
-	ProcessUtility_hook = prev_ProcessUtility;
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	RequestAddinShmemSpace(pgss_memsize());
+	RequestNamedLWLockTranche("pg_stat_statements", 1);
 }
 
 /*
@@ -1551,7 +1543,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 	HASH_SEQ_STATUS hash_seq;
 	pgssEntry  *entry;
 
-	/* Superusers or roles with the privileges of pg_read_all_stats members are allowed */
+	/*
+	 * Superusers or roles with the privileges of pg_read_all_stats members
+	 * are allowed
+	 */
 	is_allowed_role = has_privs_of_role(userid, ROLE_PG_READ_ALL_STATS);
 
 	/* hash table must exist already */
@@ -1849,7 +1844,6 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 
 	if (qbuffer)
 		free(qbuffer);
-
 }
 
 /* Number of output arguments (columns) for pg_stat_statements_info */

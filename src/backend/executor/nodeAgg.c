@@ -2656,8 +2656,8 @@ agg_refill_hash_table(AggState *aggstate)
 		prepare_hash_slot(perhash,
 						  aggstate->tmpcontext->ecxt_outertuple,
 						  hashslot);
-		entry = LookupTupleHashEntryHash(
-										 perhash->hashtable, hashslot, p_isnew, hash);
+		entry = LookupTupleHashEntryHash(perhash->hashtable, hashslot,
+										 p_isnew, hash);
 
 		if (entry != NULL)
 		{
@@ -4119,7 +4119,6 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 								 2,
 								 InvalidOid,
 								 (void *) aggstate, NULL);
-
 	}
 
 	/*

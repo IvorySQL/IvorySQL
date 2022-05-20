@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * basebackup_target.c
- *	  Base backups can be "targetted," which means that they can be sent
+ *	  Base backups can be "targeted", which means that they can be sent
  *	  somewhere other than to the client which requested the backup.
  *	  Furthermore, new targets can be defined by extensions. This file
  *	  contains code to support that functionality.
@@ -32,8 +32,8 @@ struct BaseBackupTargetHandle
 };
 
 static void initialize_target_list(void);
-extern bbsink *blackhole_get_sink(bbsink *next_sink, void *detail_arg);
-extern bbsink *server_get_sink(bbsink *next_sink, void *detail_arg);
+static bbsink *blackhole_get_sink(bbsink *next_sink, void *detail_arg);
+static bbsink *server_get_sink(bbsink *next_sink, void *detail_arg);
 static void *reject_target_detail(char *target, char *target_detail);
 static void *server_check_detail(char *target, char *target_detail);
 
@@ -80,9 +80,9 @@ BaseBackupAddTarget(char *name,
 			/*
 			 * We found one, so update it.
 			 *
-			 * It is probably not a great idea to call BaseBackupAddTarget
-			 * for the same name multiple times, but if it happens, this
-			 * seems like the sanest behavior.
+			 * It is probably not a great idea to call BaseBackupAddTarget for
+			 * the same name multiple times, but if it happens, this seems
+			 * like the sanest behavior.
 			 */
 			ttype->check_detail = check_detail;
 			ttype->get_sink = get_sink;
@@ -91,9 +91,9 @@ BaseBackupAddTarget(char *name,
 	}
 
 	/*
-	 * We use TopMemoryContext for allocations here to make sure that the
-	 * data we need doesn't vanish under us; that's also why we copy the
-	 * target name into a newly-allocated chunk of memory.
+	 * We use TopMemoryContext for allocations here to make sure that the data
+	 * we need doesn't vanish under us; that's also why we copy the target
+	 * name into a newly-allocated chunk of memory.
 	 */
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	ttype = palloc(sizeof(BaseBackupTargetType));
@@ -190,7 +190,7 @@ initialize_target_list(void)
  * but forward, but it's even cheaper to implement that by not adding a bbsink
  * at all.
  */
-bbsink *
+static bbsink *
 blackhole_get_sink(bbsink *next_sink, void *detail_arg)
 {
 	return next_sink;
@@ -199,7 +199,7 @@ blackhole_get_sink(bbsink *next_sink, void *detail_arg)
 /*
  * Create a bbsink implementing a server-side backup.
  */
-bbsink *
+static bbsink *
 server_get_sink(bbsink *next_sink, void *detail_arg)
 {
 	return bbsink_server_new(next_sink, detail_arg);
@@ -209,7 +209,7 @@ server_get_sink(bbsink *next_sink, void *detail_arg)
  * Implement target-detail checking for a target that does not accept a
  * detail.
  */
-void *
+static void *
 reject_target_detail(char *target, char *target_detail)
 {
 	if (target_detail != NULL)
@@ -228,7 +228,7 @@ reject_target_detail(char *target, char *target_detail)
  * should be written, but we don't check that here. Rather, that check,
  * as well as the necessary permissions checking, happens in bbsink_server_new.
  */
-void *
+static void *
 server_check_detail(char *target, char *target_detail)
 {
 	if (target_detail == NULL)

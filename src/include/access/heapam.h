@@ -133,7 +133,7 @@ extern bool heap_getnextslot_tidrange(TableScanDesc sscan,
 									  ScanDirection direction,
 									  TupleTableSlot *slot);
 extern bool heap_fetch(Relation relation, Snapshot snapshot,
-					   HeapTuple tuple, Buffer *userbuf);
+					   HeapTuple tuple, Buffer *userbuf, bool keep_buf);
 extern bool heap_hot_search_buffer(ItemPointer tid, Relation relation,
 								   Buffer buffer, Snapshot snapshot, HeapTuple heapTuple,
 								   bool *all_dead, bool first_call);
@@ -188,7 +188,7 @@ extern int	heap_page_prune(Relation relation, Buffer buffer,
 							struct GlobalVisState *vistest,
 							TransactionId old_snap_xmin,
 							TimestampTz old_snap_ts_ts,
-							int	*nnewlpdead,
+							int *nnewlpdead,
 							OffsetNumber *off_loc);
 extern void heap_page_prune_execute(Buffer buffer,
 									OffsetNumber *redirected, int nredirected,

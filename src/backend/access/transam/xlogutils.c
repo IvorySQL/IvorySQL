@@ -80,10 +80,9 @@ typedef struct xl_invalid_page
 
 static HTAB *invalid_page_tab = NULL;
 
-static int
-read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
-						  int reqLen, XLogRecPtr targetRecPtr,
-						  char *cur_page, bool wait_for_wal);
+static int	read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
+									  int reqLen, XLogRecPtr targetRecPtr,
+									  char *cur_page, bool wait_for_wal);
 
 /* Report a reference to an invalid page */
 static void
@@ -940,8 +939,8 @@ read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
 		 * archive in the timeline will get renamed to .partial by
 		 * StartupXLOG().
 		 *
-		 * If that happens after our caller determined the TLI but before
-		 * we actually read the xlog page, we might still try to read from the
+		 * If that happens after our caller determined the TLI but before we
+		 * actually read the xlog page, we might still try to read from the
 		 * old (now renamed) segment and fail. There's not much we can do
 		 * about this, but it can only happen when we're a leaf of a cascading
 		 * standby whose primary gets promoted while we're decoding, so a
@@ -957,7 +956,18 @@ read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
 
 			/* If asked, let's not wait for future WAL. */
 			if (!wait_for_wal)
+			{
+				ReadLocalXLogPageNoWaitPrivate *private_data;
+
+				/*
+				 * Inform the caller of read_local_xlog_page_no_wait that the
+				 * end of WAL has been reached.
+				 */
+				private_data = (ReadLocalXLogPageNoWaitPrivate *)
+					state->private_data;
+				private_data->end_of_wal = true;
 				break;
+			}
 
 			CHECK_FOR_INTERRUPTS();
 			pg_usleep(1000L);

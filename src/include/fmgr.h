@@ -473,7 +473,7 @@ typedef struct
 	FMGR_ABI_EXTRA, \
 }
 
-StaticAssertDecl(sizeof(FMGR_ABI_EXTRA) <= sizeof(((Pg_magic_struct*)0)->abi_extra),
+StaticAssertDecl(sizeof(FMGR_ABI_EXTRA) <= sizeof(((Pg_magic_struct *) 0)->abi_extra),
 				 "FMGR_ABI_EXTRA too long");
 
 /*
@@ -705,7 +705,6 @@ extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
  * Routines in fmgr.c
  */
 extern const Pg_finfo_record *fetch_finfo_record(void *filehandle, const char *funcname);
-extern void clear_external_function_hash(void *filehandle);
 extern Oid	fmgr_internal_function(const char *proname);
 extern Oid	get_fn_expr_rettype(FmgrInfo *flinfo);
 extern Oid	get_fn_expr_argtype(FmgrInfo *flinfo, int argnum);

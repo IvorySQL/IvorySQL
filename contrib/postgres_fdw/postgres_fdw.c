@@ -1243,9 +1243,9 @@ postgresGetForeignPlan(PlannerInfo *root,
 	if (best_path->fdw_private)
 	{
 		has_final_sort = boolVal(list_nth(best_path->fdw_private,
-										 FdwPathPrivateHasFinalSort));
+										  FdwPathPrivateHasFinalSort));
 		has_limit = boolVal(list_nth(best_path->fdw_private,
-									FdwPathPrivateHasLimit));
+									 FdwPathPrivateHasLimit));
 	}
 
 	if (IS_SIMPLE_REL(foreignrel))
@@ -1926,7 +1926,7 @@ postgresBeginForeignModify(ModifyTableState *mtstate,
 	values_end_len = intVal(list_nth(fdw_private,
 									 FdwModifyPrivateLen));
 	has_returning = boolVal(list_nth(fdw_private,
-									FdwModifyPrivateHasReturning));
+									 FdwModifyPrivateHasReturning));
 	retrieved_attrs = (List *) list_nth(fdw_private,
 										FdwModifyPrivateRetrievedAttrs);
 
@@ -2012,8 +2012,8 @@ postgresExecForeignBatchInsert(EState *estate,
  *		Determine the maximum number of tuples that can be inserted in bulk
  *
  * Returns the batch size specified for server or table. When batching is not
- * allowed (e.g. for tables with AFTER ROW triggers or with RETURNING clause),
- * returns 1.
+ * allowed (e.g. for tables with BEFORE/AFTER ROW triggers or with RETURNING
+ * clause), returns 1.
  */
 static int
 postgresGetForeignModifyBatchSize(ResultRelInfo *resultRelInfo)
@@ -2042,10 +2042,19 @@ postgresGetForeignModifyBatchSize(ResultRelInfo *resultRelInfo)
 	else
 		batch_size = get_batch_size_option(resultRelInfo->ri_RelationDesc);
 
-	/* Disable batching when we have to use RETURNING. */
+	/*
+	 * Disable batching when we have to use RETURNING or there are any
+	 * BEFORE/AFTER ROW INSERT triggers on the foreign table.
+	 *
+	 * When there are any BEFORE ROW INSERT triggers on the table, we can't
+	 * support it, because such triggers might query the table we're inserting
+	 * into and act differently if the tuples that have already been processed
+	 * and prepared for insertion are not there.
+	 */
 	if (resultRelInfo->ri_projectReturning != NULL ||
 		(resultRelInfo->ri_TrigDesc &&
-		 resultRelInfo->ri_TrigDesc->trig_insert_after_row))
+		 (resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
+		  resultRelInfo->ri_TrigDesc->trig_insert_after_row)))
 		return 1;
 
 	/*
@@ -2677,11 +2686,11 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	dmstate->query = strVal(list_nth(fsplan->fdw_private,
 									 FdwDirectModifyPrivateUpdateSql));
 	dmstate->has_returning = boolVal(list_nth(fsplan->fdw_private,
-											 FdwDirectModifyPrivateHasReturning));
+											  FdwDirectModifyPrivateHasReturning));
 	dmstate->retrieved_attrs = (List *) list_nth(fsplan->fdw_private,
 												 FdwDirectModifyPrivateRetrievedAttrs);
 	dmstate->set_processed = boolVal(list_nth(fsplan->fdw_private,
-											 FdwDirectModifyPrivateSetProcessed));
+											  FdwDirectModifyPrivateSetProcessed));
 
 	/* Create context for per-tuple temp workspace. */
 	dmstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,

@@ -42,6 +42,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "tcop/tcopprot.h"
+#include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/pg_lsn.h"
 #include "utils/ps_status.h"
@@ -65,7 +66,7 @@ typedef struct LogicalRepCtxStruct
 	LogicalRepWorker workers[FLEXIBLE_ARRAY_MEMBER];
 } LogicalRepCtxStruct;
 
-LogicalRepCtxStruct *LogicalRepCtx;
+static LogicalRepCtxStruct *LogicalRepCtx;
 
 static void ApplyLauncherWakeup(void);
 static void logicalrep_launcher_onexit(int code, Datum arg);
@@ -74,8 +75,6 @@ static void logicalrep_worker_detach(void);
 static void logicalrep_worker_cleanup(LogicalRepWorker *worker);
 
 static bool on_commit_launcher_wakeup = false;
-
-Datum		pg_stat_get_subscription(PG_FUNCTION_ARGS);
 
 
 /*
@@ -344,11 +343,11 @@ retry:
 	}
 
 	/*
-	 * If we reached the sync worker limit per subscription, just exit
-	 * silently as we might get here because of an otherwise harmless race
-	 * condition.
+	 * We don't allow to invoke more sync workers once we have reached the
+	 * sync worker limit per subscription. So, just return silently as we
+	 * might get here because of an otherwise harmless race condition.
 	 */
-	if (nsyncworkers >= max_sync_workers_per_subscription)
+	if (OidIsValid(relid) && nsyncworkers >= max_sync_workers_per_subscription)
 	{
 		LWLockRelease(LogicalRepWorkerLock);
 		return;

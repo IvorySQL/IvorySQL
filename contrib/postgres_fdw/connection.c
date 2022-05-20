@@ -318,14 +318,15 @@ make_new_connection(ConnCacheEntry *entry, UserMapping *user)
 	 * open even after the transaction using it ends, so that the subsequent
 	 * transactions can re-use it.
 	 *
-	 * It's enough to determine this only when making new connection because
-	 * all the connections to the foreign server whose keep_connections option
-	 * is changed will be closed and re-made later.
-	 *
 	 * By default, all the connections to any foreign servers are kept open.
 	 *
 	 * Also determine whether to commit (sub)transactions opened on the remote
-	 * server in parallel at (sub)transaction end.
+	 * server in parallel at (sub)transaction end, which is disabled by
+	 * default.
+	 *
+	 * Note: it's enough to determine these only when making a new connection
+	 * because these settings for it are changed, it will be closed and
+	 * re-made later.
 	 */
 	entry->keep_connections = true;
 	entry->parallel_commit = false;
@@ -653,10 +654,10 @@ do_sql_command_end(PGconn *conn, const char *sql, bool consume_input)
 	PGresult   *res;
 
 	/*
-	 * If requested, consume whatever data is available from the socket.
-	 * (Note that if all data is available, this allows pgfdw_get_result to
-	 * call PQgetResult without forcing the overhead of WaitLatchOrSocket,
-	 * which would be large compared to the overhead of PQconsumeInput.)
+	 * If requested, consume whatever data is available from the socket. (Note
+	 * that if all data is available, this allows pgfdw_get_result to call
+	 * PQgetResult without forcing the overhead of WaitLatchOrSocket, which
+	 * would be large compared to the overhead of PQconsumeInput.)
 	 */
 	if (consume_input && !PQconsumeInput(conn))
 		pgfdw_report_error(ERROR, NULL, conn, false, sql);
@@ -1559,6 +1560,7 @@ pgfdw_finish_pre_commit_cleanup(List *pending_entries)
 		entry = (ConnCacheEntry *) lfirst(lc);
 
 		Assert(entry->changing_xact_state);
+
 		/*
 		 * We might already have received the result on the socket, so pass
 		 * consume_input=true to try to consume it first
@@ -1633,6 +1635,7 @@ pgfdw_finish_pre_subcommit_cleanup(List *pending_entries, int curlevel)
 		entry = (ConnCacheEntry *) lfirst(lc);
 
 		Assert(entry->changing_xact_state);
+
 		/*
 		 * We might already have received the result on the socket, so pass
 		 * consume_input=true to try to consume it first
@@ -1733,7 +1736,6 @@ postgres_fdw_get_connections(PG_FUNCTION_ARGS)
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 	}
-
 
 	PG_RETURN_VOID();
 }

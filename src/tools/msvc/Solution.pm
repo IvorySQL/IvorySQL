@@ -318,7 +318,6 @@ sub GenerateFiles
 		HAVE_LOCALE_T               => 1,
 		HAVE_LONG_INT_64            => undef,
 		HAVE_LONG_LONG_INT_64       => 1,
-		HAVE_LZ4_H                  => undef,
 		HAVE_MBARRIER_H             => undef,
 		HAVE_MBSTOWCS_L             => 1,
 		HAVE_MEMORY_H               => 1,
@@ -350,7 +349,7 @@ sub GenerateFiles
 		HAVE_READLINE_READLINE_H    => undef,
 		HAVE_READLINK               => undef,
 		HAVE_READV                  => undef,
-		HAVE_RL_COMPLETION_MATCHES               => undef,
+		HAVE_RL_COMPLETION_MATCHES  => undef,
 		HAVE_RL_COMPLETION_SUPPRESS_QUOTE        => undef,
 		HAVE_RL_FILENAME_COMPLETION_FUNCTION     => undef,
 		HAVE_RL_FILENAME_QUOTE_CHARACTERS        => undef,
@@ -541,7 +540,6 @@ sub GenerateFiles
 	if ($self->{options}->{lz4})
 	{
 		$define{HAVE_LIBLZ4} = 1;
-		$define{HAVE_LZ4_H}  = 1;
 		$define{USE_LZ4}     = 1;
 	}
 	if ($self->{options}->{zstd})

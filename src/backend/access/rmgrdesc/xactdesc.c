@@ -319,7 +319,7 @@ xact_desc_stats(StringInfo buf, const char *label,
 		appendStringInfo(buf, "; %sdropped stats:", label);
 		for (i = 0; i < ndropped; i++)
 		{
-			appendStringInfo(buf, " %u/%u/%u",
+			appendStringInfo(buf, " %d/%u/%u",
 							 dropped_stats[i].kind,
 							 dropped_stats[i].dboid,
 							 dropped_stats[i].objoid);
@@ -411,8 +411,8 @@ xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec, RepOriginI
 							   parsed.tsId, xlrec->initfileinval);
 
 	/*
-	 * Check if the replication origin has been set in this record in the
-	 * same way as PrepareRedoAdd().
+	 * Check if the replication origin has been set in this record in the same
+	 * way as PrepareRedoAdd().
 	 */
 	if (origin_id != InvalidRepOriginId)
 		appendStringInfo(buf, "; origin: node %u, lsn %X/%X, at %s",

@@ -2343,7 +2343,7 @@ _copyJsonReturning(const JsonReturning *from)
 static JsonValueExpr *
 _copyJsonValueExpr(const JsonValueExpr *from)
 {
-	JsonValueExpr  *newnode = makeNode(JsonValueExpr);
+	JsonValueExpr *newnode = makeNode(JsonValueExpr);
 
 	COPY_NODE_FIELD(raw_expr);
 	COPY_NODE_FIELD(formatted_expr);
@@ -2358,7 +2358,7 @@ _copyJsonValueExpr(const JsonValueExpr *from)
 static JsonParseExpr *
 _copyJsonParseExpr(const JsonParseExpr *from)
 {
-	JsonParseExpr  *newnode = makeNode(JsonParseExpr);
+	JsonParseExpr *newnode = makeNode(JsonParseExpr);
 
 	COPY_NODE_FIELD(expr);
 	COPY_NODE_FIELD(output);
@@ -2488,7 +2488,7 @@ _copyJsonObjectAgg(const JsonObjectAgg *from)
 static JsonOutput *
 _copyJsonOutput(const JsonOutput *from)
 {
-	JsonOutput	   *newnode = makeNode(JsonOutput);
+	JsonOutput *newnode = makeNode(JsonOutput);
 
 	COPY_NODE_FIELD(typeName);
 	COPY_NODE_FIELD(returning);
@@ -2550,18 +2550,18 @@ _copyJsonArrayQueryConstructor(const JsonArrayQueryConstructor *from)
 static JsonExpr *
 _copyJsonExpr(const JsonExpr *from)
 {
-	JsonExpr    *newnode = makeNode(JsonExpr);
+	JsonExpr   *newnode = makeNode(JsonExpr);
 
 	COPY_SCALAR_FIELD(op);
 	COPY_NODE_FIELD(formatted_expr);
 	COPY_NODE_FIELD(result_coercion);
 	COPY_NODE_FIELD(format);
 	COPY_NODE_FIELD(path_spec);
-	COPY_NODE_FIELD(passing_values);
 	COPY_NODE_FIELD(passing_names);
+	COPY_NODE_FIELD(passing_values);
 	COPY_NODE_FIELD(returning);
-	COPY_NODE_FIELD(on_error);
 	COPY_NODE_FIELD(on_empty);
+	COPY_NODE_FIELD(on_error);
 	COPY_NODE_FIELD(coercions);
 	COPY_SCALAR_FIELD(wrapper);
 	COPY_SCALAR_FIELD(omit_quotes);
@@ -2614,7 +2614,7 @@ _copyJsonItemCoercions(const JsonItemCoercions *from)
 static JsonFuncExpr *
 _copyJsonFuncExpr(const JsonFuncExpr *from)
 {
-	JsonFuncExpr   *newnode = makeNode(JsonFuncExpr);
+	JsonFuncExpr *newnode = makeNode(JsonFuncExpr);
 
 	COPY_SCALAR_FIELD(op);
 	COPY_NODE_FIELD(common);
@@ -2637,8 +2637,8 @@ _copyJsonIsPredicate(const JsonIsPredicate *from)
 	JsonIsPredicate *newnode = makeNode(JsonIsPredicate);
 
 	COPY_NODE_FIELD(expr);
-	COPY_SCALAR_FIELD(format);
-	COPY_SCALAR_FIELD(value_type);
+	COPY_NODE_FIELD(format);
+	COPY_SCALAR_FIELD(item_type);
 	COPY_SCALAR_FIELD(unique_keys);
 	COPY_LOCATION_FIELD(location);
 
@@ -2651,7 +2651,7 @@ _copyJsonIsPredicate(const JsonIsPredicate *from)
 static JsonBehavior *
 _copyJsonBehavior(const JsonBehavior *from)
 {
-	JsonBehavior   *newnode = makeNode(JsonBehavior);
+	JsonBehavior *newnode = makeNode(JsonBehavior);
 
 	COPY_SCALAR_FIELD(btype);
 	COPY_NODE_FIELD(default_expr);
@@ -2665,7 +2665,7 @@ _copyJsonBehavior(const JsonBehavior *from)
 static JsonCommon *
 _copyJsonCommon(const JsonCommon *from)
 {
-	JsonCommon	   *newnode = makeNode(JsonCommon);
+	JsonCommon *newnode = makeNode(JsonCommon);
 
 	COPY_NODE_FIELD(expr);
 	COPY_NODE_FIELD(pathspec);
@@ -2682,7 +2682,7 @@ _copyJsonCommon(const JsonCommon *from)
 static JsonArgument *
 _copyJsonArgument(const JsonArgument *from)
 {
-	JsonArgument   *newnode = makeNode(JsonArgument);
+	JsonArgument *newnode = makeNode(JsonArgument);
 
 	COPY_NODE_FIELD(val);
 	COPY_STRING_FIELD(name);
@@ -2696,7 +2696,7 @@ _copyJsonArgument(const JsonArgument *from)
 static JsonTable *
 _copyJsonTable(const JsonTable *from)
 {
-	JsonTable *newnode = makeNode(JsonTable);
+	JsonTable  *newnode = makeNode(JsonTable);
 
 	COPY_NODE_FIELD(common);
 	COPY_NODE_FIELD(columns);
@@ -2764,6 +2764,7 @@ _copyJsonTableParent(const JsonTableParent *from)
 	COPY_SCALAR_FIELD(outerJoin);
 	COPY_SCALAR_FIELD(colMin);
 	COPY_SCALAR_FIELD(colMax);
+	COPY_SCALAR_FIELD(errorOnError);
 
 	return newnode;
 }
@@ -5484,7 +5485,7 @@ _copyExtensibleNode(const ExtensibleNode *from)
 static Integer *
 _copyInteger(const Integer *from)
 {
-	Integer	   *newnode = makeNode(Integer);
+	Integer    *newnode = makeNode(Integer);
 
 	COPY_SCALAR_FIELD(ival);
 
@@ -5504,7 +5505,7 @@ _copyFloat(const Float *from)
 static Boolean *
 _copyBoolean(const Boolean *from)
 {
-	Boolean	   *newnode = makeNode(Boolean);
+	Boolean    *newnode = makeNode(Boolean);
 
 	COPY_SCALAR_FIELD(boolval);
 
@@ -5524,7 +5525,7 @@ _copyString(const String *from)
 static BitString *
 _copyBitString(const BitString *from)
 {
-	BitString   *newnode = makeNode(BitString);
+	BitString  *newnode = makeNode(BitString);
 
 	COPY_STRING_FIELD(bsval);
 

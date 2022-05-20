@@ -1694,7 +1694,7 @@ ALTER TABLE products RENAME TO items;
    <literal>EXECUTE</literal>, <literal>USAGE</literal>, <literal>SET</literal>
    and <literal>ALTER SYSTEM</literal>.
    The privileges applicable to a particular
-   object vary depending on the object's type (table, function, etc).
+   object vary depending on the object's type (table, function, etc.).
    More detail about the meanings of these privileges appears below.
    The following sections and chapters will also show you how
    these privileges are used.
@@ -2619,13 +2619,13 @@ CREATE POLICY admin_local_only ON passwd AS RESTRICTIVE TO admin
 
 <programlisting>
 =&gt; SELECT current_user;
- current_user 
+ current_user
 --------------
  admin
 (1 row)
 
 =&gt; select inet_client_addr();
- inet_client_addr 
+ inet_client_addr
 ------------------
  127.0.0.1
 (1 row)

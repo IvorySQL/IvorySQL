@@ -34,6 +34,7 @@
 #include "access/relation.h"
 #include "access/table.h"
 #include "access/tableam.h"
+#include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
@@ -1202,7 +1203,7 @@ heap_create_with_catalog(const char *relname,
 					if (!OidIsValid(binary_upgrade_next_toast_pg_class_relfilenode))
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								  errmsg("toast relfilenode value not set when in binary upgrade mode")));
+								 errmsg("toast relfilenode value not set when in binary upgrade mode")));
 
 					relfilenode = binary_upgrade_next_toast_pg_class_relfilenode;
 					binary_upgrade_next_toast_pg_class_relfilenode = InvalidOid;
@@ -1269,8 +1270,8 @@ heap_create_with_catalog(const char *relname,
 	 * remove the disk file again.)
 	 *
 	 * NB: Note that passing create_storage = true is correct even for binary
-	 * upgrade.  The storage we create here will be replaced later, but we need
-	 * to have something on disk in the meanwhile.
+	 * upgrade.  The storage we create here will be replaced later, but we
+	 * need to have something on disk in the meanwhile.
 	 */
 	new_rel_desc = heap_create(relname,
 							   relnamespace,
@@ -3225,9 +3226,8 @@ restart:
 		/*
 		 * If this constraint has a parent constraint which we have not seen
 		 * yet, keep track of it for the second loop, below.  Tracking parent
-		 * constraints allows us to climb up to the top-level constraint
-		 * and look for all possible relations referencing the partitioned
-		 * table.
+		 * constraints allows us to climb up to the top-level constraint and
+		 * look for all possible relations referencing the partitioned table.
 		 */
 		if (OidIsValid(con->conparentid) &&
 			!list_member_oid(parent_cons, con->conparentid))

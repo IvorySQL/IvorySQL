@@ -3962,24 +3962,24 @@ ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
 	{
 		text	   *json = DatumGetTextP(js);
 
-		if (pred->value_type == JS_TYPE_ANY)
+		if (pred->item_type == JS_TYPE_ANY)
 			res = true;
 		else
 		{
 			switch (json_get_first_token(json, false))
 			{
 				case JSON_TOKEN_OBJECT_START:
-					res = pred->value_type == JS_TYPE_OBJECT;
+					res = pred->item_type == JS_TYPE_OBJECT;
 					break;
 				case JSON_TOKEN_ARRAY_START:
-					res = pred->value_type == JS_TYPE_ARRAY;
+					res = pred->item_type == JS_TYPE_ARRAY;
 					break;
 				case JSON_TOKEN_STRING:
 				case JSON_TOKEN_NUMBER:
 				case JSON_TOKEN_TRUE:
 				case JSON_TOKEN_FALSE:
 				case JSON_TOKEN_NULL:
-					res = pred->value_type == JS_TYPE_SCALAR;
+					res = pred->item_type == JS_TYPE_SCALAR;
 					break;
 				default:
 					res = false;
@@ -3988,21 +3988,21 @@ ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
 		}
 
 		/*
-		 * Do full parsing pass only for uniqueness check or for
-		 * JSON text validation.
+		 * Do full parsing pass only for uniqueness check or for JSON text
+		 * validation.
 		 */
 		if (res && (pred->unique_keys || exprtype == TEXTOID))
 			res = json_validate(json, pred->unique_keys, false);
 	}
 	else if (exprtype == JSONBOID)
 	{
-		if (pred->value_type == JS_TYPE_ANY)
+		if (pred->item_type == JS_TYPE_ANY)
 			res = true;
 		else
 		{
 			Jsonb	   *jb = DatumGetJsonbP(js);
 
-			switch (pred->value_type)
+			switch (pred->item_type)
 			{
 				case JS_TYPE_OBJECT:
 					res = JB_ROOT_IS_OBJECT(jb);
@@ -4523,20 +4523,20 @@ ExecEvalJsonConstructor(ExprState *state, ExprEvalStep *op,
 	if (ctor->type == JSCTOR_JSON_ARRAY)
 		res = (is_jsonb ?
 			   jsonb_build_array_worker :
-			   json_build_array_worker)(op->d.json_constructor.nargs,
-										op->d.json_constructor.arg_values,
-										op->d.json_constructor.arg_nulls,
-										op->d.json_constructor.arg_types,
-										op->d.json_constructor.constructor->absent_on_null);
-	else if (ctor->type == JSCTOR_JSON_OBJECT)
-		res = (is_jsonb ?
-			   jsonb_build_object_worker :
-			   json_build_object_worker)(op->d.json_constructor.nargs,
+			   json_build_array_worker) (op->d.json_constructor.nargs,
 										 op->d.json_constructor.arg_values,
 										 op->d.json_constructor.arg_nulls,
 										 op->d.json_constructor.arg_types,
-										 op->d.json_constructor.constructor->absent_on_null,
-										 op->d.json_constructor.constructor->unique);
+										 op->d.json_constructor.constructor->absent_on_null);
+	else if (ctor->type == JSCTOR_JSON_OBJECT)
+		res = (is_jsonb ?
+			   jsonb_build_object_worker :
+			   json_build_object_worker) (op->d.json_constructor.nargs,
+										  op->d.json_constructor.arg_values,
+										  op->d.json_constructor.arg_nulls,
+										  op->d.json_constructor.arg_types,
+										  op->d.json_constructor.constructor->absent_on_null,
+										  op->d.json_constructor.constructor->unique);
 	else if (ctor->type == JSCTOR_JSON_SCALAR)
 	{
 		if (op->d.json_constructor.arg_nulls[0])
@@ -4632,9 +4632,9 @@ static Datum
 ExecEvalJsonExprCoercion(ExprEvalStep *op, ExprContext *econtext,
 						 Datum res, bool *isNull, void *p, bool *error)
 {
-	ExprState *estate = p;
+	ExprState  *estate = p;
 
-	if (estate)		/* coerce using specified expression */
+	if (estate)					/* coerce using specified expression */
 		return ExecEvalExpr(estate, econtext, isNull);
 
 	if (op->d.jsonexpr.jsexpr->op != JSON_EXISTS_OP)
@@ -4706,7 +4706,7 @@ EvalJsonPathVar(void *cxt, char *varName, int varNameLen,
 	if (!var->evaluated)
 	{
 		MemoryContext oldcxt = var->mcxt ?
-			MemoryContextSwitchTo(var->mcxt) : NULL;
+		MemoryContextSwitchTo(var->mcxt) : NULL;
 
 		var->value = ExecEvalExpr(var->estate, var->econtext, &var->isnull);
 		var->evaluated = true;
@@ -4761,9 +4761,8 @@ ExecPrepareJsonItemCoercion(JsonbValue *item,
 
 		case jbvString:
 			coercion = &coercions->string;
-			res = PointerGetDatum(
-				cstring_to_text_with_len(item->val.string.val,
-										 item->val.string.len));
+			res = PointerGetDatum(cstring_to_text_with_len(item->val.string.val,
+														   item->val.string.len));
 			break;
 
 		case jbvNumeric:
@@ -4796,7 +4795,7 @@ ExecPrepareJsonItemCoercion(JsonbValue *item,
 					coercion = &coercions->timestamptz;
 					break;
 				default:
-					elog(ERROR, "unexpected jsonb datetime type oid %d",
+					elog(ERROR, "unexpected jsonb datetime type oid %u",
 						 item->val.datetime.typid);
 					return (Datum) 0;
 			}
@@ -4819,8 +4818,8 @@ ExecPrepareJsonItemCoercion(JsonbValue *item,
 	return res;
 }
 
-typedef Datum (*JsonFunc)(ExprEvalStep *op, ExprContext *econtext,
-						  Datum item, bool *resnull, void *p, bool *error);
+typedef Datum (*JsonFunc) (ExprEvalStep *op, ExprContext *econtext,
+						   Datum item, bool *resnull, void *p, bool *error);
 
 static Datum
 ExecEvalJsonExprSubtrans(JsonFunc func, ExprEvalStep *op,
@@ -4836,8 +4835,8 @@ ExecEvalJsonExprSubtrans(JsonFunc func, ExprEvalStep *op,
 		return func(op, econtext, res, resnull, p, error);
 
 	/*
-	 * We should catch exceptions of category ERRCODE_DATA_EXCEPTION
-	 * and execute the corresponding ON ERROR behavior then.
+	 * We should catch exceptions of category ERRCODE_DATA_EXCEPTION and
+	 * execute the corresponding ON ERROR behavior then.
 	 */
 	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
@@ -4874,7 +4873,8 @@ ExecEvalJsonExprSubtrans(JsonFunc func, ExprEvalStep *op,
 
 		ecategory = ERRCODE_TO_CATEGORY(edata->sqlerrcode);
 
-		if (ecategory != ERRCODE_DATA_EXCEPTION &&	/* jsonpath and other data errors */
+		if (ecategory != ERRCODE_DATA_EXCEPTION &&	/* jsonpath and other data
+													 * errors */
 			ecategory != ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION)	/* domain errors */
 			ReThrowError(edata);
 
@@ -4928,7 +4928,7 @@ ExecEvalJsonExpr(ExprEvalStep *op, ExprContext *econtext,
 				if (error && *error)
 					return (Datum) 0;
 
-				if (!jbv)	/* NULL or empty */
+				if (!jbv)		/* NULL or empty */
 					break;
 
 				Assert(!empty);
@@ -4959,21 +4959,23 @@ ExecEvalJsonExpr(ExprEvalStep *op, ExprContext *econtext,
 						*error = true;
 						return (Datum) 0;
 					}
+
 					/*
 					 * Coercion via I/O means here that the cast to the target
 					 * type simply does not exist.
 					 */
 					ereport(ERROR,
-							/*
-							 * XXX Standard says about a separate error code
-							 * ERRCODE_SQL_JSON_ITEM_CANNOT_BE_CAST_TO_TARGET_TYPE
-							 * but does not define its number.
-							 */
+
+					/*
+					 * XXX Standard says about a separate error code
+					 * ERRCODE_SQL_JSON_ITEM_CANNOT_BE_CAST_TO_TARGET_TYPE but
+					 * does not define its number.
+					 */
 							(errcode(ERRCODE_SQL_JSON_SCALAR_REQUIRED),
 							 errmsg("SQL/JSON item cannot be cast to target type")));
 				}
 				else if (!jcstate->estate)
-					return res;		/* no coercion */
+					return res; /* no coercion */
 
 				/* coerce using specific expression */
 				estate = jcstate->estate;
@@ -5028,6 +5030,7 @@ ExecEvalJsonExpr(ExprEvalStep *op, ExprContext *econtext,
 		}
 
 		if (jexpr->on_empty->btype == JSON_BEHAVIOR_DEFAULT)
+
 			/*
 			 * Execute DEFAULT expression as a coercion expression, because
 			 * its result is already coerced to the target type.

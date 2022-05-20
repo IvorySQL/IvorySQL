@@ -646,8 +646,8 @@ ReorderBufferTXNByXid(ReorderBuffer *rb, TransactionId xid, bool create,
 	}
 
 	/*
-	 * If the cache wasn't hit or it yielded a "does-not-exist" and we want
-	 * to create an entry.
+	 * If the cache wasn't hit or it yielded a "does-not-exist" and we want to
+	 * create an entry.
 	 */
 
 	/* search the lookup table */
@@ -2337,8 +2337,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 				case REORDER_BUFFER_CHANGE_INVALIDATION:
 					/* Execute the invalidation messages locally */
-					ReorderBufferExecuteInvalidations(
-													  change->data.inval.ninvalidations,
+					ReorderBufferExecuteInvalidations(change->data.inval.ninvalidations,
 													  change->data.inval.invalidations);
 					break;
 

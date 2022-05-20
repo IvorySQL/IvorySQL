@@ -826,7 +826,7 @@ static const SchemaQuery Query_for_list_of_mergetargets = {
 	.selcondition =
 	"c.relkind IN (" CppAsString2(RELKIND_RELATION) ", "
 	CppAsString2(RELKIND_PARTITIONED_TABLE) ") ",
-	.viscondition =	"pg_catalog.pg_table_is_visible(c.oid)",
+	.viscondition = "pg_catalog.pg_table_is_visible(c.oid)",
 	.namespace = "c.relnamespace",
 	.result = "c.relname",
 };
@@ -1006,24 +1006,18 @@ static const SchemaQuery Query_for_trigger_of_table = {
 
 /* Use COMPLETE_WITH_QUERY_VERBATIM with these queries for GUC names: */
 #define Query_for_list_of_alter_system_set_vars \
-"SELECT name FROM "\
-" (SELECT pg_catalog.lower(name) AS name FROM pg_catalog.pg_settings "\
-"  WHERE context != 'internal' "\
-" ) ss "\
-" WHERE name LIKE '%s'"
+"SELECT pg_catalog.lower(name) FROM pg_catalog.pg_settings "\
+" WHERE context != 'internal' "\
+"   AND pg_catalog.lower(name) LIKE pg_catalog.lower('%s')"
 
 #define Query_for_list_of_set_vars \
-"SELECT name FROM "\
-" (SELECT pg_catalog.lower(name) AS name FROM pg_catalog.pg_settings "\
-"  WHERE context IN ('user', 'superuser') "\
-" ) ss "\
-" WHERE name LIKE '%s'"
+"SELECT pg_catalog.lower(name) FROM pg_catalog.pg_settings "\
+" WHERE context IN ('user', 'superuser') "\
+"   AND pg_catalog.lower(name) LIKE pg_catalog.lower('%s')"
 
 #define Query_for_list_of_show_vars \
-"SELECT name FROM "\
-" (SELECT pg_catalog.lower(name) AS name FROM pg_catalog.pg_settings "\
-" ) ss "\
-" WHERE name LIKE '%s'"
+"SELECT pg_catalog.lower(name) FROM pg_catalog.pg_settings "\
+" WHERE pg_catalog.lower(name) LIKE pg_catalog.lower('%s')"
 
 #define Query_for_list_of_roles \
 " SELECT rolname "\
@@ -1834,6 +1828,7 @@ psql_completion(const char *text, int start, int end)
 			 (HeadMatches("ALTER", "PUBLICATION", MatchAny, "ADD|SET", "TABLE") &&
 			  ends_with(prev_wd, ',')))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
+
 	/*
 	 * "ALTER PUBLICATION <name> SET TABLE <name> WHERE (" - complete with
 	 * table attributes

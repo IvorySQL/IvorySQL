@@ -913,6 +913,16 @@ PostmasterMain(int argc, char *argv[])
 			puts(config_val ? config_val : "");
 			ExitPostmaster(0);
 		}
+
+		/*
+		 * A runtime-computed GUC will be printed later on.  As we initialize
+		 * a server startup sequence, silence any log messages that may show
+		 * up in the output generated.  FATAL and more severe messages are
+		 * useful to show, even if one would only expect at least PANIC.  LOG
+		 * entries are hidden.
+		 */
+		SetConfigOption("log_min_messages", "FATAL", PGC_INTERNAL,
+						PGC_S_OVERRIDE);
 	}
 
 	/* Verify that DataDir looks reasonable */
@@ -1031,6 +1041,11 @@ PostmasterMain(int argc, char *argv[])
 	 * calculate MaxBackends.
 	 */
 	InitializeMaxBackends();
+
+	/*
+	 * Give preloaded libraries a chance to request additional shared memory.
+	 */
+	process_shmem_requests();
 
 	/*
 	 * Now that loadable modules have had their chance to request additional
@@ -2849,8 +2864,8 @@ pmdie(SIGNAL_ARGS)
 
 			/*
 			 * If we reached normal running, we go straight to waiting for
-			 * client backends to exit.  If already in PM_STOP_BACKENDS or
-			 * a later state, do not change it.
+			 * client backends to exit.  If already in PM_STOP_BACKENDS or a
+			 * later state, do not change it.
 			 */
 			if (pmState == PM_RUN || pmState == PM_HOT_STANDBY)
 				connsAllowed = false;
@@ -5851,7 +5866,6 @@ bgworker_should_start_now(BgWorkerStartTime start_time)
 			if (start_time == BgWorkerStart_PostmasterStart)
 				return true;
 			/* fall through */
-
 	}
 
 	return false;
@@ -6142,7 +6156,7 @@ save_backend_variables(BackendParameters *param, Port *port,
 	param->query_id_enabled = query_id_enabled;
 	param->max_safe_fds = max_safe_fds;
 
-	param->MaxBackends = GetMaxBackends();
+	param->MaxBackends = MaxBackends;
 
 #ifdef WIN32
 	param->PostmasterHandle = PostmasterHandle;
@@ -6375,7 +6389,7 @@ restore_backend_variables(BackendParameters *param, Port *port)
 	query_id_enabled = param->query_id_enabled;
 	max_safe_fds = param->max_safe_fds;
 
-	SetMaxBackends(param->MaxBackends);
+	MaxBackends = param->MaxBackends;
 
 #ifdef WIN32
 	PostmasterHandle = param->PostmasterHandle;
