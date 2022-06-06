@@ -1516,7 +1516,6 @@ end;
 /
 
 select pkgvar.tf();
-select pkgvar.tp();
 
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
@@ -1665,3 +1664,36 @@ end;
 select pkg.f();
 select pg_catalog.pkg.f();
 drop package pg_catalog.pkg;
+
+--
+-- Test package private members
+--
+CREATE OR REPLACE PACKAGE exp AS
+  FUNCTION func(x VARCHAR(100)) RETURN INT;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY exp AS
+  priv_var  INT := 1;
+
+  FUNCTION func(x VARCHAR(100)) RETURN INT AS
+  BEGIN
+    RETURN 0;
+  END;
+
+  PROCEDURE priv_proc(x VARCHAR(100)) AS
+  BEGIN
+    NULL;
+  END;
+  FUNCTION priv_func(x VARCHAR(100)) RETURN INT AS
+  BEGIN
+    RETURN 0;
+  END;
+END;
+/
+
+SELECT exp.func('test');		-- should be okay
+CALL exp.priv_proc('test');		-- should be an error
+SELECT exp.priv_func('test');	-- should be an error
+
+DROP PACKAGE exp; -- cleanup

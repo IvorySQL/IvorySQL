@@ -1801,12 +1801,6 @@ INFO:  function tf called
  1000
 (1 row)
 
-select pkgvar.tp();
- tp  
------
- 100
-(1 row)
-
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
  proname |                      prosrc                      
 ---------+--------------------------------------------------
@@ -2035,3 +2029,43 @@ select pg_catalog.pkg.f();
 (1 row)
 
 drop package pg_catalog.pkg;
+--
+-- Test package private members
+--
+CREATE OR REPLACE PACKAGE exp AS
+  FUNCTION func(x VARCHAR(100)) RETURN INT;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY exp AS
+  priv_var  INT := 1;
+
+  FUNCTION func(x VARCHAR(100)) RETURN INT AS
+  BEGIN
+    RETURN 0;
+  END;
+
+  PROCEDURE priv_proc(x VARCHAR(100)) AS
+  BEGIN
+    NULL;
+  END;
+  FUNCTION priv_func(x VARCHAR(100)) RETURN INT AS
+  BEGIN
+    RETURN 0;
+  END;
+END;
+/
+SELECT exp.func('test');		-- should be okay
+ func 
+------
+    0
+(1 row)
+
+CALL exp.priv_proc('test');		-- should be an error
+ERROR:  package private procedure ("exp.priv_proc") is not accessible
+LINE 1: CALL exp.priv_proc('test');
+             ^
+SELECT exp.priv_func('test');	-- should be an error
+ERROR:  package private function ("exp.priv_func") is not accessible
+LINE 1: SELECT exp.priv_func('test');
+               ^
+DROP PACKAGE exp; -- cleanup
