@@ -259,91 +259,91 @@ INSERT INTO entities (parent_entity, child_entity,val) VALUES ('bi', 'biv',10);
 SELECT parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity
-ORDER BY val;
+ORDER BY val, 1, 2;
  parent_entity | child_entity 
 ---------------+--------------
- abe           | abet
- abe           | abet
- abe           | abes
- abe           | abet
- abe           | abes
- abe           | abet
  abe           | abes
  abe           | abes
- ab            | abe
+ abe           | abes
+ abe           | abes
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ ab            | abc
+ ab            | abc
  ab            | abc
  ab            | abd
+ ab            | abd
+ ab            | abd
+ ab            | abe
+ ab            | abe
  ab            | abe
  bi            | biq
- bi            | biv
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- ab            | abe
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- b             | bg
- b             | bh
- b             | bg
- b             | bi
- a             | af
- b             | bh
- b             | bi
- a             | ax
+ bi            | biv
+ bi            | biv
+ bi            | biv
+ a             | ab
  a             | ab
  a             | af
+ a             | af
  a             | ax
- a             | ab
-               | b
+ a             | ax
+ b             | bg
+ b             | bg
+ b             | bh
+ b             | bh
+ b             | bi
+ b             | bi
                | a
+               | b
 (37 rows)
 
 SELECT parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity
-ORDER BY val+1;
+ORDER BY val+1, 1, 2;
  parent_entity | child_entity 
 ---------------+--------------
- abe           | abet
- abe           | abet
- abe           | abes
- abe           | abet
- abe           | abes
- abe           | abet
  abe           | abes
  abe           | abes
- ab            | abe
+ abe           | abes
+ abe           | abes
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ abe           | abet
+ ab            | abc
+ ab            | abc
  ab            | abc
  ab            | abd
+ ab            | abd
+ ab            | abd
+ ab            | abe
+ ab            | abe
  ab            | abe
  bi            | biq
- bi            | biv
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- ab            | abe
- ab            | abd
- ab            | abc
- bi            | biv
  bi            | biq
- b             | bg
- b             | bh
- b             | bg
- b             | bi
- a             | af
- b             | bh
- b             | bi
- a             | ax
+ bi            | biv
+ bi            | biv
+ bi            | biv
+ a             | ab
  a             | ab
  a             | af
+ a             | af
  a             | ax
- a             | ab
-               | b
+ a             | ax
+ b             | bg
+ b             | bg
+ b             | bh
+ b             | bh
+ b             | bi
+ b             | bi
                | a
+               | b
 (37 rows)
 
 -- test multiple PRIOR

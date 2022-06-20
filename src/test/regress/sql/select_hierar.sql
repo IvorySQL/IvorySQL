@@ -145,12 +145,12 @@ INSERT INTO entities (parent_entity, child_entity,val) VALUES ('bi', 'biv',10);
 SELECT parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity
-ORDER BY val;
+ORDER BY val, 1, 2;
 
 SELECT parent_entity, child_entity
 FROM entities
 CONNECT BY PRIOR child_entity = parent_entity
-ORDER BY val+1;
+ORDER BY val+1, 1, 2;
 
 -- test multiple PRIOR
 SELECT parent_entity, child_entity
