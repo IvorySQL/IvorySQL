@@ -1157,6 +1157,7 @@ typedef struct PLiSQL_execstate
 
 	void	   *plugin_info;	/* reserved for use by optional plugin */
 	char	   *pkg_name;		/* add package name for this execution */
+	bool		searchpath_override;	/* search path overriden? */
 } PLiSQL_execstate;
 
 /*

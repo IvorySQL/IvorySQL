@@ -1151,8 +1151,6 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		Oid			va_elem_type;
 		int		   *argnumbers = NULL;
 		FuncCandidateList newResult;
-		Datum		proaccess;
-		bool		isNull;
 
 		if (OidIsValid(namespaceId))
 		{
@@ -1177,23 +1175,6 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			}
 			if (nsp == NULL)
 				continue;		/* proc is not in search path */
-		}
-
-		/* check for package private members */
-		proaccess = SysCacheGetAttr(PROCNAMEARGSNSP, proctup,
-										Anum_pg_proc_proaccess,
-										&isNull);
-
-		if (!isNull &&
-			DatumGetChar(proaccess) == PACKAGE_MEMBER_PRIVATE &&
-			is_package_exists(procform->pronamespace))
-		{
-			bool isproc = (procform->prokind == PROKIND_PROCEDURE);
-			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					errmsg("package private %s (\"%s\") is not accessible",
-						(isproc? "procedure" : "function"),
-						NameListToString(names))));
 		}
 
 		/*

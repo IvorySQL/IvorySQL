@@ -808,15 +808,13 @@ bool
 is_package_exists(Oid packageid)
 {
 	HeapTuple	tup;
-	bool		isnull;
+	bool		result;
 
 	tup = SearchSysCache1(PACKAGEOID, ObjectIdGetDatum(packageid));
-	if (!HeapTupleIsValid(tup))
-	{
-		return false;
-	}
+	result = HeapTupleIsValid(tup);
+	ReleaseSysCache(tup);
 
-	return true;
+	return result;
 }
 
 static Oid

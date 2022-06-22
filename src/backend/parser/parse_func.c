@@ -18,6 +18,7 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/packagecmds.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
@@ -1576,6 +1577,8 @@ func_get_detail(List *funcname,
 		HeapTuple	ftup;
 		Form_pg_proc pform;
 		FuncDetailCode result;
+		Datum		proaccess;
+		bool		isNull;
 
 		/*
 		 * If processing named args or expanding variadics or defaults, the
@@ -1694,6 +1697,23 @@ func_get_detail(List *funcname,
 					defaults = list_delete_first_n(defaults, ndelete);
 				*argdefaults = defaults;
 			}
+		}
+
+		/* check for package private members */
+		proaccess = SysCacheGetAttr(PROCNAMEARGSNSP, ftup,
+										Anum_pg_proc_proaccess,
+										&isNull);
+
+		if (!isNull &&
+			DatumGetChar(proaccess) == PACKAGE_MEMBER_PRIVATE &&
+			is_package_exists(pform->pronamespace))
+		{
+			bool isproc = (pform->prokind == PROKIND_PROCEDURE);
+			ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					errmsg("package private %s (\"%s\") is not accessible",
+						(isproc? "procedure" : "function"),
+						NameListToString(funcname))));
 		}
 
 		switch (pform->prokind)
