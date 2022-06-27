@@ -232,6 +232,7 @@ struct ParseState
 	PostParseColumnRefHook p_post_columnref_hook;
 	ParseParamRefHook p_paramref_hook;
 	CoerceParamHook p_coerce_param_hook;
+
 	void	   *p_ref_hook_state;	/* common passthrough link for above */
 	Oid			p_pkgoid;
 	bool		p_union_flag;

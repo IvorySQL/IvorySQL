@@ -4211,7 +4211,7 @@ exec_prepare_plan(PLiSQL_execstate *estate,
 		Oid pkgoid = estate->func->fn_pkg;
 
 		overridePath = GetOverrideSearchPath(CurrentMemoryContext);
-		overridePath->schemas = lcons_oid(pkgoid, overridePath->schemas);
+		overridePath->pkgoid = pkgoid;
 		PushOverrideSearchPath(overridePath);
 		estate->searchpath_override = true;
 	}

@@ -1669,31 +1669,79 @@ drop package pg_catalog.pkg;
 -- Test package private members
 --
 CREATE OR REPLACE PACKAGE exp AS
-  FUNCTION func(x VARCHAR(100)) RETURN INT;
+  FUNCTION func(x VARCHAR) RETURN INT;
+  PROCEDURE proc(x VARCHAR);
 END;
 /
 
 CREATE OR REPLACE PACKAGE BODY exp AS
   priv_var  INT := 1;
 
-  FUNCTION func(x VARCHAR(100)) RETURN INT AS
+  FUNCTION func(x VARCHAR) RETURN INT AS
   BEGIN
-    RETURN 0;
+    RETURN func(1);			-- call to private function
   END;
 
-  PROCEDURE priv_proc(x VARCHAR(100)) AS
+  PROCEDURE proc(x VARCHAR) AS
+  BEGIN
+    proc(1);				-- call to private procedure
+  END;
+
+  -- private functions and procedures
+
+  FUNCTION func(y int) RETURN int
+  AS
+  BEGIN
+    RETURN 1000;
+  END;
+
+  PROCEDURE proc(y int) AS
   BEGIN
     NULL;
-  END;
-  FUNCTION priv_func(x VARCHAR(100)) RETURN INT AS
-  BEGIN
-    RETURN 0;
   END;
 END;
 /
 
-SELECT exp.func('test');		-- should be okay
-CALL exp.priv_proc('test');		-- should be an error
-SELECT exp.priv_func('test');	-- should be an error
+CREATE OR REPLACE PACKAGE pkg AS
+    FUNCTION func(a int) RETURN INT;
+    PROCEDURE proc(a int);
+END;
+/
 
-DROP PACKAGE exp; -- cleanup
+CREATE OR REPLACE PACKAGE BODY pkg AS
+    FUNCTION func(a int) RETURN INT AS
+    begin
+        IF a = 1 THEN
+          RETURN exp.func(1);		-- private function call, should be error
+        ELSE
+          RETURN exp.func('ONE');	-- public function call
+        END IF;
+    END;
+
+    PROCEDURE proc(a int) AS
+      b int;
+    begin
+      IF a = 1 THEN
+        exp.proc(1);				-- private procedure call, should be error
+      ELSE
+        exp.proc('ONE');			-- public procedure call
+      END IF;
+    END;
+END;
+/
+
+SELECT exp.func('test');	-- should be okay
+CALL exp.proc('test');		-- should be okay
+SELECT pkg.func(2);			-- should be okay
+CALL pkg.proc(2);			-- should be okay
+
+SELECT exp.func(1);			-- should be an error
+CALL exp.proc(1);			-- should be an error
+
+SELECT pkg.func(1);			-- should be an error
+CALL pkg.proc(1);			-- should be an error
+
+
+-- cleanup
+DROP PACKAGE exp;
+DROP PACKAGE pkg;
