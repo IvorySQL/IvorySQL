@@ -18,6 +18,7 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/packagecmds.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
@@ -52,7 +53,8 @@ static Oid	LookupFuncNameInternal(ObjectType objtype, List *funcname,
 								   int nargs, const Oid *argtypes,
 								   bool include_out_arguments, bool missing_ok,
 								   FuncLookupError *lookupError);
-
+static void	check_package_privileges(List *funcname, HeapTuple ftup, Oid pkgoid,
+									 char prokind);
 
 /*
  *	Parse a function call
@@ -1696,6 +1698,9 @@ func_get_detail(List *funcname,
 			}
 		}
 
+		/* check package members priviliges, if any. */
+		check_package_privileges(funcname, ftup, pform->pronamespace, pform->prokind);
+
 		switch (pform->prokind)
 		{
 			case PROKIND_AGGREGATE:
@@ -2680,4 +2685,50 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 				 errmsg("set-returning functions are not allowed in %s",
 						ParseExprKindName(pstate->p_expr_kind)),
 				 parser_errposition(pstate, location)));
+}
+
+static void
+check_package_privileges(List *funcname, HeapTuple ftup, Oid pkgoid, char prokind)
+{
+	OverrideSearchPath *ov;
+	bool	check_privilges = true;
+
+	/*
+	 * Before getting the exprs executed by the backend parser, we push the
+	 * current package oid to the override search path. Here we ensure that
+	 * the same package is being referenced.
+	 */
+	ov = GetOverrideSearchPath(CurrentMemoryContext);
+	if (ov != NULL && pkgoid == ov->pkgoid)
+	{
+		/*
+		 * same package is being refrenced, so it means the call generated
+		 * from within the same package. so we don't check the privilefes
+		 * here.
+		 */
+		check_privilges = false;
+	}
+
+	if (check_privilges)
+	{
+		Datum	proaccess;
+		bool	isNull;
+		bool 	isproc = (prokind == PROKIND_PROCEDURE);
+
+		/* check for package private members */
+		proaccess = SysCacheGetAttr(PROCNAMEARGSNSP, ftup,
+										Anum_pg_proc_proaccess,
+										&isNull);
+
+		if (!isNull &&
+			DatumGetChar(proaccess) == PACKAGE_MEMBER_PRIVATE &&
+			is_package_exists(pkgoid))
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					errmsg("package private %s (\"%s\") is not accessible",
+						(isproc? "procedure" : "function"),
+						NameListToString(funcname))));
+		}
+	}
 }

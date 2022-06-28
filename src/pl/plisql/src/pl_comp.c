@@ -3198,6 +3198,9 @@ plisql_package_exec_init(PLiSQL_package *pkg, bool nonatomic)
 		PG_CATCH();
 		{
 			pkg->isinitexec = false;
+
+			/* And propagate the error */
+			PG_RE_THROW();
 		}
 		PG_END_TRY();
 	}

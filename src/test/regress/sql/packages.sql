@@ -1516,7 +1516,6 @@ end;
 /
 
 select pkgvar.tf();
-select pkgvar.tp();
 
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tf' and pronamespace = pk.oid;
 select proname,prosrc from pg_proc proc, pg_package pk where proname = 'tp' and pronamespace = pk.oid;
@@ -1665,3 +1664,84 @@ end;
 select pkg.f();
 select pg_catalog.pkg.f();
 drop package pg_catalog.pkg;
+
+--
+-- Test package private members
+--
+CREATE OR REPLACE PACKAGE exp AS
+  FUNCTION func(x VARCHAR) RETURN INT;
+  PROCEDURE proc(x VARCHAR);
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY exp AS
+  priv_var  INT := 1;
+
+  FUNCTION func(x VARCHAR) RETURN INT AS
+  BEGIN
+    RETURN func(1);			-- call to private function
+  END;
+
+  PROCEDURE proc(x VARCHAR) AS
+  BEGIN
+    proc(1);				-- call to private procedure
+  END;
+
+  -- private functions and procedures
+
+  FUNCTION func(y int) RETURN int
+  AS
+  BEGIN
+    RETURN 1000;
+  END;
+
+  PROCEDURE proc(y int) AS
+  BEGIN
+    NULL;
+  END;
+END;
+/
+
+CREATE OR REPLACE PACKAGE pkg AS
+    FUNCTION func(a int) RETURN INT;
+    PROCEDURE proc(a int);
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg AS
+    FUNCTION func(a int) RETURN INT AS
+    begin
+        IF a = 1 THEN
+          RETURN exp.func(1);		-- private function call, should be error
+        ELSE
+          RETURN exp.func('ONE');	-- public function call
+        END IF;
+    END;
+
+    PROCEDURE proc(a int) AS
+      b int;
+    begin
+      IF a = 1 THEN
+        exp.proc(1);				-- private procedure call, should be error
+      ELSE
+        exp.proc('ONE');			-- public procedure call
+      END IF;
+    END;
+END;
+/
+
+SELECT exp.func('test');	-- should be okay
+CALL exp.proc('test');		-- should be okay
+SELECT pkg.func(2);			-- should be okay
+CALL pkg.proc(2);			-- should be okay
+
+SELECT exp.func(1);			-- should be an error
+CALL exp.proc(1);			-- should be an error
+
+SELECT pkg.func(1);			-- should be an error
+CALL pkg.proc(1);			-- should be an error
+
+
+-- cleanup
+DROP PACKAGE exp;
+DROP PACKAGE pkg;
