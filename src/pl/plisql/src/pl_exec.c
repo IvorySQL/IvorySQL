@@ -1280,6 +1280,12 @@ plisql_exec_error_callback(void *arg)
 {
 	PLiSQL_execstate *estate = (PLiSQL_execstate *) arg;
 
+	if (estate->searchpath_override)
+	{
+		PopOverrideSearchPath();
+		estate->searchpath_override = false;
+	}
+
 	if (estate->err_text != NULL)
 	{
 		/*
@@ -4111,6 +4117,7 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 
 	estate->plugin_info = NULL;
 	estate->pkg_name = NULL;
+	estate->searchpath_override = false;
 
 	/*
 	 * Create an EState and ExprContext for evaluation of simple expressions.
@@ -4204,8 +4211,9 @@ exec_prepare_plan(PLiSQL_execstate *estate,
 		Oid pkgoid = estate->func->fn_pkg;
 
 		overridePath = GetOverrideSearchPath(CurrentMemoryContext);
-		overridePath->schemas = lcons_oid(pkgoid, overridePath->schemas);
+		overridePath->pkgoid = pkgoid;
 		PushOverrideSearchPath(overridePath);
+		estate->searchpath_override = true;
 	}
 
 	/*
@@ -4227,8 +4235,11 @@ exec_prepare_plan(PLiSQL_execstate *estate,
 	/* Check to see if it's a simple expression */
 	exec_simple_check_plan(estate, expr);
 
-	if (OidIsValid(estate->func->fn_pkg))
+	if (estate->searchpath_override)
+	{
 		PopOverrideSearchPath();
+		estate->searchpath_override = false;
+	}
 }
 
 

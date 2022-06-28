@@ -170,6 +170,7 @@ typedef struct
 	List	   *searchPath;		/* the desired search path */
 	Oid			creationNamespace;	/* the desired creation namespace */
 	int			nestLevel;		/* subtransaction nesting level */
+	Oid			pkgoid;			/* Oid of the package pushed to override search path */
 } OverrideStackEntry;
 
 static List *overrideStack = NIL;
@@ -3621,10 +3622,14 @@ GetOverrideSearchPath(MemoryContext context)
 	OverrideSearchPath *result;
 	List	   *schemas;
 	MemoryContext oldcxt;
+	OverrideStackEntry *entry = NULL;
 
 	recomputeNamespacePath();
 
 	oldcxt = MemoryContextSwitchTo(context);
+
+	if (overrideStack != NIL)
+		entry = (OverrideStackEntry *) linitial(overrideStack);
 
 	result = (OverrideSearchPath *) palloc0(sizeof(OverrideSearchPath));
 	schemas = list_copy(activeSearchPath);
@@ -3640,6 +3645,9 @@ GetOverrideSearchPath(MemoryContext context)
 	}
 	result->schemas = schemas;
 	result->generation = activePathGeneration;
+	result->pkgoid = InvalidOid;
+	if (entry != NULL)
+		result->pkgoid = entry->pkgoid;
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -3661,6 +3669,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
 	result->addCatalog = path->addCatalog;
 	result->addTemp = path->addTemp;
 	result->generation = path->generation;
+	result->pkgoid = path->pkgoid;
 
 	return result;
 }
@@ -3766,6 +3775,10 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	 */
 	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 
+	/* make package part of search_path */
+	if (OidIsValid(newpath->pkgoid))
+		newpath->schemas = lcons_oid(newpath->pkgoid, newpath->schemas);
+
 	oidlist = list_copy(newpath->schemas);
 
 	/*
@@ -3804,6 +3817,7 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	entry->searchPath = oidlist;
 	entry->creationNamespace = firstNS;
 	entry->nestLevel = GetCurrentTransactionNestLevel();
+	entry->pkgoid = newpath->pkgoid;
 
 	overrideStack = lcons(entry, overrideStack);
 

@@ -61,6 +61,7 @@ typedef struct OverrideSearchPath
 	bool		addCatalog;		/* implicitly prepend pg_catalog? */
 	bool		addTemp;		/* implicitly prepend temp schema? */
 	uint64		generation;		/* for quick detection of equality to active */
+	Oid			pkgoid;			/* Oid of the package pushed to override search path */
 } OverrideSearchPath;
 
 /*

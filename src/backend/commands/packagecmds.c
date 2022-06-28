@@ -800,6 +800,23 @@ get_package_src(Oid packageid, bool spec_or_body, bool missing_ok)
 	return pkgsrc;
 }
 
+/*
+ * is_package_exists - given a package OID, return true if it's a
+ * valid oid of a package, false otherwise.
+ */
+bool
+is_package_exists(Oid packageid)
+{
+	HeapTuple	tup;
+	bool		result;
+
+	tup = SearchSysCache1(PACKAGEOID, ObjectIdGetDatum(packageid));
+	result = HeapTupleIsValid(tup);
+	ReleaseSysCache(tup);
+
+	return result;
+}
+
 static Oid
 get_lang_validator(void)
 {
