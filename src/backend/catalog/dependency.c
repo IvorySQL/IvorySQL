@@ -53,6 +53,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
+#include "catalog/pg_synonym.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_trigger.h"
@@ -182,6 +183,7 @@ static const Oid object_classes[] = {
 	PublicationRelationId,		/* OCLASS_PUBLICATION */
 	PublicationRelRelationId,	/* OCLASS_PUBLICATION_REL */
 	SubscriptionRelationId,		/* OCLASS_SUBSCRIPTION */
+	SynonymRelationId,			/* OCLASS_SYNONYM */
 	PackageRelationId,			/* OCLASS_PACKAGE */
 	VariableRelationId,			/* OCLASS_VARIABLE */
 	TransformRelationId			/* OCLASS_TRANSFORM */
@@ -1506,6 +1508,7 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_DEFACL:
 		case OCLASS_EVENT_TRIGGER:
 		case OCLASS_TRANSFORM:
+		case OCLASS_SYNONYM:
 			DropObjectById(object);
 			break;
 
@@ -2892,6 +2895,9 @@ getObjectClass(const ObjectAddress *object)
 
 		case SubscriptionRelationId:
 			return OCLASS_SUBSCRIPTION;
+
+		case SynonymRelationId:
+			return OCLASS_SYNONYM;
 
 		case PackageRelationId:
 			return OCLASS_PACKAGE;

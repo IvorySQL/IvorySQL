@@ -75,6 +75,7 @@
 #include "catalog/pg_variable.h"
 #include "catalog/pg_package.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_synonym.h"
 #include "lib/qunique.h"
 #include "utils/catcache.h"
 #include "utils/rel.h"
@@ -1037,6 +1038,28 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		8
+	},
+	{SynonymRelationId,			/* SYNONYMNAMENSPPUB */
+		SynonyNameNspmpubIndexId,
+		3,
+		{
+			Anum_pg_synonym_synname,
+			Anum_pg_synonym_synnamespace,
+			Anum_pg_synonym_synispub,
+			0
+		},
+		2
+	},
+	{SynonymRelationId,			/* SYNONYMOID */
+		SynonymOidIndexId,
+		1,
+		{
+			Anum_pg_synonym_oid,
+			0,
+			0,
+			0
+		},
+		2
 	}
 };
 

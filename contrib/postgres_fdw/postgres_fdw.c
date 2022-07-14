@@ -337,6 +337,11 @@ static ForeignScan *postgresGetForeignPlan(PlannerInfo *root,
 										   List *scan_clauses,
 										   Plan *outer_plan);
 static void postgresBeginForeignScan(ForeignScanState *node, int eflags);
+static member_foreign_Object *postgresGetForeignObject(const char *schemaname,
+														const char *relname,
+														Oid srvowner,
+														Oid srvoid,
+														int *numattr);
 static TupleTableSlot *postgresIterateForeignScan(ForeignScanState *node);
 static void postgresReScanForeignScan(ForeignScanState *node);
 static void postgresEndForeignScan(ForeignScanState *node);
@@ -557,6 +562,7 @@ postgres_fdw_handler(PG_FUNCTION_ARGS)
 	routine->GetForeignPaths = postgresGetForeignPaths;
 	routine->GetForeignPlan = postgresGetForeignPlan;
 	routine->BeginForeignScan = postgresBeginForeignScan;
+	routine->GetForeignObject = postgresGetForeignObject;
 	routine->IterateForeignScan = postgresIterateForeignScan;
 	routine->ReScanForeignScan = postgresReScanForeignScan;
 	routine->EndForeignScan = postgresEndForeignScan;
@@ -1585,6 +1591,69 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* Set the async-capable flag */
 	fsstate->async_capable = node->ss.ps.async_capable;
+}
+
+member_foreign_Object *
+postgresGetForeignObject(const char *schemaname, const char *relname, Oid srvowner, Oid srvoid, int *numattr)
+{
+	UserMapping *user;
+	PGconn	   *fsconn;
+	PgFdwScanState *fsstate;
+	char		*query;
+	PGresult	*last_result;
+	int			i;
+	member_foreign_Object	*foreign_obj;
+
+	/*
+	 * We'll save private state in node->fdw_state.
+	 */
+	fsstate = (PgFdwScanState *) palloc0(sizeof(PgFdwScanState));
+
+	/* Get info about foreign table. */
+	user = GetUserMapping(srvowner, srvoid);
+
+	/*
+	 * Get connection to the foreign server.  Connection manager will
+	 * establish new connection if necessary.
+	 */
+	fsconn = GetConnection(user, false, &fsstate->conn_state);
+
+	/* Assign a unique ID for my cursor */
+	fsstate->cursor_number = GetCursorNumber(fsstate->conn);
+	fsstate->cursor_exists = false;
+
+	query = palloc(strlen("SELECT * FROM .") + strlen(schemaname) + strlen(relname) + 10);
+	sprintf(query, "SELECT * FROM %s.%s", schemaname, relname);
+	fsstate->query = query;
+
+	last_result = PQexec(fsconn, fsstate->query);
+
+	*numattr = PQnfields(last_result);
+
+	foreign_obj = (member_foreign_Object *)palloc(*numattr * sizeof(member_foreign_Object));
+
+	foreign_obj->colnames = (char **)palloc(*numattr * sizeof(char *));
+	foreign_obj->coltypes = (Oid *)palloc(*numattr * sizeof(Oid));
+
+	for (i = 0; i < *numattr; i++)
+	{
+		char	*tmpname;
+		tmpname = PQfname(last_result, i);
+		foreign_obj->colnames[i] = (char *)palloc(sizeof(char) * strlen(tmpname) + 1);
+		memset(foreign_obj->colnames[i], '\0', sizeof(char) * strlen(tmpname) + 1);
+		strcpy(foreign_obj->colnames[i], tmpname);
+		foreign_obj->coltypes[i] = PQftype(last_result, i);
+	}
+
+	pfree(fsstate->query);
+	pfree(fsstate);
+	if (last_result)
+		PQclear(last_result);
+	/* Release remote connection */
+	ReleaseConnection(fsconn);
+	fsconn = NULL;
+
+	return foreign_obj;
 }
 
 /*

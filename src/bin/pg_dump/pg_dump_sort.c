@@ -93,6 +93,7 @@ enum dbObjectTypePriorities
 	PRIO_PUBLICATION_REL,
 	PRIO_SUBSCRIPTION,
 	PRIO_PACKAGE,
+	PRIO_SYNONYM,
 	PRIO_DEFAULT_ACL,			/* done in ACL pass */
 	PRIO_EVENT_TRIGGER,			/* must be next to last! */
 	PRIO_REFRESH_MATVIEW		/* must be last! */
@@ -146,10 +147,11 @@ static const int dbObjectTypePriority[] =
 	PRIO_PUBLICATION,			/* DO_PUBLICATION */
 	PRIO_PUBLICATION_REL,		/* DO_PUBLICATION_REL */
 	PRIO_SUBSCRIPTION,			/* DO_SUBSCRIPTION */
-	PRIO_PACKAGE				/* DO_PACKAGE */
+	PRIO_PACKAGE,				/* DO_PACKAGE */
+	PRIO_SYNONYM				/* DO_SYNONYM */
 };
 
-StaticAssertDecl(lengthof(dbObjectTypePriority) == (DO_PACKAGE + 1),
+StaticAssertDecl(lengthof(dbObjectTypePriority) == (DO_SYNONYM + 1),
 				 "array length mismatch");
 
 static DumpId preDataBoundId;
@@ -1506,6 +1508,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 		case DO_POST_DATA_BOUNDARY:
 			snprintf(buf, bufsize,
 					 "POST-DATA BOUNDARY  (ID %d)",
+					 obj->dumpId);
+			return;
+		case DO_SYNONYM:
+			snprintf(buf, bufsize,
+					 "SYNONYM  (ID %d)",
 					 obj->dumpId);
 			return;
 	}

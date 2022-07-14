@@ -154,6 +154,7 @@ pg_statistic_ext|t
 pg_statistic_ext_data|t
 pg_subscription|t
 pg_subscription_rel|t
+pg_synonym|t
 pg_tablespace|t
 pg_transform|t
 pg_trigger|t

@@ -3582,6 +3582,9 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_PACKAGE_BODY:
 						msg = gettext_noop("permission denied for package body %s");
 						break;
+					case OBJECT_SYNONYM:
+						msg = gettext_noop("permission denied for synonym %s");
+						break;
 						/* these currently aren't used */
 					case OBJECT_ACCESS_METHOD:
 					case OBJECT_AMOP:
@@ -3729,6 +3732,9 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 						break;
 					case OBJECT_PACKAGE_BODY:
 						msg = gettext_noop("must be owner of package body %s");
+						break;
+					case OBJECT_SYNONYM:
+						msg = gettext_noop("must be owner of synonym %s");
 						break;
 
 						/* these currently aren't used */

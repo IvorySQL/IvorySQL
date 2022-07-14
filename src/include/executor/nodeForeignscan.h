@@ -34,5 +34,6 @@ extern void ExecShutdownForeignScan(ForeignScanState *node);
 extern void ExecAsyncForeignScanRequest(AsyncRequest *areq);
 extern void ExecAsyncForeignScanConfigureWait(AsyncRequest *areq);
 extern void ExecAsyncForeignScanNotify(AsyncRequest *areq);
+extern void ExecForeignTableEletsScan(const char *dblinkname, const char *schemaname, const char *relname, Oid srvowner, Oid srvoid, bool *reloidNotExistOk, Oid *mappingreloid);
 
 #endif							/* NODEFOREIGNSCAN_H */

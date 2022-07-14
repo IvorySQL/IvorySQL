@@ -535,7 +535,10 @@ typedef enum NodeTag
 	T_SupportRequestRows,		/* in nodes/supportnodes.h */
 	T_SupportRequestIndexCondition, /* in nodes/supportnodes.h */
 	T_CreatePackageStmt,		/* in nodes/parsenodes.h */
-	T_VarStmt					/* in nodes/parsenodes.h */
+	T_VarStmt,					/* in nodes/parsenodes.h */
+	T_AlterSynonymStmt,
+	T_CreateSynonymStmt,
+	T_DropSynonymStmt			/* in catalog/pg_synonym.h */
 } NodeTag;
 
 /*

@@ -43,6 +43,9 @@ extern const ObjectAddress InvalidObjectAddress;
 extern ObjectAddress get_object_address(ObjectType objtype, Node *object,
 										Relation *relp,
 										LOCKMODE lockmode, bool missing_ok);
+extern ObjectAddress get_synonym_address(ObjectType objtype, Node *object, 
+										RangeVar *var, Relation *relp, 
+				  						LOCKMODE lockmode, bool missing_ok);
 
 extern ObjectAddress get_object_address_rv(ObjectType objtype, RangeVar *rel,
 										   List *object, Relation *relp,
@@ -73,7 +76,7 @@ extern HeapTuple get_catalog_object_by_oid(Relation catalog,
 extern char *getObjectDescription(const ObjectAddress *object,
 								  bool missing_ok);
 extern char *getObjectDescriptionOids(Oid classid, Oid objid);
-
+extern ObjectAddress get_object_address_synonym(List *object, RangeVar *var, bool missing_ok);
 extern int	read_objtype_from_string(const char *objtype);
 extern char *getObjectTypeDescription(const ObjectAddress *object,
 									  bool missing_ok);

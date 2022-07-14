@@ -408,6 +408,8 @@ realfail2		({integer}|{decimal})[Ee][-+]
 
 param			\${integer}
 
+atvariable		[\@]{identifier}
+
 other			.
 
 /*
@@ -1166,6 +1168,12 @@ other			.
 {other}			{
 					SET_YYLLOC();
 					return yytext[0];
+				}
+
+{atvariable}	{
+					SET_YYLLOC();
+					yylval->str = pstrdup(yytext);
+					return ATVAR;
 				}
 
 <<EOF>>			{

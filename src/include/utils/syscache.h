@@ -113,9 +113,11 @@ enum SysCacheIdentifier
 	VARIABLENAMENSP,
 	VARIABLEOID,
 	PACKAGEOID,
-	PACKAGENAMENSP
+	PACKAGENAMENSP,
+	SYNONYMNAMENSPPUB,
+	SYNONYMOID
 
-#define SysCacheSize (PACKAGENAMENSP + 1)
+#define SysCacheSize (SYNONYMOID + 1)
 };
 
 extern void InitCatalogCache(void);
