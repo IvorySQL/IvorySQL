@@ -3463,6 +3463,8 @@ _equalVarStmt(const VarStmt *a, const VarStmt *b)
 	COMPARE_STRING_FIELD(varname);
 	COMPARE_NODE_FIELD(varType);
 	COMPARE_NODE_FIELD(defexpr);
+	COMPARE_SCALAR_FIELD(isconst);
+	COMPARE_SCALAR_FIELD(notnull);
 
 	return true;
 }

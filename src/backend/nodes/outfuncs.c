@@ -4060,6 +4060,8 @@ _outVarStmt(StringInfo str, const VarStmt *node)
 	WRITE_STRING_FIELD(varname);
 	WRITE_NODE_FIELD(varType);
 	WRITE_NODE_FIELD(defexpr);
+	WRITE_BOOL_FIELD(isconst);
+	WRITE_BOOL_FIELD(notnull);
 }
 
 static void

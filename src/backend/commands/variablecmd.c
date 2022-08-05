@@ -126,8 +126,8 @@ CreateVariable(ParseState *pstate, VarStmt *stmt, bool replace, bool isbody)
 							  collation,
 							  cooked_default,
 							  VARIABLE_EOX_NOOP,
-							  true,
-							  false,
+							  stmt->notnull,
+							  stmt->isconst,
 							  ispkg,
 							  replace,
 							  isbody);

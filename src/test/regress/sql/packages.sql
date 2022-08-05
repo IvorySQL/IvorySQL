@@ -1741,7 +1741,69 @@ CALL exp.proc(1);			-- should be an error
 SELECT pkg.func(1);			-- should be an error
 CALL pkg.proc(1);			-- should be an error
 
-
 -- cleanup
 DROP PACKAGE exp;
+DROP PACKAGE pkg;
+
+--
+-- Test constant and NOT NULL declarations
+--
+create or replace package pkg is
+	x constant int := 1;
+	y int not null default 10;
+	function tfunc(arg int) return int;
+end;
+/
+
+create or replace package body pkg is
+   function tfunc(arg int) return int as
+   begin
+		raise info 'x = %', x;
+		raise info 'y = %', y;
+		return 0;
+   end;
+end;
+/
+
+select pkg.tfunc(10);
+DROP PACKAGE pkg;
+
+--
+-- Test constant and NOT NULL declarations
+--
+create or replace package pkg is
+	x constant int;
+	y int not null default 10;
+	function tfunc(arg int) return int;
+end;
+/
+
+create or replace package body pkg is
+   function tfunc(arg int) return int as
+   begin
+		return x;
+   end;
+end;
+/
+
+DROP PACKAGE pkg;
+
+--
+-- Test constant and NOT NULL declarations
+--
+create or replace package pkg is
+	x constant int default 10;
+	y int not null;
+	function tfunc(arg int) return int;
+end;
+/
+
+create or replace package body pkg is
+   function tfunc(arg int) return int as
+   begin
+		return x;
+   end;
+end;
+/
+
 DROP PACKAGE pkg;
