@@ -85,6 +85,13 @@ CreateVariable(ParseState *pstate, VarStmt *stmt, bool replace, bool isbody)
 		oldvar = (Form_pg_type) GETSTRUCT(oldtup);
 		typid = oldvar->oid;
 		typmod = oldvar->typtypmod;
+
+		/* disallow pseudo types */
+		if (typid == RECORDOID)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("pseudo-type record cannot be declared in package")));
+
 		variableoid = GetNewOidWithIndex(rel, TypeOidIndexId,
 										 Anum_pg_type_oid);
 		ReleaseSysCache(oldtup);
