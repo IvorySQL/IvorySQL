@@ -578,6 +578,17 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						var->default_val = $6;
 
 						/*
+						 * The combination of CONSTANT without an initializer
+						 * can't work, so let's reject it at compile time.
+						 */
+						if (var->isconst && var->default_val == NULL)
+							ereport(ERROR,
+									(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+									 errmsg("variable \"%s\" must have a default value, since it's declared CONSTANT",
+											var->refname),
+									 parser_errposition(@2)));
+
+						/*
 						 * The combination of NOT NULL without an initializer
 						 * can't work, so let's reject it at compile time.
 						 */

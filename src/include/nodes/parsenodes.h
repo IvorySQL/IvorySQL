@@ -3431,6 +3431,8 @@ typedef struct VarStmt
 	char	   *varname;
 	TypeName   *varType;
 	Node	   *defexpr;		/* raw default expr, or NULL if not given */
+	bool		isconst;		/* is var declared contant? */
+	bool		notnull;		/* is var declated NOT NULL */
 } VarStmt;
 
 
