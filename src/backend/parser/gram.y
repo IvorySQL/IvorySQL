@@ -639,9 +639,10 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 				createpack_body_list pkg_func_name opt_func_args_with_defaults
 				OptRecordElementList RecordElementList
 %type <node>	createpack_spec_item createpack_body_item package_func_spec
-				package_var_spec package_func_defs package_var_body package_cur_spec
+				package_var_spec package_func_defs package_cur_spec
 				package_cur_body package_rec RecordElement package_refcursor
-%type <boolean> invoker_rights_clause
+				opt_default_assignment
+%type <boolean> invoker_rights_clause opt_notnull
 %type <typnam>	package_var_type
 %type <boolean> return_or_not
 
@@ -771,7 +772,7 @@ static void check_pkgname(List *pkgname, char *end_name, core_yyscan_t yyscanner
 
 	/* IvorySQL new-keyword */
 	AUTHID PACKAGE BODY ROWTYPE_P ELSIF EXCEPTION LOOP WHILE SYS_CONNECT_BY_PATH
-	CONNECT_BY_ROOT CONNECTBY
+	CONNECT_BY_ROOT CONNECTBY CONSTANT
 
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
@@ -7758,7 +7759,6 @@ createpack_spec_list:
 createpack_spec_item:
 		package_func_spec ';'			{ $$ = $1; }
 		| package_var_spec ';'			{ $$ = $1; }
-		| package_var_body ';'			{ $$ = $1; }
 		| package_cur_spec ';'			{ $$ = $1; }
 		| package_cur_body ';'			{ $$ = $1; }
 		| package_rec ';'				{ $$ = $1; }
@@ -7864,54 +7864,39 @@ opt_func_args_with_defaults:
 		;
 
 package_var_spec:
-		IDENT package_var_type
+		IDENT package_var_type opt_notnull opt_default_assignment
 			{
 				VarStmt *var = makeNode(VarStmt);
+
 				var->varname = $1;
 				var->varType = $2;
-				var->defexpr = NULL;
-
+				var->notnull = $3;
+				var->defexpr = $4;
+				var->isconst = false;
 				$$ = (Node *) var;
 			}
-		| IDENT package_var_type '=' a_expr
+		| IDENT CONSTANT package_var_type opt_notnull opt_default_assignment
 			{
 				VarStmt *var = makeNode(VarStmt);
-				var->varname = $1;
-				var->varType = $2;
-				var->defexpr = $4;;
 
-				$$ = (Node *) var;
-			}
-		| IDENT package_var_type COLON_EQUALS a_expr
-			{
-				VarStmt *var = makeNode(VarStmt);
 				var->varname = $1;
-				var->varType = $2;
-				var->defexpr = $4;;
-
+				var->varType = $3;
+				var->notnull = $4;
+				var->defexpr = $5;
+				var->isconst = true;
 				$$ = (Node *) var;
 			}
 		;
 
-package_var_body:
-		 IDENT '=' a_expr
-			{
-				VarStmt *var = makeNode(VarStmt);
-				var->varname = $1;
-				var->varType = NULL;
-				var->defexpr = $3;
+opt_notnull:
+		NOT NULL_P						{ $$ = true; }
+		| /*EMPTY*/						{ $$ = false; }
+		;
 
-				$$ = (Node *) var;
-			}
-		| IDENT COLON_EQUALS a_expr
-			{
-				VarStmt *var = makeNode(VarStmt);
-				var->varname = $1;
-				var->varType = NULL;
-				var->defexpr = $3;;
-
-				$$ = (Node *) var;
-			}
+opt_default_assignment:
+		COLON_EQUALS a_expr 			{ $$ = $2; }
+		| DEFAULT a_expr 				{ $$ = $2; }
+		| /*EMPTY*/						{ $$ = NULL; }
 		;
 
 package_cur_spec:
@@ -16598,6 +16583,7 @@ unreserved_keyword:
 			| CONFIGURATION
 			| CONFLICT
 			| CONNECTION
+			| CONSTANT
 			| CONSTRAINTS
 			| CONTENT_P
 			| CONTINUE_P
@@ -17142,6 +17128,7 @@ bare_label_keyword:
 			| CONFLICT
 			| CONNECTION
 			| CONNECT_BY_ROOT
+			| CONSTANT
 			| CONSTRAINT
 			| CONSTRAINTS
 			| CONTENT_P

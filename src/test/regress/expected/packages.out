@@ -2127,3 +2127,84 @@ CONTEXT:  PL/iSQL function proc(integer) line 5 at CALL
 -- cleanup
 DROP PACKAGE exp;
 DROP PACKAGE pkg;
+--
+-- Test constant and NOT NULL declarations
+--
+create or replace package pkg is
+	x constant int := 1;
+	y int not null default 10;
+	function tfunc(arg int) return int;
+end;
+/
+create or replace package body pkg is
+   function tfunc(arg int) return int as
+   begin
+		raise info 'x = %', x;
+		raise info 'y = %', y;
+		return 0;
+   end;
+end;
+/
+select pkg.tfunc(10);
+INFO:  x = 1
+INFO:  y = 10
+ tfunc 
+-------
+     0
+(1 row)
+
+DROP PACKAGE pkg;
+--
+-- Test constant and NOT NULL declarations
+--
+create or replace package pkg is
+	x constant int;
+	y int not null default 10;
+	function tfunc(arg int) return int;
+end;
+/
+create or replace package body pkg is
+   function tfunc(arg int) return int as
+   begin
+		return x;
+   end;
+end;
+/
+ERROR:  variable "x" must have a default value, since it's declared CONSTANT
+LINE 2:     x CONSTANT integer;
+              ^
+QUERY:  DECLARE
+    x CONSTANT integer;
+    y integer NOT NULL := 10;
+BEGIN
+    NULL;
+END;
+
+DROP PACKAGE pkg;
+--
+-- Test constant and NOT NULL declarations
+--
+create or replace package pkg is
+	x constant int default 10;
+	y int not null;
+	function tfunc(arg int) return int;
+end;
+/
+create or replace package body pkg is
+   function tfunc(arg int) return int as
+   begin
+		return x;
+   end;
+end;
+/
+ERROR:  variable "y" must have a default value, since it's declared NOT NULL
+LINE 3:     y integer NOT NULL;
+                      ^
+QUERY:  DECLARE
+    x CONSTANT integer := 10;
+    y integer NOT NULL;
+BEGIN
+    NULL;
+END;
+
+DROP PACKAGE pkg;

@@ -319,13 +319,20 @@ build_cons_prosrc(ParseState *pstate, List *specelems, CreatePackageStmt *stmt)
 				varstr = deparse_expression(cooked_default, NIL, false, false);
 
 				/* add to buffer */
-				appendStringInfo(&buf, "    %s %s := %s;\n", var->varname,
-								 format_type_with_typemod(typid, typmod), varstr);
+				appendStringInfo(&buf, "    %s%s %s%s := %s;\n",
+								 var->varname,
+								 var->isconst? " CONSTANT" : "",
+								 format_type_with_typemod(typid, typmod),
+								 var->notnull? " NOT NULL" : "",
+								 varstr);
 			}
 			else
 			{
-				appendStringInfo(&buf, "    %s %s;\n", var->varname,
-								 format_type_with_typemod(typid, typmod));
+				appendStringInfo(&buf, "    %s%s %s%s;\n",
+								 var->varname,
+								 var->isconst? " CONSTANT" : "",
+								 format_type_with_typemod(typid, typmod),
+								 var->notnull? " NOT NULL" : "");
 			}
 		}
 
