@@ -29,6 +29,7 @@ jobs:
       if: ${{ matrix.os == 'ubuntu-18.04' }}
       run: |
         ./configure \
+            --prefix=$PWD/inst \
             --enable-cassert --enable-debug --enable-rpath --with-tcl \
             --with-python --with-gssapi --with-pam --with-ldap \
             --with-openssl --with-libedit-preferred --with-uuid=e2fs \
@@ -38,23 +39,27 @@ jobs:
       if: ${{ matrix.os == 'macos-latest' }}
       run: |
         ./configure \
+            --prefix=$PWD/inst \
             --enable-cassert --enable-debug --enable-rpath --with-tcl \
             --with-python --with-gssapi --with-pam --with-ldap \
             --with-libedit-preferred --with-uuid=e2fs --with-libxml \
             --with-libxslt --with-perl
 
     - name: compile
-      run: make
+      run: make && make install
 
     - name: regression
       run: make check-world
+
+    - name: collect files
+      if: failure()
+      run: |
+          find . \( -name "*.diffs" -or -name "regression.out" -or -path \*/tmp_check/log -or -path \*src/test/regress/log \) -print0 |
+                xargs -0 tar -czf regression.tar.gz
 
     - name: upload regression files
       if: failure()
       uses: actions/upload-artifact@v2
       with:
         name: results
-        path: |
-            src/test/regress/regression.diffs
-            src/test/regress/regression.out
-
+        path: ${{ github.workspace }}/regression.tar.gz
