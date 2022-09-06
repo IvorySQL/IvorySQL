@@ -2,9 +2,11 @@
 use strict;
 use warnings;
 
-use Cwd qw(abs_path getcwd);
+use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use File::Compare;
+use File::Find qw(find);
+use File::Path qw(rmtree);
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -13,19 +15,19 @@ use Test::More;
 # Generate a database with a name made of a range of ASCII characters.
 sub generate_db
 {
-	my ($node, $from_char, $to_char) = @_;
+	my ($node, $prefix, $from_char, $to_char, $suffix) = @_;
 
-	my $dbname = '';
+	my $dbname = $prefix;
 	for my $i ($from_char .. $to_char)
 	{
 		next if $i == 7 || $i == 10 || $i == 13;    # skip BEL, LF, and CR
 		$dbname = $dbname . sprintf('%c', $i);
 	}
 
-	# Exercise backslashes adjacent to double quotes, a Windows special
-	# case.
-	$dbname = '\\"\\' . $dbname . '\\\\"\\\\\\';
-	$node->command_ok([ 'createdb', $dbname ]);
+	$dbname .= $suffix;
+	$node->command_ok(
+		[ 'createdb', $dbname ],
+		"created database with ASCII characters from $from_char to $to_char");
 }
 
 # The test of pg_upgrade requires two clusters, an old one and a new one
@@ -73,16 +75,19 @@ if (defined($ENV{olddump}))
 
 	# Load the dump using the "postgres" database as "regression" does
 	# not exist yet, and we are done here.
-	$oldnode->command_ok([ 'psql', '-X', '-f', $olddumpfile, 'postgres' ]);
+	$oldnode->command_ok([ 'psql', '-X', '-f', $olddumpfile, 'postgres' ],
+		'loaded old dump file');
 }
 else
 {
 	# Default is to use pg_regress to set up the old instance.
 
-	# Create databases with names covering most ASCII bytes
-	generate_db($oldnode, 1,  45);
-	generate_db($oldnode, 46, 90);
-	generate_db($oldnode, 91, 127);
+	# Create databases with names covering most ASCII bytes.  The
+	# first name exercises backslashes adjacent to double quotes, a
+	# Windows special case.
+	generate_db($oldnode, 'regression\\"\\', 1,  45,  '\\\\"\\\\\\');
+	generate_db($oldnode, 'regression',      46, 90,  '');
+	generate_db($oldnode, 'regression',      91, 127, '');
 
 	# Grab any regression options that may be passed down by caller.
 	my $extra_opts = $ENV{EXTRA_REGRESS_OPTS} || "";
@@ -99,7 +104,7 @@ else
 
 	my $rc =
 	  system($ENV{PG_REGRESS}
-		  . "$extra_opts "
+		  . " $extra_opts "
 		  . "--dlpath=\"$dlpath\" "
 		  . "--bindir= "
 		  . "--host="
@@ -121,6 +126,7 @@ else
 			print "=== EOF ===\n";
 		}
 	}
+	is($rc, 0, 'regression tests pass');
 }
 
 # Before dumping, get rid of objects not existing or not supported in later
@@ -135,7 +141,8 @@ if (defined($ENV{oldinstall}))
 			'psql', '-X',
 			'-f', "$srcdir/src/bin/pg_upgrade/upgrade_adapt.sql",
 			'regression'
-		]);
+		],
+		'ran adapt script');
 }
 
 # Initialize a new node for the upgrade.
@@ -201,8 +208,46 @@ if (defined($ENV{oldinstall}))
 	}
 }
 
+# In a VPATH build, we'll be started in the source directory, but we want
+# to run pg_upgrade in the build directory so that any files generated finish
+# in it, like delete_old_cluster.{sh,bat}.
+chdir ${PostgreSQL::Test::Utils::tmp_check};
+
 # Upgrade the instance.
 $oldnode->stop;
+
+# Cause a failure at the start of pg_upgrade, this should create the logging
+# directory pg_upgrade_output.d but leave it around.  Keep --check for an
+# early exit.
+command_fails(
+	[
+		'pg_upgrade', '--no-sync',
+		'-d',         $oldnode->data_dir,
+		'-D',         $newnode->data_dir,
+		'-b',         $oldbindir . '/does/not/exist/',
+		'-B',         $newbindir,
+		'-p',         $oldnode->port,
+		'-P',         $newnode->port,
+		'--check'
+	],
+	'run of pg_upgrade --check for new instance with incorrect binary path');
+ok(-d $newnode->data_dir . "/pg_upgrade_output.d",
+	"pg_upgrade_output.d/ not removed after pg_upgrade failure");
+rmtree($newnode->data_dir . "/pg_upgrade_output.d");
+
+# --check command works here, cleans up pg_upgrade_output.d.
+command_ok(
+	[
+		'pg_upgrade', '--no-sync',        '-d', $oldnode->data_dir,
+		'-D',         $newnode->data_dir, '-b', $oldbindir,
+		'-B',         $newbindir,         '-p', $oldnode->port,
+		'-P',         $newnode->port,     '--check'
+	],
+	'run of pg_upgrade --check for new instance');
+ok(!-d $newnode->data_dir . "/pg_upgrade_output.d",
+	"pg_upgrade_output.d/ not removed after pg_upgrade --check success");
+
+# Actual run, pg_upgrade_output.d is removed at the end.
 command_ok(
 	[
 		'pg_upgrade', '--no-sync',        '-d', $oldnode->data_dir,
@@ -211,14 +256,24 @@ command_ok(
 		'-P',         $newnode->port
 	],
 	'run of pg_upgrade for new instance');
+ok( !-d $newnode->data_dir . "/pg_upgrade_output.d",
+	"pg_upgrade_output.d/ removed after pg_upgrade success");
+
 $newnode->start;
 
 # Check if there are any logs coming from pg_upgrade, that would only be
 # retained on failure.
-my $log_path = $newnode->data_dir . "/pg_upgrade_output.d/log";
+my $log_path = $newnode->data_dir . "/pg_upgrade_output.d";
 if (-d $log_path)
 {
-	foreach my $log (glob("$log_path/*"))
+	my @log_files;
+	find(
+		sub {
+			push @log_files, $File::Find::name
+			  if $File::Find::name =~ m/.*\.log/;
+		},
+		$newnode->data_dir . "/pg_upgrade_output.d");
+	foreach my $log (@log_files)
 	{
 		note "=== contents of $log ===\n";
 		print slurp_file($log);
@@ -232,7 +287,8 @@ $newnode->command_ok(
 		'pg_dumpall', '--no-sync',
 		'-d',         $newnode->connstr('postgres'),
 		'-f',         "$tempdir/dump2.sql"
-	]);
+	],
+	'dump after running pg_upgrade');
 
 # Compare the two dumps, there should be no differences.
 my $compare_res = compare("$tempdir/dump1.sql", "$tempdir/dump2.sql");

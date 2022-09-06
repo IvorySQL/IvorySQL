@@ -210,6 +210,8 @@ report_clusters_compatible(void)
 		pg_log(PG_REPORT, "\n*Clusters are compatible*\n");
 		/* stops new cluster */
 		stop_postmaster(false);
+
+		cleanup_output_dirs();
 		exit(0);
 	}
 
@@ -289,7 +291,8 @@ check_cluster_versions(void)
 	 */
 
 	if (GET_MAJOR_VERSION(old_cluster.major_version) < 902)
-		pg_fatal("This utility can only upgrade from PostgreSQL version 9.2 and later.\n");
+		pg_fatal("This utility can only upgrade from PostgreSQL version %s and later.\n",
+				 "9.2");
 
 	/* Only current PG version is supported as a target */
 	if (GET_MAJOR_VERSION(new_cluster.major_version) != GET_MAJOR_VERSION(PG_VERSION_NUM))
