@@ -739,8 +739,10 @@ describePackages(const char *pattern)
 						 "    JOIN pg_catalog.pg_package pkg ON pkg.oid = p.pronamespace\n");
 
 	if (pattern)
-		processSQLNamePattern(pset.db, &buf, pattern, false, false,
-							  NULL, "pkg.pkgname", NULL, NULL);
+		processSQLNamePattern(pset.db, &buf, pattern,
+							  false, false,
+							  NULL, "pkg.pkgname", NULL,
+							  NULL, NULL, NULL);
 
 	/* Package Types */
 	appendPQExpBufferStr(&buf, "UNION\n");
@@ -763,8 +765,10 @@ describePackages(const char *pattern)
 	appendPQExpBufferStr(&buf, "FROM pg_catalog.pg_type t\n"
 						 "    JOIN pg_catalog.pg_package pkg ON pkg.oid = t.typnamespace\n");
 	if (pattern)
-		processSQLNamePattern(pset.db, &buf, pattern, false, false,
-							  NULL, "pkg.pkgname", NULL, NULL);
+		processSQLNamePattern(pset.db, &buf, pattern,
+							  false, false,
+							  NULL, "pkg.pkgname", NULL,
+							  NULL, NULL, NULL);
 
 	appendPQExpBufferStr(&buf, "ORDER BY 1, 2, 3;");
 
