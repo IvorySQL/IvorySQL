@@ -847,6 +847,91 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 }
 
 /*
+ * \dP
+ * describe IvorySQL Packages
+ */
+bool
+describePackages(const char *pattern)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	printQueryOpt myopt = pset.popt;
+
+	initPQExpBuffer(&buf);
+	/* Package Functions and Procedures */
+	printfPQExpBuffer(&buf,
+					  "SELECT pkg.pkgname as \"%s\",\n"
+					  "CASE p.prokind "
+					  " WHEN 'a' THEN 'agg'"
+					  " WHEN 'w' THEN 'window'"
+					  " WHEN 'p' THEN 'PROCEDURE'"
+					  " ELSE 'FUNCTION'\n"
+					  "END as \"%s\",\n"
+					  "  p.proname AS \"%s\",\n",
+					  gettext_noop("Package"),
+					  gettext_noop("Type"),
+					  gettext_noop("Name"));
+
+	appendPQExpBuffer(&buf,
+					  "  pg_catalog.pg_get_function_result(p.oid) AS \"%s\",\n"
+					  "  pg_catalog.pg_get_function_arguments(p.oid) AS \"%s\",\n"
+					  "  pg_catalog.obj_description(p.oid, 'pg_proc') AS \"%s\"\n",
+					  gettext_noop("Result data type"),
+					  gettext_noop("Argument data types"),
+					  gettext_noop("Description"));
+
+	appendPQExpBufferStr(&buf, "FROM pg_catalog.pg_proc p\n"
+						 "    JOIN pg_catalog.pg_package pkg ON pkg.oid = p.pronamespace\n");
+
+	if (pattern)
+		processSQLNamePattern(pset.db, &buf, pattern,
+							  false, false,
+							  NULL, "pkg.pkgname", NULL,
+							  NULL, NULL, NULL);
+
+	/* Package Types */
+	appendPQExpBufferStr(&buf, "UNION\n");
+
+	appendPQExpBuffer(&buf,
+					  "SELECT pkg.pkgname as \"%s\",\n"
+					  "'Type' as \"%s\",\n"
+					  " pg_catalog.format_type(t.oid, NULL) AS \"%s\",\n"
+					  "NULL as \"%s\",\n"
+					  "NULL as \"%s\",\n"
+					  "  pg_catalog.obj_description(t.oid, 'pg_type') AS \"%s\"\n",
+
+					  gettext_noop("Package"),
+					  gettext_noop("Type"),
+					  gettext_noop("Name"),
+					  gettext_noop("Result data type"),
+					  gettext_noop("Argument data types"),
+					  gettext_noop("Description"));
+
+	appendPQExpBufferStr(&buf, "FROM pg_catalog.pg_type t\n"
+						 "    JOIN pg_catalog.pg_package pkg ON pkg.oid = t.typnamespace\n");
+	if (pattern)
+		processSQLNamePattern(pset.db, &buf, pattern,
+							  false, false,
+							  NULL, "pkg.pkgname", NULL,
+							  NULL, NULL, NULL);
+
+	appendPQExpBufferStr(&buf, "ORDER BY 1, 2, 3;");
+
+	res = PSQLexec(buf.data);
+	termPQExpBuffer(&buf);
+	if (!res)
+		return false;
+
+	myopt.nullPrint = NULL;
+	myopt.title = _("List of Packages");
+	myopt.translate_header = true;
+
+	printQuery(res, &myopt, pset.queryFout, false, pset.logfile);
+
+	PQclear(res);
+	return true;
+}
+/*
  * Map some variant type names accepted by the backend grammar into
  * canonical type names.
  *

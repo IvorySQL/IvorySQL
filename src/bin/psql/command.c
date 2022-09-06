@@ -822,7 +822,17 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 				success = listCollations(pattern, show_verbose, show_system);
 				break;
 			case 'p':
-				success = permissionsList(pattern);
+				{
+					if (cmd[2] == 'k' || cmd[2] == 'K')
+					{
+						if (cmd[3] == 'g' || cmd[3] == 'G')
+							success = describePackages(pattern);
+						else
+							status = PSQL_CMD_UNKNOWN;
+					}
+					else
+						success = permissionsList(pattern);
+				}
 				break;
 			case 'P':
 				{
@@ -834,6 +844,15 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 						case 'i':
 						case 'n':
 							success = listPartitionedTables(&cmd[2], pattern, show_verbose);
+							break;
+						case 'K':
+						case 'k':
+							{
+								if (cmd[3] == 'g' || cmd[3] == 'G')
+									success = describePackages(pattern);
+								else
+									status = PSQL_CMD_UNKNOWN;
+							}
 							break;
 						default:
 							status = PSQL_CMD_UNKNOWN;

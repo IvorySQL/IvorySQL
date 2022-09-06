@@ -25,6 +25,8 @@ extern bool describeFunctions(const char *functypes, const char *func_pattern,
 
 /* \dT */
 extern bool describeTypes(const char *pattern, bool verbose, bool showSystem);
+/* \dP */
+extern bool describePackages(const char *pattern);
 
 /* \do */
 extern bool describeOperators(const char *oper_pattern,
