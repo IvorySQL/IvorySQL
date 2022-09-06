@@ -841,7 +841,17 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 				success = listCollations(pattern, show_verbose, show_system);
 				break;
 			case 'p':
-				success = permissionsList(pattern);
+				{
+					if (cmd[2] == 'k' || cmd[2] == 'K')
+					{
+						if (cmd[3] == 'g' || cmd[3] == 'G')
+							success = describePackages(pattern);
+						else
+							status = PSQL_CMD_UNKNOWN;
+					}
+					else
+						success = permissionsList(pattern);
+				}
 				break;
 			case 'P':
 				{
