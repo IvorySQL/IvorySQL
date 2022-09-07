@@ -291,6 +291,7 @@ process_syncing_tables_for_sync(XLogRecPtr current_lsn)
 	{
 		TimeLineID	tli;
 		char		syncslotname[NAMEDATALEN] = {0};
+		char		originname[NAMEDATALEN] = {0};
 
 		MyLogicalRepWorker->relstate = SUBREL_STATE_SYNCDONE;
 		MyLogicalRepWorker->relstate_lsn = current_lsn;
@@ -310,6 +311,30 @@ process_syncing_tables_for_sync(XLogRecPtr current_lsn)
 								   MyLogicalRepWorker->relstate_lsn);
 
 		/*
+		 * Cleanup the tablesync origin tracking.
+		 *
+		 * Resetting the origin session removes the ownership of the slot.
+		 * This is needed to allow the origin to be dropped.
+		 */
+		ReplicationOriginNameForTablesync(MyLogicalRepWorker->subid,
+										  MyLogicalRepWorker->relid,
+										  originname,
+										  sizeof(originname));
+		replorigin_session_reset();
+		replorigin_session_origin = InvalidRepOriginId;
+		replorigin_session_origin_lsn = InvalidXLogRecPtr;
+		replorigin_session_origin_timestamp = 0;
+
+		/*
+		 * We expect that origin must be present. The concurrent operations
+		 * that remove origin like a refresh for the subscription take an
+		 * access exclusive lock on pg_subscription which prevent the previous
+		 * operation to update the rel state to SUBREL_STATE_SYNCDONE to
+		 * succeed.
+		 */
+		replorigin_drop_by_name(originname, false, false);
+
+		/*
 		 * End streaming so that LogRepWorkerWalRcvConn can be used to drop
 		 * the slot.
 		 */
@@ -318,7 +343,7 @@ process_syncing_tables_for_sync(XLogRecPtr current_lsn)
 		/*
 		 * Cleanup the tablesync slot.
 		 *
-		 * This has to be done after updating the state because otherwise if
+		 * This has to be done after the data changes because otherwise if
 		 * there is an error while doing the database operations we won't be
 		 * able to rollback dropped slot.
 		 */
@@ -383,7 +408,7 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 	 * immediate restarts.  We don't need it if there are no tables that need
 	 * syncing.
 	 */
-	if (table_states_not_ready && !last_start_times)
+	if (table_states_not_ready != NIL && !last_start_times)
 	{
 		HASHCTL		ctl;
 
@@ -397,7 +422,7 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 	 * Clean up the hash table when we're done with all tables (just to
 	 * release the bit of memory).
 	 */
-	else if (!table_states_not_ready && last_start_times)
+	else if (table_states_not_ready == NIL && last_start_times)
 	{
 		hash_destroy(last_start_times);
 		last_start_times = NULL;
@@ -441,8 +466,6 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 			 */
 			if (current_lsn >= rstate->lsn)
 			{
-				char		originname[NAMEDATALEN];
-
 				rstate->state = SUBREL_STATE_READY;
 				rstate->lsn = current_lsn;
 				if (!started_tx)
@@ -452,26 +475,7 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 				}
 
 				/*
-				 * Remove the tablesync origin tracking if exists.
-				 *
-				 * The normal case origin drop is done here instead of in the
-				 * process_syncing_tables_for_sync function because we don't
-				 * allow to drop the origin till the process owning the origin
-				 * is alive.
-				 *
-				 * There is a chance that the user is concurrently performing
-				 * refresh for the subscription where we remove the table
-				 * state and its origin and by this time the origin might be
-				 * already removed. So passing missing_ok = true.
-				 */
-				ReplicationOriginNameForTablesync(MyLogicalRepWorker->subid,
-												  rstate->relid,
-												  originname,
-												  sizeof(originname));
-				replorigin_drop_by_name(originname, true, false);
-
-				/*
-				 * Update the state to READY only after the origin cleanup.
+				 * Update the state to READY.
 				 */
 				UpdateSubscriptionRelState(MyLogicalRepWorker->subid,
 										   rstate->relid, rstate->state,
@@ -707,7 +711,6 @@ fetch_remote_table_info(char *nspname, char *relname,
 	bool		isnull;
 	int			natt;
 	ListCell   *lc;
-	bool		first;
 	Bitmapset  *included_cols = NULL;
 
 	lrel->nspname = nspname;
@@ -759,18 +762,15 @@ fetch_remote_table_info(char *nspname, char *relname,
 	if (walrcv_server_version(LogRepWorkerWalRcvConn) >= 150000)
 	{
 		WalRcvExecResult *pubres;
-		TupleTableSlot *slot;
+		TupleTableSlot *tslot;
 		Oid			attrsRow[] = {INT2VECTOROID};
 		StringInfoData pub_names;
-		bool		first = true;
-
 		initStringInfo(&pub_names);
 		foreach(lc, MySubscription->publications)
 		{
-			if (!first)
-				appendStringInfo(&pub_names, ", ");
+			if (foreach_current_index(lc) > 0)
+				appendStringInfoString(&pub_names, ", ");
 			appendStringInfoString(&pub_names, quote_literal_cstr(strVal(lfirst(lc))));
-			first = false;
 		}
 
 		/*
@@ -819,10 +819,10 @@ fetch_remote_table_info(char *nspname, char *relname,
 		 * If we find a NULL value, it means all the columns should be
 		 * replicated.
 		 */
-		slot = MakeSingleTupleTableSlot(pubres->tupledesc, &TTSOpsMinimalTuple);
-		if (tuplestore_gettupleslot(pubres->tuplestore, true, false, slot))
+		tslot = MakeSingleTupleTableSlot(pubres->tupledesc, &TTSOpsMinimalTuple);
+		if (tuplestore_gettupleslot(pubres->tuplestore, true, false, tslot))
 		{
-			Datum		cfval = slot_getattr(slot, 1, &isnull);
+			Datum		cfval = slot_getattr(tslot, 1, &isnull);
 
 			if (!isnull)
 			{
@@ -838,9 +838,9 @@ fetch_remote_table_info(char *nspname, char *relname,
 					included_cols = bms_add_member(included_cols, elems[natt]);
 			}
 
-			ExecClearTuple(slot);
+			ExecClearTuple(tslot);
 		}
-		ExecDropSingleTupleTableSlot(slot);
+		ExecDropSingleTupleTableSlot(tslot);
 
 		walrcv_clear_result(pubres);
 
@@ -950,14 +950,11 @@ fetch_remote_table_info(char *nspname, char *relname,
 
 		/* Build the pubname list. */
 		initStringInfo(&pub_names);
-		first = true;
 		foreach(lc, MySubscription->publications)
 		{
 			char	   *pubname = strVal(lfirst(lc));
 
-			if (first)
-				first = false;
-			else
+			if (foreach_current_index(lc) > 0)
 				appendStringInfoString(&pub_names, ", ");
 
 			appendStringInfoString(&pub_names, quote_literal_cstr(pubname));
@@ -1065,7 +1062,7 @@ copy_table(Relation rel)
 			appendStringInfoString(&cmd, quote_identifier(lrel.attnames[i]));
 		}
 
-		appendStringInfo(&cmd, ") TO STDOUT");
+		appendStringInfoString(&cmd, ") TO STDOUT");
 	}
 	else
 	{
@@ -1479,7 +1476,7 @@ FetchTableStates(bool *started_tx)
 		}
 
 		/* Fetch all non-ready tables. */
-		rstates = GetSubscriptionNotReadyRelations(MySubscription->oid);
+		rstates = GetSubscriptionRelations(MySubscription->oid, true);
 
 		/* Allocate the tracking info in a permanent memory context. */
 		oldctx = MemoryContextSwitchTo(CacheMemoryContext);
@@ -1498,7 +1495,7 @@ FetchTableStates(bool *started_tx)
 		 * if table_state_not_ready was empty we still need to check again to
 		 * see if there are 0 tables.
 		 */
-		has_subrels = (list_length(table_states_not_ready) > 0) ||
+		has_subrels = (table_states_not_ready != NIL) ||
 			HasSubscriptionRelations(MySubscription->oid);
 
 		table_states_valid = true;
@@ -1534,7 +1531,7 @@ AllTablesyncsReady(void)
 	 * Return false when there are no tables in subscription or not all tables
 	 * are in ready state; true otherwise.
 	 */
-	return has_subrels && list_length(table_states_not_ready) == 0;
+	return has_subrels && (table_states_not_ready == NIL);
 }
 
 /*

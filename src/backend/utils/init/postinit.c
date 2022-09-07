@@ -217,7 +217,8 @@ PerformAuthentication(Port *port)
 		 * since there is no way to connect to the database in this case.
 		 */
 		ereport(FATAL,
-				(errmsg("could not load pg_hba.conf")));
+		/* translator: %s is a configuration file */
+				(errmsg("could not load %s", HbaFileName)));
 	}
 
 	if (!load_ident())
@@ -622,29 +623,48 @@ BaseInit(void)
  * InitPostgres
  *		Initialize POSTGRES.
  *
+ * Parameters:
+ *	in_dbname, dboid: specify database to connect to, as described below
+ *	username, useroid: specify role to connect as, as described below
+ *	load_session_libraries: TRUE to honor [session|local]_preload_libraries
+ *	override_allow_connections: TRUE to connect despite !datallowconn
+ *	out_dbname: optional output parameter, see below; pass NULL if not used
+ *
  * The database can be specified by name, using the in_dbname parameter, or by
- * OID, using the dboid parameter.  In the latter case, the actual database
+ * OID, using the dboid parameter.  Specify NULL or InvalidOid respectively
+ * for the unused parameter.  If dboid is provided, the actual database
  * name can be returned to the caller in out_dbname.  If out_dbname isn't
  * NULL, it must point to a buffer of size NAMEDATALEN.
  *
- * Similarly, the username can be passed by name, using the username parameter,
+ * Similarly, the role can be passed by name, using the username parameter,
  * or by OID using the useroid parameter.
  *
- * In bootstrap mode no parameters are used.  The autovacuum launcher process
- * doesn't use any parameters either, because it only goes far enough to be
- * able to read pg_database; it doesn't connect to any particular database.
- * In walsender mode only username is used.
+ * In bootstrap mode the database and username parameters are NULL/InvalidOid.
+ * The autovacuum launcher process doesn't specify these parameters either,
+ * because it only goes far enough to be able to read pg_database; it doesn't
+ * connect to any particular database.  An autovacuum worker specifies a
+ * database but not a username; conversely, a physical walsender specifies
+ * username but not database.
  *
- * As of PostgreSQL 8.2, we expect InitProcess() was already called, so we
- * already have a PGPROC struct ... but it's not completely filled in yet.
+ * By convention, load_session_libraries should be passed as true in
+ * "interactive" sessions (including standalone backends), but false in
+ * background processes such as autovacuum.  Note in particular that it
+ * shouldn't be true in parallel worker processes; those have another
+ * mechanism for replicating their leader's set of loaded libraries.
+ *
+ * We expect that InitProcess() was already called, so we already have a
+ * PGPROC struct ... but it's not completely filled in yet.
  *
  * Note:
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
 void
-InitPostgres(const char *in_dbname, Oid dboid, const char *username,
-			 Oid useroid, char *out_dbname, bool override_allow_connections)
+InitPostgres(const char *in_dbname, Oid dboid,
+			 const char *username, Oid useroid,
+			 bool load_session_libraries,
+			 bool override_allow_connections,
+			 char *out_dbname)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -1108,6 +1128,16 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/* Initialize this backend's session state. */
 	InitializeSession();
 
+	/*
+	 * If this is an interactive session, load any libraries that should be
+	 * preloaded at backend start.  Since those are determined by GUCs, this
+	 * can't happen until GUC settings are complete, but we want it to happen
+	 * during the initial transaction in case anything that requires database
+	 * access needs to be done.
+	 */
+	if (load_session_libraries)
+		process_session_preload_libraries();
+
 	/* report this backend in the PgBackendStatus array */
 	if (!bootstrap)
 		pgstat_bestart();
@@ -1231,24 +1261,6 @@ ShutdownPostgres(int code, Datum arg)
 	 * them explicitly.
 	 */
 	LockReleaseAll(USER_LOCKMETHOD, true);
-
-	/*
-	 * temp debugging aid to analyze 019_replslot_limit failures
-	 *
-	 * If an error were thrown outside of a transaction nothing up to now
-	 * would have released lwlocks. We probably will add an
-	 * LWLockReleaseAll(). But for now make it easier to understand such cases
-	 * by warning if any lwlocks are held.
-	 */
-#ifdef USE_ASSERT_CHECKING
-	{
-		int			held_lwlocks = LWLockHeldCount();
-
-		if (held_lwlocks)
-			elog(WARNING, "holding %d lwlocks at the end of ShutdownPostgres()",
-				 held_lwlocks);
-	}
-#endif
 }
 
 

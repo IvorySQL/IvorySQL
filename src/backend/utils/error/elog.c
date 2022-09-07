@@ -643,8 +643,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		 * Any other code you might be tempted to add here should probably be
 		 * in an on_proc_exit or on_shmem_exit callback instead.
 		 */
-		fflush(stdout);
-		fflush(stderr);
+		fflush(NULL);
 
 		/*
 		 * Let the cumulative stats system know. Only mark the session as
@@ -670,8 +669,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		 * XXX: what if we are *in* the postmaster?  abort() won't kill our
 		 * children...
 		 */
-		fflush(stdout);
-		fflush(stderr);
+		fflush(NULL);
 		abort();
 	}
 
@@ -1985,8 +1983,7 @@ set_syslog_parameters(const char *ident, int facility)
 			closelog();
 			openlog_done = false;
 		}
-		if (syslog_ident)
-			free(syslog_ident);
+		free(syslog_ident);
 		syslog_ident = strdup(ident);
 		/* if the strdup fails, we will cope in write_syslog() */
 		syslog_facility = facility;
@@ -2439,10 +2436,19 @@ process_log_prefix_padding(const char *p, int *ppadding)
 }
 
 /*
- * Format tag info for log lines; append to the provided buffer.
+ * Format log status information using Log_line_prefix.
  */
 static void
 log_line_prefix(StringInfo buf, ErrorData *edata)
+{
+	log_status_format(buf, Log_line_prefix, edata);
+}
+
+/*
+ * Format log status info; append to the provided buffer.
+ */
+void
+log_status_format(StringInfo buf, const char *format, ErrorData *edata)
 {
 	/* static counter for line numbers */
 	static long log_line_number = 0;
@@ -2466,10 +2472,10 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 	}
 	log_line_number++;
 
-	if (Log_line_prefix == NULL)
+	if (format == NULL)
 		return;					/* in case guc hasn't run yet */
 
-	for (p = Log_line_prefix; *p != '\0'; p++)
+	for (p = format; *p != '\0'; p++)
 	{
 		if (*p != '%')
 		{

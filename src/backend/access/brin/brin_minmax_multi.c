@@ -582,7 +582,6 @@ brin_range_serialize(Ranges *range)
 	int			typlen;
 	bool		typbyval;
 
-	int			i;
 	char	   *ptr;
 
 	/* simple sanity checks */
@@ -662,7 +661,7 @@ brin_range_serialize(Ranges *range)
 	 */
 	ptr = serialized->data;		/* start of the serialized data */
 
-	for (i = 0; i < nvalues; i++)
+	for (int i = 0; i < nvalues; i++)
 	{
 		if (typbyval)			/* simple by-value data types */
 		{
@@ -775,12 +774,12 @@ brin_range_deserialize(int maxvalues, SerializedRanges *serialized)
 			datalen += MAXALIGN(typlen);
 		else if (typlen == -1)	/* varlena */
 		{
-			datalen += MAXALIGN(VARSIZE_ANY(DatumGetPointer(ptr)));
-			ptr += VARSIZE_ANY(DatumGetPointer(ptr));
+			datalen += MAXALIGN(VARSIZE_ANY(ptr));
+			ptr += VARSIZE_ANY(ptr);
 		}
 		else if (typlen == -2)	/* cstring */
 		{
-			Size		slen = strlen(DatumGetCString(ptr)) + 1;
+			Size		slen = strlen(ptr) + 1;
 
 			datalen += MAXALIGN(slen);
 			ptr += slen;
@@ -3034,7 +3033,7 @@ brin_minmax_multi_summary_out(PG_FUNCTION_ARGS)
 	 * Detoast to get value with full 4B header (can't be stored in a toast
 	 * table, but can use 1B header).
 	 */
-	ranges = (SerializedRanges *) PG_DETOAST_DATUM(PG_GETARG_BYTEA_PP(0));
+	ranges = (SerializedRanges *) PG_DETOAST_DATUM_PACKED(PG_GETARG_DATUM(0));
 
 	/* lookup output func for the type */
 	getTypeOutputInfo(ranges->typid, &outfunc, &isvarlena);
@@ -3064,7 +3063,7 @@ brin_minmax_multi_summary_out(PG_FUNCTION_ARGS)
 
 		appendStringInfo(&str, "%s ... %s", a, b);
 
-		c = cstring_to_text(str.data);
+		c = cstring_to_text_with_len(str.data, str.len);
 
 		astate_values = accumArrayResult(astate_values,
 										 PointerGetDatum(c),
@@ -3082,7 +3081,7 @@ brin_minmax_multi_summary_out(PG_FUNCTION_ARGS)
 
 		getTypeOutputInfo(ANYARRAYOID, &typoutput, &typIsVarlena);
 
-		val = PointerGetDatum(makeArrayResult(astate_values, CurrentMemoryContext));
+		val = makeArrayResult(astate_values, CurrentMemoryContext);
 
 		extval = OidOutputFunctionCall(typoutput, val);
 
@@ -3096,15 +3095,9 @@ brin_minmax_multi_summary_out(PG_FUNCTION_ARGS)
 	{
 		Datum		a;
 		text	   *b;
-		StringInfoData str;
-
-		initStringInfo(&str);
 
 		a = FunctionCall1(&fmgrinfo, ranges_deserialized->values[idx++]);
-
-		appendStringInfoString(&str, DatumGetCString(a));
-
-		b = cstring_to_text(str.data);
+		b = cstring_to_text(DatumGetCString(a));
 
 		astate_values = accumArrayResult(astate_values,
 										 PointerGetDatum(b),
@@ -3122,7 +3115,7 @@ brin_minmax_multi_summary_out(PG_FUNCTION_ARGS)
 
 		getTypeOutputInfo(ANYARRAYOID, &typoutput, &typIsVarlena);
 
-		val = PointerGetDatum(makeArrayResult(astate_values, CurrentMemoryContext));
+		val = makeArrayResult(astate_values, CurrentMemoryContext);
 
 		extval = OidOutputFunctionCall(typoutput, val);
 

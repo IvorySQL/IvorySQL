@@ -14,11 +14,9 @@
 
 #include "postgres_fe.h"
 
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#endif
 
 #include "access/xlog_internal.h"
 #include "common/file_utils.h"
@@ -860,8 +858,7 @@ HandleCopyStream(PGconn *conn, StreamCtl *stream,
 	}
 
 error:
-	if (copybuf != NULL)
-		PQfreemem(copybuf);
+	PQfreemem(copybuf);
 	return NULL;
 }
 
@@ -942,8 +939,7 @@ CopyStreamReceive(PGconn *conn, long timeout, pgsocket stop_socket,
 	char	   *copybuf = NULL;
 	int			rawlen;
 
-	if (*buffer != NULL)
-		PQfreemem(*buffer);
+	PQfreemem(*buffer);
 	*buffer = NULL;
 
 	/* Try to receive a CopyData message */
@@ -1206,8 +1202,7 @@ HandleEndOfCopyStream(PGconn *conn, StreamCtl *stream, char *copybuf,
 		}
 		still_sending = false;
 	}
-	if (copybuf != NULL)
-		PQfreemem(copybuf);
+	PQfreemem(copybuf);
 	*stoppos = blockpos;
 	return res;
 }

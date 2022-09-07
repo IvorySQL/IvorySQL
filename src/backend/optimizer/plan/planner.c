@@ -24,6 +24,7 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/xact.h"
+#include "catalog/pg_aggregate.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
@@ -634,6 +635,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->qual_security_level = 0;
 	root->hasPseudoConstantQuals = false;
 	root->hasAlternativeSubPlans = false;
+	root->placeholdersFrozen = false;
 	root->hasRecursion = hasRecursion;
 	if (hasRecursion)
 		root->wt_param_id = assign_special_exec_param(root);
@@ -1791,8 +1793,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 							withCheckOptions = (List *)
 								adjust_appendrel_attrs_multilevel(root,
 																  (Node *) withCheckOptions,
-																  this_result_rel->relids,
-																  top_result_rel->relids);
+																  this_result_rel,
+																  top_result_rel);
 						withCheckOptionLists = lappend(withCheckOptionLists,
 													   withCheckOptions);
 					}
@@ -1804,8 +1806,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 							returningList = (List *)
 								adjust_appendrel_attrs_multilevel(root,
 																  (Node *) returningList,
-																  this_result_rel->relids,
-																  top_result_rel->relids);
+																  this_result_rel,
+																  top_result_rel);
 						returningLists = lappend(returningLists,
 												 returningList);
 					}
@@ -1826,13 +1828,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 							leaf_action->qual =
 								adjust_appendrel_attrs_multilevel(root,
 																  (Node *) action->qual,
-																  this_result_rel->relids,
-																  top_result_rel->relids);
+																  this_result_rel,
+																  top_result_rel);
 							leaf_action->targetList = (List *)
 								adjust_appendrel_attrs_multilevel(root,
 																  (Node *) action->targetList,
-																  this_result_rel->relids,
-																  top_result_rel->relids);
+																  this_result_rel,
+																  top_result_rel);
 							if (leaf_action->commandType == CMD_UPDATE)
 								leaf_action->updateColnos =
 									adjust_inherited_attnums_multilevel(root,
@@ -1979,7 +1981,6 @@ preprocess_grouping_sets(PlannerInfo *root)
 	Query	   *parse = root->parse;
 	List	   *sets;
 	int			maxref = 0;
-	ListCell   *lc;
 	ListCell   *lc_set;
 	grouping_sets_data *gd = palloc0(sizeof(grouping_sets_data));
 
@@ -2022,6 +2023,7 @@ preprocess_grouping_sets(PlannerInfo *root)
 	if (!bms_is_empty(gd->unsortable_refs))
 	{
 		List	   *sortable_sets = NIL;
+		ListCell   *lc;
 
 		foreach(lc, parse->groupingSets)
 		{
@@ -3096,7 +3098,7 @@ reorder_grouping_sets(List *groupingsets, List *sortclause)
 		GroupingSetData *gs = makeNode(GroupingSetData);
 
 		while (list_length(sortclause) > list_length(previous) &&
-			   list_length(new_elems) > 0)
+			   new_elems != NIL)
 		{
 			SortGroupClause *sc = list_nth(sortclause, list_length(previous));
 			int			ref = sc->tleSortGroupRef;
@@ -3126,6 +3128,217 @@ reorder_grouping_sets(List *groupingsets, List *sortclause)
 }
 
 /*
+ * make_pathkeys_for_groupagg
+ *		Determine the pathkeys for the GROUP BY clause and/or any ordered
+ *		aggregates.  We expect at least one of these here.
+ *
+ * Building the pathkeys for the GROUP BY is simple.  Most of the complexity
+ * involved here comes from calculating the best pathkeys for ordered
+ * aggregates.  We define "best" as the pathkeys that suit the most number of
+ * aggregate functions.  We find these by looking at the first ORDER BY /
+ * DISTINCT aggregate and take the pathkeys for that before searching for
+ * other aggregates that require the same or a more strict variation of the
+ * same pathkeys.  We then repeat that process for any remaining aggregates
+ * with different pathkeys and if we find another set of pathkeys that suits a
+ * larger number of aggregates then we return those pathkeys instead.
+ *
+ * *number_groupby_pathkeys gets set to the number of elements in the returned
+ * list that belong to the GROUP BY clause.  Any elements above this number
+ * must belong to ORDER BY / DISTINCT aggregates.
+ *
+ * When the best pathkeys are found we also mark each Aggref that can use
+ * those pathkeys as aggpresorted = true.
+ */
+static List *
+make_pathkeys_for_groupagg(PlannerInfo *root, List *groupClause, List *tlist,
+						   int *number_groupby_pathkeys)
+{
+	List	   *grouppathkeys = NIL;
+	List	   *bestpathkeys;
+	Bitmapset  *bestaggs;
+	Bitmapset  *unprocessed_aggs;
+	ListCell   *lc;
+	int			i;
+
+	Assert(groupClause != NIL || root->numOrderedAggs > 0);
+
+	if (groupClause != NIL)
+	{
+		/* no pathkeys possible if there's an unsortable GROUP BY */
+		if (!grouping_is_sortable(groupClause))
+		{
+			*number_groupby_pathkeys = 0;
+			return NIL;
+		}
+
+		grouppathkeys = make_pathkeys_for_sortclauses(root, groupClause,
+													  tlist);
+		*number_groupby_pathkeys = list_length(grouppathkeys);
+	}
+	else
+		*number_groupby_pathkeys = 0;
+
+	/*
+	 * We can't add pathkeys for ordered aggregates if there are any grouping
+	 * sets.  All handling specific to ordered aggregates must be done by the
+	 * executor in that case.
+	 */
+	if (root->numOrderedAggs == 0 || root->parse->groupingSets != NIL)
+		return grouppathkeys;
+
+	/*
+	 * Make a first pass over all AggInfos to collect a Bitmapset containing
+	 * the indexes of all AggInfos to be processed below.
+	 */
+	unprocessed_aggs = NULL;
+	foreach(lc, root->agginfos)
+	{
+		AggInfo    *agginfo = lfirst_node(AggInfo, lc);
+		Aggref	   *aggref = linitial_node(Aggref, agginfo->aggrefs);
+
+		if (AGGKIND_IS_ORDERED_SET(aggref->aggkind))
+			continue;
+
+		/* only add aggregates with a DISTINCT or ORDER BY */
+		if (aggref->aggdistinct != NIL || aggref->aggorder != NIL)
+			unprocessed_aggs = bms_add_member(unprocessed_aggs,
+											  foreach_current_index(lc));
+	}
+
+	/*
+	 * Now process all the unprocessed_aggs to find the best set of pathkeys
+	 * for the given set of aggregates.
+	 *
+	 * On the first outer loop here 'bestaggs' will be empty.   We'll populate
+	 * this during the first loop using the pathkeys for the very first
+	 * AggInfo then taking any stronger pathkeys from any other AggInfos with
+	 * a more strict set of compatible pathkeys.  Once the outer loop is
+	 * complete, we mark off all the aggregates with compatible pathkeys then
+	 * remove those from the unprocessed_aggs and repeat the process to try to
+	 * find another set of pathkeys that are suitable for a larger number of
+	 * aggregates.  The outer loop will stop when there are not enough
+	 * unprocessed aggregates for it to be possible to find a set of pathkeys
+	 * to suit a larger number of aggregates.
+	 */
+	bestpathkeys = NIL;
+	bestaggs = NULL;
+	while (bms_num_members(unprocessed_aggs) > bms_num_members(bestaggs))
+	{
+		Bitmapset  *aggindexes = NULL;
+		List	   *currpathkeys = NIL;
+
+		i = -1;
+		while ((i = bms_next_member(unprocessed_aggs, i)) >= 0)
+		{
+			AggInfo    *agginfo = list_nth_node(AggInfo, root->agginfos, i);
+			Aggref	   *aggref = linitial_node(Aggref, agginfo->aggrefs);
+			List	   *sortlist;
+
+			if (aggref->aggdistinct != NIL)
+				sortlist = aggref->aggdistinct;
+			else
+				sortlist = aggref->aggorder;
+
+			/*
+			 * When not set yet, take the pathkeys from the first unprocessed
+			 * aggregate.
+			 */
+			if (currpathkeys == NIL)
+			{
+				currpathkeys = make_pathkeys_for_sortclauses(root, sortlist,
+															 aggref->args);
+
+				/* include the GROUP BY pathkeys, if they exist */
+				if (grouppathkeys != NIL)
+					currpathkeys = append_pathkeys(list_copy(grouppathkeys),
+												   currpathkeys);
+
+				/* record that we found pathkeys for this aggregate */
+				aggindexes = bms_add_member(aggindexes, i);
+			}
+			else
+			{
+				List	   *pathkeys;
+
+				/* now look for a stronger set of matching pathkeys */
+				pathkeys = make_pathkeys_for_sortclauses(root, sortlist,
+														 aggref->args);
+
+				/* include the GROUP BY pathkeys, if they exist */
+				if (grouppathkeys != NIL)
+					pathkeys = append_pathkeys(list_copy(grouppathkeys),
+											   pathkeys);
+
+				/* are 'pathkeys' compatible or better than 'currpathkeys'? */
+				switch (compare_pathkeys(currpathkeys, pathkeys))
+				{
+					case PATHKEYS_BETTER2:
+						/* 'pathkeys' are stronger, use these ones instead */
+						currpathkeys = pathkeys;
+						/* FALLTHROUGH */
+
+					case PATHKEYS_BETTER1:
+						/* 'pathkeys' are less strict */
+						/* FALLTHROUGH */
+
+					case PATHKEYS_EQUAL:
+						/* mark this aggregate as covered by 'currpathkeys' */
+						aggindexes = bms_add_member(aggindexes, i);
+						break;
+
+					case PATHKEYS_DIFFERENT:
+						break;
+				}
+			}
+		}
+
+		/* remove the aggregates that we've just processed */
+		unprocessed_aggs = bms_del_members(unprocessed_aggs, aggindexes);
+
+		/*
+		 * If this pass included more aggregates than the previous best then
+		 * use these ones as the best set.
+		 */
+		if (bms_num_members(aggindexes) > bms_num_members(bestaggs))
+		{
+			bestaggs = aggindexes;
+			bestpathkeys = currpathkeys;
+		}
+	}
+
+	/*
+	 * Now that we've found the best set of aggregates we can set the
+	 * presorted flag to indicate to the executor that it needn't bother
+	 * performing a sort for these Aggrefs.  We're able to do this now as
+	 * there's no chance of a Hash Aggregate plan as create_grouping_paths
+	 * will not mark the GROUP BY as GROUPING_CAN_USE_HASH due to the presence
+	 * of ordered aggregates.
+	 */
+	i = -1;
+	while ((i = bms_next_member(bestaggs, i)) >= 0)
+	{
+		AggInfo    *agginfo = list_nth_node(AggInfo, root->agginfos, i);
+
+		foreach(lc, agginfo->aggrefs)
+		{
+			Aggref	   *aggref = lfirst_node(Aggref, lc);
+
+			aggref->aggpresorted = true;
+		}
+	}
+
+	/*
+	 * bestpathkeys includes the GROUP BY pathkeys, so if we found any ordered
+	 * aggregates, then return bestpathkeys, otherwise return the
+	 * grouppathkeys.
+	 */
+	if (bestpathkeys != NIL)
+		return bestpathkeys;
+
+	return grouppathkeys;
+}
+
+/*
  * Compute query_pathkeys and other pathkeys during plan generation
  */
 static void
@@ -3137,18 +3350,19 @@ standard_qp_callback(PlannerInfo *root, void *extra)
 	List	   *activeWindows = qp_extra->activeWindows;
 
 	/*
-	 * Calculate pathkeys that represent grouping/ordering requirements.  The
-	 * sortClause is certainly sort-able, but GROUP BY and DISTINCT might not
-	 * be, in which case we just leave their pathkeys empty.
+	 * Calculate pathkeys that represent grouping/ordering and/or ordered
+	 * aggregate requirements.
 	 */
-	if (qp_extra->groupClause &&
-		grouping_is_sortable(qp_extra->groupClause))
-		root->group_pathkeys =
-			make_pathkeys_for_sortclauses(root,
-										  qp_extra->groupClause,
-										  tlist);
+	if (qp_extra->groupClause != NIL || root->numOrderedAggs > 0)
+		root->group_pathkeys = make_pathkeys_for_groupagg(root,
+														  qp_extra->groupClause,
+														  tlist,
+														  &root->num_groupby_pathkeys);
 	else
+	{
 		root->group_pathkeys = NIL;
+		root->num_groupby_pathkeys = 0;
+	}
 
 	/* We consider only the first (bottom) window in pathkeys logic */
 	if (activeWindows != NIL)
@@ -3270,8 +3484,6 @@ get_number_of_groups(PlannerInfo *root,
 
 			if (gd->hash_sets_idx)
 			{
-				ListCell   *lc;
-
 				gd->dNumHashGroups = 0;
 
 				groupExprs = get_sortgrouplist_exprs(parse->groupClause,
@@ -3900,15 +4112,14 @@ consider_groupingsets_paths(PlannerInfo *root,
 										  (List *) parse->havingQual,
 										  strat,
 										  new_rollups,
-										  agg_costs,
-										  dNumGroups));
+										  agg_costs));
 		return;
 	}
 
 	/*
 	 * If we have sorted input but nothing we can do with it, bail.
 	 */
-	if (list_length(gd->rollups) == 0)
+	if (gd->rollups == NIL)
 		return;
 
 	/*
@@ -4059,8 +4270,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 											  (List *) parse->havingQual,
 											  AGG_MIXED,
 											  rollups,
-											  agg_costs,
-											  dNumGroups));
+											  agg_costs));
 		}
 	}
 
@@ -4075,8 +4285,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 										  (List *) parse->havingQual,
 										  AGG_SORTED,
 										  gd->rollups,
-										  agg_costs,
-										  dNumGroups));
+										  agg_costs));
 }
 
 /*
@@ -4509,8 +4718,6 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	Path	   *cheapest_input_path = input_rel->cheapest_total_path;
 	double		numDistinctRows;
 	bool		allow_hash;
-	Path	   *path;
-	ListCell   *lc;
 
 	/* Estimate number of distinct rows there will be */
 	if (parse->groupClause || parse->groupingSets || parse->hasAggs ||
@@ -4555,6 +4762,8 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		 * the other.)
 		 */
 		List	   *needed_pathkeys;
+		Path	   *path;
+		ListCell   *lc;
 
 		if (parse->hasDistinctOn &&
 			list_length(root->distinct_pathkeys) <
@@ -4565,7 +4774,7 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 		foreach(lc, input_rel->pathlist)
 		{
-			Path	   *path = (Path *) lfirst(lc);
+			path = (Path *) lfirst(lc);
 
 			if (pathkeys_contained_in(needed_pathkeys, path->pathkeys))
 			{
@@ -4823,8 +5032,6 @@ create_ordered_paths(PlannerInfo *root,
 		 */
 		if (enable_incremental_sort && list_length(root->sort_pathkeys) > 1)
 		{
-			ListCell   *lc;
-
 			foreach(lc, input_rel->partial_pathlist)
 			{
 				Path	   *input_path = (Path *) lfirst(lc);
@@ -6225,6 +6432,26 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 
 	if (can_sort)
 	{
+		List	   *group_pathkeys;
+		List	   *orderAggPathkeys;
+		int			numAggPathkeys;
+
+		numAggPathkeys = list_length(root->group_pathkeys) -
+			root->num_groupby_pathkeys;
+
+		if (numAggPathkeys > 0)
+		{
+			group_pathkeys = list_copy_head(root->group_pathkeys,
+											root->num_groupby_pathkeys);
+			orderAggPathkeys = list_copy_tail(root->group_pathkeys,
+											  root->num_groupby_pathkeys);
+		}
+		else
+		{
+			group_pathkeys = root->group_pathkeys;
+			orderAggPathkeys = NIL;
+		}
+
 		/*
 		 * Use any available suitably-sorted path as input, and also consider
 		 * sorting the cheapest-total path.
@@ -6237,7 +6464,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 
 			List	   *pathkey_orderings = NIL;
 
-			List	   *group_pathkeys = root->group_pathkeys;
 			List	   *group_clauses = parse->groupClause;
 
 			/* generate alternative group orderings that might be useful */
@@ -6245,9 +6471,10 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 																path->rows,
 																path->pathkeys,
 																group_pathkeys,
-																group_clauses);
+																group_clauses,
+																orderAggPathkeys);
 
-			Assert(list_length(pathkey_orderings) > 0);
+			Assert(pathkey_orderings != NIL);
 
 			/* process all potentially interesting grouping reorderings */
 			foreach(lc2, pathkey_orderings)
@@ -6406,10 +6633,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				ListCell   *lc2;
 				Path	   *path = (Path *) lfirst(lc);
 				Path	   *path_original = path;
-
 				List	   *pathkey_orderings = NIL;
-
-				List	   *group_pathkeys = root->group_pathkeys;
 				List	   *group_clauses = parse->groupClause;
 
 				/* generate alternative group orderings that might be useful */
@@ -6417,9 +6641,10 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 																	path->rows,
 																	path->pathkeys,
 																	group_pathkeys,
-																	group_clauses);
+																	group_clauses,
+																	orderAggPathkeys);
 
-				Assert(list_length(pathkey_orderings) > 0);
+				Assert(pathkey_orderings != NIL);
 
 				/* process all potentially interesting grouping reorderings */
 				foreach(lc2, pathkey_orderings)
@@ -6720,6 +6945,26 @@ create_partial_grouping_paths(PlannerInfo *root,
 
 	if (can_sort && cheapest_total_path != NULL)
 	{
+		List	   *group_pathkeys;
+		List	   *orderAggPathkeys;
+		int			numAggPathkeys;
+
+		numAggPathkeys = list_length(root->group_pathkeys) -
+			root->num_groupby_pathkeys;
+
+		if (numAggPathkeys > 0)
+		{
+			group_pathkeys = list_copy_head(root->group_pathkeys,
+											root->num_groupby_pathkeys);
+			orderAggPathkeys = list_copy_tail(root->group_pathkeys,
+											  root->num_groupby_pathkeys);
+		}
+		else
+		{
+			group_pathkeys = root->group_pathkeys;
+			orderAggPathkeys = NIL;
+		}
+
 		/* This should have been checked previously */
 		Assert(parse->hasAggs || parse->groupClause);
 
@@ -6732,10 +6977,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 			ListCell   *lc2;
 			Path	   *path = (Path *) lfirst(lc);
 			Path	   *path_save = path;
-
 			List	   *pathkey_orderings = NIL;
-
-			List	   *group_pathkeys = root->group_pathkeys;
 			List	   *group_clauses = parse->groupClause;
 
 			/* generate alternative group orderings that might be useful */
@@ -6743,9 +6985,10 @@ create_partial_grouping_paths(PlannerInfo *root,
 																path->rows,
 																path->pathkeys,
 																group_pathkeys,
-																group_clauses);
+																group_clauses,
+																orderAggPathkeys);
 
-			Assert(list_length(pathkey_orderings) > 0);
+			Assert(pathkey_orderings != NIL);
 
 			/* process all potentially interesting grouping reorderings */
 			foreach(lc2, pathkey_orderings)
@@ -6859,16 +7102,33 @@ create_partial_grouping_paths(PlannerInfo *root,
 
 	if (can_sort && cheapest_partial_path != NULL)
 	{
+		List	   *group_pathkeys;
+		List	   *orderAggPathkeys;
+		int			numAggPathkeys;
+
+		numAggPathkeys = list_length(root->group_pathkeys) -
+			root->num_groupby_pathkeys;
+
+		if (numAggPathkeys > 0)
+		{
+			group_pathkeys = list_copy_head(root->group_pathkeys,
+											root->num_groupby_pathkeys);
+			orderAggPathkeys = list_copy_tail(root->group_pathkeys,
+											  root->num_groupby_pathkeys);
+		}
+		else
+		{
+			group_pathkeys = root->group_pathkeys;
+			orderAggPathkeys = NIL;
+		}
+
 		/* Similar to above logic, but for partial paths. */
 		foreach(lc, input_rel->partial_pathlist)
 		{
 			ListCell   *lc2;
 			Path	   *path = (Path *) lfirst(lc);
 			Path	   *path_original = path;
-
 			List	   *pathkey_orderings = NIL;
-
-			List	   *group_pathkeys = root->group_pathkeys;
 			List	   *group_clauses = parse->groupClause;
 
 			/* generate alternative group orderings that might be useful */
@@ -6876,9 +7136,10 @@ create_partial_grouping_paths(PlannerInfo *root,
 																path->rows,
 																path->pathkeys,
 																group_pathkeys,
-																group_clauses);
+																group_clauses,
+																orderAggPathkeys);
 
-			Assert(list_length(pathkey_orderings) > 0);
+			Assert(pathkey_orderings != NIL);
 
 			/* process all potentially interesting grouping reorderings */
 			foreach(lc2, pathkey_orderings)
@@ -7342,7 +7603,6 @@ apply_scanjoin_target_to_paths(PlannerInfo *root,
 			AppendRelInfo **appinfos;
 			int			nappinfos;
 			List	   *child_scanjoin_targets = NIL;
-			ListCell   *lc;
 
 			Assert(child_rel != NULL);
 

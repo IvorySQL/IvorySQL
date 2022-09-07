@@ -106,7 +106,7 @@
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/relfilenodemap.h"
+#include "utils/relfilenumbermap.h"
 
 
 /* entry for a hash table we use to map from xid to our transaction state */
@@ -116,10 +116,10 @@ typedef struct ReorderBufferTXNByIdEnt
 	ReorderBufferTXN *txn;
 } ReorderBufferTXNByIdEnt;
 
-/* data structures for (relfilenode, ctid) => (cmin, cmax) mapping */
+/* data structures for (relfilelocator, ctid) => (cmin, cmax) mapping */
 typedef struct ReorderBufferTupleCidKey
 {
-	RelFileNode relnode;
+	RelFileLocator rlocator;
 	ItemPointerData tid;
 } ReorderBufferTupleCidKey;
 
@@ -349,6 +349,8 @@ ReorderBufferAllocate(void)
 	buffer->by_txn_last_xid = InvalidTransactionId;
 	buffer->by_txn_last_txn = NULL;
 
+	buffer->catchange_ntxns = 0;
+
 	buffer->outbuf = NULL;
 	buffer->outbufsize = 0;
 	buffer->size = 0;
@@ -366,6 +368,7 @@ ReorderBufferAllocate(void)
 
 	dlist_init(&buffer->toplevel_by_lsn);
 	dlist_init(&buffer->txns_by_base_snapshot_lsn);
+	dlist_init(&buffer->catchange_txns);
 
 	/*
 	 * Ensure there's no stale data from prior uses of this slot, in case some
@@ -1526,14 +1529,22 @@ ReorderBufferCleanupTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 	}
 
 	/*
-	 * Remove TXN from its containing list.
+	 * Remove TXN from its containing lists.
 	 *
 	 * Note: if txn is known as subxact, we are deleting the TXN from its
 	 * parent's list of known subxacts; this leaves the parent's nsubxacts
 	 * count too high, but we don't care.  Otherwise, we are deleting the TXN
-	 * from the LSN-ordered list of toplevel TXNs.
+	 * from the LSN-ordered list of toplevel TXNs. We remove the TXN from the
+	 * list of catalog modifying transactions as well.
 	 */
 	dlist_delete(&txn->node);
+	if (rbtxn_has_catalog_changes(txn))
+	{
+		dlist_delete(&txn->catchange_node);
+		rb->catchange_ntxns--;
+
+		Assert(rb->catchange_ntxns >= 0);
+	}
 
 	/* now remove reference from buffer */
 	hash_search(rb->by_txn,
@@ -1643,7 +1654,7 @@ ReorderBufferTruncateTXN(ReorderBuffer *rb, ReorderBufferTXN *txn, bool txn_prep
 	}
 
 	/*
-	 * Destroy the (relfilenode, ctid) hashtable, so that we don't leak any
+	 * Destroy the (relfilelocator, ctid) hashtable, so that we don't leak any
 	 * memory. We could also keep the hash table and update it with new ctid
 	 * values, but this seems simpler and good enough for now.
 	 */
@@ -1673,7 +1684,7 @@ ReorderBufferTruncateTXN(ReorderBuffer *rb, ReorderBufferTXN *txn, bool txn_prep
 }
 
 /*
- * Build a hash with a (relfilenode, ctid) -> (cmin, cmax) mapping for use by
+ * Build a hash with a (relfilelocator, ctid) -> (cmin, cmax) mapping for use by
  * HeapTupleSatisfiesHistoricMVCC.
  */
 static void
@@ -1711,7 +1722,7 @@ ReorderBufferBuildTupleCidHash(ReorderBuffer *rb, ReorderBufferTXN *txn)
 		/* be careful about padding */
 		memset(&key, 0, sizeof(ReorderBufferTupleCidKey));
 
-		key.relnode = change->data.tuplecid.node;
+		key.rlocator = change->data.tuplecid.locator;
 
 		ItemPointerCopy(&change->data.tuplecid.tid,
 						&key.tid);
@@ -2085,6 +2096,8 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 			Relation	relation = NULL;
 			Oid			reloid;
 
+			CHECK_FOR_INTERRUPTS();
+
 			/*
 			 * We can't call start stream callback before processing first
 			 * change.
@@ -2140,36 +2153,36 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				case REORDER_BUFFER_CHANGE_DELETE:
 					Assert(snapshot_now);
 
-					reloid = RelidByRelfilenode(change->data.tp.relnode.spcNode,
-												change->data.tp.relnode.relNode);
+					reloid = RelidByRelfilenumber(change->data.tp.rlocator.spcOid,
+												  change->data.tp.rlocator.relNumber);
 
 					/*
 					 * Mapped catalog tuple without data, emitted while
 					 * catalog table was in the process of being rewritten. We
-					 * can fail to look up the relfilenode, because the
+					 * can fail to look up the relfilenumber, because the
 					 * relmapper has no "historic" view, in contrast to the
 					 * normal catalog during decoding. Thus repeated rewrites
 					 * can cause a lookup failure. That's OK because we do not
 					 * decode catalog changes anyway. Normally such tuples
 					 * would be skipped over below, but we can't identify
 					 * whether the table should be logically logged without
-					 * mapping the relfilenode to the oid.
+					 * mapping the relfilenumber to the oid.
 					 */
 					if (reloid == InvalidOid &&
 						change->data.tp.newtuple == NULL &&
 						change->data.tp.oldtuple == NULL)
 						goto change_done;
 					else if (reloid == InvalidOid)
-						elog(ERROR, "could not map filenode \"%s\" to relation OID",
-							 relpathperm(change->data.tp.relnode,
+						elog(ERROR, "could not map filenumber \"%s\" to relation OID",
+							 relpathperm(change->data.tp.rlocator,
 										 MAIN_FORKNUM));
 
 					relation = RelationIdGetRelation(reloid);
 
 					if (!RelationIsValid(relation))
-						elog(ERROR, "could not open relation with OID %u (for filenode \"%s\")",
+						elog(ERROR, "could not open relation with OID %u (for filenumber \"%s\")",
 							 reloid,
-							 relpathperm(change->data.tp.relnode,
+							 relpathperm(change->data.tp.rlocator,
 										 MAIN_FORKNUM));
 
 					if (!RelationIsLogicallyLogged(relation))
@@ -3157,7 +3170,7 @@ ReorderBufferChangeMemoryUpdate(ReorderBuffer *rb,
 }
 
 /*
- * Add new (relfilenode, tid) -> (cmin, cmax) mappings.
+ * Add new (relfilelocator, tid) -> (cmin, cmax) mappings.
  *
  * We do not include this change type in memory accounting, because we
  * keep CIDs in a separate list and do not evict them when reaching
@@ -3165,7 +3178,7 @@ ReorderBufferChangeMemoryUpdate(ReorderBuffer *rb,
  */
 void
 ReorderBufferAddNewTupleCids(ReorderBuffer *rb, TransactionId xid,
-							 XLogRecPtr lsn, RelFileNode node,
+							 XLogRecPtr lsn, RelFileLocator locator,
 							 ItemPointerData tid, CommandId cmin,
 							 CommandId cmax, CommandId combocid)
 {
@@ -3174,7 +3187,7 @@ ReorderBufferAddNewTupleCids(ReorderBuffer *rb, TransactionId xid,
 
 	txn = ReorderBufferTXNByXid(rb, xid, true, NULL, lsn, true);
 
-	change->data.tuplecid.node = node;
+	change->data.tuplecid.locator = locator;
 	change->data.tuplecid.tid = tid;
 	change->data.tuplecid.cmin = cmin;
 	change->data.tuplecid.cmax = cmax;
@@ -3275,10 +3288,16 @@ ReorderBufferXidSetCatalogChanges(ReorderBuffer *rb, TransactionId xid,
 								  XLogRecPtr lsn)
 {
 	ReorderBufferTXN *txn;
+	ReorderBufferTXN *toptxn;
 
 	txn = ReorderBufferTXNByXid(rb, xid, true, NULL, lsn, true);
 
-	txn->txn_flags |= RBTXN_HAS_CATALOG_CHANGES;
+	if (!rbtxn_has_catalog_changes(txn))
+	{
+		txn->txn_flags |= RBTXN_HAS_CATALOG_CHANGES;
+		dlist_push_tail(&rb->catchange_txns, &txn->catchange_node);
+		rb->catchange_ntxns++;
+	}
 
 	/*
 	 * Mark top-level transaction as having catalog changes too if one of its
@@ -3286,8 +3305,52 @@ ReorderBufferXidSetCatalogChanges(ReorderBuffer *rb, TransactionId xid,
 	 * conveniently check just top-level transaction and decide whether to
 	 * build the hash table or not.
 	 */
-	if (txn->toptxn != NULL)
-		txn->toptxn->txn_flags |= RBTXN_HAS_CATALOG_CHANGES;
+	toptxn = txn->toptxn;
+	if (toptxn != NULL && !rbtxn_has_catalog_changes(toptxn))
+	{
+		toptxn->txn_flags |= RBTXN_HAS_CATALOG_CHANGES;
+		dlist_push_tail(&rb->catchange_txns, &toptxn->catchange_node);
+		rb->catchange_ntxns++;
+	}
+}
+
+/*
+ * Return palloc'ed array of the transactions that have changed catalogs.
+ * The returned array is sorted in xidComparator order.
+ *
+ * The caller must free the returned array when done with it.
+ */
+TransactionId *
+ReorderBufferGetCatalogChangesXacts(ReorderBuffer *rb)
+{
+	dlist_iter	iter;
+	TransactionId *xids = NULL;
+	size_t		xcnt = 0;
+
+	/* Quick return if the list is empty */
+	if (rb->catchange_ntxns == 0)
+	{
+		Assert(dlist_is_empty(&rb->catchange_txns));
+		return NULL;
+	}
+
+	/* Initialize XID array */
+	xids = (TransactionId *) palloc(sizeof(TransactionId) * rb->catchange_ntxns);
+	dlist_foreach(iter, &rb->catchange_txns)
+	{
+		ReorderBufferTXN *txn = dlist_container(ReorderBufferTXN,
+												catchange_node,
+												iter.cur);
+
+		Assert(rbtxn_has_catalog_changes(txn));
+
+		xids[xcnt++] = txn->xid;
+	}
+
+	qsort(xids, xcnt, sizeof(TransactionId), xidComparator);
+
+	Assert(xcnt == rb->catchange_ntxns);
+	return xids;
 }
 
 /*
@@ -4839,7 +4902,7 @@ ReorderBufferToastReset(ReorderBuffer *rb, ReorderBufferTXN *txn)
  *	 need anymore.
  *
  * To resolve those problems we have a per-transaction hash of (cmin,
- * cmax) tuples keyed by (relfilenode, ctid) which contains the actual
+ * cmax) tuples keyed by (relfilelocator, ctid) which contains the actual
  * (cmin, cmax) values. That also takes care of combo CIDs by simply
  * not caring about them at all. As we have the real cmin/cmax values
  * combo CIDs aren't interesting.
@@ -4870,9 +4933,9 @@ DisplayMapping(HTAB *tuplecid_data)
 	while ((ent = (ReorderBufferTupleCidEnt *) hash_seq_search(&hstat)) != NULL)
 	{
 		elog(DEBUG3, "mapping: node: %u/%u/%u tid: %u/%u cmin: %u, cmax: %u",
-			 ent->key.relnode.dbNode,
-			 ent->key.relnode.spcNode,
-			 ent->key.relnode.relNode,
+			 ent->key.rlocator.dbOid,
+			 ent->key.rlocator.spcOid,
+			 ent->key.rlocator.relNumber,
 			 ItemPointerGetBlockNumber(&ent->key.tid),
 			 ItemPointerGetOffsetNumber(&ent->key.tid),
 			 ent->cmin,
@@ -4932,7 +4995,7 @@ ApplyLogicalMappingFile(HTAB *tuplecid_data, Oid relid, const char *fname)
 							path, readBytes,
 							(int32) sizeof(LogicalRewriteMappingData))));
 
-		key.relnode = map.old_node;
+		key.rlocator = map.old_locator;
 		ItemPointerCopy(&map.old_tid,
 						&key.tid);
 
@@ -4947,7 +5010,7 @@ ApplyLogicalMappingFile(HTAB *tuplecid_data, Oid relid, const char *fname)
 		if (!ent)
 			continue;
 
-		key.relnode = map.new_node;
+		key.rlocator = map.new_locator;
 		ItemPointerCopy(&map.new_tid,
 						&key.tid);
 
@@ -5120,10 +5183,10 @@ ResolveCminCmaxDuringDecoding(HTAB *tuplecid_data,
 	Assert(!BufferIsLocal(buffer));
 
 	/*
-	 * get relfilenode from the buffer, no convenient way to access it other
-	 * than that.
+	 * get relfilelocator from the buffer, no convenient way to access it
+	 * other than that.
 	 */
-	BufferGetTag(buffer, &key.relnode, &forkno, &blockno);
+	BufferGetTag(buffer, &key.rlocator, &forkno, &blockno);
 
 	/* tuples can only be in the main fork */
 	Assert(forkno == MAIN_FORKNUM);

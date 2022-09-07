@@ -147,7 +147,7 @@
 					#   sysv
 					#   windows
 					# (change requires restart)
-#dynamic_shared_memory_type = posix	# the default is the first option
+#dynamic_shared_memory_type = posix	# the default is usually the first option
 					# supported by the operating system:
 					#   posix
 					#   sysv
@@ -597,10 +597,7 @@
 					# -1 disables, 0 logs all temp files
 #log_timezone = 'GMT'
 
-
-#------------------------------------------------------------------------------
-# PROCESS TITLE
-#------------------------------------------------------------------------------
+# - Process Title -
 
 #cluster_name = ''			# added to process titles if nonempty
 					# (change requires restart)

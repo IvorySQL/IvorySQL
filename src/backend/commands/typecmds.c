@@ -2098,12 +2098,9 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 	/* n-arg constructor - vararg */
 	argtypes = buildoidvector(&rangeArrayOid, 1);
 	allParamTypes = ObjectIdGetDatum(rangeArrayOid);
-	allParameterTypes = construct_array(&allParamTypes,
-										1, OIDOID,
-										sizeof(Oid), true, TYPALIGN_INT);
+	allParameterTypes = construct_array_builtin(&allParamTypes, 1, OIDOID);
 	paramModes = CharGetDatum(FUNC_PARAM_VARIADIC);
-	parameterModes = construct_array(&paramModes, 1, CHAROID,
-									 1, true, TYPALIGN_CHAR);
+	parameterModes = construct_array_builtin(&paramModes, 1, CHAROID);
 	myself = ProcedureCreate(name,	/* name: same as multirange type */
 							 namespace,
 							 false, /* replace */
@@ -2779,9 +2776,9 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 	Relation	rel;
 	char	   *defaultValue;
 	Node	   *defaultExpr = NULL; /* NULL if no default specified */
-	Datum		new_record[Natts_pg_type];
-	bool		new_record_nulls[Natts_pg_type];
-	bool		new_record_repl[Natts_pg_type];
+	Datum		new_record[Natts_pg_type] = {0};
+	bool		new_record_nulls[Natts_pg_type] = {0};
+	bool		new_record_repl[Natts_pg_type] = {0};
 	HeapTuple	newtuple;
 	Form_pg_type typTup;
 	ObjectAddress address;
@@ -2802,9 +2799,6 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 	checkDomainOwner(tup);
 
 	/* Setup new tuple */
-	MemSet(new_record, (Datum) 0, sizeof(new_record));
-	MemSet(new_record_nulls, false, sizeof(new_record_nulls));
-	MemSet(new_record_repl, false, sizeof(new_record_repl));
 
 	/* Store the new default into the tuple */
 	if (defaultRaw)
@@ -3715,7 +3709,7 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 	 * Domains don't allow variables (this is probably dead code now that
 	 * add_missing_from is history, but let's be sure).
 	 */
-	if (list_length(pstate->p_rtable) != 0 ||
+	if (pstate->p_rtable != NIL ||
 		contain_var_clause(expr))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
@@ -3786,7 +3780,6 @@ replace_domain_constraint_value(ParseState *pstate, ColumnRef *cref)
 		Node	   *field1 = (Node *) linitial(cref->fields);
 		char	   *colname;
 
-		Assert(IsA(field1, String));
 		colname = strVal(field1);
 		if (strcmp(colname, "value") == 0)
 		{

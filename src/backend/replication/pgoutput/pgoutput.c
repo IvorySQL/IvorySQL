@@ -16,6 +16,7 @@
 #include "catalog/partition.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_rel.h"
+#include "catalog/pg_subscription.h"
 #include "commands/defrem.h"
 #include "executor/executor.h"
 #include "fmgr.h"
@@ -34,8 +35,6 @@
 #include "utils/varlena.h"
 
 PG_MODULE_MAGIC;
-
-extern void _PG_output_plugin_init(OutputPluginCallbacks *cb);
 
 static void pgoutput_startup(LogicalDecodingContext *ctx,
 							 OutputPluginOptions *opt, bool is_init);
@@ -81,6 +80,7 @@ static void pgoutput_stream_prepare_txn(LogicalDecodingContext *ctx,
 
 static bool publications_valid;
 static bool in_streaming;
+static bool publish_no_origin;
 
 static List *LoadPublications(List *pubnames);
 static void publication_invalidation_cb(Datum arg, int cacheid,
@@ -287,6 +287,7 @@ parse_output_parameters(List *options, PGOutputData *data)
 	bool		messages_option_given = false;
 	bool		streaming_given = false;
 	bool		two_phase_option_given = false;
+	bool		origin_option_given = false;
 
 	data->binary = false;
 	data->streaming = false;
@@ -380,6 +381,24 @@ parse_output_parameters(List *options, PGOutputData *data)
 
 			data->two_phase = defGetBoolean(defel);
 		}
+		else if (strcmp(defel->defname, "origin") == 0)
+		{
+			if (origin_option_given)
+				ereport(ERROR,
+						errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("conflicting or redundant options"));
+			origin_option_given = true;
+
+			data->origin = defGetString(defel);
+			if (pg_strcasecmp(data->origin, LOGICALREP_ORIGIN_NONE) == 0)
+				publish_no_origin = true;
+			else if (pg_strcasecmp(data->origin, LOGICALREP_ORIGIN_ANY) == 0)
+				publish_no_origin = false;
+			else
+				ereport(ERROR,
+						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("unrecognized origin value: \"%s\"", data->origin));
+		}
 		else
 			elog(ERROR, "unrecognized pgoutput option: %s", defel->defname);
 	}
@@ -431,7 +450,7 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 					 errmsg("client sent proto_version=%d but we only support protocol %d or higher",
 							data->protocol_version, LOGICALREP_PROTO_MIN_VERSION_NUM)));
 
-		if (list_length(data->publication_names) < 1)
+		if (data->publication_names == NIL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("publication_names parameter missing")));
@@ -1698,12 +1717,16 @@ pgoutput_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 }
 
 /*
- * Currently we always forward.
+ * Return true if the data is associated with an origin and the user has
+ * requested the changes that don't have an origin, false otherwise.
  */
 static bool
 pgoutput_origin_filter(LogicalDecodingContext *ctx,
 					   RepOriginId origin_id)
 {
+	if (publish_no_origin && origin_id != InvalidRepOriginId)
+		return true;
+
 	return false;
 }
 
@@ -1923,15 +1946,7 @@ init_rel_sync_cache(MemoryContext cachectx)
 static bool
 get_schema_sent_in_streamed_txn(RelationSyncEntry *entry, TransactionId xid)
 {
-	ListCell   *lc;
-
-	foreach(lc, entry->streamed_txns)
-	{
-		if (xid == (uint32) lfirst_int(lc))
-			return true;
-	}
-
-	return false;
+	return list_member_xid(entry->streamed_txns, xid);
 }
 
 /*
@@ -1945,7 +1960,7 @@ set_schema_sent_in_streamed_txn(RelationSyncEntry *entry, TransactionId xid)
 
 	oldctx = MemoryContextSwitchTo(CacheMemoryContext);
 
-	entry->streamed_txns = lappend_int(entry->streamed_txns, xid);
+	entry->streamed_txns = lappend_xid(entry->streamed_txns, xid);
 
 	MemoryContextSwitchTo(oldctx);
 }
@@ -2248,7 +2263,7 @@ cleanup_rel_sync_cache(TransactionId xid, bool is_commit)
 		 */
 		foreach(lc, entry->streamed_txns)
 		{
-			if (xid == (uint32) lfirst_int(lc))
+			if (xid == lfirst_xid(lc))
 			{
 				if (is_commit)
 					entry->schema_sent = true;

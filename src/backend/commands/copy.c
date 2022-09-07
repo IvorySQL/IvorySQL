@@ -273,6 +273,12 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 	{
 		Assert(stmt->query);
 
+		/* MERGE is allowed by parser, but unimplemented. Reject for now */
+		if (IsA(stmt->query, MergeStmt))
+			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("MERGE not supported in COPY"));
+
 		query = makeNode(RawStmt);
 		query->stmt = stmt->query;
 		query->stmt_location = stmt_location;
@@ -321,7 +327,7 @@ static CopyHeaderChoice
 defGetCopyHeaderChoice(DefElem *def, bool is_from)
 {
 	/*
-	 * If no parameter given, assume "true" is meant.
+	 * If no parameter value given, assume "true" is meant.
 	 */
 	if (def->arg == NULL)
 		return COPY_HEADER_TRUE;

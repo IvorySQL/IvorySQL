@@ -38,9 +38,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#ifdef HAVE_NETINET_TCP_H
 #include <netinet/tcp.h>
-#endif
 #include <arpa/inet.h>
 #endif
 
@@ -1938,7 +1936,7 @@ err:
 int
 PQdefaultSSLKeyPassHook_OpenSSL(char *buf, int size, PGconn *conn)
 {
-	if (conn->sslpassword)
+	if (conn && conn->sslpassword)
 	{
 		if (strlen(conn->sslpassword) + 1 > size)
 			fprintf(stderr, libpq_gettext("WARNING: sslpassword truncated\n"));

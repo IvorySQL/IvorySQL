@@ -288,9 +288,9 @@ Boot_DeclareIndexStmt:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = InvalidOid;
-					stmt->oldNode = InvalidOid;
+					stmt->oldNumber = InvalidRelFileNumber;
 					stmt->oldCreateSubid = InvalidSubTransactionId;
-					stmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
+					stmt->oldFirstRelfilelocatorSubid = InvalidSubTransactionId;
 					stmt->unique = false;
 					stmt->primary = false;
 					stmt->isconstraint = false;
@@ -340,9 +340,9 @@ Boot_DeclareUniqueIndexStmt:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = InvalidOid;
-					stmt->oldNode = InvalidOid;
+					stmt->oldNumber = InvalidRelFileNumber;
 					stmt->oldCreateSubid = InvalidSubTransactionId;
-					stmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
+					stmt->oldFirstRelfilelocatorSubid = InvalidSubTransactionId;
 					stmt->unique = true;
 					stmt->primary = false;
 					stmt->isconstraint = false;
@@ -489,5 +489,3 @@ boot_ident:
 		| XNULL			{ $$ = pstrdup($1); }
 		;
 %%
-
-#include "bootscanner.c"

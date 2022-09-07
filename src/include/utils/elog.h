@@ -16,6 +16,8 @@
 
 #include <setjmp.h>
 
+#include "lib/stringinfo.h"
+
 /* Error level codes */
 #define DEBUG5		10			/* Debugging messages, in categories of
 								 * decreasing detail. */
@@ -138,7 +140,7 @@
 		if (__builtin_constant_p(elevel) && (elevel) >= ERROR ? \
 			errstart_cold(elevel, domain) : \
 			errstart(elevel, domain)) \
-			__VA_ARGS__, errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
+			__VA_ARGS__, errfinish(__FILE__, __LINE__, __func__); \
 		if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 			pg_unreachable(); \
 	} while(0)
@@ -148,7 +150,7 @@
 		const int elevel_ = (elevel); \
 		pg_prevent_errno_in_scope(); \
 		if (errstart(elevel_, domain)) \
-			__VA_ARGS__, errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
+			__VA_ARGS__, errfinish(__FILE__, __LINE__, __func__); \
 		if (elevel_ >= ERROR) \
 			pg_unreachable(); \
 	} while(0)
@@ -439,6 +441,8 @@ extern PGDLLIMPORT bool syslog_split_messages;
 #define LOG_DESTINATION_JSONLOG	16
 
 /* Other exported functions */
+extern void log_status_format(StringInfo buf, const char *format,
+							  ErrorData *edata);
 extern void DebugFileOpen(void);
 extern char *unpack_sql_state(int sql_state);
 extern bool in_error_recursion_trouble(void);

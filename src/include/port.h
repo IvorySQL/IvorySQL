@@ -285,7 +285,6 @@ extern int	pgunlink(const char *path);
 #if defined(WIN32) && !defined(__CYGWIN__)
 extern int	pgsymlink(const char *oldpath, const char *newpath);
 extern int	pgreadlink(const char *path, char *buf, size_t size);
-extern bool pgwin32_is_junction(const char *path);
 
 #define symlink(oldpath, newpath)	pgsymlink(oldpath, newpath)
 #define readlink(path, buf, size)	pgreadlink(path, buf, size)
@@ -329,11 +328,6 @@ extern FILE *pgwin32_popen(const char *command, const char *type);
 #define popen(a,b) pgwin32_popen(a,b)
 #define pclose(a) _pclose(a)
 
-/* New versions of MingW have gettimeofday, old mingw and msvc don't */
-#ifndef HAVE_GETTIMEOFDAY
-/* Last parameter not used */
-extern int	gettimeofday(struct timeval *tp, struct timezone *tzp);
-#endif
 #else							/* !WIN32 */
 
 /*
@@ -367,10 +361,6 @@ extern int	gettimeofday(struct timeval *tp, struct timezone *tzp);
 #define pgoff_t off_t
 #endif
 
-#ifndef HAVE_FLS
-extern int	fls(int mask);
-#endif
-
 #ifndef HAVE_GETPEEREID
 /* On Windows, Perl might have incompatible definitions of uid_t and gid_t. */
 #ifndef PLPERL_HAVE_UID_GID
@@ -398,16 +388,13 @@ extern int	getpeereid(int sock, uid_t *uid, gid_t *gid);
 extern void explicit_bzero(void *buf, size_t len);
 #endif
 
-#ifndef HAVE_STRTOF
-extern float strtof(const char *nptr, char **endptr);
-#endif
-
 #ifdef HAVE_BUGGY_STRTOF
 extern float pg_strtof(const char *nptr, char **endptr);
 #define strtof(a,b) (pg_strtof((a),(b)))
 #endif
 
-#ifndef HAVE_LINK
+#ifdef WIN32
+/* src/port/win32link.c */
 extern int	link(const char *src, const char *dst);
 #endif
 
@@ -421,25 +408,6 @@ extern char *mkdtemp(char *path);
 extern int	inet_aton(const char *cp, struct in_addr *addr);
 #endif
 
-/*
- * Windows and older Unix don't have pread(2) and pwrite(2).  We have
- * replacement functions, but they have slightly different semantics so we'll
- * use a name with a pg_ prefix to avoid confusion.
- */
-#ifdef HAVE_PREAD
-#define pg_pread pread
-#else
-extern ssize_t pg_pread(int fd, void *buf, size_t nbyte, off_t offset);
-#endif
-
-#ifdef HAVE_PWRITE
-#define pg_pwrite pwrite
-#else
-extern ssize_t pg_pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
-#endif
-
-/* For pg_pwritev() and pg_preadv(), see port/pg_iovec.h. */
-
 #if !HAVE_DECL_STRLCAT
 extern size_t strlcat(char *dst, const char *src, size_t siz);
 #endif
@@ -450,37 +418,6 @@ extern size_t strlcpy(char *dst, const char *src, size_t siz);
 
 #if !HAVE_DECL_STRNLEN
 extern size_t strnlen(const char *str, size_t maxlen);
-#endif
-
-#ifndef HAVE_SETENV
-extern int	setenv(const char *name, const char *value, int overwrite);
-#endif
-
-#ifndef HAVE_UNSETENV
-extern int	unsetenv(const char *name);
-#endif
-
-#ifndef HAVE_DLOPEN
-extern void *dlopen(const char *file, int mode);
-extern void *dlsym(void *handle, const char *symbol);
-extern int	dlclose(void *handle);
-extern char *dlerror(void);
-#endif
-
-/*
- * In some older systems, the RTLD_NOW flag isn't defined and the mode
- * argument to dlopen must always be 1.
- */
-#if !HAVE_DECL_RTLD_NOW
-#define RTLD_NOW 1
-#endif
-
-/*
- * The RTLD_GLOBAL flag is wanted if available, but it doesn't exist
- * everywhere.  If it doesn't exist, set it to 0 so it has no effect.
- */
-#if !HAVE_DECL_RTLD_GLOBAL
-#define RTLD_GLOBAL 0
 #endif
 
 /* thread.c */
@@ -499,6 +436,9 @@ typedef int (*qsort_arg_comparator) (const void *a, const void *b, void *arg);
 
 extern void qsort_arg(void *base, size_t nel, size_t elsize,
 					  qsort_arg_comparator cmp, void *arg);
+
+extern void qsort_interruptible(void *base, size_t nel, size_t elsize,
+								qsort_arg_comparator cmp, void *arg);
 
 extern void *bsearch_arg(const void *key, const void *base,
 						 size_t nmemb, size_t size,
@@ -543,5 +483,25 @@ extern char *escape_single_quotes_ascii(const char *src);
 extern char *wait_result_to_str(int exit_status);
 extern bool wait_result_is_signal(int exit_status, int signum);
 extern bool wait_result_is_any_signal(int exit_status, bool include_command_not_found);
+
+/*
+ * Interfaces that we assume all Unix system have.  We retain individual macros
+ * for better documentation.
+ *
+ * For symlink-related functions, there is often no need to test these macros,
+ * because we provided basic support on Windows that can work with absolute
+ * paths to directories.  Code that wants to test for complete symlink support
+ * (including relative paths and non-directories) should be conditional on
+ * HAVE_READLINK or HAVE_SYMLINK.
+ */
+#ifndef WIN32
+#define HAVE_GETRLIMIT 1
+#define HAVE_POLL 1
+#define HAVE_POLL_H 1
+#define HAVE_READLINK 1
+#define HAVE_SETSID 1
+#define HAVE_SHM_OPEN 1
+#define HAVE_SYMLINK 1
+#endif
 
 #endif							/* PG_PORT_H */

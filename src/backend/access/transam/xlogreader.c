@@ -576,10 +576,11 @@ XLogDecodeNextRecord(XLogReaderState *state, bool nonblocking)
 		/*
 		 * Caller supplied a position to start at.
 		 *
-		 * In this case, NextRecPtr should already be pointing to a valid
-		 * record starting position.
+		 * In this case, NextRecPtr should already be pointing either to a
+		 * valid record starting position or alternatively to the beginning of
+		 * a page. See the header comments for XLogBeginRead.
 		 */
-		Assert(XRecOffIsValid(RecPtr));
+		Assert(RecPtr % XLOG_BLCKSZ == 0 || XRecOffIsValid(RecPtr));
 		randAccess = true;
 	}
 
@@ -987,6 +988,13 @@ ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr, int reqLen)
 		return state->readLen;
 
 	/*
+	 * Invalidate contents of internal buffer before read attempt.  Just set
+	 * the length to 0, rather than a full XLogReaderInvalReadState(), so we
+	 * don't forget the segment we last successfully read.
+	 */
+	state->readLen = 0;
+
+	/*
 	 * Data is not in our buffer.
 	 *
 	 * Every time we actually read the segment, even if we looked at parts of
@@ -1066,11 +1074,8 @@ ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr, int reqLen)
 	return readLen;
 
 err:
-	if (state->errormsg_buf[0] != '\0')
-	{
-		state->errormsg_deferred = true;
-		XLogReaderInvalReadState(state);
-	}
+	XLogReaderInvalReadState(state);
+
 	return XLREAD_FAIL;
 }
 
@@ -1323,6 +1328,16 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 }
 
 /*
+ * Forget about an error produced by XLogReaderValidatePageHeader().
+ */
+void
+XLogReaderResetError(XLogReaderState *state)
+{
+	state->errormsg_buf[0] = '\0';
+	state->errormsg_deferred = false;
+}
+
+/*
  * Find the first record with an lsn >= RecPtr.
  *
  * This is different from XLogBeginRead() in that RecPtr doesn't need to point
@@ -1514,7 +1529,7 @@ WALRead(XLogReaderState *state,
 
 		/* Reset errno first; eases reporting non-errno-affecting errors */
 		errno = 0;
-		readbytes = pg_pread(state->seg.ws_file, p, segbytes, (off_t) startoff);
+		readbytes = pread(state->seg.ws_file, p, segbytes, (off_t) startoff);
 
 #ifndef FRONTEND
 		pgstat_report_wait_end();
@@ -1638,7 +1653,7 @@ DecodeXLogRecord(XLogReaderState *state,
 	char	   *out;
 	uint32		remaining;
 	uint32		datatotal;
-	RelFileNode *rnode = NULL;
+	RelFileLocator *rlocator = NULL;
 	uint8		block_id;
 
 	decoded->header = *record;
@@ -1823,12 +1838,12 @@ DecodeXLogRecord(XLogReaderState *state,
 			}
 			if (!(fork_flags & BKPBLOCK_SAME_REL))
 			{
-				COPY_HEADER_FIELD(&blk->rnode, sizeof(RelFileNode));
-				rnode = &blk->rnode;
+				COPY_HEADER_FIELD(&blk->rlocator, sizeof(RelFileLocator));
+				rlocator = &blk->rlocator;
 			}
 			else
 			{
-				if (rnode == NULL)
+				if (rlocator == NULL)
 				{
 					report_invalid_record(state,
 										  "BKPBLOCK_SAME_REL set but no previous rel at %X/%X",
@@ -1836,7 +1851,7 @@ DecodeXLogRecord(XLogReaderState *state,
 					goto err;
 				}
 
-				blk->rnode = *rnode;
+				blk->rlocator = *rlocator;
 			}
 			COPY_HEADER_FIELD(&blk->blkno, sizeof(BlockNumber));
 		}
@@ -1926,10 +1941,11 @@ err:
  */
 void
 XLogRecGetBlockTag(XLogReaderState *record, uint8 block_id,
-				   RelFileNode *rnode, ForkNumber *forknum, BlockNumber *blknum)
+				   RelFileLocator *rlocator, ForkNumber *forknum,
+				   BlockNumber *blknum)
 {
-	if (!XLogRecGetBlockTagExtended(record, block_id, rnode, forknum, blknum,
-									NULL))
+	if (!XLogRecGetBlockTagExtended(record, block_id, rlocator, forknum,
+									blknum, NULL))
 	{
 #ifndef FRONTEND
 		elog(ERROR, "failed to locate backup block with ID %d in WAL record",
@@ -1945,13 +1961,13 @@ XLogRecGetBlockTag(XLogReaderState *record, uint8 block_id,
  * Returns information about the block that a block reference refers to,
  * optionally including the buffer that the block may already be in.
  *
- * If the WAL record contains a block reference with the given ID, *rnode,
+ * If the WAL record contains a block reference with the given ID, *rlocator,
  * *forknum, *blknum and *prefetch_buffer are filled in (if not NULL), and
  * returns true.  Otherwise returns false.
  */
 bool
 XLogRecGetBlockTagExtended(XLogReaderState *record, uint8 block_id,
-						   RelFileNode *rnode, ForkNumber *forknum,
+						   RelFileLocator *rlocator, ForkNumber *forknum,
 						   BlockNumber *blknum,
 						   Buffer *prefetch_buffer)
 {
@@ -1961,8 +1977,8 @@ XLogRecGetBlockTagExtended(XLogReaderState *record, uint8 block_id,
 		return false;
 
 	bkpb = &record->record->blocks[block_id];
-	if (rnode)
-		*rnode = bkpb->rnode;
+	if (rlocator)
+		*rlocator = bkpb->rlocator;
 	if (forknum)
 		*forknum = bkpb->forknum;
 	if (blknum)

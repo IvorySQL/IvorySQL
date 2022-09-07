@@ -442,6 +442,25 @@ SELECT * FROM ft1 WHERE CASE c3 WHEN c6 THEN true ELSE c3 < 'bar' END;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM ft1 WHERE CASE c3 COLLATE "C" WHEN c6 THEN true ELSE c3 < 'bar' END;
 
+-- a regconfig constant referring to this text search configuration
+-- is initially unshippable
+CREATE TEXT SEARCH CONFIGURATION public.custom_search
+  (COPY = pg_catalog.english);
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+-- but if it's in a shippable extension, it can be shipped
+ALTER EXTENSION postgres_fdw ADD TEXT SEARCH CONFIGURATION public.custom_search;
+-- however, that doesn't flush the shippability cache, so do a quick reconnect
+\c -
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+
 -- ===================================================================
 -- JOIN queries
 -- ===================================================================
@@ -924,9 +943,11 @@ alter extension postgres_fdw add operator public.>^(int, int);
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- Now this will be pushed as sort operator is part of the extension.
+alter server loopback options (add fdw_tuple_cost '0.5');
 explain (verbose, costs off)
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
+alter server loopback options (drop fdw_tuple_cost);
 
 -- This should be pushed too.
 explain (verbose, costs off)
@@ -1484,6 +1505,14 @@ UPDATE rw_view SET b = b + 15;
 UPDATE rw_view SET b = b + 15; -- ok
 SELECT * FROM foreign_tbl;
 
+-- We don't allow batch insert when there are any WCO constraints
+ALTER SERVER loopback OPTIONS (ADD batch_size '10');
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO rw_view VALUES (0, 15), (0, 5);
+INSERT INTO rw_view VALUES (0, 15), (0, 5); -- should fail
+SELECT * FROM foreign_tbl;
+ALTER SERVER loopback OPTIONS (DROP batch_size);
+
 DROP FOREIGN TABLE foreign_tbl CASCADE;
 DROP TRIGGER row_before_insupd_trigger ON base_tbl;
 DROP TABLE base_tbl;
@@ -1521,6 +1550,14 @@ EXPLAIN (VERBOSE, COSTS OFF)
 UPDATE rw_view SET b = b + 15;
 UPDATE rw_view SET b = b + 15; -- ok
 SELECT * FROM foreign_tbl;
+
+-- We don't allow batch insert when there are any WCO constraints
+ALTER SERVER loopback OPTIONS (ADD batch_size '10');
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO rw_view VALUES (0, 15), (0, 5);
+INSERT INTO rw_view VALUES (0, 15), (0, 5); -- should fail
+SELECT * FROM foreign_tbl;
+ALTER SERVER loopback OPTIONS (DROP batch_size);
 
 DROP FOREIGN TABLE foreign_tbl CASCADE;
 DROP TRIGGER row_before_insupd_trigger ON child_tbl;
@@ -1595,9 +1632,9 @@ BEGIN
 	RETURN NULL;
 END;$$;
 
-CREATE TRIGGER trig_stmt_before BEFORE DELETE OR INSERT OR UPDATE ON rem1
+CREATE TRIGGER trig_stmt_before BEFORE DELETE OR INSERT OR UPDATE OR TRUNCATE ON rem1
 	FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
-CREATE TRIGGER trig_stmt_after AFTER DELETE OR INSERT OR UPDATE ON rem1
+CREATE TRIGGER trig_stmt_after AFTER DELETE OR INSERT OR UPDATE OR TRUNCATE ON rem1
 	FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
 
 CREATE OR REPLACE FUNCTION trigger_data()  RETURNS trigger
@@ -1652,6 +1689,7 @@ delete from rem1;
 insert into rem1 values(1,'insert');
 update rem1 set f2  = 'update' where f1 = 1;
 update rem1 set f2 = f2 || f2;
+truncate rem1;
 
 
 -- cleanup

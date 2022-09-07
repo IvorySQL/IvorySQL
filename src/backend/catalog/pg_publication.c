@@ -115,8 +115,8 @@ check_publication_add_schema(Oid schemaid)
  * Returns if relation represented by oid and Form_pg_class entry
  * is publishable.
  *
- * Does same checks as the above, but does not need relation to be opened
- * and also does not throw errors.
+ * Does same checks as check_publication_add_relation() above, but does not
+ * need relation to be opened and also does not throw errors.
  *
  * XXX  This also excludes all tables with relid < FirstNormalObjectId,
  * ie all tables created during initdb.  This mainly affects the preinstalled
@@ -138,6 +138,37 @@ is_publishable_class(Oid relid, Form_pg_class reltuple)
 		!IsCatalogRelationOid(relid) &&
 		reltuple->relpersistence == RELPERSISTENCE_PERMANENT &&
 		relid >= FirstNormalObjectId;
+}
+
+/*
+ * Another variant of is_publishable_class(), taking a Relation.
+ */
+bool
+is_publishable_relation(Relation rel)
+{
+	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel);
+}
+
+/*
+ * SQL-callable variant of the above
+ *
+ * This returns null when the relation does not exist.  This is intended to be
+ * used for example in psql to avoid gratuitous errors when there are
+ * concurrent catalog changes.
+ */
+Datum
+pg_relation_is_publishable(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	HeapTuple	tuple;
+	bool		result;
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (!HeapTupleIsValid(tuple))
+		PG_RETURN_NULL();
+	result = is_publishable_class(relid, (Form_pg_class) GETSTRUCT(tuple));
+	ReleaseSysCache(tuple);
+	PG_RETURN_BOOL(result);
 }
 
 /*
@@ -180,15 +211,6 @@ filter_partitions(List *relids)
 }
 
 /*
- * Another variant of this, taking a Relation.
- */
-bool
-is_publishable_relation(Relation rel)
-{
-	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel);
-}
-
-/*
  * Returns true if any schema is associated with the publication, false if no
  * schema is associated with the publication.
  */
@@ -217,28 +239,6 @@ is_schema_publication(Oid pubid)
 	table_close(pubschsrel, AccessShareLock);
 
 	return result;
-}
-
-/*
- * SQL-callable variant of the above
- *
- * This returns null when the relation does not exist.  This is intended to be
- * used for example in psql to avoid gratuitous errors when there are
- * concurrent catalog changes.
- */
-Datum
-pg_relation_is_publishable(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	HeapTuple	tuple;
-	bool		result;
-
-	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
-	if (!HeapTupleIsValid(tuple))
-		PG_RETURN_NULL();
-	result = is_publishable_class(relid, (Form_pg_class) GETSTRUCT(tuple));
-	ReleaseSysCache(tuple);
-	PG_RETURN_BOOL(result);
 }
 
 /*
@@ -1012,7 +1012,6 @@ GetPublication(Oid pubid)
 	return pub;
 }
 
-
 /*
  * Get Publication using name.
  */
@@ -1024,56 +1023,6 @@ GetPublicationByName(const char *pubname, bool missing_ok)
 	oid = get_publication_oid(pubname, missing_ok);
 
 	return OidIsValid(oid) ? GetPublication(oid) : NULL;
-}
-
-/*
- * get_publication_oid - given a publication name, look up the OID
- *
- * If missing_ok is false, throw an error if name not found.  If true, just
- * return InvalidOid.
- */
-Oid
-get_publication_oid(const char *pubname, bool missing_ok)
-{
-	Oid			oid;
-
-	oid = GetSysCacheOid1(PUBLICATIONNAME, Anum_pg_publication_oid,
-						  CStringGetDatum(pubname));
-	if (!OidIsValid(oid) && !missing_ok)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("publication \"%s\" does not exist", pubname)));
-	return oid;
-}
-
-/*
- * get_publication_name - given a publication Oid, look up the name
- *
- * If missing_ok is false, throw an error if name not found.  If true, just
- * return NULL.
- */
-char *
-get_publication_name(Oid pubid, bool missing_ok)
-{
-	HeapTuple	tup;
-	char	   *pubname;
-	Form_pg_publication pubform;
-
-	tup = SearchSysCache1(PUBLICATIONOID, ObjectIdGetDatum(pubid));
-
-	if (!HeapTupleIsValid(tup))
-	{
-		if (!missing_ok)
-			elog(ERROR, "cache lookup failed for publication %u", pubid);
-		return NULL;
-	}
-
-	pubform = (Form_pg_publication) GETSTRUCT(tup);
-	pubname = pstrdup(NameStr(pubform->pubname));
-
-	ReleaseSysCache(tup);
-
-	return pubname;
 }
 
 /*
@@ -1162,14 +1111,12 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 		HeapTuple	pubtuple = NULL;
 		HeapTuple	rettuple;
 		Oid			relid = list_nth_oid(tables, funcctx->call_cntr);
-		Datum		values[NUM_PUBLICATION_TABLES_ELEM];
-		bool		nulls[NUM_PUBLICATION_TABLES_ELEM];
+		Datum		values[NUM_PUBLICATION_TABLES_ELEM] = {0};
+		bool		nulls[NUM_PUBLICATION_TABLES_ELEM] = {0};
 
 		/*
 		 * Form tuple with appropriate data.
 		 */
-		MemSet(nulls, 0, sizeof(nulls));
-		MemSet(values, 0, sizeof(values));
 
 		publication = GetPublicationByName(pubname, false);
 

@@ -50,6 +50,8 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <netdb.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <signal.h>
@@ -72,7 +74,6 @@
 #include "common/string.h"
 #include "common/username.h"
 #include "fe_utils/string_utils.h"
-#include "getaddrinfo.h"
 #include "getopt_long.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -257,9 +258,6 @@ static char backend_exec[MAXPGPATH];
 static char **replace_token(char **lines,
 							const char *token, const char *replacement);
 
-#ifndef HAVE_UNIX_SOCKETS
-static char **filter_lines_with_token(char **lines, const char *token);
-#endif
 static char **readfile(const char *path);
 static void writefile(char *path, char **lines);
 static FILE *popen_check(const char *command, const char *mode);
@@ -440,36 +438,6 @@ replace_token(char **lines, const char *token, const char *replacement)
 }
 
 /*
- * make a copy of lines without any that contain the token
- *
- * a sort of poor man's grep -v
- */
-#ifndef HAVE_UNIX_SOCKETS
-static char **
-filter_lines_with_token(char **lines, const char *token)
-{
-	int			numlines = 1;
-	int			i,
-				src,
-				dst;
-	char	  **result;
-
-	for (i = 0; lines[i]; i++)
-		numlines++;
-
-	result = (char **) pg_malloc(numlines * sizeof(char *));
-
-	for (src = 0, dst = 0; src < numlines; src++)
-	{
-		if (lines[src] == NULL || strstr(lines[src], token) == NULL)
-			result[dst++] = lines[src];
-	}
-
-	return result;
-}
-#endif
-
-/*
  * get the lines from a text file
  */
 static char **
@@ -542,8 +510,7 @@ popen_check(const char *command, const char *mode)
 {
 	FILE	   *cmdfd;
 
-	fflush(stdout);
-	fflush(stderr);
+	fflush(NULL);
 	errno = 0;
 	cmdfd = popen(command, mode);
 	if (cmdfd == NULL)
@@ -863,11 +830,14 @@ set_null_conf(void)
  * segment in dsm_impl.c; if it doesn't work, we assume it won't work for
  * the postmaster either, and configure the cluster for System V shared
  * memory instead.
+ *
+ * We avoid choosing Solaris's implementation of shm_open() by default.  It
+ * can sleep and fail spuriously under contention.
  */
 static const char *
 choose_dsm_implementation(void)
 {
-#ifdef HAVE_SHM_OPEN
+#if defined(HAVE_SHM_OPEN) && !defined(__sun__)
 	int			ntries = 10;
 	pg_prng_state prng_state;
 
@@ -964,6 +934,7 @@ test_config_settings(void)
 				 test_conns, test_buffs,
 				 dynamic_shared_memory_type,
 				 DEVNULL, DEVNULL);
+		fflush(NULL);
 		status = system(cmd);
 		if (status == 0)
 		{
@@ -1000,6 +971,7 @@ test_config_settings(void)
 				 n_connections, test_buffs,
 				 dynamic_shared_memory_type,
 				 DEVNULL, DEVNULL);
+		fflush(NULL);
 		status = system(cmd);
 		if (status == 0)
 			break;
@@ -1063,12 +1035,8 @@ setup_config(void)
 				 n_buffers * (BLCKSZ / 1024));
 	conflines = replace_token(conflines, "#shared_buffers = 128MB", repltok);
 
-#ifdef HAVE_UNIX_SOCKETS
 	snprintf(repltok, sizeof(repltok), "#unix_socket_directories = '%s'",
 			 DEFAULT_PGSOCKET_DIR);
-#else
-	snprintf(repltok, sizeof(repltok), "#unix_socket_directories = ''");
-#endif
 	conflines = replace_token(conflines, "#unix_socket_directories = '/tmp'",
 							  repltok);
 
@@ -1237,13 +1205,8 @@ setup_config(void)
 
 	conflines = readfile(hba_file);
 
-#ifndef HAVE_UNIX_SOCKETS
-	conflines = filter_lines_with_token(conflines, "@remove-line-for-nolocal@");
-#else
 	conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
-#endif
 
-#ifdef HAVE_IPV6
 
 	/*
 	 * Probe to see if there is really any platform support for IPv6, and
@@ -1285,15 +1248,6 @@ setup_config(void)
 									  "#host    replication     all             ::1");
 		}
 	}
-#else							/* !HAVE_IPV6 */
-	/* If we didn't compile IPV6 support at all, always comment it out */
-	conflines = replace_token(conflines,
-							  "host    all             all             ::1",
-							  "#host    all             all             ::1");
-	conflines = replace_token(conflines,
-							  "host    replication     all             ::1",
-							  "#host    replication     all             ::1");
-#endif							/* HAVE_IPV6 */
 
 	/* Replace default authentication methods */
 	conflines = replace_token(conflines,
@@ -2789,13 +2743,9 @@ create_xlog_or_symlink(void)
 				pg_fatal("could not access directory \"%s\": %m", xlog_dir);
 		}
 
-#ifdef HAVE_SYMLINK
 		if (symlink(xlog_dir, subdirloc) != 0)
 			pg_fatal("could not create symbolic link \"%s\": %m",
 					 subdirloc);
-#else
-		pg_fatal("symlinks are not supported on this platform");
-#endif
 	}
 	else
 	{

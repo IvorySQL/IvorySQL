@@ -832,7 +832,10 @@ ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
 		 * overhead for the hash code, pointer to the next tuple, etc.
 		 */
 		bucket_size = (tupsize * NTUP_PER_BUCKET + sizeof(HashJoinTuple));
-		sbuckets = pg_nextpower2_size_t(hash_table_bytes / bucket_size);
+		if (hash_table_bytes <= bucket_size)
+			sbuckets = 1;		/* avoid pg_nextpower2_size_t(0) */
+		else
+			sbuckets = pg_nextpower2_size_t(hash_table_bytes / bucket_size);
 		sbuckets = Min(sbuckets, max_pointers);
 		nbuckets = (int) sbuckets;
 		nbuckets = pg_nextpower2_32(nbuckets);
@@ -1077,7 +1080,6 @@ static void
 ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 {
 	ParallelHashJoinState *pstate = hashtable->parallel_state;
-	int			i;
 
 	Assert(BarrierPhase(&pstate->build_barrier) == PHJ_BUILD_HASHING_INNER);
 
@@ -1241,7 +1243,7 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 				ExecParallelHashTableSetCurrentBatch(hashtable, 0);
 
 				/* Are any of the new generation of batches exhausted? */
-				for (i = 0; i < hashtable->nbatch; ++i)
+				for (int i = 0; i < hashtable->nbatch; ++i)
 				{
 					ParallelHashJoinBatch *batch = hashtable->batches[i].shared;
 
@@ -2212,12 +2214,14 @@ ExecHashTableResetMatchFlags(HashJoinTable hashtable)
 void
 ExecReScanHash(HashState *node)
 {
+	PlanState  *outerPlan = outerPlanState(node);
+
 	/*
 	 * if chgParam of subnode is not null then plan will be re-scanned by
 	 * first ExecProcNode.
 	 */
-	if (node->ps.lefttree->chgParam == NULL)
-		ExecReScan(node->ps.lefttree);
+	if (outerPlan->chgParam == NULL)
+		ExecReScan(outerPlan);
 }
 
 

@@ -472,6 +472,24 @@ select count(*) from
   (select * from tenk1 y order by y.unique2) y
   on x.thousand = y.unique2 and x.twothousand = y.hundred and x.fivethous = y.unique2;
 
+set enable_hashjoin = 0;
+set enable_nestloop = 0;
+set enable_hashagg = 0;
+
+--
+-- Check that we use the pathkeys from a prefix of the group by / order by
+-- clause for the join pathkeys when that prefix covers all join quals.  We
+-- expect this to lead to an incremental sort for the group by / order by.
+--
+explain (costs off)
+select x.thousand, x.twothousand, count(*)
+from tenk1 x inner join tenk1 y on x.thousand = y.thousand
+group by x.thousand, x.twothousand
+order by x.thousand desc, x.twothousand;
+
+reset enable_hashagg;
+reset enable_nestloop;
+reset enable_hashjoin;
 
 --
 -- Clean up
@@ -519,6 +537,28 @@ select * from t1 left join t2 on (t1.a = t2.a);
 -- Test matching of column name with wrong alias
 
 select t1.x from t1 join t3 on (t1.a = t3.x);
+
+-- Test matching of locking clause with wrong alias
+
+select t1.*, t2.*, unnamed_join.* from
+  t1 join t2 on (t1.a = t2.a), t3 as unnamed_join
+  for update of unnamed_join;
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of unnamed_join;
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of foo;
+
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of foo;
+
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of bar;
 
 --
 -- regression test for 8.1 merge right join bug

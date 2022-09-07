@@ -28,6 +28,7 @@
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_auth_members.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
@@ -76,6 +77,7 @@
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "commands/variable.h"
+#include "funcapi.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteRemove.h"
@@ -173,6 +175,7 @@ static const Oid object_classes[] = {
 	TSTemplateRelationId,		/* OCLASS_TSTEMPLATE */
 	TSConfigRelationId,			/* OCLASS_TSCONFIG */
 	AuthIdRelationId,			/* OCLASS_ROLE */
+	AuthMemRelationId,			/* OCLASS_ROLE_MEMBERSHIP */
 	DatabaseRelationId,			/* OCLASS_DATABASE */
 	TableSpaceRelationId,		/* OCLASS_TBLSPACE */
 	ForeignDataWrapperRelationId,	/* OCLASS_FDW */
@@ -209,6 +212,8 @@ static void deleteOneObject(const ObjectAddress *object,
 static void doDeletion(const ObjectAddress *object, int flags);
 static bool find_expr_references_walker(Node *node,
 										find_expr_references_context *context);
+static void process_function_rte_ref(RangeTblEntry *rte, AttrNumber attnum,
+									 find_expr_references_context *context);
 static void eliminate_duplicate_dependencies(ObjectAddresses *addrs);
 static int	object_address_comparator(const void *a, const void *b);
 static void add_object_address(ObjectClass oclass, Oid objectId, int32 subId,
@@ -1503,6 +1508,7 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_DEFACL:
 		case OCLASS_EVENT_TRIGGER:
 		case OCLASS_TRANSFORM:
+		case OCLASS_ROLE_MEMBERSHIP:
 			DropObjectById(object);
 			break;
 
@@ -1541,9 +1547,8 @@ doDeletion(const ObjectAddress *object, int flags)
  * Accepts the same flags as performDeletion (though currently only
  * PERFORM_DELETION_CONCURRENTLY does anything).
  *
- * We use LockRelation for relations, LockDatabaseObject for everything
- * else.  Shared-across-databases objects are not currently supported
- * because no caller cares, but could be modified to use LockSharedObject.
+ * We use LockRelation for relations, and otherwise LockSharedObject or
+ * LockDatabaseObject as appropriate for the object type.
  */
 void
 AcquireDeletionLock(const ObjectAddress *object, int flags)
@@ -1561,6 +1566,9 @@ AcquireDeletionLock(const ObjectAddress *object, int flags)
 		else
 			LockRelationOid(object->objectId, AccessExclusiveLock);
 	}
+	else if (object->classId == AuthMemRelationId)
+		LockSharedObject(object->classId, object->objectId, 0,
+						 AccessExclusiveLock);
 	else
 	{
 		/* assume we should lock the whole object not a sub-object */
@@ -1650,12 +1658,11 @@ recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 								bool reverse_self)
 {
 	find_expr_references_context context;
-	RangeTblEntry rte;
+	RangeTblEntry rte = {0};
 
 	context.addrs = new_object_addresses();
 
 	/* We gin up a rather bogus rangetable list to handle Vars */
-	MemSet(&rte, 0, sizeof(rte));
 	rte.type = T_RangeTblEntry;
 	rte.rtekind = RTE_RELATION;
 	rte.relid = relId;
@@ -1784,6 +1791,12 @@ find_expr_references_walker(Node *node,
 			add_object_address(OCLASS_CLASS, rte->relid, var->varattno,
 							   context->addrs);
 		}
+		else if (rte->rtekind == RTE_FUNCTION)
+		{
+			/* Might need to add a dependency on a composite type's column */
+			/* (done out of line, because it's a bit bulky) */
+			process_function_rte_ref(rte, var->varattno, context);
+		}
 
 		/*
 		 * Vars referencing other RTE types require no additional work.  In
@@ -1853,6 +1866,13 @@ find_expr_references_walker(Node *node,
 					if (SearchSysCacheExists1(TYPEOID,
 											  ObjectIdGetDatum(objoid)))
 						add_object_address(OCLASS_TYPE, objoid, 0,
+										   context->addrs);
+					break;
+				case REGCOLLATIONOID:
+					objoid = DatumGetObjectId(con->constvalue);
+					if (SearchSysCacheExists1(COLLOID,
+											  ObjectIdGetDatum(objoid)))
+						add_object_address(OCLASS_COLLATION, objoid, 0,
 										   context->addrs);
 					break;
 				case REGCONFIGOID:
@@ -2349,6 +2369,65 @@ find_expr_references_walker(Node *node,
 
 	return expression_tree_walker(node, find_expr_references_walker,
 								  (void *) context);
+}
+
+/*
+ * find_expr_references_walker subroutine: handle a Var reference
+ * to an RTE_FUNCTION RTE
+ */
+static void
+process_function_rte_ref(RangeTblEntry *rte, AttrNumber attnum,
+						 find_expr_references_context *context)
+{
+	int			atts_done = 0;
+	ListCell   *lc;
+
+	/*
+	 * Identify which RangeTblFunction produces this attnum, and see if it
+	 * returns a composite type.  If so, we'd better make a dependency on the
+	 * referenced column of the composite type (or actually, of its associated
+	 * relation).
+	 */
+	foreach(lc, rte->functions)
+	{
+		RangeTblFunction *rtfunc = (RangeTblFunction *) lfirst(lc);
+
+		if (attnum > atts_done &&
+			attnum <= atts_done + rtfunc->funccolcount)
+		{
+			TupleDesc	tupdesc;
+
+			tupdesc = get_expr_result_tupdesc(rtfunc->funcexpr, true);
+			if (tupdesc && tupdesc->tdtypeid != RECORDOID)
+			{
+				/*
+				 * Named composite type, so individual columns could get
+				 * dropped.  Make a dependency on this specific column.
+				 */
+				Oid			reltype = get_typ_typrelid(tupdesc->tdtypeid);
+
+				Assert(attnum - atts_done <= tupdesc->natts);
+				if (OidIsValid(reltype))	/* can this fail? */
+					add_object_address(OCLASS_CLASS, reltype,
+									   attnum - atts_done,
+									   context->addrs);
+				return;
+			}
+			/* Nothing to do; function's result type is handled elsewhere */
+			return;
+		}
+		atts_done += rtfunc->funccolcount;
+	}
+
+	/* If we get here, must be looking for the ordinality column */
+	if (rte->funcordinality && attnum == atts_done + 1)
+		return;
+
+	/* this probably can't happen ... */
+	ereport(ERROR,
+			(errcode(ERRCODE_UNDEFINED_COLUMN),
+			 errmsg("column %d of relation \"%s\" does not exist",
+					attnum, rte->eref->aliasname)));
 }
 
 /*
@@ -2854,6 +2933,9 @@ getObjectClass(const ObjectAddress *object)
 
 		case AuthIdRelationId:
 			return OCLASS_ROLE;
+
+		case AuthMemRelationId:
+			return OCLASS_ROLE_MEMBERSHIP;
 
 		case DatabaseRelationId:
 			return OCLASS_DATABASE;

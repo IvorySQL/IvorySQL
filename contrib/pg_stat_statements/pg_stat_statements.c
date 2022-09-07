@@ -305,8 +305,6 @@ static bool pgss_save;			/* whether to save stats across shutdown */
 
 /*---- Function declarations ----*/
 
-void		_PG_init(void);
-
 PG_FUNCTION_INFO_V1(pg_stat_statements_reset);
 PG_FUNCTION_INFO_V1(pg_stat_statements_reset_1_7);
 PG_FUNCTION_INFO_V1(pg_stat_statements_1_2);
@@ -399,7 +397,7 @@ _PG_init(void)
 							&pgss_max,
 							5000,
 							100,
-							INT_MAX,
+							INT_MAX / 2,
 							PGC_POSTMASTER,
 							0,
 							NULL,
@@ -809,8 +807,7 @@ error:
 			(errcode_for_file_access(),
 			 errmsg("could not write file \"%s\": %m",
 					PGSS_DUMP_FILE ".tmp")));
-	if (qbuffer)
-		free(qbuffer);
+	free(qbuffer);
 	if (file)
 		FreeFile(file);
 	unlink(PGSS_DUMP_FILE ".tmp");
@@ -1657,8 +1654,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			pgss->extent != extent ||
 			pgss->gc_count != gc_count)
 		{
-			if (qbuffer)
-				free(qbuffer);
+			free(qbuffer);
 			qbuffer = qtext_load_file(&qbuffer_size);
 		}
 	}
@@ -1842,8 +1838,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 
 	LWLockRelease(pgss->lock);
 
-	if (qbuffer)
-		free(qbuffer);
+	free(qbuffer);
 }
 
 /* Number of output arguments (columns) for pg_stat_statements_info */
@@ -1857,8 +1852,8 @@ pg_stat_statements_info(PG_FUNCTION_ARGS)
 {
 	pgssGlobalStats stats;
 	TupleDesc	tupdesc;
-	Datum		values[PG_STAT_STATEMENTS_INFO_COLS];
-	bool		nulls[PG_STAT_STATEMENTS_INFO_COLS];
+	Datum		values[PG_STAT_STATEMENTS_INFO_COLS] = {0};
+	bool		nulls[PG_STAT_STATEMENTS_INFO_COLS] = {0};
 
 	if (!pgss || !pgss_hash)
 		ereport(ERROR,
@@ -1868,9 +1863,6 @@ pg_stat_statements_info(PG_FUNCTION_ARGS)
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
-
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, 0, sizeof(nulls));
 
 	/* Read global statistics for pg_stat_statements */
 	{
@@ -2094,14 +2086,26 @@ qtext_store(const char *query, int query_len,
 
 	*query_offset = off;
 
+	/*
+	 * Don't allow the file to grow larger than what qtext_load_file can
+	 * (theoretically) handle.  This has been seen to be reachable on 32-bit
+	 * platforms.
+	 */
+	if (unlikely(query_len >= MaxAllocHugeSize - off))
+	{
+		errno = EFBIG;			/* not quite right, but it'll do */
+		fd = -1;
+		goto error;
+	}
+
 	/* Now write the data into the successfully-reserved part of the file */
 	fd = OpenTransientFile(PGSS_TEXT_FILE, O_RDWR | O_CREAT | PG_BINARY);
 	if (fd < 0)
 		goto error;
 
-	if (pg_pwrite(fd, query, query_len, off) != query_len)
+	if (pwrite(fd, query, query_len, off) != query_len)
 		goto error;
-	if (pg_pwrite(fd, "\0", 1, off + query_len) != 1)
+	if (pwrite(fd, "\0", 1, off + query_len) != 1)
 		goto error;
 
 	CloseTransientFile(fd);
@@ -2279,8 +2283,14 @@ need_gc_qtexts(void)
 		SpinLockRelease(&s->mutex);
 	}
 
-	/* Don't proceed if file does not exceed 512 bytes per possible entry */
-	if (extent < 512 * pgss_max)
+	/*
+	 * Don't proceed if file does not exceed 512 bytes per possible entry.
+	 *
+	 * Here and in the next test, 32-bit machines have overflow hazards if
+	 * pgss_max and/or mean_query_len are large.  Force the multiplications
+	 * and comparisons to be done in uint64 arithmetic to forestall trouble.
+	 */
+	if ((uint64) extent < (uint64) 512 * pgss_max)
 		return false;
 
 	/*
@@ -2290,7 +2300,7 @@ need_gc_qtexts(void)
 	 * query length in order to prevent garbage collection from thrashing
 	 * uselessly.
 	 */
-	if (extent < pgss->mean_query_len * pgss_max * 2)
+	if ((uint64) extent < (uint64) pgss->mean_query_len * pgss_max * 2)
 		return false;
 
 	return true;
@@ -2446,8 +2456,7 @@ gc_fail:
 	/* clean up resources */
 	if (qfile)
 		FreeFile(qfile);
-	if (qbuffer)
-		free(qbuffer);
+	free(qbuffer);
 
 	/*
 	 * Since the contents of the external file are now uncertain, mark all

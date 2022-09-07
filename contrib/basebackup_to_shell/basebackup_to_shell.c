@@ -11,8 +11,8 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "backup/basebackup_target.h"
 #include "miscadmin.h"
-#include "replication/basebackup_target.h"
 #include "storage/fd.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
@@ -36,8 +36,6 @@ typedef struct bbsink_shell
 	/* Pipe to the running command. */
 	FILE	   *pipe;
 } bbsink_shell;
-
-void		_PG_init(void);
 
 static void *shell_check_detail(char *target, char *target_detail);
 static bbsink *shell_get_sink(bbsink *next_sink, void *detail_arg);

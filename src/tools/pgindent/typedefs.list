@@ -56,7 +56,7 @@ AggregateInstrumentation
 AlenState
 Alias
 AllocBlock
-AllocChunk
+AllocFreeListLink
 AllocPointer
 AllocSet
 AllocSetContext
@@ -373,6 +373,7 @@ CkptTsStatus
 ClientAuthentication_hook_type
 ClientCertMode
 ClientCertName
+ClientConnectionInfo
 ClientData
 ClonePtrType
 ClosePortalStmt
@@ -946,7 +947,6 @@ GatherState
 Gene
 GeneratePruningStepsContext
 GenerationBlock
-GenerationChunk
 GenerationContext
 GenerationPointer
 GenericCosts
@@ -1289,18 +1289,6 @@ JsonQuotes
 JsonReturning
 JsonScalarExpr
 JsonSemAction
-JsonSerializeExpr
-JsonTable
-JsonTableColumn
-JsonTableColumnType
-JsonTableContext
-JsonTableJoinState
-JsonTableParent
-JsonTablePlan
-JsonTablePlanJoinType
-JsonTablePlanType
-JsonTableScanState
-JsonTableSibling
 JsonTokenType
 JsonTransformStringValuesAction
 JsonTypeCategory
@@ -1519,12 +1507,14 @@ MemoizeKey
 MemoizePath
 MemoizeState
 MemoizeTuple
+MemoryChunk
 MemoryContext
 MemoryContextCallback
 MemoryContextCallbackFunction
 MemoryContextCounters
 MemoryContextData
 MemoryContextMethods
+MemoryContextMethodID
 MemoryStatsPrintFunc
 MergeAction
 MergeActionState
@@ -2255,8 +2245,8 @@ ReindexObjectType
 ReindexParams
 ReindexStmt
 ReindexType
-RelFileNode
-RelFileNodeBackend
+RelFileLocator
+RelFileLocatorBackend
 RelIdCacheEnt
 RelInfo
 RelInfoArr
@@ -2274,8 +2264,8 @@ RelationPtr
 RelationSyncEntry
 RelcacheCallbackFunction
 ReleaseMatchCB
-RelfilenodeMapEntry
-RelfilenodeMapKey
+RelfilenumberMapEntry
+RelfilenumberMapKey
 Relids
 RelocationBufferInfo
 RelptrFreePageBtree
@@ -2453,6 +2443,7 @@ SerCommitSeqNo
 SerialControl
 SerializableXactHandle
 SerializedActiveRelMaps
+SerializedClientConnectionInfo
 SerializedRanges
 SerializedReindexState
 SerializedSnapshotData
@@ -2526,7 +2517,6 @@ SingleBoundSortItem
 Size
 SkipPages
 SlabBlock
-SlabChunk
 SlabContext
 SlabSlot
 SlotNumber
@@ -2720,7 +2710,6 @@ TableFunc
 TableFuncRoutine
 TableFuncScan
 TableFuncScanState
-TableFuncType
 TableInfo
 TableLikeClause
 TableSampleClause
@@ -2831,8 +2820,14 @@ TupleHashTable
 TupleQueueReader
 TupleTableSlot
 TupleTableSlotOps
+TuplesortClusterArg
+TuplesortDatumArg
+TuplesortIndexArg
+TuplesortIndexBTreeArg
+TuplesortIndexHashArg
 TuplesortInstrumentation
 TuplesortMethod
+TuplesortPublic
 TuplesortSpaceType
 Tuplesortstate
 Tuplestorestate
@@ -3567,6 +3562,7 @@ printTextFormat
 printTextLineFormat
 printTextLineWrap
 printTextRule
+printXheaderWidthType
 printfunc
 priv_map
 process_file_callback_t
@@ -3877,7 +3873,7 @@ xl_xact_parsed_abort
 xl_xact_parsed_commit
 xl_xact_parsed_prepare
 xl_xact_prepare
-xl_xact_relfilenodes
+xl_xact_relfilelocators
 xl_xact_stats_item
 xl_xact_stats_items
 xl_xact_subxacts

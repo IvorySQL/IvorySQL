@@ -179,16 +179,10 @@
 #define SIGUSR1				30
 #define SIGUSR2				31
 
-/*
- * New versions of MinGW have gettimeofday() and also declare
- * struct timezone to support it.
- */
-#ifndef HAVE_GETTIMEOFDAY
-struct timezone
-{
-	int			tz_minuteswest; /* Minutes west of GMT.  */
-	int			tz_dsttime;		/* Nonzero if DST is ever in effect.  */
-};
+/* MinGW has gettimeofday(), but MSVC doesn't */
+#ifdef _MSC_VER
+/* Last parameter not used */
+extern int	gettimeofday(struct timeval *tp, void *tzp);
 #endif
 
 /* for setitimer in backend/port/win32/timer.c */
@@ -230,7 +224,6 @@ int			setitimer(int which, const struct itimerval *value, struct itimerval *oval
  */
 extern int	pgsymlink(const char *oldpath, const char *newpath);
 extern int	pgreadlink(const char *path, char *buf, size_t size);
-extern bool pgwin32_is_junction(const char *path);
 
 #define symlink(oldpath, newpath)	pgsymlink(oldpath, newpath)
 #define readlink(path, buf, size)	pgreadlink(path, buf, size)
@@ -278,10 +271,11 @@ struct stat						/* This should match struct __stat64 */
 
 extern int	_pgfstat64(int fileno, struct stat *buf);
 extern int	_pgstat64(const char *name, struct stat *buf);
+extern int	_pglstat64(const char *name, struct stat *buf);
 
 #define fstat(fileno, sb)	_pgfstat64(fileno, sb)
 #define stat(path, sb)		_pgstat64(path, sb)
-#define lstat(path, sb)		_pgstat64(path, sb)
+#define lstat(path, sb)		_pglstat64(path, sb)
 
 /* These macros are not provided by older MinGW, nor by MSVC */
 #ifndef S_IRUSR
@@ -326,6 +320,21 @@ extern int	_pgstat64(const char *name, struct stat *buf);
 #ifndef S_ISREG
 #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
 #endif
+
+/*
+ * In order for lstat() to be able to report junction points as symlinks, we
+ * need to hijack a bit in st_mode, since neither MSVC nor MinGW provides
+ * S_ISLNK and there aren't any spare bits.  We'll steal the one for character
+ * devices, because we don't otherwise make use of those.
+ */
+#ifdef S_ISLNK
+#error "S_ISLNK is already defined"
+#endif
+#ifdef S_IFLNK
+#error "S_IFLNK is already defined"
+#endif
+#define S_IFLNK S_IFCHR
+#define S_ISLNK(m) (((m) & S_IFLNK) == S_IFLNK)
 
 /*
  * Supplement to <fcntl.h>.
@@ -495,6 +504,15 @@ extern int	pgwin32_ReserveSharedMemoryRegion(HANDLE);
 /* in backend/port/win32/crashdump.c */
 extern void pgwin32_install_crashdump_handler(void);
 
+/* in port/win32dlopen.c */
+extern void *dlopen(const char *file, int mode);
+extern void *dlsym(void *handle, const char *symbol);
+extern int	dlclose(void *handle);
+extern char *dlerror(void);
+
+#define RTLD_NOW 1
+#define RTLD_GLOBAL 0
+
 /* in port/win32error.c */
 extern void _dosmaperr(unsigned long);
 
@@ -531,13 +549,8 @@ typedef unsigned short mode_t;
 
 #endif							/* _MSC_VER */
 
-#if (defined(_MSC_VER) && (_MSC_VER < 1900)) || \
-	defined(__MINGW32__) || defined(__MINGW64__)
+#if defined(__MINGW32__) || defined(__MINGW64__)
 /*
- * VS2013 has a strtof() that seems to give correct answers for valid input,
- * even on the rounding edge cases, but which doesn't handle out-of-range
- * input correctly. Work around that.
- *
  * Mingw claims to have a strtof, and my reading of its source code suggests
  * that it ought to work (and not need this hack), but the regression test
  * results disagree with me; whether this is a version issue or not is not
@@ -549,5 +562,11 @@ typedef unsigned short mode_t;
  */
 #define HAVE_BUGGY_STRTOF 1
 #endif
+
+/* in port/win32pread.c */
+extern ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset);
+
+/* in port/win32pwrite.c */
+extern ssize_t pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
 
 #endif							/* PG_WIN32_PORT_H */

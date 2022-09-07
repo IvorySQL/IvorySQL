@@ -151,7 +151,7 @@ get_hba_options(HbaLine *hba)
 	Assert(noptions <= MAX_HBA_OPTIONS);
 
 	if (noptions > 0)
-		return construct_array(options, noptions, TEXTOID, -1, false, TYPALIGN_INT);
+		return construct_array_builtin(options, noptions, TEXTOID);
 	else
 		return NULL;
 }
@@ -512,7 +512,7 @@ fill_ident_view(Tuplestorestate *tuple_store, TupleDesc tupdesc)
 				 errmsg("could not open usermap file \"%s\": %m",
 						IdentFileName)));
 
-	linecxt = tokenize_auth_file(HbaFileName, file, &ident_lines, DEBUG3);
+	linecxt = tokenize_auth_file(IdentFileName, file, &ident_lines, DEBUG3);
 	FreeFile(file);
 
 	/* Now parse all the lines */

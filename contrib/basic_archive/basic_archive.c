@@ -40,9 +40,6 @@
 
 PG_MODULE_MAGIC;
 
-void		_PG_init(void);
-void		_PG_archive_module_init(ArchiveModuleCallbacks *cb);
-
 static char *archive_directory = NULL;
 static MemoryContext basic_archive_context;
 
@@ -114,7 +111,7 @@ check_archive_directory(char **newval, void **extra, GucSource source)
 	 */
 	if (strlen(*newval) + 64 + 2 >= MAXPGPATH)
 	{
-		GUC_check_errdetail("archive directory too long");
+		GUC_check_errdetail("Archive directory too long.");
 		return false;
 	}
 
@@ -125,7 +122,7 @@ check_archive_directory(char **newval, void **extra, GucSource source)
 	 */
 	if (stat(*newval, &st) != 0 || !S_ISDIR(st.st_mode))
 	{
-		GUC_check_errdetail("specified archive directory does not exist");
+		GUC_check_errdetail("Specified archive directory does not exist.");
 		return false;
 	}
 
@@ -282,9 +279,10 @@ basic_archive_file_internal(const char *file, const char *path)
 
 	/*
 	 * Sync the temporary file to disk and move it to its final destination.
-	 * This will fail if destination already exists.
+	 * Note that this will overwrite any existing file, but this is only
+	 * possible if someone else created the file since the stat() above.
 	 */
-	(void) durable_rename_excl(temp, destination, ERROR);
+	(void) durable_rename(temp, destination, ERROR);
 
 	ereport(DEBUG1,
 			(errmsg("archived \"%s\" via basic_archive", file)));

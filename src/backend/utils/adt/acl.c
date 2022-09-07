@@ -66,7 +66,7 @@ typedef struct
  */
 enum RoleRecurseType
 {
-	ROLERECURSE_PRIVS = 0,		/* recurse if rolinherit */
+	ROLERECURSE_PRIVS = 0,		/* recurse through inheritable grants */
 	ROLERECURSE_MEMBERS = 1		/* recurse unconditionally */
 };
 static Oid	cached_role[] = {InvalidOid, InvalidOid};
@@ -86,7 +86,6 @@ static void check_circularity(const Acl *old_acl, const AclItem *mod_aip,
 static Acl *recursive_revoke(Acl *acl, Oid grantee, AclMode revoke_privs,
 							 Oid ownerId, DropBehavior behavior);
 
-static AclMode convert_priv_string(text *priv_type_text);
 static AclMode convert_any_priv_string(text *priv_type_text,
 									   const priv_map *privileges);
 
@@ -1584,8 +1583,27 @@ makeaclitem(PG_FUNCTION_ARGS)
 	bool		goption = PG_GETARG_BOOL(3);
 	AclItem    *result;
 	AclMode		priv;
+	static const priv_map any_priv_map[] = {
+		{"SELECT", ACL_SELECT},
+		{"INSERT", ACL_INSERT},
+		{"UPDATE", ACL_UPDATE},
+		{"DELETE", ACL_DELETE},
+		{"TRUNCATE", ACL_TRUNCATE},
+		{"REFERENCES", ACL_REFERENCES},
+		{"TRIGGER", ACL_TRIGGER},
+		{"EXECUTE", ACL_EXECUTE},
+		{"USAGE", ACL_USAGE},
+		{"CREATE", ACL_CREATE},
+		{"TEMP", ACL_CREATE_TEMP},
+		{"TEMPORARY", ACL_CREATE_TEMP},
+		{"CONNECT", ACL_CONNECT},
+		{"SET", ACL_SET},
+		{"ALTER SYSTEM", ACL_ALTER_SYSTEM},
+		{"RULE", 0},			/* ignore old RULE privileges */
+		{NULL, 0}
+	};
 
-	priv = convert_priv_string(privtext);
+	priv = convert_any_priv_string(privtext, any_priv_map);
 
 	result = (AclItem *) palloc(sizeof(AclItem));
 
@@ -1596,50 +1614,6 @@ makeaclitem(PG_FUNCTION_ARGS)
 							   (goption ? priv : ACL_NO_RIGHTS));
 
 	PG_RETURN_ACLITEM_P(result);
-}
-
-static AclMode
-convert_priv_string(text *priv_type_text)
-{
-	char	   *priv_type = text_to_cstring(priv_type_text);
-
-	if (pg_strcasecmp(priv_type, "SELECT") == 0)
-		return ACL_SELECT;
-	if (pg_strcasecmp(priv_type, "INSERT") == 0)
-		return ACL_INSERT;
-	if (pg_strcasecmp(priv_type, "UPDATE") == 0)
-		return ACL_UPDATE;
-	if (pg_strcasecmp(priv_type, "DELETE") == 0)
-		return ACL_DELETE;
-	if (pg_strcasecmp(priv_type, "TRUNCATE") == 0)
-		return ACL_TRUNCATE;
-	if (pg_strcasecmp(priv_type, "REFERENCES") == 0)
-		return ACL_REFERENCES;
-	if (pg_strcasecmp(priv_type, "TRIGGER") == 0)
-		return ACL_TRIGGER;
-	if (pg_strcasecmp(priv_type, "EXECUTE") == 0)
-		return ACL_EXECUTE;
-	if (pg_strcasecmp(priv_type, "USAGE") == 0)
-		return ACL_USAGE;
-	if (pg_strcasecmp(priv_type, "CREATE") == 0)
-		return ACL_CREATE;
-	if (pg_strcasecmp(priv_type, "TEMP") == 0)
-		return ACL_CREATE_TEMP;
-	if (pg_strcasecmp(priv_type, "TEMPORARY") == 0)
-		return ACL_CREATE_TEMP;
-	if (pg_strcasecmp(priv_type, "CONNECT") == 0)
-		return ACL_CONNECT;
-	if (pg_strcasecmp(priv_type, "SET") == 0)
-		return ACL_SET;
-	if (pg_strcasecmp(priv_type, "ALTER SYSTEM") == 0)
-		return ACL_ALTER_SYSTEM;
-	if (pg_strcasecmp(priv_type, "RULE") == 0)
-		return 0;				/* ignore old RULE privileges */
-
-	ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 errmsg("unrecognized privilege type: \"%s\"", priv_type)));
-	return ACL_NO_RIGHTS;		/* keep compiler quiet */
 }
 
 
@@ -1822,15 +1796,13 @@ aclexplode(PG_FUNCTION_ARGS)
 		{
 			Datum		result;
 			Datum		values[4];
-			bool		nulls[4];
+			bool		nulls[4] = {0};
 			HeapTuple	tuple;
 
 			values[0] = ObjectIdGetDatum(aidata->ai_grantor);
 			values[1] = ObjectIdGetDatum(aidata->ai_grantee);
 			values[2] = CStringGetTextDatum(convert_aclright_to_string(priv_bit));
 			values[3] = BoolGetDatum((ACLITEM_GET_GOPTIONS(*aidata) & priv_bit) != 0);
-
-			MemSet(nulls, 0, sizeof(nulls));
 
 			tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 			result = HeapTupleGetDatum(tuple);
@@ -4774,8 +4746,8 @@ initialize_acl(void)
 
 		/*
 		 * In normal mode, set a callback on any syscache invalidation of rows
-		 * of pg_auth_members (for roles_is_member_of()), pg_authid (for
-		 * has_rolinherit()), or pg_database (for roles_is_member_of())
+		 * of pg_auth_members (for roles_is_member_of()) pg_database (for
+		 * roles_is_member_of())
 		 */
 		CacheRegisterSyscacheCallback(AUTHMEMROLEMEM,
 									  RoleMembershipCacheCallback,
@@ -4808,31 +4780,11 @@ RoleMembershipCacheCallback(Datum arg, int cacheid, uint32 hashvalue)
 	cached_role[ROLERECURSE_MEMBERS] = InvalidOid;
 }
 
-
-/* Check if specified role has rolinherit set */
-static bool
-has_rolinherit(Oid roleid)
-{
-	bool		result = false;
-	HeapTuple	utup;
-
-	utup = SearchSysCache1(AUTHOID, ObjectIdGetDatum(roleid));
-	if (HeapTupleIsValid(utup))
-	{
-		result = ((Form_pg_authid) GETSTRUCT(utup))->rolinherit;
-		ReleaseSysCache(utup);
-	}
-	return result;
-}
-
-
 /*
  * Get a list of roles that the specified roleid is a member of
  *
- * Type ROLERECURSE_PRIVS recurses only through roles that have rolinherit
- * set, while ROLERECURSE_MEMBERS recurses through all roles.  This sets
- * *is_admin==true if and only if role "roleid" has an ADMIN OPTION membership
- * in role "admin_of".
+ * Type ROLERECURSE_PRIVS recurses only through inheritable grants,
+ * while ROLERECURSE_MEMBERS recurses through all grants.
  *
  * Since indirect membership testing is relatively expensive, we cache
  * a list of memberships.  Hence, the result is only guaranteed good until
@@ -4840,10 +4792,15 @@ has_rolinherit(Oid roleid)
  *
  * For the benefit of select_best_grantor, the result is defined to be
  * in breadth-first order, ie, closer relationships earlier.
+ *
+ * If admin_of is not InvalidOid, this function sets *admin_role, either
+ * to the OID of the first role in the result list that directly possesses
+ * ADMIN OPTION on the role corresponding to admin_of, or to InvalidOid if
+ * there is no such role.
  */
 static List *
 roles_is_member_of(Oid roleid, enum RoleRecurseType type,
-				   Oid admin_of, bool *is_admin)
+				   Oid admin_of, Oid *admin_role)
 {
 	Oid			dba;
 	List	   *roles_list;
@@ -4851,7 +4808,9 @@ roles_is_member_of(Oid roleid, enum RoleRecurseType type,
 	List	   *new_cached_roles;
 	MemoryContext oldctx;
 
-	Assert(OidIsValid(admin_of) == PointerIsValid(is_admin));
+	Assert(OidIsValid(admin_of) == PointerIsValid(admin_role));
+	if (admin_role != NULL)
+		*admin_role = InvalidOid;
 
 	/* If cache is valid and ADMIN OPTION not sought, just return the list */
 	if (cached_role[type] == roleid && !OidIsValid(admin_of) &&
@@ -4895,25 +4854,26 @@ roles_is_member_of(Oid roleid, enum RoleRecurseType type,
 		CatCList   *memlist;
 		int			i;
 
-		if (type == ROLERECURSE_PRIVS && !has_rolinherit(memberid))
-			continue;			/* ignore non-inheriting roles */
-
 		/* Find roles that memberid is directly a member of */
 		memlist = SearchSysCacheList1(AUTHMEMMEMROLE,
 									  ObjectIdGetDatum(memberid));
 		for (i = 0; i < memlist->n_members; i++)
 		{
 			HeapTuple	tup = &memlist->members[i]->tuple;
-			Oid			otherid = ((Form_pg_auth_members) GETSTRUCT(tup))->roleid;
+			Form_pg_auth_members form = (Form_pg_auth_members) GETSTRUCT(tup);
+			Oid			otherid = form->roleid;
 
 			/*
 			 * While otherid==InvalidOid shouldn't appear in the catalog, the
 			 * OidIsValid() avoids crashing if that arises.
 			 */
-			if (otherid == admin_of &&
-				((Form_pg_auth_members) GETSTRUCT(tup))->admin_option &&
-				OidIsValid(admin_of))
-				*is_admin = true;
+			if (otherid == admin_of && form->admin_option &&
+				OidIsValid(admin_of) && !OidIsValid(*admin_role))
+				*admin_role = memberid;
+
+			/* If we're supposed to ignore non-heritable grants, do so. */
+			if (type == ROLERECURSE_PRIVS && !form->inherit_option)
+				continue;
 
 			/*
 			 * Even though there shouldn't be any loops in the membership
@@ -4954,8 +4914,8 @@ roles_is_member_of(Oid roleid, enum RoleRecurseType type,
 /*
  * Does member have the privileges of role (directly or indirectly)?
  *
- * This is defined not to recurse through roles that don't have rolinherit
- * set; for such roles, membership implies the ability to do SET ROLE, but
+ * This is defined not to recurse through grants that are not inherited;
+ * in such cases, membership implies the ability to do SET ROLE, but
  * the privileges are not available until you've done so.
  */
 bool
@@ -4982,7 +4942,7 @@ has_privs_of_role(Oid member, Oid role)
 /*
  * Is member a member of role (directly or indirectly)?
  *
- * This is defined to recurse through roles regardless of rolinherit.
+ * This is defined to recurse through grants whether they are inherited or not.
  *
  * Do not use this for privilege checking, instead use has_privs_of_role()
  */
@@ -5053,7 +5013,7 @@ is_member_of_role_nosuper(Oid member, Oid role)
 bool
 is_admin_of_role(Oid member, Oid role)
 {
-	bool		result = false;
+	Oid			admin_role;
 
 	if (superuser_arg(member))
 		return true;
@@ -5062,8 +5022,30 @@ is_admin_of_role(Oid member, Oid role)
 	if (member == role)
 		return false;
 
-	(void) roles_is_member_of(member, ROLERECURSE_MEMBERS, role, &result);
-	return result;
+	(void) roles_is_member_of(member, ROLERECURSE_MEMBERS, role, &admin_role);
+	return OidIsValid(admin_role);
+}
+
+/*
+ * Find a role whose privileges "member" inherits which has ADMIN OPTION
+ * on "role", ignoring super-userness.
+ *
+ * There might be more than one such role; prefer one which involves fewer
+ * hops. That is, if member has ADMIN OPTION, prefer that over all other
+ * options; if not, prefer a role from which member inherits more directly
+ * over more indirect inheritance.
+ */
+Oid
+select_best_admin(Oid member, Oid role)
+{
+	Oid			admin_role;
+
+	/* By policy, a role cannot have WITH ADMIN OPTION on itself. */
+	if (member == role)
+		return InvalidOid;
+
+	(void) roles_is_member_of(member, ROLERECURSE_PRIVS, role, &admin_role);
+	return admin_role;
 }
 
 

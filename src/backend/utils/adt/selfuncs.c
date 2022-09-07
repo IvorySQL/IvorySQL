@@ -3408,7 +3408,7 @@ estimate_num_groups_incremental(PlannerInfo *root, List *groupExprs,
 	 * for normal cases with GROUP BY or DISTINCT, but it is possible for
 	 * corner cases with set operations.)
 	 */
-	if (groupExprs == NIL || (pgset && list_length(*pgset) < 1))
+	if (groupExprs == NIL || (pgset && *pgset == NIL))
 		return 1.0;
 
 	/*
@@ -4326,6 +4326,7 @@ convert_to_scalar(Datum value, Oid valuetypid, Oid collid, double *scaledvalue,
 		case REGOPERATOROID:
 		case REGCLASSOID:
 		case REGTYPEOID:
+		case REGCOLLATIONOID:
 		case REGCONFIGOID:
 		case REGDICTIONARYOID:
 		case REGROLEOID:
@@ -4457,6 +4458,7 @@ convert_numeric_to_scalar(Datum value, Oid typid, bool *failure)
 		case REGOPERATOROID:
 		case REGCLASSOID:
 		case REGTYPEOID:
+		case REGCOLLATIONOID:
 		case REGCONFIGOID:
 		case REGDICTIONARYOID:
 		case REGROLEOID:
@@ -6642,10 +6644,10 @@ btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 			   double *indexPages)
 {
 	IndexOptInfo *index = path->indexinfo;
-	GenericCosts costs;
+	GenericCosts costs = {0};
 	Oid			relid;
 	AttrNumber	colnum;
-	VariableStatData vardata;
+	VariableStatData vardata = {0};
 	double		numIndexTuples;
 	Cost		descentCost;
 	List	   *indexBoundQuals;
@@ -6797,7 +6799,6 @@ btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	/*
 	 * Now do generic index cost estimation.
 	 */
-	MemSet(&costs, 0, sizeof(costs));
 	costs.numIndexTuples = numIndexTuples;
 
 	genericcostestimate(root, path, loop_count, &costs);
@@ -6842,8 +6843,6 @@ btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	 * ordering, but don't negate it entirely.  Before 8.0 we divided the
 	 * correlation by the number of columns, but that seems too strong.)
 	 */
-	MemSet(&vardata, 0, sizeof(vardata));
-
 	if (index->indexkeys[0] != 0)
 	{
 		/* Simple variable --- look to stats for the underlying table */
@@ -6947,9 +6946,7 @@ hashcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 				 Selectivity *indexSelectivity, double *indexCorrelation,
 				 double *indexPages)
 {
-	GenericCosts costs;
-
-	MemSet(&costs, 0, sizeof(costs));
+	GenericCosts costs = {0};
 
 	genericcostestimate(root, path, loop_count, &costs);
 
@@ -6992,10 +6989,8 @@ gistcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 				 double *indexPages)
 {
 	IndexOptInfo *index = path->indexinfo;
-	GenericCosts costs;
+	GenericCosts costs = {0};
 	Cost		descentCost;
-
-	MemSet(&costs, 0, sizeof(costs));
 
 	genericcostestimate(root, path, loop_count, &costs);
 
@@ -7049,10 +7044,8 @@ spgcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 				double *indexPages)
 {
 	IndexOptInfo *index = path->indexinfo;
-	GenericCosts costs;
+	GenericCosts costs = {0};
 	Cost		descentCost;
-
-	MemSet(&costs, 0, sizeof(costs));
 
 	genericcostestimate(root, path, loop_count, &costs);
 

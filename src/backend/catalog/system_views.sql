@@ -53,7 +53,7 @@ CREATE VIEW pg_group AS
     SELECT
         rolname AS groname,
         oid AS grosysid,
-        ARRAY(SELECT member FROM pg_auth_members WHERE roleid = oid) AS grolist
+        ARRAY(SELECT member FROM pg_auth_members WHERE roleid = pg_authid.oid) AS grolist
     FROM pg_authid
     WHERE NOT rolcanlogin;
 
@@ -1298,8 +1298,8 @@ REVOKE ALL ON pg_replication_origin_status FROM public;
 -- All columns of pg_subscription except subconninfo are publicly readable.
 REVOKE ALL ON pg_subscription FROM public;
 GRANT SELECT (oid, subdbid, subskiplsn, subname, subowner, subenabled,
-              subbinary, substream, subtwophasestate, subdisableonerr, subslotname,
-              subsynccommit, subpublications)
+              subbinary, substream, subtwophasestate, subdisableonerr,
+              subslotname, subsynccommit, subpublications, suborigin)
     ON pg_subscription TO public;
 
 CREATE VIEW pg_stat_subscription_stats AS

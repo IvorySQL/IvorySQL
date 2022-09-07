@@ -668,9 +668,10 @@ test ! -f /mnt/server/archivedir/00000001000000A900000065 &amp;&amp; cp pg_wal/0
    <para>
     If the archive function emits an <literal>ERROR</literal> or
     <literal>FATAL</literal>, the archiver process aborts and gets restarted by
-    the postmaster.  If you are archiving via shell command, FATAL is emitted if
-    the command is terminated by a signal (other than
-    <systemitem>SIGTERM</systemitem> that is used as part of a server shutdown)
+    the postmaster.  If you are archiving via shell command,
+    <literal>FATAL</literal> is emitted if the command is terminated by a signal
+    (other than <systemitem>SIGTERM</systemitem>
+    that is used as part of a server shutdown)
     or an error by the shell with an exit status greater than 125 (such as
     command not found).  In such cases, the failure is not reported in
     <xref linkend="pg-stat-archiver-view"/>.
@@ -681,14 +682,27 @@ test ! -f /mnt/server/archivedir/00000001000000A900000065 &amp;&amp; cp pg_wal/0
     any pre-existing archive file.  This is an important safety feature to
     preserve the integrity of your archive in case of administrator error
     (such as sending the output of two different servers to the same archive
-    directory).
+    directory).  It is advisable to test your proposed archive library to ensure
+    that it does not overwrite an existing file.
    </para>
 
    <para>
-    It is advisable to test your proposed archive library to ensure that it
-    indeed does not overwrite an existing file, <emphasis>and that it returns
-    <literal>false</literal> in this case</emphasis>.
-    The example command above for Unix ensures this by including a separate
+    In rare cases, <productname>PostgreSQL</productname> may attempt to
+    re-archive a WAL file that was previously archived.  For example, if the
+    system crashes before the server makes a durable record of archival
+    success, the server will attempt to archive the file again after
+    restarting (provided archiving is still enabled).  When an archive library
+    encounters a pre-existing file, it should return <literal>true</literal>
+    if the WAL file has identical contents to the pre-existing archive and the
+    pre-existing archive is fully persisted to storage.  If a pre-existing
+    file contains different contents than the WAL file being archived, the
+    archive library <emphasis>must</emphasis> return
+    <literal>false</literal>.
+   </para>
+
+   <para>
+    The example command above for Unix avoids overwriting a pre-existing archive
+    by including a separate
     <command>test</command> step.  On some Unix platforms, <command>cp</command> has
     switches such as <option>-i</option> that can be used to do the same thing
     less verbosely, but you should not rely on these without verifying that
@@ -872,8 +886,9 @@ test ! -f /mnt/server/archivedir/00000001000000A900000065 &amp;&amp; cp pg_wal/0
    <listitem>
     <para>
      Connect to the server (it does not matter which database) as a user with
-     rights to run pg_backup_start (superuser, or a user who has been granted
-     EXECUTE on the function) and issue the command:
+     rights to run <function>pg_backup_start</function> (superuser,
+     or a user who has been granted <literal>EXECUTE</literal> on the
+     function) and issue the command:
 <programlisting>
 SELECT pg_backup_start(label => 'label', fast => false);
 </programlisting>
@@ -945,11 +960,12 @@ SELECT * FROM pg_backup_stop(wait_for_archive => true);
      On a standby, <varname>archive_mode</varname> must be <literal>always</literal> in order
      for <function>pg_backup_stop</function> to wait.
      Archiving of these files happens automatically since you have
-     already configured <varname>archive_library</varname>. In most cases this
-     happens quickly, but you are advised to monitor your archive
-     system to ensure there are no delays.
-     If the archive process has fallen behind
-     because of failures of the archive library, it will keep retrying
+     already configured <varname>archive_library</varname> or
+     <varname>archive_command</varname>.
+     In most cases this happens quickly, but you are advised to monitor your
+     archive system to ensure there are no delays.
+     If the archive process has fallen behind because of failures of the
+     archive library or archive command, it will keep retrying
      until the archive succeeds and the backup is complete.
      If you wish to place a time limit on the execution of
      <function>pg_backup_stop</function>, set an appropriate

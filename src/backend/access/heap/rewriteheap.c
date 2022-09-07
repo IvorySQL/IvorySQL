@@ -113,6 +113,7 @@
 #include "access/xact.h"
 #include "access/xloginsert.h"
 #include "catalog/catalog.h"
+#include "common/file_utils.h"
 #include "lib/ilist.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -318,7 +319,7 @@ end_heap_rewrite(RewriteState state)
 	if (state->rs_buffer_valid)
 	{
 		if (RelationNeedsWAL(state->rs_new_rel))
-			log_newpage(&state->rs_new_rel->rd_node,
+			log_newpage(&state->rs_new_rel->rd_locator,
 						MAIN_FORKNUM,
 						state->rs_blockno,
 						state->rs_buffer,
@@ -679,7 +680,7 @@ raw_heap_insert(RewriteState state, HeapTuple tup)
 
 			/* XLOG stuff */
 			if (RelationNeedsWAL(state->rs_new_rel))
-				log_newpage(&state->rs_new_rel->rd_node,
+				log_newpage(&state->rs_new_rel->rd_locator,
 							MAIN_FORKNUM,
 							state->rs_blockno,
 							page,
@@ -742,7 +743,7 @@ raw_heap_insert(RewriteState state, HeapTuple tup)
  * When doing logical decoding - which relies on using cmin/cmax of catalog
  * tuples, via xl_heap_new_cid records - heap rewrites have to log enough
  * information to allow the decoding backend to update its internal mapping
- * of (relfilenode,ctid) => (cmin, cmax) to be correct for the rewritten heap.
+ * of (relfilelocator,ctid) => (cmin, cmax) to be correct for the rewritten heap.
  *
  * For that, every time we find a tuple that's been modified in a catalog
  * relation within the xmin horizon of any decoding slot, we log a mapping
@@ -1080,9 +1081,9 @@ logical_rewrite_heap_tuple(RewriteState state, ItemPointerData old_tid,
 		return;
 
 	/* fill out mapping information */
-	map.old_node = state->rs_old_rel->rd_node;
+	map.old_locator = state->rs_old_rel->rd_locator;
 	map.old_tid = old_tid;
-	map.new_node = state->rs_new_rel->rd_node;
+	map.new_locator = state->rs_new_rel->rd_locator;
 	map.new_tid = new_tid;
 
 	/* ---
@@ -1149,7 +1150,7 @@ heap_xlog_logical_rewrite(XLogReaderState *r)
 	/* write out tail end of mapping file (again) */
 	errno = 0;
 	pgstat_report_wait_start(WAIT_EVENT_LOGICAL_REWRITE_MAPPING_WRITE);
-	if (pg_pwrite(fd, data, len, xlrec->offset) != len)
+	if (pwrite(fd, data, len, xlrec->offset) != len)
 	{
 		/* if write didn't set errno, assume problem is no disk space */
 		if (errno == 0)
@@ -1213,7 +1214,6 @@ CheckPointLogicalRewriteHeap(void)
 	mappings_dir = AllocateDir("pg_logical/mappings");
 	while ((mapping_de = ReadDir(mappings_dir, "pg_logical/mappings")) != NULL)
 	{
-		struct stat statbuf;
 		Oid			dboid;
 		Oid			relid;
 		XLogRecPtr	lsn;
@@ -1221,13 +1221,16 @@ CheckPointLogicalRewriteHeap(void)
 		TransactionId create_xid;
 		uint32		hi,
 					lo;
+		PGFileType	de_type;
 
 		if (strcmp(mapping_de->d_name, ".") == 0 ||
 			strcmp(mapping_de->d_name, "..") == 0)
 			continue;
 
 		snprintf(path, sizeof(path), "pg_logical/mappings/%s", mapping_de->d_name);
-		if (lstat(path, &statbuf) == 0 && !S_ISREG(statbuf.st_mode))
+		de_type = get_dirent_type(path, mapping_de, false, DEBUG1);
+
+		if (de_type != PGFILETYPE_ERROR && de_type != PGFILETYPE_REG)
 			continue;
 
 		/* Skip over files that cannot be ours. */

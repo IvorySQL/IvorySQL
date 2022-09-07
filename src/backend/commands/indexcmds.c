@@ -565,7 +565,6 @@ DefineIndex(Oid relationId,
 	Oid			root_save_userid;
 	int			root_save_sec_context;
 	int			root_save_nestlevel;
-	int			i;
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -1047,7 +1046,7 @@ DefineIndex(Oid relationId,
 	 * We disallow indexes on system columns.  They would not necessarily get
 	 * updated correctly, and they don't seem useful anyway.
 	 */
-	for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+	for (int i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
 	{
 		AttrNumber	attno = indexInfo->ii_IndexAttrNumbers[i];
 
@@ -1067,7 +1066,7 @@ DefineIndex(Oid relationId,
 		pull_varattnos((Node *) indexInfo->ii_Expressions, 1, &indexattrs);
 		pull_varattnos((Node *) indexInfo->ii_Predicate, 1, &indexattrs);
 
-		for (i = FirstLowInvalidHeapAttributeNumber + 1; i < 0; i++)
+		for (int i = FirstLowInvalidHeapAttributeNumber + 1; i < 0; i++)
 		{
 			if (bms_is_member(i - FirstLowInvalidHeapAttributeNumber,
 							  indexattrs))
@@ -1109,10 +1108,10 @@ DefineIndex(Oid relationId,
 	}
 
 	/*
-	 * A valid stmt->oldNode implies that we already have a built form of the
-	 * index.  The caller should also decline any index build.
+	 * A valid stmt->oldNumber implies that we already have a built form of
+	 * the index.  The caller should also decline any index build.
 	 */
-	Assert(!OidIsValid(stmt->oldNode) || (skip_build && !concurrent));
+	Assert(!RelFileNumberIsValid(stmt->oldNumber) || (skip_build && !concurrent));
 
 	/*
 	 * Make the catalog entries for the index, including constraints. This
@@ -1154,7 +1153,7 @@ DefineIndex(Oid relationId,
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,
 					 parentConstraintId,
-					 stmt->oldNode, indexInfo, indexColNames,
+					 stmt->oldNumber, indexInfo, indexColNames,
 					 accessMethodId, tablespaceId,
 					 collationObjectId, classObjectId,
 					 coloptions, reloptions,
@@ -1213,18 +1212,27 @@ DefineIndex(Oid relationId,
 			int			nparts = partdesc->nparts;
 			Oid		   *part_oids = palloc(sizeof(Oid) * nparts);
 			bool		invalidate_parent = false;
+			Relation	parentIndex;
 			TupleDesc	parentDesc;
-			Oid		   *opfamOids;
 
 			pgstat_progress_update_param(PROGRESS_CREATEIDX_PARTITIONS_TOTAL,
 										 nparts);
 
+			/* Make a local copy of partdesc->oids[], just for safety */
 			memcpy(part_oids, partdesc->oids, sizeof(Oid) * nparts);
 
+			/*
+			 * We'll need an IndexInfo describing the parent index.  The one
+			 * built above is almost good enough, but not quite, because (for
+			 * example) its predicate expression if any hasn't been through
+			 * expression preprocessing.  The most reliable way to get an
+			 * IndexInfo that will match those for child indexes is to build
+			 * it the same way, using BuildIndexInfo().
+			 */
+			parentIndex = index_open(indexRelationId, lockmode);
+			indexInfo = BuildIndexInfo(parentIndex);
+
 			parentDesc = RelationGetDescr(rel);
-			opfamOids = palloc(sizeof(Oid) * numberOfKeyAttributes);
-			for (i = 0; i < numberOfKeyAttributes; i++)
-				opfamOids[i] = get_opclass_family(classObjectId[i]);
 
 			/*
 			 * For each partition, scan all existing indexes; if one matches
@@ -1234,7 +1242,7 @@ DefineIndex(Oid relationId,
 			 * If none matches, build a new index by calling ourselves
 			 * recursively with the same options (except for the index name).
 			 */
-			for (i = 0; i < nparts; i++)
+			for (int i = 0; i < nparts; i++)
 			{
 				Oid			childRelid = part_oids[i];
 				Relation	childrel;
@@ -1295,9 +1303,9 @@ DefineIndex(Oid relationId,
 					cldIdxInfo = BuildIndexInfo(cldidx);
 					if (CompareIndexInfo(cldIdxInfo, indexInfo,
 										 cldidx->rd_indcollation,
-										 collationObjectId,
+										 parentIndex->rd_indcollation,
 										 cldidx->rd_opfamily,
-										 opfamOids,
+										 parentIndex->rd_opfamily,
 										 attmap))
 					{
 						Oid			cldConstrOid = InvalidOid;
@@ -1361,15 +1369,15 @@ DefineIndex(Oid relationId,
 					 * We can't use the same index name for the child index,
 					 * so clear idxname to let the recursive invocation choose
 					 * a new name.  Likewise, the existing target relation
-					 * field is wrong, and if indexOid or oldNode are set,
+					 * field is wrong, and if indexOid or oldNumber are set,
 					 * they mustn't be applied to the child either.
 					 */
 					childStmt->idxname = NULL;
 					childStmt->relation = NULL;
 					childStmt->indexOid = InvalidOid;
-					childStmt->oldNode = InvalidOid;
+					childStmt->oldNumber = InvalidRelFileNumber;
 					childStmt->oldCreateSubid = InvalidSubTransactionId;
-					childStmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
+					childStmt->oldFirstRelfilelocatorSubid = InvalidSubTransactionId;
 
 					/*
 					 * Adjust any Vars (both in expressions and in the index's
@@ -1423,6 +1431,8 @@ DefineIndex(Oid relationId,
 											 i + 1);
 				free_attrmap(attmap);
 			}
+
+			index_close(parentIndex, lockmode);
 
 			/*
 			 * The pg_index row we inserted for this index was marked
@@ -2877,10 +2887,15 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 	bool		concurrent_warning = false;
 	bool		tablespace_warning = false;
 
-	AssertArg(objectName);
 	Assert(objectKind == REINDEX_OBJECT_SCHEMA ||
 		   objectKind == REINDEX_OBJECT_SYSTEM ||
 		   objectKind == REINDEX_OBJECT_DATABASE);
+
+	/*
+	 * This matches the options enforced by the grammar, where the object name
+	 * is optional for DATABASE and SYSTEM.
+	 */
+	AssertArg(objectName || objectKind != REINDEX_OBJECT_SCHEMA);
 
 	if (objectKind == REINDEX_OBJECT_SYSTEM &&
 		(params->options & REINDEXOPT_CONCURRENTLY) != 0)
@@ -2906,13 +2921,13 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 	{
 		objectOid = MyDatabaseId;
 
-		if (strcmp(objectName, get_database_name(objectOid)) != 0)
+		if (objectName && strcmp(objectName, get_database_name(objectOid)) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("can only reindex the currently open database")));
 		if (!pg_database_ownercheck(objectOid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
-						   objectName);
+						   get_database_name(objectOid));
 	}
 
 	/*
@@ -2970,9 +2985,15 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 			!isTempNamespace(classtuple->relnamespace))
 			continue;
 
-		/* Check user/system classification, and optionally skip */
+		/*
+		 * Check user/system classification.  SYSTEM processes all the
+		 * catalogs, and DATABASE processes everything that's not a catalog.
+		 */
 		if (objectKind == REINDEX_OBJECT_SYSTEM &&
-			!IsSystemClass(relid, classtuple))
+			!IsCatalogRelationOid(relid))
+			continue;
+		else if (objectKind == REINDEX_OBJECT_DATABASE &&
+				 IsCatalogRelationOid(relid))
 			continue;
 
 		/*
@@ -3015,7 +3036,7 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 			 * particular this eliminates all shared catalogs.).
 			 */
 			if (RELKIND_HAS_STORAGE(classtuple->relkind) &&
-				!OidIsValid(classtuple->relfilenode))
+				!RelFileNumberIsValid(classtuple->relfilenode))
 				skip_rel = true;
 
 			/*

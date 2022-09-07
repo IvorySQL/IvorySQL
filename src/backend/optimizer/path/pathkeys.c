@@ -17,6 +17,8 @@
  */
 #include "postgres.h"
 
+#include <float.h>
+
 #include "miscadmin.h"
 #include "access/stratnum.h"
 #include "catalog/pg_opfamily.h"
@@ -99,6 +101,28 @@ make_canonical_pathkey(PlannerInfo *root,
 	MemoryContextSwitchTo(oldcontext);
 
 	return pk;
+}
+
+/*
+ * append_pathkeys
+ *		Append all non-redundant PathKeys in 'source' onto 'target' and
+ *		returns the updated 'target' list.
+ */
+List *
+append_pathkeys(List *target, List *source)
+{
+	ListCell   *lc;
+
+	Assert(target != NIL);
+
+	foreach(lc, source)
+	{
+		PathKey    *pk = lfirst_node(PathKey, lc);
+
+		if (!pathkey_is_redundant(pk, target))
+			target = lappend(target, pk);
+	}
+	return target;
 }
 
 /*
@@ -591,7 +615,7 @@ get_cheapest_group_keys_order(PlannerInfo *root, double nrows,
 
 	ListCell   *cell;
 	PathkeyMutatorState mstate;
-	double		cheapest_sort_cost = -1.0;
+	double		cheapest_sort_cost = DBL_MAX;
 
 	int			nFreeKeys;
 	int			nToPermute;
@@ -620,23 +644,23 @@ get_cheapest_group_keys_order(PlannerInfo *root, double nrows,
 	nToPermute = 4;
 	if (nFreeKeys > nToPermute)
 	{
-		int			i;
 		PathkeySortCost *costs = palloc(sizeof(PathkeySortCost) * nFreeKeys);
+		PathkeySortCost *cost = costs;
 
-		/* skip the pre-ordered pathkeys */
-		cell = list_nth_cell(*group_pathkeys, n_preordered);
-
-		/* estimate cost for sorting individual pathkeys */
-		for (i = 0; cell != NULL; i++, (cell = lnext(*group_pathkeys, cell)))
+		/*
+		 * Estimate cost for sorting individual pathkeys skipping the
+		 * pre-ordered pathkeys.
+		 */
+		for_each_from(cell, *group_pathkeys, n_preordered)
 		{
-			List	   *to_cost = list_make1(lfirst(cell));
+			PathKey    *pathkey = (PathKey *) lfirst(cell);
+			List	   *to_cost = list_make1(pathkey);
 
-			Assert(i < nFreeKeys);
+			cost->pathkey = pathkey;
+			cost->cost = cost_sort_estimate(root, to_cost, 0, nrows);
+			cost++;
 
-			costs[i].pathkey = lfirst(cell);
-			costs[i].cost = cost_sort_estimate(root, to_cost, 0, nrows);
-
-			pfree(to_cost);
+			list_free(to_cost);
 		}
 
 		/* sort the pathkeys by sort cost in ascending order */
@@ -646,9 +670,9 @@ get_cheapest_group_keys_order(PlannerInfo *root, double nrows,
 		 * Rebuild the list of pathkeys - first the preordered ones, then the
 		 * rest ordered by cost.
 		 */
-		new_group_pathkeys = list_truncate(list_copy(*group_pathkeys), n_preordered);
+		new_group_pathkeys = list_copy_head(*group_pathkeys, n_preordered);
 
-		for (i = 0; i < nFreeKeys; i++)
+		for (int i = 0; i < nFreeKeys; i++)
 			new_group_pathkeys = lappend(new_group_pathkeys, costs[i].pathkey);
 
 		pfree(costs);
@@ -689,7 +713,7 @@ get_cheapest_group_keys_order(PlannerInfo *root, double nrows,
 
 		cost = cost_sort_estimate(root, var_group_pathkeys, n_preordered, nrows);
 
-		if (cost < cheapest_sort_cost || cheapest_sort_cost < 0)
+		if (cost < cheapest_sort_cost)
 		{
 			list_free(new_group_pathkeys);
 			new_group_pathkeys = list_copy(var_group_pathkeys);
@@ -744,7 +768,8 @@ get_cheapest_group_keys_order(PlannerInfo *root, double nrows,
 List *
 get_useful_group_keys_orderings(PlannerInfo *root, double nrows,
 								List *path_pathkeys,
-								List *group_pathkeys, List *group_clauses)
+								List *group_pathkeys, List *group_clauses,
+								List *aggregate_pathkeys)
 {
 	Query	   *parse = root->parse;
 	List	   *infos = NIL;
@@ -756,7 +781,10 @@ get_useful_group_keys_orderings(PlannerInfo *root, double nrows,
 
 	/* always return at least the original pathkeys/clauses */
 	info = makeNode(PathKeyInfo);
-	info->pathkeys = pathkeys;
+	if (aggregate_pathkeys != NIL)
+		info->pathkeys = list_concat_copy(pathkeys, aggregate_pathkeys);
+	else
+		info->pathkeys = pathkeys;
 	info->clauses = clauses;
 
 	infos = lappend(infos, info);
@@ -781,7 +809,10 @@ get_useful_group_keys_orderings(PlannerInfo *root, double nrows,
 									  n_preordered))
 	{
 		info = makeNode(PathKeyInfo);
-		info->pathkeys = pathkeys;
+		if (aggregate_pathkeys != NIL)
+			info->pathkeys = list_concat_copy(pathkeys, aggregate_pathkeys);
+		else
+			info->pathkeys = pathkeys;
 		info->clauses = clauses;
 
 		infos = lappend(infos, info);
@@ -820,7 +851,10 @@ get_useful_group_keys_orderings(PlannerInfo *root, double nrows,
 		 * still want to keep the keys reordered to path_pathkeys.
 		 */
 		info = makeNode(PathKeyInfo);
-		info->pathkeys = pathkeys;
+		if (aggregate_pathkeys != NIL)
+			info->pathkeys = list_concat_copy(pathkeys, aggregate_pathkeys);
+		else
+			info->pathkeys = pathkeys;
 		info->clauses = clauses;
 
 		infos = lappend(infos, info);
@@ -848,7 +882,10 @@ get_useful_group_keys_orderings(PlannerInfo *root, double nrows,
 
 		/* keep the group keys reordered to match ordering of input path */
 		info = makeNode(PathKeyInfo);
-		info->pathkeys = pathkeys;
+		if (aggregate_pathkeys != NIL)
+			info->pathkeys = list_concat_copy(pathkeys, aggregate_pathkeys);
+		else
+			info->pathkeys = pathkeys;
 		info->clauses = clauses;
 
 		infos = lappend(infos, info);
@@ -1154,8 +1191,13 @@ partkey_is_bool_constant_for_query(RelOptInfo *partrel, int partkeycol)
 	PartitionScheme partscheme = partrel->part_scheme;
 	ListCell   *lc;
 
-	/* If the partkey isn't boolean, we can't possibly get a match */
-	if (!IsBooleanOpfamily(partscheme->partopfamily[partkeycol]))
+	/*
+	 * If the partkey isn't boolean, we can't possibly get a match.
+	 *
+	 * Partitioning currently can only use built-in AMs, so checking for
+	 * built-in boolean opfamilies is good enough.
+	 */
+	if (!IsBuiltinBooleanOpfamily(partscheme->partopfamily[partkeycol]))
 		return false;
 
 	/* Check each restriction clause for the partitioned rel */
@@ -1888,11 +1930,13 @@ find_mergeclauses_for_outer_pathkeys(PlannerInfo *root,
  * Since we assume here that a sort is required, there is no particular use
  * in matching any available ordering of the outerrel.  (joinpath.c has an
  * entirely separate code path for considering sort-free mergejoins.)  Rather,
- * it's interesting to try to match the requested query_pathkeys so that a
- * second output sort may be avoided; and failing that, we try to list "more
- * popular" keys (those with the most unmatched EquivalenceClass peers)
- * earlier, in hopes of making the resulting ordering useful for as many
- * higher-level mergejoins as possible.
+ * it's interesting to try to match, or match a prefix of the requested
+ * query_pathkeys so that a second output sort may be avoided or an
+ * incremental sort may be done instead.  We can get away with just a prefix
+ * of the query_pathkeys when that prefix covers the entire join condition.
+ * Failing that, we try to list "more popular" keys  (those with the most
+ * unmatched EquivalenceClass peers) earlier, in hopes of making the resulting
+ * ordering useful for as many higher-level mergejoins as possible.
  */
 List *
 select_outer_pathkeys_for_merge(PlannerInfo *root,
@@ -1962,11 +2006,16 @@ select_outer_pathkeys_for_merge(PlannerInfo *root,
 
 	/*
 	 * Find out if we have all the ECs mentioned in query_pathkeys; if so we
-	 * can generate a sort order that's also useful for final output. There is
-	 * no percentage in a partial match, though, so we have to have 'em all.
+	 * can generate a sort order that's also useful for final output. If we
+	 * only have a prefix of the query_pathkeys, and that prefix is the entire
+	 * join condition, then it's useful to use the prefix as the pathkeys as
+	 * this increases the chances that an incremental sort will be able to be
+	 * used by the upper planner.
 	 */
 	if (root->query_pathkeys)
 	{
+		int			matches = 0;
+
 		foreach(lc, root->query_pathkeys)
 		{
 			PathKey    *query_pathkey = (PathKey *) lfirst(lc);
@@ -1979,6 +2028,8 @@ select_outer_pathkeys_for_merge(PlannerInfo *root,
 			}
 			if (j >= necs)
 				break;			/* didn't find match */
+
+			matches++;
 		}
 		/* if we got to the end of the list, we have them all */
 		if (lc == NULL)
@@ -2000,6 +2051,23 @@ select_outer_pathkeys_for_merge(PlannerInfo *root,
 					}
 				}
 			}
+		}
+
+		/*
+		 * If we didn't match to all of the query_pathkeys, but did match to
+		 * all of the join clauses then we'll make use of these as partially
+		 * sorted input is better than nothing for the upper planner as it may
+		 * lead to incremental sorts instead of full sorts.
+		 */
+		else if (matches == nClauses)
+		{
+			pathkeys = list_copy_head(root->query_pathkeys, matches);
+
+			/* we have all of the join pathkeys, so nothing more to do */
+			pfree(ecs);
+			pfree(scores);
+
+			return pathkeys;
 		}
 	}
 
@@ -2462,7 +2530,7 @@ truncate_useless_pathkeys(PlannerInfo *root,
 	else if (nuseful == list_length(pathkeys))
 		return pathkeys;
 	else
-		return list_truncate(list_copy(pathkeys), nuseful);
+		return list_copy_head(pathkeys, nuseful);
 }
 
 /*

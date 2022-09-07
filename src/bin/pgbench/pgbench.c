@@ -40,9 +40,7 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/time.h>
-#ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>		/* for getrlimit */
-#endif
 
 /* For testing, PGBENCH_USE_SELECT can be defined to force use of that code */
 #if defined(HAVE_PPOLL) && !defined(PGBENCH_USE_SELECT)
@@ -52,9 +50,7 @@
 #endif
 #else							/* no ppoll(), so use select() */
 #define POLL_USING_SELECT
-#ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
-#endif
 #endif
 
 #include "common/int.h"
@@ -1852,8 +1848,7 @@ putVariable(Variables *variables, const char *context, char *name,
 	/* dup then free, in case value is pointing at this variable */
 	val = pg_strdup(value);
 
-	if (var->svalue)
-		free(var->svalue);
+	free(var->svalue);
 	var->svalue = val;
 	var->value.type = PGBT_NO_VALUE;
 
@@ -1872,8 +1867,7 @@ putVariableValue(Variables *variables, const char *context, char *name,
 	if (!var)
 		return false;
 
-	if (var->svalue)
-		free(var->svalue);
+	free(var->svalue);
 	var->svalue = NULL;
 	var->value = *value;
 
@@ -2979,6 +2973,8 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 
 	command[len] = '\0';
 
+	fflush(NULL);				/* needed before either system() or popen() */
+
 	/* Fast path for non-assignment case */
 	if (variable == NULL)
 	{
@@ -3115,7 +3111,6 @@ sendCommand(CState *st, Command *command)
 			for (j = 0; commands[j] != NULL; j++)
 			{
 				PGresult   *res;
-				char		name[MAX_PREPARE_NAME];
 
 				if (commands[j]->type != SQL_COMMAND)
 					continue;
@@ -3517,10 +3512,9 @@ printVerboseErrorMessages(CState *st, pg_time_usec_t *now, bool is_retry)
 		resetPQExpBuffer(buf);
 
 	printfPQExpBuffer(buf, "client %d ", st->id);
-	appendPQExpBuffer(buf, "%s",
-					  (is_retry ?
-					   "repeats the transaction after the error" :
-					   "ends the failed transaction"));
+	appendPQExpBufferStr(buf, (is_retry ?
+							   "repeats the transaction after the error" :
+							   "ends the failed transaction"));
 	appendPQExpBuffer(buf, " (try %u", st->tries);
 
 	/* Print max_tries if it is not unlimitted. */
@@ -3537,7 +3531,7 @@ printVerboseErrorMessages(CState *st, pg_time_usec_t *now, bool is_retry)
 		appendPQExpBuffer(buf, ", %.3f%% of the maximum time of tries was used",
 						  (100.0 * (*now - st->txn_scheduled) / latency_limit));
 	}
-	appendPQExpBuffer(buf, ")\n");
+	appendPQExpBufferStr(buf, ")\n");
 
 	pg_log_info("%s", buf->data);
 }
@@ -3809,8 +3803,6 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 				/* quickly skip commands until something to do... */
 				while (true)
 				{
-					Command    *command;
-
 					command = sql_script[st->use_file].commands[st->command];
 
 					/* cannot reach end of script in that state */
@@ -3965,8 +3957,6 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 				 */
 				if (report_per_command)
 				{
-					Command    *command;
-
 					pg_time_now_lazy(&now);
 
 					command = sql_script[st->use_file].commands[st->command];
@@ -5475,12 +5465,10 @@ static void
 free_command(Command *command)
 {
 	termPQExpBuffer(&command->lines);
-	if (command->first_line)
-		pg_free(command->first_line);
+	pg_free(command->first_line);
 	for (int i = 0; i < command->argc; i++)
 		pg_free(command->argv[i]);
-	if (command->varprefix)
-		pg_free(command->varprefix);
+	pg_free(command->varprefix);
 
 	/*
 	 * It should also free expr recursively, but this is currently not needed
@@ -6637,8 +6625,7 @@ main(int argc, char **argv)
 				is_init_mode = true;
 				break;
 			case 'I':
-				if (initialize_steps)
-					pg_free(initialize_steps);
+				pg_free(initialize_steps);
 				initialize_steps = pg_strdup(optarg);
 				checkInitSteps(initialize_steps);
 				initialization_option_set = true;
@@ -6667,11 +6654,7 @@ main(int argc, char **argv)
 					exit(1);
 				}
 #ifdef HAVE_GETRLIMIT
-#ifdef RLIMIT_NOFILE			/* most platforms use RLIMIT_NOFILE */
 				if (getrlimit(RLIMIT_NOFILE, &rlim) == -1)
-#else							/* but BSD doesn't ... */
-				if (getrlimit(RLIMIT_OFILE, &rlim) == -1)
-#endif							/* RLIMIT_NOFILE */
 					pg_fatal("getrlimit failed: %m");
 				if (rlim.rlim_cur < nclients + 3)
 				{

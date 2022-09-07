@@ -1415,10 +1415,12 @@ cost_tidrangescan(Path *path, PlannerInfo *root,
  *
  * 'baserel' is the relation to be scanned
  * 'param_info' is the ParamPathInfo if this is a parameterized path, else NULL
+ * 'trivial_pathtarget' is true if the pathtarget is believed to be trivial.
  */
 void
 cost_subqueryscan(SubqueryScanPath *path, PlannerInfo *root,
-				  RelOptInfo *baserel, ParamPathInfo *param_info)
+				  RelOptInfo *baserel, ParamPathInfo *param_info,
+				  bool trivial_pathtarget)
 {
 	Cost		startup_cost;
 	Cost		run_cost;
@@ -1457,6 +1459,22 @@ cost_subqueryscan(SubqueryScanPath *path, PlannerInfo *root,
 	 */
 	path->path.startup_cost = path->subpath->startup_cost;
 	path->path.total_cost = path->subpath->total_cost;
+
+	/*
+	 * However, if there are no relevant restriction clauses and the
+	 * pathtarget is trivial, then we expect that setrefs.c will optimize away
+	 * the SubqueryScan plan node altogether, so we should just make its cost
+	 * and rowcount equal to the input path's.
+	 *
+	 * Note: there are some edge cases where createplan.c will apply a
+	 * different targetlist to the SubqueryScan node, thus falsifying our
+	 * current estimate of whether the target is trivial, and making the cost
+	 * estimate (though not the rowcount) wrong.  It does not seem worth the
+	 * extra complication to try to account for that exactly, especially since
+	 * that behavior falsifies other cost estimates as well.
+	 */
+	if (qpquals == NIL && trivial_pathtarget)
+		return;
 
 	get_restriction_qual_cost(root, baserel, param_info, &qpqual_cost);
 
@@ -1939,7 +1957,7 @@ compute_cpu_sort_cost(PlannerInfo *root, List *pathkeys, int nPresortedKeys,
 	List	   *cache_varinfos = NIL;
 
 	/* fallback if pathkeys is unknown */
-	if (list_length(pathkeys) == 0)
+	if (pathkeys == NIL)
 	{
 		/*
 		 * If we'll use a bounded heap-sort keeping just K tuples in memory,
@@ -2429,7 +2447,6 @@ append_nonpartial_cost(List *subpaths, int numpaths, int parallel_workers)
 	int			arrlen;
 	ListCell   *l;
 	ListCell   *cell;
-	int			i;
 	int			path_index;
 	int			min_index;
 	int			max_index;
@@ -2468,7 +2485,6 @@ append_nonpartial_cost(List *subpaths, int numpaths, int parallel_workers)
 	for_each_cell(l, subpaths, cell)
 	{
 		Path	   *subpath = (Path *) lfirst(l);
-		int			i;
 
 		/* Consider only the non-partial paths */
 		if (path_index++ == numpaths)
@@ -2477,7 +2493,8 @@ append_nonpartial_cost(List *subpaths, int numpaths, int parallel_workers)
 		costarr[min_index] += subpath->total_cost;
 
 		/* Update the new min cost array index */
-		for (min_index = i = 0; i < arrlen; i++)
+		min_index = 0;
+		for (int i = 0; i < arrlen; i++)
 		{
 			if (costarr[i] < costarr[min_index])
 				min_index = i;
@@ -2485,7 +2502,8 @@ append_nonpartial_cost(List *subpaths, int numpaths, int parallel_workers)
 	}
 
 	/* Return the highest cost from the array */
-	for (max_index = i = 0; i < arrlen; i++)
+	max_index = 0;
+	for (int i = 0; i < arrlen; i++)
 	{
 		if (costarr[i] > costarr[max_index])
 			max_index = i;
@@ -4905,8 +4923,7 @@ cost_qual_eval_walker(Node *node, cost_qual_eval_context *context)
 			 IsA(node, SQLValueFunction) ||
 			 IsA(node, XmlExpr) ||
 			 IsA(node, CoerceToDomain) ||
-			 IsA(node, NextValueExpr) ||
-			 IsA(node, JsonExpr))
+			 IsA(node, NextValueExpr))
 	{
 		/* Treat all these as having cost 1 */
 		context->total.per_tuple += cpu_operator_cost;
@@ -5445,10 +5462,8 @@ calc_joinrel_size_estimate(PlannerInfo *root,
 						   double outer_rows,
 						   double inner_rows,
 						   SpecialJoinInfo *sjinfo,
-						   List *restrictlist_in)
+						   List *restrictlist)
 {
-	/* This apparently-useless variable dodges a compiler bug in VS2013: */
-	List	   *restrictlist = restrictlist_in;
 	JoinType	jointype = sjinfo->jointype;
 	Selectivity fkselec;
 	Selectivity jselec;
@@ -6229,7 +6244,7 @@ set_rel_width(PlannerInfo *root, RelOptInfo *rel)
 			 * scanning this rel, so be sure to include it in reltarget->cost.
 			 */
 			PlaceHolderVar *phv = (PlaceHolderVar *) node;
-			PlaceHolderInfo *phinfo = find_placeholder_info(root, phv, false);
+			PlaceHolderInfo *phinfo = find_placeholder_info(root, phv);
 			QualCost	cost;
 
 			tuple_width += phinfo->ph_width;

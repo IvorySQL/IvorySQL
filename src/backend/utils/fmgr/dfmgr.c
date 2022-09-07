@@ -16,7 +16,7 @@
 
 #include <sys/stat.h>
 
-#ifdef HAVE_DLOPEN
+#ifndef WIN32
 #include <dlfcn.h>
 
 /*
@@ -28,7 +28,7 @@
 #undef bool
 #endif
 #endif
-#endif							/* HAVE_DLOPEN */
+#endif							/* !WIN32 */
 
 #include "fmgr.h"
 #include "lib/stringinfo.h"
@@ -240,7 +240,7 @@ internal_load_library(const char *libname)
 		if (file_scanner->handle == NULL)
 		{
 			load_error = dlerror();
-			free((char *) file_scanner);
+			free(file_scanner);
 			/* errcode_for_file_access might not be appropriate here? */
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -263,7 +263,7 @@ internal_load_library(const char *libname)
 
 				/* try to close library */
 				dlclose(file_scanner->handle);
-				free((char *) file_scanner);
+				free(file_scanner);
 
 				/* issue suitable complaint */
 				incompatible_module_error(libname, &module_magic_data);
@@ -273,7 +273,7 @@ internal_load_library(const char *libname)
 		{
 			/* try to close library */
 			dlclose(file_scanner->handle);
-			free((char *) file_scanner);
+			free(file_scanner);
 			/* complain */
 			ereport(ERROR,
 					(errmsg("incompatible library \"%s\": missing magic block",

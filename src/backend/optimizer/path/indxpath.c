@@ -153,6 +153,7 @@ static IndexClause *match_clause_to_indexcol(PlannerInfo *root,
 											 RestrictInfo *rinfo,
 											 int indexcol,
 											 IndexOptInfo *index);
+static bool IsBooleanOpfamily(Oid opfamily);
 static IndexClause *match_boolean_index_clause(PlannerInfo *root,
 											   RestrictInfo *rinfo,
 											   int indexcol, IndexOptInfo *index);
@@ -361,7 +362,6 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 	if (bitjoinpaths != NIL)
 	{
 		List	   *all_path_outers;
-		ListCell   *lc;
 
 		/* Identify each distinct parameterization seen in bitjoinpaths */
 		all_path_outers = NIL;
@@ -2188,7 +2188,7 @@ match_clause_to_index(PlannerInfo *root,
 		/* Ignore duplicates */
 		foreach(lc, clauseset->indexclauses[indexcol])
 		{
-			IndexClause *iclause = (IndexClause *) lfirst(lc);
+			iclause = (IndexClause *) lfirst(lc);
 
 			if (iclause->rinfo == rinfo)
 				return;
@@ -2341,6 +2341,23 @@ match_clause_to_indexcol(PlannerInfo *root,
 	}
 
 	return NULL;
+}
+
+/*
+ * IsBooleanOpfamily
+ *	  Detect whether an opfamily supports boolean equality as an operator.
+ *
+ * If the opfamily OID is in the range of built-in objects, we can rely
+ * on hard-wired knowledge of which built-in opfamilies support this.
+ * For extension opfamilies, there's no choice but to do a catcache lookup.
+ */
+static bool
+IsBooleanOpfamily(Oid opfamily)
+{
+	if (opfamily < FirstNormalObjectId)
+		return IsBuiltinBooleanOpfamily(opfamily);
+	else
+		return op_in_opfamily(BooleanEqualOperator, opfamily);
 }
 
 /*
@@ -3026,14 +3043,12 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 
 			rc->rctype = (RowCompareType) op_strategy;
 			rc->opnos = new_ops;
-			rc->opfamilies = list_truncate(list_copy(clause->opfamilies),
-										   matching_cols);
-			rc->inputcollids = list_truncate(list_copy(clause->inputcollids),
-											 matching_cols);
-			rc->largs = list_truncate(copyObject(var_args),
-									  matching_cols);
-			rc->rargs = list_truncate(copyObject(non_var_args),
-									  matching_cols);
+			rc->opfamilies = list_copy_head(clause->opfamilies,
+											matching_cols);
+			rc->inputcollids = list_copy_head(clause->inputcollids,
+											  matching_cols);
+			rc->largs = list_copy_head(var_args, matching_cols);
+			rc->rargs = list_copy_head(non_var_args, matching_cols);
 			iclause->indexquals = list_make1(make_simple_restrictinfo(root,
 																	  (Expr *) rc));
 		}

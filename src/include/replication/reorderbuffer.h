@@ -99,7 +99,7 @@ typedef struct ReorderBufferChange
 		struct
 		{
 			/* relation that has been changed */
-			RelFileNode relnode;
+			RelFileLocator rlocator;
 
 			/* no previously reassembled toast chunks are necessary anymore */
 			bool		clear_toast_afterwards;
@@ -145,7 +145,7 @@ typedef struct ReorderBufferChange
 		 */
 		struct
 		{
-			RelFileNode node;
+			RelFileLocator locator;
 			ItemPointerData tid;
 			CommandId	cmin;
 			CommandId	cmax;
@@ -262,7 +262,7 @@ typedef struct ReorderBufferTXN
 	 * aborted. This can be a
 	 * * plain commit record
 	 * * plain commit record, of a parent transaction
-	 * * prepared tansaction
+	 * * prepared transaction
 	 * * prepared transaction commit
 	 * * plain abort record
 	 * * prepared transaction abort
@@ -379,6 +379,11 @@ typedef struct ReorderBufferTXN
 	 * ---
 	 */
 	dlist_node	node;
+
+	/*
+	 * A node in the list of catalog modifying transactions
+	 */
+	dlist_node	catchange_node;
 
 	/*
 	 * Size of this transaction (changes currently in memory, in bytes).
@@ -527,6 +532,12 @@ struct ReorderBuffer
 	dlist_head	txns_by_base_snapshot_lsn;
 
 	/*
+	 * Transactions and subtransactions that have modified system catalogs.
+	 */
+	dlist_head	catchange_txns;
+	int			catchange_ntxns;
+
+	/*
 	 * one-entry sized cache for by_txn. Very frequently the same txn gets
 	 * looked up over and over again.
 	 */
@@ -657,7 +668,7 @@ extern void ReorderBufferAddSnapshot(ReorderBuffer *, TransactionId, XLogRecPtr 
 extern void ReorderBufferAddNewCommandId(ReorderBuffer *, TransactionId, XLogRecPtr lsn,
 										 CommandId cid);
 extern void ReorderBufferAddNewTupleCids(ReorderBuffer *, TransactionId, XLogRecPtr lsn,
-										 RelFileNode node, ItemPointerData pt,
+										 RelFileLocator locator, ItemPointerData pt,
 										 CommandId cmin, CommandId cmax, CommandId combocid);
 extern void ReorderBufferAddInvalidations(ReorderBuffer *, TransactionId, XLogRecPtr lsn,
 										  Size nmsgs, SharedInvalidationMessage *msgs);
@@ -677,6 +688,7 @@ extern void ReorderBufferSkipPrepare(ReorderBuffer *rb, TransactionId xid);
 extern void ReorderBufferPrepare(ReorderBuffer *rb, TransactionId xid, char *gid);
 extern ReorderBufferTXN *ReorderBufferGetOldestTXN(ReorderBuffer *);
 extern TransactionId ReorderBufferGetOldestXmin(ReorderBuffer *rb);
+extern TransactionId *ReorderBufferGetCatalogChangesXacts(ReorderBuffer *rb);
 
 extern void ReorderBufferSetRestartPoint(ReorderBuffer *, XLogRecPtr ptr);
 

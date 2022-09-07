@@ -1163,6 +1163,49 @@ SELECT * FROM ft1 WHERE CASE c3 COLLATE "C" WHEN c6 THEN true ELSE c3 < 'bar' EN
    Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
 (4 rows)
 
+-- a regconfig constant referring to this text search configuration
+-- is initially unshippable
+CREATE TEXT SEARCH CONFIGURATION public.custom_search
+  (COPY = pg_catalog.english);
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Foreign Scan on public.ft1
+   Output: c1, to_tsvector('custom_search'::regconfig, c3)
+   Filter: (length(to_tsvector('custom_search'::regconfig, ft1.c3)) > 0)
+   Remote SQL: SELECT "C 1", c3 FROM "S 1"."T 1" WHERE (("C 1" = 642))
+(4 rows)
+
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+ c1  | to_tsvector 
+-----+-------------
+ 642 | '00642':1
+(1 row)
+
+-- but if it's in a shippable extension, it can be shipped
+ALTER EXTENSION postgres_fdw ADD TEXT SEARCH CONFIGURATION public.custom_search;
+-- however, that doesn't flush the shippability cache, so do a quick reconnect
+\c -
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.ft1
+   Output: c1, to_tsvector('custom_search'::regconfig, c3)
+   Remote SQL: SELECT "C 1", c3 FROM "S 1"."T 1" WHERE (("C 1" = 642)) AND ((length(to_tsvector('public.custom_search'::regconfig, c3)) > 0))
+(3 rows)
+
+SELECT c1, to_tsvector('custom_search'::regconfig, c3) FROM ft1
+WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
+ c1  | to_tsvector 
+-----+-------------
+ 642 | '00642':1
+(1 row)
+
 -- ===================================================================
 -- JOIN queries
 -- ===================================================================
@@ -3252,15 +3295,18 @@ create operator class my_op_class for type int using btree family my_op_family a
 -- extension yet.
 explain (verbose, costs off)
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  GroupAggregate
    Output: array_agg(c1 ORDER BY c1 USING <^ NULLS LAST), c2
    Group Key: ft2.c2
-   ->  Foreign Scan on public.ft2
-         Output: c1, c2
-         Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1" WHERE (("C 1" < 100)) AND ((c2 = 6))
-(6 rows)
+   ->  Sort
+         Output: c2, c1
+         Sort Key: ft2.c1 USING <^
+         ->  Foreign Scan on public.ft2
+               Output: c2, c1
+               Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1" WHERE (("C 1" < 100)) AND ((c2 = 6))
+(9 rows)
 
 -- This should not be pushed either.
 explain (verbose, costs off)
@@ -3286,6 +3332,7 @@ alter extension postgres_fdw add operator public.=^(int, int);
 alter extension postgres_fdw add operator public.>^(int, int);
 alter server loopback options (set extensions 'postgres_fdw');
 -- Now this will be pushed as sort operator is part of the extension.
+alter server loopback options (add fdw_tuple_cost '0.5');
 explain (verbose, costs off)
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
                                                                            QUERY PLAN                                                                           
@@ -3302,6 +3349,7 @@ select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6
  {6,16,26,36,46,56,66,76,86,96}
 (1 row)
 
+alter server loopback options (drop fdw_tuple_cost);
 -- This should be pushed too.
 explain (verbose, costs off)
 select * from ft2 order by c1 using operator(public.<^);
@@ -3323,15 +3371,18 @@ alter server loopback options (set extensions 'postgres_fdw');
 -- This will not be pushed as sort operator is now removed from the extension.
 explain (verbose, costs off)
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  GroupAggregate
    Output: array_agg(c1 ORDER BY c1 USING <^ NULLS LAST), c2
    Group Key: ft2.c2
-   ->  Foreign Scan on public.ft2
-         Output: c1, c2
-         Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1" WHERE (("C 1" < 100)) AND ((c2 = 6))
-(6 rows)
+   ->  Sort
+         Output: c2, c1
+         Sort Key: ft2.c1 USING <^
+         ->  Foreign Scan on public.ft2
+               Output: c2, c1
+               Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1" WHERE (("C 1" < 100)) AND ((c2 = 6))
+(9 rows)
 
 -- Cleanup
 drop operator class my_op_class using btree;
@@ -6493,6 +6544,29 @@ SELECT * FROM foreign_tbl;
  20 | 30
 (1 row)
 
+-- We don't allow batch insert when there are any WCO constraints
+ALTER SERVER loopback OPTIONS (ADD batch_size '10');
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO rw_view VALUES (0, 15), (0, 5);
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Insert on public.foreign_tbl
+   Remote SQL: INSERT INTO public.base_tbl(a, b) VALUES ($1, $2) RETURNING a, b
+   Batch Size: 1
+   ->  Values Scan on "*VALUES*"
+         Output: "*VALUES*".column1, "*VALUES*".column2
+(5 rows)
+
+INSERT INTO rw_view VALUES (0, 15), (0, 5); -- should fail
+ERROR:  new row violates check option for view "rw_view"
+DETAIL:  Failing row contains (10, 5).
+SELECT * FROM foreign_tbl;
+ a  | b  
+----+----
+ 20 | 30
+(1 row)
+
+ALTER SERVER loopback OPTIONS (DROP batch_size);
 DROP FOREIGN TABLE foreign_tbl CASCADE;
 NOTICE:  drop cascades to view rw_view
 DROP TRIGGER row_before_insupd_trigger ON base_tbl;
@@ -6585,6 +6659,27 @@ SELECT * FROM foreign_tbl;
  20 | 30
 (1 row)
 
+-- We don't allow batch insert when there are any WCO constraints
+ALTER SERVER loopback OPTIONS (ADD batch_size '10');
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO rw_view VALUES (0, 15), (0, 5);
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Insert on public.parent_tbl
+   ->  Values Scan on "*VALUES*"
+         Output: "*VALUES*".column1, "*VALUES*".column2
+(3 rows)
+
+INSERT INTO rw_view VALUES (0, 15), (0, 5); -- should fail
+ERROR:  new row violates check option for view "rw_view"
+DETAIL:  Failing row contains (10, 5).
+SELECT * FROM foreign_tbl;
+ a  | b  
+----+----
+ 20 | 30
+(1 row)
+
+ALTER SERVER loopback OPTIONS (DROP batch_size);
 DROP FOREIGN TABLE foreign_tbl CASCADE;
 DROP TRIGGER row_before_insupd_trigger ON child_tbl;
 DROP TABLE parent_tbl CASCADE;
@@ -6732,9 +6827,9 @@ BEGIN
 		TG_ARGV[0], TG_OP, TG_WHEN, TG_LEVEL;
 	RETURN NULL;
 END;$$;
-CREATE TRIGGER trig_stmt_before BEFORE DELETE OR INSERT OR UPDATE ON rem1
+CREATE TRIGGER trig_stmt_before BEFORE DELETE OR INSERT OR UPDATE OR TRUNCATE ON rem1
 	FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
-CREATE TRIGGER trig_stmt_after AFTER DELETE OR INSERT OR UPDATE ON rem1
+CREATE TRIGGER trig_stmt_after AFTER DELETE OR INSERT OR UPDATE OR TRUNCATE ON rem1
 	FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
 CREATE OR REPLACE FUNCTION trigger_data()  RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -6821,6 +6916,9 @@ NOTICE:  OLD: (1,update),NEW: (1,updateupdate)
 NOTICE:  trig_row_after(23, skidoo) AFTER ROW UPDATE ON rem1
 NOTICE:  OLD: (1,update),NEW: (1,updateupdate)
 NOTICE:  trigger_func(<NULL>) called: action = UPDATE, when = AFTER, level = STATEMENT
+truncate rem1;
+NOTICE:  trigger_func(<NULL>) called: action = TRUNCATE, when = BEFORE, level = STATEMENT
+NOTICE:  trigger_func(<NULL>) called: action = TRUNCATE, when = AFTER, level = STATEMENT
 -- cleanup
 DROP TRIGGER trig_row_before ON rem1;
 DROP TRIGGER trig_row_after ON rem1;
@@ -7087,7 +7185,7 @@ NOTICE:  trig_row_after(23, skidoo) AFTER ROW INSERT ON rem1
 NOTICE:  NEW: (13,"test triggered !")
   ctid  
 --------
- (0,32)
+ (0,25)
 (1 row)
 
 -- cleanup
@@ -9544,7 +9642,7 @@ HINT:  Target server's authentication method must be changed or password_require
 -- Unpriv user cannot make the mapping passwordless
 ALTER USER MAPPING FOR CURRENT_USER SERVER loopback_nopw OPTIONS (ADD password_required 'false');
 ERROR:  password_required=false is superuser-only
-HINT:  User mappings with the password_required option set to false may only be created or modified by the superuser
+HINT:  User mappings with the password_required option set to false may only be created or modified by the superuser.
 SELECT 1 FROM ft1_nopw LIMIT 1;
 ERROR:  password is required
 DETAIL:  Non-superuser cannot connect if the server does not request a password.
@@ -9565,10 +9663,10 @@ SELECT 1 FROM ft1_nopw LIMIT 1;
 ALTER USER MAPPING FOR CURRENT_USER SERVER loopback_nopw OPTIONS (SET password_required 'true');
 ALTER USER MAPPING FOR CURRENT_USER SERVER loopback_nopw OPTIONS (ADD sslcert 'foo.crt');
 ERROR:  sslcert and sslkey are superuser-only
-HINT:  User mappings with the sslcert or sslkey options set may only be created or modified by the superuser
+HINT:  User mappings with the sslcert or sslkey options set may only be created or modified by the superuser.
 ALTER USER MAPPING FOR CURRENT_USER SERVER loopback_nopw OPTIONS (ADD sslkey 'foo.key');
 ERROR:  sslcert and sslkey are superuser-only
-HINT:  User mappings with the sslcert or sslkey options set may only be created or modified by the superuser
+HINT:  User mappings with the sslcert or sslkey options set may only be created or modified by the superuser.
 -- We're done with the role named after a specific user and need to check the
 -- changes to the public mapping.
 DROP USER MAPPING FOR CURRENT_USER SERVER loopback_nopw;

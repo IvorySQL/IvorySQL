@@ -135,7 +135,7 @@ typedef struct
 	char	   *nspname;		/* namespace name */
 	char	   *relname;		/* relation name */
 	Oid			reloid;			/* relation OID */
-	Oid			relfilenode;	/* relation file node */
+	RelFileNumber relfilenumber;	/* relation file number */
 	Oid			indtable;		/* if index, OID of its table, else 0 */
 	Oid			toastheap;		/* if toast table, OID of base table, else 0 */
 	char	   *tablespace;		/* tablespace path; "" for cluster default */
@@ -159,7 +159,7 @@ typedef struct
 	const char *old_tablespace_suffix;
 	const char *new_tablespace_suffix;
 	Oid			db_oid;
-	Oid			relfilenode;
+	RelFileNumber relfilenumber;
 	/* the rest are used only for logging and error reporting */
 	char	   *nspname;		/* namespaces */
 	char	   *relname;
@@ -216,7 +216,7 @@ typedef struct
 	uint32		large_object;
 	bool		date_is_int;
 	bool		float8_pass_by_value;
-	bool		data_checksum_version;
+	uint32		data_checksum_version;
 } ControlData;
 
 /*
@@ -235,14 +235,12 @@ typedef enum
 typedef enum
 {
 	PG_VERBOSE,
-	PG_STATUS,
+	PG_STATUS,					/* these messages do not get a newline added */
+	PG_REPORT_NONL,				/* these too */
 	PG_REPORT,
 	PG_WARNING,
 	PG_FATAL
 } eLogType;
-
-
-typedef long pgpid_t;
 
 
 /*
@@ -400,7 +398,7 @@ void		parseCommandLine(int argc, char *argv[]);
 void		adjust_data_dir(ClusterInfo *cluster);
 void		get_sock_dir(ClusterInfo *cluster, bool live_check);
 
-/* relfilenode.c */
+/* relfilenumber.c */
 
 void		transfer_all_new_tablespaces(DbInfoArr *old_db_arr,
 										 DbInfoArr *new_db_arr, char *old_pgdata, char *new_pgdata);

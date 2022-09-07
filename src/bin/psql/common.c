@@ -59,6 +59,7 @@ openQueryOutputFile(const char *fname, FILE **fout, bool *is_pipe)
 	}
 	else if (*fname == '|')
 	{
+		fflush(NULL);
 		*fout = popen(fname + 1, "w");
 		*is_pipe = true;
 	}
@@ -463,8 +464,7 @@ ClearOrSaveResult(PGresult *result)
 		{
 			case PGRES_NONFATAL_ERROR:
 			case PGRES_FATAL_ERROR:
-				if (pset.last_error_result)
-					PQclear(pset.last_error_result);
+				PQclear(pset.last_error_result);
 				pset.last_error_result = result;
 				break;
 

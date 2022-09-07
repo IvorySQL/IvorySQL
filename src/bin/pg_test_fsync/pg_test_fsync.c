@@ -300,7 +300,7 @@ test_sync(int writes_per_op)
 	printf(LABEL_FORMAT, "open_datasync");
 	fflush(stdout);
 
-#ifdef OPEN_DATASYNC_FLAG
+#ifdef O_DSYNC
 	if ((tmpfile = open_direct(filename, O_RDWR | O_DSYNC | PG_BINARY, 0)) == -1)
 	{
 		printf(NA_FORMAT, _("n/a*"));
@@ -312,10 +312,10 @@ test_sync(int writes_per_op)
 		for (ops = 0; alarm_triggered == false; ops++)
 		{
 			for (writes = 0; writes < writes_per_op; writes++)
-				if (pg_pwrite(tmpfile,
-							  buf,
-							  XLOG_BLCKSZ,
-							  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+				if (pwrite(tmpfile,
+						   buf,
+						   XLOG_BLCKSZ,
+						   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 					die("write failed");
 		}
 		STOP_TIMER;
@@ -331,25 +331,21 @@ test_sync(int writes_per_op)
 	printf(LABEL_FORMAT, "fdatasync");
 	fflush(stdout);
 
-#ifdef HAVE_FDATASYNC
 	if ((tmpfile = open(filename, O_RDWR | PG_BINARY, 0)) == -1)
 		die("could not open output file");
 	START_TIMER;
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
 		for (writes = 0; writes < writes_per_op; writes++)
-			if (pg_pwrite(tmpfile,
-						  buf,
-						  XLOG_BLCKSZ,
-						  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			if (pwrite(tmpfile,
+					   buf,
+					   XLOG_BLCKSZ,
+					   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 				die("write failed");
 		fdatasync(tmpfile);
 	}
 	STOP_TIMER;
 	close(tmpfile);
-#else
-	printf(NA_FORMAT, _("n/a"));
-#endif
 
 /*
  * Test fsync
@@ -363,10 +359,10 @@ test_sync(int writes_per_op)
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
 		for (writes = 0; writes < writes_per_op; writes++)
-			if (pg_pwrite(tmpfile,
-						  buf,
-						  XLOG_BLCKSZ,
-						  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			if (pwrite(tmpfile,
+					   buf,
+					   XLOG_BLCKSZ,
+					   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 				die("write failed");
 		if (fsync(tmpfile) != 0)
 			die("fsync failed");
@@ -387,10 +383,10 @@ test_sync(int writes_per_op)
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
 		for (writes = 0; writes < writes_per_op; writes++)
-			if (pg_pwrite(tmpfile,
-						  buf,
-						  XLOG_BLCKSZ,
-						  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			if (pwrite(tmpfile,
+					   buf,
+					   XLOG_BLCKSZ,
+					   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 				die("write failed");
 		if (pg_fsync_writethrough(tmpfile) != 0)
 			die("fsync failed");
@@ -407,8 +403,8 @@ test_sync(int writes_per_op)
 	printf(LABEL_FORMAT, "open_sync");
 	fflush(stdout);
 
-#ifdef OPEN_SYNC_FLAG
-	if ((tmpfile = open_direct(filename, O_RDWR | OPEN_SYNC_FLAG | PG_BINARY, 0)) == -1)
+#ifdef O_SYNC
+	if ((tmpfile = open_direct(filename, O_RDWR | O_SYNC | PG_BINARY, 0)) == -1)
 	{
 		printf(NA_FORMAT, _("n/a*"));
 		fs_warning = true;
@@ -419,10 +415,10 @@ test_sync(int writes_per_op)
 		for (ops = 0; alarm_triggered == false; ops++)
 		{
 			for (writes = 0; writes < writes_per_op; writes++)
-				if (pg_pwrite(tmpfile,
-							  buf,
-							  XLOG_BLCKSZ,
-							  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+				if (pwrite(tmpfile,
+						   buf,
+						   XLOG_BLCKSZ,
+						   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 
 					/*
 					 * This can generate write failures if the filesystem has
@@ -466,7 +462,7 @@ test_open_syncs(void)
 static void
 test_open_sync(const char *msg, int writes_size)
 {
-#ifdef OPEN_SYNC_FLAG
+#ifdef O_SYNC
 	int			tmpfile,
 				ops,
 				writes;
@@ -475,8 +471,8 @@ test_open_sync(const char *msg, int writes_size)
 	printf(LABEL_FORMAT, msg);
 	fflush(stdout);
 
-#ifdef OPEN_SYNC_FLAG
-	if ((tmpfile = open_direct(filename, O_RDWR | OPEN_SYNC_FLAG | PG_BINARY, 0)) == -1)
+#ifdef O_SYNC
+	if ((tmpfile = open_direct(filename, O_RDWR | O_SYNC | PG_BINARY, 0)) == -1)
 		printf(NA_FORMAT, _("n/a*"));
 	else
 	{
@@ -484,10 +480,10 @@ test_open_sync(const char *msg, int writes_size)
 		for (ops = 0; alarm_triggered == false; ops++)
 		{
 			for (writes = 0; writes < 16 / writes_size; writes++)
-				if (pg_pwrite(tmpfile,
-							  buf,
-							  writes_size * 1024,
-							  writes * writes_size * 1024) !=
+				if (pwrite(tmpfile,
+						   buf,
+						   writes_size * 1024,
+						   writes * writes_size * 1024) !=
 					writes_size * 1024)
 					die("write failed");
 		}
@@ -586,7 +582,7 @@ test_non_sync(void)
 	START_TIMER;
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
-		if (pg_pwrite(tmpfile, buf, XLOG_BLCKSZ, 0) != XLOG_BLCKSZ)
+		if (pwrite(tmpfile, buf, XLOG_BLCKSZ, 0) != XLOG_BLCKSZ)
 			die("write failed");
 	}
 	STOP_TIMER;

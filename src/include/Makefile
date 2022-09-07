@@ -44,6 +44,7 @@ install: all installdirs
 	$(INSTALL_DATA) pg_config.h     '$(DESTDIR)$(includedir_server)'
 	$(INSTALL_DATA) pg_config_ext.h '$(DESTDIR)$(includedir_server)'
 	$(INSTALL_DATA) pg_config_os.h  '$(DESTDIR)$(includedir_server)'
+	$(INSTALL_DATA) nodes/nodetags.h '$(DESTDIR)$(includedir_server)/nodes'
 	$(INSTALL_DATA) utils/errcodes.h '$(DESTDIR)$(includedir_server)/utils'
 	$(INSTALL_DATA) utils/fmgroids.h '$(DESTDIR)$(includedir_server)/utils'
 	$(INSTALL_DATA) utils/fmgrprotos.h '$(DESTDIR)$(includedir_server)/utils'
@@ -81,6 +82,7 @@ clean:
 	rm -f parser/gram.h storage/lwlocknames.h utils/probes.h
 	rm -f catalog/schemapg.h catalog/system_fk_info.h
 	rm -f catalog/pg_*_d.h catalog/header-stamp
+	rm -f nodes/nodetags.h nodes/header-stamp
 
 distclean maintainer-clean: clean
 	rm -f pg_config.h pg_config_ext.h pg_config_os.h stamp-h stamp-ext-h

@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -644,8 +645,6 @@ ipv4eq(struct sockaddr_in *a, struct sockaddr_in *b)
 	return (a->sin_addr.s_addr == b->sin_addr.s_addr);
 }
 
-#ifdef HAVE_IPV6
-
 static bool
 ipv6eq(struct sockaddr_in6 *a, struct sockaddr_in6 *b)
 {
@@ -657,7 +656,6 @@ ipv6eq(struct sockaddr_in6 *a, struct sockaddr_in6 *b)
 
 	return true;
 }
-#endif							/* HAVE_IPV6 */
 
 /*
  * Check whether host name matches pattern.
@@ -746,7 +744,6 @@ check_hostname(hbaPort *port, const char *hostname)
 					break;
 				}
 			}
-#ifdef HAVE_IPV6
 			else if (gai->ai_addr->sa_family == AF_INET6)
 			{
 				if (ipv6eq((struct sockaddr_in6 *) gai->ai_addr,
@@ -756,7 +753,6 @@ check_hostname(hbaPort *port, const char *hostname)
 					break;
 				}
 			}
-#endif
 		}
 	}
 
@@ -900,9 +896,10 @@ do { \
 	if (!field) { \
 		ereport(elevel, \
 				(errcode(ERRCODE_CONFIG_FILE_ERROR), \
-				 errmsg("missing entry in file \"%s\" at end of line %d", \
-						IdentFileName, line_num))); \
-		*err_msg = psprintf("missing entry at end of line"); \
+				 errmsg("missing entry at end of line"), \
+				 errcontext("line %d of configuration file \"%s\"", \
+							line_num, IdentFileName))); \
+		*err_msg = pstrdup("missing entry at end of line"); \
 		return NULL; \
 	} \
 } while (0)
@@ -915,7 +912,7 @@ do { \
 				 errmsg("multiple values in ident field"), \
 				 errcontext("line %d of configuration file \"%s\"", \
 							line_num, IdentFileName))); \
-		*err_msg = psprintf("multiple values in ident field"); \
+		*err_msg = pstrdup("multiple values in ident field"); \
 		return NULL; \
 	} \
 } while (0)
@@ -972,17 +969,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 	token = linitial(tokens);
 	if (strcmp(token->string, "local") == 0)
 	{
-#ifdef HAVE_UNIX_SOCKETS
 		parsedline->conntype = ctLocal;
-#else
-		ereport(elevel,
-				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("local connections are not supported by this build"),
-				 errcontext("line %d of configuration file \"%s\"",
-							line_num, HbaFileName)));
-		*err_msg = "local connections are not supported by this build";
-		return NULL;
-#endif
 	}
 	else if (strcmp(token->string, "host") == 0 ||
 			 strcmp(token->string, "hostssl") == 0 ||
@@ -1572,7 +1559,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 		MANDATORY_AUTH_ARG(parsedline->radiusservers, "radiusservers", "radius");
 		MANDATORY_AUTH_ARG(parsedline->radiussecrets, "radiussecrets", "radius");
 
-		if (list_length(parsedline->radiusservers) < 1)
+		if (parsedline->radiusservers == NIL)
 		{
 			ereport(elevel,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
@@ -1583,7 +1570,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 			return NULL;
 		}
 
-		if (list_length(parsedline->radiussecrets) < 1)
+		if (parsedline->radiussecrets == NIL)
 		{
 			ereport(elevel,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
@@ -2372,7 +2359,9 @@ parse_ident_line(TokenizedAuthLine *tok_line, int elevel)
 			ereport(elevel,
 					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 					 errmsg("invalid regular expression \"%s\": %s",
-							parsedline->ident_user + 1, errstr)));
+							parsedline->ident_user + 1, errstr),
+					 errcontext("line %d of configuration file \"%s\"",
+							line_num, IdentFileName)));
 
 			*err_msg = psprintf("invalid regular expression \"%s\": %s",
 								parsedline->ident_user + 1, errstr);

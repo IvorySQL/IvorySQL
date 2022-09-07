@@ -500,8 +500,7 @@ dir_close(Walfile f, WalCloseMethod method)
 
 	pg_free(df->pathname);
 	pg_free(df->fullpath);
-	if (df->temp_suffix)
-		pg_free(df->temp_suffix);
+	pg_free(df->temp_suffix);
 	pg_free(df);
 
 	return r;
@@ -1112,9 +1111,8 @@ tar_close(Walfile f, WalCloseMethod method)
 	padding = tarPaddingBytesRequired(filesize);
 	if (padding)
 	{
-		char		zerobuf[TAR_BLOCK_SIZE];
+		char		zerobuf[TAR_BLOCK_SIZE] = {0};
 
-		MemSet(zerobuf, 0, padding);
 		if (tar_write(f, zerobuf, padding) != padding)
 			return -1;
 	}
@@ -1223,7 +1221,7 @@ tar_existsfile(const char *pathname)
 static bool
 tar_finish(void)
 {
-	char		zerobuf[1024];
+	char		zerobuf[1024] = {0};
 
 	tar_clear_error();
 
@@ -1234,7 +1232,6 @@ tar_finish(void)
 	}
 
 	/* A tarfile always ends with two empty blocks */
-	MemSet(zerobuf, 0, sizeof(zerobuf));
 	if (tar_data->compression_algorithm == PG_COMPRESSION_NONE)
 	{
 		errno = 0;

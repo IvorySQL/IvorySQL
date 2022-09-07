@@ -404,16 +404,6 @@ transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 	Query	   *query;
 
 	/*
-	 * We require user to supply an alias for a subselect, per SQL92. To relax
-	 * this, we'd have to be prepared to gin up a unique alias for an
-	 * unlabeled subselect.  (This is just elog, not ereport, because the
-	 * grammar should have enforced it already.  It'd probably be better to
-	 * report the error here, but we don't have a good error location here.)
-	 */
-	if (r->alias == NULL)
-		elog(ERROR, "subquery in FROM must have an alias");
-
-	/*
 	 * Set p_expr_kind to show this parse level is recursing to a subselect.
 	 * We can't be nested within any expression, so don't need save-restore
 	 * logic here.
@@ -430,10 +420,14 @@ transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 	pstate->p_lateral_active = r->lateral;
 
 	/*
-	 * Analyze and transform the subquery.
+	 * Analyze and transform the subquery.  Note that if the subquery doesn't
+	 * have an alias, it can't be explicitly selected for locking, but locking
+	 * might still be required (if there is an all-tables locking clause).
 	 */
 	query = parse_sub_analyze(r->subquery, pstate, NULL,
-							  isLockedRefname(pstate, r->alias->aliasname),
+							  isLockedRefname(pstate,
+											  r->alias == NULL ? NULL :
+											  r->alias->aliasname),
 							  true);
 
 	/* Restore state */
@@ -696,9 +690,7 @@ transformRangeTableFunc(ParseState *pstate, RangeTableFunc *rtf)
 	char	  **names;
 	int			colno;
 
-	/* Currently only XMLTABLE and JSON_TABLE are supported */
-
-	tf->functype = TFT_XMLTABLE;
+	/* Currently only XMLTABLE is supported */
 	constructName = "XMLTABLE";
 	docType = XMLOID;
 
@@ -1056,6 +1048,9 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 						ParseNamespaceItem **top_nsitem,
 						List **namespace)
 {
+	/* Guard against stack overflow due to overly deep subtree */
+	check_stack_depth();
+
 	if (IsA(n, RangeVar))
 	{
 		/* Plain relation reference, or perhaps a CTE reference */
@@ -1102,17 +1097,13 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		rtr->rtindex = nsitem->p_rtindex;
 		return (Node *) rtr;
 	}
-	else if (IsA(n, RangeTableFunc) || IsA(n, JsonTable))
+	else if (IsA(n, RangeTableFunc))
 	{
 		/* table function is like a plain relation */
 		RangeTblRef *rtr;
 		ParseNamespaceItem *nsitem;
 
-		if (IsA(n, RangeTableFunc))
-			nsitem = transformRangeTableFunc(pstate, (RangeTableFunc *) n);
-		else
-			nsitem = transformJsonTable(pstate, (JsonTable *) n);
-
+		nsitem = transformRangeTableFunc(pstate, (RangeTableFunc *) n);
 		*top_nsitem = nsitem;
 		*namespace = list_make1(nsitem);
 		rtr = makeNode(RangeTblRef);

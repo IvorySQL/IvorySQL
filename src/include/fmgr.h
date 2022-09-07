@@ -413,7 +413,7 @@ typedef const Pg_finfo_record *(*PGFInfoFunction) (void);
  *	info function, since authors shouldn't need to be explicitly aware of it.
  */
 #define PG_FUNCTION_INFO_V1(funcname) \
-extern Datum funcname(PG_FUNCTION_ARGS); \
+extern PGDLLEXPORT Datum funcname(PG_FUNCTION_ARGS); \
 extern PGDLLEXPORT const Pg_finfo_record * CppConcat(pg_finfo_,funcname)(void); \
 const Pg_finfo_record * \
 CppConcat(pg_finfo_,funcname) (void) \
@@ -422,6 +422,17 @@ CppConcat(pg_finfo_,funcname) (void) \
 	return &my_finfo; \
 } \
 extern int no_such_variable
+
+
+/*
+ * Declare _PG_init/_PG_fini centrally. Historically each shared library had
+ * its own declaration; but now that we want to mark these PGDLLEXPORT, using
+ * central declarations avoids each extension having to add that.  Any
+ * existing declarations in extensions will continue to work if fmgr.h is
+ * included before them, otherwise compilation for Windows will fail.
+ */
+extern PGDLLEXPORT void _PG_init(void);
+extern PGDLLEXPORT void _PG_fini(void);
 
 
 /*-------------------------------------------------------------------------

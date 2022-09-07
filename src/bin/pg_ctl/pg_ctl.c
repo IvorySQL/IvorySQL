@@ -14,14 +14,12 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#ifdef HAVE_SYS_RESOURCE_H
-#include <sys/time.h>
-#include <sys/resource.h>
-#endif
 
 #include "catalog/pg_control.h"
 #include "common/controldata_utils.h"
@@ -160,7 +158,7 @@ static bool wait_for_postmaster_stop(void);
 static bool wait_for_postmaster_promote(void);
 static bool postmaster_is_alive(pid_t pid);
 
-#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+#if defined(HAVE_GETRLIMIT)
 static void unlimit_core_size(void);
 #endif
 
@@ -450,8 +448,7 @@ start_postmaster(void)
 	pgpid_t		pm_pid;
 
 	/* Flush stdio channels just before fork, to avoid double-output problems */
-	fflush(stdout);
-	fflush(stderr);
+	fflush(NULL);
 
 #ifdef EXEC_BACKEND
 	pg_disable_aslr();
@@ -776,7 +773,7 @@ wait_for_postmaster_promote(void)
 }
 
 
-#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+#if defined(HAVE_GETRLIMIT)
 static void
 unlimit_core_size(void)
 {
@@ -918,6 +915,7 @@ do_init(void)
 		cmd = psprintf("\"%s\" %s%s > \"%s\"",
 					   exec_path, pgdata_opt, post_opts, DEVNULL);
 
+	fflush(NULL);
 	if (system(cmd) != 0)
 	{
 		write_stderr(_("%s: database system initialization failed\n"), progname);
@@ -949,7 +947,7 @@ do_start(void)
 	if (exec_path == NULL)
 		exec_path = find_other_exec_or_die(argv0, "postgres", PG_BACKEND_VERSIONSTR);
 
-#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+#if defined(HAVE_GETRLIMIT)
 	if (allow_core_files)
 		unlimit_core_size();
 #endif
@@ -1728,9 +1726,7 @@ pgwin32_doRunAsService(void)
 
 /*
  * Mingw headers are incomplete, and so are the libraries. So we have to load
- * a whole lot of API functions dynamically. Since we have to do this anyway,
- * also load the couple of functions that *do* exist in mingw headers but not
- * on NT4. That way, we don't break on NT4.
+ * a whole lot of API functions dynamically.
  */
 typedef BOOL (WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
 typedef BOOL (WINAPI * __IsProcessInJob) (HANDLE, HANDLE, PBOOL);
@@ -1769,9 +1765,6 @@ InheritStdHandles(STARTUPINFO *si)
  * process with it.
  *
  * Returns 0 on success, non-zero on failure, same as CreateProcess().
- *
- * On NT4, or any other system not containing the required functions, will
- * launch the process under the current token without doing any modifications.
  *
  * NOTE! Job object will only work when running as a service, because it's
  * automatically destroyed when pg_ctl exits.
@@ -1817,14 +1810,10 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 
 	if (_CreateRestrictedToken == NULL)
 	{
-		/*
-		 * NT4 doesn't have CreateRestrictedToken, so just call ordinary
-		 * CreateProcess
-		 */
-		write_stderr(_("%s: WARNING: cannot create restricted tokens on this platform\n"), progname);
-		if (Advapi32Handle != NULL)
-			FreeLibrary(Advapi32Handle);
-		return CreateProcess(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, processInfo);
+		/* Log error if we cannot get the function */
+		write_stderr(_("%s: could not locate object function to create restricted token: error code %lu\n"),
+					 progname, (unsigned long) GetLastError());
+		return 0;
 	}
 
 	/* Open the current token to use as a base for the restricted one */
@@ -1896,17 +1885,8 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 	/* Verify that we found all functions */
 	if (_IsProcessInJob == NULL || _CreateJobObject == NULL || _SetInformationJobObject == NULL || _AssignProcessToJobObject == NULL || _QueryInformationJobObject == NULL)
 	{
-		/*
-		 * IsProcessInJob() is not available on < WinXP, so there is no need
-		 * to log the error every time in that case
-		 */
-		if (IsWindowsXPOrGreater())
-
-			/*
-			 * Log error if we can't get version, or if we're on WinXP/2003 or
-			 * newer
-			 */
-			write_stderr(_("%s: WARNING: could not locate all job object functions in system API\n"), progname);
+		/* Log error if we can't get version */
+		write_stderr(_("%s: WARNING: could not locate all job object functions in system API\n"), progname);
 	}
 	else
 	{
@@ -1946,19 +1926,6 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 						JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_READCLIPBOARD |
 						JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
 
-					if (as_service)
-					{
-						if (!IsWindows7OrGreater())
-						{
-							/*
-							 * On Windows 7 (and presumably later),
-							 * JOB_OBJECT_UILIMIT_HANDLES prevents us from
-							 * starting as a service. So we only enable it on
-							 * Vista and earlier (version <= 6.0)
-							 */
-							uiRestrictions.UIRestrictionsClass |= JOB_OBJECT_UILIMIT_HANDLES;
-						}
-					}
 					_SetInformationJobObject(job, JobObjectBasicUIRestrictions, &uiRestrictions, sizeof(uiRestrictions));
 
 					securityLimit.SecurityLimitFlags = JOB_OBJECT_SECURITY_NO_ADMIN | JOB_OBJECT_SECURITY_ONLY_TOKEN;
@@ -2091,7 +2058,7 @@ do_help(void)
 	printf(_("If the -D option is omitted, the environment variable PGDATA is used.\n"));
 
 	printf(_("\nOptions for start or restart:\n"));
-#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+#if defined(HAVE_GETRLIMIT)
 	printf(_("  -c, --core-files       allow postgres to produce core files\n"));
 #else
 	printf(_("  -c, --core-files       not applicable on this platform\n"));
@@ -2246,6 +2213,7 @@ adjust_data_dir(void)
 				   my_exec_path,
 				   pgdata_opt ? pgdata_opt : "",
 				   post_opts ? post_opts : "");
+	fflush(NULL);
 
 	fd = popen(cmd, "r");
 	if (fd == NULL || fgets(filename, sizeof(filename), fd) == NULL)

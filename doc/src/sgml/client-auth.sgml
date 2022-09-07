@@ -305,8 +305,6 @@ hostnogssenc  <replaceable>database</replaceable>  <replaceable>user</replaceabl
        An entry given in IPv4 format will match only IPv4 connections,
        and an entry given in IPv6 format will match only IPv6 connections,
        even if the represented address is in the IPv4-in-IPv6 range.
-       Note that entries in IPv6 format will be rejected if the system's
-       C library does not have support for IPv6 addresses.
       </para>
 
       <para>
@@ -417,7 +415,9 @@ hostnogssenc  <replaceable>database</replaceable>  <replaceable>user</replaceabl
       <para>
        Specifies the authentication method to use when a connection matches
        this record. The possible choices are summarized here; details
-       are in <xref linkend="auth-methods"/>.
+       are in <xref linkend="auth-methods"/>.  All the options
+       are lower case and treated case sensitively, so even acronyms like
+       <literal>ldap</literal> must be specified as lower case.
 
        <variablelist>
         <varlistentry>

@@ -40,13 +40,14 @@
 #include "access/xlogreader.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
+#include "backup/basebackup.h"
 #include "catalog/pg_control.h"
 #include "commands/tablespace.h"
+#include "common/file_utils.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/startup.h"
-#include "replication/basebackup.h"
 #include "replication/walreceiver.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
@@ -422,8 +423,8 @@ static XLogPageReadResult WaitForWALToBecomeAvailable(XLogRecPtr RecPtr,
 													  XLogRecPtr replayLSN,
 													  bool nonblocking);
 static int	emode_for_corrupt_record(int emode, XLogRecPtr RecPtr);
-static XLogRecord *ReadCheckpointRecord(XLogPrefetcher *xlogprefetcher, XLogRecPtr RecPtr,
-										int whichChkpt, bool report, TimeLineID replayTLI);
+static XLogRecord *ReadCheckpointRecord(XLogPrefetcher *xlogprefetcher,
+										XLogRecPtr RecPtr, TimeLineID replayTLI);
 static bool rescanLatestTimeLine(TimeLineID replayTLI, XLogRecPtr replayLSN);
 static int	XLogFileRead(XLogSegNo segno, int emode, TimeLineID tli,
 						 XLogSource source, bool notfoundOk);
@@ -605,7 +606,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		 * When a backup_label file is present, we want to roll forward from
 		 * the checkpoint it identifies, rather than using pg_control.
 		 */
-		record = ReadCheckpointRecord(xlogprefetcher, CheckPointLoc, 0, true,
+		record = ReadCheckpointRecord(xlogprefetcher, CheckPointLoc,
 									  CheckPointTLI);
 		if (record != NULL)
 		{
@@ -716,7 +717,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		 * know how far we need to replay the WAL before we reach consistency.
 		 * This can happen for example if a base backup is taken from a
 		 * running server using an atomic filesystem snapshot, without calling
-		 * pg_start/stop_backup. Or if you just kill a running primary server
+		 * pg_backup_start/stop. Or if you just kill a running primary server
 		 * and put it into archive recovery by creating a recovery signal
 		 * file.
 		 *
@@ -744,7 +745,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		CheckPointTLI = ControlFile->checkPointCopy.ThisTimeLineID;
 		RedoStartLSN = ControlFile->checkPointCopy.redo;
 		RedoStartTLI = ControlFile->checkPointCopy.ThisTimeLineID;
-		record = ReadCheckpointRecord(xlogprefetcher, CheckPointLoc, 1, true,
+		record = ReadCheckpointRecord(xlogprefetcher, CheckPointLoc,
 									  CheckPointTLI);
 		if (record != NULL)
 		{
@@ -2009,6 +2010,47 @@ xlogrecovery_redo(XLogReaderState *record, TimeLineID replayTLI)
 }
 
 /*
+ * Verify that, in non-test mode, ./pg_tblspc doesn't contain any real
+ * directories.
+ *
+ * Replay of database creation XLOG records for databases that were later
+ * dropped can create fake directories in pg_tblspc.  By the time consistency
+ * is reached these directories should have been removed; here we verify
+ * that this did indeed happen.  This is to be called at the point where
+ * consistent state is reached.
+ *
+ * allow_in_place_tablespaces turns the PANIC into a WARNING, which is
+ * useful for testing purposes, and also allows for an escape hatch in case
+ * things go south.
+ */
+static void
+CheckTablespaceDirectory(void)
+{
+	DIR		   *dir;
+	struct dirent *de;
+
+	dir = AllocateDir("pg_tblspc");
+	while ((de = ReadDir(dir, "pg_tblspc")) != NULL)
+	{
+		char		path[MAXPGPATH + 10];
+
+		/* Skip entries of non-oid names */
+		if (strspn(de->d_name, "0123456789") != strlen(de->d_name))
+			continue;
+
+		snprintf(path, sizeof(path), "pg_tblspc/%s", de->d_name);
+
+		if (get_dirent_type(path, de, false, ERROR) != PGFILETYPE_LNK)
+			ereport(allow_in_place_tablespaces ? WARNING : PANIC,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg("unexpected directory entry \"%s\" found in %s",
+							de->d_name, "pg_tblspc/"),
+					 errdetail("All directory entries in pg_tblspc/ should be symbolic links."),
+					 errhint("Remove those directories, or set allow_in_place_tablespaces to ON transiently to let recovery complete.")));
+	}
+}
+
+/*
  * Checks if recovery has reached a consistent state. When consistency is
  * reached and we have a valid starting standby snapshot, tell postmaster
  * that it can start accepting read-only connections.
@@ -2067,6 +2109,14 @@ CheckRecoveryConsistency(void)
 		 * references to uninitialized pages.
 		 */
 		XLogCheckInvalidPages();
+
+		/*
+		 * Check that pg_tblspc doesn't contain any real directories. Replay
+		 * of Database/CREATE_* records may have created ficticious tablespace
+		 * directories that should have been removed by the time consistency
+		 * was reached.
+		 */
+		CheckTablespaceDirectory();
 
 		reachedConsistency = true;
 		ereport(LOG,
@@ -2166,24 +2216,26 @@ xlog_block_info(StringInfo buf, XLogReaderState *record)
 	/* decode block references */
 	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
 	{
-		RelFileNode rnode;
+		RelFileLocator rlocator;
 		ForkNumber	forknum;
 		BlockNumber blk;
 
 		if (!XLogRecGetBlockTagExtended(record, block_id,
-										&rnode, &forknum, &blk, NULL))
+										&rlocator, &forknum, &blk, NULL))
 			continue;
 
 		if (forknum != MAIN_FORKNUM)
 			appendStringInfo(buf, "; blkref #%d: rel %u/%u/%u, fork %u, blk %u",
 							 block_id,
-							 rnode.spcNode, rnode.dbNode, rnode.relNode,
+							 rlocator.spcOid, rlocator.dbOid,
+							 rlocator.relNumber,
 							 forknum,
 							 blk);
 		else
 			appendStringInfo(buf, "; blkref #%d: rel %u/%u/%u, blk %u",
 							 block_id,
-							 rnode.spcNode, rnode.dbNode, rnode.relNode,
+							 rlocator.spcOid, rlocator.dbOid,
+							 rlocator.relNumber,
 							 blk);
 		if (XLogRecHasBlockImage(record, block_id))
 			appendStringInfoString(buf, " FPW");
@@ -2285,7 +2337,7 @@ static void
 verifyBackupPageConsistency(XLogReaderState *record)
 {
 	RmgrData	rmgr = GetRmgr(XLogRecGetRmid(record));
-	RelFileNode rnode;
+	RelFileLocator rlocator;
 	ForkNumber	forknum;
 	BlockNumber blkno;
 	int			block_id;
@@ -2302,7 +2354,7 @@ verifyBackupPageConsistency(XLogReaderState *record)
 		Page		page;
 
 		if (!XLogRecGetBlockTagExtended(record, block_id,
-										&rnode, &forknum, &blkno, NULL))
+										&rlocator, &forknum, &blkno, NULL))
 		{
 			/*
 			 * WAL record doesn't contain a block reference with the given id.
@@ -2327,7 +2379,7 @@ verifyBackupPageConsistency(XLogReaderState *record)
 		 * Read the contents from the current buffer and store it in a
 		 * temporary page.
 		 */
-		buf = XLogReadBufferExtended(rnode, forknum, blkno,
+		buf = XLogReadBufferExtended(rlocator, forknum, blkno,
 									 RBM_NORMAL_NO_LOG,
 									 InvalidBuffer);
 		if (!BufferIsValid(buf))
@@ -2377,7 +2429,7 @@ verifyBackupPageConsistency(XLogReaderState *record)
 		{
 			elog(FATAL,
 				 "inconsistent page found, rel %u/%u/%u, forknum %u, blkno %u",
-				 rnode.spcNode, rnode.dbNode, rnode.relNode,
+				 rlocator.spcOid, rlocator.dbOid, rlocator.relNumber,
 				 forknum, blkno);
 		}
 	}
@@ -2972,12 +3024,18 @@ ReadRecord(XLogPrefetcher *xlogprefetcher, int emode,
 		if (record == NULL)
 		{
 			/*
-			 * When not in standby mode we find that WAL ends in an incomplete
-			 * record, keep track of that record.  After recovery is done,
-			 * we'll write a record to indicate to downstream WAL readers that
-			 * that portion is to be ignored.
+			 * When we find that WAL ends in an incomplete record, keep track
+			 * of that record.  After recovery is done, we'll write a record to
+			 * indicate to downstream WAL readers that that portion is to be
+			 * ignored.
+			 *
+			 * However, when ArchiveRecoveryRequested = true, we're going to
+			 * switch to a new timeline at the end of recovery. We will only
+			 * copy WAL over to the new timeline up to the end of the last
+			 * complete record, so if we did this, we would later create an
+			 * overwrite contrecord in the wrong place, breaking everything.
 			 */
-			if (!StandbyMode &&
+			if (!ArchiveRecoveryRequested &&
 				!XLogRecPtrIsInvalid(xlogreader->abortedRecPtr))
 			{
 				abortedRecPtr = xlogreader->abortedRecPtr;
@@ -3208,7 +3266,7 @@ retry:
 	readOff = targetPageOff;
 
 	pgstat_report_wait_start(WAIT_EVENT_WAL_READ);
-	r = pg_pread(readFile, readBuf, XLOG_BLCKSZ, (off_t) readOff);
+	r = pread(readFile, readBuf, XLOG_BLCKSZ, (off_t) readOff);
 	if (r != XLOG_BLCKSZ)
 	{
 		char		fname[MAXFNAMELEN];
@@ -3283,13 +3341,21 @@ retry:
 					(errmsg_internal("%s", xlogreader->errormsg_buf)));
 
 		/* reset any error XLogReaderValidatePageHeader() might have set */
-		xlogreader->errormsg_buf[0] = '\0';
+		XLogReaderResetError(xlogreader);
 		goto next_record_is_invalid;
 	}
 
 	return readLen;
 
 next_record_is_invalid:
+
+	/*
+	 * If we're reading ahead, give up fast.  Retries and error reporting will
+	 * be handled by a later read when recovery catches up to this point.
+	 */
+	if (xlogreader->nonblocking)
+		return XLREAD_WOULDBLOCK;
+
 	lastSourceFailed = true;
 
 	if (readFile >= 0)
@@ -3841,13 +3907,10 @@ emode_for_corrupt_record(int emode, XLogRecPtr RecPtr)
 
 /*
  * Subroutine to try to fetch and validate a prior checkpoint record.
- *
- * whichChkpt identifies the checkpoint (merely for reporting purposes).
- * 1 for "primary", 0 for "other" (backup_label)
  */
 static XLogRecord *
 ReadCheckpointRecord(XLogPrefetcher *xlogprefetcher, XLogRecPtr RecPtr,
-					 int whichChkpt, bool report, TimeLineID replayTLI)
+					 TimeLineID replayTLI)
 {
 	XLogRecord *record;
 	uint8		info;
@@ -3856,20 +3919,8 @@ ReadCheckpointRecord(XLogPrefetcher *xlogprefetcher, XLogRecPtr RecPtr,
 
 	if (!XRecOffIsValid(RecPtr))
 	{
-		if (!report)
-			return NULL;
-
-		switch (whichChkpt)
-		{
-			case 1:
-				ereport(LOG,
-						(errmsg("invalid primary checkpoint link in control file")));
-				break;
-			default:
-				ereport(LOG,
-						(errmsg("invalid checkpoint link in backup_label file")));
-				break;
-		}
+		ereport(LOG,
+				(errmsg("invalid checkpoint location")));
 		return NULL;
 	}
 
@@ -3878,67 +3929,28 @@ ReadCheckpointRecord(XLogPrefetcher *xlogprefetcher, XLogRecPtr RecPtr,
 
 	if (record == NULL)
 	{
-		if (!report)
-			return NULL;
-
-		switch (whichChkpt)
-		{
-			case 1:
-				ereport(LOG,
-						(errmsg("invalid primary checkpoint record")));
-				break;
-			default:
-				ereport(LOG,
-						(errmsg("invalid checkpoint record")));
-				break;
-		}
+		ereport(LOG,
+				(errmsg("invalid checkpoint record")));
 		return NULL;
 	}
 	if (record->xl_rmid != RM_XLOG_ID)
 	{
-		switch (whichChkpt)
-		{
-			case 1:
-				ereport(LOG,
-						(errmsg("invalid resource manager ID in primary checkpoint record")));
-				break;
-			default:
-				ereport(LOG,
-						(errmsg("invalid resource manager ID in checkpoint record")));
-				break;
-		}
+		ereport(LOG,
+				(errmsg("invalid resource manager ID in checkpoint record")));
 		return NULL;
 	}
 	info = record->xl_info & ~XLR_INFO_MASK;
 	if (info != XLOG_CHECKPOINT_SHUTDOWN &&
 		info != XLOG_CHECKPOINT_ONLINE)
 	{
-		switch (whichChkpt)
-		{
-			case 1:
-				ereport(LOG,
-						(errmsg("invalid xl_info in primary checkpoint record")));
-				break;
-			default:
-				ereport(LOG,
-						(errmsg("invalid xl_info in checkpoint record")));
-				break;
-		}
+		ereport(LOG,
+				(errmsg("invalid xl_info in checkpoint record")));
 		return NULL;
 	}
 	if (record->xl_tot_len != SizeOfXLogRecord + SizeOfXLogRecordDataHeaderShort + sizeof(CheckPoint))
 	{
-		switch (whichChkpt)
-		{
-			case 1:
-				ereport(LOG,
-						(errmsg("invalid length of primary checkpoint record")));
-				break;
-			default:
-				ereport(LOG,
-						(errmsg("invalid length of checkpoint record")));
-				break;
-		}
+		ereport(LOG,
+				(errmsg("invalid length of checkpoint record")));
 		return NULL;
 	}
 	return record;

@@ -986,7 +986,7 @@ relation_can_be_sorted_early(PlannerInfo *root, RelOptInfo *rel,
 		 * one are effectively checking properties of targetexpr, so there's
 		 * no point in asking whether some other EC member would be better.)
 		 */
-		if (IS_SRF_CALL((Node *) em->em_expr))
+		if (expression_returns_set((Node *) em->em_expr))
 			continue;
 
 		/*
@@ -1014,7 +1014,7 @@ relation_can_be_sorted_early(PlannerInfo *root, RelOptInfo *rel,
 	 * member in this case; since SRFs can't appear in WHERE, they cannot
 	 * belong to multi-member ECs.)
 	 */
-	if (IS_SRF_CALL((Node *) em->em_expr))
+	if (expression_returns_set((Node *) em->em_expr))
 		return false;
 
 	return true;
@@ -1323,7 +1323,7 @@ generate_base_implied_equalities_no_const(PlannerInfo *root,
 										   PVC_RECURSE_WINDOWFUNCS |
 										   PVC_INCLUDE_PLACEHOLDERS);
 
-		add_vars_to_targetlist(root, vars, ec->ec_relids, false);
+		add_vars_to_targetlist(root, vars, ec->ec_relids);
 		list_free(vars);
 	}
 }
@@ -1760,8 +1760,8 @@ generate_join_implied_equalities_broken(PlannerInfo *root,
 	if (IS_OTHER_REL(inner_rel) && result != NIL)
 		result = (List *) adjust_appendrel_attrs_multilevel(root,
 															(Node *) result,
-															inner_rel->relids,
-															inner_rel->top_parent_relids);
+															inner_rel,
+															inner_rel->top_parent);
 
 	return result;
 }
@@ -2626,8 +2626,8 @@ add_child_rel_equivalences(PlannerInfo *root,
 					child_expr = (Expr *)
 						adjust_appendrel_attrs_multilevel(root,
 														  (Node *) cur_em->em_expr,
-														  child_relids,
-														  top_parent_relids);
+														  child_rel,
+														  child_rel->top_parent);
 				}
 
 				/*
@@ -2768,8 +2768,8 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 					child_expr = (Expr *)
 						adjust_appendrel_attrs_multilevel(root,
 														  (Node *) cur_em->em_expr,
-														  child_relids,
-														  top_parent_relids);
+														  child_joinrel,
+														  child_joinrel->top_parent);
 				}
 
 				/*
@@ -2791,8 +2791,8 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 					new_nullable_relids =
 						adjust_child_relids_multilevel(root,
 													   new_nullable_relids,
-													   child_relids,
-													   top_parent_relids);
+													   child_joinrel,
+													   child_joinrel->top_parent);
 
 				(void) add_eq_member(cur_ec, child_expr,
 									 new_relids, new_nullable_relids,

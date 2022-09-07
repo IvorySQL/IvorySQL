@@ -157,8 +157,7 @@ dblink_res_internalerror(PGconn *conn, PGresult *res, const char *p2)
 {
 	char	   *msg = pchomp(PQerrorMessage(conn));
 
-	if (res)
-		PQclear(res);
+	PQclear(res);
 	elog(ERROR, "%s: %s", p2, msg);
 }
 
@@ -1337,7 +1336,7 @@ dblink_get_connections(PG_FUNCTION_ARGS)
 	}
 
 	if (astate)
-		PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate,
+		PG_RETURN_DATUM(makeArrayResult(astate,
 											  CurrentMemoryContext));
 	else
 		PG_RETURN_NULL();
@@ -2756,8 +2755,7 @@ dblink_res_error(PGconn *conn, const char *conname, PGresult *res,
 	 * leaking all the strings too, but those are in palloc'd memory that will
 	 * get cleaned up eventually.
 	 */
-	if (res)
-		PQclear(res);
+	PQclear(res);
 
 	/*
 	 * Format the basic errcontext string.  Below, we'll add on something

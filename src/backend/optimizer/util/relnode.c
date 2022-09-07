@@ -265,14 +265,10 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	 */
 	if (parent)
 	{
-		/*
-		 * Each direct or indirect child wants to know the relids of its
-		 * topmost parent.
-		 */
-		if (parent->top_parent_relids)
-			rel->top_parent_relids = parent->top_parent_relids;
-		else
-			rel->top_parent_relids = bms_copy(parent->relids);
+		/* We keep back-links to immediate parent and topmost parent. */
+		rel->parent = parent;
+		rel->top_parent = parent->top_parent ? parent->top_parent : parent;
+		rel->top_parent_relids = rel->top_parent->relids;
 
 		/*
 		 * Also propagate lateral-reference information from appendrel parent
@@ -294,6 +290,8 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	}
 	else
 	{
+		rel->parent = NULL;
+		rel->top_parent = NULL;
 		rel->top_parent_relids = NULL;
 		rel->direct_lateral_relids = NULL;
 		rel->lateral_relids = NULL;
@@ -663,6 +661,8 @@ build_join_rel(PlannerInfo *root,
 	joinrel->joininfo = NIL;
 	joinrel->has_eclass_joins = false;
 	joinrel->consider_partitionwise_join = false;	/* might get changed later */
+	joinrel->parent = NULL;
+	joinrel->top_parent = NULL;
 	joinrel->top_parent_relids = NULL;
 	joinrel->part_scheme = NULL;
 	joinrel->nparts = -1;
@@ -679,8 +679,9 @@ build_join_rel(PlannerInfo *root,
 	set_foreign_rel_properties(joinrel, outer_rel, inner_rel);
 
 	/*
-	 * Create a new tlist containing just the vars that need to be output from
-	 * this join (ie, are needed for higher joinclauses or final output).
+	 * Fill the joinrel's tlist with just the Vars and PHVs that need to be
+	 * output from this join (ie, are needed for higher joinclauses or final
+	 * output).
 	 *
 	 * NOTE: the tlist order for a join rel will depend on which pair of outer
 	 * and inner rels we first try to build it from.  But the contents should
@@ -842,7 +843,9 @@ build_child_join_rel(PlannerInfo *root, RelOptInfo *outer_rel,
 	joinrel->joininfo = NIL;
 	joinrel->has_eclass_joins = false;
 	joinrel->consider_partitionwise_join = false;	/* might get changed later */
-	joinrel->top_parent_relids = NULL;
+	joinrel->parent = parent_joinrel;
+	joinrel->top_parent = parent_joinrel->top_parent ? parent_joinrel->top_parent : parent_joinrel;
+	joinrel->top_parent_relids = joinrel->top_parent->relids;
 	joinrel->part_scheme = NULL;
 	joinrel->nparts = -1;
 	joinrel->boundinfo = NULL;
@@ -853,9 +856,6 @@ build_child_join_rel(PlannerInfo *root, RelOptInfo *outer_rel,
 	joinrel->all_partrels = NULL;
 	joinrel->partexprs = NULL;
 	joinrel->nullable_partexprs = NULL;
-
-	joinrel->top_parent_relids = bms_union(outer_rel->top_parent_relids,
-										   inner_rel->top_parent_relids);
 
 	/* Compute information relevant to foreign relations. */
 	set_foreign_rel_properties(joinrel, outer_rel, inner_rel);
@@ -966,6 +966,7 @@ min_join_parameterization(PlannerInfo *root,
  * The join's targetlist includes all Vars of its member relations that
  * will still be needed above the join.  This subroutine adds all such
  * Vars from the specified input rel's tlist to the join rel's tlist.
+ * Likewise for any PlaceHolderVars emitted by the input rel.
  *
  * We also compute the expected width of the join's output, making use
  * of data that was cached at the baserel level by set_rel_width().
@@ -982,11 +983,24 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 		Var		   *var = (Var *) lfirst(vars);
 
 		/*
-		 * Ignore PlaceHolderVars in the input tlists; we'll make our own
-		 * decisions about whether to copy them.
+		 * For a PlaceHolderVar, we have to look up the PlaceHolderInfo.
 		 */
 		if (IsA(var, PlaceHolderVar))
+		{
+			PlaceHolderVar *phv = (PlaceHolderVar *) var;
+			PlaceHolderInfo *phinfo = find_placeholder_info(root, phv);
+
+			/* Is it still needed above this joinrel? */
+			if (bms_nonempty_difference(phinfo->ph_needed, relids))
+			{
+				/* Yup, add it to the output */
+				joinrel->reltarget->exprs = lappend(joinrel->reltarget->exprs,
+													phv);
+				/* Bubbling up the precomputed result has cost zero */
+				joinrel->reltarget->width += phinfo->ph_width;
+			}
 			continue;
+		}
 
 		/*
 		 * Otherwise, anything in a baserel or joinrel targetlist ought to be

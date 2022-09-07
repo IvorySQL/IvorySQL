@@ -23,18 +23,10 @@
 #include <limits.h>
 #include <signal.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#endif
-#ifdef HAVE_SYS_RESOURCE_H
-#include <sys/time.h>
 #include <sys/resource.h>
-#endif
-
-#ifndef HAVE_GETRUSAGE
-#include "rusagestub.h"
-#endif
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 
 #include "access/parallel.h"
 #include "access/printtup.h"
@@ -131,13 +123,6 @@ static long max_stack_depth_bytes = 100 * 1024L;
  * subprocesses (but see also InitPostmasterChild).
  */
 static char *stack_base_ptr = NULL;
-
-/*
- * On IA64 we also have to remember the register stack base.
- */
-#if defined(__ia64__) || defined(__ia64)
-static char *register_stack_base_ptr = NULL;
-#endif
 
 /*
  * Flag to keep track of whether we have started a transaction.
@@ -1285,6 +1270,13 @@ exec_simple_query(const char *query_string)
 		else
 		{
 			/*
+			 * We had better not see XACT_FLAGS_NEEDIMMEDIATECOMMIT set if
+			 * we're not calling finish_xact_command().  (The implicit
+			 * transaction block should have prevented it from getting set.)
+			 */
+			Assert(!(MyXactFlags & XACT_FLAGS_NEEDIMMEDIATECOMMIT));
+
+			/*
 			 * We need a CommandCounterIncrement after every query, except
 			 * those that start or end a transaction block.
 			 */
@@ -2099,32 +2091,16 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	/*
 	 * We must copy the sourceText and prepStmtName into MessageContext in
-	 * case the portal is destroyed during finish_xact_command. Can avoid the
-	 * copy if it's not an xact command, though.
+	 * case the portal is destroyed during finish_xact_command.  We do not
+	 * make a copy of the portalParams though, preferring to just not print
+	 * them in that case.
 	 */
-	if (is_xact_command)
-	{
-		sourceText = pstrdup(portal->sourceText);
-		if (portal->prepStmtName)
-			prepStmtName = pstrdup(portal->prepStmtName);
-		else
-			prepStmtName = "<unnamed>";
-
-		/*
-		 * An xact command shouldn't have any parameters, which is a good
-		 * thing because they wouldn't be around after finish_xact_command.
-		 */
-		portalParams = NULL;
-	}
+	sourceText = pstrdup(portal->sourceText);
+	if (portal->prepStmtName)
+		prepStmtName = pstrdup(portal->prepStmtName);
 	else
-	{
-		sourceText = portal->sourceText;
-		if (portal->prepStmtName)
-			prepStmtName = portal->prepStmtName;
-		else
-			prepStmtName = "<unnamed>";
-		portalParams = portal->portalParams;
-	}
+		prepStmtName = "<unnamed>";
+	portalParams = portal->portalParams;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -2223,13 +2199,24 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	if (completed)
 	{
-		if (is_xact_command)
+		if (is_xact_command || (MyXactFlags & XACT_FLAGS_NEEDIMMEDIATECOMMIT))
 		{
 			/*
 			 * If this was a transaction control statement, commit it.  We
 			 * will start a new xact command for the next command (if any).
+			 * Likewise if the statement required immediate commit.  Without
+			 * this provision, we wouldn't force commit until Sync is
+			 * received, which creates a hazard if the client tries to
+			 * pipeline immediate-commit statements.
 			 */
 			finish_xact_command();
+
+			/*
+			 * These commands typically don't have any parameters, and even if
+			 * one did we couldn't print them now because the storage went
+			 * away during finish_xact_command.  So pretend there were none.
+			 */
+			portalParams = NULL;
 		}
 		else
 		{
@@ -3371,10 +3358,13 @@ ProcessInterrupts(void)
 			IdleSessionTimeoutPending = false;
 	}
 
-	if (IdleStatsUpdateTimeoutPending)
+	/*
+	 * If there are pending stats updates and we currently are truly idle
+	 * (matching the conditions in PostgresMain(), report stats now.
+	 */
+	if (IdleStatsUpdateTimeoutPending &&
+		DoingCommandRead && !IsTransactionOrTransactionBlock())
 	{
-		/* timer should have been disarmed */
-		Assert(!IsTransactionBlock());
 		IdleStatsUpdateTimeoutPending = false;
 		pgstat_report_stat(true);
 	}
@@ -3389,45 +3379,6 @@ ProcessInterrupts(void)
 		ProcessLogMemoryContextInterrupt();
 }
 
-
-/*
- * IA64-specific code to fetch the AR.BSP register for stack depth checks.
- *
- * We currently support gcc, icc, and HP-UX's native compiler here.
- *
- * Note: while icc accepts gcc asm blocks on x86[_64], this is not true on
- * ia64 (at least not in icc versions before 12.x).  So we have to carry a
- * separate implementation for it.
- */
-#if defined(__ia64__) || defined(__ia64)
-
-#if defined(__hpux) && !defined(__GNUC__) && !defined(__INTEL_COMPILER)
-/* Assume it's HP-UX native compiler */
-#include <ia64/sys/inline.h>
-#define ia64_get_bsp() ((char *) (_Asm_mov_from_ar(_AREG_BSP, _NO_FENCE)))
-#elif defined(__INTEL_COMPILER)
-/* icc */
-#include <asm/ia64regs.h>
-#define ia64_get_bsp() ((char *) __getReg(_IA64_REG_AR_BSP))
-#else
-/* gcc */
-static __inline__ char *
-ia64_get_bsp(void)
-{
-	char	   *ret;
-
-	/* the ;; is a "stop", seems to be required before fetching BSP */
-	__asm__ __volatile__(
-						 ";;\n"
-						 "	mov	%0=ar.bsp	\n"
-:						 "=r"(ret));
-
-	return ret;
-}
-#endif
-#endif							/* IA64 */
-
-
 /*
  * set_stack_base: set up reference point for stack depth checking
  *
@@ -3441,12 +3392,7 @@ set_stack_base(void)
 #endif
 	pg_stack_base_t old;
 
-#if defined(__ia64__) || defined(__ia64)
-	old.stack_base_ptr = stack_base_ptr;
-	old.register_stack_base_ptr = register_stack_base_ptr;
-#else
 	old = stack_base_ptr;
-#endif
 
 	/*
 	 * Set up reference point for stack depth checking.  On recent gcc we use
@@ -3457,9 +3403,6 @@ set_stack_base(void)
 	stack_base_ptr = __builtin_frame_address(0);
 #else
 	stack_base_ptr = &stack_base;
-#endif
-#if defined(__ia64__) || defined(__ia64)
-	register_stack_base_ptr = ia64_get_bsp();
 #endif
 
 	return old;
@@ -3477,12 +3420,7 @@ set_stack_base(void)
 void
 restore_stack_base(pg_stack_base_t base)
 {
-#if defined(__ia64__) || defined(__ia64)
-	stack_base_ptr = base.stack_base_ptr;
-	register_stack_base_ptr = base.register_stack_base_ptr;
-#else
 	stack_base_ptr = base;
-#endif
 }
 
 /*
@@ -3538,22 +3476,6 @@ stack_is_too_deep(void)
 	if (stack_depth > max_stack_depth_bytes &&
 		stack_base_ptr != NULL)
 		return true;
-
-	/*
-	 * On IA64 there is a separate "register" stack that requires its own
-	 * independent check.  For this, we have to measure the change in the
-	 * "BSP" pointer from PostgresMain to here.  Logic is just as above,
-	 * except that we know IA64's register stack grows up.
-	 *
-	 * Note we assume that the same max_stack_depth applies to both stacks.
-	 */
-#if defined(__ia64__) || defined(__ia64)
-	stack_depth = (long) (ia64_get_bsp() - register_stack_base_ptr);
-
-	if (stack_depth > max_stack_depth_bytes &&
-		register_stack_base_ptr != NULL)
-		return true;
-#endif							/* IA64 */
 
 	return false;
 }
@@ -3896,8 +3818,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 					}
 					SetConfigOption(name, value, ctx, gucsource);
 					free(name);
-					if (value)
-						free(value);
+					free(value);
 					break;
 				}
 
@@ -4006,8 +3927,31 @@ PostgresSingleUserMain(int argc, char *argv[],
 	/* read control file (error checking and contains config ) */
 	LocalProcessControlFile(false);
 
+	/*
+	 * process any libraries that should be preloaded at postmaster start
+	 */
+	process_shared_preload_libraries();
+
 	/* Initialize MaxBackends */
 	InitializeMaxBackends();
+
+	/*
+	 * Give preloaded libraries a chance to request additional shared memory.
+	 */
+	process_shmem_requests();
+
+	/*
+	 * Now that loadable modules have had their chance to request additional
+	 * shared memory, determine the value of any runtime-computed GUCs that
+	 * depend on the amount of shared memory required.
+	 */
+	InitializeShmemGUCs();
+
+	/*
+	 * Now that modules have been loaded, we can process any custom resource
+	 * managers specified in the wal_consistency_checking GUC.
+	 */
+	InitializeWalConsistencyChecking();
 
 	CreateSharedMemoryAndSemaphores();
 
@@ -4051,7 +3995,6 @@ PostgresMain(const char *dbname, const char *username)
 	volatile bool send_ready_for_query = true;
 	bool		idle_in_transaction_timeout_enabled = false;
 	bool		idle_session_timeout_enabled = false;
-	bool		idle_stats_update_timeout_enabled = false;
 
 	AssertArg(dbname != NULL);
 	AssertArg(username != NULL);
@@ -4127,7 +4070,11 @@ PostgresMain(const char *dbname, const char *username)
 	 * it inside InitPostgres() instead.  In particular, anything that
 	 * involves database access should be there, not here.
 	 */
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, false);
+	InitPostgres(dbname, InvalidOid,	/* database to connect to */
+				 username, InvalidOid,	/* role to connect as */
+				 !am_walsender, /* honor session_preload_libraries? */
+				 false,			/* don't ignore datallowconn */
+				 NULL);			/* no out_dbname */
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't
@@ -4162,12 +4109,6 @@ PostgresMain(const char *dbname, const char *username)
 	/* Perform initialization specific to a WAL sender process. */
 	if (am_walsender)
 		InitWalSender();
-
-	/*
-	 * process any libraries that should be preloaded at backend start (this
-	 * likewise can't be done until GUC settings are complete)
-	 */
-	process_session_preload_libraries();
 
 	/*
 	 * Send this backend's cancellation info to the frontend.
@@ -4428,13 +4369,31 @@ PostgresMain(const char *dbname, const char *username)
 				if (notifyInterruptPending)
 					ProcessNotifyInterrupt(false);
 
-				/* Start the idle-stats-update timer */
+				/*
+				 * Check if we need to report stats. If pgstat_report_stat()
+				 * decides it's too soon to flush out pending stats / lock
+				 * contention prevented reporting, it'll tell us when we
+				 * should try to report stats again (so that stats updates
+				 * aren't unduly delayed if the connection goes idle for a
+				 * long time). We only enable the timeout if we don't already
+				 * have a timeout in progress, because we don't disable the
+				 * timeout below. enable_timeout_after() needs to determine
+				 * the current timestamp, which can have a negative
+				 * performance impact. That's OK because pgstat_report_stat()
+				 * won't have us wake up sooner than a prior call.
+				 */
 				stats_timeout = pgstat_report_stat(false);
 				if (stats_timeout > 0)
 				{
-					idle_stats_update_timeout_enabled = true;
-					enable_timeout_after(IDLE_STATS_UPDATE_TIMEOUT,
-										 stats_timeout);
+					if (!get_timeout_active(IDLE_STATS_UPDATE_TIMEOUT))
+						enable_timeout_after(IDLE_STATS_UPDATE_TIMEOUT,
+											 stats_timeout);
+				}
+				else
+				{
+					/* all stats flushed, no need for the timeout */
+					if (get_timeout_active(IDLE_STATS_UPDATE_TIMEOUT))
+						disable_timeout(IDLE_STATS_UPDATE_TIMEOUT, false);
 				}
 
 				set_ps_display("idle");
@@ -4470,10 +4429,9 @@ PostgresMain(const char *dbname, const char *username)
 		firstchar = ReadCommand(&input_message);
 
 		/*
-		 * (4) turn off the idle-in-transaction, idle-session and
-		 * idle-stats-update timeouts if active.  We do this before step (5)
-		 * so that any last-moment timeout is certain to be detected in step
-		 * (5).
+		 * (4) turn off the idle-in-transaction and idle-session timeouts if
+		 * active.  We do this before step (5) so that any last-moment timeout
+		 * is certain to be detected in step (5).
 		 *
 		 * At most one of these timeouts will be active, so there's no need to
 		 * worry about combining the timeout.c calls into one.
@@ -4487,11 +4445,6 @@ PostgresMain(const char *dbname, const char *username)
 		{
 			disable_timeout(IDLE_SESSION_TIMEOUT, false);
 			idle_session_timeout_enabled = false;
-		}
-		if (idle_stats_update_timeout_enabled)
-		{
-			disable_timeout(IDLE_STATS_UPDATE_TIMEOUT, false);
-			idle_stats_update_timeout_enabled = false;
 		}
 
 		/*
@@ -4809,7 +4762,7 @@ forbidden_in_wal_sender(char firstchar)
 long
 get_stack_depth_rlimit(void)
 {
-#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_STACK)
+#if defined(HAVE_GETRLIMIT)
 	static long val = 0;
 
 	/* This won't change after process launch, so check just once */
@@ -4828,13 +4781,9 @@ get_stack_depth_rlimit(void)
 			val = rlim.rlim_cur;
 	}
 	return val;
-#else							/* no getrlimit */
-#if defined(WIN32) || defined(__CYGWIN__)
+#else
 	/* On Windows we set the backend stack size in src/backend/Makefile */
 	return WIN32_STACK_RLIMIT;
-#else							/* not windows ... give up */
-	return -1;
-#endif
 #endif
 }
 
@@ -4899,7 +4848,14 @@ ShowUsage(const char *title)
 					 (long) user.tv_usec,
 					 (long) sys.tv_sec,
 					 (long) sys.tv_usec);
-#if defined(HAVE_GETRUSAGE)
+#ifndef WIN32
+
+	/*
+	 * The following rusage fields are not defined by POSIX, but they're
+	 * present on all current Unix-like systems so we use them without any
+	 * special checks.  Some of these could be provided in our Windows
+	 * emulation in src/port/win32getrusage.c with more work.
+	 */
 	appendStringInfo(&str,
 					 "!\t%ld kB max resident size\n",
 #if defined(__darwin__)
@@ -4935,7 +4891,7 @@ ShowUsage(const char *title)
 					 r.ru_nvcsw - Save_r.ru_nvcsw,
 					 r.ru_nivcsw - Save_r.ru_nivcsw,
 					 r.ru_nvcsw, r.ru_nivcsw);
-#endif							/* HAVE_GETRUSAGE */
+#endif							/* !WIN32 */
 
 	/* remove trailing newline */
 	if (str.data[str.len - 1] == '\n')

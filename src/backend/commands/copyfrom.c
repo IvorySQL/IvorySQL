@@ -593,12 +593,12 @@ CopyFrom(CopyFromState cstate)
 	 */
 	if (RELKIND_HAS_STORAGE(cstate->rel->rd_rel->relkind) &&
 		(cstate->rel->rd_createSubid != InvalidSubTransactionId ||
-		 cstate->rel->rd_firstRelfilenodeSubid != InvalidSubTransactionId))
+		 cstate->rel->rd_firstRelfilelocatorSubid != InvalidSubTransactionId))
 		ti_options |= TABLE_INSERT_SKIP_FSM;
 
 	/*
-	 * Optimize if new relfilenode was created in this subxact or one of its
-	 * committed children and we won't see those rows later as part of an
+	 * Optimize if new relation storage was created in this subxact or one of
+	 * its committed children and we won't see those rows later as part of an
 	 * earlier scan or command. The subxact test ensures that if this subxact
 	 * aborts then the frozen rows won't be visible after xact cleanup.  Note
 	 * that the stronger test of exactly which subtransaction created it is
@@ -640,7 +640,7 @@ CopyFrom(CopyFromState cstate)
 					 errmsg("cannot perform COPY FREEZE because of prior transaction activity")));
 
 		if (cstate->rel->rd_createSubid != GetCurrentSubTransactionId() &&
-			cstate->rel->rd_newRelfilenodeSubid != GetCurrentSubTransactionId())
+			cstate->rel->rd_newRelfilelocatorSubid != GetCurrentSubTransactionId())
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("cannot perform COPY FREEZE because the table was not created or truncated in the current subtransaction")));
@@ -1202,7 +1202,6 @@ BeginCopyFrom(ParseState *pstate,
 				num_defaults;
 	FmgrInfo   *in_functions;
 	Oid		   *typioparams;
-	int			attnum;
 	Oid			in_func_oid;
 	int		   *defmap;
 	ExprState **defexprs;
@@ -1401,7 +1400,7 @@ BeginCopyFrom(ParseState *pstate,
 	defmap = (int *) palloc(num_phys_attrs * sizeof(int));
 	defexprs = (ExprState **) palloc(num_phys_attrs * sizeof(ExprState *));
 
-	for (attnum = 1; attnum <= num_phys_attrs; attnum++)
+	for (int attnum = 1; attnum <= num_phys_attrs; attnum++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupDesc, attnum - 1);
 

@@ -176,6 +176,8 @@ InitStandaloneProcess(const char *argv0)
 {
 	Assert(!IsPostmasterEnvironment);
 
+	MyBackendType = B_STANDALONE_BACKEND;
+
 	/*
 	 * Start our win32 signal implementation
 	 */
@@ -255,6 +257,9 @@ GetBackendTypeDesc(BackendType backendType)
 		case B_INVALID:
 			backendDesc = "not initialized";
 			break;
+		case B_ARCHIVER:
+			backendDesc = "archiver";
+			break;
 		case B_AUTOVAC_LAUNCHER:
 			backendDesc = "autovacuum launcher";
 			break;
@@ -273,6 +278,12 @@ GetBackendTypeDesc(BackendType backendType)
 		case B_CHECKPOINTER:
 			backendDesc = "checkpointer";
 			break;
+		case B_LOGGER:
+			backendDesc = "logger";
+			break;
+		case B_STANDALONE_BACKEND:
+			backendDesc = "standalone backend";
+			break;
 		case B_STARTUP:
 			backendDesc = "startup";
 			break;
@@ -284,12 +295,6 @@ GetBackendTypeDesc(BackendType backendType)
 			break;
 		case B_WAL_WRITER:
 			backendDesc = "walwriter";
-			break;
-		case B_ARCHIVER:
-			backendDesc = "archiver";
-			break;
-		case B_LOGGER:
-			backendDesc = "logger";
 			break;
 	}
 
@@ -417,8 +422,7 @@ SetDataDir(const char *dir)
 	/* If presented path is relative, convert to absolute */
 	new = make_absolute_path(dir);
 
-	if (DataDir)
-		free(DataDir);
+	free(DataDir);
 	DataDir = new;
 }
 
@@ -932,6 +936,99 @@ GetUserNameFromId(Oid roleid, bool noerr)
 	return result;
 }
 
+/* ------------------------------------------------------------------------
+ *				Client connection state shared with parallel workers
+ *
+ * ClientConnectionInfo contains pieces of information about the client that
+ * need to be synced to parallel workers when they initialize.
+ *-------------------------------------------------------------------------
+ */
+
+ClientConnectionInfo MyClientConnectionInfo;
+
+/*
+ * Intermediate representation of ClientConnectionInfo for easier
+ * serialization.  Variable-length fields are allocated right after this
+ * header.
+ */
+typedef struct SerializedClientConnectionInfo
+{
+	int32		authn_id_len;	/* strlen(authn_id), or -1 if NULL */
+	UserAuth	auth_method;
+} SerializedClientConnectionInfo;
+
+/*
+ * Calculate the space needed to serialize MyClientConnectionInfo.
+ */
+Size
+EstimateClientConnectionInfoSpace(void)
+{
+	Size		size = 0;
+
+	size = add_size(size, sizeof(SerializedClientConnectionInfo));
+
+	if (MyClientConnectionInfo.authn_id)
+		size = add_size(size, strlen(MyClientConnectionInfo.authn_id) + 1);
+
+	return size;
+}
+
+/*
+ * Serialize MyClientConnectionInfo for use by parallel workers.
+ */
+void
+SerializeClientConnectionInfo(Size maxsize, char *start_address)
+{
+	SerializedClientConnectionInfo serialized = {0};
+
+	serialized.authn_id_len = -1;
+	serialized.auth_method = MyClientConnectionInfo.auth_method;
+
+	if (MyClientConnectionInfo.authn_id)
+		serialized.authn_id_len = strlen(MyClientConnectionInfo.authn_id);
+
+	/* Copy serialized representation to buffer */
+	Assert(maxsize >= sizeof(serialized));
+	memcpy(start_address, &serialized, sizeof(serialized));
+
+	maxsize -= sizeof(serialized);
+	start_address += sizeof(serialized);
+
+	/* Copy authn_id into the space after the struct */
+	if (serialized.authn_id_len >= 0)
+	{
+		Assert(maxsize >= (serialized.authn_id_len + 1));
+		memcpy(start_address,
+			   MyClientConnectionInfo.authn_id,
+		/* include the NULL terminator to ease deserialization */
+			   serialized.authn_id_len + 1);
+	}
+}
+
+/*
+ * Restore MyClientConnectionInfo from its serialized representation.
+ */
+void
+RestoreClientConnectionInfo(char *conninfo)
+{
+	SerializedClientConnectionInfo serialized;
+
+	memcpy(&serialized, conninfo, sizeof(serialized));
+
+	/* Copy the fields back into place */
+	MyClientConnectionInfo.authn_id = NULL;
+	MyClientConnectionInfo.auth_method = serialized.auth_method;
+
+	if (serialized.authn_id_len >= 0)
+	{
+		char	   *authn_id;
+
+		authn_id = conninfo + sizeof(serialized);
+		MyClientConnectionInfo.authn_id = MemoryContextStrdup(TopMemoryContext,
+															  authn_id);
+	}
+}
+
 
 /*-------------------------------------------------------------------------
  *				Interlock-file support
@@ -1430,7 +1527,7 @@ AddToDataDirLockFile(int target_line, const char *str)
 	len = strlen(destbuffer);
 	errno = 0;
 	pgstat_report_wait_start(WAIT_EVENT_LOCK_FILE_ADDTODATADIR_WRITE);
-	if (pg_pwrite(fd, destbuffer, len, 0) != len)
+	if (pwrite(fd, destbuffer, len, 0) != len)
 	{
 		pgstat_report_wait_end();
 		/* if write didn't set errno, assume problem is no disk space */

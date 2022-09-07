@@ -640,8 +640,7 @@ RestoreArchive(Archive *AHX)
 		 * If we treated users as pg_dump'able objects then we'd need to reset
 		 * currUser here too.
 		 */
-		if (AH->currSchema)
-			free(AH->currSchema);
+		free(AH->currSchema);
 		AH->currSchema = NULL;
 	}
 
@@ -2086,8 +2085,7 @@ _discoverArchiveFormat(ArchiveHandle *AH)
 
 	pg_log_debug("attempting to ascertain archive format");
 
-	if (AH->lookahead)
-		free(AH->lookahead);
+	free(AH->lookahead);
 
 	AH->readHeader = 0;
 	AH->lookaheadSize = 512;
@@ -3197,21 +3195,17 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 	 * NOTE: currUser keeps track of what the imaginary session user in our
 	 * script is.  It's now effectively reset to the original userID.
 	 */
-	if (AH->currUser)
-		free(AH->currUser);
+	free(AH->currUser);
 	AH->currUser = NULL;
 
 	/* don't assume we still know the output schema, tablespace, etc either */
-	if (AH->currSchema)
-		free(AH->currSchema);
+	free(AH->currSchema);
 	AH->currSchema = NULL;
 
-	if (AH->currTableAm)
-		free(AH->currTableAm);
+	free(AH->currTableAm);
 	AH->currTableAm = NULL;
 
-	if (AH->currTablespace)
-		free(AH->currTablespace);
+	free(AH->currTablespace);
 	AH->currTablespace = NULL;
 
 	/* re-establish fixed state */
@@ -3238,8 +3232,7 @@ _becomeUser(ArchiveHandle *AH, const char *user)
 	 * NOTE: currUser keeps track of what the imaginary session user in our
 	 * script is
 	 */
-	if (AH->currUser)
-		free(AH->currUser);
+	free(AH->currUser);
 	AH->currUser = pg_strdup(user);
 }
 
@@ -3304,8 +3297,7 @@ _selectOutputSchema(ArchiveHandle *AH, const char *schemaName)
 	else
 		ahprintf(AH, "%s;\n\n", qry->data);
 
-	if (AH->currSchema)
-		free(AH->currSchema);
+	free(AH->currSchema);
 	AH->currSchema = pg_strdup(schemaName);
 
 	destroyPQExpBuffer(qry);
@@ -3366,8 +3358,7 @@ _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 	else
 		ahprintf(AH, "%s;\n\n", qry->data);
 
-	if (AH->currTablespace)
-		free(AH->currTablespace);
+	free(AH->currTablespace);
 	AH->currTablespace = pg_strdup(want);
 
 	destroyPQExpBuffer(qry);
@@ -3418,8 +3409,7 @@ _selectTableAccessMethod(ArchiveHandle *AH, const char *tableam)
 
 	destroyPQExpBuffer(cmd);
 
-	if (AH->currTableAm)
-		free(AH->currTableAm);
+	free(AH->currTableAm);
 	AH->currTableAm = pg_strdup(want);
 }
 
@@ -3680,8 +3670,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 	 */
 	if (_tocEntryIsACL(te))
 	{
-		if (AH->currUser)
-			free(AH->currUser);
+		free(AH->currUser);
 		AH->currUser = NULL;
 	}
 }
@@ -4012,17 +4001,13 @@ restore_toc_entries_prefork(ArchiveHandle *AH, TocEntry *pending_list)
 	DisconnectDatabase(&AH->public);
 
 	/* blow away any transient state from the old connection */
-	if (AH->currUser)
-		free(AH->currUser);
+	free(AH->currUser);
 	AH->currUser = NULL;
-	if (AH->currSchema)
-		free(AH->currSchema);
+	free(AH->currSchema);
 	AH->currSchema = NULL;
-	if (AH->currTablespace)
-		free(AH->currTablespace);
+	free(AH->currTablespace);
 	AH->currTablespace = NULL;
-	if (AH->currTableAm)
-		free(AH->currTableAm);
+	free(AH->currTableAm);
 	AH->currTableAm = NULL;
 }
 
@@ -4863,16 +4848,11 @@ DeCloneArchive(ArchiveHandle *AH)
 		destroyPQExpBuffer(AH->sqlparse.curCmd);
 
 	/* Clear any connection-local state */
-	if (AH->currUser)
-		free(AH->currUser);
-	if (AH->currSchema)
-		free(AH->currSchema);
-	if (AH->currTablespace)
-		free(AH->currTablespace);
-	if (AH->currTableAm)
-		free(AH->currTableAm);
-	if (AH->savedPassword)
-		free(AH->savedPassword);
+	free(AH->currUser);
+	free(AH->currSchema);
+	free(AH->currTablespace);
+	free(AH->currTableAm);
+	free(AH->savedPassword);
 
 	free(AH);
 }

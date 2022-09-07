@@ -154,8 +154,7 @@ GetConnection(void)
 		/* Get a new password if appropriate */
 		if (need_password)
 		{
-			if (password)
-				free(password);
+			free(password);
 			password = simple_prompt("Password: ", false);
 			need_password = false;
 		}
@@ -198,16 +197,14 @@ GetConnection(void)
 		PQfinish(tmpconn);
 		free(values);
 		free(keywords);
-		if (conn_opts)
-			PQconninfoFree(conn_opts);
+		PQconninfoFree(conn_opts);
 		return NULL;
 	}
 
 	/* Connection ok! */
 	free(values);
 	free(keywords);
-	if (conn_opts)
-		PQconninfoFree(conn_opts);
+	PQconninfoFree(conn_opts);
 
 	/*
 	 * Set always-secure search path, so malicious users can't get control.

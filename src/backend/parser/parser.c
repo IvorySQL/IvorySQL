@@ -247,19 +247,6 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 				case ORDINALITY:
 					cur_token = WITH_LA;
 					break;
-				case UNIQUE:
-					cur_token = WITH_LA_UNIQUE;
-					break;
-			}
-			break;
-
-		case WITHOUT:
-			/* Replace WITHOUT by WITHOUT_LA if it's followed by TIME */
-			switch (next_token)
-			{
-				case TIME:
-					cur_token = WITHOUT_LA;
-					break;
 			}
 			break;
 

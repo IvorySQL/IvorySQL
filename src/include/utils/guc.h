@@ -325,7 +325,7 @@ extern void DefineCustomBoolVariable(const char *name,
 									 int flags,
 									 GucBoolCheckHook check_hook,
 									 GucBoolAssignHook assign_hook,
-									 GucShowHook show_hook);
+									 GucShowHook show_hook) pg_attribute_nonnull(1, 4);
 
 extern void DefineCustomIntVariable(const char *name,
 									const char *short_desc,
@@ -338,7 +338,7 @@ extern void DefineCustomIntVariable(const char *name,
 									int flags,
 									GucIntCheckHook check_hook,
 									GucIntAssignHook assign_hook,
-									GucShowHook show_hook);
+									GucShowHook show_hook) pg_attribute_nonnull(1, 4);
 
 extern void DefineCustomRealVariable(const char *name,
 									 const char *short_desc,
@@ -351,7 +351,7 @@ extern void DefineCustomRealVariable(const char *name,
 									 int flags,
 									 GucRealCheckHook check_hook,
 									 GucRealAssignHook assign_hook,
-									 GucShowHook show_hook);
+									 GucShowHook show_hook) pg_attribute_nonnull(1, 4);
 
 extern void DefineCustomStringVariable(const char *name,
 									   const char *short_desc,
@@ -362,7 +362,7 @@ extern void DefineCustomStringVariable(const char *name,
 									   int flags,
 									   GucStringCheckHook check_hook,
 									   GucStringAssignHook assign_hook,
-									   GucShowHook show_hook);
+									   GucShowHook show_hook) pg_attribute_nonnull(1, 4);
 
 extern void DefineCustomEnumVariable(const char *name,
 									 const char *short_desc,
@@ -374,7 +374,7 @@ extern void DefineCustomEnumVariable(const char *name,
 									 int flags,
 									 GucEnumCheckHook check_hook,
 									 GucEnumAssignHook assign_hook,
-									 GucShowHook show_hook);
+									 GucShowHook show_hook) pg_attribute_nonnull(1, 4);
 
 extern void MarkGUCPrefixReserved(const char *className);
 
@@ -406,6 +406,11 @@ extern int	set_config_option(const char *name, const char *value,
 							  GucContext context, GucSource source,
 							  GucAction action, bool changeVal, int elevel,
 							  bool is_reload);
+extern int	set_config_option_ext(const char *name, const char *value,
+								  GucContext context, GucSource source,
+								  Oid srole,
+								  GucAction action, bool changeVal, int elevel,
+								  bool is_reload);
 extern void AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt);
 extern char *GetConfigOptionByName(const char *name, const char **varname,
 								   bool missing_ok);
@@ -454,7 +459,6 @@ extern void GUC_check_errcode(int sqlerrcode);
 #define GUC_check_errhint \
 	pre_format_elog_string(errno, TEXTDOMAIN), \
 	GUC_check_errhint_string = format_elog_string
-
 
 /*
  * The following functions are not in guc.c, but are declared here to avoid

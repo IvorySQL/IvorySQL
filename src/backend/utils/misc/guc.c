@@ -57,6 +57,7 @@
 #include "commands/variable.h"
 #include "common/string.h"
 #include "funcapi.h"
+#include "guc_internal.h"
 #include "jit/jit.h"
 #include "libpq/auth.h"
 #include "libpq/libpq.h"
@@ -242,10 +243,6 @@ static bool check_recovery_target_lsn(char **newval, void **extra, GucSource sou
 static void assign_recovery_target_lsn(const char *newval, void *extra);
 static bool check_primary_slot_name(char **newval, void **extra, GucSource source);
 static bool check_default_with_oids(bool *newval, void **extra, GucSource source);
-
-/* Private functions in guc-file.l that need to be called from guc.c */
-static ConfigVariable *ProcessConfigFileInternal(GucContext context,
-												 bool applySettings, int elevel);
 
 /*
  * Track whether there were any deferred checks for custom resource managers
@@ -794,6 +791,8 @@ const char *const config_group_names[] =
 	gettext_noop("File Locations"),
 	/* CONN_AUTH_SETTINGS */
 	gettext_noop("Connections and Authentication / Connection Settings"),
+	/* CONN_AUTH_TCP */
+	gettext_noop("Connections and Authentication / TCP Settings"),
 	/* CONN_AUTH_AUTH */
 	gettext_noop("Connections and Authentication / Authentication"),
 	/* CONN_AUTH_SSL */
@@ -1232,7 +1231,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"enable_group_by_reordering", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("enable reordering of GROUP BY key"),
+			gettext_noop("Enable reordering of GROUP BY key."),
 			NULL,
 			GUC_EXPLAIN
 		},
@@ -3476,7 +3475,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"tcp_keepalives_idle", PGC_USERSET, CONN_AUTH_SETTINGS,
+		{"tcp_keepalives_idle", PGC_USERSET, CONN_AUTH_TCP,
 			gettext_noop("Time between issuing TCP keepalives."),
 			gettext_noop("A value of 0 uses the system default."),
 			GUC_UNIT_S
@@ -3487,7 +3486,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"tcp_keepalives_interval", PGC_USERSET, CONN_AUTH_SETTINGS,
+		{"tcp_keepalives_interval", PGC_USERSET, CONN_AUTH_TCP,
 			gettext_noop("Time between TCP keepalive retransmits."),
 			gettext_noop("A value of 0 uses the system default."),
 			GUC_UNIT_S
@@ -3509,7 +3508,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"tcp_keepalives_count", PGC_USERSET, CONN_AUTH_SETTINGS,
+		{"tcp_keepalives_count", PGC_USERSET, CONN_AUTH_TCP,
 			gettext_noop("Maximum number of TCP keepalive retransmits."),
 			gettext_noop("This controls the number of consecutive keepalive retransmits that can be "
 						 "lost before a connection is considered dead. A value of 0 uses the "
@@ -3611,7 +3610,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"tcp_user_timeout", PGC_USERSET, CONN_AUTH_SETTINGS,
+		{"tcp_user_timeout", PGC_USERSET, CONN_AUTH_TCP,
 			gettext_noop("TCP user timeout."),
 			gettext_noop("A value of 0 uses the system default."),
 			GUC_UNIT_MS
@@ -3656,7 +3655,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"client_connection_check_interval", PGC_USERSET, CONN_AUTH_SETTINGS,
+		{"client_connection_check_interval", PGC_USERSET, CONN_AUTH_TCP,
 			gettext_noop("Sets the time interval between checks for disconnection while running queries."),
 			NULL,
 			GUC_UNIT_MS
@@ -4466,11 +4465,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_LIST_INPUT | GUC_LIST_QUOTE | GUC_SUPERUSER_ONLY
 		},
 		&Unix_socket_directories,
-#ifdef HAVE_UNIX_SOCKETS
 		DEFAULT_PGSOCKET_DIR,
-#else
-		"",
-#endif
 		NULL, NULL, NULL
 	},
 
@@ -4969,7 +4964,7 @@ static struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"stats_fetch_consistency", PGC_USERSET, STATS_CUMULATIVE,
-			gettext_noop("Sets the consistency of accesses to statistics data"),
+			gettext_noop("Sets the consistency of accesses to statistics data."),
 			NULL
 		},
 		&pgstat_fetch_consistency,
@@ -5060,7 +5055,7 @@ static struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"recovery_prefetch", PGC_SIGHUP, WAL_RECOVERY,
-			gettext_noop("Prefetch referenced blocks during recovery"),
+			gettext_noop("Prefetch referenced blocks during recovery."),
 			gettext_noop("Look ahead in the WAL to find references to uncached data.")
 		},
 		&recovery_prefetch,
@@ -5201,8 +5196,8 @@ static bool report_needed;		/* true if any GUC_REPORT reports are needed */
 static int	GUCNestLevel = 0;	/* 1 when in main transaction */
 
 
+static struct config_generic *find_option(const char *name, bool create_placeholders, bool skip_errors, int elevel);
 static int	guc_var_compare(const void *a, const void *b);
-static int	guc_name_compare(const char *namea, const char *nameb);
 static void InitializeGUCOptionsFromEnvironment(void);
 static void InitializeOneGUCOption(struct config_generic *gconf);
 static void push_old_value(struct config_generic *gconf, GucAction action);
@@ -5211,7 +5206,8 @@ static void reapply_stacked_values(struct config_generic *variable,
 								   struct config_string *pHolder,
 								   GucStack *stack,
 								   const char *curvalue,
-								   GucContext curscontext, GucSource cursource);
+								   GucContext curscontext, GucSource cursource,
+								   Oid cursrole);
 static void ShowGUCConfigOption(const char *name, DestReceiver *dest);
 static void ShowAllGUCConfig(DestReceiver *dest);
 static char *_ShowOption(struct config_generic *record, bool use_units);
@@ -5220,7 +5216,359 @@ static bool validate_option_array_item(const char *name, const char *value,
 static void write_auto_conf_file(int fd, const char *filename, ConfigVariable *head_p);
 static void replace_auto_config_value(ConfigVariable **head_p, ConfigVariable **tail_p,
 									  const char *name, const char *value);
+static bool valid_custom_variable_name(const char *name);
 
+/*
+ * This function handles both actual config file (re)loads and execution of
+ * show_all_file_settings() (i.e., the pg_file_settings view).  In the latter
+ * case we don't apply any of the settings, but we make all the usual validity
+ * checks, and we return the ConfigVariable list so that it can be printed out
+ * by show_all_file_settings().
+ */
+ConfigVariable *
+ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
+{
+	bool		error = false;
+	bool		applying = false;
+	const char *ConfFileWithError;
+	ConfigVariable *item,
+			   *head,
+			   *tail;
+	int			i;
+
+	/* Parse the main config file into a list of option names and values */
+	ConfFileWithError = ConfigFileName;
+	head = tail = NULL;
+
+	if (!ParseConfigFile(ConfigFileName, true,
+						 NULL, 0, 0, elevel,
+						 &head, &tail))
+	{
+		/* Syntax error(s) detected in the file, so bail out */
+		error = true;
+		goto bail_out;
+	}
+
+	/*
+	 * Parse the PG_AUTOCONF_FILENAME file, if present, after the main file to
+	 * replace any parameters set by ALTER SYSTEM command.  Because this file
+	 * is in the data directory, we can't read it until the DataDir has been
+	 * set.
+	 */
+	if (DataDir)
+	{
+		if (!ParseConfigFile(PG_AUTOCONF_FILENAME, false,
+							 NULL, 0, 0, elevel,
+							 &head, &tail))
+		{
+			/* Syntax error(s) detected in the file, so bail out */
+			error = true;
+			ConfFileWithError = PG_AUTOCONF_FILENAME;
+			goto bail_out;
+		}
+	}
+	else
+	{
+		/*
+		 * If DataDir is not set, the PG_AUTOCONF_FILENAME file cannot be
+		 * read.  In this case, we don't want to accept any settings but
+		 * data_directory from postgresql.conf, because they might be
+		 * overwritten with settings in the PG_AUTOCONF_FILENAME file which
+		 * will be read later. OTOH, since data_directory isn't allowed in the
+		 * PG_AUTOCONF_FILENAME file, it will never be overwritten later.
+		 */
+		ConfigVariable *newlist = NULL;
+
+		/*
+		 * Prune all items except the last "data_directory" from the list.
+		 */
+		for (item = head; item; item = item->next)
+		{
+			if (!item->ignore &&
+				strcmp(item->name, "data_directory") == 0)
+				newlist = item;
+		}
+
+		if (newlist)
+			newlist->next = NULL;
+		head = tail = newlist;
+
+		/*
+		 * Quick exit if data_directory is not present in file.
+		 *
+		 * We need not do any further processing, in particular we don't set
+		 * PgReloadTime; that will be set soon by subsequent full loading of
+		 * the config file.
+		 */
+		if (head == NULL)
+			goto bail_out;
+	}
+
+	/*
+	 * Mark all extant GUC variables as not present in the config file. We
+	 * need this so that we can tell below which ones have been removed from
+	 * the file since we last processed it.
+	 */
+	for (i = 0; i < num_guc_variables; i++)
+	{
+		struct config_generic *gconf = guc_variables[i];
+
+		gconf->status &= ~GUC_IS_IN_FILE;
+	}
+
+	/*
+	 * Check if all the supplied option names are valid, as an additional
+	 * quasi-syntactic check on the validity of the config file.  It is
+	 * important that the postmaster and all backends agree on the results of
+	 * this phase, else we will have strange inconsistencies about which
+	 * processes accept a config file update and which don't.  Hence, unknown
+	 * custom variable names have to be accepted without complaint.  For the
+	 * same reason, we don't attempt to validate the options' values here.
+	 *
+	 * In addition, the GUC_IS_IN_FILE flag is set on each existing GUC
+	 * variable mentioned in the file; and we detect duplicate entries in the
+	 * file and mark the earlier occurrences as ignorable.
+	 */
+	for (item = head; item; item = item->next)
+	{
+		struct config_generic *record;
+
+		/* Ignore anything already marked as ignorable */
+		if (item->ignore)
+			continue;
+
+		/*
+		 * Try to find the variable; but do not create a custom placeholder if
+		 * it's not there already.
+		 */
+		record = find_option(item->name, false, true, elevel);
+
+		if (record)
+		{
+			/* If it's already marked, then this is a duplicate entry */
+			if (record->status & GUC_IS_IN_FILE)
+			{
+				/*
+				 * Mark the earlier occurrence(s) as dead/ignorable.  We could
+				 * avoid the O(N^2) behavior here with some additional state,
+				 * but it seems unlikely to be worth the trouble.
+				 */
+				ConfigVariable *pitem;
+
+				for (pitem = head; pitem != item; pitem = pitem->next)
+				{
+					if (!pitem->ignore &&
+						strcmp(pitem->name, item->name) == 0)
+						pitem->ignore = true;
+				}
+			}
+			/* Now mark it as present in file */
+			record->status |= GUC_IS_IN_FILE;
+		}
+		else if (!valid_custom_variable_name(item->name))
+		{
+			/* Invalid non-custom variable, so complain */
+			ereport(elevel,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("unrecognized configuration parameter \"%s\" in file \"%s\" line %d",
+							item->name,
+							item->filename, item->sourceline)));
+			item->errmsg = pstrdup("unrecognized configuration parameter");
+			error = true;
+			ConfFileWithError = item->filename;
+		}
+	}
+
+	/*
+	 * If we've detected any errors so far, we don't want to risk applying any
+	 * changes.
+	 */
+	if (error)
+		goto bail_out;
+
+	/* Otherwise, set flag that we're beginning to apply changes */
+	applying = true;
+
+	/*
+	 * Check for variables having been removed from the config file, and
+	 * revert their reset values (and perhaps also effective values) to the
+	 * boot-time defaults.  If such a variable can't be changed after startup,
+	 * report that and continue.
+	 */
+	for (i = 0; i < num_guc_variables; i++)
+	{
+		struct config_generic *gconf = guc_variables[i];
+		GucStack   *stack;
+
+		if (gconf->reset_source != PGC_S_FILE ||
+			(gconf->status & GUC_IS_IN_FILE))
+			continue;
+		if (gconf->context < PGC_SIGHUP)
+		{
+			/* The removal can't be effective without a restart */
+			gconf->status |= GUC_PENDING_RESTART;
+			ereport(elevel,
+					(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+					 errmsg("parameter \"%s\" cannot be changed without restarting the server",
+							gconf->name)));
+			record_config_file_error(psprintf("parameter \"%s\" cannot be changed without restarting the server",
+											  gconf->name),
+									 NULL, 0,
+									 &head, &tail);
+			error = true;
+			continue;
+		}
+
+		/* No more to do if we're just doing show_all_file_settings() */
+		if (!applySettings)
+			continue;
+
+		/*
+		 * Reset any "file" sources to "default", else set_config_option will
+		 * not override those settings.
+		 */
+		if (gconf->reset_source == PGC_S_FILE)
+			gconf->reset_source = PGC_S_DEFAULT;
+		if (gconf->source == PGC_S_FILE)
+			gconf->source = PGC_S_DEFAULT;
+		for (stack = gconf->stack; stack; stack = stack->prev)
+		{
+			if (stack->source == PGC_S_FILE)
+				stack->source = PGC_S_DEFAULT;
+		}
+
+		/* Now we can re-apply the wired-in default (i.e., the boot_val) */
+		if (set_config_option(gconf->name, NULL,
+							  context, PGC_S_DEFAULT,
+							  GUC_ACTION_SET, true, 0, false) > 0)
+		{
+			/* Log the change if appropriate */
+			if (context == PGC_SIGHUP)
+				ereport(elevel,
+						(errmsg("parameter \"%s\" removed from configuration file, reset to default",
+								gconf->name)));
+		}
+	}
+
+	/*
+	 * Restore any variables determined by environment variables or
+	 * dynamically-computed defaults.  This is a no-op except in the case
+	 * where one of these had been in the config file and is now removed.
+	 *
+	 * In particular, we *must not* do this during the postmaster's initial
+	 * loading of the file, since the timezone functions in particular should
+	 * be run only after initialization is complete.
+	 *
+	 * XXX this is an unmaintainable crock, because we have to know how to set
+	 * (or at least what to call to set) every non-PGC_INTERNAL variable that
+	 * could potentially have PGC_S_DYNAMIC_DEFAULT or PGC_S_ENV_VAR source.
+	 */
+	if (context == PGC_SIGHUP && applySettings)
+	{
+		InitializeGUCOptionsFromEnvironment();
+		pg_timezone_abbrev_initialize();
+		/* this selects SQL_ASCII in processes not connected to a database */
+		SetConfigOption("client_encoding", GetDatabaseEncodingName(),
+						PGC_BACKEND, PGC_S_DYNAMIC_DEFAULT);
+	}
+
+	/*
+	 * Now apply the values from the config file.
+	 */
+	for (item = head; item; item = item->next)
+	{
+		char	   *pre_value = NULL;
+		int			scres;
+
+		/* Ignore anything marked as ignorable */
+		if (item->ignore)
+			continue;
+
+		/* In SIGHUP cases in the postmaster, we want to report changes */
+		if (context == PGC_SIGHUP && applySettings && !IsUnderPostmaster)
+		{
+			const char *preval = GetConfigOption(item->name, true, false);
+
+			/* If option doesn't exist yet or is NULL, treat as empty string */
+			if (!preval)
+				preval = "";
+			/* must dup, else might have dangling pointer below */
+			pre_value = pstrdup(preval);
+		}
+
+		scres = set_config_option(item->name, item->value,
+								  context, PGC_S_FILE,
+								  GUC_ACTION_SET, applySettings, 0, false);
+		if (scres > 0)
+		{
+			/* variable was updated, so log the change if appropriate */
+			if (pre_value)
+			{
+				const char *post_value = GetConfigOption(item->name, true, false);
+
+				if (!post_value)
+					post_value = "";
+				if (strcmp(pre_value, post_value) != 0)
+					ereport(elevel,
+							(errmsg("parameter \"%s\" changed to \"%s\"",
+									item->name, item->value)));
+			}
+			item->applied = true;
+		}
+		else if (scres == 0)
+		{
+			error = true;
+			item->errmsg = pstrdup("setting could not be applied");
+			ConfFileWithError = item->filename;
+		}
+		else
+		{
+			/* no error, but variable's active value was not changed */
+			item->applied = true;
+		}
+
+		/*
+		 * We should update source location unless there was an error, since
+		 * even if the active value didn't change, the reset value might have.
+		 * (In the postmaster, there won't be a difference, but it does matter
+		 * in backends.)
+		 */
+		if (scres != 0 && applySettings)
+			set_config_sourcefile(item->name, item->filename,
+								  item->sourceline);
+
+		if (pre_value)
+			pfree(pre_value);
+	}
+
+	/* Remember when we last successfully loaded the config file. */
+	if (applySettings)
+		PgReloadTime = GetCurrentTimestamp();
+
+bail_out:
+	if (error && applySettings)
+	{
+		/* During postmaster startup, any error is fatal */
+		if (context == PGC_POSTMASTER)
+			ereport(ERROR,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("configuration file \"%s\" contains errors",
+							ConfFileWithError)));
+		else if (applying)
+			ereport(elevel,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("configuration file \"%s\" contains errors; unaffected changes were applied",
+							ConfFileWithError)));
+		else
+			ereport(elevel,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("configuration file \"%s\" contains errors; no changes were applied",
+							ConfFileWithError)));
+	}
+
+	/* Successful or otherwise, return the collected data list */
+	return head;
+}
 
 /*
  * Some infrastructure for checking malloc/strdup/realloc calls
@@ -5522,8 +5870,7 @@ build_guc_variables(void)
 	for (i = 0; ConfigureNamesEnum[i].gen.name; i++)
 		guc_vars[num_vars++] = &ConfigureNamesEnum[i].gen;
 
-	if (guc_variables)
-		free(guc_variables);
+	free(guc_variables);
 	guc_variables = guc_vars;
 	num_guc_variables = num_vars;
 	size_guc_variables = size_vars;
@@ -5778,7 +6125,7 @@ guc_var_compare(const void *a, const void *b)
 /*
  * the bare comparison function for GUC names
  */
-static int
+int
 guc_name_compare(const char *namea, const char *nameb)
 {
 	/*
@@ -5937,10 +6284,10 @@ InitializeWalConsistencyChecking(void)
 
 		check_wal_consistency_checking_deferred = false;
 
-		set_config_option("wal_consistency_checking",
-						  wal_consistency_checking_string,
-						  PGC_POSTMASTER, guc->source,
-						  GUC_ACTION_SET, true, ERROR, false);
+		set_config_option_ext("wal_consistency_checking",
+							  wal_consistency_checking_string,
+							  guc->scontext, guc->source, guc->srole,
+							  GUC_ACTION_SET, true, ERROR, false);
 
 		/* checking should not be deferred again */
 		Assert(!check_wal_consistency_checking_deferred);
@@ -6019,6 +6366,8 @@ InitializeOneGUCOption(struct config_generic *gconf)
 	gconf->reset_source = PGC_S_DEFAULT;
 	gconf->scontext = PGC_INTERNAL;
 	gconf->reset_scontext = PGC_INTERNAL;
+	gconf->srole = BOOTSTRAP_SUPERUSERID;
+	gconf->reset_srole = BOOTSTRAP_SUPERUSERID;
 	gconf->stack = NULL;
 	gconf->extra = NULL;
 	gconf->last_reported = NULL;
@@ -6396,6 +6745,7 @@ ResetAllOptions(void)
 
 		gconf->source = gconf->reset_source;
 		gconf->scontext = gconf->reset_scontext;
+		gconf->srole = gconf->reset_srole;
 
 		if (gconf->flags & GUC_REPORT)
 		{
@@ -6441,6 +6791,7 @@ push_old_value(struct config_generic *gconf, GucAction action)
 				{
 					/* SET followed by SET LOCAL, remember SET's value */
 					stack->masked_scontext = gconf->scontext;
+					stack->masked_srole = gconf->srole;
 					set_stack_value(gconf, &stack->masked);
 					stack->state = GUC_SET_LOCAL;
 				}
@@ -6479,6 +6830,7 @@ push_old_value(struct config_generic *gconf, GucAction action)
 	}
 	stack->source = gconf->source;
 	stack->scontext = gconf->scontext;
+	stack->srole = gconf->srole;
 	set_stack_value(gconf, &stack->prior);
 
 	gconf->stack = stack;
@@ -6623,6 +6975,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 						{
 							/* LOCAL migrates down */
 							prev->masked_scontext = stack->scontext;
+							prev->masked_srole = stack->srole;
 							prev->masked = stack->prior;
 							prev->state = GUC_SET_LOCAL;
 						}
@@ -6638,6 +6991,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 						discard_stack_value(gconf, &stack->prior);
 						/* copy down the masked state */
 						prev->masked_scontext = stack->masked_scontext;
+						prev->masked_srole = stack->masked_srole;
 						if (prev->state == GUC_SET_LOCAL)
 							discard_stack_value(gconf, &prev->masked);
 						prev->masked = stack->masked;
@@ -6654,18 +7008,21 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				config_var_value newvalue;
 				GucSource	newsource;
 				GucContext	newscontext;
+				Oid			newsrole;
 
 				if (restoreMasked)
 				{
 					newvalue = stack->masked;
 					newsource = PGC_S_SESSION;
 					newscontext = stack->masked_scontext;
+					newsrole = stack->masked_srole;
 				}
 				else
 				{
 					newvalue = stack->prior;
 					newsource = stack->source;
 					newscontext = stack->scontext;
+					newsrole = stack->srole;
 				}
 
 				switch (gconf->vartype)
@@ -6780,6 +7137,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				/* And restore source information */
 				gconf->source = newsource;
 				gconf->scontext = newscontext;
+				gconf->srole = newsrole;
 			}
 
 			/* Finish popping the state stack */
@@ -6919,8 +7277,7 @@ ReportGUCOption(struct config_generic *record)
 		 * set last_reported to NULL and thereby possibly make a duplicate
 		 * report later.
 		 */
-		if (record->last_reported)
-			free(record->last_reported);
+		free(record->last_reported);
 		record->last_reported = strdup(val);
 	}
 
@@ -7561,7 +7918,7 @@ parse_and_validate_value(struct config_generic *record,
 
 
 /*
- * Sets option `name' to given value.
+ * set_config_option: sets option `name' to given value.
  *
  * The value should be a string, which will be parsed and converted to
  * the appropriate data type.  The context and source parameters indicate
@@ -7604,6 +7961,46 @@ set_config_option(const char *name, const char *value,
 				  GucContext context, GucSource source,
 				  GucAction action, bool changeVal, int elevel,
 				  bool is_reload)
+{
+	Oid			srole;
+
+	/*
+	 * Non-interactive sources should be treated as having all privileges,
+	 * except for PGC_S_CLIENT.  Note in particular that this is true for
+	 * pg_db_role_setting sources (PGC_S_GLOBAL etc): we assume a suitable
+	 * privilege check was done when the pg_db_role_setting entry was made.
+	 */
+	if (source >= PGC_S_INTERACTIVE || source == PGC_S_CLIENT)
+		srole = GetUserId();
+	else
+		srole = BOOTSTRAP_SUPERUSERID;
+
+	return set_config_option_ext(name, value,
+								 context, source, srole,
+								 action, changeVal, elevel,
+								 is_reload);
+}
+
+/*
+ * set_config_option_ext: sets option `name' to given value.
+ *
+ * This API adds the ability to explicitly specify which role OID
+ * is considered to be setting the value.  Most external callers can use
+ * set_config_option() and let it determine that based on the GucSource,
+ * but there are a few that are supplying a value that was determined
+ * in some special way and need to override the decision.  Also, when
+ * restoring a previously-assigned value, it's important to supply the
+ * same role OID that set the value originally; so all guc.c callers
+ * that are doing that type of thing need to call this directly.
+ *
+ * Generally, srole should be GetUserId() when the source is a SQL operation,
+ * or BOOTSTRAP_SUPERUSERID if the source is a config file or similar.
+ */
+int
+set_config_option_ext(const char *name, const char *value,
+					  GucContext context, GucSource source, Oid srole,
+					  GucAction action, bool changeVal, int elevel,
+					  bool is_reload)
 {
 	struct config_generic *record;
 	union config_var_val newval_union;
@@ -7708,12 +8105,12 @@ set_config_option(const char *name, const char *value,
 			if (context == PGC_BACKEND)
 			{
 				/*
-				 * Check whether the current user has been granted privilege
-				 * to set this GUC.
+				 * Check whether the requesting user has been granted
+				 * privilege to set this GUC.
 				 */
 				AclResult	aclresult;
 
-				aclresult = pg_parameter_aclcheck(name, GetUserId(), ACL_SET);
+				aclresult = pg_parameter_aclcheck(name, srole, ACL_SET);
 				if (aclresult != ACLCHECK_OK)
 				{
 					/* No granted privilege */
@@ -7766,12 +8163,12 @@ set_config_option(const char *name, const char *value,
 			if (context == PGC_USERSET || context == PGC_BACKEND)
 			{
 				/*
-				 * Check whether the current user has been granted privilege
-				 * to set this GUC.
+				 * Check whether the requesting user has been granted
+				 * privilege to set this GUC.
 				 */
 				AclResult	aclresult;
 
-				aclresult = pg_parameter_aclcheck(name, GetUserId(), ACL_SET);
+				aclresult = pg_parameter_aclcheck(name, srole, ACL_SET);
 				if (aclresult != ACLCHECK_OK)
 				{
 					/* No granted privilege */
@@ -7888,6 +8285,7 @@ set_config_option(const char *name, const char *value,
 					newextra = conf->reset_extra;
 					source = conf->gen.reset_source;
 					context = conf->gen.reset_scontext;
+					srole = conf->gen.reset_srole;
 				}
 
 				if (prohibitValueChange)
@@ -7922,6 +8320,7 @@ set_config_option(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					conf->gen.srole = srole;
 				}
 				if (makeDefault)
 				{
@@ -7934,6 +8333,7 @@ set_config_option(const char *name, const char *value,
 										newextra);
 						conf->gen.reset_source = source;
 						conf->gen.reset_scontext = context;
+						conf->gen.reset_srole = srole;
 					}
 					for (stack = conf->gen.stack; stack; stack = stack->prev)
 					{
@@ -7944,6 +8344,7 @@ set_config_option(const char *name, const char *value,
 											newextra);
 							stack->source = source;
 							stack->scontext = context;
+							stack->srole = srole;
 						}
 					}
 				}
@@ -7982,6 +8383,7 @@ set_config_option(const char *name, const char *value,
 					newextra = conf->reset_extra;
 					source = conf->gen.reset_source;
 					context = conf->gen.reset_scontext;
+					srole = conf->gen.reset_srole;
 				}
 
 				if (prohibitValueChange)
@@ -8016,6 +8418,7 @@ set_config_option(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					conf->gen.srole = srole;
 				}
 				if (makeDefault)
 				{
@@ -8028,6 +8431,7 @@ set_config_option(const char *name, const char *value,
 										newextra);
 						conf->gen.reset_source = source;
 						conf->gen.reset_scontext = context;
+						conf->gen.reset_srole = srole;
 					}
 					for (stack = conf->gen.stack; stack; stack = stack->prev)
 					{
@@ -8038,6 +8442,7 @@ set_config_option(const char *name, const char *value,
 											newextra);
 							stack->source = source;
 							stack->scontext = context;
+							stack->srole = srole;
 						}
 					}
 				}
@@ -8076,6 +8481,7 @@ set_config_option(const char *name, const char *value,
 					newextra = conf->reset_extra;
 					source = conf->gen.reset_source;
 					context = conf->gen.reset_scontext;
+					srole = conf->gen.reset_srole;
 				}
 
 				if (prohibitValueChange)
@@ -8110,6 +8516,7 @@ set_config_option(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					conf->gen.srole = srole;
 				}
 				if (makeDefault)
 				{
@@ -8122,6 +8529,7 @@ set_config_option(const char *name, const char *value,
 										newextra);
 						conf->gen.reset_source = source;
 						conf->gen.reset_scontext = context;
+						conf->gen.reset_srole = srole;
 					}
 					for (stack = conf->gen.stack; stack; stack = stack->prev)
 					{
@@ -8132,6 +8540,7 @@ set_config_option(const char *name, const char *value,
 											newextra);
 							stack->source = source;
 							stack->scontext = context;
+							stack->srole = srole;
 						}
 					}
 				}
@@ -8186,6 +8595,7 @@ set_config_option(const char *name, const char *value,
 					newextra = conf->reset_extra;
 					source = conf->gen.reset_source;
 					context = conf->gen.reset_scontext;
+					srole = conf->gen.reset_srole;
 				}
 
 				if (prohibitValueChange)
@@ -8230,6 +8640,7 @@ set_config_option(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					conf->gen.srole = srole;
 				}
 
 				if (makeDefault)
@@ -8243,6 +8654,7 @@ set_config_option(const char *name, const char *value,
 										newextra);
 						conf->gen.reset_source = source;
 						conf->gen.reset_scontext = context;
+						conf->gen.reset_srole = srole;
 					}
 					for (stack = conf->gen.stack; stack; stack = stack->prev)
 					{
@@ -8254,6 +8666,7 @@ set_config_option(const char *name, const char *value,
 											newextra);
 							stack->source = source;
 							stack->scontext = context;
+							stack->srole = srole;
 						}
 					}
 				}
@@ -8295,6 +8708,7 @@ set_config_option(const char *name, const char *value,
 					newextra = conf->reset_extra;
 					source = conf->gen.reset_source;
 					context = conf->gen.reset_scontext;
+					srole = conf->gen.reset_srole;
 				}
 
 				if (prohibitValueChange)
@@ -8329,6 +8743,7 @@ set_config_option(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					conf->gen.srole = srole;
 				}
 				if (makeDefault)
 				{
@@ -8341,6 +8756,7 @@ set_config_option(const char *name, const char *value,
 										newextra);
 						conf->gen.reset_source = source;
 						conf->gen.reset_scontext = context;
+						conf->gen.reset_srole = srole;
 					}
 					for (stack = conf->gen.stack; stack; stack = stack->prev)
 					{
@@ -8351,6 +8767,7 @@ set_config_option(const char *name, const char *value,
 											newextra);
 							stack->source = source;
 							stack->scontext = context;
+							stack->srole = srole;
 						}
 					}
 				}
@@ -8395,8 +8812,7 @@ set_config_sourcefile(const char *name, char *sourcefile, int sourceline)
 		return;
 
 	sourcefile = guc_strdup(elevel, sourcefile);
-	if (record->sourcefile)
-		free(record->sourcefile);
+	free(record->sourcefile);
 	record->sourcefile = sourcefile;
 	record->sourceline = sourceline;
 }
@@ -8916,8 +9332,7 @@ AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt)
 
 			if (record->vartype == PGC_STRING && newval.stringval != NULL)
 				free(newval.stringval);
-			if (newextra)
-				free(newextra);
+			free(newextra);
 
 			/*
 			 * We must also reject values containing newlines, because the
@@ -9397,17 +9812,19 @@ define_custom_variable(struct config_generic *variable)
 
 	/* First, apply the reset value if any */
 	if (pHolder->reset_val)
-		(void) set_config_option(name, pHolder->reset_val,
-								 pHolder->gen.reset_scontext,
-								 pHolder->gen.reset_source,
-								 GUC_ACTION_SET, true, WARNING, false);
+		(void) set_config_option_ext(name, pHolder->reset_val,
+									 pHolder->gen.reset_scontext,
+									 pHolder->gen.reset_source,
+									 pHolder->gen.reset_srole,
+									 GUC_ACTION_SET, true, WARNING, false);
 	/* That should not have resulted in stacking anything */
 	Assert(variable->stack == NULL);
 
 	/* Now, apply current and stacked values, in the order they were stacked */
 	reapply_stacked_values(variable, pHolder, pHolder->gen.stack,
 						   *(pHolder->variable),
-						   pHolder->gen.scontext, pHolder->gen.source);
+						   pHolder->gen.scontext, pHolder->gen.source,
+						   pHolder->gen.srole);
 
 	/* Also copy over any saved source-location information */
 	if (pHolder->gen.sourcefile)
@@ -9438,7 +9855,8 @@ reapply_stacked_values(struct config_generic *variable,
 					   struct config_string *pHolder,
 					   GucStack *stack,
 					   const char *curvalue,
-					   GucContext curscontext, GucSource cursource)
+					   GucContext curscontext, GucSource cursource,
+					   Oid cursrole)
 {
 	const char *name = variable->name;
 	GucStack   *oldvarstack = variable->stack;
@@ -9448,43 +9866,45 @@ reapply_stacked_values(struct config_generic *variable,
 		/* First, recurse, so that stack items are processed bottom to top */
 		reapply_stacked_values(variable, pHolder, stack->prev,
 							   stack->prior.val.stringval,
-							   stack->scontext, stack->source);
+							   stack->scontext, stack->source, stack->srole);
 
 		/* See how to apply the passed-in value */
 		switch (stack->state)
 		{
 			case GUC_SAVE:
-				(void) set_config_option(name, curvalue,
-										 curscontext, cursource,
-										 GUC_ACTION_SAVE, true,
-										 WARNING, false);
+				(void) set_config_option_ext(name, curvalue,
+											 curscontext, cursource, cursrole,
+											 GUC_ACTION_SAVE, true,
+											 WARNING, false);
 				break;
 
 			case GUC_SET:
-				(void) set_config_option(name, curvalue,
-										 curscontext, cursource,
-										 GUC_ACTION_SET, true,
-										 WARNING, false);
+				(void) set_config_option_ext(name, curvalue,
+											 curscontext, cursource, cursrole,
+											 GUC_ACTION_SET, true,
+											 WARNING, false);
 				break;
 
 			case GUC_LOCAL:
-				(void) set_config_option(name, curvalue,
-										 curscontext, cursource,
-										 GUC_ACTION_LOCAL, true,
-										 WARNING, false);
+				(void) set_config_option_ext(name, curvalue,
+											 curscontext, cursource, cursrole,
+											 GUC_ACTION_LOCAL, true,
+											 WARNING, false);
 				break;
 
 			case GUC_SET_LOCAL:
 				/* first, apply the masked value as SET */
-				(void) set_config_option(name, stack->masked.val.stringval,
-										 stack->masked_scontext, PGC_S_SESSION,
-										 GUC_ACTION_SET, true,
-										 WARNING, false);
+				(void) set_config_option_ext(name, stack->masked.val.stringval,
+											 stack->masked_scontext,
+											 PGC_S_SESSION,
+											 stack->masked_srole,
+											 GUC_ACTION_SET, true,
+											 WARNING, false);
 				/* then apply the current value as LOCAL */
-				(void) set_config_option(name, curvalue,
-										 curscontext, cursource,
-										 GUC_ACTION_LOCAL, true,
-										 WARNING, false);
+				(void) set_config_option_ext(name, curvalue,
+											 curscontext, cursource, cursrole,
+											 GUC_ACTION_LOCAL, true,
+											 WARNING, false);
 				break;
 		}
 
@@ -9504,11 +9924,12 @@ reapply_stacked_values(struct config_generic *variable,
 		 */
 		if (curvalue != pHolder->reset_val ||
 			curscontext != pHolder->gen.reset_scontext ||
-			cursource != pHolder->gen.reset_source)
+			cursource != pHolder->gen.reset_source ||
+			cursrole != pHolder->gen.reset_srole)
 		{
-			(void) set_config_option(name, curvalue,
-									 curscontext, cursource,
-									 GUC_ACTION_SET, true, WARNING, false);
+			(void) set_config_option_ext(name, curvalue,
+										 curscontext, cursource, cursrole,
+										 GUC_ACTION_SET, true, WARNING, false);
 			variable->stack = NULL;
 		}
 	}
@@ -10013,7 +10434,7 @@ pg_settings_get_flags(PG_FUNCTION_ARGS)
 	Assert(cnt <= MAX_GUC_FLAGS);
 
 	/* Returns the record as Datum */
-	a = construct_array(flags, cnt, TEXTOID, -1, false, TYPALIGN_INT);
+	a = construct_array_builtin(flags, cnt, TEXTOID);
 	PG_RETURN_ARRAYTYPE_P(a);
 }
 
@@ -10620,6 +11041,7 @@ _ShowOption(struct config_generic *record, bool use_units)
  *		variable sourceline, integer
  *		variable source, integer
  *		variable scontext, integer
+*		variable srole, OID
  */
 static void
 write_one_nondefault_variable(FILE *fp, struct config_generic *gconf)
@@ -10686,6 +11108,7 @@ write_one_nondefault_variable(FILE *fp, struct config_generic *gconf)
 	fwrite(&gconf->sourceline, 1, sizeof(gconf->sourceline), fp);
 	fwrite(&gconf->source, 1, sizeof(gconf->source), fp);
 	fwrite(&gconf->scontext, 1, sizeof(gconf->scontext), fp);
+	fwrite(&gconf->srole, 1, sizeof(gconf->srole), fp);
 }
 
 void
@@ -10781,6 +11204,7 @@ read_nondefault_variables(void)
 	int			varsourceline;
 	GucSource	varsource;
 	GucContext	varscontext;
+	Oid			varsrole;
 
 	/*
 	 * Open file
@@ -10817,10 +11241,12 @@ read_nondefault_variables(void)
 			elog(FATAL, "invalid format of exec config params file");
 		if (fread(&varscontext, 1, sizeof(varscontext), fp) != sizeof(varscontext))
 			elog(FATAL, "invalid format of exec config params file");
+		if (fread(&varsrole, 1, sizeof(varsrole), fp) != sizeof(varsrole))
+			elog(FATAL, "invalid format of exec config params file");
 
-		(void) set_config_option(varname, varvalue,
-								 varscontext, varsource,
-								 GUC_ACTION_SET, true, 0, true);
+		(void) set_config_option_ext(varname, varvalue,
+									 varscontext, varsource, varsrole,
+									 GUC_ACTION_SET, true, 0, true);
 		if (varsourcefile[0])
 			set_config_sourcefile(varname, varsourcefile, varsourceline);
 
@@ -10974,6 +11400,7 @@ estimate_variable_size(struct config_generic *gconf)
 
 	size = add_size(size, sizeof(gconf->source));
 	size = add_size(size, sizeof(gconf->scontext));
+	size = add_size(size, sizeof(gconf->srole));
 
 	return size;
 }
@@ -11119,6 +11546,8 @@ serialize_variable(char **destptr, Size *maxbytes,
 						sizeof(gconf->source));
 	do_serialize_binary(destptr, maxbytes, &gconf->scontext,
 						sizeof(gconf->scontext));
+	do_serialize_binary(destptr, maxbytes, &gconf->srole,
+						sizeof(gconf->srole));
 }
 
 /*
@@ -11220,6 +11649,7 @@ RestoreGUCState(void *gucstate)
 	int			varsourceline;
 	GucSource	varsource;
 	GucContext	varscontext;
+	Oid			varsrole;
 	char	   *srcptr = (char *) gucstate;
 	char	   *srcend;
 	Size		len;
@@ -11264,12 +11694,9 @@ RestoreGUCState(void *gucstate)
 		 * pointers.
 		 */
 		Assert(gconf->stack == NULL);
-		if (gconf->extra)
-			free(gconf->extra);
-		if (gconf->last_reported)	/* probably can't happen */
-			free(gconf->last_reported);
-		if (gconf->sourcefile)
-			free(gconf->sourcefile);
+		free(gconf->extra);
+		free(gconf->last_reported);
+		free(gconf->sourcefile);
 		switch (gconf->vartype)
 		{
 			case PGC_BOOL:
@@ -11300,8 +11727,7 @@ RestoreGUCState(void *gucstate)
 				{
 					struct config_string *conf = (struct config_string *) gconf;
 
-					if (*conf->variable)
-						free(*conf->variable);
+					free(*conf->variable);
 					if (conf->reset_val && conf->reset_val != *conf->variable)
 						free(conf->reset_val);
 					if (conf->reset_extra && conf->reset_extra != gconf->extra)
@@ -11351,12 +11777,15 @@ RestoreGUCState(void *gucstate)
 							 &varsource, sizeof(varsource));
 		read_gucstate_binary(&srcptr, srcend,
 							 &varscontext, sizeof(varscontext));
+		read_gucstate_binary(&srcptr, srcend,
+							 &varsrole, sizeof(varsrole));
 
 		error_context_name_and_value[0] = varname;
 		error_context_name_and_value[1] = varvalue;
 		error_context_callback.arg = &error_context_name_and_value[0];
-		result = set_config_option(varname, varvalue, varscontext, varsource,
-								   GUC_ACTION_SET, true, ERROR, true);
+		result = set_config_option_ext(varname, varvalue,
+									   varscontext, varsource, varsrole,
+									   GUC_ACTION_SET, true, ERROR, true);
 		if (result <= 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
@@ -11546,9 +11975,7 @@ GUCArrayAdd(ArrayType *array, const char *name, const char *value)
 					  TYPALIGN_INT /* TEXT's typalign */ );
 	}
 	else
-		a = construct_array(&datum, 1,
-							TEXTOID,
-							-1, false, TYPALIGN_INT);
+		a = construct_array_builtin(&datum, 1, TEXTOID);
 
 	return a;
 }
@@ -11615,9 +12042,7 @@ GUCArrayDelete(ArrayType *array, const char *name)
 								 false /* TEXT's typbyval */ ,
 								 TYPALIGN_INT /* TEXT's typalign */ );
 		else
-			newarray = construct_array(&d, 1,
-									   TEXTOID,
-									   -1, false, TYPALIGN_INT);
+			newarray = construct_array_builtin(&d, 1, TEXTOID);
 
 		index++;
 	}
@@ -11629,7 +12054,7 @@ GUCArrayDelete(ArrayType *array, const char *name)
 /*
  * Given a GUC array, delete all settings from it that our permission
  * level allows: if superuser, delete them all; if regular user, only
- * those that are PGC_USERSET
+ * those that are PGC_USERSET or we have permission to set
  */
 ArrayType *
 GUCArrayReset(ArrayType *array)
@@ -11683,9 +12108,7 @@ GUCArrayReset(ArrayType *array)
 								 false /* TEXT's typbyval */ ,
 								 TYPALIGN_INT /* TEXT's typalign */ );
 		else
-			newarray = construct_array(&d, 1,
-									   TEXTOID,
-									   -1, false, TYPALIGN_INT);
+			newarray = construct_array_builtin(&d, 1, TEXTOID);
 
 		index++;
 		pfree(val);
@@ -11717,14 +12140,16 @@ validate_option_array_item(const char *name, const char *value,
 	 *
 	 * name is a known GUC variable.  Check the value normally, check
 	 * permissions normally (i.e., allow if variable is USERSET, or if it's
-	 * SUSET and user is superuser).
+	 * SUSET and user is superuser or holds ACL_SET permissions).
 	 *
 	 * name is not known, but exists or can be created as a placeholder (i.e.,
 	 * it has a valid custom name).  We allow this case if you're a superuser,
 	 * otherwise not.  Superusers are assumed to know what they're doing. We
 	 * can't allow it for other users, because when the placeholder is
-	 * resolved it might turn out to be a SUSET variable;
-	 * define_custom_variable assumes we checked that.
+	 * resolved it might turn out to be a SUSET variable.  (With currently
+	 * available infrastructure, we can actually handle such cases within the
+	 * current session --- but once an entry is made in pg_db_role_setting,
+	 * it's assumed to be fully validated.)
 	 *
 	 * name is not known and can't be created as a placeholder.  Throw error,
 	 * unless skipIfNoPermissions is true, in which case return false.
@@ -11742,7 +12167,8 @@ validate_option_array_item(const char *name, const char *value,
 		 * We cannot do any meaningful check on the value, so only permissions
 		 * are useful to check.
 		 */
-		if (superuser())
+		if (superuser() ||
+			pg_parameter_aclcheck(name, GetUserId(), ACL_SET) == ACLCHECK_OK)
 			return true;
 		if (skipIfNoPermissions)
 			return false;
@@ -11754,7 +12180,9 @@ validate_option_array_item(const char *name, const char *value,
 	/* manual permissions check so we can avoid an error being thrown */
 	if (gconf->context == PGC_USERSET)
 		 /* ok */ ;
-	else if (gconf->context == PGC_SUSET && superuser())
+	else if (gconf->context == PGC_SUSET &&
+			 (superuser() ||
+			  pg_parameter_aclcheck(name, GetUserId(), ACL_SET) == ACLCHECK_OK))
 		 /* ok */ ;
 	else if (skipIfNoPermissions)
 		return false;
@@ -12509,7 +12937,7 @@ check_client_connection_check_interval(int *newval, void **extra, GucSource sour
 {
 	if (!WaitEventSetCanReportClosed() && *newval != 0)
 	{
-		GUC_check_errdetail("client_connection_check_interval must be set to 0 on this platform");
+		GUC_check_errdetail("client_connection_check_interval must be set to 0 on this platform.");
 		return false;
 	}
 	return true;
@@ -12944,5 +13372,3 @@ check_default_with_oids(bool *newval, void **extra, GucSource source)
 
 	return true;
 }
-
-#include "guc-file.c"

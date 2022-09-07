@@ -64,6 +64,7 @@
 #define SUBOPT_TWOPHASE_COMMIT		0x00000200
 #define SUBOPT_DISABLE_ON_ERR		0x00000400
 #define SUBOPT_LSN					0x00000800
+#define SUBOPT_ORIGIN				0x00001000
 
 /* check if the 'val' has 'bits' set */
 #define IsSet(val, bits)  (((val) & (bits)) == (bits))
@@ -86,6 +87,7 @@ typedef struct SubOpts
 	bool		streaming;
 	bool		twophase;
 	bool		disableonerr;
+	char	   *origin;
 	XLogRecPtr	lsn;
 } SubOpts;
 
@@ -118,7 +120,7 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 		   IsSet(supported_opts, SUBOPT_ENABLED | SUBOPT_CREATE_SLOT |
 				 SUBOPT_COPY_DATA));
 
-	/* Set default values for the boolean supported options. */
+	/* Set default values for the supported options. */
 	if (IsSet(supported_opts, SUBOPT_CONNECT))
 		opts->connect = true;
 	if (IsSet(supported_opts, SUBOPT_ENABLED))
@@ -137,6 +139,8 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 		opts->twophase = false;
 	if (IsSet(supported_opts, SUBOPT_DISABLE_ON_ERR))
 		opts->disableonerr = false;
+	if (IsSet(supported_opts, SUBOPT_ORIGIN))
+		opts->origin = pstrdup(LOGICALREP_ORIGIN_ANY);
 
 	/* Parse options */
 	foreach(lc, stmt_options)
@@ -265,6 +269,29 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 			opts->specified_opts |= SUBOPT_DISABLE_ON_ERR;
 			opts->disableonerr = defGetBoolean(defel);
 		}
+		else if (IsSet(supported_opts, SUBOPT_ORIGIN) &&
+				 strcmp(defel->defname, "origin") == 0)
+		{
+			if (IsSet(opts->specified_opts, SUBOPT_ORIGIN))
+				errorConflictingDefElem(defel, pstate);
+
+			opts->specified_opts |= SUBOPT_ORIGIN;
+			pfree(opts->origin);
+
+			/*
+			 * Even though the "origin" parameter allows only "none" and "any"
+			 * values, it is implemented as a string type so that the
+			 * parameter can be extended in future versions to support
+			 * filtering using origin names specified by the user.
+			 */
+			opts->origin = defGetString(defel);
+
+			if ((pg_strcasecmp(opts->origin, LOGICALREP_ORIGIN_NONE) != 0) &&
+				(pg_strcasecmp(opts->origin, LOGICALREP_ORIGIN_ANY) != 0))
+				ereport(ERROR,
+						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("unrecognized origin value: \"%s\"", opts->origin));
+		}
 		else if (IsSet(supported_opts, SUBOPT_LSN) &&
 				 strcmp(defel->defname, "lsn") == 0)
 		{
@@ -383,7 +410,7 @@ get_publications_str(List *publications, StringInfo dest, bool quote_literal)
 	ListCell   *lc;
 	bool		first = true;
 
-	Assert(list_length(publications) > 0);
+	Assert(publications != NIL);
 
 	foreach(lc, publications)
 	{
@@ -494,8 +521,7 @@ publicationListToArray(List *publist)
 
 	MemoryContextSwitchTo(oldcxt);
 
-	arr = construct_array(datums, list_length(publist),
-						  TEXTOID, -1, false, TYPALIGN_INT);
+	arr = construct_array_builtin(datums, list_length(publist), TEXTOID);
 
 	MemoryContextDelete(memcxt);
 
@@ -531,7 +557,7 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 					  SUBOPT_SLOT_NAME | SUBOPT_COPY_DATA |
 					  SUBOPT_SYNCHRONOUS_COMMIT | SUBOPT_BINARY |
 					  SUBOPT_STREAMING | SUBOPT_TWOPHASE_COMMIT |
-					  SUBOPT_DISABLE_ON_ERR);
+					  SUBOPT_DISABLE_ON_ERR | SUBOPT_ORIGIN);
 	parse_subscription_options(pstate, stmt->options, supported_opts, &opts);
 
 	/*
@@ -618,6 +644,8 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 		CStringGetTextDatum(opts.synchronous_commit);
 	values[Anum_pg_subscription_subpublications - 1] =
 		publicationListToArray(publications);
+	values[Anum_pg_subscription_suborigin - 1] =
+		CStringGetTextDatum(opts.origin);
 
 	tup = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
@@ -786,7 +814,7 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 		pubrel_names = fetch_table_list(wrconn, sub->publications);
 
 		/* Get local table list. */
-		subrel_states = GetSubscriptionRelations(sub->oid);
+		subrel_states = GetSubscriptionRelations(sub->oid, false);
 
 		/*
 		 * Build qsorted array of local table oids for faster lookup. This can
@@ -891,10 +919,10 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 				logicalrep_worker_stop(sub->oid, relid);
 
 				/*
-				 * For READY state, we would have already dropped the
-				 * tablesync origin.
+				 * For READY state and SYNCDONE state, we would have already
+				 * dropped the tablesync origin.
 				 */
-				if (state != SUBREL_STATE_READY)
+				if (state != SUBREL_STATE_READY && state != SUBREL_STATE_SYNCDONE)
 				{
 					char		originname[NAMEDATALEN];
 
@@ -902,11 +930,8 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 					 * Drop the tablesync's origin tracking if exists.
 					 *
 					 * It is possible that the origin is not yet created for
-					 * tablesync worker, this can happen for the states before
-					 * SUBREL_STATE_FINISHEDCOPY. The apply worker can also
-					 * concurrently try to drop the origin and by this time
-					 * the origin might be already removed. For these reasons,
-					 * passing missing_ok = true.
+					 * tablesync worker so passing missing_ok = true. This can
+					 * happen for the states before SUBREL_STATE_FINISHEDCOPY.
 					 */
 					ReplicationOriginNameForTablesync(sub->oid, relid, originname,
 													  sizeof(originname));
@@ -1015,7 +1040,8 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 			{
 				supported_opts = (SUBOPT_SLOT_NAME |
 								  SUBOPT_SYNCHRONOUS_COMMIT | SUBOPT_BINARY |
-								  SUBOPT_STREAMING | SUBOPT_DISABLE_ON_ERR);
+								  SUBOPT_STREAMING | SUBOPT_DISABLE_ON_ERR |
+								  SUBOPT_ORIGIN);
 
 				parse_subscription_options(pstate, stmt->options,
 										   supported_opts, &opts);
@@ -1070,6 +1096,13 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 						= BoolGetDatum(opts.disableonerr);
 					replaces[Anum_pg_subscription_subdisableonerr - 1]
 						= true;
+				}
+
+				if (IsSet(opts.specified_opts, SUBOPT_ORIGIN))
+				{
+					values[Anum_pg_subscription_suborigin - 1] =
+						CStringGetTextDatum(opts.origin);
+					replaces[Anum_pg_subscription_suborigin - 1] = true;
 				}
 
 				update_tuple = true;
@@ -1458,7 +1491,7 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	 * the apply and tablesync workers and they can't restart because of
 	 * exclusive lock on the subscription.
 	 */
-	rstates = GetSubscriptionNotReadyRelations(subid);
+	rstates = GetSubscriptionRelations(subid, true);
 	foreach(lc, rstates)
 	{
 		SubscriptionRelState *rstate = (SubscriptionRelState *) lfirst(lc);
@@ -1471,13 +1504,19 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 		/*
 		 * Drop the tablesync's origin tracking if exists.
 		 *
+		 * For SYNCDONE/READY states, the tablesync origin tracking is known
+		 * to have already been dropped by the tablesync worker.
+		 *
 		 * It is possible that the origin is not yet created for tablesync
 		 * worker so passing missing_ok = true. This can happen for the states
 		 * before SUBREL_STATE_FINISHEDCOPY.
 		 */
-		ReplicationOriginNameForTablesync(subid, relid, originname,
-										  sizeof(originname));
-		replorigin_drop_by_name(originname, true, false);
+		if (rstate->state != SUBREL_STATE_SYNCDONE)
+		{
+			ReplicationOriginNameForTablesync(subid, relid, originname,
+											  sizeof(originname));
+			replorigin_drop_by_name(originname, true, false);
+		}
 	}
 
 	/* Clean up dependencies */
@@ -1579,15 +1618,9 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 
 	/*
 	 * Tell the cumulative stats system that the subscription is getting
-	 * dropped. We can safely report dropping the subscription statistics here
-	 * if the subscription is associated with a replication slot since we
-	 * cannot run DROP SUBSCRIPTION inside a transaction block.  Subscription
-	 * statistics will be removed later by (auto)vacuum either if it's not
-	 * associated with a replication slot or if the message for dropping the
-	 * subscription gets lost.
+	 * dropped.
 	 */
-	if (slotname)
-		pgstat_drop_subscription(subid);
+	pgstat_drop_subscription(subid);
 
 	table_close(rel, NoLock);
 }

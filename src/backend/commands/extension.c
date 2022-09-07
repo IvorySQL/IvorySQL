@@ -887,6 +887,11 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 
 	filename = get_extension_script_filename(control, from_version, version);
 
+	if (from_version == NULL)
+		elog(DEBUG1, "executing extension script for \"%s\" version '%s'", control->name, version);
+	else
+		elog(DEBUG1, "executing extension script for \"%s\" update from version '%s' to '%s'", control->name, from_version, version);
+
 	/*
 	 * If installing a trusted extension on behalf of a non-superuser, become
 	 * the bootstrap superuser.  (This switch will be cleaned up automatically
@@ -907,6 +912,9 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 * We use the equivalent of a function SET option to allow the setting to
 	 * persist for exactly the duration of the script execution.  guc.c also
 	 * takes care of undoing the setting on error.
+	 *
+	 * log_min_messages can't be set by ordinary users, so for that one we
+	 * pretend to be superuser.
 	 */
 	save_nestlevel = NewGUCNestLevel();
 
@@ -915,9 +923,10 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 								 PGC_USERSET, PGC_S_SESSION,
 								 GUC_ACTION_SAVE, true, 0, false);
 	if (log_min_messages < WARNING)
-		(void) set_config_option("log_min_messages", "warning",
-								 PGC_SUSET, PGC_S_SESSION,
-								 GUC_ACTION_SAVE, true, 0, false);
+		(void) set_config_option_ext("log_min_messages", "warning",
+									 PGC_SUSET, PGC_S_SESSION,
+									 BOOTSTRAP_SUPERUSERID,
+									 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
 	 * Similarly disable check_function_bodies, to ensure that SQL functions
@@ -2251,9 +2260,7 @@ convert_requires_to_datum(List *requires)
 		datums[ndatums++] =
 			DirectFunctionCall1(namein, CStringGetDatum(curreq));
 	}
-	a = construct_array(datums, ndatums,
-						NAMEOID,
-						NAMEDATALEN, false, TYPALIGN_CHAR);
+	a = construct_array_builtin(datums, ndatums, NAMEOID);
 	return PointerGetDatum(a);
 }
 
@@ -2433,9 +2440,7 @@ pg_extension_config_dump(PG_FUNCTION_ARGS)
 		arrayLength = 0;
 		arrayIndex = 1;
 
-		a = construct_array(&elementDatum, 1,
-							OIDOID,
-							sizeof(Oid), true, TYPALIGN_INT);
+		a = construct_array_builtin(&elementDatum, 1, OIDOID);
 	}
 	else
 	{
@@ -2486,9 +2491,7 @@ pg_extension_config_dump(PG_FUNCTION_ARGS)
 		if (arrayLength != 0)
 			elog(ERROR, "extconfig and extcondition arrays do not match");
 
-		a = construct_array(&elementDatum, 1,
-							TEXTOID,
-							-1, false, TYPALIGN_INT);
+		a = construct_array_builtin(&elementDatum, 1, TEXTOID);
 	}
 	else
 	{
@@ -2630,14 +2633,12 @@ extension_config_remove(Oid extensionoid, Oid tableoid)
 		int			i;
 
 		/* We already checked there are no nulls */
-		deconstruct_array(a, OIDOID, sizeof(Oid), true, TYPALIGN_INT,
-						  &dvalues, NULL, &nelems);
+		deconstruct_array_builtin(a, OIDOID, &dvalues, NULL, &nelems);
 
 		for (i = arrayIndex; i < arrayLength - 1; i++)
 			dvalues[i] = dvalues[i + 1];
 
-		a = construct_array(dvalues, arrayLength - 1,
-							OIDOID, sizeof(Oid), true, TYPALIGN_INT);
+		a = construct_array_builtin(dvalues, arrayLength - 1, OIDOID);
 
 		repl_val[Anum_pg_extension_extconfig - 1] = PointerGetDatum(a);
 	}
@@ -2676,14 +2677,12 @@ extension_config_remove(Oid extensionoid, Oid tableoid)
 		int			i;
 
 		/* We already checked there are no nulls */
-		deconstruct_array(a, TEXTOID, -1, false, TYPALIGN_INT,
-						  &dvalues, NULL, &nelems);
+		deconstruct_array_builtin(a, TEXTOID, &dvalues, NULL, &nelems);
 
 		for (i = arrayIndex; i < arrayLength - 1; i++)
 			dvalues[i] = dvalues[i + 1];
 
-		a = construct_array(dvalues, arrayLength - 1,
-							TEXTOID, -1, false, TYPALIGN_INT);
+		a = construct_array_builtin(dvalues, arrayLength - 1, TEXTOID);
 
 		repl_val[Anum_pg_extension_extcondition - 1] = PointerGetDatum(a);
 	}

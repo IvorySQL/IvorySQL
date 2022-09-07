@@ -180,12 +180,12 @@ typedef struct xl_btree_dedup
  * This is what we need to know about page reuse within btree.  This record
  * only exists to generate a conflict point for Hot Standby.
  *
- * Note that we must include a RelFileNode in the record because we don't
+ * Note that we must include a RelFileLocator in the record because we don't
  * actually register the buffer with the record.
  */
 typedef struct xl_btree_reuse_page
 {
-	RelFileNode node;
+	RelFileLocator locator;
 	BlockNumber block;
 	FullTransactionId latestRemovedFullXid;
 } xl_btree_reuse_page;
@@ -342,10 +342,14 @@ typedef struct xl_btree_newroot
  * prototypes for functions in nbtxlog.c
  */
 extern void btree_redo(XLogReaderState *record);
-extern void btree_desc(StringInfo buf, XLogReaderState *record);
-extern const char *btree_identify(uint8 info);
 extern void btree_xlog_startup(void);
 extern void btree_xlog_cleanup(void);
 extern void btree_mask(char *pagedata, BlockNumber blkno);
+
+/*
+ * prototypes for functions in nbtdesc.c
+ */
+extern void btree_desc(StringInfo buf, XLogReaderState *record);
+extern const char *btree_identify(uint8 info);
 
 #endif							/* NBTXLOG_H */

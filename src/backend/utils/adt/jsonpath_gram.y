@@ -18,26 +18,11 @@
 
 #include "catalog/pg_collation.h"
 #include "fmgr.h"
+#include "jsonpath_internal.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
-#include "utils/jsonpath.h"
-
-/* struct JsonPathString is shared between scan and gram */
-typedef struct JsonPathString
-{
-	char	   *val;
-	int			len;
-	int			total;
-}			JsonPathString;
-
-union YYSTYPE;
-
-/* flex 2.5.4 doesn't bother with a decl for this */
-int	jsonpath_yylex(union YYSTYPE *yylval_param);
-int	jsonpath_yyparse(JsonPathParseResult **result);
-void jsonpath_yyerror(JsonPathParseResult **result, const char *message);
 
 static JsonPathParseItem *makeItemType(JsonPathItemType type);
 static JsonPathParseItem *makeItemString(JsonPathString *s);
@@ -74,7 +59,6 @@ static JsonPathParseItem *makeItemLikeRegex(JsonPathParseItem *expr,
 %pure-parser
 %expect 0
 %name-prefix="jsonpath_yy"
-%error-verbose
 %parse-param {JsonPathParseResult **result}
 
 %union
@@ -460,7 +444,7 @@ makeIndexArray(List *list)
 	ListCell   *cell;
 	int			i = 0;
 
-	Assert(list_length(list) > 0);
+	Assert(list != NIL);
 	v->value.array.nelems = list_length(list);
 
 	v->value.array.elems = palloc(sizeof(v->value.array.elems[0]) *
@@ -527,7 +511,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, JsonPathString *pattern,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("invalid input syntax for type %s", "jsonpath"),
-						 errdetail("unrecognized flag character \"%.*s\" in LIKE_REGEX predicate",
+						 errdetail("Unrecognized flag character \"%.*s\" in LIKE_REGEX predicate.",
 								   pg_mblen(flags->val + i), flags->val + i)));
 				break;
 		}
@@ -594,13 +578,3 @@ jspConvertRegexFlags(uint32 xflags)
 
 	return cflags;
 }
-
-/*
- * jsonpath_scan.l is compiled as part of jsonpath_gram.y.  Currently, this is
- * unavoidable because jsonpath_gram does not create a .h file to export its
- * token symbols.  If these files ever grow large enough to be worth compiling
- * separately, that could be fixed; but for now it seems like useless
- * complication.
- */
-
-#include "jsonpath_scan.c"

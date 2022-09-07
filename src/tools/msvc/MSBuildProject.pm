@@ -4,7 +4,7 @@
 package MSBuildProject;
 
 #
-# Package that encapsulates a MSBuild project file (Visual C++ 2013 or greater)
+# Package that encapsulates a MSBuild project file (Visual C++ 2015 or greater)
 #
 # src/tools/msvc/MSBuildProject.pm
 #
@@ -347,7 +347,6 @@ sub WriteItemDefinitionGroup
       <ProgramDatabaseFile>.\\$cfgname\\$self->{name}\\$self->{name}.pdb</ProgramDatabaseFile>
       <GenerateMapFile>false</GenerateMapFile>
       <MapFileName>.\\$cfgname\\$self->{name}\\$self->{name}.map</MapFileName>
-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <!-- Permit links to MinGW-built, 32-bit DLLs (default before VS2012). -->
       <ImageHasSafeExceptionHandlers/>
       <SubSystem>Console</SubSystem>
@@ -403,31 +402,6 @@ sub Footer
 </Project>
 EOF
 	return;
-}
-
-package VC2013Project;
-
-#
-# Package that encapsulates a Visual C++ 2013 project file
-#
-
-use strict;
-use warnings;
-use base qw(MSBuildProject);
-
-no warnings qw(redefine);    ## no critic
-
-sub new
-{
-	my $classname = shift;
-	my $self      = $classname->SUPER::_new(@_);
-	bless($self, $classname);
-
-	$self->{vcver}           = '12.00';
-	$self->{PlatformToolset} = 'v120';
-	$self->{ToolsVersion}    = '12.0';
-
-	return $self;
 }
 
 package VC2015Project;

@@ -1594,9 +1594,8 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 					 * to.  We have to build an additional level of ParseState
 					 * to keep in step with varlevelsup in the subselect.
 					 */
-					ParseState	mypstate;
+					ParseState	mypstate = {0};
 
-					MemSet(&mypstate, 0, sizeof(mypstate));
 					mypstate.parentParseState = pstate;
 					mypstate.p_rtable = rte->subquery->rtable;
 					/* don't bother filling the rest of the fake pstate */
@@ -1964,46 +1963,6 @@ FigureColnameInternal(Node *node, char **name)
 		case T_ConnectRoot:
 			*name = "connectroot";
 			return 2;
-		case T_JsonParseExpr:
-			*name = "json";
-			return 2;
-		case T_JsonScalarExpr:
-			*name = "json_scalar";
-			return 2;
-		case T_JsonSerializeExpr:
-			*name = "json_serialize";
-			return 2;
-		case T_JsonObjectConstructor:
-			*name = "json_object";
-			return 2;
-		case T_JsonArrayConstructor:
-		case T_JsonArrayQueryConstructor:
-			*name = "json_array";
-			return 2;
-		case T_JsonObjectAgg:
-			*name = "json_objectagg";
-			return 2;
-		case T_JsonArrayAgg:
-			*name = "json_arrayagg";
-			return 2;
-		case T_JsonFuncExpr:
-			/* make SQL/JSON functions act like a regular function */
-			switch (((JsonFuncExpr *) node)->op)
-			{
-				case JSON_QUERY_OP:
-					*name = "json_query";
-					return 2;
-				case JSON_VALUE_OP:
-					*name = "json_value";
-					return 2;
-				case JSON_EXISTS_OP:
-					*name = "json_exists";
-					return 2;
-				case JSON_TABLE_OP:
-					*name = "json_table";
-					return 2;
-			}
-			break;
 		default:
 			break;
 	}
