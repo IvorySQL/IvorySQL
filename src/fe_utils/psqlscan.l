@@ -628,9 +628,45 @@ other			.
 
 {create_fun}	{
 					char *str = pg_strdup(output_buf->data);
-					if (strcasestr(str,"CREATE") != NULL && (strcasestr(str,"PACKAGE") != NULL || (strcasestr(str,"FUNCTION") != NULL && (strcasestr(str,"RETURN") != NULL)) ||
-							strcasestr(str,"PROCEDURE")!= NULL) && strcasestr(str,"RETURNS") == NULL)
-						BEGIN(xf);
+					int len = strlen(str);
+					char *fir;
+					if (strcasestr(str, "CREATE") != NULL && strcasestr(str, "RETURNS") == NULL)
+					{
+						if ((fir=strcasestr(str,"PACKAGE")) !=  NULL)
+						{
+							if (fir-1 > str &&
+								(*(fir-1) ==' ' || *(fir-1) =='\t' || *(fir-1) =='\n'  || *(fir-1) =='\r' || *(fir-1) =='\f') &&
+								fir+7 < str+len &&
+								(*(fir+7) ==' ' || *(fir+7) =='\t' || *(fir+7) =='\n'  || *(fir+7) =='\r' || *(fir+7) =='\f'))
+								BEGIN(xf);
+							else
+								BEGIN(INITIAL);
+						}
+						else if ((fir=strcasestr(str,"FUNCTION")) != NULL && strcasestr(str,"RETURN") != NULL)
+						{
+							if (fir-1 > str &&
+								(*(fir-1) ==' ' || *(fir-1) =='\t' || *(fir-1) =='\n'  || *(fir-1) =='\r' || *(fir-1) =='\f') &&
+								fir+8 < str+len &&
+								(*(fir+8) ==' ' || *(fir+8) =='\t' || *(fir+8) =='\n'  || *(fir+8) =='\r' || *(fir+8) =='\f'))
+								BEGIN(xf);
+							else
+								BEGIN(INITIAL);
+						}
+						else if ((fir=strcasestr(str,"PROCEDURE")) != NULL)
+						{
+						    if (fir-1 > str &&
+								(*(fir-1) ==' ' || *(fir-1) =='\t' || *(fir-1) =='\n'  || *(fir-1) =='\r' || *(fir-1) =='\f') &&
+								fir+9 < str+len &&
+								(*(fir+9) ==' ' || *(fir+9) =='\t' || *(fir+9) =='\n'  || *(fir+9) =='\r' || *(fir+9) =='\f'))
+								BEGIN(xf);
+							else
+								BEGIN(INITIAL);
+						}
+						else
+						{
+							BEGIN(INITIAL);
+						}
+					}
 					else
 						BEGIN(INITIAL);
 					ECHO;
