@@ -81,6 +81,7 @@ static bool ExecOnConflictUpdate(ModifyTableContext *context,
 										  TupleTableSlot *excludedSlot,
 										  bool canSetTag,
 										  TupleTableSlot **returning);
+static void ExecPendingInserts(EState *estate);
 static TupleTableSlot *ExecPrepareTupleRouting(ModifyTableState *mtstate,
 											   EState *estate,
 											   PartitionTupleRouting *proute,
@@ -683,6 +684,10 @@ ExecInsert(ModifyTableContext *context,
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_insert_before_row)
 	{
+		/* Flush any pending inserts, so rows are visible to the triggers */
+		if (estate->es_insert_pending_result_relations != NIL)
+			ExecPendingInserts(estate);
+
 		if (!ExecBRInsertTriggers(estate, resultRelInfo, slot))
 			return NULL;		/* "do nothing" */
 	}
@@ -716,6 +721,8 @@ ExecInsert(ModifyTableContext *context,
 		 */
 		if (resultRelInfo->ri_BatchSize > 1)
 		{
+			bool		flushed = false;
+
 			/*
 			 * When we've reached the desired batch size, perform the
 			 * insertion.
@@ -728,6 +735,7 @@ ExecInsert(ModifyTableContext *context,
 								resultRelInfo->ri_NumSlots,
 								estate, canSetTag);
 				resultRelInfo->ri_NumSlots = 0;
+				flushed = true;
 			}
 
 			oldContext = MemoryContextSwitchTo(estate->es_query_cxt);
@@ -769,6 +777,24 @@ ExecInsert(ModifyTableContext *context,
 
 			ExecCopySlot(resultRelInfo->ri_PlanSlots[resultRelInfo->ri_NumSlots],
 						 planSlot);
+
+			/*
+			 * If these are the first tuples stored in the buffers, add the
+			 * target rel to the es_insert_pending_result_relations list,
+			 * except in the case where flushing was done above, in which case
+			 * the target rel would already have been added to the list, so no
+			 * need to do this.
+			 */
+			if (resultRelInfo->ri_NumSlots == 0 && !flushed)
+			{
+				Assert(!list_member_ptr(estate->es_insert_pending_result_relations,
+										resultRelInfo));
+				estate->es_insert_pending_result_relations =
+					lappend(estate->es_insert_pending_result_relations,
+							resultRelInfo);
+			}
+			Assert(list_member_ptr(estate->es_insert_pending_result_relations,
+								   resultRelInfo));
 
 			resultRelInfo->ri_NumSlots++;
 
@@ -1088,9 +1114,8 @@ ExecBatchInsert(ModifyTableState *mtstate,
 		slot = rslots[i];
 
 		/*
-		 * AFTER ROW Triggers or RETURNING expressions might reference the
-		 * tableoid column, so (re-)initialize tts_tableOid before evaluating
-		 * them.
+		 * AFTER ROW Triggers might reference the tableoid column, so
+		 * (re-)initialize tts_tableOid before evaluating them.
 		 */
 		slot->tts_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
@@ -1122,12 +1147,20 @@ ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple,
 				   TupleTableSlot **epqreturnslot)
 {
+
 	/* BEFORE ROW DELETE triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_delete_before_row)
+	{
+		EState     *estate = context->estate;
+		/* Flush any pending inserts, so rows are visible to the triggers */
+		if (estate->es_insert_pending_result_relations != NIL)
+			ExecPendingInserts(estate);
+
 		return ExecBRDeleteTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple,
 									epqreturnslot);
+	}
 
 	return true;
 }
@@ -1514,6 +1547,32 @@ ldelete:;
 	}
 
 	return NULL;
+}
+
+/*
+ * ExecPendingInserts -- flushes all pending inserts to the foreign tables
+ */
+static void
+ExecPendingInserts(EState *estate)
+{
+	ListCell   *lc;
+
+	foreach(lc, estate->es_insert_pending_result_relations)
+	{
+		ResultRelInfo *resultRelInfo = (ResultRelInfo *) lfirst(lc);
+		ModifyTableState *mtstate = resultRelInfo->ri_ModifyTableState;
+
+		Assert(mtstate);
+		ExecBatchInsert(mtstate, resultRelInfo,
+						resultRelInfo->ri_Slots,
+						resultRelInfo->ri_PlanSlots,
+						resultRelInfo->ri_NumSlots,
+						estate, mtstate->canSetTag);
+		resultRelInfo->ri_NumSlots = 0;
+	}
+
+	list_free(estate->es_insert_pending_result_relations);
+	estate->es_insert_pending_result_relations = NIL;
 }
 
 /*
@@ -1914,9 +1973,16 @@ ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	/* BEFORE ROW UPDATE triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_update_before_row)
+	{
+		EState     *estate = context->estate;
+		/* Flush any pending inserts, so rows are visible to the triggers */
+		if (estate->es_insert_pending_result_relations != NIL)
+			ExecPendingInserts(estate);
+
 		return ExecBRUpdateTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple, slot,
 									&context->tmfd);
+	}
 
 	return true;
 }
@@ -3396,9 +3462,6 @@ ExecModifyTable(PlanState *pstate)
 	ItemPointerData tuple_ctid;
 	HeapTupleData oldtupdata;
 	HeapTuple	oldtuple;
-	PartitionTupleRouting *proute = node->mt_partition_tuple_routing;
-	List	   *relinfos = NIL;
-	ListCell   *lc;
 
 	CHECK_FOR_INTERRUPTS();
 
@@ -3707,21 +3770,8 @@ ExecModifyTable(PlanState *pstate)
 	/*
 	 * Insert remaining tuples for batch insert.
 	 */
-	if (proute)
-		relinfos = estate->es_tuple_routing_result_relations;
-	else
-		relinfos = estate->es_opened_result_relations;
-
-	foreach(lc, relinfos)
-	{
-		resultRelInfo = lfirst(lc);
-		if (resultRelInfo->ri_NumSlots > 0)
-			ExecBatchInsert(node, resultRelInfo,
-							resultRelInfo->ri_Slots,
-							resultRelInfo->ri_PlanSlots,
-							resultRelInfo->ri_NumSlots,
-							estate, node->canSetTag);
-	}
+	if (estate->es_insert_pending_result_relations != NIL)
+		ExecPendingInserts(estate);
 
 	/*
 	 * We're done, but fire AFTER STATEMENT triggers before exiting.
@@ -4246,6 +4296,13 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		}
 		else
 			resultRelInfo->ri_BatchSize = 1;
+
+		/*
+		 * If doing batch insert, setup back-link so we can easily find the
+		 * mtstate again.
+		 */
+		if (resultRelInfo->ri_BatchSize > 1)
+			resultRelInfo->ri_ModifyTableState = mtstate;
 	}
 
 	/*
