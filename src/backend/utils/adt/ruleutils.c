@@ -2823,8 +2823,8 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
  *
  * Note: if you change the output format of this function, be careful not
  * to break psql's rules (in \ef and \sf) for identifying the start of the
- * function body.  To wit: the function body starts on a line that begins
- * with "AS ", and no preceding line will look like that.
+ * function body.  To wit: the function body starts on a line that begins with
+ * "AS ", "BEGIN ", or "RETURN ", and no preceding line will look like that.
  *
  * we rename pg_get_functiondef to pg_get_functiondef_internal for warp a
  * new pg_get_functiondef function.
