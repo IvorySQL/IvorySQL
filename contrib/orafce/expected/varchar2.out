@@ -713,3 +713,14 @@ select * from test_var where(c1, c2) not in (select * from test_tmp);
  2  | test2
 (1 row)
 
+drop table test_var,test_tmp;
+create table test(id int, name varchar2(100));
+insert into test select a,'test'||a from generate_series(1, 10000) a;
+create index on test(name);
+select * from test where name = 'test1';
+ id | name  
+----+-------
+  1 | test1
+(1 row)
+
+drop table test;

@@ -446,3 +446,10 @@ insert into test_var values('1', 'test1'),('1', 'test1'),('2', 'test1'),('2', 't
 create table test_tmp(c1 varchar2, c2 varchar2);
 insert into test_tmp values('1', 'test1'),('2', 'test1');
 select * from test_var where(c1, c2) not in (select * from test_tmp);
+drop table test_var,test_tmp;
+
+create table test(id int, name varchar2(100));
+insert into test select a,'test'||a from generate_series(1, 10000) a;
+create index on test(name);
+select * from test where name = 'test1';
+drop table test;
