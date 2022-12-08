@@ -150,6 +150,9 @@ SELECT id, manager_id from t_tab CONNECT BY  id =  manager_id order by id;
   3 |          2
 (3 rows)
 
+-- test PRIOR exception
+SELECT id, manager_id from t_tab CONNECT BY PRIOR 50 =  manager_id;
+ERROR:  only simple column references are allowed in PRIOR
 -- tests with level in expression
 SELECT id, manager_id, level, level * 100 * manager_id  from t_tab CONNECT BY prior id =  manager_id order by id;
  id | manager_id | LEVEL | LEVEL 

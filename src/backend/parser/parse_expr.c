@@ -3608,7 +3608,14 @@ resolvePseudoColumns(ParseState *pstate, Node *expr, ResTarget *res,
 		case T_PriorClause:
 			{
 				PriorClause *n = (PriorClause *) expr;
-				ColumnRef  *cref = (ColumnRef *) n->expr;
+				ColumnRef   *cref;
+
+				if (!IsA(n->expr, ColumnRef))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("only simple column references are allowed in PRIOR")));
+
+				cref = (ColumnRef *) n->expr;
 
 				/* add conditional columns to the target list */
 				if (cols != NULL)
