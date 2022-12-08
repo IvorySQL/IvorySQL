@@ -79,6 +79,9 @@ WITH RECURSIVE test (id, manager_id) AS (
 
 SELECT id, manager_id from t_tab CONNECT BY  id =  manager_id order by id;
 
+-- test PRIOR exception
+SELECT id, manager_id from t_tab CONNECT BY PRIOR 50 =  manager_id;
+
 -- tests with level in expression
 SELECT id, manager_id, level, level * 100 * manager_id  from t_tab CONNECT BY prior id =  manager_id order by id;
 SELECT level, level * 100 * manager_id, id, manager_id from t_tab CONNECT BY id =  prior manager_id order by id;
