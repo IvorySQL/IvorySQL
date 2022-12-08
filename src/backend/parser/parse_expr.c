@@ -3507,10 +3507,17 @@ resolvePseudoColumns(ParseState *pstate, Node *expr, ResTarget *res,
 			{
 				ColumnRef  *cref;
 				SysConnectPath *n = (SysConnectPath *) expr;
-				A_Expr	   *rexpr = makeSimpleA_Expr(AEXPR_OP, "||",
-													 (Node *) n->chr,
-													 (Node *) n->expr,
-													 -1);
+				A_Expr	   *rexpr;
+
+				if (!IsA(n->expr, ColumnRef))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("only simple column references are allowed in SYS_CONNECT_BY_PATH")));
+
+				rexpr = makeSimpleA_Expr(AEXPR_OP, "||",
+										 (Node *)n->chr,
+										 (Node *)n->expr,
+										 -1);
 
 				/* add column alias if not present */
 				if (res && res->name == NULL)
