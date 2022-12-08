@@ -325,7 +325,7 @@ make_new_connection(ConnCacheEntry *entry, UserMapping *user)
 	 * default.
 	 *
 	 * Note: it's enough to determine these only when making a new connection
-	 * because these settings for it are changed, it will be closed and
+	 * because if these settings for it are changed, it will be closed and
 	 * re-made later.
 	 */
 	entry->keep_connections = true;
@@ -1668,7 +1668,7 @@ postgres_fdw_get_connections(PG_FUNCTION_ARGS)
 	HASH_SEQ_STATUS scan;
 	ConnCacheEntry *entry;
 
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	/* If cache doesn't exist, we return no records */
 	if (!ConnectionHash)

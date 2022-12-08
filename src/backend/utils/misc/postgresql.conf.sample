@@ -147,7 +147,7 @@
 					#   sysv
 					#   windows
 					# (change requires restart)
-#dynamic_shared_memory_type = posix	# the default is the first option
+#dynamic_shared_memory_type = posix	# the default is usually the first option
 					# supported by the operating system:
 					#   posix
 					#   sysv
@@ -388,7 +388,6 @@
 #enable_seqscan = on
 #enable_sort = on
 #enable_tidscan = on
-#enable_group_by_reordering = on
 
 # - Planner Cost Constants -
 

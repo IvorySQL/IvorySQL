@@ -319,6 +319,7 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 {
 	char	   *path;
 	int			ret;
+	BlockNumber segno = 0;
 
 	path = relpath(rnode, forkNum);
 
@@ -329,11 +330,15 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 	{
 		if (!RelFileNodeBackendIsTemp(rnode))
 		{
+			int			save_errno;
+
 			/* Prevent other backends' fds from holding on to the disk space */
 			ret = do_truncate(path);
 
 			/* Forget any pending sync requests for the first segment */
+			save_errno = errno;
 			register_forget_request(rnode, forkNum, 0 /* first seg */ );
+			errno = save_errno;
 		}
 		else
 			ret = 0;
@@ -346,6 +351,7 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 				ereport(WARNING,
 						(errcode_for_file_access(),
 						 errmsg("could not remove file \"%s\": %m", path)));
+			segno++;
 		}
 	}
 	else
@@ -353,25 +359,42 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 		/* Prevent other backends' fds from holding on to the disk space */
 		ret = do_truncate(path);
 
-		/* Register request to unlink first segment later */
-		register_unlink_segment(rnode, forkNum, 0 /* first seg */ );
+		/*
+		 * Except during a binary upgrade, register request to unlink first
+		 * segment later, rather than now.
+		 *
+		 * If we're performing a binary upgrade, the dangers described in the
+		 * header comments for mdunlink() do not exist, since after a crash or
+		 * even a simple ERROR, the upgrade fails and the whole new cluster
+		 * must be recreated from scratch. And, on the other hand, it is
+		 * important to remove the files from disk immediately, because we may
+		 * be about to reuse the same relfilenode.
+		 */
+		if (!IsBinaryUpgrade)
+		{
+			register_unlink_segment(rnode, forkNum, 0 /* first seg */ );
+			segno++;
+		}
 	}
 
 	/*
-	 * Delete any additional segments.
+	 * Delete any remaining segments (we might or might not have dealt with
+	 * the first one above).
 	 */
 	if (ret >= 0)
 	{
 		char	   *segpath = (char *) palloc(strlen(path) + 12);
-		BlockNumber segno;
 
 		/*
 		 * Note that because we loop until getting ENOENT, we will correctly
 		 * remove all inactive segments as well as active ones.
 		 */
-		for (segno = 1;; segno++)
+		for (;; segno++)
 		{
-			sprintf(segpath, "%s.%u", path, segno);
+			if (segno == 0)
+				strcpy(segpath, path);
+			else
+				sprintf(segpath, "%s.%u", path, segno);
 
 			if (!RelFileNodeBackendIsTemp(rnode))
 			{
