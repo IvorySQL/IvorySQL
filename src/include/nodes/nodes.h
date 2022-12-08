@@ -202,18 +202,6 @@ typedef enum NodeTag
 	T_FromExpr,
 	T_OnConflictExpr,
 	T_IntoClause,
-	T_JsonFormat,
-	T_JsonReturning,
-	T_JsonValueExpr,
-	T_JsonParseExpr,
-	T_JsonScalarExpr,
-	T_JsonSerializeExpr,
-	T_JsonConstructorExpr,
-	T_JsonExpr,
-	T_JsonCoercion,
-	T_JsonItemCoercions,
-	T_JsonTableParent,
-	T_JsonTableSibling,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -514,22 +502,6 @@ typedef enum NodeTag
 	T_PriorClause,
 	T_SysConnectPath,
 	T_ConnectRoot,
-	T_JsonObjectConstructor,
-	T_JsonArrayConstructor,
-	T_JsonArrayQueryConstructor,
-	T_JsonAggConstructor,
-	T_JsonObjectAgg,
-	T_JsonArrayAgg,
-	T_JsonFuncExpr,
-	T_JsonIsPredicate,
-	T_JsonTable,
-	T_JsonTableColumn,
-	T_JsonTablePlan,
-	T_JsonCommon,
-	T_JsonArgument,
-	T_JsonKeyValue,
-	T_JsonBehavior,
-	T_JsonOutput,
 
 	/*
 	 * TAGS FOR REPLICATION GRAMMAR PARSE NODES (replnodes.h)
@@ -892,6 +864,6 @@ typedef enum LimitOption
 	LIMIT_OPTION_COUNT,			/* FETCH FIRST... ONLY */
 	LIMIT_OPTION_WITH_TIES,		/* FETCH FIRST... WITH TIES */
 	LIMIT_OPTION_DEFAULT,		/* No limit present */
-}			LimitOption;
+} LimitOption;
 
 #endif							/* NODES_H */

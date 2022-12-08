@@ -421,7 +421,7 @@ pg_hba_file_rules(PG_FUNCTION_ARGS)
 	 * also more efficient than having to look up our current position in the
 	 * parsed list every time.
 	 */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	/* Fill the tuplestore */
 	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -512,7 +512,7 @@ fill_ident_view(Tuplestorestate *tuple_store, TupleDesc tupdesc)
 				 errmsg("could not open usermap file \"%s\": %m",
 						IdentFileName)));
 
-	linecxt = tokenize_auth_file(HbaFileName, file, &ident_lines, DEBUG3);
+	linecxt = tokenize_auth_file(IdentFileName, file, &ident_lines, DEBUG3);
 	FreeFile(file);
 
 	/* Now parse all the lines */
@@ -554,7 +554,7 @@ pg_ident_file_mappings(PG_FUNCTION_ARGS)
 	 * also more efficient than having to look up our current position in the
 	 * parsed list every time.
 	 */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	/* Fill the tuplestore */
 	rsi = (ReturnSetInfo *) fcinfo->resultinfo;

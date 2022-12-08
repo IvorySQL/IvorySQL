@@ -795,9 +795,8 @@ ExecInsert(ModifyTableContext *context,
 		if (resultRelInfo->ri_BatchSize > 1)
 		{
 			/*
-			 * If a certain number of tuples have already been accumulated, or
-			 * a tuple has come for a different relation than that for the
-			 * accumulated tuples, perform the batch insert
+			 * When we've reached the desired batch size, perform the
+			 * insertion.
 			 */
 			if (resultRelInfo->ri_NumSlots == resultRelInfo->ri_BatchSize)
 			{
@@ -956,9 +955,11 @@ ExecInsert(ModifyTableContext *context,
 			 *
 			 * We loop back here if we find a conflict below, either during
 			 * the pre-check, or when we re-check after inserting the tuple
-			 * speculatively.
+			 * speculatively.  Better allow interrupts in case some bug makes
+			 * this an infinite loop.
 			 */
 	vlock:
+			CHECK_FOR_INTERRUPTS();
 			specConflict = false;
 			if (!ExecCheckIndexConstraints(resultRelInfo, slot, estate,
 										   &conflictTid, arbiterIndexes))
@@ -1263,7 +1264,7 @@ ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							 false);
 
 		/*
-		 * We've already captured the NEW TABLE row, so make sure any AR
+		 * We've already captured the OLD TABLE row, so make sure any AR
 		 * DELETE trigger fired below doesn't capture it again.
 		 */
 		ar_delete_trig_tcs = NULL;
@@ -2080,10 +2081,10 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot move tuple across partitions when a non-root ancestor of the source partition is directly referenced in a foreign key"),
-					 errdetail("A foreign key points to ancestor \"%s\", but not the root ancestor \"%s\".",
+					 errdetail("A foreign key points to ancestor \"%s\" but not the root ancestor \"%s\".",
 							   RelationGetRelationName(rInfo->ri_RelationDesc),
 							   RelationGetRelationName(rootRelInfo->ri_RelationDesc)),
-					 errhint("Consider defining the foreign key on \"%s\".",
+					 errhint("Consider defining the foreign key on table \"%s\".",
 							 RelationGetRelationName(rootRelInfo->ri_RelationDesc))));
 	}
 
