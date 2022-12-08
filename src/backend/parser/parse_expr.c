@@ -3309,6 +3309,16 @@ resolvePseudoColumns(ParseState *pstate, Node *expr, ResTarget *res,
 							return (Node *) n;
 						}
 					}
+					else if (pstate->p_ctehflags & EXPR_FLAG_ORDER)
+					{
+						/* add column used in order-by clause to cols list */
+						if (cols != NULL)
+						{
+							ResTarget  *rt = makeNode(ResTarget);
+							rt->val = copyObject((Node *) cref);
+							*cols = lappend(*cols, rt);
+						}
+					}
 					else
 					{
 						/* add column used in order-by clause to cols list */
@@ -3317,6 +3327,9 @@ resolvePseudoColumns(ParseState *pstate, Node *expr, ResTarget *res,
 							ResTarget  *rt = makeNode(ResTarget);
 
 							rt->val = copyObject((Node *) cref);
+							if (relname)
+								cref->fields = lcons(makeString(relname),
+													 cref->fields);
 							*cols = lappend(*cols, rt);
 						}
 					}

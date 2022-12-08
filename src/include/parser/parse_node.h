@@ -19,8 +19,9 @@
 #include "utils/relcache.h"
 
 /* flags for hierarical query */
-#define EXPR_FLAG_LEVEL		0x0001	/* LEVEL clause */
-#define EXPR_FLAG_WHERE		0x0002	/* WHERE clause */
+#define EXPR_FLAG_LEVEL		(1 << 1)	/* LEVEL clause */
+#define EXPR_FLAG_WHERE		(1 << 2)	/* WHERE clause */
+#define EXPR_FLAG_ORDER		(1 << 3)	/* ORDER clause */
 
 
 /* Forward references for some structs declared below */

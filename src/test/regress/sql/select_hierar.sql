@@ -126,6 +126,12 @@ START WITH manager_id is not null
 CONNECT BY PRIOR employee_id = manager_id
 ORDER BY employee_id, manager_id;
 
+-- test Column expression
+SELECT employee_id, employee_id + 1
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
+
 -- test CONNECT_BY_ROOT and SYS_CONNECT_BY_PATH when there associated
 -- columns are not explicitly specified in the target list.
 SELECT CONNECT_BY_ROOT manager_id, SYS_CONNECT_BY_PATH(id, '\') PATH

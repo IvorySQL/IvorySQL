@@ -3708,6 +3708,9 @@ transformHierarStmt(ParseState *pstate, SelectStmt *stmt)
 	 * duplicity
 	 */
 	ctequery_l->targetList = list_concat_unique(ctequery_l->targetList, newCols);
+
+	/* qualify the target list columns with appropriate relation */
+	newCols = qualifyTlistColumns(ps, newCols, rv->relname);
 	ctequery_r->targetList = list_concat_unique(ctequery_r->targetList, newCols);
 
 	/* qualify the target list columns with appropriate relation */
@@ -3899,7 +3902,9 @@ fixupWhenAndSortClauses(ParseState *pstate, SelectStmt *stmt,
 	{
 		SortBy	   *sortby = (SortBy *) lfirst(lc);
 
+		pstate->p_ctehflags |= EXPR_FLAG_ORDER;
 		resolvePseudoColumns(pstate, (Node *) sortby->node, NULL, relname, &cols);
+		pstate->p_ctehflags &= ~EXPR_FLAG_ORDER;
 	}
 
 	/*

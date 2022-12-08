@@ -236,6 +236,19 @@ ORDER BY employee_id, manager_id;
            5 |          4 | Kyle     |       5 | /Kyle
 (4 rows)
 
+-- test Column expression
+SELECT employee_id, employee_id + 1
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
+ employee_id | ?column? 
+-------------+----------
+           2 |        3
+           3 |        4
+           5 |        6
+           3 |        4
+(4 rows)
+
 -- test CONNECT_BY_ROOT and SYS_CONNECT_BY_PATH when there associated
 -- columns are not explicitly specified in the target list.
 SELECT CONNECT_BY_ROOT manager_id, SYS_CONNECT_BY_PATH(id, '\') PATH
