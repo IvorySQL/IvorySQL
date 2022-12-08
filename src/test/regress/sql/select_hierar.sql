@@ -100,6 +100,12 @@ START WITH manager_id is not null
 CONNECT BY PRIOR employee_id = manager_id
 order by employee_id, manager_id;
 
+-- test SYS_CONNECT_BY_PATH parameter exception
+SELECT employee_id, SYS_CONNECT_BY_PATH('employee', '/') "Path"
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
+
 -- test order-by clause when order-by columns are not in target list
 SELECT employee, CONNECT_BY_ROOT employee_id as "Manager", SYS_CONNECT_BY_PATH(employee, '/') "Path"
 FROM example

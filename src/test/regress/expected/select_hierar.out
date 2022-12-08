@@ -196,6 +196,12 @@ order by employee_id, manager_id;
            5 |          4 | Kyle     |       5 | /Kyle
 (4 rows)
 
+-- test SYS_CONNECT_BY_PATH parameter exception
+SELECT employee_id, SYS_CONNECT_BY_PATH('employee', '/') "Path"
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
+ERROR:  only simple column references are allowed in SYS_CONNECT_BY_PATH
 -- test order-by clause when order-by columns are not in target list
 SELECT employee, CONNECT_BY_ROOT employee_id as "Manager", SYS_CONNECT_BY_PATH(employee, '/') "Path"
 FROM example
