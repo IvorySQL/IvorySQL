@@ -3569,6 +3569,11 @@ resolvePseudoColumns(ParseState *pstate, Node *expr, ResTarget *res,
 			{
 				ConnectRoot *n = (ConnectRoot *) expr;
 
+				if (!IsA(n->expr, ColumnRef))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("only simple column references are allowed in CONNECT_BY_ROOT")));
+
 				/* add column alias if not present */
 				if (res && res->name == NULL)
 					res->name = FigureColname(expr);
