@@ -3056,6 +3056,7 @@ typedef struct IndexStmt
 	bool		if_not_exists;	/* just do nothing if index already exists? */
 	bool		reset_default_tblspc;	/* reset default_tablespace prior to
 										 * executing */
+	bool		global_index;	/* true if index is global */
 } IndexStmt;
 
 /* ----------------------

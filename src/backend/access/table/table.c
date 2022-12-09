@@ -43,6 +43,7 @@ table_open(Oid relationId, LOCKMODE lockmode)
 	r = relation_open(relationId, lockmode);
 
 	if (r->rd_rel->relkind == RELKIND_INDEX ||
+		r->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -77,6 +78,7 @@ try_table_open(Oid relationId, LOCKMODE lockmode)
 		return NULL;
 
 	if (r->rd_rel->relkind == RELKIND_INDEX ||
+		r->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -106,6 +108,7 @@ table_openrv(const RangeVar *relation, LOCKMODE lockmode)
 	r = relation_openrv(relation, lockmode);
 
 	if (r->rd_rel->relkind == RELKIND_INDEX ||
+		r->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -139,6 +142,7 @@ table_openrv_extended(const RangeVar *relation, LOCKMODE lockmode,
 	if (r)
 	{
 		if (r->rd_rel->relkind == RELKIND_INDEX ||
+		r->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 			r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
