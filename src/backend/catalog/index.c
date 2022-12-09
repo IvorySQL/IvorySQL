@@ -731,6 +731,7 @@ index_create(Relation heapRelation,
 	bool		invalid = (flags & INDEX_CREATE_INVALID) != 0;
 	bool		concurrent = (flags & INDEX_CREATE_CONCURRENT) != 0;
 	bool		partitioned = (flags & INDEX_CREATE_PARTITIONED) != 0;
+	bool		globalindex = (flags & INDEX_CREATE_GLOBAL) != 0;
 	char		relkind;
 	TransactionId relfrozenxid;
 	MultiXactId relminmxid;
@@ -741,7 +742,10 @@ index_create(Relation heapRelation,
 	/* partitioned indexes must never be "built" by themselves */
 	Assert(!partitioned || (flags & INDEX_CREATE_SKIP_BUILD));
 
-	relkind = partitioned ? RELKIND_PARTITIONED_INDEX : RELKIND_INDEX;
+	if (globalindex)
+		relkind = partitioned ? RELKIND_PARTITIONED_INDEX : RELKIND_GLOBAL_INDEX;
+	else
+		relkind = partitioned ? RELKIND_PARTITIONED_INDEX : RELKIND_INDEX;
 	is_exclusion = (indexInfo->ii_ExclusionOps != NULL);
 
 	pg_class = table_open(RelationRelationId, RowExclusiveLock);
@@ -915,6 +919,22 @@ index_create(Relation heapRelation,
 
 			indexRelationId = binary_upgrade_next_index_pg_class_oid;
 			binary_upgrade_next_index_pg_class_oid = InvalidOid;
+
+			/* Override the index relfilenode */
+			if ((relkind == RELKIND_INDEX || relkind == RELKIND_GLOBAL_INDEX) &&
+				(!OidIsValid(binary_upgrade_next_index_pg_class_relfilenode)))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("index relfilenode value not set when in binary upgrade mode")));
+			relFileNode = binary_upgrade_next_index_pg_class_relfilenode;
+			binary_upgrade_next_index_pg_class_relfilenode = InvalidOid;
+
+			/*
+			 * Note that we want create_storage = true for binary upgrade. The
+			 * storage we create here will be replaced later, but we need to
+			 * have something on disk in the meanwhile.
+			 */
+			Assert(create_storage);
 		}
 		else
 		{
@@ -2888,6 +2908,15 @@ index_update_stats(Relation rel,
 
 	if (update_stats)
 	{
+		BlockNumber relpages = RelationGetNumberOfBlocks(rel);
+		BlockNumber relallvisible;
+
+		if (rd_rel->relkind != RELKIND_INDEX &&
+			rd_rel->relkind != RELKIND_GLOBAL_INDEX)
+			visibilitymap_count(rel, &relallvisible, NULL);
+		else					/* don't bother for indexes */
+			relallvisible = 0;
+
 		if (rd_rel->relpages != (int32) relpages)
 		{
 			rd_rel->relpages = (int32) relpages;

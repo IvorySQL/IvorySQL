@@ -2085,6 +2085,7 @@ describeOneTableDetails(const char *schemaname,
 		attgenerated_col = cols++;
 	}
 	if (tableinfo.relkind == RELKIND_INDEX ||
+		tableinfo.relkind == RELKIND_GLOBAL_INDEX ||
 		tableinfo.relkind == RELKIND_PARTITIONED_INDEX)
 	{
 		if (pset.sversion >= 110000)
@@ -2125,6 +2126,7 @@ describeOneTableDetails(const char *schemaname,
 		/* stats target, if relevant to relkind */
 		if (tableinfo.relkind == RELKIND_RELATION ||
 			tableinfo.relkind == RELKIND_INDEX ||
+			tableinfo.relkind == RELKIND_GLOBAL_INDEX ||
 			tableinfo.relkind == RELKIND_PARTITIONED_INDEX ||
 			tableinfo.relkind == RELKIND_MATVIEW ||
 			tableinfo.relkind == RELKIND_FOREIGN_TABLE ||
@@ -2188,6 +2190,14 @@ describeOneTableDetails(const char *schemaname,
 								  schemaname, relationname);
 			else
 				printfPQExpBuffer(&title, _("Index \"%s.%s\""),
+								  schemaname, relationname);
+			break;
+		case RELKIND_GLOBAL_INDEX:
+			if (tableinfo.relpersistence == 'u')
+				printfPQExpBuffer(&title, _("Unlogged global index \"%s.%s\""),
+								  schemaname, relationname);
+			else
+				printfPQExpBuffer(&title, _("Global index \"%s.%s\""),
 								  schemaname, relationname);
 			break;
 		case RELKIND_PARTITIONED_INDEX:
@@ -2464,6 +2474,7 @@ describeOneTableDetails(const char *schemaname,
 	}
 
 	if (tableinfo.relkind == RELKIND_INDEX ||
+		tableinfo.relkind == RELKIND_GLOBAL_INDEX ||
 		tableinfo.relkind == RELKIND_PARTITIONED_INDEX)
 	{
 		/* Footer information about an index */
@@ -2561,7 +2572,7 @@ describeOneTableDetails(const char *schemaname,
 			/*
 			 * If it's a partitioned index, we'll print the tablespace below
 			 */
-			if (tableinfo.relkind == RELKIND_INDEX)
+			if (tableinfo.relkind == RELKIND_INDEX || tableinfo.relkind == RELKIND_GLOBAL_INDEX)
 				add_tablespace_footer(&cont, tableinfo.relkind,
 									  tableinfo.tablespace, true);
 		}
@@ -3760,6 +3771,7 @@ add_tablespace_footer(printTableContent *const cont, char relkind,
 	if (relkind == RELKIND_RELATION ||
 		relkind == RELKIND_MATVIEW ||
 		relkind == RELKIND_INDEX ||
+		relkind == RELKIND_GLOBAL_INDEX ||
 		relkind == RELKIND_PARTITIONED_TABLE ||
 		relkind == RELKIND_PARTITIONED_INDEX ||
 		relkind == RELKIND_TOASTVALUE)
@@ -4115,6 +4127,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 					  " WHEN " CppAsString2(RELKIND_VIEW) " THEN '%s'"
 					  " WHEN " CppAsString2(RELKIND_MATVIEW) " THEN '%s'"
 					  " WHEN " CppAsString2(RELKIND_INDEX) " THEN '%s'"
+					  " WHEN " CppAsString2(RELKIND_GLOBAL_INDEX) " THEN '%s'"
 					  " WHEN " CppAsString2(RELKIND_SEQUENCE) " THEN '%s'"
 					  " WHEN 's' THEN '%s'"
 					  " WHEN " CppAsString2(RELKIND_TOASTVALUE) " THEN '%s'"
@@ -4129,6 +4142,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 					  gettext_noop("view"),
 					  gettext_noop("materialized view"),
 					  gettext_noop("index"),
+					  gettext_noop("global index"),
 					  gettext_noop("sequence"),
 					  gettext_noop("special"),
 					  gettext_noop("TOAST table"),
@@ -4227,6 +4241,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 		appendPQExpBufferStr(&buf, CppAsString2(RELKIND_MATVIEW) ",");
 	if (showIndexes)
 		appendPQExpBufferStr(&buf, CppAsString2(RELKIND_INDEX) ","
+							 CppAsString2(RELKIND_GLOBAL_INDEX) ","
 							 CppAsString2(RELKIND_PARTITIONED_INDEX) ",");
 	if (showSeq)
 		appendPQExpBufferStr(&buf, CppAsString2(RELKIND_SEQUENCE) ",");

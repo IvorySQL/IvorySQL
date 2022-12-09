@@ -324,7 +324,8 @@ heap_create(const char *relname,
 	 * user defined relation, not a system one.
 	 */
 	if (!allow_system_table_mods &&
-		((IsCatalogNamespace(relnamespace) && relkind != RELKIND_INDEX) ||
+		((IsCatalogNamespace(relnamespace) &&
+		  (relkind != RELKIND_INDEX && relkind != RELKIND_GLOBAL_INDEX)) ||
 		 IsToastNamespace(relnamespace)) &&
 		IsNormalProcessingMode())
 		ereport(ERROR,
@@ -1330,6 +1331,7 @@ heap_create_with_catalog(const char *relname,
 	if (!(relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_TOASTVALUE ||
 		  relkind == RELKIND_INDEX ||
+		  relkind == RELKIND_GLOBAL_INDEX ||
 		  relkind == RELKIND_PARTITIONED_INDEX))
 	{
 		Oid			new_array_oid;

@@ -477,6 +477,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 			amoptsfn = NULL;
 			break;
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 		case RELKIND_PARTITIONED_INDEX:
 			amoptsfn = relation->rd_indam->amoptions;
 			break;
@@ -1206,6 +1207,7 @@ retry:
 	switch (relation->rd_rel->relkind)
 	{
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 		case RELKIND_PARTITIONED_INDEX:
 			Assert(relation->rd_rel->relam != InvalidOid);
 			RelationInitIndexAccessInfo(relation);
@@ -2090,6 +2092,7 @@ RelationIdGetRelation(Oid relationId)
 			 * a headache for indexes that reload itself depends on.
 			 */
 			if (rd->rd_rel->relkind == RELKIND_INDEX ||
+				rd->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 				rd->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 				RelationReloadIndexInfo(rd);
 			else
@@ -2230,6 +2233,7 @@ RelationReloadIndexInfo(Relation relation)
 
 	/* Should be called only for invalidated, live indexes */
 	Assert((relation->rd_rel->relkind == RELKIND_INDEX ||
+			relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 			relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 		   !relation->rd_isvalid &&
 		   relation->rd_droppedSubid == InvalidSubTransactionId);
@@ -2357,7 +2361,8 @@ RelationReloadNailed(Relation relation)
 	if (!IsTransactionState() || relation->rd_refcnt <= 1)
 		return;
 
-	if (relation->rd_rel->relkind == RELKIND_INDEX)
+	if (relation->rd_rel->relkind == RELKIND_INDEX ||
+		relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 	{
 		/*
 		 * If it's a nailed-but-not-mapped index, then we need to re-read the
@@ -2547,6 +2552,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 	 * index, and we check for pg_index updates too.
 	 */
 	if ((relation->rd_rel->relkind == RELKIND_INDEX ||
+		 relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		 relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 		relation->rd_refcnt > 0 &&
 		relation->rd_indexcxt != NULL)
@@ -3716,9 +3722,37 @@ RelationSetNewRelfilenode(Relation relation, char persistence)
 	TransactionId freezeXid = InvalidTransactionId;
 	RelFileNode newrnode;
 
-	/* Allocate a new relfilenode */
-	newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace, NULL,
-									   persistence);
+	if (!IsBinaryUpgrade)
+	{
+		/* Allocate a new relfilenode */
+		newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
+										   NULL, persistence);
+	}
+	else if (relation->rd_rel->relkind == RELKIND_INDEX ||
+			 relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
+	{
+		if (!OidIsValid(binary_upgrade_next_index_pg_class_relfilenode))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("index relfilenode value not set when in binary upgrade mode")));
+
+		newrelfilenode = binary_upgrade_next_index_pg_class_relfilenode;
+		binary_upgrade_next_index_pg_class_relfilenode = InvalidOid;
+	}
+	else if (relation->rd_rel->relkind == RELKIND_RELATION)
+	{
+		if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("heap relfilenode value not set when in binary upgrade mode")));
+
+		newrelfilenode = binary_upgrade_next_heap_pg_class_relfilenode;
+		binary_upgrade_next_heap_pg_class_relfilenode = InvalidOid;
+	}
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("unexpected request for new relfilenode in binary upgrade mode")));
 
 	/*
 	 * Get a writable copy of the pg_class tuple for the given relation.
@@ -6010,7 +6044,8 @@ load_relcache_init_file(bool shared)
 		 * If it's an index, there's more to do.  Note we explicitly ignore
 		 * partitioned indexes here.
 		 */
-		if (rel->rd_rel->relkind == RELKIND_INDEX)
+		if (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 		{
 			MemoryContext indexcxt;
 			Oid		   *opfamily;
@@ -6408,7 +6443,8 @@ write_relcache_init_file(bool shared)
 		 * If it's an index, there's more to do. Note we explicitly ignore
 		 * partitioned indexes here.
 		 */
-		if (rel->rd_rel->relkind == RELKIND_INDEX)
+		if (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 		{
 			/* write the pg_index tuple */
 			/* we assume this was created by heap_copytuple! */
