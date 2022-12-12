@@ -278,6 +278,16 @@ extern void tuplesort_initialize_shared(Sharedsort *shared, int nWorkers,
 										dsm_segment *seg);
 extern void tuplesort_attach_shared(Sharedsort *shared, dsm_segment *seg);
 
+extern void tuplesort_mark_global_sort(Tuplesortstate *state);
+
+extern void tuplesort_copy_sharedsort(Sharedsort *shared1, Sharedsort *shared2);
+
+extern void tuplesort_copy_sharedsort2(Sharedsort *shared1, Tuplesortstate *state);
+
+extern int	tuplesort_get_curr_workers(Sharedsort *shared);
+
+extern void tuplesort_register_cleanup_callback(Sharedsort *shared, dsm_segment *seg);
+
 /*
  * These routines may only be called if TUPLESORT_RANDOMACCESS was specified
  * during tuplesort_begin_*.  Additionally backwards scan in gettuple/getdatum

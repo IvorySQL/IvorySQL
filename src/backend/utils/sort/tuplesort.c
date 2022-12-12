@@ -452,6 +452,7 @@ struct Tuplesortstate
 	 */
 	int64		abbrevNext;		/* Tuple # at which to next check
 								 * applicability */
+	bool        isglobalsort;
 
 	/*
 	 * These variables are specific to the CLUSTER case; they are set by
@@ -3142,7 +3143,14 @@ mergeruns(Tuplesortstate *state)
 				/* Tell logtape.c we won't be writing anymore */
 				LogicalTapeSetForgetFreeSpace(state->tapeset);
 				/* Initialize for the final merge pass */
-				beginmerge(state);
+				if (state->isglobalsort)
+				{
+					elog(DEBUG2, "global unique index final merge run...");
+					mergeonerun(state);
+				}
+				else
+					beginmerge(state);
+
 				state->status = TSS_FINALMERGE;
 				return;
 			}
@@ -4723,6 +4731,51 @@ tuplesort_attach_shared(Sharedsort *shared, dsm_segment *seg)
 {
 	/* Attach to SharedFileSet */
 	SharedFileSetAttach(&shared->fileset, seg);
+}
+
+void
+tuplesort_mark_global_sort(Tuplesortstate *state)
+{
+	state->isglobalsort = true;
+}
+
+void
+tuplesort_copy_sharedsort(Sharedsort *shared1, Sharedsort *shared2)
+{
+	if (!shared1 || !shared2)
+		elog(ERROR, "%s: cannot do sharedsort copy due to bad input", __FUNCTION__);
+
+	shared1->currentWorker = shared2->currentWorker;
+	shared1->mutex = shared2->mutex;
+	shared1->nTapes = shared2->nTapes;
+	shared1->fileset = shared2->fileset;
+	shared1->workersFinished = shared2->workersFinished;
+	memcpy(shared1->tapes, shared2->tapes, sizeof(TapeShare) * shared2->nTapes);
+}
+
+void
+tuplesort_copy_sharedsort2(Sharedsort *shared1, Tuplesortstate *state)
+{
+	if (!shared1 || !state)
+		elog(ERROR, "%s: cannot do sharedsort copy due to bad input", __FUNCTION__);
+
+	shared1->currentWorker = state->shared->currentWorker;
+	shared1->mutex = state->shared->mutex;
+	shared1->nTapes = state->shared->nTapes;
+	shared1->fileset = state->shared->fileset;
+	shared1->workersFinished = state->shared->workersFinished;
+	memcpy(shared1->tapes, state->shared->tapes, sizeof(TapeShare) * state->shared->nTapes);
+}
+
+int
+tuplesort_get_curr_workers(Sharedsort *shared)
+{
+	return shared->currentWorker;
+}
+
+void tuplesort_register_cleanup_callback(Sharedsort *shared, dsm_segment *seg)
+{
+	SharedFileSetRegisterCleanupCallback(&shared->fileset, seg);
 }
 
 /*
