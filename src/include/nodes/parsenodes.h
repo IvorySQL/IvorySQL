@@ -2956,6 +2956,10 @@ typedef struct IndexStmt
 	bool		reset_default_tblspc;	/* reset default_tablespace prior to
 										 * executing */
 	bool		global_index;	/* true if index is global */
+	int			globalIndexPart;	/* partition number indication */
+	int			nparts;			/* num partitions for global index build in
+								 * parallel */
+
 } IndexStmt;
 
 /* ----------------------
