@@ -769,6 +769,26 @@ create unique index gidx_u on gidxpart using btree(b) global;
 select relname, relhasindex, relkind from pg_class where relname like '%gidx%' order by oid;
 \d+ gidxpart
 \d+ gidx_u
+-- cross-partition uniqueness check for insert and update
+insert into gidxpart values (1, 1, 'first');
+insert into gidxpart values (11, 11, 'eleventh');
+insert into gidxpart values (2, 11, 'duplicated (b)=(11) on other partition');
+insert into gidxpart values (12, 1, 'duplicated (b)=(1) on other partition');
+insert into gidxpart values (2, 120, 'second');
+insert into gidxpart values (12, 2, 'twelfth');
+update gidxpart set b=2 where a=2;
+update gidxpart set b=1 where a=12;
+update gidxpart set b=12 where a=12;
+update gidxpart set b=2 where a=2;
+select * from gidxpart;
+
+-- cross-partition uniqueness check applys to newly created partition
+create table gidxpart3 partition of gidxpart for values from (100) to (200);
+select relname, relkind from pg_class where relname = 'gidxpart3_b_idx';
+insert into gidxpart values (150, 11, 'duplicated (b)=(11) on other partition');
+insert into gidxpart values (150, 13, 'no duplicate b');
+
+-- clean up global index tests
 drop index gidx_u;
 drop table gidxpart;
 
