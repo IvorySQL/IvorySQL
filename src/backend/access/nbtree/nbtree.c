@@ -23,6 +23,8 @@
 #include "access/relscan.h"
 #include "access/xlog.h"
 #include "access/xloginsert.h"
+#include "access/table.h"
+#include "catalog/partition.h"
 #include "commands/progress.h"
 #include "commands/vacuum.h"
 #include "miscadmin.h"
@@ -34,9 +36,11 @@
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
 #include "storage/smgr.h"
+#include "storage/predicate.h"
 #include "utils/builtins.h"
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
+#include "partitioning/partdesc.h"
 
 
 /*
@@ -86,7 +90,9 @@ static BTVacuumPosting btreevacuumposting(BTVacState *vstate,
 										  IndexTuple posting,
 										  OffsetNumber updatedoffset,
 										  int *nremaining);
-
+static void
+			btinsert_check_unique_gi(IndexTuple itup, Relation idxRel,
+									 Relation heapRel, IndexUniqueCheck checkUnique);
 
 /*
  * Btree handler function: return IndexAmRoutine with access method parameters
@@ -178,6 +184,118 @@ btbuildempty(Relation index)
 }
 
 /*
+ *	btinsert_check_unique_gi() -- cross partitions uniqueness check.
+ *
+ *		loop all partitions with global index for uniqueness check.
+ */
+static void
+btinsert_check_unique_gi(IndexTuple itup, Relation idxRel,
+						 Relation heapRel, IndexUniqueCheck checkUnique)
+{
+	bool		is_unique = false;
+	BTScanInsert itup_key = _bt_mkscankey(idxRel, itup);
+
+	if (!itup_key->anynullkeys &&
+		idxRel->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
+	{
+		Oid			parentId;
+		Relation	parentTbl;
+		PartitionDesc partDesc;
+		int			i;
+		int			nparts;
+		Oid		   *partOids;
+
+		itup_key->scantid = NULL;
+		parentId = heapRel->rd_rel->relispartition ?
+			get_partition_parent(idxRel->rd_index->indrelid, false) : InvalidOid;
+		parentTbl = table_open(parentId, AccessShareLock);
+		partDesc = RelationGetPartitionDesc(parentTbl, true);
+		nparts = partDesc->nparts;
+		partOids = palloc(sizeof(Oid) * nparts);
+		memcpy(partOids, partDesc->oids, sizeof(Oid) * nparts);
+		for (i = 0; i < nparts; i++)
+		{
+			Oid			childRelid = partOids[i];
+			List	   *childidxs;
+			ListCell   *cell;
+
+			if (childRelid != heapRel->rd_rel->oid)
+			{
+				Relation	hRel = table_open(childRelid, AccessShareLock);
+
+				childidxs = RelationGetIndexList(hRel);
+				foreach(cell, childidxs)
+				{
+					Oid			cldidxid = lfirst_oid(cell);
+					Relation	iRel = index_open(cldidxid, AccessShareLock);
+
+					if (iRel->rd_rel->relkind == RELKIND_GLOBAL_INDEX
+						&& iRel->rd_rel->oid != idxRel->rd_rel->oid)
+					{
+						BTStack		stack;
+						uint32		speculativeToken;
+						BTInsertStateData insertstate;
+						TransactionId xwait = InvalidBuffer;
+
+						insertstate.itup = itup;
+						insertstate.itemsz = MAXALIGN(IndexTupleSize(itup));
+						insertstate.itup_key = itup_key;
+						insertstate.bounds_valid = false;
+						insertstate.buf = InvalidBuffer;
+						insertstate.postingoff = 0;
+
+				search_global:
+						stack = _bt_search(iRel, insertstate.itup_key,
+										   &insertstate.buf, BT_READ, NULL);
+						xwait = _bt_check_unique_gi(iRel, &insertstate,
+													hRel, checkUnique, &is_unique,
+													&speculativeToken, heapRel);
+						if (unlikely(TransactionIdIsValid(xwait)))
+						{
+							/* Have to wait for the other guy ... */
+							if (insertstate.buf)
+							{
+								_bt_relbuf(iRel, insertstate.buf);
+								insertstate.buf = InvalidBuffer;
+							}
+
+							/*
+							 * If it's a speculative insertion, wait for it to
+							 * finish (ie. to go ahead with the insertion, or
+							 * kill the tuple).  Otherwise wait for the
+							 * transaction to finish as usual.
+							 */
+							if (speculativeToken)
+								SpeculativeInsertionWait(xwait, speculativeToken);
+							else
+								XactLockTableWait(xwait, iRel, &itup->t_tid, XLTW_InsertIndex);
+
+							/* start over... */
+							if (stack)
+								_bt_freestack(stack);
+							goto search_global;
+						}
+						if (insertstate.buf)
+							_bt_relbuf(iRel, insertstate.buf);
+						if (stack)
+							_bt_freestack(stack);
+					}
+					index_close(iRel, AccessShareLock);
+				}
+				if (childidxs)
+					list_free(childidxs);
+				table_close(hRel, AccessShareLock);
+			}
+		}
+		if (partOids)
+			pfree(partOids);
+		table_close(parentTbl, AccessShareLock);
+	}
+	if (itup_key)
+		pfree(itup_key);
+}
+
+/*
  *	btinsert() -- insert an index tuple into a btree.
  *
  *		Descend the tree recursively, find the appropriate location for our
@@ -198,6 +316,9 @@ btinsert(Relation rel, Datum *values, bool *isnull,
 	itup->t_tid = *ht_ctid;
 
 	result = _bt_doinsert(rel, itup, checkUnique, indexUnchanged, heapRel);
+
+	if (checkUnique != UNIQUE_CHECK_NO)
+		btinsert_check_unique_gi(itup, rel, heapRel, checkUnique);
 
 	pfree(itup);
 

@@ -34,7 +34,7 @@ static BTStack _bt_search_insert(Relation rel, BTInsertState insertstate);
 static TransactionId _bt_check_unique(Relation rel, BTInsertState insertstate,
 									  Relation heapRel,
 									  IndexUniqueCheck checkUnique, bool *is_unique,
-									  uint32 *speculativeToken);
+									  uint32 *speculativeToken, Relation origHeapRel);
 static OffsetNumber _bt_findinsertloc(Relation rel,
 									  BTInsertState insertstate,
 									  bool checkingunique,
@@ -72,6 +72,11 @@ static BlockNumber *_bt_deadblocks(Page page, OffsetNumber *deletable,
 								   int ndeletable, IndexTuple newitem,
 								   int *nblocks);
 static inline int _bt_blk_cmp(const void *arg1, const void *arg2);
+
+TransactionId _bt_check_unique_gi(Relation rel, BTInsertState insertstate,
+								  Relation heapRel,
+								  IndexUniqueCheck checkUnique, bool *is_unique,
+								  uint32 *speculativeToken, Relation origHeapRel);
 
 /*
  *	_bt_doinsert() -- Handle insertion of a single index tuple in the tree.
@@ -206,7 +211,7 @@ search:
 		uint32		speculativeToken;
 
 		xwait = _bt_check_unique(rel, &insertstate, heapRel, checkUnique,
-								 &is_unique, &speculativeToken);
+								 &is_unique, &speculativeToken, NULL);
 
 		if (unlikely(TransactionIdIsValid(xwait)))
 		{
@@ -379,6 +384,15 @@ _bt_search_insert(Relation rel, BTInsertState insertstate)
 					  NULL);
 }
 
+TransactionId
+_bt_check_unique_gi(Relation rel, BTInsertState insertstate, Relation heapRel,
+					IndexUniqueCheck checkUnique, bool *is_unique,
+					uint32 *speculativeToken, Relation origHeapRel)
+{
+	return _bt_check_unique(rel, insertstate, heapRel, checkUnique,
+							is_unique, speculativeToken, origHeapRel);
+}
+
 /*
  *	_bt_check_unique() -- Check for violation of unique index constraint
  *
@@ -405,7 +419,7 @@ _bt_search_insert(Relation rel, BTInsertState insertstate)
 static TransactionId
 _bt_check_unique(Relation rel, BTInsertState insertstate, Relation heapRel,
 				 IndexUniqueCheck checkUnique, bool *is_unique,
-				 uint32 *speculativeToken)
+				 uint32 *speculativeToken, Relation origHeapRel)
 {
 	IndexTuple	itup = insertstate->itup;
 	IndexTuple	curitup = NULL;
@@ -560,6 +574,7 @@ _bt_check_unique(Relation rel, BTInsertState insertstate, Relation heapRel,
 													   &all_dead))
 				{
 					TransactionId xwait;
+					bool		idx_fetch_result;
 
 					/*
 					 * It is a duplicate. If we are only doing a partial
@@ -613,8 +628,13 @@ _bt_check_unique(Relation rel, BTInsertState insertstate, Relation heapRel,
 					 * entry.
 					 */
 					htid = itup->t_tid;
-					if (table_index_fetch_tuple_check(heapRel, &htid,
-													  SnapshotSelf, NULL))
+					if (origHeapRel)
+						idx_fetch_result = table_index_fetch_tuple_check(origHeapRel, &htid,
+																		 SnapshotSelf, NULL);
+					else
+						idx_fetch_result = table_index_fetch_tuple_check(heapRel, &htid,
+																		 SnapshotSelf, NULL);
+					if (idx_fetch_result)
 					{
 						/* Normal case --- it's still live */
 					}
