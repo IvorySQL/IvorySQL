@@ -71,6 +71,7 @@
 #define PARALLEL_KEY_QUERY_TEXT			UINT64CONST(0xA000000000000004)
 #define PARALLEL_KEY_WAL_USAGE			UINT64CONST(0xA000000000000005)
 #define PARALLEL_KEY_BUFFER_USAGE		UINT64CONST(0xA000000000000006)
+#define PARALLEL_KEY_TUPLESORT_GLOBAL	UINT64CONST(0xA000000000000007)
 
 /*
  * DISABLE_LEADER_PARTICIPATION disables the leader's participation in
@@ -110,6 +111,7 @@ typedef struct BTShared
 	bool		nulls_not_distinct;
 	bool		isconcurrent;
 	int			scantuplesortstates;
+	bool		isglobal;
 
 	/*
 	 * workersdonecv is used to monitor the progress of workers.  All parallel
@@ -197,6 +199,7 @@ typedef struct BTLeader
 	Snapshot	snapshot;
 	WalUsage   *walusage;
 	BufferUsage *bufferusage;
+	Sharedsort *sharedsortglobal;
 } BTLeader;
 
 /*
@@ -226,6 +229,16 @@ typedef struct BTBuildState
 	 * BTBuildState.  Workers have their own spool and spool2, though.)
 	 */
 	BTLeader   *btleader;
+
+	/*
+	 * global unique index related parameters
+	 */
+	BTSpool    *spoolglobal;	/* spoolglobal is used on global unique index
+								 * build in parallel */
+	bool		global_index;	/* true if index is global */
+	int			globalIndexPart;	/* partition number indication */
+	int			nparts;			/* number of partitions involved in global
+								 * unique index build in parallel */
 } BTBuildState;
 
 /*
@@ -291,8 +304,29 @@ static void _bt_leader_participate_as_worker(BTBuildState *buildstate);
 static void _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 									   BTShared *btshared, Sharedsort *sharedsort,
 									   Sharedsort *sharedsort2, int sortmem,
-									   bool progress);
+									   bool progress, Sharedsort *sharedsortglobal,
+									   bool isworker);
 
+static BTSpool *global_btspool;
+Sharedsort *global_sharedsort;
+
+static void
+btinit_global_spool(Relation heap, Relation index, BTBuildState *buildstate)
+{
+	elog(DEBUG2, "%s: init global index spool", __FUNCTION__);
+	global_btspool = (BTSpool *) palloc0(sizeof(BTSpool));
+	global_btspool->heap = heap;
+	global_btspool->index = index;
+	global_btspool->isunique = buildstate->isunique;
+
+	global_btspool->sortstate =
+		tuplesort_begin_index_btree(heap, index, buildstate->isunique,
+									buildstate->nulls_not_distinct,
+									maintenance_work_mem, NULL,
+									false);
+
+	tuplesort_mark_global_sort(global_btspool->sortstate);
+}
 
 /*
  *	btbuild() -- build a new btree index.
@@ -318,22 +352,149 @@ btbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	buildstate.indtuples = 0;
 	buildstate.btleader = NULL;
 
+	if (indexInfo->ii_Global_index && indexInfo->ii_Unique)
+	{
+		/* copy global unique index related parameters to buildstate */
+		buildstate.global_index = indexInfo->ii_Global_index;
+		buildstate.globalIndexPart = indexInfo->ii_GlobalIndexPart;
+		buildstate.nparts = indexInfo->ii_Nparts;
+	}
+	else
+	{
+		/* disable global unique check */
+		buildstate.global_index = false;
+		buildstate.globalIndexPart = 0;
+		buildstate.nparts = 0;
+	}
+
 	/*
 	 * We expect to be called exactly once for any index relation. If that's
-	 * not the case, big trouble's what we have.
+	 * not the case, big trouble's what we have unless you set
+	 * buildGlobalSpool to true, which only builds the global spool for global
+	 * uniqueness check and not physical index tuples
 	 */
-	if (RelationGetNumberOfBlocks(index) != 0)
+	if (indexInfo->ii_BuildGlobalSpool == false && RelationGetNumberOfBlocks(index) != 0)
 		elog(ERROR, "index \"%s\" already contains data",
 			 RelationGetRelationName(index));
 
 	reltuples = _bt_spools_heapscan(heap, index, &buildstate, indexInfo);
 
+	if (indexInfo->ii_ParallelWorkers > 0)
+	{
+		/*
+		 * global uniqueness check in parallel build case
+		 */
+		if (indexInfo->ii_Global_index && indexInfo->ii_Unique && global_btspool)
+		{
+			/*
+			 * indexInfo->ii_GlobalIndexPart <= 0 indicates the first and
+			 * intermediate partition to build index on. For parallel global
+			 * unique index build, we need to clean up global_btspool
+			 * structure to prevent resource leak
+			 */
+			if (indexInfo->ii_GlobalIndexPart <= 0)
+			{
+				_bt_spooldestroy(global_btspool);
+				global_btspool = NULL;
+			}
+
+			/*
+			 * indexInfo->ii_GlobalIndexPart > 0 indicates the last partition
+			 * to build index on. For parallel global unique index build, we
+			 * need to call tuplesort_performsort to merge all the tapes
+			 * created from previous partition build runs and do a final
+			 * sorting to determine global uniqueness
+			 */
+			if (indexInfo->ii_GlobalIndexPart > 0)
+			{
+				IndexTuple	itup;
+
+				elog(DEBUG2, "last partitioned to build global index in parallel. Perform merge run and "
+					 "uniqueness check now...");
+				tuplesort_performsort(buildstate.spoolglobal->sortstate);
+
+				/*
+				 * this loop checks for uniqueness after all tapes have been
+				 * merged. If a duplicate is found, we will error out.
+				 */
+				while ((itup = tuplesort_getindextuple(buildstate.spoolglobal->sortstate,
+													   true)) != NULL)
+				{
+					/*
+					 * simply checking for global uniqueness, nothing to do
+					 * here
+					 */
+				}
+
+				/*
+				 * no global uniqueness violation is found at this point,
+				 * remove all the tapes (temp files) and destroy resources and
+				 * continue to build the actual index.
+				 */
+				_bt_spooldestroy(buildstate.spoolglobal);
+				_bt_spooldestroy(global_btspool);
+				global_btspool = NULL;
+				if (global_sharedsort)
+				{
+					pfree(global_sharedsort);
+					global_sharedsort = NULL;
+				}
+			}
+		}
+	}
+	else
+	{
+		/*
+		 * global uniqueness check in serial build case
+		 */
+		if (indexInfo->ii_GlobalIndexPart > 0 && indexInfo->ii_Global_index &&
+			indexInfo->ii_Unique && global_btspool)
+		{
+			/*
+			 * indexInfo->ii_GlobalIndexPart > 0 indicates the last partition
+			 * to build index on. For serial global unique index build, we
+			 * call tuplesort_performsort on global_btspool->sortstate which
+			 * should contain index tuples from all partitions. If a duplicate
+			 * is found, we will error out.
+			 */
+			elog(DEBUG2, "last partitioned to build global index serially. Sorting global_btspool for "
+				 "uniqueness check now...");
+			tuplesort_performsort(global_btspool->sortstate);
+
+			/*
+			 * no global uniqueness violation is found at this point, destroy
+			 * global_btspool structure and continue to build the actual
+			 * index.
+			 */
+			_bt_spooldestroy(global_btspool);
+			global_btspool = NULL;
+		}
+	}
+
 	/*
-	 * Finish the build by (1) completing the sort of the spool file, (2)
-	 * inserting the sorted tuples into btree pages and (3) building the upper
-	 * levels.  Finally, it may also be necessary to end use of parallelism.
+	 * if indexInfo->ii_BuildGlobalSpool is set, we will not continue to build
+	 * the actual index. This is used during a new partition attach, where we
+	 * just want to populate the global_btspool from current partitions
+	 * without building the actual indexes (because they exist already). Then,
+	 * we take that global_btspool and sort it with the tuples in newly
+	 * attached partition to determine if attach would violate global
+	 * uniquenes check
 	 */
-	_bt_leafbuild(buildstate.spool, buildstate.spool2);
+	if (indexInfo->ii_BuildGlobalSpool)
+	{
+		elog(DEBUG2, "ii_BuildGlobalSpool is set. Skip building actual index content");
+	}
+	else
+	{
+		/*
+		 * Finish the build by (1) completing the sort of the spool file, (2)
+		 * inserting the sorted tuples into btree pages and (3) building the
+		 * upper levels.  Finally, it may also be necessary to end use of
+		 * parallelism.
+		 */
+		_bt_leafbuild(buildstate.spool, buildstate.spool2);
+	}
+
 	_bt_spooldestroy(buildstate.spool);
 	if (buildstate.spool2)
 		_bt_spooldestroy(buildstate.spool2);
@@ -374,6 +535,7 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 	BTSpool    *btspool = (BTSpool *) palloc0(sizeof(BTSpool));
 	SortCoordinate coordinate = NULL;
 	double		reltuples = 0;
+	SortCoordinate coordinateglobal = NULL;
 
 	/*
 	 * We size the sort area as maintenance_work_mem rather than work_mem to
@@ -395,8 +557,40 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 
 	/* Attempt to launch parallel worker scan when required */
 	if (indexInfo->ii_ParallelWorkers > 0)
+	{
+		/*
+		 * while building the last partition table in parallel global unique
+		 * index build, we need to allocate a primary spoolglobal, which will
+		 * be used in the leader process later to "take over" all tapes
+		 * created by previous partition runs
+		 */
+		if (buildstate->isunique && buildstate->global_index &&
+			buildstate->globalIndexPart > 0)
+		{
+			elog(DEBUG2, "init primary spoolglobal in last partition for parallel index build");
+			buildstate->spoolglobal = (BTSpool *) palloc0(sizeof(BTSpool));
+			buildstate->spoolglobal->heap = heap;
+			buildstate->spoolglobal->index = index;
+			buildstate->spoolglobal->isunique = indexInfo->ii_Unique;
+		}
 		_bt_begin_parallel(buildstate, indexInfo->ii_Concurrent,
 						   indexInfo->ii_ParallelWorkers);
+	}
+	else
+	{
+		/*
+		 * in serial global unique index build, we just need to allocate a
+		 * single global_btspool structure at the first partition build. The
+		 * rest of the partitions will add their index tuples to this single
+		 * global spool structure
+		 */
+		if (buildstate->isunique && buildstate->global_index &&
+			buildstate->globalIndexPart < 0)
+		{
+			elog(DEBUG2, "init new global_btspool for serial index build");
+			btinit_global_spool(heap, index, buildstate);
+		}
+	}
 
 	/*
 	 * If parallel build requested and at least one worker process was
@@ -409,6 +603,22 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 		coordinate->nParticipants =
 			buildstate->btleader->nparticipanttuplesorts;
 		coordinate->sharedsort = buildstate->btleader->sharedsort;
+
+		/*
+		 * set up a coordinator state for primary spoolglobal if we are doing
+		 * global unique index build in parallel. We do this at the last
+		 * partition create in parallel mode
+		 */
+		if (buildstate->isunique && buildstate->global_index && buildstate->globalIndexPart > 0)
+		{
+			elog(DEBUG2, "set up coordinate state for primary spoolglobal for "
+				 "parallel index build case");
+			coordinateglobal = (SortCoordinate) palloc0(sizeof(SortCoordinateData));
+			coordinateglobal->isWorker = false;
+			coordinateglobal->nParticipants =
+				tuplesort_get_curr_workers(buildstate->btleader->sharedsortglobal);
+			coordinateglobal->sharedsort = buildstate->btleader->sharedsortglobal;
+		}
 	}
 
 	/*
@@ -437,6 +647,23 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 									buildstate->nulls_not_distinct,
 									maintenance_work_mem, coordinate,
 									TUPLESORT_NONE);
+
+	/*
+	 * initialize primary spoolglobal if we are doing global unique index
+	 * build in parallel. We do this at the last partition create in parallel
+	 * mode
+	 */
+	if (buildstate->btleader && buildstate->isunique &&
+		buildstate->global_index && buildstate->globalIndexPart > 0)
+	{
+		elog(DEBUG2, "tuplesort_begin_index_btree for primary spoolglobal for "
+			 "parallel index build case");
+		buildstate->spoolglobal->sortstate =
+			tuplesort_begin_index_btree(heap, index, buildstate->isunique,
+										buildstate->nulls_not_distinct,
+										maintenance_work_mem, coordinateglobal,
+										false);
+	}
 
 	/*
 	 * If building a unique index, put dead tuples in a second spool to keep
@@ -486,6 +713,19 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 	else
 		reltuples = _bt_parallel_heapscan(buildstate,
 										  &indexInfo->ii_BrokenHotChain);
+
+	/*
+	 * all parallel workers should finish at this point, make backup of
+	 * sharedsortglobal, which is needed to persist the logical tape and temp
+	 * file information for next partition build when building global unique
+	 * index in parallel
+	 */
+	if (buildstate->btleader && buildstate->global_index &&
+		buildstate->isunique)
+	{
+		elog(DEBUG2, "all workers finished, backup sharedsortglobal");
+		tuplesort_copy_sharedsort2(global_sharedsort, global_btspool->sortstate);
+	}
 
 	/*
 	 * Set the progress target for the next phase.  Reset the block number
@@ -599,7 +839,11 @@ _bt_build_callback(Relation index,
 	 * processing
 	 */
 	if (tupleIsAlive || buildstate->spool2 == NULL)
+	{
 		_bt_spool(buildstate->spool, tid, values, isnull);
+		if (buildstate->global_index && buildstate->isunique && global_btspool)
+			_bt_spool(global_btspool, tid, values, isnull);
+	}
 	else
 	{
 		/* dead tuples are put into spool2 */
@@ -1458,9 +1702,11 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	Snapshot	snapshot;
 	Size		estbtshared;
 	Size		estsort;
+	Size		estsortglobal = 0;
 	BTShared   *btshared;
 	Sharedsort *sharedsort;
 	Sharedsort *sharedsort2;
+	Sharedsort *sharedsortglobal;
 	BTSpool    *btspool = buildstate->spool;
 	BTLeader   *btleader = (BTLeader *) palloc0(sizeof(BTLeader));
 	WalUsage   *walusage;
@@ -1503,6 +1749,13 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	shm_toc_estimate_chunk(&pcxt->estimator, estbtshared);
 	estsort = tuplesort_estimate_shared(scantuplesortstates);
 	shm_toc_estimate_chunk(&pcxt->estimator, estsort);
+
+	if (buildstate->isunique && buildstate->global_index)
+	{
+		/* global unique index case will estimate 1 more sharesort struct */
+		estsortglobal = tuplesort_estimate_shared(scantuplesortstates * buildstate->nparts);
+		shm_toc_estimate_chunk(&pcxt->estimator, estsortglobal);
+	}
 
 	/*
 	 * Unique case requires a second spool, and so we may have to account for
@@ -1571,6 +1824,7 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	btshared->havedead = false;
 	btshared->indtuples = 0.0;
 	btshared->brokenhotchain = false;
+	btshared->isglobal = buildstate->global_index;
 	table_parallelscan_initialize(btspool->heap,
 								  ParallelTableScanFromBTShared(btshared),
 								  snapshot);
@@ -1602,6 +1856,43 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_TUPLESORT_SPOOL2, sharedsort2);
 	}
+
+	if (buildstate->isunique && buildstate->global_index)
+	{
+		/* global unique index case will allocate 1 more sharesort struct */
+		sharedsortglobal = (Sharedsort *) shm_toc_allocate(pcxt->toc, estsortglobal);
+		if (!sharedsortglobal)
+			elog(ERROR, "failed to allocate shared memory space");
+
+		if (buildstate->globalIndexPart == -1)
+		{
+			elog(DEBUG2, "initialize and make a copy of sharedsortglobal for first time");
+			tuplesort_initialize_shared(sharedsortglobal, scantuplesortstates * buildstate->nparts, NULL);
+
+			/* save a copy of sharedsortglobal */
+			global_sharedsort = (Sharedsort *) palloc(estsortglobal);
+			tuplesort_copy_sharedsort(global_sharedsort, sharedsortglobal);
+		}
+		else if (buildstate->globalIndexPart == 0 || buildstate->globalIndexPart == 1)
+		{
+			elog(DEBUG2, "restore the copy of sharedsortglobal for subsequent processing");
+			tuplesort_copy_sharedsort(sharedsortglobal, global_sharedsort);
+
+			/* register for cleanup at the last partition index build */
+			if (buildstate->globalIndexPart == 1)
+			{
+				tuplesort_register_cleanup_callback(sharedsortglobal, pcxt->seg);
+			}
+		}
+		else
+		{
+			elog(ERROR, "invalid global inedx partition value %d", buildstate->globalIndexPart);
+		}
+
+		shm_toc_insert(pcxt->toc, PARALLEL_KEY_TUPLESORT_GLOBAL, sharedsortglobal);
+	}
+	else
+		sharedsortglobal = NULL;
 
 	/* Store query string for workers */
 	if (debug_query_string)
@@ -1636,6 +1927,7 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	btleader->snapshot = snapshot;
 	btleader->walusage = walusage;
 	btleader->bufferusage = bufferusage;
+	btleader->sharedsortglobal = sharedsortglobal;
 
 	/* If no workers were successfully launched, back out (do serial build) */
 	if (pcxt->nworkers_launched == 0)
@@ -1780,7 +2072,8 @@ _bt_leader_participate_as_worker(BTBuildState *buildstate)
 	/* Perform work common to all participants */
 	_bt_parallel_scan_and_sort(leaderworker, leaderworker2, btleader->btshared,
 							   btleader->sharedsort, btleader->sharedsort2,
-							   sortmem, true);
+							   sortmem, true, btleader->sharedsortglobal,
+							   false);
 
 #ifdef BTREE_BUILD_STATS
 	if (log_btree_build_stats)
@@ -1803,6 +2096,7 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 	BTShared   *btshared;
 	Sharedsort *sharedsort;
 	Sharedsort *sharedsort2;
+	Sharedsort *sharedsortglobal;
 	Relation	heapRel;
 	Relation	indexRel;
 	LOCKMODE	heapLockmode;
@@ -1878,13 +2172,26 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 		tuplesort_attach_shared(sharedsort2, seg);
 	}
 
+	if (btshared->isunique && btshared->isglobal)
+	{
+		sharedsortglobal = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT_GLOBAL, false);
+		tuplesort_attach_shared(sharedsortglobal, seg);
+		elog(DEBUG2, "worker %d processing global unique index", MyProcPid);
+	}
+	else
+	{
+		sharedsortglobal = NULL;
+		elog(DEBUG2, "worker %d processing regular index", MyProcPid);
+	}
+
 	/* Prepare to track buffer usage during parallel execution */
 	InstrStartParallelQuery();
 
 	/* Perform sorting of spool, and possibly a spool2 */
 	sortmem = maintenance_work_mem / btshared->scantuplesortstates;
 	_bt_parallel_scan_and_sort(btspool, btspool2, btshared, sharedsort,
-							   sharedsort2, sortmem, false);
+							   sharedsort2, sortmem, false,
+							   sharedsortglobal, true);
 
 	/* Report WAL/buffer usage during parallel execution */
 	bufferusage = shm_toc_lookup(toc, PARALLEL_KEY_BUFFER_USAGE, false);
@@ -1919,7 +2226,8 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 static void
 _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 						   BTShared *btshared, Sharedsort *sharedsort,
-						   Sharedsort *sharedsort2, int sortmem, bool progress)
+						   Sharedsort *sharedsort2, int sortmem, bool progress,
+						   Sharedsort *sharedsortglobal, bool isworker)
 {
 	SortCoordinate coordinate;
 	BTBuildState buildstate;
@@ -1965,6 +2273,28 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 										false);
 	}
 
+
+	/* global index */
+	if (sharedsortglobal)
+	{
+		SortCoordinate coordinate3;
+
+		global_btspool = (BTSpool *) palloc0(sizeof(BTSpool));
+		global_btspool->heap = btspool->heap;
+		global_btspool->index = btspool->index;
+		global_btspool->isunique = btspool->isunique;
+
+		coordinate3 = palloc0(sizeof(SortCoordinateData));
+		coordinate3->isWorker = true;
+		coordinate3->nParticipants = -1;
+		coordinate3->sharedsort = sharedsortglobal;
+		global_btspool->sortstate =
+			tuplesort_begin_index_btree(global_btspool->heap, global_btspool->index, global_btspool->isunique,
+										btspool->nulls_not_distinct, sortmem, coordinate3,
+										false);
+	}
+
+
 	/* Fill in buildstate for _bt_build_callback() */
 	buildstate.isunique = btshared->isunique;
 	buildstate.nulls_not_distinct = btshared->nulls_not_distinct;
@@ -1974,6 +2304,12 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 	buildstate.spool2 = btspool2;
 	buildstate.indtuples = 0;
 	buildstate.btleader = NULL;
+
+	if (btshared->isglobal && btshared->isunique)
+	{
+		/* fill global unique index related parameters in buildstate */
+		buildstate.global_index = btshared->isglobal;
+	}
 
 	/* Join parallel scan */
 	indexInfo = BuildIndexInfo(btspool->index);
@@ -1997,6 +2333,11 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 		tuplesort_performsort(btspool2->sortstate);
 	}
 
+	if (global_btspool)
+	{
+		tuplesort_performsort(global_btspool->sortstate);
+	}
+
 	/*
 	 * Done.  Record ambuild statistics, and whether we encountered a broken
 	 * HOT chain.
@@ -2018,4 +2359,7 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 	tuplesort_end(btspool->sortstate);
 	if (btspool2)
 		tuplesort_end(btspool2->sortstate);
+
+	if (global_btspool && isworker)
+		tuplesort_end(global_btspool->sortstate);
 }

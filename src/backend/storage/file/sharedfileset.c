@@ -92,6 +92,16 @@ SharedFileSetDeleteAll(SharedFileSet *fileset)
 }
 
 /*
+ * Register cleanup callback of an already initialized fileset.
+ */
+void
+SharedFileSetRegisterCleanupCallback(SharedFileSet *fileset, dsm_segment *seg)
+{
+	/* Register our cleanup callback. */
+	if (seg)
+		on_dsm_detach(seg, SharedFileSetOnDetach, PointerGetDatum(fileset));
+}
+/*
  * Callback function that will be invoked when this backend detaches from a
  * DSM segment holding a SharedFileSet that it has created or attached to.  If
  * we are the last to detach, then try to remove the directories and
