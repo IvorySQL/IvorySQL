@@ -989,7 +989,8 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		table_relation_estimate_size(rel, attr_widths, pages, tuples,
 									 allvisfrac);
 	}
-	else if (rel->rd_rel->relkind == RELKIND_INDEX)
+	else if (rel->rd_rel->relkind == RELKIND_INDEX ||
+			 rel->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 	{
 		/*
 		 * XXX: It'd probably be good to move this into a callback, individual

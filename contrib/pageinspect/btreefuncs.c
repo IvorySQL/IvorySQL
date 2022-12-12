@@ -51,6 +51,7 @@ PG_FUNCTION_INFO_V1(bt_page_stats);
 #define IS_BTREE(r) ((r)->rd_rel->relam == BTREE_AM_OID)
 #define DatumGetItemPointer(X)	 ((ItemPointer) DatumGetPointer(X))
 #define ItemPointerGetDatum(X)	 PointerGetDatum(X)
+#define IS_GLOBAL_INDEX(r) ((r)->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 
 /* note: BlockNumber is unsigned, hence can't be negative */
 #define CHECK_RELATION_BLOCK_RANGE(rel, blkno) { \
@@ -205,7 +206,7 @@ bt_page_stats_internal(PG_FUNCTION_ARGS, enum pageinspect_version ext_version)
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = relation_openrv(relrv, AccessShareLock);
 
-	if (!IS_INDEX(rel) || !IS_BTREE(rel))
+	if ((!IS_INDEX(rel) && !IS_GLOBAL_INDEX(rel)) || !IS_BTREE(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not a %s index",
@@ -477,7 +478,7 @@ bt_page_items_internal(PG_FUNCTION_ARGS, enum pageinspect_version ext_version)
 		relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 		rel = relation_openrv(relrv, AccessShareLock);
 
-		if (!IS_INDEX(rel) || !IS_BTREE(rel))
+		if ((!IS_INDEX(rel) && !IS_GLOBAL_INDEX(rel)) || !IS_BTREE(rel))
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is not a %s index",
@@ -713,7 +714,7 @@ bt_metap(PG_FUNCTION_ARGS)
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = relation_openrv(relrv, AccessShareLock);
 
-	if (!IS_INDEX(rel) || !IS_BTREE(rel))
+	if ((!IS_INDEX(rel) && !IS_GLOBAL_INDEX(rel)) || !IS_BTREE(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not a %s index",

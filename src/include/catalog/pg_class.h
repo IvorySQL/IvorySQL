@@ -168,6 +168,7 @@ DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeInd
 #define		  RELKIND_FOREIGN_TABLE   'f'	/* foreign table */
 #define		  RELKIND_PARTITIONED_TABLE 'p' /* partitioned table */
 #define		  RELKIND_PARTITIONED_INDEX 'I' /* partitioned index */
+#define		  RELKIND_GLOBAL_INDEX 		'g' /* global index */
 
 #define		  RELPERSISTENCE_PERMANENT	'p' /* regular table */
 #define		  RELPERSISTENCE_UNLOGGED	'u' /* unlogged permanent table */
@@ -194,6 +195,7 @@ DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeInd
 #define RELKIND_HAS_STORAGE(relkind) \
 	((relkind) == RELKIND_RELATION || \
 	 (relkind) == RELKIND_INDEX || \
+	 (relkind) == RELKIND_GLOBAL_INDEX || \
 	 (relkind) == RELKIND_SEQUENCE || \
 	 (relkind) == RELKIND_TOASTVALUE || \
 	 (relkind) == RELKIND_MATVIEW)

@@ -760,3 +760,14 @@ alter table parted_index_col_drop drop column c;
 \d parted_index_col_drop2
 \d parted_index_col_drop11
 drop table parted_index_col_drop;
+
+-- create global index using non-partition key
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (10);
+create table gidxpart2 partition of gidxpart for values from (10) to (100);
+create unique index gidx_u on gidxpart using btree(b) global;
+select relname, relhasindex, relkind from pg_class where relname like '%gidx%' order by oid;
+\d+ gidxpart
+\d+ gidx_u
+drop index gidx_u;
+drop table gidxpart;

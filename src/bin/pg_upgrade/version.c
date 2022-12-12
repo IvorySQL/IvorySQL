@@ -94,6 +94,7 @@ check_for_data_types_usage(ClusterInfo *cluster,
 						  "		c.relkind IN ("
 						  CppAsString2(RELKIND_RELATION) ", "
 						  CppAsString2(RELKIND_MATVIEW) ", "
+						  CppAsString2(RELKIND_GLOBAL_INDEX) ", "
 						  CppAsString2(RELKIND_INDEX) ") AND "
 						  "		c.relnamespace = n.oid AND "
 		/* exclude possible orphaned temp tables */
