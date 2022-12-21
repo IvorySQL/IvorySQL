@@ -1455,6 +1455,17 @@ ora_psql_scan_reset(PsqlScanState state)
 	state->token_count = 0;
 	state->token_cursor_idx = 0;
 	state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
+	/* TODO:
+	 * need free if psqlpluscmd is not null ?
+	 * or copy it using state->psqlpluscmd if it not null
+	 * and we free it within psql_scan_finish, late free
+	 * the copy again.
+	 * we need make a function for free psqlpluscmd.
+	 */
+	state->psqlpluscmd = NULL;
+	state->literalbuf = NULL;
+	state->literallen= 0;
+	state->literalalloc = 0;
 }
 
 /*
