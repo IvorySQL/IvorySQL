@@ -150,6 +150,9 @@ SELECT id, manager_id from t_tab CONNECT BY  id =  manager_id order by id;
   3 |          2
 (3 rows)
 
+-- test PRIOR exception
+SELECT id, manager_id from t_tab CONNECT BY PRIOR 50 =  manager_id;
+ERROR:  only simple column references are allowed in PRIOR
 -- tests with level in expression
 SELECT id, manager_id, level, level * 100 * manager_id  from t_tab CONNECT BY prior id =  manager_id order by id;
  id | manager_id | LEVEL | LEVEL 
@@ -193,6 +196,18 @@ order by employee_id, manager_id;
            5 |          4 | Kyle     |       5 | /Kyle
 (4 rows)
 
+-- test SYS_CONNECT_BY_PATH parameter exception
+SELECT employee_id, SYS_CONNECT_BY_PATH('employee', '/') "Path"
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
+ERROR:  only simple column references are allowed in SYS_CONNECT_BY_PATH
+-- test CONNECT_BY_ROOT exception
+SELECT employee_id, CONNECT_BY_ROOT 'employee_id' as "Manager"
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
+ERROR:  only simple column references are allowed in CONNECT_BY_ROOT
 -- test order-by clause when order-by columns are not in target list
 SELECT employee, CONNECT_BY_ROOT employee_id as "Manager", SYS_CONNECT_BY_PATH(employee, '/') "Path"
 FROM example

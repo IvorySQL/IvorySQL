@@ -79,6 +79,9 @@ WITH RECURSIVE test (id, manager_id) AS (
 
 SELECT id, manager_id from t_tab CONNECT BY  id =  manager_id order by id;
 
+-- test PRIOR exception
+SELECT id, manager_id from t_tab CONNECT BY PRIOR 50 =  manager_id;
+
 -- tests with level in expression
 SELECT id, manager_id, level, level * 100 * manager_id  from t_tab CONNECT BY prior id =  manager_id order by id;
 SELECT level, level * 100 * manager_id, id, manager_id from t_tab CONNECT BY id =  prior manager_id order by id;
@@ -96,6 +99,18 @@ FROM example
 START WITH manager_id is not null
 CONNECT BY PRIOR employee_id = manager_id
 order by employee_id, manager_id;
+
+-- test SYS_CONNECT_BY_PATH parameter exception
+SELECT employee_id, SYS_CONNECT_BY_PATH('employee', '/') "Path"
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
+
+-- test CONNECT_BY_ROOT exception
+SELECT employee_id, CONNECT_BY_ROOT 'employee_id' as "Manager"
+FROM example
+START WITH manager_id is not null
+CONNECT BY PRIOR employee_id = manager_id;
 
 -- test order-by clause when order-by columns are not in target list
 SELECT employee, CONNECT_BY_ROOT employee_id as "Manager", SYS_CONNECT_BY_PATH(employee, '/') "Path"
