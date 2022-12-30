@@ -33,15 +33,19 @@ SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA/ID') from dual;
 (1 row)
 
 SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA') from dual;
-       extract       
----------------------
- <AA><ID>1</ID></AA>
+   extract    
+--------------
+ <AA>        +
+   <ID>1</ID>+
+ </AA>
 (1 row)
 
 SELECT extract(XMLType('<Co Attr ="Test Attr"><ID>1</ID></Co>'), '/Co') from dual;
-               extract                
---------------------------------------
- <Co Attr="Test Attr"><ID>1</ID></Co>
+        extract        
+-----------------------
+ <Co Attr="Test Attr">+
+   <ID>1</ID>         +
+ </Co>
 (1 row)
 
 SELECT extract(XMLType('<Co Attr ="Test Attr"><ID>1</ID></Co>'), '/Co/@ Attr') from dual;
@@ -129,6 +133,8 @@ SELECT extractvalue(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b[2]') from dual;
 
 SELECT extractvalue(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b') from dual;
 ERROR:  EXTRACTVALUE returns value of only one node
+SELECT extractvalue(XMLType('<a><b><c><d><e>111></e><f>222</f></d></c></b></a>'),'/a/b/c/d') from dual;
+ERROR:  EXTRACTVALUE returns value of only one node
 SELECT extractvalue(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
  extractvalue 
 --------------
@@ -192,16 +198,20 @@ SELECT deletexml(XMLType('<test><value>oldnode</value><value>oldnode</value></te
 
 SELECT deletexml(XMLType('<test><value>111</value><value>222</value></test>'),
   '/test/value[1]') from dual;
-            deletexml            
----------------------------------
- <test><value>222</value></test>
+      deletexml       
+----------------------
+ <test>              +
+   <value>222</value>+
+ </test>
 (1 row)
 
 SELECT deletexml(XMLType('<test><value>111</value><value>222</value></test>'),
   '/test/value[2]') from dual;
-            deletexml            
----------------------------------
- <test><value>111</value></test>
+      deletexml       
+----------------------
+ <test>              +
+   <value>111</value>+
+ </test>
 (1 row)
 
 SELECT deletexml(XMLType('<a><b></b><b></b></a>'), '//b') from dual;
@@ -224,16 +234,24 @@ SELECT deletexml(b, '/a/b') from inaf where a = 2;
 
 SELECT deletexml(XMLType('<test><value></value><value><t>11</t></value></test>'),
   '/test/value/t') from dual;
-           deletexml           
--------------------------------
- <test><value/><value/></test>
+ deletexml  
+------------
+ <test>    +
+   <value/>+
+   <value/>+
+ </test>
 (1 row)
 
 SELECT deletexml(XMLType('<test><value>12</value><value><t>12</t><b>12</b></value></test>'),
   '/test/value/t') from dual;
-                       deletexml                        
---------------------------------------------------------
- <test><value>12</value><value><b>12</b></value></test>
+      deletexml      
+---------------------
+ <test>             +
+   <value>12</value>+
+   <value>          +
+     <b>12</b>      +
+   </value>         +
+ </test>
 (1 row)
 
 SELECT deletexml(XMLType('<a><b></b><b></b></a>'), '') from dual;
@@ -249,9 +267,15 @@ SELECT deletexml(XMLType('<a><b></b><b></b></a>'), null) from dual;
 (1 row)
 
 SELECT deletexml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                                                                                                             deletexml                                                                                                              
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"><soapenv:Body><web:BBB><typ:FFF>42</typ:FFF></web:BBB></soapenv:Body></soapenv:Envelope>
+                                                                 deletexml                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Body>                                                                                                                          +
+     <web:BBB>                                                                                                                             +
+       <typ:FFF>42</typ:FFF>                                                                                                               +
+     </web:BBB>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
 (1 row)
 
 --
@@ -259,28 +283,50 @@ SELECT deletexml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:s
 --
 SELECT appendchildxml(XMLType('<test><value></value><value></value></test>'),
   '/test/value', XMLTYPE('<name>newnode</name>')) from dual;
-                                   appendchildxml                                    
--------------------------------------------------------------------------------------
- <test><value><name>newnode</name></value><value><name>newnode</name></value></test>
+      appendchildxml      
+--------------------------
+ <test>                  +
+   <value>               +
+     <name>newnode</name>+
+   </value>              +
+   <value>               +
+     <name>newnode</name>+
+   </value>              +
+ </test>
 (1 row)
 
 SELECT appendchildxml(XMLType('<test><a></a><b></b></test>'),
   '/test/a', XMLTYPE('<name>aaa</name>')) from dual;
-              appendchildxml              
-------------------------------------------
- <test><a><name>aaa</name></a><b/></test>
+    appendchildxml    
+----------------------
+ <test>              +
+   <a>               +
+     <name>aaa</name>+
+   </a>              +
+   <b/>              +
+ </test>
 (1 row)
 
 SELECT appendchildxml(XMLType('<a><b></b><b></b></a>'), '/a/b', XMLtype('<name>1000</name>')) from dual;
-                     appendchildxml                      
----------------------------------------------------------
- <a><b><name>1000</name></b><b><name>1000</name></b></a>
+    appendchildxml     
+-----------------------
+ <a>                  +
+   <b>                +
+     <name>1000</name>+
+   </b>               +
+   <b>                +
+     <name>1000</name>+
+   </b>               +
+ </a>
 (1 row)
 
 SELECT appendchildxml(XMLType('<a><b></b></a>'), '/a', XMLtype('<name>1000</name>')) from dual;
-        appendchildxml        
-------------------------------
- <a><b/><name>1000</name></a>
+   appendchildxml    
+---------------------
+ <a>                +
+   <b/>             +
+   <name>1000</name>+
+ </a>
 (1 row)
 
 SELECT appendchildxml(b, '/a/b', XMLtype('<name>1000</name>')) from inaf where a = 2;
@@ -290,15 +336,19 @@ SELECT appendchildxml(b, '/a/b', XMLtype('<name>1000</name>')) from inaf where a
 (1 row)
 
 SELECT appendchildxml(XMLType('<a><b>666</b></a>'), '/a/b', XMLtype('<name>1000<mm>66</mm></name>')) from dual;
-                appendchildxml                 
------------------------------------------------
- <a><b>666<name>1000<mm>66</mm></name></b></a>
+              appendchildxml              
+------------------------------------------
+ <a>                                     +
+   <b>666<name>1000<mm>66</mm></name></b>+
+ </a>
 (1 row)
 
 SELECT appendchildxml(XMLType('<ers:OPS xmlns:ers="http://www.test.com/schema/ers/v3"></ers:OPS>'), '/ers:OPS', XMLType('<ers:LOG xmlns:ers="http://www.test.com/schema/ers/v3" IVY="666"></ers:LOG>'),'xmlns:ers="http://www.test.com/schema/ers/v3"') from dual;
-                                                           appendchildxml                                                            
--------------------------------------------------------------------------------------------------------------------------------------
- <ers:OPS xmlns:ers="http://www.test.com/schema/ers/v3"><ers:LOG xmlns:ers="http://www.test.com/schema/ers/v3" IVY="666"/></ers:OPS>
+                            appendchildxml                            
+----------------------------------------------------------------------
+ <ers:OPS xmlns:ers="http://www.test.com/schema/ers/v3">             +
+   <ers:LOG xmlns:ers="http://www.test.com/schema/ers/v3" IVY="666"/>+
+ </ers:OPS>
 (1 row)
 
 --
@@ -331,21 +381,34 @@ SELECT updatexml(data, '/value/text()', '1000') FROM xmltest;
 (2 rows)
 
 SELECT updatexml(XMLTYPE('<a><b>b1</b><b>b2</b></a>'), '/b', '1000') FROM dual;
-         updatexml         
----------------------------
- <a><b>b1</b><b>b2</b></a>
+  updatexml  
+-------------
+ <a>        +
+   <b>b1</b>+
+   <b>b2</b>+
+ </a>
 (1 row)
 
 SELECT updatexml(XMLTYPE('<a><b>b1</b><b>b2</b></a>'), '/b[1]/text()', '1000') FROM dual;
-         updatexml         
----------------------------
- <a><b>b1</b><b>b2</b></a>
+  updatexml  
+-------------
+ <a>        +
+   <b>b1</b>+
+   <b>b2</b>+
+ </a>
 (1 row)
 
 SELECT updatexml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE/text()',123, 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                                                                                                                        updatexml                                                                                                                         
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"><soapenv:Body><web:BBB><typ:EEE>123</typ:EEE><typ:FFF>42</typ:FFF></web:BBB></soapenv:Body></soapenv:Envelope>
+                                                                 updatexml                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Body>                                                                                                                          +
+     <web:BBB>                                                                                                                             +
+       <typ:EEE>123</typ:EEE>                                                                                                              +
+       <typ:FFF>42</typ:FFF>                                                                                                               +
+     </web:BBB>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
 (1 row)
 
 --
@@ -354,15 +417,21 @@ SELECT updatexml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE/text()',12
 SELECT insertxmlbefore(XMLType('<a>a</a>'),'/a', XMLType('<b>b</b>')) from dual;
 ERROR:  invalid XPath expression
 SELECT insertxmlbefore(XMLType('<a><b>b</b></a>'),'/a/b', XMLType('<c>c</c>')) from dual;
-     insertxmlbefore     
--------------------------
- <a><c>c</c><b>b</b></a>
+ insertxmlbefore 
+-----------------
+ <a>            +
+   <c>c</c>     +
+   <b>b</b>     +
+ </a>
 (1 row)
 
 SELECT insertxmlbefore(XMLType('<a><b></b></a>'),'/a/b', XMLType('<c></c>')) from dual;
  insertxmlbefore 
 -----------------
- <a><c/><b/></a>
+ <a>            +
+   <c/>         +
+   <b/>         +
+ </a>
 (1 row)
 
 SELECT insertxmlbefore(XMLType('<a>222<b>100</b></a>'), '/a/b', XMLTYPE('<c>88</c>')) from dual;
@@ -402,18 +471,29 @@ SELECT insertxmlbefore(b,'/a/b', XMLType('<c>200</c>')) from inaf where a = 2;
 (1 row)
 
 SELECT insertxmlbefore(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                                                                                                                                                insertxmlbefore                                                                                                                                                 
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"><soapenv:Body><web:BBB><typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY><typ:EEE>41</typ:EEE><typ:FFF>42</typ:FFF></web:BBB></soapenv:Body></soapenv:Envelope>
+                                                              insertxmlbefore                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Body>                                                                                                                          +
+     <web:BBB>                                                                                                                             +
+       <typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>                                                                             +
+       <typ:EEE>41</typ:EEE>                                                                                                               +
+       <typ:FFF>42</typ:FFF>                                                                                                               +
+     </web:BBB>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
 (1 row)
 
 --
 -- insertxmlafter
 --
 SELECT insertxmlafter(XMLType('<a><b>100</b></a>'),'/a/b',XMLType('<c>88</c>')) from dual;
-       insertxmlafter       
-----------------------------
- <a><b>100</b><c>88</c></a>
+ insertxmlafter 
+----------------
+ <a>           +
+   <b>100</b>  +
+   <c>88</c>   +
+ </a>
 (1 row)
 
 SELECT insertxmlafter(XMLType('<a>200<b>100</b><b>300</b></a>'),'/a/b',XMLType('<c>88</c>')) from dual;
@@ -447,9 +527,17 @@ SELECT insertxmlafter(b,'/a/b', XMLType('<c>200</c>')) from inaf where a = 2;
 (1 row)
 
 SELECT insertxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                                                                                                                                                 insertxmlafter                                                                                                                                                 
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"><soapenv:Body><web:BBB><typ:EEE>41</typ:EEE><typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY><typ:FFF>42</typ:FFF></web:BBB></soapenv:Body></soapenv:Envelope>
+                                                               insertxmlafter                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Body>                                                                                                                          +
+     <web:BBB>                                                                                                                             +
+       <typ:EEE>41</typ:EEE>                                                                                                               +
+       <typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>                                                                             +
+       <typ:FFF>42</typ:FFF>                                                                                                               +
+     </web:BBB>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
 (1 row)
 
 --
@@ -462,9 +550,11 @@ SELECT insertchildxml(XMLType('<a>one<b></b>three<b></b></a>'), '//b', 'name', X
 (1 row)
 
 SELECT insertchildxml(XMLType('<a><b>100</b></a>'), '/a/b', 'c', XMLType('<c>88</c>')) from dual;
-       insertchildxml       
-----------------------------
- <a><b>100<c>88</c></b></a>
+    insertchildxml     
+-----------------------
+ <a>                  +
+   <b>100<c>88</c></b>+
+ </a>
 (1 row)
 
 SELECT insertchildxml(XMLType('<a><b>100</b></a>'), '/a/b', 'c', XMLType('<m>88</m>')) from dual;
@@ -476,27 +566,45 @@ SELECT insertchildxml(b, '/a/b', 'c', XMLType('<c>200</c>')) from inaf where a =
 (1 row)
 
 SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b', 'c', XMLType('<c>88</c>')) from dual;
-                insertchildxml                 
------------------------------------------------
- <a><b>100<c>88</c></b><b>200<c>88</c></b></a>
+    insertchildxml     
+-----------------------
+ <a>                  +
+   <b>100<c>88</c></b>+
+   <b>200<c>88</c></b>+
+ </a>
 (1 row)
 
 SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[1]', 'c', XMLType('<c>88</c>')) from dual;
-            insertchildxml            
---------------------------------------
- <a><b>100<c>88</c></b><b>200</b></a>
+    insertchildxml     
+-----------------------
+ <a>                  +
+   <b>100<c>88</c></b>+
+   <b>200</b>         +
+ </a>
 (1 row)
 
 SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[2]', 'c', XMLType('<c>88</c>')) from dual;
-            insertchildxml            
---------------------------------------
- <a><b>100</b><b>200<c>88</c></b></a>
+    insertchildxml     
+-----------------------
+ <a>                  +
+   <b>100</b>         +
+   <b>200<c>88</c></b>+
+ </a>
 (1 row)
 
+SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[2]', '"c"', XMLType('<c>88</c>')) from dual;
+ERROR:  The document being inserted does not conform to specified child name
 SELECT insertchildxml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE','typ:IVY', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                                                                                                                                                 insertchildxml                                                                                                                                                 
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"><soapenv:Body><web:BBB><typ:EEE>41<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY></typ:EEE><typ:FFF>42</typ:FFF></web:BBB></soapenv:Body></soapenv:Envelope>
+                                                               insertchildxml                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Body>                                                                                                                          +
+     <web:BBB>                                                                                                                             +
+       <typ:EEE>41<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY></typ:EEE>                                                        +
+       <typ:FFF>42</typ:FFF>                                                                                                               +
+     </web:BBB>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
 (1 row)
 
 --
@@ -505,31 +613,49 @@ SELECT insertchildxml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE','typ
 SELECT insertchildxmlbefore(XMLType('<a><b>100</b></a>'), '/a/b', 'b', XMLType('<c>88</c>')) from dual;
  insertchildxmlbefore 
 ----------------------
- <a><b>100</b></a>
+ <a>                 +
+   <b>100</b>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlbefore(XMLType('<a><b>100</b></a>'), '/a', 'b', XMLType('<c>88</c>')) from dual;
-    insertchildxmlbefore    
-----------------------------
- <a><c>88</c><b>100</b></a>
+ insertchildxmlbefore 
+----------------------
+ <a>                 +
+   <c>88</c>         +
+   <b>100</b>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlbefore(XMLType('<a><b>100</b><b>200</b></a>'), '/a', 'b', XMLType('<c>88</c>')) from dual;
-             insertchildxmlbefore              
------------------------------------------------
- <a><c>88</c><b>100</b><c>88</c><b>200</b></a>
+ insertchildxmlbefore 
+----------------------
+ <a>                 +
+   <c>88</c>         +
+   <b>100</b>        +
+   <c>88</c>         +
+   <b>200</b>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlbefore(XMLType('<a><b>100</b><b>200</b></a>'), '/a', 'b[1]', XMLType('<c>88</c>')) from dual;
-         insertchildxmlbefore         
---------------------------------------
- <a><c>88</c><b>100</b><b>200</b></a>
+ insertchildxmlbefore 
+----------------------
+ <a>                 +
+   <c>88</c>         +
+   <b>100</b>        +
+   <b>200</b>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlbefore(XMLType('<a><b>100</b><b>200</b></a>'), '/a', 'b[2]', XMLType('<c>88</c>')) from dual;
-         insertchildxmlbefore         
---------------------------------------
- <a><b>100</b><c>88</c><b>200</b></a>
+ insertchildxmlbefore 
+----------------------
+ <a>                 +
+   <b>100</b>        +
+   <c>88</c>         +
+   <b>200</b>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlbefore(b, '/a', 'b', XMLType('<c>200</c>')) from inaf where a = 2;
@@ -539,15 +665,26 @@ SELECT insertchildxmlbefore(b, '/a', 'b', XMLType('<c>200</c>')) from inaf where
 (1 row)
 
 SELECT insertchildxmlbefore(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[1]', 'b', XMLType('<c>88</c>')) from dual;
-    insertchildxmlbefore     
------------------------------
- <a><b>100</b><b>200</b></a>
+ insertchildxmlbefore 
+----------------------
+ <a>                 +
+   <b>100</b>        +
+   <b>200</b>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlbefore(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FFF', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                                                                                                                                              insertchildxmlbefore                                                                                                                                              
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"><soapenv:Body><web:BBB><typ:EEE>41</typ:EEE><typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY><typ:FFF>42</typ:FFF></web:BBB></soapenv:Body></soapenv:Envelope>
+                                                            insertchildxmlbefore                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Body>                                                                                                                          +
+     <web:BBB>                                                                                                                             +
+       <typ:EEE>41</typ:EEE>                                                                                                               +
+       <typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>                                                                             +
+       <typ:FFF>42</typ:FFF>                                                                                                               +
+     </web:BBB>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
 (1 row)
 
 --
@@ -556,31 +693,49 @@ SELECT insertchildxmlbefore(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:F
 SELECT insertchildxmlafter(XMLType('<a><b>100</b></a>'), '/a/b', 'b', XMLType('<c>88</c>')) from dual;
  insertchildxmlafter 
 ---------------------
- <a><b>100</b></a>
+ <a>                +
+   <b>100</b>       +
+ </a>
 (1 row)
 
 SELECT insertchildxmlafter(XMLType('<a><b>100</b></a>'), '/a', 'b', XMLType('<c>88</c>')) from dual;
-    insertchildxmlafter     
-----------------------------
- <a><b>100</b><c>88</c></a>
+ insertchildxmlafter 
+---------------------
+ <a>                +
+   <b>100</b>       +
+   <c>88</c>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlafter(XMLType('<a><b>100</b><b>200</b></a>'), '/a', 'b', XMLType('<c>88</c>')) from dual;
-              insertchildxmlafter              
------------------------------------------------
- <a><b>100</b><c>88</c><b>200</b><c>88</c></a>
+ insertchildxmlafter 
+---------------------
+ <a>                +
+   <b>100</b>       +
+   <c>88</c>        +
+   <b>200</b>       +
+   <c>88</c>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlafter(XMLType('<a><b>100</b><b>200</b></a>'), '/a', 'b[1]', XMLType('<c>88</c>')) from dual;
-         insertchildxmlafter          
---------------------------------------
- <a><b>100</b><c>88</c><b>200</b></a>
+ insertchildxmlafter 
+---------------------
+ <a>                +
+   <b>100</b>       +
+   <c>88</c>        +
+   <b>200</b>       +
+ </a>
 (1 row)
 
 SELECT insertchildxmlafter(XMLType('<a><b>100</b><b>200</b></a>'), '/a', 'b[2]', XMLType('<c>88</c>')) from dual;
-         insertchildxmlafter          
---------------------------------------
- <a><b>100</b><b>200</b><c>88</c></a>
+ insertchildxmlafter 
+---------------------
+ <a>                +
+   <b>100</b>       +
+   <b>200</b>       +
+   <c>88</c>        +
+ </a>
 (1 row)
 
 SELECT insertchildxmlafter(b, '/a', 'b', XMLType('<c>200</c>')) from inaf where a = 2;
@@ -590,15 +745,26 @@ SELECT insertchildxmlafter(b, '/a', 'b', XMLType('<c>200</c>')) from inaf where 
 (1 row)
 
 SELECT insertchildxmlafter(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[1]', 'b', XMLType('<c>88</c>')) from dual;
-     insertchildxmlafter     
------------------------------
- <a><b>100</b><b>200</b></a>
+ insertchildxmlafter 
+---------------------
+ <a>                +
+   <b>100</b>       +
+   <b>200</b>       +
+ </a>
 (1 row)
 
 SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FFF', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                                                                                                                                              insertchildxmlafter                                                                                                                                               
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"><soapenv:Body><web:BBB><typ:EEE>41</typ:EEE><typ:FFF>42</typ:FFF><typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY></web:BBB></soapenv:Body></soapenv:Envelope>
+                                                            insertchildxmlafter                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Body>                                                                                                                          +
+     <web:BBB>                                                                                                                             +
+       <typ:EEE>41</typ:EEE>                                                                                                               +
+       <typ:FFF>42</typ:FFF>                                                                                                               +
+       <typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>                                                                             +
+     </web:BBB>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
 (1 row)
 
 drop table inaf;

@@ -68,17 +68,6 @@
 #include <libxml/xpathInternals.h>
 #endif
 
-
-PgXmlErrorContext *ivy_xml_parser_init(PgXmlStrictness strictness);
-
-typedef struct xpath_ws
-{
-	xmlDocPtr			doc;
-	xmlXPathContextPtr 	xpathctx;
-	xmlXPathCompExprPtr xpathcomp;
-	xmlXPathObjectPtr 	xpathobj;
-} xpath_ws;
-
 /*
  * Local definitions
  */
@@ -86,21 +75,41 @@ typedef struct xpath_ws
 	(str[1] == 'm') && (str[2] == 'l') && (str[3] == 'n') && \
 	(str[4] == 's') && (str[5] == ':'))
 
+#define NO_XML_SUPPORT() \
+	ereport(ERROR, \
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
+			 errmsg("unsupported XML feature"), \
+			 errdetail("This functionality requires the server to be built with libxml support."), \
+			 errhint("You need to rebuild PostgreSQL using %s.", "--with-libxml")))
+
+PgXmlErrorContext *ivy_xml_parser_init(PgXmlStrictness strictness);
+
+#ifdef USE_LIBXML
+typedef struct xpath_ws
+{
+	xmlDocPtr			doc;
+	xmlXPathContextPtr 	xpathctx;
+	xmlXPathCompExprPtr xpathcomp;
+	xmlXPathObjectPtr 	xpathobj;
+} xpath_ws;
+#endif
+
 /*
  * ----------------------------------------------------------------------------
  *	Helper Function declarations
  * ----------------------------------------------------------------------------
  */
-static void cleanup_ws(xpath_ws *ws);
-static xmlXPathObjectPtr ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespace);
-static xmlXPathObjectPtr ivy_xml_xpath2(xpath_ws *ws, text *xpath_expr_text, xmlDocPtr doc, char *namespace);
-static void init_ws_doc(xpath_ws *ws, xmltype *data);
+#ifdef USE_LIBXML
 static text *rv_newline(text *tv);
 static char *left_trim(char *str);
 static char *right_trim(char *str);
 static char *ivy_trim(char *str);
 static char *ivy_escape_xml(const char *str);
 static xmltype *ivy_stringinfo_to_xmltype(StringInfo buf);
+static void cleanup_ws(xpath_ws *ws);
+static xmlXPathObjectPtr ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespace);
+static xmlXPathObjectPtr ivy_xml_xpath2(xpath_ws *ws, text *xpath_expr_text, xmlDocPtr doc, char *namespace);
+static void init_ws_doc(xpath_ws *ws, xmltype *data);
 static void register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList);
 static int ivy_xpathobjnode_nr(xmlXPathObjectPtr xpathobj);
 static char *ivy_xmlnode_getcontent(xmlNodePtr cur);
@@ -114,7 +123,9 @@ static void ivy_xml_addprevsiblingnode(xmlXPathObjectPtr xpathobj, const xmlChar
 static void ivy_xml_addnextsiblingnode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node);
 static void ivy_xml_replacenode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node);
 static xmlChar *ivy_xmlCharStrndup(const char *str, size_t len);
+#endif
 
+#ifdef USE_LIBXML
 /*
  * Initialize for xml parsing.
  *
@@ -194,7 +205,7 @@ ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespac
 
 	PG_TRY();
 	{
-		ws->doc = xmlParseDoc(string);
+		ws->doc = xmlReadMemory((const char *)string, len, NULL, NULL, XML_PARSE_NOBLANKS);
 		if (ws->doc != NULL)
 		{
 			ws->xpathctx = xmlXPathNewContext(ws->doc);
@@ -258,7 +269,7 @@ init_ws_doc(xpath_ws *ws, xmltype *data)
 
 	PG_TRY();
 	{
-		ws->doc = xmlParseDoc(string);
+		ws->doc = xmlReadMemory((const char *)string, len, NULL, NULL, XML_PARSE_NOBLANKS);
 		if (ws->doc == NULL)
 			ereport(ERROR,(errcode(ERRCODE_INVALID_XML_DOCUMENT),
 					errmsg("could not parse XML document")));
@@ -322,7 +333,7 @@ ivy_xml_xpath2(xpath_ws *ws, text *xpath_expr_text, xmlDocPtr doc, char *namespa
 
 	return ws->xpathobj;
 }
-
+#endif
 
 /*
  * ----------------------------------------------------------------------------
@@ -357,7 +368,7 @@ PG_FUNCTION_INFO_V1(ivy_insertchildxmlafter2);
  *	Helper Function definition
  * ----------------------------------------------------------------------------
  */
-
+#ifdef USE_LIBXML
 /*
  * rv_newline
  *	Remove the final newline in XMLTYPE data.
@@ -474,7 +485,6 @@ ivy_stringinfo_to_xmltype(StringInfo buf)
 	return (xmltype *) cstring_to_text_with_len(buf->data, buf->len);
 }
 
-#ifdef USE_LIBXML
 static void
 register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 {
@@ -565,9 +575,6 @@ ivy_xmlnode_getcontent(xmlNodePtr cur)
 
 	if (cur->type == XML_ELEMENT_NODE)
 	{
-		if (cur->parent->type == XML_DOCUMENT_NODE && cur->parent->name == NULL)
-			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
-					errmsg("EXTRACTVALUE can only retrieve value of leaf node")));
 		if (cur->children && cur->children->type == XML_TEXT_NODE)
 			result = (char *)xmlNodeGetContent(cur->children);
 	}
@@ -634,7 +641,7 @@ ivy_xml_xmlnode2xmltype(xmlNodePtr cur)
 			nodefree = (cur_copy->type == XML_DOCUMENT_NODE) ?
 				(void (*) (xmlNodePtr)) xmlFreeDoc : xmlFreeNode;
 
-			bytes = xmlNodeDump(buf, NULL, cur_copy, 0, 0);
+			bytes = xmlNodeDump(buf, NULL, cur_copy, 0, 1);
 			if (bytes == -1)
 				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 						errmsg("could not dump node")));
@@ -796,7 +803,7 @@ ivy_xml_addprevsiblingnode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 			num = xpathobj->nodesetval->nodeNr;
 			for (i = 0; i < num; i++)
 			{
-				n_node = xmlParseDoc((const xmlChar *)new_node);
+				n_node = xmlParseDoc(new_node);
 				if (n_node == NULL)
 					ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
 							 errmsg("could not parse XML new node")));
@@ -822,7 +829,7 @@ ivy_xml_addnextsiblingnode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 			num = xpathobj->nodesetval->nodeNr;
 			for (i = 0; i < num; i++)
 			{
-				n_node = xmlParseDoc((const xmlChar *)new_node);
+				n_node = xmlParseDoc(new_node);
 				if (n_node == NULL)
 					ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
 							 errmsg("could not parse XML new node")));
@@ -857,7 +864,7 @@ ivy_xml_replacenode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 				}
 				else
 				{
-					n_node = xmlParseDoc((const xmlChar *)new_node);
+					n_node = xmlParseDoc(new_node);
 					if (n_node == NULL)
 						ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
 								errmsg("could not parse XML new node")));
@@ -891,7 +898,12 @@ Datum
 ivy_xmltype_in(PG_FUNCTION_ARGS)
 {
 #ifdef USE_LIBXML
-	return xml_in(fcinfo);
+	char	   *s = PG_GETARG_CSTRING(0);
+	xmltype    *vardata;
+
+	vardata = (xmltype *) cstring_to_text(s);
+
+	PG_RETURN_XML_P(vardata);
 #else
 	NO_XML_SUPPORT();
 	return 0;
@@ -1016,7 +1028,21 @@ ivy_extractvalue(PG_FUNCTION_ARGS)
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
 
-	if (res->nodesetval->nodeNr > 1)
+	if (res->nodesetval && res->nodesetval->nodeNr > 1)
+	{
+		cleanup_ws(&ws);
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("EXTRACTVALUE returns value of only one node")));
+	}
+
+	if (res->nodesetval && res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
+	{
+		cleanup_ws(&ws);
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("EXTRACTVALUE can only retrieve value of leaf node")));
+	}
+
+	if (res->nodesetval && res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
@@ -1073,7 +1099,21 @@ ivy_extractvalue2(PG_FUNCTION_ARGS)
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
 
-	if (res->nodesetval->nodeNr > 1)
+	if (res->nodesetval && res->nodesetval->nodeNr > 1)
+	{
+		cleanup_ws(&ws);
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("EXTRACTVALUE returns value of only one node")));
+	}
+
+	if (res->nodesetval && res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
+	{
+		cleanup_ws(&ws);
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("EXTRACTVALUE can only retrieve value of leaf node")));
+	}
+
+	if (res->nodesetval && res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
@@ -1228,7 +1268,7 @@ ivy_deletexml(PG_FUNCTION_ARGS)
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
-	if (res->nodesetval->nodeTab != NULL)
+	if (res->nodesetval && res->nodesetval->nodeTab != NULL)
 		ivy_xml_delenode(res);
 
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
@@ -1272,7 +1312,7 @@ ivy_deletexml2(PG_FUNCTION_ARGS)
 	}
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
-	if (res->nodesetval->nodeTab != NULL)
+	if (res->nodesetval && res->nodesetval->nodeTab != NULL)
 		ivy_xml_delenode(res);
 
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
@@ -1465,7 +1505,8 @@ ivy_insertxmlbefore(PG_FUNCTION_ARGS)
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
 
-	if (res->nodesetval->nodeNr == 1 && res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
+	if (res->nodesetval && res->nodesetval->nodeNr == 1 &&
+		res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -1529,7 +1570,8 @@ ivy_insertxmlbefore2(PG_FUNCTION_ARGS)
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
 
-	if (res->nodesetval->nodeNr == 1 && res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
+	if (res->nodesetval && res->nodesetval->nodeNr == 1 &&
+		res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -1717,7 +1759,7 @@ ivy_insertchildxml(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		if (!strstr(cname, (char *)((xmlNodePtr)new_node->children->name)))
+		if (strcmp(cname, (char *)((xmlNodePtr)new_node->children->name)) != 0)
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 					errmsg("The document being inserted does not conform to specified child name")));
 	}
@@ -1754,6 +1796,7 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 	char	   *cname = NULL;
 	char	   *cns = NULL;
 	char	   *cnodestr = NULL;
+	char	   *tmp = NULL;
 	int 		len;
 	xpath_ws	ws;
 	xmlDocPtr 	new_node = NULL;
@@ -1804,7 +1847,9 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		if (!strstr(cname, (char *)((xmlNodePtr)new_node->children->name)))
+		tmp = strstr(cname, ":");
+		tmp = strtok(tmp, ":");
+		if (strcmp(tmp, (char *)((xmlNodePtr)new_node->children->name)) != 0)
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 					errmsg("The document being inserted does not conform to specified child name")));
 	}

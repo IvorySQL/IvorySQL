@@ -60,6 +60,8 @@ SELECT extractvalue(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b[2]') from dual;
 
 SELECT extractvalue(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b') from dual;
 
+SELECT extractvalue(XMLType('<a><b><c><d><e>111></e><f>222</f></d></c></b></a>'),'/a/b/c/d') from dual;
+
 SELECT extractvalue(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
 --
@@ -201,6 +203,8 @@ SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b', 'c', XMLTy
 SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[1]', 'c', XMLType('<c>88</c>')) from dual;
 
 SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[2]', 'c', XMLType('<c>88</c>')) from dual;
+
+SELECT insertchildxml(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[2]', '"c"', XMLType('<c>88</c>')) from dual;
 
 SELECT insertchildxml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE','typ:IVY', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
