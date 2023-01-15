@@ -15,6 +15,10 @@
 
 #include "nodes/execnodes.h"
 
+extern void ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
+									EState *estate,
+									CmdType cmdtype);
+
 #include "access/tableam.h"
 
 /*
@@ -81,7 +85,6 @@ typedef struct UpdateContext
 	bool		updateIndexes;	/* index update required? */
 	bool		crossPartUpdate;	/* was it a cross-partition update? */
 } UpdateContext;
-
 
 extern void ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
 									   EState *estate, TupleTableSlot *slot,
