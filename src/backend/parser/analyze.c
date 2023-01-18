@@ -3660,6 +3660,17 @@ transformHierarStmt(ParseState *pstate, SelectStmt *stmt)
 	ctequery->larg = (SelectStmt *) ctequery_l;
 	ctequery->rarg = (SelectStmt *) ctequery_r;
 
+	/*
+	 * check if is a simple RangeVar, support only one simple table
+	 */
+	if (list_length(stmt->fromClause) != 1 || 
+		!IsA(linitial(stmt->fromClause), RangeVar))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("only a single simple relation is allowed in hierarchical statement")));
+	}
+
 	/* Buildup a CTE name and fill up other info */
 	rv = (RangeVar *) linitial(stmt->fromClause);
 	cte->ctename = psprintf("cte_%s", rv->relname);
