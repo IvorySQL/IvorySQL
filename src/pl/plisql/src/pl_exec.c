@@ -2721,47 +2721,18 @@ exec_stmt_fori(PLiSQL_execstate *estate, PLiSQL_stmt_fori *stmt)
 	int32		step_value;
 	bool		found = false;
 	int			rc = PLISQL_RC_OK;
+	ListCell	*lc;
 
 	var = (PLiSQL_var *) (get_datum(estate, stmt->var->dno));
 
-	/*
-	 * Get the value of the lower bound
-	 */
-	value = exec_eval_expr(estate, stmt->lower,
-						   &isnull, &valtype, &valtypmod);
-	value = exec_cast_value(estate, value, &isnull,
-							valtype, valtypmod,
-							var->datatype->typoid,
-							var->datatype->atttypmod);
-	if (isnull)
-		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				 errmsg("lower bound of FOR loop cannot be null")));
-	loop_value = DatumGetInt32(value);
-	exec_eval_cleanup(estate);
+	foreach(lc, stmt->inlist)
+ 	{
+		PLiSQL_fori_in_item *in_item = (PLiSQL_fori_in_item *) lfirst(lc);
 
-	/*
-	 * Get the value of the upper bound
-	 */
-	value = exec_eval_expr(estate, stmt->upper,
-						   &isnull, &valtype, &valtypmod);
-	value = exec_cast_value(estate, value, &isnull,
-							valtype, valtypmod,
-							var->datatype->typoid,
-							var->datatype->atttypmod);
-	if (isnull)
-		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				 errmsg("upper bound of FOR loop cannot be null")));
-	end_value = DatumGetInt32(value);
-	exec_eval_cleanup(estate);
-
-	/*
-	 * Get the step value
-	 */
-	if (stmt->step)
-	{
-		value = exec_eval_expr(estate, stmt->step,
+		/*
+		 * Get the value of the lower bound
+		 */
+		value = exec_eval_expr(estate, in_item->lower,
 							   &isnull, &valtype, &valtypmod);
 		value = exec_cast_value(estate, value, &isnull,
 								valtype, valtypmod,
@@ -2770,75 +2741,110 @@ exec_stmt_fori(PLiSQL_execstate *estate, PLiSQL_stmt_fori *stmt)
 		if (isnull)
 			ereport(ERROR,
 					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("BY value of FOR loop cannot be null")));
-		step_value = DatumGetInt32(value);
+					 errmsg("lower bound of FOR loop cannot be null")));
+		loop_value = DatumGetInt32(value);
 		exec_eval_cleanup(estate);
-		if (step_value <= 0)
+
+		/*
+		 * Get the value of the upper bound
+		 */
+		value = exec_eval_expr(estate, in_item->upper,
+							   &isnull, &valtype, &valtypmod);
+		value = exec_cast_value(estate, value, &isnull,
+								valtype, valtypmod,
+								var->datatype->typoid,
+								var->datatype->atttypmod);
+		if (isnull)
 			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("BY value of FOR loop must be greater than zero")));
-	}
-	else
-		step_value = 1;
+					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+					 errmsg("upper bound of FOR loop cannot be null")));
+		end_value = DatumGetInt32(value);
+		exec_eval_cleanup(estate);
 
-	/*
-	 * Now do the loop
-	 */
-	for (;;)
-	{
 		/*
-		 * Check against upper bound
+		 * Get the step value
 		 */
-		if (stmt->reverse)
+		if (in_item->step)
 		{
-			if (loop_value < end_value)
-				break;
+			value = exec_eval_expr(estate, in_item->step,
+								   &isnull, &valtype, &valtypmod);
+			value = exec_cast_value(estate, value, &isnull,
+									valtype, valtypmod,
+									var->datatype->typoid,
+									var->datatype->atttypmod);
+			if (isnull)
+				ereport(ERROR,
+						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+						 errmsg("BY value of FOR loop cannot be null")));
+			step_value = DatumGetInt32(value);
+			exec_eval_cleanup(estate);
+			if (step_value <= 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("BY value of FOR loop must be greater than zero")));
 		}
 		else
-		{
-			if (loop_value > end_value)
-				break;
-		}
-
-		found = true;			/* looped at least once */
+			step_value = 1;
 
 		/*
-		 * Assign current value to loop var
+		 * Now do the loop
 		 */
-		assign_simple_var(estate, var, Int32GetDatum(loop_value), false, false);
+		for (;;)
+		{
+			/*
+			 * Check against upper bound
+			 */
+			if (in_item->reverse)
+			{
+				if (loop_value < end_value)
+					break;
+			}
+			else
+			{
+				if (loop_value > end_value)
+					break;
+			}
+
+			found = true;			/* looped at least once */
+
+			/*
+			 * Assign current value to loop var
+			 */
+			assign_simple_var(estate, var, Int32GetDatum(loop_value), false, false);
+
+			/*
+			 * Execute the statements
+			 */
+			rc = exec_stmts(estate, stmt->body);
+
+			LOOP_RC_PROCESSING(stmt->label, break);
+
+			/*
+			 * Increase/decrease loop value, unless it would overflow, in which
+			 * case exit the loop.
+			 */
+			if (in_item->reverse)
+			{
+				if (loop_value < (PG_INT32_MIN + step_value))
+					break;
+				loop_value -= step_value;
+			}
+			else
+			{
+				if (loop_value > (PG_INT32_MAX - step_value))
+					break;
+				loop_value += step_value;
+			}
+		}
 
 		/*
-		 * Execute the statements
+		 * Set the FOUND variable to indicate the result of executing the loop
+		 * (namely, whether we looped one or more times). This must be set here so
+		 * that it does not interfere with the value of the FOUND variable inside
+		 * the loop processing itself.
 		 */
-		rc = exec_stmts(estate, stmt->body);
-
-		LOOP_RC_PROCESSING(stmt->label, break);
-
-		/*
-		 * Increase/decrease loop value, unless it would overflow, in which
-		 * case exit the loop.
-		 */
-		if (stmt->reverse)
-		{
-			if (loop_value < (PG_INT32_MIN + step_value))
-				break;
-			loop_value -= step_value;
-		}
-		else
-		{
-			if (loop_value > (PG_INT32_MAX - step_value))
-				break;
-			loop_value += step_value;
-		}
+		exec_set_found(estate, found);
 	}
-
-	/*
-	 * Set the FOUND variable to indicate the result of executing the loop
-	 * (namely, whether we looped one or more times). This must be set here so
-	 * that it does not interfere with the value of the FOUND variable inside
-	 * the loop processing itself.
-	 */
-	exec_set_found(estate, found);
 
 	return rc;
 }

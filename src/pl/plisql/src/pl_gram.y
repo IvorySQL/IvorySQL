@@ -78,6 +78,9 @@ static	PLiSQL_expr	*read_sql_expression(int until,
 static	PLiSQL_expr	*read_sql_expression2(int until, int until2,
 											  const char *expected,
 											  int *endtoken);
+static	PLiSQL_expr	*read_sql_expression3(int until, int until2, int until3,
+											  const char *expected,
+											  int *endtoken);
 static	PLiSQL_expr	*read_sql_stmt(void);
 static	PLiSQL_type	*read_datatype(int tok);
 static	PLiSQL_stmt	*make_execsql_stmt(int firsttoken, int location);
@@ -1712,6 +1715,7 @@ for_control		: for_variable K_IN
 							PLiSQL_expr	*expr1;
 							int				expr1loc;
 							bool			reverse = false;
+							bool			firstflag = true;
 
 							/*
 							 * We have to distinguish between two
@@ -1751,31 +1755,99 @@ for_control		: for_variable K_IN
 
 							if (tok == DOT_DOT)
 							{
-								/* Saw "..", so it must be an integer loop */
-								PLiSQL_expr		*expr2;
-								PLiSQL_expr		*expr_by;
 								PLiSQL_var			*fvar;
 								PLiSQL_stmt_fori	*new;
 
-								/*
-								 * Relabel first expression as an expression;
-								 * then we can check its syntax.
-								 */
-								expr1->parseMode = RAW_PARSE_PLPGSQL_EXPR;
-								check_sql_expr(expr1->query, expr1->parseMode,
-											   expr1loc);
+								new = palloc0(sizeof(PLiSQL_stmt_fori));
+								new->cmd_type = PLISQL_STMT_FORI;
 
-								/* Read and check the second one */
-								expr2 = read_sql_expression2(K_LOOP, K_BY,
-															 "LOOP",
-															 &tok);
+								for (;;)
+								{
+									bool		reverseflag = false;
 
-								/* Get the BY clause if any */
-								if (tok == K_BY)
-									expr_by = read_sql_expression(K_LOOP,
-																  "LOOP");
-								else
-									expr_by = NULL;
+									if(!firstflag)
+									{
+										if (tok_is_keyword(tok, &yylval,
+														K_REVERSE, "reverse"))
+											reverseflag = true;
+										else
+											plisql_push_back_token(tok);
+
+										/*
+										* We read the token again until we see ".." or LOOP,
+										* and likewise tell it not to check syntax.
+										*/
+										expr1 = read_sql_construct(DOT_DOT,
+																',',
+																K_LOOP,
+																", or loop",
+																RAW_PARSE_DEFAULT,
+																true,
+																false,
+																true,
+																&expr1loc,
+																&tok);
+									}
+
+									if (tok == DOT_DOT)
+									{
+										/* Saw "..", so it must be an integer loop */
+										PLiSQL_expr *expr2;
+										PLiSQL_expr *expr_by;
+										PLiSQL_fori_in_item *in_item;
+
+										/*
+										* Relabel first expression as an expression;
+										* then we can check its syntax.
+										*/
+										expr1->parseMode = RAW_PARSE_PLPGSQL_EXPR;
+										check_sql_expr(expr1->query, expr1->parseMode,
+													expr1loc);
+
+										/* Read and check the second one */
+										expr2 = read_sql_expression3(K_BY, ',', K_LOOP,
+																	"by , or loop",
+																	&tok);
+
+										/* Get the BY clause if any */
+										if (tok == K_BY)
+											expr_by = read_sql_expression2(',', K_LOOP,
+																		", or K_LOOP", &tok);
+										else
+											expr_by = NULL;
+
+										in_item = palloc0(sizeof(PLiSQL_fori_in_item));
+										in_item->reverse = firstflag ? reverse : reverseflag;
+										in_item->lower = expr1;
+										in_item->upper = expr2;
+										in_item->step = expr_by;
+										firstflag = false;
+
+										new->inlist = lappend(new->inlist, in_item);
+
+										/* check for in condition list */
+										if (tok == ',')
+										{
+											tok = yylex();
+											continue;
+										}
+										else if(tok == K_LOOP)
+										{
+											break;
+										}
+										else
+										{
+											yyerror("syntax error");
+										}
+									}
+									else
+									{
+										ereport(ERROR,
+											(errcode(ERRCODE_SYNTAX_ERROR),
+											 errmsg("only integer ranges are allowed in condition_iterator"),
+											 parser_errposition(expr1loc)));
+									}
+								}
 
 								/* Should have had a single variable name */
 								if ($1.scalar && $1.row)
@@ -1794,14 +1866,8 @@ for_control		: for_variable K_IN
 																				  NULL),
 														   true);
 
-								new = palloc0(sizeof(PLiSQL_stmt_fori));
-								new->cmd_type = PLISQL_STMT_FORI;
 								new->stmtid	  = ++plisql_curr_compile->nstatements;
 								new->var	  = fvar;
-								new->reverse  = reverse;
-								new->lower	  = expr1;
-								new->upper	  = expr2;
-								new->step	  = expr_by;
 
 								$$ = (PLiSQL_stmt *) new;
 							}
@@ -3001,6 +3067,16 @@ read_sql_expression2(int until, int until2, const char *expected,
 					 int *endtoken)
 {
 	return read_sql_construct(until, until2, 0, expected,
+							  RAW_PARSE_PLPGSQL_EXPR,
+							  true, true, true, NULL, endtoken);
+}
+
+/* Convenience routine to read an expression with three possible terminators */
+static PLiSQL_expr *
+read_sql_expression3(int until, int until2, int until3, const char *expected,
+					 int *endtoken)
+{
+	return read_sql_construct(until, until2, until3, expected,
 							  RAW_PARSE_PLPGSQL_EXPR,
 							  true, true, true, NULL, endtoken);
 }

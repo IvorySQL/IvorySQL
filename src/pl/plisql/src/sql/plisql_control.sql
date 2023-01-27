@@ -58,6 +58,92 @@ begin
   end loop;
 end$$;
 
+-- Test in condition list
+
+do $$
+declare
+	i int;
+begin
+	for i in 1..3 , 51..55 loop
+		raise notice '%', i;
+	end loop;
+
+  for i in 1..3 , reverse 55..51 loop
+		raise info '%', i;
+	end loop;
+
+	for i in reverse 1..3 loop
+		raise notice '%', i;
+	end loop;
+
+	for i in 1..3 loop
+		raise notice '%', i;
+	end loop;
+
+	for i in reverse 3..1 loop
+		raise notice '%', i;
+	end loop;
+
+	for i in 1..10 by 3 loop
+		raise notice '1..10 by 3: i = %', i;
+	end loop;
+end; $$ language plisql;
+
+do $$
+declare
+   i int := 10;
+begin
+   for i in reverse i+10..i+1 loop
+      raise info '%', i;
+   end loop;
+end; $$ language plisql;
+
+do $$
+declare
+   j int := 10;
+begin
+   for i in 1..3, reverse j+10..j+1 loop
+      raise info '%', i;
+   end loop;
+end; $$ language plisql;
+
+do $$
+declare
+   j int := 10;
+begin
+   for i in reverse j+10..j+1 loop
+      raise info '%', i;
+   end loop;
+end; $$ language plisql;
+
+create type range_expr as (r int4range, s int);
+
+do $$
+declare re range_expr;
+begin
+  foreach re in array ARRAY[('[10, 20]', 1), ('[100, 200]', 10)]
+  loop
+    for i in lower(re.r) .. upper(re.r) by re.s
+    loop
+      raise notice '%', i;
+    end loop;
+  end loop;
+end; $$ language plisql;
+
+drop type range_expr;
+
+do $$
+begin
+  for i in 10..20
+  loop
+    raise notice 'Scenario 1: %', i ; -- Scenario 1
+  end loop;
+
+  for i in 100 .. 200 by 10
+  loop
+    raise notice 'Scenario 2: %', i; -- Scenario 2
+  end loop;
+end; $$ language plisql;
 
 -- CONTINUE statement
 

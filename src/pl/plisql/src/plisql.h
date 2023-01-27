@@ -675,6 +675,14 @@ typedef struct PLiSQL_stmt_while
 /*
  * FOR statement with integer loopvar
  */
+typedef struct PLiSQL_fori_in_item
+{
+	PLiSQL_expr *lower;
+	PLiSQL_expr *upper;
+	PLiSQL_expr *step;			/* NULL means default (ie, BY 1) */
+	int			reverse;
+}PLiSQL_fori_in_item;
+
 typedef struct PLiSQL_stmt_fori
 {
 	PLiSQL_stmt_type cmd_type;
@@ -682,10 +690,7 @@ typedef struct PLiSQL_stmt_fori
 	unsigned int stmtid;
 	char	   *label;
 	PLiSQL_var *var;
-	PLiSQL_expr *lower;
-	PLiSQL_expr *upper;
-	PLiSQL_expr *step;			/* NULL means default (ie, BY 1) */
-	int			reverse;
+	List	   *inlist;			/* List of in conditions: item see PLiSQL_fori_in_item*/
 	List	   *body;			/* List of statements */
 } PLiSQL_stmt_fori;
 
