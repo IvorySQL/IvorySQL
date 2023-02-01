@@ -770,3 +770,256 @@ SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FF
 drop table inaf;
 drop table xmltest;
 drop table xmlnstest;
+--
+-- Fix BUG#Z202, BUG#Z203, BUG#Z204, BUG#Z205
+--
+create table warehouse_1(
+	warehouse_id	number(3) not null,
+	warehouse_spec	xmltype,
+	warehouse_name	varchar2(35)
+);
+insert into warehouse_1 values(1,
+	'<?xml version="1.0" encoding="UTF-8"?>
+	  <Envelope>
+	   <Header />
+	   <Body>
+	    <AAA>
+	     <BBB>
+	      <Version>1.0</Version>
+	      <DDD>
+	       <EEE>11</EEE>
+	       <FFF>12</FFF>
+	       <DDDs>
+	        <DDD>
+	         <EEE>111</EEE>
+	         <FFF>112</FFF>
+	        </DDD>
+	       </DDDs>
+	      </DDD>
+	     </BBB>
+	    </AAA>
+	   </Body>
+	  </Envelope>', 'Southlake Texas');
+-- BUG#Z202
+select DELETEXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs/DDD/EEE')
+ from warehouse_1 where warehouse_id = 1;
+           deletexml            
+--------------------------------
+ <Envelope>                    +
+   <Header/>                   +
+   <Body>                      +
+     <AAA>                     +
+       <BBB>                   +
+         <Version>1.0</Version>+
+         <DDD>                 +
+           <EEE>11</EEE>       +
+           <FFF>12</FFF>       +
+           <DDDs>              +
+             <DDD>             +
+               <FFF>112</FFF>  +
+             </DDD>            +
+           </DDDs>             +
+         </DDD>                +
+       </BBB>                  +
+     </AAA>                    +
+   </Body>                     +
+ </Envelope>
+(1 row)
+
+select DELETEXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs/DDD')
+ from warehouse_1 where warehouse_id = 1;
+           deletexml            
+--------------------------------
+ <Envelope>                    +
+   <Header/>                   +
+   <Body>                      +
+     <AAA>                     +
+       <BBB>                   +
+         <Version>1.0</Version>+
+         <DDD>                 +
+           <EEE>11</EEE>       +
+           <FFF>12</FFF>       +
+           <DDDs/>             +
+         </DDD>                +
+       </BBB>                  +
+     </AAA>                    +
+   </Body>                     +
+ </Envelope>
+(1 row)
+
+-- BUG#Z203
+select EXTRACTVALUE(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs/DDD')
+  from warehouse_1 where warehouse_id = 1;
+ERROR:  EXTRACTVALUE returns value of only one node
+-- BUG#Z204
+select INSERTCHILDXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs', '"TTT"', xmltype ('<TTT>test</TTT>'))
+ from warehouse_1 where warehouse_id = 1;
+ERROR:  The document being inserted does not conform to specified child name
+-- BUG#Z205
+select INSERTXMLBEFORE(warehouse_spec, '//@name/EEE[1]', xmltype ('<TTT>test</TTT>'))
+ from warehouse_1 where warehouse_id = 1;
+        insertxmlbefore         
+--------------------------------
+ <Envelope>                    +
+   <Header/>                   +
+   <Body>                      +
+     <AAA>                     +
+       <BBB>                   +
+         <Version>1.0</Version>+
+         <DDD>                 +
+           <EEE>11</EEE>       +
+           <FFF>12</FFF>       +
+           <DDDs>              +
+             <DDD>             +
+               <EEE>111</EEE>  +
+               <FFF>112</FFF>  +
+             </DDD>            +
+           </DDDs>             +
+         </DDD>                +
+       </BBB>                  +
+     </AAA>                    +
+   </Body>                     +
+ </Envelope>
+(1 row)
+
+drop table warehouse_1;
+--
+-- Fix BUG#Z214, BUG#Z215
+--
+create table warehouse_2(
+	warehouse_id	number(3) not null,
+	warehouse_spec	xmltype,
+	warehouse_name	varchar2(35)
+);
+insert into warehouse_2 values(1,
+	'<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+	  <Envelope>
+	   <Header />
+	   <Body>
+	    <AAA>
+	     <BBB>
+	      <Version>1.0</Version>
+	      <DDD>
+	       <EEE>11</EEE>
+	       <FFF>12</FFF>
+	       <DDDs>
+	        <DDD>
+	         <EEE>111</EEE>
+	         <FFF>112</FFF>
+	        </DDD>
+	       </DDDs>
+	      </DDD>
+	     </BBB>
+	    </AAA>
+	   </Body>
+	  </Envelope>', 'Southlake Texas');
+insert into warehouse_2 values(4,
+	'<?xml version="1.0" encoding="UTF-8"?>
+	  <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">
+	   <soapenv:Header />
+	   <soapenv:Body>
+	    <web:AAA>
+	     <web:BBB>
+	      <typ:Version>1.0</typ:Version>
+	      <typ:DDD>
+	       <typ:EEE>41</typ:EEE>
+	       <typ:FFF>42</typ:FFF>
+	       <typ:DDDs>
+	        <typ:DDD>
+	         <typ:EEE>411</typ:EEE>
+	         <typ:FFF>412</typ:FFF>
+	        </typ:DDD>
+	       </typ:DDDs>
+	      </typ:DDD>
+	     </web:BBB>
+	    </web:AAA>
+	   </soapenv:Body>
+	  </soapenv:Envelope>', 'Seattle Washington');
+-- BUG#Z214
+select EXTRACTVALUE(warehouse_spec, '//@name') from warehouse_2 where warehouse_id = 1;
+ extractvalue 
+--------------
+ 
+(1 row)
+
+-- BUG#Z215
+-- ok
+select INSERTCHILDXML(warehouse_spec, 'soapenv:Envelope/soapenv:Body/web:AAA/web:BBB/typ:DDD/typ:DDDs/typ:DDD','RRR', xmltype ('<RRR><TTT>test</TTT><SSS>test</SSS></RRR>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') 
+ from warehouse_2 where warehouse_id = 4;
+                                                               insertchildxml                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Header/>                                                                                                                       +
+   <soapenv:Body>                                                                                                                          +
+     <web:AAA>                                                                                                                             +
+       <web:BBB>                                                                                                                           +
+         <typ:Version>1.0</typ:Version>                                                                                                    +
+         <typ:DDD>                                                                                                                         +
+           <typ:EEE>41</typ:EEE>                                                                                                           +
+           <typ:FFF>42</typ:FFF>                                                                                                           +
+           <typ:DDDs>                                                                                                                      +
+             <typ:DDD>                                                                                                                     +
+               <typ:EEE>411</typ:EEE>                                                                                                      +
+               <typ:FFF>412</typ:FFF>                                                                                                      +
+               <RRR>                                                                                                                       +
+                 <TTT>test</TTT>                                                                                                           +
+                 <SSS>test</SSS>                                                                                                           +
+               </RRR>                                                                                                                      +
+             </typ:DDD>                                                                                                                    +
+           </typ:DDDs>                                                                                                                     +
+         </typ:DDD>                                                                                                                        +
+       </web:BBB>                                                                                                                          +
+     </web:AAA>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
+(1 row)
+
+-- ok
+select INSERTCHILDXML(warehouse_spec, 'soapenv:Envelope/soapenv:Body/web:AAA/web:BBB/typ:DDD/typ:DDDs/typ:DDD','typ:TTT', xmltype ('<typ:TTT xmlns:typ="http://www.def.com">test</typ:TTT>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') 
+ from warehouse_2 where warehouse_id = 4;
+                                                               insertchildxml                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------
+ <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com">+
+   <soapenv:Header/>                                                                                                                       +
+   <soapenv:Body>                                                                                                                          +
+     <web:AAA>                                                                                                                             +
+       <web:BBB>                                                                                                                           +
+         <typ:Version>1.0</typ:Version>                                                                                                    +
+         <typ:DDD>                                                                                                                         +
+           <typ:EEE>41</typ:EEE>                                                                                                           +
+           <typ:FFF>42</typ:FFF>                                                                                                           +
+           <typ:DDDs>                                                                                                                      +
+             <typ:DDD>                                                                                                                     +
+               <typ:EEE>411</typ:EEE>                                                                                                      +
+               <typ:FFF>412</typ:FFF>                                                                                                      +
+               <typ:TTT xmlns:typ="http://www.def.com">test</typ:TTT>                                                                      +
+             </typ:DDD>                                                                                                                    +
+           </typ:DDDs>                                                                                                                     +
+         </typ:DDD>                                                                                                                        +
+       </web:BBB>                                                                                                                          +
+     </web:AAA>                                                                                                                            +
+   </soapenv:Body>                                                                                                                         +
+ </soapenv:Envelope>
+(1 row)
+
+-- error
+select INSERTCHILDXML(warehouse_spec, 'soapenv:Envelope/soapenv:Body/web:AAA/web:BBB/typ:DDD/typ:DDDs/typ:DDD','yyy:TTT', xmltype ('<typ:TTT xmlns:typ="http://www.def.com">test</typ:TTT>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') 
+ from warehouse_2 where warehouse_id = 4;
+ERROR:  The document being inserted does not conform to specified child name
+-- error
+select INSERTCHILDXML(warehouse_spec, 'soapenv:Envelope/soapenv:Body/web:AAA/web:BBB/typ:DDD/typ:DDDs/typ:DDD','yyy:TTT', xmltype ('<typ:TTT xmlns:typ="http://www.def.com">yyy:TTT</typ:TTT>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') 
+ from warehouse_2 where warehouse_id = 4;
+ERROR:  The document being inserted does not conform to specified child name
+-- error
+select INSERTCHILDXML(warehouse_spec, 'soapenv:Envelope/soapenv:Body/web:AAA/web:BBB/typ:DDD/typ:DDDs/typ:DDD','typ:TTT', xmltype ('<typ::TTT xmlns:typ="http://www.def.com">test</typ::TTT>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') 
+ from warehouse_2 where warehouse_id = 4;
+ERROR:  The document being inserted does not conform to specified child name
+-- error
+select INSERTCHILDXML(warehouse_spec, 'soapenv:Envelope/soapenv:Body/web:AAA/web:BBB/typ:DDD/typ:DDDs/typ:DDD',':', xmltype ('<typ:TTT xmlns:typ="http://www.def.com">typ:TTT</typ:TTT>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') 
+ from warehouse_2 where warehouse_id = 4;
+ERROR:  The document being inserted does not conform to specified child name
+-- error
+select INSERTCHILDXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs', 'TTT', xmltype ('<yy><TTT>test</TTT></yy>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') 
+ from warehouse_2 where warehouse_id = 1;
+ERROR:  The document being inserted does not conform to specified child name
+drop table warehouse_2;

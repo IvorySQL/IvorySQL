@@ -1719,7 +1719,6 @@ ivy_insertchildxml(PG_FUNCTION_ARGS)
 	text	   *xpath_expr_text = NULL;
 	text	   *n_name = NULL;
 	xmltype    *var = NULL;
-
 	xmltype    *ret = NULL;
 	char	   *cname = NULL;
 	char	   *cnodestr = NULL;
