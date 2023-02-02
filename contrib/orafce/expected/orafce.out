@@ -4282,3 +4282,29 @@ INFO:  salary is:1000.5
  1000.5
 (1 row)
 
+set datestyle='ISO,MDY';
+set compatible_mode = 'oracle';
+SELECT timestamp '4712-11-24 BC';
+      timestamp       
+----------------------
+ -4712-11-24 00:00:00
+(1 row)
+
+SELECT date '4712-11-24 BC';
+         date         
+----------------------
+ -4712-11-24 00:00:00
+(1 row)
+
+SELECT timestamp '2023-11-24';
+      timestamp      
+---------------------
+ 2023-11-24 00:00:00
+(1 row)
+
+SELECT date '2023-11-24';
+        date         
+---------------------
+ 2023-11-24 00:00:00
+(1 row)
+
