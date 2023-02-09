@@ -36,6 +36,23 @@ begin
   end loop;
 end$$;
 
+do $$
+begin
+  -- REVERSE
+  for i in reverse 0..10 by 3 loop
+    raise notice 'reverse 0..10 by 3: i = %', i;
+  end loop;
+  -- potential overflow
+  for i in 2147483620..2147483647 by 10 loop
+    raise notice '2147483620..2147483647 by 10: i = %', i;
+  end loop;
+  -- potential overflow, reverse direction
+  for i in reverse -2147483647..-2147483620 by 10 loop
+    raise notice 'reverse -2147483647..-2147483620 by 10: i = %', i;
+  end loop;
+end;
+$$ language plisql;
+
 -- BY can't be zero or negative
 do $$
 begin
@@ -144,6 +161,13 @@ begin
     raise notice 'Scenario 2: %', i; -- Scenario 2
   end loop;
 end; $$ language plisql;
+do $$
+begin
+  for i in reverse 1..3 by -1 loop
+    raise notice 'reverse 1..3 by -1: i = %', i;
+  end loop;
+end;
+$$ language plisql;
 
 -- CONTINUE statement
 

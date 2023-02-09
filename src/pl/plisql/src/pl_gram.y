@@ -1868,6 +1868,18 @@ for_control		: for_variable K_IN
 
 								new->stmtid	  = ++plisql_curr_compile->nstatements;
 								new->var	  = fvar;
+								new->reverse  = reverse;
+								if(reverse)
+								{
+									new->lower	  = expr2;
+									new->upper	  = expr1;
+								}
+								else
+								{
+									new->lower	  = expr1;
+									new->upper	  = expr2;
+								}
+								new->step	  = expr_by;
 
 								$$ = (PLiSQL_stmt *) new;
 							}
