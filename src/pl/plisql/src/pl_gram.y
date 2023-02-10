@@ -1820,6 +1820,16 @@ for_control		: for_variable K_IN
 										in_item->reverse = firstflag ? reverse : reverseflag;
 										in_item->lower = expr1;
 										in_item->upper = expr2;
+										if(in_item->reverse)
+										{
+											in_item->lower	  = expr2;
+											in_item->upper	  = expr1;
+										}
+										else
+										{
+											in_item->lower	  = expr1;
+											in_item->upper	  = expr2;
+										}
 										in_item->step = expr_by;
 										firstflag = false;
 
@@ -1868,18 +1878,6 @@ for_control		: for_variable K_IN
 
 								new->stmtid	  = ++plisql_curr_compile->nstatements;
 								new->var	  = fvar;
-								new->reverse  = reverse;
-								if(reverse)
-								{
-									new->lower	  = expr2;
-									new->upper	  = expr1;
-								}
-								else
-								{
-									new->lower	  = expr1;
-									new->upper	  = expr2;
-								}
-								new->step	  = expr_by;
 
 								$$ = (PLiSQL_stmt *) new;
 							}

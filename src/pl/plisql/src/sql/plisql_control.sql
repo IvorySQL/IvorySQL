@@ -85,7 +85,7 @@ begin
 		raise notice '%', i;
 	end loop;
 
-  for i in 1..3 , reverse 55..51 loop
+  for i in 1..3 , reverse 51..55 loop
 		raise info '%', i;
 	end loop;
 
@@ -94,10 +94,6 @@ begin
 	end loop;
 
 	for i in 1..3 loop
-		raise notice '%', i;
-	end loop;
-
-	for i in reverse 3..1 loop
 		raise notice '%', i;
 	end loop;
 
@@ -110,7 +106,7 @@ do $$
 declare
    i int := 10;
 begin
-   for i in reverse i+10..i+1 loop
+   for i in reverse i+1..i+10 loop
       raise info '%', i;
    end loop;
 end; $$ language plisql;
@@ -119,7 +115,7 @@ do $$
 declare
    j int := 10;
 begin
-   for i in 1..3, reverse j+10..j+1 loop
+   for i in 1..3, reverse j+1..j+10 loop
       raise info '%', i;
    end loop;
 end; $$ language plisql;
@@ -128,7 +124,7 @@ do $$
 declare
    j int := 10;
 begin
-   for i in reverse j+10..j+1 loop
+   for i in reverse j+1..j+10 loop
       raise info '%', i;
    end loop;
 end; $$ language plisql;
