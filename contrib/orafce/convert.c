@@ -1185,7 +1185,7 @@ orafce_to_yminterval(PG_FUNCTION_ARGS)
 	char	   *buffer1 = NULL;
 	int32		j = 0;
 	Interval   *result;
-	char		ch;
+	char		ch = '\0';
 	bool		flag = false;
 	bool		flag1 = false;
 	bool		flag2 = false;
