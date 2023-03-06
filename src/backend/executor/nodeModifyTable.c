@@ -1839,12 +1839,12 @@ ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 	/*
 	 * If we generate a new candidate tuple after EvalPlanQual testing, we
-	 * must loop back here and recheck any RLS policies and constraints. (We
-	 * don't need to redo triggers, however.  If there are any BEFORE triggers
-	 * then trigger.c will have done table_tuple_lock to lock the correct
-	 * tuple, so there's no need to do them again.)
+	 * must loop back here to try again.  (We don't need to redo triggers,
+	 * however.  If there are any BEFORE triggers then trigger.c will have
+	 * done table_tuple_lock to lock the correct tuple, so there's no need
+	 * to do them again.)
 	 */
-lreplace:;
+lreplace:
 
 	/* ensure slot is independent, consider e.g. EPQ */
 	ExecMaterializeSlot(slot);
@@ -2817,6 +2817,7 @@ lmerge_matched:;
 					result = TM_Ok;
 					break;
 				}
+
 				ExecUpdatePrepareSlot(resultRelInfo, newslot, context->estate);
 				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
 									   newslot, mtstate->canSetTag, &updateCxt);
@@ -4104,9 +4105,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 		/*
 		 * For INSERT and UPDATE, prepare to evaluate any generated columns.
-		 * We must do this now, even if we never insert or update any rows,
-		 * because we have to fill resultRelInfo->ri_extraUpdatedCols for
-		 * possible use by the trigger machinery.
+		 * (This is probably not necessary any longer, but we'll refrain from
+		 * changing it in back branches, in case extension code expects it.)
 		 */
 		if (operation == CMD_INSERT || operation == CMD_UPDATE)
 			ExecInitStoredGenerated(resultRelInfo, estate, operation);
