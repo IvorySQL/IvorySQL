@@ -2878,8 +2878,8 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
  *
  * Note: if you change the output format of this function, be careful not
  * to break psql's rules (in \ef and \sf) for identifying the start of the
- * function body.  To wit: the function body starts on a line that begins
- * with "AS ", and no preceding line will look like that.
+ * function body.  To wit: the function body starts on a line that begins with
+ * "AS ", "BEGIN ", or "RETURN ", and no preceding line will look like that.
  */
 Datum
 pg_get_functiondef(PG_FUNCTION_ARGS)
@@ -8296,11 +8296,12 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 			{
 				case T_FuncExpr:
 					{
-						/* special handling for casts */
+						/* special handling for casts and COERCE_SQL_SYNTAX */
 						CoercionForm type = ((FuncExpr *) parentNode)->funcformat;
 
 						if (type == COERCE_EXPLICIT_CAST ||
-							type == COERCE_IMPLICIT_CAST)
+							type == COERCE_IMPLICIT_CAST ||
+							type == COERCE_SQL_SYNTAX)
 							return false;
 						return true;	/* own parentheses */
 					}
@@ -8348,11 +8349,12 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 					return false;
 				case T_FuncExpr:
 					{
-						/* special handling for casts */
+						/* special handling for casts and COERCE_SQL_SYNTAX */
 						CoercionForm type = ((FuncExpr *) parentNode)->funcformat;
 
 						if (type == COERCE_EXPLICIT_CAST ||
-							type == COERCE_IMPLICIT_CAST)
+							type == COERCE_IMPLICIT_CAST ||
+							type == COERCE_SQL_SYNTAX)
 							return false;
 						return true;	/* own parentheses */
 					}
@@ -10127,9 +10129,11 @@ get_func_sql_syntax(FuncExpr *expr, deparse_context *context)
 		case F_TIMEZONE_TEXT_TIMETZ:
 			/* AT TIME ZONE ... note reversed argument order */
 			appendStringInfoChar(buf, '(');
-			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			get_rule_expr_paren((Node *) lsecond(expr->args), context, false,
+								(Node *) expr);
 			appendStringInfoString(buf, " AT TIME ZONE ");
-			get_rule_expr((Node *) linitial(expr->args), context, false);
+			get_rule_expr_paren((Node *) linitial(expr->args), context, false,
+								(Node *) expr);
 			appendStringInfoChar(buf, ')');
 			return true;
 
@@ -10181,9 +10185,10 @@ get_func_sql_syntax(FuncExpr *expr, deparse_context *context)
 
 		case F_IS_NORMALIZED:
 			/* IS xxx NORMALIZED */
-			appendStringInfoString(buf, "((");
-			get_rule_expr((Node *) linitial(expr->args), context, false);
-			appendStringInfoString(buf, ") IS");
+			appendStringInfoString(buf, "(");
+			get_rule_expr_paren((Node *) linitial(expr->args), context, false,
+								(Node *) expr);
+			appendStringInfoString(buf, " IS");
 			if (list_length(expr->args) == 2)
 			{
 				Const	   *con = (Const *) lsecond(expr->args);
@@ -10203,11 +10208,6 @@ get_func_sql_syntax(FuncExpr *expr, deparse_context *context)
 			get_rule_expr((Node *) linitial(expr->args), context, false);
 			appendStringInfoChar(buf, ')');
 			return true;
-
-			/*
-			 * XXX EXTRACT, a/k/a date_part(), is intentionally not covered
-			 * yet.  Add it after we change the return type to numeric.
-			 */
 
 		case F_NORMALIZE:
 			/* NORMALIZE() */
@@ -11426,7 +11426,7 @@ get_opclass_name(Oid opclass, Oid actual_datatype,
 
 /*
  * generate_opclass_name
- *		Compute the name to display for a opclass specified by OID
+ *		Compute the name to display for an opclass specified by OID
  *
  * The result includes all necessary quoting and schema-prefixing.
  */

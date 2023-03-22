@@ -88,7 +88,14 @@ ora_date_in(PG_FUNCTION_ARGS)
 
 	/* deal the year,restore the negative sign of the year */
 	if(flag)
+	{
 		tm->tm_year = - tm->tm_year;
+	}
+	/* IN oracle schema,support the BC sign before the year,deal year. */
+	else if (compatible_db == COMPATIBLE_ORA && tm->tm_year < 0)
+	{
+		tm->tm_year--;
+	}
 	if (dterr == 5)
 		PG_RETURN_TIMESTAMP(DT_NOBEGIN+ 1);
 	if (dterr != 0)

@@ -26,6 +26,14 @@ PostgreSQL::Test::Cluster - class representing PostgreSQL server instance
   # Modify or delete an existing setting
   $node->adjust_conf('postgresql.conf', 'max_wal_senders', '10');
 
+  # get pg_config settings
+  # all the settings in one string
+  $pgconfig = $node->config_data;
+  # all the settings as a map
+  %config_map = ($node->config_data);
+  # specified settings
+  ($incdir, $sharedir) = $node->config_data(qw(--includedir --sharedir));
+
   # run a query with psql, like:
   #   echo 'SELECT 1' | psql -qAXt postgres -v ON_ERROR_STOP=1
   $psql_stdout = $node->safe_psql('postgres', 'SELECT 1');
@@ -93,9 +101,9 @@ use warnings;
 
 use Carp;
 use Config;
-use Fcntl qw(:mode);
+use Fcntl qw(:mode :flock :seek :DEFAULT);
 use File::Basename;
-use File::Path qw(rmtree);
+use File::Path qw(rmtree mkpath);
 use File::Spec;
 use File::stat qw(stat);
 use File::Temp ();
@@ -109,11 +117,14 @@ use Time::HiRes qw(usleep);
 use Scalar::Util qw(blessed);
 
 our ($use_tcp, $test_localhost, $test_pghost, $last_host_assigned,
-	$last_port_assigned, @all_nodes, $died);
+	$last_port_assigned, @all_nodes, $died, $portdir);
 
 # the minimum version we believe to be compatible with this package without
 # subclassing.
 our $min_compat = 12;
+
+# list of file reservations made by get_free_port
+my @port_reservation_files;
 
 INIT
 {
@@ -140,6 +151,20 @@ INIT
 
 	# Tracking of last port value assigned to accelerate free port lookup.
 	$last_port_assigned = int(rand() * 16384) + 49152;
+
+	# Set the port lock directory
+
+	# If we're told to use a directory (e.g. from a buildfarm client)
+	# explicitly, use that
+	$portdir = $ENV{PG_TEST_PORT_DIR};
+	# Otherwise, try to use a directory at the top of the build tree
+	# or as a last resort use the tmp_check directory
+	my $build_dir = $ENV{top_builddir}
+	  || $PostgreSQL::Test::Utils::tmp_check ;
+	$portdir ||= "$build_dir/portlock";
+	$portdir =~ s!\\!/!g;
+	# Make sure the directory exists
+	mkpath($portdir) unless -d $portdir;
 }
 
 =pod
@@ -345,27 +370,46 @@ sub pg_version
 
 =pod
 
-=item $node->config_data($option)
+=item $node->config_data( option ...)
 
-Return a string holding configuration data from pg_config, with $option
-being the option switch used with the pg_config command.
+Return configuration data from pg_config, using options (if supplied).
+The options will be things like '--sharedir'.
+
+If no options are supplied, return a string in scalar context or a map in
+array context.
+
+If options are supplied, return the list of values.
 
 =cut
 
 sub config_data
 {
-	my ($self, $option) = @_;
+	my ($self, @options) = @_;
 	local %ENV = $self->_get_env();
 
 	my ($stdout, $stderr);
 	my $result =
-	  IPC::Run::run [ $self->installed_command('pg_config'), $option ],
+	  IPC::Run::run [ $self->installed_command('pg_config'), @options ],
 	  '>', \$stdout, '2>', \$stderr
 	  or die "could not execute pg_config";
+	# standardize line endings
+	$stdout =~ s/\r(?=\n)//g;
+	# no options, scalar context: just hand back the output
+	return $stdout unless (wantarray || @options);
 	chomp($stdout);
-	$stdout =~ s/\r$//;
-
-	return $stdout;
+	# exactly one option: hand back the output (minus LF)
+	return $stdout if (@options == 1);
+	my @lines = split(/\n/, $stdout);
+	# more than one option: hand back the list of values;
+	return @lines if (@options);
+	# no options, array context: return a map
+	my @map;
+	foreach my $line (@lines)
+	{
+		my ($k,$v) = split (/ = /,$line,2);
+		push(@map, $k, $v);
+	}
+	return @map;
 }
 
 =pod
@@ -1452,8 +1496,8 @@ start other, non-Postgres servers.
 Ports assigned to existing PostgreSQL::Test::Cluster objects are automatically
 excluded, even if those servers are not currently running.
 
-XXX A port available now may become unavailable by the time we start
-the desired service.
+The port number is reserved so that other concurrent test programs will not
+try to use the same port.
 
 Note: this is not an instance method. As it's not exported it should be
 called from outside the module as C<PostgreSQL::Test::Cluster::get_free_port()>.
@@ -1505,6 +1549,7 @@ sub get_free_port
 					last;
 				}
 			}
+			$found = _reserve_port($port) if $found;
 		}
 	}
 
@@ -1535,6 +1580,40 @@ sub can_bind
 	return $ret;
 }
 
+# Internal routine to reserve a port number
+# Returns 1 if successful, 0 if port is already reserved.
+sub _reserve_port
+{
+	my $port = shift;
+	# open in rw mode so we don't have to reopen it and lose the lock
+	my $filename = "$portdir/$port.rsv";
+	sysopen(my $portfile, $filename, O_RDWR|O_CREAT)
+	  || die "opening port file $filename: $!";
+	# take an exclusive lock to avoid concurrent access
+	flock($portfile, LOCK_EX) || die "locking port file $filename: $!";
+	# see if someone else has or had a reservation of this port
+	my $pid = <$portfile> || "0";
+	chomp $pid;
+	if ($pid +0 > 0)
+	{
+		if (kill 0, $pid)
+		{
+			# process exists and is owned by us, so we can't reserve this port
+			flock($portfile, LOCK_UN);
+			close($portfile);
+			return 0;
+		}
+	}
+	# All good, go ahead and reserve the port
+	seek($portfile, 0, SEEK_SET);
+	# print the pid with a fixed width so we don't leave any trailing junk
+	print $portfile sprintf("%10d\n",$$);
+	flock($portfile, LOCK_UN);
+	close($portfile);
+	push(@port_reservation_files, $filename);
+	return 1;
+}
+
 # Automatically shut down any still-running nodes (in the same order the nodes
 # were created in) when the test script exits.
 END
@@ -1554,6 +1633,8 @@ END
 		$node->clean_node
 		  if $exit_code == 0 && PostgreSQL::Test::Utils::all_tests_passing();
 	}
+
+	unlink @port_reservation_files;
 
 	$? = $exit_code;
 }
@@ -2597,8 +2678,23 @@ sub wait_for_catchup
 	my $query = qq[SELECT '$target_lsn' <= ${mode}_lsn AND state = 'streaming'
          FROM pg_catalog.pg_stat_replication
          WHERE application_name IN ('$standby_name', 'walreceiver')];
-	$self->poll_query_until('postgres', $query)
-	  or croak "timed out waiting for catchup";
+	if (!$self->poll_query_until('postgres', $query))
+	{
+		if (PostgreSQL::Test::Utils::has_wal_read_bug)
+		{
+			# Mimic having skipped the test file.  If >0 tests have run, the
+			# harness won't accept a skip; otherwise, it won't accept
+			# done_testing().  Force a nonzero count by running one test.
+			ok(1, 'dummy test before skip for filesystem bug');
+			carp "skip rest: timed out waiting for catchup & filesystem bug";
+			done_testing();
+			exit 0;
+		}
+		else
+		{
+			croak "timed out waiting for catchup";
+		}
+	}
 	print "done\n";
 	return;
 }

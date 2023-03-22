@@ -3952,9 +3952,15 @@ reparameterize_path(PlannerInfo *root, Path *path,
 		case T_Memoize:
 			{
 				MemoizePath *mpath = (MemoizePath *) path;
+				Path	   *spath = mpath->subpath;
 
+				spath = reparameterize_path(root, spath,
+											required_outer,
+											loop_count);
+				if (spath == NULL)
+					return NULL;
 				return (Path *) create_memoize_path(root, rel,
-													mpath->subpath,
+													spath,
 													mpath->param_exprs,
 													mpath->hash_operators,
 													mpath->singlerow,
@@ -4187,6 +4193,7 @@ do { \
 
 				FLAT_COPY_PATH(mpath, path, MemoizePath);
 				REPARAMETERIZE_CHILD_PATH(mpath->subpath);
+				ADJUST_CHILD_ATTRS(mpath->param_exprs);
 				new_path = (Path *) mpath;
 			}
 			break;

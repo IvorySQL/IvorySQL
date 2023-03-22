@@ -1007,3 +1007,11 @@ END;
 END;
 /
 select ora_type.tfunc('SMITH');
+
+set datestyle='ISO,MDY';
+set compatible_mode = 'oracle';
+SELECT timestamp '4712-11-24 BC';
+SELECT date '4712-11-24 BC';
+
+SELECT timestamp '2023-11-24';
+SELECT date '2023-11-24';
