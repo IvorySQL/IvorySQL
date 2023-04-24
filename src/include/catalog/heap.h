@@ -4,7 +4,7 @@
  *	  prototypes for functions in backend/catalog/heap.c
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/heap.h
@@ -82,8 +82,7 @@ extern Oid	heap_create_with_catalog(const char *relname,
 									 bool allow_system_table_mods,
 									 bool is_internal,
 									 Oid relrewrite,
-									 ObjectAddress *typaddress,
-									 char relaccess);
+									 ObjectAddress *typaddress);
 
 extern void heap_drop_with_catalog(Oid relid);
 

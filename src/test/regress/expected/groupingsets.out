@@ -570,16 +570,16 @@ CREATE VIEW gstest_view AS select a, b, grouping(a,b), sum(c), count(*), max(c)
   from gstest2 group by rollup ((a,b,c),(c,d));
 NOTICE:  view "gstest_view" will be a temporary view
 select pg_get_viewdef('gstest_view'::regclass, true);
-                                pg_get_viewdef                                 
--------------------------------------------------------------------------------
-  SELECT gstest2.a,                                                           +
-     gstest2.b,                                                               +
-     GROUPING(gstest2.a, gstest2.b) AS "grouping",                            +
-     sum(gstest2.c) AS sum,                                                   +
-     count(*) AS count,                                                       +
-     max(gstest2.c) AS max                                                    +
-    FROM gstest2                                                              +
-   GROUP BY ROLLUP((gstest2.a, gstest2.b, gstest2.c), (gstest2.c, gstest2.d));
+            pg_get_viewdef             
+---------------------------------------
+  SELECT a,                           +
+     b,                               +
+     GROUPING(a, b) AS "grouping",    +
+     sum(c) AS sum,                   +
+     count(*) AS count,               +
+     max(c) AS max                    +
+    FROM gstest2                      +
+   GROUP BY ROLLUP((a, b, c), (c, d));
 (1 row)
 
 -- Nested queries with 3 or more levels of nesting
@@ -2135,7 +2135,6 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
         QUERY PLAN         
 ---------------------------
  GroupAggregate
-   Group Key: $2
    InitPlan 1 (returns $1)
      ->  Result
    InitPlan 3 (returns $2)
@@ -2143,7 +2142,7 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
    ->  Result
    SubPlan 2
      ->  Result
-(9 rows)
+(8 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
  grouping 
@@ -2152,41 +2151,3 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 (1 row)
 
 -- end
---
---compatible oracle group by test
---
-set compatible_mode to oracle;
-create table students(student_id varchar(20),student_name varchar(40),student_pid int);
-insert into students values('20200201','李四',1), ('20200202','张三',1), ('20200203','李四',2), ('20200204','张三',2);
-select student_name from students group by student_pid;
-ERROR:  column "students.student_name" must appear in the GROUP BY clause or be used in an aggregate function
-LINE 1: select student_name from students group by student_pid;
-               ^
-select student_id,student_name from students group by student_id;
-ERROR:  column "students.student_name" must appear in the GROUP BY clause or be used in an aggregate function
-LINE 1: select student_id,student_name from students group by studen...
-                          ^
---add primary key
-ALTER TABLE students ADD CONSTRAINT stu_id PRIMARY KEY (student_id);
-select student_id,student_name from students group by student_id;
-ERROR:  column "students.student_name" must appear in the GROUP BY clause or be used in an aggregate function
-LINE 1: select student_id,student_name from students group by studen...
-                          ^
-select student_id,student_name from students group by student_id,student_name order by student_id;
- student_id | student_name 
-------------+--------------
- 20200201   | 李四
- 20200202   | 张三
- 20200203   | 李四
- 20200204   | 张三
-(4 rows)
-
-select student_name from students group by student_id;
-ERROR:  column "students.student_name" must appear in the GROUP BY clause or be used in an aggregate function
-LINE 1: select student_name from students group by student_id;
-               ^
-select student_name from students group by student_pid;
-ERROR:  column "students.student_name" must appear in the GROUP BY clause or be used in an aggregate function
-LINE 1: select student_name from students group by student_pid;
-               ^
-set compatible_mode to postgres;

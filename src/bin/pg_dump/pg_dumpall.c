@@ -2,7 +2,7 @@
  *
  * pg_dumpall.c
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * pg_dumpall forces all pg_dump output to be text, since it also outputs
@@ -72,8 +72,10 @@ static void buildShSecLabels(PGconn *conn,
 							 const char *catalog_name, Oid objectId,
 							 const char *objtype, const char *objname,
 							 PQExpBuffer buffer);
-static PGconn *connectDatabase(const char *dbname, const char *connstr, const char *pghost, const char *pgport,
-							   const char *pguser, trivalue prompt_password, bool fail_on_error);
+static PGconn *connectDatabase(const char *dbname,
+							   const char *connection_string, const char *pghost,
+							   const char *pgport, const char *pguser,
+							   trivalue prompt_password, bool fail_on_error);
 static char *constructConnStr(const char **keywords, const char **values);
 static PGresult *executeQuery(PGconn *conn, const char *query);
 static void executeCommand(PGconn *conn, const char *query);
@@ -953,8 +955,9 @@ dumpRoleMembership(PGconn *conn)
 				end,
 				total;
 	bool		dump_grantors;
-	bool		dump_inherit_option;
+	bool		dump_grant_options;
 	int			i_inherit_option;
+	int			i_set_option;
 
 	/*
 	 * Previous versions of PostgreSQL didn't used to track the grantor very
@@ -966,10 +969,9 @@ dumpRoleMembership(PGconn *conn)
 	dump_grantors = (PQserverVersion(conn) >= 160000);
 
 	/*
-	 * Previous versions of PostgreSQL also did not have a grant-level
-	 * INHERIT option.
+	 * Previous versions of PostgreSQL also did not have grant-level options.
 	 */
-	dump_inherit_option = (server_version >= 160000);
+	dump_grant_options = (server_version >= 160000);
 
 	/* Generate and execute query. */
 	printfPQExpBuffer(buf, "SELECT ur.rolname AS role, "
@@ -977,8 +979,8 @@ dumpRoleMembership(PGconn *conn)
 					  "ug.oid AS grantorid, "
 					  "ug.rolname AS grantor, "
 					  "a.admin_option");
-	if (dump_inherit_option)
-		appendPQExpBufferStr(buf, ", a.inherit_option");
+	if (dump_grant_options)
+		appendPQExpBufferStr(buf, ", a.inherit_option, a.set_option");
 	appendPQExpBuffer(buf, " FROM pg_auth_members a "
 					  "LEFT JOIN %s ur on ur.oid = a.roleid "
 					  "LEFT JOIN %s um on um.oid = a.member "
@@ -987,18 +989,19 @@ dumpRoleMembership(PGconn *conn)
 					  "ORDER BY 1,2,4", role_catalog, role_catalog, role_catalog);
 	res = executeQuery(conn, buf->data);
 	i_inherit_option = PQfnumber(res, "inherit_option");
+	i_set_option = PQfnumber(res, "set_option");
 
 	if (PQntuples(res) > 0)
 		fprintf(OPF, "--\n-- Role memberships\n--\n\n");
 
 	/*
-	 * We can't dump these GRANT commands in arbitary order, because a role
+	 * We can't dump these GRANT commands in arbitrary order, because a role
 	 * that is named as a grantor must already have ADMIN OPTION on the
-	 * role for which it is granting permissions, except for the boostrap
+	 * role for which it is granting permissions, except for the bootstrap
 	 * superuser, who can always be named as the grantor.
 	 *
 	 * We handle this by considering these grants role by role. For each role,
-	 * we initially consider the only allowable grantor to be the boostrap
+	 * we initially consider the only allowable grantor to be the bootstrap
 	 * superuser. Every time we grant ADMIN OPTION on the role to some user,
 	 * that user also becomes an allowable grantor. We make repeated passes
 	 * over the grants for the role, each time dumping those whose grantors
@@ -1031,7 +1034,7 @@ dumpRoleMembership(PGconn *conn)
 		ht = rolename_create(remaining, NULL);
 
 		/*
-		 * Make repeated passses over the grants for this role until all have
+		 * Make repeated passes over the grants for this role until all have
 		 * been dumped.
 		 */
 		while (remaining > 0)
@@ -1057,6 +1060,7 @@ dumpRoleMembership(PGconn *conn)
 				char	   *admin_option;
 				char	   *grantorid;
 				char	   *grantor;
+				char	   *set_option = "true";
 				bool		found;
 
 				/* If we already did this grant, don't do it again. */
@@ -1067,6 +1071,8 @@ dumpRoleMembership(PGconn *conn)
 				grantorid = PQgetvalue(res, i, 2);
 				grantor = PQgetvalue(res, i, 3);
 				admin_option = PQgetvalue(res, i, 4);
+				if (dump_grant_options)
+					set_option = PQgetvalue(res, i, i_set_option);
 
 				/*
 				 * If we're not dumping grantors or if the grantor is the
@@ -1096,7 +1102,7 @@ dumpRoleMembership(PGconn *conn)
 				fprintf(OPF, " TO %s", fmtId(member));
 				if (*admin_option == 't')
 					appendPQExpBufferStr(optbuf, "ADMIN OPTION");
-				if (dump_inherit_option)
+				if (dump_grant_options)
 				{
 					char   *inherit_option;
 
@@ -1106,6 +1112,12 @@ dumpRoleMembership(PGconn *conn)
 					appendPQExpBuffer(optbuf, "INHERIT %s",
 									  *inherit_option == 't' ?
 									  "TRUE" : "FALSE");
+				}
+				if (*set_option != 't')
+				{
+					if (optbuf->data[0] != '\0')
+						appendPQExpBufferStr(optbuf, ", ");
+					appendPQExpBuffer(optbuf, "SET FALSE");
 				}
 				if (optbuf->data[0] != '\0')
 					fprintf(OPF, " WITH %s", optbuf->data);
@@ -1349,7 +1361,6 @@ dropDBs(PGconn *conn)
 		 */
 		if (strcmp(dbname, "template1") != 0 &&
 			strcmp(dbname, "template0") != 0 &&
-			strcmp(dbname, "ivorysql") != 0 &&
 			strcmp(dbname, "postgres") != 0)
 		{
 			fprintf(OPF, "DROP DATABASE %s%s;\n",
@@ -1373,7 +1384,10 @@ dumpUserConfig(PGconn *conn, const char *username)
 	PQExpBuffer buf = createPQExpBuffer();
 	PGresult   *res;
 
-	printfPQExpBuffer(buf, "SELECT unnest(setconfig) FROM pg_db_role_setting "
+	printfPQExpBuffer(buf, "SELECT unnest(setconfig)");
+	if (server_version >= 160000)
+		appendPQExpBufferStr(buf, ", unnest(setuser)");
+	appendPQExpBuffer(buf, " FROM pg_db_role_setting "
 					  "WHERE setdatabase = 0 AND setrole = "
 					  "(SELECT oid FROM %s WHERE rolname = ",
 					  role_catalog);
@@ -1387,8 +1401,13 @@ dumpUserConfig(PGconn *conn, const char *username)
 
 	for (int i = 0; i < PQntuples(res); i++)
 	{
+		char	*userset = NULL;
+
+		if (server_version >= 160000)
+			userset = PQgetvalue(res, i, 1);
+
 		resetPQExpBuffer(buf);
-		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
+		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0), userset,
 							   "ROLE", username, NULL, NULL,
 							   buf);
 		fprintf(OPF, "%s", buf->data);
@@ -1511,9 +1530,7 @@ dumpDatabases(PGconn *conn)
 		 * otherwise we'll merely restore their contents.  Other databases
 		 * should simply be created.
 		 */
-		if (strcmp(dbname, "template1") == 0 ||
-			strcmp(dbname, "postgres") == 0 ||
-			strcmp(dbname, "ivorysql") == 0)
+		if (strcmp(dbname, "template1") == 0 || strcmp(dbname, "postgres") == 0)
 		{
 			if (output_clean)
 				create_opts = "--clean --create";
@@ -1906,7 +1923,7 @@ dumpTimestamp(const char *msg)
 }
 
 /*
- * Helper function for rolenamehash hash table.
+ * Helper function for rolename_hash hash table.
  */
 static uint32
 hash_string_pointer(char *s)

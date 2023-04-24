@@ -1,8 +1,9 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
+use locale;
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -324,5 +325,65 @@ $row_count =
 is($row_count, '10',
 	'client-side error commits transaction, no ON_ERROR_STOP and multiple -c switches'
 );
+
+# Test \copy from with DEFAULT option
+$node->safe_psql(
+	'postgres',
+	"CREATE TABLE copy_default (
+		id integer PRIMARY KEY,
+		text_value text NOT NULL DEFAULT 'test',
+		ts_value timestamp without time zone NOT NULL DEFAULT '2022-07-05'
+	)"
+);
+
+my $copy_default_sql_file = "$tempdir/copy_default.csv";
+append_to_file($copy_default_sql_file, "1,value,2022-07-04\n");
+append_to_file($copy_default_sql_file, "2,placeholder,2022-07-03\n");
+append_to_file($copy_default_sql_file, "3,placeholder,placeholder\n");
+
+psql_like(
+	$node,
+	"\\copy copy_default from $copy_default_sql_file with (format 'csv', default 'placeholder');
+	SELECT * FROM copy_default",
+	qr/1\|value\|2022-07-04 00:00:00
+2|test|2022-07-03 00:00:00
+3|test|2022-07-05 00:00:00/,
+	'\copy from with DEFAULT'
+);
+
+# Check \watch
+# Note: the interval value is parsed with locale-aware strtod()
+psql_like(
+	$node,
+	sprintf('SELECT 1 \watch c=3 i=%g', 0.01),
+	qr/1\n1\n1/,
+	'\watch with 3 iterations');
+
+# Check \watch errors
+psql_fails_like(
+	$node,
+	'SELECT 1 \watch -10',
+	qr/incorrect interval value "-10"/,
+	'\watch, negative interval');
+psql_fails_like(
+	$node,
+	'SELECT 1 \watch 10ab',
+	qr/incorrect interval value "10ab"/,
+	'\watch, incorrect interval');
+psql_fails_like(
+	$node,
+	'SELECT 1 \watch 10e400',
+	qr/incorrect interval value "10e400"/,
+	'\watch, out-of-range interval');
+psql_fails_like(
+	$node,
+	'SELECT 1 \watch 1 1',
+	qr/interval value is specified more than once/,
+	'\watch, interval value is specified more than once');
+psql_fails_like(
+	$node,
+	'SELECT 1 \watch c=1 c=1',
+	qr/iteration count is specified more than once/,
+	'\watch, iteration count is specified more than once');
 
 done_testing();

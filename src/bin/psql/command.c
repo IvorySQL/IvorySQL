@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2023, PostgreSQL Global Development Group
  *
  * src/bin/psql/command.c
  */
@@ -63,6 +63,7 @@ static backslashResult exec_command(const char *cmd,
 									PQExpBuffer query_buf,
 									PQExpBuffer previous_buf);
 static backslashResult exec_command_a(PsqlScanState scan_state, bool active_branch);
+static backslashResult exec_command_bind(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_C(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_connect(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_cd(PsqlScanState scan_state, bool active_branch,
@@ -139,7 +140,8 @@ static backslashResult exec_command_write(PsqlScanState scan_state, bool active_
 static backslashResult exec_command_watch(PsqlScanState scan_state, bool active_branch,
 										  PQExpBuffer query_buf, PQExpBuffer previous_buf);
 static backslashResult exec_command_x(PsqlScanState scan_state, bool active_branch);
-static backslashResult exec_command_z(PsqlScanState scan_state, bool active_branch);
+static backslashResult exec_command_z(PsqlScanState scan_state, bool active_branch,
+									  const char *cmd);
 static backslashResult exec_command_shell_escape(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_slash_command_help(PsqlScanState scan_state, bool active_branch);
 static char *read_connect_arg(PsqlScanState scan_state);
@@ -160,15 +162,14 @@ static bool do_connect(enum trivalue reuse_previous_specification,
 static bool do_edit(const char *filename_arg, PQExpBuffer query_buf,
 					int lineno, bool discard_on_quit, bool *edited);
 static bool do_shell(const char *command);
-static bool do_watch(PQExpBuffer query_buf, double sleep);
+static bool do_watch(PQExpBuffer query_buf, double sleep, int iter);
 static bool lookup_object_oid(EditableObjectType obj_type, const char *desc,
 							  Oid *obj_oid);
 static bool get_create_object_cmd(EditableObjectType obj_type, Oid oid,
 								  PQExpBuffer buf);
 static int	strip_lineno_from_objdesc(char *obj);
 static int	count_lines_in_buf(PQExpBuffer buf);
-static void print_with_linenumbers(FILE *output, char *lines,
-								   const char *header_keyword);
+static void print_with_linenumbers(FILE *output, char *lines, bool is_func);
 static void minimal_error_message(PGresult *res);
 
 static void printSSLInfo(void);
@@ -308,6 +309,8 @@ exec_command(const char *cmd,
 
 	if (strcmp(cmd, "a") == 0)
 		status = exec_command_a(scan_state, active_branch);
+	else if (strcmp(cmd, "bind") == 0)
+		status = exec_command_bind(scan_state, active_branch);
 	else if (strcmp(cmd, "C") == 0)
 		status = exec_command_C(scan_state, active_branch);
 	else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "connect") == 0)
@@ -411,8 +414,8 @@ exec_command(const char *cmd,
 									query_buf, previous_buf);
 	else if (strcmp(cmd, "x") == 0)
 		status = exec_command_x(scan_state, active_branch);
-	else if (strcmp(cmd, "z") == 0)
-		status = exec_command_z(scan_state, active_branch);
+	else if (strcmp(cmd, "z") == 0 || strcmp(cmd, "zS") == 0)
+		status = exec_command_z(scan_state, active_branch, cmd);
 	else if (strcmp(cmd, "!") == 0)
 		status = exec_command_shell_escape(scan_state, active_branch);
 	else if (strcmp(cmd, "?") == 0)
@@ -451,6 +454,40 @@ exec_command_a(PsqlScanState scan_state, bool active_branch)
 	}
 
 	return success ? PSQL_CMD_SKIP_LINE : PSQL_CMD_ERROR;
+}
+
+/*
+ * \bind -- set query parameters
+ */
+static backslashResult
+exec_command_bind(PsqlScanState scan_state, bool active_branch)
+{
+	backslashResult status = PSQL_CMD_SKIP_LINE;
+
+	if (active_branch)
+	{
+		char	   *opt;
+		int			nparams = 0;
+		int			nalloc = 0;
+
+		pset.bind_params = NULL;
+
+		while ((opt = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, false)))
+		{
+			nparams++;
+			if (nparams > nalloc)
+			{
+				nalloc = nalloc ? nalloc * 2 : 1;
+				pset.bind_params = pg_realloc_array(pset.bind_params, char *, nalloc);
+			}
+			pset.bind_params[nparams - 1] = opt;
+		}
+
+		pset.bind_nparams = nparams;
+		pset.bind_flag = true;
+	}
+
+	return status;
 }
 
 /*
@@ -839,17 +876,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 				success = listCollations(pattern, show_verbose, show_system);
 				break;
 			case 'p':
-				{
-					if (cmd[2] == 'k' || cmd[2] == 'K')
-					{
-						if (cmd[3] == 'g' || cmd[3] == 'G')
-							success = describePackages(pattern);
-						else
-							status = PSQL_CMD_UNKNOWN;
-					}
-					else
-						success = permissionsList(pattern);
-				}
+				success = permissionsList(pattern, show_system);
 				break;
 			case 'P':
 				{
@@ -861,15 +888,6 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 						case 'i':
 						case 'n':
 							success = listPartitionedTables(&cmd[2], pattern, show_verbose);
-							break;
-						case 'K':
-						case 'k':
-							{
-								if (cmd[3] == 'g' || cmd[3] == 'G')
-									success = describePackages(pattern);
-								else
-									status = PSQL_CMD_UNKNOWN;
-							}
 							break;
 						default:
 							status = PSQL_CMD_UNKNOWN;
@@ -1183,17 +1201,19 @@ exec_command_ef_ev(PsqlScanState scan_state, bool active_branch,
 				/*
 				 * lineno "1" should correspond to the first line of the
 				 * function body.  We expect that pg_get_functiondef() will
-				 * emit that on a line beginning with "AS ", and that there
-				 * can be no such line before the real start of the function
-				 * body.  Increment lineno by the number of lines before that
-				 * line, so that it becomes relative to the first line of the
-				 * function definition.
+				 * emit that on a line beginning with "AS ", "BEGIN ", or
+				 * "RETURN ", and that there can be no such line before the
+				 * real start of the function body.  Increment lineno by the
+				 * number of lines before that line, so that it becomes
+				 * relative to the first line of the function definition.
 				 */
 				const char *lines = query_buf->data;
 
 				while (*lines != '\0')
 				{
-					if (strncmp(lines, "AS ", 3) == 0)
+					if (strncmp(lines, "AS ", 3) == 0 ||
+						strncmp(lines, "BEGIN ", 6) == 0 ||
+						strncmp(lines, "RETURN ", 7) == 0)
 						break;
 					lineno++;
 					/* find start of next line */
@@ -2510,15 +2530,8 @@ exec_command_sf_sv(PsqlScanState scan_state, bool active_branch,
 
 			if (show_linenumbers)
 			{
-				/*
-				 * For functions, lineno "1" should correspond to the first
-				 * line of the function body.  We expect that
-				 * pg_get_functiondef() will emit that on a line beginning
-				 * with "AS ", and that there can be no such line before the
-				 * real start of the function body.
-				 */
-				print_with_linenumbers(output, buf->data,
-									   is_func ? "AS " : NULL);
+				/* add line numbers */
+				print_with_linenumbers(output, buf->data, is_func);
 			}
 			else
 			{
@@ -2713,14 +2726,25 @@ exec_command_write(PsqlScanState scan_state, bool active_branch,
 				fprintf(fd, "%s\n", previous_buf->data);
 
 			if (is_pipe)
+			{
 				result = pclose(fd);
+
+				if (result != 0)
+				{
+					pg_log_error("%s: %s", fname, wait_result_to_str(result));
+					status = PSQL_CMD_ERROR;
+				}
+				SetShellResultVariables(result);
+			}
 			else
+			{
 				result = fclose(fd);
 
-			if (result == EOF)
-			{
-				pg_log_error("%s: %m", fname);
-				status = PSQL_CMD_ERROR;
+				if (result == EOF)
+				{
+					pg_log_error("%s: %m", fname);
+					status = PSQL_CMD_ERROR;
+				}
 			}
 		}
 
@@ -2736,7 +2760,8 @@ exec_command_write(PsqlScanState scan_state, bool active_branch,
 }
 
 /*
- * \watch -- execute a query every N seconds
+ * \watch -- execute a query every N seconds.
+ * Optionally, stop after M iterations.
  */
 static backslashResult
 exec_command_watch(PsqlScanState scan_state, bool active_branch,
@@ -2746,23 +2771,109 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 
 	if (active_branch)
 	{
-		char	   *opt = psql_scan_slash_option(scan_state,
-												 OT_NORMAL, NULL, true);
+		bool		have_sleep = false;
+		bool		have_iter = false;
 		double		sleep = 2;
+		int			iter = 0;
 
-		/* Convert optional sleep-length argument */
-		if (opt)
+		/*
+		 * Parse arguments.  We allow either an unlabeled interval or
+		 * "name=value", where name is from the set ('i', 'interval', 'c',
+		 * 'count').
+		 */
+		while (success)
 		{
-			sleep = strtod(opt, NULL);
-			if (sleep <= 0)
-				sleep = 1;
+			char	   *opt = psql_scan_slash_option(scan_state,
+													 OT_NORMAL, NULL, true);
+			char	   *valptr;
+			char	   *opt_end;
+
+			if (!opt)
+				break;			/* no more arguments */
+
+			valptr = strchr(opt, '=');
+			if (valptr)
+			{
+				/* Labeled argument */
+				valptr++;
+				if (strncmp("i=", opt, strlen("i=")) == 0 ||
+					strncmp("interval=", opt, strlen("interval=")) == 0)
+				{
+					if (have_sleep)
+					{
+						pg_log_error("\\watch: interval value is specified more than once");
+						success = false;
+					}
+					else
+					{
+						have_sleep = true;
+						errno = 0;
+						sleep = strtod(valptr, &opt_end);
+						if (sleep < 0 || *opt_end || errno == ERANGE)
+						{
+							pg_log_error("\\watch: incorrect interval value \"%s\"", valptr);
+							success = false;
+						}
+					}
+				}
+				else if (strncmp("c=", opt, strlen("c=")) == 0 ||
+						 strncmp("count=", opt, strlen("count=")) == 0)
+				{
+					if (have_iter)
+					{
+						pg_log_error("\\watch: iteration count is specified more than once");
+						success = false;
+					}
+					else
+					{
+						have_iter = true;
+						errno = 0;
+						iter = strtoint(valptr, &opt_end, 10);
+						if (iter <= 0 || *opt_end || errno == ERANGE)
+						{
+							pg_log_error("\\watch: incorrect iteration count \"%s\"", valptr);
+							success = false;
+						}
+					}
+				}
+				else
+				{
+					pg_log_error("\\watch: unrecognized parameter \"%s\"", opt);
+					success = false;
+				}
+			}
+			else
+			{
+				/* Unlabeled argument: take it as interval */
+				if (have_sleep)
+				{
+					pg_log_error("\\watch: interval value is specified more than once");
+					success = false;
+				}
+				else
+				{
+					have_sleep = true;
+					errno = 0;
+					sleep = strtod(opt, &opt_end);
+					if (sleep < 0 || *opt_end || errno == ERANGE)
+					{
+						pg_log_error("\\watch: incorrect interval value \"%s\"", opt);
+						success = false;
+					}
+				}
+			}
+
 			free(opt);
 		}
 
-		/* If query_buf is empty, recall and execute previous query */
-		(void) copy_previous_query(query_buf, previous_buf);
+		/* If we parsed arguments successfully, do the command */
+		if (success)
+		{
+			/* If query_buf is empty, recall and execute previous query */
+			(void) copy_previous_query(query_buf, previous_buf);
 
-		success = do_watch(query_buf, sleep);
+			success = do_watch(query_buf, sleep, iter);
+		}
 
 		/* Reset the query buffer as though for \r */
 		resetPQExpBuffer(query_buf);
@@ -2800,16 +2911,22 @@ exec_command_x(PsqlScanState scan_state, bool active_branch)
  * \z -- list table privileges (equivalent to \dp)
  */
 static backslashResult
-exec_command_z(PsqlScanState scan_state, bool active_branch)
+exec_command_z(PsqlScanState scan_state, bool active_branch, const char *cmd)
 {
 	bool		success = true;
 
 	if (active_branch)
 	{
-		char	   *pattern = psql_scan_slash_option(scan_state,
-													 OT_NORMAL, NULL, true);
+		char	   *pattern;
+		bool		show_system;
 
-		success = permissionsList(pattern);
+		pattern = psql_scan_slash_option(scan_state,
+										 OT_NORMAL, NULL, true);
+
+		show_system = strchr(cmd, 'S') ? true : false;
+
+		success = permissionsList(pattern, show_system);
+
 		free(pattern);
 	}
 	else
@@ -3571,27 +3688,27 @@ do_connect(enum trivalue reuse_previous_specification,
 			param_is_newly_set(PQhost(o_conn), PQhost(pset.db)) ||
 			param_is_newly_set(PQport(o_conn), PQport(pset.db)))
 		{
-			char	   *host = PQhost(pset.db);
+			char	   *connhost = PQhost(pset.db);
 			char	   *hostaddr = PQhostaddr(pset.db);
 
-			if (is_unixsock_path(host))
+			if (is_unixsock_path(connhost))
 			{
-				/* hostaddr overrides host */
+				/* hostaddr overrides connhost */
 				if (hostaddr && *hostaddr)
 					printf(_("You are now connected to database \"%s\" as user \"%s\" on address \"%s\" at port \"%s\".\n"),
 						   PQdb(pset.db), PQuser(pset.db), hostaddr, PQport(pset.db));
 				else
 					printf(_("You are now connected to database \"%s\" as user \"%s\" via socket in \"%s\" at port \"%s\".\n"),
-						   PQdb(pset.db), PQuser(pset.db), host, PQport(pset.db));
+						   PQdb(pset.db), PQuser(pset.db), connhost, PQport(pset.db));
 			}
 			else
 			{
-				if (hostaddr && *hostaddr && strcmp(host, hostaddr) != 0)
+				if (hostaddr && *hostaddr && strcmp(connhost, hostaddr) != 0)
 					printf(_("You are now connected to database \"%s\" as user \"%s\" on host \"%s\" (address \"%s\") at port \"%s\".\n"),
-						   PQdb(pset.db), PQuser(pset.db), host, hostaddr, PQport(pset.db));
+						   PQdb(pset.db), PQuser(pset.db), connhost, hostaddr, PQport(pset.db));
 				else
 					printf(_("You are now connected to database \"%s\" as user \"%s\" on host \"%s\" at port \"%s\".\n"),
-						   PQdb(pset.db), PQuser(pset.db), host, PQport(pset.db));
+						   PQdb(pset.db), PQuser(pset.db), connhost, PQport(pset.db));
 			}
 		}
 		else
@@ -5003,6 +5120,8 @@ do_shell(const char *command)
 	else
 		result = system(command);
 
+	SetShellResultVariables(result);
+
 	if (result == 127 || result == -1)
 	{
 		pg_log_error("\\!: failed");
@@ -5018,7 +5137,7 @@ do_shell(const char *command)
  * onto a bunch of exec_command's variables to silence stupider compilers.
  */
 static bool
-do_watch(PQExpBuffer query_buf, double sleep)
+do_watch(PQExpBuffer query_buf, double sleep, int iter)
 {
 	long		sleep_ms = (long) (sleep * 1000);
 	printQueryOpt myopt = pset.popt;
@@ -5151,8 +5270,15 @@ do_watch(PQExpBuffer query_buf, double sleep)
 		if (res <= 0)
 			break;
 
+		/* If we have iteration count, check that it's not exceeded yet */
+		if (iter && (--iter <= 0))
+			break;
+
 		if (pagerpipe && ferror(pagerpipe))
 			break;
+
+		if (sleep == 0)
+			continue;
 
 #ifdef WIN32
 
@@ -5583,24 +5709,28 @@ count_lines_in_buf(PQExpBuffer buf)
 /*
  * Write text at *lines to output with line numbers.
  *
- * If header_keyword isn't NULL, then line 1 should be the first line beginning
- * with header_keyword; lines before that are unnumbered.
+ * For functions, lineno "1" should correspond to the first line of the
+ * function body; lines before that are unnumbered.  We expect that
+ * pg_get_functiondef() will emit that on a line beginning with "AS ",
+ * "BEGIN ", or "RETURN ", and that there can be no such line before
+ * the real start of the function body.
  *
  * Caution: this scribbles on *lines.
  */
 static void
-print_with_linenumbers(FILE *output, char *lines,
-					   const char *header_keyword)
+print_with_linenumbers(FILE *output, char *lines, bool is_func)
 {
-	bool		in_header = (header_keyword != NULL);
-	size_t		header_sz = in_header ? strlen(header_keyword) : 0;
+	bool		in_header = is_func;
 	int			lineno = 0;
 
 	while (*lines != '\0')
 	{
 		char	   *eol;
 
-		if (in_header && strncmp(lines, header_keyword, header_sz) == 0)
+		if (in_header &&
+			(strncmp(lines, "AS ", 3) == 0 ||
+			 strncmp(lines, "BEGIN ", 6) == 0 ||
+			 strncmp(lines, "RETURN ", 7) == 0))
 			in_header = false;
 
 		/* increment lineno only for body's lines */

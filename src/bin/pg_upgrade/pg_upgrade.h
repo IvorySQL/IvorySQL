@@ -1,7 +1,7 @@
 /*
  *	pg_upgrade.h
  *
- *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.h
  */
 
@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#include "common/relpath.h"
 #include "libpq-fe.h"
 
 /* For now, pg_upgrade does not use common/logging.c; use our own pg_fatal */
@@ -174,13 +175,20 @@ typedef struct
 	char	   *db_name;		/* database name */
 	char		db_tablespace[MAXPGPATH];	/* database default tablespace
 											 * path */
+	RelInfoArr	rel_arr;		/* array of all user relinfos */
+} DbInfo;
+
+/*
+ * Locale information about a database.
+ */
+typedef struct
+{
 	char	   *db_collate;
 	char	   *db_ctype;
 	char		db_collprovider;
 	char	   *db_iculocale;
 	int			db_encoding;
-	RelInfoArr	rel_arr;		/* array of all user relinfos */
-} DbInfo;
+} DbLocaleInfo;
 
 typedef struct
 {
@@ -251,6 +259,7 @@ typedef enum
 typedef struct
 {
 	ControlData controldata;	/* pg_control information */
+	DbLocaleInfo *template0;	/* template0 locale info */
 	DbInfoArr	dbarr;			/* dbinfos array */
 	char	   *pgdata;			/* pathname for cluster's $PGDATA directory */
 	char	   *pgconfig;		/* pathname for cluster's config file
@@ -358,7 +367,7 @@ void		generate_old_dump(void);
 
 #define EXEC_PSQL_ARGS "--echo-queries --set ON_ERROR_STOP=on --no-psqlrc --dbname=template1"
 
-bool		exec_prog(const char *log_file, const char *opt_log_file,
+bool		exec_prog(const char *log_filename, const char *opt_log_file,
 					  bool report_error, bool exit_on_error, const char *fmt,...) pg_attribute_printf(5, 6);
 void		verify_directories(void);
 bool		pid_lock_file_exists(const char *datadir);

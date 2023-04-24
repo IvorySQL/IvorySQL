@@ -4,7 +4,7 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -47,7 +47,6 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
-#include "catalog/pg_package.h"
 #include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
@@ -76,7 +75,6 @@
 #include "commands/sequence.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
-#include "commands/variable.h"
 #include "funcapi.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
@@ -190,10 +188,14 @@ static const Oid object_classes[] = {
 	PublicationRelationId,		/* OCLASS_PUBLICATION */
 	PublicationRelRelationId,	/* OCLASS_PUBLICATION_REL */
 	SubscriptionRelationId,		/* OCLASS_SUBSCRIPTION */
-	PackageRelationId,			/* OCLASS_PACKAGE */
-	VariableRelationId,			/* OCLASS_VARIABLE */
 	TransformRelationId			/* OCLASS_TRANSFORM */
 };
+
+/*
+ * Make sure object_classes is kept up to date with the ObjectClass enum.
+ */
+StaticAssertDecl(lengthof(object_classes) == LAST_OCLASS + 1,
+				 "object_classes[] must cover all ObjectClasses");
 
 
 static void findDependentObjects(const ObjectAddress *object,
@@ -965,7 +967,7 @@ findDependentObjects(const ObjectAddress *object,
 	 * first within ObjectAddressAndFlags.
 	 */
 	if (numDependentObjects > 1)
-		qsort((void *) dependentObjects, numDependentObjects,
+		qsort(dependentObjects, numDependentObjects,
 			  sizeof(ObjectAddressAndFlags),
 			  object_address_comparator);
 
@@ -1196,14 +1198,14 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 					 errmsg("cannot drop %s because other objects depend on it",
 							getObjectDescription(origObject, false)),
-					 errdetail("%s", clientdetail.data),
+					 errdetail_internal("%s", clientdetail.data),
 					 errdetail_log("%s", logdetail.data),
 					 errhint("Use DROP ... CASCADE to drop the dependent objects too.")));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 					 errmsg("cannot drop desired object(s) because other objects depend on them"),
-					 errdetail("%s", clientdetail.data),
+					 errdetail_internal("%s", clientdetail.data),
 					 errdetail_log("%s", logdetail.data),
 					 errhint("Use DROP ... CASCADE to drop the dependent objects too.")));
 	}
@@ -1214,7 +1216,7 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 							   "drop cascades to %d other objects",
 							   numReportedClient + numNotReportedClient,
 							   numReportedClient + numNotReportedClient),
-				 errdetail("%s", clientdetail.data),
+				 errdetail_internal("%s", clientdetail.data),
 				 errdetail_log("%s", logdetail.data)));
 	}
 	else if (numReportedClient == 1)
@@ -1510,17 +1512,6 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_TRANSFORM:
 		case OCLASS_ROLE_MEMBERSHIP:
 			DropObjectById(object);
-			break;
-
-		case OCLASS_PACKAGE:
-			if (object->objectSubId)
-				DropPackagebody(object->objectId);
-			else
-				DropPackageById(object->objectId);
-			break;
-
-		case OCLASS_VARIABLE:
-			RemoveVariable(object->objectId);
 			break;
 
 			/*
@@ -2451,7 +2442,7 @@ eliminate_duplicate_dependencies(ObjectAddresses *addrs)
 		return;					/* nothing to do */
 
 	/* Sort the refs so that duplicates are adjacent */
-	qsort((void *) addrs->refs, addrs->numrefs, sizeof(ObjectAddress),
+	qsort(addrs->refs, addrs->numrefs, sizeof(ObjectAddress),
 		  object_address_comparator);
 
 	/* Remove dups */
@@ -2564,12 +2555,6 @@ add_object_address(ObjectClass oclass, Oid objectId, int32 subId,
 				   ObjectAddresses *addrs)
 {
 	ObjectAddress *item;
-
-	/*
-	 * Make sure object_classes is kept up to date with the ObjectClass enum.
-	 */
-	StaticAssertStmt(lengthof(object_classes) == LAST_OCLASS + 1,
-					 "object_classes[] must cover all ObjectClasses");
 
 	/* enlarge array if needed */
 	if (addrs->numrefs >= addrs->maxrefs)
@@ -2824,7 +2809,7 @@ void
 sort_object_addresses(ObjectAddresses *addrs)
 {
 	if (addrs->numrefs > 1)
-		qsort((void *) addrs->refs, addrs->numrefs,
+		qsort(addrs->refs, addrs->numrefs,
 			  sizeof(ObjectAddress),
 			  object_address_comparator);
 }
@@ -2850,8 +2835,8 @@ free_object_addresses(ObjectAddresses *addrs)
 ObjectClass
 getObjectClass(const ObjectAddress *object)
 {
-	/* only pg_class or pg_package entries can have nonzero objectSubId */
-	if (object->classId != RelationRelationId && object->classId != PackageRelationId &&
+	/* only pg_class entries can have nonzero objectSubId */
+	if (object->classId != RelationRelationId &&
 		object->objectSubId != 0)
 		elog(ERROR, "invalid non-zero objectSubId for object class %u",
 			 object->classId);
@@ -2979,15 +2964,8 @@ getObjectClass(const ObjectAddress *object)
 		case SubscriptionRelationId:
 			return OCLASS_SUBSCRIPTION;
 
-		case PackageRelationId:
-			return OCLASS_PACKAGE;
-
 		case TransformRelationId:
 			return OCLASS_TRANSFORM;
-
-		case VariableRelationId:
-			return OCLASS_VARIABLE;
-
 	}
 
 	/* shouldn't get here */

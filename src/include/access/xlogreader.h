@@ -3,7 +3,7 @@
  * xlogreader.h
  *		Definitions for the generic XLog reading facility
  *
- * Portions Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/include/access/xlogreader.h
@@ -332,8 +332,6 @@ extern XLogReaderState *XLogReaderAllocate(int wal_segment_size,
 										   const char *waldir,
 										   XLogReaderRoutine *routine,
 										   void *private_data);
-extern XLogReaderRoutine *LocalXLogReaderRoutine(void);
-
 /* Free an XLogReader */
 extern void XLogReaderFree(XLogReaderState *state);
 
@@ -363,7 +361,7 @@ extern DecodedXLogRecord *XLogNextRecord(XLogReaderState *state,
 										 char **errormsg);
 
 /* Release the previously returned record, if necessary. */
-extern void XLogReleasePreviousRecord(XLogReaderState *state);
+extern XLogRecPtr XLogReleasePreviousRecord(XLogReaderState *state);
 
 /* Try to read ahead, if there is data and space. */
 extern DecodedXLogRecord *XLogReadAhead(XLogReaderState *state,
@@ -378,11 +376,11 @@ extern void XLogReaderResetError(XLogReaderState *state);
 
 /*
  * Error information from WALRead that both backend and frontend caller can
- * process.  Currently only errors from pread can be reported.
+ * process.  Currently only errors from pg_pread can be reported.
  */
 typedef struct WALReadError
 {
-	int			wre_errno;		/* errno set by the last pread() */
+	int			wre_errno;		/* errno set by the last pg_pread() */
 	int			wre_off;		/* Offset we tried to read from. */
 	int			wre_req;		/* Bytes requested to be read. */
 	int			wre_read;		/* Bytes read by the last read(). */
@@ -400,7 +398,7 @@ extern bool DecodeXLogRecord(XLogReaderState *state,
 							 DecodedXLogRecord *decoded,
 							 XLogRecord *record,
 							 XLogRecPtr lsn,
-							 char **errmsg);
+							 char **errormsg);
 
 /*
  * Macros that provide access to parts of the record most recently returned by
@@ -425,6 +423,8 @@ extern bool DecodeXLogRecord(XLogReaderState *state,
 	((decoder)->record->blocks[block_id].has_image)
 #define XLogRecBlockImageApply(decoder, block_id)		\
 	((decoder)->record->blocks[block_id].apply_image)
+#define XLogRecHasBlockData(decoder, block_id)		\
+	((decoder)->record->blocks[block_id].has_data)
 
 #ifndef FRONTEND
 extern FullTransactionId XLogRecGetFullXid(XLogReaderState *record);

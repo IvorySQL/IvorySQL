@@ -3,7 +3,7 @@
  * typecmds.c
  *	  Routines for SQL commands that manipulate types (and domains).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -52,7 +52,6 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_type.h"
-#include "catalog/pg_package.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
@@ -223,7 +222,7 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 #ifdef NOT_USED
 	/* XXX this is unnecessary given the superuser check above */
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(typeNamespace, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, typeNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(typeNamespace));
@@ -526,28 +525,28 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	 * findTypeInputFunction et al, where they could be shared by AlterType.
 	 */
 #ifdef NOT_USED
-	if (inputOid && !pg_proc_ownercheck(inputOid, GetUserId()))
+	if (inputOid && !object_ownercheck(ProcedureRelationId, inputOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(inputName));
-	if (outputOid && !pg_proc_ownercheck(outputOid, GetUserId()))
+	if (outputOid && !object_ownercheck(ProcedureRelationId, outputOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(outputName));
-	if (receiveOid && !pg_proc_ownercheck(receiveOid, GetUserId()))
+	if (receiveOid && !object_ownercheck(ProcedureRelationId, receiveOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(receiveName));
-	if (sendOid && !pg_proc_ownercheck(sendOid, GetUserId()))
+	if (sendOid && !object_ownercheck(ProcedureRelationId, sendOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(sendName));
-	if (typmodinOid && !pg_proc_ownercheck(typmodinOid, GetUserId()))
+	if (typmodinOid && !object_ownercheck(ProcedureRelationId, typmodinOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(typmodinName));
-	if (typmodoutOid && !pg_proc_ownercheck(typmodoutOid, GetUserId()))
+	if (typmodoutOid && !object_ownercheck(ProcedureRelationId, typmodoutOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(typmodoutName));
-	if (analyzeOid && !pg_proc_ownercheck(analyzeOid, GetUserId()))
+	if (analyzeOid && !object_ownercheck(ProcedureRelationId, analyzeOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(analyzeName));
-	if (subscriptOid && !pg_proc_ownercheck(subscriptOid, GetUserId()))
+	if (subscriptOid && !object_ownercheck(ProcedureRelationId, subscriptOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 					   NameListToString(subscriptName));
 #endif
@@ -598,8 +597,7 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array Dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   collation,	/* type's collation */
-				   NON_PACKAGE_MEMBER);
+				   collation);	/* type's collation */
 	Assert(typoid == address.objectId);
 
 	/*
@@ -641,8 +639,7 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   collation,		/* type's collation */
-			   NON_PACKAGE_MEMBER);
+			   collation);		/* type's collation */
 
 	pfree(array_type);
 
@@ -736,7 +733,7 @@ DefineDomain(CreateDomainStmt *stmt)
 														&domainName);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(domainNamespace, GetUserId(),
+	aclresult = object_aclcheck(NamespaceRelationId, domainNamespace, GetUserId(),
 									  ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
@@ -784,7 +781,7 @@ DefineDomain(CreateDomainStmt *stmt)
 				 errmsg("\"%s\" is not a valid base type for a domain",
 						TypeNameToString(stmt->typeName))));
 
-	aclresult = pg_type_aclcheck(basetypeoid, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(TypeRelationId, basetypeoid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, basetypeoid);
 
@@ -1051,8 +1048,7 @@ DefineDomain(CreateDomainStmt *stmt)
 				   basetypeMod, /* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
 				   typNotNull,	/* Type NOT NULL */
-				   domaincoll,	/* type's collation */
-				   NON_PACKAGE_MEMBER);
+				   domaincoll); /* type's collation */
 
 	/*
 	 * Create the array type that goes with it.
@@ -1093,8 +1089,7 @@ DefineDomain(CreateDomainStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   domaincoll,		/* type's collation */
-			   NON_PACKAGE_MEMBER);
+			   domaincoll);		/* type's collation */
 
 	pfree(domainArrayName);
 
@@ -1135,196 +1130,6 @@ DefineDomain(CreateDomainStmt *stmt)
 
 
 /*
- * DefineRefCursor
- *		Create a package's ref cursor type.
- */
-ObjectAddress
-DefineRefCursor(ParseState *pstate, CreateDomainStmt *stmt, bool isbody)
-{
-	char	   *refcurName;
-	Oid			refcurNamespace;
-	AclResult	aclresult;
-	int16		internalLength;
-	Oid			inputProcedure;
-	Oid			outputProcedure;
-	Oid			receiveProcedure;
-	Oid			sendProcedure;
-	Oid			analyzeProcedure;
-	bool		byValue;
-	char		delimiter;
-	char		alignment;
-	char		storage;
-	char		typtype;
-	Datum		datum;
-	bool		isnull;
-	char	   *defaultValue = NULL;
-	char	   *defaultValueBin = NULL;
-	bool		typNotNull = false;
-	int32		typNDims = list_length(stmt->typeName->arrayBounds);
-	HeapTuple	typeTup;
-	Oid			basetypeoid;
-	Oid			old_type_oid;
-	Form_pg_type baseType;
-	int32		basetypeMod = 0;
-	ObjectAddress address;
-	ObjectAddress myself,
-				referenced;
-
-	/* Convert list of names to a name */
-	refcurNamespace = QualifiedNameGetCreationNamespace(stmt->domainname,
-													&refcurName);
-	refcurNamespace = pstate->p_pkgoid;
-
-	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(refcurNamespace, GetUserId(),
-									  ACL_CREATE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, OBJECT_SCHEMA,
-					   get_namespace_name(refcurNamespace));
-
-	/*
-	 * Check for collision with an existing type name.  If there is one and
-	 * it's an autogenerated array, we can rename it out of the way.
-	 */
-	old_type_oid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-								   CStringGetDatum(refcurName),
-								   ObjectIdGetDatum(refcurNamespace));
-	if (OidIsValid(old_type_oid))
-	{
-		if (!moveArrayTypeName(old_type_oid, refcurName, refcurNamespace))
-			ereport(ERROR,
-					(errcode(ERRCODE_DUPLICATE_OBJECT),
-					 errmsg("type \"%s\" already exists", refcurName)));
-	}
-
-	/*
-	 * Look up the base type.
-	 */
-	typeTup = typenameType(NULL, stmt->typeName, NULL);
-	baseType = (Form_pg_type) GETSTRUCT(typeTup);
-	basetypeoid = baseType->oid;
-
-	/* Get the return type oid if exist? */
-	if (stmt->retName)
-		basetypeMod = LookupTypeNameOid(NULL, stmt->retName, true);
-
-	/*
-	 * Base type must be a plain base type, a composite type, another domain,
-	 * an enum or a range type.  Domains over pseudotypes would create a
-	 * security hole.  (It would be shorter to code this to just check for
-	 * pseudotypes; but it seems safer to call out the specific typtypes that
-	 * are supported, rather than assume that all future typtypes would be
-	 * automatically supported.)
-	 */
-	typtype = baseType->typtype;
-	if (typtype != TYPTYPE_BASE &&
-		typtype != TYPTYPE_COMPOSITE &&
-		typtype != TYPTYPE_DOMAIN &&
-		typtype != TYPTYPE_ENUM &&
-		typtype != TYPTYPE_RANGE)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("\"%s\" is not a valid base type for a domain",
-						TypeNameToString(stmt->typeName))));
-
-	aclresult = pg_type_aclcheck(basetypeoid, GetUserId(), ACL_USAGE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error_type(aclresult, basetypeoid);
-
-	/* passed by value */
-	byValue = baseType->typbyval;
-
-	/* Required Alignment */
-	alignment = baseType->typalign;
-
-	/* TOAST Strategy */
-	storage = baseType->typstorage;
-
-	/* Storage Length */
-	internalLength = baseType->typlen;
-
-	/* Array element Delimiter */
-	delimiter = baseType->typdelim;
-
-	/* I/O Functions */
-	inputProcedure = F_DOMAIN_IN;
-	outputProcedure = baseType->typoutput;
-	receiveProcedure = F_DOMAIN_RECV;
-	sendProcedure = baseType->typsend;
-
-	/* Analysis function */
-	analyzeProcedure = baseType->typanalyze;
-
-	/* Inherited default value */
-	datum = SysCacheGetAttr(TYPEOID, typeTup,
-							Anum_pg_type_typdefault, &isnull);
-	if (!isnull)
-		defaultValue = TextDatumGetCString(datum);
-
-	/* Inherited default binary value */
-	datum = SysCacheGetAttr(TYPEOID, typeTup,
-							Anum_pg_type_typdefaultbin, &isnull);
-	if (!isnull)
-		defaultValueBin = TextDatumGetCString(datum);
-
-	/*
-	 * Have TypeCreate do all the real work.
-	 */
-	address =
-		TypeCreate(InvalidOid,	/* no predetermined type OID */
-				   refcurName,	/* type name */
-				   refcurNamespace, /* namespace */
-				   InvalidOid,	/* relation oid (n/a here) */
-				   0,			/* relation kind (ditto) */
-				   GetUserId(), /* owner's ID */
-				   internalLength,	/* internal size */
-				   TYPTYPE_DOMAIN,	/* type-type (domain type) */
-				   TYPCATEGORY_COMPOSITE,	/* type-category */
-				   false,		/* domain types are never preferred */
-				   delimiter,	/* array element delimiter */
-				   inputProcedure,	/* input procedure */
-				   outputProcedure, /* output procedure */
-				   receiveProcedure,	/* receive procedure */
-				   sendProcedure,	/* send procedure */
-				   InvalidOid,	/* typmodin procedure - none */
-				   InvalidOid,	/* typmodout procedure - none */
-				   analyzeProcedure,	/* analyze procedure */
-				   InvalidOid,	/* subscript procedure - none */
-				   InvalidOid,	/* no array element type */
-				   false,		/* this isn't an array */
-				   InvalidOid,	/* array type we are about to create */
-				   basetypeoid, /* base type ID */
-				   defaultValue,	/* default type value (text) */
-				   defaultValueBin, /* default type value (binary) */
-				   byValue,		/* passed by value */
-				   alignment,	/* required alignment */
-				   storage,		/* TOAST strategy */
-				   basetypeMod, /* typeMod value */
-				   typNDims,	/* Array dimensions for base type */
-				   typNotNull,	/* Type NOT NULL */
-				   InvalidOid,	/* type's collation */
-				   isbody? PACKAGE_MEMBER_PRIVATE : PACKAGE_MEMBER_PUBLIC
-		);
-
-	/* Now we can clean up */
-	ReleaseSysCache(typeTup);
-
-	myself.classId = TypeRelationId;
-	myself.objectId = address.objectId;
-	myself.objectSubId = 0;
-
-	referenced.classId = PackageRelationId;
-	referenced.objectId = refcurNamespace;
-	referenced.objectSubId = 0;
-	recordDependencyOn(&myself, &referenced, DEPENDENCY_AUTO);
-
-	/* prevent error when processing duplicate objects */
-	CommandCounterIncrement();
-	return address;
-}
-
-
-/*
  * DefineEnum
  *		Registers a new enum.
  */
@@ -1344,7 +1149,7 @@ DefineEnum(CreateEnumStmt *stmt)
 													  &enumName);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(enumNamespace, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, enumNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(enumNamespace));
@@ -1400,8 +1205,7 @@ DefineEnum(CreateEnumStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid,	/* type's collation */
-				   NON_PACKAGE_MEMBER);
+				   InvalidOid); /* type's collation */
 
 	/* Enter the enum's values into pg_enum */
 	EnumValuesCreate(enumTypeAddr.objectId, stmt->vals);
@@ -1442,8 +1246,7 @@ DefineEnum(CreateEnumStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid,		/* type's collation */
-			   NON_PACKAGE_MEMBER);
+			   InvalidOid);		/* type's collation */
 
 	pfree(enumArrayName);
 
@@ -1515,7 +1318,7 @@ checkEnumOwner(HeapTuple tup)
 						format_type_be(typTup->oid))));
 
 	/* Permission check: must own type */
-	if (!pg_type_ownercheck(typTup->oid, GetUserId()))
+	if (!object_ownercheck(TypeRelationId, typTup->oid, GetUserId()))
 		aclcheck_error_type(ACLCHECK_NOT_OWNER, typTup->oid);
 }
 
@@ -1566,7 +1369,7 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 													  &typeName);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(typeNamespace, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, typeNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(typeNamespace));
@@ -1744,9 +1547,7 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid,	/* type's collation (ranges never have one) */
-				   NON_PACKAGE_MEMBER);
-
+				   InvalidOid); /* type's collation (ranges never have one) */
 	Assert(typoid == InvalidOid || typoid == address.objectId);
 	typoid = address.objectId;
 
@@ -1813,8 +1614,7 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid,  /* type's collation (ranges never have one) */
-				   NON_PACKAGE_MEMBER);
+				   InvalidOid); /* type's collation (ranges never have one) */
 	Assert(multirangeOid == mltrngaddress.objectId);
 
 	/* Create the entry in pg_range */
@@ -1857,8 +1657,7 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid,		/* typcollation */
-			   NON_PACKAGE_MEMBER);
+			   InvalidOid);		/* typcollation */
 
 	pfree(rangeArrayName);
 
@@ -1897,8 +1696,7 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid,		/* typcollation */
-			   NON_PACKAGE_MEMBER);
+			   InvalidOid);		/* typcollation */
 
 	/* And create the constructor functions for this range type */
 	makeRangeConstructors(typeName, typeNamespace, typoid, rangeSubtype);
@@ -1907,7 +1705,9 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 							   &castFuncOid);
 
 	/* Create cast from the range type to its multirange type */
-	CastCreate(typoid, multirangeOid, castFuncOid, 'e', 'f', DEPENDENCY_INTERNAL);
+	CastCreate(typoid, multirangeOid, castFuncOid, InvalidOid, InvalidOid,
+			   COERCION_CODE_EXPLICIT, COERCION_METHOD_FUNCTION,
+			   DEPENDENCY_INTERNAL);
 
 	pfree(multirangeArrayName);
 
@@ -1968,7 +1768,6 @@ makeRangeConstructors(const char *name, Oid namespace,
 								 false, /* isStrict */
 								 PROVOLATILE_IMMUTABLE, /* volatility */
 								 PROPARALLEL_SAFE,	/* parallel safety */
-								 NON_PACKAGE_MEMBER,	/* proaccess */
 								 constructorArgTypesVector, /* parameterTypes */
 								 PointerGetDatum(NULL), /* allParameterTypes */
 								 PointerGetDatum(NULL), /* parameterModes */
@@ -2034,7 +1833,6 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 							 true,	/* isStrict */
 							 PROVOLATILE_IMMUTABLE, /* volatility */
 							 PROPARALLEL_SAFE,	/* parallel safety */
-							 NON_PACKAGE_MEMBER,	/* proaccess */
 							 argtypes,	/* parameterTypes */
 							 PointerGetDatum(NULL), /* allParameterTypes */
 							 PointerGetDatum(NULL), /* parameterModes */
@@ -2079,7 +1877,6 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 							 true,	/* isStrict */
 							 PROVOLATILE_IMMUTABLE, /* volatility */
 							 PROPARALLEL_SAFE,	/* parallel safety */
-							 NON_PACKAGE_MEMBER,	/* proaccess */
 							 argtypes,	/* parameterTypes */
 							 PointerGetDatum(NULL), /* allParameterTypes */
 							 PointerGetDatum(NULL), /* parameterModes */
@@ -2118,7 +1915,6 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 							 true,	/* isStrict */
 							 PROVOLATILE_IMMUTABLE, /* volatility */
 							 PROPARALLEL_SAFE,	/* parallel safety */
-							 NON_PACKAGE_MEMBER,	/* proaccess */
 							 argtypes,	/* parameterTypes */
 							 PointerGetDatum(allParameterTypes),	/* allParameterTypes */
 							 PointerGetDatum(parameterModes),	/* parameterModes */
@@ -2545,7 +2341,7 @@ findRangeCanonicalFunction(List *procname, Oid typeOid)
 						func_signature_string(procname, 1, NIL, argList))));
 
 	/* Also, range type's creator must have permission to call function */
-	aclresult = pg_proc_aclcheck(procOid, GetUserId(), ACL_EXECUTE);
+	aclresult = object_aclcheck(ProcedureRelationId, procOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(procOid));
 
@@ -2588,7 +2384,7 @@ findRangeSubtypeDiffFunction(List *procname, Oid subtype)
 						func_signature_string(procname, 2, NIL, argList))));
 
 	/* Also, range type's creator must have permission to call function */
-	aclresult = pg_proc_aclcheck(procOid, GetUserId(), ACL_EXECUTE);
+	aclresult = object_aclcheck(ProcedureRelationId, procOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(procOid));
 
@@ -3243,7 +3039,6 @@ AlterDomainValidateConstraint(List *names, const char *constrName)
 	char	   *conbin;
 	SysScanDesc scan;
 	Datum		val;
-	bool		isnull;
 	HeapTuple	tuple;
 	HeapTuple	copyTuple;
 	ScanKeyData skey[3];
@@ -3298,12 +3093,7 @@ AlterDomainValidateConstraint(List *names, const char *constrName)
 				 errmsg("constraint \"%s\" of domain \"%s\" is not a check constraint",
 						constrName, TypeNameToString(typename))));
 
-	val = SysCacheGetAttr(CONSTROID, tuple,
-						  Anum_pg_constraint_conbin,
-						  &isnull);
-	if (isnull)
-		elog(ERROR, "null conbin for constraint %u",
-			 con->oid);
+	val = SysCacheGetAttrNotNull(CONSTROID, tuple, Anum_pg_constraint_conbin);
 	conbin = TextDatumGetCString(val);
 
 	validateDomainConstraint(domainoid, conbin);
@@ -3634,7 +3424,7 @@ checkDomainOwner(HeapTuple tup)
 						format_type_be(typTup->oid))));
 
 	/* Permission check: must own type */
-	if (!pg_type_ownercheck(typTup->oid, GetUserId()))
+	if (!object_ownercheck(TypeRelationId, typTup->oid, GetUserId()))
 		aclcheck_error_type(ACLCHECK_NOT_OWNER, typTup->oid);
 }
 
@@ -3822,7 +3612,7 @@ RenameType(RenameStmt *stmt)
 	typTup = (Form_pg_type) GETSTRUCT(tup);
 
 	/* check permissions on type */
-	if (!pg_type_ownercheck(typeOid, GetUserId()))
+	if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))
 		aclcheck_error_type(ACLCHECK_NOT_OWNER, typeOid);
 
 	/* ALTER DOMAIN used on a non-domain? */
@@ -3945,14 +3735,14 @@ AlterTypeOwner(List *names, Oid newOwnerId, ObjectType objecttype)
 		if (!superuser())
 		{
 			/* Otherwise, must be owner of the existing object */
-			if (!pg_type_ownercheck(typTup->oid, GetUserId()))
+			if (!object_ownercheck(TypeRelationId, typTup->oid, GetUserId()))
 				aclcheck_error_type(ACLCHECK_NOT_OWNER, typTup->oid);
 
 			/* Must be able to become new owner */
-			check_is_member_of_role(GetUserId(), newOwnerId);
+			check_can_set_role(GetUserId(), newOwnerId);
 
 			/* New owner must have CREATE privilege on namespace */
-			aclresult = pg_namespace_aclcheck(typTup->typnamespace,
+			aclresult = object_aclcheck(NamespaceRelationId, typTup->typnamespace,
 											  newOwnerId,
 											  ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
@@ -4120,7 +3910,7 @@ AlterTypeNamespace_oid(Oid typeOid, Oid nspOid, ObjectAddresses *objsMoved)
 	Oid			elemOid;
 
 	/* check permissions on type */
-	if (!pg_type_ownercheck(typeOid, GetUserId()))
+	if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))
 		aclcheck_error_type(ACLCHECK_NOT_OWNER, typeOid);
 
 	/* don't allow direct alteration of array types */
@@ -4481,7 +4271,7 @@ AlterType(AlterTypeStmt *stmt)
 	}
 	else
 	{
-		if (!pg_type_ownercheck(typeOid, GetUserId()))
+		if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))
 			aclcheck_error_type(ACLCHECK_NOT_OWNER, typeOid);
 	}
 

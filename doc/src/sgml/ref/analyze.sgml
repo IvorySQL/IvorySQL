@@ -28,6 +28,7 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
 
     VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
     SKIP_LOCKED [ <replaceable class="parameter">boolean</replaceable> ]
+    BUFFER_USAGE_LIMIT [ <replaceable class="parameter">size</replaceable> ]
 
 <phrase>and <replaceable class="parameter">table_and_columns</replaceable> is:</phrase>
 
@@ -96,6 +97,26 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
    </varlistentry>
 
    <varlistentry>
+    <term><literal>BUFFER_USAGE_LIMIT</literal></term>
+    <listitem>
+     <para>
+      Specifies the
+      <glossterm linkend="glossary-buffer-access-strategy">Buffer Access Strategy</glossterm>
+      ring buffer size for <command>ANALYZE</command>.  This size is used to
+      calculate the number of shared buffers which will be reused as part of
+      this strategy.  <literal>0</literal> disables use of a
+      <literal>Buffer Access Strategy</literal>.   When this option is not
+      specified, <command>ANALYZE</command> uses the value from
+      <xref linkend="guc-vacuum-buffer-usage-limit"/>.  Higher settings can
+      allow <command>ANALYZE</command> to run more quickly, but having too
+      large a setting may cause too many other useful pages to be evicted from
+      shared buffers.  The minimum value is <literal>128 kB</literal> and the
+      maximum value is <literal>16 GB</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><replaceable class="parameter">boolean</replaceable></term>
     <listitem>
      <para>
@@ -105,6 +126,19 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
       <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
       <replaceable class="parameter">boolean</replaceable> value can also
       be omitted, in which case <literal>TRUE</literal> is assumed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">size</replaceable></term>
+    <listitem>
+     <para>
+      Specifies an amount of memory in kilobytes.  Sizes may also be specified
+      as a string containing the numerical size followed by any one of the
+      following memory units: <literal>kB</literal> (kilobytes),
+      <literal>MB</literal> (megabytes), <literal>GB</literal> (gigabytes), or
+      <literal>TB</literal> (terabytes).
      </para>
     </listitem>
    </varlistentry>
@@ -148,11 +182,18 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
   <title>Notes</title>
 
   <para>
-   To analyze a table, one must ordinarily be the table's owner or a
-   superuser.  However, database owners are allowed to
+   To analyze a table, one must ordinarily have the <literal>MAINTAIN</literal>
+   privilege on the table or be the table's owner, a superuser, or a role with
+   privileges of the
+   <link linkend="predefined-roles-table"><literal>pg_maintain</literal></link>
+   role.  However, database owners are allowed to
    analyze all tables in their databases, except shared catalogs.
    (The restriction for shared catalogs means that a true database-wide
-   <command>ANALYZE</command> can only be performed by a superuser.)
+   <command>ANALYZE</command> can only be performed by superusers and roles
+   with privileges of <literal>pg_maintain</literal>.)  If a role has
+   permission to <command>ANALYZE</command> a partitioned table, it is also
+   permitted to <command>ANALYZE</command> each of its partitions, regardless
+   of whether the role has the aforementioned privileges on the partition.
    <command>ANALYZE</command> will skip over any tables that the calling user
    does not have permission to analyze.
   </para>

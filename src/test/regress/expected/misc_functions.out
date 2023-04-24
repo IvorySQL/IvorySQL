@@ -594,3 +594,51 @@ SELECT * FROM tenk1 a JOIN my_gen_series(1,10) g ON a.unique1 = g;
          Index Cond: (unique1 = g.g)
 (4 rows)
 
+-- Test functions for control data
+SELECT count(*) > 0 AS ok FROM pg_control_checkpoint();
+ ok 
+----
+ t
+(1 row)
+
+SELECT count(*) > 0 AS ok FROM pg_control_init();
+ ok 
+----
+ t
+(1 row)
+
+SELECT count(*) > 0 AS ok FROM pg_control_recovery();
+ ok 
+----
+ t
+(1 row)
+
+SELECT count(*) > 0 AS ok FROM pg_control_system();
+ ok 
+----
+ t
+(1 row)
+
+-- pg_split_walfile_name
+SELECT * FROM pg_split_walfile_name(NULL);
+ segment_number | timeline_id 
+----------------+-------------
+                |            
+(1 row)
+
+SELECT * FROM pg_split_walfile_name('invalid');
+ERROR:  invalid WAL file name "invalid"
+SELECT segment_number > 0 AS ok_segment_number, timeline_id
+  FROM pg_split_walfile_name('000000010000000100000000');
+ ok_segment_number | timeline_id 
+-------------------+-------------
+ t                 |           1
+(1 row)
+
+SELECT segment_number > 0 AS ok_segment_number, timeline_id
+  FROM pg_split_walfile_name('ffffffFF00000001000000af');
+ ok_segment_number | timeline_id 
+-------------------+-------------
+ t                 |  4294967295
+(1 row)
+

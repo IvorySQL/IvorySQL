@@ -4,7 +4,7 @@
  * src/backend/utils/adt/formatting.c
  *
  *
- *	 Portions Copyright (c) 1999-2022, PostgreSQL Global Development Group
+ *	 Portions Copyright (c) 1999-2023, PostgreSQL Global Development Group
  *
  *
  *	 TO_CHAR(); TO_TIMESTAMP(); TO_DATE(); TO_NUMBER();
@@ -78,6 +78,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
+#include "nodes/miscnodes.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -87,46 +88,8 @@
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 #include "utils/pg_locale.h"
-#include "utils/varlena.h"
-#include "utils/guc.h"
-#include <time.h>
+#include "varatt.h"
 
-/* ----------
- * Convenience macros for error handling
- * ----------
- *
- * Two macros below help to handle errors in functions that take
- * 'bool *have_error' argument.  When this argument is not NULL, it's expected
- * that function will suppress ereports when possible.  Instead it should
- * return some default value and set *have_error flag.
- *
- * RETURN_ERROR() macro intended to wrap ereport() calls.  When have_error
- * function argument is not NULL, then instead of ereport'ing we set
- * *have_error flag and go to on_error label.  It's supposed that jump
- * resources will be freed and some 'default' value returned.
- *
- * CHECK_ERROR() jumps on_error label when *have_error flag is defined and set.
- * It's supposed to be used for immediate exit from the function on error
- * after call of another function with 'bool *have_error' argument.
- */
-#define RETURN_ERROR(throw_error) \
-do { \
-	if (have_error) \
-	{ \
-		*have_error = true; \
-		goto on_error; \
-	} \
-	else \
-	{ \
-		throw_error; \
-	} \
-} while (0)
-
-#define CHECK_ERROR \
-do { \
-	if (have_error && *have_error) \
-		goto on_error; \
-} while (0)
 
 /* ----------
  * Routines flags
@@ -678,12 +641,9 @@ typedef enum
 	DCH_PM,
 	DCH_Q,
 	DCH_RM,
-	DCH_RRRR,
-	DCH_RR,
 	DCH_SSSSS,
 	DCH_SSSS,
 	DCH_SS,
-	DCH_SYYYY,
 	DCH_TZH,
 	DCH_TZM,
 	DCH_TZ,
@@ -735,8 +695,6 @@ typedef enum
 	DCH_pm,
 	DCH_q,
 	DCH_rm,
-	DCH_rrrr,
-	DCH_rr,
 	DCH_sssss,
 	DCH_ssss,
 	DCH_ss,
@@ -778,7 +736,6 @@ typedef enum
 	NUM_S,
 	NUM_TH,
 	NUM_V,
-	NUM_X,
 	NUM_b,
 	NUM_c,
 	NUM_d,
@@ -795,7 +752,6 @@ typedef enum
 	NUM_s,
 	NUM_th,
 	NUM_v,
-	NUM_x,
 
 	/* last */
 	_NUM_last_
@@ -851,12 +807,9 @@ static const KeyWord DCH_keywords[] = {
 	{"PM", 2, DCH_PM, false, FROM_CHAR_DATE_NONE},
 	{"Q", 1, DCH_Q, true, FROM_CHAR_DATE_NONE}, /* Q */
 	{"RM", 2, DCH_RM, false, FROM_CHAR_DATE_GREGORIAN}, /* R */
-	{"RRRR",4, DCH_RRRR, true, FROM_CHAR_DATE_GREGORIAN}, /* RRRR */
-	{"RR", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN}, /* RR */
 	{"SSSSS", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* S */
 	{"SSSS", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"SS", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
-	{"SYYYY", 5, DCH_SYYYY, true, FROM_CHAR_DATE_GREGORIAN},
 	{"TZH", 3, DCH_TZH, false, FROM_CHAR_DATE_NONE},	/* T */
 	{"TZM", 3, DCH_TZM, true, FROM_CHAR_DATE_NONE},
 	{"TZ", 2, DCH_TZ, false, FROM_CHAR_DATE_NONE},
@@ -908,12 +861,9 @@ static const KeyWord DCH_keywords[] = {
 	{"pm", 2, DCH_pm, false, FROM_CHAR_DATE_NONE},
 	{"q", 1, DCH_Q, true, FROM_CHAR_DATE_NONE}, /* q */
 	{"rm", 2, DCH_rm, false, FROM_CHAR_DATE_GREGORIAN}, /* r */
-	{"rrrr",4, DCH_RRRR, true, FROM_CHAR_DATE_GREGORIAN}, /* rrrr */
-	{"rr", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN}, /* rr */
 	{"sssss", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* s */
 	{"ssss", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"ss", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
-	{"syyyy", 5, DCH_SYYYY, true, FROM_CHAR_DATE_GREGORIAN},
 	{"tzh", 3, DCH_TZH, false, FROM_CHAR_DATE_NONE},	/* t */
 	{"tzm", 3, DCH_TZM, true, FROM_CHAR_DATE_NONE},
 	{"tz", 2, DCH_tz, false, FROM_CHAR_DATE_NONE},
@@ -958,7 +908,6 @@ static const KeyWord NUM_keywords[] = {
 	{"S", 1, NUM_S},
 	{"TH", 2, NUM_TH},			/* T */
 	{"V", 1, NUM_V},			/* V */
-	{"X", 1, NUM_X},			/* X */
 	{"b", 1, NUM_B},			/* b */
 	{"c", 1, NUM_C},			/* c */
 	{"d", 1, NUM_D},			/* d */
@@ -975,7 +924,6 @@ static const KeyWord NUM_keywords[] = {
 	{"s", 1, NUM_S},
 	{"th", 2, NUM_th},			/* t */
 	{"v", 1, NUM_V},			/* v */
-	{"x", 1, NUM_X},			/* X */
 
 	/* last */
 	{NULL, 0, 0}
@@ -1021,11 +969,11 @@ static const int NUM_index[KeyWord_INDEX_SIZE] = {
 	-1, -1, -1, -1, -1, -1, -1, NUM_9, -1, -1,
 	-1, -1, -1, -1, -1, -1, NUM_B, NUM_C, NUM_D, NUM_E,
 	NUM_FM, NUM_G, -1, -1, -1, -1, NUM_L, NUM_MI, -1, -1,
-	NUM_PL, -1, NUM_RN, NUM_SG, NUM_TH, -1, NUM_V, -1, NUM_X, -1,
+	NUM_PL, -1, NUM_RN, NUM_SG, NUM_TH, -1, NUM_V, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, NUM_b, NUM_c,
 	NUM_d, NUM_e, NUM_fm, NUM_g, -1, -1, -1, -1, NUM_l, NUM_mi,
 	-1, -1, NUM_pl, -1, NUM_rn, NUM_sg, NUM_th, -1, NUM_v, -1,
-	NUM_x, -1, -1, -1, -1, -1
+	-1, -1, -1, -1, -1, -1
 
 	/*---- chars over 126 are skipped ----*/
 };
@@ -1083,7 +1031,7 @@ static void parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 static void DCH_to_char(FormatNode *node, bool is_interval,
 						TmToChar *in, char *out, Oid collid);
 static void DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
-						  Oid collid, bool std, bool *have_error);
+						  Oid collid, bool std, Node *escontext);
 
 #ifdef DEBUG_TO_FROM_CHAR
 static void dump_index(const KeyWord *k, const int *index);
@@ -1094,24 +1042,24 @@ static const char *get_th(char *num, int type);
 static char *str_numth(char *dest, char *num, int type);
 static int	adjust_partial_year_to_2020(int year);
 static int	strspace_len(const char *str);
-static void from_char_set_mode(TmFromChar *tmfc, const FromCharDateMode mode,
-							   bool *have_error);
-static void from_char_set_int(int *dest, const int value, const FormatNode *node,
-							  bool *have_error);
+static bool from_char_set_mode(TmFromChar *tmfc, const FromCharDateMode mode,
+							   Node *escontext);
+static bool from_char_set_int(int *dest, const int value, const FormatNode *node,
+							  Node *escontext);
 static int	from_char_parse_int_len(int *dest, const char **src, const int len,
-									FormatNode *node, bool *have_error);
+									FormatNode *node, Node *escontext);
 static int	from_char_parse_int(int *dest, const char **src, FormatNode *node,
-								bool *have_error);
+								Node *escontext);
 static int	seq_search_ascii(const char *name, const char *const *array, int *len);
 static int	seq_search_localized(const char *name, char **array, int *len,
 								 Oid collid);
-static int	from_char_seq_search(int *dest, const char **src,
+static bool from_char_seq_search(int *dest, const char **src,
 								 const char *const *array,
 								 char **localized_array, Oid collid,
-								 FormatNode *node, bool *have_error);
-static void do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
+								 FormatNode *node, Node *escontext);
+static bool do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 							struct pg_tm *tm, fsec_t *fsec, int *fprec,
-							uint32 *flags, bool *have_error);
+							uint32 *flags, Node *escontext);
 static char *fill_str(char *str, int c, int max);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
@@ -1354,10 +1302,6 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 						 errmsg("\"EEEE\" is incompatible with other formats"),
 						 errdetail("\"EEEE\" may only be used together with digit and decimal point patterns.")));
 			num->flag |= NUM_F_EEEE;
-			break;
-		case NUM_X:
-		case NUM_x:
-			++num->pre;
 			break;
 	}
 }
@@ -2183,62 +2127,6 @@ asc_toupper_z(const char *buff)
 
 /* asc_initcap_z is not currently needed */
 
-/* To supprot format 'xx' or 'XX' */
-static int64
-hex_to_dec(const char *buff, int len)
-{
-	int64 		i = 0,t = 0,sum = 0;
-	char		ch;
-
-	if((len < 16) || (len == 16 && buff[0] < '8'))
-	{
-		for(i = 0; i < len; i++)
-		{
-			ch = buff[i];
-			if(ch >= '0' && ch <='9')
-			{
-				t = ch - '0';
-			}
-			else if(ch <= 'F' && ch >= 'A')
-			{
-				t = ch - 'A' + 10;
-			}
-			else if(ch <= 'f' && ch >= 'a')
-			{
-				t = ch - 'a' + 10;
-			}
-			else
-			{
-			   ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Please enter the correct hexadecimal number, for example '9f'.")));
-			}
-			sum = sum * 16 + t;
-		}
-	}
-	else
-	{
-		ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("value \"%s\" is out of range!", buff)));
-	}
-	return sum;
-}
-
-static char *
-dec_to_hex(const char* buff)
-{
-	int64		a = 0;
-	char		buf[16];
-	char	   *str = NULL;
-
-	MemSet(buf, 0x0, sizeof(buf));
-	a = atol(buff);
-	sprintf(buf, "%lx", a);
-	str =  pstrdup(buf);
-	return str;
-}
-/*end*/
 
 /* ----------
  * Skip TM / th in FROM_CHAR
@@ -2350,45 +2238,6 @@ adjust_partial_year_to_2020(int year)
 }
 
 
-/* support format rrrr/rr and RRRR/RR. */
-static int
-adjust_partial_year_to_2020RR(int year)
-{
-	time_t		timep;
-	int32		curyear;
-	char		year1[4 + 1];
-	struct tm  *p;
-	int			sufnum,prenum;
-
-	memset(year1, 0x00, sizeof(year1));
-	time(&timep);
-	p = gmtime(&timep);
-	curyear = 1900 + p->tm_year;
-
-	/*last two digits of year*/
-	sufnum = curyear % 100;
-
-	/*first two digits of year*/
-	prenum = curyear / 100;
-
-	/*first two digits of the specified year*/
-	if(year >= 100)
-		sprintf(year1, "%04d", year);
-	else
-	{
-		if( ((sufnum >= 0 && sufnum <= 49) && (year >= 0 && year <=49))||\
-			((sufnum >= 50 && sufnum <= 99) && (year >= 50 && year <=99)))
-		{
-			sprintf(year1, "%d%02d", prenum, year);
-		}
-		else
-		{
-			sprintf(year1, "%d%02d", prenum - 1, year);
-		}
-	}
-	return atoi(year1);
-}
-
 static int
 strspace_len(const char *str)
 {
@@ -2408,25 +2257,25 @@ strspace_len(const char *str)
  * Puke if the date mode has already been set, and the caller attempts to set
  * it to a conflicting mode.
  *
- * If 'have_error' is NULL, then errors are thrown, else '*have_error' is set.
+ * Returns true on success, false on failure (if escontext points to an
+ * ErrorSaveContext; otherwise errors are thrown).
  */
-static void
-from_char_set_mode(TmFromChar *tmfc, const FromCharDateMode mode, bool *have_error)
+static bool
+from_char_set_mode(TmFromChar *tmfc, const FromCharDateMode mode,
+				   Node *escontext)
 {
 	if (mode != FROM_CHAR_DATE_NONE)
 	{
 		if (tmfc->mode == FROM_CHAR_DATE_NONE)
 			tmfc->mode = mode;
 		else if (tmfc->mode != mode)
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("invalid combination of date conventions"),
-								  errhint("Do not mix Gregorian and ISO week date "
-										  "conventions in a formatting template."))));
+			ereturn(escontext, false,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("invalid combination of date conventions"),
+					 errhint("Do not mix Gregorian and ISO week date "
+							 "conventions in a formatting template.")));
 	}
-
-on_error:
-	return;
+	return true;
 }
 
 /*
@@ -2435,24 +2284,22 @@ on_error:
  * Puke if the destination integer has previously been set to some other
  * non-zero value.
  *
- * If 'have_error' is NULL, then errors are thrown, else '*have_error' is set.
+ * Returns true on success, false on failure (if escontext points to an
+ * ErrorSaveContext; otherwise errors are thrown).
  */
-static void
+static bool
 from_char_set_int(int *dest, const int value, const FormatNode *node,
-				  bool *have_error)
+				  Node *escontext)
 {
 	if (*dest != 0 && *dest != value)
-		RETURN_ERROR(ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							  errmsg("conflicting values for \"%s\" field in "
-									 "formatting string",
-									 node->key->name),
-							  errdetail("This value contradicts a previous setting "
-										"for the same field type."))));
+		ereturn(escontext, false,
+				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+				 errmsg("conflicting values for \"%s\" field in formatting string",
+						node->key->name),
+				 errdetail("This value contradicts a previous setting "
+						   "for the same field type.")));
 	*dest = value;
-
-on_error:
-	return;
+	return true;
 }
 
 /*
@@ -2469,18 +2316,16 @@ on_error:
  * point at the character immediately following the last character used in the
  * conversion.
  *
- * Return the number of characters consumed.
+ * Returns the number of characters consumed, or -1 on error (if escontext
+ * points to an ErrorSaveContext; otherwise errors are thrown).
  *
  * Note that from_char_parse_int() provides a more convenient wrapper where
  * the length of the field is the same as the length of the format keyword (as
  * with DD and MI).
- *
- * If 'have_error' is NULL, then errors are thrown, else '*have_error' is set
- * and -1 is returned.
  */
 static int
 from_char_parse_int_len(int *dest, const char **src, const int len, FormatNode *node,
-						bool *have_error)
+						Node *escontext)
 {
 	long		result;
 	char		copy[DCH_MAX_ITEM_SIZ + 1];
@@ -2516,60 +2361,54 @@ from_char_parse_int_len(int *dest, const char **src, const int len, FormatNode *
 		char	   *last;
 
 		if (used < len)
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("source string too short for \"%s\" "
-										 "formatting field",
-										 node->key->name),
-								  errdetail("Field requires %d characters, "
-											"but only %d remain.",
-											len, used),
-								  errhint("If your source string is not fixed-width, "
-										  "try using the \"FM\" modifier."))));
+			ereturn(escontext, -1,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("source string too short for \"%s\" formatting field",
+							node->key->name),
+					 errdetail("Field requires %d characters, but only %d remain.",
+							   len, used),
+					 errhint("If your source string is not fixed-width, "
+							 "try using the \"FM\" modifier.")));
 
 		errno = 0;
 		result = strtol(copy, &last, 10);
 		used = last - copy;
 
 		if (used > 0 && used < len)
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("invalid value \"%s\" for \"%s\"",
-										 copy, node->key->name),
-								  errdetail("Field requires %d characters, "
-											"but only %d could be parsed.",
-											len, used),
-								  errhint("If your source string is not fixed-width, "
-										  "try using the \"FM\" modifier."))));
+			ereturn(escontext, -1,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("invalid value \"%s\" for \"%s\"",
+							copy, node->key->name),
+					 errdetail("Field requires %d characters, but only %d could be parsed.",
+							   len, used),
+					 errhint("If your source string is not fixed-width, "
+							 "try using the \"FM\" modifier.")));
 
 		*src += used;
 	}
 
 	if (*src == init)
-		RETURN_ERROR(ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							  errmsg("invalid value \"%s\" for \"%s\"",
-									 copy, node->key->name),
-							  errdetail("Value must be an integer."))));
+		ereturn(escontext, -1,
+				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+				 errmsg("invalid value \"%s\" for \"%s\"",
+						copy, node->key->name),
+				 errdetail("Value must be an integer.")));
 
 	if (errno == ERANGE || result < INT_MIN || result > INT_MAX)
-		RETURN_ERROR(ereport(ERROR,
-							 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							  errmsg("value for \"%s\" in source string is out of range",
-									 node->key->name),
-							  errdetail("Value must be in the range %d to %d.",
-										INT_MIN, INT_MAX))));
+		ereturn(escontext, -1,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("value for \"%s\" in source string is out of range",
+						node->key->name),
+				 errdetail("Value must be in the range %d to %d.",
+						   INT_MIN, INT_MAX)));
 
 	if (dest != NULL)
 	{
-		from_char_set_int(dest, (int) result, node, have_error);
-		CHECK_ERROR;
+		if (!from_char_set_int(dest, (int) result, node, escontext))
+			return -1;
 	}
 
 	return *src - init;
-
-on_error:
-	return -1;
 }
 
 /*
@@ -2582,9 +2421,10 @@ on_error:
  * required length explicitly.
  */
 static int
-from_char_parse_int(int *dest, const char **src, FormatNode *node, bool *have_error)
+from_char_parse_int(int *dest, const char **src, FormatNode *node,
+					Node *escontext)
 {
-	return from_char_parse_int_len(dest, src, node->key->len, node, have_error);
+	return from_char_parse_int_len(dest, src, node->key->len, node, escontext);
 }
 
 /*
@@ -2730,19 +2570,19 @@ seq_search_localized(const char *name, char **array, int *len, Oid collid)
  * (which will follow the rules of the collation 'collid').
  *
  * If a match is found, copy the array index of the match into the integer
- * pointed to by 'dest', advance 'src' to the end of the part of the string
- * which matched, and return the number of characters consumed.
+ * pointed to by 'dest' and advance 'src' to the end of the part of the string
+ * which matched.
  *
- * If the string doesn't match, throw an error if 'have_error' is NULL,
- * otherwise set '*have_error' and return -1.
+ * Returns true on match, false on failure (if escontext points to an
+ * ErrorSaveContext; otherwise errors are thrown).
  *
  * 'node' is used only for error reports: node->key->name identifies the
  * field type we were searching for.
  */
-static int
+static bool
 from_char_seq_search(int *dest, const char **src, const char *const *array,
 					 char **localized_array, Oid collid,
-					 FormatNode *node, bool *have_error)
+					 FormatNode *node, Node *escontext)
 {
 	int			len;
 
@@ -2769,18 +2609,15 @@ from_char_seq_search(int *dest, const char **src, const char *const *array,
 			}
 		}
 
-		RETURN_ERROR(ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							  errmsg("invalid value \"%s\" for \"%s\"",
-									 copy, node->key->name),
-							  errdetail("The given value did not match any of "
-										"the allowed values for this field."))));
+		ereturn(escontext, false,
+				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+				 errmsg("invalid value \"%s\" for \"%s\"",
+						copy, node->key->name),
+				 errdetail("The given value did not match any of "
+						   "the allowed values for this field.")));
 	}
 	*src += len;
-	return len;
-
-on_error:
-	return -1;
+	return true;
 }
 
 /* ----------
@@ -3290,11 +3127,10 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_YYYY:
 			case DCH_IYYY:
-			case DCH_RRRR:
 				sprintf(s, "%0*d",
 						S_FM(n->suffix) ? 0 :
 						(ADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 4 : 5,
-						((n->key->id == DCH_YYYY || n->key->id == DCH_RRRR) ?
+						(n->key->id == DCH_YYYY ?
 						 ADJUST_YEAR(tm->tm_year, is_interval) :
 						 ADJUST_YEAR(date2isoyear(tm->tm_year,
 												  tm->tm_mon,
@@ -3321,11 +3157,10 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_YY:
 			case DCH_IY:
-			case DCH_RR:
 				sprintf(s, "%0*d",
 						S_FM(n->suffix) ? 0 :
 						(ADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 2 : 3,
-						((n->key->id == DCH_YY || n->key->id == DCH_RR) ?
+						(n->key->id == DCH_YY ?
 						 ADJUST_YEAR(tm->tm_year, is_interval) :
 						 ADJUST_YEAR(date2isoyear(tm->tm_year,
 												  tm->tm_mon,
@@ -3429,14 +3264,17 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
  *
  * 'collid' identifies the collation to use, if needed.
  * 'std' specifies standard parsing mode.
- * If 'have_error' is NULL, then errors are thrown, else '*have_error' is set.
+ *
+ * If escontext points to an ErrorSaveContext, data errors will be reported
+ * by filling that struct; the caller must test SOFT_ERROR_OCCURRED() to see
+ * whether an error occurred.  Otherwise, errors are thrown.
  *
  * Note: we currently don't have any to_interval() function, so there
  * is no need here for INVALID_FOR_INTERVAL checks.
  */
 static void
 DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
-			  Oid collid, bool std, bool *have_error)
+			  Oid collid, bool std, Node *escontext)
 {
 	FormatNode *n;
 	const char *s;
@@ -3479,10 +3317,10 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				if (*s == n->character[0])
 					s++;
 				else
-					RETURN_ERROR(ereport(ERROR,
-										 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-										  errmsg("unmatched format separator \"%c\"",
-												 n->character[0]))));
+					ereturn(escontext,,
+							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+							 errmsg("unmatched format separator \"%c\"",
+									n->character[0])));
 			}
 			else if (!fx_mode)
 			{
@@ -3540,18 +3378,18 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				 */
 				if (std && n->type == NODE_TYPE_CHAR &&
 					strncmp(s, n->character, chlen) != 0)
-					RETURN_ERROR(ereport(ERROR,
-										 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-										  errmsg("unmatched format character \"%s\"",
-												 n->character))));
+					ereturn(escontext,,
+							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+							 errmsg("unmatched format character \"%s\"",
+									n->character)));
 
 				s += chlen;
 			}
 			continue;
 		}
 
-		from_char_set_mode(out, n->key->date_mode, have_error);
-		CHECK_ERROR;
+		if (!from_char_set_mode(out, n->key->date_mode, escontext))
+			return;
 
 		switch (n->key->id)
 		{
@@ -3562,51 +3400,52 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_P_M:
 			case DCH_a_m:
 			case DCH_p_m:
-				from_char_seq_search(&value, &s, ampm_strings_long,
-									 NULL, InvalidOid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->pm, value % 2, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, ampm_strings_long,
+										  NULL, InvalidOid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->pm, value % 2, n, escontext))
+					return;
 				out->clock = CLOCK_12_HOUR;
 				break;
 			case DCH_AM:
 			case DCH_PM:
 			case DCH_am:
 			case DCH_pm:
-				from_char_seq_search(&value, &s, ampm_strings,
-									 NULL, InvalidOid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->pm, value % 2, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, ampm_strings,
+										  NULL, InvalidOid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->pm, value % 2, n, escontext))
+					return;
 				out->clock = CLOCK_12_HOUR;
 				break;
 			case DCH_HH:
 			case DCH_HH12:
-				from_char_parse_int_len(&out->hh, &s, 2, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int_len(&out->hh, &s, 2, n, escontext) < 0)
+					return;
 				out->clock = CLOCK_12_HOUR;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_HH24:
-				from_char_parse_int_len(&out->hh, &s, 2, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int_len(&out->hh, &s, 2, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_MI:
-				from_char_parse_int(&out->mi, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->mi, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_SS:
-				from_char_parse_int(&out->ss, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->ss, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_MS:		/* millisecond */
-				len = from_char_parse_int_len(&out->ms, &s, 3, n, have_error);
-				CHECK_ERROR;
+				len = from_char_parse_int_len(&out->ms, &s, 3, n, escontext);
+				if (len < 0)
+					return;
 
 				/*
 				 * 25 is 0.25 and 250 is 0.25 too; 025 is 0.025 and not 0.25
@@ -3627,8 +3466,9 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_US:		/* microsecond */
 				len = from_char_parse_int_len(&out->us, &s,
 											  n->key->id == DCH_US ? 6 :
-											  out->ff, n, have_error);
-				CHECK_ERROR;
+											  out->ff, n, escontext);
+				if (len < 0)
+					return;
 
 				out->us *= len == 1 ? 100000 :
 					len == 2 ? 10000 :
@@ -3639,18 +3479,17 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_SSSS:
-				from_char_parse_int(&out->ssss, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->ssss, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_tz:
 			case DCH_TZ:
 			case DCH_OF:
-				RETURN_ERROR(ereport(ERROR,
-									 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									  errmsg("formatting field \"%s\" is only supported in to_char",
-											 n->key->name))));
-				CHECK_ERROR;
+				ereturn(escontext,,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("formatting field \"%s\" is only supported in to_char",
+								n->key->name)));
 				break;
 			case DCH_TZH:
 
@@ -3674,112 +3513,112 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 						out->tzsign = +1;
 				}
 
-				from_char_parse_int_len(&out->tzh, &s, 2, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int_len(&out->tzh, &s, 2, n, escontext) < 0)
+					return;
 				break;
 			case DCH_TZM:
 				/* assign positive timezone sign if TZH was not seen before */
 				if (!out->tzsign)
 					out->tzsign = +1;
-				from_char_parse_int_len(&out->tzm, &s, 2, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int_len(&out->tzm, &s, 2, n, escontext) < 0)
+					return;
 				break;
 			case DCH_A_D:
 			case DCH_B_C:
 			case DCH_a_d:
 			case DCH_b_c:
-				from_char_seq_search(&value, &s, adbc_strings_long,
-									 NULL, InvalidOid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->bc, value % 2, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, adbc_strings_long,
+										  NULL, InvalidOid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->bc, value % 2, n, escontext))
+					return;
 				break;
 			case DCH_AD:
 			case DCH_BC:
 			case DCH_ad:
 			case DCH_bc:
-				from_char_seq_search(&value, &s, adbc_strings,
-									 NULL, InvalidOid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->bc, value % 2, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, adbc_strings,
+										  NULL, InvalidOid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->bc, value % 2, n, escontext))
+					return;
 				break;
 			case DCH_MONTH:
 			case DCH_Month:
 			case DCH_month:
-				from_char_seq_search(&value, &s, months_full,
-									 S_TM(n->suffix) ? localized_full_months : NULL,
-									 collid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->mm, value + 1, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, months_full,
+										  S_TM(n->suffix) ? localized_full_months : NULL,
+										  collid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->mm, value + 1, n, escontext))
+					return;
 				break;
 			case DCH_MON:
 			case DCH_Mon:
 			case DCH_mon:
-				from_char_seq_search(&value, &s, months,
-									 S_TM(n->suffix) ? localized_abbrev_months : NULL,
-									 collid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->mm, value + 1, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, months,
+										  S_TM(n->suffix) ? localized_abbrev_months : NULL,
+										  collid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->mm, value + 1, n, escontext))
+					return;
 				break;
 			case DCH_MM:
-				from_char_parse_int(&out->mm, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->mm, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_DAY:
 			case DCH_Day:
 			case DCH_day:
-				from_char_seq_search(&value, &s, days,
-									 S_TM(n->suffix) ? localized_full_days : NULL,
-									 collid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->d, value, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, days,
+										  S_TM(n->suffix) ? localized_full_days : NULL,
+										  collid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->d, value, n, escontext))
+					return;
 				out->d++;
 				break;
 			case DCH_DY:
 			case DCH_Dy:
 			case DCH_dy:
-				from_char_seq_search(&value, &s, days_short,
-									 S_TM(n->suffix) ? localized_abbrev_days : NULL,
-									 collid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->d, value, n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, days_short,
+										  S_TM(n->suffix) ? localized_abbrev_days : NULL,
+										  collid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->d, value, n, escontext))
+					return;
 				out->d++;
 				break;
 			case DCH_DDD:
-				from_char_parse_int(&out->ddd, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->ddd, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_IDDD:
-				from_char_parse_int_len(&out->ddd, &s, 3, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int_len(&out->ddd, &s, 3, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_DD:
-				from_char_parse_int(&out->dd, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->dd, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_D:
-				from_char_parse_int(&out->d, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->d, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_ID:
-				from_char_parse_int_len(&out->d, &s, 1, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int_len(&out->d, &s, 1, n, escontext) < 0)
+					return;
 				/* Shift numbering to match Gregorian where Sunday = 1 */
 				if (++out->d > 7)
 					out->d = 1;
@@ -3787,8 +3626,8 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				break;
 			case DCH_WW:
 			case DCH_IW:
-				from_char_parse_int(&out->ww, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->ww, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_Q:
@@ -3803,13 +3642,13 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				 * We still parse the source string for an integer, but it
 				 * isn't stored anywhere in 'out'.
 				 */
-				from_char_parse_int((int *) NULL, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int((int *) NULL, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_CC:
-				from_char_parse_int(&out->cc, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->cc, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_Y_YYY:
@@ -3819,19 +3658,14 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								millennia,
 								nch;
 
-					/* BC year only can use SYYYY format. */
-					if (compatible_db == COMPATIBLE_ORA && *s == '-')
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								 errmsg("negative YEAR must use SYYYY format")));
 					matched = sscanf(s, "%d,%03d%n", &millennia, &years, &nch);
 					if (matched < 2)
-						RETURN_ERROR(ereport(ERROR,
-											 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-											  errmsg("invalid input string for \"Y,YYY\""))));
+						ereturn(escontext,,
+								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+								 errmsg("invalid input string for \"Y,YYY\"")));
 					years += (millennia * 1000);
-					from_char_set_int(&out->year, years, n, have_error);
-					CHECK_ERROR;
+					if (!from_char_set_int(&out->year, years, n, escontext))
+						return;
 					out->yysz = 4;
 					s += nch;
 					SKIP_THth(s, n->suffix);
@@ -3839,42 +3673,16 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				break;
 			case DCH_YYYY:
 			case DCH_IYYY:
-			case DCH_RRRR:
-				/* BC year only can use SYYYY format. */
-				if (compatible_db == COMPATIBLE_ORA && *s == '-')
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							 errmsg("negative YEAR must use SYYYY format")));
-				from_char_parse_int(&out->year, &s, n, have_error);
-				CHECK_ERROR;
-				out->yysz = 4;
-				SKIP_THth(s, n->suffix);
-				break;
-			/* Support oracle SYYYY date type. */
-			case DCH_SYYYY:
-				if (compatible_db != COMPATIBLE_ORA)
-					s += pg_mblen(s);
-				len = from_char_parse_int(&out->year, &s, n, have_error);
-				CHECK_ERROR;
-				if (compatible_db == COMPATIBLE_ORA)
-				{
-					if (out->year < -4712 || out->year > 9999 || out->year == 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
-								 errmsg("YEAR must be between -4713 and +9999, and not be 0")));
-				}
+				if (from_char_parse_int(&out->year, &s, n, escontext) < 0)
+					return;
 				out->yysz = 4;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_YYY:
 			case DCH_IYY:
-				/* BC year only can use SYYYY format. */
-				if (compatible_db == COMPATIBLE_ORA && *s == '-')
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							 errmsg("negative YEAR must use SYYYY format")));
-				len = from_char_parse_int(&out->year, &s, n, have_error);
-				CHECK_ERROR;
+				len = from_char_parse_int(&out->year, &s, n, escontext);
+				if (len < 0)
+					return;
 				if (len < 4)
 					out->year = adjust_partial_year_to_2020(out->year);
 				out->yysz = 3;
@@ -3882,40 +3690,19 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				break;
 			case DCH_YY:
 			case DCH_IY:
-				/* BC year only can use SYYYY format. */
-				if (compatible_db == COMPATIBLE_ORA && *s == '-')
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							 errmsg("negative YEAR must use SYYYY format")));
-				len = from_char_parse_int(&out->year, &s, n, have_error);
-				CHECK_ERROR;
+				len = from_char_parse_int(&out->year, &s, n, escontext);
+				if (len < 0)
+					return;
 				if (len < 4)
 					out->year = adjust_partial_year_to_2020(out->year);
 				out->yysz = 2;
 				SKIP_THth(s, n->suffix);
 				break;
-			case DCH_RR:
-				/* support format RR and BC year only can use SYYYY format. */
-				if (compatible_db == COMPATIBLE_ORA && *s == '-')
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							 errmsg("negative YEAR must use SYYYY format")));
-				len = from_char_parse_int(&out->year, &s, n,have_error);
-				CHECK_ERROR;
-				if (len < 4)
-					out->year = adjust_partial_year_to_2020RR(out->year);
-				out->yysz = 2;
-				SKIP_THth(s, n->suffix);
-				break;
 			case DCH_Y:
 			case DCH_I:
-				/* BC year only can use SYYYY format. */
-				if (compatible_db == COMPATIBLE_ORA && *s == '-')
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							 errmsg("negative YEAR must use SYYYY format")));
-				len = from_char_parse_int(&out->year, &s, n, have_error);
-				CHECK_ERROR;
+				len = from_char_parse_int(&out->year, &s, n, escontext);
+				if (len < 0)
+					return;
 				if (len < 4)
 					out->year = adjust_partial_year_to_2020(out->year);
 				out->yysz = 1;
@@ -3923,22 +3710,22 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				break;
 			case DCH_RM:
 			case DCH_rm:
-				from_char_seq_search(&value, &s, rm_months_lower,
-									 NULL, InvalidOid,
-									 n, have_error);
-				CHECK_ERROR;
-				from_char_set_int(&out->mm, MONTHS_PER_YEAR - value,
-								  n, have_error);
-				CHECK_ERROR;
+				if (!from_char_seq_search(&value, &s, rm_months_lower,
+										  NULL, InvalidOid,
+										  n, escontext))
+					return;
+				if (!from_char_set_int(&out->mm, MONTHS_PER_YEAR - value, n,
+									   escontext))
+					return;
 				break;
 			case DCH_W:
-				from_char_parse_int(&out->w, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->w, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_J:
-				from_char_parse_int(&out->j, &s, n, have_error);
-				CHECK_ERROR;
+				if (from_char_parse_int(&out->j, &s, n, escontext) < 0)
+					return;
 				SKIP_THth(s, n->suffix);
 				break;
 		}
@@ -3962,22 +3749,18 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 	if (std)
 	{
 		if (n->type != NODE_TYPE_END)
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("input string is too short for datetime format"))));
+			ereturn(escontext,,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("input string is too short for datetime format")));
 
 		while (*s != '\0' && isspace((unsigned char) *s))
 			s++;
 
 		if (*s != '\0')
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("trailing characters remain in input string "
-										 "after datetime format"))));
+			ereturn(escontext,,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("trailing characters remain in input string after datetime format")));
 	}
-
-on_error:
-	return;
 }
 
 /*
@@ -4000,11 +3783,9 @@ DCH_prevent_counter_overflow(void)
 
 /*
  * Get mask of date/time/zone components present in format nodes.
- *
- * If 'have_error' is NULL, then errors are thrown, else '*have_error' is set.
  */
 static int
-DCH_datetime_type(FormatNode *node, bool *have_error)
+DCH_datetime_type(FormatNode *node)
 {
 	FormatNode *n;
 	int			flags = 0;
@@ -4045,12 +3826,6 @@ DCH_datetime_type(FormatNode *node, bool *have_error)
 			case DCH_tz:
 			case DCH_TZ:
 			case DCH_OF:
-				RETURN_ERROR(ereport(ERROR,
-									 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									  errmsg("formatting field \"%s\" is only supported in to_char",
-											 n->key->name))));
-				flags |= DCH_ZONED;
-				break;
 			case DCH_TZH:
 			case DCH_TZM:
 				flags |= DCH_ZONED;
@@ -4102,7 +3877,6 @@ DCH_datetime_type(FormatNode *node, bool *have_error)
 		}
 	}
 
-on_error:
 	return flags;
 }
 
@@ -4420,10 +4194,12 @@ to_timestamp(PG_FUNCTION_ARGS)
 	/* Use the specified time zone, if any. */
 	if (tm.tm_zone)
 	{
-		int			dterr = DecodeTimezone(unconstify(char *, tm.tm_zone), &tz);
+		DateTimeErrorExtra extra;
+		int			dterr = DecodeTimezone(tm.tm_zone, &tz);
 
 		if (dterr)
-			DateTimeParseError(dterr, text_to_cstring(date_txt), "timestamptz");
+			DateTimeParseError(dterr, &extra, text_to_cstring(date_txt),
+							   "timestamptz", NULL);
 	}
 	else
 		tz = DetermineTimeZoneOffset(&tm, session_timezone);
@@ -4435,7 +4211,7 @@ to_timestamp(PG_FUNCTION_ARGS)
 
 	/* Use the specified fractional precision, if any. */
 	if (fprec)
-		AdjustTimestampForTypmod(&result, fprec);
+		AdjustTimestampForTypmod(&result, fprec, NULL);
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -4485,25 +4261,26 @@ to_date(PG_FUNCTION_ARGS)
  * The actual data type (returned in 'typid', 'typmod') is determined by
  * the presence of date/time/zone components in the format string.
  *
- * When timezone component is present, the corresponding offset is
+ * When a timezone component is present, the corresponding offset is
  * returned in '*tz'.
  *
- * If 'have_error' is NULL, then errors are thrown, else '*have_error' is set
- * and zero value is returned.
+ * If escontext points to an ErrorSaveContext, data errors will be reported
+ * by filling that struct; the caller must test SOFT_ERROR_OCCURRED() to see
+ * whether an error occurred.  Otherwise, errors are thrown.
  */
 Datum
 parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 			   Oid *typid, int32 *typmod, int *tz,
-			   bool *have_error)
+			   Node *escontext)
 {
 	struct pg_tm tm;
 	fsec_t		fsec;
 	int			fprec;
 	uint32		flags;
 
-	do_to_timestamp(date_txt, fmt, collid, strict,
-					&tm, &fsec, &fprec, &flags, have_error);
-	CHECK_ERROR;
+	if (!do_to_timestamp(date_txt, fmt, collid, strict,
+						 &tm, &fsec, &fprec, &flags, escontext))
+		return (Datum) 0;
 
 	*typmod = fprec ? fprec : -1;	/* fractional part precision */
 
@@ -4517,10 +4294,16 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 
 				if (tm.tm_zone)
 				{
-					int			dterr = DecodeTimezone(unconstify(char *, tm.tm_zone), tz);
+					DateTimeErrorExtra extra;
+					int			dterr = DecodeTimezone(tm.tm_zone, tz);
 
 					if (dterr)
-						DateTimeParseError(dterr, text_to_cstring(date_txt), "timestamptz");
+					{
+						DateTimeParseError(dterr, &extra,
+										   text_to_cstring(date_txt),
+										   "timestamptz", escontext);
+						return (Datum) 0;
+					}
 				}
 				else
 				{
@@ -4531,17 +4314,17 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 					 */
 					Assert(!strict);
 
-					RETURN_ERROR(ereport(ERROR,
-										 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-										  errmsg("missing time zone in input string for type timestamptz"))));
+					ereturn(escontext, (Datum) 0,
+							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+							 errmsg("missing time zone in input string for type timestamptz")));
 				}
 
 				if (tm2timestamp(&tm, fsec, tz, &result) != 0)
-					RETURN_ERROR(ereport(ERROR,
-										 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-										  errmsg("timestamptz out of range"))));
+					ereturn(escontext, (Datum) 0,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("timestamptz out of range")));
 
-				AdjustTimestampForTypmod(&result, *typmod);
+				AdjustTimestampForTypmod(&result, *typmod, escontext);
 
 				*typid = TIMESTAMPTZOID;
 				return TimestampTzGetDatum(result);
@@ -4551,11 +4334,11 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 				Timestamp	result;
 
 				if (tm2timestamp(&tm, fsec, NULL, &result) != 0)
-					RETURN_ERROR(ereport(ERROR,
-										 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-										  errmsg("timestamp out of range"))));
+					ereturn(escontext, (Datum) 0,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("timestamp out of range")));
 
-				AdjustTimestampForTypmod(&result, *typmod);
+				AdjustTimestampForTypmod(&result, *typmod, escontext);
 
 				*typid = TIMESTAMPOID;
 				return TimestampGetDatum(result);
@@ -4565,9 +4348,9 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 		{
 			if (flags & DCH_ZONED)
 			{
-				RETURN_ERROR(ereport(ERROR,
-									 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-									  errmsg("datetime format is zoned but not timed"))));
+				ereturn(escontext, (Datum) 0,
+						(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+						 errmsg("datetime format is zoned but not timed")));
 			}
 			else
 			{
@@ -4575,20 +4358,20 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 
 				/* Prevent overflow in Julian-day routines */
 				if (!IS_VALID_JULIAN(tm.tm_year, tm.tm_mon, tm.tm_mday))
-					RETURN_ERROR(ereport(ERROR,
-										 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-										  errmsg("date out of range: \"%s\"",
-												 text_to_cstring(date_txt)))));
+					ereturn(escontext, (Datum) 0,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("date out of range: \"%s\"",
+									text_to_cstring(date_txt))));
 
 				result = date2j(tm.tm_year, tm.tm_mon, tm.tm_mday) -
 					POSTGRES_EPOCH_JDATE;
 
 				/* Now check for just-out-of-range dates */
 				if (!IS_VALID_DATE(result))
-					RETURN_ERROR(ereport(ERROR,
-										 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-										  errmsg("date out of range: \"%s\"",
-												 text_to_cstring(date_txt)))));
+					ereturn(escontext, (Datum) 0,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("date out of range: \"%s\"",
+									text_to_cstring(date_txt))));
 
 				*typid = DATEOID;
 				return DateADTGetDatum(result);
@@ -4603,10 +4386,16 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 
 			if (tm.tm_zone)
 			{
-				int			dterr = DecodeTimezone(unconstify(char *, tm.tm_zone), tz);
+				DateTimeErrorExtra extra;
+				int			dterr = DecodeTimezone(tm.tm_zone, tz);
 
 				if (dterr)
-					RETURN_ERROR(DateTimeParseError(dterr, text_to_cstring(date_txt), "timetz"));
+				{
+					DateTimeParseError(dterr, &extra,
+									   text_to_cstring(date_txt),
+									   "timetz", escontext);
+					return (Datum) 0;
+				}
 			}
 			else
 			{
@@ -4617,15 +4406,15 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 				 */
 				Assert(!strict);
 
-				RETURN_ERROR(ereport(ERROR,
-									 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-									  errmsg("missing time zone in input string for type timetz"))));
+				ereturn(escontext, (Datum) 0,
+						(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+						 errmsg("missing time zone in input string for type timetz")));
 			}
 
 			if (tm2timetz(&tm, fsec, *tz, result) != 0)
-				RETURN_ERROR(ereport(ERROR,
-									 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-									  errmsg("timetz out of range"))));
+				ereturn(escontext, (Datum) 0,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timetz out of range")));
 
 			AdjustTimeForTypmod(&result->time, *typmod);
 
@@ -4637,9 +4426,9 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 			TimeADT		result;
 
 			if (tm2time(&tm, fsec, &result) != 0)
-				RETURN_ERROR(ereport(ERROR,
-									 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-									  errmsg("time out of range"))));
+				ereturn(escontext, (Datum) 0,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("time out of range")));
 
 			AdjustTimeForTypmod(&result, *typmod);
 
@@ -4649,13 +4438,10 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 	}
 	else
 	{
-		RETURN_ERROR(ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-							  errmsg("datetime format is not dated and not timed"))));
+		ereturn(escontext, (Datum) 0,
+				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+				 errmsg("datetime format is not dated and not timed")));
 	}
-
-on_error:
-	return (Datum) 0;
 }
 
 /*
@@ -4666,9 +4452,13 @@ on_error:
  *
  * 'collid' identifies the collation to use, if needed.
  * 'std' specifies standard parsing mode.
+ *
  * Bit mask of date/time/zone components found in 'fmt' is returned in 'flags',
  * if that is not NULL.
- * If 'have_error' is NULL, then errors are thrown, else '*have_error' is set.
+ *
+ * Returns true on success, false on failure (if escontext points to an
+ * ErrorSaveContext; otherwise errors are thrown).  Note that currently,
+ * soft-error behavior is provided for bad data but not bad format.
  *
  * We parse 'fmt' into a list of FormatNodes, which is then passed to
  * DCH_from_char to populate a TmFromChar with the parsed contents of
@@ -4677,10 +4467,10 @@ on_error:
  * The TmFromChar is then analysed and converted into the final results in
  * struct 'tm', 'fsec', and 'fprec'.
  */
-static void
+static bool
 do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 				struct pg_tm *tm, fsec_t *fsec, int *fprec,
-				uint32 *flags, bool *have_error)
+				uint32 *flags, Node *escontext)
 {
 	FormatNode *format = NULL;
 	TmFromChar	tmfc;
@@ -4738,21 +4528,19 @@ do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 		/* dump_index(DCH_keywords, DCH_index); */
 #endif
 
-		DCH_from_char(format, date_str, &tmfc, collid, std, have_error);
-		CHECK_ERROR;
-
+		DCH_from_char(format, date_str, &tmfc, collid, std, escontext);
 		pfree(fmt_str);
+		if (SOFT_ERROR_OCCURRED(escontext))
+			goto fail;
 
 		if (flags)
-			*flags = DCH_datetime_type(format, have_error);
+			*flags = DCH_datetime_type(format);
 
 		if (!incache)
 		{
 			pfree(format);
 			format = NULL;
 		}
-
-		CHECK_ERROR;
 	}
 
 	DEBUG_TMFC(&tmfc);
@@ -4782,11 +4570,12 @@ do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 	{
 		if (tm->tm_hour < 1 || tm->tm_hour > HOURS_PER_DAY / 2)
 		{
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("hour \"%d\" is invalid for the 12-hour clock",
-										 tm->tm_hour),
-								  errhint("Use the 24-hour clock, or give an hour between 1 and 12."))));
+			errsave(escontext,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("hour \"%d\" is invalid for the 12-hour clock",
+							tm->tm_hour),
+					 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
+			goto fail;
 		}
 
 		if (tmfc.pm && tm->tm_hour < HOURS_PER_DAY / 2)
@@ -4895,9 +4684,10 @@ do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 
 		if (!tm->tm_year && !tmfc.bc)
 		{
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("cannot calculate day of year without year information"))));
+			errsave(escontext,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("cannot calculate day of year without year information")));
+			goto fail;
 		}
 
 		if (tmfc.mode == FROM_CHAR_DATE_ISOWEEK)
@@ -4955,7 +4745,9 @@ do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 			 * said DTERR_MD_FIELD_OVERFLOW, because we don't want to print an
 			 * irrelevant hint about datestyle.
 			 */
-			RETURN_ERROR(DateTimeParseError(DTERR_FIELD_OVERFLOW, date_str, "timestamp"));
+			DateTimeParseError(DTERR_FIELD_OVERFLOW, NULL,
+							   date_str, "timestamp", escontext);
+			goto fail;
 		}
 	}
 
@@ -4965,7 +4757,9 @@ do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 		tm->tm_sec < 0 || tm->tm_sec >= SECS_PER_MINUTE ||
 		*fsec < INT64CONST(0) || *fsec >= USECS_PER_SEC)
 	{
-		RETURN_ERROR(DateTimeParseError(DTERR_FIELD_OVERFLOW, date_str, "timestamp"));
+		DateTimeParseError(DTERR_FIELD_OVERFLOW, NULL,
+						   date_str, "timestamp", escontext);
+		goto fail;
 	}
 
 	/* Save parsed time-zone into tm->tm_zone if it was specified */
@@ -4976,7 +4770,9 @@ do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 		if (tmfc.tzh < 0 || tmfc.tzh > MAX_TZDISP_HOUR ||
 			tmfc.tzm < 0 || tmfc.tzm >= MINS_PER_HOUR)
 		{
-			RETURN_ERROR(DateTimeParseError(DTERR_TZDISP_OVERFLOW, date_str, "timestamp"));
+			DateTimeParseError(DTERR_TZDISP_OVERFLOW, NULL,
+							   date_str, "timestamp", escontext);
+			goto fail;
 		}
 
 		tz = psprintf("%c%02d:%02d",
@@ -4987,12 +4783,18 @@ do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 
 	DEBUG_TM(tm);
 
-on_error:
-
 	if (format && !incache)
 		pfree(format);
-
 	pfree(date_str);
+
+	return true;
+
+fail:
+	if (format && !incache)
+		pfree(format);
+	pfree(date_str);
+
+	return false;
 }
 
 
@@ -5862,13 +5664,9 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 		{
 			if (Np->sign != '-')
 			{
-				if (IS_BRACKET(Np->Num) && IS_FILLMODE(Np->Num))
+				if (IS_FILLMODE(Np->Num))
 					Np->Num->flag &= ~NUM_F_BRACKET;
-				if (IS_MINUS(Np->Num))
-					Np->Num->flag &= ~NUM_F_MINUS;
 			}
-			else if (Np->sign != '+' && IS_PLUS(Np->Num))
-				Np->Num->flag &= ~NUM_F_PLUS;
 
 			if (Np->sign == '+' && IS_FILLMODE(Np->Num) && IS_LSIGN(Np->Num) == false)
 				Np->sign_wrote = true;	/* needn't sign */
@@ -5897,13 +5695,20 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 
 			/*
 			 * If any '0' specifiers are present, make sure we don't strip
-			 * those digits.
+			 * those digits.  But don't advance last_relevant beyond the last
+			 * character of the Np->number string, which is a hazard if the
+			 * number got shortened due to precision limitations.
 			 */
 			if (Np->last_relevant && Np->Num->zero_end > Np->out_pre_spaces)
 			{
+				int			last_zero_pos;
 				char	   *last_zero;
 
-				last_zero = Np->number + (Np->Num->zero_end - Np->out_pre_spaces);
+				/* note that Np->number cannot be zero-length here */
+				last_zero_pos = strlen(Np->number) - 1;
+				last_zero_pos = Min(last_zero_pos,
+									Np->Num->zero_end - Np->out_pre_spaces);
+				last_zero = Np->number + last_zero_pos;
 				if (Np->last_relevant < last_zero)
 					Np->last_relevant = last_zero;
 			}
@@ -6211,44 +6016,6 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						}
 					}
 					break;
-				/* 
-				* supprot format 'xx' or 'XX',to_char(123,'xx')
-				*/
-				case NUM_X:
-				case NUM_x:
-				if(Np->is_to_char)
-				{
-					sprintf(Np->inout, "%s", dec_to_hex(Np->number));
-					if(Np->Num->pre >= strlen(Np->inout))
-					{
-						n += Np->Num->pre -1;
-					}
-					else
-					{
-						ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("arg is invalid!")));
-					}
-					Np->inout_p += strlen(Np->inout) - 1;
-					Np->number_p += strlen(Np->number_p) - 1;
-					break;
-				}
-				else
-				{
-					sprintf(Np->number, "%ld", hex_to_dec(Np->inout,input_len));
-					if(Np->Num->pre >= strlen(Np->number))
-					{
-						n += Np->Num->pre -1;
-					}
-					else
-					{
-						ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("arg is invalid!")));
-					}
-					Np->inout_p += strlen(Np->inout_p) - 1;
-					Np->number_p += strlen(Np->number) - 1;
-					break;
-				}
-				break;
 
 				default:
 					continue;
@@ -6337,27 +6104,6 @@ do { \
 	SET_VARSIZE(result, len + VARHDRSZ); \
 } while (0)
 
-/* reverse the strings */
-static
-void strReverse(char *str)
-{
-	char	*start = str;
-	char	*end = NULL;
-	char	 temp;
-
-	if(str == NULL || *str == '\0')
-		return;
-	end = start + strlen(str) -1;
-	while(start < end)
-	{
-		temp = *start;
-		*start = *end;
-		*end = temp;
-		start++;
-		end--;
-	}
-}
-
 /* -------------------
  * NUMERIC to_number() (convert string to numeric)
  * -------------------
@@ -6376,235 +6122,20 @@ numeric_to_number(PG_FUNCTION_ARGS)
 	int			scale,
 				precision;
 
-	int 		val_len;
-	bool		fmt_have_separator = false;	/* whether the ',' separator format string */
-	bool		val_have_separator = false;	/* whether the ',' separator value string */
-	bool		money_fmt = false;			/* '.' and money format flags */
-	bool		money_val = false;			/* '.' and money parameter flags */
-	int			i,
-				j,
-				fmt_nondigit = 0,			/* number of separators in format string */
-				val_nondigit =0,			/* number of separators in value string */
-				val_digits = 0;				/* number of numeric characters in value string */
-	char	   *ch = NULL;
-	char	   *str0 = text_to_cstring(value);
-	char	   *str1 = text_to_cstring(fmt);
-
-	FORMAT_MATCH_FLAG	flag = FMT_GROUP_LAST_LEN_MATCH;
-	val_len = VARSIZE_ANY_EXHDR(value);
-
 	len = VARSIZE_ANY_EXHDR(fmt);
-
-	if(compatible_db == COMPATIBLE_ORA)
-	{
-
-		/* to match $ */
-		if((str0[0] == '$' && (str1[0] != '$' && str1[0] != 'L'))||(str1[0] == '$' && str0[0] != '$'))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("paramter is invalid,Please note the format!")));
-		if(str1[0] == 'L' && str0[0] == '$')
-		{
-			struct lconv *lconvert = PGLC_localeconv();
-			ch = (*lconvert->currency_symbol != '\0') ? lconvert->currency_symbol : "$";
-			if(strncmp("$", ch, 1))
-			{
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								errmsg("paramter is invalid,Please note the format!,local monetary is %s",ch)));
-			}
-		}
-
-		/* Determine whether the parameter and format have ‘,’
-		 * and calculate the number of ‘,’
-		 * and calculate the number of numeric characters in the parameter.
-		 */
-		for(i = 0; i < len; i++)
-		{
-			if(!(str1[i] != ',' || (str1[i] >= '9' && str1[i] <= '0')))
-			{
-				fmt_have_separator = 1;
-				fmt_nondigit++;
-			}
-			if(str1[i] == '.' && str1[0] == '$')
-				money_fmt = 1;
-		}
-		for(j = 0;j < val_len; j++)
-		{
-			if(!(str0[j] != ',' || (str0[j] >= '9' && str0[j] <= '0')))
-			{
-				val_have_separator = 1;
-				val_nondigit++;
-			}
-			if(str0[j] == '.' && str0[0] == '$')
-				money_val = 1;
-			if(str0[j] <= '9' && str0[j] >= '0')
-				val_digits++;
-		}
-
-		/* parameters and format strings are grouped by ‘,’
-		 * and the length of each group is calculated
-		 */
-		if(fmt_have_separator && val_have_separator)
-		{
-			List	*grouped_val;			/* parameter value is a string separated by separator ',' */
-			List	*grouped_fmt;			/* format string separated by the separator ',' */
-			ListCell	*val_group;			/* structure of each group after separation by parameter value */
-			ListCell	*fmt_group;			/* structure of each group after separation by parameter format */
-			int 	*val_group_len = NULL;	/* the length if each packet in the parameter string */
-			int 	*fmt_group_len = NULL;	/* the length if each packet in the format string */
-			int 	val_groups = 0,			/* number of record value groups */
-					fmt_groups= 0,			/* number of record format groups */
-					num1 = 0;
-
-			val_group_len = (int *)palloc((val_nondigit + 1) * sizeof(int*));
-			fmt_group_len = (int *)palloc((fmt_nondigit + 1) * sizeof(int*));
-			strReverse(str0);
-			strReverse(str1);
-			SplitIdentifierString(str0, ',', &grouped_val);
-			SplitIdentifierString(str1, ',', &grouped_fmt);
-			foreach(val_group, grouped_val)
-			{
-				char *value1 = (char*)lfirst(val_group);
-				val_group_len[val_groups++] = strlen(value1);
-			}
-			val_group_len[val_groups] = 0;
-			foreach(fmt_group, grouped_fmt)
-			{
-				char *fmt1 = (char*)lfirst(fmt_group);
-				fmt_group_len[fmt_groups++] = strlen(fmt1);
-			}
-			fmt_group_len[fmt_groups] = 0;
-
-			/* starting from the last set of lengths,there are three cases:
-			 * greater than,equal to,less than.
-			 */
-			if(fmt_group_len[0] >= val_digits)
-				flag = FMT_GROUP_LAST_LEN_MATCH;
-			else
-			{
-				if(fmt_group_len[0] > val_group_len[0])
-				{
-
-				/* the length of the last group of the format string
-				 * whether it matches the length of the integer group parameter string.
-				 */
-					for(i = 0; i < val_groups; i++)
-					{
-						num1 += val_group_len[i];
-						if(fmt_group_len[0] == num1)
-						{
-							flag = FMT_GROUP_LAST_LEN_MATCH;
-							break;
-						}
-					}
-					if(fmt_group_len[0] == num1)
-					{
-						for(j = i + 1; j < val_groups - 1; j++)
-						{
-							if(fmt_group_len[j - i] == 0)
-							{
-								flag = FMT_GROUP_NO_MATCH;
-								break;
-							}
-							if(fmt_group_len[j - i] != val_group_len[j])
-							{
-								flag = FMT_GROUP_NO_MATCH;
-								break;
-							}
-						}
-						if(j == val_groups - 1)
-						{
-							if(fmt_group_len[j - i] < val_group_len[j])
-								flag = FMT_GROUP_NO_MATCH;
-						}
-					}
-					else
-						flag = FMT_GROUP_LAST_NO_MATCH;
-				}
-				else if(fmt_group_len[0] == val_group_len[0])
-				{
-					for(i = 1; i< val_groups - 1; i++)
-					{
-						if(fmt_group_len[i] == 0)
-						{
-							flag = FMT_GROUP_NO_MATCH;
-							break;
-						}
-						if(fmt_group_len[i] != val_group_len[i])
-						{
-							flag = FMT_GROUP_NO_MATCH;
-							break;
-						}
-					}
-					if(i == val_groups - 1)
-					{
-						if(fmt_group_len[i] < val_group_len[i])
-							flag = FMT_GROUP_NO_MATCH;
-					}
-				}
-				else
-					flag = FMT_GROUP_LAST_LEN_NO_MATCH;
-			}
-			pfree(val_group_len);
-			pfree(fmt_group_len);
-		}
-		switch(flag)
-		{
-			case FMT_GROUP_NO_MATCH:
-			case FMT_GROUP_LAST_NO_MATCH:
-			case FMT_GROUP_LAST_LEN_NO_MATCH:
-				ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("paramter is invalid,Please note the format is not match!")));
-				break;
-			default:
-				break;
-		}
-	}
 
 	if (len <= 0 || len >= INT_MAX / NUM_MAX_ITEM_SIZ)
 		PG_RETURN_NULL();
 
-	/* reverse parameters and format strings,then deal it */
-	if(money_fmt && money_val)
-	{
-		text	*value2 = NULL;
-		text	*fmt2 = NULL;
+	format = NUM_cache(len, &Num, fmt, &shouldFree);
 
-		strReverse(str0);
-		strReverse(str1);
-		value2 = cstring_to_text(str0);
-		fmt2 = cstring_to_text(str1);
-		format = NUM_cache(len, &Num, fmt2, &shouldFree);
+	numstr = (char *) palloc((len * NUM_MAX_ITEM_SIZ) + 1);
 
-		numstr = (char *) palloc((len * NUM_MAX_ITEM_SIZ) + 1);
+	NUM_processor(format, &Num, VARDATA_ANY(value), numstr,
+				  VARSIZE_ANY_EXHDR(value), 0, 0, false, PG_GET_COLLATION());
 
-		NUM_processor(format, &Num, VARDATA_ANY(value2), numstr,
-				VARSIZE_ANY_EXHDR(value2), 0, 0, false, PG_GET_COLLATION());
-
-		scale = Num.pre;
-		precision = Num.post + Num.multi + scale;
-		strReverse(numstr);
-	}
-	else
-	{
-		format = NUM_cache(len, &Num, fmt, &shouldFree);
-
-		numstr = (char *) palloc((len * NUM_MAX_ITEM_SIZ) + 1);
-
-		NUM_processor(format, &Num, VARDATA_ANY(value), numstr,
-					  VARSIZE_ANY_EXHDR(value), 0, 0, false, PG_GET_COLLATION());
-
-		scale = Num.post;
-		precision = Num.pre + Num.multi + scale;
-	}
-
-	/* to check the number of numeric characters in arguments and formats. */
-	if(val_digits > (Num.post + Num.pre))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("paramter is invalid,Please note the format!")));
+	scale = Num.post;
+	precision = Num.pre + Num.multi + scale;
 
 	if (shouldFree)
 		pfree(format);
@@ -6841,14 +6372,9 @@ int4_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
-			/* deal format 'X' or 'x' */
-			char *buf = text_to_cstring(fmt);
-			if(!(*buf == 'X' || *buf =='x'))
-			{
-				numstr = (char *) palloc(Num.pre + Num.post + 2);
-				fill_str(numstr, '#', Num.pre + Num.post + 1);
-				*(numstr + Num.pre) = '.';
-			}
+			numstr = (char *) palloc(Num.pre + Num.post + 2);
+			fill_str(numstr, '#', Num.pre + Num.post + 1);
+			*(numstr + Num.pre) = '.';
 		}
 	}
 

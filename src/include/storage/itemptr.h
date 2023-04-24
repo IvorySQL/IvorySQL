@@ -4,7 +4,7 @@
  *	  POSTGRES disk item pointer definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/itemptr.h
@@ -221,5 +221,25 @@ extern bool ItemPointerEquals(ItemPointer pointer1, ItemPointer pointer2);
 extern int32 ItemPointerCompare(ItemPointer arg1, ItemPointer arg2);
 extern void ItemPointerInc(ItemPointer pointer);
 extern void ItemPointerDec(ItemPointer pointer);
+
+/* ----------------
+ *		Datum conversion functions
+ * ----------------
+ */
+
+static inline ItemPointer
+DatumGetItemPointer(Datum X)
+{
+	return (ItemPointer) DatumGetPointer(X);
+}
+
+static inline Datum
+ItemPointerGetDatum(const ItemPointerData *X)
+{
+	return PointerGetDatum(X);
+}
+
+#define PG_GETARG_ITEMPOINTER(n) DatumGetItemPointer(PG_GETARG_DATUM(n))
+#define PG_RETURN_ITEMPOINTER(x) return ItemPointerGetDatum(x)
 
 #endif							/* ITEMPTR_H */

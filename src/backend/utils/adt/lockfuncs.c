@@ -3,7 +3,7 @@
  * lockfuncs.c
  *		Functions for SQL access to various lock-manager capabilities.
  *
- * Copyright (c) 2002-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/backend/utils/adt/lockfuncs.c
@@ -37,10 +37,11 @@ const char *const LockTagTypeNames[] = {
 	"spectoken",
 	"object",
 	"userlock",
-	"advisory"
+	"advisory",
+	"applytransaction"
 };
 
-StaticAssertDecl(lengthof(LockTagTypeNames) == (LOCKTAG_ADVISORY + 1),
+StaticAssertDecl(lengthof(LockTagTypeNames) == (LOCKTAG_LAST_TYPE + 1),
 				 "array length mismatch");
 
 /* This must match enum PredicateLockTargetType (predicate_internals.h) */
@@ -311,6 +312,29 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				nulls[7] = true;
 				nulls[8] = true;
 				nulls[9] = true;
+				break;
+			case LOCKTAG_SPECULATIVE_TOKEN:
+				values[6] =
+					TransactionIdGetDatum(instance->locktag.locktag_field1);
+				values[8] = ObjectIdGetDatum(instance->locktag.locktag_field2);
+				nulls[1] = true;
+				nulls[2] = true;
+				nulls[3] = true;
+				nulls[4] = true;
+				nulls[5] = true;
+				nulls[7] = true;
+				nulls[9] = true;
+				break;
+			case LOCKTAG_APPLY_TRANSACTION:
+				values[1] = ObjectIdGetDatum(instance->locktag.locktag_field1);
+				values[8] = ObjectIdGetDatum(instance->locktag.locktag_field2);
+				values[6] = ObjectIdGetDatum(instance->locktag.locktag_field3);
+				values[9] = Int16GetDatum(instance->locktag.locktag_field4);
+				nulls[2] = true;
+				nulls[3] = true;
+				nulls[4] = true;
+				nulls[5] = true;
+				nulls[7] = true;
 				break;
 			case LOCKTAG_OBJECT:
 			case LOCKTAG_USERLOCK:

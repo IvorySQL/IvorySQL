@@ -3,7 +3,7 @@
  * parallel.c
  *	  Infrastructure for launching parallel workers
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -113,7 +113,7 @@ typedef struct FixedParallelState
 int			ParallelWorkerNumber = -1;
 
 /* Is there a parallel message pending which we need to receive? */
-volatile bool ParallelMessagePending = false;
+volatile sig_atomic_t ParallelMessagePending = false;
 
 /* Are we initializing a parallel worker? */
 bool		InitializingParallelWorker = false;
@@ -376,7 +376,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 
 		/*
 		 * Serialize the transaction snapshot if the transaction
-		 * isolation-level uses a transaction snapshot.
+		 * isolation level uses a transaction snapshot.
 		 */
 		if (IsolationUsesXactSnapshot())
 		{
@@ -1152,11 +1152,11 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				 * If desired, add a context line to show that this is a
 				 * message propagated from a parallel worker.  Otherwise, it
 				 * can sometimes be confusing to understand what actually
-				 * happened.  (We don't do this in FORCE_PARALLEL_REGRESS mode
+				 * happened.  (We don't do this in DEBUG_PARALLEL_REGRESS mode
 				 * because it causes test-result instability depending on
 				 * whether a parallel worker is actually used or not.)
 				 */
-				if (force_parallel_mode != FORCE_PARALLEL_REGRESS)
+				if (debug_parallel_query != DEBUG_PARALLEL_REGRESS)
 				{
 					if (edata.context)
 						edata.context = psprintf("%s\n%s", edata.context,
@@ -1495,6 +1495,14 @@ ParallelWorkerMain(Datum main_arg)
 	clientconninfospace = shm_toc_lookup(toc, PARALLEL_KEY_CLIENTCONNINFO,
 										 false);
 	RestoreClientConnectionInfo(clientconninfospace);
+
+	/*
+	 * Initialize SystemUser now that MyClientConnectionInfo is restored.
+	 * Also ensure that auth_method is actually valid, aka authn_id is not NULL.
+	 */
+	if (MyClientConnectionInfo.authn_id)
+		InitializeSystemUser(MyClientConnectionInfo.authn_id,
+							 hba_authname(MyClientConnectionInfo.auth_method));
 
 	/* Attach to the leader's serializable transaction, if SERIALIZABLE. */
 	AttachSerializableXact(fps->serializable_xact_handle);

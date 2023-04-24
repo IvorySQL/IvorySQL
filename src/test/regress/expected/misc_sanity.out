@@ -60,9 +60,7 @@ ORDER BY 1, 2;
  pg_index                | indpred       | pg_node_tree
  pg_largeobject          | data          | bytea
  pg_largeobject_metadata | lomacl        | aclitem[]
- pg_variable             | varacl        | aclitem[]
- pg_variable             | vardefexpr    | pg_node_tree
-(13 rows)
+(11 rows)
 
 -- system catalogs without primary keys
 --

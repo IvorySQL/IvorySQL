@@ -86,7 +86,7 @@
  *	when using the SysV semaphore code.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	  src/include/storage/s_lock.h
@@ -142,7 +142,7 @@ typedef unsigned char slock_t;
 static __inline__ int
 tas(volatile slock_t *lock)
 {
-	register slock_t _res = 1;
+	slock_t		_res = 1;
 
 	/*
 	 * Use a non-locking test before asserting the bus lock.  Note that the
@@ -223,7 +223,7 @@ typedef unsigned char slock_t;
 static __inline__ int
 tas(volatile slock_t *lock)
 {
-	register slock_t _res = 1;
+	slock_t		_res = 1;
 
 	__asm__ __volatile__(
 		"	lock			\n"
@@ -293,29 +293,6 @@ spin_delay(void)
 #endif	 /* __arm__ || __arm || __aarch64__ */
 
 
-/*
- * RISC-V likewise uses __sync_lock_test_and_set(int *, int) if available.
- */
-#if defined(__riscv)
-#ifdef HAVE_GCC__SYNC_INT32_TAS
-#define HAS_TEST_AND_SET
-
-#define TAS(lock) tas(lock)
-
-typedef int slock_t;
-
-static __inline__ int
-tas(volatile slock_t *lock)
-{
-	return __sync_lock_test_and_set(lock, 1);
-}
-
-#define S_UNLOCK(lock) __sync_lock_release(lock)
-
-#endif	 /* HAVE_GCC__SYNC_INT32_TAS */
-#endif	 /* __riscv */
-
-
 /* S/390 and S/390x Linux (32- and 64-bit zSeries) */
 #if defined(__s390__) || defined(__s390x__)
 #define HAS_TEST_AND_SET
@@ -344,7 +321,7 @@ tas(volatile slock_t *lock)
 /*
  * Solaris has always run sparc processors in TSO (total store) mode, but
  * linux didn't use to and the *BSDs still don't. So, be careful about
- * acquire/release semantics. The CPU will treat superfluous membars as
+ * acquire/release semantics. The CPU will treat superfluous members as
  * NOPs, so it's just code space.
  */
 #define HAS_TEST_AND_SET
@@ -356,7 +333,7 @@ typedef unsigned char slock_t;
 static __inline__ int
 tas(volatile slock_t *lock)
 {
-	register slock_t _res;
+	slock_t		_res;
 
 	/*
 	 *	See comment in src/backend/port/tas/sunstudio_sparc.s for why this
@@ -511,9 +488,9 @@ typedef unsigned int slock_t;
 static __inline__ int
 tas(volatile slock_t *lock)
 {
-	register volatile slock_t *_l = lock;
-	register int _res;
-	register int _tmp;
+	volatile slock_t *_l = lock;
+	int			_res;
+	int			_tmp;
 
 	__asm__ __volatile__(
 		"       .set push           \n"
@@ -574,7 +551,7 @@ static __inline__ int
 tas(volatile slock_t *lock)
 {
 	volatile int *lockword = TAS_ACTIVE_WORD(lock);
-	register int lockval;
+	int			lockval;
 
 	/*
 	 * The LDCWX instruction atomically clears the target word and
@@ -617,6 +594,50 @@ tas(volatile slock_t *lock)
 #define S_LOCK_FREE(lock)	(*TAS_ACTIVE_WORD(lock) != 0)
 
 #endif	 /* __hppa || __hppa__ */
+
+
+/*
+ * If we have no platform-specific knowledge, but we found that the compiler
+ * provides __sync_lock_test_and_set(), use that.  Prefer the int-width
+ * version over the char-width version if we have both, on the rather dubious
+ * grounds that that's known to be more likely to work in the ARM ecosystem.
+ * (But we dealt with ARM above.)
+ */
+#if !defined(HAS_TEST_AND_SET)
+
+#if defined(HAVE_GCC__SYNC_INT32_TAS)
+#define HAS_TEST_AND_SET
+
+#define TAS(lock) tas(lock)
+
+typedef int slock_t;
+
+static __inline__ int
+tas(volatile slock_t *lock)
+{
+	return __sync_lock_test_and_set(lock, 1);
+}
+
+#define S_UNLOCK(lock) __sync_lock_release(lock)
+
+#elif defined(HAVE_GCC__SYNC_CHAR_TAS)
+#define HAS_TEST_AND_SET
+
+#define TAS(lock) tas(lock)
+
+typedef char slock_t;
+
+static __inline__ int
+tas(volatile slock_t *lock)
+{
+	return __sync_lock_test_and_set(lock, 1);
+}
+
+#define S_UNLOCK(lock) __sync_lock_release(lock)
+
+#endif	 /* HAVE_GCC__SYNC_INT32_TAS */
+
+#endif	/* !defined(HAS_TEST_AND_SET) */
 
 
 /*

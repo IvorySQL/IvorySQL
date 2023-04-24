@@ -3,7 +3,7 @@
  * parse_coerce.c
  *		handle type coercions/conversions for parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1042,7 +1042,7 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 		ParseNamespaceItem *nsitem;
 
 		nsitem = GetNSItemByRangeTablePosn(pstate, rtindex, sublevels_up);
-		args = expandNSItemVars(nsitem, sublevels_up, vlocation, NULL);
+		args = expandNSItemVars(pstate, nsitem, sublevels_up, vlocation, NULL);
 	}
 	else
 		ereport(ERROR,
@@ -1286,146 +1286,6 @@ parser_coercion_errposition(ParseState *pstate,
 
 
 /*
- * minmax_expr_select_common_type()
- *		Determine the common supertype of a list of input expressions.
- *		This is used for determining the output type of CASE, UNION,
- *		and similar constructs.
- *
- * 'exprs' is a *nonempty* list of expressions.  Note that earlier items
- * in the list will be preferred if there is doubt.
- * 'context' is a phrase to use in the error message if we fail to select
- * a usable type.  Pass NULL to have the routine return InvalidOid
- * rather than throwing an error on failure.
- * 'which_expr': if not NULL, receives a pointer to the particular input
- * expression from which the result type was taken.
- *
- * return textoid when First parameter is unknow
- */
-Oid
-minmax_expr_select_common_type(ParseState *pstate, List *exprs, const char *context,
-			   Node **which_expr)
-{
-	Node	   *pexpr;
-	Oid 		ptype;
-	TYPCATEGORY pcategory;
-	bool		pispreferred;
-	ListCell   *lc;
-
-	Assert(exprs != NIL);
-	pexpr = (Node *) linitial(exprs);
-	lc = lnext(exprs,list_head(exprs));
-	ptype = exprType(pexpr);
-
-	/*
-	 * If all input types are valid and exactly the same, just pick that type.
-	 * This is the only way that we will resolve the result as being a domain
-	 * type; otherwise domains are smashed to their base types for comparison.
-	 */
-	if (ptype != UNKNOWNOID)
-	{
-		for_each_cell(lc, exprs, lc)
-		{
-			Node	   *nexpr = (Node *) lfirst(lc);
-			Oid 		ntype = exprType(nexpr);
-
-			if (ntype != ptype)
-				break;
-		}
-		if (lc == NULL) 		/* got to the end of the list? */
-		{
-			if (which_expr)
-				*which_expr = pexpr;
-			return ptype;
-		}
-	}
-	else
-	{
-		ptype = TEXTOID;
-		return ptype;
-	}
-
-	/*
-	 * Nope, so set up for the full algorithm.	Note that at this point, lc
-	 * points to the first list item with type different from pexpr's; we need
-	 * not re-examine any items the previous loop advanced over.
-	 */
-	ptype = getBaseType(ptype);
-	get_type_category_preferred(ptype, &pcategory, &pispreferred);
-
-	for_each_cell(lc, exprs, lc)
-	{
-		Node	   *nexpr = (Node *) lfirst(lc);
-		Oid 		ntype = getBaseType(exprType(nexpr));
-
-		/* move on to next one if no new information... */
-		if (ntype != UNKNOWNOID && ntype != ptype)
-		{
-			TYPCATEGORY ncategory;
-			bool		nispreferred;
-
-			get_type_category_preferred(ntype, &ncategory, &nispreferred);
-			if (ptype == UNKNOWNOID)
-			{
-				/* so far, only unknowns so take anything... */
-				pexpr = nexpr;
-				ptype = ntype;
-				pcategory = ncategory;
-				pispreferred = nispreferred;
-			}
-			else if (ncategory != pcategory)
-			{
-				/*
-				 * both types in different categories? then not much hope...
-				 */
-				if (context == NULL)
-					return InvalidOid;
-				ereport(ERROR,
-						(errcode(ERRCODE_DATATYPE_MISMATCH),
-				/*------
-				  translator: first %s is name of a SQL construct, eg CASE */
-						 errmsg("%s types %s and %s cannot be matched",
-								context,
-								format_type_be(ptype),
-								format_type_be(ntype)),
-						 parser_errposition(pstate, exprLocation(nexpr))));
-			}
-			else if (!pispreferred &&
-					 can_coerce_type(1, &ptype, &ntype, COERCION_IMPLICIT) &&
-					 !can_coerce_type(1, &ntype, &ptype, COERCION_IMPLICIT))
-			{
-				/*
-				 * take new type if can coerce to it implicitly but not the
-				 * other way; but if we have a preferred type, stay on it.
-				 */
-				pexpr = nexpr;
-				ptype = ntype;
-				pcategory = ncategory;
-				pispreferred = nispreferred;
-			}
-		}
-	}
-
-	/*
-	 * If all the inputs were UNKNOWN type --- ie, unknown-type literals ---
-	 * then resolve as type TEXT.  This situation comes up with constructs
-	 * like SELECT (CASE WHEN foo THEN 'bar' ELSE 'baz' END); SELECT 'foo'
-	 * UNION SELECT 'bar'; It might seem desirable to leave the construct's
-	 * output type as UNKNOWN, but that really doesn't work, because we'd
-	 * probably end up needing a runtime coercion from UNKNOWN to something
-	 * else, and we usually won't have it.	We need to coerce the unknown
-	 * literals while they are still literals, so a decision has to be made
-	 * now.
-	 */
-	if (ptype == UNKNOWNOID)
-		ptype = TEXTOID;
-
-	if (which_expr)
-		*which_expr = pexpr;
-	return ptype;
-}
-
-
-/*
  * select_common_type()
  *		Determine the common supertype of a list of input expressions.
  *		This is used for determining the output type of CASE, UNION,
@@ -1559,40 +1419,6 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 	if (which_expr)
 		*which_expr = pexpr;
 	return ptype;
-}
-
-/*
- * minmax_expr_coerce_to_common_type()
- *		Coerce an expression to the given type.
- *
- * This is used following select_common_type() to coerce the individual
- * expressions to the desired type.  'context' is a phrase to use in the
- * error message if we fail to coerce.
- *
- * As with coerce_type, pstate may be NULL if no special unknown-Param
- * processing is wanted.
- */
- Node *
-minmax_expr_coerce_to_common_type(ParseState *pstate, Node *node,
-					Oid targetTypeId, const char *context)
-{
-	Oid		inputTypeId = exprType(node);
-
-	if (inputTypeId == targetTypeId)
-		return node;			/* no work */
-	if (can_coerce_type(1, &inputTypeId, &targetTypeId, COERCION_EXPLICIT))
-		node = coerce_type(pstate, node, inputTypeId, targetTypeId, -1,
-						 COERCION_EXPLICIT, COERCE_EXPLICIT_CAST, -1);
-	else
-		ereport(ERROR,
-				(errcode(ERRCODE_CANNOT_COERCE),
-				/* translator: first %s is name of a SQL construct, eg CASE */
-					errmsg("%s could not convert type %s to %s",
-					  context,
-					  format_type_be(inputTypeId),
-					  format_type_be(targetTypeId)),
-					  parser_errposition(pstate, exprLocation(node))));
-	return node;
 }
 
 /*
@@ -3168,9 +2994,27 @@ IsPreferredType(TYPCATEGORY category, Oid type)
 bool
 IsBinaryCoercible(Oid srctype, Oid targettype)
 {
+	Oid			castoid;
+
+	return IsBinaryCoercibleWithCast(srctype, targettype, &castoid);
+}
+
+/* IsBinaryCoercibleWithCast()
+ *		Check if srctype is binary-coercible to targettype.
+ *
+ * This variant also returns the OID of the pg_cast entry if one is involved.
+ * *castoid is set to InvalidOid if no binary-coercible cast exists, or if
+ * there is a hard-wired rule for it rather than a pg_cast entry.
+ */
+bool
+IsBinaryCoercibleWithCast(Oid srctype, Oid targettype,
+						  Oid *castoid)
+{
 	HeapTuple	tuple;
 	Form_pg_cast castForm;
 	bool		result;
+
+	*castoid = InvalidOid;
 
 	/* Fast path if same type */
 	if (srctype == targettype)
@@ -3234,6 +3078,9 @@ IsBinaryCoercible(Oid srctype, Oid targettype)
 
 	result = (castForm->castmethod == COERCION_METHOD_BINARY &&
 			  castForm->castcontext == COERCION_CODE_IMPLICIT);
+
+	if (result)
+		*castoid = castForm->oid;
 
 	ReleaseSysCache(tuple);
 

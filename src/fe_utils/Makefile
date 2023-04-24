@@ -5,7 +5,7 @@
 # This makefile generates a static library, libpgfeutils.a,
 # for use by client applications
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # IDENTIFICATION
@@ -34,6 +34,10 @@ OBJS = \
 	simple_list.o \
 	string_utils.o
 
+ifeq ($(PORTNAME), win32)
+override CPPFLAGS += -DFD_SETSIZE=1024
+endif
+
 all: libpgfeutils.a
 
 libpgfeutils.a: $(OBJS)
@@ -41,7 +45,7 @@ libpgfeutils.a: $(OBJS)
 	$(AR) $(AROPT) $@ $^
 
 psqlscan.c: FLEXFLAGS = -Cfe -p -p
-#psqlscan.c: FLEX_NO_BACKUP=yes
+psqlscan.c: FLEX_NO_BACKUP=yes
 psqlscan.c: FLEX_FIX_WARNING=yes
 
 distprep: psqlscan.c

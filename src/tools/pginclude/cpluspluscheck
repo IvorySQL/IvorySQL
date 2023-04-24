@@ -13,7 +13,7 @@
 # No output if everything is OK, else compiler errors.
 #
 # src/tools/pginclude/cpluspluscheck
-# Copyright (c) 2009-2022, PostgreSQL Global Development Group
+# Copyright (c) 2009-2023, PostgreSQL Global Development Group
 
 if [ -z "$1" ]; then
     srcdir="."
@@ -50,7 +50,7 @@ done
 # Create temp directory.
 tmp=`mktemp -d /tmp/$me.XXXXXX`
 
-trap 'rm -rf $tmp' 0 1 2 3 15
+trap "ret=$?; rm -rf $tmp; exit $ret" 0 1 2 3 15
 
 exit_status=0
 
@@ -116,7 +116,7 @@ do
 	test "$f" = src/pl/tcl/pltclerrcodes.h && continue
 
 	# Also not meant to be included standalone.
-	test "$f" = src/include/common/unicode_combining_table.h && continue
+	test "$f" = src/include/common/unicode_nonspacing_table.h && continue
 	test "$f" = src/include/common/unicode_east_asian_fw_table.h && continue
 
 	# We can't make these Bison output files compilable standalone
@@ -125,7 +125,6 @@ do
 	test "$f" = contrib/cube/cubeparse.h && continue
 	test "$f" = contrib/seg/segparse.h && continue
 	test "$f" = src/backend/bootstrap/bootparse.h && continue
-	test "$f" = src/include/parser/gram.h && continue
 	test "$f" = src/backend/parser/gram.h && continue
 	test "$f" = src/backend/replication/repl_gram.h && continue
 	test "$f" = src/backend/replication/syncrep_gram.h && continue
@@ -151,7 +150,11 @@ do
 
 	# pg_dump is not C++-clean because it uses "public" and "namespace"
 	# as field names, which is unfortunate but we won't change it now.
+	test "$f" = src/bin/pg_dump/compress_gzip.h && continue
 	test "$f" = src/bin/pg_dump/compress_io.h && continue
+	test "$f" = src/bin/pg_dump/compress_lz4.h && continue
+	test "$f" = src/bin/pg_dump/compress_none.h && continue
+	test "$f" = src/bin/pg_dump/compress_zstd.h && continue
 	test "$f" = src/bin/pg_dump/parallel.h && continue
 	test "$f" = src/bin/pg_dump/pg_backup_archiver.h && continue
 	test "$f" = src/bin/pg_dump/pg_dump.h && continue
@@ -159,7 +162,33 @@ do
 	# OK, create .c file to include this .h file.
 	{
 	    echo 'extern "C" {'
-	    test "$f" != src/include/postgres_fe.h && echo '#include "postgres.h"'
+	    # Ideally we'd pre-include only the appropriate one of
+	    # postgres.h, postgres_fe.h, or c.h.  We don't always have enough
+	    # info to guess which, but in some subdirectories there's a
+	    # reasonable choice to make, and otherwise we use postgres.h.
+	    # Also, those three files should compile with no pre-include, as
+	    # should src/interfaces headers meant to be exposed to clients.
+	    case "$f" in
+		src/include/postgres.h) ;;
+		src/include/postgres_fe.h) ;;
+		src/include/c.h) ;;
+		src/interfaces/libpq/libpq-fe.h) ;;
+		src/interfaces/libpq/libpq-events.h) ;;
+		src/interfaces/ecpg/ecpglib/ecpglib_extern.h)
+		    echo '#include "postgres_fe.h"' ;;
+		src/interfaces/ecpg/ecpglib/*) ;;
+		src/interfaces/*)
+		    echo '#include "postgres_fe.h"' ;;
+		src/bin/*)
+		    echo '#include "postgres_fe.h"' ;;
+		src/fe_utils/*)
+		    echo '#include "postgres_fe.h"' ;;
+		src/port/*) ;;
+		src/common/*)
+		    echo '#include "c.h"' ;;
+		*)
+		    echo '#include "postgres.h"' ;;
+	    esac
 	    echo "#include \"$f\""
 	    echo '};'
 	} >$tmp/test.cpp
@@ -172,7 +201,9 @@ do
 		EXTRAINCLUDES="$python_includespec" ;;
 	    src/interfaces/ecpg/*)
 		EXTRAINCLUDES="-I $builddir/src/interfaces/ecpg/include -I $srcdir/src/interfaces/ecpg/include" ;;
-		src/backend/utils/adt/*)
+	    src/backend/parser/*)
+		EXTRAINCLUDES="-I $builddir/src/backend/parser/" ;;
+	    src/backend/utils/adt/*)
 		EXTRAINCLUDES="-I $builddir/src/backend/utils/adt/" ;;
 	    *)
 		EXTRAINCLUDES="" ;;

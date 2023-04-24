@@ -4,7 +4,7 @@
  *	  POSTGRES define and remove utility definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/defrem.h
@@ -29,6 +29,7 @@ extern ObjectAddress DefineIndex(Oid relationId,
 								 Oid indexRelationId,
 								 Oid parentIndexId,
 								 Oid parentConstraintId,
+								 int total_parts,
 								 bool is_alter_table,
 								 bool check_rights,
 								 bool check_not_in_use,
@@ -150,16 +151,11 @@ extern double defGetNumeric(DefElem *def);
 extern bool defGetBoolean(DefElem *def);
 extern int32 defGetInt32(DefElem *def);
 extern int64 defGetInt64(DefElem *def);
+extern Oid	defGetObjectId(DefElem *def);
 extern List *defGetQualifiedName(DefElem *def);
 extern TypeName *defGetTypeName(DefElem *def);
 extern int	defGetTypeLength(DefElem *def);
 extern List *defGetStringList(DefElem *def);
 extern void errorConflictingDefElem(DefElem *defel, ParseState *pstate) pg_attribute_noreturn();
-
-/* commands/packagecmds.c */
-extern ObjectAddress CreatePackage(ParseState *pstate, CreatePackageStmt *stmt);
-extern void DropPackageById(Oid packageOid);
-extern void DropPackagebody(Oid packageOid);
-
 
 #endif							/* DEFREM_H */

@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2023, PostgreSQL Global Development Group
  *
  * src/bin/psql/mainloop.c
  */
@@ -417,9 +417,8 @@ MainLoop(FILE *source)
 			 * Send command if semicolon found, or if end of line and we're in
 			 * single-line mode.
 			 */
-			if ((scan_result == PSCAN_SEMICOLON) ||
-				(scan_result == PSCAN_EOL && pset.singleline) ||
-				((scan_result == PSCAN_SLASH) ))
+			if (scan_result == PSCAN_SEMICOLON ||
+				(scan_result == PSCAN_EOL && pset.singleline))
 			{
 				/*
 				 * Save line in history.  We use history_buf to accumulate
@@ -427,7 +426,6 @@ MainLoop(FILE *source)
 				 * history accumulation works on input lines, so it doesn't
 				 * matter whether the query will be ignored due to \if.
 				 */
-
 				if (pset.cur_cmd_interactive && !line_saved_in_history)
 				{
 					pg_append_history(line, history_buf);

@@ -3,7 +3,7 @@
  *
  * Definitions for the WAL record format.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlogrecord.h
@@ -61,6 +61,17 @@ typedef struct XLogRecord
  */
 #define XLR_INFO_MASK			0x0F
 #define XLR_RMGR_INFO_MASK		0xF0
+
+/*
+ * XLogReader needs to allocate all the data of a WAL record in a single
+ * chunk.  This means that a single XLogRecord cannot exceed MaxAllocSize
+ * in length if we ignore any allocation overhead of the XLogReader.
+ *
+ * To accommodate some overhead, this value allows for 4M of allocation
+ * overhead, that should be plenty enough for what
+ * DecodeXLogRecordRequiredSpace() expects as extra.
+ */
+#define XLogRecordMaxSize	(1020 * 1024 * 1024)
 
 /*
  * If a WAL record modifies any relation files, in ways not covered by the

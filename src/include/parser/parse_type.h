@@ -3,7 +3,7 @@
  * parse_type.h
  *		handle type operations for parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/parse_type.h
@@ -31,8 +31,6 @@ extern Type typenameType(ParseState *pstate, const TypeName *typeName,
 extern Oid	typenameTypeId(ParseState *pstate, const TypeName *typeName);
 extern void typenameTypeIdAndMod(ParseState *pstate, const TypeName *typeName,
 								 Oid *typeid_p, int32 *typmod_p);
-extern void LookupType(ParseState *pstate, const TypeName *typeName,
-					   Oid *typeid_p, int32 *typmod_p, bool missing_ok);
 
 extern char *TypeNameToString(const TypeName *typeName);
 extern char *TypeNameListToString(List *typenames);
@@ -53,14 +51,11 @@ extern Datum stringTypeDatum(Type tp, char *string, int32 atttypmod);
 extern Oid	typeidTypeRelid(Oid type_id);
 extern Oid	typeOrDomainTypeRelid(Oid type_id);
 
-extern TypeName *typeStringToTypeName(const char *str);
-extern void parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok);
+extern TypeName *typeStringToTypeName(const char *str, Node *escontext);
+extern bool parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p,
+							Node *escontext);
 
 /* true if typeid is composite, or domain over composite, but not RECORD */
 #define ISCOMPLEX(typeid) (typeOrDomainTypeRelid(typeid) != InvalidOid)
-
-/* Hook for typname to get typemod in typenameTypeMod() */
-typedef int (*TypenameTypeModIn_hook_type) (int32 *tl);
-extern PGDLLIMPORT TypenameTypeModIn_hook_type TypenameTypeModIn_hook;
 
 #endif							/* PARSE_TYPE_H */

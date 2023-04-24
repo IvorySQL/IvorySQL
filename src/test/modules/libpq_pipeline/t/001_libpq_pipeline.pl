@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
@@ -7,6 +7,19 @@ use warnings;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
+
+# Use Test::Differences if installed, and select unified diff output.
+BEGIN
+{
+	eval {
+		require Test::Differences;
+		Test::Differences->import;
+		unified_diff();
+	};
+
+	# No dice -- fall back to 'is'
+	*eq_or_diff = \&is if $@;
+}
 
 my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
@@ -55,7 +68,7 @@ for my $testname (@tests)
 		$result = slurp_file_eval($traceout);
 		next unless $result ne "";
 
-		is($result, $expected, "$testname trace match");
+		eq_or_diff($result, $expected, "$testname trace match");
 	}
 }
 

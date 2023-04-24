@@ -4,7 +4,7 @@
  *	  header file for postgres btree access method implementation.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/nbtree.h
@@ -288,7 +288,7 @@ BTPageGetDeleteXid(Page page)
  * well need special handling for new pages anyway.
  */
 static inline bool
-BTPageIsRecyclable(Page page)
+BTPageIsRecyclable(Page page, Relation heaprel)
 {
 	BTPageOpaque opaque;
 
@@ -307,12 +307,8 @@ BTPageIsRecyclable(Page page)
 		 * For that check if the deletion XID could still be visible to
 		 * anyone. If not, then no scan that's still in progress could have
 		 * seen its downlink, and we can recycle it.
-		 *
-		 * XXX: If we had the heap relation we could be more aggressive about
-		 * recycling deleted pages in non-catalog relations.  For now we just
-		 * pass NULL.  That is at least simple and consistent.
 		 */
-		return GlobalVisCheckRemovableFullXid(NULL, BTPageGetDeleteXid(page));
+		return GlobalVisCheckRemovableFullXid(heaprel, BTPageGetDeleteXid(page));
 	}
 
 	return false;
@@ -465,6 +461,13 @@ typedef struct BTVacState
 /* BT_STATUS_OFFSET_MASK status bits */
 #define BT_PIVOT_HEAP_TID_ATTR		0x1000
 #define BT_IS_POSTING				0x2000
+
+/*
+ * Mask allocated for number of keys in index tuple must be able to fit
+ * maximum possible number of index attributes
+ */
+StaticAssertDecl(BT_OFFSET_MASK >= INDEX_MAX_KEYS,
+				 "BT_OFFSET_MASK can't fit INDEX_MAX_KEYS");
 
 /*
  * Note: BTreeTupleIsPivot() can have false negatives (but not false
@@ -1154,9 +1157,8 @@ extern void _bt_parallel_advance_array_keys(IndexScanDesc scan);
 /*
  * prototypes for functions in nbtdedup.c
  */
-extern void _bt_dedup_pass(Relation rel, Buffer buf, Relation heapRel,
-						   IndexTuple newitem, Size newitemsz,
-						   bool bottomupdedup);
+extern void _bt_dedup_pass(Relation rel, Buffer buf, IndexTuple newitem,
+						   Size newitemsz, bool bottomupdedup);
 extern bool _bt_bottomupdel_pass(Relation rel, Buffer buf, Relation heapRel,
 								 Size newitemsz);
 extern void _bt_dedup_start_pending(BTDedupState state, IndexTuple base,
@@ -1175,8 +1177,10 @@ extern IndexTuple _bt_swap_posting(IndexTuple newitem, IndexTuple oposting,
 extern bool _bt_doinsert(Relation rel, IndexTuple itup,
 						 IndexUniqueCheck checkUnique, bool indexUnchanged,
 						 Relation heapRel);
-extern void _bt_finish_split(Relation rel, Buffer lbuf, BTStack stack);
-extern Buffer _bt_getstackbuf(Relation rel, BTStack stack, BlockNumber child);
+extern void _bt_finish_split(Relation rel, Relation heaprel, Buffer lbuf,
+							 BTStack stack);
+extern Buffer _bt_getstackbuf(Relation rel, Relation heaprel, BTStack stack,
+							  BlockNumber child);
 
 /*
  * prototypes for functions in nbtsplitloc.c
@@ -1190,16 +1194,18 @@ extern OffsetNumber _bt_findsplitloc(Relation rel, Page origpage,
  */
 extern void _bt_initmetapage(Page page, BlockNumber rootbknum, uint32 level,
 							 bool allequalimage);
-extern bool _bt_vacuum_needs_cleanup(Relation rel);
-extern void _bt_set_cleanup_info(Relation rel, BlockNumber num_delpages);
+extern bool _bt_vacuum_needs_cleanup(Relation rel, Relation heaprel);
+extern void _bt_set_cleanup_info(Relation rel, Relation heaprel,
+								 BlockNumber num_delpages);
 extern void _bt_upgrademetapage(Page page);
-extern Buffer _bt_getroot(Relation rel, int access);
-extern Buffer _bt_gettrueroot(Relation rel);
-extern int	_bt_getrootheight(Relation rel);
-extern void _bt_metaversion(Relation rel, bool *heapkeyspace,
+extern Buffer _bt_getroot(Relation rel, Relation heaprel, int access);
+extern Buffer _bt_gettrueroot(Relation rel, Relation heaprel);
+extern int	_bt_getrootheight(Relation rel, Relation heaprel);
+extern void _bt_metaversion(Relation rel, Relation heaprel, bool *heapkeyspace,
 							bool *allequalimage);
 extern void _bt_checkpage(Relation rel, Buffer buf);
-extern Buffer _bt_getbuf(Relation rel, BlockNumber blkno, int access);
+extern Buffer _bt_getbuf(Relation rel, Relation heaprel, BlockNumber blkno,
+						 int access);
 extern Buffer _bt_relandgetbuf(Relation rel, Buffer obuf,
 							   BlockNumber blkno, int access);
 extern void _bt_relbuf(Relation rel, Buffer buf);
@@ -1222,21 +1228,22 @@ extern void _bt_pendingfsm_finalize(Relation rel, BTVacState *vstate);
 /*
  * prototypes for functions in nbtsearch.c
  */
-extern BTStack _bt_search(Relation rel, BTScanInsert key, Buffer *bufP,
-						  int access, Snapshot snapshot);
-extern Buffer _bt_moveright(Relation rel, BTScanInsert key, Buffer buf,
-							bool forupdate, BTStack stack, int access, Snapshot snapshot);
+extern BTStack _bt_search(Relation rel, Relation heaprel, BTScanInsert key,
+						  Buffer *bufP, int access, Snapshot snapshot);
+extern Buffer _bt_moveright(Relation rel, Relation heaprel, BTScanInsert key,
+							Buffer buf, bool forupdate, BTStack stack,
+							int access, Snapshot snapshot);
 extern OffsetNumber _bt_binsrch_insert(Relation rel, BTInsertState insertstate);
 extern int32 _bt_compare(Relation rel, BTScanInsert key, Page page, OffsetNumber offnum);
 extern bool _bt_first(IndexScanDesc scan, ScanDirection dir);
 extern bool _bt_next(IndexScanDesc scan, ScanDirection dir);
-extern Buffer _bt_get_endpoint(Relation rel, uint32 level, bool rightmost,
-							   Snapshot snapshot);
+extern Buffer _bt_get_endpoint(Relation rel, Relation heaprel, uint32 level,
+							   bool rightmost, Snapshot snapshot);
 
 /*
  * prototypes for functions in nbtutils.c
  */
-extern BTScanInsert _bt_mkscankey(Relation rel, IndexTuple itup);
+extern BTScanInsert _bt_mkscankey(Relation rel, Relation heaprel, IndexTuple itup);
 extern void _bt_freestack(BTStack stack);
 extern void _bt_preprocess_array_keys(IndexScanDesc scan);
 extern void _bt_start_array_keys(IndexScanDesc scan, ScanDirection dir);

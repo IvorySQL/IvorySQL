@@ -4,7 +4,7 @@
  *	Routines for type coercion.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/parse_coerce.h
@@ -32,6 +32,8 @@ typedef enum CoercionPathType
 
 
 extern bool IsBinaryCoercible(Oid srctype, Oid targettype);
+extern bool IsBinaryCoercibleWithCast(Oid srctype, Oid targettype,
+									  Oid *castoid);
 extern bool IsPreferredType(TYPCATEGORY category, Oid type);
 extern TYPCATEGORY TypeCategory(Oid type);
 
@@ -64,12 +66,6 @@ extern Node *coerce_to_specific_type_typmod(ParseState *pstate, Node *node,
 extern int	parser_coercion_errposition(ParseState *pstate,
 										int coerce_location,
 										Node *input_expr);
-
-extern Oid	minmax_expr_select_common_type(ParseState *pstate, List *exprs,
-										const char *context, Node **which_expr);
-extern Node *minmax_expr_coerce_to_common_type(ParseState *pstate, Node *node,
-										Oid targetTypeId,
-										const char *context);
 
 extern Oid	select_common_type(ParseState *pstate, List *exprs,
 							   const char *context, Node **which_expr);

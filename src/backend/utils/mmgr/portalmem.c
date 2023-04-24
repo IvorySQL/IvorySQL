@@ -8,7 +8,7 @@
  * doesn't actually run the executor for them.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -177,7 +177,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 {
 	Portal		portal;
 
-	AssertArg(PointerIsValid(name));
+	Assert(PointerIsValid(name));
 
 	portal = GetPortalByName(name);
 	if (PortalIsValid(portal))
@@ -287,11 +287,11 @@ PortalDefineQuery(Portal portal,
 				  List *stmts,
 				  CachedPlan *cplan)
 {
-	AssertArg(PortalIsValid(portal));
-	AssertState(portal->status == PORTAL_NEW);
+	Assert(PortalIsValid(portal));
+	Assert(portal->status == PORTAL_NEW);
 
-	AssertArg(sourceText != NULL);
-	AssertArg(commandTag != CMDTAG_UNKNOWN || stmts == NIL);
+	Assert(sourceText != NULL);
+	Assert(commandTag != CMDTAG_UNKNOWN || stmts == NIL);
 
 	portal->prepStmtName = prepStmtName;
 	portal->sourceText = sourceText;
@@ -468,7 +468,7 @@ MarkPortalFailed(Portal portal)
 void
 PortalDrop(Portal portal, bool isTopCommit)
 {
-	AssertArg(PortalIsValid(portal));
+	Assert(PortalIsValid(portal));
 
 	/*
 	 * Don't allow dropping a pinned portal, it's still needed by whoever
@@ -627,44 +627,6 @@ PortalHashTableDeleteAll(void)
 		/* Restart the iteration in case that led to other drops */
 		hash_seq_term(&status);
 		hash_seq_init(&status, PortalHashTable);
-	}
-}
-
-/*
- * Delete a portal while drop package.
- */
-void
-PortalHashTableDeleteFromPkg(char *pkgname)
-{
-	HASH_SEQ_STATUS status;
-	PortalHashEnt *hentry;
-	char		porname[NAMEDATALEN];
-
-	if (PortalHashTable == NULL)
-		return;
-
-	hash_seq_init(&status, PortalHashTable);
-	while ((hentry = hash_seq_search(&status)) != NULL)
-	{
-		Portal		portal = hentry->portal;
-		char		*tok = NULL;
-
-		MemSet(porname, 0, sizeof(porname));
-		strlcpy(porname, portal->name, NAMEDATALEN);
-		tok = strtok(porname, ".");
-
-		/* Can't close the active portal (the one running the command) */
-		if (portal->status == PORTAL_ACTIVE)
-			continue;
-
-		if (strcmp(tok, pkgname) == 0)
-		{
-			PortalDrop(portal, false);
-
-			/* Restart the iteration in case that led to other drops */
-			hash_seq_term(&status);
-			hash_seq_init(&status, PortalHashTable);
-		}
 	}
 }
 
@@ -1177,7 +1139,7 @@ pg_cursor(PG_FUNCTION_ARGS)
 	 * We put all the tuples into a tuplestore in one scan of the hashtable.
 	 * This avoids any issue of the hashtable possibly changing between calls.
 	 */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	hash_seq_init(&hash_seq, PortalHashTable);
 	while ((hentry = hash_seq_search(&hash_seq)) != NULL)

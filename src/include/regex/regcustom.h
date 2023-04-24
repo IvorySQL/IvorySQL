@@ -44,14 +44,15 @@
 
 #include "mb/pg_wchar.h"
 
-#include "miscadmin.h"			/* needed by rcancelrequested/rstacktoodeep */
+#include "miscadmin.h"			/* needed by rstacktoodeep */
 
 
 /* overrides for regguts.h definitions, if any */
 #define FUNCPTR(name, args) (*name) args
-#define MALLOC(n)		malloc(n)
-#define FREE(p)			free(VS(p))
-#define REALLOC(p,n)	realloc(VS(p),n)
+#define MALLOC(n)		palloc_extended((n), MCXT_ALLOC_NO_OOM)
+#define FREE(p)			pfree(VS(p))
+#define REALLOC(p,n)	repalloc_extended(VS(p),(n), MCXT_ALLOC_NO_OOM)
+#define INTERRUPT(re)	CHECK_FOR_INTERRUPTS()
 #define assert(x)		Assert(x)
 
 /* internal character type and related */

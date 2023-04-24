@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 # This test case aims to verify that server-side backups and server-side
 # backup compression work properly, and it also aims to verify that
@@ -45,6 +45,14 @@ my @test_configuration = (
 	{
 		'compression_method' => 'zstd',
 		'backup_flags'       => [ '--compress', 'server-zstd' ],
+		'backup_archive'     => 'base.tar.zst',
+		'decompress_program' => $ENV{'ZSTD'},
+		'decompress_flags'   => ['-d'],
+		'enabled'            => check_pg_config("#define USE_ZSTD 1")
+	},
+	{
+		'compression_method' => 'zstd',
+		'backup_flags'       => [ '--compress', 'server-zstd:level=1,long' ],
 		'backup_archive'     => 'base.tar.zst',
 		'decompress_program' => $ENV{'ZSTD'},
 		'decompress_flags'   => ['-d'],

@@ -3,7 +3,7 @@
  * pg_proc.c
  *	  routines to support manipulation of the pg_proc relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,7 +23,6 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
-#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
@@ -87,7 +86,6 @@ ProcedureCreate(const char *procedureName,
 				bool isStrict,
 				char volatility,
 				char parallel,
-				char proaccess,
 				oidvector *parameterTypes,
 				Datum allParameterTypes,
 				Datum parameterModes,
@@ -319,7 +317,6 @@ ProcedureCreate(const char *procedureName,
 	values[Anum_pg_proc_pronargs - 1] = UInt16GetDatum(parameterCount);
 	values[Anum_pg_proc_pronargdefaults - 1] = UInt16GetDatum(list_length(parameterDefaults));
 	values[Anum_pg_proc_prorettype - 1] = ObjectIdGetDatum(returnType);
-	values[Anum_pg_proc_proaccess - 1] = CharGetDatum(proaccess);
 	values[Anum_pg_proc_proargtypes - 1] = PointerGetDatum(parameterTypes);
 	if (allParameterTypes != PointerGetDatum(NULL))
 		values[Anum_pg_proc_proallargtypes - 1] = allParameterTypes;
@@ -372,14 +369,13 @@ ProcedureCreate(const char *procedureName,
 		Datum		proargnames;
 		bool		isnull;
 		const char *dropcmd;
-		char		oldproaccess;
 
 		if (!replace)
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_FUNCTION),
 					 errmsg("function \"%s\" already exists with same argument types",
 							procedureName)));
-		if (!pg_proc_ownercheck(oldproc->oid, proowner))
+		if (!object_ownercheck(ProcedureRelationId, oldproc->oid, proowner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 						   procedureName);
 
@@ -524,10 +520,8 @@ ProcedureCreate(const char *procedureName,
 								 dropcmd,
 								 format_procedure(oldproc->oid))));
 
-			proargdefaults = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
-											 Anum_pg_proc_proargdefaults,
-											 &isnull);
-			Assert(!isnull);
+			proargdefaults = SysCacheGetAttrNotNull(PROCNAMEARGSNSP, oldtup,
+													Anum_pg_proc_proargdefaults);
 			oldDefaults = castNode(List, stringToNode(TextDatumGetCString(proargdefaults)));
 			Assert(list_length(oldDefaults) == oldproc->pronargdefaults);
 
@@ -552,12 +546,6 @@ ProcedureCreate(const char *procedureName,
 				newlc = lnext(parameterDefaults, newlc);
 			}
 		}
-
-		oldproaccess = DatumGetChar(SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
-													Anum_pg_proc_proaccess,
-													&isnull));
-		if (!isnull && oldproaccess == PACKAGE_MEMBER_PUBLIC)
-			replaces[Anum_pg_proc_proaccess - 1] = false;
 
 		/*
 		 * Do not change existing oid, ownership or permissions, either.  Note
@@ -611,18 +599,9 @@ ProcedureCreate(const char *procedureName,
 
 	ObjectAddressSet(myself, ProcedureRelationId, retval);
 
-	if (proaccess == NON_PACKAGE_MEMBER)
-	{
-		/* dependency on namespace */
-		ObjectAddressSet(referenced, NamespaceRelationId, procNamespace);
-		add_exact_object_address(&referenced, addrs);
-	}
-	else
-	{
-		/* dependency on package */
-		ObjectAddressSet(referenced, PackageRelationId, procNamespace);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_AUTO);
-	}
+	/* dependency on namespace */
+	ObjectAddressSet(referenced, NamespaceRelationId, procNamespace);
+	add_exact_object_address(&referenced, addrs);
 
 	/* dependency on implementation language */
 	ObjectAddressSet(referenced, LanguageRelationId, languageObjectId);
@@ -691,19 +670,8 @@ ProcedureCreate(const char *procedureName,
 
 	table_close(rel, RowExclusiveLock);
 
-	/*
-	 * FIXME: temporarily disable language validation, since plisql does not
-	 * understand the PLSQL syntax, so it will throw errors on such syntax.
-	 */
-	if (proaccess != NON_PACKAGE_MEMBER)
-	{
-		/* Advance command counter so new tuple can be seen by validator */
-		CommandCounterIncrement();
-	}
-
 	/* Verify function body */
-	if (OidIsValid(languageValidator) &&
-		proaccess == NON_PACKAGE_MEMBER)
+	if (OidIsValid(languageValidator))
 	{
 		ArrayType  *set_items = NULL;
 		int			save_nestlevel = 0;
@@ -728,6 +696,7 @@ ProcedureCreate(const char *procedureName,
 			{
 				save_nestlevel = NewGUCNestLevel();
 				ProcessGUCArray(set_items,
+								NULL,
 								(superuser() ? PGC_SUSET : PGC_USERSET),
 								PGC_S_SESSION,
 								GUC_ACTION_SAVE);
@@ -760,7 +729,6 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
-	bool		isnull;
 	Datum		tmp;
 	char	   *prosrc;
 
@@ -776,9 +744,7 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
-	if (isnull)
-		elog(ERROR, "null prosrc");
+	tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_prosrc);
 	prosrc = TextDatumGetCString(tmp);
 
 	if (fmgr_internal_function(prosrc) == InvalidOid)
@@ -807,7 +773,6 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	Oid			funcoid = PG_GETARG_OID(0);
 	void	   *libraryhandle;
 	HeapTuple	tuple;
-	bool		isnull;
 	Datum		tmp;
 	char	   *prosrc;
 	char	   *probin;
@@ -825,14 +790,10 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
-	if (isnull)
-		elog(ERROR, "null prosrc for C function %u", funcoid);
+	tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_prosrc);
 	prosrc = TextDatumGetCString(tmp);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_probin, &isnull);
-	if (isnull)
-		elog(ERROR, "null probin for C function %u", funcoid);
+	tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_probin);
 	probin = TextDatumGetCString(tmp);
 
 	(void) load_external_function(probin, prosrc, true, &libraryhandle);
@@ -905,10 +866,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 	/* Postpone body checks if !check_function_bodies */
 	if (check_function_bodies)
 	{
-		tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
-		if (isnull)
-			elog(ERROR, "null prosrc");
-
+		tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_prosrc);
 		prosrc = TextDatumGetCString(tmp);
 
 		/*
@@ -1047,7 +1005,6 @@ function_parse_error_transpose(const char *prosrc)
 {
 	int			origerrposition;
 	int			newerrposition;
-	const char *queryText;
 
 	/*
 	 * Nothing to do unless we are dealing with a syntax error that has a
@@ -1065,11 +1022,22 @@ function_parse_error_transpose(const char *prosrc)
 	}
 
 	/* We can get the original query text from the active portal (hack...) */
-	Assert(ActivePortal && ActivePortal->status == PORTAL_ACTIVE);
-	queryText = ActivePortal->sourceText;
+	if (ActivePortal && ActivePortal->status == PORTAL_ACTIVE)
+	{
+		const char *queryText = ActivePortal->sourceText;
 
-	/* Try to locate the prosrc in the original text */
-	newerrposition = match_prosrc_to_query(prosrc, queryText, origerrposition);
+		/* Try to locate the prosrc in the original text */
+		newerrposition = match_prosrc_to_query(prosrc, queryText,
+											   origerrposition);
+	}
+	else
+	{
+		/*
+		 * Quietly give up if no ActivePortal.  This is an unusual situation
+		 * but it can happen in, e.g., logical replication workers.
+		 */
+		newerrposition = -1;
+	}
 
 	if (newerrposition > 0)
 	{

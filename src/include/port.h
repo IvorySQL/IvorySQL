@@ -3,7 +3,7 @@
  * port.h
  *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port.h
@@ -46,14 +46,14 @@ extern bool pg_set_block(pgsocket sock);
 
 /* Portable path handling for Unix/Win32 (in path.c) */
 
-extern bool has_drive_prefix(const char *filename);
+extern bool has_drive_prefix(const char *path);
 extern char *first_dir_separator(const char *filename);
 extern char *last_dir_separator(const char *filename);
 extern char *first_path_var_separator(const char *pathlist);
 extern void join_path_components(char *ret_path,
 								 const char *head, const char *tail);
 extern void canonicalize_path(char *path);
-extern void make_native_path(char *path);
+extern void make_native_path(char *filename);
 extern void cleanup_path(char *path);
 extern bool path_contains_parent_reference(const char *path);
 extern bool path_is_relative_and_below_cwd(const char *path);
@@ -78,28 +78,32 @@ extern void get_parent_directory(char *path);
 extern char **pgfnames(const char *path);
 extern void pgfnames_cleanup(char **filenames);
 
+#define IS_NONWINDOWS_DIR_SEP(ch)	((ch) == '/')
+#define is_nonwindows_absolute_path(filename) \
+( \
+	IS_NONWINDOWS_DIR_SEP((filename)[0]) \
+)
+
+#define IS_WINDOWS_DIR_SEP(ch)	((ch) == '/' || (ch) == '\\')
+/* See path_is_relative_and_below_cwd() for how we handle 'E:abc'. */
+#define is_windows_absolute_path(filename) \
+( \
+	IS_WINDOWS_DIR_SEP((filename)[0]) || \
+	(isalpha((unsigned char) ((filename)[0])) && (filename)[1] == ':' && \
+	 IS_WINDOWS_DIR_SEP((filename)[2])) \
+)
+
 /*
- *	is_absolute_path
+ *	is_absolute_path and IS_DIR_SEP
  *
- *	By making this a macro we avoid needing to include path.c in libpq.
+ *	By using macros here we avoid needing to include path.c in libpq.
  */
 #ifndef WIN32
-#define IS_DIR_SEP(ch)	((ch) == '/')
-
-#define is_absolute_path(filename) \
-( \
-	IS_DIR_SEP((filename)[0]) \
-)
+#define IS_DIR_SEP(ch) IS_NONWINDOWS_DIR_SEP(ch)
+#define is_absolute_path(filename) is_nonwindows_absolute_path(filename)
 #else
-#define IS_DIR_SEP(ch)	((ch) == '/' || (ch) == '\\')
-
-/* See path_is_relative_and_below_cwd() for how we handle 'E:abc'. */
-#define is_absolute_path(filename) \
-( \
-	IS_DIR_SEP((filename)[0]) || \
-	(isalpha((unsigned char) ((filename)[0])) && (filename)[1] == ':' && \
-	 IS_DIR_SEP((filename)[2])) \
-)
+#define IS_DIR_SEP(ch) IS_WINDOWS_DIR_SEP(ch)
+#define is_absolute_path(filename) is_windows_absolute_path(filename)
 #endif
 
 /*
@@ -167,7 +171,6 @@ extern unsigned char pg_tolower(unsigned char ch);
 extern unsigned char pg_ascii_toupper(unsigned char ch);
 extern unsigned char pg_ascii_tolower(unsigned char ch);
 
-
 /*
  * Beginning in v12, we always replace snprintf() and friends with our own
  * implementation.  This symbol is no longer consulted by the core code,
@@ -205,14 +208,23 @@ extern unsigned char pg_ascii_tolower(unsigned char ch);
 #undef printf
 #endif
 
-extern int	pg_vsnprintf(char *str, size_t count, const char *fmt, va_list args);
+extern int	pg_vsnprintf(char *str, size_t count, const char *fmt, va_list args) pg_attribute_printf(3, 0);
 extern int	pg_snprintf(char *str, size_t count, const char *fmt,...) pg_attribute_printf(3, 4);
-extern int	pg_vsprintf(char *str, const char *fmt, va_list args);
+extern int	pg_vsprintf(char *str, const char *fmt, va_list args) pg_attribute_printf(2, 0);
 extern int	pg_sprintf(char *str, const char *fmt,...) pg_attribute_printf(2, 3);
-extern int	pg_vfprintf(FILE *stream, const char *fmt, va_list args);
+extern int	pg_vfprintf(FILE *stream, const char *fmt, va_list args) pg_attribute_printf(2, 0);
 extern int	pg_fprintf(FILE *stream, const char *fmt,...) pg_attribute_printf(2, 3);
-extern int	pg_vprintf(const char *fmt, va_list args);
+extern int	pg_vprintf(const char *fmt, va_list args) pg_attribute_printf(1, 0);
 extern int	pg_printf(const char *fmt,...) pg_attribute_printf(1, 2);
+
+#ifndef WIN32
+/*
+ * We add a pg_ prefix as a warning that the Windows implementations have the
+ * non-standard side-effect of changing the current file position.
+ */
+#define pg_pread pread
+#define pg_pwrite pwrite
+#endif
 
 /*
  * We use __VA_ARGS__ for printf to prevent replacing references to
@@ -440,7 +452,7 @@ extern void qsort_arg(void *base, size_t nel, size_t elsize,
 extern void qsort_interruptible(void *base, size_t nel, size_t elsize,
 								qsort_arg_comparator cmp, void *arg);
 
-extern void *bsearch_arg(const void *key, const void *base,
+extern void *bsearch_arg(const void *key, const void *base0,
 						 size_t nmemb, size_t size,
 						 int (*compar) (const void *, const void *, void *),
 						 void *arg);
@@ -473,16 +485,17 @@ extern int	pg_check_dir(const char *dir);
 extern int	pg_mkdir_p(char *path, int omode);
 
 /* port/pqsignal.c */
-typedef void (*pqsigfunc) (int signo);
+typedef void (*pqsigfunc) (SIGNAL_ARGS);
 extern pqsigfunc pqsignal(int signo, pqsigfunc func);
 
 /* port/quotes.c */
 extern char *escape_single_quotes_ascii(const char *src);
 
 /* common/wait_error.c */
-extern char *wait_result_to_str(int exit_status);
+extern char *wait_result_to_str(int exitstatus);
 extern bool wait_result_is_signal(int exit_status, int signum);
 extern bool wait_result_is_any_signal(int exit_status, bool include_command_not_found);
+extern int	wait_result_to_exit_code(int exit_status);
 
 /*
  * Interfaces that we assume all Unix system have.  We retain individual macros
