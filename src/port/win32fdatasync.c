@@ -4,14 +4,12 @@
  *	   Win32 fdatasync() replacement
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  *
  * src/port/win32fdatasync.c
  *
  *-------------------------------------------------------------------------
  */
-
-#define UMDF_USING_NTSTATUS
 
 #ifdef FRONTEND
 #include "postgres_fe.h"

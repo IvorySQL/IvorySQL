@@ -3,7 +3,7 @@
  * ruleutils.h
  *		Declarations for ruleutils.c
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/ruleutils.h
@@ -20,7 +20,7 @@
 struct Plan;					/* avoid including plannodes.h here */
 struct PlannedStmt;
 
-extern void pg_deparse_query(Query *query, StringInfo buf);
+
 extern char *pg_get_indexdef_string(Oid indexrelid);
 extern char *pg_get_indexdef_columns(Oid indexrelid, bool pretty);
 extern char *pg_get_querydef(Query *query, bool pretty);

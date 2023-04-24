@@ -3,7 +3,7 @@
  * dfmgr.c
  *	  Dynamic function manager code.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -405,7 +405,7 @@ file_exists(const char *name)
 {
 	struct stat st;
 
-	AssertArg(name != NULL);
+	Assert(name != NULL);
 
 	if (stat(name, &st) == 0)
 		return !S_ISDIR(st.st_mode);
@@ -434,7 +434,7 @@ expand_dynamic_library_name(const char *name)
 	char	   *new;
 	char	   *full;
 
-	AssertArg(name);
+	Assert(name);
 
 	have_slash = (first_dir_separator(name) != NULL);
 
@@ -502,7 +502,7 @@ substitute_libpath_macro(const char *name)
 {
 	const char *sep_ptr;
 
-	AssertArg(name != NULL);
+	Assert(name != NULL);
 
 	/* Currently, we only recognize $libdir at the start of the string */
 	if (name[0] != '$')
@@ -534,9 +534,9 @@ find_in_dynamic_libpath(const char *basename)
 	const char *p;
 	size_t		baselen;
 
-	AssertArg(basename != NULL);
-	AssertArg(first_dir_separator(basename) == NULL);
-	AssertState(Dynamic_library_path != NULL);
+	Assert(basename != NULL);
+	Assert(first_dir_separator(basename) == NULL);
+	Assert(Dynamic_library_path != NULL);
 
 	p = Dynamic_library_path;
 	if (strlen(p) == 0)

@@ -11,7 +11,7 @@
  * algorithm.  Parallel sorts use a variant of this external sort
  * algorithm, and are typically only used for large amounts of data.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/tuplesort.h
@@ -146,7 +146,7 @@ typedef int (*SortTupleComparator) (const SortTuple *a, const SortTuple *b,
 
 /*
  * The public part of a Tuple sort operation state.  This data structure
- * containsthe  definition of sort-variant-specific interface methods and
+ * contains the definition of sort-variant-specific interface methods and
  * the part of Tuple sort operation state required by their implementations.
  */
 typedef struct
@@ -189,7 +189,7 @@ typedef struct
 	 * Function to do some specific release of resources for the sort variant.
 	 * In particular, this function should free everything stored in the "arg"
 	 * field, which wouldn't be cleared on reset of the Tuple sort memory
-	 * contextes.  This can be NULL if nothing specific needs to be done.
+	 * contexts.  This can be NULL if nothing specific needs to be done.
 	 */
 	void		(*freestate) (Tuplesortstate *state);
 
@@ -372,18 +372,17 @@ extern const char *tuplesort_space_type_name(TuplesortSpaceType t);
 
 extern int	tuplesort_merge_order(int64 allowedMem);
 
-extern Size tuplesort_estimate_shared(int nworkers);
+extern Size tuplesort_estimate_shared(int nWorkers);
 extern void tuplesort_initialize_shared(Sharedsort *shared, int nWorkers,
 										dsm_segment *seg);
 extern void tuplesort_attach_shared(Sharedsort *shared, dsm_segment *seg);
 
 /*
- * These routines may only be called if randomAccess was specified 'true'.
- * Likewise, backwards scan in gettuple/getdatum is only allowed if
- * randomAccess was specified.  Note that parallel sorts do not support
- * randomAccess.
+ * These routines may only be called if TUPLESORT_RANDOMACCESS was specified
+ * during tuplesort_begin_*.  Additionally backwards scan in gettuple/getdatum
+ * also require TUPLESORT_RANDOMACCESS.  Note that parallel sorts do not
+ * support random access.
  */
-
 extern void tuplesort_rescan(Tuplesortstate *state);
 extern void tuplesort_markpos(Tuplesortstate *state);
 extern void tuplesort_restorepos(Tuplesortstate *state);
@@ -400,7 +399,9 @@ extern Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
 											int workMem, SortCoordinate coordinate,
 											int sortopt);
 extern Tuplesortstate *tuplesort_begin_cluster(TupleDesc tupDesc,
-											   Relation indexRel, int workMem,
+											   Relation indexRel,
+											   Relation heaprel,
+											   int workMem,
 											   SortCoordinate coordinate,
 											   int sortopt);
 extern Tuplesortstate *tuplesort_begin_index_btree(Relation heapRel,
@@ -439,7 +440,7 @@ extern bool tuplesort_gettupleslot(Tuplesortstate *state, bool forward,
 								   bool copy, TupleTableSlot *slot, Datum *abbrev);
 extern HeapTuple tuplesort_getheaptuple(Tuplesortstate *state, bool forward);
 extern IndexTuple tuplesort_getindextuple(Tuplesortstate *state, bool forward);
-extern bool tuplesort_getdatum(Tuplesortstate *state, bool forward,
+extern bool tuplesort_getdatum(Tuplesortstate *state, bool forward, bool copy,
 							   Datum *val, bool *isNull, Datum *abbrev);
 
 

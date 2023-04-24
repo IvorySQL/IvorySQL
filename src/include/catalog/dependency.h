@@ -4,7 +4,7 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/dependency.h
@@ -127,8 +127,6 @@ typedef enum ObjectClass
 	OCLASS_PUBLICATION_NAMESPACE,	/* pg_publication_namespace */
 	OCLASS_PUBLICATION_REL,		/* pg_publication_rel */
 	OCLASS_SUBSCRIPTION,		/* pg_subscription */
-	OCLASS_PACKAGE,				/* pg_package */
-	OCLASS_VARIABLE,			/* pg_variable */
 	OCLASS_TRANSFORM			/* pg_transform */
 } ObjectClass;
 
@@ -251,7 +249,7 @@ extern void recordDependencyOnTablespace(Oid classId, Oid objectId,
 extern void changeDependencyOnTablespace(Oid classId, Oid objectId,
 										 Oid newTablespaceId);
 
-extern void updateAclDependencies(Oid classId, Oid objectId, int32 objectSubId,
+extern void updateAclDependencies(Oid classId, Oid objectId, int32 objsubId,
 								  Oid ownerId,
 								  int noldmembers, Oid *oldmembers,
 								  int nnewmembers, Oid *newmembers);
@@ -265,8 +263,8 @@ extern void copyTemplateDependencies(Oid templateDbId, Oid newDbId);
 
 extern void dropDatabaseDependencies(Oid databaseId);
 
-extern void shdepDropOwned(List *relids, DropBehavior behavior);
+extern void shdepDropOwned(List *roleids, DropBehavior behavior);
 
-extern void shdepReassignOwned(List *relids, Oid newrole);
+extern void shdepReassignOwned(List *roleids, Oid newrole);
 
 #endif							/* DEPENDENCY_H */

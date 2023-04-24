@@ -231,6 +231,16 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--copy</option></term>
+      <listitem>
+       <para>
+        Copy files to the new cluster.  This is the default.  (See also
+        <option>--link</option> and <option>--clone</option>.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-?</option></term>
       <term><option>--help</option></term>
       <listitem><para>show help, then exit</para></listitem>
@@ -768,11 +778,15 @@ psql --username=postgres --file=script.sql postgres
 
   <para>
    <application>pg_upgrade</application> creates various working files, such
-   as schema dumps, stored within <literal>pg_upgrade_output.d</literal> in
+   as schema dumps, stored within <filename>pg_upgrade_output.d</filename> in
    the directory of the new cluster. Each run creates a new subdirectory named
    with a timestamp formatted as per ISO 8601
-   (<literal>%Y%m%dT%H%M%S</literal>), where all the generated files are
+   (<literal>%Y%m%dT%H%M%S</literal>), where all its generated files are
    stored.
+   <filename>pg_upgrade_output.d</filename> and its contained files will be
+   removed automatically if <application>pg_upgrade</application> completes
+   successfully; but in the event of trouble, the files there may provide
+   useful debugging information.
   </para>
 
   <para>

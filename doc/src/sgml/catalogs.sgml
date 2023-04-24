@@ -1166,23 +1166,6 @@
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>attstattarget</structfield> <type>int4</type>
-      </para>
-      <para>
-       <structfield>attstattarget</structfield> controls the level of detail
-       of statistics accumulated for this column by
-       <link linkend="sql-analyze"><command>ANALYZE</command></link>.
-       A zero value indicates that no statistics should be collected.
-       A negative value says to use the system default statistics target.
-       The exact meaning of positive values is data type-dependent.
-       For scalar data types, <structfield>attstattarget</structfield>
-       is both the target number of <quote>most common values</quote>
-       to collect, and the target number of histogram bins to create.
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>attlen</structfield> <type>int2</type>
       </para>
       <para>
@@ -1199,17 +1182,6 @@
        The number of the column.  Ordinary columns are numbered from 1
        up.  System columns, such as <structfield>ctid</structfield>,
        have (arbitrary) negative numbers.
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>attndims</structfield> <type>int4</type>
-      </para>
-      <para>
-       Number of dimensions, if the column is an array type; otherwise 0.
-       (Presently, the number of dimensions of an array is not enforced,
-       so any nonzero value effectively means <quote>it's an array</quote>.)
       </para></entry>
      </row>
 
@@ -1234,6 +1206,17 @@
        length of a <type>varchar</type> column).  It is passed to
        type-specific input functions and length coercion functions.
        The value will generally be -1 for types that do not need <structfield>atttypmod</structfield>.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>attndims</structfield> <type>int2</type>
+      </para>
+      <para>
+       Number of dimensions, if the column is an array type; otherwise 0.
+       (Presently, the number of dimensions of an array is not enforced,
+       so any nonzero value effectively means <quote>it's an array</quote>.)
       </para></entry>
      </row>
 
@@ -1362,11 +1345,28 @@
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>attinhcount</structfield> <type>int4</type>
+       <structfield>attinhcount</structfield> <type>int2</type>
       </para>
       <para>
        The number of direct ancestors this column has.  A column with a
        nonzero number of ancestors cannot be dropped nor renamed.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>attstattarget</structfield> <type>int2</type>
+      </para>
+      <para>
+       <structfield>attstattarget</structfield> controls the level of detail
+       of statistics accumulated for this column by
+       <link linkend="sql-analyze"><command>ANALYZE</command></link>.
+       A zero value indicates that no statistics should be collected.
+       A negative value says to use the system default statistics target.
+       The exact meaning of positive values is data type-dependent.
+       For scalar data types, <structfield>attstattarget</structfield>
+       is both the target number of <quote>most common values</quote>
+       to collect, and the target number of histogram bins to create.
       </para></entry>
      </row>
 
@@ -1725,6 +1725,17 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       <para>
        True if the member automatically inherits the privileges of the
        granted role
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>set_option</structfield> <type>bool</type>
+      </para>
+      <para>
+       True if the member can
+       <link linkend="sql-set-role"><command>SET ROLE</command></link>
+       to the granted role
       </para></entry>
      </row>
     </tbody>
@@ -2419,6 +2430,15 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>collicurules</structfield> <type>text</type>
+      </para>
+      <para>
+       ICU collation rules for this collation object
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>collversion</structfield> <type>text</type>
       </para>
       <para>
@@ -2671,7 +2691,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>coninhcount</structfield> <type>int4</type>
+       <structfield>coninhcount</structfield> <type>int2</type>
       </para>
       <para>
        The number of direct inheritance ancestors this constraint has.
@@ -3097,6 +3117,15 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>daticurules</structfield> <type>text</type>
+      </para>
+      <para>
+       ICU collation rules for this database
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>datcollversion</structfield> <type>text</type>
       </para>
       <para>
@@ -3181,6 +3210,16 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       </para>
       <para>
        Defaults for run-time configuration variables
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>setuser</structfield> <type>bool[]</type>
+      </para>
+      <para>
+       Values of <link linkend="sql-alterrole-user-set"><literal>USER SET</literal></link>
+       flag for every setting in <structfield>setconfig</structfield>
       </para></entry>
      </row>
     </tbody>
@@ -7892,11 +7931,16 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>substream</structfield> <type>bool</type>
+       <structfield>substream</structfield> <type>char</type>
       </para>
       <para>
-       If true, the subscription will allow streaming of in-progress
-       transactions
+       Controls how to handle the streaming of in-progress transactions:
+       <literal>f</literal> = disallow streaming of in-progress transactions,
+       <literal>t</literal> = spill the changes of in-progress transactions to
+       disk and apply at once after the transaction is committed on the
+       publisher and received by the subscriber,
+       <literal>p</literal> = apply changes directly using a parallel apply
+       worker if available (same as 't' if no worker is available)
       </para></entry>
      </row>
 
@@ -7919,6 +7963,26 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       <para>
        If true, the subscription will be disabled if one of its workers
        detects an error
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subpasswordrequired</structfield> <type>bool</type>
+      </para>
+      <para>
+       If true, the subscription will be required to specify a password
+       for authentication
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subrunasowner</structfield> <type>bool</type>
+      </para>
+      <para>
+       If true, the subscription will be run with the permissions
+       of the subscription owner
       </para></entry>
      </row>
 

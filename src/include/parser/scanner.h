@@ -8,7 +8,7 @@
  * higher-level API provided by parser.h.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/scanner.h
@@ -138,12 +138,7 @@ extern core_yyscan_t scanner_init(const char *str,
 								  const ScanKeywordList *keywordlist,
 								  const uint16 *keyword_tokens);
 extern void scanner_finish(core_yyscan_t yyscanner);
-extern char *scanner_querytext(int sloc, int eloc, core_yyscan_t yyscanner);
-extern char *read_plsql_body(int sloc, core_yyscan_t yyscanner);
-extern char *read_sql_until(int until, int until2, int until3,
-							const char *expected, bool isexpression,
-							core_yyscan_t yyscanner);
-extern int	core_yylex(core_YYSTYPE *lvalp, YYLTYPE *llocp,
+extern int	core_yylex(core_YYSTYPE *yylval_param, YYLTYPE *yylloc_param,
 					   core_yyscan_t yyscanner);
 extern int	scanner_errposition(int location, core_yyscan_t yyscanner);
 extern void setup_scanner_errposition_callback(ScannerCallbackState *scbstate,

@@ -8,7 +8,7 @@
  * or call fmgr-callable functions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fmgr.h
@@ -700,6 +700,14 @@ extern Datum OidFunctionCall9Coll(Oid functionId, Oid collation,
 /* Special cases for convenient invocation of datatype I/O functions. */
 extern Datum InputFunctionCall(FmgrInfo *flinfo, char *str,
 							   Oid typioparam, int32 typmod);
+extern bool InputFunctionCallSafe(FmgrInfo *flinfo, char *str,
+								  Oid typioparam, int32 typmod,
+								  fmNodePtr escontext,
+								  Datum *result);
+extern bool DirectInputFunctionCallSafe(PGFunction func, char *str,
+										Oid typioparam, int32 typmod,
+										fmNodePtr escontext,
+										Datum *result);
 extern Datum OidInputFunctionCall(Oid functionId, char *str,
 								  Oid typioparam, int32 typmod);
 extern char *OutputFunctionCall(FmgrInfo *flinfo, Datum val);

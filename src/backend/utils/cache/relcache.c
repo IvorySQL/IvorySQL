@@ -3,7 +3,7 @@
  * relcache.c
  *	  POSTGRES relation descriptor cache code
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -210,7 +210,7 @@ static int	EOXactTupleDescArrayLen = 0;
 do { \
 	RelIdCacheEnt *hentry; bool found; \
 	hentry = (RelIdCacheEnt *) hash_search(RelationIdCache, \
-										   (void *) &((RELATION)->rd_id), \
+										   &((RELATION)->rd_id), \
 										   HASH_ENTER, &found); \
 	if (found) \
 	{ \
@@ -232,7 +232,7 @@ do { \
 do { \
 	RelIdCacheEnt *hentry; \
 	hentry = (RelIdCacheEnt *) hash_search(RelationIdCache, \
-										   (void *) &(ID), \
+										   &(ID), \
 										   HASH_FIND, NULL); \
 	if (hentry) \
 		RELATION = hentry->reldesc; \
@@ -244,7 +244,7 @@ do { \
 do { \
 	RelIdCacheEnt *hentry; \
 	hentry = (RelIdCacheEnt *) hash_search(RelationIdCache, \
-										   (void *) &((RELATION)->rd_id), \
+										   &((RELATION)->rd_id), \
 										   HASH_REMOVE, NULL); \
 	if (hentry == NULL) \
 		elog(WARNING, "failed to delete relcache entry for OID %u", \
@@ -847,8 +847,8 @@ RelationBuildRuleLock(Relation relation)
 
 		/*
 		 * Scan through the rule's actions and set the checkAsUser field on
-		 * all rtable entries. We have to look at the qual as well, in case it
-		 * contains sublinks.
+		 * all RTEPermissionInfos. We have to look at the qual as well, in
+		 * case it contains sublinks.
 		 *
 		 * The reason for doing this when the rule is loaded, rather than when
 		 * it is stored, is that otherwise ALTER TABLE OWNER would have to
@@ -1663,7 +1663,7 @@ LookupOpclassInfo(Oid operatorClassOid,
 	}
 
 	opcentry = (OpClassCacheEnt *) hash_search(OpClassCache,
-											   (void *) &operatorClassOid,
+											   &operatorClassOid,
 											   HASH_ENTER, &found);
 
 	if (!found)
@@ -2440,10 +2440,11 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 	list_free_deep(relation->rd_fkeylist);
 	list_free(relation->rd_indexlist);
 	list_free(relation->rd_statlist);
-	bms_free(relation->rd_indexattr);
 	bms_free(relation->rd_keyattr);
 	bms_free(relation->rd_pkattr);
 	bms_free(relation->rd_idattr);
+	bms_free(relation->rd_hotblockingattr);
+	bms_free(relation->rd_summarizedattr);
 	if (relation->rd_pubdesc)
 		pfree(relation->rd_pubdesc);
 	if (relation->rd_options)
@@ -2660,6 +2661,13 @@ RelationClearRelation(Relation relation, bool rebuild)
 			 */
 			elog(ERROR, "relation %u deleted while still in use", save_relid);
 		}
+
+		/*
+		 * If we were to, again, have cases of the relkind of a relcache entry
+		 * changing, we would need to ensure that pgstats does not get
+		 * confused.
+		 */
+		Assert(relation->rd_rel->relkind == newrel->rd_rel->relkind);
 
 		keep_tupdesc = equalTupleDescs(relation->rd_att, newrel->rd_att);
 		keep_rules = equalRuleLocks(relation->rd_rules, newrel->rd_rules);
@@ -3203,7 +3211,7 @@ AtEOXact_RelationCache(bool isCommit)
 		for (i = 0; i < eoxact_list_len; i++)
 		{
 			idhentry = (RelIdCacheEnt *) hash_search(RelationIdCache,
-													 (void *) &eoxact_list[i],
+													 &eoxact_list[i],
 													 HASH_FIND,
 													 NULL);
 			if (idhentry != NULL)
@@ -3352,7 +3360,7 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 		for (i = 0; i < eoxact_list_len; i++)
 		{
 			idhentry = (RelIdCacheEnt *) hash_search(RelationIdCache,
-													 (void *) &eoxact_list[i],
+													 &eoxact_list[i],
 													 HASH_FIND,
 													 NULL);
 			if (idhentry != NULL)
@@ -3474,7 +3482,7 @@ RelationBuildLocalRelation(const char *relname,
 	bool		has_not_null;
 	bool		nailit;
 
-	AssertArg(natts >= 0);
+	Assert(natts >= 0);
 
 	/*
 	 * check for creation of a rel that must be nailed in cache.
@@ -5160,10 +5168,11 @@ RelationGetIndexPredicate(Relation relation)
 Bitmapset *
 RelationGetIndexAttrBitmap(Relation relation, IndexAttrBitmapKind attrKind)
 {
-	Bitmapset  *indexattrs;		/* indexed columns */
 	Bitmapset  *uindexattrs;	/* columns in unique indexes */
 	Bitmapset  *pkindexattrs;	/* columns in the primary index */
 	Bitmapset  *idindexattrs;	/* columns in the replica identity */
+	Bitmapset  *hotblockingattrs;   /* columns with HOT blocking indexes */
+	Bitmapset  *summarizedattrs;   /* columns with summarizing indexes */
 	List	   *indexoidlist;
 	List	   *newindexoidlist;
 	Oid			relpkindex;
@@ -5172,18 +5181,20 @@ RelationGetIndexAttrBitmap(Relation relation, IndexAttrBitmapKind attrKind)
 	MemoryContext oldcxt;
 
 	/* Quick exit if we already computed the result. */
-	if (relation->rd_indexattr != NULL)
+	if (relation->rd_attrsvalid)
 	{
 		switch (attrKind)
 		{
-			case INDEX_ATTR_BITMAP_ALL:
-				return bms_copy(relation->rd_indexattr);
 			case INDEX_ATTR_BITMAP_KEY:
 				return bms_copy(relation->rd_keyattr);
 			case INDEX_ATTR_BITMAP_PRIMARY_KEY:
 				return bms_copy(relation->rd_pkattr);
 			case INDEX_ATTR_BITMAP_IDENTITY_KEY:
 				return bms_copy(relation->rd_idattr);
+			case INDEX_ATTR_BITMAP_HOT_BLOCKING:
+				return bms_copy(relation->rd_hotblockingattr);
+			case INDEX_ATTR_BITMAP_SUMMARIZED:
+				return bms_copy(relation->rd_summarizedattr);
 			default:
 				elog(ERROR, "unknown attrKind %u", attrKind);
 		}
@@ -5223,10 +5234,11 @@ restart:
 	 * CONCURRENTLY is far enough along that we should ignore the index, it
 	 * won't be returned at all by RelationGetIndexList.
 	 */
-	indexattrs = NULL;
 	uindexattrs = NULL;
 	pkindexattrs = NULL;
 	idindexattrs = NULL;
+	hotblockingattrs = NULL;
+	summarizedattrs = NULL;
 	foreach(l, indexoidlist)
 	{
 		Oid			indexOid = lfirst_oid(l);
@@ -5239,6 +5251,7 @@ restart:
 		bool		isKey;		/* candidate key */
 		bool		isPK;		/* primary key */
 		bool		isIDKey;	/* replica identity index */
+		Bitmapset **attrs;
 
 		indexDesc = index_open(indexOid, AccessShareLock);
 
@@ -5276,6 +5289,16 @@ restart:
 		/* Is this index the configured (or default) replica identity? */
 		isIDKey = (indexOid == relreplindex);
 
+		/*
+		 * If the index is summarizing, it doesn't block HOT updates, but we
+		 * may still need to update it (if the attributes were modified). So
+		 * decide which bitmap we'll update in the following loop.
+		 */
+		if (indexDesc->rd_indam->amsummarizing)
+			attrs = &summarizedattrs;
+		else
+			attrs = &hotblockingattrs;
+
 		/* Collect simple attribute references */
 		for (i = 0; i < indexDesc->rd_index->indnatts; i++)
 		{
@@ -5284,15 +5307,21 @@ restart:
 			/*
 			 * Since we have covering indexes with non-key columns, we must
 			 * handle them accurately here. non-key columns must be added into
-			 * indexattrs, since they are in index, and HOT-update shouldn't
-			 * miss them. Obviously, non-key columns couldn't be referenced by
+			 * hotblockingattrs or summarizedattrs, since they are in index,
+			 * and update shouldn't miss them.
+			 *
+			 * Summarizing indexes do not block HOT, but do need to be updated
+			 * when the column value changes, thus require a separate
+			 * attribute bitmapset.
+			 *
+			 * Obviously, non-key columns couldn't be referenced by
 			 * foreign key or identity key. Hence we do not include them into
 			 * uindexattrs, pkindexattrs and idindexattrs bitmaps.
 			 */
 			if (attrnum != 0)
 			{
-				indexattrs = bms_add_member(indexattrs,
-											attrnum - FirstLowInvalidHeapAttributeNumber);
+				*attrs = bms_add_member(*attrs,
+										attrnum - FirstLowInvalidHeapAttributeNumber);
 
 				if (isKey && i < indexDesc->rd_index->indnkeyatts)
 					uindexattrs = bms_add_member(uindexattrs,
@@ -5309,10 +5338,10 @@ restart:
 		}
 
 		/* Collect all attributes used in expressions, too */
-		pull_varattnos(indexExpressions, 1, &indexattrs);
+		pull_varattnos(indexExpressions, 1, attrs);
 
 		/* Collect all attributes in the index predicate, too */
-		pull_varattnos(indexPredicate, 1, &indexattrs);
+		pull_varattnos(indexPredicate, 1, attrs);
 
 		index_close(indexDesc, AccessShareLock);
 	}
@@ -5340,24 +5369,28 @@ restart:
 		bms_free(uindexattrs);
 		bms_free(pkindexattrs);
 		bms_free(idindexattrs);
-		bms_free(indexattrs);
+		bms_free(hotblockingattrs);
+		bms_free(summarizedattrs);
 
 		goto restart;
 	}
 
 	/* Don't leak the old values of these bitmaps, if any */
-	bms_free(relation->rd_indexattr);
-	relation->rd_indexattr = NULL;
+	relation->rd_attrsvalid = false;
 	bms_free(relation->rd_keyattr);
 	relation->rd_keyattr = NULL;
 	bms_free(relation->rd_pkattr);
 	relation->rd_pkattr = NULL;
 	bms_free(relation->rd_idattr);
 	relation->rd_idattr = NULL;
+	bms_free(relation->rd_hotblockingattr);
+	relation->rd_hotblockingattr = NULL;
+	bms_free(relation->rd_summarizedattr);
+	relation->rd_summarizedattr = NULL;
 
 	/*
 	 * Now save copies of the bitmaps in the relcache entry.  We intentionally
-	 * set rd_indexattr last, because that's the one that signals validity of
+	 * set rd_attrsvalid last, because that's the one that signals validity of
 	 * the values; if we run out of memory before making that copy, we won't
 	 * leave the relcache entry looking like the other ones are valid but
 	 * empty.
@@ -5366,20 +5399,24 @@ restart:
 	relation->rd_keyattr = bms_copy(uindexattrs);
 	relation->rd_pkattr = bms_copy(pkindexattrs);
 	relation->rd_idattr = bms_copy(idindexattrs);
-	relation->rd_indexattr = bms_copy(indexattrs);
+	relation->rd_hotblockingattr = bms_copy(hotblockingattrs);
+	relation->rd_summarizedattr = bms_copy(summarizedattrs);
+	relation->rd_attrsvalid = true;
 	MemoryContextSwitchTo(oldcxt);
 
 	/* We return our original working copy for caller to play with */
 	switch (attrKind)
 	{
-		case INDEX_ATTR_BITMAP_ALL:
-			return indexattrs;
 		case INDEX_ATTR_BITMAP_KEY:
 			return uindexattrs;
 		case INDEX_ATTR_BITMAP_PRIMARY_KEY:
 			return pkindexattrs;
 		case INDEX_ATTR_BITMAP_IDENTITY_KEY:
 			return idindexattrs;
+		case INDEX_ATTR_BITMAP_HOT_BLOCKING:
+			return hotblockingattrs;
+		case INDEX_ATTR_BITMAP_SUMMARIZED:
+			return summarizedattrs;
 		default:
 			elog(ERROR, "unknown attrKind %u", attrKind);
 			return NULL;
@@ -6134,7 +6171,7 @@ load_relcache_init_file(bool shared)
 			if (rel->rd_isnailed)
 				nailed_indexes++;
 
-			/* next, read the pg_index tuple */
+			/* read the pg_index tuple */
 			if (fread(&len, 1, sizeof(len), fp) != sizeof(len))
 				goto read_failed;
 
@@ -6165,7 +6202,7 @@ load_relcache_init_file(bool shared)
 			 */
 			InitIndexAmRoutine(rel);
 
-			/* next, read the vector of opfamily OIDs */
+			/* read the vector of opfamily OIDs */
 			if (fread(&len, 1, sizeof(len), fp) != sizeof(len))
 				goto read_failed;
 
@@ -6175,7 +6212,7 @@ load_relcache_init_file(bool shared)
 
 			rel->rd_opfamily = opfamily;
 
-			/* next, read the vector of opcintype OIDs */
+			/* read the vector of opcintype OIDs */
 			if (fread(&len, 1, sizeof(len), fp) != sizeof(len))
 				goto read_failed;
 
@@ -6185,7 +6222,7 @@ load_relcache_init_file(bool shared)
 
 			rel->rd_opcintype = opcintype;
 
-			/* next, read the vector of support procedure OIDs */
+			/* read the vector of support procedure OIDs */
 			if (fread(&len, 1, sizeof(len), fp) != sizeof(len))
 				goto read_failed;
 			support = (RegProcedure *) MemoryContextAlloc(indexcxt, len);
@@ -6194,7 +6231,7 @@ load_relcache_init_file(bool shared)
 
 			rel->rd_support = support;
 
-			/* next, read the vector of collation OIDs */
+			/* read the vector of collation OIDs */
 			if (fread(&len, 1, sizeof(len), fp) != sizeof(len))
 				goto read_failed;
 
@@ -6204,7 +6241,7 @@ load_relcache_init_file(bool shared)
 
 			rel->rd_indcollation = indcollation;
 
-			/* finally, read the vector of indoption values */
+			/* read the vector of indoption values */
 			if (fread(&len, 1, sizeof(len), fp) != sizeof(len))
 				goto read_failed;
 
@@ -6214,7 +6251,7 @@ load_relcache_init_file(bool shared)
 
 			rel->rd_indoption = indoption;
 
-			/* finally, read the vector of opcoptions values */
+			/* read the vector of opcoptions values */
 			rel->rd_opcoptions = (bytea **)
 				MemoryContextAllocZero(indexcxt, sizeof(*rel->rd_opcoptions) * relform->relnatts);
 
@@ -6300,7 +6337,7 @@ load_relcache_init_file(bool shared)
 		rel->rd_indexlist = NIL;
 		rel->rd_pkindex = InvalidOid;
 		rel->rd_replidindex = InvalidOid;
-		rel->rd_indexattr = NULL;
+		rel->rd_attrsvalid = false;
 		rel->rd_keyattr = NULL;
 		rel->rd_pkattr = NULL;
 		rel->rd_idattr = NULL;
@@ -6523,34 +6560,34 @@ write_relcache_init_file(bool shared)
 					   HEAPTUPLESIZE + rel->rd_indextuple->t_len,
 					   fp);
 
-			/* next, write the vector of opfamily OIDs */
+			/* write the vector of opfamily OIDs */
 			write_item(rel->rd_opfamily,
 					   relform->relnatts * sizeof(Oid),
 					   fp);
 
-			/* next, write the vector of opcintype OIDs */
+			/* write the vector of opcintype OIDs */
 			write_item(rel->rd_opcintype,
 					   relform->relnatts * sizeof(Oid),
 					   fp);
 
-			/* next, write the vector of support procedure OIDs */
+			/* write the vector of support procedure OIDs */
 			write_item(rel->rd_support,
 					   relform->relnatts * (rel->rd_indam->amsupport * sizeof(RegProcedure)),
 					   fp);
 
-			/* next, write the vector of collation OIDs */
+			/* write the vector of collation OIDs */
 			write_item(rel->rd_indcollation,
 					   relform->relnatts * sizeof(Oid),
 					   fp);
 
-			/* finally, write the vector of indoption values */
+			/* write the vector of indoption values */
 			write_item(rel->rd_indoption,
 					   relform->relnatts * sizeof(int16),
 					   fp);
 
 			Assert(rel->rd_opcoptions);
 
-			/* finally, write the vector of opcoptions values */
+			/* write the vector of opcoptions values */
 			for (i = 0; i < relform->relnatts; i++)
 			{
 				bytea	   *opt = rel->rd_opcoptions[i];

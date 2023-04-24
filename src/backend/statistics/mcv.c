@@ -4,7 +4,7 @@
  *	  POSTGRES multivariate MCV lists
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -457,7 +457,7 @@ build_distinct_groups(int numrows, SortItem *items, MultiSortSupport mss,
 	Assert(j + 1 == ngroups);
 
 	/* Sort the distinct groups by frequency (in descending order). */
-	qsort_interruptible((void *) groups, ngroups, sizeof(SortItem),
+	qsort_interruptible(groups, ngroups, sizeof(SortItem),
 						compare_sort_item_count, NULL);
 
 	*ndistinct = ngroups;
@@ -528,7 +528,7 @@ build_column_frequencies(SortItem *groups, int ngroups,
 		}
 
 		/* sort the values, deduplicate */
-		qsort_interruptible((void *) result[dim], ngroups, sizeof(SortItem),
+		qsort_interruptible(result[dim], ngroups, sizeof(SortItem),
 							sort_item_compare, ssup);
 
 		/*
@@ -1032,7 +1032,7 @@ statext_mcv_deserialize(bytea *data)
 	 * header fields one by one, so we need to ignore struct alignment.
 	 */
 	if (VARSIZE_ANY(data) < MinSizeOfMCVList)
-		elog(ERROR, "invalid MCV size %zd (expected at least %zu)",
+		elog(ERROR, "invalid MCV size %zu (expected at least %zu)",
 			 VARSIZE_ANY(data), MinSizeOfMCVList);
 
 	/* read the MCV list header */
@@ -1093,7 +1093,7 @@ statext_mcv_deserialize(bytea *data)
 	 * to do this check first, before accessing the dimension info.
 	 */
 	if (VARSIZE_ANY(data) < expected_size)
-		elog(ERROR, "invalid MCV size %zd (expected %zu)",
+		elog(ERROR, "invalid MCV size %zu (expected %zu)",
 			 VARSIZE_ANY(data), expected_size);
 
 	/* Now copy the array of type Oids. */
@@ -1125,7 +1125,7 @@ statext_mcv_deserialize(bytea *data)
 	 * check on size.
 	 */
 	if (VARSIZE_ANY(data) != expected_size)
-		elog(ERROR, "invalid MCV size %zd (expected %zu)",
+		elog(ERROR, "invalid MCV size %zu (expected %zu)",
 			 VARSIZE_ANY(data), expected_size);
 
 	/*

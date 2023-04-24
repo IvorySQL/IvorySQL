@@ -15,15 +15,17 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 
 OBJS = \
+	conffiles.o \
 	guc.o \
 	guc-file.o \
+	guc_funcs.o \
+	guc_tables.o \
 	help_config.o \
 	pg_config.o \
 	pg_controldata.o \
 	pg_rusage.o \
 	ps_status.o \
 	queryenvironment.o \
-	queryjumble.o \
 	rls.o \
 	sampling.o \
 	superuser.o \

@@ -3,7 +3,7 @@
  * appendinfo.c
  *	  Routines for mapping between append parent(s) and children
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,6 +21,7 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/appendinfo.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/planmain.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -228,6 +229,28 @@ adjust_appendrel_attrs_mutator(Node *node,
 		if (var->varlevelsup != 0)
 			return (Node *) var;	/* no changes needed */
 
+		/*
+		 * You might think we need to adjust var->varnullingrels, but that
+		 * shouldn't need any changes.  It will contain outer-join relids,
+		 * while the transformation we are making affects only baserels.
+		 * Below, we just propagate var->varnullingrels into the translated
+		 * Var.
+		 *
+		 * If var->varnullingrels isn't empty, and the translation wouldn't be
+		 * a Var, we have to fail.  One could imagine wrapping the translated
+		 * expression in a PlaceHolderVar, but that won't work because this is
+		 * typically used after freezing placeholders.  Fortunately, the case
+		 * appears unreachable at the moment.  We can see nonempty
+		 * var->varnullingrels here, but only in cases involving partitionwise
+		 * joining, and in such cases the translations will always be Vars.
+		 * (Non-Var translations occur only for appendrels made by flattening
+		 * UNION ALL subqueries.)  Should we need to make this work in future,
+		 * a possible fix is to mandate that prepjointree.c create PHVs for
+		 * all non-Var outputs of such subqueries, and then we could look up
+		 * the pre-existing PHV here.  Or perhaps just wrap the translations
+		 * that way to begin with?
+		 */
+
 		for (cnt = 0; cnt < nappinfos; cnt++)
 		{
 			if (var->varno == appinfos[cnt]->parent_relid)
@@ -255,6 +278,10 @@ adjust_appendrel_attrs_mutator(Node *node,
 				if (newnode == NULL)
 					elog(ERROR, "attribute %d of relation \"%s\" does not exist",
 						 var->varattno, get_rel_name(appinfo->parent_reloid));
+				if (IsA(newnode, Var))
+					((Var *) newnode)->varnullingrels = var->varnullingrels;
+				else if (var->varnullingrels != NULL)
+					elog(ERROR, "failed to apply nullingrels to a non-Var");
 				return newnode;
 			}
 			else if (var->varattno == 0)
@@ -308,6 +335,9 @@ adjust_appendrel_attrs_mutator(Node *node,
 					rowexpr->colnames = copyObject(rte->eref->colnames);
 					rowexpr->location = -1;
 
+					if (var->varnullingrels != NULL)
+						elog(ERROR, "failed to apply nullingrels to a non-Var");
+
 					return (Node *) rowexpr;
 				}
 			}
@@ -348,6 +378,8 @@ adjust_appendrel_attrs_mutator(Node *node,
 					var = copyObject(ridinfo->rowidvar);
 					/* ... but use the correct relid */
 					var->varno = leaf_relid;
+					/* identity vars shouldn't have nulling rels */
+					Assert(var->varnullingrels == NULL);
 					/* varnosyn in the RowIdentityVarInfo is probably wrong */
 					var->varnosyn = 0;
 					var->varattnosyn = 0;
@@ -392,8 +424,11 @@ adjust_appendrel_attrs_mutator(Node *node,
 														 (void *) context);
 		/* now fix PlaceHolderVar's relid sets */
 		if (phv->phlevelsup == 0)
-			phv->phrels = adjust_child_relids(phv->phrels, context->nappinfos,
-											  context->appinfos);
+		{
+			phv->phrels = adjust_child_relids(phv->phrels,
+											  nappinfos, appinfos);
+			/* as above, we needn't touch phnullingrels */
+		}
 		return (Node *) phv;
 	}
 	/* Shouldn't need to handle planner auxiliary nodes here */
@@ -412,7 +447,7 @@ adjust_appendrel_attrs_mutator(Node *node,
 		RestrictInfo *oldinfo = (RestrictInfo *) node;
 		RestrictInfo *newinfo = makeNode(RestrictInfo);
 
-		/* Copy all flat-copiable fields */
+		/* Copy all flat-copiable fields, notably including rinfo_serial */
 		memcpy(newinfo, oldinfo, sizeof(RestrictInfo));
 
 		/* Recursively fix the clause itself */
@@ -433,9 +468,6 @@ adjust_appendrel_attrs_mutator(Node *node,
 		newinfo->outer_relids = adjust_child_relids(oldinfo->outer_relids,
 													context->nappinfos,
 													context->appinfos);
-		newinfo->nullable_relids = adjust_child_relids(oldinfo->nullable_relids,
-													   context->nappinfos,
-													   context->appinfos);
 		newinfo->left_relids = adjust_child_relids(oldinfo->left_relids,
 												   context->nappinfos,
 												   context->appinfos);
@@ -688,7 +720,11 @@ get_translated_update_targetlist(PlannerInfo *root, Index relid,
 
 /*
  * find_appinfos_by_relids
- * 		Find AppendRelInfo structures for all relations specified by relids.
+ * 		Find AppendRelInfo structures for base relations listed in relids.
+ *
+ * The relids argument is typically a join relation's relids, which can
+ * include outer-join RT indexes in addition to baserels.  We silently
+ * ignore the outer joins.
  *
  * The AppendRelInfos are returned in an array, which can be pfree'd by the
  * caller. *nappinfos is set to the number of entries in the array.
@@ -700,8 +736,9 @@ find_appinfos_by_relids(PlannerInfo *root, Relids relids, int *nappinfos)
 	int			cnt = 0;
 	int			i;
 
-	*nappinfos = bms_num_members(relids);
-	appinfos = (AppendRelInfo **) palloc(sizeof(AppendRelInfo *) * *nappinfos);
+	/* Allocate an array that's certainly big enough */
+	appinfos = (AppendRelInfo **)
+		palloc(sizeof(AppendRelInfo *) * bms_num_members(relids));
 
 	i = -1;
 	while ((i = bms_next_member(relids, i)) >= 0)
@@ -709,10 +746,17 @@ find_appinfos_by_relids(PlannerInfo *root, Relids relids, int *nappinfos)
 		AppendRelInfo *appinfo = root->append_rel_array[i];
 
 		if (!appinfo)
+		{
+			/* Probably i is an OJ index, but let's check */
+			if (find_base_rel_ignore_join(root, i) == NULL)
+				continue;
+			/* It's a base rel, but we lack an append_rel_array entry */
 			elog(ERROR, "child rel %d not found in append_rel_array", i);
+		}
 
 		appinfos[cnt++] = appinfo;
 	}
+	*nappinfos = cnt;
 	return appinfos;
 }
 
@@ -730,7 +774,7 @@ find_appinfos_by_relids(PlannerInfo *root, Relids relids, int *nappinfos)
 
 /*
  * add_row_identity_var
- *	  Register a row-identity column to be used in UPDATE/DELETE.
+ *	  Register a row-identity column to be used in UPDATE/DELETE/MERGE.
  *
  * The Var must be equal(), aside from varno, to any other row-identity
  * column with the same rowid_name.  Thus, for example, "wholerow"
@@ -754,6 +798,7 @@ add_row_identity_var(PlannerInfo *root, Var *orig_var,
 	Assert(IsA(orig_var, Var));
 	Assert(orig_var->varno == rtindex);
 	Assert(orig_var->varlevelsup == 0);
+	Assert(orig_var->varnullingrels == NULL);
 
 	/*
 	 * If we're doing non-inherited UPDATE/DELETE/MERGE, there's little need
@@ -909,8 +954,8 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
  * distribute_row_identity_vars
  *
  * After we have finished identifying all the row identity columns
- * needed by an inherited UPDATE/DELETE query, make sure that these
- * columns will be generated by all the target relations.
+ * needed by an inherited UPDATE/DELETE/MERGE query, make sure that
+ * these columns will be generated by all the target relations.
  *
  * This is more or less like what build_base_rel_tlists() does,
  * except that it would not understand what to do with ROWID_VAR Vars.
@@ -950,9 +995,10 @@ distribute_row_identity_vars(PlannerInfo *root)
 	 * certainly process no rows.  Handle this edge case by re-opening the top
 	 * result relation and adding the row identity columns it would have used,
 	 * as preprocess_targetlist() would have done if it weren't marked "inh".
-	 * (This is a bit ugly, but it seems better to confine the ugliness and
-	 * extra cycles to this unusual corner case.)  We needn't worry about
-	 * fixing the rel's reltarget, as that won't affect the finished plan.
+	 * Then re-run build_base_rel_tlists() to ensure that the added columns
+	 * get propagated to the relation's reltarget.  (This is a bit ugly, but
+	 * it seems better to confine the ugliness and extra cycles to this
+	 * unusual corner case.)
 	 */
 	if (root->row_identity_vars == NIL)
 	{
@@ -962,6 +1008,8 @@ distribute_row_identity_vars(PlannerInfo *root)
 		add_row_identity_columns(root, result_relation,
 								 target_rte, target_relation);
 		table_close(target_relation, NoLock);
+		build_base_rel_tlists(root, root->processed_tlist);
+		/* There are no ROWID_VAR Vars in this case, so we're done. */
 		return;
 	}
 

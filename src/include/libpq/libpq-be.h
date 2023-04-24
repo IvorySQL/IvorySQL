@@ -8,7 +8,7 @@
  *	  Structs that need to be client-visible are in pqcomm.h.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/libpq-be.h
@@ -84,6 +84,7 @@ typedef struct
 								 * GSSAPI auth was not used */
 	bool		auth;			/* GSSAPI Authentication used */
 	bool		enc;			/* GSSAPI encryption in use */
+	bool		delegated_creds;	/* GSSAPI Delegated credentials */
 #endif
 } pg_gssinfo;
 #endif
@@ -308,7 +309,7 @@ extern void be_tls_get_peer_serial(Port *port, char *ptr, size_t len);
  * This is not supported with old versions of OpenSSL that don't have
  * the X509_get_signature_nid() function.
  */
-#if defined(USE_OPENSSL) && defined(HAVE_X509_GET_SIGNATURE_NID)
+#if defined(USE_OPENSSL) && (defined(HAVE_X509_GET_SIGNATURE_NID) || defined(HAVE_X509_GET_SIGNATURE_INFO))
 #define HAVE_BE_TLS_GET_CERTIFICATE_HASH
 extern char *be_tls_get_certificate_hash(Port *port, size_t *len);
 #endif
@@ -328,6 +329,7 @@ extern PGDLLIMPORT openssl_tls_init_hook_typ openssl_tls_init_hook;
 extern bool be_gssapi_get_auth(Port *port);
 extern bool be_gssapi_get_enc(Port *port);
 extern const char *be_gssapi_get_princ(Port *port);
+extern bool be_gssapi_get_deleg(Port *port);
 
 /* Read and write to a GSSAPI-encrypted connection. */
 extern ssize_t be_gssapi_read(Port *port, void *ptr, size_t len);

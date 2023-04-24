@@ -6,7 +6,7 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -58,8 +58,8 @@ char	   *SSLECDHCurve;
 /* GUC variable: if false, prefer client ciphers */
 bool		SSLPreferServerCiphers;
 
-int			ssl_min_protocol_version;
-int			ssl_max_protocol_version;
+int			ssl_min_protocol_version = PG_TLS1_2_VERSION;
+int			ssl_max_protocol_version = PG_TLS_ANY;
 
 /* ------------------------------------------------------------ */
 /*			 Procedures common to all secure sessions			*/

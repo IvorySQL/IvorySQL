@@ -3,7 +3,7 @@
 # parser generator for ecpg version 2
 # call with backend parser as stdin
 #
-# Copyright (c) 2007-2022, PostgreSQL Global Development Group
+# Copyright (c) 2007-2023, PostgreSQL Global Development Group
 #
 # Written by Mike Aubury <mike.aubury@aubit.com>
 #            Michael Meskes <meskes@postgresql.org>
@@ -55,9 +55,11 @@ my %replace_token = (
 
 # or in the block
 my %replace_string = (
+	'FORMAT_LA'      => 'format',
 	'NOT_LA'         => 'not',
 	'NULLS_LA'       => 'nulls',
 	'WITH_LA'        => 'with',
+	'WITHOUT_LA'     => 'without',
 	'TYPECAST'       => '::',
 	'DOT_DOT'        => '..',
 	'COLON_EQUALS'   => ':=',
@@ -126,8 +128,7 @@ my %replace_line = (
 	  => 'CREATE OptTemp TABLE IF_P NOT EXISTS create_as_target AS EXECUTE prepared_name execute_param_clause opt_with_data execute_rest',
 	'PrepareStmtPREPAREnameprep_type_clauseASPreparableStmt' =>
 	  'PREPARE prepared_name prep_type_clause AS PreparableStmt',
-	'var_nameColId' => 'ECPGColId',
-	'AnonBlockStmtpl_block_body'		  => 'ignore');
+	'var_nameColId' => 'ECPGColId');
 
 preload_addons();
 

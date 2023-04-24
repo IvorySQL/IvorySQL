@@ -68,7 +68,7 @@ static char full_buf[DEFAULT_XLOG_SEG_SIZE],
 		   *filename = FSYNC_FILENAME;
 static struct timeval start_t,
 			stop_t;
-static bool alarm_triggered = false;
+static sig_atomic_t alarm_triggered = false;
 
 
 static void handle_args(int argc, char *argv[]);
@@ -81,11 +81,11 @@ static void test_open_sync(const char *msg, int writes_size);
 static void test_file_descriptor_sync(void);
 
 #ifndef WIN32
-static void process_alarm(int sig);
+static void process_alarm(SIGNAL_ARGS);
 #else
 static DWORD WINAPI process_alarm(LPVOID param);
 #endif
-static void signal_cleanup(int sig);
+static void signal_cleanup(SIGNAL_ARGS);
 
 #ifdef HAVE_FSYNC_WRITETHROUGH
 static int	pg_fsync_writethrough(int fd);
@@ -312,10 +312,10 @@ test_sync(int writes_per_op)
 		for (ops = 0; alarm_triggered == false; ops++)
 		{
 			for (writes = 0; writes < writes_per_op; writes++)
-				if (pwrite(tmpfile,
-						   buf,
-						   XLOG_BLCKSZ,
-						   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+				if (pg_pwrite(tmpfile,
+							  buf,
+							  XLOG_BLCKSZ,
+							  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 					die("write failed");
 		}
 		STOP_TIMER;
@@ -337,10 +337,10 @@ test_sync(int writes_per_op)
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
 		for (writes = 0; writes < writes_per_op; writes++)
-			if (pwrite(tmpfile,
-					   buf,
-					   XLOG_BLCKSZ,
-					   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			if (pg_pwrite(tmpfile,
+						  buf,
+						  XLOG_BLCKSZ,
+						  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 				die("write failed");
 		fdatasync(tmpfile);
 	}
@@ -359,10 +359,10 @@ test_sync(int writes_per_op)
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
 		for (writes = 0; writes < writes_per_op; writes++)
-			if (pwrite(tmpfile,
-					   buf,
-					   XLOG_BLCKSZ,
-					   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			if (pg_pwrite(tmpfile,
+						  buf,
+						  XLOG_BLCKSZ,
+						  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 				die("write failed");
 		if (fsync(tmpfile) != 0)
 			die("fsync failed");
@@ -383,10 +383,10 @@ test_sync(int writes_per_op)
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
 		for (writes = 0; writes < writes_per_op; writes++)
-			if (pwrite(tmpfile,
-					   buf,
-					   XLOG_BLCKSZ,
-					   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			if (pg_pwrite(tmpfile,
+						  buf,
+						  XLOG_BLCKSZ,
+						  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 				die("write failed");
 		if (pg_fsync_writethrough(tmpfile) != 0)
 			die("fsync failed");
@@ -415,10 +415,10 @@ test_sync(int writes_per_op)
 		for (ops = 0; alarm_triggered == false; ops++)
 		{
 			for (writes = 0; writes < writes_per_op; writes++)
-				if (pwrite(tmpfile,
-						   buf,
-						   XLOG_BLCKSZ,
-						   writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
+				if (pg_pwrite(tmpfile,
+							  buf,
+							  XLOG_BLCKSZ,
+							  writes * XLOG_BLCKSZ) != XLOG_BLCKSZ)
 
 					/*
 					 * This can generate write failures if the filesystem has
@@ -480,10 +480,10 @@ test_open_sync(const char *msg, int writes_size)
 		for (ops = 0; alarm_triggered == false; ops++)
 		{
 			for (writes = 0; writes < 16 / writes_size; writes++)
-				if (pwrite(tmpfile,
-						   buf,
-						   writes_size * 1024,
-						   writes * writes_size * 1024) !=
+				if (pg_pwrite(tmpfile,
+							  buf,
+							  writes_size * 1024,
+							  writes * writes_size * 1024) !=
 					writes_size * 1024)
 					die("write failed");
 		}
@@ -582,7 +582,7 @@ test_non_sync(void)
 	START_TIMER;
 	for (ops = 0; alarm_triggered == false; ops++)
 	{
-		if (pwrite(tmpfile, buf, XLOG_BLCKSZ, 0) != XLOG_BLCKSZ)
+		if (pg_pwrite(tmpfile, buf, XLOG_BLCKSZ, 0) != XLOG_BLCKSZ)
 			die("write failed");
 	}
 	STOP_TIMER;
@@ -590,14 +590,14 @@ test_non_sync(void)
 }
 
 static void
-signal_cleanup(int signum)
+signal_cleanup(SIGNAL_ARGS)
 {
 	/* Delete the file if it exists. Ignore errors */
 	if (needs_unlink)
 		unlink(filename);
 	/* Finish incomplete line on stdout */
 	puts("");
-	exit(signum);
+	exit(1);
 }
 
 #ifdef HAVE_FSYNC_WRITETHROUGH
@@ -632,7 +632,7 @@ print_elapse(struct timeval start_t, struct timeval stop_t, int ops)
 
 #ifndef WIN32
 static void
-process_alarm(int sig)
+process_alarm(SIGNAL_ARGS)
 {
 	alarm_triggered = true;
 }

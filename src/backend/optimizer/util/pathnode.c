@@ -3,7 +3,7 @@
  * pathnode.c
  *	  Routines to manipulate pathlists and create path nodes
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -982,9 +982,7 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
  * 'indexorderbycols' is an integer list of index column numbers (zero based)
  *			the ordering operators can be used with.
  * 'pathkeys' describes the ordering of the path.
- * 'indexscandir' is ForwardScanDirection or BackwardScanDirection
- *			for an ordered index, or NoMovementScanDirection for
- *			an unordered index.
+ * 'indexscandir' is either ForwardScanDirection or BackwardScanDirection.
  * 'indexonly' is true if an index-only scan is wanted.
  * 'required_outer' is the set of outer relids for a parameterized path.
  * 'loop_count' is the number of repetitions of the indexscan to factor into
@@ -1258,15 +1256,17 @@ create_append_path(PlannerInfo *root,
 	pathnode->path.pathtarget = rel->reltarget;
 
 	/*
-	 * When generating an Append path for a partitioned table, there may be
-	 * parameterized quals that are useful for run-time pruning.  Hence,
-	 * compute path.param_info the same way as for any other baserel, so that
-	 * such quals will be available for make_partition_pruneinfo().  (This
-	 * would not work right for a non-baserel, ie a scan on a non-leaf child
-	 * partition, and it's not necessary anyway in that case.  Must skip it if
-	 * we don't have "root", too.)
+	 * If this is for a baserel (not a join or non-leaf partition), we prefer
+	 * to apply get_baserel_parampathinfo to construct a full ParamPathInfo
+	 * for the path.  This supports building a Memoize path atop this path,
+	 * and if this is a partitioned table the info may be useful for run-time
+	 * pruning (cf make_partition_pruneinfo()).
+	 *
+	 * However, if we don't have "root" then that won't work and we fall back
+	 * on the simpler get_appendrel_parampathinfo.  There's no point in doing
+	 * the more expensive thing for a dummy path, either.
 	 */
-	if (root && rel->reloptkind == RELOPT_BASEREL && IS_PARTITIONED_REL(rel))
+	if (rel->reloptkind == RELOPT_BASEREL && root && subpaths != NIL)
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
@@ -1307,7 +1307,7 @@ create_append_path(PlannerInfo *root,
 	 * Apply query-wide LIMIT if known and path is for sole base relation.
 	 * (Handling this at this low level is a bit klugy.)
 	 */
-	if (root != NULL && bms_equal(rel->relids, root->all_baserels))
+	if (root != NULL && bms_equal(rel->relids, root->all_query_rels))
 		pathnode->limit_tuples = root->limit_tuples;
 	else
 		pathnode->limit_tuples = -1.0;
@@ -1346,12 +1346,12 @@ create_append_path(PlannerInfo *root,
 			pathnode->path.total_cost = child->total_cost;
 		}
 		else
-			cost_append(pathnode, root);
+			cost_append(pathnode);
 		/* Must do this last, else cost_append complains */
 		pathnode->path.pathkeys = child->pathkeys;
 	}
 	else
-		cost_append(pathnode, root);
+		cost_append(pathnode);
 
 	/* If the caller provided a row estimate, override the computed value. */
 	if (rows >= 0)
@@ -1436,7 +1436,7 @@ create_merge_append_path(PlannerInfo *root,
 	 * Apply query-wide LIMIT if known and path is for sole base relation.
 	 * (Handling this at this low level is a bit klugy.)
 	 */
-	if (bms_equal(rel->relids, root->all_baserels))
+	if (bms_equal(rel->relids, root->all_query_rels))
 		pathnode->limit_tuples = root->limit_tuples;
 	else
 		pathnode->limit_tuples = -1.0;
@@ -2374,12 +2374,6 @@ calc_nestloop_required_outer(Relids outerrelids,
 	/* ... and remove any mention of now-satisfied outer rels */
 	required_outer = bms_del_members(required_outer,
 									 outerrelids);
-	/* maintain invariant that required_outer is exactly NULL if empty */
-	if (bms_is_empty(required_outer))
-	{
-		bms_free(required_outer);
-		required_outer = NULL;
-	}
 	return required_outer;
 }
 
@@ -2442,12 +2436,12 @@ create_nestloop_path(PlannerInfo *root,
 	 * restrict_clauses that are due to be moved into the inner path.  We have
 	 * to do this now, rather than postpone the work till createplan time,
 	 * because the restrict_clauses list can affect the size and cost
-	 * estimates for this path.
+	 * estimates for this path.  We detect such clauses by checking for serial
+	 * number match to clauses already enforced in the inner path.
 	 */
 	if (bms_overlap(inner_req_outer, outer_path->parent->relids))
 	{
-		Relids		inner_and_outer = bms_union(inner_path->parent->relids,
-												inner_req_outer);
+		Bitmapset  *enforced_serials = get_param_path_clause_serials(inner_path);
 		List	   *jclauses = NIL;
 		ListCell   *lc;
 
@@ -2455,9 +2449,7 @@ create_nestloop_path(PlannerInfo *root,
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 
-			if (!join_clause_is_movable_into(rinfo,
-											 inner_path->parent->relids,
-											 inner_and_outer))
+			if (!bms_is_member(rinfo->rinfo_serial, enforced_serials))
 				jclauses = lappend(jclauses, rinfo);
 		}
 		restrict_clauses = jclauses;
@@ -3356,7 +3348,7 @@ create_minmaxagg_path(PlannerInfo *root,
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
 	pathnode->path.parallel_aware = false;
-	/* A MinMaxAggPath implies use of subplans, so cannot be parallel-safe */
+	/* A MinMaxAggPath implies use of initplans, so cannot be parallel-safe */
 	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = 0;
 	/* Result is one unordered row */
@@ -3630,7 +3622,8 @@ create_lockrows_path(PlannerInfo *root, RelOptInfo *rel,
 
 /*
  * create_modifytable_path
- *	  Creates a pathnode that represents performing INSERT/UPDATE/DELETE mods
+ *	  Creates a pathnode that represents performing INSERT/UPDATE/DELETE/MERGE
+ *	  mods
  *
  * 'rel' is the parent relation associated with the result
  * 'subpath' is a Path producing source data
@@ -3978,12 +3971,30 @@ reparameterize_path(PlannerInfo *root, Path *path,
 									   apath->path.parallel_aware,
 									   -1);
 			}
+		case T_Material:
+			{
+				MaterialPath *mpath = (MaterialPath *) path;
+				Path	   *spath = mpath->subpath;
+
+				spath = reparameterize_path(root, spath,
+											required_outer,
+											loop_count);
+				if (spath == NULL)
+					return NULL;
+				return (Path *) create_material_path(rel, spath);
+			}
 		case T_Memoize:
 			{
 				MemoizePath *mpath = (MemoizePath *) path;
+				Path	   *spath = mpath->subpath;
 
+				spath = reparameterize_path(root, spath,
+											required_outer,
+											loop_count);
+				if (spath == NULL)
+					return NULL;
 				return (Path *) create_memoize_path(root, rel,
-													mpath->subpath,
+													spath,
 													mpath->param_exprs,
 													mpath->hash_operators,
 													mpath->singlerow,
@@ -4012,7 +4023,8 @@ reparameterize_path(PlannerInfo *root, Path *path,
  * path->parent, which does not change during the translation. Hence those
  * members are copied as they are.
  *
- * If the given path can not be reparameterized, the function returns NULL.
+ * Currently, only a few path types are supported here, though more could be
+ * added at need.  We return NULL if we can't reparameterize the given path.
  */
 Path *
 reparameterize_path_by_child(PlannerInfo *root, Path *path,
@@ -4210,12 +4222,23 @@ do { \
 			}
 			break;
 
+		case T_MaterialPath:
+			{
+				MaterialPath *mpath;
+
+				FLAT_COPY_PATH(mpath, path, MaterialPath);
+				REPARAMETERIZE_CHILD_PATH(mpath->subpath);
+				new_path = (Path *) mpath;
+			}
+			break;
+
 		case T_MemoizePath:
 			{
 				MemoizePath *mpath;
 
 				FLAT_COPY_PATH(mpath, path, MemoizePath);
 				REPARAMETERIZE_CHILD_PATH(mpath->subpath);
+				ADJUST_CHILD_ATTRS(mpath->param_exprs);
 				new_path = (Path *) mpath;
 			}
 			break;
@@ -4267,6 +4290,7 @@ do { \
 		new_ppi->ppi_rows = old_ppi->ppi_rows;
 		new_ppi->ppi_clauses = old_ppi->ppi_clauses;
 		ADJUST_CHILD_ATTRS(new_ppi->ppi_clauses);
+		new_ppi->ppi_serials = bms_copy(old_ppi->ppi_serials);
 		rel->ppilist = lappend(rel->ppilist, new_ppi);
 
 		MemoryContextSwitchTo(oldcontext);

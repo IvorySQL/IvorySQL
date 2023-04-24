@@ -6,7 +6,7 @@
  * Note this is read in MinGW as well as native Windows builds,
  * but not in Cygwin builds.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/win32_port.h
@@ -48,12 +48,21 @@
  * significantly.  WIN32_LEAN_AND_MEAN reduces that a bit. It'd be better to
  * remove the include of windows.h (as well as indirect inclusions of it) from
  * such a central place, but until then...
+ *
+ * To be able to include ntstatus.h tell windows.h to not declare NTSTATUS by
+ * temporarily defining UMDF_USING_NTSTATUS, otherwise we'll get warning about
+ * macro redefinitions, as windows.h also defines NTSTATUS (yuck). That in
+ * turn requires including ntstatus.h, winternl.h to get common symbols.
  */
 #define WIN32_LEAN_AND_MEAN
+#define UMDF_USING_NTSTATUS
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <ntstatus.h>
+#include <winternl.h>
+
 #undef small
 #include <process.h>
 #include <signal.h>
@@ -195,15 +204,21 @@ struct itimerval
 
 int			setitimer(int which, const struct itimerval *value, struct itimerval *ovalue);
 
+/* Convenience wrapper for GetFileType() */
+extern DWORD pgwin32_get_file_type(HANDLE hFile);
+
 /*
  * WIN32 does not provide 64-bit off_t, but does provide the functions operating
- * with 64-bit offsets.
+ * with 64-bit offsets.  Also, fseek() might not give an error for unseekable
+ * streams, so harden that function with our version.
  */
 #define pgoff_t __int64
 
 #ifdef _MSC_VER
-#define fseeko(stream, offset, origin) _fseeki64(stream, offset, origin)
-#define ftello(stream) _ftelli64(stream)
+extern int	_pgfseeko64(FILE *stream, pgoff_t offset, int origin);
+extern pgoff_t _pgftello64(FILE *stream);
+#define fseeko(stream, offset, origin) _pgfseeko64(stream, offset, origin)
+#define ftello(stream) _pgftello64(stream)
 #else
 #ifndef fseeko
 #define fseeko(stream, offset, origin) fseeko64(stream, offset, origin)
@@ -343,6 +358,13 @@ extern int	_pglstat64(const char *name, struct stat *buf);
  * we cannot use _O_NOINHERIT ourselves.
  */
 #define O_DSYNC 0x0080
+
+/*
+ * Our open() replacement does not create inheritable handles, so it is safe to
+ * ignore O_CLOEXEC.  (If we were using Windows' own open(), it might be
+ * necessary to convert this to _O_NOINHERIT.)
+ */
+#define O_CLOEXEC 0
 
 /*
  * Supplement to <errno.h>.
@@ -564,9 +586,9 @@ typedef unsigned short mode_t;
 #endif
 
 /* in port/win32pread.c */
-extern ssize_t pread(int fd, void *buf, size_t nbyte, off_t offset);
+extern ssize_t pg_pread(int fd, void *buf, size_t nbyte, off_t offset);
 
 /* in port/win32pwrite.c */
-extern ssize_t pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
+extern ssize_t pg_pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
 
 #endif							/* PG_WIN32_PORT_H */

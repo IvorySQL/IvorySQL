@@ -4,7 +4,7 @@
  *	  internal structures for hash joins
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/hashjoin.h
@@ -159,6 +159,7 @@ typedef struct ParallelHashJoinBatch
 	size_t		ntuples;		/* number of tuples loaded */
 	size_t		old_ntuples;	/* number of tuples before repartitioning */
 	bool		space_exhausted;
+	bool		skip_unmatched; /* whether to abandon unmatched scan */
 
 	/*
 	 * Variable-sized SharedTuplestore objects follow this struct in memory.
@@ -203,7 +204,7 @@ typedef struct ParallelHashJoinBatchAccessor
 	size_t		estimated_size; /* size of partition on disk */
 	size_t		old_ntuples;	/* how many tuples before repartitioning? */
 	bool		at_least_one_chunk; /* has this backend allocated a chunk? */
-
+	bool		outer_eof;		/* has this process hit end of batch? */
 	bool		done;			/* flag to remember that a batch is done */
 	SharedTuplestoreAccessor *inner_tuples;
 	SharedTuplestoreAccessor *outer_tuples;
@@ -254,31 +255,33 @@ typedef struct ParallelHashJoinState
 } ParallelHashJoinState;
 
 /* The phases for building batches, used by build_barrier. */
-#define PHJ_BUILD_ELECTING				0
-#define PHJ_BUILD_ALLOCATING			1
-#define PHJ_BUILD_HASHING_INNER			2
-#define PHJ_BUILD_HASHING_OUTER			3
-#define PHJ_BUILD_DONE					4
+#define PHJ_BUILD_ELECT					0
+#define PHJ_BUILD_ALLOCATE				1
+#define PHJ_BUILD_HASH_INNER			2
+#define PHJ_BUILD_HASH_OUTER			3
+#define PHJ_BUILD_RUN					4
+#define PHJ_BUILD_FREE					5
 
 /* The phases for probing each batch, used by for batch_barrier. */
-#define PHJ_BATCH_ELECTING				0
-#define PHJ_BATCH_ALLOCATING			1
-#define PHJ_BATCH_LOADING				2
-#define PHJ_BATCH_PROBING				3
-#define PHJ_BATCH_DONE					4
+#define PHJ_BATCH_ELECT					0
+#define PHJ_BATCH_ALLOCATE				1
+#define PHJ_BATCH_LOAD					2
+#define PHJ_BATCH_PROBE					3
+#define PHJ_BATCH_SCAN					4
+#define PHJ_BATCH_FREE					5
 
 /* The phases of batch growth while hashing, for grow_batches_barrier. */
-#define PHJ_GROW_BATCHES_ELECTING		0
-#define PHJ_GROW_BATCHES_ALLOCATING		1
-#define PHJ_GROW_BATCHES_REPARTITIONING 2
-#define PHJ_GROW_BATCHES_DECIDING		3
-#define PHJ_GROW_BATCHES_FINISHING		4
+#define PHJ_GROW_BATCHES_ELECT			0
+#define PHJ_GROW_BATCHES_REALLOCATE		1
+#define PHJ_GROW_BATCHES_REPARTITION	2
+#define PHJ_GROW_BATCHES_DECIDE			3
+#define PHJ_GROW_BATCHES_FINISH			4
 #define PHJ_GROW_BATCHES_PHASE(n)		((n) % 5)	/* circular phases */
 
 /* The phases of bucket growth while hashing, for grow_buckets_barrier. */
-#define PHJ_GROW_BUCKETS_ELECTING		0
-#define PHJ_GROW_BUCKETS_ALLOCATING		1
-#define PHJ_GROW_BUCKETS_REINSERTING	2
+#define PHJ_GROW_BUCKETS_ELECT			0
+#define PHJ_GROW_BUCKETS_REALLOCATE		1
+#define PHJ_GROW_BUCKETS_REINSERT		2
 #define PHJ_GROW_BUCKETS_PHASE(n)		((n) % 3)	/* circular phases */
 
 typedef struct HashJoinTableData

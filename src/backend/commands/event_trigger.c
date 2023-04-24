@@ -3,7 +3,7 @@
  * event_trigger.c
  *	  PostgreSQL EVENT TRIGGER support code.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -94,7 +94,7 @@ static void AlterEventTriggerOwner_internal(Relation rel,
 static void error_duplicate_filter_variable(const char *defname);
 static Datum filter_list_to_array(List *filterlist);
 static Oid	insert_event_trigger_tuple(const char *trigname, const char *eventname,
-									   Oid evtOwner, Oid funcoid, List *tags);
+									   Oid evtOwner, Oid funcoid, List *taglist);
 static void validate_ddl_tags(const char *filtervar, List *taglist);
 static void validate_table_rewrite_tags(const char *filtervar, List *taglist);
 static void EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata);
@@ -379,7 +379,7 @@ AlterEventTrigger(AlterEventTrigStmt *stmt)
 	evtForm = (Form_pg_event_trigger) GETSTRUCT(tup);
 	trigoid = evtForm->oid;
 
-	if (!pg_event_trigger_ownercheck(trigoid, GetUserId()))
+	if (!object_ownercheck(EventTriggerRelationId, trigoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EVENT_TRIGGER,
 					   stmt->trigname);
 
@@ -471,7 +471,7 @@ AlterEventTriggerOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (form->evtowner == newOwnerId)
 		return;
 
-	if (!pg_event_trigger_ownercheck(form->oid, GetUserId()))
+	if (!object_ownercheck(EventTriggerRelationId, form->oid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EVENT_TRIGGER,
 					   NameStr(form->evtname));
 
@@ -936,9 +936,6 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 {
 	switch (obtype)
 	{
-		case OBJECT_PACKAGE:
-		case OBJECT_PACKAGE_BODY:
-		case OBJECT_VARIABLE:
 		case OBJECT_DATABASE:
 		case OBJECT_TABLESPACE:
 		case OBJECT_ROLE:
@@ -1015,8 +1012,6 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 {
 	switch (objclass)
 	{
-		case OCLASS_PACKAGE:
-		case OCLASS_VARIABLE:
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_ROLE:
@@ -1310,7 +1305,7 @@ pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 						"pg_event_trigger_dropped_objects()")));
 
 	/* Build tuplestore to hold the result rows */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	slist_foreach(iter, &(currentEventTriggerState->SQLDropList))
 	{
@@ -1837,7 +1832,7 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 						"pg_event_trigger_ddl_commands()")));
 
 	/* Build tuplestore to hold the result rows */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	foreach(lc, currentEventTriggerState->commandList)
 	{
@@ -2054,11 +2049,6 @@ stringify_grant_objtype(ObjectType objtype)
 			return "TABLESPACE";
 		case OBJECT_TYPE:
 			return "TYPE";
-		case OBJECT_PACKAGE:
-			return "PACKAGE";
-		case OBJECT_PACKAGE_BODY:
-			return "PACKAGE BODY";
-
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:
@@ -2096,7 +2086,6 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
-		case OBJECT_VARIABLE:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 	}
 
@@ -2143,10 +2132,6 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "TABLESPACES";
 		case OBJECT_TYPE:
 			return "TYPES";
-		case OBJECT_PACKAGE:
-			return "PACKAGE";
-		case OBJECT_PACKAGE_BODY:
-			return "PACKAGE BODY";
 			/* these currently aren't used */
 		case OBJECT_ACCESS_METHOD:
 		case OBJECT_AGGREGATE:
@@ -2185,7 +2170,6 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
-		case OBJECT_VARIABLE:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 	}
 

@@ -38,7 +38,7 @@
  * by re-setting the page's page_dirty flag.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/slru.c
@@ -182,6 +182,7 @@ SimpleLruShmemSize(int nslots, int nlsns)
  * ctllock: LWLock to use to control access to the shared control structure.
  * subdir: PGDATA-relative subdirectory that will contain the files.
  * tranche_id: LWLock tranche ID to use for the SLRU's per-buffer LWLocks.
+ * sync_handler: which set of functions to use to handle sync requests
  */
 void
 SimpleLruInit(SlruCtl ctl, const char *name, int nslots, int nlsns,
@@ -718,7 +719,7 @@ SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno)
 
 	errno = 0;
 	pgstat_report_wait_start(WAIT_EVENT_SLRU_READ);
-	if (pread(fd, shared->page_buffer[slotno], BLCKSZ, offset) != BLCKSZ)
+	if (pg_pread(fd, shared->page_buffer[slotno], BLCKSZ, offset) != BLCKSZ)
 	{
 		pgstat_report_wait_end();
 		slru_errcause = SLRU_READ_FAILED;
@@ -873,7 +874,7 @@ SlruPhysicalWritePage(SlruCtl ctl, int pageno, int slotno, SlruWriteAll fdata)
 
 	errno = 0;
 	pgstat_report_wait_start(WAIT_EVENT_SLRU_WRITE);
-	if (pwrite(fd, shared->page_buffer[slotno], BLCKSZ, offset) != BLCKSZ)
+	if (pg_pwrite(fd, shared->page_buffer[slotno], BLCKSZ, offset) != BLCKSZ)
 	{
 		pgstat_report_wait_end();
 		/* if write didn't set errno, assume problem is no disk space */
@@ -1239,7 +1240,7 @@ SimpleLruTruncate(SlruCtl ctl, int cutoffPage)
 	 */
 	LWLockAcquire(shared->ControlLock, LW_EXCLUSIVE);
 
-restart:;
+restart:
 
 	/*
 	 * While we are holding the lock, make an important safety check: the

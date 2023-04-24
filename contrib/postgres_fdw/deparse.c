@@ -24,7 +24,7 @@
  * with collations that match the remote table's columns, which we can
  * consider to be user error.
  *
- * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/deparse.c
@@ -149,7 +149,7 @@ static void deparseReturningList(StringInfo buf, RangeTblEntry *rte,
 static void deparseColumnRef(StringInfo buf, int varno, int varattno,
 							 RangeTblEntry *rte, bool qualify_col);
 static void deparseRelation(StringInfo buf, Relation rel);
-static void deparseExpr(Expr *expr, deparse_expr_cxt *context);
+static void deparseExpr(Expr *node, deparse_expr_cxt *context);
 static void deparseVar(Var *node, deparse_expr_cxt *context);
 static void deparseConst(Const *node, deparse_expr_cxt *context, int showtype);
 static void deparseParam(Param *node, deparse_expr_cxt *context);
@@ -943,8 +943,6 @@ foreign_expr_walker(Node *node,
 				 */
 				if (agg->aggorder)
 				{
-					ListCell   *lc;
-
 					foreach(lc, agg->aggorder)
 					{
 						SortGroupClause *srt = (SortGroupClause *) lfirst(lc);
@@ -2370,13 +2368,57 @@ deparseAnalyzeSizeSql(StringInfo buf, Relation rel)
 }
 
 /*
+ * Construct SELECT statement to acquire the number of rows and the relkind of
+ * a relation.
+ *
+ * Note: we just return the remote server's reltuples value, which might
+ * be off a good deal, but it doesn't seem worth working harder.  See
+ * comments in postgresAcquireSampleRowsFunc.
+ */
+void
+deparseAnalyzeInfoSql(StringInfo buf, Relation rel)
+{
+	StringInfoData relname;
+
+	/* We'll need the remote relation name as a literal. */
+	initStringInfo(&relname);
+	deparseRelation(&relname, rel);
+
+	appendStringInfoString(buf, "SELECT reltuples, relkind FROM pg_catalog.pg_class WHERE oid = ");
+	deparseStringLiteral(buf, relname.data);
+	appendStringInfoString(buf, "::pg_catalog.regclass");
+}
+
+/*
  * Construct SELECT statement to acquire sample rows of given relation.
  *
  * SELECT command is appended to buf, and list of columns retrieved
  * is returned to *retrieved_attrs.
+ *
+ * We only support sampling methods we can decide based on server version.
+ * Allowing custom TSM modules (like tsm_system_rows) might be useful, but it
+ * would require detecting which extensions are installed, to allow automatic
+ * fall-back. Moreover, the methods may use different parameters like number
+ * of rows (and not sampling rate). So we leave this for future improvements.
+ *
+ * Using random() to sample rows on the remote server has the advantage that
+ * this works on all PostgreSQL versions (unlike TABLESAMPLE), and that it
+ * does the sampling on the remote side (without transferring everything and
+ * then discarding most rows).
+ *
+ * The disadvantage is that we still have to read all rows and evaluate the
+ * random(), while TABLESAMPLE (at least with the "system" method) may skip.
+ * It's not that different from the "bernoulli" method, though.
+ *
+ * We could also do "ORDER BY random() LIMIT x", which would always pick
+ * the expected number of rows, but it requires sorting so it may be much
+ * more expensive (particularly on large tables, which is what the
+ * remote sampling is meant to improve).
  */
 void
-deparseAnalyzeSql(StringInfo buf, Relation rel, List **retrieved_attrs)
+deparseAnalyzeSql(StringInfo buf, Relation rel,
+				  PgFdwSamplingMethod sample_method, double sample_frac,
+				  List **retrieved_attrs)
 {
 	Oid			relid = RelationGetRelid(rel);
 	TupleDesc	tupdesc = RelationGetDescr(rel);
@@ -2424,10 +2466,35 @@ deparseAnalyzeSql(StringInfo buf, Relation rel, List **retrieved_attrs)
 		appendStringInfoString(buf, "NULL");
 
 	/*
-	 * Construct FROM clause
+	 * Construct FROM clause, and perhaps WHERE clause too, depending on the
+	 * selected sampling method.
 	 */
 	appendStringInfoString(buf, " FROM ");
 	deparseRelation(buf, rel);
+
+	switch (sample_method)
+	{
+		case ANALYZE_SAMPLE_OFF:
+			/* nothing to do here */
+			break;
+
+		case ANALYZE_SAMPLE_RANDOM:
+			appendStringInfo(buf, " WHERE pg_catalog.random() < %f", sample_frac);
+			break;
+
+		case ANALYZE_SAMPLE_SYSTEM:
+			appendStringInfo(buf, " TABLESAMPLE SYSTEM(%f)", (100.0 * sample_frac));
+			break;
+
+		case ANALYZE_SAMPLE_BERNOULLI:
+			appendStringInfo(buf, " TABLESAMPLE BERNOULLI(%f)", (100.0 * sample_frac));
+			break;
+
+		case ANALYZE_SAMPLE_AUTO:
+			/* should have been resolved into actual method */
+			elog(ERROR, "unexpected sampling method");
+			break;
+	}
 }
 
 /*
@@ -3669,6 +3736,13 @@ appendGroupByClause(List *tlist, deparse_expr_cxt *context)
 	 */
 	Assert(!query->groupingSets);
 
+	/*
+	 * We intentionally print query->groupClause not processed_groupClause,
+	 * leaving it to the remote planner to get rid of any redundant GROUP BY
+	 * items again.  This is necessary in case processed_groupClause reduced
+	 * to empty, and in any case the redundancy situation on the remote might
+	 * be different than what we think here.
+	 */
 	foreach(lc, query->groupClause)
 	{
 		SortGroupClause *grp = (SortGroupClause *) lfirst(lc);
@@ -3952,7 +4026,17 @@ get_relation_column_alias_ids(Var *node, RelOptInfo *foreignrel,
 	i = 1;
 	foreach(lc, foreignrel->reltarget->exprs)
 	{
-		if (equal(lfirst(lc), (Node *) node))
+		Var		   *tlvar = (Var *) lfirst(lc);
+
+		/*
+		 * Match reltarget entries only on varno/varattno.  Ideally there
+		 * would be some cross-check on varnullingrels, but it's unclear what
+		 * to do exactly; we don't have enough context to know what that value
+		 * should be.
+		 */
+		if (IsA(tlvar, Var) &&
+			tlvar->varno == node->varno &&
+			tlvar->varattno == node->varattno)
 		{
 			*colno = i;
 			return;

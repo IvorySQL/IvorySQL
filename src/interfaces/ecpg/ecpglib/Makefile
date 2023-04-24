@@ -2,7 +2,7 @@
 #
 # Makefile for ecpg library
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/interfaces/ecpg/ecpglib/Makefile
@@ -41,7 +41,7 @@ SHLIB_PREREQS = submake-libpq submake-pgtypeslib
 
 SHLIB_EXPORTS = exports.txt
 
-PKG_CONFIG_REQUIRES_PRIVATE = libpq libpgtypes
+PKG_CONFIG_REQUIRES_PRIVATE = libpq, libpgtypes
 
 all: all-lib
 

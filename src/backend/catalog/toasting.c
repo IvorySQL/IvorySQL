@@ -4,7 +4,7 @@
  *	  This file contains routines to support creation of toast tables
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -266,8 +266,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   true,
 										   true,
 										   OIDOldToast,
-										   NULL,
-										   NON_PACKAGE_MEMBER);
+										   NULL);
 	Assert(toast_relid != InvalidOid);
 
 	/* make the toast relation visible, else table_open will fail */

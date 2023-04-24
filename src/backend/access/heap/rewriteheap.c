@@ -92,7 +92,7 @@
  * heap's TOAST table will go through the normal bufmgr.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -102,7 +102,6 @@
  */
 #include "postgres.h"
 
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include "access/heapam.h"
@@ -196,8 +195,7 @@ typedef struct RewriteMappingFile
 	TransactionId xid;			/* xid that might need to see the row */
 	int			vfd;			/* fd of mappings file */
 	off_t		off;			/* how far have we written yet */
-	uint32		num_mappings;	/* number of in-memory mappings */
-	dlist_head	mappings;		/* list of in-memory mappings */
+	dclist_head mappings;		/* list of in-memory mappings */
 	char		path[MAXPGPATH];	/* path, for error messages */
 } RewriteMappingFile;
 
@@ -257,7 +255,7 @@ begin_heap_rewrite(Relation old_heap, Relation new_heap, TransactionId oldest_xm
 
 	state->rs_old_rel = old_heap;
 	state->rs_new_rel = new_heap;
-	state->rs_buffer = (Page) palloc(BLCKSZ);
+	state->rs_buffer = (Page) palloc_aligned(BLCKSZ, PG_IO_ALIGN_SIZE, 0);
 	/* new_heap needn't be empty, just locked */
 	state->rs_blockno = RelationGetNumberOfBlocks(new_heap);
 	state->rs_buffer_valid = false;
@@ -328,7 +326,7 @@ end_heap_rewrite(RewriteState state)
 		PageSetChecksumInplace(state->rs_buffer, state->rs_blockno);
 
 		smgrextend(RelationGetSmgr(state->rs_new_rel), MAIN_FORKNUM,
-				   state->rs_blockno, (char *) state->rs_buffer, true);
+				   state->rs_blockno, state->rs_buffer, true);
 	}
 
 	/*
@@ -694,7 +692,7 @@ raw_heap_insert(RewriteState state, HeapTuple tup)
 			PageSetChecksumInplace(page, state->rs_blockno);
 
 			smgrextend(RelationGetSmgr(state->rs_new_rel), MAIN_FORKNUM,
-					   state->rs_blockno, (char *) page, true);
+					   state->rs_blockno, page, true);
 
 			state->rs_blockno++;
 			state->rs_buffer_valid = false;
@@ -864,9 +862,10 @@ logical_heap_rewrite_flush_mappings(RewriteState state)
 		Oid			dboid;
 		uint32		len;
 		int			written;
+		uint32		num_mappings = dclist_count(&src->mappings);
 
 		/* this file hasn't got any new mappings */
-		if (src->num_mappings == 0)
+		if (num_mappings == 0)
 			continue;
 
 		if (state->rs_old_rel->rd_rel->relisshared)
@@ -874,7 +873,7 @@ logical_heap_rewrite_flush_mappings(RewriteState state)
 		else
 			dboid = MyDatabaseId;
 
-		xlrec.num_mappings = src->num_mappings;
+		xlrec.num_mappings = num_mappings;
 		xlrec.mapped_rel = RelationGetRelid(state->rs_old_rel);
 		xlrec.mapped_xid = src->xid;
 		xlrec.mapped_db = dboid;
@@ -882,31 +881,30 @@ logical_heap_rewrite_flush_mappings(RewriteState state)
 		xlrec.start_lsn = state->rs_begin_lsn;
 
 		/* write all mappings consecutively */
-		len = src->num_mappings * sizeof(LogicalRewriteMappingData);
+		len = num_mappings * sizeof(LogicalRewriteMappingData);
 		waldata_start = waldata = palloc(len);
 
 		/*
 		 * collect data we need to write out, but don't modify ondisk data yet
 		 */
-		dlist_foreach_modify(iter, &src->mappings)
+		dclist_foreach_modify(iter, &src->mappings)
 		{
 			RewriteMappingDataEntry *pmap;
 
-			pmap = dlist_container(RewriteMappingDataEntry, node, iter.cur);
+			pmap = dclist_container(RewriteMappingDataEntry, node, iter.cur);
 
 			memcpy(waldata, &pmap->map, sizeof(pmap->map));
 			waldata += sizeof(pmap->map);
 
 			/* remove from the list and free */
-			dlist_delete(&pmap->node);
+			dclist_delete_from(&src->mappings, &pmap->node);
 			pfree(pmap);
 
 			/* update bookkeeping */
 			state->rs_num_rewrite_mappings--;
-			src->num_mappings--;
 		}
 
-		Assert(src->num_mappings == 0);
+		Assert(dclist_count(&src->mappings) == 0);
 		Assert(waldata == waldata_start + len);
 
 		/*
@@ -1002,8 +1000,7 @@ logical_rewrite_log_mapping(RewriteState state, TransactionId xid,
 				 LSN_FORMAT_ARGS(state->rs_begin_lsn),
 				 xid, GetCurrentTransactionId());
 
-		dlist_init(&src->mappings);
-		src->num_mappings = 0;
+		dclist_init(&src->mappings);
 		src->off = 0;
 		memcpy(src->path, path, sizeof(path));
 		src->vfd = PathNameOpenFile(path,
@@ -1017,8 +1014,7 @@ logical_rewrite_log_mapping(RewriteState state, TransactionId xid,
 	pmap = MemoryContextAlloc(state->rs_cxt,
 							  sizeof(RewriteMappingDataEntry));
 	memcpy(&pmap->map, map, sizeof(LogicalRewriteMappingData));
-	dlist_push_tail(&src->mappings, &pmap->node);
-	src->num_mappings++;
+	dclist_push_tail(&src->mappings, &pmap->node);
 	state->rs_num_rewrite_mappings++;
 
 	/*
@@ -1150,7 +1146,7 @@ heap_xlog_logical_rewrite(XLogReaderState *r)
 	/* write out tail end of mapping file (again) */
 	errno = 0;
 	pgstat_report_wait_start(WAIT_EVENT_LOGICAL_REWRITE_MAPPING_WRITE);
-	if (pwrite(fd, data, len, xlrec->offset) != len)
+	if (pg_pwrite(fd, data, len, xlrec->offset) != len)
 	{
 		/* if write didn't set errno, assume problem is no disk space */
 		if (errno == 0)

@@ -414,26 +414,3 @@ SELECT nextval('test_seq1');
 SELECT nextval('test_seq1');
 
 DROP SEQUENCE test_seq1;
-
---
---column reference to call nextval and currval
---
-create sequence sq;
-select nextval('sq');
-select currval('sq');
-select sq.nextval;
-select sq.currval;
-
-create schema oracle;
-create sequence oracle.seq;
-select nextval('oracle.seq');
-select currval('oracle.seq');
-select oracle.seq.nextval;
-select oracle.seq.currval;
-
-drop sequence oracle.seq;
-create sequence regression.oracle.seq;
-select nextval('regression.oracle.seq');
-select currval('regression.oracle.seq');
-select regression.oracle.seq.nextval;
-select regression.oracle.seq.currval;

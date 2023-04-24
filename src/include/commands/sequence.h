@@ -3,7 +3,7 @@
  * sequence.h
  *	  prototypes for sequence.c.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/sequence.h
@@ -55,16 +55,16 @@ extern int64 nextval_internal(Oid relid, bool check_permissions);
 extern Datum nextval(PG_FUNCTION_ARGS);
 extern List *sequence_options(Oid relid);
 
-extern ObjectAddress DefineSequence(ParseState *pstate, CreateSeqStmt *stmt);
+extern ObjectAddress DefineSequence(ParseState *pstate, CreateSeqStmt *seq);
 extern ObjectAddress AlterSequence(ParseState *pstate, AlterSeqStmt *stmt);
 extern void SequenceChangePersistence(Oid relid, char newrelpersistence);
 extern void DeleteSequenceTuple(Oid relid);
 extern void ResetSequence(Oid seq_relid);
 extern void ResetSequenceCaches(void);
 
-extern void seq_redo(XLogReaderState *rptr);
-extern void seq_desc(StringInfo buf, XLogReaderState *rptr);
+extern void seq_redo(XLogReaderState *record);
+extern void seq_desc(StringInfo buf, XLogReaderState *record);
 extern const char *seq_identify(uint8 info);
-extern void seq_mask(char *pagedata, BlockNumber blkno);
+extern void seq_mask(char *page, BlockNumber blkno);
 
 #endif							/* SEQUENCE_H */

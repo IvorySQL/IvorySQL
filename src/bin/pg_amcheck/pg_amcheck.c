@@ -3,7 +3,7 @@
  * pg_amcheck.c
  *		Detects corruption within database relations.
  *
- * Copyright (c) 2017-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/bin/pg_amcheck/pg_amcheck.c
@@ -197,7 +197,7 @@ static void append_btree_pattern(PatternInfoArray *pia, const char *pattern,
 static void compile_database_list(PGconn *conn, SimplePtrList *databases,
 								  const char *initial_dbname);
 static void compile_relation_list_one_db(PGconn *conn, SimplePtrList *relations,
-										 const DatabaseInfo *datinfo,
+										 const DatabaseInfo *dat,
 										 uint64 *pagecount);
 
 #define log_no_match(...) do { \
@@ -291,7 +291,7 @@ main(int argc, char *argv[])
 	handle_help_version_opts(argc, argv, progname, help);
 
 	/* process command-line options */
-	while ((c = getopt_long(argc, argv, "ad:D:eh:Hi:I:j:p:Pr:R:s:S:t:T:U:wWv",
+	while ((c = getopt_long(argc, argv, "ad:D:eh:Hi:I:j:p:Pr:R:s:S:t:T:U:vwW",
 							long_options, &optindex)) != -1)
 	{
 		char	   *endptr;
@@ -363,15 +363,15 @@ main(int argc, char *argv[])
 			case 'U':
 				username = pg_strdup(optarg);
 				break;
+			case 'v':
+				opts.verbose = true;
+				pg_logging_increase_verbosity();
+				break;
 			case 'w':
 				prompt_password = TRI_NO;
 				break;
 			case 'W':
 				prompt_password = TRI_YES;
-				break;
-			case 'v':
-				opts.verbose = true;
-				pg_logging_increase_verbosity();
 				break;
 			case 1:
 				maintenance_db = pg_strdup(optarg);

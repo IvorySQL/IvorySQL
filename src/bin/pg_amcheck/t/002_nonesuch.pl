@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
@@ -324,7 +324,7 @@ $node->command_checks_all(
 		qr/pg_amcheck: warning: no connectable databases to check matching "no_such_database\.public\.foo_idx"/,
 		qr/pg_amcheck: error: no relations to check/,
 	],
-	'checking otherwise existent objets in the wrong databases');
+	'checking otherwise existent objects in the wrong databases');
 
 
 #########################################

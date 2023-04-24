@@ -6,7 +6,7 @@
  *	  All file system operations in POSTGRES dispatch through these
  *	  routines.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,6 +20,7 @@
 #include "access/xlogutils.h"
 #include "lib/ilist.h"
 #include "storage/bufmgr.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/md.h"
 #include "storage/smgr.h"
@@ -49,13 +50,15 @@ typedef struct f_smgr
 	void		(*smgr_unlink) (RelFileLocatorBackend rlocator, ForkNumber forknum,
 								bool isRedo);
 	void		(*smgr_extend) (SMgrRelation reln, ForkNumber forknum,
-								BlockNumber blocknum, char *buffer, bool skipFsync);
+								BlockNumber blocknum, const void *buffer, bool skipFsync);
+	void		(*smgr_zeroextend) (SMgrRelation reln, ForkNumber forknum,
+									BlockNumber blocknum, int nblocks, bool skipFsync);
 	bool		(*smgr_prefetch) (SMgrRelation reln, ForkNumber forknum,
 								  BlockNumber blocknum);
 	void		(*smgr_read) (SMgrRelation reln, ForkNumber forknum,
-							  BlockNumber blocknum, char *buffer);
+							  BlockNumber blocknum, void *buffer);
 	void		(*smgr_write) (SMgrRelation reln, ForkNumber forknum,
-							   BlockNumber blocknum, char *buffer, bool skipFsync);
+							   BlockNumber blocknum, const void *buffer, bool skipFsync);
 	void		(*smgr_writeback) (SMgrRelation reln, ForkNumber forknum,
 								   BlockNumber blocknum, BlockNumber nblocks);
 	BlockNumber (*smgr_nblocks) (SMgrRelation reln, ForkNumber forknum);
@@ -75,6 +78,7 @@ static const f_smgr smgrsw[] = {
 		.smgr_exists = mdexists,
 		.smgr_unlink = mdunlink,
 		.smgr_extend = mdextend,
+		.smgr_zeroextend = mdzeroextend,
 		.smgr_prefetch = mdprefetch,
 		.smgr_read = mdread,
 		.smgr_write = mdwrite,
@@ -165,7 +169,7 @@ smgropen(RelFileLocator rlocator, BackendId backend)
 	brlocator.locator = rlocator;
 	brlocator.backend = backend;
 	reln = (SMgrRelation) hash_search(SMgrRelationHash,
-									  (void *) &brlocator,
+									  &brlocator,
 									  HASH_ENTER, &found);
 
 	/* Initialize it if not present before */
@@ -267,7 +271,7 @@ smgrclose(SMgrRelation reln)
 		dlist_delete(&reln->node);
 
 	if (hash_search(SMgrRelationHash,
-					(void *) &(reln->smgr_rlocator),
+					&(reln->smgr_rlocator),
 					HASH_REMOVE, NULL) == NULL)
 		elog(ERROR, "SMgrRelation hashtable corrupted");
 
@@ -352,7 +356,7 @@ smgrcloserellocator(RelFileLocatorBackend rlocator)
 		return;
 
 	reln = (SMgrRelation) hash_search(SMgrRelationHash,
-									  (void *) &rlocator,
+									  &rlocator,
 									  HASH_FIND, NULL);
 	if (reln != NULL)
 		smgrclose(reln);
@@ -491,7 +495,7 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
  */
 void
 smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		   char *buffer, bool skipFsync)
+		   const void *buffer, bool skipFsync)
 {
 	smgrsw[reln->smgr_which].smgr_extend(reln, forknum, blocknum,
 										 buffer, skipFsync);
@@ -503,6 +507,31 @@ smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 	 */
 	if (reln->smgr_cached_nblocks[forknum] == blocknum)
 		reln->smgr_cached_nblocks[forknum] = blocknum + 1;
+	else
+		reln->smgr_cached_nblocks[forknum] = InvalidBlockNumber;
+}
+
+/*
+ *	smgrzeroextend() -- Add new zeroed out blocks to a file.
+ *
+ *		Similar to smgrextend(), except the relation can be extended by
+ *		multiple blocks at once and the added blocks will be filled with
+ *		zeroes.
+ */
+void
+smgrzeroextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
+			   int nblocks, bool skipFsync)
+{
+	smgrsw[reln->smgr_which].smgr_zeroextend(reln, forknum, blocknum,
+											 nblocks, skipFsync);
+
+	/*
+	 * Normally we expect this to increase the fork size by nblocks, but if
+	 * the cached value isn't as expected, just invalidate it so the next call
+	 * asks the kernel.
+	 */
+	if (reln->smgr_cached_nblocks[forknum] == blocknum)
+		reln->smgr_cached_nblocks[forknum] = blocknum + nblocks;
 	else
 		reln->smgr_cached_nblocks[forknum] = InvalidBlockNumber;
 }
@@ -530,7 +559,7 @@ smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
  */
 void
 smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		 char *buffer)
+		 void *buffer)
 {
 	smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
 }
@@ -552,7 +581,7 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
  */
 void
 smgrwrite(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		  char *buffer, bool skipFsync)
+		  const void *buffer, bool skipFsync)
 {
 	smgrsw[reln->smgr_which].smgr_write(reln, forknum, blocknum,
 										buffer, skipFsync);

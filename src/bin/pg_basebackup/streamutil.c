@@ -5,7 +5,7 @@
  *
  * Author: Magnus Hagander <magnus@hagander.net>
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/streamutil.c
@@ -31,7 +31,7 @@
 
 #define ERRCODE_DUPLICATE_OBJECT  "42710"
 
-uint32		WalSegSz;
+int			WalSegSz;
 
 static bool RetrieveDataDirCreatePerm(PGconn *conn);
 
@@ -519,7 +519,7 @@ GetSlotInformation(PGconn *conn, const char *slot_name,
 	 */
 	if (PQgetisnull(res, 0, 0))
 	{
-		pg_log_error("could not find replication slot \"%s\"", slot_name);
+		pg_log_error("replication slot \"%s\" does not exist", slot_name);
 		PQclear(res);
 		return false;
 	}

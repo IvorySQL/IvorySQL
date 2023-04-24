@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2023, PostgreSQL Global Development Group
  *
  * src/bin/psql/settings.h
  */
@@ -26,7 +26,6 @@
 #define DEFAULT_PROMPT1 "%/%R%x%# "
 #define DEFAULT_PROMPT2 "%/%R%x%# "
 #define DEFAULT_PROMPT3 ">> "
-#define DEFAULT_PLISQL "off"
 
 /*
  * Note: these enums should generally be chosen so that zero corresponds
@@ -97,6 +96,9 @@ typedef struct _psqlSettings
 	char	   *gset_prefix;	/* one-shot prefix argument for \gset */
 	bool		gdesc_flag;		/* one-shot request to describe query result */
 	bool		gexec_flag;		/* one-shot request to execute query result */
+	bool		bind_flag;		/* one-shot request to use extended query protocol */
+	int			bind_nparams;	/* number of parameters */
+	char	  **bind_params;	/* parameters for extended query protocol call */
 	bool		crosstab_flag;	/* one-shot request to crosstab result */
 	char	   *ctv_args[4];	/* \crosstabview arguments */
 

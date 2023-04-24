@@ -2,7 +2,7 @@
 #
 # Makefile for src/interfaces/libpq library
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/interfaces/libpq/Makefile
@@ -96,7 +96,7 @@ SHLIB_PREREQS = submake-libpgport
 SHLIB_EXPORTS = exports.txt
 
 ifeq ($(with_ssl),openssl)
-PKG_CONFIG_REQUIRES_PRIVATE = libssl libcrypto
+PKG_CONFIG_REQUIRES_PRIVATE = libssl, libcrypto
 endif
 
 all: all-lib libpq-refs-stamp

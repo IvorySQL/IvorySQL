@@ -3,7 +3,7 @@
  * sync.c
  *	  File synchronization management code.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -501,7 +501,7 @@ RememberSyncRequest(const FileTag *ftag, SyncRequestType type)
 
 		/* Cancel previously entered request */
 		entry = (PendingFsyncEntry *) hash_search(pendingOps,
-												  (void *) ftag,
+												  ftag,
 												  HASH_FIND,
 												  NULL);
 		if (entry != NULL)
@@ -557,7 +557,7 @@ RememberSyncRequest(const FileTag *ftag, SyncRequestType type)
 		Assert(type == SYNC_REQUEST);
 
 		entry = (PendingFsyncEntry *) hash_search(pendingOps,
-												  (void *) ftag,
+												  ftag,
 												  HASH_ENTER,
 												  &found);
 		/* if new entry, or was previously canceled, initialize it */

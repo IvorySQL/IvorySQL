@@ -4,7 +4,7 @@
  *	  WAL replay logic for GiST.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -81,7 +81,7 @@ gistRedoPageUpdateRecord(XLogReaderState *record)
 		char	   *begin;
 		char	   *data;
 		Size		datalen;
-		int			ninserted = 0;
+		int			ninserted PG_USED_FOR_ASSERTS_ONLY = 0;
 
 		data = begin = XLogRecGetBlockData(record, 0, &datalen);
 
@@ -177,6 +177,7 @@ gistRedoDeleteRecord(XLogReaderState *record)
 	gistxlogDelete *xldata = (gistxlogDelete *) XLogRecGetData(record);
 	Buffer		buffer;
 	Page		page;
+	OffsetNumber *toDelete = xldata->offsets;
 
 	/*
 	 * If we have any conflict processing to do, it must happen before we
@@ -195,7 +196,8 @@ gistRedoDeleteRecord(XLogReaderState *record)
 
 		XLogRecGetBlockTag(record, 0, &rlocator, NULL, NULL);
 
-		ResolveRecoveryConflictWithSnapshot(xldata->latestRemovedXid,
+		ResolveRecoveryConflictWithSnapshot(xldata->snapshotConflictHorizon,
+											xldata->isCatalogRel,
 											rlocator);
 	}
 
@@ -203,14 +205,7 @@ gistRedoDeleteRecord(XLogReaderState *record)
 	{
 		page = (Page) BufferGetPage(buffer);
 
-		if (XLogRecGetDataLen(record) > SizeOfGistxlogDelete)
-		{
-			OffsetNumber *todelete;
-
-			todelete = (OffsetNumber *) ((char *) xldata + SizeOfGistxlogDelete);
-
-			PageIndexMultiDelete(page, todelete, xldata->ntodelete);
-		}
+		PageIndexMultiDelete(page, toDelete, xldata->ntodelete);
 
 		GistClearPageHasGarbage(page);
 		GistMarkTuplesDeleted(page);
@@ -388,14 +383,15 @@ gistRedoPageReuse(XLogReaderState *record)
 	 * PAGE_REUSE records exist to provide a conflict point when we reuse
 	 * pages in the index via the FSM.  That's all they do though.
 	 *
-	 * latestRemovedXid was the page's deleteXid.  The
+	 * snapshotConflictHorizon was the page's deleteXid.  The
 	 * GlobalVisCheckRemovableFullXid(deleteXid) test in gistPageRecyclable()
 	 * conceptually mirrors the PGPROC->xmin > limitXmin test in
 	 * GetConflictingVirtualXIDs().  Consequently, one XID value achieves the
 	 * same exclusion effect on primary and standby.
 	 */
 	if (InHotStandby)
-		ResolveRecoveryConflictWithSnapshotFullXid(xlrec->latestRemovedFullXid,
+		ResolveRecoveryConflictWithSnapshotFullXid(xlrec->snapshotConflictHorizon,
+												   xlrec->isCatalogRel,
 												   xlrec->locator);
 }
 
@@ -597,7 +593,8 @@ gistXLogAssignLSN(void)
  * Write XLOG record about reuse of a deleted page.
  */
 void
-gistXLogPageReuse(Relation rel, BlockNumber blkno, FullTransactionId latestRemovedXid)
+gistXLogPageReuse(Relation rel, Relation heaprel,
+				  BlockNumber blkno, FullTransactionId deleteXid)
 {
 	gistxlogPageReuse xlrec_reuse;
 
@@ -608,9 +605,10 @@ gistXLogPageReuse(Relation rel, BlockNumber blkno, FullTransactionId latestRemov
 	 */
 
 	/* XLOG stuff */
+	xlrec_reuse.isCatalogRel = RelationIsAccessibleInLogicalDecoding(heaprel);
 	xlrec_reuse.locator = rel->rd_locator;
 	xlrec_reuse.block = blkno;
-	xlrec_reuse.latestRemovedFullXid = latestRemovedXid;
+	xlrec_reuse.snapshotConflictHorizon = deleteXid;
 
 	XLogBeginInsert();
 	XLogRegisterData((char *) &xlrec_reuse, SizeOfGistxlogPageReuse);
@@ -672,12 +670,13 @@ gistXLogUpdate(Buffer buffer,
  */
 XLogRecPtr
 gistXLogDelete(Buffer buffer, OffsetNumber *todelete, int ntodelete,
-			   TransactionId latestRemovedXid)
+			   TransactionId snapshotConflictHorizon, Relation heaprel)
 {
 	gistxlogDelete xlrec;
 	XLogRecPtr	recptr;
 
-	xlrec.latestRemovedXid = latestRemovedXid;
+	xlrec.isCatalogRel = RelationIsAccessibleInLogicalDecoding(heaprel);
+	xlrec.snapshotConflictHorizon = snapshotConflictHorizon;
 	xlrec.ntodelete = ntodelete;
 
 	XLogBeginInsert();
@@ -685,7 +684,8 @@ gistXLogDelete(Buffer buffer, OffsetNumber *todelete, int ntodelete,
 
 	/*
 	 * We need the target-offsets array whether or not we store the whole
-	 * buffer, to allow us to find the latestRemovedXid on a standby server.
+	 * buffer, to allow us to find the snapshotConflictHorizon on a standby
+	 * server.
 	 */
 	XLogRegisterData((char *) todelete, ntodelete * sizeof(OffsetNumber));
 

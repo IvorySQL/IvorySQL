@@ -3,7 +3,7 @@
  * jsonpath_internal.h
  *     Private definitions for jsonpath scanner & parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/utils/adt/jsonpath_internal.h
@@ -25,8 +25,14 @@ typedef struct JsonPathString
 #include "utils/jsonpath.h"
 #include "jsonpath_gram.h"
 
-extern int     jsonpath_yylex(YYSTYPE *yylval_param);
-extern int     jsonpath_yyparse(JsonPathParseResult **result);
-extern void jsonpath_yyerror(JsonPathParseResult **result, const char *message);
+#define YY_DECL extern int     jsonpath_yylex(YYSTYPE *yylval_param, \
+							  JsonPathParseResult **result, \
+							  struct Node *escontext)
+YY_DECL;
+extern int     jsonpath_yyparse(JsonPathParseResult **result,
+								struct Node *escontext);
+extern void jsonpath_yyerror(JsonPathParseResult **result,
+							 struct Node *escontext,
+							 const char *message);
 
 #endif							/* JSONPATH_INTERNAL_H */

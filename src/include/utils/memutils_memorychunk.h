@@ -5,9 +5,9 @@
  *	  MemoryContexts may use as a header for chunks of memory they allocate.
  *
  * MemoryChunk provides a lightweight header that a MemoryContext can use to
- * store a reference back to the block the which the given chunk is allocated
- * on and also an additional 30-bits to store another value such as the size
- * of the allocated chunk.
+ * store a reference back to the block which the given chunk is allocated on
+ * and also an additional 30-bits to store another value such as the size of
+ * the allocated chunk.
  *
  * Although MemoryChunks are used by each of our MemoryContexts, future
  * implementations may choose to implement their own method for storing chunk
@@ -37,8 +37,8 @@
  * In some cases, for example when memory allocations become large, it's
  * possible fields 3 and 4 above are not large enough to store the values
  * required for the chunk.  In this case, the MemoryContext can choose to mark
- * the chunk as "external" by calling the MemoryChunkSetExternal() function.
- * When this is done, fields 3 and 4 are unavailable for use by the
+ * the chunk as "external" by calling the MemoryChunkSetHdrMaskExternal()
+ * function.  When this is done, fields 3 and 4 are unavailable for use by the
  * MemoryContext and it's up to the MemoryContext itself to devise its own
  * method for getting the reference to the block.
  *
@@ -68,7 +68,7 @@
  *		PointerGetMemoryChunk
  *		MemoryChunkGetPointer
  *
- * Portions Copyright (c) 2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2022-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/memutils_memorychunk.h
@@ -156,7 +156,7 @@ MemoryChunkSetHdrMask(MemoryChunk *chunk, void *block,
 {
 	Size		blockoffset = (char *) chunk - (char *) block;
 
-	Assert((char *) chunk > (char *) block);
+	Assert((char *) chunk >= (char *) block);
 	Assert(blockoffset <= MEMORYCHUNK_MAX_BLOCKOFFSET);
 	Assert(value <= MEMORYCHUNK_MAX_VALUE);
 	Assert((int) methodid <= MEMORY_CONTEXT_METHODID_MASK);

@@ -3,7 +3,7 @@
  * toast_compression.c
  *	  Functions for toast compression.
  *
- * Copyright (c) 2021-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2021-2023, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -22,6 +22,7 @@
 #include "common/pg_lzcompress.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
+#include "varatt.h"
 
 /* GUC */
 int			default_toast_compression = TOAST_PGLZ_COMPRESSION;
