@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 # Basic logical replication test
 use strict;
@@ -177,7 +177,7 @@ $node_publisher->safe_psql('postgres',
 #
 # When a publisher drops a table from publication, it should also stop sending
 # its changes to subscribers. We look at the subscriber whether it receives
-# the row that is inserted to the table in the publisher after it is dropped
+# the row that is inserted to the table on the publisher after it is dropped
 # from the publication.
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT count(*), min(a), max(a) FROM tab_ins");

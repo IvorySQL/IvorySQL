@@ -5,7 +5,7 @@
  *
  * All the actual insertion logic is in spgdoinsert.c.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -158,7 +158,7 @@ spgbuildempty(Relation index)
 	Page		page;
 
 	/* Construct metapage. */
-	page = (Page) palloc(BLCKSZ);
+	page = (Page) palloc_aligned(BLCKSZ, PG_IO_ALIGN_SIZE, 0);
 	SpGistInitMetapage(page);
 
 	/*
@@ -170,7 +170,7 @@ spgbuildempty(Relation index)
 	 */
 	PageSetChecksumInplace(page, SPGIST_METAPAGE_BLKNO);
 	smgrwrite(RelationGetSmgr(index), INIT_FORKNUM, SPGIST_METAPAGE_BLKNO,
-			  (char *) page, true);
+			  page, true);
 	log_newpage(&(RelationGetSmgr(index))->smgr_rlocator.locator, INIT_FORKNUM,
 				SPGIST_METAPAGE_BLKNO, page, true);
 
@@ -179,7 +179,7 @@ spgbuildempty(Relation index)
 
 	PageSetChecksumInplace(page, SPGIST_ROOT_BLKNO);
 	smgrwrite(RelationGetSmgr(index), INIT_FORKNUM, SPGIST_ROOT_BLKNO,
-			  (char *) page, true);
+			  page, true);
 	log_newpage(&(RelationGetSmgr(index))->smgr_rlocator.locator, INIT_FORKNUM,
 				SPGIST_ROOT_BLKNO, page, true);
 
@@ -188,7 +188,7 @@ spgbuildempty(Relation index)
 
 	PageSetChecksumInplace(page, SPGIST_NULL_BLKNO);
 	smgrwrite(RelationGetSmgr(index), INIT_FORKNUM, SPGIST_NULL_BLKNO,
-			  (char *) page, true);
+			  page, true);
 	log_newpage(&(RelationGetSmgr(index))->smgr_rlocator.locator, INIT_FORKNUM,
 				SPGIST_NULL_BLKNO, page, true);
 

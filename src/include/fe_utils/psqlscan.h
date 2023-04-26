@@ -10,7 +10,7 @@
  * backslash commands.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fe_utils/psqlscan.h
@@ -31,7 +31,6 @@ typedef enum
 {
 	PSCAN_SEMICOLON,			/* found command-ending semicolon */
 	PSCAN_BACKSLASH,			/* found backslash command */
-	PSCAN_SLASH,				/* found slash command for plisql */
 	PSCAN_INCOMPLETE,			/* end of line, SQL statement incomplete */
 	PSCAN_EOL					/* end of line, SQL possibly complete */
 } PsqlScanResult;
@@ -45,7 +44,6 @@ typedef enum _promptStatus
 	PROMPT_SINGLEQUOTE,
 	PROMPT_DOUBLEQUOTE,
 	PROMPT_DOLLARQUOTE,
-	PROMPT_QQUOTE,
 	PROMPT_PAREN,
 	PROMPT_COPY
 } promptStatus_t;

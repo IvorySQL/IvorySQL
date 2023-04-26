@@ -6,7 +6,7 @@
  * There is hardly anything left of Paul Brown's original implementation...
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  *
@@ -34,6 +34,7 @@
 #include "catalog/objectaccess.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/toasting.h"
 #include "commands/cluster.h"
@@ -49,6 +50,7 @@
 #include "storage/predicate.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -78,6 +80,7 @@ static void copy_table_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex,
 static List *get_tables_to_cluster(MemoryContext cluster_context);
 static List *get_tables_to_cluster_partitioned(MemoryContext cluster_context,
 											   Oid indexOid);
+static bool cluster_is_permitted_for_relation(Oid relid, Oid userid);
 
 
 /*---------------------------------------------------------------------------
@@ -145,7 +148,8 @@ cluster(ParseState *pstate, ClusterStmt *stmt, bool isTopLevel)
 		tableOid = RangeVarGetRelidExtended(stmt->relation,
 											AccessExclusiveLock,
 											0,
-											RangeVarCallbackOwnsTable, NULL);
+											RangeVarCallbackMaintainsTable,
+											NULL);
 		rel = table_open(tableOid, NoLock);
 
 		/*
@@ -362,8 +366,8 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 	 */
 	if (recheck)
 	{
-		/* Check that the user still owns the relation */
-		if (!pg_class_ownercheck(tableOid, save_userid))
+		/* Check that the user still has privileges for the relation */
+		if (!cluster_is_permitted_for_relation(tableOid, save_userid))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
 			goto out;
@@ -756,8 +760,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 										  true,
 										  true,
 										  OIDOldHeap,
-										  NULL,
-										  NON_PACKAGE_MEMBER);
+										  NULL);
 	Assert(OIDNewHeap != InvalidOid);
 
 	ReleaseSysCache(tuple);
@@ -822,10 +825,8 @@ copy_table_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex, bool verbose,
 	Form_pg_class relform;
 	TupleDesc	oldTupDesc PG_USED_FOR_ASSERTS_ONLY;
 	TupleDesc	newTupDesc PG_USED_FOR_ASSERTS_ONLY;
-	TransactionId OldestXmin,
-				FreezeXid;
-	MultiXactId OldestMxact,
-				MultiXactCutoff;
+	VacuumParams params;
+	struct VacuumCutoffs cutoffs;
 	bool		use_sort;
 	double		num_tuples = 0,
 				tups_vacuumed = 0,
@@ -913,23 +914,25 @@ copy_table_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex, bool verbose,
 	 * Since we're going to rewrite the whole table anyway, there's no reason
 	 * not to be aggressive about this.
 	 */
-	vacuum_set_xid_limits(OldHeap, 0, 0, 0, 0, &OldestXmin, &OldestMxact,
-						  &FreezeXid, &MultiXactCutoff);
+	memset(&params, 0, sizeof(VacuumParams));
+	vacuum_get_cutoffs(OldHeap, &params, &cutoffs);
 
 	/*
 	 * FreezeXid will become the table's new relfrozenxid, and that mustn't go
 	 * backwards, so take the max.
 	 */
 	if (TransactionIdIsValid(OldHeap->rd_rel->relfrozenxid) &&
-		TransactionIdPrecedes(FreezeXid, OldHeap->rd_rel->relfrozenxid))
-		FreezeXid = OldHeap->rd_rel->relfrozenxid;
+		TransactionIdPrecedes(cutoffs.FreezeLimit,
+							  OldHeap->rd_rel->relfrozenxid))
+		cutoffs.FreezeLimit = OldHeap->rd_rel->relfrozenxid;
 
 	/*
 	 * MultiXactCutoff, similarly, shouldn't go backwards either.
 	 */
 	if (MultiXactIdIsValid(OldHeap->rd_rel->relminmxid) &&
-		MultiXactIdPrecedes(MultiXactCutoff, OldHeap->rd_rel->relminmxid))
-		MultiXactCutoff = OldHeap->rd_rel->relminmxid;
+		MultiXactIdPrecedes(cutoffs.MultiXactCutoff,
+							OldHeap->rd_rel->relminmxid))
+		cutoffs.MultiXactCutoff = OldHeap->rd_rel->relminmxid;
 
 	/*
 	 * Decide whether to use an indexscan or seqscan-and-optional-sort to scan
@@ -968,13 +971,14 @@ copy_table_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex, bool verbose,
 	 * values (e.g. because the AM doesn't use freezing).
 	 */
 	table_relation_copy_for_cluster(OldHeap, NewHeap, OldIndex, use_sort,
-									OldestXmin, &FreezeXid, &MultiXactCutoff,
+									cutoffs.OldestXmin, &cutoffs.FreezeLimit,
+									&cutoffs.MultiXactCutoff,
 									&num_tuples, &tups_vacuumed,
 									&tups_recently_dead);
 
 	/* return selected values to caller, get set as relfrozenxid/minmxid */
-	*pFreezeXid = FreezeXid;
-	*pCutoffMulti = MultiXactCutoff;
+	*pFreezeXid = cutoffs.FreezeLimit;
+	*pCutoffMulti = cutoffs.MultiXactCutoff;
 
 	/* Reset rd_toastoid just to be tidy --- it shouldn't be looked at again */
 	NewHeap->rd_toastoid = InvalidOid;
@@ -1609,7 +1613,7 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 
 
 /*
- * Get a list of tables that the current user owns and
+ * Get a list of tables that the current user has privileges on and
  * have indisclustered set.  Return the list in a List * of RelToCluster
  * (stored in the specified memory context), each one giving the tableOid
  * and the indexOid on which the table is already clustered.
@@ -1626,8 +1630,8 @@ get_tables_to_cluster(MemoryContext cluster_context)
 	List	   *rtcs = NIL;
 
 	/*
-	 * Get all indexes that have indisclustered set and are owned by
-	 * appropriate user.
+	 * Get all indexes that have indisclustered set and that the current user
+	 * has the appropriate privileges for.
 	 */
 	indRelation = table_open(IndexRelationId, AccessShareLock);
 	ScanKeyInit(&entry,
@@ -1641,7 +1645,7 @@ get_tables_to_cluster(MemoryContext cluster_context)
 
 		index = (Form_pg_index) GETSTRUCT(indexTuple);
 
-		if (!pg_class_ownercheck(index->indrelid, GetUserId()))
+		if (!cluster_is_permitted_for_relation(index->indrelid, GetUserId()))
 			continue;
 
 		/* Use a permanent memory context for the result list */
@@ -1689,11 +1693,11 @@ get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
 		if (get_rel_relkind(indexrelid) != RELKIND_INDEX)
 			continue;
 
-		/* Silently skip partitions which the user has no access to. */
-		if (!pg_class_ownercheck(relid, GetUserId()) &&
-			(!pg_database_ownercheck(MyDatabaseId, GetUserId()) ||
-			 IsSharedRelation(relid)))
-			continue;
+		/*
+		 * We already checked that the user has privileges to CLUSTER the
+		 * partitioned table when we locked it earlier, so there's no need to
+		 * check the privileges again here.
+		 */
 
 		/* Use a permanent memory context for the result list */
 		old_context = MemoryContextSwitchTo(cluster_context);
@@ -1707,4 +1711,21 @@ get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
 	}
 
 	return rtcs;
+}
+
+/*
+ * Return whether userid has privileges to CLUSTER relid.  If not, this
+ * function emits a WARNING.
+ */
+static bool
+cluster_is_permitted_for_relation(Oid relid, Oid userid)
+{
+	if (pg_class_aclcheck(relid, userid, ACL_MAINTAIN) == ACLCHECK_OK ||
+		has_partition_ancestor_privs(relid, userid, ACL_MAINTAIN))
+		return true;
+
+	ereport(WARNING,
+			(errmsg("permission denied to cluster \"%s\", skipping it",
+					get_rel_name(relid))));
+	return false;
 }

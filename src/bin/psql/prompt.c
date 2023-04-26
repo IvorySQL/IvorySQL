@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2023, PostgreSQL Global Development Group
  *
  * src/bin/psql/prompt.c
  */
@@ -85,7 +85,6 @@ get_prompt(promptStatus_t status, ConditionalStack cstack)
 		case PROMPT_DOLLARQUOTE:
 		case PROMPT_COMMENT:
 		case PROMPT_PAREN:
-		case PROMPT_QQUOTE:
 			prompt_string = pset.prompt2;
 			break;
 
@@ -218,9 +217,6 @@ get_prompt(promptStatus_t status, ConditionalStack cstack)
 							break;
 						case PROMPT_PAREN:
 							buf[0] = '(';
-							break;
-						case PROMPT_QQUOTE:
-							buf[0] = 'q';
 							break;
 						default:
 							buf[0] = '\0';

@@ -12,7 +12,7 @@
  * postgresql.conf.  An extension also has an installation script file,
  * containing SQL commands to create the extension's objects.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -42,6 +42,7 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_namespace.h"
@@ -59,6 +60,7 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/conffiles.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -88,6 +90,8 @@ typedef struct ExtensionControlFile
 	bool		trusted;		/* allow becoming superuser on the fly? */
 	int			encoding;		/* encoding of the script file, or -1 */
 	List	   *requires;		/* names of prerequisite extensions */
+	List	   *no_relocate;	/* names of prerequisite extensions that
+								 * should not be relocated */
 } ExtensionControlFile;
 
 /*
@@ -220,7 +224,7 @@ get_extension_name(Oid ext_oid)
  *
  * Returns InvalidOid if no such extension.
  */
-static Oid
+Oid
 get_extension_schema(Oid ext_oid)
 {
 	Oid			result;
@@ -514,7 +518,8 @@ parse_extension_control_file(ExtensionControlFile *control,
 	 * Parse the file content, using GUC's file parsing code.  We need not
 	 * check the return value since any errors will be thrown at ERROR level.
 	 */
-	(void) ParseConfigFp(file, filename, 0, ERROR, &head, &tail);
+	(void) ParseConfigFp(file, filename, CONF_FILE_START_DEPTH, ERROR,
+						 &head, &tail);
 
 	FreeFile(file);
 
@@ -595,6 +600,21 @@ parse_extension_control_file(ExtensionControlFile *control,
 
 			/* Parse string into list of identifiers */
 			if (!SplitIdentifierString(rawnames, ',', &control->requires))
+			{
+				/* syntax error in name list */
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("parameter \"%s\" must be a list of extension names",
+								item->name)));
+			}
+		}
+		else if (strcmp(item->name, "no_relocate") == 0)
+		{
+			/* Need a modifiable copy of string */
+			char	   *rawnames = pstrdup(item->value);
+
+			/* Parse string into list of identifiers */
+			if (!SplitIdentifierString(rawnames, ',', &control->no_relocate))
 			{
 				/* syntax error in name list */
 				ereport(ERROR,
@@ -832,7 +852,7 @@ extension_is_trusted(ExtensionControlFile *control)
 	if (!control->trusted)
 		return false;
 	/* Allow if user has CREATE privilege on current database */
-	aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(), ACL_CREATE);
 	if (aclresult == ACLCHECK_OK)
 		return true;
 	return false;
@@ -842,6 +862,8 @@ extension_is_trusted(ExtensionControlFile *control)
  * Execute the appropriate script file for installing or updating the extension
  *
  * If from_version isn't NULL, it's an update
+ *
+ * Note: requiredSchemas must be one-for-one with the control->requires list
  */
 static void
 execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
@@ -857,6 +879,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	int			save_nestlevel;
 	StringInfoData pathbuf;
 	ListCell   *lc;
+	ListCell   *lc2;
 
 	/*
 	 * Enforce superuser-ness if appropriate.  We postpone these checks until
@@ -1024,6 +1047,27 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 											C_COLLATION_OID,
 											t_sql,
 											CStringGetTextDatum("@extschema@"),
+											CStringGetTextDatum(qSchemaName));
+		}
+
+		/*
+		 * Likewise, substitute required extensions' schema names for
+		 * occurrences of @extschema:extension_name@.
+		 */
+		Assert(list_length(control->requires) == list_length(requiredSchemas));
+		forboth(lc, control->requires, lc2, requiredSchemas)
+		{
+			char	   *reqextname = (char *) lfirst(lc);
+			Oid			reqschema = lfirst_oid(lc2);
+			char	   *schemaName = get_namespace_name(reqschema);
+			const char *qSchemaName = quote_identifier(schemaName);
+			char	   *repltoken;
+
+			repltoken = psprintf("@extschema:%s@", reqextname);
+			t_sql = DirectFunctionCall3Coll(replace_text,
+											C_COLLATION_OID,
+											t_sql,
+											CStringGetTextDatum(repltoken),
 											CStringGetTextDatum(qSchemaName));
 		}
 
@@ -1946,7 +1990,7 @@ pg_available_extensions(PG_FUNCTION_ARGS)
 	struct dirent *de;
 
 	/* Build tuplestore to hold the result rows */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	location = get_extension_control_directory();
 	dir = AllocateDir(location);
@@ -2026,7 +2070,7 @@ pg_available_extension_versions(PG_FUNCTION_ARGS)
 	struct dirent *de;
 
 	/* Build tuplestore to hold the result rows */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	location = get_extension_control_directory();
 	dir = AllocateDir(location);
@@ -2281,7 +2325,7 @@ pg_extension_update_paths(PG_FUNCTION_ARGS)
 	check_valid_extension_name(NameStr(*extname));
 
 	/* Build tuplestore to hold the result rows */
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	/* Read the extension's control file */
 	control = read_extension_control_file(NameStr(*extname));
@@ -2727,12 +2771,12 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 	 * Permission check: must own extension.  Note that we don't bother to
 	 * check ownership of the individual member objects ...
 	 */
-	if (!pg_extension_ownercheck(extensionOid, GetUserId()))
+	if (!object_ownercheck(ExtensionRelationId, extensionOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EXTENSION,
 					   extensionName);
 
 	/* Permission check: must have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(nspOid, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, nspOid, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA, newschema);
 
@@ -2814,9 +2858,43 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 		Oid			dep_oldNspOid;
 
 		/*
-		 * Ignore non-membership dependencies.  (Currently, the only other
-		 * case we could see here is a normal dependency from another
-		 * extension.)
+		 * If a dependent extension has a no_relocate request for this
+		 * extension, disallow SET SCHEMA.  (XXX it's a bit ugly to do this in
+		 * the same loop that's actually executing the renames: we may detect
+		 * the error condition only after having expended a fair amount of
+		 * work.  However, the alternative is to do two scans of pg_depend,
+		 * which seems like optimizing for failure cases.  The rename work
+		 * will all roll back cleanly enough if we do fail here.)
+		 */
+		if (pg_depend->deptype == DEPENDENCY_NORMAL &&
+			pg_depend->classid == ExtensionRelationId)
+		{
+			char	   *depextname = get_extension_name(pg_depend->objid);
+			ExtensionControlFile *dcontrol;
+			ListCell   *lc;
+
+			dcontrol = read_extension_control_file(depextname);
+			foreach(lc, dcontrol->no_relocate)
+			{
+				char	   *nrextname = (char *) lfirst(lc);
+
+				if (strcmp(nrextname, NameStr(extForm->extname)) == 0)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot SET SCHEMA of extension \"%s\" because other extensions prevent it",
+									NameStr(extForm->extname)),
+							 errdetail("Extension \"%s\" requests no relocation of extension \"%s\".",
+									   depextname,
+									   NameStr(extForm->extname))));
+				}
+			}
+		}
+
+		/*
+		 * Otherwise, ignore non-membership dependencies.  (Currently, the
+		 * only other case we could see here is a normal dependency from
+		 * another extension.)
 		 */
 		if (pg_depend->deptype != DEPENDENCY_EXTENSION)
 			continue;
@@ -2947,7 +3025,7 @@ ExecAlterExtensionStmt(ParseState *pstate, AlterExtensionStmt *stmt)
 	table_close(extRel, AccessShareLock);
 
 	/* Permission check: must own extension */
-	if (!pg_extension_ownercheck(extensionOid, GetUserId()))
+	if (!object_ownercheck(ExtensionRelationId, extensionOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EXTENSION,
 					   stmt->extname);
 
@@ -3229,7 +3307,7 @@ ExecAlterExtensionContentsStmt(AlterExtensionContentsStmt *stmt,
 								   &relation, AccessShareLock, false);
 
 	/* Permission check: must own extension */
-	if (!pg_extension_ownercheck(extension.objectId, GetUserId()))
+	if (!object_ownercheck(ExtensionRelationId, extension.objectId, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EXTENSION,
 					   stmt->extname);
 

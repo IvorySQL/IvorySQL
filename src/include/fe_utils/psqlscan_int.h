@@ -34,7 +34,7 @@
  * same flex version, or if they don't use the same flex options.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fe_utils/psqlscan_int.h
@@ -75,16 +75,6 @@ typedef struct StackElem
 	struct StackElem *next;
 } StackElem;
 
-typedef enum {
-	None,
-	DECLARE,
-	BEGIN_P,
-	END_P,
-	IDENT,
-	SEMICOLON,
-	ENDSEMI,
-} TokenState;
-
 /*
  * All working state of the lexer must be stored in PsqlScanStateData
  * between calls.  This allows us to have multiple open lexer operations,
@@ -119,7 +109,6 @@ typedef struct PsqlScanStateData
 	 * reset by psql_scan_reset.  start_state is adopted by yylex() on entry,
 	 * and updated with its finishing state on exit.
 	 */
-	int			postion_len;	/* record the postion of the first symmetric char */
 	int			start_state;	/* yylex's starting/finishing state */
 	int			state_before_str_stop;	/* start cond. before end quote */
 	int			paren_depth;	/* depth of nesting in parentheses */
@@ -133,7 +122,6 @@ typedef struct PsqlScanStateData
 	int			identifier_count;	/* identifiers since start of statement */
 	char		identifiers[4]; /* records the first few identifiers */
 	int			begin_depth;	/* depth of begin/end pairs */
-	TokenState	tokenstate;		/* keep track of tokens processed. */
 
 	/*
 	 * Callback functions provided by the program making use of the lexer,

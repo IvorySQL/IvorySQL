@@ -4,7 +4,7 @@
  *	  prototypes for functions in backend/catalog/namespace.c
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/namespace.h
@@ -61,19 +61,7 @@ typedef struct OverrideSearchPath
 	bool		addCatalog;		/* implicitly prepend pg_catalog? */
 	bool		addTemp;		/* implicitly prepend temp schema? */
 	uint64		generation;		/* for quick detection of equality to active */
-	Oid			pkgoid;			/* Oid of the package pushed to override search path */
 } OverrideSearchPath;
-
-/*
- * Struct for qualified name of call a functions
- */
-typedef struct QualifiedName
-{
-	char	   *dbname;
-	char	   *schema;
-	char	   *package;
-	char	   *func;
-} QualifiedName;
 
 /*
  * Option flag bits for RangeVarGetRelidExtended().
@@ -97,22 +85,16 @@ extern Oid	RangeVarGetRelidExtended(const RangeVar *relation,
 									 RangeVarGetRelidCallback callback,
 									 void *callback_arg);
 extern Oid	RangeVarGetCreationNamespace(const RangeVar *newRelation);
-extern Oid	RangeVarGetAndCheckCreationNamespace(RangeVar *newRelation,
+extern Oid	RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 												 LOCKMODE lockmode,
 												 Oid *existing_relation_id);
 extern void RangeVarAdjustRelationPersistence(RangeVar *newRelation, Oid nspid);
 extern Oid	RelnameGetRelid(const char *relname);
 extern bool RelationIsVisible(Oid relid);
 
-extern Oid	LookupVariable(const char *nspname, const char *varname,
-						   bool missing_ok);
 extern Oid	TypenameGetTypid(const char *typname);
 extern Oid	TypenameGetTypidExtended(const char *typname, bool temp_ok);
 extern bool TypeIsVisible(Oid typid);
-
-extern int	ExtractQualifiedName(List *names, QualifiedName *qu);
-
-extern Oid	HandleQualifiedName(List *names, char **funcname, bool missing_ok);
 
 extern FuncCandidateList FuncnameGetCandidates(List *names,
 											   int nargs, List *argnames,
@@ -191,7 +173,6 @@ extern void PopOverrideSearchPath(void);
 extern Oid	get_collation_oid(List *collname, bool missing_ok);
 extern Oid	get_conversion_oid(List *conname, bool missing_ok);
 extern Oid	FindDefaultConversionProc(int32 for_encoding, int32 to_encoding);
-extern Oid 	get_package_oid(List *packagename, bool missing_ok);
 
 
 /* initialization & transaction cleanup code */

@@ -4,7 +4,7 @@
  *	  Copy functions for Postgres tree nodes.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -158,6 +158,12 @@ _copyExtensibleNode(const ExtensibleNode *from)
 	methods->nodeCopy(newnode, from);
 
 	return newnode;
+}
+
+static Bitmapset *
+_copyBitmapset(const Bitmapset *from)
+{
+	return bms_copy(from);
 }
 
 

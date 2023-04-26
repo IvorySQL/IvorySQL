@@ -28,7 +28,7 @@
  * all these files commit in a single map file update rather than being tied
  * to transaction commit.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -137,7 +137,7 @@ static RelMapFile pending_local_updates;
 
 /* non-export function prototypes */
 static void apply_map_update(RelMapFile *map, Oid relationId,
-							 RelFileNumber filenumber, bool add_okay);
+							 RelFileNumber fileNumber, bool add_okay);
 static void merge_map_updates(RelMapFile *map, const RelMapFile *updates,
 							  bool add_okay);
 static void load_relmap_file(bool shared, bool lock_held);

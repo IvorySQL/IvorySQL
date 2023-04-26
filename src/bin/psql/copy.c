@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2023, PostgreSQL Global Development Group
  *
  * src/bin/psql/copy.c
  */
@@ -391,6 +391,7 @@ do_copy(const char *args)
 				}
 				success = false;
 			}
+			SetShellResultVariables(pclose_rc);
 			restore_sigpipe_trap();
 		}
 		else

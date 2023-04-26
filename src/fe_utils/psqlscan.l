@@ -24,7 +24,7 @@
  * See psqlscan_int.h for additional commentary.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -63,7 +63,6 @@ typedef int YYSTYPE;
 #define LEXRES_EOL			0	/* end of input */
 #define LEXRES_SEMI			1	/* command-terminating semicolon found */
 #define LEXRES_BACKSLASH	2	/* backslash command start */
-#define LEXRES_SLASH		3	/* slash command for plisql */
 
 
 #define ECHO psqlscan_emit(cur_state, yytext, yyleng)
@@ -120,7 +119,6 @@ extern void psql_yyset_column(int column_no, yyscan_t yyscanner);
  *  <xdolq> $foo$ quoted strings
  *  <xui> quoted identifier with Unicode escapes
  *  <xus> quoted string with Unicode escapes
- *  <xdq> q escape feature
  *
  * Note: we intentionally don't mimic the backend's <xeu> state; we have
  * no need to distinguish it from <xe> state, and no good way to get out
@@ -138,10 +136,6 @@ extern void psql_yyset_column(int column_no, yyscan_t yyscanner);
 %x xdolq
 %x xui
 %x xus
-%x xf
-%x xdq
-%x plblock
-%x dec_cursor
 
 /*
  * In order to make the world safe for Windows and Mac clients as well as
@@ -228,32 +222,6 @@ xeunicodefail	[\\](u[0-9A-Fa-f]{0,3}|U[0-9A-Fa-f]{0,7})
 xqstart			{quote}
 xqdouble		{quote}{quote}
 xqinside		[^']+
-/* for create compatibility function */
-as_or_is		([aA][sS])|([iI][sS])
-create_fun		{as_or_is}
-xfinside		[^ \n\r']+
-
-/* DECLARE CURSOR combinations */
-declare_kw		[dD][eE][cC][lL][aA][rR][eE]
-cursor_kw		[cC][uU][rR][sS][oO][rR]
-binary_kw		[bB][iI][nN][aA][rR][yY]
-asensitive_kw	[aA][sS][eE][nN][sS][iI][tT][iI][vV][eE]
-insensitive_kw	[iI][nN][sS][eE][nN][sS][iI][tT][iI][vV][eE]
-scroll_kw		[sS][cC][rR][oO][lL][lL]
-noscroll_kw 	[nN][oO]{whitespace}+{scroll_kw}
-
-/* Transaction combinations */
-begin_kw		[bB][eE][gG][iI][nN]
-end_kw			[eE][nN][dD]
-case_kw  		[cC][aA][sS][eE]
-if_kw			[iI][fF]
-loop_kw 		[lL][oO][oO][pP]
-atomic_kw		[aA][tT][oO][mM][iI][cC]
-work_kw 		[wW][oO][rR][kK]
-transaction_kw	[tT][rR][aA][nN][sS][aA][cC][tT][iI][oO][nN]
-isolation_kw	[I][S][O][L][A][T][I][O][N]
-read_kw 		[rR][eE][aA][dD]
-not_deferrable	[nN][oO][tT]{whitespace}+[dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]
 
 /* $foo$ style quotes ("dollar quoting")
  * The quoted string starts with $foo$ where "foo" is an optional string
@@ -269,10 +237,6 @@ dolq_cont		[A-Za-z\200-\377_0-9]
 dolqdelim		\$({dolq_start}{dolq_cont}*)?\$
 dolqfailed		\${dolq_start}{dolq_cont}*
 dolqinside		[^$]+
-
-dosymstart		[Qq]{quote}
-dosymend		{quote}
-dosymfailed		[Qq]{quote}{space}
 
 /* Double quote
  * Allows embedded spaces and other special characters into identifiers.
@@ -359,25 +323,40 @@ operator		{op_chars}+
  * Unary minus is not part of a number here.  Instead we pass it separately to
  * the parser, and there it gets coerced via doNegate().
  *
- * {decimalfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
+ * {numericfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
  *
  * {realfail} is added to prevent the need for scanner
  * backup when the {real} rule fails to match completely.
  */
-digit			[0-9]
+decdigit		[0-9]
+hexdigit		[0-9A-Fa-f]
+octdigit		[0-7]
+bindigit		[0-1]
 
-integer			{digit}+
-decimal			(({digit}*\.{digit}+)|({digit}+\.{digit}*))
-decimalfail		{digit}+\.\.
-real			({integer}|{decimal})[Ee][-+]?{digit}+
-realfail		({integer}|{decimal})[Ee][-+]
+decinteger		{decdigit}(_?{decdigit})*
+hexinteger		0[xX](_?{hexdigit})+
+octinteger		0[oO](_?{octdigit})+
+bininteger		0[bB](_?{bindigit})+
 
-integer_junk	{integer}{ident_start}
-decimal_junk	{decimal}{ident_start}
+hexfail			0[xX]_?
+octfail			0[oO]_?
+binfail			0[bB]_?
+
+numeric			(({decinteger}\.{decinteger}?)|(\.{decinteger}))
+numericfail		{decdigit}+\.\.
+
+real			({decinteger}|{numeric})[Ee][-+]?{decinteger}
+realfail		({decinteger}|{numeric})[Ee][-+]
+
+decinteger_junk	{decinteger}{ident_start}
+hexinteger_junk	{hexinteger}{ident_start}
+octinteger_junk	{octinteger}{ident_start}
+bininteger_junk	{bininteger}{ident_start}
+numeric_junk	{numeric}{ident_start}
 real_junk		{real}{ident_start}
 
-param			\${integer}
-param_junk		\${integer}{ident_start}
+param			\${decinteger}
+param_junk		\${decinteger}{ident_start}
 
 /* psql-specific: characters allowed in variable names */
 variable_char	[A-Za-z\200-\377_0-9]
@@ -413,167 +392,6 @@ other			.
 		 */
 		BEGIN(cur_state->start_state);
 %}
-
-{declare_kw}	{
-					ECHO;
-					BEGIN(dec_cursor);
-					cur_state->tokenstate = DECLARE;
-				}
-
-{begin_kw}		{
-					ECHO;
-					BEGIN(plblock);
-					cur_state->tokenstate = BEGIN_P;
-				}
-
-<dec_cursor>{
-
-{cursor_kw}		|
-{noscroll_kw}	|
-{scroll_kw}		|
-{binary_kw}		|
-{asensitive_kw}	|
-{insensitive_kw} {
-					ECHO;
-					if (cur_state->tokenstate == IDENT)
-						BEGIN(INITIAL);
-					else
-						BEGIN(plblock);
-				}
-
-{identifier}	{
-					if (cur_state->tokenstate == IDENT)
-						BEGIN(plblock);
-
-					cur_state->tokenstate = IDENT;
-					ECHO;
-				}
-
-{whitespace}	{
-					ECHO;
-				}
-
-{other}			{	/* eatup everything */
-					ECHO;
-				}
-} /*<dec_cursor>*/
-
-<plblock>{
-
-{declare_kw}	{
-					cur_state->tokenstate = DECLARE;
-					ECHO;
-				}
-
-{begin_kw}		{
-					cur_state->tokenstate = BEGIN_P;
-					ECHO;
-				}
-
-{end_kw}		{
-					cur_state->tokenstate = END_P;
-					ECHO;
-				}
-{atomic_kw}		{
-					if (cur_state->tokenstate == BEGIN_P)
-					{
-						/*
-						 * cur_state->begin_depth is only increased here
-						 * because it's expected in the {identifier} rule.
-						 */
-						cur_state->begin_depth++;
-						BEGIN(INITIAL);
-					}
-					ECHO;
-				}
-
-{work_kw} 			|
-{transaction_kw}	|
-{isolation_kw}		|
-{read_kw}			|
-{not_deferrable} 	|
-"\\"[;:]		{
-					/*
-					 * Terminate <plblock> state for one of the following:
-					 *
-					 * BEGIN;
-					 * BEGIN WORK...
-					 * BEGIN TRANSACTION...
-					 * BEGIN ISOLATION....
-					 * BEGIN READ...
-					 * BEGIN NOT DEFERRABLE;
-					 */
-
-					if (cur_state->tokenstate == BEGIN_P)
-					{
-						if (yytext[0] == '\\' && yytext[1] == ';')
-						{
-							psqlscan_emit(cur_state, yytext + 1, 1);
-							cur_state->identifier_count = 0;
-						}
-						else
-						{
-							ECHO;
-						}
-						cur_state->begin_depth = 0;
-						BEGIN(INITIAL);
-					}
-					else
-					{
-						ECHO;
-					}
-				}
-
-{identifier}	{
-					cur_state->tokenstate = IDENT;
-					ECHO;
-				}
-
-";"				{
-					/* handle "BEGIN;", statement */
-					if (cur_state->tokenstate == BEGIN_P)
-					{
-						ECHO;
-						BEGIN(INITIAL);
-						return LEXRES_SEMI;
-					}
-
-					/* try to differenciate between a "statement;" and "END;" */
-					if (cur_state->tokenstate == END_P)
-						cur_state->tokenstate = ENDSEMI;
-					else
-						cur_state->tokenstate = SEMICOLON;
-					ECHO;
-				}
-
-^[/]			{
-					/*
-					 * we terminate the block on '/'. However we also need
-					 * to ensure that it's terminating slash and not the
-					 * slash in middle of the statement or block like a
-					 * division operator. For this we ensure that we only
-					 * terminate when '/' comes after "END;" or "statement;"
-					 */
-					if (cur_state->tokenstate == SEMICOLON ||
-						cur_state->tokenstate == ENDSEMI)
-					{
-						cur_state->start_state = INITIAL;
-						BEGIN(INITIAL);
-						return LEXRES_SLASH;
-					}
-					ECHO;
-				}
-
-{whitespace}	{
-						ECHO;
-				}
-
-{other}			{
-					cur_state->tokenstate = None;
-					ECHO;
-				}
-
-} /*<plblock>*/
 
 {whitespace}	{
 					/*
@@ -623,57 +441,6 @@ other			.
 					ECHO;
 				}
 } /* <xc> */
-
-
-
-{create_fun}	{
-					char *str = pg_strdup(output_buf->data);
-					if (strcasestr(str,"CREATE") != NULL && (strcasestr(str,"PACKAGE") != NULL || (strcasestr(str,"FUNCTION") != NULL && (strcasestr(str,"RETURN") != NULL)) ||
-							strcasestr(str,"PROCEDURE")!= NULL) && strcasestr(str,"RETURNS") == NULL)
-						BEGIN(xf);
-					else
-						BEGIN(INITIAL);
-					ECHO;
-					pg_free(str);
-				}
-<xf>{
-{whitespace}	{
-					ECHO;
-				}
-{dolqdelim}		{
-					/* Handle IS|AS $$ ... $$ case. */
-					cur_state->dolqstart = pg_strdup("$$");
-					BEGIN(xdolq);
-					ECHO;
-				}
-{xqstart}		{
-					/* Handle IS|AS $$ ... $$ case. */
-					char *str = pg_strdup(output_buf->data);
-					char* fir;
-					if((fir=strcasestr(str,"AS")) != NULL || (fir=strcasestr(str,"IS")) != NULL)
-					{
-						int i = 0;
-
-						fir += 2;
-						while (fir[i]==' ' || fir[i]=='\t' || fir[i]=='\n'  || fir[i]=='\r' || fir[i]=='\f')
-							i++;
-						if (fir[i] == '\'' || fir[i] == '\0')
-							BEGIN(xq);
-					}
-					ECHO;
-				}
-{identifier}	|
-{other}			{
-					/*
-					 * Anything other then $$..$$ and '..', send it to
-					 * plblock state.
-					 */
-					cur_state->tokenstate = DECLARE;
-					BEGIN(plblock);
-					ECHO;
-				}
-
-}	/* <xf> */
 
 {xbstart}		{
 					BEGIN(xb);
@@ -779,96 +546,6 @@ other			.
 					ECHO;
 				}
 
-{dosymstart} 	{
-					cur_state->postion_len = cur_state->output_buf->len + 2;
-					BEGIN(xdq);
-					ECHO;
-				}
-{dosymfailed}	{
-					yyless(1);
-					ECHO;
-				}
-<xdq>{dosymend} {
-					/*
-					 * determine whether the character after q' is symmetrical
-					 * to the character before '.
-					 */
-					char 	*cur_str = cur_state->output_buf->data;
-					bool	 flag = false;
-					int		 i = 0,tmp = 0;
-					int		 fir_len = cur_state->postion_len;
-					int		 last_len = cur_state->output_buf->len - 1;
-					int		 qstr_len = last_len - fir_len;
-
-					/* determine whether the symmetric char is single byte */
-					if (cur_str[fir_len] & 0x80)
-					{
-						if (qstr_len > 2)
-						{
-							for (i = 0; i < qstr_len && i < 8 ; i++)
-							{
-								if (cur_str[fir_len] == cur_str[last_len - i])
-								{
-									tmp = i;
-									break;
-								}
-							}
-
-							for (i = 0;i <= tmp; i++)
-							{
-								if (cur_str[fir_len + i] == cur_str[last_len - tmp + i])
-									flag = true;
-								else
-									break;
-							}
-						}
-					}
-					else
-					{
-						if (qstr_len >= 1)
-						{
-							if (cur_str[fir_len] == '(' || cur_str[fir_len] == '[' ||
-								cur_str[fir_len] == '{' || cur_str[fir_len] == '<')
-							{
-								if (cur_str[fir_len] == '(' && cur_str[last_len] == ')')
-									flag = true;
-								if (cur_str[fir_len] == '{' && cur_str[last_len] == '}')
-									flag =true;
-								if (cur_str[fir_len] == '[' && cur_str[last_len] == ']')
-									flag =true;
-								if (cur_str[fir_len] == '<' && cur_str[last_len ] == '>')
-									flag =true;
-							}
-							else if (cur_str[fir_len] == cur_str[last_len])
-							{
-								flag = true;
-							}
-							else
-								flag = false;
-						}
-					}
-
-					if (flag)
-					{
-						cur_state->postion_len = 0;
-						BEGIN(INITIAL);
-					}
-					ECHO;
-				}
-<xdq>{dosymstart} {
-					yyless(1);
-					ECHO;
-				}
-<xdq>{dosymfailed} {
-					ECHO;
-				}
-<xdq>{whitespace} {
-					ECHO;
-				}
-<xdq>.			{
-					ECHO;
-				}
-
 {dolqdelim}		{
 					cur_state->dolqstart = pg_strdup(yytext);
 					BEGIN(xdolq);
@@ -930,6 +607,7 @@ other			.
 <xd,xui>{xdinside}	{
 					ECHO;
 				}
+
 {xufailed}	{
 					/* throw back all but the initial u/U */
 					yyless(1);
@@ -1013,7 +691,6 @@ other			.
 					cur_state->start_state = YY_START;
 					return LEXRES_BACKSLASH;
 				}
-
 
 :{variable_char}+	{
 					/* Possible psql variable substitution */
@@ -1185,13 +862,31 @@ other			.
 					ECHO;
 				}
 
-{integer}		{
+{decinteger}	{
 					ECHO;
 				}
-{decimal}		{
+{hexinteger}	{
 					ECHO;
 				}
-{decimalfail}	{
+{octinteger}	{
+					ECHO;
+				}
+{bininteger}	{
+					ECHO;
+				}
+{hexfail}		{
+					ECHO;
+				}
+{octfail}		{
+					ECHO;
+				}
+{binfail}		{
+					ECHO;
+				}
+{numeric}		{
+					ECHO;
+				}
+{numericfail}	{
 					/* throw back the .., and treat as integer */
 					yyless(yyleng - 2);
 					ECHO;
@@ -1202,10 +897,19 @@ other			.
 {realfail}		{
 					ECHO;
 				}
-{integer_junk}	{
+{decinteger_junk}	{
 					ECHO;
 				}
-{decimal_junk}	{
+{hexinteger_junk}	{
+					ECHO;
+				}
+{octinteger_junk}	{
+					ECHO;
+				}
+{bininteger_junk}	{
+					ECHO;
+				}
+{numeric_junk}	{
 					ECHO;
 				}
 {real_junk}		{
@@ -1495,10 +1199,6 @@ psql_scan(PsqlScanState state,
 					result = PSCAN_INCOMPLETE;
 					*prompt = PROMPT_DOLLARQUOTE;
 					break;
-				case xdq:
-					result = PSCAN_INCOMPLETE;
-					*prompt = PROMPT_QQUOTE;
-					break;
 				case xui:
 					result = PSCAN_INCOMPLETE;
 					*prompt = PROMPT_DOUBLEQUOTE;
@@ -1506,18 +1206,6 @@ psql_scan(PsqlScanState state,
 				case xus:
 					result = PSCAN_INCOMPLETE;
 					*prompt = PROMPT_SINGLEQUOTE;
-					break;
-				case xf:
-					result = PSCAN_INCOMPLETE;
-					*prompt = PROMPT_DOLLARQUOTE;
-					break;
-				case plblock:
-					result = PSCAN_INCOMPLETE;
-					*prompt = PROMPT_DOLLARQUOTE;
-					break;
-				case dec_cursor:
-					result = PSCAN_INCOMPLETE;
-					*prompt = PROMPT_DOLLARQUOTE;
 					break;
 				default:
 					/* can't get here */
@@ -1531,10 +1219,6 @@ psql_scan(PsqlScanState state,
 			break;
 		case LEXRES_BACKSLASH:	/* backslash */
 			result = PSCAN_BACKSLASH;
-			*prompt = PROMPT_READY;
-			break;
-		case LEXRES_SLASH:	/* slash */
-			result = PSCAN_SLASH;
 			*prompt = PROMPT_READY;
 			break;
 		default:
@@ -1593,7 +1277,6 @@ psql_scan_reset(PsqlScanState state)
 	state->dolqstart = NULL;
 	state->identifier_count = 0;
 	state->begin_depth = 0;
-	state->tokenstate = None;
 }
 
 /*

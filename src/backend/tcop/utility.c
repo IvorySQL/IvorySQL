@@ -5,7 +5,7 @@
  *	  commands.  At one time acted as an interface between the Lisp and C
  *	  systems.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -183,7 +183,6 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateFunctionStmt:
 		case T_CreateOpClassStmt:
 		case T_CreateOpFamilyStmt:
-		case T_CreatePackageStmt:
 		case T_CreatePLangStmt:
 		case T_CreatePolicyStmt:
 		case T_CreatePublicationStmt:
@@ -951,7 +950,10 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			if (!has_privs_of_role(GetUserId(), ROLE_PG_CHECKPOINT))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("must be superuser or have privileges of pg_checkpoint to do CHECKPOINT")));
+						 errmsg("permission denied to execute %s command",
+								"CHECKPOINT"),
+						 errdetail("Only roles with privileges of the \"%s\" role may execute this command.",
+								   "pg_checkpoint")));
 
 			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
 							  (RecoveryInProgress() ? 0 : CHECKPOINT_FORCE));
@@ -1462,6 +1464,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					IndexStmt  *stmt = (IndexStmt *) parsetree;
 					Oid			relid;
 					LOCKMODE	lockmode;
+					int			nparts = -1;
 					bool		is_alter_table;
 
 					if (stmt->concurrent)
@@ -1492,7 +1495,9 @@ ProcessUtilitySlow(ParseState *pstate,
 					 *
 					 * We also take the opportunity to verify that all
 					 * partitions are something we can put an index on, to
-					 * avoid building some indexes only to fail later.
+					 * avoid building some indexes only to fail later.  While
+					 * at it, also count the partitions, so that DefineIndex
+					 * needn't do a duplicative find_all_inheritors search.
 					 */
 					if (stmt->relation->inh &&
 						get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
@@ -1503,7 +1508,8 @@ ProcessUtilitySlow(ParseState *pstate,
 						inheritors = find_all_inheritors(relid, lockmode, NULL);
 						foreach(lc, inheritors)
 						{
-							char		relkind = get_rel_relkind(lfirst_oid(lc));
+							Oid			partrelid = lfirst_oid(lc);
+							char		relkind = get_rel_relkind(partrelid);
 
 							if (relkind != RELKIND_RELATION &&
 								relkind != RELKIND_MATVIEW &&
@@ -1521,6 +1527,8 @@ ProcessUtilitySlow(ParseState *pstate,
 										 errdetail("Table \"%s\" contains partitions that are foreign tables.",
 												   stmt->relation->relname)));
 						}
+						/* count direct and indirect children, but not rel */
+						nparts = list_length(inheritors) - 1;
 						list_free(inheritors);
 					}
 
@@ -1546,6 +1554,7 @@ ProcessUtilitySlow(ParseState *pstate,
 									InvalidOid, /* no predefined OID */
 									InvalidOid, /* no parent index */
 									InvalidOid, /* no parent constraint */
+									nparts, /* # of partitions, or -1 */
 									is_alter_table,
 									true,	/* check_rights */
 									true,	/* check_not_in_use */
@@ -1649,10 +1658,6 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = CreateFunction(pstate, (CreateFunctionStmt *) parsetree);
 				break;
 
-			case T_CreatePackageStmt:	/* CREATE PACKAGE */
-				address = CreatePackage(pstate, (CreatePackageStmt *) parsetree);
-				break;
-
 			case T_AlterFunctionStmt:	/* ALTER FUNCTION */
 				address = AlterFunction(pstate, (AlterFunctionStmt *) parsetree);
 				break;
@@ -1683,16 +1688,16 @@ ProcessUtilitySlow(ParseState *pstate,
 				 * command itself is queued, which is enough.
 				 */
 				EventTriggerInhibitCommandCollection();
-				PG_TRY();
+				PG_TRY(2);
 				{
 					address = ExecRefreshMatView((RefreshMatViewStmt *) parsetree,
 												 queryString, params, qc);
 				}
-				PG_FINALLY();
+				PG_FINALLY(2);
 				{
 					EventTriggerUndoInhibitCommandCollection();
 				}
-				PG_END_TRY();
+				PG_END_TRY(2);
 				break;
 
 			case T_CreateTrigStmt:
@@ -2337,9 +2342,6 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 			tag = CMDTAG_ALTER_STATISTICS;
 			break;
-		case OBJECT_PACKAGE:
-			tag = CMDTAG_ALTER_PACKAGE;
-			break;
 		default:
 			tag = CMDTAG_UNKNOWN;
 			break;
@@ -2648,12 +2650,6 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_STATISTIC_EXT:
 					tag = CMDTAG_DROP_STATISTICS;
 					break;
-				case OBJECT_PACKAGE:
-					tag = CMDTAG_DROP_PACKAGE;
-					break;
-				case OBJECT_PACKAGE_BODY:
-					tag = CMDTAG_DROP_PACKAGE_BODY;
-					break;
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
@@ -2807,13 +2803,6 @@ CreateCommandTag(Node *parsetree)
 				tag = CMDTAG_CREATE_PROCEDURE;
 			else
 				tag = CMDTAG_CREATE_FUNCTION;
-			break;
-
-		case T_CreatePackageStmt:
-			if (((CreatePackageStmt *) parsetree)->isbody)
-				tag = CMDTAG_CREATE_PACKAGE_BODY;
-			else
-				tag = CMDTAG_CREATE_PACKAGE;
 			break;
 
 		case T_IndexStmt:
@@ -3706,10 +3695,6 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_AlterCollationStmt:
-			lev = LOGSTMT_DDL;
-			break;
-
-		case T_CreatePackageStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

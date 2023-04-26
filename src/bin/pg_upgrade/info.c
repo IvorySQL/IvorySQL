@@ -3,7 +3,7 @@
  *
  *	information support functions
  *
- *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/info.c
  */
 
@@ -20,10 +20,11 @@ static void create_rel_filename_map(const char *old_data, const char *new_data,
 static void report_unmatched_relation(const RelInfo *rel, const DbInfo *db,
 									  bool is_new_db);
 static void free_db_and_rel_infos(DbInfoArr *db_arr);
+static void get_template0_info(ClusterInfo *cluster);
 static void get_db_infos(ClusterInfo *cluster);
 static void get_rel_infos(ClusterInfo *cluster, DbInfo *dbinfo);
 static void free_rel_infos(RelInfoArr *rel_arr);
-static void print_db_infos(DbInfoArr *dbinfo);
+static void print_db_infos(DbInfoArr *db_arr);
 static void print_rel_infos(RelInfoArr *rel_arr);
 
 
@@ -278,6 +279,7 @@ get_db_and_rel_infos(ClusterInfo *cluster)
 	if (cluster->dbarr.dbs != NULL)
 		free_db_and_rel_infos(&cluster->dbarr);
 
+	get_template0_info(cluster);
 	get_db_infos(cluster);
 
 	for (dbnum = 0; dbnum < cluster->dbarr.ndbs; dbnum++)
@@ -290,6 +292,63 @@ get_db_and_rel_infos(ClusterInfo *cluster)
 
 	if (log_opts.verbose)
 		print_db_infos(&cluster->dbarr);
+}
+
+
+/*
+ * Get information about template0, which will be copied from the old cluster
+ * to the new cluster.
+ */
+static void
+get_template0_info(ClusterInfo *cluster)
+{
+	PGconn			*conn = connectToServer(cluster, "template1");
+	DbLocaleInfo	*locale;
+	PGresult		*dbres;
+	int				 i_datencoding;
+	int				 i_datlocprovider;
+	int				 i_datcollate;
+	int				 i_datctype;
+	int				 i_daticulocale;
+
+	if (GET_MAJOR_VERSION(cluster->major_version) >= 1500)
+		dbres = executeQueryOrDie(conn,
+								  "SELECT encoding, datlocprovider, "
+								  "       datcollate, datctype, daticulocale "
+								  "FROM	pg_catalog.pg_database "
+								  "WHERE datname='template0'");
+	else
+		dbres = executeQueryOrDie(conn,
+								  "SELECT encoding, 'c' AS datlocprovider, "
+								  "       datcollate, datctype, NULL AS daticulocale "
+								  "FROM	pg_catalog.pg_database "
+								  "WHERE datname='template0'");
+
+
+	if (PQntuples(dbres) != 1)
+		pg_fatal("template0 not found");
+
+	locale = pg_malloc(sizeof(DbLocaleInfo));
+
+	i_datencoding = PQfnumber(dbres, "encoding");
+	i_datlocprovider = PQfnumber(dbres, "datlocprovider");
+	i_datcollate = PQfnumber(dbres, "datcollate");
+	i_datctype = PQfnumber(dbres, "datctype");
+	i_daticulocale = PQfnumber(dbres, "daticulocale");
+
+	locale->db_encoding = atoi(PQgetvalue(dbres, 0, i_datencoding));
+	locale->db_collprovider = PQgetvalue(dbres, 0, i_datlocprovider)[0];
+	locale->db_collate = pg_strdup(PQgetvalue(dbres, 0, i_datcollate));
+	locale->db_ctype = pg_strdup(PQgetvalue(dbres, 0, i_datctype));
+	if (PQgetisnull(dbres, 0, i_daticulocale))
+		locale->db_iculocale = NULL;
+	else
+		locale->db_iculocale = pg_strdup(PQgetvalue(dbres, 0, i_daticulocale));
+
+	cluster->template0 = locale;
+
+	PQclear(dbres);
+	PQfinish(conn);
 }
 
 
@@ -309,11 +368,6 @@ get_db_infos(ClusterInfo *cluster)
 	DbInfo	   *dbinfos;
 	int			i_datname,
 				i_oid,
-				i_encoding,
-				i_datcollate,
-				i_datctype,
-				i_datlocprovider,
-				i_daticulocale,
 				i_spclocation;
 	char		query[QUERY_ALLOC];
 
@@ -337,11 +391,6 @@ get_db_infos(ClusterInfo *cluster)
 
 	i_oid = PQfnumber(res, "oid");
 	i_datname = PQfnumber(res, "datname");
-	i_encoding = PQfnumber(res, "encoding");
-	i_datcollate = PQfnumber(res, "datcollate");
-	i_datctype = PQfnumber(res, "datctype");
-	i_datlocprovider = PQfnumber(res, "datlocprovider");
-	i_daticulocale = PQfnumber(res, "daticulocale");
 	i_spclocation = PQfnumber(res, "spclocation");
 
 	ntups = PQntuples(res);
@@ -351,14 +400,6 @@ get_db_infos(ClusterInfo *cluster)
 	{
 		dbinfos[tupnum].db_oid = atooid(PQgetvalue(res, tupnum, i_oid));
 		dbinfos[tupnum].db_name = pg_strdup(PQgetvalue(res, tupnum, i_datname));
-		dbinfos[tupnum].db_encoding = atoi(PQgetvalue(res, tupnum, i_encoding));
-		dbinfos[tupnum].db_collate = pg_strdup(PQgetvalue(res, tupnum, i_datcollate));
-		dbinfos[tupnum].db_ctype = pg_strdup(PQgetvalue(res, tupnum, i_datctype));
-		dbinfos[tupnum].db_collprovider = PQgetvalue(res, tupnum, i_datlocprovider)[0];
-		if (PQgetisnull(res, tupnum, i_daticulocale))
-			dbinfos[tupnum].db_iculocale = NULL;
-		else
-			dbinfos[tupnum].db_iculocale = pg_strdup(PQgetvalue(res, tupnum, i_daticulocale));
 		snprintf(dbinfos[tupnum].db_tablespace, sizeof(dbinfos[tupnum].db_tablespace), "%s",
 				 PQgetvalue(res, tupnum, i_spclocation));
 	}
@@ -408,11 +449,10 @@ get_rel_infos(ClusterInfo *cluster, DbInfo *dbinfo)
 	query[0] = '\0';			/* initialize query string to empty */
 
 	/*
-	 * Create a CTE that collects OIDs of regular user tables, including
-	 * matviews and sequences, but excluding toast tables and indexes.  We
-	 * assume that relations with OIDs >= FirstNormalObjectId belong to the
-	 * user.  (That's probably redundant with the namespace-name exclusions,
-	 * but let's be safe.)
+	 * Create a CTE that collects OIDs of regular user tables and matviews,
+	 * but excluding toast tables and indexes.  We assume that relations with
+	 * OIDs >= FirstNormalObjectId belong to the user.  (That's probably
+	 * redundant with the namespace-name exclusions, but let's be safe.)
 	 *
 	 * pg_largeobject contains user data that does not appear in pg_dump
 	 * output, so we have to copy that system table.  It's easiest to do that

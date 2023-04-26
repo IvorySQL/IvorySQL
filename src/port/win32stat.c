@@ -3,7 +3,7 @@
  * win32stat.c
  *	  Replacements for <sys/stat.h> functions using GetFileInformationByHandle
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,8 +14,6 @@
  */
 
 #ifdef WIN32
-
-#define UMDF_USING_NTSTATUS
 
 #include "c.h"
 #include "port/win32ntdll.h"
@@ -127,15 +125,30 @@ _pglstat64(const char *name, struct stat *buf)
 
 	hFile = pgwin32_open_handle(name, O_RDONLY, true);
 	if (hFile == INVALID_HANDLE_VALUE)
-		return -1;
-
-	ret = fileinfo_to_stat(hFile, buf);
+	{
+		if (errno == ENOENT)
+		{
+			/*
+			 * If it's a junction point pointing to a non-existent path, we'll
+			 * have ENOENT here (because pgwin32_open_handle does not use
+			 * FILE_FLAG_OPEN_REPARSE_POINT).  In that case, we'll try again
+			 * with readlink() below, which will distinguish true ENOENT from
+			 * pseudo-symlink.
+			 */
+			memset(buf, 0, sizeof(*buf));
+			ret = 0;
+		}
+		else
+			return -1;
+	}
+	else
+		ret = fileinfo_to_stat(hFile, buf);
 
 	/*
 	 * Junction points appear as directories to fileinfo_to_stat(), so we'll
 	 * need to do a bit more work to distinguish them.
 	 */
-	if (ret == 0 && S_ISDIR(buf->st_mode))
+	if ((ret == 0 && S_ISDIR(buf->st_mode)) || hFile == INVALID_HANDLE_VALUE)
 	{
 		char		next[MAXPGPATH];
 		ssize_t		size;
@@ -171,10 +184,12 @@ _pglstat64(const char *name, struct stat *buf)
 			buf->st_mode &= ~S_IFDIR;
 			buf->st_mode |= S_IFLNK;
 			buf->st_size = size;
+			ret = 0;
 		}
 	}
 
-	CloseHandle(hFile);
+	if (hFile != INVALID_HANDLE_VALUE)
+		CloseHandle(hFile);
 	return ret;
 }
 
@@ -184,15 +199,25 @@ _pglstat64(const char *name, struct stat *buf)
 int
 _pgstat64(const char *name, struct stat *buf)
 {
+	int			loops = 0;
 	int			ret;
+	char		curr[MAXPGPATH];
 
 	ret = _pglstat64(name, buf);
 
+	strlcpy(curr, name, MAXPGPATH);
+
 	/* Do we need to follow a symlink (junction point)? */
-	if (ret == 0 && S_ISLNK(buf->st_mode))
+	while (ret == 0 && S_ISLNK(buf->st_mode))
 	{
 		char		next[MAXPGPATH];
 		ssize_t		size;
+
+		if (++loops > 8)
+		{
+			errno = ELOOP;
+			return -1;
+		}
 
 		/*
 		 * _pglstat64() already called readlink() once to be able to fill in
@@ -200,7 +225,7 @@ _pgstat64(const char *name, struct stat *buf)
 		 * That could be optimized, but stat() on symlinks is probably rare
 		 * and this way is simple.
 		 */
-		size = readlink(name, next, sizeof(next));
+		size = readlink(curr, next, sizeof(next));
 		if (size < 0)
 		{
 			if (errno == EACCES &&
@@ -219,17 +244,7 @@ _pgstat64(const char *name, struct stat *buf)
 		next[size] = 0;
 
 		ret = _pglstat64(next, buf);
-		if (ret == 0 && S_ISLNK(buf->st_mode))
-		{
-			/*
-			 * We're only prepared to go one hop, because we only expect to
-			 * deal with the simple cases that we create.  The error for too
-			 * many symlinks is supposed to be ELOOP, but Windows hasn't got
-			 * it.
-			 */
-			errno = EIO;
-			return -1;
-		}
+		strcpy(curr, next);
 	}
 
 	return ret;
@@ -242,34 +257,50 @@ int
 _pgfstat64(int fileno, struct stat *buf)
 {
 	HANDLE		hFile = (HANDLE) _get_osfhandle(fileno);
-	BY_HANDLE_FILE_INFORMATION fiData;
+	DWORD		fileType = FILE_TYPE_UNKNOWN;
+	unsigned short st_mode;
 
-	if (hFile == INVALID_HANDLE_VALUE || buf == NULL)
+	if (buf == NULL)
 	{
 		errno = EINVAL;
 		return -1;
 	}
 
-	/*
-	 * Check if the fileno is a data stream.  If so, unless it has been
-	 * redirected to a file, getting information through its HANDLE will fail,
-	 * so emulate its stat information in the most appropriate way and return
-	 * it instead.
-	 */
-	if ((fileno == _fileno(stdin) ||
-		 fileno == _fileno(stdout) ||
-		 fileno == _fileno(stderr)) &&
-		!GetFileInformationByHandle(hFile, &fiData))
+	fileType = pgwin32_get_file_type(hFile);
+	if (errno != 0)
+		return -1;
+
+	switch (fileType)
 	{
-		memset(buf, 0, sizeof(*buf));
-		buf->st_mode = _S_IFCHR;
-		buf->st_dev = fileno;
-		buf->st_rdev = fileno;
-		buf->st_nlink = 1;
-		return 0;
+			/* The specified file is a disk file */
+		case FILE_TYPE_DISK:
+			return fileinfo_to_stat(hFile, buf);
+
+			/*
+			 * The specified file is a socket, a named pipe, or an anonymous
+			 * pipe.
+			 */
+		case FILE_TYPE_PIPE:
+			st_mode = _S_IFIFO;
+			break;
+			/* The specified file is a character file */
+		case FILE_TYPE_CHAR:
+			st_mode = _S_IFCHR;
+			break;
+			/* Unused flag and unknown file type */
+		case FILE_TYPE_REMOTE:
+		case FILE_TYPE_UNKNOWN:
+		default:
+			errno = EINVAL;
+			return -1;
 	}
 
-	return fileinfo_to_stat(hFile, buf);
+	memset(buf, 0, sizeof(*buf));
+	buf->st_mode = st_mode;
+	buf->st_dev = fileno;
+	buf->st_rdev = fileno;
+	buf->st_nlink = 1;
+	return 0;
 }
 
 #endif							/* WIN32 */

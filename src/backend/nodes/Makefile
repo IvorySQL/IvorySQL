@@ -21,11 +21,13 @@ OBJS = \
 	extensible.o \
 	list.o \
 	makefuncs.o \
+	multibitmapset.o \
 	nodeFuncs.o \
 	nodes.o \
 	outfuncs.o \
 	params.o \
 	print.o \
+	queryjumblefuncs.o \
 	read.o \
 	readfuncs.o \
 	tidbitmap.o \
@@ -52,8 +54,10 @@ node_headers = \
 	commands/trigger.h \
 	executor/tuptable.h \
 	foreign/fdwapi.h \
+	nodes/bitmapset.h \
 	nodes/extensible.h \
 	nodes/lockoptions.h \
+	nodes/miscnodes.h \
 	nodes/replnodes.h \
 	nodes/supportnodes.h \
 	nodes/value.h \
@@ -91,7 +95,8 @@ $(top_builddir)/src/include/nodes/header-stamp: node-support-stamp
 copyfuncs.o: copyfuncs.c copyfuncs.funcs.c copyfuncs.switch.c | node-support-stamp
 equalfuncs.o: equalfuncs.c equalfuncs.funcs.c equalfuncs.switch.c | node-support-stamp
 outfuncs.o: outfuncs.c outfuncs.funcs.c outfuncs.switch.c | node-support-stamp
+queryjumblefuncs.o: queryjumblefuncs.c queryjumblefuncs.funcs.c queryjumblefuncs.switch.c | node-support-stamp
 readfuncs.o:  readfuncs.c readfuncs.funcs.c readfuncs.switch.c | node-support-stamp
 
 maintainer-clean: clean
-	rm -f node-support-stamp $(addsuffix funcs.funcs.c,copy equal out read) $(addsuffix funcs.switch.c,copy equal out read) nodetags.h
+	rm -f node-support-stamp $(addsuffix funcs.funcs.c,copy equal out queryjumble read) $(addsuffix funcs.switch.c,copy equal out queryjumble read) nodetags.h

@@ -3,7 +3,7 @@
  * auth.c
  *	  Routines to handle network authentication
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -135,14 +135,6 @@ static int	CheckBSDAuth(Port *port, char *user);
 #else
 #include <winldap.h>
 
-/* Correct header from the Platform SDK */
-typedef
-ULONG		(*__ldap_start_tls_sA) (IN PLDAP ExternalHandle,
-									OUT PULONG ServerReturnValue,
-									OUT LDAPMessage **result,
-									IN PLDAPControlA * ServerControls,
-									IN PLDAPControlA * ClientControls
-);
 #endif
 
 static int	CheckLDAPAuth(Port *port);
@@ -151,6 +143,10 @@ static int	CheckLDAPAuth(Port *port);
 #ifndef LDAP_OPT_DIAGNOSTIC_MESSAGE
 #define LDAP_OPT_DIAGNOSTIC_MESSAGE LDAP_OPT_ERROR_STRING
 #endif
+
+/* Default LDAP password mutator hook, can be overridden by a shared library */
+static char *dummy_ldap_password_mutator(char *input);
+auth_password_hook_typ ldap_password_hook = dummy_ldap_password_mutator;
 
 #endif							/* USE_LDAP */
 
@@ -169,6 +165,7 @@ static int	CheckCertAuth(Port *port);
  */
 char	   *pg_krb_server_keyfile;
 bool		pg_krb_caseins_users;
+bool		pg_gss_accept_deleg;
 
 
 /*----------------------------------------------------------------
@@ -315,8 +312,9 @@ auth_failed(Port *port, int status, const char *logdetail)
 			break;
 	}
 
-	cdetail = psprintf(_("Connection matched pg_hba.conf line %d: \"%s\""),
-					   port->hba->linenumber, port->hba->rawline);
+	cdetail = psprintf(_("Connection matched %s line %d: \"%s\""),
+					   port->hba->sourcefile, port->hba->linenumber,
+					   port->hba->rawline);
 	if (logdetail)
 		logdetail = psprintf("%s\n%s", logdetail, cdetail);
 	else
@@ -373,7 +371,7 @@ set_authn_id(Port *port, const char *id)
 					   "(%s:%d)",
 					   MyClientConnectionInfo.authn_id,
 					   hba_authname(MyClientConnectionInfo.auth_method),
-					   HbaFileName, port->hba->linenumber));
+					   port->hba->sourcefile, port->hba->linenumber));
 	}
 }
 
@@ -921,10 +919,12 @@ pg_GSS_recvauth(Port *port)
 	int			mtype;
 	StringInfoData buf;
 	gss_buffer_desc gbuf;
+	gss_cred_id_t delegated_creds;
 
 	/*
-	 * Use the configured keytab, if there is one.  Unfortunately, Heimdal
-	 * doesn't support the cred store extensions, so use the env var.
+	 * Use the configured keytab, if there is one.  As we now require MIT
+	 * Kerberos, we might consider using the credential store extensions in
+	 * the future instead of the environment variable.
 	 */
 	if (pg_krb_server_keyfile != NULL && pg_krb_server_keyfile[0] != '\0')
 	{
@@ -949,6 +949,9 @@ pg_GSS_recvauth(Port *port)
 	 * Initialize sequence with an empty context
 	 */
 	port->gss->ctx = GSS_C_NO_CONTEXT;
+
+	delegated_creds = GSS_C_NO_CREDENTIAL;
+	port->gss->delegated_creds = false;
 
 	/*
 	 * Loop through GSSAPI message exchange. This exchange can consist of
@@ -1000,7 +1003,7 @@ pg_GSS_recvauth(Port *port)
 										  &port->gss->outbuf,
 										  &gflags,
 										  NULL,
-										  NULL);
+										  pg_gss_accept_deleg ? &delegated_creds : NULL);
 
 		/* gbuf no longer used */
 		pfree(buf.data);
@@ -1011,6 +1014,12 @@ pg_GSS_recvauth(Port *port)
 			 (unsigned int) port->gss->outbuf.length, gflags);
 
 		CHECK_FOR_INTERRUPTS();
+
+		if (delegated_creds != GSS_C_NO_CREDENTIAL && gflags & GSS_C_DELEG_FLAG)
+		{
+			pg_store_delegated_credential(delegated_creds);
+			port->gss->delegated_creds = true;
+		}
 
 		if (port->gss->outbuf.length != 0)
 		{
@@ -1201,10 +1210,7 @@ pg_SSPI_recvauth(Port *port)
 	DWORD		accountnamesize = sizeof(accountname);
 	DWORD		domainnamesize = sizeof(domainname);
 	SID_NAME_USE accountnameuse;
-	HMODULE		secur32;
 	char	   *authn_id;
-
-	QUERY_SECURITY_CONTEXT_TOKEN_FN _QuerySecurityContextToken;
 
 	/*
 	 * Acquire a handle to the server credentials.
@@ -1358,36 +1364,12 @@ pg_SSPI_recvauth(Port *port)
 	 *
 	 * Get the name of the user that authenticated, and compare it to the pg
 	 * username that was specified for the connection.
-	 *
-	 * MingW is missing the export for QuerySecurityContextToken in the
-	 * secur32 library, so we have to load it dynamically.
 	 */
 
-	secur32 = LoadLibrary("SECUR32.DLL");
-	if (secur32 == NULL)
-		ereport(ERROR,
-				(errmsg("could not load library \"%s\": error code %lu",
-						"SECUR32.DLL", GetLastError())));
-
-	_QuerySecurityContextToken = (QUERY_SECURITY_CONTEXT_TOKEN_FN) (pg_funcptr_t)
-		GetProcAddress(secur32, "QuerySecurityContextToken");
-	if (_QuerySecurityContextToken == NULL)
-	{
-		FreeLibrary(secur32);
-		ereport(ERROR,
-				(errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: error code %lu",
-								 GetLastError())));
-	}
-
-	r = (_QuerySecurityContextToken) (sspictx, &token);
+	r = QuerySecurityContextToken(sspictx, &token);
 	if (r != SEC_E_OK)
-	{
-		FreeLibrary(secur32);
 		pg_SSPI_error(ERROR,
 					  _("could not get token from SSPI security context"), r);
-	}
-
-	FreeLibrary(secur32);
 
 	/*
 	 * No longer need the security context, everything from here on uses the
@@ -2375,48 +2357,7 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 #ifndef WIN32
 		if ((r = ldap_start_tls_s(*ldap, NULL, NULL)) != LDAP_SUCCESS)
 #else
-		static __ldap_start_tls_sA _ldap_start_tls_sA = NULL;
-
-		if (_ldap_start_tls_sA == NULL)
-		{
-			/*
-			 * Need to load this function dynamically because it may not exist
-			 * on Windows, and causes a load error for the whole exe if
-			 * referenced.
-			 */
-			HANDLE		ldaphandle;
-
-			ldaphandle = LoadLibrary("WLDAP32.DLL");
-			if (ldaphandle == NULL)
-			{
-				/*
-				 * should never happen since we import other files from
-				 * wldap32, but check anyway
-				 */
-				ereport(LOG,
-						(errmsg("could not load library \"%s\": error code %lu",
-								"WLDAP32.DLL", GetLastError())));
-				ldap_unbind(*ldap);
-				return STATUS_ERROR;
-			}
-			_ldap_start_tls_sA = (__ldap_start_tls_sA) (pg_funcptr_t) GetProcAddress(ldaphandle, "ldap_start_tls_sA");
-			if (_ldap_start_tls_sA == NULL)
-			{
-				ereport(LOG,
-						(errmsg("could not load function _ldap_start_tls_sA in wldap32.dll"),
-						 errdetail("LDAP over SSL is not supported on this platform.")));
-				ldap_unbind(*ldap);
-				FreeLibrary(ldaphandle);
-				return STATUS_ERROR;
-			}
-
-			/*
-			 * Leak LDAP handle on purpose, because we need the library to
-			 * stay open. This is ok because it will only ever be leaked once
-			 * per process and is automatically cleaned up on process exit.
-			 */
-		}
-		if ((r = _ldap_start_tls_sA(*ldap, NULL, NULL, NULL, NULL)) != LDAP_SUCCESS)
+		if ((r = ldap_start_tls_s(*ldap, NULL, NULL, NULL, NULL)) != LDAP_SUCCESS)
 #endif
 		{
 			ereport(LOG,
@@ -2444,6 +2385,12 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 #ifndef LDAPS_PORT
 #define LDAPS_PORT 636
 #endif
+
+static char *
+dummy_ldap_password_mutator(char *input)
+{
+	return input;
+}
 
 /*
  * Return a newly allocated C string copied from "pattern" with all
@@ -2573,7 +2520,7 @@ CheckLDAPAuth(Port *port)
 		 */
 		r = ldap_simple_bind_s(ldap,
 							   port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
-							   port->hba->ldapbindpasswd ? port->hba->ldapbindpasswd : "");
+							   port->hba->ldapbindpasswd ? ldap_password_hook(port->hba->ldapbindpasswd) : "");
 		if (r != LDAP_SUCCESS)
 		{
 			ereport(LOG,
@@ -2595,6 +2542,7 @@ CheckLDAPAuth(Port *port)
 		else
 			filter = psprintf("(uid=%s)", port->user_name);
 
+		search_message = NULL;
 		r = ldap_search_s(ldap,
 						  port->hba->ldapbasedn,
 						  port->hba->ldapscope,
@@ -2609,6 +2557,8 @@ CheckLDAPAuth(Port *port)
 					(errmsg("could not search LDAP for filter \"%s\" on server \"%s\": %s",
 							filter, server_name, ldap_err2string(r)),
 					 errdetail_for_ldap(ldap)));
+			if (search_message != NULL)
+				ldap_msgfree(search_message);
 			ldap_unbind(ldap);
 			pfree(passwd);
 			pfree(filter);

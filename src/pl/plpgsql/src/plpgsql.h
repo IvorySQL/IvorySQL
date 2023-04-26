@@ -3,7 +3,7 @@
  * plpgsql.h		- Definitions for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -147,6 +147,7 @@ enum
 typedef enum PLpgSQL_getdiag_kind
 {
 	PLPGSQL_GETDIAG_ROW_COUNT,
+	PLPGSQL_GETDIAG_ROUTINE_OID,
 	PLPGSQL_GETDIAG_CONTEXT,
 	PLPGSQL_GETDIAG_ERROR_CONTEXT,
 	PLPGSQL_GETDIAG_ERROR_DETAIL,

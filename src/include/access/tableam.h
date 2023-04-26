@@ -4,7 +4,7 @@
  *	  POSTGRES table access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/tableam.h
@@ -20,7 +20,7 @@
 #include "access/relscan.h"
 #include "access/sdir.h"
 #include "access/xact.h"
-#include "utils/guc.h"
+#include "executor/tuptable.h"
 #include "utils/rel.h"
 #include "utils/snapshot.h"
 
@@ -101,6 +101,22 @@ typedef enum TM_Result
 	/* lock couldn't be acquired, action skipped. Only used by lock_tuple */
 	TM_WouldBlock
 } TM_Result;
+
+/*
+ * Result codes for table_update(..., update_indexes*..).
+ * Used to determine which indexes to update.
+ */
+typedef enum TU_UpdateIndexes
+{
+	/* No indexed columns were updated (incl. TID addressing of tuple) */
+	TU_None,
+
+	/* A non-summarizing indexed column was updated, or the TID has changed */
+	TU_All,
+
+	/* Only summarized columns were updated, TID is unchanged */
+	TU_Summarizing
+} TU_UpdateIndexes;
 
 /*
  * When table_tuple_update, table_tuple_delete, or table_tuple_lock fail
@@ -526,7 +542,7 @@ typedef struct TableAmRoutine
 								 bool wait,
 								 TM_FailureData *tmfd,
 								 LockTupleMode *lockmode,
-								 bool *update_indexes);
+								 TU_UpdateIndexes *update_indexes);
 
 	/* see table_tuple_lock() for reference about parameters */
 	TM_Result	(*tuple_lock) (Relation rel,
@@ -863,13 +879,13 @@ typedef struct TableAmRoutine
  * for the relation.  Works for tables, views, foreign tables and partitioned
  * tables.
  */
-extern const TupleTableSlotOps *table_slot_callbacks(Relation rel);
+extern const TupleTableSlotOps *table_slot_callbacks(Relation relation);
 
 /*
  * Returns slot using the callbacks returned by table_slot_callbacks(), and
  * registers it on *reglist.
  */
-extern TupleTableSlot *table_slot_create(Relation rel, List **reglist);
+extern TupleTableSlot *table_slot_create(Relation relation, List **reglist);
 
 
 /* ----------------------------------------------------------------------------
@@ -895,7 +911,7 @@ table_beginscan(Relation rel, Snapshot snapshot,
  * Like table_beginscan(), but for scanning catalog. It'll automatically use a
  * snapshot appropriate for scanning catalog relations.
  */
-extern TableScanDesc table_beginscan_catalog(Relation rel, int nkeys,
+extern TableScanDesc table_beginscan_catalog(Relation relation, int nkeys,
 											 struct ScanKeyData *key);
 
 /*
@@ -1035,6 +1051,10 @@ table_scan_getnextslot(TableScanDesc sscan, ScanDirection direction, TupleTableS
 {
 	slot->tts_tableOid = RelationGetRelid(sscan->rs_rd);
 
+	/* We don't expect actual scans using NoMovementScanDirection */
+	Assert(direction == ForwardScanDirection ||
+		   direction == BackwardScanDirection);
+
 	/*
 	 * We don't expect direct calls to table_scan_getnextslot with valid
 	 * CheckXidAlive for catalog or regular tables.  See detailed comments in
@@ -1099,6 +1119,10 @@ table_scan_getnextslot_tidrange(TableScanDesc sscan, ScanDirection direction,
 	/* Ensure table_beginscan_tidrange() was used. */
 	Assert((sscan->rs_flags & SO_TYPE_TIDRANGESCAN) != 0);
 
+	/* We don't expect actual scans using NoMovementScanDirection */
+	Assert(direction == ForwardScanDirection ||
+		   direction == BackwardScanDirection);
+
 	return sscan->rs_rd->rd_tableam->scan_getnextslot_tidrange(sscan,
 															   direction,
 															   slot);
@@ -1133,7 +1157,7 @@ extern void table_parallelscan_initialize(Relation rel,
  *
  * Caller must hold a suitable lock on the relation.
  */
-extern TableScanDesc table_beginscan_parallel(Relation rel,
+extern TableScanDesc table_beginscan_parallel(Relation relation,
 											  ParallelTableScanDesc pscan);
 
 /*
@@ -1318,7 +1342,7 @@ table_tuple_satisfies_snapshot(Relation rel, TupleTableSlot *slot,
  * marked as deletable.  See comments above TM_IndexDelete and comments above
  * TM_IndexDeleteOp for full details.
  *
- * Returns a latestRemovedXid transaction ID that caller generally places in
+ * Returns a snapshotConflictHorizon transaction ID that caller places in
  * its index deletion WAL record.  This might be used during subsequent REDO
  * of the WAL record when in Hot Standby mode -- a recovery conflict for the
  * index deletion operation might be required on the standby.
@@ -1506,7 +1530,7 @@ static inline TM_Result
 table_tuple_update(Relation rel, ItemPointer otid, TupleTableSlot *slot,
 				   CommandId cid, Snapshot snapshot, Snapshot crosscheck,
 				   bool wait, TM_FailureData *tmfd, LockTupleMode *lockmode,
-				   bool *update_indexes)
+				   TU_UpdateIndexes *update_indexes)
 {
 	return rel->rd_tableam->tuple_update(rel, otid, slot,
 										 cid, snapshot, crosscheck,
@@ -1634,7 +1658,7 @@ table_relation_copy_data(Relation rel, const RelFileLocator *newrlocator)
  *   in that index's order; if false and OldIndex is InvalidOid, no sorting is
  *   performed
  * - OldIndex - see use_sort
- * - OldestXmin - computed by vacuum_set_xid_limits(), even when
+ * - OldestXmin - computed by vacuum_get_cutoffs(), even when
  *   not needed for the relation's AM
  * - *xid_cutoff - ditto
  * - *multi_cutoff - ditto
@@ -1871,7 +1895,7 @@ table_relation_toast_am(Relation rel)
  *
  * toastrel is the relation in which the toasted value is stored.
  *
- * valueid identifes which toast value is to be fetched. For the heap,
+ * valueid identifies which toast value is to be fetched. For the heap,
  * this corresponds to the values stored in the chunk_id column.
  *
  * attrsize is the total size of the toast value to be fetched.
@@ -2030,7 +2054,7 @@ extern void simple_table_tuple_delete(Relation rel, ItemPointer tid,
 									  Snapshot snapshot);
 extern void simple_table_tuple_update(Relation rel, ItemPointer otid,
 									  TupleTableSlot *slot, Snapshot snapshot,
-									  bool *update_indexes);
+									  TU_UpdateIndexes *update_indexes);
 
 
 /* ----------------------------------------------------------------------------
@@ -2072,7 +2096,5 @@ extern void table_block_relation_estimate_size(Relation rel,
 
 extern const TableAmRoutine *GetTableAmRoutine(Oid amhandler);
 extern const TableAmRoutine *GetHeapamTableAmRoutine(void);
-extern bool check_default_table_access_method(char **newval, void **extra,
-											  GucSource source);
 
 #endif							/* TABLEAM_H */

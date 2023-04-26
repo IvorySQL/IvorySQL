@@ -22,7 +22,7 @@
  * Postgres 9.2, this check is made automatically by the Makefile.)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -36,11 +36,13 @@
 #include <unistd.h>
 
 #include "common/string.h"
-#include "parser/gramparse.h"
+#include "gramparse.h"
+#include "nodes/miscnodes.h"
 #include "parser/parser.h"		/* only needed for GUC variables */
 #include "parser/scansup.h"
 #include "port/pg_bitutils.h"
 #include "mb/pg_wchar.h"
+#include "utils/builtins.h"
 }
 
 %{
@@ -124,7 +126,7 @@ static void addlit(char *ytext, int yleng, core_yyscan_t yyscanner);
 static void addlitchar(unsigned char ychar, core_yyscan_t yyscanner);
 static char *litbufdup(core_yyscan_t yyscanner);
 static unsigned char unescape_single_char(unsigned char c, core_yyscan_t yyscanner);
-static int	process_integer_literal(const char *token, YYSTYPE *lval);
+static int	process_integer_literal(const char *token, YYSTYPE *lval, int base);
 static void addunicode(pg_wchar c, yyscan_t yyscanner);
 
 #define yyerror(msg)  scanner_yyerror(msg, yyscanner)
@@ -142,9 +144,6 @@ static void check_escape_warning(core_yyscan_t yyscanner);
  */
 extern int	core_yyget_column(yyscan_t yyscanner);
 extern void core_yyset_column(int column_no, yyscan_t yyscanner);
-
-bool packagestmt_context = false;
-bool anonblock_context = false;
 
 %}
 
@@ -185,7 +184,6 @@ bool anonblock_context = false;
  *  <xui> quoted identifier with Unicode escapes
  *  <xus> quoted string with Unicode escapes
  *  <xeu> Unicode surrogate pair in extended quoted string
- *  <xdq> q escape feature
  *
  * Remember to add an <<EOF>> case whenever you add a new exclusive state!
  * The default one is probably not the right thing.
@@ -202,7 +200,6 @@ bool anonblock_context = false;
 %x xui
 %x xus
 %x xeu
-%x xdq
 
 /*
  * In order to make the world safe for Windows and Mac clients as well as
@@ -305,10 +302,6 @@ dolqdelim		\$({dolq_start}{dolq_cont}*)?\$
 dolqfailed		\${dolq_start}{dolq_cont}*
 dolqinside		[^$]+
 
-dosymstart		[Qq]{quote}
-dosymend		{quote}
-dosymfailed		[Qq]{quote}{space}
-
 /* Double quote
  * Allows embedded spaces and other special characters into identifiers.
  */
@@ -349,7 +342,7 @@ xufailed		[uU]&
 xcstart			\/\*{op_chars}*
 xcstop			\*+\/
 xcinside		[^*/]+
-connectby		[cC][oO][nN][nN][eE][cC][tT]
+
 ident_start		[A-Za-z\200-\377_]
 ident_cont		[A-Za-z\200-\377_0-9\$]
 
@@ -394,25 +387,40 @@ operator		{op_chars}+
  * Unary minus is not part of a number here.  Instead we pass it separately to
  * the parser, and there it gets coerced via doNegate().
  *
- * {decimalfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
+ * {numericfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
  *
  * {realfail} is added to prevent the need for scanner
  * backup when the {real} rule fails to match completely.
  */
-digit			[0-9]
+decdigit		[0-9]
+hexdigit		[0-9A-Fa-f]
+octdigit		[0-7]
+bindigit		[0-1]
 
-integer			{digit}+
-decimal			(({digit}*\.{digit}+)|({digit}+\.{digit}*))
-decimalfail		{digit}+\.\.
-real			({integer}|{decimal})[Ee][-+]?{digit}+
-realfail		({integer}|{decimal})[Ee][-+]
+decinteger		{decdigit}(_?{decdigit})*
+hexinteger		0[xX](_?{hexdigit})+
+octinteger		0[oO](_?{octdigit})+
+bininteger		0[bB](_?{bindigit})+
 
-integer_junk	{integer}{ident_start}
-decimal_junk	{decimal}{ident_start}
+hexfail			0[xX]_?
+octfail			0[oO]_?
+binfail			0[bB]_?
+
+numeric			(({decinteger}\.{decinteger}?)|(\.{decinteger}))
+numericfail		{decdigit}+\.\.
+
+real			({decinteger}|{numeric})[Ee][-+]?{decinteger}
+realfail		({decinteger}|{numeric})[Ee][-+]
+
+decinteger_junk	{decinteger}{ident_start}
+hexinteger_junk	{hexinteger}{ident_start}
+octinteger_junk	{octinteger}{ident_start}
+bininteger_junk	{bininteger}{ident_start}
+numeric_junk	{numeric}{ident_start}
 real_junk		{real}{ident_start}
 
-param			\${integer}
-param_junk		\${integer}{ident_start}
+param			\${decinteger}
+param_junk		\${decinteger}{ident_start}
 
 other			.
 
@@ -732,114 +740,6 @@ other			.
 				}
 <xq,xe,xus><<EOF>>		{ yyerror("unterminated quoted string"); }
 
-{dosymstart} 	{
-					SET_YYLLOC();
-					BEGIN(xdq);
-					startlit();
-				}
-{dosymfailed}	{
-					SET_YYLLOC();
-					yyless(1);
-					return yytext[0];
-				}
-
-<xdq>{dosymend} {
-					/*
-					 * determine whether the character after q' is symmetrical
-					 * to the character before '.
-					 */
-					int 	 i;
-					bool 	 flag = false;
-					char 	*symstr = NULL;
-					char	*symstr1 = NULL;
-					int 	 first_symlen = 0;
-					int 	 next_symlen = 0;
-					int 	 symlen = 0;
-
-					symstr = litbufdup(yyscanner);
-					/* calculate the byte length of the first symmetric character */
-					first_symlen = pg_mblen(symstr);
-					symlen = strlen(symstr);
-
-					if (first_symlen == 1 && symlen >= 2)
-					{
-						if (symstr[0] == '(' || symstr[0] == '[' || symstr[0] == '{' || symstr[0] == '<')
-						{
-							if(symstr[0] == '(' && symstr[symlen - 1] == ')' )
-								flag = true;
-							if(symstr[0] == '{' && symstr[symlen - 1] == '}' )
-								flag =true;
-							if(symstr[0] == '[' && symstr[symlen - 1] == ']' )
-								flag =true;
-							if(symstr[0] == '<' && symstr[symlen - 1] == '>' )
-								flag =true;
-						}
-						else if(symstr[0] == symstr[symlen- 1])
-							flag = true;
-						else
-							flag = false;
-					}
-
-					if (first_symlen > 1 && symlen >= first_symlen * 2)
-					{
-						symstr1 = symstr;
-						symstr1 = symstr1 + (symlen - first_symlen);
-
-						/* calculate the byte length of the next symmetric character */
-						next_symlen = pg_mblen(symstr1);
-						if (first_symlen == next_symlen)
-						{
-							for(i = 0; i< first_symlen ; i++ )
-							{
-								if (symstr[i] == symstr[symlen - first_symlen + i])
-									flag = true;
-								else
-								{
-									flag = false;
-									break;
-								}
-							}
-						}
-					}
-
-					if (flag)
-					{
-						char	*oldstr = NULL;
-						char	*newstr = NULL;
-						int		len = 0;
-
-						BEGIN(INITIAL);
-						/* get q' escaped character,really character */
-						oldstr = litbufdup(yyscanner);
-						len = strlen(oldstr);
-						newstr = (char*)palloc(len + 1);
-						MemSet(newstr, 0x00, len + 1);
-						memcpy(newstr,oldstr + first_symlen,len - first_symlen - 1);
-						yylval->str = pstrdup(newstr);
-						pfree(newstr);
-						return SCONST;
-					}
-					else
-						addlit(yytext, yyleng, yyscanner);
-					}
-<xdq>{dosymstart} {
-					addlit(yytext, yyleng-1, yyscanner);
-					yyless(yyleng - 1);
-				}
-
-<xdq>{dosymfailed} {
-					addlit(yytext, yyleng, yyscanner);
-				}
-
-<xdq>{whitespace} {
-					addlitchar(yytext[0], yyscanner);
-				}
-
-<xdq>.			{
-					addlitchar(yytext[0], yyscanner);
-				}
-<xdq><<EOF>>	{ yyerror("unterminated q-quoted string"); }
-
 {dolqdelim}		{
 					SET_YYLLOC();
 					yyextra->dolqstart = pstrdup(yytext);
@@ -1100,20 +1000,44 @@ other			.
 					yyerror("trailing junk after parameter");
 				}
 
-{integer}		{
+{decinteger}	{
 					SET_YYLLOC();
-					return process_integer_literal(yytext, yylval);
+					return process_integer_literal(yytext, yylval, 10);
 				}
-{decimal}		{
+{hexinteger}	{
+					SET_YYLLOC();
+					return process_integer_literal(yytext, yylval, 16);
+				}
+{octinteger}	{
+					SET_YYLLOC();
+					return process_integer_literal(yytext, yylval, 8);
+				}
+{bininteger}	{
+					SET_YYLLOC();
+					return process_integer_literal(yytext, yylval, 2);
+				}
+{hexfail}		{
+					SET_YYLLOC();
+					yyerror("invalid hexadecimal integer");
+				}
+{octfail}		{
+					SET_YYLLOC();
+					yyerror("invalid octal integer");
+				}
+{binfail}		{
+					SET_YYLLOC();
+					yyerror("invalid binary integer");
+				}
+{numeric}		{
 					SET_YYLLOC();
 					yylval->str = pstrdup(yytext);
 					return FCONST;
 				}
-{decimalfail}	{
+{numericfail}	{
 					/* throw back the .., and treat as integer */
 					yyless(yyleng - 2);
 					SET_YYLLOC();
-					return process_integer_literal(yytext, yylval);
+					return process_integer_literal(yytext, yylval, 10);
 				}
 {real}			{
 					SET_YYLLOC();
@@ -1124,11 +1048,23 @@ other			.
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
-{integer_junk}	{
+{decinteger_junk}	{
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
-{decimal_junk}	{
+{hexinteger_junk}	{
+					SET_YYLLOC();
+					yyerror("trailing junk after numeric literal");
+				}
+{octinteger_junk}	{
+					SET_YYLLOC();
+					yyerror("trailing junk after numeric literal");
+				}
+{bininteger_junk}	{
+					SET_YYLLOC();
+					yyerror("trailing junk after numeric literal");
+				}
+{numeric_junk}	{
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
@@ -1137,17 +1073,6 @@ other			.
 					yyerror("trailing junk after numeric literal");
 				}
 
-{connectby}		{
-					char	   *ident;
-
-					SET_YYLLOC();
-
-					/* Convert to lower case, and truncate if necessary. */
-					ident = downcase_truncate_identifier(yytext, yyleng, true);
-					yylval->str = ident;
-
-					return CONNECT_P;
-				}
 
 {identifier}	{
 					int			kwnum;
@@ -1303,7 +1228,6 @@ scanner_yyerror(const char *message, core_yyscan_t yyscanner)
 {
 	const char *loc = yyextra->scanbuf + *yylloc;
 
-	anonblock_context = false;
 	if (*loc == YY_END_OF_BUFFER_CHAR)
 	{
 		ereport(ERROR,
@@ -1387,133 +1311,6 @@ scanner_finish(core_yyscan_t yyscanner)
 		pfree(yyextra->literalbuf);
 }
 
-/*
- * Read and return a text (between 'sloc' and 'eloc') from the scanner
- * internal buffers.
- */
-char *
-scanner_querytext(int sloc, int eloc, core_yyscan_t yyscanner)
-{
-	int len = eloc - sloc;
-	char *query = palloc(len + 1);
-
-	Assert (sloc >= 0);
-	Assert (eloc >= 0);
-	memcpy(query, yyextra->scanbuf + sloc, len);
-	query[len] = '\0';
-
-	return query;
-}
-
-/*
- * Read and return a PLSQL body text (starting from 'sloc') from the scanner
- * internal buffers.
- */
-char *
-read_plsql_body(int sloc, core_yyscan_t yyscanner)
-{
-	char	   *query;
-	const char *start = yyextra->scanbuf + sloc;
-	char	   *endloc = yyextra->scanbuf + *yylloc + yyleng;
-	int			len = endloc - start;
-
-	query = palloc(len + 1);
-	memcpy(query, start, len);
-	query[len] = '\0';
-
-	return query;
-}
-
-/*
- * Read a SQL construct until a given token/keyword is reached.
- *
- * until:		token code for expected terminator
- * until2:		token code for alternate terminator (pass 0 if none)
- * until3:		token code for another alternate terminator (pass 0 if none)
- * expected:	text to use in complaining that terminator was not found
- * isexpression: whether to say we're reading an "expression" or a "statement"
- * valid_sql:   whether to check the syntax of the expr (prefixed with sqlstart)
- * trim:		trim trailing whitespace
- * startloc:	if not NULL, location of first token is stored at *startloc
- * endtoken:	if not NULL, ending token is stored at *endtoken
- *				(this is only interesting if until2 or until3 isn't zero)
- */
-char *
-read_sql_until(int until,
-				int until2,
-				int until3,
-				const char *expected,
-				bool isexpression,
-				core_yyscan_t yyscanner)
-{
-	int					tok;
-	int					startlocation = -1;
-	int					parenlevel = 0;
-
-	YYLTYPE *yylloc_ = core_yyget_lloc(yyscanner);
-
-	for (;;)
-	{
-		tok = yylex(core_yyget_lval(yyscanner),
-						core_yyget_lloc(yyscanner),
-						yyscanner);
-		yylloc_ = core_yyget_lloc(yyscanner);
-
-		if (startlocation < 0)			/* remember loc of first token */
-		{
-			startlocation = *yylloc_;
-		}
-
-		if (tok == until && parenlevel == 0)
-			break;
-		if (tok == until2 && parenlevel == 0)
-			break;
-		if (tok == until3 && parenlevel == 0)
-			break;
-		if (tok == '(' || tok == '[')
-			parenlevel++;
-		else if (tok == ')' || tok == ']')
-		{
-			parenlevel--;
-			if (parenlevel < 0)
-				yyerror("mismatched parentheses");
-		}
-
-		/*
-		 * End of function definition is an error, and we don't expect to
-		 * hit a semicolon either (unless it's the until symbol, in which
-		 * case we should have fallen out above).
-		 */
-		if (tok == 0 || tok == ';')
-		{
-			if (parenlevel != 0)
-				yyerror("mismatched parentheses");
-			if (isexpression)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("missing \"%s\" at end of SQL expression",
-								expected),
-						 lexer_errposition()));
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("missing \"%s\" at end of SQL statement",
-								expected),
-						 lexer_errposition()));
-		}
-	}
-
-	/* give helpful complaint about empty input */
-	if (startlocation > *yylloc_)
-	{
-		if (isexpression)
-			yyerror("missing expression");
-		else
-			yyerror("missing SQL statement");
-	}
-
-	return NULL;
-}
 
 static void
 addlit(char *ytext, int yleng, core_yyscan_t yyscanner)
@@ -1563,18 +1360,17 @@ litbufdup(core_yyscan_t yyscanner)
 }
 
 /*
- * Process {integer}.  Note this will also do the right thing with {decimal},
- * ie digits and a decimal point.
+ * Process {decinteger}, {hexinteger}, etc.  Note this will also do the right
+ * thing with {numeric}, ie digits and a decimal point.
  */
 static int
-process_integer_literal(const char *token, YYSTYPE *lval)
+process_integer_literal(const char *token, YYSTYPE *lval, int base)
 {
-	int			val;
-	char	   *endptr;
+	ErrorSaveContext escontext = {T_ErrorSaveContext};
+	int32		val;
 
-	errno = 0;
-	val = strtoint(token, &endptr, 10);
-	if (*endptr != '\0' || errno == ERANGE)
+	val = pg_strtoint32_safe(token, (Node *) &escontext);
+	if (escontext.error_occurred)
 	{
 		/* integer too large (or contains decimal pt), treat it as a float */
 		lval->str = pstrdup(token);

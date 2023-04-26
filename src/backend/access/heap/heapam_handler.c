@@ -3,7 +3,7 @@
  * heapam_handler.c
  *	  heap table access method code
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -314,7 +314,7 @@ static TM_Result
 heapam_tuple_update(Relation relation, ItemPointer otid, TupleTableSlot *slot,
 					CommandId cid, Snapshot snapshot, Snapshot crosscheck,
 					bool wait, TM_FailureData *tmfd,
-					LockTupleMode *lockmode, bool *update_indexes)
+					LockTupleMode *lockmode, TU_UpdateIndexes *update_indexes)
 {
 	bool		shouldFree = true;
 	HeapTuple	tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
@@ -325,7 +325,7 @@ heapam_tuple_update(Relation relation, ItemPointer otid, TupleTableSlot *slot,
 	tuple->t_tableOid = slot->tts_tableOid;
 
 	result = heap_update(relation, otid, tuple, cid, crosscheck, wait,
-						 tmfd, lockmode);
+						 tmfd, lockmode, update_indexes);
 	ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
 
 	/*
@@ -334,9 +334,20 @@ heapam_tuple_update(Relation relation, ItemPointer otid, TupleTableSlot *slot,
 	 * Note: heap_update returns the tid (location) of the new tuple in the
 	 * t_self field.
 	 *
-	 * If it's a HOT update, we mustn't insert new index entries.
+	 * If the update is not HOT, we must update all indexes. If the update
+	 * is HOT, it could be that we updated summarized columns, so we either
+	 * update only summarized indexes, or none at all.
 	 */
-	*update_indexes = result == TM_Ok && !HeapTupleIsHeapOnly(tuple);
+	if (result != TM_Ok)
+	{
+		Assert(*update_indexes == TU_None);
+		*update_indexes = TU_None;
+	}
+	else if (!HeapTupleIsHeapOnly(tuple))
+		Assert(*update_indexes == TU_All);
+	else
+		Assert((*update_indexes == TU_Summarizing) ||
+			   (*update_indexes == TU_None));
 
 	if (shouldFree)
 		pfree(tuple);
@@ -720,9 +731,14 @@ heapam_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 								 *multi_cutoff);
 
 
-	/* Set up sorting if wanted */
+	/*
+	 * Set up sorting if wanted. NewHeap is being passed to
+	 * tuplesort_begin_cluster(), it could have been OldHeap too. It does not
+	 * really matter, as the goal is to have a heap relation being passed to
+	 * _bt_log_reuse_page() (which should not be called from this code path).
+	 */
 	if (use_sort)
-		tuplesort = tuplesort_begin_cluster(oldTupDesc, OldIndex,
+		tuplesort = tuplesort_begin_cluster(oldTupDesc, OldIndex, NewHeap,
 											maintenance_work_mem,
 											NULL, TUPLESORT_NONE);
 	else
@@ -1879,17 +1895,13 @@ heapam_index_validate_scan(Relation heapRelation,
 			}
 
 			tuplesort_empty = !tuplesort_getdatum(state->tuplesort, true,
-												  &ts_val, &ts_isnull, NULL);
+												  false, &ts_val, &ts_isnull,
+												  NULL);
 			Assert(tuplesort_empty || !ts_isnull);
 			if (!tuplesort_empty)
 			{
 				itemptr_decode(&decoded, DatumGetInt64(ts_val));
 				indexcursor = &decoded;
-
-				/* If int8 is pass-by-ref, free (encoded) TID Datum memory */
-#ifndef USE_FLOAT8_BYVAL
-				pfree(DatumGetPointer(ts_val));
-#endif
 			}
 			else
 			{
@@ -2113,7 +2125,7 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 							  TBMIterateResult *tbmres)
 {
 	HeapScanDesc hscan = (HeapScanDesc) scan;
-	BlockNumber page = tbmres->blockno;
+	BlockNumber block = tbmres->blockno;
 	Buffer		buffer;
 	Snapshot	snapshot;
 	int			ntup;
@@ -2127,7 +2139,7 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	 * only hold an AccessShareLock, and it could be inserts from this
 	 * backend).
 	 */
-	if (page >= hscan->rs_nblocks)
+	if (block >= hscan->rs_nblocks)
 		return false;
 
 	/*
@@ -2135,8 +2147,8 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	 */
 	hscan->rs_cbuf = ReleaseAndReadBuffer(hscan->rs_cbuf,
 										  scan->rs_rd,
-										  page);
-	hscan->rs_cblock = page;
+										  block);
+	hscan->rs_cblock = block;
 	buffer = hscan->rs_cbuf;
 	snapshot = scan->rs_snapshot;
 
@@ -2172,7 +2184,7 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 			ItemPointerData tid;
 			HeapTupleData heapTuple;
 
-			ItemPointerSet(&tid, page, offnum);
+			ItemPointerSet(&tid, block, offnum);
 			if (heap_hot_search_buffer(&tid, scan->rs_rd, buffer, snapshot,
 									   &heapTuple, NULL, true))
 				hscan->rs_vistuples[ntup++] = ItemPointerGetOffsetNumber(&tid);
@@ -2184,8 +2196,8 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 		 * Bitmap is lossy, so we must examine each line pointer on the page.
 		 * But we can ignore HOT chains, since we'll check each tuple anyway.
 		 */
-		Page		dp = (Page) BufferGetPage(buffer);
-		OffsetNumber maxoff = PageGetMaxOffsetNumber(dp);
+		Page		page = BufferGetPage(buffer);
+		OffsetNumber maxoff = PageGetMaxOffsetNumber(page);
 		OffsetNumber offnum;
 
 		for (offnum = FirstOffsetNumber; offnum <= maxoff; offnum = OffsetNumberNext(offnum))
@@ -2194,13 +2206,13 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 			HeapTupleData loctup;
 			bool		valid;
 
-			lp = PageGetItemId(dp, offnum);
+			lp = PageGetItemId(page, offnum);
 			if (!ItemIdIsNormal(lp))
 				continue;
-			loctup.t_data = (HeapTupleHeader) PageGetItem((Page) dp, lp);
+			loctup.t_data = (HeapTupleHeader) PageGetItem(page, lp);
 			loctup.t_len = ItemIdGetLength(lp);
 			loctup.t_tableOid = scan->rs_rd->rd_id;
-			ItemPointerSet(&loctup.t_self, page, offnum);
+			ItemPointerSet(&loctup.t_self, block, offnum);
 			valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
 			if (valid)
 			{
@@ -2228,7 +2240,7 @@ heapam_scan_bitmap_next_tuple(TableScanDesc scan,
 {
 	HeapScanDesc hscan = (HeapScanDesc) scan;
 	OffsetNumber targoffset;
-	Page		dp;
+	Page		page;
 	ItemId		lp;
 
 	/*
@@ -2238,11 +2250,11 @@ heapam_scan_bitmap_next_tuple(TableScanDesc scan,
 		return false;
 
 	targoffset = hscan->rs_vistuples[hscan->rs_cindex];
-	dp = (Page) BufferGetPage(hscan->rs_cbuf);
-	lp = PageGetItemId(dp, targoffset);
+	page = BufferGetPage(hscan->rs_cbuf);
+	lp = PageGetItemId(page, targoffset);
 	Assert(ItemIdIsNormal(lp));
 
-	hscan->rs_ctup.t_data = (HeapTupleHeader) PageGetItem((Page) dp, lp);
+	hscan->rs_ctup.t_data = (HeapTupleHeader) PageGetItem(page, lp);
 	hscan->rs_ctup.t_len = ItemIdGetLength(lp);
 	hscan->rs_ctup.t_tableOid = scan->rs_rd->rd_id;
 	ItemPointerSet(&hscan->rs_ctup.t_self, hscan->rs_cblock, targoffset);

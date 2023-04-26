@@ -590,21 +590,3 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 
 -- end
-
---
---compatible oracle group by test
---
-set compatible_mode to oracle;
-
-create table students(student_id varchar(20),student_name varchar(40),student_pid int);
-insert into students values('20200201','李四',1), ('20200202','张三',1), ('20200203','李四',2), ('20200204','张三',2);
-select student_name from students group by student_pid;
-select student_id,student_name from students group by student_id;
-
---add primary key
-ALTER TABLE students ADD CONSTRAINT stu_id PRIMARY KEY (student_id);
-select student_id,student_name from students group by student_id;
-select student_id,student_name from students group by student_id,student_name order by student_id;
-select student_name from students group by student_id;
-select student_name from students group by student_pid;
-set compatible_mode to postgres;

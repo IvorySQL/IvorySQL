@@ -3,7 +3,7 @@
  * seclabel.c
  *	  routines to support security label feature.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * -------------------------------------------------------------------------
@@ -92,9 +92,6 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_TSPARSER:
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
-		case OBJECT_PACKAGE:
-		case OBJECT_PACKAGE_BODY:
-		case OBJECT_VARIABLE:
 			return false;
 
 			/*

@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 # Verify WAL consistency
 
@@ -60,7 +60,7 @@ begin
 end
 $$;
 });
-my $end_lsn = $whiskey->lsn('insert');
+my $end_lsn = $whiskey->lsn('flush');
 
 my ($ret, $out, $err) = $whiskey->psql(
 	'postgres', qq{
@@ -70,6 +70,6 @@ my ($ret, $out, $err) = $whiskey->psql(
 	});
 cmp_ok($out, '>=', 1);
 
-$whiskey->wait_for_catchup($charlie, 'replay', $whiskey->lsn('insert'));
+$whiskey->wait_for_replay_catchup($charlie);
 
 done_testing();

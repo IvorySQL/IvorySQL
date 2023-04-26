@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
@@ -105,6 +105,35 @@ unlike(
 	$log_contents,
 	qr/Query Parameters:/,
 	"query parameters not logged when disabled, text mode");
+
+# Query Identifier.
+# Logging enabled.
+$log_contents = query_log(
+	$node,
+	"SELECT * FROM pg_class;",
+	{
+		"auto_explain.log_verbose" => "on",
+		"compute_query_id"         => "on"
+	});
+
+like(
+	$log_contents,
+	qr/Query Identifier:/,
+	"query identifier logged with compute_query_id=on, text mode");
+
+# Logging disabled.
+$log_contents = query_log(
+	$node,
+	"SELECT * FROM pg_class;",
+	{
+		"auto_explain.log_verbose" => "on",
+		"compute_query_id"         => "regress"
+	});
+
+unlike(
+	$log_contents,
+	qr/Query Identifier:/,
+	"query identifier not logged with compute_query_id=regress, text mode");
 
 # JSON format.
 $log_contents = query_log(

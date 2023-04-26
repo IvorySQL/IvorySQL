@@ -9,7 +9,7 @@
  *	  polluting the namespace with lots of stuff...
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/c.h
@@ -181,6 +181,17 @@
 #define pg_attribute_noreturn() __attribute__((noreturn))
 #define pg_attribute_packed() __attribute__((packed))
 #define HAVE_PG_ATTRIBUTE_NORETURN 1
+#elif defined(_MSC_VER)
+/*
+ * MSVC supports aligned.  noreturn is also possible but in MSVC it is
+ * declared before the definition while pg_attribute_noreturn() macro
+ * is currently used after the definition.
+ *
+ * Packing is also possible but only by wrapping the entire struct definition
+ * which doesn't fit into our current macro declarations.
+ */
+#define pg_attribute_aligned(a) __declspec(align(a))
+#define pg_attribute_noreturn()
 #else
 /*
  * NB: aligned and packed are not given default definitions because they
@@ -313,7 +324,25 @@
  * pretty trivial: VA_ARGS_NARGS_() returns its 64th argument, and we set up
  * the call so that that is the appropriate one of the list of constants.
  * This idea is due to Laurent Deniau.
+ *
+ * MSVC has an implementation of __VA_ARGS__ that doesn't conform to the
+ * standard unless you use the /Zc:preprocessor compiler flag, but that
+ * isn't available before Visual Studio 2019.  For now, use a different
+ * definition that also works on older compilers.
  */
+#ifdef _MSC_VER
+#define EXPAND(args) args
+#define VA_ARGS_NARGS(...) \
+	VA_ARGS_NARGS_ EXPAND((__VA_ARGS__, \
+				   63,62,61,60,                   \
+				   59,58,57,56,55,54,53,52,51,50, \
+				   49,48,47,46,45,44,43,42,41,40, \
+				   39,38,37,36,35,34,33,32,31,30, \
+				   29,28,27,26,25,24,23,22,21,20, \
+				   19,18,17,16,15,14,13,12,11,10, \
+				   9, 8, 7, 6, 5, 4, 3, 2, 1, 0))
+#else
+
 #define VA_ARGS_NARGS(...) \
 	VA_ARGS_NARGS_(__VA_ARGS__, \
 				   63,62,61,60,                   \
@@ -323,6 +352,8 @@
 				   29,28,27,26,25,24,23,22,21,20, \
 				   19,18,17,16,15,14,13,12,11,10, \
 				   9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#endif
+
 #define VA_ARGS_NARGS_( \
 	_01,_02,_03,_04,_05,_06,_07,_08,_09,_10, \
 	_11,_12,_13,_14,_15,_16,_17,_18,_19,_20, \
@@ -349,6 +380,34 @@ typedef void (*pg_funcptr_t) (void);
  * work with MSVC and with C++ compilers.
  */
 #define FLEXIBLE_ARRAY_MEMBER	/* empty */
+
+/*
+ * Does the compiler support #pragma GCC system_header? We optionally use it
+ * to avoid warnings that we can't fix (e.g. in the perl headers).
+ * See https://gcc.gnu.org/onlinedocs/cpp/System-Headers.html
+ *
+ * Headers for which we do not want to show compiler warnings can,
+ * conditionally, use #pragma GCC system_header to avoid warnings. Obviously
+ * this should only be used for external headers over which we do not have
+ * control.
+ *
+ * Support for the pragma is tested here, instead of during configure, as gcc
+ * also warns about the pragma being used in a .c file. It's surprisingly hard
+ * to get autoconf to use .h as the file-ending. Looks like gcc has
+ * implemented the pragma since the 2000, so this test should suffice.
+ *
+ *
+ * Alternatively, we could add the include paths for problematic headers with
+ * -isystem, but that is a larger hammer and is harder to search for.
+ *
+ * A more granular alternative would be to use #pragma GCC diagnostic
+ * push/ignored/pop, but gcc warns about unknown warnings being ignored, so
+ * every to-be-ignored-temporarily compiler warning would require its own
+ * pg_config.h symbol and #ifdef.
+ */
+#ifdef __GNUC__
+#define HAVE_PRAGMA_GCC_SYSTEM_HEADER	1
+#endif
 
 
 /* ----------------------------------------------------------------
@@ -782,80 +841,42 @@ typedef NameData *Name;
 
 #define Assert(condition)	((void)true)
 #define AssertMacro(condition)	((void)true)
-#define AssertArg(condition)	((void)true)
-#define AssertState(condition)	((void)true)
-#define AssertPointerAlignment(ptr, bndr)	((void)true)
-#define Trap(condition, errorType)	((void)true)
-#define TrapMacro(condition, errorType) (true)
 
 #elif defined(FRONTEND)
 
 #include <assert.h>
 #define Assert(p) assert(p)
 #define AssertMacro(p)	((void) assert(p))
-#define AssertArg(condition) assert(condition)
-#define AssertState(condition) assert(condition)
-#define AssertPointerAlignment(ptr, bndr)	((void)true)
 
 #else							/* USE_ASSERT_CHECKING && !FRONTEND */
 
 /*
- * Trap
- *		Generates an exception if the given condition is true.
+ * Assert
+ *		Generates a fatal exception if the given condition is false.
  */
-#define Trap(condition, errorType) \
-	do { \
-		if (condition) \
-			ExceptionalCondition(#condition, (errorType), \
-								 __FILE__, __LINE__); \
-	} while (0)
-
-/*
- *	TrapMacro is the same as Trap but it's intended for use in macros:
- *
- *		#define foo(x) (AssertMacro(x != 0), bar(x))
- *
- *	Isn't CPP fun?
- */
-#define TrapMacro(condition, errorType) \
-	((bool) (! (condition) || \
-			 (ExceptionalCondition(#condition, (errorType), \
-								   __FILE__, __LINE__), 0)))
-
 #define Assert(condition) \
 	do { \
 		if (!(condition)) \
-			ExceptionalCondition(#condition, "FailedAssertion", \
-								 __FILE__, __LINE__); \
+			ExceptionalCondition(#condition, __FILE__, __LINE__); \
 	} while (0)
 
+/*
+ * AssertMacro is the same as Assert but it's suitable for use in
+ * expression-like macros, for example:
+ *
+ *		#define foo(x) (AssertMacro(x != 0), bar(x))
+ */
 #define AssertMacro(condition) \
 	((void) ((condition) || \
-			 (ExceptionalCondition(#condition, "FailedAssertion", \
-								   __FILE__, __LINE__), 0)))
+			 (ExceptionalCondition(#condition, __FILE__, __LINE__), 0)))
 
-#define AssertArg(condition) \
-	do { \
-		if (!(condition)) \
-			ExceptionalCondition(#condition, "BadArgument", \
-								 __FILE__, __LINE__); \
-	} while (0)
-
-#define AssertState(condition) \
-	do { \
-		if (!(condition)) \
-			ExceptionalCondition(#condition, "BadState", \
-								 __FILE__, __LINE__); \
-	} while (0)
+#endif							/* USE_ASSERT_CHECKING && !FRONTEND */
 
 /*
  * Check that `ptr' is `bndr' aligned.
  */
 #define AssertPointerAlignment(ptr, bndr) \
-	Trap(TYPEALIGN(bndr, (uintptr_t)(ptr)) != (uintptr_t)(ptr), \
-		 "UnalignedPointer")
-
-#endif							/* USE_ASSERT_CHECKING && !FRONTEND */
+	Assert(TYPEALIGN(bndr, (uintptr_t)(ptr)) == (uintptr_t)(ptr))
 
 /*
  * ExceptionalCondition is compiled into the backend whether or not
@@ -865,7 +886,6 @@ typedef NameData *Name;
  */
 #ifndef FRONTEND
 extern void ExceptionalCondition(const char *conditionName,
-								 const char *errorType,
 								 const char *fileName, int lineNumber) pg_attribute_noreturn();
 #endif
 
@@ -875,47 +895,50 @@ extern void ExceptionalCondition(const char *conditionName,
  * If the "condition" (a compile-time-constant expression) evaluates to false,
  * throw a compile error using the "errmessage" (a string literal).
  *
- * gcc 4.6 and up supports _Static_assert(), but there are bizarre syntactic
- * placement restrictions.  Macros StaticAssertStmt() and StaticAssertExpr()
+ * C11 has _Static_assert(), and most C99 compilers already support that.  For
+ * portability, we wrap it into StaticAssertDecl().  _Static_assert() is a
+ * "declaration", and so it must be placed where for example a variable
+ * declaration would be valid.  As long as we compile with
+ * -Wno-declaration-after-statement, that also means it cannot be placed after
+ * statements in a function.  Macros StaticAssertStmt() and StaticAssertExpr()
  * make it safe to use as a statement or in an expression, respectively.
- * The macro StaticAssertDecl() is suitable for use at file scope (outside of
- * any function).
  *
- * Otherwise we fall back on a kluge that assumes the compiler will complain
- * about a negative width for a struct bit-field.  This will not include a
- * helpful error message, but it beats not getting an error at all.
+ * For compilers without _Static_assert(), we fall back on a kluge that
+ * assumes the compiler will complain about a negative width for a struct
+ * bit-field.  This will not include a helpful error message, but it beats not
+ * getting an error at all.
  */
 #ifndef __cplusplus
 #ifdef HAVE__STATIC_ASSERT
+#define StaticAssertDecl(condition, errmessage) \
+	_Static_assert(condition, errmessage)
 #define StaticAssertStmt(condition, errmessage) \
 	do { _Static_assert(condition, errmessage); } while(0)
 #define StaticAssertExpr(condition, errmessage) \
 	((void) ({ StaticAssertStmt(condition, errmessage); true; }))
-#define StaticAssertDecl(condition, errmessage) \
-	_Static_assert(condition, errmessage)
 #else							/* !HAVE__STATIC_ASSERT */
+#define StaticAssertDecl(condition, errmessage) \
+	extern void static_assert_func(int static_assert_failure[(condition) ? 1 : -1])
 #define StaticAssertStmt(condition, errmessage) \
 	((void) sizeof(struct { int static_assert_failure : (condition) ? 1 : -1; }))
 #define StaticAssertExpr(condition, errmessage) \
 	StaticAssertStmt(condition, errmessage)
-#define StaticAssertDecl(condition, errmessage) \
-	extern void static_assert_func(int static_assert_failure[(condition) ? 1 : -1])
 #endif							/* HAVE__STATIC_ASSERT */
 #else							/* C++ */
 #if defined(__cpp_static_assert) && __cpp_static_assert >= 200410
+#define StaticAssertDecl(condition, errmessage) \
+	static_assert(condition, errmessage)
 #define StaticAssertStmt(condition, errmessage) \
 	static_assert(condition, errmessage)
 #define StaticAssertExpr(condition, errmessage) \
 	({ static_assert(condition, errmessage); })
-#define StaticAssertDecl(condition, errmessage) \
-	static_assert(condition, errmessage)
 #else							/* !__cpp_static_assert */
+#define StaticAssertDecl(condition, errmessage) \
+	extern void static_assert_func(int static_assert_failure[(condition) ? 1 : -1])
 #define StaticAssertStmt(condition, errmessage) \
 	do { struct static_assert_struct { int static_assert_failure : (condition) ? 1 : -1; }; } while(0)
 #define StaticAssertExpr(condition, errmessage) \
 	((void) ({ StaticAssertStmt(condition, errmessage); }))
-#define StaticAssertDecl(condition, errmessage) \
-	extern void static_assert_func(int static_assert_failure[(condition) ? 1 : -1])
 #endif							/* __cpp_static_assert */
 #endif							/* C++ */
 
@@ -963,12 +986,6 @@ extern void ExceptionalCondition(const char *conditionName,
  *		Return the minimum of two numbers.
  */
 #define Min(x, y)		((x) < (y) ? (x) : (y))
-
-/*
- * Abs
- *		Return the absolute value of the argument.
- */
-#define Abs(x)			((x) >= 0 ? (x) : -(x))
 
 
 /* Get a bit mask of the bits set in non-long aligned addresses */
@@ -1102,14 +1119,11 @@ extern void ExceptionalCondition(const char *conditionName,
 
 /*
  * Use this, not "char buf[BLCKSZ]", to declare a field or local variable
- * holding a page buffer, if that page might be accessed as a page and not
- * just a string of bytes.  Otherwise the variable might be under-aligned,
- * causing problems on alignment-picky hardware.  (In some places, we use
- * this to declare buffers even though we only pass them to read() and
- * write(), because copying to/from aligned buffers is usually faster than
- * using unaligned buffers.)  We include both "double" and "int64" in the
- * union to ensure that the compiler knows the value must be MAXALIGN'ed
- * (cf. configure's computation of MAXIMUM_ALIGNOF).
+ * holding a page buffer, if that page might be accessed as a page.  Otherwise
+ * the variable might be under-aligned, causing problems on alignment-picky
+ * hardware.  We include both "double" and "int64" in the union to ensure that
+ * the compiler knows the value must be MAXALIGN'ed (cf. configure's
+ * computation of MAXIMUM_ALIGNOF).
  */
 typedef union PGAlignedBlock
 {
@@ -1118,9 +1132,30 @@ typedef union PGAlignedBlock
 	int64		force_align_i64;
 } PGAlignedBlock;
 
+/*
+ * Use this to declare a field or local variable holding a page buffer, if that
+ * page might be accessed as a page or passed to an SMgr I/O function.  If
+ * allocating using the MemoryContext API, the aligned allocation functions
+ * should be used with PG_IO_ALIGN_SIZE.  This alignment may be more efficient
+ * for I/O in general, but may be strictly required on some platforms when
+ * using direct I/O.
+ */
+typedef union PGIOAlignedBlock
+{
+#ifdef pg_attribute_aligned
+	pg_attribute_aligned(PG_IO_ALIGN_SIZE)
+#endif
+	char		data[BLCKSZ];
+	double		force_align_d;
+	int64		force_align_i64;
+} PGIOAlignedBlock;
+
 /* Same, but for an XLOG_BLCKSZ-sized buffer */
 typedef union PGAlignedXLogBlock
 {
+#ifdef pg_attribute_aligned
+	pg_attribute_aligned(PG_IO_ALIGN_SIZE)
+#endif
 	char		data[XLOG_BLCKSZ];
 	double		force_align_d;
 	int64		force_align_i64;
@@ -1269,6 +1304,15 @@ extern int	fdatasync(int fildes);
 #else
 #define strtoi64(str, endptr, base) ((int64) strtoll(str, endptr, base))
 #define strtou64(str, endptr, base) ((uint64) strtoull(str, endptr, base))
+#endif
+
+/*
+ * Similarly, wrappers around labs()/llabs() matching our int64.
+ */
+#ifdef HAVE_LONG_INT_64
+#define i64abs(i) labs(i)
+#else
+#define i64abs(i) llabs(i)
 #endif
 
 /*

@@ -3,7 +3,7 @@
  *
  *	main source file
  *
- *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.c
  */
 
@@ -51,6 +51,7 @@
 #include "fe_utils/string_utils.h"
 #include "pg_upgrade.h"
 
+static void set_locale_and_encoding(void);
 static void prepare_new_cluster(void);
 static void prepare_new_globals(void);
 static void create_new_objects(void);
@@ -138,6 +139,8 @@ main(int argc, char **argv)
 		   "\n"
 		   "Performing Upgrade\n"
 		   "------------------");
+
+	set_locale_and_encoding();
 
 	prepare_new_cluster();
 
@@ -366,6 +369,76 @@ setup(char *argv0, bool *live_check)
 }
 
 
+/*
+ * Copy locale and encoding information into the new cluster's template0.
+ *
+ * We need to copy the encoding, datlocprovider, datcollate, datctype, and
+ * daticulocale. We don't need datcollversion because that's never set for
+ * template0.
+ */
+static void
+set_locale_and_encoding(void)
+{
+	PGconn		*conn_new_template1;
+	char		*datcollate_literal;
+	char		*datctype_literal;
+	char		*daticulocale_literal	= NULL;
+	DbLocaleInfo *locale = old_cluster.template0;
+
+	prep_status("Setting locale and encoding for new cluster");
+
+	/* escape literals with respect to new cluster */
+	conn_new_template1 = connectToServer(&new_cluster, "template1");
+
+	datcollate_literal = PQescapeLiteral(conn_new_template1,
+										 locale->db_collate,
+										 strlen(locale->db_collate));
+	datctype_literal = PQescapeLiteral(conn_new_template1,
+									   locale->db_ctype,
+									   strlen(locale->db_ctype));
+	if (locale->db_iculocale)
+		daticulocale_literal = PQescapeLiteral(conn_new_template1,
+											   locale->db_iculocale,
+											   strlen(locale->db_iculocale));
+	else
+		daticulocale_literal = pg_strdup("NULL");
+
+	/* update template0 in new cluster */
+	if (GET_MAJOR_VERSION(new_cluster.major_version) >= 1500)
+		PQclear(executeQueryOrDie(conn_new_template1,
+								  "UPDATE pg_catalog.pg_database "
+								  "  SET encoding = %d, "
+								  "      datlocprovider = '%c', "
+								  "      datcollate = %s, "
+								  "      datctype = %s, "
+								  "      daticulocale = %s "
+								  "  WHERE datname = 'template0' ",
+								  locale->db_encoding,
+								  locale->db_collprovider,
+								  datcollate_literal,
+								  datctype_literal,
+								  daticulocale_literal));
+	else
+		PQclear(executeQueryOrDie(conn_new_template1,
+								  "UPDATE pg_catalog.pg_database "
+								  "  SET encoding = %d, "
+								  "      datcollate = %s, "
+								  "      datctype = %s "
+								  "  WHERE datname = 'template0' ",
+								  locale->db_encoding,
+								  datcollate_literal,
+								  datctype_literal));
+
+	PQfreemem(datcollate_literal);
+	PQfreemem(datctype_literal);
+	PQfreemem(daticulocale_literal);
+
+	PQfinish(conn_new_template1);
+
+	check_ok();
+}
+
+
 static void
 prepare_new_cluster(void)
 {
@@ -487,8 +560,7 @@ create_new_objects(void)
 		 * tell pg_restore to drop and recreate it; otherwise we would fail to
 		 * propagate its database-level properties.
 		 */
-		if (strcmp(old_db->db_name, "postgres") == 0 ||
-			strcmp(old_db->db_name, "ivorysql") == 0)
+		if (strcmp(old_db->db_name, "postgres") == 0)
 			create_opts = "--clean --create";
 		else
 			create_opts = "--create";

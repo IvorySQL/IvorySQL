@@ -72,7 +72,9 @@ bbsink_server_new(bbsink *next, char *pathname)
 	if (!has_privs_of_role(GetUserId(), ROLE_PG_WRITE_SERVER_FILES))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser or a role with privileges of the pg_write_server_files role to create server backup")));
+				 errmsg("permission denied to create backup stored on server"),
+				 errdetail("Only roles with privileges of the \"%s\" role may create a backup stored on the server.",
+						   "pg_write_server_files")));
 	CommitTransactionCommand();
 
 	/*
@@ -86,7 +88,7 @@ bbsink_server_new(bbsink *next, char *pathname)
 	if (!is_absolute_path(pathname))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_NAME),
-				 errmsg("relative path not allowed for server backup")));
+				 errmsg("relative path not allowed for backup stored on server")));
 
 	switch (pg_check_dir(pathname))
 	{

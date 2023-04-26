@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
@@ -49,7 +49,6 @@ sub run_test
 		'SELECT datname FROM pg_database ORDER BY 1',
 		qq(beforepromotion
 inprimary
-ivorysql
 postgres
 standby_afterpromotion
 template0

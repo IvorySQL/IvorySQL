@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2023, PostgreSQL Global Development Group
  *
  * src/bin/psql/startup.c
  */
@@ -203,7 +203,6 @@ main(int argc, char *argv[])
 	SetVariable(pset.vars, "PROMPT1", DEFAULT_PROMPT1);
 	SetVariable(pset.vars, "PROMPT2", DEFAULT_PROMPT2);
 	SetVariable(pset.vars, "PROMPT3", DEFAULT_PROMPT3);
-	SetVariable(pset.vars, "PLISQL", DEFAULT_PLISQL); /* for plisql language */
 	SetVariableBool(pset.vars, "SHOW_ALL_RESULTS");
 
 	parse_psql_options(argc, argv, &options);
@@ -248,8 +247,8 @@ main(int argc, char *argv[])
 	do
 	{
 #define PARAMS_ARRAY_SIZE	8
-		const char **keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
-		const char **values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+		const char **keywords = pg_malloc_array(const char *, PARAMS_ARRAY_SIZE);
+		const char **values = pg_malloc_array(const char *, PARAMS_ARRAY_SIZE);
 
 		keywords[0] = "host";
 		values[0] = options.host;
@@ -261,7 +260,7 @@ main(int argc, char *argv[])
 		values[3] = password;
 		keywords[4] = "dbname"; /* see do_connect() */
 		values[4] = (options.list_dbs && options.dbname == NULL) ?
-			"ivorysql" : options.dbname;
+			"postgres" : options.dbname;
 		keywords[5] = "fallback_application_name";
 		values[5] = pset.progname;
 		keywords[6] = "client_encoding";
@@ -751,7 +750,7 @@ simple_action_list_append(SimpleActionList *list,
 {
 	SimpleActionListCell *cell;
 
-	cell = (SimpleActionListCell *) pg_malloc(sizeof(SimpleActionListCell));
+	cell = pg_malloc_object(SimpleActionListCell);
 
 	cell->next = NULL;
 	cell->action = action;

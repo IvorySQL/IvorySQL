@@ -3,7 +3,7 @@
  *
  *	server checks and output routines
  *
- *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/check.c
  */
 
@@ -16,9 +16,6 @@
 #include "pg_upgrade.h"
 
 static void check_new_cluster_is_empty(void);
-static void check_databases_are_compatible(void);
-static void check_locale_and_encoding(DbInfo *olddb, DbInfo *newdb);
-static bool equivalent_locale(int category, const char *loca, const char *locb);
 static void check_is_install_user(ClusterInfo *cluster);
 static void check_proper_datallowconn(ClusterInfo *cluster);
 static void check_for_prepared_transactions(ClusterInfo *cluster);
@@ -28,11 +25,11 @@ static void check_for_incompatible_polymorphics(ClusterInfo *cluster);
 static void check_for_tables_with_oids(ClusterInfo *cluster);
 static void check_for_composite_data_type_usage(ClusterInfo *cluster);
 static void check_for_reg_data_type_usage(ClusterInfo *cluster);
+static void check_for_aclitem_data_type_usage(ClusterInfo *cluster);
 static void check_for_jsonb_9_4_usage(ClusterInfo *cluster);
 static void check_for_pg_role_prefix(ClusterInfo *cluster);
 static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
-static char *get_canonical_locale_name(int category, const char *locale);
 
 
 /*
@@ -106,6 +103,13 @@ check_and_dump_old_cluster(bool live_check)
 	check_for_composite_data_type_usage(&old_cluster);
 	check_for_reg_data_type_usage(&old_cluster);
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
+
+	/*
+	 * PG 16 increased the size of the 'aclitem' type, which breaks the on-disk
+	 * format for existing data.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1500)
+		check_for_aclitem_data_type_usage(&old_cluster);
 
 	/*
 	 * PG 14 changed the function signature of encoding conversion functions.
@@ -186,7 +190,6 @@ check_new_cluster(void)
 	get_db_and_rel_infos(&new_cluster);
 
 	check_new_cluster_is_empty();
-	check_databases_are_compatible();
 
 	check_loadable_libraries();
 
@@ -341,94 +344,6 @@ check_cluster_compatibility(bool live_check)
 }
 
 
-/*
- * check_locale_and_encoding()
- *
- * Check that locale and encoding of a database in the old and new clusters
- * are compatible.
- */
-static void
-check_locale_and_encoding(DbInfo *olddb, DbInfo *newdb)
-{
-	if (olddb->db_encoding != newdb->db_encoding)
-		pg_fatal("encodings for database \"%s\" do not match:  old \"%s\", new \"%s\"",
-				 olddb->db_name,
-				 pg_encoding_to_char(olddb->db_encoding),
-				 pg_encoding_to_char(newdb->db_encoding));
-	if (!equivalent_locale(LC_COLLATE, olddb->db_collate, newdb->db_collate))
-		pg_fatal("lc_collate values for database \"%s\" do not match:  old \"%s\", new \"%s\"",
-				 olddb->db_name, olddb->db_collate, newdb->db_collate);
-	if (!equivalent_locale(LC_CTYPE, olddb->db_ctype, newdb->db_ctype))
-		pg_fatal("lc_ctype values for database \"%s\" do not match:  old \"%s\", new \"%s\"",
-				 olddb->db_name, olddb->db_ctype, newdb->db_ctype);
-	if (olddb->db_collprovider != newdb->db_collprovider)
-		pg_fatal("locale providers for database \"%s\" do not match:  old \"%s\", new \"%s\"",
-				 olddb->db_name,
-				 collprovider_name(olddb->db_collprovider),
-				 collprovider_name(newdb->db_collprovider));
-	if ((olddb->db_iculocale == NULL && newdb->db_iculocale != NULL) ||
-		(olddb->db_iculocale != NULL && newdb->db_iculocale == NULL) ||
-		(olddb->db_iculocale != NULL && newdb->db_iculocale != NULL && strcmp(olddb->db_iculocale, newdb->db_iculocale) != 0))
-		pg_fatal("ICU locale values for database \"%s\" do not match:  old \"%s\", new \"%s\"",
-				 olddb->db_name,
-				 olddb->db_iculocale ? olddb->db_iculocale : "(null)",
-				 newdb->db_iculocale ? newdb->db_iculocale : "(null)");
-}
-
-/*
- * equivalent_locale()
- *
- * Best effort locale-name comparison.  Return false if we are not 100% sure
- * the locales are equivalent.
- *
- * Note: The encoding parts of the names are ignored. This function is
- * currently used to compare locale names stored in pg_database, and
- * pg_database contains a separate encoding field. That's compared directly
- * in check_locale_and_encoding().
- */
-static bool
-equivalent_locale(int category, const char *loca, const char *locb)
-{
-	const char *chara;
-	const char *charb;
-	char	   *canona;
-	char	   *canonb;
-	int			lena;
-	int			lenb;
-
-	/*
-	 * If the names are equal, the locales are equivalent. Checking this first
-	 * avoids calling setlocale() in the common case that the names are equal.
-	 * That's a good thing, if setlocale() is buggy, for example.
-	 */
-	if (pg_strcasecmp(loca, locb) == 0)
-		return true;
-
-	/*
-	 * Not identical. Canonicalize both names, remove the encoding parts, and
-	 * try again.
-	 */
-	canona = get_canonical_locale_name(category, loca);
-	chara = strrchr(canona, '.');
-	lena = chara ? (chara - canona) : strlen(canona);
-
-	canonb = get_canonical_locale_name(category, locb);
-	charb = strrchr(canonb, '.');
-	lenb = charb ? (charb - canonb) : strlen(canonb);
-
-	if (lena == lenb && pg_strncasecmp(canona, canonb, lena) == 0)
-	{
-		pg_free(canona);
-		pg_free(canonb);
-		return true;
-	}
-
-	pg_free(canona);
-	pg_free(canonb);
-	return false;
-}
-
-
 static void
 check_new_cluster_is_empty(void)
 {
@@ -448,35 +363,6 @@ check_new_cluster_is_empty(void)
 						 new_cluster.dbarr.dbs[dbnum].db_name,
 						 rel_arr->rels[relnum].nspname,
 						 rel_arr->rels[relnum].relname);
-		}
-	}
-}
-
-/*
- * Check that every database that already exists in the new cluster is
- * compatible with the corresponding database in the old one.
- */
-static void
-check_databases_are_compatible(void)
-{
-	int			newdbnum;
-	int			olddbnum;
-	DbInfo	   *newdbinfo;
-	DbInfo	   *olddbinfo;
-
-	for (newdbnum = 0; newdbnum < new_cluster.dbarr.ndbs; newdbnum++)
-	{
-		newdbinfo = &new_cluster.dbarr.dbs[newdbnum];
-
-		/* Find the corresponding database in the old cluster */
-		for (olddbnum = 0; olddbnum < old_cluster.dbarr.ndbs; olddbnum++)
-		{
-			olddbinfo = &old_cluster.dbarr.dbs[olddbnum];
-			if (strcmp(newdbinfo->db_name, olddbinfo->db_name) == 0)
-			{
-				check_locale_and_encoding(olddbinfo, newdbinfo);
-				break;
-			}
 		}
 	}
 }
@@ -682,7 +568,7 @@ check_is_install_user(ClusterInfo *cluster)
 	 * users might match users defined in the old cluster and generate an
 	 * error during pg_dump restore.
 	 */
-	if (cluster == &new_cluster && atooid(PQgetvalue(res, 0, 0)) != 1)
+	if (cluster == &new_cluster && strcmp(PQgetvalue(res, 0, 0), "1") != 0)
 		pg_fatal("Only the install user can be defined in the new cluster.");
 
 	PQclear(res);
@@ -1218,7 +1104,9 @@ check_for_composite_data_type_usage(ClusterInfo *cluster)
 
 	prep_status("Checking for system-defined composite types in user tables");
 
-	snprintf(output_path, sizeof(output_path), "tables_using_composite.txt");
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "tables_using_composite.txt");
 
 	/*
 	 * Look for composite types that were made during initdb *or* belong to
@@ -1275,7 +1163,9 @@ check_for_reg_data_type_usage(ClusterInfo *cluster)
 
 	prep_status("Checking for reg* data types in user tables");
 
-	snprintf(output_path, sizeof(output_path), "tables_using_reg.txt");
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "tables_using_reg.txt");
 
 	/*
 	 * Note: older servers will not have all of these reg* types, so we have
@@ -1315,6 +1205,33 @@ check_for_reg_data_type_usage(ClusterInfo *cluster)
 		check_ok();
 }
 
+/*
+ * check_for_aclitem_data_type_usage
+ *
+ *	aclitem changed its storage format in 16, so check for it.
+ */
+static void
+check_for_aclitem_data_type_usage(ClusterInfo *cluster)
+{
+	char		output_path[MAXPGPATH];
+
+	prep_status("Checking for incompatible aclitem data type in user tables");
+
+	snprintf(output_path, sizeof(output_path), "tables_using_aclitem.txt");
+
+	if (check_for_data_type_usage(cluster, "pg_catalog.aclitem", output_path))
+	{
+		pg_log(PG_REPORT, "fatal");
+		pg_fatal("Your installation contains the \"aclitem\" data type in user tables.\n"
+				 "The internal format of \"aclitem\" changed in PostgreSQL version 16\n"
+				 "so this cluster cannot currently be upgraded.  You can drop the\n"
+				 "problem columns and restart the upgrade.  A list of the problem\n"
+				 "columns is in the file:\n"
+				 "    %s", output_path);
+	}
+	else
+		check_ok();
+}
 
 /*
  * check_for_jsonb_9_4_usage()
@@ -1328,7 +1245,9 @@ check_for_jsonb_9_4_usage(ClusterInfo *cluster)
 
 	prep_status("Checking for incompatible \"jsonb\" data type");
 
-	snprintf(output_path, sizeof(output_path), "tables_using_jsonb.txt");
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "tables_using_jsonb.txt");
 
 	if (check_for_data_type_usage(cluster, "pg_catalog.jsonb", output_path))
 	{
@@ -1354,27 +1273,52 @@ check_for_pg_role_prefix(ClusterInfo *cluster)
 {
 	PGresult   *res;
 	PGconn	   *conn = connectToServer(cluster, "template1");
+	int			ntups;
+	int			i_roloid;
+	int			i_rolname;
+	FILE	   *script = NULL;
+	char		output_path[MAXPGPATH];
 
 	prep_status("Checking for roles starting with \"pg_\"");
 
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "pg_role_prefix.txt");
+
 	res = executeQueryOrDie(conn,
-							"SELECT * "
+							"SELECT oid AS roloid, rolname "
 							"FROM pg_catalog.pg_roles "
 							"WHERE rolname ~ '^pg_'");
 
-	if (PQntuples(res) != 0)
+	ntups = PQntuples(res);
+	i_roloid = PQfnumber(res, "roloid");
+	i_rolname = PQfnumber(res, "rolname");
+	for (int rowno = 0; rowno < ntups; rowno++)
 	{
-		if (cluster == &old_cluster)
-			pg_fatal("The source cluster contains roles starting with \"pg_\"");
-		else
-			pg_fatal("The target cluster contains roles starting with \"pg_\"");
+		if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+			pg_fatal("could not open file \"%s\": %s",
+					 output_path, strerror(errno));
+		fprintf(script, "%s (oid=%s)\n",
+				PQgetvalue(res, rowno, i_rolname),
+				PQgetvalue(res, rowno, i_roloid));
 	}
 
 	PQclear(res);
 
 	PQfinish(conn);
 
-	check_ok();
+	if (script)
+	{
+		fclose(script);
+		pg_log(PG_REPORT, "fatal");
+		pg_fatal("Your installation contains roles starting with \"pg_\".\n"
+				 "\"pg_\" is a reserved prefix for system roles, the cluster\n"
+				 "cannot be upgraded until these roles are renamed.\n"
+				 "A list of roles starting with \"pg_\" is in the file:\n"
+				 "    %s", output_path);
+	}
+	else
+		check_ok();
 }
 
 /*
@@ -1457,42 +1401,4 @@ check_for_user_defined_encoding_conversions(ClusterInfo *cluster)
 	}
 	else
 		check_ok();
-}
-
-
-/*
- * get_canonical_locale_name
- *
- * Send the locale name to the system, and hope we get back a canonical
- * version.  This should match the backend's check_locale() function.
- */
-static char *
-get_canonical_locale_name(int category, const char *locale)
-{
-	char	   *save;
-	char	   *res;
-
-	/* get the current setting, so we can restore it. */
-	save = setlocale(category, NULL);
-	if (!save)
-		pg_fatal("failed to get the current locale");
-
-	/* 'save' may be pointing at a modifiable scratch variable, so copy it. */
-	save = pg_strdup(save);
-
-	/* set the locale with setlocale, to see if it accepts it. */
-	res = setlocale(category, locale);
-
-	if (!res)
-		pg_fatal("failed to get system locale name for \"%s\"", locale);
-
-	res = pg_strdup(res);
-
-	/* restore old value. */
-	if (!setlocale(category, save))
-		pg_fatal("failed to restore old locale \"%s\"", save);
-
-	pg_free(save);
-
-	return res;
 }

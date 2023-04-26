@@ -38,7 +38,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/initdb/initdb.c
@@ -53,6 +53,9 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#ifdef USE_ICU
+#include <unicode/ucol.h>
+#endif
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
@@ -81,6 +84,13 @@
 
 /* Ideally this would be in a .h file, but it hardly seems worth the trouble */
 extern const char *select_default_timezone(const char *share_path);
+
+/* simple list of strings */
+typedef struct _stringlist
+{
+	char	   *str;
+	struct _stringlist *next;
+} _stringlist;
 
 static const char *const auth_methods_host[] = {
 	"trust", "reject", "scram-sha-256", "md5", "password", "ident", "radius",
@@ -119,14 +129,6 @@ static const char *const auth_methods_local[] = {
 };
 
 /*
- * Compatibility options. Ideally this would be in a .h file, but it
- * hardly seems worth the trouble.
- */
-static const char *const compat_options[] = {
-	"postgres", "oracle", NULL
-};
-
-/*
  * these values are passed in by makefile defines
  */
 static char *share_path = NULL;
@@ -141,8 +143,13 @@ static char *lc_monetary = NULL;
 static char *lc_numeric = NULL;
 static char *lc_time = NULL;
 static char *lc_messages = NULL;
+#ifdef USE_ICU
+static char locale_provider = COLLPROVIDER_ICU;
+#else
 static char locale_provider = COLLPROVIDER_LIBC;
+#endif
 static char *icu_locale = NULL;
+static char *icu_rules = NULL;
 static const char *default_text_search_config = NULL;
 static char *username = NULL;
 static bool pwprompt = false;
@@ -150,6 +157,8 @@ static char *pwfilename = NULL;
 static char *superuser_password = NULL;
 static const char *authmethodhost = NULL;
 static const char *authmethodlocal = NULL;
+static _stringlist *extra_guc_names = NULL;
+static _stringlist *extra_guc_values = NULL;
 static bool debug = false;
 static bool noclean = false;
 static bool noinstructions = false;
@@ -160,7 +169,6 @@ static bool data_checksums = false;
 static char *xlog_dir = NULL;
 static char *str_wal_segment_size_mb = NULL;
 static int	wal_segment_size_mb;
-static char *compatible_mode = NULL;
 
 
 /* internal vars */
@@ -192,12 +200,6 @@ static int	n_connections = 10;
 static int	n_buffers = 50;
 static const char *dynamic_shared_memory_type = NULL;
 static const char *default_timezone = NULL;
-
-/*
- * IvorySQL defines
- */
-#define IVY_LOAD_CONFIG_FILE_NAME "ivy_module.config"
-#define IVY_CONFIG_EXT_MARKER '@'
 
 /*
  * Warning messages for authentication methods
@@ -257,7 +259,10 @@ static char backend_exec[MAXPGPATH];
 
 static char **replace_token(char **lines,
 							const char *token, const char *replacement);
-
+static char **replace_guc_value(char **lines,
+								const char *guc_name, const char *guc_value,
+								bool mark_as_comment);
+static bool guc_value_requires_quotes(const char *guc_value);
 static char **readfile(const char *path);
 static void writefile(char *path, char **lines);
 static FILE *popen_check(const char *command, const char *mode);
@@ -268,6 +273,7 @@ static void check_input(char *path);
 static void write_version_file(const char *extrapath);
 static void set_null_conf(void);
 static void test_config_settings(void);
+static bool test_specific_config_settings(int test_conns, int test_buffs);
 static void setup_config(void);
 static void bootstrap_template1(void);
 static void setup_auth(FILE *cmdfd);
@@ -280,24 +286,18 @@ static void setup_privileges(FILE *cmdfd);
 static void set_info_version(void);
 static void setup_schema(FILE *cmdfd);
 static void load_plpgsql(FILE *cmdfd);
-static void load_plisql(FILE *cmdfd);
-static void load_ivy_modules(FILE *cmdfd);
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
 static void make_postgres(FILE *cmdfd);
-static void make_ivorysql(FILE *cmdfd);
-static void trapsig(int signum);
+static void trapsig(SIGNAL_ARGS);
 static void check_ok(void);
 static char *escape_quotes(const char *src);
 static char *escape_quotes_bki(const char *src);
 static int	locale_date_order(const char *locale);
 static void check_locale_name(int category, const char *locale,
 							  char **canonname);
-static bool check_locale_encoding(const char *locale, int encoding);
+static bool check_locale_encoding(const char *locale, int user_enc);
 static void setlocales(void);
-static void check_compatible_mode(const char *option,
-								  const char *const *valid_options);
-static void remove_line_feed(char *str);
 static void usage(const char *progname);
 void		setup_pgdata(void);
 void		setup_bin_paths(const char *argv0);
@@ -381,8 +381,32 @@ escape_quotes_bki(const char *src)
 }
 
 /*
- * make a copy of the array of lines, with token replaced by replacement
+ * Add an item at the end of a stringlist.
+ */
+static void
+add_stringlist_item(_stringlist **listhead, const char *str)
+{
+	_stringlist *newentry = pg_malloc(sizeof(_stringlist));
+	_stringlist *oldentry;
+
+	newentry->str = pg_strdup(str);
+	newentry->next = NULL;
+	if (*listhead == NULL)
+		*listhead = newentry;
+	else
+	{
+		for (oldentry = *listhead; oldentry->next; oldentry = oldentry->next)
+			 /* skip */ ;
+		oldentry->next = newentry;
+	}
+}
+
+/*
+ * Modify the array of lines, replacing "token" by "replacement"
  * the first time it occurs on each line.
+ *
+ * The array must be a malloc'd array of individually malloc'd strings.
+ * We free any discarded strings.
  *
  * This does most of what sed was used for in the shell script, but
  * doesn't need any regexp stuff.
@@ -390,34 +414,23 @@ escape_quotes_bki(const char *src)
 static char **
 replace_token(char **lines, const char *token, const char *replacement)
 {
-	int			numlines = 1;
-	int			i;
-	char	  **result;
 	int			toklen,
 				replen,
 				diff;
-
-	for (i = 0; lines[i]; i++)
-		numlines++;
-
-	result = (char **) pg_malloc(numlines * sizeof(char *));
 
 	toklen = strlen(token);
 	replen = strlen(replacement);
 	diff = replen - toklen;
 
-	for (i = 0; i < numlines; i++)
+	for (int i = 0; lines[i]; i++)
 	{
 		char	   *where;
 		char	   *newline;
 		int			pre;
 
-		/* just copy pointer if NULL or no change needed */
-		if (lines[i] == NULL || (where = strstr(lines[i], token)) == NULL)
-		{
-			result[i] = lines[i];
+		/* nothing to do if no change needed */
+		if ((where = strstr(lines[i], token)) == NULL)
 			continue;
-		}
 
 		/* if we get here a change is needed - set up new line */
 
@@ -431,14 +444,170 @@ replace_token(char **lines, const char *token, const char *replacement)
 
 		strcpy(newline + pre + replen, lines[i] + pre + toklen);
 
-		result[i] = newline;
+		free(lines[i]);
+		lines[i] = newline;
 	}
 
-	return result;
+	return lines;
+}
+
+/*
+ * Modify the array of lines, replacing the possibly-commented-out
+ * assignment of parameter guc_name with a live assignment of guc_value.
+ * The value will be suitably quoted.
+ *
+ * If mark_as_comment is true, the replacement line is prefixed with '#'.
+ * This is used for fixing up cases where the effective default might not
+ * match what is in postgresql.conf.sample.
+ *
+ * We assume there's at most one matching assignment.  If we find no match,
+ * append a new line with the desired assignment.
+ *
+ * The array must be a malloc'd array of individually malloc'd strings.
+ * We free any discarded strings.
+ */
+static char **
+replace_guc_value(char **lines, const char *guc_name, const char *guc_value,
+				  bool mark_as_comment)
+{
+	int			namelen = strlen(guc_name);
+	PQExpBuffer newline = createPQExpBuffer();
+	int			i;
+
+	/* prepare the replacement line, except for possible comment and newline */
+	if (mark_as_comment)
+		appendPQExpBufferChar(newline, '#');
+	appendPQExpBuffer(newline, "%s = ", guc_name);
+	if (guc_value_requires_quotes(guc_value))
+		appendPQExpBuffer(newline, "'%s'", escape_quotes(guc_value));
+	else
+		appendPQExpBufferStr(newline, guc_value);
+
+	for (i = 0; lines[i]; i++)
+	{
+		const char *where;
+
+		/*
+		 * Look for a line assigning to guc_name.  Typically it will be
+		 * preceded by '#', but that might not be the case if a -c switch
+		 * overrides a previous assignment.  We allow leading whitespace too,
+		 * although normally there wouldn't be any.
+		 */
+		where = lines[i];
+		while (*where == '#' || isspace((unsigned char) *where))
+			where++;
+		if (strncmp(where, guc_name, namelen) != 0)
+			continue;
+		where += namelen;
+		while (isspace((unsigned char) *where))
+			where++;
+		if (*where != '=')
+			continue;
+
+		/* found it -- append the original comment if any */
+		where = strrchr(where, '#');
+		if (where)
+		{
+			/*
+			 * We try to preserve original indentation, which is tedious.
+			 * oldindent and newindent are measured in de-tab-ified columns.
+			 */
+			const char *ptr;
+			int			oldindent = 0;
+			int			newindent;
+
+			for (ptr = lines[i]; ptr < where; ptr++)
+			{
+				if (*ptr == '\t')
+					oldindent += 8 - (oldindent % 8);
+				else
+					oldindent++;
+			}
+			/* ignore the possibility of tabs in guc_value */
+			newindent = newline->len;
+			/* append appropriate tabs and spaces, forcing at least one */
+			oldindent = Max(oldindent, newindent + 1);
+			while (newindent < oldindent)
+			{
+				int			newindent_if_tab = newindent + 8 - (newindent % 8);
+
+				if (newindent_if_tab <= oldindent)
+				{
+					appendPQExpBufferChar(newline, '\t');
+					newindent = newindent_if_tab;
+				}
+				else
+				{
+					appendPQExpBufferChar(newline, ' ');
+					newindent++;
+				}
+			}
+			/* and finally append the old comment */
+			appendPQExpBufferStr(newline, where);
+			/* we'll have appended the original newline; don't add another */
+		}
+		else
+			appendPQExpBufferChar(newline, '\n');
+
+		free(lines[i]);
+		lines[i] = newline->data;
+
+		break;					/* assume there's only one match */
+	}
+
+	if (lines[i] == NULL)
+	{
+		/*
+		 * No match, so append a new entry.  (We rely on the bootstrap server
+		 * to complain if it's not a valid GUC name.)
+		 */
+		appendPQExpBufferChar(newline, '\n');
+		lines = pg_realloc_array(lines, char *, i + 2);
+		lines[i++] = newline->data;
+		lines[i] = NULL;		/* keep the array null-terminated */
+	}
+
+	free(newline);				/* but don't free newline->data */
+
+	return lines;
+}
+
+/*
+ * Decide if we should quote a replacement GUC value.  We aren't too tense
+ * here, but we'd like to avoid quoting simple identifiers and numbers
+ * with units, which are common cases.
+ */
+static bool
+guc_value_requires_quotes(const char *guc_value)
+{
+	/* Don't use <ctype.h> macros here, they might accept too much */
+#define LETTERS	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+#define DIGITS	"0123456789"
+
+	if (*guc_value == '\0')
+		return true;			/* empty string must be quoted */
+	if (strchr(LETTERS, *guc_value))
+	{
+		if (strspn(guc_value, LETTERS DIGITS) == strlen(guc_value))
+			return false;		/* it's an identifier */
+		return true;			/* nope */
+	}
+	if (strchr(DIGITS, *guc_value))
+	{
+		/* skip over digits */
+		guc_value += strspn(guc_value, DIGITS);
+		/* there can be zero or more unit letters after the digits */
+		if (strspn(guc_value, LETTERS) == strlen(guc_value))
+			return false;		/* it's a number, possibly with units */
+		return true;			/* nope */
+	}
+	return true;				/* all else must be quoted */
 }
 
 /*
  * get the lines from a text file
+ *
+ * The result is a malloc'd array of individually malloc'd strings.
  */
 static char **
 readfile(const char *path)
@@ -481,6 +650,9 @@ readfile(const char *path)
 /*
  * write an array of lines to a file
  *
+ * "lines" must be a malloc'd array of individually malloc'd strings.
+ * All that data is freed here.
+ *
  * This is only used to write text files.  Use fopen "w" not PG_BINARY_W
  * so that the resulting configuration files are nicely editable on Windows.
  */
@@ -500,6 +672,7 @@ writefile(char *path, char **lines)
 	}
 	if (fclose(out_file))
 		pg_fatal("could not close file \"%s\": %m", path);
+	free(lines);
 }
 
 /*
@@ -894,11 +1067,9 @@ test_config_settings(void)
 		400, 300, 200, 100, 50
 	};
 
-	char		cmd[MAXPGPATH];
 	const int	connslen = sizeof(trial_conns) / sizeof(int);
 	const int	bufslen = sizeof(trial_bufs) / sizeof(int);
 	int			i,
-				status,
 				test_conns,
 				test_buffs,
 				ok_buffers = 0;
@@ -924,19 +1095,7 @@ test_config_settings(void)
 		test_conns = trial_conns[i];
 		test_buffs = MIN_BUFS_FOR_CONNS(test_conns);
 
-		snprintf(cmd, sizeof(cmd),
-				 "\"%s\" --check %s %s "
-				 "-c max_connections=%d "
-				 "-c shared_buffers=%d "
-				 "-c dynamic_shared_memory_type=%s "
-				 "< \"%s\" > \"%s\" 2>&1",
-				 backend_exec, boot_options, extra_options,
-				 test_conns, test_buffs,
-				 dynamic_shared_memory_type,
-				 DEVNULL, DEVNULL);
-		fflush(NULL);
-		status = system(cmd);
-		if (status == 0)
+		if (test_specific_config_settings(test_conns, test_buffs))
 		{
 			ok_buffers = test_buffs;
 			break;
@@ -961,19 +1120,7 @@ test_config_settings(void)
 			break;
 		}
 
-		snprintf(cmd, sizeof(cmd),
-				 "\"%s\" --check %s %s "
-				 "-c max_connections=%d "
-				 "-c shared_buffers=%d "
-				 "-c dynamic_shared_memory_type=%s "
-				 "< \"%s\" > \"%s\" 2>&1",
-				 backend_exec, boot_options, extra_options,
-				 n_connections, test_buffs,
-				 dynamic_shared_memory_type,
-				 DEVNULL, DEVNULL);
-		fflush(NULL);
-		status = system(cmd);
-		if (status == 0)
+		if (test_specific_config_settings(n_connections, test_buffs))
 			break;
 	}
 	n_buffers = test_buffs;
@@ -987,6 +1134,48 @@ test_config_settings(void)
 	fflush(stdout);
 	default_timezone = select_default_timezone(share_path);
 	printf("%s\n", default_timezone ? default_timezone : "GMT");
+}
+
+/*
+ * Test a specific combination of configuration settings.
+ */
+static bool
+test_specific_config_settings(int test_conns, int test_buffs)
+{
+	PQExpBuffer cmd = createPQExpBuffer();
+	_stringlist *gnames,
+			   *gvalues;
+	int			status;
+
+	/* Set up the test postmaster invocation */
+	printfPQExpBuffer(cmd,
+					  "\"%s\" --check %s %s "
+					  "-c max_connections=%d "
+					  "-c shared_buffers=%d "
+					  "-c dynamic_shared_memory_type=%s",
+					  backend_exec, boot_options, extra_options,
+					  test_conns, test_buffs,
+					  dynamic_shared_memory_type);
+
+	/* Add any user-given setting overrides */
+	for (gnames = extra_guc_names, gvalues = extra_guc_values;
+		 gnames != NULL;		/* assume lists have the same length */
+		 gnames = gnames->next, gvalues = gvalues->next)
+	{
+		appendPQExpBuffer(cmd, " -c %s=", gnames->str);
+		appendShellString(cmd, gvalues->str);
+	}
+
+	appendPQExpBuffer(cmd,
+					  " < \"%s\" > \"%s\" 2>&1",
+					  DEVNULL, DEVNULL);
+
+	fflush(NULL);
+	status = system(cmd->data);
+
+	destroyPQExpBuffer(cmd);
+
+	return (status == 0);
 }
 
 /*
@@ -1015,7 +1204,8 @@ setup_config(void)
 	char	  **conflines;
 	char		repltok[MAXPGPATH];
 	char		path[MAXPGPATH];
-	char	   *autoconflines[3];
+	_stringlist *gnames,
+			   *gvalues;
 
 	fputs(_("creating configuration files ... "), stdout);
 	fflush(stdout);
@@ -1024,120 +1214,117 @@ setup_config(void)
 
 	conflines = readfile(conf_file);
 
-	snprintf(repltok, sizeof(repltok), "max_connections = %d", n_connections);
-	conflines = replace_token(conflines, "#max_connections = 100", repltok);
+	snprintf(repltok, sizeof(repltok), "%d", n_connections);
+	conflines = replace_guc_value(conflines, "max_connections",
+								  repltok, false);
 
 	if ((n_buffers * (BLCKSZ / 1024)) % 1024 == 0)
-		snprintf(repltok, sizeof(repltok), "shared_buffers = %dMB",
+		snprintf(repltok, sizeof(repltok), "%dMB",
 				 (n_buffers * (BLCKSZ / 1024)) / 1024);
 	else
-		snprintf(repltok, sizeof(repltok), "shared_buffers = %dkB",
+		snprintf(repltok, sizeof(repltok), "%dkB",
 				 n_buffers * (BLCKSZ / 1024));
-	conflines = replace_token(conflines, "#shared_buffers = 128MB", repltok);
+	conflines = replace_guc_value(conflines, "shared_buffers",
+								  repltok, false);
 
-	snprintf(repltok, sizeof(repltok), "#unix_socket_directories = '%s'",
-			 DEFAULT_PGSOCKET_DIR);
-	conflines = replace_token(conflines, "#unix_socket_directories = '/tmp'",
-							  repltok);
+	/*
+	 * Hack: don't replace the LC_XXX GUCs when their value is 'C', because
+	 * replace_guc_value will decide not to quote that, which looks strange.
+	 */
+	if (strcmp(lc_messages, "C") != 0)
+		conflines = replace_guc_value(conflines, "lc_messages",
+									  lc_messages, false);
 
-#if DEF_PGPORT != 5432
-	snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
-	conflines = replace_token(conflines, "#port = 5432", repltok);
-#endif
+	if (strcmp(lc_monetary, "C") != 0)
+		conflines = replace_guc_value(conflines, "lc_monetary",
+									  lc_monetary, false);
 
-	/* set default max_wal_size and min_wal_size */
-	snprintf(repltok, sizeof(repltok), "min_wal_size = %s",
-			 pretty_wal_size(DEFAULT_MIN_WAL_SEGS));
-	conflines = replace_token(conflines, "#min_wal_size = 80MB", repltok);
+	if (strcmp(lc_numeric, "C") != 0)
+		conflines = replace_guc_value(conflines, "lc_numeric",
+									  lc_numeric, false);
 
-	snprintf(repltok, sizeof(repltok), "max_wal_size = %s",
-			 pretty_wal_size(DEFAULT_MAX_WAL_SEGS));
-	conflines = replace_token(conflines, "#max_wal_size = 1GB", repltok);
-
-	snprintf(repltok, sizeof(repltok), "lc_messages = '%s'",
-			 escape_quotes(lc_messages));
-	conflines = replace_token(conflines, "#lc_messages = 'C'", repltok);
-
-	snprintf(repltok, sizeof(repltok), "lc_monetary = '%s'",
-			 escape_quotes(lc_monetary));
-	conflines = replace_token(conflines, "#lc_monetary = 'C'", repltok);
-
-	snprintf(repltok, sizeof(repltok), "lc_numeric = '%s'",
-			 escape_quotes(lc_numeric));
-	conflines = replace_token(conflines, "#lc_numeric = 'C'", repltok);
-
-	snprintf(repltok, sizeof(repltok), "lc_time = '%s'",
-			 escape_quotes(lc_time));
-	conflines = replace_token(conflines, "#lc_time = 'C'", repltok);
+	if (strcmp(lc_time, "C") != 0)
+		conflines = replace_guc_value(conflines, "lc_time",
+									  lc_time, false);
 
 	switch (locale_date_order(lc_time))
 	{
 		case DATEORDER_YMD:
-			strcpy(repltok, "datestyle = 'iso, ymd'");
+			strcpy(repltok, "iso, ymd");
 			break;
 		case DATEORDER_DMY:
-			strcpy(repltok, "datestyle = 'iso, dmy'");
+			strcpy(repltok, "iso, dmy");
 			break;
 		case DATEORDER_MDY:
 		default:
-			strcpy(repltok, "datestyle = 'iso, mdy'");
+			strcpy(repltok, "iso, mdy");
 			break;
 	}
-	conflines = replace_token(conflines, "#datestyle = 'iso, mdy'", repltok);
+	conflines = replace_guc_value(conflines, "datestyle",
+								  repltok, false);
 
-	snprintf(repltok, sizeof(repltok),
-			 "default_text_search_config = 'pg_catalog.%s'",
-			 escape_quotes(default_text_search_config));
-	conflines = replace_token(conflines,
-							  "#default_text_search_config = 'pg_catalog.simple'",
-							  repltok);
+	snprintf(repltok, sizeof(repltok), "pg_catalog.%s",
+			 default_text_search_config);
+	conflines = replace_guc_value(conflines, "default_text_search_config",
+								  repltok, false);
 
 	if (default_timezone)
 	{
-		snprintf(repltok, sizeof(repltok), "timezone = '%s'",
-				 escape_quotes(default_timezone));
-		conflines = replace_token(conflines, "#timezone = 'GMT'", repltok);
-		snprintf(repltok, sizeof(repltok), "log_timezone = '%s'",
-				 escape_quotes(default_timezone));
-		conflines = replace_token(conflines, "#log_timezone = 'GMT'", repltok);
+		conflines = replace_guc_value(conflines, "timezone",
+									  default_timezone, false);
+		conflines = replace_guc_value(conflines, "log_timezone",
+									  default_timezone, false);
 	}
 
-	snprintf(repltok, sizeof(repltok), "dynamic_shared_memory_type = %s",
-			 dynamic_shared_memory_type);
-	conflines = replace_token(conflines, "#dynamic_shared_memory_type = posix",
-							  repltok);
+	conflines = replace_guc_value(conflines, "dynamic_shared_memory_type",
+								  dynamic_shared_memory_type, false);
+
+	/* Caution: these depend on wal_segment_size_mb, they're not constants */
+	conflines = replace_guc_value(conflines, "min_wal_size",
+								  pretty_wal_size(DEFAULT_MIN_WAL_SEGS), false);
+
+	conflines = replace_guc_value(conflines, "max_wal_size",
+								  pretty_wal_size(DEFAULT_MAX_WAL_SEGS), false);
+
+	/*
+	 * Fix up various entries to match the true compile-time defaults.  Since
+	 * these are indeed defaults, keep the postgresql.conf lines commented.
+	 */
+	conflines = replace_guc_value(conflines, "unix_socket_directories",
+								  DEFAULT_PGSOCKET_DIR, true);
+
+	conflines = replace_guc_value(conflines, "port",
+								  DEF_PGPORT_STR, true);
 
 #if DEFAULT_BACKEND_FLUSH_AFTER > 0
-	snprintf(repltok, sizeof(repltok), "#backend_flush_after = %dkB",
+	snprintf(repltok, sizeof(repltok), "%dkB",
 			 DEFAULT_BACKEND_FLUSH_AFTER * (BLCKSZ / 1024));
-	conflines = replace_token(conflines, "#backend_flush_after = 0",
-							  repltok);
+	conflines = replace_guc_value(conflines, "backend_flush_after",
+								  repltok, true);
 #endif
 
 #if DEFAULT_BGWRITER_FLUSH_AFTER > 0
-	snprintf(repltok, sizeof(repltok), "#bgwriter_flush_after = %dkB",
+	snprintf(repltok, sizeof(repltok), "%dkB",
 			 DEFAULT_BGWRITER_FLUSH_AFTER * (BLCKSZ / 1024));
-	conflines = replace_token(conflines, "#bgwriter_flush_after = 0",
-							  repltok);
+	conflines = replace_guc_value(conflines, "bgwriter_flush_after",
+								  repltok, true);
 #endif
 
 #if DEFAULT_CHECKPOINT_FLUSH_AFTER > 0
-	snprintf(repltok, sizeof(repltok), "#checkpoint_flush_after = %dkB",
+	snprintf(repltok, sizeof(repltok), "%dkB",
 			 DEFAULT_CHECKPOINT_FLUSH_AFTER * (BLCKSZ / 1024));
-	conflines = replace_token(conflines, "#checkpoint_flush_after = 0",
-							  repltok);
+	conflines = replace_guc_value(conflines, "checkpoint_flush_after",
+								  repltok, true);
 #endif
 
 #ifndef USE_PREFETCH
-	conflines = replace_token(conflines,
-							  "#effective_io_concurrency = 1",
-							  "#effective_io_concurrency = 0");
+	conflines = replace_guc_value(conflines, "effective_io_concurrency",
+								  "0", true);
 #endif
 
 #ifdef WIN32
-	conflines = replace_token(conflines,
-							  "#update_process_title = on",
-							  "#update_process_title = off");
+	conflines = replace_guc_value(conflines, "update_process_title",
+								  "off", true);
 #endif
 
 	/*
@@ -1149,9 +1336,8 @@ setup_config(void)
 		(strcmp(authmethodhost, "md5") == 0 &&
 		 strcmp(authmethodlocal, "scram-sha-256") != 0))
 	{
-		conflines = replace_token(conflines,
-								  "#password_encryption = scram-sha-256",
-								  "password_encryption = md5");
+		conflines = replace_guc_value(conflines, "password_encryption",
+									  "md5", false);
 	}
 
 	/*
@@ -1162,43 +1348,41 @@ setup_config(void)
 	 */
 	if (pg_dir_create_mode == PG_DIR_MODE_GROUP)
 	{
-		conflines = replace_token(conflines,
-								  "#log_file_mode = 0600",
-								  "log_file_mode = 0640");
+		conflines = replace_guc_value(conflines, "log_file_mode",
+									  "0640", false);
 	}
 
-	 /* set compatibility mode */
-	if (compatible_mode != NULL)
+	/*
+	 * Now replace anything that's overridden via -c switches.
+	 */
+	for (gnames = extra_guc_names, gvalues = extra_guc_values;
+		 gnames != NULL;		/* assume lists have the same length */
+		 gnames = gnames->next, gvalues = gvalues->next)
 	{
-		check_compatible_mode(compatible_mode, compat_options);
-		conflines = replace_token(conflines,
-								  "#compatible_mode = postgres",
-								  "compatible_mode = oracle");
+		conflines = replace_guc_value(conflines, gnames->str,
+									  gvalues->str, false);
 	}
 
+	/* ... and write out the finished postgresql.conf file */
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
 
 	writefile(path, conflines);
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
-	/*
-	 * create the automatic configuration file to store the configuration
-	 * parameters set by ALTER SYSTEM command. The parameters present in this
-	 * file will override the value of parameters that exists before parse of
-	 * this file.
-	 */
-	autoconflines[0] = pg_strdup("# Do not edit this file manually!\n");
-	autoconflines[1] = pg_strdup("# It will be overwritten by the ALTER SYSTEM command.\n");
-	autoconflines[2] = NULL;
+
+	/* postgresql.auto.conf */
+
+	conflines = pg_malloc_array(char *, 3);
+	conflines[0] = pg_strdup("# Do not edit this file manually!\n");
+	conflines[1] = pg_strdup("# It will be overwritten by the ALTER SYSTEM command.\n");
+	conflines[2] = NULL;
 
 	sprintf(path, "%s/postgresql.auto.conf", pg_data);
 
-	writefile(path, autoconflines);
+	writefile(path, conflines);
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
-
-	free(conflines);
 
 
 	/* pg_hba.conf */
@@ -1267,7 +1451,6 @@ setup_config(void)
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
-	free(conflines);
 
 	/* pg_ident.conf */
 
@@ -1278,8 +1461,6 @@ setup_config(void)
 	writefile(path, conflines);
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
-
-	free(conflines);
 
 	check_ok();
 }
@@ -1342,7 +1523,10 @@ bootstrap_template1(void)
 							  escape_quotes_bki(lc_ctype));
 
 	bki_lines = replace_token(bki_lines, "ICU_LOCALE",
-							  locale_provider == COLLPROVIDER_ICU ? escape_quotes_bki(icu_locale) : "_null_");
+							  icu_locale ? escape_quotes_bki(icu_locale) : "_null_");
+
+	bki_lines = replace_token(bki_lines, "ICU_RULES",
+							  icu_rules ? escape_quotes_bki(icu_rules) : "_null_");
 
 	sprintf(buf, "%c", locale_provider);
 	bki_lines = replace_token(bki_lines, "LOCALE_PROVIDER", buf);
@@ -1380,18 +1564,11 @@ bootstrap_template1(void)
 static void
 setup_auth(FILE *cmdfd)
 {
-	const char *const *line;
-	static const char *const pg_authid_setup[] = {
-		/*
-		 * The authid table shouldn't be readable except through views, to
-		 * ensure passwords are not publicly visible.
-		 */
-		"REVOKE ALL ON pg_authid FROM public;\n\n",
-		NULL
-	};
-
-	for (line = pg_authid_setup; *line != NULL; line++)
-		PG_CMD_PUTS(*line);
+	/*
+	 * The authid table shouldn't be readable except through views, to
+	 * ensure passwords are not publicly visible.
+	 */
+	PG_CMD_PUTS("REVOKE ALL ON pg_authid FROM public;\n\n");
 
 	if (superuser_password)
 		PG_CMD_PRINTF("ALTER USER \"%s\" WITH PASSWORD E'%s';\n\n",
@@ -1463,18 +1640,11 @@ get_su_pwd(void)
 static void
 setup_depend(FILE *cmdfd)
 {
-	const char *const *line;
-	static const char *const pg_depend_setup[] = {
-		/*
-		 * Advance the OID counter so that subsequently-created objects aren't
-		 * pinned.
-		 */
-		"SELECT pg_stop_making_pinned_objects();\n\n",
-		NULL
-	};
-
-	for (line = pg_depend_setup; *line != NULL; line++)
-		PG_CMD_PUTS(*line);
+	/*
+	 * Advance the OID counter so that subsequently-created objects aren't
+	 * pinned.
+	 */
+	PG_CMD_PUTS("SELECT pg_stop_making_pinned_objects();\n\n");
 }
 
 /*
@@ -1525,16 +1695,7 @@ setup_description(FILE *cmdfd)
 static void
 setup_collation(FILE *cmdfd)
 {
-	/*
-	 * Add an SQL-standard name.  We don't want to pin this, so it doesn't go
-	 * in pg_collation.h.  But add it before reading system collations, so
-	 * that it wins if libc defines a locale named ucs_basic.
-	 */
-	PG_CMD_PRINTF("INSERT INTO pg_collation (oid, collname, collnamespace, collowner, collprovider, collisdeterministic, collencoding, collcollate, collctype)"
-				  "VALUES (pg_nextoid('pg_catalog.pg_collation', 'oid', 'pg_catalog.pg_collation_oid_index'), 'ucs_basic', 'pg_catalog'::regnamespace, %u, '%c', true, %d, 'C', 'C');\n\n",
-				  BOOTSTRAP_SUPERUSERID, COLLPROVIDER_LIBC, PG_UTF8);
-
-	/* Now import all collations we can find in the operating system */
+	/* Import all collations we can find in the operating system */
 	PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
 }
 
@@ -1560,147 +1721,138 @@ setup_collation(FILE *cmdfd)
 static void
 setup_privileges(FILE *cmdfd)
 {
-	char	  **line;
-	char	  **priv_lines;
-	static char *privileges_setup[] = {
-		"UPDATE pg_class "
-		"  SET relacl = (SELECT array_agg(a.acl) FROM "
-		" (SELECT E'=r/\"$POSTGRES_SUPERUSERNAME\"' as acl "
-		"  UNION SELECT unnest(pg_catalog.acldefault("
-		"    CASE WHEN relkind = " CppAsString2(RELKIND_SEQUENCE) " THEN 's' "
-		"         ELSE 'r' END::\"char\"," CppAsString2(BOOTSTRAP_SUPERUSERID) "::oid))"
-		" ) as a) "
-		"  WHERE relkind IN (" CppAsString2(RELKIND_RELATION) ", "
-		CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
-		CppAsString2(RELKIND_SEQUENCE) ")"
-		"  AND relacl IS NULL;\n\n",
-		"GRANT USAGE ON SCHEMA pg_catalog, public TO PUBLIC;\n\n",
-		"REVOKE ALL ON pg_largeobject FROM PUBLIC;\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class WHERE relname = 'pg_class'),"
-		"        0,"
-		"        relacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_class"
-		"    WHERE"
-		"        relacl IS NOT NULL"
-		"        AND relkind IN (" CppAsString2(RELKIND_RELATION) ", "
-		CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
-		CppAsString2(RELKIND_SEQUENCE) ");\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        pg_class.oid,"
-		"        (SELECT oid FROM pg_class WHERE relname = 'pg_class'),"
-		"        pg_attribute.attnum,"
-		"        pg_attribute.attacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_class"
-		"        JOIN pg_attribute ON (pg_class.oid = pg_attribute.attrelid)"
-		"    WHERE"
-		"        pg_attribute.attacl IS NOT NULL"
-		"        AND pg_class.relkind IN (" CppAsString2(RELKIND_RELATION) ", "
-		CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
-		CppAsString2(RELKIND_SEQUENCE) ");\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class WHERE relname = 'pg_proc'),"
-		"        0,"
-		"        proacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_proc"
-		"    WHERE"
-		"        proacl IS NOT NULL;\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class WHERE relname = 'pg_type'),"
-		"        0,"
-		"        typacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_type"
-		"    WHERE"
-		"        typacl IS NOT NULL;\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class WHERE relname = 'pg_language'),"
-		"        0,"
-		"        lanacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_language"
-		"    WHERE"
-		"        lanacl IS NOT NULL;\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class WHERE "
-		"         relname = 'pg_largeobject_metadata'),"
-		"        0,"
-		"        lomacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_largeobject_metadata"
-		"    WHERE"
-		"        lomacl IS NOT NULL;\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class WHERE relname = 'pg_namespace'),"
-		"        0,"
-		"        nspacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_namespace"
-		"    WHERE"
-		"        nspacl IS NOT NULL;\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class WHERE "
-		"         relname = 'pg_foreign_data_wrapper'),"
-		"        0,"
-		"        fdwacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_foreign_data_wrapper"
-		"    WHERE"
-		"        fdwacl IS NOT NULL;\n\n",
-		"INSERT INTO pg_init_privs "
-		"  (objoid, classoid, objsubid, initprivs, privtype)"
-		"    SELECT"
-		"        oid,"
-		"        (SELECT oid FROM pg_class "
-		"         WHERE relname = 'pg_foreign_server'),"
-		"        0,"
-		"        srvacl,"
-		"        'i'"
-		"    FROM"
-		"        pg_foreign_server"
-		"    WHERE"
-		"        srvacl IS NOT NULL;\n\n",
-		NULL
-	};
-
-	priv_lines = replace_token(privileges_setup, "$POSTGRES_SUPERUSERNAME",
-							   escape_quotes(username));
-	for (line = priv_lines; *line != NULL; line++)
-		PG_CMD_PUTS(*line);
+	PG_CMD_PRINTF("UPDATE pg_class "
+				  "  SET relacl = (SELECT array_agg(a.acl) FROM "
+				  " (SELECT E'=r/\"%s\"' as acl "
+				  "  UNION SELECT unnest(pg_catalog.acldefault("
+				  "    CASE WHEN relkind = " CppAsString2(RELKIND_SEQUENCE) " THEN 's' "
+				  "         ELSE 'r' END::\"char\"," CppAsString2(BOOTSTRAP_SUPERUSERID) "::oid))"
+				  " ) as a) "
+				  "  WHERE relkind IN (" CppAsString2(RELKIND_RELATION) ", "
+				  CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
+				  CppAsString2(RELKIND_SEQUENCE) ")"
+				  "  AND relacl IS NULL;\n\n",
+				  escape_quotes(username));
+	PG_CMD_PUTS("GRANT USAGE ON SCHEMA pg_catalog, public TO PUBLIC;\n\n");
+	PG_CMD_PUTS("REVOKE ALL ON pg_largeobject FROM PUBLIC;\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class WHERE relname = 'pg_class'),"
+				"        0,"
+				"        relacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_class"
+				"    WHERE"
+				"        relacl IS NOT NULL"
+				"        AND relkind IN (" CppAsString2(RELKIND_RELATION) ", "
+				CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
+				CppAsString2(RELKIND_SEQUENCE) ");\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        pg_class.oid,"
+				"        (SELECT oid FROM pg_class WHERE relname = 'pg_class'),"
+				"        pg_attribute.attnum,"
+				"        pg_attribute.attacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_class"
+				"        JOIN pg_attribute ON (pg_class.oid = pg_attribute.attrelid)"
+				"    WHERE"
+				"        pg_attribute.attacl IS NOT NULL"
+				"        AND pg_class.relkind IN (" CppAsString2(RELKIND_RELATION) ", "
+				CppAsString2(RELKIND_VIEW) ", " CppAsString2(RELKIND_MATVIEW) ", "
+				CppAsString2(RELKIND_SEQUENCE) ");\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class WHERE relname = 'pg_proc'),"
+				"        0,"
+				"        proacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_proc"
+				"    WHERE"
+				"        proacl IS NOT NULL;\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class WHERE relname = 'pg_type'),"
+				"        0,"
+				"        typacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_type"
+				"    WHERE"
+				"        typacl IS NOT NULL;\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class WHERE relname = 'pg_language'),"
+				"        0,"
+				"        lanacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_language"
+				"    WHERE"
+				"        lanacl IS NOT NULL;\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class WHERE "
+				"         relname = 'pg_largeobject_metadata'),"
+				"        0,"
+				"        lomacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_largeobject_metadata"
+				"    WHERE"
+				"        lomacl IS NOT NULL;\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class WHERE relname = 'pg_namespace'),"
+				"        0,"
+				"        nspacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_namespace"
+				"    WHERE"
+				"        nspacl IS NOT NULL;\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class WHERE "
+				"         relname = 'pg_foreign_data_wrapper'),"
+				"        0,"
+				"        fdwacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_foreign_data_wrapper"
+				"    WHERE"
+				"        fdwacl IS NOT NULL;\n\n");
+	PG_CMD_PUTS("INSERT INTO pg_init_privs "
+				"  (objoid, classoid, objsubid, initprivs, privtype)"
+				"    SELECT"
+				"        oid,"
+				"        (SELECT oid FROM pg_class "
+				"         WHERE relname = 'pg_foreign_server'),"
+				"        0,"
+				"        srvacl,"
+				"        'i'"
+				"    FROM"
+				"        pg_foreign_server"
+				"    WHERE"
+				"        srvacl IS NOT NULL;\n\n");
 }
 
 /*
@@ -1761,88 +1913,6 @@ load_plpgsql(FILE *cmdfd)
 }
 
 /*
- * load PL/iSQL server-side language
- */
-static void
-load_plisql(FILE *cmdfd)
-{
-	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
-}
-
-static void
-remove_line_feed(char *str)
-{
-	char *t;
-
-	if ((t = strchr(str, '\r')))
-		*t = '\0';
-
-	if ((t = strchr(str, '\n')))
-		*t = '\0';
-}
-
-static void
-load_ivy_modules(FILE *cmdfd)
-{
-	char  *conf_file;
-	char **conf_lines;
-	char **line;
-
-	printf(_("loading ivy contrib modules ...\n"));
-	fflush(stdout);
-
-	set_input(&conf_file, IVY_LOAD_CONFIG_FILE_NAME);
-	conf_lines = readfile(conf_file);
-	for (line = conf_lines; *line != NULL; line++)
-	{
-		char *file_or_ext = *line;
-		/*
-		 * Ignore empty or commented out lines
-		 */
-		if (*file_or_ext == '#' || *file_or_ext ==  '\0' ||
-				*file_or_ext == '\n' ||  *file_or_ext == '\r') /*no-oop*/
-		{
-			free(*line);
-			continue;
-		}
-
-		remove_line_feed(file_or_ext);
-
-		if (*file_or_ext == IVY_CONFIG_EXT_MARKER) /*extension*/
-		{
-			/* get rid of Marker character */
-			file_or_ext++;
-
-			printf(_("creating extension %s\n"), file_or_ext);
-			fflush(stdout);
-
-			PG_CMD_PRINTF("CREATE EXTENSION \"%s\";\n", file_or_ext);
-		}
-		else
-		{
-			static char *ivy_run_script_path;
-			char 	file_path[MAXPGPATH];
-
-			printf(_("executing %s\n"), file_or_ext);
-			fflush(stdout);
-
-			sprintf(file_path, "/contrib/%s",  file_or_ext);
-			set_input(&ivy_run_script_path, file_path);
-
-			check_input(ivy_run_script_path);
-			setup_run_file(cmdfd, ivy_run_script_path);
-		}
-		/*
-		 * Do RESET all in case come settings are
-		 left out by previous script
-		 */
-		PG_CMD_PUTS("RESET ALL;\n");
-		free(*line);
-	}
-	free(conf_file);
-	free(conf_lines);
-}
-/*
  * clean everything up in template1
  */
 static void
@@ -1858,8 +1928,6 @@ vacuum_db(FILE *cmdfd)
 static void
 make_template0(FILE *cmdfd)
 {
-	const char *const *line;
-
 	/*
 	 * pg_upgrade tries to preserve database OIDs across upgrades. It's smart
 	 * enough to drop and recreate a conflicting database with the same name,
@@ -1877,42 +1945,36 @@ make_template0(FILE *cmdfd)
 	 * are cheap. "STRATEGY = wal_log" would generate more WAL, which would be
 	 * a little bit slower and make the new cluster a little bit bigger.
 	 */
-	static const char *const template0_setup[] = {
-		"CREATE DATABASE template0 IS_TEMPLATE = true ALLOW_CONNECTIONS = false"
-		" OID = " CppAsString2(Template0DbOid)
-		" STRATEGY = file_copy;\n\n",
+	PG_CMD_PUTS("CREATE DATABASE template0 IS_TEMPLATE = true ALLOW_CONNECTIONS = false"
+				" OID = " CppAsString2(Template0DbOid)
+				" STRATEGY = file_copy;\n\n");
 
-		/*
-		 * template0 shouldn't have any collation-dependent objects, so unset
-		 * the collation version.  This disables collation version checks when
-		 * making a new database from it.
-		 */
-		"UPDATE pg_database SET datcollversion = NULL WHERE datname = 'template0';\n\n",
+	/*
+	 * template0 shouldn't have any collation-dependent objects, so unset
+	 * the collation version.  This disables collation version checks when
+	 * making a new database from it.
+	 */
+	PG_CMD_PUTS("UPDATE pg_database SET datcollversion = NULL WHERE datname = 'template0';\n\n");
 
-		/*
-		 * While we are here, do set the collation version on template1.
-		 */
-		"UPDATE pg_database SET datcollversion = pg_database_collation_actual_version(oid) WHERE datname = 'template1';\n\n",
+	/*
+	 * While we are here, do set the collation version on template1.
+	 */
+	PG_CMD_PUTS("UPDATE pg_database SET datcollversion = pg_database_collation_actual_version(oid) WHERE datname = 'template1';\n\n");
 
-		/*
-		 * Explicitly revoke public create-schema and create-temp-table
-		 * privileges in template1 and template0; else the latter would be on
-		 * by default
-		 */
-		"REVOKE CREATE,TEMPORARY ON DATABASE template1 FROM public;\n\n",
-		"REVOKE CREATE,TEMPORARY ON DATABASE template0 FROM public;\n\n",
+	/*
+	 * Explicitly revoke public create-schema and create-temp-table
+	 * privileges in template1 and template0; else the latter would be on
+	 * by default
+	 */
+	PG_CMD_PUTS("REVOKE CREATE,TEMPORARY ON DATABASE template1 FROM public;\n\n");
+	PG_CMD_PUTS("REVOKE CREATE,TEMPORARY ON DATABASE template0 FROM public;\n\n");
 
-		"COMMENT ON DATABASE template0 IS 'unmodifiable empty database';\n\n",
+	PG_CMD_PUTS("COMMENT ON DATABASE template0 IS 'unmodifiable empty database';\n\n");
 
-		/*
-		 * Finally vacuum to clean up dead rows in pg_database
-		 */
-		"VACUUM pg_database;\n\n",
-		NULL
-	};
-
-	for (line = template0_setup; *line; line++)
-		PG_CMD_PUTS(*line);
+	/*
+	 * Finally vacuum to clean up dead rows in pg_database
+	 */
+	PG_CMD_PUTS("VACUUM pg_database;\n\n");
 }
 
 /*
@@ -1921,38 +1983,13 @@ make_template0(FILE *cmdfd)
 static void
 make_postgres(FILE *cmdfd)
 {
-	const char *const *line;
-
 	/*
 	 * Just as we did for template0, and for the same reasons, assign a fixed
 	 * OID to postgres and select the file_copy strategy.
 	 */
-	static const char *const postgres_setup[] = {
-		"CREATE DATABASE postgres OID = " CppAsString2(PostgresDbOid)
-		" STRATEGY = file_copy;\n\n",
-		"COMMENT ON DATABASE postgres IS 'default administrative connection database';\n\n",
-		NULL
-	};
-
-	for (line = postgres_setup; *line; line++)
-		PG_CMD_PUTS(*line);
-}
-
-/*
- * copy template1 to ivorysql
- */
-static void
-make_ivorysql(FILE *cmdfd)
-{
-	const char *const *line;
-	static const char *const postgres_setup[] = {
-		"CREATE DATABASE ivorysql;\n\n",
-		"COMMENT ON DATABASE ivorysql IS 'default administrative connection database';\n\n",
-		NULL
-	};
-
-	for (line = postgres_setup; *line; line++)
-		PG_CMD_PUTS(*line);
+	PG_CMD_PUTS("CREATE DATABASE postgres OID = " CppAsString2(PostgresDbOid)
+				" STRATEGY = file_copy;\n\n");
+	PG_CMD_PUTS("COMMENT ON DATABASE postgres IS 'default administrative connection database';\n\n");
 }
 
 /*
@@ -1977,10 +2014,10 @@ make_ivorysql(FILE *cmdfd)
  * So this will need some testing on Windows.
  */
 static void
-trapsig(int signum)
+trapsig(SIGNAL_ARGS)
 {
 	/* handle systems that reset the handler, like Windows (grr) */
-	pqsignal(signum, trapsig);
+	pqsignal(postgres_signal_arg, trapsig);
 	caught_signal = true;
 }
 
@@ -2172,6 +2209,194 @@ check_locale_encoding(const char *locale, int user_enc)
 }
 
 /*
+ * check if the chosen encoding matches is supported by ICU
+ *
+ * this should match the similar check in the backend createdb() function
+ */
+static bool
+check_icu_locale_encoding(int user_enc)
+{
+	if (!(is_encoding_supported_by_icu(user_enc)))
+	{
+		pg_log_error("encoding mismatch");
+		pg_log_error_detail("The encoding you selected (%s) is not supported with the ICU provider.",
+							pg_encoding_to_char(user_enc));
+		pg_log_error_hint("Rerun %s and either do not specify an encoding explicitly, "
+						  "or choose a matching combination.",
+						  progname);
+		return false;
+	}
+	return true;
+}
+
+/*
+ * Convert to canonical BCP47 language tag. Must be consistent with
+ * icu_language_tag().
+ */
+static char *
+icu_language_tag(const char *loc_str)
+{
+#ifdef USE_ICU
+	UErrorCode	 status;
+	char		 lang[ULOC_LANG_CAPACITY];
+	char		*langtag;
+	size_t		 buflen = 32;	/* arbitrary starting buffer size */
+	const bool	 strict = true;
+
+	status = U_ZERO_ERROR;
+	uloc_getLanguage(loc_str, lang, ULOC_LANG_CAPACITY, &status);
+	if (U_FAILURE(status))
+	{
+		pg_fatal("could not get language from locale \"%s\": %s",
+				 loc_str, u_errorName(status));
+		return NULL;
+	}
+
+	/* C/POSIX locales aren't handled by uloc_getLanguageTag() */
+	if (strcmp(lang, "c") == 0 || strcmp(lang, "posix") == 0)
+		return pstrdup("en-US-u-va-posix");
+
+	/*
+	 * A BCP47 language tag doesn't have a clearly-defined upper limit
+	 * (cf. RFC5646 section 4.4). Additionally, in older ICU versions,
+	 * uloc_toLanguageTag() doesn't always return the ultimate length on the
+	 * first call, necessitating a loop.
+	 */
+	langtag = pg_malloc(buflen);
+	while (true)
+	{
+		int32_t		len;
+
+		status = U_ZERO_ERROR;
+		len = uloc_toLanguageTag(loc_str, langtag, buflen, strict, &status);
+
+		/*
+		 * If the result fits in the buffer exactly (len == buflen),
+		 * uloc_toLanguageTag() will return success without nul-terminating
+		 * the result. Check for either U_BUFFER_OVERFLOW_ERROR or len >=
+		 * buflen and try again.
+		 */
+		if (status == U_BUFFER_OVERFLOW_ERROR ||
+			(U_SUCCESS(status) && len >= buflen))
+		{
+			buflen = buflen * 2;
+			langtag = pg_realloc(langtag, buflen);
+			continue;
+		}
+
+		break;
+	}
+
+	if (U_FAILURE(status))
+	{
+		pg_free(langtag);
+
+		pg_fatal("could not convert locale name \"%s\" to language tag: %s",
+				 loc_str, u_errorName(status));
+	}
+
+	return langtag;
+#else
+	pg_fatal("ICU is not supported in this build");
+	return NULL;		/* keep compiler quiet */
+#endif
+}
+
+/*
+ * Perform best-effort check that the locale is a valid one. Should be
+ * consistent with pg_locale.c, except that it doesn't need to open the
+ * collator (that will happen during post-bootstrap initialization).
+ */
+static void
+icu_validate_locale(const char *loc_str)
+{
+#ifdef USE_ICU
+	UErrorCode	 status;
+	char		 lang[ULOC_LANG_CAPACITY];
+	bool		 found	 = false;
+
+	/* validate that we can extract the language */
+	status = U_ZERO_ERROR;
+	uloc_getLanguage(loc_str, lang, ULOC_LANG_CAPACITY, &status);
+	if (U_FAILURE(status))
+	{
+		pg_fatal("could not get language from locale \"%s\": %s",
+				 loc_str, u_errorName(status));
+		return;
+	}
+
+	/* check for special language name */
+	if (strcmp(lang, "") == 0 ||
+		strcmp(lang, "root") == 0 || strcmp(lang, "und") == 0 ||
+		strcmp(lang, "c") == 0 || strcmp(lang, "posix") == 0)
+		found = true;
+
+	/* search for matching language within ICU */
+	for (int32_t i = 0; !found && i < uloc_countAvailable(); i++)
+	{
+		const char	*otherloc = uloc_getAvailable(i);
+		char		 otherlang[ULOC_LANG_CAPACITY];
+
+		status = U_ZERO_ERROR;
+		uloc_getLanguage(otherloc, otherlang, ULOC_LANG_CAPACITY, &status);
+		if (U_FAILURE(status))
+			continue;
+
+		if (strcmp(lang, otherlang) == 0)
+			found = true;
+	}
+
+	if (!found)
+		pg_fatal("locale \"%s\" has unknown language \"%s\"",
+				 loc_str, lang);
+#else
+	pg_fatal("ICU is not supported in this build");
+#endif
+}
+
+/*
+ * Determine default ICU locale by opening the default collator and reading
+ * its locale.
+ *
+ * NB: The default collator (opened using NULL) is different from the collator
+ * for the root locale (opened with "", "und", or "root"). The former depends
+ * on the environment (useful at initdb time) and the latter does not.
+ */
+static char *
+default_icu_locale(void)
+{
+#ifdef USE_ICU
+	UCollator	*collator;
+	UErrorCode   status;
+	const char	*valid_locale;
+	char		*default_locale;
+
+	status = U_ZERO_ERROR;
+	collator = ucol_open(NULL, &status);
+	if (U_FAILURE(status))
+		pg_fatal("could not open collator for default locale: %s",
+				 u_errorName(status));
+
+	status = U_ZERO_ERROR;
+	valid_locale = ucol_getLocaleByType(collator, ULOC_VALID_LOCALE,
+										&status);
+	if (U_FAILURE(status))
+	{
+		ucol_close(collator);
+		pg_fatal("could not determine default ICU locale");
+	}
+
+	default_locale = pg_strdup(valid_locale);
+
+	ucol_close(collator);
+
+	return default_locale;
+#else
+	pg_fatal("ICU is not supported in this build");
+#endif
+}
+
+/*
  * set up the locale variables
  *
  * assumes we have called setlocale(LC_ALL, "") -- see set_pglocale_pgservice
@@ -2224,33 +2449,32 @@ setlocales(void)
 
 	if (locale_provider == COLLPROVIDER_ICU)
 	{
-		if (!icu_locale)
-			pg_fatal("ICU locale must be specified");
+		char *langtag;
+
+		/* acquire default locale from the environment, if not specified */
+		if (icu_locale == NULL)
+		{
+			icu_locale = default_icu_locale();
+			printf(_("Using default ICU locale \"%s\".\n"), icu_locale);
+		}
+
+		/* canonicalize to a language tag */
+		langtag = icu_language_tag(icu_locale);
+		printf(_("Using language tag \"%s\" for ICU locale \"%s\".\n"),
+			   langtag, icu_locale);
+		pg_free(icu_locale);
+		icu_locale = langtag;
+
+		icu_validate_locale(icu_locale);
 
 		/*
-		 * In supported builds, the ICU locale ID will be checked by the
-		 * backend during post-bootstrap initialization.
+		 * In supported builds, the ICU locale ID will be opened during
+		 * post-bootstrap initialization, which will perform extra checks.
 		 */
 #ifndef USE_ICU
 		pg_fatal("ICU is not supported in this build");
 #endif
 	}
-}
-
-static void
-check_compatible_mode(const char *option, const char *const *valid_options)
-{
-	const char *const *p;
-
-	for (p = valid_options; *p; p++)
-	{
-		if (pg_strcasecmp(option, *p) == 0)
-			return;
-	}
-
-	pg_log_error("invalid option specified \"%s\" for compatible-mode",
-				 option);
-	exit(1);
 }
 
 /*
@@ -2270,6 +2494,7 @@ usage(const char *progname)
 	printf(_("  -E, --encoding=ENCODING   set default encoding for new databases\n"));
 	printf(_("  -g, --allow-group-access  allow group read/execute on data directory\n"));
 	printf(_("      --icu-locale=LOCALE   set ICU locale ID for new databases\n"));
+	printf(_("      --icu-rules=RULES     set additional ICU collation rules for new databases\n"));
 	printf(_("  -k, --data-checksums      use data page checksums\n"));
 	printf(_("      --locale=LOCALE       set default locale for new databases\n"));
 	printf(_("      --lc-collate=, --lc-ctype=, --lc-messages=LOCALE\n"
@@ -2286,8 +2511,8 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
-	printf(_("  -c, --compatible-mode     compatibility mode (postgres (default), oracle)\n"));
 	printf(_("\nLess commonly used options:\n"));
+	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
 	printf(_("      --discard-caches      set debug_discard_caches=1\n"));
 	printf(_("  -L DIRECTORY              where to find the input files\n"));
@@ -2455,13 +2680,18 @@ setup_locale_encoding(void)
 			   lc_time);
 	}
 
-	if (!encoding && locale_provider == COLLPROVIDER_ICU)
-		encodingid = PG_UTF8;
-	else if (!encoding)
+	if (!encoding)
 	{
 		int			ctype_enc;
 
 		ctype_enc = pg_get_encoding_from_locale(lc_ctype, true);
+
+		/*
+		 * If ctype_enc=SQL_ASCII, it's compatible with any encoding. ICU does
+		 * not support SQL_ASCII, so select UTF-8 instead.
+		 */
+		if (locale_provider == COLLPROVIDER_ICU && ctype_enc == PG_SQL_ASCII)
+			ctype_enc = PG_UTF8;
 
 		if (ctype_enc == -1)
 		{
@@ -2508,6 +2738,10 @@ setup_locale_encoding(void)
 	if (!check_locale_encoding(lc_ctype, encodingid) ||
 		!check_locale_encoding(lc_collate, encodingid))
 		exit(1);				/* check_locale_encoding printed the error */
+
+	if (locale_provider == COLLPROVIDER_ICU &&
+		!check_icu_locale_encoding(encodingid))
+		exit(1);
 }
 
 
@@ -2873,17 +3107,11 @@ initialize_data_directory(void)
 
 	load_plpgsql(cmdfd);
 
-	load_plisql(cmdfd);
-
-	load_ivy_modules(cmdfd);
-
 	vacuum_db(cmdfd);
 
 	make_template0(cmdfd);
 
 	make_postgres(cmdfd);
-
-	make_ivorysql(cmdfd);
 
 	PG_CMD_CLOSE;
 
@@ -2921,15 +3149,16 @@ main(int argc, char *argv[])
 		{"nosync", no_argument, NULL, 'N'}, /* for backwards compatibility */
 		{"no-sync", no_argument, NULL, 'N'},
 		{"no-instructions", no_argument, NULL, 13},
+		{"set", required_argument, NULL, 'c'},
 		{"sync-only", no_argument, NULL, 'S'},
 		{"waldir", required_argument, NULL, 'X'},
 		{"wal-segsize", required_argument, NULL, 12},
 		{"data-checksums", no_argument, NULL, 'k'},
 		{"allow-group-access", no_argument, NULL, 'g'},
 		{"discard-caches", no_argument, NULL, 14},
-		{"compatible-mode", required_argument, NULL, 'c'},
 		{"locale-provider", required_argument, NULL, 15},
 		{"icu-locale", required_argument, NULL, 16},
+		{"icu-rules", required_argument, NULL, 17},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2971,7 +3200,8 @@ main(int argc, char *argv[])
 
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "A:dD:E:gkL:nNsST:U:WX:c:", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "A:c:dD:E:gkL:nNsST:U:WX:",
+							long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -2993,6 +3223,24 @@ main(int argc, char *argv[])
 				break;
 			case 11:
 				authmethodhost = pg_strdup(optarg);
+				break;
+			case 'c':
+				{
+					char	   *buf = pg_strdup(optarg);
+					char	   *equals = strchr(buf, '=');
+
+					if (!equals)
+					{
+						pg_log_error("-c %s requires a value", buf);
+						pg_log_error_hint("Try \"%s --help\" for more information.",
+										  progname);
+						exit(1);
+					}
+					*equals++ = '\0';	/* terminate variable name */
+					add_stringlist_item(&extra_guc_names, buf);
+					add_stringlist_item(&extra_guc_values, equals);
+					pfree(buf);
+				}
 				break;
 			case 'D':
 				pg_data = pg_strdup(optarg);
@@ -3076,9 +3324,6 @@ main(int argc, char *argv[])
 										 extra_options,
 										 "-c debug_discard_caches=1");
 				break;
-			case 'c':
-				compatible_mode = pg_strdup(optarg);
-				break;
 			case 15:
 				if (strcmp(optarg, "icu") == 0)
 					locale_provider = COLLPROVIDER_ICU;
@@ -3089,6 +3334,9 @@ main(int argc, char *argv[])
 				break;
 			case 16:
 				icu_locale = pg_strdup(optarg);
+				break;
+			case 17:
+				icu_rules = pg_strdup(optarg);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -3119,6 +3367,10 @@ main(int argc, char *argv[])
 	if (icu_locale && locale_provider != COLLPROVIDER_ICU)
 		pg_fatal("%s cannot be specified unless locale provider \"%s\" is chosen",
 				 "--icu-locale", "icu");
+
+	if (icu_rules && locale_provider != COLLPROVIDER_ICU)
+		pg_fatal("%s cannot be specified unless locale provider \"%s\" is chosen",
+				 "--icu-rules", "icu");
 
 	atexit(cleanup_directories_atexit);
 

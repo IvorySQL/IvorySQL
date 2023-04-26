@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 package Mkvcbuild;
 
@@ -35,6 +35,7 @@ my $libpq;
 my @unlink_on_exit;
 
 # Set of variables for modules in contrib/ and src/test/modules/
+my $contrib_defines        = {};
 my @contrib_uselibpq       = ();
 my @contrib_uselibpgport   = ();
 my @contrib_uselibpgcommon = ();
@@ -52,6 +53,7 @@ my @contrib_excludes       = (
 	'unsafe_tests');
 
 # Set of variables for frontend modules
+my $frontend_defines = { 'pgbench' => 'FD_SETSIZE=1024' };
 my @frontend_uselibpq =
   ('pg_amcheck', 'pg_ctl', 'pg_upgrade', 'pgbench', 'psql', 'initdb');
 my @frontend_uselibpgport = (
@@ -106,9 +108,11 @@ sub mkvcbuild
 	  pg_strong_random.c pgcheckdir.c pgmkdirp.c pgsleep.c pgstrcasecmp.c
 	  pqsignal.c mkdtemp.c qsort.c qsort_arg.c bsearch_arg.c quotes.c system.c
 	  strerror.c tar.c
+	  win32common.c
 	  win32dlopen.c
 	  win32env.c win32error.c
 	  win32fdatasync.c
+	  win32fseek.c
 	  win32getrusage.c
 	  win32gettimeofday.c
 	  win32link.c
@@ -134,7 +138,7 @@ sub mkvcbuild
 	  archive.c base64.c checksum_helper.c compression.c
 	  config_info.c controldata_utils.c d2s.c encnames.c exec.c
 	  f2s.c file_perm.c file_utils.c hashfn.c ip.c jsonapi.c
-	  keywords.c kwlookup.c link-canary.c md5_common.c
+	  keywords.c kwlookup.c link-canary.c md5_common.c percentrepl.c
 	  pg_get_line.c pg_lzcompress.c pg_prng.c pgfnames.c psprintf.c relpath.c
 	  rmtree.c saslprep.c scram-common.c string.c stringinfo.c unicode_norm.c
 	  username.c wait_error.c wchar.c);
@@ -175,6 +179,7 @@ sub mkvcbuild
 
 	$libpgfeutils = $solution->AddProject('libpgfeutils', 'lib', 'misc');
 	$libpgfeutils->AddDefine('FRONTEND');
+	$libpgfeutils->AddDefine('FD_SETSIZE=1024');
 	$libpgfeutils->AddIncludeDir('src/interfaces/libpq');
 	$libpgfeutils->AddFiles('src/fe_utils', @pgfeutilsfiles);
 
@@ -401,8 +406,8 @@ sub mkvcbuild
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_gzip.c');
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_inject.c');
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_lz4.c');
-	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_zstd.c');
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_tar.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_zstd.c');
 	$pgbasebackup->AddLibrary('ws2_32.lib');
 
 	my $pgreceivewal = AddSimpleFrontend('pg_basebackup', 1);
@@ -425,7 +430,6 @@ sub mkvcbuild
 	$pgevent->AddFiles('src/bin/pgevent', 'pgevent.c', 'pgmsgevent.rc');
 	$pgevent->AddResourceFile('src/bin/pgevent', 'Eventlog message formatter',
 		'win32');
-	$pgevent->RemoveFile('src/bin/pgevent/win32ver.rc');
 	$pgevent->UseDef('src/bin/pgevent/pgevent.def');
 	$pgevent->DisableLinkerWarnings('4104');
 
@@ -471,6 +475,11 @@ sub mkvcbuild
 	{
 		push @contrib_excludes, 'sslinfo', 'ssl_passphrase_callback',
 		  'pgcrypto';
+	}
+
+	if (!$solution->{options}->{ldap})
+	{
+		push @contrib_excludes, 'ldap_password_func';
 	}
 
 	if (!$solution->{options}->{uuid})
@@ -583,6 +592,9 @@ sub mkvcbuild
 
 		# hack to prevent duplicate definitions of uid_t/gid_t
 		push(@perl_embed_ccflags, 'PLPERL_HAVE_UID_GID');
+		# prevent binary mismatch between MSVC built plperl and
+		# Strawberry or msys ucrt perl libraries
+		push(@perl_embed_ccflags, 'NO_THREAD_SAFE_LOCALE');
 
 		# Windows offers several 32-bit ABIs.  Perl is sensitive to
 		# sizeof(time_t), one of the ABI dimensions.  To get 32-bit time_t,
@@ -851,7 +863,7 @@ sub mkvcbuild
 	# files symlinked on Unix are copied on windows
 	my $pg_waldump = AddSimpleFrontend('pg_waldump');
 	$pg_waldump->AddDefine('FRONTEND');
-	foreach my $xf (glob('src/backend/access/rmgrdesc/*desc.c'))
+	foreach my $xf (glob('src/backend/access/rmgrdesc/*desc*.c'))
 	{
 		$pg_waldump->AddFile($xf);
 	}
@@ -1121,10 +1133,10 @@ sub AdjustContribProj
 {
 	my $proj = shift;
 	AdjustModule(
-		$proj,                  \@contrib_uselibpq,
-		\@contrib_uselibpgport, \@contrib_uselibpgcommon,
-		$contrib_extralibs,     $contrib_extrasource,
-		$contrib_extraincludes);
+		$proj,                    $contrib_defines,
+		\@contrib_uselibpq,       \@contrib_uselibpgport,
+		\@contrib_uselibpgcommon, $contrib_extralibs,
+		$contrib_extrasource,     $contrib_extraincludes);
 	return;
 }
 
@@ -1132,16 +1144,17 @@ sub AdjustFrontendProj
 {
 	my $proj = shift;
 	AdjustModule(
-		$proj,                   \@frontend_uselibpq,
-		\@frontend_uselibpgport, \@frontend_uselibpgcommon,
-		$frontend_extralibs,     $frontend_extrasource,
-		$frontend_extraincludes);
+		$proj,                     $frontend_defines,
+		\@frontend_uselibpq,       \@frontend_uselibpgport,
+		\@frontend_uselibpgcommon, $frontend_extralibs,
+		$frontend_extrasource,     $frontend_extraincludes);
 	return;
 }
 
 sub AdjustModule
 {
 	my $proj                  = shift;
+	my $module_defines        = shift;
 	my $module_uselibpq       = shift;
 	my $module_uselibpgport   = shift;
 	my $module_uselibpgcommon = shift;
@@ -1150,6 +1163,13 @@ sub AdjustModule
 	my $module_extraincludes  = shift;
 	my $n                     = $proj->{name};
 
+	if ($module_defines->{$n})
+	{
+		foreach my $d ($module_defines->{$n})
+		{
+			$proj->AddDefine($d);
+		}
+	}
 	if (grep { /^$n$/ } @{$module_uselibpq})
 	{
 		$proj->AddIncludeDir('src\interfaces\libpq');

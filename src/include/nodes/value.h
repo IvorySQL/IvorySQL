@@ -4,7 +4,7 @@
  *	  interface for value nodes
  *
  *
- * Copyright (c) 2003-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2023, PostgreSQL Global Development Group
  *
  * src/include/nodes/value.h
  *
@@ -83,7 +83,7 @@ typedef struct BitString
 
 extern Integer *makeInteger(int i);
 extern Float *makeFloat(char *numericStr);
-extern Boolean *makeBoolean(bool var);
+extern Boolean *makeBoolean(bool val);
 extern String *makeString(char *str);
 extern BitString *makeBitString(char *str);
 

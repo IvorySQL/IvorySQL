@@ -3,7 +3,7 @@
  * nbtxlog.h
  *	  header file for postgres btree xlog routines
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/nbtxlog.h
@@ -187,10 +187,12 @@ typedef struct xl_btree_reuse_page
 {
 	RelFileLocator locator;
 	BlockNumber block;
-	FullTransactionId latestRemovedFullXid;
+	FullTransactionId snapshotConflictHorizon;
+	bool		isCatalogRel;	/* to handle recovery conflict during logical
+								 * decoding on standby */
 } xl_btree_reuse_page;
 
-#define SizeOfBtreeReusePage	(sizeof(xl_btree_reuse_page))
+#define SizeOfBtreeReusePage	(offsetof(xl_btree_reuse_page, isCatalogRel) + sizeof(bool))
 
 /*
  * xl_btree_vacuum and xl_btree_delete records describe deletion of index
@@ -199,7 +201,7 @@ typedef struct xl_btree_reuse_page
  * when btinsert() is called.
  *
  * The records are very similar.  The only difference is that xl_btree_delete
- * has to include a latestRemovedXid field to generate recovery conflicts.
+ * have snapshotConflictHorizon/isCatalogRel fields for recovery conflicts.
  * (VACUUM operations can just rely on earlier conflicts generated during
  * pruning of the table whose TIDs the to-be-deleted index tuples point to.
  * There are also small differences between each REDO routine that we don't go
@@ -223,25 +225,35 @@ typedef struct xl_btree_vacuum
 	uint16		ndeleted;
 	uint16		nupdated;
 
-	/* DELETED TARGET OFFSET NUMBERS FOLLOW */
-	/* UPDATED TARGET OFFSET NUMBERS FOLLOW */
-	/* UPDATED TUPLES METADATA (xl_btree_update) ARRAY FOLLOWS */
+	/*----
+	 * In payload of blk 0 :
+	 * - DELETED TARGET OFFSET NUMBERS
+	 * - UPDATED TARGET OFFSET NUMBERS
+	 * - UPDATED TUPLES METADATA (xl_btree_update) ITEMS
+	 *----
+	 */
 } xl_btree_vacuum;
 
 #define SizeOfBtreeVacuum	(offsetof(xl_btree_vacuum, nupdated) + sizeof(uint16))
 
 typedef struct xl_btree_delete
 {
-	TransactionId latestRemovedXid;
+	TransactionId snapshotConflictHorizon;
 	uint16		ndeleted;
 	uint16		nupdated;
+	bool		isCatalogRel;	/* to handle recovery conflict during logical
+								 * decoding on standby */
 
-	/* DELETED TARGET OFFSET NUMBERS FOLLOW */
-	/* UPDATED TARGET OFFSET NUMBERS FOLLOW */
-	/* UPDATED TUPLES METADATA (xl_btree_update) ARRAY FOLLOWS */
+	/*----
+	 * In payload of blk 0 :
+	 * - DELETED TARGET OFFSET NUMBERS
+	 * - UPDATED TARGET OFFSET NUMBERS
+	 * - UPDATED TUPLES METADATA (xl_btree_update) ITEMS
+	 *----
+	 */
 } xl_btree_delete;
 
-#define SizeOfBtreeDelete	(offsetof(xl_btree_delete, nupdated) + sizeof(uint16))
+#define SizeOfBtreeDelete	(offsetof(xl_btree_delete, isCatalogRel) + sizeof(bool))
 
 /*
  * The offsets that appear in xl_btree_update metadata are offsets into the
