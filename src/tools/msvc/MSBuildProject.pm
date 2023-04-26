@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 package MSBuildProject;
 
@@ -312,6 +312,8 @@ sub WriteItemDefinitionGroup
 
 	my $targetmachine =
 	  $self->{platform} eq 'Win32' ? 'MachineX86' : 'MachineX64';
+	my $arch =
+	  $self->{platform} eq 'Win32' ? 'x86' : 'x86_64';
 
 	my $includes = join ';', @{ $self->{includes} }, "";
 
@@ -380,7 +382,7 @@ EOF
 		print $f <<EOF;
     <PreLinkEvent>
       <Message>Generate DEF file</Message>
-      <Command>perl src\\tools\\msvc\\gendef.pl $cfgname\\$self->{name} $self->{platform}</Command>
+      <Command>perl src\\tools\\msvc\\gendef.pl --arch $arch --deffile $cfgname\\$self->{name}\\$self->{name}.def $cfgname\\$self->{name}</Command>
     </PreLinkEvent>
 EOF
 	}

@@ -3,7 +3,7 @@
  * pl_comp.c		- Compiler part of the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -271,7 +271,6 @@ do_compile(FunctionCallInfo fcinfo,
 	bool		is_dml_trigger = CALLED_AS_TRIGGER(fcinfo);
 	bool		is_event_trigger = CALLED_AS_EVENT_TRIGGER(fcinfo);
 	Datum		prosrcdatum;
-	bool		isnull;
 	char	   *proc_source;
 	HeapTuple	typeTup;
 	Form_pg_type typeStruct;
@@ -296,10 +295,7 @@ do_compile(FunctionCallInfo fcinfo,
 	 * cannot be invoked recursively, so there's no need to save and restore
 	 * the static variables used here.
 	 */
-	prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
-								  Anum_pg_proc_prosrc, &isnull);
-	if (isnull)
-		elog(ERROR, "null prosrc");
+	prosrcdatum = SysCacheGetAttrNotNull(PROCOID, procTup, Anum_pg_proc_prosrc);
 	proc_source = TextDatumGetCString(prosrcdatum);
 	plpgsql_scanner_init(proc_source);
 
@@ -2498,9 +2494,15 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 
 /*
  * This is the same as the standard resolve_polymorphic_argtypes() function,
- * but with a special case for validation: assume that polymorphic arguments
- * are integer, integer-array or integer-range.  Also, we go ahead and report
- * the error if we can't resolve the types.
+ * except that:
+ * 1. We go ahead and report the error if we can't resolve the types.
+ * 2. We treat RECORD-type input arguments (not output arguments) as if
+ *    they were polymorphic, replacing their types with the actual input
+ *    types if we can determine those.  This allows us to create a separate
+ *    function cache entry for each named composite type passed to such an
+ *    argument.
+ * 3. In validation mode, we have no inputs to look at, so assume that
+ *    polymorphic arguments are integer, integer-array or integer-range.
  */
 static void
 plpgsql_resolve_polymorphic_argtypes(int numargs,
@@ -2512,6 +2514,8 @@ plpgsql_resolve_polymorphic_argtypes(int numargs,
 
 	if (!forValidator)
 	{
+		int			inargno;
+
 		/* normal case, pass to standard routine */
 		if (!resolve_polymorphic_argtypes(numargs, argtypes, argmodes,
 										  call_expr))
@@ -2520,10 +2524,28 @@ plpgsql_resolve_polymorphic_argtypes(int numargs,
 					 errmsg("could not determine actual argument "
 							"type for polymorphic function \"%s\"",
 							proname)));
+		/* also, treat RECORD inputs (but not outputs) as polymorphic */
+		inargno = 0;
+		for (i = 0; i < numargs; i++)
+		{
+			char		argmode = argmodes ? argmodes[i] : PROARGMODE_IN;
+
+			if (argmode == PROARGMODE_OUT || argmode == PROARGMODE_TABLE)
+				continue;
+			if (argtypes[i] == RECORDOID || argtypes[i] == RECORDARRAYOID)
+			{
+				Oid			resolvedtype = get_call_expr_argtype(call_expr,
+																 inargno);
+
+				if (OidIsValid(resolvedtype))
+					argtypes[i] = resolvedtype;
+			}
+			inargno++;
+		}
 	}
 	else
 	{
-		/* special validation case */
+		/* special validation case (no need to do anything for RECORD) */
 		for (i = 0; i < numargs; i++)
 		{
 			switch (argtypes[i])
@@ -2601,7 +2623,7 @@ plpgsql_HashTableLookup(PLpgSQL_func_hashkey *func_key)
 	plpgsql_HashEnt *hentry;
 
 	hentry = (plpgsql_HashEnt *) hash_search(plpgsql_HashTable,
-											 (void *) func_key,
+											 func_key,
 											 HASH_FIND,
 											 NULL);
 	if (hentry)
@@ -2618,7 +2640,7 @@ plpgsql_HashTableInsert(PLpgSQL_function *function,
 	bool		found;
 
 	hentry = (plpgsql_HashEnt *) hash_search(plpgsql_HashTable,
-											 (void *) func_key,
+											 func_key,
 											 HASH_ENTER,
 											 &found);
 	if (found)
@@ -2639,7 +2661,7 @@ plpgsql_HashTableDelete(PLpgSQL_function *function)
 		return;
 
 	hentry = (plpgsql_HashEnt *) hash_search(plpgsql_HashTable,
-											 (void *) function->fn_hashkey,
+											 function->fn_hashkey,
 											 HASH_REMOVE,
 											 NULL);
 	if (hentry == NULL)

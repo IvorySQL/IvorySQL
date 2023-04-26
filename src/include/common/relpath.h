@@ -3,7 +3,7 @@
  * relpath.h
  *		Declarations for GetRelationPath() and friends
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/relpath.h
@@ -19,6 +19,13 @@
  */
 #include "catalog/catversion.h" /* pgrminclude ignore */
 
+/*
+ * RelFileNumber data type identifies the specific relation file name.
+ */
+typedef Oid RelFileNumber;
+#define InvalidRelFileNumber		((RelFileNumber) InvalidOid)
+#define RelFileNumberIsValid(relnumber) \
+				((bool) ((relnumber) != InvalidRelFileNumber))
 
 /*
  * Name of major-version-specific tablespace subdirectories

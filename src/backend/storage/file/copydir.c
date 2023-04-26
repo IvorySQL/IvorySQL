@@ -3,7 +3,7 @@
  * copydir.c
  *	  copies a directory
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	While "xcopy /e /i /q" works fine for copying directories, on Windows XP
@@ -20,7 +20,6 @@
 
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/stat.h>
 
 #include "common/file_utils.h"
 #include "miscadmin.h"
@@ -35,7 +34,7 @@
  * a directory or a regular file is ignored.
  */
 void
-copydir(char *fromdir, char *todir, bool recurse)
+copydir(const char *fromdir, const char *todir, bool recurse)
 {
 	DIR		   *xldir;
 	struct dirent *xlde;
@@ -115,7 +114,7 @@ copydir(char *fromdir, char *todir, bool recurse)
  * copy one file
  */
 void
-copy_file(char *fromfile, char *tofile)
+copy_file(const char *fromfile, const char *tofile)
 {
 	char	   *buffer;
 	int			srcfd;

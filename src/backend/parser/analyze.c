@@ -14,7 +14,7 @@
  * contain optimizable statements, which we should transform.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/parser/analyze.c
@@ -27,9 +27,11 @@
 #include "access/sysattr.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/defrem.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/queryjumble.h"
 #include "optimizer/optimizer.h"
 #include "parser/analyze.h"
 #include "parser/parse_agg.h"
@@ -50,7 +52,6 @@
 #include "utils/backend_status.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
-#include "utils/queryjumble.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
@@ -90,13 +91,6 @@ static void transformLockingClause(ParseState *pstate, Query *qry,
 static bool test_raw_expression_coverage(Node *node, void *context);
 #endif
 
-static Node *transformHierarStmt(ParseState *pstate, SelectStmt *stmt);
-static List *qualifyTlistColumns(ParseState *pstate, List *targetList, char *relname);
-static Node *addLevelCol(ParseState *pstate, char *relname);
-static List *transformHierarTargetList(ParseState *pstate, bool subqryleft,
-									   List **tlist, char *relname);
-static List *fixupWhenAndSortClauses(ParseState *pstate, SelectStmt *stmt,
-									  SelectStmt *ctequery, char *relname);
 
 /*
  * parse_analyze_fixedparams
@@ -366,14 +360,6 @@ transformStmt(ParseState *pstate, Node *parseTree)
 			{
 				SelectStmt *n = (SelectStmt *) parseTree;
 
-				/* Transform a Hierarchical Stmt into a CTE */
-				if (n->hierarClause)
-				{
-					Node	   *res = transformHierarStmt(pstate, n);
-
-					n = (SelectStmt *) res;
-				}
-
 				if (n->valuesLists)
 					result = transformValuesClause(pstate, n);
 				else if (n->op == SETOP_NONE)
@@ -533,6 +519,7 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 
 	/* done building the range table and jointree */
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
@@ -561,11 +548,12 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	List	   *exprList = NIL;
 	bool		isGeneralSelect;
 	List	   *sub_rtable;
+	List	   *sub_rteperminfos;
 	List	   *sub_namespace;
 	List	   *icolumns;
 	List	   *attrnos;
 	ParseNamespaceItem *nsitem;
-	RangeTblEntry *rte;
+	RTEPermissionInfo *perminfo;
 	ListCell   *icols;
 	ListCell   *attnos;
 	ListCell   *lc;
@@ -609,23 +597,26 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 
 	/*
 	 * If a non-nil rangetable/namespace was passed in, and we are doing
-	 * INSERT/SELECT, arrange to pass the rangetable/namespace down to the
-	 * SELECT.  This can only happen if we are inside a CREATE RULE, and in
-	 * that case we want the rule's OLD and NEW rtable entries to appear as
-	 * part of the SELECT's rtable, not as outer references for it.  (Kluge!)
-	 * The SELECT's joinlist is not affected however.  We must do this before
-	 * adding the target table to the INSERT's rtable.
+	 * INSERT/SELECT, arrange to pass the rangetable/rteperminfos/namespace
+	 * down to the SELECT.  This can only happen if we are inside a CREATE
+	 * RULE, and in that case we want the rule's OLD and NEW rtable entries to
+	 * appear as part of the SELECT's rtable, not as outer references for it.
+	 * (Kluge!) The SELECT's joinlist is not affected however.  We must do
+	 * this before adding the target table to the INSERT's rtable.
 	 */
 	if (isGeneralSelect)
 	{
 		sub_rtable = pstate->p_rtable;
 		pstate->p_rtable = NIL;
+		sub_rteperminfos = pstate->p_rteperminfos;
+		pstate->p_rteperminfos = NIL;
 		sub_namespace = pstate->p_namespace;
 		pstate->p_namespace = NIL;
 	}
 	else
 	{
 		sub_rtable = NIL;		/* not used, but keep compiler quiet */
+		sub_rteperminfos = NIL;
 		sub_namespace = NIL;
 	}
 
@@ -684,7 +675,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		 * the target column's type, which we handle below.
 		 */
 		sub_pstate->p_rtable = sub_rtable;
+		sub_pstate->p_rteperminfos = sub_rteperminfos;
 		sub_pstate->p_joinexprs = NIL;	/* sub_rtable has no joins */
+		sub_pstate->p_nullingrels = NIL;
 		sub_pstate->p_namespace = sub_namespace;
 		sub_pstate->p_resolve_unknowns = false;
 
@@ -866,7 +859,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		/*
 		 * Generate list of Vars referencing the RTE
 		 */
-		exprList = expandNSItemVars(nsitem, 0, -1, NULL);
+		exprList = expandNSItemVars(pstate, nsitem, 0, -1, NULL);
 
 		/*
 		 * Re-apply any indirection on the target column specs to the Vars
@@ -909,7 +902,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	 * Generate query's target list using the computed list of expressions.
 	 * Also, mark all the target columns as needing insert permissions.
 	 */
-	rte = pstate->p_target_nsitem->p_rte;
+	perminfo = pstate->p_target_nsitem->p_perminfo;
 	qry->targetList = NIL;
 	Assert(list_length(exprList) <= list_length(icolumns));
 	forthree(lc, exprList, icols, icolumns, attnos, attrnos)
@@ -925,8 +918,8 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 							  false);
 		qry->targetList = lappend(qry->targetList, tle);
 
-		rte->insertedCols = bms_add_member(rte->insertedCols,
-										   attr_num - FirstLowInvalidHeapAttributeNumber);
+		perminfo->insertedCols = bms_add_member(perminfo->insertedCols,
+												attr_num - FirstLowInvalidHeapAttributeNumber);
 	}
 
 	/*
@@ -953,6 +946,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 
 	/* done building the range table and jointree */
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
@@ -1111,8 +1105,6 @@ transformOnConflictClause(ParseState *pstate,
 		 * (We'll check the actual target relation, instead.)
 		 */
 		exclRte->relkind = RELKIND_COMPOSITE_TYPE;
-		exclRte->requiredPerms = 0;
-		/* other permissions fields in exclRte are already empty */
 
 		/* Create EXCLUDED rel's targetlist for use by EXPLAIN */
 		exclRelTlist = BuildOnConflictExcludedTargetlist(targetrel,
@@ -1406,6 +1398,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 		resolveTargetListUnknowns(pstate, qry->targetList);
 
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
@@ -1634,6 +1627,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 									  linitial(stmt->lockingClause))->strength))));
 
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
@@ -1680,9 +1674,6 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	ParseNamespaceColumn *sortnscolumns;
 	int			sortcolindex;
 	int			tllen;
-
-	pstate->p_num = 0;
-	pstate->p_union_flag = false;
 
 	qry->commandType = CMD_SELECT;
 
@@ -1748,9 +1739,6 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 					  transformSetOperationTree(pstate, stmt, true, NULL));
 	Assert(sostmt);
 	qry->setOperations = (Node *) sostmt;
-
-	if (pstate->p_type)
-		pfree(pstate->p_type);
 
 	/*
 	 * Re-find leftmost SELECT (now it's a sub-query in rangetable)
@@ -1886,6 +1874,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->limitOption = stmt->limitOption;
 
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
@@ -2097,7 +2086,6 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 		ListCell   *ltl;
 		ListCell   *rtl;
 		const char *context;
-		int	   num;
 		bool		recursive = (pstate->p_parent_cte &&
 								 pstate->p_parent_cte->cterecursive);
 
@@ -2107,54 +2095,6 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 
 		op->op = stmt->op;
 		op->all = stmt->all;
-
-		/* record the type of the right child node of the previous level */
-		if (stmt->rarg->targetList && !pstate->p_parent_cte)
-		{
-			List		*temptargetlist = NIL;
-			ListCell	*r_tartempcell;
-			int 		 i;
-			int 		 len;
-			List		 *rtable = copyObject(pstate->p_rtable);
-
-			(void)transformSetOperationTree(pstate, copyObject(stmt->rarg),
-											false,
-											&temptargetlist);
-
-			pstate->p_rtable  =copyObject(rtable);
-			pstate->p_num = 0;
-			len = temptargetlist->length;
-			if (!pstate->p_type)
-			{
-				pstate->p_type = (Oid *)palloc(sizeof(Oid) * len);
-				MemSet(pstate->p_type, 0x0, sizeof(Oid) * len);
-			}
-
-			foreach (r_tartempcell, temptargetlist)
-			{
-				TargetEntry	   *tartle = (TargetEntry *) lfirst(r_tartempcell);
-				Node	   *tarcolnode = (Node *) tartle->expr;
-				Oid	   tarcoltype = exprType(tarcolnode);
-
-				if (IsA(tarcolnode, Const) && tarcoltype == UNKNOWNOID)
-				{
-					pstate->p_num++;
-					continue;
-				}
-				else
-				{
-					pstate->p_type[pstate->p_num++] = tarcoltype;
-					pstate->p_union_flag = true;
-				}
-			}
-
-			/* handle unknown type and value is null in pstate->p_type */
-			for (i = 0; i < len; i++)
-			{
-				if (!pstate->p_type[i])
-					pstate->p_type[i] = UNKNOWNOID;
-			}
-		}
 
 		/*
 		 * Recursively transform the left child node.
@@ -2197,7 +2137,6 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 		op->colTypmods = NIL;
 		op->colCollations = NIL;
 		op->groupClauses = NIL;
-		num = 0;
 		forboth(ltl, ltargetlist, rtl, rtargetlist)
 		{
 			TargetEntry *ltle = (TargetEntry *) lfirst(ltl);
@@ -2211,26 +2150,6 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 			Oid			rescoltype;
 			int32		rescoltypmod;
 			Oid			rescolcoll;
-
-			/*
-			 * If the left and right nodes are both null,
-			 * the coercion type is the type of the upper right child node.
-			 */
-			if (IsA(lcolnode, Const) && IsA(rcolnode, Const))
-			{
-				if (lcoltype == UNKNOWNOID && rcoltype ==UNKNOWNOID &&
-					pstate->p_union_flag && ((Const *)lcolnode)->constisnull &&
-					((Const *)rcolnode)->constisnull)
-				{
-					Oid 	tarptype = pstate->p_type[num];
-
-					lcolnode = coerce_to_target_type(pstate, lcolnode, lcoltype,
-													 tarptype, -1,
-													 COERCION_EXPLICIT,
-													 COERCE_EXPLICIT_CAST,
-													 ((Const *)lcolnode)->location);
-				}
-			}
 
 			/* select common type, same as CASE et al */
 			rescoltype = select_common_type(pstate,
@@ -2352,8 +2271,6 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 										 false);
 				*targetlist = lappend(*targetlist, restle);
 			}
-
-			num++;
 		}
 
 		return (Node *) op;
@@ -2432,6 +2349,7 @@ transformReturnStmt(ParseState *pstate, ReturnStmt *stmt)
 	if (pstate->p_resolve_unknowns)
 		resolveTargetListUnknowns(pstate, qry->targetList);
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
@@ -2498,6 +2416,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	qry->targetList = transformUpdateTargetList(pstate, stmt->targetList);
 
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
 	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
@@ -2516,7 +2435,7 @@ List *
 transformUpdateTargetList(ParseState *pstate, List *origTlist)
 {
 	List	   *tlist = NIL;
-	RangeTblEntry *target_rte;
+	RTEPermissionInfo *target_perminfo;
 	ListCell   *orig_tl;
 	ListCell   *tl;
 
@@ -2528,7 +2447,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		pstate->p_next_resno = RelationGetNumberOfAttributes(pstate->p_target_relation) + 1;
 
 	/* Prepare non-junk columns for assignment to target table */
-	target_rte = pstate->p_target_nsitem->p_rte;
+	target_perminfo = pstate->p_target_nsitem->p_perminfo;
 	orig_tl = list_head(origTlist);
 
 	foreach(tl, tlist)
@@ -2536,8 +2455,6 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		TargetEntry *tle = (TargetEntry *) lfirst(tl);
 		ResTarget  *origTarget;
 		int			attrno;
-		char	   *colname_temp = NULL;
-		RangeTblEntry	   *alias_temp = NULL;
 
 		if (tle->resjunk)
 		{
@@ -2558,79 +2475,21 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
 		if (attrno == InvalidAttrNumber)
-		{
-			if (origTarget->indirection)
-			{
-				colname_temp = strVal(lfirst(list_head(origTarget->indirection)));
-				alias_temp = lfirst(list_head(pstate->p_rtable));
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("column \"%s\" of relation \"%s\" does not exist",
+							origTarget->name,
+							RelationGetRelationName(pstate->p_target_relation)),
+					 parser_errposition(pstate, origTarget->location)));
 
-				if (alias_temp->alias)
-				{
-					if (alias_temp->alias->aliasname)
-					{
-						if (strcmp(origTarget->name, alias_temp->alias->aliasname))
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_UNDEFINED_COLUMN),
-									 errmsg("Perhaps you meant to reference the table alias \"%s\"",
-											alias_temp->alias->aliasname)));
-						}
-						else
-						{
-							if (colname_temp)
-							{
-								attrno = attnameAttNum(pstate->p_target_relation, colname_temp, true);
-							}
-						}
-					}
-				}
-				else
-				{
-					if (origTarget->name && strcmp(origTarget->name, RelationGetRelationName(pstate->p_target_relation)))
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_COLUMN),
-								 errmsg("Perhaps you meant to assign the table alias \"%s\"",
-										origTarget->name)));
-					}
-					else
-					{
-						if (colname_temp)
-						{
-							attrno = attnameAttNum(pstate->p_target_relation, colname_temp, true);
-						}
-					}
-				}
-			}
-			else
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-						 errmsg("column \"%s\" of relation \"%s\" does not exist",
-								origTarget->name,
-								RelationGetRelationName(pstate->p_target_relation)),
-						parser_errposition(pstate, origTarget->location)));
-			}
-		}
-
-		if (colname_temp)
-		{
-			updateTargetListEntry(pstate, tle, colname_temp,
-								  attrno,
-								  NULL,
-								  origTarget->location);
-		}
-		else
-		{
-			updateTargetListEntry(pstate, tle, origTarget->name,
-								  attrno,
-								  origTarget->indirection,
-								  origTarget->location);
-		}
+		updateTargetListEntry(pstate, tle, origTarget->name,
+							  attrno,
+							  origTarget->indirection,
+							  origTarget->location);
 
 		/* Mark the target column as requiring update permissions */
-		target_rte->updatedCols = bms_add_member(target_rte->updatedCols,
-												 attrno - FirstLowInvalidHeapAttributeNumber);
+		target_perminfo->updatedCols = bms_add_member(target_perminfo->updatedCols,
+													  attrno - FirstLowInvalidHeapAttributeNumber);
 
 		orig_tl = lnext(origTlist, orig_tl);
 	}
@@ -2917,6 +2776,7 @@ transformPLAssignStmt(ParseState *pstate, PLAssignStmt *stmt)
 												   &qry->targetList);
 
 	qry->rtable = pstate->p_rtable;
+	qry->rteperminfos = pstate->p_rteperminfos;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
 	qry->hasSubLinks = pstate->p_hasSubLinks;
@@ -3047,9 +2907,37 @@ static Query *
 transformExplainStmt(ParseState *pstate, ExplainStmt *stmt)
 {
 	Query	   *result;
+	bool		generic_plan = false;
+	Oid		   *paramTypes = NULL;
+	int			numParams = 0;
+
+	/*
+	 * If we have no external source of parameter definitions, and the
+	 * GENERIC_PLAN option is specified, then accept variable parameter
+	 * definitions (similarly to PREPARE, for example).
+	 */
+	if (pstate->p_paramref_hook == NULL)
+	{
+		ListCell   *lc;
+
+		foreach(lc, stmt->options)
+		{
+			DefElem    *opt = (DefElem *) lfirst(lc);
+
+			if (strcmp(opt->defname, "generic_plan") == 0)
+				generic_plan = defGetBoolean(opt);
+			/* don't "break", as we want the last value */
+		}
+		if (generic_plan)
+			setup_parse_variable_parameters(pstate, &paramTypes, &numParams);
+	}
 
 	/* transform contained query, allowing SELECT INTO */
 	stmt->query = (Node *) transformOptionalSelectInto(pstate, stmt->query);
+
+	/* make sure all is well with parameter types */
+	if (generic_plan)
+		check_variable_parameters(pstate, (Query *) stmt->query);
 
 	/* represent the command as a utility Query */
 	result = makeNode(Query);
@@ -3395,9 +3283,16 @@ transformLockingClause(ParseState *pstate, Query *qry, LockingClause *lc,
 			switch (rte->rtekind)
 			{
 				case RTE_RELATION:
-					applyLockingClause(qry, i, lc->strength, lc->waitPolicy,
-									   pushedDown);
-					rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
+					{
+						RTEPermissionInfo *perminfo;
+
+						applyLockingClause(qry, i,
+										   lc->strength,
+										   lc->waitPolicy,
+										   pushedDown);
+						perminfo = getRTEPermissionInfo(qry->rteperminfos, rte);
+						perminfo->requiredPerms |= ACL_SELECT_FOR_UPDATE;
+					}
 					break;
 				case RTE_SUBQUERY:
 					applyLockingClause(qry, i, lc->strength, lc->waitPolicy,
@@ -3477,9 +3372,16 @@ transformLockingClause(ParseState *pstate, Query *qry, LockingClause *lc,
 					switch (rte->rtekind)
 					{
 						case RTE_RELATION:
-							applyLockingClause(qry, i, lc->strength,
-											   lc->waitPolicy, pushedDown);
-							rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
+							{
+								RTEPermissionInfo *perminfo;
+
+								applyLockingClause(qry, i,
+												   lc->strength,
+												   lc->waitPolicy,
+												   pushedDown);
+								perminfo = getRTEPermissionInfo(qry->rteperminfos, rte);
+								perminfo->requiredPerms |= ACL_SELECT_FOR_UPDATE;
+							}
 							break;
 						case RTE_SUBQUERY:
 							applyLockingClause(qry, i, lc->strength,
@@ -3617,312 +3519,6 @@ applyLockingClause(Query *qry, Index rtindex,
 	rc->waitPolicy = waitPolicy;
 	rc->pushedDown = pushedDown;
 	qry->rowMarks = lappend(qry->rowMarks, rc);
-}
-
-/*
- * transformHierarStmt
- *
- * transform a Hierarchical Select statement into a CTE. Currently
- * Hierarchical statement only supports PRIOR, LEVEL, CONNECT_BY_ROOT
- * and SYS_CONNECT_BY_PATH. example:
- * transform"
- * SELECT LEVEL, SYS_CONNECT_BY_PATH(col, '/') FROM tab
- * 	START WITH col =..
- *  CONNECT BY PRIOR col = ...;
- *
- * To
- *
- * WITH cte_tab AS (
- * 	SELECT 1 AS LEVEL, '/' || col as SYS_CONNECT_BY_PATH
- *  UNION ALL
- *  SELECT LEVEL + 1, cte_tab.SYS_CONNECT_BY_PATH || '/' || tab.col
- * 		FROM tab, cte_tab
- * ) SELECT LEVEL, SYS_CONNECT_BY_PATH FROM cte_tab;
- *
- */
-static Node *
-transformHierarStmt(ParseState *pstate, SelectStmt *stmt)
-{
-	RangeVar   *rv;
-	ParseState *ps = NULL;
-	ListCell   *lc;
-	CommonTableExpr *cte = makeNode(CommonTableExpr);
-	WithClause *withClause = makeNode(WithClause);
-	List	   *newCols = NIL;
-
-	SelectStmt *ctequery = makeNode(SelectStmt);
-	SelectStmt *ctequery_l = makeNode(SelectStmt);
-	SelectStmt *ctequery_r = makeNode(SelectStmt);
-
-	/* Setup the CTE subquery (anchor and recursive queries) */
-	ctequery->op = SETOP_UNION;
-	ctequery->all = true;
-	ctequery->larg = (SelectStmt *) ctequery_l;
-	ctequery->rarg = (SelectStmt *) ctequery_r;
-
-	/*
-	 * check if is a simple RangeVar, support only one simple table
-	 */
-	if (list_length(stmt->fromClause) != 1 || 
-		!IsA(linitial(stmt->fromClause), RangeVar))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("only a single simple relation is allowed in hierarchical statement")));
-	}
-
-	/* Buildup a CTE name and fill up other info */
-	rv = (RangeVar *) linitial(stmt->fromClause);
-	cte->ctename = psprintf("cte_%s", rv->relname);
-	cte->ctequery = (Node *) ctequery;
-	cte->location = -1;
-	cte->aliascolnames = NIL;
-
-	withClause->ctes = list_make1(cte);
-	withClause->recursive = true;
-	withClause->location = -1;
-
-	/* transform targetlist */
-	ps = make_parsestate(pstate);
-	pstate->p_paramref_hook = ps->p_paramref_hook = NULL;
-
-	ctequery_l->fromClause = copyObject(stmt->fromClause);
-	ctequery_r->fromClause = copyObject(stmt->fromClause);
-	transformFromClause(ps, ctequery_l->fromClause);
-
-	ctequery_l->targetList = copyObject(stmt->targetList);
-	ctequery_r->targetList = copyObject(stmt->targetList);
-
-	/* transform left-hand operand of the cte subquery */
-	newCols = transformHierarTargetList(ps, true, &ctequery_l->targetList, NULL);
-
-	/* Build and fill in the CTE's inner select's target list */
-	ctequery_l->intoClause = NULL;
-	ctequery_l->whereClause = NULL;
-	if (stmt->hierarClause != NULL &&
-		stmt->hierarClause->startWith)
-		ctequery_l->whereClause = copyObject(stmt->hierarClause->startWith->condition);
-
-	/*
-	 * make this recursive query's joining condition and adjust it as per
-	 * prior keyword
-	 */
-	ctequery_r->whereClause = copyObject(stmt->hierarClause->connectBy->condition);
-
-	newCols = list_concat_unique(newCols, fixupWhenAndSortClauses(ps, stmt, ctequery_r, rv->relname));
-
-	/* transform right-hand operand of the cte subquery */
-	transformHierarTargetList(ps, false, &ctequery_r->targetList, rv->relname);
-
-	/*
-	 * append pseudo columns list to the target list while avoiding the
-	 * duplicity
-	 */
-	ctequery_l->targetList = list_concat_unique(ctequery_l->targetList, newCols);
-	ctequery_r->targetList = list_concat_unique(ctequery_r->targetList, newCols);
-
-	/* qualify the target list columns with appropriate relation */
-	ctequery_r->targetList = qualifyTlistColumns(ps, ctequery_r->targetList, rv->relname);
-
-	/* add CTE relation to the recursive query */
-	ctequery_r->fromClause = lappend(ctequery_r->fromClause,
-									 makeRangeVar(NULL, cte->ctename, -1));
-
-	/*
-	 * transform the target list of cte query. If there were any
-	 * pseudocolumns, they have been replaced with appropriate values and an
-	 * alias has been created if one was not given. we need to use add these
-	 * column alias here to refer to them.
-	 */
-	pstate->p_cterqry = true;
-	foreach(lc, stmt->targetList)
-	{
-		ResTarget  *res = (ResTarget *) lfirst(lc);
-
-		res->val = resolvePseudoColumns(pstate, (Node *) res->val, res, NULL, NULL);
-	}
-	pstate->p_cterqry = false;
-
-	/*
-	 * The select statement is now part of cte, and it needs to refer to the
-	 * cte in the from clause, instead of the actual table.
-	 */
-	rv->relname = pstrdup(cte->ctename);
-	stmt->withClause = withClause;
-	/* hierarClause is not needed anymore */
-	stmt->hierarClause = NULL;
-
-	return (Node *) stmt;
-}
-
-/*
- * transformHierarTargetList
- *		transforms the given target list to a cte acceptable list.
- *
- * find and replace pseudocolumn columns in the target list with the
- * appropriate entries. The function returns a list of columns that
- * were used in pseudo columns such as SYS_CONNECT_BY_PATH or
- * CONNECT_BY_ROOT.
- */
-static List *
-transformHierarTargetList(ParseState *pstate, bool subqryleft,
-						  List **tlist, char *relname)
-{
-	ListCell   *lc;
-	Node	   *result;
-	List	   *cols = NIL;
-	List 	   *targetList = NIL;
-
-	if (tlist != NULL)
-		targetList = *tlist;
-
-	pstate->p_subqryleft = subqryleft;
-	foreach(lc, targetList)
-	{
-		ResTarget  *res = (ResTarget *) lfirst(lc);
-
-		if (IsA(res->val, ColumnRef))
-		{
-			ColumnRef  *cref = (ColumnRef *) res->val;
-
-			if (IsA(llast(cref->fields), A_Star))
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("column expression via \"*\" is not supported for hierarchical statement"),
-						 parser_errposition(pstate, cref->location)));
-		}
-		else if (IsA(res->val, A_Indirection))
-		{
-			A_Indirection *ind = (A_Indirection *) res->val;
-			Node	   *result = transformExpr(pstate, ind->arg, EXPR_KIND_SELECT_TARGET);
-			int			location = exprLocation(result);
-
-			if (IsA(llast(ind->indirection), A_Star))
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("column expression via \"*\" is not supported for hierarchical statement"),
-						 parser_errposition(pstate, location)));
-		}
-
-		pstate->p_ctehflags &= ~EXPR_FLAG_LEVEL;
-		resolvePseudoColumns(pstate, (Node *) res->val, res, relname, &cols);
-		if (pstate->p_ctehflags & EXPR_FLAG_LEVEL)
-			targetList = foreach_delete_current(targetList, lc);
-	}
-
-	result = addLevelCol(pstate, relname);
-	targetList = lappend(targetList, result);
-
-	if (tlist != NULL)
-		*tlist = targetList;
-	return cols;
-}
-
-/*
- * qualifyTlistColumns
- *
- * transform the target list columns and qualify them using the given
- * 'relname', to remove any ambiguities that can come up from having same
- * columns names in joined relations.
- */
-static List *
-qualifyTlistColumns(ParseState *pstate, List *targetList, char *relname)
-{
-	ListCell   *lc;
-
-	Assert(relname != NULL);
-	foreach(lc, targetList)
-	{
-		ResTarget  *res = (ResTarget *) lfirst(lc);
-		ColumnRef  *cref = NULL;
-
-		if (res && !IsA(res->val, ColumnRef))
-			continue;
-
-		cref = (ColumnRef *) res->val;
-
-		/* qualify column by appending relname to it. */
-		if (list_length(cref->fields) == 1)
-			cref->fields = lcons(makeString(relname), cref->fields);
-	}
-
-	return targetList;
-}
-
-/*
- * LEVEL is a bit different from other special columns. all LEVEL entries
- * are removed from cte subquery's target list. It is then added once at
- * the end of it and is then referenced in cte query.
- */
-static Node *
-addLevelCol(ParseState *pstate, char *relname)
-{
-	ResTarget  *res = makeNode(ResTarget);
-	A_Const    *rexpr;
-
-	res->name = pstrdup("LEVEL");
-
-	rexpr = makeNode(A_Const);
-	rexpr->val.ival.type = T_Integer;
-	rexpr->val.ival.ival = 1;
-	rexpr->location = -1;
-
-	if (pstate->p_subqryleft)
-	{
-		res->val = (Node *) rexpr;
-	}
-	else
-	{
-		ColumnRef  *n = makeNode(ColumnRef);
-		A_Expr	   *aexpr = makeSimpleA_Expr(AEXPR_OP, "+",
-											 (Node *) n,
-											 (Node *) rexpr,
-											 -1);
-
-		n->fields = list_make1(makeString("LEVEL"));
-		n->location = -1;
-
-		if (relname)
-		{
-			char	   *name = psprintf("cte_%s", relname);
-
-			n->fields = lcons(makeString(name), n->fields);
-		}
-
-		res->val = (Node *) aexpr;
-	}
-	return (Node *) res;
-}
-
-static List *
-fixupWhenAndSortClauses(ParseState *pstate, SelectStmt *stmt,
-						 SelectStmt *ctequery, char *relname)
-{
-	List	   *cols = NIL;
-	ListCell   *lc;
-
-	/*
-	 * Add sort clause columns to the target list of cte. Only columns can be
-	 * listed in the sort clause, expresions (i.e. order by col+10) in sort
-	 * clause are not supported.
-	 */
-	foreach(lc, stmt->sortClause)
-	{
-		SortBy	   *sortby = (SortBy *) lfirst(lc);
-
-		resolvePseudoColumns(pstate, (Node *) sortby->node, NULL, relname, &cols);
-	}
-
-	/*
-	 * transform the where clause and qualify the join conditions with proper
-	 * relations. if a column in condition is preceded by PRIOR we qualify it
-	 * with the cte's name. All other columns are qualified with actual table
-	 * name.
-	 */
-	pstate->p_ctehflags |= EXPR_FLAG_WHERE;
-	resolvePseudoColumns(pstate, (Node *) ctequery->whereClause, NULL, relname, &cols);
-	pstate->p_ctehflags &= ~EXPR_FLAG_WHERE;
-	return cols;
 }
 
 /*

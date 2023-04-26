@@ -3,7 +3,7 @@
  * test_oat_hooks.c
  *		Code for testing mandatory access control (MAC) using object access hooks.
  *
- * Copyright (c) 2015-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_oat_hooks/test_oat_hooks.c
@@ -55,7 +55,7 @@ static void REGRESS_object_access_hook_str(ObjectAccessType access,
 										   int subId, void *arg);
 static void REGRESS_object_access_hook(ObjectAccessType access, Oid classId,
 									   Oid objectId, int subId, void *arg);
-static bool REGRESS_exec_check_perms(List *rangeTabls, bool do_abort);
+static bool REGRESS_exec_check_perms(List *rangeTabls, List *rteperminfos, bool do_abort);
 static void REGRESS_utility_command(PlannedStmt *pstmt,
 									const char *queryString, bool readOnlyTree,
 									ProcessUtilityContext context,
@@ -233,7 +233,7 @@ emit_audit_message(const char *type, const char *hook, char *action, char *objNa
 	/*
 	 * Ensure that audit messages are not duplicated by only emitting them
 	 * from a leader process, not a worker process. This makes the test
-	 * results deterministic even if run with force_parallel_mode = regress.
+	 * results deterministic even if run with debug_parallel_query = regress.
 	 */
 	if (REGRESS_audit && !IsParallelWorker())
 	{
@@ -345,7 +345,7 @@ REGRESS_object_access_hook(ObjectAccessType access, Oid classId, Oid objectId, i
 }
 
 static bool
-REGRESS_exec_check_perms(List *rangeTabls, bool do_abort)
+REGRESS_exec_check_perms(List *rangeTabls, List *rteperminfos, bool do_abort)
 {
 	bool		am_super = superuser_arg(GetUserId());
 	bool		allow = true;
@@ -361,7 +361,7 @@ REGRESS_exec_check_perms(List *rangeTabls, bool do_abort)
 
 	/* Forward to next hook in the chain */
 	if (next_exec_check_perms_hook &&
-		!(*next_exec_check_perms_hook) (rangeTabls, do_abort))
+		!(*next_exec_check_perms_hook) (rangeTabls, rteperminfos, do_abort))
 		allow = false;
 
 	if (allow)

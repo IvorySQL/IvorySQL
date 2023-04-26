@@ -115,6 +115,15 @@ SET ROLE pg_read_all_settings;
 RESET ROLE;
 
 RESET SESSION AUTHORIZATION;
+REVOKE SET OPTION FOR pg_read_all_settings FROM regress_priv_user8;
+GRANT pg_read_all_stats TO regress_priv_user8 WITH SET FALSE;
+
+SET SESSION AUTHORIZATION regress_priv_user8;
+SET ROLE pg_read_all_settings;  -- fail, no SET option any more
+SET ROLE pg_read_all_stats;     -- fail, granted without SET option
+RESET ROLE;
+
+RESET SESSION AUTHORIZATION;
 REVOKE pg_read_all_settings FROM regress_priv_user8;
 
 DROP USER regress_priv_user10;
@@ -1421,6 +1430,15 @@ SELECT makeaclitem('regress_priv_user1'::regrole, 'regress_priv_user2'::regrole,
 SELECT makeaclitem('regress_priv_user1'::regrole, 'regress_priv_user2'::regrole,
 	'SELECT, fake_privilege', FALSE);  -- error
 
+-- Test non-throwing aclitem I/O
+SELECT pg_input_is_valid('regress_priv_user1=r/regress_priv_user2', 'aclitem');
+SELECT pg_input_is_valid('regress_priv_user1=r/', 'aclitem');
+SELECT * FROM pg_input_error_info('regress_priv_user1=r/', 'aclitem');
+SELECT pg_input_is_valid('regress_priv_user1=r/regress_no_such_user', 'aclitem');
+SELECT * FROM pg_input_error_info('regress_priv_user1=r/regress_no_such_user', 'aclitem');
+SELECT pg_input_is_valid('regress_priv_user1=rY', 'aclitem');
+SELECT * FROM pg_input_error_info('regress_priv_user1=rY', 'aclitem');
+
 --
 -- Testing blanket default grants is very hazardous since it might change
 -- the privileges attached to objects created by concurrent regression tests.
@@ -1689,11 +1707,11 @@ CREATE TABLE lock_table (a int);
 GRANT SELECT ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
-LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should fail
-ROLLBACK;
-BEGIN;
 LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
 COMMIT;
+BEGIN;
+LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should fail
+ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should fail
 ROLLBACK;
@@ -1704,11 +1722,11 @@ REVOKE SELECT ON lock_table FROM regress_locktable_user;
 GRANT INSERT ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
+LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
+ROLLBACK;
+BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
 COMMIT;
-BEGIN;
-LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
-ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should fail
 ROLLBACK;
@@ -1719,11 +1737,11 @@ REVOKE INSERT ON lock_table FROM regress_locktable_user;
 GRANT UPDATE ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
+LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
+ROLLBACK;
+BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
 COMMIT;
-BEGIN;
-LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
-ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
 COMMIT;
@@ -1734,11 +1752,11 @@ REVOKE UPDATE ON lock_table FROM regress_locktable_user;
 GRANT DELETE ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
+LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
+ROLLBACK;
+BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
 COMMIT;
-BEGIN;
-LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
-ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
 COMMIT;
@@ -1749,16 +1767,31 @@ REVOKE DELETE ON lock_table FROM regress_locktable_user;
 GRANT TRUNCATE ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
+LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
+ROLLBACK;
+BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
 COMMIT;
-BEGIN;
-LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
-ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
 COMMIT;
 \c
 REVOKE TRUNCATE ON lock_table FROM regress_locktable_user;
+
+-- LOCK TABLE and MAINTAIN permission
+GRANT MAINTAIN ON lock_table TO regress_locktable_user;
+SET SESSION AUTHORIZATION regress_locktable_user;
+BEGIN;
+LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
+ROLLBACK;
+BEGIN;
+LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
+COMMIT;
+BEGIN;
+LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
+COMMIT;
+\c
+REVOKE MAINTAIN ON lock_table FROM regress_locktable_user;
 
 -- clean up
 DROP TABLE lock_table;
@@ -1813,3 +1846,86 @@ DROP ROLE regress_group;
 DROP ROLE regress_group_direct_manager;
 DROP ROLE regress_group_indirect_manager;
 DROP ROLE regress_group_member;
+
+-- test SET and INHERIT options with object ownership changes
+CREATE ROLE regress_roleoption_protagonist;
+CREATE ROLE regress_roleoption_donor;
+CREATE ROLE regress_roleoption_recipient;
+CREATE SCHEMA regress_roleoption;
+GRANT CREATE, USAGE ON SCHEMA regress_roleoption TO PUBLIC;
+GRANT regress_roleoption_donor TO regress_roleoption_protagonist WITH INHERIT TRUE, SET FALSE;
+GRANT regress_roleoption_recipient TO regress_roleoption_protagonist WITH INHERIT FALSE, SET TRUE;
+SET SESSION AUTHORIZATION regress_roleoption_protagonist;
+CREATE TABLE regress_roleoption.t1 (a int);
+CREATE TABLE regress_roleoption.t2 (a int);
+SET SESSION AUTHORIZATION regress_roleoption_donor;
+CREATE TABLE regress_roleoption.t3 (a int);
+SET SESSION AUTHORIZATION regress_roleoption_recipient;
+CREATE TABLE regress_roleoption.t4 (a int);
+SET SESSION AUTHORIZATION regress_roleoption_protagonist;
+ALTER TABLE regress_roleoption.t1 OWNER TO regress_roleoption_donor; -- fails, can't be come donor
+ALTER TABLE regress_roleoption.t2 OWNER TO regress_roleoption_recipient; -- works
+ALTER TABLE regress_roleoption.t3 OWNER TO regress_roleoption_protagonist; -- works
+ALTER TABLE regress_roleoption.t4 OWNER TO regress_roleoption_protagonist; -- fails, we don't inherit from recipient
+RESET SESSION AUTHORIZATION;
+DROP TABLE regress_roleoption.t1;
+DROP TABLE regress_roleoption.t2;
+DROP TABLE regress_roleoption.t3;
+DROP TABLE regress_roleoption.t4;
+DROP SCHEMA regress_roleoption;
+DROP ROLE regress_roleoption_protagonist;
+DROP ROLE regress_roleoption_donor;
+DROP ROLE regress_roleoption_recipient;
+
+-- MAINTAIN
+CREATE ROLE regress_no_maintain;
+CREATE ROLE regress_maintain;
+CREATE ROLE regress_maintain_all IN ROLE pg_maintain;
+
+CREATE TABLE maintain_test (a INT);
+CREATE INDEX ON maintain_test (a);
+GRANT MAINTAIN ON maintain_test TO regress_maintain;
+CREATE MATERIALIZED VIEW refresh_test AS SELECT 1;
+GRANT MAINTAIN ON refresh_test TO regress_maintain;
+CREATE SCHEMA reindex_test;
+
+-- negative tests; should fail
+SET ROLE regress_no_maintain;
+VACUUM maintain_test;
+ANALYZE maintain_test;
+VACUUM (ANALYZE) maintain_test;
+CLUSTER maintain_test USING maintain_test_a_idx;
+REFRESH MATERIALIZED VIEW refresh_test;
+REINDEX TABLE maintain_test;
+REINDEX INDEX maintain_test_a_idx;
+REINDEX SCHEMA reindex_test;
+RESET ROLE;
+
+SET ROLE regress_maintain;
+VACUUM maintain_test;
+ANALYZE maintain_test;
+VACUUM (ANALYZE) maintain_test;
+CLUSTER maintain_test USING maintain_test_a_idx;
+REFRESH MATERIALIZED VIEW refresh_test;
+REINDEX TABLE maintain_test;
+REINDEX INDEX maintain_test_a_idx;
+REINDEX SCHEMA reindex_test;
+RESET ROLE;
+
+SET ROLE regress_maintain_all;
+VACUUM maintain_test;
+ANALYZE maintain_test;
+VACUUM (ANALYZE) maintain_test;
+CLUSTER maintain_test USING maintain_test_a_idx;
+REFRESH MATERIALIZED VIEW refresh_test;
+REINDEX TABLE maintain_test;
+REINDEX INDEX maintain_test_a_idx;
+REINDEX SCHEMA reindex_test;
+RESET ROLE;
+
+DROP TABLE maintain_test;
+DROP MATERIALIZED VIEW refresh_test;
+DROP SCHEMA reindex_test;
+DROP ROLE regress_no_maintain;
+DROP ROLE regress_maintain;
+DROP ROLE regress_maintain_all;

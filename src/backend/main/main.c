@@ -9,7 +9,7 @@
  * proper FooMain() routine for the incarnation.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -43,6 +43,7 @@
 
 
 const char *progname;
+static bool reached_main = false;
 
 
 static void startup_hacks(const char *progname);
@@ -58,6 +59,8 @@ int
 main(int argc, char *argv[])
 {
 	bool		do_check_root = true;
+
+	reached_main = true;
 
 	/*
 	 * If supported on the current platform, set up a handler to be called if
@@ -133,8 +136,6 @@ main(int argc, char *argv[])
 	 * variables installed by pg_perm_setlocale have force.
 	 */
 	unsetenv("LC_ALL");
-
-	check_strxfrm_bug();
 
 	/*
 	 * Catch standard options before doing much else, in particular before we
@@ -336,7 +337,7 @@ help(const char *progname)
 	printf(_("  -e                 use European date input format (DMY)\n"));
 	printf(_("  -F                 turn fsync off\n"));
 	printf(_("  -h HOSTNAME        host name or IP address to listen on\n"));
-	printf(_("  -i                 enable TCP/IP connections\n"));
+	printf(_("  -i                 enable TCP/IP connections (deprecated)\n"));
 	printf(_("  -k DIRECTORY       Unix-domain socket location\n"));
 #ifdef USE_SSL
 	printf(_("  -l                 enable SSL connections\n"));
@@ -352,11 +353,10 @@ help(const char *progname)
 
 	printf(_("\nDeveloper options:\n"));
 	printf(_("  -f s|i|o|b|t|n|m|h forbid use of some plan types\n"));
-	printf(_("  -n                 do not reinitialize shared memory after abnormal exit\n"));
 	printf(_("  -O                 allow system table structure changes\n"));
 	printf(_("  -P                 disable system indexes\n"));
 	printf(_("  -t pa|pl|ex        show timings after each query\n"));
-	printf(_("  -T                 send SIGSTOP to all backend processes if one dies\n"));
+	printf(_("  -T                 send SIGABRT to all backend processes if one dies\n"));
 	printf(_("  -W NUM             wait NUM seconds to allow attach from a debugger\n"));
 
 	printf(_("\nOptions for single-user mode:\n"));
@@ -420,4 +420,31 @@ check_root(const char *progname)
 		exit(1);
 	}
 #endif							/* WIN32 */
+}
+
+/*
+ * At least on linux, set_ps_display() breaks /proc/$pid/environ. The
+ * sanitizer library uses /proc/$pid/environ to implement getenv() as it wants
+ * to work independent of libc. When just using undefined and alignment
+ * sanitizers, the sanitizer library is only initialized when the first error
+ * occurs, by which time we've often already called set_ps_display(),
+ * preventing the sanitizer libraries from seeing the options.
+ *
+ * We can work around that by defining __ubsan_default_options, a weak symbol
+ * libsanitizer uses to get defaults from the application, and return
+ * getenv("UBSAN_OPTIONS"). But only if main already was reached, so that we
+ * don't end up relying on a not-yet-working getenv().
+ *
+ * As this function won't get called when not running a sanitizer, it doesn't
+ * seem necessary to only compile it conditionally.
+ */
+const char *__ubsan_default_options(void);
+const char *
+__ubsan_default_options(void)
+{
+	/* don't call libc before it's guaranteed to be initialized */
+	if (!reached_main)
+		return "";
+
+	return getenv("UBSAN_OPTIONS");
 }

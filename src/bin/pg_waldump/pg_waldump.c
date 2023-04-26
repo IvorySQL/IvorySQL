@@ -2,7 +2,7 @@
  *
  * pg_waldump.c - decode and display WAL
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_waldump/pg_waldump.c
@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include <dirent.h>
+#include <limits.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -23,9 +24,13 @@
 #include "access/xlogrecord.h"
 #include "access/xlogstats.h"
 #include "common/fe_memutils.h"
+#include "common/file_perm.h"
+#include "common/file_utils.h"
 #include "common/logging.h"
+#include "common/relpath.h"
 #include "getopt_long.h"
 #include "rmgrdesc.h"
+#include "storage/bufpage.h"
 
 /*
  * NOTE: For any code change or issue fix here, it is highly recommended to
@@ -70,6 +75,9 @@ typedef struct XLogDumpConfig
 	bool		filter_by_relation_block_enabled;
 	ForkNumber	filter_by_relation_forknum;
 	bool		filter_by_fpw;
+
+	/* save options */
+	char	   *save_fullpage_path;
 } XLogDumpConfig;
 
 
@@ -80,7 +88,7 @@ typedef struct XLogDumpConfig
 #ifndef WIN32
 
 static void
-sigint_handler(int signum)
+sigint_handler(SIGNAL_ARGS)
 {
 	time_to_stop = true;
 }
@@ -110,6 +118,37 @@ verify_directory(const char *directory)
 		return false;
 	closedir(dir);
 	return true;
+}
+
+/*
+ * Create if necessary the directory storing the full-page images extracted
+ * from the WAL records read.
+ */
+static void
+create_fullpage_directory(char *path)
+{
+	int			ret;
+
+	switch ((ret = pg_check_dir(path)))
+	{
+		case 0:
+			/* Does not exist, so create it */
+			if (pg_mkdir_p(path, pg_dir_create_mode) < 0)
+				pg_fatal("could not create directory \"%s\": %m", path);
+			break;
+		case 1:
+			/* Present and empty, so do nothing */
+			break;
+		case 2:
+		case 3:
+		case 4:
+			/* Exists and not empty */
+			pg_fatal("directory \"%s\" exists but is not empty", path);
+			break;
+		default:
+			/* Trouble accessing directory */
+			pg_fatal("could not access directory \"%s\": %m", path);
+	}
 }
 
 /*
@@ -440,6 +479,62 @@ XLogRecordHasFPW(XLogReaderState *record)
 }
 
 /*
+ * Function to externally save all FPWs stored in the given WAL record.
+ * Decompression is applied to all the blocks saved, if necessary.
+ */
+static void
+XLogRecordSaveFPWs(XLogReaderState *record, const char *savepath)
+{
+	int			block_id;
+
+	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
+	{
+		PGAlignedBlock buf;
+		Page		page;
+		char		filename[MAXPGPATH];
+		char		forkname[FORKNAMECHARS + 2];	/* _ + terminating zero */
+		FILE	   *file;
+		BlockNumber blk;
+		RelFileLocator rnode;
+		ForkNumber	fork;
+
+		if (!XLogRecHasBlockRef(record, block_id))
+			continue;
+
+		if (!XLogRecHasBlockImage(record, block_id))
+			continue;
+
+		page = (Page) buf.data;
+
+		/* Full page exists, so let's save it */
+		if (!RestoreBlockImage(record, block_id, page))
+			pg_fatal("%s", record->errormsg_buf);
+
+		(void) XLogRecGetBlockTagExtended(record, block_id,
+										  &rnode, &fork, &blk, NULL);
+
+		if (fork >= 0 && fork <= MAX_FORKNUM)
+			sprintf(forkname, "_%s", forkNames[fork]);
+		else
+			pg_fatal("invalid fork number: %u", fork);
+
+		snprintf(filename, MAXPGPATH, "%s/%08X-%08X.%u.%u.%u.%u%s", savepath,
+				 LSN_FORMAT_ARGS(record->ReadRecPtr),
+				 rnode.spcOid, rnode.dbOid, rnode.relNumber, blk, forkname);
+
+		file = fopen(filename, PG_BINARY_W);
+		if (!file)
+			pg_fatal("could not open file \"%s\": %m", filename);
+
+		if (fwrite(page, BLCKSZ, 1, file) != 1)
+			pg_fatal("could not write file \"%s\": %m", filename);
+
+		if (fclose(file) != 0)
+			pg_fatal("could not close file \"%s\": %m", filename);
+	}
+}
+
+/*
  * Print a record to stdout
  */
 static void
@@ -667,7 +762,7 @@ usage(void)
 	printf(_("  -F, --fork=FORK        only show records that modify blocks in fork FORK;\n"
 			 "                         valid names are main, fsm, vm, init\n"));
 	printf(_("  -n, --limit=N          number of records to display\n"));
-	printf(_("  -p, --path=PATH        directory in which to find log segment files or a\n"
+	printf(_("  -p, --path=PATH        directory in which to find WAL segment files or a\n"
 			 "                         directory with a ./pg_wal that contains such files\n"
 			 "                         (default: current directory, ./pg_wal, $PGDATA/pg_wal)\n"));
 	printf(_("  -q, --quiet            do not print any output, except for errors\n"));
@@ -675,13 +770,14 @@ usage(void)
 			 "                         use --rmgr=list to list valid resource manager names\n"));
 	printf(_("  -R, --relation=T/D/R   only show records that modify blocks in relation T/D/R\n"));
 	printf(_("  -s, --start=RECPTR     start reading at WAL location RECPTR\n"));
-	printf(_("  -t, --timeline=TLI     timeline from which to read log records\n"
+	printf(_("  -t, --timeline=TLI     timeline from which to read WAL records\n"
 			 "                         (default: 1 or the value used in STARTSEG)\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
 	printf(_("  -w, --fullpage         only show records with a full page write\n"));
 	printf(_("  -x, --xid=XID          only show records with transaction ID XID\n"));
 	printf(_("  -z, --stats[=record]   show statistics instead of records\n"
 			 "                         (optionally, show per-record statistics)\n"));
+	printf(_("  --save-fullpage=DIR    save full page images to DIR\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
 	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
@@ -719,6 +815,7 @@ main(int argc, char **argv)
 		{"xid", required_argument, NULL, 'x'},
 		{"version", no_argument, NULL, 'V'},
 		{"stats", optional_argument, NULL, 'z'},
+		{"save-fullpage", required_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -770,6 +867,7 @@ main(int argc, char **argv)
 	config.filter_by_relation_block_enabled = false;
 	config.filter_by_relation_forknum = InvalidForkNumber;
 	config.filter_by_fpw = false;
+	config.save_fullpage_path = NULL;
 	config.stats = false;
 	config.stats_per_record = false;
 
@@ -909,12 +1007,40 @@ main(int argc, char **argv)
 					private.startptr = (uint64) xlogid << 32 | xrecoff;
 				break;
 			case 't':
-				if (sscanf(optarg, "%u", &private.timeline) != 1)
+
+				/*
+				 * This is like option_parse_int() but needs to handle
+				 * unsigned 32-bit int.  Also, we accept both decimal and
+				 * hexadecimal specifications here.
+				 */
 				{
-					pg_log_error("invalid timeline specification: \"%s\"", optarg);
-					goto bad_argument;
+					char	   *endptr;
+					unsigned long val;
+
+					errno = 0;
+					val = strtoul(optarg, &endptr, 0);
+
+					while (*endptr != '\0' && isspace((unsigned char) *endptr))
+						endptr++;
+
+					if (*endptr != '\0')
+					{
+						pg_log_error("invalid value \"%s\" for option %s",
+									 optarg, "-t/--timeline");
+						goto bad_argument;
+					}
+
+					if (errno == ERANGE || val < 1 || val > UINT_MAX)
+					{
+						pg_log_error("%s must be in range %u..%u",
+									 "-t/--timeline", 1, UINT_MAX);
+						goto bad_argument;
+					}
+
+					private.timeline = val;
+
+					break;
 				}
-				break;
 			case 'w':
 				config.filter_by_fpw = true;
 				break;
@@ -941,6 +1067,9 @@ main(int argc, char **argv)
 						goto bad_argument;
 					}
 				}
+				break;
+			case 1:
+				config.save_fullpage_path = pg_strdup(optarg);
 				break;
 			default:
 				goto bad_argument;
@@ -971,6 +1100,9 @@ main(int argc, char **argv)
 			goto bad_argument;
 		}
 	}
+
+	if (config.save_fullpage_path != NULL)
+		create_fullpage_directory(config.save_fullpage_path);
 
 	/* parse files as start/end boundaries, extract path if not specified */
 	if (optind < argc)
@@ -1153,6 +1285,10 @@ main(int argc, char **argv)
 			else
 				XLogDumpDisplayRecord(&config, xlogreader_state);
 		}
+
+		/* save full pages if requested */
+		if (config.save_fullpage_path != NULL)
+			XLogRecordSaveFPWs(xlogreader_state, config.save_fullpage_path);
 
 		/* check whether we printed enough */
 		config.already_displayed_records++;

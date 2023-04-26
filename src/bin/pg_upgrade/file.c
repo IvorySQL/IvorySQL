@@ -3,7 +3,7 @@
  *
  *	file system operations
  *
- *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/file.c
  */
 
@@ -178,8 +178,8 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 {
 	int			src_fd;
 	int			dst_fd;
-	PGAlignedBlock buffer;
-	PGAlignedBlock new_vmbuf;
+	PGIOAlignedBlock buffer;
+	PGIOAlignedBlock new_vmbuf;
 	ssize_t		totalBytesRead = 0;
 	ssize_t		src_filesize;
 	int			rewriteVmBytesPerPage;

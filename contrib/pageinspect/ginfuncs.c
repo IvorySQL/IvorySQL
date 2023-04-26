@@ -2,7 +2,7 @@
  * ginfuncs.c
  *		Functions to investigate the content of GIN indexes
  *
- * Copyright (c) 2014-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/ginfuncs.c
@@ -20,9 +20,6 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
-
-#define DatumGetItemPointer(X)	 ((ItemPointer) DatumGetPointer(X))
-#define ItemPointerGetDatum(X)	 PointerGetDatum(X)
 
 
 PG_FUNCTION_INFO_V1(gin_metapage_info);

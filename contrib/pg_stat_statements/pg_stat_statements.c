@@ -34,7 +34,7 @@
  * in the file to be read or written while holding only shared lock.
  *
  *
- * Copyright (c) 2008-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_stat_statements/pg_stat_statements.c
@@ -55,6 +55,7 @@
 #include "jit/jit.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/queryjumble.h"
 #include "optimizer/planner.h"
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
@@ -69,7 +70,6 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/queryjumble.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
@@ -283,11 +283,12 @@ static const struct config_enum_entry track_options[] =
 	{NULL, 0, false}
 };
 
-static int	pgss_max;			/* max # statements to track */
-static int	pgss_track;			/* tracking level */
-static bool pgss_track_utility; /* whether to track utility commands */
-static bool pgss_track_planning;	/* whether to track planning duration */
-static bool pgss_save;			/* whether to save stats across shutdown */
+static int	pgss_max = 5000;	/* max # statements to track */
+static int	pgss_track = PGSS_TRACK_TOP;	/* tracking level */
+static bool pgss_track_utility = true;	/* whether to track utility commands */
+static bool pgss_track_planning = false;	/* whether to track planning
+											 * duration */
+static bool pgss_save = true;	/* whether to save stats across shutdown */
 
 
 #define pgss_enabled(level) \
@@ -835,8 +836,10 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	if (query->utilityStmt)
 	{
 		if (pgss_track_utility && !PGSS_HANDLED_UTILITY(query->utilityStmt))
+		{
 			query->queryId = UINT64CONST(0);
-		return;
+			return;
+		}
 	}
 
 	/*
@@ -1057,7 +1060,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   queryDesc->plannedstmt->stmt_len,
 				   PGSS_EXEC,
 				   queryDesc->totaltime->total * 1000.0,	/* convert to msec */
-				   queryDesc->estate->es_processed,
+				   queryDesc->estate->es_total_processed,
 				   &queryDesc->totaltime->bufusage,
 				   &queryDesc->totaltime->walusage,
 				   queryDesc->estate->es_jit ? &queryDesc->estate->es_jit->instr : NULL,
@@ -1082,6 +1085,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 {
 	Node	   *parsetree = pstmt->utilityStmt;
 	uint64		saved_queryId = pstmt->queryId;
+	int			saved_stmt_location = pstmt->stmt_location;
+	int			saved_stmt_len = pstmt->stmt_len;
 
 	/*
 	 * Force utility statements to get queryId zero.  We do this even in cases
@@ -1147,6 +1152,16 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		}
 		PG_END_TRY();
 
+		/*
+		 * CAUTION: do not access the *pstmt data structure again below here.
+		 * If it was a ROLLBACK or similar, that data structure may have been
+		 * freed.  We must copy everything we still need into local variables,
+		 * which we did above.
+		 *
+		 * For the same reason, we can't risk restoring pstmt->queryId to its
+		 * former value, which'd otherwise be a good idea.
+		 */
+
 		INSTR_TIME_SET_CURRENT(duration);
 		INSTR_TIME_SUBTRACT(duration, start);
 
@@ -1171,8 +1186,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
 		pgss_store(queryString,
 				   saved_queryId,
-				   pstmt->stmt_location,
-				   pstmt->stmt_len,
+				   saved_stmt_location,
+				   saved_stmt_len,
 				   PGSS_EXEC,
 				   INSTR_TIME_GET_MILLISEC(duration),
 				   rows,
@@ -1552,7 +1567,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("pg_stat_statements must be loaded via shared_preload_libraries")));
 
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	/*
 	 * Check we have the expected number of output arguments.  Aside from
@@ -2103,9 +2118,9 @@ qtext_store(const char *query, int query_len,
 	if (fd < 0)
 		goto error;
 
-	if (pwrite(fd, query, query_len, off) != query_len)
+	if (pg_pwrite(fd, query, query_len, off) != query_len)
 		goto error;
-	if (pwrite(fd, "\0", 1, off + query_len) != 1)
+	if (pg_pwrite(fd, "\0", 1, off + query_len) != 1)
 		goto error;
 
 	CloseTransientFile(fd);

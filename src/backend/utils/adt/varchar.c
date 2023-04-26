@@ -3,7 +3,7 @@
  * varchar.c
  *	  Functions for the built-in types char(n) and varchar(n).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/detoast.h"
+#include "access/htup_details.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
@@ -121,9 +122,13 @@ anychar_typmodout(int32 typmod)
  *
  * If the input string is too long, raise an error, unless the extra
  * characters are spaces, in which case they're truncated.  (per SQL)
+ *
+ * If escontext points to an ErrorSaveContext node, that is filled instead
+ * of throwing an error; the caller must check SOFT_ERROR_OCCURRED()
+ * to detect errors.
  */
 static BpChar *
-bpchar_input(const char *s, size_t len, int32 atttypmod)
+bpchar_input(const char *s, size_t len, int32 atttypmod, Node *escontext)
 {
 	BpChar	   *result;
 	char	   *r;
@@ -149,35 +154,13 @@ bpchar_input(const char *s, size_t len, int32 atttypmod)
 			 * string, maxlen is the max number of CHARACTERS allowed for this
 			 * bpchar type, mbmaxlen is the length in BYTES of those chars.
 			 */
-			if (nls_length_semantics == NLSLENGTH_BYTE)
+			for (j = mbmaxlen; j < len; j++)
 			{
-				for (j = maxlen; j < len; j++)
-				{
-					if (s[j] != ' ')
-						ereport(ERROR,
-								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-								errmsg("value too long for type character(%d byte)", (int)maxlen)));
-				}
-			}
-			else if (nls_length_semantics == NLSLENGTH_CHAR)
-			{
-				for (j = mbmaxlen; j < len; j++)
-				{
-					if (s[j] != ' ')
-						ereport(ERROR,
-								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-								errmsg("value too long for type character(%d char)", (int)maxlen)));
-				}
-			}
-			else
-			{
-				for (j = mbmaxlen; j < len; j++)
-				{
-					if (s[j] != ' ')
-						ereport(ERROR,
-								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-								errmsg("value too long for type character(%d)", (int) maxlen)));
-				}
+				if (s[j] != ' ')
+					ereturn(escontext, NULL,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							 errmsg("value too long for type character(%d)",
+									(int) maxlen)));
 			}
 
 			/*
@@ -188,21 +171,10 @@ bpchar_input(const char *s, size_t len, int32 atttypmod)
 		}
 		else
 		{
-			size_t		j;
 			/*
 			 * Now we set maxlen to the necessary byte length, not the number
 			 * of CHARACTERS!
 			 */
-			if (nls_length_semantics == NLSLENGTH_BYTE)
-			{
-				for (j = maxlen; j < len; j++)
-				{
-					if (s[j] != ' ')
-						ereport(ERROR,
-								(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-								errmsg("value too long for type character(%d byte)", (int)maxlen)));
-				}
-			}
 			maxlen = len + (maxlen - charlen);
 		}
 	}
@@ -227,14 +199,13 @@ Datum
 bpcharin(PG_FUNCTION_ARGS)
 {
 	char	   *s = PG_GETARG_CSTRING(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		atttypmod = PG_GETARG_INT32(2);
 	BpChar	   *result;
 
-	result = bpchar_input(s, strlen(s), atttypmod);
+	result = bpchar_input(s, strlen(s), atttypmod, fcinfo->context);
 	PG_RETURN_BPCHAR_P(result);
 }
 
@@ -260,7 +231,6 @@ Datum
 bpcharrecv(PG_FUNCTION_ARGS)
 {
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
@@ -270,7 +240,7 @@ bpcharrecv(PG_FUNCTION_ARGS)
 	int			nbytes;
 
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
-	result = bpchar_input(str, nbytes, atttypmod);
+	result = bpchar_input(str, nbytes, atttypmod, NULL);
 	pfree(str);
 	PG_RETURN_BPCHAR_P(result);
 }
@@ -308,8 +278,7 @@ bpchar(PG_FUNCTION_ARGS)
 	int32		len;
 	char	   *r;
 	char	   *s;
-	size_t		maxmblen;
-	size_t		i;
+	int			i;
 	int			charlen;		/* number of characters in the input string +
 								 * VARHDRSZ */
 
@@ -324,25 +293,6 @@ bpchar(PG_FUNCTION_ARGS)
 
 	charlen = pg_mbstrlen_with_len(s, len);
 
-	maxmblen = pg_mbcharcliplen(s, len, maxlen);
-
-	if (nls_length_semantics == NLSLENGTH_CHAR)
-	{
-		if (charlen > maxlen)
-		{
-			ereport(ERROR,
-				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-				 errmsg("value too long for type character(%d char)", maxlen)));
-		}
-	}
-	else if (nls_length_semantics == NLSLENGTH_BYTE)
-	{
-		if (maxmblen > maxlen)
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("value too long for type character(%d byte)", maxlen)));
-	}
-
 	/* No work if supplied data matches typmod already */
 	if (charlen == maxlen)
 		PG_RETURN_BPCHAR_P(source);
@@ -350,13 +300,18 @@ bpchar(PG_FUNCTION_ARGS)
 	if (charlen > maxlen)
 	{
 		/* Verify that extra characters are spaces, and clip them off */
+		size_t		maxmblen;
+
+		maxmblen = pg_mbcharcliplen(s, len, maxlen);
+
 		if (!isExplicit)
 		{
 			for (i = maxmblen; i < len; i++)
 				if (s[i] != ' ')
 					ereport(ERROR,
 							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character(%d)", maxlen)));
+							 errmsg("value too long for type character(%d)",
+									maxlen)));
 		}
 
 		len = maxmblen;
@@ -365,8 +320,7 @@ bpchar(PG_FUNCTION_ARGS)
 		 * At this point, maxlen is the necessary byte length, not the number
 		 * of CHARACTERS!
 		 */
-		if (nls_length_semantics == NLSLENGTH_CHAR || nls_length_semantics == NLSLENGTH_NONE)
-			maxlen = len;
+		maxlen = len;
 	}
 	else
 	{
@@ -374,11 +328,10 @@ bpchar(PG_FUNCTION_ARGS)
 		 * At this point, maxlen is the necessary byte length, not the number
 		 * of CHARACTERS!
 		 */
-		if (nls_length_semantics == NLSLENGTH_CHAR || nls_length_semantics == NLSLENGTH_NONE)
-			maxlen = len + (maxlen - charlen);
+		maxlen = len + (maxlen - charlen);
 	}
 
-	Assert((nls_length_semantics == NLSLENGTH_BYTE) ? (maxlen >= len) : (true));
+	Assert(maxlen >= len);
 
 	result = palloc(maxlen + VARHDRSZ);
 	SET_VARSIZE(result, maxlen + VARHDRSZ);
@@ -497,11 +450,12 @@ bpchartypmodout(PG_FUNCTION_ARGS)
  * If the input string is too long, raise an error, unless the extra
  * characters are spaces, in which case they're truncated.  (per SQL)
  *
- * Uses the C string to text conversion function, which is only appropriate
- * if VarChar and text are equivalent types.
+ * If escontext points to an ErrorSaveContext node, that is filled instead
+ * of throwing an error; the caller must check SOFT_ERROR_OCCURRED()
+ * to detect errors.
  */
 static VarChar *
-varchar_input(const char *s, size_t len, int32 atttypmod)
+varchar_input(const char *s, size_t len, int32 atttypmod, Node *escontext)
 {
 	VarChar    *result;
 	size_t		maxlen;
@@ -514,40 +468,22 @@ varchar_input(const char *s, size_t len, int32 atttypmod)
 		size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
 		size_t		j;
 
-		if (nls_length_semantics == NLSLENGTH_BYTE)
+		for (j = mbmaxlen; j < len; j++)
 		{
-			for (j = maxlen; j < len; j++)
-			{
-				if (s[j] != ' ')
-					ereport(ERROR,
-							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character varying(%d byte)", (int)maxlen)));
-			}
-		}
-		else if (nls_length_semantics == NLSLENGTH_CHAR)
-		{
-			for (j = mbmaxlen; j < len; j++)
-			{
-				if (s[j] != ' ')
-					ereport(ERROR,
-							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character varying(%d char)", (int)maxlen)));
-			}
-		}
-		else
-		{
-			for (j = mbmaxlen; j < len; j++)
-			{
-				if (s[j] != ' ')
-					ereport(ERROR,
-							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							errmsg("value too long for type character varying(%d)", (int) maxlen)));
-			}
+			if (s[j] != ' ')
+				ereturn(escontext, NULL,
+						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+						 errmsg("value too long for type character varying(%d)",
+								(int) maxlen)));
 		}
 
 		len = mbmaxlen;
 	}
 
+	/*
+	 * We can use cstring_to_text_with_len because VarChar and text are
+	 * binary-compatible types.
+	 */
 	result = (VarChar *) cstring_to_text_with_len(s, len);
 	return result;
 }
@@ -560,14 +496,13 @@ Datum
 varcharin(PG_FUNCTION_ARGS)
 {
 	char	   *s = PG_GETARG_CSTRING(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		atttypmod = PG_GETARG_INT32(2);
 	VarChar    *result;
 
-	result = varchar_input(s, strlen(s), atttypmod);
+	result = varchar_input(s, strlen(s), atttypmod, fcinfo->context);
 	PG_RETURN_VARCHAR_P(result);
 }
 
@@ -593,7 +528,6 @@ Datum
 varcharrecv(PG_FUNCTION_ARGS)
 {
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
@@ -603,7 +537,7 @@ varcharrecv(PG_FUNCTION_ARGS)
 	int			nbytes;
 
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
-	result = varchar_input(str, nbytes, atttypmod);
+	result = varchar_input(str, nbytes, atttypmod, NULL);
 	pfree(str);
 	PG_RETURN_VARCHAR_P(result);
 }
@@ -682,7 +616,6 @@ varchar(PG_FUNCTION_ARGS)
 				maxlen;
 	size_t		maxmblen;
 	int			i;
-	int			charlen;
 	char	   *s_data;
 
 	len = VARSIZE_ANY_EXHDR(source);
@@ -698,34 +631,14 @@ varchar(PG_FUNCTION_ARGS)
 	/* truncate multibyte string preserving multibyte boundary */
 	maxmblen = pg_mbcharcliplen(s_data, len, maxlen);
 
-	charlen = pg_mbstrlen_with_len(s_data, len);
-
-	if (nls_length_semantics == NLSLENGTH_BYTE)
-	{
-		if (maxlen < maxmblen)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("value too long for type character varying(%d byte)", maxlen)));
-		}
-	}
-	else if (nls_length_semantics == NLSLENGTH_CHAR)
-	{
-		if (maxlen < charlen)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("value too long for type character varying(%d char)", maxlen)));
-		}
-	}
-
 	if (!isExplicit)
 	{
 		for (i = maxmblen; i < len; i++)
 			if (s_data[i] != ' ')
 				ereport(ERROR,
 						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-						 errmsg("value too long for type character varying(%d)", maxlen)));
+						 errmsg("value too long for type character varying(%d)",
+								maxlen)));
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data,
@@ -849,7 +762,7 @@ bpchareq(PG_FUNCTION_ARGS)
 	else
 		mylocale = pg_newlocale_from_collation(collid);
 
-	if (locale_is_c || !mylocale || mylocale->deterministic)
+	if (locale_is_c || pg_locale_deterministic(mylocale))
 	{
 		/*
 		 * Since we only care about equality or not-equality, we can avoid all
@@ -894,7 +807,7 @@ bpcharne(PG_FUNCTION_ARGS)
 	else
 		mylocale = pg_newlocale_from_collation(collid);
 
-	if (locale_is_c || !mylocale || mylocale->deterministic)
+	if (locale_is_c || pg_locale_deterministic(mylocale))
 	{
 		/*
 		 * Since we only care about equality or not-equality, we can avoid all
@@ -1102,36 +1015,30 @@ hashbpchar(PG_FUNCTION_ARGS)
 	if (!lc_collate_is_c(collid))
 		mylocale = pg_newlocale_from_collation(collid);
 
-	if (!mylocale || mylocale->deterministic)
+	if (pg_locale_deterministic(mylocale))
 	{
 		result = hash_any((unsigned char *) keydata, keylen);
 	}
 	else
 	{
-#ifdef USE_ICU
-		if (mylocale->provider == COLLPROVIDER_ICU)
-		{
-			int32_t		ulen = -1;
-			UChar	   *uchar = NULL;
-			Size		bsize;
-			uint8_t    *buf;
+		Size		bsize, rsize;
+		char	   *buf;
 
-			ulen = icu_to_uchar(&uchar, keydata, keylen);
+		bsize = pg_strnxfrm(NULL, 0, keydata, keylen, mylocale);
+		buf = palloc(bsize + 1);
 
-			bsize = ucol_getSortKey(mylocale->info.icu.ucol,
-									uchar, ulen, NULL, 0);
-			buf = palloc(bsize);
-			ucol_getSortKey(mylocale->info.icu.ucol,
-							uchar, ulen, buf, bsize);
+		rsize = pg_strnxfrm(buf, bsize + 1, keydata, keylen, mylocale);
+		if (rsize != bsize)
+			elog(ERROR, "pg_strnxfrm() returned unexpected result");
 
-			result = hash_any(buf, bsize);
+		/*
+		 * In principle, there's no reason to include the terminating NUL
+		 * character in the hash, but it was done before and the behavior
+		 * must be preserved.
+		 */
+		result = hash_any((uint8_t *) buf, bsize + 1);
 
-			pfree(buf);
-		}
-		else
-#endif
-			/* shouldn't happen */
-			elog(ERROR, "unsupported collprovider: %c", mylocale->provider);
+		pfree(buf);
 	}
 
 	/* Avoid leaking memory for toasted inputs */
@@ -1162,37 +1069,32 @@ hashbpcharextended(PG_FUNCTION_ARGS)
 	if (!lc_collate_is_c(collid))
 		mylocale = pg_newlocale_from_collation(collid);
 
-	if (!mylocale || mylocale->deterministic)
+	if (pg_locale_deterministic(mylocale))
 	{
 		result = hash_any_extended((unsigned char *) keydata, keylen,
 								   PG_GETARG_INT64(1));
 	}
 	else
 	{
-#ifdef USE_ICU
-		if (mylocale->provider == COLLPROVIDER_ICU)
-		{
-			int32_t		ulen = -1;
-			UChar	   *uchar = NULL;
-			Size		bsize;
-			uint8_t    *buf;
+		Size		bsize, rsize;
+		char	   *buf;
 
-			ulen = icu_to_uchar(&uchar, VARDATA_ANY(key), VARSIZE_ANY_EXHDR(key));
+		bsize = pg_strnxfrm(NULL, 0, keydata, keylen, mylocale);
+		buf = palloc(bsize + 1);
 
-			bsize = ucol_getSortKey(mylocale->info.icu.ucol,
-									uchar, ulen, NULL, 0);
-			buf = palloc(bsize);
-			ucol_getSortKey(mylocale->info.icu.ucol,
-							uchar, ulen, buf, bsize);
+		rsize = pg_strnxfrm(buf, bsize + 1, keydata, keylen, mylocale);
+		if (rsize != bsize)
+			elog(ERROR, "pg_strnxfrm() returned unexpected result");
 
-			result = hash_any_extended(buf, bsize, PG_GETARG_INT64(1));
+		/*
+		 * In principle, there's no reason to include the terminating NUL
+		 * character in the hash, but it was done before and the behavior
+		 * must be preserved.
+		 */
+		result = hash_any_extended((uint8_t *) buf, bsize + 1,
+								   PG_GETARG_INT64(1));
 
-			pfree(buf);
-		}
-		else
-#endif
-			/* shouldn't happen */
-			elog(ERROR, "unsupported collprovider: %c", mylocale->provider);
+		pfree(buf);
 	}
 
 	PG_FREE_IF_COPY(key, 0);

@@ -3,7 +3,7 @@
  * storage.c
  *	  code to create and destroy physical storage for relations
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -451,7 +451,7 @@ void
 RelationCopyStorage(SMgrRelation src, SMgrRelation dst,
 					ForkNumber forkNum, char relpersistence)
 {
-	PGAlignedBlock buf;
+	PGIOAlignedBlock buf;
 	Page		page;
 	bool		use_wal;
 	bool		copying_initfork;
@@ -603,7 +603,7 @@ SerializePendingSyncs(Size maxSize, char *startAddress)
 	/* remove deleted rnodes */
 	for (delete = pendingDeletes; delete != NULL; delete = delete->next)
 		if (delete->atCommit)
-			(void) hash_search(tmphash, (void *) &delete->rlocator,
+			(void) hash_search(tmphash, &delete->rlocator,
 							   HASH_REMOVE, NULL);
 
 	hash_seq_init(&scan, tmphash);
@@ -748,7 +748,7 @@ smgrDoPendingSyncs(bool isCommit, bool isParallelWorker)
 	/* Skip syncing nodes that smgrDoPendingDeletes() will delete. */
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 		if (pending->atCommit)
-			(void) hash_search(pendingSyncHash, (void *) &pending->rlocator,
+			(void) hash_search(pendingSyncHash, &pending->rlocator,
 							   HASH_REMOVE, NULL);
 
 	hash_seq_init(&scan, pendingSyncHash);

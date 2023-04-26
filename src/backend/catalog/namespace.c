@@ -9,7 +9,7 @@
  * and implementing search-path-controlled searches.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -28,6 +28,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_conversion.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
@@ -39,10 +40,7 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
-#include "catalog/pg_variable.h"
-#include "catalog/pg_package.h"
 #include "commands/dbcommands.h"
-#include "commands/packagecmds.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -54,7 +52,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
-#include "utils/guc.h"
+#include "utils/guc_hooks.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -170,7 +168,6 @@ typedef struct
 	List	   *searchPath;		/* the desired search path */
 	Oid			creationNamespace;	/* the desired creation namespace */
 	int			nestLevel;		/* subtransaction nesting level */
-	Oid			pkgoid;			/* Oid of the package pushed to override search path */
 } OverrideStackEntry;
 
 static List *overrideStack = NIL;
@@ -590,7 +587,7 @@ RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 			break;
 
 		/* Check namespace permissions. */
-		aclresult = pg_namespace_aclcheck(nspid, GetUserId(), ACL_CREATE);
+		aclresult = object_aclcheck(NamespaceRelationId, nspid, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_SCHEMA,
 						   get_namespace_name(nspid));
@@ -616,7 +613,7 @@ RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 		/* Lock relation, if required if and we have permission. */
 		if (lockmode != NoLock && OidIsValid(relid))
 		{
-			if (!pg_class_ownercheck(relid, GetUserId()))
+			if (!object_ownercheck(RelationRelationId, relid, GetUserId()))
 				aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relid)),
 							   relation->relname);
 			if (relid != oldrelid)
@@ -768,60 +765,6 @@ RelationIsVisible(Oid relid)
 	return visible;
 }
 
-/*
- * When we know a variable name, then we can find variable simply
- */
-Oid
-LookupVariable(const char *nspname, const char *varname, bool missing_ok)
-{
-	Oid			namespaceId;
-	Oid			varoid = InvalidOid;
-	ListCell   *l;
-
-	if (nspname)
-	{
-		namespaceId = LookupExplicitNamespace(nspname, missing_ok);
-		if (!OidIsValid(namespaceId))
-			return InvalidOid;
-
-		varoid = GetSysCacheOid2(VARIABLENAMENSP, Anum_pg_variable_oid,
-								 PointerGetDatum(varname),
-								 ObjectIdGetDatum(namespaceId));
-	}
-	else
-	{
-		/* search for it in search path */
-		recomputeNamespacePath();
-
-		foreach(l, activeSearchPath)
-		{
-			namespaceId = lfirst_oid(l);
-
-			varoid = GetSysCacheOid2(VARIABLENAMENSP, Anum_pg_variable_oid,
-									 PointerGetDatum(varname),
-									 ObjectIdGetDatum(namespaceId));
-
-			if (OidIsValid(varoid))
-				break;
-		}
-	}
-
-	if (!OidIsValid(varoid) && !missing_ok)
-	{
-		if (nspname)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("variable \"%s\".\"%s\" does not exist",
-							nspname, varname)));
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("variable \"%s\" does not exist",
-							varname)));
-	}
-
-	return varoid;
-}
 
 /*
  * TypenameGetTypid
@@ -932,116 +875,6 @@ TypeIsVisible(Oid typid)
 	return visible;
 }
 
-/*
- * HandleQualifiedName
- *		Handle the function's qualified-name and return the namespace id.
- *
- */
-Oid
-HandleQualifiedName(List *names, char **funcname, bool missing_ok)
-{
-	QualifiedName qu;
-	int         num;
-	char       *fname = NULL;
-	Oid         np_id;
-	Oid			pkgnamespaceId;
-
-	*funcname = NULL;
-	/* Extract the qualified names */
-	num = ExtractQualifiedName(names, &qu);
-	switch (num)
-	{
-		case 1:
-			fname = qu.func;
-			np_id = InvalidOid;
-			recomputeNamespacePath();
-			break;
-
-		case 2:
-			/* either schema.obj or pkg.obj */
-			fname = qu.func;
-
-			/* let try to find the package. */
-			np_id = get_package_oid(list_make1(linitial(names)), true);
-			if (OidIsValid(np_id))
-			{
-				/* Okay a package was found */
-				AclResult	aclresult;
-
-				aclresult = pg_package_aclcheck(np_id, GetUserId(), ACL_EXECUTE);
-				if (aclresult != ACLCHECK_OK)
-					aclcheck_error(aclresult, OBJECT_PACKAGE, qu.package);
-			}
-			else
-			{
-				/* no package was found, so let the system take care of the rest */
-				np_id = LookupExplicitNamespace(qu.schema, missing_ok);
-			}
-			break;
-
-		case 3:
-			fname = qu.func;
-
-			if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.dbname))) /* select schema.pkg.func() */
-			{
-				pkgnamespaceId = get_namespace_oid(qu.dbname, false);
-				np_id = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,						  
-													CStringGetDatum(qu.package),						  
-														ObjectIdGetDatum(pkgnamespaceId));
-				if (!OidIsValid(np_id))
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 				errmsg("package \"%s\" does not exist", qu.package)));
-			}
-			else  /* select db.schema.func() */
-			{
-
-				if (strcmp(qu.dbname, get_database_name(MyDatabaseId)) != 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("cross-database references are not implemented: %s",
-									NameListToString(names))));
-				else
-				{
-					np_id = LookupExplicitNamespace(qu.package, missing_ok);
-					if (!OidIsValid(np_id))
-						return InvalidOid;
-				}
-			}
-			break;
-
-		case 4:
-			fname = qu.func;
-
-			if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.schema)))
-			{
-				pkgnamespaceId = get_namespace_oid(qu.schema, false);
-				np_id = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,						  
-												CStringGetDatum(qu.package),					  
-														ObjectIdGetDatum(pkgnamespaceId));
-				if (!OidIsValid(np_id))
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 				errmsg("package \"%s\" does not exist", qu.package)));
-			}
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 			errmsg("schema \"%s\" does not exist", qu.schema)));		
-
-			break;
-
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("improper qualified name (too many dotted names).")));
-			break;
-	}
-
-	*funcname = fname;
-	return np_id;
-}
-
 
 /*
  * FuncnameGetCandidates
@@ -1122,6 +955,7 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 {
 	FuncCandidateList resultList = NULL;
 	bool		any_special = false;
+	char	   *schemaname;
 	char	   *funcname;
 	Oid			namespaceId;
 	CatCList   *catlist;
@@ -1130,11 +964,22 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 	/* check for caller error */
 	Assert(nargs >= 0 || !(expand_variadic | expand_defaults));
 
-	/* Handle the qualified-name and get namespaceId */
-	namespaceId = HandleQualifiedName(names, &funcname, missing_ok);
-	if (!OidIsValid(namespaceId) &&
-		list_length(names) >= 2)
-		return NULL;
+	/* deconstruct the name list */
+	DeconstructQualifiedName(names, &schemaname, &funcname);
+
+	if (schemaname)
+	{
+		/* use exact schema given */
+		namespaceId = LookupExplicitNamespace(schemaname, missing_ok);
+		if (!OidIsValid(namespaceId))
+			return NULL;
+	}
+	else
+	{
+		/* flag to indicate we need namespace search */
+		namespaceId = InvalidOid;
+		recomputeNamespacePath();
+	}
 
 	/* Search syscache by name only */
 	catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
@@ -1307,10 +1152,8 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		if (argnumbers)
 		{
 			/* Re-order the argument types into call's logical order */
-			int			i;
-
-			for (i = 0; i < pronargs; i++)
-				newResult->args[i] = proargtypes[argnumbers[i]];
+			for (int j = 0; j < pronargs; j++)
+				newResult->args[j] = proargtypes[argnumbers[j]];
 		}
 		else
 		{
@@ -1319,12 +1162,10 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		}
 		if (variadic)
 		{
-			int			i;
-
 			newResult->nvargs = effective_nargs - pronargs + 1;
 			/* Expand variadic argument into N copies of element type */
-			for (i = pronargs - 1; i < effective_nargs; i++)
-				newResult->args[i] = va_elem_type;
+			for (int j = pronargs - 1; j < effective_nargs; j++)
+				newResult->args[j] = va_elem_type;
 		}
 		else
 			newResult->nvargs = 0;
@@ -3052,64 +2893,6 @@ DeconstructQualifiedName(List *names,
 }
 
 /*
- * ExtractQualifiedName
- *		Given a possibly-qualified name expressed as a list of String nodes,
- *		extract these qualified names.
- */
-int
-ExtractQualifiedName(List *names, QualifiedName *qu)
-{
-	int len;
-
-	len = list_length(names);
-	
-	switch (len) // list_length(names
-	{
-		case 1:
-			qu->dbname = NULL;
-			qu->schema = NULL;
-			qu->package = NULL;
-			qu->func = strVal(linitial(names));
-			break;
-		case 2:
-			qu->dbname = NULL;
-			qu->schema = strVal(linitial(names));
-			qu->package = strVal(linitial(names));
-			qu->func = strVal(lsecond(names));	
-			break;
-		case 3:
-			qu->dbname = strVal(linitial(names));
-			qu->schema = strVal(lsecond(names));
-			qu->package = strVal(lsecond(names));
-			qu->func = strVal(lthird(names));	      
-			break;
-		case 4:
-			qu->dbname = strVal(linitial(names));
-			qu->schema = strVal(lsecond(names));
-			qu->package = strVal(lthird(names));
-			qu->func = strVal(lfourth(names));
-
-			/*
-			 * We check the catalog name and then ignore it.
-			 */
-			if (strcmp(qu->dbname, get_database_name(MyDatabaseId)) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cross-database references are not implemented: %s",
-								NameListToString(names))));
-			break;
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("improper qualified name (too many dotted names): %s",
-							NameListToString(names))));
-			break;
-	}
-
-	return len;
-}
-
-/*
  * LookupNamespaceNoError
  *		Look up a schema name.
  *
@@ -3172,7 +2955,7 @@ LookupExplicitNamespace(const char *nspname, bool missing_ok)
 	if (missing_ok && !OidIsValid(namespaceId))
 		return InvalidOid;
 
-	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(NamespaceRelationId, namespaceId, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   nspname);
@@ -3208,7 +2991,7 @@ LookupCreationNamespace(const char *nspname)
 
 	namespaceId = get_namespace_oid(nspname, false);
 
-	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, namespaceId, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   nspname);
@@ -3622,14 +3405,10 @@ GetOverrideSearchPath(MemoryContext context)
 	OverrideSearchPath *result;
 	List	   *schemas;
 	MemoryContext oldcxt;
-	OverrideStackEntry *entry = NULL;
 
 	recomputeNamespacePath();
 
 	oldcxt = MemoryContextSwitchTo(context);
-
-	if (overrideStack != NIL)
-		entry = (OverrideStackEntry *) linitial(overrideStack);
 
 	result = (OverrideSearchPath *) palloc0(sizeof(OverrideSearchPath));
 	schemas = list_copy(activeSearchPath);
@@ -3639,15 +3418,13 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
+			Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
 			result->addCatalog = true;
 		}
 		schemas = list_delete_first(schemas);
 	}
 	result->schemas = schemas;
 	result->generation = activePathGeneration;
-	result->pkgoid = InvalidOid;
-	if (entry != NULL)
-		result->pkgoid = entry->pkgoid;
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -3669,7 +3446,6 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
 	result->addCatalog = path->addCatalog;
 	result->addTemp = path->addTemp;
 	result->generation = path->generation;
-	result->pkgoid = path->pkgoid;
 
 	return result;
 }
@@ -3719,13 +3495,6 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 	/* The remainder of activeSearchPath should match path->schemas. */
 	foreach(lcp, path->schemas)
 	{
-		/*
-		 * TODO: figure out a way to further optimize this check. It could
-		 * potentially slow down the system.
-		 */
-		if (OidIsValid(lfirst_oid(lcp)) &&
-			get_package_name(lfirst_oid(lcp), true) != NULL)
-			continue;
 		if (lc && lfirst_oid(lc) == lfirst_oid(lcp))
 			lc = lnext(activeSearchPath, lc);
 		else
@@ -3767,17 +3536,12 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	List	   *oidlist;
 	Oid			firstNS;
 	MemoryContext oldcxt;
-	Oid	compatibleNS;
 
 	/*
 	 * Copy the list for safekeeping, and insert implicitly-searched
 	 * namespaces as needed.  This code should track recomputeNamespacePath.
 	 */
 	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-
-	/* make package part of search_path */
-	if (OidIsValid(newpath->pkgoid))
-		newpath->schemas = lcons_oid(newpath->pkgoid, newpath->schemas);
 
 	oidlist = list_copy(newpath->schemas);
 
@@ -3799,16 +3563,6 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 
 	if (newpath->addTemp && OidIsValid(myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
-	/*
-	 *oracle namespace reference,for compatible
-	 */
-	if (compatible_db == COMPATIBLE_ORA)
-	{
-		compatibleNS = get_namespace_oid("oracle", true);
-		if (OidIsValid(compatibleNS) &&
-			!list_member_oid(oidlist, compatibleNS))
-			oidlist = lcons_oid(compatibleNS, oidlist);
-	}
 
 	/*
 	 * Build the new stack entry, then insert it at the head of the list.
@@ -3817,7 +3571,6 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	entry->searchPath = oidlist;
 	entry->creationNamespace = firstNS;
 	entry->nestLevel = GetCurrentTransactionNestLevel();
-	entry->pkgoid = newpath->pkgoid;
 
 	overrideStack = lcons(entry, overrideStack);
 
@@ -3888,7 +3641,7 @@ PopOverrideSearchPath(void)
  * database's encoding.
  */
 Oid
-get_collation_oid(List *name, bool missing_ok)
+get_collation_oid(List *collname, bool missing_ok)
 {
 	char	   *schemaname;
 	char	   *collation_name;
@@ -3898,7 +3651,7 @@ get_collation_oid(List *name, bool missing_ok)
 	ListCell   *l;
 
 	/* deconstruct the name list */
-	DeconstructQualifiedName(name, &schemaname, &collation_name);
+	DeconstructQualifiedName(collname, &schemaname, &collation_name);
 
 	if (schemaname)
 	{
@@ -3934,7 +3687,7 @@ get_collation_oid(List *name, bool missing_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("collation \"%s\" for encoding \"%s\" does not exist",
-						NameListToString(name), GetDatabaseEncodingName())));
+						NameListToString(collname), GetDatabaseEncodingName())));
 	return InvalidOid;
 }
 
@@ -3942,7 +3695,7 @@ get_collation_oid(List *name, bool missing_ok)
  * get_conversion_oid - find a conversion by possibly qualified name
  */
 Oid
-get_conversion_oid(List *name, bool missing_ok)
+get_conversion_oid(List *conname, bool missing_ok)
 {
 	char	   *schemaname;
 	char	   *conversion_name;
@@ -3951,7 +3704,7 @@ get_conversion_oid(List *name, bool missing_ok)
 	ListCell   *l;
 
 	/* deconstruct the name list */
-	DeconstructQualifiedName(name, &schemaname, &conversion_name);
+	DeconstructQualifiedName(conname, &schemaname, &conversion_name);
 
 	if (schemaname)
 	{
@@ -3989,7 +3742,7 @@ get_conversion_oid(List *name, bool missing_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("conversion \"%s\" does not exist",
-						NameListToString(name))));
+						NameListToString(conname))));
 	return conoid;
 }
 
@@ -4021,58 +3774,6 @@ FindDefaultConversionProc(int32 for_encoding, int32 to_encoding)
 }
 
 /*
- * get_package_oid - given a package name, look up the OID
- *
- * If missing_ok is false, throw an error if name not found.  If true, just
- * return InvalidOid.
- */
-Oid
-get_package_oid(List *packagename, bool missing_ok)
-{
-	Oid			oid = InvalidOid;
-	char	   *schema;
-	char	   *package;
-	Oid			namespaceId;
-	ListCell   *l;
-
-	DeconstructQualifiedName(packagename, &schema, &package);
-
-	if (schema)
-	{
-		namespaceId = get_namespace_oid(schema, false);
-		oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
-							  CStringGetDatum(package),
-							  ObjectIdGetDatum(namespaceId));
-	}
-	else
-	{
-		/* search for it in search path */
-		recomputeNamespacePath();
-
-		foreach(l, activeSearchPath)
-		{
-			namespaceId = lfirst_oid(l);
-
-			if (isTempNamespace(namespaceId))
-				continue;		/* do not look in temp namespace */
-
-			oid = GetSysCacheOid2(PACKAGENAMENSP, Anum_pg_package_oid,
-								  CStringGetDatum(package),
-								  ObjectIdGetDatum(namespaceId));
-			if (OidIsValid(oid))
-				break;
-		}
-	}
-
-	/* Not found in path */
-	if (!OidIsValid(oid) && !missing_ok)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("package \"%s\" does not exist", NameListToString(packagename))));
-	return oid;
-}
-
-/*
  * recomputeNamespacePath - recompute path derived variables if needed.
  */
 static void
@@ -4088,7 +3789,6 @@ recomputeNamespacePath(void)
 	Oid			firstNS;
 	bool		pathChanged;
 	MemoryContext oldcxt;
-	Oid			compatibleNS;
 
 	/* Do nothing if an override search spec is active. */
 	if (overrideStack)
@@ -4137,7 +3837,7 @@ recomputeNamespacePath(void)
 				ReleaseSysCache(tuple);
 				if (OidIsValid(namespaceId) &&
 					!list_member_oid(oidlist, namespaceId) &&
-					pg_namespace_aclcheck(namespaceId, roleid,
+					object_aclcheck(NamespaceRelationId, namespaceId, roleid,
 										  ACL_USAGE) == ACLCHECK_OK &&
 					InvokeNamespaceSearchHook(namespaceId, false))
 					oidlist = lappend_oid(oidlist, namespaceId);
@@ -4165,7 +3865,7 @@ recomputeNamespacePath(void)
 			namespaceId = get_namespace_oid(curname, true);
 			if (OidIsValid(namespaceId) &&
 				!list_member_oid(oidlist, namespaceId) &&
-				pg_namespace_aclcheck(namespaceId, roleid,
+				object_aclcheck(NamespaceRelationId, namespaceId, roleid,
 									  ACL_USAGE) == ACLCHECK_OK &&
 				InvokeNamespaceSearchHook(namespaceId, false))
 				oidlist = lappend_oid(oidlist, namespaceId);
@@ -4189,16 +3889,6 @@ recomputeNamespacePath(void)
 	 */
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
-	/*
-	 *oracle namespace reference,for compatible
-	 */
-	if (compatible_db == COMPATIBLE_ORA)
-	{
-		compatibleNS = get_namespace_oid("oracle", true);
-		if (OidIsValid(compatibleNS) &&
-			!list_member_oid(oidlist, compatibleNS))
-			oidlist = lcons_oid(compatibleNS, oidlist);
-	}
 
 	if (OidIsValid(myTempNamespace) &&
 		!list_member_oid(oidlist, myTempNamespace))
@@ -4311,7 +4001,7 @@ InitTempTableNamespace(void)
 	 * But there's no need to make the namespace in the first place until a
 	 * temp table creation request is made by someone with appropriate rights.
 	 */
-	if (pg_database_aclcheck(MyDatabaseId, GetUserId(),
+	if (object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(),
 							 ACL_CREATE_TEMP) != ACLCHECK_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -4404,7 +4094,7 @@ InitTempTableNamespace(void)
 	MyProc->tempNamespaceId = namespaceId;
 
 	/* It should not be done already. */
-	AssertState(myTempNamespaceSubID == InvalidSubTransactionId);
+	Assert(myTempNamespaceSubID == InvalidSubTransactionId);
 	myTempNamespaceSubID = GetCurrentSubTransactionId();
 
 	baseSearchPathValid = false;	/* need to rebuild list */
@@ -4670,17 +4360,6 @@ assign_search_path(const char *newval, void *extra)
 	baseSearchPathValid = false;
 }
 
-/* assign_hook: do extra actions as needed */
-void
-assign_compatible_db(int newval, void *extra)
-{
-	/*
-	 * We mark the path as needing recomputation, but don't do anything until
-	 * it's needed.  This avoids trying to do database access during GUC
-	 * initialization, or outside a transaction.
-	 */
-	baseSearchPathValid = false;
-}
 /*
  * InitializeSearchPath: initialize module during InitPostgres.
  *

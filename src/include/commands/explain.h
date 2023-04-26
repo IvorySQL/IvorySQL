@@ -3,7 +3,7 @@
  * explain.h
  *	  prototypes for explain.c
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * src/include/commands/explain.h
@@ -46,6 +46,7 @@ typedef struct ExplainState
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
 	bool		settings;		/* print modified settings */
+	bool		generic;		/* generate a generic plan */
 	ExplainFormat format;		/* output format */
 	/* state for output formatting --- not reset for each new plan tree */
 	int			indent;			/* current indentation level */

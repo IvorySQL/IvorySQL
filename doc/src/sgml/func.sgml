@@ -1289,6 +1289,41 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>erf</primary>
+        </indexterm>
+        <function>erf</function> ( <type>double precision</type> )
+        <returnvalue>double precision</returnvalue>
+       </para>
+       <para>
+        Error function
+       </para>
+       <para>
+        <literal>erf(1.0)</literal>
+        <returnvalue>0.8427007929497149</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>erfc</primary>
+        </indexterm>
+        <function>erfc</function> ( <type>double precision</type> )
+        <returnvalue>double precision</returnvalue>
+       </para>
+       <para>
+        Complementary error function (<literal>1 - erf(x)</literal>, without
+        loss of precision for large inputs)
+       </para>
+       <para>
+        <literal>erfc(1.0)</literal>
+        <returnvalue>0.15729920705028513</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>exp</primary>
         </indexterm>
         <function>exp</function> ( <type>numeric</type> )
@@ -1598,6 +1633,10 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>round(42.4382, 2)</literal>
         <returnvalue>42.44</returnvalue>
+       </para>
+       <para>
+        <literal>round(1234.56, -1)</literal>
+        <returnvalue>1230</returnvalue>
        </para></entry>
       </row>
 
@@ -1814,13 +1853,36 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>random_normal</primary>
+        </indexterm>
+
+         <function>random_normal</function> (
+         <optional> <parameter>mean</parameter> <type>double precision</type>
+         <optional>, <parameter>stddev</parameter> <type>double precision</type> </optional></optional> )
+         <returnvalue>double precision</returnvalue>
+       </para>
+       <para>
+        Returns a random value from the normal distribution with the given
+        parameters; <parameter>mean</parameter> defaults to 0.0
+        and <parameter>stddev</parameter> defaults to 1.0
+       </para>
+       <para>
+        <literal>random_normal(0.0, 1.0)</literal>
+        <returnvalue>0.051285419</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>setseed</primary>
         </indexterm>
         <function>setseed</function> ( <type>double precision</type> )
         <returnvalue>void</returnvalue>
        </para>
        <para>
-        Sets the seed for subsequent <literal>random()</literal> calls;
+        Sets the seed for subsequent <literal>random()</literal> and
+        <literal>random_normal()</literal> calls;
         argument must be between -1.0 and 1.0, inclusive
        </para>
        <para>
@@ -1844,6 +1906,7 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
    Without any prior <function>setseed()</function> call in the same
    session, the first <function>random()</function> call obtains a seed
    from a platform-dependent source of random bits.
+   These remarks hold equally for <function>random_normal()</function>.
   </para>
 
   <para>
@@ -2392,6 +2455,26 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>btrim</primary>
+        </indexterm>
+        <function>btrim</function> ( <parameter>string</parameter> <type>text</type>
+        <optional>, <parameter>characters</parameter> <type>text</type> </optional> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Removes the longest string containing only characters
+        in <parameter>characters</parameter> (a space by default)
+        from the start and end of <parameter>string</parameter>.
+       </para>
+       <para>
+        <literal>btrim('xyxtrimyyx', 'xyz')</literal>
+        <returnvalue>trim</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>normalized</primary>
         </indexterm>
         <indexterm>
@@ -2481,6 +2564,49 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>lower('TOM')</literal>
         <returnvalue>tom</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>lpad</primary>
+        </indexterm>
+        <function>lpad</function> ( <parameter>string</parameter> <type>text</type>,
+        <parameter>length</parameter> <type>integer</type>
+        <optional>, <parameter>fill</parameter> <type>text</type> </optional> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Extends the <parameter>string</parameter> to length
+        <parameter>length</parameter> by prepending the characters
+        <parameter>fill</parameter> (a space by default).  If the
+        <parameter>string</parameter> is already longer than
+        <parameter>length</parameter> then it is truncated (on the right).
+       </para>
+       <para>
+        <literal>lpad('hi', 5, 'xy')</literal>
+        <returnvalue>xyxhi</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>ltrim</primary>
+        </indexterm>
+        <function>ltrim</function> ( <parameter>string</parameter> <type>text</type>
+        <optional>, <parameter>characters</parameter> <type>text</type> </optional> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Removes the longest string containing only characters in
+        <parameter>characters</parameter> (a space by default) from the start of
+        <parameter>string</parameter>.
+       </para>
+       <para>
+        <literal>ltrim('zzzytest', 'xyz')</literal>
+        <returnvalue>test</returnvalue>
        </para></entry>
       </row>
 
@@ -2584,6 +2710,49 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>position('om' in 'Thomas')</literal>
         <returnvalue>3</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>rpad</primary>
+        </indexterm>
+        <function>rpad</function> ( <parameter>string</parameter> <type>text</type>,
+        <parameter>length</parameter> <type>integer</type>
+        <optional>, <parameter>fill</parameter> <type>text</type> </optional> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Extends the <parameter>string</parameter> to length
+        <parameter>length</parameter> by appending the characters
+        <parameter>fill</parameter> (a space by default).  If the
+        <parameter>string</parameter> is already longer than
+        <parameter>length</parameter> then it is truncated.
+       </para>
+       <para>
+        <literal>rpad('hi', 5, 'xy')</literal>
+        <returnvalue>hixyx</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>rtrim</primary>
+        </indexterm>
+        <function>rtrim</function> ( <parameter>string</parameter> <type>text</type>
+         <optional>, <parameter>characters</parameter> <type>text</type> </optional> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Removes the longest string containing only characters in
+        <parameter>characters</parameter> (a space by default) from the end of
+        <parameter>string</parameter>.
+       </para>
+       <para>
+        <literal>rtrim('testxxzx', 'xyz')</literal>
+        <returnvalue>test</returnvalue>
        </para></entry>
       </row>
 
@@ -2782,26 +2951,6 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
-         <primary>btrim</primary>
-        </indexterm>
-        <function>btrim</function> ( <parameter>string</parameter> <type>text</type>
-        <optional>, <parameter>characters</parameter> <type>text</type> </optional> )
-        <returnvalue>text</returnvalue>
-       </para>
-       <para>
-        Removes the longest string containing only characters
-        in <parameter>characters</parameter> (a space by default)
-        from the start and end of <parameter>string</parameter>.
-       </para>
-       <para>
-        <literal>btrim('xyxtrimyyx', 'xyz')</literal>
-        <returnvalue>trim</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
          <primary>chr</primary>
         </indexterm>
         <function>chr</function> ( <type>integer</type> )
@@ -2933,49 +3082,6 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>length('jose')</literal>
         <returnvalue>4</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>lpad</primary>
-        </indexterm>
-        <function>lpad</function> ( <parameter>string</parameter> <type>text</type>,
-        <parameter>length</parameter> <type>integer</type>
-        <optional>, <parameter>fill</parameter> <type>text</type> </optional> )
-        <returnvalue>text</returnvalue>
-       </para>
-       <para>
-        Extends the <parameter>string</parameter> to length
-        <parameter>length</parameter> by prepending the characters
-        <parameter>fill</parameter> (a space by default).  If the
-        <parameter>string</parameter> is already longer than
-        <parameter>length</parameter> then it is truncated (on the right).
-       </para>
-       <para>
-        <literal>lpad('hi', 5, 'xy')</literal>
-        <returnvalue>xyxhi</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>ltrim</primary>
-        </indexterm>
-        <function>ltrim</function> ( <parameter>string</parameter> <type>text</type>
-        <optional>, <parameter>characters</parameter> <type>text</type> </optional> )
-        <returnvalue>text</returnvalue>
-       </para>
-       <para>
-        Removes the longest string containing only characters in
-        <parameter>characters</parameter> (a space by default) from the start of
-        <parameter>string</parameter>.
-       </para>
-       <para>
-        <literal>ltrim('zzzytest', 'xyz')</literal>
-        <returnvalue>test</returnvalue>
        </para></entry>
       </row>
 
@@ -3439,49 +3545,6 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>right('abcde', 2)</literal>
         <returnvalue>de</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>rpad</primary>
-        </indexterm>
-        <function>rpad</function> ( <parameter>string</parameter> <type>text</type>,
-        <parameter>length</parameter> <type>integer</type>
-        <optional>, <parameter>fill</parameter> <type>text</type> </optional> )
-        <returnvalue>text</returnvalue>
-       </para>
-       <para>
-        Extends the <parameter>string</parameter> to length
-        <parameter>length</parameter> by appending the characters
-        <parameter>fill</parameter> (a space by default).  If the
-        <parameter>string</parameter> is already longer than
-        <parameter>length</parameter> then it is truncated.
-       </para>
-       <para>
-        <literal>rpad('hi', 5, 'xy')</literal>
-        <returnvalue>hixyx</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>rtrim</primary>
-        </indexterm>
-        <function>rtrim</function> ( <parameter>string</parameter> <type>text</type>
-         <optional>, <parameter>characters</parameter> <type>text</type> </optional> )
-        <returnvalue>text</returnvalue>
-       </para>
-       <para>
-        Removes the longest string containing only characters in
-        <parameter>characters</parameter> (a space by default) from the end of
-        <parameter>string</parameter>.
-       </para>
-       <para>
-        <literal>rtrim('testxxzx', 'xyz')</literal>
-        <returnvalue>test</returnvalue>
        </para></entry>
       </row>
 
@@ -4078,6 +4141,46 @@ SELECT format('Testing %3$s, %2$s, %s', 'one', 'two', 'three');
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>btrim</primary>
+        </indexterm>
+        <function>btrim</function> ( <parameter>bytes</parameter> <type>bytea</type>,
+        <parameter>bytesremoved</parameter> <type>bytea</type> )
+        <returnvalue>bytea</returnvalue>
+       </para>
+       <para>
+        Removes the longest string containing only bytes appearing in
+        <parameter>bytesremoved</parameter> from the start and end of
+        <parameter>bytes</parameter>.
+       </para>
+       <para>
+        <literal>btrim('\x1234567890'::bytea, '\x9012'::bytea)</literal>
+        <returnvalue>\x345678</returnvalue>
+       </para></entry>
+      </row>
+
+       <row>
+        <entry role="func_table_entry"><para role="func_signature">
+         <indexterm>
+          <primary>ltrim</primary>
+         </indexterm>
+         <function>ltrim</function> ( <parameter>bytes</parameter> <type>bytea</type>,
+         <parameter>bytesremoved</parameter> <type>bytea</type> )
+         <returnvalue>bytea</returnvalue>
+        </para>
+        <para>
+         Removes the longest string containing only bytes appearing in
+         <parameter>bytesremoved</parameter> from the start of
+         <parameter>bytes</parameter>.
+        </para>
+        <para>
+         <literal>ltrim('\x1234567890'::bytea, '\x9012'::bytea)</literal>
+         <returnvalue>\x34567890</returnvalue>
+        </para></entry>
+       </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>octet_length</primary>
         </indexterm>
         <function>octet_length</function> ( <type>bytea</type> )
@@ -4132,6 +4235,26 @@ SELECT format('Testing %3$s, %2$s, %s', 'one', 'two', 'three');
         <returnvalue>3</returnvalue>
        </para></entry>
       </row>
+
+       <row>
+        <entry role="func_table_entry"><para role="func_signature">
+         <indexterm>
+          <primary>rtrim</primary>
+         </indexterm>
+         <function>rtrim</function> ( <parameter>bytes</parameter> <type>bytea</type>,
+         <parameter>bytesremoved</parameter> <type>bytea</type> )
+         <returnvalue>bytea</returnvalue>
+        </para>
+        <para>
+         Removes the longest string containing only bytes appearing in
+         <parameter>bytesremoved</parameter> from the end of
+         <parameter>bytes</parameter>.
+        </para>
+        <para>
+         <literal>rtrim('\x1234567890'::bytea, '\x9012'::bytea)</literal>
+         <returnvalue>\x12345678</returnvalue>
+        </para></entry>
+       </row>
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
@@ -4246,26 +4369,6 @@ SELECT format('Testing %3$s, %2$s, %s', 'one', 'two', 'three');
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
-         <primary>btrim</primary>
-        </indexterm>
-        <function>btrim</function> ( <parameter>bytes</parameter> <type>bytea</type>,
-        <parameter>bytesremoved</parameter> <type>bytea</type> )
-        <returnvalue>bytea</returnvalue>
-       </para>
-       <para>
-        Removes the longest string containing only bytes appearing in
-        <parameter>bytesremoved</parameter> from the start and end of
-        <parameter>bytes</parameter>.
-       </para>
-       <para>
-       <literal>btrim('\x1234567890'::bytea, '\x9012'::bytea)</literal>
-       <returnvalue>\x345678</returnvalue>
-      </para></entry>
-     </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
          <primary>get_bit</primary>
         </indexterm>
         <function>get_bit</function> ( <parameter>bytes</parameter> <type>bytea</type>,
@@ -4344,26 +4447,6 @@ SELECT format('Testing %3$s, %2$s, %s', 'one', 'two', 'three');
       </row>
 
       <row>
-        <entry role="func_table_entry"><para role="func_signature">
-         <indexterm>
-          <primary>ltrim</primary>
-         </indexterm>
-         <function>ltrim</function> ( <parameter>bytes</parameter> <type>bytea</type>,
-         <parameter>bytesremoved</parameter> <type>bytea</type> )
-         <returnvalue>bytea</returnvalue>
-        </para>
-        <para>
-         Removes the longest string containing only bytes appearing in
-         <parameter>bytesremoved</parameter> from the start of
-         <parameter>bytes</parameter>.
-        </para>
-        <para>
-         <literal>ltrim('\x1234567890'::bytea, '\x9012'::bytea)</literal>
-         <returnvalue>\x34567890</returnvalue>
-        </para></entry>
-       </row>
-
-      <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
          <primary>md5</primary>
@@ -4380,26 +4463,6 @@ SELECT format('Testing %3$s, %2$s, %s', 'one', 'two', 'three');
         <returnvalue>8ab2d3c9689aaf18&zwsp;b4958c334c82d8b1</returnvalue>
        </para></entry>
       </row>
-
-      <row>
-        <entry role="func_table_entry"><para role="func_signature">
-         <indexterm>
-          <primary>rtrim</primary>
-         </indexterm>
-         <function>rtrim</function> ( <parameter>bytes</parameter> <type>bytea</type>,
-         <parameter>bytesremoved</parameter> <type>bytea</type> )
-         <returnvalue>bytea</returnvalue>
-        </para>
-        <para>
-         Removes the longest string containing only bytes appearing in
-         <parameter>bytesremoved</parameter> from the end of
-         <parameter>bytes</parameter>.
-        </para>
-        <para>
-         <literal>rtrim('\x1234567890'::bytea, '\x9012'::bytea)</literal>
-         <returnvalue>\x12345678</returnvalue>
-        </para></entry>
-       </row>
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
@@ -7410,7 +7473,7 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
       <thead>
        <row>
         <entry>SQL standard</entry>
-        <entry>PostgreSQL</entry>
+        <entry><productname>PostgreSQL</productname></entry>
        </row>
       </thead>
 
@@ -9205,6 +9268,28 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
 
        <row>
         <entry role="func_table_entry"><para role="func_signature">
+         <indexterm>
+          <primary>date_add</primary>
+         </indexterm>
+         <function>date_add</function> ( <type>timestamp with time zone</type>, <type>interval</type> <optional>, <type>text</type> </optional> )
+         <returnvalue>timestamp with time zone</returnvalue>
+        </para>
+        <para>
+         Add an <type>interval</type> to a <type>timestamp with time
+         zone</type>, computing times of day and daylight-savings adjustments
+         according to the time zone named by the third argument, or the
+         current <xref linkend="guc-timezone"/> setting if that is omitted.
+         The form with two arguments is equivalent to the <type>timestamp with
+         time zone</type> <literal>+</literal> <type>interval</type> operator.
+        </para>
+        <para>
+         <literal>date_add('2021-10-31 00:00:00+02'::timestamptz, '1 day'::interval, 'Europe/Warsaw')</literal>
+         <returnvalue>2021-10-31 23:00:00+00</returnvalue>
+        </para></entry>
+       </row>
+
+       <row>
+        <entry role="func_table_entry"><para role="func_signature">
          <function>date_bin</function> ( <type>interval</type>, <type>timestamp</type>, <type>timestamp</type> )
          <returnvalue>timestamp</returnvalue>
         </para>
@@ -9247,6 +9332,28 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
         <para>
          <literal>date_part('month', interval '2 years 3 months')</literal>
          <returnvalue>3</returnvalue>
+        </para></entry>
+       </row>
+
+       <row>
+        <entry role="func_table_entry"><para role="func_signature">
+         <indexterm>
+          <primary>date_subtract</primary>
+         </indexterm>
+         <function>date_subtract</function> ( <type>timestamp with time zone</type>, <type>interval</type> <optional>, <type>text</type> </optional> )
+         <returnvalue>timestamp with time zone</returnvalue>
+        </para>
+        <para>
+         Subtract an <type>interval</type> from a <type>timestamp with time
+         zone</type>, computing times of day and daylight-savings adjustments
+         according to the time zone named by the third argument, or the
+         current <xref linkend="guc-timezone"/> setting if that is omitted.
+         The form with two arguments is equivalent to the <type>timestamp with
+         time zone</type> <literal>-</literal> <type>interval</type> operator.
+        </para>
+        <para>
+         <literal>date_subtract('2021-11-01 00:00:00+01'::timestamptz, '1 day'::interval, 'Europe/Warsaw')</literal>
+         <returnvalue>2021-10-30 22:00:00+00</returnvalue>
         </para></entry>
        </row>
 
@@ -9745,13 +9852,23 @@ SELECT (DATE '2001-10-30', DATE '2001-10-30') OVERLAPS
 
   <para>
    When adding an <type>interval</type> value to (or subtracting an
-   <type>interval</type> value from) a <type>timestamp with time zone</type>
-   value, the days component advances or decrements the date of the
-   <type>timestamp with time zone</type> by the indicated number of days,
-   keeping the time of day the same.
-   Across daylight saving time changes (when the session time zone is set to a
-   time zone that recognizes DST), this means <literal>interval '1 day'</literal>
-   does not necessarily equal <literal>interval '24 hours'</literal>.
+   <type>interval</type> value from) a <type>timestamp</type>
+   or <type>timestamp with time zone</type> value, the months, days, and
+   microseconds fields of the <type>interval</type> value are handled in turn.
+   First, a nonzero months field advances or decrements the date of the
+   timestamp by the indicated number of months, keeping the day of month the
+   same unless it would be past the end of the new month, in which case the
+   last day of that month is used.  (For example, March 31 plus 1 month
+   becomes April 30, but March 31 plus 2 months becomes May 31.)
+   Then the days field advances or decrements the date of the timestamp by
+   the indicated number of days.  In both these steps the local time of day
+   is kept the same.  Finally, if there is a nonzero microseconds field, it
+   is added or subtracted literally.
+   When doing arithmetic on a <type>timestamp with time zone</type> value in
+   a time zone that recognizes DST, this means that adding or subtracting
+   (say) <literal>interval '1 day'</literal> does not necessarily have the
+   same result as adding or subtracting <literal>interval '24
+   hours'</literal>.
    For example, with the session time zone set
    to <literal>America/Denver</literal>:
 <screen>
@@ -9797,11 +9914,11 @@ SELECT timestamp with time zone '2005-04-02 12:00:00-07' + interval '24 hours';
 <screen>
 SELECT EXTRACT(EPOCH FROM timestamptz '2013-07-01 12:00:00') -
        EXTRACT(EPOCH FROM timestamptz '2013-03-01 12:00:00');
-<lineannotation>Result: </lineannotation><computeroutput>10537200</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>10537200.000000</computeroutput>
 SELECT (EXTRACT(EPOCH FROM timestamptz '2013-07-01 12:00:00') -
         EXTRACT(EPOCH FROM timestamptz '2013-03-01 12:00:00'))
         / 60 / 60 / 24;
-<lineannotation>Result: </lineannotation><computeroutput>121.958333333333</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>121.9583333333333333</computeroutput>
 SELECT timestamptz '2013-07-01 12:00:00' - timestamptz '2013-03-01 12:00:00';
 <lineannotation>Result: </lineannotation><computeroutput>121 days 23:00:00</computeroutput>
 SELECT age(timestamptz '2013-07-01 12:00:00', timestamptz '2013-03-01 12:00:00');
@@ -9947,13 +10064,13 @@ SELECT EXTRACT(DOY FROM TIMESTAMP '2001-02-16 20:38:40');
 
 <screen>
 SELECT EXTRACT(EPOCH FROM TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40.12-08');
-<lineannotation>Result: </lineannotation><computeroutput>982384720.12</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>982384720.120000</computeroutput>
 
 SELECT EXTRACT(EPOCH FROM TIMESTAMP '2001-02-16 20:38:40.12');
-<lineannotation>Result: </lineannotation><computeroutput>982355920.12</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>982355920.120000</computeroutput>
 
 SELECT EXTRACT(EPOCH FROM INTERVAL '5 days 3 hours');
-<lineannotation>Result: </lineannotation><computeroutput>442800</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>442800.000000</computeroutput>
 </screen>
 
        <para>
@@ -10100,7 +10217,7 @@ SELECT EXTRACT(MILLENNIUM FROM TIMESTAMP '2001-02-16 20:38:40');
 
 <screen>
 SELECT EXTRACT(MILLISECONDS FROM TIME '17:12:28.5');
-<lineannotation>Result: </lineannotation><computeroutput>28500</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>28500.000</computeroutput>
 </screen>
       </listitem>
      </varlistentry>
@@ -10164,10 +10281,10 @@ SELECT EXTRACT(QUARTER FROM TIMESTAMP '2001-02-16 20:38:40');
 
 <screen>
 SELECT EXTRACT(SECOND FROM TIMESTAMP '2001-02-16 20:38:40');
-<lineannotation>Result: </lineannotation><computeroutput>40</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>40.000000</computeroutput>
 
 SELECT EXTRACT(SECOND FROM TIME '17:12:28.5');
-<lineannotation>Result: </lineannotation><computeroutput>28.5</computeroutput>
+<lineannotation>Result: </lineannotation><computeroutput>28.500000</computeroutput>
 </screen>
       </listitem>
      </varlistentry>
@@ -13884,7 +14001,7 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
     documents for processing in client applications.
    </para>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-xmlcomment">
     <title><literal>xmlcomment</literal></title>
 
     <indexterm>
@@ -13916,7 +14033,7 @@ SELECT xmlcomment('hello');
     </para>
    </sect3>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-xmlconcat">
     <title><literal>xmlconcat</literal></title>
 
     <indexterm>
@@ -13973,7 +14090,7 @@ SELECT xmlconcat('<?xml version="1.1"?><foo/>', '<?xml version="1.1" standalone=
     </para>
    </sect3>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-xmlelement">
     <title><literal>xmlelement</literal></title>
 
    <indexterm>
@@ -14079,7 +14196,7 @@ SELECT xmlelement(name foo, xmlattributes('xyz' as bar),
     </para>
    </sect3>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-xmlforest">
     <title><literal>xmlforest</literal></title>
 
    <indexterm>
@@ -14140,7 +14257,7 @@ WHERE table_schema = 'pg_catalog';
     </para>
    </sect3>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-xmlpi">
     <title><literal>xmlpi</literal></title>
 
    <indexterm>
@@ -14173,7 +14290,7 @@ SELECT xmlpi(name php, 'echo "hello world";');
     </para>
    </sect3>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-xmlroot">
     <title><literal>xmlroot</literal></title>
 
    <indexterm>
@@ -14275,7 +14392,7 @@ SELECT xmlagg(x) FROM (SELECT * FROM test ORDER BY y DESC) AS tab;
      of <type>xml</type> values.
     </para>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-is-document">
     <title><literal>IS DOCUMENT</literal></title>
 
     <indexterm>
@@ -14295,7 +14412,7 @@ SELECT xmlagg(x) FROM (SELECT * FROM test ORDER BY y DESC) AS tab;
     </para>
    </sect3>
 
-   <sect3>
+   <sect3 id="functions-producing-xml-is-not-document">
     <title><literal>IS NOT DOCUMENT</literal></title>
 
     <indexterm>
@@ -15112,6 +15229,10 @@ table2-mapping
    <primary>JSON</primary>
    <secondary>functions and operators</secondary>
   </indexterm>
+   <indexterm zone="functions-json">
+    <primary>SQL/JSON</primary>
+    <secondary>functions and expressions</secondary>
+   </indexterm>
 
   <para>
    This section describes:
@@ -15128,6 +15249,42 @@ table2-mapping
      </para>
     </listitem>
    </itemizedlist>
+  </para>
+
+  <para>
+   To provide native support for JSON data types within the SQL environment,
+   <productname>PostgreSQL</productname> implements the
+   <firstterm>SQL/JSON data model</firstterm>.
+   This model comprises sequences of items. Each item can hold SQL scalar
+   values, with an additional SQL/JSON null value, and composite data structures
+   that use JSON arrays and objects. The model is a formalization of the implied
+   data model in the JSON specification
+   <ulink url="https://tools.ietf.org/html/rfc7159">RFC 7159</ulink>.
+  </para>
+
+  <para>
+   SQL/JSON allows you to handle JSON data alongside regular SQL data,
+   with transaction support, including:
+
+  <itemizedlist>
+   <listitem>
+    <para>
+     Uploading JSON data into the database and storing it in
+     regular SQL columns as character or binary strings.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Generating JSON objects and arrays from relational data.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Querying JSON data using SQL/JSON query functions and
+     SQL/JSON path language expressions.
+    </para>
+   </listitem>
+  </itemizedlist>
   </para>
 
   <para>
@@ -15149,6 +15306,12 @@ table2-mapping
    <type>jsonb</type>, though not for <type>json</type>.  The comparison
    operators follow the ordering rules for B-tree operations outlined in
    <xref linkend="json-indexing"/>.
+   See also <xref linkend="functions-aggregate"/> for the aggregate
+   function <function>json_agg</function> which aggregates record
+   values as JSON, the aggregate function
+   <function>json_object_agg</function> which aggregates pairs of values
+   into a JSON object, and their <type>jsonb</type> equivalents,
+   <function>jsonb_agg</function> and <function>jsonb_object_agg</function>.
   </para>
 
   <table id="functions-json-op-table">
@@ -15554,6 +15717,12 @@ table2-mapping
   <para>
    <xref linkend="functions-json-creation-table"/> shows the functions that are
    available for constructing <type>json</type> and <type>jsonb</type> values.
+   Some functions in this table have a <literal>RETURNING</literal> clause,
+   which specifies the data type returned.  It must be one of <type>json</type>,
+   <type>jsonb</type>, <type>bytea</type>, a character string type (<type>text</type>,
+   <type>char</type>, <type>varchar</type>, or <type>nchar</type>), or a type
+   for which there is a cast from <type>json</type> to that type.
+   By default, the <type>json</type> type is returned.
   </para>
 
   <table id="functions-json-creation-table">
@@ -15638,6 +15807,45 @@ table2-mapping
       </row>
 
       <row>
+       <!--
+           Note that this is barely legible in the output; it looks like a
+           salad of braces and brackets.  It would be better to split it out
+           in multiple lines, but that's surprisingly hard to do in a way that
+           matches in HTML and PDF output.  Other standard SQL/JSON functions
+           have the same problem.
+         -->
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>json_array</primary></indexterm>
+         <function>json_array</function> (
+         <optional> { <replaceable>value_expression</replaceable> <optional> <literal>FORMAT JSON</literal> </optional> } <optional>, ...</optional> </optional>
+         <optional> { <literal>NULL</literal> | <literal>ABSENT</literal> } <literal>ON NULL</literal> </optional>
+         <optional> <literal>RETURNING</literal> <replaceable>data_type</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> </optional>)
+        </para>
+        <para role="func_signature">
+         <function>json_array</function> (
+         <optional> <replaceable>query_expression</replaceable> </optional>
+         <optional> <literal>RETURNING</literal> <replaceable>data_type</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> </optional>)
+        </para>
+        <para>
+         Constructs a JSON array from either a series of
+         <replaceable>value_expression</replaceable> parameters or from the results
+         of <replaceable>query_expression</replaceable>,
+         which must be a SELECT query returning a single column. If
+         <literal>ABSENT ON NULL</literal> is specified, NULL values are ignored.
+         This is always the case if a
+         <replaceable>query_expression</replaceable> is used.
+        </para>
+        <para>
+         <literal>json_array(1,true,json '{"a":null}')</literal>
+         <returnvalue>[1, true, {"a":null}]</returnvalue>
+        </para>
+        <para>
+         <literal>json_array(SELECT * FROM (VALUES(1),(2)) t)</literal>
+         <returnvalue>[1, 2]</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
          <primary>row_to_json</primary>
@@ -15712,6 +15920,38 @@ table2-mapping
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
+         <indexterm><primary>json_object</primary></indexterm>
+         <function>json_object</function> (
+         <optional> { <replaceable>key_expression</replaceable> { <literal>VALUE</literal> | ':' }
+          <replaceable>value_expression</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> }<optional>, ...</optional> </optional>
+         <optional> { <literal>NULL</literal> | <literal>ABSENT</literal> } <literal>ON NULL</literal> </optional>
+         <optional> { <literal>WITH</literal> | <literal>WITHOUT</literal> } <literal>UNIQUE</literal> <optional> <literal>KEYS</literal> </optional> </optional>
+         <optional> <literal>RETURNING</literal> <replaceable>data_type</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> </optional>)
+        </para>
+        <para>
+         Constructs a JSON object of all the key/value pairs given,
+         or an empty object if none are given.
+         <replaceable>key_expression</replaceable> is a scalar expression
+         defining the <acronym>JSON</acronym> key, which is
+         converted to the <type>text</type> type.
+         It cannot be <literal>NULL</literal> nor can it
+         belong to a type that has a cast to the <type>json</type> type.
+         If <literal>WITH UNIQUE KEYS</literal> is specified, there must not
+         be any duplicate <replaceable>key_expression</replaceable>.
+         Any pair for which the <replaceable>value_expression</replaceable>
+         evaluates to <literal>NULL</literal> is omitted from the output
+         if <literal>ABSENT ON NULL</literal> is specified;
+         if <literal>NULL ON NULL</literal> is specified or the clause
+         omitted, the key is included with value <literal>NULL</literal>.
+        </para>
+        <para>
+         <literal>json_object('code' VALUE 'P123', 'title': 'Jaws')</literal>
+         <returnvalue>{"code" : "P123", "title" : "Jaws"}</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
          <primary>json_object</primary>
         </indexterm>
@@ -15764,6 +16004,86 @@ table2-mapping
      </tbody>
     </tgroup>
    </table>
+
+  <para>
+   <xref linkend="functions-sqljson-misc" /> details SQL/JSON
+   facilities for testing JSON.
+  </para>
+
+  <table id="functions-sqljson-misc">
+   <title>SQL/JSON Testing Functions</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="func_table_entry"><para role="func_signature">
+        Function signature
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+      </para></entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>IS JSON</primary></indexterm>
+        <replaceable>expression</replaceable> <literal>IS</literal> <optional> <literal>NOT</literal> </optional> <literal>JSON</literal>
+        <optional> { <literal>VALUE</literal> | <literal>SCALAR</literal> | <literal>ARRAY</literal> | <literal>OBJECT</literal> } </optional>
+        <optional> { <literal>WITH</literal> | <literal>WITHOUT</literal> } <literal>UNIQUE</literal> <optional> <literal>KEYS</literal> </optional> </optional>
+       </para>
+       <para>
+        This predicate tests whether <replaceable>expression</replaceable> can be
+        parsed as JSON, possibly of a specified type.
+        If <literal>SCALAR</literal> or <literal>ARRAY</literal> or
+        <literal>OBJECT</literal> is specified, the
+        test is whether or not the JSON is of that particular type. If
+        <literal>WITH UNIQUE KEYS</literal> is specified, then any object in the
+        <replaceable>expression</replaceable> is also tested to see if it
+        has duplicate keys.
+       </para>
+       <para>
+<programlisting>
+SELECT js,
+  js IS JSON "json?",
+  js IS JSON SCALAR "scalar?",
+  js IS JSON OBJECT "object?",
+  js IS JSON ARRAY "array?"
+FROM (VALUES
+      ('123'), ('"abc"'), ('{"a": "b"}'), ('[1,2]'),('abc')) foo(js);
+     js     | json? | scalar? | object? | array?
+------------+-------+---------+---------+--------
+ 123        | t     | t       | f       | f
+ "abc"      | t     | t       | f       | f
+ {"a": "b"} | t     | f       | t       | f
+ [1,2]      | t     | f       | f       | t
+ abc        | f     | f       | f       | f
+</programlisting>
+       </para>
+       <para>
+<programlisting>
+SELECT js,
+  js IS JSON OBJECT "object?",
+  js IS JSON ARRAY "array?",
+  js IS JSON ARRAY WITH UNIQUE KEYS "array w. UK?",
+  js IS JSON ARRAY WITHOUT UNIQUE KEYS "array w/o UK?"
+FROM (VALUES ('[{"a":"1"},
+ {"b":"2","b":"3"}]')) foo(js);
+-[ RECORD 1 ]-+--------------------
+js            | [{"a":"1"},        +
+              |  {"b":"2","b":"3"}]
+object?       | f
+array?        | t
+array w. UK?  | f
+array w/o UK? | t
+</programlisting>
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
 
   <para>
    <xref linkend="functions-json-processing-table"/> shows the functions that
@@ -16604,15 +16924,6 @@ table2-mapping
      </tbody>
     </tgroup>
    </table>
-
-  <para>
-    See also <xref linkend="functions-aggregate"/> for the aggregate
-    function <function>json_agg</function> which aggregates record
-    values as JSON, the aggregate function
-    <function>json_object_agg</function> which aggregates pairs of values
-    into a JSON object, and their <type>jsonb</type> equivalents,
-    <function>jsonb_agg</function> and <function>jsonb_object_agg</function>.
-  </para>
  </sect2>
 
  <sect2 id="functions-sqljson-path">
@@ -18043,16 +18354,14 @@ SELECT NULLIF(value, '(none)') ...
     largest or smallest value from a list of any number of expressions.
     The expressions must all be convertible to a common data type, which
     will be the type of the result
-    (see <xref linkend="typeconv-union-case"/> for details).  NULL values
-    in the list are ignored.  The result will be NULL only if all the
-    expressions evaluate to NULL.
+    (see <xref linkend="typeconv-union-case"/> for details).
    </para>
 
    <para>
-    Note that <function>GREATEST</function> and <function>LEAST</function> are not in
-    the SQL standard, but are a common extension.  Some other databases
-    make them return NULL if any argument is NULL, rather than only when
-    all are NULL.
+    NULL values in the argument list are ignored.  The result will be NULL
+    only if all the expressions evaluate to NULL.  (This is a deviation from
+    the SQL standard.  According to the standard, the return value is NULL if
+    any argument is NULL.  Some other databases behave this way.)
    </para>
   </sect2>
  </sect1>
@@ -18465,6 +18774,48 @@ SELECT NULLIF(value, '(none)') ...
        <para>
         <literal>array_replace(ARRAY[1,2,5,4], 5, 3)</literal>
         <returnvalue>{1,2,3,4}</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>array_sample</primary>
+        </indexterm>
+        <function>array_sample</function> ( <parameter>array</parameter> <type>anyarray</type>, <parameter>n</parameter> <type>integer</type> )
+        <returnvalue>anyarray</returnvalue>
+       </para>
+       <para>
+        Returns an array of <parameter>n</parameter> items randomly selected
+        from <parameter>array</parameter>.  <parameter>n</parameter> may not
+        exceed the length of <parameter>array</parameter>'s first dimension.
+        If <parameter>array</parameter> is multi-dimensional,
+        an <quote>item</quote> is a slice having a given first subscript.
+       </para>
+       <para>
+        <literal>array_sample(ARRAY[1,2,3,4,5,6], 3)</literal>
+        <returnvalue>{2,6,1}</returnvalue>
+       </para>
+       <para>
+        <literal>array_sample(ARRAY[[1,2],[3,4],[5,6]], 2)</literal>
+        <returnvalue>{{5,6},{1,2}}</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>array_shuffle</primary>
+        </indexterm>
+        <function>array_shuffle</function> ( <type>anyarray</type> )
+        <returnvalue>anyarray</returnvalue>
+       </para>
+       <para>
+        Randomly shuffles the first dimension of the array.
+       </para>
+       <para>
+        <literal>array_shuffle(ARRAY[[1,2],[3,4],[5,6]])</literal>
+        <returnvalue>{{5,6},{1,2},{3,4}}</returnvalue>
        </para></entry>
       </row>
 
@@ -19713,6 +20064,20 @@ SELECT NULLIF(value, '(none)') ...
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>any_value</primary>
+        </indexterm>
+        <function>any_value</function> ( <type>anyelement</type> )
+        <returnvalue><replaceable>same as input type</replaceable></returnvalue>
+       </para>
+       <para>
+        Returns an arbitrary value from the non-null input values.
+       </para></entry>
+       <entry>Yes</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>array_agg</primary>
         </indexterm>
         <function>array_agg</function> ( <type>anynonarray</type> )
@@ -19721,7 +20086,7 @@ SELECT NULLIF(value, '(none)') ...
        <para>
         Collects all the input values, including nulls, into an array.
        </para></entry>
-       <entry>No</entry>
+       <entry>Yes</entry>
       </row>
 
       <row>
@@ -19734,7 +20099,7 @@ SELECT NULLIF(value, '(none)') ...
         dimension.  (The inputs must all have the same dimensionality, and
         cannot be empty or null.)
        </para></entry>
-       <entry>No</entry>
+       <entry>Yes</entry>
       </row>
 
       <row>
@@ -19951,6 +20316,28 @@ SELECT NULLIF(value, '(none)') ...
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
+         <indexterm><primary>json_objectagg</primary></indexterm>
+         <function>json_objectagg</function> (
+         <optional> { <replaceable>key_expression</replaceable> { <literal>VALUE</literal> | ':' } <replaceable>value_expression</replaceable> } </optional>
+         <optional> { <literal>NULL</literal> | <literal>ABSENT</literal> } <literal>ON NULL</literal> </optional>
+        <optional> { <literal>WITH</literal> | <literal>WITHOUT</literal> } <literal>UNIQUE</literal> <optional> <literal>KEYS</literal> </optional> </optional>
+        <optional> <literal>RETURNING</literal> <replaceable>data_type</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> </optional>)
+        </para>
+        <para>
+         Behaves like <function>json_object</function><!-- xref -->, but as an
+         aggregate function, so it only takes one
+         <replaceable>key_expression</replaceable> and one
+         <replaceable>value_expression</replaceable> parameter.
+        </para>
+        <para>
+         <literal>SELECT json_objectagg(k:v) FROM (VALUES ('a'::text,current_date),('b',current_date + 1)) AS t(k,v)</literal>
+         <returnvalue>{ "a" : "2022-05-10", "b" : "2022-05-11" }</returnvalue>
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
          <primary>json_object_agg</primary>
         </indexterm>
@@ -19970,9 +20357,122 @@ SELECT NULLIF(value, '(none)') ...
        </para>
        <para>
         Collects all the key/value pairs into a JSON object.  Key arguments
-        are coerced to text; value arguments are converted as
-        per <function>to_json</function> or <function>to_jsonb</function>.
-        Values can be null, but not keys.
+        are coerced to text; value arguments are converted as per
+        <function>to_json</function> or <function>to_jsonb</function>.
+        Values can be null, but keys cannot.
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>json_object_agg_strict</primary>
+        </indexterm>
+        <function>json_object_agg_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_object_agg_strict</primary>
+        </indexterm>
+        <function>jsonb_object_agg_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the key/value pairs into a JSON object.  Key arguments
+        are coerced to text; value arguments are converted as per
+        <function>to_json</function> or <function>to_jsonb</function>.
+        The <parameter>key</parameter> can not be null. If the
+        <parameter>value</parameter> is null then the entry is skipped,
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>json_object_agg_unique</primary>
+        </indexterm>
+        <function>json_object_agg_unique</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_object_agg_unique</primary>
+        </indexterm>
+        <function>jsonb_object_agg_unique</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the key/value pairs into a JSON object.  Key arguments
+        are coerced to text; value arguments are converted as per
+        <function>to_json</function> or <function>to_jsonb</function>.
+        Values can be null, but keys cannot.
+        If there is a duplicate key an error is thrown.
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm><primary>json_arrayagg</primary></indexterm>
+        <function>json_arrayagg</function> (
+        <optional> <replaceable>value_expression</replaceable> </optional>
+        <optional> <literal>ORDER BY</literal> <replaceable>sort_expression</replaceable> </optional>
+        <optional> { <literal>NULL</literal> | <literal>ABSENT</literal> } <literal>ON NULL</literal> </optional>
+        <optional> <literal>RETURNING</literal> <replaceable>data_type</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> </optional>)
+       </para>
+       <para>
+        Behaves in the same way as <function>json_array</function>
+        but as an aggregate function so it only takes one
+        <replaceable>value_expression</replaceable> parameter.
+        If <literal>ABSENT ON NULL</literal> is specified, any NULL
+        values are omitted.
+        If <literal>ORDER BY</literal> is specified, the elements will
+        appear in the array in that order rather than in the input order.
+       </para>
+       <para>
+        <literal>SELECT json_arrayagg(v) FROM (VALUES(2),(1)) t(v)</literal>
+        <returnvalue>[2, 1]</returnvalue>
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>json_object_agg_unique_strict</primary>
+        </indexterm>
+        <function>json_object_agg_unique_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_object_agg_unique_strict</primary>
+        </indexterm>
+        <function>jsonb_object_agg_unique_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the key/value pairs into a JSON object.  Key arguments
+        are coerced to text; value arguments are converted as per
+        <function>to_json</function> or <function>to_jsonb</function>.
+        The <parameter>key</parameter> can not be null. If the
+        <parameter>value</parameter> is null then the entry is skipped.
+        If there is a duplicate key an error is thrown.
        </para></entry>
        <entry>No</entry>
       </row>
@@ -20058,6 +20558,29 @@ SELECT NULLIF(value, '(none)') ...
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>json_agg_strict</primary>
+        </indexterm>
+        <function>json_agg_strict</function> ( <type>anyelement</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_agg_strict</primary>
+        </indexterm>
+        <function>jsonb_agg_strict</function> ( <type>anyelement</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the input values, skipping nulls, into a JSON array.
+        Values are converted to JSON as per <function>to_json</function>
+        or <function>to_jsonb</function>.
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>string_agg</primary>
         </indexterm>
         <function>string_agg</function> ( <parameter>value</parameter>
@@ -20074,7 +20597,7 @@ SELECT NULLIF(value, '(none)') ...
         after the first is preceded by the
         corresponding <parameter>delimiter</parameter> (if it's not null).
        </para></entry>
-       <entry>No</entry>
+       <entry>Yes</entry>
       </row>
 
       <row>
@@ -20150,7 +20673,12 @@ SELECT NULLIF(value, '(none)') ...
   <para>
    The aggregate functions <function>array_agg</function>,
    <function>json_agg</function>, <function>jsonb_agg</function>,
+   <function>json_agg_strict</function>, <function>jsonb_agg_strict</function>,
    <function>json_object_agg</function>, <function>jsonb_object_agg</function>,
+   <function>json_object_agg_strict</function>, <function>jsonb_object_agg_strict</function>,
+   <function>json_object_agg_unique</function>, <function>jsonb_object_agg_unique</function>,
+   <function>json_object_agg_unique_strict</function>,
+   <function>jsonb_object_agg_unique_strict</function>,
    <function>string_agg</function>,
    and <function>xmlagg</function>, as well as similar user-defined
    aggregate functions, produce meaningfully different result values
@@ -21498,7 +22026,7 @@ WHERE EXISTS (SELECT 1 FROM tab2 WHERE col2 = tab1.col2);
   </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="functions-subquery-single-row-comp">
    <title>Single-Row Comparison</title>
 
    <indexterm zone="functions-subquery">
@@ -21621,7 +22149,7 @@ OR
   </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="functions-comparisons-not-in">
    <title><literal>NOT IN</literal></title>
 
 <synopsis>
@@ -21662,7 +22190,7 @@ AND
   </tip>
   </sect2>
 
-  <sect2>
+  <sect2 id="functions-comparisons-any-some">
    <title><literal>ANY</literal>/<literal>SOME</literal> (array)</title>
 
 <synopsis>
@@ -21699,7 +22227,7 @@ AND
   </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="functions-comparisons-all">
    <title><literal>ALL</literal> (array)</title>
 
 <synopsis>
@@ -21943,13 +22471,17 @@ AND
         <returnvalue>setof timestamp</returnvalue>
        </para>
        <para role="func_signature">
-        <function>generate_series</function> ( <parameter>start</parameter> <type>timestamp with time zone</type>, <parameter>stop</parameter> <type>timestamp with time zone</type>, <parameter>step</parameter> <type>interval</type> )
+        <function>generate_series</function> ( <parameter>start</parameter> <type>timestamp with time zone</type>, <parameter>stop</parameter> <type>timestamp with time zone</type>, <parameter>step</parameter> <type>interval</type> <optional>, <parameter>timezone</parameter> <type>text</type> </optional> )
         <returnvalue>setof timestamp with time zone</returnvalue>
        </para>
        <para>
         Generates a series of values from <parameter>start</parameter>
         to <parameter>stop</parameter>, with a step size
         of <parameter>step</parameter>.
+        In the timezone-aware form, times of day and daylight-savings
+        adjustments are computed according to the time zone named by
+        the <parameter>timezone</parameter> argument, or the current
+        <xref linkend="guc-timezone"/> setting if that is omitted.
        </para></entry>
       </row>
      </tbody>
@@ -22017,6 +22549,25 @@ SELECT * FROM generate_series('2008-03-01 00:00'::timestamp,
  2008-03-03 22:00:00
  2008-03-04 08:00:00
 (9 rows)
+
+-- this example assumes that TimeZone is set to UTC; note the DST transition:
+SELECT * FROM generate_series('2001-10-22 00:00 -04:00'::timestamptz,
+                              '2001-11-01 00:00 -05:00'::timestamptz,
+                              '1 day'::interval, 'America/New_York');
+    generate_series
+------------------------
+ 2001-10-22 04:00:00+00
+ 2001-10-23 04:00:00+00
+ 2001-10-24 04:00:00+00
+ 2001-10-25 04:00:00+00
+ 2001-10-26 04:00:00+00
+ 2001-10-27 04:00:00+00
+ 2001-10-28 04:00:00+00
+ 2001-10-29 05:00:00+00
+ 2001-10-30 05:00:00+00
+ 2001-10-31 05:00:00+00
+ 2001-11-01 05:00:00+00
+(11 rows)
 </programlisting>
   </para>
 
@@ -22166,6 +22717,14 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
 
  <sect1 id="functions-info">
   <title>System Information Functions and Operators</title>
+
+   <para>
+    The functions described in this section are used to obtain various
+    information about a <productname>PostgreSQL</productname> installation.
+   </para>
+
+  <sect2 id="functions-info-session">
+   <title>Session Information Functions</title>
 
   <para>
    <xref linkend="functions-info-session-table"/> shows several
@@ -22626,6 +23185,25 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>system_user</primary>
+        </indexterm>
+        <function>system_user</function>
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Returns the authentication method and the identity (if any) that the
+        user presented during the authentication cycle before they were
+        assigned a database role. It is represented as
+        <literal>auth_method:identity</literal> or
+        <literal>NULL</literal> if the user has not been authenticated (for
+        example if <link linkend="auth-trust">Trust authentication</link> has
+        been used).
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>user</primary>
         </indexterm>
         <function>user</function>
@@ -22690,6 +23268,11 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
     and <function>current_user</function>, but <productname>PostgreSQL</productname>
     does not, since it unifies users and roles into a single kind of entity.)
    </para>
+
+  </sect2>
+
+  <sect2 id="functions-info-access">
+   <title>Access Privilege Inquiry Functions</title>
 
   <indexterm>
    <primary>privilege</primary>
@@ -22962,7 +23545,7 @@ SELECT has_function_privilege('joeuser', 'myfunc(int, text)', 'execute');
         are <literal>SELECT</literal>, <literal>INSERT</literal>,
         <literal>UPDATE</literal>, <literal>DELETE</literal>,
         <literal>TRUNCATE</literal>, <literal>REFERENCES</literal>,
-        and <literal>TRIGGER</literal>.
+        <literal>TRIGGER</literal>, and <literal>MAINTAIN</literal>.
        </para></entry>
       </row>
 
@@ -23017,11 +23600,14 @@ SELECT has_function_privilege('joeuser', 'myfunc(int, text)', 'execute');
        <para>
         Does user have privilege for role?
         Allowable privilege types are
-        <literal>MEMBER</literal> and <literal>USAGE</literal>.
+        <literal>MEMBER</literal>, <literal>USAGE</literal>,
+        and <literal>SET</literal>.
         <literal>MEMBER</literal> denotes direct or indirect membership in
-        the role (that is, the right to do <command>SET ROLE</command>), while
+        the role without regard to what specific privileges may be conferred.
         <literal>USAGE</literal> denotes whether the privileges of the role
-        are immediately available without doing <command>SET ROLE</command>.
+        are immediately available without doing <command>SET ROLE</command>,
+        while <literal>SET</literal> denotes whether it is possible to change
+        to the role using the <literal>SET ROLE</literal> command.
         This function does not allow the special case of
         setting <parameter>user</parameter> to <literal>public</literal>,
         because the PUBLIC pseudo-role can never be a member of real roles.
@@ -23231,6 +23817,11 @@ SELECT has_function_privilege('joeuser', 'myfunc(int, text)', 'execute');
      </tbody>
     </tgroup>
    </table>
+
+  </sect2>
+
+  <sect2 id="functions-info-schema">
+   <title>Schema Visibility Inquiry Functions</title>
 
   <para>
    <xref linkend="functions-info-schema-table"/> shows functions that
@@ -23458,6 +24049,11 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
     Note that it would not make much sense to test a non-schema-qualified
     type name in this way &mdash; if the name can be recognized at all, it must be visible.
    </para>
+
+  </sect2>
+
+  <sect2 id="functions-info-catalog">
+   <title>System Catalog Information Functions</title>
 
   <para>
    <xref linkend="functions-info-catalog-table"/> lists functions that
@@ -23696,6 +24292,23 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
         possibly-localized string describing the keyword's category.
         The <parameter>baredesc</parameter> column contains a
         possibly-localized string describing the keyword's column label status.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_get_partkeydef</primary>
+        </indexterm>
+        <function>pg_get_partkeydef</function> ( <parameter>table</parameter> <type>oid</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Reconstructs the definition of a partitioned table's partition
+        key, in the form it would have in the <literal>PARTITION
+        BY</literal> clause of <command>CREATE TABLE</command>.
+        (This is a decompiled reconstruction, not the original text
+        of the command.)
        </para></entry>
       </row>
 
@@ -24037,8 +24650,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regclass</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found.
        </para></entry>
       </row>
 
@@ -24055,8 +24667,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regcollation</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found.
        </para></entry>
       </row>
 
@@ -24073,8 +24684,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regnamespace</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found.
        </para></entry>
       </row>
 
@@ -24091,8 +24701,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regoper</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found or is ambiguous.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found or is ambiguous.
        </para></entry>
       </row>
 
@@ -24109,8 +24718,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regoperator</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found.
        </para></entry>
       </row>
 
@@ -24127,8 +24735,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regproc</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found or is ambiguous.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found or is ambiguous.
        </para></entry>
       </row>
 
@@ -24145,8 +24752,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regprocedure</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found.
        </para></entry>
       </row>
 
@@ -24163,8 +24769,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regrole</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found.
        </para></entry>
       </row>
 
@@ -24181,8 +24786,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         obtained by casting the string to type <type>regtype</type> (see
         <xref linkend="datatype-oid"/>); however, this function will return
         <literal>NULL</literal> rather than throwing an error if the name is
-        not found.  Also unlike the cast, this does not accept
-        a numeric OID as input.
+        not found.
        </para></entry>
       </row>
      </tbody>
@@ -24354,6 +24958,12 @@ SELECT collation for ('foo' COLLATE "de_DE");
       </entry>
      </row>
      <row>
+      <entry><literal>NO_RESET</literal></entry>
+      <entry>Parameters with this flag do not support
+      <command>RESET</command> commands.
+      </entry>
+     </row>
+     <row>
       <entry><literal>NO_RESET_ALL</literal></entry>
       <entry>Parameters with this flag are excluded from
        <command>RESET ALL</command> commands.
@@ -24373,6 +24983,11 @@ SELECT collation for ('foo' COLLATE "de_DE");
     </tbody>
    </tgroup>
   </table>
+
+  </sect2>
+
+  <sect2 id="functions-info-object">
+   <title>Object Information and Addressing Functions</title>
 
   <para>
    <xref linkend="functions-info-object-table"/> lists functions related to
@@ -24507,6 +25122,11 @@ SELECT collation for ('foo' COLLATE "de_DE");
     </tgroup>
    </table>
 
+  </sect2>
+
+  <sect2 id="functions-info-comment">
+   <title>Comment Information Functions</title>
+
    <indexterm>
     <primary>comment</primary>
     <secondary sortas="database objects">about database objects</secondary>
@@ -24601,6 +25221,126 @@ SELECT collation for ('foo' COLLATE "de_DE");
     </tgroup>
    </table>
 
+  </sect2>
+
+  <sect2 id="functions-info-validity">
+   <title>Data Validity Checking Functions</title>
+
+   <para>
+    The functions shown in <xref linkend="functions-info-validity-table"/>
+    can be helpful for checking validity of proposed input data.
+   </para>
+
+   <table id="functions-info-validity-table">
+    <title>Data Validity Checking Functions</title>
+    <tgroup cols="1">
+     <thead>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para></entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_input_is_valid</primary>
+        </indexterm>
+        <function>pg_input_is_valid</function> (
+          <parameter>string</parameter> <type>text</type>,
+          <parameter>type</parameter> <type>text</type>
+        )
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Tests whether the given <parameter>string</parameter> is valid
+        input for the specified data type, returning true or false.
+       </para>
+       <para>
+        This function will only work as desired if the data type's input
+        function has been updated to report invalid input as
+        a <quote>soft</quote> error.  Otherwise, invalid input will abort
+        the transaction, just as if the string had been cast to the type
+        directly.
+        </para>
+        <para>
+         <literal>pg_input_is_valid('42', 'integer')</literal>
+         <returnvalue>t</returnvalue>
+        </para>
+        <para>
+         <literal>pg_input_is_valid('42000000000', 'integer')</literal>
+         <returnvalue>f</returnvalue>
+        </para>
+        <para>
+         <literal>pg_input_is_valid('1234.567', 'numeric(7,4)')</literal>
+         <returnvalue>f</returnvalue>
+       </para></entry>
+      </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_input_error_info</primary>
+        </indexterm>
+        <function>pg_input_error_info</function> (
+          <parameter>string</parameter> <type>text</type>,
+          <parameter>type</parameter> <type>text</type>
+        )
+        <returnvalue>record</returnvalue>
+        ( <parameter>message</parameter> <type>text</type>,
+        <parameter>detail</parameter> <type>text</type>,
+        <parameter>hint</parameter> <type>text</type>,
+        <parameter>sql_error_code</parameter> <type>text</type> )
+       </para>
+       <para>
+        Tests whether the given <parameter>string</parameter> is valid
+        input for the specified data type; if not, return the details of
+        the error that would have been thrown.  If the input is valid, the
+        results are NULL.  The inputs are the same as
+        for <function>pg_input_is_valid</function>.
+       </para>
+       <para>
+        This function will only work as desired if the data type's input
+        function has been updated to report invalid input as
+        a <quote>soft</quote> error.  Otherwise, invalid input will abort
+        the transaction, just as if the string had been cast to the type
+        directly.
+       </para>
+       <para>
+        <literal>select * from pg_input_error_info('42000000000', 'integer')</literal>
+        <returnvalue></returnvalue>
+<programlisting>
+                       message                        | detail | hint | sql_error_code
+------------------------------------------------------+--------+------+----------------
+ value "42000000000" is out of range for type integer |        |      | 22003
+</programlisting>
+       </para>
+       <para>
+        <literal>select message, detail from pg_input_error_info('1234.567', 'numeric(7,4)')</literal>
+        <returnvalue></returnvalue>
+<programlisting>
+        message         |                                      detail
+------------------------+----------------------------------&zwsp;-------------------------------------------------
+ numeric field overflow | A field with precision 7, scale 4 must round to an absolute value less than 10^3.
+</programlisting>
+       </para></entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+  </sect2>
+
+  <sect2 id="functions-info-snapshot">
+   <title>Transaction ID and Snapshot Information Functions</title>
+
    <para>
     The functions shown in <xref linkend="functions-pg-snapshot"/>
     provide server transaction information in an exportable form.  The main
@@ -24634,7 +25374,10 @@ SELECT collation for ('foo' COLLATE "de_DE");
        <para>
         Returns the current transaction's ID.  It will assign a new one if the
         current transaction does not have one already (because it has not
-        performed any database updates).
+        performed any database updates);  see <xref
+        linkend="transaction-id"/> for details.  If executed in a
+        subtransaction, this will return the top-level transaction ID;
+        see <xref linkend="subxacts"/> for details.
        </para></entry>
       </row>
 
@@ -24651,6 +25394,8 @@ SELECT collation for ('foo' COLLATE "de_DE");
         ID is assigned yet.  (It's best to use this variant if the transaction
         might otherwise be read-only, to avoid unnecessary consumption of an
         XID.)
+        If executed in a subtransaction, this will return the top-level
+        transaction ID.
        </para></entry>
       </row>
 
@@ -24694,6 +25439,9 @@ SELECT collation for ('foo' COLLATE "de_DE");
        <para>
         Returns a current <firstterm>snapshot</firstterm>, a data structure
         showing which transaction IDs are now in-progress.
+        Only top-level transaction IDs are included in the snapshot;
+        subtransaction IDs are not shown;  see <xref linkend="subxacts"/>
+        for details.
        </para></entry>
       </row>
 
@@ -24748,7 +25496,8 @@ SELECT collation for ('foo' COLLATE "de_DE");
         Is the given transaction ID <firstterm>visible</firstterm> according
         to this snapshot (that is, was it completed before the snapshot was
         taken)?  Note that this function will not give the correct answer for
-        a subtransaction ID.
+        a subtransaction ID (subxid);  see <xref linkend="subxacts"/> for
+        details.
        </para></entry>
       </row>
      </tbody>
@@ -24760,8 +25509,9 @@ SELECT collation for ('foo' COLLATE "de_DE");
     wraps around every 4 billion transactions.  However,
     the functions shown in <xref linkend="functions-pg-snapshot"/> use a
     64-bit type <type>xid8</type> that does not wrap around during the life
-    of an installation, and can be converted to <type>xid</type> by casting if
-    required.  The data type <type>pg_snapshot</type> stores information about
+    of an installation and can be converted to <type>xid</type> by casting if
+    required;  see <xref linkend="transaction-id"/> for details.
+    The data type <type>pg_snapshot</type> stores information about
     transaction ID visibility at a particular moment in time.  Its components
     are described in <xref linkend="functions-pg-snapshot-parts"/>.
     <type>pg_snapshot</type>'s textual representation is
@@ -24807,7 +25557,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         xmax</literal> and not in this list was already completed at the time
         of the snapshot, and thus is either visible or dead according to its
         commit status.  This list does not include the transaction IDs of
-        subtransactions.
+        subtransactions (subxids).
        </entry>
       </row>
      </tbody>
@@ -24946,6 +25696,11 @@ SELECT collation for ('foo' COLLATE "de_DE");
     </tgroup>
    </table>
 
+  </sect2>
+
+  <sect2 id="functions-info-commit-timestamp">
+   <title>Committed Transaction Information Functions</title>
+
    <para>
     The functions shown in <xref linkend="functions-commit-timestamp"/>
     provide information about when past transactions were committed.
@@ -25017,6 +25772,11 @@ SELECT collation for ('foo' COLLATE "de_DE");
      </tbody>
     </tgroup>
    </table>
+
+  </sect2>
+
+  <sect2 id="functions-info-controldata">
+   <title>Control Data Functions</title>
 
    <para>
     The functions shown in <xref linkend="functions-controldata"/>
@@ -25356,6 +26116,8 @@ SELECT collation for ('foo' COLLATE "de_DE");
     </tgroup>
    </table>
 
+  </sect2>
+
   </sect1>
 
   <sect1 id="functions-admin">
@@ -25529,7 +26291,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         will be logged at
         <literal>LOG</literal> message level. They will appear in
         the server log based on the log configuration set
-        (See <xref linkend="runtime-config-logging"/> for more information),
+        (see <xref linkend="runtime-config-logging"/> for more information),
         but will not be sent to the client regardless of
         <xref linkend="guc-client-min-messages"/>.
        </para></entry>
@@ -25894,6 +26656,22 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>pg_split_walfile_name</primary>
+        </indexterm>
+        <function>pg_split_walfile_name</function> ( <parameter>file_name</parameter> <type>text</type> )
+        <returnvalue>record</returnvalue>
+        ( <parameter>segment_number</parameter> <type>numeric</type>,
+        <parameter>timeline_id</parameter> <type>bigint</type> )
+       </para>
+       <para>
+        Extracts the sequence number and timeline ID from a WAL file
+        name.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>pg_wal_lsn_diff</primary>
         </indexterm>
         <function>pg_wal_lsn_diff</function> ( <parameter>lsn1</parameter> <type>pg_lsn</type>, <parameter>lsn2</parameter> <type>pg_lsn</type> )
@@ -25946,6 +26724,23 @@ postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
     This is usually the desired behavior for managing write-ahead log archiving
     behavior, since the preceding file is the last one that currently
     needs to be archived.
+   </para>
+
+   <para>
+    <function>pg_split_walfile_name</function> is useful to compute a
+    <acronym>LSN</acronym> from a file offset and WAL file name, for example:
+<programlisting>
+postgres=# \set file_name '000000010000000100C000AB'
+postgres=# \set offset 256
+postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset AS lsn
+  FROM pg_split_walfile_name(:'file_name') pd,
+       pg_show_all_settings() ps
+  WHERE ps.name = 'wal_segment_size';
+      lsn
+---------------
+ C001/AB000100
+(1 row)
+</programlisting>
    </para>
 
   </sect2>
@@ -26279,6 +27074,21 @@ postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
         prepared with <xref linkend="sql-prepare-transaction"/>.
        </para></entry>
       </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_log_standby_snapshot</primary>
+        </indexterm>
+        <function>pg_log_standby_snapshot</function> ()
+        <returnvalue>pg_lsn</returnvalue>
+       </para>
+       <para>
+        Take a snapshot of running transactions and write it to WAL, without
+        having to wait for bgwriter or checkpointer to log one. This is useful
+        for logical decoding on standby, as logical slot creation has to wait
+        until such a record is replayed on the standby.
+       </para></entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
@@ -26380,7 +27190,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
         <indexterm>
          <primary>pg_create_logical_replication_slot</primary>
         </indexterm>
-        <function>pg_create_logical_replication_slot</function> ( <parameter>slot_name</parameter> <type>name</type>, <parameter>plugin</parameter> <type>name</type> <optional>, <parameter>temporary</parameter> <type>boolean</type>, <parameter>two_phase</parameter> <type>boolean</type> </optional> )
+        <function>pg_create_logical_replication_slot</function> ( <parameter>slot_name</parameter> <type>name</type>, <parameter>plugin</parameter> <type>name</type> <optional>, <parameter>temporary</parameter> <type>boolean</type>, <parameter>twophase</parameter> <type>boolean</type> </optional> )
         <returnvalue>record</returnvalue>
         ( <parameter>slot_name</parameter> <type>name</type>,
         <parameter>lsn</parameter> <type>pg_lsn</type> )
@@ -26393,7 +27203,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
         the slot should not be permanently stored to disk and is only meant
         for use by the current session. Temporary slots are also
         released upon any error. The optional fourth parameter,
-        <parameter>two_phase</parameter>, when set to true, specifies
+        <parameter>twophase</parameter>, when set to true, specifies
         that the decoding of prepared transactions is enabled for this
         slot. A call to this function has the same effect as the replication
         protocol command <literal>CREATE_REPLICATION_SLOT ... LOGICAL</literal>.
@@ -26889,7 +27699,10 @@ postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
        </para>
        <para>
         Converts a size in human-readable format (as returned
-        by <function>pg_size_pretty</function>) into bytes.
+        by <function>pg_size_pretty</function>) into bytes.  Valid units are
+        <literal>bytes</literal>, <literal>B</literal>, <literal>kB</literal>,
+        <literal>MB</literal>, <literal>GB</literal>, <literal>TB</literal>,
+        and <literal>PB</literal>.
        </para></entry>
       </row>
 
@@ -26907,7 +27720,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
        </para>
        <para>
         Converts a size in bytes into a more easily human-readable format with
-        size units (bytes, kB, MB, GB or TB as appropriate).  Note that the
+        size units (bytes, kB, MB, GB, TB, or PB as appropriate).  Note that the
         units are powers of 2 rather than powers of 10, so 1kB is 1024 bytes,
         1MB is 1024<superscript>2</superscript> = 1048576 bytes, and so on.
        </para></entry>

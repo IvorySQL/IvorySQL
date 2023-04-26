@@ -1528,13 +1528,16 @@ alter table recur1 alter column f2 type recur2; -- fails
 
 -- SET STORAGE may need to add a TOAST table
 create table test_storage (a text, c text storage plain);
-alter table test_storage alter a set storage plain;
-alter table test_storage add b int default 0; -- rewrite table to remove its TOAST table
-alter table test_storage alter a set storage extended; -- re-add TOAST table
-
 select reltoastrelid <> 0 as has_toast_table
-from pg_class
-where oid = 'test_storage'::regclass;
+  from pg_class where oid = 'test_storage'::regclass;
+alter table test_storage alter a set storage plain;
+-- rewrite table to remove its TOAST table; need a non-constant column default
+alter table test_storage add b int default random()::int;
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+alter table test_storage alter a set storage default; -- re-add TOAST table
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
 
 -- check STORAGE correctness
 create table test_storage_failed (a text, b int storage extended);
@@ -1632,7 +1635,25 @@ drop view at_view_2;
 drop view at_view_1;
 drop table at_base_table;
 
--- check adding a column not iself requiring a rewrite, together with
+-- related case (bug #17811)
+begin;
+create temp table t1 as select * from int8_tbl;
+create temp view v1 as select 1::int8 as q1;
+create temp view v2 as select * from v1;
+create or replace temp view v1 with (security_barrier = true)
+  as select * from t1;
+
+create temp table log (q1 int8, q2 int8);
+create rule v1_upd_rule as on update to v1
+  do also insert into log values (new.*);
+
+update v2 set q1 = q1 + 1 where q1 = 123;
+
+select * from t1;
+select * from log;
+rollback;
+
+-- check adding a column not itself requiring a rewrite, together with
 -- a column requiring a default (bug #16038)
 
 -- ensure that rewrites aren't silently optimized away, removing the
@@ -1962,6 +1983,14 @@ CREATE TYPE test_type1 AS (a int, b text);
 CREATE TABLE test_tbl1 (x int, y test_type1);
 ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar; -- fails
 
+DROP TABLE test_tbl1;
+CREATE TABLE test_tbl1 (x int, y text);
+CREATE INDEX test_tbl1_idx ON test_tbl1((row(x,y)::test_type1));
+ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar; -- fails
+
+DROP TABLE test_tbl1;
+DROP TYPE test_type1;
+
 CREATE TYPE test_type2 AS (a int, b text);
 CREATE TABLE test_tbl2 OF test_type2;
 CREATE TABLE test_tbl2_subclass () INHERITS (test_tbl2);
@@ -1989,7 +2018,8 @@ ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa CASCADE;
 \d test_tbl2
 \d test_tbl2_subclass
 
-DROP TABLE test_tbl2_subclass;
+DROP TABLE test_tbl2_subclass, test_tbl2;
+DROP TYPE test_type2;
 
 CREATE TYPE test_typex AS (a int, b text);
 CREATE TABLE test_tblx (x int, y test_typex check ((y).a > 0));
@@ -2324,6 +2354,9 @@ ALTER TABLE partitioned DROP COLUMN a;
 ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
 ALTER TABLE partitioned DROP COLUMN b;
 ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
+
+-- specifying storage parameters for partitioned tables is not supported
+ALTER TABLE partitioned SET (fillfactor=100);
 
 -- partitioned table cannot participate in regular inheritance
 CREATE TABLE nonpartitioned (
@@ -3029,57 +3062,10 @@ create schema alter1;
 create schema alter2;
 create table alter1.t1 (a int);
 set client_min_messages = 'ERROR';
-create publication pub1 for table alter1.t1, all tables in schema alter2;
+create publication pub1 for table alter1.t1, tables in schema alter2;
 reset client_min_messages;
-alter table alter1.t1 set schema alter2; -- should fail
+alter table alter1.t1 set schema alter2;
+\d+ alter2.t1
 drop publication pub1;
 drop schema alter1 cascade;
 drop schema alter2 cascade;
-
---
---Test oracle alter attribute
---
---check oracle compatible syntax : alter table <name> add (<coldef[, coldef […]]>);
-create table tb_test1(id int, flg char(10));
-alter table tb_test1 add (name varchar);
-alter table tb_test1 add (adress varchar, num int, flg1 char);
-\d tb_test1
-
---error case
-alter table tb_test1 add (name1);
-alter table tb_test1 add (varchar);
-
---check oracle compatible syntax : alter table <name> modify (<colname> <typname> <alter_using>[,…];
-create table tb_test2(id int, flg char(10), num varchar);
-insert into tb_test2 values('1', 2, '3');
-alter table tb_test2 modify(id char);
-\d tb_test2
-
-alter table tb_test2 modify(id varchar, flg text);
-\d tb_test2
-
-alter table tb_test2 modify(flg int using 10, num char(20));
-\d tb_test2
-table tb_test2;
-
-alter table tb_test2 modify(flg int using 20, num int using 30);
-\d tb_test2
-table tb_test2;
-
---error case
-alter table tb_test2 modify(flg char using);
-
---check oralce compatible syntax : alter table <name> drop [column] (<colname> [, ...]);
-create table tb_test3(id int, flg1 char(10), flg2 char(11), flg3 char(12), flg4 char(13),
-						flg5 char(14), flg6 char(15));
-alter table tb_test3 drop column(id);
-\d tb_test3
-
-alter table tb_test3 drop column(flg1, flg2);
-\d tb_test3
-
-alter table tb_test3 drop(flg3);
-\d tb_test3
-
-alter table tb_test3 drop(flg4, flg5);
-\d tb_test3

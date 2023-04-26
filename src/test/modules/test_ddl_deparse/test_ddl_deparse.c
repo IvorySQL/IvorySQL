@@ -2,7 +2,7 @@
  * test_ddl_deparse.c
  *		Support functions for the test_ddl_deparse module
  *
- * Copyright (c) 2014-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/test/modules/test_ddl_deparse/test_ddl_deparse.c
@@ -93,7 +93,7 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 	if (cmd->type != SCT_AlterTable)
 		elog(ERROR, "command is not ALTER TABLE");
 
-	SetSingleFuncCall(fcinfo, 0);
+	InitMaterializedSRF(fcinfo, 0);
 
 	if (cmd->d.alterTable.subcmds == NIL)
 		elog(ERROR, "empty alter table subcommand list");
@@ -113,9 +113,6 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 		{
 			case AT_AddColumn:
 				strtype = "ADD COLUMN";
-				break;
-			case AT_AddColumnRecurse:
-				strtype = "ADD COLUMN (and recurse)";
 				break;
 			case AT_AddColumnToView:
 				strtype = "ADD COLUMN TO VIEW";
@@ -156,9 +153,6 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_DropColumn:
 				strtype = "DROP COLUMN";
 				break;
-			case AT_DropColumnRecurse:
-				strtype = "DROP COLUMN (and recurse)";
-				break;
 			case AT_AddIndex:
 				strtype = "ADD INDEX";
 				break;
@@ -167,9 +161,6 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				break;
 			case AT_AddConstraint:
 				strtype = "ADD CONSTRAINT";
-				break;
-			case AT_AddConstraintRecurse:
-				strtype = "ADD CONSTRAINT (and recurse)";
 				break;
 			case AT_ReAddConstraint:
 				strtype = "(re) ADD CONSTRAINT";
@@ -183,17 +174,11 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_ValidateConstraint:
 				strtype = "VALIDATE CONSTRAINT";
 				break;
-			case AT_ValidateConstraintRecurse:
-				strtype = "VALIDATE CONSTRAINT (and recurse)";
-				break;
 			case AT_AddIndexConstraint:
 				strtype = "ADD CONSTRAINT (using index)";
 				break;
 			case AT_DropConstraint:
 				strtype = "DROP CONSTRAINT";
-				break;
-			case AT_DropConstraintRecurse:
-				strtype = "DROP CONSTRAINT (and recurse)";
 				break;
 			case AT_ReAddComment:
 				strtype = "(re) ADD COMMENT";
@@ -326,7 +311,10 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				break;
 		}
 
-		values[0] = CStringGetTextDatum(strtype);
+		if (subcmd->recurse)
+			values[0] = CStringGetTextDatum(psprintf("%s (and recurse)", strtype));
+		else
+			values[0] = CStringGetTextDatum(strtype);
 		if (OidIsValid(sub->address.objectId))
 		{
 			char	   *objdesc;

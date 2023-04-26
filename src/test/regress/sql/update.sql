@@ -667,35 +667,3 @@ update hash_parted set b = b + 8 where b = 1;
 drop table hash_parted;
 drop operator class custom_opclass using hash;
 drop function dummy_hashint4(a int4, seed int8);
-
---
---check oracle compatible update syntax
---
-create table tb_test5(id int, flg char(10));
-insert into tb_test5 values(1, '2'), (3, '4'), (5, '6');
-update tb_test5 set id = 11 where id = 1;
-table tb_test5;
-
-update tb_test5 a set a.id = 12 where id = 11;
-table tb_test5;
-
-update tb_test5 a set id = 13 where a.id = 12;
-table tb_test5;
-
-update tb_test5 a set a.id = 33 where a.id = 3;
-table tb_test5;
-
-update tb_test5 a set id = 55 where id = 5;
-table tb_test5;
-
-update tb_test5 set tb_test5.id = 66 where id = 55;
-table tb_test5;
-
-update tb_test5 set tb_test5.id = 77 where tb_test5.id = 66;
-table tb_test5;
-
---error case
-update tb_test5 set a.id = 33 where a.id = 55;
-update tb_test5 a set b.id = 33 where b.id = 55;
-update tb_test5 a set b.id = 33 where id = 55;
-update tb_test5 set a.id = 33 where id = 55;

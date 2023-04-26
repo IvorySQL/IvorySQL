@@ -4,7 +4,7 @@
  *	  POSTGRES buffer manager definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/bufmgr.h
@@ -23,7 +23,12 @@
 
 typedef void *Block;
 
-/* Possible arguments for GetAccessStrategy() */
+/*
+ * Possible arguments for GetAccessStrategy().
+ *
+ * If adding a new BufferAccessStrategyType, also add a new IOContext so
+ * IO statistics using this strategy are tracked.
+ */
 typedef enum BufferAccessStrategyType
 {
 	BAS_NORMAL,					/* Normal random access */
@@ -55,6 +60,53 @@ typedef struct PrefetchBufferResult
 	bool		initiated_io;	/* If true, a miss resulting in async I/O */
 } PrefetchBufferResult;
 
+/*
+ * Flags influencing the behaviour of ExtendBufferedRel*
+ */
+typedef enum ExtendBufferedFlags
+{
+	/*
+	 * Don't acquire extension lock. This is safe only if the relation isn't
+	 * shared, an access exclusive lock is held or if this is the startup
+	 * process.
+	 */
+	EB_SKIP_EXTENSION_LOCK = (1 << 0),
+
+	/* Is this extension part of recovery? */
+	EB_PERFORMING_RECOVERY = (1 << 1),
+
+	/*
+	 * Should the fork be created if it does not currently exist? This likely
+	 * only ever makes sense for relation forks.
+	 */
+	EB_CREATE_FORK_IF_NEEDED = (1 << 2),
+
+	/* Should the first (possibly only) return buffer be returned locked? */
+	EB_LOCK_FIRST = (1 << 3),
+
+	/* Should the smgr size cache be cleared? */
+	EB_CLEAR_SIZE_CACHE = (1 << 4),
+
+	/* internal flags follow */
+	EB_LOCK_TARGET = (1 << 5),
+} ExtendBufferedFlags;
+
+/*
+ * To identify the relation - either relation or smgr + relpersistence has to
+ * be specified. Used via the EB_REL()/EB_SMGR() macros below. This allows us
+ * to use the same function for both crash recovery and normal operation.
+ */
+typedef struct ExtendBufferedWhat
+{
+	Relation	rel;
+	struct SMgrRelationData *smgr;
+	char		relpersistence;
+} ExtendBufferedWhat;
+
+#define EB_REL(p_rel) ((ExtendBufferedWhat){.rel = p_rel})
+#define EB_SMGR(p_smgr, p_relpersistence) ((ExtendBufferedWhat){.smgr = p_smgr, .relpersistence = p_relpersistence})
+
+
 /* forward declared, to avoid having to expose buf_internals.h here */
 struct WritebackContext;
 
@@ -69,6 +121,15 @@ extern PGDLLIMPORT bool zero_damaged_pages;
 extern PGDLLIMPORT int bgwriter_lru_maxpages;
 extern PGDLLIMPORT double bgwriter_lru_multiplier;
 extern PGDLLIMPORT bool track_io_timing;
+
+/* only applicable when prefetching is available */
+#ifdef USE_PREFETCH
+#define DEFAULT_EFFECTIVE_IO_CONCURRENCY 1
+#define DEFAULT_MAINTENANCE_IO_CONCURRENCY 10
+#else
+#define DEFAULT_EFFECTIVE_IO_CONCURRENCY 0
+#define DEFAULT_MAINTENANCE_IO_CONCURRENCY 0
+#endif
 extern PGDLLIMPORT int effective_io_concurrency;
 extern PGDLLIMPORT int maintenance_io_concurrency;
 
@@ -120,8 +181,27 @@ extern void ReleaseBuffer(Buffer buffer);
 extern void UnlockReleaseBuffer(Buffer buffer);
 extern void MarkBufferDirty(Buffer buffer);
 extern void IncrBufferRefCount(Buffer buffer);
+extern void CheckBufferIsPinnedOnce(Buffer buffer);
 extern Buffer ReleaseAndReadBuffer(Buffer buffer, Relation relation,
 								   BlockNumber blockNum);
+
+extern Buffer ExtendBufferedRel(ExtendBufferedWhat eb,
+								ForkNumber forkNum,
+								BufferAccessStrategy strategy,
+								uint32 flags);
+extern BlockNumber ExtendBufferedRelBy(ExtendBufferedWhat eb,
+									   ForkNumber fork,
+									   BufferAccessStrategy strategy,
+									   uint32 flags,
+									   uint32 extend_by,
+									   Buffer *buffers,
+									   uint32 *extended_by);
+extern Buffer ExtendBufferedRelTo(ExtendBufferedWhat eb,
+								  ForkNumber fork,
+								  BufferAccessStrategy strategy,
+								  uint32 flags,
+								  BlockNumber extend_to,
+								  ReadBufferMode mode);
 
 extern void InitBufferPoolAccess(void);
 extern void AtEOXact_Buffers(bool isCommit);
@@ -166,9 +246,8 @@ extern bool ConditionalLockBufferForCleanup(Buffer buffer);
 extern bool IsBufferCleanupOK(Buffer buffer);
 extern bool HoldingBufferPinThatDelaysRecovery(void);
 
-extern void AbortBufferIO(void);
+extern void AbortBufferIO(Buffer buffer);
 
-extern void BufmgrCommit(void);
 extern bool BgBufferSync(struct WritebackContext *wb_context);
 
 extern void TestForOldSnapshot_impl(Snapshot snapshot, Relation relation);
@@ -181,7 +260,12 @@ extern Size BufferShmemSize(void);
 extern void AtProcExit_LocalBuffers(void);
 
 /* in freelist.c */
+
 extern BufferAccessStrategy GetAccessStrategy(BufferAccessStrategyType btype);
+extern BufferAccessStrategy GetAccessStrategyWithSize(BufferAccessStrategyType btype,
+													  int ring_size_kb);
+extern int	GetAccessStrategyBufferCount(BufferAccessStrategy strategy);
+
 extern void FreeAccessStrategy(BufferAccessStrategy strategy);
 
 

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 package Solution;
 
@@ -262,6 +262,8 @@ sub GenerateFiles
 		HAVE_GETOPT_LONG                            => undef,
 		HAVE_GETPEEREID                             => undef,
 		HAVE_GETPEERUCRED                           => undef,
+		HAVE_GSSAPI_EXT_H                           => undef,
+		HAVE_GSSAPI_GSSAPI_EXT_H                    => undef,
 		HAVE_GSSAPI_GSSAPI_H                        => undef,
 		HAVE_GSSAPI_H                               => undef,
 		HAVE_HMAC_CTX_FREE                          => undef,
@@ -308,7 +310,6 @@ sub GenerateFiles
 		HAVE_POSIX_FADVISE          => undef,
 		HAVE_POSIX_FALLOCATE        => undef,
 		HAVE_PPOLL                  => undef,
-		HAVE_PS_STRINGS             => undef,
 		HAVE_PTHREAD                => undef,
 		HAVE_PTHREAD_BARRIER_WAIT   => undef,
 		HAVE_PTHREAD_IS_THREADED_NP => undef,
@@ -328,6 +329,7 @@ sub GenerateFiles
 		HAVE_SETPROCTITLE_FAST                   => undef,
 		HAVE_SOCKLEN_T                           => 1,
 		HAVE_SPINLOCKS                           => 1,
+		HAVE_SSL_CTX_SET_CERT_CB                 => undef,
 		HAVE_STDBOOL_H                           => 1,
 		HAVE_STDINT_H                            => 1,
 		HAVE_STDLIB_H                            => 1,
@@ -339,7 +341,6 @@ sub GenerateFiles
 		HAVE_STRLCPY                             => undef,
 		HAVE_STRNLEN                             => 1,
 		HAVE_STRSIGNAL                           => undef,
-		HAVE_STRUCT_CMSGCRED                     => undef,
 		HAVE_STRUCT_OPTION                       => undef,
 		HAVE_STRUCT_SOCKADDR_SA_LEN              => undef,
 		HAVE_STRUCT_TM_TM_ZONE                   => undef,
@@ -371,6 +372,7 @@ sub GenerateFiles
 		HAVE_WCSTOMBS_L                          => 1,
 		HAVE_VISIBILITY_ATTRIBUTE                => undef,
 		HAVE_X509_GET_SIGNATURE_NID              => 1,
+		HAVE_X509_GET_SIGNATURE_INFO             => undef,
 		HAVE_X86_64_POPCNTQ                      => undef,
 		HAVE__BOOL                               => undef,
 		HAVE__BUILTIN_BSWAP16                    => undef,
@@ -489,7 +491,14 @@ sub GenerateFiles
 
 		my ($digit1, $digit2, $digit3) = $self->GetOpenSSLVersion();
 
-		# More symbols are needed with OpenSSL 1.1.0 and above.
+		# Symbols needed with OpenSSL 1.1.1 and above.
+		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
+			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '1'))
+		{
+			$define{HAVE_X509_GET_SIGNATURE_INFO} = 1;
+		}
+
+		# Symbols needed with OpenSSL 1.1.0 and above.
 		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
 			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0'))
 		{
@@ -499,6 +508,14 @@ sub GenerateFiles
 			$define{HAVE_HMAC_CTX_FREE}         = 1;
 			$define{HAVE_HMAC_CTX_NEW}          = 1;
 			$define{HAVE_OPENSSL_INIT_SSL}      = 1;
+		}
+
+		# Symbols needed with OpenSSL 1.0.2 and above.
+		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
+			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0')
+			|| ($digit1 >= '1' && $digit2 >= '0' && $digit3 >= '2'))
+		{
+			$define{HAVE_SSL_CTX_SET_CERT_CB} = 1;
 		}
 	}
 
@@ -622,6 +639,16 @@ sub GenerateFiles
 		print "Generating pltclerrcodes.h...\n";
 		system(
 			'perl src/pl/tcl/generate-pltclerrcodes.pl src/backend/utils/errcodes.txt > src/pl/tcl/pltclerrcodes.h'
+		);
+	}
+
+	if (IsNewer('contrib/fuzzystrmatch/daitch_mokotoff.h',
+				'contrib/fuzzystrmatch/daitch_mokotoff_header.pl'))
+	{
+		print "Generating daitch_mokotoff.h...\n";
+		system(
+			'perl contrib/fuzzystrmatch/daitch_mokotoff_header.pl ' .
+			'contrib/fuzzystrmatch/daitch_mokotoff.h'
 		);
 	}
 

@@ -3,7 +3,7 @@
  * parse_func.c
  *		handle function calls in parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,7 +18,6 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "commands/packagecmds.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
@@ -53,8 +52,7 @@ static Oid	LookupFuncNameInternal(ObjectType objtype, List *funcname,
 								   int nargs, const Oid *argtypes,
 								   bool include_out_arguments, bool missing_ok,
 								   FuncLookupError *lookupError);
-static void	check_package_privileges(List *funcname, HeapTuple ftup, Oid pkgoid,
-									 char prokind);
+
 
 /*
  *	Parse a function call
@@ -1634,7 +1632,6 @@ func_get_detail(List *funcname,
 		if (argdefaults && best_candidate->ndargs > 0)
 		{
 			Datum		proargdefaults;
-			bool		isnull;
 			char	   *str;
 			List	   *defaults;
 
@@ -1642,10 +1639,8 @@ func_get_detail(List *funcname,
 			if (best_candidate->ndargs > pform->pronargdefaults)
 				elog(ERROR, "not enough default arguments");
 
-			proargdefaults = SysCacheGetAttr(PROCOID, ftup,
-											 Anum_pg_proc_proargdefaults,
-											 &isnull);
-			Assert(!isnull);
+			proargdefaults = SysCacheGetAttrNotNull(PROCOID, ftup,
+													Anum_pg_proc_proargdefaults);
 			str = TextDatumGetCString(proargdefaults);
 			defaults = castNode(List, stringToNode(str));
 			pfree(str);
@@ -1698,9 +1693,6 @@ func_get_detail(List *funcname,
 				*argdefaults = defaults;
 			}
 		}
-
-		/* check package members priviliges, if any. */
-		check_package_privileges(funcname, ftup, pform->pronamespace, pform->prokind);
 
 		switch (pform->prokind)
 		{
@@ -2626,7 +2618,6 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 			break;
 		case EXPR_KIND_COLUMN_DEFAULT:
 		case EXPR_KIND_FUNCTION_DEFAULT:
-		case EXPR_KIND_VARIABLE_DEFAULT:
 			err = _("set-returning functions are not allowed in DEFAULT expressions");
 			break;
 		case EXPR_KIND_INDEX_EXPRESSION:
@@ -2686,50 +2677,4 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 				 errmsg("set-returning functions are not allowed in %s",
 						ParseExprKindName(pstate->p_expr_kind)),
 				 parser_errposition(pstate, location)));
-}
-
-static void
-check_package_privileges(List *funcname, HeapTuple ftup, Oid pkgoid, char prokind)
-{
-	OverrideSearchPath *ov;
-	bool	check_privilges = true;
-
-	/*
-	 * Before getting the exprs executed by the backend parser, we push the
-	 * current package oid to the override search path. Here we ensure that
-	 * the same package is being referenced.
-	 */
-	ov = GetOverrideSearchPath(CurrentMemoryContext);
-	if (ov != NULL && pkgoid == ov->pkgoid)
-	{
-		/*
-		 * same package is being refrenced, so it means the call generated
-		 * from within the same package. so we don't check the privilefes
-		 * here.
-		 */
-		check_privilges = false;
-	}
-
-	if (check_privilges)
-	{
-		Datum	proaccess;
-		bool	isNull;
-		bool 	isproc = (prokind == PROKIND_PROCEDURE);
-
-		/* check for package private members */
-		proaccess = SysCacheGetAttr(PROCNAMEARGSNSP, ftup,
-										Anum_pg_proc_proaccess,
-										&isNull);
-
-		if (!isNull &&
-			DatumGetChar(proaccess) == PACKAGE_MEMBER_PRIVATE &&
-			is_package_exists(pkgoid))
-		{
-			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					errmsg("package private %s (\"%s\") is not accessible",
-						(isproc? "procedure" : "function"),
-						NameListToString(funcname))));
-		}
-	}
 }

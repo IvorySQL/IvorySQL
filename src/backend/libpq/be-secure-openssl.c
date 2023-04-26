@@ -4,7 +4,7 @@
  *	  functions for OpenSSL support in the backend.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -27,12 +27,14 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
+#include "common/string.h"
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/fd.h"
 #include "storage/latch.h"
 #include "tcop/tcopprot.h"
+#include "utils/builtins.h"
 #include "utils/memutils.h"
 
 /*
@@ -60,10 +62,10 @@ static BIO_METHOD *my_BIO_s_socket(void);
 static int	my_SSL_set_fd(Port *port, int fd);
 
 static DH  *load_dh_file(char *filename, bool isServerStart);
-static DH  *load_dh_buffer(const char *, size_t);
+static DH  *load_dh_buffer(const char *buffer, size_t len);
 static int	ssl_external_passwd_cb(char *buf, int size, int rwflag, void *userdata);
 static int	dummy_ssl_passwd_cb(char *buf, int size, int rwflag, void *userdata);
-static int	verify_cb(int, X509_STORE_CTX *);
+static int	verify_cb(int ok, X509_STORE_CTX *ctx);
 static void info_cb(const SSL *ssl, int type, int args);
 static bool initialize_dh(SSL_CTX *context, bool isServerStart);
 static bool initialize_ecdh(SSL_CTX *context, bool isServerStart);
@@ -1080,16 +1082,16 @@ dummy_ssl_passwd_cb(char *buf, int size, int rwflag, void *userdata)
 }
 
 /*
- * Examines the provided certificate name, and if it's too long to log, modifies
- * and truncates it. The return value is NULL if no truncation was needed; it
- * otherwise points into the middle of the input string, and should not be
- * freed.
+ * Examines the provided certificate name, and if it's too long to log or
+ * contains unprintable ASCII, escapes and truncates it. The return value is
+ * always a new palloc'd string. (The input string is still modified in place,
+ * for ease of implementation.)
  */
 static char *
-truncate_cert_name(char *name)
+prepare_cert_name(char *name)
 {
 	size_t		namelen = strlen(name);
-	char	   *truncated;
+	char	   *truncated = name;
 
 	/*
 	 * Common Names are 64 chars max, so for a common case where the CN is the
@@ -1099,19 +1101,20 @@ truncate_cert_name(char *name)
 	 */
 #define MAXLEN 71
 
-	if (namelen <= MAXLEN)
-		return NULL;
-
-	/*
-	 * Keep the end of the name, not the beginning, since the most specific
-	 * field is likely to give users the most information.
-	 */
-	truncated = name + namelen - MAXLEN;
-	truncated[0] = truncated[1] = truncated[2] = '.';
+	if (namelen > MAXLEN)
+	{
+		/*
+		 * Keep the end of the name, not the beginning, since the most specific
+		 * field is likely to give users the most information.
+		 */
+		truncated = name + namelen - MAXLEN;
+		truncated[0] = truncated[1] = truncated[2] = '.';
+		namelen = MAXLEN;
+	}
 
 #undef MAXLEN
 
-	return truncated;
+	return pg_clean_ascii(truncated, 0);
 }
 
 /*
@@ -1154,21 +1157,24 @@ verify_cb(int ok, X509_STORE_CTX *ctx)
 	{
 		char	   *subject,
 				   *issuer;
-		char	   *sub_truncated,
-				   *iss_truncated;
+		char	   *sub_prepared,
+				   *iss_prepared;
 		char	   *serialno;
 		ASN1_INTEGER *sn;
 		BIGNUM	   *b;
 
 		/*
 		 * Get the Subject and Issuer for logging, but don't let maliciously
-		 * huge certs flood the logs.
+		 * huge certs flood the logs, and don't reflect non-ASCII bytes into it
+		 * either.
 		 */
 		subject = X509_NAME_to_cstring(X509_get_subject_name(cert));
-		sub_truncated = truncate_cert_name(subject);
+		sub_prepared = prepare_cert_name(subject);
+		pfree(subject);
 
 		issuer = X509_NAME_to_cstring(X509_get_issuer_name(cert));
-		iss_truncated = truncate_cert_name(issuer);
+		iss_prepared = prepare_cert_name(issuer);
+		pfree(issuer);
 
 		/*
 		 * Pull the serial number, too, in case a Subject is still ambiguous.
@@ -1181,14 +1187,13 @@ verify_cb(int ok, X509_STORE_CTX *ctx)
 		appendStringInfoChar(&str, '\n');
 		appendStringInfo(&str,
 						 _("Failed certificate data (unverified): subject \"%s\", serial number %s, issuer \"%s\"."),
-						 sub_truncated ? sub_truncated : subject,
-						 serialno ? serialno : _("unknown"),
-						 iss_truncated ? iss_truncated : issuer);
+						 sub_prepared, serialno ? serialno : _("unknown"),
+						 iss_prepared);
 
 		BN_free(b);
 		OPENSSL_free(serialno);
-		pfree(issuer);
-		pfree(subject);
+		pfree(iss_prepared);
+		pfree(sub_prepared);
 	}
 
 	/* Store our detail message to be logged later. */
@@ -1424,7 +1429,7 @@ be_tls_get_peer_serial(Port *port, char *ptr, size_t len)
 		ptr[0] = '\0';
 }
 
-#ifdef HAVE_X509_GET_SIGNATURE_NID
+#if defined(HAVE_X509_GET_SIGNATURE_NID) || defined(HAVE_X509_GET_SIGNATURE_INFO)
 char *
 be_tls_get_certificate_hash(Port *port, size_t *len)
 {
@@ -1442,10 +1447,15 @@ be_tls_get_certificate_hash(Port *port, size_t *len)
 
 	/*
 	 * Get the signature algorithm of the certificate to determine the hash
-	 * algorithm to use for the result.
+	 * algorithm to use for the result.  Prefer X509_get_signature_info(),
+	 * introduced in OpenSSL 1.1.1, which can handle RSA-PSS signatures.
 	 */
+#if HAVE_X509_GET_SIGNATURE_INFO
+	if (!X509_get_signature_info(server_cert, &algo_nid, NULL, NULL, NULL))
+#else
 	if (!OBJ_find_sigid_algs(X509_get_signature_nid(server_cert),
 							 &algo_nid, NULL))
+#endif
 		elog(ERROR, "could not determine server certificate signature algorithm");
 
 	/*
@@ -1547,7 +1557,8 @@ X509_NAME_to_cstring(X509_NAME *name)
  * Convert TLS protocol version GUC enum to OpenSSL values
  *
  * This is a straightforward one-to-one mapping, but doing it this way makes
- * guc.c independent of OpenSSL availability and version.
+ * the definitions of ssl_min_protocol_version and ssl_max_protocol_version
+ * independent of OpenSSL availability and version.
  *
  * If a version is passed that is not supported by the current OpenSSL
  * version, then we return -1.  If a nonnegative value is returned,

@@ -3,7 +3,7 @@
  * pg_proc.h
  *	  definition of the "procedure" system catalog (pg_proc)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_proc.h
@@ -85,9 +85,6 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 
 	/* OID of result type */
 	Oid			prorettype BKI_LOOKUP(pg_type);
-
-	/* package function or procedure access modifier */
-	char		proaccess BKI_DEFAULT(n);
 
 	/*
 	 * variable-length fields start here, but we allow direct access to
@@ -185,14 +182,6 @@ DECLARE_UNIQUE_INDEX(pg_proc_proname_args_nsp_index, 2691, ProcedureNameArgsNspI
 #define PROARGMODE_VARIADIC 'v'
 #define PROARGMODE_TABLE	't'
 
-/*
- * Symbolic values for proaccess column: these indicate the elements access
- * modifiers such as PUBLIC or PRIVATE qualifiers.
- */
-#define PACKAGE_MEMBER_PUBLIC	'u'
-#define PACKAGE_MEMBER_PRIVATE	'r'
-#define NON_PACKAGE_MEMBER		'n'
-
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
 
@@ -213,7 +202,6 @@ extern ObjectAddress ProcedureCreate(const char *procedureName,
 									 bool isStrict,
 									 char volatility,
 									 char parallel,
-									 char proaccess,
 									 oidvector *parameterTypes,
 									 Datum allParameterTypes,
 									 Datum parameterModes,

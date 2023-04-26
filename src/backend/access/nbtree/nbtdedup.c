@@ -3,7 +3,7 @@
  * nbtdedup.c
  *	  Deduplicate or bottom-up delete items in Postgres btrees.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -55,8 +55,8 @@ static bool _bt_posting_valid(IndexTuple posting);
  * LP_DEAD bits set.
  */
 void
-_bt_dedup_pass(Relation rel, Buffer buf, Relation heapRel, IndexTuple newitem,
-			   Size newitemsz, bool bottomupdedup)
+_bt_dedup_pass(Relation rel, Buffer buf, IndexTuple newitem, Size newitemsz,
+			   bool bottomupdedup)
 {
 	OffsetNumber offnum,
 				minoff,

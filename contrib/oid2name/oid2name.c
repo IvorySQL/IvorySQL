@@ -48,15 +48,15 @@ struct options
 
 /* function prototypes */
 static void help(const char *progname);
-void		get_opts(int, char **, struct options *);
+void		get_opts(int argc, char **argv, struct options *my_opts);
 void		add_one_elt(char *eltname, eary *eary);
 char	   *get_comma_elts(eary *eary);
-PGconn	   *sql_conn(struct options *);
-int			sql_exec(PGconn *, const char *sql, bool quiet);
-void		sql_exec_dumpalldbs(PGconn *, struct options *);
-void		sql_exec_dumpalltables(PGconn *, struct options *);
-void		sql_exec_searchtables(PGconn *, struct options *);
-void		sql_exec_dumpalltbspc(PGconn *, struct options *);
+PGconn	   *sql_conn(struct options *my_opts);
+int			sql_exec(PGconn *conn, const char *todo, bool quiet);
+void		sql_exec_dumpalldbs(PGconn *conn, struct options *opts);
+void		sql_exec_dumpalltables(PGconn *conn, struct options *opts);
+void		sql_exec_searchtables(PGconn *conn, struct options *opts);
+void		sql_exec_dumpalltbspc(PGconn *conn, struct options *opts);
 
 /* function to parse command line options and check for some usage errors. */
 void
@@ -217,7 +217,7 @@ help(const char *progname)
 		   "\nConnection options:\n"
 		   "  -d, --dbname=DBNAME        database to connect to\n"
 		   "  -h, --host=HOSTNAME        database server host or socket directory\n"
-		   "  -H                         same as -h, deprecated option\n"
+		   "  -H                         (same as -h, deprecated)\n"
 		   "  -p, --port=PORT            database server port number\n"
 		   "  -U, --username=USERNAME    connect as specified database user\n"
 		   "\nThe default action is to show all database OIDs.\n\n"

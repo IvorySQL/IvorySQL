@@ -480,6 +480,8 @@ fi
 [Unit]
 Description=PostgreSQL database server
 Documentation=man:postgres(1)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=notify
@@ -1218,7 +1220,7 @@ RemoveIPC=no
    </caution>
   </sect2>
 
-  <sect2>
+  <sect2 id="kernel-resources-limits">
    <title>Resource Limits</title>
 
    <para>
@@ -1304,12 +1306,12 @@ default:\
     Another kernel limit that may be of concern when supporting large
     numbers of client connections is the maximum socket connection queue
     length.  If more than that many connection requests arrive within a very
-    short period, some may get rejected before the postmaster can service
+    short period, some may get rejected before the <productname>PostgreSQL</productname> server can service
     the requests, with those clients receiving unhelpful connection failure
     errors such as <quote>Resource temporarily unavailable</quote> or
     <quote>Connection refused</quote>.  The default queue length limit is 128
     on many platforms.  To raise it, adjust the appropriate kernel parameter
-    via <application>sysctl</application>, then restart the postmaster.
+    via <application>sysctl</application>, then restart the <productname>PostgreSQL</productname> server.
     The parameter is variously named <varname>net.core.somaxconn</varname>
     on Linux, <varname>kern.ipc.soacceptqueue</varname> on newer FreeBSD,
     and <varname>kern.ipc.somaxconn</varname> on macOS and other BSD
@@ -1407,11 +1409,12 @@ sysctl -w vm.overcommit_memory=2
 <programlisting>
 echo -1000 > /proc/self/oom_score_adj
 </programlisting>
-    in the postmaster's startup script just before invoking the postmaster.
+    in the <productname>PostgreSQL</productname> startup script just before
+    invoking <filename>postgres</filename>.
     Note that this action must be done as root, or it will have no effect;
     so a root-owned startup script is the easiest place to do it.  If you
     do this, you should also set these environment variables in the startup
-    script before invoking the postmaster:
+    script before invoking <filename>postgres</filename>:
 <programlisting>
 export PG_OOM_ADJUST_FILE=/proc/self/oom_score_adj
 export PG_OOM_ADJUST_VALUE=0
@@ -1855,7 +1858,7 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
     <step>
      <para>
       Install the new version of <productname>PostgreSQL</productname> as
-      outlined in <xref linkend="install-procedure"/>.
+      outlined in <xref linkend="installation"/>.
      </para>
     </step>
 
@@ -2004,7 +2007,11 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    (<xref linkend="ssl-tcp"/>). The TCP client must connect using
    <literal>sslmode=verify-ca</literal> or
    <literal>verify-full</literal> and have the appropriate root certificate
-   file installed (<xref linkend="libq-ssl-certificates"/>).
+   file installed (<xref linkend="libq-ssl-certificates"/>). Alternatively the
+   system CA pool can be used using <literal>sslrootcert=system</literal>; in
+   this case, <literal>sslmode=verify-full</literal> is forced for safety, since
+   it is generally trivial to obtain certificates which are signed by a public
+   CA.
   </para>
 
   <para>
@@ -2204,7 +2211,7 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    With <acronym>SSL</acronym> support compiled in, the
    <productname>PostgreSQL</productname> server can be started with
    support for encrypted connections using <acronym>TLS</acronym> protocols
-   enabled by by setting the parameter
+   enabled by setting the parameter
    <xref linkend="guc-ssl"/> to <literal>on</literal> in
    <filename>postgresql.conf</filename>.  The server will listen for both normal
    and <acronym>SSL</acronym> connections on the same TCP port, and will negotiate

@@ -9,7 +9,7 @@
  * of XLogRecData structs by a call to XLogRecordAssemble(). See
  * access/transam/README for details.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xloginsert.c
@@ -98,7 +98,7 @@ static int	max_registered_block_id = 0;	/* highest block_id + 1 currently
  */
 static XLogRecData *mainrdata_head;
 static XLogRecData *mainrdata_last = (XLogRecData *) &mainrdata_head;
-static uint32 mainrdata_len;	/* total # of bytes in chain */
+static uint64 mainrdata_len;	/* total # of bytes in chain */
 
 /* flags for the in-progress insertion */
 static uint8 curinsert_flags = 0;
@@ -355,7 +355,10 @@ XLogRegisterData(char *data, uint32 len)
 	Assert(begininsert_called);
 
 	if (num_rdatas >= max_rdatas)
-		elog(ERROR, "too much WAL data");
+		ereport(ERROR,
+				(errmsg_internal("too much WAL data"),
+				 errdetail_internal("%d out of %d data segments are already in use.",
+									num_rdatas, max_rdatas)));
 	rdata = &rdatas[num_rdatas++];
 
 	rdata->data = data;
@@ -405,9 +408,16 @@ XLogRegisterBufData(uint8 block_id, char *data, uint32 len)
 	 * regbuf->rdata_len does not grow beyond what
 	 * XLogRecordBlockHeader->data_length can hold.
 	 */
-	if (num_rdatas >= max_rdatas ||
-		regbuf->rdata_len + len > UINT16_MAX)
-		elog(ERROR, "too much WAL data");
+	if (num_rdatas >= max_rdatas)
+		ereport(ERROR,
+				(errmsg_internal("too much WAL data"),
+				 errdetail_internal("%d out of %d data segments are already in use.",
+									num_rdatas, max_rdatas)));
+	if (regbuf->rdata_len + len > UINT16_MAX || len > UINT16_MAX)
+		ereport(ERROR,
+				(errmsg_internal("too much WAL data"),
+				 errdetail_internal("Registering more than maximum %u bytes allowed to block %u: current %u bytes, adding %u bytes.",
+									UINT16_MAX, block_id, regbuf->rdata_len, len)));
 
 	rdata = &rdatas[num_rdatas++];
 
@@ -527,7 +537,7 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 				   XLogRecPtr *fpw_lsn, int *num_fpi, bool *topxid_included)
 {
 	XLogRecData *rdt;
-	uint32		total_len = 0;
+	uint64		total_len = 0;
 	int			block_id;
 	pg_crc32c	rdata_crc;
 	registered_buffer *prev_regbuf = NULL;
@@ -841,8 +851,18 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 	{
 		if (mainrdata_len > 255)
 		{
+			uint32		mainrdata_len_4b;
+
+			if (mainrdata_len > PG_UINT32_MAX)
+				ereport(ERROR,
+						(errmsg_internal("too much WAL data"),
+						 errdetail_internal("Main data length is %llu bytes for a maximum of %u bytes.",
+											(unsigned long long) mainrdata_len,
+											PG_UINT32_MAX)));
+
+			mainrdata_len_4b = (uint32) mainrdata_len;
 			*(scratch++) = (char) XLR_BLOCK_ID_DATA_LONG;
-			memcpy(scratch, &mainrdata_len, sizeof(uint32));
+			memcpy(scratch, &mainrdata_len_4b, sizeof(uint32));
 			scratch += sizeof(uint32);
 		}
 		else
@@ -873,12 +893,26 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 		COMP_CRC32C(rdata_crc, rdt->data, rdt->len);
 
 	/*
+	 * Ensure that the XLogRecord is not too large.
+	 *
+	 * XLogReader machinery is only able to handle records up to a certain
+	 * size (ignoring machine resource limitations), so make sure that we will
+	 * not emit records larger than the sizes advertised to be supported.
+	 * This cap is based on DecodeXLogRecordRequiredSpace().
+	 */
+	if (total_len >= XLogRecordMaxSize)
+		ereport(ERROR,
+				(errmsg_internal("oversized WAL record"),
+				 errdetail_internal("WAL record would be %llu bytes (of maximum %u bytes); rmid %u flags %u.",
+									(unsigned long long) total_len, XLogRecordMaxSize, rmid, info)));
+
+	/*
 	 * Fill in the fields in the record header. Prev-link is filled in later,
 	 * once we know where in the WAL the record will be inserted. The CRC does
 	 * not include the record header yet.
 	 */
 	rechdr->xl_xid = GetCurrentTransactionIdIfAny();
-	rechdr->xl_tot_len = total_len;
+	rechdr->xl_tot_len = (uint32) total_len;
 	rechdr->xl_info = info;
 	rechdr->xl_rmid = rmid;
 	rechdr->xl_prev = InvalidXLogRecPtr;
@@ -973,9 +1007,9 @@ XLogCompressBackupBlock(char *page, uint16 hole_offset, uint16 hole_length,
 /*
  * Determine whether the buffer referenced has to be backed up.
  *
- * Since we don't yet have the insert lock, fullPageWrites and forcePageWrites
- * could change later, so the result should be used for optimization purposes
- * only.
+ * Since we don't yet have the insert lock, fullPageWrites and runningBackups
+ * (which forces full-page writes) could change later, so the result should
+ * be used for optimization purposes only.
  */
 bool
 XLogCheckBufferNeedsBackup(Buffer buffer)
@@ -1094,7 +1128,7 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
  * the unused space to be left out from the WAL record, making it smaller.
  */
 XLogRecPtr
-log_newpage(RelFileLocator *rlocator, ForkNumber forkNum, BlockNumber blkno,
+log_newpage(RelFileLocator *rlocator, ForkNumber forknum, BlockNumber blkno,
 			Page page, bool page_std)
 {
 	int			flags;
@@ -1105,7 +1139,7 @@ log_newpage(RelFileLocator *rlocator, ForkNumber forkNum, BlockNumber blkno,
 		flags |= REGBUF_STANDARD;
 
 	XLogBeginInsert();
-	XLogRegisterBlock(0, rlocator, forkNum, blkno, page, flags);
+	XLogRegisterBlock(0, rlocator, forknum, blkno, page, flags);
 	recptr = XLogInsert(RM_XLOG_ID, XLOG_FPI);
 
 	/*
@@ -1126,7 +1160,7 @@ log_newpage(RelFileLocator *rlocator, ForkNumber forkNum, BlockNumber blkno,
  * because we can write multiple pages in a single WAL record.
  */
 void
-log_newpages(RelFileLocator *rlocator, ForkNumber forkNum, int num_pages,
+log_newpages(RelFileLocator *rlocator, ForkNumber forknum, int num_pages,
 			 BlockNumber *blknos, Page *pages, bool page_std)
 {
 	int			flags;
@@ -1156,7 +1190,7 @@ log_newpages(RelFileLocator *rlocator, ForkNumber forkNum, int num_pages,
 		nbatch = 0;
 		while (nbatch < XLR_MAX_BLOCK_ID && i < num_pages)
 		{
-			XLogRegisterBlock(nbatch, rlocator, forkNum, blknos[i], pages[i], flags);
+			XLogRegisterBlock(nbatch, rlocator, forknum, blknos[i], pages[i], flags);
 			i++;
 			nbatch++;
 		}
@@ -1192,15 +1226,15 @@ log_newpage_buffer(Buffer buffer, bool page_std)
 {
 	Page		page = BufferGetPage(buffer);
 	RelFileLocator rlocator;
-	ForkNumber	forkNum;
+	ForkNumber	forknum;
 	BlockNumber blkno;
 
 	/* Shared buffers should be modified in a critical section. */
 	Assert(CritSectionCount > 0);
 
-	BufferGetTag(buffer, &rlocator, &forkNum, &blkno);
+	BufferGetTag(buffer, &rlocator, &forknum, &blkno);
 
-	return log_newpage(&rlocator, forkNum, blkno, page, page_std);
+	return log_newpage(&rlocator, forknum, blkno, page, page_std);
 }
 
 /*
@@ -1221,7 +1255,7 @@ log_newpage_buffer(Buffer buffer, bool page_std)
  * cause a deadlock through some other means.
  */
 void
-log_newpage_range(Relation rel, ForkNumber forkNum,
+log_newpage_range(Relation rel, ForkNumber forknum,
 				  BlockNumber startblk, BlockNumber endblk,
 				  bool page_std)
 {
@@ -1253,7 +1287,7 @@ log_newpage_range(Relation rel, ForkNumber forkNum,
 		nbufs = 0;
 		while (nbufs < XLR_MAX_BLOCK_ID && blkno < endblk)
 		{
-			Buffer		buf = ReadBufferExtended(rel, forkNum, blkno,
+			Buffer		buf = ReadBufferExtended(rel, forknum, blkno,
 												 RBM_NORMAL, NULL);
 
 			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
@@ -1269,6 +1303,10 @@ log_newpage_range(Relation rel, ForkNumber forkNum,
 				UnlockReleaseBuffer(buf);
 			blkno++;
 		}
+
+		/* Nothing more to do if all remaining blocks were empty. */
+		if (nbufs == 0)
+			break;
 
 		/* Write WAL record for this batch. */
 		XLogBeginInsert();
@@ -1297,6 +1335,18 @@ log_newpage_range(Relation rel, ForkNumber forkNum,
 void
 InitXLogInsert(void)
 {
+#ifdef USE_ASSERT_CHECKING
+
+	/*
+	 * Check that any records assembled can be decoded.  This is capped based
+	 * on what XLogReader would require at its maximum bound.  This code path
+	 * is called once per backend, more than enough for this check.
+	 */
+	size_t		max_required = DecodeXLogRecordRequiredSpace(XLogRecordMaxSize);
+
+	Assert(AllocSizeIsValid(max_required));
+#endif
+
 	/* Initialize the working areas */
 	if (xloginsert_cxt == NULL)
 	{

@@ -8,7 +8,7 @@
  * "x" to be considered equal() to another reference to "x" in the query.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -133,16 +133,20 @@ _equalExtensibleNode(const ExtensibleNode *a, const ExtensibleNode *b)
 static bool
 _equalA_Const(const A_Const *a, const A_Const *b)
 {
-	/*
-	 * Hack for in-line val field.  Also val is not valid is isnull is true.
-	 */
-	if (!a->isnull && !b->isnull &&
+	COMPARE_SCALAR_FIELD(isnull);
+	/* Hack for in-line val field.  Also val is not valid if isnull is true */
+	if (!a->isnull &&
 		!equal(&a->val, &b->val))
 		return false;
-	COMPARE_SCALAR_FIELD(isnull);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
+}
+
+static bool
+_equalBitmapset(const Bitmapset *a, const Bitmapset *b)
+{
+	return bms_equal(a, b);
 }
 
 /*

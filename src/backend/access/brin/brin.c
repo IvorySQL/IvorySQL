@@ -4,7 +4,7 @@
  *
  * See src/backend/access/brin/README for details.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -36,6 +36,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/guc.h"
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -108,6 +109,7 @@ brinhandler(PG_FUNCTION_ARGS)
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
 	amroutine->amusemaintenanceworkmem = false;
+	amroutine->amsummarizing = true;
 	amroutine->amparallelvacuumoptions =
 		VACUUM_OPTION_PARALLEL_CLEANUP;
 	amroutine->amkeytype = InvalidOid;
@@ -329,7 +331,7 @@ brinbeginscan(Relation r, int nkeys, int norderbys)
 
 	scan = RelationGetIndexScan(r, nkeys, norderbys);
 
-	opaque = (BrinOpaque *) palloc(sizeof(BrinOpaque));
+	opaque = palloc_object(BrinOpaque);
 	opaque->bo_rmAccess = brinRevmapInitialize(r, &opaque->bo_pagesPerRange,
 											   scan->xs_snapshot);
 	opaque->bo_bdesc = brin_build_desc(r);
@@ -394,7 +396,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	 * don't look them up here; we do that lazily the first time we see a scan
 	 * key reference each of them.  We rely on zeroing fn_oid to InvalidOid.
 	 */
-	consistentFn = palloc0(sizeof(FmgrInfo) * bdesc->bd_tupdesc->natts);
+	consistentFn = palloc0_array(FmgrInfo, bdesc->bd_tupdesc->natts);
 
 	/*
 	 * Make room for per-attribute lists of scan keys that we'll pass to the
@@ -685,6 +687,13 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 								break;
 						}
 					}
+
+					/*
+					 * If we found a scan key eliminating the range, no need to
+					 * check additional ones.
+					 */
+					if (!addrange)
+						break;
 				}
 			}
 		}
@@ -828,9 +837,9 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	 * whole relation will be rolled back.
 	 */
 
-	meta = ReadBuffer(index, P_NEW);
+	meta = ExtendBufferedRel(EB_REL(index), MAIN_FORKNUM, NULL,
+							 EB_LOCK_FIRST | EB_SKIP_EXTENSION_LOCK);
 	Assert(BufferGetBlockNumber(meta) == BRIN_METAPAGE_BLKNO);
-	LockBuffer(meta, BUFFER_LOCK_EXCLUSIVE);
 
 	brin_metapage_init(BufferGetPage(meta), BrinGetPagesPerRange(index),
 					   BRIN_CURRENT_VERSION);
@@ -881,7 +890,7 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	/*
 	 * Return statistics
 	 */
-	result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+	result = palloc_object(IndexBuildResult);
 
 	result->heap_tuples = reltuples;
 	result->index_tuples = idxtuples;
@@ -895,9 +904,8 @@ brinbuildempty(Relation index)
 	Buffer		metabuf;
 
 	/* An empty BRIN index has a metapage only. */
-	metabuf =
-		ReadBufferExtended(index, INIT_FORKNUM, P_NEW, RBM_NORMAL, NULL);
-	LockBuffer(metabuf, BUFFER_LOCK_EXCLUSIVE);
+	metabuf = ExtendBufferedRel(EB_REL(index), INIT_FORKNUM, NULL,
+								EB_LOCK_FIRST | EB_SKIP_EXTENSION_LOCK);
 
 	/* Initialize and xlog metabuffer. */
 	START_CRIT_SECTION();
@@ -925,7 +933,7 @@ brinbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 {
 	/* allocate stats if first time through, else re-use existing struct */
 	if (stats == NULL)
-		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
+		stats = palloc0_object(IndexBulkDeleteResult);
 
 	return stats;
 }
@@ -944,7 +952,7 @@ brinvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 		return stats;
 
 	if (!stats)
-		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
+		stats = palloc0_object(IndexBulkDeleteResult);
 	stats->num_pages = RelationGetNumberOfBlocks(info->index);
 	/* rest of stats is initialized by zeroing */
 
@@ -1068,7 +1076,7 @@ brin_summarize_range(PG_FUNCTION_ARGS)
 						RelationGetRelationName(indexRel))));
 
 	/* User must own the index (comparable to privileges needed for VACUUM) */
-	if (heapRel != NULL && !pg_class_ownercheck(indexoid, save_userid))
+	if (heapRel != NULL && !object_ownercheck(RelationRelationId, indexoid, save_userid))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_INDEX,
 					   RelationGetRelationName(indexRel));
 
@@ -1151,7 +1159,7 @@ brin_desummarize_range(PG_FUNCTION_ARGS)
 						RelationGetRelationName(indexRel))));
 
 	/* User must own the index (comparable to privileges needed for VACUUM) */
-	if (!pg_class_ownercheck(indexoid, GetUserId()))
+	if (!object_ownercheck(RelationRelationId, indexoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_INDEX,
 					   RelationGetRelationName(indexRel));
 
@@ -1204,7 +1212,7 @@ brin_build_desc(Relation rel)
 	 * Obtain BrinOpcInfo for each indexed column.  While at it, accumulate
 	 * the number of columns stored, since the number is opclass-defined.
 	 */
-	opcinfo = (BrinOpcInfo **) palloc(sizeof(BrinOpcInfo *) * tupdesc->natts);
+	opcinfo = palloc_array(BrinOpcInfo*, tupdesc->natts);
 	for (keyno = 0; keyno < tupdesc->natts; keyno++)
 	{
 		FmgrInfo   *opcInfoFn;
@@ -1276,7 +1284,7 @@ initialize_brin_buildstate(Relation idxRel, BrinRevmap *revmap,
 {
 	BrinBuildState *state;
 
-	state = palloc(sizeof(BrinBuildState));
+	state = palloc_object(BrinBuildState);
 
 	state->bs_irel = idxRel;
 	state->bs_numtuples = 0;

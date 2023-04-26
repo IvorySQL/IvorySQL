@@ -4,7 +4,7 @@
  *	  Definitions for tagged nodes.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/nodes.h
@@ -53,16 +53,20 @@ typedef enum NodeTag
  * - custom_read_write: Has custom implementations in outfuncs.c and
  *   readfuncs.c.
  *
+ * - custom_query_jumble: Has custom implementation in queryjumblefuncs.c.
+ *
  * - no_copy: Does not support copyObject() at all.
  *
  * - no_equal: Does not support equal() at all.
  *
  * - no_copy_equal: Shorthand for both no_copy and no_equal.
  *
+ * - no_query_jumble: Does not support JumbleQuery() at all.
+ *
  * - no_read: Does not support nodeRead() at all.
  *
- * - nodetag_only: Does not support copyObject(), equal(), outNode(),
- *   or nodeRead().
+ * - nodetag_only: Does not support copyObject(), equal(), jumbleQuery()
+ *   outNode() or nodeRead().
  *
  * - special_read_write: Has special treatment in outNode() and nodeRead().
  *
@@ -73,10 +77,10 @@ typedef enum NodeTag
  *
  * Node types can be supertypes of other types whether or not they are marked
  * abstract: if a node struct appears as the first field of another struct
- * type, then it is the supertype of that type.  The no_copy, no_equal, and
- * no_read node attributes are automatically inherited from the supertype.
- * (Notice that nodetag_only does not inherit, so it's not quite equivalent
- * to a combination of other attributes.)
+ * type, then it is the supertype of that type.  The no_copy, no_equal,
+ * no_query_jumble and no_read node attributes are automatically inherited
+ * from the supertype.  (Notice that nodetag_only does not inherit, so it's
+ * not quite equivalent to a combination of other attributes.)
  *
  * Valid node field attributes:
  *
@@ -86,10 +90,23 @@ typedef enum NodeTag
  *
  * - copy_as(VALUE): In copyObject(), replace the field's value with VALUE.
  *
+ * - copy_as_scalar: In copyObject(), copy the field as a scalar value
+ *   (e.g. a pointer) even if it is a node-type pointer.
+ *
+ * - equal_as_scalar: In equal(), compare the field as a scalar value
+ *   even if it is a node-type pointer.
+ *
  * - equal_ignore: Ignore the field for equality.
  *
  * - equal_ignore_if_zero: Ignore the field for equality if it is zero.
  *   (Otherwise, compare normally.)
+ *
+ * - query_jumble_ignore: Ignore the field for the query jumbling.  Note
+ *   that typmod and collation information are usually irrelevant for the
+ *   query jumbling.
+ *
+ * - query_jumble_location: Mark the field as a location to track.  This is
+ *   only allowed for integer fields that include "location" in their name.
  *
  * - read_as(VALUE): In nodeRead(), replace the field's value with VALUE.
  *
@@ -218,7 +235,7 @@ extern int16 *readAttrNumberCols(int numCols);
 /*
  * nodes/copyfuncs.c
  */
-extern void *copyObjectImpl(const void *obj);
+extern void *copyObjectImpl(const void *from);
 
 /* cast result back to argument type, if supported by compiler */
 #ifdef HAVE_TYPEOF
@@ -300,6 +317,7 @@ typedef enum JoinType
 	 */
 	JOIN_SEMI,					/* 1 copy of each LHS row that has match(es) */
 	JOIN_ANTI,					/* 1 copy of each LHS row that has no match */
+	JOIN_RIGHT_ANTI,			/* 1 copy of each RHS row that has no match */
 
 	/*
 	 * These codes are used internally in the planner, but are not supported
@@ -332,7 +350,8 @@ typedef enum JoinType
 	  ((1 << JOIN_LEFT) | \
 	   (1 << JOIN_FULL) | \
 	   (1 << JOIN_RIGHT) | \
-	   (1 << JOIN_ANTI))) != 0)
+	   (1 << JOIN_ANTI) | \
+	   (1 << JOIN_RIGHT_ANTI))) != 0)
 
 /*
  * AggStrategy -
@@ -422,6 +441,6 @@ typedef enum LimitOption
 	LIMIT_OPTION_COUNT,			/* FETCH FIRST... ONLY */
 	LIMIT_OPTION_WITH_TIES,		/* FETCH FIRST... WITH TIES */
 	LIMIT_OPTION_DEFAULT,		/* No limit present */
-}			LimitOption;
+} LimitOption;
 
 #endif							/* NODES_H */

@@ -910,7 +910,7 @@ SELECT q1 FROM int8_tbl EXCEPT SELECT q2 FROM int8_tbl ORDER BY q2 LIMIT 1;
 ERROR:  column "q2" does not exist
 LINE 1: ... int8_tbl EXCEPT SELECT q2 FROM int8_tbl ORDER BY q2 LIMIT 1...
                                                              ^
-HINT:  There is a column named "q2" in table "*SELECT* 2", but it cannot be referenced from this part of the query.
+DETAIL:  There is a column named "q2" in table "*SELECT* 2", but it cannot be referenced from this part of the query.
 -- But this should work:
 SELECT q1 FROM int8_tbl EXCEPT (((SELECT q2 FROM int8_tbl ORDER BY q2 LIMIT 1))) ORDER BY 1;
         q1        
@@ -1303,22 +1303,24 @@ select distinct q1 from
    union all
    select distinct * from int8_tbl i82) ss
 where q2 = q2;
-                     QUERY PLAN                     
-----------------------------------------------------
- HashAggregate
-   Group Key: "*SELECT* 1".q1
-   ->  Append
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Unique
+   ->  Merge Append
+         Sort Key: "*SELECT* 1".q1
          ->  Subquery Scan on "*SELECT* 1"
-               ->  HashAggregate
-                     Group Key: i81.q1, i81.q2
-                     ->  Seq Scan on int8_tbl i81
-                           Filter: (q2 IS NOT NULL)
+               ->  Unique
+                     ->  Sort
+                           Sort Key: i81.q1, i81.q2
+                           ->  Seq Scan on int8_tbl i81
+                                 Filter: (q2 IS NOT NULL)
          ->  Subquery Scan on "*SELECT* 2"
-               ->  HashAggregate
-                     Group Key: i82.q1, i82.q2
-                     ->  Seq Scan on int8_tbl i82
-                           Filter: (q2 IS NOT NULL)
-(13 rows)
+               ->  Unique
+                     ->  Sort
+                           Sort Key: i82.q1, i82.q2
+                           ->  Seq Scan on int8_tbl i82
+                                 Filter: (q2 IS NOT NULL)
+(15 rows)
 
 select distinct q1 from
   (select distinct * from int8_tbl i81
@@ -1337,22 +1339,24 @@ select distinct q1 from
    union all
    select distinct * from int8_tbl i82) ss
 where -q1 = q2;
-                    QUERY PLAN                    
---------------------------------------------------
- HashAggregate
-   Group Key: "*SELECT* 1".q1
-   ->  Append
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Unique
+   ->  Merge Append
+         Sort Key: "*SELECT* 1".q1
          ->  Subquery Scan on "*SELECT* 1"
-               ->  HashAggregate
-                     Group Key: i81.q1, i81.q2
-                     ->  Seq Scan on int8_tbl i81
-                           Filter: ((- q1) = q2)
+               ->  Unique
+                     ->  Sort
+                           Sort Key: i81.q1, i81.q2
+                           ->  Seq Scan on int8_tbl i81
+                                 Filter: ((- q1) = q2)
          ->  Subquery Scan on "*SELECT* 2"
-               ->  HashAggregate
-                     Group Key: i82.q1, i82.q2
-                     ->  Seq Scan on int8_tbl i82
-                           Filter: ((- q1) = q2)
-(13 rows)
+               ->  Unique
+                     ->  Sort
+                           Sort Key: i82.q1, i82.q2
+                           ->  Seq Scan on int8_tbl i82
+                                 Filter: ((- q1) = q2)
+(15 rows)
 
 select distinct q1 from
   (select distinct * from int8_tbl i81
@@ -1427,349 +1431,4 @@ where (x = 0) or (q1 >= q2 and q1 <= q2);
  4567890123456789 | -4567890123456789 | 0
  4567890123456789 |  4567890123456789 | 1
 (6 rows)
-
---
---check minus behavior
---
-select * from generate_series(1, 3) g(i) minus select * from generate_series(1, 3) g(i) where i = 1;
- i 
----
- 2
- 3
-(2 rows)
-
-select * from generate_series(1, 3) g(i) minus select * from generate_series(3, 5) g(i);
- i 
----
- 1
- 2
-(2 rows)
-
---
---null union null
---
-set datestyle = ISO ,YMD;
-set timezone = 'Asia/Shanghai';
---union basic test
-select null union select null;
- ?column? 
-----------
- 
-(1 row)
-
-select null union select null union select 1.2;
- ?column? 
-----------
-      1.2
-         
-(2 rows)
-
-select null,1 union select null,2 union select 1.2,3;
- ?column? | ?column? 
-----------+----------
-      1.2 |        3
-          |        1
-          |        2
-(3 rows)
-
-select 1.2,null,1 union select 1.5,null,2 union select 1.6,1.2,3;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-      1.6 |      1.2 |        3
-      1.2 |          |        1
-      1.5 |          |        2
-(3 rows)
-
-select 1.2,null,null union select 1.5,null,null union select 1.6,1.2,3;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-      1.2 |          |         
-      1.6 |      1.2 |        3
-      1.5 |          |         
-(3 rows)
-
-select 1.2,1,null union select 1.5,null,null union select 1.6,null,3;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-      1.5 |          |         
-      1.2 |        1 |         
-      1.6 |          |        3
-(3 rows)
-
-select 1.2,null,null union select 1.5,null,null union select 1.6,'a'::text,3;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-      1.6 | a        |        3
-      1.2 |          |         
-      1.5 |          |         
-(3 rows)
-
-select 1.2,null,null union select 1.5,null,null union select 1.6,1.2::float,3;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-      1.6 |      1.2 |        3
-      1.2 |          |         
-      1.5 |          |         
-(3 rows)
-
-select 1.2,null,null union select 1.5,null,null union select 1.6,1.5,'a'::text;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-      1.6 |      1.5 | a
-      1.2 |          | 
-      1.5 |          | 
-(3 rows)
-
-select 1.2,null,null union select 1.5,null,null union select null,1.5,'a'::text;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-      1.2 |          | 
-          |      1.5 | a
-      1.5 |          | 
-(3 rows)
-
-select 1.2,null,null union select 1.5,null,null union select null,'a'::text,3;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-          | a        |        3
-      1.2 |          |         
-      1.5 |          |         
-(3 rows)
-
-select null,null,null union select null,null,null union select null,1.5,'a'::text;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-          |      1.5 | a
-          |          | 
-(2 rows)
-
-select null,null,null union select null,null,null union select null,null,'a'::text;
- ?column? | ?column? | ?column? 
-----------+----------+----------
-          |          | a
-          |          | 
-(2 rows)
-
-select null,null,null union select null,null,null union select null,null,'a'::text union select null,'b','c';
- ?column? | ?column? | ?column? 
-----------+----------+----------
-          | b        | c
-          |          | a
-          |          | 
-(3 rows)
-
-select null,null,null union select null,null,null union select null,null,'a'::text union select 'a','b','c';
- ?column? | ?column? | ?column? 
-----------+----------+----------
- a        | b        | c
-          |          | a
-          |          | 
-(3 rows)
-
-select null union select null union select 'a';
- ?column? 
-----------
- a
- 
-(2 rows)
-
-select null union select ' ' union select ' ';
- ?column? 
-----------
-  
- 
-(2 rows)
-
-select null union select 'b' union select 'a';
- ?column? 
-----------
- a
- 
- b
-(3 rows)
-
-select 'a' union select 'b' union select 'c'::text;
- ?column? 
-----------
- a
- c
- b
-(3 rows)
-
-select 'a' union select 'b' union select 1.2;
-ERROR:  UNION types text and numeric cannot be matched
-LINE 1: select 'a' union select 'b' union select 1.2;
-                                                 ^
-select 'a' union select 'b' union select 1.2 union select 'b'::text;
-ERROR:  UNION types text and numeric cannot be matched
-LINE 1: select 'a' union select 'b' union select 1.2 union select 'b...
-                                                 ^
-select null union select null union select 1.2::real;
- ?column? 
-----------
-         
-      1.2
-(2 rows)
-
-select null union select null union select 1.2::float;
- ?column? 
-----------
-      1.2
-         
-(2 rows)
-
-select null union select null union select 1.2::float4;
- ?column? 
-----------
-         
-      1.2
-(2 rows)
-
-select null union select null union select 1.2::int;
- ?column? 
-----------
-         
-        1
-(2 rows)
-
-select null union select null union select 1.2::int8;
- ?column? 
-----------
-         
-        1
-(2 rows)
-
-select null union select null union select date'2021-01-26';
-  ?column?  
-------------
- 2021-01-26
- 
-(2 rows)
-
-select null union select null union select pg_catalog.date'2021-01-26';
-  ?column?  
-------------
- 2021-01-26
- 
-(2 rows)
-
-select null union select null union select timestamp'2021-01-26';
-      ?column?       
----------------------
- 
- 2021-01-26 00:00:00
-(2 rows)
-
-select null union select null union select timestamptz'2021-01-26';
-        ?column?        
-------------------------
- 2021-01-26 00:00:00+08
- 
-(2 rows)
-
-select null union select null union select to_date('2021-01-21','YYYY-mm-dd');
-  ?column?  
-------------
- 2021-01-21
- 
-(2 rows)
-
-select null union select null union select interval'1 day 2 hours';
-    ?column?     
------------------
- 
- @ 1 day 2 hours
-(2 rows)
-
-select null union select null union select interval'1-2';
-    ?column?     
------------------
- @ 1 year 2 mons
- 
-(2 rows)
-
-select null union select 1  union select date'2020-01-02' ;
-ERROR:  UNION types integer and date cannot be matched
-LINE 1: select null union select 1  union select date'2020-01-02' ;
-                                                     ^
-select null union select 1.2  union select 1.4;
- ?column? 
-----------
-      1.4
-      1.2
-         
-(3 rows)
-
-select null union select 1  union select 'a' ;
-ERROR:  invalid input syntax for type integer: "a"
-LINE 1: select null union select 1  union select 'a' ;
-                                                 ^
-select null union select 1.2::int union select 1.3::int8;
- ?column? 
-----------
-         
-        1
-(2 rows)
-
-select null union select 1.2::float8 union select 1.3::float4;
-      ?column?      
---------------------
-                1.2
-                   
- 1.2999999523162842
-(3 rows)
-
-select null union select 1.2::int8 union select 1.3::int4;
- ?column? 
-----------
-         
-        1
-(2 rows)
-
-select null  union select null union select null union select 1.2;
- ?column? 
-----------
-      1.2
-         
-(2 rows)
-
-select null,null,null union select null,null,null union select 'a',null,1.2;
- ?column? | ?column? | ?column? 
-----------+----------+----------
- a        |          |      1.2
-          |          |         
-(2 rows)
-
---union table test
-create table tb_a(id int);
-insert into tb_a values (1),(2),(3);
-create table tb_b(id int);
-insert into tb_b values (2),(3),(4);
-select null  from tb_a  union select null from tb_a union select id from tb_a;
- ?column? 
-----------
-         
-        2
-        1
-        3
-(4 rows)
-
-select * from (select null  from tb_a  union select null from tb_a union select id from tb_a) a;
- ?column? 
-----------
-         
-        2
-        1
-        3
-(4 rows)
-
-select null  from tb_a  union select null from tb_a union select id from tb_a union select id from tb_b;
- ?column? 
-----------
-         
-        4
-        2
-        1
-        3
-(5 rows)
 

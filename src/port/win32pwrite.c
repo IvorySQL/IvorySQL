@@ -3,7 +3,7 @@
  * win32pwrite.c
  *	  Implementation of pwrite(2) for Windows.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/port/win32pwrite.c
@@ -12,12 +12,12 @@
  */
 
 
-#include "postgres.h"
+#include "c.h"
 
 #include <windows.h>
 
 ssize_t
-pwrite(int fd, const void *buf, size_t size, off_t offset)
+pg_pwrite(int fd, const void *buf, size_t size, off_t offset)
 {
 	OVERLAPPED	overlapped = {0};
 	HANDLE		handle;
@@ -30,6 +30,7 @@ pwrite(int fd, const void *buf, size_t size, off_t offset)
 		return -1;
 	}
 
+	/* Note that this changes the file position, despite not using it. */
 	overlapped.Offset = offset;
 	if (!WriteFile(handle, buf, size, &result, &overlapped))
 	{

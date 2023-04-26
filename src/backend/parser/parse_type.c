@@ -3,7 +3,7 @@
  * parse_type.c
  *		handle type operations for parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -25,14 +25,6 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-#include "commands/packagecmds.h"
-#include "catalog/pg_package.h"
-#include "commands/dbcommands.h"
-#include "miscadmin.h"
-
-/* Hook for typmod to get typename in typenameTypeMod() */
-TypenameTypeModIn_hook_type TypenameTypeModIn_hook = NULL;
-
 
 static int32 typenameTypeMod(ParseState *pstate, const TypeName *typeName,
 							 Type typ);
@@ -160,117 +152,44 @@ LookupTypeNameExtended(ParseState *pstate,
 			/* this construct should never have an array indicator */
 			Assert(typeName->arrayBounds == NIL);
 
-			if (!(pstate && OidIsValid(pstate->p_pkgoid)))
-			{
-				/* emit nuisance notice (intentionally not errposition'd) */
-				ereport(NOTICE,
-						(errmsg("type reference %s converted to %s",
-								TypeNameToString(typeName),
-								format_type_be(typoid))));
-			}
+			/* emit nuisance notice (intentionally not errposition'd) */
+			ereport(NOTICE,
+					(errmsg("type reference %s converted to %s",
+							TypeNameToString(typeName),
+							format_type_be(typoid))));
 		}
 	}
 	else
 	{
 		/* Normal reference to a type name */
-		QualifiedName qu;
-		int			num;
+		char	   *schemaname;
+		char	   *typname;
 
-		typoid = InvalidOid;
-		num = ExtractQualifiedName(typeName->names, &qu);
-		switch (num)
+		/* deconstruct the name list */
+		DeconstructQualifiedName(typeName->names, &schemaname, &typname);
+
+		if (schemaname)
 		{
-			case 1:
-				{
-					/* Unqualified type name, so search the search path */
-					typoid = TypenameGetTypidExtended(qu.func, temp_ok);
+			/* Look in specific schema only */
+			Oid			namespaceId;
+			ParseCallbackState pcbstate;
 
-					/* If the previous typoid is invalid, We need to check
-					 * whether it is a package's refcursor types.
-					 */
-					if (!OidIsValid(typoid))
-						if (typeName->t_pkgoid)
-							typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-												 PointerGetDatum(qu.func),
-												 ObjectIdGetDatum(typeName->t_pkgoid));
-				}
-				break;
-			case 2:
-				{
-					Oid			namespaceId;
-					ParseCallbackState pcbstate;
+			setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
 
-					setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
-					namespaceId = get_package_oid(list_make1(linitial(typeName->names)), true);
-					if (OidIsValid(namespaceId))
-						typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-												 PointerGetDatum(qu.func),
-												 ObjectIdGetDatum(namespaceId));
-					else
-					{
-						/* Look in specific schema only */
-						namespaceId = LookupExplicitNamespace(qu.package, missing_ok);
-						if (OidIsValid(namespaceId))
-							typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-													 PointerGetDatum(qu.func),
-													 ObjectIdGetDatum(namespaceId));
-						else
-							typoid = InvalidOid;
-					}
-					cancel_parser_errposition_callback(&pcbstate);
-				}
-				break;
-			case 3:
-				if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.dbname)))	/* select
-																						 * schema.pkg.func() */
-				{
-					Oid			np_id;
+			namespaceId = LookupExplicitNamespace(schemaname, missing_ok);
+			if (OidIsValid(namespaceId))
+				typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+										 PointerGetDatum(typname),
+										 ObjectIdGetDatum(namespaceId));
+			else
+				typoid = InvalidOid;
 
-					np_id = get_package_oid(list_make1(lsecond(typeName->names)), true);
-					if (OidIsValid(np_id))
-						typoid = InvalidOid;
-				}
-				else			/* select db.schema.fun() */
-				{
-					if (strcmp(qu.dbname, get_database_name(MyDatabaseId)) != 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("cross-database references are not implemented.")));
-					else
-					{
-						/* Look in specific schema only */
-						Oid			namespaceId;
-						ParseCallbackState pcbstate;
-
-						setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
-
-						namespaceId = LookupExplicitNamespace(qu.package, missing_ok);
-						if (OidIsValid(namespaceId))
-							typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-													 PointerGetDatum(qu.func),
-													 ObjectIdGetDatum(namespaceId));
-						else
-							typoid = InvalidOid;
-
-						cancel_parser_errposition_callback(&pcbstate);
-					}
-				}
-				break;
-			case 4:
-				if (SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(qu.schema)))
-				{
-					Oid			np_id;
-
-					np_id = get_package_oid(list_make1(lthird(typeName->names)), true);
-					if (OidIsValid(np_id))
-						typoid = InvalidOid;
-				}
-				break;
-			default:
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("improper qualified name (too many dotted names).")));
-				break;
+			cancel_parser_errposition_callback(&pcbstate);
+		}
+		else
+		{
+			/* Unqualified type name, so search the search path */
+			typoid = TypenameGetTypidExtended(typname, temp_ok);
 		}
 
 		/* If an array reference, return the array type instead */
@@ -396,38 +315,6 @@ typenameTypeIdAndMod(ParseState *pstate, const TypeName *typeName,
 	tup = typenameType(pstate, typeName, typmod_p);
 	*typeid_p = ((Form_pg_type) GETSTRUCT(tup))->oid;
 	ReleaseSysCache(tup);
-}
-
-void
-LookupType(ParseState *pstate, const TypeName *typeName,
-					 Oid *typeid_p, int32 *typmod_p, bool missing_ok)
-{
-	Type		tup;
-
-	tup = LookupTypeName(NULL, typeName, typmod_p, missing_ok);
-	if (tup == NULL)
-	{
-		if (!missing_ok)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("type \"%s\" does not exist",
-							TypeNameToString(typeName)),
-					 parser_errposition(pstate, typeName->location)));
-		*typeid_p = InvalidOid;
-	}
-	else
-	{
-		Form_pg_type typ = (Form_pg_type) GETSTRUCT(tup);
-
-		if (!typ->typisdefined)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("type \"%s\" is only a shell",
-							TypeNameToString(typeName)),
-					 parser_errposition(pstate, typeName->location)));
-		*typeid_p = typ->oid;
-		ReleaseSysCache(tup);
-	}
 }
 
 /*
@@ -840,10 +727,15 @@ pts_error_callback(void *arg)
  * Given a string that is supposed to be a SQL-compatible type declaration,
  * such as "int4" or "integer" or "character varying(32)", parse
  * the string and return the result as a TypeName.
- * If the string cannot be parsed as a type, an error is raised.
+ *
+ * If the string cannot be parsed as a type, an error is raised,
+ * unless escontext is an ErrorSaveContext node, in which case we may
+ * fill that and return NULL.  But note that the ErrorSaveContext option
+ * is mostly aspirational at present: errors detected by the main
+ * grammar, rather than here, will still be thrown.
  */
 TypeName *
-typeStringToTypeName(const char *str)
+typeStringToTypeName(const char *str, Node *escontext)
 {
 	List	   *raw_parsetree_list;
 	TypeName   *typeName;
@@ -876,49 +768,54 @@ typeStringToTypeName(const char *str)
 	return typeName;
 
 fail:
-	ereport(ERROR,
+	ereturn(escontext, NULL,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("invalid type name \"%s\"", str)));
-	return NULL;				/* keep compiler quiet */
 }
 
 /*
  * Given a string that is supposed to be a SQL-compatible type declaration,
  * such as "int4" or "integer" or "character varying(32)", parse
  * the string and convert it to a type OID and type modifier.
- * If missing_ok is true, InvalidOid is returned rather than raising an error
- * when the type name is not found.
+ *
+ * If escontext is an ErrorSaveContext node, then errors are reported by
+ * filling escontext and returning false, instead of throwing them.
  */
-void
-parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok)
+bool
+parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p,
+				Node *escontext)
 {
 	TypeName   *typeName;
 	Type		tup;
 
-	typeName = typeStringToTypeName(str);
+	typeName = typeStringToTypeName(str, escontext);
+	if (typeName == NULL)
+		return false;
 
-	tup = LookupTypeName(NULL, typeName, typmod_p, missing_ok);
+	tup = LookupTypeName(NULL, typeName, typmod_p,
+						 (escontext && IsA(escontext, ErrorSaveContext)));
 	if (tup == NULL)
 	{
-		if (!missing_ok)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("type \"%s\" does not exist",
-							TypeNameToString(typeName)),
-					 parser_errposition(NULL, typeName->location)));
-		*typeid_p = InvalidOid;
+		ereturn(escontext, false,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type \"%s\" does not exist",
+						TypeNameToString(typeName))));
 	}
 	else
 	{
 		Form_pg_type typ = (Form_pg_type) GETSTRUCT(tup);
 
 		if (!typ->typisdefined)
-			ereport(ERROR,
+		{
+			ReleaseSysCache(tup);
+			ereturn(escontext, false,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" is only a shell",
-							TypeNameToString(typeName)),
-					 parser_errposition(NULL, typeName->location)));
+							TypeNameToString(typeName))));
+		}
 		*typeid_p = typ->oid;
 		ReleaseSysCache(tup);
 	}
+
+	return true;
 }

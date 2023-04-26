@@ -8,7 +8,7 @@
  * None of this code is used during normal system operation.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xlogutils.c
@@ -151,7 +151,7 @@ log_invalid_page(RelFileLocator locator, ForkNumber forkno, BlockNumber blkno,
 	key.forkno = forkno;
 	key.blkno = blkno;
 	hentry = (xl_invalid_page *)
-		hash_search(invalid_page_tab, (void *) &key, HASH_ENTER, &found);
+		hash_search(invalid_page_tab, &key, HASH_ENTER, &found);
 
 	if (!found)
 	{
@@ -193,7 +193,7 @@ forget_invalid_pages(RelFileLocator locator, ForkNumber forkno,
 			}
 
 			if (hash_search(invalid_page_tab,
-							(void *) &hentry->key,
+							&hentry->key,
 							HASH_REMOVE, NULL) == NULL)
 				elog(ERROR, "hash table corrupted");
 		}
@@ -226,7 +226,7 @@ forget_invalid_pages_db(Oid dbid)
 			}
 
 			if (hash_search(invalid_page_tab,
-							(void *) &hentry->key,
+							&hentry->key,
 							HASH_REMOVE, NULL) == NULL)
 				elog(ERROR, "hash table corrupted");
 		}
@@ -393,7 +393,9 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 									  prefetch_buffer);
 		page = BufferGetPage(*buf);
 		if (!RestoreBlockImage(record, block_id, page))
-			elog(ERROR, "failed to restore block image");
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg_internal("%s", record->errormsg_buf)));
 
 		/*
 		 * The page may be uninitialized. If so, we can't set the LSN because
@@ -522,28 +524,13 @@ XLogReadBufferExtended(RelFileLocator rlocator, ForkNumber forknum,
 		/* OK to extend the file */
 		/* we do this in recovery only - no rel-extension lock needed */
 		Assert(InRecovery);
-		buffer = InvalidBuffer;
-		do
-		{
-			if (buffer != InvalidBuffer)
-			{
-				if (mode == RBM_ZERO_AND_LOCK || mode == RBM_ZERO_AND_CLEANUP_LOCK)
-					LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-				ReleaseBuffer(buffer);
-			}
-			buffer = ReadBufferWithoutRelcache(rlocator, forknum,
-											   P_NEW, mode, NULL, true);
-		}
-		while (BufferGetBlockNumber(buffer) < blkno);
-		/* Handle the corner case that P_NEW returns non-consecutive pages */
-		if (BufferGetBlockNumber(buffer) != blkno)
-		{
-			if (mode == RBM_ZERO_AND_LOCK || mode == RBM_ZERO_AND_CLEANUP_LOCK)
-				LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-			ReleaseBuffer(buffer);
-			buffer = ReadBufferWithoutRelcache(rlocator, forknum, blkno,
-											   mode, NULL, true);
-		}
+		buffer = ExtendBufferedRelTo(EB_SMGR(smgr, RELPERSISTENCE_PERMANENT),
+									 forknum,
+									 NULL,
+									 EB_PERFORMING_RECOVERY |
+									 EB_SKIP_EXTENSION_LOCK,
+									 blkno + 1,
+									 mode);
 	}
 
 recent_buffer_fast_path:
@@ -1049,14 +1036,14 @@ WALReadRaiseError(WALReadError *errinfo)
 		errno = errinfo->wre_errno;
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not read from log segment %s, offset %d: %m",
+				 errmsg("could not read from WAL segment %s, offset %d: %m",
 						fname, errinfo->wre_off)));
 	}
 	else if (errinfo->wre_read == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("could not read from log segment %s, offset %d: read %d of %d",
+				 errmsg("could not read from WAL segment %s, offset %d: read %d of %d",
 						fname, errinfo->wre_off, errinfo->wre_read,
 						errinfo->wre_req)));
 	}

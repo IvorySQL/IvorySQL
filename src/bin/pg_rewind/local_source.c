@@ -3,7 +3,7 @@
  * local_source.c
  *	  Functions for using a local data directory as the source.
  *
- * Portions Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2023, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -77,7 +77,7 @@ static void
 local_queue_fetch_file(rewind_source *source, const char *path, size_t len)
 {
 	const char *datadir = ((local_source *) source)->datadir;
-	PGAlignedBlock buf;
+	PGIOAlignedBlock buf;
 	char		srcpath[MAXPGPATH];
 	int			srcfd;
 	size_t		written_len;
@@ -129,7 +129,7 @@ local_queue_fetch_range(rewind_source *source, const char *path, off_t off,
 						size_t len)
 {
 	const char *datadir = ((local_source *) source)->datadir;
-	PGAlignedBlock buf;
+	PGIOAlignedBlock buf;
 	char		srcpath[MAXPGPATH];
 	int			srcfd;
 	off_t		begin = off;

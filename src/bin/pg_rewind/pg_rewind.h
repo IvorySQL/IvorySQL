@@ -3,7 +3,7 @@
  * pg_rewind.h
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -37,7 +37,7 @@ extern uint64 fetch_done;
 extern void extractPageMap(const char *datadir, XLogRecPtr startpoint,
 						   int tliIndex, XLogRecPtr endpoint,
 						   const char *restoreCommand);
-extern void findLastCheckpoint(const char *datadir, XLogRecPtr searchptr,
+extern void findLastCheckpoint(const char *datadir, XLogRecPtr forkptr,
 							   int tliIndex,
 							   XLogRecPtr *lastchkptrec, TimeLineID *lastchkpttli,
 							   XLogRecPtr *lastchkptredo,

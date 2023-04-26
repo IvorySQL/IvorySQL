@@ -3,7 +3,7 @@
  * partitionfuncs.c
  *	  Functions for accessing partition-related metadata
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -88,17 +88,9 @@ pg_partition_tree(PG_FUNCTION_ARGS)
 		 */
 		partitions = find_all_inheritors(rootrelid, AccessShareLock, NULL);
 
-		tupdesc = CreateTemplateTupleDesc(PG_PARTITION_TREE_COLS);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relid",
-						   REGCLASSOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "parentid",
-						   REGCLASSOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "isleaf",
-						   BOOLOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "level",
-						   INT4OID, -1, 0);
-
-		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			elog(ERROR, "return type must be a row type");
+		funcctx->tuple_desc = tupdesc;
 
 		/* The only state we need is the partition list */
 		funcctx->user_fctx = (void *) partitions;
@@ -238,9 +230,9 @@ pg_partition_ancestors(PG_FUNCTION_ARGS)
 
 	if (funcctx->call_cntr < list_length(ancestors))
 	{
-		Oid			relid = list_nth_oid(ancestors, funcctx->call_cntr);
+		Oid			resultrel = list_nth_oid(ancestors, funcctx->call_cntr);
 
-		SRF_RETURN_NEXT(funcctx, ObjectIdGetDatum(relid));
+		SRF_RETURN_NEXT(funcctx, ObjectIdGetDatum(resultrel));
 	}
 
 	SRF_RETURN_DONE(funcctx);
