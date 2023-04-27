@@ -29,11 +29,9 @@ jobs:
                   libicu-devel e2fsprogs-devel selinux-policy systemd-devel \
                   libuuid-devel cppcheck \
                   perl-devel perl-ExtUtils-Embed perl-IPC-Run perl-Time-HiRes perl-Test-Simple
-
         RUN     localedef -i en_US -f UTF-8 en_US.UTF-8
         RUN     useradd -m -d /home/ivorysql ivorysql
         EOF
-
     - name: Build ${{ matrix.container-os }} Docker
       if: ${{ matrix.container-os == 'centos-8' }}
       run: |
@@ -52,8 +50,6 @@ jobs:
         RUN     dnf install -y --enablerepo=*ower*ools perl-IPC-Run perl-Time-HiRes perl-Test-Simple uuid-devel
         RUN     useradd -m -d /home/ivorysql ivorysql
         EOF
-
-
     - name: Create and Start iv-${{ matrix.container-os }}-container container
       run: |
         docker create -t -u ivorysql \
@@ -61,7 +57,6 @@ jobs:
                       -v ${GITHUB_WORKSPACE}:/IvorySQL:rw \
                       ivorysql-${{ matrix.container-os }} bash &&
         docker start iv-${{ matrix.container-os }}-container
-
     - name: configure - ${{ matrix.container-os }}
       run: |
         docker exec -u ivorysql \
@@ -74,21 +69,18 @@ jobs:
                       --with-openssl --with-libedit-preferred --with-uuid=e2fs \
                       --with-ossp-uuid  --with-libxml --with-libxslt --with-perl
                   "
-
     - name: compile
       run: |
         docker exec -u ivorysql \
                     iv-${{ matrix.container-os }}-container bash -c "
                       cd /home/ivorysql/IvorySQL && make
                     "
-
     - name: regression
       run: |
         docker exec -u ivorysql \
                     iv-${{ matrix.container-os }}-container bash -c "
                       cd /home/ivorysql/IvorySQL && make check-world
                     "
-
     - name: collect files
       if: failure()
       run: |
@@ -98,7 +90,6 @@ jobs:
                       find . \( -name \*.diffs -or -name regression.out -or -path \*/tmp_check/log \) -print0 |
                           xargs -0 tar -czf /IvorySQL/regression.tar.gz
                     "
-
     - name: upload regression files
       if: failure()
       uses: actions/upload-artifact@v3
