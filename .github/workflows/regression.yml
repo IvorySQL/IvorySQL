@@ -44,11 +44,10 @@ jobs:
       run: |
         curl -L -o cpanm http://cpanmin.us && chmod +x cpanm && \
         ./cpanm --sudo IPC::Run && \
-        echo 1111111 && \
         ./configure \
             --prefix=$PWD/inst \
             --enable-cassert --enable-debug --enable-tap-tests --enable-rpath \
-            --with-tcl --with-python --with-ldap \
+            --with-tcl --with-python --with-pam --with-ldap \
             --with-libedit-preferred --with-uuid=e2fs --with-libxml \
             --with-libxslt --with-perl --without-icu
 
