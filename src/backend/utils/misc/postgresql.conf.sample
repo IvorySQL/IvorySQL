@@ -57,11 +57,13 @@
 
 # - Connection Settings -
 
-#listen_addresses = 'localhost'		# what IP address(es) to listen on;
+#listen_addresses = 'localhost'                # what IP address(es) of Postgres mode to listen on;
 					# comma-separated list of addresses;
 					# defaults to 'localhost'; use '*' for all
 					# (change requires restart)
+#ivorysql.listen_addresses = 'localhost'               # what IP address(es) of Oracle mode to listen on;
 #port = 5432				# (change requires restart)
+#ivorysql.port = 1521          # (change requires restart)
 #max_connections = 100			# (change requires restart)
 #reserved_connections = 0		# (change requires restart)
 #superuser_reserved_connections = 3	# (change requires restart)
