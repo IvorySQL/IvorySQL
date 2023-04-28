@@ -45,6 +45,7 @@ my @gucs_in_file;
 my $num_tests = 0;
 open(my $contents, '<', $sample_file)
   || die "Could not open $sample_file: $!";
+
 while (my $line = <$contents>)
 {
 	# Check if this line matches a GUC parameter:
@@ -52,7 +53,8 @@ while (my $line = <$contents>)
 	# file.
 	# - Valid configuration options are followed immediately by " = ",
 	# with one space before and after the equal sign.
-	if ($line =~ m/^#?([_[:alpha:]]+) = .*/)
+
+	if ($line =~ m/^#?([_[:alpha:].[:alpha:]]+) = .*/)
 	{
 		# Lower-case conversion matters for some of the GUCs.
 		my $param_name = lc($1);

@@ -227,6 +227,20 @@ typedef struct Port
 	SSL		   *ssl;
 	X509	   *peer;
 #endif
+
+	/* IvorySQL:BEGIN - LISTEN-MULTI-PORT */
+	/*
+	 * Connection Mode.
+	 *
+	 * Use single-byte characters to identify the mode information of the
+	 * current connection. The valid characters are as follows:
+	 *	'p' =  PostgreSQL mode,
+	 *	'o' =  Oracle mode,
+	 *	'u' = Unkonw mode, shouldn't happen.
+	 */
+	char	connmode;
+	/* IvorySQL:END - LISTEN-MULTI-PORT */
+
 } Port;
 
 #ifdef USE_SSL
