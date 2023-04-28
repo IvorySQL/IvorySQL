@@ -569,6 +569,12 @@ sub init
 	}
 
 	print $conf "port = $port\n";
+
+	# IvorySQL:BEGIN - LISTEN-MULTI-PORT
+	my $ora_port = get_free_port();
+	print $conf "ivorysql.port = $ora_port\n";
+	# IvorySQL:END - LISTEN-MULTI-PORT
+
 	if ($use_tcp)
 	{
 		print $conf "unix_socket_directories = ''\n";
@@ -792,10 +798,16 @@ sub init_from_backup
 	chmod(0700, $data_path);
 
 	# Base configuration for this node
+	# IvorySQL:BEGIN - LISTEN-MULTI-PORT
+	my $ora_port = get_free_port();
+	# IvorySQL:END - LISTEN-MULTI-PORT
 	$self->append_conf(
 		'postgresql.conf',
 		qq(
 port = $port
+# IvorySQL:BEGIN - LISTEN-MULTI-PORT
+ivorysql.port = $ora_port
+# IvorySQL:END - LISTEN-MULTI-PORT
 ));
 	if ($use_tcp)
 	{

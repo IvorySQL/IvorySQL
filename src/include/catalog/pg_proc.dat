@@ -12067,4 +12067,10 @@
   proname => 'any_value_transfn', prorettype => 'anyelement',
   proargtypes => 'anyelement anyelement', prosrc => 'any_value_transfn' },
 
+# IvorySQL:BEGIN - LISTEN-MULTI-PORT
+{ oid => '4642', descr => 'PostgreSQL connection mode',
+  proname => 'pg_get_connection_mode', provolatile => 's', prorettype => 'text',
+  proargtypes => '', prosrc => 'pg_get_connection_mode' },
+# IvorySQL:END - LISTEN-MULTI-PORT
+
 ]
