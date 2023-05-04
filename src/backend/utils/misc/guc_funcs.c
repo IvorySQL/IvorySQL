@@ -30,6 +30,10 @@
 #include "utils/builtins.h"
 #include "utils/guc_tables.h"
 #include "utils/snapmgr.h"
+/* IvorySQL:BEGIN - SQL oracle_mode */
+#include "parser/parser.h"
+#include "utils/ora_compatible.h"
+/* IvorySQL:END - SQL oracle_mode */
 
 static char *flatten_set_variable_args(const char *name, List *args);
 static void ShowGUCConfigOption(const char *name, DestReceiver *dest);
@@ -59,11 +63,51 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 		case VAR_SET_CURRENT:
 			if (stmt->is_local)
 				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
+
+			/* IvorySQL:BEGIN - SQL oracle_mode */
+			/* Internal level guc parameter can't be updated in session */
+			if (pg_strcasecmp(stmt->name, DB_MODE_PARMATER) == 0)
+			{
+				const char *currentDbstyle = GetConfigOptionResetString(DB_MODE_PARMATER);
+				char *setDbmode = ExtractSetVariableArgs(stmt);
+
+				if (pg_strcasecmp(currentDbstyle, setDbmode) == 0)
+				{
+					ereport(NOTICE,
+											(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+											errmsg("parameter \"%s\" cannot be changed", DB_MODE_PARMATER)));
+					return;
+				}
+				else
+					ereport(ERROR,
+									(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+									errmsg("parameter \"%s\" cannot be changed", DB_MODE_PARMATER)));
+			}
+
+			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
+				&& DB_PG == database_mode)
+					ereport(ERROR,
+						(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+						errmsg("parameter \"%s\" cannot be changed in native PG mode.", stmt->name)));
+			/* IvorySQL:END - SQL oracle_mode */
+
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
 									 (superuser() ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
+
+			/* IvorySQL:BEGIN - SQL oracle_mode */
+			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
+				 && DB_ORACLE == database_mode)
+			{
+				if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "oracle"))
+					sql_raw_parser = ora_raw_parser;
+				else if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "pg"))
+					sql_raw_parser = standard_raw_parser;
+			}
+			/* IvorySQL:END - SQL oracle_mode */
+
 			break;
 		case VAR_SET_MULTI:
 
@@ -146,6 +190,12 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 									 (superuser() ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
+
+			/* IvorySQL:BEGIN - SQL oracle_mode */
+			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
+				 && DB_ORACLE == database_mode)
+				sql_raw_parser = standard_raw_parser;
+			/* IvorySQL:END - SQL oracle_mode */
 			break;
 		case VAR_RESET_ALL:
 			ResetAllOptions();

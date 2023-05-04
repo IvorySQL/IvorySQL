@@ -80,6 +80,9 @@
 #include "getopt_long.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+/* IvorySQL:BEGIN - SQL oracle_mode */
+#include "utils/ora_compatible.h"
+/* IvorySQL:END - SQL oracle_mode */
 
 
 /* Ideally this would be in a .h file, but it hardly seems worth the trouble */
@@ -184,6 +187,9 @@ static char *features_file;
 static char *system_constraints_file;
 static char *system_functions_file;
 static char *system_views_file;
+/* IvorySQL:BEGIN - SQL oracle_mode */
+static char *ora_sys_schema_file;
+/* IvorySQL:END - SQL oracle_mode */
 static bool success = false;
 static bool made_new_pgdata = false;
 static bool found_existing_pgdata = false;
@@ -201,6 +207,13 @@ static int	n_buffers = 50;
 static const char *dynamic_shared_memory_type = NULL;
 static const char *default_timezone = NULL;
 
+/* IvorySQL:BEGIN - SQL oracle_mode */
+static const char *ora_options = "-c session_preload_libraries=liboracle_parser ";
+
+static char  *dbmode = "oracle";
+static char  *ora_conf_file;
+static int	database_mode = DB_ORACLE;
+/* IvorySQL:END - SQL oracle_mode */
 /*
  * Warning messages for authentication methods
  */
@@ -280,6 +293,9 @@ static void setup_auth(FILE *cmdfd);
 static void get_su_pwd(void);
 static void setup_depend(FILE *cmdfd);
 static void setup_run_file(FILE *cmdfd, const char *filename);
+/* IvorySQL:BEGIN - SQL oracle_mode */
+static void setup_ora_sys_schema(FILE *cmdfd);
+/* IvorySQL:END - SQL oracle_mode */
 static void setup_description(FILE *cmdfd);
 static void setup_collation(FILE *cmdfd);
 static void setup_privileges(FILE *cmdfd);
@@ -991,6 +1007,25 @@ set_null_conf(void)
 	if (fclose(conf_file))
 		pg_fatal("could not write file \"%s\": %m", path);
 	free(path);
+
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	if (database_mode == DB_ORACLE)
+	{
+		path = psprintf("%s/ivorysql.conf", pg_data);
+		conf_file = fopen(path, PG_BINARY_W);
+		if (conf_file == NULL)
+		{
+			pg_log_error("could not open file \"%s\" for writing: %m", path);
+			exit(1);
+		}
+		if (fclose(conf_file))
+		{
+			pg_log_error("could not write file \"%s\": %m", path);
+			exit(1);
+		}
+		free(path);
+	}
+	/* IvorySQL:END - SQL oracle_mode */
 }
 
 /*
@@ -1370,6 +1405,22 @@ setup_config(void)
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	if (database_mode == DB_ORACLE)
+	{
+		/* oracle compatibility conf file */
+		conflines = readfile(ora_conf_file);
+
+		snprintf(path, sizeof(path), "%s/ivorysql.conf", pg_data);
+
+		writefile(path, conflines);
+		if (chmod(path, pg_file_create_mode) != 0)
+		{
+			pg_log_error("could not change permissions of \"%s\": %m", path);
+			exit(1);
+		}
+	}
+	/* IvorySQL:END - SQL oracle_mode */
 
 	/* postgresql.auto.conf */
 
@@ -1535,9 +1586,20 @@ bootstrap_template1(void)
 	unsetenv("PGCLIENTENCODING");
 
 	snprintf(cmd, sizeof(cmd),
+#ifdef IvorySQL
+			 /* IvorySQL:BEGIN - SQL oracle_mode */
+			 "\"%s\" --boot -X %d %s %s %s %s %s",
+#else
 			 "\"%s\" --boot -X %d %s %s %s %s",
+			 /* IvorySQL:END - SQL oracle_mode */
+#endif
 			 backend_exec,
 			 wal_segment_size_mb * (1024 * 1024),
+#ifdef IvorySQL
+			 /* IvorySQL:BEGIN - SQL oracle_mode */
+			 pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg",
+			 /* IvorySQL:END - SQL oracle_mode */
+#endif
 			 data_checksums ? "-k" : "",
 			 boot_options, extra_options,
 			 debug ? "-d 5" : "");
@@ -1667,6 +1729,28 @@ setup_run_file(FILE *cmdfd, const char *filename)
 
 	free(lines);
 }
+
+/* IvorySQL:BEGIN - SQL oracle_mode */
+/* load oracle compatible objects */
+static void
+setup_ora_sys_schema(FILE *cmdfd)
+{
+	char	  **line;
+	char	  **ora_sys_schema_setup;
+
+	ora_sys_schema_setup = readfile(ora_sys_schema_file);
+
+	for (line = ora_sys_schema_setup; *line != NULL; line++)
+	{
+		PG_CMD_PUTS(*line);
+		free(*line);
+	}
+
+	PG_CMD_PUTS("\n\n");
+
+	free(ora_sys_schema_setup);
+}
+/* IvorySQL:END - SQL oracle_mode */
 
 /*
  * fill in extra description data
@@ -2511,6 +2595,9 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	printf(_("	-m, --dbmode=MODE 				set database mode, default is oracle\n"));
+	/* IvorySQL:END - SQL oracle_mode */
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
@@ -2748,7 +2835,12 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
-	set_input(&bki_file, "postgres.bki");
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	if (DB_PG == database_mode)
+		set_input(&bki_file, "postgres.bki");
+	else
+		set_input(&bki_file, "postgres_oracle.bki");
+	/* IvorySQL:END - SQL oracle_mode */
 	set_input(&hba_file, "pg_hba.conf.sample");
 	set_input(&ident_file, "pg_ident.conf.sample");
 	set_input(&conf_file, "postgresql.conf.sample");
@@ -2758,7 +2850,13 @@ setup_data_file_paths(void)
 	set_input(&system_constraints_file, "system_constraints.sql");
 	set_input(&system_functions_file, "system_functions.sql");
 	set_input(&system_views_file, "system_views.sql");
-
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	if (database_mode == DB_ORACLE)
+	{
+		set_input(&ora_sys_schema_file, "ora_sys_schema.sql");
+		set_input(&ora_conf_file, "ivorysql.conf.sample");
+	}
+	/* IvorySQL:END - SQL oracle_mode */
 	if (show_setting || debug)
 	{
 		fprintf(stderr,
@@ -2786,6 +2884,13 @@ setup_data_file_paths(void)
 	check_input(system_constraints_file);
 	check_input(system_functions_file);
 	check_input(system_views_file);
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	if (database_mode == DB_ORACLE)
+	{
+		check_input(ora_sys_schema_file);
+		check_input(ora_conf_file);
+	}
+	/* IvorySQL:END - SQL oracle_mode */
 }
 
 
@@ -3073,10 +3178,20 @@ initialize_data_directory(void)
 	fputs(_("performing post-bootstrap initialization ... "), stdout);
 	fflush(stdout);
 
-	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s %s template1 >%s",
-			 backend_exec, backend_options, extra_options,
-			 DEVNULL);
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	if (strcmp(dbmode, "pg") == 0)
+	/* IvorySQL:END - SQL oracle_mode */
+		snprintf(cmd, sizeof(cmd),
+				 "\"%s\" %s %s template1 >%s",
+				 backend_exec, backend_options, extra_options,
+				 DEVNULL);
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	else
+		snprintf(cmd, sizeof(cmd),
+				 "\"%s\" %s %s %s template1 >%s",
+				 backend_exec, backend_options, extra_options, ora_options,
+				 DEVNULL);
+	/* IvorySQL:END - SQL oracle_mode */
 
 	PG_CMD_OPEN;
 
@@ -3106,6 +3221,14 @@ initialize_data_directory(void)
 	setup_schema(cmdfd);
 
 	load_plpgsql(cmdfd);
+
+/* IvorySQL:BEGIN - SQL oracle_mode */
+  /* load oracle compatible objects and plisql language */
+	if (database_mode == DB_ORACLE)
+	{
+		setup_ora_sys_schema(cmdfd);
+	}
+/* IvorySQL:END - SQL oracle_mode */
 
 	vacuum_db(cmdfd);
 
@@ -3155,6 +3278,9 @@ main(int argc, char *argv[])
 		{"wal-segsize", required_argument, NULL, 12},
 		{"data-checksums", no_argument, NULL, 'k'},
 		{"allow-group-access", no_argument, NULL, 'g'},
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+		{"dbmode", required_argument, NULL, 'm'},
+	/* IvorySQL:END - SQL oracle_mode */
 		{"discard-caches", no_argument, NULL, 14},
 		{"locale-provider", required_argument, NULL, 15},
 		{"icu-locale", required_argument, NULL, 16},
@@ -3200,8 +3326,10 @@ main(int argc, char *argv[])
 
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "A:c:dD:E:gkL:nNsST:U:WX:",
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	while ((c = getopt_long(argc, argv, "A:c:dD:E:gkL:m:nNsST:U:WX:",
 							long_options, &option_index)) != -1)
+	/* IvorySQL:END - SQL oracle_mode */
 	{
 		switch (c)
 		{
@@ -3258,6 +3386,21 @@ main(int argc, char *argv[])
 				debug = true;
 				printf(_("Running in debug mode.\n"));
 				break;
+			/* IvorySQL:BEGIN - SQL oracle_mode */
+			case 'm':
+				dbmode = pg_strdup(optarg);
+
+				if (pg_strcasecmp(dbmode, "pg") == 0 || pg_strcasecmp(dbmode, "0") == 0)
+					database_mode = DB_PG;
+				else if (pg_strcasecmp(dbmode, "oracle") == 0 || pg_strcasecmp(dbmode, "1") == 0)
+					database_mode = DB_ORACLE;
+				else
+				{
+					fprintf(stderr, _("unrecognized database mode.\n"));
+					exit(1);
+				}
+			break;
+			/* IvorySQL:END - SQL oracle_mode */
 			case 'n':
 				noclean = true;
 				printf(_("Running in no-clean mode.  Mistakes will not be cleaned up.\n"));

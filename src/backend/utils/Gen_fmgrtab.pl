@@ -59,7 +59,9 @@ foreach my $datfile (@ARGV)
 	my $schema  = $catalog->{columns};
 
 	$catalogs{$catname} = $catalog;
-	$catalog_data{$catname} = Catalog::ParseData($datfile, $schema, 0);
+	#IvorySQL:BEGIN - SQL PARSER
+	$catalog_data{$catname} = Catalog::ParseData($datfile, $schema, 0, "oracle");
+	#IvorySQL:END - SQL PARSER
 }
 
 # Collect certain fields from pg_proc.dat.

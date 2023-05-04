@@ -5,7 +5,7 @@
 # This makefile generates a static library, liborafeutils.a,
 # for use by client applications
 #
-# Portions Copyright (c) 2022, IvorySQL
+# Portions Copyright (c) 2023, IvorySQL
 #
 # IDENTIFICATION
 #    src/oracle_fe_utils/Makefile
