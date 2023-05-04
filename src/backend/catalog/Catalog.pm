@@ -279,7 +279,9 @@ sub ParseHeader
 # lines. If a caller just wants to consume the data, leave it unset.
 sub ParseData
 {
-	my ($input_file, $schema, $preserve_formatting) = @_;
+	#IvorySQL:BEGIN - SQL oracle_mode
+	my ($input_file, $schema, $preserve_formatting, $compatible_type) = @_;
+	#IvorySQL:END - SQL oracle_mode
 
 	open(my $ifd, '<', $input_file) || die "$input_file: $!";
 	$input_file =~ /(\w+)\.dat$/
@@ -287,12 +289,41 @@ sub ParseData
 	my $catname = $1;
 	my $data    = [];
 
+	#IvorySQL:BEGIN - SQL oracle_mode
+	my	$match_oracle_regex_begin = 0;
+	my	$match_oracle_regex_end = 0;
+	#IvorySQL:END - SQL oracle_mode
+
 	if ($preserve_formatting)
 	{
 		# Scan the input file.
 		while (<$ifd>)
 		{
 			my $hash_ref;
+
+			#IvorySQL:BEGIN - SQL oracle_mode
+			die "$input_file: Oracle Compatibility comments more than once and mismatching.\n"
+				if ($match_oracle_regex_begin > 1 || $match_oracle_regex_end > 1);
+
+			if (/^\/\*BEGIN\sOracle\sCompatibility\sMetadatas\*\//)
+			{
+				$match_oracle_regex_begin++;
+				next;
+			}
+			if (/^\/\*END\sOracle\sCompatibility\sMetadatas\*\//)
+			{
+				$match_oracle_regex_end++;
+				next;
+			}
+
+			if ($match_oracle_regex_begin == 1)
+			{
+				if ($compatible_type eq 'pg')
+				{
+					next;
+				}
+			}
+			#IvorySQL:END - SQL oracle_mode
 
 			if (/{/)
 			{
@@ -370,6 +401,11 @@ sub ParseData
 	}
 
 	close $ifd;
+
+	#IvorySQL:BEGIN - SQL oracle_mode
+	die "$input_file: Oracle Compatibility comments missing and can't generate BKI file successfully.\n"
+		if ($match_oracle_regex_begin != $match_oracle_regex_end);
+	#IvorySQL:END - SQL oracle_mode
 
 	# If this is pg_type, auto-generate array types too.
 	GenerateArrayTypes($schema, $data) if $catname eq 'pg_type';
@@ -586,8 +622,11 @@ sub FindAllOidsFromHeaders
 		# Not all catalogs have a data file.
 		if (-e $datfile)
 		{
+			#IvorySQL:BEGIN - SQL oracle_mode
 			my $catdata =
-			  Catalog::ParseData($datfile, $catalog->{columns}, 0);
+				Catalog::ParseData($datfile, $catalog->{columns}, 0);
+				Catalog::ParseData($datfile, $catalog->{columns}, 0, "oracle");
+			#IvorySQL:END - SQL oracle_mode
 
 			foreach my $row (@$catdata)
 			{

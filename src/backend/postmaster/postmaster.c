@@ -124,7 +124,9 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "utils/guc.h"				/* IvorySQL:SQL oracle_mode */
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* IvorySQL:SQL oracle_mode */
 #include "utils/pidfile.h"
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
@@ -1257,7 +1259,7 @@ PostmasterMain(int argc, char *argv[])
 	}
 
 	/* IvorySQL:BEGIN -LISTEN-MULTI-PORT */
-	if (OraListenAddresses)
+	if (DB_ORACLE == database_mode && OraListenAddresses)
 	{
 		char	   *rawstring;
 		List	   *elemlist;
@@ -1404,32 +1406,35 @@ PostmasterMain(int argc, char *argv[])
 					(errmsg("could not create any PostgreSQL Unix-domain sockets")));
 
 		/* Oracle unix domain socket */
-		success = 0;
-		foreach(l, elemlist)
+		if (DB_ORACLE == database_mode)
 		{
-			char	   *socketdir = (char *) lfirst(l);
-
-			status = StreamServerPort(AF_UNIX, NULL,
-									  (unsigned short) OraPortNumber,
-									  socketdir,
-									  ListenSocket, MAXLISTEN);
-
-			if (status == STATUS_OK)
+			success = 0;
+			foreach(l, elemlist)
 			{
-				success++;
-				/* record the first successful Unix socket in lockfile */
-				if (success == 1)
-					AddToDataDirLockFile(LOCK_FILE_LINE_SOCKET_DIR, socketdir);
-			}
-			else
-				ereport(WARNING,
-						(errmsg("could not create Oracle Unix-domain socket in directory \"%s\"",
-								socketdir)));
-		}
+				char	   *socketdir = (char *) lfirst(l);
 
-		if (!success && elemlist != NIL)
-			ereport(FATAL,
-					(errmsg("could not create any Oracle Unix-domain sockets")));
+				status = StreamServerPort(AF_UNIX, NULL,
+										  (unsigned short) OraPortNumber,
+										  socketdir,
+										  ListenSocket, MAXLISTEN);
+
+				if (status == STATUS_OK)
+				{
+					success++;
+					/* record the first successful Unix socket in lockfile */
+					if (success == 1)
+						AddToDataDirLockFile(LOCK_FILE_LINE_SOCKET_DIR, socketdir);
+				}
+				else
+					ereport(WARNING,
+							(errmsg("could not create Oracle Unix-domain socket in directory \"%s\"",
+									socketdir)));
+			}
+
+			if (!success && elemlist != NIL)
+				ereport(FATAL,
+						(errmsg("could not create any Oracle Unix-domain sockets")));
+		}
 		/* IvorySQL:END - LISTEN-MULTI-PORT */
 
 		list_free_deep(elemlist);

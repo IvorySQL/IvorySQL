@@ -479,6 +479,15 @@ static const struct config_enum_entry wal_compression_options[] = {
  * value range of guc parameters "database_mode"
  * and "compatible_db".
  */
+/* IvorySQL:BEGIN - SQL oracle_mode */
+static const struct config_enum_entry db_mode_options[] = {
+	{"pg", DB_PG, false},
+	{"oracle", DB_ORACLE, false},
+	{"0", DB_PG, false},
+	{"1", DB_ORACLE, false},
+	{NULL, 0, false}
+};
+/* IvorySQL:END - SQL oracle_mode */
 
 static const struct config_enum_entry db_parser_options[] = {
 	{"pg", PG_PARSER, false},
@@ -624,6 +633,10 @@ static char *recovery_target_lsn_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
+
+/* IvorySQL:BEGIN - SQL oracle_mode */
+int    database_mode = DB_PG;
+/* IvorySQL:END - SQL oracle_mode */
 
 /* IvorySQL:BEGIN - SQL PARSER */
 int    compatible_db = PG_PARSER;
@@ -5051,12 +5064,25 @@ struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
+	/* IvorySQL:BEGIN - SQL oracle_mode */
+	{
+		{"database_mode", PGC_INTERNAL, PRESET_OPTIONS,
+			gettext_noop("Set database mode"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&database_mode,
+		DB_PG, db_mode_options,
+		NULL, NULL, NULL
+		},
+	/* IvorySQL:END - SQL oracle_mode */
+
 	/* IvorySQL:BEGIN - SQL PARSER */
 	{
 		{"compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
-						gettext_noop("Set default sql parser compatibility mode"),
-						NULL,
-						GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			gettext_noop("Set default sql parser compatibility mode"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&compatible_db,
 		PG_PARSER, db_parser_options,
