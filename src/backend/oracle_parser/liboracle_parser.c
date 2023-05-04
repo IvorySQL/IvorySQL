@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
- * parser.c
- *		Main entry point/driver for PostgreSQL grammar
+ * liboracle_parser.c
+ *		Main entry point/driver for Oracle grammar
  *
  * Note that the grammar is not allowed to perform any table access
  * (since we need to be able to do basic parsing even while inside an
@@ -10,59 +10,153 @@
  * analyze.c and related files.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023, IvorySQL
  *
  * IDENTIFICATION
- *	  src/backend/parser/parser.c
+ *	  src/backend/oracle_parser/liboracle_parser.c
+ *
+ * add the file for requirement "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
+#include "fmgr.h"
 
+#include "catalog/pg_type.h"
+#include "oracle_parser/ora_keywords.h"
 #include "mb/pg_wchar.h"
-#include "gramparse.h"
+#include "funcapi.h"
+#include "oracle_parser/ora_scanner.h"
+#include "oracle_parser/ora_gramparse.h"
+#include "parser/parser.h"
+#include "utils/builtins.h"
+#include "oracle_parser/ora_parser_hook.h"
 #include "parser/parser.h"
 #include "parser/scansup.h"
-
-/* IvorySQL:BEGIN - SQL PARSER */
 #include "utils/ora_compatible.h"
 
-/* Hook for plugins to get control in raw_parser() */
-raw_parser_hook_type sql_raw_parser= standard_raw_parser;
-raw_parser_hook_type ora_raw_parser= NULL;
-/* IvorySQL:END - SQL PARSER */
+PG_MODULE_MAGIC;
 
-static bool check_uescapechar(unsigned char escape);
-static char *str_udeescape(const char *str, char escape,
-						   int position, core_yyscan_t yyscanner);
-
-/* IvorySQL:BEGIN - SQL PARSER */
-List *
-raw_parser(const char *str, RawParseMode mode)
+/*
+ * Struct for tracking locations/lengths of constants during normalization
+ */
+typedef struct pgssLocationLen
 {
-	return (*sql_raw_parser)(str, mode);
+	int			location;		/* start offset in query text */
+	int			length;			/* length in bytes, or -1 to ignore */
+} pgssLocationLen;
+
+/*
+ * Working state for computing a query jumble and producing a normalized
+ * query string
+ */
+typedef struct JumbleState
+{
+	/* Jumble of current query tree */
+	unsigned char *jumble;
+
+	/* Number of bytes used in jumble[] */
+	Size		jumble_len;
+
+	/* Array of locations of constants that should be removed */
+	pgssLocationLen *clocations;
+
+	/* Allocated length of clocations array */
+	int			clocations_buf_size;
+
+	/* Current number of valid entries in clocations array */
+	int			clocations_count;
+
+	/* highest Param id we've seen, in order to start normalization correctly */
+	int			highest_extern_param_id;
+} JumbleState;
+
+/* saved hook value */
+static raw_parser_hook_type prev_raw_parser = NULL;
+static get_keywords_hook_type prev_pg_get_keywords = NULL;
+static fill_in_constant_lengths_hook_type prev_fill_in_contant_lengths = NULL;
+quote_identifier_hook_type prev_quote_identifier = NULL;
+
+void _PG_init(void);
+void _PG_fini(void);
+
+static int	oracle_comp_location(const void *a, const void *b);
+
+static List * oracle_raw_parser(const char *str, RawParseMode mode);
+static Datum oracle_pg_get_keywords(PG_FUNCTION_ARGS);
+static void oracle_fill_in_constant_lengths(void *jjstate, const char *query, int query_loc);
+static const char * oracle_quote_identifier(const char *ident);
+
+/*
+ * Module load callback
+ */
+void
+_PG_init(void)
+{
+	prev_raw_parser 			  = ora_raw_parser;
+	prev_pg_get_keywords 		  = get_keywords_hook;
+	prev_fill_in_contant_lengths  = fill_in_constant_lengths_hook;
+	prev_quote_identifier 		  = quote_identifier_hook;
+
+	ora_raw_parser 			  	  = oracle_raw_parser;
+	get_keywords_hook 			  = oracle_pg_get_keywords;
+	fill_in_constant_lengths_hook = oracle_fill_in_constant_lengths;
+	quote_identifier_hook		  = oracle_quote_identifier;
 }
 
 /*
- * raw_parser
+ * Module unload callback
+ */
+void
+_PG_fini(void)
+{
+	ora_raw_parser 			  = prev_raw_parser;
+	get_keywords_hook 			  = prev_pg_get_keywords;
+	fill_in_constant_lengths_hook = prev_fill_in_contant_lengths;
+	quote_identifier_hook		  = prev_quote_identifier;
+}
+
+/*
+ * comp_location: comparator for qsorting pgssLocationLen structs by location
+ */
+static int
+oracle_comp_location(const void *a, const void *b)
+{
+	int			l = ((const pgssLocationLen *) a)->location;
+	int			r = ((const pgssLocationLen *) b)->location;
+
+	if (l < r)
+		return -1;
+	else if (l > r)
+		return +1;
+	else
+		return 0;
+}
+
+static bool check_uescapechar(unsigned char escape);
+static char *str_udeescape(const char *str, char escape,
+						   int position, ora_core_yyscan_t yyscanner);
+
+
+/*
+ * oracle_raw_parser
  *		Given a query in string form, do lexical and grammatical analysis.
  *
  * Returns a list of raw (un-analyzed) parse trees.  The contents of the
  * list have the form required by the specified RawParseMode.
  */
-List *
-standard_raw_parser(const char *str, RawParseMode mode)
+
+static List *
+oracle_raw_parser(const char *str, RawParseMode mode)
 {
-/* IvorySQL:END - SQL PARSER */
-	core_yyscan_t yyscanner;
-	base_yy_extra_type yyextra;
+	ora_core_yyscan_t yyscanner;
+	ora_base_yy_extra_type yyextra;
 	int			yyresult;
 
 	/* initialize the flex scanner */
-	yyscanner = scanner_init(str, &yyextra.core_yy_extra,
-							 &ScanKeywords, ScanKeywordTokens);
+	yyscanner = ora_scanner_init(str, &yyextra.core_yy_extra,
+							 &OraScanKeywords, OraScanKeywordTokens);
 
 	/* base_yylex() only needs us to initialize the lookahead token, if any */
 	if (mode == RAW_PARSE_DEFAULT)
@@ -86,13 +180,13 @@ standard_raw_parser(const char *str, RawParseMode mode)
 	}
 
 	/* initialize the bison parser */
-	parser_init(&yyextra);
+	ora_parser_init(&yyextra);
 
 	/* Parse! */
-	yyresult = base_yyparse(yyscanner);
+	yyresult = ora_base_yyparse(yyscanner);
 
 	/* Clean up (release memory) */
-	scanner_finish(yyscanner);
+	ora_scanner_finish(yyscanner);
 
 	if (yyresult)				/* error */
 		return NIL;
@@ -123,9 +217,9 @@ standard_raw_parser(const char *str, RawParseMode mode)
  * same thing anyway, but notationally they're different).
  */
 int
-base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
+ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 {
-	base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
 	int			cur_token;
 	int			next_token;
 	int			cur_token_length;
@@ -142,7 +236,7 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 		yyextra->have_lookahead = false;
 	}
 	else
-		cur_token = core_yylex(&(lvalp->core_yystype), llocp, yyscanner);
+		cur_token = ora_core_yylex(&(lvalp->core_yystype), llocp, yyscanner);
 
 	/*
 	 * If this token isn't one that requires lookahead, just return it.  If it
@@ -194,7 +288,7 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 	cur_yylloc = *llocp;
 
 	/* Get next token, saving outputs into lookahead variables */
-	next_token = core_yylex(&(yyextra->lookahead_yylval), llocp, yyscanner);
+	next_token = ora_core_yylex(&(yyextra->lookahead_yylval), llocp, yyscanner);
 	yyextra->lookahead_token = next_token;
 	yyextra->lookahead_yylloc = *llocp;
 
@@ -280,17 +374,17 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 				*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
 
 				/* Get third token */
-				next_token = core_yylex(&(yyextra->lookahead_yylval),
+				next_token = ora_core_yylex(&(yyextra->lookahead_yylval),
 										llocp, yyscanner);
 
 				/* If we throw error here, it will point to third token */
 				if (next_token != SCONST)
-					scanner_yyerror("UESCAPE must be followed by a simple string literal",
+					ora_scanner_yyerror("UESCAPE must be followed by a simple string literal",
 									yyscanner);
 
 				escstr = yyextra->lookahead_yylval.str;
 				if (strlen(escstr) != 1 || !check_uescapechar(escstr[0]))
-					scanner_yyerror("invalid Unicode escape character",
+					ora_scanner_yyerror("invalid Unicode escape character",
 									yyscanner);
 
 				/* Now restore *llocp; errors will point to first token */
@@ -385,14 +479,14 @@ check_uescapechar(unsigned char escape)
  */
 static char *
 str_udeescape(const char *str, char escape,
-			  int position, core_yyscan_t yyscanner)
+			  int position, ora_core_yyscan_t yyscanner)
 {
 	const char *in;
 	char	   *new,
 			   *out;
 	size_t		new_len;
 	pg_wchar	pair_first = 0;
-	ScannerCallbackState scbstate;
+	OraScannerCallbackState scbstate;
 
 	/*
 	 * Guesstimate that result will be no longer than input, but allow enough
@@ -421,7 +515,7 @@ str_udeescape(const char *str, char escape,
 			 * Any errors reported while processing this escape sequence will
 			 * have an error cursor pointing at the escape.
 			 */
-			setup_scanner_errposition_callback(&scbstate, yyscanner,
+			ora_setup_scanner_errposition_callback(&scbstate, yyscanner,
 											   in - str + position + 3);	/* 3 for U&" */
 			if (in[1] == escape)
 			{
@@ -509,7 +603,7 @@ str_udeescape(const char *str, char escape,
 						 errmsg("invalid Unicode escape"),
 						 errhint("Unicode escapes must be \\XXXX or \\+XXXXXX.")));
 
-			cancel_scanner_errposition_callback(&scbstate);
+			ora_cancel_scanner_errposition_callback(&scbstate);
 		}
 		else
 		{
@@ -536,7 +630,254 @@ invalid_pair:
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("invalid Unicode surrogate pair"),
-			 scanner_errposition(in - str + position + 3,	/* 3 for U&" */
+			 ora_scanner_errposition(in - str + position + 3,	/* 3 for U&" */
 								 yyscanner)));
 	return NULL;				/* keep compiler quiet */
+}
+
+static Datum
+oracle_pg_get_keywords(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc	tupdesc;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		tupdesc = CreateTemplateTupleDesc(3);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "word",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "catcode",
+						   CHAROID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "catdesc",
+						   TEXTOID, -1, 0);
+
+		funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+
+	if (funcctx->call_cntr < OraScanKeywords.num_keywords)
+	{
+		char	   *values[3];
+		HeapTuple	tuple;
+
+		/* cast-away-const is ugly but alternatives aren't much better */
+		values[0] = unconstify(char *,
+							   GetScanKeyword(funcctx->call_cntr,
+											  &OraScanKeywords));
+
+		switch (OraScanKeywordCategories[funcctx->call_cntr])
+		{
+			case UNRESERVED_KEYWORD:
+				values[1] = "U";
+				values[2] = _("unreserved");
+				break;
+			case COL_NAME_KEYWORD:
+				values[1] = "C";
+				values[2] = _("unreserved (cannot be function or type name)");
+				break;
+			case TYPE_FUNC_NAME_KEYWORD:
+				values[1] = "T";
+				values[2] = _("reserved (can be function or type name)");
+				break;
+			case RESERVED_KEYWORD:
+				values[1] = "R";
+				values[2] = _("reserved");
+				break;
+			default:			/* shouldn't be possible */
+				values[1] = NULL;
+				values[2] = NULL;
+				break;
+		}
+
+		tuple = BuildTupleFromCStrings(funcctx->attinmeta, values);
+
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+
+	SRF_RETURN_DONE(funcctx);
+}
+
+static void
+oracle_fill_in_constant_lengths(void *jjstate, const char *query,
+						 int query_loc)
+{
+	JumbleState	*jstate;
+	pgssLocationLen *locs;
+	ora_core_yyscan_t yyscanner;
+	ora_core_yy_extra_type yyextra;
+	ora_core_YYSTYPE yylval;
+	YYLTYPE		yylloc;
+	int			last_loc = -1;
+	int			i;
+
+	/*
+	 * Sort the records by location so that we can process them in order while
+	 * scanning the query text.
+	 */
+	jstate = (JumbleState *)jjstate;
+	if (jstate->clocations_count > 1)
+		qsort(jstate->clocations, jstate->clocations_count,
+			  sizeof(pgssLocationLen), oracle_comp_location);
+	locs = jstate->clocations;
+
+	/* initialize the flex scanner --- should match oracle_raw_parser() */
+	yyscanner = ora_scanner_init(query,
+							 &yyextra,
+							 &OraScanKeywords,
+							 OraScanKeywordTokens);
+
+	/* we don't want to re-emit any escape string warnings */
+	yyextra.escape_string_warning = false;
+
+	/* Search for each constant, in sequence */
+	for (i = 0; i < jstate->clocations_count; i++)
+	{
+		int			loc = locs[i].location;
+		int			tok;
+
+		/* Adjust recorded location if we're dealing with partial string */
+		loc -= query_loc;
+
+		Assert(loc >= 0);
+
+		if (loc <= last_loc)
+			continue;			/* Duplicate constant, ignore */
+
+		/* Lex tokens until we find the desired constant */
+		for (;;)
+		{
+			tok = ora_core_yylex(&yylval, &yylloc, yyscanner);
+
+			/* We should not hit end-of-string, but if we do, behave sanely */
+			if (tok == 0)
+				break;			/* out of inner for-loop */
+
+			/*
+			 * We should find the token position exactly, but if we somehow
+			 * run past it, work with that.
+			 */
+			if (yylloc >= loc)
+			{
+				if (query[loc] == '-')
+				{
+					/*
+					 * It's a negative value - this is the one and only case
+					 * where we replace more than a single token.
+					 *
+					 * Do not compensate for the core system's special-case
+					 * adjustment of location to that of the leading '-'
+					 * operator in the event of a negative constant.  It is
+					 * also useful for our purposes to start from the minus
+					 * symbol.  In this way, queries like "select * from foo
+					 * where bar = 1" and "select * from foo where bar = -2"
+					 * will have identical normalized query strings.
+					 */
+					tok = ora_core_yylex(&yylval, &yylloc, yyscanner);
+					if (tok == 0)
+						break;	/* out of inner for-loop */
+				}
+
+				/*
+				 * We now rely on the assumption that flex has placed a zero
+				 * byte after the text of the current token in scanbuf.
+				 */
+				locs[i].length = strlen(yyextra.scanbuf + loc);
+				break;			/* out of inner for-loop */
+			}
+		}
+
+		/* If we hit end-of-string, give up, leaving remaining lengths -1 */
+		if (tok == 0)
+			break;
+
+		last_loc = loc;
+	}
+
+	ora_scanner_finish(yyscanner);
+}
+
+static const char *
+oracle_quote_identifier(const char *ident)
+{
+	/*
+	 * Can avoid quoting if ident starts with a lowercase letter or underscore
+	 * and contains only lowercase letters, digits, and underscores, *and* is
+	 * not any SQL keyword.  Otherwise, supply quotes.
+	 */
+	int			nquotes = 0;
+	bool		safe;
+	const char *ptr;
+	char	   *result;
+	char	   *optr;
+
+	/*
+	 * would like to use <ctype.h> macros here, but they might yield unwanted
+	 * locale-specific results...
+	 */
+	safe = ((ident[0] >= 'a' && ident[0] <= 'z') || ident[0] == '_');
+
+	for (ptr = ident; *ptr; ptr++)
+	{
+		char		ch = *ptr;
+
+		if ((ch >= 'a' && ch <= 'z') ||
+			(ch >= '0' && ch <= '9') ||
+			(ch == '_'))
+		{
+			/* okay */
+		}
+		else
+		{
+			safe = false;
+			if (ch == '"')
+				nquotes++;
+		}
+	}
+
+	if (quote_all_identifiers)
+		safe = false;
+
+	if (safe)
+	{
+		/*
+		 * Check for keyword.  We quote keywords except for unreserved ones.
+		 * (In some cases we could avoid quoting a col_name or type_func_name
+		 * keyword, but it seems much harder than it's worth to tell that.)
+		 *
+		 * Note: ScanKeywordLookup() does case-insensitive comparison, but
+		 * that's fine, since we already know we have all-lower-case.
+		 */
+		int			kwnum = ScanKeywordLookup(ident, &OraScanKeywords);
+
+		if (kwnum >= 0 && OraScanKeywordCategories[kwnum] != UNRESERVED_KEYWORD)
+			safe = false;
+	}
+
+	if (safe)
+		return ident;			/* no change needed */
+
+	result = (char *) palloc(strlen(ident) + nquotes + 2 + 1);
+
+	optr = result;
+	*optr++ = '"';
+	for (ptr = ident; *ptr; ptr++)
+	{
+		char		ch = *ptr;
+
+		if (ch == '"')
+			*optr++ = '"';
+		*optr++ = ch;
+	}
+	*optr++ = '"';
+	*optr = '\0';
+
+	return result;
 }
