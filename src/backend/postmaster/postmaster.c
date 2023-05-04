@@ -130,6 +130,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
+/*IvorySQL::BEGIN - SQL PARSER */
+#include "parser/parser.h"
+/* IvorySQL:END - SQL PARSER */
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -4468,18 +4471,43 @@ BackendInitialize(Port *port)
 		snprintf(OraPortNumberStr, sizeof(OraPortNumberStr), "%d", OraPortNumber);
 
 		if (strstr(service, PostPortNumberStr) != NULL)
+		{
 			port->connmode = 'p';
+			SetConfigOption("compatible_mode", "pg", PGC_USERSET, PGC_S_OVERRIDE);
+			sql_raw_parser = standard_raw_parser;
+		}
 		else if (strstr(service, OraPortNumberStr) != NULL)
+		{
 			port->connmode = 'o';
+			SetConfigOption("compatible_mode", "oracle", PGC_USERSET, PGC_S_OVERRIDE);
+			if (NULL == ora_raw_parser)
+				ereport(ERROR,
+						(errmsg("Invalid Oracle compatibility mode syntax library.")));
+			else
+				sql_raw_parser = ora_raw_parser;
+		}
 		else
 			port->connmode = 'u';
 	}
 	else
 	{
 		if (localport == PostPortNumber)
+		{
 			port->connmode = 'p';
+			SetConfigOption("compatible_mode", "pg", PGC_USERSET, PGC_S_OVERRIDE);
+			sql_raw_parser = standard_raw_parser;
+		}
 		else if (localport == OraPortNumber)
+		{
 			port->connmode = 'o';
+			SetConfigOption("compatible_mode", "oracle", PGC_USERSET, PGC_S_OVERRIDE);
+			if (NULL == ora_raw_parser)
+				ereport(ERROR,
+						(errmsg("Invalid Oracle compatibility mode syntax library.")));
+			else
+				sql_raw_parser = ora_raw_parser;
+		}
+
 		else
 			port->connmode = 'u';
 	}

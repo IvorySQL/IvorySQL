@@ -19,6 +19,7 @@ SUBDIRS = \
 	backend \
 	backend/utils/mb/conversion_procs \
 	backend/snowball \
+	backend/oracle_parser \
 	include \
 	interfaces \
 	backend/replication/libpqwalreceiver \
@@ -29,7 +30,8 @@ SUBDIRS = \
 	makefiles \
 	test/regress \
 	test/isolation \
-	test/perl
+	test/perl \
+	oracle_fe_utils
 
 ifeq ($(with_llvm), yes)
 SUBDIRS += backend/jit/llvm

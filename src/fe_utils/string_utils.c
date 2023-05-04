@@ -20,12 +20,20 @@
 #include "common/keywords.h"
 #include "fe_utils/string_utils.h"
 
+/* IvorySQL:BEGIN - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+#include "oracle_parser/ora_keywords.h"
+/* IvorySQL:END - SQL PARSER */
+
 static PQExpBuffer defaultGetLocalPQExpBuffer(void);
 
 /* Globals exported by this file */
 int			quote_all_identifiers = 0;
 PQExpBuffer (*getLocalPQExpBuffer) (void) = defaultGetLocalPQExpBuffer;
 
+/* IvorySQL:BEGIN - SQL PARSER */
+static const char * stardand_fmtId(const char *rawid);
+/* IvorySQL:END - SQL PARSER */
 
 /*
  * Returns a temporary PQExpBuffer, valid until the next call to the function.
@@ -63,6 +71,18 @@ defaultGetLocalPQExpBuffer(void)
 const char *
 fmtId(const char *rawid)
 {
+	/* IvorySQL:BEGIN - SQL PARSER */
+	if (DB_ORACLE == db_mode)
+		return ora_fmtId(rawid);
+	else
+		return stardand_fmtId(rawid);
+}
+
+static const char *
+stardand_fmtId(const char *rawid)
+{
+	/* IvorySQL:END - SQL PARSER */
+
 	PQExpBuffer id_return = getLocalPQExpBuffer();
 
 	const char *cp;

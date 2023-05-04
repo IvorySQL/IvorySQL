@@ -286,6 +286,10 @@ extern PGDLLIMPORT int tcp_user_timeout;
 extern PGDLLIMPORT bool trace_sort;
 #endif
 
+/* IvorySQL:BEGIN - SQL PARSER */
+extern PGDLLIMPORT int	compatible_db;
+/* IvorySQL:END - SQL PARSER */
+
 /*
  * Functions exported by guc.c
  */

@@ -65,6 +65,10 @@
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
+/* IvorySQL:BEGIN - SQL PARSER */
+#include "oracle_parser/ora_parser_hook.h"
+#include "utils/ora_compatible.h"
+/* IvorySQL:END - SQL PARSER */
 #include "utils/partcache.h"
 #include "utils/rel.h"
 #include "utils/ruleutils.h"
@@ -315,6 +319,9 @@ typedef void (*rsv_callback) (Node *node, deparse_context *context,
  * Global data
  * ----------
  */
+/* IvorySQL:BEGIN - SQL PARSER */
+quote_identifier_hook_type quote_identifier_hook = NULL;
+/* IvorySQL:END - SQL PARSER */
 static SPIPlanPtr plan_getrulebyoid = NULL;
 static const char *query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
 static SPIPlanPtr plan_getviewrule = NULL;
@@ -516,6 +523,9 @@ static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
+/* IvorySQL:BEGIN - SQL PARSER */
+static const char *standard_quote_identifier(const char *ident);
+/* IvorySQL:END - SQL PARSER */
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -11787,6 +11797,22 @@ printSubscripts(SubscriptingRef *sbsref, deparse_context *context)
 const char *
 quote_identifier(const char *ident)
 {
+	/* IvorySQL:BEGIN - SQL PARSER */
+	char		 *result;
+
+	/* Slove the issue of using the same global variable in static lib and dynamic lib */
+	if (quote_identifier_hook && compatible_db != PG_PARSER)
+		result = (char *)(*quote_identifier_hook)(ident);
+	else
+		result = (char *)standard_quote_identifier(ident);
+
+	return result;
+}
+
+static const char *
+standard_quote_identifier(const char *ident)
+{
+	/* IvorySQL:END - SQL PARSER */
 	/*
 	 * Can avoid quoting if ident starts with a lowercase letter or underscore
 	 * and contains only lowercase letters, digits, and underscores, *and* is

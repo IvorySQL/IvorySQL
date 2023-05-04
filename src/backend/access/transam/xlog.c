@@ -107,6 +107,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
+/* IvorySQL:BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* IvorySQL:END - SQL PARSER */
 
 extern uint32 bootstrap_data_checksum_version;
 
@@ -4161,6 +4164,12 @@ ReadControlFile(void)
 	/* Make the initdb settings visible as GUC variables, too */
 	SetConfigOption("data_checksums", DataChecksumsEnabled() ? "yes" : "no",
 					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+
+	/* IvorySQL:BEGIN - SQL PARSER */
+	/* set guc parameters' value about database compatible mode  */
+	SetConfigOption("compatible_mode", ControlFile->dbmode == DB_PG ? "pg" : "oracle",
+					PGC_USERSET, PGC_S_OVERRIDE);
+	/* IvorySQL:END - SQL PARSER */
 }
 
 /*

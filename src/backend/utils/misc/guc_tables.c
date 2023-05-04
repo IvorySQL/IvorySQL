@@ -83,6 +83,9 @@
 #include "utils/ps_status.h"
 #include "utils/inval.h"
 #include "utils/xml.h"
+/* IvorySQL:BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* IvorySQL:END - SQL PARSER */
 
 /* This value is normally passed in from the Makefile */
 #ifndef PG_KRB_SRVTAB
@@ -471,6 +474,19 @@ static const struct config_enum_entry wal_compression_options[] = {
 	{NULL, 0, false}
 };
 
+/* IvorySQL:BEGIN - SQL PARSER */
+/* The comments shown as blow define the
+ * value range of guc parameters "database_mode"
+ * and "compatible_db".
+ */
+
+static const struct config_enum_entry db_parser_options[] = {
+	{"pg", PG_PARSER, false},
+	{"oracle", ORA_PARSER, false},
+	{NULL, 0, false}
+};
+/* IvorySQL:END - SQL PARSER */
+
 /*
  * Options for enum values stored in other modules
  */
@@ -608,6 +624,10 @@ static char *recovery_target_lsn_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
+
+/* IvorySQL:BEGIN - SQL PARSER */
+int    compatible_db = PG_PARSER;
+/* IvorySQL:END - SQL PARSER */
 
 /* should be static, but guc.c needs to get at this */
 bool		in_hot_standby_guc;
@@ -5030,6 +5050,19 @@ struct config_enum ConfigureNamesEnum[] =
 		LOGICAL_REP_MODE_BUFFERED, logical_replication_mode_options,
 		NULL, NULL, NULL
 	},
+
+	/* IvorySQL:BEGIN - SQL PARSER */
+	{
+		{"compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
+						gettext_noop("Set default sql parser compatibility mode"),
+						NULL,
+						GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&compatible_db,
+		PG_PARSER, db_parser_options,
+		NULL, NULL, NULL
+	},
+	/* IvorySQL:END - SQL PARSER */
 
 	/* End-of-list marker */
 	{
