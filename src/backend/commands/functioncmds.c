@@ -73,6 +73,9 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+/* IvorySQL BEGIN - SQL plisql */
+#include "utils/ora_compatible.h"
+/* IvorySQL END - SQL plisql */
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -2095,7 +2098,17 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic)
 	if (language_item)
 		language = strVal(language_item->arg);
 	else
-		language = "plpgsql";
+		/* IvorySQL BEGIN - SQL plisql */
+		{
+			/* anonymous block's language default value is plsql
+			 * in oracle compatibility mode
+			 */
+			if (DB_ORACLE == compatible_db)
+				language = "plisql";
+			else
+			/* IvorySQL END - SQL plisql */
+				language = "plpgsql";
+		}
 
 	/* Look up the language and validate permissions */
 	languageTuple = SearchSysCache1(LANGNAME, PointerGetDatum(language));

@@ -35,6 +35,9 @@
 #include "fe_utils/cancel.h"
 #include "fe_utils/print.h"
 #include "fe_utils/string_utils.h"
+/* IvorySQL Begin - SQL plisql */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* IvorySQL END - SQL plisql */
 #include "help.h"
 #include "input.h"
 #include "large_obj.h"
@@ -763,6 +766,10 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 
 		show_verbose = strchr(cmd, '+') ? true : false;
 		show_system = strchr(cmd, 'S') ? true : false;
+
+		/* IvorySQL BEGIN - SQL plisql */
+		getDbCompatibleMode(pset.db);
+		/* IvorySQL END - SQL plisql */
 
 		switch (cmd[1])
 		{
@@ -2103,6 +2110,10 @@ exec_command_password(PsqlScanState scan_state, bool active_branch)
 		char	   *pw2 = NULL;
 		PQExpBufferData buf;
 		PromptInterruptContext prompt_ctx;
+
+		/* IvorySQL BEGIN - SQL plisql */
+		getDbCompatibleMode(pset.db);
+		/* IvorySQL END - SQL plisql */
 
 		if (user == NULL)
 		{
@@ -5573,6 +5584,10 @@ get_create_object_cmd(EditableObjectType obj_type, Oid oid,
 							result = false;
 							break;
 					}
+
+					/* IvorySQL BEGIN - SQL plisql */
+					getDbCompatibleMode(pset.db);
+					/* IvorySQL END - SQL plisql */
 					appendPQExpBuffer(buf, "%s.", fmtId(nspname));
 					appendPQExpBufferStr(buf, fmtId(relname));
 
