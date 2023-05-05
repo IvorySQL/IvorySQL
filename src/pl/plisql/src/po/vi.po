@@ -1,0 +1,850 @@
+# LANGUAGE message translation file for plisql
+# Copyright (C) 2018 PostgreSQL Global Development Group
+# This file is distributed under the same license as the plisql (PostgreSQL) package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2018.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: plisql (PostgreSQL) 11\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
+"POT-Creation-Date: 2018-04-22 12:08+0000\n"
+"PO-Revision-Date: 2018-05-13 15:28+0900\n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 2.0.6\n"
+"Last-Translator: \n"
+"Language: vi_VN\n"
+
+#: pl_comp.c:434 pl_handler.c:457
+#, c-format
+msgid "PL/iSQL functions cannot accept type %s"
+msgstr "Các hàm PL/iSQL không th�?chấp nhận kiểu %s"
+
+#: pl_comp.c:522
+#, c-format
+msgid "could not determine actual return type for polymorphic function \"%s\""
+msgstr "không th�?xác định kiểu thực t�?tr�?v�?cho hàm đa hình \"%s\""
+
+#: pl_comp.c:552
+#, c-format
+msgid "trigger functions can only be called as triggers"
+msgstr "hàm trigger ch�?có th�?được gọi như một trigger"
+
+#: pl_comp.c:556 pl_handler.c:441
+#, c-format
+msgid "PL/iSQL functions cannot return type %s"
+msgstr "Các hàm PL/iSQL không th�?tr�?v�?kiểu %s"
+
+#: pl_comp.c:595
+#, c-format
+msgid "trigger functions cannot have declared arguments"
+msgstr "không th�?khai báo đối s�?cho hàm trigger"
+
+#: pl_comp.c:596
+#, c-format
+msgid ""
+"The arguments of the trigger can be accessed through TG_NARGS and TG_ARGV "
+"instead."
+msgstr ""
+"Thay vào đó các đối s�?của trigger có th�?được truy cập thông qua TG_NARGS "
+"và TG_ARGV."
+
+#: pl_comp.c:719
+#, c-format
+msgid "event trigger functions cannot have declared arguments"
+msgstr "không th�?khai báo đối s�?cho hàm s�?kiện trigger"
+
+#: pl_comp.c:976
+#, c-format
+msgid "compilation of PL/iSQL function \"%s\" near line %d"
+msgstr "biên dịch hàm PL/iSQL \"%s\" gần dòng %d"
+
+#: pl_comp.c:999
+#, c-format
+msgid "parameter name \"%s\" used more than once"
+msgstr "tên thông s�?\"%s\" được s�?dụng nhiều lần"
+
+#: pl_comp.c:1109
+#, c-format
+msgid "column reference \"%s\" is ambiguous"
+msgstr "tham chiếu cột \"%s\" không rõ ràng"
+
+#: pl_comp.c:1111
+#, c-format
+msgid "It could refer to either a PL/iSQL variable or a table column."
+msgstr "Nó có th�?tham chiếu đến một biến PL/iSQL hoặc một cột bảng."
+
+#: pl_comp.c:1294 pl_exec.c:5031 pl_exec.c:5396 pl_exec.c:5483 pl_exec.c:5574
+#: pl_exec.c:6491
+#, c-format
+msgid "record \"%s\" has no field \"%s\""
+msgstr "bản ghi \"%s\" không có trường \"%s\""
+
+#: pl_comp.c:1756
+#, c-format
+msgid "relation \"%s\" does not exist"
+msgstr "relation \"%s\" không tồn tại"
+
+#: pl_comp.c:1848
+#, c-format
+msgid "variable \"%s\" has pseudo-type %s"
+msgstr "biến \"%s\" có pseudo-type %s"
+
+#: pl_comp.c:2026
+#, c-format
+msgid "type \"%s\" is only a shell"
+msgstr "kiểu \"%s\" ch�?là một shell(chưa được định nghĩa nội dung)"
+
+#: pl_comp.c:2123 pl_comp.c:2176
+#, c-format
+msgid "unrecognized exception condition \"%s\""
+msgstr "không th�?nhận ra điều kiện của ngoại l�?\"%s\""
+
+#: pl_comp.c:2390
+#, c-format
+msgid ""
+"could not determine actual argument type for polymorphic function \"%s\""
+msgstr "không th�?xác định loại đối s�?thực t�?cho hàm đa hình \"%s\""
+
+#: pl_exec.c:473 pl_exec.c:885 pl_exec.c:1098
+msgid "during initialization of execution state"
+msgstr "trong khi khởi tạo trạng thái thực thi"
+
+#: pl_exec.c:479
+msgid "while storing call arguments into local variables"
+msgstr "trong khi lưu tr�?các đối s�?gọi vào trong các biến cục b�?
+
+#: pl_exec.c:567 pl_exec.c:933
+msgid "during function entry"
+msgstr "trong lúc đi vào hàm"
+
+#: pl_exec.c:592
+#, c-format
+msgid "control reached end of function without RETURN"
+msgstr "Hàm đã kết thúc trước khi tr�?v�?RETURN"
+
+#: pl_exec.c:599
+msgid "while casting return value to function's return type"
+msgstr "trong khi ép kiểu giá tr�?tr�?v�?cho kiểu tr�?v�?của hàm"
+
+#: pl_exec.c:612 pl_exec.c:3484
+#, c-format
+msgid "set-valued function called in context that cannot accept a set"
+msgstr ""
+"hàm thiết lập giá tr�?được gọi trong ng�?cảnh không th�?chấp nhận một tập hợp"
+
+#: pl_exec.c:738 pl_exec.c:962 pl_exec.c:1123
+msgid "during function exit"
+msgstr "trong lúc kết thúc hàm"
+
+#: pl_exec.c:793 pl_exec.c:832 pl_exec.c:3329
+msgid "returned record type does not match expected record type"
+msgstr "loại bản ghi đã tr�?v�?không khớp với kiểu được ghi k�?vọng"
+
+#: pl_exec.c:958 pl_exec.c:1119
+#, c-format
+msgid "control reached end of trigger procedure without RETURN"
+msgstr "th�?tục trigger kết thúc trước khi tra v�?RETURN"
+
+#: pl_exec.c:967
+#, c-format
+msgid "trigger procedure cannot return a set"
+msgstr "th�?tục trigger không th�?tr�?v�?một tập hợp"
+
+#: pl_exec.c:1006 pl_exec.c:1034
+msgid ""
+"returned row structure does not match the structure of the triggering table"
+msgstr "cấu trúc hàng tr�?v�?không khớp với cấu trúc của trigger bảng"
+
+#. translator: last %s is a phrase such as "during statement block
+#. local variable initialization"
+#.
+#: pl_exec.c:1171
+#, c-format
+msgid "PL/iSQL function %s line %d %s"
+msgstr "Hàm PL/iSQL %s dòng %d %s"
+
+#. translator: last %s is a phrase such as "while storing call
+#. arguments into local variables"
+#.
+#: pl_exec.c:1182
+#, c-format
+msgid "PL/iSQL function %s %s"
+msgstr "Hàm PL/iSQL %s %s"
+
+#. translator: last %s is a plisql statement type name
+#: pl_exec.c:1190
+#, c-format
+msgid "PL/iSQL function %s line %d at %s"
+msgstr "Hàm PL/iSQL %s dòng %d tại %s"
+
+#: pl_exec.c:1196
+#, c-format
+msgid "PL/iSQL function %s"
+msgstr "Hàm PL/iSQL %s"
+
+#: pl_exec.c:1534
+msgid "during statement block local variable initialization"
+msgstr "trong khi khởi tạo biến cục b�?trong khối lệnh"
+
+#: pl_exec.c:1632
+msgid "during statement block entry"
+msgstr "trong khi vào khối lệnh"
+
+#: pl_exec.c:1664
+msgid "during statement block exit"
+msgstr "trong khi kết thúc khối lệnh"
+
+#: pl_exec.c:1702
+msgid "during exception cleanup"
+msgstr "trong khi dọn dẹp ngoại l�?
+
+#: pl_exec.c:2207 pl_exec.c:2221
+#, c-format
+msgid "argument %d is an output argument but is not writable"
+msgstr "đối s�?%d là đối s�?đầu ra nhưng không th�?ghi"
+
+#: pl_exec.c:2263
+#, c-format
+msgid "GET STACKED DIAGNOSTICS cannot be used outside an exception handler"
+msgstr ""
+"GET STACKED DIAGNOSTICS không th�?được s�?dụng bên ngoài bên ngoài một trình "
+"x�?lý ngoại l�?
+
+#: pl_exec.c:2468
+#, c-format
+msgid "case not found"
+msgstr "không tìm thấy trường hợp này"
+
+#: pl_exec.c:2469
+#, c-format
+msgid "CASE statement is missing ELSE part."
+msgstr "Câu lệnh CASE thiếu phần ELSE."
+
+#: pl_exec.c:2562
+#, c-format
+msgid "lower bound of FOR loop cannot be null"
+msgstr "giới hạn dưới của vòng lặp FOR không th�?là null"
+
+#: pl_exec.c:2578
+#, c-format
+msgid "upper bound of FOR loop cannot be null"
+msgstr "giới hạn trên của vòng lặp FOR không th�?là null"
+
+#: pl_exec.c:2596
+#, c-format
+msgid "BY value of FOR loop cannot be null"
+msgstr "Giá tr�?BY của vòng lặp FOR không th�?là null"
+
+#: pl_exec.c:2602
+#, c-format
+msgid "BY value of FOR loop must be greater than zero"
+msgstr "Giá tr�?BY của vòng lặp FOR phải lớn hơn 0"
+
+#: pl_exec.c:2736 pl_exec.c:4461
+#, c-format
+msgid "cursor \"%s\" already in use"
+msgstr "con tr�?\"%s\" đã đang được s�?dụng"
+
+#: pl_exec.c:2759 pl_exec.c:4526
+#, c-format
+msgid "arguments given for cursor without arguments"
+msgstr "đối s�?được đưa ra cho con tr�?không có đối s�?
+
+#: pl_exec.c:2778 pl_exec.c:4545
+#, c-format
+msgid "arguments required for cursor"
+msgstr "đối s�?cần thiết cho con tr�?
+
+#: pl_exec.c:2865
+#, c-format
+msgid "FOREACH expression must not be null"
+msgstr "Biểu thức FOREACH không được là null"
+
+#: pl_exec.c:2880
+#, c-format
+msgid "FOREACH expression must yield an array, not type %s"
+msgstr "Biểu thức FOREACH phải tạo ra một mảng, không phải kiểu %s"
+
+#: pl_exec.c:2897
+#, c-format
+msgid "slice dimension (%d) is out of the valid range 0..%d"
+msgstr "kích thước slice (%d) nằm ngoài phạm vi hợp l�?0..%d"
+
+#: pl_exec.c:2924
+#, c-format
+msgid "FOREACH ... SLICE loop variable must be of an array type"
+msgstr "Biến cho vòng lặp FOREACH ... SLICE phải là một kiểu mảng"
+
+#: pl_exec.c:2928
+#, c-format
+msgid "FOREACH loop variable must not be of an array type"
+msgstr "Biến vòng lặp FOREACH không được thuộc loại mảng"
+
+#: pl_exec.c:3090 pl_exec.c:3147 pl_exec.c:3322
+#, c-format
+msgid ""
+"cannot return non-composite value from function returning composite type"
+msgstr "không th�?tr�?v�?giá tr�?không-phức hợp t�?hàm tr�?v�?kiểu phức hợp"
+
+#: pl_exec.c:3186 pl_gram.y:3266
+#, c-format
+msgid "cannot use RETURN NEXT in a non-SETOF function"
+msgstr "không th�?s�?dụng RETURN NEXT trong một hàm không phải-SETOF"
+
+#: pl_exec.c:3227 pl_exec.c:3359
+#, c-format
+msgid "wrong result type supplied in RETURN NEXT"
+msgstr "kiểu kết qu�?tr�?v�?không đúng trong RETURN NEXT"
+
+#: pl_exec.c:3265 pl_exec.c:3286
+#, c-format
+msgid "wrong record type supplied in RETURN NEXT"
+msgstr "kiểu bản ghi tr�?v�?không đúng trong RETURN NEXT"
+
+#: pl_exec.c:3378
+#, c-format
+msgid "RETURN NEXT must have a parameter"
+msgstr "RETURN NEXT phải có một tham s�?
+
+#: pl_exec.c:3404 pl_gram.y:3329
+#, c-format
+msgid "cannot use RETURN QUERY in a non-SETOF function"
+msgstr "không th�?s�?dụng RETURN QUERY trong một hàm không phải-SETOF"
+
+#: pl_exec.c:3428
+msgid "structure of query does not match function result type"
+msgstr "cấu trúc của truy vấn không khớp với kiểu kết qu�?hàm"
+
+#: pl_exec.c:3512 pl_exec.c:3650
+#, c-format
+msgid "RAISE option already specified: %s"
+msgstr "Tùy chọn RAISE đã được ch�?định: %s"
+
+#: pl_exec.c:3546
+#, c-format
+msgid "RAISE without parameters cannot be used outside an exception handler"
+msgstr ""
+"RAISE không có tham s�?không th�?được s�?dụng bên ngoài một trình x�?lý "
+"ngoại l�?
+
+#: pl_exec.c:3640
+#, c-format
+msgid "RAISE statement option cannot be null"
+msgstr "Tùy chọn lệnh RAISE không th�?là null"
+
+#: pl_exec.c:3710
+#, c-format
+msgid "%s"
+msgstr "%s"
+
+#: pl_exec.c:3765
+#, c-format
+msgid "assertion failed"
+msgstr "lỗi assertion"
+
+#: pl_exec.c:3970 pl_exec.c:4117 pl_exec.c:4301
+#, c-format
+msgid "cannot COPY to/from client in PL/iSQL"
+msgstr "không th�?COPY tới/t�?client trong PL/iSQL"
+
+#: pl_exec.c:3974 pl_exec.c:4121 pl_exec.c:4305
+#, c-format
+msgid "cannot begin/end transactions in PL/iSQL"
+msgstr "không th�?begin/end transactions trong PL/iSQL"
+
+#: pl_exec.c:3975 pl_exec.c:4122 pl_exec.c:4306
+#, c-format
+msgid "Use a BEGIN block with an EXCEPTION clause instead."
+msgstr "S�?dụng một khối BEGIN với một cấu trúc EXCEPTION đ�?thay th�?"
+
+#: pl_exec.c:4144 pl_exec.c:4329
+#, c-format
+msgid "INTO used with a command that cannot return data"
+msgstr "INTO được s�?dụng với lệnh không th�?tr�?v�?d�?liệu"
+
+#: pl_exec.c:4167 pl_exec.c:4352
+#, c-format
+msgid "query returned no rows"
+msgstr "truy vấn không tr�?lại dòng nào"
+
+#: pl_exec.c:4186 pl_exec.c:4371
+#, c-format
+msgid "query returned more than one row"
+msgstr "truy vấn tr�?v�?nhiều dòng"
+
+#: pl_exec.c:4203
+#, c-format
+msgid "query has no destination for result data"
+msgstr "truy vấn không có đích cho d�?liệu kết qu�?
+
+#: pl_exec.c:4204
+#, c-format
+msgid "If you want to discard the results of a SELECT, use PERFORM instead."
+msgstr "Nếu bạn không muốn s�?dụng kết qu�?của SELECT, hãy s�?dụng PERFORM."
+
+#: pl_exec.c:4237 pl_exec.c:8212
+#, c-format
+msgid "query string argument of EXECUTE is null"
+msgstr "đối s�?chuỗi truy vấn của EXECUTE là null"
+
+#: pl_exec.c:4293
+#, c-format
+msgid "EXECUTE of SELECT ... INTO is not implemented"
+msgstr "EXECUTE của SELECT ... INTO chưa được thực thi"
+
+#: pl_exec.c:4294
+#, c-format
+msgid ""
+"You might want to use EXECUTE ... INTO or EXECUTE CREATE TABLE ... AS "
+"instead."
+msgstr ""
+"Thay vào đó có th�?bạn muốn s�?dụng EXECUTE ... INTO hoặc EXECUTE CREATE "
+"TABLE ... AS."
+
+#: pl_exec.c:4607 pl_exec.c:4695
+#, c-format
+msgid "cursor variable \"%s\" is null"
+msgstr "biến con tr�?\"%s\" là null"
+
+#: pl_exec.c:4618 pl_exec.c:4706
+#, c-format
+msgid "cursor \"%s\" does not exist"
+msgstr "con tr�?\"%s\" không tồn tại"
+
+#: pl_exec.c:4631
+#, c-format
+msgid "relative or absolute cursor position is null"
+msgstr "v�?trí con tr�?tương đối hoặc tuyệt đối là null"
+
+#: pl_exec.c:4881 pl_exec.c:4976
+#, c-format
+msgid "null value cannot be assigned to variable \"%s\" declared NOT NULL"
+msgstr "giá tr�?null không th�?được gán cho biến \"%s\" được khai báo NOT NULL"
+
+#: pl_exec.c:4957
+#, c-format
+msgid "cannot assign non-composite value to a row variable"
+msgstr "không th�?gán giá tr�?không-phức hợp cho biến dòng"
+
+#: pl_exec.c:4989
+#, c-format
+msgid "cannot assign non-composite value to a record variable"
+msgstr "không th�?gán giá tr�?không phải-phức hợp cho biến bản ghi"
+
+#: pl_exec.c:5040
+#, c-format
+msgid "cannot assign to system column \"%s\""
+msgstr "không th�?gán cho cột h�?thống \"%s\""
+
+#: pl_exec.c:5104
+#, c-format
+msgid "number of array dimensions (%d) exceeds the maximum allowed (%d)"
+msgstr "s�?lượng chiều của mảng (%d) vượt quá s�?lượng tối đa cho phép (%d)"
+
+#: pl_exec.c:5136
+#, c-format
+msgid "subscripted object is not an array"
+msgstr "đối tượng ch�?s�?không phải là một mảng"
+
+#: pl_exec.c:5174
+#, c-format
+msgid "array subscript in assignment must not be null"
+msgstr "ch�?s�?mảng s�?dụng trong gán không th�?là null"
+
+#: pl_exec.c:5681
+#, c-format
+msgid "query \"%s\" did not return data"
+msgstr "truy vấn \"%s\" không tr�?v�?d�?liệu"
+
+#: pl_exec.c:5689
+#, c-format
+msgid "query \"%s\" returned %d column"
+msgid_plural "query \"%s\" returned %d columns"
+msgstr[0] "truy vấn \"%s\" tr�?lại %d cột"
+
+#: pl_exec.c:5717
+#, c-format
+msgid "query \"%s\" returned more than one row"
+msgstr "truy vấn \"%s\" đã tr�?lại nhiều hàng"
+
+#: pl_exec.c:5780
+#, c-format
+msgid "query \"%s\" is not a SELECT"
+msgstr "truy vấn \"%s\" không phải là một SELECT"
+
+#: pl_exec.c:6505 pl_exec.c:6545 pl_exec.c:6585
+#, c-format
+msgid ""
+"type of parameter %d (%s) does not match that when preparing the plan (%s)"
+msgstr "kiểu tham s�?%d (%s) không khớp với thông s�?khi chuẩn b�?plan (%s)"
+
+#: pl_exec.c:7356
+#, c-format
+msgid "record \"%s\" is not assigned yet"
+msgstr "bản ghi \"%s\" chưa được gán"
+
+#: pl_exec.c:7357
+#, c-format
+msgid "The tuple structure of a not-yet-assigned record is indeterminate."
+msgstr "Cấu trúc tuple của một bản ghi chưa được gán là không xác định."
+
+#: pl_funcs.c:239
+msgid "statement block"
+msgstr "khối câu lệnh"
+
+#: pl_funcs.c:241
+msgid "assignment"
+msgstr "gán"
+
+#: pl_funcs.c:251
+msgid "FOR with integer loop variable"
+msgstr "FOR với biến s�?nguyên vòng lặp"
+
+#: pl_funcs.c:253
+msgid "FOR over SELECT rows"
+msgstr "FOR trên các dòng SELECT"
+
+#: pl_funcs.c:255
+msgid "FOR over cursor"
+msgstr "FOR trên con tr�?
+
+#: pl_funcs.c:257
+msgid "FOREACH over array"
+msgstr "FOREACH trên mảng"
+
+#: pl_funcs.c:271
+msgid "SQL statement"
+msgstr "Câu lệnh SQL"
+
+#: pl_funcs.c:275
+msgid "FOR over EXECUTE statement"
+msgstr "FOR trên câu lệnh EXECUTE"
+
+#: pl_gram.y:485
+#, c-format
+msgid "block label must be placed before DECLARE, not after"
+msgstr "nhãn khối phải được đặt trước DECLARE, không phải sau"
+
+#: pl_gram.y:505
+#, c-format
+msgid "collations are not supported by type %s"
+msgstr "collation không được h�?tr�?bởi kiểu %s"
+
+#: pl_gram.y:524
+#, c-format
+msgid "variable \"%s\" must have a default value, since it's declared NOT NULL"
+msgstr "biến \"%s\" phải có giá tr�?mặc định, vì nó được khai báo là NOT NULL"
+
+#: pl_gram.y:669 pl_gram.y:684 pl_gram.y:710
+#, c-format
+msgid "variable \"%s\" does not exist"
+msgstr "biến \"%s\" không tồn tại"
+
+#: pl_gram.y:728 pl_gram.y:756
+msgid "duplicate declaration"
+msgstr "khai báo trùng lặp"
+
+#: pl_gram.y:739 pl_gram.y:767
+#, c-format
+msgid "variable \"%s\" shadows a previously defined variable"
+msgstr "biến \"%s\" làm cho một biến được định nghĩa trước đó không kh�?th�?
+
+#: pl_gram.y:983
+#, c-format
+msgid "diagnostics item %s is not allowed in GET STACKED DIAGNOSTICS"
+msgstr "diagnostics mục %s không được phép trong GET STACKED DIAGNOSTICS"
+
+#: pl_gram.y:1001
+#, c-format
+msgid "diagnostics item %s is not allowed in GET CURRENT DIAGNOSTICS"
+msgstr "diagnostics mục %s không được cho phép trong GET CURRENT DIAGNOSTICS"
+
+#: pl_gram.y:1099
+msgid "unrecognized GET DIAGNOSTICS item"
+msgstr "không nhận ra mục GET DIAGNOSTICS"
+
+#: pl_gram.y:1109 pl_gram.y:3508
+#, c-format
+msgid "\"%s\" is not a scalar variable"
+msgstr "\"%s\" không phải là biến vô hướng"
+
+#: pl_gram.y:1357 pl_gram.y:1550
+#, c-format
+msgid ""
+"loop variable of loop over rows must be a record variable or list of scalar "
+"variables"
+msgstr ""
+"vòng lặp của vòng lặp trên các dòng phải là một biến bản ghi hoặc danh sách "
+"các biến vô hướng"
+
+#: pl_gram.y:1391
+#, c-format
+msgid "cursor FOR loop must have only one target variable"
+msgstr "vòng lặp FOR s�?dụng con tr�?ch�?có một biến đích"
+
+#: pl_gram.y:1398
+#, c-format
+msgid "cursor FOR loop must use a bound cursor variable"
+msgstr "vòng lặp FOR s�?dụng con tr�?phải s�?dụng một biến con tr�?
+
+#: pl_gram.y:1485
+#, c-format
+msgid "integer FOR loop must have only one target variable"
+msgstr "vòng lặp FOR s�?dụng s�?nguyên ch�?được phép có một biến đích"
+
+#: pl_gram.y:1521
+#, c-format
+msgid "cannot specify REVERSE in query FOR loop"
+msgstr "không th�?ch�?định REVERSE trong vòng lặp truy vấn FOR"
+
+#: pl_gram.y:1652
+#, c-format
+msgid "loop variable of FOREACH must be a known variable or list of variables"
+msgstr "biến vòng lặp của FOREACH phải là biến được biết hoặc danh sách biến"
+
+#: pl_gram.y:1693
+#, c-format
+msgid ""
+"there is no label \"%s\" attached to any block or loop enclosing this "
+"statement"
+msgstr ""
+"không có nhãn \"%s\" được đính kèm với bất k�?khối hoặc vòng lặp nào kèm "
+"theo câu lệnh này"
+
+#: pl_gram.y:1701
+#, c-format
+msgid "block label \"%s\" cannot be used in CONTINUE"
+msgstr "không th�?s�?dụng nhãn khối \"%s\" trong CONTINUE"
+
+#: pl_gram.y:1716
+#, c-format
+msgid "EXIT cannot be used outside a loop, unless it has a label"
+msgstr ""
+"EXIT không th�?được s�?dụng bên ngoài một vòng lặp, tr�?khi nó có một nhãn"
+
+#: pl_gram.y:1717
+#, c-format
+msgid "CONTINUE cannot be used outside a loop"
+msgstr "Không th�?s�?dụng CONTINUE bên ngoài vòng lặp"
+
+#: pl_gram.y:1741 pl_gram.y:1778 pl_gram.y:1826 pl_gram.y:2958 pl_gram.y:3041
+#: pl_gram.y:3152 pl_gram.y:3907
+msgid "unexpected end of function definition"
+msgstr "định nghĩa kết thúc hàm không mong đợi"
+
+#: pl_gram.y:1846 pl_gram.y:1870 pl_gram.y:1886 pl_gram.y:1892 pl_gram.y:2009
+#: pl_gram.y:2017 pl_gram.y:2031 pl_gram.y:2125 pl_gram.y:2360 pl_gram.y:2454
+#: pl_gram.y:2612 pl_gram.y:3749 pl_gram.y:3810 pl_gram.y:3888
+msgid "syntax error"
+msgstr "lỗi cú pháp"
+
+#: pl_gram.y:1874 pl_gram.y:1876 pl_gram.y:2364 pl_gram.y:2366
+msgid "invalid SQLSTATE code"
+msgstr "mã SQLSTATE không hợp l�?
+
+#: pl_gram.y:2073
+msgid "syntax error, expected \"FOR\""
+msgstr "lỗi cú pháp, k�?vọng \"FOR\""
+
+#: pl_gram.y:2134
+#, c-format
+msgid "FETCH statement cannot return multiple rows"
+msgstr "Câu lệnh FETCH không th�?tr�?v�?nhiều hàng"
+
+#: pl_gram.y:2244
+#, c-format
+msgid "cursor variable must be a simple variable"
+msgstr "biến con tr�?phải là một biến đơn giản"
+
+#: pl_gram.y:2250
+#, c-format
+msgid "variable \"%s\" must be of type cursor or refcursor"
+msgstr "biến \"%s\" phải là kiểu con tr�?hoặc refcursor"
+
+#: pl_gram.y:2583 pl_gram.y:2594
+#, c-format
+msgid "\"%s\" is not a known variable"
+msgstr "\"%s\" không phải là một biến"
+
+#: pl_gram.y:2698 pl_gram.y:2708 pl_gram.y:2863
+msgid "mismatched parentheses"
+msgstr "dấu ngoặc đơn không khớp"
+
+#: pl_gram.y:2712
+#, c-format
+msgid "missing \"%s\" at end of SQL expression"
+msgstr "thiếu \"%s\" �?cuối biểu thức SQL"
+
+#: pl_gram.y:2718
+#, c-format
+msgid "missing \"%s\" at end of SQL statement"
+msgstr "thiếu \"%s\" �?cuối câu lệnh SQL"
+
+#: pl_gram.y:2735
+msgid "missing expression"
+msgstr "thiếu biểu thức"
+
+#: pl_gram.y:2737
+msgid "missing SQL statement"
+msgstr "thiếu câu lệnh SQL"
+
+#: pl_gram.y:2865
+msgid "incomplete data type declaration"
+msgstr "khai báo kiểu d�?liệu không đầy đ�?
+
+#: pl_gram.y:2888
+msgid "missing data type declaration"
+msgstr "thiếu khai báo kiểu d�?liệu"
+
+#: pl_gram.y:2966
+msgid "INTO specified more than once"
+msgstr "INTO được ch�?định nhiều lần"
+
+#: pl_gram.y:3133
+msgid "expected FROM or IN"
+msgstr "k�?vọng FROM hoặc IN"
+
+#: pl_gram.y:3193
+#, c-format
+msgid "RETURN cannot have a parameter in function returning set"
+msgstr "RETURN không th�?có tham s�?trong tập hợp giá tr�?tr�?v�?của hàm"
+
+#: pl_gram.y:3194
+#, c-format
+msgid "Use RETURN NEXT or RETURN QUERY."
+msgstr "s�?dụng RETURN NEXT hay RETURN QUERY."
+
+#: pl_gram.y:3204
+#, c-format
+msgid "RETURN cannot have a parameter in a procedure"
+msgstr "RETURN không th�?có tham s�?trong một th�?tục"
+
+#: pl_gram.y:3209
+#, c-format
+msgid "RETURN cannot have a parameter in function returning void"
+msgstr "RETURN không th�?có tham s�?trong hàm tr�?v�?void"
+
+#: pl_gram.y:3218
+#, c-format
+msgid "RETURN cannot have a parameter in function with OUT parameters"
+msgstr "RETURN không th�?có tham s�?trong hàm với tham s�?OUT"
+
+#: pl_gram.y:3280
+#, c-format
+msgid "RETURN NEXT cannot have a parameter in function with OUT parameters"
+msgstr "RETURN NEXT không th�?có tham s�?trong hàm với tham s�?OUT"
+
+#: pl_gram.y:3387
+#, c-format
+msgid "variable \"%s\" is declared CONSTANT"
+msgstr "biến \"%s\" được khai báo CONSTANT"
+
+#: pl_gram.y:3450
+#, c-format
+msgid "record variable cannot be part of multiple-item INTO list"
+msgstr "biến bản ghi không th�?là một phần của danh sách INTO nhiều mục"
+
+#: pl_gram.y:3496
+#, c-format
+msgid "too many INTO variables specified"
+msgstr "quá nhiều biến INTO được ch�?định"
+
+#: pl_gram.y:3702
+#, c-format
+msgid "end label \"%s\" specified for unlabelled block"
+msgstr "nhãn kết thúc \"%s\" được ch�?định cho khối không được gắn nhãn"
+
+#: pl_gram.y:3709
+#, c-format
+msgid "end label \"%s\" differs from block's label \"%s\""
+msgstr "nhãn kết thúc \"%s\" khác với nhãn của block \"%s\""
+
+#: pl_gram.y:3744
+#, c-format
+msgid "cursor \"%s\" has no arguments"
+msgstr "con tr�?\"%s\" không có đối s�?
+
+#: pl_gram.y:3758
+#, c-format
+msgid "cursor \"%s\" has arguments"
+msgstr "con tr�?\"%s\" có đối s�?
+
+#: pl_gram.y:3800
+#, c-format
+msgid "cursor \"%s\" has no argument named \"%s\""
+msgstr "con tr�?\"%s\" không có đối s�?tên là \"%s\""
+
+#: pl_gram.y:3820
+#, c-format
+msgid "value for parameter \"%s\" of cursor \"%s\" specified more than once"
+msgstr "giá tr�?cho tham s�?\"%s\" của con tr�?\"%s\" được ch�?định nhiều lần"
+
+#: pl_gram.y:3845
+#, c-format
+msgid "not enough arguments for cursor \"%s\""
+msgstr "không đ�?đối s�?cho con tr�?\"%s\""
+
+#: pl_gram.y:3852
+#, c-format
+msgid "too many arguments for cursor \"%s\""
+msgstr "quá nhiều đối s�?cho con tr�?\"%s\""
+
+#: pl_gram.y:3939
+msgid "unrecognized RAISE statement option"
+msgstr "không th�?xác định tùy chọn cho lệnh RAISE"
+
+#: pl_gram.y:3943
+msgid "syntax error, expected \"=\""
+msgstr "lỗi cú pháp, k�?vọng \"=\""
+
+#: pl_gram.y:3984
+#, c-format
+msgid "too many parameters specified for RAISE"
+msgstr "quá nhiều thông s�?được ch�?định cho RAISE"
+
+#: pl_gram.y:3988
+#, c-format
+msgid "too few parameters specified for RAISE"
+msgstr "quá ít thông s�?được ch�?định cho RAISE"
+
+#: pl_handler.c:154
+msgid ""
+"Sets handling of conflicts between PL/iSQL variable names and table column "
+"names."
+msgstr "Đặt x�?lý xung đột giữa tên biến PL/iSQL và tên cột bảng."
+
+#: pl_handler.c:163
+msgid ""
+"Print information about parameters in the DETAIL part of the error messages "
+"generated on INTO ... STRICT failures."
+msgstr ""
+"Hiển th�?thông tin v�?các tham s�?trong phần DETAIL của các thông báo lỗi "
+"được tạo ra khi INTO ... STRICT lỗi."
+
+#: pl_handler.c:171
+msgid "Perform checks given in ASSERT statements."
+msgstr "Thực hiện các kiểm tra được đưa ra trong các câu lệnh ASSERT."
+
+#: pl_handler.c:179
+msgid "List of programming constructs that should produce a warning."
+msgstr "Danh sách các cấu trúc lập trình s�?tạo ra một cảnh báo."
+
+#: pl_handler.c:189
+msgid "List of programming constructs that should produce an error."
+msgstr "Danh sách các cấu trúc lập trình s�?tạo ra lỗi."
+
+#. translator: %s is typically the translation of "syntax error"
+#: pl_scanner.c:630
+#, c-format
+msgid "%s at end of input"
+msgstr "%s tại nơi kết thúc đầu vào"
+
+#. translator: first %s is typically the translation of "syntax error"
+#: pl_scanner.c:646
+#, c-format
+msgid "%s at or near \"%s\""
+msgstr "%s tại hoặc gần\"%s\""

@@ -1,0 +1,8 @@
+# plisql extension
+comment = 'PL/iSQL procedural language'
+default_version = '1.0'
+module_pathname = '$libdir/plisql'
+relocatable = false
+schema = pg_catalog
+superuser = true
+trusted = true

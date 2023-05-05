@@ -24,6 +24,7 @@
 #include "help.h"
 #include "input.h"
 #include "mainloop.h"
+#include "oracle_fe_utils/ora_string_utils.h"	/* IvorySQL - SQL plisql */
 #include "settings.h"
 
 /*
@@ -305,6 +306,10 @@ main(int argc, char *argv[])
 		PQfinish(pset.db);
 		exit(EXIT_BADCONN);
 	}
+
+	/* IvorySQL BEGIN - SQL plisql */
+	getDbCompatibleMode(pset.db);
+	/* IvorySQL END - SQL plisql */
 
 	psql_setup_cancel_handler();
 
