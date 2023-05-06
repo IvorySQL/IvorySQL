@@ -1,0 +1,4 @@
+test_rbtree is a test module for checking the correctness of red-black
+tree operations.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_rbtree" directory.

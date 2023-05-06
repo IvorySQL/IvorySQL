@@ -1,0 +1,8 @@
+src/oracle_test/recovery/README
+
+Regression tests for recovery and replication
+=============================================
+
+This directory contains a test suite for recovery and replication.
+
+For more detailed instructions, refer to the "README" file in the "src/test/recovery" directory.
