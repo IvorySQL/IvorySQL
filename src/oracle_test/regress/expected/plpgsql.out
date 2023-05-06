@@ -1,5 +1,5 @@
 --
--- PLiSQL
+-- PLPGSQL
 --
 -- Scenario:
 --
@@ -3134,7 +3134,7 @@ begin
   select 1,2 into x, y;
   select 1,2,3 into x, y;
 end
-$$;
+$$ language plpgsql;
 ERROR:  number of source and target fields in assignment does not match
 DETAIL:  strict_multi_assignment check of extra_errors is active.
 HINT:  Make sure the query returns the exact list of columns.

@@ -11,6 +11,9 @@ ISOLATION = mxact delayed_startup ondisk_startup concurrent_ddl_dml \
 	twophase_snapshot slot_creation_error catalog_change_snapshot
 
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
+#IvorySQL:BEGIN - SQL oracle_test
+ORACLE_REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
+#IvorySQL:END - SQL oracle_test
 ISOLATION_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
 
 # Disabled because these tests require "wal_level=logical", which

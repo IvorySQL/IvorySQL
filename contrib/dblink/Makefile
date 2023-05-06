@@ -14,6 +14,10 @@ PGFILEDESC = "dblink - connect to other PostgreSQL databases"
 REGRESS = dblink
 REGRESS_OPTS = --dlpath=$(top_builddir)/src/test/regress
 
+# BEGIN - SQL oracle_test
+ORACLE_REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
+# END - SQL oracle_test
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
@@ -25,3 +29,10 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+# IvorySQL:BEGIN - SQL oracle_test
+all: ../../src/oracle_test/regress/regress$(DLSUFFIX)
+
+../../src/oracle_test/regress/regress$(DLSUFFIX): ../../src/oracle_test/regress/oraregress$(DLSUFFIX)
+	        cp $< $@
+# IvorySQL:END - SQL oracle_test

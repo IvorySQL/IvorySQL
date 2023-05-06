@@ -130,7 +130,7 @@ BEGIN
 END;
 $$;
 ERROR:  variable "x" is declared CONSTANT
-CONTEXT:  PL/pgSQL function inline_code_block line 6 at CALL
+CONTEXT:  PL/iSQL function inline_code_block line 6 at CALL
 DO
 LANGUAGE plpgsql
 $$

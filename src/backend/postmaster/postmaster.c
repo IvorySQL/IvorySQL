@@ -4512,7 +4512,6 @@ BackendInitialize(Port *port)
 			else
 				sql_raw_parser = ora_raw_parser;
 		}
-
 		else
 			port->connmode = 'u';
 	}

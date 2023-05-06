@@ -9,7 +9,10 @@ PGFILEDESC = "test_slru - test module for SLRUs"
 EXTENSION = test_slru
 DATA = test_slru--1.0.sql
 
-REGRESS_OPTS = --temp-config $(top_srcdir)/src/test/modules/test_slru/test_slru.conf
+# IvorySQL:BEGIN - SQL oracle_test
+ORACLE_REGRESS_OPTS = --temp-config $(top_srcdir)/src/oracle_test/modules/test_slru/test_slru.conf
+# IvorySQL:END - SQL oracle_test
+
 REGRESS = test_slru
 # Disabled because these tests require "shared_preload_libraries=test_slru",
 # which typical installcheck users do not have (e.g. buildfarm clients).

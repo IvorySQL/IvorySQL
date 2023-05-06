@@ -31,7 +31,10 @@ SUBDIRS = \
 	test/regress \
 	test/isolation \
 	test/perl \
-	oracle_fe_utils
+	oracle_fe_utils \
+	oracle_test/regress \
+	oracle_test/isolation \
+	oracle_test/perl
 
 ifeq ($(with_llvm), yes)
 SUBDIRS += backend/jit/llvm
@@ -63,18 +66,29 @@ uninstall-local:
 
 distprep:
 	$(MAKE) -C test/isolation $@
+#IvorySQL:BEGIN - SQL oracle_test
+	$(MAKE) -C oracle_test/isolation $@
+#IvorySQL:END - SQL oracle_test
 
 clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
 	$(MAKE) -C tools/pg_bsd_indent $@
+#IvorySQL:BEGIN - SQL oracle_test
+	$(MAKE) -C oracle_test $@
+	$(MAKE) -C oracle_test/isolation $@
+#IvorySQL:END - SQL oracle_test
 
 distclean maintainer-clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
 	$(MAKE) -C tools/pg_bsd_indent $@
+#IvorySQL:BEGIN - SQL oracle_test
+	$(MAKE) -C oracle_test $@
+	$(MAKE) -C oracle_test/isolation $@
+#IvorySQL:END - SQL oracle_test
 	rm -f Makefile.port Makefile.global
 
 
