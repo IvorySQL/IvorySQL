@@ -1,0 +1,5 @@
+test_parser is an example of a custom parser for full-text
+search.  It doesn't do anything especially useful, but can serve as
+a starting point for developing your own parser.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_parser" directory.

@@ -1,0 +1,4 @@
+test_predtest is a module for checking the correctness of the optimizer's
+predicate-proof logic, in src/backend/optimizer/util/predtest.c.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_predtest" directory.

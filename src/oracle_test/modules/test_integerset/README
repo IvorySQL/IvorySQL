@@ -1,0 +1,4 @@
+test_integerset contains unit tests for testing the integer set implementation
+in src/backend/lib/integerset.c.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_integerset" directory.

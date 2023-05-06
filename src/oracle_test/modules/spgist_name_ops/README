@@ -1,0 +1,5 @@
+spgist_name_ops implements an SP-GiST operator class that indexes
+columns of type "name", but with storage identical to that used
+by SP-GiST text_ops.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_rls_hooks" directory.

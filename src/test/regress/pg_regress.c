@@ -2317,14 +2317,16 @@ regression_main(int argc, char *argv[],
 			make_directory(buf);
 
 		/* initdb */
+		/* IvorySQL: BEGIN oracle test*/
 		snprintf(buf, sizeof(buf),
-				 "\"%s%sinitdb\" -D \"%s/data\" --no-clean --no-sync%s%s > \"%s/log/initdb.log\" 2>&1",
+				 "\"%s%sinitdb\" -D \"%s/data\" -m pg --no-clean --no-sync%s%s > \"%s/log/initdb.log\" 2>&1",
 				 bindir ? bindir : "",
 				 bindir ? "/" : "",
 				 temp_instance,
 				 debug ? " --debug" : "",
 				 nolocale ? " --no-locale" : "",
 				 outputdir);
+		/* IvorySQL: END oracle test*/
 		fflush(NULL);
 		if (system(buf))
 		{

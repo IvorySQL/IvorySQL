@@ -1,0 +1,12 @@
+src/oracle_test/ldap/README
+
+Tests for LDAP functionality
+============================
+
+This directory contains a test suite for LDAP functionality.  This
+requires a full OpenLDAP installation, including server and client
+tools, and is therefore kept separate and not run by default.  You
+might need to adjust some paths in the test file to have it find
+OpenLDAP in a place that hadn't been thought of yet.
+
+For more detailed instructions, refer to the "README" file in the "src/test/ldap" directory.
