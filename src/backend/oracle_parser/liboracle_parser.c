@@ -28,7 +28,7 @@
 #include "mb/pg_wchar.h"
 #include "funcapi.h"
 #include "oracle_parser/ora_scanner.h"
-#include "oracle_parser/ora_gramparse.h"
+#include "ora_gramparse.h"
 #include "parser/parser.h"
 #include "utils/builtins.h"
 #include "oracle_parser/ora_parser_hook.h"

@@ -46,6 +46,7 @@
 #   HEADERS_built_$(MODULE) -- as above but built first (also NOT cleaned)
 #   REGRESS -- list of regression test cases (without suffix)
 #   REGRESS_OPTS -- additional switches to pass to pg_regress
+#   ORACLE_REGRESS_OPTS -- oracle additional switches to pass to pg_regress
 #   TAP_TESTS -- switch to enable TAP tests
 #   ISOLATION -- list of isolation test cases
 #   ISOLATION_OPTS -- additional switches to pass to pg_isolation_regress
@@ -376,6 +377,9 @@ endif
 ifdef REGRESS
 # things created by various check targets
 	rm -rf $(pg_regress_clean_files)
+#IvorySQL:BEGIN - SQL oracle_test
+	rm -rf $(oracle_regress_clean_files)
+#IvorySQL:END - SQL oracle_test
 ifeq ($(PORTNAME), win)
 	rm -f regress.def
 endif
@@ -397,6 +401,9 @@ distclean maintainer-clean: clean
 ifdef REGRESS
 
 REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
+#IvorySQL:BEGIN - SQL oracle_test
+ORACLE_REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
+#IvorySQL:END - SQL oracle_test
 
 # When doing a VPATH build, must copy over the data files so that the
 # driver script can find them.  We have to use an absolute path for
@@ -417,12 +424,20 @@ $(test_files_build): $(abs_builddir)/%: $(srcdir)/%
 endif # VPATH
 endif # REGRESS
 
-.PHONY: submake
+.PHONY: submake oracle-submake
 submake:
 ifndef PGXS
 	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress$(X)
 	$(MAKE) -C $(top_builddir)/src/test/isolation all
 endif
+
+#IvorySQL:BEGIN - SQL oracle_test
+oracle-submake:
+ifndef PGXS
+	$(MAKE) -C $(top_builddir)/src/oracle_test/regress pg_regress$(X)
+	$(MAKE) -C $(top_builddir)/src/oracle_test/isolation all
+endif
+#IvorySQL:END - SQL oracle_test
 
 ifdef ISOLATION
 ISOLATION_OPTS += --dbname=$(ISOLATION_TESTDB)
@@ -441,6 +456,18 @@ endif
 ifdef TAP_TESTS
 	$(prove_installcheck)
 endif
+#IvorySQL:BEGIN - SQL oracle_test
+oracle-installcheck: oracle-submake $(REGRESS_PREP)
+ifdef REGRESS
+	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+endif
+ifdef ISOLATION
+	$(oracle_isolation_regress_installcheck) $(ISOLATION_OPTS) $(ISOLATION)
+endif
+ifdef TAP_TESTS
+	$(oracle_prove_installcheck)
+endif
+#IvorySQL:END - SQL oracle_test
 endif # NO_INSTALLCHECK
 
 # Runs independently of any installation
@@ -448,6 +475,11 @@ ifdef PGXS
 check:
 	@echo '"$(MAKE) check" is not supported.'
 	@echo 'Do "$(MAKE) install", then "$(MAKE) installcheck" instead.'
+#IvorySQL:BEGIN - SQL oracle_test
+oracle-check:
+	@echo '"$(MAKE) oracle-check" is not supported.'
+	@echo 'Do "$(MAKE) install", then "$(MAKE) oracle-installcheck" instead.'
+#IvorySQL:END - SQL oracle_test
 else
 check: submake $(REGRESS_PREP)
 ifdef REGRESS
@@ -459,10 +491,25 @@ endif
 ifdef TAP_TESTS
 	$(prove_check)
 endif
+#IvorySQL:BEGIN - SQL oracle_test
+oracle-check: oracle-submake $(REGRESS_PREP)
+ifdef REGRESS
+	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+endif
+ifdef ISOLATION
+	$(oracle_isolation_regress_check) $(ISOLATION_OPTS) $(ISOLATION)
+endif
+ifdef TAP_TESTS
+	$(oracle_prove_check)
+endif
+#IvorySQL:END - SQL oracle_test
 endif # PGXS
 
 ifndef NO_TEMP_INSTALL
 checkprep: EXTRA_INSTALL+=$(subdir)
+#IvorySQL:BEGIN - SQL oracle_test
+oracle-checkprep: EXTRA_INSTALL+=$(subdir)
+#IvorySQL:END - SQL oracle_test
 endif
 
 

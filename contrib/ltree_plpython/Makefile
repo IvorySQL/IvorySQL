@@ -36,4 +36,7 @@ SHLIB_LINK += $(python_libspec) $(python_additional_libs)
 endif
 
 REGRESS_OPTS += --load-extension=ltree
+#IvorySQL:BEGIN - SQL oracle_test
+ORACLE_REGRESS_OPTS += --load-extension=ltree
+#IvorySQL:END - SQL oracle_test
 EXTRA_INSTALL += contrib/ltree

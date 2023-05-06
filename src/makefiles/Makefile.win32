@@ -15,12 +15,18 @@ ifeq (,$(findstring conversion_procs,$(subdir)))
 ifeq (,$(findstring libpqwalreceiver,$(subdir)))
 ifeq (,$(findstring replication/pgoutput,$(subdir)))
 ifeq (,$(findstring snowball,$(subdir)))
+# IvorySQL:BEGIN - SQL oracle_test
+ifeq (,$(findstring oracle, $(subdir)))
+# IvorySQL:END - SQL oracle_test
 override CPPFLAGS+= -DBUILDING_DLL
 endif
 endif
 endif
 endif
 endif
+# IvorySQL:BEGIN - SQL oracle_test
+endif
+# IvorySQL:END - SQL oracle_test
 
 ifneq (,$(findstring src/common,$(subdir)))
 override CPPFLAGS+= -DBUILDING_DLL

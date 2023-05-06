@@ -18,6 +18,9 @@
 
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
+/* IvorySQL:BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* IvorySQL:END - SQL PARSER */
 
 /* Global variables controlling behavior of fmtId() and fmtQualifiedId() */
 extern PGDLLIMPORT int quote_all_identifiers;

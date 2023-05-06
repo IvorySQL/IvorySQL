@@ -37,7 +37,7 @@
 #include <unistd.h>
 
 #include "common/string.h"
-#include "oracle_parser/ora_gramparse.h"
+#include "ora_gramparse.h"
 #include "nodes/miscnodes.h"
 #include "parser/parser.h"		/* only needed for GUC variables */
 #include "parser/scansup.h"
@@ -66,9 +66,9 @@ fprintf_to_ereport(const char *fmt, const char *msg)
  * as such, changing their values can induce very unintuitive behavior.
  * But we shall have to live with it until we can remove these variables.
  */
-int			backslash_quote = BACKSLASH_QUOTE_SAFE_ENCODING;
-bool		escape_string_warning = true;
-bool		standard_conforming_strings = true;
+extern int			backslash_quote;
+extern bool		escape_string_warning;
+extern bool		standard_conforming_strings;
 
 /*
  * Constant data exported from this file.  This array maps from the

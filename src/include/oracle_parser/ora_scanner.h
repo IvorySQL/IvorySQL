@@ -129,7 +129,7 @@ typedef struct OraScannerCallbackState
 
 
 /* Constant data exported from oracle_parser/ora_scan.l */
-extern const uint16 OraScanKeywordTokens[];
+extern PGDLLIMPORT const uint16 OraScanKeywordTokens[];
 
 /* Entry points in oracle_parser/ora_scan.l */
 extern ora_core_yyscan_t ora_scanner_init(const char *str,

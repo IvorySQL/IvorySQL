@@ -151,6 +151,11 @@ check: test-build all
 installcheck: test-build all
 	$(prove_installcheck)
 
+# IvorySQL:BEGIN - SQL oracle_test
+oracle-installcheck: test-build all
+	$(prove_installcheck)
+# IvorySQL:END - SQL oracle_test
+
 installdirs: installdirs-lib
 	$(MKDIR_P) '$(DESTDIR)$(includedir)' '$(DESTDIR)$(includedir_internal)' '$(DESTDIR)$(datadir)'
 

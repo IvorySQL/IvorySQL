@@ -327,6 +327,7 @@ select sillyaddone(42);
 -- for now see plisql_cache test
 
 alter table mutable drop column f1;
+-- the context stack is different when debug_discard_caches
 -- is set, so suppress context output
 \set SHOW_CONTEXT never
 select sillyaddone(42);  -- fail

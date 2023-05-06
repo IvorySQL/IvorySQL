@@ -16,7 +16,7 @@
 int main(void)
 {
 	char t1[] = "abc  def  ghi  ";
-	/* 123456789012345 */
+	          /* 123456789012345 */
 	char buf[50];
 	int k;
 

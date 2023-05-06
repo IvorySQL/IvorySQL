@@ -50,7 +50,7 @@
 #include "catalog/pg_trigger.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
-#include "oracle_parser/ora_gramparse.h"
+#include "ora_gramparse.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parser.h"

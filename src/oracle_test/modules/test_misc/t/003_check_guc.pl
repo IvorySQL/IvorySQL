@@ -45,6 +45,7 @@ my @gucs_in_file;
 my $num_tests = 0;
 open(my $contents, '<', $sample_file)
   || die "Could not open $sample_file: $!";
+
 while (my $line = <$contents>)
 {
 	# Check if this line matches a GUC parameter:
@@ -52,6 +53,7 @@ while (my $line = <$contents>)
 	# file.
 	# - Valid configuration options are followed immediately by " = ",
 	# with one space before and after the equal sign.
+
 	if ($line =~ m/^#?([_[:alpha:]]+) = .*/)
 	{
 		# Lower-case conversion matters for some of the GUCs.
@@ -66,9 +68,44 @@ while (my $line = <$contents>)
 		# follow-up tests.
 		push @gucs_in_file, $param_name;
 	}
+
 }
 
 close $contents;
+
+my $ivory_sample_file = "$share_dir/ivorysql.conf.sample";
+
+# Read the sample file line-by-line, checking its contents to build a list
+# of everything known as a GUC.
+open(my $ivory_contents, '<', $ivory_sample_file)
+  || die "Could not open $sample_file: $!";
+
+while (my $line = <$ivory_contents>)
+{
+	# Check if this line matches a GUC parameter:
+	# - Each parameter is preceded by "#", but not "# " in the sample
+	# file.
+	# - Valid configuration options are followed immediately by " = ",
+	# with one space before and after the equal sign.
+
+	if ($line =~ m/^#?([_[:alpha:].[:alpha:]]+) = .*/)
+	{
+		# Lower-case conversion matters for some of the GUCs.
+		my $param_name = lc($1);
+
+		# Ignore some exceptions.
+		next if $param_name eq "include";
+		next if $param_name eq "include_dir";
+		next if $param_name eq "include_if_exists";
+
+		# Update the list of GUCs found in the sample file, for the
+		# follow-up tests.
+		push @gucs_in_file, $param_name;
+	}
+
+}
+
+close $ivory_contents;
 
 # Cross-check that all the GUCs found in the sample file match the ones
 # fetched above.  This maps the arrays to a hash, making the creation of
