@@ -17,6 +17,9 @@
 #include "fe_utils/query_utils.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* IvorySQL:END - SQL src_bin */
 
 
 static void cluster_one_database(const ConnParams *cparams, const char *table,
@@ -196,6 +199,9 @@ cluster_one_database(const ConnParams *cparams, const char *table,
 	PGconn	   *conn;
 
 	conn = connectDatabase(cparams, progname, echo, false, false);
+	/* IvorySQL:BEGIN - SQL src_bin */
+	getDbCompatibleMode(conn);
+	/* IvorySQL:END - SQL src_bin */
 
 	initPQExpBuffer(&sql);
 

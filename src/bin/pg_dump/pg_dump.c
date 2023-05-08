@@ -63,10 +63,16 @@
 #include "getopt_long.h"
 #include "libpq/libpq-fs.h"
 #include "parallel.h"
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "pg_backup_archiver.h"
+/* IvorySQL:END - SQL src_bin */
 #include "pg_backup_db.h"
 #include "pg_backup_utils.h"
 #include "pg_dump.h"
 #include "storage/block.h"
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* IvorySQL:END - SQL src_bin */
 
 typedef struct
 {
@@ -803,6 +809,9 @@ main(int argc, char **argv)
 	 * death.
 	 */
 	ConnectDatabase(fout, &dopt.cparams, false);
+	/* IvorySQL:BEGIN - SQL src_bin */
+	getDbCompatibleMode(((ArchiveHandle *) fout)->connection);
+	/* IvorySQL:END - SQL src_bin */
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
 
 	/*

@@ -24,6 +24,10 @@
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
 
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* IvorySQL:END - SQL src_bin */
+
 typedef enum ReindexType
 {
 	REINDEX_DATABASE,
@@ -330,6 +334,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "tablespace", "14");
 	}
+
+	/* IvorySQL:BEGIN - SQL src_bin */
+	getDbCompatibleMode(conn);
+	/* IvorySQL:END - SQL src_bin */
 
 	if (!parallel)
 	{

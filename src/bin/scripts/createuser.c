@@ -20,6 +20,9 @@
 #include "fe_utils/option_utils.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* IvorySQL:END - SQL src_bin */
 
 
 static void help(const char *progname);
@@ -290,6 +293,10 @@ main(int argc, char *argv[])
 	cparams.override_dbname = NULL;
 
 	conn = connectMaintenanceDatabase(&cparams, progname, echo);
+	/* IvorySQL:BEGIN - SQL src_bin */
+	getDbCompatibleMode(conn);
+	/* IvorySQL:END - SQL src_bin */
+
 
 	initPQExpBuffer(&sql);
 

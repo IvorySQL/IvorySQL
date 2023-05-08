@@ -26,6 +26,9 @@
 #include "common/string.h"
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* IvorySQL:END - SQL src_bin */
 #include "getopt_long.h"
 #include "pg_backup.h"
 
@@ -484,6 +487,11 @@ main(int argc, char *argv[])
 			exit_nicely(1);
 		}
 	}
+#ifdef IvorySQL
+		/* IvorySQL:BEGIN - SQL src_bin */
+		getDbCompatibleMode(conn);
+		/* IvorySQL:END - SQL src_bin */
+#endif
 
 	/*
 	 * Get a list of database names that match the exclude patterns
