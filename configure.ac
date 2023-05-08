@@ -180,6 +180,37 @@ elif test "$default_port" -lt "1" -o "$default_port" -gt "65535"; then
   AC_MSG_ERROR([invalid --with-pgport specification: must be between 1 and 65535])
 fi
 
+# IvorySQL:BEGIN - IYHOST IYPORT
+# Default port number (--with-oraport), default 1521
+#
+AC_MSG_CHECKING([for default port number in oracle compatible mode])
+PGAC_ARG_REQ(with, oraport, [PORTNUM], [set default port number for  [1521]],
+             [default_ora_port=$withval],
+             [default_ora_port=1521])
+AC_MSG_RESULT([$default_ora_port])
+# Need both of these because some places want an integer and some a string
+AC_DEFINE_UNQUOTED(DEF_ORAPORT, ${default_ora_port},
+[Define to the default TCP port number on which the server listens and
+to which clients will try to connect.  This can be overridden at run-time,
+but it's convenient if your clients have the right default compiled in.
+(--with-oraport=PORTNUM)])
+AC_DEFINE_UNQUOTED(DEF_PGPORT_STR, "${default_ora_port}",
+                   [Define to the default TCP port number as a string constant.])
+AC_SUBST(default_ora_port)
+
+# It's worth validating port; you can get very confusing errors otherwise
+if test x"$default_ora_port" = x""; then
+  AC_MSG_ERROR([invalid --with-oraport specification: empty string])
+elif test ! x`echo "$default_ora_port" | sed -e 's/[[0-9]]*//'` = x""; then
+  AC_MSG_ERROR([invalid --with-oraport specification: must be a number])
+elif test ! x`echo "$default_ora_port" | sed -e 's/^0.//'` = x"$default_ora_port"; then
+  AC_MSG_ERROR([invalid --with-oraport specification: must not have leading 0])
+elif test "$default_ora_port" -lt "1" -o "$default_ora_port" -gt "65535"; then
+  AC_MSG_ERROR([invalid --with-oraport specification: must be between 1 and 65535])
+fi
+
+# IvorySQL:END - IYHOST IYPORT
+
 #
 # '-rpath'-like feature can be disabled
 #

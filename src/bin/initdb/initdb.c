@@ -1416,6 +1416,14 @@ setup_config(void)
 
 		snprintf(path, sizeof(path), "%s/ivorysql.conf", pg_data);
 
+		/* IvorySQL:BEGIN - IYHOST IYPORT */
+		if (DEF_ORAPORT != 1521)
+		{
+			snprintf(repltok, sizeof(repltok), "ivorysql.port = %d", DEF_ORAPORT);
+			conflines = replace_token(conflines, "#ivorysql.port = 1521", repltok);
+		}
+		/* IvorySQL:END - IYHOST IYPORT */
+
 		writefile(path, conflines);
 		if (chmod(path, pg_file_create_mode) != 0)
 		{
