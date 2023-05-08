@@ -21,6 +21,9 @@
 #include "common/string.h"
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* IvorySQL:END - SQL PARSER */
 #include "parallel.h"
 #include "pg_backup_archiver.h"
 #include "pg_backup_db.h"
@@ -91,6 +94,10 @@ ReconnectToServer(ArchiveHandle *AH, const char *dbname)
 	AH->connection = NULL;		/* dodge error check in ConnectDatabase */
 
 	ConnectDatabase((Archive *) AH, &ropt->cparams, true);
+
+	/* IvorySQL:BEGIN - SQL src_bin */
+	getDbCompatibleMode(AH->connection);
+	/* IvorySQL:END - SQL src_bin */
 
 	PQfinish(oldConn);
 }

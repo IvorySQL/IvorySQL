@@ -58,6 +58,9 @@
 #include "getopt_long.h"
 #include "pg_getopt.h"
 #include "storage/large_object.h"
+/* IvorySQL:BEGIN - SQL src_bin */
+#include "utils/ora_compatible.h"
+/* IvorySQL:END - SQL src_bin */
 
 static ControlFileData ControlFile; /* pg_control values */
 static XLogSegNo newXlogSegNo;	/* new XLOG segment # */
@@ -97,6 +100,9 @@ main(int argc, char *argv[])
 		{"pgdata", required_argument, NULL, 'D'},
 		{"epoch", required_argument, NULL, 'e'},
 		{"force", no_argument, NULL, 'f'},
+		/* IvorySQL:BEGIN - SQL src_bin */
+		{"dbmode", required_argument, NULL, 'g'},
+		/* IvorySQL:END - SQL src_bin */
 		{"next-wal-file", required_argument, NULL, 'l'},
 		{"multixact-ids", required_argument, NULL, 'm'},
 		{"dry-run", no_argument, NULL, 'n'},
@@ -117,6 +123,9 @@ main(int argc, char *argv[])
 	char	   *DataDir = NULL;
 	char	   *log_fname = NULL;
 	int			fd;
+	/* IvorySQL:BEGIN - SQL src_bin */
+	char *dbmode = "oracle";
+	/* IvorySQL:END - SQL src_bin */
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_resetwal"));
@@ -136,8 +145,9 @@ main(int argc, char *argv[])
 		}
 	}
 
-
-	while ((c = getopt_long(argc, argv, "c:D:e:fl:m:no:O:u:x:", long_options, NULL)) != -1)
+	/* IvorySQL:BEGIN - SQL src_bin */
+	while ((c = getopt_long(argc, argv, "c:D:e:fg:l:m:no:O:u:x:", long_options, NULL)) != -1)
+	/* IvorySQL:END - SQL src_bin */
 	{
 		switch (c)
 		{
@@ -289,6 +299,12 @@ main(int argc, char *argv[])
 				log_fname = pg_strdup(optarg);
 				break;
 
+			/* IvorySQL:BEGIN - SQL src_bin */
+			case 'g':
+				dbmode = pg_strdup(optarg);
+				break;
+			/* IvorySQL:END - SQL src_bin */
+
 			case 1:
 				errno = 0;
 				set_wal_segsize = strtol(optarg, &endptr, 10) * 1024 * 1024;
@@ -394,6 +410,13 @@ main(int argc, char *argv[])
 	 * Also look at existing segment files to set up newXlogSegNo
 	 */
 	FindEndOfXLOG();
+
+	/* IvorySQL:BEGIN - SQL src_bin */
+	if (pg_strcasecmp(dbmode, "oracle") == 0 || pg_strcasecmp(dbmode, "1") == 0)
+		ControlFile.dbmode = DB_ORACLE;
+	else
+		ControlFile.dbmode = DB_PG;
+	/* IvorySQL:END - SQL src_bin */
 
 	/*
 	 * If we're not going to proceed with the reset, print the current control
@@ -772,6 +795,10 @@ PrintControlValues(bool guessed)
 		   (ControlFile.float8ByVal ? _("by value") : _("by reference")));
 	printf(_("Data page checksum version:           %u\n"),
 		   ControlFile.data_checksum_version);
+	/* IvorySQL:BEGING - SQL src_bin */
+	printf(_("Database mode:                        %u\n"),
+		   ControlFile.dbmode);
+	/* IvorySQL:END - SQL src_bin */
 }
 
 
@@ -1133,6 +1160,9 @@ usage(void)
 	printf(_(" [-D, --pgdata=]DATADIR            data directory\n"));
 	printf(_("  -e, --epoch=XIDEPOCH             set next transaction ID epoch\n"));
 	printf(_("  -f, --force                      force update to be done\n"));
+	/* IvorySQL:BEGIN - SQL src_bin */
+	printf(_("  -g, --dbmode                   set database mode\n"));
+	/* IvorySQL:END - SQL src_bin */
 	printf(_("  -l, --next-wal-file=WALFILE      set minimum starting location for new WAL\n"));
 	printf(_("  -m, --multixact-ids=MXID,MXID    set next and oldest multitransaction ID\n"));
 	printf(_("  -n, --dry-run                    no update, just show what would be done\n"));
