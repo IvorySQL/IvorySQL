@@ -2,7 +2,7 @@
 #
 # Makefile for src/pl/plisql (IvorySQL's PLISQL procedural language)
 #
-# Portions Copyright (c) 2023, IvorySQL
+# Portions Copyright (c) 2023, IvorySQL Global Development Team
 #
 # src/pl/plisql/Makefile
 #
