@@ -8,7 +8,9 @@
  * Definitions that are needed outside the core parser should be in parser.h.
  *
  *
- * Portions Copyright (c) 2022, IvorySQL-2.0 Global Development Group
+ * Portions Copyright (c) 2023, IvorySQL Global Development Team
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/oracle_parser/ora_gramparse.h
  *

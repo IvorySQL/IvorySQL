@@ -1,4 +1,4 @@
-# Copyright (c) 2023, IvorySQL Global Development Group
+# Copyright (c) 2022-2023, PostgreSQL Global Development Group
 
 plisql_sources = files(
   'pl_comp.c',

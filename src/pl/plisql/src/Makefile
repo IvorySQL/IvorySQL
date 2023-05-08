@@ -2,6 +2,8 @@
 #
 # Makefile for the PL/iSQL procedural language
 #
+# Portions Copyright (c) 2023, IvorySQL Global Development Team
+#
 # src/pl/plisql/src/Makefile
 #
 # add the file for requirement "SQL PARSER"
