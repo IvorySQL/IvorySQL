@@ -201,7 +201,9 @@ sub GenerateFiles
 	my $extraver = $self->{options}->{extraver};
 	$extraver = '' unless defined $extraver;
 	my $port = $self->{options}->{"--with-pgport"} || 5432;
-
+	# IvorySQL:BEGIN -  IYHOST IYPORT
+	my $oraport = $self->{options}->{"--with-oraport"} || 1521;
+	# IvorySQL:END -  IYHOST IYPORT
 	# Every symbol in pg_config.h.in must be accounted for here.  Set
 	# to undef if the symbol should not be defined.
 	my %define = (
@@ -216,6 +218,10 @@ sub GenerateFiles
 		CONFIGURE_ARGS             => '"' . $self->GetFakeConfigure() . '"',
 		DEF_PGPORT                 => $port,
 		DEF_PGPORT_STR             => qq{"$port"},
+		# IvorySQL:BEGIN -  IYHOST IYPORT
+		DEF_ORAPORT                => $oraport,
+		DEF_ORAPORT_STR            => qq{"$oraport"},
+		# IvorySQL:END -  IYHOST IYPORT
 		DLSUFFIX                   => '".dll"',
 		ENABLE_GSS                 => $self->{options}->{gss} ? 1 : undef,
 		ENABLE_NLS                 => $self->{options}->{nls} ? 1 : undef,
