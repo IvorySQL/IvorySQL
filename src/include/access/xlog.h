@@ -258,6 +258,11 @@ extern void ReachedEndOfBackup(XLogRecPtr EndRecPtr, TimeLineID tli);
 extern void SetInstallXLogFileSegmentActive(void);
 extern bool IsInstallXLogFileSegmentActive(void);
 extern void XLogShutdownWalRcv(void);
+/* IvorySQL: BEGIN - case sensitive indentify */
+extern void SetCaseGucOption(char* path);
+extern int GetDatabaseStyleFromControl(char* path);
+extern int GetCaseSwitchModeFromControl(char* path);
+/* IvorySQL: END - case sensitive indentify */
 
 /*
  * Routines to start, stop, and get status of a base backup.

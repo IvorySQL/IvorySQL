@@ -37,6 +37,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* IvorySQL: SQL PARSER */
 #include "utils/pg_locale.h"
 #include "utils/sortsupport.h"
 #include "utils/varlena.h"
@@ -3471,6 +3472,7 @@ SplitIdentifierString(char *rawstring, char separator,
 	{
 		char	   *curname;
 		char	   *endp;
+		bool	    need_case_switch = false;	/* IvorySQL: case sensitive indentify */
 
 		if (*nextp == '"')
 		{
@@ -3489,6 +3491,7 @@ SplitIdentifierString(char *rawstring, char separator,
 			}
 			/* endp now points at the terminating quote */
 			nextp = endp + 1;
+			need_case_switch = true;	/* IvorySQL: case sensitive indentify */
 		}
 		else
 		{
@@ -3537,6 +3540,21 @@ SplitIdentifierString(char *rawstring, char separator,
 
 		/* Now safe to overwrite separator with a null */
 		*endp = '\0';
+
+		/* IvorySQL: BEGIN - case sensitive indentify */
+		/* transform the case for the identifier that is
+		 * quoted by double quotes.
+		 */
+		if (compatible_db == DB_ORACLE && enable_case_switch
+			 && identifier_case_switch == INTERCHANGE && need_case_switch)
+		{
+			char	   *new_name;
+
+			new_name = identifier_case_transform(curname, strlen(curname));
+			strncpy(curname, new_name, strlen(new_name));
+			pfree(new_name);
+		}
+		/* IvorySQL: END - case sensitive indentify */
 
 		/* Truncate name if it's overlength */
 		truncate_identifier(curname, strlen(curname), false);
@@ -3719,6 +3737,7 @@ SplitGUCList(char *rawstring, char separator,
 	{
 		char	   *curname;
 		char	   *endp;
+		bool	    need_case_switch = false;	/* IvorySQL: case sensitive indentify */
 
 		if (*nextp == '"')
 		{
@@ -3737,6 +3756,7 @@ SplitGUCList(char *rawstring, char separator,
 			}
 			/* endp now points at the terminating quote */
 			nextp = endp + 1;
+			need_case_switch = true;	/* IvorySQL: case sensitive indentify */
 		}
 		else
 		{
@@ -3767,6 +3787,21 @@ SplitGUCList(char *rawstring, char separator,
 
 		/* Now safe to overwrite separator with a null */
 		*endp = '\0';
+
+		/* IvorySQL: BEGIN - case sensitive indentify */
+		/* transform the case for the identifier that is
+		 * quoted by double quotes.
+		 */
+		if (compatible_db == DB_ORACLE && enable_case_switch
+			 && identifier_case_switch == INTERCHANGE && need_case_switch)
+		{
+			char	   *new_name;
+
+			new_name = identifier_case_transform(curname, strlen(curname));
+			strncpy(curname, new_name, strlen(new_name));
+			pfree(new_name);
+		}
+		/* IvorySQL: END - case sensitive indentify */
 
 		/*
 		 * Finished isolating current name --- add it to list

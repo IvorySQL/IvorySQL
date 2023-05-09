@@ -2322,7 +2322,7 @@ regression_main(int argc, char *argv[],
 
 		/* initdb */
 		snprintf(buf, sizeof(buf),
-				 "\"%s%sinitdb\" -D \"%s/data\"  -m oracle --no-clean --no-sync%s%s > \"%s/log/initdb.log\" 2>&1",
+				 "\"%s%sinitdb\" -D \"%s/data\"  -m oracle -C normal --no-clean --no-sync%s%s > \"%s/log/initdb.log\" 2>&1",
 				 bindir ? bindir : "",
 				 bindir ? "/" : "",
 				 temp_instance,

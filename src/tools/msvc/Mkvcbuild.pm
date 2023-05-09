@@ -119,7 +119,8 @@ sub mkvcbuild
 	  win32pread.c
 	  win32pwrite.c
 	  win32ntdll.c
-	  win32security.c win32setlocale.c win32stat.c);
+	  win32security.c win32setlocale.c win32stat.c
+	  identifier_alpha_transfor.c);  # IvorySQL: case sensitive indentify
 
 	push(@pgportfiles, 'strtof.c') if ($vsVersion < '14.00');
 

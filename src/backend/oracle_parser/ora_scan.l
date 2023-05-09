@@ -44,6 +44,10 @@
 #include "port/pg_bitutils.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
+/* IvorySQL: BEGIN - case sensitive indentify */
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+/* IvorySQL: END - case sensitive indentify */
 }
 
 %{
@@ -803,6 +807,36 @@ other			.
 					if (yyextra->literallen == 0)
 						yyerror("zero-length delimited identifier");
 					ident = litbufdup(yyscanner);
+
+					/* Convert the upper case identifier to the lower case, and the lower
+					 * case to the upper case, if the identifier is quoted by the double
+					 * quotes.
+					 */
+					/* IvorySQL: BEGIN - case sensitive indentify */
+					if (compatible_db == DB_ORACLE && enable_case_switch
+						&& identifier_case_switch != NORMAL
+						&& !identifier_case_from_pg_dump)
+					{
+						if (identifier_case_switch == LOWERCASE
+							 && is_all_upper(ident, strlen(ident)))
+						{
+							char *lowerident = ident;
+
+							ident = downcase_identifier(ident, strlen(ident), true, true);
+							pfree(lowerident);
+						}
+						else if (identifier_case_switch == INTERCHANGE)
+						{
+							char		*interident = ident;
+
+							ident = identifier_case_transform(ident, yyextra->literallen);
+
+							Assert (interident != ident);
+							pfree(interident);
+						}
+					}
+					/* IvorySQL: END - case sensitive indentify */
+
 					if (yyextra->literallen >= NAMEDATALEN)
 						truncate_identifier(ident, yyextra->literallen, true);
 					yylval->str = ident;

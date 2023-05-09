@@ -333,5 +333,9 @@ main(int argc, char *argv[])
 	printf(_("database mode:                        %u\n"),
 		   ControlFile->dbmode);
 	/* IvorySQL:END - SQL src_bin */
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	printf(_("case conversion mode:                 %u\n"),
+		   ControlFile->yh_casemode);
+	/* IvorySQL: END - case sensitive indentify */
 	return 0;
 }

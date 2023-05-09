@@ -413,9 +413,15 @@ main(int argc, char *argv[])
 
 	/* IvorySQL:BEGIN - SQL src_bin */
 	if (pg_strcasecmp(dbmode, "oracle") == 0 || pg_strcasecmp(dbmode, "1") == 0)
+	{
 		ControlFile.dbmode = DB_ORACLE;
+		ControlFile.yh_casemode = INTERCHANGE; /* IvorySQL: case sensitive indentify - reset case conversion mode */
+	}
 	else
+	{
 		ControlFile.dbmode = DB_PG;
+		ControlFile.yh_casemode = NORMAL; /* IvorySQL: case sensitive indentify - reset case conversion mode */
+	}
 	/* IvorySQL:END - SQL src_bin */
 
 	/*
@@ -799,6 +805,10 @@ PrintControlValues(bool guessed)
 	printf(_("Database mode:                        %u\n"),
 		   ControlFile.dbmode);
 	/* IvorySQL:END - SQL src_bin */
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	printf(_("case conversion mode:                 %u\n"),
+		   ControlFile.yh_casemode);
+	/* IvorySQL: END - case sensitive indentify */
 }
 
 

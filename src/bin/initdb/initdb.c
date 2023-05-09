@@ -201,6 +201,11 @@ static bool output_failed = false;
 static int	output_errno = 0;
 static char *pgdata_native;
 
+/* IvorySQL: BEGIN - case sensitive indentify */
+static char *switchmode = "interchange";
+static int   caseswitchmode = INTERCHANGE;
+/* IvorySQL: END - case sensitive indentify */
+
 /* defaults */
 static int	n_connections = 10;
 static int	n_buffers = 50;
@@ -1599,12 +1604,15 @@ bootstrap_template1(void)
 	snprintf(cmd, sizeof(cmd),
 #ifdef IvorySQL
 			 /* IvorySQL:BEGIN - SQL oracle_mode */
-			 "\"%s\" --boot -X %d %s %s %s %s %s",
+			 "\"%s\" --boot -C identifier_case_switch=%d -X %d %s %s %s %s %s", /* IvorySQL: case sensitive indentify */
 #else
 			 "\"%s\" --boot -X %d %s %s %s %s",
 			 /* IvorySQL:END - SQL oracle_mode */
 #endif
 			 backend_exec,
+#ifdef IvorySQL
+			 caseswitchmode,	/* IvorySQL: case sensitive indentify: add guc "identifier_case_switch" */
+#endif
 			 wal_segment_size_mb * (1024 * 1024),
 #ifdef IvorySQL
 			 /* IvorySQL:BEGIN - SQL oracle_mode */
@@ -1750,6 +1758,10 @@ setup_ora_sys_schema(FILE *cmdfd)
 	char	  **ora_sys_schema_setup;
 
 	ora_sys_schema_setup = readfile(ora_sys_schema_file);
+
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	PG_CMD_PUTS("set identifier_case_switch = normal;\n");
+	/* IvorySQL: END - case sensitive indentify */
 
 	for (line = ora_sys_schema_setup; *line != NULL; line++)
 	{
@@ -2619,6 +2631,7 @@ usage(const char *progname)
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
 	/* IvorySQL:BEGIN - SQL oracle_mode */
 	printf(_("	-m, --dbmode=MODE 				set database mode, default is oracle\n"));
+	printf(_("  -C, --case-conversion-mode=MODE   set case conversion mode, default is interchange\n"));
 	/* IvorySQL:END - SQL oracle_mode */
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
@@ -3305,6 +3318,7 @@ main(int argc, char *argv[])
 		{"allow-group-access", no_argument, NULL, 'g'},
 	/* IvorySQL:BEGIN - SQL oracle_mode */
 		{"dbmode", required_argument, NULL, 'm'},
+		{"case-conversion-mode", required_argument, NULL, 'C'}, /* IvorySQL: case sensitive indentify */
 	/* IvorySQL:END - SQL oracle_mode */
 		{"discard-caches", no_argument, NULL, 14},
 		{"locale-provider", required_argument, NULL, 15},
@@ -3352,7 +3366,8 @@ main(int argc, char *argv[])
 	/* process command-line options */
 
 	/* IvorySQL:BEGIN - SQL oracle_mode */
-	while ((c = getopt_long(argc, argv, "A:c:dD:E:gkL:m:nNsST:U:WX:",
+	/* IvorySQL: case sensitive indentify: add "-C" option for specifing case conversion mode */
+	while ((c = getopt_long(argc, argv, "A:c:C:dD:E:gkL:m:nNsST:U:WX:",
 							long_options, &option_index)) != -1)
 	/* IvorySQL:END - SQL oracle_mode */
 	{
@@ -3395,6 +3410,28 @@ main(int argc, char *argv[])
 					pfree(buf);
 				}
 				break;
+			/* IvorySQL: BEGIN - case sensitive indentify */
+			case 'C':
+				switchmode = pg_strdup(optarg);
+
+				if(0 == strcmp(switchmode,"normal")||0 == strcmp(switchmode,"0"))
+				{
+					caseswitchmode = NORMAL; /* Case conversion is prohibited. */
+				}
+				else if (0 == strcmp(switchmode,"interchange")||0 == strcmp(switchmode,"1"))
+				{
+					caseswitchmode = INTERCHANGE; /* Uppercase and lowercase characters convert to each other. */
+				}
+				else if (0 == strcmp(switchmode,"lowercase")||0 == strcmp(switchmode,"2"))
+				{
+					caseswitchmode = LOWERCASE; /* The characters are all converted to lowercase. */
+				}
+				else
+				{
+					printf(_("UnKnow case conversion mode, use the default interchange.\n"));
+				}
+				break;
+			/* IvorySQL: END - case sensitive indentify */
 			case 'D':
 				pg_data = pg_strdup(optarg);
 				break;
@@ -3598,6 +3635,17 @@ main(int argc, char *argv[])
 
 	if (strncmp(username, "pg_", 3) == 0)
 		pg_fatal("superuser name \"%s\" is disallowed; role names cannot begin with \"pg_\"", username);
+
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	/* Oracle compatibility username transfor upper to lower */
+	if (database_mode == DB_ORACLE && username != NULL
+		&& is_all_upper(username, strlen(username)))
+	{
+		char *lowerusername = username;
+		username = down_character(username, strlen(username));
+		free(lowerusername);
+	}
+	/* IvorySQL: END - case sensitive indentify */
 
 	printf(_("The files belonging to this database system will be owned "
 			 "by user \"%s\".\n"

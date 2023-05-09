@@ -56,6 +56,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* IvorSQL: SQL PARSER */
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -3822,7 +3823,8 @@ recomputeNamespacePath(void)
 		char	   *curname = (char *) lfirst(l);
 		Oid			namespaceId;
 
-		if (strcmp(curname, "$user") == 0)
+		if ((compatible_db == DB_ORACLE && enable_case_switch && identifier_case_switch != NORMAL) ?	/* IvorSQL: case sensitive indentify */
+			pg_strcasecmp(curname, "$user") == 0 : strcmp(curname, "$user") == 0)
 		{
 			/* $user --- substitute namespace matching user name, if any */
 			HeapTuple	tuple;

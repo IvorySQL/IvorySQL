@@ -105,6 +105,7 @@
 #include "nodes/queryjumble.h"
 #include "pg_getopt.h"
 #include "pgstat.h"
+#include "parser/scansup.h"
 #include "port/pg_bswap.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/auxprocess.h"
@@ -878,6 +879,11 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!SelectConfigFiles(userDoption, progname))
 		ExitPostmaster(2);
+
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	/* set database_style here */
+	SetCaseGucOption(userDoption);
+	/* IvorySQL: END - case sensitive indentify */
 
 	if (output_config_variable != NULL)
 	{
@@ -2290,9 +2296,115 @@ retry1:
 			valptr = buf + valoffset;
 
 			if (strcmp(nameptr, "database") == 0)
-				port->database_name = pstrdup(valptr);
+			{
+				/* IvorySQL: BEGIN - case sensitive indentify */
+				/* Oracle compatibility tranfor upper to lower */
+				char *database_name = pstrdup(valptr);
+
+				if (DB_ORACLE == compatible_db && database_name != NULL)
+				{
+					if (identifier_case_switch == LOWERCASE &&
+						is_all_upper(database_name, strlen(database_name)))
+					{
+						port->database_name = down_character(database_name, strlen(database_name));
+						pfree(database_name);
+					}
+					else if (identifier_case_switch == INTERCHANGE)
+					{
+						if (database_name[0] == '"')
+						{
+							const char *cp;
+							int   len;
+							char  *result;
+							char  *casename;
+
+							/* delete the double quote */
+							casename = identifier_case_transform(database_name, strlen(database_name));
+							result = (char *) palloc(strlen(database_name) + 1);
+							len = 0;
+							for (cp = casename; *cp != '\0'; cp++)
+							{
+								if (!(*cp == '"'))
+								{
+									result[len++] = *cp;
+								}
+							}
+							result[len] = '\0';
+
+							port->database_name = result;
+							pfree(database_name);
+							pfree(casename);
+						}
+						else if (is_all_upper(database_name, strlen(database_name)))
+						{
+							port->database_name = down_character(database_name, strlen(database_name));
+							pfree(database_name);
+						}
+						else
+							port->database_name = database_name;
+					}
+					else
+						port->database_name = database_name;
+				}
+				else
+					port->database_name = database_name;
+				/* IvorySQL: END - case sensitive indentify */
+			}
 			else if (strcmp(nameptr, "user") == 0)
-				port->user_name = pstrdup(valptr);
+			{
+				/* IvorySQL: BEGIN - case sensitive indentify */
+				/* Oracle compatibility tranfor upper to lower */
+				char *user_name = pstrdup(valptr);
+
+				if (DB_ORACLE == compatible_db && user_name != NULL)
+				{
+					if (identifier_case_switch == LOWERCASE &&
+						is_all_upper(user_name, strlen(user_name)))
+					{
+						port->user_name = down_character(user_name, strlen(user_name));
+						pfree(user_name);
+					}
+					else if (identifier_case_switch == INTERCHANGE)
+					{
+						if (user_name[0] == '"')
+						{
+							char  *casename;
+							const char *cp;
+							int	  len;
+							char  *result;
+
+							/* delete the double quote */
+							casename = identifier_case_transform(user_name, strlen(user_name));
+							result = (char *) palloc(strlen(user_name) + 1);
+							len = 0;
+							for (cp = casename; *cp != '\0'; cp++)
+							{
+								if (!(*cp == '"'))
+								{
+									result[len++] = *cp;
+								}
+							}
+							result[len] = '\0';
+
+							port->user_name = result;
+							pfree(user_name);
+							pfree(casename);
+						}
+						else if (is_all_upper(user_name, strlen(user_name)))
+						{
+							port->user_name = down_character(user_name, strlen(user_name));
+							pfree(user_name);
+						}
+						else
+							port->user_name = user_name;
+					}
+					else
+						port->user_name = user_name;
+				}
+				else
+					port->user_name = user_name;
+				/* IvorySQL: END - case sensitive indentify */
+			}
 			else if (strcmp(nameptr, "options") == 0)
 				port->cmdline_options = pstrdup(valptr);
 			else if (strcmp(nameptr, "replication") == 0)

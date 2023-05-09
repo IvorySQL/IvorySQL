@@ -3147,6 +3147,10 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	else
 		ahprintf(AH, "SET row_security = off;\n");
 
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	ahprintf(AH, "SET identifier_case_switch = normal;\n");
+	/* IvorySQL: END - case sensitive indentify */
+
 	ahprintf(AH, "\n");
 }
 

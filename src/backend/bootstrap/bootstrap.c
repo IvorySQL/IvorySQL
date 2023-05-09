@@ -230,7 +230,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 
 	/* IvorySQL:BEGIN - SQL oracle_mode */
 	/* add parameter "-y" for sql parser mode option */
-	while ((flag = getopt(argc, argv, "B:c:d:D:Fkr:X:-:y:")) != -1)
+	while ((flag = getopt(argc, argv, "B:C:c:d:D:Fkr:X:-:y:")) != -1)
 	/* IvorySQL:END - SQL oracle_mode */
 	{
 		switch (flag)
@@ -238,6 +238,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 			case 'B':
 				SetConfigOption("shared_buffers", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+			case 'C':
 			case 'c':
 			case '-':
 				{

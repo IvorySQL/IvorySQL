@@ -28,6 +28,7 @@
 
 #include "plisql.h"
 
+#include "utils/ora_compatible.h"	/* IvorySQL: case sensitive indentify */
 
 /* Location tracking support --- simpler than bison's default */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \

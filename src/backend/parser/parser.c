@@ -42,6 +42,12 @@ static char *str_udeescape(const char *str, char escape,
 List *
 raw_parser(const char *str, RawParseMode mode)
 {
+	if (sql_raw_parser == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYSTEM_ERROR),
+				 errmsg("liboracle_parser not found!"),
+				 errhint("You must load liboracle_parser to use oracle parser.")));
+
 	return (*sql_raw_parser)(str, mode);
 }
 
