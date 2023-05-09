@@ -813,6 +813,9 @@ main(int argc, char **argv)
 	getDbCompatibleMode(((ArchiveHandle *) fout)->connection);
 	/* IvorySQL:END - SQL src_bin */
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	ExecuteSqlStatement(fout, "set identifier_case_switch = normal;");
+	/* IvorySQL: END - case sensitive indentify */
 
 	/*
 	 * On hot standbys, never try to dump unlogged table data, since it will

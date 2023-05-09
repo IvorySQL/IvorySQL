@@ -8,6 +8,9 @@
 # this limits the number of connections needed to run the tests.
 # ----------
 
+# support case sensitive conversion
+test: case_conversion
+
 # required setup steps
 test: test_setup
 

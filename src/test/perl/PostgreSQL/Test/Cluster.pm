@@ -522,7 +522,7 @@ sub init
 	mkdir $self->archive_dir;
 
 	PostgreSQL::Test::Utils::system_or_bail('initdb', '-D', $pgdata, '-A',
-		'trust', '-N', @{ $params{extra} });
+		'trust', '-N', '-m', 'pg', '-C', 'normal', @{ $params{extra} });
 	PostgreSQL::Test::Utils::system_or_bail($ENV{PG_REGRESS},
 		'--config-auth', $pgdata, @{ $params{auth_extra} });
 

@@ -102,7 +102,15 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 				 && DB_ORACLE == database_mode)
 			{
 				if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "oracle"))
+				{
+					if (ora_raw_parser == NULL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYSTEM_ERROR),
+								 errmsg("liboracle_parser not found!"),
+								 errhint("You must load liboracle_parser to use oracle parser.")));
+
 					sql_raw_parser = ora_raw_parser;
+				}
 				else if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "pg"))
 					sql_raw_parser = standard_raw_parser;
 			}

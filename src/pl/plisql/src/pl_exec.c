@@ -50,6 +50,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* IvorySQL: case sensitive indentify */
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"

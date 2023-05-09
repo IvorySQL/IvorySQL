@@ -496,6 +496,18 @@ static const struct config_enum_entry db_parser_options[] = {
 };
 /* IvorySQL:END - SQL PARSER */
 
+/* IvorySQL: BEGIN - case sensitive indentify */
+static const struct config_enum_entry case_conversion_mode[] = {
+	{"normal", NORMAL, false},
+	{"interchange", INTERCHANGE, false},
+	{"lowercase", LOWERCASE, false},
+	{"0", NORMAL, false},
+	{"1", INTERCHANGE, false},
+	{"2", LOWERCASE, false},
+	{NULL, 0, false}
+};
+/* IvorySQL: END - case sensitive indentify */
+
 /*
  * Options for enum values stored in other modules
  */
@@ -578,6 +590,12 @@ int			ssl_renegotiation_limit;
  */
 int			huge_pages = HUGE_PAGES_TRY;
 int			huge_page_size;
+
+/* IvorySQL: BEGIN - case sensitive indentify */
+int				identifier_case_switch = INTERCHANGE;
+bool			identifier_case_from_pg_dump = false;
+bool			enable_case_switch = true;
+/* IvorySQL: END - case sensitive indentify */
 
 /*
  * These variables are all dummies that don't do anything, except in some
@@ -2034,6 +2052,31 @@ struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	{
+		/* Not for general use --- used by pg_dump */
+		{"identifier_case_from_pg_dump", PGC_USERSET, UNGROUPED,
+			gettext_noop("Shows whether the identifer with quote is from pg dump."),
+			NULL,
+			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&identifier_case_from_pg_dump,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"enable_case_switch", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("whether enable case conversion feature in oracle compatible mode."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&enable_case_switch,
+		true,
+		NULL, NULL, NULL
+	},
+	/* IvorySQL: END - case sensitive indentify */
 
 	/* End-of-list marker */
 	{
@@ -5089,6 +5132,19 @@ struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 	/* IvorySQL:END - SQL PARSER */
+
+	/* IvorySQL: BEGIN - case sensitive indentify */
+	{
+		{"identifier_case_switch", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set character case conversion mode."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&identifier_case_switch,
+		INTERCHANGE, case_conversion_mode,
+		NULL, NULL, NULL
+	},
+	/* IvorySQL: END - case sensitive indentify */
 
 	/* End-of-list marker */
 	{
