@@ -25,13 +25,13 @@ SUBDIRS = \
 	backend/replication/libpqwalreceiver \
 	backend/replication/pgoutput \
 	fe_utils \
+	oracle_fe_utils \
 	bin \
 	pl \
 	makefiles \
 	test/regress \
 	test/isolation \
 	test/perl \
-	oracle_fe_utils \
 	oracle_test/regress \
 	oracle_test/isolation \
 	oracle_test/perl

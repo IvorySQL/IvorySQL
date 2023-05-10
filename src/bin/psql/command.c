@@ -47,6 +47,7 @@
 #include "portability/instr_time.h"
 #include "pqexpbuffer.h"
 #include "psqlscanslash.h"
+#include "ora_psqlscanslash.h" /* IvorySQL:psql-parser */
 #include "settings.h"
 #include "variables.h"
 
@@ -58,6 +59,8 @@ typedef enum EditableObjectType
 	EditableFunction,
 	EditableView
 } EditableObjectType;
+
+psql_scan_slash_option_hook_type psql_scan_slash_option_parser = pg_psql_scan_slash_option; /* IvorySQL:psql-parser */
 
 /* local function declarations */
 static backslashResult exec_command(const char *cmd,
@@ -147,6 +150,7 @@ static backslashResult exec_command_z(PsqlScanState scan_state, bool active_bran
 									  const char *cmd);
 static backslashResult exec_command_shell_escape(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_slash_command_help(PsqlScanState scan_state, bool active_branch);
+static backslashResult exec_command_parser(PsqlScanState scan_state, bool active_branch); /* IvorySQL:psql-parser */
 static char *read_connect_arg(PsqlScanState scan_state);
 static PQExpBuffer gather_boolean_expression(PsqlScanState scan_state);
 static bool is_true_boolean_expression(PsqlScanState scan_state, const char *name);
@@ -226,8 +230,19 @@ HandleSlashCmds(PsqlScanState scan_state,
 	Assert(scan_state != NULL);
 	Assert(cstack != NULL);
 
+	/* IvorySQL:BEGIN - psql-parser */
 	/* Parse off the command name */
-	cmd = psql_scan_slash_command(scan_state);
+	if (db_mode == DB_PG)
+	{
+		cmd = psql_scan_slash_command(scan_state);
+		psql_scan_slash_option_parser = pg_psql_scan_slash_option;
+	}
+	else if (db_mode == DB_ORACLE)
+	{
+		cmd = ora_psql_scan_slash_command(scan_state);
+		psql_scan_slash_option_parser = ora_psql_scan_slash_option;
+	}
+	/* IvorySQL:END - psql-parser */
 
 	/* And try to execute it */
 	status = exec_command(cmd, scan_state, cstack, query_buf, previous_buf);
@@ -267,8 +282,13 @@ HandleSlashCmds(PsqlScanState scan_state,
 			free(arg);
 	}
 
+	/* IvorySQL:BEGIN - psql-parser */
 	/* if there is a trailing \\, swallow it */
-	psql_scan_slash_command_end(scan_state);
+	if (db_mode == DB_PG)
+		psql_scan_slash_command_end(scan_state);
+	else if(db_mode == DB_ORACLE)
+		ora_psql_scan_slash_command_end(scan_state);
+	/* IvorySQL:END - psql-parser */
 
 	free(cmd);
 
@@ -423,6 +443,10 @@ exec_command(const char *cmd,
 		status = exec_command_shell_escape(scan_state, active_branch);
 	else if (strcmp(cmd, "?") == 0)
 		status = exec_command_slash_command_help(scan_state, active_branch);
+	/* IvorySQL:BEGIN - psql-parser */
+	else if (strcmp(cmd, "parser") == 0)
+		status = exec_command_parser(scan_state, active_branch);
+	/* IvorySQL:END - psql-parser */
 	else
 		status = PSQL_CMD_UNKNOWN;
 
@@ -2967,6 +2991,36 @@ exec_command_shell_escape(PsqlScanState scan_state, bool active_branch)
 
 	return success ? PSQL_CMD_SKIP_LINE : PSQL_CMD_ERROR;
 }
+
+/* IvorySQL:BEGIN - psql-paser */
+/*
+ * \parser -- switch the psql parser
+ */
+static backslashResult
+exec_command_parser(PsqlScanState scan_state, bool active_branch)
+{
+	bool		success = true;
+	if (active_branch)
+	{
+		getDbCompatibleMode(pset.db);
+		if (db_mode == DB_PG)
+		{
+			psql_scan_slash_option_parser = pg_psql_scan_slash_option;
+			printf(_("PG parser.\n"));
+		}
+		else if (db_mode == DB_ORACLE)
+		{
+			psql_scan_slash_option_parser = ora_psql_scan_slash_option;
+			printf(_("Oracle parser.\n"));
+		}
+		else
+			success = false;
+	}
+	else
+		ignore_slash_options(scan_state);
+	return success ? PSQL_CMD_SKIP_LINE : PSQL_CMD_ERROR;
+}
+/* IvorySQL:END - psql-paser */
 
 /*
  * \? -- print help about backslash commands

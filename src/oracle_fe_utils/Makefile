@@ -20,13 +20,22 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
 
-OBJS = ora_string_utils.o
+/* IvorySQL:BEGIN - psql-parser */
+OBJS = ora_string_utils.o \
+	ora_psqlscan.o
+/* IvorySQL:END - psql-parser */
 
 all: liborafeutils.a
 
 liborafeutils.a: $(OBJS)
 	rm -f $@
 	$(AR) $(AROPT) $@ $^
+
+/* IvorySQL:BEGIN - psql-parser */
+ora_psqlscan.c: FLEXFLAGS = -Cfe -p -p
+ora_psqlscan.c: FLEX_NO_BACKUP=yes
+ora_psqlscan.c: FLEX_FIX_WARNING=yes
+/* IvorySQL:END - psql-parser */
 
 # liborafeutils could be useful to contrib, so install it
 install: all installdirs
@@ -38,8 +47,12 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(libdir)/liborafeutils.a'
 
+/* IvorySQL:BEGIN - psql-parser */
 clean distclean:
-	rm -f liborafeutils.a $(OBJS) lex.backup
+	rm -f liborafeutils.a $(OBJS) lex.backup ora_psqlscan.c
+/* IvorySQL:END - psql-parser */
 
+/* IvorySQL:BEGIN - psql-parser */
 maintainer-clean: distclean
-	rm -f ora_string_utils.o
+	rm -f ora_psqlscan.c ora_string_utils.o
+/* IvorySQL:END - psql-parser */

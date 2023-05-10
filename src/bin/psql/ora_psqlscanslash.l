@@ -1,26 +1,29 @@
 %top{
 /*-------------------------------------------------------------------------
  *
- * psqlscanslash.l
+ * ora_psqlscanslash.l
  *	  lexical scanner for psql backslash commands
  *
  * XXX Avoid creating backtracking cases --- see the backend lexer for info.
  *
  * See fe_utils/psqlscan_int.h for additional commentary.
  *
+ * Authored by lanke@highgo.com, 20220705.
+ *
+ * Copyright:
+ * Portions Copyright (c) 2023, Ivory SQL Global Development Team
  * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  src/bin/psql/psqlscanslash.l
+ *	  src/bin/psql/ora_psqlscanslash.l
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres_fe.h"
 
 #include "common.h"
-#include "psqlscanslash.h"
-
+#include "ora_psqlscanslash.h"
 #include "common/logging.h"
 #include "fe_utils/conditional.h"
 
@@ -84,7 +87,7 @@ extern void slash_yyset_column(int column_no, yyscan_t yyscanner);
 %option nounput
 %option noyywrap
 %option warn
-%option prefix="slash_yy"
+%option prefix="ora_slash_yy"
 
 /*
  * OK, here is a short description of lex/flex rules behavior.
@@ -236,17 +239,17 @@ other			.
 
 :{variable_char}+	{
 					/* Possible psql variable substitution */
-					if (cur_state->callbacks->get_variable == NULL)
+					if (cur_state->oracallbacks->get_variable == NULL)
 						ECHO;
 					else
 					{
 						char	   *varname;
 						char	   *value;
 
-						varname = psqlscan_extract_substring(cur_state,
+						varname = ora_psqlscan_extract_substring(cur_state,
 															 yytext + 1,
 															 yyleng - 1);
-						value = cur_state->callbacks->get_variable(varname,
+						value = cur_state->oracallbacks->get_variable(varname,
 																   PQUOTE_PLAIN,
 																   cur_state->cb_passthrough);
 						free(varname);
@@ -272,7 +275,7 @@ other			.
 				}
 
 :'{variable_char}+'	{
-					psqlscan_escape_variable(cur_state, yytext, yyleng,
+					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
 											 PQUOTE_SQL_LITERAL);
 					*option_quote = ':';
 					unquoted_option_chars = 0;
@@ -280,14 +283,14 @@ other			.
 
 
 :\"{variable_char}+\"	{
-					psqlscan_escape_variable(cur_state, yytext, yyleng,
+					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
 											 PQUOTE_SQL_IDENT);
 					*option_quote = ':';
 					unquoted_option_chars = 0;
 				}
 
 :\{\?{variable_char}+\}	{
-					psqlscan_test_variable(cur_state, yytext, yyleng);
+					ora_psqlscan_test_variable(cur_state, yytext, yyleng);
 				}
 
 :'{variable_char}*	{
@@ -353,7 +356,7 @@ other			.
 										  (char) strtol(yytext + 2, NULL, 16));
 				}
 
-"\\".			{ psqlscan_emit(cur_state, yytext + 1, 1); }
+"\\".			{ ora_psqlscan_emit(cur_state, yytext + 1, 1); }
 
 {other}|\n		{ ECHO; }
 
@@ -382,10 +385,10 @@ other			.
 						char	   *varname;
 						char	   *value;
 
-						varname = psqlscan_extract_substring(cur_state,
+						varname = ora_psqlscan_extract_substring(cur_state,
 															 yytext + 1,
 															 yyleng - 1);
-						value = cur_state->callbacks->get_variable(varname,
+						value = cur_state->oracallbacks->get_variable(varname,
 																   PQUOTE_PLAIN,
 																   cur_state->cb_passthrough);
 						free(varname);
@@ -401,7 +404,7 @@ other			.
 				}
 
 :'{variable_char}+'	{
-					psqlscan_escape_variable(cur_state, yytext, yyleng,
+					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
 											 PQUOTE_SHELL_ARG);
 				}
 
@@ -467,8 +470,8 @@ other			.
 					 * We were expanding a variable, so pop the inclusion
 					 * stack and keep lexing
 					 */
-					psqlscan_pop_buffer_stack(cur_state);
-					psqlscan_select_top_buffer(cur_state);
+					ora_psqlscan_pop_buffer_stack(cur_state);
+					ora_psqlscan_select_top_buffer(cur_state);
 				}
 
 %%
@@ -484,7 +487,7 @@ other			.
  * from the input.
  */
 char *
-psql_scan_slash_command(PsqlScanState state)
+ora_psql_scan_slash_command(PsqlScanState state)
 {
 	PQExpBufferData mybuf;
 
@@ -522,7 +525,16 @@ psql_scan_slash_command(PsqlScanState state)
 
 	return mybuf.data;
 }
-
+/*
+ * A function pointer,for pg_psql_scan_slash_option_parser or ora_psql_scan_slash_option_parser
+ */
+char *psql_scan_slash_option(PsqlScanState state,
+					   enum slash_option_type type,
+					   char *quote,
+					   bool semicolon)
+{
+	return (*psql_scan_slash_option_parser)(state, type, quote, semicolon);
+}
 /*
  * Parse off the next argument for a backslash command, and return it as a
  * malloc'd string.  If there are no more arguments, returns NULL.
@@ -543,7 +555,7 @@ psql_scan_slash_command(PsqlScanState state)
  * need to worry about flushing remaining input.
  */
 char *
-pg_psql_scan_slash_option(PsqlScanState state,
+ora_psql_scan_slash_option(PsqlScanState state,
 					   enum slash_option_type type,
 					   char *quote,
 					   bool semicolon)
@@ -625,7 +637,7 @@ pg_psql_scan_slash_option(PsqlScanState state,
 			 */
 			if (type == OT_SQLID || type == OT_SQLIDHACK)
 			{
-				dequote_downcase_identifier(mybuf.data,
+				ora_dequote_downcase_identifier(mybuf.data,
 											(type != OT_SQLIDHACK),
 											state->encoding);
 				/* update mybuf.len for possible shortening */
@@ -666,7 +678,7 @@ pg_psql_scan_slash_option(PsqlScanState state,
  * Eat up any unused \\ to complete a backslash command.
  */
 void
-psql_scan_slash_command_end(PsqlScanState state)
+ora_psql_scan_slash_command_end(PsqlScanState state)
 {
 	/* Must be scanning already */
 	Assert(state->scanbufhandle != NULL);
@@ -699,7 +711,7 @@ psql_scan_slash_command_end(PsqlScanState state)
  * Fetch current paren nesting depth
  */
 int
-psql_scan_get_paren_depth(PsqlScanState state)
+ora_psql_scan_get_paren_depth(PsqlScanState state)
 {
 	return state->paren_depth;
 }
@@ -708,7 +720,7 @@ psql_scan_get_paren_depth(PsqlScanState state)
  * Set paren nesting depth
  */
 void
-psql_scan_set_paren_depth(PsqlScanState state, int depth)
+ora_psql_scan_set_paren_depth(PsqlScanState state, int depth)
 {
 	Assert(depth >= 0);
 	state->paren_depth = depth;
@@ -731,7 +743,7 @@ psql_scan_set_paren_depth(PsqlScanState state, int depth)
  * choice; this routine doesn't get to change the token boundaries.
  */
 void
-dequote_downcase_identifier(char *str, bool downcase, int encoding)
+ora_dequote_downcase_identifier(char *str, bool downcase, int encoding)
 {
 	bool		inquotes = false;
 	char	   *cp = str;

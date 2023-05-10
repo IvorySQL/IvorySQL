@@ -6,7 +6,7 @@
  * and interpreting backend output.
  *
  *
- * Portions Copyright (c) 2023, IvorySQL
+ * Portions Copyright (c) 2023, Ivory SQL Global Development Team
  *
  * src/oracle_fe_utils/ora_string_utils.c
  *

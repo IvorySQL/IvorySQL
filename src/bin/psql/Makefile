@@ -22,7 +22,7 @@ export with_readline
 REFDOCDIR= $(top_srcdir)/doc/src/sgml/ref
 
 override CPPFLAGS := -I. -I$(srcdir) -I$(libpq_srcdir) $(CPPFLAGS)
-LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/oracle_fe_utils -lorafeutils -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
 OBJS = \
 	$(WIN32RES) \
@@ -35,6 +35,7 @@ OBJS = \
 	input.o \
 	large_obj.o \
 	mainloop.o \
+	ora_psqlscanslash.o \
 	prompt.o \
 	psqlscanslash.o \
 	sql_help.o \
@@ -62,7 +63,13 @@ psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 psqlscanslash.c: FLEX_NO_BACKUP=yes
 psqlscanslash.c: FLEX_FIX_WARNING=yes
 
-distprep: sql_help.h sql_help.c psqlscanslash.c
+#IvorySQL:BEGIN - psql-parser
+ora_psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
+ora_psqlscanslash.c: FLEX_NO_BACKUP=yes
+ora_psqlscanslash.c: FLEX_FIX_WARNING=yes
+
+distprep: ora_psqlscanslash.c sql_help.h sql_help.c psqlscanslash.c
+#IvorySQL:END - psql-parser
 
 install: all installdirs
 	$(INSTALL_PROGRAM) psql$(X) '$(DESTDIR)$(bindir)/psql$(X)'
@@ -75,13 +82,17 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/psql$(X)' '$(DESTDIR)$(datadir)/psqlrc.sample'
 
 clean distclean:
-	rm -f psql$(X) $(OBJS) lex.backup
+#IvorySQL:BEGIN - psql-parser
+	rm -f psql$(X) $(OBJS) lex.backup ora_psqlscanslash.c
+#IvorySQL:END - psql-parser
 	rm -rf tmp_check
 
 # files removed here are supposed to be in the distribution tarball,
 # so do not clean them in the clean/distclean rules
 maintainer-clean: distclean
-	rm -f sql_help.h sql_help.c psqlscanslash.c
+#IvorySQL:BEGIN - psql-parser
+	rm -f ora_psqlscanslash.c sql_help.h sql_help.c psqlscanslash.c
+#IvorySQL:END - psql-parser
 
 check:
 	$(prove_check)
