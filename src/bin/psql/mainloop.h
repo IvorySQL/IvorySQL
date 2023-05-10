@@ -11,6 +11,7 @@
 #include "fe_utils/psqlscan.h"
 
 extern const PsqlScanCallbacks psqlscan_callbacks;
+extern const Ora_psqlScanCallbacks Ora_psqlscan_callbacks; /* IvorySQL:psql-parser */
 
 extern int	MainLoop(FILE *source);
 

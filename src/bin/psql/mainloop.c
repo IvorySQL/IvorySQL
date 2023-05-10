@@ -15,12 +15,22 @@
 #include "mb/pg_wchar.h"
 #include "prompt.h"
 #include "settings.h"
+/* IvorySQL:BEGIN - psql-parser */
+#include "oracle_fe_utils/ora_string_utils.h"
+#include "oracle_fe_utils/ora_psqlscan.h"
+#include "fe_utils/psqlscan_int.h"
+/* IvorySQL:END - psql-parser */
 
 /* callback functions for our flex lexer */
 const PsqlScanCallbacks psqlscan_callbacks = {
 	psql_get_variable,
 };
 
+/* IvorySQL:BEGIN - psql-parser */
+const Ora_psqlScanCallbacks Ora_psqlscan_callbacks = {
+	ora_psql_get_variable,
+};
+/* IvorySQL:END - psql-parser */
 
 /*
  * Main processing loop for reading lines of input
@@ -33,6 +43,7 @@ int
 MainLoop(FILE *source)
 {
 	PsqlScanState scan_state;	/* lexer working state */
+	PsqlScanState ora_scan_state;	/* oracle lexer working state */ /* IvorySQL:psql-parser */
 	ConditionalStack cond_stack;	/* \if status stack */
 	volatile PQExpBuffer query_buf; /* buffer for query being accumulated */
 	volatile PQExpBuffer previous_buf;	/* if there isn't anything in the new
@@ -70,6 +81,12 @@ MainLoop(FILE *source)
 	scan_state = psql_scan_create(&psqlscan_callbacks);
 	cond_stack = conditional_stack_create();
 	psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+
+	/* IvorySQL:BEGIN - psql-parser */
+	/* Oracle working state */
+	ora_scan_state = ora_psql_scan_create(&Ora_psqlscan_callbacks);
+	ora_psql_scan_set_passthrough(ora_scan_state, (void *) cond_stack);
+	/* IvorySQL:END - psql-parser */
 
 	query_buf = createPQExpBuffer();
 	previous_buf = createPQExpBuffer();
@@ -111,6 +128,13 @@ MainLoop(FILE *source)
 			/* reset parsing state */
 			psql_scan_finish(scan_state);
 			psql_scan_reset(scan_state);
+
+			/* IvorySQL:BEGIN - psql-parser */
+			/* reset oracle parsing state */
+			ora_psql_scan_finish(ora_scan_state);
+			ora_psql_scan_reset(ora_scan_state);
+			/* IvorySQL:END - psql-parser */
+
 			resetPQExpBuffer(query_buf);
 			resetPQExpBuffer(history_buf);
 			count_eof = 0;
@@ -218,12 +242,25 @@ MainLoop(FILE *source)
 			break;
 		}
 
+		/* IvorySQL:BEGIN - psql-parser */
 		/* no further processing of empty lines, unless within a literal */
-		if (line[0] == '\0' && !psql_scan_in_quote(scan_state))
+		if (db_mode == DB_PG)
 		{
-			free(line);
-			continue;
+			if (line[0] == '\0' && !psql_scan_in_quote(scan_state))
+			{
+				free(line);
+				continue;
+			}
 		}
+		else if (db_mode == DB_ORACLE)
+		{
+			if (line[0] == '\0' && !ora_psql_scan_in_quote(ora_scan_state))
+			{
+				free(line);
+				continue;
+			}
+		}
+		/* IvorySQL:END - psql-parser */
 
 		/* Recognize "help", "quit", "exit" only in interactive mode */
 		if (pset.cur_cmd_interactive)
@@ -375,187 +412,378 @@ MainLoop(FILE *source)
 		/* Setting this will not have effect until next line. */
 		die_on_error = pset.on_error_stop;
 
+		/* IvorySQL:BEGIN - psql-parser */
 		/*
 		 * Parse line, looking for command separators.
 		 */
-		psql_scan_setup(scan_state, line, strlen(line),
-						pset.encoding, standard_strings());
+		if (db_mode == DB_PG)
+		{
+			psql_scan_setup(scan_state, line, strlen(line),
+								pset.encoding, standard_strings());
+		}
+		else if (db_mode == DB_ORACLE)
+		{
+			ora_psql_scan_setup(ora_scan_state, line, strlen(line),
+								pset.encoding, standard_strings());
+		}
+		/* IvorySQL:END - psql-parser */
+
 		success = true;
 		line_saved_in_history = false;
 
 		while (success || !die_on_error)
 		{
 			PsqlScanResult scan_result;
+			Ora_PsqlScanResult ora_scan_result; /* IvorySQL:psql-parser */
 			promptStatus_t prompt_tmp = prompt_status;
+			Ora_promptStatus_t ora_prompt_tmp = (Ora_promptStatus_t)prompt_status; /* IvorySQL:psql-parser */
 			size_t		pos_in_query;
 			char	   *tmp_line;
 
 			pos_in_query = query_buf->len;
-			scan_result = psql_scan(scan_state, query_buf, &prompt_tmp);
-			prompt_status = prompt_tmp;
 
-			if (PQExpBufferBroken(query_buf))
-				pg_fatal("out of memory");
-
-			/*
-			 * Increase statement line number counter for each linebreak added
-			 * to the query buffer by the last psql_scan() call. There only
-			 * will be ones to add when navigating to a statement in
-			 * readline's history containing newlines.
-			 */
-			tmp_line = query_buf->data + pos_in_query;
-			while (*tmp_line != '\0')
+			/* IvorySQL:BEGIN - psql-parser */
+			if (db_mode == DB_PG)
 			{
-				if (*(tmp_line++) == '\n')
+				if (scan_state->scanbufhandle == NULL)
+					break;
+				scan_result = psql_scan(scan_state, query_buf, &prompt_tmp);
+				prompt_status = prompt_tmp;
+
+				if (PQExpBufferBroken(query_buf))
+					pg_fatal("out of memory");
+
+				/*
+				 * Increase statement line number counter for each linebreak added
+				 * to the query buffer by the last psql_scan() call. There only
+				 * will be ones to add when navigating to a statement in
+				 * readline's history containing newlines.
+				 */
+				tmp_line = query_buf->data + pos_in_query;
+				while (*tmp_line != '\0')
+				{
+					if (*(tmp_line++) == '\n')
+						pset.stmt_lineno++;
+				}
+
+				if (scan_result == PSCAN_EOL)
 					pset.stmt_lineno++;
-			}
 
-			if (scan_result == PSCAN_EOL)
-				pset.stmt_lineno++;
-
-			/*
-			 * Send command if semicolon found, or if end of line and we're in
-			 * single-line mode.
-			 */
-			if (scan_result == PSCAN_SEMICOLON ||
-				(scan_result == PSCAN_EOL && pset.singleline))
-			{
 				/*
-				 * Save line in history.  We use history_buf to accumulate
-				 * multi-line queries into a single history entry.  Note that
-				 * history accumulation works on input lines, so it doesn't
-				 * matter whether the query will be ignored due to \if.
+				 * Send command if semicolon found, or if end of line and we're in
+				 * single-line mode.
 				 */
-				if (pset.cur_cmd_interactive && !line_saved_in_history)
+				if (scan_result == PSCAN_SEMICOLON ||
+					(scan_result == PSCAN_EOL && pset.singleline))
 				{
-					pg_append_history(line, history_buf);
-					pg_send_history(history_buf);
-					line_saved_in_history = true;
-				}
-
-				/* execute query unless we're in an inactive \if branch */
-				if (conditional_active(cond_stack))
-				{
-					success = SendQuery(query_buf->data);
-					slashCmdStatus = success ? PSQL_CMD_SEND : PSQL_CMD_ERROR;
-					pset.stmt_lineno = 1;
-
-					/* transfer query to previous_buf by pointer-swapping */
+					/*
+					 * Save line in history.  We use history_buf to accumulate
+					 * multi-line queries into a single history entry.  Note that
+					 * history accumulation works on input lines, so it doesn't
+					 * matter whether the query will be ignored due to \if.
+					 */
+					if (pset.cur_cmd_interactive && !line_saved_in_history)
 					{
-						PQExpBuffer swap_buf = previous_buf;
-
-						previous_buf = query_buf;
-						query_buf = swap_buf;
+						pg_append_history(line, history_buf);
+						pg_send_history(history_buf);
+						line_saved_in_history = true;
 					}
-					resetPQExpBuffer(query_buf);
 
+					/* execute query unless we're in an inactive \if branch */
+					if (conditional_active(cond_stack))
+					{
+						success = SendQuery(query_buf->data);
+						slashCmdStatus = success ? PSQL_CMD_SEND : PSQL_CMD_ERROR;
+						pset.stmt_lineno = 1;
+
+						/* transfer query to previous_buf by pointer-swapping */
+						{
+							PQExpBuffer swap_buf = previous_buf;
+
+							previous_buf = query_buf;
+							query_buf = swap_buf;
+						}
+						resetPQExpBuffer(query_buf);
+
+						added_nl_pos = -1;
+						/* we need not do psql_scan_reset() here */
+					}
+					else
+					{
+						/* if interactive, warn about non-executed query */
+						if (pset.cur_cmd_interactive)
+							pg_log_error("query ignored; use \\endif or Ctrl-C to exit current \\if block");
+						/* fake an OK result for purposes of loop checks */
+						success = true;
+						slashCmdStatus = PSQL_CMD_SEND;
+						pset.stmt_lineno = 1;
+						/* note that query_buf doesn't change state */
+					}
+				}
+				else if (scan_result == PSCAN_BACKSLASH)
+				{
+					/* handle backslash command */
+
+					/*
+					 * If we added a newline to query_buf, and nothing else has
+					 * been inserted in query_buf by the lexer, then strip off the
+					 * newline again.  This avoids any change to query_buf when a
+					 * line contains only a backslash command.  Also, in this
+					 * situation we force out any previous lines as a separate
+					 * history entry; we don't want SQL and backslash commands
+					 * intermixed in history if at all possible.
+					 */
+					if (query_buf->len == added_nl_pos)
+					{
+						query_buf->data[--query_buf->len] = '\0';
+						pg_send_history(history_buf);
+					}
 					added_nl_pos = -1;
-					/* we need not do psql_scan_reset() here */
-				}
-				else
-				{
-					/* if interactive, warn about non-executed query */
-					if (pset.cur_cmd_interactive)
-						pg_log_error("query ignored; use \\endif or Ctrl-C to exit current \\if block");
-					/* fake an OK result for purposes of loop checks */
-					success = true;
-					slashCmdStatus = PSQL_CMD_SEND;
-					pset.stmt_lineno = 1;
-					/* note that query_buf doesn't change state */
-				}
-			}
-			else if (scan_result == PSCAN_BACKSLASH)
-			{
-				/* handle backslash command */
 
-				/*
-				 * If we added a newline to query_buf, and nothing else has
-				 * been inserted in query_buf by the lexer, then strip off the
-				 * newline again.  This avoids any change to query_buf when a
-				 * line contains only a backslash command.  Also, in this
-				 * situation we force out any previous lines as a separate
-				 * history entry; we don't want SQL and backslash commands
-				 * intermixed in history if at all possible.
-				 */
-				if (query_buf->len == added_nl_pos)
-				{
-					query_buf->data[--query_buf->len] = '\0';
-					pg_send_history(history_buf);
-				}
-				added_nl_pos = -1;
-
-				/* save backslash command in history */
-				if (pset.cur_cmd_interactive && !line_saved_in_history)
-				{
-					pg_append_history(line, history_buf);
-					pg_send_history(history_buf);
-					line_saved_in_history = true;
-				}
-
-				/* execute backslash command */
-				slashCmdStatus = HandleSlashCmds(scan_state,
-												 cond_stack,
-												 query_buf,
-												 previous_buf);
-
-				success = slashCmdStatus != PSQL_CMD_ERROR;
-
-				/*
-				 * Resetting stmt_lineno after a backslash command isn't
-				 * always appropriate, but it's what we've done historically
-				 * and there have been few complaints.
-				 */
-				pset.stmt_lineno = 1;
-
-				if (slashCmdStatus == PSQL_CMD_SEND)
-				{
-					/* should not see this in inactive branch */
-					Assert(conditional_active(cond_stack));
-
-					success = SendQuery(query_buf->data);
-
-					/* transfer query to previous_buf by pointer-swapping */
+					/* save backslash command in history */
+					if (pset.cur_cmd_interactive && !line_saved_in_history)
 					{
-						PQExpBuffer swap_buf = previous_buf;
-
-						previous_buf = query_buf;
-						query_buf = swap_buf;
+						pg_append_history(line, history_buf);
+						pg_send_history(history_buf);
+						line_saved_in_history = true;
 					}
-					resetPQExpBuffer(query_buf);
 
-					/* flush any paren nesting info after forced send */
-					psql_scan_reset(scan_state);
+					/* execute backslash command */
+					slashCmdStatus = HandleSlashCmds(scan_state,
+													 cond_stack,
+													 query_buf,
+													 previous_buf);
+
+					success = slashCmdStatus != PSQL_CMD_ERROR;
+
+					/*
+					 * Resetting stmt_lineno after a backslash command isn't
+					 * always appropriate, but it's what we've done historically
+					 * and there have been few complaints.
+					 */
+					pset.stmt_lineno = 1;
+
+					if (slashCmdStatus == PSQL_CMD_SEND)
+					{
+						/* should not see this in inactive branch */
+						Assert(conditional_active(cond_stack));
+
+						success = SendQuery(query_buf->data);
+
+						/* transfer query to previous_buf by pointer-swapping */
+						{
+							PQExpBuffer swap_buf = previous_buf;
+
+							previous_buf = query_buf;
+							query_buf = swap_buf;
+						}
+						resetPQExpBuffer(query_buf);
+
+						/* flush any paren nesting info after forced send */
+						psql_scan_reset(scan_state);
+					}
+					else if (slashCmdStatus == PSQL_CMD_NEWEDIT)
+					{
+						/* should not see this in inactive branch */
+						Assert(conditional_active(cond_stack));
+						/* ensure what came back from editing ends in a newline */
+						if (query_buf->len > 0 &&
+							query_buf->data[query_buf->len - 1] != '\n')
+							appendPQExpBufferChar(query_buf, '\n');
+						/* rescan query_buf as new input */
+						psql_scan_finish(scan_state);
+						free(line);
+						line = pg_strdup(query_buf->data);
+						resetPQExpBuffer(query_buf);
+						/* reset parsing state since we are rescanning whole line */
+						psql_scan_reset(scan_state);
+						psql_scan_setup(scan_state, line, strlen(line),
+										pset.encoding, standard_strings());
+						line_saved_in_history = false;
+						prompt_status = PROMPT_READY;
+						/* we'll want to redisplay after parsing what we have */
+						need_redisplay = true;
+					}
+					else if (slashCmdStatus == PSQL_CMD_TERMINATE)
+						break;
 				}
-				else if (slashCmdStatus == PSQL_CMD_NEWEDIT)
-				{
-					/* should not see this in inactive branch */
-					Assert(conditional_active(cond_stack));
-					/* ensure what came back from editing ends in a newline */
-					if (query_buf->len > 0 &&
-						query_buf->data[query_buf->len - 1] != '\n')
-						appendPQExpBufferChar(query_buf, '\n');
-					/* rescan query_buf as new input */
-					psql_scan_finish(scan_state);
-					free(line);
-					line = pg_strdup(query_buf->data);
-					resetPQExpBuffer(query_buf);
-					/* reset parsing state since we are rescanning whole line */
-					psql_scan_reset(scan_state);
-					psql_scan_setup(scan_state, line, strlen(line),
-									pset.encoding, standard_strings());
-					line_saved_in_history = false;
-					prompt_status = PROMPT_READY;
-					/* we'll want to redisplay after parsing what we have */
-					need_redisplay = true;
-				}
-				else if (slashCmdStatus == PSQL_CMD_TERMINATE)
+
+				/* fall out of loop if lexer reached EOL */
+				if (scan_result == PSCAN_INCOMPLETE ||
+					scan_result == PSCAN_EOL)
 					break;
 			}
+			else if (db_mode == DB_ORACLE)
+			{
+				if (ora_scan_state->scanbufhandle == NULL)
+					break;
+				ora_scan_result = ora_psql_scan(ora_scan_state, query_buf, &ora_prompt_tmp);
+				prompt_status = ora_prompt_tmp;
 
-			/* fall out of loop if lexer reached EOL */
-			if (scan_result == PSCAN_INCOMPLETE ||
-				scan_result == PSCAN_EOL)
-				break;
+				if (PQExpBufferBroken(query_buf))
+					pg_fatal("out of memory");
+
+				/*
+				 * Increase statement line number counter for each linebreak added
+				 * to the query buffer by the last psql_scan() call. There only
+				 * will be ones to add when navigating to a statement in
+				 * readline's history containing newlines.
+				 */
+				tmp_line = query_buf->data + pos_in_query;
+				while (*tmp_line != '\0')
+				{
+					if (*(tmp_line++) == '\n')
+						pset.stmt_lineno++;
+				}
+
+				if (ora_scan_result == ORAPSCAN_EOL)
+					pset.stmt_lineno++;
+
+				/*
+				 * Send command if semicolon found, or if end of line and we're in
+				 * single-line mode.
+				 */
+				if (ora_scan_result == ORAPSCAN_SEMICOLON ||
+					(ora_scan_result == ORAPSCAN_EOL && pset.singleline))
+				{
+					/*
+					 * Save line in history.  We use history_buf to accumulate
+					 * multi-line queries into a single history entry.  Note that
+					 * history accumulation works on input lines, so it doesn't
+					 * matter whether the query will be ignored due to \if.
+					 */
+					if (pset.cur_cmd_interactive && !line_saved_in_history)
+					{
+						pg_append_history(line, history_buf);
+						pg_send_history(history_buf);
+						line_saved_in_history = true;
+					}
+
+					/* execute query unless we're in an inactive \if branch */
+					if (conditional_active(cond_stack))
+					{
+						success = SendQuery(query_buf->data);
+						slashCmdStatus = success ? PSQL_CMD_SEND : PSQL_CMD_ERROR;
+						pset.stmt_lineno = 1;
+
+						/* transfer query to previous_buf by pointer-swapping */
+						{
+							PQExpBuffer swap_buf = previous_buf;
+
+							previous_buf = query_buf;
+							query_buf = swap_buf;
+						}
+						resetPQExpBuffer(query_buf);
+
+						added_nl_pos = -1;
+						/* we need not do psql_scan_reset() here */
+					}
+					else
+					{
+						/* if interactive, warn about non-executed query */
+						if (pset.cur_cmd_interactive)
+							pg_log_error("query ignored; use \\endif or Ctrl-C to exit current \\if block");
+						/* fake an OK result for purposes of loop checks */
+						success = true;
+						slashCmdStatus = PSQL_CMD_SEND;
+						pset.stmt_lineno = 1;
+						/* note that query_buf doesn't change state */
+					}
+				}
+				else if (ora_scan_result == ORAPSCAN_BACKSLASH)
+				{
+					/* handle backslash command */
+
+					/*
+					 * If we added a newline to query_buf, and nothing else has
+					 * been inserted in query_buf by the lexer, then strip off the
+					 * newline again.  This avoids any change to query_buf when a
+					 * line contains only a backslash command.  Also, in this
+					 * situation we force out any previous lines as a separate
+					 * history entry; we don't want SQL and backslash commands
+					 * intermixed in history if at all possible.
+					 */
+					if (query_buf->len == added_nl_pos)
+					{
+						query_buf->data[--query_buf->len] = '\0';
+						pg_send_history(history_buf);
+					}
+					added_nl_pos = -1;
+
+					/* save backslash command in history */
+					if (pset.cur_cmd_interactive && !line_saved_in_history)
+					{
+						pg_append_history(line, history_buf);
+						pg_send_history(history_buf);
+						line_saved_in_history = true;
+					}
+
+					/* execute backslash command */
+					slashCmdStatus = HandleSlashCmds(ora_scan_state,
+													 cond_stack,
+													 query_buf,
+													 previous_buf);
+
+					success = slashCmdStatus != PSQL_CMD_ERROR;
+
+					/*
+					 * Resetting stmt_lineno after a backslash command isn't
+					 * always appropriate, but it's what we've done historically
+					 * and there have been few complaints.
+					 */
+					pset.stmt_lineno = 1;
+
+					if (slashCmdStatus == PSQL_CMD_SEND)
+					{
+						/* should not see this in inactive branch */
+						Assert(conditional_active(cond_stack));
+
+						success = SendQuery(query_buf->data);
+
+						/* transfer query to previous_buf by pointer-swapping */
+						{
+							PQExpBuffer swap_buf = previous_buf;
+
+							previous_buf = query_buf;
+							query_buf = swap_buf;
+						}
+						resetPQExpBuffer(query_buf);
+
+						/* flush any paren nesting info after forced send */
+						ora_psql_scan_reset(ora_scan_state);
+					}
+					else if (slashCmdStatus == PSQL_CMD_NEWEDIT)
+					{
+						/* should not see this in inactive branch */
+						Assert(conditional_active(cond_stack));
+						/* ensure what came back from editing ends in a newline */
+						if (query_buf->len > 0 &&
+							query_buf->data[query_buf->len - 1] != '\n')
+							appendPQExpBufferChar(query_buf, '\n');
+						/* rescan query_buf as new input */
+						ora_psql_scan_finish(ora_scan_state);
+						free(line);
+						line = pg_strdup(query_buf->data);
+						resetPQExpBuffer(query_buf);
+						/* reset parsing state since we are rescanning whole line */
+						ora_psql_scan_reset(ora_scan_state);
+						ora_psql_scan_setup(ora_scan_state, line, strlen(line),
+										pset.encoding, standard_strings());
+						line_saved_in_history = false;
+						prompt_status = PROMPT_READY;
+						/* we'll want to redisplay after parsing what we have */
+						need_redisplay = true;
+					}
+					else if (slashCmdStatus == PSQL_CMD_TERMINATE)
+						break;
+				}
+
+				/* fall out of loop if lexer reached EOL */
+				if (ora_scan_result == ORAPSCAN_INCOMPLETE ||
+					ora_scan_result == ORAPSCAN_EOL)
+					break;
+			}
+			/* IvorySQL:END - psql-parser */
 		}
 
 		/*
@@ -574,6 +802,7 @@ MainLoop(FILE *source)
 		}
 
 		psql_scan_finish(scan_state);
+		ora_psql_scan_finish(ora_scan_state); /* IvorySQL:psql-parser */
 		free(line);
 
 		if (slashCmdStatus == PSQL_CMD_TERMINATE)
@@ -652,6 +881,7 @@ MainLoop(FILE *source)
 	destroyPQExpBuffer(history_buf);
 
 	psql_scan_destroy(scan_state);
+	ora_psql_scan_destroy(ora_scan_state); /* IvorySQL:psql-parser */
 	conditional_stack_destroy(cond_stack);
 
 	pset.cur_cmd_source = prev_cmd_source;

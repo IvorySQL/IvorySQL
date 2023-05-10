@@ -5247,6 +5247,25 @@ reset work_mem;
  pg_catalog | &&   | anyarray      | anyarray       | boolean     | overlaps
 (1 row)
 
+/* IvorySQL:BEGIN - psql-parser */
+--test parser switch in psql
+show compatible_mode;
+ compatible_mode 
+-----------------
+ oracle
+(1 row)
+
+set compatible_mode = 'pg';
+\parser
+PG parser.
+reset compatible_mode;
+show compatible_mode;
+ compatible_mode 
+-----------------
+ oracle
+(1 row)
+
+/* IvorySQL:END - psql-parser */
 -- check \df+
 -- we have to use functions with a predictable owner name, so make a role
 create role regress_psql_user superuser;

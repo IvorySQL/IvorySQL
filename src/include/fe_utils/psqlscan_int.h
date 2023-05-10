@@ -45,6 +45,7 @@
 #define PSQLSCAN_INT_H
 
 #include "fe_utils/psqlscan.h"
+#include "oracle_fe_utils/ora_psqlscan.h"	/* IvorySQL:psql-parser */
 
 /*
  * These are just to allow this file to be compilable standalone for header
@@ -128,6 +129,7 @@ typedef struct PsqlScanStateData
 	 * plus a void* callback passthrough argument.
 	 */
 	const PsqlScanCallbacks *callbacks;
+	const Ora_psqlScanCallbacks *oracallbacks;	/* IvorySQL:psql-parser */
 	void	   *cb_passthrough;
 } PsqlScanStateData;
 
@@ -153,5 +155,23 @@ extern void psqlscan_escape_variable(PsqlScanState state,
 									 PsqlScanQuoteType quote);
 extern void psqlscan_test_variable(PsqlScanState state,
 								   const char *txt, int len);
+
+/* IvorySQL:BEGIN - psql-parser */
+/*
+ * for oracle parser
+ */
+extern void ora_psqlscan_push_new_buffer(PsqlScanState state, const char *newstr,
+								 const char *varname);
+extern void ora_psqlscan_pop_buffer_stack(PsqlScanState state);
+extern void ora_psqlscan_select_top_buffer(PsqlScanState state);
+extern bool ora_psqlscan_var_is_current_source(PsqlScanState state, const char *varname);
+extern YY_BUFFER_STATE ora_psqlscan_prepare_buffer(PsqlScanState state, const char *txt, int len,
+								 char **txtcopy);
+extern void ora_psqlscan_emit(PsqlScanState state, const char *txt, int len);
+extern char * ora_psqlscan_extract_substring(PsqlScanState state, const char *txt, int len);
+extern void ora_psqlscan_escape_variable(PsqlScanState state, const char *txt, int len,
+								 PsqlScanQuoteType quote);
+extern void ora_psqlscan_test_variable(PsqlScanState state, const char *txt, int len);
+/* IvorySQL:END - psql-parser */
 
 #endif							/* PSQLSCAN_INT_H */

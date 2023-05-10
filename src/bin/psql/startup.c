@@ -399,12 +399,26 @@ main(int argc, char *argv[])
 				if (pset.echo == PSQL_ECHO_ALL)
 					puts(cell->val);
 
-				scan_state = psql_scan_create(&psqlscan_callbacks);
-				psql_scan_setup(scan_state,
-								cell->val, strlen(cell->val),
-								pset.encoding, standard_strings());
-				cond_stack = conditional_stack_create();
-				psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+				/* IvorySQL:BEGIN - psql-paser */
+				if (db_mode == DB_PG)
+				{
+					scan_state = psql_scan_create(&psqlscan_callbacks);
+					psql_scan_setup(scan_state,
+									cell->val, strlen(cell->val),
+									pset.encoding, standard_strings());
+					cond_stack = conditional_stack_create();
+					psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+				}
+				else if (db_mode == DB_ORACLE)
+				{
+					scan_state = ora_psql_scan_create(&Ora_psqlscan_callbacks);
+					ora_psql_scan_setup(scan_state,
+									cell->val, strlen(cell->val),
+									pset.encoding, standard_strings());
+					cond_stack = conditional_stack_create();
+					ora_psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+				}
+				/* IvorySQL:END - psql-parser */
 
 				successResult = HandleSlashCmds(scan_state,
 												cond_stack,
@@ -412,7 +426,13 @@ main(int argc, char *argv[])
 												NULL) != PSQL_CMD_ERROR
 					? EXIT_SUCCESS : EXIT_FAILURE;
 
-				psql_scan_destroy(scan_state);
+				/* IvorySQL:BEGIN - psql-paser */
+				if (db_mode == DB_PG)
+					psql_scan_destroy(scan_state);
+				else if(db_mode == DB_ORACLE)
+					ora_psql_scan_destroy(scan_state);
+				/* IvorySQL:END - psql-parser */
+
 				conditional_stack_destroy(cond_stack);
 			}
 			else if (cell->action == ACT_FILE)
