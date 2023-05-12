@@ -191,7 +191,6 @@ main(int argc, char *argv[])
 			dbname = get_user_name_or_exit(progname);
 	}
 
-#ifdef IvorySQL
 	/* IvorySQL:BEGIN - SQL src_bin */
 	/* No point in trying to use postgres db when creating postgres db. */
 	if (maintenance_db == NULL && strcmp(dbname, "postgres") == 0)
@@ -208,7 +207,6 @@ main(int argc, char *argv[])
 
 	getDbCompatibleMode(conn);
 	/* IvorySQL:END - SQL src_bin */
-#endif
 
 	initPQExpBuffer(&sql);
 
@@ -253,7 +251,7 @@ main(int argc, char *argv[])
 
 	appendPQExpBufferChar(&sql, ';');
 
-#ifndef IvorySQL
+#if 0
 	/* BEGIN - SQL PARSER */
 	/* No point in trying to use postgres db when creating postgres db. */
 	if(maintenance_db == NULL && strcmp(dbname, "psotgres") == 0)

@@ -19438,11 +19438,6 @@ if test x"$PG_SYSROOT" != x; then
 fi
 
 
-#IvorySQL:BEGIN - SQL oracle_mode
-# For IvorySQL, set -DIvorySQL by default. This can be overriden with -UIvorySQL if the user sets it.
-CFLAGS="-DIvorySQL $CFLAGS"
-#IvorySQL:END - SQL oracle_mode
-
 # Begin output steps
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: using compiler=$cc_string" >&5

@@ -131,7 +131,7 @@ main(int argc, char *argv[])
 		if (!yesno_prompt("Are you sure?"))
 			exit(0);
 	}
-#ifndef IvorySQL
+#if 0
 	/* IvorySQL:BEGIN - SQL src_bin */
 	initPQExpBuffer(&sql);
 
@@ -154,7 +154,7 @@ main(int argc, char *argv[])
 	cparams.override_dbname = NULL;
 
 	conn = connectMaintenanceDatabase(&cparams, progname, echo);
-#ifdef IvorySQL
+
 	/* IvorySQL:BEGIN - SQL src_bin */
 	getDbCompatibleMode(conn);
 
@@ -165,7 +165,7 @@ main(int argc, char *argv[])
 					  fmtId(dbname),
 					  force ? " WITH (FORCE)" : "");
 	/* IvorySQL:END - SQL src_bin */
-#endif
+
 	if (echo)
 		printf("%s\n", sql.data);
 	result = PQexec(conn, sql.data);
