@@ -135,7 +135,6 @@ main(int argc, char *argv[])
 			exit(0);
 	}
 
-#ifdef IvorySQL
 	/* IvorySQL:BEGIN - SQL src_bin */
 	cparams.dbname = NULL;		/* this program lacks any dbname option... */
 	cparams.pghost = host;
@@ -148,13 +147,12 @@ main(int argc, char *argv[])
 
 	getDbCompatibleMode(conn);
 	/* IvorySQL:END - SQL src_bin */
-#endif
 
 	initPQExpBuffer(&sql);
 	appendPQExpBuffer(&sql, "DROP ROLE %s%s;",
 					  (if_exists ? "IF EXISTS " : ""), fmtId(dropuser));
 
-#ifndef IvorySQL
+#if 0
 	/* IvorySQL:BEGING - SQL src_bin */
 	cparams.dbname = NULL;     /* this program lacks any dbname option... */
 	cparams.pghost = host;
