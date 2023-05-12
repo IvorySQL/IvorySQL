@@ -824,4 +824,4 @@
 #COMPATIBLE LEVEL
 #------------------------------------------------------------------------------
 
-include_if_exists 'ivorysql.conf'
+include_if_exists = 'ivorysql.conf'
