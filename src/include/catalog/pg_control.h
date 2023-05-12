@@ -229,7 +229,7 @@ typedef struct ControlFileData
 	/* IvorySQL:BEGIN - SQL PARSER */
 	/* database compatible mode */
 	int8		dbmode;
-	int8		yh_casemode; /* IvorySQL: case conversion mode 0 normal,1 interchange, 2 lowercase */
+	int8		casemode; /* IvorySQL: case conversion mode 0 normal,1 interchange, 2 lowercase */
 	/* IvorySQL:END - SQL PARSER */
 
 	/* CRC of all above ... MUST BE LAST! */
