@@ -4810,7 +4810,7 @@ BootStrapXLOG(void)
 	/* save database compatible level value */
 	ControlFile->dbmode = bootstrap_database_mode;
 	/* IvorSQL: BEGIN - case sensitive indentify */
-	ControlFile->yh_casemode = identifier_case_switch;
+	ControlFile->casemode = identifier_case_switch;
 	/* IvorSQL: END - case sensitive indentify */
 	/* IvorySQL:END - SQL oracle_mode */
 
@@ -5084,7 +5084,7 @@ int GetCaseSwitchModeFromControl(char* path)
 	}
 	close(fd);
 
-	return confile.yh_casemode;
+	return confile.casemode;
 }
 
 /*
