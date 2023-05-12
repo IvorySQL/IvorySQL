@@ -2955,6 +2955,7 @@ typedef struct CreateSeqStmt
 	Oid			ownerId;		/* ID of owner, or InvalidOid for default */
 	bool		for_identity;
 	bool		if_not_exists;	/* just do nothing if it already exists? */
+	char		seq_type;	/* is oracle compatible type or original type */ /* IvorySQL:sql-sequence */
 } CreateSeqStmt;
 
 typedef struct AlterSeqStmt

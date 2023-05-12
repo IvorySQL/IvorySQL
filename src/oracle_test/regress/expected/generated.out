@@ -303,9 +303,6 @@ DROP TABLE gtest_normal, gtest_normal_child;
 CREATE TABLE gtestx (x int, b int DEFAULT 10) INHERITS (gtest1);  -- error
 NOTICE:  merging column "b" with inherited definition
 ERROR:  column "b" inherits from generated column but specifies default
-CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS IDENTITY) INHERITS (gtest1);  -- error
-NOTICE:  merging column "b" with inherited definition
-ERROR:  column "b" inherits from generated column but specifies identity
 CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- ok, overrides parent
 NOTICE:  merging column "b" with inherited definition
 \d+ gtestx

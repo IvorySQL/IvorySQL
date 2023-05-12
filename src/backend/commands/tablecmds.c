@@ -7981,6 +7981,11 @@ ATExecDropIdentity(Relation rel, const char *colName, bool missing_ok, LOCKMODE 
 		}
 	}
 
+	/* IvorySQL:BEGIN - sql-sequence */
+	if (attTup->attidentity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL)
+		attTup->attnotnull = false;
+	/* IvorySQL:BEGIN - sql-sequence */
+
 	attTup->attidentity = '\0';
 	CatalogTupleUpdate(attrelation, &tuple->t_self, tuple);
 

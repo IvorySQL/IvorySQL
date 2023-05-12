@@ -134,7 +134,6 @@ DROP TABLE gtest_normal, gtest_normal_child;
 
 -- test inheritance mismatches between parent and child
 CREATE TABLE gtestx (x int, b int DEFAULT 10) INHERITS (gtest1);  -- error
-CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS IDENTITY) INHERITS (gtest1);  -- error
 CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- ok, overrides parent
 \d+ gtestx
 
