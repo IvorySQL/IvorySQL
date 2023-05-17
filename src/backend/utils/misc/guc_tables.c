@@ -4874,7 +4874,7 @@ struct config_enum ConfigureNamesEnum[] =
 		 NULL
 		},
 		&icu_validation_level,
-		ERROR, icu_validation_level_options,
+		WARNING, icu_validation_level_options,
 		NULL, NULL, NULL
 	},
 
