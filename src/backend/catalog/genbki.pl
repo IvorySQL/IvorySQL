@@ -37,15 +37,15 @@ my $constraints_file = '';
 #IvorySQL:END - SQL oracle_mode
 
 GetOptions(
-	'output:s'       => \$output_path,
+	'output:s' => \$output_path,
 #IvorySQL:BEGIN - SQL oracle_mode
-	'M:s'			 => \$compatible_type,
+	'M:s' => \$compatible_type,
 #IvorySQL:END - SQL oracle_mode
-	'set-version:s'  => \$major_version,
+	'set-version:s' => \$major_version,
 	'include-path:s' => \$include_path) || usage();
 
 # Sanity check arguments.
-die "No input files.\n"                  unless @ARGV;
+die "No input files.\n" unless @ARGV;
 die "--set-version must be specified.\n" unless $major_version;
 die "Invalid version string: $major_version\n"
   unless $major_version =~ /^\d+$/;
@@ -78,7 +78,7 @@ foreach my $header (@ARGV)
 
 	my $catalog = Catalog::ParseHeader($header);
 	my $catname = $catalog->{catname};
-	my $schema  = $catalog->{columns};
+	my $schema = $catalog->{columns};
 
 	if (defined $catname)
 	{
@@ -113,9 +113,9 @@ foreach my $header (@ARGV)
 			if (defined $row->{descr})
 			{
 				my %descr = (
-					objoid      => $row->{oid},
-					classoid    => $catalog->{relation_oid},
-					objsubid    => 0,
+					objoid => $row->{oid},
+					classoid => $catalog->{relation_oid},
+					objsubid => 0,
 					description => $row->{descr});
 
 				if ($catalog->{shared_relation})
@@ -377,7 +377,7 @@ open(my $ef, '<', $encfile) || die "$encfile: $!";
 
 # We're parsing an enum, so start with 0 and increment
 # every time we find an enum member.
-my $encid             = 0;
+my $encid = 0;
 my $collect_encodings = 0;
 while (<$ef>)
 {
@@ -400,27 +400,27 @@ close $ef;
 
 # Map lookup name to the corresponding hash table.
 my %lookup_kind = (
-	pg_am          => \%amoids,
-	pg_authid      => \%authidoids,
-	pg_class       => \%classoids,
-	pg_collation   => \%collationoids,
-	pg_language    => \%langoids,
-	pg_namespace   => \%namespaceoids,
-	pg_opclass     => \%opcoids,
-	pg_operator    => \%operoids,
-	pg_opfamily    => \%opfoids,
-	pg_proc        => \%procoids,
-	pg_tablespace  => \%tablespaceoids,
-	pg_ts_config   => \%tsconfigoids,
-	pg_ts_dict     => \%tsdictoids,
-	pg_ts_parser   => \%tsparseroids,
+	pg_am => \%amoids,
+	pg_authid => \%authidoids,
+	pg_class => \%classoids,
+	pg_collation => \%collationoids,
+	pg_language => \%langoids,
+	pg_namespace => \%namespaceoids,
+	pg_opclass => \%opcoids,
+	pg_operator => \%operoids,
+	pg_opfamily => \%opfoids,
+	pg_proc => \%procoids,
+	pg_tablespace => \%tablespaceoids,
+	pg_ts_config => \%tsconfigoids,
+	pg_ts_dict => \%tsdictoids,
+	pg_ts_parser => \%tsparseroids,
 	pg_ts_template => \%tstemplateoids,
-	pg_type        => \%typeoids,
-	encoding       => \%encids);
+	pg_type => \%typeoids,
+	encoding => \%encids);
 
 
 # Open temp files
-my $tmpext  = ".tmp$$";
+my $tmpext = ".tmp$$";
 #IvorySQL:BEGIN - SQL oracle_mode
 if ($compatible_type eq 'pg')
 {
@@ -639,7 +639,7 @@ EOM
 			# each element of the array as per the lookup rule.
 			if ($column->{lookup})
 			{
-				my $lookup     = $lookup_kind{ $column->{lookup} };
+				my $lookup = $lookup_kind{ $column->{lookup} };
 				my $lookup_opt = $column->{lookup_opt};
 				my @lookupnames;
 				my @lookupoids;
@@ -829,7 +829,7 @@ foreach my $catname (@catnames)
 
 		printf $fk_info
 		  "\t{ /* %s */ %s, /* %s */ %s, \"{%s}\", \"{%s}\", %s, %s},\n",
-		  $catname,   $catalog->{relation_oid},
+		  $catname, $catalog->{relation_oid},
 		  $pktabname, $catalogs{$pktabname}->{relation_oid},
 		  $fkinfo->{fk_cols},
 		  $fkinfo->{pk_cols},
@@ -848,9 +848,9 @@ close $fk_info;
 close $constraints;
 
 # Finally, rename the completed files into place.
-Catalog::RenameTempFile($bkifile,          $tmpext);
-Catalog::RenameTempFile($schemafile,       $tmpext);
-Catalog::RenameTempFile($fk_info_file,     $tmpext);
+Catalog::RenameTempFile($bkifile, $tmpext);
+Catalog::RenameTempFile($schemafile, $tmpext);
+Catalog::RenameTempFile($fk_info_file, $tmpext);
 Catalog::RenameTempFile($constraints_file, $tmpext);
 
 exit($num_errors != 0 ? 1 : 0);
@@ -884,13 +884,13 @@ sub gen_pg_attribute
 		push @tables_needing_macros, $table_name;
 
 		# Generate entries for user attributes.
-		my $attnum          = 0;
+		my $attnum = 0;
 		my $priorfixedwidth = 1;
 		foreach my $attr (@{ $table->{columns} })
 		{
 			$attnum++;
 			my %row;
-			$row{attnum}   = $attnum;
+			$row{attnum} = $attnum;
 			$row{attrelid} = $table->{relation_oid};
 
 			morph_row_for_pgattr(\%row, $schema, $attr, $priorfixedwidth);
@@ -916,18 +916,18 @@ sub gen_pg_attribute
 		{
 			$attnum = 0;
 			my @SYS_ATTRS = (
-				{ name => 'ctid',     type => 'tid' },
-				{ name => 'xmin',     type => 'xid' },
-				{ name => 'cmin',     type => 'cid' },
-				{ name => 'xmax',     type => 'xid' },
-				{ name => 'cmax',     type => 'cid' },
+				{ name => 'ctid', type => 'tid' },
+				{ name => 'xmin', type => 'xid' },
+				{ name => 'cmin', type => 'cid' },
+				{ name => 'xmax', type => 'xid' },
+				{ name => 'cmax', type => 'cid' },
 				{ name => 'tableoid', type => 'oid' });
 			foreach my $attr (@SYS_ATTRS)
 			{
 				$attnum--;
 				my %row;
-				$row{attnum}        = $attnum;
-				$row{attrelid}      = $table->{relation_oid};
+				$row{attnum} = $attnum;
+				$row{attrelid} = $table->{relation_oid};
 				$row{attstattarget} = '0';
 
 				morph_row_for_pgattr(\%row, $schema, $attr, 1);
@@ -955,10 +955,10 @@ sub morph_row_for_pgattr
 	# Copy the type data from pg_type, and add some type-dependent items
 	my $type = $types{$atttype};
 
-	$row->{atttypid}   = $type->{oid};
-	$row->{attlen}     = $type->{typlen};
-	$row->{attbyval}   = $type->{typbyval};
-	$row->{attalign}   = $type->{typalign};
+	$row->{atttypid} = $type->{oid};
+	$row->{attlen} = $type->{typlen};
+	$row->{attbyval} = $type->{typbyval};
+	$row->{attalign} = $type->{typalign};
 	$row->{attstorage} = $type->{typstorage};
 
 	# set attndims if it's an array type
@@ -985,7 +985,7 @@ sub morph_row_for_pgattr
 		# At this point the width of type name is still symbolic,
 		# so we need a special test.
 		$row->{attnotnull} =
-		    $row->{attlen} eq 'NAMEDATALEN' ? 't'
+			$row->{attlen} eq 'NAMEDATALEN' ? 't'
 		  : $row->{attlen} > 0              ? 't'
 		  :                                   'f';
 	}
@@ -1001,15 +1001,15 @@ sub morph_row_for_pgattr
 # Write an entry to postgres.bki.
 sub print_bki_insert
 {
-	my $row    = shift;
+	my $row = shift;
 	my $schema = shift;
 
 	my @bki_values;
 
 	foreach my $column (@$schema)
 	{
-		my $attname   = $column->{name};
-		my $atttype   = $column->{type};
+		my $attname = $column->{name};
+		my $atttype = $column->{type};
 		my $bki_value = $row->{$attname};
 
 		# Fold backslash-zero to empty string if it's the entire string,
@@ -1041,7 +1041,7 @@ sub print_bki_insert
 # quite identical, to the corresponding values in postgres.bki.
 sub morph_row_for_schemapg
 {
-	my $row           = shift;
+	my $row = shift;
 	my $pgattr_schema = shift;
 
 	foreach my $column (@$pgattr_schema)
@@ -1066,7 +1066,7 @@ sub morph_row_for_schemapg
 		# don't change.
 		elsif ($atttype eq 'bool')
 		{
-			$row->{$attname} = 'true'  if $row->{$attname} eq 't';
+			$row->{$attname} = 'true' if $row->{$attname} eq 't';
 			$row->{$attname} = 'false' if $row->{$attname} eq 'f';
 		}
 
@@ -1124,7 +1124,7 @@ sub form_pg_type_symbol
 	# Skip for rowtypes of bootstrap catalogs, since they have their
 	# own naming convention defined elsewhere.
 	return
-	     if $typename eq 'pg_type'
+		 if $typename eq 'pg_type'
 	  or $typename eq 'pg_proc'
 	  or $typename eq 'pg_attribute'
 	  or $typename eq 'pg_class';
