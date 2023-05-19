@@ -35,21 +35,85 @@ my $oids = Catalog::FindAllOidsFromHeaders(@input_files);
 # Also push FirstGenbkiObjectId to serve as a terminator for the last gap.
 my $FirstGenbkiObjectId =
   Catalog::FindDefinedSymbol('access/transam.h', '..', 'FirstGenbkiObjectId');
+# IvorySQL:BEGIN   add OIDs for new types
+my $MinTypeObjectId = 
+  Catalog::FindDefinedSymbol('access/transam.h', '..', 'MinTypeObjectId');
+my $MaxTypeObjectId = 
+  Catalog::FindDefinedSymbol('access/transam.h', '..', 'MaxTypeObjectId');
+# IvorySQL:END   add OIDs for new types
 push @{$oids}, $FirstGenbkiObjectId;
 
 my $prev_oid = 0;
+# IvorySQL:BEGIN   add OIDs for new types
+my $min = 0;
+my $max = 0;
+# IvorySQL:END   add OIDs for new types
 my @sortedoids = sort { $a <=> $b } @{$oids};
+# IvorySQL: The unused OID values between 9000 and 9100 are specified for the newly added type in IvorySQL,
+# IvorySQL: so they are not shown in the search results executed by the script "unused_OIDS"
 foreach my $oid (@sortedoids)
 {
 	if ($oid > $prev_oid + 1)
 	{
 		if ($oid > $prev_oid + 2)
 		{
-			printf "%d - %d\n", $prev_oid + 1, $oid - 1;
+			#IvorySQL:BEGIN   add OIDs for new types
+			$min = $prev_oid + 1;
+			$max = $oid - 1;
+
+			if ($max < $MinTypeObjectId || $min > $MaxTypeObjectId)
+			{
+				printf "%d - %d\n", $min, $max;
+			}
+			elsif ($min < $MinTypeObjectId)
+			{
+				if ($MinTypeObjectId - 1 > $min)
+				{
+					printf "%d - %d\n", $min, $MinTypeObjectId - 1;
+				}
+				else
+				{
+					printf "%d\n", $min;
+				}
+				if ($max > $MaxTypeObjectId)
+				{
+					if ($max > $MaxTypeObjectId + 1)
+					{
+						printf "%d - %d\n", $MaxTypeObjectId + 1, $max;
+					}
+					else
+					{
+						printf "%d\n", $max;
+					}
+				}
+			}
+			elsif ($max > $MaxTypeObjectId)
+			{
+				if ($max > $MaxTypeObjectId + 1)
+				{
+					printf "%d - %d\n", $MaxTypeObjectId + 1, $max;
+				}
+				else
+				{
+					printf "%d\n", $max;
+				}
+			}
+			# IvorySQL:END   add OIDs for new types
 		}
 		else
 		{
-			printf "%d\n", $prev_oid + 1;
+			# IvorySQL:BEGIN   add OIDs for new types
+			$min = $prev_oid + 1;
+			
+			if (($MinTypeObjectId <= $min) && ($min <= $MaxTypeObjectId))
+			{
+				next;
+			}
+			else
+			{
+				printf "%d\n", $min;
+			}
+			# IvorySQL:END   add OIDs for new types
 		}
 	}
 	$prev_oid = $oid;
@@ -59,8 +123,9 @@ my $suggestion;
 do
 {
 	$suggestion = int(8000 + rand(2000));
-} while (grep(/^$suggestion$/, @{$oids}));
-
+# IvorySQL:BEGIN   add OIDs for new types
+} while (grep(/^$suggestion$/, @{$oids}) || ($MinTypeObjectId <= $suggestion) && ($suggestion <= $MaxTypeObjectId));
+# IvorySQL:END   add OIDs for new types
 my $navailable = 0;
 foreach my $oid (@sortedoids)
 {
