@@ -486,7 +486,7 @@ test_access(
 );
 
 $node->append_conf('postgresql.conf',
-	qq{gss_accept_deleg=off});
+	qq{gss_accept_delegation=off});
 $node->restart;
 
 test_access(
@@ -511,7 +511,7 @@ test_access(
 );
 
 $node->append_conf('postgresql.conf',
-	qq{gss_accept_deleg=on});
+	qq{gss_accept_delegation=on});
 $node->restart;
 
 test_access(
