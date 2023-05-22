@@ -343,9 +343,9 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"GSS-library", "", 7,	/* sizeof("gssapi") == 7 */
 	offsetof(struct pg_conn, gsslib)},
 
-	{"gssdeleg", "PGGSSDELEG", NULL, NULL,
-		"GSS-delegation", "", 8,	/* sizeof("disable") == 8 */
-	offsetof(struct pg_conn, gssdeleg)},
+	{"gssdelegation", "PGGSSDELEGATION", "0", NULL,
+		"GSS-delegation", "", 1,
+	offsetof(struct pg_conn, gssdelegation)},
 
 	{"replication", NULL, NULL, NULL,
 		"Replication", "D", 5,
@@ -4463,7 +4463,7 @@ freePGconn(PGconn *conn)
 	free(conn->gssencmode);
 	free(conn->krbsrvname);
 	free(conn->gsslib);
-	free(conn->gssdeleg);
+	free(conn->gssdelegation);
 	free(conn->connip);
 	/* Note that conn->Pfdebug is not ours to close or free */
 	free(conn->write_err_msg);
