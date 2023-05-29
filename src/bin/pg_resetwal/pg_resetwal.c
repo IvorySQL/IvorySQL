@@ -126,6 +126,7 @@ main(int argc, char *argv[])
 	/* IvorySQL:BEGIN - SQL src_bin */
 	char *dbmode = "oracle";
 	/* IvorySQL:END - SQL src_bin */
+	bool		is_named = false;	/* IvorySQL: datatype */
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_resetwal"));
@@ -301,6 +302,7 @@ main(int argc, char *argv[])
 
 			/* IvorySQL:BEGIN - SQL src_bin */
 			case 'g':
+				is_named = true;	/* IvorySQL: datatype */
 				dbmode = pg_strdup(optarg);
 				break;
 			/* IvorySQL:END - SQL src_bin */
@@ -412,15 +414,18 @@ main(int argc, char *argv[])
 	FindEndOfXLOG();
 
 	/* IvorySQL:BEGIN - SQL src_bin */
-	if (pg_strcasecmp(dbmode, "oracle") == 0 || pg_strcasecmp(dbmode, "1") == 0)
+	if (is_named)
 	{
-		ControlFile.dbmode = DB_ORACLE;
-		ControlFile.casemode = INTERCHANGE; /* IvorySQL: case sensitive indentify - reset case conversion mode */
-	}
-	else
-	{
-		ControlFile.dbmode = DB_PG;
-		ControlFile.casemode = NORMAL; /* IvorySQL: case sensitive indentify - reset case conversion mode */
+		if (pg_strcasecmp(dbmode, "oracle") == 0 || pg_strcasecmp(dbmode, "1") == 0)
+		{
+			ControlFile.dbmode = DB_ORACLE;
+			ControlFile.casemode = INTERCHANGE; /* IvorySQL: case sensitive indentify - reset case conversion mode */
+		}
+		else
+		{
+			ControlFile.dbmode = DB_PG;
+			ControlFile.casemode = NORMAL; /* IvorySQL: case sensitive indentify - reset case conversion mode */
+		}
 	}
 	/* IvorySQL:END - SQL src_bin */
 
@@ -802,7 +807,7 @@ PrintControlValues(bool guessed)
 	printf(_("Data page checksum version:           %u\n"),
 		   ControlFile.data_checksum_version);
 	/* IvorySQL:BEGING - SQL src_bin */
-	printf(_("Database mode:                        %u\n"),
+	printf(_("database mode:                        %u\n"),
 		   ControlFile.dbmode);
 	/* IvorySQL:END - SQL src_bin */
 	/* IvorySQL: BEGIN - case sensitive indentify */

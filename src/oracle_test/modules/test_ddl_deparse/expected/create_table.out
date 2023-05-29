@@ -29,7 +29,7 @@ CREATE TABLE datatype_table (
     v_time_tz      TIME WITH TIME ZONE,
     v_timestamp    TIMESTAMP,
     v_timestamp_tz TIMESTAMP WITH TIME ZONE,
-    v_interval     INTERVAL,
+    v_interval     pg_catalog.INTERVAL,
     v_bit          BIT,
     v_bit4         BIT(4),
     v_varbit       VARBIT,

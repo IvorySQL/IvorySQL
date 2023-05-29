@@ -405,10 +405,10 @@ select four, x || 'x'
   order by four;
  four | ?column? 
 ------+----------
-    0 | 
-    1 | 
-    2 | 
-    3 | 
+    0 | x
+    1 | x
+    2 | x
+    3 | x
       | foox
 (5 rows)
 

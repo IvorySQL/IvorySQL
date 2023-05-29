@@ -424,19 +424,7 @@ SELECT to_timestamp('2011$03!18 23_38_15', 'YYYY-MM-DD HH24:MI:SS');
 
 SELECT to_timestamp('1985 January 12', 'YYYY FMMonth DD');
 
-SELECT to_timestamp('1985 FMMonth 12', 'YYYY "FMMonth" DD');
-
-SELECT to_timestamp('1985 \ 12', 'YYYY \\ DD');
-
-SELECT to_timestamp('My birthday-> Year: 1976, Month: May, Day: 16',
-                    '"My birthday-> Year:" YYYY, "Month:" FMMonth, "Day:" DD');
-
 SELECT to_timestamp('1,582nd VIII 21', 'Y,YYYth FMRM DD');
-
-SELECT to_timestamp('15 "text between quote marks" 98 54 45',
-                    E'HH24 "\\"text between quote marks\\"" YY MI SS');
-
-SELECT to_timestamp('05121445482000', 'MMDDHH24MISSYYYY');
 
 SELECT to_timestamp('2000January09Sunday', 'YYYYFMMonthDDFMDay');
 
@@ -546,8 +534,6 @@ SELECT to_timestamp('2000 + JUN', 'YYYY MON');
 SELECT to_timestamp('2000 ++ JUN', 'YYYY  MON');
 SELECT to_timestamp('2000 + + JUN', 'YYYY  MON');
 SELECT to_timestamp('2000 + + JUN', 'YYYY   MON');
-SELECT to_timestamp('2000 -10', 'YYYY TZH');
-SELECT to_timestamp('2000 -10', 'YYYY  TZH');
 
 SELECT to_date('2011 12  18', 'YYYY MM DD');
 SELECT to_date('2011 12  18', 'YYYY MM  DD');

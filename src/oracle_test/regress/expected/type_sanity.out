@@ -467,9 +467,15 @@ WHERE t1.typanalyze = p1.oid AND NOT
 SELECT d.oid, d.typname, d.typanalyze, t.oid, t.typname, t.typanalyze
 FROM pg_type d JOIN pg_type t ON d.typbasetype = t.oid
 WHERE d.typanalyze != t.typanalyze;
- oid | typname | typanalyze | oid | typname | typanalyze 
------+---------+------------+-----+---------+------------
-(0 rows)
+ oid  |  typname  |    typanalyze    | oid | typname | typanalyze 
+------+-----------+------------------+-----+---------+------------
+ 9032 | _blob     | array_typanalyze |  17 | bytea   | -
+ 9033 | _clob     | array_typanalyze |  25 | text    | -
+ 9035 | _long_raw | array_typanalyze |  17 | bytea   | -
+ 9037 | _nclob    | array_typanalyze |  25 | text    | -
+ 9034 | _long     | array_typanalyze |  25 | text    | -
+ 9036 | _raw      | array_typanalyze |  17 | bytea   | -
+(6 rows)
 
 -- range_typanalyze should be used for all and only range types
 -- (but exclude domains, which we checked above)
@@ -670,7 +676,7 @@ CREATE TABLE tab_core_types AS SELECT
   2::int2, 4::int4, 8::int8,
   4::float4, '8'::float8, pi()::numeric,
   'foo'::"char",
-  'c'::bpchar,
+  'c'::char,
   'abc'::varchar,
   'name'::name,
   'txt'::text,
@@ -709,6 +715,7 @@ CREATE TABLE tab_core_types AS SELECT
   '{(2020-01-02 03:04:05, 2021-02-03 06:07:08)}'::tsmultirange,
   '(2020-01-02 03:04:05, 2021-02-03 06:07:08)'::tstzrange,
   '{(2020-01-02 03:04:05, 2021-02-03 06:07:08)}'::tstzmultirange;
+ERROR:  missing or invalid datetime field.
 -- Sanity check on the previous table, checking that all core types are
 -- included in this table.
 SELECT oid, typname, typtype, typelem, typarray
@@ -736,7 +743,6 @@ SELECT oid, typname, typtype, typelem, typarray
                     WHERE a.atttypid=t.oid AND
                           a.attnum > 0 AND
                           a.attrelid='tab_core_types'::regclass);
- oid | typname | typtype | typelem | typarray 
------+---------+---------+---------+----------
-(0 rows)
-
+ERROR:  relation "tab_core_types" does not exist
+LINE 25:                           a.attrelid='tab_core_types'::regcl...
+                                              ^

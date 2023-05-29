@@ -9,6 +9,8 @@ ERROR:  invalid XML content
 LINE 1: INSERT INTO xmltest VALUES (3, '<wrong');
                                        ^
 DETAIL:  line 1: Couldn't find end of Start Tag wrong line 1
+<wrong
+      ^
 SELECT * FROM xmltest;
  id |        data        
 ----+--------------------
@@ -92,6 +94,8 @@ ERROR:  invalid XML content
 LINE 1: SELECT xmlconcat('bad', '<syntax');
                                 ^
 DETAIL:  line 1: Couldn't find end of Start Tag syntax line 1
+<syntax
+       ^
 SELECT xmlconcat('<foo/>', NULL, '<?xml version="1.1" standalone="no"?><bar/>');
   xmlconcat   
 --------------
@@ -207,14 +211,16 @@ SELECT xmlelement(name foo, xmlattributes(true as bar));
 (1 row)
 
 SELECT xmlelement(name foo, xmlattributes('2009-04-09 00:24:37'::timestamp as bar));
-            xmlelement            
-----------------------------------
- <foo bar="2009-04-09T00:24:37"/>
+               xmlelement                
+-----------------------------------------
+ <foo bar="2009-04-09 00:24:37.000000"/>
 (1 row)
 
 SELECT xmlelement(name foo, xmlattributes('infinity'::timestamp as bar));
-ERROR:  timestamp out of range
-DETAIL:  XML does not support infinite timestamp values.
+ERROR:  invalid value "infi" for "YYYY"
+LINE 1: SELECT xmlelement(name foo, xmlattributes('infinity'::timest...
+                                                  ^
+DETAIL:  Value must be an integer.
 SELECT xmlelement(name foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
                          xmlelement                         
 ------------------------------------------------------------
@@ -251,12 +257,16 @@ DETAIL:  line 1: xmlParseEntityRef: no name
 <invalidentity>&</invalidentity>
                 ^
 line 1: chunk is not well balanced
+<invalidentity>&</invalidentity>
+                                ^
 SELECT xmlparse(content '<undefinedentity>&idontexist;</undefinedentity>');
 ERROR:  invalid XML content
 DETAIL:  line 1: Entity 'idontexist' not defined
 <undefinedentity>&idontexist;</undefinedentity>
                              ^
 line 1: chunk is not well balanced
+<undefinedentity>&idontexist;</undefinedentity>
+                                               ^
 SELECT xmlparse(content '<invalidns xmlns=''&lt;''/>');
          xmlparse          
 ---------------------------
@@ -275,7 +285,11 @@ DETAIL:  line 1: Entity 'idontexist' not defined
 <twoerrors>&idontexist;</unbalanced>
                        ^
 line 1: Opening and ending tag mismatch: twoerrors line 1 and unbalanced
+<twoerrors>&idontexist;</unbalanced>
+                                    ^
 line 1: chunk is not well balanced
+<twoerrors>&idontexist;</unbalanced>
+                                    ^
 SELECT xmlparse(content '<nosuchprefix:tag/>');
       xmlparse       
 ---------------------
@@ -285,6 +299,8 @@ SELECT xmlparse(content '<nosuchprefix:tag/>');
 SELECT xmlparse(document '   ');
 ERROR:  invalid XML document
 DETAIL:  line 1: Start tag expected, '<' not found
+   
+   ^
 SELECT xmlparse(document 'abc');
 ERROR:  invalid XML document
 DETAIL:  line 1: Start tag expected, '<' not found
@@ -302,12 +318,16 @@ DETAIL:  line 1: xmlParseEntityRef: no name
 <invalidentity>&</abc>
                 ^
 line 1: Opening and ending tag mismatch: invalidentity line 1 and abc
+<invalidentity>&</abc>
+                      ^
 SELECT xmlparse(document '<undefinedentity>&idontexist;</abc>');
 ERROR:  invalid XML document
 DETAIL:  line 1: Entity 'idontexist' not defined
 <undefinedentity>&idontexist;</abc>
                              ^
 line 1: Opening and ending tag mismatch: undefinedentity line 1 and abc
+<undefinedentity>&idontexist;</abc>
+                                   ^
 SELECT xmlparse(document '<invalidns xmlns=''&lt;''/>');
          xmlparse          
 ---------------------------
@@ -326,6 +346,8 @@ DETAIL:  line 1: Entity 'idontexist' not defined
 <twoerrors>&idontexist;</unbalanced>
                        ^
 line 1: Opening and ending tag mismatch: twoerrors line 1 and unbalanced
+<twoerrors>&idontexist;</unbalanced>
+                                    ^
 SELECT xmlparse(document '<nosuchprefix:tag/>');
       xmlparse       
 ---------------------
@@ -810,7 +832,7 @@ SELECT table_name, view_definition FROM information_schema.views
  xmlview5   |  SELECT XMLPARSE(CONTENT '<abc>x</abc>'::text STRIP WHITESPACE) AS "xmlparse";
  xmlview6   |  SELECT XMLPI(NAME foo, 'bar'::text) AS "xmlpi";
  xmlview7   |  SELECT XMLROOT('<foo/>'::xml, VERSION NO VALUE, STANDALONE YES) AS "xmlroot";
- xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS character(10)))::character(10) AS "xmlserialize";
+ xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10)))::char(10) AS "xmlserialize";
  xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text) AS "xmlserialize";
 (9 rows)
 

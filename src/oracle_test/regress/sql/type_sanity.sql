@@ -497,7 +497,7 @@ CREATE TABLE tab_core_types AS SELECT
   2::int2, 4::int4, 8::int8,
   4::float4, '8'::float8, pi()::numeric,
   'foo'::"char",
-  'c'::bpchar,
+  'c'::char,
   'abc'::varchar,
   'name'::name,
   'txt'::text,

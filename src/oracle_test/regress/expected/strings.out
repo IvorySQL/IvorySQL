@@ -308,8 +308,7 @@ SELECT CAST(f1 AS text) AS "text(char)" FROM CHAR_TBL;
  a
  ab
  abcd
- abcd
-(4 rows)
+(3 rows)
 
 SELECT CAST(f1 AS text) AS "text(varchar)" FROM VARCHAR_TBL;
  text(varchar) 
@@ -317,8 +316,7 @@ SELECT CAST(f1 AS text) AS "text(varchar)" FROM VARCHAR_TBL;
  a
  ab
  abcd
- abcd
-(4 rows)
+(3 rows)
 
 SELECT CAST(name 'namefield' AS text) AS "text(name)";
  text(name) 
@@ -348,8 +346,7 @@ SELECT CAST(f1 AS char(10)) AS "char(varchar)" FROM VARCHAR_TBL;
  a         
  ab        
  abcd      
- abcd      
-(4 rows)
+(3 rows)
 
 SELECT CAST(name 'namefield' AS char(10)) AS "char(name)";
  char(name) 
@@ -370,8 +367,7 @@ SELECT CAST(f1 AS varchar) AS "varchar(char)" FROM CHAR_TBL;
  a
  ab
  abcd
- abcd
-(4 rows)
+(3 rows)
 
 SELECT CAST(name 'namefield' AS varchar) AS "varchar(name)";
  varchar(name) 
@@ -1954,7 +1950,7 @@ INSERT INTO toasttest VALUES('x');
 SELECT length(c), c::text FROM toasttest;
  length | c 
 --------+---
-      1 | x
+   4096 | x
 (1 row)
 
 SELECT c FROM toasttest;
@@ -2508,8 +2504,8 @@ SELECT SUBSTRING('string'::bytea FROM -10 FOR 2147483646) AS "string";
 SELECT SUBSTRING('string'::bytea FROM -10 FOR -2147483646) AS "error";
 ERROR:  negative substring length not allowed
 SELECT trim(E'\\000'::bytea from E'\\000Tom\\000'::bytea);
- btrim 
--------
+ trim 
+------
  Tom
 (1 row)
 

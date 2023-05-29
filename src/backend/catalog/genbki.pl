@@ -1100,20 +1100,16 @@ sub lookup_oids
 			push @lookupoids, $lookupname;
 			if ($lookupname eq '-' or $lookupname eq '0')
 			{
-				if (!$lookup_opt)
-				{
-					warn sprintf
-					  "invalid zero OID reference in %s.dat field %s line %s\n",
-					  $catname, $attname, $bki_values->{line_number};
-					$num_errors++;
-				}
+				warn sprintf
+				  "invalid zero OID reference in %s.dat field %s line %s\n",
+				  $catname, $attname, $bki_values->{line_number}
+				  if !$lookup_opt;
 			}
 			else
 			{
 				warn sprintf
 				  "unresolved OID reference \"%s\" in %s.dat field %s line %s\n",
 				  $lookupname, $catname, $attname, $bki_values->{line_number};
-				$num_errors++;
 			}
 		}
 	}

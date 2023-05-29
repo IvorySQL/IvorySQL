@@ -1,0 +1,351 @@
+--
+-- INTERVAL YEAR TO MONTH
+--
+-- Valid Interval Literals
+SELECT INTERVAL'1-1' YEAR TO MONTH;
+ yminterval 
+------------
+ +01-01
+(1 row)
+
+SELECT INTERVAL '123-2' YEAR(3) TO MONTH;
+ yminterval 
+------------
+ +123-02
+(1 row)
+
+SELECT INTERVAL'11' YEAR;
+ yminterval 
+------------
+ +11-00
+(1 row)
+
+SELECT INTERVAL'356' YEAR(3);
+ yminterval 
+------------
+ +356-00
+(1 row)
+
+SELECT INTERVAL'12' MONTH;
+ yminterval 
+------------
+ +01-00
+(1 row)
+
+SELECT INTERVAL'1200' MONTH(3);
+ yminterval 
+------------
+ +100-00
+(1 row)
+
+-- If the leading field is YEAR and the trailing field is MONTH, 
+-- then the range of integer values for the month field is 0 to 11.
+SELECT INTERVAL'1-11' YEAR TO MONTH;
+ yminterval 
+------------
+ +01-11
+(1 row)
+
+SELECT INTERVAL'1-12' YEAR TO MONTH;	
+ERROR:  interval field value out of range: "1-12"
+LINE 1: SELECT INTERVAL'1-12' YEAR TO MONTH;
+                       ^
+CREATE TABLE TEST_YMINTERVAL(a interval year(4) to month);
+INSERT INTO TEST_YMINTERVAL (a) VALUES ('0-1');
+INSERT INTO TEST_YMINTERVAL (a) VALUES ('1-2');
+INSERT INTO TEST_YMINTERVAL (a) VALUES ('12-3');
+INSERT INTO TEST_YMINTERVAL (a) VALUES ('123-4');
+INSERT INTO TEST_YMINTERVAL (a) VALUES ('1234-5');
+-- Precision out of range
+INSERT INTO TEST_YMINTERVAL (a) VALUES ('12345-6');
+ERROR:  Leading precision of the interval is too small
+LINE 1: INSERT INTO TEST_YMINTERVAL (a) VALUES ('12345-6');
+                                                ^
+-- Comparison operator
+SELECT * FROM TEST_YMINTERVAL WHERE TEST_YMINTERVAL.a = interval'12-3' year to month;
+    a     
+----------
+ +0012-03
+(1 row)
+
+SELECT * FROM TEST_YMINTERVAL WHERE TEST_YMINTERVAL.a <> interval'12-3' year to month;
+    a     
+----------
+ +0000-01
+ +0001-02
+ +0123-04
+ +1234-05
+(4 rows)
+
+SELECT * FROM TEST_YMINTERVAL WHERE TEST_YMINTERVAL.a > interval'12-3' year to month;
+    a     
+----------
+ +0123-04
+ +1234-05
+(2 rows)
+
+SELECT * FROM TEST_YMINTERVAL WHERE TEST_YMINTERVAL.a >= interval'12-3' year to month;
+    a     
+----------
+ +0012-03
+ +0123-04
+ +1234-05
+(3 rows)
+
+SELECT * FROM TEST_YMINTERVAL WHERE TEST_YMINTERVAL.a < interval'12-3' year to month;
+    a     
+----------
+ +0000-01
+ +0001-02
+(2 rows)
+
+SELECT * FROM TEST_YMINTERVAL WHERE TEST_YMINTERVAL.a <= interval'12-3' year to month;
+    a     
+----------
+ +0000-01
+ +0001-02
+ +0012-03
+(3 rows)
+
+-- "+" operator
+SELECT TEST_YMINTERVAL.a + interval'1-1' year to month FROM TEST_YMINTERVAL;
+   ?column?    
+---------------
+ +000000001-02
+ +000000002-03
+ +000000013-04
+ +000000124-05
+ +000001235-06
+(5 rows)
+
+-- "-" operator
+SELECT TEST_YMINTERVAL.a - interval'1-1' year to month FROM TEST_YMINTERVAL;
+   ?column?    
+---------------
+ -000000001-00
+ +000000000-01
+ +000000011-02
+ +000000122-03
+ +000001233-04
+(5 rows)
+
+-- AGGREGATE
+SELECT MAX(a) FROM TEST_YMINTERVAL;
+      max      
+---------------
+ +000001234-05
+(1 row)
+
+SELECT MIN(a) FROM TEST_YMINTERVAL;
+      min      
+---------------
+ +000000000-01
+(1 row)
+
+-- index 
+CREATE INDEX test_yminterval_btree on TEST_YMINTERVAL(a);
+CREATE INDEX test_yminterval_hash on TEST_YMINTERVAL USING hash (a);
+CREATE INDEX test_yminterval_brin on TEST_YMINTERVAL USING brin (a);
+--
+-- INTERVAL DAY TO SECOND
+--
+-- Valid Interval Literals
+SELECT INTERVAL '4 5:12:10.222' DAY TO SECOND(3);
+    dsinterval    
+------------------
+ +04 05:12:10.222
+(1 row)
+
+SELECT INTERVAL '4 5:12' DAY TO MINUTE;
+  dsinterval  
+--------------
+ +04 05:12:00
+(1 row)
+
+SELECT INTERVAL '400 5' DAY(3) TO HOUR;
+  dsinterval   
+---------------
+ +400 05:00:00
+(1 row)
+
+SELECT INTERVAL '400' DAY(3);
+  dsinterval   
+---------------
+ +400 00:00:00
+(1 row)
+
+SELECT INTERVAL '11:12:10.2222222' HOUR TO SECOND(7);
+      dsinterval      
+----------------------
+ +00 11:12:10.2222220
+(1 row)
+
+SELECT INTERVAL '11:20' HOUR TO MINUTE;
+  dsinterval  
+--------------
+ +00 11:20:00
+(1 row)
+
+SELECT INTERVAL '10' HOUR;
+  dsinterval  
+--------------
+ +00 10:00:00
+(1 row)
+
+SELECT INTERVAL '10:22' MINUTE TO SECOND;
+     dsinterval      
+---------------------
+ +00 00:10:22.000000
+(1 row)
+
+SELECT INTERVAL '10' MINUTE;
+  dsinterval  
+--------------
+ +00 00:10:00
+(1 row)
+
+SELECT INTERVAL '4' DAY;
+  dsinterval  
+--------------
+ +04 00:00:00
+(1 row)
+
+SELECT INTERVAL '25' HOUR;
+  dsinterval  
+--------------
+ +01 01:00:00
+(1 row)
+
+SELECT INTERVAL '40' MINUTE;
+  dsinterval  
+--------------
+ +00 00:40:00
+(1 row)
+
+SELECT INTERVAL '120' HOUR(3);
+  dsinterval   
+---------------
+ +005 00:00:00
+(1 row)
+
+SELECT INTERVAL '30.12345' SECOND(2,4);
+    dsinterval     
+-------------------
+ +00 00:00:30.1235
+(1 row)
+
+-- The valid range of values for the trailing field are as follows:
+-- HOUR: 0 to 23
+-- MINUTE: 0 to 59
+-- SECOND: 0 to 59.999999999
+SELECT INTERVAL '400 24' DAY(3) TO HOUR;	--ERROR
+ERROR:  hour must be between 0 and 23
+LINE 1: SELECT INTERVAL '400 24' DAY(3) TO HOUR;
+                        ^
+SELECT INTERVAL '4 5:60' DAY TO MINUTE;		--ERROR
+ERROR:  minutes must be between 0 and 59
+LINE 1: SELECT INTERVAL '4 5:60' DAY TO MINUTE;
+                        ^
+SELECT INTERVAL '4 5:12:60' DAY TO SECOND(3);	--ERROR	
+ERROR:  seconds must be between 0 and 59
+LINE 1: SELECT INTERVAL '4 5:12:60' DAY TO SECOND(3);
+                        ^
+CREATE TABLE TEST_DSINTERVAL(a interval day(4) to second(6));
+INSERT INTO TEST_DSINTERVAL (a) VALUES ('0 0:0:0');
+INSERT INTO TEST_DSINTERVAL (a) VALUES ('1 1:1:1.123');
+INSERT INTO TEST_DSINTERVAL (a) VALUES ('12 1:1:1.123456');
+INSERT INTO TEST_DSINTERVAL (a) VALUES ('123 1:1:1.123456789');
+INSERT INTO TEST_DSINTERVAL (a) VALUES ('1234 1:1:1.123456789');
+-- Precision out of range
+INSERT INTO TEST_DSINTERVAL (a) VALUES ('12345 1:1:1.123456');
+ERROR:  Leading precision of the interval is too small
+LINE 1: INSERT INTO TEST_DSINTERVAL (a) VALUES ('12345 1:1:1.123456'...
+                                                ^
+-- Comparison operator
+SELECT * FROM TEST_DSINTERVAL WHERE TEST_DSINTERVAL.a = interval'12 1:1:1.123456' day to second;
+           a           
+-----------------------
+ +0012 01:01:01.123456
+(1 row)
+
+SELECT * FROM TEST_DSINTERVAL WHERE TEST_DSINTERVAL.a <> interval'12 1:1:1.123456' day to second;
+           a           
+-----------------------
+ +0000 00:00:00.000000
+ +0001 01:01:01.123000
+ +0123 01:01:01.123457
+ +1234 01:01:01.123457
+(4 rows)
+
+SELECT * FROM TEST_DSINTERVAL WHERE TEST_DSINTERVAL.a > interval'12 1:1:1.123456' day to second;
+           a           
+-----------------------
+ +0123 01:01:01.123457
+ +1234 01:01:01.123457
+(2 rows)
+
+SELECT * FROM TEST_DSINTERVAL WHERE TEST_DSINTERVAL.a >= interval'12 1:1:1.123456' day to second;
+           a           
+-----------------------
+ +0012 01:01:01.123456
+ +0123 01:01:01.123457
+ +1234 01:01:01.123457
+(3 rows)
+
+SELECT * FROM TEST_DSINTERVAL WHERE TEST_DSINTERVAL.a < interval'12 1:1:1.123456' day to second;
+           a           
+-----------------------
+ +0000 00:00:00.000000
+ +0001 01:01:01.123000
+(2 rows)
+
+SELECT * FROM TEST_DSINTERVAL WHERE TEST_DSINTERVAL.a <= interval'12 1:1:1.123456' day to second;
+           a           
+-----------------------
+ +0000 00:00:00.000000
+ +0001 01:01:01.123000
+ +0012 01:01:01.123456
+(3 rows)
+
+-- "+" operator
+SELECT TEST_DSINTERVAL.a + interval'1 1:1:1' day to second FROM TEST_DSINTERVAL;
+           ?column?            
+-------------------------------
+ +000000001 01:01:01.000000000
+ +000000002 02:02:02.123000000
+ +000000013 02:02:02.123456000
+ +000000124 02:02:02.123457000
+ +000001235 02:02:02.123457000
+(5 rows)
+
+-- "-" operator
+SELECT TEST_DSINTERVAL.a - interval'1 1:1:1' day to second FROM TEST_DSINTERVAL;
+           ?column?            
+-------------------------------
+ -000000001 01:01:01.000000000
+ +000000000 00:00:00.123000000
+ +000000011 00:00:00.123456000
+ +000000122 00:00:00.123457000
+ +000001233 00:00:00.123457000
+(5 rows)
+
+-- AGGREGATE
+SELECT MAX(a) FROM TEST_DSINTERVAL;
+              max              
+-------------------------------
+ +000001234 01:01:01.123457000
+(1 row)
+
+SELECT MIN(a) FROM TEST_DSINTERVAL;
+              min              
+-------------------------------
+ +000000000 00:00:00.000000000
+(1 row)
+
+-- index
+CREATE INDEX test_dsinterval_btree on TEST_DSINTERVAL(a);
+CREATE INDEX test_dsinterval_hash on TEST_DSINTERVAL USING hash (a);
+CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
+-- drop table
+DROP TABLE TEST_YMINTERVAL;
+DROP TABLE TEST_DSINTERVAL;

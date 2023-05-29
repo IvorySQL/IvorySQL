@@ -526,8 +526,10 @@ alter table rewriteme alter column foo type numeric(12,4);
 begin;
 set timezone to 'UTC';
 alter table rewriteme alter column bar type timestamp;
+NOTICE:  Table 'rewriteme' is being rewritten (reason = 4)
 set timezone to '0';
 alter table rewriteme alter column bar type timestamptz;
+NOTICE:  Table 'rewriteme' is being rewritten (reason = 4)
 set timezone to 'Europe/London';
 alter table rewriteme alter column bar type timestamp; -- does rewrite
 NOTICE:  Table 'rewriteme' is being rewritten (reason = 4)

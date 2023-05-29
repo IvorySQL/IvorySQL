@@ -24,8 +24,9 @@ INSERT INTO CHAR_TBL (f1) VALUES ('3');
 INSERT INTO CHAR_TBL (f1) VALUES ('');
 -- try char's of greater than 1 length
 INSERT INTO CHAR_TBL (f1) VALUES ('cd');
-ERROR:  value too long for type character(1)
+ERROR:  value too long for type char(1 byte)
 INSERT INTO CHAR_TBL (f1) VALUES ('c     ');
+ERROR:  value too long for type char(1 byte)
 SELECT * FROM CHAR_TBL;
  f1 
 ----
@@ -35,8 +36,7 @@ SELECT * FROM CHAR_TBL;
  2
  3
   
- c
-(7 rows)
+(6 rows)
 
 SELECT c.*
    FROM CHAR_TBL c
@@ -48,8 +48,7 @@ SELECT c.*
  2
  3
   
- c
-(6 rows)
+(5 rows)
 
 SELECT c.*
    FROM CHAR_TBL c
@@ -88,8 +87,7 @@ SELECT c.*
  f1 
 ----
  A
- c
-(2 rows)
+(1 row)
 
 SELECT c.*
    FROM CHAR_TBL c
@@ -98,8 +96,7 @@ SELECT c.*
 ----
  a
  A
- c
-(3 rows)
+(2 rows)
 
 DROP TABLE CHAR_TBL;
 --
@@ -109,15 +106,14 @@ DROP TABLE CHAR_TBL;
 -- Here we just try to insert bad values.
 --
 INSERT INTO CHAR_TBL (f1) VALUES ('abcde');
-ERROR:  value too long for type character(4)
+ERROR:  value too long for type char(4 byte)
 SELECT * FROM CHAR_TBL;
   f1  
 ------
  a   
  ab  
  abcd
- abcd
-(4 rows)
+(3 rows)
 
 -- Also try it with non-error-throwing API
 SELECT pg_input_is_valid('abcd  ', 'char(4)');

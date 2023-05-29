@@ -226,10 +226,7 @@ FROM   (VALUES (NULL::interval),
         ('17 year 11 month 7 day 9 hours 46 minutes 5 seconds')) x(v)
 WHERE  interval_hash(v)::bit(32) != interval_hash_extended(v, 0)::bit(32)
        OR interval_hash(v)::bit(32) = interval_hash_extended(v, 1)::bit(32);
- value | standard | extended0 | extended1 
--------+----------+-----------+-----------
-(0 rows)
-
+ERROR:  missing or invalid datetime field.
 SELECT v as value, timestamp_hash(v)::bit(32) as standard,
        timestamp_hash_extended(v, 0)::bit(32) as extended0,
        timestamp_hash_extended(v, 1)::bit(32) as extended1
@@ -239,10 +236,9 @@ FROM   (VALUES (NULL::timestamp), ('2017-08-22 00:09:59.518762'),
         ('2013-08-22 00:11:52.62+01'), ('2013-08-22 11:59:59+04')) x(v)
 WHERE  timestamp_hash(v)::bit(32) != timestamp_hash_extended(v, 0)::bit(32)
        OR timestamp_hash(v)::bit(32) = timestamp_hash_extended(v, 1)::bit(32);
- value | standard | extended0 | extended1 
--------+----------+-----------+-----------
-(0 rows)
-
+ERROR:  datetime format picture ends before converting entire input string
+LINE 5:         ('2015-08-20 00:11:52.51762-08'),
+                 ^
 SELECT v as value, uuid_hash(v)::bit(32) as standard,
        uuid_hash_extended(v, 0)::bit(32) as extended0,
        uuid_hash_extended(v, 1)::bit(32) as extended1

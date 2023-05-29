@@ -267,6 +267,11 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		case WITHOUT:
 			cur_token_length = 7;
 			break;
+		/* IvorySQL:BEGIN - datatype */
+		case LONG_P:
+			cur_token_length = 4;
+			break;
+		/* IvorySQL:END - datatype */
 		default:
 			return cur_token;
 	}
@@ -346,6 +351,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			{
 				case TIME:
 				case ORDINALITY:
+				case LOCAL:		/* IvorySQL: datatype */
 					cur_token = WITH_LA;
 					break;
 			}
@@ -360,6 +366,18 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 					break;
 			}
 			break;
+
+		/* IvorySQL:BEGIN - datatype */
+		case LONG_P:
+			switch (next_token)
+				{
+				case RAW_P:
+					yyextra->have_lookahead = false;	/* eat RAW_P token */
+					cur_token = LONG_RAW;
+					break;
+				}
+			break;
+		/* IvorySQL:END - datatype */
 
 		case UIDENT:
 		case USCONST:

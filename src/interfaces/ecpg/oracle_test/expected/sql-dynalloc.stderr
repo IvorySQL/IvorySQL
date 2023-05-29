@@ -14,13 +14,13 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 37: OK: CREATE TABLE
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_execute on line 38: query: insert into test ( b , c , d , e , f , g , h , i ) values ( 23.456 , 'varchar' , 'v' , 'c' , '2003-03-03 12:33:07 PDT' , true , '(1,2,3,4)' , '2001:4f8:3:ba:2e0:81ff:fe22:d1f1/128' ); with 0 parameter(s) on connection ecpg1_regression
+[NO_PID]: ecpg_execute on line 38: query: insert into test ( b , c , d , e , f , g , h , i ) values ( 23.456 , 'varchar' , 'v' , 'c' , '2003-03-03 12:33:07' , true , '(1,2,3,4)' , '2001:4f8:3:ba:2e0:81ff:fe22:d1f1/128' ); with 0 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 38: using PQexec
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 38: OK: INSERT 0 1
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_execute on line 39: query: insert into test ( b , c , d , e , f , g , h , i ) values ( 2.446456 , null , 'v' , 'c' , '2003-03-03 12:33:07 PDT' , false , null , null ); with 0 parameter(s) on connection ecpg1_regression
+[NO_PID]: ecpg_execute on line 39: query: insert into test ( b , c , d , e , f , g , h , i ) values ( 2.446456 , null , 'v' , 'c' , '2003-03-03 12:33:07' , false , null , null ); with 0 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 39: using PQexec
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -52,6 +52,8 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ECPGget_desc: reading items for tuple 3
 [NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_is_type_an_array on line 45: type (9003); C (1); array (no)
+[NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_store_result on line 45: allocating memory for 2 tuples
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 45: RESULT: varchar offset: -1; array: no
@@ -68,6 +70,8 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ECPGget_desc: reading items for tuple 5
 [NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_is_type_an_array on line 47: type (9001); C (1); array (no)
+[NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_store_result on line 47: allocating memory for 2 tuples
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 47: RESULT: c    offset: -1; array: no
@@ -76,11 +80,13 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ECPGget_desc: reading items for tuple 6
 [NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_is_type_an_array on line 48: type (9012); C (1); array (no)
+[NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_store_result on line 48: allocating memory for 2 tuples
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_get_data on line 48: RESULT: Mon Mar 03 11:33:07 2003 PST offset: -1; array: no
+[NO_PID]: ecpg_get_data on line 48: RESULT: 2003-03-03 12:33:07.000000 -08:00 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_get_data on line 48: RESULT: Mon Mar 03 11:33:07 2003 PST offset: -1; array: no
+[NO_PID]: ecpg_get_data on line 48: RESULT: 2003-03-03 12:33:07.000000 -08:00 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ECPGget_desc: reading items for tuple 7
 [NO_PID]: sqlca: code: 0, state: 00000

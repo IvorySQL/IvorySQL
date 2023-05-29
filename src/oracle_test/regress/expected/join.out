@@ -2645,16 +2645,16 @@ LEFT JOIN (
 ) AS d ON (a.f1 = d.f1)
 WHERE COALESCE(d.f1, 0) = 0
 ORDER BY 1;
-                  QUERY PLAN                   
------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  Sort
    Sort Key: a.f1
    ->  Hash Right Join
          Hash Cond: (b.f1 = a.f1)
-         Filter: (COALESCE(b.f1, 0) = 0)
+         Filter: (COALESCE((b.f1)::number, '0'::number) = '0'::number)
          ->  Hash Left Join
                Hash Cond: (b.f1 = c.f1)
-               Filter: (COALESCE(c.f1, 0) = 0)
+               Filter: (COALESCE((c.f1)::number, '0'::number) = '0'::number)
                ->  Seq Scan on tt3 b
                ->  Hash
                      ->  Seq Scan on tt3 c
@@ -3014,8 +3014,8 @@ from c left join
 order by c.name;
  name | code | b_cnt | const 
 ------+------+-------+-------
- A    | p    |     2 |    -1
- B    | q    |     0 |    -1
+ A    | p    | 2     |    -1
+ B    | q    | 0     |    -1
  C    |      |       |      
 (3 rows)
 
@@ -3041,7 +3041,7 @@ LEFT JOIN
 ON sub1.key1 = sub2.key3;
  key1 | key3 | value2 | value3 
 ------+------+--------+--------
-    1 |    1 |      1 |      1
+    1 |    1 | 1      | 1
 (1 row)
 
 -- test the path using join aliases, too
@@ -3062,7 +3062,7 @@ LEFT JOIN
 ON sub1.key1 = sub2.key3;
  key1 | key3 | value2 | value3 
 ------+------+--------+--------
-    1 |    1 |      1 |      1
+    1 |    1 | 1      | 1
 (1 row)
 
 --
@@ -3076,17 +3076,18 @@ SELECT qq, unique1
   ( SELECT COALESCE(q2, -1) AS qq FROM int8_tbl b ) AS ss2
   USING (qq)
   INNER JOIN tenk1 c ON qq = unique2;
-                                               QUERY PLAN                                                
----------------------------------------------------------------------------------------------------------
- Nested Loop
-   ->  Hash Full Join
-         Hash Cond: ((COALESCE(a.q1, '0'::bigint)) = (COALESCE(b.q2, '-1'::bigint)))
-         ->  Seq Scan on int8_tbl a
-         ->  Hash
-               ->  Seq Scan on int8_tbl b
-   ->  Index Scan using tenk1_unique2 on tenk1 c
-         Index Cond: (unique2 = COALESCE((COALESCE(a.q1, '0'::bigint)), (COALESCE(b.q2, '-1'::bigint))))
-(8 rows)
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: ((c.unique2)::number = COALESCE((COALESCE((a.q1)::number, '0'::number)), (COALESCE((b.q2)::number, '-1'::number))))
+   ->  Seq Scan on tenk1 c
+   ->  Hash
+         ->  Hash Full Join
+               Hash Cond: ((COALESCE((a.q1)::number, '0'::number)) = (COALESCE((b.q2)::number, '-1'::number)))
+               ->  Seq Scan on int8_tbl a
+               ->  Hash
+                     ->  Seq Scan on int8_tbl b
+(9 rows)
 
 SELECT qq, unique1
   FROM
@@ -4001,10 +4002,10 @@ select * from
 ) ss
 where fault = 122
 order by fault;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
  Nested Loop Left Join
-   Filter: ((COALESCE(tenk1.unique1, '-1'::integer) + int8_tbl.q1) = 122)
+   Filter: ((COALESCE((tenk1.unique1)::number, '-1'::number) + (int8_tbl.q1)::number) = '122'::number)
    ->  Seq Scan on int8_tbl
    ->  Index Scan using tenk1_unique2 on tenk1
          Index Cond: (unique2 = int8_tbl.q2)
@@ -4019,7 +4020,7 @@ where fault = 122
 order by fault;
  unique1 | q1  | fault 
 ---------+-----+-------
-         | 123 |   122
+         | 123 | 122
 (1 row)
 
 explain (costs off)
@@ -4056,10 +4057,10 @@ explain (costs off)
 select q1, unique2, thousand, hundred
   from int8_tbl a left join tenk1 b on q1 = unique2
   where coalesce(thousand,123) = q1 and q1 = coalesce(hundred,123);
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop Left Join
-   Filter: ((COALESCE(b.thousand, 123) = COALESCE(b.hundred, 123)) AND (a.q1 = COALESCE(b.hundred, 123)))
+   Filter: ((COALESCE((b.thousand)::number, '123'::number) = COALESCE((b.hundred)::number, '123'::number)) AND ((a.q1)::number = COALESCE((b.hundred)::number, '123'::number)))
    ->  Seq Scan on int8_tbl a
    ->  Index Scan using tenk1_unique2 on tenk1 b
          Index Cond: (unique2 = a.q1)
@@ -4100,19 +4101,19 @@ explain (costs off)
 select a.unique1, b.unique1, c.unique1, coalesce(b.twothousand, a.twothousand)
   from tenk1 a left join tenk1 b on b.thousand = a.unique1                        left join tenk1 c on c.unique2 = coalesce(b.twothousand, a.twothousand)
   where a.unique2 < 10 and coalesce(b.twothousand, a.twothousand) = 44;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Nested Loop Left Join
    ->  Nested Loop Left Join
-         Filter: (COALESCE(b.twothousand, a.twothousand) = 44)
+         Filter: (COALESCE((b.twothousand)::number, (a.twothousand)::number) = '44'::number)
          ->  Index Scan using tenk1_unique2 on tenk1 a
                Index Cond: (unique2 < 10)
          ->  Bitmap Heap Scan on tenk1 b
                Recheck Cond: (thousand = a.unique1)
                ->  Bitmap Index Scan on tenk1_thous_tenthous
                      Index Cond: (thousand = a.unique1)
-   ->  Index Scan using tenk1_unique2 on tenk1 c
-         Index Cond: (unique2 = 44)
+   ->  Seq Scan on tenk1 c
+         Filter: ((unique2)::number = '44'::number)
 (11 rows)
 
 select a.unique1, b.unique1, c.unique1, coalesce(b.twothousand, a.twothousand)
@@ -4797,13 +4798,13 @@ select * from
   left join
     (tenk1 as a1 full join (select 1 as id) as yy on (a1.unique1 = yy.id))
   on (xx.id = coalesce(yy.id));
-              QUERY PLAN               
----------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Nested Loop Left Join
    ->  Result
    ->  Hash Full Join
          Hash Cond: (a1.unique1 = (1))
-         Filter: (1 = COALESCE((1)))
+         Filter: ('1'::number = COALESCE(((1))::number))
          ->  Seq Scan on tenk1 a1
          ->  Hash
                ->  Result
@@ -4855,22 +4856,22 @@ explain (verbose, costs off)
   select a.q2, b.q1
     from int8_tbl a left join int8_tbl b on a.q2 = coalesce(b.q1, 1)
     where coalesce(b.q1, 1) > 0;
-                       QUERY PLAN                        
----------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Merge Left Join
    Output: a.q2, b.q1
-   Merge Cond: (a.q2 = (COALESCE(b.q1, '1'::bigint)))
-   Filter: (COALESCE(b.q1, '1'::bigint) > 0)
+   Merge Cond: (((a.q2)::number) = (COALESCE((b.q1)::number, '1'::number)))
+   Filter: (COALESCE((b.q1)::number, '1'::number) > '0'::number)
    ->  Sort
-         Output: a.q2
-         Sort Key: a.q2
+         Output: a.q2, ((a.q2)::number)
+         Sort Key: ((a.q2)::number)
          ->  Seq Scan on public.int8_tbl a
-               Output: a.q2
+               Output: a.q2, a.q2
    ->  Sort
-         Output: b.q1, (COALESCE(b.q1, '1'::bigint))
-         Sort Key: (COALESCE(b.q1, '1'::bigint))
+         Output: b.q1, (COALESCE((b.q1)::number, '1'::number))
+         Sort Key: (COALESCE((b.q1)::number, '1'::number))
          ->  Seq Scan on public.int8_tbl b
-               Output: b.q1, COALESCE(b.q1, '1'::bigint)
+               Output: b.q1, COALESCE((b.q1)::number, '1'::number)
 (14 rows)
 
 select a.q2, b.q1
@@ -5443,9 +5444,9 @@ SELECT * FROM
   ON true;
  x |        q1        |        q2         |        y         
 ---+------------------+-------------------+------------------
- 1 |              123 |               456 |              123
- 1 |              123 |  4567890123456789 |              123
- 1 | 4567890123456789 |               123 |               42
+ 1 |              123 |               456 | 123
+ 1 |              123 |  4567890123456789 | 123
+ 1 | 4567890123456789 |               123 | 42
  1 | 4567890123456789 |  4567890123456789 | 4567890123456789
  1 | 4567890123456789 | -4567890123456789 | 4567890123456789
 (5 rows)
@@ -5456,10 +5457,10 @@ SELECT q2 FROM
   (SELECT *
    FROM int8_tbl LEFT JOIN innertab ON q2 = id) ss
  WHERE COALESCE(dat1, 0) = q1;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
  Nested Loop Left Join
-   Filter: (COALESCE(innertab.dat1, '0'::bigint) = int8_tbl.q1)
+   Filter: (COALESCE((innertab.dat1)::number, '0'::number) = (int8_tbl.q1)::number)
    ->  Seq Scan on int8_tbl
    ->  Index Scan using innertab_pkey on innertab
          Index Cond: (id = int8_tbl.q2)
@@ -6083,16 +6084,16 @@ select * from
   lateral (values(x.q1,y.q1,y.q2)) v(xq1,yq1,yq2);
         q1        |        q2         |        q1        |        q2         |       xq1        |       yq1        |        yq2        
 ------------------+-------------------+------------------+-------------------+------------------+------------------+-------------------
-              123 |               456 |                  |                   |              123 |                  |                  
-              123 |  4567890123456789 | 4567890123456789 | -4567890123456789 |              123 | 4567890123456789 | -4567890123456789
-              123 |  4567890123456789 | 4567890123456789 |  4567890123456789 |              123 | 4567890123456789 |  4567890123456789
-              123 |  4567890123456789 | 4567890123456789 |               123 |              123 | 4567890123456789 |               123
- 4567890123456789 |               123 |              123 |  4567890123456789 | 4567890123456789 |              123 |  4567890123456789
- 4567890123456789 |               123 |              123 |               456 | 4567890123456789 |              123 |               456
+ 4567890123456789 |               123 |              123 | 456               | 4567890123456789 |              123 | 456
+ 4567890123456789 |               123 |              123 | 4567890123456789  | 4567890123456789 |              123 | 4567890123456789
+ 4567890123456789 |  4567890123456789 | 4567890123456789 | 123               | 4567890123456789 | 4567890123456789 | 123
+              123 |  4567890123456789 | 4567890123456789 | 123               |              123 | 4567890123456789 | 123
+ 4567890123456789 |  4567890123456789 | 4567890123456789 | 4567890123456789  | 4567890123456789 | 4567890123456789 | 4567890123456789
+              123 |  4567890123456789 | 4567890123456789 | 4567890123456789  |              123 | 4567890123456789 | 4567890123456789
  4567890123456789 |  4567890123456789 | 4567890123456789 | -4567890123456789 | 4567890123456789 | 4567890123456789 | -4567890123456789
- 4567890123456789 |  4567890123456789 | 4567890123456789 |  4567890123456789 | 4567890123456789 | 4567890123456789 |  4567890123456789
- 4567890123456789 |  4567890123456789 | 4567890123456789 |               123 | 4567890123456789 | 4567890123456789 |               123
- 4567890123456789 | -4567890123456789 |                  |                   | 4567890123456789 |                  |                  
+              123 |  4567890123456789 | 4567890123456789 | -4567890123456789 |              123 | 4567890123456789 | -4567890123456789
+              123 |               456 |                  |                   |              123 |                  | 
+ 4567890123456789 | -4567890123456789 |                  |                   | 4567890123456789 |                  | 
 (10 rows)
 
 select * from
@@ -6100,16 +6101,16 @@ select * from
   lateral (select x.q1,y.q1,y.q2) v(xq1,yq1,yq2);
         q1        |        q2         |        q1        |        q2         |       xq1        |       yq1        |        yq2        
 ------------------+-------------------+------------------+-------------------+------------------+------------------+-------------------
-              123 |               456 |                  |                   |              123 |                  |                  
-              123 |  4567890123456789 | 4567890123456789 | -4567890123456789 |              123 | 4567890123456789 | -4567890123456789
-              123 |  4567890123456789 | 4567890123456789 |  4567890123456789 |              123 | 4567890123456789 |  4567890123456789
-              123 |  4567890123456789 | 4567890123456789 |               123 |              123 | 4567890123456789 |               123
- 4567890123456789 |               123 |              123 |  4567890123456789 | 4567890123456789 |              123 |  4567890123456789
- 4567890123456789 |               123 |              123 |               456 | 4567890123456789 |              123 |               456
+ 4567890123456789 |               123 |              123 | 456               | 4567890123456789 |              123 | 456
+ 4567890123456789 |               123 |              123 | 4567890123456789  | 4567890123456789 |              123 | 4567890123456789
+ 4567890123456789 |  4567890123456789 | 4567890123456789 | 123               | 4567890123456789 | 4567890123456789 | 123
+              123 |  4567890123456789 | 4567890123456789 | 123               |              123 | 4567890123456789 | 123
+ 4567890123456789 |  4567890123456789 | 4567890123456789 | 4567890123456789  | 4567890123456789 | 4567890123456789 | 4567890123456789
+              123 |  4567890123456789 | 4567890123456789 | 4567890123456789  |              123 | 4567890123456789 | 4567890123456789
  4567890123456789 |  4567890123456789 | 4567890123456789 | -4567890123456789 | 4567890123456789 | 4567890123456789 | -4567890123456789
- 4567890123456789 |  4567890123456789 | 4567890123456789 |  4567890123456789 | 4567890123456789 | 4567890123456789 |  4567890123456789
- 4567890123456789 |  4567890123456789 | 4567890123456789 |               123 | 4567890123456789 | 4567890123456789 |               123
- 4567890123456789 | -4567890123456789 |                  |                   | 4567890123456789 |                  |                  
+              123 |  4567890123456789 | 4567890123456789 | -4567890123456789 |              123 | 4567890123456789 | -4567890123456789
+              123 |               456 |                  |                   |              123 |                  | 
+ 4567890123456789 | -4567890123456789 |                  |                   | 4567890123456789 |                  | 
 (10 rows)
 
 select x.* from
@@ -6135,26 +6136,26 @@ select v.* from
   lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy);
         vx         |        vy         
 -------------------+-------------------
-               123 |                  
-               456 |                  
-               123 |  4567890123456789
+  4567890123456789 | 123
+               123 | 456
+  4567890123456789 | 123
+               123 | 4567890123456789
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 123
+               123 | 4567890123456789
+  4567890123456789 | 123
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 4567890123456789
+               123 | 4567890123456789
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 4567890123456789
   4567890123456789 | -4567890123456789
-               123 |  4567890123456789
-  4567890123456789 |  4567890123456789
-               123 |  4567890123456789
-  4567890123456789 |               123
-  4567890123456789 |               123
-               123 |  4567890123456789
-  4567890123456789 |               123
-               123 |               456
-  4567890123456789 |  4567890123456789
+               123 | 4567890123456789
   4567890123456789 | -4567890123456789
-  4567890123456789 |  4567890123456789
-  4567890123456789 |  4567890123456789
-  4567890123456789 |  4567890123456789
-  4567890123456789 |               123
-  4567890123456789 |                  
- -4567890123456789 |                  
+               123 | 
+               456 | 
+  4567890123456789 | 
+ -4567890123456789 | 
 (20 rows)
 
 select v.* from
@@ -6163,26 +6164,26 @@ select v.* from
   lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy);
         vx         |        vy         
 -------------------+-------------------
-  4567890123456789 |               123
-               123 |               456
-  4567890123456789 |               123
-               123 |  4567890123456789
-  4567890123456789 |  4567890123456789
-  4567890123456789 |               123
-               123 |  4567890123456789
-  4567890123456789 |               123
-  4567890123456789 |  4567890123456789
-  4567890123456789 |  4567890123456789
-               123 |  4567890123456789
-  4567890123456789 |  4567890123456789
-  4567890123456789 |  4567890123456789
+  4567890123456789 | 123
+               123 | 456
+  4567890123456789 | 123
+               123 | 4567890123456789
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 123
+               123 | 4567890123456789
+  4567890123456789 | 123
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 4567890123456789
+               123 | 4567890123456789
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 4567890123456789
   4567890123456789 | -4567890123456789
-               123 |  4567890123456789
+               123 | 4567890123456789
   4567890123456789 | -4567890123456789
-               123 |                  
-               456 |                  
-  4567890123456789 |                  
- -4567890123456789 |                  
+               123 | 
+               456 | 
+  4567890123456789 | 
+ -4567890123456789 | 
 (20 rows)
 
 select v.* from
@@ -6191,26 +6192,26 @@ select v.* from
   lateral (select x.q1,y.q1 from onerow union all select x.q2,y.q2 from onerow) v(vx,vy);
         vx         |        vy         
 -------------------+-------------------
-  4567890123456789 |               123
-               123 |               456
-  4567890123456789 |               123
-               123 |  4567890123456789
-  4567890123456789 |  4567890123456789
-  4567890123456789 |               123
-               123 |  4567890123456789
-  4567890123456789 |               123
-  4567890123456789 |  4567890123456789
-  4567890123456789 |  4567890123456789
-               123 |  4567890123456789
-  4567890123456789 |  4567890123456789
-  4567890123456789 |  4567890123456789
+  4567890123456789 | 123
+               123 | 456
+  4567890123456789 | 123
+               123 | 4567890123456789
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 123
+               123 | 4567890123456789
+  4567890123456789 | 123
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 4567890123456789
+               123 | 4567890123456789
+  4567890123456789 | 4567890123456789
+  4567890123456789 | 4567890123456789
   4567890123456789 | -4567890123456789
-               123 |  4567890123456789
+               123 | 4567890123456789
   4567890123456789 | -4567890123456789
-               123 |                  
-               456 |                  
-  4567890123456789 |                  
- -4567890123456789 |                  
+               123 | 
+               456 | 
+  4567890123456789 | 
+ -4567890123456789 | 
 (20 rows)
 
 explain (verbose, costs off)
@@ -6249,14 +6250,14 @@ explain (verbose, costs off)
 select * from
   int8_tbl a left join
   lateral (select *, coalesce(a.q2, 42) as x from int8_tbl b) ss on a.q2 = ss.q1;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Nested Loop Left Join
-   Output: a.q1, a.q2, b.q1, b.q2, (COALESCE(a.q2, '42'::bigint))
+   Output: a.q1, a.q2, b.q1, b.q2, (COALESCE((a.q2)::number, '42'::number))
    ->  Seq Scan on public.int8_tbl a
          Output: a.q1, a.q2
    ->  Seq Scan on public.int8_tbl b
-         Output: b.q1, b.q2, COALESCE(a.q2, '42'::bigint)
+         Output: b.q1, b.q2, COALESCE((a.q2)::number, '42'::number)
          Filter: (a.q2 = b.q1)
 (7 rows)
 
@@ -6265,16 +6266,16 @@ select * from
   lateral (select *, coalesce(a.q2, 42) as x from int8_tbl b) ss on a.q2 = ss.q1;
         q1        |        q2         |        q1        |        q2         |        x         
 ------------------+-------------------+------------------+-------------------+------------------
-              123 |               456 |                  |                   |                 
+              123 |               456 |                  |                   | 
               123 |  4567890123456789 | 4567890123456789 |               123 | 4567890123456789
               123 |  4567890123456789 | 4567890123456789 |  4567890123456789 | 4567890123456789
               123 |  4567890123456789 | 4567890123456789 | -4567890123456789 | 4567890123456789
- 4567890123456789 |               123 |              123 |               456 |              123
- 4567890123456789 |               123 |              123 |  4567890123456789 |              123
+ 4567890123456789 |               123 |              123 |               456 | 123
+ 4567890123456789 |               123 |              123 |  4567890123456789 | 123
  4567890123456789 |  4567890123456789 | 4567890123456789 |               123 | 4567890123456789
  4567890123456789 |  4567890123456789 | 4567890123456789 |  4567890123456789 | 4567890123456789
  4567890123456789 |  4567890123456789 | 4567890123456789 | -4567890123456789 | 4567890123456789
- 4567890123456789 | -4567890123456789 |                  |                   |                 
+ 4567890123456789 | -4567890123456789 |                  |                   | 
 (10 rows)
 
 -- lateral can result in join conditions appearing below their
@@ -6470,32 +6471,32 @@ select * from
     lateral (select q1, coalesce(ss1.x,q2) as y from int8_tbl d) ss2
   ) on c.q2 = ss2.q1,
   lateral (select ss2.y offset 0) ss3;
-                                                                                     QUERY PLAN                                                                                     
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                              QUERY PLAN                                                                                                              
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
-   Output: c.q1, c.q2, a.q1, a.q2, b.q1, (COALESCE(b.q2, '42'::bigint)), d.q1, (COALESCE((COALESCE(b.q2, '42'::bigint)), d.q2)), ((COALESCE((COALESCE(b.q2, '42'::bigint)), d.q2)))
+   Output: c.q1, c.q2, a.q1, a.q2, b.q1, (COALESCE((b.q2)::number, '42'::number)), d.q1, (COALESCE((COALESCE((b.q2)::number, '42'::number)), (d.q2)::number)), ((COALESCE((COALESCE((b.q2)::number, '42'::number)), (d.q2)::number)))
    ->  Hash Right Join
-         Output: c.q1, c.q2, a.q1, a.q2, b.q1, (COALESCE(b.q2, '42'::bigint)), d.q1, (COALESCE((COALESCE(b.q2, '42'::bigint)), d.q2))
+         Output: c.q1, c.q2, a.q1, a.q2, b.q1, (COALESCE((b.q2)::number, '42'::number)), d.q1, (COALESCE((COALESCE((b.q2)::number, '42'::number)), (d.q2)::number))
          Hash Cond: (d.q1 = c.q2)
          ->  Nested Loop
-               Output: a.q1, a.q2, b.q1, (COALESCE(b.q2, '42'::bigint)), d.q1, (COALESCE((COALESCE(b.q2, '42'::bigint)), d.q2))
-               ->  Hash Left Join
-                     Output: a.q1, a.q2, b.q1, (COALESCE(b.q2, '42'::bigint))
-                     Hash Cond: (a.q2 = b.q1)
-                     ->  Seq Scan on public.int8_tbl a
-                           Output: a.q1, a.q2
+               Output: a.q1, a.q2, b.q1, (COALESCE((b.q2)::number, '42'::number)), d.q1, (COALESCE((COALESCE((b.q2)::number, '42'::number)), (d.q2)::number))
+               ->  Hash Right Join
+                     Output: a.q1, a.q2, b.q1, (COALESCE((b.q2)::number, '42'::number))
+                     Hash Cond: (b.q1 = a.q2)
+                     ->  Seq Scan on public.int8_tbl b
+                           Output: b.q1, COALESCE((b.q2)::number, '42'::number)
                      ->  Hash
-                           Output: b.q1, (COALESCE(b.q2, '42'::bigint))
-                           ->  Seq Scan on public.int8_tbl b
-                                 Output: b.q1, COALESCE(b.q2, '42'::bigint)
+                           Output: a.q1, a.q2
+                           ->  Seq Scan on public.int8_tbl a
+                                 Output: a.q1, a.q2
                ->  Seq Scan on public.int8_tbl d
-                     Output: d.q1, COALESCE((COALESCE(b.q2, '42'::bigint)), d.q2)
+                     Output: d.q1, COALESCE((COALESCE((b.q2)::number, '42'::number)), (d.q2)::number)
          ->  Hash
                Output: c.q1, c.q2
                ->  Seq Scan on public.int8_tbl c
                      Output: c.q1, c.q2
    ->  Result
-         Output: (COALESCE((COALESCE(b.q2, '42'::bigint)), d.q2))
+         Output: (COALESCE((COALESCE((b.q2)::number, '42'::number)), (d.q2)::number))
 (24 rows)
 
 -- case that breaks the old ph_may_need optimization
@@ -6510,21 +6511,21 @@ select c.*,a.*,ss1.q1,ss2.q1,ss3.* from
     lateral (select q1, coalesce(ss1.x,q2) as y from int8_tbl d) ss2
   ) on c.q2 = ss2.q1,
   lateral (select * from int4_tbl i where ss2.y > f1) ss3;
-                                               QUERY PLAN                                                
----------------------------------------------------------------------------------------------------------
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: c.q1, c.q2, a.q1, a.q2, b.q1, d.q1, i.f1
-   Join Filter: ((COALESCE((COALESCE(b.q2, (b2.f1)::bigint)), d.q2)) > i.f1)
+   Join Filter: ((COALESCE((COALESCE((b.q2)::number, (b2.f1)::number)), (d.q2)::number)) > (i.f1)::number)
    ->  Hash Right Join
-         Output: c.q1, c.q2, a.q1, a.q2, b.q1, d.q1, (COALESCE((COALESCE(b.q2, (b2.f1)::bigint)), d.q2))
+         Output: c.q1, c.q2, a.q1, a.q2, b.q1, d.q1, (COALESCE((COALESCE((b.q2)::number, (b2.f1)::number)), (d.q2)::number))
          Hash Cond: (d.q1 = c.q2)
          ->  Nested Loop
-               Output: a.q1, a.q2, b.q1, d.q1, (COALESCE((COALESCE(b.q2, (b2.f1)::bigint)), d.q2))
+               Output: a.q1, a.q2, b.q1, d.q1, (COALESCE((COALESCE((b.q2)::number, (b2.f1)::number)), (d.q2)::number))
                ->  Hash Right Join
-                     Output: a.q1, a.q2, b.q1, (COALESCE(b.q2, (b2.f1)::bigint))
+                     Output: a.q1, a.q2, b.q1, (COALESCE((b.q2)::number, (b2.f1)::number))
                      Hash Cond: (b.q1 = a.q2)
                      ->  Nested Loop
-                           Output: b.q1, COALESCE(b.q2, (b2.f1)::bigint)
+                           Output: b.q1, COALESCE((b.q2)::number, (b2.f1)::number)
                            Join Filter: (b.q1 < b2.f1)
                            ->  Seq Scan on public.int8_tbl b
                                  Output: b.q1, b.q2
@@ -6537,7 +6538,7 @@ select c.*,a.*,ss1.q1,ss2.q1,ss3.* from
                            ->  Seq Scan on public.int8_tbl a
                                  Output: a.q1, a.q2
                ->  Seq Scan on public.int8_tbl d
-                     Output: d.q1, COALESCE((COALESCE(b.q2, (b2.f1)::bigint)), d.q2)
+                     Output: d.q1, COALESCE((COALESCE((b.q2)::number, (b2.f1)::number)), (d.q2)::number)
          ->  Hash
                Output: c.q1, c.q2
                ->  Seq Scan on public.int8_tbl c

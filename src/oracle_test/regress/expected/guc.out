@@ -22,9 +22,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- SET LOCAL has no effect outside of a transaction
@@ -45,9 +45,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- SET LOCAL within a transaction that commits
@@ -67,9 +67,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-       timestamptz       
--------------------------
- 08/13/2006 12:34:56 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 COMMIT;
@@ -86,9 +86,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- SET should be reverted after ROLLBACK
@@ -108,9 +108,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-       timestamptz       
--------------------------
- 13.08.2006 12:34:56 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK;
@@ -127,9 +127,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- Some tests with subtransactions
@@ -143,9 +143,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 SAVEPOINT first_sp;
@@ -164,9 +164,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-       timestamptz       
--------------------------
- 13.08.2006 12:34:56 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK TO first_sp;
@@ -177,9 +177,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 SAVEPOINT second_sp;
@@ -192,9 +192,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-       timestamptz       
--------------------------
- 08/13/2006 12:34:56 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 SAVEPOINT third_sp;
@@ -213,9 +213,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-         timestamptz          
-------------------------------
- Sun Aug 13 12:34:56 2006 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK TO third_sp;
@@ -232,9 +232,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-       timestamptz       
--------------------------
- 08/13/2006 12:34:56 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK TO second_sp;
@@ -251,9 +251,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK;
@@ -270,9 +270,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- SET LOCAL with Savepoints
@@ -290,9 +290,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 SAVEPOINT sp;
@@ -311,9 +311,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-         timestamptz          
-------------------------------
- Sun Aug 13 12:34:56 2006 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK TO sp;
@@ -330,9 +330,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK;
@@ -349,9 +349,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- SET LOCAL persists through RELEASE (which was not true in 8.0-8.2)
@@ -369,9 +369,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 SAVEPOINT sp;
@@ -390,9 +390,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-         timestamptz          
-------------------------------
- Sun Aug 13 12:34:56 2006 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 RELEASE SAVEPOINT sp;
@@ -409,9 +409,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-         timestamptz          
-------------------------------
- Sun Aug 13 12:34:56 2006 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 ROLLBACK;
@@ -428,9 +428,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- SET followed by SET LOCAL
@@ -452,9 +452,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-         timestamptz          
-------------------------------
- Sun Aug 13 12:34:56 2006 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 COMMIT;
@@ -471,9 +471,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 --
@@ -488,9 +488,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-      timestamptz       
-------------------------
- 2006-08-13 12:34:56-07
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 RESET datestyle;
@@ -501,9 +501,9 @@ SHOW datestyle;
 (1 row)
 
 SELECT '2006-08-13 12:34:56'::timestamptz;
-         timestamptz          
-------------------------------
- Sun Aug 13 12:34:56 2006 PDT
+          oratimestamptz           
+-----------------------------------
+ 2006-08-13 12:34:56.000000 -07:00
 (1 row)
 
 -- Test some simple error cases

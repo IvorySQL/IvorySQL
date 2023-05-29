@@ -29,11 +29,11 @@ CREATE TABLESPACE regress_tblspace LOCATION '';
 -- of these tables in later tests, as it may affect other tests.)
 --
 CREATE TABLE CHAR_TBL(f1 char(4));
-INSERT INTO CHAR_TBL (f1) VALUES
-  ('a'),
-  ('ab'),
-  ('abcd'),
-  ('abcd    ');
+INSERT INTO CHAR_TBL (f1) VALUES ('a');
+INSERT INTO CHAR_TBL (f1) VALUES ('ab');
+INSERT INTO CHAR_TBL (f1) VALUES ('abcd');
+INSERT INTO CHAR_TBL (f1) VALUES ('abcd    ');
+ERROR:  value too long for type char(4 byte)
 VACUUM CHAR_TBL;
 CREATE TABLE FLOAT8_TBL(f1 float8);
 INSERT INTO FLOAT8_TBL(f1) VALUES
@@ -86,11 +86,11 @@ INSERT INTO TEXT_TBL VALUES
   ('hi de ho neighbor');
 VACUUM TEXT_TBL;
 CREATE TABLE VARCHAR_TBL(f1 varchar(4));
-INSERT INTO VARCHAR_TBL (f1) VALUES
-  ('a'),
-  ('ab'),
-  ('abcd'),
-  ('abcd    ');
+INSERT INTO VARCHAR_TBL (f1) VALUES ('a');
+INSERT INTO VARCHAR_TBL (f1) VALUES ('ab');
+INSERT INTO VARCHAR_TBL (f1) VALUES ('abcd');
+INSERT INTO VARCHAR_TBL (f1) VALUES ('abcd    ');
+ERROR:  value too long for type varchar2(4 byte)
 VACUUM VARCHAR_TBL;
 CREATE TABLE onek (
 	unique1		int4,

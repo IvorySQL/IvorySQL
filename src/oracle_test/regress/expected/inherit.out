@@ -699,19 +699,26 @@ drop table some_tab cascade;
 NOTICE:  drop cascades to table some_tab_child
 /* Test multiple inheritance of column defaults */
 CREATE TABLE firstparent (tomorrow date default now()::date + 1);
+ERROR:  cannot cast type timestamp with time zone to date
+LINE 2: ...ATE TABLE firstparent (tomorrow date default now()::date + 1...
+                                                             ^
 CREATE TABLE secondparent (tomorrow date default  now() :: date  +  1);
+ERROR:  cannot cast type timestamp with time zone to date
+LINE 1: ... TABLE secondparent (tomorrow date default  now() :: date  +...
+                                                             ^
 CREATE TABLE jointchild () INHERITS (firstparent, secondparent);  -- ok
-NOTICE:  merging multiple inherited definitions of column "tomorrow"
+ERROR:  relation "firstparent" does not exist
 CREATE TABLE thirdparent (tomorrow date default now()::date - 1);
+ERROR:  cannot cast type timestamp with time zone to date
+LINE 1: ...ATE TABLE thirdparent (tomorrow date default now()::date - 1...
+                                                             ^
 CREATE TABLE otherchild () INHERITS (firstparent, thirdparent);  -- not ok
-NOTICE:  merging multiple inherited definitions of column "tomorrow"
-ERROR:  column "tomorrow" inherits conflicting default values
-HINT:  To resolve the conflict, specify a default explicitly.
+ERROR:  relation "firstparent" does not exist
 CREATE TABLE otherchild (tomorrow date default now())
   INHERITS (firstparent, thirdparent);  -- ok, child resolves ambiguous default
-NOTICE:  merging multiple inherited definitions of column "tomorrow"
-NOTICE:  merging column "tomorrow" with inherited definition
+ERROR:  relation "firstparent" does not exist
 DROP TABLE firstparent, secondparent, jointchild, thirdparent, otherchild;
+ERROR:  table "firstparent" does not exist
 -- Test changing the type of inherited columns
 insert into d values('test','one','two','three');
 alter table a alter column aa type integer using bit_length(aa);
@@ -1133,33 +1140,33 @@ drop cascades to table inht4
 CREATE TABLE test_constraints (id int, val1 varchar, val2 int, UNIQUE(val1, val2));
 CREATE TABLE test_constraints_inh () INHERITS (test_constraints);
 \d+ test_constraints
-                                   Table "public.test_constraints"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+--------------+-------------
- id     | integer           |           |          |         | plain    |              | 
- val1   | character varying |           |          |         | extended |              | 
- val2   | integer           |           |          |         | plain    |              | 
+                                 Table "public.test_constraints"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+--------------+-------------
+ id     | integer        |           |          |         | plain    |              | 
+ val1   | varchar2(4000) |           |          |         | extended |              | 
+ val2   | integer        |           |          |         | plain    |              | 
 Indexes:
     "test_constraints_val1_val2_key" UNIQUE CONSTRAINT, btree (val1, val2)
 Child tables: test_constraints_inh
 
 ALTER TABLE ONLY test_constraints DROP CONSTRAINT test_constraints_val1_val2_key;
 \d+ test_constraints
-                                   Table "public.test_constraints"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+--------------+-------------
- id     | integer           |           |          |         | plain    |              | 
- val1   | character varying |           |          |         | extended |              | 
- val2   | integer           |           |          |         | plain    |              | 
+                                 Table "public.test_constraints"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+--------------+-------------
+ id     | integer        |           |          |         | plain    |              | 
+ val1   | varchar2(4000) |           |          |         | extended |              | 
+ val2   | integer        |           |          |         | plain    |              | 
 Child tables: test_constraints_inh
 
 \d+ test_constraints_inh
-                                 Table "public.test_constraints_inh"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+--------------+-------------
- id     | integer           |           |          |         | plain    |              | 
- val1   | character varying |           |          |         | extended |              | 
- val2   | integer           |           |          |         | plain    |              | 
+                               Table "public.test_constraints_inh"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+--------------+-------------
+ id     | integer        |           |          |         | plain    |              | 
+ val1   | varchar2(4000) |           |          |         | extended |              | 
+ val2   | integer        |           |          |         | plain    |              | 
 Inherits: test_constraints
 
 DROP TABLE test_constraints_inh;
@@ -1916,27 +1923,27 @@ explain (costs off) select * from list_parted where a is not null;
 (7 rows)
 
 explain (costs off) select * from list_parted where a in ('ab', 'cd', 'ef');
-                        QUERY PLAN                        
-----------------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Append
    ->  Seq Scan on part_ab_cd list_parted_1
-         Filter: ((a)::text = ANY ('{ab,cd,ef}'::text[]))
+         Filter: (a = ANY ('{ab,cd,ef}'::varchar2[]))
    ->  Seq Scan on part_ef_gh list_parted_2
-         Filter: ((a)::text = ANY ('{ab,cd,ef}'::text[]))
+         Filter: (a = ANY ('{ab,cd,ef}'::varchar2[]))
 (5 rows)
 
 explain (costs off) select * from list_parted where a = 'ab' or a in (null, 'cd');
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Seq Scan on part_ab_cd list_parted
-   Filter: (((a)::text = 'ab'::text) OR ((a)::text = ANY ('{NULL,cd}'::text[])))
+   Filter: ((a = 'ab'::varchar2) OR (a = ANY ('{NULL,cd}'::varchar2[])))
 (2 rows)
 
 explain (costs off) select * from list_parted where a = 'ab';
              QUERY PLAN             
 ------------------------------------
  Seq Scan on part_ab_cd list_parted
-   Filter: ((a)::text = 'ab'::text)
+   Filter: (a = 'ab'::varchar2)
 (2 rows)
 
 create table range_list_parted (
@@ -1986,25 +1993,25 @@ explain (costs off) select * from range_list_parted where b = 'ab';
 ------------------------------------------------------
  Append
    ->  Seq Scan on part_1_10_ab range_list_parted_1
-         Filter: (b = 'ab'::bpchar)
+         Filter: (b = 'ab'::oracharbyte)
    ->  Seq Scan on part_10_20_ab range_list_parted_2
-         Filter: (b = 'ab'::bpchar)
+         Filter: (b = 'ab'::oracharbyte)
    ->  Seq Scan on part_21_30_ab range_list_parted_3
-         Filter: (b = 'ab'::bpchar)
+         Filter: (b = 'ab'::oracharbyte)
    ->  Seq Scan on part_40_inf_ab range_list_parted_4
-         Filter: (b = 'ab'::bpchar)
+         Filter: (b = 'ab'::oracharbyte)
 (9 rows)
 
 explain (costs off) select * from range_list_parted where a between 3 and 23 and b in ('ab');
-                           QUERY PLAN                            
------------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Append
    ->  Seq Scan on part_1_10_ab range_list_parted_1
-         Filter: ((a >= 3) AND (a <= 23) AND (b = 'ab'::bpchar))
+         Filter: ((a >= 3) AND (a <= 23) AND (b = 'ab'::oracharbyte))
    ->  Seq Scan on part_10_20_ab range_list_parted_2
-         Filter: ((a >= 3) AND (a <= 23) AND (b = 'ab'::bpchar))
+         Filter: ((a >= 3) AND (a <= 23) AND (b = 'ab'::oracharbyte))
    ->  Seq Scan on part_21_30_ab range_list_parted_3
-         Filter: ((a >= 3) AND (a <= 23) AND (b = 'ab'::bpchar))
+         Filter: ((a >= 3) AND (a <= 23) AND (b = 'ab'::oracharbyte))
 (7 rows)
 
 /* Should select no rows because range partition key cannot be null */
@@ -2177,11 +2184,11 @@ explain (costs off) select min(a), max(a) from parted_minmax where b = '12345';
    InitPlan 1 (returns $0)
      ->  Limit
            ->  Index Only Scan using parted_minmax1i on parted_minmax1 parted_minmax
-                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::text))
+                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::varchar2))
    InitPlan 2 (returns $1)
      ->  Limit
            ->  Index Only Scan Backward using parted_minmax1i on parted_minmax1 parted_minmax_1
-                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::text))
+                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::varchar2))
 (9 rows)
 
 select min(a), max(a) from parted_minmax where b = '12345';

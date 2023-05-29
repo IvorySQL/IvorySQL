@@ -3151,6 +3151,10 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	ahprintf(AH, "SET identifier_case_switch = normal;\n");
 	/* IvorySQL: END - case sensitive indentify */
 
+	/* IvorySQL: BEGIN - EMPTY_STIRNG_TO_NULL */
+	ahprintf(AH, "SET enable_emptystring_to_NULL = off;\n");
+	/* IvorySQL: END - EMPTY_STIRNG_TO_NULL */
+
 	ahprintf(AH, "\n");
 }
 

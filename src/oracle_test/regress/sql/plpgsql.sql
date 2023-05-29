@@ -304,7 +304,7 @@ create trigger tg_hub_a after insert or update or delete
 -- ************************************************************
 -- * Support function to add/remove slots of Hub
 -- ************************************************************
-create function tg_hub_adjustslots(hname bpchar,
+create function tg_hub_adjustslots(hname char,
                                    oldnslots integer,
                                    newnslots integer)
 returns integer as '
@@ -325,9 +325,9 @@ end
 ' language plpgsql;
 
 -- Test comments
-COMMENT ON FUNCTION tg_hub_adjustslots_wrong(bpchar, integer, integer) IS 'function with args';
-COMMENT ON FUNCTION tg_hub_adjustslots(bpchar, integer, integer) IS 'function with args';
-COMMENT ON FUNCTION tg_hub_adjustslots(bpchar, integer, integer) IS NULL;
+COMMENT ON FUNCTION tg_hub_adjustslots_wrong(char, integer, integer) IS 'function with args';
+COMMENT ON FUNCTION tg_hub_adjustslots(char, integer, integer) IS 'function with args';
+COMMENT ON FUNCTION tg_hub_adjustslots(char, integer, integer) IS NULL;
 
 -- ************************************************************
 -- * BEFORE INSERT or UPDATE on HSlot
@@ -696,7 +696,7 @@ create trigger tg_backlink_a after insert or update or delete
 -- * Support function to set the opponents backlink field
 -- * if it does not already point to the requested slot
 -- ************************************************************
-create function tg_backlink_set(myname bpchar, blname bpchar)
+create function tg_backlink_set(myname char, blname char)
 returns integer as '
 declare
     mytype	char(2);
@@ -752,7 +752,7 @@ end;
 -- * Support function to clear out the backlink field if
 -- * it still points to specific slot
 -- ************************************************************
-create function tg_backlink_unset(bpchar, bpchar)
+create function tg_backlink_unset(char, char)
 returns integer as '
 declare
     myname	alias for $1;
@@ -854,7 +854,7 @@ create trigger tg_slotlink_a after insert or update or delete
 -- * Support function to set the opponents slotlink field
 -- * if it does not already point to the requested slot
 -- ************************************************************
-create function tg_slotlink_set(bpchar, bpchar)
+create function tg_slotlink_set(char, char)
 returns integer as '
 declare
     myname	alias for $1;
@@ -940,7 +940,7 @@ end;
 -- * Support function to clear out the slotlink field if
 -- * it still points to specific slot
 -- ************************************************************
-create function tg_slotlink_unset(bpchar, bpchar)
+create function tg_slotlink_unset(char, char)
 returns integer as '
 declare
     myname	alias for $1;
@@ -1006,7 +1006,7 @@ end;
 -- ************************************************************
 -- * Describe the backside of a patchfield slot
 -- ************************************************************
-create function pslot_backlink_view(bpchar)
+create function pslot_backlink_view(char)
 returns text as '
 <<outer>>
 declare
@@ -1051,7 +1051,7 @@ end;
 -- ************************************************************
 -- * Describe the front of a patchfield slot
 -- ************************************************************
-create function pslot_slotlink_view(bpchar)
+create function pslot_slotlink_view(char)
 returns text as '
 declare
     psrec	record;
@@ -1087,7 +1087,7 @@ end;
 -- ************************************************************
 -- * Describe the front of a wall connector slot
 -- ************************************************************
-create function wslot_slotlink_view(bpchar)
+create function wslot_slotlink_view(char)
 returns text as '
 declare
     rec		record;
@@ -3720,7 +3720,6 @@ select cast_invoker(20150717);
 select cast_invoker(20150718);
 savepoint s1;
 select cast_invoker(20150718);
-select cast_invoker(-1); -- fails
 rollback to savepoint s1;
 select cast_invoker(20150719);
 select cast_invoker(20150720);

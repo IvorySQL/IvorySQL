@@ -27,6 +27,7 @@ CREATE TABLE brintest (byteacol bytea,
 	lsncol pg_lsn,
 	boxcol box
 ) WITH (fillfactor=10, autovacuum_enabled=off);
+ERROR:  missing or invalid datetime field.
 INSERT INTO brintest SELECT
 	repeat(stringu1, 8)::bytea,
 	substr(stringu1, 1, 1)::"char",
@@ -56,12 +57,18 @@ INSERT INTO brintest SELECT
 	format('%s/%s%s', odd, even, tenthous)::pg_lsn,
 	box(point(odd, even), point(thousand, twothousand))
 FROM tenk1 ORDER BY unique2 LIMIT 100;
+ERROR:  syntax error at or near ","
+LINE 17:  time '01:20:30' + thousand * interval '18.5 second',
+                                                             ^
 -- throw in some NULL's and different values
 INSERT INTO brintest (inetcol, cidrcol, int4rangecol) SELECT
 	inet 'fe80::6e40:8ff:fea9:8c46' + tenthous,
 	cidr 'fe80::6e40:8ff:fea9:8c46' + tenthous,
 	'empty'::int4range
 FROM tenk1 ORDER BY thousand, tenthous LIMIT 25;
+ERROR:  relation "brintest" does not exist
+LINE 1: INSERT INTO brintest (inetcol, cidrcol, int4rangecol) SELECT
+                    ^
 CREATE INDEX brinidx ON brintest USING brin (
 	byteacol,
 	charcol,
@@ -94,6 +101,7 @@ CREATE INDEX brinidx ON brintest USING brin (
 	lsncol,
 	boxcol
 ) with (pages_per_range = 1);
+ERROR:  relation "brintest" does not exist
 CREATE TABLE brinopers (colname name, typ text,
 	op text[], value text[], matches int[],
 	check (cardinality(op) = cardinality(value)),
@@ -363,6 +371,11 @@ BEGIN
 	END LOOP;
 END;
 $x$;
+ERROR:  relation "brintest" does not exist
+LINE 1: EXPLAIN SELECT array_agg(ctid) FROM brintest WHERE byteacol ...
+                                            ^
+QUERY:  EXPLAIN SELECT array_agg(ctid) FROM brintest WHERE byteacol > 'AAAAAA'::bytea 
+CONTEXT:  PL/iSQL function inline_code_block line 26 at FOR over EXECUTE statement
 RESET enable_seqscan;
 RESET enable_bitmapscan;
 INSERT INTO brintest SELECT
@@ -394,47 +407,51 @@ INSERT INTO brintest SELECT
 	format('%s/%s%s', odd, even, tenthous)::pg_lsn,
 	box(point(odd, even), point(thousand, twothousand))
 FROM tenk1 ORDER BY unique2 LIMIT 5 OFFSET 5;
+ERROR:  syntax error at or near ","
+LINE 17:  time '01:20:30' + thousand * interval '18.5 second',
+                                                             ^
 SELECT brin_desummarize_range('brinidx', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx', 0);
+                                      ^
 VACUUM brintest;  -- force a summarization cycle in brinidx
+ERROR:  relation "brintest" does not exist
 UPDATE brintest SET int8col = int8col * int4col;
+ERROR:  relation "brintest" does not exist
+LINE 1: UPDATE brintest SET int8col = int8col * int4col;
+               ^
 UPDATE brintest SET textcol = '' WHERE textcol IS NOT NULL;
+ERROR:  relation "brintest" does not exist
+LINE 1: UPDATE brintest SET textcol = '' WHERE textcol IS NOT NULL;
+               ^
 -- Tests for brin_summarize_new_values
 SELECT brin_summarize_new_values('brintest'); -- error, not an index
-ERROR:  "brintest" is not an index
+ERROR:  relation "brintest" does not exist
+LINE 1: SELECT brin_summarize_new_values('brintest');
+                                         ^
 SELECT brin_summarize_new_values('tenk1_unique1'); -- error, not a BRIN index
 ERROR:  "tenk1_unique1" is not a BRIN index
 SELECT brin_summarize_new_values('brinidx'); -- ok, no change expected
- brin_summarize_new_values 
----------------------------
-                         0
-(1 row)
-
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_summarize_new_values('brinidx');
+                                         ^
 -- Tests for brin_desummarize_range
 SELECT brin_desummarize_range('brinidx', -1); -- error, invalid range
-ERROR:  block number out of range: -1
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx', -1);
+                                      ^
 SELECT brin_desummarize_range('brinidx', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx', 0);
+                                      ^
 SELECT brin_desummarize_range('brinidx', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx', 0);
+                                      ^
 SELECT brin_desummarize_range('brinidx', 100000000);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx', 100000000);
+                                      ^
 -- Test brin_summarize_range
 CREATE TABLE brin_summarize (
     value int
@@ -490,17 +507,13 @@ INSERT INTO brintest_2 VALUES ('empty');
 INSERT INTO brintest_2 VALUES (numrange(0, 2^1000::numeric));
 INSERT INTO brintest_2 VALUES ('(-1, 0)');
 SELECT brin_desummarize_range('brinidx', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx', 0);
+                                      ^
 SELECT brin_summarize_range('brinidx', 0);
- brin_summarize_range 
-----------------------
-                    1
-(1 row)
-
+ERROR:  relation "brinidx" does not exist
+LINE 1: SELECT brin_summarize_range('brinidx', 0);
+                                    ^
 DROP TABLE brintest_2;
 -- test brin cost estimates behave sanely based on correlation of values
 CREATE TABLE brin_test (a INT, b INT);

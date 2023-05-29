@@ -250,6 +250,7 @@ extern PGDLLIMPORT bool log_statement_stats;
 extern PGDLLIMPORT bool log_btree_build_stats;
 
 extern PGDLLIMPORT bool check_function_bodies;
+extern PGDLLIMPORT bool	enable_emptystring_to_NULL;		/* IvorySQL: EMPTY_STIRNG_TO_NULL */
 extern PGDLLIMPORT bool session_auth_is_superuser;
 
 extern PGDLLIMPORT bool log_duration;
@@ -299,6 +300,20 @@ extern int     database_mode;
 /* IvorySQL:BEGIN - SQL PARSER */
 extern PGDLLIMPORT int	compatible_db;
 /* IvorySQL:END - SQL PARSER */
+
+/* IvorySQL:BEGIN - datatype */
+extern PGDLLIMPORT char	*nls_length_semantics;
+extern PGDLLIMPORT char *nls_date_format;
+extern PGDLLIMPORT char *nls_timestamp_format;
+extern PGDLLIMPORT char *nls_timestamp_tz_format;
+extern PGDLLIMPORT int	datetime_ignore_nls_mask;
+
+#define ORADATE_MASK			0x01
+#define ORATIMESTAMP_MASK		0x02
+#define ORATIMESTAMPTZ_MASK		0x04
+#define ORATIMESTAMPLTZ_MASK	0x08
+#define DATETIME_IGNORE_NLS(i, m) (((i) & (m)) != 0) 
+/* IvorySQL:END - datatype */
 
 /*
  * Functions exported by guc.c

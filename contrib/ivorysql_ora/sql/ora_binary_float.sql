@@ -1,0 +1,113 @@
+--
+-- BINARY_FLOAT
+--
+
+set enable_emptystring_to_NULL = on;
+set extra_float_digits = 0;
+
+CREATE TABLE BINARY_FLOAT_TBL (f1 binary_float);
+
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('    0.0');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('1004.30   ');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('     -34.84    ');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('1.2345678901234e+20');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('1.2345678901234e-20');
+
+-- test for over and under flow
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('10e70');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('-10e70');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('10e-70');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('-10e-70');
+
+-- bad input
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('       ');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('xyz');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5.0.0');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5 . 0');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5.   0');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('     - 3.0');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('123            5');
+
+-- special inputs
+SELECT 'NaN'::binary_float;
+SELECT 'nan'::binary_float;
+SELECT '   NAN  '::binary_float;
+SELECT 'infinity'::binary_float;
+SELECT '          -INFINiTY   '::binary_float;
+
+-- bad special inputs
+SELECT 'N A N'::binary_float;
+SELECT 'NaN x'::binary_float;
+SELECT ' INFINITY    x'::binary_float;
+
+SELECT 'Infinity'::binary_float + 100.0;
+SELECT 'Infinity'::binary_float / 'Infinity'::binary_float;
+SELECT 'nan'::binary_float / 'nan'::binary_float;
+SELECT 'nan'::number::binary_float;
+
+SELECT '' AS five, * FROM BINARY_FLOAT_TBL;
+
+SELECT '' AS four, f.* FROM BINARY_FLOAT_TBL f WHERE f.f1 <> '1004.3';
+
+SELECT '' AS one, f.* FROM BINARY_FLOAT_TBL f WHERE f.f1 = '1004.3';
+
+SELECT '' AS three, f.* FROM BINARY_FLOAT_TBL f WHERE '1004.3' > f.f1;
+
+SELECT '' AS three, f.* FROM BINARY_FLOAT_TBL f WHERE  f.f1 < '1004.3';
+
+SELECT '' AS four, f.* FROM BINARY_FLOAT_TBL f WHERE '1004.3' >= f.f1;
+
+SELECT '' AS four, f.* FROM BINARY_FLOAT_TBL f WHERE  f.f1 <= '1004.3';
+
+SELECT '' AS three, f.f1, f.f1 * '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+
+SELECT '' AS three, f.f1, f.f1 + '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+
+SELECT '' AS three, f.f1, f.f1 / '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+
+SELECT '' AS three, f.f1, f.f1 - '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+
+-- test divide by zero
+SELECT '' AS bad, f.f1 / '0.0' from BINARY_FLOAT_TBL f;
+
+SELECT '' AS five, * FROM BINARY_FLOAT_TBL;
+
+-- test the unary abs operator
+SELECT '' AS five, f.f1, @f.f1 AS abs_f1 FROM BINARY_FLOAT_TBL f;
+
+UPDATE BINARY_FLOAT_TBL
+   SET f1 = BINARY_FLOAT_TBL.f1 * '-1'
+   WHERE BINARY_FLOAT_TBL.f1 > '0.0';
+
+SELECT '' AS five, * FROM BINARY_FLOAT_TBL;
+
+-- drop table
+DROP TABLE BINARY_FLOAT_TBL;
+
+
+--SIMPLE_FLOAT
+CREATE TABLE SIMPLE_FLOAT_TBL (f1 binary_float);
+
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('    0.0');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('1004.30   ');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('     -34.84    ');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('1.2345678901234e+20');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('1.2345678901234e-20');
+SELECT * FROM SIMPLE_FLOAT_TBL;
+DROP TABLE SIMPLE_FLOAT_TBL;
+
+--SIMPLE_DOUBLE
+CREATE TABLE SIMPLE_DOUBLE_TBL(f1 binary_double);
+
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('    0.0   ');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1004.30  ');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('   -34.84');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1.2345678901234e+200');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1.2345678901234e-200');
+SELECT * FROM SIMPLE_DOUBLE_TBL;
+DROP TABLE SIMPLE_DOUBLE_TBL;

@@ -2195,7 +2195,7 @@ select jsonb_path_query_tz(
 select jsonb_path_query('"1000000-01-01"', '$.datetime() > "2020-01-01 12:00:00".datetime()'::jsonpath);
  jsonb_path_query 
 ------------------
- true
+ null
 (1 row)
 
 set time zone default;

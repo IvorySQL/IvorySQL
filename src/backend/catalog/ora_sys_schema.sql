@@ -13,3 +13,10 @@
  * add the file for requirement "SQL PARSER"
  *
  */
+
+GRANT USAGE ON SCHEMA sys TO PUBLIC;
+SET search_path TO sys;
+
+CREATE table dual (DUMMY CHAR(1));
+insert into dual values('X');
+GRANT SELECT ON dual TO PUBLIC;

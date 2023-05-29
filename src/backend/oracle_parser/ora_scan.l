@@ -625,6 +625,14 @@ other			.
 											   yyextra->literallen,
 											   false);
 							yylval->str = litbufdup(yyscanner);
+							/* IvorySQL:BEGIN - datatype */
+							if (strcmp(yylval->str, "") == 0 &&
+								ORA_PARSER == compatible_db &&
+								enable_emptystring_to_NULL)
+							{
+								return NULL_P;
+							}
+							/* IvorySQL:END - datatype */
 							return SCONST;
 						case xus:
 							yylval->str = litbufdup(yyscanner);

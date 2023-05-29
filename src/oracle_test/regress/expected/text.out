@@ -24,10 +24,11 @@ SELECT * FROM TEXT_TBL;
 -- As of 8.3 we have removed most implicit casts to text, so that for example
 -- this no longer works:
 select length(42);
-ERROR:  function length(integer) does not exist
-LINE 1: select length(42);
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ length 
+--------
+      2
+(1 row)
+
 -- But as a special exception for usability's sake, we still allow implicit
 -- casting to text in concatenations, so long as the other input is text or
 -- an unknown literal.  So these work:
@@ -45,10 +46,11 @@ select 'four: ' || 2+2;
 
 -- but not this:
 select 3 || 4.0;
-ERROR:  operator does not exist: integer || numeric
-LINE 1: select 3 || 4.0;
-                 ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ ?column? 
+----------
+ 34.0
+(1 row)
+
 /*
  * various string functions
  */
@@ -61,7 +63,7 @@ select concat('one');
 select concat(1,2,3,'hello',true, false, to_date('20100309','YYYYMMDD'));
         concat        
 ----------------------
- 123hellotf03-09-2010
+ 123hellotf2010-03-09
 (1 row)
 
 select concat_ws('#','one');
@@ -73,7 +75,7 @@ select concat_ws('#','one');
 select concat_ws('#',1,2,3,'hello',true, false, to_date('20100309','YYYYMMDD'));
          concat_ws          
 ----------------------------
- 1#2#3#hello#t#f#03-09-2010
+ 1#2#3#hello#t#f#2010-03-09
 (1 row)
 
 select concat_ws(',',10,20,null,30);

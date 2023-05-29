@@ -10505,7 +10505,21 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 	getTypeOutputInfo(constval->consttype,
 					  &typoutput, &typIsVarlena);
 
-	extval = OidOutputFunctionCall(typoutput, constval->constvalue);
+	/*
+	 * IvorySQL:BEGIN - datatype
+	 * Compatible oracle , pass typmod to output function
+	 */
+	if (ORA_PARSER == compatible_db &&
+		(constval->consttype == YMINTERVALOID ||
+		constval->consttype == DSINTERVALOID))
+	{
+		extval = OidOutputFunctionCallWithTypmod(typoutput, constval->constvalue, constval->consttypmod);
+	}
+	else
+	{
+		extval = OidOutputFunctionCall(typoutput, constval->constvalue);
+	}
+	/* IvorySQL:END - datatype */
 
 	switch (constval->consttype)
 	{

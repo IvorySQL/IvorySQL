@@ -192,7 +192,7 @@ if (sqlca.sqlcode < 0) exit (1);}
 
 	sql_check("main", "create", 0);
 
-	{ ECPGdo(__LINE__, 1, 1, NULL, 0, ECPGst_normal, "insert into history ( customerid , timestamp , action_taken , narrative ) values ( 1 , '2003-05-07 13:28:34 CEST' , 'test' , 'test' )", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 1, 1, NULL, 0, ECPGst_normal, "insert into history ( customerid , timestamp , action_taken , narrative ) values ( 1 , '2003-05-07 13:28:34' , 'test' , 'test' )", ECPGt_EOIT, ECPGt_EORT);
 #line 71 "test_informix2.pgc"
 
 if (sqlca.sqlcode < 0) exit (1);}

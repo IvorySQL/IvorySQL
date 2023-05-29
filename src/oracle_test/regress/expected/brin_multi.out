@@ -20,6 +20,7 @@ CREATE TABLE brintest_multi (
 	uuidcol uuid,
 	lsncol pg_lsn
 ) WITH (fillfactor=10);
+ERROR:  missing or invalid datetime field.
 INSERT INTO brintest_multi SELECT
 	142857 * tenthous,
 	thousand,
@@ -42,24 +43,28 @@ INSERT INTO brintest_multi SELECT
 	format('%s%s-%s-%s-%s-%s%s%s', to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'))::uuid,
 	format('%s/%s%s', odd, even, tenthous)::pg_lsn
 FROM tenk1 ORDER BY unique2 LIMIT 100;
+ERROR:  syntax error at or near ","
+LINE 14:  time '01:20:30' + thousand * interval '18.5 second',
+                                                             ^
 -- throw in some NULL's and different values
 INSERT INTO brintest_multi (inetcol, cidrcol) SELECT
 	inet 'fe80::6e40:8ff:fea9:8c46' + tenthous,
 	cidr 'fe80::6e40:8ff:fea9:8c46' + tenthous
 FROM tenk1 ORDER BY thousand, tenthous LIMIT 25;
+ERROR:  relation "brintest_multi" does not exist
+LINE 1: INSERT INTO brintest_multi (inetcol, cidrcol) SELECT
+                    ^
 -- test minmax-multi specific index options
 -- number of values must be >= 16
 CREATE INDEX brinidx_multi ON brintest_multi USING brin (
 	int8col int8_minmax_multi_ops(values_per_range = 7)
 );
-ERROR:  value 7 out of bounds for option "values_per_range"
-DETAIL:  Valid values are between "8" and "256".
+ERROR:  relation "brintest_multi" does not exist
 -- number of values must be <= 256
 CREATE INDEX brinidx_multi ON brintest_multi USING brin (
 	int8col int8_minmax_multi_ops(values_per_range = 257)
 );
-ERROR:  value 257 out of bounds for option "values_per_range"
-DETAIL:  Valid values are between "8" and "256".
+ERROR:  relation "brintest_multi" does not exist
 -- first create an index with a single page range, to force compaction
 -- due to exceeding the number of values per summary
 CREATE INDEX brinidx_multi ON brintest_multi USING brin (
@@ -84,7 +89,9 @@ CREATE INDEX brinidx_multi ON brintest_multi USING brin (
 	uuidcol uuid_minmax_multi_ops,
 	lsncol pg_lsn_minmax_multi_ops
 );
+ERROR:  relation "brintest_multi" does not exist
 DROP INDEX brinidx_multi;
+ERROR:  index "brinidx_multi" does not exist
 CREATE INDEX brinidx_multi ON brintest_multi USING brin (
 	int8col int8_minmax_multi_ops,
 	int2col int2_minmax_multi_ops,
@@ -107,6 +114,7 @@ CREATE INDEX brinidx_multi ON brintest_multi USING brin (
 	uuidcol uuid_minmax_multi_ops,
 	lsncol pg_lsn_minmax_multi_ops
 ) with (pages_per_range = 1);
+ERROR:  relation "brintest_multi" does not exist
 CREATE TABLE brinopers_multi (colname name, typ text,
 	op text[], value text[], matches int[],
 	check (cardinality(op) = cardinality(value)),
@@ -316,6 +324,11 @@ BEGIN
 	END LOOP;
 END;
 $x$;
+ERROR:  relation "brintest_multi" does not exist
+LINE 1: EXPLAIN SELECT array_agg(ctid) FROM brintest_multi WHERE int...
+                                            ^
+QUERY:  EXPLAIN SELECT array_agg(ctid) FROM brintest_multi WHERE int2col > '0'::int2 
+CONTEXT:  PL/iSQL function inline_code_block line 26 at FOR over EXECUTE statement
 RESET enable_seqscan;
 RESET enable_bitmapscan;
 INSERT INTO brintest_multi SELECT
@@ -340,17 +353,28 @@ INSERT INTO brintest_multi SELECT
 	format('%s%s-%s-%s-%s-%s%s%s', to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'))::uuid,
 	format('%s/%s%s', odd, even, tenthous)::pg_lsn
 FROM tenk1 ORDER BY unique2 LIMIT 5 OFFSET 5;
+ERROR:  syntax error at or near ","
+LINE 14:  time '01:20:30' + thousand * interval '18.5 second',
+                                                             ^
 SELECT brin_desummarize_range('brinidx_multi', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_multi" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_multi', 0);
+                                      ^
 VACUUM brintest_multi;  -- force a summarization cycle in brinidx
+ERROR:  relation "brintest_multi" does not exist
 -- Try inserting a values with NaN, to test distance calculation.
 insert into public.brintest_multi (float4col) values (real 'nan');
+ERROR:  relation "public.brintest_multi" does not exist
+LINE 1: insert into public.brintest_multi (float4col) values (real '...
+                    ^
 insert into public.brintest_multi (float8col) values (real 'nan');
+ERROR:  relation "public.brintest_multi" does not exist
+LINE 1: insert into public.brintest_multi (float8col) values (real '...
+                    ^
 UPDATE brintest_multi SET int8col = int8col * int4col;
+ERROR:  relation "brintest_multi" does not exist
+LINE 1: UPDATE brintest_multi SET int8col = int8col * int4col;
+               ^
 -- Test handling of inet netmasks with inet_minmax_multi_ops
 CREATE TABLE brin_test_inet (a inet);
 CREATE INDEX ON brin_test_inet USING brin (a inet_minmax_multi_ops);
@@ -359,36 +383,32 @@ INSERT INTO brin_test_inet VALUES ('0.0.0.0/12');
 DROP TABLE brin_test_inet;
 -- Tests for brin_summarize_new_values
 SELECT brin_summarize_new_values('brintest_multi'); -- error, not an index
-ERROR:  "brintest_multi" is not an index
+ERROR:  relation "brintest_multi" does not exist
+LINE 1: SELECT brin_summarize_new_values('brintest_multi');
+                                         ^
 SELECT brin_summarize_new_values('tenk1_unique1'); -- error, not a BRIN index
 ERROR:  "tenk1_unique1" is not a BRIN index
 SELECT brin_summarize_new_values('brinidx_multi'); -- ok, no change expected
- brin_summarize_new_values 
----------------------------
-                         0
-(1 row)
-
+ERROR:  relation "brinidx_multi" does not exist
+LINE 1: SELECT brin_summarize_new_values('brinidx_multi');
+                                         ^
 -- Tests for brin_desummarize_range
 SELECT brin_desummarize_range('brinidx_multi', -1); -- error, invalid range
-ERROR:  block number out of range: -1
+ERROR:  relation "brinidx_multi" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_multi', -1);
+                                      ^
 SELECT brin_desummarize_range('brinidx_multi', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_multi" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_multi', 0);
+                                      ^
 SELECT brin_desummarize_range('brinidx_multi', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_multi" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_multi', 0);
+                                      ^
 SELECT brin_desummarize_range('brinidx_multi', 100000000);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_multi" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_multi', 100000000);
+                                      ^
 -- test building an index with many values, to force compaction of the buffer
 CREATE TABLE brin_large_range (a int4);
 INSERT INTO brin_large_range SELECT i FROM generate_series(1,10000) s(i);

@@ -24,8 +24,9 @@ INSERT INTO CHAR_TBL (f1) VALUES ('3');
 INSERT INTO CHAR_TBL (f1) VALUES ('');
 -- try char's of greater than 1 length
 INSERT INTO CHAR_TBL (f1) VALUES ('cd');
-ERROR:  value too long for type character(1)
+ERROR:  value too long for type char(1 byte)
 INSERT INTO CHAR_TBL (f1) VALUES ('c     ');
+ERROR:  value too long for type char(1 byte)
 SELECT * FROM CHAR_TBL;
  f1 
 ----
@@ -35,8 +36,7 @@ SELECT * FROM CHAR_TBL;
  2
  3
   
- c
-(7 rows)
+(6 rows)
 
 SELECT c.*
    FROM CHAR_TBL c
@@ -48,8 +48,7 @@ SELECT c.*
  2
  3
   
- c
-(6 rows)
+(5 rows)
 
 SELECT c.*
    FROM CHAR_TBL c
@@ -64,8 +63,12 @@ SELECT c.*
    WHERE c.f1 < 'a';
  f1 
 ----
+ A
+ 1
+ 2
+ 3
   
-(1 row)
+(5 rows)
 
 SELECT c.*
    FROM CHAR_TBL c
@@ -73,20 +76,19 @@ SELECT c.*
  f1 
 ----
  a
+ A
+ 1
+ 2
+ 3
   
-(2 rows)
+(6 rows)
 
 SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 > 'a';
  f1 
 ----
- A
- 1
- 2
- 3
- c
-(5 rows)
+(0 rows)
 
 SELECT c.*
    FROM CHAR_TBL c
@@ -94,12 +96,7 @@ SELECT c.*
  f1 
 ----
  a
- A
- 1
- 2
- 3
- c
-(6 rows)
+(1 row)
 
 DROP TABLE CHAR_TBL;
 --
@@ -109,35 +106,22 @@ DROP TABLE CHAR_TBL;
 -- Here we just try to insert bad values.
 --
 INSERT INTO CHAR_TBL (f1) VALUES ('abcde');
-ERROR:  value too long for type character(4)
+ERROR:  value too long for type char(4 byte)
 SELECT * FROM CHAR_TBL;
   f1  
 ------
  a   
  ab  
  abcd
- abcd
-(4 rows)
+(3 rows)
 
 -- Also try it with non-error-throwing API
 SELECT pg_input_is_valid('abcd  ', 'char(4)');
- pg_input_is_valid 
--------------------
- t
-(1 row)
-
+ERROR:  value too long for type char(4 byte)
 SELECT pg_input_is_valid('abcde', 'char(4)');
- pg_input_is_valid 
--------------------
- f
-(1 row)
-
+ERROR:  value too long for type char(4 byte)
 SELECT * FROM pg_input_error_info('abcde', 'char(4)');
-               message                | detail | hint | sql_error_code 
---------------------------------------+--------+------+----------------
- value too long for type character(4) |        |      | 22001
-(1 row)
-
+ERROR:  value too long for type char(4 byte)
 --
 -- Also test "char", which is an ad-hoc one-byte type.  It can only
 -- really store ASCII characters, but we allow high-bit-set characters

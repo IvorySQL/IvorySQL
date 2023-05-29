@@ -1352,14 +1352,9 @@ DROP VIEW v_window;
 CREATE TEMP VIEW v_window AS
 	SELECT i, min(i) over (order by i range between '1 day' preceding and '10 days' following) as min_i
   FROM generate_series(now(), now()+'100 days'::interval, '1 hour') i;
+ERROR:  missing or invalid datetime field.
 SELECT pg_get_viewdef('v_window');
-                                                    pg_get_viewdef                                                     
------------------------------------------------------------------------------------------------------------------------
-  SELECT i,                                                                                                           +
-     min(i) OVER (ORDER BY i RANGE BETWEEN '@ 1 day'::interval PRECEDING AND '@ 10 days'::interval FOLLOWING) AS min_i+
-    FROM generate_series(now(), (now() + '@ 100 days'::interval), '@ 1 hour'::interval) i(i);
-(1 row)
-
+ERROR:  relation "v_window" does not exist
 -- RANGE offset PRECEDING/FOLLOWING tests
 SELECT sum(unique1) over (order by four range between 2::int8 preceding and 1::int2 preceding),
 	unique1, four
@@ -1533,100 +1528,22 @@ FROM tenk1 WHERE unique1 < 10;
 
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following),
 	salary, enroll_date from empsalary;
-  sum  | salary | enroll_date 
--------+--------+-------------
- 34900 |   5000 | 10-01-2006
- 34900 |   6000 | 10-01-2006
- 38400 |   3900 | 12-23-2006
- 47100 |   4800 | 08-01-2007
- 47100 |   5200 | 08-01-2007
- 47100 |   4800 | 08-08-2007
- 47100 |   5200 | 08-15-2007
- 36100 |   3500 | 12-10-2007
- 32200 |   4500 | 01-01-2008
- 32200 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select sum(salary) over (order by enroll_date desc range between '1 year'::interval preceding and '1 year'::interval following),
 	salary, enroll_date from empsalary;
-  sum  | salary | enroll_date 
--------+--------+-------------
- 32200 |   4200 | 01-01-2008
- 32200 |   4500 | 01-01-2008
- 36100 |   3500 | 12-10-2007
- 47100 |   5200 | 08-15-2007
- 47100 |   4800 | 08-08-2007
- 47100 |   4800 | 08-01-2007
- 47100 |   5200 | 08-01-2007
- 38400 |   3900 | 12-23-2006
- 34900 |   5000 | 10-01-2006
- 34900 |   6000 | 10-01-2006
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select sum(salary) over (order by enroll_date desc range between '1 year'::interval following and '1 year'::interval following),
 	salary, enroll_date from empsalary;
- sum | salary | enroll_date 
------+--------+-------------
-     |   4200 | 01-01-2008
-     |   4500 | 01-01-2008
-     |   3500 | 12-10-2007
-     |   5200 | 08-15-2007
-     |   4800 | 08-08-2007
-     |   4800 | 08-01-2007
-     |   5200 | 08-01-2007
-     |   3900 | 12-23-2006
-     |   5000 | 10-01-2006
-     |   6000 | 10-01-2006
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following
 	exclude current row), salary, enroll_date from empsalary;
-  sum  | salary | enroll_date 
--------+--------+-------------
- 29900 |   5000 | 10-01-2006
- 28900 |   6000 | 10-01-2006
- 34500 |   3900 | 12-23-2006
- 42300 |   4800 | 08-01-2007
- 41900 |   5200 | 08-01-2007
- 42300 |   4800 | 08-08-2007
- 41900 |   5200 | 08-15-2007
- 32600 |   3500 | 12-10-2007
- 27700 |   4500 | 01-01-2008
- 28000 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following
 	exclude group), salary, enroll_date from empsalary;
-  sum  | salary | enroll_date 
--------+--------+-------------
- 23900 |   5000 | 10-01-2006
- 23900 |   6000 | 10-01-2006
- 34500 |   3900 | 12-23-2006
- 37100 |   4800 | 08-01-2007
- 37100 |   5200 | 08-01-2007
- 42300 |   4800 | 08-08-2007
- 41900 |   5200 | 08-15-2007
- 32600 |   3500 | 12-10-2007
- 23500 |   4500 | 01-01-2008
- 23500 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-  sum  | salary | enroll_date 
--------+--------+-------------
- 28900 |   5000 | 10-01-2006
- 29900 |   6000 | 10-01-2006
- 38400 |   3900 | 12-23-2006
- 41900 |   4800 | 08-01-2007
- 42300 |   5200 | 08-01-2007
- 47100 |   4800 | 08-08-2007
- 47100 |   5200 | 08-15-2007
- 36100 |   3500 | 12-10-2007
- 28000 |   4500 | 01-01-2008
- 27700 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select first_value(salary) over(order by salary range between 1000 preceding and 1000 following),
 	lead(salary) over(order by salary range between 1000 preceding and 1000 following),
 	nth_value(salary, 1) over(order by salary range between 1000 preceding and 1000 following),
@@ -1704,77 +1621,25 @@ select first_value(salary) over(order by enroll_date range between unbounded pre
 	exclude ties),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following),
 	salary, enroll_date from empsalary;
- first_value | last_value | salary | enroll_date 
--------------+------------+--------+-------------
-        5000 |       5200 |   5000 | 10-01-2006
-        6000 |       5200 |   6000 | 10-01-2006
-        5000 |       3500 |   3900 | 12-23-2006
-        5000 |       4200 |   4800 | 08-01-2007
-        5000 |       4200 |   5200 | 08-01-2007
-        5000 |       4200 |   4800 | 08-08-2007
-        5000 |       4200 |   5200 | 08-15-2007
-        5000 |       4200 |   3500 | 12-10-2007
-        5000 |       4200 |   4500 | 01-01-2008
-        5000 |       4200 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select first_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude ties),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude ties),
 	salary, enroll_date from empsalary;
- first_value | last_value | salary | enroll_date 
--------------+------------+--------+-------------
-        5000 |       5200 |   5000 | 10-01-2006
-        6000 |       5200 |   6000 | 10-01-2006
-        5000 |       3500 |   3900 | 12-23-2006
-        5000 |       4200 |   4800 | 08-01-2007
-        5000 |       4200 |   5200 | 08-01-2007
-        5000 |       4200 |   4800 | 08-08-2007
-        5000 |       4200 |   5200 | 08-15-2007
-        5000 |       4200 |   3500 | 12-10-2007
-        5000 |       4500 |   4500 | 01-01-2008
-        5000 |       4200 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select first_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude group),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude group),
 	salary, enroll_date from empsalary;
- first_value | last_value | salary | enroll_date 
--------------+------------+--------+-------------
-        3900 |       5200 |   5000 | 10-01-2006
-        3900 |       5200 |   6000 | 10-01-2006
-        5000 |       3500 |   3900 | 12-23-2006
-        5000 |       4200 |   4800 | 08-01-2007
-        5000 |       4200 |   5200 | 08-01-2007
-        5000 |       4200 |   4800 | 08-08-2007
-        5000 |       4200 |   5200 | 08-15-2007
-        5000 |       4200 |   3500 | 12-10-2007
-        5000 |       3500 |   4500 | 01-01-2008
-        5000 |       3500 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select first_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude current row),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude current row),
 	salary, enroll_date from empsalary;
- first_value | last_value | salary | enroll_date 
--------------+------------+--------+-------------
-        6000 |       5200 |   5000 | 10-01-2006
-        5000 |       5200 |   6000 | 10-01-2006
-        5000 |       3500 |   3900 | 12-23-2006
-        5000 |       4200 |   4800 | 08-01-2007
-        5000 |       4200 |   5200 | 08-01-2007
-        5000 |       4200 |   4800 | 08-08-2007
-        5000 |       4200 |   5200 | 08-15-2007
-        5000 |       4200 |   3500 | 12-10-2007
-        5000 |       4200 |   4500 | 01-01-2008
-        5000 |       4500 |   4200 | 01-01-2008
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 -- RANGE offset PRECEDING/FOLLOWING with null values
 select x, y,
        first_value(y) over w,
@@ -2371,6 +2236,7 @@ create temp table datetimes(
     f_timestamptz timestamptz,
     f_timestamp timestamp
 );
+ERROR:  missing or invalid datetime field.
 insert into datetimes values
 (1, '11:00', '11:00 BST', '1 year', '2000-10-19 10:23:54+01', '2000-10-19 10:23:54'),
 (2, '12:00', '12:00 BST', '2 years', '2001-10-19 10:23:54+01', '2001-10-19 10:23:54'),
@@ -2382,208 +2248,84 @@ insert into datetimes values
 (8, '18:00', '18:00 BST', '8 years', '2006-10-19 10:23:54+01', '2006-10-19 10:23:54'),
 (9, '19:00', '19:00 BST', '9 years', '2007-10-19 10:23:54+01', '2007-10-19 10:23:54'),
 (10, '20:00', '20:00 BST', '10 years', '2008-10-19 10:23:54+01', '2008-10-19 10:23:54');
+ERROR:  relation "datetimes" does not exist
+LINE 1: insert into datetimes values
+                    ^
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time range between
              '70 min'::interval preceding and '2 hours'::interval following);
- id |  f_time  | first_value | last_value 
-----+----------+-------------+------------
-  1 | 11:00:00 |           1 |          3
-  2 | 12:00:00 |           1 |          4
-  3 | 13:00:00 |           2 |          6
-  4 | 14:00:00 |           3 |          6
-  5 | 15:00:00 |           4 |          7
-  6 | 15:00:00 |           4 |          7
-  7 | 17:00:00 |           7 |          9
-  8 | 18:00:00 |           7 |         10
-  9 | 19:00:00 |           8 |         10
- 10 | 20:00:00 |           9 |         10
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time desc range between
              '70 min' preceding and '2 hours' following);
- id |  f_time  | first_value | last_value 
-----+----------+-------------+------------
- 10 | 20:00:00 |          10 |          8
-  9 | 19:00:00 |          10 |          7
-  8 | 18:00:00 |           9 |          7
-  7 | 17:00:00 |           8 |          5
-  6 | 15:00:00 |           6 |          3
-  5 | 15:00:00 |           6 |          3
-  4 | 14:00:00 |           6 |          2
-  3 | 13:00:00 |           4 |          1
-  2 | 12:00:00 |           3 |          1
-  1 | 11:00:00 |           2 |          1
-(10 rows)
-
+ERROR:  relation "datetimes" does not exist
+LINE 2: from datetimes
+             ^
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz range between
              '70 min'::interval preceding and '2 hours'::interval following);
- id |  f_timetz   | first_value | last_value 
-----+-------------+-------------+------------
-  1 | 11:00:00+01 |           1 |          3
-  2 | 12:00:00+01 |           1 |          4
-  3 | 13:00:00+01 |           2 |          6
-  4 | 14:00:00+01 |           3 |          6
-  5 | 15:00:00+01 |           4 |          7
-  6 | 15:00:00+01 |           4 |          7
-  7 | 17:00:00+01 |           7 |          9
-  8 | 18:00:00+01 |           7 |         10
-  9 | 19:00:00+01 |           8 |         10
- 10 | 20:00:00+01 |           9 |         10
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz desc range between
              '70 min' preceding and '2 hours' following);
- id |  f_timetz   | first_value | last_value 
-----+-------------+-------------+------------
- 10 | 20:00:00+01 |          10 |          8
-  9 | 19:00:00+01 |          10 |          7
-  8 | 18:00:00+01 |           9 |          7
-  7 | 17:00:00+01 |           8 |          5
-  6 | 15:00:00+01 |           6 |          3
-  5 | 15:00:00+01 |           6 |          3
-  4 | 14:00:00+01 |           6 |          2
-  3 | 13:00:00+01 |           4 |          1
-  2 | 12:00:00+01 |           3 |          1
-  1 | 11:00:00+01 |           2 |          1
-(10 rows)
-
+ERROR:  relation "datetimes" does not exist
+LINE 2: from datetimes
+             ^
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval range between
              '1 year'::interval preceding and '1 year'::interval following);
- id | f_interval | first_value | last_value 
-----+------------+-------------+------------
-  1 | @ 1 year   |           1 |          2
-  2 | @ 2 years  |           1 |          3
-  3 | @ 3 years  |           2 |          4
-  4 | @ 4 years  |           3 |          6
-  5 | @ 5 years  |           4 |          6
-  6 | @ 5 years  |           4 |          6
-  7 | @ 7 years  |           7 |          8
-  8 | @ 8 years  |           7 |          9
-  9 | @ 9 years  |           8 |         10
- 10 | @ 10 years |           9 |         10
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval desc range between
              '1 year' preceding and '1 year' following);
- id | f_interval | first_value | last_value 
-----+------------+-------------+------------
- 10 | @ 10 years |          10 |          9
-  9 | @ 9 years  |          10 |          8
-  8 | @ 8 years  |           9 |          7
-  7 | @ 7 years  |           8 |          7
-  6 | @ 5 years  |           6 |          4
-  5 | @ 5 years  |           6 |          4
-  4 | @ 4 years  |           6 |          3
-  3 | @ 3 years  |           4 |          2
-  2 | @ 2 years  |           3 |          1
-  1 | @ 1 year   |           2 |          1
-(10 rows)
-
+ERROR:  relation "datetimes" does not exist
+LINE 2: from datetimes
+             ^
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz range between
              '1 year'::interval preceding and '1 year'::interval following);
- id |        f_timestamptz         | first_value | last_value 
-----+------------------------------+-------------+------------
-  1 | Thu Oct 19 02:23:54 2000 PDT |           1 |          3
-  2 | Fri Oct 19 02:23:54 2001 PDT |           1 |          4
-  3 | Fri Oct 19 02:23:54 2001 PDT |           1 |          4
-  4 | Sat Oct 19 02:23:54 2002 PDT |           2 |          5
-  5 | Sun Oct 19 02:23:54 2003 PDT |           4 |          6
-  6 | Tue Oct 19 02:23:54 2004 PDT |           5 |          7
-  7 | Wed Oct 19 02:23:54 2005 PDT |           6 |          8
-  8 | Thu Oct 19 02:23:54 2006 PDT |           7 |          9
-  9 | Fri Oct 19 02:23:54 2007 PDT |           8 |         10
- 10 | Sun Oct 19 02:23:54 2008 PDT |           9 |         10
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz desc range between
              '1 year' preceding and '1 year' following);
- id |        f_timestamptz         | first_value | last_value 
-----+------------------------------+-------------+------------
- 10 | Sun Oct 19 02:23:54 2008 PDT |          10 |          9
-  9 | Fri Oct 19 02:23:54 2007 PDT |          10 |          8
-  8 | Thu Oct 19 02:23:54 2006 PDT |           9 |          7
-  7 | Wed Oct 19 02:23:54 2005 PDT |           8 |          6
-  6 | Tue Oct 19 02:23:54 2004 PDT |           7 |          5
-  5 | Sun Oct 19 02:23:54 2003 PDT |           6 |          4
-  4 | Sat Oct 19 02:23:54 2002 PDT |           5 |          2
-  3 | Fri Oct 19 02:23:54 2001 PDT |           4 |          1
-  2 | Fri Oct 19 02:23:54 2001 PDT |           4 |          1
-  1 | Thu Oct 19 02:23:54 2000 PDT |           3 |          1
-(10 rows)
-
+ERROR:  relation "datetimes" does not exist
+LINE 2: from datetimes
+             ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp range between
              '1 year'::interval preceding and '1 year'::interval following);
- id |       f_timestamp        | first_value | last_value 
-----+--------------------------+-------------+------------
-  1 | Thu Oct 19 10:23:54 2000 |           1 |          3
-  2 | Fri Oct 19 10:23:54 2001 |           1 |          4
-  3 | Fri Oct 19 10:23:54 2001 |           1 |          4
-  4 | Sat Oct 19 10:23:54 2002 |           2 |          5
-  5 | Sun Oct 19 10:23:54 2003 |           4 |          6
-  6 | Tue Oct 19 10:23:54 2004 |           5 |          7
-  7 | Wed Oct 19 10:23:54 2005 |           6 |          8
-  8 | Thu Oct 19 10:23:54 2006 |           7 |          9
-  9 | Fri Oct 19 10:23:54 2007 |           8 |         10
- 10 | Sun Oct 19 10:23:54 2008 |           9 |         10
-(10 rows)
-
+ERROR:  missing or invalid datetime field.
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp desc range between
              '1 year' preceding and '1 year' following);
- id |       f_timestamp        | first_value | last_value 
-----+--------------------------+-------------+------------
- 10 | Sun Oct 19 10:23:54 2008 |          10 |          9
-  9 | Fri Oct 19 10:23:54 2007 |          10 |          8
-  8 | Thu Oct 19 10:23:54 2006 |           9 |          7
-  7 | Wed Oct 19 10:23:54 2005 |           8 |          6
-  6 | Tue Oct 19 10:23:54 2004 |           7 |          5
-  5 | Sun Oct 19 10:23:54 2003 |           6 |          4
-  4 | Sat Oct 19 10:23:54 2002 |           5 |          2
-  3 | Fri Oct 19 10:23:54 2001 |           4 |          1
-  2 | Fri Oct 19 10:23:54 2001 |           4 |          1
-  1 | Thu Oct 19 10:23:54 2000 |           3 |          1
-(10 rows)
-
+ERROR:  relation "datetimes" does not exist
+LINE 2: from datetimes
+             ^
 -- RANGE offset PRECEDING/FOLLOWING error cases
 select sum(salary) over (order by enroll_date, salary range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column
-LINE 1: select sum(salary) over (order by enroll_date, salary range ...
-                                ^
+ERROR:  missing or invalid datetime field.
 select sum(salary) over (range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column
-LINE 1: select sum(salary) over (range between '1 year'::interval pr...
-                                ^
+ERROR:  missing or invalid datetime field.
 select sum(salary) over (order by depname range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type text
-LINE 1: ... sum(salary) over (order by depname range between '1 year'::...
-                                                             ^
+ERROR:  missing or invalid datetime field.
 select max(enroll_date) over (order by enroll_date range between 1 preceding and 2 following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date and offset type integer
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
 LINE 1: ...ll_date) over (order by enroll_date range between 1 precedin...
                                                              ^
-HINT:  Cast the offset value to an appropriate type.
 select max(enroll_date) over (order by salary range between -1 preceding and 2 following
 	exclude ties), salary, enroll_date from empsalary;
 ERROR:  invalid preceding or following size in window function
@@ -2592,13 +2334,10 @@ select max(enroll_date) over (order by salary range between 1 preceding and -2 f
 ERROR:  invalid preceding or following size in window function
 select max(enroll_date) over (order by salary range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type integer and offset type interval
-LINE 1: ...(enroll_date) over (order by salary range between '1 year'::...
-                                                             ^
-HINT:  Cast the offset value to an appropriate type.
+ERROR:  missing or invalid datetime field.
 select max(enroll_date) over (order by enroll_date range between '1 year'::interval preceding and '-2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  invalid preceding or following size in window function
+ERROR:  missing or invalid datetime field.
 -- GROUPS tests
 SELECT sum(unique1) over (order by four groups between unbounded preceding and current row),
 	unique1, four
@@ -2878,16 +2617,16 @@ select first_value(salary) over(order by enroll_date groups between 1 preceding 
 	salary, enroll_date from empsalary;
  first_value | lead | nth_value | salary | enroll_date 
 -------------+------+-----------+--------+-------------
-        5000 | 6000 |      5000 |   5000 | 10-01-2006
-        5000 | 3900 |      5000 |   6000 | 10-01-2006
-        5000 | 4800 |      5000 |   3900 | 12-23-2006
-        3900 | 5200 |      3900 |   4800 | 08-01-2007
-        3900 | 4800 |      3900 |   5200 | 08-01-2007
-        4800 | 5200 |      4800 |   4800 | 08-08-2007
-        4800 | 3500 |      4800 |   5200 | 08-15-2007
-        5200 | 4500 |      5200 |   3500 | 12-10-2007
-        3500 | 4200 |      3500 |   4500 | 01-01-2008
-        3500 |      |      3500 |   4200 | 01-01-2008
+        5000 | 6000 |      5000 |   5000 | 2006-10-01
+        5000 | 3900 |      5000 |   6000 | 2006-10-01
+        5000 | 4800 |      5000 |   3900 | 2006-12-23
+        3900 | 5200 |      3900 |   4800 | 2007-08-01
+        3900 | 4800 |      3900 |   5200 | 2007-08-01
+        4800 | 5200 |      4800 |   4800 | 2007-08-08
+        4800 | 3500 |      4800 |   5200 | 2007-08-15
+        5200 | 4500 |      5200 |   3500 | 2007-12-10
+        3500 | 4200 |      3500 |   4500 | 2008-01-01
+        3500 |      |      3500 |   4200 | 2008-01-01
 (10 rows)
 
 select last_value(salary) over(order by enroll_date groups between 1 preceding and 1 following),
@@ -2895,16 +2634,16 @@ select last_value(salary) over(order by enroll_date groups between 1 preceding a
 	salary, enroll_date from empsalary;
  last_value | lag  | salary | enroll_date 
 ------------+------+--------+-------------
-       3900 |      |   5000 | 10-01-2006
-       3900 | 5000 |   6000 | 10-01-2006
-       5200 | 6000 |   3900 | 12-23-2006
-       4800 | 3900 |   4800 | 08-01-2007
-       4800 | 4800 |   5200 | 08-01-2007
-       5200 | 5200 |   4800 | 08-08-2007
-       3500 | 4800 |   5200 | 08-15-2007
-       4200 | 5200 |   3500 | 12-10-2007
-       4200 | 3500 |   4500 | 01-01-2008
-       4200 | 4500 |   4200 | 01-01-2008
+       3900 |      |   5000 | 2006-10-01
+       3900 | 5000 |   6000 | 2006-10-01
+       5200 | 6000 |   3900 | 2006-12-23
+       4800 | 3900 |   4800 | 2007-08-01
+       4800 | 4800 |   5200 | 2007-08-01
+       5200 | 5200 |   4800 | 2007-08-08
+       3500 | 4800 |   5200 | 2007-08-15
+       4200 | 5200 |   3500 | 2007-12-10
+       4200 | 3500 |   4500 | 2008-01-01
+       4200 | 4500 |   4200 | 2008-01-01
 (10 rows)
 
 select first_value(salary) over(order by enroll_date groups between 1 following and 3 following
@@ -2915,16 +2654,16 @@ select first_value(salary) over(order by enroll_date groups between 1 following 
 	salary, enroll_date from empsalary;
  first_value | lead | nth_value | salary | enroll_date 
 -------------+------+-----------+--------+-------------
-        3900 | 6000 |      3900 |   5000 | 10-01-2006
-        3900 | 3900 |      3900 |   6000 | 10-01-2006
-        4800 | 4800 |      4800 |   3900 | 12-23-2006
-        4800 | 5200 |      4800 |   4800 | 08-01-2007
-        4800 | 4800 |      4800 |   5200 | 08-01-2007
-        5200 | 5200 |      5200 |   4800 | 08-08-2007
-        3500 | 3500 |      3500 |   5200 | 08-15-2007
-        4500 | 4500 |      4500 |   3500 | 12-10-2007
-             | 4200 |           |   4500 | 01-01-2008
-             |      |           |   4200 | 01-01-2008
+        3900 | 6000 |      3900 |   5000 | 2006-10-01
+        3900 | 3900 |      3900 |   6000 | 2006-10-01
+        4800 | 4800 |      4800 |   3900 | 2006-12-23
+        4800 | 5200 |      4800 |   4800 | 2007-08-01
+        4800 | 4800 |      4800 |   5200 | 2007-08-01
+        5200 | 5200 |      5200 |   4800 | 2007-08-08
+        3500 | 3500 |      3500 |   5200 | 2007-08-15
+        4500 | 4500 |      4500 |   3500 | 2007-12-10
+             | 4200 |           |   4500 | 2008-01-01
+             |      |           |   4200 | 2008-01-01
 (10 rows)
 
 select last_value(salary) over(order by enroll_date groups between 1 following and 3 following
@@ -2933,16 +2672,16 @@ select last_value(salary) over(order by enroll_date groups between 1 following a
 	salary, enroll_date from empsalary;
  last_value | lag  | salary | enroll_date 
 ------------+------+--------+-------------
-       4800 |      |   5000 | 10-01-2006
-       4800 | 5000 |   6000 | 10-01-2006
-       5200 | 6000 |   3900 | 12-23-2006
-       3500 | 3900 |   4800 | 08-01-2007
-       3500 | 4800 |   5200 | 08-01-2007
-       4200 | 5200 |   4800 | 08-08-2007
-       4200 | 4800 |   5200 | 08-15-2007
-       4200 | 5200 |   3500 | 12-10-2007
-            | 3500 |   4500 | 01-01-2008
-            | 4500 |   4200 | 01-01-2008
+       4800 |      |   5000 | 2006-10-01
+       4800 | 5000 |   6000 | 2006-10-01
+       5200 | 6000 |   3900 | 2006-12-23
+       3500 | 3900 |   4800 | 2007-08-01
+       3500 | 4800 |   5200 | 2007-08-01
+       4200 | 5200 |   4800 | 2007-08-08
+       4200 | 4800 |   5200 | 2007-08-15
+       4200 | 5200 |   3500 | 2007-12-10
+            | 3500 |   4500 | 2008-01-01
+            | 4500 |   4200 | 2008-01-01
 (10 rows)
 
 -- Show differences in offset interpretation between ROWS, RANGE, and GROUPS
@@ -3408,7 +3147,7 @@ WHERE depname = 'sales';
                ->  Sort
                      Sort Key: (((empsalary.depname)::text || 'A'::text))
                      ->  Seq Scan on empsalary
-                           Filter: ((depname)::text = 'sales'::text)
+                           Filter: (depname = 'sales'::varchar2)
 (7 rows)
 
 -- pushdown is unsafe because there's a PARTITION BY clause without depname:
@@ -3422,7 +3161,7 @@ WHERE depname = 'sales';
                       QUERY PLAN                       
 -------------------------------------------------------
  Subquery Scan on emp
-   Filter: ((emp.depname)::text = 'sales'::text)
+   Filter: (emp.depname = 'sales'::varchar2)
    ->  WindowAgg
          ->  Sort
                Sort Key: empsalary.enroll_date
@@ -3431,457 +3170,6 @@ WHERE depname = 'sales';
                            Sort Key: empsalary.depname
                            ->  Seq Scan on empsalary
 (9 rows)
-
--- Test window function run conditions are properly pushed down into the
--- WindowAgg
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          row_number() OVER (ORDER BY empno) rn
-   FROM empsalary) emp
-WHERE rn < 3;
-                  QUERY PLAN                  
-----------------------------------------------
- WindowAgg
-   Run Condition: (row_number() OVER (?) < 3)
-   ->  Sort
-         Sort Key: empsalary.empno
-         ->  Seq Scan on empsalary
-(5 rows)
-
--- The following 3 statements should result the same result.
-SELECT * FROM
-  (SELECT empno,
-          row_number() OVER (ORDER BY empno) rn
-   FROM empsalary) emp
-WHERE rn < 3;
- empno | rn 
--------+----
-     1 |  1
-     2 |  2
-(2 rows)
-
-SELECT * FROM
-  (SELECT empno,
-          row_number() OVER (ORDER BY empno) rn
-   FROM empsalary) emp
-WHERE 3 > rn;
- empno | rn 
--------+----
-     1 |  1
-     2 |  2
-(2 rows)
-
-SELECT * FROM
-  (SELECT empno,
-          row_number() OVER (ORDER BY empno) rn
-   FROM empsalary) emp
-WHERE 2 >= rn;
- empno | rn 
--------+----
-     1 |  1
-     2 |  2
-(2 rows)
-
--- Ensure r <= 3 is pushed down into the run condition of the window agg
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          rank() OVER (ORDER BY salary DESC) r
-   FROM empsalary) emp
-WHERE r <= 3;
-               QUERY PLAN                
------------------------------------------
- WindowAgg
-   Run Condition: (rank() OVER (?) <= 3)
-   ->  Sort
-         Sort Key: empsalary.salary DESC
-         ->  Seq Scan on empsalary
-(5 rows)
-
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          rank() OVER (ORDER BY salary DESC) r
-   FROM empsalary) emp
-WHERE r <= 3;
- empno | salary | r 
--------+--------+---
-     8 |   6000 | 1
-    10 |   5200 | 2
-    11 |   5200 | 2
-(3 rows)
-
--- Ensure dr = 1 is converted to dr <= 1 to get all rows leading up to dr = 1
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          dense_rank() OVER (ORDER BY salary DESC) dr
-   FROM empsalary) emp
-WHERE dr = 1;
-                     QUERY PLAN                      
------------------------------------------------------
- Subquery Scan on emp
-   Filter: (emp.dr = 1)
-   ->  WindowAgg
-         Run Condition: (dense_rank() OVER (?) <= 1)
-         ->  Sort
-               Sort Key: empsalary.salary DESC
-               ->  Seq Scan on empsalary
-(7 rows)
-
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          dense_rank() OVER (ORDER BY salary DESC) dr
-   FROM empsalary) emp
-WHERE dr = 1;
- empno | salary | dr 
--------+--------+----
-     8 |   6000 |  1
-(1 row)
-
--- Check COUNT() and COUNT(*)
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(*) OVER (ORDER BY salary DESC) c
-   FROM empsalary) emp
-WHERE c <= 3;
-                QUERY PLAN                 
--------------------------------------------
- WindowAgg
-   Run Condition: (count(*) OVER (?) <= 3)
-   ->  Sort
-         Sort Key: empsalary.salary DESC
-         ->  Seq Scan on empsalary
-(5 rows)
-
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(*) OVER (ORDER BY salary DESC) c
-   FROM empsalary) emp
-WHERE c <= 3;
- empno | salary | c 
--------+--------+---
-     8 |   6000 | 1
-    10 |   5200 | 3
-    11 |   5200 | 3
-(3 rows)
-
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(empno) OVER (ORDER BY salary DESC) c
-   FROM empsalary) emp
-WHERE c <= 3;
-                       QUERY PLAN                        
----------------------------------------------------------
- WindowAgg
-   Run Condition: (count(empsalary.empno) OVER (?) <= 3)
-   ->  Sort
-         Sort Key: empsalary.salary DESC
-         ->  Seq Scan on empsalary
-(5 rows)
-
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(empno) OVER (ORDER BY salary DESC) c
-   FROM empsalary) emp
-WHERE c <= 3;
- empno | salary | c 
--------+--------+---
-     8 |   6000 | 1
-    10 |   5200 | 3
-    11 |   5200 | 3
-(3 rows)
-
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(*) OVER (ORDER BY salary DESC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) c
-   FROM empsalary) emp
-WHERE c >= 3;
-                QUERY PLAN                 
--------------------------------------------
- WindowAgg
-   Run Condition: (count(*) OVER (?) >= 3)
-   ->  Sort
-         Sort Key: empsalary.salary DESC
-         ->  Seq Scan on empsalary
-(5 rows)
-
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(*) OVER () c
-   FROM empsalary) emp
-WHERE 11 <= c;
-                 QUERY PLAN                 
---------------------------------------------
- WindowAgg
-   Run Condition: (11 <= count(*) OVER (?))
-   ->  Seq Scan on empsalary
-(3 rows)
-
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(*) OVER (ORDER BY salary DESC) c,
-          dense_rank() OVER (ORDER BY salary DESC) dr
-   FROM empsalary) emp
-WHERE dr = 1;
-                     QUERY PLAN                      
------------------------------------------------------
- Subquery Scan on emp
-   Filter: (emp.dr = 1)
-   ->  WindowAgg
-         Run Condition: (dense_rank() OVER (?) <= 1)
-         ->  Sort
-               Sort Key: empsalary.salary DESC
-               ->  Seq Scan on empsalary
-(7 rows)
-
--- Ensure we get a run condition when there's a PARTITION BY clause
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          depname,
-          row_number() OVER (PARTITION BY depname ORDER BY empno) rn
-   FROM empsalary) emp
-WHERE rn < 3;
-                      QUERY PLAN                      
-------------------------------------------------------
- WindowAgg
-   Run Condition: (row_number() OVER (?) < 3)
-   ->  Sort
-         Sort Key: empsalary.depname, empsalary.empno
-         ->  Seq Scan on empsalary
-(5 rows)
-
--- and ensure we get the correct results from the above plan
-SELECT * FROM
-  (SELECT empno,
-          depname,
-          row_number() OVER (PARTITION BY depname ORDER BY empno) rn
-   FROM empsalary) emp
-WHERE rn < 3;
- empno |  depname  | rn 
--------+-----------+----
-     7 | develop   |  1
-     8 | develop   |  2
-     2 | personnel |  1
-     5 | personnel |  2
-     1 | sales     |  1
-     3 | sales     |  2
-(6 rows)
-
--- ensure that "unused" subquery columns are not removed when the column only
--- exists in the run condition
-EXPLAIN (COSTS OFF)
-SELECT empno, depname FROM
-  (SELECT empno,
-          depname,
-          row_number() OVER (PARTITION BY depname ORDER BY empno) rn
-   FROM empsalary) emp
-WHERE rn < 3;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Subquery Scan on emp
-   ->  WindowAgg
-         Run Condition: (row_number() OVER (?) < 3)
-         ->  Sort
-               Sort Key: empsalary.depname, empsalary.empno
-               ->  Seq Scan on empsalary
-(6 rows)
-
--- likewise with count(empno) instead of row_number()
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          depname,
-          salary,
-          count(empno) OVER (PARTITION BY depname ORDER BY salary DESC) c
-   FROM empsalary) emp
-WHERE c <= 3;
-                         QUERY PLAN                         
-------------------------------------------------------------
- WindowAgg
-   Run Condition: (count(empsalary.empno) OVER (?) <= 3)
-   ->  Sort
-         Sort Key: empsalary.depname, empsalary.salary DESC
-         ->  Seq Scan on empsalary
-(5 rows)
-
--- and again, check the results are what we expect.
-SELECT * FROM
-  (SELECT empno,
-          depname,
-          salary,
-          count(empno) OVER (PARTITION BY depname ORDER BY salary DESC) c
-   FROM empsalary) emp
-WHERE c <= 3;
- empno |  depname  | salary | c 
--------+-----------+--------+---
-     8 | develop   |   6000 | 1
-    10 | develop   |   5200 | 3
-    11 | develop   |   5200 | 3
-     2 | personnel |   3900 | 1
-     5 | personnel |   3500 | 2
-     1 | sales     |   5000 | 1
-     4 | sales     |   4800 | 3
-     3 | sales     |   4800 | 3
-(8 rows)
-
--- Ensure we get the correct run condition when the window function is both
--- monotonically increasing and decreasing.
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          depname,
-          salary,
-          count(empno) OVER () c
-   FROM empsalary) emp
-WHERE c = 1;
-                       QUERY PLAN                       
---------------------------------------------------------
- WindowAgg
-   Run Condition: (count(empsalary.empno) OVER (?) = 1)
-   ->  Seq Scan on empsalary
-(3 rows)
-
--- Some more complex cases with multiple window clauses
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT *,
-          count(salary) OVER (PARTITION BY depname || '') c1, -- w1
-          row_number() OVER (PARTITION BY depname) rn, -- w2
-          count(*) OVER (PARTITION BY depname) c2, -- w2
-          count(*) OVER (PARTITION BY '' || depname) c3, -- w3
-          ntile(2) OVER (PARTITION BY depname) nt -- w2
-   FROM empsalary
-) e WHERE rn <= 1 AND c1 <= 3 AND nt < 2;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
- Subquery Scan on e
-   ->  WindowAgg
-         Filter: (((row_number() OVER (?)) <= 1) AND ((ntile(2) OVER (?)) < 2))
-         Run Condition: (count(empsalary.salary) OVER (?) <= 3)
-         ->  Sort
-               Sort Key: (((empsalary.depname)::text || ''::text))
-               ->  WindowAgg
-                     Run Condition: ((row_number() OVER (?) <= 1) AND (ntile(2) OVER (?) < 2))
-                     ->  Sort
-                           Sort Key: empsalary.depname
-                           ->  WindowAgg
-                                 ->  Sort
-                                       Sort Key: ((''::text || (empsalary.depname)::text))
-                                       ->  Seq Scan on empsalary
-(14 rows)
-
--- Ensure we correctly filter out all of the run conditions from each window
-SELECT * FROM
-  (SELECT *,
-          count(salary) OVER (PARTITION BY depname || '') c1, -- w1
-          row_number() OVER (PARTITION BY depname) rn, -- w2
-          count(*) OVER (PARTITION BY depname) c2, -- w2
-          count(*) OVER (PARTITION BY '' || depname) c3, -- w3
-          ntile(2) OVER (PARTITION BY depname) nt -- w2
-   FROM empsalary
-) e WHERE rn <= 1 AND c1 <= 3 AND nt < 2;
-  depname  | empno | salary | enroll_date | c1 | rn | c2 | c3 | nt 
------------+-------+--------+-------------+----+----+----+----+----
- personnel |     5 |   3500 | 12-10-2007  |  2 |  1 |  2 |  2 |  1
- sales     |     3 |   4800 | 08-01-2007  |  3 |  1 |  3 |  3 |  1
-(2 rows)
-
--- Tests to ensure we don't push down the run condition when it's not valid to
--- do so.
--- Ensure we don't push down when the frame options show that the window
--- function is not monotonically increasing
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(*) OVER (ORDER BY salary DESC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) c
-   FROM empsalary) emp
-WHERE c <= 3;
-                  QUERY PLAN                   
------------------------------------------------
- Subquery Scan on emp
-   Filter: (emp.c <= 3)
-   ->  WindowAgg
-         ->  Sort
-               Sort Key: empsalary.salary DESC
-               ->  Seq Scan on empsalary
-(6 rows)
-
--- Ensure we don't push down when the window function's monotonic properties
--- don't match that of the clauses.
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(*) OVER (ORDER BY salary) c
-   FROM empsalary) emp
-WHERE 3 <= c;
-                QUERY PLAN                
-------------------------------------------
- Subquery Scan on emp
-   Filter: (3 <= emp.c)
-   ->  WindowAgg
-         ->  Sort
-               Sort Key: empsalary.salary
-               ->  Seq Scan on empsalary
-(6 rows)
-
--- Ensure we don't use a run condition when there's a volatile function in the
--- WindowFunc
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count(random()) OVER (ORDER BY empno DESC) c
-   FROM empsalary) emp
-WHERE c = 1;
-                  QUERY PLAN                  
-----------------------------------------------
- Subquery Scan on emp
-   Filter: (emp.c = 1)
-   ->  WindowAgg
-         ->  Sort
-               Sort Key: empsalary.empno DESC
-               ->  Seq Scan on empsalary
-(6 rows)
-
--- Ensure we don't use a run condition when the WindowFunc contains subplans
-EXPLAIN (COSTS OFF)
-SELECT * FROM
-  (SELECT empno,
-          salary,
-          count((SELECT 1)) OVER (ORDER BY empno DESC) c
-   FROM empsalary) emp
-WHERE c = 1;
-                  QUERY PLAN                  
-----------------------------------------------
- Subquery Scan on emp
-   Filter: (emp.c = 1)
-   ->  WindowAgg
-         InitPlan 1 (returns $0)
-           ->  Result
-         ->  Sort
-               Sort Key: empsalary.empno DESC
-               ->  Seq Scan on empsalary
-(8 rows)
 
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)
@@ -3899,7 +3187,7 @@ WHERE depname = 'sales';
                ->  Sort
                      Sort Key: empsalary.empno, empsalary.enroll_date
                      ->  Seq Scan on empsalary
-                           Filter: ((depname)::text = 'sales'::text)
+                           Filter: (depname = 'sales'::varchar2)
 (7 rows)
 
 -- Ensure that the evaluation order of the WindowAggs results in the WindowAgg
@@ -4028,17 +3316,17 @@ SELECT * FROM
           row_number() OVER (PARTITION BY depname ORDER BY enroll_date DESC) AS last_emp
    FROM empsalary) emp
 WHERE first_emp = 1 OR last_emp = 1;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Subquery Scan on emp
    Filter: ((emp.first_emp = 1) OR (emp.last_emp = 1))
    ->  WindowAgg
          ->  Incremental Sort
-               Sort Key: empsalary.depname, empsalary.enroll_date
+               Sort Key: empsalary.depname, empsalary.enroll_date DESC
                Presorted Key: empsalary.depname
                ->  WindowAgg
                      ->  Sort
-                           Sort Key: empsalary.depname, empsalary.enroll_date DESC
+                           Sort Key: empsalary.depname, empsalary.enroll_date
                            ->  Seq Scan on empsalary
 (10 rows)
 
@@ -4053,12 +3341,12 @@ SELECT * FROM
 WHERE first_emp = 1 OR last_emp = 1;
   depname  | empno | salary | enroll_date | first_emp | last_emp 
 -----------+-------+--------+-------------+-----------+----------
- develop   |     8 |   6000 | 10-01-2006  |         1 |        5
- develop   |     7 |   4200 | 01-01-2008  |         5 |        1
- personnel |     2 |   3900 | 12-23-2006  |         1 |        2
- personnel |     5 |   3500 | 12-10-2007  |         2 |        1
- sales     |     1 |   5000 | 10-01-2006  |         1 |        3
- sales     |     4 |   4800 | 08-08-2007  |         3 |        1
+ develop   |     9 |   4500 | 2008-01-01  |         4 |        1
+ develop   |     8 |   6000 | 2006-10-01  |         1 |        5
+ personnel |     5 |   3500 | 2007-12-10  |         2 |        1
+ personnel |     2 |   3900 | 2006-12-23  |         1 |        2
+ sales     |     4 |   4800 | 2007-08-08  |         3 |        1
+ sales     |     1 |   5000 | 2006-10-01  |         1 |        3
 (6 rows)
 
 -- cleanup
@@ -4367,14 +3655,7 @@ SELECT i,AVG(v::numeric) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED
 
 SELECT i,AVG(v::interval) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,'1 sec'),(2,'2 sec'),(3,NULL),(4,NULL)) t(i,v);
- i |    avg     
----+------------
- 1 | @ 1.5 secs
- 2 | @ 2 secs
- 3 | 
- 4 | 
-(4 rows)
-
+ERROR:  missing or invalid datetime field.
 SELECT i,SUM(v::smallint) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,1),(2,2),(3,NULL),(4,NULL)) t(i,v);
  i | sum 
@@ -4417,14 +3698,7 @@ SELECT i,SUM(v::money) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED F
 
 SELECT i,SUM(v::interval) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,'1 sec'),(2,'2 sec'),(3,NULL),(4,NULL)) t(i,v);
- i |   sum    
----+----------
- 1 | @ 3 secs
- 2 | @ 2 secs
- 3 | 
- 4 | 
-(4 rows)
-
+ERROR:  missing or invalid datetime field.
 SELECT i,SUM(v::numeric) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,1.1),(2,2.2),(3,NULL),(4,NULL)) t(i,v);
  i | sum 

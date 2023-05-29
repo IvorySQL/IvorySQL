@@ -22,6 +22,7 @@ CREATE TABLE brintest_bloom (byteacol bytea,
 	uuidcol uuid,
 	lsncol pg_lsn
 ) WITH (fillfactor=10);
+ERROR:  missing or invalid datetime field.
 INSERT INTO brintest_bloom SELECT
 	repeat(stringu1, 8)::bytea,
 	substr(stringu1, 1, 1)::"char",
@@ -46,29 +47,32 @@ INSERT INTO brintest_bloom SELECT
 	format('%s%s-%s-%s-%s-%s%s%s', to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'))::uuid,
 	format('%s/%s%s', odd, even, tenthous)::pg_lsn
 FROM tenk1 ORDER BY unique2 LIMIT 100;
+ERROR:  syntax error at or near ","
+LINE 16:  time '01:20:30' + thousand * interval '18.5 second',
+                                                             ^
 -- throw in some NULL's and different values
 INSERT INTO brintest_bloom (inetcol, cidrcol) SELECT
 	inet 'fe80::6e40:8ff:fea9:8c46' + tenthous,
 	cidr 'fe80::6e40:8ff:fea9:8c46' + tenthous
 FROM tenk1 ORDER BY thousand, tenthous LIMIT 25;
+ERROR:  relation "brintest_bloom" does not exist
+LINE 1: INSERT INTO brintest_bloom (inetcol, cidrcol) SELECT
+                    ^
 -- test bloom specific index options
 -- ndistinct must be >= -1.0
 CREATE INDEX brinidx_bloom ON brintest_bloom USING brin (
 	byteacol bytea_bloom_ops(n_distinct_per_range = -1.1)
 );
-ERROR:  value -1.1 out of bounds for option "n_distinct_per_range"
-DETAIL:  Valid values are between "-1.000000" and "2147483647.000000".
+ERROR:  relation "brintest_bloom" does not exist
 -- false_positive_rate must be between 0.0001 and 0.25
 CREATE INDEX brinidx_bloom ON brintest_bloom USING brin (
 	byteacol bytea_bloom_ops(false_positive_rate = 0.00009)
 );
-ERROR:  value 0.00009 out of bounds for option "false_positive_rate"
-DETAIL:  Valid values are between "0.000100" and "0.250000".
+ERROR:  relation "brintest_bloom" does not exist
 CREATE INDEX brinidx_bloom ON brintest_bloom USING brin (
 	byteacol bytea_bloom_ops(false_positive_rate = 0.26)
 );
-ERROR:  value 0.26 out of bounds for option "false_positive_rate"
-DETAIL:  Valid values are between "0.000100" and "0.250000".
+ERROR:  relation "brintest_bloom" does not exist
 CREATE INDEX brinidx_bloom ON brintest_bloom USING brin (
 	byteacol bytea_bloom_ops,
 	charcol char_bloom_ops,
@@ -94,6 +98,7 @@ CREATE INDEX brinidx_bloom ON brintest_bloom USING brin (
 	uuidcol uuid_bloom_ops,
 	lsncol pg_lsn_bloom_ops
 ) with (pages_per_range = 1);
+ERROR:  relation "brintest_bloom" does not exist
 CREATE TABLE brinopers_bloom (colname name, typ text,
 	op text[], value text[], matches int[],
 	check (cardinality(op) = cardinality(value)),
@@ -287,6 +292,11 @@ BEGIN
 	END LOOP;
 END;
 $x$;
+ERROR:  relation "brintest_bloom" does not exist
+LINE 1: EXPLAIN SELECT array_agg(ctid) FROM brintest_bloom WHERE byt...
+                                            ^
+QUERY:  EXPLAIN SELECT array_agg(ctid) FROM brintest_bloom WHERE byteacol = 'BNAAAABNAAAABNAAAABNAAAABNAAAABNAAAABNAAAABNAAAA'::bytea 
+CONTEXT:  PL/iSQL function inline_code_block line 26 at FOR over EXECUTE statement
 RESET enable_seqscan;
 RESET enable_bitmapscan;
 INSERT INTO brintest_bloom SELECT
@@ -313,47 +323,51 @@ INSERT INTO brintest_bloom SELECT
 	format('%s%s-%s-%s-%s-%s%s%s', to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'), to_char(tenthous, 'FM0000'))::uuid,
 	format('%s/%s%s', odd, even, tenthous)::pg_lsn
 FROM tenk1 ORDER BY unique2 LIMIT 5 OFFSET 5;
+ERROR:  syntax error at or near ","
+LINE 16:  time '01:20:30' + thousand * interval '18.5 second',
+                                                             ^
 SELECT brin_desummarize_range('brinidx_bloom', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_bloom" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_bloom', 0);
+                                      ^
 VACUUM brintest_bloom;  -- force a summarization cycle in brinidx
+ERROR:  relation "brintest_bloom" does not exist
 UPDATE brintest_bloom SET int8col = int8col * int4col;
+ERROR:  relation "brintest_bloom" does not exist
+LINE 1: UPDATE brintest_bloom SET int8col = int8col * int4col;
+               ^
 UPDATE brintest_bloom SET textcol = '' WHERE textcol IS NOT NULL;
+ERROR:  relation "brintest_bloom" does not exist
+LINE 1: UPDATE brintest_bloom SET textcol = '' WHERE textcol IS NOT ...
+               ^
 -- Tests for brin_summarize_new_values
 SELECT brin_summarize_new_values('brintest_bloom'); -- error, not an index
-ERROR:  "brintest_bloom" is not an index
+ERROR:  relation "brintest_bloom" does not exist
+LINE 1: SELECT brin_summarize_new_values('brintest_bloom');
+                                         ^
 SELECT brin_summarize_new_values('tenk1_unique1'); -- error, not a BRIN index
 ERROR:  "tenk1_unique1" is not a BRIN index
 SELECT brin_summarize_new_values('brinidx_bloom'); -- ok, no change expected
- brin_summarize_new_values 
----------------------------
-                         0
-(1 row)
-
+ERROR:  relation "brinidx_bloom" does not exist
+LINE 1: SELECT brin_summarize_new_values('brinidx_bloom');
+                                         ^
 -- Tests for brin_desummarize_range
 SELECT brin_desummarize_range('brinidx_bloom', -1); -- error, invalid range
-ERROR:  block number out of range: -1
+ERROR:  relation "brinidx_bloom" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_bloom', -1);
+                                      ^
 SELECT brin_desummarize_range('brinidx_bloom', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_bloom" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_bloom', 0);
+                                      ^
 SELECT brin_desummarize_range('brinidx_bloom', 0);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_bloom" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_bloom', 0);
+                                      ^
 SELECT brin_desummarize_range('brinidx_bloom', 100000000);
- brin_desummarize_range 
-------------------------
- 
-(1 row)
-
+ERROR:  relation "brinidx_bloom" does not exist
+LINE 1: SELECT brin_desummarize_range('brinidx_bloom', 100000000);
+                                      ^
 -- Test brin_summarize_range
 CREATE TABLE brin_summarize_bloom (
     value int

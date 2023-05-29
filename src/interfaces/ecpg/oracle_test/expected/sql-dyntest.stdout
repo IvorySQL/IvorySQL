@@ -1,7 +1,7 @@
 Found 7 columns
- 1	name (type: 1 length: 14 precision: 0 scale: 14 = char(14))
+ 1	name (type: 0 length: 14 precision: 0 scale: 14 = <SQL3 0>)
 	octet_length: -1 returned_octet_length: 14)
-	= "first entry   "
+	= <"first entry   ">
  2	d (type: 8 length: -5 precision: -1 scale: 65531 = double precision)
 	octet_length: 8 returned_octet_length: 4)
 	= 14.700000
@@ -17,12 +17,12 @@ Found 7 columns
  6	comment (type: 1 length: -5 precision: -1 scale: 65531 = text)
 	octet_length: -1 returned_octet_length: 47)
 	= "The world's most advanced open source database."
- 7	day (type: 9 length: -5 precision: -1 scale: 65531 = date)
-	octet_length: 4 returned_octet_length: 10)
-	= 1 "14.07.1987"
- 1	name (type: 1 length: 14 precision: 0 scale: 14 = char(14))
+ 7	day (type: 0 length: -5 precision: -1 scale: 65531 = <SQL3 0>)
+	octet_length: 8 returned_octet_length: 10)
+	= <"1987-07-14">
+ 1	name (type: 0 length: 14 precision: 0 scale: 14 = <SQL3 0>)
 	octet_length: -1 returned_octet_length: 14)
-	= "second entry  "
+	= <"second entry  ">
  2	d (type: 8 length: -5 precision: -1 scale: 65531 = double precision)
 	octet_length: 8 returned_octet_length: 7)
 	= 1407.870000
@@ -38,6 +38,6 @@ Found 7 columns
  6	comment (type: 1 length: -5 precision: -1 scale: 65531 = text)
 	octet_length: -1 returned_octet_length: 27)
 	= "The elephant never forgets."
- 7	day (type: 9 length: -5 precision: -1 scale: 65531 = date)
-	octet_length: 4 returned_octet_length: 10)
-	= 1 "05.11.1999"
+ 7	day (type: 0 length: -5 precision: -1 scale: 65531 = <SQL3 0>)
+	octet_length: 8 returned_octet_length: 10)
+	= <"1999-11-05">

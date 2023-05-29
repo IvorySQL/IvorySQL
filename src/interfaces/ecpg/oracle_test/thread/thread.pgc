@@ -49,7 +49,7 @@ int main()
   EXEC SQL DROP TABLE test_thread; /* DROP might fail */
   EXEC SQL COMMIT;
   EXEC SQL CREATE TABLE
-    test_thread(tstamp    TIMESTAMP NOT NULL DEFAULT CAST(timeofday() AS TIMESTAMP),
+    test_thread(tstamp    TIMESTAMP NOT NULL DEFAULT CAST(timeofday() AS pg_catalog.TIMESTAMP),
 		thread    TEXT      NOT NULL,
 		iteration INTEGER   NOT NULL,
 		PRIMARY KEY(thread, iteration));

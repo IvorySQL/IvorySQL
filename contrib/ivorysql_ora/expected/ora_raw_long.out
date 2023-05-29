@@ -1,0 +1,169 @@
+CREATE TABLE RW_TEXT(a raw(32768));
+ERROR:  length for type raw cannot exceed 32767
+LINE 1: CREATE TABLE RW_TEXT(a raw(32768));
+                               ^
+CREATE TABLE RW_TEXT(II INT, a raw(32767));
+INSERT INTO RW_TEXT VALUES(1,'\xFFFF');
+INSERT INTO RW_TEXT VALUES(2,'\xFFFFFF');
+INSERT INTO RW_TEXT VALUES(3,'\xFF');
+INSERT INTO RW_TEXT VALUES(4,'\xFFFF');
+INSERT INTO RW_TEXT VALUES(5,'\xFFFF');
+INSERT INTO RW_TEXT VALUES(6,'\xFFFE');
+SELECT * FROM RW_TEXT WHERE a = '\xFFFF';
+ ii |   a    
+----+--------
+  1 | \xffff
+  4 | \xffff
+  5 | \xffff
+(3 rows)
+
+SELECT * FROM RW_TEXT WHERE a <> '\xFFFF';
+ ii |    a     
+----+----------
+  2 | \xffffff
+  3 | \xff
+  6 | \xfffe
+(3 rows)
+
+SELECT * FROM RW_TEXT WHERE a > '\xFFFF';
+ ii |    a     
+----+----------
+  2 | \xffffff
+(1 row)
+
+SELECT * FROM RW_TEXT WHERE a >= '\xFFFF';
+ ii |    a     
+----+----------
+  1 | \xffff
+  2 | \xffffff
+  4 | \xffff
+  5 | \xffff
+(4 rows)
+
+SELECT * FROM RW_TEXT WHERE a < '\xFFFF';
+ ii |   a    
+----+--------
+  3 | \xff
+  6 | \xfffe
+(2 rows)
+
+SELECT * FROM RW_TEXT WHERE a <= '\xFFFF';
+ ii |   a    
+----+--------
+  1 | \xffff
+  3 | \xff
+  4 | \xffff
+  5 | \xffff
+  6 | \xfffe
+(5 rows)
+
+SELECT *FROM RW_TEXT;
+ ii |    a     
+----+----------
+  1 | \xffff
+  2 | \xffffff
+  3 | \xff
+  4 | \xffff
+  5 | \xffff
+  6 | \xfffe
+(6 rows)
+
+-- Arithmetic operator
+SELECT '123'::raw(3) + '123'::raw(3);
+ERROR:  operator does not exist: raw + raw
+LINE 1: SELECT '123'::raw(3) + '123'::raw(3);
+                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '123'::bytea + '123'::bytea;
+ERROR:  operator does not exist: bytea + bytea
+LINE 1: SELECT '123'::bytea + '123'::bytea;
+                            ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '123'::raw(3) - '123'::raw(3);
+ERROR:  operator does not exist: raw - raw
+LINE 1: SELECT '123'::raw(3) - '123'::raw(3);
+                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '123'::bytea - '123'::bytea;
+ERROR:  operator does not exist: bytea - bytea
+LINE 1: SELECT '123'::bytea - '123'::bytea;
+                            ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '123'::raw(3) * '123'::raw(3);
+ERROR:  operator does not exist: raw * raw
+LINE 1: SELECT '123'::raw(3) * '123'::raw(3);
+                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '123'::bytea * '123'::bytea;
+ERROR:  operator does not exist: bytea * bytea
+LINE 1: SELECT '123'::bytea * '123'::bytea;
+                            ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '123'::raw(3) / '123'::raw(3);
+ERROR:  operator does not exist: raw / raw
+LINE 1: SELECT '123'::raw(3) / '123'::raw(3);
+                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '123'::bytea / '123'::bytea;
+ERROR:  operator does not exist: bytea / bytea
+LINE 1: SELECT '123'::bytea / '123'::bytea;
+                            ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+select '123'::raw = '123'::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '123'::raw(2) = '123'::bytea;
+ ?column? 
+----------
+ f
+(1 row)
+
+select '\xff'::bytea = '\xff'::raw(2);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 'ff'::text = 'ff'::long(2);
+ ?column? 
+----------
+ t
+(1 row)
+
+DELETE FROM RW_TEXT;
+CREATE INDEX test_orachar_btree ON RW_TEXT(a);
+INSERT INTO RW_TEXT VALUES(3,'\xFF');
+INSERT INTO RW_TEXT SELECT generate_series(1,10000), md5( generate_series(1,10000)::text)::bytea;
+SELECT * FROM RW_TEXT WHERE a='\xFF';
+ ii |  a   
+----+------
+  3 | \xff
+(1 row)
+
+VACUUM ANALYZE RW_TEXT;
+set enable_seqscan = false;
+explain (costs off) SELECT * FROM RW_TEXT WHERE a='\xFF';
+                   QUERY PLAN                   
+------------------------------------------------
+ Index Scan using test_orachar_btree on rw_text
+   Index Cond: ((a)::bytea = '\xff'::bytea)
+(2 rows)
+
+-- drop table
+DROP TABLE RW_TEXT;
+CREATE TABLE LONG_TEXT(II INT, INAME LONG);
+INSERT INTO LONG_TEXT VALUES(1,'ABCDEFGH');
+INSERT INTO LONG_TEXT VALUES(2,'ABCDE');
+INSERT INTO LONG_TEXT VALUES(3,repeat('ABCDEFGH',10));
+SELECT * FROM LONG_TEXT ORDER BY II DESC;
+ ii |                                      iname                                       
+----+----------------------------------------------------------------------------------
+  3 | ABCDEFGHABCDEFGHABCDEFGHABCDEFGHABCDEFGHABCDEFGHABCDEFGHABCDEFGHABCDEFGHABCDEFGH
+  2 | ABCDE
+  1 | ABCDEFGH
+(3 rows)
+
+DROP TABLE LONG_TEXT;
