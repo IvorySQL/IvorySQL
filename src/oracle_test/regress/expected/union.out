@@ -236,12 +236,10 @@ SELECT f1 FROM CHAR_TBL;
  a
  ab
  abcd
- abcd
  a
  ab
  abcd
- abcd
-(8 rows)
+(6 rows)
 
 SELECT f1 AS five FROM TEXT_TBL
 UNION

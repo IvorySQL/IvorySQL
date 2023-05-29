@@ -67,7 +67,7 @@ SELECT set('t');
 (1 row)
 
 INSERT INTO T VALUES (1), (2);
-ALTER TABLE T ADD COLUMN c_bpchar BPCHAR(5) DEFAULT 'hello',
+ALTER TABLE T ADD COLUMN c_bpchar CHAR(5) DEFAULT 'hello',
               ALTER COLUMN c_int SET DEFAULT 2;
 INSERT INTO T VALUES (3), (4);
 ALTER TABLE T ADD COLUMN c_text TEXT  DEFAULT 'world',
@@ -102,12 +102,15 @@ ALTER TABLE T ADD COLUMN c_time TIME DEFAULT '12:00:00',
 INSERT INTO T VALUES (19), (20);
 ALTER TABLE T ADD COLUMN c_interval INTERVAL DEFAULT '1 day',
               ALTER COLUMN c_time SET DEFAULT '23:59:59';
+ERROR:  missing or invalid datetime field.
 INSERT INTO T VALUES (21), (22);
 ALTER TABLE T ADD COLUMN c_hugetext TEXT DEFAULT repeat('abcdefg',1000),
               ALTER COLUMN c_interval SET DEFAULT '3 hours';
+ERROR:  column "c_interval" of relation "t" does not exist
 INSERT INTO T VALUES (23), (24);
 ALTER TABLE T ALTER COLUMN c_interval DROP DEFAULT,
               ALTER COLUMN c_hugetext SET DEFAULT repeat('poiuyt', 1000);
+ERROR:  column "c_interval" of relation "t" does not exist
 INSERT INTO T VALUES (25), (26);
 ALTER TABLE T ALTER COLUMN c_bpchar    DROP DEFAULT,
               ALTER COLUMN c_date      DROP DEFAULT,
@@ -119,6 +122,7 @@ ALTER TABLE T ALTER COLUMN c_bpchar    DROP DEFAULT,
               ALTER COLUMN c_num       DROP DEFAULT,
               ALTER COLUMN c_time      DROP DEFAULT,
               ALTER COLUMN c_hugetext  DROP DEFAULT;
+ERROR:  column "c_hugetext" of relation "t" does not exist
 INSERT INTO T VALUES (27), (28);
 SELECT pk, c_int, c_bpchar, c_text, c_date, c_timestamp,
        c_timestamp_null, c_array, c_small, c_small_null,
@@ -126,38 +130,9 @@ SELECT pk, c_int, c_bpchar, c_text, c_date, c_timestamp,
        c_hugetext = repeat('abcdefg',1000) as c_hugetext_origdef,
        c_hugetext = repeat('poiuyt', 1000) as c_hugetext_newdef
 FROM T ORDER BY pk;
- pk | c_int | c_bpchar | c_text |   c_date   |       c_timestamp        |     c_timestamp_null     |         c_array          | c_small | c_small_null |       c_big       |       c_num       |  c_time  | c_interval | c_hugetext_origdef | c_hugetext_newdef 
-----+-------+----------+--------+------------+--------------------------+--------------------------+--------------------------+---------+--------------+-------------------+-------------------+----------+------------+--------------------+-------------------
-  1 |     1 | hello    | world  | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  2 |     1 | hello    | world  | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  3 |     2 | hello    | world  | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  4 |     2 | hello    | world  | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  5 |     2 | dog      | world  | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  6 |     2 | dog      | world  | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  7 |     2 | dog      | cat    | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  8 |     2 | dog      | cat    | 06-02-2016 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
-  9 |     2 | dog      | cat    | 01-01-2010 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 10 |     2 | dog      | cat    | 01-01-2010 | Thu Sep 01 12:00:00 2016 |                          | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 11 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 12 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 13 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 14 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 15 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 16 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 17 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 18 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
- 19 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 12:00:00 | @ 1 day    | t                  | f
- 20 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 12:00:00 | @ 1 day    | t                  | f
- 21 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 1 day    | t                  | f
- 22 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 1 day    | t                  | f
- 23 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 3 hours  | t                  | f
- 24 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 3 hours  | t                  | f
- 25 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 |            | f                  | t
- 26 |     2 | dog      | cat    | 01-01-2010 | Thu Dec 31 11:12:13 1970 | Thu Sep 29 12:00:00 2016 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 |            | f                  | t
- 27 |     2 |          |        |            |                          | Thu Sep 29 12:00:00 2016 |                          |         |           13 |                   |                   |          |            |                    | 
- 28 |     2 |          |        |            |                          | Thu Sep 29 12:00:00 2016 |                          |         |           13 |                   |                   |          |            |                    | 
-(28 rows)
-
+ERROR:  column "c_interval" does not exist
+LINE 3:        c_big, c_num, c_time, c_interval,
+                                     ^
 SELECT comp();
    comp    
 -----------
@@ -185,7 +160,7 @@ SELECT set('t');
 (1 row)
 
 INSERT INTO T VALUES (1), (2);
-ALTER TABLE T ADD COLUMN c_bpchar BPCHAR(5) DEFAULT foo(4),
+ALTER TABLE T ADD COLUMN c_bpchar CHAR(5) DEFAULT foo(4),
               ALTER COLUMN c_int SET DEFAULT LENGTH(foo(8));
 INSERT INTO T VALUES (3), (4);
 ALTER TABLE T ADD COLUMN c_text TEXT  DEFAULT foo(6),
@@ -218,24 +193,24 @@ ALTER TABLE T ALTER COLUMN c_bpchar    DROP DEFAULT,
               ALTER COLUMN c_array     DROP DEFAULT;
 INSERT INTO T VALUES (15), (16);
 SELECT * FROM T;
- pk | c_int | c_bpchar |    c_text    |   c_date   |       c_timestamp        |            c_array            
-----+-------+----------+--------------+------------+--------------------------+-------------------------------
-  1 |     6 | abcd     | abcdef       | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  2 |     6 | abcd     | abcdef       | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  3 |     8 | abcd     | abcdef       | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  4 |     8 | abcd     | abcdef       | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  5 |     8 | abc      | abcdef       | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  6 |     8 | abc      | abcdef       | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  7 |     8 | abc      | abcdefghijkl | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  8 |     8 | abc      | abcdefghijkl | 06-12-2016 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
-  9 |     8 | abc      | abcdefghijkl | 12-28-2009 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
- 10 |     8 | abc      | abcdefghijkl | 12-28-2009 | Sun Sep 11 00:00:00 2016 | {This,is,abcd,the,real,world}
- 11 |     8 | abc      | abcdefghijkl | 12-28-2009 | Sat Jan 30 00:00:00 1971 | {This,is,abcd,the,real,world}
- 12 |     8 | abc      | abcdefghijkl | 12-28-2009 | Sat Jan 30 00:00:00 1971 | {This,is,abcd,the,real,world}
- 13 |       | abc      | abcdefghijkl | 12-28-2009 | Sat Jan 30 00:00:00 1971 | {This,is,a,fantasy}
- 14 |       | abc      | abcdefghijkl | 12-28-2009 | Sat Jan 30 00:00:00 1971 | {This,is,a,fantasy}
- 15 |       |          |              |            |                          | 
- 16 |       |          |              |            |                          | 
+ pk | c_int | c_bpchar |    c_text    |   c_date   |        c_timestamp         |            c_array            
+----+-------+----------+--------------+------------+----------------------------+-------------------------------
+  1 |     6 | abcd     | abcdef       | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  2 |     6 | abcd     | abcdef       | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  3 |     8 | abcd     | abcdef       | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  4 |     8 | abcd     | abcdef       | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  5 |     8 | abc      | abcdef       | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  6 |     8 | abc      | abcdef       | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  7 |     8 | abc      | abcdefghijkl | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  8 |     8 | abc      | abcdefghijkl | 2016-06-12 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+  9 |     8 | abc      | abcdefghijkl | 2009-12-28 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+ 10 |     8 | abc      | abcdefghijkl | 2009-12-28 | 2016-09-11 00:00:00.000000 | {This,is,abcd,the,real,world}
+ 11 |     8 | abc      | abcdefghijkl | 2009-12-28 | 1971-01-30 00:00:00.000000 | {This,is,abcd,the,real,world}
+ 12 |     8 | abc      | abcdefghijkl | 2009-12-28 | 1971-01-30 00:00:00.000000 | {This,is,abcd,the,real,world}
+ 13 |       | abc      | abcdefghijkl | 2009-12-28 | 1971-01-30 00:00:00.000000 | {This,is,a,fantasy}
+ 14 |       | abc      | abcdefghijkl | 2009-12-28 | 1971-01-30 00:00:00.000000 | {This,is,a,fantasy}
+ 15 |       |          |              |            |                            | 
+ 16 |       |          |              |            |                            | 
 (16 rows)
 
 SELECT comp();
@@ -257,6 +232,8 @@ SELECT set('t');
 
 -- now() is stable, because it returns the transaction timestamp
 ALTER TABLE T ADD COLUMN c1 TIMESTAMP DEFAULT now();
+ERROR:  column "c1" is of type timestamp but default expression is of type timestamp with time zone
+HINT:  You will need to rewrite or cast the expression.
 SELECT comp();
    comp    
 -----------
@@ -265,11 +242,12 @@ SELECT comp();
 
 -- clock_timestamp() is volatile
 ALTER TABLE T ADD COLUMN c2 TIMESTAMP DEFAULT clock_timestamp();
-NOTICE:  rewriting table t for reason 2
+ERROR:  column "c2" is of type timestamp but default expression is of type timestamp with time zone
+HINT:  You will need to rewrite or cast the expression.
 SELECT comp();
    comp    
 -----------
- Rewritten
+ Unchanged
 (1 row)
 
 DROP TABLE T;
@@ -326,16 +304,16 @@ FROM T
 ORDER BY pk LIMIT 10;
  coalesce | coalesce 
 ----------+----------
-       -1 | hello
-       -1 | hello
-       -1 | hello
-       -1 | hello
-       -1 | hello
-       -1 | hello
-       -1 | hello
-       -1 | hello
-       -1 | hello
-       -1 | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
+ -1       | hello
 (10 rows)
 
 -- Aggregate function

@@ -1,0 +1,46 @@
+CREATE TABLE RW_TEXT(a raw(32768));
+CREATE TABLE RW_TEXT(II INT, a raw(32767));
+INSERT INTO RW_TEXT VALUES(1,'\xFFFF');
+INSERT INTO RW_TEXT VALUES(2,'\xFFFFFF');
+INSERT INTO RW_TEXT VALUES(3,'\xFF');
+INSERT INTO RW_TEXT VALUES(4,'\xFFFF');
+INSERT INTO RW_TEXT VALUES(5,'\xFFFF');
+INSERT INTO RW_TEXT VALUES(6,'\xFFFE');
+SELECT * FROM RW_TEXT WHERE a = '\xFFFF';
+SELECT * FROM RW_TEXT WHERE a <> '\xFFFF';
+SELECT * FROM RW_TEXT WHERE a > '\xFFFF';
+SELECT * FROM RW_TEXT WHERE a >= '\xFFFF';
+SELECT * FROM RW_TEXT WHERE a < '\xFFFF';
+SELECT * FROM RW_TEXT WHERE a <= '\xFFFF';
+SELECT *FROM RW_TEXT;
+-- Arithmetic operator
+SELECT '123'::raw(3) + '123'::raw(3);
+SELECT '123'::bytea + '123'::bytea;
+SELECT '123'::raw(3) - '123'::raw(3);
+SELECT '123'::bytea - '123'::bytea;
+SELECT '123'::raw(3) * '123'::raw(3);
+SELECT '123'::bytea * '123'::bytea;
+SELECT '123'::raw(3) / '123'::raw(3);
+SELECT '123'::bytea / '123'::bytea;
+select '123'::raw = '123'::bytea;
+select '123'::raw(2) = '123'::bytea;
+select '\xff'::bytea = '\xff'::raw(2);
+select 'ff'::text = 'ff'::long(2);
+DELETE FROM RW_TEXT;
+CREATE INDEX test_orachar_btree ON RW_TEXT(a);
+INSERT INTO RW_TEXT VALUES(3,'\xFF');
+INSERT INTO RW_TEXT SELECT generate_series(1,10000), md5( generate_series(1,10000)::text)::bytea;
+SELECT * FROM RW_TEXT WHERE a='\xFF';
+VACUUM ANALYZE RW_TEXT;
+set enable_seqscan = false;
+explain (costs off) SELECT * FROM RW_TEXT WHERE a='\xFF';
+-- drop table
+DROP TABLE RW_TEXT;
+CREATE TABLE LONG_TEXT(II INT, INAME LONG);
+INSERT INTO LONG_TEXT VALUES(1,'ABCDEFGH');
+INSERT INTO LONG_TEXT VALUES(2,'ABCDE');
+INSERT INTO LONG_TEXT VALUES(3,repeat('ABCDEFGH',10));
+SELECT * FROM LONG_TEXT ORDER BY II DESC;
+
+DROP TABLE LONG_TEXT;
+

@@ -26,15 +26,10 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 28: query: insert into "My_Table" values ( 1 , 'a\\\\b' ); with 0 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ECPGnoticeReceiver: nonstandard use of \\ in a string literal
-[NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: raising sqlcode 0
-[NO_PID]: sqlca: code: 0, state: 22P06
 [NO_PID]: ecpg_execute on line 28: using PQexec
-[NO_PID]: sqlca: code: 0, state: 22P06
+[NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 28: OK: INSERT 0 1
-[NO_PID]: sqlca: code: 0, state: 22P06
-SQL error: nonstandard use of \\ in a string literal
+[NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 30: query: insert into "My_Table" values ( 1 , E'a\\\\b' ); with 0 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 30: using PQexec
@@ -83,7 +78,7 @@ SQL error: nonstandard use of \\ in a string literal
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 51: RESULT: 1 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_get_data on line 51: RESULT: a\\b offset: -1; array: no
+[NO_PID]: ecpg_get_data on line 51: RESULT: a\\\\b offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 51: query: fetch C; with 0 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000

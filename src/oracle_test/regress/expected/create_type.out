@@ -231,9 +231,9 @@ TABLE mytab;
 
 -- and test format_type() a bit more, too
 select format_type('varchar'::regtype, 42);
-      format_type      
------------------------
- character varying(38)
+ format_type  
+--------------
+ varchar2(38)
 (1 row)
 
 select format_type('bpchar'::regtype, null);

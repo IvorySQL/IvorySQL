@@ -8,7 +8,7 @@ subdir = src/backend/utils/adt
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
+override CPPFLAGS := -I. -I$(srcdir) -I$(top_builddir)/contrib/ivorysql_ora/src/include $(CPPFLAGS)
 
 # keep this list arranged alphabetically or it gets to be a mess
 OBJS = \

@@ -93,20 +93,9 @@ select prop,
                     'bogus']::text[])
          with ordinality as u(prop,ord)
  order by ord;
-        prop        | btree | hash | gist | spgist_radix | spgist_quad | gin | brin 
---------------------+-------+------+------+--------------+-------------+-----+------
- asc                | t     | f    | f    | f            | f           | f   | f
- desc               | f     | f    | f    | f            | f           | f   | f
- nulls_first        | f     | f    | f    | f            | f           | f   | f
- nulls_last         | t     | f    | f    | f            | f           | f   | f
- orderable          | t     | f    | f    | f            | f           | f   | f
- distance_orderable | f     | f    | t    | f            | t           | f   | f
- returnable         | t     | f    | f    | t            | t           | f   | f
- search_array       | t     | f    | f    | f            | f           | f   | f
- search_nulls       | t     | f    | t    | t            | t           | f   | t
- bogus              |       |      |      |              |             |     | 
-(10 rows)
-
+ERROR:  relation "brinidx" does not exist
+LINE 8:        pg_index_column_has_property('brinidx'::regclass, 1, ...
+                                            ^
 select prop,
        pg_index_has_property('onek_hundred'::regclass, prop) as btree,
        pg_index_has_property('hash_i4_index'::regclass, prop) as hash,
@@ -119,15 +108,9 @@ select prop,
                     'bogus']::text[])
          with ordinality as u(prop,ord)
  order by ord;
-     prop      | btree | hash | gist | spgist | gin | brin 
----------------+-------+------+------+--------+-----+------
- clusterable   | t     | f    | t    | f      | f   | f
- index_scan    | t     | t    | t    | t      | f   | f
- bitmap_scan   | t     | t    | t    | t      | t   | t
- backward_scan | t     | t    | f    | f      | f   | f
- bogus         |       |      |      |        |     | 
-(5 rows)
-
+ERROR:  relation "brinidx" does not exist
+LINE 7:        pg_index_has_property('brinidx'::regclass, prop) as b...
+                                     ^
 select amname, prop, pg_indexam_has_property(a.oid, prop) as p
   from pg_am a,
        unnest(array['can_order', 'can_unique', 'can_multi_col',

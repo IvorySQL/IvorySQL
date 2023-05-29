@@ -72,13 +72,11 @@ create index spgist_domain_idx on spgist_domain_tbl using spgist(f1);
 insert into spgist_domain_tbl values('fee'), ('fi'), ('fo'), ('fum');
 explain (costs off)
 select * from spgist_domain_tbl where f1 = 'fo';
-                  QUERY PLAN                   
------------------------------------------------
- Bitmap Heap Scan on spgist_domain_tbl
-   Recheck Cond: ((f1)::text = 'fo'::text)
-   ->  Bitmap Index Scan on spgist_domain_idx
-         Index Cond: ((f1)::text = 'fo'::text)
-(4 rows)
+                 QUERY PLAN                  
+---------------------------------------------
+ Seq Scan on spgist_domain_tbl
+   Filter: ((f1)::varchar2 = 'fo'::varchar2)
+(2 rows)
 
 select * from spgist_domain_tbl where f1 = 'fo';
  f1 

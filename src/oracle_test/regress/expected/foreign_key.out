@@ -1154,12 +1154,12 @@ CREATE TEMP TABLE fktable (
 ALTER TABLE fktable ADD CONSTRAINT fk_2_3
 FOREIGN KEY (x2) REFERENCES pktable(id3);
 ERROR:  foreign key constraint "fk_2_3" cannot be implemented
-DETAIL:  Key columns "x2" and "id3" are of incompatible types: character varying and real.
+DETAIL:  Key columns "x2" and "id3" are of incompatible types: varchar2 and real.
 -- nor to int4
 ALTER TABLE fktable ADD CONSTRAINT fk_2_1
 FOREIGN KEY (x2) REFERENCES pktable(id1);
 ERROR:  foreign key constraint "fk_2_1" cannot be implemented
-DETAIL:  Key columns "x2" and "id1" are of incompatible types: character varying and integer.
+DETAIL:  Key columns "x2" and "id1" are of incompatible types: varchar2 and integer.
 -- real does not promote to int4
 ALTER TABLE fktable ADD CONSTRAINT fk_3_1
 FOREIGN KEY (x3) REFERENCES pktable(id1);
@@ -1168,8 +1168,6 @@ DETAIL:  Key columns "x3" and "id1" are of incompatible types: real and integer.
 -- int4 does not promote to text
 ALTER TABLE fktable ADD CONSTRAINT fk_1_2
 FOREIGN KEY (x1) REFERENCES pktable(id2);
-ERROR:  foreign key constraint "fk_1_2" cannot be implemented
-DETAIL:  Key columns "x1" and "id2" are of incompatible types: integer and character varying.
 -- should succeed
 -- int4 promotes to real
 ALTER TABLE fktable ADD CONSTRAINT fk_1_3
@@ -1192,11 +1190,11 @@ FOREIGN KEY (x2,x5,x3) REFERENCES pktable(id2,id1,id3);
 ALTER TABLE fktable ADD CONSTRAINT fk_123_231
 FOREIGN KEY (x1,x2,x3) REFERENCES pktable(id2,id3,id1);
 ERROR:  foreign key constraint "fk_123_231" cannot be implemented
-DETAIL:  Key columns "x1" and "id2" are of incompatible types: integer and character varying.
+DETAIL:  Key columns "x2" and "id3" are of incompatible types: varchar2 and real.
 ALTER TABLE fktable ADD CONSTRAINT fk_241_132
 FOREIGN KEY (x2,x4,x1) REFERENCES pktable(id1,id3,id2);
 ERROR:  foreign key constraint "fk_241_132" cannot be implemented
-DETAIL:  Key columns "x2" and "id1" are of incompatible types: character varying and integer.
+DETAIL:  Key columns "x2" and "id1" are of incompatible types: varchar2 and integer.
 DROP TABLE pktable, fktable;
 -- test a tricky case: we can elide firing the FK check trigger during
 -- an UPDATE if the UPDATE did not change the foreign key

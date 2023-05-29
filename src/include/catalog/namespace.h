@@ -60,6 +60,7 @@ typedef struct OverrideSearchPath
 	List	   *schemas;		/* OIDs of explicitly named schemas */
 	bool		addCatalog;		/* implicitly prepend pg_catalog? */
 	bool		addTemp;		/* implicitly prepend temp schema? */
+	bool		addSys;			/* implicitly prepend sys schema? */
 	uint64		generation;		/* for quick detection of equality to active */
 } OverrideSearchPath;
 

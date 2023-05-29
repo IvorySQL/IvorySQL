@@ -23,39 +23,39 @@ explain (costs off) select * from lp;
 (7 rows)
 
 explain (costs off) select * from lp where a > 'a' and a < 'd';
-                        QUERY PLAN                         
------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc lp_1
-         Filter: ((a > 'a'::bpchar) AND (a < 'd'::bpchar))
+         Filter: ((a > 'a'::oracharbyte) AND (a < 'd'::oracharbyte))
    ->  Seq Scan on lp_default lp_2
-         Filter: ((a > 'a'::bpchar) AND (a < 'd'::bpchar))
+         Filter: ((a > 'a'::oracharbyte) AND (a < 'd'::oracharbyte))
 (5 rows)
 
 explain (costs off) select * from lp where a > 'a' and a <= 'd';
-                         QUERY PLAN                         
-------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_ad lp_1
-         Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
+         Filter: ((a > 'a'::oracharbyte) AND (a <= 'd'::oracharbyte))
    ->  Seq Scan on lp_bc lp_2
-         Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
+         Filter: ((a > 'a'::oracharbyte) AND (a <= 'd'::oracharbyte))
    ->  Seq Scan on lp_default lp_3
-         Filter: ((a > 'a'::bpchar) AND (a <= 'd'::bpchar))
+         Filter: ((a > 'a'::oracharbyte) AND (a <= 'd'::oracharbyte))
 (7 rows)
 
 explain (costs off) select * from lp where a = 'a';
-         QUERY PLAN          
------------------------------
+            QUERY PLAN            
+----------------------------------
  Seq Scan on lp_ad lp
-   Filter: (a = 'a'::bpchar)
+   Filter: (a = 'a'::oracharbyte)
 (2 rows)
 
 explain (costs off) select * from lp where 'a' = a;	/* commuted */
-         QUERY PLAN          
------------------------------
+            QUERY PLAN            
+----------------------------------
  Seq Scan on lp_ad lp
-   Filter: ('a'::bpchar = a)
+   Filter: ('a'::oracharbyte = a)
 (2 rows)
 
 explain (costs off) select * from lp where a is not null;
@@ -82,65 +82,65 @@ explain (costs off) select * from lp where a is null;
 (2 rows)
 
 explain (costs off) select * from lp where a = 'a' or a = 'c';
-                        QUERY PLAN                        
-----------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_ad lp_1
-         Filter: ((a = 'a'::bpchar) OR (a = 'c'::bpchar))
+         Filter: ((a = 'a'::oracharbyte) OR (a = 'c'::oracharbyte))
    ->  Seq Scan on lp_bc lp_2
-         Filter: ((a = 'a'::bpchar) OR (a = 'c'::bpchar))
+         Filter: ((a = 'a'::oracharbyte) OR (a = 'c'::oracharbyte))
 (5 rows)
 
 explain (costs off) select * from lp where a is not null and (a = 'a' or a = 'c');
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_ad lp_1
-         Filter: ((a IS NOT NULL) AND ((a = 'a'::bpchar) OR (a = 'c'::bpchar)))
+         Filter: ((a IS NOT NULL) AND ((a = 'a'::oracharbyte) OR (a = 'c'::oracharbyte)))
    ->  Seq Scan on lp_bc lp_2
-         Filter: ((a IS NOT NULL) AND ((a = 'a'::bpchar) OR (a = 'c'::bpchar)))
+         Filter: ((a IS NOT NULL) AND ((a = 'a'::oracharbyte) OR (a = 'c'::oracharbyte)))
 (5 rows)
 
 explain (costs off) select * from lp where a <> 'g';
-             QUERY PLAN             
-------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Append
    ->  Seq Scan on lp_ad lp_1
-         Filter: (a <> 'g'::bpchar)
+         Filter: (a <> 'g'::oracharbyte)
    ->  Seq Scan on lp_bc lp_2
-         Filter: (a <> 'g'::bpchar)
+         Filter: (a <> 'g'::oracharbyte)
    ->  Seq Scan on lp_ef lp_3
-         Filter: (a <> 'g'::bpchar)
+         Filter: (a <> 'g'::oracharbyte)
    ->  Seq Scan on lp_default lp_4
-         Filter: (a <> 'g'::bpchar)
+         Filter: (a <> 'g'::oracharbyte)
 (9 rows)
 
 explain (costs off) select * from lp where a <> 'a' and a <> 'd';
-                         QUERY PLAN                          
--------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc lp_1
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Filter: ((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte))
    ->  Seq Scan on lp_ef lp_2
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Filter: ((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte))
    ->  Seq Scan on lp_g lp_3
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Filter: ((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte))
    ->  Seq Scan on lp_default lp_4
-         Filter: ((a <> 'a'::bpchar) AND (a <> 'd'::bpchar))
+         Filter: ((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte))
 (9 rows)
 
 explain (costs off) select * from lp where a not in ('a', 'd');
-                   QUERY PLAN                   
-------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Append
    ->  Seq Scan on lp_bc lp_1
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Filter: (a <> ALL ('{a,d}'::oracharbyte[]))
    ->  Seq Scan on lp_ef lp_2
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Filter: (a <> ALL ('{a,d}'::oracharbyte[]))
    ->  Seq Scan on lp_g lp_3
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Filter: (a <> ALL ('{a,d}'::oracharbyte[]))
    ->  Seq Scan on lp_default lp_4
-         Filter: (a <> ALL ('{a,d}'::bpchar[]))
+         Filter: (a <> ALL ('{a,d}'::oracharbyte[]))
 (9 rows)
 
 -- collation matches the partitioning collation, pruning works
@@ -342,26 +342,32 @@ explain (costs off) select * from rlp where a <= 15;
 (17 rows)
 
 explain (costs off) select * from rlp where a > 15 and b = 'ab';
-                       QUERY PLAN                        
----------------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd rlp_1
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_1 rlp_2
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_2 rlp_3
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_default rlp_4
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_1 rlp_5
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_default rlp_6
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_30 rlp_7
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_default rlp_8
-         Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-(17 rows)
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp3efgh rlp_2
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp3nullxy rlp_3
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp3_default rlp_4
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp4_1 rlp_5
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp4_2 rlp_6
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp4_default rlp_7
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp5_1 rlp_8
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp5_default rlp_9
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp_default_30 rlp_10
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp_default_default rlp_11
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
+(23 rows)
 
 explain (costs off) select * from rlp where a = 16;
               QUERY PLAN              
@@ -378,28 +384,46 @@ explain (costs off) select * from rlp where a = 16;
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b in ('not', 'in', 'here');
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Seq Scan on rlp3_default rlp
-   Filter: ((a = 16) AND ((b)::text = ANY ('{not,in,here}'::text[])))
-(2 rows)
-
-explain (costs off) select * from rlp where a = 16 and b < 'ab';
-                    QUERY PLAN                     
----------------------------------------------------
- Seq Scan on rlp3_default rlp
-   Filter: (((b)::text < 'ab'::text) AND (a = 16))
-(2 rows)
-
-explain (costs off) select * from rlp where a = 16 and b <= 'ab';
-                        QUERY PLAN                        
-----------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd rlp_1
-         Filter: (((b)::text <= 'ab'::text) AND (a = 16))
-   ->  Seq Scan on rlp3_default rlp_2
-         Filter: (((b)::text <= 'ab'::text) AND (a = 16))
-(5 rows)
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
+   ->  Seq Scan on rlp3efgh rlp_2
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
+   ->  Seq Scan on rlp3nullxy rlp_3
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
+   ->  Seq Scan on rlp3_default rlp_4
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
+(9 rows)
+
+explain (costs off) select * from rlp where a = 16 and b < 'ab';
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Append
+   ->  Seq Scan on rlp3abcd rlp_1
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
+   ->  Seq Scan on rlp3efgh rlp_2
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
+   ->  Seq Scan on rlp3nullxy rlp_3
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
+   ->  Seq Scan on rlp3_default rlp_4
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
+(9 rows)
+
+explain (costs off) select * from rlp where a = 16 and b <= 'ab';
+                      QUERY PLAN                      
+------------------------------------------------------
+ Append
+   ->  Seq Scan on rlp3abcd rlp_1
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
+   ->  Seq Scan on rlp3efgh rlp_2
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
+   ->  Seq Scan on rlp3nullxy rlp_3
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
+   ->  Seq Scan on rlp3_default rlp_4
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
+(9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b is null;
               QUERY PLAN              
@@ -522,34 +546,40 @@ explain (costs off) select * from rlp where a = 1 or a = 7;
 (2 rows)
 
 explain (costs off) select * from rlp where a = 1 or b = 'ab';
-                      QUERY PLAN                       
--------------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  Append
    ->  Seq Scan on rlp1 rlp_1
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp2 rlp_2
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3abcd rlp_3
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_1 rlp_4
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_2 rlp_5
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_default rlp_6
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_1 rlp_7
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_default rlp_8
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_10 rlp_9
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_30 rlp_10
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_null rlp_11
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_default rlp_12
-         Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-(25 rows)
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp3efgh rlp_4
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp3nullxy rlp_5
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp3_default rlp_6
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp4_1 rlp_7
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp4_2 rlp_8
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp4_default rlp_9
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp5_1 rlp_10
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp5_default rlp_11
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp_default_10 rlp_12
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp_default_30 rlp_13
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp_default_null rlp_14
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+   ->  Seq Scan on rlp_default_default rlp_15
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
+(31 rows)
 
 explain (costs off) select * from rlp where a > 20 and a < 27;
                QUERY PLAN                
@@ -1334,16 +1364,13 @@ create table coercepart_ab partition of coercepart for values in ('ab');
 create table coercepart_bc partition of coercepart for values in ('bc');
 create table coercepart_cd partition of coercepart for values in ('cd');
 explain (costs off) select * from coercepart where a in ('ab', to_char(125, '999'));
-                                                          QUERY PLAN                                                          
-------------------------------------------------------------------------------------------------------------------------------
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Append
+   Subplans Removed: 2
    ->  Seq Scan on coercepart_ab coercepart_1
-         Filter: ((a)::text = ANY ((ARRAY['ab'::character varying, (to_char(125, '999'::text))::character varying])::text[]))
-   ->  Seq Scan on coercepart_bc coercepart_2
-         Filter: ((a)::text = ANY ((ARRAY['ab'::character varying, (to_char(125, '999'::text))::character varying])::text[]))
-   ->  Seq Scan on coercepart_cd coercepart_3
-         Filter: ((a)::text = ANY ((ARRAY['ab'::character varying, (to_char(125, '999'::text))::character varying])::text[]))
-(7 rows)
+         Filter: (a = ANY (ARRAY['ab'::varchar2, (to_char(125, '999'::text))::varchar2]))
+(4 rows)
 
 explain (costs off) select * from coercepart where a ~ any ('{ab}');
                      QUERY PLAN                     
@@ -1394,34 +1421,39 @@ explain (costs off) select * from coercepart where a !~ all ('{ab,bc}');
 (7 rows)
 
 explain (costs off) select * from coercepart where a = any ('{ab,bc}');
-                      QUERY PLAN                       
--------------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  Append
    ->  Seq Scan on coercepart_ab coercepart_1
-         Filter: ((a)::text = ANY ('{ab,bc}'::text[]))
+         Filter: (a = ANY ('{ab,bc}'::varchar2[]))
    ->  Seq Scan on coercepart_bc coercepart_2
-         Filter: ((a)::text = ANY ('{ab,bc}'::text[]))
+         Filter: (a = ANY ('{ab,bc}'::varchar2[]))
 (5 rows)
 
 explain (costs off) select * from coercepart where a = any ('{ab,null}');
-                    QUERY PLAN                     
----------------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Seq Scan on coercepart_ab coercepart
-   Filter: ((a)::text = ANY ('{ab,NULL}'::text[]))
+   Filter: (a = ANY ('{ab,NULL}'::varchar2[]))
 (2 rows)
 
 explain (costs off) select * from coercepart where a = any (null::text[]);
-        QUERY PLAN        
---------------------------
- Result
-   One-Time Filter: false
-(2 rows)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Append
+   ->  Seq Scan on coercepart_ab coercepart_1
+         Filter: ((a)::text = ANY (NULL::text[]))
+   ->  Seq Scan on coercepart_bc coercepart_2
+         Filter: ((a)::text = ANY (NULL::text[]))
+   ->  Seq Scan on coercepart_cd coercepart_3
+         Filter: ((a)::text = ANY (NULL::text[]))
+(7 rows)
 
 explain (costs off) select * from coercepart where a = all ('{ab}');
-                  QUERY PLAN                  
-----------------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Seq Scan on coercepart_ab coercepart
-   Filter: ((a)::text = ALL ('{ab}'::text[]))
+   Filter: (a = ALL ('{ab}'::varchar2[]))
 (2 rows)
 
 explain (costs off) select * from coercepart where a = all ('{ab,bc}');
@@ -1439,11 +1471,16 @@ explain (costs off) select * from coercepart where a = all ('{ab,null}');
 (2 rows)
 
 explain (costs off) select * from coercepart where a = all (null::text[]);
-        QUERY PLAN        
---------------------------
- Result
-   One-Time Filter: false
-(2 rows)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Append
+   ->  Seq Scan on coercepart_ab coercepart_1
+         Filter: ((a)::text = ALL (NULL::text[]))
+   ->  Seq Scan on coercepart_bc coercepart_2
+         Filter: ((a)::text = ALL (NULL::text[]))
+   ->  Seq Scan on coercepart_cd coercepart_3
+         Filter: ((a)::text = ALL (NULL::text[]))
+(7 rows)
 
 drop table coercepart;
 CREATE TABLE part (a INT, b INT) PARTITION BY LIST (a);
@@ -1595,19 +1632,19 @@ explain (costs off) select * from rp where a <> 1 and a <> 2;
 
 -- null partition should be eliminated due to strict <> clause.
 explain (costs off) select * from lp where a <> 'a';
-             QUERY PLAN             
-------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Append
    ->  Seq Scan on lp_ad lp_1
-         Filter: (a <> 'a'::bpchar)
+         Filter: (a <> 'a'::oracharbyte)
    ->  Seq Scan on lp_bc lp_2
-         Filter: (a <> 'a'::bpchar)
+         Filter: (a <> 'a'::oracharbyte)
    ->  Seq Scan on lp_ef lp_3
-         Filter: (a <> 'a'::bpchar)
+         Filter: (a <> 'a'::oracharbyte)
    ->  Seq Scan on lp_g lp_4
-         Filter: (a <> 'a'::bpchar)
+         Filter: (a <> 'a'::oracharbyte)
    ->  Seq Scan on lp_default lp_5
-         Filter: (a <> 'a'::bpchar)
+         Filter: (a <> 'a'::oracharbyte)
 (11 rows)
 
 -- ensure we detect contradictions in clauses; a can't be NULL and NOT NULL.
@@ -1619,33 +1656,37 @@ explain (costs off) select * from lp where a <> 'a' and a is null;
 (2 rows)
 
 explain (costs off) select * from lp where (a <> 'a' and a <> 'd') or a is null;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on lp_bc lp_1
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Filter: (((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte)) OR (a IS NULL))
    ->  Seq Scan on lp_ef lp_2
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Filter: (((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte)) OR (a IS NULL))
    ->  Seq Scan on lp_g lp_3
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Filter: (((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte)) OR (a IS NULL))
    ->  Seq Scan on lp_null lp_4
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Filter: (((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte)) OR (a IS NULL))
    ->  Seq Scan on lp_default lp_5
-         Filter: (((a <> 'a'::bpchar) AND (a <> 'd'::bpchar)) OR (a IS NULL))
+         Filter: (((a <> 'a'::oracharbyte) AND (a <> 'd'::oracharbyte)) OR (a IS NULL))
 (11 rows)
 
 -- check that it also works for a partitioned table that's not root,
 -- which in this case are partitions of rlp that are themselves
 -- list-partitioned on b
 explain (costs off) select * from rlp where a = 15 and b <> 'ab' and b <> 'cd' and b <> 'xy' and b is not null;
-                                                                QUERY PLAN                                                                
-------------------------------------------------------------------------------------------------------------------------------------------
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
  Append
-   ->  Seq Scan on rlp3efgh rlp_1
-         Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
-   ->  Seq Scan on rlp3_default rlp_2
-         Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
-(5 rows)
+   ->  Seq Scan on rlp3abcd rlp_1
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
+   ->  Seq Scan on rlp3efgh rlp_2
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
+   ->  Seq Scan on rlp3nullxy rlp_3
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
+   ->  Seq Scan on rlp3_default rlp_4
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
+(9 rows)
 
 --
 -- different collations for different keys with same expression
@@ -3100,9 +3141,9 @@ select * from stable_qual_pruning where a < localtimestamp;
  Append (actual rows=0 loops=1)
    Subplans Removed: 1
    ->  Seq Scan on stable_qual_pruning1 stable_qual_pruning_1 (actual rows=0 loops=1)
-         Filter: (a < LOCALTIMESTAMP)
+         Filter: (a < "localtimestamp"())
    ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_2 (actual rows=0 loops=1)
-         Filter: (a < LOCALTIMESTAMP)
+         Filter: (a < "localtimestamp"())
 (6 rows)
 
 -- timestamp < timestamptz comparison is only stable, not immutable
@@ -3113,7 +3154,7 @@ select * from stable_qual_pruning where a < '2000-02-01'::timestamptz;
  Append (actual rows=0 loops=1)
    Subplans Removed: 2
    ->  Seq Scan on stable_qual_pruning1 stable_qual_pruning_1 (actual rows=0 loops=1)
-         Filter: (a < 'Tue Feb 01 00:00:00 2000 PST'::timestamp with time zone)
+         Filter: (a < '2000-02-01 00:00:00.000000 -08:00'::timestamp with time zone)
 (4 rows)
 
 -- check ScalarArrayOp cases
@@ -3129,21 +3170,21 @@ select * from stable_qual_pruning
 explain (analyze, costs off, summary off, timing off)
 select * from stable_qual_pruning
   where a = any(array['2000-02-01', '2010-01-01']::timestamp[]);
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
  Seq Scan on stable_qual_pruning2 stable_qual_pruning (actual rows=0 loops=1)
-   Filter: (a = ANY ('{"Tue Feb 01 00:00:00 2000","Fri Jan 01 00:00:00 2010"}'::timestamp without time zone[]))
+   Filter: (a = ANY ('{"2000-02-01 00:00:00.000000","2010-01-01 00:00:00.000000"}'::timestamp(6)[]))
 (2 rows)
 
 explain (analyze, costs off, summary off, timing off)
 select * from stable_qual_pruning
   where a = any(array['2000-02-01', localtimestamp]::timestamp[]);
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 2
    ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_1 (actual rows=0 loops=1)
-         Filter: (a = ANY (ARRAY['Tue Feb 01 00:00:00 2000'::timestamp without time zone, LOCALTIMESTAMP]))
+         Filter: (a = ANY (ARRAY['2000-02-01 00:00:00.000000'::timestamp(6), ("localtimestamp"())::timestamp(6)]))
 (4 rows)
 
 explain (analyze, costs off, summary off, timing off)
@@ -3158,12 +3199,12 @@ select * from stable_qual_pruning
 explain (analyze, costs off, summary off, timing off)
 select * from stable_qual_pruning
   where a = any(array['2000-02-01', '2010-01-01']::timestamptz[]);
-                                                        QUERY PLAN                                                         
----------------------------------------------------------------------------------------------------------------------------
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 2
    ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_1 (actual rows=0 loops=1)
-         Filter: (a = ANY ('{"Tue Feb 01 00:00:00 2000 PST","Fri Jan 01 00:00:00 2010 PST"}'::timestamp with time zone[]))
+         Filter: (a = ANY ('{"2000-02-01 00:00:00.000000 -08:00","2010-01-01 00:00:00.000000 -08:00"}'::timestamp with time zone[]))
 (4 rows)
 
 explain (analyze, costs off, summary off, timing off)
@@ -3976,10 +4017,10 @@ create table rp_prefix_test1_p2 partition of rp_prefix_test1 for values from (2,
 -- Don't call get_steps_using_prefix() with the last partition key b plus
 -- an empty prefix
 explain (costs off) select * from rp_prefix_test1 where a <= 1 and b = 'a';
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Seq Scan on rp_prefix_test1_p1 rp_prefix_test1
-   Filter: ((a <= 1) AND ((b)::text = 'a'::text))
+   Filter: ((a <= 1) AND (b = 'a'::varchar2))
 (2 rows)
 
 create table rp_prefix_test2 (a int, b int, c int) partition by range(a, b, c);

@@ -18,6 +18,7 @@
 
 /* Use port in the private/dynamic port number range */
 #define DEF_PGUPORT			50432
+#define DEF_ORAUPORT		50433	/* IvorySQL: datatype */
 
 #define MAX_STRING			1024
 #define QUERY_ALLOC			8192
@@ -46,6 +47,8 @@
 #define INTERNAL_LOG_FILE	"pg_upgrade_internal.log"
 
 extern char *output_files[];
+
+extern bool pg_cluster_within_oracle_mode;	/* IvorySQL: datatype */
 
 /*
  * WIN32 files do not accept writes from multiple processes
@@ -225,6 +228,7 @@ typedef struct
 	bool		date_is_int;
 	bool		float8_pass_by_value;
 	uint32		data_checksum_version;
+	bool		database_mode_is_oracle;	/* IvorySQL: datatype */
 } ControlData;
 
 /*
@@ -269,6 +273,9 @@ typedef struct
 								 * -o */
 	char	   *sockdir;		/* directory for Unix Domain socket, if any */
 	unsigned short port;		/* port number where postmaster is waiting */
+	/* IvorySQL:BEGIN - datatype */
+	unsigned short oraport;		/* port number where postmaster is waiting for oracle mode */
+	/* IvorySQL:END - datatype */
 	uint32		major_version;	/* PG_VERSION of cluster */
 	char		major_version_str[64];	/* string PG_VERSION of cluster */
 	uint32		bin_version;	/* version returned from pg_ctl */

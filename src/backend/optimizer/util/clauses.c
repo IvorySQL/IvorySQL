@@ -3070,8 +3070,11 @@ eval_const_expressions_mutator(Node *node,
 				save_case_val = context->case_val;
 				if (newarg && IsA(newarg, Const))
 				{
-					context->case_val = newarg;
-					newarg = NULL;	/* not needed anymore, see above */
+					if (!caseexpr->is_decode)	/* IvorySQL: datatype */
+					{
+						context->case_val = newarg;
+						newarg = NULL;	/* not needed anymore, see above */
+					}
 				}
 				else
 					context->case_val = NULL;
@@ -3082,28 +3085,166 @@ eval_const_expressions_mutator(Node *node,
 				foreach(arg, caseexpr->args)
 				{
 					CaseWhen   *oldcasewhen = lfirst_node(CaseWhen, arg);
-					Node	   *casecond;
+					Node	   *casecond = NULL;	/* IvorySQL: datatype */
 					Node	   *caseresult;
+					Node	   *orig_casecond = NULL;	/* IvorySQL: datatype */
 
-					/* Simplify this alternative's test condition */
-					casecond = eval_const_expressions_mutator((Node *) oldcasewhen->expr,
-															  context);
-
-					/*
-					 * If the test condition is constant FALSE (or NULL), then
-					 * drop this WHEN clause completely, without processing
-					 * the result.
-					 */
-					if (casecond && IsA(casecond, Const))
+					if (!caseexpr->is_decode) /* IvorySQL: datatype */
 					{
-						Const	   *const_input = (Const *) casecond;
+						/* Simplify this alternative's test condition */
+						casecond = eval_const_expressions_mutator((Node *) oldcasewhen->expr,
+																  context);
 
-						if (const_input->constisnull ||
-							!DatumGetBool(const_input->constvalue))
-							continue;	/* drop alternative with FALSE cond */
-						/* Else it's constant TRUE */
-						const_true_cond = true;
+						/*
+						 * If the test condition is constant FALSE (or NULL), then
+						 * drop this WHEN clause completely, without processing
+						 * the result.
+						 */
+						if (casecond && IsA(casecond, Const))
+						{
+							Const	   *const_input = (Const *) casecond;
+
+							if (const_input->constisnull ||
+								!DatumGetBool(const_input->constvalue))
+								continue;	/* drop alternative with FALSE cond */
+							/* Else it's constant TRUE */
+							const_true_cond = true;
+						}
 					}
+					/* IvorySQL:BEGIN - datatype */
+					else
+					{
+						orig_casecond = eval_const_expressions_mutator((Node *) oldcasewhen->orig_expr,
+																  context);
+
+						/*
+						 * If the test condition is constant FALSE (or NULL), then
+						 * drop this WHEN clause completely, without processing
+						 * the result.
+						 */
+						if (orig_casecond && IsA(orig_casecond, Const))
+						{
+							Const	   *orig_const_input = (Const *) orig_casecond;
+
+							if (!caseexpr->is_decode)
+							{
+								if (orig_const_input->constisnull ||
+									!DatumGetBool(orig_const_input->constvalue))
+									continue;	/* drop alternative with FALSE cond */
+							}
+							else
+							{
+								if (!orig_const_input->constisnull)
+								{
+									if (IsA(caseexpr->arg, Const) && ((Const *) caseexpr->arg)->constisnull)
+										continue;
+									else if (IsA(caseexpr->arg, CoerceViaIO))
+									{
+										Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
+
+										if (IsA(n, Const) && ((Const *) n)->constisnull)
+											continue;
+										else
+											goto eval_whenexpr1;
+									}
+									else
+										goto eval_whenexpr1;
+								}
+								else if (orig_const_input->constisnull)
+								{
+									if (IsA(caseexpr->arg, Const))
+									{
+										if (((Const *) caseexpr->arg)->constisnull)
+										{
+											orig_const_input->constvalue = BoolGetDatum(true);
+											const_true_cond = true;
+										}
+										else
+											continue;
+									}
+									else if (IsA(caseexpr->arg, CoerceViaIO))
+									{
+										Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
+
+										if (IsA(n, Const))
+										{
+											if (((Const *) n)->constisnull)
+											{
+												orig_const_input->constvalue = BoolGetDatum(true);
+												const_true_cond = true;
+											}
+											else
+												continue;
+										}
+										else
+											goto eval_whenexpr1;
+									}
+									else
+										goto eval_whenexpr1;
+								}
+								else
+								{
+eval_whenexpr1:
+									casecond = eval_const_expressions_mutator((Node *) oldcasewhen->expr,
+																  context);
+									/*
+									 * If the test condition is constant FALSE (or NULL), then
+									 * drop this WHEN clause completely, without processing
+									 * the result.
+									 */
+									if (casecond && IsA(casecond, Const))
+									{
+										Const	   *const_input = (Const *) casecond;
+
+										if (!orig_const_input->constisnull)
+										{
+											if (const_input->constisnull ||
+												!DatumGetBool(const_input->constvalue))
+												continue;	/* drop alternative with FALSE cond */
+											/* Else it's constant TRUE */
+											const_true_cond = true;
+										}
+									}
+								}
+							}
+						}
+						else
+						{
+							if (IsA(caseexpr->arg, Const) && ((Const *) caseexpr->arg)->constisnull)
+								continue;
+							else if (IsA(caseexpr->arg, CoerceViaIO))
+							{
+								Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
+
+								if (IsA(n, Const) && ((Const *) n)->constisnull)
+									continue;
+								else
+									goto eval_whenexpr2;
+							}
+							else
+							{
+eval_whenexpr2:
+								casecond = eval_const_expressions_mutator((Node *) oldcasewhen->expr,
+																			context);
+								/*
+								 * If the test condition is constant FALSE (or NULL), then
+								 * drop this WHEN clause completely, without processing
+								 * the result.
+								 */
+								if (casecond && IsA(casecond, Const))
+								{
+									Const	   *const_input = (Const *) casecond;
+
+									if (const_input->constisnull ||
+										!DatumGetBool(const_input->constvalue))
+										continue;	/* drop alternative with FALSE cond */
+									/* Else it's constant TRUE */
+									const_true_cond = true;
+								}
+							}
+						}
+					}
+					/* IvorySQL:END - datatype */
 
 					/* Simplify this alternative's result value */
 					caseresult = eval_const_expressions_mutator((Node *) oldcasewhen->result,
@@ -3115,6 +3256,7 @@ eval_const_expressions_mutator(Node *node,
 						CaseWhen   *newcasewhen = makeNode(CaseWhen);
 
 						newcasewhen->expr = (Expr *) casecond;
+						newcasewhen->orig_expr = (Expr *) orig_casecond;	/* IvorySQL: datatype */
 						newcasewhen->result = (Expr *) caseresult;
 						newcasewhen->location = oldcasewhen->location;
 						newargs = lappend(newargs, newcasewhen);
@@ -3151,6 +3293,7 @@ eval_const_expressions_mutator(Node *node,
 				newcase->args = newargs;
 				newcase->defresult = (Expr *) defresult;
 				newcase->location = caseexpr->location;
+				newcase->is_decode = caseexpr->is_decode;	/* IvorySQL: datatype */
 				return (Node *) newcase;
 			}
 		case T_CaseTestExpr:

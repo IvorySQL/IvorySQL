@@ -163,6 +163,17 @@ typedef struct
 #define REG_PREFIX	(-1)		/* identified a common prefix */
 #define REG_EXACT	(-2)		/* identified an exact match */
 
+/* IvorySQL:BEGIN - Support Oracle Regexp */
+/*
+ * all the options of interest for regex functions.
+ * move from regexp.c to here.
+ */
+typedef struct pg_re_flags
+{
+	int			cflags;			/* compile flags for Spencer's regex code */
+	bool		glob;			/* do it globally (for each occurrence) */
+} pg_re_flags;
+/* IvorySQL:END - Support Oracle Regexp */
 
 
 /*
@@ -185,5 +196,35 @@ extern regex_t *RE_compile_and_cache(text *text_re, int cflags, Oid collation);
 extern bool RE_compile_and_execute(text *text_re, char *dat, int dat_len,
 								   int cflags, Oid collation,
 								   int nmatch, regmatch_t *pmatch);
+
+/* IvorySQL:BEGIN - Support Oracle Regexp */
+extern regex_t *ora_re_compile_and_cache(text *text_re, int cflags, Oid collation);
+extern void ora_parse_re_flags(pg_re_flags *flags, text *opts);
+extern text *ora_replace_text_regexp(text *src_text, regex_t *regexp,
+				   text *replace_text, int start_posn,int occur_posn);
+extern bool
+ora_substr_text_regexp(text *src_text,text *pattern_arg ,text *match_para,
+								   Oid collation,int start_posn,
+								   int occur_posn,int subexpr_pos,
+								   Datum *substr);
+extern bool
+ora_setup_regexp_substr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
+											 int start_posn, int occur_posn,
+											 int subexpr_pos,Datum *substr,
+											 bool ignore_degenerate);
+extern int charlen_to_bytelen(const char *p, int n);
+
+extern bool
+ora_instr_text_regexp(text *src_text,text *pattern_arg ,text *match_para,
+								 Oid collation,int start_posn,
+								 int occur_posn,int ret_opt,
+								 int subexpr_pos,Datum *substr);
+extern bool
+ora_setup_regexp_instr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
+										   int start_posn, int occur_posn,
+										   int ret_opt,int subexpr_pos,
+										   Datum *substr,bool ignore_degenerate);
+/* IvorySQL:END - Support Oracle Regexp */
+
 
 #endif							/* _REGEX_H_ */

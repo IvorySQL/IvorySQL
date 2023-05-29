@@ -36,10 +36,16 @@
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
+#include "utils/guc.h"	/* IvorySQL: datatype */
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
+#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+
 #include "utils/xml.h"
+#include "utils/fmgroids.h"			/* IvorySQL: datatype */
+#include "access/htup_details.h"	/* IvorySQL: datatype */
+
 
 /* GUC parameters */
 bool		Transform_null_equals = false;
@@ -58,6 +64,9 @@ static Node *transformBoolExpr(ParseState *pstate, BoolExpr *a);
 static Node *transformFuncCall(ParseState *pstate, FuncCall *fn);
 static Node *transformMultiAssignRef(ParseState *pstate, MultiAssignRef *maref);
 static Node *transformCaseExpr(ParseState *pstate, CaseExpr *c);
+/* IvorySQL:BEGIN - datatype */
+static Node *transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c);
+/* IvorySQL:END - datatype */
 static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
 static Node *transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 								Oid array_type, Oid element_type, int32 typmod);
@@ -235,8 +244,17 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			break;
 
 		case T_CaseExpr:
-			result = transformCaseExpr(pstate, (CaseExpr *) expr);
-			break;
+			{
+				/* IvorySQL:BEGIN - datatype */
+				CaseExpr *n = (CaseExpr *) expr;
+
+				if (!n->is_decode)
+					result = transformCaseExpr(pstate, n);
+				else
+					result = transformCaseExpr_for_decode(pstate, n);
+				/* IvorySQL:END - datatype */
+				break;
+			}
 
 		case T_RowExpr:
 			result = transformRowExpr(pstate, (RowExpr *) expr, false);
@@ -329,6 +347,14 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 		case T_JsonIsPredicate:
 			result = transformJsonIsPredicate(pstate, (JsonIsPredicate *) expr);
 			break;
+
+		/* IvorySQL:BEGIN - datatype */
+		case T_ResTarget:
+			{
+				result = transformExprRecurse(pstate, ((ResTarget *)expr)->val);
+				break;
+			}
+		/* IvorySQL:END - datatype */
 
 		default:
 			/* should not reach here */
@@ -1695,9 +1721,234 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 									exprLocation(pstate->p_last_srf))));
 
 	newc->location = c->location;
+	newc->is_decode = c->is_decode;	/* IvorySQL: datatype */
 
 	return (Node *) newc;
 }
+
+/* IvorySQL:BEGIN - datatype */
+static Node *
+transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c)
+{
+	CaseExpr   *newc;
+	Node	   *arg;
+	CaseTestExpr *placeholder;
+	List	   *newargs;
+	List	   *resultexprs;
+	ListCell   *l;
+	Node	   *defresult;
+	Oid			ptype = InvalidOid;
+	List	   *whenexprs;
+
+	newc = makeNode(CaseExpr);
+
+	/* transform the test expression, if any */
+	arg = transformExprRecurse(pstate, (Node *) c->arg);
+
+	whenexprs = NIL;
+	if (database_mode == DB_ORACLE)
+	{
+		foreach(l, c->args)
+		{
+			CaseWhen   *w = (CaseWhen *) lfirst(l);
+			Node	   *warg;
+			Expr	   *tmp;
+
+			Assert(IsA(w, CaseWhen));
+
+			warg = (Node *) w->expr;
+
+			tmp = (Expr *) transformExprRecurse(pstate, warg);
+			whenexprs = lappend(whenexprs, tmp);
+		}
+		ptype = select_common_type_for_nvl(pstate, whenexprs, "DECODE", NULL);
+
+		l = lnext(whenexprs, list_head(whenexprs));
+		while (l)
+		{
+			Expr   *w = (Expr *) lfirst(l);
+			Oid			ntype = exprType((Node *) w);
+
+			if (!can_coerce_type(1, &ntype, &ptype, COERCION_IMPLICIT))
+				ereport(ERROR,
+						(errcode(ERRCODE_CANNOT_COERCE),
+				/* translator: first %s is name of a SQL construct, eg CASE */
+						 errmsg("%s could not convert type %s to %s",
+								"DECODE",
+								format_type_be(ntype),
+								format_type_be(ptype)),
+						 parser_errposition(pstate, exprLocation((Node *) w))));
+
+			l = lnext(whenexprs, l);
+		}
+	}
+
+	/* generate placeholder for test expression */
+	if (arg)
+	{
+		/*
+		 * If test expression is an untyped literal, force it to text. We have
+		 * to do something now because we won't be able to do this coercion on
+		 * the placeholder.  This is not as flexible as what was done in 7.4
+		 * and before, but it's good enough to handle the sort of silly coding
+		 * commonly seen.
+		 */
+		if (exprType(arg) == UNKNOWNOID)
+		{
+			if (compatible_db == PG_PARSER)
+				arg = coerce_to_common_type(pstate, arg, TEXTOID, "DECODE");
+			else if (compatible_db == ORA_PARSER)
+			{
+				if (strcmp(nls_length_semantics, "byte") == 0)
+					arg = coerce_to_common_type(pstate, arg, ORAVARCHARBYTEOID, "DECODE");
+				else
+					arg = coerce_to_common_type(pstate, arg, ORAVARCHARCHAROID, "DECODE");
+			}
+		}
+
+		if (OidIsValid(ptype))
+			arg = coerce_to_common_type(pstate,
+									  (Node *) arg,
+									  ptype,
+									  "DECODE");
+
+		/*
+		 * Run collation assignment on the test expression so that we know
+		 * what collation to mark the placeholder with.  In principle we could
+		 * leave it to parse_collate.c to do that later, but propagating the
+		 * result to the CaseTestExpr would be unnecessarily complicated.
+		 */
+		assign_expr_collations(pstate, arg);
+
+		placeholder = makeNode(CaseTestExpr);
+		placeholder->typeId = exprType(arg);
+		placeholder->typeMod = exprTypmod(arg);
+		placeholder->collation = exprCollation(arg);
+	}
+	else
+		placeholder = NULL;
+
+	newc->arg = (Expr *) arg;
+
+	/* transform the list of arguments */
+	newargs = NIL;
+	resultexprs = NIL;
+
+	foreach(l, c->args)
+	{
+		CaseWhen   *w = (CaseWhen *) lfirst(l);
+		CaseWhen   *neww = makeNode(CaseWhen);
+		Node	   *warg;
+
+		Assert(IsA(w, CaseWhen));
+
+		warg = (Node *) w->expr;
+		if (!c->is_decode)
+		{
+			if (placeholder)
+			{
+				/* shorthand form was specified, so expand... */
+				warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+												 (Node *) placeholder,
+												 warg,
+												 w->location);
+			}
+			neww->expr = (Expr *) transformExprRecurse(pstate, warg);
+
+			neww->expr = (Expr *) coerce_to_boolean(pstate,
+													(Node *) neww->expr,
+													"DECODE");
+		}
+		else
+		{
+			if (placeholder)
+			{
+				/* shorthand form was specified, so expand... */
+				warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+												 (Node *) placeholder,
+												 warg,
+												 w->location);
+			}
+			neww->expr = (Expr *) transformExprRecurse(pstate, warg);
+
+			neww->expr = (Expr *) coerce_to_boolean(pstate,
+													(Node *) neww->expr,
+													"DECODE");
+
+			warg = (Node *) w->orig_expr;
+			neww->orig_expr = (Expr *) transformExprRecurse(pstate, warg);
+			if (OidIsValid(ptype))
+				neww->orig_expr = (Expr *) coerce_to_common_type(pstate,
+													(Node *) neww->orig_expr,
+													ptype,
+													"DECODE");
+		}
+
+		warg = (Node *) w->result;
+		neww->result = (Expr *) transformExprRecurse(pstate, warg);
+		neww->location = w->location;
+
+		newargs = lappend(newargs, neww);
+		resultexprs = lappend(resultexprs, neww->result);
+	}
+
+	newc->args = newargs;
+
+	/* transform the default clause */
+	defresult = (Node *) c->defresult;
+	if (defresult == NULL)
+	{
+		A_Const    *n = makeNode(A_Const);
+
+		n->isnull = true;
+		n->location = -1;
+		defresult = (Node *) n;
+	}
+	newc->defresult = (Expr *) transformExprRecurse(pstate, defresult);
+
+	/*
+	 * Note: default result is considered the most significant type in
+	 * determining preferred type. This is how the code worked before, but it
+	 * seems a little bogus to me --- tgl
+	 */
+	if (database_mode == DB_PG)
+		resultexprs = lcons(newc->defresult, resultexprs);
+	else if (database_mode == DB_ORACLE)
+		resultexprs = lappend(resultexprs, newc->defresult);
+
+	if (database_mode == DB_PG)
+		ptype = select_common_type(pstate, resultexprs, "DECODE", NULL);
+	else if (database_mode == DB_ORACLE)
+		ptype = select_common_type_for_nvl(pstate, resultexprs, "DECODE", NULL);
+	Assert(OidIsValid(ptype));
+	newc->casetype = ptype;
+	/* casecollid will be set by parse_collate.c */
+
+	/* Convert default result clause, if necessary */
+	newc->defresult = (Expr *)
+		coerce_to_common_type(pstate,
+							  (Node *) newc->defresult,
+							  ptype,
+							  "DECODE");
+
+	/* Convert when-clause results, if necessary */
+	foreach(l, newc->args)
+	{
+		CaseWhen   *w = (CaseWhen *) lfirst(l);
+
+		w->result = (Expr *)
+			coerce_to_common_type(pstate,
+								  (Node *) w->result,
+								  ptype,
+								  "DECODE");
+	}
+
+	newc->location = c->location;
+	newc->is_decode = c->is_decode;
+
+	return (Node *) newc;
+}
+/* IvorySQL:END - datatype */
 
 static Node *
 transformSubLink(ParseState *pstate, SubLink *sublink)
@@ -2150,7 +2401,12 @@ transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c)
 		newargs = lappend(newargs, newe);
 	}
 
-	newc->coalescetype = select_common_type(pstate, newargs, "COALESCE", NULL);
+	/* IvorySQL:BEGIN - datatype */
+	if (compatible_db == PG_PARSER)
+		newc->coalescetype = select_common_type(pstate, newargs, "COALESCE", NULL);
+	else if (compatible_db == ORA_PARSER)
+		newc->coalescetype = select_common_type_for_nvl(pstate, newargs, "COALESCE", NULL);
+	/* IvorySQL:END - datatype */
 	/* coalescecollid will be set by parse_collate.c */
 
 	/* Convert arguments if necessary */

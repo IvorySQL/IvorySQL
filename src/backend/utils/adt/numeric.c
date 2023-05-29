@@ -617,6 +617,56 @@ static void accum_sum_combine(NumericSumAccum *accum, NumericSumAccum *accum2);
  * ----------------------------------------------------------------------
  */
 
+/* IvorySQL:BEGIN - datatype */
+/* ----------------------------------------------------------------------
+ *
+ * global function
+ *
+ * ----------------------------------------------------------------------
+ */
+Numeric
+numeric_bitand(Numeric arg1, Numeric arg2)
+{
+	int64		i1, i2;
+	NumericVar	num1, num2, result;
+	Numeric		res;
+
+	if (NUMERIC_IS_NAN(arg1) || NUMERIC_IS_NAN(arg2))
+		return make_result(&const_nan);
+
+	init_var(&num1);
+	init_var(&num2);
+	init_var(&result);
+
+	set_var_from_num(arg1, &num1);
+	set_var_from_num(arg2, &num2);
+
+	if (!numericvar_to_int64(&num1, &i1) )
+	{
+		if (NUMERIC_POS == num1.sign)
+			i1 = PG_INT64_MAX;
+		else
+			i1 = PG_INT64_MIN;
+	}
+
+	if (!numericvar_to_int64(&num2, &i2) )
+	{
+		if (NUMERIC_POS == num2.sign)
+			i2 = PG_INT64_MAX;
+		else
+			i2 = PG_INT64_MIN;
+	}
+
+	int64_to_numericvar(i1 & i2, &result);
+
+	res = make_result(&result);
+	free_var(&result);
+	free_var(&num1);
+	free_var(&num2);
+
+	return res;
+}
+/* IvorySQL:END - datatype */
 
 /*
  * numeric_in() -

@@ -1751,7 +1751,8 @@ selectDumpableNamespace(NamespaceInfo *nsinfo, Archive *fout)
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_ACL;
 	}
 	else if (strncmp(nsinfo->dobj.name, "pg_", 3) == 0 ||
-			 strcmp(nsinfo->dobj.name, "information_schema") == 0)
+			 strcmp(nsinfo->dobj.name, "information_schema") == 0 ||
+			 strcmp(nsinfo->dobj.name, "sys") == 0 /* IvorySQL: datatype */)
 	{
 		/* Other system schemas don't get dumped */
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_NONE;

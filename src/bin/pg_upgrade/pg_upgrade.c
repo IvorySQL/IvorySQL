@@ -64,6 +64,19 @@ ClusterInfo old_cluster,
 			new_cluster;
 OSInfo		os_info;
 
+/* IvorySQL:BEGIN - datatype */
+/*
+ * When we upgrade a cluster initialized to Oracle and connect using as PG mode,
+ * the parser of the database server has been switched to the PG hook, so we should
+ * use the PG port for the upgrade, but the control file of the cluster currently only
+ * identifies the current cluster as Oralce or PG, so we add a '-g' option to upgrade
+ * the PG database in Oracle mode. Due to the variability of the compatible_mode, so,
+ * we cannot automatically check the old cluster and the new cluster are compatibility,
+ * which is currently the responsibility of the caller.
+ */
+bool		pg_cluster_within_oracle_mode = false;
+/* IvorySQL:END - datatype */
+
 char	   *output_files[] = {
 	SERVER_LOG_FILE,
 #ifdef WIN32

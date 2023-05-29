@@ -310,6 +310,7 @@ static void load_plpgsql(FILE *cmdfd);
 /* IvorySQL BEGIN - load plisql */
 static void load_plisql(FILE *cmdfd);
 /* IvorySQL END - load plisql */
+static void load_ivorysql_ora(FILE *cmdfd);		/* IvorySQL: datatype */
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
 static void make_postgres(FILE *cmdfd);
@@ -2022,6 +2023,21 @@ load_plisql(FILE *cmdfd)
 }
 /* IvorySQL END - load plisql */
 
+/* 
+ * IvorySQL:BEGIN - datatype
+ *
+ * load PL/pgSQL server-side language
+ */
+static void
+load_ivorysql_ora(FILE *cmdfd)
+{
+	/* switch to oracle parser and load extenison */
+	PG_CMD_PUTS("set compatible_mode to oracle;\n\n");
+	PG_CMD_PUTS("CREATE EXTENSION ivorysql_ora;\n\n");
+	PG_CMD_PUTS("reset compatible_mode;\n\n");
+}
+/* IvorySQL:END - datatype */
+
 /*
  * clean everything up in template1
  */
@@ -3253,10 +3269,11 @@ initialize_data_directory(void)
   /* load oracle compatible objects and plisql language */
 	if (database_mode == DB_ORACLE)
 	{
-		setup_ora_sys_schema(cmdfd);
 		/* IvorySQL BEGIN - load plisql */
 		load_plisql(cmdfd);
 		/* IvorySQL END - load plisql */
+		load_ivorysql_ora(cmdfd);	/* IvorySQL: datatype */
+		setup_ora_sys_schema(cmdfd);
 	}
 /* IvorySQL:END - SQL oracle_mode */
 

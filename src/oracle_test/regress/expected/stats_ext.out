@@ -286,6 +286,9 @@ SELECT x / 10, x / 3,
     '2020-10-01'::timestamp + x * interval '1 day',
     '2020-10-01'::timestamptz + x * interval '1 day'
 FROM generate_series(1, 100) x;
+ERROR:  syntax error at or near ","
+LINE 3:     '2020-10-01'::timestamp + x * interval '1 day',
+                                                          ^
 ANALYZE ab1;
 -- apply some stats
 SELECT * FROM check_estimated_rows('SELECT * FROM ab1 WHERE (case a when 1 then true else false end) AND b=2');

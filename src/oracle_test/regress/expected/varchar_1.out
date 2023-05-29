@@ -16,8 +16,9 @@ INSERT INTO VARCHAR_TBL (f1) VALUES ('3');
 INSERT INTO VARCHAR_TBL (f1) VALUES ('');
 -- try varchar's of greater than 1 length
 INSERT INTO VARCHAR_TBL (f1) VALUES ('cd');
-ERROR:  value too long for type character varying(1)
+ERROR:  value too long for type varchar2(1 byte)
 INSERT INTO VARCHAR_TBL (f1) VALUES ('c     ');
+ERROR:  value too long for type varchar2(1 byte)
 SELECT * FROM VARCHAR_TBL;
  f1 
 ----
@@ -27,8 +28,7 @@ SELECT * FROM VARCHAR_TBL;
  2
  3
  
- c
-(7 rows)
+(6 rows)
 
 SELECT c.*
    FROM VARCHAR_TBL c
@@ -40,8 +40,7 @@ SELECT c.*
  2
  3
  
- c
-(6 rows)
+(5 rows)
 
 SELECT c.*
    FROM VARCHAR_TBL c
@@ -80,8 +79,7 @@ SELECT c.*
  f1 
 ----
  A
- c
-(2 rows)
+(1 row)
 
 SELECT c.*
    FROM VARCHAR_TBL c
@@ -90,8 +88,7 @@ SELECT c.*
 ----
  a
  A
- c
-(3 rows)
+(2 rows)
 
 DROP TABLE VARCHAR_TBL;
 --
@@ -101,15 +98,14 @@ DROP TABLE VARCHAR_TBL;
 -- Here we just try to insert bad values.
 --
 INSERT INTO VARCHAR_TBL (f1) VALUES ('abcde');
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for type varchar2(4 byte)
 SELECT * FROM VARCHAR_TBL;
   f1  
 ------
  a
  ab
  abcd
- abcd
-(4 rows)
+(3 rows)
 
 -- Also try it with non-error-throwing API
 SELECT pg_input_is_valid('abcd  ', 'varchar(4)');

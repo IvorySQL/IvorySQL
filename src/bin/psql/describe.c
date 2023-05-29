@@ -29,6 +29,9 @@
 #include "settings.h"
 #include "variables.h"
 
+
+#define ORA_SCHEMA "sys"	/* IvorySQL: datatype */
+
 static const char *map_typename_pattern(const char *pattern);
 static bool describeOneTableDetails(const char *schemaname,
 									const char *relationname,
@@ -105,8 +108,9 @@ describeAggregates(const char *pattern, bool verbose, bool showSystem)
 						  gettext_noop("Description"));
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "p.proname", NULL,
@@ -575,8 +579,9 @@ describeFunctions(const char *functypes, const char *func_pattern,
 	}
 
 	if (!showSystem && !func_pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	appendPQExpBufferStr(&buf, "ORDER BY 1, 2, 4;");
 
@@ -680,8 +685,9 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 		appendPQExpBufferStr(&buf, "  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)\n");
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	/* Match name pattern against either internal or external name */
 	if (!validateSQLNamePattern(&buf, map_typename_pattern(pattern),
@@ -839,8 +845,9 @@ describeOperators(const char *oper_pattern,
 	}
 
 	if (!showSystem && !oper_pattern)
-		appendPQExpBufferStr(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, oper_pattern,
 								!showSystem && !oper_pattern, true,
@@ -1136,7 +1143,7 @@ permissionsList(const char *pattern, bool showSystem)
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "c.relname", NULL,
-								"pg_catalog.pg_table_is_visible(c.oid)",
+								"n.nspname <> 'sys' AND pg_catalog.pg_table_is_visible(c.oid)", /* IvorySQL: datatype */
 								NULL, 3))
 		goto error_return;
 
@@ -1280,8 +1287,9 @@ objectDescription(const char *pattern, bool showSystem)
 					  gettext_noop("table constraint"));
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, !showSystem && !pattern,
 								false, "n.nspname", "pgc.conname", NULL,
@@ -1304,8 +1312,9 @@ objectDescription(const char *pattern, bool showSystem)
 					  gettext_noop("domain constraint"));
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, !showSystem && !pattern,
 								false, "n.nspname", "pgc.conname", NULL,
@@ -1328,8 +1337,9 @@ objectDescription(const char *pattern, bool showSystem)
 					  gettext_noop("operator class"));
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+								 "      AND n.nspname <> 'information_schema'\n"
+								 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "o.opcname", NULL,
@@ -1352,8 +1362,9 @@ objectDescription(const char *pattern, bool showSystem)
 					  gettext_noop("operator family"));
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+								 "      AND n.nspname <> 'information_schema'\n"
+								 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "opf.opfname", NULL,
@@ -1375,8 +1386,9 @@ objectDescription(const char *pattern, bool showSystem)
 					  gettext_noop("rule"));
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+								 "      AND n.nspname <> 'information_schema'\n"
+								 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "r.rulename", NULL,
@@ -1397,8 +1409,9 @@ objectDescription(const char *pattern, bool showSystem)
 					  gettext_noop("trigger"));
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, !showSystem && !pattern, false,
 								"n.nspname", "t.tgname", NULL,
@@ -1459,8 +1472,9 @@ describeTableDetails(const char *pattern, bool verbose, bool showSystem)
 					  "     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n");
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, !showSystem && !pattern, false,
 								"n.nspname", "c.relname", NULL,
@@ -3989,9 +4003,10 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	appendPQExpBufferStr(&buf, ")\n");
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
 							 "      AND n.nspname !~ '^pg_toast'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "c.relname", NULL,
@@ -4211,7 +4226,8 @@ listPartitionedTables(const char *reltypes, const char *pattern, bool verbose)
 	if (!pattern)
 		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
 							 "      AND n.nspname !~ '^pg_toast'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> 'sys'\n");	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "c.relname", NULL,
@@ -4380,8 +4396,9 @@ listDomains(const char *pattern, bool verbose, bool showSystem)
 	appendPQExpBufferStr(&buf, "WHERE t.typtype = 'd'\n");
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "t.typname", NULL,
@@ -4459,8 +4476,9 @@ listConversions(const char *pattern, bool verbose, bool showSystem)
 	appendPQExpBufferStr(&buf, "WHERE true\n");
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "  AND n.nspname <> 'pg_catalog'\n"
-							 "  AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "  AND n.nspname <> 'pg_catalog'\n"
+							 "  AND n.nspname <> 'information_schema'\n"
+							 "  AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern, true, false,
 								"n.nspname", "c.conname", NULL,
@@ -4932,8 +4950,9 @@ listCollations(const char *pattern, bool verbose, bool showSystem)
 						 "WHERE n.oid = c.collnamespace\n");
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
-							 "      AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf, "      AND n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	/*
 	 * Hide collations that aren't usable in the current database's encoding.
@@ -5005,8 +5024,9 @@ listSchemas(const char *pattern, bool verbose, bool showSystem)
 						 "\nFROM pg_catalog.pg_namespace n\n");
 
 	if (!showSystem && !pattern)
-		appendPQExpBufferStr(&buf,
-							 "WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'\n");
+		appendPQExpBuffer(&buf,
+							 "WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);	/* IvorySQL: datatype */
 
 	if (!validateSQLNamePattern(&buf, pattern,
 								!showSystem && !pattern, false,

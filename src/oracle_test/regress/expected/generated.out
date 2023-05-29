@@ -400,7 +400,7 @@ SELECT * FROM gtest3a ORDER BY a;
  a | a+a
  b | b+b
  c | c+c
-   | 
+   | +
 (4 rows)
 
 UPDATE gtest3a SET a = 'bb' WHERE a = 'b';
@@ -410,7 +410,7 @@ SELECT * FROM gtest3a ORDER BY a;
  a  | a+a
  bb | bb+bb
  c  | c+c
-    | 
+    | +
 (4 rows)
 
 -- COPY
@@ -756,7 +756,7 @@ ALTER TABLE gtest_parent ATTACH PARTITION gtest_child3 FOR VALUES FROM ('2016-09
  f1     | date   |           | not null | 
  f2     | bigint |           |          | 
  f3     | bigint |           |          | generated always as (f2 * 2) stored
-Partition of: gtest_parent FOR VALUES FROM ('07-01-2016') TO ('08-01-2016')
+Partition of: gtest_parent FOR VALUES FROM ('2016-07-01') TO ('2016-08-01')
 
 \d gtest_child2
                           Table "public.gtest_child2"
@@ -765,7 +765,7 @@ Partition of: gtest_parent FOR VALUES FROM ('07-01-2016') TO ('08-01-2016')
  f1     | date   |           | not null | 
  f2     | bigint |           |          | 
  f3     | bigint |           |          | generated always as (f2 * 22) stored
-Partition of: gtest_parent FOR VALUES FROM ('08-01-2016') TO ('09-01-2016')
+Partition of: gtest_parent FOR VALUES FROM ('2016-08-01') TO ('2016-09-01')
 
 \d gtest_child3
                           Table "public.gtest_child3"
@@ -774,32 +774,32 @@ Partition of: gtest_parent FOR VALUES FROM ('08-01-2016') TO ('09-01-2016')
  f1     | date   |           | not null | 
  f2     | bigint |           |          | 
  f3     | bigint |           |          | generated always as (f2 * 33) stored
-Partition of: gtest_parent FOR VALUES FROM ('09-01-2016') TO ('10-01-2016')
+Partition of: gtest_parent FOR VALUES FROM ('2016-09-01') TO ('2016-10-01')
 
 INSERT INTO gtest_parent (f1, f2) VALUES ('2016-07-15', 1);
 SELECT * FROM gtest_parent;
      f1     | f2 | f3 
 ------------+----+----
- 07-15-2016 |  1 |  2
+ 2016-07-15 |  1 |  2
 (1 row)
 
 SELECT * FROM gtest_child;
      f1     | f2 | f3 
 ------------+----+----
- 07-15-2016 |  1 |  2
+ 2016-07-15 |  1 |  2
 (1 row)
 
 UPDATE gtest_parent SET f1 = f1 + 60;
 SELECT * FROM gtest_parent;
      f1     | f2 | f3 
 ------------+----+----
- 09-13-2016 |  1 | 33
+ 2016-09-13 |  1 | 33
 (1 row)
 
 SELECT * FROM gtest_child3;
      f1     | f2 | f3 
 ------------+----+----
- 09-13-2016 |  1 | 33
+ 2016-09-13 |  1 | 33
 (1 row)
 
 -- we leave these tables around for purposes of testing dump/reload/upgrade

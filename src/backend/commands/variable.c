@@ -1097,6 +1097,18 @@ assign_maintenance_io_concurrency(int newval, void *extra)
 #endif
 }
 
+/* IvorySQL:BEGIN - datatype */
+bool
+check_nls_length_semantics(char **newval, void **extra, GucSource source)
+{
+
+	if (newval == NULL
+		|| (newval != NULL && pg_strcasecmp(*newval, "CHAR")  && pg_strcasecmp(*newval, "BYTE")))
+		return false;
+
+	return true;
+}
+/* IvorySQL:END - datatype */
 
 /*
  * These show hooks just exist because we want to show the values in octal.

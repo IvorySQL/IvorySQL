@@ -1289,7 +1289,7 @@ select dfunc(0);
 select dfunc(to_date('20081215','YYYYMMDD'));
        dfunc       
 -------------------
- Hello, 12-15-2008
+ Hello, 2008-12-15
 (1 row)
 
 select dfunc('City'::text);
@@ -1464,31 +1464,31 @@ $$ language sql;
 select (dfunc('Hello World', 20, '2009-07-25'::date)).*;
       a      | b  |     c      
 -------------+----+------------
- Hello World | 20 | 07-25-2009
+ Hello World | 20 | 2009-07-25
 (1 row)
 
 select * from dfunc('Hello World', 20, '2009-07-25'::date);
       a      | b  |     c      
 -------------+----+------------
- Hello World | 20 | 07-25-2009
+ Hello World | 20 | 2009-07-25
 (1 row)
 
 select * from dfunc(c := '2009-07-25'::date, a := 'Hello World', b := 20);
       a      | b  |     c      
 -------------+----+------------
- Hello World | 20 | 07-25-2009
+ Hello World | 20 | 2009-07-25
 (1 row)
 
 select * from dfunc('Hello World', b := 20, c := '2009-07-25'::date);
       a      | b  |     c      
 -------------+----+------------
- Hello World | 20 | 07-25-2009
+ Hello World | 20 | 2009-07-25
 (1 row)
 
 select * from dfunc('Hello World', c := '2009-07-25'::date, b := 20);
       a      | b  |     c      
 -------------+----+------------
- Hello World | 20 | 07-25-2009
+ Hello World | 20 | 2009-07-25
 (1 row)
 
 select * from dfunc('Hello World', c := 20, b := '2009-07-25'::date);  -- fail
@@ -1556,13 +1556,13 @@ returns record as $$
   select $1, $2;
 $$ language sql;
 ERROR:  cannot change name of input parameter "c"
-HINT:  Use DROP FUNCTION dfunc(character varying,numeric) first.
+HINT:  Use DROP FUNCTION dfunc(varchar2,numeric) first.
 create or replace function dfunc(a varchar = 'def a', out _a varchar, numeric = NULL, out _c numeric)
 returns record as $$
   select $1, $2;
 $$ language sql;
 ERROR:  cannot change name of input parameter "c"
-HINT:  Use DROP FUNCTION dfunc(character varying,numeric) first.
+HINT:  Use DROP FUNCTION dfunc(varchar2,numeric) first.
 drop function dfunc(varchar, numeric);
 --fail, named parameters are not unique
 create function testpolym(a int, a int) returns int as $$ select 1;$$ language sql;

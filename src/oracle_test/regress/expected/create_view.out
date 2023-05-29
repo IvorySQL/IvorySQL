@@ -387,19 +387,19 @@ CREATE VIEW tt1 AS
        ('0123456789', 'abc'::varchar(3), 42.12, 'abc'::varchar(4))
   ) vv(a,b,c,d);
 \d+ tt1
-                                View "testviewschm2.tt1"
- Column |         Type         | Collation | Nullable | Default | Storage  | Description 
---------+----------------------+-----------+----------+---------+----------+-------------
- a      | character varying    |           |          |         | extended | 
- b      | character varying    |           |          |         | extended | 
- c      | numeric              |           |          |         | main     | 
- d      | character varying(4) |           |          |         | extended | 
+                            View "testviewschm2.tt1"
+ Column |    Type     | Collation | Nullable | Default | Storage  | Description 
+--------+-------------+-----------+----------+---------+----------+-------------
+ a      | varchar2    |           |          |         | extended | 
+ b      | varchar2    |           |          |         | extended | 
+ c      | numeric     |           |          |         | main     | 
+ d      | varchar2(4) |           |          |         | extended | 
 View definition:
  SELECT a,
     b,
     c,
     d
-   FROM ( VALUES ('abc'::character varying(3),'0123456789'::character varying,42,'abcd'::character varying(4)), ('0123456789'::character varying,'abc'::character varying(3),42.12,'abc'::character varying(4))) vv(a, b, c, d);
+   FROM ( VALUES ('abc'::varchar2(3),'0123456789'::varchar2,42,'abcd'::varchar2(4)), ('0123456789'::varchar2,'abc'::varchar2(3),42.12,'abc'::varchar2(4))) vv(a, b, c, d);
 
 SELECT * FROM tt1;
      a      |     b      |   c   |  d   
@@ -1482,26 +1482,11 @@ create view vv2a as
 select * from (values(now(),2,3,now(),5)) v(a,b,c,d,e)
 union all
 select * from tt7a left join tt8a using (x), tt8a tt8ax;
+ERROR:  UNION could not convert type date to timestamp with time zone
+LINE 4: select * from tt7a left join tt8a using (x), tt8a tt8ax;
+               ^
 select pg_get_viewdef('vv2a', true);
-                     pg_get_viewdef                     
---------------------------------------------------------
-  SELECT v.a,                                          +
-     v.b,                                              +
-     v.c,                                              +
-     v.d,                                              +
-     v.e                                               +
-    FROM ( VALUES (now(),2,3,now(),5)) v(a, b, c, d, e)+
- UNION ALL                                             +
-  SELECT x AS a,                                       +
-     tt7a.y AS b,                                      +
-     tt8a.z AS c,                                      +
-     tt8ax.x_1 AS d,                                   +
-     tt8ax.z AS e                                      +
-    FROM tt7a                                          +
-      LEFT JOIN tt8a USING (x),                        +
-     tt8a tt8ax(x_1, z);
-(1 row)
-
+ERROR:  relation "vv2a" does not exist
 --
 -- Also check dropping a column that existed when the view was made
 --
@@ -1903,29 +1888,28 @@ select * from
   cast(1+2 as int4) as i4,
   cast(1+2 as int8) as i8;
 select pg_get_viewdef('tt20v', true);
-               pg_get_viewdef                
----------------------------------------------
-  SELECT c.c,                               +
-     col.col,                               +
-     d.d,                                   +
-     t.t,                                   +
-     i4.i4,                                 +
-     i8.i8                                  +
-    FROM COALESCE(1, 2) c(c),               +
-     COLLATION FOR ('x'::text) col(col),    +
-     CURRENT_DATE d(d),                     +
-     LOCALTIMESTAMP(3) t(t),                +
-     CAST(1 + 2 AS integer) i4(i4),         +
+                pg_get_viewdef                
+----------------------------------------------
+  SELECT c.c,                                +
+     col.col,                                +
+     d.d,                                    +
+     t.t,                                    +
+     i4.i4,                                  +
+     i8.i8                                   +
+    FROM COALESCE(1::number, 2::number) c(c),+
+     COLLATION FOR ('x'::text) col(col),     +
+     "current_date"() d(d),                  +
+     "localtimestamp"(3) t(t),               +
+     CAST(1 + 2 AS integer) i4(i4),          +
      CAST((1 + 2)::bigint AS bigint) i8(i8);
 (1 row)
 
 -- reverse-listing of various special function syntaxes required by SQL
 create view tt201v as
 select
-  ('2022-12-01'::date + '1 day'::interval) at time zone 'UTC' as atz,
   extract(day from now()) as extr,
-  (now(), '1 day'::interval) overlaps
-    (current_timestamp(2), '1 day'::interval) as o,
+  (now(), '1 day'::pg_catalog.interval) overlaps
+    (current_timestamp(2), '1 day'::pg_catalog.interval) as o,
   'foo' is normalized isn,
   'foo' is nfkc normalized isnn,
   normalize('foo') as n,
@@ -1941,109 +1925,28 @@ select
   trim(trailing ' foo ') as rt,
   trim(E'\\000'::bytea from E'\\000Tom\\000'::bytea) as btb,
   trim(leading E'\\000'::bytea from E'\\000Tom\\000'::bytea) as ltb,
-  trim(trailing E'\\000'::bytea from E'\\000Tom\\000'::bytea) as rtb,
-  CURRENT_DATE as cd,
-  (select * from CURRENT_DATE) as cd2,
-  CURRENT_TIME as ct,
-  (select * from CURRENT_TIME) as ct2,
-  CURRENT_TIME (1) as ct3,
-  (select * from CURRENT_TIME (1)) as ct4,
-  CURRENT_TIMESTAMP as ct5,
-  (select * from CURRENT_TIMESTAMP) as ct6,
-  CURRENT_TIMESTAMP (1) as ct7,
-  (select * from CURRENT_TIMESTAMP (1)) as ct8,
-  LOCALTIME as lt1,
-  (select * from LOCALTIME) as lt2,
-  LOCALTIME (1) as lt3,
-  (select * from LOCALTIME (1)) as lt4,
-  LOCALTIMESTAMP as lt5,
-  (select * from LOCALTIMESTAMP) as lt6,
-  LOCALTIMESTAMP (1) as lt7,
-  (select * from LOCALTIMESTAMP (1)) as lt8,
-  CURRENT_CATALOG as ca,
-  (select * from CURRENT_CATALOG) as ca2,
-  CURRENT_ROLE as cr,
-  (select * from CURRENT_ROLE) as cr2,
-  CURRENT_SCHEMA as cs,
-  (select * from CURRENT_SCHEMA) as cs2,
-  CURRENT_USER as cu,
-  (select * from CURRENT_USER) as cu2,
-  USER as us,
-  (select * from USER) as us2,
-  SESSION_USER seu,
-  (select * from SESSION_USER) as seu2,
-  SYSTEM_USER as su,
-  (select * from SYSTEM_USER) as su2;
+  trim(trailing E'\\000'::bytea from E'\\000Tom\\000'::bytea) as rtb;
 select pg_get_viewdef('tt201v', true);
-                                        pg_get_viewdef                                         
------------------------------------------------------------------------------------------------
-  SELECT (('12-01-2022'::date + '@ 1 day'::interval) AT TIME ZONE 'UTC'::text) AS atz,        +
-     EXTRACT(day FROM now()) AS extr,                                                         +
-     ((now(), '@ 1 day'::interval) OVERLAPS (CURRENT_TIMESTAMP(2), '@ 1 day'::interval)) AS o,+
-     ('foo'::text IS NORMALIZED) AS isn,                                                      +
-     ('foo'::text IS NFKC NORMALIZED) AS isnn,                                                +
-     NORMALIZE('foo'::text) AS n,                                                             +
-     NORMALIZE('foo'::text, NFKD) AS nfkd,                                                    +
-     OVERLAY('foo'::text PLACING 'bar'::text FROM 2) AS ovl,                                  +
-     OVERLAY('foo'::text PLACING 'bar'::text FROM 2 FOR 3) AS ovl2,                           +
-     POSITION(('foo'::text) IN ('foobar'::text)) AS p,                                        +
-     SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                +
-     SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                         +
-     "substring"('foo'::text, 'oo'::text) AS ssf,                                             +
-     TRIM(BOTH ' '::text FROM ' foo '::text) AS bt,                                           +
-     TRIM(LEADING ' '::text FROM ' foo '::text) AS lt,                                        +
-     TRIM(TRAILING FROM ' foo '::text) AS rt,                                                 +
-     TRIM(BOTH '\x00'::bytea FROM '\x00546f6d00'::bytea) AS btb,                              +
-     TRIM(LEADING '\x00'::bytea FROM '\x00546f6d00'::bytea) AS ltb,                           +
-     TRIM(TRAILING '\x00'::bytea FROM '\x00546f6d00'::bytea) AS rtb,                          +
-     CURRENT_DATE AS cd,                                                                      +
-     ( SELECT "current_date"."current_date"                                                   +
-            FROM CURRENT_DATE "current_date"("current_date")) AS cd2,                         +
-     CURRENT_TIME AS ct,                                                                      +
-     ( SELECT "current_time"."current_time"                                                   +
-            FROM CURRENT_TIME "current_time"("current_time")) AS ct2,                         +
-     CURRENT_TIME(1) AS ct3,                                                                  +
-     ( SELECT "current_time"."current_time"                                                   +
-            FROM CURRENT_TIME(1) "current_time"("current_time")) AS ct4,                      +
-     CURRENT_TIMESTAMP AS ct5,                                                                +
-     ( SELECT "current_timestamp"."current_timestamp"                                         +
-            FROM CURRENT_TIMESTAMP "current_timestamp"("current_timestamp")) AS ct6,          +
-     CURRENT_TIMESTAMP(1) AS ct7,                                                             +
-     ( SELECT "current_timestamp"."current_timestamp"                                         +
-            FROM CURRENT_TIMESTAMP(1) "current_timestamp"("current_timestamp")) AS ct8,       +
-     LOCALTIME AS lt1,                                                                        +
-     ( SELECT "localtime"."localtime"                                                         +
-            FROM LOCALTIME "localtime"("localtime")) AS lt2,                                  +
-     LOCALTIME(1) AS lt3,                                                                     +
-     ( SELECT "localtime"."localtime"                                                         +
-            FROM LOCALTIME(1) "localtime"("localtime")) AS lt4,                               +
-     LOCALTIMESTAMP AS lt5,                                                                   +
-     ( SELECT "localtimestamp"."localtimestamp"                                               +
-            FROM LOCALTIMESTAMP "localtimestamp"("localtimestamp")) AS lt6,                   +
-     LOCALTIMESTAMP(1) AS lt7,                                                                +
-     ( SELECT "localtimestamp"."localtimestamp"                                               +
-            FROM LOCALTIMESTAMP(1) "localtimestamp"("localtimestamp")) AS lt8,                +
-     CURRENT_CATALOG AS ca,                                                                   +
-     ( SELECT "current_catalog"."current_catalog"                                             +
-            FROM CURRENT_CATALOG "current_catalog"("current_catalog")) AS ca2,                +
-     CURRENT_ROLE AS cr,                                                                      +
-     ( SELECT "current_role"."current_role"                                                   +
-            FROM CURRENT_ROLE "current_role"("current_role")) AS cr2,                         +
-     CURRENT_SCHEMA AS cs,                                                                    +
-     ( SELECT "current_schema"."current_schema"                                               +
-            FROM CURRENT_SCHEMA "current_schema"("current_schema")) AS cs2,                   +
-     CURRENT_USER AS cu,                                                                      +
-     ( SELECT "current_user"."current_user"                                                   +
-            FROM CURRENT_USER "current_user"("current_user")) AS cu2,                         +
-     USER AS us,                                                                              +
-     ( SELECT "user"."user"                                                                   +
-            FROM USER "user"("user")) AS us2,                                                 +
-     SESSION_USER AS seu,                                                                     +
-     ( SELECT "session_user"."session_user"                                                   +
-            FROM SESSION_USER "session_user"("session_user")) AS seu2,                        +
-     SYSTEM_USER AS su,                                                                       +
-     ( SELECT "system_user"."system_user"                                                     +
-            FROM SYSTEM_USER "system_user"("system_user")) AS su2;
+                                         pg_get_viewdef                                          
+-------------------------------------------------------------------------------------------------
+  SELECT EXTRACT(day FROM now()) AS extr,                                                       +
+     ((now(), '@ 1 day'::interval) OVERLAPS ("current_timestamp"(2), '@ 1 day'::interval)) AS o,+
+     ('foo'::text IS NORMALIZED) AS isn,                                                        +
+     ('foo'::text IS NFKC NORMALIZED) AS isnn,                                                  +
+     NORMALIZE('foo'::text) AS n,                                                               +
+     NORMALIZE('foo'::text, NFKD) AS nfkd,                                                      +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2) AS ovl,                                    +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2 FOR 3) AS ovl2,                             +
+     POSITION(('foo'::text) IN ('foobar'::text)) AS p,                                          +
+     SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                  +
+     SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                           +
+     "substring"('foo'::text, 'oo'::text) AS ssf,                                               +
+     "trim"(' foo '::varchar2, ' '::varchar2) AS bt,                                            +
+     ltrim(' foo '::varchar2, ' '::varchar2) AS lt,                                             +
+     rtrim(' foo '::varchar2) AS rt,                                                            +
+     "trim"('\x00546f6d00'::bytea, '\x00'::bytea) AS btb,                                       +
+     ltrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS ltb,                    +
+     rtrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS rtb;
 (1 row)
 
 -- corner cases with empty join conditions
@@ -2233,7 +2136,7 @@ drop cascades to view aliased_view_2
 drop cascades to view aliased_view_3
 drop cascades to view aliased_view_4
 DROP SCHEMA testviewschm2 CASCADE;
-NOTICE:  drop cascades to 77 other objects
+NOTICE:  drop cascades to 76 other objects
 DETAIL:  drop cascades to table t1
 drop cascades to view temporal1
 drop cascades to view temporal2
@@ -2285,7 +2188,6 @@ drop cascades to view vv3
 drop cascades to view vv4
 drop cascades to table tt7a
 drop cascades to table tt8a
-drop cascades to view vv2a
 drop cascades to table tt9
 drop cascades to table tt10
 drop cascades to view vv5

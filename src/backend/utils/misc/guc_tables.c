@@ -537,6 +537,10 @@ char	   *event_source;
 bool		row_security;
 bool		check_function_bodies = true;
 
+/* IvorySQL:BEGIN - datatype */
+bool			enable_emptystring_to_NULL = false;
+/* IvorySQL:END - datatype */
+
 /*
  * This GUC exists solely for backward compatibility, check its definition for
  * details.
@@ -570,6 +574,14 @@ char	   *external_pid_file;
 char	   *pgstat_temp_directory;
 
 char	   *application_name;
+
+/* IvorySQL:BEGIN - datatype */
+char	   *nls_length_semantics = NULL;
+char	   *nls_date_format = "YYYY-MM-DD";
+char	   *nls_timestamp_format = "YYYY-MM-DD HH24:MI:SS.FF6";
+char	   *nls_timestamp_tz_format = "YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM";
+int			datetime_ignore_nls_mask = 0;
+/* IvorySQL:END - datatype */
 
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
@@ -2077,6 +2089,19 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	/* IvorySQL: END - case sensitive indentify */
+
+	/* IvorySQL: BEGIN - EMPTY_STIRNG_TO_NULL */
+	{
+		{"enable_emptystring_to_NULL", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("whether convert empty string to NULL."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&enable_emptystring_to_NULL,
+		false,
+		NULL, NULL, NULL
+	},
+	/* IvorySQL: END - EMPTY_STIRNG_TO_NULL */
 
 	/* End-of-list marker */
 	{
@@ -3607,6 +3632,19 @@ struct config_int ConfigureNamesInt[] =
 	},
 	/* IvorySQL: END - LISTEN-MULTI-PORT */
 
+	/* IvorySQL: BEGIN - datatype */
+	{
+		{"datetime_ignore_nls_mask", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Sets the datetime type input is not controlled by the NLS parameter."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&datetime_ignore_nls_mask,
+		0, 0, 15,
+		NULL, NULL, NULL
+	},
+	/* IvorySQL: END - datatype */
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -4687,6 +4725,52 @@ struct config_string ConfigureNamesString[] =
 		NULL, NULL, NULL
 	},
 	/* IvorySQL:END - LISTEN-MULTI-PORT */
+
+	/* IvorySQL: BEGIN - datatype */
+	{
+		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Compatible Oracle NLS parameter for charater data type."),
+			gettext_noop("Valid values are CHAR, BYTE."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_length_semantics,
+		"byte",
+		check_nls_length_semantics, NULL, NULL
+	},
+
+	{
+		{"nls_date_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Compatible Oracle NLS parameter for date type."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_date_format,
+		"YYYY-MM-DD",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"nls_timestamp_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Compatible Oracle NLS parameter for timestamp type."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_timestamp_format,
+		"YYYY-MM-DD HH24:MI:SS.FF6",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"nls_timestamp_tz_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Compatible Oracle NLS parameter for timestamp with time zone type."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_timestamp_tz_format,
+		"YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM",
+		NULL, NULL, NULL
+	},
+	/* IvorySQL: BEGIN - datatype */
 
 	/* End-of-list marker */
 	{

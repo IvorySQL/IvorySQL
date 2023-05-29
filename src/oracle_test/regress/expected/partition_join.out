@@ -410,13 +410,13 @@ EXPLAIN (COSTS OFF)
 SELECT t1.a, ss.t2a, ss.t2c FROM prt1 t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t3.a AS t3a, t2.b t2b, t2.c t2c, least(t1.a,t2.a,t3.b) FROM prt1 t2 JOIN prt2 t3 ON (t2.a = t3.b)) ss
 			  ON t1.c = ss.t2c WHERE (t1.b + coalesce(ss.t2b, 0)) = 0 ORDER BY t1.a;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a
    ->  Hash Left Join
-         Hash Cond: ((t1.c)::text = (t2.c)::text)
-         Filter: ((t1.b + COALESCE(t2.b, 0)) = 0)
+         Hash Cond: (t1.c = t2.c)
+         Filter: (((t1.b)::number + COALESCE((t2.b)::number, '0'::number)) = '0'::number)
          ->  Append
                ->  Seq Scan on prt1_p1 t1_1
                ->  Seq Scan on prt1_p2 t1_2
@@ -1668,31 +1668,31 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1, prt2_l t2 WHERE t1.a = t2.b AND t1
 -- left join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 LEFT JOIN prt2_l t2 ON t1.a = t2.b AND t1.c = t2.c WHERE t1.b = 0 ORDER BY t1.a, t2.b;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.b
    ->  Append
          ->  Hash Right Join
-               Hash Cond: ((t2_1.b = t1_1.a) AND ((t2_1.c)::text = (t1_1.c)::text))
+               Hash Cond: ((t2_1.b = t1_1.a) AND (t2_1.c = t1_1.c))
                ->  Seq Scan on prt2_l_p1 t2_1
                ->  Hash
                      ->  Seq Scan on prt1_l_p1 t1_1
                            Filter: (b = 0)
          ->  Hash Right Join
-               Hash Cond: ((t2_2.b = t1_2.a) AND ((t2_2.c)::text = (t1_2.c)::text))
+               Hash Cond: ((t2_2.b = t1_2.a) AND (t2_2.c = t1_2.c))
                ->  Seq Scan on prt2_l_p2_p1 t2_2
                ->  Hash
                      ->  Seq Scan on prt1_l_p2_p1 t1_2
                            Filter: (b = 0)
          ->  Hash Right Join
-               Hash Cond: ((t2_3.b = t1_3.a) AND ((t2_3.c)::text = (t1_3.c)::text))
+               Hash Cond: ((t2_3.b = t1_3.a) AND (t2_3.c = t1_3.c))
                ->  Seq Scan on prt2_l_p2_p2 t2_3
                ->  Hash
                      ->  Seq Scan on prt1_l_p2_p2 t1_3
                            Filter: (b = 0)
          ->  Hash Right Join
-               Hash Cond: ((t2_5.b = t1_4.a) AND ((t2_5.c)::text = (t1_4.c)::text))
+               Hash Cond: ((t2_5.b = t1_4.a) AND (t2_5.c = t1_4.c))
                ->  Append
                      ->  Seq Scan on prt2_l_p3_p1 t2_5
                      ->  Seq Scan on prt2_l_p3_p2 t2_6
@@ -1721,31 +1721,31 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 LEFT JOIN prt2_l t2 ON t1.a = t2.b 
 -- right join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 RIGHT JOIN prt2_l t2 ON t1.a = t2.b AND t1.c = t2.c WHERE t2.a = 0 ORDER BY t1.a, t2.b;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.b
    ->  Append
          ->  Hash Right Join
-               Hash Cond: ((t1_1.a = t2_1.b) AND ((t1_1.c)::text = (t2_1.c)::text))
+               Hash Cond: ((t1_1.a = t2_1.b) AND (t1_1.c = t2_1.c))
                ->  Seq Scan on prt1_l_p1 t1_1
                ->  Hash
                      ->  Seq Scan on prt2_l_p1 t2_1
                            Filter: (a = 0)
          ->  Hash Right Join
-               Hash Cond: ((t1_2.a = t2_2.b) AND ((t1_2.c)::text = (t2_2.c)::text))
+               Hash Cond: ((t1_2.a = t2_2.b) AND (t1_2.c = t2_2.c))
                ->  Seq Scan on prt1_l_p2_p1 t1_2
                ->  Hash
                      ->  Seq Scan on prt2_l_p2_p1 t2_2
                            Filter: (a = 0)
          ->  Hash Right Join
-               Hash Cond: ((t1_3.a = t2_3.b) AND ((t1_3.c)::text = (t2_3.c)::text))
+               Hash Cond: ((t1_3.a = t2_3.b) AND (t1_3.c = t2_3.c))
                ->  Seq Scan on prt1_l_p2_p2 t1_3
                ->  Hash
                      ->  Seq Scan on prt2_l_p2_p2 t2_3
                            Filter: (a = 0)
          ->  Hash Right Join
-               Hash Cond: ((t1_5.a = t2_4.b) AND ((t1_5.c)::text = (t2_4.c)::text))
+               Hash Cond: ((t1_5.a = t2_4.b) AND (t1_5.c = t2_4.c))
                ->  Append
                      ->  Seq Scan on prt1_l_p3_p1 t1_5
                      ->  Seq Scan on prt1_l_p3_p2 t1_6
@@ -1770,34 +1770,34 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 RIGHT JOIN prt2_l t2 ON t1.a = t2.b
 -- full join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 FULL JOIN (SELECT * FROM prt2_l WHERE prt2_l.a = 0) t2 ON (t1.a = t2.b AND t1.c = t2.c) ORDER BY t1.a, t2.b;
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
  Sort
    Sort Key: prt1_l.a, prt2_l.b
    ->  Append
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_1.a = prt2_l_1.b) AND ((prt1_l_1.c)::text = (prt2_l_1.c)::text))
+               Hash Cond: ((prt1_l_1.a = prt2_l_1.b) AND (prt1_l_1.c = prt2_l_1.c))
                ->  Seq Scan on prt1_l_p1 prt1_l_1
                      Filter: (b = 0)
                ->  Hash
                      ->  Seq Scan on prt2_l_p1 prt2_l_1
                            Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_2.a = prt2_l_2.b) AND ((prt1_l_2.c)::text = (prt2_l_2.c)::text))
+               Hash Cond: ((prt1_l_2.a = prt2_l_2.b) AND (prt1_l_2.c = prt2_l_2.c))
                ->  Seq Scan on prt1_l_p2_p1 prt1_l_2
                      Filter: (b = 0)
                ->  Hash
                      ->  Seq Scan on prt2_l_p2_p1 prt2_l_2
                            Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_3.a = prt2_l_3.b) AND ((prt1_l_3.c)::text = (prt2_l_3.c)::text))
+               Hash Cond: ((prt1_l_3.a = prt2_l_3.b) AND (prt1_l_3.c = prt2_l_3.c))
                ->  Seq Scan on prt1_l_p2_p2 prt1_l_3
                      Filter: (b = 0)
                ->  Hash
                      ->  Seq Scan on prt2_l_p2_p2 prt2_l_3
                            Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_4.a = prt2_l_4.b) AND ((prt1_l_4.c)::text = (prt2_l_4.c)::text))
+               Hash Cond: ((prt1_l_4.a = prt2_l_4.b) AND (prt1_l_4.c = prt2_l_4.c))
                ->  Seq Scan on prt1_l_p3_p1 prt1_l_4
                      Filter: (b = 0)
                ->  Hash
@@ -1831,8 +1831,8 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM prt1_l t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM prt1_l t2 JOIN prt2_l t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss
 			  ON t1.a = ss.t2a AND t1.c = ss.t2c WHERE t1.b = 0 ORDER BY t1.a;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a
    ->  Append
@@ -1840,43 +1840,43 @@ SELECT * FROM prt1_l t1 LEFT JOIN LATERAL
                ->  Seq Scan on prt1_l_p1 t1_1
                      Filter: (b = 0)
                ->  Hash Join
-                     Hash Cond: ((t3_1.b = t2_1.a) AND ((t3_1.c)::text = (t2_1.c)::text))
+                     Hash Cond: ((t3_1.b = t2_1.a) AND (t3_1.c = t2_1.c))
                      ->  Seq Scan on prt2_l_p1 t3_1
                      ->  Hash
                            ->  Seq Scan on prt1_l_p1 t2_1
-                                 Filter: ((t1_1.a = a) AND ((t1_1.c)::text = (c)::text))
+                                 Filter: ((t1_1.a = a) AND (t1_1.c = c))
          ->  Nested Loop Left Join
                ->  Seq Scan on prt1_l_p2_p1 t1_2
                      Filter: (b = 0)
                ->  Hash Join
-                     Hash Cond: ((t3_2.b = t2_2.a) AND ((t3_2.c)::text = (t2_2.c)::text))
+                     Hash Cond: ((t3_2.b = t2_2.a) AND (t3_2.c = t2_2.c))
                      ->  Seq Scan on prt2_l_p2_p1 t3_2
                      ->  Hash
                            ->  Seq Scan on prt1_l_p2_p1 t2_2
-                                 Filter: ((t1_2.a = a) AND ((t1_2.c)::text = (c)::text))
+                                 Filter: ((t1_2.a = a) AND (t1_2.c = c))
          ->  Nested Loop Left Join
                ->  Seq Scan on prt1_l_p2_p2 t1_3
                      Filter: (b = 0)
                ->  Hash Join
-                     Hash Cond: ((t3_3.b = t2_3.a) AND ((t3_3.c)::text = (t2_3.c)::text))
+                     Hash Cond: ((t3_3.b = t2_3.a) AND (t3_3.c = t2_3.c))
                      ->  Seq Scan on prt2_l_p2_p2 t3_3
                      ->  Hash
                            ->  Seq Scan on prt1_l_p2_p2 t2_3
-                                 Filter: ((t1_3.a = a) AND ((t1_3.c)::text = (c)::text))
+                                 Filter: ((t1_3.a = a) AND (t1_3.c = c))
          ->  Nested Loop Left Join
                ->  Seq Scan on prt1_l_p3_p1 t1_4
                      Filter: (b = 0)
                ->  Hash Join
-                     Hash Cond: ((t3_5.b = t2_5.a) AND ((t3_5.c)::text = (t2_5.c)::text))
+                     Hash Cond: ((t3_5.b = t2_5.a) AND (t3_5.c = t2_5.c))
                      ->  Append
                            ->  Seq Scan on prt2_l_p3_p1 t3_5
                            ->  Seq Scan on prt2_l_p3_p2 t3_6
                      ->  Hash
                            ->  Append
                                  ->  Seq Scan on prt1_l_p3_p1 t2_5
-                                       Filter: ((t1_4.a = a) AND ((t1_4.c)::text = (c)::text))
+                                       Filter: ((t1_4.a = a) AND (t1_4.c = c))
                                  ->  Seq Scan on prt1_l_p3_p2 t2_6
-                                       Filter: ((t1_4.a = a) AND ((t1_4.c)::text = (c)::text))
+                                       Filter: ((t1_4.a = a) AND (t1_4.c = c))
 (44 rows)
 
 SELECT * FROM prt1_l t1 LEFT JOIN LATERAL
@@ -1901,10 +1901,10 @@ SELECT * FROM prt1_l t1 LEFT JOIN LATERAL
 -- join with one side empty
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE a = 1 AND a = 2) t1 RIGHT JOIN prt2_l t2 ON t1.a = t2.b AND t1.b = t2.a AND t1.c = t2.c;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Hash Left Join
-   Hash Cond: ((t2.b = a) AND (t2.a = b) AND ((t2.c)::text = (c)::text))
+   Hash Cond: ((t2.b = a) AND (t2.a = b) AND (t2.c = c))
    ->  Append
          ->  Seq Scan on prt2_l_p1 t2_1
          ->  Seq Scan on prt2_l_p2_p1 t2_2
@@ -2145,7 +2145,7 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_n t1 FULL JOIN prt1 t2 ON (t1.c = t2.c);
                   QUERY PLAN                  
 ----------------------------------------------
  Hash Full Join
-   Hash Cond: ((t2.c)::text = (t1.c)::text)
+   Hash Cond: (t2.c = t1.c)
    ->  Append
          ->  Seq Scan on prt1_p1 t2_1
          ->  Seq Scan on prt1_p2 t2_2
@@ -3327,26 +3327,26 @@ SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t
 -- full join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.a
    ->  Append
          ->  Hash Full Join
                Hash Cond: ((t1_1.a = t2_1.a) AND (t1_1.c = t2_1.c))
-               Filter: ((COALESCE(t1_1.b, 0) < 10) AND (COALESCE(t2_1.b, 0) < 10))
+               Filter: ((COALESCE((t1_1.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_1.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p1 t1_1
                ->  Hash
                      ->  Seq Scan on plt2_adv_p1 t2_1
          ->  Hash Full Join
                Hash Cond: ((t1_2.a = t2_2.a) AND (t1_2.c = t2_2.c))
-               Filter: ((COALESCE(t1_2.b, 0) < 10) AND (COALESCE(t2_2.b, 0) < 10))
+               Filter: ((COALESCE((t1_2.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_2.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p2 t1_2
                ->  Hash
                      ->  Seq Scan on plt2_adv_p2 t2_2
          ->  Hash Full Join
                Hash Cond: ((t1_3.a = t2_3.a) AND (t1_3.c = t2_3.c))
-               Filter: ((COALESCE(t1_3.b, 0) < 10) AND (COALESCE(t2_3.b, 0) < 10))
+               Filter: ((COALESCE((t1_3.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_3.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p3 t1_3
                ->  Hash
                      ->  Seq Scan on plt2_adv_p3 t2_3
@@ -3570,13 +3570,13 @@ SELECT t1.* FROM plt2_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt1_adv t2 WHERE t
 -- partitions on the nullable side
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.a
    ->  Hash Full Join
          Hash Cond: ((t2.a = t1.a) AND (t2.c = t1.c))
-         Filter: ((COALESCE(t1.b, 0) < 10) AND (COALESCE(t2.b, 0) < 10))
+         Filter: ((COALESCE((t1.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2.b)::number, '0'::number) < '10'::number))
          ->  Append
                ->  Seq Scan on plt2_adv_extra t2_1
                ->  Seq Scan on plt2_adv_p1 t2_2
@@ -3697,13 +3697,13 @@ SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t
 -- full join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.a
    ->  Hash Full Join
          Hash Cond: ((t2.a = t1.a) AND (t2.c = t1.c))
-         Filter: ((COALESCE(t1.b, 0) < 10) AND (COALESCE(t2.b, 0) < 10))
+         Filter: ((COALESCE((t1.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2.b)::number, '0'::number) < '10'::number))
          ->  Append
                ->  Seq Scan on plt2_adv_p1 t2_1
                ->  Seq Scan on plt2_adv_p2_1 t2_2
@@ -3884,26 +3884,26 @@ SELECT t1.* FROM plt1_adv t1 WHERE NOT EXISTS (SELECT 1 FROM plt2_adv t2 WHERE t
 -- full join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.a
    ->  Append
          ->  Hash Full Join
                Hash Cond: ((t1_1.a = t2_1.a) AND (t1_1.c = t2_1.c))
-               Filter: ((COALESCE(t1_1.b, 0) < 10) AND (COALESCE(t2_1.b, 0) < 10))
+               Filter: ((COALESCE((t1_1.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_1.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p1_null t1_1
                ->  Hash
                      ->  Seq Scan on plt2_adv_p1 t2_1
          ->  Hash Full Join
                Hash Cond: ((t1_2.a = t2_2.a) AND (t1_2.c = t2_2.c))
-               Filter: ((COALESCE(t1_2.b, 0) < 10) AND (COALESCE(t2_2.b, 0) < 10))
+               Filter: ((COALESCE((t1_2.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_2.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p2 t1_2
                ->  Hash
                      ->  Seq Scan on plt2_adv_p2 t2_2
          ->  Hash Full Join
                Hash Cond: ((t2_3.a = t1_3.a) AND (t2_3.c = t1_3.c))
-               Filter: ((COALESCE(t1_3.b, 0) < 10) AND (COALESCE(t2_3.b, 0) < 10))
+               Filter: ((COALESCE((t1_3.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_3.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt2_adv_p3_null t2_3
                ->  Hash
                      ->  Seq Scan on plt1_adv_p3 t1_3
@@ -4003,13 +4003,13 @@ SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = 
 -- partitions on the nullable side
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.a
    ->  Hash Full Join
          Hash Cond: ((t1.a = t2.a) AND (t1.c = t2.c))
-         Filter: ((COALESCE(t1.b, 0) < 10) AND (COALESCE(t2.b, 0) < 10))
+         Filter: ((COALESCE((t1.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2.b)::number, '0'::number) < '10'::number))
          ->  Append
                ->  Seq Scan on plt1_adv_p1 t1_1
                ->  Seq Scan on plt1_adv_p2 t1_2
@@ -4112,32 +4112,32 @@ SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.a = 
 -- full join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.a, t2.c FROM plt1_adv t1 FULL JOIN plt2_adv t2 ON (t1.a = t2.a AND t1.c = t2.c) WHERE coalesce(t1.b, 0) < 10 AND coalesce(t2.b, 0) < 10 ORDER BY t1.a, t2.a;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t2.a
    ->  Append
          ->  Hash Full Join
                Hash Cond: ((t1_1.a = t2_1.a) AND (t1_1.c = t2_1.c))
-               Filter: ((COALESCE(t1_1.b, 0) < 10) AND (COALESCE(t2_1.b, 0) < 10))
+               Filter: ((COALESCE((t1_1.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_1.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p1 t1_1
                ->  Hash
                      ->  Seq Scan on plt2_adv_p1 t2_1
          ->  Hash Full Join
                Hash Cond: ((t1_2.a = t2_2.a) AND (t1_2.c = t2_2.c))
-               Filter: ((COALESCE(t1_2.b, 0) < 10) AND (COALESCE(t2_2.b, 0) < 10))
+               Filter: ((COALESCE((t1_2.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_2.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p2 t1_2
                ->  Hash
                      ->  Seq Scan on plt2_adv_p2 t2_2
          ->  Hash Full Join
                Hash Cond: ((t1_3.a = t2_3.a) AND (t1_3.c = t2_3.c))
-               Filter: ((COALESCE(t1_3.b, 0) < 10) AND (COALESCE(t2_3.b, 0) < 10))
+               Filter: ((COALESCE((t1_3.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_3.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_p3 t1_3
                ->  Hash
                      ->  Seq Scan on plt2_adv_p3 t2_3
          ->  Hash Full Join
                Hash Cond: ((t1_4.a = t2_4.a) AND (t1_4.c = t2_4.c))
-               Filter: ((COALESCE(t1_4.b, 0) < 10) AND (COALESCE(t2_4.b, 0) < 10))
+               Filter: ((COALESCE((t1_4.b)::number, '0'::number) < '10'::number) AND (COALESCE((t2_4.b)::number, '0'::number) < '10'::number))
                ->  Seq Scan on plt1_adv_extra t1_4
                ->  Hash
                      ->  Seq Scan on plt2_adv_extra t2_4
@@ -4569,14 +4569,14 @@ ANALYZE plt3_adv;
 -- '0001' of that partition
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM (plt1_adv t1 LEFT JOIN plt2_adv t2 ON (t1.c = t2.c)) FULL JOIN plt3_adv t3 ON (t1.c = t3.c) WHERE coalesce(t1.a, 0) % 5 != 3 AND coalesce(t1.a, 0) % 5 != 4 ORDER BY t1.c, t1.a, t2.a, t3.a;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.c, t1.a, t2.a, t3.a
    ->  Append
          ->  Hash Full Join
                Hash Cond: (t1_1.c = t3_1.c)
-               Filter: (((COALESCE(t1_1.a, 0) % 5) <> 3) AND ((COALESCE(t1_1.a, 0) % 5) <> 4))
+               Filter: (((COALESCE((t1_1.a)::number, '0'::number) % '5'::number) <> '3'::number) AND ((COALESCE((t1_1.a)::number, '0'::number) % '5'::number) <> '4'::number))
                ->  Hash Left Join
                      Hash Cond: (t1_1.c = t2_1.c)
                      ->  Seq Scan on plt1_adv_p1 t1_1
@@ -4586,7 +4586,7 @@ SELECT t1.a, t1.c, t2.a, t2.c, t3.a, t3.c FROM (plt1_adv t1 LEFT JOIN plt2_adv t
                      ->  Seq Scan on plt3_adv_p1 t3_1
          ->  Hash Full Join
                Hash Cond: (t1_2.c = t3_2.c)
-               Filter: (((COALESCE(t1_2.a, 0) % 5) <> 3) AND ((COALESCE(t1_2.a, 0) % 5) <> 4))
+               Filter: (((COALESCE((t1_2.a)::number, '0'::number) % '5'::number) <> '3'::number) AND ((COALESCE((t1_2.a)::number, '0'::number) % '5'::number) <> '4'::number))
                ->  Hash Left Join
                      Hash Cond: (t1_2.c = t2_2.c)
                      ->  Seq Scan on plt1_adv_p2 t1_2

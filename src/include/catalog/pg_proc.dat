@@ -253,9 +253,13 @@
 { oid => '1257', descr => 'length',
   proname => 'textlen', prorettype => 'int4', proargtypes => 'text',
   prosrc => 'textlen' },
+
+# IvorySQL:BEGIN - EMPTY_STIRNG_TO_NULL
+# Change proisstrict to false.
 { oid => '1258',
   proname => 'textcat', prorettype => 'text', proargtypes => 'text text',
-  prosrc => 'textcat' },
+  proisstrict => 'f', prosrc => 'textcat' },
+# IvorySQL:END - EMPTY_STIRNG_TO_NULL
 
 { oid => '84',
   proname => 'boolne', proleakproof => 't', prorettype => 'bool',
@@ -5990,14 +5994,17 @@
   proname => 'timetz', prosupport => 'time_support', prorettype => 'timetz',
   proargtypes => 'timetz int4', prosrc => 'timetz_scale' },
 
+# IvorySQL:BEGIN - EMPTY_STIRNG_TO_NULL
+# Change proisstrict to false.
 { oid => '2003',
   proname => 'textanycat', prolang => 'sql', provolatile => 's',
-  prorettype => 'text', proargtypes => 'text anynonarray',
+  proisstrict => 'f', prorettype => 'text', proargtypes => 'text anynonarray',
   prosrc => 'select $1 operator(pg_catalog.||) $2::pg_catalog.text' },
 { oid => '2004',
   proname => 'anytextcat', prolang => 'sql', provolatile => 's',
-  prorettype => 'text', proargtypes => 'anynonarray text',
+  proisstrict => 'f', prorettype => 'text', proargtypes => 'anynonarray text',
   prosrc => 'select $1::pg_catalog.text operator(pg_catalog.||) $2' },
+# IvorySQL:END - EMPTY_STIRNG_TO_NULL
 
 { oid => '2005',
   proname => 'bytealike', prosupport => 'textlike_support',

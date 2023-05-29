@@ -2320,15 +2320,15 @@ select * from rngfuncbar();
 
 -- this function is now inlinable, too:
 explain (verbose, costs off) select * from rngfuncbar();
-                   QUERY PLAN                   
-------------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Result
-   Output: ('foo'::character varying)
+   Output: ('foo'::varchar2(4000))
    ->  Append
          ->  Result
-               Output: 'foo'::character varying
+               Output: 'foo'::varchar2(4000)
          ->  Result
-               Output: 'bar'::character varying
+               Output: 'bar'::varchar2(4000)
 (7 rows)
 
 drop function rngfuncbar();

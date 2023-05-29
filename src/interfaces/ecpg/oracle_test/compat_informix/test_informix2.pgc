@@ -68,7 +68,7 @@ int main(void)
 
 	EXEC SQL insert into history
 			(customerid, timestamp, action_taken, narrative)
-			values(1, '2003-05-07 13:28:34 CEST', 'test', 'test');
+			values(1, '2003-05-07 13:28:34', 'test', 'test');
 	sql_check("main", "insert", 0);
 
 	EXEC SQL select max(timestamp)

@@ -126,7 +126,7 @@ insert into people values ('(Joe,Blow)', '1984-01-10');
 select * from people;
      fn     |     bd     
 ------------+------------
- (Joe,Blow) | 01-10-1984
+ (Joe,Blow) | 1984-01-10
 (1 row)
 
 -- at the moment this will not work due to ALTER TABLE inadequacy:
@@ -137,7 +137,7 @@ alter table fullname add column suffix text default null;
 select * from people;
      fn      |     bd     
 -------------+------------
- (Joe,Blow,) | 01-10-1984
+ (Joe,Blow,) | 1984-01-10
 (1 row)
 
 -- test insertion/updating of subfields
@@ -145,7 +145,7 @@ update people set fn.suffix = 'Jr';
 select * from people;
       fn       |     bd     
 ---------------+------------
- (Joe,Blow,Jr) | 01-10-1984
+ (Joe,Blow,Jr) | 1984-01-10
 (1 row)
 
 insert into quadtable (f1, q.c1.r, q.c2.i) values(44,55,66);

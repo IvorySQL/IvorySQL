@@ -14,7 +14,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 66: OK: CREATE TABLE
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_execute on line 69: query: insert into history ( customerid , timestamp , action_taken , narrative ) values ( 1 , '2003-05-07 13:28:34 CEST' , 'test' , 'test' ); with 0 parameter(s) on connection ecpg1_regression
+[NO_PID]: ecpg_execute on line 69: query: insert into history ( customerid , timestamp , action_taken , narrative ) values ( 1 , '2003-05-07 13:28:34' , 'test' , 'test' ); with 0 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 69: using PQexec
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -26,7 +26,9 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 74: correctly got 1 tuples with 1 fields
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_get_data on line 74: RESULT: Wed 07 May 13:28:34 2003 offset: -1; array: no
+[NO_PID]: ecpg_is_type_an_array on line 74: type (9010); C (19); array (no)
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_get_data on line 74: RESULT: 2003-05-07 13:28:34.000000 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 79: query: select customerid , timestamp from history where timestamp = $1  limit 1; with 1 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -38,7 +40,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 79: RESULT: 1 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_get_data on line 79: RESULT: Wed 07 May 13:28:34 2003 offset: -1; array: no
+[NO_PID]: ecpg_get_data on line 79: RESULT: 2003-05-07 13:28:34.000000 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_execute on line 93: query: insert into history ( customerid , timestamp , action_taken , narrative ) values ( $1  , $2  , 'test' , 'test' ); with 2 parameter(s) on connection ecpg1_regression
 [NO_PID]: sqlca: code: 0, state: 00000

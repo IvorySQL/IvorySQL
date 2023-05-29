@@ -718,6 +718,10 @@ extern Datum OidReceiveFunctionCall(Oid functionId, fmStringInfo buf,
 									Oid typioparam, int32 typmod);
 extern bytea *SendFunctionCall(FmgrInfo *flinfo, Datum val);
 extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
+/* IvorySQL:BEGIN - datatype */
+extern char *OutputFunctionCallWithTypmod(FmgrInfo *flinfo, Datum val, Datum typmod);
+extern char *OidOutputFunctionCallWithTypmod(Oid functionId, Datum val, Datum typmod);
+/* IvorySQL:END - datatype */
 
 
 /*

@@ -44,11 +44,11 @@ create table basictest
            );
 INSERT INTO basictest values ('88', 'haha', 'short', '123.12');      -- Good
 INSERT INTO basictest values ('88', 'haha', 'short text', '123.12'); -- Bad varchar
-ERROR:  value too long for type character varying(5)
+ERROR:  value too long for type varchar2(5 byte)
 INSERT INTO basictest values ('88', 'haha', 'short', '123.1212');    -- Truncate numeric
 -- Test copy
 COPY basictest (testvarchar) FROM stdin; -- fail
-ERROR:  value too long for type character varying(5)
+ERROR:  value too long for type varchar2(5 byte)
 CONTEXT:  COPY basictest, line 1, column testvarchar: "notsoshorttext"
 COPY basictest (testvarchar) FROM stdin;
 select * from basictest;
@@ -66,20 +66,20 @@ from basictest;
 -----------+--------
  hahashort | 165.12
  hahashort | 165.12
-           |       
+ short     |       
 (3 rows)
 
 -- check that union/case/coalesce type resolution handles domains properly
 select pg_typeof(coalesce(4::domainint4, 7));
  pg_typeof 
 -----------
- integer
+ number
 (1 row)
 
 select pg_typeof(coalesce(4::domainint4, 7::domainint4));
- pg_typeof  
-------------
- domainint4
+ pg_typeof 
+-----------
+ number
 (1 row)
 
 drop table basictest;
@@ -150,7 +150,7 @@ INSERT INTO domarrtest values ('{2,2}', '{{"a","b"},{"c","d"},{"e","f"}}');
 INSERT INTO domarrtest values ('{2,2}', '{{"a"},{"c"}}');
 INSERT INTO domarrtest values (NULL, '{{"a","b","c"},{"d","e","f"}}');
 INSERT INTO domarrtest values (NULL, '{{"toolong","b","c"},{"d","e","f"}}');
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for type varchar2(4 byte)
 INSERT INTO domarrtest (testint4arr[1], testint4arr[3]) values (11,22);
 select * from domarrtest;
   testint4arr  |    testchar4arr     
@@ -187,7 +187,7 @@ select array_dims(testint4arr), array_dims(testchar4arr) from domarrtest;
 
 COPY domarrtest FROM stdin;
 COPY domarrtest FROM stdin;	-- fail
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for type varchar2(4 byte)
 CONTEXT:  COPY domarrtest, line 1, column testchar4arr: "{qwerty,w,e}"
 select * from domarrtest;
   testint4arr  |    testchar4arr     
@@ -361,8 +361,6 @@ comment on constraint c1 on domain dcomptype is 'random commentary';
 select row(0,1)::dcomptype;  -- fail
 ERROR:  value for domain dcomptype violates check constraint "c1"
 alter type comptype alter attribute r type varchar;  -- fail
-ERROR:  operator does not exist: character varying > double precision
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 alter type comptype alter attribute r type bigint;
 alter type comptype drop attribute r;  -- fail
 ERROR:  cannot drop column r of composite type comptype because other objects depend on it
@@ -513,7 +511,7 @@ drop table pitable;
 create domain vc4 as varchar(4);
 create table vc4table (f1 vc4[]);
 insert into vc4table values(array['too long']);  -- fail
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for type varchar2(4 byte)
 insert into vc4table values(array['too long']::vc4[]);  -- cast truncates
 select * from vc4table;
     f1    
@@ -878,9 +876,9 @@ ERROR:  value for domain dtop violates check constraint "dtop_check"
 create temp table dtest(f1 dtop);
 insert into dtest values('x123');
 insert into dtest values('x1234'); -- fail, implicit coercion
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for type varchar2(4 byte)
 insert into dtest values('y1234'); -- fail, implicit coercion
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for type varchar2(4 byte)
 insert into dtest values('y123'); -- fail
 ERROR:  value for domain dtop violates check constraint "dinter_check"
 insert into dtest values('yz23'); -- fail

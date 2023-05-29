@@ -3419,8 +3419,41 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
-			Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
-			result->addCatalog = true;
+			/* IvorySQL:BEGIN - datatype */
+			if (PG_PARSER == compatible_db)
+			{
+				Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+				result->addCatalog = true;
+
+			}
+			else if (ORA_PARSER == compatible_db)
+			{
+				/*
+				 * When the search_path is specified by the user, and the pg_catalog namespace is
+				 * behind some user defined namespace, then the pg_catalog namespace isn't close to
+				 * the sys namespace. For example, "SET search_path = sch,pg_catalog", then the
+				 * schemas is the oid of sys namespace, the oid of the sch namespace, and the oid
+				 * of the pg_catalog namespace. So, before reaching the activeCreationNamespace, check
+				 * then sys namespace and the pg_catalog namespace respectively.
+				 */
+				if (!IsNormalProcessingMode())
+				{
+					Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+					result->addCatalog = true;
+				}
+				else
+				{
+					if (linitial_oid(schemas) == PG_SYS_NAMESPACE)
+					{
+						result->addSys = true;
+					}
+					else if (linitial_oid(schemas) == PG_CATALOG_NAMESPACE)
+					{
+						result->addCatalog = true;
+					}
+				}
+			}
+			/* IvorySQL:END - datatype */
 		}
 		schemas = list_delete_first(schemas);
 	}
@@ -3446,6 +3479,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
 	result->schemas = list_copy(path->schemas);
 	result->addCatalog = path->addCatalog;
 	result->addTemp = path->addTemp;
+	result->addSys = path->addSys;	/* IvorySQL: datatype */
 	result->generation = path->generation;
 
 	return result;
@@ -3490,6 +3524,18 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 		else
 			return false;
 	}
+
+	/* IvorySQL:BEGIN - datatype */
+	/* If path->addSys, next item should be sys. */
+	if (path->addSys)
+	{
+		if (lc && lfirst_oid(lc) == PG_SYS_NAMESPACE)
+			lc = lnext(activeSearchPath, lc);
+		else
+			return false;
+	}
+	/* IvorySQL:END - datatype */
+
 	/* We should now be looking at the activeCreationNamespace. */
 	if (activeCreationNamespace != (lc ? lfirst_oid(lc) : InvalidOid))
 		return false;
@@ -3561,6 +3607,11 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	 */
 	if (newpath->addCatalog)
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+
+	/* IvorySQL:BEGIN - datatype */
+	if (newpath->addSys)
+		oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
+	/* IvorySQL:END - datatype */
 
 	if (newpath->addTemp && OidIsValid(myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
@@ -3891,6 +3942,14 @@ recomputeNamespacePath(void)
 	 */
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+
+	/* IvorySQL:BEGIN - datatype */
+	if (IsNormalProcessingMode() && ORA_PARSER == compatible_db)
+	{
+		if (!list_member_oid(oidlist, PG_SYS_NAMESPACE))
+			oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
+	}
+	/* IvorySQL:END - datatype */
 
 	if (OidIsValid(myTempNamespace) &&
 		!list_member_oid(oidlist, myTempNamespace))

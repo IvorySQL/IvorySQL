@@ -1450,9 +1450,9 @@ SELECT * FROM my_credit_card_usage_normal
 NOTICE:  f_leak => 1111-2222-3333-4444
  cid |     name      |       tel        |  passwd   |        cnum         | climit |    ymd     | usage 
 -----+---------------+------------------+-----------+---------------------+--------+------------+-------
- 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 10-05-2011 |    90
- 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 10-18-2011 |   110
- 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 10-21-2011 |   200
+ 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 2011-10-05 |    90
+ 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 2011-10-18 |   110
+ 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 2011-10-21 |   200
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM my_credit_card_usage_normal
@@ -1462,7 +1462,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM my_credit_card_usage_normal
  Nested Loop
    Join Filter: (l.cid = r.cid)
    ->  Seq Scan on credit_usage r
-         Filter: ((ymd >= '10-01-2011'::date) AND (ymd < '11-01-2011'::date))
+         Filter: ((ymd >= '2011-10-01'::date) AND (ymd < '2011-11-01'::date))
    ->  Materialize
          ->  Subquery Scan on l
                Filter: f_leak(l.cnum)
@@ -1481,9 +1481,9 @@ NOTICE:  f_leak => 1111-2222-3333-4444
 NOTICE:  f_leak => 1111-2222-3333-4444
  cid |     name      |       tel        |  passwd   |        cnum         | climit |    ymd     | usage 
 -----+---------------+------------------+-----------+---------------------+--------+------------+-------
- 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 10-05-2011 |    90
- 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 10-18-2011 |   110
- 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 10-21-2011 |   200
+ 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 2011-10-05 |    90
+ 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 2011-10-18 |   110
+ 101 | regress_alice | +81-12-3456-7890 | passwd123 | 1111-2222-3333-4444 |   4000 | 2011-10-21 |   200
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM my_credit_card_usage_secure
@@ -1495,7 +1495,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM my_credit_card_usage_secure
    ->  Nested Loop
          Join Filter: (l.cid = r.cid)
          ->  Seq Scan on credit_usage r
-               Filter: ((ymd >= '10-01-2011'::date) AND (ymd < '11-01-2011'::date))
+               Filter: ((ymd >= '2011-10-01'::date) AND (ymd < '2011-11-01'::date))
          ->  Materialize
                ->  Hash Join
                      Hash Cond: (r_1.cid = l.cid)

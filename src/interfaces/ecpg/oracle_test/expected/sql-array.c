@@ -193,7 +193,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 #line 57 "array.pgc"
 
 
-	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "create table test ( f float , i int , a int [ 10 ] , text char ( 10 ) , ts timestamp [ 10 ] , n numeric [ 10 ] , d date [ 10 ] , inter interval [ 10 ] )", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "create table test ( f float , i int , a int [ 10 ] , text char ( 10 ) , ts timestamp [ 10 ] , n numeric [ 10 ] , d date [ 10 ] , inter pg_catalog . interval [ 10 ] )", ECPGt_EOIT, ECPGt_EORT);
 #line 59 "array.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint();}

@@ -32,6 +32,7 @@
 #include "utils/datetime.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
 #include "utils/tzparser.h"
 
 static int	DecodeNumber(int flen, char *str, bool haveTextMonth,
@@ -289,6 +290,52 @@ date2j(int year, int month, int day)
 {
 	int			julian;
 	int			century;
+
+	/*
+	 * The default date values are determined as follows:
+	 *	the year is the current year, as returned by SYSDATE.
+	 *	the month is the current month, as returned by SYSDATE.
+	 *	the day is 01 (the first day of the month).
+	 *	the hour, minute, and second are all 0.
+	 *
+	 *	IvorySQL:BEGIN - datatype
+	 */
+	if ((year == 0 || month == 0) && ORA_PARSER == compatible_db)
+	{
+		TimestampTz current_date;
+		int			tz;
+		struct pg_tm tt,
+				   *tm = &tt;
+		fsec_t		fsec;
+		const char *tzn;
+
+		current_date = GetCurrentTimestamp();
+		if (timestamp2tm(current_date, &tz, tm, &fsec, &tzn, NULL) == 0)
+		{
+			if (year == 0)
+			{
+				year = tm->tm_year;
+			}
+
+			if (month == 0)
+			{
+				month = tm->tm_mon;
+			}
+
+			if (day > day_tab[isleap(year)][month - 1])
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+					  errmsg("The value of day must be between 1 and the last day of the month.")));
+
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+		}
+	}
+	/* IvorySQL:END - datatype */
 
 	if (month > 2)
 	{
