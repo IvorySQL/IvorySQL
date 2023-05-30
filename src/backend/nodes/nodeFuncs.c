@@ -1820,7 +1820,8 @@ check_functions_in_node(Node *node, check_function_callback checker,
 			{
 				FuncExpr   *expr = (FuncExpr *) node;
 
-				if (checker(expr->funcid, context))
+				if (FUNC_EXPR_FROM_PG_PROC(expr->function_from) &&
+					checker(expr->funcid, context))
 					return true;
 			}
 			break;

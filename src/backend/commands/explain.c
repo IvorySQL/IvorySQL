@@ -39,7 +39,7 @@
 #include "utils/tuplesort.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
-
+#include "funcapi.h"
 
 /* Hook for plugins to get control in ExplainOneQuery() */
 ExplainOneQuery_hook_type ExplainOneQuery_hook = NULL;
@@ -3852,9 +3852,15 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 						FuncExpr   *funcexpr = (FuncExpr *) rtfunc->funcexpr;
 						Oid			funcid = funcexpr->funcid;
 
-						objectname = get_func_name(funcid);
-						if (es->verbose)
-							namespace = get_namespace_name_or_temp(get_func_namespace(funcid));
+						if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+						{
+							objectname = get_func_name(funcid);
+							if (es->verbose)
+								namespace =
+									get_namespace_name(get_func_namespace(funcid));
+						}
+						else
+							objectname = get_internal_function_name(funcexpr);
 					}
 				}
 				objecttag = "Function Name";

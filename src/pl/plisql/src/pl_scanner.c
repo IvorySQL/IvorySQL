@@ -21,6 +21,7 @@
 #include "oracle_parser/ora_scanner.h"
 
 #include "plisql.h"
+#include "pl_subproc_function.h"
 #include "pl_gram.h"			/* must be after parser/scanner.h */
 
 

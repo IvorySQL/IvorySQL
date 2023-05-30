@@ -210,4 +210,9 @@ extern void AtEOXact_SPI(bool isCommit);
 extern void AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid);
 extern bool SPI_inside_nonatomic_context(void);
 
+extern int SPI_get_connected(void);
+extern void SPI_remember_func(void *func);
+extern void *SPI_get_func(int level);
+extern MemoryContext SPI_get_proccxt(int level);
+
 #endif							/* SPI_H */

@@ -296,6 +296,14 @@ expression_returns_set_rows(PlannerInfo *root, Node *clause)
 	{
 		FuncExpr   *expr = (FuncExpr *) clause;
 
+		if (!FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+		{
+			if (expr->funcretset)
+				return 100.0;
+			else
+				return 1.0;
+		}
+
 		if (expr->funcretset)
 			return clamp_row_est(get_function_rows(root, expr->funcid, clause));
 	}
@@ -1404,7 +1412,8 @@ find_nonnullable_rels_walker(Node *node, bool top_level)
 	{
 		FuncExpr   *expr = (FuncExpr *) node;
 
-		if (func_strict(expr->funcid))
+		if (FUNC_EXPR_FROM_PG_PROC(expr->function_from) &&
+			func_strict(expr->funcid))
 			result = find_nonnullable_rels_walker((Node *) expr->args, false);
 	}
 	else if (IsA(node, OpExpr))
@@ -1657,7 +1666,8 @@ find_nonnullable_vars_walker(Node *node, bool top_level)
 	{
 		FuncExpr   *expr = (FuncExpr *) node;
 
-		if (func_strict(expr->funcid))
+		if (FUNC_EXPR_FROM_PG_PROC(expr->function_from) &&
+			func_strict(expr->funcid))
 			result = find_nonnullable_vars_walker((Node *) expr->args, false);
 	}
 	else if (IsA(node, OpExpr))
@@ -2482,7 +2492,7 @@ eval_const_expressions_mutator(Node *node,
 			{
 				FuncExpr   *expr = (FuncExpr *) node;
 				List	   *args = expr->args;
-				Expr	   *simple;
+				Expr	   *simple = NULL;
 				FuncExpr   *newexpr;
 
 				/*
@@ -2492,7 +2502,8 @@ eval_const_expressions_mutator(Node *node,
 				 * length coercion; we want to preserve the typmod in the
 				 * eventual Const if so.
 				 */
-				simple = simplify_function(expr->funcid,
+					if (FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+						simple = simplify_function(expr->funcid,
 										   expr->funcresulttype,
 										   exprTypmod(node),
 										   expr->funccollid,
@@ -2520,6 +2531,8 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->funccollid = expr->funccollid;
 				newexpr->inputcollid = expr->inputcollid;
 				newexpr->args = args;
+				newexpr->function_from = expr->function_from;
+				newexpr->parent_func = expr->parent_func;
 				newexpr->location = expr->location;
 				return (Node *) newexpr;
 			}
@@ -4151,6 +4164,8 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 		fexpr.funccollid = result_collid;
 		fexpr.inputcollid = input_collid;
 		fexpr.args = args;
+		fexpr.function_from = FUNC_FROM_PG_PROC;
+		fexpr.parent_func = NULL;
 		fexpr.location = -1;
 
 		req.type = T_SupportRequestSimplify;
@@ -4535,6 +4550,8 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 	newexpr->funccollid = result_collid;	/* doesn't matter */
 	newexpr->inputcollid = input_collid;
 	newexpr->args = args;
+	newexpr->function_from = FUNC_FROM_PG_PROC;
+	newexpr->parent_func = NULL;
 	newexpr->location = -1;
 
 	return evaluate_expr((Expr *) newexpr, result_type, result_typmod,
@@ -4647,6 +4664,8 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	fexpr->funccollid = result_collid;	/* doesn't matter */
 	fexpr->inputcollid = input_collid;
 	fexpr->args = args;
+	fexpr->function_from = FUNC_FROM_PG_PROC;
+	fexpr->parent_func = NULL;
 	fexpr->location = -1;
 
 	/* Fetch the function body */
@@ -5131,6 +5150,9 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	fexpr = (FuncExpr *) rtfunc->funcexpr;
 
 	func_oid = fexpr->funcid;
+
+	if (!FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+		return NULL;
 
 	/*
 	 * The function must be declared to return a set, else inlining would

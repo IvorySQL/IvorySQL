@@ -45,6 +45,8 @@ typedef enum PLiSQL_nsitem_type
 	PLISQL_NSTYPE_LABEL,		/* block label */
 	PLISQL_NSTYPE_VAR,			/* scalar variable */
 	PLISQL_NSTYPE_REC,			/* composite variable */
+	PLISQL_NSTYPE_SUBPROC_FUNC,	/* subproc function */
+	PLISQL_NSTYPE_SUBPROC_PROC	/* subproc proc */
 } PLiSQL_nsitem_type;
 
 /*
@@ -446,6 +448,7 @@ typedef struct PLiSQL_nsitem
 	 */
 	int			itemno;
 	struct PLiSQL_nsitem *prev;
+	List		*subprocfunc;
 	char		name[FLEXIBLE_ARRAY_MEMBER];	/* nul-terminated string */
 } PLiSQL_nsitem;
 
@@ -1005,6 +1008,9 @@ typedef struct PLiSQL_function
 	PLiSQL_datum **datums;
 	Size		copiable_size;	/* space for locally instantiated datums */
 
+	int			nsubprocfuncs;
+	struct PLiSQL_subproc_function **subprocfuncs;
+
 	/* function body parsetree */
 	PLiSQL_stmt_block *action;
 
@@ -1016,6 +1022,12 @@ typedef struct PLiSQL_function
 	struct PLiSQL_execstate *cur_estate;
 	unsigned long use_count;
 } PLiSQL_function;
+
+typedef struct plisql_hashent
+{
+	PLiSQL_func_hashkey key;
+	PLiSQL_function *function;
+} plisql_HashEnt;
 
 /*
  * Runtime execution data
@@ -1222,6 +1234,8 @@ extern PLiSQL_stmt_block *plisql_parse_result;
 extern int	plisql_nDatums;
 extern PLiSQL_datum **plisql_Datums;
 
+extern int datums_last;
+
 extern char *plisql_error_funcname;
 
 extern PLiSQL_function *plisql_curr_compile;
@@ -1270,6 +1284,17 @@ extern void plisql_adddatum(PLiSQL_datum *newdatum);
 extern int	plisql_add_initdatums(int **varnos);
 extern void plisql_HashTableInit(void);
 
+extern void plisql_resolve_polymorphic_argtypes(int numargs,
+												 Oid *argtypes, char *argmodes,
+												 Node *call_expr, bool forValidator,
+												 const char *proname);
+extern void add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno, const char *name);
+extern PLiSQL_row *build_row_from_vars(PLiSQL_variable **vars, int numvars);
+extern void add_dummy_return(PLiSQL_function *function);
+extern void plisql_start_datums(void);
+extern void plisql_compile_error_callback(void *arg);
+extern void plisql_finish_datums(PLiSQL_function *function);
+
 /*
  * Functions in pl_exec.c
  */
@@ -1293,10 +1318,20 @@ extern void plisql_exec_get_datum_type_info(PLiSQL_execstate *estate,
 											 Oid *typeId, int32 *typMod,
 											 Oid *collation);
 
+extern void plisql_assign_in_global_var(PLiSQL_execstate *estate,
+													 PLiSQL_execstate *parestate,
+													 int dno);
+extern void plisql_assign_out_global_var(PLiSQL_execstate *estate,
+										 PLiSQL_execstate *parestate,
+										 int dno,
+										 int spilevel);
+
+
 /*
  * Functions for namespace handling in pl_funcs.c
  */
 extern void plisql_ns_init(void);
+extern void plisql_set_ns(PLiSQL_nsitem *cur);
 extern void plisql_ns_push(const char *label,
 							PLiSQL_label_type label_type);
 extern void plisql_ns_pop(void);
@@ -1314,7 +1349,8 @@ extern PLiSQL_nsitem *plisql_ns_find_nearest_loop(PLiSQL_nsitem *ns_cur);
  */
 extern PGDLLEXPORT const char *plisql_stmt_typename(PLiSQL_stmt *stmt);
 extern const char *plisql_getdiag_kindname(PLiSQL_getdiag_kind kind);
-extern void plisql_free_function_memory(PLiSQL_function *func);
+extern void plisql_free_function_memory(PLiSQL_function *func,
+							int start_datum, int start_inlinefunc);
 extern void plisql_dumptree(PLiSQL_function *func);
 
 /*

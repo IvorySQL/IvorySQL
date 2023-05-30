@@ -169,6 +169,8 @@ SPI_connect_ext(int options)
 	/* ... and switch to procedure's context */
 	_SPI_current->savedcxt = MemoryContextSwitchTo(_SPI_current->procCxt);
 
+	_SPI_current->current_func = NULL;
+
 	/*
 	 * Reset API global variables so that current caller cannot accidentally
 	 * depend on state of an outer caller.
@@ -3396,4 +3398,49 @@ SPI_register_trigger_data(TriggerData *tdata)
 	}
 
 	return SPI_OK_TD_REGISTER;
+}
+
+/*
+ * get _SPI_connected
+ */
+int
+SPI_get_connected(void)
+{
+	return _SPI_connected;
+}
+
+/*
+ * record this level SPI execute func
+ */
+void
+SPI_remember_func(void *func)
+{
+	Assert(_SPI_current != NULL);
+	_SPI_current->current_func = func;
+}
+
+/*
+ * get current_func according to level
+ */
+void*
+SPI_get_func(int level)
+{
+	if (level > _SPI_connected ||
+		level < 0)
+		elog(ERROR, "invalid SPI level");
+
+	return _SPI_stack[level].current_func;
+}
+
+/*
+ * get procCxt according to level
+ */
+MemoryContext
+SPI_get_proccxt(int level)
+{
+	if (level > _SPI_connected ||
+		level < 0)
+		elog(ERROR, "invalid SPI level");
+
+	return _SPI_stack[level].procCxt;
 }

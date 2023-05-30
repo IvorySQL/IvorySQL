@@ -32,6 +32,7 @@ OBJS = \
 	pl_gram.o \
 	pl_handler.o \
 	pl_scanner.o \
+	pl_subproc_function.o \
 	$(top_builddir)/src/backend/oracle_parser/ora_scan.o
 
 DATA = plisql.control plisql--1.0.sql
@@ -40,7 +41,7 @@ ORACLE_REGRESS_OPTS = --dbname=$(PL_TESTDB)
 
 REGRESS = plisql_array plisql_call plisql_control plisql_copy plisql_domain \
 	plisql_record plisql_cache plisql_simple plisql_transaction \
-	plisql_trap plisql_trigger plisql_varprops
+	plisql_trap plisql_trigger plisql_varprops plisql_nested_subproc
 
 # where to find ora_gen_keywordlist.pl and subsidiary files
 TOOLSDIR = $(top_srcdir)/src/tools
@@ -67,18 +68,20 @@ install-data: installdirs
 # The plisql.h header file is needed by instrumentation plugins
 install-headers: installdirs
 	$(INSTALL_DATA) '$(srcdir)/plisql.h' '$(DESTDIR)$(includedir_server)'
+	$(INSTALL_DATA) '$(srcdir)/pl_subproc_function.h' '$(DESTDIR)$(includedir_server)'
 
 uninstall-data:
 	rm -f $(addprefix '$(DESTDIR)$(datadir)/extension'/, $(notdir $(DATA)))
 
 uninstall-headers:
 	rm -f '$(DESTDIR)$(includedir_server)/plisql.h'
+	rm -f '$(DESTDIR)$(includedir_server)/pl_subproc_function.h'
 
 .PHONY: install-data install-headers uninstall-data uninstall-headers
 
 
 # Force these dependencies to be known even without dependency info built:
-pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o: plisql.h pl_gram.h plerrcodes.h
+pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o: plisql.h pl_gram.h plerrcodes.h pl_subproc_function.h
 pl_scanner.o: pl_reserved_kwlist_d.h pl_unreserved_kwlist_d.h
 
 # See notes in src/backend/parser/Makefile about the following two rules

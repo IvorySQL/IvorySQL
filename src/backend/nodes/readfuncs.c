@@ -131,6 +131,11 @@
 	local_node->fldname = -1	/* set field to "unknown" */
 #endif
 
+#define READ_VOID_FIELD(fldname) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	token = pg_strtok(&length);		/* get field value */ \
+	local_node->fldname = NULL		/* assign to null */
+
 /* Read a Node field */
 #define READ_NODE_FIELD(fldname) \
 	token = pg_strtok(&length);		/* skip :fldname */ \

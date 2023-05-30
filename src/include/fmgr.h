@@ -123,6 +123,9 @@ typedef struct FunctionCallInfoBaseData
  */
 extern void fmgr_info(Oid functionId, FmgrInfo *finfo);
 
+extern void fmgr_subproc_info_cxt(Oid functionId, FmgrInfo *finfo,
+						  MemoryContext mcxt);
+
 /*
  * Same, when the FmgrInfo struct is in a memory context longer-lived than
  * CurrentMemoryContext.  The specified context will be set as fn_mcxt

@@ -94,6 +94,22 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
 								  Oid targetTypeId, int32 targetTypeMod,
 								  int location);
 
+typedef int (*ParseSubprocFuncHook) (ParseState *pstate, List *funcname,
+				List **fargs, /* return value */
+				List *fargnames,
+				int nargs,
+				Oid *argtypes,
+				bool expand_variadic,
+				bool expand_defaults,
+				bool proc_call,
+				Oid *funcid,	/* return value */
+				Oid *rettype, /* return value */
+				bool *retset, /* return value */
+				int *nvargs,	/* return value */
+				Oid *vatype,	/* return value */
+				Oid **true_typeids, /* return value */
+				List **argdefaults, /* return value */
+				void **pfunc);		/* return value */
 
 /*
  * State information used during parse analysis
@@ -235,6 +251,7 @@ struct ParseState
 	PostParseColumnRefHook p_post_columnref_hook;
 	ParseParamRefHook p_paramref_hook;
 	CoerceParamHook p_coerce_param_hook;
+	ParseSubprocFuncHook p_subprocfunc_hook;
 	void	   *p_ref_hook_state;	/* common passthrough link for above */
 };
 

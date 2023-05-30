@@ -19,6 +19,7 @@
 
 #include "postgres.h"
 
+#include "funcapi.h"
 #include "access/printtup.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodeFuncs.h"
@@ -421,7 +422,10 @@ print_expr(const Node *expr, const List *rtable)
 		char	   *funcname;
 		ListCell   *l;
 
-		funcname = get_func_name(e->funcid);
+		if (FUNC_EXPR_FROM_PG_PROC(e->function_from))
+			funcname = get_func_name(e->funcid);
+		else
+			funcname = get_internal_function_name((FuncExpr *) e);
 		printf("%s(", ((funcname != NULL) ? funcname : "(invalid function)"));
 		foreach(l, e->args)
 		{

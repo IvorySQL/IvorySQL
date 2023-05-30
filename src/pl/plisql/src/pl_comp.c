@@ -27,6 +27,7 @@
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
 #include "plisql.h"
+#include "pl_subproc_function.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -46,7 +47,7 @@ PLiSQL_stmt_block *plisql_parse_result;
 static int	datums_alloc;
 int			plisql_nDatums;
 PLiSQL_datum **plisql_Datums;
-static int	datums_last;
+int	datums_last;
 
 char	   *plisql_error_funcname;
 bool		plisql_DumpExecTree = false;
@@ -62,12 +63,6 @@ MemoryContext plisql_compile_tmp_cxt;
  * ----------
  */
 static HTAB *plisql_HashTable = NULL;
-
-typedef struct plisql_hashent
-{
-	PLiSQL_func_hashkey key;
-	PLiSQL_function *function;
-} plisql_HashEnt;
 
 #define FUNCS_PER_USER		128 /* initial table size */
 
@@ -96,28 +91,18 @@ static PLiSQL_function *do_compile(FunctionCallInfo fcinfo,
 									PLiSQL_function *function,
 									PLiSQL_func_hashkey *hashkey,
 									bool forValidator);
-static void plisql_compile_error_callback(void *arg);
-static void add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno, const char *name);
-static void add_dummy_return(PLiSQL_function *function);
 static Node *plisql_pre_column_ref(ParseState *pstate, ColumnRef *cref);
 static Node *plisql_post_column_ref(ParseState *pstate, ColumnRef *cref, Node *var);
 static Node *plisql_param_ref(ParseState *pstate, ParamRef *pref);
 static Node *resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 								ColumnRef *cref, bool error_if_no_field);
 static Node *make_datum_param(PLiSQL_expr *expr, int dno, int location);
-static PLiSQL_row *build_row_from_vars(PLiSQL_variable **vars, int numvars);
 static PLiSQL_type *build_datatype(HeapTuple typeTup, int32 typmod,
 									Oid collation, TypeName *origtypname);
-static void plisql_start_datums(void);
-static void plisql_finish_datums(PLiSQL_function *function);
 static void compute_function_hashkey(FunctionCallInfo fcinfo,
 									 Form_pg_proc procStruct,
 									 PLiSQL_func_hashkey *hashkey,
 									 bool forValidator);
-static void plisql_resolve_polymorphic_argtypes(int numargs,
-												 Oid *argtypes, char *argmodes,
-												 Node *call_expr, bool forValidator,
-												 const char *proname);
 static PLiSQL_function *plisql_HashTableLookup(PLiSQL_func_hashkey *func_key);
 static void plisql_HashTableInsert(PLiSQL_function *function,
 									PLiSQL_func_hashkey *func_key);
@@ -378,6 +363,8 @@ do_compile(FunctionCallInfo fcinfo,
 	plisql_ns_push(NameStr(procStruct->proname), PLISQL_LABEL_BLOCK);
 	plisql_DumpExecTree = false;
 	plisql_start_datums();
+	cur_compile_func_level = 0;
+	plisql_start_subproc_func();
 
 	switch (function->fn_is_trigger)
 	{
@@ -809,6 +796,8 @@ do_compile(FunctionCallInfo fcinfo,
 
 	plisql_finish_datums(function);
 
+	plisql_finish_subproc_func(function);
+
 	/* Debug dump for completed functions */
 	if (plisql_DumpExecTree)
 		plisql_dumptree(function);
@@ -907,6 +896,8 @@ plisql_compile_inline(char *proc_source)
 	plisql_ns_push(func_name, PLISQL_LABEL_BLOCK);
 	plisql_DumpExecTree = false;
 	plisql_start_datums();
+	cur_compile_func_level = 0;
+	plisql_start_subproc_func();
 
 	/* Set up as though in a function returning VOID */
 	function->fn_rettype = VOIDOID;
@@ -959,6 +950,8 @@ plisql_compile_inline(char *proc_source)
 
 	plisql_finish_datums(function);
 
+	plisql_finish_subproc_func(function);
+
 	/*
 	 * Pop the error context stack
 	 */
@@ -978,7 +971,7 @@ plisql_compile_inline(char *proc_source)
  * If we are validating or executing an anonymous code block, the function
  * source text is passed as an argument.
  */
-static void
+void
 plisql_compile_error_callback(void *arg)
 {
 	if (arg)
@@ -1005,7 +998,7 @@ plisql_compile_error_callback(void *arg)
 /*
  * Add a name for a function parameter to the function's namespace
  */
-static void
+void
 add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno, const char *name)
 {
 	/*
@@ -1030,7 +1023,7 @@ add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno, const char *name)
 /*
  * Add a dummy RETURN statement to the given function's body
  */
-static void
+void
 add_dummy_return(PLiSQL_function *function)
 {
 	/*
@@ -1081,6 +1074,7 @@ plisql_parser_setup(struct ParseState *pstate, PLiSQL_expr *expr)
 	pstate->p_pre_columnref_hook = plisql_pre_column_ref;
 	pstate->p_post_columnref_hook = plisql_post_column_ref;
 	pstate->p_paramref_hook = plisql_param_ref;
+	pstate->p_subprocfunc_hook = plisql_subprocfunc_ref;
 	/* no need to use p_coerce_param_hook */
 	pstate->p_ref_hook_state = (void *) expr;
 }
@@ -1319,6 +1313,9 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 							 parser_errposition(pstate, cref->location)));
 			}
 			break;
+		case PLISQL_NSTYPE_SUBPROC_FUNC:
+		case PLISQL_NSTYPE_SUBPROC_PROC:
+			break;
 		default:
 			elog(ERROR, "unrecognized plisql itemtype: %d", nse->itemtype);
 	}
@@ -1415,6 +1412,10 @@ plisql_parse_word(char *word1, const char *yytxt, bool lookup,
 					wdatum->quoted = (yytxt[0] == '"');
 					wdatum->idents = NIL;
 					return true;
+
+					case PLISQL_NSTYPE_SUBPROC_FUNC:
+					case PLISQL_NSTYPE_SUBPROC_PROC:
+						break;
 
 				default:
 					/* plisql_ns_lookup should never return anything else */
@@ -1965,7 +1966,7 @@ plisql_build_record(const char *refname, int lineno,
  * Build a row-variable data structure given the component variables.
  * Include a rowtupdesc, since we will need to materialize the row result.
  */
-static PLiSQL_row *
+PLiSQL_row *
 build_row_from_vars(PLiSQL_variable **vars, int numvars)
 {
 	PLiSQL_row *row;
@@ -2304,7 +2305,7 @@ plisql_parse_err_condition(char *condname)
  * plisql_start_datums			Initialize datum list at compile startup.
  * ----------
  */
-static void
+void
 plisql_start_datums(void)
 {
 	datums_alloc = 128;
@@ -2338,7 +2339,7 @@ plisql_adddatum(PLiSQL_datum *newdatum)
  * plisql_finish_datums	Copy completed datum info into function struct.
  * ----------
  */
-static void
+void
 plisql_finish_datums(PLiSQL_function *function)
 {
 	Size		copiable_size = 0;
@@ -2506,7 +2507,7 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
  * 3. In validation mode, we have no inputs to look at, so assume that
  *    polymorphic arguments are integer, integer-array or integer-range.
  */
-static void
+void
 plisql_resolve_polymorphic_argtypes(int numargs,
 									 Oid *argtypes, char *argmodes,
 									 Node *call_expr, bool forValidator,
@@ -2599,7 +2600,7 @@ delete_function(PLiSQL_function *func)
 
 	/* release the function's storage if safe and not done already */
 	if (func->use_count == 0)
-		plisql_free_function_memory(func);
+		plisql_free_function_memory(func, 0, 0);
 }
 
 /* exported so we can call it from _PG_init() */
