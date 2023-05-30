@@ -664,6 +664,12 @@ typedef enum CoercionForm
 	COERCE_SQL_SYNTAX			/* display with SQL-mandated special syntax */
 } CoercionForm;
 
+#define FUNC_FROM_SUBPROCFUNC	'i'
+#define FUNC_FROM_PG_PROC		's'
+
+#define FUNC_EXPR_FROM_PG_PROC(function_from) \
+	(function_from != FUNC_FROM_SUBPROCFUNC)
+
 /*
  * FuncExpr - expression node for a function call
  *
@@ -693,6 +699,8 @@ typedef struct FuncExpr
 	Oid			inputcollid pg_node_attr(query_jumble_ignore);
 	/* arguments to the function */
 	List	   *args;
+	char		function_from;	/* proc func, subproc func, package func */
+	void 		*parent_func;	/* subproc funcs'parent func address */
 	/* token location, or -1 if unknown */
 	int			location;
 } FuncExpr;

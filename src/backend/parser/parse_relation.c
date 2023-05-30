@@ -1262,7 +1262,11 @@ chooseScalarFunctionAlias(Node *funcexpr, char *funcname,
 	 */
 	if (funcexpr && IsA(funcexpr, FuncExpr))
 	{
-		pname = get_func_result_name(((FuncExpr *) funcexpr)->funcid);
+		if (FUNC_EXPR_FROM_PG_PROC(((FuncExpr *) funcexpr)->function_from))
+			pname = get_func_result_name(((FuncExpr *) funcexpr)->funcid);
+		else
+			pname = get_internal_function_result_name((FuncExpr *) funcexpr);
+
 		if (pname)
 			return pname;
 	}

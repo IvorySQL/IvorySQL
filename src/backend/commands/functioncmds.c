@@ -2206,6 +2206,14 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 	Assert(fexpr);
 	Assert(IsA(fexpr, FuncExpr));
 
+	if (!FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+	{
+		callcontext = makeNode(CallContext);
+		callcontext->atomic = atomic;
+
+		goto SKIP_PG_PROC_CHECK;
+	}
+
 	aclresult = object_aclcheck(ProcedureRelationId, fexpr->funcid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_PROCEDURE, get_func_name(fexpr->funcid));
@@ -2238,6 +2246,8 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 
 	ReleaseSysCache(tp);
 
+SKIP_PG_PROC_CHECK:
+
 	/* safety check; see ExecInitFunc() */
 	nargs = list_length(fexpr->args);
 	if (nargs > FUNC_MAX_ARGS)
@@ -2248,9 +2258,17 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 							   FUNC_MAX_ARGS,
 							   FUNC_MAX_ARGS)));
 
-	/* Initialize function call structure */
-	InvokeFunctionExecuteHook(fexpr->funcid);
-	fmgr_info(fexpr->funcid, &flinfo);
+	if (!FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+	{
+		fmgr_subproc_info_cxt(fexpr->funcid, &flinfo, CurrentMemoryContext);
+	}
+	else
+	{
+			/* Initialize function call structure */
+			InvokeFunctionExecuteHook(fexpr->funcid);
+			fmgr_info(fexpr->funcid, &flinfo);
+	}
+
 	fmgr_info_set_expr((Node *) fexpr, &flinfo);
 	InitFunctionCallInfoData(*fcinfo, &flinfo, nargs, fexpr->inputcollid,
 							 (Node *) callcontext, NULL);
@@ -2371,13 +2389,18 @@ CallStmtResultDesc(CallStmt *stmt)
 
 	fexpr = stmt->funcexpr;
 
-	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(fexpr->funcid));
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for procedure %u", fexpr->funcid);
+	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+	{
+		tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(fexpr->funcid));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for procedure %u", fexpr->funcid);
 
-	tupdesc = build_function_result_tupdesc_t(tuple);
+		tupdesc = build_function_result_tupdesc_t(tuple);
 
-	ReleaseSysCache(tuple);
+		ReleaseSysCache(tuple);
+	}
+	else
+		tupdesc = build_internal_function_result_tupdesc_t(fexpr);
 
 	return tupdesc;
 }

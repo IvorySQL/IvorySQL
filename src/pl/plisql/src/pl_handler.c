@@ -23,6 +23,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "plisql.h"
+#include "pl_subproc_function.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -205,10 +206,21 @@ _PG_init(void)
 	RegisterXactCallback(plisql_xact_cb, NULL);
 	RegisterSubXactCallback(plisql_subxact_cb, NULL);
 
+	plisql_register_internal_func();
+
 	/* Set up a rendezvous point with optional instrumentation plugin */
 	plisql_plugin_ptr = (PLiSQL_plugin **) find_rendezvous_variable("PLiSQL_plugin");
 
 	inited = true;
+}
+
+/*
+ * unregister internel func
+ */
+void
+_PG_fini(void)
+{
+	plisql_unregister_internal_func();
 }
 
 /* ----------
@@ -230,6 +242,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	volatile Datum retval = (Datum) 0;
 	int			rc;
 
+	char	function_from = plisql_function_from(fcinfo);
+
 	nonatomic = fcinfo->context &&
 		IsA(fcinfo->context, CallContext) &&
 		!castNode(CallContext, fcinfo->context)->atomic;
@@ -241,7 +255,14 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
 	/* Find or compile the function */
-	func = plisql_compile(fcinfo, false);
+	if (function_from == FUNC_FROM_SUBPROCFUNC)
+		func = plisql_get_subproc_func(fcinfo, false);
+	else
+		func = plisql_compile(fcinfo, false);
+	/* End - nSRS-PLSQL-SUBPROC */
+
+	/* rember current func in SPI */
+	SPI_remember_func(func);
 
 	/* Must save and restore prior value of cur_estate */
 	save_cur_estate = func->cur_estate;
@@ -334,6 +355,9 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	/* Compile the anonymous code block */
 	func = plisql_compile_inline(codeblock->source_text);
 
+	/* rember current func in SPI */
+	SPI_remember_func(func);
+
 	/* Mark the function as busy, just pro forma */
 	func->use_count++;
 
@@ -403,7 +427,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		Assert(func->use_count == 0);
 
 		/* ... so we can free subsidiary storage */
-		plisql_free_function_memory(func);
+		plisql_free_function_memory(func, 0, 0);
 
 		/* And propagate the error */
 		PG_RE_THROW();
@@ -420,7 +444,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	Assert(func->use_count == 0);
 
 	/* ... so we can free subsidiary storage */
-	plisql_free_function_memory(func);
+	plisql_free_function_memory(func, 0, 0);
 
 	/*
 	 * Disconnect from SPI manager

@@ -701,11 +701,24 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 	AclResult	aclresult;
 	size_t		numargs = list_length(sexpr->args);
 
-	/* Check permission to call function */
-	aclresult = object_aclcheck(ProcedureRelationId, foid, GetUserId(), ACL_EXECUTE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(foid));
-	InvokeFunctionExecuteHook(foid);
+	bool is_subproc_func = false;
+
+	if (node != NULL && nodeTag(node) == T_FuncExpr)
+	{
+		FuncExpr *funcexpr = (FuncExpr *) node;
+
+		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+			is_subproc_func = true;
+	}
+
+	if (!is_subproc_func)
+	{
+		/* Check permission to call function */
+		aclresult = object_aclcheck(ProcedureRelationId, foid, GetUserId(), ACL_EXECUTE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(foid));
+		InvokeFunctionExecuteHook(foid);
+	}
 
 	/*
 	 * Safety check on nargs.  Under normal circumstances this should never
@@ -722,7 +735,10 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 							   FUNC_MAX_ARGS)));
 
 	/* Set up the primary fmgr lookup information */
-	fmgr_info_cxt(foid, &(sexpr->func), sexprCxt);
+	if (is_subproc_func)
+		fmgr_subproc_info_cxt(foid, &(sexpr->func), sexprCxt);
+	else
+		fmgr_info_cxt(foid, &(sexpr->func), sexprCxt);
 	fmgr_info_set_expr((Node *) sexpr->expr, &(sexpr->func));
 
 	/* Initialize the function call parameter struct as well */

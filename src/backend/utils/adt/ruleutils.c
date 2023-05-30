@@ -9826,12 +9826,17 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 		nargs++;
 	}
 
-	appendStringInfo(buf, "%s(",
+	if (FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+		appendStringInfo(buf, "%s(",
 					 generate_function_name(funcoid, nargs,
 											argnames, argtypes,
 											expr->funcvariadic,
 											&use_variadic,
 											context->special_exprkind));
+	else
+		appendStringInfo(buf, "%s(",
+					 get_internal_function_name(expr));
+
 	nargs = 0;
 	foreach(l, expr->args)
 	{
@@ -10137,6 +10142,9 @@ get_func_sql_syntax(FuncExpr *expr, deparse_context *context)
 {
 	StringInfo	buf = context->buf;
 	Oid			funcoid = expr->funcid;
+
+	if (!FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+		return false;
 
 	switch (funcoid)
 	{

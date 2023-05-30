@@ -2557,12 +2557,24 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	FunctionCallInfo fcinfo;
 	int			argno;
 	ListCell   *lc;
+	bool is_subproc_func = false;
 
-	/* Check permission to call function */
-	aclresult = object_aclcheck(ProcedureRelationId, funcid, GetUserId(), ACL_EXECUTE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(funcid));
-	InvokeFunctionExecuteHook(funcid);
+	if (nodeTag(node) == T_FuncExpr)
+	{
+		FuncExpr *funcexpr = (FuncExpr *) node;
+
+		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+			is_subproc_func = true;
+	}
+
+	if (!is_subproc_func)
+	{
+		/* Check permission to call function */
+		aclresult = object_aclcheck(ProcedureRelationId, funcid, GetUserId(), ACL_EXECUTE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(funcid));
+		InvokeFunctionExecuteHook(funcid);
+	}
 
 	/*
 	 * Safety check on nargs.  Under normal circumstances this should never
@@ -2585,7 +2597,10 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	fcinfo = scratch->d.func.fcinfo_data;
 
 	/* Set up the primary fmgr lookup information */
-	fmgr_info(funcid, flinfo);
+	if (is_subproc_func)
+		fmgr_subproc_info_cxt(funcid, flinfo, CurrentMemoryContext);
+	else
+		fmgr_info(funcid, flinfo);
 	fmgr_info_set_expr((Node *) node, flinfo);
 
 	/* Initialize function call parameter structure too */

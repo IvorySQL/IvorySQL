@@ -12515,6 +12515,9 @@ ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno)
 		{
 			FuncExpr   *f = (FuncExpr *) expr;
 
+			if (!FUNC_EXPR_FROM_PG_PROC(f->function_from))
+				return true;
+
 			switch (f->funcid)
 			{
 				case F_TIMESTAMPTZ_TIMESTAMP:

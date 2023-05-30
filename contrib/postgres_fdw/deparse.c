@@ -61,6 +61,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "commands/tablecmds.h"
+#include "funcapi.h"
 
 /*
  * Global context for foreign_expr_walker's search of an expression tree.
@@ -548,6 +549,9 @@ foreign_expr_walker(Node *node,
 		case T_FuncExpr:
 			{
 				FuncExpr   *fe = (FuncExpr *) node;
+
+				if (!FUNC_EXPR_FROM_PG_PROC(fe->function_from))
+					return false;
 
 				/*
 				 * If function used by the expression is not shippable, it
