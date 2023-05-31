@@ -4,6 +4,7 @@
 SET nls_date_format = 'DD-MON-YY';
 SET nls_timestamp_format = 'DD-MON-YY HH24:MI:SS.US';
 SET nls_timestamp_tz_format = 'DD-MON-YY HH24:MI:SS.US TZ';
+set default_text_search_config = 'pg_catalog.simple';
 
 -- error
 select decode(NULL, 1, 2018, 2, timestamp'2018-2-1 00:00:00', timestamp'2018-5-1 00:00:00');
@@ -2343,3 +2344,4 @@ drop table t_bug0000331;
 reset nls_date_format;
 reset nls_timestamp_format;
 reset nls_timestamp_tz_format;
+reset default_text_search_config;

@@ -1601,6 +1601,12 @@ VariableSetStmt:
 					n->is_local = false;
 					$$ = (Node *) n;
 				}
+			| ALTER SESSION SET set_rest
+				{
+					VariableSetStmt *n = $4;
+					n->is_local = false;
+					$$ = (Node *) n;
+				}
 			| SET LOCAL set_rest
 				{
 					VariableSetStmt *n = $3;
