@@ -97,5 +97,11 @@ maintainer-clean: distclean
 check:
 	$(prove_check)
 
+oracle-check:
+	$(oracle_prove_check)
+
 installcheck:
 	$(prove_installcheck)
+
+oracle-installcheck:
+	$(oracle_prove_installcheck)

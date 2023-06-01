@@ -28,6 +28,12 @@ check:
 installcheck:
 	$(prove_installcheck)
 
+oracle-check:
+	$(oracle_prove_check)
+
+oracle-installcheck:
+	$(oracle_prove_installcheck)
+
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_test_fsync$(X)'
 
