@@ -9,7 +9,7 @@ Full Str.  :  Short  Ind.
 -----------------
 type    : data
 numeric : "123"
-varchar : "t"
+oravarcharbyte: "t"
 
 GOOD-BYE!!
 

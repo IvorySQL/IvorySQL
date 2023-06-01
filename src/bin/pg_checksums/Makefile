@@ -45,3 +45,9 @@ check:
 
 installcheck:
 	$(prove_installcheck)
+
+oracle-check:
+	$(oracle_prove_check)
+
+oracle-installcheck:
+	$(oracle_prove_installcheck)

@@ -474,9 +474,12 @@ cd $(srcdir) && \
 endef
 #IvorySQL:BEGIN - SQL oracle_test
 define oracle_prove_installcheck
-rm -rf '$(CURDIR)'/tmp_check
-$(MKDIR_P) '$(CURDIR)'/tmp_check
+echo "# +++ tap install-check in $(subdir) +++" && \
+rm -rf '$(CURDIR)'/tmp_check && \
+$(MKDIR_P) '$(CURDIR)'/tmp_check && \
 cd $(srcdir) && \
+   TESTLOGDIR='$(CURDIR)/tmp_check/log' \
+   TESTDATADIR='$(CURDIR)/tmp_check' \
    TESTDIR='$(CURDIR)' PATH="$(bindir):$(CURDIR):$$PATH" \
    PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/oracle_test/regress/pg_regress' \
@@ -498,10 +501,13 @@ cd $(srcdir) && \
 endef
 #IvorySQL:BEGIN - SQL oracle_test
 define oracle_prove_installcheck
-rm -rf '$(CURDIR)'/tmp_check
-$(MKDIR_P) '$(CURDIR)'/tmp_check
+echo "# +++ tap install-check in $(subdir) +++" && \
+rm -rf '$(CURDIR)'/tmp_check && \
+$(MKDIR_P) '$(CURDIR)'/tmp_check && \
 cd $(srcdir) && \
-   TESTDIR='$(CURDIR)' PATH="$(bindir):$(CURDIR):$$PATH" \
+   TESTLOGDIR='$(CURDIR)/tmp_check/log' \
+   TESTDATADIR='$(CURDIR)/tmp_check' \
+   PATH="$(bindir):$(CURDIR):$$PATH" \
    PGPORT='6$(DEF_PGPORT)' top_builddir='$(top_builddir)' \
    PG_REGRESS='$(top_builddir)/src/oracle_test/regress/pg_regress' \
    $(PROVE) $(ORACLE_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
@@ -523,10 +529,14 @@ cd $(srcdir) && \
 endef
 #IvorySQL:BEGIN - SQL oracle_test
 define oracle_prove_check
-rm -rf '$(CURDIR)'/tmp_check
-$(MKDIR_P) '$(CURDIR)'/tmp_check
+echo "# +++ tap check in $(subdir) +++" && \
+rm -rf '$(CURDIR)'/tmp_check && \
+$(MKDIR_P) '$(CURDIR)'/tmp_check && \
 cd $(srcdir) && \
-   TESTDIR='$(CURDIR)' $(with_temp_install) PGPORT='6$(DEF_PGPORT)' \
+   TESTLOGDIR='$(CURDIR)/tmp_check/log' \
+   TESTDATADIR='$(CURDIR)/tmp_check' \
+   $(with_temp_install) \
+   PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/oracle_test/regress/pg_regress' \
    $(PROVE) $(ORACLE_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
@@ -536,7 +546,7 @@ else
 prove_installcheck = @echo "TAP tests not enabled. Try configuring with --enable-tap-tests"
 prove_check = $(prove_installcheck)
 #IvorySQL:BEGIN - SQL oracle_test
-oracle_prove_installcheck = @echo "TAP tests not enabled"
+oracle_prove_installcheck = @echo "TAP tests not enabled. Try configuring with --enable-tap-tests"
 oracle_prove_check = $(oracle_prove_installcheck)
 #IvorySQL:END - SQL oracle_test
 endif
