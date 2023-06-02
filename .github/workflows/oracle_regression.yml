@@ -1,4 +1,4 @@
-name: regression
+name: oracle_regression
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ master ]
 
 jobs:
-  regression:
+  oracle_regression:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -53,18 +53,18 @@ jobs:
     - name: compile
       run: make && make install
 
-    - name: regression
-      run: make check-world
+    - name: oracle_regression
+      run: make oracle-check-world
 
     - name: collect files
       if: failure()
       run: |
-          find . \( -name "*.diffs" -or -name "regression.out" -or -path \*/tmp_check/log -or -path \*src/test/regress/log \) -print0 |
-                xargs -0 tar -czf regression.tar.gz
-    - name: upload regression files
+          find . \( -name "*.diffs" -or -name "oracle_regression.out" -or -path \*/tmp_check/log -or -path \*src/test/regress/log \) -print0 |
+                xargs -0 tar -czf oracle_regression.tar.gz
+    - name: upload oracle_regression files
       if: failure()
       uses: actions/upload-artifact@v2
       with:
         name: results
-        path: ${{ github.workspace }}/regression.tar.gz
+        path: ${{ github.workspace }}/oracle_regression.tar.gz
 
