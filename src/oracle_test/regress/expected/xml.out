@@ -211,14 +211,16 @@ SELECT xmlelement(name foo, xmlattributes(true as bar));
 (1 row)
 
 SELECT xmlelement(name foo, xmlattributes('2009-04-09 00:24:37'::timestamp as bar));
-            xmlelement            
-----------------------------------
- <foo bar="2009-04-09T00:24:37"/>
+               xmlelement                
+-----------------------------------------
+ <foo bar="2009-04-09 00:24:37.000000"/>
 (1 row)
 
 SELECT xmlelement(name foo, xmlattributes('infinity'::timestamp as bar));
-ERROR:  timestamp out of range
-DETAIL:  XML does not support infinite timestamp values.
+ERROR:  invalid value "infi" for "YYYY"
+LINE 1: SELECT xmlelement(name foo, xmlattributes('infinity'::timest...
+                                                  ^
+DETAIL:  Value must be an integer.
 SELECT xmlelement(name foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
                          xmlelement                         
 ------------------------------------------------------------
@@ -830,7 +832,7 @@ SELECT table_name, view_definition FROM information_schema.views
  xmlview5   |  SELECT XMLPARSE(CONTENT '<abc>x</abc>'::text STRIP WHITESPACE) AS "xmlparse";
  xmlview6   |  SELECT XMLPI(NAME foo, 'bar'::text) AS "xmlpi";
  xmlview7   |  SELECT XMLROOT('<foo/>'::xml, VERSION NO VALUE, STANDALONE YES) AS "xmlroot";
- xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS character(10)))::character(10) AS "xmlserialize";
+ xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10)))::char(10) AS "xmlserialize";
  xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text) AS "xmlserialize";
 (9 rows)
 
