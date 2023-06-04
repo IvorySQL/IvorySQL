@@ -2495,6 +2495,27 @@ my %tests = (
 		},
 	},
 
+	'Check ordering of a function that depends on a primary key' => {
+		create_order => 41,
+		create_sql => '
+			CREATE TABLE dump_test.ordering_table (id int primary key, data int);
+			CREATE FUNCTION dump_test.ordering_func ()
+			RETURNS SETOF dump_test.ordering_table
+			LANGUAGE sql BEGIN ATOMIC
+			SELECT * FROM dump_test.ordering_table GROUP BY id; END;',
+		regexp => qr/^
+			\QALTER TABLE ONLY dump_test.ordering_table\E
+			\n\s+\QADD CONSTRAINT ordering_table_pkey PRIMARY KEY (id);\E
+			.*^
+			\QCREATE FUNCTION dump_test.ordering_func\E/xms,
+		like =>
+		  { %full_runs, %dump_test_schema_runs, section_post_data => 1, },
+		unlike => {
+			exclude_dump_test_schema => 1,
+			only_dump_measurement => 1,
+		},
+	},
+
 	'CREATE PROCEDURE dump_test.ptest1' => {
 		create_order => 41,
 		create_sql   => 'CREATE PROCEDURE dump_test.ptest1(a int)
