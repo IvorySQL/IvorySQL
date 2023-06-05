@@ -366,6 +366,14 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			else
 				buf = pstrdup("number");
 			break;
+
+		case BINARY_FLOATOID:
+			buf = pstrdup("binary_float");
+			break;
+		case BINARY_DOUBLEOID:
+			buf = pstrdup("binary_double");
+			break;
+
 		/* IvorySQL:END - datatype */
 	}
 
