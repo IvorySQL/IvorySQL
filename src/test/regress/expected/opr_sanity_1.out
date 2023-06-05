@@ -2241,8 +2241,8 @@ ORDER BY 1, 2, 3;
  sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharbyte_pattern_ops | varchar2
  sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharchar_pattern_ops | varchar2
                            | array_ops              | array_ops                  | anyarray
-                           | binary_ops             | binary_double_ops          | sys.binary_double
-                           | binary_ops             | binary_float_ops           | sys.binary_float
+                           | binary_ops             | binary_double_ops          | binary_double
+                           | binary_ops             | binary_float_ops           | binary_float
                            | dsinterval_ops         | dsinterval_ops             | interval day to second
                            | float_ops              | float4_ops                 | real
                            | float_ops              | float8_ops                 | double precision
