@@ -257,7 +257,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 				 log_opts.logdir,
 				 SERVER_LOG_FILE, cluster->pgconfig, cluster->port, cluster->oraport,
 				 (cluster == &new_cluster) ?
-				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off -c vacuum_defer_cleanup_age=0" : "",
+				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
 				 cluster->pgopts ? cluster->pgopts : "", socket_string);
 	}
 	else
@@ -269,7 +269,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 				 log_opts.logdir,
 				 SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
 				 (cluster == &new_cluster) ?
-				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off -c vacuum_defer_cleanup_age=0" : "",
+				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
 				 cluster->pgopts ? cluster->pgopts : "", socket_string);
 	}
 
