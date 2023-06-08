@@ -141,22 +141,18 @@ static ResourceOwner shared_simple_eval_resowner = NULL;
 	MemoryContextAllocZero(get_eval_mcontext(estate), sz)
 
 /*
- * We use two session-wide hash tables for caching cast information.
+ * We use a session-wide hash table for caching cast information.
  *
- * cast_expr_hash entries (of type plpgsql_CastExprHashEntry) hold compiled
- * expression trees for casts.  These survive for the life of the session and
- * are shared across all PL/pgSQL functions and DO blocks.  At some point it
- * might be worth invalidating them after pg_cast changes, but for the moment
- * we don't bother.
+ * Once built, the compiled expression trees (cast_expr fields) survive for
+ * the life of the session.  At some point it might be worth invalidating
+ * those after pg_cast changes, but for the moment we don't bother.
  *
- * There is a separate hash table shared_cast_hash (with entries of type
- * plpgsql_CastHashEntry) containing evaluation state trees for these
- * expressions, which are managed in the same way as simple expressions
- * (i.e., we assume cast expressions are always simple).
+ * The evaluation state trees (cast_exprstate) are managed in the same way as
+ * simple expressions (i.e., we assume cast expressions are always simple).
  *
- * As with simple expressions, DO blocks don't use the shared_cast_hash table
- * but must have their own evaluation state trees.  This isn't ideal, but we
- * don't want to deal with multiple simple_eval_estates within a DO block.
+ * As with simple expressions, DO blocks don't use the shared hash table but
+ * must have their own.  This isn't ideal, but we don't want to deal with
+ * multiple simple_eval_estates within a DO block.
  */
 typedef struct					/* lookup key for cast info */
 {
@@ -167,24 +163,18 @@ typedef struct					/* lookup key for cast info */
 	int32		dsttypmod;		/* destination typmod for cast */
 } plisql_CastHashKey;
 
-typedef struct					/* cast_expr_hash table entry */
-{
-	plisql_CastHashKey key;	/* hash key --- MUST BE FIRST */
-	Expr	   *cast_expr;		/* cast expression, or NULL if no-op cast */
-	CachedExpression *cast_cexpr;	/* cached expression backing the above */
-} plisql_CastExprHashEntry;
-
 typedef struct					/* cast_hash table entry */
 {
 	plisql_CastHashKey key;	/* hash key --- MUST BE FIRST */
 	Expr	   *cast_expr;		/* cast expression, or NULL if no-op cast */
+	CachedExpression *cast_cexpr;	/* cached expression backing the above */
 	/* ExprState is valid only when cast_lxid matches current LXID */
 	ExprState  *cast_exprstate; /* expression's eval tree */
 	bool		cast_in_use;	/* true while we're executing eval tree */
 	LocalTransactionId cast_lxid;
 } plisql_CastHashEntry;
 
-static HTAB *cast_expr_hash = NULL;
+static MemoryContext shared_cast_context = NULL;
 static HTAB *shared_cast_hash = NULL;
 
 /*
@@ -4057,17 +4047,6 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 	estate->paramLI->parserSetupArg = NULL; /* filled during use */
 	estate->paramLI->numParams = estate->ndatums;
 
-	/* Create the session-wide cast-expression hash if we didn't already */
-	if (cast_expr_hash == NULL)
-	{
-		ctl.keysize = sizeof(plisql_CastHashKey);
-		ctl.entrysize = sizeof(plisql_CastExprHashEntry);
-		cast_expr_hash = hash_create("PLpgSQL cast expressions",
-									 16,	/* start small and extend */
-									 &ctl,
-									 HASH_ELEM | HASH_BLOBS);
-	}
-
 	/* set up for use of appropriate simple-expression EState and cast hash */
 	if (simple_eval_estate)
 	{
@@ -4080,6 +4059,7 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 										16, /* start small and extend */
 										&ctl,
 										HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+		estate->cast_hash_context = CurrentMemoryContext;
 	}
 	else
 	{
@@ -4087,14 +4067,19 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 		/* Create the session-wide cast-info hash table if we didn't already */
 		if (shared_cast_hash == NULL)
 		{
+			shared_cast_context = AllocSetContextCreate(TopMemoryContext,
+														"PLiSQL cast info",
+														ALLOCSET_DEFAULT_SIZES);
 			ctl.keysize = sizeof(plisql_CastHashKey);
 			ctl.entrysize = sizeof(plisql_CastHashEntry);
+			ctl.hcxt = shared_cast_context;
 			shared_cast_hash = hash_create("PLiSQL cast cache",
 										   16,	/* start small and extend */
 										   &ctl,
-										   HASH_ELEM | HASH_BLOBS);
+										   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 		}
 		estate->cast_hash = shared_cast_hash;
+		estate->cast_hash_context = shared_cast_context;
 	}
 	/* likewise for the simple-expression resource owner */
 	if (simple_eval_resowner)
@@ -7902,7 +7887,6 @@ get_cast_hashentry(PLiSQL_execstate *estate,
 {
 	plisql_CastHashKey cast_key;
 	plisql_CastHashEntry *cast_entry;
-	plisql_CastExprHashEntry *expr_entry;
 	bool		found;
 	LocalTransactionId curlxid;
 	MemoryContext oldcontext;
@@ -7916,28 +7900,10 @@ get_cast_hashentry(PLiSQL_execstate *estate,
 													   &cast_key,
 													   HASH_ENTER, &found);
 	if (!found)					/* initialize if new entry */
-	{
-		/* We need a second lookup to see if a cast_expr_hash entry exists */
-		expr_entry = (plisql_CastExprHashEntry *) hash_search(cast_expr_hash,
-																&cast_key,
-																HASH_ENTER,
-																&found);
-		if (!found)				/* initialize if new expr entry */
-			expr_entry->cast_cexpr = NULL;
+		cast_entry->cast_cexpr = NULL;
 
-		cast_entry->cast_centry = expr_entry;
-		cast_entry->cast_exprstate = NULL;
-		cast_entry->cast_in_use = false;
-		cast_entry->cast_lxid = InvalidLocalTransactionId;
-	}
-	else
-	{
-		/* Use always-valid link to avoid a second hash lookup */
-		expr_entry = cast_entry->cast_centry;
-	}
-
-	if (expr_entry->cast_cexpr == NULL ||
-		!expr_entry->cast_cexpr->is_valid)
+	if (cast_entry->cast_cexpr == NULL ||
+		!cast_entry->cast_cexpr->is_valid)
 	{
 		/*
 		 * We've not looked up this coercion before, or we have but the cached
@@ -7950,10 +7916,10 @@ get_cast_hashentry(PLiSQL_execstate *estate,
 		/*
 		 * Drop old cached expression if there is one.
 		 */
-		if (expr_entry->cast_cexpr)
+		if (cast_entry->cast_cexpr)
 		{
-			FreeCachedExpression(expr_entry->cast_cexpr);
-			expr_entry->cast_cexpr = NULL;
+			FreeCachedExpression(cast_entry->cast_cexpr);
+			cast_entry->cast_cexpr = NULL;
 		}
 
 		/*
@@ -8034,11 +8000,9 @@ get_cast_hashentry(PLiSQL_execstate *estate,
 			((RelabelType *) cast_expr)->arg == (Expr *) placeholder)
 			cast_expr = NULL;
 
-		/* Now we can fill in the expression hashtable entry. */
-		expr_entry->cast_cexpr = cast_cexpr;
-		expr_entry->cast_expr = (Expr *) cast_expr;
-
-		/* Be sure to reset the exprstate hashtable entry, too. */
+		/* Now we can fill in the hashtable entry. */
+		cast_entry->cast_cexpr = cast_cexpr;
+		cast_entry->cast_expr = (Expr *) cast_expr;
 		cast_entry->cast_exprstate = NULL;
 		cast_entry->cast_in_use = false;
 		cast_entry->cast_lxid = InvalidLocalTransactionId;
@@ -8047,7 +8011,7 @@ get_cast_hashentry(PLiSQL_execstate *estate,
 	}
 
 	/* Done if we have determined that this is a no-op cast. */
-	if (expr_entry->cast_expr == NULL)
+	if (cast_entry->cast_expr == NULL)
 		return NULL;
 
 	/*
@@ -8066,7 +8030,7 @@ get_cast_hashentry(PLiSQL_execstate *estate,
 	if (cast_entry->cast_lxid != curlxid || cast_entry->cast_in_use)
 	{
 		oldcontext = MemoryContextSwitchTo(estate->simple_eval_estate->es_query_cxt);
-		cast_entry->cast_exprstate = ExecInitExpr(expr_entry->cast_expr, NULL);
+		cast_entry->cast_exprstate = ExecInitExpr(cast_entry->cast_expr, NULL);
 		cast_entry->cast_in_use = false;
 		cast_entry->cast_lxid = curlxid;
 		MemoryContextSwitchTo(oldcontext);
