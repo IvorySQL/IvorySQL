@@ -803,7 +803,7 @@ SELECT regexp_instr('abcabcabc', 'a.c', 1, 3);
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 4);
  regexp_instr 
 --------------
- 2139062144
+ 0
 (1 row)
 
 SELECT regexp_instr('abcabcabc', 'A.C', 1, 2, 0, 'i');
