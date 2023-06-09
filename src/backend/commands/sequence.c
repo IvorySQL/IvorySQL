@@ -1416,7 +1416,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				newtypid != INT8OID &&
 				newtypid != FLOAT4OID	&&
 				newtypid != FLOAT8OID	&&
-				//newtypid != NUMBEROID	&&
+				newtypid != NUMBEROID	&&
 				newtypid != NUMERICOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
