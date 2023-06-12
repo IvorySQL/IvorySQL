@@ -6,7 +6,7 @@
 SELECT pg_catalog.set_config('search_path', ' ', false);
  set_config 
 ------------
-
+  
 (1 row)
 
 CREATE SCHEMA test_ns_schema_1
