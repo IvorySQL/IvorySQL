@@ -20204,7 +20204,7 @@ preprocess_pubobj_list(List *pubobjspec_list, ora_core_yyscan_t yyscanner)
 			if (!pubobj->name && !pubobj->pubtable)
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid table name at or near"),
+						errmsg("invalid table name"),
 						parser_errposition(pubobj->location));
 
 			if (pubobj->name)
@@ -20246,7 +20246,7 @@ preprocess_pubobj_list(List *pubobjspec_list, ora_core_yyscan_t yyscanner)
 			else
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid schema name at or near"),
+						errmsg("invalid schema name"),
 						parser_errposition(pubobj->location));
 		}
 
