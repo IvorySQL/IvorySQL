@@ -61,6 +61,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 
 
@@ -69,57 +70,6 @@ typedef struct MTTargetRelLookup
 	Oid			relationOid;	/* hash key, must be first */
 	int			relationIndex;	/* rel's index in resultRelInfo[] array */
 } MTTargetRelLookup;
-
-/*
- * Context struct for a ModifyTable operation, containing basic execution
- * state and some output variables populated by ExecUpdateAct() and
- * ExecDeleteAct() to report the result of their actions to callers.
- */
-typedef struct ModifyTableContext
-{
-	/* Operation state */
-	ModifyTableState *mtstate;
-	EPQState   *epqstate;
-	EState	   *estate;
-
-	/*
-	 * Slot containing tuple obtained from ModifyTable's subplan.  Used to
-	 * access "junk" columns that are not going to be stored.
-	 */
-	TupleTableSlot *planSlot;
-
-	/* MERGE specific */
-	MergeActionState *relaction;	/* MERGE action in progress */
-
-	/*
-	 * Information about the changes that were made concurrently to a tuple
-	 * being updated or deleted
-	 */
-	TM_FailureData tmfd;
-
-	/*
-	 * The tuple projected by the INSERT's RETURNING clause, when doing a
-	 * cross-partition UPDATE
-	 */
-	TupleTableSlot *cpUpdateReturningSlot;
-} ModifyTableContext;
-
-/*
- * Context struct containing output data specific to UPDATE operations.
- */
-typedef struct UpdateContext
-{
-	bool		updated;		/* did UPDATE actually occur? */
-	bool		crossPartUpdate;	/* was it a cross-partition update? */
-	TU_UpdateIndexes updateIndexes;	/* Which index updates are required? */
-
-	/*
-	 * Lock mode to acquire on the latest tuple version before performing
-	 * EvalPlanQual on it
-	 */
-	LockTupleMode lockmode;
-} UpdateContext;
-
 
 static void ExecBatchInsert(ModifyTableState *mtstate,
 							ResultRelInfo *resultRelInfo,
@@ -153,14 +103,12 @@ static TupleTableSlot *ExecMerge(ModifyTableContext *context,
 								 ItemPointer tupleid,
 								 bool canSetTag);
 static void ExecInitMerge(ModifyTableState *mtstate, EState *estate);
-static bool ExecMergeMatched(ModifyTableContext *context,
-							 ResultRelInfo *resultRelInfo,
-							 ItemPointer tupleid,
-							 bool canSetTag);
 static void ExecMergeNotMatched(ModifyTableContext *context,
 								ResultRelInfo *resultRelInfo,
 								bool canSetTag);
 
+exec_merge_matched_hook_type pg_exec_merge_matched_hook = ExecMergeMatched;
+exec_merge_matched_hook_type ora_exec_merge_matched_hook = NULL;
 
 /*
  * Verify that the tuples to be produced by INSERT match the
@@ -1300,7 +1248,7 @@ ExecPendingInserts(EState *estate)
  * here is execute BEFORE ROW triggers.  We return false if one of them makes
  * the delete a no-op; otherwise, return true.
  */
-static bool
+bool
 ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple,
 				   TupleTableSlot **epqreturnslot, TM_Result *result)
@@ -1331,7 +1279,7 @@ ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  *
  * Caller is in charge of doing EvalPlanQual as necessary
  */
-static TM_Result
+TM_Result
 ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			  ItemPointer tupleid, bool changingPart)
 {
@@ -1353,7 +1301,7 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * including the UPDATE triggers if the deletion is being done as part of a
  * cross-partition tuple move.
  */
-static void
+void
 ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple, bool changingPart)
 {
@@ -1881,7 +1829,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
  * triggers.  We return false if one of them makes the update a no-op;
  * otherwise, return true.
  */
-static bool
+bool
 ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
 				   TM_Result *result)
@@ -1923,7 +1871,7 @@ ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * Apply the final modifications to the tuple slot before the update.
  * (This is split out because we also need it in the foreign-table code path.)
  */
-static void
+void
 ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
 					  TupleTableSlot *slot,
 					  EState *estate)
@@ -1958,7 +1906,7 @@ ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
  * be concurrently updated.  However, in case of a cross-partition update,
  * this routine does it.
  */
-static TM_Result
+TM_Result
 ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			  ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
 			  bool canSetTag, UpdateContext *updateCxt)
@@ -2111,7 +2059,7 @@ lreplace:
  * Closing steps of updating a tuple.  Must be called if ExecUpdateAct
  * returns indicating that the tuple was updated.
  */
-static void
+void
 ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 				   ResultRelInfo *resultRelInfo, ItemPointer tupleid,
 				   HeapTuple oldtuple, TupleTableSlot *slot)
@@ -2753,7 +2701,7 @@ ExecMerge(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	 */
 	matched = tupleid != NULL;
 	if (matched)
-		matched = ExecMergeMatched(context, resultRelInfo, tupleid, canSetTag);
+		matched = (*pg_exec_merge_matched_hook)(context, resultRelInfo, tupleid, canSetTag);
 
 	/*
 	 * Either we were dealing with a NOT MATCHED tuple or ExecMergeMatched()
@@ -2788,7 +2736,7 @@ ExecMerge(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * meaning that a NOT MATCHED action must now be executed for the current
  * source tuple.
  */
-static bool
+bool
 ExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				 ItemPointer tupleid, bool canSetTag)
 {
@@ -3419,15 +3367,30 @@ fireASTriggers(ModifyTableState *node)
 								 node->mt_transition_capture);
 			break;
 		case CMD_MERGE:
-			if (node->mt_merge_subcommands & MERGE_DELETE)
-				ExecASDeleteTriggers(node->ps.state, resultRelInfo,
-									 node->mt_transition_capture);
-			if (node->mt_merge_subcommands & MERGE_UPDATE)
-				ExecASUpdateTriggers(node->ps.state, resultRelInfo,
-									 node->mt_transition_capture);
-			if (node->mt_merge_subcommands & MERGE_INSERT)
-				ExecASInsertTriggers(node->ps.state, resultRelInfo,
-									 node->mt_transition_capture);
+			if (compatible_db == DB_ORACLE)
+			{
+				if (node->mt_merge_subcommands & MERGE_UPDATE)
+					ExecASUpdateTriggers(node->ps.state, resultRelInfo,
+										 node->mt_transition_capture);
+				if (node->mt_merge_subcommands & MERGE_DELETE)
+					ExecASDeleteTriggers(node->ps.state, resultRelInfo,
+										 node->mt_transition_capture);
+				if (node->mt_merge_subcommands & MERGE_INSERT)
+					ExecASInsertTriggers(node->ps.state, resultRelInfo,
+										 node->mt_transition_capture);
+			}
+			else
+			{
+				if (node->mt_merge_subcommands & MERGE_DELETE)
+					ExecASDeleteTriggers(node->ps.state, resultRelInfo,
+										 node->mt_transition_capture);
+				if (node->mt_merge_subcommands & MERGE_UPDATE)
+					ExecASUpdateTriggers(node->ps.state, resultRelInfo,
+										 node->mt_transition_capture);
+				if (node->mt_merge_subcommands & MERGE_INSERT)
+					ExecASInsertTriggers(node->ps.state, resultRelInfo,
+										 node->mt_transition_capture);
+			}
 			break;
 		default:
 			elog(ERROR, "unknown operation");

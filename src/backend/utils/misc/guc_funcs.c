@@ -30,6 +30,8 @@
 #include "utils/builtins.h"
 #include "utils/guc_tables.h"
 #include "utils/snapmgr.h"
+#include "executor/nodeModifyTable.h"
+#include "parser/parse_merge.h"
 /* IvorySQL:BEGIN - SQL oracle_mode */
 #include "parser/parser.h"
 #include "utils/ora_compatible.h"
@@ -110,9 +112,17 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 								 errhint("You must load liboracle_parser to use oracle parser.")));
 
 					sql_raw_parser = ora_raw_parser;
+
+					pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
+					pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
 				}
 				else if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "pg"))
+				{
 					sql_raw_parser = standard_raw_parser;
+
+					pg_transform_merge_stmt_hook = transformMergeStmt;
+					pg_exec_merge_matched_hook = ExecMergeMatched;
+				}
 			}
 			/* IvorySQL:END - SQL oracle_mode */
 
@@ -202,7 +212,12 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			/* IvorySQL:BEGIN - SQL oracle_mode */
 			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
 				 && DB_ORACLE == database_mode)
+			{
 				sql_raw_parser = standard_raw_parser;
+
+				pg_transform_merge_stmt_hook = transformMergeStmt;
+				pg_exec_merge_matched_hook = ExecMergeMatched;
+			}
 			/* IvorySQL:END - SQL oracle_mode */
 			break;
 		case VAR_RESET_ALL:

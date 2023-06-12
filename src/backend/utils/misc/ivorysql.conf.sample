@@ -8,4 +8,4 @@
 					# (change requires restart)
 #ivorysql.port = 1521		# (change requires restart)
 
-shared_preload_libraries = 'liboracle_parser'		# (change requires restart)
+shared_preload_libraries = 'liboracle_parser, ivorysql_ora'		# (change requires restart)

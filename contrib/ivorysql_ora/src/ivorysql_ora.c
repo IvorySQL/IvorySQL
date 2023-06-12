@@ -15,10 +15,11 @@
 
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "parser/parse_oper.h"
-
+#include "parser/parse_merge.h"
 #include "include/guc.h"
 #include "include/ivorysql_ora.h"
 
@@ -27,6 +28,10 @@ PG_MODULE_MAGIC;
 
 /* Saved hook value in case of unload */
 static oracle_datatype_precedence_hook_type pre_oracle_datatype_precedence_hook = NULL;
+
+/* The hook of the merge command */
+static exec_merge_matched_hook_type pre_exec_merge_matched_hook = NULL;
+static transform_merge_stmt_hook_type pre_transform_merge_stmt_hook = NULL;
 
 void _PG_init(void);
 void _PG_fini(void);
@@ -50,6 +55,14 @@ _PG_init(void)
 	/* Install Hooks */
 	pre_oracle_datatype_precedence_hook = oracle_datatype_precedence_hook;
 	oracle_datatype_precedence_hook = pg_compatible_oracle_precedence;
+
+	ora_exec_merge_matched_hook = IvyExecMergeMatched;
+	ora_transform_merge_stmt_hook = IvytransformMergeStmt;
+
+	pre_exec_merge_matched_hook = pg_exec_merge_matched_hook;
+	pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
+	pre_transform_merge_stmt_hook = pg_transform_merge_stmt_hook;
+	pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
 }
 
 /*
@@ -64,4 +77,7 @@ _PG_fini(void)
 {
 	/* Uninstall Hooks */
 	oracle_datatype_precedence_hook = pre_oracle_datatype_precedence_hook;
+
+	pg_exec_merge_matched_hook = pre_exec_merge_matched_hook;
+	pg_transform_merge_stmt_hook = pre_transform_merge_stmt_hook;
 }

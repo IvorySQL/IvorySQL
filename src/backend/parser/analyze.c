@@ -52,6 +52,7 @@
 #include "utils/backend_status.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "funcapi.h"
@@ -354,7 +355,7 @@ transformStmt(ParseState *pstate, Node *parseTree)
 			break;
 
 		case T_MergeStmt:
-			result = transformMergeStmt(pstate, (MergeStmt *) parseTree);
+			result = (*pg_transform_merge_stmt_hook)(pstate, (MergeStmt *) parseTree);
 			break;
 
 		case T_SelectStmt:
@@ -2456,6 +2457,8 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		TargetEntry *tle = (TargetEntry *) lfirst(tl);
 		ResTarget  *origTarget;
 		int			attrno;
+		char	   *colname_temp = NULL;
+		RangeTblEntry *alias_temp = NULL;
 
 		if (tle->resjunk)
 		{
@@ -2476,17 +2479,75 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
 		if (attrno == InvalidAttrNumber)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							origTarget->name,
-							RelationGetRelationName(pstate->p_target_relation)),
-					 parser_errposition(pstate, origTarget->location)));
+		{
+			if (origTarget->indirection)
+			{
+				colname_temp = strVal(lfirst(list_head(origTarget->indirection)));
+				alias_temp = lfirst(list_head(pstate->p_rtable));
 
-		updateTargetListEntry(pstate, tle, origTarget->name,
-							  attrno,
-							  origTarget->indirection,
-							  origTarget->location);
+				if (alias_temp->alias)
+				{
+					if (alias_temp->alias->aliasname)
+					{
+						if (strcmp(origTarget->name, alias_temp->alias->aliasname))
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_UNDEFINED_COLUMN),
+									 errmsg("Perhaps you meant to reference the table alias \"%s\"",
+											alias_temp->alias->aliasname)));
+						}
+						else
+						{
+							if (colname_temp)
+							{
+								attrno = attnameAttNum(pstate->p_target_relation, colname_temp, true);
+							}
+						}
+					}
+				}
+				else
+				{
+					if (origTarget->name && strcmp(origTarget->name, RelationGetRelationName(pstate->p_target_relation)))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_COLUMN),
+								 errmsg("Perhaps you meant to assign the table alias \"%s\"",
+										origTarget->name)));
+					}
+					else
+					{
+						if (colname_temp)
+						{
+							attrno = attnameAttNum(pstate->p_target_relation, colname_temp, true);
+						}
+					}
+				}
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								origTarget->name,
+								RelationGetRelationName(pstate->p_target_relation)),
+						 parser_errposition(pstate, origTarget->location)));
+			}
+		}
+
+		if (colname_temp)
+		{
+			updateTargetListEntry(pstate, tle, colname_temp,
+								  attrno,
+								  NULL,
+								  origTarget->location);
+		}
+		else
+		{
+			updateTargetListEntry(pstate, tle, origTarget->name,
+								  attrno,
+								  origTarget->indirection,
+								  origTarget->location);
+		}
 
 		/* Mark the target column as requiring update permissions */
 		target_perminfo->updatedCols = bms_add_member(target_perminfo->updatedCols,

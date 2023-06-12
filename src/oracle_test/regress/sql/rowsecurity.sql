@@ -862,23 +862,14 @@ ON did = s.sdid
 WHEN MATCHED THEN
 	UPDATE SET dnotes = dnotes || ' notes added by merge ';
 
--- The same thing with DELETE action, but fails again because no permissions
--- to delete items in 'science fiction' category that did 3 belongs to.
-MERGE INTO document d
-USING (SELECT 3 as sdid) s
-ON did = s.sdid
-WHEN MATCHED THEN
-	DELETE;
-
 -- Document with did 4 belongs to 'manga' category which is allowed for
 -- deletion. But this fails because the UPDATE action is matched first and
 -- UPDATE policy does not allow updation in the category.
 MERGE INTO document d
 USING (SELECT 4 as sdid) s
 ON did = s.sdid
-WHEN MATCHED AND dnotes = '' THEN
-	UPDATE SET dnotes = dnotes || ' notes added by merge '
 WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ' WHERE dnotes = ''
 	DELETE;
 
 -- UPDATE action is not matched this time because of the WHEN qual.
@@ -887,9 +878,8 @@ WHEN MATCHED THEN
 MERGE INTO document d
 USING (SELECT 4 as sdid) s
 ON did = s.sdid
-WHEN MATCHED AND dnotes <> '' THEN
-	UPDATE SET dnotes = dnotes || ' notes added by merge '
 WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ' WHERE dnotes <> ''
 	DELETE;
 
 SELECT * FROM document WHERE did = 4;
@@ -902,9 +892,8 @@ SET SESSION AUTHORIZATION regress_rls_carol;
 MERGE INTO document d
 USING (SELECT 4 as sdid) s
 ON did = s.sdid
-WHEN MATCHED AND dnotes <> '' THEN
-	UPDATE SET dnotes = dnotes || ' notes added by merge '
 WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ' WHERE dnotes <> ''
 	DELETE;
 
 -- Switch back to regress_rls_bob role
@@ -917,8 +906,6 @@ SET SESSION AUTHORIZATION regress_rls_bob;
 MERGE INTO document d
 USING (SELECT 12 as sdid) s
 ON did = s.sdid
-WHEN MATCHED THEN
-	DELETE
 WHEN NOT MATCHED THEN
 	INSERT VALUES (12, 11, 1, 'regress_rls_dave', 'another novel');
 
@@ -926,8 +913,6 @@ WHEN NOT MATCHED THEN
 MERGE INTO document d
 USING (SELECT 12 as sdid) s
 ON did = s.sdid
-WHEN MATCHED THEN
-	DELETE
 WHEN NOT MATCHED THEN
 	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
 
