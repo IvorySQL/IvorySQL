@@ -33,6 +33,7 @@
 #include "utils/guc_tables.h"
 #include "utils/json.h"
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/ruleutils.h"
 #include "utils/snapmgr.h"
@@ -4098,7 +4099,8 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 			update_path = mtstate->mt_merge_updated;
 			delete_path = mtstate->mt_merge_deleted;
 			skipped_path = total - insert_path - update_path - delete_path;
-			Assert(skipped_path >= 0);
+			if (compatible_db != DB_ORACLE)
+				Assert(skipped_path >= 0);
 
 			if (es->format == EXPLAIN_FORMAT_TEXT)
 			{
@@ -4113,7 +4115,10 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 					if (delete_path > 0)
 						appendStringInfo(es->str, " deleted=%.0f", delete_path);
 					if (skipped_path > 0)
-						appendStringInfo(es->str, " skipped=%.0f", skipped_path);
+					{
+						if (compatible_db != DB_ORACLE)
+							appendStringInfo(es->str, " skipped=%.0f", skipped_path);
+					}
 					appendStringInfoChar(es->str, '\n');
 				}
 			}
@@ -4122,7 +4127,8 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 				ExplainPropertyFloat("Tuples Inserted", NULL, insert_path, 0, es);
 				ExplainPropertyFloat("Tuples Updated", NULL, update_path, 0, es);
 				ExplainPropertyFloat("Tuples Deleted", NULL, delete_path, 0, es);
-				ExplainPropertyFloat("Tuples Skipped", NULL, skipped_path, 0, es);
+				if (compatible_db != DB_ORACLE)
+					ExplainPropertyFloat("Tuples Skipped", NULL, skipped_path, 0, es);
 			}
 		}
 	}

@@ -2496,20 +2496,18 @@ when not matched then
 merge into merge_target_table t
 using merge_source_table s
 on t.a = s.a
-when matched and s.a <= 2 then
-	update set b = t.b || ' updated by merge'
-when matched and s.a > 2 then
-	delete
+when matched then
+	update set b = t.b || ' updated by merge' where s.a <= 2
+	delete where s.a > 2
 when not matched then
   insert values (a, b);
 
 merge into merge_target_table t
 using merge_source_table s
 on t.a = s.a
-when matched and s.a <= 2 then
-	update set b = t.b || ' updated again by merge'
-when matched and s.a > 2 then
-	delete
+when matched then
+	update set b = t.b || ' updated again by merge' where s.a <= 2
+	delete where s.a > 2
 when not matched then
   insert values (a, b);
 

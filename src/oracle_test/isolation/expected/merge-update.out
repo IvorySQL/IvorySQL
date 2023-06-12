@@ -10,11 +10,12 @@ step merge1:
   WHEN MATCHED THEN
     UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val;
 
+ERROR:  Columns referenced in the ON Clause cannot be updated: target.key
 step c1: COMMIT;
 step select2: SELECT * FROM target;
-key|val                     
----+------------------------
-  2|setup1 updated by merge1
+key|val   
+---+------
+  1|setup1
 (1 row)
 
 step c2: COMMIT;
@@ -29,6 +30,7 @@ step merge1:
   WHEN MATCHED THEN
     UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val;
 
+ERROR:  Columns referenced in the ON Clause cannot be updated: target.key
 step c1: COMMIT;
 step merge2a: 
   MERGE INTO target t
@@ -39,13 +41,9 @@ step merge2a:
   WHEN MATCHED THEN
 	UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val;
 
+ERROR:  Columns referenced in the ON Clause cannot be updated: target.key
 step select2: SELECT * FROM target;
-key|val                     
----+------------------------
-  2|setup1 updated by merge1
-  1|merge2a                 
-(2 rows)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 step c2: COMMIT;
 
 starting permutation: merge1 merge2a c1 select2 c2

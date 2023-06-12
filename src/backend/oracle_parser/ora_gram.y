@@ -513,7 +513,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <onconflict> opt_on_conflict
 %type <mergewhen>	merge_insert merge_update merge_delete
 
-%type <node>	merge_when_clause opt_merge_when_condition
+%type <node>	merge_when_clause merge_error_clause
 %type <list>	merge_when_list
 
 %type <vsetstmt> generic_set set_rest set_rest_more generic_reset reset_rest
@@ -12385,9 +12385,9 @@ MergeStmt:
 			opt_with_clause MERGE INTO relation_expr_opt_alias
 			USING table_ref
 			ON a_expr
-			merge_when_list
+			merge_when_list merge_error_clause
 				{
-					MergeStmt  *m = makeNode(MergeStmt);
+					MergeStmt *m = makeNode(MergeStmt);
 
 					m->withClause = $1;
 					m->relation = $4;
@@ -12395,7 +12395,7 @@ MergeStmt:
 					m->joinCondition = $8;
 					m->mergeWhenClauses = $9;
 
-					$$ = (Node *) m;
+					$$ = (Node *)m;
 				}
 		;
 
@@ -12405,122 +12405,79 @@ merge_when_list:
 		;
 
 merge_when_clause:
-			WHEN MATCHED opt_merge_when_condition THEN merge_update
-				{
-					$5->matched = true;
-					$5->condition = $3;
+		WHEN MATCHED THEN merge_update
+			{
+				$4->matched = true;
+				$4->commandType = CMD_UPDATE;
 
-					$$ = (Node *) $5;
-				}
-			| WHEN MATCHED opt_merge_when_condition THEN merge_delete
-				{
-					$5->matched = true;
-					$5->condition = $3;
+				$$ = (Node *) $4;
+			}
+		| WHEN NOT MATCHED THEN merge_insert where_clause
+			{
+				$5->matched = false;
+				$5->commandType = CMD_INSERT;
+				$5->condition = $6;
 
-					$$ = (Node *) $5;
-				}
-			| WHEN NOT MATCHED opt_merge_when_condition THEN merge_insert
-				{
-					$6->matched = false;
-					$6->condition = $4;
-
-					$$ = (Node *) $6;
-				}
-			| WHEN MATCHED opt_merge_when_condition THEN DO NOTHING
-				{
-					MergeWhenClause *m = makeNode(MergeWhenClause);
-
-					m->matched = true;
-					m->commandType = CMD_NOTHING;
-					m->condition = $3;
-
-					$$ = (Node *) m;
-				}
-			| WHEN NOT MATCHED opt_merge_when_condition THEN DO NOTHING
-				{
-					MergeWhenClause *m = makeNode(MergeWhenClause);
-
-					m->matched = false;
-					m->commandType = CMD_NOTHING;
-					m->condition = $4;
-
-					$$ = (Node *) m;
-				}
-		;
-
-opt_merge_when_condition:
-			AND a_expr				{ $$ = $2; }
-			|						{ $$ = NULL; }
-		;
+				$$ = (Node *) $5;
+			}
+	;
 
 merge_update:
-			UPDATE SET set_clause_list
+			UPDATE SET set_clause_list where_clause merge_delete
 				{
 					MergeWhenClause *n = makeNode(MergeWhenClause);
-					n->commandType = CMD_UPDATE;
-					n->override = OVERRIDING_NOT_SET;
+
 					n->targetList = $3;
-					n->values = NIL;
+					n->condition = $4;
+					n->update_delete = $5;
 
 					$$ = n;
 				}
 		;
 
 merge_delete:
-			DELETE_P
+			{
+				$$ = NULL;
+			}
+		| DELETE_P where_clause
+			{
+				$$ = NULL;
+				if ($2)
 				{
 					MergeWhenClause *n = makeNode(MergeWhenClause);
+
+					n->matched = true;
 					n->commandType = CMD_DELETE;
-					n->override = OVERRIDING_NOT_SET;
-					n->targetList = NIL;
-					n->values = NIL;
+					n->condition = $2;
 
 					$$ = n;
 				}
-		;
+				else
+					ereport(ERROR,(errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("missing WHERE keyword"),parser_errposition(@2)));
+			}
+	;
 
 merge_insert:
 			INSERT merge_values_clause
 				{
 					MergeWhenClause *n = makeNode(MergeWhenClause);
-					n->commandType = CMD_INSERT;
-					n->override = OVERRIDING_NOT_SET;
-					n->targetList = NIL;
+
 					n->values = $2;
-					$$ = n;
-				}
-			| INSERT OVERRIDING override_kind VALUE_P merge_values_clause
-				{
-					MergeWhenClause *n = makeNode(MergeWhenClause);
-					n->commandType = CMD_INSERT;
-					n->override = $3;
-					n->targetList = NIL;
-					n->values = $5;
 					$$ = n;
 				}
 			| INSERT '(' insert_column_list ')' merge_values_clause
 				{
 					MergeWhenClause *n = makeNode(MergeWhenClause);
-					n->commandType = CMD_INSERT;
-					n->override = OVERRIDING_NOT_SET;
+
 					n->targetList = $3;
 					n->values = $5;
-					$$ = n;
-				}
-			| INSERT '(' insert_column_list ')' OVERRIDING override_kind VALUE_P merge_values_clause
-				{
-					MergeWhenClause *n = makeNode(MergeWhenClause);
-					n->commandType = CMD_INSERT;
-					n->override = $6;
-					n->targetList = $3;
-					n->values = $8;
 					$$ = n;
 				}
 			| INSERT DEFAULT VALUES
 				{
 					MergeWhenClause *n = makeNode(MergeWhenClause);
-					n->commandType = CMD_INSERT;
-					n->override = OVERRIDING_NOT_SET;
+
 					n->targetList = NIL;
 					n->values = NIL;
 					$$ = n;
@@ -12532,6 +12489,9 @@ merge_values_clause:
 				{
 					$$ = $3;
 				}
+		;
+
+merge_error_clause: { $$ = NULL; }
 		;
 
 /*****************************************************************************

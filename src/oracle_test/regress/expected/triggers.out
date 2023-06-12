@@ -3374,27 +3374,25 @@ NOTICE:  trigger = merge_target_table_insert_trig, new table = (1,initial1), (2,
 merge into merge_target_table t
 using merge_source_table s
 on t.a = s.a
-when matched and s.a <= 2 then
-	update set b = t.b || ' updated by merge'
-when matched and s.a > 2 then
-	delete
+when matched then
+	update set b = t.b || ' updated by merge' where s.a <= 2
+	delete where s.a > 2
 when not matched then
   insert values (a, b);
-NOTICE:  trigger = merge_target_table_delete_trig, old table = (3,initial3), (4,initial4)
 NOTICE:  trigger = merge_target_table_update_trig, old table = (1,initial1), (2,initial2), new table = (1,"initial1 updated by merge"), (2,"initial2 updated by merge")
+NOTICE:  trigger = merge_target_table_delete_trig, old table = <NULL>
 NOTICE:  trigger = merge_target_table_insert_trig, new table = <NULL>
 merge into merge_target_table t
 using merge_source_table s
 on t.a = s.a
-when matched and s.a <= 2 then
-	update set b = t.b || ' updated again by merge'
-when matched and s.a > 2 then
-	delete
+when matched then
+	update set b = t.b || ' updated again by merge' where s.a <= 2
+	delete where s.a > 2
 when not matched then
   insert values (a, b);
-NOTICE:  trigger = merge_target_table_delete_trig, old table = <NULL>
 NOTICE:  trigger = merge_target_table_update_trig, old table = (1,"initial1 updated by merge"), (2,"initial2 updated by merge"), new table = (1,"initial1 updated by merge updated again by merge"), (2,"initial2 updated by merge updated again by merge")
-NOTICE:  trigger = merge_target_table_insert_trig, new table = (3,initial3), (4,initial4)
+NOTICE:  trigger = merge_target_table_delete_trig, old table = <NULL>
+NOTICE:  trigger = merge_target_table_insert_trig, new table = <NULL>
 drop table merge_source_table, merge_target_table;
 -- cleanup
 drop function dump_insert();

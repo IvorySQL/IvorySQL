@@ -1678,6 +1678,7 @@ typedef struct MergeWhenClause
 	List	   *targetList;		/* INSERT/UPDATE targetlist */
 	/* the following members are only used in INSERT actions */
 	List	   *values;			/* VALUES to INSERT, or NULL */
+	struct MergeWhenClause *update_delete; /* ora_merge delete clause */
 } MergeWhenClause;
 
 /*
