@@ -4432,8 +4432,7 @@ PopulateGlobalSpool(Relation idxRel, Relation heapRel, IndexStmt *stmt)
 	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
 
 	GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
-	SetUserIdAndSecContext(heapRel->rd_rel->relowner,
-						   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	SetUserIdAndSecContext(heapRel->rd_rel->relowner, root_save_sec_context);
 
 	idxinfo = makeIndexInfo(numberOfAttributes,
 							numberOfKeyAttributes,

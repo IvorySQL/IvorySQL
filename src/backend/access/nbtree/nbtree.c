@@ -247,33 +247,36 @@ btinsert_check_unique_gi(IndexTuple itup, Relation idxRel,
 				search_global:
 						stack = _bt_search(iRel, insertstate.itup_key,
 										   &insertstate.buf, BT_READ, NULL);
-						xwait = _bt_check_unique_gi(iRel, &insertstate,
-													hRel, checkUnique, &is_unique,
-													&speculativeToken, heapRel);
-						if (unlikely(TransactionIdIsValid(xwait)))
+						if (insertstate.buf)
 						{
-							/* Have to wait for the other guy ... */
-							if (insertstate.buf)
+							xwait = _bt_check_unique_gi(iRel, &insertstate,
+														hRel, checkUnique, &is_unique,
+														&speculativeToken, heapRel);
+							if (unlikely(TransactionIdIsValid(xwait)))
 							{
-								_bt_relbuf(iRel, insertstate.buf);
-								insertstate.buf = InvalidBuffer;
+								/* Have to wait for the other guy ... */
+								if (insertstate.buf)
+								{
+									_bt_relbuf(iRel, insertstate.buf);
+									insertstate.buf = InvalidBuffer;
+								}
+
+								/*
+								 * If it's a speculative insertion, wait for it to
+								 * finish (ie. to go ahead with the insertion, or
+								 * kill the tuple).  Otherwise wait for the
+								 * transaction to finish as usual.
+								 */
+								if (speculativeToken)
+									SpeculativeInsertionWait(xwait, speculativeToken);
+								else
+									XactLockTableWait(xwait, iRel, &itup->t_tid, XLTW_InsertIndex);
+
+								/* start over... */
+								if (stack)
+									_bt_freestack(stack);
+								goto search_global;
 							}
-
-							/*
-							 * If it's a speculative insertion, wait for it to
-							 * finish (ie. to go ahead with the insertion, or
-							 * kill the tuple).  Otherwise wait for the
-							 * transaction to finish as usual.
-							 */
-							if (speculativeToken)
-								SpeculativeInsertionWait(xwait, speculativeToken);
-							else
-								XactLockTableWait(xwait, iRel, &itup->t_tid, XLTW_InsertIndex);
-
-							/* start over... */
-							if (stack)
-								_bt_freestack(stack);
-							goto search_global;
 						}
 						if (insertstate.buf)
 							_bt_relbuf(iRel, insertstate.buf);
