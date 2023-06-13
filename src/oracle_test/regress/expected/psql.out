@@ -6236,9 +6236,9 @@ List of schemas
 (0 rows)
 
 \drds "no.such.setting"
-           List of settings
- Role | Database | Settings | User set 
-------+----------+----------+----------
+      List of settings
+ Role | Database | Settings 
+------+----------+----------
 (0 rows)
 
 \dRp "no.such.publication"

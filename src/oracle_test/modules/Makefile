@@ -26,7 +26,6 @@ SUBDIRS = \
 		  test_misc \
 		  test_oat_hooks \
 		  test_parser \
-		  test_pg_db_role_setting \
 		  test_pg_dump \
 		  test_predtest \
 		  test_rbtree \
