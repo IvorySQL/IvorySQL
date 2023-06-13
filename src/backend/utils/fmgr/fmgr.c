@@ -20,7 +20,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/functions.h"
-#include "executor/spi.h"	/* IvorySQL: datatype */
+#include "executor/spi.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -1705,7 +1705,6 @@ OutputFunctionCall(FmgrInfo *flinfo, Datum val)
 }
 
 /*
- * IvorySQL:BEGIN - datatype
  * Pass typmod to output function.
  */
 char *
@@ -1713,7 +1712,6 @@ OutputFunctionCallWithTypmod(FmgrInfo *flinfo, Datum val, Datum typmod)
 {
 	return DatumGetCString(FunctionCall2(flinfo, val, typmod));
 }
-/* IvorySQL:END - datatype */
 
 /*
  * Call a previously-looked-up datatype binary-input function.
@@ -1799,7 +1797,6 @@ OidOutputFunctionCall(Oid functionId, Datum val)
 }
 
 /*
- * IvorySQL:BEGIN - datatype
  * Pass typmod to output function .
  */
 char *
@@ -1810,7 +1807,6 @@ OidOutputFunctionCallWithTypmod(Oid functionId, Datum val, Datum typmod)
 	fmgr_info(functionId, &flinfo);
 	return OutputFunctionCallWithTypmod(&flinfo, val, typmod);
 }
-/* IvorySQL:END - datatype */
 
 Datum
 OidReceiveFunctionCall(Oid functionId, StringInfo buf,

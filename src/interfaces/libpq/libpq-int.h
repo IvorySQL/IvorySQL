@@ -364,16 +364,12 @@ struct pg_conn
 								 * or a path to a UNIX-domain socket, or a
 								 * comma-separated list of machines and/or
 								 * paths; if NULL, use DEFAULT_PGSOCKET_DIR */
-	/* IvorySQL:BEGIN - IYHOST IYPORT */
 	char       *iyhost;			/* Oracle compatible mode ENV VARIABLE */
-	/* IvorySQL:END -	IYHOST IYPORT  */
 	char	   *pghostaddr;		/* the numeric IP address of the machine on
 								 * which the server is running, or a
 								 * comma-separated list of same.  Takes
 								 * precedence over pghost. */
-	/* IvorySQL:BEGIN - IYHOST IYPORT */
 	char       *iyport;          /* Oracle compatible mdoe ENV VARIABLE */
-	/* IvorySQL:END -	IYHOST IYPORT  */
 	char	   *pgport;			/* the server's communication port number, or
 								 * a comma-separated list of ports */
 	char	   *connect_timeout;	/* connection timeout (numeric string) */

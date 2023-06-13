@@ -57,27 +57,21 @@ extern PGDLLIMPORT int backslash_quote;
 extern PGDLLIMPORT bool escape_string_warning;
 extern PGDLLIMPORT bool standard_conforming_strings;
 
-/* IvorySQL:BEGIN - SQL PARSER */
 /* Hook for plugins to get control in raw_parser() */
 typedef List *(*raw_parser_hook_type) (const char *str, RawParseMode mode);
 extern PGDLLIMPORT raw_parser_hook_type sql_raw_parser;
 extern PGDLLIMPORT raw_parser_hook_type ora_raw_parser;
-/* IvorySQL:END - SQL PARSER */
 
 /* Primary entry point for the raw parsing functions */
-/* IvorySQL:BEGIN - SQL PARSER */
 extern List *raw_parser(const char *str, RawParseMode mode);
-/* IvorySQL:END - SQL PARSER */
 
 extern List *standard_raw_parser(const char *str, RawParseMode mode);
 
 /* Utility functions exported by gram.y (perhaps these should be elsewhere) */
 extern List *SystemFuncName(char *name);
 extern TypeName *SystemTypeName(char *name);
-/* IvorySQL:BEGIN - datatype */
 extern List *OracleSystemFuncName(char *name);
 extern TypeName *OracleSystemTypeName(char *name);
-/* IvorySQL:END - datatype */
 
 
 #endif							/* PARSER_H */

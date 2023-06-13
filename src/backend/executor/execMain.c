@@ -61,10 +61,10 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/backend_status.h"
-#include "utils/guc.h"		/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/partcache.h"
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
@@ -2301,7 +2301,6 @@ ExecBuildSlotValueDescription(Oid reloid,
 				getTypeOutputInfo(att->atttypid,
 								  &foutoid, &typisvarlena);
 				/*
-				 * IvorySQL:BEGIN - datatype
 				 * Compatible oracle , pass typmod to output function
 				 */
 				if (ORA_PARSER == compatible_db &&
@@ -2314,7 +2313,6 @@ ExecBuildSlotValueDescription(Oid reloid,
 				{
 					val = OidOutputFunctionCall(foutoid, slot->tts_values[i]);
 				}
-				/* IvorySQL:END - datatype */
 			}
 
 			if (write_comma)

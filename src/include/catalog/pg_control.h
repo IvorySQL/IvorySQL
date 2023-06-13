@@ -226,11 +226,9 @@ typedef struct ControlFileData
 	 */
 	char		mock_authentication_nonce[MOCK_AUTH_NONCE_LEN];
 
-	/* IvorySQL:BEGIN - SQL PARSER */
 	/* database compatible mode */
 	int8		dbmode;
-	int8		casemode; /* IvorySQL: case conversion mode 0 normal,1 interchange, 2 lowercase */
-	/* IvorySQL:END - SQL PARSER */
+	int8		casemode;/* case conversion mode 0 normal,1 interchange, 2 lowercase */
 
 	/* CRC of all above ... MUST BE LAST! */
 	pg_crc32c	crc;

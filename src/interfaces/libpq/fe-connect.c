@@ -361,7 +361,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Load-Balance-Hosts", "", 8,	/* sizeof("disable") = 8 */
 	offsetof(struct pg_conn, load_balance_hosts)},
 
-	/* IvorySQL:BEGIN - Oracle compatible mode ENV VARIABLE */
 	{"ivoryhost", "IYHOST", NULL, NULL,
 		"IvorySQL-Database-Host", "", 40,
 		offsetof(struct pg_conn, iyhost)},
@@ -369,7 +368,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 	{"ivoryport", "IYPORT", DEF_ORAPORT_STR, NULL,
 		"IvorySQL-Database-Port", "", 6,
 		offsetof(struct pg_conn, iyport)},
-	/* IvorySQL:END - Oracle compatible mode ENV VARIABLE */
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,

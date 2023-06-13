@@ -44,14 +44,10 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relmapper.h"
-/* IvorySQL:BEGIN - SQL oracle_mode */
 #include "utils/ora_compatible.h"
-/* IvorySQL:END - SQL oracle_mode */
 
 uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
-/* IvorySQL:BEGIN - SQL oracle_mode */
 int			bootstrap_database_mode = DB_ORACLE;
-/* IvorySQL:END - SQL oracle_mode */
 
 static void CheckerModeMain(void);
 static void bootstrap_signals(void);
@@ -178,9 +174,7 @@ typedef struct _IndexList
 } IndexList;
 
 static IndexList *ILHead = NULL;
-/* IvorySQL:BEGIN - SQL oracle_mode */
 static char  *bootstrap_dbmode = "pg";
-/* IvorySQL:END - SQL oracle_mode */
 
 /*
  * In shared memory checker mode, all we really want to do is create shared
@@ -228,10 +222,8 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	argv++;
 	argc--;
 
-	/* IvorySQL:BEGIN - SQL oracle_mode */
 	/* add parameter "-y" for sql parser mode option */
 	while ((flag = getopt(argc, argv, "B:C:c:d:D:Fkr:X:-:y:")) != -1)
-	/* IvorySQL:END - SQL oracle_mode */
 	{
 		switch (flag)
 		{
@@ -290,7 +282,6 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 			case 'r':
 				strlcpy(OutputFileName, optarg, MAXPGPATH);
 				break;
-			/* IvorySQL:BEGIN - SQL oracle_mode */
 			case 'y':
 			{
 				bootstrap_dbmode = strdup(optarg);
@@ -305,7 +296,6 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 							 errmsg("unrecognized database mode in bootstrap mode.\n")));
 			}
 			break;
-			/* IvorySQL:END - SQL oracle_mode */
 			case 'X':
 				{
 					int			WalSegSz = strtoul(optarg, NULL, 0);

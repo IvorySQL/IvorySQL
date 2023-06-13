@@ -39,7 +39,7 @@
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
-#include "parser/scansup.h"			/* IvorySQL: case sensitive indentify */
+#include "parser/scansup.h"	
 #include "storage/bufmgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -49,7 +49,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: SQL PARSER */
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
@@ -1882,7 +1882,6 @@ quoteOneName(char *buffer, const char *name)
 	/* Rather than trying to be smart, just always quote it. */
 	*buffer++ = '"';
 
-	/* IvorySQL: BEGIN - case sensitive indentify */
 	if (compatible_db == DB_ORACLE && enable_case_switch
 		 && identifier_case_switch == INTERCHANGE)
 		new_name = identifier_case_transform(name, strlen(name));
@@ -1892,7 +1891,6 @@ quoteOneName(char *buffer, const char *name)
 		new_name = palloc0(len);
 		memcpy(new_name, name, len);
 	}
-	/* IvorySQL: END - case sensitive indentify */
 
 	prev = new_name;
 	while (*new_name)
@@ -1904,7 +1902,7 @@ quoteOneName(char *buffer, const char *name)
 	*buffer++ = '"';
 	*buffer = '\0';
 
-	pfree(prev);	/* IvorySQL: case sensitive indentify */
+	pfree(prev);
 }
 
 /*

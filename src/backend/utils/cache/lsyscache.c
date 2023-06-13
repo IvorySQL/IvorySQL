@@ -43,9 +43,9 @@
 #include "utils/catcache.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -2516,7 +2516,7 @@ getBaseTypeAndTypmod(Oid typid, int32 *typmod)
 			break;
 		}
 
-		if (typid != LONGOID && typid != RAWOID) /* IvorySQL: datatype */
+		if (typid != LONGOID && typid != RAWOID)
 			Assert(*typmod == -1);
 		typid = typTup->typbasetype;
 		*typmod = typTup->typtypmod;
@@ -2682,7 +2682,6 @@ get_type_category_preferred(Oid typid, char *typcategory, bool *typispreferred)
 	ReleaseSysCache(tp);
 }
 
-/* IvorySQL:BEGIN - datatype */
 Oid
 get_preferred_type(Oid typid)
 {
@@ -2746,7 +2745,6 @@ get_preferred_type(Oid typid)
 
 	return result;
 }
-/* IvorySQL:END - datatype */
 
 /*
  * get_typ_typrelid

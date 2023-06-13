@@ -31,9 +31,9 @@
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 
 
@@ -1030,7 +1030,7 @@ func_select_candidate(int nargs,
 	FuncCandidateList current_candidate,
 				first_candidate,
 				last_candidate,
-				candidate;		/* IvorySQL: datatype */
+				candidate;
 	Oid		   *current_typeids;
 	Oid			current_type;
 	int			i;
@@ -1086,7 +1086,7 @@ func_select_candidate(int nargs,
 	 */
 	ncandidates = 0;
 	nbestMatch = 0;
-	first_candidate = NULL;	/* IvorySQL: datatype */
+	first_candidate = NULL;
 	last_candidate = NULL;
 	for (current_candidate = candidates;
 		 current_candidate != NULL;
@@ -1158,7 +1158,7 @@ func_select_candidate(int nargs,
 			nbestMatch = nmatch;
 			candidates = current_candidate;
 			last_candidate = current_candidate;
-			first_candidate = last_candidate;	/* IvorySQL: datatype */
+			first_candidate = last_candidate;
 			ncandidates = 1;
 		}
 		else if (nmatch == nbestMatch)
@@ -1184,7 +1184,6 @@ func_select_candidate(int nargs,
 	if (nunknowns == 0)
 	{
 		/*
-		 * IvorySQL:BEGIN - datatype
 		 *
 		 * There are more than one candidates, then check those namespace.
 		 * If they are not in the same namespace, then return the one in
@@ -1215,7 +1214,6 @@ func_select_candidate(int nargs,
 				return candidate;
 			else
 				return NULL;
-			/* IvorySQL:END - datatype */
 		}
 	}
 
@@ -1401,10 +1399,8 @@ func_select_candidate(int nargs,
 					if (++ncandidates > 1)
 						break;	/* not unique, give up */
 					last_candidate = current_candidate;
-					/* IvorySQL:BEGIN - datatype */
 					if (first_candidate == NULL)
 						first_candidate = last_candidate;
-					/* IvorySQL:END - datatype */
 				}
 			}
 			if (ncandidates == 1)
@@ -1413,7 +1409,6 @@ func_select_candidate(int nargs,
 				last_candidate->next = NULL;
 				return last_candidate;
 			}
-			/* IvorySQL:BEGIN - datatype */
 			else if (ncandidates > 1)
 			{
 				if (PG_PARSER == compatible_db)
@@ -1431,7 +1426,6 @@ func_select_candidate(int nargs,
 					return candidate;
 				}
 			}
-			/* IvorySQL:END - datatype */
 		}
 	}
 

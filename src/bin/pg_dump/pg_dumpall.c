@@ -26,9 +26,7 @@
 #include "common/string.h"
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
-/* IvorySQL:BEGIN - SQL src_bin */
 #include "oracle_fe_utils/ora_string_utils.h"
-/* IvorySQL:END - SQL src_bin */
 #include "getopt_long.h"
 #include "pg_backup.h"
 
@@ -488,9 +486,7 @@ main(int argc, char *argv[])
 		}
 	}
 #ifdef IvorySQL
-		/* IvorySQL:BEGIN - SQL src_bin */
 		getDbCompatibleMode(conn);
-		/* IvorySQL:END - SQL src_bin */
 #endif
 
 	/*
@@ -565,7 +561,7 @@ main(int argc, char *argv[])
 	fprintf(OPF, "SET standard_conforming_strings = %s;\n", std_strings);
 	if (strcmp(std_strings, "off") == 0)
 		fprintf(OPF, "SET escape_string_warning = off;\n");
-	fprintf(OPF, "SET identifier_case_switch = normal;\n"); /* IvorySQL: case sensitive indentify */
+	fprintf(OPF, "SET identifier_case_switch = normal;\n");
 	fprintf(OPF, "\n");
 
 	if (!data_only)

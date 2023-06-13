@@ -65,12 +65,10 @@ get_db_conn(ClusterInfo *cluster, const char *db_name)
 	appendConnStrVal(&conn_opts, db_name);
 	appendPQExpBufferStr(&conn_opts, " user=");
 	appendConnStrVal(&conn_opts, os_info.user);
-	/* IvorySQL:BEGIN - datatype */
 	if (pg_cluster_within_oracle_mode)
 		appendPQExpBuffer(&conn_opts, " port=%d", cluster->port);
 	else
 		appendPQExpBuffer(&conn_opts, " port=%d", cluster->controldata.database_mode_is_oracle ? cluster->oraport : cluster->port);
-	/* IvorySQL:END - datatype */
 	if (cluster->sockdir)
 	{
 		appendPQExpBufferStr(&conn_opts, " host=");
@@ -109,12 +107,10 @@ cluster_conn_opts(ClusterInfo *cluster)
 		appendShellString(buf, cluster->sockdir);
 		appendPQExpBufferChar(buf, ' ');
 	}
-	/* IvorySQL:BEGIN - datatype */
 	if (pg_cluster_within_oracle_mode)
 		appendPQExpBuffer(buf, "--port %d --username ", cluster->port);
 	else
 		appendPQExpBuffer(buf, "--port %d --username ", cluster->controldata.database_mode_is_oracle ? cluster->oraport : cluster->port);
-	/* IvorySQL:END - datatype */
 	appendShellString(buf, os_info.user);
 
 	return buf->data;
@@ -248,7 +244,6 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	 * Force vacuum_defer_cleanup_age to 0 on the new cluster, so that
 	 * vacuumdb --freeze actually freezes the tuples.
 	 */
-	/* IvorySQL:BEGIN - datatype */
 	if (cluster->controldata.database_mode_is_oracle)
 	{
 		snprintf(cmd, sizeof(cmd),
@@ -262,7 +257,6 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	}
 	else
 	{
-		/* IvorySQL:END - datatype */
 		snprintf(cmd, sizeof(cmd),
 				 "\"%s/pg_ctl\" -w -l \"%s/%s\" -D \"%s\" -o \"-p %d -b%s %s%s\" start",
 				 cluster->bindir,

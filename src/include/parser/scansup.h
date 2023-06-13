@@ -20,11 +20,9 @@ extern char *downcase_truncate_identifier(const char *ident, int len,
 extern char *downcase_identifier(const char *ident, int len,
 								 bool warn, bool truncate);
 
-/* IvorySQL: BEGIN - case sensitive indentify */
 extern char *upcase_identifier(const char *ident, int len,
 							bool warn, bool truncate);
 extern char *identifier_case_transform(const char *ident, int len);
-/* IvorySQL: END - case sensitive indentify */
 
 extern void truncate_identifier(char *ident, int len, bool warn);
 

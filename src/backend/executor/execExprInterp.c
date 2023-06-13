@@ -2533,7 +2533,6 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 		case INT8OID:
 			*op->resvalue = Int64GetDatum((int64) newval);
 			break;
-		/* IvorySQL:BEGIN - sql-sequence */
 		case FLOAT4OID:
 			*op->resvalue = Float4GetDatum((float4) newval);
 			break;
@@ -2543,7 +2542,6 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 		case NUMBEROID:
 			*op->resvalue = NumericGetDatum(int64_to_numeric(newval));
 			break;
-		/* IvorySQL:END - sql-sequence */
 		default:
 			elog(ERROR, "unsupported sequence type %u",
 				 op->d.nextvalueexpr.seqtypid);

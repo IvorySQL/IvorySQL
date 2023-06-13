@@ -31,9 +31,9 @@
 #include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/guc.h"		/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
@@ -265,7 +265,6 @@ BuildIndexValueDescription(Relation indexRelation,
 							  &foutoid, &typisvarlena);
 
 			/*
-			 * IvorySQL:BEGIN - datatype
 			 * Compatible oracle , pass typmod to output function
 			 */
 			if (ORA_PARSER == compatible_db &&
@@ -279,7 +278,6 @@ BuildIndexValueDescription(Relation indexRelation,
 			{
 				val = OidOutputFunctionCall(foutoid, values[i]);
 			}
-			/* IvorySQL:End - datatype */
 		}
 
 		if (i > 0)

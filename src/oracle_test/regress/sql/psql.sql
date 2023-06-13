@@ -1275,14 +1275,12 @@ reset work_mem;
 \do - pg_catalog.int4
 \do && anyarray *
 
-/* IvorySQL:BEGIN - psql-parser */
 --test parser switch in psql
 show compatible_mode;
 set compatible_mode = 'pg';
 \parser
 reset compatible_mode;
 show compatible_mode;
-/* IvorySQL:END - psql-parser */
 
 -- check \df+
 -- we have to use functions with a predictable owner name, so make a role

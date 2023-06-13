@@ -16,7 +16,7 @@
 
 #include "catalog/pg_cast.h"
 #include "catalog/pg_class.h"
-#include "catalog/pg_collation.h"	/* IvorySQL: datatype */
+#include "catalog/pg_collation.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -26,14 +26,14 @@
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
-#include "utils/date.h"			/* IvorySQL: datatype */
-#include "utils/datetime.h"		/* IvorySQL: datatype */
+#include "utils/date.h"	
+#include "utils/datetime.h"
 #include "utils/datum.h"		/* needed for datumIsEqual() */
 #include "utils/fmgroids.h"
-#include "utils/formatting.h"	/* IvorySQL: datatype */
-#include "utils/guc.h"			/* IvorySQL: datatype */
+#include "utils/formatting.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -284,7 +284,6 @@ coerce_type(ParseState *pstate, Node *node,
 		 */
 
 		/*
-		 * IvorySQL:BEGIN - datatype
 		 * TIMESTAMP/TIMESTAMPTZ/TIMESTAMPLTZ type,  we *must* pass
 		 * the typmod, and be used in oratimestamp_in function.
 		 */
@@ -297,7 +296,6 @@ coerce_type(ParseState *pstate, Node *node,
 			inputTypeMod = baseTypeMod;
 		else
 			inputTypeMod = -1;
-		/* IvorySQL:END - datatype */
 
 		baseType = typeidType(baseTypeId);
 
@@ -322,7 +320,6 @@ coerce_type(ParseState *pstate, Node *node,
 		setup_parser_errposition_callback(&pcbstate, pstate, con->location);
 
 		/*
-		 * IvorySQL:BEGIN - datatype
 		 * Compatible oracle fix input format of datetime literals.
 		 * eg: TIMESTAMP '1997-01-31 09:26:50.124'
 		 * TODO:
@@ -580,7 +577,6 @@ coerce_type(ParseState *pstate, Node *node,
 													 NULL,
 													inputTypeMod);
 		}
-		/* IvorySQL:END - datatype */
 
 		/*
 		 * If it's a varlena value, force it to be in non-expanded
@@ -1687,7 +1683,6 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 	return ptype;
 }
 
-/* IvorySQL:BEGIN - datatype */
 Oid
 select_common_type_for_nvl(ParseState *pstate, List *exprs, const char *context,
 				  Node **which_expr)
@@ -1765,7 +1760,6 @@ select_common_type_for_nvl(ParseState *pstate, List *exprs, const char *context,
 		*which_expr = pexpr;
 	return ptype;
 }
-/* IvorySQL:END - datatype */
 
 /*
  * select_common_type_from_oids()
@@ -3646,7 +3640,6 @@ find_typmod_coercion_function(Oid typeId,
 		result = COERCION_PATH_ARRAYCOERCE;
 	}
 
-	/* IvorySQL:BEGIN - datatype */
 	if (compatible_db == ORA_PARSER && typeForm->typbasetype != InvalidOid)
 	{
 		if ((strcmp(typeForm->typname.data, "raw") == 0)||
@@ -3655,7 +3648,6 @@ find_typmod_coercion_function(Oid typeId,
 			typeId = typeForm->typbasetype;
 		}
 	}
-	/* IvorySQL:END - datatype */
 
 	ReleaseSysCache(targetType);
 
