@@ -228,7 +228,6 @@ typedef struct Port
 	X509	   *peer;
 #endif
 
-	/* IvorySQL:BEGIN - LISTEN-MULTI-PORT */
 	/*
 	 * Connection Mode.
 	 *
@@ -239,7 +238,6 @@ typedef struct Port
 	 *	'u' = Unkonw mode, shouldn't happen.
 	 */
 	char	connmode;
-	/* IvorySQL:END - LISTEN-MULTI-PORT */
 
 } Port;
 

@@ -5407,7 +5407,7 @@ exception when others then
 end;
 $$;
 ERROR:  unhandled assertion
-CONTEXT:  PL/iSQL function inline_code_block line 3 at ASSERT
+CONTEXT:  PL/pgSQL function inline_code_block line 3 at ASSERT
 -- Test use of plpgsql in a domain check constraint (cf. bug #14414)
 create function plpgsql_domain_check(val int) returns boolean as $$
 begin return val > 0; end
@@ -5426,7 +5426,7 @@ begin
 end;
 $$;
 ERROR:  value for domain plpgsql_domain violates check constraint "plpgsql_domain_check"
-CONTEXT:  PL/iSQL function inline_code_block line 4 at assignment
+CONTEXT:  PL/pgSQL function inline_code_block line 4 at assignment
 -- Test handling of expanded array passed to a domain constraint (bug #14472)
 create function plpgsql_arr_domain_check(val int[]) returns boolean as $$
 begin return val[1] > 0; end

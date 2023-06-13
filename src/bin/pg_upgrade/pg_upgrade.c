@@ -64,7 +64,6 @@ ClusterInfo old_cluster,
 			new_cluster;
 OSInfo		os_info;
 
-/* IvorySQL:BEGIN - datatype */
 /*
  * When we upgrade a cluster initialized to Oracle and connect using as PG mode,
  * the parser of the database server has been switched to the PG hook, so we should
@@ -75,8 +74,6 @@ OSInfo		os_info;
  * which is currently the responsibility of the caller.
  */
 bool		pg_cluster_within_oracle_mode = false;
-/* IvorySQL:END - datatype */
-
 char	   *output_files[] = {
 	SERVER_LOG_FILE,
 #ifdef WIN32
@@ -795,10 +792,8 @@ set_frozenxids(bool minmxid_only)
 
 	conn_template1 = connectToServer(&new_cluster, "template1");
 
-	/* IvorySQL: BEGIN - case sensitive indentify */
 	PQclear(executeQueryOrDie(conn_template1,
 							  "set identifier_case_switch = normal;"));
-	/* IvorySQL: END - case sensitive indentify */
 
 	if (!minmxid_only)
 		/* set pg_database.datfrozenxid */

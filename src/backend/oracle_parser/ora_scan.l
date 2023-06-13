@@ -44,10 +44,8 @@
 #include "port/pg_bitutils.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
-/* IvorySQL: BEGIN - case sensitive indentify */
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
-/* IvorySQL: END - case sensitive indentify */
 }
 
 %{
@@ -625,14 +623,12 @@ other			.
 											   yyextra->literallen,
 											   false);
 							yylval->str = litbufdup(yyscanner);
-							/* IvorySQL:BEGIN - datatype */
 							if (strcmp(yylval->str, "") == 0 &&
 								ORA_PARSER == compatible_db &&
 								enable_emptystring_to_NULL)
 							{
 								return NULL_P;
 							}
-							/* IvorySQL:END - datatype */
 							return SCONST;
 						case xus:
 							yylval->str = litbufdup(yyscanner);
@@ -820,7 +816,6 @@ other			.
 					 * case to the upper case, if the identifier is quoted by the double
 					 * quotes.
 					 */
-					/* IvorySQL: BEGIN - case sensitive indentify */
 					if (compatible_db == DB_ORACLE && enable_case_switch
 						&& identifier_case_switch != NORMAL
 						&& !identifier_case_from_pg_dump)
@@ -843,7 +838,6 @@ other			.
 							pfree(interident);
 						}
 					}
-					/* IvorySQL: END - case sensitive indentify */
 
 					if (yyextra->literallen >= NAMEDATALEN)
 						truncate_identifier(ident, yyextra->literallen, true);
@@ -1532,7 +1526,6 @@ ora_core_yyfree(void *ptr, ora_core_yyscan_t yyscanner)
 		pfree(ptr);
 }
 
-/* IvorySQL:BEGIN - sql-sequence */
 /*
  * Read and return a text (between 'sloc' and 'eloc') from the scanner
  * internal buffers.
@@ -1550,4 +1543,3 @@ scanner_querytext(int sloc, int eloc, ora_core_yyscan_t yyscanner)
 
 	return query;
 }
-/* IvorySQL:END - sql-sequence */

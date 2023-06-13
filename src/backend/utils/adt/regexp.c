@@ -58,9 +58,7 @@ typedef struct regexp_matches_ctx
 	pg_wchar   *wide_str;		/* wide-char version of original string */
 	char	   *conv_buf;		/* conversion buffer, if needed */
 	int			conv_bufsiz;	/* size thereof */
-	/* IvorySQL:BEGIN - Support Oracle Regexp */
 	bool       use_subpatterns; /* use_subpatterns */
-	/* IvorySQL:END - Support Oracle Regexp */
 } regexp_matches_ctx;
 
 /*
@@ -122,7 +120,6 @@ static ArrayType *build_regexp_match_result(regexp_matches_ctx *matchctx);
 static Datum build_regexp_split_result(regexp_matches_ctx *splitctx);
 
 
-/* IvorySQL:BEGIN - Support Oracle Regexp */
 static bool
 ora_build_regexp_substr_matches_result(regexp_matches_ctx *matchctx ,
 					int subexpr_pos,Datum *subpatterns);
@@ -130,7 +127,6 @@ static bool
 ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,
 													int ret_opt,int subexpr_pos,
 													Datum *subpattern);
-/* IvorySQL:END - Support Oracle Regexp */
 
 /*
  * RE_compile_and_cache - compile a RE, caching if possible
@@ -271,13 +267,11 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	return &re_array[0].cre_re;
 }
 
-/* IvorySQL:BEGIN - Support Oracle Regexp */
 regex_t *
 ora_re_compile_and_cache(text *text_re, int cflags, Oid collation)
 {
 	return RE_compile_and_cache(text_re, cflags, collation);
 }
-/* IvorySQL:END - Support Oracle Regexp */
 
 /*
  * RE_wchar_execute - execute a RE on pg_wchar data
@@ -465,13 +459,11 @@ parse_re_flags(pg_re_flags *flags, text *opts)
 	}
 }
 
-/* IvorySQL:BEGIN - Support Oracle Regexp */
 void
 ora_parse_re_flags(pg_re_flags *flags, text *opts)
 {
 	parse_re_flags(flags,opts);
 }
-/* IvorySQL:BEGIN - Support Oracle Regexp */
 
 /*
  *	interface routines called by the function manager
@@ -1407,7 +1399,6 @@ regexp_matches(PG_FUNCTION_ARGS)
 	SRF_RETURN_DONE(funcctx);
 }
 
-/* IvorySQL:BEGIN - Support Oracle Regexp */
 /*
  * ora_build_regexp_matches_result - return submatch for current match
  */
@@ -1749,7 +1740,6 @@ ora_setup_regexp_instr_matches(text *src_text,
 	else
 		return false;
 }
-/* IvorySQL:END - Support Oracle Regexp */
 
 
 /* This is separate to keep the opr_sanity regression test from complaining */

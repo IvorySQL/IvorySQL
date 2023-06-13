@@ -38,7 +38,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: SQL PARSER */
+#include "utils/ora_compatible.h"
 #include "utils/pg_locale.h"
 #include "utils/sortsupport.h"
 #include "utils/varlena.h"
@@ -749,7 +749,6 @@ textoctetlen(PG_FUNCTION_ARGS)
 Datum
 textcat(PG_FUNCTION_ARGS)
 {
-	/* IvorySQL:BEGIN - datatype */
 	text	   *t1 = NULL;
 	text	   *t2 = NULL;
 
@@ -772,7 +771,6 @@ textcat(PG_FUNCTION_ARGS)
 
 	t1 = PG_GETARG_TEXT_PP(0);
 	t2 = PG_GETARG_TEXT_PP(1);
-	/* IvorySQL:END - datatype */
 
 	PG_RETURN_TEXT_P(text_catenate(t1, t2));
 }
@@ -824,7 +822,6 @@ text_catenate(text *t1, text *t2)
  * It is caller's responsibility that there actually are n characters;
  * the string need not be null-terminated.
  *
- * IvorySQL: Support Oracle Regexp
  * remove static.
  */
 int
@@ -1919,7 +1916,7 @@ varstr_sortsupport(SortSupport ssup, Oid typid, Oid collid)
 	if (lc_collate_is_c(collid))
 	{
 		if (typid == BPCHAROID ||
-			(database_mode == DB_ORACLE && (typid == ORACHARCHAROID || typid == ORACHARBYTEOID)))	/* IvorySQL: datatype */
+			(database_mode == DB_ORACLE && (typid == ORACHARCHAROID || typid == ORACHARBYTEOID)))
 			ssup->comparator = bpcharfastcmp_c;
 		else if (typid == NAMEOID)
 		{
@@ -2187,7 +2184,7 @@ varstrfastcmp_locale(char *a1p, int len1, char *a2p, int len2, SortSupport ssup)
 	}
 
 	if (sss->typid == BPCHAROID ||
-		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID))) /* IvorySQL: datatype */
+		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))
 	{
 		/* Get true number of bytes, ignoring trailing spaces */
 		len1 = bpchartruelen(a1p, len1);
@@ -2282,8 +2279,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 
 	/* Get number of bytes, ignoring trailing spaces */
 	if (sss->typid == BPCHAROID ||
-		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))	/* IvorySQL: datatype */
-		len = bpchartruelen(authoritative_data, len);
+		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))	
 
 	/*
 	 * If we're using the C collation, use memcpy(), rather than strxfrm(), to
@@ -3501,7 +3497,7 @@ SplitIdentifierString(char *rawstring, char separator,
 	{
 		char	   *curname;
 		char	   *endp;
-		bool	    need_case_switch = false;	/* IvorySQL: case sensitive indentify */
+		bool	    need_case_switch = false;
 
 		if (*nextp == '"')
 		{
@@ -3520,7 +3516,7 @@ SplitIdentifierString(char *rawstring, char separator,
 			}
 			/* endp now points at the terminating quote */
 			nextp = endp + 1;
-			need_case_switch = true;	/* IvorySQL: case sensitive indentify */
+			need_case_switch = true;
 		}
 		else
 		{
@@ -3570,7 +3566,6 @@ SplitIdentifierString(char *rawstring, char separator,
 		/* Now safe to overwrite separator with a null */
 		*endp = '\0';
 
-		/* IvorySQL: BEGIN - case sensitive indentify */
 		/* transform the case for the identifier that is
 		 * quoted by double quotes.
 		 */
@@ -3583,7 +3578,6 @@ SplitIdentifierString(char *rawstring, char separator,
 			strncpy(curname, new_name, strlen(new_name));
 			pfree(new_name);
 		}
-		/* IvorySQL: END - case sensitive indentify */
 
 		/* Truncate name if it's overlength */
 		truncate_identifier(curname, strlen(curname), false);
@@ -3868,7 +3862,7 @@ SplitGUCList(char *rawstring, char separator,
 	{
 		char	   *curname;
 		char	   *endp;
-		bool	    need_case_switch = false;	/* IvorySQL: case sensitive indentify */
+		bool	    need_case_switch = false;
 
 		if (*nextp == '"')
 		{
@@ -3887,7 +3881,7 @@ SplitGUCList(char *rawstring, char separator,
 			}
 			/* endp now points at the terminating quote */
 			nextp = endp + 1;
-			need_case_switch = true;	/* IvorySQL: case sensitive indentify */
+			need_case_switch = true;
 		}
 		else
 		{
@@ -3919,7 +3913,6 @@ SplitGUCList(char *rawstring, char separator,
 		/* Now safe to overwrite separator with a null */
 		*endp = '\0';
 
-		/* IvorySQL: BEGIN - case sensitive indentify */
 		/* transform the case for the identifier that is
 		 * quoted by double quotes.
 		 */
@@ -3932,7 +3925,6 @@ SplitGUCList(char *rawstring, char separator,
 			strncpy(curname, new_name, strlen(new_name));
 			pfree(new_name);
 		}
-		/* IvorySQL: END - case sensitive indentify */
 
 		/*
 		 * Finished isolating current name --- add it to list
@@ -4741,7 +4733,7 @@ text_to_table_null(PG_FUNCTION_ARGS)
 	return text_to_table(fcinfo);
 }
 
-/* IvorySQL:BEGIN - Support Oracle Regexp */
+
 /*
  * ora_replace_text_regexp
  *
@@ -4955,7 +4947,7 @@ ora_instr_text_regexp(text *src_text,text *pattern_arg,
 										  occur_posn,ret_opt,subexpr_pos,
 										  substr,false);
 }
-/* IvorySQL:BEGIN - Support Oracle Regexp */
+
 
 /*
  * Common code for text_to_array, text_to_array_null, text_to_table

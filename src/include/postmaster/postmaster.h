@@ -18,13 +18,13 @@ extern PGDLLIMPORT bool EnableSSL;
 extern PGDLLIMPORT int SuperuserReservedConnections;
 extern PGDLLIMPORT int ReservedConnections;
 extern PGDLLIMPORT int PostPortNumber;
-extern PGDLLIMPORT int OraPortNumber;  /* IvorySQL:LISTEN-MULTI-PORT */
+extern PGDLLIMPORT int OraPortNumber;
 
 extern PGDLLIMPORT int Unix_socket_permissions;
 extern PGDLLIMPORT char *Unix_socket_group;
 extern PGDLLIMPORT char *Unix_socket_directories;
 extern PGDLLIMPORT char *ListenAddresses;
-extern PGDLLIMPORT char *OraListenAddresses;           /* IvorySQL:LISTEN-MULTI-PORT */
+extern PGDLLIMPORT char *OraListenAddresses;
 
 extern PGDLLIMPORT bool ClientAuthInProgress;
 extern PGDLLIMPORT int PreAuthDelay;

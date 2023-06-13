@@ -75,9 +75,7 @@ foreach my $datfile (@ARGV)
 	push @catnames, $catname;
 	$catalogs{$catname} = $catalog;
 
-	#IvorySQL:BEGIN - SQL PARSER
 	$catalog_data{$catname} = Catalog::ParseData($datfile, $schema, 1, "oracle");
-	#IvorySQL:END - SQL PARSER
 }
 
 ########################################################################

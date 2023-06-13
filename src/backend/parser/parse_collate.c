@@ -661,10 +661,8 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 								 */
 								(void) assign_collations_walker((Node *) when->expr,
 																&loccontext);
-								/* IvorySQL:BEGIN - datatype */
 								(void) assign_collations_walker((Node *) when->orig_expr,
 																&loccontext);
-								/* IvorySQL:END - datatype */
 								(void) assign_collations_walker((Node *) when->result,
 																&loccontext);
 							}

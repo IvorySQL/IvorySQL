@@ -15,10 +15,9 @@
 # a single-target, empty rule to make the other targets non-default.
 all:
 
-# IvorySQL:BEGIN - SQL PARSER
 #all check install installdirs installcheck installcheck-parallel uninstall clean distclean maintainer-clean dist distcheck world check-world install-world installcheck-world:
 all check oracle-check all-check install installdirs installcheck oracle-installcheck installcheck-parallel oracle-installcheck-parallel uninstall clean distclean maintainer-clean dist distcheck world check-world oracle-pg-check-world oracle-check-world all-check-world install-world installcheck-world oracle-installcheck-world all-installcheck-world:
-# IvorySQL:END - SQL PARSER
+
 	@if [ ! -f GNUmakefile ] ; then \
 	   if [ -f INSTALL ] ; then \
 	     INSTRUCTIONS="INSTALL"; \

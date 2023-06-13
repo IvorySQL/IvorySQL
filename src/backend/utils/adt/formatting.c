@@ -85,10 +85,10 @@
 #include "utils/datetime.h"
 #include "utils/float.h"
 #include "utils/formatting.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/pg_locale.h"
 #include "varatt.h"
 
@@ -587,12 +587,10 @@ typedef enum
 	DCH_FF4,
 	DCH_FF5,
 	DCH_FF6,
-	/* IvorySQL:BEGIN - datatype */
 	DCH_FF7,
 	DCH_FF8,
 	DCH_FF9,
 	DCH_FF,
-	/* IvorySQL:END - datatype */
 	DCH_FX,						/* global suffix */
 	DCH_HH24,
 	DCH_HH12,
@@ -649,12 +647,10 @@ typedef enum
 	DCH_ff4,
 	DCH_ff5,
 	DCH_ff6,
-	/* IvorySQL:BEGIN - datatype */
 	DCH_ff7,
 	DCH_ff8,
 	DCH_ff9,
 	DCH_ff,
-	/* IvorySQL:END - datatype */
 	DCH_fx,
 	DCH_hh24,
 	DCH_hh12,
@@ -765,12 +761,10 @@ static const KeyWord DCH_keywords[] = {
 	{"FF4", 3, DCH_FF4, false, FROM_CHAR_DATE_NONE},
 	{"FF5", 3, DCH_FF5, false, FROM_CHAR_DATE_NONE},
 	{"FF6", 3, DCH_FF6, false, FROM_CHAR_DATE_NONE},
-	/* IvorySQL:BEGIN - datatype */
 	{"FF7", 3, DCH_FF7, false, FROM_CHAR_DATE_NONE},
 	{"FF8", 3, DCH_FF8, false, FROM_CHAR_DATE_NONE},
 	{"FF9", 3, DCH_FF9, false, FROM_CHAR_DATE_NONE},
 	{"FF", 2, DCH_FF, false, FROM_CHAR_DATE_NONE},
-	/* IvorySQL:END - datatype */
 	{"FX", 2, DCH_FX, false, FROM_CHAR_DATE_NONE},
 	{"HH24", 4, DCH_HH24, true, FROM_CHAR_DATE_NONE},	/* H */
 	{"HH12", 4, DCH_HH12, true, FROM_CHAR_DATE_NONE},
@@ -827,12 +821,10 @@ static const KeyWord DCH_keywords[] = {
 	{"ff4", 3, DCH_FF4, false, FROM_CHAR_DATE_NONE},
 	{"ff5", 3, DCH_FF5, false, FROM_CHAR_DATE_NONE},
 	{"ff6", 3, DCH_FF6, false, FROM_CHAR_DATE_NONE},
-	/* IvorySQL:BEGIN - datatype */
 	{"ff7", 3, DCH_FF7, false, FROM_CHAR_DATE_NONE},
 	{"ff8", 3, DCH_FF8, false, FROM_CHAR_DATE_NONE},
 	{"ff9", 3, DCH_FF9, false, FROM_CHAR_DATE_NONE},
 	{"ff", 2, DCH_FF, false, FROM_CHAR_DATE_NONE},
-	/* IvorySQL:END - datatype */
 	{"fx", 2, DCH_FX, false, FROM_CHAR_DATE_NONE},
 	{"hh24", 4, DCH_HH24, true, FROM_CHAR_DATE_NONE},	/* h */
 	{"hh12", 4, DCH_HH12, true, FROM_CHAR_DATE_NONE},
@@ -1035,7 +1027,7 @@ static void dump_node(FormatNode *node, int max);
 static const char *get_th(char *num, int type);
 static char *str_numth(char *dest, char *num, int type);
 static int	adjust_partial_year_to_2020(int year);
-static int	ora_adjust_partial_year(int year, int id);		/* IvorySQL: datatype */
+static int	ora_adjust_partial_year(int year, int id);
 static int	strspace_len(const char *str);
 static bool from_char_set_mode(TmFromChar *tmfc, const FromCharDateMode mode,
 							   Node *escontext);
@@ -1065,11 +1057,9 @@ static void NUM_numpart_to_char(NUMProc *Np, int id);
 static char *NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						   char *number, int input_len, int to_char_out_pre_spaces,
 						   int sign, bool is_to_char, Oid collid);
-/* IvorySQL:BEGIN - datatype */
 static char *ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 		   char *number, int from_char_input_len, int to_char_out_pre_spaces,
 			  int sign, bool is_to_char, Oid collid);
-/* IvorySQL:END - datatype */
 static DCHCacheEntry *DCH_cache_getnew(const char *str, bool std);
 static DCHCacheEntry *DCH_cache_search(const char *str, bool std);
 static DCHCacheEntry *DCH_cache_fetch(const char *str, bool std);
@@ -1101,7 +1091,6 @@ index_seq_search(const char *str, const KeyWord *kw, const int *index)
 		{
 			if (strncmp(str, k->name, k->len) == 0)
 			{
-				/* IvorySQL:BEGIN - datatype */
 				if(temk == NULL || temk->len <= k->len)
 					return k;
 				else
@@ -1121,16 +1110,13 @@ index_seq_search(const char *str, const KeyWord *kw, const int *index)
 			k++;
 			if (!k->name)
 				break;
-			/* IvorySQL:END - datatype */
 		} while (*str == *k->name);
 	}
 
-	/* IvorySQL:BEGIN - datatype */
 	if (temk != NULL)
 		return temk;
 	else
 		return NULL;
-	/* IvorySQL:END - datatype */
 }
 
 static const KeySuffix *
@@ -1466,12 +1452,10 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 					n->type = NODE_TYPE_SPACE;
 				else
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db && !is_separator_char(str))
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 								 errmsg("date format not recognized")));
-					/* IvorySQL:END - datatype */
 					else
 						n->type = NODE_TYPE_CHAR;
 				}
@@ -2271,7 +2255,7 @@ adjust_partial_year_to_2020(int year)
 		return year;
 }
 
-/* IvorySQL:BEGIN - datatype
+/* 
  *
  * Adjust all dates toward the current century
  */
@@ -2305,7 +2289,7 @@ ora_adjust_partial_year(int year, int id)
 
 	return year;
 }
-/* IvorySQL:END - datatype */
+
 
 static int
 strspace_len(const char *str)
@@ -2410,7 +2394,7 @@ from_char_parse_int_len(int *dest, const char **src, const int len, FormatNode *
 	used = (int) strlcpy(copy, *src, len + 1);
 
 	if ((ORA_PARSER != compatible_db || (node->type != NODE_TYPE_END && (node + 1)->type == NODE_TYPE_END)) &&
-		(S_FM(node->suffix) || is_next_separator(node)))	/* IvorySQL: datatype */
+		(S_FM(node->suffix) || is_next_separator(node)))
 	{
 		/*
 		 * This node is in Fill Mode, or the next node is known to be a
@@ -2430,7 +2414,7 @@ from_char_parse_int_len(int *dest, const char **src, const int len, FormatNode *
 		 */
 		char	   *last;
 
-		if (used < len && ORA_PARSER != compatible_db)	/* IvorySQL: datatype */
+		if (used < len && ORA_PARSER != compatible_db)
 			ereturn(escontext, -1,
 					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 					 errmsg("source string too short for \"%s\" formatting field",
@@ -2444,7 +2428,7 @@ from_char_parse_int_len(int *dest, const char **src, const int len, FormatNode *
 		result = strtol(copy, &last, 10);
 		used = last - copy;
 
-		if (used > 0 && used < len && ORA_PARSER != compatible_db)	/* IvorySQL: datatype */
+		if (used > 0 && used < len && ORA_PARSER != compatible_db)
 			ereturn(escontext, -1,
 					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 					 errmsg("invalid value \"%s\" for \"%s\"",
@@ -2803,10 +2787,9 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_FF6:
 			case DCH_US:		/* microsecond */
-			case DCH_FF:		/* IvorySQL: datatype */
+			case DCH_FF:
 				DCH_to_char_fsec("%06d", in->fsec);
 				break;
-			/* IvorySQL:BEGIN - datatype */
 			case DCH_FF7:
 				DCH_to_char_fsec("%06d", in->fsec);
 				sprintf(s, "%s", "0");
@@ -2822,7 +2805,6 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				sprintf(s, "%s", "000");
 				s += 3;
 				break;
-			/* IvorySQL:END - datatype */
 #undef DCH_to_char_fsec
 			case DCH_SSSS:
 				sprintf(s, "%lld",
@@ -3514,7 +3496,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					return;
 				out->clock = CLOCK_12_HOUR;
 				SKIP_THth(s, n->suffix);
-				/* IvorySQL:BEGIN - datatype */
 				if (ORA_PARSER == compatible_db)
 				{
 					if (out->hh < 0 || out->hh > 12)
@@ -3522,13 +3503,11 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 							  errmsg("The hour value must be between 1 and 12.")));
 				}
-				/* IvorySQL:END - datatype */
 				break;
 			case DCH_HH24:
 				if (from_char_parse_int_len(&out->hh, &s, 2, n, escontext) < 0)
 					return;
 				SKIP_THth(s, n->suffix);
-				/* IvorySQL:BEGIN - datatype */
 				if (ORA_PARSER == compatible_db)
 				{
 					if (out->hh < 0 || out->hh > 23)
@@ -3536,13 +3515,11 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 							  errmsg("The hour value must be between 0 and 23.")));
 				}
-				/* IvorySQL:END - datatype */
 				break;
 			case DCH_MI:
 				if (from_char_parse_int(&out->mi, &s, n, escontext) < 0)
 					return;
 				SKIP_THth(s, n->suffix);
-				/* IvorySQL:BEGIN - datatype */
 				if (ORA_PARSER == compatible_db)
 				{
 					if (out->mi < 0 || out->mi > 59)
@@ -3550,13 +3527,11 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 							  errmsg("The minute value must be between 0 and 59.")));
 				}
-				/* IvorySQL:END - datatype */
 				break;
 			case DCH_SS:
 				if (from_char_parse_int(&out->ss, &s, n, escontext) < 0)
 					return;
 				SKIP_THth(s, n->suffix);
-				/* IvorySQL:BEGIN - datatype */
 				if (ORA_PARSER == compatible_db)
 				{
 					if (out->ss < 0 || out->ss > 59)
@@ -3564,7 +3539,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 							  errmsg("The second must be between 0 and 59.")));
 				}
-				/* IvorySQL:END - datatype */
 				break;
 			case DCH_MS:		/* millisecond */
 				len = from_char_parse_int_len(&out->ms, &s, 3, n, escontext);
@@ -3585,18 +3559,14 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_FF4:
 			case DCH_FF5:
 			case DCH_FF6:
-			/* IvorySQL:BEGIN - datatype */
 			case DCH_FF7:
 			case DCH_FF8:
 			case DCH_FF9:
-			/* IvorySQL:END - datatype */
 				out->ff = n->key->id - DCH_FF1 + 1;
 				/* fall through */
-			/* IvorySQL:BEGIN - datatype */
 			case DCH_FF:
 				if (n->key->id == DCH_FF)
 					out->ff = 6;	/* FF default precision */
-			/* IvorySQL:END - datatype */
 			case DCH_US:		/* microsecond */
 				len = from_char_parse_int_len(&out->us, &s,
 											  n->key->id == DCH_US ? 6 :
@@ -3604,7 +3574,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				if (len < 0)
 					return;
 
-				/* IvorySQL:BEGIN - datatype */
 				/*
 				 * Compatible oracle, if the number of fractional seconds is greater than
 				 * the lenght of format picture item 'FFx' should error out.
@@ -3620,7 +3589,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 						  errmsg("date format picture ends before converting entire input string.")));
 				}
-				/* IvorySQL:END - datatype */
 
 				out->us *= len == 1 ? 100000 :
 					len == 2 ? 10000 :
@@ -3628,7 +3596,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					len == 4 ? 100 :
 					len == 5 ? 10 : 1;
 
-				/* IvorySQL:BEGIN - datatype */
 				if (ORA_PARSER == compatible_db &&
 					n->key->id != DCH_US &&
 					len > 6)
@@ -3656,7 +3623,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								  errmsg("Fractional seconds overflow, fractional seconds supports up to 9 digits.")));
 					}
 				}
-				/* IvorySQL:END - datatype */
 
 				SKIP_THth(s, n->suffix);
 				break;
@@ -3753,7 +3719,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				if (from_char_parse_int(&out->mm, &s, n, escontext) < 0)
 					return;
 				SKIP_THth(s, n->suffix);
-				/* IvorySQL:BEGIN - datatype */
 				if (ORA_PARSER == compatible_db)
 				{
 					if (out->mm < 1 || out->mm > 12)
@@ -3763,7 +3728,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 							  errmsg("The value of month is invalid.")));
 					}
 				}
-				/* IvorySQL:END - datatype */
 				break;
 			case DCH_DAY:
 			case DCH_Day:
@@ -3803,7 +3767,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				if (from_char_parse_int(&out->dd, &s, n, escontext) < 0)
 					return;
 				SKIP_THth(s, n->suffix);
-				/* IvorySQL:BEGIN - datatype */
 				if (ORA_PARSER == compatible_db)
 				{
 					/* Check for valid day of month */
@@ -3815,7 +3778,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								  errmsg("The value of day must be between 1 and the last day of the month.")));
 					}
 				}
-				/* IvorySQL:END - datatype */
 				break;
 			case DCH_D:
 				if (from_char_parse_int(&out->d, &s, n, escontext) < 0)
@@ -3893,7 +3855,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				{
 					if (ORA_PARSER != compatible_db)
 						out->year = adjust_partial_year_to_2020(out->year);
-					/* IvorySQL:BEGIN - datatype */
 					else
 					{
 						if (len > 3)
@@ -3902,7 +3863,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								  errmsg("The numeric value does not match the length of the format item.")));
 						out->year = ora_adjust_partial_year(out->year, n->key->id);
 					}
-					/* IvorySQL:END - datatype */
 				}
 				out->yysz = 3;
 				SKIP_THth(s, n->suffix);
@@ -3916,7 +3876,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				{
 					if (ORA_PARSER != compatible_db)
 						out->year = adjust_partial_year_to_2020(out->year);
-					/* IvorySQL:BEGIN - datatype */
 					else
 					{
 						if (len > 2)
@@ -3925,7 +3884,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								  errmsg("The numeric value does not match the length of the format item.")));
 						out->year = ora_adjust_partial_year(out->year, n->key->id);
 					}
-					/* IvorySQL:END - datatype */
 				}
 				out->yysz = 2;
 				SKIP_THth(s, n->suffix);
@@ -3939,7 +3897,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				{
 					if (ORA_PARSER != compatible_db)
 						out->year = adjust_partial_year_to_2020(out->year);
-					/* IvorySQL:BEGIN - datatype */
 					else
 					{
 						if (len > 1)
@@ -3948,7 +3905,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								  errmsg("The numeric value does not match the length of the format item.")));
 						out->year = ora_adjust_partial_year(out->year, n->key->id);
 					}
-					/* IvorySQL:END - datatype */
 				}
 				out->yysz = 1;
 				SKIP_THth(s, n->suffix);
@@ -4007,7 +3963,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					 errmsg("trailing characters remain in input string after datetime format")));
 	}
 
-	/* IvorySQL:BEGIN - datatype */
 	if (ORA_PARSER == compatible_db)
 	{
 		while(*s != '\0' && *s == ' ')
@@ -4017,7 +3972,6 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 				errmsg("datetime format picture ends before converting entire input string")));
 	}
-	/* IvorySQL:END - datatype */
 }
 
 /*
@@ -4077,12 +4031,10 @@ DCH_datetime_type(FormatNode *node)
 			case DCH_FF4:
 			case DCH_FF5:
 			case DCH_FF6:
-			/* IvorySQL:BEGIN - datatype */
 			case DCH_FF7:
 			case DCH_FF8:
 			case DCH_FF9:
 			case DCH_FF:
-			/* IvorySQL:END - datatype */
 			case DCH_SSSS:
 				flags |= DCH_TIMED;
 				break;
@@ -4252,7 +4204,6 @@ DCH_cache_fetch(const char *str, bool std)
  * We parse fmt into a list of FormatNodes.  This is then passed to DCH_to_char
  * for formatting.
  *
- * IvorySQL: datatype => export for used in ivorysql_ora.
  */
 text *
 datetime_to_char_body(TmToChar *tmtc, text *fmt, bool is_interval, Oid collid)
@@ -4336,13 +4287,10 @@ timestamp_to_char(PG_FUNCTION_ARGS)
 
 	if (VARSIZE_ANY_EXHDR(fmt) <= 0 || TIMESTAMP_NOT_FINITE(dt))
 		PG_RETURN_NULL();
-
-	/* IvorySQL:BEGIN - datatype */
 	if (ORA_PARSER == compatible_db)
 		ORA_ZERO_tmtc(&tmtc);
 	else
 		ZERO_tmtc(&tmtc);
-	/* IvorySQL:END - datatype */
 	tm = tmtcTm(&tmtc);
 
 	if (timestamp2tm(dt, NULL, &tt, &tmtcFsec(&tmtc), NULL, NULL) != 0)
@@ -4375,7 +4323,6 @@ timestamptz_to_char(PG_FUNCTION_ARGS)
 	struct fmt_tm *tm;
 	int			thisdate;
 
-	/* IvorySQL:BEGIN - datatype */
 	if (VARSIZE_ANY_EXHDR(fmt) <= 0)
 		PG_RETURN_NULL();
 
@@ -4391,8 +4338,6 @@ timestamptz_to_char(PG_FUNCTION_ARGS)
 		ORA_ZERO_tmtc(&tmtc);
 	else
 		ZERO_tmtc(&tmtc);
-	/* IvorySQL:END - datatype */
-
 	tm = tmtcTm(&tmtc);
 
 	if (timestamp2tm(dt, &tz, &tt, &tmtcFsec(&tmtc), &tmtcTzn(&tmtc), NULL) != 0)
@@ -4432,12 +4377,10 @@ interval_to_char(PG_FUNCTION_ARGS)
 	if (VARSIZE_ANY_EXHDR(fmt) <= 0)
 		PG_RETURN_NULL();
 
-	/* IvorySQL:BEGIN - datatype */
 	if (ORA_PARSER == compatible_db)
 		ORA_ZERO_tmtc(&tmtc);
 	else
 		ZERO_tmtc(&tmtc);
-	/* IvorySQL:END - datatype */
 	tm = tmtcTm(&tmtc);
 
 	interval2itm(*it, itm);
@@ -5086,7 +5029,6 @@ fail:
 	return false;
 }
 
-/* IvorySQL:BEGIN - datatype */
 static void
 final_datetime_check(TmFromChar *out)
 {
@@ -5515,7 +5457,6 @@ fail:
 
 	pfree(date_str);
 }
-/* IvorySQL:END - datatype */
 
 /**********************************************************************
  *	the NUMBER version part
@@ -6307,7 +6248,6 @@ NUM_eat_non_data_chars(NUMProc *Np, int n, int input_len)
 	}
 }
 
-/* IvorySQL:BEGIN - datatype */
 static char *
 ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 		   char *number, int from_char_input_len, int to_char_out_pre_spaces,
@@ -6969,7 +6909,6 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 
 	return DatumGetNumeric(result);
 }
-/* IvorySQL:END - datatype */
 
 static char *
 NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,

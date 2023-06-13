@@ -295,7 +295,6 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 				buf = pstrdup("character varying");
 			break;
 
-		/* IvorySQL:BEGIN - datatype */
 		case ORACHARCHAROID:
 		case ORACHARBYTEOID:
 			if (with_typemod)
@@ -374,7 +373,6 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			buf = pstrdup("binary_double");
 			break;
 
-		/* IvorySQL:END - datatype */
 	}
 
 	if (buf == NULL)

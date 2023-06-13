@@ -3,7 +3,7 @@
 # Makefile--
 #    Makefile for src/backend/oracle_parser
 #
-# Copyright (c) 2023, IvorySQL
+# Copyright (c) 2023, Ivory SQL Global Development Team
 # IDENTIFICATION
 #    src/backend/oracle_parser/Makefile
 #

@@ -171,7 +171,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	ListCell   *elements;
 	Oid			namespaceid;
 	Oid			existing_relid;
-	int			ora_identity_cnt = 0;	/* IvorySQL:sql-sequence */
+	int			ora_identity_cnt = 0;
 	ParseCallbackState pcbstate;
 
 	/* Set up pstate */
@@ -296,7 +296,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		}
 	}
 
-	/* IvorySQL:BEGIN - sql-sequence */
 	/*
 	 * Count the number of compatible identity columns when create table.
 	 */
@@ -310,7 +309,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	}
 	if(ora_identity_cnt > 1)
 		elog(ERROR, "table can have only one identity column");
-	/* IvorySQL:END - sql-sequence */
 
 	/*
 	 * Transfer anything we already have in cxt.alist into save_alist, to keep
@@ -386,7 +384,7 @@ static void
 generateSerialExtraStmts(CreateStmtContext *cxt, ColumnDef *column,
 						 Oid seqtypid, List *seqoptions,
 						 bool for_identity, bool col_exists,
-						 char **snamespace_p, char **sname_p, char seq_type)	/* IvorySQL:sql-sequence */
+						 char **snamespace_p, char **sname_p, char seq_type)
 {
 	ListCell   *option;
 	DefElem    *nameEl = NULL;
@@ -477,10 +475,8 @@ generateSerialExtraStmts(CreateStmtContext *cxt, ColumnDef *column,
 	seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 	seqstmt->sequence->relpersistence = cxt->relation->relpersistence;
 	seqstmt->options = seqoptions;
-	/* IvorySQL:BEGIN - sql-sequence */
 	if (seq_type)
 		seqstmt->seq_type = seq_type;
-	/* IvorySQL:END - sql-sequence */
 
 	/*
 	 * If a sequence data type was specified, add it to the options.  Prepend
@@ -623,7 +619,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 		generateSerialExtraStmts(cxt, column,
 								 column->typeName->typeOid, NIL,
 								 false, false,
-								 &snamespace, &sname, 0); /* IvorySQL:sql-sequence */
+								 &snamespace, &sname, 0);
 
 		/*
 		 * Create appropriate constraints for SERIAL.  We do this in full,
@@ -729,7 +725,6 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 					ctype = typenameType(cxt->pstate, column->typeName, NULL);
 					typeOid = ((Form_pg_type) GETSTRUCT(ctype))->oid;
 
-					/* IvorySQL:BEGIN - sql-sequence */
 					/* Convert compatible identity smallint/int type column to bigint type */
 					if ((constraint->generated_when == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL
 							|| constraint->generated_when == ATTRIBUTE_ORA_IDENTITY_ALWAYS
@@ -739,7 +734,6 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 						column->typeName = makeTypeName("int8");
 						typeOid = INT8OID;
 					}
-					/* IvorySQL:END - sql-sequence */
 
 					ReleaseSysCache(ctype);
 
@@ -754,7 +748,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 					generateSerialExtraStmts(cxt, column,
 											 typeOid, constraint->options,
 											 true, false,
-											 NULL, NULL, constraint->generated_when); /* IvorySQL:sql-sequence */
+											 NULL, NULL, constraint->generated_when);
 
 					column->identity = constraint->generated_when;
 					saw_identity = true;
@@ -767,13 +761,11 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 										column->colname, cxt->relation->relname),
 								 parser_errposition(cxt->pstate,
 													constraint->location)));
-					/* IvorySQL:BEGIN - sql-sequence */
 					/* Allow DEFAULT ON NULL to insert NULL values */
 					if (column->identity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL)
 						column->is_not_null = false;
 					else
 						column->is_not_null = true;
-					/* IvorySQL:END - sql-sequence */
 
 					saw_nullable = true;
 					break;
@@ -1124,7 +1116,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 			generateSerialExtraStmts(cxt, def,
 									 InvalidOid, seq_options,
 									 true, false,
-									 NULL, NULL, 0); /* IvorySQL:sql-sequence */
+									 NULL, NULL, 0);
 			def->identity = attribute->attidentity;
 		}
 
@@ -3495,7 +3487,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 					generateSerialExtraStmts(&cxt, newdef,
 											 get_atttype(relid, attnum),
 											 def->options, true, true,
-											 NULL, NULL, 0); /* IvorySQL:sql-sequence */
+											 NULL, NULL, 0);
 
 					newcmds = lappend(newcmds, cmd);
 					break;

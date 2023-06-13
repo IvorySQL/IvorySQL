@@ -15,22 +15,18 @@
 #include "mb/pg_wchar.h"
 #include "prompt.h"
 #include "settings.h"
-/* IvorySQL:BEGIN - psql-parser */
 #include "oracle_fe_utils/ora_string_utils.h"
 #include "oracle_fe_utils/ora_psqlscan.h"
 #include "fe_utils/psqlscan_int.h"
-/* IvorySQL:END - psql-parser */
 
 /* callback functions for our flex lexer */
 const PsqlScanCallbacks psqlscan_callbacks = {
 	psql_get_variable,
 };
 
-/* IvorySQL:BEGIN - psql-parser */
 const Ora_psqlScanCallbacks Ora_psqlscan_callbacks = {
 	ora_psql_get_variable,
 };
-/* IvorySQL:END - psql-parser */
 
 /*
  * Main processing loop for reading lines of input
@@ -43,7 +39,7 @@ int
 MainLoop(FILE *source)
 {
 	PsqlScanState scan_state;	/* lexer working state */
-	PsqlScanState ora_scan_state;	/* oracle lexer working state */ /* IvorySQL:psql-parser */
+	PsqlScanState ora_scan_state;	/* oracle lexer working state */
 	ConditionalStack cond_stack;	/* \if status stack */
 	volatile PQExpBuffer query_buf; /* buffer for query being accumulated */
 	volatile PQExpBuffer previous_buf;	/* if there isn't anything in the new
@@ -82,11 +78,9 @@ MainLoop(FILE *source)
 	cond_stack = conditional_stack_create();
 	psql_scan_set_passthrough(scan_state, (void *) cond_stack);
 
-	/* IvorySQL:BEGIN - psql-parser */
 	/* Oracle working state */
 	ora_scan_state = ora_psql_scan_create(&Ora_psqlscan_callbacks);
 	ora_psql_scan_set_passthrough(ora_scan_state, (void *) cond_stack);
-	/* IvorySQL:END - psql-parser */
 
 	query_buf = createPQExpBuffer();
 	previous_buf = createPQExpBuffer();
@@ -129,11 +123,9 @@ MainLoop(FILE *source)
 			psql_scan_finish(scan_state);
 			psql_scan_reset(scan_state);
 
-			/* IvorySQL:BEGIN - psql-parser */
 			/* reset oracle parsing state */
 			ora_psql_scan_finish(ora_scan_state);
 			ora_psql_scan_reset(ora_scan_state);
-			/* IvorySQL:END - psql-parser */
 
 			resetPQExpBuffer(query_buf);
 			resetPQExpBuffer(history_buf);
@@ -242,7 +234,6 @@ MainLoop(FILE *source)
 			break;
 		}
 
-		/* IvorySQL:BEGIN - psql-parser */
 		/* no further processing of empty lines, unless within a literal */
 		if (db_mode == DB_PG)
 		{
@@ -260,7 +251,6 @@ MainLoop(FILE *source)
 				continue;
 			}
 		}
-		/* IvorySQL:END - psql-parser */
 
 		/* Recognize "help", "quit", "exit" only in interactive mode */
 		if (pset.cur_cmd_interactive)
@@ -412,7 +402,6 @@ MainLoop(FILE *source)
 		/* Setting this will not have effect until next line. */
 		die_on_error = pset.on_error_stop;
 
-		/* IvorySQL:BEGIN - psql-parser */
 		/*
 		 * Parse line, looking for command separators.
 		 */
@@ -426,7 +415,6 @@ MainLoop(FILE *source)
 			ora_psql_scan_setup(ora_scan_state, line, strlen(line),
 								pset.encoding, standard_strings());
 		}
-		/* IvorySQL:END - psql-parser */
 
 		success = true;
 		line_saved_in_history = false;
@@ -434,15 +422,14 @@ MainLoop(FILE *source)
 		while (success || !die_on_error)
 		{
 			PsqlScanResult scan_result;
-			Ora_PsqlScanResult ora_scan_result; /* IvorySQL:psql-parser */
+			Ora_PsqlScanResult ora_scan_result; 
 			promptStatus_t prompt_tmp = prompt_status;
-			Ora_promptStatus_t ora_prompt_tmp = (Ora_promptStatus_t)prompt_status; /* IvorySQL:psql-parser */
+			Ora_promptStatus_t ora_prompt_tmp = (Ora_promptStatus_t)prompt_status;
 			size_t		pos_in_query;
 			char	   *tmp_line;
 
 			pos_in_query = query_buf->len;
 
-			/* IvorySQL:BEGIN - psql-parser */
 			if (db_mode == DB_PG)
 			{
 				if (scan_state->scanbufhandle == NULL)
@@ -783,7 +770,6 @@ MainLoop(FILE *source)
 					ora_scan_result == ORAPSCAN_EOL)
 					break;
 			}
-			/* IvorySQL:END - psql-parser */
 		}
 
 		/*
@@ -802,7 +788,7 @@ MainLoop(FILE *source)
 		}
 
 		psql_scan_finish(scan_state);
-		ora_psql_scan_finish(ora_scan_state); /* IvorySQL:psql-parser */
+		ora_psql_scan_finish(ora_scan_state);
 		free(line);
 
 		if (slashCmdStatus == PSQL_CMD_TERMINATE)
@@ -881,7 +867,7 @@ MainLoop(FILE *source)
 	destroyPQExpBuffer(history_buf);
 
 	psql_scan_destroy(scan_state);
-	ora_psql_scan_destroy(ora_scan_state); /* IvorySQL:psql-parser */
+	ora_psql_scan_destroy(ora_scan_state);
 	conditional_stack_destroy(cond_stack);
 
 	pset.cur_cmd_source = prev_cmd_source;

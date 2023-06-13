@@ -25,13 +25,13 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
-#include "utils/guc.h"		/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-#include "utils/regproc.h"	/* IvorySQL: datatype */
+#include "utils/regproc.h"
 
 
 /*
@@ -67,10 +67,8 @@ typedef struct OprCacheEntry
 	Oid			opr_oid;		/* OID of the resolved operator */
 } OprCacheEntry;
 
-/* IvorySQL:BEGIN - datatype */
 /* Hook to compatible-oracle datatype precedence */
 oracle_datatype_precedence_hook_type oracle_datatype_precedence_hook = NULL;
-/* IvorySQL:END - datatype */
 
 static Oid	binary_oper_exact(List *opname, Oid arg1, Oid arg2);
 static FuncDetailCode oper_select_candidate(int nargs,
@@ -299,7 +297,6 @@ binary_oper_exact(List *opname, Oid arg1, Oid arg2)
 	if (OidIsValid(result))
 		return result;
 
-	/* IvorySQL:BEGIN - datatype */
 	if (oracle_datatype_precedence_hook && ORA_PARSER == compatible_db)
 	{
 		bool	rewrite_args = false;
@@ -323,7 +320,6 @@ binary_oper_exact(List *opname, Oid arg1, Oid arg2)
 				return result;
 		}
 	}
-	/* IvorySQL:END - datatype */
 
 	if (was_unknown)
 	{

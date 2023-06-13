@@ -103,7 +103,7 @@ static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
 static Form_pg_sequence_data read_seq_tuple(Relation rel,
 											Buffer *buf, HeapTuple seqdatatuple);
 static void init_params(ParseState *pstate, List *options, bool for_identity,
-						bool isInit, char seq_type,	/* IvorySQL:sql-sequence */
+						bool isInit, char seq_type,
 						Form_pg_sequence seqform,
 						Form_pg_sequence_data seqdataform,
 						bool *need_seq_rewrite,
@@ -162,7 +162,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	}
 
 	/* Check and set all option values */
-	init_params(pstate, seq->options, seq->for_identity, true, seq->seq_type,	/* IvorySQL:sql-sequence */
+	init_params(pstate, seq->options, seq->for_identity, true, seq->seq_type,
 				&seqform, &seqdataform,
 				&need_seq_rewrite, &owned_by);
 
@@ -497,7 +497,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	UnlockReleaseBuffer(buf);
 
 	/* Check and set new values */
-	init_params(pstate, stmt->options, stmt->for_identity, false, 0,	/* IvorySQL:sql-sequence */
+	init_params(pstate, stmt->options, stmt->for_identity, false, 0,
 				seqform, newdataform,
 				&need_seq_rewrite, &owned_by);
 
@@ -1266,7 +1266,7 @@ read_seq_tuple(Relation rel, Buffer *buf, HeapTuple seqdatatuple)
  */
 static void
 init_params(ParseState *pstate, List *options, bool for_identity,
-			bool isInit,char		seq_type, /* IvorySQL:sql-sequence */
+			bool isInit,char		seq_type,
 			Form_pg_sequence seqform,
 			Form_pg_sequence_data seqdataform,
 			bool *need_seq_rewrite,
@@ -1283,7 +1283,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	ListCell   *option;
 	bool		reset_max_value = false;
 	bool		reset_min_value = false;
-	int			ordercnt = 0;	/* IvorySQL:sql-sequence */
+	int			ordercnt = 0;
 
 	*need_seq_rewrite = false;
 	*owned_by = NIL;
@@ -1366,7 +1366,6 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 					 errmsg("invalid sequence option SEQUENCE NAME"),
 					 parser_errposition(pstate, defel->location)));
 		}
-		/* IvorySQL:BEGIN - sql-sequence */
 		else if (strcmp(defel->defname, "order") == 0 || strcmp(defel->defname, "noorder") == 0)
 		{
 			ordercnt++;
@@ -1378,7 +1377,6 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 					 parser_errposition(pstate, defel->location)));
 			}
 		}
-		/* IvorySQL:END - sql-sequence */
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -1396,7 +1394,6 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	{
 		Oid			newtypid = typenameTypeId(pstate, defGetTypeName(as_type));
 
-		/* IvorySQL:BEGIN - sql-sequence */
 		if (seq_type == ATTRIBUTE_IDENTITY_ALWAYS || seq_type == ATTRIBUTE_IDENTITY_BY_DEFAULT || !seq_type)
 		{
 			if (newtypid != INT2OID &&
@@ -1424,7 +1421,6 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 						 ? errmsg("identity column type must be a numeric type")
 						 : errmsg("sequence type must be a numeric type")));
 		}
-		/* IvorySQL:END - sql-sequence */
 
 		if (!isInit)
 		{

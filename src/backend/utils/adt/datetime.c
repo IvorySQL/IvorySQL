@@ -32,7 +32,7 @@
 #include "utils/datetime.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/tzparser.h"
 
 static int	DecodeNumber(int flen, char *str, bool haveTextMonth,
@@ -298,7 +298,6 @@ date2j(int year, int month, int day)
 	 *	the day is 01 (the first day of the month).
 	 *	the hour, minute, and second are all 0.
 	 *
-	 *	IvorySQL:BEGIN - datatype
 	 */
 	if ((year == 0 || month == 0) && ORA_PARSER == compatible_db)
 	{
@@ -335,7 +334,6 @@ date2j(int year, int month, int day)
 					 errmsg("timestamp out of range")));
 		}
 	}
-	/* IvorySQL:END - datatype */
 
 	if (month > 2)
 	{

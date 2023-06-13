@@ -12,9 +12,7 @@
 #include "catalog/pg_class_d.h"
 #include "fe_utils/string_utils.h"
 #include "pg_upgrade.h"
-/* IvorySQL:BEGIN - SQL src_bin */
 #include "oracle_fe_utils/ora_string_utils.h"
-/* IvorySQL:END - SQL src_bin */
 
 
 /*
@@ -270,9 +268,7 @@ old_9_6_invalidate_hash_indexes(ClusterInfo *cluster, bool check_mode)
 		DbInfo	   *active_db = &cluster->dbarr.dbs[dbnum];
 		PGconn	   *conn = connectToServer(cluster, active_db->db_name);
 
-		/* IvorySQL:BEGIN - SQL src_bin */
 		getDbCompatibleMode(conn);
-		/* IvorySQL:END - SQL src_bin */
 
 		/* find hash indexes */
 		res = executeQueryOrDie(conn,

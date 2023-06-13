@@ -56,13 +56,13 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parser.h"
-#include "parser/scansup.h"	/* IvorySQL: datatype */
+#include "parser/scansup.h"
 #include "storage/lmgr.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/numeric.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/xml.h"
 
 
@@ -451,7 +451,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				TriggerTransitions TriggerReferencing
 				vacuum_relation_list opt_vacuum_relation_list
 				drop_option_list pub_obj_list
-				numeric_opt_type_modifiers	/* IvorySQL: datatype */
+				numeric_opt_type_modifiers
 
 %type <node>	opt_routine_body
 %type <groupclause> group_clause
@@ -486,7 +486,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <list>	extract_list overlay_list position_list
 %type <list>	substr_list trim_list
-%type <list>	opt_interval opt_interval_type	/* IvorySQL: datatype */
+%type <list>	opt_interval opt_interval_type
 %type <str>		unicode_normal_form
 
 %type <boolean> opt_instead
@@ -570,9 +570,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				CharacterWithLength CharacterWithoutLength
 				ConstDatetime ConstInterval
 				Bit ConstBit BitWithLength BitWithoutLength
-				OracleCharacter	/* IvorySQL: datatype */
-				Datetime	/* IvorySQL: datatype */
-				LongTypename	/* IvorySQL: datatype */
+				OracleCharacter
+				Datetime
+				LongTypename
 %type <str>		character
 %type <str>		extract_arg
 %type <boolean> opt_varying opt_timezone opt_no_inherit
@@ -647,7 +647,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <node>	identity_clause identity_options drop_identity	/* IvorySQL:sql-sequence */
+%type <node>	identity_clause identity_options drop_identity
 
 %type <node>		json_format_clause_opt
 					json_value_expr
@@ -695,9 +695,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
-	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BINARY_DOUBLE /* IvorySQL: datatype */
-	BINARY_FLOAT /* IvorySQL: datatype */ BIT
-	BOOLEAN_P BOTH BREADTH BY BYTE_P /* IvorySQL: datatype */
+	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BINARY_DOUBLE
+	BINARY_FLOAT BIT
+	BOOLEAN_P BOTH BREADTH BY BYTE_P
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
@@ -708,7 +708,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
-	DATA_P DATABASE DATE_P /* IvorySQL: datatype */ DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DECODE /* IvorySQL: datatype */ DEFAULT DEFAULTS
+	DATA_P DATABASE DATE_P DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DECODE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DEPENDS DEPTH DESC
 	DETACH DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P
 	DOUBLE_P DROP
@@ -738,13 +738,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
 	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE METHOD
-	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE /* IvorySQL:sql-sequence */
+	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE /* IvorySQL:sql-sequence */
-	NOMAXVALUE NOMINVALUE NONE NOORDER /* IvorySQL:sql-sequence */
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
+	NOMAXVALUE NOMINVALUE NONE NOORDER
 	NORMALIZE NORMALIZED
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
-	NULLS_P NUMBER_P /* IvorySQL: datatype */ NUMERIC NVL NVL2 /* IvorySQL: datatype */
+	NULLS_P NUMBER_P NUMERIC NVL NVL2
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
@@ -775,9 +775,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
 	UESCAPE UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
-	UNLISTEN UNLOGGED UNTIL UPDATE USER USERENV /* IvorySQL: datatype */ USING
+	UNLISTEN UNLOGGED UNTIL UPDATE USER USERENV USING
 
-	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 /* IvorySQL: datatype */ VARIADIC VARYING
+	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VOLATILE
 
 	WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
@@ -789,10 +789,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	ZONE
 
-/* IvorySQL:BEGIN - datatype */
 %token <keyword> LONG_P RAW_P
 %token LONG_RAW
-/* IvorySQL:END - datatype */
 
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
@@ -2384,7 +2382,6 @@ alter_table_cmd:
 					n->missing_ok = false;
 					$$ = (Node *) n;
 				}
-			/* IvorySQL:BEGIN - sql-sequence */
 			/* ALTER TABLE <name> ADD ( <coldef> ) */
 			| ADD_P '(' columnDef ')'
 			{
@@ -2394,7 +2391,6 @@ alter_table_cmd:
 				n->missing_ok = false;
 				$$ = (Node *)n;
 				}
-			/* IvorySQL:END - sql-sequence */
 			/* ALTER TABLE <name> ADD IF NOT EXISTS <coldef> */
 			| ADD_P IF_P NOT EXISTS columnDef
 				{
@@ -2596,13 +2592,11 @@ alter_table_cmd:
 					n->missing_ok = true;
 					$$ = (Node *) n;
 				}
-			/* IvorySQL:BEGIN - sql-sequence */
 			/* ALTER TABLE <name> MODIFY <colname> [datatype] [ DEFAULT [ ON NULL ] expr | identity_clause | DROP IDENTITY ] ) */
 			| MODIFY identity_clause
 				{
 					$$ = $2;
 				}
-			/* IvorySQL:END - sql-sequence */
 			/* ALTER TABLE <name> DROP [COLUMN] <colname> [RESTRICT|CASCADE] */
 			| DROP opt_column ColId opt_drop_behavior
 				{
@@ -3102,7 +3096,6 @@ alter_identity_column_option:
 					$$ = makeDefElem("generated", (Node *) makeInteger($3), @1);
 				}
 		;
-/* IvorySQL:BEGIN - sql-sequence */
 identity_clause:
 		'(' identity_options ')'		{ $$ = $2; }
 		| identity_options				{ $$ = $1; }
@@ -3136,7 +3129,6 @@ drop_identity:
 				$$ = (Node *)n;
 			}
 	;
-/* IvorySQL:END - sql-sequence */
 
 PartitionBoundSpec:
 			/* a HASH partition */
@@ -3994,19 +3986,16 @@ ColConstraintElem:
 				}
 			| GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
 				{
-					char *str = NULL;	/* IvorySQL:sql-sequence */
+					char *str = NULL;
 					Constraint *n = makeNode(Constraint);
 
-					/* IvorySQL:BEGIN - sql-sequence */
 					if($5)
 					{
 						str = scanner_querytext(@5, @5+1, yyscanner);
 					}
-					/* IvorySQL:END - sql-sequence */
 
 					n->contype = CONSTR_IDENTITY;
 					n->generated_when = $2;
-					/* IvorySQL:BEGIN - sql-sequence */
 					if ( $5 != NULL && strncmp(str,"(",1) != 0 && n->generated_when  == ATTRIBUTE_IDENTITY_ALWAYS)
 						n->generated_when = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
 					else if ($5 != NULL && strncmp(str,"(",1) != 0 && n->generated_when  == ATTRIBUTE_IDENTITY_BY_DEFAULT)
@@ -4015,7 +4004,6 @@ ColConstraintElem:
 						n->generated_when = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
 					else if ($5 == NULL && n->generated_when  == ATTRIBUTE_IDENTITY_BY_DEFAULT)
 						n->generated_when = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
-					/* IvorySQL:END - sql-sequence */
 					n->options = $5;
 					n->location = @1;
 					$$ = (Node *) n;
@@ -4073,7 +4061,7 @@ generated_when:
 			ALWAYS			{ $$ = ATTRIBUTE_IDENTITY_ALWAYS; }
 			| BY DEFAULT	{ $$ = ATTRIBUTE_IDENTITY_BY_DEFAULT; }
 			/* ... GENERATED ALWAYS BY DEFAULT [ON NULL] */
-			| BY DEFAULT ON NULL_P	{ $$ = ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL; }	/* IvorySQL:sql-sequence */
+			| BY DEFAULT ON NULL_P	{ $$ = ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL; }
 		;
 
 /*
@@ -4877,7 +4865,7 @@ OptSeqOptList: SeqOptList							{ $$ = $1; }
 
 OptParenthesizedSeqOptList: '(' SeqOptList ')'		{ $$ = $2; }
 			/* ... GENERATED BY DEFAULT AS IDENTITY start with num */
-			| SeqOptList							{ $$ = $1; }		/* IvorySQL:sql-sequence */
+			| SeqOptList							{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
@@ -4893,12 +4881,10 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("cache", (Node *) $2, @1);
 				}
-			/* IvorySQL:BEGIN - sql-sequence */
 			| NOCACHE
 				{
 					$$ = makeDefElem("cache", (Node *)makeInteger(0), @1);
 				}
-			/* IvorySQL:END - sql-sequence */
 			| CYCLE
 				{
 					$$ = makeDefElem("cycle", (Node *) makeBoolean(true), @1);
@@ -4907,12 +4893,10 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("cycle", (Node *) makeBoolean(false), @1);
 				}
-			/* IvorySQL:BEGIN - sql-sequence */
 			| NOCYCLE
 				{
 					$$ = makeDefElem("cycle", (Node *)makeInteger(false), @1);
 				}
-			/* IvorySQL:END - sql-sequence */
 			| INCREMENT opt_by NumericOnly
 				{
 					$$ = makeDefElem("increment", (Node *) $3, @1);
@@ -4929,7 +4913,6 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("maxvalue", NULL, @1);
 				}
-			/* IvorySQL:BEGIN - sql-sequence */
 			| NOMAXVALUE
 				{
 					$$ = makeDefElem("maxvalue", NULL, @1);
@@ -4938,7 +4921,6 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("minvalue", NULL, @1);
 				}
-			/* IvorySQL:END - sql-sequence */
 			| NO MINVALUE
 				{
 					$$ = makeDefElem("minvalue", NULL, @1);
@@ -4964,10 +4946,8 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("restart", (Node *) $3, @1);
 				}
-			/* IvorySQL:BEGIN - sql-sequence */
 			| ORDER { $$ = makeDefElem("order", NULL, @1); }
 			| NOORDER { $$ = makeDefElem("noorder", NULL, @1); }
-			/* IvorySQL:END - sql-sequence */
 		;
 
 opt_by:		BY
@@ -14069,13 +14049,12 @@ SimpleTypename:
 			| Numeric								{ $$ = $1; }
 			| Bit									{ $$ = $1; }
 			| Character								{ $$ = $1; }
-			| OracleCharacter						{ $$ = $1; }	/* IvorySQL: datatype */
-			| Datetime								{ $$ = $1; }	/* IvorySQL: datatype */
-			| LongTypename 							{ $$ = $1; }	/* IvorySQL: datatype */
+			| OracleCharacter						{ $$ = $1; }	
+			| Datetime								{ $$ = $1; }	
+			| LongTypename 							{ $$ = $1; }
 //			| ConstDatetime							{ $$ = $1; }
-			| ConstInterval opt_interval_type	/* IvorySQL: datatype */
+			| ConstInterval opt_interval_type
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						List *typmods = $2;
@@ -14117,7 +14096,6 @@ SimpleTypename:
 									 errmsg("unsupported interval type.")));
 						}
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = $1;
@@ -14132,7 +14110,6 @@ SimpleTypename:
 				}
 		;
 
-/* IvorySQL:BEGIN - datatype */
 LongTypename:
 		LONG_RAW
 			{
@@ -14140,7 +14117,6 @@ LongTypename:
 				$$->location = @1;
 			}
 		;
-/* IvorySQL:END - datatype */
 
 /* We have a separate ConstTypename to allow defaulting fixed-length
  * types such as CHAR() and BIT() to an unspecified length.
@@ -14170,13 +14146,11 @@ ConstTypename:
 GenericType:
 			type_function_name opt_type_modifiers
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db &&
 						strcmp($1, "timestamptz") == 0)
 						$$ = makeTypeName("oratimestamptz");
 					else
 						$$ = makeTypeName($1);
-					/* IvorySQL:END - datatype */
 					$$->typmods = $2;
 					$$->location = @1;
 				}
@@ -14192,7 +14166,6 @@ opt_type_modifiers: '(' expr_list ')'				{ $$ = $2; }
 					| /* EMPTY */					{ $$ = NIL; }
 		;
 
-/* IvorySQL:BEGIN - datatype */
 /* support the precision of number is '*' */
 numeric_opt_type_modifiers: opt_type_modifiers				{ $$ = $1; }
 					| '(' '*' ',' expr_list ')'
@@ -14218,7 +14191,6 @@ numeric_opt_type_modifiers: opt_type_modifiers				{ $$ = $1; }
 							$$ = NIL;
 						}
 		;
-/* IvorySQL:END - datatype */
 
 /*
  * SQL numeric data types
@@ -14258,19 +14230,18 @@ Numeric:	INT_P
 					$$ = SystemTypeName("float8");
 					$$->location = @1;
 				}
-			| DECIMAL_P numeric_opt_type_modifiers	/* IvorySQL: datatype */
+			| DECIMAL_P numeric_opt_type_modifiers
 				{
 					$$ = SystemTypeName("numeric");
 					$$->typmods = $2;
 					$$->location = @1;
 				}
-			| DEC numeric_opt_type_modifiers	/* IvorySQL: datatype */
+			| DEC numeric_opt_type_modifiers
 				{
 					$$ = SystemTypeName("numeric");
 					$$->typmods = $2;
 					$$->location = @1;
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| NUMBER_P numeric_opt_type_modifiers
 				{
 					$$ = OracleSystemTypeName("number");
@@ -14287,7 +14258,6 @@ Numeric:	INT_P
 					$$ = OracleSystemTypeName("binary_double");
 					$$->location = @1;
 				}
-			/* IvorySQL:END - datatype */
 			| NUMERIC numeric_opt_type_modifiers
 				{
 					$$ = SystemTypeName("numeric");
@@ -14418,7 +14388,6 @@ ConstCharacter:  CharacterWithLength
 
 CharacterWithLength:  character '(' Iconst ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						if (strcmp($1, "bpchar"))
@@ -14440,7 +14409,6 @@ CharacterWithLength:  character '(' Iconst ')'
 						$$->typmods = list_make1(makeIntConst($3, @3));
 						$$->location = @1;
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = SystemTypeName($1);
@@ -14452,7 +14420,6 @@ CharacterWithLength:  character '(' Iconst ')'
 
 CharacterWithoutLength:	 character
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						if (!strcmp($1, "bpchar"))
@@ -14479,7 +14446,6 @@ CharacterWithoutLength:	 character
 
 						$$->location = @1;
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = SystemTypeName($1);
@@ -14498,7 +14464,7 @@ character:	CHARACTER opt_varying
 			| VARCHAR
 										{ $$ = "varchar"; }
 			| VARCHAR2
-										{ $$ = "varchar"; }	/* IvorySQL: datatype */
+										{ $$ = "varchar"; }
 			| NATIONAL CHARACTER opt_varying
 										{ $$ = $3 ? "varchar": "bpchar"; }
 			| NATIONAL CHAR_P opt_varying
@@ -14512,7 +14478,6 @@ opt_varying:
 			| /*EMPTY*/								{ $$ = false; }
 		;
 
-/* IvorySQL:BEGIN - datatype */
 OracleCharacter: character '(' Iconst CHAR_P ')'
 					{
 						if (strcmp($1, "bpchar"))
@@ -14537,12 +14502,10 @@ OracleCharacter: character '(' Iconst CHAR_P ')'
 					}
 
 		;
-/* IvorySQL:END - datatype */
 
 /*
  * SQL date/time types
  */
-/* IvorySQL:BEGIN - datatype */
 Datetime:
 			TIMESTAMP '(' Iconst ')' opt_timezone
 				{
@@ -14628,29 +14591,24 @@ Datetime:
 					$$->location = @1;
 				}
 		;
-/* IvorySQL:END - datatype */
 
 ConstDatetime:
 	TIMESTAMP
 		{
-			/* IvorySQL:BEGIN - datatype */
 			if (ORA_PARSER == compatible_db)
 			{
 				$$ = OracleSystemTypeName("oratimestamp");
 				$$->typmods = list_make1(makeIntConst(6, -1));
 				$$->location = @1;
 			}
-			/* IvorySQL:END - datatype */
 		}
 	| DATE_P
 		{
-			/* IvorySQL:BEGIN - datatype */
 			if (ORA_PARSER == compatible_db)
 			{
 				$$ = OracleSystemTypeName("oradate");
 				$$->location = @1;
 			}
-			/* IvorySQL:END - datatype */
 		}
 	| TIME
 		{
@@ -14676,19 +14634,16 @@ opt_timezone:
 opt_interval:
 			YEAR_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(YEAR), @1),
 										makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(YEAR), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| YEAR_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14703,22 +14658,18 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| MONTH_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(MONTH), @1),
 										makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(MONTH), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| MONTH_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14733,22 +14684,18 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| DAY_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(DAY), @1),
 										makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(DAY), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| DAY_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14763,22 +14710,18 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| HOUR_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(HOUR), @1),
 										makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| HOUR_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14793,22 +14736,18 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| MINUTE_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(MINUTE), @1),
 										makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(MINUTE), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| MINUTE_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14823,16 +14762,13 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| SECOND_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(SECOND), @1),
 										makeIntConst(6, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(SECOND), @1));
@@ -14843,7 +14779,6 @@ opt_interval:
 					$$ = list_make2(makeIntConst(INTERVAL_MASK(SECOND), @1),
 									makeIntConst($3, @3));
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| SECOND_P '(' Iconst ',' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14859,24 +14794,20 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| YEAR_P TO MONTH_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(YEAR) |
 													 INTERVAL_MASK(MONTH), @1),
 													 makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(YEAR) |
 													 INTERVAL_MASK(MONTH), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| YEAR_P '(' Iconst ')' TO MONTH_P
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14891,24 +14822,20 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| DAY_P TO HOUR_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(DAY) |
 													 INTERVAL_MASK(HOUR), @1),
 													 makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(DAY) |
 													 INTERVAL_MASK(HOUR), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| DAY_P '(' Iconst ')' TO HOUR_P
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14924,10 +14851,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| DAY_P TO MINUTE_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(DAY) |
@@ -14935,7 +14860,6 @@ opt_interval:
 													 INTERVAL_MASK(MINUTE), @1),
 													 makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(DAY) |
@@ -14943,7 +14867,6 @@ opt_interval:
 													 INTERVAL_MASK(MINUTE), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| DAY_P '(' Iconst ')' TO MINUTE_P
 				{
 					if (ORA_PARSER == compatible_db)
@@ -14960,10 +14883,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| DAY_P TO SECOND_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make3(makeIntConst(INTERVAL_MASK(DAY) |
@@ -14973,7 +14894,6 @@ opt_interval:
 										makeIntConst(2, -1),
 										makeIntConst(6, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(DAY) |
@@ -14982,7 +14902,6 @@ opt_interval:
 													INTERVAL_MASK(SECOND), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| DAY_P '(' Iconst ')' TO SECOND_P
 				{
 					if (ORA_PARSER == compatible_db)
@@ -15001,10 +14920,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| DAY_P TO SECOND_P '(' Iconst ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make3(makeIntConst(INTERVAL_MASK(DAY) |
@@ -15014,7 +14931,6 @@ opt_interval:
 										makeIntConst(2, -1),
 										makeIntConst($5, @5));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(DAY) |
@@ -15024,7 +14940,6 @@ opt_interval:
 										makeIntConst($5, @5));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| DAY_P '(' Iconst ')' TO SECOND_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -15043,24 +14958,20 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| HOUR_P TO MINUTE_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(HOUR) |
 													 INTERVAL_MASK(MINUTE), @1),
 													 makeIntConst(2, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR) |
 													 INTERVAL_MASK(MINUTE), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| HOUR_P '(' Iconst ')' TO MINUTE_P
 				{
 					if (ORA_PARSER == compatible_db)
@@ -15076,10 +14987,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| HOUR_P TO SECOND_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make3(makeIntConst(INTERVAL_MASK(HOUR) |
@@ -15088,7 +14997,6 @@ opt_interval:
 										makeIntConst(2, -1),
 										makeIntConst(6, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR) |
@@ -15096,7 +15004,6 @@ opt_interval:
 													INTERVAL_MASK(SECOND), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| HOUR_P '(' Iconst ')' TO SECOND_P
 				{
 					if (ORA_PARSER == compatible_db)
@@ -15114,10 +15021,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| HOUR_P TO SECOND_P '(' Iconst ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make3(makeIntConst(INTERVAL_MASK(HOUR) |
@@ -15126,7 +15031,6 @@ opt_interval:
 										makeIntConst(2, -1),
 										makeIntConst($5, @5));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(HOUR) |
@@ -15135,7 +15039,6 @@ opt_interval:
 										makeIntConst($5, @5));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| HOUR_P '(' Iconst ')' TO SECOND_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -15153,10 +15056,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| MINUTE_P TO SECOND_P
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make3(makeIntConst(INTERVAL_MASK(MINUTE) |
@@ -15164,14 +15065,12 @@ opt_interval:
 										makeIntConst(2, -1),
 										makeIntConst(6, -1));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(MINUTE) |
 													INTERVAL_MASK(SECOND), @1));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| MINUTE_P '(' Iconst ')' TO SECOND_P
 				{
 					if (ORA_PARSER == compatible_db)
@@ -15188,10 +15087,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 			| MINUTE_P TO SECOND_P '(' Iconst ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						$$ = list_make3(makeIntConst(INTERVAL_MASK(MINUTE) |
@@ -15199,7 +15096,6 @@ opt_interval:
 										makeIntConst(2, -1),
 										makeIntConst($5, @5));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = list_make2(makeIntConst(INTERVAL_MASK(MINUTE) |
@@ -15207,7 +15103,6 @@ opt_interval:
 										makeIntConst($5, @5));
 					}
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| MINUTE_P '(' Iconst ')' TO SECOND_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
@@ -15224,10 +15119,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			/* IvorySQL:END - datatype */
 		;
 
-/* IvorySQL:BEGIN - datatype */
 opt_interval_type:
 			YEAR_P TO MONTH_P
 				{
@@ -15396,7 +15289,6 @@ opt_interval_type:
 			| /* empty */
 				{ $$ = NIL; }
 		;
-/* IvorySQL:END - datatype */
 
 
 /*****************************************************************************
@@ -15441,14 +15333,12 @@ a_expr:		c_expr									{ $$ = $1; }
 				}
 			| a_expr AT TIME ZONE a_expr			%prec AT
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (compatible_db == ORA_PARSER)
 						$$ = (Node *) makeFuncCall(OracleSystemFuncName("timezone"),
 												   list_make2($5, $1),
 												   COERCE_SQL_SYNTAX,
 												   @2);
 					else
-					/* IvorySQL:END - datatype */
 						$$ = (Node *) makeFuncCall(SystemFuncName("timezone"),
 												   list_make2($5, $1),
 												   COERCE_SQL_SYNTAX,
@@ -16306,14 +16196,12 @@ func_expr_common_subexpr:
 				}
 			| CURRENT_DATE
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 						$$ = (Node *) makeFuncCall(OracleSystemFuncName("current_date"),
 												   NIL,
 												   COERCE_EXPLICIT_CALL,
 												   @1);
 					else
-					/* IvorySQL:END - datatype */
 						$$ = (Node *) makeFuncCall(SystemFuncName("current_date"),
 												   NIL,
 												   COERCE_SQL_SYNTAX,
@@ -16335,14 +16223,12 @@ func_expr_common_subexpr:
 				}
 			| CURRENT_TIMESTAMP
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 						$$ = (Node *) makeFuncCall(OracleSystemFuncName("current_timestamp"),
 												   NIL,
 												   COERCE_EXPLICIT_CALL,
 												   @1);
 					else
-					/* IvorySQL:END - datatype */
 						$$ = (Node *) makeFuncCall(SystemFuncName("current_timestamp"),
 												   NIL,
 												   COERCE_SQL_SYNTAX,
@@ -16350,14 +16236,12 @@ func_expr_common_subexpr:
 				}
 			| CURRENT_TIMESTAMP '(' Iconst ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 						$$ = (Node *) makeFuncCall(OracleSystemFuncName("current_timestamp"),
 												   list_make1(makeIntConst($3, @3)),
 												   COERCE_EXPLICIT_CALL,
 												   @1);
 					else
-					/* IvorySQL:END - datatype */
 						$$ = (Node *) makeFuncCall(SystemFuncName("current_timestamp"),
 												   list_make1(makeIntConst($3, @3)),
 												   COERCE_SQL_SYNTAX,
@@ -16379,14 +16263,12 @@ func_expr_common_subexpr:
 				}
 			| LOCALTIMESTAMP
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 						$$ = (Node *) makeFuncCall(OracleSystemFuncName("localtimestamp"),
 												   NIL,
 												   COERCE_EXPLICIT_CALL,
 												   @1);
 					else
-					/* IvorySQL:END - datatype */
 						$$ = (Node *) makeFuncCall(SystemFuncName("localtimestamp"),
 												   NIL,
 												   COERCE_SQL_SYNTAX,
@@ -16394,14 +16276,12 @@ func_expr_common_subexpr:
 				}
 			| LOCALTIMESTAMP '(' Iconst ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 						$$ = (Node *) makeFuncCall(OracleSystemFuncName("localtimestamp"),
 												   list_make1(makeIntConst($3, @3)),
 												   COERCE_EXPLICIT_CALL,
 												   @1);
 					else
-					/* IvorySQL:END - datatype */
 						$$ = (Node *) makeFuncCall(SystemFuncName("localtimestamp"),
 												   list_make1(makeIntConst($3, @3)),
 												   COERCE_SQL_SYNTAX,
@@ -16553,39 +16433,31 @@ func_expr_common_subexpr:
 					/* various trim expressions are defined in SQL
 					 * - thomas 1997-07-19
 					 */
-					/* IvorySQL:BEGIN - datatype */
 					$$ = (Node *) makeFuncCall(OracleSystemFuncName("trim"),
 											   $4,
 											   COERCE_SQL_SYNTAX,
 											   @1);
-					/* IvorySQL:END - datatype */
 				}
 			| TRIM '(' LEADING trim_list ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					$$ = (Node *) makeFuncCall(OracleSystemFuncName("ltrim"),
 											   $4,
 											   COERCE_SQL_SYNTAX,
 											   @1);
-					/* IvorySQL:END - datatype */
 				}
 			| TRIM '(' TRAILING trim_list ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					$$ = (Node *) makeFuncCall(OracleSystemFuncName("rtrim"),
 											   $4,
 											   COERCE_SQL_SYNTAX,
 											   @1);
-					/* IvorySQL:END - datatype */
 				}
 			| TRIM '(' trim_list ')'
 				{
-					/* IvorySQL:BEGIN - datatype */
 					$$ = (Node *) makeFuncCall(OracleSystemFuncName("trim"),
 											   $3,
 											   COERCE_SQL_SYNTAX,
 											   @1);
-					/* IvorySQL:END - datatype */
 				}
 			| NULLIF '(' a_expr ',' a_expr ')'
 				{
@@ -16684,7 +16556,6 @@ func_expr_common_subexpr:
 					n->location = @1;
 					$$ = (Node *) n;
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| USERENV '(' Sconst ')'
 				{
 					if (strcmp(downcase_identifier($3, strlen($3), true, true), "client_info") == 0)
@@ -16708,7 +16579,6 @@ func_expr_common_subexpr:
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("invalid USERENV parameter.")));
 				}
-			/* IvorySQL:END - datatype */
 			| JSON_OBJECT '(' func_arg_list ')'
 				{
 					/* Support for legacy (non-standard) json_object() */
@@ -17417,10 +17287,9 @@ case_expr:	CASE case_arg when_clause_list case_default END_P
 					c->args = $3;
 					c->defresult = (Expr *) $4;
 					c->location = @1;
-					c->is_decode = false;	/* IvorySQL: datatype */
+					c->is_decode = false;
 					$$ = (Node *) c;
 				}
-			/* IvorySQL:BEGIN - datatype */
 			| DECODE '(' expr_list ')'
 				{
 					List *pars_list = $3;
@@ -17542,7 +17411,6 @@ case_expr:	CASE case_arg when_clause_list case_default END_P
 					}
 					$$ = (Node *) res;
 				}
-			/* IvorySQL:BEGIN - datatype */
 		;
 
 when_clause_list:
@@ -17798,12 +17666,10 @@ target_el:	a_expr AS ColLabel
 				}
 			| a_expr
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if(nodeTag($1) == T_ResTarget)
 					{
 						$$ = (ResTarget *) $1;
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						$$ = makeNode(ResTarget);
@@ -17959,7 +17825,6 @@ AexprConst: Iconst
 				}
 			| ConstTypename Sconst
 				{
-					/* IvorySQL: datatype */
 					if (ORA_PARSER == compatible_db)
 						$$ = makeStringConstCast($2, -2, $1);
 					else
@@ -17967,7 +17832,6 @@ AexprConst: Iconst
 				}
 			| ConstInterval Sconst opt_interval
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						TypeName *t;
@@ -18000,7 +17864,6 @@ AexprConst: Iconst
 							$$ = makeStringConstCast($2, @2, t);
 						}
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						TypeName   *t = $1;
@@ -18011,14 +17874,12 @@ AexprConst: Iconst
 				}
 			| ConstInterval '(' Iconst ')' Sconst
 				{
-					/* IvorySQL:BEGIN - datatype */
 					if (ORA_PARSER == compatible_db)
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("missing or invalid datetime field.")));
 					}
-					/* IvorySQL:END - datatype */
 					else
 					{
 						TypeName   *t = $1;
@@ -18422,7 +18283,7 @@ unreserved_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
-			| LONG_P	/* IvorySQL: datatype */
+			| LONG_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -18433,7 +18294,7 @@ unreserved_keyword:
 			| MINUTE_P
 			| MINVALUE
 			| MODE
-			| MODIFY		/* IvorySQL:sql-sequence */
+			| MODIFY
 			| MONTH_P
 			| MOVE
 			| NAME_P
@@ -18445,10 +18306,10 @@ unreserved_keyword:
 			| NFKC
 			| NFKD
 			| NO
-			| NOCACHE	/* IvorySQL:sql-sequence */
-			| NOMAXVALUE	/* IvorySQL:sql-sequence */
-			| NOMINVALUE	/* IvorySQL:sql-sequence */
-			| NOORDER	/* IvorySQL:sql-sequence */
+			| NOCACHE
+			| NOMAXVALUE
+			| NOMINVALUE
+			| NOORDER
 			| NORMALIZED
 			| NOTHING
 			| NOTIFY
@@ -18490,7 +18351,7 @@ unreserved_keyword:
 			| PUBLICATION
 			| QUOTE
 			| RANGE
-			| RAW_P	/* IvorySQL: datatype */
+			| RAW_P
 			| READ
 			| REASSIGN
 			| RECHECK
@@ -18612,18 +18473,18 @@ unreserved_keyword:
 col_name_keyword:
 			  BETWEEN
 			| BIGINT
-			| BINARY_DOUBLE	/* IvorySQL: datatype */
-			| BINARY_FLOAT	/* IvorySQL: datatype */
+			| BINARY_DOUBLE
+			| BINARY_FLOAT
 			| BIT
 			| BOOLEAN_P
-			| BYTE_P	/* IvorySQL: datatype */
+			| BYTE_P
 			| CHAR_P
 			| CHARACTER
 			| COALESCE
-			| DATE_P	/* IvorySQL: datatype */
+			| DATE_P
 			| DEC
 			| DECIMAL_P
-			| DECODE	/* IvorySQL: datatype */
+			| DECODE
 			| EXISTS
 			| EXTRACT
 			| FLOAT_P
@@ -18643,10 +18504,10 @@ col_name_keyword:
 			| NONE
 			| NORMALIZE
 			| NULLIF
-			| NUMBER_P	/* IvorySQL: datatype */
+			| NUMBER_P
 			| NUMERIC
-			| NVL	/* IvorySQL: datatype */
-			| NVL2	/* IvorySQL: datatype */
+			| NVL
+			| NVL2
 			| OUT_P
 			| OVERLAY
 			| POSITION
@@ -18660,10 +18521,10 @@ col_name_keyword:
 			| TIMESTAMP
 			| TREAT
 			| TRIM
-			| USERENV	/* IvorySQL: datatype */
+			| USERENV
 			| VALUES
 			| VARCHAR
-			| VARCHAR2	/* IvorySQL: datatype */
+			| VARCHAR2
 			| XMLATTRIBUTES
 			| XMLCONCAT
 			| XMLELEMENT
@@ -18768,7 +18629,7 @@ reserved_keyword:
 			| LIMIT
 			| LOCALTIME
 			| LOCALTIMESTAMP
-			| NOCYCLE 	/* IvorySQL:sql-sequence */
+			| NOCYCLE
 			| NOT
 			| NULL_P
 			| OFFSET
@@ -18844,14 +18705,14 @@ bare_label_keyword:
 			| BETWEEN
 			| BIGINT
 			| BINARY
-			| BINARY_DOUBLE	/* IvorySQL: datatype */
-			| BINARY_FLOAT	/* IvorySQL: datatype */
+			| BINARY_DOUBLE
+			| BINARY_FLOAT
 			| BIT
 			| BOOLEAN_P
 			| BOTH
 			| BREADTH
 			| BY
-			| BYTE_P	/* IvorySQL: datatype */
+			| BYTE_P
 			| CACHE
 			| CALL
 			| CALLED
@@ -18903,12 +18764,12 @@ bare_label_keyword:
 			| CYCLE
 			| DATA_P
 			| DATABASE
-			| DATE_P	/* IvorySQL: datatype */
+			| DATE_P
 			| DEALLOCATE
 			| DEC
 			| DECIMAL_P
 			| DECLARE
-			| DECODE	/* IvorySQL: datatype */
+			| DECODE
 			| DEFAULT
 			| DEFAULTS
 			| DEFERRABLE
@@ -19030,7 +18891,7 @@ bare_label_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
-			| LONG_P	/* IvorySQL: datatype */
+			| LONG_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -19040,7 +18901,7 @@ bare_label_keyword:
 			| METHOD
 			| MINVALUE
 			| MODE
-			| MODIFY		/* IvorySQL:sql-sequence */
+			| MODIFY
 			| MOVE
 			| NAME_P
 			| NAMES
@@ -19054,10 +18915,10 @@ bare_label_keyword:
 			| NFKC
 			| NFKD
 			| NO
-			| NOCACHE	/* IvorySQL:sql-sequence */
-			| NOCYCLE	/* IvorySQL:sql-sequence */
-			| NOMAXVALUE	/* IvorySQL:sql-sequence */
-			| NOMINVALUE	/* IvorySQL:sql-sequence */
+			| NOCACHE
+			| NOCYCLE
+			| NOMAXVALUE
+			| NOMINVALUE
 			| NONE
 			| NORMALIZE
 			| NORMALIZED
@@ -19068,10 +18929,10 @@ bare_label_keyword:
 			| NULL_P
 			| NULLIF
 			| NULLS_P
-			| NUMBER_P	/* IvorySQL: datatype */
+			| NUMBER_P
 			| NUMERIC
-			| NVL		/* IvorySQL: datatype */
-			| NVL2		/* IvorySQL: datatype */
+			| NVL
+			| NVL2
 			| OBJECT_P
 			| OF
 			| OFF
@@ -19115,7 +18976,7 @@ bare_label_keyword:
 			| PUBLICATION
 			| QUOTE
 			| RANGE
-			| RAW_P	/* IvorySQL: datatype */
+			| RAW_P
 			| READ
 			| REAL
 			| REASSIGN
@@ -19225,7 +19086,7 @@ bare_label_keyword:
 			| UNTIL
 			| UPDATE
 			| USER
-			| USERENV	/* IvorySQL: datatype */
+			| USERENV
 			| USING
 			| VACUUM
 			| VALID
@@ -19234,7 +19095,7 @@ bare_label_keyword:
 			| VALUE_P
 			| VALUES
 			| VARCHAR
-			| VARCHAR2	/* IvorySQL: datatype */
+			| VARCHAR2
 			| VARIADIC
 			| VERBOSE
 			| VERSION_P
@@ -19716,13 +19577,11 @@ SystemFuncName(char *name)
 	return list_make2(makeString("pg_catalog"), makeString(name));
 }
 
-/* IvorySQL:BEGIN - datatype */
 List *
 OracleSystemFuncName(char *name)
 {
 	return list_make2(makeString("sys"), makeString(name));
 }
-/* IvorySQL:END - datatype */
 
 /* SystemTypeName()
  * Build a properly-qualified reference to a built-in type.
@@ -19741,14 +19600,12 @@ SystemTypeName(char *name)
  *  Build a properly-qualified reference to a built-in type with oracle schema.
  *
  */
-/* IvorySQL:BEGIN - datatype */
 TypeName *
 OracleSystemTypeName(char *name)
 {
 	return makeTypeNameFromNameList(list_make2(makeString("sys"),
 											   makeString(name)));
 }
-/* IvorySQL:END - datatype */
 
 /* doNegate()
  * Handle negation of a numeric constant.

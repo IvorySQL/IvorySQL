@@ -2103,7 +2103,6 @@ clean_ipv6_addr(int addr_family, char *addr)
 	}
 }
 
-/* IvorySQL: BEGIN - LISTEN-MULTI-PORT */
 /*
  * Returns the mode information of the current connection.
  */
@@ -2122,4 +2121,3 @@ pg_get_connection_mode(PG_FUNCTION_ARGS)
 	else
 		PG_RETURN_DATUM(CStringGetTextDatum("Unknown"));
 }
-/* IvorySQL:END - LISTEN-MULTI-PORT */

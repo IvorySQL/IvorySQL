@@ -30,7 +30,7 @@
 
 #include "pl_subproc_function.h"
 
-#include "utils/ora_compatible.h"	/* IvorySQL: case sensitive indentify */
+#include "utils/ora_compatible.h"
 
 /* Location tracking support --- simpler than bison's default */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \

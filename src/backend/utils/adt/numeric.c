@@ -617,7 +617,6 @@ static void accum_sum_combine(NumericSumAccum *accum, NumericSumAccum *accum2);
  * ----------------------------------------------------------------------
  */
 
-/* IvorySQL:BEGIN - datatype */
 /* ----------------------------------------------------------------------
  *
  * global function
@@ -666,7 +665,6 @@ numeric_bitand(Numeric arg1, Numeric arg2)
 
 	return res;
 }
-/* IvorySQL:END - datatype */
 
 /*
  * numeric_in() -

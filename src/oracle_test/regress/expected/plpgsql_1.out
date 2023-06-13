@@ -4075,7 +4075,7 @@ CONTEXT:  PL/pgSQL function stacked_diagnostics_test() line 6 at GET STACKED DIA
 drop function zero_divide();
 drop function stacked_diagnostics_test();
 -- check cases where implicit SQLSTATE variable could be confused with
--- SQLSTATE as a keyword, cf bug #5524
+-- SQLSTATE as a keyword
 create or replace function raise_test() returns void as $$
 begin
   perform 1/0;
@@ -5071,7 +5071,6 @@ select consumes_rw_array(returns_rw_array(42));
                 42
 (1 row)
 
--- bug #14174
 explain (verbose, costs off)
 select i, a from
   (select returns_rw_array(1) as a offset 0) ss,
@@ -5370,7 +5369,7 @@ end;
 $$;
 ERROR:  unhandled assertion
 CONTEXT:  PL/iSQL function inline_code_block line 3 at ASSERT
--- Test use of plpgsql in a domain check constraint (cf. bug #14414)
+-- Test use of plpgsql in a domain check constraint
 create function plpgsql_domain_check(val int) returns boolean as $$
 begin return val > 0; end
 $$ language plpgsql immutable;
@@ -5389,7 +5388,7 @@ end;
 $$;
 ERROR:  value for domain plpgsql_domain violates check constraint "plpgsql_domain_check"
 CONTEXT:  PL/iSQL function inline_code_block line 4 at assignment
--- Test handling of expanded array passed to a domain constraint (bug #14472)
+-- Test handling of expanded array passed to a domain constraint
 create function plpgsql_arr_domain_check(val int[]) returns boolean as $$
 begin return val[1] > 0; end
 $$ language plpgsql immutable;

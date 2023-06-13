@@ -25,15 +25,11 @@ install-ecpglib-recurse: install-pgtypeslib-recurse
 
 clean distclean maintainer-clean:
 	$(MAKE) -C test clean
-#IvorySQL:BEGIN - SQL ecpg oracle_test
 	$(MAKE) -C oracle_test clean
-#IvorySQL:END - SQL ecpg oracle_test
 
 checktcp: | temp-install
 check checktcp installcheck:
 	$(MAKE) -C test $@
 
-#IvorySQL:BEGIN - SQL  ecpg oracle_test
 oracle-check oracle-checktcp oracle-installcheck:
 	$(MAKE) -C oracle_test $@
-#IvorySQL:END - SQL  ecpg oracle_test

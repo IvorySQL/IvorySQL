@@ -31,13 +31,11 @@ typedef enum DBParser
 	ORA_PARSER
 }DBParser;
 
-/* IvorySQL: BEGIN - case sensitive indentify */
 typedef enum CaseSwitchMode
 {
 	NORMAL = 0,
 	INTERCHANGE,
 	LOWERCASE
 }CaseSwitchMode;
-/* IvorySQL: END - case sensitive indentify */
 
 #endif							/* ORA_COMPATIBLE_H */

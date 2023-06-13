@@ -24,7 +24,7 @@
 #include "help.h"
 #include "input.h"
 #include "mainloop.h"
-#include "oracle_fe_utils/ora_string_utils.h"	/* IvorySQL - SQL plisql */
+#include "oracle_fe_utils/ora_string_utils.h"
 #include "settings.h"
 
 /*
@@ -307,9 +307,7 @@ main(int argc, char *argv[])
 		exit(EXIT_BADCONN);
 	}
 
-	/* IvorySQL BEGIN - SQL plisql */
 	getDbCompatibleMode(pset.db);
-	/* IvorySQL END - SQL plisql */
 
 	psql_setup_cancel_handler();
 
@@ -399,7 +397,6 @@ main(int argc, char *argv[])
 				if (pset.echo == PSQL_ECHO_ALL)
 					puts(cell->val);
 
-				/* IvorySQL:BEGIN - psql-paser */
 				if (db_mode == DB_PG)
 				{
 					scan_state = psql_scan_create(&psqlscan_callbacks);
@@ -418,7 +415,6 @@ main(int argc, char *argv[])
 					cond_stack = conditional_stack_create();
 					ora_psql_scan_set_passthrough(scan_state, (void *) cond_stack);
 				}
-				/* IvorySQL:END - psql-parser */
 
 				successResult = HandleSlashCmds(scan_state,
 												cond_stack,
@@ -426,12 +422,10 @@ main(int argc, char *argv[])
 												NULL) != PSQL_CMD_ERROR
 					? EXIT_SUCCESS : EXIT_FAILURE;
 
-				/* IvorySQL:BEGIN - psql-paser */
 				if (db_mode == DB_PG)
 					psql_scan_destroy(scan_state);
 				else if(db_mode == DB_ORACLE)
 					ora_psql_scan_destroy(scan_state);
-				/* IvorySQL:END - psql-parser */
 
 				conditional_stack_destroy(cond_stack);
 			}

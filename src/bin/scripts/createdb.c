@@ -15,9 +15,7 @@
 #include "common/logging.h"
 #include "fe_utils/option_utils.h"
 #include "fe_utils/string_utils.h"
-/* IvorySQL:BEGIN - SQL src_bin */
 #include "oracle_fe_utils/ora_string_utils.h"
-/* IvorySQL:END - SQL src_bin */
 
 
 static void help(const char *progname);
@@ -191,7 +189,6 @@ main(int argc, char *argv[])
 			dbname = get_user_name_or_exit(progname);
 	}
 
-	/* IvorySQL:BEGIN - SQL src_bin */
 	/* No point in trying to use postgres db when creating postgres db. */
 	if (maintenance_db == NULL && strcmp(dbname, "postgres") == 0)
 		maintenance_db = "template1";
@@ -206,7 +203,6 @@ main(int argc, char *argv[])
 	conn = connectMaintenanceDatabase(&cparams, progname, echo);
 
 	getDbCompatibleMode(conn);
-	/* IvorySQL:END - SQL src_bin */
 
 	initPQExpBuffer(&sql);
 
