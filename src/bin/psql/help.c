@@ -294,6 +294,7 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\sf[+]  FUNCNAME       show a function's definition\n");
 	HELP0("  \\sv[+]  VIEWNAME       show a view's definition\n");
 	HELP0("  \\z      [PATTERN]      same as \\dp\n");
+	HELP0("  \\parser                synchronize psql with the backend parser or display the psql parser\n");
 	HELP0("\n");
 
 	HELP0("Large Objects\n");
