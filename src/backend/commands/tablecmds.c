@@ -7981,7 +7981,9 @@ ATExecDropIdentity(Relation rel, const char *colName, bool missing_ok, LOCKMODE 
 		}
 	}
 
-	if (attTup->attidentity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL)
+	if (attTup->attidentity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL ||
+		attTup->attidentity == ATTRIBUTE_ORA_IDENTITY_ALWAYS ||
+		attTup->attidentity == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
 		attTup->attnotnull = false;
 
 	attTup->attidentity = '\0';

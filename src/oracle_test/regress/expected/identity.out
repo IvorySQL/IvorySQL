@@ -149,3 +149,7 @@ ERROR:  dumplicate or conflicting ORDER/NOORDER specifications
 LINE 1: ...l as identity start with 1 increment by 2 noorder noorder, b...
                                                              ^
 DROP TABLE itest_order;
+CREATE TABLE idcol_alter2(userid number generated always as identity  start with 2,uname varchar2(20));
+INSERT INTO idcol_alter2 (uname) VALUES ('xiaodong');
+ALTER TABLE idcol_alter2 modify userid drop identity;
+INSERT INTO idcol_alter2 (uname) VALUES ('xiaohong');
