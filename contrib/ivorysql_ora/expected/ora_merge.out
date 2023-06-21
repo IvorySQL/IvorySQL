@@ -471,3 +471,37 @@ SELECT * FROM member_staging ORDER BY member_id;
 ROLLBACK;
 drop table members;
 drop table member_staging;
+CREATE TABLE target (tid integer, balance integer);
+CREATE TABLE source (sid integer, delta integer);
+INSERT INTO target VALUES (1, 10);
+INSERT INTO target VALUES (2, 20);
+INSERT INTO target VALUES (3, 30);
+INSERT INTO source VALUES (2, 5);
+INSERT INTO source VALUES (3, 20);
+INSERT INTO source VALUES (2, 5);
+SELECT * from target;
+ tid | balance 
+-----+---------
+   1 |      10
+   2 |      20
+   3 |      30
+(3 rows)
+
+SELECT * from source;
+ sid | delta 
+-----+-------
+   2 |     5
+   3 |    20
+   2 |     5
+(3 rows)
+
+-- Merge statement
+MERGE INTO target t
+USING source s
+ON (t.tid = s.sid)
+WHEN MATCHED THEN
+	UPDATE SET balance = 0
+	DELETE WHERE balance = 0;
+ERROR:  specified row no longer exists
+drop table target;
+drop table source;
