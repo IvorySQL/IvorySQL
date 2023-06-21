@@ -402,3 +402,31 @@ ROLLBACK;
 
 drop table members;
 drop table member_staging;
+
+--
+-- Fix bug#041:TC_IVYSQL_MERGE_UPDATE_034
+--
+CREATE TABLE target (tid integer, balance integer);
+CREATE TABLE source (sid integer, delta integer);
+
+INSERT INTO target VALUES (1, 10);
+INSERT INTO target VALUES (2, 20);
+INSERT INTO target VALUES (3, 30);
+
+INSERT INTO source VALUES (2, 5);
+INSERT INTO source VALUES (3, 20);
+INSERT INTO source VALUES (2, 5);
+
+SELECT * from target;
+SELECT * from source;
+
+-- Merge statement
+MERGE INTO target t
+USING source s
+ON (t.tid = s.sid)
+WHEN MATCHED THEN
+	UPDATE SET balance = 0
+	DELETE WHERE balance = 0;
+
+drop table target;
+drop table source;
