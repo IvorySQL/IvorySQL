@@ -89,7 +89,7 @@ typedef enum TAPtype
 	TEST_STATUS,
 	PLAN,
 	NONE
-}			TAPtype;
+} TAPtype;
 
 /* options settable from command line */
 _stringlist *dblist = NULL;
