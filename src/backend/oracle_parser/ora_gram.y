@@ -4883,7 +4883,7 @@ SeqOptElem: AS SimpleTypename
 				}
 			| NOCACHE
 				{
-					$$ = makeDefElem("cache", (Node *)makeInteger(0), @1);
+					$$ = makeDefElem("cache", (Node *)makeInteger(1), @1);
 				}
 			| CYCLE
 				{
