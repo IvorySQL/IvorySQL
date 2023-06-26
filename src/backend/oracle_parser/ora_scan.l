@@ -1526,20 +1526,3 @@ ora_core_yyfree(void *ptr, ora_core_yyscan_t yyscanner)
 		pfree(ptr);
 }
 
-/*
- * Read and return a text (between 'sloc' and 'eloc') from the scanner
- * internal buffers.
- */
-char *
-scanner_querytext(int sloc, int eloc, ora_core_yyscan_t yyscanner)
-{
-	int len = eloc - sloc;
-	char *query = palloc(len + 1);
-
-	Assert (sloc >= 0);
-	Assert (eloc >= 0);
-	memcpy(query, yyextra->scanbuf + sloc, len);
-	query[len] = '\0';
-
-	return query;
-}
