@@ -3986,23 +3986,12 @@ ColConstraintElem:
 				}
 			| GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
 				{
-					char *str = NULL;
 					Constraint *n = makeNode(Constraint);
-
-					if($5)
-					{
-						str = scanner_querytext(@5, @5+1, yyscanner);
-					}
-
 					n->contype = CONSTR_IDENTITY;
 					n->generated_when = $2;
-					if ( $5 != NULL && strncmp(str,"(",1) != 0 && n->generated_when  == ATTRIBUTE_IDENTITY_ALWAYS)
+					if (n->generated_when == ATTRIBUTE_IDENTITY_ALWAYS)
 						n->generated_when = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
-					else if ($5 != NULL && strncmp(str,"(",1) != 0 && n->generated_when  == ATTRIBUTE_IDENTITY_BY_DEFAULT)
-						n->generated_when = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
-					else if ($5 == NULL && n->generated_when  == ATTRIBUTE_IDENTITY_ALWAYS)
-						n->generated_when = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
-					else if ($5 == NULL && n->generated_when  == ATTRIBUTE_IDENTITY_BY_DEFAULT)
+					else if (n->generated_when == ATTRIBUTE_IDENTITY_BY_DEFAULT)
 						n->generated_when = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
 					n->options = $5;
 					n->location = @1;
