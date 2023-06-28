@@ -47,7 +47,8 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
 
 /*
  * We don't want to log each fetching of a value from a sequence,
@@ -1549,7 +1550,15 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* START WITH */
 	if (start_value != NULL)
 	{
-		seqform->seqstart = defGetInt64(start_value);
+		if (compatible_db == ORA_PARSER)
+		{
+			seqform->seqstart = defGetNumeric(start_value);
+			seqdataform->log_cnt = 0;
+			seqdataform->last_value = seqform->seqstart;
+			seqdataform->is_called = false;
+		}
+		else
+			seqform->seqstart = defGetInt64(start_value);
 	}
 	else if (isInit)
 	{
