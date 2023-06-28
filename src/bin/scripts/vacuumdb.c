@@ -24,9 +24,7 @@
 #include "fe_utils/query_utils.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
-/* IvorySQL:BEGIN - SQL src_bin */
 #include "oracle_fe_utils/ora_string_utils.h"
-/* IvorySQL:END - SQL src_bin */
 
 /* vacuum options controlled by user flags */
 typedef struct vacuumingOptions

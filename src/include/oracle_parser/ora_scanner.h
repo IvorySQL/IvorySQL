@@ -145,6 +145,5 @@ extern void ora_setup_scanner_errposition_callback(OraScannerCallbackState *scbs
 											   int location);
 extern void ora_cancel_scanner_errposition_callback(OraScannerCallbackState *scbstate);
 extern void ora_scanner_yyerror(const char *message, ora_core_yyscan_t yyscanner) pg_attribute_noreturn();
-extern char *scanner_querytext(int sloc, int eloc, ora_core_yyscan_t yyscanner);	/* IvorySQL:sql-sequence */
 
 #endif							/* SCANNER_H */

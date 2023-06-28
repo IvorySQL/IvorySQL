@@ -58,9 +58,7 @@
 #include "getopt_long.h"
 #include "pg_getopt.h"
 #include "storage/large_object.h"
-/* IvorySQL:BEGIN - SQL src_bin */
 #include "utils/ora_compatible.h"
-/* IvorySQL:END - SQL src_bin */
 
 static ControlFileData ControlFile; /* pg_control values */
 static XLogSegNo newXlogSegNo;	/* new XLOG segment # */
@@ -100,9 +98,7 @@ main(int argc, char *argv[])
 		{"pgdata", required_argument, NULL, 'D'},
 		{"epoch", required_argument, NULL, 'e'},
 		{"force", no_argument, NULL, 'f'},
-		/* IvorySQL:BEGIN - SQL src_bin */
 		{"dbmode", required_argument, NULL, 'g'},
-		/* IvorySQL:END - SQL src_bin */
 		{"next-wal-file", required_argument, NULL, 'l'},
 		{"multixact-ids", required_argument, NULL, 'm'},
 		{"dry-run", no_argument, NULL, 'n'},
@@ -123,10 +119,8 @@ main(int argc, char *argv[])
 	char	   *DataDir = NULL;
 	char	   *log_fname = NULL;
 	int			fd;
-	/* IvorySQL:BEGIN - SQL src_bin */
 	char *dbmode = "oracle";
-	/* IvorySQL:END - SQL src_bin */
-	bool		is_named = false;	/* IvorySQL: datatype */
+	bool		is_named = false;
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_resetwal"));
@@ -146,9 +140,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* IvorySQL:BEGIN - SQL src_bin */
 	while ((c = getopt_long(argc, argv, "c:D:e:fg:l:m:no:O:u:x:", long_options, NULL)) != -1)
-	/* IvorySQL:END - SQL src_bin */
 	{
 		switch (c)
 		{
@@ -299,13 +291,10 @@ main(int argc, char *argv[])
 				 */
 				log_fname = pg_strdup(optarg);
 				break;
-
-			/* IvorySQL:BEGIN - SQL src_bin */
 			case 'g':
-				is_named = true;	/* IvorySQL: datatype */
+				is_named = true;
 				dbmode = pg_strdup(optarg);
 				break;
-			/* IvorySQL:END - SQL src_bin */
 
 			case 1:
 				errno = 0;
@@ -413,21 +402,19 @@ main(int argc, char *argv[])
 	 */
 	FindEndOfXLOG();
 
-	/* IvorySQL:BEGIN - SQL src_bin */
 	if (is_named)
 	{
 		if (pg_strcasecmp(dbmode, "oracle") == 0 || pg_strcasecmp(dbmode, "1") == 0)
 		{
 			ControlFile.dbmode = DB_ORACLE;
-			ControlFile.casemode = INTERCHANGE; /* IvorySQL: case sensitive indentify - reset case conversion mode */
+			ControlFile.casemode = INTERCHANGE;
 		}
 		else
 		{
 			ControlFile.dbmode = DB_PG;
-			ControlFile.casemode = NORMAL; /* IvorySQL: case sensitive indentify - reset case conversion mode */
+			ControlFile.casemode = NORMAL;
 		}
 	}
-	/* IvorySQL:END - SQL src_bin */
 
 	/*
 	 * If we're not going to proceed with the reset, print the current control
@@ -806,14 +793,10 @@ PrintControlValues(bool guessed)
 		   (ControlFile.float8ByVal ? _("by value") : _("by reference")));
 	printf(_("Data page checksum version:           %u\n"),
 		   ControlFile.data_checksum_version);
-	/* IvorySQL:BEGING - SQL src_bin */
 	printf(_("database mode:                        %u\n"),
 		   ControlFile.dbmode);
-	/* IvorySQL:END - SQL src_bin */
-	/* IvorySQL: BEGIN - case sensitive indentify */
 	printf(_("case conversion mode:                 %u\n"),
 		   ControlFile.casemode);
-	/* IvorySQL: END - case sensitive indentify */
 }
 
 
@@ -1175,9 +1158,7 @@ usage(void)
 	printf(_(" [-D, --pgdata=]DATADIR            data directory\n"));
 	printf(_("  -e, --epoch=XIDEPOCH             set next transaction ID epoch\n"));
 	printf(_("  -f, --force                      force update to be done\n"));
-	/* IvorySQL:BEGIN - SQL src_bin */
 	printf(_("  -g, --dbmode                   set database mode\n"));
-	/* IvorySQL:END - SQL src_bin */
 	printf(_("  -l, --next-wal-file=WALFILE      set minimum starting location for new WAL\n"));
 	printf(_("  -m, --multixact-ids=MXID,MXID    set next and oldest multitransaction ID\n"));
 	printf(_("  -n, --dry-run                    no update, just show what would be done\n"));

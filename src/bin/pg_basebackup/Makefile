@@ -83,10 +83,8 @@ check:
 installcheck:
 	$(prove_installcheck)
 
-#IvorySQL:BEGIN - SQL oracle_test
 oracle-check:
 	$(oracle_prove_check)
 
 oracle-installcheck:
 	$(oracle_prove_installcheck)
-#IvorySQL:END - SQL oracle_test

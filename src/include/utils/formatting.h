@@ -17,7 +17,6 @@
 #ifndef _FORMATTING_H_
 #define _FORMATTING_H_
 
-/* IvorySQL:BEGIN - datatype */
 #include "pgtime.h"
 #include "datatype/timestamp.h"
 #include "utils/numeric.h"
@@ -55,7 +54,6 @@ typedef struct TmToChar
 #define tmtcTm(_X)	(&(_X)->tm)
 #define tmtcTzn(_X) ((_X)->tzn)
 #define tmtcFsec(_X)	((_X)->fsec)
-/* IvorySQL:END - datatype */
 
 /*
  * The default date values are determined as follows:
@@ -64,7 +62,6 @@ typedef struct TmToChar
  *	the day is 01 (the first day of the month).
  *	the hour, minute, and second are all 0.
  *
- *	 IvorySQL:BEGIN - datatype
  */
 #define ORA_ZERO_tm(_X) \
 do {	\
@@ -78,7 +75,6 @@ do { \
 	tmtcFsec(_X) = 0; \
 	tmtcTzn(_X) = NULL; \
 } while(0)
-/* IvorySQL:END - datatype */
 
 extern char *str_tolower(const char *buff, size_t nbytes, Oid collid);
 extern char *str_toupper(const char *buff, size_t nbytes, Oid collid);
@@ -92,7 +88,6 @@ extern Datum parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 							Oid *typid, int32 *typmod, int *tz,
 							struct Node *escontext);
 
-/* IvorySQL:BEGIN - datatype */
 /* export datetime_to_char_body from formatting.c used in ivorysql_ora */
 extern text *datetime_to_char_body(TmToChar *tmtc, text *fmt,
 											bool is_interval, Oid collid);
@@ -102,6 +97,5 @@ ora_do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 				struct pg_tm *tm, fsec_t *fsec, int *fprec,
 				uint32 *flags, Node *escontext, bool is_conv_func);
 extern Numeric ora_to_number_internal(text *value, text *fmt);
-/* IvorySQL:END - datatype */
 
 #endif

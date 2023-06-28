@@ -1260,20 +1260,18 @@ CREATE RULE rule3 AS ON DELETE TO rule_merge1
 -- MERGE not supported for table with rules
 MERGE INTO rule_merge1 t USING (SELECT 1 AS a) s
 	ON t.a = s.a
-	WHEN MATCHED AND t.a < 2 THEN
-		UPDATE SET b = b || ' updated by merge'
-	WHEN MATCHED AND t.a > 2 THEN
-		DELETE
+	WHEN MATCHED THEN
+		UPDATE SET b = b || ' updated by merge' WHERE t.a < 2
+		DELETE WHERE t.a > 2
 	WHEN NOT MATCHED THEN
 		INSERT VALUES (s.a, '');
 
 -- should be ok with the other table though
 MERGE INTO rule_merge2 t USING (SELECT 1 AS a) s
 	ON t.a = s.a
-	WHEN MATCHED AND t.a < 2 THEN
-		UPDATE SET b = b || ' updated by merge'
-	WHEN MATCHED AND t.a > 2 THEN
-		DELETE
+	WHEN MATCHED THEN
+		UPDATE SET b = b || ' updated by merge' WHERE t.a < 2
+		DELETE WHERE t.a > 2
 	WHEN NOT MATCHED THEN
 		INSERT VALUES (s.a, '');
 

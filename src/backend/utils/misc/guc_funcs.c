@@ -30,10 +30,10 @@
 #include "utils/builtins.h"
 #include "utils/guc_tables.h"
 #include "utils/snapmgr.h"
-/* IvorySQL:BEGIN - SQL oracle_mode */
+#include "executor/nodeModifyTable.h"
+#include "parser/parse_merge.h"
 #include "parser/parser.h"
 #include "utils/ora_compatible.h"
-/* IvorySQL:END - SQL oracle_mode */
 
 static char *flatten_set_variable_args(const char *name, List *args);
 static void ShowGUCConfigOption(const char *name, DestReceiver *dest);
@@ -64,7 +64,6 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			if (stmt->is_local)
 				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
 
-			/* IvorySQL:BEGIN - SQL oracle_mode */
 			/* Internal level guc parameter can't be updated in session */
 			if (pg_strcasecmp(stmt->name, DB_MODE_PARMATER) == 0)
 			{
@@ -89,7 +88,6 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 					ereport(ERROR,
 						(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
 						errmsg("parameter \"%s\" cannot be changed in native PG mode.", stmt->name)));
-			/* IvorySQL:END - SQL oracle_mode */
 
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
@@ -97,7 +95,6 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 									 PGC_S_SESSION,
 									 action, true, 0, false);
 
-			/* IvorySQL:BEGIN - SQL oracle_mode */
 			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
 				 && DB_ORACLE == database_mode)
 			{
@@ -110,11 +107,18 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 								 errhint("You must load liboracle_parser to use oracle parser.")));
 
 					sql_raw_parser = ora_raw_parser;
+
+					pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
+					pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
 				}
 				else if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "pg"))
+				{
 					sql_raw_parser = standard_raw_parser;
+
+					pg_transform_merge_stmt_hook = transformMergeStmt;
+					pg_exec_merge_matched_hook = ExecMergeMatched;
+				}
 			}
-			/* IvorySQL:END - SQL oracle_mode */
 
 			break;
 		case VAR_SET_MULTI:
@@ -199,11 +203,14 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 									 PGC_S_SESSION,
 									 action, true, 0, false);
 
-			/* IvorySQL:BEGIN - SQL oracle_mode */
 			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
 				 && DB_ORACLE == database_mode)
+			{
 				sql_raw_parser = standard_raw_parser;
-			/* IvorySQL:END - SQL oracle_mode */
+
+				pg_transform_merge_stmt_hook = transformMergeStmt;
+				pg_exec_merge_matched_hook = ExecMergeMatched;
+			}
 			break;
 		case VAR_RESET_ALL:
 			ResetAllOptions();

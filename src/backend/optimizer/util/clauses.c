@@ -3091,7 +3091,7 @@ eval_const_expressions_mutator(Node *node,
 				save_case_val = context->case_val;
 				if (newarg && IsA(newarg, Const))
 				{
-					if (!caseexpr->is_decode)	/* IvorySQL: datatype */
+					if (!caseexpr->is_decode)
 					{
 						context->case_val = newarg;
 						newarg = NULL;	/* not needed anymore, see above */
@@ -3106,11 +3106,11 @@ eval_const_expressions_mutator(Node *node,
 				foreach(arg, caseexpr->args)
 				{
 					CaseWhen   *oldcasewhen = lfirst_node(CaseWhen, arg);
-					Node	   *casecond = NULL;	/* IvorySQL: datatype */
+					Node	   *casecond = NULL;
 					Node	   *caseresult;
-					Node	   *orig_casecond = NULL;	/* IvorySQL: datatype */
+					Node	   *orig_casecond = NULL;
 
-					if (!caseexpr->is_decode) /* IvorySQL: datatype */
+					if (!caseexpr->is_decode)
 					{
 						/* Simplify this alternative's test condition */
 						casecond = eval_const_expressions_mutator((Node *) oldcasewhen->expr,
@@ -3132,7 +3132,6 @@ eval_const_expressions_mutator(Node *node,
 							const_true_cond = true;
 						}
 					}
-					/* IvorySQL:BEGIN - datatype */
 					else
 					{
 						orig_casecond = eval_const_expressions_mutator((Node *) oldcasewhen->orig_expr,
@@ -3265,7 +3264,6 @@ eval_whenexpr2:
 							}
 						}
 					}
-					/* IvorySQL:END - datatype */
 
 					/* Simplify this alternative's result value */
 					caseresult = eval_const_expressions_mutator((Node *) oldcasewhen->result,
@@ -3277,7 +3275,7 @@ eval_whenexpr2:
 						CaseWhen   *newcasewhen = makeNode(CaseWhen);
 
 						newcasewhen->expr = (Expr *) casecond;
-						newcasewhen->orig_expr = (Expr *) orig_casecond;	/* IvorySQL: datatype */
+						newcasewhen->orig_expr = (Expr *) orig_casecond;
 						newcasewhen->result = (Expr *) caseresult;
 						newcasewhen->location = oldcasewhen->location;
 						newargs = lappend(newargs, newcasewhen);
@@ -3314,7 +3312,7 @@ eval_whenexpr2:
 				newcase->args = newargs;
 				newcase->defresult = (Expr *) defresult;
 				newcase->location = caseexpr->location;
-				newcase->is_decode = caseexpr->is_decode;	/* IvorySQL: datatype */
+				newcase->is_decode = caseexpr->is_decode;
 				return (Node *) newcase;
 			}
 		case T_CaseTestExpr:

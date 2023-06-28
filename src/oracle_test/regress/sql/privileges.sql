@@ -576,8 +576,8 @@ WHEN NOT MATCHED THEN
 
 -- fail (s.b used in the WHEN quals)
 MERGE INTO mtarget t USING msource s ON t.a = s.a
-WHEN MATCHED AND s.b = 'x' THEN
-	UPDATE SET b = 'x'
+WHEN MATCHED THEN
+	UPDATE SET b = 'x' where s.b = 'x'
 WHEN NOT MATCHED THEN
 	INSERT VALUES (a, NULL);
 
@@ -623,8 +623,8 @@ WHEN NOT MATCHED THEN
 
 -- fail (no SELECT on t.b)
 MERGE INTO mtarget t USING msource s ON t.a = s.a
-WHEN MATCHED AND t.b IS NOT NULL THEN
-	UPDATE SET b = s.b
+WHEN MATCHED THEN
+	UPDATE SET b = s.b WHERE t.b IS NOT NULL
 WHEN NOT MATCHED THEN
 	INSERT VALUES (a, b);
 
@@ -635,20 +635,9 @@ WHEN MATCHED THEN
 	UPDATE SET b = s.b;
 ROLLBACK;
 
--- fail (no DELETE)
-MERGE INTO mtarget t USING msource s ON t.a = s.a
-WHEN MATCHED AND t.b IS NOT NULL THEN
-	DELETE;
-
 -- grant delete privileges
 SET SESSION AUTHORIZATION regress_priv_user1;
 GRANT DELETE ON mtarget TO regress_priv_user4;
--- should be ok now
-BEGIN;
-MERGE INTO mtarget t USING msource s ON t.a = s.a
-WHEN MATCHED AND t.b IS NOT NULL THEN
-	DELETE;
-ROLLBACK;
 
 -- check error reporting with column privs
 SET SESSION AUTHORIZATION regress_priv_user1;

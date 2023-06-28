@@ -70,11 +70,11 @@
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/guc_hooks.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/ps_status.h"
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
@@ -1830,7 +1830,6 @@ exec_bind_message(StringInfo input_message)
 				 * trailing null.  This is grotty but is a big win when
 				 * dealing with very large parameter strings.
 				 */
-				/* IvorySQL:BEGIN - datatype */
 				if (compatible_db == ORA_PARSER &&
 					enable_emptystring_to_NULL &&
 					plength == 0)
@@ -1842,7 +1841,6 @@ exec_bind_message(StringInfo input_message)
 				}
 				else
 				{
-					/* IvorySQL:END - datatype */
 					pbuf.data = unconstify(char *, pvalue);
 					pbuf.maxlen = plength + 1;
 					pbuf.len = plength;

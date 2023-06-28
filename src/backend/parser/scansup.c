@@ -79,7 +79,6 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	return result;
 }
 
-/* IvorySQL: BEGIN - case sensitive indentify */
 char *
 upcase_identifier(const char *ident, int len, bool warn, bool truncate)
 {
@@ -146,7 +145,6 @@ identifier_case_transform(const char *ident, int len)
 
 	return result;
 }
-/* IvorySQL: END - case sensitive indentify */
 
 /*
  * truncate_identifier() --- truncate an identifier to NAMEDATALEN-1 bytes.

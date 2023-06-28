@@ -218,7 +218,6 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, AttributeRelidN
 
 #define		  ATTRIBUTE_GENERATED_STORED	's'
 
-/* IvorySQL:BEGIN - sql-sequence */
 /* for compatibel oracle identity column */
 /* n=self increasing columns can be inserted and NULL */
 #define		  ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL	'n'
@@ -226,7 +225,6 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, AttributeRelidN
 #define		  ATTRIBUTE_ORA_IDENTITY_ALWAYS	'i'
 /* o=self increasing columns can be inserted but cannot be NULL */
 #define		  ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT 'o'
-/* IvorySQL:END - sql-sequence */
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 

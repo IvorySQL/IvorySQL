@@ -3419,7 +3419,6 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
-			/* IvorySQL:BEGIN - datatype */
 			if (PG_PARSER == compatible_db)
 			{
 				Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
@@ -3453,7 +3452,6 @@ GetOverrideSearchPath(MemoryContext context)
 					}
 				}
 			}
-			/* IvorySQL:END - datatype */
 		}
 		schemas = list_delete_first(schemas);
 	}
@@ -3479,7 +3477,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
 	result->schemas = list_copy(path->schemas);
 	result->addCatalog = path->addCatalog;
 	result->addTemp = path->addTemp;
-	result->addSys = path->addSys;	/* IvorySQL: datatype */
+	result->addSys = path->addSys;
 	result->generation = path->generation;
 
 	return result;
@@ -3525,7 +3523,6 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 			return false;
 	}
 
-	/* IvorySQL:BEGIN - datatype */
 	/* If path->addSys, next item should be sys. */
 	if (path->addSys)
 	{
@@ -3534,7 +3531,6 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 		else
 			return false;
 	}
-	/* IvorySQL:END - datatype */
 
 	/* We should now be looking at the activeCreationNamespace. */
 	if (activeCreationNamespace != (lc ? lfirst_oid(lc) : InvalidOid))
@@ -3612,10 +3608,8 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	if (newpath->addCatalog)
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
 
-	/* IvorySQL:BEGIN - datatype */
 	if (newpath->addSys)
 		oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
-	/* IvorySQL:END - datatype */
 
 	if (newpath->addTemp && OidIsValid(myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
@@ -3947,13 +3941,11 @@ recomputeNamespacePath(void)
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
 
-	/* IvorySQL:BEGIN - datatype */
 	if (IsNormalProcessingMode() && ORA_PARSER == compatible_db)
 	{
 		if (!list_member_oid(oidlist, PG_SYS_NAMESPACE))
 			oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
 	}
-	/* IvorySQL:END - datatype */
 
 	if (OidIsValid(myTempNamespace) &&
 		!list_member_oid(oidlist, myTempNamespace))

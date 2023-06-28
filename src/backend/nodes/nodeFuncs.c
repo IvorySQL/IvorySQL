@@ -2202,10 +2202,8 @@ expression_tree_walker_impl(Node *node,
 
 					if (WALK(when->expr))
 						return true;
-					/* IvorySQL:BEGIN - datatype */
 					if (WALK(when->orig_expr))
 						return true;
-					/* IvorySQL:END - datatype */
 					if (WALK(when->result))
 						return true;
 				}
@@ -3152,7 +3150,7 @@ expression_tree_mutator_impl(Node *node,
 
 				FLATCOPY(newnode, casewhen, CaseWhen);
 				MUTATE(newnode->expr, casewhen->expr, Expr *);
-				MUTATE(newnode->orig_expr, casewhen->orig_expr, Expr *);	/* IvorySQL: datatype */
+				MUTATE(newnode->orig_expr, casewhen->orig_expr, Expr *);
 				MUTATE(newnode->result, casewhen->result, Expr *);
 				return (Node *) newnode;
 			}
@@ -3868,10 +3866,8 @@ raw_expression_tree_walker_impl(Node *node,
 
 					if (WALK(when->expr))
 						return true;
-					/* IvorySQL:BEGIN - datatype */
 					if (WALK(when->orig_expr))
 						return true;
-					/* IvorySQL:END - datatype */
 					if (WALK(when->result))
 						return true;
 				}

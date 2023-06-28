@@ -2175,36 +2175,26 @@ ON did = s.sdid
 WHEN MATCHED THEN
 	UPDATE SET dnotes = dnotes || ' notes added by merge ';
 ERROR:  target row violates row-level security policy (USING expression) for table "document"
--- The same thing with DELETE action, but fails again because no permissions
--- to delete items in 'science fiction' category that did 3 belongs to.
-MERGE INTO document d
-USING (SELECT 3 as sdid) s
-ON did = s.sdid
-WHEN MATCHED THEN
-	DELETE;
-ERROR:  target row violates row-level security policy (USING expression) for table "document"
 -- Document with did 4 belongs to 'manga' category which is allowed for
 -- deletion. But this fails because the UPDATE action is matched first and
 -- UPDATE policy does not allow updation in the category.
 MERGE INTO document d
 USING (SELECT 4 as sdid) s
 ON did = s.sdid
-WHEN MATCHED AND dnotes = '' THEN
-	UPDATE SET dnotes = dnotes || ' notes added by merge '
 WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ' WHERE dnotes = ''
 	DELETE;
-ERROR:  target row violates row-level security policy (USING expression) for table "document"
+ERROR:  missing WHERE keyword
 -- UPDATE action is not matched this time because of the WHEN qual.
 -- DELETE still fails because role regress_rls_bob does not have SELECT
 -- privileges on 'manga' category row in the category table.
 MERGE INTO document d
 USING (SELECT 4 as sdid) s
 ON did = s.sdid
-WHEN MATCHED AND dnotes <> '' THEN
-	UPDATE SET dnotes = dnotes || ' notes added by merge '
 WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ' WHERE dnotes <> ''
 	DELETE;
-ERROR:  target row violates row-level security policy (USING expression) for table "document"
+ERROR:  missing WHERE keyword
 SELECT * FROM document WHERE did = 4;
  did | cid | dlevel |     dauthor     |     dtitle     | dnotes 
 -----+-----+--------+-----------------+----------------+--------
@@ -2218,10 +2208,10 @@ SET SESSION AUTHORIZATION regress_rls_carol;
 MERGE INTO document d
 USING (SELECT 4 as sdid) s
 ON did = s.sdid
-WHEN MATCHED AND dnotes <> '' THEN
-	UPDATE SET dnotes = dnotes || ' notes added by merge '
 WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ' WHERE dnotes <> ''
 	DELETE;
+ERROR:  missing WHERE keyword
 -- Switch back to regress_rls_bob role
 RESET SESSION AUTHORIZATION;
 SET SESSION AUTHORIZATION regress_rls_bob;
@@ -2231,8 +2221,6 @@ SET SESSION AUTHORIZATION regress_rls_bob;
 MERGE INTO document d
 USING (SELECT 12 as sdid) s
 ON did = s.sdid
-WHEN MATCHED THEN
-	DELETE
 WHEN NOT MATCHED THEN
 	INSERT VALUES (12, 11, 1, 'regress_rls_dave', 'another novel');
 ERROR:  new row violates row-level security policy for table "document"
@@ -2240,8 +2228,6 @@ ERROR:  new row violates row-level security policy for table "document"
 MERGE INTO document d
 USING (SELECT 12 as sdid) s
 ON did = s.sdid
-WHEN MATCHED THEN
-	DELETE
 WHEN NOT MATCHED THEN
 	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
 -- ok
@@ -2278,6 +2264,7 @@ SELECT * FROM document;
  did | cid | dlevel |      dauthor      |              dtitle              |                                dnotes                                 
 -----+-----+--------+-------------------+----------------------------------+-----------------------------------------------------------------------
    3 |  22 |      2 | regress_rls_bob   | my science fiction               | 
+   4 |  44 |      1 | regress_rls_bob   | my first manga                   | 
    5 |  44 |      2 | regress_rls_bob   | my second manga                  | 
    6 |  22 |      1 | regress_rls_carol | great science fiction            | 
    7 |  33 |      2 | regress_rls_carol | great technology book            | 
@@ -2291,7 +2278,7 @@ SELECT * FROM document;
   79 |  33 |      1 | regress_rls_bob   | technology book, can only insert | 
   12 |  11 |      1 | regress_rls_bob   | another novel                    | 
    1 |  11 |      1 | regress_rls_bob   | my first novel                   |  notes added by merge2  notes added by merge3  notes added by merge4 
-(14 rows)
+(15 rows)
 
 --
 -- ROLE/GROUP

@@ -254,12 +254,10 @@
   proname => 'textlen', prorettype => 'int4', proargtypes => 'text',
   prosrc => 'textlen' },
 
-# IvorySQL:BEGIN - EMPTY_STIRNG_TO_NULL
 # Change proisstrict to false.
 { oid => '1258',
   proname => 'textcat', prorettype => 'text', proargtypes => 'text text',
   proisstrict => 'f', prosrc => 'textcat' },
-# IvorySQL:END - EMPTY_STIRNG_TO_NULL
 
 { oid => '84',
   proname => 'boolne', proleakproof => 't', prorettype => 'bool',
@@ -5968,7 +5966,6 @@
   proname => 'timetz', prosupport => 'time_support', prorettype => 'timetz',
   proargtypes => 'timetz int4', prosrc => 'timetz_scale' },
 
-# IvorySQL:BEGIN - EMPTY_STIRNG_TO_NULL
 # Change proisstrict to false.
 { oid => '2003',
   proname => 'textanycat', prolang => 'sql', provolatile => 's',
@@ -5978,7 +5975,6 @@
   proname => 'anytextcat', prolang => 'sql', provolatile => 's',
   proisstrict => 'f', prorettype => 'text', proargtypes => 'anynonarray text',
   prosrc => 'select $1::pg_catalog.text operator(pg_catalog.||) $2' },
-# IvorySQL:END - EMPTY_STIRNG_TO_NULL
 
 { oid => '2005',
   proname => 'bytealike', prosupport => 'textlike_support',
@@ -12048,10 +12044,8 @@
   proname => 'any_value_transfn', prorettype => 'anyelement',
   proargtypes => 'anyelement anyelement', prosrc => 'any_value_transfn' },
 
-# IvorySQL:BEGIN - LISTEN-MULTI-PORT
 { oid => '4642', descr => 'PostgreSQL connection mode',
   proname => 'pg_get_connection_mode', provolatile => 's', prorettype => 'text',
   proargtypes => '', prosrc => 'pg_get_connection_mode' },
-# IvorySQL:END - LISTEN-MULTI-PORT
 
 ]

@@ -1249,7 +1249,7 @@ typedef struct CaseExpr
 	List	   *args;			/* the arguments (list of WHEN clauses) */
 	Expr	   *defresult;		/* the default result (ELSE clause) */
 	int			location;		/* token location, or -1 if unknown */
-	bool		is_decode;		/* IvorySQL: datatype */
+	bool		is_decode;
 } CaseExpr;
 
 /*
@@ -1259,7 +1259,7 @@ typedef struct CaseWhen
 {
 	Expr		xpr;
 	Expr	   *expr;			/* condition expression */
-	Expr	   *orig_expr;		/* IvorySQL: datatype */
+	Expr	   *orig_expr;
 	Expr	   *result;			/* substitution result */
 	int			location;		/* token location, or -1 if unknown */
 } CaseWhen;

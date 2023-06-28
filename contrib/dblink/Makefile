@@ -30,9 +30,7 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
-# IvorySQL:BEGIN - SQL oracle_test
 all: ../../src/oracle_test/regress/regress$(DLSUFFIX)
 
 ../../src/oracle_test/regress/regress$(DLSUFFIX): ../../src/oracle_test/regress/oraregress$(DLSUFFIX)
 	        cp $< $@
-# IvorySQL:END - SQL oracle_test

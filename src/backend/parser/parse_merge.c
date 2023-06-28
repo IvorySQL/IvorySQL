@@ -31,13 +31,12 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
-static void setNamespaceForMergeWhen(ParseState *pstate,
-									 MergeWhenClause *mergeWhenClause,
-									 Index targetRTI,
-									 Index sourceRTI);
 static void setNamespaceVisibilityForRTE(List *namespace, RangeTblEntry *rte,
 										 bool rel_visible,
 										 bool cols_visible);
+
+transform_merge_stmt_hook_type pg_transform_merge_stmt_hook = transformMergeStmt;
+transform_merge_stmt_hook_type ora_transform_merge_stmt_hook = NULL;
 
 /*
  * Make appropriate changes to the namespace visibility while transforming
@@ -51,7 +50,7 @@ static void setNamespaceVisibilityForRTE(List *namespace, RangeTblEntry *rte,
  * relations, we must explicitly make the respective relation as visible so
  * that columns can be referenced unqualified from these relations.
  */
-static void
+void
 setNamespaceForMergeWhen(ParseState *pstate, MergeWhenClause *mergeWhenClause,
 						 Index targetRTI, Index sourceRTI)
 {

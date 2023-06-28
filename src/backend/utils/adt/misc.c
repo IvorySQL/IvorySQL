@@ -45,11 +45,9 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/ruleutils.h"
-/* IvorySQL:BEGIN - SQL PARSER */
 #include "oracle_parser/ora_parser_hook.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
-/* IvorySQL:END - SQL PARSER */
 #include "utils/timestamp.h"
 
 
@@ -71,12 +69,10 @@ static bool pg_input_is_valid_common(FunctionCallInfo fcinfo,
 									 ErrorSaveContext *escontext);
 
 /* Hook for plugins to get control in get_keywords() */
-/* IvorySQL:BEGIN - SQL PARSER */
 get_keywords_hook_type get_keywords_hook = NULL;
 fill_in_constant_lengths_hook_type fill_in_constant_lengths_hook = NULL;
 
 static Datum standard_pg_get_keywords(PG_FUNCTION_ARGS);
-/* IvorySQL:END - SQL PARSER */
 
 /*
  * Common subroutine for num_nulls() and num_nonnulls().
@@ -429,7 +425,6 @@ pg_sleep(PG_FUNCTION_ARGS)
 Datum
 pg_get_keywords(PG_FUNCTION_ARGS)
 {
-	/* IvorySQL:BEGIN - SQL PARSER */
 	/* Slove the issue of using the same global variable in static lib and dynamic lib */
 	if (get_keywords_hook && compatible_db != PG_PARSER)
 	{
@@ -450,7 +445,6 @@ pg_get_keywords(PG_FUNCTION_ARGS)
 static Datum
 standard_pg_get_keywords(PG_FUNCTION_ARGS)
 {
-	/* IvorySQL:END - SQL PARSER */
 	FuncCallContext *funcctx;
 
 	if (SRF_IS_FIRSTCALL())

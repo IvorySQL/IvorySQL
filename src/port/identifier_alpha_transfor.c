@@ -20,7 +20,6 @@
  */
 
 
-/* IvorySQL: BEGIN - case sensitive indentify */
 #include "postgres.h"
 
 #include "c.h"
@@ -121,4 +120,3 @@ is_all_upper(const char *src, int len)
 
 	return true;
 }
-/* IvorySQL: END - case sensitive indentify */

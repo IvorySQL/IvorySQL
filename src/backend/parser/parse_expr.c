@@ -36,15 +36,15 @@
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 
 #include "utils/xml.h"
-#include "utils/fmgroids.h"			/* IvorySQL: datatype */
-#include "access/htup_details.h"	/* IvorySQL: datatype */
+#include "utils/fmgroids.h"
+#include "access/htup_details.h"
 
 
 /* GUC parameters */
@@ -64,9 +64,7 @@ static Node *transformBoolExpr(ParseState *pstate, BoolExpr *a);
 static Node *transformFuncCall(ParseState *pstate, FuncCall *fn);
 static Node *transformMultiAssignRef(ParseState *pstate, MultiAssignRef *maref);
 static Node *transformCaseExpr(ParseState *pstate, CaseExpr *c);
-/* IvorySQL:BEGIN - datatype */
 static Node *transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c);
-/* IvorySQL:END - datatype */
 static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
 static Node *transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 								Oid array_type, Oid element_type, int32 typmod);
@@ -247,14 +245,12 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_CaseExpr:
 			{
-				/* IvorySQL:BEGIN - datatype */
 				CaseExpr *n = (CaseExpr *) expr;
 
 				if (!n->is_decode)
 					result = transformCaseExpr(pstate, n);
 				else
 					result = transformCaseExpr_for_decode(pstate, n);
-				/* IvorySQL:END - datatype */
 				break;
 			}
 
@@ -355,16 +351,13 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			result = transformJsonIsPredicate(pstate, (JsonIsPredicate *) expr);
 			break;
 
-		/* IvorySQL:BEGIN - datatype */
 		case T_ResTarget:
 			{
 				result = transformExprRecurse(pstate, ((ResTarget *)expr)->val);
 				break;
 			}
-		/* IvorySQL:END - datatype */
 
 		default:
-			/* should not reach here */
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			result = NULL;		/* keep compiler quiet */
 			break;
@@ -1728,12 +1721,11 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 									exprLocation(pstate->p_last_srf))));
 
 	newc->location = c->location;
-	newc->is_decode = c->is_decode;	/* IvorySQL: datatype */
+	newc->is_decode = c->is_decode;
 
 	return (Node *) newc;
 }
 
-/* IvorySQL:BEGIN - datatype */
 static Node *
 transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c)
 {
@@ -1955,7 +1947,6 @@ transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c)
 
 	return (Node *) newc;
 }
-/* IvorySQL:END - datatype */
 
 static Node *
 transformSubLink(ParseState *pstate, SubLink *sublink)
@@ -2408,12 +2399,10 @@ transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c)
 		newargs = lappend(newargs, newe);
 	}
 
-	/* IvorySQL:BEGIN - datatype */
 	if (compatible_db == PG_PARSER)
 		newc->coalescetype = select_common_type(pstate, newargs, "COALESCE", NULL);
 	else if (compatible_db == ORA_PARSER)
 		newc->coalescetype = select_common_type_for_nvl(pstate, newargs, "COALESCE", NULL);
-	/* IvorySQL:END - datatype */
 	/* coalescecollid will be set by parse_collate.c */
 
 	/* Convert arguments if necessary */

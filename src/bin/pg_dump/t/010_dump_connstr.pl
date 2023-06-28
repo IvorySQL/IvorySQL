@@ -26,7 +26,7 @@ $ENV{PGCLIENTENCODING} = 'LATIN1';
 # The odds of finding something interesting by testing all ASCII letters
 # seem too small to justify the cycles of testing a fifth name.
 
-# IvorySQL: the ASCII larger than 127 is a bit troubles 
+# the ASCII larger than 127 is a bit troubles
 # in the Windows Chinese environment.
 my $dbname1 =
   'regression'

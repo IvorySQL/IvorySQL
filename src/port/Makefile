@@ -61,9 +61,7 @@ OBJS = \
 	tar.o \
 	thread.o
 
-# IvorySQL: BEGIN - case sensitive indentify
 override OBJS := $(OBJS) identifier_alpha_transfor.o
-# IvorySQL: END - case sensitive indentify
 
 # libpgport.a, libpgport_shlib.a, and libpgport_srv.a contain the same files
 # foo.o, foo_shlib.o, and foo_srv.o are all built from foo.c

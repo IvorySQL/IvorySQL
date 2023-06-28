@@ -19,11 +19,11 @@
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "tcop/pquery.h"
-#include "utils/guc.h"		/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 
 
 
@@ -358,7 +358,6 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 			char	   *outputstr;
 
 			/*
-			 * IvorySQL:BEGIN - datatype
 			 * Compatible oracle , pass typmod to output function
 			 */
 			if (ORA_PARSER == compatible_db &&
@@ -371,7 +370,6 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 			{
 				outputstr = OutputFunctionCall(&thisState->finfo, attr);
 			}
-			/* IvorySQL:End - datatype */
 
 			pq_sendcountedtext(buf, outputstr, strlen(outputstr), false);
 		}
@@ -494,7 +492,6 @@ debugtup(TupleTableSlot *slot, DestReceiver *self)
 						  &typoutput, &typisvarlena);
 
 		/*
-		 * IvorySQL:BEGIN - datatype
 		 * Compatible oracle , pass typmod to output function
 		 */
 		if (ORA_PARSER == compatible_db &&
@@ -507,7 +504,6 @@ debugtup(TupleTableSlot *slot, DestReceiver *self)
 		{
 			value = OidOutputFunctionCall(typoutput, attr);
 		}
-		/* IvorySQL:End - datatype */
 
 		printatt((unsigned) i + 1, TupleDescAttr(typeinfo, i), value);
 	}

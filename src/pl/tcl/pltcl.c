@@ -32,10 +32,10 @@
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/regproc.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -3071,7 +3071,6 @@ pltcl_set_tuple_values(Tcl_Interp *interp, const char *arrayname,
 		if (!isnull)
 		{
 			getTypeOutputInfo(att->atttypid, &typoutput, &typisvarlena);
-			/* IvorySQL:BEGIN - datatype */
 			if (ORA_PARSER == compatible_db &&
 				(att->atttypid == YMINTERVALOID ||
 				 att->atttypid == DSINTERVALOID))
@@ -3082,7 +3081,6 @@ pltcl_set_tuple_values(Tcl_Interp *interp, const char *arrayname,
 			{
 				outputstr = OidOutputFunctionCall(typoutput, attr);
 			}
-			/* IvorySQL:END - datatype */
 			UTF_BEGIN;
 			Tcl_SetVar2Ex(interp, *arrptr, *nameptr,
 						  Tcl_NewStringObj(UTF_E2U(outputstr), -1), 0);
@@ -3150,7 +3148,6 @@ pltcl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc, bool include_gene
 		{
 			getTypeOutputInfo(att->atttypid,
 							  &typoutput, &typisvarlena);
-			/* IvorySQL:BEGIN - datatype */
 			if (ORA_PARSER == compatible_db &&
 				(att->atttypid == YMINTERVALOID ||
 				 att->atttypid == DSINTERVALOID))
@@ -3161,7 +3158,6 @@ pltcl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc, bool include_gene
 			{
 				outputstr = OidOutputFunctionCall(typoutput, attr);
 			}
-			/* IvorySQL:END - datatype */
 			UTF_BEGIN;
 			Tcl_ListObjAppendElement(NULL, retobj,
 									 Tcl_NewStringObj(UTF_E2U(attname), -1));

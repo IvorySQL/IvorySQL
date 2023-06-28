@@ -26,19 +26,16 @@
 #include "parser/parser.h"
 #include "parser/scansup.h"
 
-/* IvorySQL:BEGIN - SQL PARSER */
 #include "utils/ora_compatible.h"
 
 /* Hook for plugins to get control in raw_parser() */
 raw_parser_hook_type sql_raw_parser= standard_raw_parser;
 raw_parser_hook_type ora_raw_parser= NULL;
-/* IvorySQL:END - SQL PARSER */
 
 static bool check_uescapechar(unsigned char escape);
 static char *str_udeescape(const char *str, char escape,
 						   int position, core_yyscan_t yyscanner);
 
-/* IvorySQL:BEGIN - SQL PARSER */
 List *
 raw_parser(const char *str, RawParseMode mode)
 {
@@ -61,7 +58,6 @@ raw_parser(const char *str, RawParseMode mode)
 List *
 standard_raw_parser(const char *str, RawParseMode mode)
 {
-/* IvorySQL:END - SQL PARSER */
 	core_yyscan_t yyscanner;
 	base_yy_extra_type yyextra;
 	int			yyresult;

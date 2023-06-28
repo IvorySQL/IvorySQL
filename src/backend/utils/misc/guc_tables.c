@@ -83,9 +83,7 @@
 #include "utils/ps_status.h"
 #include "utils/inval.h"
 #include "utils/xml.h"
-/* IvorySQL:BEGIN - SQL PARSER */
 #include "utils/ora_compatible.h"
-/* IvorySQL:END - SQL PARSER */
 
 /* This value is normally passed in from the Makefile */
 #ifndef PG_KRB_SRVTAB
@@ -474,12 +472,10 @@ static const struct config_enum_entry wal_compression_options[] = {
 	{NULL, 0, false}
 };
 
-/* IvorySQL:BEGIN - SQL PARSER */
 /* The comments shown as blow define the
  * value range of guc parameters "database_mode"
  * and "compatible_db".
  */
-/* IvorySQL:BEGIN - SQL oracle_mode */
 static const struct config_enum_entry db_mode_options[] = {
 	{"pg", DB_PG, false},
 	{"oracle", DB_ORACLE, false},
@@ -487,16 +483,13 @@ static const struct config_enum_entry db_mode_options[] = {
 	{"1", DB_ORACLE, false},
 	{NULL, 0, false}
 };
-/* IvorySQL:END - SQL oracle_mode */
 
 static const struct config_enum_entry db_parser_options[] = {
 	{"pg", PG_PARSER, false},
 	{"oracle", ORA_PARSER, false},
 	{NULL, 0, false}
 };
-/* IvorySQL:END - SQL PARSER */
 
-/* IvorySQL: BEGIN - case sensitive indentify */
 static const struct config_enum_entry case_conversion_mode[] = {
 	{"normal", NORMAL, false},
 	{"interchange", INTERCHANGE, false},
@@ -506,7 +499,6 @@ static const struct config_enum_entry case_conversion_mode[] = {
 	{"2", LOWERCASE, false},
 	{NULL, 0, false}
 };
-/* IvorySQL: END - case sensitive indentify */
 
 /*
  * Options for enum values stored in other modules
@@ -536,10 +528,7 @@ char	   *event_source;
 
 bool		row_security;
 bool		check_function_bodies = true;
-
-/* IvorySQL:BEGIN - datatype */
 bool			enable_emptystring_to_NULL = false;
-/* IvorySQL:END - datatype */
 
 /*
  * This GUC exists solely for backward compatibility, check its definition for
@@ -575,13 +564,11 @@ char	   *pgstat_temp_directory;
 
 char	   *application_name;
 
-/* IvorySQL:BEGIN - datatype */
 char	   *nls_length_semantics = NULL;
 char	   *nls_date_format = "YYYY-MM-DD";
 char	   *nls_timestamp_format = "YYYY-MM-DD HH24:MI:SS.FF6";
 char	   *nls_timestamp_tz_format = "YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM";
 int			datetime_ignore_nls_mask = 0;
-/* IvorySQL:END - datatype */
 
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
@@ -603,11 +590,9 @@ int			ssl_renegotiation_limit;
 int			huge_pages = HUGE_PAGES_TRY;
 int			huge_page_size;
 
-/* IvorySQL: BEGIN - case sensitive indentify */
 int				identifier_case_switch = INTERCHANGE;
 bool			identifier_case_from_pg_dump = false;
 bool			enable_case_switch = true;
-/* IvorySQL: END - case sensitive indentify */
 
 /*
  * These variables are all dummies that don't do anything, except in some
@@ -664,13 +649,9 @@ static char *recovery_target_lsn_string;
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
 
-/* IvorySQL:BEGIN - SQL oracle_mode */
 int    database_mode = DB_PG;
-/* IvorySQL:END - SQL oracle_mode */
 
-/* IvorySQL:BEGIN - SQL PARSER */
 int    compatible_db = PG_PARSER;
-/* IvorySQL:END - SQL PARSER */
 
 /* should be static, but guc.c needs to get at this */
 bool		in_hot_standby_guc;
@@ -2065,7 +2046,6 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-	/* IvorySQL: BEGIN - case sensitive indentify */
 	{
 		/* Not for general use --- used by pg_dump */
 		{"identifier_case_from_pg_dump", PGC_USERSET, UNGROUPED,
@@ -2088,9 +2068,7 @@ struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
-	/* IvorySQL: END - case sensitive indentify */
 
-	/* IvorySQL: BEGIN - EMPTY_STIRNG_TO_NULL */
 	{
 		{"enable_emptystring_to_NULL", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("whether convert empty string to NULL."),
@@ -2101,7 +2079,6 @@ struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
-	/* IvorySQL: END - EMPTY_STIRNG_TO_NULL */
 
 	/* End-of-list marker */
 	{
@@ -3611,7 +3588,6 @@ struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-	/* IvorySQL: BEGIN - LISTEN-MULTI-PORT */
 	{
 		{"ivorysql.port", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
 			gettext_noop("Sets the Oracle TCP port the server listens on."),
@@ -3621,9 +3597,7 @@ struct config_int ConfigureNamesInt[] =
 		1521, 1, 65535,
 		NULL, NULL, NULL
 	},
-	/* IvorySQL: END - LISTEN-MULTI-PORT */
 
-	/* IvorySQL: BEGIN - datatype */
 	{
 		{"datetime_ignore_nls_mask", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Sets the datetime type input is not controlled by the NLS parameter."),
@@ -3634,7 +3608,6 @@ struct config_int ConfigureNamesInt[] =
 		0, 0, 15,
 		NULL, NULL, NULL
 	},
-	/* IvorySQL: END - datatype */
 
 	/* End-of-list marker */
 	{
@@ -4704,7 +4677,6 @@ struct config_string ConfigureNamesString[] =
 		check_io_direct, assign_io_direct, NULL
 	},
 
-	/* IvorySQL: BEGIN - LISTEN-MULTI-PORT */
 	{
 		{"ivorysql.listen_addresses", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
 		gettext_noop("Sets oracle host name or IP address(es) to listen to."),
@@ -4715,9 +4687,7 @@ struct config_string ConfigureNamesString[] =
 		"localhost",
 		NULL, NULL, NULL
 	},
-	/* IvorySQL:END - LISTEN-MULTI-PORT */
 
-	/* IvorySQL: BEGIN - datatype */
 	{
 		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for charater data type."),
@@ -4761,7 +4731,6 @@ struct config_string ConfigureNamesString[] =
 		"YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM",
 		NULL, NULL, NULL
 	},
-	/* IvorySQL: BEGIN - datatype */
 
 	/* End-of-list marker */
 	{
@@ -5182,7 +5151,6 @@ struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
-	/* IvorySQL:BEGIN - SQL oracle_mode */
 	{
 		{"database_mode", PGC_INTERNAL, PRESET_OPTIONS,
 			gettext_noop("Set database mode"),
@@ -5193,9 +5161,7 @@ struct config_enum ConfigureNamesEnum[] =
 		DB_PG, db_mode_options,
 		NULL, NULL, NULL
 		},
-	/* IvorySQL:END - SQL oracle_mode */
 
-	/* IvorySQL:BEGIN - SQL PARSER */
 	{
 		{"compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Set default sql parser compatibility mode"),
@@ -5206,9 +5172,7 @@ struct config_enum ConfigureNamesEnum[] =
 		PG_PARSER, db_parser_options,
 		NULL, NULL, NULL
 	},
-	/* IvorySQL:END - SQL PARSER */
 
-	/* IvorySQL: BEGIN - case sensitive indentify */
 	{
 		{"identifier_case_switch", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Set character case conversion mode."),
@@ -5219,7 +5183,6 @@ struct config_enum ConfigureNamesEnum[] =
 		INTERCHANGE, case_conversion_mode,
 		NULL, NULL, NULL
 	},
-	/* IvorySQL: END - case sensitive indentify */
 
 	/* End-of-list marker */
 	{

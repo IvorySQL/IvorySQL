@@ -25,9 +25,9 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
-#include "utils/guc.h"	/* IvorySQL: datatype */
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/ora_compatible.h"	/* IvorySQL: datatype */
+#include "utils/ora_compatible.h"
 #include "utils/typcache.h"
 
 
@@ -436,7 +436,6 @@ record_out(PG_FUNCTION_ARGS)
 
 		attr = values[i];
 		/*
-		 * IvorySQL:BEGIN - datatype
 		 * Compatible oracle , pass typmod to output function
 		 */
 		if (ORA_PARSER == compatible_db &&
@@ -449,7 +448,6 @@ record_out(PG_FUNCTION_ARGS)
 		{
 			value = OutputFunctionCall(&column_info->proc, attr);
 		}
-		/* IvorySQL:END - datatype */
 
 		/* Detect whether we need double quotes for this value */
 		nq = (value[0] == '\0');	/* force quotes for empty string */

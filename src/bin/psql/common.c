@@ -220,7 +220,6 @@ psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 	return result;
 }
 
-/* IvorySQL:BEGIN - psql-parser */
 char *
 ora_psql_get_variable(const char *varname, Ora_psqlScanQuoteType quote,
 				void *passthrough)
@@ -307,7 +306,6 @@ ora_psql_get_variable(const char *varname, Ora_psqlScanQuoteType quote,
 
 	return result;
 }
-/* IvorySQL:END - psql-parser */
 
 /*
  * for backend Notice messages (INFO, WARNING, etc)

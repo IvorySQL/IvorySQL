@@ -17,5 +17,10 @@
 #include "parser/parse_node.h"
 
 extern Query *transformMergeStmt(ParseState *pstate, MergeStmt *stmt);
+extern void setNamespaceForMergeWhen(ParseState *pstate, MergeWhenClause *mergeWhenClause,
+												Index targetRTI, Index sourceRTI);
+typedef Query* (* transform_merge_stmt_hook_type)(ParseState *pstate, MergeStmt *stmt);
+extern PGDLLIMPORT transform_merge_stmt_hook_type pg_transform_merge_stmt_hook;
+extern PGDLLIMPORT transform_merge_stmt_hook_type ora_transform_merge_stmt_hook;
 
 #endif							/* PARSE_MERGE_H */

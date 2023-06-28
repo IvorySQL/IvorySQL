@@ -70,15 +70,11 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-/* IvorySQL:BEGIN - SQL PARSER */
 #include "utils/guc.h"
-/* IvorySQL:END - SQL PARSER */
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
-/* IvorySQL:BEGIN - SQL PARSER */
 #include "oracle_parser/ora_parser_hook.h"
 #include "utils/ora_compatible.h"
-/* IvorySQL:END - SQL PARSER */
 
 
 PG_MODULE_MAGIC;
@@ -372,10 +368,8 @@ static char *generate_normalized_query(JumbleState *jstate, const char *query,
 static void fill_in_constant_lengths(JumbleState *jstate, const char *query,
 									 int query_loc);
 static int	comp_location(const void *a, const void *b);
-/* IvorySQL:BEGIN - SQL PARSER */
 static void standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 											  int query_loc);
-/* IvorySQL:END - SQL PARSER */
 
 
 /*
@@ -2778,7 +2772,6 @@ static void
 fill_in_constant_lengths(JumbleState *jstate, const char *query,
 						 int query_loc)
 {
-	/* IvorySQL:BEGIN - SQL PARSER */
 	/* Slove the issue of using the same global variable in static lib and dynamic lib */
 	if (fill_in_constant_lengths_hook && compatible_db != PG_PARSER)
 		(*fill_in_constant_lengths_hook)((void *)jstate, query, query_loc);
@@ -2790,7 +2783,6 @@ static void
 standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 						 int query_loc)
 {
-	/* IvorySQL:END - SQL PARSER */
 	LocationLen *locs;
 	core_yyscan_t yyscanner;
 	core_yy_extra_type yyextra;

@@ -50,6 +50,10 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
+#include "executor/nodeModifyTable.h"
+#include "parser/parse_node.h"
+#include "access/heapam.h"
+#include "parser/parse_merge.h"
 
 #define CONFIG_FILENAME "postgresql.conf"
 #define HBA_FILENAME	"pg_hba.conf"
