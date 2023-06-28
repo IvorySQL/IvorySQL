@@ -724,6 +724,21 @@ main(int argc, char **argv)
 		plainText = 1;
 
 	/*
+	 * Custom and directory formats are compressed by default with gzip when
+	 * available, not the others.  If gzip is not available, no compression is
+	 * done by default.
+	 */
+	if ((archiveFormat == archCustom || archiveFormat == archDirectory) &&
+		!user_compression_defined)
+	{
+#ifdef HAVE_LIBZ
+		compression_algorithm_str = "gzip";
+#else
+		compression_algorithm_str = "none";
+#endif
+	}
+
+	/*
 	 * Compression options
 	 */
 	if (!parse_compress_algorithm(compression_algorithm_str,
@@ -750,21 +765,6 @@ main(int argc, char **argv)
 	if (compression_spec.options & PG_COMPRESSION_OPTION_WORKERS)
 		pg_log_warning("compression option \"%s\" is not currently supported by pg_dump",
 					   "workers");
-
-	/*
-	 * Custom and directory formats are compressed by default with gzip when
-	 * available, not the others.
-	 */
-	if ((archiveFormat == archCustom || archiveFormat == archDirectory) &&
-		!user_compression_defined)
-	{
-#ifdef HAVE_LIBZ
-		parse_compress_specification(PG_COMPRESSION_GZIP, NULL,
-									 &compression_spec);
-#else
-		/* Nothing to do in the default case */
-#endif
-	}
 
 	/*
 	 * If emitting an archive format, we always want to emit a DATABASE item,
@@ -1068,7 +1068,7 @@ help(const char *progname)
 	printf(_("  -j, --jobs=NUM               use this many parallel jobs to dump\n"));
 	printf(_("  -v, --verbose                verbose mode\n"));
 	printf(_("  -V, --version                output version information, then exit\n"));
-	printf(_("  -Z, --compress=METHOD[:LEVEL]\n"
+	printf(_("  -Z, --compress=METHOD[:DETAIL]\n"
 			 "                               compress as specified\n"));
 	printf(_("  --lock-wait-timeout=TIMEOUT  fail after waiting TIMEOUT for a table lock\n"));
 	printf(_("  --no-sync                    do not wait for changes to be written safely to disk\n"));
@@ -1076,10 +1076,10 @@ help(const char *progname)
 
 	printf(_("\nOptions controlling the output content:\n"));
 	printf(_("  -a, --data-only              dump only the data, not the schema\n"));
-	printf(_("  -b, --large-objects          include large objects in dump\n"
-			 "  --blobs                      (same as --large-objects, deprecated)\n"));
-	printf(_("  -B, --no-large-objects       exclude large objects in dump\n"
-			 "  --no-blobs                   (same as --no-large-objects, deprecated)\n"));
+	printf(_("  -b, --large-objects          include large objects in dump\n"));
+	printf(_("  --blobs                      (same as --large-objects, deprecated)\n"));
+	printf(_("  -B, --no-large-objects       exclude large objects in dump\n"));
+	printf(_("  --no-blobs                   (same as --no-large-objects, deprecated)\n"));
 	printf(_("  -c, --clean                  clean (drop) database objects before recreating\n"));
 	printf(_("  -C, --create                 include commands to create database in dump\n"));
 	printf(_("  -e, --extension=PATTERN      dump the specified extension(s) only\n"));
@@ -1100,8 +1100,8 @@ help(const char *progname)
 	printf(_("  --enable-row-security        enable row security (dump only content user has\n"
 			 "                               access to)\n"));
 	printf(_("  --exclude-table-and-children=PATTERN\n"
-			 "                               do NOT dump the specified table(s),\n"
-			 "                               including child and partition tables\n"));
+			 "                               do NOT dump the specified table(s), including\n"
+			 "                               child and partition tables\n"));
 	printf(_("  --exclude-table-data=PATTERN do NOT dump data for the specified table(s)\n"));
 	printf(_("  --exclude-table-data-and-children=PATTERN\n"
 			 "                               do NOT dump data for the specified table(s),\n"
@@ -1129,8 +1129,8 @@ help(const char *progname)
 	printf(_("  --snapshot=SNAPSHOT          use given snapshot for the dump\n"));
 	printf(_("  --strict-names               require table and/or schema include patterns to\n"
 			 "                               match at least one entity each\n"));
-	printf(_("  --table-and-children=PATTERN dump only the specified table(s),\n"
-			 "                               including child and partition tables\n"));
+	printf(_("  --table-and-children=PATTERN dump only the specified table(s), including\n"
+			 "                               child and partition tables\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
@@ -3390,49 +3390,32 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	PGresult   *res;
 
 	/* First collect database-specific options */
-	printfPQExpBuffer(buf, "SELECT unnest(setconfig)");
-	if (AH->remoteVersion >= 160000)
-		appendPQExpBufferStr(buf, ", unnest(setuser)");
-	appendPQExpBuffer(buf, " FROM pg_db_role_setting "
+	printfPQExpBuffer(buf, "SELECT unnest(setconfig) FROM pg_db_role_setting "
 					  "WHERE setrole = 0 AND setdatabase = '%u'::oid",
 					  dboid);
 
 	res = ExecuteSqlQuery(AH, buf->data, PGRES_TUPLES_OK);
 
 	for (int i = 0; i < PQntuples(res); i++)
-	{
-		char	   *userset = NULL;
-
-		if (AH->remoteVersion >= 160000)
-			userset = PQgetvalue(res, i, 1);
-		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0), userset,
+		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "DATABASE", dbname, NULL, NULL,
 							   outbuf);
-	}
 
 	PQclear(res);
 
 	/* Now look for role-and-database-specific options */
-	printfPQExpBuffer(buf, "SELECT rolname, unnest(setconfig)");
-	if (AH->remoteVersion >= 160000)
-		appendPQExpBufferStr(buf, ", unnest(setuser)");
-	appendPQExpBuffer(buf, " FROM pg_db_role_setting s, pg_roles r "
+	printfPQExpBuffer(buf, "SELECT rolname, unnest(setconfig) "
+					  "FROM pg_db_role_setting s, pg_roles r "
 					  "WHERE setrole = r.oid AND setdatabase = '%u'::oid",
 					  dboid);
 
 	res = ExecuteSqlQuery(AH, buf->data, PGRES_TUPLES_OK);
 
 	for (int i = 0; i < PQntuples(res); i++)
-	{
-		char	   *userset = NULL;
-
-		if (AH->remoteVersion >= 160000)
-			userset = PQgetvalue(res, i, 2);
-		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1), userset,
+		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1),
 							   "ROLE", PQgetvalue(res, i, 0),
 							   "DATABASE", dbname,
 							   outbuf);
-	}
 
 	PQclear(res);
 

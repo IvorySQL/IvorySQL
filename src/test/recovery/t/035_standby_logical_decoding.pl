@@ -10,12 +10,17 @@ use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
 
-my ($stdin, $stdout, $stderr, $cascading_stdout, $cascading_stderr, $ret, $handle, $slot);
+my ($stdin,             $stdout,            $stderr,
+	$cascading_stdout,  $cascading_stderr,  $subscriber_stdin,
+	$subscriber_stdout, $subscriber_stderr, $ret,
+	$handle,            $slot);
 
 my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 my $node_standby = PostgreSQL::Test::Cluster->new('standby');
 my $node_cascading_standby = PostgreSQL::Test::Cluster->new('cascading_standby');
+my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
 my $default_timeout = $PostgreSQL::Test::Utils::timeout_default;
+my $psql_timeout    = IPC::Run::timer($default_timeout);
 my $res;
 
 # Name for the physical slot on primary
@@ -235,8 +240,6 @@ $node_primary->append_conf('postgresql.conf', q{
 wal_level = 'logical'
 max_replication_slots = 4
 max_wal_senders = 4
-log_min_messages = 'debug2'
-log_error_verbosity = verbose
 });
 $node_primary->dump_info;
 $node_primary->start;
@@ -269,23 +272,30 @@ $node_standby->init_from_backup(
 	has_streaming => 1,
 	has_restoring => 1);
 $node_standby->append_conf('postgresql.conf',
-	qq[primary_slot_name = '$primary_slotname']);
+	qq[primary_slot_name = '$primary_slotname'
+       max_replication_slots = 5]);
 $node_standby->start;
 $node_primary->wait_for_replay_catchup($node_standby);
-$node_standby->safe_psql('testdb', qq[SELECT * FROM pg_create_physical_replication_slot('$standby_physical_slotname');]);
 
 #######################
-# Initialize cascading standby node
+# Initialize subscriber node
 #######################
-$node_standby->backup($backup_name);
-$node_cascading_standby->init_from_backup(
-	$node_standby, $backup_name,
-	has_streaming => 1,
-	has_restoring => 1);
-$node_cascading_standby->append_conf('postgresql.conf',
-	qq[primary_slot_name = '$standby_physical_slotname']);
-$node_cascading_standby->start;
-$node_standby->wait_for_replay_catchup($node_cascading_standby, $node_primary);
+$node_subscriber->init(allows_streaming => 'logical');
+$node_subscriber->start;
+
+my %psql_subscriber = (
+	'subscriber_stdin'  => '',
+	'subscriber_stdout' => '',
+	'subscriber_stderr' => '');
+$psql_subscriber{run} = IPC::Run::start(
+	[ 'psql', '-XA', '-f', '-', '-d', $node_subscriber->connstr('postgres') ],
+	'<',
+	\$psql_subscriber{subscriber_stdin},
+	'>',
+	\$psql_subscriber{subscriber_stdout},
+	'2>',
+	\$psql_subscriber{subscriber_stderr},
+	$psql_timeout);
 
 ##################################################
 # Test that logical decoding on the standby
@@ -337,7 +347,7 @@ $node_primary->safe_psql('testdb',
 	qq[INSERT INTO decoding_test(x,y) SELECT s, s::text FROM generate_series(5,50) s;]
 );
 
-$node_primary->wait_for_catchup($node_standby);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 my $stdout_recv = $node_standby->pg_recvlogical_upto(
     'testdb', 'behaves_ok_activeslot', $endpos, $default_timeout,
@@ -360,12 +370,78 @@ is($stdout_recv, '', 'pg_recvlogical acknowledged changes');
 
 $node_primary->safe_psql('postgres', 'CREATE DATABASE otherdb');
 
-is( $node_primary->psql(
+# Wait for catchup to ensure that the new database is visible to other sessions
+# on the standby.
+$node_primary->wait_for_replay_catchup($node_standby);
+
+($result, $stdout, $stderr) = $node_standby->psql(
         'otherdb',
         "SELECT lsn FROM pg_logical_slot_peek_changes('behaves_ok_activeslot', NULL, NULL) ORDER BY lsn DESC LIMIT 1;"
-    ),
-    3,
-    'replaying logical slot from another database fails');
+    );
+ok( $stderr =~
+	  m/replication slot "behaves_ok_activeslot" was not created in this database/,
+	"replaying logical slot from another database fails");
+
+##################################################
+# Test that we can subscribe on the standby with the publication
+# created on the primary.
+##################################################
+
+# Create a table on the primary
+$node_primary->safe_psql('postgres',
+	"CREATE TABLE tab_rep (a int primary key)");
+
+# Create a table (same structure) on the subscriber node
+$node_subscriber->safe_psql('postgres',
+	"CREATE TABLE tab_rep (a int primary key)");
+
+# Create a publication on the primary
+$node_primary->safe_psql('postgres',
+	"CREATE PUBLICATION tap_pub for table tab_rep");
+
+$node_primary->wait_for_replay_catchup($node_standby);
+
+# Subscribe on the standby
+my $standby_connstr = $node_standby->connstr . ' dbname=postgres';
+
+# Not using safe_psql() here as it would wait for activity on the primary
+# and we wouldn't be able to launch pg_log_standby_snapshot() on the primary
+# while waiting.
+# psql_subscriber() allows to not wait synchronously.
+$psql_subscriber{subscriber_stdin} .=
+  qq[CREATE SUBSCRIPTION tap_sub
+     CONNECTION '$standby_connstr'
+     PUBLICATION tap_pub
+     WITH (copy_data = off);];
+$psql_subscriber{subscriber_stdin} .= "\n";
+
+$psql_subscriber{run}->pump_nb();
+
+# Speed up the subscription creation
+$node_primary->safe_psql('postgres', "SELECT pg_log_standby_snapshot()");
+
+# Explicitly shut down psql instance gracefully - to avoid hangs
+# or worse on windows
+$psql_subscriber{subscriber_stdin} .= "\\q\n";
+$psql_subscriber{run}->finish;
+
+$node_subscriber->wait_for_subscription_sync($node_standby, 'tap_sub');
+
+# Insert some rows on the primary
+$node_primary->safe_psql('postgres',
+	qq[INSERT INTO tab_rep select generate_series(1,10);]);
+
+$node_primary->wait_for_replay_catchup($node_standby);
+$node_standby->wait_for_catchup('tap_sub');
+
+# Check that the subscriber can see the rows inserted in the primary
+$result =
+  $node_subscriber->safe_psql('postgres', "SELECT count(*) FROM tab_rep");
+is($result, qq(10), 'check replicated inserts after subscription on standby');
+
+# We do not need the subscription and the subscriber anymore
+$node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub");
+$node_subscriber->stop;
 
 ##################################################
 # Recovery conflict: Invalidate conflicting slots, including in-use slots
@@ -410,9 +486,40 @@ $node_standby->restart;
 check_slots_conflicting_status(1);
 
 ##################################################
-# Verify that invalidated logical slots do not lead to retaining WAL
+# Verify that invalidated logical slots do not lead to retaining WAL.
 ##################################################
-# XXXXX TODO
+
+# Get the restart_lsn from an invalidated slot
+my $restart_lsn = $node_standby->safe_psql('postgres',
+	"SELECT restart_lsn from pg_replication_slots WHERE slot_name = 'vacuum_full_activeslot' and conflicting is true;"
+);
+
+chomp($restart_lsn);
+
+# As pg_walfile_name() can not be executed on the standby,
+# get the WAL file name associated to this lsn from the primary
+my $walfile_name = $node_primary->safe_psql('postgres',
+	"SELECT pg_walfile_name('$restart_lsn')");
+
+chomp($walfile_name);
+
+# Generate some activity and switch WAL file on the primary
+$node_primary->safe_psql(
+	'postgres', "create table retain_test(a int);
+									 select pg_switch_wal();
+									 insert into retain_test values(1);
+									 checkpoint;");
+
+# Wait for the standby to catch up
+$node_primary->wait_for_replay_catchup($node_standby);
+
+# Request a checkpoint on the standby to trigger the WAL file(s) removal
+$node_standby->safe_psql('postgres', 'checkpoint;');
+
+# Verify that the WAL file has not been retained on the standby
+my $standby_walfile = $node_standby->data_dir . '/pg_wal/' . $walfile_name;
+ok(!-f "$standby_walfile",
+	"invalidated logical slots do not lead to retaining WAL");
 
 ##################################################
 # Recovery conflict: Invalidate conflicting slots, including in-use slots
@@ -653,8 +760,25 @@ $node_standby->reload;
 $node_primary->psql('postgres', q[CREATE DATABASE testdb]);
 $node_primary->safe_psql('testdb', qq[CREATE TABLE decoding_test(x integer, y text);]);
 
-# Wait for the standby to catchup before creating the slots
+# Wait for the standby to catchup before initializing the cascading standby
 $node_primary->wait_for_replay_catchup($node_standby);
+
+# Create a physical replication slot on the standby.
+# Keep this step after the "Verify that invalidated logical slots do not lead
+# to retaining WAL" test (as the physical slot on the standby could prevent the
+# WAL file removal).
+$node_standby->safe_psql('testdb', qq[SELECT * FROM pg_create_physical_replication_slot('$standby_physical_slotname');]);
+
+# Initialize cascading standby node
+$node_standby->backup($backup_name);
+$node_cascading_standby->init_from_backup(
+	$node_standby, $backup_name,
+	has_streaming => 1,
+	has_restoring => 1);
+$node_cascading_standby->append_conf('postgresql.conf',
+	qq[primary_slot_name = '$standby_physical_slotname'
+	   hot_standby_feedback = on]);
+$node_cascading_standby->start;
 
 # create the logical slots
 create_logical_slots($node_standby, 'promotion_');

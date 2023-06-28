@@ -283,7 +283,7 @@ pgstat_beinit(void)
  *
  *	Apart from auxiliary processes, MyBackendId, MyDatabaseId,
  *	session userid, and application_name must be set for a
- *	backend (hence, this cannot be combined with pgbestat_beinit).
+ *	backend (hence, this cannot be combined with pgstat_beinit).
  *	Note also that we must be inside a transaction if this isn't an aux
  *	process, as we may need to do encoding conversion on some strings.
  * ----------
@@ -384,7 +384,7 @@ pgstat_bestart(void)
 		lbeentry.st_gss = true;
 		lgssstatus.gss_auth = be_gssapi_get_auth(MyProcPort);
 		lgssstatus.gss_enc = be_gssapi_get_enc(MyProcPort);
-		lgssstatus.gss_deleg = be_gssapi_get_deleg(MyProcPort);
+		lgssstatus.gss_delegation = be_gssapi_get_delegation(MyProcPort);
 		if (princ)
 			strlcpy(lgssstatus.gss_princ, princ, NAMEDATALEN);
 	}

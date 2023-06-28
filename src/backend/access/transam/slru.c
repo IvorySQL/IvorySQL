@@ -809,7 +809,7 @@ SlruPhysicalWritePage(SlruCtl ctl, int pageno, int slotno, SlruWriteAll fdata)
 	}
 
 	/*
-	 * During a WriteAll, we may already have the desired file open.
+	 * During a SimpleLruWriteAll, we may already have the desired file open.
 	 */
 	if (fdata)
 	{
@@ -864,7 +864,7 @@ SlruPhysicalWritePage(SlruCtl ctl, int pageno, int slotno, SlruWriteAll fdata)
 			else
 			{
 				/*
-				 * In the unlikely event that we exceed MAX_FLUSH_BUFFERS,
+				 * In the unlikely event that we exceed MAX_WRITEALL_BUFFERS,
 				 * fall back to treating it as a standalone write.
 				 */
 				fdata = NULL;
@@ -1478,7 +1478,7 @@ SlruPagePrecedesTestOffset(SlruCtl ctl, int per_page, uint32 offset)
  *
  * This assumes every uint32 >= FirstNormalTransactionId is a valid key.  It
  * assumes each value occupies a contiguous, fixed-size region of SLRU bytes.
- * (MultiXactMemberCtl separates flags from XIDs.  AsyncCtl has
+ * (MultiXactMemberCtl separates flags from XIDs.  NotifyCtl has
  * variable-length entries, no keys, and no random access.  These unit tests
  * do not apply to them.)
  */
@@ -1603,7 +1603,9 @@ SlruSyncFileTag(SlruCtl ctl, const FileTag *ftag, char *path)
 	if (fd < 0)
 		return -1;
 
+	pgstat_report_wait_start(WAIT_EVENT_SLRU_FLUSH_SYNC);
 	result = pg_fsync(fd);
+	pgstat_report_wait_end();
 	save_errno = errno;
 
 	CloseTransientFile(fd);

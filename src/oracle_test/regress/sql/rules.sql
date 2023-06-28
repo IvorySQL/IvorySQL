@@ -1275,6 +1275,7 @@ MERGE INTO rule_merge2 t USING (SELECT 1 AS a) s
 	WHEN NOT MATCHED THEN
 		INSERT VALUES (s.a, '');
 
+
 --
 -- Test enabling/disabling
 --

@@ -224,7 +224,7 @@ WriteDataToArchiveLZ4(ArchiveHandle *AH, CompressorState *cs,
 									 data, chunk, NULL);
 
 		if (LZ4F_isError(status))
-			pg_fatal("failed to LZ4 compress data: %s",
+			pg_fatal("could not compress data: %s",
 					 LZ4F_getErrorName(status));
 
 		cs->writeF(AH, state->buffer, status);
@@ -256,14 +256,14 @@ EndCompressorLZ4(ArchiveHandle *AH, CompressorState *cs)
 							  state->buffer, state->buflen,
 							  NULL);
 	if (LZ4F_isError(status))
-		pg_fatal("failed to end compression: %s",
+		pg_fatal("could not end compression: %s",
 				 LZ4F_getErrorName(status));
 
 	cs->writeF(AH, state->buffer, status);
 
 	status = LZ4F_freeCompressionContext(state->ctx);
 	if (LZ4F_isError(status))
-		pg_fatal("failed to end compression: %s",
+		pg_fatal("could not end compression: %s",
 				 LZ4F_getErrorName(status));
 
 	pg_free(state->buffer);
@@ -459,6 +459,10 @@ LZ4Stream_read_internal(LZ4State *state, void *ptr, int ptrsize, bool eol_flag)
 	if (!LZ4Stream_init(state, size, false /* decompressing */ ))
 		return -1;
 
+	/* No work needs to be done for a zero-sized output buffer */
+	if (size <= 0)
+		return 0;
+
 	/* Verify that there is enough space in the outbuf */
 	if (size > state->buflen)
 	{
@@ -584,6 +588,8 @@ LZ4Stream_write(const void *ptr, size_t size, CompressFileHandle *CFH)
 			errno = (errno) ? errno : ENOSPC;
 			return false;
 		}
+
+		ptr = ((const char *) ptr) + chunk;
 	}
 
 	return true;
@@ -636,13 +642,19 @@ LZ4Stream_gets(char *ptr, int size, CompressFileHandle *CFH)
 	LZ4State   *state = (LZ4State *) CFH->private_data;
 	int			ret;
 
-	ret = LZ4Stream_read_internal(state, ptr, size, true);
+	ret = LZ4Stream_read_internal(state, ptr, size - 1, true);
 	if (ret < 0 || (ret == 0 && !LZ4Stream_eof(CFH)))
 		pg_fatal("could not read from input file: %s", LZ4Stream_get_error(CFH));
 
 	/* Done reading */
 	if (ret == 0)
 		return NULL;
+
+	/*
+	 * Our caller expects the return string to be NULL terminated
+	 * and we know that ret is greater than zero.
+	 */
+	ptr[ret - 1] = '\0';
 
 	return ptr;
 }
@@ -665,7 +677,7 @@ LZ4Stream_close(CompressFileHandle *CFH)
 		{
 			status = LZ4F_compressEnd(state->ctx, state->buffer, state->buflen, NULL);
 			if (LZ4F_isError(status))
-				pg_fatal("failed to end compression: %s",
+				pg_fatal("could not end compression: %s",
 						 LZ4F_getErrorName(status));
 			else if (fwrite(state->buffer, 1, status, state->fp) != status)
 			{
@@ -675,14 +687,14 @@ LZ4Stream_close(CompressFileHandle *CFH)
 
 			status = LZ4F_freeCompressionContext(state->ctx);
 			if (LZ4F_isError(status))
-				pg_fatal("failed to end compression: %s",
+				pg_fatal("could not end compression: %s",
 						 LZ4F_getErrorName(status));
 		}
 		else
 		{
 			status = LZ4F_freeDecompressionContext(state->dtx);
 			if (LZ4F_isError(status))
-				pg_fatal("failed to end decompression: %s",
+				pg_fatal("could not end decompression: %s",
 						 LZ4F_getErrorName(status));
 			pg_free(state->overflowbuf);
 		}

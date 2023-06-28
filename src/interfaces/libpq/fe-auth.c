@@ -97,7 +97,7 @@ pg_GSS_continue(PGconn *conn, int payloadlen)
 	if (!pg_GSS_have_cred_cache(&conn->gcred))
 		conn->gcred = GSS_C_NO_CREDENTIAL;
 
-	if (conn->gssdeleg && pg_strcasecmp(conn->gssdeleg, "enable") == 0)
+	if (conn->gssdelegation && conn->gssdelegation[0] == '1')
 		gss_flags |= GSS_C_DELEG_FLAG;
 
 	maj_stat = gss_init_sec_context(&min_stat,
@@ -909,7 +909,7 @@ check_expected_areq(AuthRequest areq, PGconn *conn)
 		if (!reason)
 			reason = auth_method_description(areq);
 
-		libpq_append_conn_error(conn, "auth method \"%s\" requirement failed: %s",
+		libpq_append_conn_error(conn, "authentication method requirement \"%s\" failed: %s",
 								conn->require_auth, reason);
 		return result;
 	}

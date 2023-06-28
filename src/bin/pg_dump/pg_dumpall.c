@@ -1057,6 +1057,7 @@ dumpRoleMembership(PGconn *conn)
 				PQfinish(conn);
 				exit_nicely(1);
 			}
+			prev_remaining = remaining;
 
 			/* Make one pass over the grants for this role. */
 			for (i = start; i < end; ++i)
@@ -1389,10 +1390,7 @@ dumpUserConfig(PGconn *conn, const char *username)
 	PQExpBuffer buf = createPQExpBuffer();
 	PGresult   *res;
 
-	printfPQExpBuffer(buf, "SELECT unnest(setconfig)");
-	if (server_version >= 160000)
-		appendPQExpBufferStr(buf, ", unnest(setuser)");
-	appendPQExpBuffer(buf, " FROM pg_db_role_setting "
+	printfPQExpBuffer(buf, "SELECT unnest(setconfig) FROM pg_db_role_setting "
 					  "WHERE setdatabase = 0 AND setrole = "
 					  "(SELECT oid FROM %s WHERE rolname = ",
 					  role_catalog);
@@ -1406,13 +1404,8 @@ dumpUserConfig(PGconn *conn, const char *username)
 
 	for (int i = 0; i < PQntuples(res); i++)
 	{
-		char	*userset = NULL;
-
-		if (server_version >= 160000)
-			userset = PQgetvalue(res, i, 1);
-
 		resetPQExpBuffer(buf);
-		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0), userset,
+		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "ROLE", username, NULL, NULL,
 							   buf);
 		fprintf(OPF, "%s", buf->data);

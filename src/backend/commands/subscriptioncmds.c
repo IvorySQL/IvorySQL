@@ -611,7 +611,9 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 	if (!has_privs_of_role(owner, ROLE_PG_CREATE_SUBSCRIPTION))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must have privileges of pg_create_subscription to create subscriptions")));
+				 errmsg("permission denied to create subscription"),
+				 errdetail("Only roles with privileges of the \"%s\" role may create subscriptions.",
+						   "pg_create_subscription")));
 
 	/*
 	 * Since a subscription is a database object, we also check for CREATE
@@ -974,8 +976,8 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 				 *
 				 * Even if new worker for this particular rel is restarted it
 				 * won't be able to make any progress as we hold exclusive
-				 * lock on subscription_rel till the transaction end. It will
-				 * simply exit as there is no corresponding rel entry.
+				 * lock on pg_subscription_rel till the transaction end. It
+				 * will simply exit as there is no corresponding rel entry.
 				 *
 				 * This locking also ensures that the state of rels won't
 				 * change till we are done with this refresh operation.

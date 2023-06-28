@@ -953,7 +953,6 @@ ExtendBufferedRelTo(ExtendBufferedWhat eb,
 											  buffers, &extended_by);
 
 		current_size = first_block + extended_by;
-		Assert(current_size <= extend_to);
 		Assert(num_pages != 0 || current_size >= extend_to);
 
 		for (int i = 0; i < extended_by; i++)
@@ -1685,7 +1684,7 @@ again:
 		FlushBuffer(buf_hdr, NULL, IOOBJECT_RELATION, io_context);
 		LWLockRelease(content_lock);
 
-		ScheduleBufferTagForWriteback(&BackendWritebackContext,
+		ScheduleBufferTagForWriteback(&BackendWritebackContext, io_context,
 									  &buf_hdr->tag);
 	}
 
@@ -2725,8 +2724,11 @@ BufferSync(int flags)
 		CheckpointWriteDelay(flags, (double) num_processed / num_to_scan);
 	}
 
-	/* issue all pending flushes */
-	IssuePendingWritebacks(&wb_context);
+	/*
+	 * Issue all pending flushes. Only checkpointer calls BufferSync(), so
+	 * IOContext will always be IOCONTEXT_NORMAL.
+	 */
+	IssuePendingWritebacks(&wb_context, IOCONTEXT_NORMAL);
 
 	pfree(per_ts_stat);
 	per_ts_stat = NULL;
@@ -3110,7 +3112,11 @@ SyncOneBuffer(int buf_id, bool skip_recently_used, WritebackContext *wb_context)
 
 	UnpinBuffer(bufHdr);
 
-	ScheduleBufferTagForWriteback(wb_context, &tag);
+	/*
+	 * SyncOneBuffer() is only called by checkpointer and bgwriter, so
+	 * IOContext will always be IOCONTEXT_NORMAL.
+	 */
+	ScheduleBufferTagForWriteback(wb_context, IOCONTEXT_NORMAL, &tag);
 
 	return result | BUF_WRITTEN;
 }
@@ -5445,7 +5451,8 @@ WritebackContextInit(WritebackContext *context, int *max_pending)
  * Add buffer to list of pending writeback requests.
  */
 void
-ScheduleBufferTagForWriteback(WritebackContext *context, BufferTag *tag)
+ScheduleBufferTagForWriteback(WritebackContext *wb_context, IOContext io_context,
+							  BufferTag *tag)
 {
 	PendingWriteback *pending;
 
@@ -5456,11 +5463,11 @@ ScheduleBufferTagForWriteback(WritebackContext *context, BufferTag *tag)
 	 * Add buffer to the pending writeback array, unless writeback control is
 	 * disabled.
 	 */
-	if (*context->max_pending > 0)
+	if (*wb_context->max_pending > 0)
 	{
-		Assert(*context->max_pending <= WRITEBACK_MAX_PENDING_FLUSHES);
+		Assert(*wb_context->max_pending <= WRITEBACK_MAX_PENDING_FLUSHES);
 
-		pending = &context->pending_writebacks[context->nr_pending++];
+		pending = &wb_context->pending_writebacks[wb_context->nr_pending++];
 
 		pending->tag = *tag;
 	}
@@ -5470,8 +5477,8 @@ ScheduleBufferTagForWriteback(WritebackContext *context, BufferTag *tag)
 	 * includes the case where previously an item has been added, but control
 	 * is now disabled.
 	 */
-	if (context->nr_pending >= *context->max_pending)
-		IssuePendingWritebacks(context);
+	if (wb_context->nr_pending >= *wb_context->max_pending)
+		IssuePendingWritebacks(wb_context, io_context);
 }
 
 #define ST_SORT sort_pending_writebacks
@@ -5489,25 +5496,29 @@ ScheduleBufferTagForWriteback(WritebackContext *context, BufferTag *tag)
  * error out - it's just a hint.
  */
 void
-IssuePendingWritebacks(WritebackContext *context)
+IssuePendingWritebacks(WritebackContext *wb_context, IOContext io_context)
 {
+	instr_time	io_start;
 	int			i;
 
-	if (context->nr_pending == 0)
+	if (wb_context->nr_pending == 0)
 		return;
 
 	/*
 	 * Executing the writes in-order can make them a lot faster, and allows to
 	 * merge writeback requests to consecutive blocks into larger writebacks.
 	 */
-	sort_pending_writebacks(context->pending_writebacks, context->nr_pending);
+	sort_pending_writebacks(wb_context->pending_writebacks,
+							wb_context->nr_pending);
+
+	io_start = pgstat_prepare_io_time();
 
 	/*
 	 * Coalesce neighbouring writes, but nothing else. For that we iterate
 	 * through the, now sorted, array of pending flushes, and look forward to
 	 * find all neighbouring (or identical) writes.
 	 */
-	for (i = 0; i < context->nr_pending; i++)
+	for (i = 0; i < wb_context->nr_pending; i++)
 	{
 		PendingWriteback *cur;
 		PendingWriteback *next;
@@ -5517,7 +5528,7 @@ IssuePendingWritebacks(WritebackContext *context)
 		RelFileLocator currlocator;
 		Size		nblocks = 1;
 
-		cur = &context->pending_writebacks[i];
+		cur = &wb_context->pending_writebacks[i];
 		tag = cur->tag;
 		currlocator = BufTagGetRelFileLocator(&tag);
 
@@ -5525,10 +5536,10 @@ IssuePendingWritebacks(WritebackContext *context)
 		 * Peek ahead, into following writeback requests, to see if they can
 		 * be combined with the current one.
 		 */
-		for (ahead = 0; i + ahead + 1 < context->nr_pending; ahead++)
+		for (ahead = 0; i + ahead + 1 < wb_context->nr_pending; ahead++)
 		{
 
-			next = &context->pending_writebacks[i + ahead + 1];
+			next = &wb_context->pending_writebacks[i + ahead + 1];
 
 			/* different file, stop */
 			if (!RelFileLocatorEquals(currlocator,
@@ -5555,7 +5566,14 @@ IssuePendingWritebacks(WritebackContext *context)
 		smgrwriteback(reln, BufTagGetForkNum(&tag), tag.blockNum, nblocks);
 	}
 
-	context->nr_pending = 0;
+	/*
+	 * Assume that writeback requests are only issued for buffers containing
+	 * blocks of permanent relations.
+	 */
+	pgstat_count_io_op_time(IOOBJECT_RELATION, io_context,
+							IOOP_WRITEBACK, io_start, wb_context->nr_pending);
+
+	wb_context->nr_pending = 0;
 }
 
 

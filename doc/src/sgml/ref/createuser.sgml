@@ -82,14 +82,13 @@ PostgreSQL documentation
 
      <varlistentry>
       <term><option>-a <replaceable class="parameter">role</replaceable></option></term>
-      <term><option>--admin=<replaceable class="parameter">role</replaceable></option></term>
+      <term><option>--with-admin=<replaceable class="parameter">role</replaceable></option></term>
       <listitem>
        <para>
-        Indicates a role that will be immediately added as a member of the new
+        Specifies an existing role that will be automatically added as a member of the new
         role with admin option, giving it the right to grant membership in the
-        new role to others.  Multiple roles to add as members (with admin
-        option) of the new role can be specified by writing multiple
-        <option>-a</option> switches.
+        new role to others.  Multiple existing roles can be specified by
+        writing multiple <option>-a</option> switches.
        </para>
       </listitem>
      </varlistentry>
@@ -150,14 +149,13 @@ PostgreSQL documentation
 
      <varlistentry>
       <term><option>-g <replaceable class="parameter">role</replaceable></option></term>
-      <term><option>--role=<replaceable class="parameter">role</replaceable></option></term>
+      <term><option>--member-of=<replaceable class="parameter">role</replaceable></option></term>
       <listitem>
        <para>
-         Indicates a role to which this role will be added immediately as a new
-         member. Multiple roles to which this role will be added as a member
-         can be specified by writing multiple
-         <option>-g</option> switches.
-         </para>
+        Specifies the new role should be automatically added as a member
+        of the specified existing role. Multiple existing roles can be
+        specified by writing multiple <option>-g</option> switches.
+       </para>
       </listitem>
      </varlistentry>
 
@@ -224,12 +222,12 @@ PostgreSQL documentation
 
      <varlistentry>
       <term><option>-m <replaceable class="parameter">role</replaceable></option></term>
-      <term><option>--member=<replaceable class="parameter">role</replaceable></option></term>
+      <term><option>--with-member=<replaceable class="parameter">role</replaceable></option></term>
       <listitem>
        <para>
-        Indicates role that will be immediately added as a member of the new
-        role.  Multiple roles to add as members of the new role can be specified
-        by writing multiple <option>-m</option> switches.
+        Specifies an existing role that will be automatically
+        added as a member of the new role. Multiple existing roles can
+        be specified by writing multiple <option>-m</option> switches.
        </para>
       </listitem>
      </varlistentry>

@@ -1549,6 +1549,12 @@ llvm_compile_expr(ExprState *state)
 					break;
 				}
 
+			case EEOP_SQLVALUEFUNCTION:
+				build_EvalXFunc(b, mod, "ExecEvalSQLValueFunction",
+								v_state, op);
+				LLVMBuildBr(b, opblocks[opno + 1]);
+				break;
+
 			case EEOP_CURRENTOFEXPR:
 				build_EvalXFunc(b, mod, "ExecEvalCurrentOfExpr",
 								v_state, op);
@@ -2121,8 +2127,8 @@ llvm_compile_expr(ExprState *state)
 
 					/*
 					 * pergroup = &aggstate->all_pergroups
-					 * [op->d.agg_strict_trans_check.setoff]
-					 * [op->d.agg_init_trans_check.transno];
+					 * [op->d.agg_trans.setoff]
+					 * [op->d.agg_trans.transno];
 					 */
 					v_allpergroupsp =
 						l_load_struct_gep(b, v_aggstatep,
@@ -2314,7 +2320,7 @@ llvm_compile_expr(ExprState *state)
 						params[5] = LLVMBuildTrunc(b, v_transnull,
 												   TypeParamBool, "");
 
-						v_fn = llvm_pg_func(mod, "ExecAggTransReparent");
+						v_fn = llvm_pg_func(mod, "ExecAggCopyTransValue");
 						v_newval =
 							LLVMBuildCall(b, v_fn,
 										  params, lengthof(params),

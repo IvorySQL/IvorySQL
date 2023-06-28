@@ -102,7 +102,7 @@ FunctionReturningBool(void)
 void	   *referenced_functions[] =
 {
 	ExecAggInitGroup,
-	ExecAggTransReparent,
+	ExecAggCopyTransValue,
 	ExecEvalPreOrderedDistinctSingle,
 	ExecEvalPreOrderedDistinctMulti,
 	ExecEvalAggOrderedTransDatum,
@@ -126,6 +126,7 @@ void	   *referenced_functions[] =
 	ExecEvalRow,
 	ExecEvalRowNotNull,
 	ExecEvalRowNull,
+	ExecEvalSQLValueFunction,
 	ExecEvalScalarArrayOp,
 	ExecEvalHashedScalarArrayOp,
 	ExecEvalSubPlan,

@@ -985,6 +985,65 @@ SELECT pg_stat_get_snapshot_timestamp();
 
 COMMIT;
 ----
+-- Changing stats_fetch_consistency in a transaction.
+----
+BEGIN;
+-- Stats filled under the cache mode
+SET LOCAL stats_fetch_consistency = cache;
+SELECT pg_stat_get_function_calls(0);
+ pg_stat_get_function_calls 
+----------------------------
+                           
+(1 row)
+
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+ snapshot_ok 
+-------------
+ f
+(1 row)
+
+-- Success in accessing pre-existing snapshot data.
+SET LOCAL stats_fetch_consistency = snapshot;
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+ snapshot_ok 
+-------------
+ f
+(1 row)
+
+SELECT pg_stat_get_function_calls(0);
+ pg_stat_get_function_calls 
+----------------------------
+                           
+(1 row)
+
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+ snapshot_ok 
+-------------
+ t
+(1 row)
+
+-- Snapshot cleared.
+SET LOCAL stats_fetch_consistency = none;
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+ snapshot_ok 
+-------------
+ f
+(1 row)
+
+SELECT pg_stat_get_function_calls(0);
+ pg_stat_get_function_calls 
+----------------------------
+                           
+(1 row)
+
+SELECT pg_stat_get_snapshot_timestamp() IS NOT NULL AS snapshot_ok;
+ snapshot_ok 
+-------------
+ f
+(1 row)
+
+ROLLBACK;
+----
 -- pg_stat_have_stats behavior
 ----
 -- fixed-numbered stats exist
@@ -1337,11 +1396,13 @@ SET wal_skip_threshold = '1 kB';
 SELECT sum(reuses) AS reuses, sum(reads) AS reads
   FROM pg_stat_io WHERE context = 'vacuum' \gset io_sum_vac_strategy_before_
 CREATE TABLE test_io_vac_strategy(a int, b int) WITH (autovacuum_enabled = 'false');
-INSERT INTO test_io_vac_strategy SELECT i, i from generate_series(1, 8000)i;
+INSERT INTO test_io_vac_strategy SELECT i, i from generate_series(1, 4500)i;
 -- Ensure that the next VACUUM will need to perform IO by rewriting the table
 -- first with VACUUM (FULL).
 VACUUM (FULL) test_io_vac_strategy;
-VACUUM (PARALLEL 0) test_io_vac_strategy;
+-- Use the minimum BUFFER_USAGE_LIMIT to cause reuses with the smallest table
+-- possible.
+VACUUM (PARALLEL 0, BUFFER_USAGE_LIMIT 128) test_io_vac_strategy;
 SELECT pg_stat_force_next_flush();
  pg_stat_force_next_flush 
 --------------------------
@@ -1384,7 +1445,7 @@ SELECT pg_stat_have_stats('io', 0, 0);
  t
 (1 row)
 
-SELECT sum(evictions) + sum(reuses) + sum(extends) + sum(fsyncs) + sum(reads) + sum(writes) + sum(hits) AS io_stats_pre_reset
+SELECT sum(evictions) + sum(reuses) + sum(extends) + sum(fsyncs) + sum(reads) + sum(writes) + sum(writebacks) + sum(hits) AS io_stats_pre_reset
   FROM pg_stat_io \gset
 SELECT pg_stat_reset_shared('io');
  pg_stat_reset_shared 
@@ -1392,7 +1453,7 @@ SELECT pg_stat_reset_shared('io');
  
 (1 row)
 
-SELECT sum(evictions) + sum(reuses) + sum(extends) + sum(fsyncs) + sum(reads) + sum(writes) + sum(hits) AS io_stats_post_reset
+SELECT sum(evictions) + sum(reuses) + sum(extends) + sum(fsyncs) + sum(reads) + sum(writes) + sum(writebacks) + sum(hits) AS io_stats_post_reset
   FROM pg_stat_io \gset
 SELECT :io_stats_post_reset < :io_stats_pre_reset;
  ?column? 

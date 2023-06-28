@@ -389,7 +389,11 @@ heap_vacuum_rel(Relation rel, VacuumParams *params,
 	Assert(params->index_cleanup != VACOPTVALUE_UNSPECIFIED);
 	Assert(params->truncate != VACOPTVALUE_UNSPECIFIED &&
 		   params->truncate != VACOPTVALUE_AUTO);
-	Assert(!VacuumFailsafeActive);
+	/*
+	 * While VacuumFailSafeActive is reset to false before calling this, we
+	 * still need to reset it here due to recursive calls.
+	 */
+	VacuumFailsafeActive = false;
 	vacrel->consider_bypass_optimization = true;
 	vacrel->do_index_vacuuming = true;
 	vacrel->do_index_cleanup = true;
@@ -2571,7 +2575,7 @@ lazy_vacuum_heap_page(LVRelState *vacrel, BlockNumber blkno, Buffer buffer,
 	END_CRIT_SECTION();
 
 	/*
-	 * Now that we have removed the LD_DEAD items from the page, once again
+	 * Now that we have removed the LP_DEAD items from the page, once again
 	 * check if the page has become all-visible.  The page is already marked
 	 * dirty, exclusively locked, and, if needed, a full page image has been
 	 * emitted.

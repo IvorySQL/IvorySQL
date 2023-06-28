@@ -101,7 +101,7 @@
 # GSSAPI using Kerberos
 #krb_server_keyfile = 'FILE:${sysconfdir}/krb5.keytab'
 #krb_caseins_users = off
-#gss_accept_deleg = off
+#gss_accept_delegation = off
 
 # - SSL -
 
@@ -158,9 +158,9 @@
 					#   mmap
 					# (change requires restart)
 #min_dynamic_shared_memory = 0MB	# (change requires restart)
-#vacuum_buffer_usage_limit = 256 # size of vacuum and analyze buffer access strategy ring.
-				 # 0 to disable vacuum buffer access strategy
-				 # range 128kB to 16GB
+#vacuum_buffer_usage_limit = 256kB	# size of vacuum and analyze buffer access strategy ring.
+					# 0 to disable vacuum buffer access strategy
+					# range 128kB to 16GB
 
 # - Disk -
 
@@ -329,7 +329,6 @@
 				# method to choose sync standbys, number of sync standbys,
 				# and comma-separated list of application_name
 				# from standby(s); '*' = all
-#vacuum_defer_cleanup_age = 0	# number of xacts by which cleanup is delayed
 
 # - Standby Servers -
 
@@ -622,7 +621,7 @@
 #track_io_timing = off
 #track_wal_io_timing = off
 #track_functions = none			# none, pl, all
-#stats_fetch_consistency = cache
+#stats_fetch_consistency = cache	# cache, none, snapshot
 
 
 # - Monitoring -
@@ -735,7 +734,7 @@
 #lc_numeric = 'C'			# locale for number formatting
 #lc_time = 'C'				# locale for time formatting
 
-#icu_validation_level = ERROR		# report ICU locale validation
+#icu_validation_level = WARNING		# report ICU locale validation
 					# errors at the given level
 
 # default configuration for text search

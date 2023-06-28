@@ -63,7 +63,7 @@
 #include "utils/memutils.h"
 #include "utils/ora_compatible.h"
 #include "utils/rel.h"
-
+#include "utils/guc.h"
 
 typedef struct MTTargetRelLookup
 {
@@ -804,7 +804,6 @@ ExecInsert(ModifyTableContext *context,
 								resultRelInfo->ri_PlanSlots,
 								resultRelInfo->ri_NumSlots,
 								estate, canSetTag);
-				resultRelInfo->ri_NumSlots = 0;
 				flushed = true;
 			}
 
@@ -1209,6 +1208,14 @@ ExecBatchInsert(ModifyTableState *mtstate,
 
 	if (canSetTag && numInserted > 0)
 		estate->es_processed += numInserted;
+
+	/* Clean up all the slots, ready for the next batch */
+	for (i = 0; i < numSlots; i++)
+	{
+		ExecClearTuple(slots[i]);
+		ExecClearTuple(planSlots[i]);
+	}
+	resultRelInfo->ri_NumSlots = 0;
 }
 
 /*
@@ -1232,7 +1239,6 @@ ExecPendingInserts(EState *estate)
 						resultRelInfo->ri_PlanSlots,
 						resultRelInfo->ri_NumSlots,
 						estate, mtstate->canSetTag);
-		resultRelInfo->ri_NumSlots = 0;
 	}
 
 	list_free(estate->es_insert_pending_result_relations);
@@ -3942,7 +3948,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	}
 
 	/* set up epqstate with dummy subplan data for the moment */
-	EvalPlanQualInit(&mtstate->mt_epqstate, estate, NULL, NIL, node->epqParam);
+	EvalPlanQualInit(&mtstate->mt_epqstate, estate, NULL, NIL,
+					 node->epqParam, node->resultRelations);
 	mtstate->fireBSTriggers = true;
 
 	/*

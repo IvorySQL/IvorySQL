@@ -1772,11 +1772,11 @@ struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gss_accept_deleg", PGC_SIGHUP, CONN_AUTH_AUTH,
+		{"gss_accept_delegation", PGC_SIGHUP, CONN_AUTH_AUTH,
 			gettext_noop("Sets whether GSSAPI delegation should be accepted from the client."),
 			NULL
 		},
-		&pg_gss_accept_deleg,
+		&pg_gss_accept_delegation,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2655,15 +2655,6 @@ struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"vacuum_defer_cleanup_age", PGC_SIGHUP, REPLICATION_PRIMARY,
-			gettext_noop("Number of transactions by which VACUUM and HOT cleanup should be deferred, if any."),
-			NULL
-		},
-		&vacuum_defer_cleanup_age,
-		0, 0, 1000000,			/* see ComputeXidHorizons */
-		NULL, NULL, NULL
-	},
-	{
 		{"vacuum_failsafe_age", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Age at which VACUUM should trigger failsafe to avoid a wraparound outage."),
 			NULL
@@ -2867,7 +2858,7 @@ struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_XBLOCKS
 		},
 		&WalWriterFlushAfter,
-		(1024 * 1024) / XLOG_BLCKSZ, 0, INT_MAX,
+		DEFAULT_WAL_WRITER_FLUSH_AFTER, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4676,7 +4667,7 @@ struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"io_direct", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+		{"debug_io_direct", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Use direct I/O for file access."),
 			NULL,
 			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
@@ -4852,7 +4843,7 @@ struct config_enum ConfigureNamesEnum[] =
 		 NULL
 		},
 		&icu_validation_level,
-		ERROR, icu_validation_level_options,
+		WARNING, icu_validation_level_options,
 		NULL, NULL, NULL
 	},
 
@@ -4984,7 +4975,7 @@ struct config_enum ConfigureNamesEnum[] =
 		},
 		&pgstat_fetch_consistency,
 		PGSTAT_FETCH_CONSISTENCY_CACHE, stats_fetch_consistency,
-		NULL, NULL, NULL
+		NULL, assign_stats_fetch_consistency, NULL
 	},
 
 	{

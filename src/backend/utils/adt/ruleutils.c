@@ -414,6 +414,8 @@ static void get_update_query_targetlist_def(Query *query, List *targetList,
 											RangeTblEntry *rte);
 static void get_delete_query_def(Query *query, deparse_context *context,
 								 bool colNamesVisible);
+static void get_merge_query_def(Query *query, deparse_context *context,
+								bool colNamesVisible);
 static void get_utility_query_def(Query *query, deparse_context *context);
 static void get_basic_select_query(Query *query, deparse_context *context,
 								   TupleDesc resultDesc, bool colNamesVisible);
@@ -1213,6 +1215,22 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 
 	return pg_get_indexdef_worker(indexrelid, 0, NULL,
 								  true, true,
+								  false, false,
+								  prettyFlags, false);
+}
+
+/* Internal version, extensible with flags to control its behavior */
+char *
+pg_get_indexdef_columns_extended(Oid indexrelid, bits16 flags)
+{
+	bool		pretty = ((flags & RULE_INDEXDEF_PRETTY) != 0);
+	bool		keys_only = ((flags & RULE_INDEXDEF_KEYS_ONLY) != 0);
+	int			prettyFlags;
+
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
+
+	return pg_get_indexdef_worker(indexrelid, 0, NULL,
+								  true, keys_only,
 								  false, false,
 								  prettyFlags, false);
 }
@@ -5452,6 +5470,10 @@ get_query_def(Query *query, StringInfo buf, List *parentnamespace,
 			get_delete_query_def(query, &context, colNamesVisible);
 			break;
 
+		case CMD_MERGE:
+			get_merge_query_def(query, &context, colNamesVisible);
+			break;
+
 		case CMD_NOTHING:
 			appendStringInfoString(buf, "NOTHING");
 			break;
@@ -7049,6 +7071,128 @@ get_delete_query_def(Query *query, deparse_context *context,
 
 
 /* ----------
+ * get_merge_query_def				- Parse back a MERGE parsetree
+ * ----------
+ */
+static void
+get_merge_query_def(Query *query, deparse_context *context,
+					bool colNamesVisible)
+{
+	StringInfo	buf = context->buf;
+	RangeTblEntry *rte;
+	ListCell   *lc;
+
+	/* Insert the WITH clause if given */
+	get_with_clause(query, context);
+
+	/*
+	 * Start the query with MERGE INTO relname
+	 */
+	rte = rt_fetch(query->resultRelation, query->rtable);
+	Assert(rte->rtekind == RTE_RELATION);
+	if (PRETTY_INDENT(context))
+	{
+		appendStringInfoChar(buf, ' ');
+		context->indentLevel += PRETTYINDENT_STD;
+	}
+	appendStringInfo(buf, "MERGE INTO %s%s",
+					 only_marker(rte),
+					 generate_relation_name(rte->relid, NIL));
+
+	/* Print the relation alias, if needed */
+	get_rte_alias(rte, query->resultRelation, false, context);
+
+	/* Print the source relation and join clause */
+	get_from_clause(query, " USING ", context);
+	appendContextKeyword(context, " ON ",
+						 -PRETTYINDENT_STD, PRETTYINDENT_STD, 2);
+	get_rule_expr(query->jointree->quals, context, false);
+
+	/* Print each merge action */
+	foreach(lc, query->mergeActionList)
+	{
+		MergeAction *action = lfirst_node(MergeAction, lc);
+
+		appendContextKeyword(context, " WHEN ",
+							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 2);
+		appendStringInfo(buf, "%sMATCHED", action->matched ? "" : "NOT ");
+
+		if (action->qual)
+		{
+			appendContextKeyword(context, " AND ",
+								 -PRETTYINDENT_STD, PRETTYINDENT_STD, 3);
+			get_rule_expr(action->qual, context, false);
+		}
+		appendContextKeyword(context, " THEN ",
+							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 3);
+
+		if (action->commandType == CMD_INSERT)
+		{
+			/* This generally matches get_insert_query_def() */
+			List	   *strippedexprs = NIL;
+			const char *sep = "";
+			ListCell   *lc2;
+
+			appendStringInfoString(buf, "INSERT");
+
+			if (action->targetList)
+				appendStringInfoString(buf, " (");
+			foreach(lc2, action->targetList)
+			{
+				TargetEntry *tle = (TargetEntry *) lfirst(lc2);
+
+				Assert(!tle->resjunk);
+
+				appendStringInfoString(buf, sep);
+				sep = ", ";
+
+				appendStringInfoString(buf,
+									   quote_identifier(get_attname(rte->relid,
+																	tle->resno,
+																	false)));
+				strippedexprs = lappend(strippedexprs,
+										processIndirection((Node *) tle->expr,
+														   context));
+			}
+			if (action->targetList)
+				appendStringInfoChar(buf, ')');
+
+			if (action->override)
+			{
+				if (action->override == OVERRIDING_SYSTEM_VALUE)
+					appendStringInfoString(buf, " OVERRIDING SYSTEM VALUE");
+				else if (action->override == OVERRIDING_USER_VALUE)
+					appendStringInfoString(buf, " OVERRIDING USER VALUE");
+			}
+
+			if (strippedexprs)
+			{
+				appendContextKeyword(context, " VALUES (",
+									 -PRETTYINDENT_STD, PRETTYINDENT_STD, 4);
+				get_rule_list_toplevel(strippedexprs, context, false);
+				appendStringInfoChar(buf, ')');
+			}
+			else
+				appendStringInfoString(buf, " DEFAULT VALUES");
+		}
+		else if (action->commandType == CMD_UPDATE)
+		{
+			appendStringInfoString(buf, "UPDATE SET ");
+			get_update_query_targetlist_def(query, action->targetList,
+											context, rte);
+		}
+		else if (action->commandType == CMD_DELETE)
+			appendStringInfoString(buf, "DELETE");
+		else if (action->commandType == CMD_NOTHING)
+			appendStringInfoString(buf, "DO NOTHING");
+	}
+
+	/* No RETURNING support in MERGE yet */
+	Assert(query->returningList == NIL);
+}
+
+
+/* ----------
  * get_utility_query_def			- Parse back a UTILITY parsetree
  * ----------
  */
@@ -8130,6 +8274,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_RowExpr:
 		case T_CoalesceExpr:
 		case T_MinMaxExpr:
+		case T_SQLValueFunction:
 		case T_XmlExpr:
 		case T_NextValueExpr:
 		case T_NullIfExpr:
@@ -9118,6 +9263,67 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
+		case T_SQLValueFunction:
+			{
+				SQLValueFunction *svf = (SQLValueFunction *) node;
+
+				/*
+				 * Note: this code knows that typmod for time, timestamp, and
+				 * timestamptz just prints as integer.
+				 */
+				switch (svf->op)
+				{
+					case SVFOP_CURRENT_DATE:
+						appendStringInfoString(buf, "CURRENT_DATE");
+						break;
+					case SVFOP_CURRENT_TIME:
+						appendStringInfoString(buf, "CURRENT_TIME");
+						break;
+					case SVFOP_CURRENT_TIME_N:
+						appendStringInfo(buf, "CURRENT_TIME(%d)", svf->typmod);
+						break;
+					case SVFOP_CURRENT_TIMESTAMP:
+						appendStringInfoString(buf, "CURRENT_TIMESTAMP");
+						break;
+					case SVFOP_CURRENT_TIMESTAMP_N:
+						appendStringInfo(buf, "CURRENT_TIMESTAMP(%d)",
+										 svf->typmod);
+						break;
+					case SVFOP_LOCALTIME:
+						appendStringInfoString(buf, "LOCALTIME");
+						break;
+					case SVFOP_LOCALTIME_N:
+						appendStringInfo(buf, "LOCALTIME(%d)", svf->typmod);
+						break;
+					case SVFOP_LOCALTIMESTAMP:
+						appendStringInfoString(buf, "LOCALTIMESTAMP");
+						break;
+					case SVFOP_LOCALTIMESTAMP_N:
+						appendStringInfo(buf, "LOCALTIMESTAMP(%d)",
+										 svf->typmod);
+						break;
+					case SVFOP_CURRENT_ROLE:
+						appendStringInfoString(buf, "CURRENT_ROLE");
+						break;
+					case SVFOP_CURRENT_USER:
+						appendStringInfoString(buf, "CURRENT_USER");
+						break;
+					case SVFOP_USER:
+						appendStringInfoString(buf, "USER");
+						break;
+					case SVFOP_SESSION_USER:
+						appendStringInfoString(buf, "SESSION_USER");
+						break;
+					case SVFOP_CURRENT_CATALOG:
+						appendStringInfoString(buf, "CURRENT_CATALOG");
+						break;
+					case SVFOP_CURRENT_SCHEMA:
+						appendStringInfoString(buf, "CURRENT_SCHEMA");
+						break;
+				}
+			}
+			break;
+
 		case T_XmlExpr:
 			{
 				XmlExpr    *xexpr = (XmlExpr *) node;
@@ -9692,6 +9898,7 @@ looks_like_function(Node *node)
 		case T_NullIfExpr:
 		case T_CoalesceExpr:
 		case T_MinMaxExpr:
+		case T_SQLValueFunction:
 		case T_XmlExpr:
 			/* these are all accepted by func_expr_common_subexpr */
 			return true;
@@ -10099,33 +10306,6 @@ get_windowfunc_expr_helper(WindowFunc *wfunc, deparse_context *context,
 }
 
 /*
- * get_func_sql_syntax_time
- *
- * Parse back argument of SQL-syntax function call related to a time or a
- * timestamp.  These require a specific handling when their typmod is given
- * by the function caller through their SQL keyword.
- */
-static void
-get_func_sql_syntax_time(List *args, deparse_context *context)
-{
-	StringInfo	buf = context->buf;
-	Const	   *cons;
-
-	if (list_length(args) != 1)
-		return;
-
-	cons = (Const *) linitial(args);
-	Assert(IsA(cons, Const));
-
-	if (!cons->constisnull)
-	{
-		appendStringInfoString(buf, "(");
-		get_rule_expr((Node *) cons, context, false);
-		appendStringInfoString(buf, ")");
-	}
-}
-
-/*
  * get_func_sql_syntax		- Parse back a SQL-syntax function call
  *
  * Returns true if we successfully deparsed, false if we did not
@@ -10354,46 +10534,8 @@ get_func_sql_syntax(FuncExpr *expr, deparse_context *context)
 			appendStringInfoChar(buf, ')');
 			return true;
 
-		case F_CURRENT_CATALOG:
-			appendStringInfoString(buf, "CURRENT_CATALOG");
-			return true;
-		case F_CURRENT_ROLE:
-			appendStringInfoString(buf, "CURRENT_ROLE");
-			return true;
-		case F_CURRENT_SCHEMA:
-			appendStringInfoString(buf, "CURRENT_SCHEMA");
-			return true;
-		case F_CURRENT_USER:
-			appendStringInfoString(buf, "CURRENT_USER");
-			return true;
-		case F_USER:
-			appendStringInfoString(buf, "USER");
-			return true;
-		case F_SESSION_USER:
-			appendStringInfoString(buf, "SESSION_USER");
-			return true;
 		case F_SYSTEM_USER:
 			appendStringInfoString(buf, "SYSTEM_USER");
-			return true;
-
-		case F_CURRENT_DATE:
-			appendStringInfoString(buf, "CURRENT_DATE");
-			return true;
-		case F_CURRENT_TIME:
-			appendStringInfoString(buf, "CURRENT_TIME");
-			get_func_sql_syntax_time(expr->args, context);
-			return true;
-		case F_CURRENT_TIMESTAMP:
-			appendStringInfoString(buf, "CURRENT_TIMESTAMP");
-			get_func_sql_syntax_time(expr->args, context);
-			return true;
-		case F_LOCALTIME:
-			appendStringInfoString(buf, "LOCALTIME");
-			get_func_sql_syntax_time(expr->args, context);
-			return true;
-		case F_LOCALTIMESTAMP:
-			appendStringInfoString(buf, "LOCALTIMESTAMP");
-			get_func_sql_syntax_time(expr->args, context);
 			return true;
 
 		case F_XMLEXISTS:
