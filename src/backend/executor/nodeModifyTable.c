@@ -63,7 +63,7 @@
 #include "utils/memutils.h"
 #include "utils/ora_compatible.h"
 #include "utils/rel.h"
-
+#include "utils/guc.h"
 
 typedef struct MTTargetRelLookup
 {
