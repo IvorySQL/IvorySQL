@@ -700,6 +700,8 @@ nextval_internal(Oid relid, bool check_permissions)
 	last = next = result = seq->last_value;
 	fetch = cache;
 	log = seq->log_cnt;
+	if (result > maxv && compatible_db == ORA_PARSER)
+		elog(ERROR, "sequence %s.nextval exceeds MAXVALUE and cannot be instantiated",get_rel_name(relid));
 
 	if (!seq->is_called)
 	{
@@ -1575,7 +1577,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				 errmsg("START value (%lld) cannot be less than MINVALUE (%lld)",
 						(long long) seqform->seqstart,
 						(long long) seqform->seqmin)));
-	if (seqform->seqstart > seqform->seqmax)
+	if (seqform->seqstart > seqform->seqmax && compatible_db == PG_PARSER)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("START value (%lld) cannot be greater than MAXVALUE (%lld)",
@@ -1605,7 +1607,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				 errmsg("RESTART value (%lld) cannot be less than MINVALUE (%lld)",
 						(long long) seqdataform->last_value,
 						(long long) seqform->seqmin)));
-	if (seqdataform->last_value > seqform->seqmax)
+	if (seqdataform->last_value > seqform->seqmax && compatible_db == PG_PARSER)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("RESTART value (%lld) cannot be greater than MAXVALUE (%lld)",

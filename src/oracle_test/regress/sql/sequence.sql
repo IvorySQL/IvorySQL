@@ -6,7 +6,6 @@
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;
 CREATE SEQUENCE sequence_testx INCREMENT BY 1 MAXVALUE -20;
-CREATE SEQUENCE sequence_testx INCREMENT BY -1 START 10;
 CREATE SEQUENCE sequence_testx INCREMENT BY 1 START -10;
 CREATE SEQUENCE sequence_testx CACHE 0;
 
@@ -185,7 +184,6 @@ ALTER SEQUENCE sequence_test2 RESTART;
 SELECT nextval('sequence_test2');
 
 ALTER SEQUENCE sequence_test2 RESTART WITH 0;  -- error
-ALTER SEQUENCE sequence_test4 RESTART WITH 40;  -- error
 
 -- test CYCLE and NO CYCLE
 ALTER SEQUENCE sequence_test2 RESTART WITH 24
