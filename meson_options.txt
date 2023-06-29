@@ -21,8 +21,8 @@ option('segsize_blocks', type: 'integer', value: 0,
 
 # Miscellaneous options
 
-option('krb_srvnam', type : 'string', value : 'postgres',
-  description : 'Default Kerberos service principal for GSSAPI')
+option('krb_srvnam', type: 'string', value: 'postgres',
+  description: 'Default Kerberos service principal for GSSAPI')
 
 option('system_tzdata', type: 'string', value: '',
   description: 'Use system time zone data in specified directory')
@@ -32,7 +32,7 @@ option('system_tzdata', type: 'string', value: '',
 
 option('pgport', type: 'integer', value: 5432,
   min: 1, max: 65535,
-  description : 'Default port number for server and clients')
+  description: 'Default port number for server and clients')
 
 option('oraport', type : 'integer', value : 1521,
   min: 1, max: 65535,
