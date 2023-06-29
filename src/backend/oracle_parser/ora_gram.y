@@ -4880,19 +4880,11 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("minvalue", (Node *) $2, @1);
 				}
-			| NO MAXVALUE
-				{
-					$$ = makeDefElem("maxvalue", NULL, @1);
-				}
 			| NOMAXVALUE
 				{
 					$$ = makeDefElem("maxvalue", NULL, @1);
 				}
 			| NOMINVALUE
-				{
-					$$ = makeDefElem("minvalue", NULL, @1);
-				}
-			| NO MINVALUE
 				{
 					$$ = makeDefElem("minvalue", NULL, @1);
 				}

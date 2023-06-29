@@ -17090,16 +17090,16 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 
 	if (minv)
 		appendPQExpBuffer(query, "    MINVALUE %s\n", minv);
-	else if (!is_ora_identity)
+	else if (!is_ora_identity && db_mode == DB_PG)
 		appendPQExpBufferStr(query, "    NO MINVALUE\n");
-	else
+	else if (db_mode == DB_ORACLE)
 		appendPQExpBufferStr(query, "    NOMINVALUE\n");
 
 	if (maxv)
 		appendPQExpBuffer(query, "    MAXVALUE %s\n", maxv);
-	else if (!is_ora_identity)
+	else if (!is_ora_identity && db_mode == DB_PG)
 		appendPQExpBufferStr(query, "    NO MAXVALUE\n");
-	else
+	else if (db_mode == DB_ORACLE)
 		appendPQExpBufferStr(query, "    NOMAXVALUE\n");
 
 	appendPQExpBuffer(query,
