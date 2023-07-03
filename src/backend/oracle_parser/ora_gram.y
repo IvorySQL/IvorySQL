@@ -650,6 +650,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <defelt>		hash_partbound_elem
 
 %type <node>	identity_clause identity_options drop_identity
+%type <boolean>	opt_with opt_by
 
 %type <node>		json_format_clause_opt
 					json_value_expr
@@ -1163,9 +1164,9 @@ CreateRoleStmt:
 		;
 
 
-opt_with:	WITH
-			| WITH_LA
-			| /*EMPTY*/
+opt_with:	WITH		{ $$ = true; }
+			| WITH_LA	{ $$ = true; }
+			| /*EMPTY*/	{ $$= false; }
 		;
 
 /*
@@ -4860,16 +4861,14 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("cycle", (Node *) makeBoolean(true), @1);
 				}
-			| NO CYCLE
-				{
-					$$ = makeDefElem("cycle", (Node *) makeBoolean(false), @1);
-				}
 			| NOCYCLE
 				{
-					$$ = makeDefElem("cycle", (Node *)makeInteger(false), @1);
+					$$ = makeDefElem("cycle", (Node *)makeBoolean(false), @1);
 				}
 			| INCREMENT opt_by NumericOnly
 				{
+					if (!$2 && compatible_db == ORA_PARSER)
+						elog(ERROR, "missing BY keyword");
 					$$ = makeDefElem("increment", (Node *) $3, @1);
 				}
 			| MAXVALUE NumericOnly
@@ -4899,6 +4898,8 @@ SeqOptElem: AS SimpleTypename
 				}
 			| START opt_with NumericOnly
 				{
+					if (!$2 && compatible_db == ORA_PARSER)
+						elog(ERROR, "missing WITH keyword");
 					$$ = makeDefElem("start", (Node *) $3, @1);
 				}
 			| RESTART
@@ -4913,8 +4914,8 @@ SeqOptElem: AS SimpleTypename
 			| NOORDER { $$ = makeDefElem("noorder", NULL, @1); }
 		;
 
-opt_by:		BY
-			| /* EMPTY */
+opt_by:		BY				{ $$ = true; }
+			| /* EMPTY */	{ $$ = false; }
 	  ;
 
 NumericOnly:
