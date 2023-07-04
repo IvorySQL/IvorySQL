@@ -5454,6 +5454,7 @@ CREATE FUNCTION warn(msg TEXT) RETURNS BOOLEAN LANGUAGE plpgsql
 AS $$
   BEGIN RAISE NOTICE 'warn %', msg ; RETURN TRUE ; END
 $$;
+/
 -- show both
 SELECT 1 AS one \; SELECT warn('1.5') \; SELECT 2 AS two ;
 NOTICE:  warn 1.5
@@ -5723,6 +5724,7 @@ CREATE FUNCTION psql_error(msg TEXT) RETURNS BOOLEAN AS $$
     RAISE EXCEPTION 'error %', msg;
   END;
 $$ LANGUAGE plpgsql;
+/
 \set ON_ERROR_ROLLBACK on
 \echo '# ON_ERROR_ROLLBACK:' :ON_ERROR_ROLLBACK
 # ON_ERROR_ROLLBACK: on

@@ -154,8 +154,10 @@ SELECT float4send('1.1754944e-38'::float4);
 create type xfloat4;
 create function xfloat4in(cstring) returns xfloat4 immutable strict
   language internal as 'int4in';
+/
 create function xfloat4out(xfloat4) returns cstring immutable strict
   language internal as 'int4out';
+/
 create type xfloat4 (input = xfloat4in, output = xfloat4out, like = float4);
 create cast (xfloat4 as float4) without function;
 create cast (float4 as xfloat4) without function;

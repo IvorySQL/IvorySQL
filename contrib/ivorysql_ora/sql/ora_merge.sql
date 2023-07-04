@@ -169,6 +169,7 @@ BEGIN
 	RETURN x;
 END;
 $$ LANGUAGE plpgsql;
+/
 
 MERGE INTO people_target pt
 USING people_source ps
@@ -193,6 +194,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
+/
 
 CREATE OR REPLACE FUNCTION up_trigg_after() RETURNS trigger
 AS $$
@@ -202,6 +204,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
+/
 
 CREATE OR REPLACE FUNCTION del_trigg_before() RETURNS trigger
 AS $$
@@ -210,6 +213,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
+/
 
 CREATE OR REPLACE FUNCTION del_trigg_after() RETURNS trigger
 AS $$
@@ -218,7 +222,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
-
+/
 
 -- create statement-level trigger
 CREATE TRIGGER tri_update_be BEFORE UPDATE ON people_target
@@ -271,7 +275,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
+/
 
 CREATE TRIGGER row_tri_bef_up BEFORE UPDATE ON people_target
   FOR EACH ROW EXECUTE PROCEDURE trigger_test();

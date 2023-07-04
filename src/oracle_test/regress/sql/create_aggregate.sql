@@ -45,6 +45,7 @@ COMMENT ON AGGREGATE newcnt ("any") IS 'an agg(any) comment';
 -- multi-argument aggregate
 create function sum3(int8,int8,int8) returns int8 as
 'select $1 + $2 + $3' language sql strict immutable;
+/
 
 create aggregate sum2(int8,int8) (
    sfunc = sum3, stype = int8,
@@ -57,10 +58,12 @@ create type aggtype as (a integer, b integer, c text);
 create function aggf_trans(aggtype[],integer,integer,text) returns aggtype[]
 as 'select array_append($1,ROW($2,$3,$4)::aggtype)'
 language sql strict immutable;
+/
 
 create function aggfns_trans(aggtype[],integer,integer,text) returns aggtype[]
 as 'select array_append($1,ROW($2,$3,$4)::aggtype)'
 language sql immutable;
+/
 
 create aggregate aggfstr(integer,integer,text) (
    sfunc = aggf_trans, stype = aggtype[],
@@ -75,6 +78,7 @@ create aggregate aggfns(integer,integer,text) (
 -- check error cases that would require run-time type coercion
 create function least_accum(int8, int8) returns int8 language sql as
   'select least($1, $2)';
+/
 
 create aggregate least_agg(int4) (
   stype = int8, sfunc = least_accum
@@ -85,6 +89,7 @@ drop function least_accum(int8, int8);
 create function least_accum(anycompatible, anycompatible)
 returns anycompatible language sql as
   'select least($1, $2)';
+/
 
 create aggregate least_agg(int4) (
   stype = int8, sfunc = least_accum
@@ -100,6 +105,7 @@ drop function least_accum(anycompatible, anycompatible) cascade;
 create function least_accum(anyelement, variadic anyarray)
 returns anyelement language sql as
   'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
+/
 
 create aggregate least_agg(variadic items anyarray) (
   stype = anyelement, sfunc = least_accum
@@ -108,6 +114,7 @@ create aggregate least_agg(variadic items anyarray) (
 create function cleast_accum(anycompatible, variadic anycompatiblearray)
 returns anycompatible language sql as
   'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
+/
 
 create aggregate cleast_agg(variadic items anycompatiblearray) (
   stype = anycompatible, sfunc = cleast_accum
@@ -260,6 +267,7 @@ CREATE OR REPLACE AGGREGATE myavg (order by numeric)
 -- can't change plain function to aggregate:
 create function sum4(int8,int8,int8,int8) returns int8 as
 'select $1 + $2 + $3 + $4' language sql strict immutable;
+/
 
 CREATE OR REPLACE AGGREGATE sum3 (int8,int8,int8)
 (
@@ -284,6 +292,7 @@ CREATE AGGREGATE mysum (int)
 CREATE FUNCTION float8mi_n(float8, float8) RETURNS float8 AS
 $$ SELECT $1 - $2; $$
 LANGUAGE SQL;
+/
 
 CREATE AGGREGATE invalidsumdouble (float8)
 (
@@ -299,6 +308,7 @@ CREATE AGGREGATE invalidsumdouble (float8)
 CREATE FUNCTION float8mi_int(float8, float8) RETURNS int AS
 $$ SELECT CAST($1 - $2 AS INT); $$
 LANGUAGE SQL;
+/
 
 CREATE AGGREGATE wrongreturntype (float8)
 (

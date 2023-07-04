@@ -273,6 +273,7 @@ $$
     return null;
   end;
 $$;
+/
 
 CREATE TRIGGER trans_updatetrig
   AFTER UPDATE ON range_parted REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
@@ -309,6 +310,7 @@ BEGIN
    NEW.b = NEW.b + 1;
    return NEW;
 END $$ language plpgsql;
+/
 CREATE TRIGGER trig_c1_100 BEFORE UPDATE OR INSERT ON part_c_1_100
    FOR EACH ROW EXECUTE PROCEDURE func_parted_mod_b();
 CREATE TRIGGER trig_d1_15 BEFORE UPDATE OR INSERT ON part_d_1_15
@@ -357,6 +359,7 @@ BEGIN
    NEW.c = NEW.c + 1; -- Make even numbers odd, or vice versa
    return NEW;
 END $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER trig_d_1_15 BEFORE INSERT ON part_d_1_15
    FOR EACH ROW EXECUTE PROCEDURE func_d_1_15();
 
@@ -431,6 +434,7 @@ $$
     return null;
   end;
 $$;
+/
 -- Triggers on root partition
 CREATE TRIGGER parent_delete_trig
   AFTER DELETE ON range_parted for each statement execute procedure trigfunc();
@@ -596,6 +600,7 @@ BEGIN
    NEW.b = 2; -- This is changing partition key column.
    return NEW;
 END $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER parted_mod_b before update on sub_part1
    for each row execute procedure func_parted_mod_b();
 
@@ -615,6 +620,7 @@ BEGIN
    raise notice 'Trigger: Got OLD row %, but returning NULL', OLD;
    return NULL;
 END $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER trig_skip_delete before delete on sub_part2
    for each row execute procedure func_parted_mod_b();
 UPDATE list_parted set b = 1 WHERE c = 70;
@@ -641,6 +647,7 @@ DROP TABLE list_parted;
 -- explained in alter_table.sql
 create or replace function dummy_hashint4(a int4, seed int8) returns int8 as
 $$ begin return (a + seed); end; $$ language 'plpgsql' immutable;
+/
 create operator class custom_opclass for type int4 using hash as
 operator 1 = , function 2 dummy_hashint4(int4, int8);
 

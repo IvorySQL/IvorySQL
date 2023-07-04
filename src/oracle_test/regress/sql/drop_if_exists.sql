@@ -275,7 +275,9 @@ DROP VIEW IF EXISTS no_such_schema.foo;
 -- Check we receive an ambiguous function error when there are
 -- multiple matching functions.
 CREATE FUNCTION test_ambiguous_funcname(int) returns int as $$ select $1; $$ language sql;
+/
 CREATE FUNCTION test_ambiguous_funcname(text) returns text as $$ select $1; $$ language sql;
+/
 DROP FUNCTION test_ambiguous_funcname;
 DROP FUNCTION IF EXISTS test_ambiguous_funcname;
 
@@ -285,7 +287,9 @@ DROP FUNCTION test_ambiguous_funcname(text);
 
 -- Likewise for procedures.
 CREATE PROCEDURE test_ambiguous_procname(int) as $$ begin end; $$ language plpgsql;
+/
 CREATE PROCEDURE test_ambiguous_procname(text) as $$ begin end; $$ language plpgsql;
+/
 DROP PROCEDURE test_ambiguous_procname;
 DROP PROCEDURE IF EXISTS test_ambiguous_procname;
 

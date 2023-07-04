@@ -294,6 +294,7 @@ begin
     return null;
 end;
 $$ LANGUAGE plpgsql;
+/
 -- basic before trigger
 INSERT INTO trunc_trigger_test VALUES(1, 'foo', 'bar'), (2, 'baz', 'quux');
 CREATE TRIGGER t
@@ -442,6 +443,7 @@ CREATE FUNCTION tp_ins_data() RETURNS void LANGUAGE plpgsql AS $$
 	INSERT INTO truncpart VALUES (1), (100), (150);
   END
 $$;
+/
 CREATE FUNCTION tp_chk_data(OUT pktb regclass, OUT pkval int, OUT fktb regclass, OUT fkval int)
   RETURNS SETOF record LANGUAGE plpgsql AS $$
   BEGIN
@@ -451,6 +453,7 @@ CREATE FUNCTION tp_chk_data(OUT pktb regclass, OUT pkval int, OUT fktb regclass,
     ORDER BY 2, 4;
   END
 $$;
+/
 CREATE TABLE truncprim (a int PRIMARY KEY);
 CREATE TABLE truncpart (a int REFERENCES truncprim)
   PARTITION BY RANGE (a);

@@ -18,6 +18,7 @@ BEGIN
 RETURN abs($1);
 END
 $$ LANGUAGE plpgsql IMMUTABLE;
+/
 CREATE OPERATOR ==== (
     LEFTARG = int,
     RIGHTARG = int,
@@ -30,11 +31,13 @@ CREATE FUNCTION casttesttype_in(cstring)
    RETURNS casttesttype
    AS 'textin'
    LANGUAGE internal STRICT IMMUTABLE;
+/
 NOTICE:  return type casttesttype is only a shell
 CREATE FUNCTION casttesttype_out(casttesttype)
    RETURNS cstring
    AS 'textout'
    LANGUAGE internal STRICT IMMUTABLE;
+/
 NOTICE:  argument type casttesttype is only a shell
 CREATE TYPE casttesttype (
    internallength = variable,

@@ -32,6 +32,7 @@ begin
     end loop;
 end;
 $$;
+/
 
 -- To produce valid JSON output, replace numbers with "0" or "0.0" not "N"
 create function explain_filter_to_json(text) returns jsonb
@@ -50,7 +51,7 @@ begin
     return data::jsonb;
 end;
 $$;
-
+/
 -- Disable JIT, or we'll get different output on machines where that's been
 -- forced on
 set jit = off;
@@ -148,6 +149,7 @@ create temp table t1(f1 float8);
 
 create function pg_temp.mysin(float8) returns float8 language plpgsql
 as 'begin return sin($1); end';
+/
 
 select explain_filter('explain (verbose) select * from t1 where pg_temp.mysin(f1) < 0.5');
 

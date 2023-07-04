@@ -190,6 +190,7 @@ BEGIN
 	RETURN x;
 END;
 $$ LANGUAGE plpgsql;
+/
 MERGE INTO people_target pt
 USING people_source ps
 ON    (tco(pt.person_id) = ps.person_id)
@@ -217,6 +218,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE OR REPLACE FUNCTION up_trigg_after() RETURNS trigger
 AS $$
 BEGIN
@@ -225,6 +227,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE OR REPLACE FUNCTION del_trigg_before() RETURNS trigger
 AS $$
 BEGIN
@@ -232,6 +235,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE OR REPLACE FUNCTION del_trigg_after() RETURNS trigger
 AS $$
 BEGIN
@@ -239,6 +243,7 @@ BEGIN
     RETURN old;
 END;
 $$ LANGUAGE plpgsql;
+/
 -- create statement-level trigger
 CREATE TRIGGER tri_update_be BEFORE UPDATE ON people_target
  FOR EACH STATEMENT EXECUTE PROCEDURE up_trigg_before();
@@ -289,6 +294,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER row_tri_bef_up BEFORE UPDATE ON people_target
   FOR EACH ROW EXECUTE PROCEDURE trigger_test();
 -- Merge statement

@@ -525,12 +525,14 @@ create or replace function unnest1(anyarray)
 returns setof anyelement as $$
 select $1[s] from generate_subscripts($1,1) g(s);
 $$ language sql immutable;
+/
 
 create or replace function unnest2(anyarray)
 returns setof anyelement as $$
 select $1[s1][s2] from generate_subscripts($1,1) g1(s1),
                    generate_subscripts($1,2) g2(s2);
 $$ language sql immutable;
+/
 
 select * from unnest1(array[1,2,3]);
 select * from unnest2(array[[1,2,3],[4,5,6]]);

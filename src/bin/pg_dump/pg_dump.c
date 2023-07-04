@@ -12158,6 +12158,10 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 
 	appendPQExpBuffer(q, "\n    %s;\n", asPart->data);
 
+	/* Send a CREATE FUNCTION command to the backend using a slash in psql's Oracle mode */
+	if (((ArchiveHandle *) fout)->format == archNull && db_mode == DB_ORACLE)
+		appendPQExpBufferStr(q, "/\n");
+
 	append_depends_on_extension(fout, q, &finfo->dobj,
 								"pg_catalog.pg_proc", keyword,
 								qual_funcsig);

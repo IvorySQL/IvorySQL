@@ -14,8 +14,10 @@
 create type int8alias1;
 create function int8alias1in(cstring) returns int8alias1
   strict immutable language internal as 'int8in';
+/
 create function int8alias1out(int8alias1) returns cstring
   strict immutable language internal as 'int8out';
+/
 create type int8alias1 (
     input = int8alias1in,
     output = int8alias1out,
@@ -25,8 +27,10 @@ create type int8alias1 (
 create type int8alias2;
 create function int8alias2in(cstring) returns int8alias2
   strict immutable language internal as 'int8in';
+/
 create function int8alias2out(int8alias2) returns cstring
   strict immutable language internal as 'int8out';
+/
 create type int8alias2 (
     input = int8alias2in,
     output = int8alias2out,
@@ -40,6 +44,7 @@ create cast (int8alias2 as int8) without function;
 
 create function int8alias1eq(int8alias1, int8alias1) returns bool
   strict immutable language internal as 'int8eq';
+/
 create operator = (
     procedure = int8alias1eq,
     leftarg = int8alias1, rightarg = int8alias1,
@@ -52,6 +57,7 @@ alter operator family integer_ops using btree add
 
 create function int8alias2eq(int8alias2, int8alias2) returns bool
   strict immutable language internal as 'int8eq';
+/
 create operator = (
     procedure = int8alias2eq,
     leftarg = int8alias2, rightarg = int8alias2,
@@ -64,6 +70,7 @@ alter operator family integer_ops using btree add
 
 create function int8alias1eq(int8, int8alias1) returns bool
   strict immutable language internal as 'int8eq';
+/
 create operator = (
     procedure = int8alias1eq,
     leftarg = int8, rightarg = int8alias1,
@@ -75,6 +82,7 @@ alter operator family integer_ops using btree add
 
 create function int8alias1eq(int8alias1, int8alias2) returns bool
   strict immutable language internal as 'int8eq';
+/
 create operator = (
     procedure = int8alias1eq,
     leftarg = int8alias1, rightarg = int8alias2,
@@ -86,6 +94,7 @@ alter operator family integer_ops using btree add
 
 create function int8alias1lt(int8alias1, int8alias1) returns bool
   strict immutable language internal as 'int8lt';
+/
 create operator < (
     procedure = int8alias1lt,
     leftarg = int8alias1, rightarg = int8alias1
@@ -95,6 +104,7 @@ alter operator family integer_ops using btree add
 
 create function int8alias1cmp(int8, int8alias1) returns int
   strict immutable language internal as 'btint8cmp';
+/
 alter operator family integer_ops using btree add
   function 1 int8alias1cmp (int8, int8alias1);
 

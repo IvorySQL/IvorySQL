@@ -69,6 +69,7 @@ begin
 	return total;
 end
 $$ language plpgsql;
+/
 
 select cache_test(1);
 select cache_test(2);
@@ -83,6 +84,7 @@ create function cache_test_2() returns int as $$
 begin
 	return f1 from v1;
 end$$ language plpgsql;
+/
 
 select cache_test_2();
 
@@ -153,6 +155,7 @@ begin
     raise notice '%', r;
   end loop;
 end$$ language plpgsql;
+/
 
 select cachebug();
 select cachebug();

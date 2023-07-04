@@ -15,6 +15,7 @@ CREATE TABLE dummy_seclabel_tbl1 (a int, b text);
 CREATE TABLE dummy_seclabel_tbl2 (x int, y text);
 CREATE VIEW dummy_seclabel_view1 AS SELECT * FROM dummy_seclabel_tbl2;
 CREATE FUNCTION dummy_seclabel_four() RETURNS integer AS $$SELECT 4$$ language sql;
+/
 CREATE DOMAIN dummy_seclabel_domain AS text;
 ALTER TABLE dummy_seclabel_tbl1 OWNER TO regress_dummy_seclabel_user1;
 ALTER TABLE dummy_seclabel_tbl2 OWNER TO regress_dummy_seclabel_user2;
@@ -100,6 +101,7 @@ CREATE FUNCTION event_trigger_test()
 RETURNS event_trigger AS $$
   BEGIN RAISE NOTICE 'event %: %', TG_EVENT, TG_TAG; END;
 $$ LANGUAGE plpgsql;
+/
 CREATE EVENT TRIGGER always_start ON ddl_command_start
 EXECUTE PROCEDURE event_trigger_test();
 CREATE EVENT TRIGGER always_end ON ddl_command_end

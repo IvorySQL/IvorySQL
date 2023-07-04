@@ -31,6 +31,23 @@
  */
 #include "ora_gram.h"
 
+typedef enum OraBodyStyle
+{
+	OraBody_UNKOWN,
+	OraBody_FUNC
+}OraBodyStyle;
+
+/* Auxiliary data about a token (other than the token type) */
+typedef struct
+{
+	YYSTYPE		lval;			/* semantic information */
+	YYLTYPE		lloc;			/* offset in scanbuf */
+	int			leng;			/* length in bytes */
+} TokenAuxData;
+
+/* Token pushback stack */
+#define MAX_PUSHBACKS 16
+
 /*
  * The YY_EXTRA data that a flex scanner allows us to pass around.  Private
  * state needed for raw parsing/lexing goes here.
@@ -56,6 +73,20 @@ typedef struct ora_base_yy_extra_type
 	 * State variables that belong to the grammar.
 	 */
 	List	   *parsetree;		/* final parse result is delivered here */
+
+	/*
+	 * The native PG only cache one-token info include yylloc, yylval and token
+	 * number in yyextra, IvorySQL cache multiple tokens info using two arrays.
+	 */
+	int max_pushbacks;		/* the maxsize of cache array */
+	int loc_pushback; 		/* # of used tokens */
+	int	num_pushbacks;		/* # of cached tokens */
+	int	*pushback_token;			/* token number array */
+	TokenAuxData *pushback_auxdata; /* auxdata array */
+
+	OraBodyStyle body_style;
+	int          body_start;
+	int          body_level;
 } ora_base_yy_extra_type;
 
 /*
@@ -70,6 +101,9 @@ typedef struct ora_base_yy_extra_type
 /* from libparser_oracle.c */
 extern int	ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp,
 					   	   ora_core_yyscan_t yyscanner);
+
+extern void set_oracle_plsql_body(ora_core_yyscan_t yyscanner, OraBodyStyle body_style);
+extern void set_oracle_plsql_bodystart(ora_core_yyscan_t yyscanner, int body_start, int body_level);
 
 /* from ora_gram.y */
 extern void ora_parser_init(ora_base_yy_extra_type *yyext);

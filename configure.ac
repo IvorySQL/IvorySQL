@@ -184,7 +184,7 @@ fi
 # Default port number (--with-oraport), default 1521
 #
 AC_MSG_CHECKING([for default port number in oracle compatible mode])
-PGAC_ARG_REQ(with, oraport, [PORTNUM], [set default port number for  [1521]],
+PGAC_ARG_REQ(with, oraport, [PORTNUM], [set default port number for oracle  [1521]],
              [default_ora_port=$withval],
              [default_ora_port=1521])
 AC_MSG_RESULT([$default_ora_port])
@@ -194,7 +194,7 @@ AC_DEFINE_UNQUOTED(DEF_ORAPORT, ${default_ora_port},
 to which clients will try to connect.  This can be overridden at run-time,
 but it's convenient if your clients have the right default compiled in.
 (--with-oraport=PORTNUM)])
-AC_DEFINE_UNQUOTED(DEF_PGPORT_STR, "${default_ora_port}",
+AC_DEFINE_UNQUOTED(DEF_ORAPORT_STR, "${default_ora_port}",
                    [Define to the default TCP port number as a string constant.])
 AC_SUBST(default_ora_port)
 
@@ -388,6 +388,48 @@ AC_DEFINE_UNQUOTED([XLOG_BLCKSZ], ${XLOG_BLCKSZ}, [
 
  Changing XLOG_BLCKSZ requires an initdb.
 ])
+
+#
+# Max function arguments
+#
+AC_MSG_CHECKING([for maximum number of arguments to a function])
+PGAC_ARG_REQ(with, max-funarg, [MAXFUNARG], [set maximum number of function arguments[100]],
+             [max_funarg=$withval],
+             [max_funarg=100])
+# The maximum value of function arguments is affected by blocksize
+# Minimum check
+if test $max_funarg -lt 8; then
+	AC_MSG_ERROR([minimum number of function arguments is 8.])
+fi
+
+# Maximum check
+case ${blocksize} in
+  1 | 2 | 4)
+	if test $max_funarg -gt 100; then
+		AC_MSG_ERROR([maximum number of function arguments is 100, when blocksize is 1,2,4 kb.])
+	fi
+	;;
+  8)
+	if test $max_funarg -gt 600; then
+		AC_MSG_ERROR([maximum number of function arguments is 600, when blocksize is 8 kb.])
+	fi
+	;;
+ 16)
+	if test $max_funarg -gt 1200; then
+		AC_MSG_ERROR([maximum number of function arguments is 1200, when blocksize is 16 kb.])
+	fi
+	;;
+ 32)
+	if test $max_funarg -gt 2400; then
+		AC_MSG_ERROR([maximum number of function arguments is 2400, when blocksize is 32 kb.])
+	fi
+	;;
+  *) AC_MSG_ERROR([Invalid block size. Allowed values are 1,2,4,8,16,32.])
+esac
+
+AC_MSG_RESULT([${max_funarg}])
+
+AC_DEFINE_UNQUOTED(MAXIMUM_FUNARG, $max_funarg, [Set maximum number of function arguments.])
 
 #
 # C compiler

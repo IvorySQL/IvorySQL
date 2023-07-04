@@ -488,6 +488,7 @@ BEGIN ATOMIC
          unique1, four
   FROM tenk1 WHERE unique1 < 10;
 END;
+/
 
 CREATE FUNCTION unbounded_syntax_test1b(x int) RETURNS TABLE (a int, b int, c int)
 LANGUAGE SQL
@@ -496,6 +497,7 @@ AS $$
          unique1, four
   FROM tenk1 WHERE unique1 < 10;
 $$;
+/
 
 -- These will apply the argument to the window specification inside the function.
 SELECT * FROM unbounded_syntax_test1a(2);
@@ -508,6 +510,7 @@ BEGIN ATOMIC
          unique1, four
   FROM tenk1 WHERE unique1 < 10;
 END;
+/
 
 CREATE FUNCTION unbounded_syntax_test2b(unbounded int) RETURNS TABLE (a int, b int, c int)
 LANGUAGE SQL
@@ -516,6 +519,7 @@ AS $$
          unique1, four
   FROM tenk1 WHERE unique1 < 10;
 $$;
+/
 
 -- These will not apply the argument but instead treat UNBOUNDED as a keyword.
 SELECT * FROM unbounded_syntax_test2a(2);
@@ -526,6 +530,7 @@ DROP FUNCTION unbounded_syntax_test1a, unbounded_syntax_test1b,
 
 -- Other tests with token UNBOUNDED in potentially problematic position
 CREATE FUNCTION unbounded(x int) RETURNS int LANGUAGE SQL IMMUTABLE RETURN x;
+/
 
 SELECT sum(unique1) over (rows between 1 preceding and 1 following),
        unique1, four
@@ -1134,6 +1139,7 @@ DROP TABLE empsalary;
 -- test user-defined window function with named args and default args
 CREATE FUNCTION nth_value_def(val anyelement, n integer = 1) RETURNS anyelement
   LANGUAGE internal WINDOW IMMUTABLE STRICT AS 'window_nth_value';
+/
 
 SELECT nth_value_def(n := 2, val := ten) OVER (PARTITION BY four), ten, four
   FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten) s;
@@ -1151,14 +1157,17 @@ SELECT nth_value_def(ten) OVER (PARTITION BY four), ten, four
 CREATE FUNCTION logging_sfunc_nonstrict(text, anyelement) RETURNS text AS
 $$ SELECT COALESCE($1, '') || '*' || quote_nullable($2) $$
 LANGUAGE SQL IMMUTABLE;
+/
 
 CREATE FUNCTION logging_msfunc_nonstrict(text, anyelement) RETURNS text AS
 $$ SELECT COALESCE($1, '') || '+' || quote_nullable($2) $$
 LANGUAGE SQL IMMUTABLE;
+/
 
 CREATE FUNCTION logging_minvfunc_nonstrict(text, anyelement) RETURNS text AS
 $$ SELECT $1 || '-' || quote_nullable($2) $$
 LANGUAGE SQL IMMUTABLE;
+/
 
 CREATE AGGREGATE logging_agg_nonstrict (anyelement)
 (
@@ -1183,14 +1192,17 @@ CREATE AGGREGATE logging_agg_nonstrict_initcond (anyelement)
 CREATE FUNCTION logging_sfunc_strict(text, anyelement) RETURNS text AS
 $$ SELECT $1 || '*' || quote_nullable($2) $$
 LANGUAGE SQL STRICT IMMUTABLE;
+/
 
 CREATE FUNCTION logging_msfunc_strict(text, anyelement) RETURNS text AS
 $$ SELECT $1 || '+' || quote_nullable($2) $$
 LANGUAGE SQL STRICT IMMUTABLE;
+/
 
 CREATE FUNCTION logging_minvfunc_strict(text, anyelement) RETURNS text AS
 $$ SELECT $1 || '-' || quote_nullable($2) $$
 LANGUAGE SQL STRICT IMMUTABLE;
+/
 
 CREATE AGGREGATE logging_agg_strict (text)
 (
@@ -1303,6 +1315,7 @@ ORDER BY i;
 CREATE FUNCTION sum_int_randrestart_minvfunc(int4, int4) RETURNS int4 AS
 $$ SELECT CASE WHEN random() < 0.2 THEN NULL ELSE $1 - $2 END $$
 LANGUAGE SQL STRICT;
+/
 
 CREATE AGGREGATE sum_int_randomrestart (int4)
 (
@@ -1493,6 +1506,7 @@ AS $$
       FROM generate_series(1,5) s
     WINDOW w AS (ORDER BY s ROWS BETWEEN CURRENT ROW AND GROUP_SIZE FOLLOWING)
 $$ LANGUAGE SQL STABLE;
+/
 
 EXPLAIN (costs off) SELECT * FROM pg_temp.f(2);
 SELECT * FROM pg_temp.f(2);

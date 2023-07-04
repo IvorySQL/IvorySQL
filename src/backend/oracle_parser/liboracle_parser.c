@@ -160,10 +160,18 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 	yyscanner = ora_scanner_init(str, &yyextra.core_yy_extra,
 							 &OraScanKeywords, OraScanKeywordTokens);
 
+	yyextra.max_pushbacks = MAX_PUSHBACKS;
+	yyextra.pushback_token = palloc(sizeof(int)* MAX_PUSHBACKS);
+	yyextra.pushback_auxdata = palloc(sizeof(TokenAuxData)* MAX_PUSHBACKS);
+	yyextra.num_pushbacks = 0;
+	yyextra.loc_pushback = 0;
+	yyextra.lookahead_end = NULL;
+
+	set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
+
+
 	/* base_yylex() only needs us to initialize the lookahead token, if any */
-	if (mode == RAW_PARSE_DEFAULT)
-		yyextra.have_lookahead = false;
-	else
+	if (mode != RAW_PARSE_DEFAULT)
 	{
 		/* this array is indexed by RawParseMode enum */
 		static const int mode_token[] = {
@@ -175,10 +183,14 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 			MODE_PLPGSQL_ASSIGN3	/* RAW_PARSE_PLPGSQL_ASSIGN3 */
 		};
 
-		yyextra.have_lookahead = true;
-		yyextra.lookahead_token = mode_token[mode];
-		yyextra.lookahead_yylloc = 0;
-		yyextra.lookahead_end = NULL;
+		TokenAuxData auxdata;
+
+		auxdata.lval.core_yystype.str = " ";	/* token value doesn't matter, no one uses it */
+		auxdata.lloc = 0;
+		auxdata.leng = 1;
+		yyextra.pushback_token[yyextra.num_pushbacks] = mode_token[mode];
+		yyextra.pushback_auxdata[yyextra.num_pushbacks] = auxdata;
+		yyextra.num_pushbacks++;
 	}
 
 	/* initialize the bison parser */
@@ -190,12 +202,124 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 	/* Clean up (release memory) */
 	ora_scanner_finish(yyscanner);
 
+	pfree(yyextra.pushback_token);
+	pfree(yyextra.pushback_auxdata);
+
 	if (yyresult)				/* error */
 		return NIL;
 
 	return yyextra.parsetree;
 }
 
+/*
+ * Push a token into cache arrays using the token number and TokenAuxData.
+ */
+static void
+push_back_token(ora_core_yyscan_t yyscanner,  int token, TokenAuxData *auxdata)
+{
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+
+	/* ensure enough space */
+	if (yyextra->num_pushbacks >= yyextra->max_pushbacks)
+	{
+		yyextra->max_pushbacks = yyextra->max_pushbacks * 2;
+		yyextra->pushback_token = repalloc(yyextra->pushback_token, sizeof(int) * yyextra->max_pushbacks);
+		yyextra->pushback_auxdata = repalloc(yyextra->pushback_auxdata, sizeof(TokenAuxData)* yyextra->max_pushbacks);
+
+	}
+
+	yyextra->pushback_token[yyextra->num_pushbacks] = token;
+	yyextra->pushback_auxdata[yyextra->num_pushbacks] = *auxdata;
+	yyextra->num_pushbacks++;
+}
+
+/*
+ * Push a token into cache arrays using yylval, yylloc and token number.
+ */
+static void
+ora_push_back_token(ora_core_yyscan_t yyscanner, int token, ora_core_YYSTYPE lval, YYLTYPE lloc, int length)
+{
+	TokenAuxData auxdata;
+
+	auxdata.lval.core_yystype = lval;
+	auxdata.lloc = lloc;
+	auxdata.leng = length;
+	push_back_token(yyscanner, token, &auxdata);
+}
+
+static void
+forward_token(ora_core_yyscan_t yyscanner, int token, TokenAuxData *auxdata)
+{
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+
+	if (yyextra->loc_pushback >= yyextra->num_pushbacks)
+	{
+		push_back_token(yyscanner, token, auxdata);
+	}
+	else
+	{
+		Assert(yyextra->loc_pushback > 0);
+
+		yyextra->pushback_token[yyextra->loc_pushback-1] = token;
+		yyextra->pushback_auxdata[yyextra->loc_pushback-1] = *auxdata;
+		yyextra->loc_pushback--;
+	}
+}
+
+/* Get next token using ora_core_yylex() */
+static int
+ora_internal_yylex(ora_core_yyscan_t yyscanner, YYLTYPE *llocp, TokenAuxData *auxdata)
+{
+
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	int			token;
+	const char *yytext;
+
+	token = ora_core_yylex(&auxdata->lval.core_yystype,
+		llocp,
+		yyscanner);
+	auxdata->lloc = *llocp;
+
+	/* remember the length of yytext before it gets changed */
+	yytext = yyextra->core_yy_extra.scanbuf + auxdata->lloc;
+	auxdata->leng = strlen(yytext);
+
+	return token;
+}
+
+/*
+ * Get next token directly from the cache when cache array
+ * in yyextra is available, otherwise call ora_core_yylex()
+ * to get the next token.
+ */
+static int
+internal_yylex(ora_core_yyscan_t yyscanner, YYLTYPE *llocp, TokenAuxData *auxdata)
+{
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	int token;
+
+	/* get token from cache arrays */
+	if (yyextra->loc_pushback < yyextra->num_pushbacks)
+	{
+		token = yyextra->pushback_token[yyextra->loc_pushback];
+		*auxdata = yyextra->pushback_auxdata[yyextra->loc_pushback];
+		yyextra->loc_pushback++;
+		*llocp = auxdata->lloc;
+
+		/* If this is the last token in the cache array, reset it */
+		if (yyextra->loc_pushback >= yyextra->num_pushbacks)
+		{
+			yyextra->loc_pushback = 0;
+			yyextra->num_pushbacks = 0;
+		}
+	}
+	else
+	{
+		token = ora_internal_yylex(yyscanner, llocp, auxdata);
+	}
+
+	return token;
+}
 
 /*
  * Intermediate filter between parser and core lexer (core_yylex in scan.l).
@@ -227,18 +351,98 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	int			cur_token_length;
 	YYLTYPE		cur_yylloc;
 
+	TokenAuxData aux1;
+
 	/* Get next token --- we might already have it */
-	if (yyextra->have_lookahead)
+	cur_token = internal_yylex(yyscanner, llocp, &aux1);
+
+	lvalp->core_yystype = aux1.lval.core_yystype;
+
+	if (yyextra->lookahead_end)
 	{
-		cur_token = yyextra->lookahead_token;
-		lvalp->core_yystype = yyextra->lookahead_yylval;
-		*llocp = yyextra->lookahead_yylloc;
-		if (yyextra->lookahead_end)
-			*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
-		yyextra->have_lookahead = false;
+		*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
+		yyextra->lookahead_end = NULL;
 	}
-	else
-		cur_token = ora_core_yylex(&(lvalp->core_yystype), llocp, yyscanner);
+
+	if (yyextra->body_style == OraBody_FUNC && cur_token != SCONST)
+	{
+		int beginpos = yyextra->body_start;
+		int blocklevel = yyextra->body_level;
+		bool found_begin = false;
+
+		if (blocklevel > 0)
+			found_begin = true;
+
+		while (cur_token != 0)
+		{
+			if (beginpos < 0)
+				beginpos = *llocp;
+
+			while (cur_token == BEGIN_P)
+			{
+				cur_token = internal_yylex(yyscanner, llocp, &aux1);
+				if (cur_token != ';' && cur_token != '(')
+				{
+					blocklevel++;
+					found_begin = true;
+				}
+			}
+
+			if (found_begin)
+			{
+				if (cur_token == CASE)
+				{
+					blocklevel++;
+				}
+				else if (cur_token == END_P)
+				{
+					if (blocklevel > 0)
+					{
+						cur_token = internal_yylex(yyscanner, llocp, &aux1);
+						if (cur_token == ';')
+						{
+							blocklevel--;
+						}
+						else if (cur_token == 0)
+						{
+							blocklevel--;
+							break;
+						}
+						//else if (cur_token != LOOP_P && cur_token != IF_P)
+						else if (cur_token != IF_P)
+						{
+							blocklevel--;
+						}
+					}
+				}
+
+				if (blocklevel == 0)
+				{
+					break;
+				}
+			}
+
+			cur_token = internal_yylex(yyscanner, llocp, &aux1);
+		}
+
+		if ((cur_token == ';' && blocklevel == 0) || (cur_token == 0 && blocklevel > 0))
+		{
+			aux1.lval.str = ";";
+			ora_push_back_token(yyscanner, ';', aux1.lval.core_yystype, aux1.lloc, 1);
+
+			/* Now revert the un-truncation of the current token */
+			yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
+				aux1.lloc;
+			yyextra->lookahead_hold_char = *(yyextra->lookahead_end);
+			*(yyextra->lookahead_end) = '\0';
+		}
+
+		lvalp->core_yystype.str = pstrdup(yyextra->core_yy_extra.scanbuf + beginpos);
+		*llocp = beginpos;
+		cur_token = SCONST;
+	}
+
+	set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
 
 	/*
 	 * If this token isn't one that requires lookahead, just return it.  If it
@@ -290,12 +494,11 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	 * internally, and will use that for error reporting.  We need any error
 	 * reports to point to the current token, not the next one.
 	 */
-	cur_yylloc = *llocp;
+	cur_yylloc = aux1.lloc;
 
 	/* Get next token, saving outputs into lookahead variables */
-	next_token = ora_core_yylex(&(yyextra->lookahead_yylval), llocp, yyscanner);
-	yyextra->lookahead_token = next_token;
-	yyextra->lookahead_yylloc = *llocp;
+	next_token = internal_yylex(yyscanner, llocp, &aux1);
+	forward_token(yyscanner, next_token, &aux1);
 
 	*llocp = cur_yylloc;
 
@@ -369,7 +572,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			switch (next_token)
 				{
 				case RAW_P:
-					yyextra->have_lookahead = false;	/* eat RAW_P token */
+					yyextra->loc_pushback++;	/* eat RAW_P token */
 					cur_token = LONG_RAW;
 					break;
 				}
@@ -383,28 +586,21 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				/* Yup, so get third token, which had better be SCONST */
 				const char *escstr;
 
-				/* Again save and restore *llocp */
-				cur_yylloc = *llocp;
-
 				/* Un-truncate current token so errors point to third token */
 				*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
 
-				/* Get third token */
-				next_token = ora_core_yylex(&(yyextra->lookahead_yylval),
-										llocp, yyscanner);
+				/* Get third token using ora_core_yylex() and don't push it into cache arrays */
+				next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
 
 				/* If we throw error here, it will point to third token */
 				if (next_token != SCONST)
 					ora_scanner_yyerror("UESCAPE must be followed by a simple string literal",
 									yyscanner);
 
-				escstr = yyextra->lookahead_yylval.str;
+				escstr = aux1.lval.str;
 				if (strlen(escstr) != 1 || !check_uescapechar(escstr[0]))
 					ora_scanner_yyerror("invalid Unicode escape character",
 									yyscanner);
-
-				/* Now restore *llocp; errors will point to first token */
-				*llocp = cur_yylloc;
 
 				/* Apply Unicode conversion */
 				lvalp->core_yystype.str =
@@ -415,10 +611,10 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 				/*
 				 * We don't need to revert the un-truncation of UESCAPE.  What
-				 * we do want to do is clear have_lookahead, thereby consuming
-				 * all three tokens.
+				 * we do want to do is  eat one-token within cache array, thereby
+				 * consuming all three tokens.
 				 */
-				yyextra->have_lookahead = false;
+				yyextra->loc_pushback++;
 			}
 			else
 			{
@@ -446,6 +642,29 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	}
 
 	return cur_token;
+}
+
+/*
+ * Sets the current syntax type.
+ */
+void set_oracle_plsql_body(ora_core_yyscan_t yyscanner, OraBodyStyle body_style)
+{
+
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	yyextra->body_style = body_style;
+
+	set_oracle_plsql_bodystart(yyscanner, -1, 0);
+}
+
+/*
+ * Sets the current syntax position.
+ */
+void set_oracle_plsql_bodystart(ora_core_yyscan_t yyscanner, int body_start, int body_level)
+{
+
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	yyextra->body_start = body_start;
+	yyextra->body_level = body_level;
 }
 
 /* convert hex digit (caller should have verified that) to value */

@@ -83,6 +83,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE regress_dep_user1 IN SCHEMA deptest
   GRANT ALL ON TABLES TO regress_dep_user2;
 CREATE FUNCTION deptest_func() RETURNS void LANGUAGE plpgsql
   AS $$ BEGIN END; $$;
+/
 CREATE TYPE deptest_enum AS ENUM ('red');
 CREATE TYPE deptest_range AS RANGE (SUBTYPE = int4);
 

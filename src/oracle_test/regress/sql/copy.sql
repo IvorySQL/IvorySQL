@@ -109,7 +109,7 @@ begin
   return new;
 end;
 $$;
-
+/
 create trigger part_ins_trig
 	before insert on parted_copytest_a2
 	for each row
@@ -175,7 +175,7 @@ begin
   return new;
 end;
 $$ language plpgsql;
-
+/
 create trigger check_after_tab_progress_reporting
 	after insert on tab_progress_reporting
 	for each statement

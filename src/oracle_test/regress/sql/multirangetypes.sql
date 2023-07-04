@@ -706,6 +706,7 @@ drop type textrange2;
 
 create function anyarray_anymultirange_func(a anyarray, r anymultirange)
   returns anyelement as 'select $1[1] + lower($2);' language sql;
+/
 
 select anyarray_anymultirange_func(ARRAY[1,2], int4multirange(int4range(10,20)));
 
@@ -717,13 +718,16 @@ drop function anyarray_anymultirange_func(anyarray, anymultirange);
 -- should fail
 create function bogus_func(anyelement)
   returns anymultirange as 'select int4multirange(int4range(1,10))' language sql;
+/
 
 -- should fail
 create function bogus_func(int)
   returns anymultirange as 'select int4multirange(int4range(1,10))' language sql;
+/
 
 create function range_add_bounds(anymultirange)
   returns anyelement as 'select lower($1) + upper($1)' language sql;
+/
 
 select range_add_bounds(int4multirange(int4range(1, 17)));
 select range_add_bounds(nummultirange(numrange(1.0001, 123.123)));
@@ -731,12 +735,14 @@ select range_add_bounds(nummultirange(numrange(1.0001, 123.123)));
 create function multirangetypes_sql(q anymultirange, b anyarray, out c anyelement)
   as $$ select upper($1) + $2[1] $$
   language sql;
+/
 
 select multirangetypes_sql(int4multirange(int4range(1,10)), ARRAY[2,20]);
 select multirangetypes_sql(nummultirange(numrange(1,10)), ARRAY[2,20]);  -- match failure
 
 create function anycompatiblearray_anycompatiblemultirange_func(a anycompatiblearray, mr anycompatiblemultirange)
   returns anycompatible as 'select $1[1] + lower($2);' language sql;
+/
 
 select anycompatiblearray_anycompatiblemultirange_func(ARRAY[1,2], multirange(int4range(10,20)));
 
@@ -749,6 +755,7 @@ drop function anycompatiblearray_anycompatiblemultirange_func(anycompatiblearray
 
 create function anycompatiblerange_anycompatiblemultirange_func(r anycompatiblerange, mr anycompatiblemultirange)
   returns anycompatible as 'select lower($1) + lower($2);' language sql;
+/
 
 select anycompatiblerange_anycompatiblemultirange_func(int4range(1,2), multirange(int4range(10,20)));
 
@@ -760,6 +767,7 @@ drop function anycompatiblerange_anycompatiblemultirange_func(anycompatiblerange
 -- should fail
 create function bogus_func(anycompatible)
   returns anycompatiblerange as 'select int4range(1,10)' language sql;
+/
 
 --
 -- Arrays of multiranges
@@ -813,51 +821,62 @@ reset enable_sort;
 -- infer anymultirange from anymultirange
 create function mr_outparam_succeed(i anymultirange, out r anymultirange, out t text)
   as $$ select $1, 'foo'::text $$ language sql;
+/
 
 select * from mr_outparam_succeed(int4multirange(int4range(1,2)));
 
 -- infer anyarray from anymultirange
 create function mr_outparam_succeed2(i anymultirange, out r anyarray, out t text)
   as $$ select ARRAY[upper($1)], 'foo'::text $$ language sql;
+/
 
 select * from mr_outparam_succeed2(int4multirange(int4range(1,2)));
 
 -- infer anyrange from anymultirange
 create function mr_outparam_succeed3(i anymultirange, out r anyrange, out t text)
   as $$ select range_merge($1), 'foo'::text $$ language sql;
+/
+
 select * from mr_outparam_succeed3(int4multirange(int4range(1,2)));
 
 -- infer anymultirange from anyrange
 create function mr_outparam_succeed4(i anyrange, out r anymultirange, out t text)
   as $$ select multirange($1), 'foo'::text $$ language sql;
+/
 
 select * from mr_outparam_succeed4(int4range(1,2));
 
 -- infer anyelement from anymultirange
 create function mr_inoutparam_succeed(out i anyelement, inout r anymultirange)
   as $$ select upper($1), $1 $$ language sql;
+/
 
 select * from mr_inoutparam_succeed(int4multirange(int4range(1,2)));
 
 -- infer anyelement+anymultirange from anyelement+anymultirange
 create function mr_table_succeed(i anyelement, r anymultirange) returns table(i anyelement, r anymultirange)
   as $$ select $1, $2 $$ language sql;
+/
 
 select * from mr_table_succeed(123, int4multirange(int4range(1,11)));
 
 -- use anymultirange in plpgsql
 create function mr_polymorphic(i anyrange) returns anymultirange
   as $$ begin return multirange($1); end; $$ language plpgsql;
+/
 select mr_polymorphic(int4range(1, 4));
 
 -- should fail
 create function mr_outparam_fail(i anyelement, out r anymultirange, out t text)
   as $$ select '[1,10]', 'foo' $$ language sql;
+/
 
 --should fail
 create function mr_inoutparam_fail(inout i anyelement, out r anymultirange)
   as $$ select $1, '[1,10]' $$ language sql;
+/
 
 --should fail
 create function mr_table_fail(i anyelement) returns table(i anyelement, r anymultirange)
   as $$ select $1, '[1,10]' $$ language sql;
+/

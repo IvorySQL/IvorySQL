@@ -306,7 +306,9 @@ NOTICE:  schema "no_such_schema" does not exist, skipping
 -- Check we receive an ambiguous function error when there are
 -- multiple matching functions.
 CREATE FUNCTION test_ambiguous_funcname(int) returns int as $$ select $1; $$ language sql;
+/
 CREATE FUNCTION test_ambiguous_funcname(text) returns text as $$ select $1; $$ language sql;
+/
 DROP FUNCTION test_ambiguous_funcname;
 ERROR:  function name "test_ambiguous_funcname" is not unique
 HINT:  Specify the argument list to select the function unambiguously.
@@ -318,7 +320,9 @@ DROP FUNCTION test_ambiguous_funcname(int);
 DROP FUNCTION test_ambiguous_funcname(text);
 -- Likewise for procedures.
 CREATE PROCEDURE test_ambiguous_procname(int) as $$ begin end; $$ language plpgsql;
+/
 CREATE PROCEDURE test_ambiguous_procname(text) as $$ begin end; $$ language plpgsql;
+/
 DROP PROCEDURE test_ambiguous_procname;
 ERROR:  procedure name "test_ambiguous_procname" is not unique
 HINT:  Specify the argument list to select the procedure unambiguously.

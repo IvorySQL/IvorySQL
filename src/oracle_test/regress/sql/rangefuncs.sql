@@ -4,6 +4,7 @@ INSERT INTO rngfunc2 VALUES(2, 22);
 INSERT INTO rngfunc2 VALUES(1, 111);
 
 CREATE FUNCTION rngfunct(int) returns setof rngfunc2 as 'SELECT * FROM rngfunc2 WHERE rngfuncid = $1 ORDER BY f2;' LANGUAGE SQL;
+/
 
 -- function with ORDINALITY
 select * from rngfunct(1) with ordinality as z(a,b,ord);
@@ -89,6 +90,7 @@ INSERT INTO rngfunc VALUES(2,1,'Mary');
 
 -- sql, proretset = f, prorettype = b
 CREATE FUNCTION getrngfunc1(int) RETURNS int AS 'SELECT $1;' LANGUAGE SQL;
+/
 SELECT * FROM getrngfunc1(1) AS t1;
 SELECT * FROM getrngfunc1(1) WITH ORDINALITY AS t1(v,o);
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc1(1);
@@ -100,6 +102,7 @@ DROP VIEW vw_getrngfunc;
 
 -- sql, proretset = t, prorettype = b
 CREATE FUNCTION getrngfunc2(int) RETURNS setof int AS 'SELECT rngfuncid FROM rngfunc WHERE rngfuncid = $1;' LANGUAGE SQL;
+/
 SELECT * FROM getrngfunc2(1) AS t1;
 SELECT * FROM getrngfunc2(1) WITH ORDINALITY AS t1(v,o);
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc2(1);
@@ -111,6 +114,7 @@ DROP VIEW vw_getrngfunc;
 
 -- sql, proretset = t, prorettype = b
 CREATE FUNCTION getrngfunc3(int) RETURNS setof text AS 'SELECT rngfuncname FROM rngfunc WHERE rngfuncid = $1;' LANGUAGE SQL;
+/
 SELECT * FROM getrngfunc3(1) AS t1;
 SELECT * FROM getrngfunc3(1) WITH ORDINALITY AS t1(v,o);
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc3(1);
@@ -122,6 +126,7 @@ DROP VIEW vw_getrngfunc;
 
 -- sql, proretset = f, prorettype = c
 CREATE FUNCTION getrngfunc4(int) RETURNS rngfunc AS 'SELECT * FROM rngfunc WHERE rngfuncid = $1;' LANGUAGE SQL;
+/
 SELECT * FROM getrngfunc4(1) AS t1;
 SELECT * FROM getrngfunc4(1) WITH ORDINALITY AS t1(a,b,c,o);
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc4(1);
@@ -133,6 +138,7 @@ DROP VIEW vw_getrngfunc;
 
 -- sql, proretset = t, prorettype = c
 CREATE FUNCTION getrngfunc5(int) RETURNS setof rngfunc AS 'SELECT * FROM rngfunc WHERE rngfuncid = $1;' LANGUAGE SQL;
+/
 SELECT * FROM getrngfunc5(1) AS t1;
 SELECT * FROM getrngfunc5(1) WITH ORDINALITY AS t1(a,b,c,o);
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc5(1);
@@ -144,6 +150,7 @@ DROP VIEW vw_getrngfunc;
 
 -- sql, proretset = f, prorettype = record
 CREATE FUNCTION getrngfunc6(int) RETURNS RECORD AS 'SELECT * FROM rngfunc WHERE rngfuncid = $1;' LANGUAGE SQL;
+/
 SELECT * FROM getrngfunc6(1) AS t1(rngfuncid int, rngfuncsubid int, rngfuncname text);
 SELECT * FROM ROWS FROM( getrngfunc6(1) AS (rngfuncid int, rngfuncsubid int, rngfuncname text) ) WITH ORDINALITY;
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc6(1) AS
@@ -158,6 +165,7 @@ DROP VIEW vw_getrngfunc;
 
 -- sql, proretset = t, prorettype = record
 CREATE FUNCTION getrngfunc7(int) RETURNS setof record AS 'SELECT * FROM rngfunc WHERE rngfuncid = $1;' LANGUAGE SQL;
+/
 SELECT * FROM getrngfunc7(1) AS t1(rngfuncid int, rngfuncsubid int, rngfuncname text);
 SELECT * FROM ROWS FROM( getrngfunc7(1) AS (rngfuncid int, rngfuncsubid int, rngfuncname text) ) WITH ORDINALITY;
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc7(1) AS
@@ -172,6 +180,7 @@ DROP VIEW vw_getrngfunc;
 
 -- plpgsql, proretset = f, prorettype = b
 CREATE FUNCTION getrngfunc8(int) RETURNS int AS 'DECLARE rngfuncint int; BEGIN SELECT rngfuncid into rngfuncint FROM rngfunc WHERE rngfuncid = $1; RETURN rngfuncint; END;' LANGUAGE plpgsql;
+/
 SELECT * FROM getrngfunc8(1) AS t1;
 SELECT * FROM getrngfunc8(1) WITH ORDINALITY AS t1(v,o);
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc8(1);
@@ -183,6 +192,7 @@ DROP VIEW vw_getrngfunc;
 
 -- plpgsql, proretset = f, prorettype = c
 CREATE FUNCTION getrngfunc9(int) RETURNS rngfunc AS 'DECLARE rngfunctup rngfunc%ROWTYPE; BEGIN SELECT * into rngfunctup FROM rngfunc WHERE rngfuncid = $1; RETURN rngfunctup; END;' LANGUAGE plpgsql;
+/
 SELECT * FROM getrngfunc9(1) AS t1;
 SELECT * FROM getrngfunc9(1) WITH ORDINALITY AS t1(a,b,c,o);
 CREATE VIEW vw_getrngfunc AS SELECT * FROM getrngfunc9(1);
@@ -233,8 +243,10 @@ CREATE TEMPORARY SEQUENCE rngfunc_rescan_seq2;
 CREATE TYPE rngfunc_rescan_t AS (i integer, s bigint);
 
 CREATE FUNCTION rngfunc_sql(int,int) RETURNS setof rngfunc_rescan_t AS 'SELECT i, nextval(''rngfunc_rescan_seq1'') FROM generate_series($1,$2) i;' LANGUAGE SQL;
+/
 -- plpgsql functions use materialize mode
 CREATE FUNCTION rngfunc_mat(int,int) RETURNS setof rngfunc_rescan_t AS 'begin for i in $1..$2 loop return next (i, nextval(''rngfunc_rescan_seq2'')); end loop; end;' LANGUAGE plpgsql;
+/
 
 --invokes ExecReScanFunctionScan - all these cases should materialize the function only once
 -- LEFT JOIN on a condition that the planner can't prove to be true is used to ensure the function
@@ -345,6 +357,7 @@ DROP SEQUENCE rngfunc_rescan_seq2;
 
 CREATE FUNCTION rngfunc(in f1 int, out f2 int)
 AS 'select $1+1' LANGUAGE sql;
+/
 SELECT rngfunc(42);
 SELECT * FROM rngfunc(42);
 SELECT * FROM rngfunc(42) AS p(x);
@@ -352,24 +365,30 @@ SELECT * FROM rngfunc(42) AS p(x);
 -- explicit spec of return type is OK
 CREATE OR REPLACE FUNCTION rngfunc(in f1 int, out f2 int) RETURNS int
 AS 'select $1+1' LANGUAGE sql;
+/
 -- error, wrong result type
 CREATE OR REPLACE FUNCTION rngfunc(in f1 int, out f2 int) RETURNS float
 AS 'select $1+1' LANGUAGE sql;
+/
 -- with multiple OUT params you must get a RECORD result
 CREATE OR REPLACE FUNCTION rngfunc(in f1 int, out f2 int, out f3 text) RETURNS int
 AS 'select $1+1' LANGUAGE sql;
+/
 CREATE OR REPLACE FUNCTION rngfunc(in f1 int, out f2 int, out f3 text)
 RETURNS record
 AS 'select $1+1' LANGUAGE sql;
+/
 
 CREATE OR REPLACE FUNCTION rngfuncr(in f1 int, out f2 int, out text)
 AS $$select $1-1, $1::text || 'z'$$ LANGUAGE sql;
+/
 SELECT f1, rngfuncr(f1) FROM int4_tbl;
 SELECT * FROM rngfuncr(42);
 SELECT * FROM rngfuncr(42) AS p(a,b);
 
 CREATE OR REPLACE FUNCTION rngfuncb(in f1 int, inout f2 int, out text)
 AS $$select $2-1, $1::text || 'z'$$ LANGUAGE sql;
+/
 SELECT f1, rngfuncb(f1, f1/2) FROM int4_tbl;
 SELECT * FROM rngfuncb(42, 99);
 SELECT * FROM rngfuncb(42, 99) AS p(a,b);
@@ -385,6 +404,7 @@ DROP FUNCTION rngfuncb(in f1 int, inout f2 int);
 
 CREATE FUNCTION dup (f1 anyelement, f2 out anyelement, f3 out anyarray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
+/
 SELECT dup(22);
 SELECT dup('xyz');	-- fails
 SELECT dup('xyz'::text);
@@ -393,12 +413,14 @@ SELECT * FROM dup('xyz'::text);
 -- fails, as we are attempting to rename first argument
 CREATE OR REPLACE FUNCTION dup (inout f2 anyelement, out f3 anyarray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
+/
 
 DROP FUNCTION dup(anyelement);
 
 -- equivalent behavior, though different name exposed for input arg
 CREATE OR REPLACE FUNCTION dup (inout f2 anyelement, out f3 anyarray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
+/
 SELECT dup(22);
 
 DROP FUNCTION dup(anyelement);
@@ -406,9 +428,11 @@ DROP FUNCTION dup(anyelement);
 -- fails, no way to deduce outputs
 CREATE FUNCTION bad (f1 int, out f2 anyelement, out f3 anyarray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
+/
 
 CREATE FUNCTION dup (f1 anycompatible, f2 anycompatiblearray, f3 out anycompatible, f4 out anycompatiblearray)
 AS 'select $1, $2' LANGUAGE sql;
+/
 SELECT dup(22, array[44]);
 SELECT dup(4.5, array[44]);
 SELECT dup(22, array[44::bigint]);
@@ -418,6 +442,7 @@ DROP FUNCTION dup(f1 anycompatible, f2 anycompatiblearray);
 
 CREATE FUNCTION dup (f1 anycompatiblerange, f2 out anycompatible, f3 out anycompatiblearray, f4 out anycompatiblerange)
 AS 'select lower($1), array[lower($1), upper($1)], $1' LANGUAGE sql;
+/
 SELECT dup(int4range(4,7));
 SELECT dup(numrange(4,7));
 SELECT dup(textrange('aaa', 'bbb'));
@@ -427,6 +452,7 @@ DROP FUNCTION dup(f1 anycompatiblerange);
 -- fails, no way to deduce outputs
 CREATE FUNCTION bad (f1 anyarray, out f2 anycompatible, out f3 anycompatiblearray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
+/
 
 --
 -- table functions
@@ -435,6 +461,7 @@ AS 'select $1, array[$1,$1]' LANGUAGE sql;
 CREATE OR REPLACE FUNCTION rngfunc()
 RETURNS TABLE(a int)
 AS $$ SELECT a FROM generate_series(1,5) a(a) $$ LANGUAGE sql;
+/
 SELECT * FROM rngfunc();
 DROP FUNCTION rngfunc();
 
@@ -443,6 +470,7 @@ RETURNS TABLE(a int, b int)
 AS $$ SELECT a, b
          FROM generate_series(1,$1) a(a),
               generate_series(1,$1) b(b) $$ LANGUAGE sql;
+/
 SELECT * FROM rngfunc(3);
 DROP FUNCTION rngfunc(int);
 
@@ -450,6 +478,7 @@ DROP FUNCTION rngfunc(int);
 CREATE OR REPLACE FUNCTION rngfunc()
 RETURNS TABLE(a varchar(5))
 AS $$ SELECT 'hello'::varchar(5) $$ LANGUAGE sql STABLE;
+/
 SELECT * FROM rngfunc() GROUP BY 1;
 DROP FUNCTION rngfunc();
 
@@ -462,6 +491,7 @@ create temp table tt(f1 serial, data text);
 create function insert_tt(text) returns int as
 $$ insert into tt(data) values($1) returning f1 $$
 language sql;
+/
 
 select insert_tt('foo');
 select insert_tt('bar');
@@ -471,6 +501,7 @@ select * from tt;
 create or replace function insert_tt(text) returns int as
 $$ insert into tt(data) values($1),($1||$1) returning f1 $$
 language sql;
+/
 
 select insert_tt('fool');
 select * from tt;
@@ -479,6 +510,7 @@ select * from tt;
 create or replace function insert_tt2(text,text) returns setof int as
 $$ insert into tt(data) values($1),($2) returning f1 $$
 language sql;
+/
 
 select insert_tt2('foolish','barrish');
 select * from insert_tt2('baz','quux');
@@ -494,6 +526,7 @@ begin
   raise notice 'noticetrigger % %', new.f1, new.data;
   return null;
 end $$ language plpgsql;
+/
 create trigger tnoticetrigger after insert on tt for each row
 execute procedure noticetrigger();
 
@@ -517,6 +550,7 @@ create function rngfunc1(n integer, out a text, out b text)
   returns setof record
   language sql
   as $$ select 'foo ' || i, 'bar ' || i from generate_series(1,$1) i $$;
+/
 
 set work_mem='64kB';
 select t.a, t, t.a from rngfunc1(10000) t limit 1;
@@ -532,6 +566,7 @@ drop function rngfunc1(n integer);
 create function array_to_set(anyarray) returns setof record as $$
   select i AS "index", $1[i] AS "value" from generate_subscripts($1, 1) i
 $$ language sql strict immutable;
+/
 
 select array_to_set(array['one', 'two']);
 select * from array_to_set(array['one', 'two']) as t(f1 int,f2 text);
@@ -550,6 +585,7 @@ explain (verbose, costs off)
 create or replace function array_to_set(anyarray) returns setof record as $$
   select i AS "index", $1[i] AS "value" from generate_subscripts($1, 1) i
 $$ language sql immutable;
+/
 
 select array_to_set(array['one', 'two']);
 select * from array_to_set(array['one', 'two']) as t(f1 int,f2 text);
@@ -563,6 +599,7 @@ create temp table rngfunc(f1 int8, f2 int8);
 create function testrngfunc() returns record as $$
   insert into rngfunc values (1,2) returning *;
 $$ language sql;
+/
 
 select testrngfunc();
 select * from testrngfunc() as t(f1 int8,f2 int8);
@@ -573,6 +610,7 @@ drop function testrngfunc();
 create function testrngfunc() returns setof record as $$
   insert into rngfunc values (1,2), (3,4) returning *;
 $$ language sql;
+/
 
 select testrngfunc();
 select * from testrngfunc() as t(f1 int8,f2 int8);
@@ -586,6 +624,7 @@ create type rngfunc_type as (f1 numeric(35,6), f2 numeric(35,2));
 create function testrngfunc() returns rngfunc_type as $$
   select 7.136178319899999964, 7.136178319899999964;
 $$ language sql immutable;
+/
 
 explain (verbose, costs off)
 select testrngfunc();
@@ -597,6 +636,7 @@ select * from testrngfunc();
 create or replace function testrngfunc() returns rngfunc_type as $$
   select 7.136178319899999964, 7.136178319899999964;
 $$ language sql volatile;
+/
 
 explain (verbose, costs off)
 select testrngfunc();
@@ -610,6 +650,7 @@ drop function testrngfunc();
 create function testrngfunc() returns setof rngfunc_type as $$
   select 7.136178319899999964, 7.136178319899999964;
 $$ language sql immutable;
+/
 
 explain (verbose, costs off)
 select testrngfunc();
@@ -621,6 +662,7 @@ select * from testrngfunc();
 create or replace function testrngfunc() returns setof rngfunc_type as $$
   select 7.136178319899999964, 7.136178319899999964;
 $$ language sql volatile;
+/
 
 explain (verbose, costs off)
 select testrngfunc();
@@ -632,6 +674,7 @@ select * from testrngfunc();
 create or replace function testrngfunc() returns setof rngfunc_type as $$
   select 1, 2 union select 3, 4 order by 1;
 $$ language sql immutable;
+/
 
 explain (verbose, costs off)
 select testrngfunc();
@@ -659,6 +702,7 @@ alter table users drop column todrop;
 create or replace function get_first_user() returns users as
 $$ SELECT * FROM users ORDER BY userid LIMIT 1; $$
 language sql stable;
+/
 
 SELECT get_first_user();
 SELECT * FROM get_first_user();
@@ -666,6 +710,7 @@ SELECT * FROM get_first_user();
 create or replace function get_users() returns setof users as
 $$ SELECT * FROM users ORDER BY userid; $$
 language sql stable;
+/
 
 SELECT get_users();
 SELECT * FROM get_users();
@@ -732,6 +777,7 @@ drop table users;
 create or replace function rngfuncbar() returns setof text as
 $$ select 'foo'::varchar union all select 'bar'::varchar ; $$
 language sql stable;
+/
 
 select rngfuncbar();
 select * from rngfuncbar();
@@ -744,16 +790,19 @@ drop function rngfuncbar();
 
 create or replace function rngfuncbar(out integer, out numeric) as
 $$ select (1, 2.1) $$ language sql;
+/
 
 select * from rngfuncbar();
 
 create or replace function rngfuncbar(out integer, out numeric) as
 $$ select (1, 2) $$ language sql;
+/
 
 select * from rngfuncbar();  -- fail
 
 create or replace function rngfuncbar(out integer, out numeric) as
 $$ select (1, 2.1, 3) $$ language sql;
+/
 
 select * from rngfuncbar();  -- fail
 
@@ -764,6 +813,7 @@ drop function rngfuncbar();
 create function extractq2(t int8_tbl) returns int8 as $$
   select t.q2
 $$ language sql immutable;
+/
 
 explain (verbose, costs off)
 select x from int8_tbl, extractq2(int8_tbl) f(x);
@@ -773,6 +823,7 @@ select x from int8_tbl, extractq2(int8_tbl) f(x);
 create function extractq2_2(t int8_tbl) returns table(ret1 int8) as $$
   select extractq2(t) offset 0
 $$ language sql immutable;
+/
 
 explain (verbose, costs off)
 select x from int8_tbl, extractq2_2(int8_tbl) f(x);
@@ -784,6 +835,7 @@ select x from int8_tbl, extractq2_2(int8_tbl) f(x);
 create function extractq2_2_opt(t int8_tbl) returns table(ret1 int8) as $$
   select extractq2(t)
 $$ language sql immutable;
+/
 
 explain (verbose, costs off)
 select x from int8_tbl, extractq2_2_opt(int8_tbl) f(x);

@@ -12,6 +12,7 @@ CREATE FUNCTION make_tuple_indirect (record)
         RETURNS record
         AS :'regresslib'
         LANGUAGE C STRICT;
+/
 
 -- Other compression algorithms may cause the compressed data to be stored
 -- inline.  pglz guarantees that the data is externalized, so stick to it.
@@ -51,6 +52,7 @@ BEGIN
     NEW := make_tuple_indirect(NEW);
     RETURN NEW;
 END$$;
+/
 
 CREATE TRIGGER indtoasttest_update_indirect
         BEFORE INSERT OR UPDATE

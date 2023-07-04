@@ -101,6 +101,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_room_au after update
     on Room for each row execute procedure tg_room_au();
 -- ************************************************************
@@ -113,6 +114,7 @@ begin
     return old;
 end;
 ' language plpgsql;
+/
 create trigger tg_room_ad after delete
     on Room for each row execute procedure tg_room_ad();
 -- ************************************************************
@@ -127,6 +129,7 @@ begin
     return new;
 end;
 $$ language plpgsql;
+/
 create trigger tg_wslot_biu before insert or update
     on WSlot for each row execute procedure tg_wslot_biu();
 -- ************************************************************
@@ -141,6 +144,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_pfield_au after update
     on PField for each row execute procedure tg_pfield_au();
 -- ************************************************************
@@ -153,6 +157,7 @@ begin
     return old;
 end;
 ' language plpgsql;
+/
 create trigger tg_pfield_ad after delete
     on PField for each row execute procedure tg_pfield_ad();
 -- ************************************************************
@@ -171,6 +176,7 @@ begin
     return ps;
 end;
 $proc$ language plpgsql;
+/
 create trigger tg_pslot_biu before insert or update
     on PSlot for each row execute procedure tg_pslot_biu();
 -- ************************************************************
@@ -185,6 +191,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_system_au after update
     on System for each row execute procedure tg_system_au();
 -- ************************************************************
@@ -210,6 +217,7 @@ begin
     return new;
 end;
 $$ language plpgsql;
+/
 create trigger tg_iface_biu before insert or update
     on IFace for each row execute procedure tg_iface_biu();
 -- ************************************************************
@@ -238,6 +246,7 @@ begin
     end if;
 end;
 ' language plpgsql;
+/
 create trigger tg_hub_a after insert or update or delete
     on Hub for each row execute procedure tg_hub_a();
 -- ************************************************************
@@ -262,6 +271,7 @@ begin
     return 0;
 end
 ' language plpgsql;
+/
 -- Test comments
 COMMENT ON FUNCTION tg_hub_adjustslots_wrong(bpchar, integer, integer) IS 'function with args';
 ERROR:  function tg_hub_adjustslots_wrong(character, integer, integer) does not exist
@@ -300,6 +310,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_hslot_biu before insert or update
     on HSlot for each row execute procedure tg_hslot_biu();
 -- ************************************************************
@@ -320,6 +331,7 @@ begin
     raise exception ''no manual manipulation of HSlot'';
 end;
 ' language plpgsql;
+/
 create trigger tg_hslot_bd before delete
     on HSlot for each row execute procedure tg_hslot_bd();
 -- ************************************************************
@@ -334,6 +346,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_chkslotname before insert
     on PSlot for each row execute procedure tg_chkslotname('PS');
 create trigger tg_chkslotname before insert
@@ -356,6 +369,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_chkslotlink before insert or update
     on PSlot for each row execute procedure tg_chkslotlink();
 create trigger tg_chkslotlink before insert or update
@@ -378,6 +392,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_chkbacklink before insert or update
     on PSlot for each row execute procedure tg_chkbacklink();
 create trigger tg_chkbacklink before insert or update
@@ -408,6 +423,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_pslot_bu before update
     on PSlot for each row execute procedure tg_pslot_bu();
 -- ************************************************************
@@ -434,6 +450,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_wslot_bu before update
     on WSlot for each row execute procedure tg_Wslot_bu();
 -- ************************************************************
@@ -460,6 +477,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_pline_bu before update
     on PLine for each row execute procedure tg_pline_bu();
 -- ************************************************************
@@ -486,6 +504,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_iface_bu before update
     on IFace for each row execute procedure tg_iface_bu();
 -- ************************************************************
@@ -512,6 +531,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_hslot_bu before update
     on HSlot for each row execute procedure tg_hslot_bu();
 -- ************************************************************
@@ -536,6 +556,7 @@ begin
     return new;
 end;
 ' language plpgsql;
+/
 create trigger tg_phone_bu before update
     on PHone for each row execute procedure tg_phone_bu();
 -- ************************************************************
@@ -575,6 +596,7 @@ begin
     end if;
 end;
 ' language plpgsql;
+/
 create trigger tg_backlink_a after insert or update or delete
     on PSlot for each row execute procedure tg_backlink_a('PS');
 create trigger tg_backlink_a after insert or update or delete
@@ -635,6 +657,7 @@ begin
     raise exception ''illegal backlink beginning with %'', mytype;
 end;
 ' language plpgsql;
+/
 -- ************************************************************
 -- * Support function to clear out the backlink field if
 -- * it still points to specific slot
@@ -680,6 +703,7 @@ begin
     end if;
 end
 ' language plpgsql;
+/
 -- ************************************************************
 -- * AFTER INSERT or UPDATE or DELETE on slot with slotlink
 -- *	- Ensure that the opponent correctly points back to us
@@ -717,6 +741,7 @@ begin
     end if;
 end;
 ' language plpgsql;
+/
 create trigger tg_slotlink_a after insert or update or delete
     on PSlot for each row execute procedure tg_slotlink_a('PS');
 create trigger tg_slotlink_a after insert or update or delete
@@ -811,6 +836,7 @@ begin
     raise exception ''illegal slotlink beginning with %'', mytype;
 end;
 ' language plpgsql;
+/
 -- ************************************************************
 -- * Support function to clear out the slotlink field if
 -- * it still points to specific slot
@@ -876,6 +902,7 @@ begin
     end if;
 end;
 ' language plpgsql;
+/
 -- ************************************************************
 -- * Describe the backside of a patchfield slot
 -- ************************************************************
@@ -919,6 +946,7 @@ begin
     return rec.backlink;
 end;
 ' language plpgsql;
+/
 -- ************************************************************
 -- * Describe the front of a patchfield slot
 -- ************************************************************
@@ -953,6 +981,7 @@ begin
     return psrec.slotlink;
 end;
 ' language plpgsql;
+/
 -- ************************************************************
 -- * Describe the front of a wall connector slot
 -- ************************************************************
@@ -1001,6 +1030,7 @@ begin
     return rec.slotlink;
 end;
 ' language plpgsql;
+/
 -- ************************************************************
 -- * View of a patchfield describing backside and patches
 -- ************************************************************
@@ -1564,6 +1594,7 @@ BEGIN
     END IF;
     RETURN rslt;
 END;' LANGUAGE plpgsql;
+/
 SELECT recursion_test(4,3);
  recursion_test 
 ----------------
@@ -1609,6 +1640,7 @@ create function test_found()
   end if;
   return true;
   end;' language plpgsql;
+/
 select test_found();
  test_found 
 ------------
@@ -1638,6 +1670,7 @@ BEGIN
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
+/
 select * from test_table_func_rec();
   a  
 -----
@@ -1658,6 +1691,7 @@ BEGIN
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
+/
 select * from test_table_func_row();
   a  
 -----
@@ -1678,6 +1712,7 @@ BEGIN
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
+/
 select * from test_ret_set_scalar(1,10);
  test_ret_set_scalar 
 ---------------------
@@ -1708,6 +1743,7 @@ BEGIN
 	END IF;
 	RETURN;
 END;' language plpgsql;
+/
 SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int);
  a | b  | c  
 ---+----+----
@@ -1734,6 +1770,7 @@ BEGIN
 		RETURN retval;
 	END IF;
 END;' language plpgsql;
+/
 SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int);
  a | b  | c  
 ---+----+----
@@ -1753,6 +1790,7 @@ create function f1(x anyelement) returns anyelement as $$
 begin
   return x + 1;
 end$$ language plpgsql;
+/
 select f1(42) as int, f1(4.5) as num;
  int | num 
 -----+-----
@@ -1771,6 +1809,7 @@ create function f1(x anyelement) returns anyarray as $$
 begin
   return array[x + 1, x + 2];
 end$$ language plpgsql;
+/
 select f1(42) as int, f1(4.5) as num;
    int   |    num    
 ---------+-----------
@@ -1782,6 +1821,7 @@ create function f1(x anyarray) returns anyelement as $$
 begin
   return x[1];
 end$$ language plpgsql;
+/
 select f1(array[2,4]) as int, f1(array[4.5, 7.7]) as num;
  int | num 
 -----+-----
@@ -1795,6 +1835,7 @@ create function f1(x anyarray) returns anyarray as $$
 begin
   return x;
 end$$ language plpgsql;
+/
 select f1(array[2,4]) as int, f1(array[4.5, 7.7]) as num;
   int  |    num    
 -------+-----------
@@ -1810,12 +1851,14 @@ create function f1(x anyelement) returns anyrange as $$
 begin
   return array[x + 1, x + 2];
 end$$ language plpgsql;
+/
 ERROR:  cannot determine result data type
 DETAIL:  A result of type anyrange requires at least one input of type anyrange or anymultirange.
 create function f1(x anyrange) returns anyarray as $$
 begin
   return array[lower(x), upper(x)];
 end$$ language plpgsql;
+/
 select f1(int4range(42, 49)) as int, f1(float8range(4.5, 7.8)) as num;
    int   |    num    
 ---------+-----------
@@ -1827,6 +1870,7 @@ create function f1(x anycompatible, y anycompatible) returns anycompatiblearray 
 begin
   return array[x, y];
 end$$ language plpgsql;
+/
 select f1(2, 4) as int, f1(2, 4.5) as num;
   int  |   num   
 -------+---------
@@ -1838,6 +1882,7 @@ create function f1(x anycompatiblerange, y anycompatible, z anycompatible) retur
 begin
   return array[lower(x), upper(x), y, z];
 end$$ language plpgsql;
+/
 select f1(int4range(42, 49), 11, 2::smallint) as int, f1(float8range(4.5, 7.8), 7.8, 11::real) as num;
      int      |       num        
 --------------+------------------
@@ -1861,6 +1906,7 @@ create function f1(x anycompatiblerange, y anycompatiblearray) returns anycompat
 begin
   return x;
 end$$ language plpgsql;
+/
 select f1(int4range(42, 49), array[11]) as int, f1(float8range(4.5, 7.8), array[7]) as num;
    int   |    num    
 ---------+-----------
@@ -1876,6 +1922,7 @@ begin
   x := a || b;
   y := array[c, d];
 end$$ language plpgsql;
+/
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, array[1, 2], 42, 34.5);
     x     | pg_typeof |     y     | pg_typeof 
@@ -1914,6 +1961,7 @@ create function f1(in i int, out j int) returns int as $$
 begin
   return i+1;
 end$$ language plpgsql;
+/
 ERROR:  RETURN cannot have a parameter in function with OUT parameters
 LINE 3:   return i+1;
                  ^
@@ -1922,6 +1970,7 @@ begin
   j := i+1;
   return;
 end$$ language plpgsql;
+/
 select f1(42);
  f1 
 ----
@@ -1938,6 +1987,7 @@ create or replace function f1(inout i int) as $$
 begin
   i := i+1;
 end$$ language plpgsql;
+/
 select f1(42);
  f1 
 ----
@@ -1959,6 +2009,7 @@ begin
   return next;
   return;
 end$$ language plpgsql;
+/
 select * from f1(42);
  j  
 ----
@@ -1973,6 +2024,7 @@ begin
   j := j+1;
   k := 'foo';
 end$$ language plpgsql;
+/
 select f1(42);
     f1    
 ----------
@@ -1995,6 +2047,7 @@ begin
   k := 'foot';
   return next;
 end$$ language plpgsql;
+/
 select * from f1(42);
  j  |  k   
 ----+------
@@ -2009,6 +2062,7 @@ begin
   k := array[j,j];
   return;
 end$$ language plpgsql;
+/
 select * from duplic(42);
  j  |    k    
 ----+---------
@@ -2028,6 +2082,7 @@ begin
   k := array[lower(i),upper(i)];
   return;
 end$$ language plpgsql;
+/
 select * from duplic(int4range(42,49));
  j  |    k    
 ----+---------
@@ -2057,6 +2112,7 @@ BEGIN
 		RETURN FALSE;
 	END IF;
 END;' language plpgsql;
+/
 create function perform_test_func() returns void as '
 BEGIN
 	IF FOUND then
@@ -2077,6 +2133,7 @@ BEGIN
 
 	RETURN;
 END;' language plpgsql;
+/
 SELECT perform_test_func();
  perform_test_func 
 -------------------
@@ -2103,6 +2160,7 @@ begin
   if found then return x; end if;
   return 0;
 end$$ language plpgsql stable;
+/
 insert into users values('user1');
 select sp_id_user('user1');
  sp_id_user 
@@ -2130,6 +2188,7 @@ begin
   END IF;
   RETURN my_id_user;
 end$$ language plpgsql;
+/
 select sp_add_user('user1');
  sp_add_user 
 -------------
@@ -2175,6 +2234,7 @@ begin
     return rc;
 end
 $$ language plpgsql;
+/
 create function use_refcursor(rc refcursor) returns int as $$
 declare
     rc refcursor;
@@ -2185,6 +2245,7 @@ begin
     return x.a;
 end
 $$ language plpgsql;
+/
 select use_refcursor(return_unnamed_refcursor());
  use_refcursor 
 ---------------
@@ -2197,12 +2258,14 @@ begin
     return rc;
 end
 $$ language plpgsql;
+/
 create function refcursor_test1(refcursor) returns refcursor as $$
 begin
     perform return_refcursor($1);
     return $1;
 end
 $$ language plpgsql;
+/
 begin;
 select refcursor_test1('test1');
  refcursor_test1 
@@ -2249,6 +2312,7 @@ begin
     end if;
 end
 $$ language plpgsql;
+/
 select refcursor_test2(20000, 20000) as "Should be false",
        refcursor_test2(20, 20) as "Should be true";
  Should be false | Should be true 
@@ -2265,6 +2329,7 @@ begin
     return rc;
 end
 $$ language plpgsql;
+/
 select constant_refcursor();
 ERROR:  variable "rc" is declared CONSTANT
 CONTEXT:  PL/pgSQL function constant_refcursor() line 5 at OPEN
@@ -2277,6 +2342,7 @@ begin
     return rc;
 end
 $$ language plpgsql;
+/
 select constant_refcursor();
  constant_refcursor 
 --------------------
@@ -2301,6 +2367,7 @@ begin
     end if;
 end
 $$ language plpgsql;
+/
 select namedparmcursor_test1(20000, 20000) as "Should be false",
        namedparmcursor_test1(20, 20) as "Should be true";
  Should be false | Should be true 
@@ -2324,6 +2391,7 @@ begin
     end if;
 end
 $$ language plpgsql;
+/
 select namedparmcursor_test2(20, 20);
  namedparmcursor_test2 
 -----------------------
@@ -2339,6 +2407,7 @@ begin
     open c1(param2 := 20, 21);
 end
 $$ language plpgsql;
+/
 ERROR:  value for parameter "param2" of cursor "c1" specified more than once
 LINE 5:     open c1(param2 := 20, 21);
                                   ^
@@ -2350,6 +2419,7 @@ begin
     open c1(20, param1 := 21);
 end
 $$ language plpgsql;
+/
 ERROR:  value for parameter "param1" of cursor "c1" specified more than once
 LINE 5:     open c1(20, param1 := 21);
                         ^
@@ -2362,6 +2432,7 @@ begin
   open c1 (p2 := 77, p2 := 42);
 end
 $$ language plpgsql;
+/
 ERROR:  value for parameter "p2" of cursor "c1" specified more than once
 LINE 6:   open c1 (p2 := 77, p2 := 42);
                              ^
@@ -2374,6 +2445,7 @@ begin
   open c1 (p2 := 77);
 end
 $$ language plpgsql;
+/
 ERROR:  not enough arguments for cursor "c1"
 LINE 6:   open c1 (p2 := 77);
                            ^
@@ -2386,6 +2458,7 @@ declare
 begin
   open c1 (p2 := 77, p1 := 42/0);
 end $$ language plpgsql;
+/
 select namedparmcursor_test7();
 ERROR:  division by zero
 CONTEXT:  SQL expression "42/0 AS p1, 77 AS p2"
@@ -2406,6 +2479,7 @@ begin
   fetch c1 into n;
   return n;
 end $$ language plpgsql;
+/
 select namedparmcursor_test8();
  namedparmcursor_test8 
 -----------------------
@@ -2425,6 +2499,7 @@ begin
   fetch c1 into n;
   return n;
 end $$ language plpgsql;
+/
 select namedparmcursor_test9(6);
  namedparmcursor_test9 
 -----------------------
@@ -2440,6 +2515,7 @@ begin
     return $1;
 end;
 $$ language plpgsql;
+/
 ERROR:  too many parameters specified for RAISE
 CONTEXT:  compilation of PL/pgSQL function "raise_test1" near line 3
 create function raise_test2(int) returns int as $$
@@ -2448,6 +2524,7 @@ begin
     return $1;
 end;
 $$ language plpgsql;
+/
 ERROR:  too few parameters specified for RAISE
 CONTEXT:  compilation of PL/pgSQL function "raise_test2" near line 3
 create function raise_test3(int) returns int as $$
@@ -2456,6 +2533,7 @@ begin
     return $1;
 end;
 $$ language plpgsql;
+/
 select raise_test3(1);
 NOTICE:  This message has no parameters (despite having % signs in it)!
  raise_test3 
@@ -2484,6 +2562,7 @@ EXCEPTION
        raise notice 'WRONG - exception % caught in outer block', sqlerrm;
 END;
 $$ LANGUAGE plpgsql;
+/
 SELECT reraise_test();
 NOTICE:  exception syntax_error thrown in inner block, reraising
 NOTICE:  RIGHT - exception syntax_error caught in inner block
@@ -2504,6 +2583,7 @@ begin
     a := 10;
     return a;
 end$$ language plpgsql;
+/
 ERROR:  syntax error at or near "Johnny"
 LINE 5:     Johnny Yuma;
             ^
@@ -2515,6 +2595,7 @@ begin
     end loop;
     return 5;
 end;$$ language plpgsql;
+/
 ERROR:  syntax error at or near "the"
 LINE 4:     for r in select I fought the law, the law won LOOP
                                      ^
@@ -2524,6 +2605,7 @@ create function missing_return_expr() returns int as $$
 begin
     return ;
 end;$$ language plpgsql;
+/
 ERROR:  missing expression at or near ";"
 LINE 3:     return ;
                    ^
@@ -2531,6 +2613,7 @@ create function void_return_expr() returns void as $$
 begin
     return 5;
 end;$$ language plpgsql;
+/
 ERROR:  RETURN cannot have a parameter in function returning void
 LINE 3:     return 5;
                    ^
@@ -2539,6 +2622,7 @@ create function void_return_expr() returns void as $$
 begin
     perform 2+2;
 end;$$ language plpgsql;
+/
 select void_return_expr();
  void_return_expr 
 ------------------
@@ -2550,6 +2634,7 @@ create function missing_return_expr() returns int as $$
 begin
     perform 2+2;
 end;$$ language plpgsql;
+/
 select missing_return_expr();
 ERROR:  control reached end of function without RETURN
 CONTEXT:  PL/pgSQL function missing_return_expr()
@@ -2579,6 +2664,7 @@ begin
     execute 'select 1,2' into _v;
     return _v;
 end; $$ language plpgsql;
+/
 select execute_into_test('eifoo');
 NOTICE:  10 1
 NOTICE:  10 15
@@ -2597,6 +2683,7 @@ create function excpt_test1() returns void as $$
 begin
     raise notice '% %', sqlstate, sqlerrm;
 end; $$ language plpgsql;
+/
 -- should fail: SQLSTATE and SQLERRM are only in defined EXCEPTION
 -- blocks
 select excpt_test1();
@@ -2613,6 +2700,7 @@ begin
         end;
     end;
 end; $$ language plpgsql;
+/
 -- should fail
 select excpt_test2();
 ERROR:  column "sqlstate" does not exist
@@ -2639,6 +2727,7 @@ begin
 	    raise notice '% %', sqlstate, sqlerrm;
     end;
 end; $$ language plpgsql;
+/
 select excpt_test3();
 NOTICE:  caught exception P0001 user exception
 NOTICE:  P0001 user exception
@@ -2654,6 +2743,7 @@ begin
 	begin perform 1/0;
 	exception when others then return sqlerrm; end;
 end; $$ language plpgsql;
+/
 select excpt_test4();
    excpt_test4    
 ------------------
@@ -2674,6 +2764,7 @@ begin
     i := 2;
     raise notice '%; %; %; %; %; %', a, a[i], c, (select c || 'abc'), row(10,'aaa',NULL,30), NULL;
 end;$$ language plpgsql;
+/
 select raise_exprs();
 NOTICE:  {10,20,30}; 20; xyz; xyzabc; (10,aaa,,30); <NULL>
  raise_exprs 
@@ -2694,6 +2785,7 @@ begin
   select into x,y unique1/p1, unique1/$1 from tenk1 group by unique1/p1;
   return x = y;
 end$$ language plpgsql;
+/
 select multi_datum_use(42);
  multi_datum_use 
 -----------------
@@ -2714,6 +2806,7 @@ begin
   insert into foo values(5,6) returning * into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 NOTICE:  x.f1 = 5, x.f2 = 6
  stricttest 
@@ -2728,6 +2821,7 @@ begin
   insert into foo values(7,8),(9,10) returning * into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 HINT:  Make sure the query returns a single row, or use LIMIT 1.
@@ -2739,6 +2833,7 @@ begin
   execute 'insert into foo values(5,6) returning *' into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 NOTICE:  x.f1 = 5, x.f2 = 6
  stricttest 
@@ -2753,6 +2848,7 @@ begin
   execute 'insert into foo values(7,8),(9,10) returning *' into x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 NOTICE:  x.f1 = 7, x.f2 = 8
  stricttest 
@@ -2778,6 +2874,7 @@ begin
   select * from foo where f1 = 3 into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 NOTICE:  x.f1 = 3, x.f2 = 4
  stricttest 
@@ -2792,6 +2889,7 @@ begin
   select * from foo where f1 = 0 into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned no rows
 CONTEXT:  PL/pgSQL function stricttest() line 5 at SQL statement
@@ -2802,6 +2900,7 @@ begin
   select * from foo where f1 > 3 into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 HINT:  Make sure the query returns a single row, or use LIMIT 1.
@@ -2813,6 +2912,7 @@ begin
   execute 'select * from foo where f1 = 3' into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 NOTICE:  x.f1 = 3, x.f2 = 4
  stricttest 
@@ -2827,6 +2927,7 @@ begin
   execute 'select * from foo where f1 = 0' into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned no rows
 CONTEXT:  PL/pgSQL function stricttest() line 5 at EXECUTE
@@ -2837,6 +2938,7 @@ begin
   execute 'select * from foo where f1 > 3' into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 CONTEXT:  PL/pgSQL function stricttest() line 5 at EXECUTE
@@ -2853,6 +2955,7 @@ begin
   select * from foo where f1 = p1 and f1::text = p3 into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned no rows
 DETAIL:  parameters: p1 = '2', p3 = 'foo'
@@ -2867,6 +2970,7 @@ begin
   select * from foo where f1 = p1 and f1::text = p3 into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned no rows
 DETAIL:  parameters: p1 = '2', p3 = '''Valame Dios!'' dijo Sancho; ''no le dije yo a vuestra merced que mirase bien lo que hacia?'''
@@ -2881,6 +2985,7 @@ begin
   select * from foo where f1 > p1 or f1::text = p3  into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 DETAIL:  parameters: p1 = '2', p3 = 'foo'
@@ -2893,6 +2998,7 @@ begin
   select * from foo where f1 > 3 into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 HINT:  Make sure the query returns a single row, or use LIMIT 1.
@@ -2904,6 +3010,7 @@ begin
   execute 'select * from foo where f1 = $1 or f1::text = $2' using 0, 'foo' into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned no rows
 DETAIL:  parameters: $1 = '0', $2 = 'foo'
@@ -2915,6 +3022,7 @@ begin
   execute 'select * from foo where f1 > $1' using 1 into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 DETAIL:  parameters: $1 = '1'
@@ -2926,6 +3034,7 @@ begin
   execute 'select * from foo where f1 > 3' into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 CONTEXT:  PL/pgSQL function stricttest() line 5 at EXECUTE
@@ -2941,6 +3050,7 @@ begin
   select * from foo where f1 > p1 or f1::text = p3  into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 HINT:  Make sure the query returns a single row, or use LIMIT 1.
@@ -2958,6 +3068,7 @@ begin
   select * from foo where f1 > p1 or f1::text = p3  into strict x;
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
+/
 select stricttest();
 ERROR:  query returned more than one row
 DETAIL:  parameters: p1 = '2', p3 = 'foo'
@@ -2979,6 +3090,7 @@ out1 int;
 begin
 end
 $$ language plpgsql;
+/
 WARNING:  variable "in1" shadows a previously defined variable
 LINE 4: in1 int;
         ^
@@ -3004,6 +3116,7 @@ out1 int;
 begin
 end
 $$ language plpgsql;
+/
 WARNING:  variable "in1" shadows a previously defined variable
 LINE 4: in1 int;
         ^
@@ -3027,6 +3140,7 @@ begin
 	begin
 	end;
 end$$ language plpgsql;
+/
 WARNING:  variable "f1" shadows a previously defined variable
 LINE 7:  f1 int;
          ^
@@ -3042,6 +3156,7 @@ begin
 	begin
 	end;
 end$$ language plpgsql;
+/
 WARNING:  variable "in1" shadows a previously defined variable
 LINE 4: in1 int;
         ^
@@ -3057,6 +3172,7 @@ f1 int;
 c1 cursor (f1 int) for select 1;
 begin
 end$$ language plpgsql;
+/
 WARNING:  variable "f1" shadows a previously defined variable
 LINE 5: c1 cursor (f1 int) for select 1;
                    ^
@@ -3066,6 +3182,7 @@ set plpgsql.extra_errors to 'shadowed_variables';
 create or replace function shadowtest(f1 int)
 	returns boolean as $$
 declare f1 int; begin return 1; end $$ language plpgsql;
+/
 ERROR:  variable "f1" shadows a previously defined variable
 LINE 3: declare f1 int; begin return 1; end $$ language plpgsql;
                 ^
@@ -3079,6 +3196,7 @@ reset plpgsql.extra_warnings;
 create or replace function shadowtest(f1 int)
 	returns boolean as $$
 declare f1 int; begin return 1; end $$ language plpgsql;
+/
 select shadowtest(1);
  shadowtest 
 ------------
@@ -3201,6 +3319,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
+/
 select * from sc_test();
    sc_test   
 -------------
@@ -3225,6 +3344,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
+/
 select * from sc_test();  -- fails because of NO SCROLL specification
 ERROR:  cursor can only scan forward
 HINT:  Declare it with SCROLL option to enable backward scan.
@@ -3243,6 +3363,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
+/
 select * from sc_test();
    sc_test   
 -------------
@@ -3267,6 +3388,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
+/
 select * from sc_test();
    sc_test   
 -------------
@@ -3290,6 +3412,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
+/
 select * from sc_test();
    sc_test   
 -------------
@@ -3316,6 +3439,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
+/
 select * from sc_test();
  sc_test 
 ---------
@@ -3338,6 +3462,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
+/
 select * from sc_test();
  sc_test 
 ---------
@@ -3362,6 +3487,7 @@ begin
   end;
 end;
 $$ language plpgsql;
+/
 select pl_qual_names(42);
 NOTICE:  param1 = 2
 NOTICE:  pl_qual_names.param1 = 42
@@ -3383,6 +3509,7 @@ begin
     return next;
 end;
 $$ language plpgsql;
+/
 select * from ret_query1();
  column1 | column2 
 ---------+---------
@@ -3408,6 +3535,7 @@ begin
                  from generate_series(-8, lim) s (x) where s.x % 2 = 0;
 end;
 $$ language plpgsql;
+/
 select * from ret_query2(8);
                 x                 | y  | z 
 ----------------------------------+----+---
@@ -3433,6 +3561,7 @@ begin
   return i;
 end
 $$ language plpgsql;
+/
 select exc_using(5, 'foobar');
 NOTICE:  1
 NOTICE:  2
@@ -3461,6 +3590,7 @@ begin
   return;
 end;
 $$ language plpgsql;
+/
 select exc_using(5);
 NOTICE:  1
 NOTICE:  2
@@ -3513,6 +3643,7 @@ begin
   return;
 end;
 $$ language plpgsql;
+/
 select forc01();
 NOTICE:  5 from c
 NOTICE:  6 from c
@@ -3549,6 +3680,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+/
 select forc01();
 NOTICE:  1, 1
 NOTICE:  2, 2
@@ -3595,6 +3727,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+/
 select forc01();
 NOTICE:  100, 2
 NOTICE:  200, 4
@@ -3653,6 +3786,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+/
 ERROR:  cursor FOR loop must use a bound cursor variable
 LINE 5:   for r in c loop
                    ^
@@ -3664,6 +3798,7 @@ begin
   return query execute 'select * from (values($1),($2)) f' using 40,50;
 end;
 $$ language plpgsql;
+/
 select * from return_dquery();
  return_dquery 
 ---------------
@@ -3684,6 +3819,7 @@ begin
   return query execute 'select * from tabwithcols';
 end;
 $$ language plpgsql;
+/
 select * from returnqueryf();
  a  | b  | c  | d  
 ----+----+----+----
@@ -3738,6 +3874,7 @@ begin
   return v;
 end;
 $$ language plpgsql;
+/
 select compos();
   compos   
 -----------
@@ -3753,6 +3890,7 @@ begin
   return v;
 end;
 $$ language plpgsql;
+/
 select compos();
   compos   
 -----------
@@ -3765,6 +3903,7 @@ begin
   return (1, 'hello'::varchar);
 end;
 $$ language plpgsql;
+/
 select compos();
   compos   
 -----------
@@ -3777,6 +3916,7 @@ begin
   return (1, 'hello');
 end;
 $$ language plpgsql;
+/
 select compos();
 ERROR:  returned record type does not match expected record type
 DETAIL:  Returned type unknown does not match expected type character varying in column 2.
@@ -3787,6 +3927,7 @@ begin
   return (1, 'hello')::compostype;
 end;
 $$ language plpgsql;
+/
 select compos();
   compos   
 -----------
@@ -3803,6 +3944,7 @@ begin
   return v;
 end;
 $$ language plpgsql;
+/
 select composrec();
  composrec 
 -----------
@@ -3815,6 +3957,7 @@ begin
   return (1, 'hello');
 end;
 $$ language plpgsql;
+/
 select composrec();
  composrec 
 -----------
@@ -3833,6 +3976,7 @@ begin
   return next (2, 'goodbye')::compostype;
 end;
 $$ language plpgsql;
+/
 select * from compos();
  x |    y    
 ---+---------
@@ -3850,6 +3994,7 @@ begin
   return 1 + 1;
 end;
 $$ language plpgsql;
+/
 select compos();
 ERROR:  cannot return non-composite value from function returning composite type
 CONTEXT:  PL/pgSQL function compos() line 3 at RETURN
@@ -3860,6 +4005,7 @@ begin
   return x;
 end;
 $$ language plpgsql;
+/
 select * from compos();
 ERROR:  cannot return non-composite value from function returning composite type
 CONTEXT:  PL/pgSQL function compos() line 4 at RETURN
@@ -3873,6 +4019,7 @@ begin
   return v;
 end;
 $$ language plpgsql;
+/
 select compos();
 ERROR:  invalid input syntax for type integer: "(1,hello)"
 CONTEXT:  PL/pgSQL function compos() while casting return value to function's return type
@@ -3882,6 +4029,7 @@ begin
   return (1, 'hello')::compostype;
 end;
 $$ language plpgsql;
+/
 select compos();
 ERROR:  invalid input syntax for type integer: "(1,hello)"
 CONTEXT:  PL/pgSQL function compos() while casting return value to function's return type
@@ -3898,6 +4046,7 @@ begin
      using errcode = 'division_by_zero', detail = 'some detail info';
 end;
 $$ language plpgsql;
+/
 select raise_test();
 NOTICE:  1 2 3
 DETAIL:  some detail info
@@ -3917,6 +4066,7 @@ begin
       raise;
 end;
 $$ language plpgsql;
+/
 select raise_test();
 NOTICE:  SQLSTATE: 22012 SQLERRM: check me
 ERROR:  check me
@@ -3932,6 +4082,7 @@ begin
       raise;
 end;
 $$ language plpgsql;
+/
 select raise_test();
 NOTICE:  SQLSTATE: 1234F SQLERRM: check me
 ERROR:  check me
@@ -3948,6 +4099,7 @@ begin
       raise;
 end;
 $$ language plpgsql;
+/
 select raise_test();
 NOTICE:  SQLSTATE: 1234F SQLERRM: check me
 ERROR:  check me
@@ -3962,6 +4114,7 @@ begin
       raise;
 end;
 $$ language plpgsql;
+/
 select raise_test();
 NOTICE:  SQLSTATE: 22012 SQLERRM: division_by_zero
 ERROR:  division_by_zero
@@ -3972,6 +4125,7 @@ begin
   raise division_by_zero;
 end;
 $$ language plpgsql;
+/
 select raise_test();
 ERROR:  division_by_zero
 CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
@@ -3980,6 +4134,7 @@ begin
   raise sqlstate '1234F';
 end;
 $$ language plpgsql;
+/
 select raise_test();
 ERROR:  1234F
 CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
@@ -3988,6 +4143,7 @@ begin
   raise division_by_zero using message = 'custom' || ' message';
 end;
 $$ language plpgsql;
+/
 select raise_test();
 ERROR:  custom message
 CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
@@ -3996,6 +4152,7 @@ begin
   raise using message = 'custom' || ' message', errcode = '22012';
 end;
 $$ language plpgsql;
+/
 select raise_test();
 ERROR:  custom message
 CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
@@ -4005,6 +4162,7 @@ begin
   raise notice 'some message' using message = 'custom' || ' message', errcode = '22012';
 end;
 $$ language plpgsql;
+/
 select raise_test();
 ERROR:  RAISE option already specified: MESSAGE
 CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
@@ -4014,6 +4172,7 @@ begin
   raise division_by_zero using message = 'custom' || ' message', errcode = '22012';
 end;
 $$ language plpgsql;
+/
 select raise_test();
 ERROR:  RAISE option already specified: ERRCODE
 CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
@@ -4023,6 +4182,7 @@ begin
   raise;
 end;
 $$ language plpgsql;
+/
 select raise_test();
 ERROR:  RAISE without parameters cannot be used outside an exception handler
 CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
@@ -4033,6 +4193,7 @@ begin
   return 10 / v;
 end;
 $$ language plpgsql;
+/
 create or replace function raise_test() returns void as $$
 begin
   raise exception 'custom exception'
@@ -4040,6 +4201,7 @@ begin
            hint = 'some hint related to custom exception';
 end;
 $$ language plpgsql;
+/
 create function stacked_diagnostics_test() returns void as $$
 declare _sqlstate text;
         _message text;
@@ -4055,6 +4217,7 @@ exception when others then
     _sqlstate, _message, replace(_context, E'\n', ' <- ');
 end;
 $$ language plpgsql;
+/
 select stacked_diagnostics_test();
 NOTICE:  sqlstate: 22012, message: division by zero, context: [PL/pgSQL function zero_divide() line 4 at RETURN <- SQL statement "SELECT zero_divide()" <- PL/pgSQL function stacked_diagnostics_test() line 6 at PERFORM]
  stacked_diagnostics_test 
@@ -4076,6 +4239,7 @@ exception when others then
   raise notice 'message: %, detail: %, hint: %', _message, _detail, _hint;
 end;
 $$ language plpgsql;
+/
 select stacked_diagnostics_test();
 NOTICE:  message: custom exception, detail: some detail of custom exception, hint: some hint related to custom exception
  stacked_diagnostics_test 
@@ -4096,6 +4260,7 @@ begin
   raise notice 'message: %, detail: %, hint: %', _message, _detail, _hint;
 end;
 $$ language plpgsql;
+/
 select stacked_diagnostics_test();
 ERROR:  GET STACKED DIAGNOSTICS cannot be used outside an exception handler
 CONTEXT:  PL/pgSQL function stacked_diagnostics_test() line 6 at GET STACKED DIAGNOSTICS
@@ -4112,6 +4277,7 @@ exception
     raise sqlstate '22012' using message = 'substitute message';
 end;
 $$ language plpgsql;
+/
 select raise_test();
 NOTICE:  22012
 ERROR:  substitute message
@@ -4143,6 +4309,7 @@ exception when others then
     _column_name, _constraint_name, _datatype_name, _table_name, _schema_name;
 end;
 $$ language plpgsql;
+/
 select stacked_diagnostics_test();
 NOTICE:  column >>some column name<<, constraint >>some constraint name<<, type >>some datatype name<<, table >>some table name<<, schema >>some schema name<<
  stacked_diagnostics_test 
@@ -4159,6 +4326,7 @@ begin
     raise notice '%', $1[i];
   end loop; end;
 $$ language plpgsql;
+/
 select vari(1,2,3,4,5);
 NOTICE:  1
 NOTICE:  2
@@ -4200,6 +4368,7 @@ begin
   return aux;
 end;
 $$ language plpgsql immutable strict;
+/
 select pleast(10,1,2,3,-16);
  pleast 
 --------
@@ -4232,6 +4401,7 @@ begin
   return $1;
 end;
 $$ language plpgsql immutable strict;
+/
 select pleast(10);
 NOTICE:  non-variadic function called
  pleast 
@@ -4247,6 +4417,7 @@ begin
   return query select $1, $1+i from generate_series(1,5) g(i);
 end;
 $$ language plpgsql immutable strict;
+/
 select * from tftest(10);
  a  | b  
 ----+----
@@ -4265,6 +4436,7 @@ begin
   return next;
 end;
 $$ language plpgsql immutable strict;
+/
 select * from tftest(10);
   a  |  b  
 -----+-----
@@ -4291,6 +4463,7 @@ begin
   raise notice '% %', found, rc;
 end;
 $$ language plpgsql;
+/
 select * from rttest();
 NOTICE:  t 2
 NOTICE:  f 0
@@ -4311,6 +4484,7 @@ begin
   return query select 10 into no_such_table;
 end;
 $$ language plpgsql;
+/
 select * from rttest();
 ERROR:  SELECT INTO query does not return tuples
 CONTEXT:  SQL statement "select 10 into no_such_table"
@@ -4321,6 +4495,7 @@ begin
   return query execute 'select 10 into no_such_table';
 end;
 $$ language plpgsql;
+/
 select * from rttest();
 ERROR:  SELECT INTO query does not return tuples
 CONTEXT:  SQL statement "select 10 into no_such_table"
@@ -4355,6 +4530,7 @@ BEGIN
   RETURN;
 END;
 $$ LANGUAGE plpgsql;
+/
 SELECT * FROM leaker_1(false);
  leaker_1 
 ----------
@@ -4385,6 +4561,7 @@ BEGIN
   RETURN arr;
 END;
 $$ LANGUAGE plpgsql;
+/
 SELECT nonsimple_expr_test();
    nonsimple_expr_test   
 -------------------------
@@ -4405,6 +4582,7 @@ begin
   return i;
 end;
 $$ LANGUAGE plpgsql;
+/
 SELECT nonsimple_expr_test();
  nonsimple_expr_test 
 ---------------------
@@ -4427,9 +4605,11 @@ begin
   end if;
 end;
 $$ language plpgsql;
+/
 -- "limit" is to prevent this from being inlined
 create function sql_recurse(float8) returns float8 as
 $$ select recurse($1) limit 1; $$ language sql;
+/
 select recurse(10);
  recurse 
 ---------
@@ -4442,6 +4622,7 @@ create function error2(p_name_table text) returns text language plpgsql as $$
 begin
   return error1(p_name_table);
 end$$;
+/
 BEGIN;
 create table public.stuffs (stuff text);
 SAVEPOINT a;
@@ -4468,6 +4649,7 @@ create function cast_invoker(integer) returns date as $$
 begin
   return $1;
 end$$ language plpgsql;
+/
 select cast_invoker(20150717);
  cast_invoker 
 --------------
@@ -4534,6 +4716,7 @@ begin
   return 1/0;
 end
 $$;
+/
 select fail();
 ERROR:  division by zero
 CONTEXT:  SQL expression "1/0"
@@ -4551,6 +4734,7 @@ begin
   return 'foo\\bar\041baz';
 end
 $$ language plpgsql;
+/
 WARNING:  nonstandard use of \\ in a string literal
 LINE 3:   raise notice 'foo\\bar\041baz';
                        ^
@@ -4581,6 +4765,7 @@ begin
   return E'foo\\bar\041baz';
 end
 $$ language plpgsql;
+/
 select strtest();
 NOTICE:  foo\bar!baz
    strtest   
@@ -4595,6 +4780,7 @@ begin
   return 'foo\\bar\041baz\';
 end
 $$ language plpgsql;
+/
 select strtest();
 NOTICE:  foo\\bar\041baz\
      strtest      
@@ -4608,6 +4794,7 @@ begin
   return E'foo\\bar\041baz';
 end
 $$ language plpgsql;
+/
 select strtest();
 NOTICE:  foo\bar!baz
    strtest   
@@ -4738,6 +4925,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+/
 select * from conflict_test();
 ERROR:  column reference "q1" is ambiguous
 LINE 1: select q1,q2 from int8_tbl
@@ -4755,6 +4943,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+/
 select * from conflict_test();
  q1 |        q2         
 ----+-------------------
@@ -4775,6 +4964,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+/
 select * from conflict_test();
         q1        |        q2         
 ------------------+-------------------
@@ -4795,6 +4985,7 @@ begin
   return forward;
 end
 $$ language plpgsql;
+/
 select unreserved_test();
  unreserved_test 
 -----------------
@@ -4809,6 +5000,7 @@ begin
   return return;
 end
 $$ language plpgsql;
+/
 select unreserved_test();
  unreserved_test 
 -----------------
@@ -4824,6 +5016,7 @@ begin
   return comment;
 end
 $$ language plpgsql;
+/
 select unreserved_test();
  unreserved_test 
 -----------------
@@ -4850,6 +5043,7 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+/
 select foreach_test(ARRAY[1,2,3,4]);
 NOTICE:  1
 NOTICE:  2
@@ -4880,6 +5074,7 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+/
 -- should fail
 select foreach_test(ARRAY[1,2,3,4]);
 ERROR:  FOREACH ... SLICE loop variable must be of an array type
@@ -4897,6 +5092,7 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+/
 select foreach_test(ARRAY[1,2,3,4]);
 NOTICE:  {1,2,3,4}
  foreach_test 
@@ -4923,6 +5119,7 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+/
 -- should fail
 select foreach_test(ARRAY[1,2,3,4]);
 ERROR:  slice dimension (2) is out of the valid range 0..1
@@ -4955,6 +5152,7 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+/
 select foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]);
 NOTICE:  (10,20)
 NOTICE:  (40,69)
@@ -4984,6 +5182,7 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+/
 select foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]);
 NOTICE:  x = 10, y = 20
 NOTICE:  x = 40, y = 69
@@ -5014,6 +5213,7 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+/
 select foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]);
 NOTICE:  {"(10,20)","(40,69)","(35,78)"}
  foreach_test 
@@ -5043,6 +5243,7 @@ begin
   r.ar[2] := 'replace';
   return r.ar;
 end$$;
+/
 select arrayassign1();
    arrayassign1    
 -------------------
@@ -5073,6 +5274,7 @@ begin
   res[2] := x3;
   return res;
 end$$;
+/
 select testoa(1,2,3);
  testoa 
 --------
@@ -5101,10 +5303,12 @@ language plpgsql as $$
   declare r int[];
   begin r := array[$1, $1]; return r; end;
 $$ stable;
+/
 create function consumes_rw_array(int[]) returns int
 language plpgsql as $$
   begin return $1[1]; end;
 $$ stable;
+/
 select consumes_rw_array(returns_rw_array(42));
  consumes_rw_array 
 -------------------
@@ -5190,6 +5394,7 @@ begin
   return 2 * $1;
 end;
 $$ language plpgsql;
+/
 create or replace function outer_func(int)
 returns int as $$
 declare
@@ -5201,6 +5406,7 @@ begin
   return myresult;
 end;
 $$ language plpgsql;
+/
 create or replace function outer_outer_func(int)
 returns int as $$
 declare
@@ -5212,6 +5418,7 @@ begin
   return myresult;
 end;
 $$ language plpgsql;
+/
 select outer_outer_func(10);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
@@ -5272,6 +5479,7 @@ begin
   return 2 * $1;
 end;
 $$ language plpgsql;
+/
 create or replace function outer_func(int)
 returns int as $$
 declare
@@ -5283,6 +5491,7 @@ begin
   return myresult;
 end;
 $$ language plpgsql;
+/
 create or replace function outer_outer_func(int)
 returns int as $$
 declare
@@ -5294,6 +5503,7 @@ begin
   return myresult;
 end;
 $$ language plpgsql;
+/
 select outer_outer_func(10);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
@@ -5342,6 +5552,7 @@ begin
   return fn_oid;
 end;
 $$ language plpgsql;
+/
 select current_function('foo');
     current_function    
 ------------------------
@@ -5472,6 +5683,7 @@ BEGIN
   RETURN new;
 END;
 $$;
+/
 CREATE TRIGGER transition_table_base_ins_trig
   AFTER INSERT ON transition_table_base
   REFERENCING OLD TABLE AS oldtable NEW TABLE AS newtable
@@ -5512,6 +5724,7 @@ BEGIN
   RETURN new;
 END;
 $$;
+/
 CREATE TRIGGER transition_table_base_upd_trig
   AFTER UPDATE ON transition_table_base
   REFERENCING OLD TABLE AS oldtable NEW TABLE AS newtable
@@ -5563,6 +5776,7 @@ AS $$
     RETURN NULL;
   END;
 $$;
+/
 CREATE TRIGGER transition_table_level1_ri_parent_del_trigger
   AFTER DELETE ON transition_table_level1
   REFERENCING OLD TABLE AS p
@@ -5590,6 +5804,7 @@ AS $$
     RETURN NULL;
   END;
 $$;
+/
 CREATE TRIGGER transition_table_level1_ri_parent_upd_trigger
   AFTER UPDATE ON transition_table_level1
   REFERENCING OLD TABLE AS d NEW TABLE AS i
@@ -5610,6 +5825,7 @@ AS $$
     RETURN NULL;
   END;
 $$;
+/
 CREATE TRIGGER transition_table_level2_ri_child_ins_trigger
   AFTER INSERT ON transition_table_level2
   REFERENCING NEW TABLE AS i
@@ -5646,6 +5862,7 @@ AS $$
     RETURN NULL;
   END;
 $$;
+/
 CREATE TRIGGER transition_table_level2_bad_usage_trigger
   AFTER DELETE ON transition_table_level2
   REFERENCING OLD TABLE AS dx
@@ -5711,6 +5928,7 @@ BEGIN
   RETURN NULL;
 END;
 $$;
+/
 -- should fail, TRUNCATE is not compatible with transition tables
 CREATE TRIGGER alter_table_under_transition_tables_upd_trigger
   AFTER TRUNCATE OR UPDATE ON alter_table_under_transition_tables
@@ -5761,6 +5979,7 @@ BEGIN
        FROM (SELECT * FROM new_test UNION ALL SELECT * FROM new_test) ss);
     RETURN NULL;
 END$$;
+/
 CREATE TRIGGER my_trigger AFTER UPDATE ON multi_test
   REFERENCING NEW TABLE AS new_test OLD TABLE as old_test
   FOR EACH STATEMENT EXECUTE PROCEDURE multi_test_trig();
@@ -5787,6 +6006,7 @@ BEGIN
     SELECT * INTO result FROM partitioned_table WHERE a = a_val;
     RETURN result;
 END; $$ LANGUAGE plpgsql;
+/
 NOTICE:  type reference partitioned_table.a%TYPE converted to integer
 SELECT * FROM get_from_partitioned_table(1) AS t;
  a |   b   
@@ -5806,6 +6026,7 @@ BEGIN
     END LOOP;
     RETURN;
 END; $$ LANGUAGE plpgsql;
+/
 NOTICE:  type reference partitioned_table.a%TYPE converted to integer
 SELECT * FROM list_partitioned_table() AS t;
  t 
@@ -5822,6 +6043,7 @@ BEGIN
   GET DIAGNOSTICS x = ROW_COUNT;
   RETURN;
 END; $$ LANGUAGE plpgsql;
+/
 ERROR:  "x" is not a scalar variable
 LINE 3:   GET DIAGNOSTICS x = ROW_COUNT;
                           ^

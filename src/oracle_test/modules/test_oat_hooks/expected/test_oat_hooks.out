@@ -98,6 +98,7 @@ NOTICE:  in process utility: superuser finished GRANT
 CREATE FUNCTION regress_test_func (t text) RETURNS text AS $$
 	SELECT $1;
 $$ LANGUAGE sql;
+/
 NOTICE:  in process utility: superuser attempting CREATE FUNCTION
 NOTICE:  in object access: superuser attempting create (subId=0x0) [explicit]
 NOTICE:  in object access: superuser finished create (subId=0x0) [explicit]

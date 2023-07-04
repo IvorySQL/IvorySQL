@@ -765,6 +765,7 @@ create view rtest_vview4 as select X.a, X.b, count(Y.a) as refcount
 create function rtest_viewfunc1(int4) returns int4 as
 	'select count(*)::int4 from rtest_view2 where a = $1'
 	language sql;
+/
 create view rtest_vview5 as select a, b, rtest_viewfunc1(a) as refcount
 	from rtest_view1;
 insert into rtest_view1 values (1, 'item 1', 't');
@@ -3452,6 +3453,7 @@ CREATE FUNCTION func_with_set_params() RETURNS integer
     SET datestyle to iso, mdy
     SET local_preload_libraries TO "Mixed/Case", 'c:/''a"/path', '', '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
     IMMUTABLE STRICT;
+/
 SELECT pg_get_functiondef('func_with_set_params()'::regprocedure);
                                                                             pg_get_functiondef                                                                            
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------

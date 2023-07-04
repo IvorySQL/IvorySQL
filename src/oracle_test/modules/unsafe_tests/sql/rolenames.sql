@@ -15,6 +15,7 @@ SELECT r.rolname, v.keyword, r.rolcanlogin, r.rolreplication
       ON (r.rolname = v.uname)
  ORDER BY 1, 2;
 $$ LANGUAGE SQL;
+/
 
 CREATE FUNCTION chksetconfig()
  RETURNS TABLE (db name, "role" name, rolkeyword text, setconfig text[])
@@ -32,6 +33,7 @@ SELECT COALESCE(d.datname, 'ALL'), COALESCE(r.rolname, 'ALL'),
    WHERE (r.rolname) IN ('Public', 'current_user', 'regress_testrol1', 'regress_testrol2')
 ORDER BY 1, 2, 3;
 $$ LANGUAGE SQL;
+/
 
 CREATE FUNCTION chkumapping()
  RETURNS TABLE (umname name, umserver name, umoptions text[])
@@ -42,6 +44,7 @@ SELECT r.rolname, s.srvname, m.umoptions
  JOIN pg_foreign_server s ON (s.oid = m.umserver)
  ORDER BY 2, 1;
 $$ LANGUAGE SQL;
+/
 
 --
 -- We test creation and use of these role names to ensure that the server

@@ -19,9 +19,11 @@ from generate_series(0, 11*11-1) i;
 -- and a simple strict function that's opaque to the optimizer
 create function strictf(bool, bool) returns bool
 language plpgsql as $$begin return $1 and not $2; end$$ strict;
+/
 -- a simple function to make arrays opaque to the optimizer
 create function opaque_array(int[]) returns int[]
 language plpgsql as $$begin return $1; end$$ strict;
+/
 -- Basic proof rules for single boolean variables
 select * from test_predtest($$
 select x, x

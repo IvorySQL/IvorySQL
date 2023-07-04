@@ -34,6 +34,7 @@ begin
   end if;
 end;
 $$;
+/
 create or replace function hash_join_batches(query text)
 returns table (original int, final int) language plpgsql
 as
@@ -52,6 +53,7 @@ begin
   end loop;
 end;
 $$;
+/
 
 -- Make a simple relation with well distributed keys and correctly
 -- estimated size.

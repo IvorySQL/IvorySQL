@@ -167,5 +167,6 @@ EXCEPTION
     RAISE NOTICE 'Got expected error for xid in the future';
 END;
 $$;
+/
 SELECT test_future_xid_status((:inprogress + 10000)::text::xid8);
 ROLLBACK;

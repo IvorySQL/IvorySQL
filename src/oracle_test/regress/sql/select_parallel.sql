@@ -4,6 +4,7 @@
 
 create function sp_parallel_restricted(int) returns int as
   $$begin return $1; end$$ language plpgsql parallel restricted;
+/
 
 begin;
 
@@ -51,6 +52,7 @@ reset enable_parallel_append;
 create function sp_test_func() returns setof text as
 $$ select 'foo'::varchar union all select 'bar'::varchar $$
 language sql stable;
+/
 select sp_test_func() order by 1;
 
 -- Parallel Append is not to be used when the subpath depends on the outer param
@@ -237,6 +239,7 @@ begin
     end loop;
 end;
 $$;
+/
 select * from explain_parallel_sort_stats();
 
 reset enable_indexscan;
@@ -273,6 +276,7 @@ begin
         return var1 + 10;
 end;
 $$ language plpgsql PARALLEL SAFE;
+/
 
 explain (costs off, verbose)
     select ten, sp_simple_func(ten) from tenk1 where ten < 100 order by ten;
@@ -363,6 +367,7 @@ BEGIN
          END;
 END;
 $$;
+/
 SAVEPOINT settings;
 SET LOCAL debug_parallel_query = 1;
 SELECT make_record(x) FROM (SELECT generate_series(1, 5) x) ss ORDER BY x;
@@ -447,6 +452,7 @@ $$declare x int[];
     x[2] := $2;
     return x;
   end$$ language plpgsql parallel safe;
+/
 CREATE TABLE fooarr(f1 text, f2 int[], f3 text);
 INSERT INTO fooarr VALUES('1', ARRAY[1,2], 'one');
 

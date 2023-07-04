@@ -12,6 +12,7 @@ CREATE FUNCTION test_opclass_options_func(internal)
     RETURNS void
     AS :'regresslib', 'test_opclass_options_func'
     LANGUAGE C;
+/
 
 -- Clean up in case a prior regression run failed
 SET client_min_messages TO 'warning';
@@ -39,8 +40,10 @@ SET search_path = alt_nsp1, public;
 SET SESSION AUTHORIZATION regress_alter_generic_user1;
 CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
   AS 'SELECT $1 + 1';
+/
 CREATE FUNCTION alt_func2(int) RETURNS int LANGUAGE sql
   AS 'SELECT $1 - 1';
+/
 CREATE AGGREGATE alt_agg1 (
   sfunc1 = int4pl, basetype = int4, stype1 = int4, initcond = 0
 );
@@ -67,8 +70,10 @@ ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- OK
 SET SESSION AUTHORIZATION regress_alter_generic_user2;
 CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
   AS 'SELECT $1 + 2';
+/
 CREATE FUNCTION alt_func2(int) RETURNS int LANGUAGE sql
   AS 'SELECT $1 - 2';
+/
 CREATE AGGREGATE alt_agg1 (
   sfunc1 = int4pl, basetype = int4, stype1 = int4, initcond = 100
 );
@@ -366,6 +371,7 @@ DROP OPERATOR FAMILY alt_opf11 USING gist;
 BEGIN TRANSACTION;
 CREATE OPERATOR FAMILY alt_opf12 USING btree;
 CREATE FUNCTION fn_opf12  (int4, int2) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' LANGUAGE SQL;
+/
 ALTER OPERATOR FAMILY alt_opf12 USING btree ADD FUNCTION 1 fn_opf12(int4, int2);
 DROP OPERATOR FAMILY alt_opf12 USING btree;
 ROLLBACK;
@@ -374,6 +380,7 @@ ROLLBACK;
 BEGIN TRANSACTION;
 CREATE OPERATOR FAMILY alt_opf13 USING hash;
 CREATE FUNCTION fn_opf13  (int4) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' LANGUAGE SQL;
+/
 ALTER OPERATOR FAMILY alt_opf13 USING hash ADD FUNCTION 1 fn_opf13(int4);
 DROP OPERATOR FAMILY alt_opf13 USING hash;
 ROLLBACK;
@@ -382,6 +389,7 @@ ROLLBACK;
 BEGIN TRANSACTION;
 CREATE OPERATOR FAMILY alt_opf14 USING btree;
 CREATE FUNCTION fn_opf14 (int4) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' LANGUAGE SQL;
+/
 ALTER OPERATOR FAMILY alt_opf14 USING btree ADD FUNCTION 1 fn_opf14(int4);
 DROP OPERATOR FAMILY alt_opf14 USING btree;
 ROLLBACK;
@@ -390,6 +398,7 @@ ROLLBACK;
 BEGIN TRANSACTION;
 CREATE OPERATOR FAMILY alt_opf15 USING hash;
 CREATE FUNCTION fn_opf15 (int4, int2) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' LANGUAGE SQL;
+/
 ALTER OPERATOR FAMILY alt_opf15 USING hash ADD FUNCTION 1 fn_opf15(int4, int2);
 DROP OPERATOR FAMILY alt_opf15 USING hash;
 ROLLBACK;

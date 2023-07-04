@@ -37,6 +37,7 @@ BEGIN
 	END LOOP;
 END;
 $$;
+/
 
 CREATE EVENT TRIGGER test_ddl_deparse
 ON ddl_command_end EXECUTE PROCEDURE test_ddl_deparse();

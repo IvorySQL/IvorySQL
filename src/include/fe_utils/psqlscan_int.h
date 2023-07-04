@@ -123,6 +123,7 @@ typedef struct PsqlScanStateData
 	int			identifier_count;	/* identifiers since start of statement */
 	char		identifiers[4]; /* records the first few identifiers */
 	int			begin_depth;	/* depth of begin/end pairs */
+	bool		cancel_semicolon_terminator; /* not send command when semicolon found */
 
 	/*
 	 * Callback functions provided by the program making use of the lexer,

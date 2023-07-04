@@ -245,6 +245,9 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 %type <expr> arg_decl_defval
 %type <boolean> function_arg_nocopy
 
+%type <stmt> ora_outermost_pl_block
+%type <declhdr> ora_decl_sect
+%type <boolean> opt_ora_decl_stmts
 
 /*
  * Basic non-keyword token types.  These are hard-wired into the core lexer.
@@ -400,7 +403,7 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 
 %%
 
-pl_function		: comp_options pl_block opt_semi
+pl_function		: comp_options ora_outermost_pl_block opt_semi
 					{
 						plisql_parse_result = (PLiSQL_stmt_block *) $2;
 					}
@@ -449,6 +452,87 @@ option_value : T_WORD
 opt_semi		:
 				| ';'
 				;
+
+ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END opt_label
+		{
+			PLiSQL_stmt_block *new;
+
+			new = palloc0(sizeof(PLiSQL_stmt_block));
+
+			new->cmd_type = PLISQL_STMT_BLOCK;
+			new->lineno 	= plisql_location_to_lineno(@2);
+			new->stmtid 	= ++plisql_curr_compile->nstatements;
+			new->label		= $1.label;
+			new->n_initvars = $1.n_initvars;
+			new->initvarnos = $1.initvarnos;
+			new->body 	= $3;
+			new->exceptions = $4;
+
+			check_labels($1.label, $6, @6);
+			plisql_ns_pop();
+
+			$$ = (PLiSQL_stmt *)new;
+		}
+	;
+
+ora_decl_sect		: opt_block_label opt_ora_decl_start opt_ora_decl_stmts
+					{
+						if ($3)
+						{
+							plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+							$$.label	  = $1;
+							/* Remember variables declared in decl_stmts */
+							$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
+						}
+						else
+						{
+							plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+							$$.label	  = $1;
+							$$.n_initvars = 0;
+							$$.initvarnos = NULL;
+						}
+					}
+				;
+
+opt_ora_decl_start: K_DECLARE
+					{
+						/* Forget any variables created before block */
+						plisql_add_initdatums(NULL);
+						/*
+						 * Disable scanner lookup of identifiers while
+						 * we process the decl_stmts
+						 */
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
+					}
+				| /*EMPTY*/
+					{
+						/* Forget any variables created before block */
+						plisql_add_initdatums(NULL);
+						/*
+						 * Disable scanner lookup of identifiers while
+						 * we process the decl_stmts
+						 */
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
+					}
+				;
+
+opt_ora_decl_stmts:
+			ora_decl_stmts
+				{
+					$$ = true;
+				}
+			| /*EMPTY*/
+				{
+					$$ = false;
+				}
+
+ora_decl_stmts: ora_decl_stmts ora_decl_stmt
+			| ora_decl_stmt
+			;
+
+ora_decl_stmt: decl_statement
+			;
+
 
 pl_block		: decl_sect K_BEGIN proc_sect exception_sect K_END opt_label
 					{

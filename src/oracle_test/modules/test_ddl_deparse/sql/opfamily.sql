@@ -2,8 +2,10 @@
 create type int8alias1;
 create function int8alias1in(cstring) returns int8alias1
   strict immutable language internal as 'int8in';
+/
 create function int8alias1out(int8alias1) returns cstring
   strict immutable language internal as 'int8out';
+/
 create type int8alias1 (
     input = int8alias1in,
     output = int8alias1out,
@@ -13,8 +15,10 @@ create type int8alias1 (
 create type int8alias2;
 create function int8alias2in(cstring) returns int8alias2
   strict immutable language internal as 'int8in';
+/
 create function int8alias2out(int8alias2) returns cstring
   strict immutable language internal as 'int8out';
+/
 create type int8alias2 (
     input = int8alias2in,
     output = int8alias2out,
@@ -28,6 +32,7 @@ create cast (int8alias2 as int8) without function;
 
 create function int8alias1eq(int8alias1, int8alias1) returns bool
   strict immutable language internal as 'int8eq';
+/
 create operator = (
     procedure = int8alias1eq,
     leftarg = int8alias1, rightarg = int8alias1,
@@ -44,6 +49,7 @@ create type ctype as (f1 int, f2 text);
 
 create function same(ctype, ctype) returns boolean language sql
 as 'select $1.f1 is not distinct from $2.f1 and $1.f2 is not distinct from $2.f2';
+/
 
 create operator =(procedure = same, leftarg  = ctype, rightarg = ctype);
 

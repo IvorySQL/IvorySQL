@@ -1292,14 +1292,17 @@ create function psql_df_internal (float8)
   returns float8
   language internal immutable parallel safe strict
   as 'dsin';
+
 create function psql_df_sql (x integer)
   returns integer
   security definer
   begin atomic select x + 1; end;
+
 create function psql_df_plpgsql ()
   returns void
   language plpgsql
   as $$ begin return; end; $$;
+
 comment on function psql_df_plpgsql () is 'some comment';
 
 \df+ psql_df_*
@@ -1383,6 +1386,7 @@ CREATE FUNCTION warn(msg TEXT) RETURNS BOOLEAN LANGUAGE plpgsql
 AS $$
   BEGIN RAISE NOTICE 'warn %', msg ; RETURN TRUE ; END
 $$;
+/
 
 -- show both
 SELECT 1 AS one \; SELECT warn('1.5') \; SELECT 2 AS two ;
@@ -1529,6 +1533,7 @@ CREATE FUNCTION psql_error(msg TEXT) RETURNS BOOLEAN AS $$
     RAISE EXCEPTION 'error %', msg;
   END;
 $$ LANGUAGE plpgsql;
+/
 
 \set ON_ERROR_ROLLBACK on
 \echo '# ON_ERROR_ROLLBACK:' :ON_ERROR_ROLLBACK

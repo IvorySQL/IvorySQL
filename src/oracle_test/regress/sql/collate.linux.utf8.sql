@@ -276,12 +276,15 @@ SELECT a, CAST(b AS varchar) FROM collate_test3 ORDER BY 2;
 
 CREATE FUNCTION mylt (text, text) RETURNS boolean LANGUAGE sql
     AS $$ select $1 < $2 $$;
+/
 
 CREATE FUNCTION mylt_noninline (text, text) RETURNS boolean LANGUAGE sql
     AS $$ select $1 < $2 limit 1 $$;
+/
 
 CREATE FUNCTION mylt_plpgsql (text, text) RETURNS boolean LANGUAGE plpgsql
     AS $$ begin return $1 < $2; end $$;
+/
 
 SELECT a.b AS a, b.b AS b, a.b < b.b AS lt,
        mylt(a.b, b.b), mylt_noninline(a.b, b.b), mylt_plpgsql(a.b, b.b)
@@ -305,6 +308,7 @@ begin
   return xx < yy;
 end
 $$;
+/
 
 SELECT mylt2('a', 'B' collate "en_US") as t, mylt2('a', 'B' collate "C") as f;
 
@@ -317,6 +321,7 @@ begin
   return xx < yy;
 end
 $$;
+/
 
 SELECT mylt2('a', 'B') as f;
 SELECT mylt2('a', 'B' collate "C") as fail; -- conflicting collations
@@ -331,6 +336,7 @@ SELECT * FROM unnest((SELECT array_agg(b ORDER BY b) FROM collate_test3)) ORDER 
 
 CREATE FUNCTION dup (anyelement) RETURNS anyelement
     AS 'select $1' LANGUAGE sql;
+/
 
 SELECT a, dup(b) FROM collate_test1 ORDER BY 2;
 SELECT a, dup(b) FROM collate_test2 ORDER BY 2;

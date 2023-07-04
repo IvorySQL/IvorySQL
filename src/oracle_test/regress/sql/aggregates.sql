@@ -985,6 +985,7 @@ begin
 	return null;
 end
 $$ language plpgsql;
+/
 
 create function avg_finalfn(state avg_state) returns int4 as
 $$
@@ -996,6 +997,7 @@ begin
 	end if;
 end
 $$ language plpgsql;
+/
 
 create function sum_finalfn(state avg_state) returns int4 as
 $$
@@ -1007,6 +1009,7 @@ begin
 	end if;
 end
 $$ language plpgsql;
+/
 
 create aggregate my_avg(int4)
 (
@@ -1113,6 +1116,7 @@ begin
 	return null;
 end
 $$ language plpgsql;
+/
 
 create function halfsum_finalfn(state int4) returns int4 as
 $$
@@ -1124,6 +1128,7 @@ begin
 	end if;
 end
 $$ language plpgsql;
+/
 
 create aggregate my_sum(int4)
 (
@@ -1159,6 +1164,7 @@ BEGIN
     END IF;
     RETURN NULL;
 END$$;
+/
 
 CREATE AGGREGATE balk(int4)
 (
@@ -1187,6 +1193,7 @@ BEGIN
     END IF;
     RETURN NULL;
 END$$;
+/
 
 CREATE AGGREGATE balk(int4)
 (
@@ -1216,6 +1223,7 @@ BEGIN
     RETURN array_fill(y[1], ARRAY[4]);
 END;
 $$;
+/
 
 CREATE FUNCTION rwagg_finalfunc(x anyarray) RETURNS anyarray
 LANGUAGE plpgsql STRICT IMMUTABLE AS $$
@@ -1227,6 +1235,7 @@ BEGIN
     RETURN res;
 END;
 $$;
+/
 
 CREATE AGGREGATE rwagg(anyarray) (
     STYPE = anyarray,
@@ -1241,6 +1250,7 @@ BEGIN
     RETURN x;
 END;
 $$;
+/
 
 SELECT eatarray(rwagg(ARRAY[1.0::real])), eatarray(rwagg(ARRAY[1.0::real]));
 

@@ -156,6 +156,7 @@ begin
     end loop;
   end loop;
 end; $$ language plisql;
+/
 
 select continue_test1();
 
@@ -167,6 +168,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 
 -- should fail: unlabeled EXIT is only legal inside a loop
 create function exit_error1() returns void as $$
@@ -176,6 +178,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 
 -- should fail: no such label
 create function continue_error2() returns void as $$
@@ -187,6 +190,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 
 -- should fail: no such label
 create function exit_error2() returns void as $$
@@ -198,6 +202,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 
 -- should fail: CONTINUE can't reference the label of a named block
 create function continue_error3() returns void as $$
@@ -210,6 +215,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 
 -- On the other hand, EXIT *can* reference the label of a named block
 create function exit_block1() returns void as $$
@@ -223,6 +229,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 
 select exit_block1();
 
@@ -242,6 +249,7 @@ begin
   end loop;
 end blbl;
 $$ language plisql;
+/
 
 select end_label1();
 
@@ -253,6 +261,7 @@ begin
   end loop flbl1;
 end;
 $$ language plisql;
+/
 
 -- should fail: end label does not match start label
 create function end_label3() returns void as $$
@@ -264,6 +273,7 @@ begin
   end loop outer_label;
 end;
 $$ language plisql;
+/
 
 -- should fail: end label on a block without a start label
 create function end_label4() returns void as $$
@@ -274,6 +284,7 @@ begin
   end loop outer_label;
 end;
 $$ language plisql;
+/
 
 -- unlabeled exit matches no blocks
 do $$
@@ -392,6 +403,7 @@ begin
   end loop;
   return null;
 end$$;
+/
 
 select return_from_while();
 
@@ -421,6 +433,7 @@ begin
   end loop;
 end;
 $proc$ language plisql;
+/
 
 select for_vect();
 
@@ -444,6 +457,7 @@ begin
   end case;
 end;
 $$ language plisql immutable;
+/
 
 select case_test(1);
 select case_test(2);
@@ -464,6 +478,7 @@ exception
     raise notice 'caught case_not_found % %', SQLSTATE, SQLERRM;
 end
 $$ language plisql;
+/
 
 select catch();
 
@@ -481,6 +496,7 @@ begin
   end case;
 end;
 $$ language plisql immutable;
+/
 
 select case_test(1);
 select case_test(2);

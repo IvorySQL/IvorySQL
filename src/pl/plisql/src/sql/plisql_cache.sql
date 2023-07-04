@@ -14,6 +14,7 @@ create table c_mutable(f1 int, f2 text);
 
 create function c_sillyaddone(int) returns int language plisql as
 $$ declare r c_mutable; begin r.f1 := $1; return r.f1 + 1; end $$;
+/
 select c_sillyaddone(42);
 
 alter table c_mutable drop column f1;
@@ -39,6 +40,7 @@ $$
         return format('type %s value %s', t, r.a::text);
     end;
 $$;
+/
 
 select show_result_type('select 1 as a');
 -- currently this fails due to cached plan for pg_typeof expression

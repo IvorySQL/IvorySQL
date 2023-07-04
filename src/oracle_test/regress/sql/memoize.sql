@@ -29,6 +29,7 @@ begin
     end loop;
 end;
 $$;
+/
 
 -- Ensure we get a memoize node on the inner side of the nested loop
 SET enable_hashjoin TO off;

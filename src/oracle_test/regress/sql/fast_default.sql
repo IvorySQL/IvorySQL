@@ -18,6 +18,7 @@ BEGIN
                 AND s.nspname = 'fast_default');
 END;
 $$ LANGUAGE 'plpgsql';
+/
 
 CREATE FUNCTION comp() RETURNS TEXT
 AS $$
@@ -32,6 +33,7 @@ BEGIN
                AND s.nspname = 'fast_default');
 END;
 $$ LANGUAGE 'plpgsql';
+/
 
 CREATE FUNCTION log_rewrite() RETURNS event_trigger
 LANGUAGE plpgsql as
@@ -51,6 +53,7 @@ begin
     end if;
 end;
 $func$;
+/
 
 CREATE TABLE has_volatile AS
 SELECT * FROM generate_series(1,10) id;
@@ -178,6 +181,7 @@ BEGIN
   END LOOP;
   RETURN res;
 END; $$ LANGUAGE PLPGSQL STABLE;
+/
 
 CREATE TABLE T(pk INT NOT NULL PRIMARY KEY, c_int INT DEFAULT LENGTH(foo(6)));
 
@@ -381,6 +385,7 @@ begin
 end;
 
 $$;
+/
 
 -- 2 new columns, both have defaults
 CREATE TABLE t (id serial PRIMARY KEY, a int, b int, c int);

@@ -4050,4 +4050,47 @@ typedef struct DropSubscriptionStmt
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
 } DropSubscriptionStmt;
 
+typedef enum AccessorItemUnitKind
+{
+	ACCESSOR_FUNCTION,
+	ACCESSOR_PROCEDURE,
+	ACCESSOR_PACKAGE,
+	ACCESSOR_TRIGGER,
+	ACCESSOR_TYPE,
+	ACCESSOR_UNKNOW
+} AccessorItemUnitKind;
+
+typedef struct AccessorItem
+{
+	NodeTag		type;
+	List		*unitname;			/* qualified name (list of Value strings) */
+	AccessorItemUnitKind unitkind;	/* ACCESSOR_FUNCTION, etc */
+} AccessorItem;
+
+typedef struct AccessibleByClause
+{
+	NodeTag		type;
+	List		*accessors;		/* List of AccessorItem nodes */
+} AccessibleByClause;
+
+/*
+ * support alter a function like
+ * alter function func editable|noneditable or compile
+ * we doesn't use the AlterFunctionStmt, because we doesn't
+ * want to use AlterFunction function, which will modify the
+ * pg_proc catalog table,compile doesn't change the system catalog.
+ * another reason is AlterFunction which fun should
+ * bring function arguments and find function rely on its
+ * arguments, this struct will doesn't consider function arguments.
+ */
+typedef struct CompileFunctionStmt
+{
+	NodeTag		type;
+	List		*funcname;
+	bool		is_compile;		/* if false, it is change the editable|noneditable */
+	bool		editable;
+	List		*parameters;
+	bool		is_procedure;		/* a procedure or a function */
+} CompileFunctionStmt;
+
 #endif							/* PARSENODES_H */

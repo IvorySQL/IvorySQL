@@ -15,7 +15,7 @@ CREATE FUNCTION interpt_pp(path, path)
     RETURNS point
     AS :'regresslib'
     LANGUAGE C STRICT;
-
+/
 CREATE TABLE real_city (
 	pop			int4,
 	cname		text,
@@ -569,6 +569,7 @@ begin
 end;
 $$
 language plpgsql;
+/
 
 create view tt14v as select t.* from tt14f() t;
 

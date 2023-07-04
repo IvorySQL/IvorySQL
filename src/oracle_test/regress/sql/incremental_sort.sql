@@ -28,6 +28,7 @@ begin
   end loop;
 end;
 $$;
+/
 
 create or replace function explain_analyze_inc_sort_nodes(query text)
 returns jsonb language plpgsql
@@ -65,6 +66,7 @@ begin
   return matching_nodes;
 end;
 $$;
+/
 
 create or replace function explain_analyze_inc_sort_nodes_without_memory(query text)
 returns jsonb language plpgsql
@@ -88,6 +90,7 @@ begin
   return nodes;
 end;
 $$;
+/
 
 create or replace function explain_analyze_inc_sort_nodes_verify_invariants(query text)
 returns bool language plpgsql
@@ -112,6 +115,7 @@ begin
   return true;
 end;
 $$;
+/
 
 -- A single large group tested around each mode transition point.
 insert into t(a, b) select i/100 + 1, i + 1 from generate_series(0, 999) n(i);

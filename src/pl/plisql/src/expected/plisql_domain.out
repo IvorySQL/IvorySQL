@@ -7,6 +7,7 @@ begin
 return y;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_argresult_booltrue(true, true);
  test_argresult_booltrue 
 -------------------------
@@ -25,6 +26,7 @@ v := y;
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_booltrue(true, true);
  test_assign_booltrue 
 ----------------------
@@ -43,6 +45,7 @@ begin
 return y;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_argresult_uint2(100::uint2, 50);
  test_argresult_uint2 
 ----------------------
@@ -65,6 +68,7 @@ v := y;
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_uint2(100, 50);
  test_assign_uint2 
 -------------------
@@ -89,6 +93,7 @@ begin
 return y;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_argresult_nnint(10, 20);
  test_argresult_nnint 
 ----------------------
@@ -107,6 +112,7 @@ v := y;
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_nnint(10, 20);
  test_assign_nnint 
 -------------------
@@ -129,6 +135,7 @@ begin
 return x;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_argresult_array_domain(ARRAY[0, 100]::ordered_pair_domain);
  test_argresult_array_domain 
 -----------------------------
@@ -147,6 +154,7 @@ begin
 return array[2,1];
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_argresult_array_domain_check_violation();
 ERROR:  value for domain ordered_pair_domain violates check constraint "ordered_pair_domain_check"
 CONTEXT:  PL/iSQL function test_argresult_array_domain_check_violation() while casting return value to function's return type
@@ -157,6 +165,7 @@ v[2] := z;
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_ordered_pair_domain(1,2,3);
  test_assign_ordered_pair_domain 
 ---------------------------------
@@ -177,6 +186,7 @@ begin
 return x[1];
 end
 $$ LANGUAGE plisql;
+/
 select test_read_uint2_array(array[1::uint2]);
  test_read_uint2_array 
 -----------------------
@@ -188,6 +198,7 @@ begin
 return array[x, x];
 end
 $$ LANGUAGE plisql;
+/
 select test_build_uint2_array(1::int2);
  test_build_uint2_array 
 ------------------------
@@ -203,6 +214,7 @@ begin
 return array[x::ordered_pair_domain, x::ordered_pair_domain];
 end
 $$ LANGUAGE plisql;
+/
 select test_argresult_domain_array(array[2,4]);
  test_argresult_domain_array 
 -----------------------------
@@ -218,6 +230,7 @@ begin
 return x[1];
 end
 $$ LANGUAGE plisql;
+/
 select test_argresult_domain_array2(array[2,4]);
  test_argresult_domain_array2 
 ------------------------------
@@ -232,6 +245,7 @@ begin
 return x[1];
 end
 $$ LANGUAGE plisql;
+/
 select test_argresult_array_domain_array(array[array[2,4]::ordered_pair_domain]);
  test_argresult_array_domain_array 
 -----------------------------------
@@ -248,6 +262,7 @@ begin
 return row(x, y)::nnint_container;
 end
 $$ LANGUAGE plisql;
+/
 SELECT test_result_nnint_container(null, 3);
  test_result_nnint_container 
 -----------------------------
@@ -265,6 +280,7 @@ v.f2 := z;
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_nnint_container(1,2,3);
  f1 | f2 
 ----+----
@@ -293,6 +309,7 @@ v.f2 := z;
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_nnint_container2(1,2,3);
  f1 | f2 
 ----+----
@@ -315,6 +332,7 @@ begin
 return p.i + p.j;
 end
 $$ LANGUAGE plisql;
+/
 SELECT read_ordered_named_pair(row(1, 2));
  read_ordered_named_pair 
 -------------------------
@@ -328,6 +346,7 @@ begin
 return row(i, j);
 end
 $$ LANGUAGE plisql;
+/
 SELECT build_ordered_named_pair(1,2);
  build_ordered_named_pair 
 --------------------------
@@ -345,6 +364,7 @@ v.j := z;
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_ordered_named_pair(1,2,3);
  i | j 
 ---+---
@@ -362,6 +382,7 @@ begin
 return array[row(i, j), row(i, j+1)];
 end
 $$ LANGUAGE plisql;
+/
 SELECT build_ordered_named_pairs(1,2);
  build_ordered_named_pairs 
 ---------------------------
@@ -380,6 +401,7 @@ begin
 return v;
 end
 $$ LANGUAGE plisql;
+/
 SELECT * FROM test_assign_ordered_named_pairs(1,2,3);
  test_assign_ordered_named_pairs 
 ---------------------------------

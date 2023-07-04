@@ -169,6 +169,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterTypeStmt:
 		case T_AlterUserMappingStmt:
 		case T_CommentStmt:
+		case T_CompileFunctionStmt:
 		case T_CompositeTypeStmt:
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
@@ -1662,6 +1663,10 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = AlterFunction(pstate, (AlterFunctionStmt *) parsetree);
 				break;
 
+			case T_CompileFunctionStmt:
+				address = CompileFunction((CompileFunctionStmt *) parsetree);
+				break;
+
 			case T_RuleStmt:	/* CREATE RULE */
 				address = DefineRule((RuleStmt *) parsetree, queryString);
 				break;
@@ -2721,6 +2726,13 @@ CreateCommandTag(Node *parsetree)
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
+			break;
+
+		case T_CompileFunctionStmt:
+			if (((CompileFunctionStmt *) parsetree)->is_procedure)
+				tag = CMDTAG_ALTER_PROCEDURE;
+			else
+				tag = CMDTAG_ALTER_FUNCTION;
 			break;
 
 		case T_GrantStmt:

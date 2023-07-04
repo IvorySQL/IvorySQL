@@ -85,6 +85,7 @@ CREATE OR REPLACE FUNCTION create_extension_with_temp_schema()
     RAISE NOTICE 'query %', query;
     EXECUTE query;
   END; $$ LANGUAGE plpgsql;
+/
 BEGIN;
 SELECT create_extension_with_temp_schema();
 PREPARE TRANSACTION 'twophase_extension';
@@ -107,7 +108,7 @@ DROP EXTENSION test_ext_evttrig;
 
 CREATE FUNCTION ext_cor_func() RETURNS text
   AS $$ SELECT 'ext_cor_func: original'::text $$ LANGUAGE sql;
-
+/
 CREATE EXTENSION test_ext_cor;  -- fail
 
 SELECT ext_cor_func();

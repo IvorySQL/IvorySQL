@@ -140,6 +140,7 @@ CREATE OR REPLACE FUNCTION create_extension_with_temp_schema()
     RAISE NOTICE 'query %', query;
     EXECUTE query;
   END; $$ LANGUAGE plpgsql;
+/
 BEGIN;
 SELECT create_extension_with_temp_schema();
  create_extension_with_temp_schema 
@@ -165,6 +166,7 @@ DROP EXTENSION test_ext_evttrig;
 -- check that too.
 CREATE FUNCTION ext_cor_func() RETURNS text
   AS $$ SELECT 'ext_cor_func: original'::text $$ LANGUAGE sql;
+/
 CREATE EXTENSION test_ext_cor;  -- fail
 ERROR:  function ext_cor_func() is not a member of extension "test_ext_cor"
 DETAIL:  An extension is not allowed to replace an object that it does not own.
