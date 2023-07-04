@@ -229,6 +229,7 @@ set work_mem = '3MB';
 create function report_guc(text) returns text as
 $$ select current_setting($1) $$ language sql
 set work_mem = '1MB';
+/
 
 select report_guc('work_mem'), current_setting('work_mem');
 
@@ -248,6 +249,7 @@ begin
 end $$
 language plpgsql
 set work_mem = '1MB';
+/
 
 select myfunc(0), current_setting('work_mem');
 
@@ -265,6 +267,7 @@ begin
 end $$
 language plpgsql
 set work_mem = '1MB';
+/
 
 select myfunc(0), current_setting('work_mem');
 
@@ -279,6 +282,7 @@ begin
 end $$
 language plpgsql
 set work_mem = '1MB';
+/
 
 select myfunc(0);
 select current_setting('work_mem');
@@ -304,12 +308,14 @@ select current_setting('nosuch.setting', true);
 create function func_with_bad_set() returns int as $$ select 1 $$
 language sql
 set default_text_search_config = no_such_config;
+/
 
 set check_function_bodies = off;
 
 create function func_with_bad_set() returns int as $$ select 1 $$
 language sql
 set default_text_search_config = no_such_config;
+/
 
 select func_with_bad_set();
 

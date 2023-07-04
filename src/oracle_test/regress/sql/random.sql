@@ -46,6 +46,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql;
+/
 
 -- As written, ks_test_uniform_random() returns true about 99.9%
 -- of the time.  To get down to a roughly 1e-9 test failure rate,
@@ -93,6 +94,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql;
+/
 
 -- As above, ks_test_normal_random() returns true about 99.9%
 -- of the time, so try it 3 times and accept if any test passes.

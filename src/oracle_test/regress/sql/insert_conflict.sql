@@ -564,6 +564,7 @@ begin
  return new;
 end;
 $$ language plpgsql;
+/
 
 create trigger parted_conflict_update
     after update on parted_conflict

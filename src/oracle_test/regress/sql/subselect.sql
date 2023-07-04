@@ -523,6 +523,7 @@ begin;
 -- make an operator to allow it to succeed
 create function bogus_int8_text_eq(int8, text) returns boolean
 language sql as 'select $1::text = $2';
+/
 
 create operator = (procedure=bogus_int8_text_eq, leftarg=int8, rightarg=text);
 
@@ -534,6 +535,7 @@ select * from int8_tbl where q1 in (select c1 from inner_text);
 -- which we can still cope with
 create or replace function bogus_int8_text_eq(int8, text) returns boolean
 language sql as 'select $1::text = $2 and $1::text = $2';
+/
 
 explain (costs off)
 select * from int8_tbl where q1 in (select c1 from inner_text);
@@ -543,6 +545,7 @@ select * from int8_tbl where q1 in (select c1 from inner_text);
 -- which we can't cope with, so hashing should be abandoned
 create or replace function bogus_int8_text_eq(int8, text) returns boolean
 language sql as 'select $2 = $1::text';
+/
 
 explain (costs off)
 select * from int8_tbl where q1 in (select c1 from inner_text);
@@ -787,6 +790,7 @@ begin
   raise notice 'x = %, y = %', x, y;
   return x > y;
 end$$;
+/
 
 explain (verbose, costs off)
 select * from
@@ -851,6 +855,7 @@ begin
     end loop;
 end;
 $$;
+/
 
 select * from explain_sq_limit();
 

@@ -71,4 +71,6 @@ extern Oid	LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func,
 extern void check_srf_call_placement(ParseState *pstate, Node *last_srf,
 									 int location);
 
+extern Oid LookupFuncOnlyByName(List *names, bool noError, bool is_procedure);
+
 #endif							/* PARSE_FUNC_H */

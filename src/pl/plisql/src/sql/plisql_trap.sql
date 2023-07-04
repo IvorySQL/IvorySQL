@@ -25,6 +25,7 @@ begin
 	end;
 	return x;
 end$$ language plisql;
+/
 
 select trap_zero_divide(50);
 select trap_zero_divide(0);
@@ -54,6 +55,7 @@ begin
 	end;
 	return x;
 end$$ language plisql;
+/
 
 select trap_matching_test(50);
 select trap_matching_test(0);
@@ -78,6 +80,7 @@ begin
   insert into foo values(x);
   return x;
 end$$ language plisql;
+/
 
 select subxact_rollback_semantics();
 select * from foo;
@@ -99,6 +102,7 @@ begin
   -- the next top-level statement would be vulnerable to the timeout.
   raise exception 'end of function';
 end$$ language plisql;
+/
 
 begin;
 set statement_timeout to 1000;
@@ -120,6 +124,7 @@ begin
   end;
   return x;
 end$$ language plisql;
+/
 
 select test_variable_storage();
 
@@ -146,6 +151,7 @@ begin
 	end;
 	return 1;
 end$$ language plisql;
+/
 
 create function trap_foreign_key_2() returns int as $$
 begin
@@ -158,6 +164,7 @@ begin
 	end;
 	return 1;
 end$$ language plisql;
+/
 
 select trap_foreign_key(1);
 select trap_foreign_key(2);	-- detects FK violation

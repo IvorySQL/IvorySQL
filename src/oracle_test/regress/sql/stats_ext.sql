@@ -26,6 +26,7 @@ begin
     end loop;
 end;
 $$;
+/
 
 -- Verify failures
 CREATE TABLE ext_stats_test (x text, y int, z int);
@@ -1631,6 +1632,7 @@ SELECT * FROM tststats.priv_test_tbl
 CREATE FUNCTION op_leak(int, int) RETURNS bool
     AS 'BEGIN RAISE NOTICE ''op_leak => %, %'', $1, $2; RETURN $1 < $2; END'
     LANGUAGE plpgsql;
+/
 CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
                      restrict = scalarltsel);
 SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Permission denied

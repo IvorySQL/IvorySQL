@@ -9,6 +9,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+/
 NOTICE:  DDL test: type simple, tag CREATE FUNCTION
 CREATE TRIGGER trigger_1
   BEFORE INSERT OR UPDATE

@@ -331,6 +331,7 @@ begin
 end;
 $$
 language plpgsql;
+/
 create trigger mlparted11_trig before insert ON mlparted11
   for each row execute procedure mlparted11_trig_fn();
 
@@ -374,6 +375,7 @@ alter table mlparted attach partition mlparted5 for values from (1, 40) to (1, 5
 alter table mlparted add constraint check_b check (a = 1 and b < 45);
 insert into mlparted values (1, 45, 'a');
 create function mlparted5abrtrig_func() returns trigger as $$ begin new.c = 'b'; return new; end; $$ language plpgsql;
+/
 create trigger mlparted5abrtrig before insert on mlparted5a for each row execute procedure mlparted5abrtrig_func();
 insert into mlparted5 (a, b, c) values (1, 40, 'a');
 drop table mlparted5;
@@ -513,6 +515,7 @@ drop table mcrparted;
 create table brtrigpartcon (a int, b text) partition by list (a);
 create table brtrigpartcon1 partition of brtrigpartcon for values in (1);
 create or replace function brtrigpartcon1trigf() returns trigger as $$begin new.a := 2; return new; end$$ language plpgsql;
+/
 create trigger brtrigpartcon1trig before insert on brtrigpartcon1 for each row execute procedure brtrigpartcon1trigf();
 insert into brtrigpartcon values (1, 'hi there');
 insert into brtrigpartcon1 values (1, 'hi there');
@@ -543,6 +546,7 @@ create table donothingbrtrig_test1 (b text, a int);
 create table donothingbrtrig_test2 (c text, b text, a int);
 alter table donothingbrtrig_test2 drop column c;
 create or replace function donothingbrtrig_func() returns trigger as $$begin raise notice 'b: %', new.b; return NULL; end$$ language plpgsql;
+/
 create trigger donothingbrtrig1 before insert on donothingbrtrig_test1 for each row execute procedure donothingbrtrig_func();
 create trigger donothingbrtrig2 before insert on donothingbrtrig_test2 for each row execute procedure donothingbrtrig_func();
 alter table donothingbrtrig_test attach partition donothingbrtrig_test1 for values in (1);

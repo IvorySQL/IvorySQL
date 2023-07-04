@@ -16,21 +16,25 @@ CREATE FUNCTION widget_in(cstring)
    RETURNS widget
    AS :'regresslib'
    LANGUAGE C STRICT IMMUTABLE;
+/
 
 CREATE FUNCTION widget_out(widget)
    RETURNS cstring
    AS :'regresslib'
    LANGUAGE C STRICT IMMUTABLE;
+/
 
 CREATE FUNCTION int44in(cstring)
    RETURNS city_budget
    AS :'regresslib'
    LANGUAGE C STRICT IMMUTABLE;
+/
 
 CREATE FUNCTION int44out(city_budget)
    RETURNS cstring
    AS :'regresslib'
    LANGUAGE C STRICT IMMUTABLE;
+/
 
 CREATE TYPE widget (
    internallength = 24,
@@ -73,18 +77,22 @@ CREATE FUNCTION int42_in(cstring)
    RETURNS int42
    AS 'int4in'
    LANGUAGE internal STRICT IMMUTABLE;
+/
 CREATE FUNCTION int42_out(int42)
    RETURNS cstring
    AS 'int4out'
    LANGUAGE internal STRICT IMMUTABLE;
+/
 CREATE FUNCTION text_w_default_in(cstring)
    RETURNS text_w_default
    AS 'textin'
    LANGUAGE internal STRICT IMMUTABLE;
+/
 CREATE FUNCTION text_w_default_out(text_w_default)
    RETURNS cstring
    AS 'textout'
    LANGUAGE internal STRICT IMMUTABLE;
+/
 
 CREATE TYPE int42 (
    internallength = 4,
@@ -143,6 +151,7 @@ CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;
 ' LANGUAGE SQL;
+/
 
 SELECT * FROM get_default_test();
 
@@ -165,8 +174,10 @@ DROP TABLE default_test;
 CREATE TYPE base_type;
 CREATE FUNCTION base_fn_in(cstring) RETURNS base_type AS 'boolin'
     LANGUAGE internal IMMUTABLE STRICT;
+/
 CREATE FUNCTION base_fn_out(base_type) RETURNS cstring AS 'boolout'
     LANGUAGE internal IMMUTABLE STRICT;
+/
 CREATE TYPE base_type(INPUT = base_fn_in, OUTPUT = base_fn_out);
 DROP FUNCTION base_fn_in(cstring); -- error
 DROP FUNCTION base_fn_out(base_type); -- error
@@ -206,6 +217,7 @@ CREATE FUNCTION pt_in_widget(point, widget)
    RETURNS bool
    AS :'regresslib'
    LANGUAGE C STRICT;
+/
 
 CREATE OPERATOR <% (
    leftarg = point,
@@ -239,15 +251,19 @@ CREATE TYPE myvarchar;
 
 CREATE FUNCTION myvarcharin(cstring, oid, integer) RETURNS myvarchar
 LANGUAGE internal IMMUTABLE PARALLEL SAFE STRICT AS 'varcharin';
+/
 
 CREATE FUNCTION myvarcharout(myvarchar) RETURNS cstring
 LANGUAGE internal IMMUTABLE PARALLEL SAFE STRICT AS 'varcharout';
+/
 
 CREATE FUNCTION myvarcharsend(myvarchar) RETURNS bytea
 LANGUAGE internal STABLE PARALLEL SAFE STRICT AS 'varcharsend';
+/
 
 CREATE FUNCTION myvarcharrecv(internal, oid, integer) RETURNS myvarchar
 LANGUAGE internal STABLE PARALLEL SAFE STRICT AS 'varcharrecv';
+/
 
 -- fail, it's still a shell:
 ALTER TYPE myvarchar SET (storage = extended);

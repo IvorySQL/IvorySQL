@@ -87,6 +87,7 @@ begin
   return query execute 'EXPLAIN (ANALYZE, FORMAT json) ' || query_sql;
 end;
 $$;
+/
 
 create function execute_text_query_index(query_sql text)
 returns setof text
@@ -99,6 +100,7 @@ begin
   return query execute query_sql;
 end;
 $$;
+/
 
 create function execute_text_query_heap(query_sql text)
 returns setof text
@@ -111,6 +113,7 @@ begin
   return query execute query_sql;
 end;
 $$;
+/
 
 -- check number of rows returned by index and removed by recheck
 select

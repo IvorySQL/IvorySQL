@@ -252,6 +252,7 @@ drop table base;
 create table p1(ff1 int);
 create table p2(f1 text);
 create function p2text(p2) returns text as 'select $1.f1' language sql;
+/
 create table c1(f3 int) inherits(p1,p2);
 insert into c1 values(123456789, 'hi', 42);
 select p2text(c1.*) from c1;

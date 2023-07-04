@@ -457,7 +457,8 @@ other			.
 
 <xc>{
 {xcstart}		{
-					(yyextra->xcdepth)++;
+					/* Simply don't consider nesting for compatibility with Oracle's comments */
+					//(yyextra->xcdepth)++;
 					/* Put back any characters past slash-star; see above */
 					yyless(2);
 				}

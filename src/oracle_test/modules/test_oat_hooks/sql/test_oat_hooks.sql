@@ -48,6 +48,7 @@ GRANT SELECT ON Table regress_test_table TO public;
 CREATE FUNCTION regress_test_func (t text) RETURNS text AS $$
 	SELECT $1;
 $$ LANGUAGE sql;
+/
 GRANT EXECUTE ON FUNCTION regress_test_func (text) TO public;
 
 -- Do a few things as superuser

@@ -9,6 +9,7 @@ BEGIN
     RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
 END
 $$ language plpgsql;
+/
 
 -- should fail, can't call it as a plain function
 SELECT test_event_trigger();
@@ -16,10 +17,12 @@ SELECT test_event_trigger();
 -- should fail, event triggers cannot have declared arguments
 create function test_event_trigger_arg(name text)
 returns event_trigger as $$ BEGIN RETURN 1; END $$ language plpgsql;
+/
 
 -- should fail, SQL functions cannot be event triggers
 create function test_event_trigger_sql() returns event_trigger as $$
 SELECT 1 $$ language sql;
+/
 
 -- should fail, no elephant_bootstrap entry point
 create event trigger regress_event_trigger on elephant_bootstrap
@@ -117,6 +120,7 @@ begin
   create table event_trigger_fire6 (a int);
   return 0;
 end $$;
+/
 select f1();
 -- non-top-level command
 create procedure p1()
@@ -125,6 +129,7 @@ as $$
 begin
   create table event_trigger_fire7 (a int);
 end $$;
+/
 call p1();
 
 -- clean up
@@ -228,6 +233,7 @@ BEGIN
 	END LOOP;
 END;
 $$;
+/
 
 CREATE EVENT TRIGGER undroppable ON sql_drop
 	EXECUTE PROCEDURE undroppable();
@@ -250,6 +256,7 @@ BEGIN
     END LOOP;
 END
 $$;
+/
 
 CREATE EVENT TRIGGER regress_event_trigger_drop_objects ON sql_drop
 	WHEN TAG IN ('drop table', 'drop function', 'drop view',
@@ -290,6 +297,7 @@ BEGIN
         r.object_identity, r.address_names, r.address_args;
     END LOOP;
 END; $$;
+/
 CREATE EVENT TRIGGER regress_event_trigger_report_dropped ON sql_drop
     EXECUTE PROCEDURE event_trigger_report_dropped();
 CREATE OR REPLACE FUNCTION event_trigger_report_end()
@@ -304,6 +312,7 @@ BEGIN
             r.command_tag, r.object_type, r.object_identity;
     END LOOP;
 END; $$;
+/
 CREATE EVENT TRIGGER regress_event_trigger_report_end ON ddl_command_end
   EXECUTE PROCEDURE event_trigger_report_end();
 
@@ -354,6 +363,7 @@ BEGIN
   RAISE EXCEPTION 'rewrites not allowed';
 END;
 $$;
+/
 
 create event trigger no_rewrite_allowed on table_rewrite
   execute procedure test_evtrig_no_rewrite();
@@ -373,6 +383,7 @@ BEGIN
                pg_event_trigger_table_rewrite_reason();
 END;
 $$;
+/
 
 alter table rewriteme
  add column onemore int default 0,
@@ -404,6 +415,7 @@ BEGIN
                pg_event_trigger_table_rewrite_reason();
 END;
 $$;
+/
 
 create type rewritetype as (a int);
 create table rewritemetoo1 of rewritetype;
@@ -428,6 +440,7 @@ BEGIN
 RAISE NOTICE '% - ddl_command_start', tg_tag;
 END;
 $$ LANGUAGE plpgsql;
+/
 
 CREATE OR REPLACE FUNCTION end_command()
 RETURNS event_trigger AS $$
@@ -435,6 +448,7 @@ BEGIN
 RAISE NOTICE '% - ddl_command_end', tg_tag;
 END;
 $$ LANGUAGE plpgsql;
+/
 
 CREATE OR REPLACE FUNCTION drop_sql_command()
 RETURNS event_trigger AS $$
@@ -442,6 +456,7 @@ BEGIN
 RAISE NOTICE '% - sql_drop', tg_tag;
 END;
 $$ LANGUAGE plpgsql;
+/
 
 CREATE EVENT TRIGGER start_rls_command ON ddl_command_start
     WHEN TAG IN ('CREATE POLICY', 'ALTER POLICY', 'DROP POLICY') EXECUTE PROCEDURE start_command();

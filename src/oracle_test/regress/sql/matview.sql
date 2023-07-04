@@ -240,6 +240,7 @@ BEGIN
   CREATE MATERIALIZED VIEW mvtest2 AS SELECT 1 AS x WITH NO DATA;
 END;
 $$ LANGUAGE plpgsql;
+/
 SELECT mvtest_func();
 SELECT * FROM mvtest1;
 SELECT * FROM mvtest2;

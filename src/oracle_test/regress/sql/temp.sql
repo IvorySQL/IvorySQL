@@ -132,9 +132,11 @@ insert into whereami values ('temp');
 
 create function public.whoami() returns text
   as $$select 'public'::text$$ language sql;
+/
 
 create function pg_temp.whoami() returns text
   as $$select 'temp'::text$$ language sql;
+/
 
 -- default should have pg_temp implicitly first, but only for tables
 select * from whereami;
@@ -249,10 +251,12 @@ drop table temp_inh_oncommit_test;
 begin;
 create function pg_temp.twophase_func() returns void as
   $$ select '2pc_func'::text $$ language sql;
+/
 prepare transaction 'twophase_func';
 -- Function drop
 create function pg_temp.twophase_func() returns void as
   $$ select '2pc_func'::text $$ language sql;
+/
 begin;
 drop function pg_temp.twophase_func();
 prepare transaction 'twophase_func';

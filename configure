@@ -770,8 +770,8 @@ LCOV
 GCOV
 enable_debug
 enable_rpath
-default_port
 default_ora_port
+default_port
 WANTED_LANGUAGES
 enable_nls
 PORTNAME
@@ -846,6 +846,7 @@ with_blocksize
 with_segsize
 with_segsize_blocks
 with_wal_blocksize
+with_max_funarg
 with_CC
 with_llvm
 enable_depend
@@ -1551,7 +1552,7 @@ Optional Packages:
   --with-libraries=DIRS   look for additional libraries in DIRS
   --with-libs=DIRS        alternative spelling of --with-libraries
   --with-pgport=PORTNUM   set default port number [5432]
-  --with-oraport=PORTNUM   set default port number [1521] # IvorySQL
+  --with-oraport=PORTNUM   set default port number oracle [1521] # IvorySQL
   --with-blocksize=BLOCKSIZE
                           set table block size in kB [8]
   --with-segsize=SEGSIZE  set table segment size in GB [1]
@@ -1559,6 +1560,8 @@ Optional Packages:
                           set table segment size in blocks [0]
   --with-wal-blocksize=BLOCKSIZE
                           set WAL block size in kB [8]
+  --with-max-funarg=MAXFUNARG
+                          set maximum number of function arguments[100]
   --with-CC=CMD           set compiler (deprecated)
   --with-llvm             build with LLVM based JIT support
   --without-icu           build without ICU support
@@ -3909,6 +3912,69 @@ cat >>confdefs.h <<_ACEOF
 #define XLOG_BLCKSZ ${XLOG_BLCKSZ}
 _ACEOF
 
+#
+# Max function arguments
+#
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for maximum number of arguments to a function" >&5
+$as_echo_n "checking for maximum number of arguments to a function... " >&6; }
+
+# Check whether --with-max-funarg was given.
+if test "${with_max_funarg+set}" = set; then :
+  withval=$with_max_funarg;
+  case $withval in
+    yes)
+      as_fn_error $? "argument required for --with-max-funarg option" "$LINENO" 5
+      ;;
+    no)
+      as_fn_error $? "argument required for --with-max-funarg option" "$LINENO" 5
+      ;;
+    *)
+      max_funarg=$withval
+      ;;
+  esac
+
+else
+  max_funarg=100
+fi
+
+# Maximum check
+case ${blocksize} in
+  1 | 2 | 4)
+	if test $max_funarg -gt 100; then
+		as_fn_error $? "maximum number of function arguments is 100, when blocksize is 1,2,4 kb." "$LINENO" 5
+	fi
+	;;
+  8)
+	if test $max_funarg -gt 600; then
+		as_fn_error $? "maximum number of function arguments is 600, when blocksize is 8 kb." "$LINENO" 5
+	fi
+	;;
+ 16)
+	if test $max_funarg -gt 1200; then
+		as_fn_error $? "maximum number of function arguments is 1200, when blocksize is 16 kb." "$LINENO" 5
+	fi
+	;;
+ 32)
+	if test $max_funarg -gt 2400; then
+		as_fn_error $? "maximum number of function arguments is 2400, when blocksize is 32 kb." "$LINENO" 5
+	fi
+	;;
+  *) as_fn_error $? "Invalid block size. Allowed values are 1,2,4,8,16,32." "$LINENO" 5
+esac
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: ${max_funarg}" >&5
+$as_echo "${max_funarg}" >&6; }
+
+
+cat >>confdefs.h <<_ACEOF
+#define MAXIMUM_FUNARG $max_funarg
+_ACEOF
+
+# The maximum value of function arguments is affected by blocksize
+# Minimum check
+if test $max_funarg -lt 8; then
+	as_fn_error $? "minimum number of function arguments is 8." "$LINENO" 5
+fi
 
 #
 # C compiler

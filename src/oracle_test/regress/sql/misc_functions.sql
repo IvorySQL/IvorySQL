@@ -44,6 +44,7 @@ CREATE FUNCTION test_canonicalize_path(text)
    RETURNS text
    AS :'regresslib'
    LANGUAGE C STRICT IMMUTABLE;
+/
 
 SELECT test_canonicalize_path('/');
 SELECT test_canonicalize_path('/./abc/def/');
@@ -194,6 +195,7 @@ DROP ROLE regress_slot_dir_funcs;
 CREATE FUNCTION my_int_eq(int, int) RETURNS bool
   LANGUAGE internal STRICT IMMUTABLE PARALLEL SAFE
   AS $$int4eq$$;
+/
 
 -- By default, planner does not think that's selective
 EXPLAIN (COSTS OFF)
@@ -205,6 +207,7 @@ CREATE FUNCTION test_support_func(internal)
     RETURNS internal
     AS :'regresslib', 'test_support_func'
     LANGUAGE C STRICT;
+/
 
 ALTER FUNCTION my_int_eq(int, int) SUPPORT test_support_func;
 
@@ -217,6 +220,7 @@ CREATE FUNCTION my_gen_series(int, int) RETURNS SETOF integer
   LANGUAGE internal STRICT IMMUTABLE PARALLEL SAFE
   AS $$generate_series_int4$$
   SUPPORT test_support_func;
+/
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1 a JOIN my_gen_series(1,1000) g ON a.unique1 = g;

@@ -36,19 +36,20 @@
 /* Define to the default TCP port number on which the server listens and to
    which clients will try to connect. This can be overridden at run-time, but
    it's convenient if your clients have the right default compiled in.
-   (--with-pgport=PORTNUM) (--with-oraport=PORTNUM)*/
-#undef DEF_PGPORT
+   (--with-oraport=PORTNUM) */
 
-/* IvorySQL:BEGIN -  IYHOST IYPORT */
 #undef DEF_ORAPORT
-/* IvorySQL:END -  IYHOST IYPORT  */
+
+#undef DEF_ORAPORT_STR
+
+/* Define to the default TCP port number on which the server listens and to
+   which clients will try to connect. This can be overridden at run-time, but
+   it's convenient if your clients have the right default compiled in.
+   (--with-pgport=PORTNUM) */
+#undef DEF_PGPORT
 
 /* Define to the default TCP port number as a string constant. */
 #undef DEF_PGPORT_STR
-
-/* IvorySQL:BEGIN -  IYHOST IYPORT */
-#undef DEF_ORAPORT_STR
-/* IvorySQL:END -  IYHOST IYPORT */
 
 /* Define to the file name extension of dynamically-loadable modules. */
 #undef DLSUFFIX
@@ -599,6 +600,9 @@
 
 /* Define as the maximum alignment requirement of any C data type. */
 #undef MAXIMUM_ALIGNOF
+
+/* Set maximum number of function arguments. */
+#undef MAXIMUM_FUNARG
 
 /* Define bytes to use libc memset(). */
 #undef MEMSET_LOOP_LIMIT

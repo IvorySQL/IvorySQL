@@ -12,6 +12,7 @@ CREATE FUNCTION fn_x_before () RETURNS TRIGGER AS '
 		return NEW;
 	END;
 ' LANGUAGE plpgsql;
+/
 
 CREATE FUNCTION fn_x_after () RETURNS TRIGGER AS '
   BEGIN
@@ -19,6 +20,7 @@ CREATE FUNCTION fn_x_after () RETURNS TRIGGER AS '
 		return NULL;
 	END;
 ' LANGUAGE plpgsql;
+/
 
 CREATE TRIGGER trg_x_after AFTER INSERT ON x
 FOR EACH ROW EXECUTE PROCEDURE fn_x_after();
@@ -297,6 +299,7 @@ EXCEPTION
 	INSERT INTO vistest VALUES ('subxact failure');
 END;
 $$ language plpgsql;
+/
 BEGIN;
 INSERT INTO vistest VALUES ('z');
 SELECT truncate_in_subxact();
@@ -353,6 +356,7 @@ begin
   raise notice 'input = %', row_to_json($1);
   return $1.f1 > 0;
 end $$ language plpgsql immutable;
+/
 alter table check_con_tbl add check (check_con_function(check_con_tbl.*));
 \d+ check_con_tbl
 copy check_con_tbl from stdin;
@@ -438,6 +442,7 @@ BEGIN
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER trig_instead_of_insert_tbl_view
   INSTEAD OF INSERT ON instead_of_insert_tbl_view
   FOR EACH ROW EXECUTE PROCEDURE fun_instead_of_insert_tbl();

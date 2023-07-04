@@ -14,26 +14,31 @@ CREATE FUNCTION autoinc ()
 	RETURNS trigger
 	AS :'autoinclib'
 	LANGUAGE C;
+/
 
 CREATE FUNCTION check_primary_key ()
 	RETURNS trigger
 	AS :'refintlib'
 	LANGUAGE C;
+/
 
 CREATE FUNCTION check_foreign_key ()
 	RETURNS trigger
 	AS :'refintlib'
 	LANGUAGE C;
+/
 
 CREATE FUNCTION trigger_return_old ()
         RETURNS trigger
         AS :'regresslib'
         LANGUAGE C;
+/
 
 CREATE FUNCTION set_ttdummy (int4)
         RETURNS int4
         AS :'regresslib'
         LANGUAGE C STRICT;
+/
 
 create table pkeys (pkey1 int4 not null, pkey2 text not null);
 create table fkeys (fkey1 int4, fkey2 text, fkey3 int);
@@ -153,6 +158,7 @@ select * from trigtest;
 -- Also check what happens when such a trigger runs before or after others
 create function f1_times_10() returns trigger as
 $$ begin new.f1 := new.f1 * 10; return new; end $$ language plpgsql;
+/
 
 create trigger trigger_alpha
 	before insert or update on trigtest
@@ -306,6 +312,7 @@ BEGIN
 	RAISE NOTICE ''trigger_func(%) called: action = %, when = %, level = %'', TG_ARGV[0], TG_OP, TG_WHEN, TG_LEVEL;
 	RETURN NULL;
 END;';
+/
 
 CREATE TRIGGER before_ins_stmt_trig BEFORE INSERT ON main_table
 FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func('before_ins_stmt');
@@ -434,6 +441,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER some_trig_before BEFORE UPDATE ON some_t FOR EACH ROW
   EXECUTE PROCEDURE dummy_update_func('before');
 CREATE TRIGGER some_trig_aftera AFTER UPDATE ON some_t FOR EACH ROW
@@ -489,6 +497,7 @@ begin
 	raise notice '% % % %', TG_TABLE_NAME, TG_OP, TG_WHEN, TG_LEVEL;
 	return new;
 end;$$ language plpgsql;
+/
 
 create trigger trigtest_b_row_tg before insert or update or delete on trigtest
 for each row execute procedure trigtest();
@@ -582,6 +591,7 @@ begin
 
 end;
 $$;
+/
 
 CREATE TRIGGER show_trigger_data_trig
 BEFORE INSERT OR UPDATE OR DELETE ON trigger_test
@@ -613,6 +623,7 @@ begin
 	end if;
 	return new;
 end$$;
+/
 
 CREATE TRIGGER t
 BEFORE UPDATE ON trigger_test
@@ -636,6 +647,7 @@ begin
 	end if;
 	return new;
 end$$;
+/
 
 UPDATE trigger_test SET f3 = 'bar';
 UPDATE trigger_test SET f3 = NULL;
@@ -656,6 +668,7 @@ begin
 	return new;
 end;
 $$;
+/
 
 CREATE TABLE serializable_update_tab (
 	id int,
@@ -749,6 +762,7 @@ begin
     RETURN NULL;
 end;
 $$;
+/
 
 -- Before row triggers aren't allowed on views
 CREATE TRIGGER invalid_trig BEFORE INSERT ON main_view
@@ -915,6 +929,7 @@ begin
     RETURN NEW;
 end;
 $$;
+/
 
 CREATE TRIGGER city_insert_trig INSTEAD OF INSERT ON city_view
 FOR EACH ROW EXECUTE PROCEDURE city_insert();
@@ -926,6 +941,7 @@ begin
     RETURN OLD;
 end;
 $$;
+/
 
 CREATE TRIGGER city_delete_trig INSTEAD OF DELETE ON city_view
 FOR EACH ROW EXECUTE PROCEDURE city_delete();
@@ -956,6 +972,7 @@ begin
     RETURN NEW;
 end;
 $$;
+/
 
 CREATE TRIGGER city_update_trig INSTEAD OF UPDATE ON city_view
 FOR EACH ROW EXECUTE PROCEDURE city_update();
@@ -993,6 +1010,7 @@ SELECT count(*) FROM european_city_view;
 
 CREATE FUNCTION no_op_trig_fn() RETURNS trigger LANGUAGE plpgsql
 AS 'begin RETURN NULL; end';
+/
 
 CREATE TRIGGER no_op_trig INSTEAD OF INSERT OR UPDATE OR DELETE
 ON european_city_view FOR EACH ROW EXECUTE PROCEDURE no_op_trig_fn();
@@ -1069,6 +1087,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger depth_a_tr before insert on depth_a
   for each row execute procedure depth_a_tf();
 
@@ -1089,6 +1108,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger depth_b_tr before insert on depth_b
   for each row execute procedure depth_b_tf();
 
@@ -1103,6 +1123,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger depth_c_tr before insert on depth_c
   for each row execute procedure depth_c_tf();
 
@@ -1145,6 +1166,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger parent_upd_trig before update on parent
   for each row execute procedure parent_upd_func();
 
@@ -1156,6 +1178,7 @@ begin
   return old;
 end;
 $$;
+/
 create trigger parent_del_trig before delete on parent
   for each row execute procedure parent_del_func();
 
@@ -1167,6 +1190,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger child_ins_trig after insert on child
   for each row execute procedure child_ins_func();
 
@@ -1178,6 +1202,7 @@ begin
   return old;
 end;
 $$;
+/
 create trigger child_del_trig after delete on child
   for each row execute procedure child_del_func();
 
@@ -1205,6 +1230,7 @@ begin
   return old;
 end;
 $$;
+/
 
 delete from parent where aid = 1;
 select * from parent; select * from child;
@@ -1237,6 +1263,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger self_ref_trigger_ins_trig before insert on self_ref_trigger
   for each row execute procedure self_ref_trigger_ins_func();
 
@@ -1251,6 +1278,7 @@ begin
   return old;
 end;
 $$;
+/
 create trigger self_ref_trigger_del_trig before delete on self_ref_trigger
   for each row execute procedure self_ref_trigger_del_func();
 
@@ -1284,6 +1312,7 @@ begin
 	return null;
 end;
 $$ language plpgsql;
+/
 create trigger before_stmt_trigger
 	before update on stmt_trig_on_empty_upd
 	execute procedure update_stmt_notice();
@@ -1313,6 +1342,7 @@ begin
   alter table trigger_ddl_table add primary key (col1);
   return new;
 end$$ language plpgsql;
+/
 
 create trigger trigger_ddl_func before insert on trigger_ddl_table for each row
   execute procedure trigger_ddl_func();
@@ -1324,6 +1354,7 @@ begin
   create index on trigger_ddl_table (col2);
   return new;
 end$$ language plpgsql;
+/
 
 insert into trigger_ddl_table values (1, 42);  -- fail
 
@@ -1354,6 +1385,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger upsert_before_trig before insert or update on upsert
   for each row execute procedure upsert_before_func();
 
@@ -1370,6 +1402,7 @@ begin
   return null;
 end;
 $$;
+/
 create trigger upsert_after_trig after insert or update on upsert
   for each row execute procedure upsert_after_func();
 
@@ -1396,6 +1429,7 @@ drop function upsert_after_func();
 create table my_table (i int);
 create view my_view as select * from my_table;
 create function my_trigger_function() returns trigger as $$ begin end; $$ language plpgsql;
+/
 create trigger my_trigger after update on my_view referencing old table as old_table
    for each statement execute procedure my_trigger_function();
 drop function my_trigger_function();
@@ -1408,6 +1442,7 @@ drop table my_table;
 create table parted_trig (a int) partition by list (a);
 create function trigger_nothing() returns trigger
   language plpgsql as $$ begin end; $$;
+/
 create trigger failed instead of update on parted_trig
   for each row execute procedure trigger_nothing();
 create trigger failed after update on parted_trig
@@ -1489,6 +1524,7 @@ create or replace function trigger_notice() returns trigger as $$
     return null;
   end;
   $$ language plpgsql;
+/
 
 -- insert/update/delete statement-level triggers on the parent
 create trigger trig_ins_before before insert on parted_stmt_trig
@@ -1596,6 +1632,7 @@ create or replace function trigger_notice() returns trigger as $$
     return null;
   end;
   $$ language plpgsql;
+/
 create trigger aaa after insert on parted_trig
    for each row execute procedure trigger_notice('quirky', 1);
 
@@ -1621,6 +1658,7 @@ create or replace function trigger_notice_ab() returns trigger as $$
     return null;
   end;
   $$ language plpgsql;
+/
 create table parted_irreg_ancestor (fd text, b text, fd2 int, fd3 int, a int)
   partition by range (b);
 alter table parted_irreg_ancestor drop column fd,
@@ -1656,6 +1694,7 @@ begin
   return new;
 end;
 $$;
+/
 insert into parted values (1, 1, 'uno uno v1');    -- works
 create trigger t before insert or update or delete on parted
   for each row execute function parted_trigfunc();
@@ -1667,6 +1706,7 @@ begin
   return new;
 end;
 $$;
+/
 insert into parted values (1, 1, 'uno uno v4');    -- fail
 update parted set c = c || 'v5';                   -- fail
 create or replace function parted_trigfunc() returns trigger language plpgsql as $$
@@ -1675,6 +1715,7 @@ begin
   return new;
 end;
 $$;
+/
 insert into parted values (1, 1, 'uno uno');       -- works
 update parted set c = c || ' v6';                   -- works
 select tableoid::regclass, * from parted;
@@ -1693,6 +1734,7 @@ begin
   return new;
 end;
 $$;
+/
 create trigger t2 before update on parted
   for each row execute function parted_trigfunc2();
 truncate table parted;
@@ -1713,6 +1755,7 @@ begin
   return new;
 end;
 $$;
+/
 create table parted_1 partition of parted for values in (1, 2);
 create table parted_2 partition of parted for values in (3, 4);
 create trigger t before insert or update on parted
@@ -1847,6 +1890,7 @@ create table parent (a int);
 create table child1 () inherits (parent);
 create function trig_nothing() returns trigger language plpgsql
   as $$ begin return null; end $$;
+/
 create trigger tg after insert on parent
   for each row execute function trig_nothing();
 create trigger tg after insert on child1
@@ -1908,6 +1952,7 @@ CREATE TABLE trgfire (i int) PARTITION BY RANGE (i);
 CREATE TABLE trgfire1 PARTITION OF trgfire FOR VALUES FROM (1) TO (10);
 CREATE OR REPLACE FUNCTION tgf() RETURNS trigger LANGUAGE plpgsql
   AS $$ begin raise exception 'except'; end $$;
+/
 CREATE TRIGGER tg AFTER INSERT ON trgfire FOR EACH ROW EXECUTE FUNCTION tgf();
 INSERT INTO trgfire VALUES (1);
 ALTER TABLE trgfire DISABLE TRIGGER tg;
@@ -1952,6 +1997,7 @@ $$
     return null;
   end;
 $$;
+/
 
 create or replace function dump_update() returns trigger language plpgsql as
 $$
@@ -1963,6 +2009,7 @@ $$
     return null;
   end;
 $$;
+/
 
 create or replace function dump_delete() returns trigger language plpgsql as
 $$
@@ -1973,6 +2020,7 @@ $$
     return null;
   end;
 $$;
+/
 
 --
 -- Verify behavior of statement triggers on partition hierarchy with
@@ -2100,6 +2148,7 @@ $$
     return new;
   end;
 $$;
+/
 
 create trigger intercept_insert_child3
   before insert on child3
@@ -2528,12 +2577,14 @@ begin
   raise notice 'hello from funcA';
   return null;
 end; $$ language plpgsql;
+/
 
 create function funcB() returns trigger as $$
 begin
   raise notice 'hello from funcB';
   return null;
 end; $$ language plpgsql;
+/
 
 create trigger my_trig
   after insert on my_table
@@ -2609,6 +2660,7 @@ drop function funcB();
 create table trigger_parted (a int primary key) partition by list (a);
 create function trigger_parted_trigfunc() returns trigger language plpgsql as
   $$ begin end; $$;
+/
 create trigger aft_row after insert or update on trigger_parted
   for each row execute function trigger_parted_trigfunc();
 create table trigger_parted_p1 partition of trigger_parted for values in (1)
@@ -2643,6 +2695,7 @@ raise notice 'trigger = %, old_table = %',
           (select string_agg(old_table::text, ', ' order by col1) from old_table);
 return null;
 end; $$;
+/
 
 create function convslot_trig2()
 returns trigger
@@ -2654,6 +2707,7 @@ raise notice 'trigger = %, new table = %',
           (select string_agg(new_table::text, ', ' order by col1) from new_table);
 return null;
 end; $$;
+/
 
 create trigger but_trigger after update on convslot_test_child
 referencing new table as new_table
@@ -2672,6 +2726,7 @@ raise notice 'trigger = %, old_table = %, new table = %',
           (select string_agg(new_table::text, ', ' order by col1) from new_table);
 return null;
 end; $$;
+/
 
 create trigger but_trigger2 after update on convslot_test_child
 referencing old table as old_table new table as new_table
@@ -2701,6 +2756,7 @@ alter table convslot_test_parent
 
 create function convslot_trig4() returns trigger as
 $$begin raise exception 'BOOM!'; end$$ language plpgsql;
+/
 
 create trigger convslot_test_parent_update
     after update on convslot_test_parent
@@ -2727,6 +2783,7 @@ create table cho partition of middle for values from (6) to (10);
 create function f () returns trigger as
 $$ begin return new; end; $$
 language plpgsql;
+/
 create trigger a after insert on grandparent
 for each row execute procedure f();
 

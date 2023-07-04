@@ -181,6 +181,7 @@ SELECT a, CAST(b AS varchar) FROM collate_test2 ORDER BY 2;
 
 CREATE FUNCTION vc (text) RETURNS text LANGUAGE sql
     AS 'select $1::varchar';
+/
 
 SELECT a, b FROM collate_test1 ORDER BY a, vc(b);
 
@@ -192,6 +193,7 @@ SELECT * FROM unnest((SELECT array_agg(b ORDER BY b) FROM collate_test2)) ORDER 
 
 CREATE FUNCTION dup (anyelement) RETURNS anyelement
     AS 'select $1' LANGUAGE sql;
+/
 
 SELECT a, dup(b) FROM collate_test1 ORDER BY 2;
 SELECT a, dup(b) FROM collate_test2 ORDER BY 2;

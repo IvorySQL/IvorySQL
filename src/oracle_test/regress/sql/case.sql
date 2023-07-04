@@ -189,6 +189,7 @@ BEGIN;
 
 CREATE FUNCTION vol(text) returns text as
   'begin return $1; end' language plpgsql volatile;
+/
 
 SELECT CASE
   (CASE vol('bar')
@@ -205,9 +206,11 @@ CREATE DOMAIN foodomain AS text;
 
 CREATE FUNCTION volfoo(text) returns foodomain as
   'begin return $1::foodomain; end' language plpgsql volatile;
+/
 
 CREATE FUNCTION inline_eq(foodomain, foodomain) returns boolean as
   'SELECT CASE $2::text WHEN $1::text THEN true ELSE false END' language sql;
+/
 
 CREATE OPERATOR = (procedure = inline_eq,
                    leftarg = foodomain, rightarg = foodomain);
@@ -229,9 +232,11 @@ CREATE FUNCTION make_ad(int,int) returns arrdomain as
      x := array[$1,$2];
      return x;
    end' language plpgsql volatile;
+/
 
 CREATE FUNCTION ad_eq(arrdomain, arrdomain) returns boolean as
   'begin return array_eq($1, $2); end' language plpgsql;
+/
 
 CREATE OPERATOR = (procedure = ad_eq,
                    leftarg = arrdomain, rightarg = arrdomain);

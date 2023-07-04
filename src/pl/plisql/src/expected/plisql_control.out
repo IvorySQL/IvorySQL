@@ -174,6 +174,7 @@ begin
     end loop;
   end loop;
 end; $$ language plisql;
+/
 select continue_test1();
 NOTICE:  ---1---
 NOTICE:  1
@@ -245,6 +246,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 ERROR:  CONTINUE cannot be used outside a loop
 LINE 4:         continue;
                 ^
@@ -256,6 +258,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 ERROR:  EXIT cannot be used outside a loop, unless it has a label
 LINE 4:         exit;
                 ^
@@ -269,6 +272,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 ERROR:  there is no label "no_such_label" attached to any block or loop enclosing this statement
 LINE 5:             continue no_such_label;
                              ^
@@ -282,6 +286,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 ERROR:  there is no label "no_such_label" attached to any block or loop enclosing this statement
 LINE 5:             exit no_such_label;
                          ^
@@ -296,6 +301,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 ERROR:  block label "begin_block1" cannot be used in CONTINUE
 LINE 6:             continue begin_block1;
                              ^
@@ -311,6 +317,7 @@ begin
     end;
 end;
 $$ language plisql;
+/
 select exit_block1();
  exit_block1 
 -------------
@@ -333,6 +340,7 @@ begin
   end loop;
 end blbl;
 $$ language plisql;
+/
 select end_label1();
 NOTICE:  i = 1
 NOTICE:  j = 1
@@ -349,6 +357,7 @@ begin
   end loop flbl1;
 end;
 $$ language plisql;
+/
 ERROR:  end label "flbl1" specified for unlabeled block
 LINE 5:   end loop flbl1;
                    ^
@@ -362,6 +371,7 @@ begin
   end loop outer_label;
 end;
 $$ language plisql;
+/
 ERROR:  end label "outer_label" differs from block's label "inner_label"
 LINE 7:   end loop outer_label;
                    ^
@@ -374,6 +384,7 @@ begin
   end loop outer_label;
 end;
 $$ language plisql;
+/
 ERROR:  end label "outer_label" specified for unlabeled block
 LINE 6:   end loop outer_label;
                    ^
@@ -496,6 +507,7 @@ begin
   end loop;
   return null;
 end$$;
+/
 select return_from_while();
  return_from_while 
 -------------------
@@ -528,6 +540,7 @@ begin
   end loop;
 end;
 $proc$ language plisql;
+/
 select for_vect();
 NOTICE:  1
 NOTICE:  2
@@ -572,6 +585,7 @@ begin
   end case;
 end;
 $$ language plisql immutable;
+/
 select case_test(1);
  case_test 
 -----------
@@ -636,6 +650,7 @@ exception
     raise notice 'caught case_not_found % %', SQLSTATE, SQLERRM;
 end
 $$ language plisql;
+/
 select catch();
 NOTICE:  caught case_not_found 20000 case not found
  catch 
@@ -657,6 +672,7 @@ begin
   end case;
 end;
 $$ language plisql immutable;
+/
 select case_test(1);
  case_test 
 -----------

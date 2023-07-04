@@ -2752,3 +2752,46 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 						ParseExprKindName(pstate->p_expr_kind)),
 				 parser_errposition(pstate, location)));
 }
+
+/*
+ * like LookupFuncName
+ * but we only find by its funcname and
+ * doesn't consider its arguments
+ */
+Oid
+LookupFuncOnlyByName(List *names, bool noError, bool is_procedure)
+{
+	FuncCandidateList clist;
+	int		nmatch = 0;
+	Oid		funcoid = InvalidOid;
+
+	clist = FuncnameGetCandidatesOnlyByName(names, noError);
+
+	while (clist)
+	{
+		nmatch++;
+		funcoid = clist->oid;
+		clist = clist->next;
+	}
+
+	if (nmatch != 1)
+	{
+		char	*schemaname;
+		char	*funcname;
+
+		DeconstructQualifiedName(names, &schemaname, &funcname);
+
+		if (!noError)
+		{
+			if (is_procedure)
+				elog(ERROR, "procedure \"%s\" has %d match", funcname, nmatch);
+			else
+				elog(ERROR, "functon \"%s\" has %d match", funcname, nmatch);
+		}
+		else
+			funcoid = InvalidOid;
+	}
+
+	return funcoid;
+}
+

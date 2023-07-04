@@ -5,6 +5,7 @@
 -- Check that changes to an inline-able function are handled correctly
 create function simplesql(int) returns int language sql
 as 'select $1';
+/
 
 create function simplecaller() returns int language plisql
 as $$
@@ -20,6 +21,7 @@ begin
   end loop;
   return sum;
 end$$;
+/
 
 select simplecaller();
 
@@ -29,9 +31,11 @@ create schema simple1;
 
 create function simple1.simpletarget(int) returns int language plisql
 as $$begin return $1; end$$;
+/
 
 create function simpletarget(int) returns int language plisql
 as $$begin return $1 + 100; end$$;
+/
 
 create or replace function simplecaller() returns int language plisql
 as $$
@@ -46,6 +50,7 @@ begin
   end loop;
   return sum;
 end$$;
+/
 
 select simplecaller();
 
@@ -65,6 +70,7 @@ select simplecaller();
 
 create function simplesql() returns int language sql
 as $$select 1 / 0$$;
+/
 
 create or replace function simplecaller() returns int language plisql
 as $$
@@ -73,10 +79,12 @@ begin
   select simplesql() into x;
   return x;
 end$$;
+/
 
 select simplecaller();  -- division by zero occurs during simple-expr check
 
 create or replace function simplesql() returns int language sql
 as $$select 2 + 2$$;
+/
 
 select simplecaller();

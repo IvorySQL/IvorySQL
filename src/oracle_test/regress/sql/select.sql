@@ -244,6 +244,7 @@ SELECT 1 AS x ORDER BY x;
 -- But ORDER BY on a set-valued expression does
 create function sillysrf(int) returns setof int as
   'values (1),(10),(2),($1)' language sql immutable;
+/
 
 select sillysrf(42);
 select sillysrf(-1) order by 1;

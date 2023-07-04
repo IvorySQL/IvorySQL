@@ -1,7 +1,9 @@
 CREATE FUNCTION alter_op_test_fn(boolean, boolean)
 RETURNS boolean AS $$ SELECT NULL::BOOLEAN; $$ LANGUAGE sql IMMUTABLE;
+/
 CREATE FUNCTION customcontsel(internal, oid, internal, integer)
 RETURNS float8 AS 'contsel' LANGUAGE internal STABLE STRICT;
+/
 CREATE OPERATOR === (
     LEFTARG = boolean,
     RIGHTARG = boolean,

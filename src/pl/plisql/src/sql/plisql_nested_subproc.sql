@@ -44,6 +44,7 @@ begin
     a := original + 1;
     return mds;
 end;$$ language plisql;
+/
 
 --print 100 and 10
 select * from test_subproc_func(23);
@@ -765,6 +766,7 @@ begin
     a := original + 1;
     --return mds;
 end; $$ language plisql;
+/
 
 --print mds=10 original=10 local var a =23
 --global a =21 101 102
@@ -871,6 +873,7 @@ begin
     raise info 'schema function test_subproc';
     return var1;
 END $$ language plisql;
+/
 
 --print subproc function test_subproc
 do $$
@@ -1058,6 +1061,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --print 23
 do $$
@@ -1086,6 +1090,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --test ok
 create or replace function test_mds(id integer) returns integer as
@@ -1114,6 +1119,7 @@ declare
 begin
   id := test_mds(23);
 end; $$ language plisql;
+/
 
 --print 23 23
 select * from test_mds(23);
@@ -1145,6 +1151,7 @@ declare
 begin
   id := test_mds(23);
 end;$$ language plisql;
+/
 
 --test ok
 create or replace function test_mds(id integer) returns integer AS
@@ -1165,6 +1172,7 @@ begin
     raise info '%', id;
     return id;
 end;$$ language plisql;
+/
 
 --print 23
 do $$
@@ -1193,6 +1201,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --print 23
 do $$
@@ -1221,6 +1230,7 @@ begin
     raise info '%', id;
     return id;
 end;$$ language plisql;
+/
 
 --print 23
 do $$
@@ -1249,6 +1259,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --print 23
 do $$
@@ -1277,6 +1288,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --test failed
 create or replace function test_mds(id integer) returns integer AS
@@ -1297,7 +1309,7 @@ begin
     raise info '%', id;
     return id;
 end;$$ language plisql;
-
+/
 
 --test failed
 create or replace function test_mds(id integer) returns integer AS
@@ -1318,6 +1330,7 @@ begin
     raise info '%', id;
     return id;
 end;$$ language plisql;
+/
 
 --test failed
 create or replace function test_mds(id integer) returns integer AS
@@ -1338,6 +1351,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --test failed
 create or replace function test_mds(id integer) returns integer AS
@@ -1358,6 +1372,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --test failed
 create or replace function test_mds(id integer) returns integer AS
@@ -1378,7 +1393,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
-
+/
 
 --test failed
 do $$
@@ -1418,6 +1433,7 @@ begin
     raise info '%', id;
     return id;
 end; $$ language plisql;
+/
 
 --test ok
 create or replace function test_mds(id integer) returns integer AS
@@ -1438,6 +1454,7 @@ begin
     raise info '%', id;
     return id;
 end;$$ language plisql;
+/
 
 --print 23
 do $$
@@ -1466,6 +1483,7 @@ begin
     raise info '%', id;
     return id;
 end;$$ language plisql;
+/
 
 --print 23
 do $$
@@ -1494,6 +1512,7 @@ begin
     raise info '%', id;
     return id;
 end;$$ language plisql;
+/
 
 --print 23
 do $$
@@ -1523,6 +1542,7 @@ begin
     ids := test_subproc(23);
     raise info '%', id;
 end; $$ language plisql;
+/
 
 --print 23
 do $$
@@ -1586,6 +1606,7 @@ begin
   mds := test_subprocfunc(23);
   return mds;
 end; $$ language plisql;
+/
 
 --print test_subprocproc test_subprocfunc
 do $$
@@ -1639,6 +1660,7 @@ begin
   call test_subprocproc(23);
   mds := test_subprocfunc(23);
 end; $$ language plisql;
+/
 
 --print test_subprocproc test_subprocfunc
 do $$
@@ -1683,6 +1705,7 @@ begin
     var1 := square(100);
     raise info '%', var1;
  end; $$ language plisql;
+/
 
 --print 45 55 10000
 do $$
@@ -1932,6 +1955,7 @@ declare
 begin
   return 23;
 end; $$ language plisql;
+/
 
 --ok
 SELECT test(23) FROM dual;
@@ -2405,6 +2429,7 @@ begin
   var1 := 23;
   return 23;
 end; $$ language plisql;
+/
 
 --ok
 SELECT test_f(23) FROM dual;
@@ -2778,6 +2803,7 @@ begin
   var1 := 23;
   return var1;
 end; $$ language plisql;
+/
 
 --raise error
 do $$
@@ -2811,6 +2837,7 @@ declare
 begin
   raise info 'id = %', id;
 end; $$ language plisql;
+/
 
 --error
 do $$
@@ -3003,6 +3030,7 @@ begin
    raise info '%', test_f(23);
    RETURN NULL;
 end; $$ language plisql;
+/
 
 --ok
 create or replace trigger after_insert_trig1 after insert on test_trig_subproc
@@ -3029,6 +3057,7 @@ begin
    raise info '%', test_f(23);
    RETURN new;
 end; $$ language plisql;
+/
 
 create or replace trigger after_insert_trig1 after insert on test_trig_subproc
 for each row EXECUTE PROCEDURE after_insert_trig();
@@ -3056,6 +3085,7 @@ BEGIN
     var1 := test_f(var1);
 END
 $$ language plisql;
+/
 
 create event trigger regress_event_trigger on ddl_command_start
    execute procedure test_event_trigger();
@@ -3117,6 +3147,7 @@ begin
   mds := test_subprocfunc(23);
   return mds;
 end; $$ language plisql;
+/
 
 --ok
 do $$
@@ -3150,6 +3181,7 @@ begin
   call test_subprocproc(23);
   mds := test_subprocfunc(23);
 end; $$ language plisql;
+/
 
 --ok
 do $$
@@ -3228,6 +3260,7 @@ begin
     var1 := square(100);
     raise info '%', var1;
 end; $$ language plisql;
+/
 
 --print 45 55 10000
 do $$
@@ -3250,6 +3283,7 @@ begin
   var1 := test_f(23);
   return var1;
 end; $$ language plisql;
+/
 
 --ok
 select test_nested_f(23) from dual;

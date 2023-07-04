@@ -15,6 +15,7 @@ BEGIN
     END LOOP;
 END
 $$;
+/
 
 CALL transaction_test1(9, 'foo');
 
@@ -69,6 +70,7 @@ BEGIN
     RETURN 1;
 END
 $$;
+/
 
 SELECT transaction_test2();
 
@@ -84,6 +86,7 @@ BEGIN
     RETURN 1;
 END;
 $$;
+/
 
 SELECT transaction_test3();
 
@@ -99,6 +102,7 @@ BEGIN
     RETURN 1;
 END;
 $$;
+/
 
 SELECT transaction_test4();
 
@@ -112,6 +116,7 @@ BEGIN
     COMMIT;
 END;
 $$;
+/
 
 CALL transaction_test5();
 
@@ -125,6 +130,7 @@ BEGIN
     COMMIT;
 END;
 $$;
+/
 
 CALL transaction_test5b();
 
@@ -139,6 +145,7 @@ BEGIN
     CALL transaction_test1(9, c);
 END;
 $$;
+/
 
 CALL transaction_test6('bar');
 
@@ -153,6 +160,7 @@ BEGIN
     DO 'BEGIN CALL transaction_test1(9, $x$baz$x$); END;';
 END;
 $$;
+/
 
 CALL transaction_test7();
 
@@ -165,6 +173,7 @@ BEGIN
     EXECUTE 'CALL transaction_test1(10, $x$baz$x$)';
 END;
 $$;
+/
 
 CALL transaction_test8();
 
@@ -394,6 +403,7 @@ begin
   end loop;
   raise notice 'length(x) = %', length(x);
 end $$;
+/
 
 
 -- operations on composite types vs. internal transactions
@@ -444,6 +454,7 @@ AS $$
     END LOOP;
   END;
 $$;
+/
 
 TRUNCATE test1;
 
@@ -463,6 +474,7 @@ AS $$
     END LOOP;
   END;
 $$;
+/
 
 TRUNCATE test1;
 
@@ -516,6 +528,7 @@ LANGUAGE SQL
 AS $$
 INSERT INTO test2 VALUES (42);
 $$;
+/
 
 DO LANGUAGE plisql $$
 BEGIN
@@ -532,6 +545,7 @@ SELECT * FROM test2;
 CREATE FUNCTION report_count() RETURNS int
 STABLE LANGUAGE sql
 AS $$ SELECT COUNT(*) FROM test2 $$;
+/
 
 CREATE PROCEDURE transaction_test9b(cnt int)
 LANGUAGE plisql
@@ -540,6 +554,7 @@ BEGIN
   RAISE NOTICE 'count = %', cnt;
 END
 $$;
+/
 
 DO $$
 BEGIN
@@ -560,6 +575,7 @@ BEGIN
   COMMIT;
 END;
 $$;
+/
 
 CALL transaction_test10a(10);
 
@@ -571,6 +587,7 @@ BEGIN
   ROLLBACK;
 END;
 $$;
+/
 
 CALL transaction_test10b(10);
 
@@ -604,6 +621,7 @@ BEGIN
   ASSERT t3 > t2;
 END;
 $$;
+/
 
 CALL transaction_test11();
 

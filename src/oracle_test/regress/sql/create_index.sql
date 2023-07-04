@@ -510,6 +510,7 @@ BEGIN
   EXECUTE 'SELECT txid_current()';
   RETURN true;
 END; $$;
+/
 CREATE INDEX CONCURRENTLY concur_index8 ON concur_heap (f1)
   WHERE predicate_stable();
 DROP INDEX concur_index8;
@@ -1011,6 +1012,7 @@ CREATE OR REPLACE FUNCTION create_relfilenode_part(relname text, indname text)
 	 relname, indname);
   END
   $func$ LANGUAGE plpgsql;
+/
 CREATE OR REPLACE FUNCTION compare_relfilenode_part(tabname text)
   RETURNS TABLE (relname name, relkind "char", state text) AS
   $func$
@@ -1026,6 +1028,7 @@ CREATE OR REPLACE FUNCTION compare_relfilenode_part(tabname text)
            ORDER BY 1;', tabname);
   END
   $func$ LANGUAGE plpgsql;
+/
 --  Check that expected relfilenodes are changed, non-concurrent case.
 SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
 REINDEX INDEX concur_reindex_part_index;

@@ -2,6 +2,7 @@ CALL nonexistent();  -- error
 CALL random();  -- error
 
 CREATE FUNCTION cp_testfunc1(a int) RETURNS int LANGUAGE SQL AS $$ SELECT a $$;
+/
 
 CREATE TABLE cp_test (a int, b text);
 
@@ -10,6 +11,7 @@ LANGUAGE SQL
 AS $$
 INSERT INTO cp_test VALUES (1, x);
 $$;
+/
 
 \df ptest1
 SELECT pg_get_functiondef('ptest1'::regproc);
@@ -34,6 +36,7 @@ LANGUAGE SQL
 BEGIN ATOMIC
   INSERT INTO cp_test VALUES (1, x);
 END;
+/
 
 \df ptest1s
 SELECT pg_get_functiondef('ptest1s'::regproc);
@@ -48,13 +51,14 @@ LANGUAGE SQL
 BEGIN ATOMIC
   CREATE TABLE x (a int);
 END;
-
+/
 
 CREATE PROCEDURE ptest2()
 LANGUAGE SQL
 AS $$
 SELECT 5;
 $$;
+/
 
 CALL ptest2();
 
@@ -68,6 +72,7 @@ AS $$
 CALL ptest1(y);
 CALL ptest1($1);
 $$;
+/
 
 CALL ptest3('b');
 
@@ -81,6 +86,7 @@ LANGUAGE SQL
 AS $$
 SELECT 1, 2;
 $$;
+/
 
 CALL ptest4a(NULL, NULL);
 
@@ -89,6 +95,7 @@ LANGUAGE SQL
 AS $$
 CALL ptest4a(a, b);  -- error, not supported
 $$;
+/
 
 DROP PROCEDURE ptest4a;
 
@@ -101,6 +108,7 @@ AS $$
 INSERT INTO cp_test VALUES(a, b);
 INSERT INTO cp_test VALUES(c, b);
 $$;
+/
 
 TRUNCATE cp_test;
 
@@ -119,6 +127,7 @@ LANGUAGE SQL
 AS $$
 SELECT NULL::int;
 $$;
+/
 
 CALL ptest6(1, 2);
 
@@ -130,6 +139,7 @@ LANGUAGE SQL
 AS $$
 SELECT a = b;
 $$;
+/
 
 CALL ptest7(least('a', 'b'), 'a');
 
@@ -138,6 +148,7 @@ CALL ptest7(least('a', 'b'), 'a');
 CREATE PROCEDURE ptest8(x text)
 BEGIN ATOMIC
 END;
+/
 
 \df ptest8
 SELECT pg_get_functiondef('ptest8'::regproc);
@@ -152,6 +163,7 @@ AS $$
 INSERT INTO cp_test VALUES (1, 'a');
 SELECT 1;
 $$;
+/
 
 -- standard way to do a call:
 CALL ptest9(NULL);
@@ -163,6 +175,7 @@ CALL ptest9(1./0.);  -- error
 -- check named-parameter matching
 CREATE PROCEDURE ptest10(OUT a int, IN b int, IN c int)
 LANGUAGE SQL AS $$ SELECT b - c $$;
+/
 
 CALL ptest10(null, 7, 4);
 CALL ptest10(a => null, b => 8, c => 2);
@@ -172,6 +185,7 @@ CALL ptest10(b => 8, c => 2, a => 0);
 
 CREATE PROCEDURE ptest11(a OUT int, VARIADIC b int[]) LANGUAGE SQL
   AS $$ SELECT b[1] + b[2] $$;
+/
 
 CALL ptest11(null, 11, 12, 13);
 
@@ -179,6 +193,7 @@ CALL ptest11(null, 11, 12, 13);
 
 CREATE PROCEDURE ptest10(IN a int, IN b int, IN c int)
 LANGUAGE SQL AS $$ SELECT a + b - c $$;
+/
 
 \df ptest10
 
@@ -201,11 +216,15 @@ CALL version();  -- error: not a procedure
 CALL sum(1);  -- error: not a procedure
 
 CREATE PROCEDURE ptestx() LANGUAGE SQL WINDOW AS $$ INSERT INTO cp_test VALUES (1, 'a') $$;
+/
 CREATE PROCEDURE ptestx() LANGUAGE SQL STRICT AS $$ INSERT INTO cp_test VALUES (1, 'a') $$;
+/
 CREATE PROCEDURE ptestx(a VARIADIC int[], b OUT int) LANGUAGE SQL
   AS $$ SELECT a[1] $$;
+/
 CREATE PROCEDURE ptestx(a int DEFAULT 42, b OUT int) LANGUAGE SQL
   AS $$ SELECT a $$;
+/
 
 ALTER PROCEDURE ptest1(text) STRICT;
 ALTER FUNCTION ptest1(text) VOLATILE;  -- error: not a function

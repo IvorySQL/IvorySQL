@@ -486,6 +486,7 @@ drop type textrange2;
 
 create function anyarray_anyrange_func(a anyarray, r anyrange)
   returns anyelement as 'select $1[1] + lower($2);' language sql;
+/
 
 select anyarray_anyrange_func(ARRAY[1,2], int4range(10,20));
 
@@ -497,13 +498,16 @@ drop function anyarray_anyrange_func(anyarray, anyrange);
 -- should fail
 create function bogus_func(anyelement)
   returns anyrange as 'select int4range(1,10)' language sql;
+/
 
 -- should fail
 create function bogus_func(int)
   returns anyrange as 'select int4range(1,10)' language sql;
+/
 
 create function range_add_bounds(anyrange)
   returns anyelement as 'select lower($1) + upper($1)' language sql;
+/
 
 select range_add_bounds(int4range(1, 17));
 select range_add_bounds(numrange(1.0001, 123.123));
@@ -511,12 +515,14 @@ select range_add_bounds(numrange(1.0001, 123.123));
 create function rangetypes_sql(q anyrange, b anyarray, out c anyelement)
   as $$ select upper($1) + $2[1] $$
   language sql;
+/
 
 select rangetypes_sql(int4range(1,10), ARRAY[2,20]);
 select rangetypes_sql(numrange(1,10), ARRAY[2,20]);  -- match failure
 
 create function anycompatiblearray_anycompatiblerange_func(a anycompatiblearray, r anycompatiblerange)
   returns anycompatible as 'select $1[1] + lower($2);' language sql;
+/
 
 select anycompatiblearray_anycompatiblerange_func(ARRAY[1,2], int4range(10,20));
 
@@ -530,6 +536,7 @@ drop function anycompatiblearray_anycompatiblerange_func(anycompatiblearray, any
 -- should fail
 create function bogus_func(anycompatible)
   returns anycompatiblerange as 'select int4range(1,10)' language sql;
+/
 
 --
 -- Arrays of ranges
@@ -590,24 +597,28 @@ reset enable_sort;
 -- infer anyrange from anyrange
 create function outparam_succeed(i anyrange, out r anyrange, out t text)
   as $$ select $1, 'foo'::text $$ language sql;
+/
 
 select * from outparam_succeed(int4range(1,2));
 
 create function outparam2_succeed(r anyrange, out lu anyarray, out ul anyarray)
   as $$ select array[lower($1), upper($1)], array[upper($1), lower($1)] $$
   language sql;
+/
 
 select * from outparam2_succeed(int4range(1,11));
 
 -- infer anyarray from anyrange
 create function outparam_succeed2(i anyrange, out r anyarray, out t text)
   as $$ select ARRAY[upper($1)], 'foo'::text $$ language sql;
+/
 
 select * from outparam_succeed2(int4range(int4range(1,2)));
 
 -- infer anyelement from anyrange
 create function inoutparam_succeed(out i anyelement, inout r anyrange)
   as $$ select upper($1), $1 $$ language sql;
+/
 
 select * from inoutparam_succeed(int4range(1,2));
 
@@ -615,17 +626,21 @@ create function table_succeed(r anyrange)
   returns table(l anyelement, u anyelement)
   as $$ select lower($1), upper($1) $$
   language sql;
+/
 
 select * from table_succeed(int4range(1,11));
 
 -- should fail
 create function outparam_fail(i anyelement, out r anyrange, out t text)
   as $$ select '[1,10]', 'foo' $$ language sql;
+/
 
 --should fail
 create function inoutparam_fail(inout i anyelement, out r anyrange)
   as $$ select $1, '[1,10]' $$ language sql;
+/
 
 --should fail
 create function table_fail(i anyelement) returns table(i anyelement, r anyrange)
   as $$ select $1, '[1,10]' $$ language sql;
+/

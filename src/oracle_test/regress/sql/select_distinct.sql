@@ -133,6 +133,7 @@ CREATE OR REPLACE FUNCTION distinct_func(a INT) RETURNS INT AS $$
     RETURN a;
   END;
 $$ LANGUAGE plpgsql PARALLEL UNSAFE;
+/
 
 -- Ensure we don't do parallel distinct with a parallel unsafe function
 EXPLAIN (COSTS OFF)
@@ -144,6 +145,7 @@ CREATE OR REPLACE FUNCTION distinct_func(a INT) RETURNS INT AS $$
     RETURN a;
   END;
 $$ LANGUAGE plpgsql PARALLEL SAFE;
+/
 
 -- Ensure we do parallel distinct now that the function is parallel safe
 EXPLAIN (COSTS OFF)

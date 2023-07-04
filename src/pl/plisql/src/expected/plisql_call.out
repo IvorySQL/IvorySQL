@@ -8,6 +8,7 @@ BEGIN
     NULL;
 END;
 $$;
+/
 CALL test_proc1();
 -- error: can't return non-NULL
 CREATE PROCEDURE test_proc2()
@@ -17,6 +18,7 @@ BEGIN
     RETURN 5;
 END;
 $$;
+/
 ERROR:  RETURN cannot have a parameter in a procedure
 LINE 5:     RETURN 5;
                    ^
@@ -28,6 +30,7 @@ BEGIN
     INSERT INTO test1 VALUES (x);
 END;
 $$;
+/
 CALL test_proc3(55);
 SELECT * FROM test1;
  a  
@@ -45,6 +48,7 @@ BEGIN
     CALL test_proc3($1);
 END;
 $$;
+/
 CALL test_proc4(66);
 SELECT * FROM test1;
  a  
@@ -71,6 +75,7 @@ BEGIN
     a := a || '+' || a;
 END;
 $$;
+/
 CALL test_proc5('abc');
     a    
 ---------
@@ -85,6 +90,7 @@ BEGIN
     c := c * a;
 END;
 $$;
+/
 CALL test_proc6(2, 3, 4);
  b | c 
 ---+---
@@ -161,6 +167,7 @@ IF x > 1 THEN
 END IF;
 END;
 $$;
+/
 CALL test_proc7(100, -1, -1);
  a | b 
 ---+---
@@ -177,6 +184,7 @@ BEGIN
   COMMIT;
 END;
 $$;
+/
 CREATE PROCEDURE test_proc7cc(_x int)
 LANGUAGE plisql
 AS $$
@@ -186,8 +194,12 @@ BEGIN
   RAISE NOTICE '_x: %,_a: %, _b: %', _x, _a, _b;
 END
 $$;
+/
 CALL test_proc7cc(10);
-NOTICE:  _x: 10,_a: 1, _b: 5
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function test_proc7c(integer,integer,numeric) line 5 at COMMIT
+SQL statement "CALL test_proc7c(_x, _a, _b)"
+PL/iSQL function test_proc7cc(integer) line 4 at CALL
 -- named parameters and defaults
 CREATE PROCEDURE test_proc8a(INOUT a int, INOUT b int)
 LANGUAGE plisql
@@ -198,6 +210,7 @@ BEGIN
   b := b + 10;
 END;
 $$;
+/
 CALL test_proc8a(10, 20);
 NOTICE:  a: 10, b: 20
   a  | b  
@@ -236,6 +249,7 @@ BEGIN
   c := c * -10;
 END;
 $$;
+/
 DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
@@ -260,6 +274,7 @@ BEGIN
   c := c * -10;
 END;
 $$;
+/
 DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
@@ -309,6 +324,7 @@ BEGIN
   b := a * 2;
 END;
 $$;
+/
 DO $$
 DECLARE _a int; _b int;
 BEGIN
@@ -327,6 +343,7 @@ BEGIN
   b := a - c;
 END;
 $$;
+/
 DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
@@ -382,6 +399,7 @@ BEGIN
   a := b[1] + b[2];
 END;
 $$;
+/
 DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
@@ -404,6 +422,7 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+/
 CREATE TRIGGER t1 BEFORE INSERT ON test1 EXECUTE PROCEDURE triggerfunc1();
 INSERT INTO test1 VALUES (1), (2), (3);
 UPDATE test1 SET a = 22 WHERE a = 2;
@@ -426,6 +445,7 @@ BEGIN
   v_Text := 'v_cnt = ' || v_cnt;
 END
 $$ LANGUAGE plisql;
+/
 DO $$
 DECLARE
   v_Text text;

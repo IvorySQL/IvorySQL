@@ -114,6 +114,7 @@ CREATE TABLE partitioned (
 
 -- prevent using prohibited expressions in the key
 CREATE FUNCTION retset (a int) RETURNS SETOF int AS $$ SELECT 1; $$ LANGUAGE SQL IMMUTABLE;
+/
 CREATE TABLE partitioned (
 	a int
 ) PARTITION BY RANGE (retset(a));
@@ -137,6 +138,7 @@ CREATE TABLE partitioned (
 ) PARTITION BY RANGE ((42));
 
 CREATE FUNCTION const_func () RETURNS int AS $$ SELECT 1; $$ LANGUAGE SQL IMMUTABLE;
+/
 CREATE TABLE partitioned (
 	a int
 ) PARTITION BY RANGE (const_func());
@@ -169,6 +171,7 @@ CREATE TABLE partitioned (
 
 -- functions in key must be immutable
 CREATE FUNCTION immut_func (a int) RETURNS int AS $$ SELECT a + random()::int; $$ LANGUAGE SQL;
+/
 CREATE TABLE partitioned (
 	a int
 ) PARTITION BY RANGE (immut_func(a));
@@ -196,7 +199,7 @@ CREATE TABLE partitioned (
 
 -- some checks after successful creation of a partitioned table
 CREATE FUNCTION plusone(a int) RETURNS INT AS $$ SELECT a+1; $$ LANGUAGE SQL;
-
+/
 CREATE TABLE partitioned (
 	a int,
 	b int,
@@ -629,6 +632,7 @@ DROP TABLE range_parted4;
 -- user-defined operator class in partition key
 CREATE FUNCTION my_int4_sort(int4,int4) RETURNS int LANGUAGE sql
   AS $$ SELECT CASE WHEN $1 = $2 THEN 0 WHEN $1 > $2 THEN 1 ELSE -1 END; $$;
+/
 CREATE OPERATOR CLASS test_int4_ops FOR TYPE int4 USING btree AS
   OPERATOR 1 < (int4,int4), OPERATOR 2 <= (int4,int4),
   OPERATOR 3 = (int4,int4), OPERATOR 4 >= (int4,int4),
@@ -685,6 +689,7 @@ create or replace function func_part_create() returns trigger
     execute 'create table tab_part_create_1 partition of tab_part_create for values in (1)';
     return null;
   end $$;
+/
 create trigger trig_part_create before insert on tab_part_create
   for each statement execute procedure func_part_create();
 insert into tab_part_create values (1);

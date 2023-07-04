@@ -13,16 +13,14 @@ BEGIN
     END LOOP;
 END
 $$;
+/
 CALL transaction_test1(9, 'foo');
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
 SELECT * FROM test1;
- a |  b  
----+-----
- 0 | foo
- 2 | foo
- 4 | foo
- 6 | foo
- 8 | foo
-(5 rows)
+ a | b 
+---+---
+(0 rows)
 
 TRUNCATE test1;
 DO
@@ -77,6 +75,7 @@ BEGIN
     RETURN 1;
 END
 $$;
+/
 SELECT transaction_test2();
 ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function transaction_test2() line 6 at COMMIT
@@ -94,6 +93,7 @@ BEGIN
     RETURN 1;
 END;
 $$;
+/
 SELECT transaction_test3();
 ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
@@ -113,6 +113,7 @@ BEGIN
     RETURN 1;
 END;
 $$;
+/
 SELECT transaction_test4();
 ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function inline_code_block line 1 at COMMIT
@@ -127,6 +128,7 @@ BEGIN
     COMMIT;
 END;
 $$;
+/
 CALL transaction_test5();
 ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function transaction_test5() line 3 at COMMIT
@@ -139,6 +141,7 @@ BEGIN
     COMMIT;
 END;
 $$;
+/
 CALL transaction_test5b();
 ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function transaction_test5b() line 3 at COMMIT
@@ -151,16 +154,16 @@ BEGIN
     CALL transaction_test1(9, c);
 END;
 $$;
+/
 CALL transaction_test6('bar');
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+SQL statement "CALL transaction_test1(9, c)"
+PL/iSQL function transaction_test6(text) line 3 at CALL
 SELECT * FROM test1;
- a |  b  
----+-----
- 0 | bar
- 2 | bar
- 4 | bar
- 6 | bar
- 8 | bar
-(5 rows)
+ a | b 
+---+---
+(0 rows)
 
 TRUNCATE test1;
 CREATE PROCEDURE transaction_test7()
@@ -170,16 +173,18 @@ BEGIN
     DO 'BEGIN CALL transaction_test1(9, $x$baz$x$); END;';
 END;
 $$;
+/
 CALL transaction_test7();
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+SQL statement "CALL transaction_test1(9, $x$baz$x$)"
+PL/iSQL function inline_code_block line 1 at CALL
+SQL statement "DO 'BEGIN CALL transaction_test1(9, $x$baz$x$); END;'"
+PL/iSQL function transaction_test7() line 3 at DO
 SELECT * FROM test1;
- a |  b  
----+-----
- 0 | baz
- 2 | baz
- 4 | baz
- 6 | baz
- 8 | baz
-(5 rows)
+ a | b 
+---+---
+(0 rows)
 
 CREATE PROCEDURE transaction_test8()
 LANGUAGE plisql
@@ -188,6 +193,7 @@ BEGIN
     EXECUTE 'CALL transaction_test1(10, $x$baz$x$)';
 END;
 $$;
+/
 CALL transaction_test8();
 ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
@@ -475,7 +481,9 @@ begin
   end loop;
   raise notice 'length(x) = %', length(x);
 end $$;
-NOTICE:  length(x) = 10000
+/
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function inline_code_block line 6 at COMMIT
 -- operations on composite types vs. internal transactions
 DO LANGUAGE plisql $$
 declare
@@ -534,9 +542,10 @@ AS $$
     END LOOP;
   END;
 $$;
+/
 TRUNCATE test1;
 CALL cursor_fail_during_commit();
-ERROR:  division by zero
+ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function cursor_fail_during_commit() line 6 at COMMIT
 -- note that error occurs during first COMMIT, hence nothing is in test1
 SELECT count(*) FROM test1;
@@ -556,9 +565,10 @@ AS $$
     END LOOP;
   END;
 $$;
+/
 TRUNCATE test1;
 CALL cursor_fail_during_rollback();
-ERROR:  division by zero
+ERROR:  invalid transaction termination
 CONTEXT:  PL/iSQL function cursor_fail_during_rollback() line 6 at ROLLBACK
 SELECT count(*) FROM test1;
  count 
@@ -615,6 +625,7 @@ LANGUAGE SQL
 AS $$
 INSERT INTO test2 VALUES (42);
 $$;
+/
 DO LANGUAGE plisql $$
 BEGIN
   ROLLBACK;
@@ -632,6 +643,7 @@ SELECT * FROM test2;
 CREATE FUNCTION report_count() RETURNS int
 STABLE LANGUAGE sql
 AS $$ SELECT COUNT(*) FROM test2 $$;
+/
 CREATE PROCEDURE transaction_test9b(cnt int)
 LANGUAGE plisql
 AS $$
@@ -639,6 +651,7 @@ BEGIN
   RAISE NOTICE 'count = %', cnt;
 END
 $$;
+/
 DO $$
 BEGIN
     CALL transaction_test9b(report_count());
@@ -658,12 +671,10 @@ BEGIN
   COMMIT;
 END;
 $$;
+/
 CALL transaction_test10a(10);
- x  
-----
- 11
-(1 row)
-
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function transaction_test10a(integer) line 4 at COMMIT
 CREATE PROCEDURE transaction_test10b(INOUT x int)
 LANGUAGE plisql
 AS $$
@@ -672,12 +683,10 @@ BEGIN
   ROLLBACK;
 END;
 $$;
+/
 CALL transaction_test10b(10);
- x 
----
- 9
-(1 row)
-
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function transaction_test10b(integer) line 4 at ROLLBACK
 -- transaction timestamp vs. statement timestamp
 CREATE PROCEDURE transaction_test11()
 LANGUAGE plisql
@@ -707,7 +716,10 @@ BEGIN
   ASSERT t3 > t2;
 END;
 $$;
+/
 CALL transaction_test11();
+ERROR:  invalid transaction termination
+CONTEXT:  PL/iSQL function transaction_test11() line 14 at COMMIT
 -- transaction chain
 TRUNCATE test1;
 DO LANGUAGE plisql $$

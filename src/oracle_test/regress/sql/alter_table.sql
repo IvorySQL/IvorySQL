@@ -405,6 +405,7 @@ ALTER TABLE attmp3 VALIDATE CONSTRAINT b_le_20;	-- succeeds
 
 -- An already validated constraint must not be revalidated
 CREATE FUNCTION boo(int) RETURNS int IMMUTABLE STRICT LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'boo: %', $1; RETURN $1; END; $$;
+/
 INSERT INTO attmp7 VALUES (8, 18);
 ALTER TABLE attmp7 ADD CONSTRAINT identity CHECK (b = boo(b));
 ALTER TABLE attmp3 ADD CONSTRAINT IDENTITY check (b = boo(b)) NOT VALID;
@@ -1671,6 +1672,7 @@ BEGIN
     RETURN v_relfilenode <> (SELECT relfilenode FROM pg_class WHERE oid = p_tablename);
 END;
 $$;
+/
 
 CREATE TABLE rewrite_test(col text);
 INSERT INTO rewrite_test VALUES ('something');
@@ -1865,6 +1867,7 @@ drop type lockmodes;
 create function test_strict(text) returns text as
     'select coalesce($1, ''got passed a null'');'
     language sql returns null on null input;
+/
 select test_strict(NULL);
 alter function test_strict(text) called on null input;
 select test_strict(NULL);
@@ -1872,6 +1875,7 @@ select test_strict(NULL);
 create function non_strict(text) returns text as
     'select coalesce($1, ''got passed a null'');'
     language sql called on null input;
+/
 select non_strict(NULL);
 alter function non_strict(text) returns null on null input;
 select non_strict(NULL);
@@ -1888,6 +1892,7 @@ create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
 create view alter1.v1 as select * from alter1.t1;
 
 create function alter1.plus1(int) returns int as 'select $1+1' language sql;
+/
 
 create domain alter1.posint integer check (value > 0);
 
@@ -1895,6 +1900,7 @@ create type alter1.ctype as (f1 int, f2 text);
 
 create function alter1.same(alter1.ctype, alter1.ctype) returns boolean language sql
 as 'select $1.f1 is not distinct from $2.f1 and $1.f2 is not distinct from $2.f2';
+/
 
 create operator alter1.=(procedure = alter1.same, leftarg  = alter1.ctype, rightarg = alter1.ctype);
 
@@ -2934,6 +2940,7 @@ create or replace function func_part_attach() returns trigger
     execute 'alter table tab_part_attach attach partition tab_part_attach_1 for values in (1)';
     return null;
   end $$;
+/
 create trigger trig_part_attach before insert on tab_part_attach
   for each statement execute procedure func_part_attach();
 insert into tab_part_attach values (1);
@@ -2945,6 +2952,7 @@ drop function func_part_attach();
 -- the execution of an ATTACH PARTITION command
 create function at_test_sql_partop (int4, int4) returns int language sql
 as $$ select case when $1 = $2 then 0 when $1 > $2 then 1 else -1 end; $$;
+/
 create operator class at_test_sql_partop for type int4 using btree as
     operator 1 < (int4, int4), operator 2 <= (int4, int4),
     operator 3 = (int4, int4), operator 4 >= (int4, int4),
@@ -2986,6 +2994,7 @@ as $$
     return NULL;
   end;
 $$;
+/
 create trigger xtrig
   after update on bar1
   referencing old table as old

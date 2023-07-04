@@ -42,6 +42,9 @@ SELECT 'trailing' as x1; -- inside block comment
 */
 /* This block comment surrounds a query which itself has a block comment...
 SELECT /* embedded single line */ 'embedded' AS x2;
+ERROR:  syntax error at or near "'embedded'"
+LINE 5: SELECT /* embedded single line */ 'embedded' AS x2;
+                                          ^
 */
 SELECT -- continued after the following block comments...
 /* Deeply nested comment.
@@ -57,9 +60,7 @@ Hoo boy. Still two deep...
 Now just one deep...
 */
 'deeply nested example' AS sixth;
-         sixth         
------------------------
- deeply nested example
-(1 row)
-
+ERROR:  syntax error at or near "*/"
+LINE 1: */
+        ^
 /* and this is the end of the file */

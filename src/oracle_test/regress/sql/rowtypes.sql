@@ -339,10 +339,12 @@ CREATE TYPE price_key AS (
 CREATE FUNCTION price_key_from_table(price) RETURNS price_key AS $$
     SELECT $1.id
 $$ LANGUAGE SQL;
+/
 
 CREATE FUNCTION price_key_from_input(price_input) RETURNS price_key AS $$
     SELECT $1.id
 $$ LANGUAGE SQL;
+/
 
 insert into price values (1,false,42), (10,false,100), (11,true,17.99);
 
@@ -365,18 +367,22 @@ create temp table compos (f1 int, f2 text);
 create function fcompos1(v compos) returns void as $$
 insert into compos values (v);  -- fail
 $$ language sql;
+/
 
 create function fcompos1(v compos) returns void as $$
 insert into compos values (v.*);
 $$ language sql;
+/
 
 create function fcompos2(v compos) returns void as $$
 select fcompos1(v);
 $$ language sql;
+/
 
 create function fcompos3(v compos) returns void as $$
 select fcompos1(fcompos3.v.*);
 $$ language sql;
+/
 
 select fcompos1(row(1,'one'));
 select fcompos2(row(2,'two'));
@@ -408,6 +414,7 @@ select last(f) from fullname f;
 
 create function longname(fullname) returns text language sql
 as $$select $1.first || ' ' || $1.last$$;
+/
 
 select f.longname from fullname f;
 select longname(f) from fullname f;
