@@ -37,6 +37,7 @@ OBJS = \
 	mainloop.o \
 	ora_psqlscanslash.o \
 	prompt.o \
+	ora_prompt.o \
 	psqlscanslash.o \
 	sql_help.o \
 	startup.o \

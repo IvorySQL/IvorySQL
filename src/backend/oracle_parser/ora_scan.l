@@ -187,6 +187,7 @@ extern void ora_core_yyset_column(int column_no, yyscan_t yyscanner);
  *  <xui> quoted identifier with Unicode escapes
  *  <xus> quoted string with Unicode escapes
  *  <xeu> Unicode surrogate pair in extended quoted string
+ *  <xdq> q escape feature
  *
  * Remember to add an <<EOF>> case whenever you add a new exclusive state!
  * The default one is probably not the right thing.
@@ -203,6 +204,7 @@ extern void ora_core_yyset_column(int column_no, yyscan_t yyscanner);
 %x xui
 %x xus
 %x xeu
+%x xdq
 
 /*
  * In order to make the world safe for Windows and Mac clients as well as
@@ -304,6 +306,10 @@ dolq_cont		[A-Za-z\200-\377_0-9]
 dolqdelim		\$({dolq_start}{dolq_cont}*)?\$
 dolqfailed		\${dolq_start}{dolq_cont}*
 dolqinside		[^$]+
+/* q escape */
+dosymstart		[Qq]{quote}
+dosymend		{quote}
+dosymfailed		[Qq]{quote}{space}
 
 /* Double quote
  * Allows embedded spaces and other special characters into identifiers.
@@ -749,6 +755,106 @@ other			.
 					addlitchar(yytext[0], yyscanner);
 				}
 <xq,xe,xus><<EOF>>		{ yyerror("unterminated quoted string"); }
+
+{dosymstart}	{
+					SET_YYLLOC();
+					BEGIN(xdq);
+					startlit();
+				}
+{dosymfailed}	{
+					SET_YYLLOC();
+					yyless(1);
+					return yytext[0];
+				}
+
+<xdq>{dosymend}	{
+					/*
+					 * determine whether the character after q' is symmetrical
+					 * to the character before '.
+					 */
+					bool 	 flag = false;
+					char 	*symstr = NULL;
+					int 	 first_symlen = 0;
+					int 	 last_symlen = 0;
+					int 	 symlen = 0;
+
+					symstr = litbufdup(yyscanner);
+					/* calculate the byte length of the first symmetric character */
+					first_symlen = pg_mblen(symstr);
+					symlen = strlen(symstr);
+
+					if (first_symlen == 1 && symlen >= 2)
+					{
+						if (symstr[0] == '(' || symstr[0] == '[' || symstr[0] == '{' || symstr[0] == '<')
+						{
+							if (symstr[0] == '(' && symstr[symlen - 1] == ')' )
+								flag = true;
+							if (symstr[0] == '{' && symstr[symlen - 1] == '}' )
+								flag =true;
+							if (symstr[0] == '[' && symstr[symlen - 1] == ']' )
+								flag =true;
+							if (symstr[0] == '<' && symstr[symlen - 1] == '>' )
+								flag =true;
+						}
+						else if (symstr[0] == symstr[symlen- 1])
+							flag = true;
+						else
+							flag = false;
+					}
+
+					if (first_symlen > 1 && symlen >= first_symlen * 2)
+					{
+						char	*first = symstr;
+						char	*last = first + (symlen - first_symlen);
+
+						/* calculate the byte length of the next symmetric character */
+						last_symlen = pg_mblen(last);
+
+						if (first_symlen == last_symlen)
+						{
+							flag = (memcmp(first, last, first_symlen) == 0) ? true : false;
+						}
+					}
+
+					if (flag)
+					{
+						char	*oldstr = NULL;
+						char	*newstr = NULL;
+						int		len = 0;
+
+						BEGIN(INITIAL);
+						/* get q' escaped character,really character */
+
+						oldstr = litbufdup(yyscanner);
+						len = strlen(oldstr);
+						newstr = (char*)palloc(len + 1);
+						MemSet(newstr, 0x00, len + 1);
+						memcpy(newstr, oldstr + first_symlen, len - first_symlen * 2);
+						yylval->str = pstrdup(newstr);
+						pfree(newstr);
+						return SCONST;
+					}
+					else
+						addlit(yytext, yyleng, yyscanner);
+				}
+
+<xdq>{dosymstart}	{
+						addlit(yytext, yyleng-1, yyscanner);
+						yyless(yyleng - 1);
+					}
+
+<xdq>{dosymfailed}	{
+						addlit(yytext, yyleng, yyscanner);
+					}
+
+<xdq>{newline} {
+					addlit(yytext, yyleng, yyscanner);
+				}
+
+<xdq>.			{
+					addlitchar(yytext[0], yyscanner);
+				}
+<xdq><<EOF>>	{ yyerror("unterminated q-quoted string"); }
 
 {dolqdelim}		{
 					SET_YYLLOC();
