@@ -9925,6 +9925,17 @@ AS 'timestamptz_izone'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
+
+CREATE  OR REPLACE FUNCTION sys.varchar2like(varchar2, varchar2)
+RETURNS bool AS $$
+SELECT $1::text like $2::text;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR ~~ (
+PROCEDURE = sys.varchar2like,
+LEFTARG   = varchar2,
+RIGHTARG  = varchar2
+);
 /* End - BUG#986 */
 
 /***************************************************************

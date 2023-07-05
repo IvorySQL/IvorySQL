@@ -1,0 +1,266 @@
+--
+-- oracle like tests
+--
+set ivorysql.compatible_mode to oracle;
+alter session set timezone = '+8';
+select '123456'::char(6) like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '123456'::varchar(6) like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '123456'::varchar2 like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '123456'::text like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '123456'::text like '123%'::varchar2 from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::integer like '123%'::varchar2 from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::integer like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::int like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 1234::int2 like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::int4 like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::int8 like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::bigint like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 1234::smallint like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::real like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::number like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::numeric like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::dec like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 123456::decimal like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 1234.56::float like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 1234.56::float4 like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 1234.56::float8 like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 1234.56::double precision like '123%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '2022-09-26'::date like '2022%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '2022-09-26 16:39:20'::timestamp like '2022%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '2022-09-26 16:39:20'::timestamptz  like '2022%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '2022-09-26 16:39:20'::timestamp with local time zone like '2022%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '2022-09-26 16:39:20'::time like '16%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '08:55:08 GMT+2'::timetz like '08%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '2022-09-26 16:39:20'::clob like '2022%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '2022-09-26 16:39:20'::nclob like '2022%' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select '123456'::char(6) like null from dual;
+ ?column? 
+----------
+ 
+(1 row)
+
+select 123456::integer like null from dual;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT null like '123%' from dual;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT null like '123%'::varchar2 from dual;
+ ?column? 
+----------
+ 
+(1 row)
+
+create table t_ora_like (id int ,str1 varchar(8), date1 timestamp with time zone, date2 time with time zone, num int, str2 varchar(8));
+insert into t_ora_like (id ,str1 ,date1 ,date2) values (123456,'test1','2022-09-26 16:39:20','2022-09-26 16:39:20');
+insert into t_ora_like (id ,str1 ,date1 ,date2) values (123457,'test2','2022-09-26 16:40:20','2022-09-26 16:40:20');
+insert into t_ora_like (id ,str1 ,date1 ,date2) values (223456,'test3','2022-09-26 16:41:20','2022-09-26 16:41:20');
+insert into t_ora_like (id ,str1 ,date1 ,date2) values (123458,'test4','2022-09-26 16:42:20','2022-09-26 16:42:20');
+select * from t_ora_like where str1 like 'test%';
+   id   | str1  |               date1               |    date2    | num | str2 
+--------+-------+-----------------------------------+-------------+-----+------
+ 123456 | test1 | 2022-09-26 16:39:20.000000 +08:00 | 16:39:20+08 |     | 
+ 123457 | test2 | 2022-09-26 16:40:20.000000 +08:00 | 16:40:20+08 |     | 
+ 223456 | test3 | 2022-09-26 16:41:20.000000 +08:00 | 16:41:20+08 |     | 
+ 123458 | test4 | 2022-09-26 16:42:20.000000 +08:00 | 16:42:20+08 |     | 
+(4 rows)
+
+select * from t_ora_like where date1 like '2022%';
+   id   | str1  |               date1               |    date2    | num | str2 
+--------+-------+-----------------------------------+-------------+-----+------
+ 123456 | test1 | 2022-09-26 16:39:20.000000 +08:00 | 16:39:20+08 |     | 
+ 123457 | test2 | 2022-09-26 16:40:20.000000 +08:00 | 16:40:20+08 |     | 
+ 223456 | test3 | 2022-09-26 16:41:20.000000 +08:00 | 16:41:20+08 |     | 
+ 123458 | test4 | 2022-09-26 16:42:20.000000 +08:00 | 16:42:20+08 |     | 
+(4 rows)
+
+select * from t_ora_like where date2 like '16%';
+   id   | str1  |               date1               |    date2    | num | str2 
+--------+-------+-----------------------------------+-------------+-----+------
+ 123456 | test1 | 2022-09-26 16:39:20.000000 +08:00 | 16:39:20+08 |     | 
+ 123457 | test2 | 2022-09-26 16:40:20.000000 +08:00 | 16:40:20+08 |     | 
+ 223456 | test3 | 2022-09-26 16:41:20.000000 +08:00 | 16:41:20+08 |     | 
+ 123458 | test4 | 2022-09-26 16:42:20.000000 +08:00 | 16:42:20+08 |     | 
+(4 rows)
+
+select * from t_ora_like where id like '123%';
+   id   | str1  |               date1               |    date2    | num | str2 
+--------+-------+-----------------------------------+-------------+-----+------
+ 123456 | test1 | 2022-09-26 16:39:20.000000 +08:00 | 16:39:20+08 |     | 
+ 123457 | test2 | 2022-09-26 16:40:20.000000 +08:00 | 16:40:20+08 |     | 
+ 123458 | test4 | 2022-09-26 16:42:20.000000 +08:00 | 16:42:20+08 |     | 
+(3 rows)
+
+select * from t_ora_like where id like null;
+ id | str1 | date1 | date2 | num | str2 
+----+------+-------+-------+-----+------
+(0 rows)
+
+select * from t_ora_like where num like '123%';
+ id | str1 | date1 | date2 | num | str2 
+----+------+-------+-------+-----+------
+(0 rows)
+
+select * from t_ora_like where str2 like 'test%';
+ id | str1 | date1 | date2 | num | str2 
+----+------+-------+-------+-----+------
+(0 rows)
+
+drop table t_ora_like;
+set ivorysql.compatible_mode to pg;
