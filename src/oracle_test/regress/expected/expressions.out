@@ -38,7 +38,7 @@ SELECT now()::time(3)::text = localtime(3)::text;
 SELECT current_timestamp = NOW();
  ?column? 
 ----------
- f
+ t
 (1 row)
 
 -- precision
