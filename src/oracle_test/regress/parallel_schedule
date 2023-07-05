@@ -135,3 +135,8 @@ test: fast_default
 # setup that other tests may use.
 test: tablespace
 test: ora_plisql
+
+# ----------
+# compatible oracle q escape feature
+# ----------
+test: qsyntax

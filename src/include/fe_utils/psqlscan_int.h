@@ -110,6 +110,7 @@ typedef struct PsqlScanStateData
 	 * reset by psql_scan_reset.  start_state is adopted by yylex() on entry,
 	 * and updated with its finishing state on exit.
 	 */
+	int			postion_len;	/* record the postion of the first symmetric char */
 	int			start_state;	/* yylex's starting/finishing state */
 	int			state_before_str_stop;	/* start cond. before end quote */
 	int			paren_depth;	/* depth of nesting in parentheses */

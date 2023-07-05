@@ -122,6 +122,7 @@ extern void ora_psql_yyset_column(int column_no, yyscan_t yyscanner);
  *  <xdolq> $foo$ quoted strings
  *  <xui> quoted identifier with Unicode escapes
  *  <xus> quoted string with Unicode escapes
+ *  <xdq> q escape feature
  *
  * Note: we intentionally don't mimic the backend's <xeu> state; we have
  * no need to distinguish it from <xe> state, and no good way to get out
@@ -139,6 +140,7 @@ extern void ora_psql_yyset_column(int column_no, yyscan_t yyscanner);
 %x xdolq
 %x xui
 %x xus
+%x xdq
 
 /*
  * In order to make the world safe for Windows and Mac clients as well as
@@ -240,6 +242,10 @@ dolq_cont		[A-Za-z\200-\377_0-9]
 dolqdelim		\$({dolq_start}{dolq_cont}*)?\$
 dolqfailed		\${dolq_start}{dolq_cont}*
 dolqinside		[^$]+
+/* q escape */
+dosymstart		[Qq]{quote}
+dosymend		{quote}
+dosymfailed		[Qq]{quote}{space}
 
 /* Double quote
  * Allows embedded spaces and other special characters into identifiers.
@@ -550,6 +556,96 @@ other			.
 				}
 <xe>.			{
 					/* This is only needed for \ just before EOF */
+					ECHO;
+				}
+{dosymstart} 	{
+					cur_state->postion_len = cur_state->output_buf->len + 2;
+					BEGIN(xdq);
+					ECHO;
+				}
+{dosymfailed}	{
+					yyless(1);
+					ECHO;
+				}
+<xdq>{dosymend} {
+					/*
+					 * determine whether the character after q' is symmetrical
+					 * to the character before '.
+					 */
+					char 	*cur_str = cur_state->output_buf->data;
+					bool	 flag = false;
+					int		 i = 0,tmp = 0;
+					int		 fir_len = cur_state->postion_len;
+					int		 last_len = cur_state->output_buf->len - 1;
+					int		 qstr_len = last_len - fir_len;
+
+					/* determine whether the symmetric char is single byte */
+					if (cur_str[fir_len] & 0x80)
+					{
+						if (qstr_len > 2)
+						{
+							for (i = 0; i < qstr_len && i < 8 ; i++)
+							{
+								if (cur_str[fir_len] == cur_str[last_len - i])
+								{
+									tmp = i;
+									break;
+								}
+							}
+
+							for (i = 0;i <= tmp; i++)
+							{
+								if (cur_str[fir_len + i] == cur_str[last_len - tmp + i])
+									flag = true;
+								else
+									break;
+							}
+						}
+					}
+					else
+					{
+						if (qstr_len >= 1)
+						{
+							if (cur_str[fir_len] == '(' || cur_str[fir_len] == '[' ||
+								cur_str[fir_len] == '{' || cur_str[fir_len] == '<')
+							{
+								if (cur_str[fir_len] == '(' && cur_str[last_len] == ')')
+									flag = true;
+								if (cur_str[fir_len] == '{' && cur_str[last_len] == '}')
+									flag =true;
+								if (cur_str[fir_len] == '[' && cur_str[last_len] == ']')
+									flag =true;
+								if (cur_str[fir_len] == '<' && cur_str[last_len ] == '>')
+									flag =true;
+							}
+							else if (cur_str[fir_len] == cur_str[last_len])
+							{
+								flag = true;
+							}
+							else
+								flag = false;
+						}
+					}
+
+					if (flag)
+					{
+						cur_state->postion_len = 0;
+						BEGIN(INITIAL);
+					}
+					ECHO;
+				}
+<xdq>{dosymstart} {
+					yyless(1);
+					ECHO;
+				}
+<xdq>{dosymfailed} {
+					ECHO;
+				}
+<xdq>{newline} {
+					ECHO;
+				}
+
+<xdq>.			{
 					ECHO;
 				}
 
@@ -1235,6 +1331,11 @@ ora_psql_scan(PsqlScanState state,
 				case xdolq:
 					result = ORAPSCAN_INCOMPLETE;
 					*prompt = ORAPROMPT_DOLLARQUOTE;
+					break;
+				/* hanlde q escape */
+				case xdq:
+					result = ORAPSCAN_INCOMPLETE;
+					*prompt = ORAPROMPT_QQUOTE;
 					break;
 				case xui:
 					result = ORAPSCAN_INCOMPLETE;
