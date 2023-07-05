@@ -25,6 +25,7 @@
 #include "utils/formatting.h"
 #include "utils/guc.h"
 #include "utils/numeric.h"
+#include "access/xact.h"
 
 #include "../include/common_datatypes.h"
 
@@ -272,7 +273,7 @@ ora_current_date(PG_FUNCTION_ARGS)
 Datum
 ora_current_timestamp(PG_FUNCTION_ARGS)
 {
-	TimestampTz timestamp = GetCurrentTimestamp();
+	TimestampTz timestamp = GetCurrentTransactionStartTimestamp();
 	int argsnum = PG_NARGS();
 	if (argsnum == 1)
 	{
