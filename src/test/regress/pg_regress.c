@@ -1225,7 +1225,6 @@ spawn_process(const char *cmdline)
 #else
 	PROCESS_INFORMATION pi;
 	char	   *cmdline2;
-	HANDLE		restrictedToken;
 	const char *comspec;
 
 	/* Find CMD.EXE location using COMSPEC, if it's set */
@@ -1236,8 +1235,7 @@ spawn_process(const char *cmdline)
 	memset(&pi, 0, sizeof(pi));
 	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
 
-	if ((restrictedToken =
-		 CreateRestrictedProcess(cmdline2, &pi)) == 0)
+	if (!CreateRestrictedProcess(cmdline2, &pi))
 		exit(2);
 
 	CloseHandle(pi.hThread);
