@@ -51,6 +51,7 @@ GenerateRecoveryConfig(PGconn *pgconn, char *replication_slot)
 		if (strcmp(opt->keyword, "replication") == 0 ||
 			strcmp(opt->keyword, "dbname") == 0 ||
 			strcmp(opt->keyword, "fallback_application_name") == 0 ||
+			strcmp(opt->keyword, "ivoryport") == 0 ||
 			(opt->val == NULL) ||
 			(opt->val != NULL && opt->val[0] == '\0'))
 			continue;
