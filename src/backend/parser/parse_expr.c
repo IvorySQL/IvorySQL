@@ -3676,21 +3676,6 @@ makeJsonByteaToTextConversion(Node *expr, JsonFormat *format, int location)
 }
 
 /*
- * Make a CaseTestExpr node.
- */
-static Node *
-makeCaseTestExpr(Node *expr)
-{
-	CaseTestExpr *placeholder = makeNode(CaseTestExpr);
-
-	placeholder->typeId = exprType(expr);
-	placeholder->typeMod = exprTypmod(expr);
-	placeholder->collation = exprCollation(expr);
-
-	return (Node *) placeholder;
-}
-
-/*
  * Transform JSON value expression using specified input JSON format or
  * default format otherwise.
  */
@@ -3741,10 +3726,7 @@ transformJsonValueExpr(ParseState *pstate, char *constructName,
 	if (format != JS_FORMAT_DEFAULT)
 	{
 		Oid			targettype = format == JS_FORMAT_JSONB ? JSONBOID : JSONOID;
-		Node	   *orig = makeCaseTestExpr(expr);
 		Node	   *coerced;
-
-		expr = orig;
 
 		if (exprtype != BYTEAOID && typcategory != TYPCATEGORY_STRING)
 			ereport(ERROR,
@@ -3783,7 +3765,7 @@ transformJsonValueExpr(ParseState *pstate, char *constructName,
 			coerced = (Node *) fexpr;
 		}
 
-		if (coerced == orig)
+		if (coerced == expr)
 			expr = rawexpr;
 		else
 		{
@@ -4010,8 +3992,22 @@ makeJsonConstructorExpr(ParseState *pstate, JsonConstructorType type,
 	jsctor->absent_on_null = absent_on_null;
 	jsctor->location = location;
 
+	/*
+	 * Coerce to the RETURNING type and format, if needed.  We abuse
+	 * CaseTestExpr here as placeholder to pass the result of either evaluating
+	 * 'fexpr' or whatever is produced by ExecEvalJsonConstructor() that is of
+	 * type JSON or JSONB to the coercion function.
+	 */
 	if (fexpr)
-		placeholder = makeCaseTestExpr((Node *) fexpr);
+	{
+		CaseTestExpr *cte = makeNode(CaseTestExpr);
+
+		cte->typeId = exprType((Node *) fexpr);
+		cte->typeMod = exprTypmod((Node *) fexpr);
+		cte->collation = exprCollation((Node *) fexpr);
+
+		placeholder = (Node *) cte;
+	}
 	else
 	{
 		CaseTestExpr *cte = makeNode(CaseTestExpr);
@@ -4109,6 +4105,11 @@ transformJsonArrayQueryConstructor(ParseState *pstate,
 	colref->location = ctor->location;
 
 	agg->arg = makeJsonValueExpr((Expr *) colref, ctor->format);
+	/*
+	 * No formatting necessary, so set formatted_expr to be the same as
+	 * raw_expr.
+	 */
+	agg->arg->formatted_expr = agg->arg->raw_expr;
 	agg->absent_on_null = ctor->absent_on_null;
 	agg->constructor = makeNode(JsonAggConstructor);
 	agg->constructor->agg_order = NIL;
@@ -4373,7 +4374,7 @@ transformJsonParseArg(ParseState *pstate, Node *jsexpr, JsonFormat *format,
 	{
 		JsonValueExpr *jve;
 
-		expr = makeCaseTestExpr(raw_expr);
+		expr = raw_expr;
 		expr = makeJsonByteaToTextConversion(expr, format, exprLocation(expr));
 		*exprtype = TEXTOID;
 
