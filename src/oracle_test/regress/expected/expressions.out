@@ -79,7 +79,7 @@ SELECT localtimestamp = localtimestamp(7);
 WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6,the part of excess is 0
  ?column? 
 ----------
- f
+ t
 (1 row)
 
 -- current_role/user/user is tested in rolenames.sql

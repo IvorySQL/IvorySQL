@@ -298,7 +298,7 @@ ora_current_timestamp(PG_FUNCTION_ARGS)
 Datum
 ora_local_timestamp(PG_FUNCTION_ARGS)
 {
-	Timestamp timestamp = GetCurrentTimestamp();
+	Timestamp timestamp = GetCurrentTransactionStartTimestamp();
 	int argsnum = PG_NARGS();
 	struct pg_tm tt,
 				*tm = &tt;
