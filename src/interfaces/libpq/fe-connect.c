@@ -361,13 +361,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Load-Balance-Hosts", "", 8,	/* sizeof("disable") = 8 */
 	offsetof(struct pg_conn, load_balance_hosts)},
 
-	{"ivoryhost", "IYHOST", NULL, NULL,
-		"IvorySQL-Database-Host", "", 40,
-		offsetof(struct pg_conn, iyhost)},
-
-	{"ivoryport", "IYPORT", DEF_ORAPORT_STR, NULL,
-		"IvorySQL-Database-Port", "", 6,
-		offsetof(struct pg_conn, iyport)},
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
