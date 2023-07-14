@@ -818,6 +818,7 @@ static void determineLanguage(List *options);
 
 %token <keyword> LONG_P RAW_P
 %token LONG_RAW
+%token <keyword> LOOP_P
 
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
@@ -18807,6 +18808,7 @@ unreserved_keyword:
 			| LOCKED
 			| LOGGED
 			| LONG_P
+			| LOOP_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -19437,6 +19439,7 @@ bare_label_keyword:
 			| LOCKED
 			| LOGGED
 			| LONG_P
+			| LOOP_P
 			| MAPPING
 			| MATCH
 			| MATCHED
