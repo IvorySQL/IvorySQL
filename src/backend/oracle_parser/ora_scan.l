@@ -375,6 +375,8 @@ less_equals		"<="
 greater_equals	">="
 less_greater	"<>"
 not_equals		"!="
+less_less		"<<"
+greater_greater ">>"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -1021,6 +1023,16 @@ other			.
 					return NOT_EQUALS;
 				}
 
+{less_less}		{
+				SET_YYLLOC();
+				return LESS_LESS;
+			}
+
+{greater_greater}	{
+					SET_YYLLOC();
+					return GREATER_GREATER;
+				}
+
 {self}			{
 					SET_YYLLOC();
 					return yytext[0];
@@ -1118,6 +1130,10 @@ other			.
 								return NOT_EQUALS;
 							if (yytext[0] == '!' && yytext[1] == '=')
 								return NOT_EQUALS;
+							if (yytext[0] == '<' && yytext[1] == '<')
+								return LESS_LESS;
+							if (yytext[0] == '>' && yytext[1] == '>')
+								return GREATER_GREATER;
 						}
 					}
 

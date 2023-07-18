@@ -729,6 +729,7 @@ begin
   raise notice 'in test_pg_proc, var1 = %', var1;
 end;
 $$ LANGUAGE plpgsql;
+/
 
 alter procedure test_proc editionable;
 alter procedure public.test_proc noneditionable;
@@ -749,3 +750,117 @@ alter procedure public.test_pg_proc compile debug reuse settings;
 drop function test_proc;--error
 drop procedure test_proc;
 drop procedure test_pg_proc(integer);
+
+--
+-- Oracle anonymous block
+--
+begin
+null;
+end;
+/
+
+declare
+begin
+null;
+end;
+/
+
+<<main>>
+begin
+null;
+end;
+/
+
+
+<<main>>
+declare
+begin
+null;
+end;
+/
+
+
+<<main>>
+declare
+i integer := 10;
+begin
+ raise notice '%', i;
+ raise notice '%', main.i;
+end;
+/
+
+<<main>>
+i integer := 10;
+begin
+ raise notice '%', i;
+ raise notice '%', main.i;
+end;
+/
+
+<< main >>
+begin
+null;
+end;
+
+
+<<
+main >>
+begin
+null;
+end;
+
+<<
+main
+>>
+begin
+null;
+end;
+/
+
+declare
+i integer := 10;
+begin
+ raise notice '%', i;
+end;
+/
+
+DECLARE
+  grade CHAR(1);
+BEGIN
+  grade := 'B';
+
+  CASE grade
+    WHEN 'A' THEN raise notice 'Excellent';
+    WHEN 'B' THEN raise notice 'Very Good';
+  END CASE;
+EXCEPTION
+  WHEN CASE_NOT_FOUND THEN
+    raise notice 'No such grade';
+END;
+/
+
+declare
+"a b c end; " text;
+a_output text;
+begin
+"a b c end; " := ' end;  ';
+raise notice '%', "a b c end; ";
+
+a_output := "a b c end; ";
+raise notice '%', a_output;
+
+a_output := '''end;''';
+raise notice '%', a_output;
+
+a_output := '''''end;''''';
+raise notice '%', a_output;
+a_output := 'end;
+'' '''' ''''''
+''
+''''
+''''''
+"
+end;   ';
+raise notice '%', a_output;
+end;
+/

@@ -685,7 +685,7 @@ static void determineLanguage(List *options);
 %token <str>	IDENT UIDENT FCONST SCONST USCONST BCONST XCONST Op
 %token <ival>	ICONST PARAM
 %token			TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
-%token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS
+%token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS LESS_LESS GREATER_GREATER
 
 /*
  * If you want to make any keyword changes, update the keyword table in
@@ -805,6 +805,7 @@ static void determineLanguage(List *options);
 								ora_procedure_source_clause_item
 
 %type <ival>	opt_unit_kind
+%type <str>	any_identifier
 %type <boolean> opt_ora_editioned ora_editioned
 
 %type <node>	ivy_routine_body accessor_item sql_macro_options implementation_package_type
@@ -854,7 +855,7 @@ static void determineLanguage(List *options);
 %left		AND
 %right		NOT
 %nonassoc	IS ISNULL NOTNULL	/* IS sets precedence for IS NULL, etc */
-%nonassoc	'<' '>' '=' LESS_EQUALS GREATER_EQUALS NOT_EQUALS
+%nonassoc	'<' '>' '=' LESS_EQUALS GREATER_EQUALS NOT_EQUALS LESS_LESS GREATER_GREATER
 %nonassoc	BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
 %nonassoc	ESCAPE			/* ESCAPE must be just above LIKE/ILIKE/SIMILAR */
 
@@ -9131,7 +9132,7 @@ opt_routine_body:
 				{
 					$$ = $1;
 				}
-			| BEGIN_P ATOMIC routine_body_stmt_list END_P
+			| ora_anonymous_begin ATOMIC routine_body_stmt_list END_P
 				{
 					/*
 					 * A compound statement is stored as a single-item list
@@ -9154,7 +9155,7 @@ ivy_routine_body:
 					r->returnval = (Node *) $3;
 					$$ = (Node *) r;
 				}
-			| BEGIN_P ATOMIC routine_body_stmt_list END_P
+			| ora_anonymous_begin ATOMIC routine_body_stmt_list END_P
 				{
 					/*
 					 * A compound statement is stored as a single-item list
@@ -9570,7 +9571,51 @@ DoStmt: DO dostmt_opt_list
 					n->args = $2;
 					$$ = (Node *) n;
 				}
+			| ora_anonymous_begin Sconst
+				{
+					DoStmt *n = makeNode(DoStmt);
+					n->args = list_make1(makeDefElem("as", (Node *)makeString($2), @1));
+					determineLanguage(n->args);
+					$$ = (Node *)n;
+				}
+			| ora_anonymous_less_less Sconst
+					{
+						DoStmt *n = makeNode(DoStmt);
+						n->args = list_make1(makeDefElem("as", (Node *)makeString($2), @1));
+						determineLanguage(n->args);
+						$$ = (Node *)n;
+					}
+			| ora_anonymous_declare Sconst
+				{
+					DoStmt *n = makeNode(DoStmt);
+					n->args = list_make1(makeDefElem("as", (Node *)makeString($2), @1));
+					determineLanguage(n->args);
+					$$ = (Node *)n;
+				}
 		;
+
+ora_anonymous_begin: BEGIN_P
+			{
+				set_oracle_plsql_body(yyscanner, OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN);
+				set_oracle_plsql_bodystart(yyscanner, @1, 1);
+			}
+		;
+
+ora_anonymous_less_less: LESS_LESS any_identifier GREATER_GREATER
+			{
+				set_oracle_plsql_body(yyscanner, OraBody_ANONYMOUS_BLOCK);
+				set_oracle_plsql_bodystart(yyscanner, @1, 0);
+			}
+		;
+
+ora_anonymous_declare: DECLARE
+				{
+					set_oracle_plsql_body(yyscanner, OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE);
+					set_oracle_plsql_bodystart(yyscanner, @1, 0);
+				}
+			;
+
+any_identifier: NonReservedWord { $$ = $1; }
 
 dostmt_opt_list:
 			dostmt_opt_item						{ $$ = list_make1($1); }
@@ -11615,7 +11660,7 @@ TransactionStmt:
 		;
 
 TransactionStmtLegacy:
-			BEGIN_P opt_transaction transaction_mode_list_or_empty
+			ora_anonymous_begin opt_transaction transaction_mode_list_or_empty
 				{
 					TransactionStmt *n = makeNode(TransactionStmt);
 
@@ -13040,7 +13085,7 @@ merge_error_clause: { $$ = NULL; }
  *				CURSOR STATEMENTS
  *
  *****************************************************************************/
-DeclareCursorStmt: DECLARE cursor_name cursor_options CURSOR opt_hold FOR SelectStmt
+DeclareCursorStmt: ora_anonymous_declare cursor_name cursor_options CURSOR opt_hold FOR SelectStmt
 				{
 					DeclareCursorStmt *n = makeNode(DeclareCursorStmt);
 
@@ -15947,6 +15992,11 @@ a_expr:		c_expr									{ $$ = $1; }
 			| qual_Op a_expr					%prec Op
 				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $1, NULL, $2, @1); }
 
+			| a_expr LESS_LESS a_expr
+				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<<", $1, $3, @2); }
+			| a_expr GREATER_GREATER a_expr
+				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">>", $1, $3, @2); }
+
 			| a_expr AND a_expr
 				{ $$ = makeAndExpr($1, $3, @2); }
 			| a_expr OR a_expr
@@ -16424,6 +16474,10 @@ b_expr:		c_expr
 				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", $1, $3, @2); }
 			| b_expr qual_Op b_expr				%prec Op
 				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $2, $1, $3, @2); }
+			| b_expr LESS_LESS b_expr
+				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<<", $1, $3, @2); }
+			| b_expr GREATER_GREATER b_expr
+				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, ">>", $1, $3, @2); }
 			| qual_Op b_expr					%prec Op
 				{ $$ = (Node *) makeA_Expr(AEXPR_OP, $1, NULL, $2, @1); }
 			| b_expr IS DISTINCT FROM b_expr		%prec IS
@@ -17536,6 +17590,8 @@ sub_type:	ANY										{ $$ = ANY_SUBLINK; }
 
 all_Op:		Op										{ $$ = $1; }
 			| MathOp								{ $$ = $1; }
+			| LESS_LESS                             { $$ = "<<"; }
+			| GREATER_GREATER                       { $$ = ">>"; }
 		;
 
 MathOp:		 '+'									{ $$ = "+"; }

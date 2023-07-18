@@ -34,7 +34,10 @@
 typedef enum OraBodyStyle
 {
 	OraBody_UNKOWN,
-	OraBody_FUNC
+	OraBody_FUNC,
+	OraBody_ANONYMOUS_BLOCK,
+	OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN,
+	OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE
 }OraBodyStyle;
 
 /* Auxiliary data about a token (other than the token type) */
