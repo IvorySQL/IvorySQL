@@ -710,7 +710,7 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						plisql_build_variable_from_funcargs($1, true, NULL, found_varno);
 						plisql_add_initdatums(NULL);
 					}
-				pl_block ';'
+				ora_outermost_pl_block ';'
 					{
 						StringInfoData ds;
 
@@ -754,7 +754,7 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						plisql_build_variable_from_funcargs($1, true, NULL, found_varno);
 						plisql_add_initdatums(NULL);
 					}
-				pl_block ';'
+				ora_outermost_pl_block ';'
 					{
 						StringInfoData ds;
 
