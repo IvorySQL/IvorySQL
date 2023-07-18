@@ -321,6 +321,28 @@ internal_yylex(ora_core_yyscan_t yyscanner, YYLTYPE *llocp, TokenAuxData *auxdat
 	return token;
 }
 
+static bool
+token_is_col_id(int token)
+{
+	int	i = 0;
+
+	if (token == IDENT)
+		return true;
+
+	/* Get the subscript of token in the keyword array */
+	for (i = 0; i < OraScanKeywords.num_keywords; i++)
+	{
+		if (OraScanKeywordTokens[i] == token)
+			break;
+	}
+
+	if (OraScanKeywordCategories[i]== UNRESERVED_KEYWORD ||
+		OraScanKeywordCategories[i]== COL_NAME_KEYWORD)
+		return true;
+	return false;
+}
+
+
 /*
  * Intermediate filter between parser and core lexer (core_yylex in scan.l).
  *
@@ -364,7 +386,80 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		yyextra->lookahead_end = NULL;
 	}
 
-	if (yyextra->body_style == OraBody_FUNC && cur_token != SCONST)
+	if (yyextra->body_style == OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN)
+	{
+		/* If it is the beginning of BEGIN, maybe it is a Transaction or routine_body of function */
+		if (cur_token != WORK &&
+			cur_token != TRANSACTION &&
+			cur_token != ATOMIC &&
+			cur_token != ';' &&
+			cur_token != ISOLATION &&
+			cur_token != READ &&
+			cur_token != DEFERRABLE &&
+			cur_token != NOT &&
+			cur_token != 0)
+		{
+			yyextra->body_style = OraBody_ANONYMOUS_BLOCK;
+		}
+	}
+
+	else if (yyextra->body_style == OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE)
+	{
+		/* If it is the beginning of DECLARE, maybe the transaction defines a cursor */
+		int	token = cur_token;
+		bool is_def_cursor_stmt = false;
+
+		if (token_is_col_id(cur_token))
+		{
+			bool has_cursor = false;
+
+			token = ora_internal_yylex(yyscanner, llocp, &aux1);
+			push_back_token(yyscanner, token, &aux1);
+
+			is_def_cursor_stmt = false;
+			while (token != 0 && token != ';')
+			{
+				/*
+				 * support anonymous block
+				 * In the PLSQL, the cursor declare must be 'CURSOR ...',
+				 * not '... CURSOR ...'.
+				 *
+				 * PLSQL support type xxx is ref cursor grammer
+				 * so we check the last token is ref
+				 * declare cursor don't support ref for the cursor name
+				 *
+				 * Inline function support cursor
+				 * we judge it is the cursor of SQL, if it next token
+				 * is WITH or FOR or WITHOUT. see details for ora_gram.y about
+				 * declare cursor stmt
+				 */
+				if (token == CURSOR)
+					has_cursor = true;
+
+				token = ora_internal_yylex(yyscanner, llocp, &aux1);
+				push_back_token(yyscanner, token, &aux1);
+
+				if (has_cursor &&
+					(token == WITH ||
+					token == FOR ||
+					token == WITHOUT))
+				{
+					is_def_cursor_stmt = true;
+					break;
+				}
+				else if (has_cursor)
+					break;
+			}
+		}
+
+		if (!is_def_cursor_stmt)
+		{
+			yyextra->body_style = OraBody_ANONYMOUS_BLOCK;
+		}
+	}
+
+	if ((yyextra->body_style == OraBody_FUNC && cur_token != SCONST) ||
+		(yyextra->body_style == OraBody_ANONYMOUS_BLOCK))
 	{
 		int beginpos = yyextra->body_start;
 		int blocklevel = yyextra->body_level;

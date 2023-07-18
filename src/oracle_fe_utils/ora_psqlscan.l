@@ -771,7 +771,14 @@ other			.
 					{
 						/* Terminate lexing temporarily */
 						cur_state->cancel_semicolon_terminator = false;
+						cur_state->maybe_anonymous_declare_start = false;
+						cur_state->maybe_anonymous_begin_start = false;
+						cur_state->anonymous_label_start = false;
+						cur_state->anonymous_label_ident = false;
+						cur_state->anonymous_label_end = false;
 						cur_state->start_state = YY_START;
+						cur_state->token_count = 0;
+						cur_state->token_cursor_idx = 0;
 						cur_state->identifier_count = 0;
 						cur_state->begin_depth = 0;
 						return LEXRES_SEMI;
@@ -786,6 +793,14 @@ other			.
 							!cur_state->cancel_semicolon_terminator)
 					{
 						/* Terminate lexing temporarily */
+						/* Paranoid */
+						cur_state->maybe_anonymous_declare_start = false;
+						cur_state->maybe_anonymous_begin_start = false;
+						cur_state->anonymous_label_start = false;
+						cur_state->anonymous_label_ident = false;
+						cur_state->anonymous_label_end = false;
+						cur_state->token_cursor_idx = 0;
+						cur_state->token_count = 0;
 						cur_state->start_state = YY_START;
 						cur_state->identifier_count = 0;
 						return LEXRES_SEMI;
@@ -1415,7 +1430,14 @@ ora_psql_scan_reset(PsqlScanState state)
 	state->dolqstart = NULL;
 	state->identifier_count = 0;
 	state->begin_depth = 0;
+	state->maybe_anonymous_declare_start = false;
+	state->maybe_anonymous_begin_start = false;
 	state->cancel_semicolon_terminator = false;
+	state->anonymous_label_start = false;
+	state->anonymous_label_ident = false;
+	state->anonymous_label_end = false;
+	state->token_count = 0;
+	state->token_cursor_idx = 0;
 }
 
 /*
@@ -1605,6 +1627,7 @@ void
 ora_psqlscan_emit(PsqlScanState state, const char *txt, int len)
 {
 	PQExpBuffer output_buf = state->output_buf;
+	int idx = 0;
 
 	if (state->safe_encoding)
 		appendBinaryPQExpBuffer(output_buf, txt, len);
@@ -1625,6 +1648,85 @@ ora_psqlscan_emit(PsqlScanState state, const char *txt, int len)
 			appendPQExpBufferChar(output_buf, ch);
 		}
 	}
+
+	for (idx = 0; idx < len; idx++)
+	{
+		if (!isspace((unsigned char) txt[idx]))
+			break;
+	}
+
+	if (idx != len)
+	{
+		/*
+		 * the anonymous block start with <<label>>
+		 */
+		if (state->token_count < 3)
+		{
+			/*
+			 * Maybe we should just do state->token_count++ in this
+			 * function and add "<<" regex rules like less_greater.
+			 */
+			if (strcmp(txt, "<<") == 0 && state->token_count == 0)
+				state->anonymous_label_start = true;
+			else if (state->identifier_count == 1 && state->token_count == 1)
+				state->anonymous_label_ident = true;
+			else if (strcmp(txt, ">>") == 0 && state->token_count == 2)
+				state->anonymous_label_end = true;
+
+			if (state->anonymous_label_start &&
+				state->anonymous_label_ident &&
+				state->anonymous_label_end)
+				state->cancel_semicolon_terminator = true;
+		}
+
+		/*
+		 * the anonymous block start with DECLARE keyword
+		 */
+		if (state->token_count == 0 && pg_strcasecmp(txt, "declare") == 0)
+		{
+			state->maybe_anonymous_declare_start = true;
+			state->cancel_semicolon_terminator = true;
+		}
+
+		if (state->maybe_anonymous_declare_start && pg_strcasecmp(txt, "cursor") == 0)
+		{
+			state->token_cursor_idx = state->token_count;
+		}
+
+		/* not an anonymous block but a cursor declaration */
+		if (state->token_cursor_idx > 0 &&
+			state->token_count == (state->token_cursor_idx + 1) &&
+			(pg_strcasecmp(txt, "with") == 0 ||
+			 pg_strcasecmp(txt, "without") == 0 ||
+			 pg_strcasecmp(txt, "for") == 0))
+		{
+			state->cancel_semicolon_terminator = false;
+		}
+
+		/*
+		 * the anonymous block start with BEGIN keyword
+		 */
+		if (state->token_count == 0 && pg_strcasecmp(txt, "begin") == 0)
+		{
+			state->maybe_anonymous_begin_start = true;
+			state->cancel_semicolon_terminator = true;
+		}
+
+		if (state->token_count == 1 &&
+			state->maybe_anonymous_begin_start &&
+			(pg_strcasecmp(txt, "work") == 0 ||
+			 pg_strcasecmp(txt, "transaction") == 0 ||
+			 pg_strcasecmp(txt, "atomic") == 0 ||
+			 pg_strcasecmp(txt, "isolation") == 0 ||
+			 pg_strcasecmp(txt, "read") == 0 ||
+			 pg_strcasecmp(txt, "deferrable") == 0 ||
+			 pg_strcasecmp(txt, "not") == 0 ||
+			 pg_strcasecmp(txt, ";") == 0))
+			 state->cancel_semicolon_terminator = false;
+
+		state->token_count++;
+	}
+
 }
 
 /*

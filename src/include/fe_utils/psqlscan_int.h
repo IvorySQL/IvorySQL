@@ -127,6 +127,28 @@ typedef struct PsqlScanStateData
 	bool		cancel_semicolon_terminator; /* not send command when semicolon found */
 
 	/*
+	 * State to track boundaries of Oracle ANONYMOUS BLOCK.
+	 * Case 1: Statements starting with << ident >> is Oracle anonymous block.
+	 */
+	int 		token_count;			/* # of tokens, not blank or newline since start of statement */
+	bool		anonymous_label_start;	/* T if the first token is "<<" */
+	bool		anonymous_label_ident;	/* T if the second token is an identifier */
+	bool		anonymous_label_end;	/* T if the third token is ">>" */
+
+	/*
+	 * Case 2: DECLARE BEGIN ... END is Oracle anonymous block sytax.
+	 * DECLARE can also be a PostgreSQL cursor declaration statement, we need to distinguish it.
+	 */
+	bool		maybe_anonymous_declare_start;	/* T if the first token is DECLARE */
+	int 		token_cursor_idx; 			/* the position of keyword CURSOR in SQL statement */
+
+	/*
+	 * Case 3: DECLARE BEGIN ... END is Oracle anonymous block sytax.
+	 * BEGIN can also be a PostgreSQL transaction statement.
+	 */
+	bool		maybe_anonymous_begin_start;	/* T if the first token is BEGIN */
+
+	/*
 	 * Callback functions provided by the program making use of the lexer,
 	 * plus a void* callback passthrough argument.
 	 */
