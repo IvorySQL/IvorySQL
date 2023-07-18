@@ -464,15 +464,35 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		int beginpos = yyextra->body_start;
 		int blocklevel = yyextra->body_level;
 		bool found_begin = false;
+		bool found_foreign_begin = false;
+		int subproc_define_level = 0;
 
 		if (blocklevel > 0)
+		{
 			found_begin = true;
+			found_foreign_begin = true;
+		}
 
 		while (cur_token != 0)
 		{
 			if (beginpos < 0)
 				beginpos = *llocp;
 
+			if (cur_token == FUNCTION || cur_token == PROCEDURE)
+			{
+				while (true)
+				{
+					cur_token = internal_yylex(yyscanner, llocp, &aux1);
+
+					if (cur_token == IS || cur_token == AS)
+					{
+						subproc_define_level++;
+						break;
+					}
+					if (cur_token == ';' || cur_token == 0)
+						break;
+				}
+			}
 			while (cur_token == BEGIN_P)
 			{
 				cur_token = internal_yylex(yyscanner, llocp, &aux1);
@@ -480,6 +500,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				{
 					blocklevel++;
 					found_begin = true;
+					if (subproc_define_level == 0)
+						found_foreign_begin = true;
 				}
 			}
 
@@ -508,19 +530,24 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 						{
 							blocklevel--;
 						}
-					}
 				}
 
 				if (blocklevel == 0)
 				{
-					break;
+						if (found_foreign_begin && subproc_define_level == 0)
+							break;
+						else if (subproc_define_level > 0)
+							subproc_define_level--;
+					}
 				}
 			}
 
 			cur_token = internal_yylex(yyscanner, llocp, &aux1);
 		}
 
-		if ((cur_token == ';' && blocklevel == 0) || (cur_token == 0 && blocklevel > 0))
+		if ((cur_token == ';' && blocklevel == 0 &&
+			subproc_define_level == 0) ||
+			(cur_token == 0 && blocklevel > 0))
 		{
 			aux1.lval.str = ";";
 			ora_push_back_token(yyscanner, ';', aux1.lval.core_yystype, aux1.lloc, 1);
