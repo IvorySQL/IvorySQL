@@ -508,3 +508,368 @@ begin
  end;
 /
 drop procedure test_subprocproc(integer);
+--ok
+create schema test;
+create or replace procedure test.test_proc(id integer) is
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p2(id integer);
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	raise info 'invoke test_f1.test_p2';
+	return var3;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         var4 := 1;
+         raise info 'xiexie';
+       else
+         var4 := 5;
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+      procedure test_p2(id integer) is
+      begin
+        var3 := 1;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      var3 := test_f1(var3);
+      var3 := test_p2(var3);
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+     var1 := test_f(23);
+  end;
+end;
+/
+call test.test_proc(23);
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+INFO:  subproc level 1 test_f
+INFO:  welcome
+INFO:  invoke test_f1.test_p2
+create or replace procedure test.test_proc1(id integer) is
+  var1 integer;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+  end;
+end;
+/
+call test.test_proc1(23);
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+--ok
+declare
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p2(id integer);
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	raise info 'invoke test_f1.test_p2';
+	return var3;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         var4 := 1;
+         raise info 'xiexie';
+       else
+         var4 := 5;
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+      procedure test_p2(id integer) is
+      begin
+        var3 := 1;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      var3 := test_f1(var3);
+      var3 := test_p2(var3);
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+     var1 := test_f(23);
+  end;
+end;
+/
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+INFO:  subproc level 1 test_f
+INFO:  welcome
+INFO:  invoke test_f1.test_p2
+--ok and print
+BEGIN
+   raise info 'welccome to begin';
+declare
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p2(id integer);
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	raise info 'invoke test_f1.test_p2';
+	return var3;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         var4 := 1;
+         raise info 'xiexie';
+       else
+         var4 := 5;
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+      procedure test_p2(id integer) is
+      begin
+        var3 := 1;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      var3 := test_f1(var3);
+      var3 := test_p2(var3);
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+     var1 := test_f(23);
+  end;
+end;
+end;
+/
+INFO:  welccome to begin
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+INFO:  subproc level 1 test_f
+INFO:  welcome
+INFO:  invoke test_f1.test_p2
+--clean data
+DROP PROCEDURE test.test_proc;
+DROP PROCEDURE test.test_proc1;
