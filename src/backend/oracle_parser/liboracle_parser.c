@@ -525,8 +525,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 							blocklevel--;
 							break;
 						}
-						//else if (cur_token != LOOP_P && cur_token != IF_P)
-						else if (cur_token != IF_P)
+						else if (cur_token != LOOP_P && cur_token != IF_P)
 						{
 							blocklevel--;
 						}
