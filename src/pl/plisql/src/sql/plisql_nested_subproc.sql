@@ -3767,3 +3767,4 @@ begin
 end; $$ language plisql;
 
 DROP TABLE rec_typ2;
+DROP TABLE r1;
