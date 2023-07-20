@@ -622,8 +622,6 @@ plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
 	ListCell *lc;
 	bool	has_result_cache = false;
 	bool	has_deterministic = false;
-	bool	has_parallel_enable = false;
-	bool	has_pipelined = false;
 
 	/* check result_cache match */
 	foreach (lc, subprocfunc->properties)
@@ -674,14 +672,10 @@ plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
 				has_deterministic = true;
 				break;
 			case FUNC_PROPER_PARALLEL_ENABLE:
-				if (has_parallel_enable)
-					elog(ERROR, "at most one declaration for 'PARALLEL_ENABLE' is permitted");
-				has_parallel_enable = true;
+				elog(ERROR, "illegal option for subprogram \"%s\"", subprocfunc->func_name);
 				break;
 			case FUNC_PROPER_PIPELINED:
-				if (has_pipelined)
-					elog(ERROR, "at most one declaration for 'PIPELINED' is permitted");
-				has_pipelined = true;
+				elog(ERROR, "aggregate/table functions are not allowed in PLi/SQL scope");
 				break;
 			case PROC_PROPER_ACCESSIBLE_BY:
 				elog(ERROR, "Only schema-level programs allow ACCESSIBLE BY");
@@ -1350,7 +1344,10 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 
 		*funcid = subprocfunc->fno;
 		*true_typeids = best_candidate->args;
-		*rettype = subprocfunc->function->fn_rettype;
+		if (subprocfunc->rettype != NULL)
+			*rettype = subprocfunc->rettype->typoid;
+		else
+			*rettype = VOIDOID;
 		*retset = subprocfunc->function->fn_retset;
 
 		if (best_candidate->argnumbers != NULL)
@@ -2639,6 +2636,7 @@ plisql_init_subprocfunc_compile(PLiSQL_subproc_function *subprocfunc)
 		plisql_add_subproc_function(subprocfunc->function->subprocfuncs[i]);
 	Assert(subprocfunc->lastoutsubprocfno == plisql_nsubprocFuncs);
 
+	plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
 	return;
 }
 

@@ -1982,9 +1982,8 @@ DECLARE
 begin
   var1 := mds(23);
 end; $$ language plisql;
-ERROR:  cache lookup failed for type 0
-CONTEXT:  PL/pgSQL assignment "var1 := mds(23)"
-PL/iSQL function inline_code_block line 6 at assignment
+ERROR:  subproc function doesn't define
+CONTEXT:  PL/iSQL function inline_code_block line 6 at assignment
 --again
 do $$
 DECLARE
@@ -1993,9 +1992,8 @@ DECLARE
 begin
   var1 := mds(23);
 end; $$ language plisql;
-ERROR:  cache lookup failed for type 0
-CONTEXT:  PL/pgSQL assignment "var1 := mds(23)"
-PL/iSQL function inline_code_block line 6 at assignment
+ERROR:  subproc function doesn't define
+CONTEXT:  PL/iSQL function inline_code_block line 6 at assignment
 --define before declare faield
 do $$
 declare
@@ -2133,7 +2131,7 @@ BEGIN
    raise info 'var1=%,var2=%',var1,var2;
    var3 := f1(point(3,4));
 end; $$ language plisql;
-INFO:  var1=43,var2=6
+INFO:  var1=43,var2=5.5
 ERROR:  operator does not exist: point + integer
 LINE 1: x + 1
           ^
@@ -2163,7 +2161,7 @@ BEGIN
    raise info 'var1=%,var2=%',var1,var2;
    raise info '%', var3;
 end; $$ language plisql;
-INFO:  var1=43,var2=6
+INFO:  var1=43,var2=5.5
 INFO:  (3,ok424.5)
 --two nested ok
 do $$
@@ -2196,7 +2194,7 @@ BEGIN
    raise info 'var1=%,var2=%',var1,var2;
    raise info '%', var3;
 end; $$ language plisql;
-INFO:  var1=43,var2=6
+INFO:  var1=43,var2=5.5
 INFO:  (7,ok245.442245.44.5)
 --ok
 do $$
@@ -2210,7 +2208,7 @@ BEGIN
    raise info '%', f1(4.5);
 end; $$ language plisql;
 INFO:  {43,44}
-INFO:  {6,7}
+INFO:  {5.5,6.5}
 --ok
 do $$
 declare
@@ -2221,7 +2219,7 @@ declare
 BEGIN
    raise info '%,%', f1(array[2,4]),f1(array[4.5,7.7]);
 END; $$ language plisql;
-INFO:  2,5
+INFO:  2,4.5
 do $$
 declare
   function f1(x anyarray) return anyarray as
@@ -2231,7 +2229,7 @@ declare
 BEGIN
   raise info '%,%', f1(array[2,4]),f1(array[4.5, 7.7]);
 end; $$ language plisql;
-INFO:  {2,4},{5,8}
+INFO:  {2,4},{4.5,7.7}
 -- fail, can't infer type:
 do $$
 declare
@@ -2266,7 +2264,7 @@ declare
 BEGIN
    raise info '%,%', f1(2,4),f1(2,4.5);
 end; $$ language plisql;
-INFO:  {2,4},{2,5}
+INFO:  {2,4},{2,4.5}
 --failed
 do $$
 declare
@@ -2862,7 +2860,7 @@ declare
 begin
   var1 := test_f(23);
 end; $$ language plisql;
-ERROR:  at most one declaration for 'PIPELINED' is permitted
+ERROR:  aggregate/table functions are not allowed in PLi/SQL scope
 CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 3
 --failed
 do $$
@@ -2876,7 +2874,7 @@ declare
 begin
   var1 := test_f(23);
 end; $$ language plisql;
-ERROR:  at most one declaration for 'PIPELINED' is permitted
+ERROR:  aggregate/table functions are not allowed in PLi/SQL scope
 CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 3
 --test access by
 --failed
@@ -3715,7 +3713,7 @@ declare
     raise info '%', test_f(24.1);
  end; $$ language plisql;
 INFO:  24
-INFO:  25
+INFO:  25.1
 --oracle raise error,but we sucess
 CREATE TABLE mds(id integer,name varchar2(256));
 ERROR:  relation "mds" already exists
@@ -3943,3 +3941,4 @@ begin
    end loop;
 end; $$ language plisql;
 DROP TABLE rec_typ2;
+DROP TABLE r1;
