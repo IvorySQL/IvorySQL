@@ -631,6 +631,9 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 				buf = pstrdup("binary_double");
 			break;
 
+		case JSONOID:
+			buf = pstrdup("json");
+			break;
 	}
 
 	if (buf == NULL)

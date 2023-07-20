@@ -11154,6 +11154,15 @@ get_json_constructor(JsonConstructorExpr *ctor, deparse_context *context,
 		case JSCTOR_JSON_ARRAY:
 			funcname = "JSON_ARRAY";
 			break;
+		case JSCTOR_JSON_PARSE:
+			funcname = "JSON";
+			break;
+		case JSCTOR_JSON_SCALAR:
+			funcname = "JSON_SCALAR";
+			break;
+		case JSCTOR_JSON_SERIALIZE:
+			funcname = "JSON_SERIALIZE";
+			break;
 		default:
 			elog(ERROR, "invalid JsonConstructorType %d", ctor->type);
 	}
@@ -11201,7 +11210,12 @@ get_json_constructor_options(JsonConstructorExpr *ctor, StringInfo buf)
 	if (ctor->unique)
 		appendStringInfoString(buf, " WITH UNIQUE KEYS");
 
-	get_json_returning(ctor->returning, buf, true);
+	/*
+	 * Append RETURNING clause if needed; JSON() and JSON_SCALAR() don't
+	 * support one.
+	 */
+	if (ctor->type != JSCTOR_JSON_PARSE && ctor->type != JSCTOR_JSON_SCALAR)
+		get_json_returning(ctor->returning, buf, true);
 }
 
 /*

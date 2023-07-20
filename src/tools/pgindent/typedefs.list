@@ -1273,6 +1273,7 @@ JsonManifestWALRangeField
 JsonObjectAgg
 JsonObjectConstructor
 JsonOutput
+JsonParseExpr
 JsonParseContext
 JsonParseErrorType
 JsonParseExpr
@@ -1302,6 +1303,7 @@ JsonQuotes
 JsonReturning
 JsonScalarExpr
 JsonSemAction
+JsonSerializeExpr
 JsonTokenType
 JsonTransformStringValuesAction
 JsonTypeCategory
