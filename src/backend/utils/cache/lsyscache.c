@@ -2108,7 +2108,8 @@ get_transform_fromsql(Oid typid, Oid langid, List *trftypes)
 	if (!list_member_oid(trftypes, typid))
 		return InvalidOid;
 
-	tup = SearchSysCache2(TRFTYPELANG, typid, langid);
+	tup = SearchSysCache2(TRFTYPELANG, ObjectIdGetDatum(typid),
+						  ObjectIdGetDatum(langid));
 	if (HeapTupleIsValid(tup))
 	{
 		Oid			funcid;
@@ -2129,7 +2130,8 @@ get_transform_tosql(Oid typid, Oid langid, List *trftypes)
 	if (!list_member_oid(trftypes, typid))
 		return InvalidOid;
 
-	tup = SearchSysCache2(TRFTYPELANG, typid, langid);
+	tup = SearchSysCache2(TRFTYPELANG, ObjectIdGetDatum(typid),
+						  ObjectIdGetDatum(langid));
 	if (HeapTupleIsValid(tup))
 	{
 		Oid			funcid;
