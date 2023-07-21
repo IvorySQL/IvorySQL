@@ -816,8 +816,7 @@ drop table atacc1;
 create table atacc1 ( test int );
 -- add a check constraint (fails)
 alter table atacc1 add constraint atacc_test1 check (test1>3);
-ERROR:  column "test1" does not exist
-HINT:  Perhaps you meant to reference the column "atacc1.test".
+ERROR:  "test1": invalid identifier
 drop table atacc1;
 -- something a little more complicated
 create table atacc1 ( test int, test2 int, test3 int);
@@ -1294,19 +1293,19 @@ select * from atacc1;
 (1 row)
 
 select * from atacc1 order by a;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: select * from atacc1 order by a;
                                       ^
 select * from atacc1 order by "........pg.dropped.1........";
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 LINE 1: select * from atacc1 order by "........pg.dropped.1........"...
                                       ^
 select * from atacc1 group by a;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: select * from atacc1 group by a;
                                       ^
 select * from atacc1 group by "........pg.dropped.1........";
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 LINE 1: select * from atacc1 group by "........pg.dropped.1........"...
                                       ^
 select atacc1.* from atacc1;
@@ -1316,11 +1315,11 @@ select atacc1.* from atacc1;
 (1 row)
 
 select a from atacc1;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: select a from atacc1;
                ^
 select atacc1.a from atacc1;
-ERROR:  column atacc1.a does not exist
+ERROR:  "atacc1"."a": invalid identifier
 LINE 1: select atacc1.a from atacc1;
                ^
 select b,c,d from atacc1;
@@ -1330,27 +1329,27 @@ select b,c,d from atacc1;
 (1 row)
 
 select a,b,c,d from atacc1;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: select a,b,c,d from atacc1;
                ^
 select * from atacc1 where a = 1;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: select * from atacc1 where a = 1;
                                    ^
 select "........pg.dropped.1........" from atacc1;
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 LINE 1: select "........pg.dropped.1........" from atacc1;
                ^
 select atacc1."........pg.dropped.1........" from atacc1;
-ERROR:  column atacc1.........pg.dropped.1........ does not exist
+ERROR:  "atacc1"."........pg.dropped.1........": invalid identifier
 LINE 1: select atacc1."........pg.dropped.1........" from atacc1;
                ^
 select "........pg.dropped.1........",b,c,d from atacc1;
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 LINE 1: select "........pg.dropped.1........",b,c,d from atacc1;
                ^
 select * from atacc1 where "........pg.dropped.1........" = 1;
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 LINE 1: select * from atacc1 where "........pg.dropped.1........" = ...
                                    ^
 -- UPDATEs
@@ -1359,7 +1358,7 @@ ERROR:  column "a" of relation "atacc1" does not exist
 LINE 1: update atacc1 set a = 3;
                           ^
 update atacc1 set b = 2 where a = 3;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: update atacc1 set b = 2 where a = 3;
                                       ^
 update atacc1 set "........pg.dropped.1........" = 3;
@@ -1367,7 +1366,7 @@ ERROR:  column "........pg.dropped.1........" of relation "atacc1" does not exis
 LINE 1: update atacc1 set "........pg.dropped.1........" = 3;
                           ^
 update atacc1 set b = 2 where "........pg.dropped.1........" = 3;
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 LINE 1: update atacc1 set b = 2 where "........pg.dropped.1........"...
                                       ^
 -- INSERTs
@@ -1415,11 +1414,11 @@ LINE 1: insert into atacc1 ("........pg.dropped.1........",b,c,d) va...
                             ^
 -- DELETEs
 delete from atacc1 where a = 3;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: delete from atacc1 where a = 3;
                                  ^
 delete from atacc1 where "........pg.dropped.1........" = 3;
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 LINE 1: delete from atacc1 where "........pg.dropped.1........" = 3;
                                  ^
 delete from atacc1;
@@ -1497,9 +1496,9 @@ ERROR:  column "a" named in key does not exist
 alter table atacc1 add unique("........pg.dropped.1........");
 ERROR:  column "........pg.dropped.1........" named in key does not exist
 alter table atacc1 add check (a > 3);
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 alter table atacc1 add check ("........pg.dropped.1........" > 3);
-ERROR:  column "........pg.dropped.1........" does not exist
+ERROR:  "........pg.dropped.1........": invalid identifier
 create table atacc2 (id int4 unique);
 alter table atacc1 add foreign key (a) references atacc2(id);
 ERROR:  column "a" referenced in foreign key constraint does not exist
@@ -1705,10 +1704,9 @@ select f1 from c1;
 
 alter table c1 drop column f1;
 select f1 from c1;
-ERROR:  column "f1" does not exist
+ERROR:  "f1": invalid identifier
 LINE 1: select f1 from c1;
                ^
-HINT:  Perhaps you meant to reference the column "c1.f2".
 drop table p1 cascade;
 NOTICE:  drop cascades to table c1
 create table p1 (f1 int, f2 int);
@@ -1719,10 +1717,9 @@ ERROR:  cannot drop inherited column "f1"
 alter table p1 drop column f1;
 -- c1.f1 is dropped now, since there is no local definition for it
 select f1 from c1;
-ERROR:  column "f1" does not exist
+ERROR:  "f1": invalid identifier
 LINE 1: select f1 from c1;
                ^
-HINT:  Perhaps you meant to reference the column "c1.f2".
 drop table p1 cascade;
 NOTICE:  drop cascades to table c1
 create table p1 (f1 int, f2 int);

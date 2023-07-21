@@ -250,7 +250,7 @@ SELECT ABC FROM t_48;
 (0 rows)
 
 SELECT "abc" FROM t_48; -- ERROR
-ERROR:  column "ABC" does not exist
+ERROR:  "ABC": invalid identifier
 LINE 1: SELECT "abc" FROM t_48;
                ^
 SELECT abc FROM t_48;
@@ -259,10 +259,9 @@ SELECT abc FROM t_48;
 (0 rows)
 
 SELECT "Abc" FROM t_48; -- ERROR
-ERROR:  column "Abc" does not exist
+ERROR:  "Abc": invalid identifier
 LINE 1: SELECT "Abc" FROM t_48;
                ^
-HINT:  Perhaps you meant to reference the column "t_48.abc".
 SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = 't_48');
  attname  
 ----------
@@ -278,24 +277,21 @@ SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHER
 DROP TABLE t_48;
 CREATE TABLE t_48("Abc" int);
 SELECT "ABC" FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT "ABC" FROM t_48;
                ^
-HINT:  Perhaps you meant to reference the column "t_48.Abc".
 SELECT ABC FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT ABC FROM t_48;
                ^
-HINT:  Perhaps you meant to reference the column "t_48.Abc".
 SELECT "abc" FROM t_48; -- ERROR
-ERROR:  column "ABC" does not exist
+ERROR:  "ABC": invalid identifier
 LINE 1: SELECT "abc" FROM t_48;
                ^
 SELECT abc FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT abc FROM t_48;
                ^
-HINT:  Perhaps you meant to reference the column "t_48.Abc".
 SELECT "Abc" FROM t_48;
  Abc 
 -----
@@ -316,11 +312,11 @@ SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHER
 DROP TABLE t_48;
 CREATE TABLE t_48("abc" int);
 SELECT "ABC" FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT "ABC" FROM t_48;
                ^
 SELECT ABC FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT ABC FROM t_48;
                ^
 SELECT "abc" FROM t_48;
@@ -329,11 +325,11 @@ SELECT "abc" FROM t_48;
 (0 rows)
 
 SELECT abc FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT abc FROM t_48;
                ^
 SELECT "Abc" FROM t_48; -- ERROR
-ERROR:  column "Abc" does not exist
+ERROR:  "Abc": invalid identifier
 LINE 1: SELECT "Abc" FROM t_48;
                ^
 SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = 't_48');
@@ -723,24 +719,21 @@ SELECT * FROM "abc";
 DROP TABLE "abc";
 CREATE TABLE t_48("Abc" int);
 SELECT "ABC" FROM t_48; -- ERROR
-ERROR:  column "ABC" does not exist
+ERROR:  "ABC": invalid identifier
 LINE 1: SELECT "ABC" FROM t_48;
                ^
 SELECT ABC FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT ABC FROM t_48;
                ^
-HINT:  Perhaps you meant to reference the column "t_48.Abc".
 SELECT "abc" FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT "abc" FROM t_48;
                ^
-HINT:  Perhaps you meant to reference the column "t_48.Abc".
 SELECT abc FROM t_48; -- ERROR
-ERROR:  column "abc" does not exist
+ERROR:  "abc": invalid identifier
 LINE 1: SELECT abc FROM t_48;
                ^
-HINT:  Perhaps you meant to reference the column "t_48.Abc".
 SELECT "Abc" FROM t_48;
  Abc 
 -----

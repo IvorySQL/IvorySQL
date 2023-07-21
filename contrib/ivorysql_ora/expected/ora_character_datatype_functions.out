@@ -450,11 +450,11 @@ select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', NULL, 8) from  du
 
 --Incorrect parameter type
 select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', '', a) from  dual;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: ...lace('662 regEXP_REplaCe TEst 172', '[0-9]+', '', a) from  d...
                                                              ^
 select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', NULL, a) from  dual;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: ...ce('662 regEXP_REplaCe TEst 172', '[0-9]+', NULL, a) from  d...
                                                              ^
 --Searched position is less than 1 out of range
@@ -717,7 +717,7 @@ select regexp_substr('345 REGEXP_substr 789', '[0-9]+', 8) from  dual;
 
 --Incorrect parameter type
 select regexp_substr('345 REGEXP_substr 789', '[0-9]+',  a) from  dual;
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: ...regexp_substr('345 REGEXP_substr 789', '[0-9]+',  a) from  d...
                                                              ^
 --Searched position is less than 1 out of range
@@ -1105,7 +1105,7 @@ select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 8) from dual;
 
 --Incorrect parameter type
 select regexp_instr('345 REGEXP_instr 789', '[0-9]+',  a) from dual;	  --fail
-ERROR:  column "a" does not exist
+ERROR:  "a": invalid identifier
 LINE 1: ...t regexp_instr('345 REGEXP_instr 789', '[0-9]+',  a) from du...
                                                              ^
 --Searched position is less than 1 out of range

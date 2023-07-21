@@ -152,10 +152,9 @@ LINE 1: UPDATE update_test SET (a,b) = (v.*) FROM (VALUES(21, 101)) ...
 -- if an alias for the target table is specified, don't allow references
 -- to the original table name
 UPDATE update_test AS t SET b = update_test.b + 10 WHERE t.a = 10;
-ERROR:  invalid reference to FROM-clause entry for table "update_test"
+ERROR:  "update_test"."b": invalid identifier
 LINE 1: UPDATE update_test AS t SET b = update_test.b + 10 WHERE t.a...
                                         ^
-HINT:  Perhaps you meant to reference the table alias "t".
 -- Make sure that we can update to a TOASTed value.
 UPDATE update_test SET c = repeat('x', 10000) WHERE c = 'car';
 SELECT a, b, char_length(c) FROM update_test;

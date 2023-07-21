@@ -55,7 +55,7 @@ LINE 2:     b int GENERATED ALWAYS AS (num_nulls(gtest_err_2c)) STOR...
 DETAIL:  This would cause the generated column to depend on its own value.
 -- invalid reference
 CREATE TABLE gtest_err_3 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (c * 2) STORED);
-ERROR:  column "c" does not exist
+ERROR:  "c": invalid identifier
 LINE 1: ..._3 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (c * 2) STO...
                                                              ^
 -- generation expression must be immutable
@@ -830,7 +830,7 @@ ALTER TABLE gtest25 ADD COLUMN x int GENERATED ALWAYS AS (b * 4) STORED;  -- err
 ERROR:  cannot use generated column "b" in column generation expression
 DETAIL:  A generated column cannot reference another generated column.
 ALTER TABLE gtest25 ADD COLUMN x int GENERATED ALWAYS AS (z * 4) STORED;  -- error
-ERROR:  column "z" does not exist
+ERROR:  "z": invalid identifier
 ALTER TABLE gtest25 ADD COLUMN c int DEFAULT 42,
   ADD COLUMN x int GENERATED ALWAYS AS (c * 4) STORED;
 ALTER TABLE gtest25 ADD COLUMN d int DEFAULT 101;

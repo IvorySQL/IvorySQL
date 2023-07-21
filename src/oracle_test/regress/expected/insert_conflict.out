@@ -239,10 +239,9 @@ on conflict (key) do update set (fruit, key) = (excluded.fruit, excluded.key);
 -- Give good diagnostic message when EXCLUDED.* spuriously referenced from
 -- RETURNING:
 insert into insertconflicttest values (1, 'Apple') on conflict (key) do update set fruit = excluded.fruit RETURNING excluded.fruit;
-ERROR:  invalid reference to FROM-clause entry for table "excluded"
+ERROR:  "excluded"."fruit": invalid identifier
 LINE 1: ...y) do update set fruit = excluded.fruit RETURNING excluded.f...
                                                              ^
-DETAIL:  There is an entry for table "excluded", but it cannot be referenced from this part of the query.
 -- Only suggest <table>.* column when inference element misspelled:
 insert into insertconflicttest values (1, 'Apple') on conflict (keyy) do update set fruit = excluded.fruit;
 ERROR:  column "keyy" does not exist
@@ -251,10 +250,9 @@ LINE 1: ...nsertconflicttest values (1, 'Apple') on conflict (keyy) do ...
 HINT:  Perhaps you meant to reference the column "insertconflicttest.key" or the column "excluded.key".
 -- Have useful HINT for EXCLUDED.* RTE within UPDATE:
 insert into insertconflicttest values (1, 'Apple') on conflict (key) do update set fruit = excluded.fruitt;
-ERROR:  column excluded.fruitt does not exist
+ERROR:  "excluded"."fruitt": invalid identifier
 LINE 1: ... 'Apple') on conflict (key) do update set fruit = excluded.f...
                                                              ^
-HINT:  Perhaps you meant to reference the column "excluded.fruit".
 -- inference fails:
 insert into insertconflicttest values (3, 'Kiwi') on conflict (key, fruit) do update set fruit = excluded.fruit;
 ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
@@ -268,10 +266,9 @@ ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT spec
 insert into insertconflicttest AS ict values (6, 'Passionfruit') on conflict (key) do update set fruit = excluded.fruit; -- ok, no reference to target table
 insert into insertconflicttest AS ict values (6, 'Passionfruit') on conflict (key) do update set fruit = ict.fruit; -- ok, alias
 insert into insertconflicttest AS ict values (6, 'Passionfruit') on conflict (key) do update set fruit = insertconflicttest.fruit; -- error, references aliased away name
-ERROR:  invalid reference to FROM-clause entry for table "insertconflicttest"
+ERROR:  "insertconflicttest"."fruit": invalid identifier
 LINE 1: ...onfruit') on conflict (key) do update set fruit = insertconf...
                                                              ^
-HINT:  Perhaps you meant to reference the table alias "ict".
 drop index key_index;
 --
 -- Composite key tests
@@ -448,7 +445,7 @@ drop table insertconflicttest;
 create table syscolconflicttest(key int4, data text);
 insert into syscolconflicttest values (1);
 insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.ctid::text;
-ERROR:  column excluded.ctid does not exist
+ERROR:  "excluded"."ctid": invalid identifier
 LINE 1: ...values (1) on conflict (key) do update set data = excluded.c...
                                                              ^
 drop table syscolconflicttest;

@@ -11,10 +11,9 @@ DELETE FROM delete_test AS dt WHERE dt.a > 75;
 -- if an alias is specified, don't allow the original table name
 -- to be referenced
 DELETE FROM delete_test dt WHERE delete_test.a > 25;
-ERROR:  invalid reference to FROM-clause entry for table "delete_test"
+ERROR:  "delete_test"."a": invalid identifier
 LINE 1: DELETE FROM delete_test dt WHERE delete_test.a > 25;
                                          ^
-HINT:  Perhaps you meant to reference the table alias "dt".
 SELECT id, a, char_length(b) FROM delete_test;
  id | a  | char_length 
 ----+----+-------------

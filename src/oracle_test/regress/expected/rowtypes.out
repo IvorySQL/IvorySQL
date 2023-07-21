@@ -111,7 +111,7 @@ select * from quadtable;
 (2 rows)
 
 select f1, q.c1 from quadtable;		-- fails, q is a table reference
-ERROR:  missing FROM-clause entry for table "q"
+ERROR:  "q"."c1": invalid identifier
 LINE 1: select f1, q.c1 from quadtable;
                    ^
 select f1, (q).c1, (qq.q).c1.i from quadtable qq;
@@ -964,7 +964,7 @@ LINE 1: select text(fullname) from fullname;
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select fullname.text from fullname;  -- error
-ERROR:  column fullname.text does not exist
+ERROR:  "fullname"."text": invalid identifier
 LINE 1: select fullname.text from fullname;
                ^
 -- same, but RECORD instead of named composite type:
@@ -1245,7 +1245,7 @@ CREATE TABLE compositetable(a text, b text);
 INSERT INTO compositetable(a, b) VALUES('fa', 'fb');
 -- composite type columns can't directly be accessed (error)
 SELECT d.a FROM (SELECT compositetable AS d FROM compositetable) s;
-ERROR:  missing FROM-clause entry for table "d"
+ERROR:  "d"."a": invalid identifier
 LINE 1: SELECT d.a FROM (SELECT compositetable AS d FROM compositeta...
                ^
 -- but can be accessed with proper parens
