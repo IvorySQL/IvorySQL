@@ -2394,7 +2394,7 @@ begin
   var1 := test_f.var2;
   var1 := test_f(23,'xiexie');
 end; $$ language plisql;
-ERROR:  missing FROM-clause entry for table "test_f"
+ERROR:  "test_f"."id": invalid identifier
 LINE 1: var1 := test_f.id
                 ^
 QUERY:  var1 := test_f.id
@@ -2414,7 +2414,7 @@ begin
   var1 := test_f.var2;
   var1 := test_f(23,'xiexie');
 end; $$ language plisql;
-ERROR:  missing FROM-clause entry for table "test_f"
+ERROR:  "test_f"."var2": invalid identifier
 LINE 1: var1 := test_f.var2
                 ^
 QUERY:  var1 := test_f.var2
@@ -2440,7 +2440,7 @@ declare
 begin
   var1 := test_f1(23,'xiexie');
 end; $$ language plisql;
-ERROR:  missing FROM-clause entry for table "test_f"
+ERROR:  "test_f"."var2": invalid identifier
 LINE 1: var3 := test_f.var2
                 ^
 QUERY:  var3 := test_f.var2
@@ -3521,7 +3521,7 @@ begin
   var1 := test_f.var2;
   var1 := test_f(23,'xiexie');
 end; $$ language plisql;
-ERROR:  missing FROM-clause entry for table "test_f"
+ERROR:  "test_f"."id": invalid identifier
 LINE 1: var1 := test_f.id
                 ^
 QUERY:  var1 := test_f.id
@@ -3541,7 +3541,7 @@ begin
   var1 := test_f.var2;
   var1 := test_f(23,'xiexie');
 end; $$ language plisql;
-ERROR:  missing FROM-clause entry for table "test_f"
+ERROR:  "test_f"."var2": invalid identifier
 LINE 1: var1 := test_f.var2
                 ^
 QUERY:  var1 := test_f.var2
@@ -3567,7 +3567,7 @@ declare
 begin
   var1 := test_f1(23,'xiexie');
 end; $$ language plisql;
-ERROR:  missing FROM-clause entry for table "test_f"
+ERROR:  "test_f"."var2": invalid identifier
 LINE 1: var3 := test_f.var2
                 ^
 QUERY:  var3 := test_f.var2

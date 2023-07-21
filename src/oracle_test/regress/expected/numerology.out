@@ -299,7 +299,7 @@ SELECT 1_000.5e0_1;
 
 -- error cases
 SELECT _100;
-ERROR:  column "_100" does not exist
+ERROR:  "_100": invalid identifier
 LINE 1: SELECT _100;
                ^
 SELECT 100_;

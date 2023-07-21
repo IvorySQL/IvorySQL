@@ -257,7 +257,7 @@ SELECT * FROM trans_barbaz;	-- should have 1
 BEGIN;
 	SAVEPOINT one;
 		SELECT trans_foo;
-ERROR:  column "trans_foo" does not exist
+ERROR:  "trans_foo": invalid identifier
 LINE 1: SELECT trans_foo;
                ^
 	ROLLBACK TO SAVEPOINT one;
@@ -306,7 +306,7 @@ BEGIN;
 	SAVEPOINT one;
 		INSERT INTO savepoints VALUES (5);
 		SELECT trans_foo;
-ERROR:  column "trans_foo" does not exist
+ERROR:  "trans_foo": invalid identifier
 LINE 1: SELECT trans_foo;
                ^
 COMMIT;

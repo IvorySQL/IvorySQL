@@ -1774,6 +1774,9 @@ FigureColnameInternal(Node *node, char **name)
 		case T_FuncCall:
 			*name = strVal(llast(((FuncCall *) node)->funcname));
 			return 2;
+		case T_ColumnRefOrFuncCall:
+			*name = strVal(llast(((ColumnRefOrFuncCall *)node)->func->funcname));
+			return 2;
 		case T_A_Expr:
 			if (((A_Expr *) node)->kind == AEXPR_NULLIF)
 			{

@@ -1594,6 +1594,12 @@ exprLocation(const Node *expr)
 								  exprLocation((Node *) fc->args));
 			}
 			break;
+		case T_ColumnRefOrFuncCall:
+			{
+				const ColumnRef *c = ((const ColumnRefOrFuncCall *) expr)->cref;
+				loc = c->location;
+			}
+			break;
 		case T_A_ArrayExpr:
 			/* the location points at ARRAY or [, which must be leftmost */
 			loc = ((const A_ArrayExpr *) expr)->location;
@@ -4114,6 +4120,21 @@ raw_expression_tree_walker_impl(Node *node,
 		case T_FuncCall:
 			{
 				FuncCall   *fcall = (FuncCall *) node;
+
+				if (WALK(fcall->args))
+					return true;
+				if (WALK(fcall->agg_order))
+					return true;
+				if (WALK(fcall->agg_filter))
+					return true;
+				if (WALK(fcall->over))
+					return true;
+				/* function name is deemed uninteresting */
+			}
+			break;
+		case T_ColumnRefOrFuncCall:
+			{
+				FuncCall   *fcall = ((ColumnRefOrFuncCall *) node)->func;
 
 				if (WALK(fcall->args))
 					return true;

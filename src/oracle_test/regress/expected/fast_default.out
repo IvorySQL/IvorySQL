@@ -133,7 +133,7 @@ SELECT pk, c_int, c_bpchar, c_text, c_date, c_timestamp,
        c_hugetext = repeat('abcdefg',1000) as c_hugetext_origdef,
        c_hugetext = repeat('poiuyt', 1000) as c_hugetext_newdef
 FROM T ORDER BY pk;
-ERROR:  column "c_interval" does not exist
+ERROR:  "c_interval": invalid identifier
 LINE 3:        c_big, c_num, c_time, c_interval,
                                      ^
 SELECT comp();

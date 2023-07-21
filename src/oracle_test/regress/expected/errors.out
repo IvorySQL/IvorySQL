@@ -27,7 +27,7 @@ LINE 1: select * from nonesuch;
                       ^
 -- bad name in target list
 select nonesuch from pg_database;
-ERROR:  column "nonesuch" does not exist
+ERROR:  "nonesuch": invalid identifier
 LINE 1: select nonesuch from pg_database;
                ^
 -- empty distinct list isn't OK
@@ -37,17 +37,17 @@ LINE 1: select distinct from pg_database;
                         ^
 -- bad attribute name on lhs of operator
 select * from pg_database where nonesuch = pg_database.datname;
-ERROR:  column "nonesuch" does not exist
+ERROR:  "nonesuch": invalid identifier
 LINE 1: select * from pg_database where nonesuch = pg_database.datna...
                                         ^
 -- bad attribute name on rhs of operator
 select * from pg_database where pg_database.datname = nonesuch;
-ERROR:  column "nonesuch" does not exist
+ERROR:  "nonesuch": invalid identifier
 LINE 1: ...ect * from pg_database where pg_database.datname = nonesuch;
                                                               ^
 -- bad attribute name in select distinct on
 select distinct on (foobar) * from pg_database;
-ERROR:  column "foobar" does not exist
+ERROR:  "foobar": invalid identifier
 LINE 1: select distinct on (foobar) * from pg_database;
                             ^
 -- grouping with FOR UPDATE

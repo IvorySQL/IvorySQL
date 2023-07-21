@@ -120,7 +120,7 @@ SELECT $1, $2 \bind 'foo' 'bar' \g
 -- errors
 -- parse error
 SELECT foo \bind \g
-ERROR:  column "foo" does not exist
+ERROR:  "foo": invalid identifier
 LINE 1: SELECT foo 
                ^
 -- tcop error

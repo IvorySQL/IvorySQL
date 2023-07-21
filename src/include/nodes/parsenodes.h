@@ -4093,4 +4093,11 @@ typedef struct CompileFunctionStmt
 	bool		is_procedure;		/* a procedure or a function */
 } CompileFunctionStmt;
 
+typedef struct ColumnRefOrFuncCall
+{
+	NodeTag		type;
+	ColumnRef	*cref;
+	FuncCall	*func;
+} ColumnRefOrFuncCall;
+
 #endif							/* PARSENODES_H */

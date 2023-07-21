@@ -864,3 +864,22 @@ end;   ';
 raise notice '%', a_output;
 end;
 /
+
+--
+-- Compatible with Oracle:
+-- Parentheses can be omitted when calling parameterless functions
+--
+create or replace function f_noparentheses
+return int is
+begin
+return 11;
+end;
+/
+
+create table t_noparentheses(f_noparentheses int);
+insert into t_noparentheses values(123);
+select f_noparentheses from t_noparentheses;
+
+-- When the function name and the column name are the same, we preferentially resolve to the column name.
+select f_noparentheses from dual;
+select f_noparentheses from t_noparentheses;

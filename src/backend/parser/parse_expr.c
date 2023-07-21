@@ -101,7 +101,7 @@ static Expr *make_distinct_op(ParseState *pstate, List *opname,
 							  Node *ltree, Node *rtree, int location);
 static Node *make_nulltest_from_distinct(ParseState *pstate,
 										 A_Expr *distincta, Node *arg);
-
+static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func);
 
 /*
  * transformExpr -
@@ -220,6 +220,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_FuncCall:
 			result = transformFuncCall(pstate, (FuncCall *) expr);
+			break;
+
+		case T_ColumnRefOrFuncCall:
+			result = transformColumnRefOrFunCall(pstate, ((ColumnRefOrFuncCall *)expr));
 			break;
 
 		case T_MultiAssignRef:
@@ -491,7 +495,7 @@ transformIndirection(ParseState *pstate, A_Indirection *ind)
  * If you find yourself changing this code, see also ExpandColumnRefStar.
  */
 static Node *
-transformColumnRef(ParseState *pstate, ColumnRef *cref)
+transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 {
 	Node	   *node = NULL;
 	char	   *nspname = NULL;
@@ -834,35 +838,50 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 	/*
 	 * Throw error if no translation found.
 	 */
-	if (node == NULL)
+	 if ((compatible_db == ORA_PARSER && !missing_ok) ||
+		compatible_db == PG_PARSER)
 	{
-		switch (crerr)
+		if (node == NULL)
 		{
-			case CRERR_NO_COLUMN:
-				errorMissingColumn(pstate, relname, colname, cref->location);
-				break;
-			case CRERR_NO_RTE:
-				errorMissingRTE(pstate, makeRangeVar(nspname, relname,
-													 cref->location));
-				break;
-			case CRERR_WRONG_DB:
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cross-database references are not implemented: %s",
-								NameListToString(cref->fields)),
-						 parser_errposition(pstate, cref->location)));
-				break;
-			case CRERR_TOO_MANY:
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("improper qualified name (too many dotted names): %s",
-								NameListToString(cref->fields)),
-						 parser_errposition(pstate, cref->location)));
-				break;
+			switch (crerr)
+			{
+				case CRERR_NO_COLUMN:
+					errorMissingColumn(pstate, relname, colname, cref->location);
+					break;
+				case CRERR_NO_RTE:
+					errorMissingRTE(pstate, makeRangeVar(nspname, relname,
+														 cref->location));
+					break;
+				case CRERR_WRONG_DB:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cross-database references are not implemented: %s",
+									NameListToString(cref->fields)),
+							 parser_errposition(pstate, cref->location)));
+					break;
+				case CRERR_TOO_MANY:
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("improper qualified name (too many dotted names): %s",
+									NameListToString(cref->fields)),
+							 parser_errposition(pstate, cref->location)));
+					break;
+			}
 		}
 	}
 
 	return node;
+}
+
+/*
+ * Transform a ColumnRef.
+ *
+ * If you find yourself changing this code, see also ExpandColumnRefStar.
+ */
+static Node *
+transformColumnRef(ParseState *pstate, ColumnRef *cref)
+{
+	return transformColumnRefInternal(pstate, cref, false);
 }
 
 static Node *
@@ -1435,6 +1454,48 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 fn,
 							 false,
 							 fn->location);
+}
+
+/*
+ * First we assume it's a ColumnRef, if it's not a ColumnRef
+ * we assume it's a FuncCall, still not, report an error.
+ */
+Node *
+transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func)
+{
+	Node *node = transformColumnRefInternal(pstate, cref_func->cref, true);
+
+	if (node == NULL)
+	{
+		PG_TRY();
+		{
+			node = transformFuncCall(pstate, cref_func->func);
+		}
+		PG_CATCH();
+		{
+			char str[264] = {'\0'};
+			ListCell	*lc;
+			int			i = 1;
+
+			strcpy(str, "\"");
+			foreach(lc, cref_func->cref->fields)
+			{
+				if (i > 1)
+					strcat(str, "\".\"");
+				strcat(str, ((String *)lfirst(lc))->sval);
+				i++;
+			}
+			strcat(str, "\"");
+
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_NAME),
+					 errmsg("%s: invalid identifier", str),
+					 parser_errposition(pstate, cref_func->cref->location)));
+		}
+		PG_END_TRY();
+	}
+
+	return node;
 }
 
 static Node *
@@ -2560,7 +2621,7 @@ transformXmlExpr(ParseState *pstate, XmlExpr *x)
 
 		if (r->name)
 			argname = map_sql_identifier_to_xml_name(r->name, false, false);
-		else if (IsA(r->val, ColumnRef))
+		else if (IsA(r->val, ColumnRef) || IsA(r->val, ColumnRefOrFuncCall))
 			argname = map_sql_identifier_to_xml_name(FigureColname(r->val),
 													 true, false);
 		else

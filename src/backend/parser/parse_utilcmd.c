@@ -4192,10 +4192,16 @@ transformPartitionRangeBounds(ParseState *pstate, List *blist,
 		 * Infinite range bounds -- "minvalue" and "maxvalue" -- get passed in
 		 * as ColumnRefs.
 		 */
-		if (IsA(expr, ColumnRef))
+		if (IsA(expr, ColumnRef) ||
+				IsA(expr, ColumnRefOrFuncCall))
 		{
-			ColumnRef  *cref = (ColumnRef *) expr;
+			ColumnRef  *cref = NULL;
 			char	   *cname = NULL;
+
+			if (IsA(expr, ColumnRef))
+				cref = (ColumnRef *) expr;
+			else
+				cref = ((ColumnRefOrFuncCall *) expr)->cref;
 
 			/*
 			 * There should be a single field named either "minvalue" or

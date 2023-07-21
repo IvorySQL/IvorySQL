@@ -23,7 +23,7 @@ BEGIN;
 SET search_path to public, test_ns_schema_1;
 CREATE SCHEMA test_ns_schema_2
        CREATE VIEW abc_view AS SELECT c FROM abc;
-ERROR:  column "c" does not exist
+ERROR:  "c": invalid identifier
 LINE 2:        CREATE VIEW abc_view AS SELECT c FROM abc;
                                               ^
 COMMIT;

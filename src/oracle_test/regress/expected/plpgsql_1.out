@@ -2688,7 +2688,7 @@ end; $$ language plpgsql;
 -- should fail: SQLSTATE and SQLERRM are only in defined EXCEPTION
 -- blocks
 select excpt_test1();
-ERROR:  column "sqlstate" does not exist
+ERROR:  "sqlstate": invalid identifier
 LINE 1: sqlstate
         ^
 QUERY:  sqlstate
@@ -2704,7 +2704,7 @@ end; $$ language plpgsql;
 /
 -- should fail
 select excpt_test2();
-ERROR:  column "sqlstate" does not exist
+ERROR:  "sqlstate": invalid identifier
 LINE 1: sqlstate
         ^
 QUERY:  sqlstate
@@ -4799,7 +4799,7 @@ BEGIN
         RAISE NOTICE '%, %', r.roomno, r.comment;
     END LOOP;
 END$$;
-ERROR:  column "foo" does not exist
+ERROR:  "foo": invalid identifier
 LINE 1: SELECT rtrim(roomno) AS roomno, foo FROM Room ORDER BY roomn...
                                         ^
 QUERY:  SELECT rtrim(roomno) AS roomno, foo FROM Room ORDER BY roomno
@@ -5927,7 +5927,7 @@ ALTER TABLE alter_table_under_transition_tables
   DROP column name;
 UPDATE alter_table_under_transition_tables
   SET id = id;
-ERROR:  column "name" does not exist
+ERROR:  "name": invalid identifier
 LINE 1: (SELECT string_agg(id || '=' || name, ',') FROM d)
                                         ^
 QUERY:  (SELECT string_agg(id || '=' || name, ',') FROM d)

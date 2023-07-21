@@ -1635,10 +1635,9 @@ SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';  -- ok
 (1 row)
 
 SELECT * FROM (J1_TBL JOIN J2_TBL USING (i)) AS x WHERE J1_TBL.t = 'one';  -- error
-ERROR:  invalid reference to FROM-clause entry for table "j1_tbl"
+ERROR:  "j1_tbl"."t": invalid identifier
 LINE 1: ... * FROM (J1_TBL JOIN J2_TBL USING (i)) AS x WHERE J1_TBL.t =...
                                                              ^
-DETAIL:  There is an entry for table "j1_tbl", but it cannot be referenced from this part of the query.
 SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.i = 1;  -- ok
  i | j |  t  | k  
 ---+---+-----+----
@@ -1646,11 +1645,11 @@ SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.i = 1;  -- ok
 (1 row)
 
 SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.t = 'one';  -- error
-ERROR:  column x.t does not exist
+ERROR:  "x"."t": invalid identifier
 LINE 1: ...CT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.t = 'one...
                                                              ^
 SELECT * FROM (J1_TBL JOIN J2_TBL USING (i) AS x) AS xx WHERE x.i = 1;  -- error (XXX could use better hint)
-ERROR:  missing FROM-clause entry for table "x"
+ERROR:  "x"."i": invalid identifier
 LINE 1: ...ROM (J1_TBL JOIN J2_TBL USING (i) AS x) AS xx WHERE x.i = 1;
                                                                ^
 SELECT * FROM J1_TBL a1 JOIN J2_TBL a2 USING (i) AS a1;  -- error
@@ -2740,10 +2739,9 @@ select * from t1 left join t2 on (t1.a = t2.a);
 
 -- Test matching of column name with wrong alias
 select t1.x from t1 join t3 on (t1.a = t3.x);
-ERROR:  column t1.x does not exist
+ERROR:  "t1"."x": invalid identifier
 LINE 1: select t1.x from t1 join t3 on (t1.a = t3.x);
                ^
-HINT:  Perhaps you meant to reference the column "t3.x".
 -- Test matching of locking clause with wrong alias
 select t1.*, t2.*, unnamed_join.* from
   t1 join t2 on (t1.a = t2.a), t3 as unnamed_join
@@ -5883,10 +5881,9 @@ LINE 2: ..._tbl x join (int4_tbl x cross join int4_tbl y) j on q1 = f1;
                                                                     ^
 select * from
   int8_tbl x join (int4_tbl x cross join int4_tbl y) j on q1 = y.f1; -- error
-ERROR:  invalid reference to FROM-clause entry for table "y"
+ERROR:  "y"."f1": invalid identifier
 LINE 2: ...bl x join (int4_tbl x cross join int4_tbl y) j on q1 = y.f1;
                                                                   ^
-DETAIL:  There is an entry for table "y", but it cannot be referenced from this part of the query.
 select * from
   int8_tbl x join (int4_tbl x cross join int4_tbl y(ff)) j on q1 = f1; -- ok
  q1 | q2 | f1 | ff 
@@ -5898,29 +5895,24 @@ select * from
 --
 select t1.uunique1 from
   tenk1 t1 join tenk2 t2 on t1.two = t2.two; -- error, prefer "t1" suggestion
-ERROR:  column t1.uunique1 does not exist
+ERROR:  "t1"."uunique1": invalid identifier
 LINE 1: select t1.uunique1 from
                ^
-HINT:  Perhaps you meant to reference the column "t1.unique1".
 select t2.uunique1 from
   tenk1 t1 join tenk2 t2 on t1.two = t2.two; -- error, prefer "t2" suggestion
-ERROR:  column t2.uunique1 does not exist
+ERROR:  "t2"."uunique1": invalid identifier
 LINE 1: select t2.uunique1 from
                ^
-HINT:  Perhaps you meant to reference the column "t2.unique1".
 select uunique1 from
   tenk1 t1 join tenk2 t2 on t1.two = t2.two; -- error, suggest both at once
-ERROR:  column "uunique1" does not exist
+ERROR:  "uunique1": invalid identifier
 LINE 1: select uunique1 from
                ^
-HINT:  Perhaps you meant to reference the column "t1.unique1" or the column "t2.unique1".
 select ctid from
   tenk1 t1 join tenk2 t2 on t1.two = t2.two; -- error, need qualification
-ERROR:  column "ctid" does not exist
+ERROR:  "ctid": invalid identifier
 LINE 1: select ctid from
                ^
-DETAIL:  There are columns named "ctid", but they are in tables that cannot be referenced from this part of the query.
-HINT:  Try using a table-qualified name.
 --
 -- Take care to reference the correct RTE
 --
@@ -5929,7 +5921,7 @@ select atts.relid::regclass, s.* from pg_stats s join
     a.attrelid::regclass::text join (select unnest(indkey) attnum,
     indexrelid from pg_index i) atts on atts.attnum = a.attnum where
     schemaname != 'pg_catalog';
-ERROR:  column atts.relid does not exist
+ERROR:  "atts"."relid": invalid identifier
 LINE 1: select atts.relid::regclass, s.* from pg_stats s join
                ^
 -- Test bug in rangetable flattening
@@ -6986,29 +6978,21 @@ lateral (select * from int8_tbl t1,
 
 -- test some error cases where LATERAL should have been used but wasn't
 select f1,g from int4_tbl a, (select f1 as g) ss;
-ERROR:  column "f1" does not exist
+ERROR:  "f1": invalid identifier
 LINE 1: select f1,g from int4_tbl a, (select f1 as g) ss;
                                              ^
-DETAIL:  There is a column named "f1" in table "a", but it cannot be referenced from this part of the query.
-HINT:  To reference that column, you must mark this subquery with LATERAL.
 select f1,g from int4_tbl a, (select a.f1 as g) ss;
-ERROR:  invalid reference to FROM-clause entry for table "a"
+ERROR:  "a"."f1": invalid identifier
 LINE 1: select f1,g from int4_tbl a, (select a.f1 as g) ss;
                                              ^
-DETAIL:  There is an entry for table "a", but it cannot be referenced from this part of the query.
-HINT:  To reference that table, you must mark this subquery with LATERAL.
 select f1,g from int4_tbl a cross join (select f1 as g) ss;
-ERROR:  column "f1" does not exist
+ERROR:  "f1": invalid identifier
 LINE 1: select f1,g from int4_tbl a cross join (select f1 as g) ss;
                                                        ^
-DETAIL:  There is a column named "f1" in table "a", but it cannot be referenced from this part of the query.
-HINT:  To reference that column, you must mark this subquery with LATERAL.
 select f1,g from int4_tbl a cross join (select a.f1 as g) ss;
-ERROR:  invalid reference to FROM-clause entry for table "a"
+ERROR:  "a"."f1": invalid identifier
 LINE 1: select f1,g from int4_tbl a cross join (select a.f1 as g) ss...
                                                        ^
-DETAIL:  There is an entry for table "a", but it cannot be referenced from this part of the query.
-HINT:  To reference that table, you must mark this subquery with LATERAL.
 -- SQL:2008 says the left table is in scope but illegal to access here
 select f1,g from int4_tbl a right join lateral generate_series(0, a.f1) g on true;
 ERROR:  invalid reference to FROM-clause entry for table "a"
@@ -7035,15 +7019,13 @@ LINE 1: select 1 from tenk1 a, lateral (select max(a.unique1) from i...
 create temp table xx1 as select f1 as x1, -f1 as x2 from int4_tbl;
 -- error, can't do this:
 update xx1 set x2 = f1 from (select * from int4_tbl where f1 = x1) ss;
-ERROR:  column "x1" does not exist
+ERROR:  "x1": invalid identifier
 LINE 1: ... set x2 = f1 from (select * from int4_tbl where f1 = x1) ss;
                                                                 ^
-DETAIL:  There is a column named "x1" in table "xx1", but it cannot be referenced from this part of the query.
 update xx1 set x2 = f1 from (select * from int4_tbl where f1 = xx1.x1) ss;
-ERROR:  invalid reference to FROM-clause entry for table "xx1"
+ERROR:  "xx1"."x1": invalid identifier
 LINE 1: ...t x2 = f1 from (select * from int4_tbl where f1 = xx1.x1) ss...
                                                              ^
-DETAIL:  There is an entry for table "xx1", but it cannot be referenced from this part of the query.
 -- can't do it even with LATERAL:
 update xx1 set x2 = f1 from lateral (select * from int4_tbl where f1 = x1) ss;
 ERROR:  invalid reference to FROM-clause entry for table "xx1"
@@ -7055,15 +7037,13 @@ update xx1 set x2 = f1 from xx1, lateral (select * from int4_tbl where f1 = x1) 
 ERROR:  table name "xx1" specified more than once
 -- also errors:
 delete from xx1 using (select * from int4_tbl where f1 = x1) ss;
-ERROR:  column "x1" does not exist
+ERROR:  "x1": invalid identifier
 LINE 1: ...te from xx1 using (select * from int4_tbl where f1 = x1) ss;
                                                                 ^
-DETAIL:  There is a column named "x1" in table "xx1", but it cannot be referenced from this part of the query.
 delete from xx1 using (select * from int4_tbl where f1 = xx1.x1) ss;
-ERROR:  invalid reference to FROM-clause entry for table "xx1"
+ERROR:  "xx1"."x1": invalid identifier
 LINE 1: ...from xx1 using (select * from int4_tbl where f1 = xx1.x1) ss...
                                                              ^
-DETAIL:  There is an entry for table "xx1", but it cannot be referenced from this part of the query.
 delete from xx1 using lateral (select * from int4_tbl where f1 = x1) ss;
 ERROR:  invalid reference to FROM-clause entry for table "xx1"
 LINE 1: ...xx1 using lateral (select * from int4_tbl where f1 = x1) ss;
