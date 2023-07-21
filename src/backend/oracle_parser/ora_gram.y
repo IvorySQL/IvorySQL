@@ -8656,6 +8656,7 @@ opt_or_replace:
  */
 opt_ora_func_args_with_defaults:
 	'(' func_args_with_defaults_list ')'		{ $$ = $2; }
+	| '(' ')' 								{ $$ = NIL; }
 	| /*EMPTY*/ 								{ $$ = NIL; }
 	;
 
