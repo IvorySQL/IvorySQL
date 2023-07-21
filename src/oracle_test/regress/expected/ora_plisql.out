@@ -19,9 +19,6 @@ BEGIN
     RETURN 1;
 END;
 /
-ERROR:  syntax error at or near "RETURN"
-LINE 1: CREATE or replace FUNCTION ora_func() RETURN integer AS
-                                              ^
 -- OK
 CREATE or replace FUNCTION ora_func RETURN integer AS
 BEGIN    

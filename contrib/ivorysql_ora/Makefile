@@ -45,6 +45,7 @@ REGRESS = \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_merge \
+	datatype_and_func_bugs \
 	ora_like_operator
 
 ifdef USE_PGXS
