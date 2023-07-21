@@ -4084,6 +4084,23 @@ end;
 end;
 /
 
+create or replace function func_tinc001111019(fc integer) return integer is
+	mds integer;
+	function test_inlinefunc(id integer) return NUMBER result_cache is
+	    rtn number;
+	begin
+	    rtn := id *10;
+	    return rtn;
+	end;
+begin
+	mds:=test_inlinefunc(1);
+	return mds;
+end;
+/
+
+SELECT func_tinc001111019(23) FROM dual;
+
+DROP FUNCTION func_tinc001111019;
 --clean data
 DROP PROCEDURE test.test_proc;
 DROP PROCEDURE test.test_proc1;

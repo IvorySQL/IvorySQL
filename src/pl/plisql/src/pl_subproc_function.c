@@ -704,7 +704,8 @@ plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
 
 		if (append)
 		{
-			if (proper->proper_type == FUNC_PROPER_RESULT_CACHE && (!isdeclare))
+			if (proper->proper_type == FUNC_PROPER_RESULT_CACHE &&
+				(!isdeclare) && subprocfunc->has_declare)
 				elog(ERROR, "RESULT_CACHE must be specified on \"%s\" declaration and definition",
 							subprocfunc->func_name);
 
