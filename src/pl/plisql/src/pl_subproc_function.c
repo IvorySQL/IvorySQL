@@ -194,8 +194,8 @@ plisql_finish_subproc_func(PLiSQL_function *function)
 void
 plisql_push_subproc_func(void)
 {
-	if (cur_compile_func_level >= FUNC_MAX_NEST_LEVEL - 1)
-		elog(ERROR, "function or procedure nested more than :%d", FUNC_MAX_NEST_LEVEL);
+	if (cur_compile_func_level > FUNC_MAX_NEST_LEVEL - 1)
+		elog(ERROR, "function or procedure nested level more than: %d", FUNC_MAX_NEST_LEVEL);
 
 	plisql_saved_compile[cur_compile_func_level] = plisql_curr_compile;
 	plisql_saved_error_funcname[cur_compile_func_level] = plisql_error_funcname;
