@@ -9267,11 +9267,11 @@ AlterFunctionStmt:
 				{
 					CompileFunctionStmt *stmt = makeNode(CompileFunctionStmt);
 
-					stmt->funcname = $3->objname;
+					stmt->func = $3;
+					stmt->objtype = OBJECT_FUNCTION;
 					stmt->is_compile = false;
 					stmt->editable = $4;
 					stmt->parameters = NIL;
-					stmt->is_procedure = false;
 
 					$$ = (Node *) stmt;
 				}
@@ -9279,10 +9279,10 @@ AlterFunctionStmt:
 				{
 					CompileFunctionStmt *stmt = makeNode(CompileFunctionStmt);
 
-					stmt->funcname = $3->objname;
+					stmt->func = $3;
+					stmt->objtype = OBJECT_FUNCTION;
 					stmt->is_compile = true;
 					stmt->parameters = $6;
-					stmt->is_procedure = false;
 
 					$$ = (Node *) stmt;
 				}
@@ -9290,11 +9290,11 @@ AlterFunctionStmt:
 				{
 					CompileFunctionStmt *stmt = makeNode(CompileFunctionStmt);
 
-					stmt->funcname = $3->objname;
+					stmt->func = $3;
+					stmt->objtype = OBJECT_PROCEDURE;
 					stmt->is_compile = false;
 					stmt->editable = $4;
 					stmt->parameters = NIL;
-					stmt->is_procedure = true;
 
 					$$ = (Node *) stmt;
 				}
@@ -9302,10 +9302,10 @@ AlterFunctionStmt:
 				{
 					CompileFunctionStmt *stmt = makeNode(CompileFunctionStmt);
 
-					stmt->funcname = $3->objname;
+					stmt->func = $3;
+					stmt->objtype = OBJECT_PROCEDURE;
 					stmt->is_compile = true;
 					stmt->parameters = $6;
-					stmt->is_procedure = true;
 
 					$$ = (Node *) stmt;
 				}

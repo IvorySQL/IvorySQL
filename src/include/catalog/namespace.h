@@ -104,8 +104,6 @@ extern FuncCandidateList FuncnameGetCandidates(List *names,
 											   bool include_out_arguments,
 											   bool missing_ok);
 
-extern FuncCandidateList FuncnameGetCandidatesOnlyByName(List *names, bool noError);
-
 extern bool FunctionIsVisible(Oid funcid);
 
 extern Oid	OpernameGetOprid(List *names, Oid oprleft, Oid oprright);
