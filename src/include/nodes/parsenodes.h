@@ -4086,11 +4086,11 @@ typedef struct AccessibleByClause
 typedef struct CompileFunctionStmt
 {
 	NodeTag		type;
-	List		*funcname;
+	ObjectType	objtype;
+	ObjectWithArgs *func;		/* name and args of function */
 	bool		is_compile;		/* if false, it is change the editable|noneditable */
 	bool		editable;
 	List		*parameters;
-	bool		is_procedure;		/* a procedure or a function */
 } CompileFunctionStmt;
 
 typedef struct ColumnRefOrFuncCall
