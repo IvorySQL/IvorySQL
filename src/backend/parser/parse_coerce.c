@@ -1704,7 +1704,7 @@ select_common_type_for_nvl(ParseState *pstate, List *exprs, const char *context,
 				ptype = TEXTOID;
 			else if (compatible_db == ORA_PARSER)
 			{
-				if (strcmp(nls_length_semantics, "byte"))
+				if (nls_length_semantics == NLS_LENGTH_CHAR)
 					ptype = ORAVARCHARBYTEOID;
 				else
 					ptype = ORAVARCHARCHAROID;
@@ -1739,7 +1739,7 @@ select_common_type_for_nvl(ParseState *pstate, List *exprs, const char *context,
 					ptype = TEXTOID;
 				else if (compatible_db == ORA_PARSER)
 				{
-					if (strcmp(nls_length_semantics, "byte"))
+					if (nls_length_semantics == NLS_LENGTH_CHAR)
 						ptype = ORAVARCHARBYTEOID;
 					else
 						ptype = ORAVARCHARCHAROID;

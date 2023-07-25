@@ -14999,14 +14999,14 @@ CharacterWithLength:  character '(' Iconst ')'
 					{
 						if (strcmp($1, "bpchar"))
 						{
-							if (!strcmp(nls_length_semantics, "char"))
+							if (nls_length_semantics == NLS_LENGTH_CHAR)
 								$1 = "oravarcharchar";
 							else
 								$1 = "oravarcharbyte";
 						}
 						else
 						{
-							if (!strcmp(nls_length_semantics, "char"))
+							if (nls_length_semantics == NLS_LENGTH_CHAR)
 								$1 = "oracharchar";
 							else
 								$1 = "oracharbyte";
@@ -15031,14 +15031,14 @@ CharacterWithoutLength:	 character
 					{
 						if (!strcmp($1, "bpchar"))
 						{
-							if (!strcmp(nls_length_semantics, "char"))
+							if (nls_length_semantics == NLS_LENGTH_CHAR)
 								$1 = "oracharchar";
 							else
 								$1 = "oracharbyte";
 						}
 						else
 						{
-							if (!strcmp(nls_length_semantics, "char"))
+							if (nls_length_semantics == NLS_LENGTH_CHAR)
 								$1 = "oravarcharchar";
 							else
 								$1 = "oravarcharbyte";

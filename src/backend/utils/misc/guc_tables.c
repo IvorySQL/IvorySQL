@@ -500,6 +500,12 @@ static const struct config_enum_entry case_conversion_mode[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry nls_length_options[] = {
+	{"byte", NLS_LENGTH_BYTE, false},
+	{"char", NLS_LENGTH_CHAR, false},
+	{NULL, 0, false}
+};
+
 /*
  * Options for enum values stored in other modules
  */
@@ -564,7 +570,7 @@ char	   *pgstat_temp_directory;
 
 char	   *application_name;
 
-char	   *nls_length_semantics = NULL;
+int	   nls_length_semantics = NLS_LENGTH_BYTE;
 char	   *nls_date_format = "YYYY-MM-DD";
 char	   *nls_timestamp_format = "YYYY-MM-DD HH24:MI:SS.FF6";
 char	   *nls_timestamp_tz_format = "YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM";
@@ -4689,17 +4695,6 @@ struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for charater data type."),
-			gettext_noop("Valid values are CHAR, BYTE."),
-			GUC_NOT_IN_SAMPLE
-		},
-		&nls_length_semantics,
-		"byte",
-		check_nls_length_semantics, NULL, NULL
-	},
-
-	{
 		{"nls_date_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for date type."),
 			NULL,
@@ -5182,6 +5177,17 @@ struct config_enum ConfigureNamesEnum[] =
 		&identifier_case_switch,
 		INTERCHANGE, case_conversion_mode,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Set the length semantics of the character datatype."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_length_semantics,
+		NLS_LENGTH_BYTE, nls_length_options,
+		check_nls_length_semantics, NULL, NULL
 	},
 
 	/* End-of-list marker */

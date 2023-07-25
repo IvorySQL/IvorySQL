@@ -1859,7 +1859,7 @@ transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c)
 				arg = coerce_to_common_type(pstate, arg, TEXTOID, "DECODE");
 			else if (compatible_db == ORA_PARSER)
 			{
-				if (strcmp(nls_length_semantics, "byte") == 0)
+				if (nls_length_semantics == NLS_LENGTH_BYTE)
 					arg = coerce_to_common_type(pstate, arg, ORAVARCHARBYTEOID, "DECODE");
 				else
 					arg = coerce_to_common_type(pstate, arg, ORAVARCHARCHAROID, "DECODE");

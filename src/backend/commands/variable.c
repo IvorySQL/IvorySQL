@@ -35,6 +35,7 @@
 #include "utils/builtins.h"
 #include "utils/datetime.h"
 #include "utils/guc_hooks.h"
+#include "utils/ora_compatible.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
@@ -1098,12 +1099,14 @@ assign_maintenance_io_concurrency(int newval, void *extra)
 }
 
 bool
-check_nls_length_semantics(char **newval, void **extra, GucSource source)
+check_nls_length_semantics(int *newval, void **extra, GucSource source)
 {
 
-	if (newval == NULL
-		|| (newval != NULL && pg_strcasecmp(*newval, "CHAR")  && pg_strcasecmp(*newval, "BYTE")))
-		return false;
+	if (IsUnderPostmaster && DB_PG == database_mode)
+		ereport(WARNING,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Do not use this GUC variable in the current cluster (PG).")));
+
 
 	return true;
 }
