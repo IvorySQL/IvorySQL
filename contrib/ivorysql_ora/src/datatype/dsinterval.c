@@ -1438,7 +1438,7 @@ dsinterval_in(PG_FUNCTION_ARGS)
 	struct		tm tt,
 			   *tm = &tt;
 	int			dtype = -1;
-	int			nf;
+	int			nf = 0;
 	int			range;
 	int			dterr;
 	char	   *field[MAXDATEFIELDS];
