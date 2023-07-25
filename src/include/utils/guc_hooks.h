@@ -57,7 +57,7 @@ extern bool check_default_text_search_config(char **newval, void **extra, GucSou
 extern void assign_default_text_search_config(const char *newval, void *extra);
 extern bool check_default_with_oids(bool *newval, void **extra,
 									GucSource source);
-extern bool check_nls_length_semantics(char **newval, void **extra, GucSource source);
+extern bool check_nls_length_semantics(int *newval, void **extra, GucSource source);
 extern bool check_effective_io_concurrency(int *newval, void **extra,
 										   GucSource source);
 extern bool check_huge_page_size(int *newval, void **extra, GucSource source);

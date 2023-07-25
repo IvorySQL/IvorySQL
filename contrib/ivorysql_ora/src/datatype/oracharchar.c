@@ -23,6 +23,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/ora_compatible.h"
 #include "utils/varlena.h"
 #include "mb/pg_wchar.h"
 #include "fmgr.h"
@@ -171,7 +172,7 @@ anychar_typmodout(int32 typmod)
 
 	if (typmod > VARHDRSZ)
 	{
-		if (strcmp(nls_length_semantics, "char") == 0)
+		if (nls_length_semantics == NLS_LENGTH_CHAR)
 			snprintf(res, 64, "(%d)", (int) (typmod - VARHDRSZ));
 		else
 			snprintf(res, 69, "(%d char)", (int) (typmod - VARHDRSZ));

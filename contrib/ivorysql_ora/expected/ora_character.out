@@ -4,6 +4,7 @@ SET nls_length_semantics to byte;
 -- Only values of 'char' and 'byte' is valid
 SET nls_length_semantics to other;
 ERROR:  invalid value for parameter "nls_length_semantics": "other"
+HINT:  Available values: byte, char.
 -- invalid range
 CREATE TABLE TEST_ORACHAR(a char(32768 byte));
 ERROR:  length for type char cannot exceed 32767

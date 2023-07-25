@@ -295,7 +295,7 @@ extern int     database_mode;
 
 extern PGDLLIMPORT int	compatible_db;
 
-extern PGDLLIMPORT char	*nls_length_semantics;
+extern PGDLLIMPORT int nls_length_semantics;
 extern PGDLLIMPORT char *nls_date_format;
 extern PGDLLIMPORT char *nls_timestamp_format;
 extern PGDLLIMPORT char *nls_timestamp_tz_format;
