@@ -2,6 +2,11 @@
 -- Mainly contains bug-modified test cases for built-in datatypes and built-in functions.
 --
 
+create table dtos_tb1tidid004134318(dtos_clo interval day to second);
+insert into dtos_tb1tidid004134318 values(interval '--2 07:16:23' day to second);
+insert into dtos_tb1tidid004134318 values(interval ' 2 07:16:23' day to second);
+insert into dtos_tb1tidid004134318 values(interval ' -2 07:16:23' day to second);
+select * from dtos_tb1tidid004134318;
 CREATE FUNCTION f_noparam() 
 RETURN int 
 IS 
@@ -65,6 +70,7 @@ alter function s1.f_alter(arg1 text) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number default 10) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number) compile;
 -- clean
+drop table dtos_tb1tidid004134318;
 drop function f_noparam();
 drop function s1.f_alter(arg1 number);
 drop function s1.f_alter(arg1 number, arg2 number);
