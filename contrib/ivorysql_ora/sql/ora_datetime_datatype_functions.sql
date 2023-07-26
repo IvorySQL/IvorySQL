@@ -161,7 +161,7 @@ insert into datetest values (ADD_MONTHS(date '2018-01-23',2));
 insert into datetest values (ADD_MONTHS(date '2018-01-23',13));
 insert into datetest values (ADD_MONTHS(timestamp '2018-01-23 13:12:14',2));
 insert into datetest values (ADD_MONTHS(timestamp '2018-01-23 12:34:45',13));
-insert into datetest values (ADD_MONTHS(date'2017-1-30',1.1));  /* BUGID:0000414 */
+insert into datetest values (ADD_MONTHS(date'2017-1-30',1.1));
 
 select * from datetest;
 drop table datetest;

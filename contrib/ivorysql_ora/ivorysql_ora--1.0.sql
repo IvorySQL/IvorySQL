@@ -9657,7 +9657,6 @@ CREATE AGGREGATE sys.min(sys.binary_float) (
 -- ----------------------------------------
 -- REDO LATER
 -- ----------------------------------------
-/* Begin - BUGID:0000531 */
 create or replace function sys.text_text(text,text) returns numeric as $$
   select $1::varchar2-$2::varchar2;
 $$ language sql strict immutable;
@@ -9667,10 +9666,8 @@ CREATE OPERATOR sys.- (
 	leftarg = pg_catalog.text,
 	rightarg = pg_catalog.text
 );
-/* End - BUGID:0000531 */
 
 
-/* Begin - BUGID:0000536 */
 CREATE CAST (pg_catalog.int2 AS sys.oravarcharchar)
 WITH INOUT
 AS IMPLICIT;
@@ -9824,7 +9821,6 @@ CREATE CAST (pg_catalog.timetz AS sys.oracharchar)
 WITH INOUT
 AS IMPLICIT;
 
-/* Begin - BUG#998 */
 CREATE CAST (pg_catalog.bytea AS sys.oravarcharbyte)
 WITH INOUT
 AS ASSIGNMENT;
@@ -9832,9 +9828,6 @@ AS ASSIGNMENT;
 CREATE CAST (pg_catalog.bytea AS sys.oravarcharchar)
 WITH INOUT
 AS IMPLICIT;
-/* End - BUG#998 */
-/* End - BUGID:0000536 */
-
 
 CREATE CAST (sys.oravarcharchar AS pg_catalog.int8)
 WITH INOUT
@@ -9851,10 +9844,10 @@ AS IMPLICIT;
 
 
 --create function for sgrdb
---bug#984 add immutable
+-- add immutable
 create or replace function sys.to_char(text) RETURNS text AS $$ SELECT $1 $$ LANGUAGE SQL IMMUTABLE;
 
---bug#797 generate_series support int2,int4,int8 but number has more choices will result error
+-- generate_series support int2,int4,int8 but number has more choices will result error
 CREATE FUNCTION sys.generate_series(number, number) returns setof numeric AS $$
 SELECT PG_CATALOG.generate_series($1::numeric,$2::numeric)
 $$ LANGUAGE SQL IMMUTABLE;
@@ -9863,7 +9856,6 @@ CREATE FUNCTION sys.generate_series(number, number, number) returns setof numeri
 SELECT PG_CATALOG.generate_series($1::numeric,$2::numeric, $3::numeric)
 $$ LANGUAGE SQL IMMUTABLE;
 
---bug#800
 CREATE CAST (sys.oravarcharchar AS pg_catalog.int4)
 WITH INOUT
 AS IMPLICIT;
@@ -9879,7 +9871,6 @@ create operator <> (procedure=sys.oid_cc_ne, LEFTARG=pg_catalog.oid, RIGHTARG=sy
 create operator <> (procedure=sys.cc_oid_ne, LEFTARG=sys.oracharchar, RIGHTARG=pg_catalog.oid);
 
 
-/* Begin - BUG#828 */
 CREATE FUNCTION sys.round(number, integer)
 RETURNS numeric
 AS $$SELECT pg_catalog.round($1,$2);$$
@@ -9894,9 +9885,7 @@ AS IMPLICIT;
 CREATE CAST (sys.oravarcharbyte AS float8)
 WITH INOUT
 AS IMPLICIT;
-/* End - BUG#828 */
 
-/* Begin - BUG#986 */
 /* AT TIME ZONE */
 CREATE FUNCTION sys.timezone(text, sys.oratimestamp)
 RETURNS sys.oratimestamptz
@@ -9936,7 +9925,6 @@ PROCEDURE = sys.varchar2like,
 LEFTARG   = varchar2,
 RIGHTARG  = varchar2
 );
-/* End - BUG#986 */
 
 /***************************************************************
  *
@@ -10095,12 +10083,10 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 
-/* Begin - bug0000540 */
 CREATE FUNCTION sys.length(integer)
 RETURNS integer
 AS $$SELECT sys.length(cast($1 as sys.oravarcharchar));$$
 LANGUAGE SQL VOLATILE;
-/* End - bug0000540 */
 
 create function sys.lengthb(bytea) returns int as
 $$
@@ -10112,7 +10098,6 @@ language plpgsql;
 
 
 /* trim/ltrim/rtrim functions */
-/* Begin - Bug#796 */
 CREATE FUNCTION sys.rtrim(sys.oravarcharchar)
 RETURNS oravarcharchar
 AS 'MODULE_PATHNAME','rtrim1'
@@ -10140,9 +10125,7 @@ AS 'MODULE_PATHNAME','ltrim2'
 LANGUAGE C
 STRICT
 IMMUTABLE;
-/* End - Bug#796 */
 
-/* Begin - BUG#833 */
 CREATE FUNCTION sys.trim(sys.oravarcharchar)
 RETURNS oravarcharchar
 AS 'MODULE_PATHNAME','trim1'
@@ -10164,9 +10147,7 @@ AS $$ SELECT pg_catalog.btrim($1, $2);$$
 LANGUAGE SQL
 STRICT
 IMMUTABLE;
-/* End - BUG#833 */
 
-/* Begin - SRS-CKC-Oracle-SupportOra_Regexp_245 */
 /* regexp_replace */
 CREATE FUNCTION sys.regexp_replace(text, text, text, integer,integer,text)
 RETURNS varchar2
@@ -10186,7 +10167,6 @@ AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 STABLE;
 
-/* Begin - bug0000698 */
 CREATE FUNCTION sys.regexp_replace(varchar2, varchar2, varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
@@ -10198,7 +10178,6 @@ RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 STABLE;
-/* End - bug0000698 */
 
 CREATE FUNCTION sys.regexp_replace(varchar2, varchar2)
 RETURNS varchar2
@@ -10305,14 +10284,11 @@ AS 'MODULE_PATHNAME','ora_regexp_like'
 LANGUAGE C
 STABLE;
 
-/* Begin - BUG:0000891 */
 CREATE FUNCTION sys.regexp_count(text, text, int default 1, text default 'g')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_regexp_count'
 LANGUAGE C
 STABLE;
-/* End - BUG:0000891 */
-/* End - SRS-CKC-Oracle-SupportOra_Regexp_245 */
 
 /* SR */
 CREATE FUNCTION sys.substrb(varchar, number)
@@ -10342,7 +10318,6 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 
-/* Begin - BUG#997 */
 --lpad
 CREATE FUNCTION sys.lpad(varchar2, number) returns varchar2 AS
 $$ select pg_catalog.lpad($1::text, $2::integer); $$
@@ -10368,7 +10343,6 @@ $$ select pg_catalog.rpad($1::text, $2::integer, $3::text); $$
 LANGUAGE SQL
 STRICT
 IMMUTABLE;
-/* End - BUG#997 */
 
 /***************************************************************
  *
@@ -10396,7 +10370,6 @@ LANGUAGE C
 STRICT
 STABLE;
 
-/* Begin - bug0000415 */
 CREATE FUNCTION sys.current_timestamp()
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','ora_current_timestamp'
@@ -10410,9 +10383,7 @@ AS 'MODULE_PATHNAME','ora_current_timestamp'
 LANGUAGE C
 STRICT
 STABLE;
-/* End - bug0000415 */
 
-/* Begin - bug0000415 */
 CREATE FUNCTION sys.localtimestamp()
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','ora_local_timestamp'
@@ -10426,7 +10397,6 @@ AS 'MODULE_PATHNAME','ora_local_timestamp'
 LANGUAGE C
 STRICT
 STABLE;
-/* End - bug0000415 */
 
 CREATE FUNCTION sys.last_day(sys.oradate)
 RETURNS sys.oradate
@@ -10435,21 +10405,12 @@ LANGUAGE C
 STRICT
 STABLE;
 
-/* Begin - BUGID:0000414 */
 CREATE FUNCTION sys.add_months(sys.oradate,sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','add_months'
 LANGUAGE C
 STRICT
 STABLE;
-
-CREATE FUNCTION sys.add_months(sys.oratimestamptz,sys.number)
-RETURNS sys.oradate
-AS 'MODULE_PATHNAME','add_months'
-LANGUAGE C
-STRICT
-STABLE;
-/* End - BUGID:0000414 */
 
 CREATE FUNCTION sys.round(sys.oradate,text)
 RETURNS sys.oradate
@@ -10465,7 +10426,7 @@ LANGUAGE C
 STRICT
 STABLE;
 
---bug#894 change trunc to immutable
+-- change trunc to immutable
 CREATE FUNCTION sys.trunc(sys.oradate,text)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','ora_trunc'
@@ -10519,14 +10480,12 @@ LANGUAGE C
 STRICT
 STABLE;
 
-/* Begin - bug0000427 */
 CREATE FUNCTION sys.sessiontimezone()
 RETURNS text
 AS 'MODULE_PATHNAME','ora_sessiontimezone'
 LANGUAGE C
 STRICT
 STABLE;
-/* End - bug0000427 */
 
 CREATE FUNCTION sys.to_date(text)
 RETURNS sys.oradate
@@ -10752,16 +10711,13 @@ IMMUTABLE;
  * Numeric datatype functions. 
  *
  ***************************************************************/
-/* Begin - bug0000457 */
 CREATE FUNCTION sys.bitand(number,number)
 RETURNS number
 AS 'MODULE_PATHNAME','number_bitand'
 LANGUAGE C
 STRICT
 IMMUTABLE;
-/* End - bug0000457 */
 
-/* Begin - bug0000478 */
 CREATE FUNCTION sys.bitand(text, text)
 RETURNS number
 AS
@@ -10776,7 +10732,6 @@ $$
 LANGUAGE plpgsql
 STRICT
 IMMUTABLE;
-/* End - bug0000478 */
 
 CREATE FUNCTION sys.to_number(text,text)
 RETURNS sys.number
@@ -10797,7 +10752,6 @@ IMMUTABLE;
  * RAW BLOB CLOB datatype functions. 
  *
  ***************************************************************/
---bug#834 support to_clob
 CREATE OR REPLACE FUNCTION sys.to_clob(varchar2)
 RETURNS clob
 AS $$ SELECT $1::clob;$$
@@ -10805,14 +10759,12 @@ LANGUAGE SQL
 STRICT
 IMMUTABLE;
 
-/* Begin - BUG#999 */
 CREATE OR REPLACE FUNCTION sys.to_blob(varchar2)
 RETURNS blob
 AS $$ SELECT $1::blob;$$
 LANGUAGE SQL
 STRICT
 IMMUTABLE;
-/* End - BUG#999 */
 
 /* support hextoraw function for oracle compatibility */
 create or replace function sys.hextoraw(text) RETURNS bytea AS $$ select pg_catalog.decode($1, 'hex'); $$ LANGUAGE SQL;
@@ -10823,14 +10775,12 @@ create or replace function sys.hextoraw(text) RETURNS bytea AS $$ select pg_cata
  * Misc functions. 
  *
  ***************************************************************/
-/* Begin - bug0000459 */
 CREATE FUNCTION sys.uid()
 RETURNS int4
 AS 'MODULE_PATHNAME','uid'
 LANGUAGE C
 STRICT
 IMMUTABLE;
-/* End - bug0000459 */
 
 /* 
  * Oracle USERENV support
