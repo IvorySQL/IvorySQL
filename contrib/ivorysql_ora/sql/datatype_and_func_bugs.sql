@@ -15,6 +15,8 @@ RETURN 1;
 END;
 /
 
+alter session set NLS_DATE_FORMAT='yyyy-mm-dd hh24:mi:ss';
+select add_months('2022-08-23',3) from dual;
 alter session set NLS_LENGTH_SEMANTICS='BYTE';
 create table char_tb(char_clo char(3));
 insert into char_tb values('测试');
@@ -71,6 +73,8 @@ alter function s1.f_alter(arg1 number, arg2 number, arg3 number default 10) comp
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number) compile;
 -- clean
 drop table dtos_tb1tidid004134318;
+drop table char_tb2;
+drop table char_tb;
 drop function f_noparam();
 drop function s1.f_alter(arg1 number);
 drop function s1.f_alter(arg1 number, arg2 number);
