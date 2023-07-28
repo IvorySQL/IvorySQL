@@ -5926,7 +5926,7 @@ generate_series_timestamptz(PG_FUNCTION_ARGS)
  *
  * Purpose:
  *
- * Returns system date with server time, it's not change, eUnless the 
+ * Returns system date with server time, it's not change, unless the
  * system date or time changes.
  *
  ********************************************************************/

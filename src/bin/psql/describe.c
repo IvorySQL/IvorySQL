@@ -718,7 +718,7 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 }
 
 /*
- * \dP
+ * \dPKG
  * describe IvorySQL Packages
  */
 bool
