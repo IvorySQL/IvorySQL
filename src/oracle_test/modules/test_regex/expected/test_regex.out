@@ -4,6 +4,7 @@
 -- The full copyright notice can be found in src/backend/regex/COPYRIGHT.
 -- Most commented lines below are copied from reg.test.  Each
 -- test case is followed by an equivalent test using test_regex().
+set ivorysql.enable_emptystring_to_null to false;
 create extension test_regex;
 set standard_conforming_strings = on;
 -- # support functions and preliminary misc.
@@ -5082,3 +5083,4 @@ select * from test_regex('((x|xabcdefghijklmnopqrstuvwxyz0123456789)x*|[^y]z)$',
  {az,az,NULL}
 (2 rows)
 
+reset ivorysql.enable_emptystring_to_null;

@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE ttable1 OF nothing;
 ERROR:  type "nothing" does not exist
 CREATE TYPE person_type AS (id int, name text);
@@ -133,3 +134,4 @@ Indexes:
     "persons3_pkey" PRIMARY KEY, btree (id)
 Typed table of type: person_type
 
+reset ivorysql.enable_emptystring_to_null;

@@ -3,6 +3,7 @@
 -- Test various data entry syntaxes.
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- SQL string continuation syntax
 -- E021-03 character string literals
 SELECT 'first line'
@@ -828,3 +829,4 @@ SELECT unistr('wrong: \udb99\u0061');
 SELECT unistr('wrong: \U0000db99\U00000061');
 SELECT unistr('wrong: \U002FFFFF');
 SELECT unistr('wrong: \xyz');
+reset ivorysql.enable_emptystring_to_null;

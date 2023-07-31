@@ -5,6 +5,7 @@
 -- Build a table for testing
 -- (This temporarily hides the table created in test_setup.sql)
 --
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TEMP TABLE FLOAT8_TBL(f1 float8);
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    0.0   ');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('1004.30  ');
@@ -1444,3 +1445,4 @@ drop cascades to cast from xfloat8 to double precision
 drop cascades to cast from double precision to xfloat8
 drop cascades to cast from xfloat8 to bigint
 drop cascades to cast from bigint to xfloat8
+reset ivorysql.enable_emptystring_to_null;

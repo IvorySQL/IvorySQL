@@ -1,6 +1,7 @@
 --
 -- WINDOW FUNCTIONS
 --
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TEMPORARY TABLE empsalary (
     depname varchar,
     empno bigint,
@@ -4138,3 +4139,4 @@ SELECT * FROM pg_temp.f(2);
  {5}
 (5 rows)
 
+reset ivorysql.enable_emptystring_to_null;

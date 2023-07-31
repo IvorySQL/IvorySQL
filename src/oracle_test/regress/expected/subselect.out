@@ -1,6 +1,7 @@
 --
 -- SUBSELECT
 --
+set ivorysql.enable_emptystring_to_null to false;
 SELECT 1 AS one WHERE 1 IN (SELECT 1);
  one 
 -----
@@ -1928,3 +1929,4 @@ select * from x for update;
    Output: subselect_tbl.f1, subselect_tbl.f2, subselect_tbl.f3
 (2 rows)
 
+reset ivorysql.enable_emptystring_to_null;

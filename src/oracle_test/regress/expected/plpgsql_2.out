@@ -20,6 +20,7 @@
 --     you look behind the wall when looking at a patchfield
 --     or into a room.
 --
+set ivorysql.enable_emptystring_to_null to false;
 create table Room (
     roomno	char(8),
     comment	text
@@ -6049,3 +6050,4 @@ END; $$ LANGUAGE plpgsql;
 ERROR:  "x" is not a scalar variable
 LINE 3:   GET DIAGNOSTICS x = ROW_COUNT;
                           ^
+reset ivorysql.enable_emptystring_to_null;

@@ -1,7 +1,7 @@
 --
 -- Test foreign-data wrapper and server management.
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 -- directory paths and dlsuffix are passed to us in environment variables
 \getenv libdir PG_LIBDIR
 \getenv dlsuffix PG_DLSUFFIX
@@ -867,3 +867,4 @@ DROP ROLE regress_foreign_data_user;
 SELECT fdwname, fdwhandler, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper;
 SELECT srvname, srvoptions FROM pg_foreign_server;
 SELECT * FROM pg_user_mapping;
+reset ivorysql.enable_emptystring_to_null;

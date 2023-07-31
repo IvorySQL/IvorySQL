@@ -2,6 +2,7 @@
 -- OID
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE OID_TBL(f1 oid);
 
 INSERT INTO OID_TBL(f1) VALUES ('1234');
@@ -55,3 +56,4 @@ SELECT o.* FROM OID_TBL o WHERE o.f1 >= '1234';
 SELECT o.* FROM OID_TBL o WHERE o.f1 > '1234';
 
 DROP TABLE OID_TBL;
+reset ivorysql.enable_emptystring_to_null;

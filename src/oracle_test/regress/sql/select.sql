@@ -2,6 +2,7 @@
 -- SELECT
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- btree index
 -- awk '{if($1<10){print;}else{next;}}' onek.data | sort +0n -1
 --
@@ -263,3 +264,4 @@ create table list_parted_tbl1 partition of list_parted_tbl
   for values in (1) partition by list(b);
 explain (costs off) select * from list_parted_tbl;
 drop table list_parted_tbl;
+reset ivorysql.enable_emptystring_to_null;

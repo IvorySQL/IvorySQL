@@ -21,7 +21,7 @@
 --     or into a room.
 --
 
-
+set ivorysql.enable_emptystring_to_null to false;
 create table Room (
     roomno	char(8),
     comment	text
@@ -4983,3 +4983,4 @@ BEGIN
   RETURN;
 END; $$ LANGUAGE plpgsql;
 /
+reset ivorysql.enable_emptystring_to_null;

@@ -3,6 +3,7 @@
 -- Virtual class definitions
 --	(this also tests the query rewrite system)
 --
+set ivorysql.enable_emptystring_to_null to false;
 -- directory paths and dlsuffix are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
 \getenv libdir PG_LIBDIR
@@ -2215,3 +2216,4 @@ drop cascades to view tt23v
 drop cascades to view tt24v
 drop cascades to view tt25v
 drop cascades to view tt26v
+reset ivorysql.enable_emptystring_to_null;

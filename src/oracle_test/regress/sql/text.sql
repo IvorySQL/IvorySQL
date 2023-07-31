@@ -2,6 +2,7 @@
 -- TEXT
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 SELECT text 'this is a text string' = text 'this is a text string' AS true;
 
 SELECT text 'this is a text string' = text 'this is a text strin' AS false;
@@ -112,3 +113,4 @@ select format('>>%-s<<', 'Hello');
 select format('>>%10L<<', NULL);
 select format('>>%2$*1$L<<', NULL, 'Hello');
 select format('>>%2$*1$L<<', 0, 'Hello');
+reset ivorysql.enable_emptystring_to_null;

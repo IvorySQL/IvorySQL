@@ -534,7 +534,7 @@ char	   *event_source;
 
 bool		row_security;
 bool		check_function_bodies = true;
-bool			enable_emptystring_to_NULL = false;
+bool		enable_emptystring_to_NULL = false;
 
 /*
  * This GUC exists solely for backward compatibility, check its definition for
@@ -2076,10 +2076,9 @@ struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"enable_emptystring_to_NULL", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+		{"ivorysql.enable_emptystring_to_NULL", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("whether convert empty string to NULL."),
 			NULL,
-			GUC_NOT_IN_SAMPLE
 		},
 		&enable_emptystring_to_NULL,
 		false,

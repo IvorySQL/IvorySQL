@@ -9,6 +9,7 @@
 -- row in the linked-to table.  However, if we want to enforce that a link
 -- field can't be 0, we have to check it here.
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Find unexpected zero link entries
 
 SELECT oid, prsname
@@ -890,3 +891,4 @@ select websearch_to_tsquery('''');
 select websearch_to_tsquery('''abc''''def''');
 select websearch_to_tsquery('\abc');
 select websearch_to_tsquery('\');
+reset ivorysql.enable_emptystring_to_null;

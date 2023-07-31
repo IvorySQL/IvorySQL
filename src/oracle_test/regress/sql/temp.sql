@@ -5,6 +5,7 @@
 
 -- test temp table/index masking
 
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE temptest(col int);
 
 CREATE INDEX i_temptest ON temptest(col);
@@ -158,6 +159,7 @@ select pg_temp.whoami();
 drop table public.whereami;
 
 -- types in temp schema
+set ivorysql.enable_emptystring_to_null to false;
 set search_path = pg_temp, public;
 create domain pg_temp.nonempty as text check (value <> '');
 -- function-syntax invocation of types matches rules for functions
@@ -299,3 +301,4 @@ SET search_path TO 'pg_temp';
 BEGIN;
 SELECT current_schema() ~ 'pg_temp' AS is_temp_schema;
 PREPARE TRANSACTION 'twophase_search';
+reset ivorysql.enable_emptystring_to_null;

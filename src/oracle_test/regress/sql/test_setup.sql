@@ -24,6 +24,7 @@ SET synchronous_commit = on;
 GRANT ALL ON SCHEMA public TO public;
 
 -- Create a tablespace we can use in tests.
+set ivorysql.enable_emptystring_to_null to false;
 SET allow_in_place_tablespaces = true;
 CREATE TABLESPACE regress_tblspace LOCATION '';
 
@@ -297,3 +298,4 @@ create function fipshash(text)
     returns text
     strict immutable parallel safe leakproof
     return substr(encode(sha256($1::bytea), 'hex'), 1, 32);
+reset ivorysql.enable_emptystring_to_null;

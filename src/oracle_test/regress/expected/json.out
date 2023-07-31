@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 -- Strings.
 SELECT '""'::json;				-- OK.
  json 
@@ -2653,3 +2654,4 @@ select ts_headline('[]'::json, tsquery('aaa & bbb'));
  []
 (1 row)
 
+reset ivorysql.enable_emptystring_to_null;

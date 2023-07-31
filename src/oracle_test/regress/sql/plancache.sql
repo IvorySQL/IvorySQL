@@ -2,6 +2,7 @@
 -- Tests to exercise the plan caching/invalidation mechanism
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TEMP TABLE pcachetest AS SELECT * FROM int8_tbl;
 
 -- create and use a cached plan
@@ -226,3 +227,4 @@ select name, generic_plans, custom_plans from pg_prepared_statements
   where  name = 'test_mode_pp';
 
 drop table test_mode;
+reset ivorysql.enable_emptystring_to_null;

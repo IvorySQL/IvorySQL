@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 SELECT getdatabaseencoding() <> 'UTF8' AS skip_test \gset
 \if :skip_test
 \quit
@@ -32,3 +33,4 @@ FROM
 ORDER BY num;
 
 SELECT is_normalized('abc', 'def');  -- run-time error
+reset ivorysql.enable_emptystring_to_null;

@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TEMP TABLE x (
 	a serial,
 	b int,
@@ -483,3 +484,4 @@ DROP TABLE instead_of_insert_tbl;
 DROP VIEW instead_of_insert_tbl_view;
 DROP VIEW instead_of_insert_tbl_view_2;
 DROP FUNCTION fun_instead_of_insert_tbl();
+reset ivorysql.enable_emptystring_to_null;

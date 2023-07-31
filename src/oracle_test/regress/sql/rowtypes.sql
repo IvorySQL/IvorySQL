@@ -2,6 +2,7 @@
 -- ROWTYPES
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Make both a standalone composite type and a table rowtype
 
 create type complex as (r float8, i float8);
@@ -518,3 +519,4 @@ SELECT (NULL::compositetable).a;
 SELECT (NULL::compositetable).oid;
 
 DROP TABLE compositetable;
+reset ivorysql.enable_emptystring_to_null;

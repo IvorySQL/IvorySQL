@@ -1,7 +1,7 @@
 --
 -- VARCHAR
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 --
 -- Build a table for testing
 -- (This temporarily hides the table created in test_setup.sql)
@@ -66,6 +66,7 @@ DROP TABLE VARCHAR_TBL;
 INSERT INTO VARCHAR_TBL (f1) VALUES ('abcde');
 
 SELECT * FROM VARCHAR_TBL;
+reset ivorysql.enable_emptystring_to_null;
 
 -- Also try it with non-error-throwing API
 SELECT pg_input_is_valid('abcd  ', 'varchar(4)');

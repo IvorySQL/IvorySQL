@@ -2,6 +2,7 @@
 -- Tests for common table expressions (WITH query, ... SELECT ...)
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Basic WITH
 WITH q1(x,y) AS (SELECT 1,2)
 SELECT * FROM q1, q1 AS q2;
@@ -1631,3 +1632,4 @@ create temp table with_test (i int);
 with with_test as (select 42) insert into with_test select * from with_test;
 select * from with_test;
 drop table with_test;
+reset ivorysql.enable_emptystring_to_null;

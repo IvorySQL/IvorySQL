@@ -2,6 +2,7 @@
 -- SUBSELECT
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 SELECT 1 AS one WHERE 1 IN (SELECT 1);
 
 SELECT 1 AS zero WHERE 1 NOT IN (SELECT 1);
@@ -973,3 +974,4 @@ select * from (with x as (select 2 as y) select * from x) ss;
 explain (verbose, costs off)
 with x as (select * from subselect_tbl)
 select * from x for update;
+reset ivorysql.enable_emptystring_to_null;

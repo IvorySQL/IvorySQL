@@ -8,4 +8,5 @@
 					# (change requires restart)
 #ivorysql.port = 1521		# (change requires restart)
 
+ivorysql.enable_emptystring_to_NULL = 'on'
 shared_preload_libraries = 'liboracle_parser, ivorysql_ora'		# (change requires restart)

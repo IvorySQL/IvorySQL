@@ -2,6 +2,7 @@
 -- NUMERIC
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE num_data (id int4, val numeric(210,10));
 CREATE TABLE num_exp_add (id1 int4, id2 int4, expected numeric(210,10));
 CREATE TABLE num_exp_sub (id1 int4, id2 int4, expected numeric(210,10));
@@ -1504,3 +1505,4 @@ SELECT pg_lsn(18446744073709551615::numeric);
 SELECT pg_lsn(-1::numeric);
 SELECT pg_lsn(18446744073709551616::numeric);
 SELECT pg_lsn('NaN'::numeric);
+reset ivorysql.enable_emptystring_to_null;

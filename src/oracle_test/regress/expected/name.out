@@ -2,6 +2,7 @@
 -- NAME
 -- all inputs are silently truncated at NAMEDATALEN-1 (63) characters
 --
+set ivorysql.enable_emptystring_to_null to false;
 -- fixed-length by reference
 SELECT name 'name string' = name 'name string' AS "True";
  True 
@@ -195,3 +196,4 @@ DETAIL:  No valid identifier before ".".
 SELECT parse_ident('xxx.1020');
 ERROR:  string is not a valid identifier: "xxx.1020"
 DETAIL:  No valid identifier after ".".
+reset ivorysql.enable_emptystring_to_null;

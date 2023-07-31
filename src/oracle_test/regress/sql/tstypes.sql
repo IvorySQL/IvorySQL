@@ -1,4 +1,5 @@
 -- deal with numeric instability of ts_rank
+set ivorysql.enable_emptystring_to_null to false;
 SET extra_float_digits = 0;
 
 --Base tsvector test
@@ -279,3 +280,4 @@ SELECT setweight('a asd w:5,6,12B,13A zxc'::tsvector, 'c', ARRAY['a', 'zxc', '',
 SELECT ts_filter('base:7A empir:17 evil:15 first:11 galact:16 hidden:6A rebel:1A spaceship:2A strike:3A victori:12 won:9'::tsvector, '{a}');
 SELECT ts_filter('base hidden rebel spaceship strike'::tsvector, '{a}');
 SELECT ts_filter('base hidden rebel spaceship strike'::tsvector, '{a,b,NULL}');
+reset ivorysql.enable_emptystring_to_null;

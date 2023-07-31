@@ -5,6 +5,7 @@
 --
 -- sanity check - if this fails go insane!
 --
+set ivorysql.enable_emptystring_to_null to false;
 SELECT 1 AS one;
 
 
@@ -265,3 +266,4 @@ DROP TABLE  BOOLTBL2;
 DROP TABLE  BOOLTBL3;
 
 DROP TABLE  BOOLTBL4;
+reset ivorysql.enable_emptystring_to_null;

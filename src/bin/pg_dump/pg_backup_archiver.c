@@ -3149,7 +3149,7 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 
 	ahprintf(AH, "SET identifier_case_switch = normal;\n");
 
-	ahprintf(AH, "SET enable_emptystring_to_NULL = off;\n");
+	ahprintf(AH, "SET ivorysql.enable_emptystring_to_NULL = off;\n");
 
 	ahprintf(AH, "\n");
 }

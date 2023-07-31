@@ -1,6 +1,7 @@
 --
 -- ARRAYS
 --
+set ivorysql.enable_emptystring_to_null to false;
 -- directory paths are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
 CREATE TABLE arrtest (
@@ -2519,3 +2520,4 @@ SELECT array_sample('{1,2,3,4,5,6}'::int[], -1); -- fail
 ERROR:  sample size must be between 0 and 6
 SELECT array_sample('{1,2,3,4,5,6}'::int[], 7); --fail
 ERROR:  sample size must be between 0 and 6
+reset ivorysql.enable_emptystring_to_null;

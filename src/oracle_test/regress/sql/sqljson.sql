@@ -1,4 +1,5 @@
 -- JSON_OBJECT()
+set ivorysql.enable_emptystring_to_null to false;
 SELECT JSON_OBJECT();
 SELECT JSON_OBJECT(RETURNING json);
 SELECT JSON_OBJECT(RETURNING json FORMAT JSON);
@@ -378,3 +379,4 @@ SELECT '1' IS JSON AS "any", ('1' || i) IS JSON SCALAR AS "scalar", '[]' IS NOT 
 \sv is_json_view
 
 DROP VIEW is_json_view;
+reset ivorysql.enable_emptystring_to_null;

@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE ttable1 OF nothing;
 
 CREATE TYPE person_type AS (id int, name text);
@@ -75,3 +76,4 @@ CREATE TABLE persons3 OF person_type (
 );
 
 \d persons3
+reset ivorysql.enable_emptystring_to_null;

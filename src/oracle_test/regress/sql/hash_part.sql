@@ -2,6 +2,7 @@
 -- Hash partitioning.
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Use hand-rolled hash functions and operator classes to get predictable
 -- result on different machines.  See the definitions of
 -- part_part_test_int4_ops and part_test_text_ops in insert.sql.
@@ -88,3 +89,4 @@ select satisfies_hash_partition('text_hashp'::regclass, 2, 0, 'xxx'::text) OR
 DROP TABLE mchash;
 DROP TABLE mcinthash;
 DROP TABLE text_hashp;
+reset ivorysql.enable_emptystring_to_null;

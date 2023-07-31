@@ -1,6 +1,7 @@
 --
 -- AGGREGATES
 --
+set ivorysql.enable_emptystring_to_null to false;
 
 -- directory paths are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
@@ -1456,3 +1457,4 @@ drop table agg_hash_1;
 drop table agg_hash_2;
 drop table agg_hash_3;
 drop table agg_hash_4;
+reset ivorysql.enable_emptystring_to_null;

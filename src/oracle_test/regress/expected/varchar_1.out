@@ -1,6 +1,7 @@
 --
 -- VARCHAR
 --
+set ivorysql.enable_emptystring_to_null to false;
 --
 -- Build a table for testing
 -- (This temporarily hides the table created in test_setup.sql)
@@ -106,7 +107,7 @@ SELECT * FROM VARCHAR_TBL;
  ab
  abcd
 (3 rows)
-
+reset ivorysql.enable_emptystring_to_null;
 -- Also try it with non-error-throwing API
 SELECT pg_input_is_valid('abcd  ', 'varchar(4)');
  pg_input_is_valid 
@@ -125,4 +126,3 @@ SELECT * FROM pg_input_error_info('abcde', 'varchar(4)');
 ----------------------------------------------+--------+------+----------------
  value too long for type character varying(4) |        |      | 22001
 (1 row)
-

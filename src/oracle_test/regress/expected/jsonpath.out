@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 --jsonpath io
 select ''::jsonpath;
 ERROR:  invalid input syntax for type jsonpath: ""
@@ -1216,3 +1217,4 @@ FROM unnest(ARRAY['$ ? (@ like_regex "pattern" flag "smixq")'::text,
  1a                                        | f  | 42601          | trailing junk after numeric literal at or near "1a" of jsonpath input |                                                          | 
 (5 rows)
 
+reset ivorysql.enable_emptystring_to_null;

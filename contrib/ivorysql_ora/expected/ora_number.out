@@ -1,7 +1,7 @@
 --
 -- NUMBER
 --
-set enable_emptystring_to_NULL = on;
+set ivorysql.enable_emptystring_to_NULL = on;
 CREATE TABLE num_data (id int4, val number(210,10));
 CREATE TABLE num_exp_add (id1 int4, id2 int4, expected number(210,10));
 CREATE TABLE num_exp_sub (id1 int4, id2 int4, expected number(210,10));

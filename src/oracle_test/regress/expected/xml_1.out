@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE xmltest (
     id int,
     data xml
@@ -1402,3 +1403,4 @@ DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT * FROM XMLTABLE('.' PASSING XMLELEMENT(NAME a) columns a varchar(20) PATH '"<foo/>"', b xml PATH '"<foo/>"');
 ERROR:  unsupported XML feature
 DETAIL:  This functionality requires the server to be built with libxml support.
+reset ivorysql.enable_emptystring_to_null;

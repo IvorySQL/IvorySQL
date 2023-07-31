@@ -2,6 +2,7 @@
 -- FLOAT4
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE FLOAT4_TBL (f1  float4);
 
 INSERT INTO FLOAT4_TBL(f1) VALUES ('    0.0');
@@ -360,3 +361,4 @@ select float4send(flt) as ibits,
 
 -- clean up, lest opr_sanity complain
 drop type xfloat4 cascade;
+reset ivorysql.enable_emptystring_to_null;
