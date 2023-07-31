@@ -1,0 +1,101 @@
+-- compatible_mode
+SET COMPATIBLE_MODE TO ORACLE;
+SHOW COMPATIBLE_MODE;
+ compatible_mode 
+-----------------
+ oracle
+(1 row)
+
+SET IDENTIFIER_CASE_SWITCH = INTERCHANGE;
+SHOW IDENTIFIER_CASE_SWITCH;
+ identifier_case_switch 
+------------------------
+ interchange
+(1 row)
+
+-- create a procedure
+CREATE TABLE TB_TODEL(ID INT);
+CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
+BEGIN
+	DROP TABLE TB_TODEL;
+END;
+/
+-- create a function with security definer
+CREATE OR REPLACE FUNCTION FUNC_AUTHID(P VARCHAR2)
+RETURN INT DETERMINISTIC IS
+BEGIN
+	RETURN 123;
+END;
+/
+-- select ... from all_procedures
+SELECT OBJECT_NAME, OBJECT_TYPE, DETERMINISTIC, PARALLEL, AUTHID
+FROM ALL_PROCEDURES
+WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
+ object_name | object_type | deterministic | parallel | authid  
+-------------+-------------+---------------+----------+---------
+ PROC_DEL_TB | PROCEDURE   | NO            | NO       | DEFINER
+ FUNC_AUTHID | FUNCTION    | YES           | NO       | DEFINER
+(2 rows)
+
+-- create a function with all-lowercase name
+CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
+RETURN VARCHAR2 IS
+BEGIN
+	RETURN 'func_quotes_lower'::VARCHAR2;
+END;
+/
+-- select ... from all_source
+SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
+       name        | line |                     text                      
+-------------------+------+-----------------------------------------------
+ func_quotes_lower | 1    | BEGIN
+ func_quotes_lower | 2    |         RETURN 'func_quotes_lower'::VARCHAR2;
+ func_quotes_lower | 3    | END
+(3 rows)
+
+-- data_type and pls_type in all_arguments
+CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES
+(
+	T1 CHAR, T2 NCHAR, T3 VARCHAR2, T4 INTEGER, T5 NUMBER, T6 NUMERIC,
+	T7 BINARY_FLOAT, T8 BINARY_DOUBLE, T9 REAL, T10 FLOAT, T11 DOUBLE PRECISION,
+	T12 DATE, T13 TIMESTAMP, T14 TIMESTAMP WITH TIME ZONE,
+	T15 TIMESTAMP WITH LOCAL TIME ZONE,
+	T16 CLOB, T17 BLOB, T18 NCLOB, T19 LONG, T20 LONG RAW, T21 BOOLEAN
+)
+RETURN RAW IS
+BEGIN
+	RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
+END;
+/
+-- select ... from all_arguments
+SELECT
+	ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' || 
+	IN_OUT || ',' || DATA_TYPE || ',' || PLS_TYPE
+FROM ALL_ARGUMENTS WHERE OBJECT_NAME = 'FUNC_22_ARG_TYPES'
+ORDER BY OBJECT_ID, POSITION;
+                                  ?column?                                  
+----------------------------------------------------------------------------
+ ,0,1,OUT,RAW,RAW
+ T1,1,2,IN,CHAR,CHAR
+ T2,2,3,IN,CHAR,CHAR
+ T3,3,4,IN,VARCHAR2,VARCHAR2
+ T4,4,5,IN,NUMBER,INTEGER
+ T5,5,6,IN,NUMBER,NUMBER
+ T6,6,7,IN,NUMBER,NUMERIC
+ T7,7,8,IN,BINARY_FLOAT,BINARY_FLOAT
+ T8,8,9,IN,BINARY_DOUBLE,BINARY_DOUBLE
+ T9,9,10,IN,FLOAT,REAL
+ T10,10,11,IN,FLOAT,DOUBLE PRECISION
+ T11,11,12,IN,FLOAT,DOUBLE PRECISION
+ T12,12,13,IN,DATE,DATE
+ T13,13,14,IN,TIMESTAMP,TIMESTAMP
+ T14,14,15,IN,TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE
+ T15,15,16,IN,TIMESTAMP WITH LOCAL TIME ZONE,TIMESTAMP WITH LOCAL TIME ZONE
+ T16,16,17,IN,CLOB,CLOB
+ T17,17,18,IN,BLOB,BLOB
+ T18,18,19,IN,NCLOB,CLOB
+ T19,19,20,IN,LONG,LONG
+ T20,20,21,IN,LONG_RAW,LONG_RAW
+ T21,21,22,IN,BOOLEAN,BOOLEAN
+(22 rows)
+

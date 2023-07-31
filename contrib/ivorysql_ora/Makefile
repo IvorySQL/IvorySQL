@@ -23,7 +23,8 @@ OBJS = \
 	src/builtin_functions/datetime_datatype_functions.o \
 	src/builtin_functions/numeric_datatype_functions.o \
 	src/builtin_functions/misc_functions.o \
-	src/merge/ora_merge.o
+	src/merge/ora_merge.o \
+	src/sysview/sysview_functions.o
 
 EXTENSION = ivorysql_ora
 
@@ -46,6 +47,7 @@ REGRESS = \
 	ora_misc_functions \
 	ora_merge \
 	datatype_and_func_bugs \
+	ora_sysview \
 	ora_like_operator
 
 ifdef USE_PGXS
