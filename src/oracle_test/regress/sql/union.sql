@@ -2,6 +2,7 @@
 -- UNION (also INTERSECT, EXCEPT)
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Simple UNION constructs
 
 SELECT 1 AS two UNION SELECT 2 ORDER BY 1;
@@ -541,3 +542,4 @@ select * from
    union all
    select *, 1 as x from int8_tbl b) ss
 where (x = 0) or (q1 >= q2 and q1 <= q2);
+reset ivorysql.enable_emptystring_to_null;

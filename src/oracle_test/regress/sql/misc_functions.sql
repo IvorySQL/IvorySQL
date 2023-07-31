@@ -8,6 +8,7 @@
 -- num_nulls()
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 SELECT num_nonnulls(NULL);
 SELECT num_nonnulls('1');
 SELECT num_nonnulls(NULL::text);
@@ -241,3 +242,4 @@ SELECT segment_number > 0 AS ok_segment_number, timeline_id
   FROM pg_split_walfile_name('000000010000000100000000');
 SELECT segment_number > 0 AS ok_segment_number, timeline_id
   FROM pg_split_walfile_name('ffffffFF00000001000000af');
+reset ivorysql.enable_emptystring_to_null;

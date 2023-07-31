@@ -2,6 +2,7 @@
 -- Test INSERT/UPDATE/DELETE RETURNING
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Simple cases
 
 CREATE TEMP TABLE foo (f1 serial, f2 text, f3 int default 42);
@@ -160,3 +161,4 @@ INSERT INTO foo AS bar DEFAULT VALUES RETURNING *; -- ok
 INSERT INTO foo AS bar DEFAULT VALUES RETURNING foo.*; -- fails, wrong name
 INSERT INTO foo AS bar DEFAULT VALUES RETURNING bar.*; -- ok
 INSERT INTO foo AS bar DEFAULT VALUES RETURNING bar.f3; -- ok
+reset ivorysql.enable_emptystring_to_null;

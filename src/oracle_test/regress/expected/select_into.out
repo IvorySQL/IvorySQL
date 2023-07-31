@@ -1,6 +1,7 @@
 --
 -- SELECT_INTO
 --
+set ivorysql.enable_emptystring_to_null to false;
 SELECT *
    INTO TABLE sitmp1
    FROM onek
@@ -221,3 +222,4 @@ NOTICE:  relation "ctas_ine_tbl" already exists, skipping
 (0 rows)
 
 DROP TABLE ctas_ine_tbl;
+reset ivorysql.enable_emptystring_to_null;

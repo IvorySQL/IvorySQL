@@ -2,7 +2,7 @@
 -- INT8
 -- Test int8 64-bit integers.
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 -- int8_tbl was already created and filled in test_setup.sql.
 -- Here we just try to insert bad values.
 
@@ -291,3 +291,4 @@ SELECT int8 '0b_10_0101';
 SELECT int8 '_100';
 SELECT int8 '100_';
 SELECT int8 '100__000';
+reset ivorysql.enable_emptystring_to_null;

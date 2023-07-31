@@ -2,6 +2,7 @@
 -- STRINGS
 -- Test various data entry syntaxes.
 --
+set ivorysql.enable_emptystring_to_null to false;
 -- SQL string continuation syntax
 -- E021-03 character string literals
 SELECT 'first line'
@@ -2599,3 +2600,4 @@ ERROR:  invalid Unicode code point: 2FFFFF
 SELECT unistr('wrong: \xyz');
 ERROR:  invalid Unicode escape
 HINT:  Unicode escapes must be \XXXX, \+XXXXXX, \uXXXX, or \UXXXXXXXX.
+reset ivorysql.enable_emptystring_to_null;

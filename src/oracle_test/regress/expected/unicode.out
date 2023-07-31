@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 SELECT getdatabaseencoding() <> 'UTF8' AS skip_test \gset
 \if :skip_test
 \quit
@@ -87,3 +88,4 @@ ORDER BY num;
 
 SELECT is_normalized('abc', 'def');  -- run-time error
 ERROR:  invalid normalization form: def
+reset ivorysql.enable_emptystring_to_null;

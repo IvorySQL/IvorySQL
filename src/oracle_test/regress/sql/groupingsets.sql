@@ -2,6 +2,7 @@
 -- grouping sets
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- test data sources
 
 create temp view gstest1(a,b,v)
@@ -591,3 +592,4 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 
 -- end
+reset ivorysql.enable_emptystring_to_null;

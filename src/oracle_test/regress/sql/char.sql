@@ -4,7 +4,7 @@
 
 -- Per SQL standard, CHAR means character(1), that is a varlena type
 -- with a constraint restricting it to one character (not byte)
-
+set ivorysql.enable_emptystring_to_null to false;
 SELECT char 'c' = char 'c' AS true;
 
 --
@@ -92,3 +92,4 @@ SELECT '\000'::"char"::text;
 SELECT 'a'::text::"char";
 SELECT '\377'::text::"char";
 SELECT ''::text::"char";
+reset ivorysql.enable_emptystring_to_null;

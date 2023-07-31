@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE SCHEMA testxmlschema;
 
 CREATE TABLE testxmlschema.test1 (a int, b text);
@@ -61,3 +62,4 @@ CREATE TABLE testxmlschema.test3
 
 SELECT xmlforest(c1, c2, c3, c4) FROM testxmlschema.test3;
 SELECT table_to_xml('testxmlschema.test3', true, true, '');
+reset ivorysql.enable_emptystring_to_null;

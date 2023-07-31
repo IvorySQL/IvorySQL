@@ -1,6 +1,7 @@
 --
 -- FLOAT4
 --
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE FLOAT4_TBL (f1  float4);
 INSERT INTO FLOAT4_TBL(f1) VALUES ('    0.0');
 INSERT INTO FLOAT4_TBL(f1) VALUES ('1004.30   ');
@@ -986,3 +987,4 @@ drop cascades to cast from xfloat4 to real
 drop cascades to cast from real to xfloat4
 drop cascades to cast from xfloat4 to integer
 drop cascades to cast from integer to xfloat4
+reset ivorysql.enable_emptystring_to_null;

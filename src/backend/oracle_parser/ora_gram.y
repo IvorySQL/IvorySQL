@@ -1821,6 +1821,8 @@ var_value:	opt_boolean_or_string
 				{ $$ = makeStringConst($1, @1); }
 			| NumericOnly
 				{ $$ = makeAConst($1, @1); }
+			| NULL_P
+				{ $$ = makeStringConst("", @1); }
 		;
 
 iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }

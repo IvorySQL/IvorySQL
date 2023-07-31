@@ -3,6 +3,7 @@
 -- Tests for other features related to function-calling have snuck in, too.
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 create function polyf(x anyelement) returns anyelement as $$
   select x + 1
 $$ language sql;
@@ -1211,3 +1212,4 @@ select x, pg_typeof(x) from anyctest(variadic array[11, 12]) x;
 select x, pg_typeof(x) from anyctest(variadic array[11, 12.2]) x;
 
 drop function anyctest(variadic anycompatiblearray);
+reset ivorysql.enable_emptystring_to_null;

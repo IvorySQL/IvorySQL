@@ -2,6 +2,7 @@
 -- UPDATABLE VIEWS
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- avoid bit-exact output here because operations may not be bit-exact.
 SET extra_float_digits = 0;
 
@@ -1747,3 +1748,4 @@ values (1, 2, default, 5, 4, default, 3), (10, 11, 'C value', 14, 13, 100, 12);
 select * from base_tab order by a;
 drop view base_tab_view;
 drop table base_tab;
+reset ivorysql.enable_emptystring_to_null;

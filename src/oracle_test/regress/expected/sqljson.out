@@ -1,4 +1,5 @@
 -- JSON_OBJECT()
+set ivorysql.enable_emptystring_to_null to false;
 SELECT JSON_OBJECT();
  json_object 
 -------------
@@ -952,3 +953,4 @@ CREATE OR REPLACE VIEW public.is_json_view AS
     '{}'::text IS JSON OBJECT WITH UNIQUE KEYS AS object
    FROM generate_series(1, 3) i(i)
 DROP VIEW is_json_view;
+reset ivorysql.enable_emptystring_to_null;

@@ -2,7 +2,7 @@
 -- NUMEROLOGY
 -- Test various combinations of numeric types and functions.
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 
 --
 -- numeric literals
@@ -182,3 +182,4 @@ DROP TABLE TEMP_INT4;
 DROP TABLE TEMP_FLOAT;
 
 DROP TABLE TEMP_GROUP;
+reset ivorysql.enable_emptystring_to_null;

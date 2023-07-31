@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 --jsonpath io
 
 select ''::jsonpath;
@@ -252,3 +253,4 @@ FROM unnest(ARRAY['$ ? (@ like_regex "pattern" flag "smixq")'::text,
                   '00',
                   '1a']) str,
      LATERAL pg_input_error_info(str, 'jsonpath') as errinfo;
+reset ivorysql.enable_emptystring_to_null;

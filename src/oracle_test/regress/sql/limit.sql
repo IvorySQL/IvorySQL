@@ -3,6 +3,7 @@
 -- Check the LIMIT/OFFSET feature of SELECT
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 SELECT ''::text AS two, unique1, unique2, stringu1
 		FROM onek WHERE unique1 > 50
 		ORDER BY unique1 LIMIT 2;
@@ -199,3 +200,4 @@ CREATE VIEW limit_thousand_v_4 AS SELECT thousand FROM onek WHERE thousand < 995
 		ORDER BY thousand FETCH FIRST NULL ROWS ONLY;
 \d+ limit_thousand_v_4
 -- leave these views
+reset ivorysql.enable_emptystring_to_null;

@@ -2,6 +2,7 @@
 -- exercises for the hash join code
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 begin;
 
 set local min_parallel_table_scan_size = 0;
@@ -605,3 +606,4 @@ WHERE
     AND hjtest_1.a <> hjtest_2.b;
 
 ROLLBACK;
+reset ivorysql.enable_emptystring_to_null;

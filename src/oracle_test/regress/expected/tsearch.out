@@ -7,6 +7,7 @@
 -- that is OID or REGPROC fields that are not zero and do not match some
 -- row in the linked-to table.  However, if we want to enforce that a link
 -- field can't be 0, we have to check it here.
+set ivorysql.enable_emptystring_to_null to false;
 -- Find unexpected zero link entries
 SELECT oid, prsname
 FROM pg_ts_parser
@@ -3005,3 +3006,4 @@ NOTICE:  text-search query contains only stop words or doesn't contain lexemes, 
  
 (1 row)
 
+reset ivorysql.enable_emptystring_to_null;

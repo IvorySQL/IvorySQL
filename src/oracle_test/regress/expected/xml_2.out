@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE xmltest (
     id int,
     data xml
@@ -1767,3 +1768,4 @@ SELECT * FROM XMLTABLE('.' PASSING XMLELEMENT(NAME a) columns a varchar(20) PATH
  <foo/> | &lt;foo/&gt;
 (1 row)
 
+reset ivorysql.enable_emptystring_to_null;

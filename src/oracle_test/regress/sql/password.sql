@@ -2,6 +2,7 @@
 -- Tests for password types
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Tests for GUC password_encryption
 SET password_encryption = 'novalue'; -- error
 SET password_encryption = true; -- error
@@ -112,3 +113,4 @@ SELECT rolname, rolpassword
     FROM pg_authid
     WHERE rolname LIKE 'regress_passwd%'
     ORDER BY rolname, rolpassword;
+reset ivorysql.enable_emptystring_to_null;

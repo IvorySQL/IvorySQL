@@ -2,6 +2,7 @@
 -- Test for pg_get_object_address
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Clean up in case a prior regression run failed
 SET client_min_messages TO 'warning';
 DROP ROLE IF EXISTS regress_addr_user;
@@ -297,3 +298,4 @@ ORDER BY objects.classid, objects.objid, objects.objsubid;
 
 -- restore normal output mode
 \a\t
+reset ivorysql.enable_emptystring_to_null;

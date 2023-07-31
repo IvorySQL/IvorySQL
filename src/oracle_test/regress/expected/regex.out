@@ -1,6 +1,7 @@
 --
 -- Regular expression tests
 --
+set ivorysql.enable_emptystring_to_null to false;
 -- Don't want to have to double backslashes in regexes
 set standard_conforming_strings = on;
 -- Test simple quantified backrefs
@@ -643,3 +644,4 @@ select 'xyz' ~ 'x(\w)(?=(\1))';
 ERROR:  invalid regular expression: invalid backreference number
 select 'a' ~ '\x7fffffff';  -- invalid chr code
 ERROR:  invalid regular expression: invalid escape \ sequence
+reset ivorysql.enable_emptystring_to_null;

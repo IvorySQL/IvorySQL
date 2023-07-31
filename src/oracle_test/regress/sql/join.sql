@@ -3,6 +3,7 @@
 -- Test JOIN clauses
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE J1_TBL (
   i integer,
   j integer,
@@ -2749,3 +2750,4 @@ where exists (select 1 from j3
       and t1.unique1 < 1;
 
 drop table j3;
+reset ivorysql.enable_emptystring_to_null;

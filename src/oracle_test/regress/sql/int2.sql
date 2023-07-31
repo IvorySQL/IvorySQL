@@ -1,7 +1,7 @@
 --
 -- INT2
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 -- int2_tbl was already created and filled in test_setup.sql.
 -- Here we just try to insert bad values.
 
@@ -155,3 +155,4 @@ SELECT int2 '0b_10_0101';
 SELECT int2 '_100';
 SELECT int2 '100_';
 SELECT int2 '10__000';
+reset ivorysql.enable_emptystring_to_null;

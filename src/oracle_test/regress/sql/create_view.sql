@@ -3,7 +3,7 @@
 -- Virtual class definitions
 --	(this also tests the query rewrite system)
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 -- directory paths and dlsuffix are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
 \getenv libdir PG_LIBDIR
@@ -784,3 +784,4 @@ select pg_get_viewdef('tt26v', true);
 -- clean up all the random objects we made above
 DROP SCHEMA temp_view_test CASCADE;
 DROP SCHEMA testviewschm2 CASCADE;
+reset ivorysql.enable_emptystring_to_null;

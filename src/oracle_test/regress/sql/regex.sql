@@ -2,6 +2,7 @@
 -- Regular expression tests
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- Don't want to have to double backslashes in regexes
 set standard_conforming_strings = on;
 
@@ -156,3 +157,4 @@ select regexp_match('foo', '(?:.|){99}');
 select 'xyz' ~ 'x(\w)(?=\1)';  -- no backrefs in LACONs
 select 'xyz' ~ 'x(\w)(?=(\1))';
 select 'a' ~ '\x7fffffff';  -- invalid chr code
+reset ivorysql.enable_emptystring_to_null;

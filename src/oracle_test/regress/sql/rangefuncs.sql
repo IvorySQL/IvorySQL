@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE rngfunc2(rngfuncid int, f2 int);
 INSERT INTO rngfunc2 VALUES(1, 11);
 INSERT INTO rngfunc2 VALUES(2, 22);
@@ -867,3 +868,4 @@ select * from
    from unnest(array['{"lectures": [{"id": "1"}]}'::jsonb])
         as unnested_modules(module)) as ss,
   jsonb_to_recordset(ss.lecture) as j (id text);
+reset ivorysql.enable_emptystring_to_null;

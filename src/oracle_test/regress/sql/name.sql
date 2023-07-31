@@ -3,6 +3,7 @@
 -- all inputs are silently truncated at NAMEDATALEN-1 (63) characters
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 -- fixed-length by reference
 SELECT name 'name string' = name 'name string' AS "True";
 
@@ -85,3 +86,4 @@ SELECT parse_ident('10.20');
 SELECT parse_ident('.');
 SELECT parse_ident('.1020');
 SELECT parse_ident('xxx.1020');
+reset ivorysql.enable_emptystring_to_null;

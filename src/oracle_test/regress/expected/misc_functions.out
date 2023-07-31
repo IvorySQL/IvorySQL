@@ -5,6 +5,7 @@
 --
 -- num_nulls()
 --
+set ivorysql.enable_emptystring_to_null to false;
 SELECT num_nonnulls(NULL);
  num_nonnulls 
 --------------
@@ -646,3 +647,4 @@ SELECT segment_number > 0 AS ok_segment_number, timeline_id
  t                 |  4294967295
 (1 row)
 
+reset ivorysql.enable_emptystring_to_null;

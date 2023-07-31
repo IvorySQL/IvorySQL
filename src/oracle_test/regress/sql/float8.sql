@@ -1,12 +1,11 @@
 --
 -- FLOAT8
 --
-
 --
 -- Build a table for testing
 -- (This temporarily hides the table created in test_setup.sql)
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TEMP TABLE FLOAT8_TBL(f1 float8);
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    0.0   ');
@@ -514,3 +513,4 @@ select float8send(flt) as ibits,
 
 -- clean up, lest opr_sanity complain
 drop type xfloat8 cascade;
+reset ivorysql.enable_emptystring_to_null;

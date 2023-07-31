@@ -159,7 +159,7 @@ drop table test_trim;
 /*
  * regexp_replace
  */
-set enable_emptystring_to_null to on;
+set ivorysql.enable_emptystring_to_null to on;
 --Return empty
 
 select regexp_replace('', '[0-9]+','') from  dual;

@@ -1,7 +1,7 @@
 --
 -- Tests for external toast datums
 --
-
+set ivorysql.enable_emptystring_to_null to false;
 -- directory paths and dlsuffix are passed to us in environment variables
 \getenv libdir PG_LIBDIR
 \getenv dlsuffix PG_DLSUFFIX
@@ -82,3 +82,4 @@ DROP TABLE indtoasttest;
 DROP FUNCTION update_using_indirect();
 
 RESET default_toast_compression;
+reset ivorysql.enable_emptystring_to_null;

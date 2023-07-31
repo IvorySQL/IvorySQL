@@ -2,6 +2,7 @@
 -- SELECT_INTO
 --
 
+set ivorysql.enable_emptystring_to_null to false;
 SELECT *
    INTO TABLE sitmp1
    FROM onek
@@ -137,3 +138,4 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
   CREATE TABLE IF NOT EXISTS ctas_ine_tbl AS EXECUTE ctas_ine_query; -- ok
 DROP TABLE ctas_ine_tbl;
+reset ivorysql.enable_emptystring_to_null;

@@ -4,7 +4,7 @@
 
 SET DATESTYLE = 'ISO';
 SET IntervalStyle to postgres;
-
+set ivorysql.enable_emptystring_to_null to false;
 -- check acceptance of "time zone style"
 SELECT INTERVAL '01:00' AS "One hour";
 SELECT INTERVAL '+02:00' AS "Two hours";
@@ -582,3 +582,4 @@ SELECT f1,
 
 -- internal overflow test case
 SELECT extract(epoch from interval '1000000000 days');
+reset ivorysql.enable_emptystring_to_null;

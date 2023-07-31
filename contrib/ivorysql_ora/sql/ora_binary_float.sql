@@ -2,7 +2,7 @@
 -- BINARY_FLOAT
 --
 
-set enable_emptystring_to_NULL = on;
+set ivorysql.enable_emptystring_to_NULL = on;
 set extra_float_digits = 0;
 
 CREATE TABLE BINARY_FLOAT_TBL (f1 binary_float);

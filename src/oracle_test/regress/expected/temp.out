@@ -3,6 +3,7 @@
 -- Test temp relations and indexes
 --
 -- test temp table/index masking
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE temptest(col int);
 CREATE INDEX i_temptest ON temptest(col);
 CREATE TEMP TABLE temptest(tcol int);
@@ -204,6 +205,7 @@ select pg_temp.whoami();
 
 drop table public.whereami;
 -- types in temp schema
+set ivorysql.enable_emptystring_to_null to false;
 set search_path = pg_temp, public;
 create domain pg_temp.nonempty as text check (value <> '');
 -- function-syntax invocation of types matches rules for functions
@@ -394,3 +396,4 @@ SELECT current_schema() ~ 'pg_temp' AS is_temp_schema;
 
 PREPARE TRANSACTION 'twophase_search';
 ERROR:  cannot PREPARE a transaction that has operated on temporary objects
+reset ivorysql.enable_emptystring_to_null;

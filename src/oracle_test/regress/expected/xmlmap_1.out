@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 CREATE SCHEMA testxmlschema;
 CREATE TABLE testxmlschema.test1 (a int, b text);
 INSERT INTO testxmlschema.test1 VALUES (1, 'one'), (2, 'two'), (-1, null);
@@ -105,3 +106,4 @@ DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT table_to_xml('testxmlschema.test3', true, true, '');
 ERROR:  unsupported XML feature
 DETAIL:  This functionality requires the server to be built with libxml support.
+reset ivorysql.enable_emptystring_to_null;

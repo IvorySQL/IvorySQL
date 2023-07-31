@@ -1,4 +1,5 @@
 -- Tests for range data types.
+set ivorysql.enable_emptystring_to_null to false;
 --
 -- test input parser
 -- (type textrange was already made in test_setup.sql)
@@ -1845,3 +1846,4 @@ create function table_fail(i anyelement) returns table(i anyelement, r anyrange)
 /
 ERROR:  cannot determine result data type
 DETAIL:  A result of type anyrange requires at least one input of type anyrange or anymultirange.
+reset ivorysql.enable_emptystring_to_null;

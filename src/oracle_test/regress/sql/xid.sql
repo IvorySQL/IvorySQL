@@ -1,5 +1,6 @@
 -- xid and xid8
 
+set ivorysql.enable_emptystring_to_null to false;
 -- values in range, in octal, decimal, hex
 select '010'::xid,
        '42'::xid,
@@ -170,3 +171,4 @@ $$;
 /
 SELECT test_future_xid_status((:inprogress + 10000)::text::xid8);
 ROLLBACK;
+reset ivorysql.enable_emptystring_to_null;

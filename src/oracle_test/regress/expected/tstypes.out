@@ -1,4 +1,5 @@
 -- deal with numeric instability of ts_rank
+set ivorysql.enable_emptystring_to_null to false;
 SET extra_float_digits = 0;
 --Base tsvector test
 SELECT '1'::tsvector;
@@ -1442,3 +1443,4 @@ SELECT ts_filter('base hidden rebel spaceship strike'::tsvector, '{a}');
 
 SELECT ts_filter('base hidden rebel spaceship strike'::tsvector, '{a,b,NULL}');
 ERROR:  weight array may not contain nulls
+reset ivorysql.enable_emptystring_to_null;

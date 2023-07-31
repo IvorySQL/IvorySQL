@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 SELECT size, pg_size_pretty(size), pg_size_pretty(-1 * size) FROM
     (VALUES (10::bigint), (1000::bigint), (1000000::bigint),
             (1000000000::bigint), (1000000000000::bigint),
@@ -66,3 +67,4 @@ SELECT pg_size_bytes('-. kb');
 SELECT pg_size_bytes('.+912');
 SELECT pg_size_bytes('+912+ kB');
 SELECT pg_size_bytes('++123 kB');
+reset ivorysql.enable_emptystring_to_null;

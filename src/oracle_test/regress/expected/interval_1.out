@@ -3,6 +3,7 @@
 --
 SET DATESTYLE = 'ISO';
 SET IntervalStyle to postgres;
+set ivorysql.enable_emptystring_to_null to false;
 -- check acceptance of "time zone style"
 SELECT INTERVAL '01:00' AS "One hour";
 ERROR:  syntax error at or near "AS"
@@ -1430,3 +1431,4 @@ SELECT extract(epoch from interval '1000000000 days');
 ERROR:  syntax error at or near ")"
 LINE 1: SELECT extract(epoch from interval '1000000000 days');
                                                             ^
+reset ivorysql.enable_emptystring_to_null;

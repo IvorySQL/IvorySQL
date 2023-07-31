@@ -1,4 +1,5 @@
 -- relative tablespace locations are not allowed
+set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLESPACE regress_tblspace LOCATION 'relative'; -- fail
 
 -- empty tablespace locations are not usually allowed
@@ -431,3 +432,4 @@ DROP SCHEMA testschema CASCADE;
 
 DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
+reset ivorysql.enable_emptystring_to_null;

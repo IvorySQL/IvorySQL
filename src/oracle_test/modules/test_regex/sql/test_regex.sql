@@ -5,6 +5,7 @@
 -- Most commented lines below are copied from reg.test.  Each
 -- test case is followed by an equivalent test using test_regex().
 
+set ivorysql.enable_emptystring_to_null to false;
 create extension test_regex;
 
 set standard_conforming_strings = on;
@@ -1783,3 +1784,5 @@ select * from test_regex('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789(\Y\Y)+',
                          'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789Z', 'LP');
 select * from test_regex('((x|xabcdefghijklmnopqrstuvwxyz0123456789)x*|[^y]z)$',
                          'az', '');
+
+reset ivorysql.enable_emptystring_to_null;

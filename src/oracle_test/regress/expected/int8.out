@@ -2,6 +2,7 @@
 -- INT8
 -- Test int8 64-bit integers.
 --
+set ivorysql.enable_emptystring_to_null to false;
 -- int8_tbl was already created and filled in test_setup.sql.
 -- Here we just try to insert bad values.
 INSERT INTO INT8_TBL(q1) VALUES ('      ');
@@ -1088,3 +1089,4 @@ SELECT int8 '100__000';
 ERROR:  invalid input syntax for type bigint: "100__000"
 LINE 1: SELECT int8 '100__000';
                     ^
+reset ivorysql.enable_emptystring_to_null;

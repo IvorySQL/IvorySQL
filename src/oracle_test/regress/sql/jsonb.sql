@@ -1,3 +1,4 @@
+set ivorysql.enable_emptystring_to_null to false;
 -- directory paths are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
 
@@ -1516,3 +1517,4 @@ select '12345.0000000000000000000000000000000000000000000005'::jsonb::float8;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int2;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int4;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int8;
+reset ivorysql.enable_emptystring_to_null;
