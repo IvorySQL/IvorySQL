@@ -18,6 +18,7 @@ DATA = intarray--1.4--1.5.sql intarray--1.3--1.4.sql intarray--1.2--1.3.sql \
 PGFILEDESC = "intarray - functions and operators for arrays of integers"
 
 REGRESS = _int
+ORA_REGRESS = _int
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
