@@ -137,3 +137,7 @@ create table other_start_max1(userid number generated always as identity start w
 create table other_max1(userid number generated always as identity  maxvalue 9999999999999999999999999999,uname varchar2(20));
 DROP TABLE other_start_max1;
 DROP TABLE other_max1;
+create table other_max2(userid number(8) generated always as identity  start with 99999999 increment by 2,uname varchar2(20));
+insert into other_max2 (uname) values ('xiaodong');
+insert into other_max2 (uname) values ('xiaodong');    --error
+DROP TABLE other_max2;
