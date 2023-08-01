@@ -1480,8 +1480,29 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* MAXVALUE (null arg means NO MAXVALUE) */
 	if (max_value != NULL && max_value->arg)
 	{
-		seqform->seqmax = defGetInt64(max_value);
-		seqdataform->log_cnt = 0;
+		PG_TRY();
+		{
+			seqform->seqmax = defGetInt64(max_value);
+			seqdataform->log_cnt = 0;
+		}
+		PG_CATCH();
+		{
+			int		errcod;
+			errcod = geterrcode();
+			if(errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+			{
+				ereport(WARNING,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						errmsg("Maxvalue is out of range for data type bigint")));
+				seqform->seqmax = PG_INT64_MAX;
+			}
+			else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION)
+			{
+				PG_RE_THROW();
+			}
+			FlushErrorState();
+		}
+		PG_END_TRY();
 	}
 	else if (isInit || max_value != NULL || reset_max_value)
 	{
@@ -1554,10 +1575,31 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	{
 		if (compatible_db == ORA_PARSER)
 		{
-			seqform->seqstart = defGetNumeric(start_value);
-			seqdataform->log_cnt = 0;
-			seqdataform->last_value = seqform->seqstart;
-			seqdataform->is_called = false;
+			PG_TRY();
+			{
+				seqform->seqstart = defGetInt64(start_value);
+				seqdataform->log_cnt = 0;
+				seqdataform->last_value = seqform->seqstart;
+				seqdataform->is_called = false;
+			}
+			PG_CATCH();
+			{
+				int		errcod;
+				errcod = geterrcode();
+				if(errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							errmsg("Start value is out of range for data type bigint")));
+					seqform->seqstart = PG_INT64_MAX;
+				}
+				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION)
+				{
+					PG_RE_THROW();
+				}
+				FlushErrorState();
+			}
+			PG_END_TRY();
 		}
 		else
 			seqform->seqstart = defGetInt64(start_value);
