@@ -4,6 +4,7 @@ MODULES = basic_archive
 PGFILEDESC = "basic_archive - basic archive module"
 
 REGRESS = basic_archive
+ORA_REGRESS = basic_archive
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/basic_archive/basic_archive.conf
 ORACLE_REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/basic_archive/basic_archive.conf
 
