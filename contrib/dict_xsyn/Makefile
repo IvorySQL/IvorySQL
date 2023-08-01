@@ -11,6 +11,7 @@ DATA_TSEARCH = xsyn_sample.rules
 PGFILEDESC = "dict_xsyn - add-on dictionary template for full-text search"
 
 REGRESS = dict_xsyn
+ORA_REGRESS = dict_xsyn
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
