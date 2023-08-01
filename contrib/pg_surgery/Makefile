@@ -10,6 +10,7 @@ DATA = pg_surgery--1.0.sql
 PGFILEDESC = "pg_surgery - perform surgery on a damaged relation"
 
 REGRESS = heap_surgery
+ORA_REGRESS = heap_surgery
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
