@@ -15,6 +15,7 @@ DATA = bloom--1.0.sql
 PGFILEDESC = "bloom access method - signature file based index"
 
 REGRESS = bloom
+ORA_REGRESS = bloom
 
 TAP_TESTS = 1
 
