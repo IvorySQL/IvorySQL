@@ -10,8 +10,10 @@ EXTENSION = pg_walinspect
 DATA = pg_walinspect--1.0.sql pg_walinspect--1.0--1.1.sql
 
 REGRESS = pg_walinspect oldextversions
+ORA_REGRESS = pg_walinspect oldextversions
 
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/pg_walinspect/walinspect.conf
+ORA_REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/pg_walinspect/walinspect.conf
 
 # Disabled because these tests require "wal_level=replica", which
 # some installcheck users do not have (e.g. buildfarm clients).
