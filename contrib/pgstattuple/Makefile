@@ -14,6 +14,7 @@ DATA = pgstattuple--1.4.sql pgstattuple--1.4--1.5.sql \
 PGFILEDESC = "pgstattuple - tuple-level statistics"
 
 REGRESS = pgstattuple
+ORA_REGRESS = pgstattuple
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
