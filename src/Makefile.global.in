@@ -767,6 +767,7 @@ pg_isolation_regress_installcheck = \
 
 #IvorySQL:BEGIN - SQL oracle_test
 ora_pg_regress_check = \
+    echo "\# +++ ora pg regress check in $(subdir) +++" && \
     $(with_temp_install) \
     $(top_builddir)/src/test/regress/ora_pg_regress \
     --temp-instance=./tmp_check \
@@ -775,6 +776,7 @@ ora_pg_regress_check = \
     $(TEMP_CONF) \
     $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
 oracle_regress_check = \
+    echo "\# +++ ora regress check in $(subdir) +++" && \
     $(with_temp_install) \
     $(top_builddir)/src/oracle_test/regress/pg_regress \
     --temp-instance=./tmp_check \
@@ -783,12 +785,14 @@ oracle_regress_check = \
     $(TEMP_CONF) \
     $(oracle_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
 oracle_regress_installcheck = \
+    echo "\# +++ ora installcheck regress check in $(subdir) +++" && \
     $(top_builddir)/src/oracle_test/regress/pg_regress \
     --inputdir=$(srcdir) \
     --bindir='$(bindir)' \
     $(oracle_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
 
 oracle_isolation_regress_check = \
+    echo "\# +++ ora isolation regress check in $(subdir) +++" && \
     $(with_temp_install) \
     $(top_builddir)/src/oracle_test/isolation/pg_isolation_regress \
     --temp-instance=./tmp_check_iso \

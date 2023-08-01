@@ -377,13 +377,19 @@ endif
 ifdef REGRESS
 # things created by various check targets
 	rm -rf $(pg_regress_clean_files)
-#IvorySQL:BEGIN - SQL oracle_test
-	rm -rf $(oracle_regress_clean_files)
-#IvorySQL:END - SQL oracle_test
 ifeq ($(PORTNAME), win)
 	rm -f regress.def
 endif
 endif # REGRESS
+
+ifdef ORA_REGRESS
+# things created by various check targets
+	rm -rf $(oracle_regress_clean_files)
+ifeq ($(PORTNAME), win)
+	rm -f regress.def
+endif
+endif # ORA_REGRESS
+
 ifdef TAP_TESTS
 	rm -rf tmp_check/
 endif
@@ -397,13 +403,10 @@ endif
 
 distclean maintainer-clean: clean
 
-
 ifdef REGRESS
 
 REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
-#IvorySQL:BEGIN - SQL oracle_test
 ORACLE_REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
-#IvorySQL:END - SQL oracle_test
 
 # When doing a VPATH build, must copy over the data files so that the
 # driver script can find them.  We have to use an absolute path for
@@ -458,8 +461,8 @@ ifdef TAP_TESTS
 endif
 #IvorySQL:BEGIN - SQL oracle_test
 oracle-installcheck: oracle-submake $(REGRESS_PREP)
-ifdef REGRESS
-	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+ifdef ORA_REGRESS
+	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) $(ORA_REGRESS)
 endif
 ifdef ISOLATION
 	$(oracle_isolation_regress_installcheck) $(ISOLATION_OPTS) $(ISOLATION)
@@ -493,8 +496,8 @@ ifdef TAP_TESTS
 endif
 #IvorySQL:BEGIN - SQL oracle_test
 oracle-check: oracle-submake $(REGRESS_PREP)
-ifdef REGRESS
-	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+ifdef ORA_REGRESS
+	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(ORA_REGRESS)
 endif
 ifdef ISOLATION
 	$(oracle_isolation_regress_check) $(ISOLATION_OPTS) $(ISOLATION)
