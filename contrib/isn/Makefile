@@ -11,6 +11,7 @@ PGFILEDESC = "isn - data types for international product numbering standards"
 HEADERS_isn = isn.h
 
 REGRESS = isn
+ORA_REGRESS = isn
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
