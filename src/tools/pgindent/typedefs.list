@@ -1675,7 +1675,6 @@ OutputContext
 OutputPluginCallbacks
 OutputPluginOptions
 OutputPluginOutputType
-OverrideSearchPath
 OverridingKind
 PACE_HEADER
 PACL
@@ -2454,6 +2453,7 @@ ScanState
 ScanTypeControl
 ScannerCallbackState
 SchemaQuery
+SearchPathMatcher
 SecBuffer
 SecBufferDesc
 SecLabelItem
