@@ -10,6 +10,7 @@ EXTENSION = tsm_system_time
 DATA = tsm_system_time--1.0.sql
 
 REGRESS = tsm_system_time
+ORA_REGRESS = tsm_system_time
 
 SHLIB_LINK += $(filter -lm, $(LIBS))
 
