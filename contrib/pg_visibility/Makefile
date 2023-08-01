@@ -11,6 +11,7 @@ DATA = pg_visibility--1.1.sql pg_visibility--1.1--1.2.sql \
 PGFILEDESC = "pg_visibility - page visibility information"
 
 REGRESS = pg_visibility
+ORA_REGRESS = pg_visibility
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
