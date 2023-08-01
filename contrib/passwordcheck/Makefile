@@ -11,6 +11,7 @@ PGFILEDESC = "passwordcheck - strengthen user password checks"
 # SHLIB_LINK = -lcrack
 
 REGRESS = passwordcheck
+ORA_REGRESS = passwordcheck
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
