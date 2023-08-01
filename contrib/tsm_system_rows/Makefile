@@ -10,6 +10,7 @@ EXTENSION = tsm_system_rows
 DATA = tsm_system_rows--1.0.sql
 
 REGRESS = tsm_system_rows
+ORA_REGRESS = tsm_system_rows
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
