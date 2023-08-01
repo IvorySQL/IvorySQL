@@ -7,6 +7,7 @@ DATA = lo--1.1.sql lo--1.0--1.1.sql
 PGFILEDESC = "lo - management for large objects"
 
 REGRESS = lo
+ORA_REGRESS = lo
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
