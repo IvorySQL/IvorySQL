@@ -7,6 +7,7 @@ DATA = earthdistance--1.1.sql earthdistance--1.0--1.1.sql
 PGFILEDESC = "earthdistance - calculate distances on the surface of the Earth"
 
 REGRESS = earthdistance
+ORA_REGRESS = earthdistance
 EXTRA_INSTALL = contrib/cube
 
 LDFLAGS_SL += $(filter -lm, $(LIBS))
