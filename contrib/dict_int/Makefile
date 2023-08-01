@@ -10,6 +10,7 @@ DATA = dict_int--1.0.sql
 PGFILEDESC = "dict_int - add-on dictionary template for full-text search"
 
 REGRESS = dict_int
+ORA_REGRESS = dict_int
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
