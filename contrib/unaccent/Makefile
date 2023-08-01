@@ -11,6 +11,7 @@ DATA_TSEARCH = unaccent.rules
 PGFILEDESC = "unaccent - text search dictionary that removes accents"
 
 REGRESS = unaccent
+ORA_REGRESS = unaccent
 
 # We need a UTF8 database
 ENCODING = UTF8
