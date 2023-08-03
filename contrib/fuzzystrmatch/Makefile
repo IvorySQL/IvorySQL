@@ -14,6 +14,7 @@ DATA = fuzzystrmatch--1.1.sql fuzzystrmatch--1.1--1.2.sql \
 PGFILEDESC = "fuzzystrmatch - similarities and distance between strings"
 
 REGRESS = fuzzystrmatch fuzzystrmatch_utf8
+ORA_REGRESS = ivy_fuzzystrmatch fuzzystrmatch_utf8
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
