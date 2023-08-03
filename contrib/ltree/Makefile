@@ -20,6 +20,7 @@ PGFILEDESC = "ltree - hierarchical label data type"
 HEADERS = ltree.h
 
 REGRESS = ltree
+ORA_REGRESS = ivy_ltree
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
