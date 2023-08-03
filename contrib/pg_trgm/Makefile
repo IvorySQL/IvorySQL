@@ -15,6 +15,7 @@ DATA = pg_trgm--1.5--1.6.sql pg_trgm--1.4--1.5.sql pg_trgm--1.3--1.4.sql \
 PGFILEDESC = "pg_trgm - trigram matching"
 
 REGRESS = pg_trgm pg_word_trgm pg_strict_word_trgm
+ORA_REGRESS = ivy_pg_trgm pg_word_trgm pg_strict_word_trgm
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
