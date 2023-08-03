@@ -10,6 +10,7 @@ EXTENSION = ltree_plpython3u
 DATA = ltree_plpython3u--1.0.sql
 
 REGRESS = ltree_plpython
+ORA_REGRESS = ivy_ltree_plpython
 
 PG_CPPFLAGS = $(python_includespec) -DPLPYTHON_LIBNAME='"plpython$(python_majorversion)"'
 
