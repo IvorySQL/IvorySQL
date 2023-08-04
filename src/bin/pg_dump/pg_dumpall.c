@@ -561,7 +561,7 @@ main(int argc, char *argv[])
 	fprintf(OPF, "SET standard_conforming_strings = %s;\n", std_strings);
 	if (strcmp(std_strings, "off") == 0)
 		fprintf(OPF, "SET escape_string_warning = off;\n");
-	fprintf(OPF, "SET identifier_case_switch = normal;\n");
+	fprintf(OPF, "SET ivorysql.identifier_case_switch = normal;\n");
 	fprintf(OPF, "\n");
 
 	if (!data_only)

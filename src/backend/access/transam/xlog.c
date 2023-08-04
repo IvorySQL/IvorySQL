@@ -4164,11 +4164,9 @@ ReadControlFile(void)
 					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 
 	/* set guc parameters' value about database compatible mode  */
-	SetConfigOption("database_mode", ControlFile->dbmode == DB_PG ? "pg" : "oracle",
+	SetConfigOption("ivorysql.database_mode", ControlFile->dbmode == DB_PG ? "pg" : "oracle",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
 
-	SetConfigOption("compatible_mode", ControlFile->dbmode == DB_PG ? "pg" : "oracle",
-					PGC_USERSET, PGC_S_OVERRIDE);
 }
 
 /*
@@ -5094,17 +5092,17 @@ void SetCaseGucOption(char* path)
 		casemode = GetCaseSwitchModeFromControl(path);
 		if (casemode == NORMAL)
 		{
-			SetConfigOption("identifier_case_switch", "normal",
+			SetConfigOption("ivorysql.identifier_case_switch", "normal",
 				PGC_USERSET, PGC_S_OVERRIDE);
 		}
 		else if (casemode == INTERCHANGE)
 		{
-			SetConfigOption("identifier_case_switch", "interchange",
+			SetConfigOption("ivorysql.identifier_case_switch", "interchange",
 				PGC_USERSET, PGC_S_OVERRIDE);
 		}
 		else if (casemode == LOWERCASE)
 		{
-			SetConfigOption("identifier_case_switch", "lowercase",
+			SetConfigOption("ivorysql.identifier_case_switch", "lowercase",
 				PGC_USERSET, PGC_S_OVERRIDE);
 		}
 		else
@@ -5112,7 +5110,6 @@ void SetCaseGucOption(char* path)
 					(errmsg("Incorrect case conversion mode value \"%d\"", casemode)));
 	}
 }
-/* IvorSQL: END - case sensitive indentify */
 
 /*
  * Check to see if required parameters are set high enough on this server

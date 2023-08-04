@@ -1098,18 +1098,6 @@ assign_maintenance_io_concurrency(int newval, void *extra)
 #endif
 }
 
-bool
-check_nls_length_semantics(int *newval, void **extra, GucSource source)
-{
-
-	if (IsUnderPostmaster && DB_PG == database_mode)
-		ereport(WARNING,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Do not use this GUC variable in the current cluster (PG).")));
-
-
-	return true;
-}
 
 /*
  * These show hooks just exist because we want to show the values in octal.

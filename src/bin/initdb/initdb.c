@@ -1393,6 +1393,17 @@ setup_config(void)
 									  gvalues->str, false);
 	}
 
+
+	/*
+	 * In this mode we don't need ivorysql configuration file
+	 */
+	if (database_mode == DB_PG)
+	{
+		conflines = replace_token(conflines,
+							  "include_if_exists = 'ivorysql.conf'",
+							  "#include_if_exists = 'ivorysql.conf'");
+	}
+
 	/* ... and write out the finished postgresql.conf file */
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
 
@@ -1585,7 +1596,7 @@ bootstrap_template1(void)
 	unsetenv("PGCLIENTENCODING");
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" --boot -C identifier_case_switch=%d -X %d %s %s %s %s %s",
+			 "\"%s\" --boot -C ivorysql.identifier_case_switch=%d -X %d %s %s %s %s %s",
 			 backend_exec,
 			 caseswitchmode,
 			 wal_segment_size_mb * (1024 * 1024),
@@ -1728,7 +1739,7 @@ setup_ora_sys_schema(FILE *cmdfd)
 	char	  **ora_sys_schema_setup;
 
 	ora_sys_schema_setup = readfile(ora_sys_schema_file);
-	PG_CMD_PUTS("set identifier_case_switch = normal;\n");
+	PG_CMD_PUTS("set ivorysql.identifier_case_switch = normal;\n");
 
 	for (line = ora_sys_schema_setup; *line != NULL; line++)
 	{
@@ -2009,9 +2020,9 @@ static void
 load_ivorysql_ora(FILE *cmdfd)
 {
 	/* switch to oracle parser and load extenison */
-	PG_CMD_PUTS("set compatible_mode to oracle;\n\n");
+	PG_CMD_PUTS("set ivorysql.compatible_mode to oracle;\n\n");
 	PG_CMD_PUTS("CREATE EXTENSION ivorysql_ora;\n\n");
-	PG_CMD_PUTS("reset compatible_mode;\n\n");
+	PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
 }
 
 /*
@@ -3198,6 +3209,9 @@ initialize_data_directory(void)
 	setup_auth(cmdfd);
 
 	setup_run_file(cmdfd, system_constraints_file);
+
+	if (database_mode == DB_ORACLE)
+		PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
 
 	setup_run_file(cmdfd, system_functions_file);
 

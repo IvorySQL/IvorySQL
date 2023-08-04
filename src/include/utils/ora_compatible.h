@@ -17,7 +17,7 @@
 #define ORA_COMPATIBLE_H
 
 #define ORA_SEARCH_PATH "sys,\"$user\", public"
-#define DB_MODE_PARMATER "database_mode"
+#define DB_MODE_PARMATER "ivorysql.database_mode"
 
 typedef enum DBMode
 {

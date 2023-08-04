@@ -1276,11 +1276,11 @@ reset work_mem;
 \do && anyarray *
 
 --test parser switch in psql
-show compatible_mode;
-set compatible_mode = 'pg';
+show ivorysql.compatible_mode;
+set ivorysql.compatible_mode = 'pg';
 \parser
-reset compatible_mode;
-show compatible_mode;
+reset ivorysql.compatible_mode;
+show ivorysql.compatible_mode;
 
 -- check \df+
 -- we have to use functions with a predictable owner name, so make a role

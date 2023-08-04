@@ -292,8 +292,9 @@ extern PGDLLIMPORT bool identifier_case_from_pg_dump;
 extern PGDLLIMPORT bool enable_case_switch;
 
 extern int     database_mode;
-
 extern PGDLLIMPORT int	compatible_db;
+
+extern PGDLLIMPORT bool	enable_emptystring_to_NULL;
 
 extern PGDLLIMPORT int nls_length_semantics;
 extern PGDLLIMPORT char *nls_date_format;
