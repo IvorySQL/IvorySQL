@@ -89,7 +89,7 @@ LANGUAGE C STRICT PARALLEL SAFE;
 DROP FUNCTION bt_page_stats(text, int4);
 CREATE FUNCTION bt_page_stats(IN relname text, IN blkno int8,
     OUT blkno int8,
-    OUT type "char",
+    OUT type pg_catalog.char,
     OUT live_items int4,
     OUT dead_items int4,
     OUT avg_item_size int4,

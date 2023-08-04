@@ -8,7 +8,7 @@
 --
 CREATE FUNCTION bt_multi_page_stats(IN relname text, IN blkno int8, IN blk_count int8,
     OUT blkno int8,
-    OUT type "char",
+    OUT type pg_catalog.char,
     OUT live_items int4,
     OUT dead_items int4,
     OUT avg_item_size int4,
