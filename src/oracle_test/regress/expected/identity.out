@@ -192,6 +192,6 @@ DROP TABLE other_max1;
 create table other_max2(userid number(8) generated always as identity  start with 99999999 increment by 2,uname varchar2(20));
 insert into other_max2 (uname) values ('xiaodong');
 insert into other_max2 (uname) values ('xiaodong');    --error
-ERROR:  new row for relation "other_max2" violates check constraint "other_max2_userid_check"
-DETAIL:  Failing row contains (100000001, xiaodong).
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 8, scale 0 must round to an absolute value less than 10^8.
 DROP TABLE other_max2;
