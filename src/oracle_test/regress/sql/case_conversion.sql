@@ -7,8 +7,8 @@
 -- 3. if guc parameter "identifier_case_switch" value is "normal", The rules for converting identifiers are the same as for native PG.
 
 ----1. "identifier_case_switch" value is "interchange"
-SET enable_case_switch = true;
-SET identifier_case_switch = interchange;
+SET ivorysql.enable_case_switch = true;
+SET ivorysql.identifier_case_switch = interchange;
 CREATE TABLE "ABC"(c1 int, c2 int);
 SELECT relname FROM pg_class WHERE relname = 'ABC';
 SELECT relname FROM pg_class WHERE relname = 'abc';
@@ -138,10 +138,10 @@ drop user "U4";
 drop user "Uu5";
 drop user Uu6;
 
-RESET identifier_case_switch;
+RESET ivorysql.identifier_case_switch;
 
 ----2. "identifier_case_switch" value is "lowercase"
-SET identifier_case_switch = lowercase;
+SET ivorysql.identifier_case_switch = lowercase;
 CREATE TABLE "ABC"(c1 int, c2 int);
 SELECT relname FROM pg_class WHERE relname = 'ABC';
 SELECT relname FROM pg_class WHERE relname = 'abc';
@@ -195,10 +195,10 @@ drop user u4;
 drop user "Uu5";
 drop user uu6;
 
-RESET identifier_case_switch;
+RESET ivorysql.identifier_case_switch;
 
 ----3. "identifier_case_switch" value is "normal"
-SET identifier_case_switch = normal;
+SET ivorysql.identifier_case_switch = normal;
 CREATE TABLE "ABC"(c1 int, c2 int);
 SELECT relname FROM pg_class WHERE relname = 'ABC';
 SELECT relname FROM pg_class WHERE relname = 'abc';
@@ -252,12 +252,12 @@ drop user "U4";
 drop user "Uu5";
 drop user Uu6;
 
-RESET identifier_case_switch;
-RESET enable_case_switch;
+RESET ivorysql.identifier_case_switch;
+RESET ivorysql.enable_case_switch;
 
 ----test guc parameter "enable_case_switch" feature
-SET enable_case_switch = false;
-SET identifier_case_switch = interchange;
+SET ivorysql.enable_case_switch = false;
+SET ivorysql.identifier_case_switch = interchange;
 
 CREATE TABLE "ABC"(c1 int, c2 int);
 SELECT relname FROM pg_class WHERE relname = 'ABC';
@@ -290,5 +290,5 @@ SELECT "Abc" FROM t_48;
 SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = 't_48');
 DROP TABLE t_48;
 
-RESET identifier_case_switch;
-RESET enable_case_switch;
+RESET ivorysql.identifier_case_switch;
+RESET ivorysql.enable_case_switch;

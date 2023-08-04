@@ -807,7 +807,7 @@ main(int argc, char **argv)
 	ConnectDatabase(fout, &dopt.cparams, false);
 	getDbCompatibleMode(((ArchiveHandle *) fout)->connection);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
-	ExecuteSqlStatement(fout, "set identifier_case_switch = normal;");
+	ExecuteSqlStatement(fout, "set ivorysql.identifier_case_switch = normal;");
 
 	/*
 	 * On hot standbys, never try to dump unlogged table data, since it will

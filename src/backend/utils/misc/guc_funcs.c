@@ -40,6 +40,7 @@ static void ShowGUCConfigOption(const char *name, DestReceiver *dest);
 static void ShowAllGUCConfig(DestReceiver *dest);
 
 
+
 /*
  * SET command
  */

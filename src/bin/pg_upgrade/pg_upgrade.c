@@ -793,7 +793,7 @@ set_frozenxids(bool minmxid_only)
 	conn_template1 = connectToServer(&new_cluster, "template1");
 
 	PQclear(executeQueryOrDie(conn_template1,
-							  "set identifier_case_switch = normal;"));
+							  "set ivorysql.identifier_case_switch = normal;"));
 
 	if (!minmxid_only)
 		/* set pg_database.datfrozenxid */

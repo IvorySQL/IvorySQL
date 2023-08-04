@@ -42,6 +42,7 @@
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "common/scram-common.h"
+#include "executor/nodeModifyTable.h"
 #include "jit/jit.h"
 #include "libpq/auth.h"
 #include "libpq/libpq.h"
@@ -53,6 +54,7 @@
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_merge.h"
 #include "parser/parser.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
@@ -85,10 +87,19 @@
 #include "utils/xml.h"
 #include "utils/ora_compatible.h"
 
+
+#define IVY_GUC_VAR_DEFINE
+#include "ivy_guc.c"
+#undef IVY_GUC_VAR_DEFINE
+
 /* This value is normally passed in from the Makefile */
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
 #endif
+
+#define IVY_GUC_FUNC_DECLARE
+#include "ivy_guc.c"
+#undef IVY_GUC_FUNC_DECLARE
 
 /* XXX these should appear in other modules' header files */
 extern bool Log_disconnections;
@@ -106,6 +117,7 @@ extern bool trace_syncscan;
 #ifdef DEBUG_BOUNDED_SORT
 extern bool optimize_bounded_sort;
 #endif
+
 
 /*
  * Options for enum values defined in this module.
@@ -472,39 +484,9 @@ static const struct config_enum_entry wal_compression_options[] = {
 	{NULL, 0, false}
 };
 
-/* The comments shown as blow define the
- * value range of guc parameters "database_mode"
- * and "compatible_db".
- */
-static const struct config_enum_entry db_mode_options[] = {
-	{"pg", DB_PG, false},
-	{"oracle", DB_ORACLE, false},
-	{"0", DB_PG, false},
-	{"1", DB_ORACLE, false},
-	{NULL, 0, false}
-};
-
-static const struct config_enum_entry db_parser_options[] = {
-	{"pg", PG_PARSER, false},
-	{"oracle", ORA_PARSER, false},
-	{NULL, 0, false}
-};
-
-static const struct config_enum_entry case_conversion_mode[] = {
-	{"normal", NORMAL, false},
-	{"interchange", INTERCHANGE, false},
-	{"lowercase", LOWERCASE, false},
-	{"0", NORMAL, false},
-	{"1", INTERCHANGE, false},
-	{"2", LOWERCASE, false},
-	{NULL, 0, false}
-};
-
-static const struct config_enum_entry nls_length_options[] = {
-	{"byte", NLS_LENGTH_BYTE, false},
-	{"char", NLS_LENGTH_CHAR, false},
-	{NULL, 0, false}
-};
+#define IVY_GUC_VAR_STRUCT
+#include "ivy_guc.c"
+#undef IVY_GUC_VAR_STRUCT
 
 /*
  * Options for enum values stored in other modules
@@ -534,7 +516,6 @@ char	   *event_source;
 
 bool		row_security;
 bool		check_function_bodies = true;
-bool		enable_emptystring_to_NULL = false;
 
 /*
  * This GUC exists solely for backward compatibility, check its definition for
@@ -596,9 +577,6 @@ int			ssl_renegotiation_limit;
 int			huge_pages = HUGE_PAGES_TRY;
 int			huge_page_size;
 
-int				identifier_case_switch = INTERCHANGE;
-bool			identifier_case_from_pg_dump = false;
-bool			enable_case_switch = true;
 
 /*
  * These variables are all dummies that don't do anything, except in some
@@ -655,9 +633,6 @@ static char *recovery_target_lsn_string;
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
 
-int    database_mode = DB_PG;
-
-int    compatible_db = PG_PARSER;
 
 /* should be static, but guc.c needs to get at this */
 bool		in_hot_standby_guc;
@@ -2052,38 +2027,10 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-	{
-		/* Not for general use --- used by pg_dump */
-		{"identifier_case_from_pg_dump", PGC_USERSET, UNGROUPED,
-			gettext_noop("Shows whether the identifer with quote is from pg dump."),
-			NULL,
-			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&identifier_case_from_pg_dump,
-		false,
-		NULL, NULL, NULL
-	},
 
-	{
-		{"enable_case_switch", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("whether enable case conversion feature in oracle compatible mode."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&enable_case_switch,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"ivorysql.enable_emptystring_to_NULL", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("whether convert empty string to NULL."),
-			NULL,
-		},
-		&enable_emptystring_to_NULL,
-		false,
-		NULL, NULL, NULL
-	},
+	#define IVY_GUC_BOOL_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_BOOL_PARAMS
 
 	/* End-of-list marker */
 	{
@@ -3593,26 +3540,10 @@ struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-	{
-		{"ivorysql.port", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
-			gettext_noop("Sets the Oracle TCP port the server listens on."),
-			NULL
-		},
-		&OraPortNumber,
-		1521, 1, 65535,
-		NULL, NULL, NULL
-	},
 
-	{
-		{"datetime_ignore_nls_mask", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Sets the datetime type input is not controlled by the NLS parameter."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&datetime_ignore_nls_mask,
-		0, 0, 15,
-		NULL, NULL, NULL
-	},
+	#define IVY_GUC_INT_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_INT_PARAMS
 
 	/* End-of-list marker */
 	{
@@ -3894,6 +3825,10 @@ struct config_real ConfigureNamesReal[] =
 		0.0, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
+
+	#define IVY_GUC_REAL_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_REAL_PARAMS
 
 	/* End-of-list marker */
 	{
@@ -4682,49 +4617,9 @@ struct config_string ConfigureNamesString[] =
 		check_io_direct, assign_io_direct, NULL
 	},
 
-	{
-		{"ivorysql.listen_addresses", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
-		gettext_noop("Sets oracle host name or IP address(es) to listen to."),
-		NULL,
-		GUC_LIST_INPUT
-		},
-		&OraListenAddresses,
-		"localhost",
-		NULL, NULL, NULL
-	},
-
-	{
-		{"nls_date_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for date type."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&nls_date_format,
-		"YYYY-MM-DD",
-		NULL, NULL, NULL
-	},
-
-	{
-		{"nls_timestamp_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for timestamp type."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&nls_timestamp_format,
-		"YYYY-MM-DD HH24:MI:SS.FF6",
-		NULL, NULL, NULL
-	},
-
-	{
-		{"nls_timestamp_tz_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for timestamp with time zone type."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&nls_timestamp_tz_format,
-		"YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM",
-		NULL, NULL, NULL
-	},
+	#define IVY_GUC_STRING_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_STRING_PARAMS
 
 	/* End-of-list marker */
 	{
@@ -5145,52 +5040,16 @@ struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
-	{
-		{"database_mode", PGC_INTERNAL, PRESET_OPTIONS,
-			gettext_noop("Set database mode"),
-			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&database_mode,
-		DB_PG, db_mode_options,
-		NULL, NULL, NULL
-		},
-
-	{
-		{"compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Set default sql parser compatibility mode"),
-			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&compatible_db,
-		PG_PARSER, db_parser_options,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"identifier_case_switch", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Set character case conversion mode."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&identifier_case_switch,
-		INTERCHANGE, case_conversion_mode,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Set the length semantics of the character datatype."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&nls_length_semantics,
-		NLS_LENGTH_BYTE, nls_length_options,
-		check_nls_length_semantics, NULL, NULL
-	},
+	#define IVY_GUC_ENUM_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_ENUM_PARAMS
 
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL, NULL
 	}
 };
+
+#define IVY_GUC_FUNC_DEFINE
+#include "ivy_guc.c"
+#undef IVY_GUC_FUNC_DEFINE
