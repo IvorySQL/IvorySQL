@@ -12,6 +12,7 @@ EXTENSION = bool_plperlu bool_plperl
 DATA = bool_plperlu--1.0.sql bool_plperl--1.0.sql
 
 REGRESS = bool_plperl bool_plperlu
+ORA_REGRESS = ivy_bool_plperl ivy_bool_plperlu
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
