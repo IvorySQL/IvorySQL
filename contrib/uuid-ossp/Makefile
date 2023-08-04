@@ -10,6 +10,7 @@ DATA = uuid-ossp--1.1.sql uuid-ossp--1.0--1.1.sql
 PGFILEDESC = "uuid-ossp - UUID generation"
 
 REGRESS = uuid_ossp
+ORA_REGRESS = ivy_uuid_ossp
 
 SHLIB_LINK += $(UUID_LIBS)
 
