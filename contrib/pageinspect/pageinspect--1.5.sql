@@ -159,9 +159,11 @@ LANGUAGE C STRICT PARALLEL SAFE;
 --
 -- bt_page_stats()
 --
+--set identifier_case_switch = normal;
+--set enable_case_switch = off;
 CREATE FUNCTION bt_page_stats(IN relname text, IN blkno int4,
     OUT blkno int4,
-    OUT type "char",
+    OUT type pg_catalog.char,
     OUT live_items int4,
     OUT dead_items int4,
     OUT avg_item_size int4,
@@ -173,6 +175,8 @@ CREATE FUNCTION bt_page_stats(IN relname text, IN blkno int4,
     OUT btpo_flags int4)
 AS 'MODULE_PATHNAME', 'bt_page_stats'
 LANGUAGE C STRICT PARALLEL SAFE;
+--RESET identifier_case_switch;
+--RESET enable_case_switch;
 
 --
 -- bt_page_items()
