@@ -12,6 +12,7 @@ DATA = citext--1.4.sql \
 PGFILEDESC = "citext - case-insensitive character string data type"
 
 REGRESS = create_index_acl citext citext_utf8
+ORA_REGRESS = ivy_create_index_acl ivy_citext citext_utf8
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
