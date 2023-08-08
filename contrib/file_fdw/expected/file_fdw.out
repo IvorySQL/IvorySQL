@@ -97,7 +97,7 @@ CREATE FOREIGN TABLE agg_text (
 	a	int2 CHECK (a >= 0),
 	b	float4
 ) SERVER file_server
-OPTIONS (format 'text', filename :'filename', delimiter '	', null '\N');
+OPTIONS (format 'text', filename :'filename', delimiter ' ', null '\N');
 GRANT SELECT ON agg_text TO regress_file_fdw_user;
 \set filename :abs_srcdir '/data/agg.csv'
 CREATE FOREIGN TABLE agg_csv (
