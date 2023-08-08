@@ -315,3 +315,5 @@ SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
 --sessiontimezone
 set timezone = 'Asia/Hong_Kong';
 select sessiontimezone() from dual; /* BUG:0000427 */
+alter session set NLS_DATE_FORMAT='DD-MON-RR HH24:MI:SS';
+--select current_date from dual;
