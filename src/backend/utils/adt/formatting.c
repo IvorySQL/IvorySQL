@@ -91,7 +91,7 @@
 #include "utils/ora_compatible.h"
 #include "utils/pg_locale.h"
 #include "varatt.h"
-
+#include <time.h>
 
 /* ----------
  * Routines flags
@@ -615,6 +615,7 @@ typedef enum
 	DCH_PM,
 	DCH_Q,
 	DCH_RM,
+	DCH_RR,
 	DCH_SSSSS,
 	DCH_SSSS,
 	DCH_SS,
@@ -673,6 +674,7 @@ typedef enum
 	DCH_pm,
 	DCH_q,
 	DCH_rm,
+	DCH_rr,
 	DCH_sssss,
 	DCH_ssss,
 	DCH_ss,
@@ -789,6 +791,7 @@ static const KeyWord DCH_keywords[] = {
 	{"PM", 2, DCH_PM, false, FROM_CHAR_DATE_NONE},
 	{"Q", 1, DCH_Q, true, FROM_CHAR_DATE_NONE}, /* Q */
 	{"RM", 2, DCH_RM, false, FROM_CHAR_DATE_GREGORIAN}, /* R */
+	{"RR", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"SSSSS", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* S */
 	{"SSSS", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"SS", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
@@ -847,6 +850,7 @@ static const KeyWord DCH_keywords[] = {
 	{"pm", 2, DCH_pm, false, FROM_CHAR_DATE_NONE},
 	{"q", 1, DCH_Q, true, FROM_CHAR_DATE_NONE}, /* q */
 	{"rm", 2, DCH_rm, false, FROM_CHAR_DATE_GREGORIAN}, /* r */
+	{"rr", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"sssss", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* s */
 	{"ssss", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"ss", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
@@ -1066,6 +1070,7 @@ static DCHCacheEntry *DCH_cache_fetch(const char *str, bool std);
 static NUMCacheEntry *NUM_cache_getnew(const char *str);
 static NUMCacheEntry *NUM_cache_search(const char *str);
 static NUMCacheEntry *NUM_cache_fetch(const char *str);
+static int adjust_partial_year_to_2020RR(int year);
 
 
 /* ----------
@@ -2255,6 +2260,44 @@ adjust_partial_year_to_2020(int year)
 		return year;
 }
 
+static int
+adjust_partial_year_to_2020RR(int year)
+{
+	time_t		timep;
+	int32		curyear;
+	char		year1[4 + 1];
+	struct tm  *p;
+	int			sufnum,prenum;
+
+	memset(year1, 0x00, sizeof(year1));
+	time(&timep);
+	p = gmtime(&timep);
+	curyear = 1900 + p->tm_year;
+
+	/*last two digits of year*/
+	sufnum = curyear % 100;
+
+	/*first two digits of year*/
+	prenum = curyear / 100;
+
+	/*first two digits of the specified year*/
+	if (year >= 100)
+		sprintf(year1, "%04d", year);
+	else
+	{
+		if ( ((sufnum >= 0 && sufnum <= 49) && (year >= 0 && year <=49))||\
+			((sufnum >= 50 && sufnum <= 99) && (year >= 50 && year <=99)))
+		{
+			sprintf(year1, "%d%02d", prenum, year);
+		}
+		else
+		{
+			sprintf(year1, "%d%02d", prenum - 1, year);
+		}
+	}
+	return atoi(year1);
+}
+
 /* 
  *
  * Adjust all dates toward the current century
@@ -3227,10 +3270,11 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_YY:
 			case DCH_IY:
+			case DCH_RR:
 				sprintf(s, "%0*d",
 						S_FM(n->suffix) ? 0 :
 						(ADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 2 : 3,
-						(n->key->id == DCH_YY ?
+						((n->key->id == DCH_YY || n->key->id == DCH_RR)?
 						 ADJUST_YEAR(tm->tm_year, is_interval) :
 						 ADJUST_YEAR(date2isoyear(tm->tm_year,
 												  tm->tm_mon,
@@ -3885,6 +3929,20 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 						out->year = ora_adjust_partial_year(out->year, n->key->id);
 					}
 				}
+				out->yysz = 2;
+				SKIP_THth(s, n->suffix);
+				break;
+			case DCH_RR:
+				/* support format RR and BC year only can use SYYYY format. */
+				if (ORA_PARSER == compatible_db && *s == '-')
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+							 errmsg("negative YEAR must use SYYYY format")));
+				len = from_char_parse_int(&out->year, &s, n,escontext);
+				if (len < 0)
+					return;
+				if (len < 4)
+					out->year = adjust_partial_year_to_2020RR(out->year);
 				out->yysz = 2;
 				SKIP_THth(s, n->suffix);
 				break;
