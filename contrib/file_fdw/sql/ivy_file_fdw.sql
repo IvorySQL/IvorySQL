@@ -32,6 +32,7 @@ begin
     end loop;
 end;
 $$;
+/
 
 -- regress_file_fdw_superuser owns fdw-related objects
 SET ROLE regress_file_fdw_superuser;
@@ -81,18 +82,18 @@ CREATE FOREIGN TABLE tbl () SERVER file_server;  -- ERROR
 
 \set filename :abs_srcdir '/data/agg.data'
 CREATE FOREIGN TABLE agg_text (
-	a	int2 CHECK (a >= 0),
-	b	float4
+	a	int CHECK (a >= 0),
+	b	number
 ) SERVER file_server
 OPTIONS (format 'text', filename :'filename', delimiter ' ', null '\N');
 GRANT SELECT ON agg_text TO regress_file_fdw_user;
 
 \set filename :abs_srcdir '/data/agg.csv'
 CREATE FOREIGN TABLE agg_csv (
-	a	int2,
-	b	float4
+	a int2,
+	b float4
 ) SERVER file_server
-OPTIONS (format 'csv', filename :'filename', header 'true', delimiter ';', quote '@', escape '"', null '');
+OPTIONS (format 'csv', filename :'filename', header 'true', delimiter ';', quote '@', escape '"', null ' ');
 ALTER FOREIGN TABLE agg_csv ADD CHECK (a >= 0);
 
 \set filename :abs_srcdir '/data/agg.bad'
@@ -100,7 +101,7 @@ CREATE FOREIGN TABLE agg_bad (
 	a	int2,
 	b	float4
 ) SERVER file_server
-OPTIONS (format 'csv', filename :'filename', header 'true', delimiter ';', quote '@', escape '"', null '');
+OPTIONS (format 'csv', filename :'filename', header 'true', delimiter ';', quote '@', escape '"', null ' ');
 ALTER FOREIGN TABLE agg_bad ADD CHECK (a >= 0);
 
 -- test header matching
