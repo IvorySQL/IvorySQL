@@ -15,6 +15,7 @@ PGFILEDESC = "seg - line segment data type"
 HEADERS = segdata.h
 
 REGRESS = security seg
+ORA_REGRESS = ivy_security ivy_seg
 
 EXTRA_CLEAN = y.tab.c y.tab.h
 
