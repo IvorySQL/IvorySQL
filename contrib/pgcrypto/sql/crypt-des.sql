@@ -2,6 +2,7 @@
 -- crypt() and gen_salt(): crypt-des
 --
 
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT crypt('', 'NB');
 
 SELECT crypt('foox', 'NB');

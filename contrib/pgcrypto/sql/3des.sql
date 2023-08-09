@@ -7,6 +7,7 @@ SELECT encrypt('\x8000000000000000',
                '\x010101010101010101010101010101010101010101010101',
                '3des-ecb/pad:none');
 
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', '3des');
 -- 10 bytes key
 select encrypt('foo', '0123456789', '3des');

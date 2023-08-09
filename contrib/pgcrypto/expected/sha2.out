@@ -2,6 +2,7 @@
 -- SHA2 family
 --
 -- SHA224
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT digest('', 'sha224');
                            digest                           
 ------------------------------------------------------------
@@ -137,3 +138,4 @@ SELECT digest('abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm
  \x930d0cefcb30ff1133b6898121f1cf3d27578afcafe8677c5257cf069911f75d8f5831b56ebfda67b278e66dff8b84fe2b2870f742a580d8edb41987232850c9
 (1 row)
 
+RESET ivorysql.enable_emptystring_to_null;

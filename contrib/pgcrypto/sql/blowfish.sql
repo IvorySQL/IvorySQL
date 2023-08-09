@@ -35,6 +35,7 @@ SELECT encrypt('\xfedcba9876543210',
                'bf-ecb/pad:none');
 
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'bf');
 -- 10 bytes key
 select encrypt('foo', '0123456789', 'bf');

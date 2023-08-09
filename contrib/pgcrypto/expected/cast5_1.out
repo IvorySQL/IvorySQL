@@ -13,6 +13,7 @@ SELECT encrypt('\x0123456789ABCDEF', '\x0123456712', 'cast5-ecb/pad:none');
 ERROR:  encrypt error: Cipher cannot be initialized
 -- cbc
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'cast5');
 ERROR:  encrypt error: Cipher cannot be initialized
 -- 10 bytes key
