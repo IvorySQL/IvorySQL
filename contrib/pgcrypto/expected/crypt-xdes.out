@@ -1,6 +1,7 @@
 --
 -- crypt() and gen_salt(): extended des
 --
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT crypt('', '_J9..j2zz');
         crypt         
 ----------------------
@@ -48,4 +49,5 @@ FROM ctest;
  t
 (1 row)
 
+RESET ivorysql.enable_emptystring_to_null;
 DROP TABLE ctest;

@@ -2,6 +2,7 @@
 -- crypt() and gen_salt(): bcrypt
 --
 
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT crypt('', '$2a$06$RQiOJ.3ELirrXwxIZY8q0O');
 
 SELECT crypt('foox', '$2a$06$RQiOJ.3ELirrXwxIZY8q0O');
@@ -22,5 +23,6 @@ UPDATE ctest SET salt = gen_salt('bf', 8);
 UPDATE ctest SET res = crypt(data, salt);
 SELECT res = crypt(data, res) AS "worked"
 FROM ctest;
+RESET ivorysql.enable_emptystring_to_null;
 
 DROP TABLE ctest;

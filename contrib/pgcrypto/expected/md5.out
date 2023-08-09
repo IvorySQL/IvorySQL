@@ -1,12 +1,14 @@
 --
 -- MD5 message digest
 --
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT digest('', 'md5');
                digest               
 ------------------------------------
  \xd41d8cd98f00b204e9800998ecf8427e
 (1 row)
 
+reset ivorysql.enable_emptystring_to_null;
 SELECT digest('a', 'md5');
                digest               
 ------------------------------------

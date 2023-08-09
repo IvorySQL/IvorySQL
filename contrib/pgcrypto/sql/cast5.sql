@@ -16,6 +16,7 @@ SELECT encrypt('\x0123456789ABCDEF', '\x0123456712', 'cast5-ecb/pad:none');
 -- cbc
 
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'cast5');
 -- 10 bytes key
 select encrypt('foo', '0123456789', 'cast5');
@@ -30,3 +31,4 @@ select encode(decrypt_iv('\x384a970695ce016a', '0123456', 'abcd', 'cast5'), 'esc
 -- long message
 select encrypt('Lets try a longer message.', '0123456789', 'cast5');
 select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'cast5'), '0123456789', 'cast5'), 'escape');
+RESET ivorysql.enable_emptystring_to_null;

@@ -78,3 +78,4 @@ SELECT bytes =
  t
 (1 row)
 
+RESET ivorysql.enable_emptystring_to_null;

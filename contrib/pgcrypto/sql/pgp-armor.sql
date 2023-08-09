@@ -2,6 +2,7 @@
 -- PGP Armor
 --
 
+SET ivorysql.enable_emptystring_to_null to off;
 select armor('');
 select armor('test');
 select encode(dearmor(armor('')), 'escape');
@@ -212,3 +213,4 @@ select armor('', array['foo'], '[0:0]={"foo"}');
 select armor('', array[E'embedded\nnewline'], array['foo']);
 select armor('', array['foo'], array[E'embedded\nnewline']);
 select armor('', array['embedded: colon+space'], array['foo']);
+RESET ivorysql.enable_emptystring_to_null;

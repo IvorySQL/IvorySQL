@@ -48,6 +48,7 @@ SELECT encrypt(
 'aes-cbc');
 
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'aes');
 -- 10 bytes key
 select encrypt('foo', '0123456789', 'aes');
@@ -70,3 +71,4 @@ select encode(decrypt_iv('\x2c24cb7da91d6d5699801268b0f5adad', '0123456', 'abcd'
 -- long message
 select encrypt('Lets try a longer message.', '0123456789', 'aes');
 select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'aes'), '0123456789', 'aes'), 'escape');
+RESET ivorysql.enable_emptystring_to_null;

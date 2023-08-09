@@ -2,6 +2,7 @@
 -- crypt() and gen_salt(): crypt-des
 --
 
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT crypt('', 'NB');
 
 SELECT crypt('foox', 'NB');
@@ -17,5 +18,6 @@ UPDATE ctest SET salt = gen_salt('des');
 UPDATE ctest SET res = crypt(data, salt);
 SELECT res = crypt(data, res) AS "worked"
 FROM ctest;
+RESET ivorysql.enable_emptystring_to_null;
 
 DROP TABLE ctest;

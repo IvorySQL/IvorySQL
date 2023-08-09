@@ -35,6 +35,7 @@ SELECT encrypt('\xfedcba9876543210',
                'bf-ecb/pad:none');
 
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'bf');
 -- 10 bytes key
 select encrypt('foo', '0123456789', 'bf');
@@ -51,3 +52,4 @@ select encode(decrypt_iv('\x95c7e89322525d59', '0123456', 'abcd', 'bf'), 'escape
 -- long message
 select encrypt('Lets try a longer message.', '0123456789', 'bf');
 select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'bf'), '0123456789', 'bf'), 'escape');
+RESET ivorysql.enable_emptystring_to_null;

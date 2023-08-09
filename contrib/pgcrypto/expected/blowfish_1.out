@@ -39,6 +39,7 @@ SELECT encrypt('\xfedcba9876543210',
                'bf-ecb/pad:none');
 ERROR:  encrypt error: Key was too big
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'bf');
 ERROR:  encrypt error: Cipher cannot be initialized
 -- 10 bytes key
@@ -60,3 +61,4 @@ select encrypt('Lets try a longer message.', '0123456789', 'bf');
 ERROR:  encrypt error: Cipher cannot be initialized
 select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'bf'), '0123456789', 'bf'), 'escape');
 ERROR:  encrypt error: Cipher cannot be initialized
+RESET ivorysql.enable_emptystring_to_null;

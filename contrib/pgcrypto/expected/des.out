@@ -10,6 +10,7 @@ SELECT encrypt('\x0123456789abcdef', '\xfedcba9876543210', 'des-ecb/pad:none');
 (1 row)
 
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'des');
       encrypt       
 --------------------
@@ -56,3 +57,4 @@ select encode(decrypt(encrypt('Lets try a longer message.', '01234567', 'des'), 
  Lets try a longer message.
 (1 row)
 
+RESET ivorysql.enable_emptystring_to_null;
