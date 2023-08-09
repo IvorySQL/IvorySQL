@@ -10,6 +10,7 @@ EXTENSION = hstore_plpython3u
 DATA = hstore_plpython3u--1.0.sql
 
 REGRESS = hstore_plpython
+ORA_REGRESS = ivy_hstore_plpython
 
 PG_CPPFLAGS = $(python_includespec) -DPLPYTHON_LIBNAME='"plpython$(python_majorversion)"'
 
