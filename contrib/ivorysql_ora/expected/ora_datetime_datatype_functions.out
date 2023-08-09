@@ -560,4 +560,7 @@ select sessiontimezone() from dual; /* BUG:0000427 */
 (1 row)
 
 alter session set NLS_DATE_FORMAT='DD-MON-RR HH24:MI:SS';
+--select sysdate() from dual;
+
+alter session set NLS_DATE_FORMAT='DD-MON-RR HH24:MI:SS';
 --select current_date from dual;
