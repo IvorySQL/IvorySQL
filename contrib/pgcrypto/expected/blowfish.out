@@ -141,3 +141,4 @@ select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'bf'),
  Lets try a longer message.
 (1 row)
 
+RESET ivorysql.enable_emptystring_to_null;

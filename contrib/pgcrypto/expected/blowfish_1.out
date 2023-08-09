@@ -61,3 +61,4 @@ select encrypt('Lets try a longer message.', '0123456789', 'bf');
 ERROR:  encrypt error: Cipher cannot be initialized
 select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'bf'), '0123456789', 'bf'), 'escape');
 ERROR:  encrypt error: Cipher cannot be initialized
+RESET ivorysql.enable_emptystring_to_null;

@@ -49,3 +49,4 @@ SELECT bytes =
                             'key', 'expect-compress-algo=1')
     AS is_same
   FROM random_string;
+RESET ivorysql.enable_emptystring_to_null;

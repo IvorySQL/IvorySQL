@@ -32,3 +32,4 @@ select encrypt('Lets try a longer message.', '0123456789', 'cast5');
 ERROR:  encrypt error: Cipher cannot be initialized
 select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'cast5'), '0123456789', 'cast5'), 'escape');
 ERROR:  encrypt error: Cipher cannot be initialized
+RESET ivorysql.enable_emptystring_to_null;

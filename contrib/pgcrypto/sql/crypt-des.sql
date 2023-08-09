@@ -18,5 +18,6 @@ UPDATE ctest SET salt = gen_salt('des');
 UPDATE ctest SET res = crypt(data, salt);
 SELECT res = crypt(data, res) AS "worked"
 FROM ctest;
+RESET ivorysql.enable_emptystring_to_null;
 
 DROP TABLE ctest;

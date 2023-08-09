@@ -24,3 +24,4 @@ select encode(decrypt_iv('\x50735067b073bb93', '0123456', 'abcd', '3des'), 'esca
 -- long message
 select encrypt('Lets try a longer message.', '0123456789012345678901', '3des');
 select encode(decrypt(encrypt('Lets try a longer message.', '0123456789012345678901', '3des'), '0123456789012345678901', '3des'), 'escape');
+RESET ivorysql.enable_emptystring_to_null;

@@ -213,3 +213,4 @@ select armor('', array['foo'], '[0:0]={"foo"}');
 select armor('', array[E'embedded\nnewline'], array['foo']);
 select armor('', array['foo'], array[E'embedded\nnewline']);
 select armor('', array['embedded: colon+space'], array['foo']);
+RESET ivorysql.enable_emptystring_to_null;
