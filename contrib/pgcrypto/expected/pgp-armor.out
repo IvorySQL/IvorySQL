@@ -1,6 +1,7 @@
 --
 -- PGP Armor
 --
+SET ivorysql.enable_emptystring_to_null to off;
 select armor('');
             armor            
 -----------------------------

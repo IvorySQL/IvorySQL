@@ -1,8 +1,9 @@
 --
 -- SHA1 message digest
 --
-
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT digest('', 'sha1');
+reset ivorysql.enable_emptystring_to_null;
 SELECT digest('a', 'sha1');
 SELECT digest('abc', 'sha1');
 SELECT digest('message digest', 'sha1');

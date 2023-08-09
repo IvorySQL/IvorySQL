@@ -10,6 +10,7 @@ SELECT encrypt('\x8000000000000000',
  \x95f8a5e5dd31d900
 (1 row)
 
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', '3des');
       encrypt       
 --------------------

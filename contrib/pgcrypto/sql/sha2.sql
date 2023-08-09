@@ -3,6 +3,7 @@
 --
 
 -- SHA224
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT digest('', 'sha224');
 SELECT digest('a', 'sha224');
 SELECT digest('abc', 'sha224');
@@ -31,3 +32,4 @@ SELECT digest('abc', 'sha512');
 SELECT digest('abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq', 'sha512');
 SELECT digest('abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu', 'sha512');
 SELECT digest('abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz', 'sha512');
+RESET ivorysql.enable_emptystring_to_null;

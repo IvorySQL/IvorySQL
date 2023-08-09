@@ -48,6 +48,7 @@ SELECT encrypt(
 'aes-cbc');
 
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'aes');
 -- 10 bytes key
 select encrypt('foo', '0123456789', 'aes');

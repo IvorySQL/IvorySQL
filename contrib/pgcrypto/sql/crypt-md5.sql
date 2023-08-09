@@ -2,6 +2,7 @@
 -- crypt() and gen_salt(): md5
 --
 
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT crypt('', '$1$Szzz0yzz');
 
 SELECT crypt('foox', '$1$Szzz0yzz');

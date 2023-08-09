@@ -1,8 +1,9 @@
 --
 -- MD5 message digest
 --
-
+SET ivorysql.enable_emptystring_to_null to off;
 SELECT digest('', 'md5');
+reset ivorysql.enable_emptystring_to_null;
 SELECT digest('a', 'md5');
 SELECT digest('abc', 'md5');
 SELECT digest('message digest', 'md5');

@@ -87,6 +87,7 @@ SELECT encrypt('\xfedcba9876543210',
 (1 row)
 
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'bf');
       encrypt       
 --------------------

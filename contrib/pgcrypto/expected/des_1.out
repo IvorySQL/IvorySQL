@@ -6,6 +6,7 @@
 SELECT encrypt('\x0123456789abcdef', '\xfedcba9876543210', 'des-ecb/pad:none');
 ERROR:  encrypt error: Cipher cannot be initialized
 -- empty data
+SET ivorysql.enable_emptystring_to_null to off;
 select encrypt('', 'foo', 'des');
 ERROR:  encrypt error: Cipher cannot be initialized
 -- 8 bytes key
