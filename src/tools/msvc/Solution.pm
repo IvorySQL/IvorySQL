@@ -808,6 +808,18 @@ EOF
 		close($chs);
 	}
 
+	$mf = Project::read_file('contrib/ivorysql_ora/Makefile');
+	$mf =~ s{\\\r?\n}{}g;
+	$mf =~ /^DATA\s*:?=(.*)$/gm
+		|| croak "Could not find DATA in Makefile\n";
+	my $versions = $1;
+	$versions =~ s/ivorysql_ora--//g;
+	$versions =~ s/\.sql//g;
+	chdir('contrib/ivorysql_ora');
+	system("perl gensql.pl $versions");
+	close($f);
+	chdir('../..');
+
 	my $nmf = Project::read_file('src/backend/nodes/Makefile');
 	$nmf =~ s{\\\r?\n}{}g;
 	$nmf =~ /^node_headers\s*:?=(.*)$/gm

@@ -136,6 +136,10 @@ REM Clean up datafiles built with contrib
 REM cd contrib
 REM for /r %%f in (*.sql) do if exist %%f.in del %%f
 
+REM Begin - SQLMERGE
+for /r %%f in (contrib\ivorysql_ora\*.sql) do if exist %%f del %%f
+REM End - SQLMERGE
+
 cd "%~dp0"
 
 REM Clean up ecpg regression test files
