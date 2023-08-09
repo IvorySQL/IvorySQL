@@ -615,6 +615,7 @@ typedef enum
 	DCH_PM,
 	DCH_Q,
 	DCH_RM,
+	DCH_RRRR,
 	DCH_RR,
 	DCH_SSSSS,
 	DCH_SSSS,
@@ -674,6 +675,7 @@ typedef enum
 	DCH_pm,
 	DCH_q,
 	DCH_rm,
+	DCH_rrrr,
 	DCH_rr,
 	DCH_sssss,
 	DCH_ssss,
@@ -791,6 +793,7 @@ static const KeyWord DCH_keywords[] = {
 	{"PM", 2, DCH_PM, false, FROM_CHAR_DATE_NONE},
 	{"Q", 1, DCH_Q, true, FROM_CHAR_DATE_NONE}, /* Q */
 	{"RM", 2, DCH_RM, false, FROM_CHAR_DATE_GREGORIAN}, /* R */
+	{"RRRR",4, DCH_RRRR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"RR", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"SSSSS", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* S */
 	{"SSSS", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
@@ -850,6 +853,7 @@ static const KeyWord DCH_keywords[] = {
 	{"pm", 2, DCH_pm, false, FROM_CHAR_DATE_NONE},
 	{"q", 1, DCH_Q, true, FROM_CHAR_DATE_NONE}, /* q */
 	{"rm", 2, DCH_rm, false, FROM_CHAR_DATE_GREGORIAN}, /* r */
+	{"rrrr",4, DCH_RRRR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"rr", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"sssss", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* s */
 	{"ssss", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
@@ -3240,10 +3244,11 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_YYYY:
 			case DCH_IYYY:
+			case DCH_RRRR:
 				sprintf(s, "%0*d",
 						S_FM(n->suffix) ? 0 :
 						(ADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 4 : 5,
-						(n->key->id == DCH_YYYY ?
+						((n->key->id == DCH_YYYY || n->key->id == DCH_RRRR) ?
 						 ADJUST_YEAR(tm->tm_year, is_interval) :
 						 ADJUST_YEAR(date2isoyear(tm->tm_year,
 												  tm->tm_mon,
@@ -3965,6 +3970,15 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					}
 				}
 				out->yysz = 1;
+				SKIP_THth(s, n->suffix);
+				break;
+			case DCH_RRRR:
+				len = from_char_parse_int(&out->year, &s, n, escontext);
+				if (len < 0)
+					return;
+				if (len < 4)
+					out->year = adjust_partial_year_to_2020RR(out->year);
+				out->yysz = 4;
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_RM:
