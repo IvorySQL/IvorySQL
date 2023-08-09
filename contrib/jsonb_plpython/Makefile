@@ -12,6 +12,7 @@ EXTENSION = jsonb_plpython3u
 DATA = jsonb_plpython3u--1.0.sql
 
 REGRESS = jsonb_plpython
+ORA_REGRESS = ivy_jsonb_plpython
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
