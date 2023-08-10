@@ -7,6 +7,7 @@ DATA = tablefunc--1.0.sql
 PGFILEDESC = "tablefunc - various functions that return tables"
 
 REGRESS = tablefunc
+ORA_REGRESS = ivy_tablefunc
 
 LDFLAGS_SL += $(filter -lm, $(LIBS))
 
