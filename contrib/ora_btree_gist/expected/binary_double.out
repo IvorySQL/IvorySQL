@@ -1,0 +1,169 @@
+-- binary_double check
+CREATE TABLE binary_doubletmp (a binary_double);
+\copy binary_doubletmp from 'data/binary_double.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM binary_doubletmp WHERE a <  -1890.0;
+ count 
+-------
+   237
+(1 row)
+
+SELECT count(*) FROM binary_doubletmp WHERE a <= -1890.0;
+ count 
+-------
+   238
+(1 row)
+
+SELECT count(*) FROM binary_doubletmp WHERE a  = -1890.0;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM binary_doubletmp WHERE a >= -1890.0;
+ count 
+-------
+   307
+(1 row)
+
+SELECT count(*) FROM binary_doubletmp WHERE a >  -1890.0;
+ count 
+-------
+   306
+(1 row)
+
+SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0;
+ count 
+-------
+   543
+(1 row)
+
+SELECT a, a <-> '-1890.0' FROM binary_doubletmp ORDER BY a <-> '-1890.0' LIMIT 3;
+      a       |      ?column?      
+--------------+--------------------
+ -1890        | 0
+ -2003.634512 | 113.63451200000009
+ -1769.73634  | 120.26366000000007
+(3 rows)
+
+CREATE INDEX binary_doubleidx ON binary_doubletmp USING gist ( a );
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_doubletmp WHERE a <  -1890.0::binary_double;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_doubletmp
+         Recheck Cond: (a < '-1890'::binary_double)
+         ->  Bitmap Index Scan on binary_doubleidx
+               Index Cond: (a < '-1890'::binary_double)
+(5 rows)
+
+SELECT count(*) FROM binary_doubletmp WHERE a <  -1890.0::binary_double;
+ count 
+-------
+   237
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_doubletmp WHERE a <= -1890.0::binary_double;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_doubletmp
+         Recheck Cond: (a <= '-1890'::binary_double)
+         ->  Bitmap Index Scan on binary_doubleidx
+               Index Cond: (a <= '-1890'::binary_double)
+(5 rows)
+
+SELECT count(*) FROM binary_doubletmp WHERE a <= -1890.0::binary_double;
+ count 
+-------
+   238
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_doubletmp WHERE a  = -1890.0::binary_double;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_doubletmp
+         Recheck Cond: (a = '-1890'::binary_double)
+         ->  Bitmap Index Scan on binary_doubleidx
+               Index Cond: (a = '-1890'::binary_double)
+(5 rows)
+
+SELECT count(*) FROM binary_doubletmp WHERE a  = -1890.0::binary_double;
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_doubletmp WHERE a >= -1890.0::binary_double;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_doubletmp
+         Recheck Cond: (a >= '-1890'::binary_double)
+         ->  Bitmap Index Scan on binary_doubleidx
+               Index Cond: (a >= '-1890'::binary_double)
+(5 rows)
+
+SELECT count(*) FROM binary_doubletmp WHERE a >= -1890.0::binary_double;
+ count 
+-------
+   307
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_doubletmp WHERE a >  -1890.0::binary_double;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_doubletmp
+         Recheck Cond: (a > '-1890'::binary_double)
+         ->  Bitmap Index Scan on binary_doubleidx
+               Index Cond: (a > '-1890'::binary_double)
+(5 rows)
+
+SELECT count(*) FROM binary_doubletmp WHERE a >  -1890.0::binary_double;
+ count 
+-------
+   306
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0::binary_double;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_doubletmp
+         Recheck Cond: (a <> '-1890'::binary_double)
+         ->  Bitmap Index Scan on binary_doubleidx
+               Index Cond: (a <> '-1890'::binary_double)
+(5 rows)
+
+SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0::binary_double;
+ count 
+-------
+   543
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT a, a <-> '-1890.0' FROM binary_doubletmp ORDER BY a <-> '-1890.0' LIMIT 3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using binary_doubleidx on binary_doubletmp
+         Order By: (a <-> '-1890'::binary_double)
+(3 rows)
+
+SELECT a, a <-> '-1890.0' FROM binary_doubletmp ORDER BY a <-> '-1890.0' LIMIT 3;
+      a       |      ?column?      
+--------------+--------------------
+ -1890        | 0
+ -2003.634512 | 113.63451200000009
+ -1769.73634  | 120.26366000000007
+(3 rows)
+

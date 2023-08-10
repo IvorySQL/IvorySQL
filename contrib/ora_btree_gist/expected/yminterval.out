@@ -1,0 +1,157 @@
+-- yminterval check
+CREATE TABLE ymintervaltmp(a interval year(5) to month);
+\copy ymintervaltmp from 'data/yminterval.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <  interval'12-3' year to month;
+ count 
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <= interval'12-3' year to month;
+ count 
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a  = interval'12-3' year to month;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a >= interval'12-3' year to month;
+ count 
+-------
+     4
+(1 row)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a >  interval'12-3' year to month;
+ count 
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <> interval'12-3' year to month;
+ count 
+-------
+     5
+(1 row)
+
+SELECT a, a <-> interval'12-3' year to month FROM ymintervaltmp ORDER BY a <-> interval'12-3' year to month LIMIT 3;
+     a     |   ?column?    
+-----------+---------------
+ +00012-03 | +000000000-00
+ +00001-02 | +000000011-01
+ +00000-01 | +000000012-02
+(3 rows)
+
+CREATE INDEX ymintervalidx on ymintervaltmp USING gist(a);
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <  interval'12-3' year to month;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ymintervalidx on ymintervaltmp
+         Index Cond: (a < '+12-03'::interval year(2) to month)
+(3 rows)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <  interval'12-3' year to month;
+ count 
+-------
+     2
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <= interval'12-3' year to month;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ymintervalidx on ymintervaltmp
+         Index Cond: (a <= '+12-03'::interval year(2) to month)
+(3 rows)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <= interval'12-3' year to month;
+ count 
+-------
+     3
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a  = interval'12-3' year to month;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ymintervalidx on ymintervaltmp
+         Index Cond: (a = '+12-03'::interval year(2) to month)
+(3 rows)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a  = interval'12-3' year to month;
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a >= interval'12-3' year to month;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ymintervalidx on ymintervaltmp
+         Index Cond: (a >= '+12-03'::interval year(2) to month)
+(3 rows)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a >= interval'12-3' year to month;
+ count 
+-------
+     4
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a >  interval'12-3' year to month;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ymintervalidx on ymintervaltmp
+         Index Cond: (a > '+12-03'::interval year(2) to month)
+(3 rows)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a >  interval'12-3' year to month;
+ count 
+-------
+     3
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <> interval'12-3' year to month;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ymintervalidx on ymintervaltmp
+         Index Cond: (a <> '+12-03'::interval year(2) to month)
+(3 rows)
+
+SELECT count(*) FROM ymintervaltmp WHERE ymintervaltmp.a <> interval'12-3' year to month;
+ count 
+-------
+     5
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT a, a <-> interval'12-3' year to month FROM ymintervaltmp ORDER BY a <-> interval'12-3' year to month LIMIT 3;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using ymintervalidx on ymintervaltmp
+         Order By: (a <-> '+12-03'::interval year(2) to month)
+(3 rows)
+
+SELECT a, a <-> interval'12-3' year to month FROM ymintervaltmp ORDER BY a <-> interval'12-3' year to month LIMIT 3;
+     a     |   ?column?    
+-----------+---------------
+ +00012-03 | +000000000-00
+ +00001-02 | +000000011-01
+ +00000-01 | +000000012-02
+(3 rows)
+
