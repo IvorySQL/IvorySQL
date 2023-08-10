@@ -858,8 +858,8 @@ static const KeyWord DCH_keywords[] = {
 	{"sssss", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* s */
 	{"ssss", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"ss", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
-	{"tzh", 3, DCH_TZH, false, FROM_CHAR_DATE_NONE},	/* t */
-	{"tzm", 3, DCH_TZM, true, FROM_CHAR_DATE_NONE},
+	{"tzh", 3, DCH_tzh, false, FROM_CHAR_DATE_NONE},
+	{"tzm", 3, DCH_tzm, true, FROM_CHAR_DATE_NONE},
 	{"tz", 2, DCH_tz, false, FROM_CHAR_DATE_NONE},
 	{"us", 2, DCH_US, true, FROM_CHAR_DATE_NONE},	/* u */
 	{"ww", 2, DCH_WW, true, FROM_CHAR_DATE_GREGORIAN},	/* w */
@@ -2883,6 +2883,7 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				}
 				break;
 			case DCH_TZH:
+			case DCH_tzh:
 				INVALID_FOR_INTERVAL;
 				sprintf(s, "%c%02d",
 						(tm->tm_gmtoff >= 0) ? '+' : '-',
@@ -2890,6 +2891,7 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				s += strlen(s);
 				break;
 			case DCH_TZM:
+			case DCH_tzm:
 				INVALID_FOR_INTERVAL;
 				sprintf(s, "%02d",
 						(abs((int) tm->tm_gmtoff) % SECS_PER_HOUR) / SECS_PER_MINUTE);
@@ -3689,6 +3691,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 								n->key->name)));
 				break;
 			case DCH_TZH:
+			case DCH_tzh:
 
 				/*
 				 * Value of TZH might be negative.  And the issue is that we
@@ -3714,6 +3717,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					return;
 				break;
 			case DCH_TZM:
+			case DCH_tzm:
 				/* assign positive timezone sign if TZH was not seen before */
 				if (!out->tzsign)
 					out->tzsign = +1;
@@ -4115,6 +4119,8 @@ DCH_datetime_type(FormatNode *node)
 			case DCH_OF:
 			case DCH_TZH:
 			case DCH_TZM:
+			case DCH_tzh:
+			case DCH_tzm:
 				flags |= DCH_ZONED;
 				break;
 			case DCH_A_D:

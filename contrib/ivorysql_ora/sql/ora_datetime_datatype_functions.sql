@@ -315,6 +315,42 @@ SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
 --sessiontimezone
 set timezone = 'Asia/Hong_Kong';
 select sessiontimezone() from dual; /* BUG:0000427 */
+alter session set nls_date_format='YYYY-MM-DD HH24:MI:SS';
+alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS.ff';
+/*
+ * round
+ */
+select round(to_timestamp_tz('2012-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM')) from dual;
+select round(to_timestamp_tz('2012-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'CC') from dual;
+select round(to_timestamp_tz('2050-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'SCC') from dual;
+select round(to_timestamp_tz('2051-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'SCC') from dual;
+select round(to_timestamp_tz('2050-06-12 19:20:21 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'SYYYY') from dual;
+select round(to_timestamp_tz('2050-06-12 16:40:55 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'IYYY') from dual;
+select round(to_timestamp_tz('2020-02-16 19:16:12 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'Q') from dual;
+select round(to_timestamp_tz('2020-09-27 18:30:21 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'MONTH') from dual;
+select round(to_timestamp_tz('2020-03-15 12:12:19 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'WW') from dual;
+select round(to_timestamp_tz('2020-02-28 10:00:01 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'IW') from dual;
+select round(to_timestamp_tz('2020-02-23 12:12:14 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'W') from dual;
+select round(to_timestamp_tz('2020-06-18 13:12:18 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'DDD') from dual;
+select round(to_timestamp_tz('2020-02-29 14:40:20 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'DAY') from dual;
+select round(to_timestamp_tz('2020-02-29 11:40:20 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'HH') from dual;
+select round(to_timestamp_tz('2020-06-18 14:40:20 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'MI') from dual;
+
+/*
+ * trunc
+ */
+select trunc(to_timestamp_tz('2051-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'SCC') from dual;
+select trunc(to_timestamp_tz('2050-06-12 19:20:21 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'SYYYY') from dual;
+select trunc(to_timestamp_tz('2020-02-28 16:40:55 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'IYYY') from dual;
+select trunc(to_timestamp_tz('2020-02-28 19:16:12 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'Q') from dual;
+select trunc(to_timestamp_tz('2020-09-27 18:30:21 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'MONTH') from dual;
+select trunc(to_timestamp_tz('2020-03-15 12:12:19 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'WW') from dual;
+select trunc(to_timestamp_tz('2020-02-28 10:00:01 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'IW') from dual;
+select trunc(to_timestamp_tz('2020-02-23 12:12:14 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'W') from dual;
+select trunc(to_timestamp_tz('2020-06-18 13:12:18 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'DDD') from dual;
+select trunc(to_timestamp_tz('2020-02-29 14:40:20 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'DAY') from dual;
+select trunc(to_timestamp_tz('2020-02-29 11:40:20 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'HH') from dual;
+select trunc(to_timestamp_tz('2020-02-29 14:40:50 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'MI') from dual;
 alter session set NLS_DATE_FORMAT='DD-MON-RR HH24:MI:SS';
 --select sysdate() from dual;
 
