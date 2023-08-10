@@ -446,6 +446,10 @@ ifdef ISOLATION
 ISOLATION_OPTS += --dbname=$(ISOLATION_TESTDB)
 endif
 
+ifdef ORA_ISOLATION
+ORA_ISOLATION_OPTS += --dbname=$(ISOLATION_TESTDB)
+endif
+
 # Standard rules to run regression tests including multiple test suites.
 # Runs against an installed postmaster.
 ifndef NO_INSTALLCHECK
@@ -464,8 +468,8 @@ oracle-installcheck: oracle-submake $(REGRESS_PREP)
 ifdef ORA_REGRESS
 	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) $(ORA_REGRESS)
 endif
-ifdef ISOLATION
-	$(oracle_isolation_regress_installcheck) $(ISOLATION_OPTS) $(ISOLATION)
+ifdef ORA_ISOLATION
+	$(oracle_isolation_regress_installcheck) $(ORA_ISOLATION_OPTS) $(ORA_ISOLATION)
 endif
 ifdef TAP_TESTS
 	$(oracle_prove_installcheck)
@@ -499,8 +503,8 @@ oracle-check: oracle-submake $(REGRESS_PREP)
 ifdef ORA_REGRESS
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(ORA_REGRESS)
 endif
-ifdef ISOLATION
-	$(oracle_isolation_regress_check) $(ISOLATION_OPTS) $(ISOLATION)
+ifdef ORA_ISOLATION
+	$(oracle_isolation_regress_check) $(ORA_ISOLATION_OPTS) $(ORA_ISOLATION)
 endif
 ifdef TAP_TESTS
 	$(oracle_prove_check)
