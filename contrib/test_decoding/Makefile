@@ -6,13 +6,21 @@ PGFILEDESC = "test_decoding - example of a logical decoding output plugin"
 REGRESS = ddl xact rewrite toast permissions decoding_in_xact \
 	decoding_into_rel binary prepared replorigin time messages \
 	spill slot truncate stream stats twophase twophase_stream
+ORA_REGRESS = ivy_ddl xact ivy_rewrite ivy_toast permissions decoding_in_xact \
+	ivy_decoding_into_rel binary prepared replorigin ivy_time messages \
+	spill ivy_slot truncate stream stats twophase twophase_stream
 ISOLATION = mxact delayed_startup ondisk_startup concurrent_ddl_dml \
 	oldest_xmin snapshot_transfer subxact_without_top concurrent_stream \
 	twophase_snapshot slot_creation_error catalog_change_snapshot
+ORA_ISOLATION = mxact delayed_startup ondisk_startup ivy_concurrent_ddl_dml \
+	oldest_xmin snapshot_transfer subxact_without_top concurrent_stream \
+	twophase_snapshot slot_creation_error catalog_change_snapshot
+
+ISOLATION_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
+ORA_ISOLATION_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
 
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
 ORACLE_REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
-ISOLATION_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
 
 # Disabled because these tests require "wal_level=logical", which
 # typical installcheck users do not have (e.g. buildfarm clients).
