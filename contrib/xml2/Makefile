@@ -11,6 +11,7 @@ DATA = xml2--1.1.sql xml2--1.0--1.1.sql
 PGFILEDESC = "xml2 - XPath querying and XSLT"
 
 REGRESS = xml2
+ORA_REGRESS = ivy_xml2
 
 SHLIB_LINK += $(filter -lxslt, $(LIBS)) -lxml2
 
