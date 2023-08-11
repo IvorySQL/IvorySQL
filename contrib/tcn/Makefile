@@ -8,6 +8,8 @@ PGFILEDESC = "tcn - trigger function notifying listeners"
 
 ISOLATION = tcn
 ISOLATION_OPTS = --load-extension=tcn
+ORA_ISOLATION = tcn
+ORA_ISOLATION_OPTS = --load-extension=tcn
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

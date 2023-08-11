@@ -11,6 +11,8 @@ PGFILEDESC = "pgrowlocks - display row locking information"
 
 ISOLATION = pgrowlocks
 ISOLATION_OPTS = --load-extension=pgrowlocks
+ORA_ISOLATION = pgrowlocks
+ORA_ISOLATION_OPTS = --load-extension=pgrowlocks
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
