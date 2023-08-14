@@ -14,6 +14,7 @@ REGRESS = install_btree_gin int2 int4 int8 float4 float8 money oid \
 	timestamp timestamptz time timetz date interval \
 	macaddr macaddr8 inet cidr text varchar char bytea bit varbit \
 	numeric enum uuid name bool bpchar
+ORA_REGRESS = install_btree_gin
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
