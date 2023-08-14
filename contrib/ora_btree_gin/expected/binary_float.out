@@ -1,0 +1,121 @@
+-- binary_float check
+CREATE TABLE binary_float_test (a binary_float);
+\copy binary_float_test from 'data/binary_float.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM binary_float_test WHERE a <  179.0;
+ count 
+-------
+   265
+(1 row)
+
+SELECT count(*) FROM binary_float_test WHERE a <= 179.0;
+ count 
+-------
+   265
+(1 row)
+
+SELECT count(*) FROM binary_float_test WHERE a  = 179.0;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM binary_float_test WHERE a >= 179.0;
+ count 
+-------
+   282
+(1 row)
+
+SELECT count(*) FROM binary_float_test WHERE a >  179.0;
+ count 
+-------
+   282
+(1 row)
+
+CREATE INDEX binary_floatidx ON binary_float_test USING gin ( a );
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_float_test WHERE a <  179.0::binary_float;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_float_test
+         Recheck Cond: (a < '179'::binary_float)
+         ->  Bitmap Index Scan on binary_floatidx
+               Index Cond: (a < '179'::binary_float)
+(5 rows)
+
+SELECT count(*) FROM binary_float_test WHERE a <  179.0::binary_float;
+ count 
+-------
+   265
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_float_test WHERE a <= 179.0::binary_float;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_float_test
+         Recheck Cond: (a <= '179'::binary_float)
+         ->  Bitmap Index Scan on binary_floatidx
+               Index Cond: (a <= '179'::binary_float)
+(5 rows)
+
+SELECT count(*) FROM binary_float_test WHERE a <= 179.0::binary_float;
+ count 
+-------
+   265
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_float_test WHERE a  = 179.0::binary_float;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_float_test
+         Recheck Cond: (a = '179'::binary_float)
+         ->  Bitmap Index Scan on binary_floatidx
+               Index Cond: (a = '179'::binary_float)
+(5 rows)
+
+SELECT count(*) FROM binary_float_test WHERE a  = 179.0::binary_float;
+ count 
+-------
+     0
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_float_test WHERE a >= 179.0::binary_float;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_float_test
+         Recheck Cond: (a >= '179'::binary_float)
+         ->  Bitmap Index Scan on binary_floatidx
+               Index Cond: (a >= '179'::binary_float)
+(5 rows)
+
+SELECT count(*) FROM binary_float_test WHERE a >= 179.0::binary_float;
+ count 
+-------
+   282
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM binary_float_test WHERE a >  179.0::binary_float;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on binary_float_test
+         Recheck Cond: (a > '179'::binary_float)
+         ->  Bitmap Index Scan on binary_floatidx
+               Index Cond: (a > '179'::binary_float)
+(5 rows)
+
+SELECT count(*) FROM binary_float_test WHERE a >  179.0::binary_float;
+ count 
+-------
+   282
+(1 row)
+

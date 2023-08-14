@@ -1,0 +1,8 @@
+# ora_btree_gin extension
+comment = 'support for indexing oracle datatypes in GIN'
+default_version = '1.0'
+module_pathname = '$libdir/ora_btree_gin'
+relocatable = false
+trusted = true
+schema = sys
+requires = 'ivorysql_ora'
