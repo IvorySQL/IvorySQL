@@ -2978,6 +2978,8 @@ WaitEventBufferPin
 WaitEventClient
 WaitEventExtension
 WaitEventExtensionCounterData
+WaitEventExtensionEntryById
+WaitEventExtensionEntryByName
 WaitEventIO
 WaitEventIPC
 WaitEventSet
