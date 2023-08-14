@@ -1,0 +1,170 @@
+-- timestampltz check
+SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
+CREATE TABLE timestampltztmp (a timestamp with local time zone);
+\copy timestampltztmp from 'data/timestamptz.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM timestampltztmp WHERE a <  '2018-12-18 10:59:54';
+ count 
+-------
+   385
+(1 row)
+
+SELECT count(*) FROM timestampltztmp WHERE a <= '2018-12-18 10:59:54';
+ count 
+-------
+   386
+(1 row)
+
+SELECT count(*) FROM timestampltztmp WHERE a  = '2018-12-18 10:59:54';
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM timestampltztmp WHERE a >= '2018-12-18 10:59:54';
+ count 
+-------
+   146
+(1 row)
+
+SELECT count(*) FROM timestampltztmp WHERE a >  '2018-12-18 10:59:54';
+ count 
+-------
+   145
+(1 row)
+
+SELECT count(*) FROM timestampltztmp WHERE a <> '2018-12-18 10:59:54'::timestamp with local time zone;
+ count 
+-------
+   530
+(1 row)
+
+SELECT a, a <-> '2018-12-18 10:59:54' FROM timestampltztmp ORDER BY a <-> '2018-12-18 10:59:54' LIMIT 3;
+               a               |             ?column?              
+-------------------------------+-----------------------------------
+ 2018-12-18 10:59:54.000000000 | @ 0
+ 2019-01-10 06:01:34.000000000 | @ 22 days 19 hours 1 min 40 secs
+ 2019-01-24 15:28:12.000000000 | @ 37 days 4 hours 28 mins 18 secs
+(3 rows)
+
+CREATE INDEX timestampltzidx ON timestampltztmp USING gist ( a );
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM timestampltztmp WHERE a <  '2018-12-18 10:59:54'::timestamp with local time zone;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on timestampltztmp
+         Recheck Cond: (a < '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+         ->  Bitmap Index Scan on timestampltzidx
+               Index Cond: (a < '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+(5 rows)
+
+SELECT count(*) FROM timestampltztmp WHERE a <  '2018-12-18 10:59:54'::timestamp with local time zone;
+ count 
+-------
+   385
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM timestampltztmp WHERE a <= '2018-12-18 10:59:54'::timestamp with local time zone;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on timestampltztmp
+         Recheck Cond: (a <= '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+         ->  Bitmap Index Scan on timestampltzidx
+               Index Cond: (a <= '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+(5 rows)
+
+SELECT count(*) FROM timestampltztmp WHERE a <= '2018-12-18 10:59:54'::timestamp with local time zone;
+ count 
+-------
+   386
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM timestampltztmp WHERE a  = '2018-12-18 10:59:54'::timestamp with local time zone;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on timestampltztmp
+         Recheck Cond: (a = '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+         ->  Bitmap Index Scan on timestampltzidx
+               Index Cond: (a = '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+(5 rows)
+
+SELECT count(*) FROM timestampltztmp WHERE a  = '2018-12-18 10:59:54'::timestamp with local time zone;
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM timestampltztmp WHERE a >= '2018-12-18 10:59:54'::timestamp with local time zone;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on timestampltztmp
+         Recheck Cond: (a >= '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+         ->  Bitmap Index Scan on timestampltzidx
+               Index Cond: (a >= '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+(5 rows)
+
+SELECT count(*) FROM timestampltztmp WHERE a >=  '2018-12-18 10:59:54'::timestamp with local time zone;
+ count 
+-------
+   146
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM timestampltztmp WHERE a >  '2018-12-18 10:59:54'::timestamp with local time zone;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on timestampltztmp
+         Recheck Cond: (a > '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+         ->  Bitmap Index Scan on timestampltzidx
+               Index Cond: (a > '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+(5 rows)
+
+SELECT count(*) FROM timestampltztmp WHERE a >  '2018-12-18 10:59:54'::timestamp with local time zone;
+ count 
+-------
+   145
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM timestampltztmp WHERE a <> '2018-12-18 10:59:54'::timestamp with local time zone;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on timestampltztmp
+         Recheck Cond: (a <> '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+         ->  Bitmap Index Scan on timestampltzidx
+               Index Cond: (a <> '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+(5 rows)
+
+SELECT count(*) FROM timestampltztmp WHERE a <> '2018-12-18 10:59:54'::timestamp with local time zone;
+ count 
+-------
+   530
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT a, a <-> '2018-12-18 10:59:54' FROM timestampltztmp ORDER BY a <-> '2018-12-18 10:59:54' LIMIT 3;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using timestampltzidx on timestampltztmp
+         Order By: (a <-> '2018-12-18 10:59:54.000000000'::timestamp with local time zone)
+(3 rows)
+
+SELECT a, a <-> '2018-12-18 10:59:54' FROM timestampltztmp ORDER BY a <-> '2018-12-18 10:59:54' LIMIT 3;
+               a               |             ?column?              
+-------------------------------+-----------------------------------
+ 2018-12-18 10:59:54.000000000 | @ 0
+ 2019-01-10 06:01:34.000000000 | @ 22 days 19 hours 1 min 40 secs
+ 2019-01-24 15:28:12.000000000 | @ 37 days 4 hours 28 mins 18 secs
+(3 rows)
+

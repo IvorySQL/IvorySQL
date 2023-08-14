@@ -48,8 +48,22 @@ extern void OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod);
 /* dsinterval.c */
 extern Datum dsinterval_out(PG_FUNCTION_ARGS);
 extern Datum dsinterval_in(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_mi(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_eq(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_lt(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_gt(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_le(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_ge(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_cmp(PG_FUNCTION_ARGS);
 
 /* yminterval.c */
 extern Datum yminterval_out(PG_FUNCTION_ARGS);
 extern Datum yminterval_in(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_mi(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_eq(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_lt(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_gt(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_le(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_ge(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_cmp(PG_FUNCTION_ARGS);
 
