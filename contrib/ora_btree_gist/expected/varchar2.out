@@ -1,0 +1,200 @@
+-- varcharbyte check
+CREATE TABLE varchar2tmp (a varchar2(32 byte));
+\copy varchar2tmp from 'data/varchar2.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM varchar2tmp WHERE a <   '31b0'::varchar2(32);
+ count 
+-------
+   587
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a <=  '31b0'::varchar2(32);
+ count 
+-------
+   588
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a  =  '31b0'::varchar2(32);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a >=  '31b0'::varchar2(32);
+ count 
+-------
+   401
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a >   '31b0'::varchar2(32);
+ count 
+-------
+   400
+(1 row)
+
+CREATE INDEX varcharbyteidx ON varchar2tmp USING GIST (a);
+SET enable_seqscan=off;
+SELECT count(*) FROM varchar2tmp WHERE a <   '31b0'::varchar2(32);
+ count 
+-------
+   587
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a <=  '31b0'::varchar2(32);
+ count 
+-------
+   588
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a  =  '31b0'::varchar2(32);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a >=  '31b0'::varchar2(32);
+ count 
+-------
+   401
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a >   '31b0'::varchar2(32);
+ count 
+-------
+   400
+(1 row)
+
+-- Test index-only scans
+SET enable_bitmapscan=off;
+EXPLAIN (COSTS OFF)
+SELECT * FROM varchar2tmp WHERE a BETWEEN '31a' AND '31c';
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Only Scan using varcharbyteidx on varchar2tmp
+   Index Cond: ((a >= '31a'::varchar2) AND (a <= '31c'::varchar2))
+(2 rows)
+
+SELECT * FROM varchar2tmp WHERE a BETWEEN '31a' AND '31c';
+  a   
+------
+ 31b0
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a <> '31a';
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using varcharbyteidx on varchar2tmp
+         Index Cond: (a <> '31a'::varchar2)
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a <> '31a'::varchar2(32 char);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using varcharbyteidx on varchar2tmp
+         Filter: (a <> '31a'::varchar2(32 char))
+(3 rows)
+
+-- varcharchar check
+CREATE TABLE varchar2test (a varchar2(32 char));
+\copy varchar2test from 'data/varchar2.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM varchar2test WHERE a <   '31b0'::varchar2(32);
+ count 
+-------
+   587
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a <=  '31b0'::varchar2(32);
+ count 
+-------
+   588
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a  =  '31b0'::varchar2(32);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a >=  '31b0'::varchar2(32);
+ count 
+-------
+   401
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a >   '31b0'::varchar2(32);
+ count 
+-------
+   400
+(1 row)
+
+CREATE INDEX varcharcharidx ON varchar2test USING GIST (a);
+SET enable_seqscan=off;
+SELECT count(*) FROM varchar2test WHERE a <   '31b0'::varchar2(32);
+ count 
+-------
+   587
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a <=  '31b0'::varchar2(32);
+ count 
+-------
+   588
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a  =  '31b0'::varchar2(32);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a >=  '31b0'::varchar2(32);
+ count 
+-------
+   401
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a >   '31b0'::varchar2(32);
+ count 
+-------
+   400
+(1 row)
+
+-- Test index-only scans
+SET enable_bitmapscan=off;
+EXPLAIN (COSTS OFF)
+SELECT * FROM varchar2test WHERE a BETWEEN '31a' AND '31c';
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Only Scan using varcharcharidx on varchar2test
+   Index Cond: ((a >= '31a'::varchar2) AND (a <= '31c'::varchar2))
+(2 rows)
+
+SELECT * FROM varchar2test WHERE a BETWEEN '31a' AND '31c';
+  a   
+------
+ 31b0
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a <> '31a';
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using varcharcharidx on varchar2test
+         Index Cond: (a <> '31a'::varchar2)
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a <> '31a'::varchar2(32 byte);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using varcharcharidx on varchar2test
+         Filter: (a <> '31a'::varchar2(32))
+(3 rows)
+

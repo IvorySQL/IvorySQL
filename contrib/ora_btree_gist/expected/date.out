@@ -1,0 +1,158 @@
+-- date check
+SET NLS_date_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
+CREATE TABLE datetmp(a DATE);
+\copy datetmp from 'data/date.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM datetmp WHERE a <  '2016-11-27';
+ count 
+-------
+     9
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a <= '2016-11-27';
+ count 
+-------
+    10
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a  = '2016-11-27';
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a >= '2016-11-27';
+ count 
+-------
+    10
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a >  '2016-11-27';
+ count 
+-------
+     9
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a <> '2016-11-27';
+ count 
+-------
+    18
+(1 row)
+
+SELECT a, a <-> '2016-11-27' FROM datetmp ORDER BY a <-> '2016-11-27' LIMIT 3;
+               a               | ?column? 
+-------------------------------+----------
+ 2016-11-27 00:00:00.000000000 | @ 0
+ 2016-11-26 00:00:00.000000000 | @ 1 day
+ 2016-11-28 00:00:00.000000000 | @ 1 day
+(3 rows)
+
+CREATE INDEX dateidx on datetmp USING gist(a);
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetmp WHERE a <  '2016-11-27'::date;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dateidx on datetmp
+         Index Cond: (a < '2016-11-27 00:00:00.000000000'::date)
+(3 rows)
+
+SELECT count(*) FROM datetmp WHERE a <  '2016-11-27'::date;
+ count 
+-------
+     9
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetmp WHERE a <= '2016-11-27'::date;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dateidx on datetmp
+         Index Cond: (a <= '2016-11-27 00:00:00.000000000'::date)
+(3 rows)
+
+SELECT count(*) FROM datetmp WHERE a <= '2016-11-27'::date;
+ count 
+-------
+    10
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetmp WHERE a  = '2016-11-27'::date;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dateidx on datetmp
+         Index Cond: (a = '2016-11-27 00:00:00.000000000'::date)
+(3 rows)
+
+SELECT count(*) FROM datetmp WHERE a  = '2016-11-27'::date;
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetmp WHERE a >= '2016-11-27'::date;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dateidx on datetmp
+         Index Cond: (a >= '2016-11-27 00:00:00.000000000'::date)
+(3 rows)
+
+SELECT count(*) FROM datetmp WHERE a >= '2016-11-27'::date;
+ count 
+-------
+    10
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetmp WHERE a >  '2016-11-27'::date;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dateidx on datetmp
+         Index Cond: (a > '2016-11-27 00:00:00.000000000'::date)
+(3 rows)
+
+SELECT count(*) FROM datetmp WHERE a >  '2016-11-27'::date;
+ count 
+-------
+     9
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetmp WHERE a <> '2016-11-27';
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dateidx on datetmp
+         Index Cond: (a <> '2016-11-27 00:00:00.000000000'::date)
+(3 rows)
+
+SELECT count(*) FROM datetmp WHERE a <> '2016-11-27'::date;
+ count 
+-------
+    18
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT a, a <-> '2016-11-27' FROM datetmp ORDER BY a <-> '2016-11-27' LIMIT 3;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using dateidx on datetmp
+         Order By: (a <-> '2016-11-27 00:00:00.000000000'::date)
+(3 rows)
+
+SELECT a, a <-> '2016-11-27' FROM datetmp ORDER BY a <-> '2016-11-27' LIMIT 3;
+               a               | ?column? 
+-------------------------------+----------
+ 2016-11-27 00:00:00.000000000 | @ 0
+ 2016-11-26 00:00:00.000000000 | @ 1 day
+ 2016-11-28 00:00:00.000000000 | @ 1 day
+(3 rows)
+

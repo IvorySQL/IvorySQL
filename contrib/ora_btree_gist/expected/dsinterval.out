@@ -1,0 +1,157 @@
+-- dsinterval check
+CREATE TABLE dsintervaltmp(a interval day(4) to second(6));
+\copy dsintervaltmp from 'data/dsinterval.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <  interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <= interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a  = interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a >= interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a >  interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <> interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     4
+(1 row)
+
+SELECT a, a <-> interval'12 1:1:1.123456' day to second FROM dsintervaltmp ORDER BY a <-> interval'12 1:1:1.123456' day to second LIMIT 3;
+           a           |           ?column?            
+-----------------------+-------------------------------
+ +0012 01:01:01.123456 | +000000000 00:00:00.000000000
+ +0001 01:01:01.123000 | +000000011 00:00:00.000456000
+ +0000 00:00:00.000000 | +000000012 01:01:01.123456000
+(3 rows)
+
+CREATE INDEX dsintervalidx on dsintervaltmp USING gist(a);
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <  interval'12 1:1:1.123456' day to second;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dsintervalidx on dsintervaltmp
+         Index Cond: (a < '+12 01:01:01.123456'::interval day(2) to second(6))
+(3 rows)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <  interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     2
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <= interval'12 1:1:1.123456' day to second;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dsintervalidx on dsintervaltmp
+         Index Cond: (a <= '+12 01:01:01.123456'::interval day(2) to second(6))
+(3 rows)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <= interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     3
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a  = interval'12 1:1:1.123456' day to second;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dsintervalidx on dsintervaltmp
+         Index Cond: (a = '+12 01:01:01.123456'::interval day(2) to second(6))
+(3 rows)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a  = interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a >= interval'12 1:1:1.123456' day to second;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dsintervalidx on dsintervaltmp
+         Index Cond: (a >= '+12 01:01:01.123456'::interval day(2) to second(6))
+(3 rows)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a >= interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     3
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a >  interval'12 1:1:1.123456' day to second;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dsintervalidx on dsintervaltmp
+         Index Cond: (a > '+12 01:01:01.123456'::interval day(2) to second(6))
+(3 rows)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a >  interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     2
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <> interval'12 1:1:1.123456' day to second;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using dsintervalidx on dsintervaltmp
+         Index Cond: (a <> '+12 01:01:01.123456'::interval day(2) to second(6))
+(3 rows)
+
+SELECT count(*) FROM dsintervaltmp WHERE dsintervaltmp.a <> interval'12 1:1:1.123456' day to second;
+ count 
+-------
+     4
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT a, a <-> interval'12 1:1:1.123456' day to second FROM dsintervaltmp ORDER BY a <-> interval'12 1:1:1.123456' day to second LIMIT 3;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using dsintervalidx on dsintervaltmp
+         Order By: (a <-> '+12 01:01:01.123456'::interval day(2) to second(6))
+(3 rows)
+
+SELECT a, a <-> interval'12 1:1:1.123456' day to second FROM dsintervaltmp ORDER BY a <-> interval'12 1:1:1.123456' day to second LIMIT 3;
+           a           |           ?column?            
+-----------------------+-------------------------------
+ +0012 01:01:01.123456 | +000000000 00:00:00.000000000
+ +0001 01:01:01.123000 | +000000011 00:00:00.000456000
+ +0000 00:00:00.000000 | +000000012 01:01:01.123456000
+(3 rows)
+
