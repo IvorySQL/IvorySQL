@@ -218,215 +218,215 @@ AS
     FUNCTION        5       gin_compare_prefix_oid(oid,oid,int2, internal),
 STORAGE         oid;
 
-CREATE FUNCTION gin_extract_value_timestamp(timestamp, internal)
+CREATE FUNCTION gin_extract_value_timestamp(pg_catalog.timestamp, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_timestamp(timestamp, timestamp, int2, internal)
+CREATE FUNCTION gin_compare_prefix_timestamp(pg_catalog.timestamp, pg_catalog.timestamp, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_timestamp(timestamp, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_timestamp(pg_catalog.timestamp, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS timestamp_ops
-DEFAULT FOR TYPE timestamp USING gin
+DEFAULT FOR TYPE pg_catalog.timestamp USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       timestamp_cmp(timestamp,timestamp),
-    FUNCTION        2       gin_extract_value_timestamp(timestamp, internal),
-    FUNCTION        3       gin_extract_query_timestamp(timestamp, internal, int2, internal, internal),
+    FUNCTION        1       timestamp_cmp(pg_catalog.timestamp,pg_catalog.timestamp),
+    FUNCTION        2       gin_extract_value_timestamp(pg_catalog.timestamp, internal),
+    FUNCTION        3       gin_extract_query_timestamp(pg_catalog.timestamp, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_timestamp(timestamp,timestamp,int2, internal),
-STORAGE         timestamp;
+    FUNCTION        5       gin_compare_prefix_timestamp(pg_catalog.timestamp,pg_catalog.timestamp,int2, internal),
+STORAGE         pg_catalog.timestamp;
 
-CREATE FUNCTION gin_extract_value_timestamptz(timestamptz, internal)
+CREATE FUNCTION gin_extract_value_timestamptz(pg_catalog.timestamptz, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_timestamptz(timestamptz, timestamptz, int2, internal)
+CREATE FUNCTION gin_compare_prefix_timestamptz(pg_catalog.timestamptz, pg_catalog.timestamptz, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_timestamptz(timestamptz, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_timestamptz(pg_catalog.timestamptz, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS timestamptz_ops
-DEFAULT FOR TYPE timestamptz USING gin
+DEFAULT FOR TYPE pg_catalog.timestamptz USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       timestamptz_cmp(timestamptz,timestamptz),
-    FUNCTION        2       gin_extract_value_timestamptz(timestamptz, internal),
-    FUNCTION        3       gin_extract_query_timestamptz(timestamptz, internal, int2, internal, internal),
+    FUNCTION        1       timestamptz_cmp(pg_catalog.timestamptz,pg_catalog.timestamptz),
+    FUNCTION        2       gin_extract_value_timestamptz(pg_catalog.timestamptz, internal),
+    FUNCTION        3       gin_extract_query_timestamptz(pg_catalog.timestamptz, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_timestamptz(timestamptz,timestamptz,int2, internal),
-STORAGE         timestamptz;
+    FUNCTION        5       gin_compare_prefix_timestamptz(pg_catalog.timestamptz,pg_catalog.timestamptz,int2, internal),
+STORAGE         pg_catalog.timestamptz;
 
-CREATE FUNCTION gin_extract_value_time(time, internal)
+CREATE FUNCTION gin_extract_value_time(pg_catalog.time, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_time(time, time, int2, internal)
+CREATE FUNCTION gin_compare_prefix_time(pg_catalog.time, pg_catalog.time, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_time(time, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_time(pg_catalog.time, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS time_ops
-DEFAULT FOR TYPE time USING gin
+DEFAULT FOR TYPE pg_catalog.time USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       time_cmp(time,time),
-    FUNCTION        2       gin_extract_value_time(time, internal),
-    FUNCTION        3       gin_extract_query_time(time, internal, int2, internal, internal),
+    FUNCTION        1       time_cmp(pg_catalog.time,pg_catalog.time),
+    FUNCTION        2       gin_extract_value_time(pg_catalog.time, internal),
+    FUNCTION        3       gin_extract_query_time(pg_catalog.time, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_time(time,time,int2, internal),
+    FUNCTION        5       gin_compare_prefix_time(pg_catalog.time,pg_catalog.time,int2, internal),
 STORAGE         time;
 
-CREATE FUNCTION gin_extract_value_timetz(timetz, internal)
+CREATE FUNCTION gin_extract_value_timetz(pg_catalog.timetz, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_timetz(timetz, timetz, int2, internal)
+CREATE FUNCTION gin_compare_prefix_timetz(pg_catalog.timetz, pg_catalog.timetz, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_timetz(timetz, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_timetz(pg_catalog.timetz, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS timetz_ops
-DEFAULT FOR TYPE timetz USING gin
+DEFAULT FOR TYPE pg_catalog.timetz USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       timetz_cmp(timetz,timetz),
-    FUNCTION        2       gin_extract_value_timetz(timetz, internal),
-    FUNCTION        3       gin_extract_query_timetz(timetz, internal, int2, internal, internal),
+    FUNCTION        1       timetz_cmp(pg_catalog.timetz,pg_catalog.timetz),
+    FUNCTION        2       gin_extract_value_timetz(pg_catalog.timetz, internal),
+    FUNCTION        3       gin_extract_query_timetz(pg_catalog.timetz, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_timetz(timetz,timetz,int2, internal),
+    FUNCTION        5       gin_compare_prefix_timetz(pg_catalog.timetz,pg_catalog.timetz,int2, internal),
 STORAGE         timetz;
 
-CREATE FUNCTION gin_extract_value_date(date, internal)
+CREATE FUNCTION gin_extract_value_date(pg_catalog.date, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_date(date, date, int2, internal)
+CREATE FUNCTION gin_compare_prefix_date(pg_catalog.date, pg_catalog.date, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_date(date, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_date(pg_catalog.date, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS date_ops
-DEFAULT FOR TYPE date USING gin
+DEFAULT FOR TYPE pg_catalog.date USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       date_cmp(date,date),
-    FUNCTION        2       gin_extract_value_date(date, internal),
-    FUNCTION        3       gin_extract_query_date(date, internal, int2, internal, internal),
+    FUNCTION        1       date_cmp(pg_catalog.date,pg_catalog.date),
+    FUNCTION        2       gin_extract_value_date(pg_catalog.date, internal),
+    FUNCTION        3       gin_extract_query_date(pg_catalog.date, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_date(date,date,int2, internal),
-STORAGE         date;
+    FUNCTION        5       gin_compare_prefix_date(pg_catalog.date,pg_catalog.date,int2, internal),
+STORAGE         pg_catalog.date;
 
-CREATE FUNCTION gin_extract_value_interval(interval, internal)
+CREATE FUNCTION gin_extract_value_interval(pg_catalog.interval, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_interval(interval, interval, int2, internal)
+CREATE FUNCTION gin_compare_prefix_interval(pg_catalog.interval, pg_catalog.interval, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_interval(interval, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_interval(pg_catalog.interval, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS interval_ops
-DEFAULT FOR TYPE interval USING gin
+DEFAULT FOR TYPE pg_catalog.interval USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       interval_cmp(interval,interval),
-    FUNCTION        2       gin_extract_value_interval(interval, internal),
-    FUNCTION        3       gin_extract_query_interval(interval, internal, int2, internal, internal),
+    FUNCTION        1       interval_cmp(pg_catalog.interval,pg_catalog.interval),
+    FUNCTION        2       gin_extract_value_interval(pg_catalog.interval, internal),
+    FUNCTION        3       gin_extract_query_interval(pg_catalog.interval, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_interval(interval,interval,int2, internal),
-STORAGE         interval;
+    FUNCTION        5       gin_compare_prefix_interval(pg_catalog.interval,pg_catalog.interval,int2, internal),
+STORAGE         pg_catalog.interval;
 
-CREATE FUNCTION gin_extract_value_macaddr(macaddr, internal)
+CREATE FUNCTION gin_extract_value_macaddr(pg_catalog.macaddr, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_macaddr(macaddr, macaddr, int2, internal)
+CREATE FUNCTION gin_compare_prefix_macaddr(pg_catalog.macaddr, pg_catalog.macaddr, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_macaddr(macaddr, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_macaddr(pg_catalog.macaddr, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS macaddr_ops
-DEFAULT FOR TYPE macaddr USING gin
+DEFAULT FOR TYPE pg_catalog.macaddr USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       macaddr_cmp(macaddr,macaddr),
-    FUNCTION        2       gin_extract_value_macaddr(macaddr, internal),
-    FUNCTION        3       gin_extract_query_macaddr(macaddr, internal, int2, internal, internal),
+    FUNCTION        1       macaddr_cmp(pg_catalog.macaddr,pg_catalog.macaddr),
+    FUNCTION        2       gin_extract_value_macaddr(pg_catalog.macaddr, internal),
+    FUNCTION        3       gin_extract_query_macaddr(pg_catalog.macaddr, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_macaddr(macaddr,macaddr,int2, internal),
-STORAGE         macaddr;
+    FUNCTION        5       gin_compare_prefix_macaddr(pg_catalog.macaddr,pg_catalog.macaddr,int2, internal),
+STORAGE         pg_catalog.macaddr;
 
 CREATE FUNCTION gin_extract_value_inet(inet, internal)
 RETURNS internal
@@ -488,80 +488,80 @@ AS
     FUNCTION        5       gin_compare_prefix_cidr(cidr,cidr,int2, internal),
 STORAGE         cidr;
 
-CREATE FUNCTION gin_extract_value_text(text, internal)
+CREATE FUNCTION gin_extract_value_text(pg_catalog.text, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_text(text, text, int2, internal)
+CREATE FUNCTION gin_compare_prefix_text(pg_catalog.text, pg_catalog.text, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_text(text, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_text(pg_catalog.text, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS text_ops
-DEFAULT FOR TYPE text USING gin
+DEFAULT FOR TYPE pg_catalog.text USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       bttextcmp(text,text),
-    FUNCTION        2       gin_extract_value_text(text, internal),
-    FUNCTION        3       gin_extract_query_text(text, internal, int2, internal, internal),
+    FUNCTION        1       bttextcmp(pg_catalog.text,pg_catalog.text),
+    FUNCTION        2       gin_extract_value_text(pg_catalog.text, internal),
+    FUNCTION        3       gin_extract_query_text(pg_catalog.text, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_text(text,text,int2, internal),
+    FUNCTION        5       gin_compare_prefix_text(pg_catalog.text,pg_catalog.text,int2, internal),
 STORAGE         text;
 
 CREATE OPERATOR CLASS varchar_ops
-DEFAULT FOR TYPE varchar USING gin
+DEFAULT FOR TYPE pg_catalog.varchar USING gin
 AS
-    OPERATOR        1       <(text,text),
-    OPERATOR        2       <=(text,text),
-    OPERATOR        3       =(text,text),
-    OPERATOR        4       >=(text,text),
-    OPERATOR        5       >(text,text),
-    FUNCTION        1       bttextcmp(text,text),
-    FUNCTION        2       gin_extract_value_text(text, internal),
-    FUNCTION        3       gin_extract_query_text(text, internal, int2, internal, internal),
+    OPERATOR        1       <(pg_catalog.text,pg_catalog.text),
+    OPERATOR        2       <=(pg_catalog.text,pg_catalog.text),
+    OPERATOR        3       =(pg_catalog.text,pg_catalog.text),
+    OPERATOR        4       >=(pg_catalog.text,pg_catalog.text),
+    OPERATOR        5       >(pg_catalog.text,pg_catalog.text),
+    FUNCTION        1       bttextcmp(pg_catalog.text,pg_catalog.text),
+    FUNCTION        2       gin_extract_value_text(pg_catalog.text, internal),
+    FUNCTION        3       gin_extract_query_text(pg_catalog.text, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_text(text,text,int2, internal),
-STORAGE         varchar;
+    FUNCTION        5       gin_compare_prefix_text(pg_catalog.text,pg_catalog.text,int2, internal),
+STORAGE         pg_catalog.varchar;
 
-CREATE FUNCTION gin_extract_value_char("char", internal)
+CREATE FUNCTION gin_extract_value_char(pg_catalog.char, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_char("char", "char", int2, internal)
+CREATE FUNCTION gin_compare_prefix_char(pg_catalog.char, pg_catalog.char, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_char("char", internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_char(pg_catalog.char, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS char_ops
-DEFAULT FOR TYPE "char" USING gin
+DEFAULT FOR TYPE pg_catalog.char USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       btcharcmp("char","char"),
-    FUNCTION        2       gin_extract_value_char("char", internal),
-    FUNCTION        3       gin_extract_query_char("char", internal, int2, internal, internal),
+    FUNCTION        1       btcharcmp(pg_catalog.char,pg_catalog.char),
+    FUNCTION        2       gin_extract_value_char(pg_catalog.char, internal),
+    FUNCTION        3       gin_extract_query_char(pg_catalog.char, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_char("char","char",int2, internal),
-STORAGE         "char";
+    FUNCTION        5       gin_compare_prefix_char(pg_catalog.char,pg_catalog.char,int2, internal),
+STORAGE         pg_catalog.char;
 
 CREATE FUNCTION gin_extract_value_bytea(bytea, internal)
 RETURNS internal
