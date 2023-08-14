@@ -193,6 +193,7 @@ static const char *const days_short[] = {
  *	years up one.  For interval years, we just return the year.
  */
 #define ADJUST_YEAR(year, is_interval)	((is_interval) ? (year) : ((year) <= 0 ? -((year) - 1) : (year)))
+#define ORAADJUST_YEAR(year, is_interval)	((is_interval) ? (year) : ((year) <= 0 ? ((year) - 1) : (year)))
 
 #define A_D_STR		"A.D."
 #define a_d_STR		"a.d."
@@ -620,6 +621,7 @@ typedef enum
 	DCH_SSSSS,
 	DCH_SSSS,
 	DCH_SS,
+	DCH_SYYYY,
 	DCH_TZH,
 	DCH_TZM,
 	DCH_TZ,
@@ -680,6 +682,7 @@ typedef enum
 	DCH_sssss,
 	DCH_ssss,
 	DCH_ss,
+	DCH_syyyy,
 	DCH_tzh,
 	DCH_tzm,
 	DCH_tz,
@@ -798,6 +801,7 @@ static const KeyWord DCH_keywords[] = {
 	{"SSSSS", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* S */
 	{"SSSS", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"SS", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
+	{"SYYYY", 5, DCH_SYYYY, true, FROM_CHAR_DATE_GREGORIAN},
 	{"TZH", 3, DCH_TZH, false, FROM_CHAR_DATE_NONE},	/* T */
 	{"TZM", 3, DCH_TZM, true, FROM_CHAR_DATE_NONE},
 	{"TZ", 2, DCH_TZ, false, FROM_CHAR_DATE_NONE},
@@ -858,6 +862,7 @@ static const KeyWord DCH_keywords[] = {
 	{"sssss", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* s */
 	{"ssss", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"ss", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
+	{"syyyy", 5, DCH_SYYYY, true, FROM_CHAR_DATE_GREGORIAN},
 	{"tzh", 3, DCH_tzh, false, FROM_CHAR_DATE_NONE},
 	{"tzm", 3, DCH_tzm, true, FROM_CHAR_DATE_NONE},
 	{"tz", 2, DCH_tz, false, FROM_CHAR_DATE_NONE},
@@ -3260,6 +3265,15 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 					str_numth(s, s, S_TH_TYPE(n->suffix));
 				s += strlen(s);
 				break;
+			case DCH_SYYYY:
+				sprintf(s, "%0*d",
+						S_FM(n->suffix) ? 0 :
+						(ORAADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 4 : 5,
+						ORAADJUST_YEAR(tm->tm_year, is_interval));
+				if (S_THth(n->suffix))
+					str_numth(s, s, S_TH_TYPE(n->suffix));
+				s += strlen(s);
+				break;
 			case DCH_YYY:
 			case DCH_IYY:
 				sprintf(s, "%0*d",
@@ -3896,6 +3910,22 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_IYYY:
 				if (from_char_parse_int(&out->year, &s, n, escontext) < 0)
 					return;
+				out->yysz = 4;
+				SKIP_THth(s, n->suffix);
+				break;
+			case DCH_SYYYY:
+				if (ORA_PARSER != compatible_db)
+					s += pg_mblen(s);
+				len = from_char_parse_int(&out->year, &s, n, escontext);
+				if (len < 0)
+					return;
+				if (ORA_PARSER == compatible_db)
+				{
+					if (out->year < -4712 || out->year > 9999 || out->year == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("YEAR must be between -4713 and +9999, and not be 0")));
+				}
 				out->yysz = 4;
 				SKIP_THth(s, n->suffix);
 				break;
