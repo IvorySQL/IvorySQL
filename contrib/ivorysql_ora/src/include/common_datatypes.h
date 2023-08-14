@@ -42,8 +42,18 @@
 /* common_datatypes.c */
 extern text *ora_dotrim(const char *string, int stringlen, const char *set, int setlen, bool doltrim, bool dortrim);
 
+/* oradate.c */
+extern PGDLLEXPORT Datum oradate_cmp(PG_FUNCTION_ARGS);
+
 /* oratimestamp.c */
 extern void OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod);
+extern PGDLLEXPORT Datum oratimestamp_cmp(PG_FUNCTION_ARGS);
+
+/* oratimestamptz.c */
+extern PGDLLEXPORT Datum oratimestamptz_cmp(PG_FUNCTION_ARGS);
+
+/* oratimestampltz.c */
+extern PGDLLEXPORT Datum oratimestampltz_cmp(PG_FUNCTION_ARGS);
 
 /* dsinterval.c */
 extern Datum dsinterval_out(PG_FUNCTION_ARGS);
@@ -67,3 +77,5 @@ extern PGDLLEXPORT Datum yminterval_le(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum yminterval_ge(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum yminterval_cmp(PG_FUNCTION_ARGS);
 
+/* oravarcharchar.c */
+extern PGDLLEXPORT Datum bt_oravarchar_cmp(PG_FUNCTION_ARGS);

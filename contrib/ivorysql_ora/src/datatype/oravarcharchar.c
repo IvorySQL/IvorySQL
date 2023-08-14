@@ -28,6 +28,7 @@
 #include "fmgr.h"
 #include "catalog/namespace.h"
 #include "utils/xml.h"
+#include "../include/common_datatypes.h"
 
 #define MaxVarcharSize 32767
 

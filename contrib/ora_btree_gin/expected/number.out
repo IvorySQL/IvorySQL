@@ -1,0 +1,220 @@
+-- number check
+CREATE TABLE numbertmp (a number);
+\copy numbertmp from 'data/int8.data'
+\copy numbertmp from 'data/number.data'
+\copy numbertmp from 'data/binary_float.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM numbertmp WHERE a <  -1890.0;
+ count 
+-------
+   417
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <= -1890.0;
+ count 
+-------
+   417
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a  = -1890.0;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >= -1890.0;
+ count 
+-------
+   688
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >  -1890.0;
+ count 
+-------
+   688
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <  'NaN' ;
+ count 
+-------
+  1103
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <= 'NaN' ;
+ count 
+-------
+  1105
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a  = 'NaN' ;
+ count 
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >= 'NaN' ;
+ count 
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >  'NaN' ;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <  0 ;
+ count 
+-------
+   524
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <= 0 ;
+ count 
+-------
+   527
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a  = 0 ;
+ count 
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >= 0 ;
+ count 
+-------
+   581
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >  0 ;
+ count 
+-------
+   578
+(1 row)
+
+CREATE INDEX numberidx ON numbertmp USING gin ( a );
+SET enable_seqscan=off;
+SELECT count(*) FROM numbertmp WHERE a <  -1890.0;
+ count 
+-------
+   417
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <= -1890.0;
+ count 
+-------
+   417
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a  = -1890.0;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >= -1890.0;
+ count 
+-------
+   688
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >  -1890.0;
+ count 
+-------
+   688
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <  'NaN' ;
+ count 
+-------
+  1103
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <= 'NaN' ;
+ count 
+-------
+  1105
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a  = 'NaN' ;
+ count 
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >= 'NaN' ;
+ count 
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >  'NaN' ;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <  0 ;
+ count 
+-------
+   524
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a <= 0 ;
+ count 
+-------
+   527
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a  = 0 ;
+ count 
+-------
+     3
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >= 0 ;
+ count 
+-------
+   581
+(1 row)
+
+SELECT count(*) FROM numbertmp WHERE a >  0 ;
+ count 
+-------
+   578
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM numbertmp WHERE a BETWEEN 1 AND 300 ORDER BY a;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Sort
+   Sort Key: a
+   ->  Bitmap Heap Scan on numbertmp
+         Recheck Cond: ((a >= '1'::number) AND (a <= '300'::number))
+         ->  Bitmap Index Scan on numberidx
+               Index Cond: ((a >= '1'::number) AND (a <= '300'::number))
+(6 rows)
+
+SELECT * FROM numbertmp WHERE a BETWEEN 1 AND 300 ORDER BY a;
+     a      
+------------
+ 11.839394
+ 20.740053
+ 64.593039
+ 108.475352
+ 116.563907
+ 130.449252
+ 145.945556
+ 151.567927
+ 168.847235
+ 172.233984
+ 220.199877
+ 234.904986
+ 239.448960
+ 248.493708
+ 291.009348
+(15 rows)
+
