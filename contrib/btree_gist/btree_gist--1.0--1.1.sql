@@ -88,19 +88,19 @@ ALTER OPERATOR FAMILY gist_float8_ops USING gist ADD
 	FUNCTION	9 (float8, float8) gbt_float8_fetch (internal) ;
 
 ALTER OPERATOR FAMILY gist_timestamp_ops USING gist ADD
-	FUNCTION	9 (timestamp, timestamp) gbt_ts_fetch (internal) ;
+	FUNCTION	9 (pg_catalog.timestamp, pg_catalog.timestamp) gbt_ts_fetch (internal) ;
 
 ALTER OPERATOR FAMILY gist_timestamptz_ops USING gist ADD
-	FUNCTION	9 (timestamptz, timestamptz) gbt_ts_fetch (internal) ;
+	FUNCTION	9 (pg_catalog.timestamptz, pg_catalog.timestamptz) gbt_ts_fetch (internal) ;
 
 ALTER OPERATOR FAMILY gist_time_ops USING gist ADD
-	FUNCTION	9 (time, time) gbt_time_fetch (internal) ;
+	FUNCTION	9 (pg_catalog.time, pg_catalog.time) gbt_time_fetch (internal) ;
 
 ALTER OPERATOR FAMILY gist_date_ops USING gist ADD
-	FUNCTION	9 (date, date) gbt_date_fetch (internal) ;
+	FUNCTION	9 (pg_catalog.date, pg_catalog.date) gbt_date_fetch (internal) ;
 
 ALTER OPERATOR FAMILY gist_interval_ops USING gist ADD
-	FUNCTION	9 (interval, interval) gbt_intv_fetch (internal) ;
+	FUNCTION	9 (pg_catalog.interval, pg_catalog.interval) gbt_intv_fetch (internal) ;
 
 ALTER OPERATOR FAMILY gist_cash_ops USING gist ADD
 	FUNCTION	9 (money, money) gbt_cash_fetch (internal) ;

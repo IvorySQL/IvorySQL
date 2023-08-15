@@ -98,14 +98,14 @@ CREATE OPERATOR <-> (
 	COMMUTATOR = '<->'
 );
 
-CREATE FUNCTION date_dist(date, date)
+CREATE FUNCTION date_dist(pg_catalog.date, pg_catalog.date)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR <-> (
-	LEFTARG = date,
-	RIGHTARG = date,
+	LEFTARG = pg_catalog.date,
+	RIGHTARG = pg_catalog.date,
 	PROCEDURE = date_dist,
 	COMMUTATOR = '<->'
 );
@@ -170,14 +170,14 @@ CREATE OPERATOR <-> (
 	COMMUTATOR = '<->'
 );
 
-CREATE FUNCTION interval_dist(interval, interval)
-RETURNS interval
+CREATE FUNCTION interval_dist(pg_catalog.interval, pg_catalog.interval)
+RETURNS pg_catalog.interval
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR <-> (
-	LEFTARG = interval,
-	RIGHTARG = interval,
+	LEFTARG = pg_catalog.interval,
+	RIGHTARG = pg_catalog.interval,
 	PROCEDURE = interval_dist,
 	COMMUTATOR = '<->'
 );
@@ -194,38 +194,38 @@ CREATE OPERATOR <-> (
 	COMMUTATOR = '<->'
 );
 
-CREATE FUNCTION time_dist(time, time)
-RETURNS interval
+CREATE FUNCTION time_dist(pg_catalog.time, pg_catalog.time)
+RETURNS pg_catalog.interval
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR <-> (
-	LEFTARG = time,
-	RIGHTARG = time,
+	LEFTARG = pg_catalog.time,
+	RIGHTARG = pg_catalog.time,
 	PROCEDURE = time_dist,
 	COMMUTATOR = '<->'
 );
 
-CREATE FUNCTION ts_dist(timestamp, timestamp)
-RETURNS interval
+CREATE FUNCTION ts_dist(pg_catalog.timestamp, pg_catalog.timestamp)
+RETURNS pg_catalog.interval
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR <-> (
-	LEFTARG = timestamp,
-	RIGHTARG = timestamp,
+	LEFTARG = pg_catalog.timestamp,
+	RIGHTARG = pg_catalog.timestamp,
 	PROCEDURE = ts_dist,
 	COMMUTATOR = '<->'
 );
 
-CREATE FUNCTION tstz_dist(timestamptz, timestamptz)
-RETURNS interval
+CREATE FUNCTION tstz_dist(pg_catalog.timestamptz, pg_catalog.timestamptz)
+RETURNS pg_catalog.interval
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR <-> (
-	LEFTARG = timestamptz,
-	RIGHTARG = timestamptz,
+	LEFTARG = pg_catalog.timestamptz,
+	RIGHTARG = pg_catalog.timestamptz,
 	PROCEDURE = tstz_dist,
 	COMMUTATOR = '<->'
 );
@@ -687,27 +687,27 @@ ALTER OPERATOR FAMILY gist_float8_ops USING gist ADD
 --
 --
 --
--- timestamp ops
+-- pg_catalog.timestamp ops
 --
 --
 --
 
-CREATE FUNCTION gbt_ts_consistent(internal,timestamp,int2,oid,internal)
+CREATE FUNCTION gbt_ts_consistent(internal,pg_catalog.timestamp,int2,oid,internal)
 RETURNS bool
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION gbt_ts_distance(internal,timestamp,int2,oid,internal)
+CREATE FUNCTION gbt_ts_distance(internal,pg_catalog.timestamp,int2,oid,internal)
 RETURNS float8
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION gbt_tstz_consistent(internal,timestamptz,int2,oid,internal)
+CREATE FUNCTION gbt_tstz_consistent(internal,pg_catalog.timestamptz,int2,oid,internal)
 RETURNS bool
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION gbt_tstz_distance(internal,timestamptz,int2,oid,internal)
+CREATE FUNCTION gbt_tstz_distance(internal,pg_catalog.timestamptz,int2,oid,internal)
 RETURNS float8
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
@@ -749,14 +749,14 @@ LANGUAGE C IMMUTABLE STRICT;
 
 -- Create the operator class
 CREATE OPERATOR CLASS gist_timestamp_ops
-DEFAULT FOR TYPE timestamp USING gist
+DEFAULT FOR TYPE pg_catalog.timestamp USING gist
 AS
 	OPERATOR	1	<  ,
 	OPERATOR	2	<= ,
 	OPERATOR	3	=  ,
 	OPERATOR	4	>= ,
 	OPERATOR	5	>  ,
-	FUNCTION	1	gbt_ts_consistent (internal, timestamp, int2, oid, internal),
+	FUNCTION	1	gbt_ts_consistent (internal, pg_catalog.timestamp, int2, oid, internal),
 	FUNCTION	2	gbt_ts_union (internal, internal),
 	FUNCTION	3	gbt_ts_compress (internal),
 	FUNCTION	4	gbt_decompress (internal),
@@ -766,21 +766,21 @@ AS
 	STORAGE		gbtreekey16;
 
 ALTER OPERATOR FAMILY gist_timestamp_ops USING gist ADD
-	OPERATOR	6	<> (timestamp, timestamp) ,
-	OPERATOR	15	<-> (timestamp, timestamp) FOR ORDER BY pg_catalog.interval_ops ,
-	FUNCTION	8 (timestamp, timestamp) gbt_ts_distance (internal, timestamp, int2, oid, internal) ,
-	FUNCTION	9 (timestamp, timestamp) gbt_ts_fetch (internal) ;
+	OPERATOR	6	<> (pg_catalog.timestamp, pg_catalog.timestamp) ,
+	OPERATOR	15	<-> (pg_catalog.timestamp, pg_catalog.timestamp) FOR ORDER BY pg_catalog.interval_ops ,
+	FUNCTION	8 (pg_catalog.timestamp, pg_catalog.timestamp) gbt_ts_distance (internal, pg_catalog.timestamp, int2, oid, internal) ,
+	FUNCTION	9 (pg_catalog.timestamp, pg_catalog.timestamp) gbt_ts_fetch (internal) ;
 
 -- Create the operator class
 CREATE OPERATOR CLASS gist_timestamptz_ops
-DEFAULT FOR TYPE timestamptz USING gist
+DEFAULT FOR TYPE pg_catalog.timestamptz USING gist
 AS
 	OPERATOR	1	<  ,
 	OPERATOR	2	<= ,
 	OPERATOR	3	=  ,
 	OPERATOR	4	>= ,
 	OPERATOR	5	>  ,
-	FUNCTION	1	gbt_tstz_consistent (internal, timestamptz, int2, oid, internal),
+	FUNCTION	1	gbt_tstz_consistent (internal, pg_catalog.timestamptz, int2, oid, internal),
 	FUNCTION	2	gbt_ts_union (internal, internal),
 	FUNCTION	3	gbt_tstz_compress (internal),
 	FUNCTION	4	gbt_decompress (internal),
@@ -790,30 +790,30 @@ AS
 	STORAGE		gbtreekey16;
 
 ALTER OPERATOR FAMILY gist_timestamptz_ops USING gist ADD
-	OPERATOR	6	<> (timestamptz, timestamptz) ,
-	OPERATOR	15	<-> (timestamptz, timestamptz) FOR ORDER BY pg_catalog.interval_ops ,
-	FUNCTION	8 (timestamptz, timestamptz) gbt_tstz_distance (internal, timestamptz, int2, oid, internal) ,
-	FUNCTION	9 (timestamptz, timestamptz) gbt_ts_fetch (internal) ;
+	OPERATOR	6	<> (pg_catalog.timestamptz, pg_catalog.timestamptz) ,
+	OPERATOR	15	<-> (pg_catalog.timestamptz, pg_catalog.timestamptz) FOR ORDER BY pg_catalog.interval_ops ,
+	FUNCTION	8 (pg_catalog.timestamptz, pg_catalog.timestamptz) gbt_tstz_distance (internal, pg_catalog.timestamptz, int2, oid, internal) ,
+	FUNCTION	9 (pg_catalog.timestamptz, pg_catalog.timestamptz) gbt_ts_fetch (internal) ;
 
 --
 --
 --
--- time ops
+-- pg_catalog.time ops
 --
 --
 --
 
-CREATE FUNCTION gbt_time_consistent(internal,time,int2,oid,internal)
+CREATE FUNCTION gbt_time_consistent(internal,pg_catalog.time,int2,oid,internal)
 RETURNS bool
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION gbt_time_distance(internal,time,int2,oid,internal)
+CREATE FUNCTION gbt_time_distance(internal,pg_catalog.time,int2,oid,internal)
 RETURNS float8
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION gbt_timetz_consistent(internal,timetz,int2,oid,internal)
+CREATE FUNCTION gbt_timetz_consistent(internal,pg_catalog.timetz,int2,oid,internal)
 RETURNS bool
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
@@ -855,14 +855,14 @@ LANGUAGE C IMMUTABLE STRICT;
 
 -- Create the operator class
 CREATE OPERATOR CLASS gist_time_ops
-DEFAULT FOR TYPE time USING gist
+DEFAULT FOR TYPE pg_catalog.time USING gist
 AS
 	OPERATOR	1	<  ,
 	OPERATOR	2	<= ,
 	OPERATOR	3	=  ,
 	OPERATOR	4	>= ,
 	OPERATOR	5	>  ,
-	FUNCTION	1	gbt_time_consistent (internal, time, int2, oid, internal),
+	FUNCTION	1	gbt_time_consistent (internal, pg_catalog.time, int2, oid, internal),
 	FUNCTION	2	gbt_time_union (internal, internal),
 	FUNCTION	3	gbt_time_compress (internal),
 	FUNCTION	4	gbt_decompress (internal),
@@ -872,21 +872,21 @@ AS
 	STORAGE		gbtreekey16;
 
 ALTER OPERATOR FAMILY gist_time_ops USING gist ADD
-	OPERATOR	6	<> (time, time) ,
-	OPERATOR	15	<-> (time, time) FOR ORDER BY pg_catalog.interval_ops ,
-	FUNCTION	8 (time, time) gbt_time_distance (internal, time, int2, oid, internal) ,
-	FUNCTION	9 (time, time) gbt_time_fetch (internal) ;
+	OPERATOR	6	<> (pg_catalog.time, pg_catalog.time) ,
+	OPERATOR	15	<-> (pg_catalog.time, pg_catalog.time) FOR ORDER BY pg_catalog.interval_ops ,
+	FUNCTION	8 (pg_catalog.time, pg_catalog.time) gbt_time_distance (internal, pg_catalog.time, int2, oid, internal) ,
+	FUNCTION	9 (pg_catalog.time, pg_catalog.time) gbt_time_fetch (internal) ;
 
 
 CREATE OPERATOR CLASS gist_timetz_ops
-DEFAULT FOR TYPE timetz USING gist
+DEFAULT FOR TYPE pg_catalog.timetz USING gist
 AS
 	OPERATOR	1	<   ,
 	OPERATOR	2	<=  ,
 	OPERATOR	3	=   ,
 	OPERATOR	4	>=  ,
 	OPERATOR	5	>   ,
-	FUNCTION	1	gbt_timetz_consistent (internal, timetz, int2, oid, internal),
+	FUNCTION	1	gbt_timetz_consistent (internal, pg_catalog.timetz, int2, oid, internal),
 	FUNCTION	2	gbt_time_union (internal, internal),
 	FUNCTION	3	gbt_timetz_compress (internal),
 	FUNCTION	4	gbt_decompress (internal),
@@ -896,24 +896,24 @@ AS
 	STORAGE		gbtreekey16;
 
 ALTER OPERATOR FAMILY gist_timetz_ops USING gist ADD
-	OPERATOR	6	<> (timetz, timetz) ;
+	OPERATOR	6	<> (pg_catalog.timetz, pg_catalog.timetz) ;
 	-- no 'fetch' function, as the compress function is lossy.
 
 
 --
 --
 --
--- date ops
+-- pg_catalog.date ops
 --
 --
 --
 
-CREATE FUNCTION gbt_date_consistent(internal,date,int2,oid,internal)
+CREATE FUNCTION gbt_date_consistent(internal,pg_catalog.date,int2,oid,internal)
 RETURNS bool
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION gbt_date_distance(internal,date,int2,oid,internal)
+CREATE FUNCTION gbt_date_distance(internal,pg_catalog.date,int2,oid,internal)
 RETURNS float8
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
@@ -950,14 +950,14 @@ LANGUAGE C IMMUTABLE STRICT;
 
 -- Create the operator class
 CREATE OPERATOR CLASS gist_date_ops
-DEFAULT FOR TYPE date USING gist
+DEFAULT FOR TYPE pg_catalog.date USING gist
 AS
 	OPERATOR	1	<  ,
 	OPERATOR	2	<= ,
 	OPERATOR	3	=  ,
 	OPERATOR	4	>= ,
 	OPERATOR	5	>  ,
-	FUNCTION	1	gbt_date_consistent (internal, date, int2, oid, internal),
+	FUNCTION	1	gbt_date_consistent (internal, pg_catalog.date, int2, oid, internal),
 	FUNCTION	2	gbt_date_union (internal, internal),
 	FUNCTION	3	gbt_date_compress (internal),
 	FUNCTION	4	gbt_decompress (internal),
@@ -967,26 +967,26 @@ AS
 	STORAGE		gbtreekey8;
 
 ALTER OPERATOR FAMILY gist_date_ops USING gist ADD
-	OPERATOR	6	<> (date, date) ,
-	OPERATOR	15	<-> (date, date) FOR ORDER BY pg_catalog.integer_ops ,
-	FUNCTION	8 (date, date) gbt_date_distance (internal, date, int2, oid, internal) ,
-	FUNCTION	9 (date, date) gbt_date_fetch (internal) ;
+	OPERATOR	6	<> (pg_catalog.date, pg_catalog.date) ,
+	OPERATOR	15	<-> (pg_catalog.date, pg_catalog.date) FOR ORDER BY pg_catalog.integer_ops ,
+	FUNCTION	8 (pg_catalog.date, pg_catalog.date) gbt_date_distance (internal, pg_catalog.date, int2, oid, internal) ,
+	FUNCTION	9 (pg_catalog.date, pg_catalog.date) gbt_date_fetch (internal) ;
 
 
 --
 --
 --
--- interval ops
+-- pg_catalog.interval ops
 --
 --
 --
 
-CREATE FUNCTION gbt_intv_consistent(internal,interval,int2,oid,internal)
+CREATE FUNCTION gbt_intv_consistent(internal,pg_catalog.interval,int2,oid,internal)
 RETURNS bool
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION gbt_intv_distance(internal,interval,int2,oid,internal)
+CREATE FUNCTION gbt_intv_distance(internal,pg_catalog.interval,int2,oid,internal)
 RETURNS float8
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
@@ -1028,14 +1028,14 @@ LANGUAGE C IMMUTABLE STRICT;
 
 -- Create the operator class
 CREATE OPERATOR CLASS gist_interval_ops
-DEFAULT FOR TYPE interval USING gist
+DEFAULT FOR TYPE pg_catalog.interval USING gist
 AS
 	OPERATOR	1	< ,
 	OPERATOR	2	<= ,
 	OPERATOR	3	= ,
 	OPERATOR	4	>= ,
 	OPERATOR	5	> ,
-	FUNCTION	1	gbt_intv_consistent (internal, interval, int2, oid, internal),
+	FUNCTION	1	gbt_intv_consistent (internal, pg_catalog.interval, int2, oid, internal),
 	FUNCTION	2	gbt_intv_union (internal, internal),
 	FUNCTION	3	gbt_intv_compress (internal),
 	FUNCTION	4	gbt_intv_decompress (internal),
@@ -1045,10 +1045,10 @@ AS
 	STORAGE		gbtreekey32;
 
 ALTER OPERATOR FAMILY gist_interval_ops USING gist ADD
-	OPERATOR	6	<> (interval, interval) ,
-	OPERATOR	15	<-> (interval, interval) FOR ORDER BY pg_catalog.interval_ops ,
-	FUNCTION	8 (interval, interval) gbt_intv_distance (internal, interval, int2, oid, internal) ,
-	FUNCTION	9 (interval, interval) gbt_intv_fetch (internal) ;
+	OPERATOR	6	<> (pg_catalog.interval, pg_catalog.interval) ,
+	OPERATOR	15	<-> (pg_catalog.interval, pg_catalog.interval) FOR ORDER BY pg_catalog.interval_ops ,
+	FUNCTION	8 (pg_catalog.interval, pg_catalog.interval) gbt_intv_distance (internal, pg_catalog.interval, int2, oid, internal) ,
+	FUNCTION	9 (pg_catalog.interval, pg_catalog.interval) gbt_intv_fetch (internal) ;
 
 
 --
