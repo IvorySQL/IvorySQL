@@ -490,3 +490,7 @@ select last_day('2022-08-23') from dual; --err
 select to_date('-2022-09-21','syyyy-mm-dd') from dual;
 select to_timestamp('-20220314121313222','syyyy/mm/dd hh:mi:ss:ff') from dual;
 select to_timestamp_tz('-2022-08-22 10:13:18. 1516 -08:00','SYYYY/MM/DD HH:MI:SS:ff TZH:TZM') from dual;
+create table inytom_tb(ytom_clo interval year to month);
+insert into inytom_tb values(interval '1-   11   ' year to month);
+select * from inytom_tb;
+drop table inytom_tb;

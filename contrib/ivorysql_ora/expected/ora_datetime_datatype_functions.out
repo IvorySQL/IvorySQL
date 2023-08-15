@@ -1406,3 +1406,12 @@ select to_timestamp_tz('-2022-08-22 10:13:18. 1516 -08:00','SYYYY/MM/DD HH:MI:SS
 --------------------------------------
  08-23-2022 01:50:00.151600000 +07:36
 (1 row)
+create table inytom_tb(ytom_clo interval year to month);
+insert into inytom_tb values(interval '1-   11   ' year to month);
+select * from inytom_tb;
+ ytom_clo 
+----------
+ +01-11
+(1 row)
+
+drop table inytom_tb;

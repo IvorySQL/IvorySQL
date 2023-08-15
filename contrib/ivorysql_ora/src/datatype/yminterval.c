@@ -1317,6 +1317,15 @@ yminterval_in(PG_FUNCTION_ARGS)
 					break;
 			}
 		}
+		else if (*strold == '-' && *(strold + 1) == ' ')
+		{
+			*strsrc++ = *strold++;
+			while (*(strold) == ' ')
+				strold++;
+
+			if (*strold == '\0')
+				break;
+		}
 		*strsrc++ = *strold++;
 	}
 	*strsrc = *strold;
