@@ -6088,7 +6088,8 @@ add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
 											 useful_pathkeys,
 											 rel->lateral_relids,
 											 sorted_epq_path,
-											 NIL,	/* no fdw_restrictinfo list */
+											 NIL,	/* no fdw_restrictinfo
+													 * list */
 											 NIL));
 		else
 			add_path(rel, (Path *)
@@ -6876,7 +6877,8 @@ add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 											 total_cost,
 											 root->sort_pathkeys,
 											 NULL,	/* no extra plan */
-											 NIL,	/* no fdw_restrictinfo list */
+											 NIL,	/* no fdw_restrictinfo
+													 * list */
 											 fdw_private);
 
 	/* and add it to the ordered_rel */
@@ -6992,7 +6994,8 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 													   path->total_cost,
 													   path->pathkeys,
 													   NULL,	/* no extra plan */
-													   NIL,	/* no fdw_restrictinfo list */
+													   NIL, /* no fdw_restrictinfo
+															 * list */
 													   NIL);	/* no fdw_private */
 
 				/* and add it to the final_rel */
@@ -7113,7 +7116,7 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 										   total_cost,
 										   pathkeys,
 										   NULL,	/* no extra plan */
-										   NIL,	/* no fdw_restrictinfo list */
+										   NIL, /* no fdw_restrictinfo list */
 										   fdw_private);
 
 	/* and add it to the final_rel */
