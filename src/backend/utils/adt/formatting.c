@@ -2436,6 +2436,7 @@ from_char_parse_int_len(int *dest, const char **src, const int len, FormatNode *
 	char		copy[DCH_MAX_ITEM_SIZ + 1];
 	const char *init = *src;
 	int			used;
+	bool		yyflag = false;
 
 	/*
 	 * Skip any whitespace before parsing the integer.
@@ -2445,8 +2446,13 @@ from_char_parse_int_len(int *dest, const char **src, const int len, FormatNode *
 	Assert(len <= DCH_MAX_ITEM_SIZ);
 	used = (int) strlcpy(copy, *src, len + 1);
 
-	if ((ORA_PARSER != compatible_db || (node->type != NODE_TYPE_END && (node + 1)->type == NODE_TYPE_END)) &&
-		(S_FM(node->suffix) || is_next_separator(node)))
+	if (node && node->key && node->key->name && ORA_PARSER == compatible_db)
+	{
+		if (!pg_strcasecmp(node->key->name, "yy"))
+			yyflag = true;
+	}
+	if (((ORA_PARSER != compatible_db || (node->type != NODE_TYPE_END && (node + 1)->type == NODE_TYPE_END)) && 
+		(S_FM(node->suffix) || is_next_separator(node)))  || yyflag)
 	{
 		/*
 		 * This node is in Fill Mode, or the next node is known to be a
@@ -3961,10 +3967,10 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 						out->year = adjust_partial_year_to_2020(out->year);
 					else
 					{
-						if (len > 2)
+						/*if (len > 2)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("The numeric value does not match the length of the format item.")));
+								  errmsg("The numeric value does not match the length of the format item.")));*/
 						out->year = ora_adjust_partial_year(out->year, n->key->id);
 					}
 				}
