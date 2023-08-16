@@ -414,19 +414,19 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS macaddr_ops
-DEFAULT FOR TYPE pg_catalog.macaddr USING gin
+DEFAULT FOR TYPE macaddr USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       macaddr_cmp(pg_catalog.macaddr,pg_catalog.macaddr),
-    FUNCTION        2       gin_extract_value_macaddr(pg_catalog.macaddr, internal),
-    FUNCTION        3       gin_extract_query_macaddr(pg_catalog.macaddr, internal, int2, internal, internal),
+    FUNCTION        1       macaddr_cmp(macaddr,macaddr),
+    FUNCTION        2       gin_extract_value_macaddr(macaddr, internal),
+    FUNCTION        3       gin_extract_query_macaddr(macaddr, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_macaddr(pg_catalog.macaddr,pg_catalog.macaddr,int2, internal),
-STORAGE         pg_catalog.macaddr;
+    FUNCTION        5       gin_compare_prefix_macaddr(macaddr,macaddr,int2, internal),
+STORAGE         macaddr;
 
 CREATE FUNCTION gin_extract_value_inet(inet, internal)
 RETURNS internal
@@ -488,34 +488,34 @@ AS
     FUNCTION        5       gin_compare_prefix_cidr(cidr,cidr,int2, internal),
 STORAGE         cidr;
 
-CREATE FUNCTION gin_extract_value_text(pg_catalog.text, internal)
+CREATE FUNCTION gin_extract_value_text(text, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_compare_prefix_text(pg_catalog.text, pg_catalog.text, int2, internal)
+CREATE FUNCTION gin_compare_prefix_text(text, text, int2, internal)
 RETURNS int4
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
-CREATE FUNCTION gin_extract_query_text(pg_catalog.text, internal, int2, internal, internal)
+CREATE FUNCTION gin_extract_query_text(text, internal, int2, internal, internal)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT IMMUTABLE;
 
 CREATE OPERATOR CLASS text_ops
-DEFAULT FOR TYPE pg_catalog.text USING gin
+DEFAULT FOR TYPE text USING gin
 AS
     OPERATOR        1       <,
     OPERATOR        2       <=,
     OPERATOR        3       =,
     OPERATOR        4       >=,
     OPERATOR        5       >,
-    FUNCTION        1       bttextcmp(pg_catalog.text,pg_catalog.text),
-    FUNCTION        2       gin_extract_value_text(pg_catalog.text, internal),
-    FUNCTION        3       gin_extract_query_text(pg_catalog.text, internal, int2, internal, internal),
+    FUNCTION        1       bttextcmp(text,text),
+    FUNCTION        2       gin_extract_value_text(text, internal),
+    FUNCTION        3       gin_extract_query_text(text, internal, int2, internal, internal),
     FUNCTION        4       gin_btree_consistent(internal, int2, anyelement, int4, internal, internal),
-    FUNCTION        5       gin_compare_prefix_text(pg_catalog.text,pg_catalog.text,int2, internal),
+    FUNCTION        5       gin_compare_prefix_text(text,text,int2, internal),
 STORAGE         text;
 
 CREATE OPERATOR CLASS varchar_ops
