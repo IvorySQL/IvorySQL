@@ -3422,6 +3422,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 	int			len,
 				value;
 	bool		fx_mode = std;
+	bool		pmamflg = false;
 
 	/* number of extra skipped characters (more than given in format string) */
 	int			extra_skip = 0;
@@ -3548,6 +3549,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				if (!from_char_set_int(&out->pm, value % 2, n, escontext))
 					return;
 				out->clock = CLOCK_12_HOUR;
+				pmamflg = true;
 				break;
 			case DCH_AM:
 			case DCH_PM:
@@ -4055,6 +4057,8 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 		}
 	}
 
+	if (!pmamflg && out->clock == CLOCK_12_HOUR && out->hh == 12 && out->pm == 0)
+		out->pm = 1;
 	/*
 	 * Standard parsing mode doesn't allow unmatched format patterns or
 	 * trailing characters in the input string.

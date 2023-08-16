@@ -524,3 +524,13 @@ create table inytom_tb(ytom_clo interval year to month);
 insert into inytom_tb values(interval '1-   11   ' year to month);
 select * from inytom_tb;
 drop table inytom_tb;
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH.MI.SS.FF AM';
+create table ts_tb(a timestamp);
+insert into ts_tb values('2022-08-19 12.37.05');
+insert into ts_tb values('2022-08-19 12.00.00');
+insert into ts_tb values('2022-08-19 12.59.00');
+insert into ts_tb values('2022-08-19 11.59.59');
+select * from ts_tb;
+drop table ts_tb;
+
+reset nls_timestamp_format;
