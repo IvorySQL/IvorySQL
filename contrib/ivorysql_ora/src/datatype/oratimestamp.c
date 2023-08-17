@@ -64,6 +64,7 @@ PG_FUNCTION_INFO_V1(oratimestamp_cmp_oradate);
 PG_FUNCTION_INFO_V1(oratimestamp_cmp_oratimestamptz);
 PG_FUNCTION_INFO_V1(oratimestamp_cmp_oratimestampltz);
 PG_FUNCTION_INFO_V1(oratimestamp_hash);
+PG_FUNCTION_INFO_V1(oratimestamp_hash_extended);
 PG_FUNCTION_INFO_V1(oratimestamp_smaller);
 PG_FUNCTION_INFO_V1(oratimestamp_larger);
 PG_FUNCTION_INFO_V1(oratimestamp);
@@ -120,7 +121,6 @@ PG_FUNCTION_INFO_V1(number_pl_oratimestamptz);
 void
 OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 {
-#ifdef HAVE_INT64_TIMESTAMP
 	static const int64 TimestampScales[MAX_TIMESTAMP_PRECISION + 1] = {
 		INT64CONST(1000000),
 		INT64CONST(100000),
@@ -140,17 +140,6 @@ OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 		INT64CONST(5),
 		INT64CONST(0)
 	};
-#else
-	static const double TimestampScales[MAX_TIMESTAMP_PRECISION + 1] = {
-		1,
-		10,
-		100,
-		1000,
-		10000,
-		100000,
-		1000000
-	};
-#endif
 
 	if (typmod > MAX_TIMESTAMP_PRECISION)
 		typmod = MAX_TIMESTAMP_PRECISION;
@@ -171,7 +160,6 @@ OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 		 * the integer code always rounds up (away from zero).  Is it worth
 		 * trying to be consistent?
 		 */
-#ifdef HAVE_INT64_TIMESTAMP
 		if (*time >= INT64CONST(0))
 		{
 			*time = ((*time + TimestampOffsets[typmod]) / TimestampScales[typmod]) *
@@ -182,9 +170,6 @@ OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 			*time = -((((-*time) + TimestampOffsets[typmod]) / TimestampScales[typmod])
 					  * TimestampScales[typmod]);
 		}
-#else
-		*time = rint((double) *time * TimestampScales[typmod]) / TimestampScales[typmod];
-#endif
 	}
 }
 
@@ -364,16 +349,7 @@ oratimestamp_recv(PG_FUNCTION_ARGS)
 			   *tm = &tt;
 	fsec_t		fsec;
 
-#ifdef HAVE_INT64_TIMESTAMP
 	timestamp = (Timestamp) pq_getmsgint64(buf);
-#else
-	timestamp = (Timestamp) pq_getmsgfloat8(buf);
-
-	if (isnan(timestamp))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp cannot be NaN")));
-#endif
 
 	/* rangecheck: see if timestamp_out would like it */
 	if (TIMESTAMP_NOT_FINITE(timestamp))
@@ -398,11 +374,7 @@ oratimestamp_send(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 
 	pq_begintypsend(&buf);
-#ifdef HAVE_INT64_TIMESTAMP
 	pq_sendint64(&buf, timestamp);
-#else
-	pq_sendfloat8(&buf, timestamp);
-#endif
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
@@ -737,12 +709,13 @@ oratimestamp_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 Datum
 oratimestamp_hash(PG_FUNCTION_ARGS)
 {
-	/* We can use either hashint8 or hashfloat8 directly */
-#ifdef HAVE_INT64_TIMESTAMP
 	return hashint8(fcinfo);
-#else
-	return hashfloat8(fcinfo);
-#endif
+}
+
+Datum
+oratimestamp_hash_extended(PG_FUNCTION_ARGS)
+{
+	return hashint8extended(fcinfo);
 }
 
 /*****************************************************************************

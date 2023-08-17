@@ -24,6 +24,7 @@
 #include "access/hash.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "common/int128.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -59,7 +60,9 @@ PG_FUNCTION_INFO_V1(mul_d_dsinterval);
 PG_FUNCTION_INFO_V1(dsinterval_div);
 
 PG_FUNCTION_INFO_V1(dsinterval_cmp);
+PG_FUNCTION_INFO_V1(in_range_dsinterval_dsinterval);
 PG_FUNCTION_INFO_V1(dsinterval_hash);
+PG_FUNCTION_INFO_V1(dsinterval_hash_extended);
 
 PG_FUNCTION_INFO_V1(dsinterval_larger);
 PG_FUNCTION_INFO_V1(dsinterval_smaller);
@@ -2426,6 +2429,36 @@ dsinterval_cmp(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(dsinterval_cmp_internal(interval1, interval2));
 }
 
+Datum
+in_range_dsinterval_dsinterval(PG_FUNCTION_ARGS)
+{
+	Interval   *val = PG_GETARG_INTERVAL_P(0);
+	Interval   *base = PG_GETARG_INTERVAL_P(1);
+	Interval   *offset = PG_GETARG_INTERVAL_P(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	Interval   *sum;
+
+	if (int128_compare(dsinterval_cmp_value(offset), int64_to_int128(0)) < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	/* We don't currently bother to avoid overflow hazards here */
+	if (sub)
+		sum = DatumGetIntervalP(DirectFunctionCall2(dsinterval_mi,
+													IntervalPGetDatum(base),
+													IntervalPGetDatum(offset)));
+	else
+		sum = DatumGetIntervalP(DirectFunctionCall2(dsinterval_pl,
+													IntervalPGetDatum(base),
+													IntervalPGetDatum(offset)));
+
+	if (less)
+		PG_RETURN_BOOL(dsinterval_cmp_internal(val, sum) <= 0);
+	else
+		PG_RETURN_BOOL(dsinterval_cmp_internal(val, sum) >= 0);
+}
 
 /*****************************************************************************
  *	 Hash index support procedure 
@@ -2444,11 +2477,21 @@ dsinterval_hash(PG_FUNCTION_ARGS)
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
 	TimeOffset	span = dsinterval_cmp_value(interval);
 
-#ifdef HAVE_INT64_TIMESTAMP
 	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span));
-#else
-	return DirectFunctionCall1(hashfloat8, Float8GetDatumFast(span));
-#endif
+}
+
+Datum
+dsinterval_hash_extended(PG_FUNCTION_ARGS)
+{
+	Interval   *interval = PG_GETARG_INTERVAL_P(0);
+	INT128		span = dsinterval_cmp_value(interval);
+	int64		span64;
+
+	/* Same approach as interval_hash */
+	span64 = int128_to_int64(span);
+
+	return DirectFunctionCall2(hashint8extended, Int64GetDatumFast(span64),
+							   PG_GETARG_DATUM(1));
 }
 
 
