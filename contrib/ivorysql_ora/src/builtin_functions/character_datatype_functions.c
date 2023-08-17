@@ -694,24 +694,20 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	pg_wchar   *data;
 	size_t		data_len;
 	pg_re_flags flags;
+	int			num = 0;
+	bool		flag = false;
 	
-	if (PG_ARGISNULL(0) ||
-		PG_ARGISNULL(1) ||
-		PG_ARGISNULL(2))
+	if (PG_ARGISNULL(2))
 		PG_RETURN_NULL();
 
 	/* get the value of the parameters safely */
-	position = PG_GETARG_INT32(2);
-
+	position = DatumGetInt32(DirectFunctionCall1(numeric_int4, DirectFunctionCall2(numeric_trunc, PG_GETARG_DATUM(2),Int32GetDatum(0))));
+	
 	/* position and occurrence must be positive integer */
 	if (position <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("argument \"%d\" is out of range", position)));
-
-	s = PG_GETARG_TEXT_PP(0);
-	p = PG_GETARG_TEXT_PP(1);
-	src_text_len = VARSIZE_ANY_EXHDR(s);
 
 	if (PG_ARGISNULL(3))
 	{
@@ -720,10 +716,44 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	}
 	else
 	{
+		char	*paramstr = NULL;
 		match_param = PG_GETARG_TEXT_PP(3);
+		paramstr = text_to_cstring(match_param);
+		if (paramstr && paramstr[0] != '\0')
+		{
+			if (paramstr[0] != 'x' && paramstr[0] != 'm' && paramstr[0] != 'i' && 
+				paramstr[0] != 'c' && paramstr[0] != 'n' && paramstr[0] != 'g')
+					ereport(ERROR,
+							 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.")));
+		}
 		ora_parse_re_flags(&flags, match_param);
 	}
 
+	if (PG_ARGISNULL(0) || 
+		PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	s = PG_GETARG_TEXT_PP(0);
+	p = PG_GETARG_TEXT_PP(1);
+	src_text_len = VARSIZE_ANY_EXHDR(s);
+	
+	if (PG_NARGS() == 4)
+	{
+		char	*str = text_to_cstring(s);
+		int 	 len = strlen(str);
+		int 	 i = 0;
+		if (len > 0) 
+		{
+			for (i = 0;i < len; i++)
+			{
+				if (str[i] == '\n')
+					num++;
+			}
+			if (str[len - 1] == '\n')
+				flag = true;
+		}
+	}
 	/* Compile RE */
 	re = RE_compile_and_cache(p, flags.cflags, PG_GET_COLLATION());
 
@@ -775,6 +805,23 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 			search_start++;
 	}
 
+	if (flags.cflags == (REG_ICASE | REG_ADVANCED) || (flags.cflags == REG_ADVANCED))
+	{
+		if (!strncmp(p->vl_dat ,".",1))
+			occurrence_cnt -= num;
+	}	
+	if (flags.cflags == (REG_NEWLINE | REG_ADVANCED) && !strncmp(p->vl_dat ,".",1))
+		occurrence_cnt += num;
+	if (flags.cflags == (REG_NEWLINE | REG_ADVANCED) && !strncmp(p->vl_dat ,"^",1))
+	{
+		if (num)
+			occurrence_cnt = num;
+	}
+	if (flags.cflags ==  REG_ADVANCED && !strncmp(p->vl_dat ,"^",1) && flag)
+	{
+		if (num > 1)
+			occurrence_cnt += 1;
+	}
 	pfree(data);
 
 	PG_RETURN_INT32(occurrence_cnt);

@@ -742,3 +742,289 @@ SELECT INSTRB('CORPORATE FLOOR','OR') "Instring in bytes" FROM DUAL;
  */
 SELECT REPLACE('JACK and JUE','J','BL') "Changes" FROM DUAL;
 SELECT REPLACE('JACK and JUE','J') "Changes" FROM DUAL;
+
+
+/*
+ * REGEXP_COUNT
+ */
+set ivorysql.enable_emptystring_to_NULL to on;
+
+SELECT REGEXP_COUNT(1231, 123::int2, 1::int2, 'c'::char) REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(123123::int4, 2312::int4, 1::int4, 'cd') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(12312312312, 231, 1, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(1231.2312312312355, 1.23, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT('12312312312312355', '123', 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(123123123::int, 123::int, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'i') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 6::int, 'i') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abcd'::text, 3::int, 'i') COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT('Abcdefg'::text, 'c'::varchar, 2, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT('Abcdefg'::varchar2, 'c'::text, 2, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT('Abcacdefg'::text, 'cd'::char, 2, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT('Abcacdefg'::text, 'cd'::char(2), 2, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT('Abcacdefg'::text, 'cd'::text, '2', 'c') REGEXP_COUNT FROM DUAL;
+
+set datestyle to ISO,YMD;
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24.MI.SS.FF';
+SELECT REGEXP_COUNT(to_date('2019-12-12','yy-MM-dd'), to_date('2019-12-12','yy-MM-dd'), 1.9::number, 'c'::char) REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(to_date('2019-12-12','yy-MM-dd'), to_date('2019-12-12','yy-MM-dd'), 1::int, 'c'::char) REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT('2019-12-12 00:00:00'::timestamp, '2019-12-12 00:00:00'::timestamp, 1::int, 'c'::char) REGEXP_COUNT FROM DUAL;
+reset NLS_TIMESTAMP_FORMAT;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 1, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc') COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT(null, null) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(null, null, null) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(null, null, null, null) COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT('', '') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ') COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT('', '', 0) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 0.99) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', -0.9) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', -100) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 100) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 0) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 0.99) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', -0.9) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', -100) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 100) COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT('', '', 1, '') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, ' ') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '0') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'x') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'm') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'i') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'n') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 't') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'dc') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'ie') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '-100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '1') COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT(' ', ' ', 1, ' ') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '0') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'x') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'm') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'i') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'n') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 't') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'dc') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'ie') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '-100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '1') COUNT FROM DUAL;
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 0, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'gg') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 2147483648, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'o') COUNT FROM DUAL;
+
+--20
+select regexp_count('
+hello
+Hello.hello
+good', '.', 1, 'i') from dual; 
+
+--25
+select regexp_count('
+hello
+
+Hello hello
+good
+','.',1,'n') from dual;
+
+--1
+select regexp_count('gooddd', '^', 1, 'm') from dual;
+
+--4
+select regexp_count('
+hello
+Hello.hello
+good
+', '^', 1, 'm') from dual;
+
+--3
+select regexp_count('hello
+Hello.hello
+good', '$', 1, 'm') from dual;
+
+--23
+select regexp_count('hello
+
+Hello.hello
+good', '.', 1, 'n') from dual;
+
+
+/*
+ * length
+ */
+alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS';
+alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS';
+
+select length(192) from dual;
+select length(cast(192 as int2)) from dual;
+select length(cast(192 as int4)) from dual;
+select length(cast(192 as int8)) from dual;
+select length(192.922) from dual;
+select length(cast(192.922 as numeric)) from dual;
+select length('192') from dual;
+select length('Highgo DB!') from dual;
+select length('今天') from dual;
+select length(cast('Highgo DB!' as char(10))) from dual;
+select length(cast('Highgo DB!' as char(20))) from dual;
+select length(cast('Highgo DB!' as varchar(20))) from dual;
+select length(cast('Highgo DB!' as oravarcharchar(20))) from dual;
+select length(cast('Highgo DB!' as oravarcharchar(20))) from dual;
+select length(cast('Highgo DB!' as text)) from dual;
+select length(cast('今天' as text)) from dual;
+select length(cast('今天是Monday' as char(20))) from dual;
+select length(cast('2019-12-12' as date)) from dual;
+select length(cast('2019-12-12' as timestamp)) from dual;
+select length(null) from dual;
+select length('') from dual;
+select length(' ') from dual;
+select length(0::int) from dual;
+select length(-2::int) from dual;
+select length(123.14) from dual;
+select length(cast('2020-06-18 14:40:20' as date)) from dual;
+select length(cast('2020-06-18 14:40:20' as timestamp)) from dual;
+
+/*
+ * lengthb
+ */
+select lengthb(192) from dual;
+--select lengthb(192::int2) from dual;
+select lengthb(192::int4) from dual;
+--select lengthb(192::int8) from dual;
+select lengthb(192.922) from dual;
+select lengthb(cast(192.922 as numeric)) from dual;
+select lengthb(cast(192.922 as number)) from dual;
+select lengthb('192') from dual;
+select lengthb('Highgo DB!') from dual;
+select lengthb('今天') from dual;
+select lengthb(cast('Highgo DB!' as char(10))) from dual;
+select lengthb(cast('Highgo DB!' as char(20))) from dual;
+select lengthb(cast('Highgo DB!' as varchar(20))) from dual;
+select lengthb(cast('Highgo DB!' as varchar2(20))) from dual;
+--select lengthb('Highgo DB!'::nvarchar2(20)) from dual;
+select lengthb(cast('Highgo DB!' as text)) from dual;
+select lengthb(cast('今天' as text)) from dual;
+select lengthb(cast('今天是Monday' as char(20))) from dual;
+select lengthb(cast('2019-12-12' as date)) from dual;
+select lengthb(cast('2019-12-12' as timestamp)) from dual;
+select lengthb(null) from dual;
+select lengthb('') from dual;
+select lengthb(' ') from dual;
+select lengthb(0::int) from dual;
+select lengthb(-2::int) from dual;
+select  lengthb(1234.123) from dual;
+select lengthb(cast('2020-06-18 14:40:20' as date)) from dual;
+select lengthb(cast('2020-06-18 14:40:20' as timestamp)) from dual;
+
+/*
+ * round
+ */
+select round(cast(1.234 as double precision), 2), trunc(cast(1.234 as double precision), 2) from dual;
+select round(cast(1.234 as float), 2), trunc(cast(1.234 as float), 2) from dual;
+select round(cast('1.2345' as oravarcharchar)), trunc(cast('1.2345' as oravarcharchar)) from dual;
+select round(cast('1.2345' as oravarcharchar), 3), trunc(cast('1.2345' as oravarcharchar), 3) from dual;
+select round(cast('1.2345' as oravarcharchar), 6), trunc(cast('1.2345' as oravarcharchar), 6) from dual;
+select round(cast('-1.2345' as oravarcharchar)), trunc(cast('-1.2345' as oravarcharchar)) from dual;
+select round(cast('-1.2345' as oravarcharchar), 3), trunc(cast('-1.2345' as oravarcharchar), 3) from dual;
+select round(cast('-1.2345' as oravarcharbyte), 6), trunc(cast('-1.2345' as oravarcharbyte), 6) from dual;
+select round(cast('12345.12345' as text), -1), trunc(cast('12345.12345' as text), -1) from dual;
+select round('123456') from dual;
+
+/*
+ * trunc
+ */
+select trunc('123456') from dual;
+
+/*
+ * to_char
+ */
+select to_char(22) from dual;
+select to_char(cast(99 as smallint)) from dual;
+select to_char(-44444) from dual;
+select to_char(cast(1234567890123456 as bigint)) from dual;
+select to_char(cast(123.456 as real)) from dual;
+select to_char(cast(1234.5678 as double precision)) from dual;
+select to_char(cast(12345678901234567890 as numeric)) from dual;
+select to_char(1234567890.12345) from dual;
+select to_char(cast('4.00' as numeric)) from dual;
+select to_char(cast('4.0010' as numeric)) from dual;
+select to_char(cast('4.0010' as number)) from dual;
+select to_char('4.0010') from dual;
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('14-Jan08 11:44:49')) from dual;
+set nls_date_format='YY-DDMon HH24:MI:SS';
+select to_char(to_date('14-08Jan 11:44:49')) from dual;
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('21052014 12:13:44')) from dual;
+set nls_date_format='DDMMYY HH24:MI:SS';
+select to_char(to_date('210514 12:13:44')) from dual;
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('2014/04/25 10:13', 'YYYY/MM/DD HH:MI')) from dual;
+set nls_date_format='YY-DDMon HH24:MI:SS';
+select to_char(to_date('16-Feb-09 10:11:11', 'DD-Mon-YY HH:MI:SS')) from dual;
+set nls_date_format='YY-DDMon HH24:MI:SS';
+select to_char(to_date('02/16/09 04:12:12', 'MM/DD/YY HH24:MI:SS')) from dual;
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('021609 111213', 'MMDDYY HHMISS')) from dual;
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('16-Feb-09 11:12:12', 'DD-Mon-YY HH:MI:SS')) from dual;
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('Feb/16/09 11:21:23', 'Mon/DD/YY HH:MI:SS')) from dual;
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('February.16.2009 10:11:12', 'Month.DD.YYYY HH:MI:SS')) from dual;
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('20020315111212', 'yyyymmddhh12miss')) from dual;
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('January 15, 1989, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.')) from dual;
+set nls_date_format='DDMMYY HH24:MI:SS';
+select to_char(to_date('14-Jan08 11:44:49' ,'YY-MonDD HH24:MI:SS')) from dual;
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('14-08Jan 11:44:49','YY-DDMon HH24:MI:SS')) from dual;
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('21052014 12:13:44','DDMMYYYY HH24:MI:SS')) from dual;
+set nls_date_format='DDMMYY HH24:MI:SS';
+select to_char(to_date('210514 12:13:44','DDMMYY HH24:MI:SS')) from dual;
+select to_char(1234567890123456) from dual;
+select to_char(1234.123456789012) from dual;
+
+/*
+ * to_number
+ */
+SELECT to_number(cast('123' as text)) from dual;
+SELECT to_number(cast('123.456' as text)) from dual;
+SELECT to_number(123) from dual;
+SELECT to_number(cast(123 as smallint)) from dual;
+SELECT to_number(cast(123 as int)) from dual;
+SELECT to_number(cast(123 as bigint)) from dual;
+SELECT to_number(cast(123 as numeric)) from dual;
+SELECT to_number(123.456) from dual;
+SELECT to_number(1210.7, 9999.99) from dual;
+SELECT to_number(1210.73, 9999.99) from dual;
+SELECT to_number(1210.733, 9999.99) from dual; --err
+SELECT to_number(cast(1210 as smallint), cast(9999 as smallint)) from dual;
+SELECT to_number(cast(1210 as int), cast(9999 as int)) from dual;
+SELECT to_number(cast(1210 as bigint), cast(9999 as bigint)) from dual;
+SELECT to_number(cast(1210.73 as numeric), cast(9999.99 as numeric)) from dual;
+--select to_number('$12345.67', '$99999999.99') from dual;
+--select to_number('1,2,6,7,8', '99,99,99,9,999') from dual;
+select to_number('1;2;6;7;8', '99,99,99,9,999') from dual; --error
+select to_number('1.1,2,6,7,8', '9999,99,99,9,999') from dual; --error
+select to_number('1.1,2,6,77,8', '9999,99,99,9,999') from dual; --error
+select to_number(123) from dual;
+SELECT to_number(12.34) from dual;
