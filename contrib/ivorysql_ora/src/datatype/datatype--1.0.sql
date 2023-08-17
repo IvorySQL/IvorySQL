@@ -8,6 +8,7 @@ CREATE FUNCTION sys.oracharcharin(cstring,oid,integer)
 RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','oracharcharin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -15,6 +16,7 @@ CREATE FUNCTION sys.oracharcharout(sys.oracharchar)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oracharcharout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -22,6 +24,7 @@ CREATE FUNCTION sys.oracharcharrecv(internal,oid,integer)
 RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','oracharcharrecv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -29,6 +32,7 @@ CREATE FUNCTION sys.oracharcharsend(sys.oracharchar)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oracharcharsend'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -43,6 +47,7 @@ CREATE FUNCTION sys.oracharchartypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oracharchartypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -51,20 +56,25 @@ CREATE FUNCTION sys.oracharcharcmp(sys.oracharchar, sys.oracharchar)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharcharcmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE FUNCTION sys.orachar_bytecmp(sys.oracharchar, sys.oracharbyte)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharcharcmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE FUNCTION sys.oracharchar_sortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','oracharchar_sortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -81,6 +91,7 @@ CREATE FUNCTION sys.oracharchar(sys.oracharchar,integer,boolean)
 RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','oracharchar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -89,6 +100,7 @@ CREATE FUNCTION sys.text(sys.oracharchar)
 RETURNS text
 AS 'MODULE_PATHNAME','rtrim'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -97,6 +109,7 @@ CREATE FUNCTION sys.orachar_char(sys.oracharchar)
 RETURNS pg_catalog.char
 AS 'MODULE_PATHNAME','orachar_char'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -105,6 +118,7 @@ CREATE FUNCTION sys.char_orachar(pg_catalog.char)
 RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','char_orachar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -113,7 +127,9 @@ CREATE FUNCTION sys.orachar_name(sys.oracharchar)
 RETURNS name
 AS 'MODULE_PATHNAME','orachar_name'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 -- Convert name to oracharchar
@@ -121,6 +137,7 @@ CREATE FUNCTION sys.name_orachar(name)
 RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','name_orachar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -145,6 +162,7 @@ CREATE FUNCTION sys.orachar_xml(sys.oracharchar)
 RETURNS xml
 AS 'texttoxml'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -153,14 +171,18 @@ CREATE FUNCTION sys.oracharchar_larger(sys.oracharchar, sys.oracharchar)
 RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','oracharchar_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharchar_smaller(sys.oracharchar, sys.oracharchar)
 RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','oracharchar_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* Operator function (oracharchar, oracharchar) */
@@ -168,42 +190,55 @@ CREATE FUNCTION sys.oracharchareq(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharchareq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharcharne(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharcharle(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharle'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
+
 
 CREATE FUNCTION sys.oracharchargt(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharchargt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharcharlt(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharlt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharcharge(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* Operator function (oracharchar, oracharbyte) */
@@ -211,42 +246,54 @@ CREATE FUNCTION sys.orachar_byteeq(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharchareq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_bytene(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_bytele(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharle'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_bytegt(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharchargt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_bytelt(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharlt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_bytege(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharcharge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 -- Register the basic I/O for 'oracharchar' in pg_type.
@@ -427,6 +474,7 @@ CREATE FUNCTION sys.oracharbytein(cstring,oid,integer)
 RETURNS sys.oracharbyte
 AS 'MODULE_PATHNAME','oracharbytein'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -434,6 +482,7 @@ CREATE FUNCTION sys.oracharbyteout(sys.oracharbyte)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oracharbyteout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -441,6 +490,7 @@ CREATE FUNCTION sys.oracharbyterecv(internal,oid,integer)
 RETURNS sys.oracharbyte
 AS 'MODULE_PATHNAME','oracharbyterecv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -448,6 +498,7 @@ CREATE FUNCTION sys.oracharbytesend(sys.oracharbyte)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oracharbytesend'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -462,6 +513,7 @@ CREATE FUNCTION sys.oracharbytetypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oracharbytetypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -470,23 +522,27 @@ CREATE FUNCTION sys.oracharbytecmp(sys.oracharbyte, sys.oracharbyte)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharbytecmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE FUNCTION sys.orabyte_charcmp(sys.oracharbyte, sys.oracharchar)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharbytecmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE FUNCTION sys.oracharbyte_sortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','oracharbyte_sortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
-
 
 /* Conversion function */
 -- Converts a oracharbyte type to the specified size
@@ -494,6 +550,7 @@ CREATE FUNCTION sys.oracharbyte(sys.oracharbyte,integer,boolean)
 RETURNS sys.oracharbyte
 AS 'MODULE_PATHNAME','oracharbyte'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -502,6 +559,7 @@ CREATE FUNCTION sys.text(sys.oracharbyte)
 RETURNS text
 AS 'MODULE_PATHNAME','rtrim'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -510,6 +568,7 @@ CREATE FUNCTION sys.orachar_char(sys.oracharbyte)
 RETURNS pg_catalog.char
 AS 'MODULE_PATHNAME','orachar_char'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -518,7 +577,9 @@ CREATE FUNCTION sys.orachar_name(sys.oracharbyte)
 RETURNS name
 AS 'MODULE_PATHNAME','orachar_name'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 -- Convert oracharbyte to xml 
@@ -526,6 +587,7 @@ CREATE FUNCTION sys.orachar_xml(sys.oracharbyte)
 RETURNS xml
 AS 'texttoxml'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -534,14 +596,18 @@ CREATE FUNCTION sys.oracharbyte_larger(sys.oracharbyte, sys.oracharbyte)
 RETURNS sys.oracharbyte
 AS 'MODULE_PATHNAME','oracharbyte_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharbyte_smaller(sys.oracharbyte, sys.oracharbyte)
 RETURNS sys.oracharbyte
 AS 'MODULE_PATHNAME','oracharbyte_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* Operator function for (oracharbyte, oracharbyte) */
@@ -549,42 +615,54 @@ CREATE FUNCTION sys.oracharbyteeq(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbyteeq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharbytene(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytene'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharbytele(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytele'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharbytegt(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytegt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharbytelt(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytelt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.oracharbytege(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytege'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* Operator function for (oracharbyte, oracharchar) */
@@ -592,42 +670,54 @@ CREATE FUNCTION sys.orabyte_chareq(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbyteeq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orabyte_charne(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytene'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orabyte_charle(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytele'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orabyte_chargt(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytegt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orabyte_charlt(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytelt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orabyte_charge(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oracharbytege'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 -- Register the basic I/O for 'oracharbyte' in pg_type.
@@ -1112,28 +1202,36 @@ CREATE FUNCTION sys.orachar_pattern_lt(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_le(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_ge(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_gt(sys.oracharchar, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* args type is (sys.oracharbyte, sys.oracharbyte) */
@@ -1141,28 +1239,36 @@ CREATE FUNCTION sys.orachar_pattern_lt(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_le(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_ge(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_gt(sys.oracharbyte, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* args type is (sys.oracharchar, sys.oracharbyte) */
@@ -1170,28 +1276,36 @@ CREATE FUNCTION sys.orachar_pattern_lt(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_le(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_ge(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_gt(sys.oracharchar, sys.oracharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* args type is (sys.oracharbyte, sys.oracharchar) */
@@ -1199,28 +1313,36 @@ CREATE FUNCTION sys.orachar_pattern_lt(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_le(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_ge(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;	
+LEAKPROOF
+IMMUTABLE;
 
 CREATE FUNCTION sys.orachar_pattern_gt(sys.oracharbyte, sys.oracharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','orachar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 /* Index Method Support Routines */
@@ -1228,34 +1350,43 @@ CREATE FUNCTION sys.btorachar_pattern_cmp(sys.oracharchar, sys.oracharchar)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btorachar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.btorachar_pattern_cmp(sys.oracharbyte, sys.oracharbyte)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btorachar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.btorachar_pattern_cmp(sys.oracharchar, sys.oracharbyte)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btorachar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.btorachar_pattern_cmp(sys.oracharbyte, sys.oracharchar)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btorachar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE FUNCTION sys.btoracharchar_pattern_sortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','btoracharchar_pattern_sortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1263,13 +1394,16 @@ CREATE FUNCTION sys.btoracharbyte_pattern_sortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','btoracharbyte_pattern_sortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
+
 
 CREATE FUNCTION sys.btoraequalimage(oid)
 RETURNS boolean
 AS 'btequalimage'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1491,6 +1625,7 @@ CREATE FUNCTION sys.oracharcharhash(sys.oracharchar)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharcharhash'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1498,6 +1633,7 @@ CREATE FUNCTION sys.oracharbytehash(sys.oracharbyte)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharbytehash'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1505,6 +1641,7 @@ CREATE FUNCTION sys.hashoracharcharextended(sys.oracharchar, bigint)
 RETURNS bigint
 AS 'hashbpcharextended'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1512,6 +1649,7 @@ CREATE FUNCTION sys.hashoracharbyteextended(sys.oracharbyte, bigint)
 RETURNS bigint
 AS 'hashbpcharextended'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1568,6 +1706,7 @@ CREATE FUNCTION sys.brin_minmax_opcinfo(internal)
 RETURNS internal
 AS 'brin_minmax_opcinfo'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1575,6 +1714,7 @@ CREATE FUNCTION sys.brin_minmax_add_value(internal, internal, internal, internal
 RETURNS boolean
 AS 'brin_minmax_add_value'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1582,6 +1722,7 @@ CREATE FUNCTION sys.brin_minmax_consistent(internal, internal, internal)
 RETURNS boolean
 AS 'brin_minmax_consistent'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1589,6 +1730,7 @@ CREATE FUNCTION sys.brin_minmax_union(internal, internal, internal)
 RETURNS boolean
 AS 'brin_minmax_union'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1670,6 +1812,7 @@ CREATE FUNCTION sys.oravarcharcharin(cstring,oid,integer)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','oravarcharcharin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1677,6 +1820,7 @@ CREATE FUNCTION sys.oravarcharcharout(sys.oravarcharchar)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oravarcharcharout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1684,6 +1828,7 @@ CREATE FUNCTION sys.oravarcharcharrecv(internal,oid,integer)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','oravarcharcharrecv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -1691,6 +1836,7 @@ CREATE FUNCTION sys.oravarcharcharsend(sys.oravarcharchar)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oravarcharcharsend'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -1698,6 +1844,7 @@ CREATE FUNCTION sys.oravarcharchartypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oravarcharchartypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1705,6 +1852,7 @@ CREATE FUNCTION sys.oravarcharchartypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oravarcharchartypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1714,6 +1862,7 @@ CREATE FUNCTION sys.oravarcharchar(sys.oravarcharchar,integer,boolean)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','oravarcharchar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1722,6 +1871,7 @@ CREATE FUNCTION sys.oravarcharchar_support(internal)
 RETURNS internal
 AS 'varchar_support'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1730,6 +1880,7 @@ CREATE FUNCTION sys.oravarcharchareq(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchareq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1738,6 +1889,7 @@ CREATE FUNCTION sys.oravarcharcharne(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1746,6 +1898,7 @@ CREATE FUNCTION sys.oravarcharcharle(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharle'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1754,6 +1907,7 @@ CREATE FUNCTION sys.oravarcharchargt(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchargt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1762,6 +1916,7 @@ CREATE FUNCTION sys.oravarcharcharlt(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharlt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1770,6 +1925,7 @@ CREATE FUNCTION sys.oravarcharcharge(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1779,6 +1935,7 @@ CREATE FUNCTION sys.oravarcharchareq(sys.oravarcharchar, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchareq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1787,6 +1944,7 @@ CREATE FUNCTION sys.oravarcharcharne(sys.oravarcharchar, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1795,6 +1953,7 @@ CREATE FUNCTION sys.oravarcharcharle(sys.oravarcharchar, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharle'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1803,6 +1962,7 @@ CREATE FUNCTION sys.oravarcharchargt(sys.oravarcharchar, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchargt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1811,6 +1971,7 @@ CREATE FUNCTION sys.oravarcharcharlt(sys.oravarcharchar, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharlt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1819,6 +1980,7 @@ CREATE FUNCTION sys.oravarcharcharge(sys.oravarcharchar, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -1868,6 +2030,7 @@ CREATE FUNCTION sys.oravarchar_regclass(sys.oravarcharchar)
 RETURNS OID 
 AS 'MODULE_PATHNAME','oravarchar_regclass'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -1892,6 +2055,7 @@ CREATE FUNCTION sys.bpchar_oravarchar(pg_catalog.bpchar)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','rtrim'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1912,6 +2076,7 @@ CREATE FUNCTION sys.char_oravarchar(pg_catalog.char)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','char_oravarchar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1924,6 +2089,7 @@ CREATE FUNCTION sys.oravarchar_char(sys.oravarcharchar)
 RETURNS pg_catalog.char
 AS 'MODULE_PATHNAME','oravarchar_char'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1936,6 +2102,7 @@ CREATE FUNCTION sys.name_oravarchar(pg_catalog.name)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','name_oravarchar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -1948,7 +2115,9 @@ CREATE FUNCTION sys.oravarchar_name(sys.oravarcharchar)
 RETURNS pg_catalog.name
 AS 'MODULE_PATHNAME','oravarchar_name'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
+LEAKPROOF
 IMMUTABLE;
 
 CREATE CAST (sys.oravarcharchar AS pg_catalog.name)
@@ -1972,6 +2141,7 @@ CREATE FUNCTION sys.inet_oravarchar(inet)
 RETURNS sys.oravarcharchar
 AS 'network_show'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -1984,6 +2154,7 @@ CREATE FUNCTION sys.bool_oravarchar(pg_catalog.bool)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','bool_oravarchar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2000,6 +2171,7 @@ CREATE FUNCTION sys.oravarchar_xml(sys.oravarcharchar)
 RETURNS pg_catalog.xml
 AS 'MODULE_PATHNAME','oravarchar_xml'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -2069,6 +2241,7 @@ CREATE FUNCTION sys.oravarcharbytein(cstring,oid,integer)
 RETURNS sys.oravarcharbyte
 AS 'MODULE_PATHNAME','oravarcharbytein'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2076,6 +2249,7 @@ CREATE FUNCTION sys.oravarcharbyteout(sys.oravarcharbyte)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oravarcharbyteout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2083,6 +2257,7 @@ CREATE FUNCTION sys.oravarcharbyterecv(internal,oid,integer)
 RETURNS sys.oravarcharbyte
 AS 'MODULE_PATHNAME','oravarcharbyterecv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -2090,6 +2265,7 @@ CREATE FUNCTION sys.oravarcharbytesend(sys.oravarcharbyte)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oravarcharbytesend'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -2097,6 +2273,7 @@ CREATE FUNCTION sys.oravarcharbytetypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oravarcharbytetypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2104,6 +2281,7 @@ CREATE FUNCTION sys.oravarcharbytetypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oravarcharbytetypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2113,6 +2291,7 @@ CREATE FUNCTION sys.oravarcharbyte(sys.oravarcharbyte,integer,boolean)
 RETURNS sys.oravarcharbyte
 AS 'MODULE_PATHNAME','oravarcharbyte'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2121,6 +2300,7 @@ CREATE FUNCTION sys.oravarcharbyte_support(internal)
 RETURNS internal
 AS 'varchar_support'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2129,6 +2309,7 @@ CREATE FUNCTION sys.oravarcharbyteeq(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchareq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2137,6 +2318,7 @@ CREATE FUNCTION sys.oravarcharbytene(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2145,6 +2327,7 @@ CREATE FUNCTION sys.oravarcharbytele(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharle'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2153,6 +2336,7 @@ CREATE FUNCTION sys.oravarcharbytegt(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchargt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2161,6 +2345,7 @@ CREATE FUNCTION sys.oravarcharbytelt(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharlt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2169,6 +2354,7 @@ CREATE FUNCTION sys.oravarcharbytege(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2178,6 +2364,7 @@ CREATE FUNCTION sys.oravarcharbyteeq(sys.oravarcharbyte, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchareq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2186,6 +2373,7 @@ CREATE FUNCTION sys.oravarcharbytene(sys.oravarcharbyte, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2194,6 +2382,7 @@ CREATE FUNCTION sys.oravarcharbytele(sys.oravarcharbyte, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharle'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2202,6 +2391,7 @@ CREATE FUNCTION sys.oravarcharbytegt(sys.oravarcharbyte, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchargt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2210,6 +2400,7 @@ CREATE FUNCTION sys.oravarcharbytelt(sys.oravarcharbyte, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharlt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2218,6 +2409,7 @@ CREATE FUNCTION sys.oravarcharbytege(sys.oravarcharbyte, sys.oravarcharchar)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarcharge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2319,6 +2511,7 @@ CREATE FUNCTION sys.oravarchar_regclass(sys.oravarcharbyte)
 RETURNS OID 
 AS 'MODULE_PATHNAME','oravarchar_regclass'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -2646,6 +2839,7 @@ CREATE FUNCTION sys.bt_oravarchar_cmp(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS integer
 AS 'MODULE_PATHNAME','bt_oravarchar_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2654,6 +2848,7 @@ CREATE FUNCTION sys.bt_oravarchar_cmp(sys.oravarcharchar, sys.oravarcharbyte)
 RETURNS integer
 AS 'MODULE_PATHNAME','bt_oravarchar_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2662,6 +2857,7 @@ CREATE FUNCTION sys.bt_oravarchar_cmp(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS integer
 AS 'MODULE_PATHNAME','bt_oravarchar_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2670,6 +2866,7 @@ CREATE FUNCTION sys.bt_oravarchar_cmp(sys.oravarcharbyte, sys.oravarcharchar)
 RETURNS integer
 AS 'MODULE_PATHNAME','bt_oravarchar_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2679,6 +2876,7 @@ CREATE FUNCTION sys.btoravarcharcharsortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','btoravarcharcharsortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2686,6 +2884,7 @@ CREATE FUNCTION sys.btoravarcharbytesortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','btoravarcharbytesortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2742,6 +2941,7 @@ CREATE FUNCTION sys.hashoravarchar(sys.oravarcharchar)
 RETURNS integer
 AS 'MODULE_PATHNAME','hashoravarchar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2749,6 +2949,7 @@ CREATE FUNCTION sys.hashoravarchar(sys.oravarcharbyte)
 RETURNS integer
 AS 'MODULE_PATHNAME','hashoravarchar'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2756,6 +2957,7 @@ CREATE FUNCTION sys.hashoravarcharcharextended(sys.oravarcharchar, bigint)
 RETURNS bigint
 AS 'hashtextextended'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2763,6 +2965,7 @@ CREATE FUNCTION sys.hashoravarcharbyteextended(sys.oravarcharbyte, bigint)
 RETURNS bigint
 AS 'hashtextextended'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2797,6 +3000,7 @@ CREATE FUNCTION sys.oravarchar_pattern_lt(sys.oravarcharchar, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2805,6 +3009,7 @@ CREATE FUNCTION sys.oravarchar_pattern_le(sys.oravarcharchar, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2813,6 +3018,7 @@ CREATE FUNCTION sys.oravarchar_pattern_ge(sys.oravarcharchar, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2830,6 +3036,7 @@ CREATE FUNCTION sys.oravarchar_pattern_lt(sys.oravarcharbyte, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2838,6 +3045,7 @@ CREATE FUNCTION sys.oravarchar_pattern_le(sys.oravarcharbyte, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2846,6 +3054,7 @@ CREATE FUNCTION sys.oravarchar_pattern_ge(sys.oravarcharbyte, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2854,6 +3063,7 @@ CREATE FUNCTION sys.oravarchar_pattern_gt(sys.oravarcharbyte, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2864,6 +3074,7 @@ CREATE FUNCTION sys.oravarchar_pattern_lt(sys.oravarcharchar, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2872,6 +3083,7 @@ CREATE FUNCTION sys.oravarchar_pattern_le(sys.oravarcharchar, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2880,6 +3092,7 @@ CREATE FUNCTION sys.oravarchar_pattern_ge(sys.oravarcharchar, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2888,6 +3101,7 @@ CREATE FUNCTION sys.oravarchar_pattern_gt(sys.oravarcharchar, sys.oravarcharbyte
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2897,6 +3111,7 @@ CREATE FUNCTION sys.oravarchar_pattern_lt(sys.oravarcharbyte, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2905,6 +3120,7 @@ CREATE FUNCTION sys.oravarchar_pattern_le(sys.oravarcharbyte, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2913,6 +3129,7 @@ CREATE FUNCTION sys.oravarchar_pattern_ge(sys.oravarcharbyte, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2921,6 +3138,7 @@ CREATE FUNCTION sys.oravarchar_pattern_gt(sys.oravarcharbyte, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2930,6 +3148,7 @@ CREATE FUNCTION sys.btoravarchar_pattern_cmp(sys.oravarcharchar, sys.oravarcharc
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btoravarchar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2938,6 +3157,7 @@ CREATE FUNCTION sys.btoravarchar_pattern_cmp(sys.oravarcharbyte, sys.oravarcharb
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btoravarchar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2946,6 +3166,7 @@ CREATE FUNCTION sys.btoravarchar_pattern_cmp(sys.oravarcharchar, sys.oravarcharb
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btoravarchar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2954,6 +3175,7 @@ CREATE FUNCTION sys.btoravarchar_pattern_cmp(sys.oravarcharbyte, sys.oravarcharc
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','btoravarchar_pattern_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -2962,6 +3184,7 @@ CREATE FUNCTION sys.btoravarcharchar_pattern_sortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','btoravarcharchar_pattern_sortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -2969,6 +3192,7 @@ CREATE FUNCTION sys.btoravarcharbyte_pattern_sortsupport(internal)
 RETURNS void
 AS 'MODULE_PATHNAME','btoravarcharbyte_pattern_sortsupport'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3183,7 +3407,6 @@ ALTER OPERATOR FAMILY sys.oravarchar_pattern_ops USING btree ADD
 	FUNCTION        1       sys.btoravarchar_pattern_cmp(sys.oravarcharbyte, sys.oravarcharchar),
 	FUNCTION        2 (sys.oravarcharbyte, sys.oravarcharchar)       sys.btoravarcharbyte_pattern_sortsupport(internal);
 
-
 /* CREATE OPERATOR FAMILY */
 CREATE OPERATOR FAMILY sys.oravarchar_pattern_ops USING hash;
 
@@ -3215,30 +3438,38 @@ CREATE FUNCTION sys.oravarchar_larger(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','oravarchar_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE FUNCTION sys.oravarchar_smaller(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','oravarchar_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 /* Aggregate Function for 'oravarcharbyte'*/
 CREATE FUNCTION sys.oravarchar_larger(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS sys.oravarcharbyte
 AS 'MODULE_PATHNAME','oravarchar_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE FUNCTION sys.oravarchar_smaller(sys.oravarcharbyte, sys.oravarcharbyte)
 RETURNS sys.oravarcharbyte
 AS 'MODULE_PATHNAME','oravarchar_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE AGGREGATE sys.max(sys.oravarcharchar) (
   SFUNC=sys.oravarchar_larger,
@@ -3284,6 +3515,7 @@ CREATE FUNCTION sys.oradate_in(cstring)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_in'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3291,6 +3523,7 @@ CREATE FUNCTION sys.oradate_out(sys.oradate)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oradate_out'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3298,6 +3531,7 @@ CREATE FUNCTION sys.oradate_recv(internal)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_recv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3305,6 +3539,7 @@ CREATE FUNCTION sys.oradate_send(sys.oradate)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oradate_send'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3370,6 +3605,7 @@ CREATE FUNCTION sys.oradate_oratimestamptz(sys.oradate)
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oradate_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3377,6 +3613,7 @@ CREATE FUNCTION sys.oradate_oratimestampltz(sys.oradate)
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oradate_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3398,6 +3635,7 @@ CREATE FUNCTION sys.oradate_eq(sys.oradate, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_eq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -3406,6 +3644,7 @@ CREATE FUNCTION sys.oradate_ne(sys.oradate, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -3414,6 +3653,7 @@ CREATE FUNCTION sys.oradate_lt(sys.oradate, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -3422,6 +3662,7 @@ CREATE FUNCTION sys.oradate_gt(sys.oradate, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -3430,6 +3671,7 @@ CREATE FUNCTION sys.oradate_le(sys.oradate, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -3438,6 +3680,7 @@ CREATE FUNCTION sys.oradate_ge(sys.oradate, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -3504,6 +3747,7 @@ CREATE FUNCTION sys.oradate_eq_oratimestamp(sys.oradate, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_eq_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3511,6 +3755,7 @@ CREATE FUNCTION sys.oradate_ne_oratimestamp(sys.oradate, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ne_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3518,6 +3763,7 @@ CREATE FUNCTION sys.oradate_lt_oratimestamp(sys.oradate, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_lt_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3525,6 +3771,7 @@ CREATE FUNCTION sys.oradate_gt_oratimestamp(sys.oradate, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_gt_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3532,6 +3779,7 @@ CREATE FUNCTION sys.oradate_le_oratimestamp(sys.oradate, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_le_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3539,6 +3787,7 @@ CREATE FUNCTION sys.oradate_ge_oratimestamp(sys.oradate, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ge_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3603,6 +3852,7 @@ CREATE FUNCTION sys.oradate_eq_oratimestamptz(sys.oradate, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_eq_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3610,6 +3860,7 @@ CREATE FUNCTION sys.oradate_ne_oratimestamptz(sys.oradate, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ne_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3617,6 +3868,7 @@ CREATE FUNCTION sys.oradate_lt_oratimestamptz(sys.oradate, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_lt_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3624,6 +3876,7 @@ CREATE FUNCTION sys.oradate_gt_oratimestamptz(sys.oradate, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_gt_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3638,6 +3891,7 @@ CREATE FUNCTION sys.oradate_ge_oratimestamptz(sys.oradate, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ge_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3702,6 +3956,7 @@ CREATE FUNCTION sys.oradate_eq_oratimestampltz(sys.oradate, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_eq_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3709,6 +3964,7 @@ CREATE FUNCTION sys.oradate_ne_oratimestampltz(sys.oradate, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ne_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3716,6 +3972,7 @@ CREATE FUNCTION sys.oradate_lt_oratimestampltz(sys.oradate, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_lt_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3723,6 +3980,7 @@ CREATE FUNCTION sys.oradate_gt_oratimestampltz(sys.oradate, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_gt_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3730,6 +3988,7 @@ CREATE FUNCTION sys.oradate_le_oratimestampltz(sys.oradate, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_le_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
@@ -3737,6 +3996,7 @@ CREATE FUNCTION sys.oradate_ge_oratimestampltz(sys.oradate, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_ge_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3805,6 +4065,7 @@ CREATE FUNCTION sys.oradate_cmp(sys.oradate, sys.oradate)
 RETURNS integer
 AS 'MODULE_PATHNAME','oradate_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -3813,6 +4074,7 @@ CREATE FUNCTION sys.oradate_cmp_oratimestamp(sys.oradate, sys.oratimestamp)
 RETURNS integer
 AS 'MODULE_PATHNAME','oradate_cmp_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3820,6 +4082,7 @@ CREATE FUNCTION sys.oradate_cmp_oratimestamptz(sys.oradate, sys.oratimestamptz)
 RETURNS integer
 AS 'MODULE_PATHNAME','oradate_cmp_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3827,6 +4090,7 @@ CREATE FUNCTION sys.oradate_cmp_oratimestampltz(sys.oradate, sys.oratimestampltz
 RETURNS integer
 AS 'MODULE_PATHNAME','oradate_cmp_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3834,6 +4098,7 @@ CREATE FUNCTION sys.oradate_sortsupport(internal)
 RETURNS void
 AS 'timestamp_sortsupport'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3849,7 +4114,8 @@ CREATE OPERATOR CLASS sys.oradate_ops
         OPERATOR        4       >= (sys.oradate, sys.oradate),
         OPERATOR        5       > (sys.oradate, sys.oradate),
         FUNCTION        1       sys.oradate_cmp(sys.oradate, sys.oradate),
-		FUNCTION		2		sys.oradate_sortsupport(internal);
+		FUNCTION		2		sys.oradate_sortsupport(internal),
+		FUNCTION		4		(sys.oradate, sys.oradate) sys.btoraequalimage(oid);
 
 ALTER OPERATOR FAMILY sys.oradatetime_ops USING btree ADD
 	-- Cross data type comparison
@@ -3879,13 +4145,23 @@ CREATE FUNCTION sys.oradate_hash(sys.oradate)
 RETURNS integer
 AS 'MODULE_PATHNAME','oradate_hash'
 LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.oradate_hash_extended(sys.oradate, int8)
+RETURNS bigint
+AS 'MODULE_PATHNAME','oradate_hash_extended'
+LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE OPERATOR CLASS sys.oradate_ops
     DEFAULT FOR TYPE sys.oradate USING hash AS
 		OPERATOR        1       = (sys.oradate, sys.oradate),
-        FUNCTION        1       sys.oradate_hash(sys.oradate);		
+		FUNCTION        1       sys.oradate_hash(sys.oradate),
+		FUNCTION        2       sys.oradate_hash_extended(sys.oradate, int8);
 
 /*
  * Brin index support
@@ -3931,6 +4207,7 @@ CREATE FUNCTION sys.oradate_larger(sys.oradate, sys.oradate)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3938,6 +4215,7 @@ CREATE FUNCTION sys.oradate_smaller(sys.oradate, sys.oradate)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3961,6 +4239,7 @@ CREATE FUNCTION sys.oratimestamp_in(cstring, oid, integer)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_in'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3968,6 +4247,7 @@ CREATE FUNCTION sys.oratimestamp_out(sys.oratimestamp)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oratimestamp_out'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -3975,6 +4255,7 @@ CREATE FUNCTION sys.oratimestamp_recv(internal, oid, integer)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_recv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3982,6 +4263,7 @@ CREATE FUNCTION sys.oratimestamp_send(sys.oratimestamp)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oratimestamp_send'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3989,6 +4271,7 @@ CREATE FUNCTION sys.oratimestamptypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamptypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3996,6 +4279,7 @@ CREATE FUNCTION sys.oratimestamptypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oratimestamptypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4065,6 +4349,7 @@ CREATE FUNCTION sys.oratimestamp(sys.oratimestamp,integer)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4076,6 +4361,7 @@ CREATE FUNCTION sys.oratimestamp_oradate(sys.oratimestamp)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamp_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4087,6 +4373,7 @@ CREATE FUNCTION sys.oratimestamp_oratimestamptz(sys.oratimestamp)
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamp_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4098,6 +4385,7 @@ CREATE FUNCTION sys.oratimestamp_oratimestampltz(sys.oratimestamp)
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestamp_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4110,6 +4398,7 @@ CREATE FUNCTION sys.oratimestamp_eq(sys.oratimestamp, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_eq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -4118,6 +4407,7 @@ CREATE FUNCTION sys.oratimestamp_ne(sys.oratimestamp, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -4126,30 +4416,34 @@ CREATE FUNCTION sys.oratimestamp_lt(sys.oratimestamp, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamp_gt(sys.oratimestamp, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamp_le(sys.oratimestamp, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamp_ge(sys.oratimestamp, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -4216,41 +4510,47 @@ CREATE FUNCTION sys.oratimestamp_eq_oradate(sys.oratimestamp, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_eq_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_ne_oradate(sys.oratimestamp, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ne_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_lt_oradate(sys.oratimestamp, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_lt_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_gt_oradate(sys.oratimestamp, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_gt_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_le_oradate(sys.oratimestamp, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_le_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_ge_oradate(sys.oratimestamp, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ge_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4315,41 +4615,47 @@ CREATE FUNCTION sys.oratimestamp_eq_oratimestamptz(sys.oratimestamp, sys.oratime
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_eq_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_ne_oratimestamptz(sys.oratimestamp, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ne_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_lt_oratimestamptz(sys.oratimestamp, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_lt_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_gt_oratimestamptz(sys.oratimestamp, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_gt_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_le_oratimestamptz(sys.oratimestamp, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_le_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_ge_oratimestamptz(sys.oratimestamp, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ge_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4414,41 +4720,47 @@ CREATE FUNCTION sys.oratimestamp_eq_oratimestampltz(sys.oratimestamp, sys.oratim
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_eq_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_ne_oratimestampltz(sys.oratimestamp, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ne_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_lt_oratimestampltz(sys.oratimestamp, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_lt_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_gt_oratimestampltz(sys.oratimestamp, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_gt_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_le_oratimestampltz(sys.oratimestamp, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_le_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamp_ge_oratimestampltz(sys.oratimestamp, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamp_ge_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4516,6 +4828,7 @@ CREATE FUNCTION sys.oratimestamp_cmp(sys.oratimestamp, sys.oratimestamp)
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamp_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -4524,6 +4837,7 @@ CREATE FUNCTION sys.oratimestamp_cmp_oradate(sys.oratimestamp, sys.oradate)
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamp_cmp_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4531,6 +4845,7 @@ CREATE FUNCTION sys.oratimestamp_cmp_oratimestamptz(sys.oratimestamp, sys.oratim
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamp_cmp_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4538,6 +4853,7 @@ CREATE FUNCTION sys.oratimestamp_cmp_oratimestampltz(sys.oratimestamp, sys.orati
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamp_cmp_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4545,6 +4861,7 @@ CREATE FUNCTION sys.oratimestamp_sortsupport(internal)
 RETURNS void
 AS 'timestamp_sortsupport'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4557,8 +4874,9 @@ CREATE OPERATOR CLASS sys.oratimestamp_ops
         OPERATOR        4       >= (sys.oratimestamp, sys.oratimestamp),
         OPERATOR        5       > (sys.oratimestamp, sys.oratimestamp),
         FUNCTION        1       sys.oratimestamp_cmp(sys.oratimestamp, sys.oratimestamp),
-		FUNCTION		2		sys.oratimestamp_sortsupport(internal);
-		
+		FUNCTION		2		sys.oratimestamp_sortsupport(internal),
+		FUNCTION		4		(sys.oratimestamp, sys.oratimestamp) sys.btoraequalimage(oid);
+
 ALTER OPERATOR FAMILY sys.oradatetime_ops USING btree ADD
 	-- Cross data type comparison
 	OPERATOR        1       < (sys.oratimestamp, sys.oradate),
@@ -4587,13 +4905,23 @@ CREATE FUNCTION sys.oratimestamp_hash(sys.oratimestamp)
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamp_hash'
 LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.oratimestamp_hash_extended(sys.oratimestamp, int8)
+RETURNS bigint
+AS 'MODULE_PATHNAME','oratimestamp_hash_extended'
+LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE OPERATOR CLASS sys.oratimestamp_ops
     DEFAULT FOR TYPE sys.oratimestamp USING hash AS
 		OPERATOR        1       = (sys.oratimestamp, sys.oratimestamp),
-        FUNCTION        1       sys.oratimestamp_hash(sys.oratimestamp);		
+		FUNCTION        1       sys.oratimestamp_hash(sys.oratimestamp),
+		FUNCTION        2       sys.oratimestamp_hash_extended(sys.oratimestamp, int8);
 
 /*
  * Brin index support
@@ -4636,6 +4964,7 @@ CREATE FUNCTION sys.oratimestamp_larger(sys.oratimestamp, sys.oratimestamp)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4643,6 +4972,7 @@ CREATE FUNCTION sys.oratimestamp_smaller(sys.oratimestamp, sys.oratimestamp)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4666,6 +4996,7 @@ CREATE FUNCTION sys.oratimestamptz_in(cstring, oid, integer)
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_in'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4673,6 +5004,7 @@ CREATE FUNCTION sys.oratimestamptz_out(sys.oratimestamptz)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oratimestamptz_out'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4680,6 +5012,7 @@ CREATE FUNCTION sys.oratimestamptz_recv(internal, oid, integer)
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_recv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4687,6 +5020,7 @@ CREATE FUNCTION sys.oratimestamptz_send(sys.oratimestamptz)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oratimestamptz_send'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4694,6 +5028,7 @@ CREATE FUNCTION sys.oratimestamptztypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamptztypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4701,6 +5036,7 @@ CREATE FUNCTION sys.oratimestamptztypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oratimestamptztypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4768,6 +5104,7 @@ CREATE FUNCTION sys.oratimestamptz(sys.oratimestamptz,integer)
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -4779,6 +5116,7 @@ CREATE FUNCTION sys.oratimestamptz_oradate(sys.oratimestamptz)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamptz_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4790,6 +5128,7 @@ CREATE FUNCTION sys.oratimestamptz_oratimestamp(sys.oratimestamptz)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamptz_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -4806,46 +5145,52 @@ CREATE FUNCTION sys.oratimestamptz_eq(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_eq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ne(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamptz_lt(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamptz_gt(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamptz_le(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ge(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -4912,41 +5257,47 @@ CREATE FUNCTION sys.oratimestamptz_eq_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_eq_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ne_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ne_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_lt_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_lt_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_gt_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_gt_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_le_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_le_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ge_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ge_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5011,41 +5362,47 @@ CREATE FUNCTION sys.oratimestamptz_eq_oratimestamp(sys.oratimestamptz, sys.orati
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_eq_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ne_oratimestamp(sys.oratimestamptz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ne_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_lt_oratimestamp(sys.oratimestamptz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_lt_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_gt_oratimestamp(sys.oratimestamptz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_gt_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_le_oratimestamp(sys.oratimestamptz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_le_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ge_oratimestamp(sys.oratimestamptz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ge_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5110,41 +5467,47 @@ CREATE FUNCTION sys.oratimestamptz_eq_oratimestampltz(sys.oratimestamptz, sys.or
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_eq_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ne_oratimestampltz(sys.oratimestamptz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ne_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_lt_oratimestampltz(sys.oratimestamptz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_lt_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_gt_oratimestampltz(sys.oratimestamptz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_gt_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_le_oratimestampltz(sys.oratimestamptz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_le_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestamptz_ge_oratimestampltz(sys.oratimestamptz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestamptz_ge_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5212,6 +5575,7 @@ CREATE FUNCTION sys.oratimestamptz_cmp(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamptz_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -5220,6 +5584,7 @@ CREATE FUNCTION sys.oratimestamptz_cmp_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamptz_cmp_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5227,6 +5592,7 @@ CREATE FUNCTION sys.oratimestamptz_cmp_oratimestamp(sys.oratimestamptz, sys.orat
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamptz_cmp_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5234,6 +5600,7 @@ CREATE FUNCTION sys.oratimestamptz_cmp_oratimestampltz(sys.oratimestamptz, sys.o
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamptz_cmp_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5241,6 +5608,7 @@ CREATE FUNCTION sys.oratimestamptz_sortsupport(internal)
 RETURNS void
 AS 'timestamp_sortsupport'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5283,6 +5651,7 @@ CREATE FUNCTION sys.oratimestamptz_hash(sys.oratimestamptz)
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestamptz_hash'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5333,6 +5702,7 @@ CREATE FUNCTION sys.oratimestamptz_larger(sys.oratimestamptz, sys.oratimestamptz
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5340,6 +5710,7 @@ CREATE FUNCTION sys.oratimestamptz_smaller(sys.oratimestamptz, sys.oratimestampt
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5363,6 +5734,7 @@ CREATE FUNCTION sys.oratimestampltz_in(cstring, oid, integer)
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestampltz_in'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5370,6 +5742,7 @@ CREATE FUNCTION sys.oratimestampltz_out(sys.oratimestampltz)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oratimestampltz_out'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5377,6 +5750,7 @@ CREATE FUNCTION sys.oratimestampltz_recv(internal, oid, integer)
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestampltz_recv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5384,6 +5758,7 @@ CREATE FUNCTION sys.oratimestampltz_send(sys.oratimestampltz)
 RETURNS bytea
 AS 'MODULE_PATHNAME','oratimestampltz_send'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5391,6 +5766,7 @@ CREATE FUNCTION sys.oratimestampltztypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestampltztypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5398,6 +5774,7 @@ CREATE FUNCTION sys.oratimestampltztypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oratimestampltztypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5457,6 +5834,7 @@ CREATE FUNCTION sys.oratimestampltz(sys.oratimestampltz,integer)
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5468,6 +5846,7 @@ CREATE FUNCTION sys.oratimestampltz_oradate(sys.oratimestampltz)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestampltz_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5479,6 +5858,7 @@ CREATE FUNCTION sys.oratimestampltz_oratimestamp(sys.oratimestampltz)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestampltz_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5495,46 +5875,52 @@ CREATE FUNCTION sys.oratimestampltz_eq(sys.oratimestampltz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_eq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ne(sys.oratimestampltz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestampltz_lt(sys.oratimestampltz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestampltz_gt(sys.oratimestampltz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestampltz_le(sys.oratimestampltz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ge(sys.oratimestampltz, sys.oratimestampltz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -5601,41 +5987,47 @@ CREATE FUNCTION sys.oratimestampltz_eq_oradate(sys.oratimestampltz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_eq_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ne_oradate(sys.oratimestampltz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ne_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_lt_oradate(sys.oratimestampltz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_lt_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_gt_oradate(sys.oratimestampltz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_gt_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_le_oradate(sys.oratimestampltz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_le_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ge_oradate(sys.oratimestampltz, sys.oradate)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ge_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5700,41 +6092,47 @@ CREATE FUNCTION sys.oratimestampltz_eq_oratimestamp(sys.oratimestampltz, sys.ora
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_eq_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ne_oratimestamp(sys.oratimestampltz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ne_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_lt_oratimestamp(sys.oratimestampltz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_lt_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_gt_oratimestamp(sys.oratimestampltz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_gt_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_le_oratimestamp(sys.oratimestampltz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_le_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ge_oratimestamp(sys.oratimestampltz, sys.oratimestamp)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ge_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5799,41 +6197,47 @@ CREATE FUNCTION sys.oratimestampltz_eq_oratimestamptz(sys.oratimestampltz, sys.o
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_eq_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ne_oratimestamptz(sys.oratimestampltz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ne_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_lt_oratimestamptz(sys.oratimestampltz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_lt_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_gt_oratimestamptz(sys.oratimestampltz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_gt_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_le_oratimestamptz(sys.oratimestampltz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_le_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
- 
+
 CREATE FUNCTION sys.oratimestampltz_ge_oratimestamptz(sys.oratimestampltz, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oratimestampltz_ge_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5901,6 +6305,7 @@ CREATE FUNCTION sys.oratimestampltz_cmp(sys.oratimestampltz, sys.oratimestampltz
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestampltz_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -5909,6 +6314,7 @@ CREATE FUNCTION sys.oratimestampltz_cmp_oradate(sys.oratimestampltz, sys.oradate
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestampltz_cmp_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5916,6 +6322,7 @@ CREATE FUNCTION sys.oratimestampltz_cmp_oratimestamp(sys.oratimestampltz, sys.or
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestampltz_cmp_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5923,6 +6330,7 @@ CREATE FUNCTION sys.oratimestampltz_cmp_oratimestamptz(sys.oratimestampltz, sys.
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestampltz_cmp_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -5930,6 +6338,7 @@ CREATE FUNCTION sys.oratimestampltz_sortsupport(internal)
 RETURNS void
 AS 'timestamp_sortsupport'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -5942,8 +6351,9 @@ CREATE OPERATOR CLASS sys.oratimestampltz_ops
         OPERATOR        4       >= (sys.oratimestampltz, sys.oratimestampltz),
         OPERATOR        5       > (sys.oratimestampltz, sys.oratimestampltz),
         FUNCTION        1       sys.oratimestampltz_cmp(sys.oratimestampltz, sys.oratimestampltz),
-		FUNCTION		2		sys.oratimestampltz_sortsupport(internal);
-		
+		FUNCTION		2		sys.oratimestampltz_sortsupport(internal),
+		FUNCTION		4		(sys.oratimestampltz, sys.oratimestampltz) sys.btoraequalimage(oid);
+
 ALTER OPERATOR FAMILY sys.oradatetime_ops USING btree ADD
 	-- Cross data type comparison
 	OPERATOR        1       < (sys.oratimestampltz, sys.oradate),
@@ -5973,13 +6383,23 @@ CREATE FUNCTION sys.oratimestampltz_hash(sys.oratimestampltz)
 RETURNS integer
 AS 'MODULE_PATHNAME','oratimestampltz_hash'
 LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.oratimestampltz_hash_extended(sys.oratimestampltz, int8)
+RETURNS bigint
+AS 'MODULE_PATHNAME','oratimestamp_hash_extended'
+LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE OPERATOR CLASS sys.oratimestampltz_ops
     DEFAULT FOR TYPE sys.oratimestampltz USING hash AS
 		OPERATOR        1       = (sys.oratimestampltz, sys.oratimestampltz),
-        FUNCTION        1       sys.oratimestampltz_hash(sys.oratimestampltz);		
+		FUNCTION        1       sys.oratimestampltz_hash(sys.oratimestampltz),
+		FUNCTION        2       sys.oratimestampltz_hash_extended(sys.oratimestampltz, int8);
 
 /*
  * Brin index support
@@ -6022,6 +6442,7 @@ CREATE FUNCTION sys.oratimestampltz_larger(sys.oratimestampltz, sys.oratimestamp
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestampltz_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6029,6 +6450,7 @@ CREATE FUNCTION sys.oratimestampltz_smaller(sys.oratimestampltz, sys.oratimestam
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestampltz_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6052,6 +6474,7 @@ CREATE FUNCTION sys.yminterval_in(cstring, oid, integer)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_in'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -6059,6 +6482,7 @@ CREATE FUNCTION sys.yminterval_out(sys.yminterval)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','yminterval_out'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -6066,6 +6490,7 @@ CREATE FUNCTION sys.yminterval_recv(internal, oid, integer)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_recv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6073,6 +6498,7 @@ CREATE FUNCTION sys.yminterval_send(sys.yminterval)
 RETURNS bytea
 AS 'MODULE_PATHNAME','yminterval_send'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6080,6 +6506,7 @@ CREATE FUNCTION sys.ymintervaltypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','ymintervaltypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6087,6 +6514,7 @@ CREATE FUNCTION sys.ymintervaltypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','ymintervaltypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6130,6 +6558,7 @@ CREATE FUNCTION sys.yminterval(sys.yminterval, integer)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6160,6 +6589,7 @@ CREATE FUNCTION sys.yminterval_eq(sys.yminterval, sys.yminterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','yminterval_eq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6168,6 +6598,7 @@ CREATE FUNCTION sys.yminterval_ne(sys.yminterval, sys.yminterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','yminterval_ne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6176,6 +6607,7 @@ CREATE FUNCTION sys.yminterval_lt(sys.yminterval, sys.yminterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','yminterval_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6184,6 +6616,7 @@ CREATE FUNCTION sys.yminterval_gt(sys.yminterval, sys.yminterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','yminterval_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6192,6 +6625,7 @@ CREATE FUNCTION sys.yminterval_le(sys.yminterval, sys.yminterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','yminterval_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6200,6 +6634,7 @@ CREATE FUNCTION sys.yminterval_ge(sys.yminterval, sys.yminterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','yminterval_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6209,6 +6644,7 @@ CREATE FUNCTION sys.yminterval_mi(sys.yminterval, sys.yminterval)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6216,6 +6652,7 @@ CREATE FUNCTION sys.yminterval_pl(sys.yminterval, sys.yminterval)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_pl'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6301,9 +6738,18 @@ CREATE FUNCTION sys.yminterval_cmp(sys.yminterval, sys.yminterval)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','yminterval_cmp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
+
+CREATE FUNCTION sys.ymin_range(sys.yminterval, sys.yminterval, sys.yminterval, bool, bool)
+RETURNS boolean
+AS 'MODULE_PATHNAME','in_range_yminterval_yminterval'
+LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
 
 CREATE OPERATOR CLASS sys.yminterval_ops
     DEFAULT FOR TYPE sys.yminterval USING btree AS
@@ -6312,7 +6758,9 @@ CREATE OPERATOR CLASS sys.yminterval_ops
         OPERATOR        3       = (sys.yminterval, sys.yminterval),
         OPERATOR        4       >= (sys.yminterval, sys.yminterval),
         OPERATOR        5       > (sys.yminterval, sys.yminterval),
-        FUNCTION        1       sys.yminterval_cmp(sys.yminterval, sys.yminterval);
+        FUNCTION        1       sys.yminterval_cmp(sys.yminterval, sys.yminterval),
+        FUNCTION        3       sys.ymin_range(sys.yminterval, sys.yminterval, sys.yminterval, bool, bool),
+        FUNCTION        4       (sys.yminterval, sys.yminterval) sys.btoraequalimage(oid);
 
 --
 -- HASH index support
@@ -6321,13 +6769,23 @@ CREATE FUNCTION sys.yminterval_hash(sys.yminterval)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','yminterval_hash'
 LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.yminterval_hash_extended(sys.yminterval, int8)
+RETURNS bigint
+AS 'MODULE_PATHNAME','yminterval_hash_extended'
+LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE OPERATOR CLASS sys.yminterval_ops
     DEFAULT FOR TYPE sys.yminterval USING hash AS
 		OPERATOR        1       = (sys.yminterval, sys.yminterval),
-        FUNCTION        1       sys.yminterval_hash(sys.yminterval);
+        FUNCTION        1       sys.yminterval_hash(sys.yminterval),
+        FUNCTION        2       sys.yminterval_hash_extended(sys.yminterval, int8);
 
 --
 -- BRIN index support
@@ -6349,6 +6807,7 @@ CREATE FUNCTION sys.yminterval_larger(sys.yminterval, sys.yminterval)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6356,6 +6815,7 @@ CREATE FUNCTION sys.yminterval_smaller(sys.yminterval, sys.yminterval)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6379,6 +6839,7 @@ CREATE FUNCTION sys.dsinterval_in(cstring, oid, integer)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_in'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -6386,6 +6847,7 @@ CREATE FUNCTION sys.dsinterval_out(sys.dsinterval)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','dsinterval_out'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -6393,6 +6855,7 @@ CREATE FUNCTION sys.dsinterval_recv(internal, oid, integer)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_recv'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6400,6 +6863,7 @@ CREATE FUNCTION sys.dsinterval_send(sys.dsinterval)
 RETURNS bytea
 AS 'MODULE_PATHNAME','dsinterval_send'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6407,6 +6871,7 @@ CREATE FUNCTION sys.dsintervaltypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','dsintervaltypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6414,6 +6879,7 @@ CREATE FUNCTION sys.dsintervaltypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','dsintervaltypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6455,6 +6921,7 @@ CREATE FUNCTION sys.dsinterval(sys.dsinterval, integer)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6485,6 +6952,7 @@ CREATE FUNCTION sys.dsinterval_eq(sys.dsinterval, sys.dsinterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','dsinterval_eq'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6493,6 +6961,7 @@ CREATE FUNCTION sys.dsinterval_ne(sys.dsinterval, sys.dsinterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','dsinterval_ne'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6501,6 +6970,7 @@ CREATE FUNCTION sys.dsinterval_lt(sys.dsinterval, sys.dsinterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','dsinterval_lt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6509,6 +6979,7 @@ CREATE FUNCTION sys.dsinterval_gt(sys.dsinterval, sys.dsinterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','dsinterval_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6517,6 +6988,7 @@ CREATE FUNCTION sys.dsinterval_le(sys.dsinterval, sys.dsinterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','dsinterval_le'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6525,6 +6997,7 @@ CREATE FUNCTION sys.dsinterval_ge(sys.dsinterval, sys.dsinterval)
 RETURNS boolean
 AS 'MODULE_PATHNAME','dsinterval_ge'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6591,6 +7064,7 @@ CREATE FUNCTION sys.dsinterval_pl(sys.dsinterval, sys.dsinterval)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_pl'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6598,6 +7072,7 @@ CREATE FUNCTION sys.dsinterval_mi(sys.dsinterval, sys.dsinterval)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6621,6 +7096,16 @@ CREATE FUNCTION sys.dsinterval_cmp(sys.dsinterval, sys.dsinterval)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','dsinterval_cmp'
 LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE
+LEAKPROOF;
+
+CREATE FUNCTION sys.dsin_range(sys.dsinterval, sys.dsinterval, sys.dsinterval, bool, bool)
+RETURNS boolean
+AS 'MODULE_PATHNAME','in_range_dsinterval_dsinterval'
+LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -6632,7 +7117,9 @@ CREATE OPERATOR CLASS sys.dsinterval_ops
         OPERATOR        3       = (sys.dsinterval, sys.dsinterval),
         OPERATOR        4       >= (sys.dsinterval, sys.dsinterval),
         OPERATOR        5       > (sys.dsinterval, sys.dsinterval),
-        FUNCTION        1       sys.dsinterval_cmp(sys.dsinterval, sys.dsinterval);
+        FUNCTION        1       sys.dsinterval_cmp(sys.dsinterval, sys.dsinterval),
+        FUNCTION        3       sys.dsin_range(sys.dsinterval, sys.dsinterval, sys.dsinterval, bool, bool),
+        FUNCTION        4       (sys.dsinterval, sys.dsinterval) sys.btoraequalimage(oid);
 
 --
 -- HASH index support
@@ -6641,13 +7128,23 @@ CREATE FUNCTION sys.dsinterval_hash(sys.dsinterval)
 RETURNS INTEGER
 AS 'MODULE_PATHNAME','dsinterval_hash'
 LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.dsinterval_hash_extended(sys.dsinterval, int8)
+RETURNS bigint
+AS 'MODULE_PATHNAME','dsinterval_hash_extended'
+LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE OPERATOR CLASS sys.dsinterval_ops
     DEFAULT FOR TYPE sys.dsinterval USING hash AS
 		OPERATOR        1       = (sys.dsinterval, sys.dsinterval),
-        FUNCTION        1       sys.dsinterval_hash(sys.dsinterval);
+        FUNCTION        1       sys.dsinterval_hash(sys.dsinterval),
+        FUNCTION        2       sys.dsinterval_hash_extended(sys.dsinterval, int8);
 
 --
 -- BRIN index support
@@ -6665,11 +7162,12 @@ CREATE OPERATOR CLASS sys.dsinterval_minmax_ops
 		FUNCTION        4       sys.brin_minmax_union(internal, internal, internal);	
 
 
-/* CREATE AGGREGATE */	
+/* CREATE AGGREGATE */
 CREATE FUNCTION sys.dsinterval_larger(sys.dsinterval, sys.dsinterval)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_larger'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6677,6 +7175,7 @@ CREATE FUNCTION sys.dsinterval_smaller(sys.dsinterval, sys.dsinterval)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_smaller'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6704,6 +7203,7 @@ CREATE FUNCTION sys.oradate_mi(sys.oradate, sys.oradate)
 RETURNS sys.number
 AS 'MODULE_PATHNAME','oradate_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6718,6 +7218,7 @@ CREATE FUNCTION sys.oratimestamp_mi(sys.oradate, sys.oratimestamp)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestamp_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6732,6 +7233,7 @@ CREATE FUNCTION sys.oradate_mi_oratimestampltz(sys.oradate, sys.oratimestamptz)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oradate_mi_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6746,6 +7248,7 @@ CREATE FUNCTION sys.oradate_mi_oratimestampltz(sys.oradate, sys.oratimestampltz)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oradate_mi_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6760,6 +7263,7 @@ CREATE FUNCTION sys.oradate_mi_yminterval(sys.oradate, sys.yminterval)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6774,6 +7278,7 @@ CREATE FUNCTION sys.oradate_mi_dsinterval(sys.oradate, sys.dsinterval)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6788,6 +7293,7 @@ CREATE FUNCTION sys.oradate_mi_number(sys.oradate, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_mi_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6805,6 +7311,7 @@ CREATE FUNCTION sys.oradate_pl_yminterval(sys.oradate, sys.yminterval)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_pl_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6820,6 +7327,7 @@ CREATE FUNCTION sys.oradate_pl_dsinterval(sys.oradate, sys.dsinterval)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_pl_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6835,6 +7343,7 @@ CREATE FUNCTION sys.oradate_pl_number(sys.oradate, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oradate_pl_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6853,6 +7362,7 @@ CREATE FUNCTION sys.oratimestamp_mi(sys.oratimestamp, sys.oratimestamp)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestamp_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6867,6 +7377,7 @@ CREATE FUNCTION sys.oratimestamp_mi(sys.oratimestamp, sys.oradate)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestamp_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6881,6 +7392,7 @@ CREATE FUNCTION sys.oradate_mi_oratimestampltz(sys.oratimestamp, sys.oratimestam
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oradate_mi_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6895,6 +7407,7 @@ CREATE FUNCTION sys.oradate_mi_oratimestampltz(sys.oratimestamp, sys.oratimestam
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oradate_mi_oratimestampltz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6909,6 +7422,7 @@ CREATE FUNCTION sys.oratimestamp_mi_yminterval(sys.oratimestamp, sys.yminterval)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6924,6 +7438,7 @@ CREATE FUNCTION sys.oratimestamp_mi_dsinterval(sys.oratimestamp, sys.dsinterval)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6939,6 +7454,7 @@ CREATE FUNCTION sys.oratimestamp_mi_number(sys.oratimestamp, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamp_mi_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6956,6 +7472,7 @@ CREATE FUNCTION sys.oratimestamp_pl_yminterval(sys.oratimestamp, sys.yminterval)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_pl_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6971,6 +7488,7 @@ CREATE FUNCTION sys.oratimestamp_pl_dsinterval(sys.oratimestamp, sys.dsinterval)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','oratimestamp_pl_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -6986,6 +7504,7 @@ CREATE FUNCTION sys.oratimestamp_pl_number(sys.oratimestamp, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamp_pl_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7004,6 +7523,7 @@ CREATE FUNCTION sys.oratimestamp_mi(sys.oratimestamptz, sys.oratimestamptz)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestamp_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7018,6 +7538,7 @@ CREATE FUNCTION sys.oratimestampltz_mi_oradate(sys.oratimestamptz, sys.oradate)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestampltz_mi_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7032,6 +7553,7 @@ CREATE FUNCTION sys.oratimestampltz_mi_oradate(sys.oratimestamptz, sys.oratimest
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestampltz_mi_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7046,6 +7568,7 @@ CREATE FUNCTION sys.oratimestamp_mi(sys.oratimestamptz, sys.oratimestampltz)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestamp_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7060,6 +7583,7 @@ CREATE FUNCTION sys.oratimestamptz_mi_yminterval(sys.oratimestamptz, sys.yminter
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7074,6 +7598,7 @@ CREATE FUNCTION sys.oratimestamptz_mi_dsinterval(sys.oratimestamptz, sys.dsinter
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7088,6 +7613,7 @@ CREATE FUNCTION sys.oratimestamptz_mi_number(sys.oratimestamptz, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamptz_mi_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7105,6 +7631,7 @@ CREATE FUNCTION sys.oratimestamptz_pl_yminterval(sys.oratimestamptz, sys.yminter
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7120,6 +7647,7 @@ CREATE FUNCTION sys.oratimestamptz_pl_dsinterval(sys.oratimestamptz, sys.dsinter
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7135,6 +7663,7 @@ CREATE FUNCTION sys.oratimestamptz_pl_number(sys.oratimestamptz, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamptz_pl_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7153,6 +7682,7 @@ CREATE FUNCTION sys.oratimestamp_mi(sys.oratimestampltz, sys.oratimestampltz)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestamp_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7167,6 +7697,7 @@ CREATE FUNCTION sys.oratimestampltz_mi_oradate(sys.oratimestampltz, sys.oradate)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestampltz_mi_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7181,6 +7712,7 @@ CREATE FUNCTION sys.oratimestampltz_mi_oradate(sys.oratimestampltz, sys.oratimes
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestampltz_mi_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7195,6 +7727,7 @@ CREATE FUNCTION sys.oratimestamp_mi(sys.oratimestampltz, sys.oratimestamptz)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','oratimestamp_mi'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7209,6 +7742,7 @@ CREATE FUNCTION sys.oratimestampltz_mi_yminterval(sys.oratimestampltz, sys.ymint
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7223,6 +7757,7 @@ CREATE FUNCTION sys.oratimestampltz_mi_dsinterval(sys.oratimestampltz, sys.dsint
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7237,6 +7772,7 @@ CREATE FUNCTION sys.oratimestampltz_mi_number(sys.oratimestampltz, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamptz_mi_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7253,6 +7789,7 @@ CREATE OPERATOR - (
 CREATE FUNCTION sys.oratimestampltz_pl_yminterval(sys.oratimestampltz, sys.yminterval)
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
+PARALLEL SAFE
 LANGUAGE C
 STRICT
 IMMUTABLE;
@@ -7269,6 +7806,7 @@ CREATE FUNCTION sys.oratimestampltz_pl_dsinterval(sys.oratimestampltz, sys.dsint
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7284,6 +7822,7 @@ CREATE FUNCTION sys.oratimestampltz_pl_number(sys.oratimestampltz, sys.number)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','oratimestamptz_pl_number'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7302,6 +7841,7 @@ CREATE FUNCTION sys.yminterval_pl_oradate(sys.yminterval, sys.oradate)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','interval_pl_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7317,6 +7857,7 @@ CREATE FUNCTION sys.dsinterval_pl_oradate(sys.dsinterval, sys.oradate)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','interval_pl_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7332,6 +7873,7 @@ CREATE FUNCTION sys.yminterval_pl_oratimestamp(sys.yminterval, sys.oratimestamp)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','interval_pl_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7347,6 +7889,7 @@ CREATE FUNCTION sys.dsinterval_pl_oratimestamp(sys.dsinterval, sys.oratimestamp)
 RETURNS sys.oratimestamp
 AS 'MODULE_PATHNAME','interval_pl_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7362,6 +7905,7 @@ CREATE FUNCTION sys.yminterval_pl_oratimestamptz(sys.yminterval, sys.oratimestam
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7377,6 +7921,7 @@ CREATE FUNCTION sys.dsinterval_pl_oratimestamptz(sys.dsinterval, sys.oratimestam
 RETURNS sys.oratimestamptz
 AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7392,6 +7937,7 @@ CREATE FUNCTION sys.yminterval_pl_oratimestampltz(sys.yminterval, sys.oratimesta
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7407,6 +7953,7 @@ CREATE FUNCTION sys.dsinterval_pl_oratimestampltz(sys.dsinterval, sys.oratimesta
 RETURNS sys.oratimestampltz
 AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7425,6 +7972,7 @@ CREATE FUNCTION sys.yminterval_mul(sys.yminterval, sys.number)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_mul'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7440,6 +7988,7 @@ CREATE FUNCTION sys.dsinterval_mul(sys.dsinterval, sys.number)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_mul'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7458,6 +8007,7 @@ CREATE FUNCTION sys.yminterval_div(sys.yminterval, sys.number)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','yminterval_div'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7472,6 +8022,7 @@ CREATE FUNCTION sys.dsinterval_div(sys.dsinterval, sys.number)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','dsinterval_div'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7489,6 +8040,7 @@ CREATE FUNCTION sys.number_pl_oradate(sys.number, sys.oradate)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','number_pl_oradate'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7504,6 +8056,7 @@ CREATE FUNCTION sys.number_pl_oratimestamp(sys.number, sys.oratimestamp)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','number_pl_oratimestamp'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7519,6 +8072,7 @@ CREATE FUNCTION sys.number_pl_oratimestamptz(sys.number, sys.oratimestamptz)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','number_pl_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7534,6 +8088,7 @@ CREATE FUNCTION sys.number_pl_oratimestampltz(sys.number, sys.oratimestampltz)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','number_pl_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7552,6 +8107,7 @@ CREATE FUNCTION sys.mul_d_yminterval(sys.number, sys.yminterval)
 RETURNS sys.yminterval
 AS 'MODULE_PATHNAME','mul_d_yminterval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7567,6 +8123,7 @@ CREATE FUNCTION sys.mul_d_dsinterval(sys.number, sys.dsinterval)
 RETURNS sys.dsinterval
 AS 'MODULE_PATHNAME','mul_d_dsinterval'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7587,6 +8144,7 @@ CREATE FUNCTION sys.number_in(cstring, oid, integer)
 RETURNS sys.number
 AS 'numeric_in'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7594,6 +8152,7 @@ CREATE FUNCTION sys.number_out(sys.number)
 RETURNS CSTRING
 AS 'numeric_out'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7601,6 +8160,7 @@ CREATE FUNCTION sys.number_recv(internal, oid, integer)
 RETURNS sys.number
 AS 'numeric_recv'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7608,6 +8168,7 @@ CREATE FUNCTION sys.number_send(sys.number)
 RETURNS bytea
 AS 'numeric_send'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7615,6 +8176,7 @@ CREATE FUNCTION sys.numbertypmodin(cstring[])
 RETURNS integer
 AS 'numerictypmodin'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7622,6 +8184,7 @@ CREATE FUNCTION sys.numbertypmodout(integer)
 RETURNS CSTRING
 AS 'numerictypmodout'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7674,6 +8237,7 @@ CREATE FUNCTION sys.number_int8(sys.number)
 RETURNS int8
 AS 'numeric_int8'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7686,8 +8250,10 @@ CREATE FUNCTION sys.int8_number(int8)
 RETURNS sys.number
 AS 'int8_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (int8 AS sys.number)
 WITH FUNCTION sys.int8_number(int8)
@@ -7698,6 +8264,7 @@ CREATE FUNCTION sys.number_int2(sys.number)
 RETURNS int2
 AS 'numeric_int2'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7710,8 +8277,10 @@ CREATE FUNCTION sys.int2_number(int2)
 RETURNS sys.number
 AS 'int2_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (int2 AS sys.number)
 WITH FUNCTION sys.int2_number(int2)
@@ -7722,6 +8291,7 @@ CREATE FUNCTION sys.number_int4(sys.number)
 RETURNS int4
 AS 'numeric_int4'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 --bug#797 --bug#973 recorver assignment
@@ -7734,8 +8304,10 @@ CREATE FUNCTION sys.int4_number(int4)
 RETURNS sys.number
 AS 'int4_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (int4 AS sys.number)
 WITH FUNCTION sys.int4_number(int4)
@@ -7746,6 +8318,7 @@ CREATE FUNCTION sys.number_float4(sys.number)
 RETURNS float4
 AS 'numeric_float4'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7758,8 +8331,10 @@ CREATE FUNCTION sys.float4_number(float4)
 RETURNS sys.number
 AS 'float4_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (float4 AS sys.number)
 WITH FUNCTION sys.float4_number(float4)
@@ -7770,6 +8345,7 @@ CREATE FUNCTION sys.number_float8(sys.number)
 RETURNS float8
 AS 'numeric_float8'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7782,8 +8358,10 @@ CREATE FUNCTION sys.float8_number(float8)
 RETURNS sys.number
 AS 'float8_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (float8 AS sys.number)
 WITH FUNCTION sys.float8_number(float8)
@@ -7794,6 +8372,7 @@ CREATE FUNCTION sys.number_cash(sys.number)
 RETURNS money
 AS 'numeric_cash'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 STABLE;
 
@@ -7806,8 +8385,9 @@ CREATE FUNCTION sys.cash_number(money)
 RETURNS sys.number
 AS 'cash_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE CAST (money AS sys.number)
 WITH FUNCTION sys.cash_number(money)
@@ -7819,6 +8399,7 @@ CREATE FUNCTION sys.number(sys.number, integer)
 RETURNS sys.number
 AS 'numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7847,6 +8428,7 @@ CREATE FUNCTION sys.number_binary_float(sys.number)
 RETURNS sys.binary_float
 AS 'numeric_float4'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7859,6 +8441,7 @@ CREATE FUNCTION sys.number_binary_double(sys.number)
 RETURNS sys.binary_double
 AS 'numeric_float8'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7871,6 +8454,7 @@ CREATE FUNCTION sys.number_eq(sys.number, sys.number)
 RETURNS boolean
 AS 'numeric_eq'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7878,6 +8462,7 @@ CREATE FUNCTION sys.number_ne(sys.number, sys.number)
 RETURNS boolean
 AS 'numeric_ne'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7885,6 +8470,7 @@ CREATE FUNCTION sys.number_lt(sys.number, sys.number)
 RETURNS boolean
 AS 'numeric_lt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7892,6 +8478,7 @@ CREATE FUNCTION sys.number_le(sys.number, sys.number)
 RETURNS boolean
 AS 'numeric_le'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7899,6 +8486,7 @@ CREATE FUNCTION sys.number_gt(sys.number, sys.number)
 RETURNS boolean
 AS 'numeric_gt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7906,6 +8494,7 @@ CREATE FUNCTION sys.number_ge(sys.number, sys.number)
 RETURNS boolean
 AS 'numeric_ge'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7975,6 +8564,7 @@ CREATE FUNCTION sys.number_add(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_add'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -7989,6 +8579,7 @@ CREATE FUNCTION sys.number_sub(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_sub'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8002,6 +8593,7 @@ CREATE FUNCTION sys.number_mul(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_mul'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8016,6 +8608,7 @@ CREATE FUNCTION sys.number_div(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_div'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8029,6 +8622,7 @@ CREATE FUNCTION sys.number_mod(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_mod'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8042,6 +8636,7 @@ CREATE FUNCTION sys.number_power(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_power'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8055,6 +8650,7 @@ CREATE FUNCTION sys.number_abs(sys.number)
 RETURNS sys.number
 AS 'numeric_abs'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8067,6 +8663,7 @@ CREATE FUNCTION sys.number_uplus(sys.number)
 RETURNS sys.number
 AS 'numeric_uplus'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8080,6 +8677,7 @@ CREATE FUNCTION sys.number_uminus(sys.number)
 RETURNS sys.number
 AS 'numeric_uminus'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8095,6 +8693,7 @@ CREATE FUNCTION sys.number_cmp(sys.number, sys.number)
 RETURNS integer
 AS 'numeric_cmp'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8102,6 +8701,15 @@ CREATE FUNCTION sys.number_sortsupport(internal)
 RETURNS void
 AS 'numeric_sortsupport'
 LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.number_in_range(sys.number, sys.number, sys.number, bool, bool)
+RETURNS boolean
+AS 'in_range_numeric_numeric'
+LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8114,7 +8722,8 @@ CREATE OPERATOR CLASS sys.number_ops
         OPERATOR        4       >= (sys.number, sys.number),
         OPERATOR        5       > (sys.number, sys.number),
         FUNCTION        1       sys.number_cmp(sys.number, sys.number),
-		FUNCTION		2		sys.number_sortsupport(internal);
+		FUNCTION		2		sys.number_sortsupport(internal),
+		FUNCTION        3       sys.number_in_range(sys.number, sys.number, sys.number, bool, bool);
 
 --
 -- HASH index support
@@ -8123,13 +8732,23 @@ CREATE FUNCTION sys.hash_number(sys.number)
 RETURNS INTEGER
 AS 'hash_numeric'
 LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.hash_number_extended(sys.number, int8)
+RETURNS int8
+AS 'hash_numeric_extended'
+LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE OPERATOR CLASS sys.number_ops
     DEFAULT FOR TYPE sys.number USING hash AS
 		OPERATOR        1       = (sys.number, sys.number),
-        FUNCTION        1       sys.hash_number(sys.number);
+        FUNCTION        1       sys.hash_number(sys.number),
+        FUNCTION        2       sys.hash_number_extended(sys.number, int8);
 
 --
 -- BRIN index support
@@ -8154,6 +8773,7 @@ CREATE FUNCTION sys.number_larger(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_larger'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8168,6 +8788,7 @@ CREATE FUNCTION sys.number_smaller(sys.number, sys.number)
 RETURNS sys.number
 AS 'numeric_smaller'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8182,18 +8803,21 @@ CREATE FUNCTION sys.number_avg_accum(internal, sys.number)
 RETURNS internal
 AS 'numeric_avg_accum'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.number_avg(internal)
 RETURNS sys.number
 AS 'numeric_avg'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.number_accum_inv(internal, sys.number)
 RETURNS internal
 AS 'numeric_accum_inv'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE AGGREGATE sys.avg(sys.number) (
@@ -8213,6 +8837,7 @@ CREATE FUNCTION sys.number_sum(internal)
 RETURNS sys.number
 AS 'numeric_sum'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE AGGREGATE sys.sum(sys.number) (
@@ -8232,12 +8857,14 @@ CREATE FUNCTION sys.number_accum(internal, sys.number)
 RETURNS internal
 AS 'numeric_accum'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.number_var_pop(internal)
 RETURNS sys.number
 AS 'numeric_var_pop'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE AGGREGATE sys.var_pop(sys.number) (
@@ -8257,6 +8884,7 @@ CREATE FUNCTION sys.number_var_samp(internal)
 RETURNS sys.number
 AS 'numeric_var_samp'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE AGGREGATE sys.var_samp(sys.number) (
@@ -8289,6 +8917,7 @@ CREATE FUNCTION sys.number_stddev_pop(internal)
 RETURNS sys.number
 AS 'numeric_stddev_pop'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE AGGREGATE sys.stddev_pop(sys.number) (
@@ -8308,6 +8937,7 @@ CREATE FUNCTION sys.number_stddev_samp(internal)
 RETURNS sys.number
 AS 'numeric_stddev_samp'
 LANGUAGE internal
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE AGGREGATE sys.stddev_samp(sys.number) (
@@ -8345,6 +8975,7 @@ CREATE FUNCTION sys.binary_float_in(cstring)
 RETURNS sys.binary_float
 AS 'float4in'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8352,6 +8983,7 @@ CREATE FUNCTION sys.binary_float_out(sys.binary_float)
 RETURNS CSTRING
 AS 'float4out'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8359,6 +8991,7 @@ CREATE FUNCTION sys.binary_float_recv(internal)
 RETURNS sys.binary_float
 AS 'float4recv'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8366,6 +8999,7 @@ CREATE FUNCTION sys.binary_float_send(sys.binary_float)
 RETURNS bytea
 AS 'float4send'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8401,6 +9035,7 @@ CREATE FUNCTION sys.binary_float_int8(sys.binary_float)
 RETURNS int8
 AS 'ftoi8'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8413,6 +9048,7 @@ CREATE FUNCTION sys.int8_binary_float(int8)
 RETURNS sys.binary_float
 AS 'i8tof'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8425,6 +9061,7 @@ CREATE FUNCTION sys.binary_float_int2(sys.binary_float)
 RETURNS int2
 AS 'ftoi2'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8437,6 +9074,7 @@ CREATE FUNCTION sys.int2_binary_float(int2)
 RETURNS sys.binary_float
 AS 'i2tof'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8449,6 +9087,7 @@ CREATE FUNCTION sys.binary_float_int4(sys.binary_float)
 RETURNS int4
 AS 'ftoi4'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8461,6 +9100,7 @@ CREATE FUNCTION sys.int4_binary_float(int4)
 RETURNS sys.binary_float
 AS 'i4tof'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8473,6 +9113,7 @@ CREATE FUNCTION sys.binary_float_float8(sys.binary_float)
 RETURNS float8
 AS 'ftod'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8485,6 +9126,7 @@ CREATE FUNCTION sys.float8_binary_float(float8)
 RETURNS sys.binary_float
 AS 'dtof'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8497,8 +9139,10 @@ CREATE FUNCTION sys.binary_float_numeric(sys.binary_float)
 RETURNS numeric
 AS 'float4_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (sys.binary_float AS numeric)
 WITH FUNCTION sys.binary_float_numeric(sys.binary_float)
@@ -8509,6 +9153,7 @@ CREATE FUNCTION sys.numeric_binary_float(numeric)
 RETURNS sys.binary_float
 AS 'numeric_float4'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8538,8 +9183,10 @@ CREATE FUNCTION sys.binary_float_number(sys.binary_float)
 RETURNS sys.number
 AS 'float4_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (sys.binary_float AS sys.number)
 WITH FUNCTION sys.binary_float_number(sys.binary_float)
@@ -8550,8 +9197,10 @@ CREATE FUNCTION sys.binary_float_binary_double(sys.binary_float)
 RETURNS sys.binary_double
 AS 'ftod'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (sys.binary_float AS sys.binary_double)
 WITH FUNCTION sys.binary_float_binary_double(sys.binary_float)
@@ -8562,6 +9211,7 @@ CREATE FUNCTION sys.binary_float_eq(sys.binary_float, sys.binary_float)
 RETURNS boolean
 AS 'float4eq'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8570,6 +9220,7 @@ CREATE FUNCTION sys.binary_float_ne(sys.binary_float, sys.binary_float)
 RETURNS boolean
 AS 'float4ne'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8578,6 +9229,7 @@ CREATE FUNCTION sys.binary_float_lt(sys.binary_float, sys.binary_float)
 RETURNS boolean
 AS 'float4lt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8586,6 +9238,7 @@ CREATE FUNCTION sys.binary_float_le(sys.binary_float, sys.binary_float)
 RETURNS boolean
 AS 'float4le'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8594,6 +9247,7 @@ CREATE FUNCTION sys.binary_float_gt(sys.binary_float, sys.binary_float)
 RETURNS boolean
 AS 'float4gt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8602,6 +9256,7 @@ CREATE FUNCTION sys.binary_float_ge(sys.binary_float, sys.binary_float)
 RETURNS boolean
 AS 'float4ge'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8668,6 +9323,7 @@ CREATE FUNCTION sys.binary_float_pl(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'float4pl'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8682,6 +9338,7 @@ CREATE FUNCTION sys.binary_float_mi(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'float4mi'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8695,6 +9352,7 @@ CREATE FUNCTION sys.binary_float_mul(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'float4mul'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8709,6 +9367,7 @@ CREATE FUNCTION sys.binary_float_div(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'float4div'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8727,6 +9386,7 @@ CREATE FUNCTION sys.binary_double_in(cstring)
 RETURNS sys.binary_double
 AS 'float8in'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8734,6 +9394,7 @@ CREATE FUNCTION sys.binary_double_out(sys.binary_double)
 RETURNS CSTRING
 AS 'float8out'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8741,6 +9402,7 @@ CREATE FUNCTION sys.binary_double_recv(internal)
 RETURNS sys.binary_double
 AS 'float8recv'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8748,6 +9410,7 @@ CREATE FUNCTION sys.binary_double_send(sys.binary_double)
 RETURNS bytea
 AS 'float8send'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8783,6 +9446,7 @@ CREATE FUNCTION sys.binary_double_int8(sys.binary_double)
 RETURNS int8
 AS 'dtoi8'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8795,8 +9459,10 @@ CREATE FUNCTION sys.int8_binary_double(int8)
 RETURNS sys.binary_double
 AS 'i8tod'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (int8 AS sys.binary_double)
 WITH FUNCTION sys.int8_binary_double(int8)
@@ -8807,6 +9473,7 @@ CREATE FUNCTION sys.binary_double_int2(sys.binary_double)
 RETURNS int2
 AS 'dtoi2'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8819,8 +9486,10 @@ CREATE FUNCTION sys.int2_binary_double(int2)
 RETURNS sys.binary_double
 AS 'i2tod'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (int2 AS sys.binary_double)
 WITH FUNCTION sys.int2_binary_double(int2)
@@ -8831,6 +9500,7 @@ CREATE FUNCTION sys.binary_double_int4(sys.binary_double)
 RETURNS int4
 AS 'dtoi4'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8843,8 +9513,10 @@ CREATE FUNCTION sys.int4_binary_double(int4)
 RETURNS sys.binary_double
 AS 'i4tod'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (int4 AS sys.binary_double)
 WITH FUNCTION sys.int4_binary_double(int4)
@@ -8855,6 +9527,7 @@ CREATE FUNCTION sys.binary_double_to_real(sys.binary_double)
 RETURNS float4
 AS 'dtof'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8867,8 +9540,10 @@ CREATE FUNCTION sys.real_to_binary_double(float4)
 RETURNS sys.binary_double
 AS 'ftod'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (real AS sys.binary_double)
 WITH FUNCTION sys.real_to_binary_double(float4)
@@ -8879,6 +9554,7 @@ CREATE FUNCTION sys.binary_double_numeric(sys.binary_double)
 RETURNS numeric
 AS 'float8_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8892,7 +9568,8 @@ RETURNS sys.binary_double
 AS 'numeric_float8'
 LANGUAGE internal
 STRICT
-IMMUTABLE;
+IMMUTABLE
+LEAKPROOF;
 
 CREATE CAST (numeric AS sys.binary_double)
 WITH FUNCTION sys.numeric_binary_double(numeric)
@@ -8920,6 +9597,7 @@ CREATE FUNCTION sys.binary_double_number(sys.binary_double)
 RETURNS sys.number
 AS 'float8_numeric'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8932,6 +9610,7 @@ CREATE FUNCTION sys.binary_double_to_binary_float(sys.binary_double)
 RETURNS sys.binary_float
 AS 'dtof'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -8944,6 +9623,7 @@ CREATE FUNCTION sys.binary_double_eq(sys.binary_double, sys.binary_double)
 RETURNS boolean
 AS 'float8eq'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8952,6 +9632,7 @@ CREATE FUNCTION sys.binary_double_ne(sys.binary_double, sys.binary_double)
 RETURNS boolean
 AS 'float8ne'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8960,6 +9641,7 @@ CREATE FUNCTION sys.binary_double_lt(sys.binary_double, sys.binary_double)
 RETURNS boolean
 AS 'float8lt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8968,6 +9650,7 @@ CREATE FUNCTION sys.binary_double_le(sys.binary_double, sys.binary_double)
 RETURNS boolean
 AS 'float8le'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8976,6 +9659,7 @@ CREATE FUNCTION sys.binary_double_gt(sys.binary_double, sys.binary_double)
 RETURNS boolean
 AS 'float8gt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -8984,6 +9668,7 @@ CREATE FUNCTION sys.binary_double_ge(sys.binary_double, sys.binary_double)
 RETURNS boolean
 AS 'float8ge'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9054,6 +9739,7 @@ CREATE FUNCTION sys.binary_double_pl(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
 AS 'float8pl'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9068,6 +9754,7 @@ CREATE FUNCTION sys.binary_double_mi(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
 AS 'float8mi'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9081,6 +9768,7 @@ CREATE FUNCTION sys.binary_double_mul(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
 AS 'float8mul'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9095,6 +9783,7 @@ CREATE FUNCTION sys.binary_double_div(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
 AS 'float8div'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9108,6 +9797,7 @@ CREATE FUNCTION sys.binary_double_pow(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
 AS 'dpow'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9122,6 +9812,7 @@ CREATE FUNCTION sys.binary_float_eq_binary_double(sys.binary_float, sys.binary_d
 RETURNS boolean
 AS 'float48eq'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9130,6 +9821,7 @@ CREATE FUNCTION sys.binary_float_ne_binary_double(sys.binary_float, sys.binary_d
 RETURNS boolean
 AS 'float48ne'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9138,6 +9830,7 @@ CREATE FUNCTION sys.binary_float_lt_binary_double(sys.binary_float, sys.binary_d
 RETURNS boolean
 AS 'float48lt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9146,6 +9839,7 @@ CREATE FUNCTION sys.binary_float_le_binary_double(sys.binary_float, sys.binary_d
 RETURNS boolean
 AS 'float48le'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9154,6 +9848,7 @@ CREATE FUNCTION sys.binary_float_gt_binary_double(sys.binary_float, sys.binary_d
 RETURNS boolean
 AS 'float48gt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9162,6 +9857,7 @@ CREATE FUNCTION sys.binary_float_ge_binary_double(sys.binary_float, sys.binary_d
 RETURNS boolean
 AS 'float48ge'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9228,6 +9924,7 @@ CREATE FUNCTION sys.binary_float_pl_binary_double(sys.binary_float, sys.binary_d
 RETURNS sys.binary_double
 AS 'float48pl'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9242,6 +9939,7 @@ CREATE FUNCTION sys.binary_float_mi_binary_double(sys.binary_float, sys.binary_d
 RETURNS sys.binary_double
 AS 'float48mi'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9255,6 +9953,7 @@ CREATE FUNCTION sys.binary_float_mul_binary_double(sys.binary_float, sys.binary_
 RETURNS sys.binary_double
 AS 'float48mul'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9269,6 +9968,7 @@ CREATE FUNCTION sys.binary_float_div_binary_double(sys.binary_float, sys.binary_
 RETURNS sys.binary_double
 AS 'float48div'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9284,6 +9984,7 @@ CREATE FUNCTION sys.binary_double_eq_binary_float(sys.binary_double, sys.binary_
 RETURNS boolean
 AS 'float84eq'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9292,6 +9993,7 @@ CREATE FUNCTION sys.binary_double_ne_binary_float(sys.binary_double, sys.binary_
 RETURNS boolean
 AS 'float84ne'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9300,6 +10002,7 @@ CREATE FUNCTION sys.binary_double_lt_binary_float(sys.binary_double, sys.binary_
 RETURNS boolean
 AS 'float84lt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9308,6 +10011,7 @@ CREATE FUNCTION sys.binary_double_le_binary_float(sys.binary_double, sys.binary_
 RETURNS boolean
 AS 'float84le'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9316,6 +10020,7 @@ CREATE FUNCTION sys.binary_double_gt_binary_float(sys.binary_double, sys.binary_
 RETURNS boolean
 AS 'float84gt'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9324,6 +10029,7 @@ CREATE FUNCTION sys.binary_double_ge_binary_float(sys.binary_double, sys.binary_
 RETURNS boolean
 AS 'float84ge'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9390,6 +10096,7 @@ CREATE FUNCTION sys.binary_double_pl_binary_float(sys.binary_double, sys.binary_
 RETURNS sys.binary_double
 AS 'float84pl'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9404,6 +10111,7 @@ CREATE FUNCTION sys.binary_double_mi_binary_float(sys.binary_double, sys.binary_
 RETURNS sys.binary_double
 AS 'float84mi'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9417,6 +10125,7 @@ CREATE FUNCTION sys.binary_double_mul_binary_float(sys.binary_double, sys.binary
 RETURNS sys.binary_double
 AS 'float84mul'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9431,6 +10140,7 @@ CREATE FUNCTION sys.binary_double_div_binary_float(sys.binary_double, sys.binary
 RETURNS sys.binary_double
 AS 'float84div'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9448,6 +10158,7 @@ CREATE FUNCTION sys.bt_binary_float_cmp(sys.binary_float, sys.binary_float)
 RETURNS int4
 AS 'btfloat4cmp'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9456,6 +10167,7 @@ CREATE FUNCTION sys.bt_binary_float_sortsupport(internal)
 RETURNS void
 AS 'btfloat4sortsupport'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9464,6 +10176,7 @@ CREATE FUNCTION sys.bt_binary_double_cmp(sys.binary_double, sys.binary_double)
 RETURNS int4
 AS 'btfloat8cmp'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9472,6 +10185,7 @@ CREATE FUNCTION sys.bt_binary_double_sortsupport(internal)
 RETURNS void
 AS 'btfloat8sortsupport'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9480,6 +10194,7 @@ CREATE FUNCTION sys.bt_binary_float_double_cmp(sys.binary_float, sys.binary_doub
 RETURNS int4
 AS 'btfloat48cmp'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9488,6 +10203,7 @@ CREATE FUNCTION sys.bt_binary_double_float_cmp(sys.binary_double, sys.binary_flo
 RETURNS int4
 AS 'btfloat84cmp'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
@@ -9542,6 +10258,15 @@ CREATE FUNCTION sys.hash_binary_float(sys.binary_float)
 RETURNS int4
 AS 'hashfloat4'
 LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.hash_binary_float_extended(sys.binary_float, int8)
+RETURNS int8
+AS 'hashfloat4extended'
+LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9549,6 +10274,15 @@ CREATE FUNCTION sys.hash_binary_double(sys.binary_double)
 RETURNS int4
 AS 'hashfloat8'
 LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.hash_binary_double_extended(sys.binary_double, int8)
+RETURNS int8
+AS 'hashfloat8extended'
+LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9559,13 +10293,15 @@ CREATE OPERATOR FAMILY sys.binary_ops USING hash;
 CREATE OPERATOR CLASS sys.binary_float_ops
     DEFAULT FOR TYPE sys.binary_float USING hash FAMILY sys.binary_ops AS
 		OPERATOR        1       = (sys.binary_float, sys.binary_float),
-        FUNCTION        1       sys.hash_binary_float(sys.binary_float);
+        FUNCTION        1       sys.hash_binary_float(sys.binary_float),
+        FUNCTION        2       sys.hash_binary_float_extended(sys.binary_float, int8);
 
 /* CREATE OPERATOR CLASS for 'binary_double' */
 CREATE OPERATOR CLASS sys.binary_double_ops
     DEFAULT FOR TYPE sys.binary_double USING hash FAMILY sys.binary_ops AS
 		OPERATOR        1       = (sys.binary_double, sys.binary_double),
-        FUNCTION        1       sys.hash_binary_double(sys.binary_double);
+        FUNCTION        1       sys.hash_binary_double(sys.binary_double),
+        FUNCTION        2       sys.hash_binary_double_extended(sys.binary_double, int8);
 
 ALTER OPERATOR FAMILY sys.binary_ops USING hash ADD
 	-- Cross data type comparison
@@ -9626,6 +10362,7 @@ CREATE FUNCTION sys.binary_float_larger(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'float4larger'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9640,6 +10377,7 @@ CREATE FUNCTION sys.binary_float_smaller(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'float4smaller'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9886,6 +10624,7 @@ CREATE FUNCTION sys.timezone(text, sys.oratimestamp)
 RETURNS sys.oratimestamptz
 AS 'timestamp_zone'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9893,6 +10632,7 @@ CREATE FUNCTION sys.timezone(text, sys.oratimestamptz)
 RETURNS sys.oratimestamp
 AS 'timestamptz_zone'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9900,6 +10640,7 @@ CREATE FUNCTION sys.timezone(pg_catalog.interval, sys.oratimestamp)
 RETURNS sys.oratimestamptz
 AS 'timestamp_izone'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9907,6 +10648,7 @@ CREATE FUNCTION sys.timezone(pg_catalog.interval, sys.oratimestamptz)
 RETURNS sys.oratimestamp
 AS 'timestamptz_izone'
 LANGUAGE internal
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9930,6 +10672,7 @@ CREATE FUNCTION sys.oralongtypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oralongtypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9937,6 +10680,7 @@ CREATE FUNCTION sys.oralongtypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','oralongtypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9961,6 +10705,7 @@ CREATE FUNCTION sys.orarawtypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','orarawtypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9968,6 +10713,7 @@ CREATE FUNCTION sys.orarawtypmodout(integer)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','orarawtypmodout'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9992,6 +10738,7 @@ CREATE FUNCTION sys.orabytea_to_raw_with_typmod(bytea, integer, boolean)
 RETURNS bytea
 AS 'MODULE_PATHNAME','orabytea_to_raw_with_typmod'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -9999,6 +10746,7 @@ CREATE FUNCTION sys.orachar_to_long_with_typmod(text, integer, boolean)
 RETURNS text
 AS 'MODULE_PATHNAME','orachar_to_long_with_typmod'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 

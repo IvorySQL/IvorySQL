@@ -979,20 +979,17 @@ WHERE c.castfunc = p.oid AND p.pronargs < 2 AND castsource = casttarget;
 -- declared to take TEXT.  This does not pass the binary-coercibility test
 -- because CHAR(n)-to-TEXT normally invokes rtrim().  However, the results
 -- are the same, so long as the function is one that ignores trailing blanks.
-SELECT c.castsource, c.casttarget, c.castfunc, c.castcontext, c.castmethod
+SELECT c.*
 FROM pg_cast c, pg_proc p
 WHERE c.castfunc = p.oid AND
-    p.pronamespace != 9900 AND
     (p.pronargs < 1 OR p.pronargs > 3
      OR NOT (binary_coercible(c.castsource, p.proargtypes[0])
              OR (c.castsource = 'character'::regtype AND
                  p.proargtypes[0] = 'text'::regtype))
      OR NOT binary_coercible(p.prorettype, c.casttarget));
- castsource | casttarget | castfunc | castcontext | castmethod 
-------------+------------+----------+-------------+------------
-       1042 |         18 |      944 | a           | f
-       1042 |        142 |     2896 | e           | f
-(2 rows)
+ oid | castsource | casttarget | castfunc | castcontext | castmethod 
+-----+------------+------------+----------+-------------+------------
+(0 rows)
 
 SELECT c.*
 FROM pg_cast c, pg_proc p
@@ -2229,40 +2226,40 @@ LEFT JOIN pg_amproc AS amp ON amp.amprocfamily = opf.oid AND
 WHERE am.amname = 'btree' AND
     amp.amproc IS DISTINCT FROM 'btequalimage'::regproc
 ORDER BY 1, 2, 3;
-         proc          |     opfamily_name      |        opclass_name        |           opcintype            
------------------------+------------------------+----------------------------+--------------------------------
- btvarstrequalimage    | bpchar_ops             | bpchar_ops                 | character
- btvarstrequalimage    | text_ops               | name_ops                   | name
- btvarstrequalimage    | text_ops               | text_ops                   | text
- btvarstrequalimage    | text_ops               | varchar_ops                | text
- btoravarstrequalimage | orachar_ops            | oracharbyte_ops            | char
- btoravarstrequalimage | orachar_ops            | oracharchar_ops            | char
- btoravarstrequalimage | oravarchar_ops         | oravarcharbyte_ops         | varchar2
- btoravarstrequalimage | oravarchar_ops         | oravarcharchar_ops         | varchar2
- btoraequalimage       | dsinterval_ops         | dsinterval_ops             | interval day to second
- btoraequalimage       | orachar_pattern_ops    | oracharbyte_pattern_ops    | char
- btoraequalimage       | orachar_pattern_ops    | oracharchar_pattern_ops    | char
- btoraequalimage       | oradatetime_ops        | oradate_ops                | date
- btoraequalimage       | oradatetime_ops        | oratimestamp_ops           | timestamp
- btoraequalimage       | oradatetime_ops        | oratimestampltz_ops        | timestamp with local time zone
- btoraequalimage       | oravarchar_pattern_ops | oravarcharbyte_pattern_ops | varchar2
- btoraequalimage       | oravarchar_pattern_ops | oravarcharchar_pattern_ops | varchar2
- btoraequalimage       | yminterval_ops         | yminterval_ops             | interval year to month
-                       | array_ops              | array_ops                  | anyarray
-                       | binary_ops             | binary_double_ops          | binary_double
-                       | binary_ops             | binary_float_ops           | binary_float
-                       | float_ops              | float4_ops                 | real
-                       | float_ops              | float8_ops                 | double precision
-                       | jsonb_ops              | jsonb_ops                  | jsonb
-                       | multirange_ops         | multirange_ops             | anymultirange
-                       | number_ops             | number_ops                 | number
-                       | numeric_ops            | numeric_ops                | numeric
-                       | oradatetime_ops        | oratimestamptz_ops         | timestamp with time zone
-                       | range_ops              | range_ops                  | anyrange
-                       | record_image_ops       | record_image_ops           | record
-                       | record_ops             | record_ops                 | record
-                       | tsquery_ops            | tsquery_ops                | tsquery
-                       | tsvector_ops           | tsvector_ops               | tsvector
+           proc            |     opfamily_name      |        opclass_name        |           opcintype            
+---------------------------+------------------------+----------------------------+--------------------------------
+ btvarstrequalimage        | bpchar_ops             | bpchar_ops                 | character
+ btvarstrequalimage        | text_ops               | name_ops                   | name
+ btvarstrequalimage        | text_ops               | text_ops                   | text
+ btvarstrequalimage        | text_ops               | varchar_ops                | text
+ sys.btoravarstrequalimage | orachar_ops            | oracharbyte_ops            | char
+ sys.btoravarstrequalimage | orachar_ops            | oracharchar_ops            | char
+ sys.btoravarstrequalimage | oravarchar_ops         | oravarcharbyte_ops         | varchar2
+ sys.btoravarstrequalimage | oravarchar_ops         | oravarcharchar_ops         | varchar2
+ sys.btoraequalimage       | dsinterval_ops         | dsinterval_ops             | interval day to second
+ sys.btoraequalimage       | orachar_pattern_ops    | oracharbyte_pattern_ops    | char
+ sys.btoraequalimage       | orachar_pattern_ops    | oracharchar_pattern_ops    | char
+ sys.btoraequalimage       | oradatetime_ops        | oradate_ops                | date
+ sys.btoraequalimage       | oradatetime_ops        | oratimestamp_ops           | timestamp
+ sys.btoraequalimage       | oradatetime_ops        | oratimestampltz_ops        | timestamp with local time zone
+ sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharbyte_pattern_ops | varchar2
+ sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharchar_pattern_ops | varchar2
+ sys.btoraequalimage       | yminterval_ops         | yminterval_ops             | interval year to month
+                           | array_ops              | array_ops                  | anyarray
+                           | binary_ops             | binary_double_ops          | binary_double
+                           | binary_ops             | binary_float_ops           | binary_float
+                           | float_ops              | float4_ops                 | real
+                           | float_ops              | float8_ops                 | double precision
+                           | jsonb_ops              | jsonb_ops                  | jsonb
+                           | multirange_ops         | multirange_ops             | anymultirange
+                           | number_ops             | number_ops                 | number
+                           | numeric_ops            | numeric_ops                | numeric
+                           | oradatetime_ops        | oratimestamptz_ops         | timestamp with time zone
+                           | range_ops              | range_ops                  | anyrange
+                           | record_image_ops       | record_image_ops           | record
+                           | record_ops             | record_ops                 | record
+                           | tsquery_ops            | tsquery_ops                | tsquery
+                           | tsvector_ops           | tsvector_ops               | tsvector
 (32 rows)
 
 -- **************** pg_index ****************
