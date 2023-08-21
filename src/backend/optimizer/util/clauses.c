@@ -3234,11 +3234,11 @@ eval_whenexpr1:
 								continue;
 							else if (IsA(caseexpr->arg, CoerceViaIO))
 							{
-								Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
+								/*Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
 
 								if (IsA(n, Const) && ((Const *) n)->constisnull)
 									continue;
-								else
+								else*/
 									goto eval_whenexpr2;
 							}
 							else

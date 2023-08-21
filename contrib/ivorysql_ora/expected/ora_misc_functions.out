@@ -11,13 +11,15 @@ ERROR:  DECODE could not convert type timestamp to number
 LINE 1: select decode(NULL, 1, 2018, 2, timestamp'2018-2-1 00:00:00'...
           ^
 select decode('abc', 123, 123,4, date'2018-8-1', 5) from dual;
-ERROR:  DECODE could not convert type date to number
+ERROR:  invalid input syntax for type integer: "abc"
+LINE 1: select decode('abc', 123, 123,4, date'2018-8-1', 5) from dua...
+                      ^
 select decode('abc', 123, 123,4, 5, date'2018-8-1', 5) from dual;
 ERROR:  DECODE could not convert type date to number
 select decode('abc', 123, 123,4, 5, 6,timestamp'2018-08-1 00:00:00') from dual;
-ERROR:  DECODE could not convert type timestamp to number
+ERROR:  invalid input syntax for type integer: "abc"
 LINE 1: select decode('abc', 123, 123,4, 5, 6,timestamp'2018-08-1 00...
-          ^
+                      ^
 select decode('abc', date'2018-8-1', 5, 123, 123,4, 5) from dual;
 ERROR:  DECODE could not convert type integer to date
 LINE 1: select decode('abc', date'2018-8-1', 5, 123, 123,4, 5) from ...
@@ -27,27 +29,29 @@ ERROR:  DECODE could not convert type integer to date
 LINE 1: ...date'2018-8-1', 5, date'2018-8-2', date'2018-8-3',4, 5) from...
                                                              ^
 select decode('abc', 123, 123,4, 5, 6,timestamp'2018-08-1 00:00:00', interval'1-1' year to month) from dual;
-ERROR:  DECODE could not convert type interval year to month to number
-LINE 1: ...23,4, 5, 6,timestamp'2018-08-1 00:00:00', interval'1-1' year...
-                                                             ^
+ERROR:  invalid input syntax for type integer: "abc"
+LINE 1: select decode('abc', 123, 123,4, 5, 6,timestamp'2018-08-1 00...
+                      ^
 select decode('abc', 123, 123,4, timestamp'2018-08-1 00:00:00', interval'1-1' year to month) from dual;
-ERROR:  DECODE could not convert type interval year to month to number
-LINE 1: ...23, 123,4, timestamp'2018-08-1 00:00:00', interval'1-1' year...
-                                                             ^
+ERROR:  invalid input syntax for type integer: "abc"
+LINE 1: select decode('abc', 123, 123,4, timestamp'2018-08-1 00:00:0...
+                      ^
 select decode('abc', 123, 123,4, 456, interval'1-1' year to month) from dual;
-ERROR:  DECODE could not convert type interval year to month to number
+ERROR:  invalid input syntax for type integer: "abc"
 LINE 1: select decode('abc', 123, 123,4, 456, interval'1-1' year to ...
-                                                      ^
+                      ^
 select decode('abc', 123, 123,4, '456', interval'1-1' year to month) from dual;
-ERROR:  DECODE could not convert type interval year to month to number
+ERROR:  invalid input syntax for type integer: "abc"
 LINE 1: select decode('abc', 123, 123,4, '456', interval'1-1' year t...
-                                                        ^
+                      ^
 select decode('abc', 123, 123,4, '456', 456.7) from dual;
-ERROR:  invalid input syntax for type numeric: "abc"
+ERROR:  invalid input syntax for type integer: "abc"
+LINE 1: select decode('abc', 123, 123,4, '456', 456.7) from dual;
+                      ^
 select decode('abc', 123, date'2018-8-1', '456', 456.7) from dual;
-ERROR:  DECODE could not convert type numeric to date
+ERROR:  invalid input syntax for type integer: "abc"
 LINE 1: select decode('abc', 123, date'2018-8-1', '456', 456.7) from...
-                                                         ^
+                      ^
 select decode(NULL, 1, interval'1-1' year to month, 2, timestamp'2018-2-1 00:00:00', date'2018-8-1');
 ERROR:  DECODE could not convert type date to interval year to month
 -- ok
@@ -97,10 +101,10 @@ drop table tmp_decode;
 create table tmp_decode as
   select decode(123, 123, timestamp'2018-8-1 00:00:00', '456', date'2018-08-1') as b from dual;
 \d tmp_decode
-              Table "public.tmp_decode"
- Column |   Type    | Collation | Nullable | Default 
---------+-----------+-----------+----------+---------
- b      | timestamp |           |          | 
+               Table "public.tmp_decode"
+ Column |     Type     | Collation | Nullable | Default 
+--------+--------------+-----------+----------+---------
+ b      | timestamp(6) |           |          | 
 
 drop table tmp_decode;
 --return type is interval
@@ -204,13 +208,13 @@ insert into t_decode values(null, null);
 select decode(a, b, 2018, 2, 3) from t_decode;
  decode 
 --------
- 
+ 2018
 (1 row)
 
 select decode(a, 1, 2018, b, 3) from t_decode;
  decode 
 --------
- 
+ 3
 (1 row)
 
 select decode(a, 1, 2018, 2, 3, 4) from t_decode;
@@ -3059,7 +3063,7 @@ insert into test1 values(E'\\001',1);
 SELECT decode (col1,NULL,0,E'\\001',7000) from test1;
  decode 
 --------
- 
+ 7000
 (1 row)
 
 drop table test1;
@@ -3070,7 +3074,7 @@ insert into test1 values('1999-1-5 00:00:00',1);
 SELECT decode (col1,NULL,0,'1999-1-5',7000)from test1;  
  decode 
 --------
- 
+ 7000
 (1 row)
 
 drop table test1;
@@ -3080,7 +3084,7 @@ insert into test1 values('1999-1-5 8:00:00',1);
 SELECT decode (col1,NULL,0,'1999-1-5 8:00:00',7000)from test1;  
  decode 
 --------
- 
+ 7000
 (1 row)
 
 drop table test1;
@@ -3090,7 +3094,7 @@ insert into test1 values('1999-01-05',1);
 SELECT decode (col1,NULL,0,'1999-01-05',7000)from test1;  
  decode 
 --------
- 
+ 7000
 (1 row)
 
 drop table test1;
@@ -3110,7 +3114,7 @@ insert into test1 values('14:12:50-8',1);
 SELECT decode (col1,NULL,0,'14:12:50-8',7000)from test1; 
  decode 
 --------
- 
+ 7000
 (1 row)
 
 drop table test1;
@@ -3120,7 +3124,7 @@ insert into test1 values('1-2',1);
 SELECT decode (col1,NULL,0,'1-2',7000)from test1; 
  decode 
 --------
- 
+ 7000
 (1 row)
 
 drop table test1;
@@ -3919,9 +3923,9 @@ drop table test1;
 create table test1(col1 interval year to month,col2  int);
 insert into test1 values('1-2',1);
 SELECT decode (23, 20,NULL,23,col1,col1) from test1;
-    decode     
----------------
- +000000001-02
+ decode 
+--------
+ +01-02
 (1 row)
 
 drop table test1;
@@ -4167,7 +4171,7 @@ insert into t_bug589 values(null);
 select lengthb(decode(a, null, ' ',a)) from t_bug589;
  lengthb 
 ---------
-        
+       1
 (1 row)
 
 drop table t_bug589;
