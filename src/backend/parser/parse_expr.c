@@ -64,7 +64,7 @@ static Node *transformBoolExpr(ParseState *pstate, BoolExpr *a);
 static Node *transformFuncCall(ParseState *pstate, FuncCall *fn);
 static Node *transformMultiAssignRef(ParseState *pstate, MultiAssignRef *maref);
 static Node *transformCaseExpr(ParseState *pstate, CaseExpr *c);
-static Node *transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c);
+static Node *transformdecodeexpr(ParseState *pstate, CaseExpr *c);
 static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
 static Node *transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 								Oid array_type, Oid element_type, int32 typmod);
@@ -254,7 +254,9 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 				if (!n->is_decode)
 					result = transformCaseExpr(pstate, n);
 				else
-					result = transformCaseExpr_for_decode(pstate, n);
+				{
+					result = transformdecodeexpr(pstate, n);
+				}
 				break;
 			}
 
@@ -1788,7 +1790,7 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 }
 
 static Node *
-transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c)
+transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 {
 	CaseExpr   *newc;
 	Node	   *arg;
@@ -1921,13 +1923,160 @@ transformCaseExpr_for_decode(ParseState *pstate, CaseExpr *c)
 		}
 		else
 		{
+			CaseExpr	*innernewexpr;
+			CaseWhen	*innerneww;
+			NullTest	*innernulltest;
+			List		*blist = NIL;
+			List		*blist1 = NIL;
+			A_Expr 		*aexpr = NULL;
+				
 			if (placeholder)
 			{
-				/* shorthand form was specified, so expand... */
-				warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
-												 (Node *) placeholder,
+				/* decode(a, b, c) ==>> 
+						case when
+							case when a is null and b is null then true  --first step
+								 when a is not null and b is not null and a = b then true --second step
+								 else false
+							end
+							then c
+						end;
+				 */
+				A_Const *ac = makeNode(A_Const);
+				A_Const *ac1 = makeNode(A_Const);
+				TypeCast *tc = makeNode(TypeCast);
+				TypeCast *tc1 = makeNode(TypeCast);
+				
+				innernewexpr = makeNode(CaseExpr);
+				innerneww = makeNode(CaseWhen);
+					
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: a is null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(c->arg);
+				innernulltest->nulltesttype = IS_NULL;
+				innernulltest->location = -1;
+				blist = lappend(blist, innernulltest);
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: b is null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(w->expr);
+				innernulltest->nulltesttype = IS_NULL;
+				innernulltest->location = -1;
+				blist = lappend(blist, innernulltest);				
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: a is null and b is null 
+				 */
+				innerneww->expr =  makeBoolExpr(AND_EXPR, blist, -1);
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: then true
+				 */
+				ac->val.node.type = T_String;
+				ac->val.sval.sval = "t";
+				ac->location = -1;
+				tc->arg = (Node*)ac;
+				tc->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"), 
+											makeString("bool")));
+				tc->location = -1;
+				
+				innerneww->result = (Expr *)tc;
+				innerneww->location = -1;
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: case when a is null and b is null then true
+				 */
+				innernewexpr->args = lappend(innernewexpr->args, innerneww);
+				
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: a is not null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(c->arg);
+				innernulltest->nulltesttype = IS_NOT_NULL;
+				innernulltest->location = -1;
+				blist1 = lappend(blist1, innernulltest);
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: b is not null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(w->expr);
+				innernulltest->nulltesttype = IS_NOT_NULL;
+				innernulltest->location = -1;
+				blist1 = lappend(blist1, innernulltest);			
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: a = b
+				 */
+				aexpr = makeSimpleA_Expr(AEXPR_OP, "=",
+												 (Node *) c->arg,
 												 warg,
 												 w->location);
+				blist1 = lappend(blist1, aexpr);
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: a is not null and b is not null and a = b
+				 */
+				innerneww = makeNode(CaseWhen);
+				innerneww->expr =  makeBoolExpr(AND_EXPR, blist1, -1);
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: then true
+				 */
+				innerneww->result = (Expr *)tc;
+				innerneww->location = -1;
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: case when a is not null and b is not null and a = b then true
+				 */
+				innernewexpr->args = lappend(innernewexpr->args, innerneww);
+			
+				/* 
+				 * third step: 
+				 *  else false, default value (true of false)
+				 *  current step: else false
+				 */
+				ac1->val.node.type = T_String;
+				ac1->val.sval.sval = "f";
+				ac1->location = -1;
+				tc1->arg = (Node*)ac1;
+				tc1->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"), 
+											makeString("bool")));
+				tc1->location = -1;
+
+				/* 
+				 * last step: new case expr
+				 */
+				innernewexpr->defresult = (Expr *)tc1;					
+				innernewexpr->location = -1;
+				
+				warg = (Node *)innernewexpr;
 			}
 			neww->expr = (Expr *) transformExprRecurse(pstate, warg);
 

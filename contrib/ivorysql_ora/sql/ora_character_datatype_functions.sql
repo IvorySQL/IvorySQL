@@ -1028,3 +1028,30 @@ select to_number('1.1,2,6,7,8', '9999,99,99,9,999') from dual; --error
 select to_number('1.1,2,6,77,8', '9999,99,99,9,999') from dual; --error
 select to_number(123) from dual;
 SELECT to_number(12.34) from dual;
+/*
+ * decode
+ */
+ 
+select  decode('b', null, 2018, 111) from dual; --expect:111
+select  decode(1, null, 2018, 111, 2222, 3333, 22, 1, 99, 5) from dual; --expect:99
+select  decode(null, 1, 2018, 111, 2222, 3333, 22, 1, 99, 5) from dual; --expect:5
+select  decode(null, 1, 2018, 111, 2222, 3333, 22, 1, null, 5) from dual; --expect:5
+
+create table test_decode(a int, b int);
+insert into test_decode values(null, null);
+select decode(a, b, 2018, 2, 3) from test_decode;
+select decode(a, 1, 2018, b, 3) from test_decode;
+select decode(a, 1, 2018, 2, 3, 4) from test_decode;
+insert into test_decode values(1, 1);
+insert into test_decode values(1, null);
+insert into test_decode values(null, 1);
+select * from test_decode;
+select decode(a, b, 2018, 2, 3) from test_decode;
+select decode(a, b, 2018, 1, 3) from test_decode;
+select decode(a, null, 2018, 1, 3) from test_decode;
+select decode(a, null, 2018, 2, 3) from test_decode;
+select decode(null, a, 2018, 2, 3) from test_decode;
+select decode(null, b, 2018, 2, 3) from test_decode;
+select decode(null, null, 2018, 2, 3) from test_decode; --expect:all
+
+drop table test_decode;
