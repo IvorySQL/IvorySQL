@@ -145,27 +145,27 @@ LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2001-09-22T18:19:20');
 DETAIL:  Value must be an integer.
 -- POSIX format (note that the timezone abbrev is just decoration here)
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 08:14:01 GMT+8');
-ERROR:  invalid value "GMT+8" for "FF6"
+ERROR:  invalid value "GM" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 08:14:01 GMT...
                                             ^
 DETAIL:  Value must be an integer.
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 13:14:02 GMT-1');
-ERROR:  invalid value "GMT-1" for "FF6"
+ERROR:  invalid value "GM" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 13:14:02 GMT...
                                             ^
 DETAIL:  Value must be an integer.
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 12:14:03 GMT-2');
-ERROR:  invalid value "GMT-2" for "FF6"
+ERROR:  invalid value "GM" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 12:14:03 GMT...
                                             ^
 DETAIL:  Value must be an integer.
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 03:14:04 PST+8');
-ERROR:  invalid value "PST+8" for "FF6"
+ERROR:  invalid value "PS" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 03:14:04 PST...
                                             ^
 DETAIL:  Value must be an integer.
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 02:14:05 MST+7:00');
-ERROR:  invalid value "MST+7:" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 02:14:05 MST...
                                             ^
 DETAIL:  Value must be an integer.
@@ -187,7 +187,7 @@ LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 5:32PM 1997');
 DETAIL:  Value must be an integer.
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997/02/10 17:32:01-0800');
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-02-10 17:32:01 PST');
-ERROR:  invalid value "PST" for "FF6"
+ERROR:  invalid value "PS" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-02-10 17:32:01 PST...
                                             ^
 DETAIL:  Value must be an integer.
@@ -201,7 +201,7 @@ ERROR:  The hour value must be between 0 and 23.
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('02-10-1997 17:32:01 PST...
                                             ^
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 PST');
-ERROR:  invalid value "PST" for "FF6"
+ERROR:  invalid value "PS" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 PST');
                                             ^
 DETAIL:  Value must be an integer.
@@ -212,19 +212,18 @@ LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('97FEB10 5:32:01PM UTC')...
                                             ^
 DETAIL:  Value must be an integer.
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('97/02/10 17:32:01 UTC');
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('97/02/10 17:32:01 UTC')...
                                             ^
 DETAIL:  Value must be an integer.
 reset datestyle;
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997.041 17:32:01 UTC');
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  Number value does not match the length of the format item.
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997.041 17:32:01 UTC')...
                                             ^
-DETAIL:  Value must be an integer.
 -- timestamps at different timezones
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 America/New_York');
-ERROR:  invalid value "Americ" for "FF6"
+ERROR:  invalid value "Am" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 America...
                                             ^
 DETAIL:  Value must be an integer.
@@ -235,7 +234,7 @@ SELECT '19970210 173201' AT TIME ZONE 'America/New_York';
 (1 row)
 
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America/New_York');
-ERROR:  invalid value "Americ" for "FF6"
+ERROR:  invalid value "Am" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America...
                                             ^
 DETAIL:  Value must be an integer.
@@ -246,7 +245,7 @@ SELECT '19970710 173201' AT TIME ZONE 'America/New_York';
 (1 row)
 
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America/Does_not_exist');
-ERROR:  invalid value "Americ" for "FF6"
+ERROR:  invalid value "Am" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America...
                                             ^
 DETAIL:  Value must be an integer.
@@ -254,12 +253,12 @@ SELECT '19970710 173201' AT TIME ZONE 'America/Does_not_exist';
 ERROR:  time zone "America/Does_not_exist" not recognized
 -- Daylight saving time for timestamps beyond 32-bit time_t range.
 SELECT '20500710 173201 Europe/Helsinki'::timestamptz; -- DST
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '20500710 173201 Europe/Helsinki'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '20500110 173201 Europe/Helsinki'::timestamptz; -- non-DST
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '20500110 173201 Europe/Helsinki'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
@@ -289,7 +288,7 @@ ERROR:  invalid value "Ne" for "SS"
 DETAIL:  Value must be an integer.
 -- Check date conversion and date arithmetic
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-06-10 18:32:01 PDT');
-ERROR:  invalid value "PDT" for "FF6"
+ERROR:  invalid value "PD" for "TZH"
 LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-06-10 18:32:01 PDT...
                                             ^
 DETAIL:  Value must be an integer.
@@ -491,22 +490,22 @@ SELECT d1 FROM TIMESTAMPTZ_TBL;
 -----------------------------------
  1997-01-02 00:00:00.000000 -08:00
  1997-01-02 03:04:05.000000 -08:00
- 1997-02-10 17:32:01.080000 -08:00
- 1997-02-10 17:32:01.080000 -08:00
- 1997-02-10 09:32:01.080000 -08:00
- 1997-02-10 17:32:01.080000 -08:00
- 1997-06-10 10:32:01.070000 -07:00
- 1997-02-10 17:32:01.080000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-06-10 03:32:01.000000 -07:00
+ 1997-02-10 01:32:01.000000 -08:00
 (8 rows)
 
 -- Check behavior at the boundaries of the timestamp range
 SELECT '4714-11-24 00:00:00+00 BC'::timestamptz;
-ERROR:  invalid value "BC" for "TZH"
+ERROR:  invalid value "BC" for "TZM"
 LINE 1: SELECT '4714-11-24 00:00:00+00 BC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '4714-11-23 16:00:00-08 BC'::timestamptz;
-ERROR:  invalid value "BC" for "TZH"
+ERROR:  invalid value "BC" for "TZM"
 LINE 1: SELECT '4714-11-23 16:00:00-08 BC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
@@ -516,7 +515,7 @@ LINE 1: SELECT 'Sun Nov 23 16:00:00 4714 PST BC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '4714-11-23 23:59:59+00 BC'::timestamptz;  -- out of range
-ERROR:  invalid value "BC" for "TZH"
+ERROR:  invalid value "BC" for "TZM"
 LINE 1: SELECT '4714-11-23 23:59:59+00 BC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
@@ -654,12 +653,12 @@ SELECT d1 as timestamptz,
 -----------------------------------+------+-------+-----+------+--------+--------
  1997-01-02 00:00:00.000000 -08:00 | 1997 |     1 |   2 |    0 |      0 |      0
  1997-01-02 03:04:05.000000 -08:00 | 1997 |     1 |   2 |    3 |      4 |      5
- 1997-02-10 17:32:01.080000 -08:00 | 1997 |     2 |  10 |   17 |     32 |   1.08
- 1997-02-10 17:32:01.080000 -08:00 | 1997 |     2 |  10 |   17 |     32 |   1.08
- 1997-02-10 09:32:01.080000 -08:00 | 1997 |     2 |  10 |    9 |     32 |   1.08
- 1997-02-10 17:32:01.080000 -08:00 | 1997 |     2 |  10 |   17 |     32 |   1.08
- 1997-06-10 10:32:01.070000 -07:00 | 1997 |     6 |  10 |   10 |     32 |   1.07
- 1997-02-10 17:32:01.080000 -08:00 | 1997 |     2 |  10 |   17 |     32 |   1.08
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-06-10 03:32:01.000000 -07:00 | 1997 |     6 |  10 |    3 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
 (8 rows)
 
 SELECT d1 as timestamptz,
@@ -670,12 +669,12 @@ SELECT d1 as timestamptz,
 -----------------------------------+---------+------+---------
  1997-01-02 00:00:00.000000 -08:00 |       1 |    0 |       0
  1997-01-02 03:04:05.000000 -08:00 |       1 | 5000 | 5000000
- 1997-02-10 17:32:01.080000 -08:00 |       1 | 1080 | 1080000
- 1997-02-10 17:32:01.080000 -08:00 |       1 | 1080 | 1080000
- 1997-02-10 09:32:01.080000 -08:00 |       1 | 1080 | 1080000
- 1997-02-10 17:32:01.080000 -08:00 |       1 | 1080 | 1080000
- 1997-06-10 10:32:01.070000 -07:00 |       2 | 1070 | 1070000
- 1997-02-10 17:32:01.080000 -08:00 |       1 | 1080 | 1080000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-06-10 03:32:01.000000 -07:00 |       2 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
 (8 rows)
 
 SELECT d1 as timestamptz,
@@ -687,12 +686,12 @@ SELECT d1 as timestamptz,
 -----------------------------------+---------+------+--------+-----+-----
  1997-01-02 00:00:00.000000 -08:00 |    1997 |    1 |      4 |   4 |   2
  1997-01-02 03:04:05.000000 -08:00 |    1997 |    1 |      4 |   4 |   2
- 1997-02-10 17:32:01.080000 -08:00 |    1997 |    7 |      1 |   1 |  41
- 1997-02-10 17:32:01.080000 -08:00 |    1997 |    7 |      1 |   1 |  41
- 1997-02-10 09:32:01.080000 -08:00 |    1997 |    7 |      1 |   1 |  41
- 1997-02-10 17:32:01.080000 -08:00 |    1997 |    7 |      1 |   1 |  41
- 1997-06-10 10:32:01.070000 -07:00 |    1997 |   24 |      2 |   2 | 161
- 1997-02-10 17:32:01.080000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-06-10 03:32:01.000000 -07:00 |    1997 |   24 |      2 |   2 | 161
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
 (8 rows)
 
 SELECT d1 as timestamptz,
@@ -702,16 +701,16 @@ SELECT d1 as timestamptz,
    round(date_part( 'julian', d1)) AS julian,
    date_part( 'epoch', d1) AS epoch
    FROM TIMESTAMPTZ_TBL;
-            timestamptz            | decade | century | millennium | julian  |    epoch     
------------------------------------+--------+---------+------------+---------+--------------
- 1997-01-02 00:00:00.000000 -08:00 |    199 |      20 |          2 | 2450451 |    852192000
- 1997-01-02 03:04:05.000000 -08:00 |    199 |      20 |          2 | 2450451 |    852203045
- 1997-02-10 17:32:01.080000 -08:00 |    199 |      20 |          2 | 2450491 | 855624721.08
- 1997-02-10 17:32:01.080000 -08:00 |    199 |      20 |          2 | 2450491 | 855624721.08
- 1997-02-10 09:32:01.080000 -08:00 |    199 |      20 |          2 | 2450490 | 855595921.08
- 1997-02-10 17:32:01.080000 -08:00 |    199 |      20 |          2 | 2450491 | 855624721.08
- 1997-06-10 10:32:01.070000 -07:00 |    199 |      20 |          2 | 2450610 | 865963921.07
- 1997-02-10 17:32:01.080000 -08:00 |    199 |      20 |          2 | 2450491 | 855624721.08
+            timestamptz            | decade | century | millennium | julian  |   epoch   
+-----------------------------------+--------+---------+------------+---------+-----------
+ 1997-01-02 00:00:00.000000 -08:00 |    199 |      20 |          2 | 2450451 | 852192000
+ 1997-01-02 03:04:05.000000 -08:00 |    199 |      20 |          2 | 2450451 | 852203045
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-06-10 03:32:01.000000 -07:00 |    199 |      20 |          2 | 2450610 | 865938721
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
 (8 rows)
 
 SELECT d1 as timestamptz,
@@ -723,12 +722,12 @@ SELECT d1 as timestamptz,
 -----------------------------------+----------+---------------+-----------------
  1997-01-02 00:00:00.000000 -08:00 |   -28800 |            -8 |               0
  1997-01-02 03:04:05.000000 -08:00 |   -28800 |            -8 |               0
- 1997-02-10 17:32:01.080000 -08:00 |   -28800 |            -8 |               0
- 1997-02-10 17:32:01.080000 -08:00 |   -28800 |            -8 |               0
- 1997-02-10 09:32:01.080000 -08:00 |   -28800 |            -8 |               0
- 1997-02-10 17:32:01.080000 -08:00 |   -28800 |            -8 |               0
- 1997-06-10 10:32:01.070000 -07:00 |   -25200 |            -7 |               0
- 1997-02-10 17:32:01.080000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-06-10 03:32:01.000000 -07:00 |   -25200 |            -7 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
 (8 rows)
 
 -- extract implementation is mostly the same as date_part, so only
@@ -744,12 +743,12 @@ SELECT d1 as "timestamp",
 -----------------------------------+--------------+--------------+----------+---------+------------------
  1997-01-02 00:00:00.000000 -08:00 |            0 |        0.000 | 0.000000 | 2450451 | 852192000.000000
  1997-01-02 03:04:05.000000 -08:00 |      5000000 |     5000.000 | 5.000000 | 2450451 | 852203045.000000
- 1997-02-10 17:32:01.080000 -08:00 |      1080000 |     1080.000 | 1.080000 | 2450491 | 855624721.080000
- 1997-02-10 17:32:01.080000 -08:00 |      1080000 |     1080.000 | 1.080000 | 2450491 | 855624721.080000
- 1997-02-10 09:32:01.080000 -08:00 |      1080000 |     1080.000 | 1.080000 | 2450490 | 855595921.080000
- 1997-02-10 17:32:01.080000 -08:00 |      1080000 |     1080.000 | 1.080000 | 2450491 | 855624721.080000
- 1997-06-10 10:32:01.070000 -07:00 |      1070000 |     1070.000 | 1.070000 | 2450610 | 865963921.070000
- 1997-02-10 17:32:01.080000 -08:00 |      1080000 |     1080.000 | 1.080000 | 2450491 | 855624721.080000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-06-10 03:32:01.000000 -07:00 |      1000000 |     1000.000 | 1.000000 | 2450610 | 865938721.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
 (8 rows)
 
 -- value near upper bound uses special case in code
@@ -765,7 +764,7 @@ LINE 1: SELECT extract(epoch from '294270-01-01 00:00:00+00'::timest...
 SELECT extract(epoch from '5000-01-01 00:00:00+00'::timestamptz);
       extract       
 --------------------
- 95617612800.000000
+ 95617584000.000000
 (1 row)
 
 -- test edge-case overflow in timestamp subtraction
@@ -840,12 +839,12 @@ SELECT to_char(d1, 'HH HH12 HH24 MI SS SSSS')
 ----------------------
  12 12 00 00 00 0
  03 03 03 04 05 11045
- 05 05 17 32 01 63121
- 05 05 17 32 01 63121
- 09 09 09 32 01 34321
- 05 05 17 32 01 63121
- 10 10 10 32 01 37921
- 05 05 17 32 01 63121
+ 01 01 01 32 01 5521
+ 01 01 01 32 01 5521
+ 01 01 01 32 01 5521
+ 01 01 01 32 01 5521
+ 03 03 03 32 01 12721
+ 01 01 01 32 01 5521
 (8 rows)
 
 SELECT to_char(d1, E'"HH:MI:SS is" HH:MI:SS "\\"text between quote marks\\""')
@@ -854,12 +853,12 @@ SELECT to_char(d1, E'"HH:MI:SS is" HH:MI:SS "\\"text between quote marks\\""')
 -------------------------------------------------
  HH:MI:SS is 12:00:00 "text between quote marks"
  HH:MI:SS is 03:04:05 "text between quote marks"
- HH:MI:SS is 05:32:01 "text between quote marks"
- HH:MI:SS is 05:32:01 "text between quote marks"
- HH:MI:SS is 09:32:01 "text between quote marks"
- HH:MI:SS is 05:32:01 "text between quote marks"
- HH:MI:SS is 10:32:01 "text between quote marks"
- HH:MI:SS is 05:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 03:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
 (8 rows)
 
 SELECT to_char(d1, 'HH24--text--MI--text--SS')
@@ -885,12 +884,12 @@ SELECT to_char(d1, 'YYYY A.D. YYYY a.d. YYYY bc HH:MI:SS P.M. HH:MI:SS p.m. HH:M
 ---------------------------------------------------------------------
  1997 A.D. 1997 a.d. 1997 ad 12:00:00 A.M. 12:00:00 a.m. 12:00:00 am
  1997 A.D. 1997 a.d. 1997 ad 03:04:05 A.M. 03:04:05 a.m. 03:04:05 am
- 1997 A.D. 1997 a.d. 1997 ad 05:32:01 P.M. 05:32:01 p.m. 05:32:01 pm
- 1997 A.D. 1997 a.d. 1997 ad 05:32:01 P.M. 05:32:01 p.m. 05:32:01 pm
- 1997 A.D. 1997 a.d. 1997 ad 09:32:01 A.M. 09:32:01 a.m. 09:32:01 am
- 1997 A.D. 1997 a.d. 1997 ad 05:32:01 P.M. 05:32:01 p.m. 05:32:01 pm
- 1997 A.D. 1997 a.d. 1997 ad 10:32:01 A.M. 10:32:01 a.m. 10:32:01 am
- 1997 A.D. 1997 a.d. 1997 ad 05:32:01 P.M. 05:32:01 p.m. 05:32:01 pm
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 03:32:01 A.M. 03:32:01 a.m. 03:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
 (8 rows)
 
 SELECT to_char(d1, 'IYYY IYY IY I IW IDDD ID')
@@ -928,7 +927,7 @@ SELECT to_char(d, 'FF1 FF2 FF3 FF4 FF5 FF6  ff1 ff2 ff3 ff4 ff5 ff6  MS US')
        ('2018-11-02 12:34:56.78901'),
        ('2018-11-02 12:34:56.78901234')
    ) d(d);
-ERROR:  time zone displacement out of range: "2018-11-02 12:34:56.78901234"
+ERROR:  date format picture ends before converting entire input string.
 LINE 6:        ('2018-11-02 12:34:56.78901234')
                 ^
 -- Check OF, TZH, TZM with various zone offsets, particularly fractional hours
@@ -1079,7 +1078,7 @@ LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(3, 'Sat Mar 12 23:58:48 1...
                                               ^
 DETAIL:  Value must be an integer.
 INSERT INTO TIMESTAMPTZ_TST VALUES(3, '10000 Mar 12 23:58:48 IST');
-ERROR:  The value of month is invalid.
+ERROR:  Number value does not match the length of the format item.
 LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(3, '10000 Mar 12 23:58:48...
                                               ^
 INSERT INTO TIMESTAMPTZ_TST VALUES(4, '100000312 23:58:48 IST');
@@ -1251,142 +1250,142 @@ RESET TimeZone;
 --
 SET TimeZone to 'UTC';
 SELECT '2011-03-27 00:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 00:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 01:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 01:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 01:59:59 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 01:59:59 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 02:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 02:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 02:00:01 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 02:00:01 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 02:59:59 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 02:59:59 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 03:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 03:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 03:00:01 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 03:00:01 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 04:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2011-03-27 04:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 00:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 00:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 01:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 01:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 01:59:59 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 01:59:59 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 02:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 02:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 02:00:01 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 02:00:01 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 02:59:59 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 02:59:59 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 03:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 03:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 03:00:01 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 03:00:01 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 04:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2011-03-27 04:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 00:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2014-10-26 00:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 00:59:59 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2014-10-26 00:59:59 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 01:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2014-10-26 01:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 01:00:01 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2014-10-26 01:00:01 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 02:00:00 Europe/Moscow'::timestamptz;
-ERROR:  invalid value "Europe" for "FF6"
+ERROR:  invalid value "Eu" for "TZH"
 LINE 1: SELECT '2014-10-26 02:00:00 Europe/Moscow'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 00:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2014-10-26 00:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 00:59:59 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2014-10-26 00:59:59 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 01:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2014-10-26 01:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 01:00:01 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2014-10-26 01:00:01 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-26 02:00:00 MSK'::timestamptz;
-ERROR:  invalid value "MSK" for "FF6"
+ERROR:  invalid value "MS" for "TZH"
 LINE 1: SELECT '2014-10-26 02:00:00 MSK'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
@@ -1613,183 +1612,183 @@ SELECT to_timestamp('NaN'::float);
 ERROR:  timestamp cannot be NaN
 SET TimeZone to 'Europe/Moscow';
 SELECT '2011-03-26 21:00:00 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 21:00:00 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 22:00:00 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 22:00:00 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 22:59:59 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 22:59:59 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:00:00 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:00:00 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:00:01 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:00:01 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:59:59 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:59:59 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 00:00:00 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-27 00:00:00 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 21:00:00 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 21:00:00 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 21:59:59 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 21:59:59 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 22:00:00 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 22:00:00 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 22:00:01 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 22:00:01 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 23:00:00 UTC'::timestamptz;
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 23:00:00 UTC'::timestamptz;
                ^
 DETAIL:  Value must be an integer.
 RESET TimeZone;
 SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
-ERROR:  invalid value "UTC" for "FF6"
+ERROR:  invalid value "UT" for "TZH"
 LINE 1: SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
