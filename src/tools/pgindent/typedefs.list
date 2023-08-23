@@ -318,6 +318,7 @@ BufferDesc
 BufferDescPadded
 BufferHeapTupleTableSlot
 BufferLookupEnt
+BufferManagerRelation
 BufferStrategyControl
 BufferTag
 BufferUsage
@@ -709,7 +710,6 @@ ExprEvalStep
 ExprState
 ExprStateEvalFunc
 ExtendBufferedFlags
-ExtendBufferedWhat
 ExtensibleNode
 ExtensibleNodeEntry
 ExtensibleNodeMethods
