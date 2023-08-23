@@ -330,7 +330,7 @@ AS 'MODULE_PATHNAME','ora_replace'
 LANGUAGE C
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrb(varchar, text, number default 1, number default 1)
+CREATE FUNCTION sys.instrb(varchar2, varchar2, number default 1, number default 1)
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrb'
 LANGUAGE C

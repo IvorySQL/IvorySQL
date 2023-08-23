@@ -2686,6 +2686,183 @@ SELECT to_number(12.34) from dual;
 -----------
  12.34
 (1 row)
+
+/*
+ * instrb
+ */
+select instrb(1, 1) from dual;
+ instrb 
+--------
+      1
+(1 row)
+
+select instrb('a', 1) from dual;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2, 4) "instrb" FROM DUAL; --err
+ERROR:  function instrb(integer, integer, text, integer, integer) does not exist
+LINE 1: SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2,...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT instrb(20121209, cast(12 as int), cast(1 as varchar2), '2') "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2, '4', 5) "instrb" FROM DUAL; --err
+ERROR:  function instrb(integer, integer, text, integer, unknown, integer) does not exist
+LINE 1: SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2,...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT instrb(20121209) "instrb" FROM DUAL;
+ERROR:  function instrb(integer) does not exist
+LINE 1: SELECT instrb(20121209) "instrb" FROM DUAL;
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT instrb(20121209,12, 1, 2) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(20121209,12, 1) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(20121209,12) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(2012 as int2), cast(12 as int2), cast(1 as int2), cast(2 as int2)) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(2012 as int2), cast(12 as int2), cast(1 as int2)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(2012 as int2), cast(12 as int2)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121209 as int), cast(12 as int), cast(1.9 as int), cast(2.99 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(20121209 as int), cast(12 as int), cast(1.9 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121209 as int), cast(12 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121212 as int8), cast(1212 as int8), cast(1.9 as int8), cast(1.99 as int8)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(cast(20121212 as int8), cast(1212 as int8), cast(1.9 as int8)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121212 as int8), cast(1212 as int8)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(201212.09 as int),cast(12.9 as int), cast(1.9 as numeric), 2.99::numeric) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric), cast(1.9 as int), cast(1.99 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric), cast(1.9 as numeric), cast(1.99 as numeric)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric), cast(1.9 as numeric)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(null,null,null,null) FROM DUAL;
+ instrb 
+--------
+       
+(1 row)
+
+SELECT instrb(null,null,null) FROM DUAL;
+ instrb 
+--------
+       
+(1 row)
+
+SELECT instrb(null,null) FROM DUAL;
+ instrb 
+--------
+       
+(1 row)
+
+select instrb(1, 1) from dual;
+ instrb 
+--------
+      1
+(1 row)
+
+select instrb('a', 1) from dual;
+ instrb 
+--------
+      0
+(1 row)
+
+reset nls_timestamp_format;
+reset nls_date_format;
+select instrb(cast('2022-09-27' as date), 2) from dual;
+ instrb 
+--------
+      1
+(1 row)
+
 /*
  * decode
  */
