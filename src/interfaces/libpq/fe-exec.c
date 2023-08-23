@@ -1458,7 +1458,7 @@ PQsendQueryInternal(PGconn *conn, const char *query, bool newQuery)
 
 	/* Send the query message(s) */
 	/* construct the outgoing Query message */
-	if (pqPutMsgStart('Q', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Query, conn) < 0 ||
 		pqPuts(query, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 	{
@@ -1571,7 +1571,7 @@ PQsendPrepare(PGconn *conn,
 		return 0;				/* error msg already set */
 
 	/* construct the Parse message */
-	if (pqPutMsgStart('P', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Parse, conn) < 0 ||
 		pqPuts(stmtName, conn) < 0 ||
 		pqPuts(query, conn) < 0)
 		goto sendFailed;
@@ -1599,7 +1599,7 @@ PQsendPrepare(PGconn *conn,
 	/* Add a Sync, unless in pipeline mode. */
 	if (conn->pipelineStatus == PQ_PIPELINE_OFF)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			goto sendFailed;
 	}
@@ -1784,7 +1784,7 @@ PQsendQueryGuts(PGconn *conn,
 	if (command)
 	{
 		/* construct the Parse message */
-		if (pqPutMsgStart('P', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Parse, conn) < 0 ||
 			pqPuts(stmtName, conn) < 0 ||
 			pqPuts(command, conn) < 0)
 			goto sendFailed;
@@ -1808,7 +1808,7 @@ PQsendQueryGuts(PGconn *conn,
 	}
 
 	/* Construct the Bind message */
-	if (pqPutMsgStart('B', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Bind, conn) < 0 ||
 		pqPuts("", conn) < 0 ||
 		pqPuts(stmtName, conn) < 0)
 		goto sendFailed;
@@ -1874,14 +1874,14 @@ PQsendQueryGuts(PGconn *conn,
 		goto sendFailed;
 
 	/* construct the Describe Portal message */
-	if (pqPutMsgStart('D', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Describe, conn) < 0 ||
 		pqPutc('P', conn) < 0 ||
 		pqPuts("", conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 		goto sendFailed;
 
 	/* construct the Execute message */
-	if (pqPutMsgStart('E', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Execute, conn) < 0 ||
 		pqPuts("", conn) < 0 ||
 		pqPutInt(0, 4, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
@@ -1890,7 +1890,7 @@ PQsendQueryGuts(PGconn *conn,
 	/* construct the Sync message if not in pipeline mode */
 	if (conn->pipelineStatus == PQ_PIPELINE_OFF)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			goto sendFailed;
 	}
@@ -2423,7 +2423,7 @@ PQdescribePrepared(PGconn *conn, const char *stmt)
 {
 	if (!PQexecStart(conn))
 		return NULL;
-	if (!PQsendTypedCommand(conn, 'D', 'S', stmt))
+	if (!PQsendTypedCommand(conn, PqMsg_Describe, 'S', stmt))
 		return NULL;
 	return PQexecFinish(conn);
 }
@@ -2442,7 +2442,7 @@ PQdescribePortal(PGconn *conn, const char *portal)
 {
 	if (!PQexecStart(conn))
 		return NULL;
-	if (!PQsendTypedCommand(conn, 'D', 'P', portal))
+	if (!PQsendTypedCommand(conn, PqMsg_Describe, 'P', portal))
 		return NULL;
 	return PQexecFinish(conn);
 }
@@ -2457,7 +2457,7 @@ PQdescribePortal(PGconn *conn, const char *portal)
 int
 PQsendDescribePrepared(PGconn *conn, const char *stmt)
 {
-	return PQsendTypedCommand(conn, 'D', 'S', stmt);
+	return PQsendTypedCommand(conn, PqMsg_Describe, 'S', stmt);
 }
 
 /*
@@ -2470,7 +2470,7 @@ PQsendDescribePrepared(PGconn *conn, const char *stmt)
 int
 PQsendDescribePortal(PGconn *conn, const char *portal)
 {
-	return PQsendTypedCommand(conn, 'D', 'P', portal);
+	return PQsendTypedCommand(conn, PqMsg_Describe, 'P', portal);
 }
 
 /*
@@ -2489,7 +2489,7 @@ PQclosePrepared(PGconn *conn, const char *stmt)
 {
 	if (!PQexecStart(conn))
 		return NULL;
-	if (!PQsendTypedCommand(conn, 'C', 'S', stmt))
+	if (!PQsendTypedCommand(conn, PqMsg_Close, 'S', stmt))
 		return NULL;
 	return PQexecFinish(conn);
 }
@@ -2507,7 +2507,7 @@ PQclosePortal(PGconn *conn, const char *portal)
 {
 	if (!PQexecStart(conn))
 		return NULL;
-	if (!PQsendTypedCommand(conn, 'C', 'P', portal))
+	if (!PQsendTypedCommand(conn, PqMsg_Close, 'P', portal))
 		return NULL;
 	return PQexecFinish(conn);
 }
@@ -2522,7 +2522,7 @@ PQclosePortal(PGconn *conn, const char *portal)
 int
 PQsendClosePrepared(PGconn *conn, const char *stmt)
 {
-	return PQsendTypedCommand(conn, 'C', 'S', stmt);
+	return PQsendTypedCommand(conn, PqMsg_Close, 'S', stmt);
 }
 
 /*
@@ -2535,7 +2535,7 @@ PQsendClosePrepared(PGconn *conn, const char *stmt)
 int
 PQsendClosePortal(PGconn *conn, const char *portal)
 {
-	return PQsendTypedCommand(conn, 'C', 'P', portal);
+	return PQsendTypedCommand(conn, PqMsg_Close, 'P', portal);
 }
 
 /*
@@ -2543,8 +2543,8 @@ PQsendClosePortal(PGconn *conn, const char *portal)
  *	 Common code to send a Describe or Close command
  *
  * Available options for "command" are
- *	 'C' for Close; or
- *	 'D' for Describe.
+ *	 PqMsg_Close for Close; or
+ *	 PqMsg_Describe for Describe.
  *
  * Available options for "type" are
  *	 'S' to run a command on a prepared statement; or
@@ -2578,17 +2578,17 @@ PQsendTypedCommand(PGconn *conn, char command, char type, const char *target)
 	/* construct the Sync message */
 	if (conn->pipelineStatus == PQ_PIPELINE_OFF)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			goto sendFailed;
 	}
 
 	/* remember if we are doing a Close or a Describe */
-	if (command == 'C')
+	if (command == PqMsg_Close)
 	{
 		entry->queryclass = PGQUERY_CLOSE;
 	}
-	else if (command == 'D')
+	else if (command == PqMsg_Describe)
 	{
 		entry->queryclass = PGQUERY_DESCRIBE;
 	}
@@ -2697,7 +2697,7 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 				return pqIsnonblocking(conn) ? 0 : -1;
 		}
 		/* Send the data (too simple to delegate to fe-protocol files) */
-		if (pqPutMsgStart('d', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_CopyData, conn) < 0 ||
 			pqPutnchar(buffer, nbytes, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
@@ -2732,7 +2732,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 	if (errormsg)
 	{
 		/* Send COPY FAIL */
-		if (pqPutMsgStart('f', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_CopyFail, conn) < 0 ||
 			pqPuts(errormsg, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
@@ -2740,7 +2740,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 	else
 	{
 		/* Send COPY DONE */
-		if (pqPutMsgStart('c', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_CopyDone, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
 	}
@@ -2752,7 +2752,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 	if (conn->cmd_queue_head &&
 		conn->cmd_queue_head->queryclass != PGQUERY_SIMPLE)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
 	}
@@ -3263,7 +3263,7 @@ PQpipelineSync(PGconn *conn)
 	entry->query = NULL;
 
 	/* construct the Sync message */
-	if (pqPutMsgStart('S', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 		goto sendFailed;
 
@@ -3311,7 +3311,7 @@ PQsendFlushRequest(PGconn *conn)
 		return 0;
 	}
 
-	if (pqPutMsgStart('H', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Flush, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 	{
 		return 0;
