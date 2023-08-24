@@ -52,6 +52,22 @@ typedef struct Float
 	char	   *fval;
 } Float;
 
+typedef struct BFloat
+{
+	pg_node_attr(special_read_write)
+
+	NodeTag		type;
+	char	   *fval;
+} BFloat;
+
+typedef struct BDouble
+{
+	pg_node_attr(special_read_write)
+
+	NodeTag		type;
+	char	   *fval;
+} BDouble;
+
 typedef struct Boolean
 {
 	pg_node_attr(special_read_write)
@@ -80,9 +96,14 @@ typedef struct BitString
 #define floatVal(v)		atof(castNode(Float, v)->fval)
 #define boolVal(v)		(castNode(Boolean, v)->boolval)
 #define strVal(v)		(castNode(String, v)->sval)
+#define bfloatVal(v)	(castNode(BFloat, v)->fval)
+#define bdoubleVal(v)	(castNode(BDouble, v)->fval)
+
 
 extern Integer *makeInteger(int i);
 extern Float *makeFloat(char *numericStr);
+extern BFloat *makeBFloat(char *numericStr);
+extern BDouble *makeBDouble(char *numericStr);
 extern Boolean *makeBoolean(bool val);
 extern String *makeString(char *str);
 extern BitString *makeBitString(char *str);

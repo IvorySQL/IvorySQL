@@ -250,6 +250,7 @@ extern int	pg_printf(const char *fmt,...) pg_attribute_printf(1, 2);
 
 /* This is also provided by snprintf.c */
 extern int	pg_strfromd(char *str, size_t count, int precision, double value);
+extern int	ivy_strfromd(char *str, size_t count, int precision, double value);
 
 /* Replace strerror() with our own, somewhat more robust wrapper */
 extern char *pg_strerror(int errnum);

@@ -8426,8 +8426,8 @@ AS IMPLICIT;
 -- Converts a number type to binary_float type
 CREATE FUNCTION sys.number_binary_float(sys.number)
 RETURNS sys.binary_float
-AS 'numeric_float4'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','number_binary_float'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -8439,8 +8439,8 @@ AS IMPLICIT;
 -- Converts a number type to binary_double type
 CREATE FUNCTION sys.number_binary_double(sys.number)
 RETURNS sys.binary_double
-AS 'numeric_float8'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','number_binary_double'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -8973,32 +8973,32 @@ CREATE AGGREGATE sys.stddev(sys.number) (
  ****************************************************************/
 CREATE FUNCTION sys.binary_float_in(cstring)
 RETURNS sys.binary_float
-AS 'float4in'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_float_in'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION sys.binary_float_out(sys.binary_float)
 RETURNS CSTRING
-AS 'float4out'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_float_out'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION sys.binary_float_recv(internal)
 RETURNS sys.binary_float
-AS 'float4recv'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_float_recv'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION sys.binary_float_send(sys.binary_float)
 RETURNS bytea
-AS 'float4send'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_float_send'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9151,8 +9151,8 @@ AS ASSIGNMENT;
 -- Converts a numeric type to binary_float type
 CREATE FUNCTION sys.numeric_binary_float(numeric)
 RETURNS sys.binary_float
-AS 'numeric_float4'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','number_binary_float'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9384,32 +9384,32 @@ CREATE OPERATOR / (
  ****************************************************************/
 CREATE FUNCTION sys.binary_double_in(cstring)
 RETURNS sys.binary_double
-AS 'float8in'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_double_in'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION sys.binary_double_out(sys.binary_double)
 RETURNS CSTRING
-AS 'float8out'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_double_out'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION sys.binary_double_recv(internal)
 RETURNS sys.binary_double
-AS 'float8recv'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_double_recv'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION sys.binary_double_send(sys.binary_double)
 RETURNS bytea
-AS 'float8send'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','binary_double_send'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9565,8 +9565,8 @@ AS ASSIGNMENT;
 -- Converts a numeric type to binary_double type
 CREATE FUNCTION sys.numeric_binary_double(numeric)
 RETURNS sys.binary_double
-AS 'numeric_float8'
-LANGUAGE internal
+AS 'MODULE_PATHNAME','number_binary_double'
+LANGUAGE C
 STRICT
 IMMUTABLE
 LEAKPROOF;

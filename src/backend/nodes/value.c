@@ -42,6 +42,24 @@ makeFloat(char *numericStr)
 	return v;
 }
 
+BFloat *
+makeBFloat(char *numericStr)
+{
+	BFloat	   *v = makeNode(BFloat);
+
+	v->fval = numericStr;
+	return v;
+}
+
+BDouble *
+makeBDouble(char *numericStr)
+{
+	BDouble	   *v = makeNode(BDouble);
+
+	v->fval = numericStr;
+	return v;
+}
+
 /*
  *	makeBoolean
  */

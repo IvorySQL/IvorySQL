@@ -468,6 +468,55 @@ make_const(ParseState *pstate, A_Const *aconst)
 			typebyval = false;
 			break;
 
+		case T_BFloat:
+			{
+				Oid		typinput, typioparam;
+				char	*bfconst = (char *) palloc0(strlen(bfloatVal(&aconst->val)) + 3);	/* original value, 'BF' prefix, '\0' */
+
+				/*
+				 * Oracle will throw an error when float-point literals out of range,
+				 * other case convert it to inf/-inf. we pass the float-point literals
+				 * in ivorysql by appending the BF flag to the header of the string.
+				 * Example:
+				 *	select 3.40282E+39F from dual;	-- error, out of range
+				 *	select cast(3.40282E+39 as binary_float) from dual;	-- OK, inf
+				 */
+				strcpy(bfconst, "BF");
+				strcpy(bfconst + 2, bfloatVal(&aconst->val));
+
+				getTypeInputInfo(BINARY_FLOATOID, &typinput, &typioparam);
+
+				/* arrange to report location if binary_float_in() fails */
+				setup_parser_errposition_callback(&pcbstate, pstate, aconst->location);
+				val = OidInputFunctionCall(typinput, bfconst, typioparam, -1);
+				cancel_parser_errposition_callback(&pcbstate);
+
+				typeid = BINARY_FLOATOID;
+				typelen = sizeof(float4);
+				typebyval = true;
+			}
+			break;
+
+		case T_BDouble:
+			{
+				Oid		typinput, typioparam;
+				char	*bdconst = (char *) palloc0(strlen(bdoubleVal(&aconst->val)) + 3);	/* original value, 'BD' prefix, '\0' */
+
+				strcpy(bdconst, "BD");
+				strcpy(bdconst + 2, bdoubleVal(&aconst->val));
+
+				getTypeInputInfo(BINARY_DOUBLEOID, &typinput, &typioparam);
+
+				/* arrange to report location if binary_double_in() fails */
+				setup_parser_errposition_callback(&pcbstate, pstate, aconst->location);
+				val = OidInputFunctionCall(typinput, bdconst, typioparam, -1);
+				cancel_parser_errposition_callback(&pcbstate);
+
+				typeid = BINARY_DOUBLEOID;
+				typelen = sizeof(float8);
+				typebyval = FLOAT8PASSBYVAL;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(&aconst->val));
 			return NULL;		/* keep compiler quiet */
