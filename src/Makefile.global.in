@@ -408,6 +408,25 @@ oracle-pg-check: temp-install
 
 .PHONY: temp-install
 
+
+# prepend to path if already set, else just set it
+define add_to_path
+$(1)="$(if $($(1)),$(2):$$$(1),$(2))"
+endef
+
+# platform-specific environment variable to set shared library path
+# individual ports can override this later, this is the default name
+ld_library_path_var = LD_LIBRARY_PATH
+
+# with_temp_install_extra is for individual ports to define if they
+# need something more here. If not defined then the expansion does
+# nothing.
+with_temp_install = \
+	PATH="$(abs_top_builddir)/tmp_install$(bindir):$(CURDIR):$$PATH" \
+	$(call add_to_path,$(strip $(ld_library_path_var)),$(abs_top_builddir)/tmp_install$(libdir)) \
+	INITDB_TEMPLATE='$(abs_top_builddir)'/tmp_install/initdb-template \
+	$(with_temp_install_extra)
+
 temp-install: | submake-generated-headers
 ifndef NO_TEMP_INSTALL
 ifneq ($(abs_top_builddir),)
@@ -416,6 +435,8 @@ ifeq ($(MAKELEVEL),0)
 	$(MKDIR_P) '$(abs_top_builddir)'/tmp_install/log
 	$(MAKE) -C '$(top_builddir)' DESTDIR='$(abs_top_builddir)'/tmp_install install >'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
 	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) checkprep >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+
+	$(with_temp_install) initdb -A trust -N --no-instructions '$(abs_top_builddir)'/tmp_install/initdb-template >>'$(abs_top_builddir)'/tmp_install/log/initdb-template.log 2>&1
 endif
 endif
 endif
@@ -440,23 +461,6 @@ ORACLE_PROVE_FLAGS = -I $(top_srcdir)/src/oracle_test/perl/ -I $(srcdir)
 #IvorySQL:END - SQL oracle_test
 # User-supplied prove flags such as --verbose can be provided in PROVE_FLAGS.
 PROVE_FLAGS =
-
-# prepend to path if already set, else just set it
-define add_to_path
-$(1)="$(if $($(1)),$(2):$$$(1),$(2))"
-endef
-
-# platform-specific environment variable to set shared library path
-# individual ports can override this later, this is the default name
-ld_library_path_var = LD_LIBRARY_PATH
-
-# with_temp_install_extra is for individual ports to define if they
-# need something more here. If not defined then the expansion does
-# nothing.
-with_temp_install = \
-	PATH="$(abs_top_builddir)/tmp_install$(bindir):$(CURDIR):$$PATH" \
-	$(call add_to_path,$(strip $(ld_library_path_var)),$(abs_top_builddir)/tmp_install$(libdir)) \
-	$(with_temp_install_extra)
 
 ifeq ($(enable_tap_tests),yes)
 
