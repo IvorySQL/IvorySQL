@@ -174,5 +174,42 @@ SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
 -- drop table 
 DROP TABLE BINARY_DOUBLE_TBL;
 
+create table test_bd(a binary_double);
+insert into test_bd values(1.79769313486231E+308D);		-- ok
+insert into test_bd values(-1.79769313486231E+308D);	-- ok
+insert into test_bd values(1.79769313486231E+309D);		-- error
+insert into test_bd values(-1.79769313486231E+309D);	-- error
+insert into test_bd values(1.79769313486231E+309);		-- inf
+insert into test_bd values(-1.79769313486231E+309);		-- inf
+insert into test_bd values('1.79769313486231E+309');	-- inf
+insert into test_bd values('-1.79769313486231E+309');	-- -inf
+select * from test_bd;
 
+delete from test_bd;
+insert into test_bd values(2.22507485850720E-308D);		-- ok
+insert into test_bd values(-2.22507485850720E-308D);	-- ok
+insert into test_bd values(2.22507485850720E-309D);		-- ok
+insert into test_bd values(-2.22507485850720E-309D);	-- ok
+insert into test_bd values(2.22507485850720E-400D);		-- error
+insert into test_bd values(-2.22507485850720E-400D);	-- error
+insert into test_bd values(2.22507485850720E-400);		-- 0
+insert into test_bd values(-2.22507485850720E-400);		-- 0
+insert into test_bd values('2.22507485850720E-400');	-- 0
+insert into test_bd values('-2.22507485850720E-400');	-- 0
+select * from test_bd;
+drop table test_bd;
+
+create table float_point_condition(a binary_double);
+insert into float_point_condition values(1.79769313486231E+308D);
+insert into float_point_condition values(-1.79769313486231E+308D);
+insert into float_point_condition values('inf');
+insert into float_point_condition values('+inf');
+insert into float_point_condition values('-inf');
+insert into float_point_condition values('+nan');
+insert into float_point_condition values('-nan');
+select * from float_point_condition where a is nan;
+select * from float_point_condition where a is not nan;
+select * from float_point_condition where a is infinite;
+select * from float_point_condition where a is not infinite;
+drop table float_point_condition;
 

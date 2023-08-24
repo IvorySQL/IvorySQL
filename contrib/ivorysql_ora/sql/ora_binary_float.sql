@@ -111,3 +111,43 @@ INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1.2345678901234e+200');
 INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1.2345678901234e-200');
 SELECT * FROM SIMPLE_DOUBLE_TBL;
 DROP TABLE SIMPLE_DOUBLE_TBL;
+
+create table test_bf(a binary_float);
+insert into test_bf values(3.40282E+38F);	-- ok
+insert into test_bf values(-3.40282E+38F);	-- ok
+insert into test_bf values(3.40282E+39F);	-- overflow
+insert into test_bf values(-3.40282E+39F);	-- overflow
+insert into test_bf values(3.40282E+39);	-- inf
+insert into test_bf values(-3.40282E+39);	-- -inf
+insert into test_bf values('3.40282E+39');	-- inf
+insert into test_bf values('-3.40282E+39');-- -inf
+select * from test_bf;
+
+delete from test_bf;
+insert into test_bf values(1.17549E-38F);	-- ok
+insert into test_bf values(-1.17549E-38F);	-- ok
+insert into test_bf values(1.17549E-39F);	-- ok
+insert into test_bf values(-1.17549E-39F);	-- ok
+insert into test_bf values(1.17549E-70F);	-- overflow
+insert into test_bf values(-1.17549E-70F); -- overflow
+insert into test_bf values(1.17549E-70);	-- 0
+insert into test_bf values(-1.17549E-70);	-- 0
+insert into test_bf values('1.17549E-70');	-- 0
+insert into test_bf values('-1.17549E-70'); -- 0
+select * from test_bf;
+drop table test_bf;
+
+create table float_point_conditions(a binary_float);
+insert into float_point_conditions values(1.17549E-38F);
+insert into float_point_conditions values(-1.17549E-38F);
+insert into float_point_conditions values('inf');
+insert into float_point_conditions values('+inf');
+insert into float_point_conditions values('-inf');
+insert into float_point_conditions values('+nan');
+insert into float_point_conditions values('-nan');
+select * from float_point_conditions where a is nan;
+select * from float_point_conditions where a is not nan;
+select * from float_point_conditions where a is infinite;
+select * from float_point_conditions where a is not infinite;
+drop table float_point_conditions;
+

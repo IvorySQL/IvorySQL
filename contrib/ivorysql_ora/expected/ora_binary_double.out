@@ -11,117 +11,125 @@ INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('1.2345678901234e+200');
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('1.2345678901234e-200');
 -- test for underflow and overflow handling
 SELECT '10e400'::binary_double;
-ERROR:  "10e400" is out of range for type double precision
-LINE 1: SELECT '10e400'::binary_double;
-               ^
+ binary_double 
+---------------
+ Inf
+(1 row)
+
 SELECT '-10e400'::binary_double;
-ERROR:  "-10e400" is out of range for type double precision
-LINE 1: SELECT '-10e400'::binary_double;
-               ^
+ binary_double 
+---------------
+ -Inf
+(1 row)
+
 SELECT '10e-400'::binary_double;
-ERROR:  "10e-400" is out of range for type double precision
-LINE 1: SELECT '10e-400'::binary_double;
-               ^
+ binary_double 
+---------------
+ 0
+(1 row)
+
 SELECT '-10e-400'::binary_double;
-ERROR:  "-10e-400" is out of range for type double precision
-LINE 1: SELECT '-10e-400'::binary_double;
-               ^
+ binary_double 
+---------------
+ 0
+(1 row)
+
 -- bad input
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('');
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('     ');
-ERROR:  invalid input syntax for type double precision: "     "
+ERROR:  invalid input syntax for type binary_double: "     "
 LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('     ');
                                                   ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('xyz');
-ERROR:  invalid input syntax for type double precision: "xyz"
+ERROR:  invalid input syntax for type binary_double: "xyz"
 LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('xyz');
                                                   ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.0.0');
-ERROR:  invalid input syntax for type double precision: "5.0.0"
+ERROR:  invalid input syntax for type binary_double: "5.0.0"
 LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.0.0');
                                                   ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5 . 0');
-ERROR:  invalid input syntax for type double precision: "5 . 0"
+ERROR:  invalid input syntax for type binary_double: "5 . 0"
 LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5 . 0');
                                                   ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.   0');
-ERROR:  invalid input syntax for type double precision: "5.   0"
+ERROR:  invalid input syntax for type binary_double: "5.   0"
 LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.   0');
                                                   ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('    - 3');
-ERROR:  invalid input syntax for type double precision: "    - 3"
+ERROR:  invalid input syntax for type binary_double: "    - 3"
 LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('    - 3');
                                                   ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('123           5');
-ERROR:  invalid input syntax for type double precision: "123           5"
+ERROR:  invalid input syntax for type binary_double: "123           5"
 LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('123           5')...
                                                   ^
 -- special inputs
 SELECT 'NaN'::binary_double;
  binary_double 
 ---------------
- NaN
+ Nan
 (1 row)
 
 SELECT 'nan'::binary_double;
  binary_double 
 ---------------
- NaN
+ Nan
 (1 row)
 
 SELECT '   NAN  '::binary_double;
  binary_double 
 ---------------
- NaN
+ Nan
 (1 row)
 
 SELECT 'infinity'::binary_double;
  binary_double 
 ---------------
- Infinity
+ Inf
 (1 row)
 
 SELECT '          -INFINiTY   '::binary_double;
  binary_double 
 ---------------
- -Infinity
+ -Inf
 (1 row)
 
 -- bad special inputs
 SELECT 'N A N'::binary_double;
-ERROR:  invalid input syntax for type double precision: "N A N"
+ERROR:  invalid input syntax for type binary_double: "N A N"
 LINE 1: SELECT 'N A N'::binary_double;
                ^
 SELECT 'NaN x'::binary_double;
-ERROR:  invalid input syntax for type double precision: "NaN x"
+ERROR:  invalid input syntax for type binary_double: "NaN x"
 LINE 1: SELECT 'NaN x'::binary_double;
                ^
 SELECT ' INFINITY    x'::binary_double;
-ERROR:  invalid input syntax for type double precision: " INFINITY    x"
+ERROR:  invalid input syntax for type binary_double: " INFINITY    x"
 LINE 1: SELECT ' INFINITY    x'::binary_double;
                ^
 SELECT 'Infinity'::binary_double + 100.0;
  ?column? 
 ----------
- Infinity
+ Inf
 (1 row)
 
 SELECT 'Infinity'::binary_double / 'Infinity'::binary_double;
  ?column? 
 ----------
- NaN
+ Nan
 (1 row)
 
 SELECT 'nan'::binary_double / 'nan'::binary_double;
  ?column? 
 ----------
- NaN
+ Nan
 (1 row)
 
 SELECT 'nan'::number::binary_double;
  binary_double 
 ---------------
- NaN
+ Nan
 (1 row)
 
 SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
@@ -421,21 +429,9 @@ SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
 
 -- test for over- and underflow
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('10e400');
-ERROR:  "10e400" is out of range for type double precision
-LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('10e400');
-                                                  ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-10e400');
-ERROR:  "-10e400" is out of range for type double precision
-LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-10e400');
-                                                  ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('10e-400');
-ERROR:  "10e-400" is out of range for type double precision
-LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('10e-400');
-                                                  ^
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-10e-400');
-ERROR:  "-10e-400" is out of range for type double precision
-LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-10e-400');
-                                                  ^
 -- maintain external table consistency across platforms
 -- delete all values and reinsert well-behaved ones
 DELETE FROM BINARY_DOUBLE_TBL;
@@ -456,3 +452,103 @@ SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
 
 -- drop table 
 DROP TABLE BINARY_DOUBLE_TBL;
+create table test_bd(a binary_double);
+insert into test_bd values(1.79769313486231E+308D);		-- ok
+insert into test_bd values(-1.79769313486231E+308D);	-- ok
+insert into test_bd values(1.79769313486231E+309D);		-- error
+ERROR:  "1.79769313486231E+309" is out of range for type binary_double
+LINE 1: insert into test_bd values(1.79769313486231E+309D);
+                                   ^
+insert into test_bd values(-1.79769313486231E+309D);	-- error
+ERROR:  "1.79769313486231E+309" is out of range for type binary_double
+LINE 1: insert into test_bd values(-1.79769313486231E+309D);
+                                   ^
+insert into test_bd values(1.79769313486231E+309);		-- inf
+insert into test_bd values(-1.79769313486231E+309);		-- inf
+insert into test_bd values('1.79769313486231E+309');	-- inf
+insert into test_bd values('-1.79769313486231E+309');	-- -inf
+select * from test_bd;
+           a            
+------------------------
+ 1.79769313486231e+308
+ -1.79769313486231e+308
+ Inf
+ -Inf
+ Inf
+ -Inf
+(6 rows)
+
+delete from test_bd;
+insert into test_bd values(2.22507485850720E-308D);		-- ok
+insert into test_bd values(-2.22507485850720E-308D);	-- ok
+insert into test_bd values(2.22507485850720E-309D);		-- ok
+insert into test_bd values(-2.22507485850720E-309D);	-- ok
+insert into test_bd values(2.22507485850720E-400D);		-- error
+ERROR:  "2.22507485850720E-400" is out of range for type binary_double
+LINE 1: insert into test_bd values(2.22507485850720E-400D);
+                                   ^
+insert into test_bd values(-2.22507485850720E-400D);	-- error
+ERROR:  "2.22507485850720E-400" is out of range for type binary_double
+LINE 1: insert into test_bd values(-2.22507485850720E-400D);
+                                   ^
+insert into test_bd values(2.22507485850720E-400);		-- 0
+insert into test_bd values(-2.22507485850720E-400);		-- 0
+insert into test_bd values('2.22507485850720E-400');	-- 0
+insert into test_bd values('-2.22507485850720E-400');	-- 0
+select * from test_bd;
+           a           
+-----------------------
+ 2.2250748585072e-308
+ -2.2250748585072e-308
+ 2.2250748585072e-309
+ -2.2250748585072e-309
+ 0
+ 0
+ 0
+ 0
+(8 rows)
+
+drop table test_bd;
+create table float_point_condition(a binary_double);
+insert into float_point_condition values(1.79769313486231E+308D);
+insert into float_point_condition values(-1.79769313486231E+308D);
+insert into float_point_condition values('inf');
+insert into float_point_condition values('+inf');
+insert into float_point_condition values('-inf');
+insert into float_point_condition values('+nan');
+insert into float_point_condition values('-nan');
+select * from float_point_condition where a is nan;
+  a  
+-----
+ Nan
+ Nan
+(2 rows)
+
+select * from float_point_condition where a is not nan;
+           a            
+------------------------
+ 1.79769313486231e+308
+ -1.79769313486231e+308
+ Inf
+ Inf
+ -Inf
+(5 rows)
+
+select * from float_point_condition where a is infinite;
+  a   
+------
+ Inf
+ Inf
+ -Inf
+(3 rows)
+
+select * from float_point_condition where a is not infinite;
+           a            
+------------------------
+ 1.79769313486231e+308
+ -1.79769313486231e+308
+ Nan
+ Nan
+(4 rows)
+
+drop table float_point_condition;

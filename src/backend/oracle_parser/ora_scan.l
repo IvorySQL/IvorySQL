@@ -423,6 +423,9 @@ numericfail		{decdigit}+\.\.
 real			({decinteger}|{numeric})[Ee][-+]?{decinteger}
 realfail		({decinteger}|{numeric})[Ee][-+]
 
+binary_float	(({decinteger}|{numeric}|{real})[Ff])
+binary_double	({decinteger}|{numeric}|{real})[Dd]
+
 decinteger_junk	{decinteger}{ident_start}
 hexinteger_junk	{hexinteger}{ident_start}
 octinteger_junk	{octinteger}{ident_start}
@@ -1208,6 +1211,16 @@ other			.
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
+{binary_float}	{
+					SET_YYLLOC();
+					yylval->str = pnstrdup(yytext, yyleng - 1);
+					return BFCONST;
+				}
+{binary_double}	{
+					SET_YYLLOC();
+					yylval->str = pnstrdup(yytext, yyleng - 1);
+					return BDCONST;
+				}
 {decinteger_junk}	{
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
@@ -1232,7 +1245,6 @@ other			.
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
-
 
 {identifier}	{
 					int			kwnum;

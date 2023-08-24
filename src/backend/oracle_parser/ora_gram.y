@@ -176,6 +176,8 @@ static Node *makeIntConst(int val, int location);
 static Node *makeFloatConst(char *str, int location);
 static Node *makeBoolAConst(bool state, int location);
 static Node *makeBitStringConst(char *str, int location);
+static Node *makeBFloatConst(char *str, int location);
+static Node *makeBDoubleConst(char *str, int location);
 static Node *makeNullAConst(int location);
 static Node *makeAConst(Node *v, int location);
 static RoleSpec *makeRoleSpec(RoleSpecType type, int location);
@@ -683,6 +685,7 @@ static void determineLanguage(List *options);
  * parse errors.  It is needed by PL/SQL.
  */
 %token <str>	IDENT UIDENT FCONST SCONST USCONST BCONST XCONST Op
+%token <str>	BFCONST	BDCONST
 %token <ival>	ICONST PARAM
 %token			TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
 %token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS LESS_LESS GREATER_GREATER
@@ -820,6 +823,7 @@ static void determineLanguage(List *options);
 %token <keyword> LONG_P RAW_P
 %token LONG_RAW
 %token <keyword> LOOP_P
+%token <keyword> NAN_P INFINITE_P
 
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
@@ -16434,6 +16438,22 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->location = @1;
 					$$ = (Node *) n;
 				}
+			| a_expr IS NAN_P
+				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", $1, makeStringConst("Nan", @3), @2); }
+			| a_expr IS NOT NAN_P
+				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "<>", $1, makeStringConst("Nan", @4), @2); }
+			| a_expr IS INFINITE_P
+				{
+					$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "=", $1,
+													(Node *) list_make2(makeStringConst("+inf", @3),
+																		makeStringConst("-inf", @3)), @2);
+				}
+			| a_expr IS NOT INFINITE_P
+				{
+					$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "<>", $1,
+													(Node *) list_make2(makeStringConst("+inf", @4),
+																		makeStringConst("-inf", @4)), @2);
+				}
 		;
 
 /*
@@ -18385,6 +18405,14 @@ AexprConst: Iconst
 					 */
 					$$ = makeBitStringConst($1, @1);
 				}
+			| BFCONST
+				{
+					$$ = makeBFloatConst($1, @1);
+				}
+			| BDCONST
+				{
+					$$ = makeBDoubleConst($1, @1);
+				}
 			| func_name Sconst
 				{
 					/* generic type 'literal' syntax */
@@ -19245,6 +19273,7 @@ reserved_keyword:
 			| GROUP_P
 			| HAVING
 			| IN_P
+			| INFINITE_P
 			| INITIALLY
 			| INTERSECT
 			| INTO
@@ -19253,6 +19282,7 @@ reserved_keyword:
 			| LIMIT
 			| LOCALTIME
 			| LOCALTIMESTAMP
+			| NAN_P
 			| NOCOPY
 			| NOCYCLE
 			| NOT
@@ -19479,6 +19509,7 @@ bare_label_keyword:
 			| INDENT
 			| INDEX
 			| INDEXES
+			| INFINITE_P
 			| INHERIT
 			| INHERITS
 			| INITIALLY
@@ -19540,6 +19571,7 @@ bare_label_keyword:
 			| MOVE
 			| NAME_P
 			| NAMES
+			| NAN_P
 			| NATIONAL
 			| NATURAL
 			| NCHAR
@@ -19928,6 +19960,30 @@ makeBoolAConst(bool state, int location)
 	n->location = location;
 
    return (Node *) n;
+}
+
+static Node *
+makeBFloatConst(char *str, int location)
+{
+	A_Const *n = makeNode(A_Const);
+
+	n->val.fval.type = T_BFloat;
+	n->val.fval.fval = str;
+	n->location = location;
+
+	return (Node *)n;
+}
+
+static Node *
+makeBDoubleConst(char *str, int location)
+{
+	A_Const *n = makeNode(A_Const);
+
+	n->val.fval.type = T_BDouble;
+	n->val.fval.fval = str;
+	n->location = location;
+
+	return (Node *)n;
 }
 
 static Node *

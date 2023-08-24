@@ -252,12 +252,13 @@ static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 /*
  * Basic non-keyword token types.  These are hard-wired into the core lexer.
  * They must be listed first so that their numeric codes do not depend on
- * the set of keywords.  Keep this list in sync with backend/parser/gram.y!
+ * the set of keywords.  Keep this list in sync with backend/parser/ora_gram.y!
  *
  * Some of these are not directly referenced in this file, but they must be
  * here anyway.
  */
 %token <str>	IDENT UIDENT FCONST SCONST USCONST BCONST XCONST Op
+%token <str>	BFCONST	BDCONST
 %token <ival>	ICONST PARAM
 %token			TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
 %token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS LESS_LESS GREATER_GREATER
