@@ -158,3 +158,21 @@ insert into identity_3(description) values (2);
 insert into identity_3(id,description) values (4,2);
 insert into identity_3(id,description) values (4,2);
 DROP TABLE identity_3;
+
+create table other_max1(userid number generated always as identity  start with -9999999999999999999999999999 increment by -1,uname varchar2(20));
+insert into other_max1 (uname) values ('aaa');
+insert into other_max1 (uname) values ('aaa');	--error
+DROP TABLE other_max1;
+
+create table other_max1(userid number generated always as identity  increment by -9999999999999999999999999999,uname varchar2(20));
+insert into other_max1 (uname) values ('aa');
+insert into other_max1 (uname) values ('aa');	--error
+DROP TABLE other_max1;
+
+create table other_max1(userid number generated always as identity	increment by 9999999999999999999999999999,uname varchar2(20));
+insert into other_max1 (uname) values ('aa');
+insert into other_max1 (uname) values ('aa');	--error
+DROP TABLE other_max1;
+
+create table cache_max1(userid number generated always as identity  increment by 1 cache 999999999999999999999,uname varchar2(20));
+DROP TABLE cache_max1;
