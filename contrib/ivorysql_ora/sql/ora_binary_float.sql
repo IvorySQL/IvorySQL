@@ -151,3 +151,12 @@ select * from float_point_conditions where a is infinite;
 select * from float_point_conditions where a is not infinite;
 drop table float_point_conditions;
 
+create table binaryf_tb(binaryf_clo binary_float);
+insert into binaryf_tb values (BINARY_FLOAT_NAN);
+insert into binaryf_tb values (binary_float_nan);
+insert into binaryf_tb values (Binary_Float_Nan);
+insert into binaryf_tb values (BINARY_FLOAT_INFINITY);
+insert into binaryf_tb values (binary_float_infinity);
+insert into binaryf_tb values (Binary_Float_Infinity);
+select * from binaryf_tb;
+drop table binaryf_tb;

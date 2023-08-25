@@ -823,6 +823,8 @@ static void determineLanguage(List *options);
 %token <keyword> LONG_P RAW_P
 %token LONG_RAW
 %token <keyword> LOOP_P
+%token <keyword> BINARY_FLOAT_NAN BINARY_FLOAT_INFINITY
+	BINARY_DOUBLE_NAN BINARY_DOUBLE_INFINITY
 %token <keyword> NAN_P INFINITE_P
 
 /*
@@ -18531,6 +18533,22 @@ AexprConst: Iconst
 				{
 					$$ = makeNullAConst(@1);
 				}
+			| BINARY_FLOAT_INFINITY
+				{
+					$$ = makeBFloatConst("Inf", @1);
+				}
+			| BINARY_FLOAT_NAN
+				{
+					$$ = makeBFloatConst("Nan", @1);
+				}
+			| BINARY_DOUBLE_INFINITY
+				{
+					$$ = makeBDoubleConst("Inf", @1);
+				}
+			| BINARY_DOUBLE_NAN
+				{
+					$$ = makeBDoubleConst("Nan", @1);
+				}
 		;
 
 Iconst:		ICONST									{ $$ = $1; };
@@ -19242,6 +19260,10 @@ reserved_keyword:
 			| AS
 			| ASC
 			| ASYMMETRIC
+			| BINARY_DOUBLE_INFINITY
+			| BINARY_DOUBLE_NAN
+			| BINARY_FLOAT_INFINITY
+			| BINARY_FLOAT_NAN
 			| BOTH
 			| CASE
 			| CAST
@@ -19363,7 +19385,11 @@ bare_label_keyword:
 			| BIGINT
 			| BINARY
 			| BINARY_DOUBLE
+			| BINARY_DOUBLE_INFINITY
+			| BINARY_DOUBLE_NAN
 			| BINARY_FLOAT
+			| BINARY_FLOAT_INFINITY
+			| BINARY_FLOAT_NAN
 			| BIT
 			| BOOLEAN_P
 			| BOTH

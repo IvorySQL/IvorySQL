@@ -552,3 +552,22 @@ select * from float_point_condition where a is not infinite;
 (4 rows)
 
 drop table float_point_condition;
+create table binaryd_tb(binaryd_clo binary_double);
+insert into binaryd_tb values (BINARY_DOUBLE_NAN);
+insert into binaryd_tb values (binary_double_nan);
+insert into binaryd_tb values (Binary_Double_Nan);
+insert into binaryd_tb values (BINARY_DOUBLE_INFINITY);
+insert into binaryd_tb values (binary_double_infinity);
+insert into binaryd_tb values (Binary_Double_Infinity);
+select * from binaryd_tb;
+ binaryd_clo 
+-------------
+ Nan
+ Nan
+ Nan
+ Inf
+ Inf
+ Inf
+(6 rows)
+
+drop table binaryd_tb;
