@@ -213,3 +213,13 @@ select * from float_point_condition where a is infinite;
 select * from float_point_condition where a is not infinite;
 drop table float_point_condition;
 
+create table binaryd_tb(binaryd_clo binary_double);
+insert into binaryd_tb values (BINARY_DOUBLE_NAN);
+insert into binaryd_tb values (binary_double_nan);
+insert into binaryd_tb values (Binary_Double_Nan);
+insert into binaryd_tb values (BINARY_DOUBLE_INFINITY);
+insert into binaryd_tb values (binary_double_infinity);
+insert into binaryd_tb values (Binary_Double_Infinity);
+select * from binaryd_tb;
+drop table binaryd_tb;
+
