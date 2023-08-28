@@ -954,6 +954,30 @@ rewriteTargetListIU(List *targetList,
 									   NameStr(att_tup->attname))));
 			}
 
+			if (att_tup->attidentity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL &&
+				new_tle &&
+				(IsA(new_tle->expr, Const) || IsA(new_tle->expr, FuncExpr)))
+			{
+				if (IsA(new_tle->expr, Const))
+				{
+					Const   *var = (Const *) new_tle->expr;
+					if (var->constisnull)
+						apply_default = true;
+				}
+				else if (IsA(new_tle->expr, FuncExpr))
+				{
+					Node	   *numvar;
+					FuncExpr   *fun = (FuncExpr *) new_tle->expr;
+					char	   *funname = get_func_name(fun->funcid);
+					if (pg_strcasecmp(funname, "number") == 0)
+					{
+						numvar = (Node *) linitial(fun->args);
+						if (IsA(numvar, Const) && ((Const *) numvar)->constisnull)
+							apply_default = true;
+					}
+				}
+			}
+
 			/*
 			 * For an INSERT from a VALUES RTE, return the attribute numbers
 			 * of any VALUES columns that will no longer be used (due to the
