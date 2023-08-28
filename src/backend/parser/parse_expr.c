@@ -103,6 +103,20 @@ static Node *make_nulltest_from_distinct(ParseState *pstate,
 										 A_Expr *distincta, Node *arg);
 static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func);
 
+static inline void
+set_merge_on_attrno(ParseState *pstate, char *colname)
+{
+	AttrNumber	attno = InvalidAttrNumber;
+
+	if (colname && pstate->merge_on_attrno != NULL && pstate->p_expr_kind == EXPR_KIND_JOIN_ON)
+		attno = attnameAttNum(pstate->p_target_relation, colname, true);
+
+	if (attno > InvalidAttrNumber && attno <= pstate->merge_on_attr_size)
+	{
+		pstate->merge_on_attrno[attno - 1] = 1;
+	}
+}
+
 /*
  * transformExpr -
  *	  Analyze and transform expressions. Type checking and type casting is
@@ -631,6 +645,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				Node	   *field1 = (Node *) linitial(cref->fields);
 
 				colname = strVal(field1);
+				set_merge_on_attrno(pstate, colname);
 
 				/* Try to identify as an unqualified column */
 				node = colNameToVar(pstate, colname, false, cref->location);
@@ -683,6 +698,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				}
 
 				colname = strVal(field2);
+				set_merge_on_attrno(pstate, colname);
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
@@ -730,6 +746,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				}
 
 				colname = strVal(field3);
+				set_merge_on_attrno(pstate, colname);
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
@@ -789,6 +806,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				}
 
 				colname = strVal(field4);
+				set_merge_on_attrno(pstate, colname);
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
