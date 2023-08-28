@@ -431,3 +431,48 @@ WHEN MATCHED THEN
 
 drop table target;
 drop table source;
+
+CREATE TABLE wq_target_TIMU048170046 (tid integer not null, balance integer DEFAULT -1);
+CREATE TABLE wq_source_TIMU048170046 (balance integer, sid integer);
+
+INSERT INTO wq_source_TIMU048170046 (sid, balance) VALUES (1, 100);
+
+select * from wq_target_TIMU048170046;
+select * from wq_source_TIMU048170046;
+
+create or replace function merge_when_and_write_TIMU048170046(bflag int)
+RETURN int
+IS
+BEGIN
+    IF bflag <10 then
+        RETURN 1;
+    ELSE
+        RETURN 0;
+    END IF;
+    ROLLBACK;
+END;
+/
+
+MERGE INTO wq_target_TIMU048170046 t
+USING wq_source_TIMU048170046 s ON (t.tid = s.sid)
+WHEN MATCHED THEN
+UPDATE SET balance = t.balance + s.balance
+  WHERE merge_when_and_write_TIMU048170046(8)=1;
+
+MERGE INTO wq_source_TIMU048170046 t
+USING wq_source_TIMU048170046 s ON (t.ctid = s.ctid)
+WHEN MATCHED THEN
+ UPDATE SET ctid = s.ctid;
+
+
+INSERT INTO wq_target_TIMU048170046 (tid, balance) VALUES (1, 100);
+
+MERGE INTO wq_target_TIMU048170046 t
+USING wq_target_TIMU048170046 s ON (t.ctid = s.ctid)
+WHEN MATCHED THEN
+ UPDATE SET balance = t.balance + s.balance;
+
+select * from wq_target_TIMU048170046;
+DROP function merge_when_and_write_TIMU048170046;
+DROP table wq_target_TIMU048170046;
+DROP table wq_source_TIMU048170046;

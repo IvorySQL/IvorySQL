@@ -253,6 +253,8 @@ struct ParseState
 	CoerceParamHook p_coerce_param_hook;
 	ParseSubprocFuncHook p_subprocfunc_hook;
 	void	   *p_ref_hook_state;	/* common passthrough link for above */
+	uint16	    merge_on_attr_size;
+	uint8 	   *merge_on_attrno;
 };
 
 /*
