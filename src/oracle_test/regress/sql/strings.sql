@@ -232,8 +232,8 @@ SELECT regexp_count('123123123123', '123', 33);
 SELECT regexp_count('ABCABCABCABC', 'Abc', 1, '');
 SELECT regexp_count('ABCABCABCABC', 'Abc', 1, 'i');
 -- errors
-SELECT regexp_count('123123123123', '123', 0);
-SELECT regexp_count('123123123123', '123', -3);
+SELECT sys.regexp_count('123123123123', '123', 0);
+SELECT sys.regexp_count('123123123123', '123', -3);
 
 -- regexp_like tests
 SELECT regexp_like('Steven', '^Ste(v|ph)en$');

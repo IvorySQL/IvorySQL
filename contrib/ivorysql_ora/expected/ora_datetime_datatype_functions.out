@@ -857,6 +857,7 @@ select round(to_timestamp_tz('2020-06-18 14:40:20 + 08', 'YYYY-MM-DD HH24:MI:SS 
 ---------------------
  2020-06-18 14:40:00
 (1 row)
+
 /*
  * trunc
  */
@@ -1373,7 +1374,6 @@ select * from test1;
 drop table test1;
 alter session set NLS_DATE_FORMAT='DD-MON-RR HH24:MI:SS';
 --select sysdate() from dual;
-
 alter session set NLS_DATE_FORMAT='DD-MON-RR HH24:MI:SS';
 --select current_date from dual;
 alter session set NLS_DATE_FORMAT='DD-MON-RR HH24:MI:SS';
@@ -1388,7 +1388,6 @@ ERROR:  invalid value "22-08-23" for "MON"
 LINE 1: select last_day('2022-08-23') from dual;
                         ^
 DETAIL:  The given value did not match any of the allowed values for this field.
-
 select to_date('-2022-09-21','syyyy-mm-dd') from dual;
       to_date       
 --------------------
@@ -1406,6 +1405,7 @@ select to_timestamp_tz('-2022-08-22 10:13:18. 1516 -08:00','SYYYY/MM/DD HH:MI:SS
 --------------------------------------
  08-23-2022 01:50:00.151600000 +07:36
 (1 row)
+
 alter session set NLS_TIMESTAMP_FORMAT='YY-MM-DD HH24.MI.SS.FF';
 create table ts_tb(a timestamp);
 insert into ts_tb values('2022-08-19 11.11.11');   --succ
