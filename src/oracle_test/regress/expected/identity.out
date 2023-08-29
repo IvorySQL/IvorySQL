@@ -230,3 +230,24 @@ insert into identity_3(id,description) values (4,2);
 ERROR:  duplicate key value violates unique constraint "identity_3_pkey"
 DETAIL:  Key (id, description)=(4, 2) already exists.
 DROP TABLE identity_3;
+create table other_max1(userid number generated always as identity  start with -9999999999999999999999999999 increment by -1,uname varchar2(20));
+WARNING:  Start value is out of range for data type bigint
+insert into other_max1 (uname) values ('aaa');
+insert into other_max1 (uname) values ('aaa');	--error
+ERROR:  nextval: reached minimum value of sequence "other_max1_userid_seq" (-9223372036854775808)
+DROP TABLE other_max1;
+create table other_max1(userid number generated always as identity  increment by -9999999999999999999999999999,uname varchar2(20));
+WARNING:  Increment value is out of range for data type bigint
+insert into other_max1 (uname) values ('aa');
+insert into other_max1 (uname) values ('aa');	--error
+ERROR:  nextval: reached maximum value of sequence "other_max1_userid_seq" (9223372036854775807)
+DROP TABLE other_max1;
+create table other_max1(userid number generated always as identity	increment by 9999999999999999999999999999,uname varchar2(20));
+WARNING:  Increment value is out of range for data type bigint
+insert into other_max1 (uname) values ('aa');
+insert into other_max1 (uname) values ('aa');	--error
+ERROR:  nextval: reached maximum value of sequence "other_max1_userid_seq" (9223372036854775807)
+DROP TABLE other_max1;
+create table cache_max1(userid number generated always as identity  increment by 1 cache 999999999999999999999,uname varchar2(20));
+WARNING:  Cache value is out of range for data type bigint
+DROP TABLE cache_max1;
