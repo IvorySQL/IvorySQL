@@ -524,13 +524,116 @@ create table inytom_tb(ytom_clo interval year to month);
 insert into inytom_tb values(interval '1-   11   ' year to month);
 select * from inytom_tb;
 drop table inytom_tb;
-alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH.MI.SS.FF AM';
+
+
+
+alter session set NLS_DATE_FORMAT='D YYYY-MM-DD HH24.MI.SS';
+create table date_tb(date_clo date);
+insert into date_tb values('2022-08-22 11.11.11'); --err
+alter session set NLS_DATE_FORMAT='DDD YYYY-MM-DD HH24.MI.SS';
+insert into date_tb values('2022-08-23 11.11.11'); --err
+alter session set NLS_DATE_FORMAT='J YYYY-MM-DD HH24.MI.SS'; 
+insert into date_tb values('2459814 2022-08-22 11.11.11'); --succ
+alter session set NLS_DATE_FORMAT='FX YYYY-MM-DD HH24.MI.SS';
+insert into date_tb values('2022-08-23 11.11.11');	--err
+insert into date_tb values('  2022-08-23 11.11.11'); --err
+insert into date_tb values(' 2022-08-23 11.11.11'); --succ
+insert into date_tb values(' 2022/08-23 11.11.11'); --err
+insert into date_tb values(' 2022 -08-23 11.11.11'); --err
+insert into date_tb values(' 2022- 08-23 11.11.11'); --err
+insert into date_tb values(' 2022-08 -23 11.11.11'); --err
+insert into date_tb values(' 2022-08-23  11.11.11'); --err
+select * from date_tb;
+drop table date_tb;
+
+
+
+--timestamp:
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24.MI.SS.FF';
 create table ts_tb(a timestamp);
-insert into ts_tb values('2022-08-19 12.37.05');
-insert into ts_tb values('2022-08-19 12.00.00');
-insert into ts_tb values('2022-08-19 12.59.00');
-insert into ts_tb values('2022-08-19 11.59.59');
+insert into ts_tb values('2022-0823-19 11.11.11');          --succ			 expect:2022-08-23 19.11.11.110000
+insert into ts_tb values('2022-082323-19 11.11.11');        --err
+insert into ts_tb values('2022-08-011 11.11.11');          --err
+insert into ts_tb values('2022-08-232 11.11.11');        --err
+insert into ts_tb values('22022-08-19 11.11.11');          --err
+insert into ts_tb values('2022-08-19 004.37.05');          --err
+insert into ts_tb values('2022-08-19 11.037.05');          --err
+insert into ts_tb values('2022-08-19 11.+37.05');          --succ            expect:2022-08-19 11.37.05.000000
+insert into ts_tb values('2022-08-19 11.05.037');          --err
+insert into ts_tb values('2022-08-19 11.05.+37');          --succ             expect:2022-08-19 11.05.37.000000
+alter session set NLS_TIMESTAMP_FORMAT='YYY-MM-DD HH24.MI.SS.FF';
+insert into ts_tb values('2022-08-19 11.11.11');          --err
 select * from ts_tb;
 drop table ts_tb;
 
+--timestamptz:
+alter session set NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24.MI.SS.FF TZH:TZM';
+create table tswtz_tb(a timestamp with time zone);
+insert into tswtz_tb values('2022-082323-19 11.11.11');        --succ     expect:2022-08-23 23.19.11.110000 +11:00
+insert into tswtz_tb values('2022-08-011 11.11.11');          --err
+insert into tswtz_tb values('2022-08-232 11.11.11');        --err
+insert into tswtz_tb values('22022-08-19 11.11.11');          --err
+insert into tswtz_tb values('2022-08-19 004.37.05');          --err
+insert into tswtz_tb values('2022-08-19 11.037.05');          --err
+insert into tswtz_tb values('2022-08-19 11.+37.05');          --succ        expect:2022-08-19 11.37.05.000000 +08:00
+insert into tswtz_tb values('2022-08-19 11.05.037');          --err
+insert into tswtz_tb values('2022-08-19 11.05.+37');          --succ         expect:2022-08-19 11.05.37.000000 +08:00
+alter session set NLS_TIMESTAMP_TZ_FORMAT='YYY-MM-DD HH24.MI.SS.FF';
+insert into tswtz_tb values('2022-08-19 11.11.11');          --err
+alter session set NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24.MI.SS.FF';
+select * from tswtz_tb;
+drop table tswtz_tb;
+
+--date
+alter session set NLS_DATE_FORMAT='YYYY-MM-DD HH24.MI.SS';
+create table t_tb(a date);
+insert into t_tb values('2022-08-19 11.+37.05');          --succ	expect:2022-08-19 11.37.05
+insert into t_tb values('2022-08-19 11.05.037');          --err
+select * from t_tb;
+drop table t_tb;
+
+
+
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH.MI.SS.FF AM';
+create table ts_tb(a timestamp);
+insert into ts_tb values ('2022-09-+08 11.11.11');
+insert into ts_tb values ('2022-09--08 11.11.11'); --err
+insert into ts_tb values ('2022-08-19 ++11.11.11');
+insert into ts_tb values ('2022-08-19 11.+11.11');
+insert into ts_tb values ('2022-08-19 11.11.1 1'); --err
+insert into ts_tb values ('2022-08-19 11.11.+11');
+insert into ts_tb values ('2022-08-19 11.11.1-1'); --err
+insert into ts_tb values ('2022-08-19 03.37.05.+471801 PM');
+select * from ts_tb;
+drop table ts_tb;
+
+
+
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH.MI.SS.FF AM';
+CREATE TABLE timestp_tb(timestp_clo timestamp);
+insert into timestp_tb values('2022-08-19 03.37.05.47801310 PM'); 
+insert into timestp_tb values('2022-08-19 03.37.05.47801370 PM');
+insert into timestp_tb values('2022-08-19 03.37.05 PM');
+select * from timestp_tb;
+drop table timestp_tb;
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH.MI.SS.FF7 AM';
+CREATE TABLE timestp_tb(timestp_clo timestamp(5));
+insert into timestp_tb values ('2022-08-19 03.37.05 PM');
+select * from timestp_tb;
+drop table timestp_tb;
+alter session set NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24.MI.SS.FF7 TZH:TZM';
+CREATE TABLE timestpwtz_tb(timestpwtz_clo timestamp with time zone);
+insert into timestpwtz_tb values ('2022-08-19 03.37.05.4780130000');
+insert into timestpwtz_tb values ('2022-08-19 03.37.05.47801300');
+insert into timestpwtz_tb values ('2022-08-19 03.37.05.478041');
+select * from timestpwtz_tb;
+drop table timestpwtz_tb;
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH.MI.SS.FF5 AM';
+CREATE TABLE timestp_tb(timestp_clo timestamp(7));
+insert into timestp_tb values ('2022-08-19 03.37.05 PM');
+select * from timestp_tb;
+drop table timestp_tb;
+
+reset nls_date_format;
 reset nls_timestamp_format;
+reset nls_timestamp_tz_format;

@@ -732,27 +732,27 @@ DROP TABLE TEMP_TIMESTAMP;
 -- Comparisons between datetime types, especially overflow cases
 ---
 SELECT '2202020-10-05'::date::timestamp;  -- fail
-ERROR:  datetime format picture ends before converting entire input string
+ERROR:  Number value does not match the length of the format item.
 LINE 1: SELECT '2202020-10-05'::date::timestamp;
                ^
 SELECT '2202020-10-05'::date > '2020-10-05'::timestamp as t;
-ERROR:  datetime format picture ends before converting entire input string
+ERROR:  Number value does not match the length of the format item.
 LINE 1: SELECT '2202020-10-05'::date > '2020-10-05'::timestamp as t;
                ^
 SELECT '2020-10-05'::timestamp > '2202020-10-05'::date as f;
-ERROR:  datetime format picture ends before converting entire input string
+ERROR:  Number value does not match the length of the format item.
 LINE 1: SELECT '2020-10-05'::timestamp > '2202020-10-05'::date as f;
                                          ^
 SELECT '2202020-10-05'::date::timestamptz;  -- fail
-ERROR:  datetime format picture ends before converting entire input string
+ERROR:  Number value does not match the length of the format item.
 LINE 1: SELECT '2202020-10-05'::date::timestamptz;
                ^
 SELECT '2202020-10-05'::date > '2020-10-05'::timestamptz as t;
-ERROR:  datetime format picture ends before converting entire input string
+ERROR:  Number value does not match the length of the format item.
 LINE 1: SELECT '2202020-10-05'::date > '2020-10-05'::timestamptz as ...
                ^
 SELECT '2020-10-05'::timestamptz > '2202020-10-05'::date as f;
-ERROR:  datetime format picture ends before converting entire input string
+ERROR:  Number value does not match the length of the format item.
 LINE 1: SELECT '2020-10-05'::timestamptz > '2202020-10-05'::date as ...
                                            ^
 -- This conversion may work depending on timezone
@@ -870,11 +870,7 @@ SELECT d1 AS us_postgres FROM TIMESTAMP_TBL;
 ----------------------------
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
-(6 rows)
+(2 rows)
 
 SET DateStyle TO 'US,ISO';
 SELECT d1 AS us_iso FROM TIMESTAMP_TBL;
@@ -882,11 +878,7 @@ SELECT d1 AS us_iso FROM TIMESTAMP_TBL;
 ----------------------------
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
-(6 rows)
+(2 rows)
 
 SET DateStyle TO 'US,SQL';
 SHOW DateStyle;
@@ -900,11 +892,7 @@ SELECT d1 AS us_sql FROM TIMESTAMP_TBL;
 ----------------------------
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
-(6 rows)
+(2 rows)
 
 SET DateStyle TO 'European,Postgres';
 SHOW DateStyle;
@@ -927,11 +915,7 @@ SELECT d1 AS european_postgres FROM TIMESTAMP_TBL;
 ----------------------------
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
-(6 rows)
+(2 rows)
 
 SET DateStyle TO 'European,ISO';
 SHOW DateStyle;
@@ -945,11 +929,7 @@ SELECT d1 AS european_iso FROM TIMESTAMP_TBL;
 ----------------------------
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
-(6 rows)
+(2 rows)
 
 SET DateStyle TO 'European,SQL';
 SHOW DateStyle;
@@ -963,11 +943,7 @@ SELECT d1 AS european_sql FROM TIMESTAMP_TBL;
 ----------------------------
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
- 1997-02-10 17:32:01.080000
-(6 rows)
+(2 rows)
 
 RESET DateStyle;
 --
@@ -1019,11 +995,7 @@ SELECT to_timestamp('97/Feb/16', 'YY:Mon:DD');
 (1 row)
 
 SELECT to_timestamp('97/Feb/16', 'FXYY:Mon:DD');
-        to_timestamp        
-----------------------------
- 2097-02-16 00:00:00.000000
-(1 row)
-
+ERROR:  unmatched format separator ":"
 SELECT to_timestamp('97/Feb/16', 'FXYY/Mon/DD');
         to_timestamp        
 ----------------------------
@@ -1037,7 +1009,7 @@ SELECT to_timestamp('19971116', 'YYYYMMDD');
 (1 row)
 
 SELECT to_timestamp('20000-1116', 'YYYY-MMDD');
-ERROR:  The value of month is invalid.
+ERROR:  Number value does not match the length of the format item.
 SELECT to_timestamp('1997 AD 11 16', 'YYYY BC MM DD');
         to_timestamp        
 ----------------------------
@@ -1434,15 +1406,10 @@ ERROR:  invalid combination of date conventions
 HINT:  Do not mix Gregorian and ISO week date conventions in a formatting template.
 -- Insufficient characters in the source string:
 SELECT to_timestamp('19971', 'YYYYMMDD');
-        to_timestamp        
-----------------------------
- 1997-01-01 00:00:00.000000
-(1 row)
-
+ERROR:  Number value does not match the length of the format item.
 -- Insufficient digit characters for a single node:
 SELECT to_timestamp('19971)24', 'YYYYMMDD');
-ERROR:  invalid value ")2" for "DD"
-DETAIL:  Value must be an integer.
+ERROR:  Number value does not match the length of the format item.
 -- We don't accept full-length day or month names if short form is specified:
 SELECT to_timestamp('Friday 1-January-1999', 'DY DD MON YYYY');
 ERROR:  invalid value "da" for "DD"
