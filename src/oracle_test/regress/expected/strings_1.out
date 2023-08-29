@@ -739,9 +739,9 @@ SELECT regexp_count('ABCABCABCABC', 'Abc', 1, 'i');
 (1 row)
 
 -- errors
-SELECT regexp_count('123123123123', '123', 0);
+SELECT sys.regexp_count('123123123123', '123', 0);
 ERROR:  argument "0" is out of range
-SELECT regexp_count('123123123123', '123', -3);
+SELECT sys.regexp_count('123123123123', '123', -3);
 ERROR:  argument "-3" is out of range
 -- regexp_like tests
 SELECT regexp_like('Steven', '^Ste(v|ph)en$');

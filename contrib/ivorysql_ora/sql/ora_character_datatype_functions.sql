@@ -749,12 +749,12 @@ SELECT REPLACE('JACK and JUE','J') "Changes" FROM DUAL;
  */
 set ivorysql.enable_emptystring_to_NULL to on;
 
-SELECT REGEXP_COUNT(1231, 123::int2, 1::int2, 'c'::char) REGEXP_COUNT FROM DUAL;
-SELECT REGEXP_COUNT(123123::int4, 2312::int4, 1::int4, 'cd') REGEXP_COUNT FROM DUAL;
-SELECT REGEXP_COUNT(12312312312, 231, 1, 'c') REGEXP_COUNT FROM DUAL;
-SELECT REGEXP_COUNT(1231.2312312312355, 1.23, 4.9, 'c') REGEXP_COUNT FROM DUAL;
-SELECT REGEXP_COUNT('12312312312312355', '123', 4.9, 'c') REGEXP_COUNT FROM DUAL;
-SELECT REGEXP_COUNT(123123123::int, 123::int, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(1231, 123::int2, 1::int2, 'c'::char) REGEXP_COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(123123::int4, 2312::int4, 1::int4, 'cd') REGEXP_COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(12312312312, 231, 1, 'c') REGEXP_COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(1231.2312312312355, 1.23, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('12312312312312355', '123', 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(123123123::int, 123::int, 4.9, 'c') REGEXP_COUNT FROM DUAL;
 
 SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'c') COUNT FROM DUAL;
 SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'i') COUNT FROM DUAL;
@@ -785,59 +785,59 @@ SELECT REGEXP_COUNT(null, null, null, null) COUNT FROM DUAL;
 SELECT REGEXP_COUNT('', '') COUNT FROM DUAL;
 SELECT REGEXP_COUNT(' ', ' ') COUNT FROM DUAL;
 
-SELECT REGEXP_COUNT('', '', 0) COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 0) COUNT FROM DUAL;
 SELECT REGEXP_COUNT('', '', 0.99) COUNT FROM DUAL;
 SELECT REGEXP_COUNT('', '', -0.9) COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', -100) COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 100) COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 0) COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', -100) COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 100) COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 0) COUNT FROM DUAL;
 SELECT REGEXP_COUNT(' ', ' ', 0.99) COUNT FROM DUAL;
 SELECT REGEXP_COUNT(' ', ' ', -0.9) COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', -100) COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 100) COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', -100) COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 100) COUNT FROM DUAL;
 
-SELECT REGEXP_COUNT('', '', 1, '') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, ' ') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, '0') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 'x') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 'm') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 'i') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 'c') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 'n') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 't') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 'dc') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, 'ie') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, '-100') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, '100') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('', '', 1, '1') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, '') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, ' ') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, '0') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 'x') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 'm') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 'i') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 'c') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 'n') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 't') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 'dc') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, 'ie') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, '-100') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, '100') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('', '', 1, '1') COUNT FROM DUAL;
 
-SELECT REGEXP_COUNT(' ', ' ', 1, ' ') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, '0') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 'x') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 'm') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 'i') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 'c') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 'n') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 't') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 'dc') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, 'ie') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, '-100') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, '100') COUNT FROM DUAL;
-SELECT REGEXP_COUNT(' ', ' ', 1, '1') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, ' ') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '0') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'x') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'm') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'i') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'c') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'n') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 't') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'dc') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'ie') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '-100') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '100') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '1') COUNT FROM DUAL;
 
-SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 0, 'c') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'gg') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 2147483648, 'c') COUNT FROM DUAL;
-SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'o') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 0, 'c') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'gg') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 2147483648, 'c') COUNT FROM DUAL;
+SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'o') COUNT FROM DUAL;
 
 --20
-select regexp_count('
+select sys.regexp_count('
 hello
 Hello.hello
 good', '.', 1, 'i') from dual; 
 
 --25
-select regexp_count('
+select sys.regexp_count('
 hello
 
 Hello hello
@@ -845,22 +845,22 @@ good
 ','.',1,'n') from dual;
 
 --1
-select regexp_count('gooddd', '^', 1, 'm') from dual;
+select sys.regexp_count('gooddd', '^', 1, 'm') from dual;
 
 --4
-select regexp_count('
+select sys.regexp_count('
 hello
 Hello.hello
 good
 ', '^', 1, 'm') from dual;
 
 --3
-select regexp_count('hello
+select sys.regexp_count('hello
 Hello.hello
 good', '$', 1, 'm') from dual;
 
 --23
-select regexp_count('hello
+select sys.regexp_count('hello
 
 Hello.hello
 good', '.', 1, 'n') from dual;
@@ -880,15 +880,15 @@ select length(192.922) from dual;
 select length(cast(192.922 as numeric)) from dual;
 select length('192') from dual;
 select length('Highgo DB!') from dual;
-select length('今天') from dual;
+select sys.length('浠婂ぉ') from dual;
 select length(cast('Highgo DB!' as char(10))) from dual;
 select length(cast('Highgo DB!' as char(20))) from dual;
 select length(cast('Highgo DB!' as varchar(20))) from dual;
 select length(cast('Highgo DB!' as oravarcharchar(20))) from dual;
 select length(cast('Highgo DB!' as oravarcharchar(20))) from dual;
 select length(cast('Highgo DB!' as text)) from dual;
-select length(cast('今天' as text)) from dual;
-select length(cast('今天是Monday' as char(20))) from dual;
+select length(cast('浠婂ぉ' as text)) from dual;
+select length(cast('浠婂ぉ鏄疢onday' as char(20))) from dual;
 select length(cast('2019-12-12' as date)) from dual;
 select length(cast('2019-12-12' as timestamp)) from dual;
 select length(null) from dual;
@@ -912,15 +912,15 @@ select lengthb(cast(192.922 as numeric)) from dual;
 select lengthb(cast(192.922 as number)) from dual;
 select lengthb('192') from dual;
 select lengthb('Highgo DB!') from dual;
-select lengthb('今天') from dual;
+select lengthb('浠婂ぉ') from dual;
 select lengthb(cast('Highgo DB!' as char(10))) from dual;
 select lengthb(cast('Highgo DB!' as char(20))) from dual;
 select lengthb(cast('Highgo DB!' as varchar(20))) from dual;
 select lengthb(cast('Highgo DB!' as varchar2(20))) from dual;
 --select lengthb('Highgo DB!'::nvarchar2(20)) from dual;
 select lengthb(cast('Highgo DB!' as text)) from dual;
-select lengthb(cast('今天' as text)) from dual;
-select lengthb(cast('今天是Monday' as char(20))) from dual;
+select lengthb(cast('浠婂ぉ' as text)) from dual;
+select lengthb(cast('浠婂ぉ鏄疢onday' as char(20))) from dual;
 select lengthb(cast('2019-12-12' as date)) from dual;
 select lengthb(cast('2019-12-12' as timestamp)) from dual;
 select lengthb(null) from dual;

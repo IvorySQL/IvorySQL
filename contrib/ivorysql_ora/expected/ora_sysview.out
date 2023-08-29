@@ -1,15 +1,15 @@
 -- compatible_mode
-SET COMPATIBLE_MODE TO ORACLE;
-SHOW COMPATIBLE_MODE;
- compatible_mode 
------------------
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+SHOW IVORYSQL.COMPATIBLE_MODE;
+ ivorysql.compatible_mode 
+--------------------------
  oracle
 (1 row)
 
-SET IDENTIFIER_CASE_SWITCH = INTERCHANGE;
-SHOW IDENTIFIER_CASE_SWITCH;
- identifier_case_switch 
-------------------------
+SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
+SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
+ ivorysql.identifier_case_switch 
+---------------------------------
  interchange
 (1 row)
 

@@ -47,7 +47,7 @@ cleansql:
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
-REGRESS = \
+ORA_REGRESS = \
 	ora_character \
 	ora_datetime \
 	ora_interval \

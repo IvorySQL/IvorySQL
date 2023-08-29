@@ -406,7 +406,6 @@ distclean maintainer-clean: clean
 ifdef REGRESS
 
 REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
-ORACLE_REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
 
 # When doing a VPATH build, must copy over the data files so that the
 # driver script can find them.  We have to use an absolute path for
@@ -426,6 +425,30 @@ $(test_files_build): $(abs_builddir)/%: $(srcdir)/%
 	ln -s $< $@
 endif # VPATH
 endif # REGRESS
+
+ifdef ORA_REGRESS
+
+ORACLE_REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
+
+# When doing a VPATH build, must copy over the data files so that the
+# driver script can find them.  We have to use an absolute path for
+# the targets, because otherwise make will try to locate the missing
+# files using VPATH, and will find them in $(srcdir), but the point
+# here is that we want to copy them from $(srcdir) to the build
+# directory.
+
+ifdef VPATH
+abs_builddir := $(shell pwd)
+test_files_src := $(wildcard $(srcdir)/data/*.data)
+test_files_build := $(patsubst $(srcdir)/%, $(abs_builddir)/%, $(test_files_src))
+
+all: $(test_files_build)
+$(test_files_build): $(abs_builddir)/%: $(srcdir)/%
+	$(MKDIR_P) $(dir $@)
+	ln -s $< $@
+endif # VPATH
+endif # ORA_REGRESS
+
 
 .PHONY: submake oracle-submake
 submake:
