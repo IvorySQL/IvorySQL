@@ -1922,52 +1922,55 @@ CREATE TABLE base_tbl (a int, b int DEFAULT 10);
 INSERT INTO base_tbl VALUES (1,2), (2,3), (1,-1);
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a < b
   WITH LOCAL CHECK OPTION;
-ERROR:  syntax error at or near "WITH"
-LINE 2:   WITH LOCAL CHECK OPTION;
-          ^
 \d+ rw_view1
+                          View "public.rw_view1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Description 
+--------+---------+-----------+----------+---------+---------+-------------
+ a      | integer |           |          |         | plain   | 
+ b      | integer |           |          |         | plain   | 
+View definition:
+ SELECT a,
+    b
+   FROM base_tbl
+  WHERE a < b;
+Options: check_option=local
+
 SELECT * FROM information_schema.views WHERE table_name = 'rw_view1';
- table_catalog | table_schema | table_name | view_definition | check_option | is_updatable | is_insertable_into | is_trigger_updatable | is_trigger_deletable | is_trigger_insertable_into 
----------------+--------------+------------+-----------------+--------------+--------------+--------------------+----------------------+----------------------+----------------------------
-(0 rows)
+ table_catalog | table_schema | table_name | view_definition  | check_option | is_updatable | is_insertable_into | is_trigger_updatable | is_trigger_deletable | is_trigger_insertable_into 
+---------------+--------------+------------+------------------+--------------+--------------+--------------------+----------------------+----------------------+----------------------------
+ regression    | public       | rw_view1   |  SELECT a,      +| LOCAL        | YES          | YES                | NO                   | NO                   | NO
+               |              |            |     b           +|              |              |                    |                      |                      | 
+               |              |            |    FROM base_tbl+|              |              |                    |                      |                      | 
+               |              |            |   WHERE (a < b); |              |              |                    |                      |                      | 
+(1 row)
 
 INSERT INTO rw_view1 VALUES(3,4); -- ok
-ERROR:  relation "rw_view1" does not exist
-LINE 1: INSERT INTO rw_view1 VALUES(3,4);
-                    ^
 INSERT INTO rw_view1 VALUES(4,3); -- should fail
-ERROR:  relation "rw_view1" does not exist
-LINE 1: INSERT INTO rw_view1 VALUES(4,3);
-                    ^
+ERROR:  new row violates check option for view "rw_view1"
+DETAIL:  Failing row contains (4, 3).
 INSERT INTO rw_view1 VALUES(5,null); -- should fail
-ERROR:  relation "rw_view1" does not exist
-LINE 1: INSERT INTO rw_view1 VALUES(5,null);
-                    ^
+ERROR:  new row violates check option for view "rw_view1"
+DETAIL:  Failing row contains (5, null).
 UPDATE rw_view1 SET b = 5 WHERE a = 3; -- ok
-ERROR:  relation "rw_view1" does not exist
-LINE 1: UPDATE rw_view1 SET b = 5 WHERE a = 3;
-               ^
 UPDATE rw_view1 SET b = -5 WHERE a = 3; -- should fail
-ERROR:  relation "rw_view1" does not exist
-LINE 1: UPDATE rw_view1 SET b = -5 WHERE a = 3;
-               ^
+ERROR:  new row violates check option for view "rw_view1"
+DETAIL:  Failing row contains (3, -5).
 INSERT INTO rw_view1(a) VALUES (9); -- ok
-ERROR:  relation "rw_view1" does not exist
-LINE 1: INSERT INTO rw_view1(a) VALUES (9);
-                    ^
 INSERT INTO rw_view1(a) VALUES (10); -- should fail
-ERROR:  relation "rw_view1" does not exist
-LINE 1: INSERT INTO rw_view1(a) VALUES (10);
-                    ^
+ERROR:  new row violates check option for view "rw_view1"
+DETAIL:  Failing row contains (10, 10).
 SELECT * FROM base_tbl;
  a | b  
 ---+----
  1 |  2
  2 |  3
  1 | -1
-(3 rows)
+ 3 |  5
+ 9 | 10
+(5 rows)
 
 DROP TABLE base_tbl CASCADE;
+NOTICE:  drop cascades to view rw_view1
 -- WITH LOCAL/CASCADED CHECK OPTION
 CREATE TABLE base_tbl (a int);
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a > 0;
@@ -2013,9 +2016,6 @@ ERROR:  new row violates check option for view "rw_view2"
 DETAIL:  Failing row contains (15).
 CREATE OR REPLACE VIEW rw_view2 AS SELECT * FROM rw_view1 WHERE a < 10
   WITH LOCAL CHECK OPTION;
-ERROR:  syntax error at or near "WITH"
-LINE 2:   WITH LOCAL CHECK OPTION;
-          ^
 \d+ rw_view2
                           View "public.rw_view2"
  Column |  Type   | Collation | Nullable | Default | Storage | Description 
@@ -2025,27 +2025,26 @@ View definition:
  SELECT a
    FROM rw_view1
   WHERE a < 10;
-Options: check_option=cascaded
+Options: check_option=local
 
 SELECT * FROM information_schema.views WHERE table_name = 'rw_view2';
  table_catalog | table_schema | table_name |  view_definition  | check_option | is_updatable | is_insertable_into | is_trigger_updatable | is_trigger_deletable | is_trigger_insertable_into 
 ---------------+--------------+------------+-------------------+--------------+--------------+--------------------+----------------------+----------------------+----------------------------
- regression    | public       | rw_view2   |  SELECT a        +| CASCADED     | YES          | YES                | NO                   | NO                   | NO
+ regression    | public       | rw_view2   |  SELECT a        +| LOCAL        | YES          | YES                | NO                   | NO                   | NO
                |              |            |    FROM rw_view1 +|              |              |                    |                      |                      | 
                |              |            |   WHERE (a < 10); |              |              |                    |                      |                      | 
 (1 row)
 
 INSERT INTO rw_view2 VALUES (-10); -- ok, but not in view
-ERROR:  new row violates check option for view "rw_view1"
-DETAIL:  Failing row contains (-10).
 INSERT INTO rw_view2 VALUES (20); -- should fail
 ERROR:  new row violates check option for view "rw_view2"
 DETAIL:  Failing row contains (20).
 SELECT * FROM base_tbl;
- a 
----
- 5
-(1 row)
+  a  
+-----
+   5
+ -10
+(2 rows)
 
 ALTER VIEW rw_view1 SET (check_option=here); -- invalid
 ERROR:  invalid value for enum option "check_option": here
@@ -2078,11 +2077,12 @@ SELECT * FROM information_schema.views WHERE table_name = 'rw_view2';
 
 INSERT INTO rw_view2 VALUES (30); -- ok, but not in view
 SELECT * FROM base_tbl;
- a  
-----
-  5
- 30
-(2 rows)
+  a  
+-----
+   5
+ -10
+  30
+(3 rows)
 
 DROP TABLE base_tbl CASCADE;
 NOTICE:  drop cascades to 2 other objects
@@ -2231,45 +2231,32 @@ CREATE TRIGGER rw_view1_trig
   FOR EACH ROW EXECUTE PROCEDURE rw_view1_trig_fn();
 CREATE VIEW rw_view2 AS
   SELECT * FROM rw_view1 WHERE a > 0 WITH LOCAL CHECK OPTION;
-ERROR:  syntax error at or near "WITH"
-LINE 2:   SELECT * FROM rw_view1 WHERE a > 0 WITH LOCAL CHECK OPTION...
-                                             ^
 INSERT INTO rw_view2 VALUES (-5); -- should fail
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (-5);
-                    ^
+ERROR:  new row violates check option for view "rw_view2"
+DETAIL:  Failing row contains (-5).
 INSERT INTO rw_view2 VALUES (5); -- ok
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (5);
-                    ^
 INSERT INTO rw_view2 VALUES (50); -- ok, but not in view
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (50);
-                    ^
 UPDATE rw_view2 SET a = a - 10; -- should fail
-ERROR:  relation "rw_view2" does not exist
-LINE 1: UPDATE rw_view2 SET a = a - 10;
-               ^
+ERROR:  new row violates check option for view "rw_view2"
+DETAIL:  Failing row contains (-5).
 SELECT * FROM base_tbl;
- a | b 
----+---
-(0 rows)
+ a  | b  
+----+----
+  5 | 10
+ 50 | 10
+(2 rows)
 
 -- Check option won't cascade down to base view with INSTEAD OF triggers
 ALTER VIEW rw_view2 SET (check_option=cascaded);
-ERROR:  relation "rw_view2" does not exist
 INSERT INTO rw_view2 VALUES (100); -- ok, but not in view (doesn't fail rw_view1's check)
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (100);
-                    ^
 UPDATE rw_view2 SET a = 200 WHERE a = 5; -- ok, but not in view (doesn't fail rw_view1's check)
-ERROR:  relation "rw_view2" does not exist
-LINE 1: UPDATE rw_view2 SET a = 200 WHERE a = 5;
-               ^
 SELECT * FROM base_tbl;
- a | b 
----+---
-(0 rows)
+  a  | b  
+-----+----
+  50 | 10
+ 100 | 10
+ 200 | 10
+(3 rows)
 
 -- Neither local nor cascaded check options work with INSTEAD rules
 DROP TRIGGER rw_view1_trig ON rw_view1;
@@ -2278,36 +2265,27 @@ CREATE RULE rw_view1_ins_rule AS ON INSERT TO rw_view1
 CREATE RULE rw_view1_upd_rule AS ON UPDATE TO rw_view1
   DO INSTEAD UPDATE base_tbl SET a=NEW.a WHERE a=OLD.a;
 INSERT INTO rw_view2 VALUES (-10); -- ok, but not in view (doesn't fail rw_view2's check)
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (-10);
-                    ^
 INSERT INTO rw_view2 VALUES (5); -- ok
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (5);
-                    ^
 INSERT INTO rw_view2 VALUES (20); -- ok, but not in view (doesn't fail rw_view1's check)
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (20);
-                    ^
 UPDATE rw_view2 SET a = 30 WHERE a = 5; -- ok, but not in view (doesn't fail rw_view1's check)
-ERROR:  relation "rw_view2" does not exist
-LINE 1: UPDATE rw_view2 SET a = 30 WHERE a = 5;
-               ^
 INSERT INTO rw_view2 VALUES (5); -- ok
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (5);
-                    ^
 UPDATE rw_view2 SET a = -5 WHERE a = 5; -- ok, but not in view (doesn't fail rw_view2's check)
-ERROR:  relation "rw_view2" does not exist
-LINE 1: UPDATE rw_view2 SET a = -5 WHERE a = 5;
-               ^
 SELECT * FROM base_tbl;
- a | b 
----+---
-(0 rows)
+  a  | b  
+-----+----
+  50 | 10
+ 100 | 10
+ 200 | 10
+ -10 | 10
+  20 | 10
+  30 | 10
+  -5 | 10
+(7 rows)
 
 DROP TABLE base_tbl CASCADE;
-NOTICE:  drop cascades to view rw_view1
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to view rw_view1
+drop cascades to view rw_view2
 DROP FUNCTION rw_view1_trig_fn();
 CREATE TABLE base_tbl (a int);
 CREATE VIEW rw_view1 AS SELECT a,10 AS b FROM base_tbl;
@@ -2315,15 +2293,11 @@ CREATE RULE rw_view1_ins_rule AS ON INSERT TO rw_view1
   DO INSTEAD INSERT INTO base_tbl VALUES (NEW.a);
 CREATE VIEW rw_view2 AS
   SELECT * FROM rw_view1 WHERE a > b WITH LOCAL CHECK OPTION;
-ERROR:  syntax error at or near "WITH"
-LINE 2:   SELECT * FROM rw_view1 WHERE a > b WITH LOCAL CHECK OPTION...
-                                             ^
 INSERT INTO rw_view2 VALUES (2,3); -- ok, but not in view (doesn't fail rw_view2's check)
-ERROR:  relation "rw_view2" does not exist
-LINE 1: INSERT INTO rw_view2 VALUES (2,3);
-                    ^
 DROP TABLE base_tbl CASCADE;
-NOTICE:  drop cascades to view rw_view1
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to view rw_view1
+drop cascades to view rw_view2
 -- security barrier view
 CREATE TABLE base_tbl (person text, visibility text);
 INSERT INTO base_tbl VALUES ('Tom', 'public'),
