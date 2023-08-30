@@ -883,3 +883,22 @@ select f_noparentheses from t_noparentheses;
 -- When the function name and the column name are the same, we preferentially resolve to the column name.
 select f_noparentheses from dual;
 select f_noparentheses from t_noparentheses;
+
+--
+-- Compatible with Oracle:
+-- The input parameter type is %rowtype
+--
+create table t1(a int, b int);
+
+create or  replace function ftest(a in t1%rowtype)
+ return int 
+  as 
+begin  a.a = 25; a.b= 26; raise notice '%',a;
+return 25;
+end;
+/
+
+select * from ftest(null::t1);
+
+drop function ftest;
+drop table t1;
