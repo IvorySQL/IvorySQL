@@ -1408,88 +1408,88 @@ select to_timestamp_tz('-2022-08-22 10:13:18. 1516 -08:00','SYYYY/MM/DD HH:MI:SS
 
 alter session set NLS_TIMESTAMP_FORMAT='YY-MM-DD HH24.MI.SS.FF';
 create table ts_tb(a timestamp);
-insert into ts_tb values('2022-08-19 11.11.11');   --succ
-insert into ts_tb values('122-08-19 11.11.11');     --err
+insert into ts_tb values('2022-08-19 11.11.11');   --err
+ERROR:  The value of month is invalid.
+LINE 1: insert into ts_tb values('2022-08-19 11.11.11');
+                                 ^
+insert into ts_tb values('122-08-19 11.11.11');     --succ
 insert into ts_tb values('23-08-19 11.11.11');     --succ
 insert into ts_tb values('7-08-19 11.11.11');     --succ
-insert into ts_tb values('-08-19 11.11.11');	--err
-ERROR:  The value of month is invalid.
-LINE 1: insert into ts_tb values('-08-19 11.11.11');
-                                 ^
+insert into ts_tb values('-08-19 11.11.11');	--succ
 insert into ts_tb values('22022-08-19 11.11.11');  --err
-ERROR:  The year value must be between -4713 and +9999, and can not be 0
+ERROR:  Number value does not match the length of the format item.
 LINE 1: insert into ts_tb values('22022-08-19 11.11.11');
                                  ^
 select * from ts_tb;
             a             
 --------------------------
- 22-08-19 11.11.11.000000
- 22-08-19 11.11.11.000000
+ 12-02-08 19.11.11.110000
  23-08-19 11.11.11.000000
  07-08-19 11.11.11.000000
+ 00-08-19 11.11.11.000000
 (4 rows)
 
 select to_char(a, 'YYYY-MM-DD') from ts_tb;
   to_char   
 ------------
- 2022-08-19
- 0122-08-19
+ 2012-02-08
  2023-08-19
  2007-08-19
+ 2000-08-19
 (4 rows)
 
 alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24.MI.SS';
 select * from ts_tb;
           a          
 ---------------------
- 2022-08-19 11.11.11
- 0122-08-19 11.11.11
+ 2012-02-08 19.11.11
  2023-08-19 11.11.11
  2007-08-19 11.11.11
+ 2000-08-19 11.11.11
 (4 rows)
 
 drop table ts_tb;
 alter session set NLS_DATE_FORMAT='YY-MM-DD HH24.MI.SS';
 create table ts_tb(a date);
-insert into ts_tb values('2022-08-19 11.11.11');   --succ
+insert into ts_tb values('2022-08-19 11.11.11');   --err
+ERROR:  The value of month is invalid.
+LINE 1: insert into ts_tb values('2022-08-19 11.11.11');
+                                 ^
 insert into ts_tb values('122-08-19 11.11.11');    --succ
+ERROR:  datetime format picture ends before converting entire input string
+LINE 1: insert into ts_tb values('122-08-19 11.11.11');
+                                 ^
 insert into ts_tb values('23-08-19 11.11.11');     --succ
 insert into ts_tb values('4-08-19 11.11.11');     --succ
-insert into ts_tb values('-08-19 11.11.11');	--err
-ERROR:  The value of month is invalid.
-LINE 1: insert into ts_tb values('-08-19 11.11.11');
-                                 ^
+insert into ts_tb values('-08-19 11.11.11');	--succ
 insert into ts_tb values('22022-08-19 11.11.11');  --err
-ERROR:  The year value must be between -4713 and +9999, and can not be 0
+ERROR:  Number value does not match the length of the format item.
 LINE 1: insert into ts_tb values('22022-08-19 11.11.11');
                                  ^
 select * from ts_tb;
          a         
 -------------------
- 22-08-19 11.11.11
- 22-08-19 11.11.11
  23-08-19 11.11.11
  04-08-19 11.11.11
-(4 rows)
+ 00-08-19 11.11.11
+(3 rows)
 
 select to_char(a, 'YYYY-MM-DD') from ts_tb;
   to_char   
 ------------
- 2022-08-19
- 0122-08-19
  2023-08-19
  2004-08-19
-(4 rows)
+ 2000-08-19
+(3 rows)
 
 alter session set NLS_DATE_FORMAT='YYYY-MM-DD HH24.MI.SS';
 select * from ts_tb;
           a          
 ---------------------
- 2022-08-19 11.11.11
- 0122-08-19 11.11.11
  2023-08-19 11.11.11
  2004-08-19 11.11.11
-(4 rows)
+ 2000-08-19 11.11.11
+(3 rows)
 
 drop table ts_tb;
 reset nls_date_format;
