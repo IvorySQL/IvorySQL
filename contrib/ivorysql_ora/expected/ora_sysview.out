@@ -99,3 +99,31 @@ ORDER BY OBJECT_ID, POSITION;
  T21,21,22,IN,BOOLEAN,BOOLEAN
 (22 rows)
 
+-- create a function with arguments defaulted
+CREATE OR REPLACE FUNCTION FUNC_WITH_DEFAULT
+(
+	ARG1 IN INT DEFAULT 10,
+	ARG2 OUT INT,
+	ARG3 IN OUT INT DEFAULT 20,
+	ARG4 IN VARCHAR2(10) DEFAULT NULL
+)
+RETURN RECORD IS
+BEGIN
+	ARG2 := ARG1 + 10;
+	ARG3 := ARG1 / 2;
+END;
+/
+-- check arguments with default value
+SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED FROM ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
+ argument_name | in_out | position | defaulted 
+---------------+--------+----------+-----------
+               | OUT    | 0        | N
+ ARG1          | IN     | 1        | Y
+ ARG2          | OUT    | 2        | N
+ ARG3          | IN/OUT | 3        | Y
+ ARG4          | IN     | 4        | Y
+(5 rows)
+
+-- clean data
+DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
