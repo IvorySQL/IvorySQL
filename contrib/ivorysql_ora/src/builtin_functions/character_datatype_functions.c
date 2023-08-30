@@ -997,8 +997,8 @@ ora_instrb(PG_FUNCTION_ARGS)
 {
 	text	*str = NULL;
 	text	*search_str = NULL;
-	int32	position = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(2)));
-	int32	occurrence = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(3)));
+	int32	position = DatumGetInt32(DirectFunctionCall1(numeric_int4, DirectFunctionCall2(numeric_trunc, PG_GETARG_DATUM(2),Int32GetDatum(0))));
+	int32	occurrence = DatumGetInt32(DirectFunctionCall1(numeric_int4, DirectFunctionCall2(numeric_trunc, PG_GETARG_DATUM(3),Int32GetDatum(0))));
 
 	if (position == 0)
 		PG_RETURN_INT32(0);
