@@ -767,7 +767,7 @@ static void determineLanguage(List *options);
 	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
 	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
-	ROUTINE ROUTINES ROW ROWS RULE
+	ROUTINE ROUTINES ROW ROWS  ROWTYPE RULE
 
 	SAVEPOINT SCALAR SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
@@ -8854,6 +8854,12 @@ func_type:	Typename								{ $$ = $1; }
 				{
 					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
 					$$->pct_type = true;
+					$$->location = @1;
+				}
+			| type_function_name '%' ROWTYPE
+				{
+					$$ = makeTypeNameFromNameList(list_make1(makeString($1)));
+					$$->pct_type = false;
 					$$->location = @1;
 				}
 			| SETOF type_function_name attrs '%' TYPE_P
@@ -19044,6 +19050,7 @@ unreserved_keyword:
 			| ROUTINE
 			| ROUTINES
 			| ROWS
+			| ROWTYPE
 			| RULE
 			| SAVEPOINT
 			| SCALAR
@@ -19709,6 +19716,7 @@ bare_label_keyword:
 			| ROUTINES
 			| ROW
 			| ROWS
+			| ROWTYPE
 			| RULE
 			| SAVEPOINT
 			| SCALAR
