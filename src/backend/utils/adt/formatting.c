@@ -4228,6 +4228,10 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 							 errmsg("negative YEAR must use SYYYY format")));
+				if (ORA_PARSER == compatible_db)
+				{
+					n->sep = true;
+				}
 				len = from_char_parse_int(&out->year, &s, n,escontext);
 				if (len < 0)
 					return;
