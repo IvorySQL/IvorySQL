@@ -637,3 +637,38 @@ drop table timestp_tb;
 reset nls_date_format;
 reset nls_timestamp_format;
 reset nls_timestamp_tz_format;
+alter session set NLS_TIMESTAMP_FORMAT='RR-MM-DD HH24.MI.SS.FF';
+create table timestp_tb(timestp_clo timestamp);
+INSERT INTO timestp_tb VALUES('2022-08-19 11.11.11');   --succ  22-08-19 11.11.11.000000
+insert into timestp_tb values('122-08-19 11.11.11');  --succ  22-08-19 11.11.11
+select * from timestp_tb;
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24.MI.SS.FF';
+select * from timestp_tb;
+drop table timestp_tb;
+
+alter session set NLS_TIMESTAMP_TZ_FORMAT='RR-MM-DD HH24.MI.SS.FF TZH:TZM';
+create table timestpwtz_tb(timestp_clo timestamp with time zone);
+INSERT INTO timestpwtz_tb VALUES('2022-08-19 11.11.11'); 
+insert into timestpwtz_tb values('122-08-19 11.11.11');
+select * from timestpwtz_tb;
+alter session set NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24.MI.SS.FF TZH:TZM';
+select * from timestpwtz_tb;
+drop table timestpwtz_tb;
+
+alter session set NLS_TIMESTAMP_FORMAT='RR-MM-DD HH24.MI.SS.FF';
+create table timestpwltz_tb(timestp_clo timestamp with local time zone);
+INSERT INTO timestpwltz_tb VALUES('2022-08-19 11.11.11'); 
+insert into timestpwltz_tb values('122-08-19 11.11.11');
+select * from timestpwltz_tb;
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24.MI.SS.FF';
+select * from timestpwltz_tb;
+drop table timestpwltz_tb;
+
+alter session set NLS_DATE_FORMAT='RR-MM-DD HH24.MI.SS';
+create table ds_tb(date_clo date);
+INSERT INTO ds_tb VALUES('2022-08-19 11.11.11');   --succ  22-08-19 11.11.11
+insert into ds_tb values('122-08-19 11.11.11');  --succ  22-08-19 11.11.11
+select * from ds_tb;
+alter session set NLS_DATE_FORMAT='YYYY-MM-DD HH24.MI.SS';
+select * from ds_tb;
+drop table ds_tb;
