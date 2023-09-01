@@ -1834,3 +1834,102 @@ select * from ds_tb;
 (2 rows)
 
 drop table ds_tb;
+alter session set NLS_TIMESTAMP_FORMAT='RRRR-MM-DD HH24.MI.SS.FF';
+create table timestp_tb(timestp_clo timestamp);
+INSERT INTO timestp_tb VALUES('22022-08-19 11.11.11');   --err
+ERROR:  Number value does not match the length of the format item.
+LINE 1: INSERT INTO timestp_tb VALUES('22022-08-19 11.11.11');
+                                      ^
+INSERT INTO timestp_tb VALUES('2022-08-19 11.11.11');   --succ
+INSERT INTO timestp_tb VALUES('022-08-19 11.11.11');   --succ
+INSERT INTO timestp_tb VALUES('22-08-19 11.11.11');   --succ
+INSERT INTO timestp_tb VALUES('2-08-19 11.11.11');   --succ
+INSERT INTO timestp_tb VALUES('202208-19 11.11.11');   --succ
+INSERT INTO timestp_tb VALUES('20220819 11.11.11');   --succ
+select * from timestp_tb;
+        timestp_clo         
+----------------------------
+ 2022-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+ 2002-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+(6 rows)
+
+drop table timestp_tb;
+alter session set NLS_TIMESTAMP_TZ_FORMAT='RRRR-MM-DD HH24.MI.SS.FF TZH:TZM';
+create table timestpwtz_tb(timestp_clo timestamp with time zone);
+INSERT INTO timestpwtz_tb VALUES('22022-08-19 11.11.11');   --err
+ERROR:  Number value does not match the length of the format item.
+LINE 1: INSERT INTO timestpwtz_tb VALUES('22022-08-19 11.11.11');
+                                         ^
+INSERT INTO timestpwtz_tb VALUES('2022-08-19 11.11.11');   --succ
+INSERT INTO timestpwtz_tb VALUES('022-08-19 11.11.11');   --succ
+INSERT INTO timestpwtz_tb VALUES('22-08-19 11.11.11');   --succ
+INSERT INTO timestpwtz_tb VALUES('2-08-19 11.11.11');   --succ
+INSERT INTO timestpwtz_tb VALUES('202208-19 11.11.11');   --succ
+INSERT INTO timestpwtz_tb VALUES('20220819 11.11.11');   --succ
+select * from timestpwtz_tb;
+            timestp_clo            
+-----------------------------------
+ 2022-08-19 11.11.11.000000 +08:00
+ 2022-08-19 11.11.11.000000 +08:00
+ 2022-08-19 11.11.11.000000 +08:00
+ 2002-08-19 11.11.11.000000 +08:00
+ 2022-08-19 11.11.11.000000 +08:00
+ 2022-08-19 11.11.11.000000 +08:00
+(6 rows)
+
+drop table timestpwtz_tb;
+alter session set NLS_TIMESTAMP_FORMAT='RRRR-MM-DD HH24.MI.SS.FF';
+create table timestpwltz_tb(timestp_clo timestamp with local time zone);
+INSERT INTO timestpwltz_tb VALUES('22022-08-19 11.11.11');  --err
+ERROR:  Number value does not match the length of the format item.
+LINE 1: INSERT INTO timestpwltz_tb VALUES('22022-08-19 11.11.11');
+                                          ^
+INSERT INTO timestpwltz_tb VALUES('2022-08-19 11.11.11');   --succ
+INSERT INTO timestpwltz_tb VALUES('022-08-19 11.11.11');   --succ
+INSERT INTO timestpwltz_tb VALUES('22-08-19 11.11.11');   --succ
+INSERT INTO timestpwltz_tb VALUES('2-08-19 11.11.11');   --succ
+INSERT INTO timestpwltz_tb VALUES('202208-19 11.11.11');   --succ
+INSERT INTO timestpwltz_tb VALUES('20220819 11.11.11');   --succ
+select * from timestpwltz_tb;
+        timestp_clo         
+----------------------------
+ 2022-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+ 2002-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+ 2022-08-19 11.11.11.000000
+(6 rows)
+
+drop table timestpwltz_tb;
+alter session set NLS_DATE_FORMAT='RRRR-MM-DD HH24.MI.SS';
+create table ds_tb(timestp_clo date);
+INSERT INTO ds_tb VALUES('22022-08-19 11.11.11');   --err
+ERROR:  Number value does not match the length of the format item.
+LINE 1: INSERT INTO ds_tb VALUES('22022-08-19 11.11.11');
+                                 ^
+INSERT INTO ds_tb VALUES('2022-08-19 11.11.11');   --succ
+INSERT INTO ds_tb VALUES('022-08-19 11.11.11');   --succ
+INSERT INTO ds_tb VALUES('22-08-19 11.11.11');   --succ
+INSERT INTO ds_tb VALUES('2-08-19 11.11.11');   --succ
+INSERT INTO ds_tb VALUES('202208-19 11.11.11');   --succ
+INSERT INTO ds_tb VALUES('20220819 11.11.11');   --succ
+select * from ds_tb;
+     timestp_clo     
+---------------------
+ 2022-08-19 11.11.11
+ 2022-08-19 11.11.11
+ 2022-08-19 11.11.11
+ 2002-08-19 11.11.11
+ 2022-08-19 11.11.11
+ 2022-08-19 11.11.11
+(6 rows)
+
+drop table ds_tb;
+reset NLS_TIMESTAMP_FORMAT;
+reset NLS_TIMESTAMP_TZ_FORMAT;
+reset NLS_DATE_FORMAT;
