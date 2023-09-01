@@ -15754,9 +15754,10 @@ MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel)
 								attributeName)));
 
 			/*
-			 * Check child doesn't discard NOT NULL property.  (Other
-			 * constraints are checked elsewhere.)  However, if the constraint
-			 * is NO INHERIT in the parent, this is allowed.
+			 * If the parent has a not-null constraint that's not NO INHERIT,
+			 * make sure the child has one too.
+			 *
+			 * Other constraints are checked elsewhere.
 			 */
 			if (attribute->attnotnull && !childatt->attnotnull)
 			{
@@ -15764,11 +15765,12 @@ MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel)
 
 				contup = findNotNullConstraintAttnum(RelationGetRelid(parent_rel),
 													 attribute->attnum);
-				if (!((Form_pg_constraint) GETSTRUCT(contup))->connoinherit)
+				if (HeapTupleIsValid(contup) &&
+					!((Form_pg_constraint) GETSTRUCT(contup))->connoinherit)
 					ereport(ERROR,
-							(errcode(ERRCODE_DATATYPE_MISMATCH),
-							 errmsg("column \"%s\" in child table must be marked NOT NULL",
-									attributeName)));
+							errcode(ERRCODE_DATATYPE_MISMATCH),
+							errmsg("column \"%s\" in child table must be marked NOT NULL",
+								   attributeName));
 			}
 
 			/*
@@ -15989,10 +15991,20 @@ MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel)
 		systable_endscan(child_scan);
 
 		if (!found)
+		{
+			if (parent_con->contype == CONSTRAINT_NOTNULL)
+				ereport(ERROR,
+						errcode(ERRCODE_DATATYPE_MISMATCH),
+						errmsg("column \"%s\" in child table must be marked NOT NULL",
+							   get_attname(parent_relid,
+										   extractNotNullColumn(parent_tuple),
+										   false)));
+
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("child table is missing constraint \"%s\"",
 							NameStr(parent_con->conname))));
+		}
 	}
 
 	systable_endscan(parent_scan);
