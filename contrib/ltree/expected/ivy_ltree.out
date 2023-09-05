@@ -8133,4 +8133,32 @@ FROM (VALUES ('.2.3', 'ltree'),
  !tree & aWdf@* | ltxtquery | t  |                |                                    |                          | 
 (8 rows)
 
+CREATE FUNCTION sys.ltree2varchar2(ltree)
+RETURNS text AS $$
+SELECT ltree2text($1::ltree);
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+/
+CREATE FUNCTION sys.varchar22ltree(varchar2)
+RETURNS ltree AS $$
+SELECT text2ltree($1::text);
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+/
+SELECT ltree2varchar2('1.2.3.34.sdf');
+ ltree2varchar2 
+----------------
+ 1.2.3.34.sdf
+(1 row)
+
+SELECT varchar22ltree('1.2.3.34.sdf');
+ varchar22ltree 
+----------------
+ 1.2.3.34.sdf
+(1 row)
+
+SELECT 'Top.Child1.Child2'::ltree || 'Child3'::varchar2;
+         ?column?         
+--------------------------
+ Top.Child1.Child2.Child3
+(1 row)
+
 RESET ivorysql.enable_emptystring_to_null;

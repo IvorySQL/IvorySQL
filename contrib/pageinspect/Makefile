@@ -23,7 +23,7 @@ DATA =  pageinspect--1.11--1.12.sql pageinspect--1.10--1.11.sql \
 PGFILEDESC = "pageinspect - functions to inspect contents of database pages"
 
 REGRESS = page btree brin gin gist hash checksum oldextversions
-ORA_REGRESS = page btree brin gin gist hash checksum oldextversions
+ORA_REGRESS = ivy_page btree ivy_brin ivy_gin ivy_gist ivy_hash checksum ivy_oldextversions
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
