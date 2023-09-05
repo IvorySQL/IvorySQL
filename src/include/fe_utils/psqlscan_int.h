@@ -155,6 +155,7 @@ typedef struct PsqlScanStateData
 	const PsqlScanCallbacks *callbacks;
 	const Ora_psqlScanCallbacks *oracallbacks;
 	void	   *cb_passthrough;
+	char       ora_plsql_expect_end_symbol;
 } PsqlScanStateData;
 
 
