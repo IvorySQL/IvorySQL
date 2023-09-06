@@ -359,6 +359,7 @@ main(int argc, char **argv)
 	char	   *compression_algorithm_str = "none";
 	char	   *error_detail = NULL;
 	bool		user_compression_defined = false;
+	DataDirSyncMethod sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
 
 	static DumpOptions dopt;
 
@@ -779,7 +780,7 @@ main(int argc, char **argv)
 
 	/* Open the output file */
 	fout = CreateArchive(filename, archiveFormat, compression_spec,
-						 dosync, archiveMode, setupDumpWorker);
+						 dosync, archiveMode, setupDumpWorker, sync_method);
 
 	/* Make dump options accessible right away */
 	SetArchiveOptions(fout, &dopt, NULL);
