@@ -18,11 +18,11 @@ CREATE TABLE collate_test1 (
     b text COLLATE "en_US" NOT NULL
 );
 \d collate_test1
-        Table "collate_tests.collate_test1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    | en_US     | not null | 
+            Table "collate_tests.collate_test1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            | en_US     | not null | 
 
 CREATE TABLE collate_test_fail (
     a int,
@@ -42,18 +42,18 @@ CREATE TABLE collate_test_fail (
     a int COLLATE "en_US",
     b text
 );
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 LINE 2:     a int COLLATE "en_US",
                   ^
 CREATE TABLE collate_test_like (
     LIKE collate_test1
 );
 \d collate_test_like
-      Table "collate_tests.collate_test_like"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    | en_US     | not null | 
+          Table "collate_tests.collate_test_like"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            | en_US     | not null | 
 
 CREATE TABLE collate_test2 (
     a int,
@@ -121,7 +121,7 @@ LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
                                                              ^
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv_SE";
 CREATE DOMAIN testdomain_i AS int COLLATE "sv_SE"; -- fails
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 CREATE TABLE collate_test4 (
     a int,
     b testdomain_sv
@@ -1000,9 +1000,9 @@ CREATE INDEX collate_test1_idx2 ON collate_test1 (b COLLATE "C");
 CREATE INDEX collate_test1_idx3 ON collate_test1 ((b COLLATE "C")); -- this is different grammatically
 CREATE INDEX collate_test1_idx4 ON collate_test1 (((b||'foo') COLLATE "POSIX"));
 CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE "C"); -- fail
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 CREATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "C")); -- fail
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 LINE 1: ...ATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "C...
                                                              ^
 SELECT relname, pg_get_indexdef(oid) FROM pg_class WHERE relname LIKE 'collate_test%_idx%' ORDER BY 1;
@@ -1118,16 +1118,16 @@ drop cascades to column y of composite type collate_dep_test2
 drop cascades to view collate_dep_test3
 drop cascades to index collate_dep_test4i
 \d collate_dep_test1
-      Table "collate_tests.collate_dep_test1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+          Table "collate_tests.collate_dep_test1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 
 \d collate_dep_test2
- Composite type "collate_tests.collate_dep_test2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- x      | integer |           |          | 
+     Composite type "collate_tests.collate_dep_test2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ x      | pg_catalog.int4 |           |          | 
 
 DROP TABLE collate_dep_test1, collate_dep_test4t;
 DROP TYPE collate_dep_test2;

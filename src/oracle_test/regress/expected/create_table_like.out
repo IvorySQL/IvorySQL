@@ -68,11 +68,11 @@ SELECT * FROM inhg; /* Two records with three columns in order x=x, xx=text, y=y
 DROP TABLE inhg;
 CREATE TABLE test_like_gen_1 (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
 \d test_like_gen_1
-                        Table "public.test_like_gen_1"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           |          | 
- b      | integer |           |          | generated always as (a * 2) stored
+                            Table "public.test_like_gen_1"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 
 INSERT INTO test_like_gen_1 (a) VALUES (1);
 SELECT * FROM test_like_gen_1;
@@ -83,11 +83,11 @@ SELECT * FROM test_like_gen_1;
 
 CREATE TABLE test_like_gen_2 (LIKE test_like_gen_1);
 \d test_like_gen_2
-          Table "public.test_like_gen_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+              Table "public.test_like_gen_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 
 INSERT INTO test_like_gen_2 (a) VALUES (1);
 SELECT * FROM test_like_gen_2;
@@ -98,11 +98,11 @@ SELECT * FROM test_like_gen_2;
 
 CREATE TABLE test_like_gen_3 (LIKE test_like_gen_1 INCLUDING GENERATED);
 \d test_like_gen_3
-                        Table "public.test_like_gen_3"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           |          | 
- b      | integer |           |          | generated always as (a * 2) stored
+                            Table "public.test_like_gen_3"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 
 INSERT INTO test_like_gen_3 (a) VALUES (1);
 SELECT * FROM test_like_gen_3;
@@ -117,12 +117,12 @@ CREATE TABLE test_like_4 (b int DEFAULT 42,
   c int GENERATED ALWAYS AS (a * 2) STORED,
   a int CHECK (a > 0));
 \d test_like_4
-                          Table "public.test_like_4"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- b      | integer |           |          | 42
- c      | integer |           |          | generated always as (a * 2) stored
- a      | integer |           |          | 
+                              Table "public.test_like_4"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ b      | pg_catalog.int4 |           |          | 42
+ c      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
+ a      | pg_catalog.int4 |           |          | 
 Check constraints:
     "test_like_4_a_check" CHECK (a > 0)
 
@@ -131,12 +131,12 @@ CREATE TABLE test_like_4b (LIKE test_like_4 INCLUDING DEFAULTS);
 CREATE TABLE test_like_4c (LIKE test_like_4 INCLUDING GENERATED);
 CREATE TABLE test_like_4d (LIKE test_like_4 INCLUDING DEFAULTS INCLUDING GENERATED);
 \d test_like_4a
-            Table "public.test_like_4a"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- b      | integer |           |          | 
- c      | integer |           |          | 
- a      | integer |           |          | 
+                Table "public.test_like_4a"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
+ a      | pg_catalog.int4 |           |          | 
 
 INSERT INTO test_like_4a (a) VALUES(11);
 SELECT a, b, c FROM test_like_4a;
@@ -146,12 +146,12 @@ SELECT a, b, c FROM test_like_4a;
 (1 row)
 
 \d test_like_4b
-            Table "public.test_like_4b"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- b      | integer |           |          | 42
- c      | integer |           |          | 
- a      | integer |           |          | 
+                Table "public.test_like_4b"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ b      | pg_catalog.int4 |           |          | 42
+ c      | pg_catalog.int4 |           |          | 
+ a      | pg_catalog.int4 |           |          | 
 
 INSERT INTO test_like_4b (a) VALUES(11);
 SELECT a, b, c FROM test_like_4b;
@@ -161,12 +161,12 @@ SELECT a, b, c FROM test_like_4b;
 (1 row)
 
 \d test_like_4c
-                         Table "public.test_like_4c"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- b      | integer |           |          | 
- c      | integer |           |          | generated always as (a * 2) stored
- a      | integer |           |          | 
+                             Table "public.test_like_4c"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
+ a      | pg_catalog.int4 |           |          | 
 
 INSERT INTO test_like_4c (a) VALUES(11);
 SELECT a, b, c FROM test_like_4c;
@@ -176,12 +176,12 @@ SELECT a, b, c FROM test_like_4c;
 (1 row)
 
 \d test_like_4d
-                         Table "public.test_like_4d"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- b      | integer |           |          | 42
- c      | integer |           |          | generated always as (a * 2) stored
- a      | integer |           |          | 
+                             Table "public.test_like_4d"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ b      | pg_catalog.int4 |           |          | 42
+ c      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
+ a      | pg_catalog.int4 |           |          | 
 
 INSERT INTO test_like_4d (a) VALUES(11);
 SELECT a, b, c FROM test_like_4d;
@@ -197,17 +197,17 @@ CREATE TABLE test_like_5x (p int CHECK (p > 0),
 CREATE TABLE test_like_5c (LIKE test_like_4 INCLUDING ALL)
   INHERITS (test_like_5, test_like_5x);
 \d test_like_5c
-                         Table "public.test_like_5c"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- x      | point   |           |          | 
- y      | point   |           |          | 
- z      | point   |           |          | 
- p      | integer |           |          | 
- q      | integer |           |          | generated always as (p * 2) stored
- b      | integer |           |          | 42
- c      | integer |           |          | generated always as (a * 2) stored
- a      | integer |           |          | 
+                             Table "public.test_like_5c"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ x      | point           |           |          | 
+ y      | point           |           |          | 
+ z      | point           |           |          | 
+ p      | pg_catalog.int4 |           |          | 
+ q      | pg_catalog.int4 |           |          | generated always as (p * 2) stored
+ b      | pg_catalog.int4 |           |          | 42
+ c      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
+ a      | pg_catalog.int4 |           |          | 
 Check constraints:
     "test_like_4_a_check" CHECK (a > 0)
     "test_like_5x_p_check" CHECK (p > 0)
@@ -441,10 +441,10 @@ NOTICE:  drop cascades to table inhe
 CREATE TABLE noinh_con_copy (a int CHECK (a > 0) NO INHERIT);
 CREATE TABLE noinh_con_copy1 (LIKE noinh_con_copy INCLUDING CONSTRAINTS);
 \d noinh_con_copy1
-          Table "public.noinh_con_copy1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+              Table "public.noinh_con_copy1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Check constraints:
     "noinh_con_copy_a_check" CHECK (a > 0) NO INHERIT
 

@@ -85,7 +85,7 @@ SELECT xmlconcat('hello', 'you');
 (1 row)
 
 SELECT xmlconcat(1, 2);
-ERROR:  argument of XMLCONCAT must be type xml, not type integer
+ERROR:  argument of XMLCONCAT must be type xml, not type pg_catalog.int4
 LINE 1: SELECT xmlconcat(1, 2);
                          ^
 SELECT xmlconcat('bad', '<syntax');
@@ -1324,7 +1324,7 @@ CREATE OR REPLACE VIEW public.xmltableview1 AS
     "xmltable".premier_name
    FROM ( SELECT xmldata.data
            FROM xmldata) x,
-    LATERAL XMLTABLE(('/ROWS/ROW'::text) PASSING (x.data) COLUMNS id integer PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME/text()'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id integer PATH ('REGION_ID'::text), size double precision PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
+    LATERAL XMLTABLE(('/ROWS/ROW'::text) PASSING (x.data) COLUMNS id pg_catalog.int4 PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME/text()'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id pg_catalog.int4 PATH ('REGION_ID'::text), size pg_catalog.float8 PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
 EXPLAIN (COSTS OFF) SELECT * FROM xmltableview1;
                QUERY PLAN                
 -----------------------------------------
@@ -1334,15 +1334,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM xmltableview1;
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE) SELECT * FROM xmltableview1;
-                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                            
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
    ->  Seq Scan on public.xmldata
          Output: xmldata.data
    ->  Table Function Scan on "xmltable"
          Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
-         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id integer PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME/text()'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id integer PATH ('REGION_ID'::text), size double precision PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
+         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id pg_catalog.int4 PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME/text()'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id pg_catalog.int4 PATH ('REGION_ID'::text), size pg_catalog.float8 PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
 (7 rows)
 
 -- errors
@@ -1513,15 +1513,15 @@ SELECT  xmltable.*
                                   size float PATH 'SIZE',
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
-                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                         
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
    ->  Seq Scan on public.xmldata
          Output: xmldata.data
    ->  Table Function Scan on "xmltable"
          Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
-         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id integer PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id integer PATH ('REGION_ID'::text), size double precision PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
+         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id pg_catalog.int4 PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id pg_catalog.int4 PATH ('REGION_ID'::text), size pg_catalog.float8 PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
 (7 rows)
 
 -- test qual
@@ -1533,15 +1533,15 @@ SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan"
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int) WHERE "COUNTRY_NAME" = 'Japan';
-                                                                                    QUERY PLAN                                                                                    
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: "xmltable"."COUNTRY_NAME", "xmltable"."REGION_ID"
    ->  Seq Scan on public.xmldata
          Output: xmldata.data
    ->  Table Function Scan on "xmltable"
          Output: "xmltable"."COUNTRY_NAME", "xmltable"."REGION_ID"
-         Table Function Call: XMLTABLE(('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]'::text) PASSING (xmldata.data) COLUMNS "COUNTRY_NAME" text, "REGION_ID" integer)
+         Table Function Call: XMLTABLE(('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]'::text) PASSING (xmldata.data) COLUMNS "COUNTRY_NAME" text, "REGION_ID" pg_catalog.int4)
          Filter: ("xmltable"."COUNTRY_NAME" = 'Japan'::text)
 (8 rows)
 
@@ -1636,15 +1636,15 @@ SELECT  xmltable.*
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified')
   WHERE region_id = 2;
-                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                         
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
    ->  Seq Scan on public.xmldata
          Output: xmldata.data
    ->  Table Function Scan on "xmltable"
          Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
-         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id integer PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id integer PATH ('REGION_ID'::text), size double precision PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
+         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id pg_catalog.int4 PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id pg_catalog.int4 PATH ('REGION_ID'::text), size pg_catalog.float8 PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
          Filter: ("xmltable".region_id = 2)
 (8 rows)
 

@@ -112,11 +112,11 @@ HINT:  Alter statistics on table column instead.
 ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
 \d+ attmp_idx
                         Index "public.attmp_idx"
- Column |       Type       | Key? | Definition | Storage | Stats target 
---------+------------------+------+------------+---------+--------------
- a      | integer          | yes  | a          | plain   | 
- expr   | double precision | yes  | (d + e)    | plain   | 1000
- b      | cstring          | yes  | b          | plain   | 
+ Column |       Type        | Key? | Definition | Storage | Stats target 
+--------+-------------------+------+------------+---------+--------------
+ a      | pg_catalog.int4   | yes  | a          | plain   | 
+ expr   | pg_catalog.float8 | yes  | (d + e)    | plain   | 1000
+ b      | cstring           | yes  | b          | plain   | 
 btree, for table "public.attmp"
 
 ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
@@ -334,12 +334,12 @@ ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
 -- renaming constraints vs. inheritance
 CREATE TABLE constraint_rename_test (a int CONSTRAINT con1 CHECK (a > 0), b int, c int);
 \d constraint_rename_test
-       Table "public.constraint_rename_test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | integer |           |          | 
+           Table "public.constraint_rename_test"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1" CHECK (a > 0)
 
@@ -347,13 +347,13 @@ CREATE TABLE constraint_rename_test2 (a int CONSTRAINT con1 CHECK (a > 0), d int
 NOTICE:  merging column "a" with inherited definition
 NOTICE:  merging constraint "con1" with inherited definition
 \d constraint_rename_test2
-      Table "public.constraint_rename_test2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | integer |           |          | 
- d      | integer |           |          | 
+          Table "public.constraint_rename_test2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
+ d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1" CHECK (a > 0)
 Inherits: constraint_rename_test
@@ -364,24 +364,24 @@ ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con1 TO con1foo; -- fa
 ERROR:  inherited constraint "con1" must be renamed in child tables too
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con1 TO con1foo; -- ok
 \d constraint_rename_test
-       Table "public.constraint_rename_test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | integer |           |          | 
+           Table "public.constraint_rename_test"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d constraint_rename_test2
-      Table "public.constraint_rename_test2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | integer |           |          | 
- d      | integer |           |          | 
+          Table "public.constraint_rename_test2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
+ d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
 Inherits: constraint_rename_test
@@ -390,25 +390,25 @@ ALTER TABLE constraint_rename_test ADD CONSTRAINT con2 CHECK (b > 0) NO INHERIT;
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con2 TO con2foo; -- ok
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con2foo TO con2bar; -- ok
 \d constraint_rename_test
-       Table "public.constraint_rename_test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | integer |           |          | 
+           Table "public.constraint_rename_test"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
     "con2bar" CHECK (b > 0) NO INHERIT
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d constraint_rename_test2
-      Table "public.constraint_rename_test2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | integer |           |          | 
- d      | integer |           |          | 
+          Table "public.constraint_rename_test2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
+ d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
 Inherits: constraint_rename_test
@@ -416,12 +416,12 @@ Inherits: constraint_rename_test
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con3 PRIMARY KEY (a);
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con3 TO con3foo; -- ok
 \d constraint_rename_test
-       Table "public.constraint_rename_test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           |          | 
- c      | integer |           |          | 
+           Table "public.constraint_rename_test"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
 Indexes:
     "con3foo" PRIMARY KEY, btree (a)
 Check constraints:
@@ -430,13 +430,13 @@ Check constraints:
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d constraint_rename_test2
-      Table "public.constraint_rename_test2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           |          | 
- c      | integer |           |          | 
- d      | integer |           |          | 
+          Table "public.constraint_rename_test2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
+ d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
 Inherits: constraint_rename_test
@@ -458,10 +458,10 @@ ALTER TABLE constraint_rename_cache
 CREATE TABLE like_constraint_rename_cache
   (LIKE constraint_rename_cache INCLUDING ALL);
 \d like_constraint_rename_cache
-    Table "public.like_constraint_rename_cache"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
+        Table "public.like_constraint_rename_cache"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
 Indexes:
     "like_constraint_rename_cache_pkey" PRIMARY KEY, btree (a)
 Check constraints:
@@ -666,12 +666,12 @@ CREATE TEMP TABLE FKTABLE (ftest1 inet);
 -- This next should fail, because int=inet does not exist
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 -- This should also fail for the same reason, but here we
 -- give the column name
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable(ptest1);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 DROP TABLE FKTABLE;
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
@@ -689,7 +689,7 @@ DROP TABLE FKTABLE;
 CREATE TEMP TABLE FKTABLE (ftest1 numeric);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: pg_catalog.numeric and pg_catalog.int4.
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
@@ -711,26 +711,26 @@ CREATE TEMP TABLE PKTABLE (ptest1 int, ptest2 inet,
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and pg_catalog.int4.
 DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest1, ptest2);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and pg_catalog.int4.
 DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TEMP TABLE FKTABLE (ftest1 int, ftest2 inet);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest2, ptest1);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: pg_catalog.int4 and inet.
 -- As does this...
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest2, ftest1)
      references pktable(ptest1, ptest2);
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- Test that ALTER CONSTRAINT updates trigger deferrability properly
@@ -1594,12 +1594,12 @@ create table parent (a float8, b numeric(10,4), c text collate "C");
 create table child (a float4) inherits (parent); -- fail
 NOTICE:  merging column "a" with inherited definition
 ERROR:  column "a" has a type conflict
-DETAIL:  double precision versus real
+DETAIL:  pg_catalog.float8 versus pg_catalog.float4
 create table child (b decimal(10,7)) inherits (parent); -- fail
 NOTICE:  moving and merging column "b" with inherited definition
 DETAIL:  User-specified column moved to the position of the inherited column.
 ERROR:  column "b" has a type conflict
-DETAIL:  numeric(10,4) versus numeric(10,7)
+DETAIL:  pg_catalog.numeric(10,4) versus pg_catalog.numeric(10,7)
 create table child (c text collate "POSIX") inherits (parent); -- fail
 NOTICE:  moving and merging column "c" with inherited definition
 DETAIL:  User-specified column moved to the position of the inherited column.
@@ -1899,8 +1899,8 @@ select f3,max(f1) from foo group by f3;
 
 -- Simple tests for alter table column type
 alter table foo alter f1 TYPE integer; -- fails
-ERROR:  column "f1" cannot be cast automatically to type integer
-HINT:  You might need to specify "USING f1::integer".
+ERROR:  column "f1" cannot be cast automatically to type pg_catalog.int4
+HINT:  You might need to specify "USING f1::pg_catalog.int4".
 alter table foo alter f1 TYPE varchar(10);
 create table anothertab (atcol1 serial8, atcol2 boolean,
 	constraint anothertab_chk check (atcol1 <= 3));
@@ -1914,10 +1914,10 @@ select * from anothertab;
 (2 rows)
 
 alter table anothertab alter column atcol1 type boolean; -- fails
-ERROR:  column "atcol1" cannot be cast automatically to type boolean
-HINT:  You might need to specify "USING atcol1::boolean".
+ERROR:  column "atcol1" cannot be cast automatically to type pg_catalog.bool
+HINT:  You might need to specify "USING atcol1::pg_catalog.bool".
 alter table anothertab alter column atcol1 type boolean using atcol1::int; -- fails
-ERROR:  result of USING clause for column "atcol1" cannot be cast automatically to type boolean
+ERROR:  result of USING clause for column "atcol1" cannot be cast automatically to type pg_catalog.bool
 HINT:  You might need to add an explicit cast.
 alter table anothertab alter column atcol1 type integer;
 select * from anothertab;
@@ -1953,11 +1953,11 @@ select * from anothertab;
 
 alter table anothertab alter column atcol1 type boolean
         using case when atcol1 % 2 = 0 then true else false end; -- fails
-ERROR:  default for column "atcol1" cannot be cast automatically to type boolean
+ERROR:  default for column "atcol1" cannot be cast automatically to type pg_catalog.bool
 alter table anothertab alter column atcol1 drop default;
 alter table anothertab alter column atcol1 type boolean
         using case when atcol1 % 2 = 0 then true else false end; -- fails
-ERROR:  operator does not exist: boolean <= integer
+ERROR:  operator does not exist: pg_catalog.bool <= pg_catalog.int4
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 alter table anothertab drop constraint anothertab_chk;
 alter table anothertab drop constraint anothertab_chk; -- fails
@@ -1989,14 +1989,14 @@ alter table anothertab
 create index on anothertab(f2,f3);
 create unique index on anothertab(f4);
 \d anothertab
-             Table "public.anothertab"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- f1     | integer |           | not null | 
- f2     | integer |           |          | 
- f3     | integer |           |          | 
- f4     | integer |           |          | 
- f5     | integer |           |          | 
+                 Table "public.anothertab"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ f1     | pg_catalog.int4 |           | not null | 
+ f2     | pg_catalog.int4 |           |          | 
+ f3     | pg_catalog.int4 |           |          | 
+ f4     | pg_catalog.int4 |           |          | 
+ f5     | pg_catalog.int4 |           |          | 
 Indexes:
     "anothertab_pkey" PRIMARY KEY, btree (f1)
     "anothertab_f1_f4_key" UNIQUE CONSTRAINT, btree (f1, f4)
@@ -2014,14 +2014,14 @@ alter table anothertab
   alter column f4 type bigint;
 alter table anothertab alter column f5 type bigint;
 \d anothertab
-            Table "public.anothertab"
- Column |  Type  | Collation | Nullable | Default 
---------+--------+-----------+----------+---------
- f1     | bigint |           | not null | 
- f2     | bigint |           |          | 
- f3     | bigint |           |          | 
- f4     | bigint |           |          | 
- f5     | bigint |           |          | 
+                 Table "public.anothertab"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ f1     | pg_catalog.int8 |           | not null | 
+ f2     | pg_catalog.int8 |           |          | 
+ f3     | pg_catalog.int8 |           |          | 
+ f4     | pg_catalog.int8 |           |          | 
+ f5     | pg_catalog.int8 |           |          | 
 Indexes:
     "anothertab_pkey" PRIMARY KEY, btree (f1)
     "anothertab_f1_f4_key" UNIQUE CONSTRAINT, btree (f1, f4)
@@ -2092,30 +2092,30 @@ insert into at_part_2 values ('1.234', 1024);
 create index on at_partitioned (b);
 create index on at_partitioned (a);
 \d at_part_1
-             Table "public.at_part_1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    |           |          | 
+                 Table "public.at_part_1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            |           |          | 
 Partition of: at_partitioned FOR VALUES FROM (0) TO (1000)
 Indexes:
     "at_part_1_a_idx" btree (a)
     "at_part_1_b_idx" btree (b)
 
 \d at_part_2
-             Table "public.at_part_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- b      | text    |           |          | 
- a      | integer |           |          | 
+                 Table "public.at_part_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ b      | text            |           |          | 
+ a      | pg_catalog.int4 |           |          | 
 
 alter table at_partitioned attach partition at_part_2 for values from (1000) to (2000);
 \d at_part_2
-             Table "public.at_part_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- b      | text    |           |          | 
- a      | integer |           |          | 
+                 Table "public.at_part_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ b      | text            |           |          | 
+ a      | pg_catalog.int4 |           |          | 
 Partition of: at_partitioned FOR VALUES FROM (1000) TO (2000)
 Indexes:
     "at_part_2_a_idx" btree (a)
@@ -2123,22 +2123,22 @@ Indexes:
 
 alter table at_partitioned alter column b type numeric using b::numeric;
 \d at_part_1
-             Table "public.at_part_1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | numeric |           |          | 
+                   Table "public.at_part_1"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ a      | pg_catalog.int4    |           |          | 
+ b      | pg_catalog.numeric |           |          | 
 Partition of: at_partitioned FOR VALUES FROM (0) TO (1000)
 Indexes:
     "at_part_1_a_idx" btree (a)
     "at_part_1_b_idx" btree (b)
 
 \d at_part_2
-             Table "public.at_part_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- b      | numeric |           |          | 
- a      | integer |           |          | 
+                   Table "public.at_part_2"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ b      | pg_catalog.numeric |           |          | 
+ a      | pg_catalog.int4    |           |          | 
 Partition of: at_partitioned FOR VALUES FROM (1000) TO (2000)
 Indexes:
     "at_part_2_a_idx" btree (a)
@@ -2276,49 +2276,49 @@ select reltoastrelid <> 0 as has_toast_table
 
 -- check STORAGE correctness
 create table test_storage_failed (a text, b int storage extended);
-ERROR:  column data type integer can only have storage PLAIN
+ERROR:  column data type pg_catalog.int4 can only have storage PLAIN
 -- test that SET STORAGE propagates to index correctly
 create index test_storage_idx on test_storage (b, a);
 alter table test_storage alter column a set storage external;
 \d+ test_storage
-                                     Table "public.test_storage"
- Column |  Type   | Collation | Nullable |      Default      | Storage  | Stats target | Description 
---------+---------+-----------+----------+-------------------+----------+--------------+-------------
- a      | text    |           |          |                   | external |              | 
- c      | text    |           |          |                   | plain    |              | 
- b      | integer |           |          | random()::integer | plain    |              | 
+                                             Table "public.test_storage"
+ Column |      Type       | Collation | Nullable |          Default          | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------------------------+----------+--------------+-------------
+ a      | text            |           |          |                           | external |              | 
+ c      | text            |           |          |                           | plain    |              | 
+ b      | pg_catalog.int4 |           |          | random()::pg_catalog.int4 | plain    |              | 
 Indexes:
     "test_storage_idx" btree (b, a)
 
 \d+ test_storage_idx
-                Index "public.test_storage_idx"
- Column |  Type   | Key? | Definition | Storage  | Stats target 
---------+---------+------+------------+----------+--------------
- b      | integer | yes  | b          | plain    | 
- a      | text    | yes  | a          | external | 
+                    Index "public.test_storage_idx"
+ Column |      Type       | Key? | Definition | Storage  | Stats target 
+--------+-----------------+------+------------+----------+--------------
+ b      | pg_catalog.int4 | yes  | b          | plain    | 
+ a      | text            | yes  | a          | external | 
 btree, for table "public.test_storage"
 
 -- ALTER COLUMN TYPE with a check constraint and a child table (bug #13779)
 CREATE TABLE test_inh_check (a float check (a > 10.2), b float);
 CREATE TABLE test_inh_check_child() INHERITS(test_inh_check);
 \d test_inh_check
-               Table "public.test_inh_check"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- a      | double precision |           |          | 
- b      | double precision |           |          | 
+                Table "public.test_inh_check"
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ a      | pg_catalog.float8 |           |          | 
+ b      | pg_catalog.float8 |           |          | 
 Check constraints:
-    "test_inh_check_a_check" CHECK (a > 10.2::double precision)
+    "test_inh_check_a_check" CHECK (a > 10.2::pg_catalog.float8)
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d test_inh_check_child
-            Table "public.test_inh_check_child"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- a      | double precision |           |          | 
- b      | double precision |           |          | 
+             Table "public.test_inh_check_child"
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ a      | pg_catalog.float8 |           |          | 
+ b      | pg_catalog.float8 |           |          | 
 Check constraints:
-    "test_inh_check_a_check" CHECK (a > 10.2::double precision)
+    "test_inh_check_a_check" CHECK (a > 10.2::pg_catalog.float8)
 Inherits: test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
@@ -2333,23 +2333,23 @@ select relname, conname, coninhcount, conislocal, connoinherit
 
 ALTER TABLE test_inh_check ALTER COLUMN a TYPE numeric;
 \d test_inh_check
-               Table "public.test_inh_check"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- a      | numeric          |           |          | 
- b      | double precision |           |          | 
+                Table "public.test_inh_check"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ a      | pg_catalog.numeric |           |          | 
+ b      | pg_catalog.float8  |           |          | 
 Check constraints:
-    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+    "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d test_inh_check_child
-            Table "public.test_inh_check_child"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- a      | numeric          |           |          | 
- b      | double precision |           |          | 
+             Table "public.test_inh_check_child"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ a      | pg_catalog.numeric |           |          | 
+ b      | pg_catalog.float8  |           |          | 
 Check constraints:
-    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+    "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
 Inherits: test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
@@ -2369,27 +2369,27 @@ ALTER TABLE test_inh_check_child ADD CONSTRAINT bmerged CHECK (b > 1);
 ALTER TABLE test_inh_check ADD CONSTRAINT bmerged CHECK (b > 1);
 NOTICE:  merging constraint "bmerged" with inherited definition
 \d test_inh_check
-               Table "public.test_inh_check"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- a      | numeric          |           |          | 
- b      | double precision |           |          | 
+                Table "public.test_inh_check"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ a      | pg_catalog.numeric |           |          | 
+ b      | pg_catalog.float8  |           |          | 
 Check constraints:
-    "bmerged" CHECK (b > 1::double precision)
-    "bnoinherit" CHECK (b > 100::double precision) NO INHERIT
-    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+    "bmerged" CHECK (b > 1::pg_catalog.float8)
+    "bnoinherit" CHECK (b > 100::pg_catalog.float8) NO INHERIT
+    "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d test_inh_check_child
-            Table "public.test_inh_check_child"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- a      | numeric          |           |          | 
- b      | double precision |           |          | 
+             Table "public.test_inh_check_child"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ a      | pg_catalog.numeric |           |          | 
+ b      | pg_catalog.float8  |           |          | 
 Check constraints:
-    "blocal" CHECK (b < 1000::double precision)
-    "bmerged" CHECK (b > 1::double precision)
-    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+    "blocal" CHECK (b < 1000::pg_catalog.float8)
+    "bmerged" CHECK (b > 1::pg_catalog.float8)
+    "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
 Inherits: test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
@@ -2409,27 +2409,27 @@ select relname, conname, coninhcount, conislocal, connoinherit
 ALTER TABLE test_inh_check ALTER COLUMN b TYPE numeric;
 NOTICE:  merging constraint "bmerged" with inherited definition
 \d test_inh_check
-           Table "public.test_inh_check"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | numeric |           |          | 
- b      | numeric |           |          | 
+                Table "public.test_inh_check"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ a      | pg_catalog.numeric |           |          | 
+ b      | pg_catalog.numeric |           |          | 
 Check constraints:
-    "bmerged" CHECK (b::double precision > 1::double precision)
-    "bnoinherit" CHECK (b::double precision > 100::double precision) NO INHERIT
-    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+    "bmerged" CHECK (b::pg_catalog.float8 > 1::pg_catalog.float8)
+    "bnoinherit" CHECK (b::pg_catalog.float8 > 100::pg_catalog.float8) NO INHERIT
+    "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d test_inh_check_child
-        Table "public.test_inh_check_child"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | numeric |           |          | 
- b      | numeric |           |          | 
+             Table "public.test_inh_check_child"
+ Column |        Type        | Collation | Nullable | Default 
+--------+--------------------+-----------+----------+---------
+ a      | pg_catalog.numeric |           |          | 
+ b      | pg_catalog.numeric |           |          | 
 Check constraints:
-    "blocal" CHECK (b::double precision < 1000::double precision)
-    "bmerged" CHECK (b::double precision > 1::double precision)
-    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+    "blocal" CHECK (b::pg_catalog.float8 < 1000::pg_catalog.float8)
+    "bmerged" CHECK (b::pg_catalog.float8 > 1::pg_catalog.float8)
+    "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
 Inherits: test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
@@ -2476,11 +2476,11 @@ ALTER TABLE check_fk_presence_2 DROP CONSTRAINT check_fk_presence_2_id_fkey;
 ANALYZE check_fk_presence_2;
 ROLLBACK;
 \d check_fk_presence_2
-        Table "public.check_fk_presence_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           |          | 
- t      | text    |           |          | 
+            Table "public.check_fk_presence_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ id     | pg_catalog.int4 |           |          | 
+ t      | text            |           |          | 
 Foreign-key constraints:
     "check_fk_presence_2_id_fkey" FOREIGN KEY (id) REFERENCES check_fk_presence_1(id)
 
@@ -2491,23 +2491,23 @@ insert into at_base_table values (23, 'skidoo');
 create view at_view_1 as select * from at_base_table bt;
 create view at_view_2 as select *, to_json(v1) as j from at_view_1 v1;
 \d+ at_view_1
-                          View "public.at_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- id     | integer |           |          |         | plain    | 
- stuff  | text    |           |          |         | extended | 
+                              View "public.at_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain    | 
+ stuff  | text            |           |          |         | extended | 
 View definition:
  SELECT id,
     stuff
    FROM at_base_table bt;
 
 \d+ at_view_2
-                          View "public.at_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- id     | integer |           |          |         | plain    | 
- stuff  | text    |           |          |         | extended | 
- j      | json    |           |          |         | extended | 
+                              View "public.at_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain    | 
+ stuff  | text            |           |          |         | extended | 
+ j      | json            |           |          |         | extended | 
 View definition:
  SELECT id,
     stuff,
@@ -2529,12 +2529,12 @@ select * from at_view_2;
 
 create or replace view at_view_1 as select *, 2+2 as more from at_base_table bt;
 \d+ at_view_1
-                          View "public.at_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- id     | integer |           |          |         | plain    | 
- stuff  | text    |           |          |         | extended | 
- more   | integer |           |          |         | plain    | 
+                              View "public.at_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain    | 
+ stuff  | text            |           |          |         | extended | 
+ more   | pg_catalog.int4 |           |          |         | plain    | 
 View definition:
  SELECT id,
     stuff,
@@ -2542,12 +2542,12 @@ View definition:
    FROM at_base_table bt;
 
 \d+ at_view_2
-                          View "public.at_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- id     | integer |           |          |         | plain    | 
- stuff  | text    |           |          |         | extended | 
- j      | json    |           |          |         | extended | 
+                              View "public.at_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain    | 
+ stuff  | text            |           |          |         | extended | 
+ j      | json            |           |          |         | extended | 
 View definition:
  SELECT id,
     stuff,
@@ -3025,7 +3025,7 @@ drop schema alter2 cascade;
 NOTICE:  drop cascades to 13 other objects
 DETAIL:  drop cascades to table alter2.t1
 drop cascades to view alter2.v1
-drop cascades to function alter2.plus1(integer)
+drop cascades to function alter2.plus1(pg_catalog.int4)
 drop cascades to type alter2.posint
 drop cascades to type alter2.ctype
 drop cascades to function alter2.same(alter2.ctype,alter2.ctype)
@@ -3041,45 +3041,45 @@ drop cascades to text search dictionary alter2.dict
 --
 CREATE TYPE test_type AS (a int);
 \d test_type
-         Composite type "public.test_type"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+             Composite type "public.test_type"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 
 ALTER TYPE nosuchtype ADD ATTRIBUTE b text; -- fails
 ERROR:  relation "nosuchtype" does not exist
 ALTER TYPE test_type ADD ATTRIBUTE b text;
 \d test_type
-         Composite type "public.test_type"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    |           |          | 
+             Composite type "public.test_type"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            |           |          | 
 
 ALTER TYPE test_type ADD ATTRIBUTE b text; -- fails
 ERROR:  column "b" of relation "test_type" already exists
 ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE varchar;
 \d test_type
-            Composite type "public.test_type"
- Column |      Type      | Collation | Nullable | Default 
---------+----------------+-----------+----------+---------
- a      | integer        |           |          | 
- b      | varchar2(4000) |           |          | 
+             Composite type "public.test_type"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | varchar2(4000)  |           |          | 
 
 ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE integer;
 \d test_type
-         Composite type "public.test_type"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+             Composite type "public.test_type"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 
 ALTER TYPE test_type DROP ATTRIBUTE b;
 \d test_type
-         Composite type "public.test_type"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+             Composite type "public.test_type"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 
 ALTER TYPE test_type DROP ATTRIBUTE c; -- fails
 ERROR:  column "c" of relation "test_type" does not exist
@@ -3087,19 +3087,19 @@ ALTER TYPE test_type DROP ATTRIBUTE IF EXISTS c;
 NOTICE:  column "c" of relation "test_type" does not exist, skipping
 ALTER TYPE test_type DROP ATTRIBUTE a, ADD ATTRIBUTE d boolean;
 \d test_type
-         Composite type "public.test_type"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- d      | boolean |           |          | 
+             Composite type "public.test_type"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ d      | pg_catalog.bool |           |          | 
 
 ALTER TYPE test_type RENAME ATTRIBUTE a TO aa;
 ERROR:  column "a" does not exist
 ALTER TYPE test_type RENAME ATTRIBUTE d TO dd;
 \d test_type
-         Composite type "public.test_type"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- dd     | boolean |           |          | 
+             Composite type "public.test_type"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ dd     | pg_catalog.bool |           |          | 
 
 DROP TYPE test_type;
 CREATE TYPE test_type1 AS (a int, b text);
@@ -3117,18 +3117,18 @@ CREATE TYPE test_type2 AS (a int, b text);
 CREATE TABLE test_tbl2 OF test_type2;
 CREATE TABLE test_tbl2_subclass () INHERITS (test_tbl2);
 \d test_type2
-        Composite type "public.test_type2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    |           |          | 
+            Composite type "public.test_type2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            |           |          | 
 
 \d test_tbl2
-             Table "public.test_tbl2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    |           |          | 
+                 Table "public.test_tbl2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            |           |          | 
 Number of child tables: 1 (Use \d+ to list them.)
 Typed table of type: test_type2
 
@@ -3137,20 +3137,20 @@ ERROR:  cannot alter type "test_type2" because it is the type of a typed table
 HINT:  Use ALTER ... CASCADE to alter the typed tables too.
 ALTER TYPE test_type2 ADD ATTRIBUTE c text CASCADE;
 \d test_type2
-        Composite type "public.test_type2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    |           |          | 
- c      | text    |           |          | 
+            Composite type "public.test_type2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            |           |          | 
+ c      | text            |           |          | 
 
 \d test_tbl2
-             Table "public.test_tbl2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    |           |          | 
- c      | text    |           |          | 
+                 Table "public.test_tbl2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            |           |          | 
+ c      | text            |           |          | 
 Number of child tables: 1 (Use \d+ to list them.)
 Typed table of type: test_type2
 
@@ -3160,19 +3160,19 @@ HINT:  Use ALTER ... CASCADE to alter the typed tables too.
 ALTER TYPE test_type2 ALTER ATTRIBUTE b TYPE varchar CASCADE;
 \d test_type2
             Composite type "public.test_type2"
- Column |      Type      | Collation | Nullable | Default 
---------+----------------+-----------+----------+---------
- a      | integer        |           |          | 
- b      | varchar2(4000) |           |          | 
- c      | text           |           |          | 
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | varchar2(4000)  |           |          | 
+ c      | text            |           |          | 
 
 \d test_tbl2
                  Table "public.test_tbl2"
- Column |      Type      | Collation | Nullable | Default 
---------+----------------+-----------+----------+---------
- a      | integer        |           |          | 
- b      | varchar2(4000) |           |          | 
- c      | text           |           |          | 
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | varchar2(4000)  |           |          | 
+ c      | text            |           |          | 
 Number of child tables: 1 (Use \d+ to list them.)
 Typed table of type: test_type2
 
@@ -3181,18 +3181,18 @@ ERROR:  cannot alter type "test_type2" because it is the type of a typed table
 HINT:  Use ALTER ... CASCADE to alter the typed tables too.
 ALTER TYPE test_type2 DROP ATTRIBUTE b CASCADE;
 \d test_type2
-        Composite type "public.test_type2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- c      | text    |           |          | 
+            Composite type "public.test_type2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
 
 \d test_tbl2
-             Table "public.test_tbl2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- c      | text    |           |          | 
+                 Table "public.test_tbl2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
 Number of child tables: 1 (Use \d+ to list them.)
 Typed table of type: test_type2
 
@@ -3201,27 +3201,27 @@ ERROR:  cannot alter type "test_type2" because it is the type of a typed table
 HINT:  Use ALTER ... CASCADE to alter the typed tables too.
 ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa CASCADE;
 \d test_type2
-        Composite type "public.test_type2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- aa     | integer |           |          | 
- c      | text    |           |          | 
+            Composite type "public.test_type2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ aa     | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
 
 \d test_tbl2
-             Table "public.test_tbl2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- aa     | integer |           |          | 
- c      | text    |           |          | 
+                 Table "public.test_tbl2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ aa     | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
 Number of child tables: 1 (Use \d+ to list them.)
 Typed table of type: test_type2
 
 \d test_tbl2_subclass
-         Table "public.test_tbl2_subclass"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- aa     | integer |           |          | 
- c      | text    |           |          | 
+             Table "public.test_tbl2_subclass"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ aa     | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
 Inherits: test_tbl2
 
 DROP TABLE test_tbl2_subclass, test_tbl2;
@@ -3235,11 +3235,11 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 ALTER TYPE test_typex DROP ATTRIBUTE a CASCADE;
 NOTICE:  drop cascades to constraint test_tblx_y_check on table test_tblx
 \d test_tblx
-               Table "public.test_tblx"
- Column |    Type    | Collation | Nullable | Default 
---------+------------+-----------+----------+---------
- x      | integer    |           |          | 
- y      | test_typex |           |          | 
+                 Table "public.test_tblx"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ x      | pg_catalog.int4 |           |          | 
+ y      | test_typex      |           |          | 
 
 DROP TABLE test_tblx;
 DROP TYPE test_typex;
@@ -3283,11 +3283,11 @@ CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
 ALTER TABLE tt7 NOT OF;
 \d tt7
-                   Table "public.tt7"
- Column |     Type     | Collation | Nullable | Default 
---------+--------------+-----------+----------+---------
- x      | integer      |           |          | 
- y      | numeric(8,2) |           |          | 
+                        Table "public.tt7"
+ Column |          Type           | Collation | Nullable | Default 
+--------+-------------------------+-----------+----------+---------
+ x      | pg_catalog.int4         |           |          | 
+ y      | pg_catalog.numeric(8,2) |           |          | 
 
 -- make sure we can drop a constraint on the parent but it remains on the child
 CREATE TABLE test_drop_constr_parent (c text CHECK (c IS NOT NULL));
@@ -3323,11 +3323,11 @@ ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
 ALTER TABLE IF EXISTS tt8 RENAME COLUMN f TO f1;
 ALTER TABLE IF EXISTS tt8 SET SCHEMA alter2;
 \d alter2.tt8
-                Table "alter2.tt8"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- f1     | integer |           | not null | 0
+                    Table "alter2.tt8"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ f1     | pg_catalog.int4 |           | not null | 0
 Indexes:
     "xxx" PRIMARY KEY, btree (f1)
 Check constraints:
@@ -3355,10 +3355,10 @@ ERROR:  constraint "tt9_c_key" for relation "tt9" already exists
 ALTER TABLE tt9 ADD CONSTRAINT tt9_c_key2 CHECK(c > 6);
 ALTER TABLE tt9 ADD UNIQUE(c);  -- picks nonconflicting name
 \d tt9
-                Table "public.tt9"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c      | integer |           |          | 
+                    Table "public.tt9"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c      | pg_catalog.int4 |           |          | 
 Indexes:
     "tt9_c_key" UNIQUE CONSTRAINT, btree (c)
     "tt9_c_key1" UNIQUE CONSTRAINT, btree (c)
@@ -3446,7 +3446,7 @@ COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KE
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
 ERROR:  foreign key constraint "comment_test_child_fk" cannot be implemented
-DETAIL:  Key columns "id" and "id" are of incompatible types: text and integer.
+DETAIL:  Key columns "id" and "id" are of incompatible types: text and pg_catalog.int4.
 -- Comments should be intact
 SELECT col_description('comment_test_child'::regclass, 1) as comment;
               comment              
@@ -3603,19 +3603,19 @@ DROP TABLE logged1;
 -- test ADD COLUMN IF NOT EXISTS
 CREATE TABLE test_add_column(c1 integer);
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN c2 integer;
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN c2 integer; -- fail because c2 already exists
@@ -3624,11 +3624,11 @@ ALTER TABLE ONLY test_add_column
 	ADD COLUMN c2 integer; -- fail because c2 already exists
 ERROR:  column "c2" of relation "test_add_column" already exists
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
@@ -3637,34 +3637,34 @@ ALTER TABLE ONLY test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN c2 integer, -- fail because c2 already exists
 	ADD COLUMN c3 integer primary key;
 ERROR:  column "c2" of relation "test_add_column" already exists
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
 	ADD COLUMN c3 integer primary key;
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
- c3     | integer |           | not null | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
+ c3     | pg_catalog.int4 |           | not null | 
 Indexes:
     "test_add_column_pkey" PRIMARY KEY, btree (c3)
 
@@ -3674,12 +3674,12 @@ ALTER TABLE test_add_column
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
- c3     | integer |           | not null | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
+ c3     | pg_catalog.int4 |           | not null | 
 Indexes:
     "test_add_column_pkey" PRIMARY KEY, btree (c3)
 
@@ -3690,13 +3690,13 @@ ALTER TABLE test_add_column
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
 NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
+ c3     | pg_catalog.int4 |           | not null | 
+ c4     | pg_catalog.int4 |           |          | 
 Indexes:
     "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Foreign-key constraints:
@@ -3708,13 +3708,13 @@ ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c4 integer REFERENCES test_add_column;
 NOTICE:  column "c4" of relation "test_add_column" already exists, skipping
 \d test_add_column
-          Table "public.test_add_column"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
+              Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
+ c3     | pg_catalog.int4 |           | not null | 
+ c4     | pg_catalog.int4 |           |          | 
 Indexes:
     "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Foreign-key constraints:
@@ -3725,14 +3725,14 @@ Referenced by:
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 8);
 \d test_add_column
-                            Table "public.test_add_column"
- Column |  Type   | Collation | Nullable |                   Default                   
---------+---------+-----------+----------+---------------------------------------------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
- c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
+                                Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable |                   Default                   
+--------+-----------------+-----------+----------+---------------------------------------------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
+ c3     | pg_catalog.int4 |           | not null | 
+ c4     | pg_catalog.int4 |           |          | 
+ c5     | pg_catalog.int4 |           | not null | nextval('test_add_column_c5_seq'::regclass)
 Indexes:
     "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Check constraints:
@@ -3746,14 +3746,14 @@ ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 10);
 NOTICE:  column "c5" of relation "test_add_column" already exists, skipping
 \d test_add_column*
-                            Table "public.test_add_column"
- Column |  Type   | Collation | Nullable |                   Default                   
---------+---------+-----------+----------+---------------------------------------------
- c1     | integer |           |          | 
- c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
- c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
+                                Table "public.test_add_column"
+ Column |      Type       | Collation | Nullable |                   Default                   
+--------+-----------------+-----------+----------+---------------------------------------------
+ c1     | pg_catalog.int4 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
+ c3     | pg_catalog.int4 |           | not null | 
+ c4     | pg_catalog.int4 |           |          | 
+ c5     | pg_catalog.int4 |           | not null | nextval('test_add_column_c5_seq'::regclass)
 Indexes:
     "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Check constraints:
@@ -3763,16 +3763,16 @@ Foreign-key constraints:
 Referenced by:
     TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
-               Sequence "public.test_add_column_c5_seq"
-  Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
----------+-------+---------+------------+-----------+---------+-------
- integer |     1 |       1 | 2147483647 |         1 | no      |     1
+                   Sequence "public.test_add_column_c5_seq"
+      Type       | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
+-----------------+-------+---------+------------+-----------+---------+-------
+ pg_catalog.int4 |     1 |       1 | 2147483647 |         1 | no      |     1
 Owned by: public.test_add_column.c5
 
- Index "public.test_add_column_pkey"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- c3     | integer | yes  | c3
+     Index "public.test_add_column_pkey"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ c3     | pg_catalog.int4 | yes  | c3
 primary key, btree, for table "public.test_add_column"
 
 DROP TABLE test_add_column;
@@ -3785,10 +3785,10 @@ ALTER TABLE ataddindex
   ADD PRIMARY KEY USING INDEX ataddindexi0,
   ALTER f1 TYPE BIGINT;
 \d ataddindex
-            Table "public.ataddindex"
- Column |  Type  | Collation | Nullable | Default 
---------+--------+-----------+----------+---------
- f1     | bigint |           | not null | 
+                 Table "public.ataddindex"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ f1     | pg_catalog.int8 |           | not null | 
 Indexes:
     "ataddindexi0" PRIMARY KEY, btree (f1)
 
@@ -3812,11 +3812,11 @@ ALTER TABLE ataddindex
   ADD PRIMARY KEY (id),
   ADD FOREIGN KEY (ref_id) REFERENCES ataddindex;
 \d ataddindex
-             Table "public.ataddindex"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           | not null | 
- ref_id | integer |           |          | 
+                 Table "public.ataddindex"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ id     | pg_catalog.int4 |           | not null | 
+ ref_id | pg_catalog.int4 |           |          | 
 Indexes:
     "ataddindex_pkey" PRIMARY KEY, btree (id)
 Foreign-key constraints:
@@ -3830,11 +3830,11 @@ ALTER TABLE ataddindex
   ADD UNIQUE (id),
   ADD FOREIGN KEY (ref_id) REFERENCES ataddindex (id);
 \d ataddindex
-             Table "public.ataddindex"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           |          | 
- ref_id | integer |           |          | 
+                 Table "public.ataddindex"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ id     | pg_catalog.int4 |           |          | 
+ ref_id | pg_catalog.int4 |           |          | 
 Indexes:
     "ataddindex_id_key" UNIQUE CONSTRAINT, btree (id)
 Foreign-key constraints:
@@ -4316,19 +4316,19 @@ DROP TABLE part_rpd;
 -- works fine
 ALTER TABLE range_parted2 DETACH PARTITION part_rp CONCURRENTLY;
 \d+ range_parted2
-                         Partitioned table "public.range_parted2"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              | 
+                             Partitioned table "public.range_parted2"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   |              | 
 Partition key: RANGE (a)
 Number of partitions: 0
 
 -- constraint should be created
 \d part_rp
-              Table "public.part_rp"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                  Table "public.part_rp"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Check constraints:
     "part_rp_a_check" CHECK (a IS NOT NULL AND a >= 0 AND a < 100)
 
@@ -4336,10 +4336,10 @@ CREATE TABLE part_rp100 PARTITION OF range_parted2 (CHECK (a>=123 AND a<133 AND 
 ALTER TABLE range_parted2 DETACH PARTITION part_rp100 CONCURRENTLY;
 -- redundant constraint should not be created
 \d part_rp100
-             Table "public.part_rp100"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                 Table "public.part_rp100"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Check constraints:
     "part_rp100_a_check" CHECK (a >= 123 AND a < 133 AND a IS NOT NULL)
 
@@ -4664,10 +4664,10 @@ create publication pub1 for table alter1.t1, tables in schema alter2;
 reset client_min_messages;
 alter table alter1.t1 set schema alter2;
 \d+ alter2.t1
-                                    Table "alter2.t1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              | 
+                                        Table "alter2.t1"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   |              | 
 Publications:
     "pub1"
 

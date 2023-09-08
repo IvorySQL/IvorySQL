@@ -26,18 +26,18 @@ SELECT @#@ 24;
 
 -- Test comments
 COMMENT ON OPERATOR ###### (NONE, int4) IS 'bad prefix';
-ERROR:  operator does not exist: ###### integer
+ERROR:  operator does not exist: ###### pg_catalog.int4
 COMMENT ON OPERATOR ###### (int4, NONE) IS 'bad postfix';
 ERROR:  postfix operators are not supported
 COMMENT ON OPERATOR ###### (int4, int8) IS 'bad infix';
-ERROR:  operator does not exist: integer ###### bigint
+ERROR:  operator does not exist: pg_catalog.int4 ###### pg_catalog.int8
 -- Check that DROP on a nonexistent op behaves sanely, too
 DROP OPERATOR ###### (NONE, int4);
-ERROR:  operator does not exist: ###### integer
+ERROR:  operator does not exist: ###### pg_catalog.int4
 DROP OPERATOR ###### (int4, NONE);
 ERROR:  postfix operators are not supported
 DROP OPERATOR ###### (int4, int8);
-ERROR:  operator does not exist: integer ###### bigint
+ERROR:  operator does not exist: pg_catalog.int4 ###### pg_catalog.int8
 -- => is disallowed as an operator name now
 CREATE OPERATOR => (
    rightarg = int8,

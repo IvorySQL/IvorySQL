@@ -175,21 +175,21 @@ WARNING:  error for foreign table column,{addr_nsp,zwei},{integer}: relation "ad
 WARNING:  error for foreign table column,{eins,zwei,drei},{}: schema "eins" does not exist
 WARNING:  error for foreign table column,{eins,zwei,drei},{integer}: schema "eins" does not exist
 WARNING:  error for aggregate,{eins},{}: aggregate eins(*) does not exist
-WARNING:  error for aggregate,{eins},{integer}: aggregate eins(integer) does not exist
+WARNING:  error for aggregate,{eins},{integer}: aggregate eins(pg_catalog.int4) does not exist
 WARNING:  error for aggregate,{addr_nsp,zwei},{}: aggregate addr_nsp.zwei(*) does not exist
-WARNING:  error for aggregate,{addr_nsp,zwei},{integer}: aggregate addr_nsp.zwei(integer) does not exist
+WARNING:  error for aggregate,{addr_nsp,zwei},{integer}: aggregate addr_nsp.zwei(pg_catalog.int4) does not exist
 WARNING:  error for aggregate,{eins,zwei,drei},{}: cross-database references are not implemented: eins.zwei.drei
 WARNING:  error for aggregate,{eins,zwei,drei},{integer}: cross-database references are not implemented: eins.zwei.drei
 WARNING:  error for function,{eins},{}: function eins() does not exist
-WARNING:  error for function,{eins},{integer}: function eins(integer) does not exist
+WARNING:  error for function,{eins},{integer}: function eins(pg_catalog.int4) does not exist
 WARNING:  error for function,{addr_nsp,zwei},{}: function addr_nsp.zwei() does not exist
-WARNING:  error for function,{addr_nsp,zwei},{integer}: function addr_nsp.zwei(integer) does not exist
+WARNING:  error for function,{addr_nsp,zwei},{integer}: function addr_nsp.zwei(pg_catalog.int4) does not exist
 WARNING:  error for function,{eins,zwei,drei},{}: cross-database references are not implemented: eins.zwei.drei
 WARNING:  error for function,{eins,zwei,drei},{integer}: cross-database references are not implemented: eins.zwei.drei
 WARNING:  error for procedure,{eins},{}: procedure eins() does not exist
-WARNING:  error for procedure,{eins},{integer}: procedure eins(integer) does not exist
+WARNING:  error for procedure,{eins},{integer}: procedure eins(pg_catalog.int4) does not exist
 WARNING:  error for procedure,{addr_nsp,zwei},{}: procedure addr_nsp.zwei() does not exist
-WARNING:  error for procedure,{addr_nsp,zwei},{integer}: procedure addr_nsp.zwei(integer) does not exist
+WARNING:  error for procedure,{addr_nsp,zwei},{integer}: procedure addr_nsp.zwei(pg_catalog.int4) does not exist
 WARNING:  error for procedure,{eins,zwei,drei},{}: cross-database references are not implemented: eins.zwei.drei
 WARNING:  error for procedure,{eins,zwei,drei},{integer}: cross-database references are not implemented: eins.zwei.drei
 WARNING:  error for type,{eins},{}: type "eins" does not exist
@@ -460,13 +460,13 @@ FROM objects,
 ORDER BY addr1.classid, addr1.objid, addr1.objsubid;
 default acl|NULL|NULL|for role regress_addr_user in schema public on tables|t
 default acl|NULL|NULL|for role regress_addr_user on tables|t
-type|pg_catalog|_int4|integer[]|t
+type|pg_catalog|_int4|pg_catalog.int4[]|t
 type|addr_nsp|gencomptype|addr_nsp.gencomptype|t
 type|addr_nsp|genenum|addr_nsp.genenum|t
 type|addr_nsp|gendomain|addr_nsp.gendomain|t
-function|pg_catalog|NULL|pg_catalog.pg_identify_object(pg_catalog.oid,pg_catalog.oid,integer)|t
-aggregate|addr_nsp|NULL|addr_nsp.genaggr(integer)|t
-procedure|addr_nsp|NULL|addr_nsp.proc(integer)|t
+function|pg_catalog|NULL|pg_catalog.pg_identify_object(pg_catalog.oid,pg_catalog.oid,pg_catalog.int4)|t
+aggregate|addr_nsp|NULL|addr_nsp.genaggr(pg_catalog.int4)|t
+procedure|addr_nsp|NULL|addr_nsp.proc(pg_catalog.int4)|t
 sequence|addr_nsp|gentable_a_seq|addr_nsp.gentable_a_seq|t
 table|addr_nsp|gentable|addr_nsp.gentable|t
 table column|addr_nsp|gentable|addr_nsp.gentable.b|t
@@ -482,24 +482,24 @@ server|NULL|addr_fserv|addr_fserv|t
 user mapping|NULL|NULL|regress_addr_user on server integer|t
 foreign-data wrapper|NULL|addr_fdw|addr_fdw|t
 access method|NULL|btree|btree|t
-operator of access method|NULL|NULL|operator 1 (integer, integer) of pg_catalog.integer_ops USING btree|t
-function of access method|NULL|NULL|function 2 (integer, integer) of pg_catalog.integer_ops USING btree|t
+operator of access method|NULL|NULL|operator 1 (pg_catalog.int4, pg_catalog.int4) of pg_catalog.integer_ops USING btree|t
+function of access method|NULL|NULL|function 2 (pg_catalog.int4, pg_catalog.int4) of pg_catalog.integer_ops USING btree|t
 default value|NULL|NULL|for addr_nsp.gentable.b|t
-cast|NULL|NULL|(bigint AS integer)|t
+cast|NULL|NULL|(pg_catalog.int8 AS pg_catalog.int4)|t
 table constraint|addr_nsp|NULL|a_chk on addr_nsp.gentable|t
 domain constraint|addr_nsp|NULL|domconstr on addr_nsp.gendomain|t
 conversion|pg_catalog|koi8_r_to_mic|pg_catalog.koi8_r_to_mic|t
 language|NULL|plpgsql|plpgsql|t
 schema|NULL|addr_nsp|addr_nsp|t
 operator class|pg_catalog|int4_ops|pg_catalog.int4_ops USING btree|t
-operator|pg_catalog|NULL|pg_catalog.+(integer,integer)|t
+operator|pg_catalog|NULL|pg_catalog.+(pg_catalog.int4,pg_catalog.int4)|t
 rule|NULL|NULL|"_RETURN" on addr_nsp.genview|t
 trigger|NULL|NULL|t on addr_nsp.gentable|t
 operator family|pg_catalog|integer_ops|pg_catalog.integer_ops USING btree|t
 policy|NULL|NULL|genpol on addr_nsp.gentable|t
 statistics object|addr_nsp|gentable_stat|addr_nsp.gentable_stat|t
 collation|pg_catalog|"default"|pg_catalog."default"|t
-transform|NULL|NULL|for integer language sql|t
+transform|NULL|NULL|for pg_catalog.int4 language sql|t
 text search dictionary|addr_nsp|addr_ts_dict|addr_nsp.addr_ts_dict|t
 text search parser|addr_nsp|addr_ts_prs|addr_nsp.addr_ts_prs|t
 text search configuration|addr_nsp|addr_ts_conf|addr_nsp.addr_ts_conf|t
@@ -532,10 +532,10 @@ drop cascades to view genview
 drop cascades to materialized view genmatview
 drop cascades to type gencomptype
 drop cascades to type genenum
-drop cascades to function genaggr(integer)
+drop cascades to function genaggr(pg_catalog.int4)
 drop cascades to type gendomain
 drop cascades to function trig()
-drop cascades to function proc(integer)
+drop cascades to function proc(pg_catalog.int4)
 DROP OWNED BY regress_addr_user;
 DROP USER regress_addr_user;
 --

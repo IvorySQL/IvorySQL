@@ -1550,7 +1550,7 @@ set timezone to default;
 --
 --should fail
 create type bogus_float8range as range (subtype=float8, subtype_diff=float4mi);
-ERROR:  function float4mi(double precision, double precision) does not exist
+ERROR:  function float4mi(pg_catalog.float8, pg_catalog.float8) does not exist
 select '[123.001, 5.e9)'::float8range @> 888.882::float8;
  ?column? 
 ----------
@@ -1625,7 +1625,7 @@ select anyarray_anyrange_func(ARRAY[1,2], int4range(10,20));
 
 -- should fail
 select anyarray_anyrange_func(ARRAY[1,2], numrange(10,20));
-ERROR:  function anyarray_anyrange_func(integer[], numrange) does not exist
+ERROR:  function anyarray_anyrange_func(pg_catalog.int4[], numrange) does not exist
 LINE 1: select anyarray_anyrange_func(ARRAY[1,2], numrange(10,20));
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1668,7 +1668,7 @@ select rangetypes_sql(int4range(1,10), ARRAY[2,20]);
 (1 row)
 
 select rangetypes_sql(numrange(1,10), ARRAY[2,20]);  -- match failure
-ERROR:  function rangetypes_sql(numrange, integer[]) does not exist
+ERROR:  function rangetypes_sql(numrange, pg_catalog.int4[]) does not exist
 LINE 1: select rangetypes_sql(numrange(1,10), ARRAY[2,20]);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1689,7 +1689,7 @@ select anycompatiblearray_anycompatiblerange_func(ARRAY[1,2], numrange(10,20));
 
 -- should fail
 select anycompatiblearray_anycompatiblerange_func(ARRAY[1.1,2], int4range(10,20));
-ERROR:  function anycompatiblearray_anycompatiblerange_func(numeric[], int4range) does not exist
+ERROR:  function anycompatiblearray_anycompatiblerange_func(pg_catalog.numeric[], int4range) does not exist
 LINE 1: select anycompatiblearray_anycompatiblerange_func(ARRAY[1.1,...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

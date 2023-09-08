@@ -983,8 +983,8 @@ drop type xfloat4 cascade;
 NOTICE:  drop cascades to 6 other objects
 DETAIL:  drop cascades to function xfloat4in(cstring)
 drop cascades to function xfloat4out(xfloat4)
-drop cascades to cast from xfloat4 to real
-drop cascades to cast from real to xfloat4
-drop cascades to cast from xfloat4 to integer
-drop cascades to cast from integer to xfloat4
+drop cascades to cast from xfloat4 to pg_catalog.float4
+drop cascades to cast from pg_catalog.float4 to xfloat4
+drop cascades to cast from xfloat4 to pg_catalog.int4
+drop cascades to cast from pg_catalog.int4 to xfloat4
 reset ivorysql.enable_emptystring_to_null;

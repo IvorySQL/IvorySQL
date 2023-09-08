@@ -796,11 +796,11 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 IS NOT NULL;    -- Nu
 (3 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE round(abs(c1), 0) = 1; -- FuncExpr
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
  Foreign Scan on public.ft1 t1
    Output: c1, c2, c3, c4, c5, c6, c7, c8
-   Filter: (round((abs((t1.c1)::double precision))::numeric, 0) = '1'::numeric)
+   Filter: (round((abs((t1.c1)::pg_catalog.float8))::pg_catalog.numeric, 0) = '1'::pg_catalog.numeric)
    Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
 (4 rows)
 
@@ -1069,13 +1069,13 @@ CREATE OPERATOR === (
 -- built-in operators and functions can be shipped for remote execution
 EXPLAIN (VERBOSE, COSTS OFF)
   SELECT count(c3) FROM ft1 t1 WHERE t1.c1 = abs(t1.c2);
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Aggregate
    Output: count(c3)
    ->  Foreign Scan on public.ft1 t1
          Output: c3
-         Filter: ((t1.c1)::binary_double = (abs((t1.c2)::double precision))::binary_double)
+         Filter: ((t1.c1)::binary_double = (abs((t1.c2)::pg_catalog.float8))::binary_double)
          Remote SQL: SELECT "C 1", c2, c3 FROM "S 1"."T 1"
 (6 rows)
 
@@ -1272,22 +1272,22 @@ SELECT c1,c2,c3 FROM ft2 WHERE CASE CASE WHEN c2 > 0 THEN c2 END WHEN 100 THEN 6
 -- CASE arg WHEN
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM ft1 WHERE c1 > (CASE mod(c1, 4) WHEN 0 THEN 1 WHEN 2 THEN 50 ELSE 100 END);
-                                                                QUERY PLAN                                                                
-------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.ft1
    Output: c1, c2, c3, c4, c5, c6, c7, c8
-   Filter: (ft1.c1 > (CASE mod((ft1.c1)::numeric, '4'::numeric) WHEN '0'::numeric THEN 1 WHEN '2'::numeric THEN 50 ELSE 100 END)::number)
+   Filter: (ft1.c1 > (CASE mod((ft1.c1)::pg_catalog.numeric, '4'::pg_catalog.numeric) WHEN '0'::pg_catalog.numeric THEN 1 WHEN '2'::pg_catalog.numeric THEN 50 ELSE 100 END)::number)
    Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
 (4 rows)
 
 -- CASE cannot be pushed down because of unshippable arg clause
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM ft1 WHERE c1 > (CASE random()::integer WHEN 0 THEN 1 WHEN 2 THEN 50 ELSE 100 END);
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
  Foreign Scan on public.ft1
    Output: c1, c2, c3, c4, c5, c6, c7, c8
-   Filter: (ft1.c1 > (CASE (random())::integer WHEN 0 THEN 1 WHEN 2 THEN 50 ELSE 100 END)::number)
+   Filter: (ft1.c1 > (CASE (random())::pg_catalog.int4 WHEN 0 THEN 1 WHEN 2 THEN 50 ELSE 100 END)::number)
    Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
 (4 rows)
 
@@ -3373,10 +3373,10 @@ DROP ROLE regress_view_owner;
 -- Simple aggregates
 explain (verbose, costs off)
 select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (random() <= 1)::int as sum2 from ft1 where c2 < 5 group by c2 order by 1, 2;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Result
-   Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), ((sum(c1)) * (((random() <= '1'::double precision))::integer)::number), c2
+   Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), ((sum(c1)) * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number), c2
    ->  Sort
          Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), c2
          Sort Key: (count(ft1.c6)), (sum(ft1.c1))
@@ -3401,12 +3401,12 @@ select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (ran
 
 explain (verbose, costs off)
 select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (random() <= 1)::int as sum2 from ft1 where c2 < 5 group by c2 order by 1, 2 limit 1;
-                                                                            QUERY PLAN                                                                             
--------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
-   Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), (((sum(c1)) * (((random() <= '1'::double precision))::integer)::number)), c2
+   Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), (((sum(c1)) * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)), c2
    ->  Result
-         Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), ((sum(c1)) * (((random() <= '1'::double precision))::integer)::number), c2
+         Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), ((sum(c1)) * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number), c2
          ->  Sort
                Output: (count(c6)), (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), (stddev(c2)), c2
                Sort Key: (count(ft1.c6)), (sum(ft1.c1))
@@ -3428,10 +3428,10 @@ select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (ran
 -- Aggregate is not pushed down as aggregation contains random()
 explain (verbose, costs off)
 select sum(c1 * (random() <= 1)::int) as sum, avg(c1) from ft1;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  Aggregate
-   Output: sum((c1 * (((random() <= '1'::double precision))::integer)::number)), avg(c1)
+   Output: sum((c1 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)), avg(c1)
    ->  Foreign Scan on public.ft1
          Output: c1
          Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
@@ -3520,18 +3520,18 @@ select c2/2, sum(c2) * (c2/2) from ft1 group by c2/2 order by c2/2;
 set enable_incremental_sort = off;
 explain (verbose, costs off)
 select count(x.a), sum(x.a) from (select c2 a, sum(c1) b from ft1 group by c2, sqrt(c1) order by 1, 2) x;
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Aggregate
    Output: count(ft1.c2), sum(ft1.c2)
    ->  Sort
-         Output: ft1.c2, (sum(ft1.c1)), (sqrt((ft1.c1)::double precision))
+         Output: ft1.c2, (sum(ft1.c1)), (sqrt((ft1.c1)::pg_catalog.float8))
          Sort Key: ft1.c2, (sum(ft1.c1))
          ->  HashAggregate
-               Output: ft1.c2, sum(ft1.c1), (sqrt((ft1.c1)::double precision))
-               Group Key: ft1.c2, sqrt((ft1.c1)::double precision)
+               Output: ft1.c2, sum(ft1.c1), (sqrt((ft1.c1)::pg_catalog.float8))
+               Group Key: ft1.c2, sqrt((ft1.c1)::pg_catalog.float8)
                ->  Foreign Scan on public.ft1
-                     Output: ft1.c2, sqrt((ft1.c1)::double precision), ft1.c1
+                     Output: ft1.c2, sqrt((ft1.c1)::pg_catalog.float8), ft1.c1
                      Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
 (11 rows)
 
@@ -3545,13 +3545,13 @@ reset enable_incremental_sort;
 -- Aggregate is still pushed down by taking unshippable expression out
 explain (verbose, costs off)
 select c2 * (random() <= 1)::int as sum1, sum(c1) * c2 as sum2 from ft1 group by c2 order by 1, 2;
-                                                 QUERY PLAN                                                  
--------------------------------------------------------------------------------------------------------------
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
  Sort
-   Output: ((c2 * (((random() <= '1'::double precision))::integer)::number)), ((sum(c1) * c2)), c2
-   Sort Key: ((ft1.c2 * (((random() <= '1'::double precision))::integer)::number)), ((sum(ft1.c1) * ft1.c2))
+   Output: ((c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)), ((sum(c1) * c2)), c2
+   Sort Key: ((ft1.c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)), ((sum(ft1.c1) * ft1.c2))
    ->  HashAggregate
-         Output: (c2 * (((random() <= '1'::double precision))::integer)::number), (sum(c1) * c2), c2
+         Output: (c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number), (sum(c1) * c2), c2
          Group Key: ft1.c2
          ->  Foreign Scan on public.ft1
                Output: c2, c1
@@ -3576,16 +3576,16 @@ select c2 * (random() <= 1)::int as sum1, sum(c1) * c2 as sum2 from ft1 group by
 -- Aggregate with unshippable GROUP BY clause are not pushed
 explain (verbose, costs off)
 select c2 * (random() <= 1)::int as c2 from ft2 group by c2 * (random() <= 1)::int order by 1;
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
  Sort
-   Output: ((c2 * (((random() <= '1'::double precision))::integer)::number))
-   Sort Key: ((ft2.c2 * (((random() <= '1'::double precision))::integer)::number))
+   Output: ((c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number))
+   Sort Key: ((ft2.c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number))
    ->  HashAggregate
-         Output: ((c2 * (((random() <= '1'::double precision))::integer)::number))
-         Group Key: (ft2.c2 * (((random() <= '1'::double precision))::integer)::number)
+         Output: ((c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number))
+         Group Key: (ft2.c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)
          ->  Foreign Scan on public.ft2
-               Output: (c2 * (((random() <= '1'::double precision))::integer)::number)
+               Output: (c2 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)
                Remote SQL: SELECT c2 FROM "S 1"."T 1"
 (9 rows)
 
@@ -3676,11 +3676,11 @@ select count(*) from (select c5, count(c1) from ft1 group by c5, sqrt(c2) having
  Aggregate
    Output: count(*)
    ->  HashAggregate
-         Output: ft1.c5, NULL::bigint, (sqrt((ft1.c2)::double precision))
-         Group Key: ft1.c5, sqrt((ft1.c2)::double precision)
+         Output: ft1.c5, NULL::pg_catalog.int8, (sqrt((ft1.c2)::pg_catalog.float8))
+         Group Key: ft1.c5, sqrt((ft1.c2)::pg_catalog.float8)
          Filter: ((avg(ft1.c1) < '500'::number) AND ((((avg(ft1.c1) / avg(ft1.c1)))::binary_double * (random())::binary_double) <= '1'::binary_double))
          ->  Foreign Scan on public.ft1
-               Output: ft1.c5, sqrt((ft1.c2)::double precision), ft1.c1
+               Output: ft1.c5, sqrt((ft1.c2)::pg_catalog.float8), ft1.c1
                Remote SQL: SELECT "C 1", c2, c5 FROM "S 1"."T 1"
 (9 rows)
 
@@ -3693,15 +3693,15 @@ select count(*) from (select c5, count(c1) from ft1 group by c5, sqrt(c2) having
 -- Aggregate in HAVING clause is not pushable, and thus aggregation is not pushed down
 explain (verbose, costs off)
 select sum(c1) from ft1 group by c2 having avg(c1 * (random() <= 1)::int) > 100 order by 1;
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
  Sort
    Output: (sum(c1)), c2
    Sort Key: (sum(ft1.c1))
    ->  HashAggregate
          Output: sum(c1), c2
          Group Key: ft1.c2
-         Filter: (avg((ft1.c1 * (((random() <= '1'::double precision))::integer)::number)) > '100'::number)
+         Filter: (avg((ft1.c1 * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)) > '100'::number)
          ->  Foreign Scan on public.ft1
                Output: c1, c2
                Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
@@ -4056,12 +4056,12 @@ select sum(c2) filter (where c2 in (select c2 from ft1 where c2 < 5)) from ft1;
 -- Ordered-sets within aggregate
 explain (verbose, costs off)
 select c2, rank('10'::pg_catalog.varchar) within group (order by c6), percentile_cont(c2/10::number) within group (order by c1) from ft1 where c2 < 10 group by c2 having percentile_cont(c2/10::number) within group (order by c1) < 500 order by c2;
-                                                                                QUERY PLAN                                                                                
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: c2, rank('10'::varchar2) WITHIN GROUP (ORDER BY c6), percentile_cont(((c2 / '10'::number))::double precision) WITHIN GROUP (ORDER BY ((c1)::double precision))
+   Output: c2, rank('10'::varchar2) WITHIN GROUP (ORDER BY c6), percentile_cont(((c2 / '10'::number))::pg_catalog.float8) WITHIN GROUP (ORDER BY ((c1)::pg_catalog.float8))
    Group Key: ft1.c2
-   Filter: (percentile_cont(((ft1.c2 / '10'::number))::double precision) WITHIN GROUP (ORDER BY ((ft1.c1)::double precision)) < '500'::double precision)
+   Filter: (percentile_cont(((ft1.c2 / '10'::number))::pg_catalog.float8) WITHIN GROUP (ORDER BY ((ft1.c1)::pg_catalog.float8)) < '500'::pg_catalog.float8)
    ->  Sort
          Output: c2, c6, c1
          Sort Key: ft1.c2
@@ -4459,13 +4459,13 @@ select count(*), sum(t1.c1), avg(t2.c1) from (select c1 from ft4 where c1 betwee
 -- foreign server.
 explain (verbose, costs off)
 select sum(c2) * (random() <= 1)::int as sum from ft1 order by 1;
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
  Sort
-   Output: ((sum(c2) * (((random() <= '1'::double precision))::integer)::number))
-   Sort Key: ((sum(ft1.c2) * (((random() <= '1'::double precision))::integer)::number))
+   Output: ((sum(c2) * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number))
+   Sort Key: ((sum(ft1.c2) * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number))
    ->  Aggregate
-         Output: (sum(c2) * (((random() <= '1'::double precision))::integer)::number)
+         Output: (sum(c2) * (((random() <= '1'::pg_catalog.float8))::pg_catalog.int4)::number)
          ->  Foreign Scan on public.ft1
                Output: c2
                Remote SQL: SELECT c2 FROM "S 1"."T 1"
@@ -5089,13 +5089,13 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 
 PREPARE st7 AS INSERT INTO ft1 (c1,c2,c3) VALUES (1001,101,'foo');
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                                QUERY PLAN                                                                                                 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: NULL::integer, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
+         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
 (5 rows)
 
 ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
@@ -5124,13 +5124,13 @@ EXECUTE st6;
 (9 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                                QUERY PLAN                                                                                                 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 0"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: NULL::integer, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
+         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
 (5 rows)
 
 ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
@@ -5194,11 +5194,11 @@ SELECT * FROM ft1 t1 WHERE t1.tableoid = 'ft1'::regclass LIMIT 1;
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  Foreign Scan on public.ft1 t1
    Output: (tableoid)::regclass, c1, c2, c3, c4, c5, c6, c7, c8
-   Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" LIMIT 1::bigint
+   Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" LIMIT 1::pg_catalog.int8
 (3 rows)
 
 SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
@@ -5224,11 +5224,11 @@ SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)';
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT ctid, * FROM ft1 t1 LIMIT 1;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
  Foreign Scan on public.ft1 t1
    Output: ctid, c1, c2, c3, c4, c5, c6, c7, c8
-   Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" LIMIT 1::bigint
+   Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" LIMIT 1::pg_catalog.int8
 (3 rows)
 
 SELECT ctid, * FROM ft1 t1 LIMIT 1;
@@ -5519,16 +5519,16 @@ explain (verbose, costs off) select * from ft3 f, loct3 l
 -- ===================================================================
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
-                                                                                                    QUERY PLAN                                                                                                    
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Subquery Scan on "*SELECT*"
-         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::integer, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
+         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::pg_catalog.int4, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
          ->  Foreign Scan on public.ft2 ft2_1
                Output: (ft2_1.c1 + '1000'::number), (ft2_1.c2 + '100'::number), ((ft2_1.c3)::text || (ft2_1.c3)::text)
-               Remote SQL: SELECT "C 1", c2, c3 FROM "S 1"."T 1" LIMIT 20::bigint
+               Remote SQL: SELECT "C 1", c2, c3 FROM "S 1"."T 1" LIMIT 20::pg_catalog.int8
 (8 rows)
 
 INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
@@ -6666,14 +6666,14 @@ SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
 
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
-                                                                                                QUERY PLAN                                                                                                 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                    QUERY PLAN                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Output: (ft2.tableoid)::regclass
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: '1200'::number(38,0), '999'::number(38,0), NULL::integer, 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
+         Output: '1200'::number(38,0), '999'::number(38,0), NULL::pg_catalog.int4, 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
 (6 rows)
 
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
@@ -6850,12 +6850,12 @@ UPDATE ft2 AS target SET (c2) = (
 EXPLAIN (VERBOSE, COSTS OFF)
 UPDATE ft2 d SET c2 = CASE WHEN random() >= 0 THEN d.c2 ELSE 0 END
   FROM ft2 AS t WHERE d.c1 = t.c1 AND d.c1 > 1000;
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
  Update on public.ft2 d
    Remote SQL: UPDATE "S 1"."T 1" SET c2 = $2 WHERE ctid = $1
    ->  Hash Join
-         Output: CASE WHEN (random() >= '0'::double precision) THEN d.c2 ELSE '0'::number END, d.ctid, d.*, t.*
+         Output: CASE WHEN (random() >= '0'::pg_catalog.float8) THEN d.c2 ELSE '0'::number END, d.ctid, d.*, t.*
          Hash Cond: (t.c1 = d.c1)
          ->  Foreign Scan on public.ft2 t
                Output: t.*, t.c1
@@ -7583,11 +7583,11 @@ CREATE FOREIGN TABLE foreign_tbl (a int, b int)
 CREATE VIEW rw_view AS SELECT * FROM foreign_tbl
   WHERE a < b WITH CHECK OPTION;
 \d+ rw_view
-                           View "public.rw_view"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
- b      | integer |           |          |         | plain   | 
+                               View "public.rw_view"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
+ b      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT a,
     b
@@ -10312,20 +10312,20 @@ IMPORT FOREIGN SCHEMA import_source FROM SERVER loopback INTO import_dest1;
 (7 rows)
 
 \d import_dest1.*
-                       Foreign table "import_dest1.t1"
- Column |     Type     | Collation | Nullable | Default |    FDW options     
---------+--------------+-----------+----------+---------+--------------------
- c1     | number(38,0) |           |          |         | (column_name 'c1')
- c2     | varchar2(42) |           | not null |         | (column_name 'c2')
+                            Foreign table "import_dest1.t1"
+ Column |          Type          | Collation | Nullable | Default |    FDW options     
+--------+------------------------+-----------+----------+---------+--------------------
+ c1     | number(38,0)           |           |          |         | (column_name 'c1')
+ c2     | pg_catalog.varchar(42) |           | not null |         | (column_name 'c2')
 Server: loopback
 FDW options: (schema_name 'import_source', table_name 't1')
 
-                        Foreign table "import_dest1.t2"
- Column |      Type      | Collation | Nullable | Default |    FDW options     
---------+----------------+-----------+----------+---------+--------------------
- c1     | number(38,0)   |           |          |         | (column_name 'c1')
- c2     | varchar2(42)   |           |          |         | (column_name 'c2')
- c3     | varchar2(1024) | POSIX     |          |         | (column_name 'c3')
+                            Foreign table "import_dest1.t2"
+ Column |          Type          | Collation | Nullable | Default |    FDW options     
+--------+------------------------+-----------+----------+---------+--------------------
+ c1     | number(38,0)           |           |          |         | (column_name 'c1')
+ c2     | pg_catalog.varchar(42) |           |          |         | (column_name 'c2')
+ c3     | varchar2(1024)         | POSIX     |          |         | (column_name 'c3')
 Server: loopback
 FDW options: (schema_name 'import_source', table_name 't2')
 
@@ -10385,20 +10385,20 @@ IMPORT FOREIGN SCHEMA import_source FROM SERVER loopback INTO import_dest2
 (7 rows)
 
 \d import_dest2.*
-                       Foreign table "import_dest2.t1"
- Column |     Type     | Collation | Nullable | Default |    FDW options     
---------+--------------+-----------+----------+---------+--------------------
- c1     | number(38,0) |           |          |         | (column_name 'c1')
- c2     | varchar2(42) |           | not null |         | (column_name 'c2')
+                            Foreign table "import_dest2.t1"
+ Column |          Type          | Collation | Nullable | Default |    FDW options     
+--------+------------------------+-----------+----------+---------+--------------------
+ c1     | number(38,0)           |           |          |         | (column_name 'c1')
+ c2     | pg_catalog.varchar(42) |           | not null |         | (column_name 'c2')
 Server: loopback
 FDW options: (schema_name 'import_source', table_name 't1')
 
-                        Foreign table "import_dest2.t2"
- Column |      Type      | Collation | Nullable | Default |    FDW options     
---------+----------------+-----------+----------+---------+--------------------
- c1     | number(38,0)   |           |          | 42      | (column_name 'c1')
- c2     | varchar2(42)   |           |          |         | (column_name 'c2')
- c3     | varchar2(1024) | POSIX     |          |         | (column_name 'c3')
+                            Foreign table "import_dest2.t2"
+ Column |          Type          | Collation | Nullable | Default |    FDW options     
+--------+------------------------+-----------+----------+---------+--------------------
+ c1     | number(38,0)           |           |          | 42      | (column_name 'c1')
+ c2     | pg_catalog.varchar(42) |           |          |         | (column_name 'c2')
+ c3     | varchar2(1024)         | POSIX     |          |         | (column_name 'c3')
 Server: loopback
 FDW options: (schema_name 'import_source', table_name 't2')
 
@@ -10457,20 +10457,20 @@ IMPORT FOREIGN SCHEMA import_source FROM SERVER loopback INTO import_dest3
 (7 rows)
 
 \d import_dest3.*
-                       Foreign table "import_dest3.t1"
- Column |     Type     | Collation | Nullable | Default |    FDW options     
---------+--------------+-----------+----------+---------+--------------------
- c1     | number(38,0) |           |          |         | (column_name 'c1')
- c2     | varchar2(42) |           |          |         | (column_name 'c2')
+                            Foreign table "import_dest3.t1"
+ Column |          Type          | Collation | Nullable | Default |    FDW options     
+--------+------------------------+-----------+----------+---------+--------------------
+ c1     | number(38,0)           |           |          |         | (column_name 'c1')
+ c2     | pg_catalog.varchar(42) |           |          |         | (column_name 'c2')
 Server: loopback
 FDW options: (schema_name 'import_source', table_name 't1')
 
-                        Foreign table "import_dest3.t2"
- Column |      Type      | Collation | Nullable | Default |    FDW options     
---------+----------------+-----------+----------+---------+--------------------
- c1     | number(38,0)   |           |          |         | (column_name 'c1')
- c2     | varchar2(42)   |           |          |         | (column_name 'c2')
- c3     | varchar2(1024) |           |          |         | (column_name 'c3')
+                            Foreign table "import_dest3.t2"
+ Column |          Type          | Collation | Nullable | Default |    FDW options     
+--------+------------------------+-----------+----------+---------+--------------------
+ c1     | number(38,0)           |           |          |         | (column_name 'c1')
+ c2     | pg_catalog.varchar(42) |           |          |         | (column_name 'c2')
+ c3     | varchar2(1024)         |           |          |         | (column_name 'c3')
 Server: loopback
 FDW options: (schema_name 'import_source', table_name 't2')
 

@@ -1019,33 +1019,33 @@ WHERE c.castmethod = 'b' AND
                 WHERE k.castmethod = 'b' AND
                     k.castsource = c.casttarget AND
                     k.casttarget = c.castsource);
-    castsource     |    casttarget     | castfunc | castcontext 
--------------------+-------------------+----------+-------------
- pg_ndistinct      | bytea             |        0 | i
- pg_dependencies   | bytea             |        0 | i
- pg_mcv_list       | bytea             |        0 | i
- xml               | text              |        0 | a
- pg_node_tree      | text              |        0 | i
- cidr              | inet              |        0 | i
- text              | character         |        0 | i
- xml               | character         |        0 | a
- character varying | character         |        0 | i
- varchar2          | character         |        0 | i
- varchar2          | character         |        0 | i
- xml               | character varying |        0 | a
- text              | char              |        0 | i
- xml               | char              |        0 | a
- character varying | char              |        0 | i
- varchar2          | char              |        0 | i
- varchar2          | char              |        0 | i
- text              | char              |        0 | i
- xml               | char              |        0 | a
- character varying | char              |        0 | i
- varchar2          | char              |        0 | i
- varchar2          | char              |        0 | i
- xml               | varchar2          |        0 | a
- xml               | varchar2          |        0 | a
- date              | timestamp         |        0 | i
+     castsource     |     casttarget     | castfunc | castcontext 
+--------------------+--------------------+----------+-------------
+ pg_ndistinct       | bytea              |        0 | i
+ pg_dependencies    | bytea              |        0 | i
+ pg_mcv_list        | bytea              |        0 | i
+ xml                | text               |        0 | a
+ pg_node_tree       | text               |        0 | i
+ cidr               | inet               |        0 | i
+ text               | character          |        0 | i
+ xml                | character          |        0 | a
+ character varying  | character          |        0 | i
+ sys.oravarcharchar | character          |        0 | i
+ sys.oravarcharbyte | character          |        0 | i
+ xml                | character varying  |        0 | a
+ text               | sys.oracharchar    |        0 | i
+ xml                | sys.oracharchar    |        0 | a
+ character varying  | sys.oracharchar    |        0 | i
+ sys.oravarcharchar | sys.oracharchar    |        0 | i
+ sys.oravarcharbyte | sys.oracharchar    |        0 | i
+ text               | sys.oracharbyte    |        0 | i
+ xml                | sys.oracharbyte    |        0 | a
+ character varying  | sys.oracharbyte    |        0 | i
+ sys.oravarcharchar | sys.oracharbyte    |        0 | i
+ sys.oravarcharbyte | sys.oracharbyte    |        0 | i
+ xml                | sys.oravarcharchar |        0 | a
+ xml                | sys.oravarcharbyte |        0 | a
+ sys.oradate        | sys.oratimestamp   |        0 | i
 (25 rows)
 
 -- **************** pg_conversion ****************
@@ -2226,40 +2226,40 @@ LEFT JOIN pg_amproc AS amp ON amp.amprocfamily = opf.oid AND
 WHERE am.amname = 'btree' AND
     amp.amproc IS DISTINCT FROM 'btequalimage'::regproc
 ORDER BY 1, 2, 3;
-           proc            |     opfamily_name      |        opclass_name        |           opcintype            
----------------------------+------------------------+----------------------------+--------------------------------
+           proc            |     opfamily_name      |        opclass_name        |      opcintype      
+---------------------------+------------------------+----------------------------+---------------------
  btvarstrequalimage        | bpchar_ops             | bpchar_ops                 | character
  btvarstrequalimage        | text_ops               | name_ops                   | name
  btvarstrequalimage        | text_ops               | text_ops                   | text
  btvarstrequalimage        | text_ops               | varchar_ops                | text
- sys.btoravarstrequalimage | orachar_ops            | oracharbyte_ops            | char
- sys.btoravarstrequalimage | orachar_ops            | oracharchar_ops            | char
- sys.btoravarstrequalimage | oravarchar_ops         | oravarcharbyte_ops         | varchar2
- sys.btoravarstrequalimage | oravarchar_ops         | oravarcharchar_ops         | varchar2
- sys.btoraequalimage       | orachar_pattern_ops    | oracharbyte_pattern_ops    | char
- sys.btoraequalimage       | orachar_pattern_ops    | oracharchar_pattern_ops    | char
- sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharbyte_pattern_ops | varchar2
- sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharchar_pattern_ops | varchar2
+ sys.btoravarstrequalimage | orachar_ops            | oracharbyte_ops            | sys.oracharbyte
+ sys.btoravarstrequalimage | orachar_ops            | oracharchar_ops            | sys.oracharchar
+ sys.btoravarstrequalimage | oravarchar_ops         | oravarcharbyte_ops         | sys.oravarcharbyte
+ sys.btoravarstrequalimage | oravarchar_ops         | oravarcharchar_ops         | sys.oravarcharchar
+ sys.btoraequalimage       | dsinterval_ops         | dsinterval_ops             | sys.dsinterval
+ sys.btoraequalimage       | orachar_pattern_ops    | oracharbyte_pattern_ops    | sys.oracharbyte
+ sys.btoraequalimage       | orachar_pattern_ops    | oracharchar_pattern_ops    | sys.oracharchar
+ sys.btoraequalimage       | oradatetime_ops        | oradate_ops                | sys.oradate
+ sys.btoraequalimage       | oradatetime_ops        | oratimestamp_ops           | sys.oratimestamp
+ sys.btoraequalimage       | oradatetime_ops        | oratimestampltz_ops        | sys.oratimestampltz
+ sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharbyte_pattern_ops | sys.oravarcharbyte
+ sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharchar_pattern_ops | sys.oravarcharchar
+ sys.btoraequalimage       | yminterval_ops         | yminterval_ops             | sys.yminterval
                            | array_ops              | array_ops                  | anyarray
-                           | binary_ops             | binary_double_ops          | binary_double
-                           | binary_ops             | binary_float_ops           | binary_float
-                           | dsinterval_ops         | dsinterval_ops             | interval day to second
+                           | binary_ops             | binary_double_ops          | sys.binary_double
+                           | binary_ops             | binary_float_ops           | sys.binary_float
                            | float_ops              | float4_ops                 | real
                            | float_ops              | float8_ops                 | double precision
                            | jsonb_ops              | jsonb_ops                  | jsonb
                            | multirange_ops         | multirange_ops             | anymultirange
-                           | number_ops             | number_ops                 | number
+                           | number_ops             | number_ops                 | sys.number
                            | numeric_ops            | numeric_ops                | numeric
-                           | oradatetime_ops        | oradate_ops                | date
-                           | oradatetime_ops        | oratimestamp_ops           | timestamp
-                           | oradatetime_ops        | oratimestampltz_ops        | timestamp with local time zone
-                           | oradatetime_ops        | oratimestamptz_ops         | timestamp with time zone
+                           | oradatetime_ops        | oratimestamptz_ops         | sys.oratimestamptz
                            | range_ops              | range_ops                  | anyrange
                            | record_image_ops       | record_image_ops           | record
                            | record_ops             | record_ops                 | record
                            | tsquery_ops            | tsquery_ops                | tsquery
                            | tsvector_ops           | tsvector_ops               | tsvector
-                           | yminterval_ops         | yminterval_ops             | interval year to month
 (32 rows)
 
 -- **************** pg_index ****************

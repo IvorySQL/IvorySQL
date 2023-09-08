@@ -2170,7 +2170,7 @@ select id, f_numeric, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_numeric range between
              1 preceding and 1.1::float8 following);  -- currently unsupported
-ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type numeric and offset type double precision
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type pg_catalog.numeric and offset type pg_catalog.float8
 LINE 4:              1 preceding and 1.1::float8 following);
                                      ^
 HINT:  Cast the offset value to an appropriate type.

@@ -114,14 +114,14 @@ CREATE POLICY p1r ON document AS RESTRICTIVE TO regress_rls_dave
 (3 rows)
 
 \d document
-        Table "regress_rls_schema.document"
- Column  |  Type   | Collation | Nullable | Default 
----------+---------+-----------+----------+---------
- did     | integer |           | not null | 
- cid     | integer |           |          | 
- dlevel  | integer |           | not null | 
- dauthor | name    |           |          | 
- dtitle  | text    |           |          | 
+            Table "regress_rls_schema.document"
+ Column  |      Type       | Collation | Nullable | Default 
+---------+-----------------+-----------+----------+---------
+ did     | pg_catalog.int4 |           | not null | 
+ cid     | pg_catalog.int4 |           |          | 
+ dlevel  | pg_catalog.int4 |           | not null | 
+ dauthor | name            |           |          | 
+ dtitle  | text            |           |          | 
 Indexes:
     "document_pkey" PRIMARY KEY, btree (did)
 Foreign-key constraints:
@@ -939,14 +939,14 @@ CREATE POLICY pp1 ON part_document AS PERMISSIVE
 CREATE POLICY pp1r ON part_document AS RESTRICTIVE TO regress_rls_dave
     USING (cid < 55);
 \d+ part_document
-                    Partitioned table "regress_rls_schema.part_document"
- Column  |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
----------+---------+-----------+----------+---------+----------+--------------+-------------
- did     | integer |           |          |         | plain    |              | 
- cid     | integer |           |          |         | plain    |              | 
- dlevel  | integer |           | not null |         | plain    |              | 
- dauthor | name    |           |          |         | plain    |              | 
- dtitle  | text    |           |          |         | extended |              | 
+                        Partitioned table "regress_rls_schema.part_document"
+ Column  |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
+---------+-----------------+-----------+----------+---------+----------+--------------+-------------
+ did     | pg_catalog.int4 |           |          |         | plain    |              | 
+ cid     | pg_catalog.int4 |           |          |         | plain    |              | 
+ dlevel  | pg_catalog.int4 |           | not null |         | plain    |              | 
+ dauthor | name            |           |          |         | plain    |              | 
+ dtitle  | text            |           |          |         | extended |              | 
 Partition key: RANGE (cid)
 Policies:
     POLICY "pp1"
@@ -4396,7 +4396,7 @@ INSERT INTO rls_tbl
 --------------------------------------------------------------------
  Insert on regress_rls_schema.rls_tbl
    ->  Subquery Scan on ss
-         Output: ss.b, ss.c, NULL::integer
+         Output: ss.b, ss.c, NULL::pg_catalog.int4
          ->  Sort
                Output: rls_tbl_1.b, rls_tbl_1.c, rls_tbl_1.a
                Sort Key: rls_tbl_1.a

@@ -275,7 +275,7 @@ end
 /
 -- Test comments
 COMMENT ON FUNCTION tg_hub_adjustslots_wrong(char, integer, integer) IS 'function with args';
-ERROR:  function tg_hub_adjustslots_wrong(char, integer, integer) does not exist
+ERROR:  function tg_hub_adjustslots_wrong(char, pg_catalog.int4, pg_catalog.int4) does not exist
 COMMENT ON FUNCTION tg_hub_adjustslots(char, integer, integer) IS 'function with args';
 COMMENT ON FUNCTION tg_hub_adjustslots(char, integer, integer) IS NULL;
 -- ************************************************************
@@ -1799,7 +1799,7 @@ select f1(42) as int, f1(4.5) as num;
 (1 row)
 
 select f1(point(3,4));  -- fail for lack of + operator
-ERROR:  operator does not exist: point + integer
+ERROR:  operator does not exist: point + pg_catalog.int4
 LINE 1: x + 1
           ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
@@ -1891,7 +1891,7 @@ select f1(int4range(42, 49), 11, 2::smallint) as int, f1(float8range(4.5, 7.8), 
 (1 row)
 
 select f1(int4range(42, 49), 11, 4.5) as fail;  -- range type doesn't fit
-ERROR:  function f1(int4range, integer, numeric) does not exist
+ERROR:  function f1(int4range, pg_catalog.int4, pg_catalog.numeric) does not exist
 LINE 1: select f1(int4range(42, 49), 11, 4.5) as fail;
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1927,28 +1927,28 @@ end$$ language plpgsql;
 /
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, array[1, 2], 42, 34.5);
-    x     | pg_typeof |     y     | pg_typeof 
-----------+-----------+-----------+-----------
- {11,1,2} | integer[] | {42,34.5} | numeric[]
+    x     |     pg_typeof     |     y     |      pg_typeof       
+----------+-------------------+-----------+----------------------
+ {11,1,2} | pg_catalog.int4[] | {42,34.5} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, array[1, 2], point(1,2), point(3,4));
-    x     | pg_typeof |         y         | pg_typeof 
-----------+-----------+-------------------+-----------
- {11,1,2} | integer[] | {"(1,2)","(3,4)"} | point[]
+    x     |     pg_typeof     |         y         | pg_typeof 
+----------+-------------------+-------------------+-----------
+ {11,1,2} | pg_catalog.int4[] | {"(1,2)","(3,4)"} | point[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, '{1,2}', point(1,2), '(3,4)');
-    x     | pg_typeof |         y         | pg_typeof 
-----------+-----------+-------------------+-----------
- {11,1,2} | integer[] | {"(1,2)","(3,4)"} | point[]
+    x     |     pg_typeof     |         y         | pg_typeof 
+----------+-------------------+-------------------+-----------
+ {11,1,2} | pg_catalog.int4[] | {"(1,2)","(3,4)"} | point[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from f1(11, array[1, 2.2], 42, 34.5);  -- fail
-ERROR:  function f1(integer, numeric[], integer, numeric) does not exist
+ERROR:  function f1(pg_catalog.int4, pg_catalog.numeric[], pg_catalog.int4, pg_catalog.numeric) does not exist
 LINE 2:   from f1(11, array[1, 2.2], 42, 34.5);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -3189,7 +3189,7 @@ ERROR:  variable "f1" shadows a previously defined variable
 LINE 3: declare f1 int; begin return 1; end $$ language plpgsql;
                 ^
 select shadowtest(1);
-ERROR:  function shadowtest(integer) does not exist
+ERROR:  function shadowtest(pg_catalog.int4) does not exist
 LINE 1: select shadowtest(1);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -4703,7 +4703,7 @@ select cast_invoker(20150720);
 commit;
 drop function cast_invoker(integer);
 drop function sql_to_date(integer) cascade;
-NOTICE:  drop cascades to cast from integer to date
+NOTICE:  drop cascades to cast from pg_catalog.int4 to date
 -- Test handling of cast cache inside DO blocks
 -- (to check the original crash case, this must be a cast not previously
 -- used in this session)
@@ -5290,10 +5290,10 @@ select testoa(1,2,3); -- try again to exercise internal caching
 
 select testoa(2,1,3); -- fail at initial assign
 ERROR:  value for domain orderedarray violates check constraint "sorted"
-CONTEXT:  PL/pgSQL function testoa(integer,integer,integer) line 4 at assignment
+CONTEXT:  PL/pgSQL function testoa(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 4 at assignment
 select testoa(1,2,1); -- fail at update
 ERROR:  value for domain orderedarray violates check constraint "sorted"
-CONTEXT:  PL/pgSQL function testoa(integer,integer,integer) line 5 at assignment
+CONTEXT:  PL/pgSQL function testoa(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 5 at assignment
 drop function arrayassign1();
 drop function testoa(x1 int, x2 int, x3 int);
 --
@@ -5423,12 +5423,12 @@ $$ language plpgsql;
 select outer_outer_func(10);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 4 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 7 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 4 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 7 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
@@ -5441,12 +5441,12 @@ NOTICE:  outer_func() done
 select outer_outer_func(20);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 4 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 7 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 4 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 7 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
@@ -5508,12 +5508,12 @@ $$ language plpgsql;
 select outer_outer_func(10);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 10 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 15 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 10 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 15 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
@@ -5526,12 +5526,12 @@ NOTICE:  outer_func() done
 select outer_outer_func(20);
 NOTICE:  calling down into outer_func()
 NOTICE:  calling down into inner_func()
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 10 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
-NOTICE:  ***PL/pgSQL function inner_func(integer) line 15 at GET DIAGNOSTICS
-PL/pgSQL function outer_func(integer) line 6 at assignment
-PL/pgSQL function outer_outer_func(integer) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 10 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
+NOTICE:  ***PL/pgSQL function inner_func(pg_catalog.int4) line 15 at GET DIAGNOSTICS
+PL/pgSQL function outer_func(pg_catalog.int4) line 6 at assignment
+PL/pgSQL function outer_outer_func(pg_catalog.int4) line 6 at assignment***
 NOTICE:  lets make sure we didnt break anything
 NOTICE:  inner_func() done
 NOTICE:  outer_func() done
@@ -6010,7 +6010,7 @@ BEGIN
     RETURN result;
 END; $$ LANGUAGE plpgsql;
 /
-NOTICE:  type reference partitioned_table.a%TYPE converted to integer
+NOTICE:  type reference partitioned_table.a%TYPE converted to pg_catalog.int4
 SELECT * FROM get_from_partitioned_table(1) AS t;
  a |   b   
 ---+-------
@@ -6030,7 +6030,7 @@ BEGIN
     RETURN;
 END; $$ LANGUAGE plpgsql;
 /
-NOTICE:  type reference partitioned_table.a%TYPE converted to integer
+NOTICE:  type reference partitioned_table.a%TYPE converted to pg_catalog.int4
 SELECT * FROM list_partitioned_table() AS t;
  t 
 ---

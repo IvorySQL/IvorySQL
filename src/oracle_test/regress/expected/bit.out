@@ -731,13 +731,13 @@ CREATE TABLE bit_defaults(
   b4 bit varying(5) DEFAULT B'0101'
 );
 \d bit_defaults
-                     Table "public.bit_defaults"
- Column |      Type      | Collation | Nullable |       Default       
---------+----------------+-----------+----------+---------------------
- b1     | bit(4)         |           |          | '1001'::"bit"
- b2     | bit(4)         |           |          | '0101'::"bit"
- b3     | bit varying(5) |           |          | '1001'::bit varying
- b4     | bit varying(5) |           |          | '0101'::"bit"
+                           Table "public.bit_defaults"
+ Column |         Type         | Collation | Nullable |          Default          
+--------+----------------------+-----------+----------+---------------------------
+ b1     | pg_catalog.bit(4)    |           |          | '1001'::"bit"
+ b2     | pg_catalog.bit(4)    |           |          | '0101'::"bit"
+ b3     | pg_catalog.varbit(5) |           |          | '1001'::pg_catalog.varbit
+ b4     | pg_catalog.varbit(5) |           |          | '0101'::"bit"
 
 INSERT INTO bit_defaults DEFAULT VALUES;
 TABLE bit_defaults;

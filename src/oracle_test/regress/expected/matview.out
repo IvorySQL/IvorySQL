@@ -94,11 +94,11 @@ CREATE MATERIALIZED VIEW mvtest_bb AS SELECT * FROM mvtest_tvvmv;
 CREATE INDEX mvtest_aa ON mvtest_bb (grandtot);
 -- check that plans seem reasonable
 \d+ mvtest_tvm
-                           Materialized view "public.mvtest_tvm"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- type   | text    |           |          |         | extended |              | 
- totamt | numeric |           |          |         | main     |              | 
+                                Materialized view "public.mvtest_tvm"
+ Column |        Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+--------------------+-----------+----------+---------+----------+--------------+-------------
+ type   | text               |           |          |         | extended |              | 
+ totamt | pg_catalog.numeric |           |          |         | main     |              | 
 View definition:
  SELECT type,
     totamt
@@ -106,11 +106,11 @@ View definition:
   ORDER BY type;
 
 \d+ mvtest_tvm
-                           Materialized view "public.mvtest_tvm"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- type   | text    |           |          |         | extended |              | 
- totamt | numeric |           |          |         | main     |              | 
+                                Materialized view "public.mvtest_tvm"
+ Column |        Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+--------------------+-----------+----------+---------+----------+--------------+-------------
+ type   | text               |           |          |         | extended |              | 
+ totamt | pg_catalog.numeric |           |          |         | main     |              | 
 View definition:
  SELECT type,
     totamt
@@ -118,19 +118,19 @@ View definition:
   ORDER BY type;
 
 \d+ mvtest_tvvm
-                           Materialized view "public.mvtest_tvvm"
-  Column  |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
-----------+---------+-----------+----------+---------+---------+--------------+-------------
- grandtot | numeric |           |          |         | main    |              | 
+                                Materialized view "public.mvtest_tvvm"
+  Column  |        Type        | Collation | Nullable | Default | Storage | Stats target | Description 
+----------+--------------------+-----------+----------+---------+---------+--------------+-------------
+ grandtot | pg_catalog.numeric |           |          |         | main    |              | 
 View definition:
  SELECT grandtot
    FROM mvtest_tvv;
 
 \d+ mvtest_bb
-                            Materialized view "public.mvtest_bb"
-  Column  |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
-----------+---------+-----------+----------+---------+---------+--------------+-------------
- grandtot | numeric |           |          |         | main    |              | 
+                                 Materialized view "public.mvtest_bb"
+  Column  |        Type        | Collation | Nullable | Default | Storage | Stats target | Description 
+----------+--------------------+-----------+----------+---------+---------+--------------+-------------
+ grandtot | pg_catalog.numeric |           |          |         | main    |              | 
 Indexes:
     "mvtest_aa" btree (grandtot)
 View definition:
@@ -142,24 +142,24 @@ CREATE SCHEMA mvtest_mvschema;
 ALTER MATERIALIZED VIEW mvtest_tvm SET SCHEMA mvtest_mvschema;
 \d+ mvtest_tvm
 \d+ mvtest_tvmm
-                           Materialized view "public.mvtest_tvmm"
-  Column  |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
-----------+---------+-----------+----------+---------+---------+--------------+-------------
- grandtot | numeric |           |          |         | main    |              | 
+                                Materialized view "public.mvtest_tvmm"
+  Column  |        Type        | Collation | Nullable | Default | Storage | Stats target | Description 
+----------+--------------------+-----------+----------+---------+---------+--------------+-------------
+ grandtot | pg_catalog.numeric |           |          |         | main    |              | 
 Indexes:
-    "mvtest_tvmm_expr" UNIQUE, btree ((grandtot > 0::numeric))
-    "mvtest_tvmm_pred" UNIQUE, btree (grandtot) WHERE grandtot < 0::numeric
+    "mvtest_tvmm_expr" UNIQUE, btree ((grandtot > 0::pg_catalog.numeric))
+    "mvtest_tvmm_pred" UNIQUE, btree (grandtot) WHERE grandtot < 0::pg_catalog.numeric
 View definition:
  SELECT sum(totamt) AS grandtot
    FROM mvtest_mvschema.mvtest_tvm;
 
 SET search_path = mvtest_mvschema, public;
 \d+ mvtest_tvm
-                      Materialized view "mvtest_mvschema.mvtest_tvm"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- type   | text    |           |          |         | extended |              | 
- totamt | numeric |           |          |         | main     |              | 
+                            Materialized view "mvtest_mvschema.mvtest_tvm"
+ Column |        Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+--------------------+-----------+----------+---------+----------+--------------+-------------
+ type   | text               |           |          |         | extended |              | 
+ totamt | pg_catalog.numeric |           |          |         | main     |              | 
 View definition:
  SELECT type,
     totamt
@@ -340,11 +340,11 @@ ROLLBACK;
 CREATE VIEW mvtest_vt1 AS SELECT 1 moo;
 CREATE VIEW mvtest_vt2 AS SELECT moo, 2*moo FROM mvtest_vt1 UNION ALL SELECT moo, 3*moo FROM mvtest_vt1;
 \d+ mvtest_vt2
-                          View "public.mvtest_vt2"
-  Column  |  Type   | Collation | Nullable | Default | Storage | Description 
-----------+---------+-----------+----------+---------+---------+-------------
- moo      | integer |           |          |         | plain   | 
- ?column? | integer |           |          |         | plain   | 
+                              View "public.mvtest_vt2"
+  Column  |      Type       | Collation | Nullable | Default | Storage | Description 
+----------+-----------------+-----------+----------+---------+---------+-------------
+ moo      | pg_catalog.int4 |           |          |         | plain   | 
+ ?column? | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT mvtest_vt1.moo,
     2 * mvtest_vt1.moo AS "?column?"
@@ -356,11 +356,11 @@ UNION ALL
 
 CREATE MATERIALIZED VIEW mv_test2 AS SELECT moo, 2*moo FROM mvtest_vt2 UNION ALL SELECT moo, 3*moo FROM mvtest_vt2;
 \d+ mv_test2
-                            Materialized view "public.mv_test2"
-  Column  |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
-----------+---------+-----------+----------+---------+---------+--------------+-------------
- moo      | integer |           |          |         | plain   |              | 
- ?column? | integer |           |          |         | plain   |              | 
+                                Materialized view "public.mv_test2"
+  Column  |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+----------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ moo      | pg_catalog.int4 |           |          |         | plain   |              | 
+ ?column? | pg_catalog.int4 |           |          |         | plain   |              | 
 View definition:
  SELECT mvtest_vt2.moo,
     2 * mvtest_vt2.moo AS "?column?"
@@ -493,14 +493,14 @@ drop cascades to materialized view mvtest_mv_v_4
 CREATE MATERIALIZED VIEW mv_unspecified_types AS
   SELECT 42 as i, 42.5 as num, 'foo' as u, 'foo'::unknown as u2, null as n;
 \d+ mv_unspecified_types
-                      Materialized view "public.mv_unspecified_types"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- i      | integer |           |          |         | plain    |              | 
- num    | numeric |           |          |         | main     |              | 
- u      | text    |           |          |         | extended |              | 
- u2     | text    |           |          |         | extended |              | 
- n      | text    |           |          |         | extended |              | 
+                           Materialized view "public.mv_unspecified_types"
+ Column |        Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+--------------------+-----------+----------+---------+----------+--------------+-------------
+ i      | pg_catalog.int4    |           |          |         | plain    |              | 
+ num    | pg_catalog.numeric |           |          |         | main     |              | 
+ u      | text               |           |          |         | extended |              | 
+ u2     | text               |           |          |         | extended |              | 
+ n      | text               |           |          |         | extended |              | 
 View definition:
  SELECT 42 AS i,
     42.5 AS num,

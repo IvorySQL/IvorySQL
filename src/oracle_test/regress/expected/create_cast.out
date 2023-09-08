@@ -54,7 +54,7 @@ SELECT casttestfunc('foo'::text); -- Should work now
 
 -- Try I/O conversion cast.
 SELECT 1234::int4::casttesttype; -- No cast yet, should fail
-ERROR:  cannot cast type integer to casttesttype
+ERROR:  cannot cast type pg_catalog.int4 to casttesttype
 LINE 1: SELECT 1234::int4::casttesttype;
                          ^
 CREATE CAST (int4 AS casttesttype) WITH INOUT;
@@ -77,7 +77,7 @@ SELECT 1234::int4::casttesttype; -- Should work now
 (1 row)
 
 DROP FUNCTION int4_casttesttype(int4) CASCADE;
-NOTICE:  drop cascades to cast from integer to casttesttype
+NOTICE:  drop cascades to cast from pg_catalog.int4 to casttesttype
 -- Try it with a function that requires an implicit cast
 CREATE FUNCTION bar_int4_text(int4) RETURNS text LANGUAGE SQL AS
 $$ SELECT ('bar'::text || $1::text); $$;
@@ -99,10 +99,10 @@ WHERE classid = 'pg_cast'::regclass AND
                WHERE castsource = 'int4'::regtype
                  AND casttarget = 'casttesttype'::regtype)
 ORDER BY refclassid;
-                obj                |             objref              | deptype 
------------------------------------+---------------------------------+---------
- cast from integer to casttesttype | type casttesttype               | n
- cast from integer to casttesttype | function bar_int4_text(integer) | n
- cast from integer to casttesttype | cast from text to casttesttype  | n
+                    obj                    |                 objref                  | deptype 
+-------------------------------------------+-----------------------------------------+---------
+ cast from pg_catalog.int4 to casttesttype | type casttesttype                       | n
+ cast from pg_catalog.int4 to casttesttype | function bar_int4_text(pg_catalog.int4) | n
+ cast from pg_catalog.int4 to casttesttype | cast from text to casttesttype          | n
 (3 rows)
 

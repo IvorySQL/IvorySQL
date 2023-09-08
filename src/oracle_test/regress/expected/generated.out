@@ -22,11 +22,11 @@ SELECT table_name, column_name, dependent_column FROM information_schema.column_
 (1 row)
 
 \d gtest1
-                            Table "public.gtest1"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           | not null | 
- b      | integer |           |          | generated always as (a * 2) stored
+                                Table "public.gtest1"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 Indexes:
     "gtest1_pkey" PRIMARY KEY, btree (a)
 
@@ -267,11 +267,11 @@ SELECT * FROM gtest1_1;
 (0 rows)
 
 \d gtest1_1
-                           Table "public.gtest1_1"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           | not null | 
- b      | integer |           |          | generated always as (a * 2) stored
+                               Table "public.gtest1_1"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 Inherits: gtest1
 
 INSERT INTO gtest1_1 VALUES (4);
@@ -306,12 +306,12 @@ ERROR:  column "b" inherits from generated column but specifies default
 CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- ok, overrides parent
 NOTICE:  merging column "b" with inherited definition
 \d+ gtestx
-                                                Table "public.gtestx"
- Column |  Type   | Collation | Nullable |               Default               | Storage | Stats target | Description 
---------+---------+-----------+----------+-------------------------------------+---------+--------------+-------------
- a      | integer |           | not null |                                     | plain   |              | 
- b      | integer |           |          | generated always as (a * 22) stored | plain   |              | 
- x      | integer |           |          |                                     | plain   |              | 
+                                                    Table "public.gtestx"
+ Column |      Type       | Collation | Nullable |               Default               | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+-------------------------------------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |                                     | plain   |              | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 22) stored | plain   |              | 
+ x      | pg_catalog.int4 |           |          |                                     | plain   |              | 
 Inherits: gtest1
 
 CREATE TABLE gtestxx_1 (a int NOT NULL, b int);
@@ -342,12 +342,12 @@ NOTICE:  merging multiple inherited definitions of column "b"
 NOTICE:  moving and merging column "b" with inherited definition
 DETAIL:  User-specified column moved to the position of the inherited column.
 \d gtest1_y
-                           Table "public.gtest1_y"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           | not null | 
- b      | integer |           |          | generated always as (x + 1) stored
- x      | integer |           |          | 
+                               Table "public.gtest1_y"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           |          | generated always as (x + 1) stored
+ x      | pg_catalog.int4 |           |          | 
 Inherits: gtest1,
           gtesty
 
@@ -517,10 +517,10 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 ALTER TABLE gtest10 DROP COLUMN b CASCADE;  -- drops c too
 NOTICE:  drop cascades to column c of table gtest10
 \d gtest10
-              Table "public.gtest10"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
+                  Table "public.gtest10"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
 Indexes:
     "gtest10_pkey" PRIMARY KEY, btree (a)
 
@@ -559,8 +559,8 @@ SELECT a, c FROM gtest12s;  -- allowed
 
 RESET ROLE;
 DROP FUNCTION gf1(int);  -- fail
-ERROR:  cannot drop function gf1(integer) because other objects depend on it
-DETAIL:  column c of table gtest12s depends on function gf1(integer)
+ERROR:  cannot drop function gf1(pg_catalog.int4) because other objects depend on it
+DETAIL:  column c of table gtest12s depends on function gf1(pg_catalog.int4)
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TABLE gtest11s, gtest12s;
 DROP FUNCTION gf1(int);
@@ -614,11 +614,11 @@ CREATE INDEX gtest22c_b_idx ON gtest22c (b);
 CREATE INDEX gtest22c_expr_idx ON gtest22c ((b * 3));
 CREATE INDEX gtest22c_pred_idx ON gtest22c (a) WHERE b > 0;
 \d gtest22c
-                           Table "public.gtest22c"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           |          | 
- b      | integer |           |          | generated always as (a * 2) stored
+                               Table "public.gtest22c"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 Indexes:
     "gtest22c_b_idx" btree (b)
     "gtest22c_expr_idx" btree ((b * 3))
@@ -677,11 +677,11 @@ CREATE TABLE gtest23x (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) STOR
 ERROR:  invalid ON DELETE action for foreign key constraint containing generated column
 CREATE TABLE gtest23b (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) STORED REFERENCES gtest23a (x));
 \d gtest23b
-                           Table "public.gtest23b"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           | not null | 
- b      | integer |           |          | generated always as (a * 2) stored
+                               Table "public.gtest23b"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 Indexes:
     "gtest23b_pkey" PRIMARY KEY, btree (a)
 Foreign-key constraints:
@@ -751,30 +751,30 @@ DROP TABLE gtest_child3;
 CREATE TABLE gtest_child3 (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 33) STORED);
 ALTER TABLE gtest_parent ATTACH PARTITION gtest_child3 FOR VALUES FROM ('2016-09-01') TO ('2016-10-01');
 \d gtest_child
-                          Table "public.gtest_child"
- Column |  Type  | Collation | Nullable |               Default               
---------+--------+-----------+----------+-------------------------------------
- f1     | date   |           | not null | 
- f2     | bigint |           |          | 
- f3     | bigint |           |          | generated always as (f2 * 2) stored
+                              Table "public.gtest_child"
+ Column |      Type       | Collation | Nullable |               Default               
+--------+-----------------+-----------+----------+-------------------------------------
+ f1     | date            |           | not null | 
+ f2     | pg_catalog.int8 |           |          | 
+ f3     | pg_catalog.int8 |           |          | generated always as (f2 * 2) stored
 Partition of: gtest_parent FOR VALUES FROM ('2016-07-01') TO ('2016-08-01')
 
 \d gtest_child2
-                          Table "public.gtest_child2"
- Column |  Type  | Collation | Nullable |               Default                
---------+--------+-----------+----------+--------------------------------------
- f1     | date   |           | not null | 
- f2     | bigint |           |          | 
- f3     | bigint |           |          | generated always as (f2 * 22) stored
+                              Table "public.gtest_child2"
+ Column |      Type       | Collation | Nullable |               Default                
+--------+-----------------+-----------+----------+--------------------------------------
+ f1     | date            |           | not null | 
+ f2     | pg_catalog.int8 |           |          | 
+ f3     | pg_catalog.int8 |           |          | generated always as (f2 * 22) stored
 Partition of: gtest_parent FOR VALUES FROM ('2016-08-01') TO ('2016-09-01')
 
 \d gtest_child3
-                          Table "public.gtest_child3"
- Column |  Type  | Collation | Nullable |               Default                
---------+--------+-----------+----------+--------------------------------------
- f1     | date   |           | not null | 
- f2     | bigint |           |          | 
- f3     | bigint |           |          | generated always as (f2 * 33) stored
+                              Table "public.gtest_child3"
+ Column |      Type       | Collation | Nullable |               Default                
+--------+-----------------+-----------+----------+--------------------------------------
+ f1     | date            |           | not null | 
+ f2     | pg_catalog.int8 |           |          | 
+ f3     | pg_catalog.int8 |           |          | generated always as (f2 * 33) stored
 Partition of: gtest_parent FOR VALUES FROM ('2016-09-01') TO ('2016-10-01')
 
 INSERT INTO gtest_parent (f1, f2) VALUES ('2016-07-15', 1);
@@ -844,15 +844,15 @@ SELECT * FROM gtest25 ORDER BY a;
 (2 rows)
 
 \d gtest25
-                                         Table "public.gtest25"
- Column |       Type       | Collation | Nullable |                       Default                        
---------+------------------+-----------+----------+------------------------------------------------------
- a      | integer          |           | not null | 
- b      | integer          |           |          | generated always as (a * 3) stored
- c      | integer          |           |          | 42
- x      | integer          |           |          | generated always as (c * 4) stored
- d      | double precision |           |          | 101
- y      | double precision |           |          | generated always as (d * 4::double precision) stored
+                                          Table "public.gtest25"
+ Column |       Type        | Collation | Nullable |                        Default                        
+--------+-------------------+-----------+----------+-------------------------------------------------------
+ a      | pg_catalog.int4   |           | not null | 
+ b      | pg_catalog.int4   |           |          | generated always as (a * 3) stored
+ c      | pg_catalog.int4   |           |          | 42
+ x      | pg_catalog.int4   |           |          | generated always as (c * 4) stored
+ d      | pg_catalog.float8 |           |          | 101
+ y      | pg_catalog.float8 |           |          | generated always as (d * 4::pg_catalog.float8) stored
 Indexes:
     "gtest25_pkey" PRIMARY KEY, btree (a)
 
@@ -868,12 +868,12 @@ ERROR:  cannot alter type of a column used by a generated column
 DETAIL:  Column "a" is used by generated column "x".
 ALTER TABLE gtest27 ALTER COLUMN x TYPE numeric;
 \d gtest27
-                                Table "public.gtest27"
- Column |  Type   | Collation | Nullable |                  Default                   
---------+---------+-----------+----------+--------------------------------------------
- a      | integer |           |          | 
- b      | integer |           |          | 
- x      | numeric |           |          | generated always as (((a + b) * 2)) stored
+                                     Table "public.gtest27"
+ Column |        Type        | Collation | Nullable |                  Default                   
+--------+--------------------+-----------+----------+--------------------------------------------
+ a      | pg_catalog.int4    |           |          | 
+ b      | pg_catalog.int4    |           |          | 
+ x      | pg_catalog.numeric |           |          | generated always as (((a + b) * 2)) stored
 
 SELECT * FROM gtest27;
  a | b  | x  
@@ -883,7 +883,7 @@ SELECT * FROM gtest27;
 (2 rows)
 
 ALTER TABLE gtest27 ALTER COLUMN x TYPE boolean USING x <> 0;  -- error
-ERROR:  generation expression for column "x" cannot be cast automatically to type boolean
+ERROR:  generation expression for column "x" cannot be cast automatically to type pg_catalog.bool
 ALTER TABLE gtest27 ALTER COLUMN x DROP DEFAULT;  -- error
 ERROR:  column "x" of relation "gtest27" is a generated column
 HINT:  Use ALTER TABLE ... ALTER COLUMN ... DROP EXPRESSION instead.
@@ -894,12 +894,12 @@ ALTER TABLE gtest27
   ALTER COLUMN b TYPE bigint,
   ADD COLUMN x bigint GENERATED ALWAYS AS ((a + b) * 2) STORED;
 \d gtest27
-                              Table "public.gtest27"
- Column |  Type  | Collation | Nullable |                 Default                  
---------+--------+-----------+----------+------------------------------------------
- a      | bigint |           |          | 
- b      | bigint |           |          | 
- x      | bigint |           |          | generated always as ((a + b) * 2) stored
+                                   Table "public.gtest27"
+ Column |      Type       | Collation | Nullable |                 Default                  
+--------+-----------------+-----------+----------+------------------------------------------
+ a      | pg_catalog.int8 |           |          | 
+ b      | pg_catalog.int8 |           |          | 
+ x      | pg_catalog.int8 |           |          | generated always as ((a + b) * 2) stored
 
 -- Ideally you could just do this, but not today (and should x change type?):
 ALTER TABLE gtest27
@@ -908,12 +908,12 @@ ALTER TABLE gtest27
 ERROR:  cannot alter type of a column used by a generated column
 DETAIL:  Column "a" is used by generated column "x".
 \d gtest27
-                              Table "public.gtest27"
- Column |  Type  | Collation | Nullable |                 Default                  
---------+--------+-----------+----------+------------------------------------------
- a      | bigint |           |          | 
- b      | bigint |           |          | 
- x      | bigint |           |          | generated always as ((a + b) * 2) stored
+                                   Table "public.gtest27"
+ Column |      Type       | Collation | Nullable |                 Default                  
+--------+-----------------+-----------+----------+------------------------------------------
+ a      | pg_catalog.int8 |           |          | 
+ b      | pg_catalog.int8 |           |          | 
+ x      | pg_catalog.int8 |           |          | generated always as ((a + b) * 2) stored
 
 SELECT * FROM gtest27;
  a | b  | x  
@@ -945,19 +945,19 @@ SELECT * FROM gtest29;
 (4 rows)
 
 \d gtest29
-              Table "public.gtest29"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                  Table "public.gtest29"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 
 -- check that dependencies between columns have also been removed
 ALTER TABLE gtest29 DROP COLUMN a;  -- should not drop b
 \d gtest29
-              Table "public.gtest29"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- b      | integer |           |          | 
+                  Table "public.gtest29"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ b      | pg_catalog.int4 |           |          | 
 
 -- with inheritance
 CREATE TABLE gtest30 (
@@ -967,19 +967,19 @@ CREATE TABLE gtest30 (
 CREATE TABLE gtest30_1 () INHERITS (gtest30);
 ALTER TABLE gtest30 ALTER COLUMN b DROP EXPRESSION;
 \d gtest30
-              Table "public.gtest30"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                  Table "public.gtest30"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d gtest30_1
-             Table "public.gtest30_1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                 Table "public.gtest30_1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Inherits: gtest30
 
 DROP TABLE gtest30 CASCADE;
@@ -992,19 +992,19 @@ CREATE TABLE gtest30_1 () INHERITS (gtest30);
 ALTER TABLE ONLY gtest30 ALTER COLUMN b DROP EXPRESSION;  -- error
 ERROR:  ALTER TABLE / DROP EXPRESSION must be applied to child tables too
 \d gtest30
-                            Table "public.gtest30"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           |          | 
- b      | integer |           |          | generated always as (a * 2) stored
+                                Table "public.gtest30"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d gtest30_1
-                           Table "public.gtest30_1"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- a      | integer |           |          | 
- b      | integer |           |          | generated always as (a * 2) stored
+                               Table "public.gtest30_1"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 2) stored
 Inherits: gtest30
 
 ALTER TABLE gtest30_1 ALTER COLUMN b DROP EXPRESSION;  -- error
@@ -1164,17 +1164,17 @@ CREATE TABLE gtest28a (
 ALTER TABLE gtest28a DROP COLUMN a;
 CREATE TABLE gtest28b (LIKE gtest28a INCLUDING GENERATED);
 \d gtest28*
-                           Table "public.gtest28a"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- b      | integer |           |          | 
- c      | integer |           |          | 
- x      | integer |           |          | generated always as (b * 2) stored
+                               Table "public.gtest28a"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
+ x      | pg_catalog.int4 |           |          | generated always as (b * 2) stored
 
-                           Table "public.gtest28b"
- Column |  Type   | Collation | Nullable |              Default               
---------+---------+-----------+----------+------------------------------------
- b      | integer |           |          | 
- c      | integer |           |          | 
- x      | integer |           |          | generated always as (b * 2) stored
+                               Table "public.gtest28b"
+ Column |      Type       | Collation | Nullable |              Default               
+--------+-----------------+-----------+----------+------------------------------------
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
+ x      | pg_catalog.int4 |           |          | generated always as (b * 2) stored
 

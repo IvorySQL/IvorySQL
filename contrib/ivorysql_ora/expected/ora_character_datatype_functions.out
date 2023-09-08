@@ -536,7 +536,7 @@ select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'a')
 ERROR:  illegal argument for function
 --Too many parameters
 select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'ic',8)  from  dual;
-ERROR:  function regexp_replace(unknown, unknown, unknown, integer, integer, unknown, integer) does not exist
+ERROR:  function regexp_replace(unknown, unknown, unknown, pg_catalog.int4, pg_catalog.int4, unknown, pg_catalog.int4) does not exist
 LINE 1: select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -893,7 +893,7 @@ select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, '
 
 --Too many parameters
 select regexp_substr('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 1, 1, 'i',2,8) from dual;
-ERROR:  function regexp_substr(unknown, unknown, integer, integer, unknown, integer, integer) does not exist
+ERROR:  function regexp_substr(unknown, unknown, pg_catalog.int4, pg_catalog.int4, unknown, pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: select regexp_substr('foobarbequebazilbarfbonk', '(b[^b]+)(b...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1188,7 +1188,7 @@ select regexp_instr('345 REGEXP_instr 789', '[A-Z]+', 1, 1, 0, 'a')  from dual;	
 ERROR:  illegal argument for function
 --Too many parameters
 select regexp_instr('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 1, 1, 0, 'i', 0, 3) from dual;	--fail
-ERROR:  function regexp_instr(unknown, unknown, integer, integer, integer, unknown, integer, integer) does not exist
+ERROR:  function regexp_instr(unknown, unknown, pg_catalog.int4, pg_catalog.int4, pg_catalog.int4, unknown, pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: select regexp_instr('foobarbequebazilbarfbonk', '(b[^b]+)(b[...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -2709,7 +2709,7 @@ select instrb('a', 1) from dual;
 (1 row)
 
 SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2, 4) "instrb" FROM DUAL; --err
-ERROR:  function instrb(integer, integer, text, integer, integer) does not exist
+ERROR:  function instrb(pg_catalog.int4, pg_catalog.int4, text, pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2,...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -2720,12 +2720,12 @@ SELECT instrb(20121209, cast(12 as int), cast(1 as varchar2), '2') "instrb" FROM
 (1 row)
 
 SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2, '4', 5) "instrb" FROM DUAL; --err
-ERROR:  function instrb(integer, integer, text, integer, unknown, integer) does not exist
+ERROR:  function instrb(pg_catalog.int4, pg_catalog.int4, text, pg_catalog.int4, unknown, pg_catalog.int4) does not exist
 LINE 1: SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2,...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT instrb(20121209) "instrb" FROM DUAL;
-ERROR:  function instrb(integer) does not exist
+ERROR:  function instrb(pg_catalog.int4) does not exist
 LINE 1: SELECT instrb(20121209) "instrb" FROM DUAL;
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

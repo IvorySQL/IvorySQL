@@ -31,8 +31,8 @@ $$ begin return row($1,1); end $$;
 /
 select retc(42);
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type integer does not match expected type bigint in column 1.
-CONTEXT:  PL/iSQL function retc(integer) while casting return value to function's return type
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 1.
+CONTEXT:  PL/iSQL function retc(pg_catalog.int4) while casting return value to function's return type
 -- nor extra columns
 create or replace function retc(int) returns two_int8s language plisql as
 $$ begin return row($1::int8, 1::int8, 42); end $$;
@@ -40,7 +40,7 @@ $$ begin return row($1::int8, 1::int8, 42); end $$;
 select retc(42);
 ERROR:  returned record type does not match expected record type
 DETAIL:  Number of returned columns (3) does not match expected column count (2).
-CONTEXT:  PL/iSQL function retc(integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function retc(pg_catalog.int4) while casting return value to function's return type
 -- same cases with an intermediate "record" variable
 create or replace function retc(int) returns two_int8s language plisql as
 $$ declare r record; begin r := row($1::int8, 1::int8); return r; end $$;
@@ -56,15 +56,15 @@ $$ declare r record; begin r := row($1,1); return r; end $$;
 /
 select retc(42);
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type integer does not match expected type bigint in column 1.
-CONTEXT:  PL/iSQL function retc(integer) while casting return value to function's return type
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 1.
+CONTEXT:  PL/iSQL function retc(pg_catalog.int4) while casting return value to function's return type
 create or replace function retc(int) returns two_int8s language plisql as
 $$ declare r record; begin r := row($1::int8, 1::int8, 42); return r; end $$;
 /
 select retc(42);
 ERROR:  returned record type does not match expected record type
 DETAIL:  Number of returned columns (3) does not match expected column count (2).
-CONTEXT:  PL/iSQL function retc(integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function retc(pg_catalog.int4) while casting return value to function's return type
 -- but, for mostly historical reasons, we do convert when assigning
 -- to a named-composite-type variable
 create or replace function retc(int) returns two_int8s language plisql as
@@ -347,11 +347,11 @@ select * from returnsrecord(42) as r(x int, y int);
 select * from returnsrecord(42) as r(x int, y int, z int);  -- fail
 ERROR:  returned record type does not match expected record type
 DETAIL:  Number of returned columns (2) does not match expected column count (3).
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type integer does not match expected type bigint in column 2.
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- same with an intermediate record variable
 create or replace function returnsrecord(int) returns record language plisql as
 $$ declare r record; begin r := row($1,$1+1); return r; end $$;
@@ -371,11 +371,11 @@ select * from returnsrecord(42) as r(x int, y int);
 select * from returnsrecord(42) as r(x int, y int, z int);  -- fail
 ERROR:  returned record type does not match expected record type
 DETAIL:  Number of returned columns (2) does not match expected column count (3).
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type integer does not match expected type bigint in column 2.
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- should work the same with a missing column in the actual result value
 create table has_hole(f1 int, f2 int, f3 int);
 alter table has_hole drop column f2;
@@ -397,11 +397,11 @@ select * from returnsrecord(42) as r(x int, y int);
 select * from returnsrecord(42) as r(x int, y int, z int);  -- fail
 ERROR:  returned record type does not match expected record type
 DETAIL:  Number of returned columns (2) does not match expected column count (3).
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type integer does not match expected type bigint in column 2.
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- same with an intermediate record variable
 create or replace function returnsrecord(int) returns record language plisql as
 $$ declare r record; begin r := row($1,$1+1)::has_hole; return r; end $$;
@@ -421,17 +421,17 @@ select * from returnsrecord(42) as r(x int, y int);
 select * from returnsrecord(42) as r(x int, y int, z int);  -- fail
 ERROR:  returned record type does not match expected record type
 DETAIL:  Number of returned columns (2) does not match expected column count (3).
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type integer does not match expected type bigint in column 2.
-CONTEXT:  PL/iSQL function returnsrecord(integer) while casting return value to function's return type
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- check access to a field of an argument declared "record"
 create function getf1(x record) returns int language plisql as
 $$ begin return x.f1; end $$;
 /
 select getf1(1);
-ERROR:  function getf1(integer) does not exist
+ERROR:  function getf1(pg_catalog.int4) does not exist
 LINE 1: select getf1(1);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -707,7 +707,7 @@ select build_ordered_int8s(1,2);
 
 select build_ordered_int8s(2,1);  -- fail
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
-CONTEXT:  PL/iSQL function build_ordered_int8s(bigint,bigint) while casting return value to function's return type
+CONTEXT:  PL/iSQL function build_ordered_int8s(pg_catalog.int8,pg_catalog.int8) while casting return value to function's return type
 create function build_ordered_int8s_2(i int8, j int8) returns ordered_int8s as $$
 declare r record; begin r := row(i,j); return r; end
 $$ language plisql;
@@ -720,7 +720,7 @@ select build_ordered_int8s_2(1,2);
 
 select build_ordered_int8s_2(2,1);  -- fail
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
-CONTEXT:  PL/iSQL function build_ordered_int8s_2(bigint,bigint) while casting return value to function's return type
+CONTEXT:  PL/iSQL function build_ordered_int8s_2(pg_catalog.int8,pg_catalog.int8) while casting return value to function's return type
 create function build_ordered_int8s_3(i int8, j int8) returns ordered_int8s as $$
 declare r two_int8s; begin r := row(i,j); return r; end
 $$ language plisql;
@@ -733,7 +733,7 @@ select build_ordered_int8s_3(1,2);
 
 select build_ordered_int8s_3(2,1);  -- fail
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
-CONTEXT:  PL/iSQL function build_ordered_int8s_3(bigint,bigint) while casting return value to function's return type
+CONTEXT:  PL/iSQL function build_ordered_int8s_3(pg_catalog.int8,pg_catalog.int8) while casting return value to function's return type
 create function build_ordered_int8s_4(i int8, j int8) returns ordered_int8s as $$
 declare r ordered_int8s; begin r := row(i,j); return r; end
 $$ language plisql;
@@ -746,7 +746,7 @@ select build_ordered_int8s_4(1,2);
 
 select build_ordered_int8s_4(2,1);  -- fail
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
-CONTEXT:  PL/iSQL function build_ordered_int8s_4(bigint,bigint) line 2 at assignment
+CONTEXT:  PL/iSQL function build_ordered_int8s_4(pg_catalog.int8,pg_catalog.int8) line 2 at assignment
 create function build_ordered_int8s_a(i int8, j int8) returns ordered_int8s[] as $$
 begin return array[row(i,j), row(i,j+1)]; end
 $$ language plisql;
@@ -759,7 +759,7 @@ select build_ordered_int8s_a(1,2);
 
 select build_ordered_int8s_a(2,1);  -- fail
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
-CONTEXT:  PL/iSQL function build_ordered_int8s_a(bigint,bigint) while casting return value to function's return type
+CONTEXT:  PL/iSQL function build_ordered_int8s_a(pg_catalog.int8,pg_catalog.int8) while casting return value to function's return type
 -- check field assignment
 do $$
 declare r ordered_int8s;

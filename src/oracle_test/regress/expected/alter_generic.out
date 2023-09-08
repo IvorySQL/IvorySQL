@@ -40,13 +40,13 @@ CREATE AGGREGATE alt_agg2 (
   sfunc1 = int4mi, basetype = int4, stype1 = int4, initcond = 0
 );
 ALTER AGGREGATE alt_func1(int) RENAME TO alt_func3;  -- failed (not aggregate)
-ERROR:  function alt_func1(integer) is not an aggregate
+ERROR:  function alt_func1(pg_catalog.int4) is not an aggregate
 ALTER AGGREGATE alt_func1(int) OWNER TO regress_alter_generic_user3;  -- failed (not aggregate)
-ERROR:  function alt_func1(integer) is not an aggregate
+ERROR:  function alt_func1(pg_catalog.int4) is not an aggregate
 ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;  -- failed (not aggregate)
-ERROR:  function alt_func1(integer) is not an aggregate
+ERROR:  function alt_func1(pg_catalog.int4) is not an aggregate
 ALTER FUNCTION alt_func1(int) RENAME TO alt_func2;  -- failed (name conflict)
-ERROR:  function alt_func2(integer) already exists in schema "alt_nsp1"
+ERROR:  function alt_func2(pg_catalog.int4) already exists in schema "alt_nsp1"
 ALTER FUNCTION alt_func1(int) RENAME TO alt_func3;  -- OK
 ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
 ERROR:  must be able to SET ROLE "regress_alter_generic_user2"
@@ -54,7 +54,7 @@ ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user3;  -- OK
 ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp1;  -- OK, already there
 ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp2;  -- OK
 ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg2;   -- failed (name conflict)
-ERROR:  function alt_agg2(integer) already exists in schema "alt_nsp1"
+ERROR:  function alt_agg2(pg_catalog.int4) already exists in schema "alt_nsp1"
 ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg3;   -- OK
 ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
 ERROR:  must be able to SET ROLE "regress_alter_generic_user2"
@@ -83,7 +83,7 @@ ERROR:  must be able to SET ROLE "regress_alter_generic_user3"
 ALTER FUNCTION alt_func3(int) SET SCHEMA alt_nsp2;      -- failed (not owner)
 ERROR:  must be owner of function alt_func3
 ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp2;	-- failed (name conflicts)
-ERROR:  function alt_func2(integer) already exists in schema "alt_nsp2"
+ERROR:  function alt_func2(pg_catalog.int4) already exists in schema "alt_nsp2"
 ALTER AGGREGATE alt_agg3(int) RENAME TO alt_agg4;   -- failed (not owner)
 ERROR:  must be owner of function alt_agg3
 ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg4;   -- OK
@@ -94,23 +94,23 @@ ERROR:  must be able to SET ROLE "regress_alter_generic_user3"
 ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;  -- failed (not owner)
 ERROR:  must be owner of function alt_agg3
 ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- failed (name conflict)
-ERROR:  function alt_agg2(integer) already exists in schema "alt_nsp2"
+ERROR:  function alt_agg2(pg_catalog.int4) already exists in schema "alt_nsp2"
 RESET SESSION AUTHORIZATION;
 SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
   FROM pg_proc p, pg_namespace n, pg_authid a
   WHERE p.pronamespace = n.oid AND p.proowner = a.oid
     AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
   ORDER BY nspname, proname;
- nspname  |  proname  | prorettype | prokind |           rolname           
-----------+-----------+------------+---------+-----------------------------
- alt_nsp1 | alt_agg2  | integer    | a       | regress_alter_generic_user2
- alt_nsp1 | alt_agg3  | integer    | a       | regress_alter_generic_user1
- alt_nsp1 | alt_agg4  | integer    | a       | regress_alter_generic_user2
- alt_nsp1 | alt_func2 | integer    | f       | regress_alter_generic_user2
- alt_nsp1 | alt_func3 | integer    | f       | regress_alter_generic_user1
- alt_nsp1 | alt_func4 | integer    | f       | regress_alter_generic_user2
- alt_nsp2 | alt_agg2  | integer    | a       | regress_alter_generic_user3
- alt_nsp2 | alt_func2 | integer    | f       | regress_alter_generic_user3
+ nspname  |  proname  |   prorettype    | prokind |           rolname           
+----------+-----------+-----------------+---------+-----------------------------
+ alt_nsp1 | alt_agg2  | pg_catalog.int4 | a       | regress_alter_generic_user2
+ alt_nsp1 | alt_agg3  | pg_catalog.int4 | a       | regress_alter_generic_user1
+ alt_nsp1 | alt_agg4  | pg_catalog.int4 | a       | regress_alter_generic_user2
+ alt_nsp1 | alt_func2 | pg_catalog.int4 | f       | regress_alter_generic_user2
+ alt_nsp1 | alt_func3 | pg_catalog.int4 | f       | regress_alter_generic_user1
+ alt_nsp1 | alt_func4 | pg_catalog.int4 | f       | regress_alter_generic_user2
+ alt_nsp2 | alt_agg2  | pg_catalog.int4 | a       | regress_alter_generic_user3
+ alt_nsp2 | alt_func2 | pg_catalog.int4 | f       | regress_alter_generic_user3
 (8 rows)
 
 --
@@ -241,11 +241,11 @@ SELECT n.nspname, oprname, a.rolname,
   WHERE o.oprnamespace = n.oid AND o.oprowner = a.oid
     AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
   ORDER BY nspname, oprname;
- nspname  | oprname |           rolname           | oprleft | oprright | oprcode 
-----------+---------+-----------------------------+---------+----------+---------
- alt_nsp1 | @+@     | regress_alter_generic_user3 | integer | integer  | int4pl
- alt_nsp1 | @-@     | regress_alter_generic_user2 | integer | integer  | int4mi
- alt_nsp2 | @-@     | regress_alter_generic_user1 | integer | integer  | int4mi
+ nspname  | oprname |           rolname           |     oprleft     |    oprright     | oprcode 
+----------+---------+-----------------------------+-----------------+-----------------+---------
+ alt_nsp1 | @+@     | regress_alter_generic_user3 | pg_catalog.int4 | pg_catalog.int4 | int4pl
+ alt_nsp1 | @-@     | regress_alter_generic_user2 | pg_catalog.int4 | pg_catalog.int4 | int4mi
+ alt_nsp2 | @-@     | regress_alter_generic_user1 | pg_catalog.int4 | pg_catalog.int4 | int4mi
 (3 rows)
 
 --
@@ -469,10 +469,10 @@ DROP OPERATOR FAMILY alt_opf16 USING gist;
 -- Should fail. duplicate operator number / function number in ALTER OPERATOR FAMILY ... ADD FUNCTION
 CREATE OPERATOR FAMILY alt_opf17 USING btree;
 ALTER OPERATOR FAMILY alt_opf17 USING btree ADD OPERATOR 1 < (int4, int4), OPERATOR 1 < (int4, int4); -- operator # appears twice in same statement
-ERROR:  operator number 1 for (integer,integer) appears more than once
+ERROR:  operator number 1 for (pg_catalog.int4,pg_catalog.int4) appears more than once
 ALTER OPERATOR FAMILY alt_opf17 USING btree ADD OPERATOR 1 < (int4, int4); -- operator 1 requested first-time
 ALTER OPERATOR FAMILY alt_opf17 USING btree ADD OPERATOR 1 < (int4, int4); -- operator 1 requested again in separate statement
-ERROR:  operator 1(integer,integer) already exists in operator family "alt_opf17"
+ERROR:  operator 1(pg_catalog.int4,pg_catalog.int4) already exists in operator family "alt_opf17"
 ALTER OPERATOR FAMILY alt_opf17 USING btree ADD
   OPERATOR 1 < (int4, int2) ,
   OPERATOR 2 <= (int4, int2) ,
@@ -481,7 +481,7 @@ ALTER OPERATOR FAMILY alt_opf17 USING btree ADD
   OPERATOR 5 > (int4, int2) ,
   FUNCTION 1 btint42cmp(int4, int2) ,
   FUNCTION 1 btint42cmp(int4, int2);    -- procedure 1 appears twice in same statement
-ERROR:  function number 1 for (integer,smallint) appears more than once
+ERROR:  function number 1 for (pg_catalog.int4,pg_catalog.int2) appears more than once
 ALTER OPERATOR FAMILY alt_opf17 USING btree ADD
   OPERATOR 1 < (int4, int2) ,
   OPERATOR 2 <= (int4, int2) ,
@@ -496,13 +496,13 @@ ALTER OPERATOR FAMILY alt_opf17 USING btree ADD
   OPERATOR 4 >= (int4, int2) ,
   OPERATOR 5 > (int4, int2) ,
   FUNCTION 1 btint42cmp(int4, int2);    -- procedure 1 requested again in separate statement
-ERROR:  operator 1(integer,smallint) already exists in operator family "alt_opf17"
+ERROR:  operator 1(pg_catalog.int4,pg_catalog.int2) already exists in operator family "alt_opf17"
 DROP OPERATOR FAMILY alt_opf17 USING btree;
 -- Should fail. Ensure that DROP requests for missing OPERATOR / FUNCTIONS
 -- return appropriate message in ALTER OPERATOR FAMILY ... DROP OPERATOR / FUNCTION
 CREATE OPERATOR FAMILY alt_opf18 USING btree;
 ALTER OPERATOR FAMILY alt_opf18 USING btree DROP OPERATOR 1 (int4, int4);
-ERROR:  operator 1(integer,integer) does not exist in operator family "alt_opf18"
+ERROR:  operator 1(pg_catalog.int4,pg_catalog.int4) does not exist in operator family "alt_opf18"
 ALTER OPERATOR FAMILY alt_opf18 USING btree ADD
   OPERATOR 1 < (int4, int2) ,
   OPERATOR 2 <= (int4, int2) ,
@@ -515,12 +515,12 @@ ALTER OPERATOR FAMILY alt_opf18 USING btree
   ADD FUNCTION 4 (int4, int2) btequalimage(oid);
 ERROR:  btree equal image functions must not be cross-type
 ALTER OPERATOR FAMILY alt_opf18 USING btree DROP FUNCTION 2 (int4, int4);
-ERROR:  function 2(integer,integer) does not exist in operator family "alt_opf18"
+ERROR:  function 2(pg_catalog.int4,pg_catalog.int4) does not exist in operator family "alt_opf18"
 DROP OPERATOR FAMILY alt_opf18 USING btree;
 -- Should fail. Invalid opclass options function (#5) specifications.
 CREATE OPERATOR FAMILY alt_opf19 USING btree;
 ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 test_opclass_options_func(internal, text[], bool);
-ERROR:  function test_opclass_options_func(internal, text[], boolean) does not exist
+ERROR:  function test_opclass_options_func(internal, text[], pg_catalog.bool) does not exist
 ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) btint42cmp(int4, int2);
 ERROR:  invalid operator class options parsing function
 HINT:  Valid signature of operator class options parsing function is (internal) RETURNS void.
@@ -720,17 +720,17 @@ DROP LANGUAGE alt_lang2 CASCADE;
 DROP LANGUAGE alt_lang3 CASCADE;
 DROP SCHEMA alt_nsp1 CASCADE;
 NOTICE:  drop cascades to 28 other objects
-DETAIL:  drop cascades to function alt_func3(integer)
-drop cascades to function alt_agg3(integer)
-drop cascades to function alt_func4(integer)
-drop cascades to function alt_func2(integer)
-drop cascades to function alt_agg4(integer)
-drop cascades to function alt_agg2(integer)
+DETAIL:  drop cascades to function alt_func3(pg_catalog.int4)
+drop cascades to function alt_agg3(pg_catalog.int4)
+drop cascades to function alt_func4(pg_catalog.int4)
+drop cascades to function alt_func2(pg_catalog.int4)
+drop cascades to function alt_agg4(pg_catalog.int4)
+drop cascades to function alt_agg2(pg_catalog.int4)
 drop cascades to conversion alt_conv3
 drop cascades to conversion alt_conv4
 drop cascades to conversion alt_conv2
-drop cascades to operator @+@(integer,integer)
-drop cascades to operator @-@(integer,integer)
+drop cascades to operator @+@(pg_catalog.int4,pg_catalog.int4)
+drop cascades to operator @-@(pg_catalog.int4,pg_catalog.int4)
 drop cascades to operator family alt_opf3 for access method hash
 drop cascades to operator family alt_opc1 for access method hash
 drop cascades to operator family alt_opc2 for access method hash
@@ -750,10 +750,10 @@ drop cascades to text search parser alt_ts_prs3
 drop cascades to text search parser alt_ts_prs2
 DROP SCHEMA alt_nsp2 CASCADE;
 NOTICE:  drop cascades to 9 other objects
-DETAIL:  drop cascades to function alt_nsp2.alt_func2(integer)
-drop cascades to function alt_nsp2.alt_agg2(integer)
+DETAIL:  drop cascades to function alt_nsp2.alt_func2(pg_catalog.int4)
+drop cascades to function alt_nsp2.alt_agg2(pg_catalog.int4)
 drop cascades to conversion alt_nsp2.alt_conv2
-drop cascades to operator alt_nsp2.@-@(integer,integer)
+drop cascades to operator alt_nsp2.@-@(pg_catalog.int4,pg_catalog.int4)
 drop cascades to operator family alt_nsp2.alt_opf2 for access method hash
 drop cascades to text search dictionary alt_nsp2.alt_ts_dict2
 drop cascades to text search configuration alt_nsp2.alt_ts_conf2

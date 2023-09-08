@@ -16,28 +16,28 @@ CREATE TABLE collate_test1 (
     b text COLLATE "C" NOT NULL
 );
 \d collate_test1
-        Table "collate_tests.collate_test1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    | C         | not null | 
+            Table "collate_tests.collate_test1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            | C         | not null | 
 
 CREATE TABLE collate_test_fail (
     a int COLLATE "C",
     b text
 );
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 LINE 2:     a int COLLATE "C",
                   ^
 CREATE TABLE collate_test_like (
     LIKE collate_test1
 );
 \d collate_test_like
-      Table "collate_tests.collate_test_like"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | text    | C         | not null | 
+          Table "collate_tests.collate_test_like"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | text            | C         | not null | 
 
 CREATE TABLE collate_test2 (
     a int,
@@ -72,7 +72,7 @@ LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "P...
                                                              ^
 CREATE DOMAIN testdomain_p AS text COLLATE "POSIX";
 CREATE DOMAIN testdomain_i AS int COLLATE "POSIX"; -- fail
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 CREATE TABLE collate_test4 (
     a int,
     b testdomain_p
@@ -595,9 +595,9 @@ CREATE INDEX collate_test1_idx2 ON collate_test1 (b COLLATE "POSIX");
 CREATE INDEX collate_test1_idx3 ON collate_test1 ((b COLLATE "POSIX")); -- this is different grammatically
 CREATE INDEX collate_test1_idx4 ON collate_test1 (((b||'foo') COLLATE "POSIX"));
 CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE "POSIX"); -- fail
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 CREATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "POSIX")); -- fail
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 LINE 1: ...ATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "P...
                                                              ^
 SELECT relname, pg_get_indexdef(oid) FROM pg_class WHERE relname LIKE 'collate_test%_idx%' ORDER BY 1;
@@ -683,7 +683,7 @@ SELECT collation for ('foo'::text);
 (1 row)
 
 SELECT collation for ((SELECT a FROM collate_test1 LIMIT 1)); -- non-collatable type - error
-ERROR:  collations are not supported by type integer
+ERROR:  collations are not supported by type pg_catalog.int4
 SELECT collation for ((SELECT b FROM collate_test1 LIMIT 1));
  pg_collation_for 
 ------------------
@@ -695,10 +695,10 @@ CREATE VIEW collate_on_int AS
 SELECT c1+1 AS c1p FROM
   (SELECT ('4' COLLATE "C")::INT AS c1) ss;
 \d+ collate_on_int
-                    View "collate_tests.collate_on_int"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- c1p    | integer |           |          |         | plain   | 
+                        View "collate_tests.collate_on_int"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ c1p    | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT c1 + 1 AS c1p
    FROM ( SELECT 4 AS c1) ss;

@@ -289,8 +289,8 @@ DROP SCHEMA schema_one, schema_two CASCADE;
 NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table schema_two.table_two
 drop cascades to table schema_two.table_three
-drop cascades to function schema_two.add(integer,integer)
-drop cascades to function schema_two.newton(integer)
+drop cascades to function schema_two.add(pg_catalog.int4,pg_catalog.int4)
+drop cascades to function schema_two.newton(pg_catalog.int4)
 drop cascades to table schema_one.table_one
 drop cascades to table schema_one."table two"
 drop cascades to table schema_one.table_three
@@ -305,8 +305,8 @@ DROP SCHEMA schema_one, schema_two CASCADE;
 NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table schema_two.table_two
 drop cascades to table schema_two.table_three
-drop cascades to function schema_two.add(integer,integer)
-drop cascades to function schema_two.newton(integer)
+drop cascades to function schema_two.add(pg_catalog.int4,pg_catalog.int4)
+drop cascades to function schema_two.newton(pg_catalog.int4)
 drop cascades to table schema_one.table_one
 drop cascades to table schema_one."table two"
 drop cascades to table schema_one.table_three
@@ -322,8 +322,8 @@ DROP SCHEMA schema_one, schema_two CASCADE;
 NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table schema_two.table_two
 drop cascades to table schema_two.table_three
-drop cascades to function schema_two.add(integer,integer)
-drop cascades to function schema_two.newton(integer)
+drop cascades to function schema_two.add(pg_catalog.int4,pg_catalog.int4)
+drop cascades to function schema_two.newton(pg_catalog.int4)
 drop cascades to table schema_one.table_one
 drop cascades to table schema_one."table two"
 drop cascades to table schema_one.table_three
@@ -333,8 +333,8 @@ NOTICE:  table "schema_one_table_one" does not exist, skipping
 NOTICE:  table "schema_one_table two" does not exist, skipping
 NOTICE:  table "schema_one_table_three" does not exist, skipping
 SELECT * FROM dropped_objects WHERE schema IS NULL OR schema <> 'pg_toast';
-     type     |   schema   |               object                
---------------+------------+-------------------------------------
+     type     |   schema   |                     object                      
+--------------+------------+-------------------------------------------------
  table column | schema_one | schema_one.table_one.a
  schema       |            | schema_two
  table        | schema_two | schema_two.table_two
@@ -346,8 +346,8 @@ SELECT * FROM dropped_objects WHERE schema IS NULL OR schema <> 'pg_toast';
  table        | schema_two | schema_two.table_three
  type         | schema_two | schema_two.table_three
  type         | schema_two | schema_two.table_three[]
- function     | schema_two | schema_two.add(integer,integer)
- aggregate    | schema_two | schema_two.newton(integer)
+ function     | schema_two | schema_two.add(pg_catalog.int4,pg_catalog.int4)
+ aggregate    | schema_two | schema_two.newton(pg_catalog.int4)
  schema       |            | schema_one
  table        | schema_one | schema_one.table_one
  type         | schema_one | schema_one.table_one

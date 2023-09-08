@@ -126,7 +126,7 @@ create aggregate newavg2 (sfunc = int4pl,
 			  stype = int4,
 			  finalfunc = int2um,
 			  initcond = '0');
-ERROR:  function int2um(integer) does not exist
+ERROR:  function int2um(pg_catalog.int4) does not exist
 -- left out basetype
 create aggregate newcnt1 (sfunc = int4inc,
 			  stype = int4,
@@ -169,10 +169,10 @@ drop aggregate newcnt (nonesuch);
 ERROR:  type "nonesuch" does not exist
 -- no such aggregate
 drop aggregate nonesuch (int4);
-ERROR:  aggregate nonesuch(integer) does not exist
+ERROR:  aggregate nonesuch(pg_catalog.int4) does not exist
 -- no such aggregate for type
 drop aggregate newcnt (float4);
-ERROR:  aggregate newcnt(real) does not exist
+ERROR:  aggregate newcnt(pg_catalog.float4) does not exist
 --
 -- DROP FUNCTION
 -- missing function name
@@ -243,7 +243,7 @@ LINE 1: drop operator === (int4);
 HINT:  Use NONE to denote the missing argument of a unary operator.
 -- no such operator by that name
 drop operator === (int4, int4);
-ERROR:  operator does not exist: integer === integer
+ERROR:  operator does not exist: pg_catalog.int4 === pg_catalog.int4
 -- no such type1
 drop operator = (nonesuch);
 ERROR:  missing argument

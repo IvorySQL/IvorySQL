@@ -2070,7 +2070,7 @@ BEGIN
 end;
 /
 INFO:  var1=43,var2=5.5
-ERROR:  operator does not exist: point + integer
+ERROR:  operator does not exist: point + pg_catalog.int4
 LINE 1: x + 1
           ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
@@ -3459,7 +3459,7 @@ INFO:  inner test_f
 
 --failed
 select test_f(23) from dual;
-ERROR:  function test_f(integer) does not exist
+ERROR:  function test_f(pg_catalog.int4) does not exist
 LINE 1: select test_f(23) from dual;
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

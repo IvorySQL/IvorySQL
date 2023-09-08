@@ -114,11 +114,11 @@ set enable_mergejoin = off;
 --
 explain (costs off)
   select * from ec0 where ff = f1 and f1 = '42'::int8;
-            QUERY PLAN             
------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Index Scan using ec0_pkey on ec0
-   Index Cond: (ff = '42'::bigint)
-   Filter: (f1 = '42'::bigint)
+   Index Cond: (ff = '42'::pg_catalog.int8)
+   Filter: (f1 = '42'::pg_catalog.int8)
 (3 rows)
 
 explain (costs off)
@@ -149,12 +149,12 @@ explain (costs off)
 
 explain (costs off)
   select * from ec1, ec2 where ff = x1 and ff = '42'::int8;
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
  Nested Loop
    Join Filter: (ec1.ff = ec2.x1)
    ->  Index Scan using ec1_pkey on ec1
-         Index Cond: ((ff = '42'::bigint) AND (ff = '42'::bigint))
+         Index Cond: ((ff = '42'::pg_catalog.int8) AND (ff = '42'::pg_catalog.int8))
    ->  Seq Scan on ec2
 (5 rows)
 
@@ -171,14 +171,14 @@ explain (costs off)
 
 explain (costs off)
   select * from ec1, ec2 where ff = x1 and '42'::int8 = x1;
-               QUERY PLAN                
------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Nested Loop
    Join Filter: (ec1.ff = ec2.x1)
    ->  Index Scan using ec1_pkey on ec1
-         Index Cond: (ff = '42'::bigint)
+         Index Cond: (ff = '42'::pg_catalog.int8)
    ->  Seq Scan on ec2
-         Filter: ('42'::bigint = x1)
+         Filter: ('42'::pg_catalog.int8 = x1)
 (6 rows)
 
 explain (costs off)
@@ -220,7 +220,7 @@ explain (costs off)
 -----------------------------------------------------
  Nested Loop
    ->  Index Scan using ec1_pkey on ec1
-         Index Cond: (ff = '42'::bigint)
+         Index Cond: (ff = '42'::pg_catalog.int8)
    ->  Append
          ->  Index Scan using ec1_expr2 on ec1 ec1_1
                Index Cond: (((ff + 2) + 1) = ec1.f1)
@@ -239,20 +239,20 @@ explain (costs off)
      union all
      select ff + 4 as x from ec1) as ss1
   where ss1.x = ec1.f1 and ec1.ff = 42::int8 and ec1.ff = ec1.f1;
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
  Nested Loop
    Join Filter: ((((ec1_1.ff + 2) + 1)) = ec1.f1)
    ->  Index Scan using ec1_pkey on ec1
-         Index Cond: ((ff = '42'::bigint) AND (ff = '42'::bigint))
+         Index Cond: ((ff = '42'::pg_catalog.int8) AND (ff = '42'::pg_catalog.int8))
          Filter: (ff = f1)
    ->  Append
          ->  Index Scan using ec1_expr2 on ec1 ec1_1
-               Index Cond: (((ff + 2) + 1) = '42'::bigint)
+               Index Cond: (((ff + 2) + 1) = '42'::pg_catalog.int8)
          ->  Index Scan using ec1_expr3 on ec1 ec1_2
-               Index Cond: (((ff + 3) + 1) = '42'::bigint)
+               Index Cond: (((ff + 3) + 1) = '42'::pg_catalog.int8)
          ->  Index Scan using ec1_expr4 on ec1 ec1_3
-               Index Cond: ((ff + 4) = '42'::bigint)
+               Index Cond: ((ff + 4) = '42'::pg_catalog.int8)
 (12 rows)
 
 explain (costs off)
@@ -275,7 +275,7 @@ explain (costs off)
  Nested Loop
    ->  Nested Loop
          ->  Index Scan using ec1_pkey on ec1
-               Index Cond: (ff = '42'::bigint)
+               Index Cond: (ff = '42'::pg_catalog.int8)
          ->  Append
                ->  Index Scan using ec1_expr2 on ec1 ec1_1
                      Index Cond: (((ff + 2) + 1) = ec1.f1)
@@ -310,8 +310,8 @@ explain (costs off)
      union all
      select ff + 4 as x from ec1) as ss2
   where ss1.x = ec1.f1 and ss1.x = ss2.x and ec1.ff = 42::int8;
-                           QUERY PLAN                            
------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Merge Join
    Merge Cond: ((((ec1_4.ff + 2) + 1)) = (((ec1_1.ff + 2) + 1)))
    ->  Merge Append
@@ -330,7 +330,7 @@ explain (costs off)
                ->  Sort
                      Sort Key: ec1.f1 USING <
                      ->  Index Scan using ec1_pkey on ec1
-                           Index Cond: (ff = '42'::bigint)
+                           Index Cond: (ff = '42'::pg_catalog.int8)
 (19 rows)
 
 -- check partially indexed scan
@@ -350,7 +350,7 @@ explain (costs off)
 -----------------------------------------------------
  Nested Loop
    ->  Index Scan using ec1_pkey on ec1
-         Index Cond: (ff = '42'::bigint)
+         Index Cond: (ff = '42'::pg_catalog.int8)
    ->  Append
          ->  Index Scan using ec1_expr2 on ec1 ec1_1
                Index Cond: (((ff + 2) + 1) = ec1.f1)
@@ -372,8 +372,8 @@ explain (costs off)
      union all
      select ff + 4 as x from ec1) as ss1
   where ss1.x = ec1.f1 and ec1.ff = 42::int8;
-                     QUERY PLAN                      
------------------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Merge Join
    Merge Cond: ((((ec1_1.ff + 2) + 1)) = ec1.f1)
    ->  Merge Append
@@ -386,7 +386,7 @@ explain (costs off)
    ->  Sort
          Sort Key: ec1.f1 USING <
          ->  Index Scan using ec1_pkey on ec1
-               Index Cond: (ff = '42'::bigint)
+               Index Cond: (ff = '42'::pg_catalog.int8)
 (13 rows)
 
 -- check effects of row-level security

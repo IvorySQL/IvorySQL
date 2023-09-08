@@ -152,7 +152,7 @@ select * from people;
 insert into quadtable (f1, q.c1.r, q.c2.i) values(44,55,66);
 update quadtable set q.c1.r = 12 where f1 = 2;
 update quadtable set q.c1 = 12;  -- error, type mismatch
-ERROR:  subfield "c1" is of type complex but expression is of type integer
+ERROR:  subfield "c1" is of type complex but expression is of type pg_catalog.int4
 LINE 1: update quadtable set q.c1 = 12;
                              ^
 HINT:  You will need to rewrite or cast the expression.
@@ -456,7 +456,7 @@ select a,b from test_table where (a,b) > ('a','a') order by a,b;
 reset enable_sort;
 -- Check row comparisons with IN
 select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
-ERROR:  cannot compare dissimilar column types bigint and integer at record column 1
+ERROR:  cannot compare dissimilar column types pg_catalog.int8 and pg_catalog.int4 at record column 1
 explain (costs off)
 select * from int8_tbl i8
 where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
@@ -648,9 +648,9 @@ select row(1, -2)::testtype1 < row(1, 3)::testtype1;
 -- mismatches
 create type testtype3 as (a int, b text);
 select row(1, 2)::testtype1 < row(1, 'abc')::testtype3;
-ERROR:  cannot compare dissimilar column types integer and text at record column 2
+ERROR:  cannot compare dissimilar column types pg_catalog.int4 and text at record column 2
 select row(1, 2)::testtype1 <> row(1, 'abc')::testtype3;
-ERROR:  cannot compare dissimilar column types integer and text at record column 2
+ERROR:  cannot compare dissimilar column types pg_catalog.int4 and text at record column 2
 create type testtype5 as (a int);
 select row(1, 2)::testtype1 < row(1)::testtype5;
 ERROR:  cannot compare record types with different numbers of columns
@@ -815,9 +815,9 @@ select row(1, '(1,2)')::testtype4 *<> row(1, '(1,3)')::testtype4;
 
 -- mismatches
 select row(1, 2)::testtype1 *< row(1, 'abc')::testtype3;
-ERROR:  cannot compare dissimilar column types integer and text at record column 2
+ERROR:  cannot compare dissimilar column types pg_catalog.int4 and text at record column 2
 select row(1, 2)::testtype1 *<> row(1, 'abc')::testtype3;
-ERROR:  cannot compare dissimilar column types integer and text at record column 2
+ERROR:  cannot compare dissimilar column types pg_catalog.int4 and text at record column 2
 create type testtype5 as (a int);
 select row(1, 2)::testtype1 *< row(1)::testtype5;
 ERROR:  cannot compare record types with different numbers of columns
@@ -902,7 +902,7 @@ create function fcompos1(v compos) returns void as $$
 insert into compos values (v);  -- fail
 $$ language sql;
 /
-ERROR:  column "f1" is of type integer but expression is of type compos
+ERROR:  column "f1" is of type pg_catalog.int4 but expression is of type compos
 LINE 2: insert into compos values (v);  -- fail
                                    ^
 HINT:  You will need to rewrite or cast the expression.

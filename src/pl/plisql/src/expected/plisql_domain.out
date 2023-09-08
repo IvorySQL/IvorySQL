@@ -18,7 +18,7 @@ SELECT * FROM test_argresult_booltrue(false, true);
 ERROR:  value for domain booltrue violates check constraint "booltrue_check"
 SELECT * FROM test_argresult_booltrue(true, false);
 ERROR:  value for domain booltrue violates check constraint "booltrue_check"
-CONTEXT:  PL/iSQL function test_argresult_booltrue(booltrue,boolean) while casting return value to function's return type
+CONTEXT:  PL/iSQL function test_argresult_booltrue(booltrue,pg_catalog.bool) while casting return value to function's return type
 CREATE FUNCTION test_assign_booltrue(x bool, y bool) RETURNS booltrue AS $$
 declare v booltrue := x;
 begin
@@ -35,10 +35,10 @@ SELECT * FROM test_assign_booltrue(true, true);
 
 SELECT * FROM test_assign_booltrue(false, true);
 ERROR:  value for domain booltrue violates check constraint "booltrue_check"
-CONTEXT:  PL/iSQL function test_assign_booltrue(boolean,boolean) line 2 during statement block local variable initialization
+CONTEXT:  PL/iSQL function test_assign_booltrue(pg_catalog.bool,pg_catalog.bool) line 2 during statement block local variable initialization
 SELECT * FROM test_assign_booltrue(true, false);
 ERROR:  value for domain booltrue violates check constraint "booltrue_check"
-CONTEXT:  PL/iSQL function test_assign_booltrue(boolean,boolean) line 4 at assignment
+CONTEXT:  PL/iSQL function test_assign_booltrue(pg_catalog.bool,pg_catalog.bool) line 4 at assignment
 CREATE DOMAIN uint2 AS int2 CHECK (VALUE >= 0);
 CREATE FUNCTION test_argresult_uint2(x uint2, y int) RETURNS uint2 AS $$
 begin
@@ -54,7 +54,7 @@ SELECT * FROM test_argresult_uint2(100::uint2, 50);
 
 SELECT * FROM test_argresult_uint2(100::uint2, -50);
 ERROR:  value for domain uint2 violates check constraint "uint2_check"
-CONTEXT:  PL/iSQL function test_argresult_uint2(uint2,integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function test_argresult_uint2(uint2,pg_catalog.int4) while casting return value to function's return type
 SELECT * FROM test_argresult_uint2(null, 1);
  test_argresult_uint2 
 ----------------------
@@ -77,10 +77,10 @@ SELECT * FROM test_assign_uint2(100, 50);
 
 SELECT * FROM test_assign_uint2(100, -50);
 ERROR:  value for domain uint2 violates check constraint "uint2_check"
-CONTEXT:  PL/iSQL function test_assign_uint2(integer,integer) line 4 at assignment
+CONTEXT:  PL/iSQL function test_assign_uint2(pg_catalog.int4,pg_catalog.int4) line 4 at assignment
 SELECT * FROM test_assign_uint2(-100, 50);
 ERROR:  value for domain uint2 violates check constraint "uint2_check"
-CONTEXT:  PL/iSQL function test_assign_uint2(integer,integer) line 2 during statement block local variable initialization
+CONTEXT:  PL/iSQL function test_assign_uint2(pg_catalog.int4,pg_catalog.int4) line 2 during statement block local variable initialization
 SELECT * FROM test_assign_uint2(null, 1);
  test_assign_uint2 
 -------------------
@@ -104,7 +104,7 @@ SELECT * FROM test_argresult_nnint(null, 20);
 ERROR:  domain nnint does not allow null values
 SELECT * FROM test_argresult_nnint(10, null);
 ERROR:  domain nnint does not allow null values
-CONTEXT:  PL/iSQL function test_argresult_nnint(nnint,integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function test_argresult_nnint(nnint,pg_catalog.int4) while casting return value to function's return type
 CREATE FUNCTION test_assign_nnint(x int, y int) RETURNS nnint AS $$
 declare v nnint := x;
 begin
@@ -121,10 +121,10 @@ SELECT * FROM test_assign_nnint(10, 20);
 
 SELECT * FROM test_assign_nnint(null, 20);
 ERROR:  domain nnint does not allow null values
-CONTEXT:  PL/iSQL function test_assign_nnint(integer,integer) line 2 during statement block local variable initialization
+CONTEXT:  PL/iSQL function test_assign_nnint(pg_catalog.int4,pg_catalog.int4) line 2 during statement block local variable initialization
 SELECT * FROM test_assign_nnint(10, null);
 ERROR:  domain nnint does not allow null values
-CONTEXT:  PL/iSQL function test_assign_nnint(integer,integer) line 4 at assignment
+CONTEXT:  PL/iSQL function test_assign_nnint(pg_catalog.int4,pg_catalog.int4) line 4 at assignment
 --
 -- Domains over arrays
 --
@@ -174,10 +174,10 @@ SELECT * FROM test_assign_ordered_pair_domain(1,2,3);
 
 SELECT * FROM test_assign_ordered_pair_domain(1,2,0);
 ERROR:  value for domain ordered_pair_domain violates check constraint "ordered_pair_domain_check"
-CONTEXT:  PL/iSQL function test_assign_ordered_pair_domain(integer,integer,integer) line 4 at assignment
+CONTEXT:  PL/iSQL function test_assign_ordered_pair_domain(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 4 at assignment
 SELECT * FROM test_assign_ordered_pair_domain(2,1,3);
 ERROR:  value for domain ordered_pair_domain violates check constraint "ordered_pair_domain_check"
-CONTEXT:  PL/iSQL function test_assign_ordered_pair_domain(integer,integer,integer) line 2 during statement block local variable initialization
+CONTEXT:  PL/iSQL function test_assign_ordered_pair_domain(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 2 during statement block local variable initialization
 --
 -- Arrays of domains
 --
@@ -207,7 +207,7 @@ select test_build_uint2_array(1::int2);
 
 select test_build_uint2_array(-1::int2);  -- fail
 ERROR:  value for domain uint2 violates check constraint "uint2_check"
-CONTEXT:  PL/iSQL function test_build_uint2_array(smallint) while casting return value to function's return type
+CONTEXT:  PL/iSQL function test_build_uint2_array(pg_catalog.int2) while casting return value to function's return type
 CREATE FUNCTION test_argresult_domain_array(x integer[])
   RETURNS ordered_pair_domain[] AS $$
 begin
@@ -223,7 +223,7 @@ select test_argresult_domain_array(array[2,4]);
 
 select test_argresult_domain_array(array[4,2]);  -- fail
 ERROR:  value for domain ordered_pair_domain violates check constraint "ordered_pair_domain_check"
-CONTEXT:  PL/iSQL function test_argresult_domain_array(integer[]) line 3 at RETURN
+CONTEXT:  PL/iSQL function test_argresult_domain_array(pg_catalog.int4[]) line 3 at RETURN
 CREATE FUNCTION test_argresult_domain_array2(x ordered_pair_domain)
   RETURNS integer AS $$
 begin
@@ -271,7 +271,7 @@ SELECT test_result_nnint_container(null, 3);
 
 SELECT test_result_nnint_container(3, null);  -- fail
 ERROR:  domain nnint does not allow null values
-CONTEXT:  PL/iSQL function test_result_nnint_container(integer,integer) line 3 at RETURN
+CONTEXT:  PL/iSQL function test_result_nnint_container(pg_catalog.int4,pg_catalog.int4) line 3 at RETURN
 CREATE FUNCTION test_assign_nnint_container(x int, y int, z int)
   RETURNS nnint_container AS $$
 declare v nnint_container := row(x, y);
@@ -289,10 +289,10 @@ SELECT * FROM test_assign_nnint_container(1,2,3);
 
 SELECT * FROM test_assign_nnint_container(1,2,null);
 ERROR:  domain nnint does not allow null values
-CONTEXT:  PL/iSQL function test_assign_nnint_container(integer,integer,integer) line 4 at assignment
+CONTEXT:  PL/iSQL function test_assign_nnint_container(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 4 at assignment
 SELECT * FROM test_assign_nnint_container(1,null,3);
 ERROR:  domain nnint does not allow null values
-CONTEXT:  PL/iSQL function test_assign_nnint_container(integer,integer,integer) line 2 during statement block local variable initialization
+CONTEXT:  PL/iSQL function test_assign_nnint_container(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 2 during statement block local variable initialization
 -- Since core system allows this:
 SELECT null::nnint_container;
  nnint_container 
@@ -318,7 +318,7 @@ SELECT * FROM test_assign_nnint_container2(1,2,3);
 
 SELECT * FROM test_assign_nnint_container2(1,2,null);
 ERROR:  domain nnint does not allow null values
-CONTEXT:  PL/iSQL function test_assign_nnint_container2(integer,integer,integer) line 4 at assignment
+CONTEXT:  PL/iSQL function test_assign_nnint_container2(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 4 at assignment
 --
 -- Domains of composite
 --
@@ -355,7 +355,7 @@ SELECT build_ordered_named_pair(1,2);
 
 SELECT build_ordered_named_pair(2,1);  -- fail
 ERROR:  value for domain ordered_named_pair violates check constraint "ordered_named_pair_check"
-CONTEXT:  PL/iSQL function build_ordered_named_pair(integer,integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function build_ordered_named_pair(pg_catalog.int4,pg_catalog.int4) while casting return value to function's return type
 CREATE FUNCTION test_assign_ordered_named_pair(x int, y int, z int)
   RETURNS ordered_named_pair AS $$
 declare v ordered_named_pair := row(x, y);
@@ -373,10 +373,10 @@ SELECT * FROM test_assign_ordered_named_pair(1,2,3);
 
 SELECT * FROM test_assign_ordered_named_pair(1,2,0);
 ERROR:  value for domain ordered_named_pair violates check constraint "ordered_named_pair_check"
-CONTEXT:  PL/iSQL function test_assign_ordered_named_pair(integer,integer,integer) line 4 at assignment
+CONTEXT:  PL/iSQL function test_assign_ordered_named_pair(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 4 at assignment
 SELECT * FROM test_assign_ordered_named_pair(2,1,3);
 ERROR:  value for domain ordered_named_pair violates check constraint "ordered_named_pair_check"
-CONTEXT:  PL/iSQL function test_assign_ordered_named_pair(integer,integer,integer) line 2 during statement block local variable initialization
+CONTEXT:  PL/iSQL function test_assign_ordered_named_pair(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 2 during statement block local variable initialization
 CREATE FUNCTION build_ordered_named_pairs(i int, j int) RETURNS ordered_named_pair[] AS $$
 begin
 return array[row(i, j), row(i, j+1)];
@@ -391,7 +391,7 @@ SELECT build_ordered_named_pairs(1,2);
 
 SELECT build_ordered_named_pairs(2,1);  -- fail
 ERROR:  value for domain ordered_named_pair violates check constraint "ordered_named_pair_check"
-CONTEXT:  PL/iSQL function build_ordered_named_pairs(integer,integer) while casting return value to function's return type
+CONTEXT:  PL/iSQL function build_ordered_named_pairs(pg_catalog.int4,pg_catalog.int4) while casting return value to function's return type
 CREATE FUNCTION test_assign_ordered_named_pairs(x int, y int, z int)
   RETURNS ordered_named_pair[] AS $$
 declare v ordered_named_pair[] := array[row(x, y)];
@@ -410,7 +410,7 @@ SELECT * FROM test_assign_ordered_named_pairs(1,2,3);
 
 SELECT * FROM test_assign_ordered_named_pairs(2,1,3);
 ERROR:  value for domain ordered_named_pair violates check constraint "ordered_named_pair_check"
-CONTEXT:  PL/iSQL function test_assign_ordered_named_pairs(integer,integer,integer) line 2 during statement block local variable initialization
+CONTEXT:  PL/iSQL function test_assign_ordered_named_pairs(pg_catalog.int4,pg_catalog.int4,pg_catalog.int4) line 2 during statement block local variable initialization
 SELECT * FROM test_assign_ordered_named_pairs(1,2,0);  -- should fail someday
  test_assign_ordered_named_pairs 
 ---------------------------------

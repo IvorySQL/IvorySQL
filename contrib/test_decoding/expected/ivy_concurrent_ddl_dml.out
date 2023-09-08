@@ -13,12 +13,12 @@ step s2_alter_tbl2_float: ALTER TABLE tbl2 ALTER COLUMN val2 TYPE float;
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                               
--------------------------------------------------------------------
-BEGIN                                                              
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1         
-table public.tbl2: INSERT: val1[integer]:1 val2[double precision]:1
-COMMIT                                                             
+data                                                                        
+----------------------------------------------------------------------------
+BEGIN                                                                       
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1  
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.float8]:1
+COMMIT                                                                      
 (4 rows)
 
 ?column?
@@ -41,12 +41,12 @@ step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s1_commit: COMMIT;
 step s2_alter_tbl1_float: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -68,12 +68,12 @@ step s2_alter_tbl2_char: ALTER TABLE tbl2 ALTER COLUMN val2 TYPE character varyi
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                         
--------------------------------------------------------------
-BEGIN                                                        
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1   
-table public.tbl2: INSERT: val1[integer]:1 val2[varchar2]:'1'
-COMMIT                                                       
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[varchar2]:'1'     
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -96,12 +96,12 @@ step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s1_commit: COMMIT;
 step s2_alter_tbl1_char: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -124,12 +124,12 @@ step s2_alter_tbl1_float: ALTER TABLE tbl1 ALTER COLUMN val2 TYPE float; <waitin
 step s1_commit: COMMIT;
 step s2_alter_tbl1_float: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -152,12 +152,12 @@ step s2_alter_tbl1_char: ALTER TABLE tbl1 ALTER COLUMN val2 TYPE character varyi
 step s1_commit: COMMIT;
 step s2_alter_tbl1_char: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -181,12 +181,12 @@ step s2_alter_tbl1_float: ALTER TABLE tbl1 ALTER COLUMN val2 TYPE float; <waitin
 step s1_commit: COMMIT;
 step s2_alter_tbl1_float: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                               
--------------------------------------------------------------------
-BEGIN                                                              
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1         
-table public.tbl2: INSERT: val1[integer]:1 val2[double precision]:1
-COMMIT                                                             
+data                                                                        
+----------------------------------------------------------------------------
+BEGIN                                                                       
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1  
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.float8]:1
+COMMIT                                                                      
 (4 rows)
 
 ?column?
@@ -210,12 +210,12 @@ step s2_alter_tbl1_char: ALTER TABLE tbl1 ALTER COLUMN val2 TYPE character varyi
 step s1_commit: COMMIT;
 step s2_alter_tbl1_char: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                         
--------------------------------------------------------------
-BEGIN                                                        
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1   
-table public.tbl2: INSERT: val1[integer]:1 val2[varchar2]:'1'
-COMMIT                                                       
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[varchar2]:'1'     
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -238,12 +238,12 @@ step s2_alter_tbl2_text: ALTER TABLE tbl2 ALTER COLUMN val2 TYPE text;
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[text]:'1' 
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[text]:'1'         
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -268,12 +268,12 @@ step s2_alter_tbl1_char: ALTER TABLE tbl1 ALTER COLUMN val2 TYPE character varyi
 step s1_commit: COMMIT;
 step s2_alter_tbl1_char: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[text]:'1' 
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[text]:'1'         
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -292,16 +292,16 @@ init
 step s1_begin: BEGIN;
 step s1_insert_tbl1: INSERT INTO tbl1 (val1, val2) VALUES (1, 1);
 step s2_alter_tbl2_boolean: ALTER TABLE tbl2 ALTER COLUMN val2 TYPE boolean;
-ERROR:  column "val2" cannot be cast automatically to type boolean
+ERROR:  column "val2" cannot be cast automatically to type pg_catalog.bool
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -320,19 +320,19 @@ init
 step s1_begin: BEGIN;
 step s1_insert_tbl1: INSERT INTO tbl1 (val1, val2) VALUES (1, 1);
 step s2_alter_tbl2_boolean: ALTER TABLE tbl2 ALTER COLUMN val2 TYPE boolean;
-ERROR:  column "val2" cannot be cast automatically to type boolean
+ERROR:  column "val2" cannot be cast automatically to type pg_catalog.bool
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s2_alter_tbl1_boolean: ALTER TABLE tbl1 ALTER COLUMN val2 TYPE boolean; <waiting ...>
 step s1_commit: COMMIT;
 step s2_alter_tbl1_boolean: <... completed>
-ERROR:  column "val2" cannot be cast automatically to type boolean
+ERROR:  column "val2" cannot be cast automatically to type pg_catalog.bool
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+COMMIT                                                                    
 (4 rows)
 
 ?column?
@@ -354,12 +354,12 @@ step s2_alter_tbl2_add_int: ALTER TABLE tbl2 ADD COLUMN val3 INTEGER;
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                      
---------------------------------------------------------------------------
-BEGIN                                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[integer]:1
-COMMIT                                                                    
+data                                                                                              
+--------------------------------------------------------------------------------------------------
+BEGIN                                                                                             
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                        
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.int4]:1
+COMMIT                                                                                            
 (4 rows)
 
 ?column?
@@ -384,15 +384,15 @@ step s2_alter_tbl2_add_int: ALTER TABLE tbl2 ADD COLUMN val3 INTEGER;
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                      
---------------------------------------------------------------------------
-BEGIN                                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1                
-COMMIT                                                                    
-BEGIN                                                                     
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[integer]:1
-COMMIT                                                                    
+data                                                                                              
+--------------------------------------------------------------------------------------------------
+BEGIN                                                                                             
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                        
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                        
+COMMIT                                                                                            
+BEGIN                                                                                             
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.int4]:1
+COMMIT                                                                                            
 (7 rows)
 
 ?column?
@@ -414,12 +414,12 @@ step s2_alter_tbl2_add_float: ALTER TABLE tbl2 ADD COLUMN val3 FLOAT;
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                               
------------------------------------------------------------------------------------
-BEGIN                                                                              
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                         
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[double precision]:1
-COMMIT                                                                             
+data                                                                                                
+----------------------------------------------------------------------------------------------------
+BEGIN                                                                                               
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                          
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.float8]:1
+COMMIT                                                                                              
 (4 rows)
 
 ?column?
@@ -444,15 +444,15 @@ step s2_alter_tbl2_add_float: ALTER TABLE tbl2 ADD COLUMN val3 FLOAT;
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                               
------------------------------------------------------------------------------------
-BEGIN                                                                              
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                         
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1                         
-COMMIT                                                                             
-BEGIN                                                                              
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[double precision]:1
-COMMIT                                                                             
+data                                                                                                
+----------------------------------------------------------------------------------------------------
+BEGIN                                                                                               
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                          
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                          
+COMMIT                                                                                              
+BEGIN                                                                                               
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.float8]:1
+COMMIT                                                                                              
 (7 rows)
 
 ?column?
@@ -474,12 +474,12 @@ step s2_alter_tbl2_add_char: ALTER TABLE tbl2 ADD COLUMN val3 character varying;
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                         
------------------------------------------------------------------------------
-BEGIN                                                                        
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                   
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[varchar2]:'1'
-COMMIT                                                                       
+data                                                                                         
+---------------------------------------------------------------------------------------------
+BEGIN                                                                                        
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                   
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[varchar2]:'1'
+COMMIT                                                                                       
 (4 rows)
 
 ?column?
@@ -504,15 +504,15 @@ step s2_alter_tbl2_add_char: ALTER TABLE tbl2 ADD COLUMN val3 character varying;
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                         
------------------------------------------------------------------------------
-BEGIN                                                                        
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                   
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1                   
-COMMIT                                                                       
-BEGIN                                                                        
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[varchar2]:'1'
-COMMIT                                                                       
+data                                                                                         
+---------------------------------------------------------------------------------------------
+BEGIN                                                                                        
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                   
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                   
+COMMIT                                                                                       
+BEGIN                                                                                        
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[varchar2]:'1'
+COMMIT                                                                                       
 (7 rows)
 
 ?column?
@@ -535,11 +535,11 @@ step s2_alter_tbl2_drop_3rd_col: ALTER TABLE tbl2 DROP COLUMN val3; <waiting ...
 step s1_commit: COMMIT;
 step s2_alter_tbl2_drop_3rd_col: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                      
---------------------------------------------------------------------------
-BEGIN                                                                     
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[integer]:1
-COMMIT                                                                    
+data                                                                                              
+--------------------------------------------------------------------------------------------------
+BEGIN                                                                                             
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.int4]:1
+COMMIT                                                                                            
 (3 rows)
 
 ?column?
@@ -564,15 +564,15 @@ step s1_commit: COMMIT;
 step s2_alter_tbl2_drop_3rd_col: <... completed>
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                         
------------------------------------------------------------------------------
-BEGIN                                                                        
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[integer]:1   
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[integer]:null
-COMMIT                                                                       
-BEGIN                                                                        
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1                   
-COMMIT                                                                       
+data                                                                                                 
+-----------------------------------------------------------------------------------------------------
+BEGIN                                                                                                
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.int4]:1   
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.int4]:null
+COMMIT                                                                                               
+BEGIN                                                                                                
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                           
+COMMIT                                                                                               
 (7 rows)
 
 ?column?
@@ -595,11 +595,11 @@ step s2_alter_tbl2_drop_3rd_col: ALTER TABLE tbl2 DROP COLUMN val3; <waiting ...
 step s1_commit: COMMIT;
 step s2_alter_tbl2_drop_3rd_col: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                      
---------------------------------------------------------------------------
-BEGIN                                                                     
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[integer]:1
-COMMIT                                                                    
+data                                                                                              
+--------------------------------------------------------------------------------------------------
+BEGIN                                                                                             
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.int4]:1
+COMMIT                                                                                            
 (3 rows)
 
 step s2_alter_tbl2_add_text: ALTER TABLE tbl2 ADD COLUMN val3 TEXT;
@@ -610,22 +610,22 @@ step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s1_commit: COMMIT;
 step s2_alter_tbl2_3rd_char: <... completed>
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                     
--------------------------------------------------------------------------
-BEGIN                                                                    
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[text]:'1'
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[text]:'1'
-COMMIT                                                                   
+data                                                                                     
+-----------------------------------------------------------------------------------------
+BEGIN                                                                                    
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[text]:'1'
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[text]:'1'
+COMMIT                                                                                   
 (4 rows)
 
 step s2_alter_tbl2_3rd_int: ALTER TABLE tbl2 ALTER COLUMN val3 TYPE int USING val3::integer;
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                      
---------------------------------------------------------------------------
-BEGIN                                                                     
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[integer]:1
-COMMIT                                                                    
+data                                                                                              
+--------------------------------------------------------------------------------------------------
+BEGIN                                                                                             
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[pg_catalog.int4]:1
+COMMIT                                                                                            
 (3 rows)
 
 ?column?
@@ -651,16 +651,16 @@ step s1_commit: COMMIT;
 step s2_alter_tbl2_3rd_text: <... completed>
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                         
------------------------------------------------------------------------------
-BEGIN                                                                        
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                   
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[varchar2]:'1'
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[varchar2]:'1'
-COMMIT                                                                       
-BEGIN                                                                        
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[text]:'1'    
-COMMIT                                                                       
+data                                                                                         
+---------------------------------------------------------------------------------------------
+BEGIN                                                                                        
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                   
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[varchar2]:'1'
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[varchar2]:'1'
+COMMIT                                                                                       
+BEGIN                                                                                        
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[text]:'1'    
+COMMIT                                                                                       
 (8 rows)
 
 ?column?
@@ -686,16 +686,16 @@ step s1_commit: COMMIT;
 step s2_alter_tbl2_3rd_char: <... completed>
 step s1_insert_tbl2_3col: INSERT INTO tbl2 (val1, val2, val3) VALUES (1, 1, 1);
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                         
------------------------------------------------------------------------------
-BEGIN                                                                        
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                   
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[text]:'1'    
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[text]:'1'    
-COMMIT                                                                       
-BEGIN                                                                        
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[varchar2]:'1'
-COMMIT                                                                       
+data                                                                                         
+---------------------------------------------------------------------------------------------
+BEGIN                                                                                        
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                   
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[text]:'1'    
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[text]:'1'    
+COMMIT                                                                                       
+BEGIN                                                                                        
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[varchar2]:'1'
+COMMIT                                                                                       
 (8 rows)
 
 ?column?
@@ -720,15 +720,15 @@ step s1_commit: COMMIT;
 step s2_alter_tbl2_drop_3rd_col: ALTER TABLE tbl2 DROP COLUMN val3;
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                     
--------------------------------------------------------------------------
-BEGIN                                                                    
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1               
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[text]:'1'
-COMMIT                                                                   
-BEGIN                                                                    
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1               
-COMMIT                                                                   
+data                                                                                     
+-----------------------------------------------------------------------------------------
+BEGIN                                                                                    
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1               
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[text]:'1'
+COMMIT                                                                                   
+BEGIN                                                                                    
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1               
+COMMIT                                                                                   
 (7 rows)
 
 ?column?
@@ -753,15 +753,15 @@ step s1_commit: COMMIT;
 step s2_alter_tbl2_drop_3rd_col: ALTER TABLE tbl2 DROP COLUMN val3;
 step s1_insert_tbl2: INSERT INTO tbl2 (val1, val2) VALUES (1, 1);
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                                         
------------------------------------------------------------------------------
-BEGIN                                                                        
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1                   
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1 val3[varchar2]:'1'
-COMMIT                                                                       
-BEGIN                                                                        
-table public.tbl2: INSERT: val1[integer]:1 val2[integer]:1                   
-COMMIT                                                                       
+data                                                                                         
+---------------------------------------------------------------------------------------------
+BEGIN                                                                                        
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                   
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1 val3[varchar2]:'1'
+COMMIT                                                                                       
+BEGIN                                                                                        
+table public.tbl2: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1                   
+COMMIT                                                                                       
 (7 rows)
 
 ?column?
@@ -784,12 +784,12 @@ step s2_alter_tbl2_drop_3rd_col: ALTER TABLE tbl2 DROP COLUMN val3;
 step s1_insert_tbl1: INSERT INTO tbl1 (val1, val2) VALUES (1, 1);
 step s1_commit: COMMIT;
 step s2_get_changes: SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-data                                                      
-----------------------------------------------------------
-BEGIN                                                     
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-table public.tbl1: INSERT: val1[integer]:1 val2[integer]:1
-COMMIT                                                    
+data                                                                      
+--------------------------------------------------------------------------
+BEGIN                                                                     
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+table public.tbl1: INSERT: val1[pg_catalog.int4]:1 val2[pg_catalog.int4]:1
+COMMIT                                                                    
 (4 rows)
 
 ?column?

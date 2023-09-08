@@ -3129,7 +3129,7 @@ select anyarray_anymultirange_func(ARRAY[1,2], int4multirange(int4range(10,20)))
 
 -- should fail
 select anyarray_anymultirange_func(ARRAY[1,2], nummultirange(numrange(10,20)));
-ERROR:  function anyarray_anymultirange_func(integer[], nummultirange) does not exist
+ERROR:  function anyarray_anymultirange_func(pg_catalog.int4[], nummultirange) does not exist
 LINE 1: select anyarray_anymultirange_func(ARRAY[1,2], nummultirange...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -3172,7 +3172,7 @@ select multirangetypes_sql(int4multirange(int4range(1,10)), ARRAY[2,20]);
 (1 row)
 
 select multirangetypes_sql(nummultirange(numrange(1,10)), ARRAY[2,20]);  -- match failure
-ERROR:  function multirangetypes_sql(nummultirange, integer[]) does not exist
+ERROR:  function multirangetypes_sql(nummultirange, pg_catalog.int4[]) does not exist
 LINE 1: select multirangetypes_sql(nummultirange(numrange(1,10)), AR...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -3193,7 +3193,7 @@ select anycompatiblearray_anycompatiblemultirange_func(ARRAY[1,2], multirange(nu
 
 -- should fail
 select anycompatiblearray_anycompatiblemultirange_func(ARRAY[1.1,2], multirange(int4range(10,20)));
-ERROR:  function anycompatiblearray_anycompatiblemultirange_func(numeric[], int4multirange) does not exist
+ERROR:  function anycompatiblearray_anycompatiblemultirange_func(pg_catalog.numeric[], int4multirange) does not exist
 LINE 1: select anycompatiblearray_anycompatiblemultirange_func(ARRAY...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

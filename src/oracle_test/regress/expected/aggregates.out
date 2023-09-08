@@ -1706,10 +1706,10 @@ select * from agg_view1;
 (1 row)
 
 select pg_get_viewdef('agg_view1'::regclass);
-                                                   pg_get_viewdef                                                    
----------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(a, b, c) AS aggfns                                                                                  +
-    FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
+                                                       pg_get_viewdef                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+  SELECT aggfns(a, b, c) AS aggfns                                                                                          +
+    FROM ( VALUES (1,3,'foo'::text), (0,NULL::pg_catalog.int4,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
 create or replace view agg_view1 as
@@ -1723,10 +1723,10 @@ select * from agg_view1;
 (1 row)
 
 select pg_get_viewdef('agg_view1'::regclass);
-                                                   pg_get_viewdef                                                    
----------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(DISTINCT v.a, v.b, v.c) AS aggfns                                                                   +
-    FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c),+
+                                                       pg_get_viewdef                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+  SELECT aggfns(DISTINCT v.a, v.b, v.c) AS aggfns                                                                           +
+    FROM ( VALUES (1,3,'foo'::text), (0,NULL::pg_catalog.int4,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c),+
      generate_series(1, 3) i(i);
 (1 row)
 
@@ -1741,10 +1741,10 @@ select * from agg_view1;
 (1 row)
 
 select pg_get_viewdef('agg_view1'::regclass);
-                                                   pg_get_viewdef                                                    
----------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(DISTINCT v.a, v.b, v.c ORDER BY v.b) AS aggfns                                                      +
-    FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c),+
+                                                       pg_get_viewdef                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+  SELECT aggfns(DISTINCT v.a, v.b, v.c ORDER BY v.b) AS aggfns                                                              +
+    FROM ( VALUES (1,3,'foo'::text), (0,NULL::pg_catalog.int4,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c),+
      generate_series(1, 3) i(i);
 (1 row)
 
@@ -1758,10 +1758,10 @@ select * from agg_view1;
 (1 row)
 
 select pg_get_viewdef('agg_view1'::regclass);
-                                                   pg_get_viewdef                                                    
----------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(a, b, c ORDER BY (b + 1)) AS aggfns                                                                 +
-    FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
+                                                       pg_get_viewdef                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+  SELECT aggfns(a, b, c ORDER BY (b + 1)) AS aggfns                                                                         +
+    FROM ( VALUES (1,3,'foo'::text), (0,NULL::pg_catalog.int4,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
 create or replace view agg_view1 as
@@ -1774,10 +1774,10 @@ select * from agg_view1;
 (1 row)
 
 select pg_get_viewdef('agg_view1'::regclass);
-                                                   pg_get_viewdef                                                    
----------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(a, a, c ORDER BY b) AS aggfns                                                                       +
-    FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
+                                                       pg_get_viewdef                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+  SELECT aggfns(a, a, c ORDER BY b) AS aggfns                                                                               +
+    FROM ( VALUES (1,3,'foo'::text), (0,NULL::pg_catalog.int4,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
 create or replace view agg_view1 as
@@ -1790,10 +1790,10 @@ select * from agg_view1;
 (1 row)
 
 select pg_get_viewdef('agg_view1'::regclass);
-                                                   pg_get_viewdef                                                    
----------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(a, b, c ORDER BY c USING ~<~ NULLS LAST) AS aggfns                                                  +
-    FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
+                                                       pg_get_viewdef                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+  SELECT aggfns(a, b, c ORDER BY c USING ~<~ NULLS LAST) AS aggfns                                                          +
+    FROM ( VALUES (1,3,'foo'::text), (0,NULL::pg_catalog.int4,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
 create or replace view agg_view1 as
@@ -1807,10 +1807,10 @@ select * from agg_view1;
 (1 row)
 
 select pg_get_viewdef('agg_view1'::regclass);
-                                                   pg_get_viewdef                                                    
----------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(DISTINCT v.a, v.b, v.c ORDER BY v.a, v.c USING ~<~ NULLS LAST, v.b) AS aggfns                       +
-    FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c),+
+                                                       pg_get_viewdef                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+  SELECT aggfns(DISTINCT v.a, v.b, v.c ORDER BY v.a, v.c USING ~<~ NULLS LAST, v.b) AS aggfns                               +
+    FROM ( VALUES (1,3,'foo'::text), (0,NULL::pg_catalog.int4,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c),+
      generate_series(1, 2) i(i);
 (1 row)
 
@@ -1973,12 +1973,12 @@ select * from v_pagg_test order by y;
 
 -- Ensure parallel aggregation is actually being used.
 explain (costs off) select * from v_pagg_test order by y;
-                                                              QUERY PLAN                                                              
---------------------------------------------------------------------------------------------------------------------------------------
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
    Group Key: pagg_test.y
    ->  Sort
-         Sort Key: pagg_test.y, (((unnest(regexp_split_to_array((string_agg((pagg_test.x)::text, ','::text)), ','::text))))::integer)
+         Sort Key: pagg_test.y, (((unnest(regexp_split_to_array((string_agg((pagg_test.x)::text, ','::text)), ','::text))))::pg_catalog.int4)
          ->  Result
                ->  ProjectSet
                      ->  Finalize HashAggregate
@@ -2336,11 +2336,11 @@ LINE 1: select rank(sum(x)) within group (order by x) from generate_...
                     ^
 -- hypothetical-set type unification and argument-count failures:
 select rank(3) within group (order by x) from (values ('fred'),('jim')) v(x);
-ERROR:  WITHIN GROUP types text and integer cannot be matched
+ERROR:  WITHIN GROUP types text and pg_catalog.int4 cannot be matched
 LINE 1: select rank(3) within group (order by x) from (values ('fred...
                     ^
 select rank(3) within group (order by stringu1,stringu2) from tenk1;
-ERROR:  function rank(integer, name, name) does not exist
+ERROR:  function rank(pg_catalog.int4, name, name) does not exist
 LINE 1: select rank(3) within group (order by stringu1,stringu2) fro...
                ^
 HINT:  To use the hypothetical-set aggregate rank, the number of hypothetical direct arguments (here 1) must match the number of ordering columns (here 2).
@@ -2382,14 +2382,14 @@ select ten,
   from tenk1
  group by ten order by ten;
 select pg_get_viewdef('aggordview1');
-                                                  pg_get_viewdef                                                   
--------------------------------------------------------------------------------------------------------------------
-  SELECT ten,                                                                                                     +
-     percentile_disc((0.5)::double precision) WITHIN GROUP (ORDER BY thousand) AS p50,                            +
-     percentile_disc((0.5)::double precision) WITHIN GROUP (ORDER BY thousand) FILTER (WHERE (hundred = 1)) AS px,+
-     rank(5, 'AZZZZ'::name, 50) WITHIN GROUP (ORDER BY hundred, string4 DESC, hundred) AS rank                    +
-    FROM tenk1                                                                                                    +
-   GROUP BY ten                                                                                                   +
+                                                   pg_get_viewdef                                                   
+--------------------------------------------------------------------------------------------------------------------
+  SELECT ten,                                                                                                      +
+     percentile_disc((0.5)::pg_catalog.float8) WITHIN GROUP (ORDER BY thousand) AS p50,                            +
+     percentile_disc((0.5)::pg_catalog.float8) WITHIN GROUP (ORDER BY thousand) FILTER (WHERE (hundred = 1)) AS px,+
+     rank(5, 'AZZZZ'::name, 50) WITHIN GROUP (ORDER BY hundred, string4 DESC, hundred) AS rank                     +
+    FROM tenk1                                                                                                     +
+   GROUP BY ten                                                                                                    +
    ORDER BY ten;
 (1 row)
 
@@ -2441,9 +2441,9 @@ select cleast_agg(variadic array[4.5,f1]) from int4_tbl;
 (1 row)
 
 select pg_typeof(cleast_agg(variadic array[4.5,f1])) from int4_tbl;
- pg_typeof 
------------
- numeric
+     pg_typeof      
+--------------------
+ pg_catalog.numeric
 (1 row)
 
 -- test aggregates with common transition functions share the same states
@@ -2824,15 +2824,15 @@ FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1) u;
-                                                                                      QUERY PLAN                                                                                       
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                            QUERY PLAN                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
-   Output: variance(tenk1.unique1), sum((tenk1.unique1)::bigint), regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
+   Output: variance(tenk1.unique1), sum((tenk1.unique1)::pg_catalog.int8), regr_count((tenk1.unique1)::pg_catalog.float8, (tenk1.unique1)::pg_catalog.float8)
    ->  Gather
-         Output: (PARTIAL variance(tenk1.unique1)), (PARTIAL sum((tenk1.unique1)::bigint)), (PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision))
+         Output: (PARTIAL variance(tenk1.unique1)), (PARTIAL sum((tenk1.unique1)::pg_catalog.int8)), (PARTIAL regr_count((tenk1.unique1)::pg_catalog.float8, (tenk1.unique1)::pg_catalog.float8))
          Workers Planned: 4
          ->  Partial Aggregate
-               Output: PARTIAL variance(tenk1.unique1), PARTIAL sum((tenk1.unique1)::bigint), PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
+               Output: PARTIAL variance(tenk1.unique1), PARTIAL sum((tenk1.unique1)::pg_catalog.int8), PARTIAL regr_count((tenk1.unique1)::pg_catalog.float8, (tenk1.unique1)::pg_catalog.float8)
                ->  Parallel Append
                      ->  Parallel Seq Scan on public.tenk1
                            Output: tenk1.unique1
@@ -2862,15 +2862,15 @@ FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1) u;
-                                               QUERY PLAN                                               
---------------------------------------------------------------------------------------------------------
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
-   Output: variance((tenk1.unique1)::bigint), avg((tenk1.unique1)::numeric)
+   Output: variance((tenk1.unique1)::pg_catalog.int8), avg((tenk1.unique1)::pg_catalog.numeric)
    ->  Gather
-         Output: (PARTIAL variance((tenk1.unique1)::bigint)), (PARTIAL avg((tenk1.unique1)::numeric))
+         Output: (PARTIAL variance((tenk1.unique1)::pg_catalog.int8)), (PARTIAL avg((tenk1.unique1)::pg_catalog.numeric))
          Workers Planned: 4
          ->  Partial Aggregate
-               Output: PARTIAL variance((tenk1.unique1)::bigint), PARTIAL avg((tenk1.unique1)::numeric)
+               Output: PARTIAL variance((tenk1.unique1)::pg_catalog.int8), PARTIAL avg((tenk1.unique1)::pg_catalog.numeric)
                ->  Parallel Append
                      ->  Parallel Seq Scan on public.tenk1
                            Output: tenk1.unique1

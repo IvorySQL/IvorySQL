@@ -91,11 +91,11 @@ HINT:  Use ALTER VIEW ... RENAME COLUMN ... to change name of view column instea
 -- should fail
 CREATE OR REPLACE VIEW viewtest AS
 	SELECT a, b::numeric, c, d FROM viewtest_tbl;
-ERROR:  cannot change data type of view column "b" from integer to numeric
+ERROR:  cannot change data type of view column "b" from pg_catalog.int4 to pg_catalog.numeric
 -- should fail
 CREATE OR REPLACE VIEW viewtest AS
 	SELECT a, b, c::numeric(10,2), d FROM viewtest_tbl;
-ERROR:  cannot change data type of view column "c" from numeric(10,1) to numeric(10,2)
+ERROR:  cannot change data type of view column "c" from pg_catalog.numeric(10,1) to pg_catalog.numeric(10,2)
 -- should fail
 CREATE OR REPLACE VIEW viewtest AS
 	SELECT a, b, c, d COLLATE "POSIX" FROM viewtest_tbl;
@@ -360,14 +360,14 @@ SELECT relname, relkind, reloptions FROM pg_class
 CREATE VIEW unspecified_types AS
   SELECT 42 as i, 42.5 as num, 'foo' as u, 'foo'::unknown as u2, null as n;
 \d+ unspecified_types
-                   View "testviewschm2.unspecified_types"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- i      | integer |           |          |         | plain    | 
- num    | numeric |           |          |         | main     | 
- u      | text    |           |          |         | extended | 
- u2     | text    |           |          |         | extended | 
- n      | text    |           |          |         | extended | 
+                        View "testviewschm2.unspecified_types"
+ Column |        Type        | Collation | Nullable | Default | Storage  | Description 
+--------+--------------------+-----------+----------+---------+----------+-------------
+ i      | pg_catalog.int4    |           |          |         | plain    | 
+ num    | pg_catalog.numeric |           |          |         | main     | 
+ u      | text               |           |          |         | extended | 
+ u2     | text               |           |          |         | extended | 
+ n      | text               |           |          |         | extended | 
 View definition:
  SELECT 42 AS i,
     42.5 AS num,
@@ -389,13 +389,13 @@ CREATE VIEW tt1 AS
        ('0123456789', 'abc'::varchar(3), 42.12, 'abc'::varchar(4))
   ) vv(a,b,c,d);
 \d+ tt1
-                            View "testviewschm2.tt1"
- Column |    Type     | Collation | Nullable | Default | Storage  | Description 
---------+-------------+-----------+----------+---------+----------+-------------
- a      | varchar2    |           |          |         | extended | 
- b      | varchar2    |           |          |         | extended | 
- c      | numeric     |           |          |         | main     | 
- d      | varchar2(4) |           |          |         | extended | 
+                               View "testviewschm2.tt1"
+ Column |        Type        | Collation | Nullable | Default | Storage  | Description 
+--------+--------------------+-----------+----------+---------+----------+-------------
+ a      | varchar2           |           |          |         | extended | 
+ b      | varchar2           |           |          |         | extended | 
+ c      | pg_catalog.numeric |           |          |         | main     | 
+ d      | varchar2(4)        |           |          |         | extended | 
 View definition:
  SELECT a,
     b,
@@ -435,12 +435,12 @@ CREATE VIEW aliased_view_4 AS
   select * from temp_view_test.tt1
     where exists (select 1 from tt1 where temp_view_test.tt1.y1 = tt1.f1);
 \d+ aliased_view_1
-                    View "testviewschm2.aliased_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -451,12 +451,12 @@ View definition:
           WHERE tt1.f1 = tx1.x1));
 
 \d+ aliased_view_2
-                    View "testviewschm2.aliased_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -467,12 +467,12 @@ View definition:
           WHERE a1.f1 = tx1.x1));
 
 \d+ aliased_view_3
-                    View "testviewschm2.aliased_view_3"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_3"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -483,12 +483,12 @@ View definition:
           WHERE tt1.f1 = a2.x1));
 
 \d+ aliased_view_4
-                    View "testviewschm2.aliased_view_4"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- y1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_4"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ y1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT y1,
     f2,
@@ -500,12 +500,12 @@ View definition:
 
 ALTER TABLE tx1 RENAME TO a1;
 \d+ aliased_view_1
-                    View "testviewschm2.aliased_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -516,12 +516,12 @@ View definition:
           WHERE tt1.f1 = a1.x1));
 
 \d+ aliased_view_2
-                    View "testviewschm2.aliased_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -532,12 +532,12 @@ View definition:
           WHERE a1.f1 = a1_1.x1));
 
 \d+ aliased_view_3
-                    View "testviewschm2.aliased_view_3"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_3"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -548,12 +548,12 @@ View definition:
           WHERE tt1.f1 = a2.x1));
 
 \d+ aliased_view_4
-                    View "testviewschm2.aliased_view_4"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- y1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_4"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ y1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT y1,
     f2,
@@ -565,12 +565,12 @@ View definition:
 
 ALTER TABLE tt1 RENAME TO a2;
 \d+ aliased_view_1
-                    View "testviewschm2.aliased_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -581,12 +581,12 @@ View definition:
           WHERE a2.f1 = a1.x1));
 
 \d+ aliased_view_2
-                    View "testviewschm2.aliased_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -597,12 +597,12 @@ View definition:
           WHERE a1.f1 = a1_1.x1));
 
 \d+ aliased_view_3
-                    View "testviewschm2.aliased_view_3"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_3"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -613,12 +613,12 @@ View definition:
           WHERE a2.f1 = a2_1.x1));
 
 \d+ aliased_view_4
-                    View "testviewschm2.aliased_view_4"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- y1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_4"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ y1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT y1,
     f2,
@@ -630,12 +630,12 @@ View definition:
 
 ALTER TABLE a1 RENAME TO tt1;
 \d+ aliased_view_1
-                    View "testviewschm2.aliased_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -646,12 +646,12 @@ View definition:
           WHERE a2.f1 = tt1.x1));
 
 \d+ aliased_view_2
-                    View "testviewschm2.aliased_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -662,12 +662,12 @@ View definition:
           WHERE a1.f1 = tt1.x1));
 
 \d+ aliased_view_3
-                    View "testviewschm2.aliased_view_3"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_3"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -678,12 +678,12 @@ View definition:
           WHERE a2.f1 = a2_1.x1));
 
 \d+ aliased_view_4
-                    View "testviewschm2.aliased_view_4"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- y1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_4"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ y1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT y1,
     f2,
@@ -696,12 +696,12 @@ View definition:
 ALTER TABLE a2 RENAME TO tx1;
 ALTER TABLE tx1 SET SCHEMA temp_view_test;
 \d+ aliased_view_1
-                    View "testviewschm2.aliased_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -712,12 +712,12 @@ View definition:
           WHERE tx1.f1 = tt1.x1));
 
 \d+ aliased_view_2
-                    View "testviewschm2.aliased_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -728,12 +728,12 @@ View definition:
           WHERE a1.f1 = tt1.x1));
 
 \d+ aliased_view_3
-                    View "testviewschm2.aliased_view_3"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_3"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -744,12 +744,12 @@ View definition:
           WHERE tx1.f1 = a2.x1));
 
 \d+ aliased_view_4
-                    View "testviewschm2.aliased_view_4"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- y1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_4"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ y1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT y1,
     f2,
@@ -763,12 +763,12 @@ ALTER TABLE temp_view_test.tt1 RENAME TO tmp1;
 ALTER TABLE temp_view_test.tmp1 SET SCHEMA testviewschm2;
 ALTER TABLE tmp1 RENAME TO tx1;
 \d+ aliased_view_1
-                    View "testviewschm2.aliased_view_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_1"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -779,12 +779,12 @@ View definition:
           WHERE tx1.f1 = tt1.x1));
 
 \d+ aliased_view_2
-                    View "testviewschm2.aliased_view_2"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_2"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -795,12 +795,12 @@ View definition:
           WHERE a1.f1 = tt1.x1));
 
 \d+ aliased_view_3
-                    View "testviewschm2.aliased_view_3"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- f1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_3"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT f1,
     f2,
@@ -811,12 +811,12 @@ View definition:
           WHERE tx1.f1 = a2.x1));
 
 \d+ aliased_view_4
-                    View "testviewschm2.aliased_view_4"
- Column |  Type   | Collation | Nullable | Default | Storage  | Description 
---------+---------+-----------+----------+---------+----------+-------------
- y1     | integer |           |          |         | plain    | 
- f2     | integer |           |          |         | plain    | 
- f3     | text    |           |          |         | extended | 
+                        View "testviewschm2.aliased_view_4"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Description 
+--------+-----------------+-----------+----------+---------+----------+-------------
+ y1     | pg_catalog.int4 |           |          |         | plain    | 
+ f2     | pg_catalog.int4 |           |          |         | plain    | 
+ f3     | text            |           |          |         | extended | 
 View definition:
  SELECT y1,
     f2,
@@ -832,17 +832,17 @@ select * from
   (select * from (tbl1 cross join tbl2) same) ss,
   (tbl3 cross join tbl4) same;
 \d+ view_of_joins
-                    View "testviewschm2.view_of_joins"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
- b      | integer |           |          |         | plain   | 
- c      | integer |           |          |         | plain   | 
- d      | integer |           |          |         | plain   | 
- e      | integer |           |          |         | plain   | 
- f      | integer |           |          |         | plain   | 
- g      | integer |           |          |         | plain   | 
- h      | integer |           |          |         | plain   | 
+                        View "testviewschm2.view_of_joins"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
+ b      | pg_catalog.int4 |           |          |         | plain   | 
+ c      | pg_catalog.int4 |           |          |         | plain   | 
+ d      | pg_catalog.int4 |           |          |         | plain   | 
+ e      | pg_catalog.int4 |           |          |         | plain   | 
+ f      | pg_catalog.int4 |           |          |         | plain   | 
+ g      | pg_catalog.int4 |           |          |         | plain   | 
+ h      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT ss.a,
     ss.b,
@@ -1484,7 +1484,7 @@ create view vv2a as
 select * from (values(now(),2,3,now(),5)) v(a,b,c,d,e)
 union all
 select * from tt7a left join tt8a using (x), tt8a tt8ax;
-ERROR:  UNION could not convert type date to timestamp with time zone
+ERROR:  UNION could not convert type date to pg_catalog.timestamptz
 LINE 4: select * from tt7a left join tt8a using (x), tt8a tt8ax;
                ^
 select pg_get_viewdef('vv2a', true);
@@ -1678,7 +1678,7 @@ select f1, f3 from tt14v;
 
 select * from tt14v;
 ERROR:  attribute 4 of type record has wrong type
-DETAIL:  Table has type integer, but query expects text.
+DETAIL:  Table has type pg_catalog.int4, but query expects text.
 rollback;
 drop view tt14v;
 create view tt14v as select t.f1, t.f4 from tt14f() t;
@@ -1891,20 +1891,20 @@ select * from
   cast(1+2 as int4) as i4,
   cast(1+2 as int8) as i8;
 select pg_get_viewdef('tt20v', true);
-                pg_get_viewdef                
-----------------------------------------------
-  SELECT c.c,                                +
-     col.col,                                +
-     d.d,                                    +
-     t.t,                                    +
-     i4.i4,                                  +
-     i8.i8                                   +
-    FROM COALESCE(1::number, 2::number) c(c),+
-     COLLATION FOR ('x'::text) col(col),     +
-     "current_date"() d(d),                  +
-     "localtimestamp"(3) t(t),               +
-     CAST(1 + 2 AS integer) i4(i4),          +
-     CAST((1 + 2)::bigint AS bigint) i8(i8);
+                        pg_get_viewdef                         
+---------------------------------------------------------------
+  SELECT c.c,                                                 +
+     col.col,                                                 +
+     d.d,                                                     +
+     t.t,                                                     +
+     i4.i4,                                                   +
+     i8.i8                                                    +
+    FROM COALESCE(1::number, 2::number) c(c),                 +
+     COLLATION FOR ('x'::text) col(col),                      +
+     "current_date"() d(d),                                   +
+     "localtimestamp"(3) t(t),                                +
+     CAST(1 + 2 AS pg_catalog.int4) i4(i4),                   +
+     CAST((1 + 2)::pg_catalog.int8 AS pg_catalog.int8) i8(i8);
 (1 row)
 
 -- reverse-listing of various special function syntaxes required by SQL
@@ -1930,25 +1930,25 @@ select
   trim(leading E'\\000'::bytea from E'\\000Tom\\000'::bytea) as ltb,
   trim(trailing E'\\000'::bytea from E'\\000Tom\\000'::bytea) as rtb;
 select pg_get_viewdef('tt201v', true);
-                                         pg_get_viewdef                                          
--------------------------------------------------------------------------------------------------
-  SELECT EXTRACT(day FROM now()) AS extr,                                                       +
-     ((now(), '@ 1 day'::interval) OVERLAPS ("current_timestamp"(2), '@ 1 day'::interval)) AS o,+
-     ('foo'::text IS NORMALIZED) AS isn,                                                        +
-     ('foo'::text IS NFKC NORMALIZED) AS isnn,                                                  +
-     NORMALIZE('foo'::text) AS n,                                                               +
-     NORMALIZE('foo'::text, NFKD) AS nfkd,                                                      +
-     OVERLAY('foo'::text PLACING 'bar'::text FROM 2) AS ovl,                                    +
-     OVERLAY('foo'::text PLACING 'bar'::text FROM 2 FOR 3) AS ovl2,                             +
-     POSITION(('foo'::text) IN ('foobar'::text)) AS p,                                          +
-     SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                  +
-     SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                           +
-     "substring"('foo'::text, 'oo'::text) AS ssf,                                               +
-     "trim"(' foo '::varchar2, ' '::varchar2) AS bt,                                            +
-     ltrim(' foo '::varchar2, ' '::varchar2) AS lt,                                             +
-     rtrim(' foo '::varchar2) AS rt,                                                            +
-     "trim"('\x00546f6d00'::bytea, '\x00'::bytea) AS btb,                                       +
-     ltrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS ltb,                    +
+                                                    pg_get_viewdef                                                     
+-----------------------------------------------------------------------------------------------------------------------
+  SELECT EXTRACT(day FROM now()) AS extr,                                                                             +
+     ((now(), '@ 1 day'::pg_catalog.interval) OVERLAPS ("current_timestamp"(2), '@ 1 day'::pg_catalog.interval)) AS o,+
+     ('foo'::text IS NORMALIZED) AS isn,                                                                              +
+     ('foo'::text IS NFKC NORMALIZED) AS isnn,                                                                        +
+     NORMALIZE('foo'::text) AS n,                                                                                     +
+     NORMALIZE('foo'::text, NFKD) AS nfkd,                                                                            +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2) AS ovl,                                                          +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2 FOR 3) AS ovl2,                                                   +
+     POSITION(('foo'::text) IN ('foobar'::text)) AS p,                                                                +
+     SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                                        +
+     SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                                                 +
+     "substring"('foo'::text, 'oo'::text) AS ssf,                                                                     +
+     "trim"(' foo '::varchar2, ' '::varchar2) AS bt,                                                                  +
+     ltrim(' foo '::varchar2, ' '::varchar2) AS lt,                                                                   +
+     rtrim(' foo '::varchar2) AS rt,                                                                                  +
+     "trim"('\x00546f6d00'::bytea, '\x00'::bytea) AS btb,                                                             +
+     ltrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS ltb,                                          +
      rtrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS rtb;
 (1 row)
 

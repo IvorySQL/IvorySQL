@@ -11,9 +11,9 @@ SELECT regoper('||/');
 (1 row)
 
 SELECT regoperator('+(int4,int4)');
-    regoperator     
---------------------
- +(integer,integer)
+            regoperator             
+------------------------------------
+ +(pg_catalog.int4,pg_catalog.int4)
 (1 row)
 
 SELECT regproc('now');
@@ -23,9 +23,9 @@ SELECT regproc('now');
 (1 row)
 
 SELECT regprocedure('abs(numeric)');
- regprocedure 
---------------
- abs(numeric)
+      regprocedure       
+-------------------------
+ abs(pg_catalog.numeric)
 (1 row)
 
 SELECT regclass('pg_class');
@@ -35,9 +35,9 @@ SELECT regclass('pg_class');
 (1 row)
 
 SELECT regtype('int4');
- regtype 
----------
- integer
+     regtype     
+-----------------
+ pg_catalog.int4
 (1 row)
 
 SELECT regcollation('"POSIX"');
@@ -53,9 +53,9 @@ SELECT to_regoper('||/');
 (1 row)
 
 SELECT to_regoperator('+(int4,int4)');
-   to_regoperator   
---------------------
- +(integer,integer)
+           to_regoperator           
+------------------------------------
+ +(pg_catalog.int4,pg_catalog.int4)
 (1 row)
 
 SELECT to_regproc('now');
@@ -65,9 +65,9 @@ SELECT to_regproc('now');
 (1 row)
 
 SELECT to_regprocedure('abs(numeric)');
- to_regprocedure 
------------------
- abs(numeric)
+     to_regprocedure     
+-------------------------
+ abs(pg_catalog.numeric)
 (1 row)
 
 SELECT to_regclass('pg_class');
@@ -77,9 +77,9 @@ SELECT to_regclass('pg_class');
 (1 row)
 
 SELECT to_regtype('int4');
- to_regtype 
-------------
- integer
+   to_regtype    
+-----------------
+ pg_catalog.int4
 (1 row)
 
 SELECT to_regcollation('"POSIX"');
@@ -96,9 +96,9 @@ SELECT regoper('pg_catalog.||/');
 (1 row)
 
 SELECT regoperator('pg_catalog.+(int4,int4)');
-    regoperator     
---------------------
- +(integer,integer)
+            regoperator             
+------------------------------------
+ +(pg_catalog.int4,pg_catalog.int4)
 (1 row)
 
 SELECT regproc('pg_catalog.now');
@@ -108,9 +108,9 @@ SELECT regproc('pg_catalog.now');
 (1 row)
 
 SELECT regprocedure('pg_catalog.abs(numeric)');
- regprocedure 
---------------
- abs(numeric)
+      regprocedure       
+-------------------------
+ abs(pg_catalog.numeric)
 (1 row)
 
 SELECT regclass('pg_catalog.pg_class');
@@ -120,9 +120,9 @@ SELECT regclass('pg_catalog.pg_class');
 (1 row)
 
 SELECT regtype('pg_catalog.int4');
- regtype 
----------
- integer
+     regtype     
+-----------------
+ pg_catalog.int4
 (1 row)
 
 SELECT regcollation('pg_catalog."POSIX"');
@@ -144,9 +144,9 @@ SELECT to_regproc('pg_catalog.now');
 (1 row)
 
 SELECT to_regprocedure('pg_catalog.abs(numeric)');
- to_regprocedure 
------------------
- abs(numeric)
+     to_regprocedure     
+-------------------------
+ abs(pg_catalog.numeric)
 (1 row)
 
 SELECT to_regclass('pg_catalog.pg_class');
@@ -156,9 +156,9 @@ SELECT to_regclass('pg_catalog.pg_class');
 (1 row)
 
 SELECT to_regtype('pg_catalog.int4');
- to_regtype 
-------------
- integer
+   to_regtype    
+-----------------
+ pg_catalog.int4
 (1 row)
 
 SELECT to_regcollation('pg_catalog."POSIX"');

@@ -517,7 +517,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
 
 -- clean up (regress_priv_user1's objects are all dropped later)
 DROP FUNCTION leak2(integer, integer) CASCADE;
-NOTICE:  drop cascades to operator >>>(integer,integer)
+NOTICE:  drop cascades to operator >>>(pg_catalog.int4,pg_catalog.int4)
 -- groups
 SET SESSION AUTHORIZATION regress_priv_user3;
 CREATE TABLE atest3 (one int, two int, three int);
@@ -1115,7 +1115,7 @@ CREATE PROCEDURE priv_testproc1(int) AS 'select $1;' LANGUAGE sql;
 REVOKE ALL ON FUNCTION priv_testfunc1(int), priv_testfunc2(int), priv_testagg1(int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION priv_testfunc1(int), priv_testfunc2(int), priv_testagg1(int) TO regress_priv_user2;
 REVOKE ALL ON FUNCTION priv_testproc1(int) FROM PUBLIC; -- fail, not a function
-ERROR:  priv_testproc1(integer) is not a function
+ERROR:  priv_testproc1(pg_catalog.int4) is not a function
 REVOKE ALL ON PROCEDURE priv_testproc1(int) FROM PUBLIC;
 GRANT EXECUTE ON PROCEDURE priv_testproc1(int) TO regress_priv_user2;
 GRANT USAGE ON FUNCTION priv_testfunc1(int) TO regress_priv_user3; -- semantic error
@@ -1126,7 +1126,7 @@ GRANT USAGE ON PROCEDURE priv_testproc1(int) TO regress_priv_user3; -- semantic 
 ERROR:  invalid privilege type USAGE for procedure
 GRANT ALL PRIVILEGES ON FUNCTION priv_testfunc1(int) TO regress_priv_user4;
 GRANT ALL PRIVILEGES ON FUNCTION priv_testfunc_nosuch(int) TO regress_priv_user4;
-ERROR:  function priv_testfunc_nosuch(integer) does not exist
+ERROR:  function priv_testfunc_nosuch(pg_catalog.int4) does not exist
 GRANT ALL PRIVILEGES ON FUNCTION priv_testagg1(int) TO regress_priv_user4;
 GRANT ALL PRIVILEGES ON PROCEDURE priv_testproc1(int) TO regress_priv_user4;
 CREATE FUNCTION priv_testfunc4(boolean) RETURNS text
@@ -2593,9 +2593,9 @@ DROP SCHEMA testns CASCADE;
 NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table testns.t1
 drop cascades to table testns.t2
-drop cascades to function testns.priv_testfunc(integer)
-drop cascades to function testns.priv_testagg(integer)
-drop cascades to function testns.priv_testproc(integer)
+drop cascades to function testns.priv_testfunc(pg_catalog.int4)
+drop cascades to function testns.priv_testagg(pg_catalog.int4)
+drop cascades to function testns.priv_testproc(pg_catalog.int4)
 -- Change owner of the schema & and rename of new schema owner
 \c -
 CREATE ROLE regress_schemauser1 superuser login;

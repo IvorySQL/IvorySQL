@@ -50,7 +50,7 @@ SELECT length(current_timestamp::text) >= length(current_timestamp(0)::text);
 
 -- localtimestamp
 SELECT now()::timestamp::text = localtimestamp::text;
-ERROR:  cannot cast type timestamp with time zone to timestamp
+ERROR:  cannot cast type pg_catalog.timestamptz to timestamp
 LINE 1: SELECT now()::timestamp::text = localtimestamp::text;
                     ^
 -- precision overflow
@@ -123,29 +123,29 @@ create view numeric_view as
     f2, f2::numeric(16,4) as f2164, f2::numeric as f2n
   from numeric_tbl;
 \d+ numeric_view
-                           View "public.numeric_view"
- Column |     Type      | Collation | Nullable | Default | Storage | Description 
---------+---------------+-----------+----------+---------+---------+-------------
- f1     | numeric(18,3) |           |          |         | main    | 
- f1164  | numeric(16,4) |           |          |         | main    | 
- f1n    | numeric       |           |          |         | main    | 
- f2     | numeric       |           |          |         | main    | 
- f2164  | numeric(16,4) |           |          |         | main    | 
- f2n    | numeric       |           |          |         | main    | 
+                                 View "public.numeric_view"
+ Column |           Type           | Collation | Nullable | Default | Storage | Description 
+--------+--------------------------+-----------+----------+---------+---------+-------------
+ f1     | pg_catalog.numeric(18,3) |           |          |         | main    | 
+ f1164  | pg_catalog.numeric(16,4) |           |          |         | main    | 
+ f1n    | pg_catalog.numeric       |           |          |         | main    | 
+ f2     | pg_catalog.numeric       |           |          |         | main    | 
+ f2164  | pg_catalog.numeric(16,4) |           |          |         | main    | 
+ f2n    | pg_catalog.numeric       |           |          |         | main    | 
 View definition:
  SELECT f1,
-    f1::numeric(16,4) AS f1164,
-    f1::numeric AS f1n,
+    f1::pg_catalog.numeric(16,4) AS f1164,
+    f1::pg_catalog.numeric AS f1n,
     f2,
-    f2::numeric(16,4) AS f2164,
+    f2::pg_catalog.numeric(16,4) AS f2164,
     f2 AS f2n
    FROM numeric_tbl;
 
 explain (verbose, costs off) select * from numeric_view;
-                                                                      QUERY PLAN                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on public.numeric_tbl
-   Output: numeric_tbl.f1, (numeric_tbl.f1)::numeric(16,4), (numeric_tbl.f1)::numeric, numeric_tbl.f2, (numeric_tbl.f2)::numeric(16,4), numeric_tbl.f2
+   Output: numeric_tbl.f1, (numeric_tbl.f1)::pg_catalog.numeric(16,4), (numeric_tbl.f1)::pg_catalog.numeric, numeric_tbl.f2, (numeric_tbl.f2)::pg_catalog.numeric(16,4), numeric_tbl.f2
 (2 rows)
 
 -- bpchar, lacking planner support for its length coercion function,
@@ -191,18 +191,18 @@ rollback;
 --
 explain (verbose, costs off)
 select random() IN (1, 4, 8.0);
-                         QUERY PLAN                         
-------------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Result
-   Output: (random() = ANY ('{1,4,8}'::double precision[]))
+   Output: (random() = ANY ('{1,4,8}'::pg_catalog.float8[]))
 (2 rows)
 
 explain (verbose, costs off)
 select random()::int IN (1, 4, 8.0);
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
  Result
-   Output: (((random())::integer)::numeric = ANY ('{1,4,8.0}'::numeric[]))
+   Output: (((random())::pg_catalog.int4)::pg_catalog.numeric = ANY ('{1,4,8.0}'::pg_catalog.numeric[]))
 (2 rows)
 
 -- However, if there's not a common supertype for the IN elements,

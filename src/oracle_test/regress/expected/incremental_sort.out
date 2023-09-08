@@ -702,12 +702,12 @@ set local enable_mergejoin = off;
 set local enable_material = off;
 set local enable_sort = off;
 explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
-                   QUERY PLAN                   
-------------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Nested Loop Left Join
    Join Filter: (t_1.a = t.a)
    ->  Seq Scan on t
-         Filter: (a = ANY ('{1,2}'::integer[]))
+         Filter: (a = ANY ('{1,2}'::pg_catalog.int4[]))
    ->  Incremental Sort
          Sort Key: t_1.a, t_1.b
          Presorted Key: t_1.a

@@ -613,7 +613,7 @@ select case_test(4);
 select case_test(5); -- fails
 ERROR:  case not found
 HINT:  CASE statement is missing ELSE part.
-CONTEXT:  PL/iSQL function case_test(bigint) line 5 at CASE
+CONTEXT:  PL/iSQL function case_test(pg_catalog.int8) line 5 at CASE
 select case_test(8);
       case_test       
 ----------------------
@@ -641,7 +641,7 @@ select case_test(12);
 select case_test(13); -- fails
 ERROR:  case not found
 HINT:  CASE statement is missing ELSE part.
-CONTEXT:  PL/iSQL function case_test(bigint) line 5 at CASE
+CONTEXT:  PL/iSQL function case_test(pg_catalog.int8) line 5 at CASE
 create or replace function catch() returns void as $$
 begin
   raise notice '%', case_test(6);
