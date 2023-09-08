@@ -2029,11 +2029,18 @@ select length('Highgo DB!') from dual;
      10
 (1 row)
 
-select sys.length('今天') from dual;
-ERROR:  function sys.length(unknown) is not unique
-LINE 1: select sys.length('今天') from dual;
-               ^
-HINT:  Could not choose a best candidate function. You might need to add explicit type casts.
+select length('今天') from dual;
+ length 
+--------
+      2
+(1 row)
+
+select sys.length('明天') from dual;
+ length 
+--------
+      2
+(1 row)
+
 select length(cast('Highgo DB!' as char(10))) from dual;
  length 
 --------

@@ -4,11 +4,20 @@
  *
  ***************************************************************/
 /* length/lengthb for CHAR(n char/byte) */
+CREATE FUNCTION sys.length(text)
+RETURNS integer
+AS 'MODULE_PATHNAME','oracharlen'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 CREATE FUNCTION sys.length(sys.oracharchar)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.length(sys.oracharbyte)
@@ -16,6 +25,7 @@ RETURNS integer
 AS 'MODULE_PATHNAME','oracharlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.lengthb(sys.oracharchar)
@@ -23,6 +33,7 @@ RETURNS integer
 AS 'MODULE_PATHNAME','oracharoctetlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.lengthb(sys.oracharbyte)
@@ -30,6 +41,7 @@ RETURNS integer
 AS 'MODULE_PATHNAME','oracharoctetlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 /* length/lengthb for VARCHAR2(n char/byte) */
@@ -38,6 +50,7 @@ RETURNS integer
 AS 'MODULE_PATHNAME','oravarcharlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.length(sys.oravarcharbyte)
@@ -45,6 +58,7 @@ RETURNS integer
 AS 'MODULE_PATHNAME','oravarcharlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.lengthb(sys.oravarcharchar)
@@ -52,6 +66,7 @@ RETURNS integer
 AS 'MODULE_PATHNAME','oravarcharoctetlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.lengthb(sys.oravarcharbyte)
@@ -59,6 +74,7 @@ RETURNS integer
 AS 'MODULE_PATHNAME','oravarcharoctetlen'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.length(integer)
