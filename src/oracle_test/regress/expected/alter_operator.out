@@ -19,11 +19,11 @@ FROM pg_depend
 WHERE classid = 'pg_operator'::regclass AND
       objid = '===(bool,bool)'::regoperator
 ORDER BY 1;
-                          ref                          | deptype 
--------------------------------------------------------+---------
- function alter_op_test_fn(boolean,boolean)            | n
- function customcontsel(internal,oid,internal,integer) | n
- schema public                                         | n
+                              ref                              | deptype 
+---------------------------------------------------------------+---------
+ function alter_op_test_fn(pg_catalog.bool,pg_catalog.bool)    | n
+ function customcontsel(internal,oid,internal,pg_catalog.int4) | n
+ schema public                                                 | n
 (3 rows)
 
 --
@@ -43,10 +43,10 @@ FROM pg_depend
 WHERE classid = 'pg_operator'::regclass AND
       objid = '===(bool,bool)'::regoperator
 ORDER BY 1;
-                    ref                     | deptype 
---------------------------------------------+---------
- function alter_op_test_fn(boolean,boolean) | n
- schema public                              | n
+                            ref                             | deptype 
+------------------------------------------------------------+---------
+ function alter_op_test_fn(pg_catalog.bool,pg_catalog.bool) | n
+ schema public                                              | n
 (2 rows)
 
 ALTER OPERATOR === (boolean, boolean) SET (RESTRICT = contsel);
@@ -63,10 +63,10 @@ FROM pg_depend
 WHERE classid = 'pg_operator'::regclass AND
       objid = '===(bool,bool)'::regoperator
 ORDER BY 1;
-                    ref                     | deptype 
---------------------------------------------+---------
- function alter_op_test_fn(boolean,boolean) | n
- schema public                              | n
+                            ref                             | deptype 
+------------------------------------------------------------+---------
+ function alter_op_test_fn(pg_catalog.bool,pg_catalog.bool) | n
+ schema public                                              | n
 (2 rows)
 
 ALTER OPERATOR === (boolean, boolean) SET (RESTRICT = NONE, JOIN = NONE);
@@ -82,10 +82,10 @@ FROM pg_depend
 WHERE classid = 'pg_operator'::regclass AND
       objid = '===(bool,bool)'::regoperator
 ORDER BY 1;
-                    ref                     | deptype 
---------------------------------------------+---------
- function alter_op_test_fn(boolean,boolean) | n
- schema public                              | n
+                            ref                             | deptype 
+------------------------------------------------------------+---------
+ function alter_op_test_fn(pg_catalog.bool,pg_catalog.bool) | n
+ schema public                                              | n
 (2 rows)
 
 ALTER OPERATOR === (boolean, boolean) SET (RESTRICT = customcontsel, JOIN = contjoinsel);
@@ -101,11 +101,11 @@ FROM pg_depend
 WHERE classid = 'pg_operator'::regclass AND
       objid = '===(bool,bool)'::regoperator
 ORDER BY 1;
-                          ref                          | deptype 
--------------------------------------------------------+---------
- function alter_op_test_fn(boolean,boolean)            | n
- function customcontsel(internal,oid,internal,integer) | n
- schema public                                         | n
+                              ref                              | deptype 
+---------------------------------------------------------------+---------
+ function alter_op_test_fn(pg_catalog.bool,pg_catalog.bool)    | n
+ function customcontsel(internal,oid,internal,pg_catalog.int4) | n
+ schema public                                                 | n
 (3 rows)
 
 --
@@ -116,9 +116,9 @@ ERROR:  operator attribute "commutator" cannot be changed
 ALTER OPERATOR === (boolean, boolean) SET (NEGATOR = ====);
 ERROR:  operator attribute "negator" cannot be changed
 ALTER OPERATOR === (boolean, boolean) SET (RESTRICT = non_existent_func);
-ERROR:  function non_existent_func(internal, oid, internal, integer) does not exist
+ERROR:  function non_existent_func(internal, oid, internal, pg_catalog.int4) does not exist
 ALTER OPERATOR === (boolean, boolean) SET (JOIN = non_existent_func);
-ERROR:  function non_existent_func(internal, oid, internal, smallint, internal) does not exist
+ERROR:  function non_existent_func(internal, oid, internal, pg_catalog.int2, internal) does not exist
 ALTER OPERATOR === (boolean, boolean) SET (COMMUTATOR = !==);
 ERROR:  operator attribute "commutator" cannot be changed
 ALTER OPERATOR === (boolean, boolean) SET (NEGATOR = !==);

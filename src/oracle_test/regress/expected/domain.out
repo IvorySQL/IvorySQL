@@ -236,9 +236,9 @@ select pg_typeof('{1,2,3}'::dia);
 (1 row)
 
 select pg_typeof('{1,2,3}'::dia || 42); -- should be int[] not dia
- pg_typeof 
------------
- integer[]
+     pg_typeof     
+-------------------
+ pg_catalog.int4[]
 (1 row)
 
 drop domain dia;
@@ -305,12 +305,12 @@ select * from dcomptable;
 
 explain (verbose, costs off)
   update dcomptable set d1.r = (d1).r - 1, d1.i = (d1).i + 1 where (d1).i > 0;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
  Update on public.dcomptable
    ->  Seq Scan on public.dcomptable
-         Output: ROW(((d1).r - '1'::double precision), ((d1).i + '1'::double precision)), ctid
-         Filter: ((dcomptable.d1).i > '0'::double precision)
+         Output: ROW(((d1).r - '1'::pg_catalog.float8), ((d1).i + '1'::pg_catalog.float8)), ctid
+         Filter: ((dcomptable.d1).i > '0'::pg_catalog.float8)
 (4 rows)
 
 create rule silly as on delete to dcomptable do instead
@@ -324,8 +324,8 @@ Indexes:
     "dcomptable_d1_key" UNIQUE CONSTRAINT, btree (d1)
 Rules:
     silly AS
-    ON DELETE TO dcomptable DO INSTEAD  UPDATE dcomptable SET d1.r = (dcomptable.d1).r - 1::double precision, d1.i = (dcomptable.d1).i + 1::double precision
-  WHERE (dcomptable.d1).i > 0::double precision
+    ON DELETE TO dcomptable DO INSTEAD  UPDATE dcomptable SET d1.r = (dcomptable.d1).r - 1::pg_catalog.float8, d1.i = (dcomptable.d1).i + 1::pg_catalog.float8
+  WHERE (dcomptable.d1).i > 0::pg_catalog.float8
 
 create function makedcomp(r float8, i float8) returns dcomptype
 as 'select row(r, i)' language sql;
@@ -463,12 +463,12 @@ select * from dcomptable;
 explain (verbose, costs off)
   update dcomptable set d1[1].r = d1[1].r - 1, d1[1].i = d1[1].i + 1
     where d1[1].i > 0;
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
  Update on public.dcomptable
    ->  Seq Scan on public.dcomptable
-         Output: (d1[1].r := (d1[1].r - '1'::double precision))[1].i := (d1[1].i + '1'::double precision), ctid
-         Filter: (dcomptable.d1[1].i > '0'::double precision)
+         Output: (d1[1].r := (d1[1].r - '1'::pg_catalog.float8))[1].i := (d1[1].i + '1'::pg_catalog.float8), ctid
+         Filter: (dcomptable.d1[1].i > '0'::pg_catalog.float8)
 (4 rows)
 
 create rule silly as on delete to dcomptable do instead
@@ -483,8 +483,8 @@ Indexes:
     "dcomptable_d1_key" UNIQUE CONSTRAINT, btree (d1)
 Rules:
     silly AS
-    ON DELETE TO dcomptable DO INSTEAD  UPDATE dcomptable SET d1[1].r = dcomptable.d1[1].r - 1::double precision, d1[1].i = dcomptable.d1[1].i + 1::double precision
-  WHERE dcomptable.d1[1].i > 0::double precision
+    ON DELETE TO dcomptable DO INSTEAD  UPDATE dcomptable SET d1[1].r = dcomptable.d1[1].r - 1::pg_catalog.float8, d1[1].i = dcomptable.d1[1].i + 1::pg_catalog.float8
+  WHERE dcomptable.d1[1].i > 0::pg_catalog.float8
 
 drop table dcomptable;
 drop type comptype cascade;
@@ -526,7 +526,7 @@ drop type vc4;
 create domain dposinta as posint[];
 create table dposintatable (f1 dposinta[]);
 insert into dposintatable values(array[array[42]]);  -- fail
-ERROR:  column "f1" is of type dposinta[] but expression is of type integer[]
+ERROR:  column "f1" is of type dposinta[] but expression is of type pg_catalog.int4[]
 LINE 1: insert into dposintatable values(array[array[42]]);
                                          ^
 HINT:  You will need to rewrite or cast the expression.
@@ -1030,7 +1030,7 @@ end$$ language plisql;
 select array_elem_check(121.00);
 ERROR:  numeric field overflow
 DETAIL:  A field with precision 4, scale 2 must round to an absolute value less than 10^2.
-CONTEXT:  PL/iSQL function array_elem_check(numeric) line 5 at assignment
+CONTEXT:  PL/iSQL function array_elem_check(pg_catalog.numeric) line 5 at assignment
 select array_elem_check(1.23456);
  array_elem_check 
 ------------------
@@ -1049,7 +1049,7 @@ end$$ language plisql;
 select array_elem_check(121.00);
 ERROR:  numeric field overflow
 DETAIL:  A field with precision 4, scale 2 must round to an absolute value less than 10^2.
-CONTEXT:  PL/iSQL function array_elem_check(numeric) line 5 at assignment
+CONTEXT:  PL/iSQL function array_elem_check(pg_catalog.numeric) line 5 at assignment
 select array_elem_check(1.23456);
  array_elem_check 
 ------------------
@@ -1068,7 +1068,7 @@ end$$ language plisql;
 select array_elem_check(121.00);
 ERROR:  numeric field overflow
 DETAIL:  A field with precision 4, scale 2 must round to an absolute value less than 10^2.
-CONTEXT:  PL/iSQL function array_elem_check(numeric) line 5 at assignment
+CONTEXT:  PL/iSQL function array_elem_check(pg_catalog.numeric) line 5 at assignment
 select array_elem_check(1.23456);
  array_elem_check 
 ------------------
@@ -1117,7 +1117,7 @@ select array_elem_check(3);
 
 select array_elem_check(-1);
 ERROR:  value for domain orderedpair violates check constraint "orderedpair_check"
-CONTEXT:  PL/iSQL function array_elem_check(integer) line 5 at assignment
+CONTEXT:  PL/iSQL function array_elem_check(pg_catalog.int4) line 5 at assignment
 drop function array_elem_check(int);
 --
 -- Check enforcement of changing constraints in plisql
@@ -1140,7 +1140,7 @@ select dom_check(0);
 alter domain di add constraint pos check (value > 0);
 select dom_check(0); -- fail
 ERROR:  value for domain di violates check constraint "pos"
-CONTEXT:  PL/iSQL function dom_check(integer) line 4 at assignment
+CONTEXT:  PL/iSQL function dom_check(pg_catalog.int4) line 4 at assignment
 alter domain di drop constraint pos;
 select dom_check(0);
  dom_check 
@@ -1166,7 +1166,7 @@ select dom_check(0);
 alter domain di add constraint pos check (value > 0);
 select dom_check(0); -- fail
 ERROR:  value for domain di violates check constraint "pos"
-CONTEXT:  PL/iSQL function dom_check(integer) line 4 at assignment
+CONTEXT:  PL/iSQL function dom_check(pg_catalog.int4) line 4 at assignment
 alter domain di drop constraint pos;
 select dom_check(0);
  dom_check 

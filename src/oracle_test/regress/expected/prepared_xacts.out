@@ -232,10 +232,10 @@ rollback;
 -- Commit table creation
 COMMIT PREPARED 'regress-one';
 \d pxtest2
-              Table "public.pxtest2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                  Table "public.pxtest2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 
 SELECT * FROM pxtest2;
  a 

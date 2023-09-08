@@ -135,7 +135,7 @@ ERROR:  function test_function_exists() does not exist
 DROP FUNCTION IF EXISTS test_function_exists();
 NOTICE:  function test_function_exists() does not exist, skipping
 DROP FUNCTION test_function_exists(int, text, int[]);
-ERROR:  function test_function_exists(integer, text, integer[]) does not exist
+ERROR:  function test_function_exists(pg_catalog.int4, text, pg_catalog.int4[]) does not exist
 DROP FUNCTION IF EXISTS test_function_exists(int, text, int[]);
 NOTICE:  function test_function_exists(pg_catalog.int4,text,pg_catalog.int4[]) does not exist, skipping
 -- aggregate
@@ -144,12 +144,12 @@ ERROR:  aggregate test_aggregate_exists(*) does not exist
 DROP AGGREGATE IF EXISTS test_aggregate_exists(*);
 NOTICE:  aggregate test_aggregate_exists() does not exist, skipping
 DROP AGGREGATE test_aggregate_exists(int);
-ERROR:  aggregate test_aggregate_exists(integer) does not exist
+ERROR:  aggregate test_aggregate_exists(pg_catalog.int4) does not exist
 DROP AGGREGATE IF EXISTS test_aggregate_exists(int);
 NOTICE:  aggregate test_aggregate_exists(pg_catalog.int4) does not exist, skipping
 -- operator
 DROP OPERATOR @#@ (int, int);
-ERROR:  operator does not exist: integer @#@ integer
+ERROR:  operator does not exist: pg_catalog.int4 @#@ pg_catalog.int4
 DROP OPERATOR IF EXISTS @#@ (int, int);
 NOTICE:  operator @#@ does not exist, skipping
 CREATE OPERATOR @#@

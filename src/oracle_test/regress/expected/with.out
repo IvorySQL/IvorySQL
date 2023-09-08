@@ -173,7 +173,7 @@ UNION ALL
     SELECT n+1 FROM t WHERE n < 10
 )
 SELECT n, pg_typeof(n) FROM t;
-ERROR:  operator does not exist: text + integer
+ERROR:  operator does not exist: text + pg_catalog.int4
 LINE 4:     SELECT n+1 FROM t WHERE n < 10
                     ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
@@ -435,10 +435,10 @@ UNION ALL
 )
 SELECT sum(n) FROM t;
 \d+ sums_1_100
-                         View "public.sums_1_100"
- Column |  Type  | Collation | Nullable | Default | Storage | Description 
---------+--------+-----------+----------+---------+---------+-------------
- sum    | bigint |           |          |         | plain   | 
+                             View "public.sums_1_100"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ sum    | pg_catalog.int8 |           |          |         | plain   | 
 View definition:
  WITH RECURSIVE t(n) AS (
          VALUES (1)
@@ -735,7 +735,7 @@ select * from search_graph order by seq;
    CTE search_graph
      ->  Recursive Union
            ->  Seq Scan on pg_temp.graph0 g
-                 Output: g.f, g.t, g.label, ROW('0'::bigint, g.f, g.t)
+                 Output: g.f, g.t, g.label, ROW('0'::pg_catalog.int8, g.f, g.t)
            ->  Merge Join
                  Output: g_1.f, g_1.t, g_1.label, ROW(int8inc((sg.seq)."*DEPTH*"), g_1.f, g_1.t)
                  Merge Cond: (g_1.f = sg.t)
@@ -1433,7 +1433,7 @@ with recursive search_graph(f, t, label) as (
 	where g.f = sg.t
 ) cycle f, t set is_cycle to true default 55 using path
 select * from search_graph;
-ERROR:  CYCLE types boolean and integer cannot be matched
+ERROR:  CYCLE types pg_catalog.bool and pg_catalog.int4 cannot be matched
 LINE 7: ) cycle f, t set is_cycle to true default 55 using path
                                                   ^
 with recursive search_graph(f, t, label) as (
@@ -2101,7 +2101,7 @@ WITH RECURSIVE foo(i) AS
    UNION ALL
    SELECT (i+1)::numeric(10,0) FROM foo WHERE i < 10)
 SELECT * FROM foo;
-ERROR:  recursive query "foo" column 1 has type integer in non-recursive term but type numeric overall
+ERROR:  recursive query "foo" column 1 has type pg_catalog.int4 in non-recursive term but type pg_catalog.numeric overall
 LINE 2:    (SELECT i FROM (VALUES(1),(2)) t(i)
                    ^
 HINT:  Cast the output of the non-recursive term to the correct type.
@@ -2111,7 +2111,7 @@ WITH RECURSIVE foo(i) AS
    UNION ALL
    SELECT (i+1)::numeric(10,0) FROM foo WHERE i < 10)
 SELECT * FROM foo;
-ERROR:  recursive query "foo" column 1 has type numeric(3,0) in non-recursive term but type numeric overall
+ERROR:  recursive query "foo" column 1 has type pg_catalog.numeric(3,0) in non-recursive term but type pg_catalog.numeric overall
 LINE 2:    (SELECT i::numeric(3,0) FROM (VALUES(1),(2)) t(i)
                    ^
 HINT:  Cast the output of the non-recursive term to the correct type.
@@ -2702,12 +2702,12 @@ SELECT q1 FROM
   SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
   FROM int8_tbl i8
 ) ss;
-              QUERY PLAN              
---------------------------------------
+                  QUERY PLAN                  
+----------------------------------------------
  Subquery Scan on ss
    Output: ss.q1
    ->  Seq Scan on public.int8_tbl i8
-         Output: i8.q1, NULL::bigint
+         Output: i8.q1, NULL::pg_catalog.int8
 (4 rows)
 
 SELECT q1 FROM
@@ -2732,12 +2732,12 @@ SELECT q1 FROM
   SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
   FROM int8_tbl i8
 ) ss;
-                 QUERY PLAN                  
----------------------------------------------
+                  QUERY PLAN                  
+----------------------------------------------
  Subquery Scan on ss
    Output: ss.q1
    ->  Seq Scan on public.int8_tbl i8
-         Output: i8.q1, NULL::bigint
+         Output: i8.q1, NULL::pg_catalog.int8
          CTE t_cte
            ->  Seq Scan on public.int8_tbl t
                  Output: t.q1, t.q2
@@ -3415,7 +3415,7 @@ DELETE FROM a_star USING wcte WHERE aa = q2;
      ->  Insert on public.int8_tbl
            Output: int8_tbl.q2
            ->  Result
-                 Output: '42'::bigint, '47'::bigint
+                 Output: '42'::pg_catalog.int8, '47'::pg_catalog.int8
    ->  Hash Join
          Output: wcte.*, a_star.tableoid, a_star.ctid
          Hash Cond: (a_star.aa = wcte.q2)

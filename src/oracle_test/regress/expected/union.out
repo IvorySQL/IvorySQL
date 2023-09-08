@@ -1268,15 +1268,15 @@ SELECT * FROM
    SELECT 2 AS t, 4 AS x) ss
 WHERE x > 3
 ORDER BY x;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Sort
    Sort Key: ss.x
    ->  Subquery Scan on ss
          Filter: (ss.x > 3)
          ->  Unique
                ->  Sort
-                     Sort Key: (1), (((random() * '3'::double precision))::integer)
+                     Sort Key: (1), (((random() * '3'::pg_catalog.float8))::pg_catalog.int4)
                      ->  Append
                            ->  Result
                            ->  Result

@@ -236,7 +236,7 @@ SELECT set('t');
 
 -- now() is stable, because it returns the transaction timestamp
 ALTER TABLE T ADD COLUMN c1 TIMESTAMP DEFAULT now();
-ERROR:  column "c1" is of type timestamp but default expression is of type timestamp with time zone
+ERROR:  column "c1" is of type timestamp but default expression is of type pg_catalog.timestamptz
 HINT:  You will need to rewrite or cast the expression.
 SELECT comp();
    comp    
@@ -246,7 +246,7 @@ SELECT comp();
 
 -- clock_timestamp() is volatile
 ALTER TABLE T ADD COLUMN c2 TIMESTAMP DEFAULT clock_timestamp();
-ERROR:  column "c2" is of type timestamp but default expression is of type timestamp with time zone
+ERROR:  column "c2" is of type timestamp but default expression is of type pg_catalog.timestamptz
 HINT:  You will need to rewrite or cast the expression.
 SELECT comp();
    comp    
@@ -277,13 +277,13 @@ SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
-                  QUERY PLAN                  
-----------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Limit
    Output: c_bigint, c_text
    ->  Seq Scan on fast_default.t
          Output: c_bigint, c_text
-         Filter: (t.c_bigint = '-1'::integer)
+         Filter: (t.c_bigint = '-1'::pg_catalog.int4)
 (5 rows)
 
 SELECT c_bigint, c_text FROM T WHERE c_text = 'hello' LIMIT 1;
@@ -374,8 +374,8 @@ SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
-                     QUERY PLAN                     
-----------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Limit
    Output: pk, c_bigint, c_text
    ->  Sort
@@ -383,7 +383,7 @@ SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
          Sort Key: t.c_bigint, t.c_text, t.pk
          ->  Seq Scan on fast_default.t
                Output: pk, c_bigint, c_text
-               Filter: (t.c_bigint > '-1'::integer)
+               Filter: (t.c_bigint > '-1'::pg_catalog.int4)
 (8 rows)
 
 --  DELETE with RETURNING

@@ -40,10 +40,10 @@ SELECT * FROM bt_page_items('test1_a_idx', 1);
 -- pagesize in pageinspect >= 1.10.
 ALTER EXTENSION pageinspect UPDATE TO '1.9';
 \df page_header
-                                                                                                                  List of functions
- Schema |    Name     | Result data type |                                                                                         Argument data types                                                                                         | Type 
---------+-------------+------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------
- public | page_header | record           | page bytea, OUT lsn pg_lsn, OUT checksum smallint, OUT flags smallint, OUT lower smallint, OUT upper smallint, OUT special smallint, OUT pagesize smallint, OUT version smallint, OUT prune_xid xid | func
+                                                                                                                                           List of functions
+ Schema |    Name     | Result data type |                                                                                                                 Argument data types                                                                                                                  | Type 
+--------+-------------+------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------
+ public | page_header | record           | page bytea, OUT lsn pg_lsn, OUT checksum pg_catalog.int2, OUT flags pg_catalog.int2, OUT lower pg_catalog.int2, OUT upper pg_catalog.int2, OUT special pg_catalog.int2, OUT pagesize pg_catalog.int2, OUT version pg_catalog.int2, OUT prune_xid xid | func
 (1 row)
 
 SELECT pagesize, version FROM page_header(get_raw_page('test1', 0));

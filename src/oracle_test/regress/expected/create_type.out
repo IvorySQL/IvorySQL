@@ -248,9 +248,9 @@ select format_type('varchar'::regtype, 42);
 (1 row)
 
 select format_type('bpchar'::regtype, null);
- format_type 
--------------
- character
+    format_type    
+-------------------
+ pg_catalog.bpchar
 (1 row)
 
 -- this behavior difference is intentional
@@ -401,23 +401,23 @@ FROM pg_type WHERE typname = '_myvarchardom';
 DROP FUNCTION myvarcharsend(myvarchar);  -- fail
 ERROR:  cannot drop function myvarcharsend(myvarchar) because other objects depend on it
 DETAIL:  type myvarchar depends on function myvarcharsend(myvarchar)
-function myvarcharin(cstring,oid,integer) depends on type myvarchar
+function myvarcharin(cstring,oid,pg_catalog.int4) depends on type myvarchar
 function myvarcharout(myvarchar) depends on type myvarchar
-function myvarcharrecv(internal,oid,integer) depends on type myvarchar
+function myvarcharrecv(internal,oid,pg_catalog.int4) depends on type myvarchar
 type myvarchardom depends on function myvarcharsend(myvarchar)
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE myvarchar;  -- fail
 ERROR:  cannot drop type myvarchar because other objects depend on it
-DETAIL:  function myvarcharin(cstring,oid,integer) depends on type myvarchar
+DETAIL:  function myvarcharin(cstring,oid,pg_catalog.int4) depends on type myvarchar
 function myvarcharout(myvarchar) depends on type myvarchar
 function myvarcharsend(myvarchar) depends on type myvarchar
-function myvarcharrecv(internal,oid,integer) depends on type myvarchar
+function myvarcharrecv(internal,oid,pg_catalog.int4) depends on type myvarchar
 type myvarchardom depends on type myvarchar
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE myvarchar CASCADE;
 NOTICE:  drop cascades to 5 other objects
-DETAIL:  drop cascades to function myvarcharin(cstring,oid,integer)
+DETAIL:  drop cascades to function myvarcharin(cstring,oid,pg_catalog.int4)
 drop cascades to function myvarcharout(myvarchar)
 drop cascades to function myvarcharsend(myvarchar)
-drop cascades to function myvarcharrecv(internal,oid,integer)
+drop cascades to function myvarcharrecv(internal,oid,pg_catalog.int4)
 drop cascades to type myvarchardom

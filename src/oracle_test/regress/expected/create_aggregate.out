@@ -9,7 +9,7 @@ CREATE AGGREGATE newavg (
 );
 -- test comments
 COMMENT ON AGGREGATE newavg_wrong (int4) IS 'an agg comment';
-ERROR:  aggregate newavg_wrong(integer) does not exist
+ERROR:  aggregate newavg_wrong(pg_catalog.int4) does not exist
 COMMENT ON AGGREGATE newavg (int4) IS 'an agg comment';
 COMMENT ON AGGREGATE newavg (int4) IS NULL;
 -- without finalfunc; test obsolete spellings 'sfunc1' etc
@@ -69,7 +69,7 @@ create function least_accum(int8, int8) returns int8 language sql as
 create aggregate least_agg(int4) (
   stype = int8, sfunc = least_accum
 );  -- fails
-ERROR:  function least_accum(bigint, bigint) requires run-time type coercion
+ERROR:  function least_accum(pg_catalog.int8, pg_catalog.int8) requires run-time type coercion
 drop function least_accum(int8, int8);
 create function least_accum(anycompatible, anycompatible)
 returns anycompatible language sql as
@@ -78,12 +78,12 @@ returns anycompatible language sql as
 create aggregate least_agg(int4) (
   stype = int8, sfunc = least_accum
 );  -- fails
-ERROR:  function least_accum(bigint, bigint) requires run-time type coercion
+ERROR:  function least_accum(pg_catalog.int8, pg_catalog.int8) requires run-time type coercion
 create aggregate least_agg(int8) (
   stype = int8, sfunc = least_accum
 );
 drop function least_accum(anycompatible, anycompatible) cascade;
-NOTICE:  drop cascades to function least_agg(bigint)
+NOTICE:  drop cascades to function least_agg(pg_catalog.int8)
 -- variadic aggregates
 create function least_accum(anyelement, variadic anyarray)
 returns anyelement language sql as
@@ -122,8 +122,8 @@ alter aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any")
                                        List of aggregate functions
  Schema |         Name         | Result data type |          Argument data types           | Description 
 --------+----------------------+------------------+----------------------------------------+-------------
- public | test_percentile_disc | anyelement       | double precision ORDER BY anyelement   | 
- public | test_rank            | bigint           | VARIADIC "any" ORDER BY VARIADIC "any" | 
+ public | test_percentile_disc | anyelement       | pg_catalog.float8 ORDER BY anyelement  | 
+ public | test_rank            | pg_catalog.int8  | VARIADIC "any" ORDER BY VARIADIC "any" | 
 (2 rows)
 
 -- moving-aggregate options
@@ -231,9 +231,9 @@ SELECT aggfnoid, aggtransfn, aggcombinefn, aggtranstype::regtype,
        aggserialfn, aggdeserialfn, aggfinalmodify
 FROM pg_aggregate
 WHERE aggfnoid = 'myavg'::REGPROC;
- aggfnoid | aggtransfn  | aggcombinefn | aggtranstype | aggserialfn | aggdeserialfn | aggfinalmodify 
-----------+-------------+--------------+--------------+-------------+---------------+----------------
- myavg    | numeric_add | -            | numeric      | -           | -             | r
+ aggfnoid | aggtransfn  | aggcombinefn |    aggtranstype    | aggserialfn | aggdeserialfn | aggfinalmodify 
+----------+-------------+--------------+--------------------+-------------+---------------+----------------
+ myavg    | numeric_add | -            | pg_catalog.numeric | -           | -             | r
 (1 row)
 
 -- can't change return type:
@@ -244,7 +244,7 @@ CREATE OR REPLACE AGGREGATE myavg (numeric)
 	finalfunc = numeric_out
 );
 ERROR:  cannot change return type of existing function
-HINT:  Use DROP AGGREGATE myavg(numeric) first.
+HINT:  Use DROP AGGREGATE myavg(pg_catalog.numeric) first.
 -- can't change to a different kind:
 CREATE OR REPLACE AGGREGATE myavg (order by numeric)
 (
@@ -301,7 +301,7 @@ CREATE AGGREGATE wrongreturntype (float8)
     msfunc = float8pl,
     minvfunc = float8mi_int
 );
-ERROR:  return type of inverse transition function float8mi_int is not double precision
+ERROR:  return type of inverse transition function float8mi_int is not pg_catalog.float8
 -- invalid: non-lowercase quoted identifiers
 CREATE AGGREGATE case_agg ( -- old syntax
 	"Sfunc1" = int4pl,

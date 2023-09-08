@@ -20,13 +20,13 @@ WHERE i.indrelid = 'tbl_include_reg'::regclass ORDER BY c.relname;
 (2 rows)
 
 \d tbl_include_reg_idx
-  Index "public.tbl_include_reg_idx"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- c1     | integer | yes  | c1
- c2     | integer | yes  | c2
- c3     | integer | no   | c3
- c4     | box     | no   | c4
+      Index "public.tbl_include_reg_idx"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ c1     | pg_catalog.int4 | yes  | c1
+ c2     | pg_catalog.int4 | yes  | c2
+ c3     | pg_catalog.int4 | no   | c3
+ c4     | box             | no   | c4
 btree, for table "public.tbl_include_reg"
 
 -- Unique index and unique constraint
@@ -387,13 +387,13 @@ INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS
 ALTER TABLE tbl ALTER c1 TYPE bigint;
 ALTER TABLE tbl ALTER c3 TYPE bigint;
 \d tbl
-                Table "public.tbl"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- c1     | bigint  |           |          | 
- c2     | integer |           |          | 
- c3     | bigint  |           |          | 
- c4     | box     |           |          | 
+                    Table "public.tbl"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ c1     | pg_catalog.int8 |           |          | 
+ c2     | pg_catalog.int4 |           |          | 
+ c3     | pg_catalog.int8 |           |          | 
+ c4     | box             |           |          | 
 Indexes:
     "tbl_c1_c2_c3_c4_key" UNIQUE CONSTRAINT, btree (c1, c2) INCLUDE (c3, c4)
 

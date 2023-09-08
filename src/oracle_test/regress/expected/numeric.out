@@ -2344,14 +2344,14 @@ CREATE TABLE num_typemod_test (
   millionths numeric(3, 6)
 );
 \d num_typemod_test
-               Table "public.num_typemod_test"
-   Column    |     Type      | Collation | Nullable | Default 
--------------+---------------+-----------+----------+---------
- millions    | numeric(3,-6) |           |          | 
- thousands   | numeric(3,-3) |           |          | 
- units       | numeric(3,0)  |           |          | 
- thousandths | numeric(3,3)  |           |          | 
- millionths  | numeric(3,6)  |           |          | 
+                     Table "public.num_typemod_test"
+   Column    |           Type           | Collation | Nullable | Default 
+-------------+--------------------------+-----------+----------+---------
+ millions    | pg_catalog.numeric(3,-6) |           |          | 
+ thousands   | pg_catalog.numeric(3,-3) |           |          | 
+ units       | pg_catalog.numeric(3,0)  |           |          | 
+ thousandths | pg_catalog.numeric(3,3)  |           |          | 
+ millionths  | pg_catalog.numeric(3,6)  |           |          | 
 
 -- rounding of valid inputs
 INSERT INTO num_typemod_test VALUES (123456, 123, 0.123, 0.000123, 0.000000123);

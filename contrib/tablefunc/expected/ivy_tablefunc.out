@@ -389,7 +389,7 @@ DETAIL:  First two columns must be the same type.
 -- should fail as key field datatype should match return datatype
 SELECT * FROM connectby('connectby_int', 'keyid', 'parent_keyid', '2', 0, '~') AS t(keyid float8, parent_keyid float8, level int, branch text);
 ERROR:  invalid return type
-DETAIL:  SQL key field type double precision does not match return key field type integer.
+DETAIL:  SQL key field type pg_catalog.float8 does not match return key field type pg_catalog.int4.
 -- tests for values using custom queries
 -- query with one column - failed
 SELECT * FROM connectby('connectby_int', '1; --', 'parent_keyid', '2', 0) AS t(keyid int, parent_keyid int, level int);

@@ -699,17 +699,17 @@ drop table some_tab cascade;
 NOTICE:  drop cascades to table some_tab_child
 /* Test multiple inheritance of column defaults */
 CREATE TABLE firstparent (tomorrow date default now()::date + 1);
-ERROR:  cannot cast type timestamp with time zone to date
+ERROR:  cannot cast type pg_catalog.timestamptz to date
 LINE 2: ...ATE TABLE firstparent (tomorrow date default now()::date + 1...
                                                              ^
 CREATE TABLE secondparent (tomorrow date default  now() :: date  +  1);
-ERROR:  cannot cast type timestamp with time zone to date
+ERROR:  cannot cast type pg_catalog.timestamptz to date
 LINE 1: ... TABLE secondparent (tomorrow date default  now() :: date  +...
                                                              ^
 CREATE TABLE jointchild () INHERITS (firstparent, secondparent);  -- ok
 ERROR:  relation "firstparent" does not exist
 CREATE TABLE thirdparent (tomorrow date default now()::date - 1);
-ERROR:  cannot cast type timestamp with time zone to date
+ERROR:  cannot cast type pg_catalog.timestamptz to date
 LINE 1: ...ATE TABLE thirdparent (tomorrow date default now()::date - 1...
                                                              ^
 CREATE TABLE otherchild () INHERITS (firstparent, thirdparent);  -- not ok
@@ -753,20 +753,20 @@ select pc.relname, pgc.conname, pgc.contype, pgc.conislocal, pgc.coninhcount, pg
 -- Test that child does not inherit NO INHERIT constraints
 create table c1 () inherits (p1);
 \d p1
-                 Table "public.p1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- ff1    | integer |           |          | 
+                     Table "public.p1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ ff1    | pg_catalog.int4 |           |          | 
 Check constraints:
     "p1chk" CHECK (ff1 > 0) NO INHERIT
     "p2chk" CHECK (ff1 > 10)
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d c1
-                 Table "public.c1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- ff1    | integer |           |          | 
+                     Table "public.c1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ ff1    | pg_catalog.int4 |           |          | 
 Check constraints:
     "p2chk" CHECK (ff1 > 10)
 Inherits: p1
@@ -957,12 +957,12 @@ ERROR:  new row for relation "c1" violates check constraint "p2_f2_check"
 DETAIL:  Failing row contains (1, -1, 2).
 create table c2(f3 int) inherits(p1,p2);
 \d c2
-                 Table "public.c2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- f1     | integer |           |          | 
- f2     | integer |           |          | 
- f3     | integer |           |          | 
+                     Table "public.c2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ f1     | pg_catalog.int4 |           |          | 
+ f2     | pg_catalog.int4 |           |          | 
+ f3     | pg_catalog.int4 |           |          | 
 Check constraints:
     "p2_f2_check" CHECK (f2 > 0)
 Inherits: p1,
@@ -973,13 +973,13 @@ NOTICE:  merging multiple inherited definitions of column "f1"
 NOTICE:  merging multiple inherited definitions of column "f2"
 NOTICE:  merging multiple inherited definitions of column "f3"
 \d c3
-                 Table "public.c3"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- f1     | integer |           |          | 
- f2     | integer |           |          | 
- f3     | integer |           |          | 
- f4     | integer |           |          | 
+                     Table "public.c3"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ f1     | pg_catalog.int4 |           |          | 
+ f2     | pg_catalog.int4 |           |          | 
+ f3     | pg_catalog.int4 |           |          | 
+ f4     | pg_catalog.int4 |           |          | 
 Check constraints:
     "p2_f2_check" CHECK (f2 > 0)
 Inherits: c1,
@@ -995,13 +995,13 @@ create table pp1 (f1 int);
 create table cc1 (f2 text, f3 int) inherits (pp1);
 alter table pp1 add column a1 int check (a1 > 0);
 \d cc1
-                Table "public.cc1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- f1     | integer |           |          | 
- f2     | text    |           |          | 
- f3     | integer |           |          | 
- a1     | integer |           |          | 
+                    Table "public.cc1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ f1     | pg_catalog.int4 |           |          | 
+ f2     | text            |           |          | 
+ f3     | pg_catalog.int4 |           |          | 
+ a1     | pg_catalog.int4 |           |          | 
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
 Inherits: pp1
@@ -1011,13 +1011,13 @@ NOTICE:  merging multiple inherited definitions of column "f1"
 NOTICE:  merging multiple inherited definitions of column "a1"
 \d cc2
                      Table "public.cc2"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- f1     | integer          |           |          | 
- a1     | integer          |           |          | 
- f2     | text             |           |          | 
- f3     | integer          |           |          | 
- f4     | double precision |           |          | 
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ f1     | pg_catalog.int4   |           |          | 
+ a1     | pg_catalog.int4   |           |          | 
+ f2     | text              |           |          | 
+ f3     | pg_catalog.int4   |           |          | 
+ f4     | pg_catalog.float8 |           |          | 
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
 Inherits: pp1,
@@ -1028,14 +1028,14 @@ NOTICE:  merging definition of column "a2" for child "cc2"
 NOTICE:  merging constraint "pp1_a2_check" with inherited definition
 \d cc2
                      Table "public.cc2"
- Column |       Type       | Collation | Nullable | Default 
---------+------------------+-----------+----------+---------
- f1     | integer          |           |          | 
- a1     | integer          |           |          | 
- f2     | text             |           |          | 
- f3     | integer          |           |          | 
- f4     | double precision |           |          | 
- a2     | integer          |           |          | 
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ f1     | pg_catalog.int4   |           |          | 
+ a1     | pg_catalog.int4   |           |          | 
+ f2     | text              |           |          | 
+ f3     | pg_catalog.int4   |           |          | 
+ f4     | pg_catalog.float8 |           |          | 
+ a2     | pg_catalog.int4   |           |          | 
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
     "pp1_a2_check" CHECK (a2 > 0)
@@ -1058,13 +1058,13 @@ ALTER TABLE inhts RENAME aa TO aaa;      -- to be failed
 ERROR:  cannot rename inherited column "aa"
 ALTER TABLE inhts RENAME d TO dd;
 \d+ inhts
-                                   Table "public.inhts"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- aa     | integer |           |          |         | plain   |              | 
- b      | integer |           |          |         | plain   |              | 
- c      | integer |           |          |         | plain   |              | 
- dd     | integer |           |          |         | plain   |              | 
+                                       Table "public.inhts"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ aa     | pg_catalog.int4 |           |          |         | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         | plain   |              | 
+ dd     | pg_catalog.int4 |           |          |         | plain   |              | 
 Inherits: inht1,
           inhs1
 
@@ -1077,14 +1077,14 @@ NOTICE:  merging multiple inherited definitions of column "aa"
 NOTICE:  merging multiple inherited definitions of column "b"
 ALTER TABLE inht1 RENAME aa TO aaa;
 \d+ inht4
-                                   Table "public.inht4"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- aaa    | integer |           |          |         | plain   |              | 
- b      | integer |           |          |         | plain   |              | 
- x      | integer |           |          |         | plain   |              | 
- y      | integer |           |          |         | plain   |              | 
- z      | integer |           |          |         | plain   |              | 
+                                       Table "public.inht4"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ aaa    | pg_catalog.int4 |           |          |         | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         | plain   |              | 
+ x      | pg_catalog.int4 |           |          |         | plain   |              | 
+ y      | pg_catalog.int4 |           |          |         | plain   |              | 
+ z      | pg_catalog.int4 |           |          |         | plain   |              | 
 Inherits: inht2,
           inht3
 
@@ -1094,14 +1094,14 @@ ALTER TABLE inht1 RENAME aaa TO aaaa;
 ALTER TABLE inht1 RENAME b TO bb;                -- to be failed
 ERROR:  cannot rename inherited column "b"
 \d+ inhts
-                                   Table "public.inhts"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- aaaa   | integer |           |          |         | plain   |              | 
- b      | integer |           |          |         | plain   |              | 
- x      | integer |           |          |         | plain   |              | 
- c      | integer |           |          |         | plain   |              | 
- d      | integer |           |          |         | plain   |              | 
+                                       Table "public.inhts"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ aaaa   | pg_catalog.int4 |           |          |         | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         | plain   |              | 
+ x      | pg_catalog.int4 |           |          |         | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         | plain   |              | 
+ d      | pg_catalog.int4 |           |          |         | plain   |              | 
 Inherits: inht2,
           inhs1
 
@@ -1141,33 +1141,33 @@ drop cascades to table inht4
 CREATE TABLE test_constraints (id int, val1 varchar, val2 int, UNIQUE(val1, val2));
 CREATE TABLE test_constraints_inh () INHERITS (test_constraints);
 \d+ test_constraints
-                                 Table "public.test_constraints"
- Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+----------------+-----------+----------+---------+----------+--------------+-------------
- id     | integer        |           |          |         | plain    |              | 
- val1   | varchar2(4000) |           |          |         | extended |              | 
- val2   | integer        |           |          |         | plain    |              | 
+                                  Table "public.test_constraints"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain    |              | 
+ val1   | varchar2(4000)  |           |          |         | extended |              | 
+ val2   | pg_catalog.int4 |           |          |         | plain    |              | 
 Indexes:
     "test_constraints_val1_val2_key" UNIQUE CONSTRAINT, btree (val1, val2)
 Child tables: test_constraints_inh
 
 ALTER TABLE ONLY test_constraints DROP CONSTRAINT test_constraints_val1_val2_key;
 \d+ test_constraints
-                                 Table "public.test_constraints"
- Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+----------------+-----------+----------+---------+----------+--------------+-------------
- id     | integer        |           |          |         | plain    |              | 
- val1   | varchar2(4000) |           |          |         | extended |              | 
- val2   | integer        |           |          |         | plain    |              | 
+                                  Table "public.test_constraints"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain    |              | 
+ val1   | varchar2(4000)  |           |          |         | extended |              | 
+ val2   | pg_catalog.int4 |           |          |         | plain    |              | 
 Child tables: test_constraints_inh
 
 \d+ test_constraints_inh
-                               Table "public.test_constraints_inh"
- Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+----------------+-----------+----------+---------+----------+--------------+-------------
- id     | integer        |           |          |         | plain    |              | 
- val1   | varchar2(4000) |           |          |         | extended |              | 
- val2   | integer        |           |          |         | plain    |              | 
+                                Table "public.test_constraints_inh"
+ Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain    |              | 
+ val1   | varchar2(4000)  |           |          |         | extended |              | 
+ val2   | pg_catalog.int4 |           |          |         | plain    |              | 
 Inherits: test_constraints
 
 DROP TABLE test_constraints_inh;
@@ -1208,37 +1208,37 @@ CREATE TABLE test_primary_constraints(id int PRIMARY KEY);
 CREATE TABLE test_foreign_constraints(id1 int REFERENCES test_primary_constraints(id));
 CREATE TABLE test_foreign_constraints_inh () INHERITS (test_foreign_constraints);
 \d+ test_primary_constraints
-                         Table "public.test_primary_constraints"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- id     | integer |           | not null |         | plain   |              | 
+                             Table "public.test_primary_constraints"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null |         | plain   |              | 
 Indexes:
     "test_primary_constraints_pkey" PRIMARY KEY, btree (id)
 Referenced by:
     TABLE "test_foreign_constraints" CONSTRAINT "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
 
 \d+ test_foreign_constraints
-                         Table "public.test_foreign_constraints"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- id1    | integer |           |          |         | plain   |              | 
+                             Table "public.test_foreign_constraints"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ id1    | pg_catalog.int4 |           |          |         | plain   |              | 
 Foreign-key constraints:
     "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
 Child tables: test_foreign_constraints_inh
 
 ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
 \d+ test_foreign_constraints
-                         Table "public.test_foreign_constraints"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- id1    | integer |           |          |         | plain   |              | 
+                             Table "public.test_foreign_constraints"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ id1    | pg_catalog.int4 |           |          |         | plain   |              | 
 Child tables: test_foreign_constraints_inh
 
 \d+ test_foreign_constraints_inh
-                       Table "public.test_foreign_constraints_inh"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- id1    | integer |           |          |         | plain   |              | 
+                           Table "public.test_foreign_constraints_inh"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ id1    | pg_catalog.int4 |           |          |         | plain   |              | 
 Inherits: test_foreign_constraints
 
 DROP TABLE test_foreign_constraints_inh;
@@ -1619,7 +1619,7 @@ ORDER BY thousand, tenthous;
    Sort Key: tenk1.thousand, tenk1.tenthous
    ->  Index Only Scan using tenk1_thous_tenthous on tenk1
    ->  Sort
-         Sort Key: tenk1_1.thousand, ((random())::integer)
+         Sort Key: tenk1_1.thousand, ((random())::pg_catalog.int4)
          ->  Index Only Scan using tenk1_thous_tenthous on tenk1 tenk1_1
 (6 rows)
 
@@ -2136,19 +2136,19 @@ explain (costs off) select * from mcrparted where a > -1;	-- scans all partition
 ---------------------------------------------
  Append
    ->  Seq Scan on mcrparted0 mcrparted_1
-         Filter: (a > '-1'::integer)
+         Filter: (a > '-1'::pg_catalog.int4)
    ->  Seq Scan on mcrparted1 mcrparted_2
-         Filter: (a > '-1'::integer)
+         Filter: (a > '-1'::pg_catalog.int4)
    ->  Seq Scan on mcrparted2 mcrparted_3
-         Filter: (a > '-1'::integer)
+         Filter: (a > '-1'::pg_catalog.int4)
    ->  Seq Scan on mcrparted3 mcrparted_4
-         Filter: (a > '-1'::integer)
+         Filter: (a > '-1'::pg_catalog.int4)
    ->  Seq Scan on mcrparted4 mcrparted_5
-         Filter: (a > '-1'::integer)
+         Filter: (a > '-1'::pg_catalog.int4)
    ->  Seq Scan on mcrparted5 mcrparted_6
-         Filter: (a > '-1'::integer)
+         Filter: (a > '-1'::pg_catalog.int4)
    ->  Seq Scan on mcrparted_def mcrparted_7
-         Filter: (a > '-1'::integer)
+         Filter: (a > '-1'::pg_catalog.int4)
 (15 rows)
 
 explain (costs off) select * from mcrparted where a = 20 and abs(b) = 10 and c > 10;	-- scans mcrparted4
@@ -2334,9 +2334,9 @@ explain (costs off) select * from mclparted where a in(3,4,5) order by a;
  Merge Append
    Sort Key: mclparted.a
    ->  Index Only Scan using mclparted3_5_a_idx on mclparted3_5 mclparted_1
-         Index Cond: (a = ANY ('{3,4,5}'::integer[]))
+         Index Cond: (a = ANY ('{3,4,5}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted4_a_idx on mclparted4 mclparted_2
-         Index Cond: (a = ANY ('{3,4,5}'::integer[]))
+         Index Cond: (a = ANY ('{3,4,5}'::pg_catalog.int4[]))
 (6 rows)
 
 -- Introduce a NULL and DEFAULT partition so we can test more complex cases
@@ -2348,11 +2348,11 @@ explain (costs off) select * from mclparted where a in(1,2,4) order by a;
 ------------------------------------------------------------------------
  Append
    ->  Index Only Scan using mclparted1_a_idx on mclparted1 mclparted_1
-         Index Cond: (a = ANY ('{1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted2_a_idx on mclparted2 mclparted_2
-         Index Cond: (a = ANY ('{1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted4_a_idx on mclparted4 mclparted_3
-         Index Cond: (a = ANY ('{1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4}'::pg_catalog.int4[]))
 (7 rows)
 
 explain (costs off) select * from mclparted where a in(1,2,4) or a is null order by a;
@@ -2360,13 +2360,13 @@ explain (costs off) select * from mclparted where a in(1,2,4) or a is null order
 --------------------------------------------------------------------------------
  Append
    ->  Index Only Scan using mclparted1_a_idx on mclparted1 mclparted_1
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
    ->  Index Only Scan using mclparted2_a_idx on mclparted2 mclparted_2
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
    ->  Index Only Scan using mclparted4_a_idx on mclparted4 mclparted_3
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
    ->  Index Only Scan using mclparted_null_a_idx on mclparted_null mclparted_4
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
 (9 rows)
 
 -- Test a more complex case where the NULL partition allows some other value
@@ -2379,13 +2379,13 @@ explain (costs off) select * from mclparted where a in(1,2,4) or a is null order
  Merge Append
    Sort Key: mclparted.a
    ->  Index Only Scan using mclparted_0_null_a_idx on mclparted_0_null mclparted_1
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
    ->  Index Only Scan using mclparted1_a_idx on mclparted1 mclparted_2
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
    ->  Index Only Scan using mclparted2_a_idx on mclparted2 mclparted_3
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
    ->  Index Only Scan using mclparted4_a_idx on mclparted4 mclparted_4
-         Filter: ((a = ANY ('{1,2,4}'::integer[])) OR (a IS NULL))
+         Filter: ((a = ANY ('{1,2,4}'::pg_catalog.int4[])) OR (a IS NULL))
 (10 rows)
 
 explain (costs off) select * from mclparted where a in(0,1,2,4) order by a;
@@ -2394,13 +2394,13 @@ explain (costs off) select * from mclparted where a in(0,1,2,4) order by a;
  Merge Append
    Sort Key: mclparted.a
    ->  Index Only Scan using mclparted_0_null_a_idx on mclparted_0_null mclparted_1
-         Index Cond: (a = ANY ('{0,1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{0,1,2,4}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted1_a_idx on mclparted1 mclparted_2
-         Index Cond: (a = ANY ('{0,1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{0,1,2,4}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted2_a_idx on mclparted2 mclparted_3
-         Index Cond: (a = ANY ('{0,1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{0,1,2,4}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted4_a_idx on mclparted4 mclparted_4
-         Index Cond: (a = ANY ('{0,1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{0,1,2,4}'::pg_catalog.int4[]))
 (10 rows)
 
 -- Ensure Append is used when the null partition is pruned
@@ -2409,11 +2409,11 @@ explain (costs off) select * from mclparted where a in(1,2,4) order by a;
 ------------------------------------------------------------------------
  Append
    ->  Index Only Scan using mclparted1_a_idx on mclparted1 mclparted_1
-         Index Cond: (a = ANY ('{1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted2_a_idx on mclparted2 mclparted_2
-         Index Cond: (a = ANY ('{1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted4_a_idx on mclparted4 mclparted_3
-         Index Cond: (a = ANY ('{1,2,4}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4}'::pg_catalog.int4[]))
 (7 rows)
 
 -- Ensure MergeAppend is used when the default partition is not pruned
@@ -2423,13 +2423,13 @@ explain (costs off) select * from mclparted where a in(1,2,4,100) order by a;
  Merge Append
    Sort Key: mclparted.a
    ->  Index Only Scan using mclparted1_a_idx on mclparted1 mclparted_1
-         Index Cond: (a = ANY ('{1,2,4,100}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4,100}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted2_a_idx on mclparted2 mclparted_2
-         Index Cond: (a = ANY ('{1,2,4,100}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4,100}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted4_a_idx on mclparted4 mclparted_3
-         Index Cond: (a = ANY ('{1,2,4,100}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4,100}'::pg_catalog.int4[]))
    ->  Index Only Scan using mclparted_def_a_idx on mclparted_def mclparted_4
-         Index Cond: (a = ANY ('{1,2,4,100}'::integer[]))
+         Index Cond: (a = ANY ('{1,2,4,100}'::pg_catalog.int4[]))
 (10 rows)
 
 drop table mclparted;

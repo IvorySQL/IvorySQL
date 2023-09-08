@@ -1444,7 +1444,7 @@ pg_publication_tables| SELECT p.pubname,
     c.relname AS tablename,
     ( SELECT array_agg(a.attname ORDER BY a.attnum) AS array_agg
            FROM pg_attribute a
-          WHERE ((a.attrelid = gpt.relid) AND (a.attnum = ANY ((gpt.attrs)::smallint[])))) AS attnames,
+          WHERE ((a.attrelid = gpt.relid) AND (a.attnum = ANY ((gpt.attrs)::pg_catalog.int2[])))) AS attnames,
     pg_get_expr(gpt.qual, gpt.relid) AS rowfilter
    FROM pg_publication p,
     LATERAL pg_get_publication_tables(VARIADIC ARRAY[(p.pubname)::text]) gpt(pubid, relid, attrs, qual),
@@ -1695,7 +1695,7 @@ pg_sequences| SELECT n.nspname AS schemaname,
     s.seqcache AS cache_size,
         CASE
             WHEN has_sequence_privilege(c.oid, 'SELECT,USAGE'::text) THEN pg_sequence_last_value((c.oid)::regclass)
-            ELSE NULL::bigint
+            ELSE NULL::pg_catalog.int8
         END AS last_value
    FROM ((pg_sequence s
      JOIN pg_class c ON ((c.oid = s.seqrelid)))
@@ -1758,7 +1758,7 @@ pg_stat_activity| SELECT s.datid,
     s.query_id,
     s.query,
     s.backend_type
-   FROM ((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
+   FROM ((pg_stat_get_activity(NULL::pg_catalog.int4) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)))
      LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)));
 pg_stat_all_indexes| SELECT c.oid AS relid,
@@ -1781,9 +1781,9 @@ pg_stat_all_tables| SELECT c.oid AS relid,
     pg_stat_get_numscans(c.oid) AS seq_scan,
     pg_stat_get_lastscan(c.oid) AS last_seq_scan,
     pg_stat_get_tuples_returned(c.oid) AS seq_tup_read,
-    (sum(pg_stat_get_numscans(i.indexrelid)))::bigint AS idx_scan,
+    (sum(pg_stat_get_numscans(i.indexrelid)))::pg_catalog.int8 AS idx_scan,
     max(pg_stat_get_lastscan(i.indexrelid)) AS last_idx_scan,
-    ((sum(pg_stat_get_tuples_fetched(i.indexrelid)))::bigint + pg_stat_get_tuples_fetched(c.oid)) AS idx_tup_fetch,
+    ((sum(pg_stat_get_tuples_fetched(i.indexrelid)))::pg_catalog.int8 + pg_stat_get_tuples_fetched(c.oid)) AS idx_tup_fetch,
     pg_stat_get_tuples_inserted(c.oid) AS n_tup_ins,
     pg_stat_get_tuples_updated(c.oid) AS n_tup_upd,
     pg_stat_get_tuples_deleted(c.oid) AS n_tup_del,
@@ -1876,7 +1876,7 @@ pg_stat_gssapi| SELECT pid,
     gss_princ AS principal,
     gss_enc AS encrypted,
     gss_delegation AS credentials_delegated
-   FROM pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
+   FROM pg_stat_get_activity(NULL::pg_catalog.int4) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
   WHERE (client_port IS NOT NULL);
 pg_stat_io| SELECT backend_type,
     object,
@@ -1930,7 +1930,7 @@ pg_stat_progress_basebackup| SELECT pid,
             ELSE NULL::text
         END AS phase,
         CASE param2
-            WHEN '-1'::integer THEN NULL::bigint
+            WHEN '-1'::pg_catalog.int4 THEN NULL::pg_catalog.int8
             ELSE param2
         END AS backup_total,
     param3 AS backup_streamed,
@@ -2076,7 +2076,7 @@ pg_stat_replication| SELECT s.pid,
     w.sync_priority,
     w.sync_state,
     w.reply_time
-   FROM ((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
+   FROM ((pg_stat_get_activity(NULL::pg_catalog.int4) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
      JOIN pg_stat_get_wal_senders() w(pid, state, sent_lsn, write_lsn, flush_lsn, replay_lsn, write_lag, flush_lag, replay_lag, sync_priority, sync_state, reply_time) ON ((s.pid = w.pid)))
      LEFT JOIN pg_authid u ON ((s.usesysid = u.oid)));
 pg_stat_replication_slots| SELECT s.slot_name,
@@ -2110,7 +2110,7 @@ pg_stat_ssl| SELECT pid,
     ssl_client_dn AS client_dn,
     ssl_client_serial AS client_serial,
     ssl_issuer_dn AS issuer_dn
-   FROM pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
+   FROM pg_stat_get_activity(NULL::pg_catalog.int4) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, gss_delegation, leader_pid, query_id)
   WHERE (client_port IS NOT NULL);
 pg_stat_subscription| SELECT su.oid AS subid,
     su.subname,
@@ -2250,8 +2250,8 @@ pg_stat_xact_all_tables| SELECT c.oid AS relid,
     c.relname,
     pg_stat_get_xact_numscans(c.oid) AS seq_scan,
     pg_stat_get_xact_tuples_returned(c.oid) AS seq_tup_read,
-    (sum(pg_stat_get_xact_numscans(i.indexrelid)))::bigint AS idx_scan,
-    ((sum(pg_stat_get_xact_tuples_fetched(i.indexrelid)))::bigint + pg_stat_get_xact_tuples_fetched(c.oid)) AS idx_tup_fetch,
+    (sum(pg_stat_get_xact_numscans(i.indexrelid)))::pg_catalog.int8 AS idx_scan,
+    ((sum(pg_stat_get_xact_tuples_fetched(i.indexrelid)))::pg_catalog.int8 + pg_stat_get_xact_tuples_fetched(c.oid)) AS idx_tup_fetch,
     pg_stat_get_xact_tuples_inserted(c.oid) AS n_tup_ins,
     pg_stat_get_xact_tuples_updated(c.oid) AS n_tup_upd,
     pg_stat_get_xact_tuples_deleted(c.oid) AS n_tup_del,
@@ -2333,12 +2333,12 @@ pg_statio_all_tables| SELECT c.oid AS relid,
    FROM ((((pg_class c
      LEFT JOIN pg_class t ON ((c.reltoastrelid = t.oid)))
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
-     LEFT JOIN LATERAL ( SELECT (sum((pg_stat_get_blocks_fetched(pg_index.indexrelid) - pg_stat_get_blocks_hit(pg_index.indexrelid))))::bigint AS idx_blks_read,
-            (sum(pg_stat_get_blocks_hit(pg_index.indexrelid)))::bigint AS idx_blks_hit
+     LEFT JOIN LATERAL ( SELECT (sum((pg_stat_get_blocks_fetched(pg_index.indexrelid) - pg_stat_get_blocks_hit(pg_index.indexrelid))))::pg_catalog.int8 AS idx_blks_read,
+            (sum(pg_stat_get_blocks_hit(pg_index.indexrelid)))::pg_catalog.int8 AS idx_blks_hit
            FROM pg_index
           WHERE (pg_index.indrelid = c.oid)) i ON (true))
-     LEFT JOIN LATERAL ( SELECT (sum((pg_stat_get_blocks_fetched(pg_index.indexrelid) - pg_stat_get_blocks_hit(pg_index.indexrelid))))::bigint AS idx_blks_read,
-            (sum(pg_stat_get_blocks_hit(pg_index.indexrelid)))::bigint AS idx_blks_hit
+     LEFT JOIN LATERAL ( SELECT (sum((pg_stat_get_blocks_fetched(pg_index.indexrelid) - pg_stat_get_blocks_hit(pg_index.indexrelid))))::pg_catalog.int8 AS idx_blks_read,
+            (sum(pg_stat_get_blocks_hit(pg_index.indexrelid)))::pg_catalog.int8 AS idx_blks_hit
            FROM pg_index
           WHERE (pg_index.indrelid = t.oid)) x ON (true))
   WHERE (c.relkind = ANY (ARRAY['r'::"char", 't'::"char", 'm'::"char"]));
@@ -2421,7 +2421,7 @@ pg_stats| SELECT n.nspname AS schemaname,
             WHEN (s.stakind3 = 1) THEN s.stanumbers3
             WHEN (s.stakind4 = 1) THEN s.stanumbers4
             WHEN (s.stakind5 = 1) THEN s.stanumbers5
-            ELSE NULL::real[]
+            ELSE NULL::pg_catalog.float4[]
         END AS most_common_freqs,
         CASE
             WHEN (s.stakind1 = 2) THEN s.stavalues1
@@ -2437,7 +2437,7 @@ pg_stats| SELECT n.nspname AS schemaname,
             WHEN (s.stakind3 = 3) THEN s.stanumbers3[1]
             WHEN (s.stakind4 = 3) THEN s.stanumbers4[1]
             WHEN (s.stakind5 = 3) THEN s.stanumbers5[1]
-            ELSE NULL::real
+            ELSE NULL::pg_catalog.float4
         END AS correlation,
         CASE
             WHEN (s.stakind1 = 4) THEN s.stavalues1
@@ -2453,7 +2453,7 @@ pg_stats| SELECT n.nspname AS schemaname,
             WHEN (s.stakind3 = 4) THEN s.stanumbers3
             WHEN (s.stakind4 = 4) THEN s.stanumbers4
             WHEN (s.stakind5 = 4) THEN s.stanumbers5
-            ELSE NULL::real[]
+            ELSE NULL::pg_catalog.float4[]
         END AS most_common_elem_freqs,
         CASE
             WHEN (s.stakind1 = 5) THEN s.stanumbers1
@@ -2461,7 +2461,7 @@ pg_stats| SELECT n.nspname AS schemaname,
             WHEN (s.stakind3 = 5) THEN s.stanumbers3
             WHEN (s.stakind4 = 5) THEN s.stanumbers4
             WHEN (s.stakind5 = 5) THEN s.stanumbers5
-            ELSE NULL::real[]
+            ELSE NULL::pg_catalog.float4[]
         END AS elem_count_histogram
    FROM (((pg_statistic s
      JOIN pg_class c ON ((c.oid = s.starelid)))
@@ -2523,7 +2523,7 @@ pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
             WHEN ((stat.a).stakind3 = 1) THEN (stat.a).stanumbers3
             WHEN ((stat.a).stakind4 = 1) THEN (stat.a).stanumbers4
             WHEN ((stat.a).stakind5 = 1) THEN (stat.a).stanumbers5
-            ELSE NULL::real[]
+            ELSE NULL::pg_catalog.float4[]
         END AS most_common_freqs,
         CASE
             WHEN ((stat.a).stakind1 = 2) THEN (stat.a).stavalues1
@@ -2539,7 +2539,7 @@ pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
             WHEN ((stat.a).stakind3 = 3) THEN (stat.a).stanumbers3[1]
             WHEN ((stat.a).stakind4 = 3) THEN (stat.a).stanumbers4[1]
             WHEN ((stat.a).stakind5 = 3) THEN (stat.a).stanumbers5[1]
-            ELSE NULL::real
+            ELSE NULL::pg_catalog.float4
         END AS correlation,
         CASE
             WHEN ((stat.a).stakind1 = 4) THEN (stat.a).stavalues1
@@ -2555,7 +2555,7 @@ pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
             WHEN ((stat.a).stakind3 = 4) THEN (stat.a).stanumbers3
             WHEN ((stat.a).stakind4 = 4) THEN (stat.a).stanumbers4
             WHEN ((stat.a).stakind5 = 4) THEN (stat.a).stanumbers5
-            ELSE NULL::real[]
+            ELSE NULL::pg_catalog.float4[]
         END AS most_common_elem_freqs,
         CASE
             WHEN ((stat.a).stakind1 = 5) THEN (stat.a).stanumbers1
@@ -2563,7 +2563,7 @@ pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
             WHEN ((stat.a).stakind3 = 5) THEN (stat.a).stanumbers3
             WHEN ((stat.a).stakind4 = 5) THEN (stat.a).stanumbers4
             WHEN ((stat.a).stakind5 = 5) THEN (stat.a).stanumbers5
-            ELSE NULL::real[]
+            ELSE NULL::pg_catalog.float4[]
         END AS elem_count_histogram
    FROM (((((pg_statistic_ext s
      JOIN pg_class c ON ((c.oid = s.stxrelid)))
@@ -3028,18 +3028,18 @@ create rule r7 as on delete to rules_src do instead
   returning trgt.f1, trgt.f2;
 -- check display of all rules added above
 \d+ rules_src
-                                 Table "public.rules_src"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- f1     | integer |           |          |         | plain   |              | 
- f2     | integer |           |          | 0       | plain   |              | 
+                                     Table "public.rules_src"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain   |              | 
+ f2     | pg_catalog.int4 |           |          | 0       | plain   |              | 
 Rules:
     r1 AS
     ON UPDATE TO rules_src DO  INSERT INTO rules_log (f1, f2, tag, id) VALUES (old.f1,old.f2,'old'::text,DEFAULT), (new.f1,new.f2,'new'::text,DEFAULT)
     r2 AS
     ON UPDATE TO rules_src DO  VALUES (old.f1,old.f2,'old'::text), (new.f1,new.f2,'new'::text)
     r3 AS
-    ON INSERT TO rules_src DO  INSERT INTO rules_log (f1, f2, tag, id) VALUES (NULL::integer,NULL::integer,'-'::text,DEFAULT), (new.f1,new.f2,'new'::text,DEFAULT)
+    ON INSERT TO rules_src DO  INSERT INTO rules_log (f1, f2, tag, id) VALUES (NULL::pg_catalog.int4,NULL::pg_catalog.int4,'-'::text,DEFAULT), (new.f1,new.f2,'new'::text,DEFAULT)
     r4 AS
     ON DELETE TO rules_src DO
  NOTIFY rules_src_deletion
@@ -3081,11 +3081,11 @@ create rule rr as on update to rule_t1 do instead UPDATE rule_dest trgt
   SET (f2[1], f1, tag) = (SELECT new.f2, new.f1, 'updated'::varchar)
   WHERE trgt.f1 = new.f1 RETURNING new.*;
 \d+ rule_t1
-                                  Table "public.rule_t1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- f1     | integer |           |          |         | plain   |              | 
- f2     | integer |           |          |         | plain   |              | 
+                                      Table "public.rule_t1"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain   |              | 
+ f2     | pg_catalog.int4 |           |          |         | plain   |              | 
 Rules:
     rr AS
     ON UPDATE TO rule_t1 DO INSTEAD  UPDATE rule_dest trgt SET (f2[1], f1, tag) = ( SELECT new.f2,
@@ -3139,10 +3139,10 @@ SELECT * FROM rule_v1;
 (1 row)
 
 \d+ rule_v1
-                           View "public.rule_v1"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
+                               View "public.rule_v1"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT a
    FROM rule_t1;
@@ -3167,21 +3167,21 @@ DROP TABLE rule_t1;
 --
 create view rule_v1 as values(1,2);
 \d+ rule_v1
-                           View "public.rule_v1"
- Column  |  Type   | Collation | Nullable | Default | Storage | Description 
----------+---------+-----------+----------+---------+---------+-------------
- column1 | integer |           |          |         | plain   | 
- column2 | integer |           |          |         | plain   | 
+                               View "public.rule_v1"
+ Column  |      Type       | Collation | Nullable | Default | Storage | Description 
+---------+-----------------+-----------+----------+---------+---------+-------------
+ column1 | pg_catalog.int4 |           |          |         | plain   | 
+ column2 | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  VALUES (1,2);
 
 alter table rule_v1 rename column column2 to q2;
 \d+ rule_v1
-                           View "public.rule_v1"
- Column  |  Type   | Collation | Nullable | Default | Storage | Description 
----------+---------+-----------+----------+---------+---------+-------------
- column1 | integer |           |          |         | plain   | 
- q2      | integer |           |          |         | plain   | 
+                               View "public.rule_v1"
+ Column  |      Type       | Collation | Nullable | Default | Storage | Description 
+---------+-----------------+-----------+----------+---------+---------+-------------
+ column1 | pg_catalog.int4 |           |          |         | plain   | 
+ q2      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT column1,
     column2 AS q2
@@ -3190,11 +3190,11 @@ View definition:
 drop view rule_v1;
 create view rule_v1(x) as values(1,2);
 \d+ rule_v1
-                           View "public.rule_v1"
- Column  |  Type   | Collation | Nullable | Default | Storage | Description 
----------+---------+-----------+----------+---------+---------+-------------
- x       | integer |           |          |         | plain   | 
- column2 | integer |           |          |         | plain   | 
+                               View "public.rule_v1"
+ Column  |      Type       | Collation | Nullable | Default | Storage | Description 
+---------+-----------------+-----------+----------+---------+---------+-------------
+ x       | pg_catalog.int4 |           |          |         | plain   | 
+ column2 | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT column1 AS x,
     column2
@@ -3203,11 +3203,11 @@ View definition:
 drop view rule_v1;
 create view rule_v1(x) as select * from (values(1,2)) v;
 \d+ rule_v1
-                           View "public.rule_v1"
- Column  |  Type   | Collation | Nullable | Default | Storage | Description 
----------+---------+-----------+----------+---------+---------+-------------
- x       | integer |           |          |         | plain   | 
- column2 | integer |           |          |         | plain   | 
+                               View "public.rule_v1"
+ Column  |      Type       | Collation | Nullable | Default | Storage | Description 
+---------+-----------------+-----------+----------+---------+---------+-------------
+ x       | pg_catalog.int4 |           |          |         | plain   | 
+ column2 | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT column1 AS x,
     column2
@@ -3216,11 +3216,11 @@ View definition:
 drop view rule_v1;
 create view rule_v1(x) as select * from (values(1,2)) v(q,w);
 \d+ rule_v1
-                           View "public.rule_v1"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- x      | integer |           |          |         | plain   | 
- w      | integer |           |          |         | plain   | 
+                               View "public.rule_v1"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ x      | pg_catalog.int4 |           |          |         | plain   | 
+ w      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT q AS x,
     w
@@ -3456,7 +3456,7 @@ SELECT pg_get_functiondef('func_with_set_params()'::regprocedure);
                                                                             pg_get_functiondef                                                                            
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  CREATE OR REPLACE FUNCTION public.func_with_set_params()                                                                                                                +
-  RETURNS integer                                                                                                                                                        +
+  RETURNS pg_catalog.int4                                                                                                                                                +
   LANGUAGE sql                                                                                                                                                           +
   IMMUTABLE STRICT                                                                                                                                                       +
   SET search_path TO 'pg_catalog'                                                                                                                                        +

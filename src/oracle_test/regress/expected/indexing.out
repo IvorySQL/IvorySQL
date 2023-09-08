@@ -82,41 +82,41 @@ create index idxparti on idxpart (a);
 create index idxparti2 on idxpart (b, c);
 create table idxpart1 (like idxpart);
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | text    |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
 
 alter table idxpart attach partition idxpart1 for values from (0) to (10);
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | text    |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (10)
 Indexes:
     "idxpart1_a_idx" btree (a)
     "idxpart1_b_c_idx" btree (b, c)
 
 \d+ idxpart1_a_idx
-                 Index "public.idxpart1_a_idx"
- Column |  Type   | Key? | Definition | Storage | Stats target 
---------+---------+------+------------+---------+--------------
- a      | integer | yes  | a          | plain   | 
+                     Index "public.idxpart1_a_idx"
+ Column |      Type       | Key? | Definition | Storage | Stats target 
+--------+-----------------+------+------------+---------+--------------
+ a      | pg_catalog.int4 | yes  | a          | plain   | 
 Partition of: idxparti 
 No partition constraint
 btree, for table "public.idxpart1"
 
 \d+ idxpart1_b_c_idx
-                Index "public.idxpart1_b_c_idx"
- Column |  Type   | Key? | Definition | Storage  | Stats target 
---------+---------+------+------------+----------+--------------
- b      | integer | yes  | b          | plain    | 
- c      | text    | yes  | c          | extended | 
+                    Index "public.idxpart1_b_c_idx"
+ Column |      Type       | Key? | Definition | Storage  | Stats target 
+--------+-----------------+------+------------+----------+--------------
+ b      | pg_catalog.int4 | yes  | b          | plain    | 
+ c      | text            | yes  | c          | extended | 
 Partition of: idxparti2 
 No partition constraint
 btree, for table "public.idxpart1"
@@ -146,11 +146,11 @@ create table idxpart1 partition of idxpart for values from (0, 0) to (10, 10);
 create index on idxpart1 (a, b);
 create index on idxpart (a, b);
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (0, 0) TO (10, 10)
 Indexes:
     "idxpart1_a_b_idx" btree (a, b)
@@ -267,11 +267,11 @@ create index on idxpart1 (a, a);
 create index on idxpart (a);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (1000)
 Indexes:
     "idxpart1_a_a1_idx" btree (a, a)
@@ -296,19 +296,19 @@ create index on idxpart (a);
 -- Here we expect that idxpart1 and idxpart2 have a new index, but idxpart21
 -- does not; also, idxpart22 is not attached.
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (100)
 Indexes:
     "idxpart1_a_idx" btree (a)
 
 \d idxpart2
-        Partitioned table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+            Partitioned table "public.idxpart2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (100) TO (1000)
 Partition key: RANGE (a)
 Indexes:
@@ -316,10 +316,10 @@ Indexes:
 Number of partitions: 2 (Use \d+ to list them.)
 
 \d idxpart21
-             Table "public.idxpart21"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                 Table "public.idxpart21"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: idxpart2 FOR VALUES FROM (100) TO (200)
 
 select indexrelid::regclass, indrelid::regclass, inhparent::regclass
@@ -350,10 +350,10 @@ where indexrelid::regclass::text like 'idxpart%'
 -- attaching idxpart22 is not enough to set idxpart22_a_idx valid ...
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 \d idxpart2
-        Partitioned table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+            Partitioned table "public.idxpart2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (100) TO (1000)
 Partition key: RANGE (a)
 Indexes:
@@ -364,10 +364,10 @@ Number of partitions: 2 (Use \d+ to list them.)
 create index on idxpart21 (a);
 alter index idxpart2_a_idx attach partition idxpart21_a_idx;
 \d idxpart2
-        Partitioned table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+            Partitioned table "public.idxpart2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (100) TO (1000)
 Partition key: RANGE (a)
 Indexes:
@@ -383,13 +383,13 @@ create index idxparti on idxpart (a);
 create index idxparti2 on idxpart (b, c);
 create table idxpart1 (like idxpart including indexes);
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | text    |           |          | 
- d      | boolean |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
+ d      | pg_catalog.bool |           |          | 
 Indexes:
     "idxpart1_a_idx" btree (a)
     "idxpart1_b_c_idx" btree (b, c)
@@ -410,13 +410,13 @@ select relname, relkind, inhparent::regclass
 
 alter table idxpart attach partition idxpart1 for values from (0) to (10);
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | text    |           |          | 
- d      | boolean |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
+ d      | pg_catalog.bool |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (10)
 Indexes:
     "idxpart1_a_idx" btree (a)
@@ -439,13 +439,13 @@ select relname, relkind, inhparent::regclass
 -- While here, also check matching when creating an index after the fact.
 create index on idxpart1 ((a+b)) where d = true;
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | text    |           |          | 
- d      | boolean |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
+ d      | pg_catalog.bool |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (10)
 Indexes:
     "idxpart1_a_idx" btree (a)
@@ -469,13 +469,13 @@ select relname, relkind, inhparent::regclass
 
 create index idxparti3 on idxpart ((a+b)) where d = true;
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | text    |           |          | 
- d      | boolean |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | text            |           |          | 
+ d      | pg_catalog.bool |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (10)
 Indexes:
     "idxpart1_a_idx" btree (a)
@@ -636,22 +636,22 @@ create table idxpart1 partition of idxpart for values from (0) to (250);
 create table idxpart2 partition of idxpart for values from (250) to (500);
 alter table idxpart detach partition idxpart2;
 \d idxpart2
-              Table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
- c      | integer |           |          | 
+                  Table "public.idxpart2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
+ c      | pg_catalog.int4 |           |          | 
 Indexes:
     "idxpart2_c_idx" btree (c)
 
 alter table idxpart2 drop column c;
 \d idxpart2
-              Table "public.idxpart2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                  Table "public.idxpart2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 
 drop table idxpart, idxpart2;
 -- Verify that expression indexes inherit correctly
@@ -861,20 +861,20 @@ create table idxpart (col_keep int) partition by range (col_keep);
 create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
-         Partitioned table "public.idxpart"
-  Column  |  Type   | Collation | Nullable | Default 
-----------+---------+-----------+----------+---------
- col_keep | integer |           |          | 
+             Partitioned table "public.idxpart"
+  Column  |      Type       | Collation | Nullable | Default 
+----------+-----------------+-----------+----------+---------
+ col_keep | pg_catalog.int4 |           |          | 
 Partition key: RANGE (col_keep)
 Indexes:
     "idxpart_col_keep_idx" btree (col_keep)
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d idxpart1
-               Table "public.idxpart1"
-  Column  |  Type   | Collation | Nullable | Default 
-----------+---------+-----------+----------+---------
- col_keep | integer |           |          | 
+                   Table "public.idxpart1"
+  Column  |      Type       | Collation | Nullable | Default 
+----------+-----------------+-----------+----------+---------
+ col_keep | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (1000)
 Indexes:
     "idxpart1_col_keep_idx" btree (col_keep)
@@ -904,20 +904,20 @@ create index on idxpart1 (col_keep);
 create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
-         Partitioned table "public.idxpart"
-  Column  |  Type   | Collation | Nullable | Default 
-----------+---------+-----------+----------+---------
- col_keep | integer |           |          | 
+             Partitioned table "public.idxpart"
+  Column  |      Type       | Collation | Nullable | Default 
+----------+-----------------+-----------+----------+---------
+ col_keep | pg_catalog.int4 |           |          | 
 Partition key: RANGE (col_keep)
 Indexes:
     "idxpart_col_keep_idx" btree (col_keep)
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d idxpart1
-               Table "public.idxpart1"
-  Column  |  Type   | Collation | Nullable | Default 
-----------+---------+-----------+----------+---------
- col_keep | integer |           |          | 
+                   Table "public.idxpart1"
+  Column  |      Type       | Collation | Nullable | Default 
+----------+-----------------+-----------+----------+---------
+ col_keep | pg_catalog.int4 |           |          | 
 Partition of: idxpart FOR VALUES FROM (0) TO (1000)
 Indexes:
     "idxpart1_col_keep_idx" btree (col_keep)
@@ -943,11 +943,11 @@ drop table idxpart;
 -- Verify that it works to add primary key / unique to partitioned tables
 create table idxpart (a int primary key, b int) partition by range (a);
 \d idxpart
-        Partitioned table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           |          | 
+            Partitioned table "public.idxpart"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           |          | 
 Partition key: RANGE (a)
 Indexes:
     "idxpart_pkey" PRIMARY KEY, btree (a)
@@ -961,10 +961,10 @@ drop table idxpart;
 create table idxpart (a int) partition by range (a);
 create table idxpart1pk partition of idxpart (a primary key) for values from (0) to (100);
 \d idxpart1pk
-             Table "public.idxpart1pk"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
+                 Table "public.idxpart1pk"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
 Partition of: idxpart FOR VALUES FROM (0) TO (100)
 Indexes:
     "idxpart1pk_pkey" PRIMARY KEY, btree (a)
@@ -1005,12 +1005,12 @@ ERROR:  unique constraint on partitioned table must include all partitioning col
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add primary key (a, b);	-- this works
 \d idxpart
-        Partitioned table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+            Partitioned table "public.idxpart"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           | not null | 
+ c      | text            |           |          | 
 Partition key: RANGE (a, b)
 Indexes:
     "idxpart_pkey" PRIMARY KEY, btree (a, b)
@@ -1018,12 +1018,12 @@ Number of partitions: 0
 
 create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
 \d idxpart1
-              Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+                  Table "public.idxpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           | not null | 
+ c      | text            |           |          | 
 Partition of: idxpart FOR VALUES FROM (0, 0) TO (1000, 1000)
 Indexes:
     "idxpart1_pkey" PRIMARY KEY, btree (a, b)
@@ -1036,11 +1036,11 @@ ERROR:  unique constraint on partitioned table must include all partitioning col
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add unique (b, a);		-- this works
 \d idxpart
-        Partitioned table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+            Partitioned table "public.idxpart"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition key: RANGE (a, b)
 Indexes:
     "idxpart_b_a_key" UNIQUE CONSTRAINT, btree (b, a)
@@ -1376,22 +1376,22 @@ create index on parted_index_col_drop (c);
 create index on parted_index_col_drop (b, c);
 alter table parted_index_col_drop drop column c;
 \d parted_index_col_drop
- Partitioned table "public.parted_index_col_drop"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+     Partitioned table "public.parted_index_col_drop"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition key: LIST (a)
 Indexes:
     "parted_index_col_drop_b_idx" btree (b)
 Number of partitions: 2 (Use \d+ to list them.)
 
 \d parted_index_col_drop1
- Partitioned table "public.parted_index_col_drop1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+     Partitioned table "public.parted_index_col_drop1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: parted_index_col_drop FOR VALUES IN (1)
 Partition key: LIST (a)
 Indexes:
@@ -1399,11 +1399,11 @@ Indexes:
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d parted_index_col_drop2
- Partitioned table "public.parted_index_col_drop2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+     Partitioned table "public.parted_index_col_drop2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: parted_index_col_drop FOR VALUES IN (2)
 Partition key: LIST (a)
 Indexes:
@@ -1411,11 +1411,11 @@ Indexes:
 Number of partitions: 0
 
 \d parted_index_col_drop11
-      Table "public.parted_index_col_drop11"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+          Table "public.parted_index_col_drop11"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: parted_index_col_drop1 FOR VALUES IN (1)
 Indexes:
     "parted_index_col_drop11_b_idx" btree (b)

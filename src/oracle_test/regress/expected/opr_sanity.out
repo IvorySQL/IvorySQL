@@ -159,12 +159,12 @@ WHERE p1.oid != p2.oid AND
     p2.prosrc NOT LIKE E'multirange\\_constructor_' AND
     (p1.prorettype < p2.prorettype)
 ORDER BY 1, 2;
-         prorettype          |        prorettype        
------------------------------+--------------------------
- bigint                      | xid8
- text                        | character varying
- timestamp without time zone | timestamp with time zone
- txid_snapshot               | pg_snapshot
+      prorettype      |       prorettype       
+----------------------+------------------------
+ pg_catalog.int8      | xid8
+ text                 | pg_catalog.varchar
+ pg_catalog.timestamp | pg_catalog.timestamptz
+ txid_snapshot        | pg_snapshot
 (4 rows)
 
 SELECT DISTINCT p1.proargtypes[0]::regtype, p2.proargtypes[0]::regtype
@@ -181,14 +181,14 @@ WHERE p1.oid != p2.oid AND
     p2.prosrc NOT LIKE E'multirange\\_constructor_' AND
     (p1.proargtypes[0] < p2.proargtypes[0])
 ORDER BY 1, 2;
-         proargtypes         |       proargtypes        
------------------------------+--------------------------
- bigint                      | xid8
- text                        | character
- text                        | character varying
- timestamp without time zone | timestamp with time zone
- bit                         | bit varying
- txid_snapshot               | pg_snapshot
+     proargtypes      |      proargtypes       
+----------------------+------------------------
+ pg_catalog.int8      | xid8
+ text                 | pg_catalog.bpchar
+ text                 | pg_catalog.varchar
+ pg_catalog.timestamp | pg_catalog.timestamptz
+ pg_catalog.bit       | pg_catalog.varbit
+ txid_snapshot        | pg_snapshot
 (6 rows)
 
 SELECT DISTINCT p1.proargtypes[1]::regtype, p2.proargtypes[1]::regtype
@@ -205,13 +205,13 @@ WHERE p1.oid != p2.oid AND
     p2.prosrc NOT LIKE E'multirange\\_constructor_' AND
     (p1.proargtypes[1] < p2.proargtypes[1])
 ORDER BY 1, 2;
-         proargtypes         |       proargtypes        
------------------------------+--------------------------
- integer                     | xid
- timestamp without time zone | timestamp with time zone
- bit                         | bit varying
- txid_snapshot               | pg_snapshot
- anyrange                    | anymultirange
+     proargtypes      |      proargtypes       
+----------------------+------------------------
+ pg_catalog.int4      | xid
+ pg_catalog.timestamp | pg_catalog.timestamptz
+ pg_catalog.bit       | pg_catalog.varbit
+ txid_snapshot        | pg_snapshot
+ anyrange             | anymultirange
 (5 rows)
 
 SELECT DISTINCT p1.proargtypes[2]::regtype, p2.proargtypes[2]::regtype
@@ -224,9 +224,9 @@ WHERE p1.oid != p2.oid AND
     p1.prokind != 'a' AND p2.prokind != 'a' AND
     (p1.proargtypes[2] < p2.proargtypes[2])
 ORDER BY 1, 2;
-         proargtypes         |       proargtypes        
------------------------------+--------------------------
- timestamp without time zone | timestamp with time zone
+     proargtypes      |      proargtypes       
+----------------------+------------------------
+ pg_catalog.timestamp | pg_catalog.timestamptz
 (1 row)
 
 SELECT DISTINCT p1.proargtypes[3]::regtype, p2.proargtypes[3]::regtype
@@ -237,9 +237,9 @@ WHERE p1.oid != p2.oid AND
     p1.prokind != 'a' AND p2.prokind != 'a' AND
     (p1.proargtypes[3] < p2.proargtypes[3])
 ORDER BY 1, 2;
-         proargtypes         |       proargtypes        
------------------------------+--------------------------
- timestamp without time zone | timestamp with time zone
+     proargtypes      |      proargtypes       
+----------------------+------------------------
+ pg_catalog.timestamp | pg_catalog.timestamptz
 (1 row)
 
 SELECT DISTINCT p1.proargtypes[4]::regtype, p2.proargtypes[4]::regtype
@@ -547,15 +547,15 @@ FROM pg_proc p1 JOIN pg_namespace pn
      ON pronamespace = pn.oid
 WHERE nspname = 'pg_catalog' AND proleakproof
 ORDER BY 1;
-boollt(boolean,boolean)
-boolgt(boolean,boolean)
-booleq(boolean,boolean)
+boollt(pg_catalog.bool,pg_catalog.bool)
+boolgt(pg_catalog.bool,pg_catalog.bool)
+booleq(pg_catalog.bool,pg_catalog.bool)
 chareq("char","char")
 nameeq(name,name)
-int2eq(smallint,smallint)
-int2lt(smallint,smallint)
-int4eq(integer,integer)
-int4lt(integer,integer)
+int2eq(pg_catalog.int2,pg_catalog.int2)
+int2lt(pg_catalog.int2,pg_catalog.int2)
+int4eq(pg_catalog.int4,pg_catalog.int4)
+int4lt(pg_catalog.int4,pg_catalog.int4)
 texteq(text,text)
 xideq(xid,xid)
 cideq(cid,cid)
@@ -563,32 +563,32 @@ charne("char","char")
 charle("char","char")
 chargt("char","char")
 charge("char","char")
-boolne(boolean,boolean)
-int4ne(integer,integer)
-int2ne(smallint,smallint)
-int2gt(smallint,smallint)
-int4gt(integer,integer)
-int2le(smallint,smallint)
-int4le(integer,integer)
-int4ge(integer,integer)
-int2ge(smallint,smallint)
+boolne(pg_catalog.bool,pg_catalog.bool)
+int4ne(pg_catalog.int4,pg_catalog.int4)
+int2ne(pg_catalog.int2,pg_catalog.int2)
+int2gt(pg_catalog.int2,pg_catalog.int2)
+int4gt(pg_catalog.int4,pg_catalog.int4)
+int2le(pg_catalog.int2,pg_catalog.int2)
+int4le(pg_catalog.int4,pg_catalog.int4)
+int4ge(pg_catalog.int4,pg_catalog.int4)
+int2ge(pg_catalog.int2,pg_catalog.int2)
 textne(text,text)
-int24eq(smallint,integer)
-int42eq(integer,smallint)
-int24lt(smallint,integer)
-int42lt(integer,smallint)
-int24gt(smallint,integer)
-int42gt(integer,smallint)
-int24ne(smallint,integer)
-int42ne(integer,smallint)
-int24le(smallint,integer)
-int42le(integer,smallint)
-int24ge(smallint,integer)
-int42ge(integer,smallint)
+int24eq(pg_catalog.int2,pg_catalog.int4)
+int42eq(pg_catalog.int4,pg_catalog.int2)
+int24lt(pg_catalog.int2,pg_catalog.int4)
+int42lt(pg_catalog.int4,pg_catalog.int2)
+int24gt(pg_catalog.int2,pg_catalog.int4)
+int42gt(pg_catalog.int4,pg_catalog.int2)
+int24ne(pg_catalog.int2,pg_catalog.int4)
+int42ne(pg_catalog.int4,pg_catalog.int2)
+int24le(pg_catalog.int2,pg_catalog.int4)
+int42le(pg_catalog.int4,pg_catalog.int2)
+int24ge(pg_catalog.int2,pg_catalog.int4)
+int42ge(pg_catalog.int4,pg_catalog.int2)
 oideq(oid,oid)
 oidne(oid,oid)
-float8(smallint)
-float4(smallint)
+float8(pg_catalog.int2)
+float4(pg_catalog.int2)
 nameeqtext(name,text)
 namelttext(name,text)
 nameletext(name,text)
@@ -603,38 +603,38 @@ textgename(text,name)
 textgtname(text,name)
 textnename(text,name)
 bttextnamecmp(text,name)
-float4eq(real,real)
-float4ne(real,real)
-float4lt(real,real)
-float4le(real,real)
-float4gt(real,real)
-float4ge(real,real)
-float8eq(double precision,double precision)
-float8ne(double precision,double precision)
-float8lt(double precision,double precision)
-float8le(double precision,double precision)
-float8gt(double precision,double precision)
-float8ge(double precision,double precision)
-float48eq(real,double precision)
-float48ne(real,double precision)
-float48lt(real,double precision)
-float48le(real,double precision)
-float48gt(real,double precision)
-float48ge(real,double precision)
-float84eq(double precision,real)
-float84ne(double precision,real)
-float84lt(double precision,real)
-float84le(double precision,real)
-float84gt(double precision,real)
-float84ge(double precision,real)
-float8(real)
-int4(smallint)
-float8(integer)
-float4(integer)
-btint2cmp(smallint,smallint)
-btint4cmp(integer,integer)
-btfloat4cmp(real,real)
-btfloat8cmp(double precision,double precision)
+float4eq(pg_catalog.float4,pg_catalog.float4)
+float4ne(pg_catalog.float4,pg_catalog.float4)
+float4lt(pg_catalog.float4,pg_catalog.float4)
+float4le(pg_catalog.float4,pg_catalog.float4)
+float4gt(pg_catalog.float4,pg_catalog.float4)
+float4ge(pg_catalog.float4,pg_catalog.float4)
+float8eq(pg_catalog.float8,pg_catalog.float8)
+float8ne(pg_catalog.float8,pg_catalog.float8)
+float8lt(pg_catalog.float8,pg_catalog.float8)
+float8le(pg_catalog.float8,pg_catalog.float8)
+float8gt(pg_catalog.float8,pg_catalog.float8)
+float8ge(pg_catalog.float8,pg_catalog.float8)
+float48eq(pg_catalog.float4,pg_catalog.float8)
+float48ne(pg_catalog.float4,pg_catalog.float8)
+float48lt(pg_catalog.float4,pg_catalog.float8)
+float48le(pg_catalog.float4,pg_catalog.float8)
+float48gt(pg_catalog.float4,pg_catalog.float8)
+float48ge(pg_catalog.float4,pg_catalog.float8)
+float84eq(pg_catalog.float8,pg_catalog.float4)
+float84ne(pg_catalog.float8,pg_catalog.float4)
+float84lt(pg_catalog.float8,pg_catalog.float4)
+float84le(pg_catalog.float8,pg_catalog.float4)
+float84gt(pg_catalog.float8,pg_catalog.float4)
+float84ge(pg_catalog.float8,pg_catalog.float4)
+float8(pg_catalog.float4)
+int4(pg_catalog.int2)
+float8(pg_catalog.int4)
+float4(pg_catalog.int4)
+btint2cmp(pg_catalog.int2,pg_catalog.int2)
+btint4cmp(pg_catalog.int4,pg_catalog.int4)
+btfloat4cmp(pg_catalog.float4,pg_catalog.float4)
+btfloat8cmp(pg_catalog.float8,pg_catalog.float8)
 btoidcmp(oid,oid)
 btcharcmp("char","char")
 btnamecmp(name,name)
@@ -643,25 +643,25 @@ cash_cmp(money,money)
 btoidvectorcmp(oidvector,oidvector)
 text(name)
 name(text)
-name(character)
+name(pg_catalog.bpchar)
 text_larger(text,text)
 text_smaller(text,text)
-int8eq(bigint,bigint)
-int8ne(bigint,bigint)
-int8lt(bigint,bigint)
-int8gt(bigint,bigint)
-int8le(bigint,bigint)
-int8ge(bigint,bigint)
-int84eq(bigint,integer)
-int84ne(bigint,integer)
-int84lt(bigint,integer)
-int84gt(bigint,integer)
-int84le(bigint,integer)
-int84ge(bigint,integer)
-int8(integer)
-float8(bigint)
+int8eq(pg_catalog.int8,pg_catalog.int8)
+int8ne(pg_catalog.int8,pg_catalog.int8)
+int8lt(pg_catalog.int8,pg_catalog.int8)
+int8gt(pg_catalog.int8,pg_catalog.int8)
+int8le(pg_catalog.int8,pg_catalog.int8)
+int8ge(pg_catalog.int8,pg_catalog.int8)
+int84eq(pg_catalog.int8,pg_catalog.int4)
+int84ne(pg_catalog.int8,pg_catalog.int4)
+int84lt(pg_catalog.int8,pg_catalog.int4)
+int84gt(pg_catalog.int8,pg_catalog.int4)
+int84le(pg_catalog.int8,pg_catalog.int4)
+int84ge(pg_catalog.int8,pg_catalog.int4)
+int8(pg_catalog.int4)
+float8(pg_catalog.int8)
 oidvectorne(oidvector,oidvector)
-float4(bigint)
+float4(pg_catalog.int8)
 namelt(name,name)
 namele(name,name)
 namegt(name,name)
@@ -678,7 +678,7 @@ text_lt(text,text)
 text_le(text,text)
 text_gt(text,text)
 text_ge(text,text)
-int8(smallint)
+int8(pg_catalog.int2)
 macaddr_eq(macaddr,macaddr)
 macaddr_lt(macaddr,macaddr)
 macaddr_le(macaddr,macaddr)
@@ -686,13 +686,13 @@ macaddr_gt(macaddr,macaddr)
 macaddr_ge(macaddr,macaddr)
 macaddr_ne(macaddr,macaddr)
 macaddr_cmp(macaddr,macaddr)
-btint8cmp(bigint,bigint)
-int48eq(integer,bigint)
-int48ne(integer,bigint)
-int48lt(integer,bigint)
-int48gt(integer,bigint)
-int48le(integer,bigint)
-int48ge(integer,bigint)
+btint8cmp(pg_catalog.int8,pg_catalog.int8)
+int48eq(pg_catalog.int4,pg_catalog.int8)
+int48ne(pg_catalog.int4,pg_catalog.int8)
+int48lt(pg_catalog.int4,pg_catalog.int8)
+int48gt(pg_catalog.int4,pg_catalog.int8)
+int48le(pg_catalog.int4,pg_catalog.int8)
+int48ge(pg_catalog.int4,pg_catalog.int8)
 cash_eq(money,money)
 cash_ne(money,money)
 cash_lt(money,money)
@@ -707,15 +707,15 @@ network_ge(inet,inet)
 network_ne(inet,inet)
 network_cmp(inet,inet)
 lseg_eq(lseg,lseg)
-bpchareq(character,character)
-bpcharlt(character,character)
-bpcharle(character,character)
-bpchargt(character,character)
-bpcharge(character,character)
-bpcharne(character,character)
-bpchar_larger(character,character)
-bpchar_smaller(character,character)
-bpcharcmp(character,character)
+bpchareq(pg_catalog.bpchar,pg_catalog.bpchar)
+bpcharlt(pg_catalog.bpchar,pg_catalog.bpchar)
+bpcharle(pg_catalog.bpchar,pg_catalog.bpchar)
+bpchargt(pg_catalog.bpchar,pg_catalog.bpchar)
+bpcharge(pg_catalog.bpchar,pg_catalog.bpchar)
+bpcharne(pg_catalog.bpchar,pg_catalog.bpchar)
+bpchar_larger(pg_catalog.bpchar,pg_catalog.bpchar)
+bpchar_smaller(pg_catalog.bpchar,pg_catalog.bpchar)
+bpcharcmp(pg_catalog.bpchar,pg_catalog.bpchar)
 date_eq(date,date)
 date_lt(date,date)
 date_le(date,date)
@@ -723,41 +723,41 @@ date_gt(date,date)
 date_ge(date,date)
 date_ne(date,date)
 date_cmp(date,date)
-time_lt(time without time zone,time without time zone)
-time_le(time without time zone,time without time zone)
-time_gt(time without time zone,time without time zone)
-time_ge(time without time zone,time without time zone)
-time_ne(time without time zone,time without time zone)
-time_cmp(time without time zone,time without time zone)
-time_eq(time without time zone,time without time zone)
-timestamptz_eq(timestamp with time zone,timestamp with time zone)
-timestamptz_ne(timestamp with time zone,timestamp with time zone)
-timestamptz_lt(timestamp with time zone,timestamp with time zone)
-timestamptz_le(timestamp with time zone,timestamp with time zone)
-timestamptz_ge(timestamp with time zone,timestamp with time zone)
-timestamptz_gt(timestamp with time zone,timestamp with time zone)
-interval_eq(interval,interval)
-interval_ne(interval,interval)
-interval_lt(interval,interval)
-interval_le(interval,interval)
-interval_ge(interval,interval)
-interval_gt(interval,interval)
+time_lt(pg_catalog.time,pg_catalog.time)
+time_le(pg_catalog.time,pg_catalog.time)
+time_gt(pg_catalog.time,pg_catalog.time)
+time_ge(pg_catalog.time,pg_catalog.time)
+time_ne(pg_catalog.time,pg_catalog.time)
+time_cmp(pg_catalog.time,pg_catalog.time)
+time_eq(pg_catalog.time,pg_catalog.time)
+timestamptz_eq(pg_catalog.timestamptz,pg_catalog.timestamptz)
+timestamptz_ne(pg_catalog.timestamptz,pg_catalog.timestamptz)
+timestamptz_lt(pg_catalog.timestamptz,pg_catalog.timestamptz)
+timestamptz_le(pg_catalog.timestamptz,pg_catalog.timestamptz)
+timestamptz_ge(pg_catalog.timestamptz,pg_catalog.timestamptz)
+timestamptz_gt(pg_catalog.timestamptz,pg_catalog.timestamptz)
+interval_eq(pg_catalog.interval,pg_catalog.interval)
+interval_ne(pg_catalog.interval,pg_catalog.interval)
+interval_lt(pg_catalog.interval,pg_catalog.interval)
+interval_le(pg_catalog.interval,pg_catalog.interval)
+interval_ge(pg_catalog.interval,pg_catalog.interval)
+interval_gt(pg_catalog.interval,pg_catalog.interval)
 charlt("char","char")
 tidne(tid,tid)
 int8(oid)
 tideq(tid,tid)
-timestamptz_cmp(timestamp with time zone,timestamp with time zone)
-interval_cmp(interval,interval)
-xideqint4(xid,integer)
-timetz_eq(time with time zone,time with time zone)
-timetz_ne(time with time zone,time with time zone)
-timetz_lt(time with time zone,time with time zone)
-timetz_le(time with time zone,time with time zone)
-timetz_ge(time with time zone,time with time zone)
-timetz_gt(time with time zone,time with time zone)
-timetz_cmp(time with time zone,time with time zone)
-"interval"(time without time zone)
-name(character varying)
+timestamptz_cmp(pg_catalog.timestamptz,pg_catalog.timestamptz)
+interval_cmp(pg_catalog.interval,pg_catalog.interval)
+xideqint4(xid,pg_catalog.int4)
+timetz_eq(pg_catalog.timetz,pg_catalog.timetz)
+timetz_ne(pg_catalog.timetz,pg_catalog.timetz)
+timetz_lt(pg_catalog.timetz,pg_catalog.timetz)
+timetz_le(pg_catalog.timetz,pg_catalog.timetz)
+timetz_ge(pg_catalog.timetz,pg_catalog.timetz)
+timetz_gt(pg_catalog.timetz,pg_catalog.timetz)
+timetz_cmp(pg_catalog.timetz,pg_catalog.timetz)
+"interval"(pg_catalog.time)
+name(pg_catalog.varchar)
 "varchar"(name)
 circle_eq(circle,circle)
 circle_ne(circle,circle)
@@ -770,42 +770,42 @@ lseg_lt(lseg,lseg)
 lseg_le(lseg,lseg)
 lseg_gt(lseg,lseg)
 lseg_ge(lseg,lseg)
-biteq(bit,bit)
-bitne(bit,bit)
-bitge(bit,bit)
-bitgt(bit,bit)
-bitle(bit,bit)
-bitlt(bit,bit)
-bitcmp(bit,bit)
+biteq(pg_catalog.bit,pg_catalog.bit)
+bitne(pg_catalog.bit,pg_catalog.bit)
+bitge(pg_catalog.bit,pg_catalog.bit)
+bitgt(pg_catalog.bit,pg_catalog.bit)
+bitle(pg_catalog.bit,pg_catalog.bit)
+bitlt(pg_catalog.bit,pg_catalog.bit)
+bitcmp(pg_catalog.bit,pg_catalog.bit)
 oidgt(oid,oid)
 oidge(oid,oid)
-varbiteq(bit varying,bit varying)
-varbitne(bit varying,bit varying)
-varbitge(bit varying,bit varying)
-varbitgt(bit varying,bit varying)
-varbitle(bit varying,bit varying)
-varbitlt(bit varying,bit varying)
-varbitcmp(bit varying,bit varying)
-boolle(boolean,boolean)
-boolge(boolean,boolean)
-btboolcmp(boolean,boolean)
-"numeric"(integer)
-"numeric"(real)
-"numeric"(double precision)
-"numeric"(bigint)
-"numeric"(smallint)
-int28eq(smallint,bigint)
-int28ne(smallint,bigint)
-int28lt(smallint,bigint)
-int28gt(smallint,bigint)
-int28le(smallint,bigint)
-int28ge(smallint,bigint)
-int82eq(bigint,smallint)
-int82ne(bigint,smallint)
-int82lt(bigint,smallint)
-int82gt(bigint,smallint)
-int82le(bigint,smallint)
-int82ge(bigint,smallint)
+varbiteq(pg_catalog.varbit,pg_catalog.varbit)
+varbitne(pg_catalog.varbit,pg_catalog.varbit)
+varbitge(pg_catalog.varbit,pg_catalog.varbit)
+varbitgt(pg_catalog.varbit,pg_catalog.varbit)
+varbitle(pg_catalog.varbit,pg_catalog.varbit)
+varbitlt(pg_catalog.varbit,pg_catalog.varbit)
+varbitcmp(pg_catalog.varbit,pg_catalog.varbit)
+boolle(pg_catalog.bool,pg_catalog.bool)
+boolge(pg_catalog.bool,pg_catalog.bool)
+btboolcmp(pg_catalog.bool,pg_catalog.bool)
+"numeric"(pg_catalog.int4)
+"numeric"(pg_catalog.float4)
+"numeric"(pg_catalog.float8)
+"numeric"(pg_catalog.int8)
+"numeric"(pg_catalog.int2)
+int28eq(pg_catalog.int2,pg_catalog.int8)
+int28ne(pg_catalog.int2,pg_catalog.int8)
+int28lt(pg_catalog.int2,pg_catalog.int8)
+int28gt(pg_catalog.int2,pg_catalog.int8)
+int28le(pg_catalog.int2,pg_catalog.int8)
+int28ge(pg_catalog.int2,pg_catalog.int8)
+int82eq(pg_catalog.int8,pg_catalog.int2)
+int82ne(pg_catalog.int8,pg_catalog.int2)
+int82lt(pg_catalog.int8,pg_catalog.int2)
+int82gt(pg_catalog.int8,pg_catalog.int2)
+int82le(pg_catalog.int8,pg_catalog.int2)
+int82ge(pg_catalog.int8,pg_catalog.int2)
 byteaeq(bytea,bytea)
 bytealt(bytea,bytea)
 byteale(bytea,bytea)
@@ -813,35 +813,35 @@ byteagt(bytea,bytea)
 byteage(bytea,bytea)
 byteane(bytea,bytea)
 byteacmp(bytea,bytea)
-timestamp_cmp(timestamp without time zone,timestamp without time zone)
-timestamp_eq(timestamp without time zone,timestamp without time zone)
-timestamp_ne(timestamp without time zone,timestamp without time zone)
-timestamp_lt(timestamp without time zone,timestamp without time zone)
-timestamp_le(timestamp without time zone,timestamp without time zone)
-timestamp_ge(timestamp without time zone,timestamp without time zone)
-timestamp_gt(timestamp without time zone,timestamp without time zone)
+timestamp_cmp(pg_catalog.timestamp,pg_catalog.timestamp)
+timestamp_eq(pg_catalog.timestamp,pg_catalog.timestamp)
+timestamp_ne(pg_catalog.timestamp,pg_catalog.timestamp)
+timestamp_lt(pg_catalog.timestamp,pg_catalog.timestamp)
+timestamp_le(pg_catalog.timestamp,pg_catalog.timestamp)
+timestamp_ge(pg_catalog.timestamp,pg_catalog.timestamp)
+timestamp_gt(pg_catalog.timestamp,pg_catalog.timestamp)
 text_pattern_lt(text,text)
 text_pattern_le(text,text)
 text_pattern_ge(text,text)
 text_pattern_gt(text,text)
 bttext_pattern_cmp(text,text)
-bpchar_pattern_lt(character,character)
-bpchar_pattern_le(character,character)
-bpchar_pattern_ge(character,character)
-bpchar_pattern_gt(character,character)
-btbpchar_pattern_cmp(character,character)
-btint48cmp(integer,bigint)
-btint84cmp(bigint,integer)
-btint24cmp(smallint,integer)
-btint42cmp(integer,smallint)
-btint28cmp(smallint,bigint)
-btint82cmp(bigint,smallint)
-btfloat48cmp(real,double precision)
-btfloat84cmp(double precision,real)
+bpchar_pattern_lt(pg_catalog.bpchar,pg_catalog.bpchar)
+bpchar_pattern_le(pg_catalog.bpchar,pg_catalog.bpchar)
+bpchar_pattern_ge(pg_catalog.bpchar,pg_catalog.bpchar)
+bpchar_pattern_gt(pg_catalog.bpchar,pg_catalog.bpchar)
+btbpchar_pattern_cmp(pg_catalog.bpchar,pg_catalog.bpchar)
+btint48cmp(pg_catalog.int4,pg_catalog.int8)
+btint84cmp(pg_catalog.int8,pg_catalog.int4)
+btint24cmp(pg_catalog.int2,pg_catalog.int4)
+btint42cmp(pg_catalog.int4,pg_catalog.int2)
+btint28cmp(pg_catalog.int2,pg_catalog.int8)
+btint82cmp(pg_catalog.int8,pg_catalog.int2)
+btfloat48cmp(pg_catalog.float4,pg_catalog.float8)
+btfloat84cmp(pg_catalog.float8,pg_catalog.float4)
 md5(text)
 md5(bytea)
-bool(integer)
-int4(boolean)
+bool(pg_catalog.int4)
+int4(pg_catalog.bool)
 tidgt(tid,tid)
 tidlt(tid,tid)
 tidge(tid,tid)
@@ -862,7 +862,7 @@ pg_lsn_gt(pg_lsn,pg_lsn)
 pg_lsn_ne(pg_lsn,pg_lsn)
 pg_lsn_cmp(pg_lsn,pg_lsn)
 xidneq(xid,xid)
-xidneqint4(xid,integer)
+xidneqint4(xid,pg_catalog.int4)
 sha224(bytea)
 sha256(bytea)
 sha384(bytea)
@@ -1022,33 +1022,33 @@ WHERE c.castmethod = 'b' AND
                 WHERE k.castmethod = 'b' AND
                     k.castsource = c.casttarget AND
                     k.casttarget = c.castsource);
-    castsource     |    casttarget     | castfunc | castcontext 
--------------------+-------------------+----------+-------------
- pg_ndistinct      | bytea             |        0 | i
- pg_dependencies   | bytea             |        0 | i
- pg_mcv_list       | bytea             |        0 | i
- xml               | text              |        0 | a
- pg_node_tree      | text              |        0 | i
- cidr              | inet              |        0 | i
- text              | character         |        0 | i
- xml               | character         |        0 | a
- character varying | character         |        0 | i
- varchar2          | character         |        0 | i
- varchar2          | character         |        0 | i
- xml               | character varying |        0 | a
- text              | char              |        0 | i
- xml               | char              |        0 | a
- character varying | char              |        0 | i
- varchar2          | char              |        0 | i
- varchar2          | char              |        0 | i
- text              | char              |        0 | i
- xml               | char              |        0 | a
- character varying | char              |        0 | i
- varchar2          | char              |        0 | i
- varchar2          | char              |        0 | i
- xml               | varchar2          |        0 | a
- xml               | varchar2          |        0 | a
- date              | timestamp         |        0 | i
+     castsource     |     casttarget     | castfunc | castcontext 
+--------------------+--------------------+----------+-------------
+ pg_ndistinct       | bytea              |        0 | i
+ pg_dependencies    | bytea              |        0 | i
+ pg_mcv_list        | bytea              |        0 | i
+ xml                | text               |        0 | a
+ pg_node_tree       | text               |        0 | i
+ cidr               | inet               |        0 | i
+ text               | pg_catalog.bpchar  |        0 | i
+ xml                | pg_catalog.bpchar  |        0 | a
+ pg_catalog.varchar | pg_catalog.bpchar  |        0 | i
+ varchar2           | pg_catalog.bpchar  |        0 | i
+ varchar2           | pg_catalog.bpchar  |        0 | i
+ xml                | pg_catalog.varchar |        0 | a
+ text               | char               |        0 | i
+ xml                | char               |        0 | a
+ pg_catalog.varchar | char               |        0 | i
+ varchar2           | char               |        0 | i
+ varchar2           | char               |        0 | i
+ text               | char               |        0 | i
+ xml                | char               |        0 | a
+ pg_catalog.varchar | char               |        0 | i
+ varchar2           | char               |        0 | i
+ varchar2           | char               |        0 | i
+ xml                | varchar2           |        0 | a
+ xml                | varchar2           |        0 | a
+ date               | timestamp          |        0 | i
 (25 rows)
 
 -- **************** pg_conversion ****************
@@ -2231,7 +2231,7 @@ WHERE am.amname = 'btree' AND
 ORDER BY 1, 2, 3;
          proc          |     opfamily_name      |        opclass_name        |           opcintype            
 -----------------------+------------------------+----------------------------+--------------------------------
- btvarstrequalimage    | bpchar_ops             | bpchar_ops                 | character
+ btvarstrequalimage    | bpchar_ops             | bpchar_ops                 | pg_catalog.bpchar
  btvarstrequalimage    | text_ops               | name_ops                   | name
  btvarstrequalimage    | text_ops               | text_ops                   | text
  btvarstrequalimage    | text_ops               | varchar_ops                | text
@@ -2251,12 +2251,12 @@ ORDER BY 1, 2, 3;
                        | array_ops              | array_ops                  | anyarray
                        | binary_ops             | binary_double_ops          | binary_double
                        | binary_ops             | binary_float_ops           | binary_float
-                       | float_ops              | float4_ops                 | real
-                       | float_ops              | float8_ops                 | double precision
+                       | float_ops              | float4_ops                 | pg_catalog.float4
+                       | float_ops              | float8_ops                 | pg_catalog.float8
                        | jsonb_ops              | jsonb_ops                  | jsonb
                        | multirange_ops         | multirange_ops             | anymultirange
                        | number_ops             | number_ops                 | number
-                       | numeric_ops            | numeric_ops                | numeric
+                       | numeric_ops            | numeric_ops                | pg_catalog.numeric
                        | oradatetime_ops        | oratimestamptz_ops         | timestamp with time zone
                        | range_ops              | range_ops                  | anyrange
                        | record_image_ops       | record_image_ops           | record

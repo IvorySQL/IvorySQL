@@ -1923,11 +1923,11 @@ INSERT INTO base_tbl VALUES (1,2), (2,3), (1,-1);
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a < b
   WITH LOCAL CHECK OPTION;
 \d+ rw_view1
-                          View "public.rw_view1"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
- b      | integer |           |          |         | plain   | 
+                              View "public.rw_view1"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
+ b      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT a,
     b
@@ -1977,10 +1977,10 @@ CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a > 0;
 CREATE VIEW rw_view2 AS SELECT * FROM rw_view1 WHERE a < 10
   WITH CHECK OPTION; -- implicitly cascaded
 \d+ rw_view2
-                          View "public.rw_view2"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
+                              View "public.rw_view2"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT a
    FROM rw_view1
@@ -2017,10 +2017,10 @@ DETAIL:  Failing row contains (15).
 CREATE OR REPLACE VIEW rw_view2 AS SELECT * FROM rw_view1 WHERE a < 10
   WITH LOCAL CHECK OPTION;
 \d+ rw_view2
-                          View "public.rw_view2"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
+                              View "public.rw_view2"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT a
    FROM rw_view1
@@ -2058,10 +2058,10 @@ ERROR:  new row violates check option for view "rw_view2"
 DETAIL:  Failing row contains (30).
 ALTER VIEW rw_view2 RESET (check_option);
 \d+ rw_view2
-                          View "public.rw_view2"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
+                              View "public.rw_view2"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT a
    FROM rw_view1
@@ -2980,12 +2980,12 @@ select * from uv_iocu_tab;
 explain (costs off)
 insert into uv_iocu_view (a, b) values ('xyxyxy', 3)
    on conflict (a) do update set b = excluded.b where excluded.c > 0;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
  Insert on uv_iocu_tab
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: uv_iocu_tab_a_key
-   Conflict Filter: ((excluded.b + '1'::double precision) > '0'::double precision)
+   Conflict Filter: ((excluded.b + '1'::pg_catalog.float8) > '0'::pg_catalog.float8)
    ->  Result
 (5 rows)
 

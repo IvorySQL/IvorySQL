@@ -822,12 +822,12 @@ INSERT INTO PKTABLE VALUES(42);
 -- This next should fail, because int=inet does not exist
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 -- This should also fail for the same reason, but here we
 -- give the column name
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable(ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
 CREATE TABLE FKTABLE (ftest1 int8 REFERENCES pktable);
@@ -846,7 +846,7 @@ DROP TABLE FKTABLE;
 -- of the integer opfamily)
 CREATE TABLE FKTABLE (ftest1 numeric REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: pg_catalog.numeric and pg_catalog.int4.
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
 -- numeric, and we allow promotion on the FK side
@@ -869,23 +869,23 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, PRIMARY KEY(ptest1, ptest2));
 -- This should fail, because we just chose really odd types
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and pg_catalog.int4.
 -- Again, so should this...
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and pg_catalog.int4.
 -- This fails because we mixed up the column ordering
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 -- As does this...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 -- And again..
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: pg_catalog.int4 and inet.
 -- This works...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest2, ptest1));
 DROP TABLE FKTABLE;
@@ -906,17 +906,17 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, ptest3 int, ptest4 inet, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest3,
 ptest4) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "pktable_ptest3_ptest4_fkey" cannot be implemented
-DETAIL:  Key columns "ptest3" and "ptest2" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ptest3" and "ptest2" are of incompatible types: pg_catalog.int4 and inet.
 -- Nor should this... (same reason, we have 4,3 referencing 1,2 which mismatches types
 CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, ptest3 int, ptest4 inet, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "pktable_ptest4_ptest3_fkey" cannot be implemented
-DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 -- Not this one either... Same as the last one except we didn't defined the columns being referenced.
 CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, ptest3 int, ptest4 inet, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
 ERROR:  foreign key constraint "pktable_ptest4_ptest3_fkey" cannot be implemented
-DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: inet and pg_catalog.int4.
 --
 -- Now some cases with inheritance
 -- Basic 2 table case: 1 column of matching types.
@@ -1009,20 +1009,20 @@ create table pktable(ptest1 inet, primary key(base1, ptest1)) inherits (pktable_
 -- just generally bad types (with and without column references on the referenced table)
 create table fktable(ftest1 cidr, ftest2 int[], foreign key (ftest1, ftest2) references pktable);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and pg_catalog.int4.
 create table fktable(ftest1 cidr, ftest2 int[], foreign key (ftest1, ftest2) references pktable(base1, ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and pg_catalog.int4.
 -- let's mix up which columns reference which
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest2, ftest1) references pktable);
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and pg_catalog.int4.
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest2, ftest1) references pktable(base1, ptest1));
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and pg_catalog.int4.
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest1, ftest2) references pktable(ptest1, base1));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: pg_catalog.int4 and inet.
 drop table pktable;
 drop table pktable_base;
 -- 2 columns (1 table), mismatched types
@@ -1034,15 +1034,15 @@ DETAIL:  Key columns "ptest2" and "ptest1" are of incompatible types: inet[] and
 create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(base2, ptest2) references
                                              pktable(ptest1, base1)) inherits (pktable_base);
 ERROR:  foreign key constraint "pktable_base2_ptest2_fkey" cannot be implemented
-DETAIL:  Key columns "base2" and "ptest1" are of incompatible types: integer and inet.
+DETAIL:  Key columns "base2" and "ptest1" are of incompatible types: pg_catalog.int4 and inet.
 create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(ptest2, base2) references
                                              pktable(base1, ptest1)) inherits (pktable_base);
 ERROR:  foreign key constraint "pktable_ptest2_base2_fkey" cannot be implemented
-DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: inet and pg_catalog.int4.
 create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(ptest2, base2) references
                                              pktable(base1, ptest1)) inherits (pktable_base);
 ERROR:  foreign key constraint "pktable_ptest2_base2_fkey" cannot be implemented
-DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: inet and pg_catalog.int4.
 drop table pktable;
 ERROR:  table "pktable" does not exist
 drop table pktable_base;
@@ -1154,17 +1154,17 @@ CREATE TEMP TABLE fktable (
 ALTER TABLE fktable ADD CONSTRAINT fk_2_3
 FOREIGN KEY (x2) REFERENCES pktable(id3);
 ERROR:  foreign key constraint "fk_2_3" cannot be implemented
-DETAIL:  Key columns "x2" and "id3" are of incompatible types: varchar2 and real.
+DETAIL:  Key columns "x2" and "id3" are of incompatible types: varchar2 and pg_catalog.float4.
 -- nor to int4
 ALTER TABLE fktable ADD CONSTRAINT fk_2_1
 FOREIGN KEY (x2) REFERENCES pktable(id1);
 ERROR:  foreign key constraint "fk_2_1" cannot be implemented
-DETAIL:  Key columns "x2" and "id1" are of incompatible types: varchar2 and integer.
+DETAIL:  Key columns "x2" and "id1" are of incompatible types: varchar2 and pg_catalog.int4.
 -- real does not promote to int4
 ALTER TABLE fktable ADD CONSTRAINT fk_3_1
 FOREIGN KEY (x3) REFERENCES pktable(id1);
 ERROR:  foreign key constraint "fk_3_1" cannot be implemented
-DETAIL:  Key columns "x3" and "id1" are of incompatible types: real and integer.
+DETAIL:  Key columns "x3" and "id1" are of incompatible types: pg_catalog.float4 and pg_catalog.int4.
 -- int4 does not promote to text
 ALTER TABLE fktable ADD CONSTRAINT fk_1_2
 FOREIGN KEY (x1) REFERENCES pktable(id2);
@@ -1190,11 +1190,11 @@ FOREIGN KEY (x2,x5,x3) REFERENCES pktable(id2,id1,id3);
 ALTER TABLE fktable ADD CONSTRAINT fk_123_231
 FOREIGN KEY (x1,x2,x3) REFERENCES pktable(id2,id3,id1);
 ERROR:  foreign key constraint "fk_123_231" cannot be implemented
-DETAIL:  Key columns "x2" and "id3" are of incompatible types: varchar2 and real.
+DETAIL:  Key columns "x2" and "id3" are of incompatible types: varchar2 and pg_catalog.float4.
 ALTER TABLE fktable ADD CONSTRAINT fk_241_132
 FOREIGN KEY (x2,x4,x1) REFERENCES pktable(id1,id3,id2);
 ERROR:  foreign key constraint "fk_241_132" cannot be implemented
-DETAIL:  Key columns "x2" and "id1" are of incompatible types: varchar2 and integer.
+DETAIL:  Key columns "x2" and "id1" are of incompatible types: varchar2 and pg_catalog.int4.
 DROP TABLE pktable, fktable;
 -- test a tricky case: we can elide firing the FK check trigger during
 -- an UPDATE if the UPDATE did not change the foreign key
@@ -1653,11 +1653,11 @@ ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key co
 DETAIL:  Key (a, b)=(2500, 2502) is still referenced from table "fk_partitioned_fk".
 -- check psql behavior
 \d fk_notpartitioned_pk
-        Table "public.fk_notpartitioned_pk"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
+            Table "public.fk_notpartitioned_pk"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           | not null | 
+ b      | pg_catalog.int4 |           | not null | 
 Indexes:
     "fk_notpartitioned_pk_pkey" PRIMARY KEY, btree (a, b)
 Referenced by:
@@ -1840,11 +1840,11 @@ BEGIN;
 DROP TABLE fk_partitioned_fk;
 -- constraint should still be there
 \d fk_partitioned_fk_2;
-        Table "public.fk_partitioned_fk_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 2501
- b      | integer |           |          | 142857
+            Table "public.fk_partitioned_fk_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 2501
+ b      | pg_catalog.int4 |           |          | 142857
 Foreign-key constraints:
     "fk_partitioned_fk_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
 
@@ -1857,11 +1857,11 @@ ALTER TABLE fk_partitioned_fk_2 DROP COLUMN c;
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES IN (1500,1502);
 -- should have only one constraint
 \d fk_partitioned_fk_2
-        Table "public.fk_partitioned_fk_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- b      | integer |           |          | 
- a      | integer |           |          | 
+            Table "public.fk_partitioned_fk_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ b      | pg_catalog.int4 |           |          | 
+ a      | pg_catalog.int4 |           |          | 
 Partition of: fk_partitioned_fk FOR VALUES IN (1500, 1502)
 Foreign-key constraints:
     TABLE "fk_partitioned_fk" CONSTRAINT "fk_partitioned_fk_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
@@ -1876,11 +1876,11 @@ ALTER TABLE fk_partitioned_fk DETACH PARTITION fk_partitioned_fk_4;
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_4 FOR VALUES IN (3500,3502);
 -- should only have one constraint
 \d fk_partitioned_fk_4
-  Partitioned table "public.fk_partitioned_fk_4"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+      Partitioned table "public.fk_partitioned_fk_4"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: fk_partitioned_fk FOR VALUES IN (3500, 3502)
 Partition key: RANGE (b, a)
 Foreign-key constraints:
@@ -1888,22 +1888,22 @@ Foreign-key constraints:
 Number of partitions: 2 (Use \d+ to list them.)
 
 \d fk_partitioned_fk_4_1
-       Table "public.fk_partitioned_fk_4_1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+           Table "public.fk_partitioned_fk_4_1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: fk_partitioned_fk_4 FOR VALUES FROM (1, 1) TO (100, 100)
 Foreign-key constraints:
     TABLE "fk_partitioned_fk" CONSTRAINT "fk_partitioned_fk_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE CASCADE ON DELETE CASCADE
 
 -- this one has an FK with mismatched properties
 \d fk_partitioned_fk_4_2
-       Table "public.fk_partitioned_fk_4_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+           Table "public.fk_partitioned_fk_4_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: fk_partitioned_fk_4 FOR VALUES FROM (100, 100) TO (1000, 1000)
 Foreign-key constraints:
     "fk_partitioned_fk_4_2_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b) ON UPDATE SET NULL
@@ -1921,11 +1921,11 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_5 FOR VALUES IN
 -- this one has two constraints, similar but not quite the one in the parent,
 -- so it gets a new one
 \d fk_partitioned_fk_5
-  Partitioned table "public.fk_partitioned_fk_5"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+      Partitioned table "public.fk_partitioned_fk_5"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: fk_partitioned_fk FOR VALUES IN (4500)
 Partition key: RANGE (a)
 Foreign-key constraints:
@@ -1939,11 +1939,11 @@ Number of partitions: 1 (Use \d+ to list them.)
 ALTER TABLE fk_partitioned_fk_5 DETACH PARTITION fk_partitioned_fk_5_1;
 ALTER TABLE fk_partitioned_fk_5 ATTACH PARTITION fk_partitioned_fk_5_1 FOR VALUES FROM (0) TO (10);
 \d fk_partitioned_fk_5_1
-       Table "public.fk_partitioned_fk_5_1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+           Table "public.fk_partitioned_fk_5_1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: fk_partitioned_fk_5 FOR VALUES FROM (0) TO (10)
 Foreign-key constraints:
     "fk_partitioned_fk_5_1_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b)
@@ -2086,10 +2086,10 @@ create schema fkpart0
   create table fk_part_23_2 partition of fk_part_23 for values in (2);
 alter table fkpart0.fk_part add foreign key (a) references fkpart0.pkey;
 \d fkpart0.fk_part_1	\\ -- should have only one FK
-             Table "fkpart0.fk_part_1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                 Table "fkpart0.fk_part_1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: fkpart0.fk_part FOR VALUES IN (1)
 Foreign-key constraints:
     TABLE "fkpart0.fk_part" CONSTRAINT "fk_part_a_fkey" FOREIGN KEY (a) REFERENCES fkpart0.pkey(a)
@@ -2097,10 +2097,10 @@ Foreign-key constraints:
 alter table fkpart0.fk_part_1 drop constraint fk_part_1_a_fkey;
 ERROR:  cannot drop inherited constraint "fk_part_1_a_fkey" of relation "fk_part_1"
 \d fkpart0.fk_part_23	\\ -- should have only one FK
-      Partitioned table "fkpart0.fk_part_23"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+          Partitioned table "fkpart0.fk_part_23"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: fkpart0.fk_part FOR VALUES IN (2, 3)
 Partition key: LIST (a)
 Foreign-key constraints:
@@ -2108,10 +2108,10 @@ Foreign-key constraints:
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d fkpart0.fk_part_23_2	\\ -- should have only one FK
-           Table "fkpart0.fk_part_23_2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+               Table "fkpart0.fk_part_23_2"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: fkpart0.fk_part_23 FOR VALUES IN (2)
 Foreign-key constraints:
     TABLE "fkpart0.fk_part" CONSTRAINT "fk_part_a_fkey" FOREIGN KEY (a) REFERENCES fkpart0.pkey(a)
@@ -2122,10 +2122,10 @@ alter table fkpart0.fk_part_23_2 drop constraint fk_part_23_a_fkey;
 ERROR:  cannot drop inherited constraint "fk_part_23_a_fkey" of relation "fk_part_23_2"
 create table fkpart0.fk_part_4 partition of fkpart0.fk_part for values in (4);
 \d fkpart0.fk_part_4
-             Table "fkpart0.fk_part_4"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                 Table "fkpart0.fk_part_4"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: fkpart0.fk_part FOR VALUES IN (4)
 Foreign-key constraints:
     TABLE "fkpart0.fk_part" CONSTRAINT "fk_part_a_fkey" FOREIGN KEY (a) REFERENCES fkpart0.pkey(a)
@@ -2137,10 +2137,10 @@ create table fkpart0.fk_part_56 partition of fkpart0.fk_part
 create table fkpart0.fk_part_56_5 partition of fkpart0.fk_part_56
     for values in (5);
 \d fkpart0.fk_part_56
-      Partitioned table "fkpart0.fk_part_56"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+          Partitioned table "fkpart0.fk_part_56"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: fkpart0.fk_part FOR VALUES IN (5, 6)
 Partition key: LIST (a)
 Foreign-key constraints:

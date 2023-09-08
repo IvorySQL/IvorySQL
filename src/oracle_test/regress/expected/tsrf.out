@@ -86,10 +86,10 @@ INSERT INTO few VALUES(1, 'a', 'foo'),(2, 'a', 'bar'),(3, 'b', 'bar');
 -- SRF with a provably-dummy relation
 explain (verbose, costs off)
 SELECT unnest(ARRAY[1, 2]) FROM few WHERE false;
-              QUERY PLAN              
---------------------------------------
+                  QUERY PLAN                  
+----------------------------------------------
  ProjectSet
-   Output: unnest('{1,2}'::integer[])
+   Output: unnest('{1,2}'::pg_catalog.int4[])
    ->  Result
          One-Time Filter: false
 (4 rows)

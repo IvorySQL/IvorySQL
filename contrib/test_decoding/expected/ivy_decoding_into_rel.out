@@ -21,10 +21,10 @@ INSERT INTO somechange DEFAULT VALUES;
 CREATE TABLE changeresult AS
     SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
 SELECT * FROM changeresult;
-                      data                      
-------------------------------------------------
+                          data                          
+--------------------------------------------------------
  BEGIN
- table public.somechange: INSERT: id[integer]:1
+ table public.somechange: INSERT: id[pg_catalog.int4]:1
  COMMIT
 (3 rows)
 
@@ -33,25 +33,25 @@ INSERT INTO changeresult
 INSERT INTO changeresult
     SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
 SELECT * FROM changeresult;
-                                                                       data                                                                       
---------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                           data                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------
  BEGIN
- table public.somechange: INSERT: id[integer]:1
+ table public.somechange: INSERT: id[pg_catalog.int4]:1
  COMMIT
  BEGIN
  table public.changeresult: INSERT: data[text]:'BEGIN'
- table public.changeresult: INSERT: data[text]:'table public.somechange: INSERT: id[integer]:1'
+ table public.changeresult: INSERT: data[text]:'table public.somechange: INSERT: id[pg_catalog.int4]:1'
  table public.changeresult: INSERT: data[text]:'COMMIT'
  COMMIT
  BEGIN
  table public.changeresult: INSERT: data[text]:'BEGIN'
- table public.changeresult: INSERT: data[text]:'table public.somechange: INSERT: id[integer]:1'
+ table public.changeresult: INSERT: data[text]:'table public.somechange: INSERT: id[pg_catalog.int4]:1'
  table public.changeresult: INSERT: data[text]:'COMMIT'
  COMMIT
  BEGIN
  table public.changeresult: INSERT: data[text]:'BEGIN'
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''BEGIN'''
- table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.somechange: INSERT: id[integer]:1'''
+ table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.somechange: INSERT: id[pg_catalog.int4]:1'''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''COMMIT'''
  table public.changeresult: INSERT: data[text]:'COMMIT'
  COMMIT
@@ -67,18 +67,18 @@ BEGIN
 END$$ LANGUAGE plpgsql;
 /
 SELECT * FROM slot_changes_wrapper('regression_slot');
-                                                                                          slot_changes_wrapper                                                                                          
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                              slot_changes_wrapper                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  BEGIN
  table public.changeresult: INSERT: data[text]:'BEGIN'
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''BEGIN'''
- table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.somechange: INSERT: id[integer]:1'''
+ table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.somechange: INSERT: id[pg_catalog.int4]:1'''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''COMMIT'''
  table public.changeresult: INSERT: data[text]:'COMMIT'
  table public.changeresult: INSERT: data[text]:'BEGIN'
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''BEGIN'''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''BEGIN'''''''
- table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''table public.somechange: INSERT: id[integer]:1'''''''
+ table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''table public.somechange: INSERT: id[pg_catalog.int4]:1'''''''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''COMMIT'''''''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''COMMIT'''
  table public.changeresult: INSERT: data[text]:'COMMIT'
@@ -86,18 +86,18 @@ SELECT * FROM slot_changes_wrapper('regression_slot');
 (14 rows)
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-                                                                                                  data                                                                                                  
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                      data                                                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  BEGIN
  table public.changeresult: INSERT: data[text]:'BEGIN'
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''BEGIN'''
- table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.somechange: INSERT: id[integer]:1'''
+ table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.somechange: INSERT: id[pg_catalog.int4]:1'''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''COMMIT'''
  table public.changeresult: INSERT: data[text]:'COMMIT'
  table public.changeresult: INSERT: data[text]:'BEGIN'
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''BEGIN'''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''BEGIN'''''''
- table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''table public.somechange: INSERT: id[integer]:1'''''''
+ table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''table public.somechange: INSERT: id[pg_catalog.int4]:1'''''''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''table public.changeresult: INSERT: data[text]:''''COMMIT'''''''
  table public.changeresult: INSERT: data[text]:'table public.changeresult: INSERT: data[text]:''COMMIT'''
  table public.changeresult: INSERT: data[text]:'COMMIT'

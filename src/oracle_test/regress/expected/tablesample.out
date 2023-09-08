@@ -69,19 +69,19 @@ CREATE VIEW test_tablesample_v1 AS
 CREATE VIEW test_tablesample_v2 AS
   SELECT id FROM test_tablesample TABLESAMPLE SYSTEM (99);
 \d+ test_tablesample_v1
-                     View "public.test_tablesample_v1"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- id     | integer |           |          |         | plain   | 
+                         View "public.test_tablesample_v1"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT id
    FROM test_tablesample TABLESAMPLE system ((10 * 2)) REPEATABLE (2);
 
 \d+ test_tablesample_v2
-                     View "public.test_tablesample_v2"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- id     | integer |           |          |         | plain   | 
+                         View "public.test_tablesample_v2"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ id     | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT id
    FROM test_tablesample TABLESAMPLE system (99);
@@ -177,35 +177,35 @@ CLOSE tablesample_cur;
 END;
 EXPLAIN (COSTS OFF)
   SELECT id FROM test_tablesample TABLESAMPLE SYSTEM (50) REPEATABLE (2);
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Sample Scan on test_tablesample
-   Sampling: system ('50'::real) REPEATABLE ('2'::double precision)
+   Sampling: system ('50'::pg_catalog.float4) REPEATABLE ('2'::pg_catalog.float8)
 (2 rows)
 
 EXPLAIN (COSTS OFF)
   SELECT * FROM test_tablesample_v1;
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Sample Scan on test_tablesample
-   Sampling: system ('20'::real) REPEATABLE ('2'::double precision)
+   Sampling: system ('20'::pg_catalog.float4) REPEATABLE ('2'::pg_catalog.float8)
 (2 rows)
 
 -- check inheritance behavior
 explain (costs off)
   select count(*) from person tablesample bernoulli (100);
-                   QUERY PLAN                    
--------------------------------------------------
+                          QUERY PLAN                          
+--------------------------------------------------------------
  Aggregate
    ->  Append
          ->  Sample Scan on person person_1
-               Sampling: bernoulli ('100'::real)
+               Sampling: bernoulli ('100'::pg_catalog.float4)
          ->  Sample Scan on emp person_2
-               Sampling: bernoulli ('100'::real)
+               Sampling: bernoulli ('100'::pg_catalog.float4)
          ->  Sample Scan on student person_3
-               Sampling: bernoulli ('100'::real)
+               Sampling: bernoulli ('100'::pg_catalog.float4)
          ->  Sample Scan on stud_emp person_4
-               Sampling: bernoulli ('100'::real)
+               Sampling: bernoulli ('100'::pg_catalog.float4)
 (10 rows)
 
 select count(*) from person tablesample bernoulli (100);
@@ -319,13 +319,13 @@ create table parted_sample_1 partition of parted_sample for values in (1);
 create table parted_sample_2 partition of parted_sample for values in (2);
 explain (costs off)
   select * from parted_sample tablesample bernoulli (100);
-                QUERY PLAN                 
--------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Append
    ->  Sample Scan on parted_sample_1
-         Sampling: bernoulli ('100'::real)
+         Sampling: bernoulli ('100'::pg_catalog.float4)
    ->  Sample Scan on parted_sample_2
-         Sampling: bernoulli ('100'::real)
+         Sampling: bernoulli ('100'::pg_catalog.float4)
 (5 rows)
 
 drop table parted_sample, parted_sample_1, parted_sample_2;

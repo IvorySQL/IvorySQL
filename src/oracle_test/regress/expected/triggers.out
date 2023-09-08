@@ -1265,11 +1265,11 @@ DELETE 1
 \set QUIET true
 -- Describe view should list triggers
 \d main_view
-              View "public.main_view"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                  View "public.main_view"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Triggers:
     after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_del_stmt')
     after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_ins_stmt')
@@ -1285,11 +1285,11 @@ Triggers:
 DROP TRIGGER instead_of_insert_trig ON main_view;
 DROP TRIGGER instead_of_delete_trig ON main_view;
 \d+ main_view
-                          View "public.main_view"
- Column |  Type   | Collation | Nullable | Default | Storage | Description 
---------+---------+-----------+----------+---------+---------+-------------
- a      | integer |           |          |         | plain   | 
- b      | integer |           |          |         | plain   | 
+                              View "public.main_view"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   | 
+ b      | pg_catalog.int4 |           |          |         | plain   | 
 View definition:
  SELECT a,
     b
@@ -2141,11 +2141,11 @@ select tgrelid::regclass, tgname, tgfoid::regproc from pg_trigger
 -- check detach behavior
 create trigger trg1 after insert on trigpart for each row execute procedure trigger_nothing();
 \d trigpart3
-             Table "public.trigpart3"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                 Table "public.trigpart3"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: trigpart FOR VALUES FROM (2000) TO (3000)
 Triggers:
     trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE FUNCTION trigger_nothing(), ON TABLE trigpart
@@ -2172,11 +2172,11 @@ select tgrelid::regclass::text, tgname, tgfoid::regproc, tgenabled, tgisinternal
 create table trigpart3 (like trigpart);
 create trigger trg1 after insert on trigpart3 for each row execute procedure trigger_nothing();
 \d trigpart3
-             Table "public.trigpart3"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                 Table "public.trigpart3"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Triggers:
     trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE FUNCTION trigger_nothing()
 
@@ -2187,11 +2187,11 @@ drop table trigpart3;
 create trigger samename after delete on trigpart execute function trigger_nothing();
 create trigger samename after delete on trigpart1 execute function trigger_nothing();
 \d trigpart1
-             Table "public.trigpart1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
- b      | integer |           |          | 
+                 Table "public.trigpart1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
+ b      | pg_catalog.int4 |           |          | 
 Partition of: trigpart FOR VALUES FROM (0) TO (1000)
 Triggers:
     samename AFTER DELETE ON trigpart1 FOR EACH STATEMENT EXECUTE FUNCTION trigger_nothing()
@@ -3709,10 +3709,10 @@ create trigger parenttrig after insert on child
 for each row execute procedure f();
 alter trigger parenttrig on parent rename to anothertrig;
 \d+ child
-                                   Table "public.child"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              | 
+                                       Table "public.child"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   |              | 
 Triggers:
     parenttrig AFTER INSERT ON child FOR EACH ROW EXECUTE FUNCTION f()
 Inherits: parent

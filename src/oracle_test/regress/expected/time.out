@@ -154,7 +154,7 @@ SELECT * FROM pg_input_error_info('15:36:39 America/New_York', 'time');
 -- and do the rest of the testing in horology.sql
 -- where we do mixed-type arithmetic. - thomas 2000-12-02
 SELECT f1 + time '00:01' AS "Illegal" FROM TIME_TBL;
-ERROR:  operator is not unique: time without time zone + time without time zone
+ERROR:  operator is not unique: pg_catalog.time + pg_catalog.time
 LINE 1: SELECT f1 + time '00:01' AS "Illegal" FROM TIME_TBL;
                   ^
 HINT:  Could not choose a best candidate operator. You might need to add explicit type casts.
