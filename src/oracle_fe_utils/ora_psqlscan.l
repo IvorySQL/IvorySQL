@@ -767,7 +767,10 @@ other			.
 				}
 
 "/"				{
-					if (is_oracle_slash(cur_state, cur_state->scanline))
+					/* This is where the creation process ends */
+					if ((cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SLASH && 
+							cur_state->paren_depth == 0 && cur_state->begin_depth == 0) || 
+								is_oracle_slash(cur_state, cur_state->scanline))
 					{
 						/* Terminate lexing temporarily */
 						cur_state->cancel_semicolon_terminator = false;
@@ -781,12 +784,17 @@ other			.
 						cur_state->token_cursor_idx = 0;
 						cur_state->identifier_count = 0;
 						cur_state->begin_depth = 0;
+						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 						return LEXRES_SEMI;
 					}
 					ECHO;
 				}
 
 ";"				{
+					/* update Symbol State */
+					if (cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SEMICOLON)
+						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_SLASH;
+					
 					ECHO;
 					if (cur_state->paren_depth == 0 &&
 							cur_state->begin_depth == 0 &&
@@ -803,6 +811,7 @@ other			.
 						cur_state->token_count = 0;
 						cur_state->start_state = YY_START;
 						cur_state->identifier_count = 0;
+						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 						return LEXRES_SEMI;
 					}
 				}
@@ -1073,7 +1082,10 @@ other			.
 						if (cur_state->identifier_count < sizeof(cur_state->identifiers))
 							cur_state->identifiers[cur_state->identifier_count] = pg_tolower((unsigned char) yytext[0]);
 					}
-
+					
+					/* Not final End state .This state needs to be cleared */
+					if (cur_state->ora_plsql_expect_end_symbol)
+						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 					/*
 					 * Simply discard EDITIONABLE and NONEDITIONABLE that occur in
 					 * the first 4 identifiers at the beginning of the command.
@@ -1112,6 +1124,9 @@ other			.
 						{
 							if (cur_state->begin_depth > 0)
 								cur_state->begin_depth--;
+							
+							/* update Symbol State */
+							cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_SEMICOLON;
 						}
 					}
 
@@ -1438,6 +1453,7 @@ ora_psql_scan_reset(PsqlScanState state)
 	state->anonymous_label_end = false;
 	state->token_count = 0;
 	state->token_cursor_idx = 0;
+	state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 }
 
 /*

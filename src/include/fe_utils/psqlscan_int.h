@@ -76,6 +76,13 @@ typedef struct StackElem
 	struct StackElem *next;
 } StackElem;
 
+typedef enum PLSQL_endSymbolState
+{
+  END_SYMBOL_INVALID,
+  END_SYMBOL_SEMICOLON,		/* It only makes sense if the end exists */
+  END_SYMBOL_SLASH
+} PLSQL_endSymbolState;
+
 /*
  * All working state of the lexer must be stored in PsqlScanStateData
  * between calls.  This allows us to have multiple open lexer operations,
@@ -155,6 +162,9 @@ typedef struct PsqlScanStateData
 	const PsqlScanCallbacks *callbacks;
 	const Ora_psqlScanCallbacks *oracallbacks;
 	void	   *cb_passthrough;
+
+	/* Used to handle funtion/procedure that does not end properly */
+	PLSQL_endSymbolState ora_plsql_expect_end_symbol;
 } PsqlScanStateData;
 
 
