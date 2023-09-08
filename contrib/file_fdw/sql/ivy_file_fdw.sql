@@ -18,11 +18,11 @@ CREATE ROLE regress_no_priv_user LOGIN;                 -- has priv but no user 
 CREATE EXTENSION file_fdw;
 
 -- create function to filter unstable results of EXPLAIN
-CREATE FUNCTION explain_filter(text) RETURNS setof text
+CREATE FUNCTION explain_filter(varchar2(1024)) RETURNS setof varchar2(1024)
 LANGUAGE plpgsql AS
 $$
 declare
-    ln text;
+    ln varchar2(1024);
 begin
     for ln in execute $1
     loop
@@ -82,44 +82,44 @@ CREATE FOREIGN TABLE tbl () SERVER file_server;  -- ERROR
 
 \set filename :abs_srcdir '/data/agg.data'
 CREATE FOREIGN TABLE agg_text (
-	a	int CHECK (a >= 0),
-	b	number
+	a	number(38,0) CHECK (a >= 0),
+	b	binary_float
 ) SERVER file_server
 OPTIONS (format 'text', filename :'filename', delimiter ' ', null '\N');
 GRANT SELECT ON agg_text TO regress_file_fdw_user;
 
 \set filename :abs_srcdir '/data/agg.csv'
 CREATE FOREIGN TABLE agg_csv (
-	a int2,
-	b float4
+	a	number(38,0),
+	b	binary_float
 ) SERVER file_server
 OPTIONS (format 'csv', filename :'filename', header 'true', delimiter ';', quote '@', escape '"', null ' ');
 ALTER FOREIGN TABLE agg_csv ADD CHECK (a >= 0);
 
 \set filename :abs_srcdir '/data/agg.bad'
 CREATE FOREIGN TABLE agg_bad (
-	a	int2,
-	b	float4
+	a	number(38,0),
+	b	binary_float
 ) SERVER file_server
 OPTIONS (format 'csv', filename :'filename', header 'true', delimiter ';', quote '@', escape '"', null ' ');
 ALTER FOREIGN TABLE agg_bad ADD CHECK (a >= 0);
 
 -- test header matching
 \set filename :abs_srcdir '/data/list1.csv'
-CREATE FOREIGN TABLE header_match ("1" int, foo text) SERVER file_server
+CREATE FOREIGN TABLE header_match ("1" number(38,0), foo varchar2(1024)) SERVER file_server
 OPTIONS (format 'csv', filename :'filename', delimiter ',', header 'match');
 SELECT * FROM header_match;
-CREATE FOREIGN TABLE header_doesnt_match (a int, foo text) SERVER file_server
+CREATE FOREIGN TABLE header_doesnt_match (a number(38,0), foo varchar2(1024)) SERVER file_server
 OPTIONS (format 'csv', filename :'filename', delimiter ',', header 'match');
 SELECT * FROM header_doesnt_match; -- ERROR
 
 -- per-column options tests
 \set filename :abs_srcdir '/data/text.csv'
 CREATE FOREIGN TABLE text_csv (
-    word1 text OPTIONS (force_not_null 'true'),
-    word2 text OPTIONS (force_not_null 'off'),
-    word3 text OPTIONS (force_null 'true'),
-    word4 text OPTIONS (force_null 'off')
+    word1 varchar2(1024) OPTIONS (force_not_null 'true'),
+    word2 varchar2(1024) OPTIONS (force_not_null 'off'),
+    word3 varchar2(1024) OPTIONS (force_null 'true'),
+    word4 varchar2(1024) OPTIONS (force_null 'off')
 ) SERVER file_server
 OPTIONS (format 'text', filename :'filename', null 'NULL');
 SELECT * FROM text_csv; -- ERROR
@@ -189,7 +189,7 @@ SELECT * FROM agg_csv WHERE a < 0;
 RESET constraint_exclusion;
 
 -- table inheritance tests
-CREATE TABLE agg (a int2, b float4);
+CREATE TABLE agg (a number(38,0), b binary_float);
 ALTER FOREIGN TABLE agg_csv INHERIT agg;
 SELECT tableoid::regclass, * FROM agg;
 SELECT tableoid::regclass, * FROM agg_csv;
@@ -204,7 +204,7 @@ DROP TABLE agg;
 
 -- declarative partitioning tests
 SET ROLE regress_file_fdw_superuser;
-CREATE TABLE pt (a int, b text) partition by list (a);
+CREATE TABLE pt (a number(38,0), b varchar2(1024)) partition by list (a);
 \set filename :abs_srcdir '/data/list1.csv'
 CREATE FOREIGN TABLE p1 partition of pt for values in (1) SERVER file_server
 OPTIONS (format 'csv', filename :'filename', delimiter ',');
@@ -229,7 +229,7 @@ DROP TABLE pt;
 
 -- generated column tests
 \set filename :abs_srcdir '/data/list1.csv'
-CREATE FOREIGN TABLE gft1 (a int, b text, c text GENERATED ALWAYS AS ('foo') STORED) SERVER file_server
+CREATE FOREIGN TABLE gft1 (a number(38,0), b varchar2(1024), c varchar2(1024) GENERATED ALWAYS AS ('foo') STORED) SERVER file_server
 OPTIONS (format 'csv', filename :'filename', delimiter ',');
 SELECT a, c FROM gft1;
 DROP FOREIGN TABLE gft1;
@@ -237,8 +237,8 @@ DROP FOREIGN TABLE gft1;
 -- copy default tests
 \set filename :abs_srcdir '/data/copy_default.csv'
 CREATE FOREIGN TABLE copy_default (
-	id integer,
-	text_value text not null default 'test',
+	id number(38,0),
+	text_value varchar2(1024) not null default 'test',
 	ts_value timestamp without time zone not null default '2022-07-05'
 ) SERVER file_server
 OPTIONS (format 'csv', filename :'filename', default '\D');

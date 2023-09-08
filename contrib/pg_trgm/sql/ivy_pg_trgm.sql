@@ -26,7 +26,7 @@ select similarity('wow',' WOW ');
 
 select similarity('---', '####---');
 
-CREATE TABLE test_trgm(t text COLLATE "C");
+CREATE TABLE test_trgm(t varchar2(1024) COLLATE "C");
 
 \copy test_trgm from 'data/trgm.data'
 
@@ -78,7 +78,7 @@ explain (costs off)
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
 -- ensure that pending-list items are handled correctly, too
-create temp table t_test_trgm(t text COLLATE "C");
+create temp table t_test_trgm(t varchar2(1024) COLLATE "C");
 create index t_trgm_idx on t_test_trgm using gin (t gin_trgm_ops);
 insert into t_test_trgm values ('qwerty99'), ('qwerty01');
 explain (costs off)
@@ -97,7 +97,7 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
 reset enable_bitmapscan;
 
-create table test2(t text COLLATE "C");
+create table test2(t varchar2(1024) COLLATE "C");
 insert into test2 values ('abcdef');
 insert into test2 values ('quark');
 insert into test2 values ('  z foo bar');
@@ -219,7 +219,7 @@ select * from test2 where t = 'li_e 6';
 
 -- Check similarity threshold (bug #14202)
 
-CREATE TEMP TABLE restaurants (city text);
+CREATE TEMP TABLE restaurants (city varchar2(1024 char));
 INSERT INTO restaurants SELECT 'Warsaw' FROM generate_series(1, 10000);
 INSERT INTO restaurants SELECT 'Szczecin' FROM generate_series(1, 10000);
 CREATE INDEX ON restaurants USING gist(city gist_trgm_ops);
