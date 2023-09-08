@@ -118,23 +118,11 @@ SELECT * FROM CHAR_TBL;
 
 -- Also try it with non-error-throwing API
 SELECT pg_input_is_valid('abcd  ', 'char(4)');
- pg_input_is_valid 
--------------------
- t
-(1 row)
-
+ERROR:  value too long for type char(4 byte)
 SELECT pg_input_is_valid('abcde', 'char(4)');
- pg_input_is_valid 
--------------------
- f
-(1 row)
-
+ERROR:  value too long for type char(4 byte)
 SELECT * FROM pg_input_error_info('abcde', 'char(4)');
-               message                | detail | hint | sql_error_code 
---------------------------------------+--------+------+----------------
- value too long for type character(4) |        |      | 22001
-(1 row)
-
+ERROR:  value too long for type char(4 byte)
 --
 -- Also test "char", which is an ad-hoc one-byte type.  It can only
 -- really store ASCII characters, but we allow high-bit-set characters
@@ -193,4 +181,5 @@ SELECT ''::text::"char";
 ------
  
 (1 row)
+
 reset ivorysql.enable_emptystring_to_null;
