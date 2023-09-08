@@ -1610,33 +1610,33 @@ SELECT REPLACE('JACK and JUE','J') "Changes" FROM DUAL;
  * REGEXP_COUNT
  */
 set ivorysql.enable_emptystring_to_NULL to on;
-SELECT SYS.REGEXP_COUNT(1231, 123::int2, 1::int2, 'c'::char) REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(1231, 123::int2, 1::int2, 'c'::char) REGEXP_COUNT FROM DUAL;
  regexp_count 
 --------------
             1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(123123::int4, 2312::int4, 1::int4, 'cd') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(123123::int4, 2312::int4, 1::int4, 'cd') REGEXP_COUNT FROM DUAL;
 ERROR:  invalid regular expression option: "d"
-SELECT SYS.REGEXP_COUNT(12312312312, 231, 1, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(12312312312, 231, 1, 'c') REGEXP_COUNT FROM DUAL;
  regexp_count 
 --------------
             3
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(1231.2312312312355, 1.23, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(1231.2312312312355, 1.23, 4.9, 'c') REGEXP_COUNT FROM DUAL;
  regexp_count 
 --------------
             1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('12312312312312355', '123', 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT('12312312312312355', '123', 4.9, 'c') REGEXP_COUNT FROM DUAL;
  regexp_count 
 --------------
             4
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(123123123::int, 123::int, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(123123123::int, 123::int, 4.9, 'c') REGEXP_COUNT FROM DUAL;
  regexp_count 
 --------------
             2
@@ -1771,154 +1771,154 @@ SELECT REGEXP_COUNT(' ', ' ') COUNT FROM DUAL;
      1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 0) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 0) COUNT FROM DUAL;
 ERROR:  argument "0" is out of range
 SELECT REGEXP_COUNT('', '', 0.99) COUNT FROM DUAL;
 ERROR:  argument "0" is out of range
 SELECT REGEXP_COUNT('', '', -0.9) COUNT FROM DUAL;
 ERROR:  argument "0" is out of range
-SELECT SYS.REGEXP_COUNT('', '', -100) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', -100) COUNT FROM DUAL;
 ERROR:  argument "-100" is out of range
-SELECT SYS.REGEXP_COUNT('', '', 100) COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 100) COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(' ', ' ', 0) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 0) COUNT FROM DUAL;
 ERROR:  argument "0" is out of range
 SELECT REGEXP_COUNT(' ', ' ', 0.99) COUNT FROM DUAL;
 ERROR:  argument "0" is out of range
 SELECT REGEXP_COUNT(' ', ' ', -0.9) COUNT FROM DUAL;
 ERROR:  argument "0" is out of range
-SELECT SYS.REGEXP_COUNT(' ', ' ', -100) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', -100) COUNT FROM DUAL;
 ERROR:  argument "-100" is out of range
-SELECT SYS.REGEXP_COUNT(' ', ' ', 100) COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 100) COUNT FROM DUAL;
  count 
 -------
      0
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, '') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '') COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, ' ') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, ' ') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT('', '', 1, '0') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '0') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT('', '', 1, 'x') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'x') COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, 'm') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'm') COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, 'i') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'i') COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'c') COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, 'n') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'n') COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, 't') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 't') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT('', '', 1, 'dc') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'dc') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT('', '', 1, 'ie') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, 'ie') COUNT FROM DUAL;
  count 
 -------
       
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('', '', 1, '-100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '-100') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT('', '', 1, '100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '100') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT('', '', 1, '1') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('', '', 1, '1') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, ' ') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, ' ') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '0') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '0') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'x') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'x') COUNT FROM DUAL;
  count 
 -------
      2
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'm') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'm') COUNT FROM DUAL;
  count 
 -------
      1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'i') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'i') COUNT FROM DUAL;
  count 
 -------
      1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'c') COUNT FROM DUAL;
  count 
 -------
      1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'n') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'n') COUNT FROM DUAL;
  count 
 -------
      1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 't') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 't') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'dc') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'dc') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, 'ie') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, 'ie') COUNT FROM DUAL;
  count 
 -------
      1
 (1 row)
 
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '-100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '-100') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '100') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '100') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT(' ', ' ', 1, '1') COUNT FROM DUAL;
+SELECT REGEXP_COUNT(' ', ' ', 1, '1') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
-SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 0, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 0, 'c') COUNT FROM DUAL;
 ERROR:  argument "0" is out of range
-SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'gg') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'gg') COUNT FROM DUAL;
  count 
 -------
      2
 (1 row)
 
-SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 2147483648, 'c') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 2147483648, 'c') COUNT FROM DUAL;
 ERROR:  integer out of range
-SELECT SYS.REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'o') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'o') COUNT FROM DUAL;
 ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
 --20
-select sys.regexp_count('
+select regexp_count('
 hello
 Hello.hello
 good', '.', 1, 'i') from dual; 
@@ -1928,7 +1928,7 @@ good', '.', 1, 'i') from dual;
 (1 row)
 
 --25
-select sys.regexp_count('
+select regexp_count('
 hello
 
 Hello hello
@@ -1940,14 +1940,14 @@ good
 (1 row)
 
 --1
-select sys.regexp_count('gooddd', '^', 1, 'm') from dual;
+select regexp_count('gooddd', '^', 1, 'm') from dual;
  regexp_count 
 --------------
             1
 (1 row)
 
 --4
-select sys.regexp_count('
+select regexp_count('
 hello
 Hello.hello
 good
@@ -1958,7 +1958,7 @@ good
 (1 row)
 
 --3
-select sys.regexp_count('hello
+select regexp_count('hello
 Hello.hello
 good', '$', 1, 'm') from dual;
  regexp_count 
@@ -1967,7 +1967,7 @@ good', '$', 1, 'm') from dual;
 (1 row)
 
 --23
-select sys.regexp_count('hello
+select regexp_count('hello
 
 Hello.hello
 good', '.', 1, 'n') from dual;
