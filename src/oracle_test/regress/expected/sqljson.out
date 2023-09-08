@@ -753,7 +753,7 @@ SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) RETURNING 
 CREATE OR REPLACE VIEW public.json_array_subquery_view AS
  SELECT ( SELECT JSON_ARRAYAGG(q.a RETURNING jsonb) AS "json_arrayagg"
            FROM ( SELECT foo.i
-                   FROM ( VALUES (1), (2), (NULL::integer), (4)) foo(i)) q(a)) AS "json_array"
+                   FROM ( VALUES (1), (2), (NULL::pg_catalog.int4), (4)) foo(i)) q(a)) AS "json_array"
 DROP VIEW json_array_subquery_view;
 -- IS JSON predicate
 SELECT NULL IS JSON;
@@ -793,7 +793,7 @@ SELECT NULL::bytea IS JSON;
 (1 row)
 
 SELECT NULL::int IS JSON;
-ERROR:  cannot use type integer in IS JSON predicate
+ERROR:  cannot use type pg_catalog.int4 in IS JSON predicate
 SELECT '' IS JSON;
  ?column? 
 ----------

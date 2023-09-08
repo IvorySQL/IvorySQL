@@ -352,9 +352,9 @@ savings  |    600|    1200
 
 starting permutation: wnested2 c1 c2 read
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  upid: text savings = text checking: f
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
@@ -392,9 +392,9 @@ balance
 (1 row)
 
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -409,13 +409,13 @@ step wnested2:
  <waiting ...>
 step c1: COMMIT;
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 400 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 400 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 400 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 400 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 400 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 400 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  upid: text savings = text checking: f
 step wnested2: <... completed>
 step c2: COMMIT;
@@ -447,9 +447,9 @@ balance
 (1 row)
 
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -464,9 +464,9 @@ step wnested2:
  <waiting ...>
 step c1: COMMIT;
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 400 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 400 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 200 > numeric 200.0: f
+s2: NOTICE:  up: pg_catalog.numeric 200 > pg_catalog.numeric 200.0: f
 s2: NOTICE:  upid: text savings = text checking: f
 step wnested2: <... completed>
 step c2: COMMIT;
@@ -504,9 +504,9 @@ balance
 (1 row)
 
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -521,7 +521,7 @@ step wnested2:
  <waiting ...>
 step c1: COMMIT;
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 200 > numeric 200.0: f
+s2: NOTICE:  lock_bal: pg_catalog.numeric 200 > pg_catalog.numeric 200.0: f
 s2: NOTICE:  lock_id: text savings = text checking: f
 s2: NOTICE:  upid: text savings = text checking: f
 step wnested2: <... completed>
@@ -554,9 +554,9 @@ balance
 (1 row)
 
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -571,7 +571,7 @@ step wnested2:
  <waiting ...>
 step c1: COMMIT;
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 200 > numeric 200.0: f
+s2: NOTICE:  lock_bal: pg_catalog.numeric 200 > pg_catalog.numeric 200.0: f
 s2: NOTICE:  lock_id: text savings = text checking: f
 s2: NOTICE:  upid: text savings = text checking: f
 step wnested2: <... completed>
@@ -593,9 +593,9 @@ balance
 
 step tocds1: UPDATE accounts SET accountid = 'cds' WHERE accountid = 'checking';
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -630,9 +630,9 @@ balance
 
 step tocdsext1: UPDATE accounts_ext SET accountid = 'cds' WHERE accountid = 'checking';
 s2: NOTICE:  upid: text checking = text checking: t
-s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  up: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 s2: NOTICE:  lock_id: text checking = text checking: t
-s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_bal: pg_catalog.numeric 600 > pg_catalog.numeric 200.0: t
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')

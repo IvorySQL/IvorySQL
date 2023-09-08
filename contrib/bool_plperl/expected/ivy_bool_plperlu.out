@@ -75,9 +75,9 @@ SELECT bool2perl (true, false, NULL);
 
 --- test ruleutils
 \sf bool2perl
-CREATE OR REPLACE FUNCTION public.bool2perl(boolean, boolean, boolean)
+CREATE OR REPLACE FUNCTION public.bool2perl(pg_catalog.bool, pg_catalog.bool, pg_catalog.bool)
  RETURNS void
- TRANSFORM FOR TYPE boolean, FOR TYPE boolean
+ TRANSFORM FOR TYPE pg_catalog.bool, FOR TYPE pg_catalog.bool
  LANGUAGE plperlu
 AS $function$
 my ($x, $y, $z) = @_;
@@ -112,8 +112,8 @@ DROP EXTENSION plperlu CASCADE;
 NOTICE:  drop cascades to 6 other objects
 DETAIL:  drop cascades to function spi_test()
 drop cascades to extension bool_plperlu
-drop cascades to function perl2int(integer)
+drop cascades to function perl2int(pg_catalog.int4)
 drop cascades to function perl2text(text)
 drop cascades to function perl2undef()
-drop cascades to function bool2perl(boolean,boolean,boolean)
+drop cascades to function bool2perl(pg_catalog.bool,pg_catalog.bool,pg_catalog.bool)
 RESET ivorysql.enable_emptystring_to_null;

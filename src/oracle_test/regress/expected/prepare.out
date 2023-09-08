@@ -14,9 +14,9 @@ EXECUTE q1;
 (1 row)
 
 SELECT name, statement, parameter_types, result_types FROM pg_prepared_statements;
- name |          statement           | parameter_types | result_types 
-------+------------------------------+-----------------+--------------
- q1   | PREPARE q1 AS SELECT 1 AS a; | {}              | {integer}
+ name |          statement           | parameter_types |   result_types    
+------+------------------------------+-----------------+-------------------
+ q1   | PREPARE q1 AS SELECT 1 AS a; | {}              | {pg_catalog.int4}
 (1 row)
 
 -- should fail
@@ -33,18 +33,18 @@ EXECUTE q1;
 
 PREPARE q2 AS SELECT 2 AS b;
 SELECT name, statement, parameter_types, result_types FROM pg_prepared_statements;
- name |          statement           | parameter_types | result_types 
-------+------------------------------+-----------------+--------------
- q1   | PREPARE q1 AS SELECT 2;      | {}              | {integer}
- q2   | PREPARE q2 AS SELECT 2 AS b; | {}              | {integer}
+ name |          statement           | parameter_types |   result_types    
+------+------------------------------+-----------------+-------------------
+ q1   | PREPARE q1 AS SELECT 2;      | {}              | {pg_catalog.int4}
+ q2   | PREPARE q2 AS SELECT 2 AS b; | {}              | {pg_catalog.int4}
 (2 rows)
 
 -- sql92 syntax
 DEALLOCATE PREPARE q1;
 SELECT name, statement, parameter_types, result_types FROM pg_prepared_statements;
- name |          statement           | parameter_types | result_types 
-------+------------------------------+-----------------+--------------
- q2   | PREPARE q2 AS SELECT 2 AS b; | {}              | {integer}
+ name |          statement           | parameter_types |   result_types    
+------+------------------------------+-----------------+-------------------
+ q2   | PREPARE q2 AS SELECT 2 AS b; | {}              | {pg_catalog.int4}
 (1 row)
 
 DEALLOCATE PREPARE q2;
@@ -112,7 +112,7 @@ ERROR:  wrong number of parameters for prepared statement "q3"
 DETAIL:  Expected 5 parameters but got 6.
 -- wrong param types
 EXECUTE q3(5::smallint, 10.5::float, false, 4::bigint, 'bytea');
-ERROR:  parameter $3 of type boolean cannot be coerced to the expected type double precision
+ERROR:  parameter $3 of type pg_catalog.bool cannot be coerced to the expected type pg_catalog.float8
 LINE 1: EXECUTE q3(5::smallint, 10.5::float, false, 4::bigint, 'byte...
                                              ^
 HINT:  You will need to rewrite or cast the expression.
@@ -164,24 +164,24 @@ PREPARE q8 AS
     UPDATE tenk1 SET stringu1 = $2 WHERE unique1 = $1;
 SELECT name, statement, parameter_types, result_types FROM pg_prepared_statements
     ORDER BY name;
- name |                            statement                             |                  parameter_types                   |                                                       result_types                                                       
-------+------------------------------------------------------------------+----------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------
- q2   | PREPARE q2(text) AS                                             +| {text}                                             | {name,boolean,boolean}
-      |         SELECT datname, datistemplate, datallowconn             +|                                                    | 
-      |         FROM pg_database WHERE datname = $1;                     |                                                    | 
- q3   | PREPARE q3(text, int, float, boolean, smallint) AS              +| {text,integer,"double precision",boolean,smallint} | {integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,name,name,name}
-      |         SELECT * FROM tenk1 WHERE string4 = $1 AND (four = $2 OR+|                                                    | 
-      |         ten = $3::bigint OR true = $4 OR odd = $5::int)         +|                                                    | 
-      |         ORDER BY unique1;                                        |                                                    | 
- q5   | PREPARE q5(int, text) AS                                        +| {integer,text}                                     | {integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,name,name,name}
-      |         SELECT * FROM tenk1 WHERE unique1 = $1 OR stringu1 = $2 +|                                                    | 
-      |         ORDER BY unique1;                                        |                                                    | 
- q6   | PREPARE q6 AS                                                   +| {integer,name}                                     | {integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,integer,name,name,name}
-      |     SELECT * FROM tenk1 WHERE unique1 = $1 AND stringu1 = $2;    |                                                    | 
- q7   | PREPARE q7(unknown) AS                                          +| {path}                                             | {text,path}
-      |     SELECT * FROM road WHERE thepath = $1;                       |                                                    | 
- q8   | PREPARE q8 AS                                                   +| {integer,name}                                     | 
-      |     UPDATE tenk1 SET stringu1 = $2 WHERE unique1 = $1;           |                                                    | 
+ name |                            statement                             |                             parameter_types                              |                                                                                                           result_types                                                                                                           
+------+------------------------------------------------------------------+--------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ q2   | PREPARE q2(text) AS                                             +| {text}                                                                   | {name,pg_catalog.bool,pg_catalog.bool}
+      |         SELECT datname, datistemplate, datallowconn             +|                                                                          | 
+      |         FROM pg_database WHERE datname = $1;                     |                                                                          | 
+ q3   | PREPARE q3(text, int, float, boolean, smallint) AS              +| {text,pg_catalog.int4,pg_catalog.float8,pg_catalog.bool,pg_catalog.int2} | {pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,name,name,name}
+      |         SELECT * FROM tenk1 WHERE string4 = $1 AND (four = $2 OR+|                                                                          | 
+      |         ten = $3::bigint OR true = $4 OR odd = $5::int)         +|                                                                          | 
+      |         ORDER BY unique1;                                        |                                                                          | 
+ q5   | PREPARE q5(int, text) AS                                        +| {pg_catalog.int4,text}                                                   | {pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,name,name,name}
+      |         SELECT * FROM tenk1 WHERE unique1 = $1 OR stringu1 = $2 +|                                                                          | 
+      |         ORDER BY unique1;                                        |                                                                          | 
+ q6   | PREPARE q6 AS                                                   +| {pg_catalog.int4,name}                                                   | {pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,name,name,name}
+      |     SELECT * FROM tenk1 WHERE unique1 = $1 AND stringu1 = $2;    |                                                                          | 
+ q7   | PREPARE q7(unknown) AS                                          +| {path}                                                                   | {text,path}
+      |     SELECT * FROM road WHERE thepath = $1;                       |                                                                          | 
+ q8   | PREPARE q8 AS                                                   +| {pg_catalog.int4,name}                                                   | 
+      |     UPDATE tenk1 SET stringu1 = $2 WHERE unique1 = $1;           |                                                                          | 
 (6 rows)
 
 -- test DEALLOCATE ALL;

@@ -26,6 +26,10 @@
 #include "utils/lsyscache.h"
 #include "utils/numeric.h"
 #include "utils/syscache.h"
+#include "lib/stringinfo.h"
+#include "utils/ora_compatible.h"
+#include "utils/guc.h"
+#include "catalog/pg_namespace.h"
 
 static char *printTypmod(const char *typname, int32 typmod, Oid typmodout);
 
@@ -114,6 +118,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 	HeapTuple	tuple;
 	Form_pg_type typeform;
 	Oid			array_base_type;
+	StringInfoData tmpbuf;
 	bool		is_array;
 	char	   *buf;
 	bool		with_typemod;
@@ -182,195 +187,472 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 	 * essential for some cases, such as types "bit" and "char".
 	 */
 	buf = NULL;					/* flag for no special case */
+	initStringInfo(&tmpbuf);
 
 	switch (type_oid)
 	{
 		case BITOID:
-			if (with_typemod)
-				buf = printTypmod("bit", typemod, typeform->typmodout);
-			else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
 			{
-				/*
-				 * bit with typmod -1 is not the same as BIT, which means
-				 * BIT(1) per SQL spec.  Report it as the quoted typename so
-				 * that parser will not assign a bogus typmod.
-				 */
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+				{
+					/*
+					 * bit with typmod -1 is not the same as BIT, which means
+					 * BIT(1) per SQL spec.  Report it as the quoted typename so
+					 * that parser will not assign a bogus typmod.
+					 */
+				}
+				else
+					buf = pstrdup(tmpbuf.data);
 			}
 			else
-				buf = pstrdup("bit");
+			{
+				if (with_typemod)
+					buf = printTypmod("bit", typemod, typeform->typmodout);
+				else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+				{
+					/*
+					* bit with typmod -1 is not the same as BIT, which means
+					* BIT(1) per SQL spec.  Report it as the quoted typename so
+					* that parser will not assign a bogus typmod.
+					*/
+				}
+				else
+					buf = pstrdup("bit");
+			}
 			break;
 
 		case BOOLOID:
-			buf = pstrdup("boolean");
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("boolean");
 			break;
 
 		case BPCHAROID:
-			if (with_typemod)
-				buf = printTypmod("character", typemod, typeform->typmodout);
-			else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
 			{
-				/*
-				 * bpchar with typmod -1 is not the same as CHARACTER, which
-				 * means CHARACTER(1) per SQL spec.  Report it as bpchar so
-				 * that parser will not assign a bogus typmod.
-				 */
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+				{
+					/*
+					* bpchar with typmod -1 is not the same as CHARACTER, which
+					* means CHARACTER(1) per SQL spec.  Report it as bpchar so
+					* that parser will not assign a bogus typmod.
+					*/
+				}
+				else
+					buf = pstrdup(tmpbuf.data);
 			}
 			else
-				buf = pstrdup("character");
+			{
+				if (with_typemod)
+					buf = printTypmod("character", typemod, typeform->typmodout);
+				else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+				{
+					/*
+					 * bpchar with typmod -1 is not the same as CHARACTER, which
+					 * means CHARACTER(1) per SQL spec.  Report it as bpchar so
+					 * that parser will not assign a bogus typmod.
+					 */
+				}
+				else
+					buf = pstrdup("character");
+			}
 			break;
 
 		case FLOAT4OID:
-			buf = pstrdup("real");
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("real");
 			break;
 
 		case FLOAT8OID:
-			buf = pstrdup("double precision");
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("double precision");
 			break;
 
 		case INT2OID:
-			buf = pstrdup("smallint");
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("smallint");
 			break;
 
 		case INT4OID:
-			buf = pstrdup("integer");
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("integer");
 			break;
 
 		case INT8OID:
-			buf = pstrdup("bigint");
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("bigint");
 			break;
 
 		case NUMERICOID:
-			if (with_typemod)
-				buf = printTypmod("numeric", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("numeric");
+			{
+				if(with_typemod)
+					buf = printTypmod("numeric", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("numeric");
+			}
 			break;
 
 		case INTERVALOID:
-			if (with_typemod)
-				buf = printTypmod("interval", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("interval");
+			{
+				if(with_typemod)
+					buf = printTypmod("interval", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("interval");
+			}
 			break;
 
 		case TIMEOID:
-			if (with_typemod)
-				buf = printTypmod("time", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("time without time zone");
+			{
+				if(with_typemod)
+					buf = printTypmod("time", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("time without time zone");
+			}
 			break;
 
 		case TIMETZOID:
-			if (with_typemod)
-				buf = printTypmod("time", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("time with time zone");
+			{
+				if(with_typemod)
+					buf = printTypmod("time", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("time with time zone");
+			}
 			break;
 
 		case TIMESTAMPOID:
-			if (with_typemod)
-				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("timestamp without time zone");
+			{
+				if(with_typemod)
+					buf = printTypmod("timestamp", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("timestamp without time zone");
+			}
 			break;
 
 		case TIMESTAMPTZOID:
-			if (with_typemod)
-				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("timestamp with time zone");
+			{
+				if(with_typemod)
+					buf = printTypmod("timestamp", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("timestamp with time zone");
+			}
 			break;
 
 		case VARBITOID:
-			if (with_typemod)
-				buf = printTypmod("bit varying", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("bit varying");
+			{
+				if(with_typemod)
+					buf = printTypmod("bit varying", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("bit varying");
+			}
 			break;
 
 		case VARCHAROID:
-			if (with_typemod)
-				buf = printTypmod("character varying", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("character varying");
+			{
+				if(with_typemod)
+					buf = printTypmod("character varying", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("character varying");
+			}
 			break;
 
 		case ORACHARCHAROID:
 		case ORACHARBYTEOID:
-			if (with_typemod)
-				buf = printTypmod("char", typemod, typeform->typmodout);
-			else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
 			{
-				/*
-				 * oracharchar or oracharbyte with typmod -1 is not the same
-				 * as CHARACTER, which means CHARACTER(1) per SQL spec.
-				 * Report it as bpchar so that parser will not assign a bogus typmod.
-				 */
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+				{
+					/*
+					 * oracharchar or oracharbyte with typmod -1 is not the same
+					 * as CHARACTER, which means CHARACTER(1) per SQL spec.
+					 * Report it as bpchar so that parser will not assign a bogus typmod.
+					 */
+				}
+				else
+					buf = pstrdup(tmpbuf.data);
 			}
 			else
-				buf = pstrdup("char");
+			{
+				if (with_typemod)
+					buf = printTypmod("char", typemod, typeform->typmodout);
+				else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+				{
+					/*
+					* oracharchar or oracharbyte with typmod -1 is not the same
+					* as CHARACTER, which means CHARACTER(1) per SQL spec.
+					* Report it as bpchar so that parser will not assign a bogus typmod.
+					*/
+				}
+				else
+					buf = pstrdup("char");				
+			}
 			break;
 
 		case ORAVARCHARCHAROID:
 		case ORAVARCHARBYTEOID:
-			if (with_typemod)
-				buf = printTypmod("varchar2", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("varchar2");
+			{
+				if(with_typemod)
+					buf = printTypmod("varchar2", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("varchar2");
+			}
 			break;
 
 		case ORADATEOID:
 		case DATEOID:
-			buf = pstrdup("date");
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("date");
 			break;
 
 		case ORATIMESTAMPOID:
-			if (with_typemod)
-				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("timestamp");
+			{
+				if(with_typemod)
+					buf = printTypmod("timestamp", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("timestamp");
+			}
 			break;
 
 		case ORATIMESTAMPTZOID:
-			if (with_typemod)
-				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("timestamp with time zone");
+			{
+				if(with_typemod)
+					buf = printTypmod("timestamp", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("timestamp with time zone");
+			}
 			break;
 
 		case ORATIMESTAMPLTZOID:
-			if (with_typemod)
-				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("timestamp with local time zone");
+			{
+				if(with_typemod)
+					buf = printTypmod("timestamp", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("timestamp with local time zone");
+			}
 			break;
 
 		case YMINTERVALOID:
-			if (with_typemod)
-				buf = printTypmod("interval", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("interval year to month");
+			{
+				if(with_typemod)
+					buf = printTypmod("interval", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("interval year to month");
+			}
 			break;
 
 		case DSINTERVALOID:
-			if (with_typemod)
-				buf = printTypmod("interval", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("interval day to second");
+			{
+				if(with_typemod)
+					buf = printTypmod("interval", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("interval day to second");
+			}
 			break;
 
 		case NUMBEROID:
-			if (with_typemod)
-				buf = printTypmod("number", typemod, typeform->typmodout);
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				if (with_typemod)
+					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+				else
+					buf = pstrdup(tmpbuf.data);
+			}
 			else
-				buf = pstrdup("number");
+			{
+				if(with_typemod)
+					buf = printTypmod("number", typemod, typeform->typmodout);
+				else
+					buf = pstrdup("number");
+			}
 			break;
 
 		case BINARY_FLOATOID:
-			buf = pstrdup("binary_float");
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("binary_float");
 			break;
 		case BINARY_DOUBLEOID:
-			buf = pstrdup("binary_double");
+			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("binary_double");
 			break;
 
 	}
@@ -557,3 +839,4 @@ oidvectortypes(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(cstring_to_text(result));
 }
+

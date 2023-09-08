@@ -545,11 +545,11 @@ create function pg_temp.mysin(float8) returns float8 language plpgsql
 as 'begin return sin($1); end';
 /
 select explain_filter('explain (verbose) select * from t1 where pg_temp.mysin(f1) < 0.5');
-                       explain_filter                       
-------------------------------------------------------------
+                       explain_filter                        
+-------------------------------------------------------------
  Seq Scan on pg_temp.t1  (cost=N.N..N.N rows=N width=N)
    Output: f1
-   Filter: (pg_temp.mysin(t1.f1) < 'N.N'::double precision)
+   Filter: (pg_temp.mysin(t1.f1) < 'N.N'::pg_catalog.float8)
 (3 rows)
 
 -- Test compute_query_id

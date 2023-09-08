@@ -4434,16 +4434,16 @@ int4_tbl i0 left join
 ) ss0
 on (i0.f1 = ss0.f1)
 order by i0.f1, x;
-                         QUERY PLAN                          
--------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Sort
-   Output: i0.f1, ('123'::bigint), i1.f1, i2.q1, i2.q2
-   Sort Key: i0.f1, ('123'::bigint)
+   Output: i0.f1, ('123'::pg_catalog.int8), i1.f1, i2.q1, i2.q2
+   Sort Key: i0.f1, ('123'::pg_catalog.int8)
    ->  Hash Right Join
-         Output: i0.f1, ('123'::bigint), i1.f1, i2.q1, i2.q2
+         Output: i0.f1, ('123'::pg_catalog.int8), i1.f1, i2.q1, i2.q2
          Hash Cond: (i1.f1 = i0.f1)
          ->  Nested Loop Left Join
-               Output: i1.f1, i2.q1, i2.q2, '123'::bigint
+               Output: i1.f1, i2.q1, i2.q2, '123'::pg_catalog.int8
                ->  Seq Scan on public.int4_tbl i1
                      Output: i1.f1
                ->  Materialize
@@ -4489,8 +4489,8 @@ select t1.* from
   on (t1.f1 = b1.d1)
   left join int4_tbl i4
   on (i8.q2 = i4.f1);
-                              QUERY PLAN                              
-----------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Hash Left Join
    Output: t1.f1
    Hash Cond: (i8.q2 = i4.f1)
@@ -4503,16 +4503,16 @@ select t1.* from
                Output: i8.q2
                ->  Hash Right Join
                      Output: i8.q2
-                     Hash Cond: ((NULL::integer) = i8b1.q2)
+                     Hash Cond: ((NULL::pg_catalog.int4) = i8b1.q2)
                      ->  Hash Join
-                           Output: i8.q2, (NULL::integer)
+                           Output: i8.q2, (NULL::pg_catalog.int4)
                            Hash Cond: (i8.q1 = i8b2.q1)
                            ->  Seq Scan on public.int8_tbl i8
                                  Output: i8.q1, i8.q2
                            ->  Hash
-                                 Output: i8b2.q1, (NULL::integer)
+                                 Output: i8b2.q1, (NULL::pg_catalog.int4)
                                  ->  Seq Scan on public.int8_tbl i8b2
-                                       Output: i8b2.q1, NULL::integer
+                                       Output: i8b2.q1, NULL::pg_catalog.int4
                      ->  Hash
                            Output: i8b1.q2
                            ->  Seq Scan on public.int8_tbl i8b1
@@ -4564,12 +4564,12 @@ select t1.* from
                Output: i8.q2
                ->  Hash Right Join
                      Output: i8.q2
-                     Hash Cond: ((NULL::integer) = i8b1.q2)
+                     Hash Cond: ((NULL::pg_catalog.int4) = i8b1.q2)
                      ->  Hash Right Join
-                           Output: i8.q2, (NULL::integer)
+                           Output: i8.q2, (NULL::pg_catalog.int4)
                            Hash Cond: (i8b2.q1 = i8.q1)
                            ->  Nested Loop
-                                 Output: i8b2.q1, NULL::integer
+                                 Output: i8b2.q1, NULL::pg_catalog.int4
                                  ->  Seq Scan on public.int8_tbl i8b2
                                        Output: i8b2.q1, i8b2.q2
                                  ->  Materialize
@@ -4630,12 +4630,12 @@ select t1.* from
                Output: i8.q2
                ->  Hash Right Join
                      Output: i8.q2
-                     Hash Cond: ((NULL::integer) = i8b1.q2)
+                     Hash Cond: ((NULL::pg_catalog.int4) = i8b1.q2)
                      ->  Hash Right Join
-                           Output: i8.q2, (NULL::integer)
+                           Output: i8.q2, (NULL::pg_catalog.int4)
                            Hash Cond: (i8b2.q1 = i8.q1)
                            ->  Hash Join
-                                 Output: i8b2.q1, NULL::integer
+                                 Output: i8b2.q1, NULL::pg_catalog.int4
                                  Hash Cond: (i8b2.q1 = i4b2.f1)
                                  ->  Seq Scan on public.int8_tbl i8b2
                                        Output: i8b2.q1, i8b2.q2
@@ -4754,7 +4754,7 @@ select 1 from
    ->  Result
    ->  Nested Loop
          ->  Nested Loop Left Join
-               Join Filter: NULL::boolean
+               Join Filter: NULL::pg_catalog.bool
                Filter: (((1) IS NULL) OR (i8.q1 <> i8.q2))
                ->  Nested Loop Left Join
                      Join Filter: (i4.f1 IS NOT NULL)
@@ -5723,7 +5723,7 @@ SELECT q2 FROM
 ------------------------------------------------------
  Nested Loop Left Join
    Output: q2
-   Join Filter: NULL::boolean
+   Join Filter: NULL::pg_catalog.bool
    Filter: (('constant'::text) >= ('constant'::text))
    ->  Seq Scan on public.int4_tbl
          Output: int4_tbl.f1
@@ -5745,7 +5745,7 @@ FROM int4_tbl
    ->  Seq Scan on int4_tbl
    ->  Materialize
          ->  Nested Loop Left Join
-               Join Filter: NULL::boolean
+               Join Filter: NULL::pg_catalog.bool
                Filter: ((tenk1.unique1 = (42)) OR (tenk1.unique2 = (42)))
                ->  Seq Scan on tenk1
                ->  Result
@@ -7491,14 +7491,14 @@ where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1;
 explain (costs off) select * from j1
 inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
 where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 = any (array[1]);
-                     QUERY PLAN                     
-----------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Merge Join
    Merge Cond: (j1.id1 = j2.id1)
    Join Filter: (j2.id2 = j1.id2)
    ->  Index Scan using j1_id1_idx on j1
    ->  Index Scan using j2_id1_idx on j2
-         Index Cond: (id1 = ANY ('{1}'::integer[]))
+         Index Cond: (id1 = ANY ('{1}'::pg_catalog.int4[]))
 (6 rows)
 
 select * from j1
@@ -7514,14 +7514,14 @@ where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 = any (array[1]);
 explain (costs off) select * from j1
 inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
 where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 >= any (array[1,5]);
-                      QUERY PLAN                       
--------------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Merge Join
    Merge Cond: (j1.id1 = j2.id1)
    Join Filter: (j2.id2 = j1.id2)
    ->  Index Scan using j1_id1_idx on j1
    ->  Index Only Scan using j2_pkey on j2
-         Index Cond: (id1 >= ANY ('{1,5}'::integer[]))
+         Index Cond: (id1 >= ANY ('{1,5}'::pg_catalog.int4[]))
          Filter: ((id1 % 1000) = 1)
 (7 rows)
 

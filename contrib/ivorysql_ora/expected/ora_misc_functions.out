@@ -21,11 +21,11 @@ ERROR:  invalid input syntax for type integer: "abc"
 LINE 1: select decode('abc', 123, 123,4, 5, 6,timestamp'2018-08-1 00...
                       ^
 select decode('abc', date'2018-8-1', 5, 123, 123,4, 5) from dual;
-ERROR:  DECODE could not convert type integer to date
+ERROR:  DECODE could not convert type pg_catalog.int4 to date
 LINE 1: select decode('abc', date'2018-8-1', 5, 123, 123,4, 5) from ...
                                                 ^
 select decode('abc', date'2018-8-1', 5, date'2018-8-2', date'2018-8-3',4, 5) from dual;
-ERROR:  DECODE could not convert type integer to date
+ERROR:  DECODE could not convert type pg_catalog.int4 to date
 LINE 1: ...date'2018-8-1', 5, date'2018-8-2', date'2018-8-3',4, 5) from...
                                                              ^
 select decode('abc', 123, 123,4, 5, 6,timestamp'2018-08-1 00:00:00', interval'1-1' year to month) from dual;
@@ -1290,7 +1290,7 @@ SELECT NVL2(col1, 'aaaa','ueywh') from test11;
 (5 rows)
 
 SELECT NVL2(col1,111,to_date('1998','YYYY')) from test11;--报错
-ERROR:  CASE types integer and date cannot be matched
+ERROR:  CASE types pg_catalog.int4 and date cannot be matched
 LINE 1: SELECT NVL2(col1,111,to_date('1998','YYYY')) from test11;
                              ^
 DROP TABLE test11;
@@ -2627,7 +2627,7 @@ select decode(NULL,1,'south',2,'north','west');
 
 --参数非法
 select decode(NULL,1);--报错
-ERROR:  function decode(unknown, integer) does not exist
+ERROR:  function decode(unknown, pg_catalog.int4) does not exist
 LINE 1: select decode(NULL,1);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -3499,7 +3499,7 @@ drop table test1;
 create table test1(col1 time,col2  int);
 insert into test1 values('14:12:50',1);
 SELECT decode ('14:12:50',NULL,0,col1,7000)from test1;  
-ERROR:  DECODE could not convert type varchar2 to time without time zone
+ERROR:  DECODE could not convert type varchar2 to pg_catalog.time
 LINE 1: SELECT decode ('14:12:50',NULL,0,col1,7000)from test1;
                        ^
 drop table test1;
@@ -3507,7 +3507,7 @@ drop table test1;
 create table test1(col1 time with time zone,col2  int);
 insert into test1 values('14:12:50-8',1);
 SELECT decode ('14:12:50-8',NULL,0,col1,7000)from test1; 
-ERROR:  DECODE could not convert type varchar2 to time with time zone
+ERROR:  DECODE could not convert type varchar2 to pg_catalog.timetz
 LINE 1: SELECT decode ('14:12:50-8',NULL,0,col1,7000)from test1;
                        ^
 drop table test1;
@@ -3526,7 +3526,7 @@ drop table test1;
 create table test1(col1 boolean,col2  int);
 insert into test1 values(true,1);
 SELECT decode ('true',NULL,0,col1,7000)from test1;    
-ERROR:  DECODE could not convert type varchar2 to boolean
+ERROR:  DECODE could not convert type varchar2 to pg_catalog.bool
 LINE 1: SELECT decode ('true',NULL,0,col1,7000)from test1;
                        ^
 drop table test1;

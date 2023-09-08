@@ -81,14 +81,14 @@ begin a := f1 from onecol limit 1; raise notice 'a = %', a; end$$;
 NOTICE:  a = {1,2}
 do $$ declare a real;
 begin a[1] := 2; raise notice 'a = %', a; end$$;
-ERROR:  cannot subscript type real because it does not support subscripting
+ERROR:  cannot subscript type pg_catalog.float4 because it does not support subscripting
 LINE 1: a[1] := 2
         ^
 QUERY:  a[1] := 2
 CONTEXT:  PL/iSQL function inline_code_block line 2 at assignment
 do $$ declare a complex;
 begin a.r[1] := 2; raise notice 'a = %', a; end$$;
-ERROR:  cannot subscript type double precision because it does not support subscripting
+ERROR:  cannot subscript type pg_catalog.float8 because it does not support subscripting
 LINE 1: a.r[1] := 2
         ^
 QUERY:  a.r[1] := 2

@@ -16,7 +16,7 @@ $$;
 /
 CALL transaction_test1(9, 'foo');
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(pg_catalog.int4,text) line 6 at COMMIT
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -51,7 +51,7 @@ SELECT * FROM test1;
 START TRANSACTION;
 CALL transaction_test1(9, 'error');
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(pg_catalog.int4,text) line 6 at COMMIT
 COMMIT;
 START TRANSACTION;
 DO LANGUAGE plisql $$ BEGIN COMMIT; END $$;
@@ -96,7 +96,7 @@ $$;
 /
 SELECT transaction_test3();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(pg_catalog.int4,text) line 6 at COMMIT
 SQL statement "CALL transaction_test1(9, 'error')"
 PL/iSQL function transaction_test3() line 3 at CALL
 SELECT * FROM test1;
@@ -157,7 +157,7 @@ $$;
 /
 CALL transaction_test6('bar');
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(pg_catalog.int4,text) line 6 at COMMIT
 SQL statement "CALL transaction_test1(9, c)"
 PL/iSQL function transaction_test6(text) line 3 at CALL
 SELECT * FROM test1;
@@ -176,7 +176,7 @@ $$;
 /
 CALL transaction_test7();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(pg_catalog.int4,text) line 6 at COMMIT
 SQL statement "CALL transaction_test1(9, $x$baz$x$)"
 PL/iSQL function inline_code_block line 1 at CALL
 SQL statement "DO 'BEGIN CALL transaction_test1(9, $x$baz$x$); END;'"
@@ -196,7 +196,7 @@ $$;
 /
 CALL transaction_test8();
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test1(integer,text) line 6 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test1(pg_catalog.int4,text) line 6 at COMMIT
 SQL statement "CALL transaction_test1(10, $x$baz$x$)"
 PL/iSQL function transaction_test8() line 3 at EXECUTE
 -- commit inside cursor loop
@@ -674,7 +674,7 @@ $$;
 /
 CALL transaction_test10a(10);
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test10a(integer) line 4 at COMMIT
+CONTEXT:  PL/iSQL function transaction_test10a(pg_catalog.int4) line 4 at COMMIT
 CREATE PROCEDURE transaction_test10b(INOUT x int)
 LANGUAGE plisql
 AS $$
@@ -686,7 +686,7 @@ $$;
 /
 CALL transaction_test10b(10);
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function transaction_test10b(integer) line 4 at ROLLBACK
+CONTEXT:  PL/iSQL function transaction_test10b(pg_catalog.int4) line 4 at ROLLBACK
 -- transaction timestamp vs. statement timestamp
 CREATE PROCEDURE transaction_test11()
 LANGUAGE plisql

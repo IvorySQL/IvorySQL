@@ -197,9 +197,9 @@ $$;
 /
 CALL test_proc7cc(10);
 ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function test_proc7c(integer,integer,numeric) line 5 at COMMIT
+CONTEXT:  PL/iSQL function test_proc7c(pg_catalog.int4,pg_catalog.int4,pg_catalog.numeric) line 5 at COMMIT
 SQL statement "CALL test_proc7c(_x, _a, _b)"
-PL/iSQL function test_proc7cc(integer) line 4 at CALL
+PL/iSQL function test_proc7cc(pg_catalog.int4) line 4 at CALL
 -- named parameters and defaults
 CREATE PROCEDURE test_proc8a(INOUT a int, INOUT b int)
 LANGUAGE plisql

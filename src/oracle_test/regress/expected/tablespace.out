@@ -261,19 +261,19 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
 
 -- check \d output
 \d testschema.foo
-              Table "testschema.foo"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- i      | integer |           |          | 
+                  Table "testschema.foo"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ i      | pg_catalog.int4 |           |          | 
 Indexes:
     "foo_idx" btree (i), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
 
 \d testschema.foo_idx
-      Index "testschema.foo_idx"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- i      | integer | yes  | i
+          Index "testschema.foo_idx"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ i      | pg_catalog.int4 | yes  | i
 btree, for table "testschema.foo"
 Tablespace: "regress_tblspace"
 
@@ -339,20 +339,20 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
 (3 rows)
 
 \d testschema.part
-        Partitioned table "testschema.part"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+            Partitioned table "testschema.part"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition key: LIST (a)
 Indexes:
     "part_a_idx" btree (a), tablespace "regress_tblspace"
 Number of partitions: 2 (Use \d+ to list them.)
 
 \d+ testschema.part
-                           Partitioned table "testschema.part"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              | 
+                               Partitioned table "testschema.part"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   |              | 
 Partition key: LIST (a)
 Indexes:
     "part_a_idx" btree (a), tablespace "regress_tblspace"
@@ -360,38 +360,38 @@ Partitions: testschema.part1 FOR VALUES IN (1),
             testschema.part2 FOR VALUES IN (2)
 
 \d testschema.part1
-             Table "testschema.part1"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
+                 Table "testschema.part1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int4 |           |          | 
 Partition of: testschema.part FOR VALUES IN (1)
 Indexes:
     "part1_a_idx" btree (a), tablespace "regress_tblspace"
 
 \d+ testschema.part1
-                                 Table "testschema.part1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              | 
+                                     Table "testschema.part1"
+ Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         | plain   |              | 
 Partition of: testschema.part FOR VALUES IN (1)
 Partition constraint: ((a IS NOT NULL) AND (a = 1))
 Indexes:
     "part1_a_idx" btree (a), tablespace "regress_tblspace"
 
 \d testschema.part_a_idx
-Partitioned index "testschema.part_a_idx"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- a      | integer | yes  | a
+  Partitioned index "testschema.part_a_idx"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ a      | pg_catalog.int4 | yes  | a
 btree, for table "testschema.part"
 Number of partitions: 2 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
 
 \d+ testschema.part_a_idx
-           Partitioned index "testschema.part_a_idx"
- Column |  Type   | Key? | Definition | Storage | Stats target 
---------+---------+------+------------+---------+--------------
- a      | integer | yes  | a          | plain   | 
+               Partitioned index "testschema.part_a_idx"
+ Column |      Type       | Key? | Definition | Storage | Stats target 
+--------+-----------------+------+------------+---------+--------------
+ a      | pg_catalog.int4 | yes  | a          | plain   | 
 btree, for table "testschema.part"
 Partitions: testschema.part1_a_idx,
             testschema.part2_a_idx
@@ -420,32 +420,32 @@ CREATE INDEX test_index2 on testschema.test_default_tab (id) TABLESPACE regress_
 ALTER TABLE testschema.test_default_tab ADD CONSTRAINT test_index3 PRIMARY KEY (id);
 ALTER TABLE testschema.test_default_tab ADD CONSTRAINT test_index4 UNIQUE (id) USING INDEX TABLESPACE regress_tblspace;
 \d testschema.test_index1
-   Index "testschema.test_index1"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
-   Index "testschema.test_index2"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-   Index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index4
-   Index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -454,32 +454,32 @@ SET default_tablespace TO regress_tblspace;
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
 \d testschema.test_index1
-   Index "testschema.test_index1"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
-   Index "testschema.test_index2"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-   Index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index4
-   Index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -492,32 +492,32 @@ SELECT * FROM testschema.test_default_tab;
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
 \d testschema.test_index1
-    Index "testschema.test_index1"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
-    Index "testschema.test_index2"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-    Index "testschema.test_index3"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 primary key, btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index4
-    Index "testschema.test_index4"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 unique, btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -532,64 +532,64 @@ SET default_tablespace TO '';
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
 \d testschema.test_index1
-    Index "testschema.test_index1"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
-    Index "testschema.test_index2"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-    Index "testschema.test_index3"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 primary key, btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index4
-    Index "testschema.test_index4"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+        Index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 unique, btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
 \d testschema.test_index1
-   Index "testschema.test_index1"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index2
-   Index "testschema.test_index2"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-   Index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab"
 
 \d testschema.test_index4
-   Index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+        Index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -606,35 +606,35 @@ CREATE INDEX test_index2 on testschema.test_default_tab_p (val) TABLESPACE regre
 ALTER TABLE testschema.test_default_tab_p ADD CONSTRAINT test_index3 PRIMARY KEY (id);
 ALTER TABLE testschema.test_default_tab_p ADD CONSTRAINT test_index4 UNIQUE (id) USING INDEX TABLESPACE regress_tblspace;
 \d testschema.test_index1
-Partitioned index "testschema.test_index1"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- val    | bigint | yes  | val
+  Partitioned index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int8 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index2
-Partitioned index "testschema.test_index2"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- val    | bigint | yes  | val
+  Partitioned index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int8 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-Partitioned index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index4
-Partitioned index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
@@ -644,35 +644,35 @@ SET default_tablespace TO regress_tblspace;
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab_p ALTER val TYPE bigint;
 \d testschema.test_index1
-Partitioned index "testschema.test_index1"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- val    | bigint | yes  | val
+  Partitioned index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int8 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index2
-Partitioned index "testschema.test_index2"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- val    | bigint | yes  | val
+  Partitioned index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int8 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-Partitioned index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index4
-Partitioned index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
@@ -686,35 +686,35 @@ SELECT * FROM testschema.test_default_tab_p;
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab_p ALTER val TYPE int;
 \d testschema.test_index1
-Partitioned index "testschema.test_index1"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- val    | integer | yes  | val
+  Partitioned index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int4 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index2
-Partitioned index "testschema.test_index2"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- val    | integer | yes  | val
+  Partitioned index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int4 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-Partitioned index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index4
-Partitioned index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
@@ -730,35 +730,35 @@ SET default_tablespace TO '';
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab_p ALTER val TYPE int;
 \d testschema.test_index1
-Partitioned index "testschema.test_index1"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- val    | integer | yes  | val
+  Partitioned index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int4 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index2
-Partitioned index "testschema.test_index2"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- val    | integer | yes  | val
+  Partitioned index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int4 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-Partitioned index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index4
-Partitioned index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
@@ -766,35 +766,35 @@ Tablespace: "regress_tblspace"
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab_p ALTER val TYPE bigint;
 \d testschema.test_index1
-Partitioned index "testschema.test_index1"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- val    | bigint | yes  | val
+  Partitioned index "testschema.test_index1"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int8 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index2
-Partitioned index "testschema.test_index2"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- val    | bigint | yes  | val
+  Partitioned index "testschema.test_index2"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ val    | pg_catalog.int8 | yes  | val
 btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
 
 \d testschema.test_index3
-Partitioned index "testschema.test_index3"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index3"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 primary key, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 
 \d testschema.test_index4
-Partitioned index "testschema.test_index4"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- id     | bigint | yes  | id
+  Partitioned index "testschema.test_index4"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int8 | yes  | id
 unique, btree, for table "testschema.test_default_tab_p"
 Number of partitions: 1 (Use \d+ to list them.)
 Tablespace: "regress_tblspace"
@@ -808,18 +808,18 @@ ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_unique UNIQUE (id);
 SET default_tablespace TO '';
 ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_pkey PRIMARY KEY (id);
 \d testschema.test_tab_unique
-  Index "testschema.test_tab_unique"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+      Index "testschema.test_tab_unique"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 unique, btree, for table "testschema.test_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_tab_pkey
-   Index "testschema.test_tab_pkey"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- id     | integer | yes  | id
+       Index "testschema.test_tab_pkey"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ id     | pg_catalog.int4 | yes  | id
 primary key, btree, for table "testschema.test_tab"
 
 SELECT * FROM testschema.test_tab;
@@ -838,50 +838,50 @@ CREATE INDEX test_tab_a_idx ON testschema.test_tab (a);
 SET default_tablespace TO '';
 CREATE INDEX test_tab_b_idx ON testschema.test_tab (b);
 \d testschema.test_tab_unique
-  Index "testschema.test_tab_unique"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- a      | integer | yes  | a
+      Index "testschema.test_tab_unique"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ a      | pg_catalog.int4 | yes  | a
 unique, btree, for table "testschema.test_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_tab_a_idx
-  Index "testschema.test_tab_a_idx"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- a      | integer | yes  | a
+      Index "testschema.test_tab_a_idx"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ a      | pg_catalog.int4 | yes  | a
 btree, for table "testschema.test_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_tab_b_idx
-  Index "testschema.test_tab_b_idx"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- b      | integer | yes  | b
+      Index "testschema.test_tab_b_idx"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ b      | pg_catalog.int4 | yes  | b
 btree, for table "testschema.test_tab"
 
 ALTER TABLE testschema.test_tab ALTER b TYPE bigint, ADD UNIQUE (c);
 \d testschema.test_tab_unique
-  Index "testschema.test_tab_unique"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- a      | integer | yes  | a
+      Index "testschema.test_tab_unique"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ a      | pg_catalog.int4 | yes  | a
 unique, btree, for table "testschema.test_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_tab_a_idx
-  Index "testschema.test_tab_a_idx"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- a      | integer | yes  | a
+      Index "testschema.test_tab_a_idx"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ a      | pg_catalog.int4 | yes  | a
 btree, for table "testschema.test_tab"
 Tablespace: "regress_tblspace"
 
 \d testschema.test_tab_b_idx
-  Index "testschema.test_tab_b_idx"
- Column |  Type  | Key? | Definition 
---------+--------+------+------------
- b      | bigint | yes  | b
+      Index "testschema.test_tab_b_idx"
+ Column |      Type       | Key? | Definition 
+--------+-----------------+------+------------
+ b      | pg_catalog.int8 | yes  | b
 btree, for table "testschema.test_tab"
 
 DROP TABLE testschema.test_tab;

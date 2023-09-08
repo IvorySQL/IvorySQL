@@ -43,16 +43,16 @@ ERROR:  type "nosuchtype" does not exist
 LINE 1: CREATE SEQUENCE sequence_testx AS nosuchtype;
                                           ^
 CREATE SEQUENCE sequence_testx AS smallint MAXVALUE 100000;
-ERROR:  MAXVALUE (100000) is out of range for sequence data type smallint
+ERROR:  MAXVALUE (100000) is out of range for sequence data type pg_catalog.int2
 CREATE SEQUENCE sequence_testx AS smallint MINVALUE -100000;
-ERROR:  MINVALUE (-100000) is out of range for sequence data type smallint
+ERROR:  MINVALUE (-100000) is out of range for sequence data type pg_catalog.int2
 ALTER SEQUENCE sequence_test5 AS smallint;  -- success, max will be adjusted
 ALTER SEQUENCE sequence_test8 AS smallint;  -- fail, max has to be adjusted
-ERROR:  MAXVALUE (100000) is out of range for sequence data type smallint
+ERROR:  MAXVALUE (100000) is out of range for sequence data type pg_catalog.int2
 ALTER SEQUENCE sequence_test8 AS smallint MAXVALUE 20000;  -- ok now
 ALTER SEQUENCE sequence_test9 AS smallint;  -- success, min will be adjusted
 ALTER SEQUENCE sequence_test10 AS smallint;  -- fail, min has to be adjusted
-ERROR:  MINVALUE (-100000) is out of range for sequence data type smallint
+ERROR:  MINVALUE (-100000) is out of range for sequence data type pg_catalog.int2
 ALTER SEQUENCE sequence_test10 AS smallint MINVALUE -20000;  -- ok now
 ALTER SEQUENCE sequence_test11 AS int;  -- max will be adjusted
 ALTER SEQUENCE sequence_test12 AS int;  -- min will be adjusted
@@ -474,27 +474,27 @@ CREATE SEQUENCE sequence_test3;  -- not read from, to test is_called
 SELECT * FROM information_schema.sequences
   WHERE sequence_name ~ ANY(ARRAY['sequence_test', 'serialtest'])
   ORDER BY sequence_name ASC;
- sequence_catalog | sequence_schema |   sequence_name    | data_type | numeric_precision | numeric_precision_radix | numeric_scale | start_value |    minimum_value     |    maximum_value    | increment | cycle_option 
-------------------+-----------------+--------------------+-----------+-------------------+-------------------------+---------------+-------------+----------------------+---------------------+-----------+--------------
- regression       | public          | sequence_test10    | smallint  |                16 |                       2 |             0 | 1           | -20000               | 32767               | 1         | NO
- regression       | public          | sequence_test11    | integer   |                32 |                       2 |             0 | 1           | 1                    | 2147483647          | 1         | NO
- regression       | public          | sequence_test12    | integer   |                32 |                       2 |             0 | -1          | -2147483648          | -1                  | -1        | NO
- regression       | public          | sequence_test13    | integer   |                32 |                       2 |             0 | -32768      | -2147483648          | 2147483647          | 1         | NO
- regression       | public          | sequence_test14    | integer   |                32 |                       2 |             0 | 32767       | -2147483648          | 2147483647          | -1        | NO
- regression       | public          | sequence_test2     | bigint    |                64 |                       2 |             0 | 32          | 5                    | 36                  | 4         | YES
- regression       | public          | sequence_test3     | bigint    |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
- regression       | public          | sequence_test4     | bigint    |                64 |                       2 |             0 | -1          | -9223372036854775808 | -1                  | -1        | NO
- regression       | public          | sequence_test5     | smallint  |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
- regression       | public          | sequence_test6     | smallint  |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
- regression       | public          | sequence_test7     | bigint    |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
- regression       | public          | sequence_test8     | smallint  |                16 |                       2 |             0 | 1           | 1                    | 20000               | 1         | NO
- regression       | public          | sequence_test9     | smallint  |                16 |                       2 |             0 | -1          | -32768               | -1                  | -1        | NO
- regression       | public          | serialtest1_f2_foo | integer   |                32 |                       2 |             0 | 1           | 1                    | 2147483647          | 1         | NO
- regression       | public          | serialtest2_f2_seq | integer   |                32 |                       2 |             0 | 1           | 1                    | 2147483647          | 1         | NO
- regression       | public          | serialtest2_f3_seq | smallint  |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
- regression       | public          | serialtest2_f4_seq | smallint  |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
- regression       | public          | serialtest2_f5_seq | bigint    |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
- regression       | public          | serialtest2_f6_seq | bigint    |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
+ sequence_catalog | sequence_schema |   sequence_name    |    data_type    | numeric_precision | numeric_precision_radix | numeric_scale | start_value |    minimum_value     |    maximum_value    | increment | cycle_option 
+------------------+-----------------+--------------------+-----------------+-------------------+-------------------------+---------------+-------------+----------------------+---------------------+-----------+--------------
+ regression       | public          | sequence_test10    | pg_catalog.int2 |                16 |                       2 |             0 | 1           | -20000               | 32767               | 1         | NO
+ regression       | public          | sequence_test11    | pg_catalog.int4 |                32 |                       2 |             0 | 1           | 1                    | 2147483647          | 1         | NO
+ regression       | public          | sequence_test12    | pg_catalog.int4 |                32 |                       2 |             0 | -1          | -2147483648          | -1                  | -1        | NO
+ regression       | public          | sequence_test13    | pg_catalog.int4 |                32 |                       2 |             0 | -32768      | -2147483648          | 2147483647          | 1         | NO
+ regression       | public          | sequence_test14    | pg_catalog.int4 |                32 |                       2 |             0 | 32767       | -2147483648          | 2147483647          | -1        | NO
+ regression       | public          | sequence_test2     | pg_catalog.int8 |                64 |                       2 |             0 | 32          | 5                    | 36                  | 4         | YES
+ regression       | public          | sequence_test3     | pg_catalog.int8 |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
+ regression       | public          | sequence_test4     | pg_catalog.int8 |                64 |                       2 |             0 | -1          | -9223372036854775808 | -1                  | -1        | NO
+ regression       | public          | sequence_test5     | pg_catalog.int2 |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
+ regression       | public          | sequence_test6     | pg_catalog.int2 |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
+ regression       | public          | sequence_test7     | pg_catalog.int8 |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
+ regression       | public          | sequence_test8     | pg_catalog.int2 |                16 |                       2 |             0 | 1           | 1                    | 20000               | 1         | NO
+ regression       | public          | sequence_test9     | pg_catalog.int2 |                16 |                       2 |             0 | -1          | -32768               | -1                  | -1        | NO
+ regression       | public          | serialtest1_f2_foo | pg_catalog.int4 |                32 |                       2 |             0 | 1           | 1                    | 2147483647          | 1         | NO
+ regression       | public          | serialtest2_f2_seq | pg_catalog.int4 |                32 |                       2 |             0 | 1           | 1                    | 2147483647          | 1         | NO
+ regression       | public          | serialtest2_f3_seq | pg_catalog.int2 |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
+ regression       | public          | serialtest2_f4_seq | pg_catalog.int2 |                16 |                       2 |             0 | 1           | 1                    | 32767               | 1         | NO
+ regression       | public          | serialtest2_f5_seq | pg_catalog.int8 |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
+ regression       | public          | serialtest2_f6_seq | pg_catalog.int8 |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
 (19 rows)
 
 SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size, last_value
@@ -531,16 +531,16 @@ SELECT * FROM pg_sequence_parameters('sequence_test4'::regclass);
 (1 row)
 
 \d sequence_test4
-                       Sequence "public.sequence_test4"
-  Type  | Start |       Minimum        | Maximum | Increment | Cycles? | Cache 
---------+-------+----------------------+---------+-----------+---------+-------
- bigint |    -1 | -9223372036854775808 |      -1 |        -1 | no      |     1
+                            Sequence "public.sequence_test4"
+      Type       | Start |       Minimum        | Maximum | Increment | Cycles? | Cache 
+-----------------+-------+----------------------+---------+-----------+---------+-------
+ pg_catalog.int8 |    -1 | -9223372036854775808 |      -1 |        -1 | no      |     1
 
 \d serialtest2_f2_seq
-                 Sequence "public.serialtest2_f2_seq"
-  Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
----------+-------+---------+------------+-----------+---------+-------
- integer |     1 |       1 | 2147483647 |         1 | no      |     1
+                     Sequence "public.serialtest2_f2_seq"
+      Type       | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
+-----------------+-------+---------+------------+-----------+---------+-------
+ pg_catalog.int4 |     1 |       1 | 2147483647 |         1 | no      |     1
 Owned by: public.serialtest2.f2
 
 -- Test comments
@@ -599,17 +599,17 @@ ERROR:  lastval is not yet defined in this session
 CREATE UNLOGGED SEQUENCE sequence_test_unlogged;
 ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
 \d sequence_test_unlogged
-                   Sequence "public.sequence_test_unlogged"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
---------+-------+---------+---------------------+-----------+---------+-------
- bigint |     1 |       1 | 9223372036854775807 |         1 | no      |     1
+                       Sequence "public.sequence_test_unlogged"
+      Type       | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
+-----------------+-------+---------+---------------------+-----------+---------+-------
+ pg_catalog.int8 |     1 |       1 | 9223372036854775807 |         1 | no      |     1
 
 ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
 \d sequence_test_unlogged
-              Unlogged sequence "public.sequence_test_unlogged"
-  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
---------+-------+---------+---------------------+-----------+---------+-------
- bigint |     1 |       1 | 9223372036854775807 |         1 | no      |     1
+                   Unlogged sequence "public.sequence_test_unlogged"
+      Type       | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
+-----------------+-------+---------+---------------------+-----------+---------+-------
+ pg_catalog.int8 |     1 |       1 | 9223372036854775807 |         1 | no      |     1
 
 DROP SEQUENCE sequence_test_unlogged;
 -- Test sequences in read-only transactions
@@ -807,9 +807,9 @@ SELECT * FROM information_schema.sequences WHERE sequence_name IN
   ('sequence_test2', 'serialtest2_f2_seq', 'serialtest2_f3_seq',
    'serialtest2_f4_seq', 'serialtest2_f5_seq', 'serialtest2_f6_seq')
   ORDER BY sequence_name ASC;
- sequence_catalog | sequence_schema | sequence_name  | data_type | numeric_precision | numeric_precision_radix | numeric_scale | start_value | minimum_value | maximum_value | increment | cycle_option 
-------------------+-----------------+----------------+-----------+-------------------+-------------------------+---------------+-------------+---------------+---------------+-----------+--------------
- regression       | public          | sequence_test2 | bigint    |                64 |                       2 |             0 | 32          | 5             | 36            | 4         | YES
+ sequence_catalog | sequence_schema | sequence_name  |    data_type    | numeric_precision | numeric_precision_radix | numeric_scale | start_value | minimum_value | maximum_value | increment | cycle_option 
+------------------+-----------------+----------------+-----------------+-------------------+-------------------------+---------------+-------------+---------------+---------------+-----------+--------------
+ regression       | public          | sequence_test2 | pg_catalog.int8 |                64 |                       2 |             0 | 32          | 5             | 36            | 4         | YES
 (1 row)
 
 DROP USER regress_seq_user;

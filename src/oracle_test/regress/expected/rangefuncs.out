@@ -678,17 +678,17 @@ select * from vw_rngfunc;
 (2 rows)
 
 select pg_get_viewdef('vw_rngfunc');
-                                                                                pg_get_viewdef                                                                                
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  SELECT a,                                                                                                                                                                  +
-     b,                                                                                                                                                                      +
-     c,                                                                                                                                                                      +
-     d,                                                                                                                                                                      +
-     e,                                                                                                                                                                      +
-     f,                                                                                                                                                                      +
-     g,                                                                                                                                                                      +
-     n                                                                                                                                                                       +
-    FROM ROWS FROM(getrngfunc9(1), getrngfunc7(1) AS (rngfuncid integer, rngfuncsubid integer, rngfuncname text), getrngfunc1(1)) WITH ORDINALITY t1(a, b, c, d, e, f, g, n);
+                                                                                        pg_get_viewdef                                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  SELECT a,                                                                                                                                                                                  +
+     b,                                                                                                                                                                                      +
+     c,                                                                                                                                                                                      +
+     d,                                                                                                                                                                                      +
+     e,                                                                                                                                                                                      +
+     f,                                                                                                                                                                                      +
+     g,                                                                                                                                                                                      +
+     n                                                                                                                                                                                       +
+    FROM ROWS FROM(getrngfunc9(1), getrngfunc7(1) AS (rngfuncid pg_catalog.int4, rngfuncsubid pg_catalog.int4, rngfuncname text), getrngfunc1(1)) WITH ORDINALITY t1(a, b, c, d, e, f, g, n);
 (1 row)
 
 drop view vw_rngfunc;
@@ -1465,7 +1465,7 @@ AS 'select $1+1' LANGUAGE sql;
 CREATE OR REPLACE FUNCTION rngfunc(in f1 int, out f2 int) RETURNS float
 AS 'select $1+1' LANGUAGE sql;
 /
-ERROR:  function result type must be integer because of OUT parameters
+ERROR:  function result type must be pg_catalog.int4 because of OUT parameters
 -- with multiple OUT params you must get a RECORD result
 CREATE OR REPLACE FUNCTION rngfunc(in f1 int, out f2 int, out f3 text) RETURNS int
 AS 'select $1+1' LANGUAGE sql;
@@ -1476,7 +1476,7 @@ RETURNS record
 AS 'select $1+1' LANGUAGE sql;
 /
 ERROR:  cannot change return type of existing function
-HINT:  Use DROP FUNCTION rngfunc(integer) first.
+HINT:  Use DROP FUNCTION rngfunc(pg_catalog.int4) first.
 CREATE OR REPLACE FUNCTION rngfuncr(in f1 int, out f2 int, out text)
 AS $$select $1-1, $1::text || 'z'$$ LANGUAGE sql;
 /
@@ -1603,9 +1603,9 @@ SELECT dup(22, array[44::bigint]);
 (1 row)
 
 SELECT *, pg_typeof(f3), pg_typeof(f4) FROM dup(22, array[44::bigint]);
- f3 |  f4  | pg_typeof | pg_typeof 
-----+------+-----------+-----------
- 22 | {44} | bigint    | bigint[]
+ f3 |  f4  |    pg_typeof    |     pg_typeof     
+----+------+-----------------+-------------------
+ 22 | {44} | pg_catalog.int8 | pg_catalog.int8[]
 (1 row)
 
 DROP FUNCTION dup(f1 anycompatible, f2 anycompatiblearray);
@@ -1920,7 +1920,7 @@ select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
 -- and if it doesn't work, you get a compile-time not run-time error
 select * from array_to_set(array['one', 'two']) as t(f1 point,f2 text);
 ERROR:  return type mismatch in function declared to return record
-DETAIL:  Final statement returns integer instead of point at column 1.
+DETAIL:  Final statement returns pg_catalog.int4 instead of point at column 1.
 CONTEXT:  SQL function "array_to_set" during startup
 -- with "strict", this function can't be inlined in FROM
 explain (verbose, costs off)
@@ -1960,7 +1960,7 @@ select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
 
 select * from array_to_set(array['one', 'two']) as t(f1 point,f2 text);
 ERROR:  return type mismatch in function declared to return record
-DETAIL:  Final statement returns integer instead of point at column 1.
+DETAIL:  Final statement returns pg_catalog.int4 instead of point at column 1.
 CONTEXT:  SQL function "array_to_set" during inlining
 explain (verbose, costs off)
   select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
@@ -2106,10 +2106,10 @@ select testrngfunc();
 
 explain (verbose, costs off)
 select * from testrngfunc();
-                       QUERY PLAN                       
---------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Result
-   Output: 7.136178::numeric(35,6), 7.14::numeric(35,2)
+   Output: 7.136178::pg_catalog.numeric(35,6), 7.14::pg_catalog.numeric(35,2)
 (2 rows)
 
 select * from testrngfunc();
@@ -2340,7 +2340,7 @@ returning pg_describe_object(classid, objid, objsubid) as obj,
 alter table users alter column seq type numeric;
 select * from usersview;  -- expect clean failure
 ERROR:  attribute 2 of type record has wrong type
-DETAIL:  Table has type numeric, but query expects integer.
+DETAIL:  Table has type pg_catalog.numeric, but query expects pg_catalog.int4.
 rollback;
 drop view usersview;
 drop function get_first_user();
@@ -2394,7 +2394,7 @@ $$ select (1, 2) $$ language sql;
 /
 select * from rngfuncbar();  -- fail
 ERROR:  function return row and query-specified return row do not match
-DETAIL:  Returned type integer at ordinal position 2, but query expects numeric.
+DETAIL:  Returned type pg_catalog.int4 at ordinal position 2, but query expects pg_catalog.numeric.
 create or replace function rngfuncbar(out integer, out numeric) as
 $$ select (1, 2.1, 3) $$ language sql;
 /

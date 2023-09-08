@@ -40,7 +40,7 @@ SELECT pg_get_functiondef('ptest1'::regproc);
                            List of functions
  Schema |     Name     | Result data type | Argument data types | Type 
 --------+--------------+------------------+---------------------+------
- public | cp_testfunc1 | integer          | a integer           | func
+ public | cp_testfunc1 | pg_catalog.int4  | a pg_catalog.int4   | func
 (1 row)
 
 -- show only procedures
@@ -246,7 +246,7 @@ CALL ptest9(1/0);  -- no error
 
 -- ... and it had better match the type of the parameter
 CALL ptest9(1./0.);  -- error
-ERROR:  procedure ptest9(numeric) does not exist
+ERROR:  procedure ptest9(pg_catalog.numeric) does not exist
 LINE 1: CALL ptest9(1./0.);
              ^
 HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
@@ -298,11 +298,11 @@ CREATE PROCEDURE ptest10(IN a int, IN b int, IN c int)
 LANGUAGE SQL AS $$ SELECT a + b - c $$;
 /
 \df ptest10
-                                   List of functions
- Schema |  Name   | Result data type |            Argument data types            | Type 
---------+---------+------------------+-------------------------------------------+------
- public | ptest10 |                  | IN a integer, IN b integer, IN c integer  | proc
- public | ptest10 |                  | OUT a integer, IN b integer, IN c integer | proc
+                                               List of functions
+ Schema |  Name   | Result data type |                        Argument data types                        | Type 
+--------+---------+------------------+-------------------------------------------------------------------+------
+ public | ptest10 |                  | IN a pg_catalog.int4, IN b pg_catalog.int4, IN c pg_catalog.int4  | proc
+ public | ptest10 |                  | OUT a pg_catalog.int4, IN b pg_catalog.int4, IN c pg_catalog.int4 | proc
 (2 rows)
 
 drop procedure ptest10;  -- fail
@@ -313,10 +313,10 @@ ERROR:  procedure name "ptest10" is not unique
 begin;
 drop procedure ptest10(out int, int, int);
 \df ptest10
-                                   List of functions
- Schema |  Name   | Result data type |           Argument data types            | Type 
---------+---------+------------------+------------------------------------------+------
- public | ptest10 |                  | IN a integer, IN b integer, IN c integer | proc
+                                               List of functions
+ Schema |  Name   | Result data type |                       Argument data types                        | Type 
+--------+---------+------------------+------------------------------------------------------------------+------
+ public | ptest10 |                  | IN a pg_catalog.int4, IN b pg_catalog.int4, IN c pg_catalog.int4 | proc
 (1 row)
 
 drop procedure ptest10(int, int, int);  -- now this would work
@@ -324,10 +324,10 @@ rollback;
 begin;
 drop procedure ptest10(in int, int, int);
 \df ptest10
-                                   List of functions
- Schema |  Name   | Result data type |            Argument data types            | Type 
---------+---------+------------------+-------------------------------------------+------
- public | ptest10 |                  | OUT a integer, IN b integer, IN c integer | proc
+                                               List of functions
+ Schema |  Name   | Result data type |                        Argument data types                        | Type 
+--------+---------+------------------+-------------------------------------------------------------------+------
+ public | ptest10 |                  | OUT a pg_catalog.int4, IN b pg_catalog.int4, IN c pg_catalog.int4 | proc
 (1 row)
 
 drop procedure ptest10(int, int, int);  -- now this would work
@@ -339,7 +339,7 @@ LINE 1: CALL version();
              ^
 HINT:  To call a function, use SELECT.
 CALL sum(1);  -- error: not a procedure
-ERROR:  sum(integer) is not a procedure
+ERROR:  sum(pg_catalog.int4) is not a procedure
 LINE 1: CALL sum(1);
              ^
 HINT:  To call a function, use SELECT.
@@ -368,13 +368,13 @@ LINE 1: ALTER PROCEDURE ptest1(text) STRICT;
 ALTER FUNCTION ptest1(text) VOLATILE;  -- error: not a function
 ERROR:  ptest1(text) is not a function
 ALTER PROCEDURE cp_testfunc1(int) VOLATILE;  -- error: not a procedure
-ERROR:  cp_testfunc1(integer) is not a procedure
+ERROR:  cp_testfunc1(pg_catalog.int4) is not a procedure
 ALTER PROCEDURE nonexistent() VOLATILE;
 ERROR:  procedure nonexistent() does not exist
 DROP FUNCTION ptest1(text);  -- error: not a function
 ERROR:  ptest1(text) is not a function
 DROP PROCEDURE cp_testfunc1(int);  -- error: not a procedure
-ERROR:  cp_testfunc1(integer) is not a procedure
+ERROR:  cp_testfunc1(pg_catalog.int4) is not a procedure
 DROP PROCEDURE nonexistent();
 ERROR:  procedure nonexistent() does not exist
 -- privileges

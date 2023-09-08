@@ -59,7 +59,7 @@ SELECT * FROM update_test;
 -- fail, wrong data type:
 UPDATE update_test SET a = v.* FROM (VALUES(100, 20)) AS v(i, j)
   WHERE update_test.b = v.j;
-ERROR:  column "a" is of type integer but expression is of type record
+ERROR:  column "a" is of type pg_catalog.int4 but expression is of type record
 LINE 1: UPDATE update_test SET a = v.* FROM (VALUES(100, 20)) AS v(i...
                                    ^
 HINT:  You will need to rewrite or cast the expression.
@@ -350,19 +350,19 @@ EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
    Update on part_b_20_b_30 range_parted_7
    ->  Append
          ->  Seq Scan on part_a_1_a_10 range_parted_1
-               Filter: (c > '97'::numeric)
+               Filter: (c > '97'::pg_catalog.numeric)
          ->  Seq Scan on part_a_10_a_20 range_parted_2
-               Filter: (c > '97'::numeric)
+               Filter: (c > '97'::pg_catalog.numeric)
          ->  Seq Scan on part_b_1_b_10 range_parted_3
-               Filter: (c > '97'::numeric)
+               Filter: (c > '97'::pg_catalog.numeric)
          ->  Seq Scan on part_c_1_100 range_parted_4
-               Filter: (c > '97'::numeric)
+               Filter: (c > '97'::pg_catalog.numeric)
          ->  Seq Scan on part_d_1_15 range_parted_5
-               Filter: (c > '97'::numeric)
+               Filter: (c > '97'::pg_catalog.numeric)
          ->  Seq Scan on part_d_15_20 range_parted_6
-               Filter: (c > '97'::numeric)
+               Filter: (c > '97'::pg_catalog.numeric)
          ->  Seq Scan on part_b_20_b_30 range_parted_7
-               Filter: (c > '97'::numeric)
+               Filter: (c > '97'::pg_catalog.numeric)
 (23 rows)
 
 -- fail, row movement happens only within the partition subtree.
@@ -746,16 +746,16 @@ DROP TRIGGER d15_insert_trig ON part_d_15_20;
 :init_range_parted;
 create table part_def partition of range_parted default;
 \d+ part_def
-                                     Table "public.part_def"
- Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text           |           |          |         | extended |              | 
- b      | bigint         |           |          |         | plain    |              | 
- c      | numeric        |           |          |         | main     |              | 
- d      | integer        |           |          |         | plain    |              | 
- e      | varchar2(4000) |           |          |         | extended |              | 
+                                       Table "public.part_def"
+ Column |        Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+--------------------+-----------+----------+---------+----------+--------------+-------------
+ a      | text               |           |          |         | extended |              | 
+ b      | pg_catalog.int8    |           |          |         | plain    |              | 
+ c      | pg_catalog.numeric |           |          |         | main     |              | 
+ d      | pg_catalog.int4    |           |          |         | plain    |              | 
+ e      | varchar2(4000)     |           |          |         | extended |              | 
 Partition of: range_parted DEFAULT
-Partition constraint: (NOT ((a IS NOT NULL) AND (b IS NOT NULL) AND (((a = 'a'::text) AND (b >= '1'::bigint) AND (b < '10'::bigint)) OR ((a = 'a'::text) AND (b >= '10'::bigint) AND (b < '20'::bigint)) OR ((a = 'b'::text) AND (b >= '1'::bigint) AND (b < '10'::bigint)) OR ((a = 'b'::text) AND (b >= '10'::bigint) AND (b < '20'::bigint)) OR ((a = 'b'::text) AND (b >= '20'::bigint) AND (b < '30'::bigint)))))
+Partition constraint: (NOT ((a IS NOT NULL) AND (b IS NOT NULL) AND (((a = 'a'::text) AND (b >= '1'::pg_catalog.int8) AND (b < '10'::pg_catalog.int8)) OR ((a = 'a'::text) AND (b >= '10'::pg_catalog.int8) AND (b < '20'::pg_catalog.int8)) OR ((a = 'b'::text) AND (b >= '1'::pg_catalog.int8) AND (b < '10'::pg_catalog.int8)) OR ((a = 'b'::text) AND (b >= '10'::pg_catalog.int8) AND (b < '20'::pg_catalog.int8)) OR ((a = 'b'::text) AND (b >= '20'::pg_catalog.int8) AND (b < '30'::pg_catalog.int8)))))
 
 insert into range_parted values ('c', 9);
 -- ok

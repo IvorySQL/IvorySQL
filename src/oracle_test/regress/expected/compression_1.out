@@ -80,7 +80,7 @@ DROP TABLE cmdata2;
 ERROR:  table "cmdata2" does not exist
 -- try setting compression for incompressible data type
 CREATE TABLE cmdata2 (f1 int COMPRESSION pglz);
-ERROR:  column data type integer does not support compression
+ERROR:  column data type pg_catalog.int4 does not support compression
 -- update using datum from different table
 CREATE TABLE cmmove2(f1 text COMPRESSION pglz);
 INSERT INTO cmmove2 VALUES (repeat('1234567890', 1004));
@@ -134,10 +134,10 @@ DROP TABLE cmdata2;
 --test column type update varlena/non-varlena
 CREATE TABLE cmdata2 (f1 int);
 \d+ cmdata2
-                                         Table "public.cmdata2"
- Column |  Type   | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+---------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | integer |           |          |         | plain   |             |              | 
+                                             Table "public.cmdata2"
+ Column |      Type       | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain   |             |              | 
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 \d+ cmdata2
@@ -148,10 +148,10 @@ ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE int USING f1::integer;
 \d+ cmdata2
-                                         Table "public.cmdata2"
- Column |  Type   | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+---------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | integer |           |          |         | plain   |             |              | 
+                                             Table "public.cmdata2"
+ Column |      Type       | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         | plain   |             |              | 
 
 --changing column storage should not impact the compression method
 --but the data should not be compressed

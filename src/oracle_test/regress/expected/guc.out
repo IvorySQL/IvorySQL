@@ -764,7 +764,7 @@ set work_mem = '1MB';
 select myfunc(0);
 ERROR:  division by zero
 CONTEXT:  SQL statement "SELECT 1/$1"
-PL/pgSQL function myfunc(integer) line 4 at PERFORM
+PL/pgSQL function myfunc(pg_catalog.int4) line 4 at PERFORM
 select current_setting('work_mem');
  current_setting 
 -----------------

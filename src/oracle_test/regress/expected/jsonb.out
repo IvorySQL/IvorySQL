@@ -2647,13 +2647,13 @@ ERROR:  function return row and query-specified return row do not match
 DETAIL:  Returned row contains 1 attribute, but query expects 2.
 select * from jsonb_populate_recordset(row(0::int,0::int),'[{"a":"1","b":"2"},{"a":"3"}]') q (a text, b text);
 ERROR:  function return row and query-specified return row do not match
-DETAIL:  Returned type integer at ordinal position 1, but query expects text.
+DETAIL:  Returned type pg_catalog.int4 at ordinal position 1, but query expects text.
 select * from jsonb_populate_recordset(row(0::int,0::int,0::int),'[{"a":"1","b":"2"},{"a":"3"}]') q (a text, b text);
 ERROR:  function return row and query-specified return row do not match
 DETAIL:  Returned row contains 3 attributes, but query expects 2.
 select * from jsonb_populate_recordset(row(1000000000::int,50::int),'[{"b":"2"},{"a":"3"}]') q (a text, b text);
 ERROR:  function return row and query-specified return row do not match
-DETAIL:  Returned type integer at ordinal position 1, but query expects text.
+DETAIL:  Returned type pg_catalog.int4 at ordinal position 1, but query expects text.
 -- jsonb_to_record and jsonb_to_recordset
 select * from jsonb_to_record('{"a":1,"b":"foo","c":"bar"}')
     as x(a int, b text, d text);
@@ -4843,7 +4843,7 @@ select ('[1, "2", null]'::jsonb)['1'];
 (1 row)
 
 select ('[1, "2", null]'::jsonb)[1.0];
-ERROR:  subscript type numeric is not supported
+ERROR:  subscript type pg_catalog.numeric is not supported
 LINE 1: select ('[1, "2", null]'::jsonb)[1.0];
                                          ^
 HINT:  jsonb subscript must be coercible to either integer or text.

@@ -38,13 +38,13 @@ vacuum gin_test_tbl;
 -- Test for "rare && frequent" searches
 explain (costs off)
 select count(*) from gin_test_tbl where i @> array[1, 999];
-                      QUERY PLAN                       
--------------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on gin_test_tbl
-         Recheck Cond: (i @> '{1,999}'::integer[])
+         Recheck Cond: (i @> '{1,999}'::pg_catalog.int4[])
          ->  Bitmap Index Scan on gin_test_idx
-               Index Cond: (i @> '{1,999}'::integer[])
+               Index Cond: (i @> '{1,999}'::pg_catalog.int4[])
 (5 rows)
 
 select count(*) from gin_test_tbl where i @> array[1, 999];
@@ -57,13 +57,13 @@ select count(*) from gin_test_tbl where i @> array[1, 999];
 set gin_fuzzy_search_limit = 1000;
 explain (costs off)
 select count(*) > 0 as ok from gin_test_tbl where i @> array[1];
-                    QUERY PLAN                     
----------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on gin_test_tbl
-         Recheck Cond: (i @> '{1}'::integer[])
+         Recheck Cond: (i @> '{1}'::pg_catalog.int4[])
          ->  Bitmap Index Scan on gin_test_idx
-               Index Cond: (i @> '{1}'::integer[])
+               Index Cond: (i @> '{1}'::pg_catalog.int4[])
 (5 rows)
 
 select count(*) > 0 as ok from gin_test_tbl where i @> array[1];
@@ -91,12 +91,12 @@ values
 set enable_seqscan = off;
 explain (costs off)
 select * from t_gin_test_tbl where array[0] <@ i;
-                    QUERY PLAN                     
----------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Bitmap Heap Scan on t_gin_test_tbl
-   Recheck Cond: ('{0}'::integer[] <@ i)
+   Recheck Cond: ('{0}'::pg_catalog.int4[] <@ i)
    ->  Bitmap Index Scan on t_gin_test_tbl_i_j_idx
-         Index Cond: (i @> '{0}'::integer[])
+         Index Cond: (i @> '{0}'::pg_catalog.int4[])
 (4 rows)
 
 select * from t_gin_test_tbl where array[0] <@ i;
@@ -111,12 +111,12 @@ select * from t_gin_test_tbl where array[0] <@ i and '{}'::int4[] <@ j;
 
 explain (costs off)
 select * from t_gin_test_tbl where i @> '{}';
-                    QUERY PLAN                     
----------------------------------------------------
+                     QUERY PLAN                     
+----------------------------------------------------
  Bitmap Heap Scan on t_gin_test_tbl
-   Recheck Cond: (i @> '{}'::integer[])
+   Recheck Cond: (i @> '{}'::pg_catalog.int4[])
    ->  Bitmap Index Scan on t_gin_test_tbl_i_j_idx
-         Index Cond: (i @> '{}'::integer[])
+         Index Cond: (i @> '{}'::pg_catalog.int4[])
 (4 rows)
 
 select * from t_gin_test_tbl where i @> '{}';
@@ -218,13 +218,13 @@ set enable_seqscan = off;
 set enable_bitmapscan = on;
 explain (costs off)
 select count(*) from t_gin_test_tbl where j @> array[50];
-                       QUERY PLAN                        
----------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on t_gin_test_tbl
-         Recheck Cond: (j @> '{50}'::integer[])
+         Recheck Cond: (j @> '{50}'::pg_catalog.int4[])
          ->  Bitmap Index Scan on t_gin_test_tbl_i_j_idx
-               Index Cond: (j @> '{50}'::integer[])
+               Index Cond: (j @> '{50}'::pg_catalog.int4[])
 (5 rows)
 
 select count(*) from t_gin_test_tbl where j @> array[50];
@@ -235,13 +235,13 @@ select count(*) from t_gin_test_tbl where j @> array[50];
 
 explain (costs off)
 select count(*) from t_gin_test_tbl where j @> array[2];
-                       QUERY PLAN                        
----------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on t_gin_test_tbl
-         Recheck Cond: (j @> '{2}'::integer[])
+         Recheck Cond: (j @> '{2}'::pg_catalog.int4[])
          ->  Bitmap Index Scan on t_gin_test_tbl_i_j_idx
-               Index Cond: (j @> '{2}'::integer[])
+               Index Cond: (j @> '{2}'::pg_catalog.int4[])
 (5 rows)
 
 select count(*) from t_gin_test_tbl where j @> array[2];
@@ -252,13 +252,13 @@ select count(*) from t_gin_test_tbl where j @> array[2];
 
 explain (costs off)
 select count(*) from t_gin_test_tbl where j @> '{}'::int[];
-                       QUERY PLAN                        
----------------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on t_gin_test_tbl
-         Recheck Cond: (j @> '{}'::integer[])
+         Recheck Cond: (j @> '{}'::pg_catalog.int4[])
          ->  Bitmap Index Scan on t_gin_test_tbl_i_j_idx
-               Index Cond: (j @> '{}'::integer[])
+               Index Cond: (j @> '{}'::pg_catalog.int4[])
 (5 rows)
 
 select count(*) from t_gin_test_tbl where j @> '{}'::int[];

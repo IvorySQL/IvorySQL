@@ -25,22 +25,22 @@ ANALYZE pagg_tab;
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY c HAVING avg(d) < 15 ORDER BY 1, 2, 3;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab.c, (sum(pagg_tab.a)), (avg(pagg_tab.b))
    ->  Append
          ->  HashAggregate
                Group Key: pagg_tab.c
-               Filter: (avg(pagg_tab.d) < '15'::numeric)
+               Filter: (avg(pagg_tab.d) < '15'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_p1 pagg_tab
          ->  HashAggregate
                Group Key: pagg_tab_1.c
-               Filter: (avg(pagg_tab_1.d) < '15'::numeric)
+               Filter: (avg(pagg_tab_1.d) < '15'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_p2 pagg_tab_1
          ->  HashAggregate
                Group Key: pagg_tab_2.c
-               Filter: (avg(pagg_tab_2.d) < '15'::numeric)
+               Filter: (avg(pagg_tab_2.d) < '15'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_p3 pagg_tab_2
 (15 rows)
 
@@ -64,7 +64,7 @@ SELECT a, sum(b), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY a HAVI
    Sort Key: pagg_tab.a, (sum(pagg_tab.b)), (avg(pagg_tab.b))
    ->  Finalize HashAggregate
          Group Key: pagg_tab.a
-         Filter: (avg(pagg_tab.d) < '15'::numeric)
+         Filter: (avg(pagg_tab.d) < '15'::pg_catalog.numeric)
          ->  Append
                ->  Partial HashAggregate
                      Group Key: pagg_tab.a
@@ -178,26 +178,26 @@ SET enable_hashagg TO false;
 -- When GROUP BY clause matches full aggregation is performed for each partition.
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 ORDER BY 1, 2, 3;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab.c, (sum(pagg_tab.a)), (avg(pagg_tab.b))
    ->  Append
          ->  GroupAggregate
                Group Key: pagg_tab.c
-               Filter: (avg(pagg_tab.d) < '15'::numeric)
+               Filter: (avg(pagg_tab.d) < '15'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab.c
                      ->  Seq Scan on pagg_tab_p1 pagg_tab
          ->  GroupAggregate
                Group Key: pagg_tab_1.c
-               Filter: (avg(pagg_tab_1.d) < '15'::numeric)
+               Filter: (avg(pagg_tab_1.d) < '15'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab_1.c
                      ->  Seq Scan on pagg_tab_p2 pagg_tab_1
          ->  GroupAggregate
                Group Key: pagg_tab_2.c
-               Filter: (avg(pagg_tab_2.d) < '15'::numeric)
+               Filter: (avg(pagg_tab_2.d) < '15'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab_2.c
                      ->  Seq Scan on pagg_tab_p3 pagg_tab_2
@@ -223,7 +223,7 @@ SELECT a, sum(b), avg(b), count(*) FROM pagg_tab GROUP BY 1 HAVING avg(d) < 15 O
    Sort Key: pagg_tab.a, (sum(pagg_tab.b)), (avg(pagg_tab.b))
    ->  Finalize GroupAggregate
          Group Key: pagg_tab.a
-         Filter: (avg(pagg_tab.d) < '15'::numeric)
+         Filter: (avg(pagg_tab.d) < '15'::pg_catalog.numeric)
          ->  Merge Append
                Sort Key: pagg_tab.a
                ->  Partial GroupAggregate
@@ -527,7 +527,7 @@ SELECT t1.y, sum(t1.x), count(*) FROM pagg_tab1 t1, pagg_tab2 t2 WHERE t1.x = t2
    Sort Key: t1.y, (sum(t1.x)), (count(*))
    ->  Finalize GroupAggregate
          Group Key: t1.y
-         Filter: (avg(t1.x) > '10'::numeric)
+         Filter: (avg(t1.x) > '10'::pg_catalog.numeric)
          ->  Merge Append
                Sort Key: t1.y
                ->  Partial GroupAggregate
@@ -835,7 +835,7 @@ SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22
    Sort Key: pagg_tab_m.a, (sum(pagg_tab_m.b)), (avg(pagg_tab_m.c))
    ->  Finalize HashAggregate
          Group Key: pagg_tab_m.a
-         Filter: (avg(pagg_tab_m.c) < '22'::numeric)
+         Filter: (avg(pagg_tab_m.c) < '22'::pg_catalog.numeric)
          ->  Append
                ->  Partial HashAggregate
                      Group Key: pagg_tab_m.a
@@ -895,22 +895,22 @@ SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a, (a+b)/2 HAVING su
 -- Full aggregation as PARTITION KEY is part of GROUP BY clause
 EXPLAIN (COSTS OFF)
 SELECT a, c, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY (a+b)/2, 2, 1 HAVING sum(b) = 50 AND avg(c) > 25 ORDER BY 1, 2, 3;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab_m.a, pagg_tab_m.c, (sum(pagg_tab_m.b))
    ->  Append
          ->  HashAggregate
                Group Key: ((pagg_tab_m.a + pagg_tab_m.b) / 2), pagg_tab_m.c, pagg_tab_m.a
-               Filter: ((sum(pagg_tab_m.b) = 50) AND (avg(pagg_tab_m.c) > '25'::numeric))
+               Filter: ((sum(pagg_tab_m.b) = 50) AND (avg(pagg_tab_m.c) > '25'::pg_catalog.numeric))
                ->  Seq Scan on pagg_tab_m_p1 pagg_tab_m
          ->  HashAggregate
                Group Key: ((pagg_tab_m_1.a + pagg_tab_m_1.b) / 2), pagg_tab_m_1.c, pagg_tab_m_1.a
-               Filter: ((sum(pagg_tab_m_1.b) = 50) AND (avg(pagg_tab_m_1.c) > '25'::numeric))
+               Filter: ((sum(pagg_tab_m_1.b) = 50) AND (avg(pagg_tab_m_1.c) > '25'::pg_catalog.numeric))
                ->  Seq Scan on pagg_tab_m_p2 pagg_tab_m_1
          ->  HashAggregate
                Group Key: ((pagg_tab_m_2.a + pagg_tab_m_2.b) / 2), pagg_tab_m_2.c, pagg_tab_m_2.a
-               Filter: ((sum(pagg_tab_m_2.b) = 50) AND (avg(pagg_tab_m_2.c) > '25'::numeric))
+               Filter: ((sum(pagg_tab_m_2.b) = 50) AND (avg(pagg_tab_m_2.c) > '25'::pg_catalog.numeric))
                ->  Seq Scan on pagg_tab_m_p3 pagg_tab_m_2
 (15 rows)
 
@@ -957,13 +957,13 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
          ->  Parallel Append
                ->  GroupAggregate
                      Group Key: pagg_tab_ml.a
-                     Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+                     Filter: (avg(pagg_tab_ml.b) < '3'::pg_catalog.numeric)
                      ->  Sort
                            Sort Key: pagg_tab_ml.a, pagg_tab_ml.c
                            ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
                ->  GroupAggregate
                      Group Key: pagg_tab_ml_5.a
-                     Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+                     Filter: (avg(pagg_tab_ml_5.b) < '3'::pg_catalog.numeric)
                      ->  Sort
                            Sort Key: pagg_tab_ml_5.a, pagg_tab_ml_5.c
                            ->  Append
@@ -971,7 +971,7 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                                  ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
                ->  GroupAggregate
                      Group Key: pagg_tab_ml_2.a
-                     Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
+                     Filter: (avg(pagg_tab_ml_2.b) < '3'::pg_catalog.numeric)
                      ->  Sort
                            Sort Key: pagg_tab_ml_2.a, pagg_tab_ml_2.c
                            ->  Append
@@ -1003,13 +1003,13 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
    ->  Parallel Append
          ->  GroupAggregate
                Group Key: pagg_tab_ml.a
-               Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml.b) < '3'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab_ml.a, pagg_tab_ml.c
                      ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
          ->  GroupAggregate
                Group Key: pagg_tab_ml_5.a
-               Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml_5.b) < '3'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab_ml_5.a, pagg_tab_ml_5.c
                      ->  Append
@@ -1017,7 +1017,7 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                            ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
          ->  GroupAggregate
                Group Key: pagg_tab_ml_2.a
-               Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml_2.b) < '3'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab_ml_2.a, pagg_tab_ml_2.c
                      ->  Append
@@ -1038,11 +1038,11 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER B
    ->  Append
          ->  HashAggregate
                Group Key: pagg_tab_ml.a
-               Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml.b) < '3'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
          ->  Finalize GroupAggregate
                Group Key: pagg_tab_ml_2.a
-               Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml_2.b) < '3'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab_ml_2.a
                      ->  Append
@@ -1054,7 +1054,7 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER B
                                  ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
          ->  Finalize GroupAggregate
                Group Key: pagg_tab_ml_5.a
-               Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml_5.b) < '3'::pg_catalog.numeric)
                ->  Sort
                      Sort Key: pagg_tab_ml_5.a
                      ->  Append
@@ -1130,23 +1130,23 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
    ->  Append
          ->  HashAggregate
                Group Key: pagg_tab_ml.a, pagg_tab_ml.b, pagg_tab_ml.c
-               Filter: (avg(pagg_tab_ml.b) > '7'::numeric)
+               Filter: (avg(pagg_tab_ml.b) > '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
          ->  HashAggregate
                Group Key: pagg_tab_ml_1.a, pagg_tab_ml_1.b, pagg_tab_ml_1.c
-               Filter: (avg(pagg_tab_ml_1.b) > '7'::numeric)
+               Filter: (avg(pagg_tab_ml_1.b) > '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
          ->  HashAggregate
                Group Key: pagg_tab_ml_2.a, pagg_tab_ml_2.b, pagg_tab_ml_2.c
-               Filter: (avg(pagg_tab_ml_2.b) > '7'::numeric)
+               Filter: (avg(pagg_tab_ml_2.b) > '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
          ->  HashAggregate
                Group Key: pagg_tab_ml_3.a, pagg_tab_ml_3.b, pagg_tab_ml_3.c
-               Filter: (avg(pagg_tab_ml_3.b) > '7'::numeric)
+               Filter: (avg(pagg_tab_ml_3.b) > '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
          ->  HashAggregate
                Group Key: pagg_tab_ml_4.a, pagg_tab_ml_4.b, pagg_tab_ml_4.c
-               Filter: (avg(pagg_tab_ml_4.b) > '7'::numeric)
+               Filter: (avg(pagg_tab_ml_4.b) > '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
 (23 rows)
 
@@ -1182,7 +1182,7 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER B
    ->  Append
          ->  Finalize GroupAggregate
                Group Key: pagg_tab_ml.a
-               Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml.b) < '3'::pg_catalog.numeric)
                ->  Gather Merge
                      Workers Planned: 2
                      ->  Sort
@@ -1192,7 +1192,7 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER B
                                  ->  Parallel Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
          ->  Finalize GroupAggregate
                Group Key: pagg_tab_ml_2.a
-               Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml_2.b) < '3'::pg_catalog.numeric)
                ->  Gather Merge
                      Workers Planned: 2
                      ->  Sort
@@ -1206,7 +1206,7 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER B
                                        ->  Parallel Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
          ->  Finalize GroupAggregate
                Group Key: pagg_tab_ml_5.a
-               Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+               Filter: (avg(pagg_tab_ml_5.b) < '3'::pg_catalog.numeric)
                ->  Gather Merge
                      Workers Planned: 2
                      ->  Sort
@@ -1288,23 +1288,23 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
          ->  Parallel Append
                ->  HashAggregate
                      Group Key: pagg_tab_ml.a, pagg_tab_ml.b, pagg_tab_ml.c
-                     Filter: (avg(pagg_tab_ml.b) > '7'::numeric)
+                     Filter: (avg(pagg_tab_ml.b) > '7'::pg_catalog.numeric)
                      ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
                ->  HashAggregate
                      Group Key: pagg_tab_ml_3.a, pagg_tab_ml_3.b, pagg_tab_ml_3.c
-                     Filter: (avg(pagg_tab_ml_3.b) > '7'::numeric)
+                     Filter: (avg(pagg_tab_ml_3.b) > '7'::pg_catalog.numeric)
                      ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
                ->  HashAggregate
                      Group Key: pagg_tab_ml_1.a, pagg_tab_ml_1.b, pagg_tab_ml_1.c
-                     Filter: (avg(pagg_tab_ml_1.b) > '7'::numeric)
+                     Filter: (avg(pagg_tab_ml_1.b) > '7'::pg_catalog.numeric)
                      ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
                ->  HashAggregate
                      Group Key: pagg_tab_ml_4.a, pagg_tab_ml_4.b, pagg_tab_ml_4.c
-                     Filter: (avg(pagg_tab_ml_4.b) > '7'::numeric)
+                     Filter: (avg(pagg_tab_ml_4.b) > '7'::pg_catalog.numeric)
                      ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
                ->  HashAggregate
                      Group Key: pagg_tab_ml_2.a, pagg_tab_ml_2.b, pagg_tab_ml_2.c
-                     Filter: (avg(pagg_tab_ml_2.b) > '7'::numeric)
+                     Filter: (avg(pagg_tab_ml_2.b) > '7'::pg_catalog.numeric)
                      ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
 (25 rows)
 
@@ -1349,7 +1349,7 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
    Sort Key: pagg_tab_para.x, (sum(pagg_tab_para.y)), (avg(pagg_tab_para.y))
    ->  Finalize GroupAggregate
          Group Key: pagg_tab_para.x
-         Filter: (avg(pagg_tab_para.y) < '7'::numeric)
+         Filter: (avg(pagg_tab_para.y) < '7'::pg_catalog.numeric)
          ->  Gather Merge
                Workers Planned: 2
                ->  Sort
@@ -1386,7 +1386,7 @@ SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) <
    Sort Key: pagg_tab_para.y, (sum(pagg_tab_para.x)), (avg(pagg_tab_para.x))
    ->  Finalize GroupAggregate
          Group Key: pagg_tab_para.y
-         Filter: (avg(pagg_tab_para.x) < '12'::numeric)
+         Filter: (avg(pagg_tab_para.x) < '12'::pg_catalog.numeric)
          ->  Gather Merge
                Workers Planned: 2
                ->  Sort
@@ -1425,7 +1425,7 @@ SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVIN
    Sort Key: pagg_tab_para.x, (sum(pagg_tab_para.y)), (avg(pagg_tab_para.y))
    ->  Finalize GroupAggregate
          Group Key: pagg_tab_para.x
-         Filter: (avg(pagg_tab_para.y) < '7'::numeric)
+         Filter: (avg(pagg_tab_para.y) < '7'::pg_catalog.numeric)
          ->  Gather Merge
                Workers Planned: 2
                ->  Sort
@@ -1459,7 +1459,7 @@ SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVIN
    Sort Key: pagg_tab_para.x, (sum(pagg_tab_para.y)), (avg(pagg_tab_para.y))
    ->  Finalize GroupAggregate
          Group Key: pagg_tab_para.x
-         Filter: (avg(pagg_tab_para.y) < '7'::numeric)
+         Filter: (avg(pagg_tab_para.y) < '7'::pg_catalog.numeric)
          ->  Gather Merge
                Workers Planned: 2
                ->  Sort
@@ -1495,15 +1495,15 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
    ->  Append
          ->  HashAggregate
                Group Key: pagg_tab_para.x
-               Filter: (avg(pagg_tab_para.y) < '7'::numeric)
+               Filter: (avg(pagg_tab_para.y) < '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_para_p1 pagg_tab_para
          ->  HashAggregate
                Group Key: pagg_tab_para_1.x
-               Filter: (avg(pagg_tab_para_1.y) < '7'::numeric)
+               Filter: (avg(pagg_tab_para_1.y) < '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_para_p2 pagg_tab_para_1
          ->  HashAggregate
                Group Key: pagg_tab_para_2.x
-               Filter: (avg(pagg_tab_para_2.y) < '7'::numeric)
+               Filter: (avg(pagg_tab_para_2.y) < '7'::pg_catalog.numeric)
                ->  Seq Scan on pagg_tab_para_p3 pagg_tab_para_2
 (15 rows)
 

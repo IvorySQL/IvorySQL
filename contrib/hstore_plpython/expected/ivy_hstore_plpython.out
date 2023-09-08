@@ -78,7 +78,7 @@ SELECT test2(1, 'boo');
 
 --- test ruleutils
 \sf test2
-CREATE OR REPLACE FUNCTION public.test2(a integer, b text)
+CREATE OR REPLACE FUNCTION public.test2(a pg_catalog.int4, b text)
  RETURNS hstore
  TRANSFORM FOR TYPE hstore
  LANGUAGE plpython3u

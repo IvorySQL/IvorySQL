@@ -38,12 +38,12 @@ INSERT INTO arrtest (a, b[1:2][1:2], c, d, e, f, g)
 INSERT INTO arrtest (a, b[1:2], c, d[1:2])
    VALUES ('{}', '{3,4}', '{foo,bar}', '{bar,foo}');
 INSERT INTO arrtest (b[2]) VALUES(now());  -- error, type mismatch
-ERROR:  subscripted assignment to "b" requires type integer but expression is of type timestamp with time zone
+ERROR:  subscripted assignment to "b" requires type pg_catalog.int4 but expression is of type pg_catalog.timestamptz
 LINE 1: INSERT INTO arrtest (b[2]) VALUES(now());
                              ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO arrtest (b[1:2]) VALUES(now());  -- error, type mismatch
-ERROR:  subscripted assignment to "b" requires type integer[] but expression is of type timestamp with time zone
+ERROR:  subscripted assignment to "b" requires type pg_catalog.int4[] but expression is of type pg_catalog.timestamptz
 LINE 1: INSERT INTO arrtest (b[1:2]) VALUES(now());
                              ^
 HINT:  You will need to rewrite or cast the expression.
@@ -273,7 +273,7 @@ UPDATE arrtest
 ERROR:  array subscript in assignment must not be null
 -- Un-subscriptable type
 SELECT (now())[1];
-ERROR:  cannot subscript type timestamp with time zone because it does not support subscripting
+ERROR:  cannot subscript type pg_catalog.timestamptz because it does not support subscripting
 LINE 1: SELECT (now())[1];
                 ^
 -- test slices with empty lower and/or upper index
@@ -1216,9 +1216,9 @@ SELECT ARRAY[1,2,3]::text[]::int[]::float8[] AS "{1,2,3}";
 (1 row)
 
 SELECT pg_typeof(ARRAY[1,2,3]::text[]::int[]::float8[]) AS "double precision[]";
- double precision[] 
---------------------
- double precision[]
+ double precision[]  
+---------------------
+ pg_catalog.float8[]
 (1 row)
 
 SELECT ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[] AS "{{a,bc},{def,hijk}}";
@@ -2435,7 +2435,7 @@ SELECT width_bucket(5, '{}');
 
 -- error cases
 SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
-ERROR:  function width_bucket(text, integer[]) does not exist
+ERROR:  function width_bucket(text, pg_catalog.int4[]) does not exist
 LINE 1: SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

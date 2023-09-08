@@ -14,7 +14,7 @@ select polyf(42) as int, polyf(4.5) as num;
 (1 row)
 
 select polyf(point(3,4));  -- fail for lack of + operator
-ERROR:  operator does not exist: point + integer
+ERROR:  operator does not exist: point + pg_catalog.int4
 LINE 2:   select x + 1
                    ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
@@ -101,7 +101,7 @@ select polyf(int4range(42, 49), 11, 2::smallint) as int, polyf(float8range(4.5, 
 (1 row)
 
 select polyf(int4range(42, 49), 11, 4.5) as fail;  -- range type doesn't fit
-ERROR:  function polyf(int4range, integer, numeric) does not exist
+ERROR:  function polyf(int4range, pg_catalog.int4, pg_catalog.numeric) does not exist
 LINE 1: select polyf(int4range(42, 49), 11, 4.5) as fail;
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -117,7 +117,7 @@ select polyf(multirange(int4range(42, 49)), 11, 2::smallint) as int, polyf(multi
 (1 row)
 
 select polyf(multirange(int4range(42, 49)), 11, 4.5) as fail;  -- range type doesn't fit
-ERROR:  function polyf(int4multirange, integer, numeric) does not exist
+ERROR:  function polyf(int4multirange, pg_catalog.int4, pg_catalog.numeric) does not exist
 LINE 1: select polyf(multirange(int4range(42, 49)), 11, 4.5) as fail...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -167,28 +167,28 @@ $$ language sql;
 /
 select x, pg_typeof(x), y, pg_typeof(y)
   from polyf(11, array[1, 2], 42, 34.5);
-    x     | pg_typeof |     y     | pg_typeof 
-----------+-----------+-----------+-----------
- {11,1,2} | integer[] | {42,34.5} | numeric[]
+    x     |     pg_typeof     |     y     |      pg_typeof       
+----------+-------------------+-----------+----------------------
+ {11,1,2} | pg_catalog.int4[] | {42,34.5} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from polyf(11, array[1, 2], point(1,2), point(3,4));
-    x     | pg_typeof |         y         | pg_typeof 
-----------+-----------+-------------------+-----------
- {11,1,2} | integer[] | {"(1,2)","(3,4)"} | point[]
+    x     |     pg_typeof     |         y         | pg_typeof 
+----------+-------------------+-------------------+-----------
+ {11,1,2} | pg_catalog.int4[] | {"(1,2)","(3,4)"} | point[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from polyf(11, '{1,2}', point(1,2), '(3,4)');
-    x     | pg_typeof |         y         | pg_typeof 
-----------+-----------+-------------------+-----------
- {11,1,2} | integer[] | {"(1,2)","(3,4)"} | point[]
+    x     |     pg_typeof     |         y         | pg_typeof 
+----------+-------------------+-------------------+-----------
+ {11,1,2} | pg_catalog.int4[] | {"(1,2)","(3,4)"} | point[]
 (1 row)
 
 select x, pg_typeof(x), y, pg_typeof(y)
   from polyf(11, array[1, 2.2], 42, 34.5);  -- fail
-ERROR:  function polyf(integer, numeric[], integer, numeric) does not exist
+ERROR:  function polyf(pg_catalog.int4, pg_catalog.numeric[], pg_catalog.int4, pg_catalog.numeric) does not exist
 LINE 2:   from polyf(11, array[1, 2.2], 42, 34.5);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -391,7 +391,7 @@ CREATE AGGREGATE myaggp06a(BASETYPE = int, SFUNC = tf2p, STYPE = int[],
 -- should ERROR: tfnp(int[], anyelement) not matched by tfnp(int[], int)
 CREATE AGGREGATE myaggp07a(BASETYPE = anyelement, SFUNC = tfnp, STYPE = int[],
   FINALFUNC = ffp, INITCOND = '{}');
-ERROR:  function tfnp(integer[], anyelement) does not exist
+ERROR:  function tfnp(pg_catalog.int4[], anyelement) does not exist
 --    N    N        P    P
 -- should CREATE
 CREATE AGGREGATE myaggp08a(BASETYPE = anyelement, SFUNC = tf2p, STYPE = int[],
@@ -412,18 +412,18 @@ CREATE AGGREGATE myaggp10b(BASETYPE = int, SFUNC = tfp, STYPE = int[],
 -- should ERROR: tf1p(int[],anyelement) not matched by tf1p(anyarray,int)
 CREATE AGGREGATE myaggp11a(BASETYPE = anyelement, SFUNC = tf1p, STYPE = int[],
   FINALFUNC = ffp, INITCOND = '{}');
-ERROR:  function tf1p(integer[], anyelement) does not exist
+ERROR:  function tf1p(pg_catalog.int4[], anyelement) does not exist
 CREATE AGGREGATE myaggp11b(BASETYPE = anyelement, SFUNC = tf1p, STYPE = int[],
   INITCOND = '{}');
-ERROR:  function tf1p(integer[], anyelement) does not exist
+ERROR:  function tf1p(pg_catalog.int4[], anyelement) does not exist
 --    N    P        P    P
 -- should ERROR: tfp(int[],anyelement) not matched by tfp(anyarray,anyelement)
 CREATE AGGREGATE myaggp12a(BASETYPE = anyelement, SFUNC = tfp, STYPE = int[],
   FINALFUNC = ffp, INITCOND = '{}');
-ERROR:  function tfp(integer[], anyelement) does not exist
+ERROR:  function tfp(pg_catalog.int4[], anyelement) does not exist
 CREATE AGGREGATE myaggp12b(BASETYPE = anyelement, SFUNC = tfp, STYPE = int[],
   INITCOND = '{}');
-ERROR:  function tfp(integer[], anyelement) does not exist
+ERROR:  function tfp(pg_catalog.int4[], anyelement) does not exist
 --    P    N        N    N
 -- should ERROR: tfnp(anyarray, int) not matched by tfnp(int[],int)
 CREATE AGGREGATE myaggp13a(BASETYPE = int, SFUNC = tfnp, STYPE = anyarray,
@@ -530,10 +530,10 @@ CREATE AGGREGATE myaggn06b(BASETYPE = int, SFUNC = tf2p, STYPE = int[],
 -- should ERROR: tfnp(int[], anyelement) not matched by tfnp(int[], int)
 CREATE AGGREGATE myaggn07a(BASETYPE = anyelement, SFUNC = tfnp, STYPE = int[],
   FINALFUNC = ffnp, INITCOND = '{}');
-ERROR:  function tfnp(integer[], anyelement) does not exist
+ERROR:  function tfnp(pg_catalog.int4[], anyelement) does not exist
 CREATE AGGREGATE myaggn07b(BASETYPE = anyelement, SFUNC = tfnp, STYPE = int[],
   INITCOND = '{}');
-ERROR:  function tfnp(integer[], anyelement) does not exist
+ERROR:  function tfnp(pg_catalog.int4[], anyelement) does not exist
 --    N    N        P    P
 -- should CREATE
 CREATE AGGREGATE myaggn08a(BASETYPE = anyelement, SFUNC = tf2p, STYPE = int[],
@@ -552,12 +552,12 @@ CREATE AGGREGATE myaggn10a(BASETYPE = int, SFUNC = tfp, STYPE = int[],
 -- should ERROR: tf1p(int[],anyelement) not matched by tf1p(anyarray,int)
 CREATE AGGREGATE myaggn11a(BASETYPE = anyelement, SFUNC = tf1p, STYPE = int[],
   FINALFUNC = ffnp, INITCOND = '{}');
-ERROR:  function tf1p(integer[], anyelement) does not exist
+ERROR:  function tf1p(pg_catalog.int4[], anyelement) does not exist
 --    N    P        P    P
 -- should ERROR: tfp(int[],anyelement) not matched by tfp(anyarray,anyelement)
 CREATE AGGREGATE myaggn12a(BASETYPE = anyelement, SFUNC = tfp, STYPE = int[],
   FINALFUNC = ffnp, INITCOND = '{}');
-ERROR:  function tfp(integer[], anyelement) does not exist
+ERROR:  function tfp(pg_catalog.int4[], anyelement) does not exist
 --    P    N        N    N
 -- should ERROR: tfnp(anyarray, int) not matched by tfnp(int[],int)
 CREATE AGGREGATE myaggn13a(BASETYPE = int, SFUNC = tfnp, STYPE = anyarray,
@@ -909,7 +909,7 @@ create aggregate build_group(int8, integer) (
   SFUNC = add_group,
   STYPE = int2[]
 );
-ERROR:  function add_group(smallint[], bigint, integer) does not exist
+ERROR:  function add_group(pg_catalog.int2[], pg_catalog.int8, pg_catalog.int4) does not exist
 -- but we can make a non-poly agg from a poly sfunc if types are OK
 create aggregate build_group(int8, integer) (
   SFUNC = add_group,
@@ -1095,17 +1095,17 @@ select formarray(1.1, variadic array[1.2,55.5]);
 (1 row)
 
 select formarray(1.1, array[1.2,55.5]); -- fail without variadic
-ERROR:  function formarray(numeric, numeric[]) does not exist
+ERROR:  function formarray(pg_catalog.numeric, pg_catalog.numeric[]) does not exist
 LINE 1: select formarray(1.1, array[1.2,55.5]);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select formarray(1, 'x'::text); -- fail, type mismatch
-ERROR:  function formarray(integer, text) does not exist
+ERROR:  function formarray(pg_catalog.int4, text) does not exist
 LINE 1: select formarray(1, 'x'::text);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select formarray(1, variadic array['x'::text]); -- fail, type mismatch
-ERROR:  function formarray(integer, text[]) does not exist
+ERROR:  function formarray(pg_catalog.int4, text[]) does not exist
 LINE 1: select formarray(1, variadic array['x'::text]);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1118,21 +1118,21 @@ select pg_typeof(null);           -- unknown
 (1 row)
 
 select pg_typeof(0);              -- integer
- pg_typeof 
------------
- integer
+    pg_typeof    
+-----------------
+ pg_catalog.int4
 (1 row)
 
 select pg_typeof(0.0);            -- numeric
- pg_typeof 
------------
- numeric
+     pg_typeof      
+--------------------
+ pg_catalog.numeric
 (1 row)
 
 select pg_typeof(1+1 = 2);        -- boolean
- pg_typeof 
------------
- boolean
+    pg_typeof    
+-----------------
+ pg_catalog.bool
 (1 row)
 
 select pg_typeof('x');            -- unknown
@@ -1154,15 +1154,15 @@ select pg_typeof(pg_typeof(0));   -- regtype
 (1 row)
 
 select pg_typeof(array[1.2,55.5]); -- numeric[]
- pg_typeof 
------------
- numeric[]
+      pg_typeof       
+----------------------
+ pg_catalog.numeric[]
 (1 row)
 
 select pg_typeof(myleast(10, 1, 20, 33));  -- polymorphic input
- pg_typeof 
------------
- integer
+    pg_typeof    
+-----------------
+ pg_catalog.int4
 (1 row)
 
 -- test functions with default parameters
@@ -1190,14 +1190,14 @@ select dfunc(10, 20);
 (1 row)
 
 select dfunc(10, 20, 30);  -- fail
-ERROR:  function dfunc(integer, integer, integer) does not exist
+ERROR:  function dfunc(pg_catalog.int4, pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: select dfunc(10, 20, 30);
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 drop function dfunc();  -- fail
 ERROR:  function dfunc() does not exist
 drop function dfunc(int);  -- fail
-ERROR:  function dfunc(integer) does not exist
+ERROR:  function dfunc(pg_catalog.int4) does not exist
 drop function dfunc(int, int);  -- ok
 -- fail: defaults must be at end of argument list
 create function dfunc(a int = 1, b int) returns int as $$
@@ -1218,10 +1218,10 @@ select dfunc();
 
 -- verify it lists properly
 \df dfunc
-                                          List of functions
- Schema | Name  | Result data type |                    Argument data types                    | Type 
---------+-------+------------------+-----------------------------------------------------------+------
- public | dfunc | integer          | a integer DEFAULT 1, OUT sum integer, b integer DEFAULT 2 | func
+                                                      List of functions
+ Schema | Name  | Result data type |                                Argument data types                                | Type 
+--------+-------+------------------+-----------------------------------------------------------------------------------+------
+ public | dfunc | pg_catalog.int4  | a pg_catalog.int4 DEFAULT 1, OUT sum pg_catalog.int4, b pg_catalog.int4 DEFAULT 2 | func
 (1 row)
 
 drop function dfunc(int, int);
@@ -1287,12 +1287,12 @@ LINE 1: select dfunc();
                ^
 HINT:  Could not choose a best candidate function. You might need to add explicit type casts.
 select dfunc(1);  -- fail
-ERROR:  function dfunc(integer) is not unique
+ERROR:  function dfunc(pg_catalog.int4) is not unique
 LINE 1: select dfunc(1);
                ^
 HINT:  Could not choose a best candidate function. You might need to add explicit type casts.
 select dfunc(1, 2);  -- fail
-ERROR:  function dfunc(integer, integer) is not unique
+ERROR:  function dfunc(pg_catalog.int4, pg_catalog.int4) is not unique
 LINE 1: select dfunc(1, 2);
                ^
 HINT:  Could not choose a best candidate function. You might need to add explicit type casts.
@@ -1393,12 +1393,12 @@ create or replace function dfunc(a variadic int[]) returns int as
 $$ select array_upper($1, 1) $$ language sql;
 /
 ERROR:  cannot remove parameter defaults from existing function
-HINT:  Use DROP FUNCTION dfunc(integer[]) first.
+HINT:  Use DROP FUNCTION dfunc(pg_catalog.int4[]) first.
 \df dfunc
-                                     List of functions
- Schema | Name  | Result data type |               Argument data types               | Type 
---------+-------+------------------+-------------------------------------------------+------
- public | dfunc | integer          | VARIADIC a integer[] DEFAULT ARRAY[]::integer[] | func
+                                             List of functions
+ Schema | Name  | Result data type |                       Argument data types                       | Type 
+--------+-------+------------------+-----------------------------------------------------------------+------
+ public | dfunc | pg_catalog.int4  | VARIADIC a pg_catalog.int4[] DEFAULT ARRAY[]::pg_catalog.int4[] | func
 (1 row)
 
 drop function dfunc(a variadic int[]);
@@ -1417,7 +1417,7 @@ $$ language sql;
 /
 -- dfunc(narg=2) and dfunc(narg=3) are ambiguous
 select dfunc(1);  -- fail
-ERROR:  function dfunc(integer) is not unique
+ERROR:  function dfunc(pg_catalog.int4) is not unique
 LINE 1: select dfunc(1);
                ^
 HINT:  Could not choose a best candidate function. You might need to add explicit type casts.
@@ -1464,7 +1464,7 @@ select * from dfunc(b := 10, a := 20);
 (1 row)
 
 select * from dfunc(0);  -- fail
-ERROR:  function dfunc(integer) does not exist
+ERROR:  function dfunc(pg_catalog.int4) does not exist
 LINE 1: select * from dfunc(0);
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1495,17 +1495,17 @@ ERROR:  positional argument cannot follow named argument
 LINE 1: select * from dfunc(10, b := 20, 30);
                                          ^
 select * from dfunc(x := 10, b := 20, c := 30);  -- fail, unknown param
-ERROR:  function dfunc(x => integer, b => integer, c => integer) does not exist
+ERROR:  function dfunc(x => pg_catalog.int4, b => pg_catalog.int4, c => pg_catalog.int4) does not exist
 LINE 1: select * from dfunc(x := 10, b := 20, c := 30);
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select * from dfunc(10, 10, a := 20);  -- fail, a overlaps positional parameter
-ERROR:  function dfunc(integer, integer, a => integer) does not exist
+ERROR:  function dfunc(pg_catalog.int4, pg_catalog.int4, a => pg_catalog.int4) does not exist
 LINE 1: select * from dfunc(10, 10, a := 20);
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select * from dfunc(1,c := 2,d := 3); -- fail, no value for b
-ERROR:  function dfunc(integer, c => integer, d => integer) does not exist
+ERROR:  function dfunc(pg_catalog.int4, c => pg_catalog.int4, d => pg_catalog.int4) does not exist
 LINE 1: select * from dfunc(1,c := 2,d := 3);
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1547,7 +1547,7 @@ select * from dfunc('Hello World', c := '2009-07-25'::date, b := 20);
 (1 row)
 
 select * from dfunc('Hello World', c := 20, b := '2009-07-25'::date);  -- fail
-ERROR:  function dfunc(unknown, c => integer, b => date) does not exist
+ERROR:  function dfunc(unknown, c => pg_catalog.int4, b => date) does not exist
 LINE 1: select * from dfunc('Hello World', c := 20, b := '2009-07-25...
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1613,14 +1613,14 @@ returns record as $$
 $$ language sql;
 /
 ERROR:  cannot change name of input parameter "c"
-HINT:  Use DROP FUNCTION dfunc(varchar2,numeric) first.
+HINT:  Use DROP FUNCTION dfunc(varchar2,pg_catalog.numeric) first.
 create or replace function dfunc(a varchar = 'def a', out _a varchar, numeric = NULL, out _c numeric)
 returns record as $$
   select $1, $2;
 $$ language sql;
 /
 ERROR:  cannot change name of input parameter "c"
-HINT:  Use DROP FUNCTION dfunc(varchar2,numeric) first.
+HINT:  Use DROP FUNCTION dfunc(varchar2,pg_catalog.numeric) first.
 drop function dfunc(varchar, numeric);
 --fail, named parameters are not unique
 create function testpolym(a int, a int) returns int as $$ select 1;$$ language sql;
@@ -1858,13 +1858,13 @@ select * from dfview;
 (5 rows)
 
 \d+ dfview
-                           View "public.dfview"
- Column |  Type  | Collation | Nullable | Default | Storage | Description 
---------+--------+-----------+----------+---------+---------+-------------
- q1     | bigint |           |          |         | plain   | 
- q2     | bigint |           |          |         | plain   | 
- c3     | bigint |           |          |         | plain   | 
- c4     | bigint |           |          |         | plain   | 
+                               View "public.dfview"
+ Column |      Type       | Collation | Nullable | Default | Storage | Description 
+--------+-----------------+-----------+----------+---------+---------+-------------
+ q1     | pg_catalog.int8 |           |          |         | plain   | 
+ q2     | pg_catalog.int8 |           |          |         | plain   | 
+ c3     | pg_catalog.int8 |           |          |         | plain   | 
+ c4     | pg_catalog.int8 |           |          |         | plain   | 
 View definition:
  SELECT q1,
     q2,
@@ -1883,19 +1883,19 @@ returns anycompatible as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(11, 12) x;
- x  | pg_typeof 
-----+-----------
- 12 | integer
+ x  |    pg_typeof    
+----+-----------------
+ 12 | pg_catalog.int4
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, 12.3) x;
-  x   | pg_typeof 
-------+-----------
- 12.3 | numeric
+  x   |     pg_typeof      
+------+--------------------
+ 12.3 | pg_catalog.numeric
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, point(1,2)) x;  -- fail
-ERROR:  function anyctest(integer, point) does not exist
+ERROR:  function anyctest(pg_catalog.int4, point) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11, point(1,2)) x;
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1912,19 +1912,19 @@ returns anycompatiblearray as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(11, 12) x;
-    x    | pg_typeof 
----------+-----------
- {11,12} | integer[]
+    x    |     pg_typeof     
+---------+-------------------
+ {11,12} | pg_catalog.int4[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, 12.3) x;
-     x     | pg_typeof 
------------+-----------
- {11,12.3} | numeric[]
+     x     |      pg_typeof       
+-----------+----------------------
+ {11,12.3} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, array[1,2]) x;  -- fail
-ERROR:  function anyctest(integer, integer[]) does not exist
+ERROR:  function anyctest(pg_catalog.int4, pg_catalog.int4[]) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11, array[1,2]) x;
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1935,36 +1935,36 @@ returns anycompatiblearray as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(11, array[12]) x;
-    x    | pg_typeof 
----------+-----------
- {11,12} | integer[]
+    x    |     pg_typeof     
+---------+-------------------
+ {11,12} | pg_catalog.int4[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, array[12.3]) x;
-     x     | pg_typeof 
------------+-----------
- {11,12.3} | numeric[]
+     x     |      pg_typeof       
+-----------+----------------------
+ {11,12.3} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(12.3, array[13]) x;
-     x     | pg_typeof 
------------+-----------
- {12.3,13} | numeric[]
+     x     |      pg_typeof       
+-----------+----------------------
+ {12.3,13} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(12.3, '{13,14.4}') x;
-       x        | pg_typeof 
-----------------+-----------
- {12.3,13,14.4} | numeric[]
+       x        |      pg_typeof       
+----------------+----------------------
+ {12.3,13,14.4} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, array[point(1,2)]) x;  -- fail
-ERROR:  function anyctest(integer, point[]) does not exist
+ERROR:  function anyctest(pg_catalog.int4, point[]) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11, array[point(1,2)]) ...
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select x, pg_typeof(x) from anyctest(11, 12) x;  -- fail
-ERROR:  function anyctest(integer, integer) does not exist
+ERROR:  function anyctest(pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11, 12) x;
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -1987,12 +1987,12 @@ select x, pg_typeof(x) from anyctest(11, numrange(4,7)) x;
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, 12) x;  -- fail
-ERROR:  function anyctest(integer, integer) does not exist
+ERROR:  function anyctest(pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11, 12) x;
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select x, pg_typeof(x) from anyctest(11.2, int4range(4,7)) x;  -- fail
-ERROR:  function anyctest(numeric, int4range) does not exist
+ERROR:  function anyctest(pg_catalog.numeric, int4range) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11.2, int4range(4,7)) x...
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -2005,9 +2005,9 @@ returns anycompatible as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(int4range(11,12), int4range(4,7)) x;
- x  | pg_typeof 
-----+-----------
- 18 | integer
+ x  |    pg_typeof    
+----+-----------------
+ 18 | pg_catalog.int4
 (1 row)
 
 select x, pg_typeof(x) from anyctest(int4range(11,12), numrange(4,7)) x; -- fail
@@ -2042,12 +2042,12 @@ select x, pg_typeof(x) from anyctest(11, multirange(numrange(4,7))) x;
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, 12) x;  -- fail
-ERROR:  function anyctest(integer, integer) does not exist
+ERROR:  function anyctest(pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11, 12) x;
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 select x, pg_typeof(x) from anyctest(11.2, multirange(int4range(4,7))) x;  -- fail
-ERROR:  function anyctest(numeric, int4multirange) does not exist
+ERROR:  function anyctest(pg_catalog.numeric, int4multirange) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11.2, multirange(int4ra...
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -2060,9 +2060,9 @@ returns anycompatible as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(multirange(int4range(11,12)), multirange(int4range(4,7))) x;
- x  | pg_typeof 
-----+-----------
- 18 | integer
+ x  |    pg_typeof    
+----+-----------------
+ 18 | pg_catalog.int4
 (1 row)
 
 select x, pg_typeof(x) from anyctest(multirange(int4range(11,12)), multirange(numrange(4,7))) x; -- fail
@@ -2085,19 +2085,19 @@ returns anycompatiblearray as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(11, 12) x;
-    x    | pg_typeof 
----------+-----------
- {11,12} | integer[]
+    x    |     pg_typeof     
+---------+-------------------
+ {11,12} | pg_catalog.int4[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, 12.3) x;
-     x     | pg_typeof 
------------+-----------
- {11,12.3} | numeric[]
+     x     |      pg_typeof       
+-----------+----------------------
+ {11,12.3} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(array[11], array[1,2]) x;  -- fail
-ERROR:  function anyctest(integer[], integer[]) does not exist
+ERROR:  function anyctest(pg_catalog.int4[], pg_catalog.int4[]) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(array[11], array[1,2]) ...
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -2109,9 +2109,9 @@ returns anycompatiblearray as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(11, array[1, 2], 42, 34.5) x;
-     x     | pg_typeof 
------------+-----------
- {42,34.5} | numeric[]
+     x     |      pg_typeof       
+-----------+----------------------
+ {42,34.5} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, array[1, 2], point(1,2), point(3,4)) x;
@@ -2127,7 +2127,7 @@ select x, pg_typeof(x) from anyctest(11, '{1,2}', point(1,2), '(3,4)') x;
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, array[1, 2.2], 42, 34.5) x;  -- fail
-ERROR:  function anyctest(integer, numeric[], integer, numeric) does not exist
+ERROR:  function anyctest(pg_catalog.int4, pg_catalog.numeric[], pg_catalog.int4, pg_catalog.numeric) does not exist
 LINE 1: select x, pg_typeof(x) from anyctest(11, array[1, 2.2], 42, ...
                                     ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -2139,21 +2139,21 @@ returns anycompatiblearray as $$
 $$ language sql;
 /
 select x, pg_typeof(x) from anyctest(11, 12) x;
-    x    | pg_typeof 
----------+-----------
- {11,12} | integer[]
+    x    |     pg_typeof     
+---------+-------------------
+ {11,12} | pg_catalog.int4[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, 12.2) x;
-     x     | pg_typeof 
------------+-----------
- {11,12.2} | numeric[]
+     x     |      pg_typeof       
+-----------+----------------------
+ {11,12.2} | pg_catalog.numeric[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, '12') x;
-    x    | pg_typeof 
----------+-----------
- {11,12} | integer[]
+    x    |     pg_typeof     
+---------+-------------------
+ {11,12} | pg_catalog.int4[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(11, '12.2') x;  -- fail
@@ -2161,15 +2161,15 @@ ERROR:  invalid input syntax for type integer: "12.2"
 LINE 1: select x, pg_typeof(x) from anyctest(11, '12.2') x;
                                                  ^
 select x, pg_typeof(x) from anyctest(variadic array[11, 12]) x;
-    x    | pg_typeof 
----------+-----------
- {11,12} | integer[]
+    x    |     pg_typeof     
+---------+-------------------
+ {11,12} | pg_catalog.int4[]
 (1 row)
 
 select x, pg_typeof(x) from anyctest(variadic array[11, 12.2]) x;
-     x     | pg_typeof 
------------+-----------
- {11,12.2} | numeric[]
+     x     |      pg_typeof       
+-----------+----------------------
+ {11,12.2} | pg_catalog.numeric[]
 (1 row)
 
 drop function anyctest(variadic anycompatiblearray);

@@ -1144,7 +1144,7 @@ where o.ten = 0;
                                                                                          QUERY PLAN                                                                                          
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate
-   Output: sum((((hashed SubPlan 1)))::integer)
+   Output: sum((((hashed SubPlan 1)))::pg_catalog.int4)
    ->  Nested Loop
          Output: ((hashed SubPlan 1))
          ->  Seq Scan on public.onek o
@@ -1347,7 +1347,7 @@ select * from int4_tbl where
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop Semi Join
    Output: int4_tbl.f1
-   Join Filter: (CASE WHEN (hashed SubPlan 1) THEN int4_tbl.f1 ELSE NULL::integer END = b.ten)
+   Join Filter: (CASE WHEN (hashed SubPlan 1) THEN int4_tbl.f1 ELSE NULL::pg_catalog.int4 END = b.ten)
    ->  Seq Scan on public.int4_tbl
          Output: int4_tbl.f1
    ->  Seq Scan on public.tenk1 b
@@ -1516,13 +1516,13 @@ explain (verbose, costs off)
 select * from
   (select 9 as x, unnest(array[1,2,3,11,12,13]) as u) ss
   where tattle(x, 8);
-                        QUERY PLAN                        
-----------------------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  Subquery Scan on ss
    Output: ss.x, ss.u
    Filter: tattle(ss.x, 8)
    ->  ProjectSet
-         Output: 9, unnest('{1,2,3,11,12,13}'::integer[])
+         Output: 9, unnest('{1,2,3,11,12,13}'::pg_catalog.int4[])
          ->  Result
 (6 rows)
 
@@ -1551,10 +1551,10 @@ explain (verbose, costs off)
 select * from
   (select 9 as x, unnest(array[1,2,3,11,12,13]) as u) ss
   where tattle(x, 8);
-                     QUERY PLAN                     
-----------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  ProjectSet
-   Output: 9, unnest('{1,2,3,11,12,13}'::integer[])
+   Output: 9, unnest('{1,2,3,11,12,13}'::pg_catalog.int4[])
    ->  Result
          One-Time Filter: tattle(9, 8)
 (4 rows)
@@ -1578,13 +1578,13 @@ explain (verbose, costs off)
 select * from
   (select 9 as x, unnest(array[1,2,3,11,12,13]) as u) ss
   where tattle(x, u);
-                        QUERY PLAN                        
-----------------------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  Subquery Scan on ss
    Output: ss.x, ss.u
    Filter: tattle(ss.x, ss.u)
    ->  ProjectSet
-         Output: 9, unnest('{1,2,3,11,12,13}'::integer[])
+         Output: 9, unnest('{1,2,3,11,12,13}'::pg_catalog.int4[])
          ->  Result
 (6 rows)
 

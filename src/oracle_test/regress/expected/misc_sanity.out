@@ -47,9 +47,9 @@ WHERE c.oid < 16384 AND
       relkind = 'r' AND
       attstorage != 'p'
 ORDER BY 1, 2;
-         relname         |    attname    |   atttypid   
--------------------------+---------------+--------------
- dual                    | dummy         | character
+         relname         |    attname    |     atttypid      
+-------------------------+---------------+-------------------
+ dual                    | dummy         | pg_catalog.bpchar
  pg_attribute            | attacl        | aclitem[]
  pg_attribute            | attfdwoptions | text[]
  pg_attribute            | attmissingval | anyarray
