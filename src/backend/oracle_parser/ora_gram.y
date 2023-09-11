@@ -629,7 +629,7 @@ static void determineLanguage(List *options);
 %type <list>	xml_namespace_list
 %type <target>	xml_namespace_el
 
-%type <node>	func_application func_expr_common_subexpr
+%type <node>	func_application func_expr_common_subexpr exec_func_application
 %type <node>	func_expr func_expr_windowless
 %type <node>	common_table_expr
 %type <with>	with_clause opt_with_clause
@@ -721,7 +721,7 @@ static void determineLanguage(List *options);
 	DOUBLE_P DROP
 
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT EXCEPT
-	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXPRESSION
+	EXCLUDE EXCLUDING EXCLUSIVE EXEC EXECUTE EXISTS EXPLAIN EXPRESSION
 	EXTENSION EXTERNAL EXTRACT
 
 	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
@@ -1175,8 +1175,100 @@ CallStmt:	CALL func_application
 					n->funccall = castNode(FuncCall, $2);
 					$$ = (Node *) n;
 				}
+			| EXEC exec_func_application
+				{
+					CallStmt   *n = makeNode(CallStmt);
+
+					n->funccall = castNode(FuncCall, $2);
+					$$ = (Node *) n;
+				}
 		;
 
+exec_func_application :
+			ora_func_name																/* EXEC PROCEDURE; */
+				{
+					$$ = (Node *) makeFuncCall($1, NIL,
+							COERCE_EXPLICIT_CALL,
+							@1);
+				}
+			| ora_func_name '(' ')'														/* EXEC PROCEDURE(); */
+				{
+					$$ = (Node *) makeFuncCall($1, NIL,
+											   COERCE_EXPLICIT_CALL,
+											   @1);
+				}
+			| ora_func_name '(' func_arg_list opt_sort_clause ')'
+				{
+					FuncCall   *n = makeFuncCall($1, $3,
+												 COERCE_EXPLICIT_CALL,
+												 @1);
+
+					n->agg_order = $4;
+					$$ = (Node *) n;
+				}
+			| ora_func_name '(' VARIADIC func_arg_expr opt_sort_clause ')'
+				{
+					FuncCall   *n = makeFuncCall($1, list_make1($4),
+												 COERCE_EXPLICIT_CALL,
+												 @1);
+
+					n->func_variadic = true;
+					n->agg_order = $5;
+					$$ = (Node *) n;
+				}
+			| ora_func_name '(' func_arg_list ',' VARIADIC func_arg_expr opt_sort_clause ')'
+				{
+					FuncCall   *n = makeFuncCall($1, lappend($3, $6),
+												 COERCE_EXPLICIT_CALL,
+												 @1);
+
+					n->func_variadic = true;
+					n->agg_order = $7;
+					$$ = (Node *) n;
+				}
+			| ora_func_name '(' ALL func_arg_list opt_sort_clause ')'
+				{
+					FuncCall   *n = makeFuncCall($1, $4,
+												 COERCE_EXPLICIT_CALL,
+												 @1);
+
+					n->agg_order = $5;
+					/* Ideally we'd mark the FuncCall node to indicate
+					 * "must be an aggregate", but there's no provision
+					 * for that in FuncCall at the moment.
+					 */
+					$$ = (Node *) n;
+				}
+			| ora_func_name '(' DISTINCT func_arg_list opt_sort_clause ')'
+				{
+					FuncCall   *n = makeFuncCall($1, $4,
+												 COERCE_EXPLICIT_CALL,
+												 @1);
+
+					n->agg_order = $5;
+					n->agg_distinct = true;
+					$$ = (Node *) n;
+				}
+			| ora_func_name '(' '*' ')'
+				{
+					/*
+					 * We consider AGGREGATE(*) to invoke a parameterless
+					 * aggregate.  This does the right thing for COUNT(*),
+					 * and there are no other aggregates in SQL that accept
+					 * '*' as parameter.
+					 *
+					 * The FuncCall node is also marked agg_star = true,
+					 * so that later processing can detect what the argument
+					 * really was.
+					 */
+					FuncCall   *n = makeFuncCall($1, NIL,
+												 COERCE_EXPLICIT_CALL,
+												 @1);
+
+					n->agg_star = true;
+					$$ = (Node *) n;
+				}
+		; 
 /*****************************************************************************
  *
  * Create a new Postgres DBMS role
@@ -18899,6 +18991,7 @@ unreserved_keyword:
 			| EXCLUDE
 			| EXCLUDING
 			| EXCLUSIVE
+			| EXEC
 			| EXECUTE
 			| EXPLAIN
 			| EXPRESSION
@@ -19513,6 +19606,7 @@ bare_label_keyword:
 			| EXCLUDE
 			| EXCLUDING
 			| EXCLUSIVE
+			| EXEC
 			| EXECUTE
 			| EXISTS
 			| EXPLAIN

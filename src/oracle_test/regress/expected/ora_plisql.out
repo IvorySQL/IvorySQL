@@ -1014,3 +1014,23 @@ NOTICE:  (25,26)
 
 drop function ftest;
 drop table t1;
+create or replace procedure protest 
+as 
+begin 
+raise notice 'protest';
+end;
+/ 
+exec protest;
+NOTICE:  protest
+exec protest;
+NOTICE:  protest
+drop  procedure protest ;
+create or replace procedure procedure_addtest (a int, b int)
+as 
+begin 
+raise notice 'a + b = %', a + b;
+end;
+/ 
+exec procedure_addtest(12,13);
+NOTICE:  a + b = 25
+drop procedure procedure_addtest;
