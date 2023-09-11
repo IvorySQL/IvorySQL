@@ -1397,7 +1397,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	{
 		Oid			newtypid = typenameTypeId(pstate, defGetTypeName(as_type));
 
-		if (seq_type == ATTRIBUTE_IDENTITY_ALWAYS || seq_type == ATTRIBUTE_IDENTITY_BY_DEFAULT || !seq_type)
+		if (seq_type == ATTRIBUTE_IDENTITY_ALWAYS || seq_type == ATTRIBUTE_IDENTITY_BY_DEFAULT || compatible_db == PG_PARSER)
 		{
 			if (newtypid != INT2OID &&
 				newtypid != INT4OID &&
@@ -1409,7 +1409,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 						 : errmsg("sequence type must be smallint, integer, or bigint")));
 		}
 		else if (seq_type == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL || seq_type == ATTRIBUTE_ORA_IDENTITY_ALWAYS
-						|| seq_type == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
+						|| seq_type == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT || compatible_db == ORA_PARSER)
 		{
 			if (newtypid != INT2OID &&
 				newtypid != INT4OID &&
@@ -1435,11 +1435,17 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			 */
 			if ((seqform->seqtypid == INT2OID && seqform->seqmax == PG_INT16_MAX) ||
 				(seqform->seqtypid == INT4OID && seqform->seqmax == PG_INT32_MAX) ||
-				(seqform->seqtypid == INT8OID && seqform->seqmax == PG_INT64_MAX))
+				(seqform->seqtypid == INT8OID && seqform->seqmax == PG_INT64_MAX) ||
+				(seqform->seqtypid == FLOAT4OID && seqform->seqmax == PG_INT32_MAX) ||
+				(seqform->seqtypid == FLOAT8OID && seqform->seqmax == PG_INT64_MAX) ||
+				(seqform->seqtypid == NUMBEROID && seqform->seqmax == PG_INT64_MAX))
 				reset_max_value = true;
 			if ((seqform->seqtypid == INT2OID && seqform->seqmin == PG_INT16_MIN) ||
 				(seqform->seqtypid == INT4OID && seqform->seqmin == PG_INT32_MIN) ||
-				(seqform->seqtypid == INT8OID && seqform->seqmin == PG_INT64_MIN))
+				(seqform->seqtypid == INT8OID && seqform->seqmin == PG_INT64_MIN) ||
+				(seqform->seqtypid == FLOAT4OID && seqform->seqmin == PG_INT32_MAX) ||
+				(seqform->seqtypid == FLOAT8OID && seqform->seqmin == PG_INT64_MAX) ||
+				(seqform->seqtypid == NUMBEROID && seqform->seqmin == PG_INT64_MIN))
 				reset_min_value = true;
 		}
 
