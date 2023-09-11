@@ -902,3 +902,25 @@ select * from ftest(null::t1);
 
 drop function ftest;
 drop table t1;
+
+
+create or replace procedure protest 
+as 
+begin 
+raise notice 'protest';
+end;
+/ 
+
+exec protest;
+exec protest;
+drop  procedure protest ;
+
+create or replace procedure procedure_addtest (a int, b int)
+as 
+begin 
+raise notice 'a + b = %', a + b;
+end;
+/ 
+
+exec procedure_addtest(12,13);
+drop procedure procedure_addtest;
