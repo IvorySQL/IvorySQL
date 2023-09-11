@@ -37,7 +37,7 @@ CREATE SEQUENCE sequence_test12 AS smallint INCREMENT BY -1;
 CREATE SEQUENCE sequence_test13 AS smallint MINVALUE -32768;
 CREATE SEQUENCE sequence_test14 AS smallint MAXVALUE 32767 INCREMENT BY -1;
 CREATE SEQUENCE sequence_testx AS text;
-ERROR:  sequence type must be smallint, integer, or bigint
+ERROR:  sequence type must be a numeric type
 CREATE SEQUENCE sequence_testx AS nosuchtype;
 ERROR:  type "nosuchtype" does not exist
 LINE 1: CREATE SEQUENCE sequence_testx AS nosuchtype;
