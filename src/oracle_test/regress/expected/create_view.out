@@ -1930,25 +1930,25 @@ select
   trim(leading E'\\000'::bytea from E'\\000Tom\\000'::bytea) as ltb,
   trim(trailing E'\\000'::bytea from E'\\000Tom\\000'::bytea) as rtb;
 select pg_get_viewdef('tt201v', true);
-                                                    pg_get_viewdef                                                     
------------------------------------------------------------------------------------------------------------------------
-  SELECT EXTRACT(day FROM now()) AS extr,                                                                             +
-     ((now(), '@ 1 day'::pg_catalog.interval) OVERLAPS ("current_timestamp"(2), '@ 1 day'::pg_catalog.interval)) AS o,+
-     ('foo'::text IS NORMALIZED) AS isn,                                                                              +
-     ('foo'::text IS NFKC NORMALIZED) AS isnn,                                                                        +
-     NORMALIZE('foo'::text) AS n,                                                                                     +
-     NORMALIZE('foo'::text, NFKD) AS nfkd,                                                                            +
-     OVERLAY('foo'::text PLACING 'bar'::text FROM 2) AS ovl,                                                          +
-     OVERLAY('foo'::text PLACING 'bar'::text FROM 2 FOR 3) AS ovl2,                                                   +
-     POSITION(('foo'::text) IN ('foobar'::text)) AS p,                                                                +
-     SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                                        +
-     SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                                                 +
-     "substring"('foo'::text, 'oo'::text) AS ssf,                                                                     +
-     "trim"(' foo '::varchar2, ' '::varchar2) AS bt,                                                                  +
-     ltrim(' foo '::varchar2, ' '::varchar2) AS lt,                                                                   +
-     rtrim(' foo '::varchar2) AS rt,                                                                                  +
-     "trim"('\x00546f6d00'::bytea, '\x00'::bytea) AS btb,                                                             +
-     ltrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS ltb,                                          +
+                                         pg_get_viewdef                                          
+-------------------------------------------------------------------------------------------------
+  SELECT EXTRACT(day FROM now()) AS extr,                                                       +
+     ((now(), '@ 1 day'::interval) OVERLAPS ("current_timestamp"(2), '@ 1 day'::interval)) AS o,+
+     ('foo'::text IS NORMALIZED) AS isn,                                                        +
+     ('foo'::text IS NFKC NORMALIZED) AS isnn,                                                  +
+     NORMALIZE('foo'::text) AS n,                                                               +
+     NORMALIZE('foo'::text, NFKD) AS nfkd,                                                      +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2) AS ovl,                                    +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2 FOR 3) AS ovl2,                             +
+     POSITION(('foo'::text) IN ('foobar'::text)) AS p,                                          +
+     SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                  +
+     SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                           +
+     "substring"('foo'::text, 'oo'::text) AS ssf,                                               +
+     "trim"(' foo '::varchar2, ' '::varchar2) AS bt,                                            +
+     ltrim(' foo '::varchar2, ' '::varchar2) AS lt,                                             +
+     rtrim(' foo '::varchar2) AS rt,                                                            +
+     "trim"('\x00546f6d00'::bytea, '\x00'::bytea) AS btb,                                       +
+     ltrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS ltb,                    +
      rtrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS rtb;
 (1 row)
 
