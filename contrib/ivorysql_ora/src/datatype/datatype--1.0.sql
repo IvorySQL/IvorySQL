@@ -3506,6 +3506,11 @@ CREATE OPERATOR ||  (
 	rightarg = sys.oravarcharchar
 );
 
+CREATE FUNCTION sys.concat(sys.oravarcharchar, sys.oravarcharchar)
+RETURNS sys.oravarcharchar
+AS 'MODULE_PATHNAME','oravarcharcat'
+LANGUAGE C
+IMMUTABLE;
 /***************************************************************
  *
  * oracle date type support
