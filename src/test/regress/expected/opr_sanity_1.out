@@ -2226,8 +2226,8 @@ LEFT JOIN pg_amproc AS amp ON amp.amprocfamily = opf.oid AND
 WHERE am.amname = 'btree' AND
     amp.amproc IS DISTINCT FROM 'btequalimage'::regproc
 ORDER BY 1, 2, 3;
-           proc            |     opfamily_name      |        opclass_name        |      opcintype      
----------------------------+------------------------+----------------------------+---------------------
+           proc            |     opfamily_name      |        opclass_name        |       opcintype        
+---------------------------+------------------------+----------------------------+------------------------
  btvarstrequalimage        | bpchar_ops             | bpchar_ops                 | character
  btvarstrequalimage        | text_ops               | name_ops                   | name
  btvarstrequalimage        | text_ops               | text_ops                   | text
@@ -2236,7 +2236,7 @@ ORDER BY 1, 2, 3;
  sys.btoravarstrequalimage | orachar_ops            | oracharchar_ops            | sys.oracharchar
  sys.btoravarstrequalimage | oravarchar_ops         | oravarcharbyte_ops         | sys.oravarcharbyte
  sys.btoravarstrequalimage | oravarchar_ops         | oravarcharchar_ops         | sys.oravarcharchar
- sys.btoraequalimage       | dsinterval_ops         | dsinterval_ops             | sys.dsinterval
+ sys.btoraequalimage       | dsinterval_ops         | dsinterval_ops             | interval day to second
  sys.btoraequalimage       | orachar_pattern_ops    | oracharbyte_pattern_ops    | sys.oracharbyte
  sys.btoraequalimage       | orachar_pattern_ops    | oracharchar_pattern_ops    | sys.oracharchar
  sys.btoraequalimage       | oradatetime_ops        | oradate_ops                | sys.oradate
@@ -2244,7 +2244,7 @@ ORDER BY 1, 2, 3;
  sys.btoraequalimage       | oradatetime_ops        | oratimestampltz_ops        | sys.oratimestampltz
  sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharbyte_pattern_ops | sys.oravarcharbyte
  sys.btoraequalimage       | oravarchar_pattern_ops | oravarcharchar_pattern_ops | sys.oravarcharchar
- sys.btoraequalimage       | yminterval_ops         | yminterval_ops             | sys.yminterval
+ sys.btoraequalimage       | yminterval_ops         | yminterval_ops             | interval year to month
                            | array_ops              | array_ops                  | anyarray
                            | binary_ops             | binary_double_ops          | sys.binary_double
                            | binary_ops             | binary_float_ops           | sys.binary_float
