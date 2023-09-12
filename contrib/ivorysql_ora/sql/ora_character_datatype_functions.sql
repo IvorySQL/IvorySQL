@@ -79,6 +79,109 @@ drop table test_concat2;
 drop table test_concat3;
 
 /*
+ * concat
+ */
+-- table null_special
+create table null_special
+(
+	id number not null,
+	special_name varchar2(255),
+	teacher varchar2(8),
+	remark varchar2(255)
+);
+
+-- truncate table null_special;
+insert into null_special(id,special_name,teacher) values (1,'语文','小王');
+insert into null_special (id,special_name,remark)
+	values (2,'体育','体育teacher IS NULL');
+insert into null_special (id,special_name,teacher,remark)
+	values (3,'音乐',' ','音乐teacher is 空了一格');
+insert into null_special (id,special_name,teacher,remark)
+	values (4,'英语','','英语teacher is empty');
+insert into null_special (id,special_name,teacher) values (5,'数学','小刘');
+
+-- table null_specialbk
+create table null_specialbk
+(
+	id number not null,
+	special_name varchar2(255),
+	teacher varchar2(8),
+	remark varchar2(255)
+);
+
+-- truncate table null_special;
+insert into null_specialbk (id,special_name,teacher) values (1,'语文','小王');
+insert into null_specialbk (id,special_name,teacher,remark)
+values (2,'体育','','体育teacher ie empty');
+insert into null_specialbk (id,special_name,teacher,remark)
+values (3,'音乐',' ','音乐teacher is 空了一格');
+insert into null_specialbk (id,special_name,remark)
+values (4,'英语','英语teacher IS NULL');
+
+-- query
+select sp.* from
+(
+	select
+		sp1.id, sp1.special_name, concat(sp1.teacher, sp2.teacher) tch, sp1.remark
+	from null_special sp1, null_specialbk sp2
+	where sp1.id = sp2.id
+) sp where sp.tch is null;
+
+-- other types
+SET nls_date_format = 'DD-MON-YY';
+SET nls_timestamp_format = 'DD-MON-YY HH24:MI:SS.US';
+create table test_concat(id number,id2 integer,id3 timestamp,id4 date);
+
+-- insert a row
+insert into test_concat values(1,2,'01-FEB-21','01-FEB-21');
+
+-- concat(integer, number)
+select concat(id, id2) from test_concat;
+
+-- concat(integer, timestamp)
+select concat(id, id3) from test_concat;
+
+-- concat(timestamp, date)
+select concat(id3, id4) from test_concat;
+
+-- concat(integer, concat(number, concat(timestamp, date)))
+select concat(id, concat(id2, concat(id3, id4))) from test_concat;
+
+-- as a table column
+create table test_concat1 as select concat(id, id2) as test from test_concat;
+
+-- column type
+select attname,atttypid from pg_attribute attr
+left join pg_class r on r.oid = attr.attrelid
+where r.relname='test_concat1' and attname='test' order by attname;
+
+create table test_concat2 as select concat(id, id4) as test from test_concat;
+
+select attname,atttypid from pg_attribute attr
+left join pg_class r on r.oid = attr.attrelid
+where r.relname='test_concat2' and attname='test' order by attname;
+
+create table test_concat3 as select concat(id3, id4) as test from test_concat;
+
+select attname,atttypid from pg_attribute attr
+left join pg_class r on r.oid = attr.attrelid
+where r.relname='test_concat3' and attname='test' order by attname;
+
+insert into test_concat(id) values(2);
+
+-- concat(integer, null)
+select concat(id, id2) from test_concat;
+
+-- concat(null, number)
+select concat(id2, id) from test_concat;
+
+-- clean data
+drop table test_concat;
+drop table test_concat1;
+drop table test_concat2;
+drop table test_concat3;
+
+/*
  * lpad/rpad
  */
 --bug#997
