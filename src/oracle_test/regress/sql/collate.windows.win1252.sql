@@ -57,7 +57,7 @@ CREATE TABLE collate_test3 (
     b text COLLATE "C"
 );
 
-INSERT INTO collate_test1 VALUES (1, 'abc'), (2, 'äbc'), (3, 'bbc'), (4, 'ABC');
+INSERT INTO collate_test1 VALUES (1, 'abc'), (2, 'ï¿½bc'), (3, 'bbc'), (4, 'ABC');
 INSERT INTO collate_test2 SELECT * FROM collate_test1;
 INSERT INTO collate_test3 SELECT * FROM collate_test1;
 
@@ -101,8 +101,8 @@ SELECT * FROM collate_test2 ORDER BY b;
 SELECT * FROM collate_test3 ORDER BY b;
 
 -- constant expression folding
-SELECT 'bbc' COLLATE "en_US" > 'äbc' COLLATE "en_US" AS "true";
-SELECT 'bbc' COLLATE "sv_SE" > 'äbc' COLLATE "sv_SE" AS "false";
+SELECT 'bbc' COLLATE "en_US" > 'ï¿½bc' COLLATE "en_US" AS "true";
+SELECT 'bbc' COLLATE "sv_SE" > 'ï¿½bc' COLLATE "sv_SE" AS "false";
 
 -- LIKE/ILIKE
 
@@ -132,7 +132,7 @@ CREATE TABLE collate_test6 (
 );
 INSERT INTO collate_test6 VALUES (1, 'abc'), (2, 'ABC'), (3, '123'), (4, 'ab1'),
                                  (5, 'a1!'), (6, 'a c'), (7, '!.;'), (8, '   '),
-                                 (9, 'äbç'), (10, 'ÄBÇ');
+                                 (9, 'ï¿½bï¿½'), (10, 'ï¿½Bï¿½');
 SELECT b,
        b ~ '^[[:alpha:]]+$' AS is_alpha,
        b ~ '^[[:upper:]]+$' AS is_upper,
@@ -310,7 +310,7 @@ CREATE SCHEMA test_schema;
 do $$
 BEGIN
   EXECUTE 'CREATE COLLATION test0 (locale = ' ||
-          quote_literal(current_setting('lc_collate')) || ');';
+          quote_literal((SELECT datcollate FROM pg_database WHERE datname = current_database())) || ');';
 END
 $$;
 CREATE COLLATION test0 FROM "C"; -- fail, duplicate name
@@ -319,9 +319,9 @@ CREATE COLLATION IF NOT EXISTS test0 (locale = 'foo'); -- ok, skipped
 do $$
 BEGIN
   EXECUTE 'CREATE COLLATION test1 (lc_collate = ' ||
-          quote_literal(current_setting('lc_collate')) ||
+          quote_literal((SELECT datcollate FROM pg_database WHERE datname = current_database())) ||
           ', lc_ctype = ' ||
-          quote_literal(current_setting('lc_ctype')) || ');';
+          quote_literal((SELECT datctype FROM pg_database WHERE datname = current_database())) || ');';
 END
 $$;
 CREATE COLLATION test3 (lc_collate = 'en_US.utf8'); -- fail, need lc_ctype

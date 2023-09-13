@@ -2590,7 +2590,6 @@ on t2.q2 = 123;
 (12 rows)
 
 --
---
 -- check a case where we formerly got confused by conflicting sort orders
 -- in redundant merge join path keys
 --
