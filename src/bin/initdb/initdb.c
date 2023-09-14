@@ -2617,7 +2617,7 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
-	printf(_("	-m, --dbmode=MODE 				set database mode, default is oracle\n"));
+	printf(_("  -m, --dbmode=MODE 	    set database mode, default is oracle\n"));
 	printf(_("  -C, --case-conversion-mode=MODE   set case conversion mode, default is interchange\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
