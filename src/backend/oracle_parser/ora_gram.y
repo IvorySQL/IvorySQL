@@ -652,7 +652,7 @@ static void determineLanguage(List *options);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <node>	identity_clause identity_options drop_identity
+%type <list>	identity_clause identity_options drop_identity
 %type <boolean>	opt_with opt_by
 
 %type <node>		json_format_clause_opt
@@ -2418,6 +2418,7 @@ AlterTableStmt:
 alter_table_cmds:
 			alter_table_cmd							{ $$ = list_make1($1); }
 			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
+			| MODIFY identity_clause				{ $$ = $2; }
 		;
 
 partition_cmd:
@@ -2700,11 +2701,6 @@ alter_table_cmd:
 					n->behavior = $6;
 					n->missing_ok = true;
 					$$ = (Node *) n;
-				}
-			/* ALTER TABLE <name> MODIFY <colname> [datatype] [ DEFAULT [ ON NULL ] expr | identity_clause | DROP IDENTITY ] ) */
-			| MODIFY identity_clause
-				{
-					$$ = $2;
 				}
 			/* ALTER TABLE <name> DROP [COLUMN] <colname> [RESTRICT|CASCADE] */
 			| DROP opt_column ColId opt_drop_behavior
@@ -3213,19 +3209,39 @@ identity_clause:
 	;
 
 identity_options:
-		ColId GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
-			{
-				AlterTableCmd *n = makeNode(AlterTableCmd);
-				if ($3 == ATTRIBUTE_IDENTITY_ALWAYS)
-					$3 = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
-				else if ($3 == ATTRIBUTE_IDENTITY_BY_DEFAULT)
-					$3 = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
-				n->def = (Node *)lcons(makeDefElem("generated", (Node *) makeInteger($3), @1), $6);
+			ColId Typename GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
+				{
+					AlterTableCmd *m = makeNode(AlterTableCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					ColumnDef *def = makeNode(ColumnDef);
+					m->subtype = AT_AlterColumnType;
+					m->name = $1;
+					m->def = (Node *) def;
+					def->typeName = $2;
+					def->location = @1;
+					if ($4 == ATTRIBUTE_IDENTITY_ALWAYS)
+						$4 = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
+					else if ($4 == ATTRIBUTE_IDENTITY_BY_DEFAULT)
+						$4 = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
+					n->def = (Node *)lcons(makeDefElem("generated", (Node *) makeInteger($4), @1), $7);
+
+					n->subtype = AT_SetIdentity;
+					n->name = $1;
+					$$ = list_make2(m, n);
+				}
+			| ColId GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					if ($3 == ATTRIBUTE_IDENTITY_ALWAYS)
+						$3 = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
+					else if ($3 == ATTRIBUTE_IDENTITY_BY_DEFAULT)
+						$3 = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
+					n->def = (Node *)lcons(makeDefElem("generated", (Node *) makeInteger($3), @1), $6);
 
 				n->subtype = AT_SetIdentity;
 				n->name = $1;
 
-				$$ = (Node *)n;
+				$$ = list_make1(n);
 			}
 
 drop_identity:
@@ -3235,7 +3251,7 @@ drop_identity:
 				n->subtype = AT_DropIdentity;
 				n->name = $1;
 				n->missing_ok = false;
-				$$ = (Node *)n;
+				$$ = list_make1(n);
 			}
 	;
 

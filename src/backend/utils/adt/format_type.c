@@ -338,21 +338,10 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			break;
 
 		case INTERVALOID:
-			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
-			{
-				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
-				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
-				else
-					buf = pstrdup(tmpbuf.data);
-			}
+			if(with_typemod)
+				buf = printTypmod("interval", typemod, typeform->typmodout);
 			else
-			{
-				if(with_typemod)
-					buf = printTypmod("interval", typemod, typeform->typmodout);
-				else
-					buf = pstrdup("interval");
-			}
+				buf = pstrdup("interval");
 			break;
 
 		case TIMEOID:
@@ -360,7 +349,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+					buf = psprintf("%s(%d)", tmpbuf.data, (int) typemod);
 				else
 					buf = pstrdup(tmpbuf.data);
 			}
@@ -378,7 +367,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+					buf = psprintf("%s(%d)", tmpbuf.data, (int) typemod);
 				else
 					buf = pstrdup(tmpbuf.data);
 			}
@@ -396,7 +385,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+					buf = psprintf("%s(%d)", tmpbuf.data, (int) typemod);
 				else
 					buf = pstrdup(tmpbuf.data);
 			}
@@ -414,7 +403,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+					buf = psprintf("%s(%d)", tmpbuf.data, (int) typemod);
 				else
 					buf = pstrdup(tmpbuf.data);
 			}
@@ -518,8 +507,17 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			break;
 
 		case ORADATEOID:
-		case DATEOID:
 			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			{
+				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
+				buf = pstrdup(tmpbuf.data);
+			}
+			else
+				buf = pstrdup("date");
+			break;
+
+		case DATEOID:
+			if (typeform->typnamespace == PG_CATALOG_NAMESPACE && compatible_db == ORA_PARSER)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				buf = pstrdup(tmpbuf.data);
@@ -533,7 +531,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+					buf = psprintf("%s(%d)", tmpbuf.data, (int) typemod);
 				else
 					buf = pstrdup(tmpbuf.data);
 			}
@@ -551,7 +549,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+					buf = psprintf("%s(%d)", tmpbuf.data, (int) typemod);
 				else
 					buf = pstrdup(tmpbuf.data);
 			}
@@ -569,7 +567,7 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
+					buf = psprintf("%s(%d)", tmpbuf.data, (int) typemod);
 				else
 					buf = pstrdup(tmpbuf.data);
 			}
@@ -583,39 +581,17 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			break;
 
 		case YMINTERVALOID:
-			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
-			{
-				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
-				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
-				else
-					buf = pstrdup(tmpbuf.data);
-			}
+			if(with_typemod)
+				buf = printTypmod("interval", typemod, typeform->typmodout);
 			else
-			{
-				if(with_typemod)
-					buf = printTypmod("interval", typemod, typeform->typmodout);
-				else
-					buf = pstrdup("interval year to month");
-			}
+				buf = pstrdup("interval year to month");
 			break;
 
 		case DSINTERVALOID:
-			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
-			{
-				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
-				if (with_typemod)
-					buf = printTypmod(tmpbuf.data, typemod, typeform->typmodout);
-				else
-					buf = pstrdup(tmpbuf.data);
-			}
+			if(with_typemod)
+				buf = printTypmod("interval", typemod, typeform->typmodout);
 			else
-			{
-				if(with_typemod)
-					buf = printTypmod("interval", typemod, typeform->typmodout);
-				else
-					buf = pstrdup("interval day to second");
-			}
+				buf = pstrdup("interval day to second");
 			break;
 
 		case NUMBEROID:

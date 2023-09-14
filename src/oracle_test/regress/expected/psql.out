@@ -5159,19 +5159,19 @@ reset work_mem;
 (2 rows)
 
 \df int*pl
-                                        List of functions
-   Schema   |    Name     |  Result data type   |           Argument data types            | Type 
-------------+-------------+---------------------+------------------------------------------+------
- pg_catalog | int24pl     | pg_catalog.int4     | pg_catalog.int2, pg_catalog.int4         | func
- pg_catalog | int28pl     | pg_catalog.int8     | pg_catalog.int2, pg_catalog.int8         | func
- pg_catalog | int2pl      | pg_catalog.int2     | pg_catalog.int2, pg_catalog.int2         | func
- pg_catalog | int42pl     | pg_catalog.int4     | pg_catalog.int4, pg_catalog.int2         | func
- pg_catalog | int48pl     | pg_catalog.int8     | pg_catalog.int4, pg_catalog.int8         | func
- pg_catalog | int4pl      | pg_catalog.int4     | pg_catalog.int4, pg_catalog.int4         | func
- pg_catalog | int82pl     | pg_catalog.int8     | pg_catalog.int8, pg_catalog.int2         | func
- pg_catalog | int84pl     | pg_catalog.int8     | pg_catalog.int8, pg_catalog.int4         | func
- pg_catalog | int8pl      | pg_catalog.int8     | pg_catalog.int8, pg_catalog.int8         | func
- pg_catalog | interval_pl | pg_catalog.interval | pg_catalog.interval, pg_catalog.interval | func
+                                   List of functions
+   Schema   |    Name     | Result data type |       Argument data types        | Type 
+------------+-------------+------------------+----------------------------------+------
+ pg_catalog | int24pl     | pg_catalog.int4  | pg_catalog.int2, pg_catalog.int4 | func
+ pg_catalog | int28pl     | pg_catalog.int8  | pg_catalog.int2, pg_catalog.int8 | func
+ pg_catalog | int2pl      | pg_catalog.int2  | pg_catalog.int2, pg_catalog.int2 | func
+ pg_catalog | int42pl     | pg_catalog.int4  | pg_catalog.int4, pg_catalog.int2 | func
+ pg_catalog | int48pl     | pg_catalog.int8  | pg_catalog.int4, pg_catalog.int8 | func
+ pg_catalog | int4pl      | pg_catalog.int4  | pg_catalog.int4, pg_catalog.int4 | func
+ pg_catalog | int82pl     | pg_catalog.int8  | pg_catalog.int8, pg_catalog.int2 | func
+ pg_catalog | int84pl     | pg_catalog.int8  | pg_catalog.int8, pg_catalog.int4 | func
+ pg_catalog | int8pl      | pg_catalog.int8  | pg_catalog.int8, pg_catalog.int8 | func
+ pg_catalog | interval_pl | interval         | interval, interval               | func
 (10 rows)
 
 \df int*pl int4
@@ -5312,7 +5312,7 @@ AS $function$select $1[s],
 4                                               pg_catalog.array_upper($1,1),
 5                                               1) as g(s)$function$
 \sf+ interval_pl_time
-        CREATE OR REPLACE FUNCTION pg_catalog.interval_pl_time(pg_catalog.interval, pg_catalog.time)
+        CREATE OR REPLACE FUNCTION pg_catalog.interval_pl_time(interval, pg_catalog.time)
          RETURNS pg_catalog.time
          LANGUAGE sql
          IMMUTABLE PARALLEL SAFE STRICT COST 1

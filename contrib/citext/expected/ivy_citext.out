@@ -1261,13 +1261,13 @@ HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('1999-01-08 04:05:06'::timestamptz);
 -- Cannot cast to interval on assignment.
 INSERT INTO caster (interval)      VALUES ('1 hour'::text);
-ERROR:  column "interval" is of type pg_catalog.interval but expression is of type text
+ERROR:  column "interval" is of type interval but expression is of type text
 LINE 1: INSERT INTO caster (interval)      VALUES ('1 hour'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('1 hour'::pg_catalog.interval);
 INSERT INTO caster (interval)      VALUES ('1 hour'::citext);
-ERROR:  column "interval" is of type pg_catalog.interval but expression is of type citext
+ERROR:  column "interval" is of type interval but expression is of type citext
 LINE 1: INSERT INTO caster (interval)      VALUES ('1 hour'::citext)...
                                                    ^
 HINT:  You will need to rewrite or cast the expression.

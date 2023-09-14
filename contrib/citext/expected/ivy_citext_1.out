@@ -1092,91 +1092,91 @@ HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('foo'::bytea);
 -- Cannot cast to boolean on assignment.
 INSERT INTO caster (boolean)       VALUES ('t'::text);
-ERROR:  column "boolean" is of type boolean but expression is of type text
+ERROR:  column "boolean" is of type pg_catalog.bool but expression is of type text
 LINE 1: INSERT INTO caster (boolean)       VALUES ('t'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('t'::boolean);
 INSERT INTO caster (boolean)       VALUES ('t'::citext);
-ERROR:  column "boolean" is of type boolean but expression is of type citext
+ERROR:  column "boolean" is of type pg_catalog.bool but expression is of type citext
 LINE 1: INSERT INTO caster (boolean)       VALUES ('t'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('t'::boolean);
 -- Cannot cast to float8 on assignment.
 INSERT INTO caster (float8)        VALUES ('12.42'::text);
-ERROR:  column "float8" is of type double precision but expression is of type text
+ERROR:  column "float8" is of type pg_catalog.float8 but expression is of type text
 LINE 1: INSERT INTO caster (float8)        VALUES ('12.42'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('12.42'::float8);
 INSERT INTO caster (float8)        VALUES ('12.42'::citext);
-ERROR:  column "float8" is of type double precision but expression is of type citext
+ERROR:  column "float8" is of type pg_catalog.float8 but expression is of type citext
 LINE 1: INSERT INTO caster (float8)        VALUES ('12.42'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('12.42'::float8);
 -- Cannot cast to float4 on assignment.
 INSERT INTO caster (float4)        VALUES ('12.42'::text);
-ERROR:  column "float4" is of type real but expression is of type text
+ERROR:  column "float4" is of type pg_catalog.float4 but expression is of type text
 LINE 1: INSERT INTO caster (float4)        VALUES ('12.42'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('12.42'::float4);
 INSERT INTO caster (float4)        VALUES ('12.42'::citext);
-ERROR:  column "float4" is of type real but expression is of type citext
+ERROR:  column "float4" is of type pg_catalog.float4 but expression is of type citext
 LINE 1: INSERT INTO caster (float4)        VALUES ('12.42'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('12.42'::float4);
 -- Cannot cast to numeric on assignment.
 INSERT INTO caster (numeric)       VALUES ('12.42'::text);
-ERROR:  column "numeric" is of type numeric but expression is of type text
+ERROR:  column "numeric" is of type pg_catalog.numeric but expression is of type text
 LINE 1: INSERT INTO caster (numeric)       VALUES ('12.42'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('12.42'::numeric);
 INSERT INTO caster (numeric)       VALUES ('12.42'::citext);
-ERROR:  column "numeric" is of type numeric but expression is of type citext
+ERROR:  column "numeric" is of type pg_catalog.numeric but expression is of type citext
 LINE 1: INSERT INTO caster (numeric)       VALUES ('12.42'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('12.42'::numeric);
 -- Cannot cast to int8 on assignment.
 INSERT INTO caster (int8)          VALUES ('12'::text);
-ERROR:  column "int8" is of type bigint but expression is of type text
+ERROR:  column "int8" is of type pg_catalog.int8 but expression is of type text
 LINE 1: INSERT INTO caster (int8)          VALUES ('12'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('12'::int8);
 INSERT INTO caster (int8)          VALUES ('12'::citext);
-ERROR:  column "int8" is of type bigint but expression is of type citext
+ERROR:  column "int8" is of type pg_catalog.int8 but expression is of type citext
 LINE 1: INSERT INTO caster (int8)          VALUES ('12'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('12'::int8);
 -- Cannot cast to int4 on assignment.
 INSERT INTO caster (int4)          VALUES ('12'::text);
-ERROR:  column "int4" is of type integer but expression is of type text
+ERROR:  column "int4" is of type pg_catalog.int4 but expression is of type text
 LINE 1: INSERT INTO caster (int4)          VALUES ('12'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('12'::int4);
 INSERT INTO caster (int4)          VALUES ('12'::citext);
-ERROR:  column "int4" is of type integer but expression is of type citext
+ERROR:  column "int4" is of type pg_catalog.int4 but expression is of type citext
 LINE 1: INSERT INTO caster (int4)          VALUES ('12'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('12'::int4);
 -- Cannot cast to int2 on assignment.
 INSERT INTO caster (int2)          VALUES ('12'::text);
-ERROR:  column "int2" is of type smallint but expression is of type text
+ERROR:  column "int2" is of type pg_catalog.int2 but expression is of type text
 LINE 1: INSERT INTO caster (int2)          VALUES ('12'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('12'::int2);
 INSERT INTO caster (int2)          VALUES ('12'::citext);
-ERROR:  column "int2" is of type smallint but expression is of type citext
+ERROR:  column "int2" is of type pg_catalog.int2 but expression is of type citext
 LINE 1: INSERT INTO caster (int2)          VALUES ('12'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
@@ -1287,26 +1287,26 @@ HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('1999-01-08'::date);
 -- Cannot cast to time on assignment.
 INSERT INTO caster (time)          VALUES ('04:05:06'::text);
-ERROR:  column "time" is of type time without time zone but expression is of type text
+ERROR:  column "time" is of type pg_catalog.time but expression is of type text
 LINE 1: INSERT INTO caster (time)          VALUES ('04:05:06'::text)...
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('04:05:06'::time);
 INSERT INTO caster (time)          VALUES ('04:05:06'::citext);
-ERROR:  column "time" is of type time without time zone but expression is of type citext
+ERROR:  column "time" is of type pg_catalog.time but expression is of type citext
 LINE 1: INSERT INTO caster (time)          VALUES ('04:05:06'::citex...
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('04:05:06'::time);
 -- Cannot cast to timetz on assignment.
 INSERT INTO caster (timetz)        VALUES ('04:05:06'::text);
-ERROR:  column "timetz" is of type time with time zone but expression is of type text
+ERROR:  column "timetz" is of type pg_catalog.timetz but expression is of type text
 LINE 1: INSERT INTO caster (timetz)        VALUES ('04:05:06'::text)...
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('04:05:06'::timetz);
 INSERT INTO caster (timetz)        VALUES ('04:05:06'::citext);
-ERROR:  column "timetz" is of type time with time zone but expression is of type citext
+ERROR:  column "timetz" is of type pg_catalog.timetz but expression is of type citext
 LINE 1: INSERT INTO caster (timetz)        VALUES ('04:05:06'::citex...
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
@@ -1391,26 +1391,26 @@ HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('((0,0),2)'::circle);
 -- Cannot cast to bit on assignment.
 INSERT INTO caster (bit)           VALUES ('101'::text);
-ERROR:  column "bit" is of type bit but expression is of type text
+ERROR:  column "bit" is of type pg_catalog.bit but expression is of type text
 LINE 1: INSERT INTO caster (bit)           VALUES ('101'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('101'::bit);
 INSERT INTO caster (bit)           VALUES ('101'::citext);
-ERROR:  column "bit" is of type bit but expression is of type citext
+ERROR:  column "bit" is of type pg_catalog.bit but expression is of type citext
 LINE 1: INSERT INTO caster (bit)           VALUES ('101'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (citext)        VALUES ('101'::bit);
 -- Cannot cast to bit varying on assignment.
 INSERT INTO caster (bitv)          VALUES ('101'::text);
-ERROR:  column "bitv" is of type bit varying but expression is of type text
+ERROR:  column "bitv" is of type pg_catalog.varbit but expression is of type text
 LINE 1: INSERT INTO caster (bitv)          VALUES ('101'::text);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
 INSERT INTO caster (text)          VALUES ('101'::bit varying);
 INSERT INTO caster (bitv)          VALUES ('101'::citext);
-ERROR:  column "bitv" is of type bit varying but expression is of type citext
+ERROR:  column "bitv" is of type pg_catalog.varbit but expression is of type citext
 LINE 1: INSERT INTO caster (bitv)          VALUES ('101'::citext);
                                                    ^
 HINT:  You will need to rewrite or cast the expression.
