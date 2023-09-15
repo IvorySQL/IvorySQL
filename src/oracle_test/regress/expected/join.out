@@ -2553,15 +2553,15 @@ select * from int4_tbl t1
                 where t2.f1 <> coalesce(t3.f1, -1)) s
              left join tenk1 t4 on s.f1 > 1)
     on s.f1 = t1.f1;
-                           QUERY PLAN                            
------------------------------------------------------------------
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
  Nested Loop Left Join
    Join Filter: (t2.f1 > 1)
    ->  Hash Right Join
          Hash Cond: (t2.f1 = t1.f1)
          ->  Nested Loop Left Join
                Join Filter: (t2.f1 > 0)
-               Filter: (t2.f1 <> COALESCE(t3.f1, '-1'::integer))
+               Filter: ((t2.f1)::number <> COALESCE((t3.f1)::number, '-1'::number))
                ->  Seq Scan on int4_tbl t2
                ->  Materialize
                      ->  Seq Scan on int4_tbl t3
@@ -6007,13 +6007,13 @@ from t t1
   on true
   left join t t4 on true
 where s.a < s.c;
-                  QUERY PLAN                   
------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  Nested Loop Left Join
    ->  Nested Loop
          ->  Seq Scan on t t1
          ->  Seq Scan on t t2
-               Filter: (a < COALESCE(t1.a, 1))
+               Filter: ((a)::number < COALESCE((t1.a)::number, '1'::number))
    ->  Materialize
          ->  Seq Scan on t t4
 (7 rows)
