@@ -86,6 +86,7 @@ for my $node ($node_publisher, $node_subscriber)
 	$node->safe_psql(
 		'postgres', qq(
   CREATE ROLE regress_admin SUPERUSER LOGIN;
+  CREATE ROLE regress_admin2 SUPERUSER LOGIN;
   CREATE ROLE regress_alice NOSUPERUSER LOGIN;
   GRANT CREATE ON DATABASE postgres TO regress_alice;
   SET SESSION AUTHORIZATION regress_alice;
