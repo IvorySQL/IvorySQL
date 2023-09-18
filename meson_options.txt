@@ -34,6 +34,9 @@ option('pgport', type : 'integer', value : 5432,
   min: 1, max: 65535,
   description : '''Default port number for server and clients''')
 
+option('oraport', type : 'integer', value : 1521,
+  min: 1, max: 65535,
+  description : '''Default oracle port number for server and clients''')
 
 # Developer options
 
