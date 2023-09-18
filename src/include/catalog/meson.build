@@ -119,11 +119,36 @@ generated_catalog_headers = custom_target('generated_catalog_headers',
     files('../../backend/catalog/genbki.pl'),
     '--include-path=@SOURCE_ROOT@/src/include',
     '--set-version=' + pg_version_major.to_string(),
-    '--output=@OUTDIR@', '@INPUT@'
+    '--output=@OUTDIR@',
+    '@INPUT@',
+    '-M=pg'
   ],
 )
 
 generated_headers += generated_catalog_headers.to_list()
+
+# Target for Oracle
+ora_output_files = ['postgres_oracle.bki']
+ora_output_install = [dir_data]
+ora_generated_catalog_headers = custom_target('ora_generated_catalog_headers',
+  output: ora_output_files,
+  install_dir: ora_output_install,
+  input: input,
+  depend_files: bki_data_f,
+  build_by_default: true,
+  install: true,
+  command: [
+    perl,
+    files('../../backend/catalog/genbki.pl'),
+    '--include-path=@SOURCE_ROOT@/src/include',
+    '--set-version=' + pg_version_major.to_string(),
+    '--output=@OUTDIR@',
+    '@INPUT@',
+    '-M=oracle'
+  ]
+)
+
+generated_headers += ora_generated_catalog_headers.to_list()
 
 # autoconf generates the file there, ensure we get a conflict
 generated_sources_ac += {'src/backend/catalog': output_files + ['bki-stamp']}

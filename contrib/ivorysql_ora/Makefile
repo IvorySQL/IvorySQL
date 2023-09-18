@@ -39,7 +39,7 @@ clean: cleansql
 
 # SQL(s) merge using perl
 gensql: gensql.pl
-	$(PERL) $< $(patsubst ivorysql_ora--%.sql, %, $(DATA))
+	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %, $(DATA))
 
 # Clean the generated SQL(s).
 cleansql:

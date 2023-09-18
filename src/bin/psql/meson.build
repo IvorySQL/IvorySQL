@@ -15,6 +15,7 @@ psql_sources = files(
   'stringutils.c',
   'tab-complete.c',
   'variables.c',
+  'ora_prompt.c',
 )
 
 psqlscanslash = custom_target('psqlscanslash',
@@ -23,6 +24,13 @@ psqlscanslash = custom_target('psqlscanslash',
   command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
 generated_sources += psqlscanslash
 psql_sources += psqlscanslash
+
+ora_psqlscanslash = custom_target('ora_psqlscanslash',
+  input: 'ora_psqlscanslash.l',
+  output: 'ora_psqlscanslash.c',
+  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
+generated_sources += ora_psqlscanslash
+psql_sources += ora_psqlscanslash
 
 sql_help = custom_target('psql_help',
   output: ['sql_help.c', 'sql_help.h'],

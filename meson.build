@@ -343,6 +343,7 @@ missing = find_program('config/missing', native: true)
 cp = find_program('cp', required: false, native: true)
 xmllint_bin = find_program(get_option('XMLLINT'), native: true, required: false)
 xsltproc_bin = find_program(get_option('XSLTPROC'), native: true, required: false)
+ln = find_program('ln', required: false, native: true)
 
 bison_flags = []
 if bison.found()
@@ -458,6 +459,8 @@ if get_option('system_tzdata') != ''
   cdata.set_quoted('SYSTEMTZDIR', get_option('system_tzdata'))
 endif
 
+cdata.set('DEF_ORAPORT', get_option('oraport'))
+cdata.set_quoted('DEF_ORAPORT_STR', get_option('oraport').to_string())
 
 
 ###############################################################
@@ -2829,11 +2832,12 @@ libpq_deps += [
 subdir('src/interfaces/libpq')
 # fe_utils depends on libpq
 subdir('src/fe_utils')
+subdir('src/oracle_fe_utils')
 
 # for frontend binaries
 frontend_code = declare_dependency(
   include_directories: [postgres_inc],
-  link_with: [fe_utils, common_static, pgport_static],
+  link_with: [fe_utils, ora_fe_utils, common_static, pgport_static],
   sources: generated_headers,
   dependencies: [os_deps, libintl],
 )

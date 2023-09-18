@@ -694,8 +694,6 @@
   typstorage => 'x', typcollation => 'default' },
 
 # BEGIN Oracle Compatibility Metadatas
-# Note: these data types are just placeholders for shell type
-# and will be further processed in the extension.
 { oid => '9000', array_type_oid => '9004',
   descr => 'Oracle CHAR datatype, blank-padded string, fixed storage length',
   typname => 'oracharchar', typnamespace => 'sys', typlen => '-1', typbyval => 'f',

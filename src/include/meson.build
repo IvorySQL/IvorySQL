@@ -144,6 +144,7 @@ header_subdirs = [
   'mb',
   'nodes',
   'optimizer',
+  'oracle_parser',
   'parser',
   'partitioning',
   'postmaster',

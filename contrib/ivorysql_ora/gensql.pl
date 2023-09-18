@@ -24,6 +24,8 @@ use File::Spec;
 
 my @sql_set;
 
+my $first_arg = $ARGV[0];
+
 sql_merge();
 
 # The subroutine which does sql merge.
@@ -39,16 +41,30 @@ sub sql_merge
 {
 	# Read information from ivorysql_ora_merge_sqls.
 	#     There are SQLs specified which need to be merged.
-	open(INFO, "<", File::Spec->rel2abs("ivorysql_ora_merge_sqls"))
+	if ($first_arg eq 'meson') {
+		open(INFO, "<", File::Spec->rel2abs("../contrib/ivorysql_ora/ivorysql_ora_merge_sqls"))
 		|| croak "Could not open file ivorysql_ora_merge_sqls: $!";
+	}
+	else {
+		open(INFO, "<", File::Spec->rel2abs("ivorysql_ora_merge_sqls"))
+                || croak "Could not open file ivorysql_ora_merge_sqls: $!";
+	}
+
 	while (<INFO>)
 	{
 		# Delete the last tailing "\n" of this line.
 		chomp($_);
-		push @sql_set, "$_";
+		if ($first_arg eq 'meson') {
+			push @sql_set, "../contrib/ivorysql_ora/$_";
+		}
+		else
+		{
+			push @sql_set, "$_";
+		}
 	}
 	close INFO;
 
+	shift @ARGV;
 	foreach my $v (@ARGV)
 	{
 		# Delete ivorysql_ora--x.x(--x.x).sql files generated before.
@@ -56,22 +72,41 @@ sub sql_merge
 			if (-e File::Spec->rel2abs("ivorysql_ora--$v.sql"));
 
 		# Open(create if necessary) ivorysql_ora--x.x(--x.x).sql.
-		open(OUTFILE, ">ivorysql_ora--$v.sql")
+		if ($first_arg eq 'meson'){
+			open(OUTFILE, ">contrib/ivorysql_ora/ivorysql_ora--$v.sql")
+                        || croak "Could not open ivorysql_ora--$v.sql : $!";
+		}
+		else {
+			open(OUTFILE, ">ivorysql_ora--$v.sql")
 			|| croak "Could not open ivorysql_ora--$v.sql : $!";
+		}
 
 		# Write "extension file loading information" into it.
 		# Create extension when this version is "x.x".
 		if ($v =~ /^\d+\.\d+$/)
 		{
-			print OUTFILE '\echo Use "CREATE EXTENSION ivorysql_ora"';
-			print OUTFILE " to load this file. \\quit\n";
+			if ($first_arg eq 'meson'){
+				print STDOUT '\echo Use "CREATE EXTENSION ivorysql_ora"';
+				print STDOUT " to load this file. \\quit\n";
+			}
+			else
+			{
+				print OUTFILE '\echo Use "CREATE EXTENSION ivorysql_ora"';
+				print OUTFILE " to load this file. \\quit\n";
+			}
 		}
 		# Update extension when this version is "x.x--x.x".
 		elsif ($v =~ /^\d+\.\d+\-\-\d+\.\d+$/)
 		{
 			my $up2ver = (split("--", $v))[1];
-			print OUTFILE '\echo Use "ALTER EXTENSION ivorysql_ora UPDATE';
-			print OUTFILE " TO \'$up2ver\'\" to load this file. \\quit\n";
+			if ($first_arg eq 'meson'){
+				print STDOUT '\echo Use "ALTER EXTENSION ivorysql_ora UPDATE';
+				print STDOUT " TO \'$up2ver\'\" to load this file. \\quit\n";
+                        }
+                        else{
+				print OUTFILE '\echo Use "ALTER EXTENSION ivorysql_ora UPDATE';
+				print OUTFILE " TO \'$up2ver\'\" to load this file. \\quit\n";
+                        }
 		}
 		else
 		{
@@ -95,7 +130,12 @@ sub sql_merge
 					# Delete the last tailing "\n" of this line.
 					chomp($line);
 					# Write.
-					print OUTFILE "$line\n";
+					if ($first_arg eq 'meson'){
+						print STDOUT "$line\n";
+					}
+					else{
+						print OUTFILE "$line\n";
+					}
 				}
 				close INFILE;
 			}

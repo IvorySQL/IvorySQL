@@ -42,5 +42,6 @@ install_data(
   'sql_features.txt',
   'system_functions.sql',
   'system_views.sql',
+  'ora_sys_schema.sql',
   install_dir: dir_data,
 )
