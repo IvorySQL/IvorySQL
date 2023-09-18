@@ -884,6 +884,64 @@ select f_noparentheses from t_noparentheses;
 select f_noparentheses from dual;
 select f_noparentheses from t_noparentheses;
 
+CREATE OR REPLACE FUNCTION test_func RETURN integer
+AUTHID DEFINER
+DETERMINISTIC
+PARALLEL_ENABLE ( PARTITION A BY RANGE ( B, C ) CLUSTER A BY ( E,F ) )
+IS
+BEGIN    
+    RETURN 1;
+END;
+/
+
+CREATE OR REPLACE PROCEDURE test_proc
+AUTHID CURRENT_USER
+IS
+	p integer := 20;   
+begin
+	raise notice '%', p;
+end;
+/
+
+-- nested subproc of plisql
+create or replace function test_subproc_func(a in integer) returns integer as
+$$
+declare
+  mds integer;
+  original integer;
+  function square(original in integer) return integer;
+  function square(original in integer) return integer
+  AS
+  declare
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       original := original_squared + 1;
+       return original_squared;
+   end;
+begin
+    mds := 10;
+    original := square(mds);
+    raise info '%',original;
+    a := original + 1;
+    return mds;
+end;$$ language plisql;
+/
+
+-- pg_get_functiondef
+SELECT pg_get_functiondef('test_func'::regproc) from dual;
+SELECT pg_get_functiondef('test_proc'::regproc) from dual;
+SELECT pg_get_functiondef('test_subproc_func'::regproc) from dual;
+
+-- ivy_get_plisql_functiondef is only using get plisql func/proc definition.
+SELECT ivy_get_plisql_functiondef('test_func'::regproc) from dual;
+SELECT ivy_get_plisql_functiondef('test_proc'::regproc) from dual;
+SELECT ivy_get_plisql_functiondef('test_subproc_func'::regproc) from dual;
+
+DROP PROCEDURE test_proc();
+DROP FUNCTION test_func();
+DROP FUNCTION test_subproc_func(int);
+
 --
 -- Compatible with Oracle:
 -- The input parameter type is %rowtype
