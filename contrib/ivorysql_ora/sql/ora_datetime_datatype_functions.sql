@@ -492,11 +492,11 @@ select to_timestamp('-20220314121313222','syyyy/mm/dd hh:mi:ss:ff') from dual;
 select to_timestamp_tz('-2022-08-22 10:13:18. 1516 -08:00','SYYYY/MM/DD HH:MI:SS:ff TZH:TZM') from dual;
 alter session set NLS_TIMESTAMP_FORMAT='YY-MM-DD HH24.MI.SS.FF';
 create table ts_tb(a timestamp);
-insert into ts_tb values('2022-08-19 11.11.11');   --err
-insert into ts_tb values('122-08-19 11.11.11');     --succ
+insert into ts_tb values('2022-08-19 11.11.11');   --succ
+insert into ts_tb values('122-08-19 11.11.11');     --err
 insert into ts_tb values('23-08-19 11.11.11');     --succ
 insert into ts_tb values('7-08-19 11.11.11');     --succ
-insert into ts_tb values('-08-19 11.11.11');	--succ
+insert into ts_tb values('-08-19 11.11.11');	--err
 insert into ts_tb values('22022-08-19 11.11.11');  --err
 select * from ts_tb;
 select to_char(a, 'YYYY-MM-DD') from ts_tb;
@@ -506,11 +506,11 @@ drop table ts_tb;
 
 alter session set NLS_DATE_FORMAT='YY-MM-DD HH24.MI.SS';
 create table ts_tb(a date);
-insert into ts_tb values('2022-08-19 11.11.11');   --err
+insert into ts_tb values('2022-08-19 11.11.11');   --succ
 insert into ts_tb values('122-08-19 11.11.11');    --succ
 insert into ts_tb values('23-08-19 11.11.11');     --succ
 insert into ts_tb values('4-08-19 11.11.11');     --succ
-insert into ts_tb values('-08-19 11.11.11');	--succ
+insert into ts_tb values('-08-19 11.11.11');	--err
 insert into ts_tb values('22022-08-19 11.11.11');  --err
 select * from ts_tb;
 select to_char(a, 'YYYY-MM-DD') from ts_tb;
