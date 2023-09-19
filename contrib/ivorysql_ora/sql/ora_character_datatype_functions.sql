@@ -872,8 +872,8 @@ SELECT REGEXP_COUNT('Abcacdefg'::text, 'cd'::text, '2', 'c') REGEXP_COUNT FROM D
 
 set datestyle to ISO,YMD;
 alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24.MI.SS.FF';
-SELECT REGEXP_COUNT(to_date('2019-12-12','yyyy-MM-dd'), to_date('2019-12-12','yyyy-MM-dd'), 1.9::number, 'c'::char) REGEXP_COUNT FROM DUAL;
-SELECT REGEXP_COUNT(to_date('2019-12-12','yyyy-MM-dd'), to_date('2019-12-12','yyyy-MM-dd'), 1::int, 'c'::char) REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(to_date('2019-12-12','yy-MM-dd'), to_date('2019-12-12','yy-MM-dd'), 1.9::number, 'c'::char) REGEXP_COUNT FROM DUAL;
+SELECT REGEXP_COUNT(to_date('2019-12-12','yy-MM-dd'), to_date('2019-12-12','yy-MM-dd'), 1::int, 'c'::char) REGEXP_COUNT FROM DUAL;
 SELECT REGEXP_COUNT('2019-12-12 00:00:00'::timestamp, '2019-12-12 00:00:00'::timestamp, 1::int, 'c'::char) REGEXP_COUNT FROM DUAL;
 reset NLS_TIMESTAMP_FORMAT;
 SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'c') COUNT FROM DUAL;

@@ -4194,7 +4194,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_IY:
 				if (ORA_PARSER == compatible_db)
 				{
-					if (n->key->len == DCH_YY)
+					if (n->key->id == DCH_YY)
 						n->sep = true;
 
 					numlen = ivy_getnumlength(s);
