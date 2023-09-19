@@ -853,7 +853,7 @@ MERGE INTO document d
 USING (SELECT 1 as sdid) s
 ON did = s.sdid
 WHEN MATCHED THEN
-	UPDATE SET dnotes = dnotes || ' notes added by merge3 ', dlevel = 0;
+	UPDATE SET dnotes = dnotes || ' notes added by merge3 ', dlevel = 1;
 
 -- There is a MATCH for did = 3, but UPDATE's USING qual does not allow
 -- updating an item in category 'science fiction'
