@@ -1,5 +1,5 @@
 /*
- * contrib/btree_gist/btree_utils_var.c
+ * contrib/ora_btree_gist/btree_utils_var.c
  */
 #include "postgres.h"
 
@@ -172,6 +172,7 @@ gbt_bytea_pf_match(const bytea *pf, const bytea *query, const gbtree_vinfo *tinf
 	int32		qlen = VARSIZE(query) - VARHDRSZ;
 	int32		nlen = VARSIZE(pf) - VARHDRSZ;
 
+	(void) tinfo;		/* not used */
 	if (nlen <= qlen)
 	{
 		char	   *q = VARDATA(query);
@@ -210,6 +211,7 @@ gbt_var_node_truncate(const GBT_VARKEY *node, int32 cpf_length, const gbtree_vin
 	int32		si;
 	char	   *out2;
 
+	(void) tinfo;		/* not used */
 	len1 = Min(len1, (cpf_length + 1));
 	len2 = Min(len2, (cpf_length + 1));
 
@@ -282,6 +284,7 @@ gbt_var_compress(GISTENTRY *entry, const gbtree_vinfo *tinfo)
 {
 	GISTENTRY  *retval;
 
+	(void) tinfo;		/* not used */
 	if (entry->leafkey)
 	{
 		struct varlena *leaf = PG_DETOAST_DATUM(entry->key);
@@ -422,10 +425,10 @@ gbt_var_penalty(float *res, const GISTENTRY *o, const GISTENTRY *n,
 			GBT_VARKEY_R uk = gbt_var_key_readable((GBT_VARKEY *) DatumGetPointer(d));
 			unsigned char tmp[4];
 
-			tmp[0] = (unsigned char) (((VARSIZE(ok.lower) - VARHDRSZ) <= ul) ? 0 : (VARDATA(ok.lower)[ul]));
-			tmp[1] = (unsigned char) (((VARSIZE(uk.lower) - VARHDRSZ) <= ul) ? 0 : (VARDATA(uk.lower)[ul]));
-			tmp[2] = (unsigned char) (((VARSIZE(ok.upper) - VARHDRSZ) <= ul) ? 0 : (VARDATA(ok.upper)[ul]));
-			tmp[3] = (unsigned char) (((VARSIZE(uk.upper) - VARHDRSZ) <= ul) ? 0 : (VARDATA(uk.upper)[ul]));
+			tmp[0] = (unsigned char) (((VARSIZE(ok.lower) - VARHDRSZ) <= (uint32)ul) ? 0 : (VARDATA(ok.lower)[ul]));
+			tmp[1] = (unsigned char) (((VARSIZE(uk.lower) - VARHDRSZ) <= (uint32)ul) ? 0 : (VARDATA(uk.lower)[ul]));
+			tmp[2] = (unsigned char) (((VARSIZE(ok.upper) - VARHDRSZ) <= (uint32)ul) ? 0 : (VARDATA(ok.upper)[ul]));
+			tmp[3] = (unsigned char) (((VARSIZE(uk.upper) - VARHDRSZ) <= (uint32)ul) ? 0 : (VARDATA(uk.upper)[ul]));
 			dres = abs(tmp[0] - tmp[1]) + abs(tmp[3] - tmp[2]);
 			dres /= 256.0;
 		}

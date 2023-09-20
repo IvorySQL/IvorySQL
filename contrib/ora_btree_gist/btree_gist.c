@@ -1,5 +1,5 @@
 /*
- * contrib/btree_gist/btree_gist.c
+ * contrib/ora_btree_gist/btree_gist.c
  */
 #include "postgres.h"
 
@@ -33,6 +33,7 @@ gbtreekey_in(PG_FUNCTION_ARGS)
 Datum
 gbtreekey_out(PG_FUNCTION_ARGS)
 {
+	(void) fcinfo;		/* not used */
 	/* Sadly, we do not receive any indication of the specific type */
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

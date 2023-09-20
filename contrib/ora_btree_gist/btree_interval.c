@@ -32,30 +32,35 @@ PG_FUNCTION_INFO_V1(gbt_intv_same);
 static bool
 gbt_intvgt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(interval_gt, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_intvge(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(interval_ge, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_intveq(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(interval_eq, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_intvle(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(interval_le, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_intvlt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(interval_lt, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
@@ -66,6 +71,7 @@ gbt_intvkey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 	intvKEY    *ib = (intvKEY *) (((const Nsrt *) b)->t);
 	int			res;
 
+	(void) flinfo;		/* not used */
 	res = DatumGetInt32(DirectFunctionCall2(interval_cmp, IntervalPGetDatum(&ia->lower), IntervalPGetDatum(&ib->lower)));
 	if (res == 0)
 		return DatumGetInt32(DirectFunctionCall2(interval_cmp, IntervalPGetDatum(&ia->upper), IntervalPGetDatum(&ib->upper)));
@@ -83,6 +89,7 @@ intr2num(const Interval *i)
 static float8
 gbt_intv_dist(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return fabs(intr2num((const Interval *) a) - intr2num((const Interval *) b));
 }
 

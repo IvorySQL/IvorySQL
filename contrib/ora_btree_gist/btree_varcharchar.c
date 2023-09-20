@@ -30,6 +30,7 @@ PG_FUNCTION_INFO_V1(gbt_text_same);
 static bool
 gbt_textgt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(text_gt,
 												collation,
 												PointerGetDatum(a),
@@ -39,6 +40,7 @@ gbt_textgt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_textge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(text_ge,
 												collation,
 												PointerGetDatum(a),
@@ -48,6 +50,7 @@ gbt_textge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_texteq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(texteq,
 												collation,
 												PointerGetDatum(a),
@@ -57,6 +60,7 @@ gbt_texteq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_textle(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(text_le,
 												collation,
 												PointerGetDatum(a),
@@ -66,6 +70,7 @@ gbt_textle(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_textlt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(text_lt,
 												collation,
 												PointerGetDatum(a),
@@ -75,6 +80,7 @@ gbt_textlt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static int32
 gbt_textcmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetInt32(DirectFunctionCall2Coll(bttextcmp,
 												 collation,
 												 PointerGetDatum(a),
@@ -100,6 +106,7 @@ static gbtree_vinfo tinfo =
 static bool
 gbt_varcharchargt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(bpchargt,
 												collation,
 												PointerGetDatum(a),
@@ -109,6 +116,7 @@ gbt_varcharchargt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_varcharcharge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(bpcharge,
 												collation,
 												PointerGetDatum(a),
@@ -118,6 +126,7 @@ gbt_varcharcharge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_varcharchareq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(bpchareq,
 												collation,
 												PointerGetDatum(a),
@@ -127,6 +136,7 @@ gbt_varcharchareq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_varcharcharle(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(bpcharle,
 												collation,
 												PointerGetDatum(a),
@@ -136,6 +146,7 @@ gbt_varcharcharle(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_varcharcharlt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2Coll(bpcharlt,
 												collation,
 												PointerGetDatum(a),
@@ -145,6 +156,7 @@ gbt_varcharcharlt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static int32
 gbt_varcharcharcmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetInt32(DirectFunctionCall2Coll(bpcharcmp,
 												 collation,
 												 PointerGetDatum(a),

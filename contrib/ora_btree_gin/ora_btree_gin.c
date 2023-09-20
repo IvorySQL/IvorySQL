@@ -2,7 +2,7 @@
  * contrib/ora_btree_gin/ora_btree_gin.c
  */
 #include "postgres.h"
-
+#include "varatt.h"
 #include <limits.h>
 
 #include "access/stratnum.h"
@@ -16,7 +16,8 @@
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
 #include "utils/varbit.h"
-#include "../ivorysql_ora/src/include/common_datatypes.h"
+#include "utils/varlena.h"
+
 
 PG_MODULE_MAGIC;
 
@@ -170,6 +171,79 @@ gin_btree_compare_prefix(FunctionCallInfo fcinfo)
 
 	PG_RETURN_INT32(res);
 }
+
+/* oravarcharchar_cmp()
+ * Internal comparison function for oravarchar.
+ * Returns -1, 0 or 1
+ */
+static int
+oravarcharchar_cmp(VarChar *arg1, VarChar *arg2, Oid collid)
+{
+	char	   *a1p,
+			   *a2p;
+	int			len1,
+				len2;
+
+	a1p = VARDATA_ANY(arg1);
+	a2p = VARDATA_ANY(arg2);
+
+	len1 = VARSIZE_ANY_EXHDR(arg1);
+	len2 = VARSIZE_ANY_EXHDR(arg2);
+
+	return varstr_cmp(a1p, len1, a2p, len2, collid);
+}
+
+static Datum
+oratimestamp_cmp(PG_FUNCTION_ARGS)
+{
+	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
+	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
+
+	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
+}
+
+static Datum
+oratimestamptz_cmp(PG_FUNCTION_ARGS)
+{
+	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
+	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
+
+	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
+}
+
+static Datum
+oratimestampltz_cmp(PG_FUNCTION_ARGS)
+{
+	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
+	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
+
+	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
+}
+
+static Datum
+oradate_cmp(PG_FUNCTION_ARGS)
+{
+	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
+	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
+
+	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
+}
+
+static Datum
+bt_oravarchar_cmp(PG_FUNCTION_ARGS)
+{
+	VarChar	   *arg1 = PG_GETARG_VARCHAR_PP(0);
+	VarChar	   *arg2 = PG_GETARG_VARCHAR_PP(1);
+	int32		result;
+
+	result = oravarcharchar_cmp(arg1, arg2, PG_GET_COLLATION());
+
+	PG_FREE_IF_COPY(arg1, 0);
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_INT32(result);
+}
+
 
 PG_FUNCTION_INFO_V1(gin_btree_consistent);
 Datum
