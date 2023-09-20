@@ -7,7 +7,10 @@
 #include "btree_utils_num.h"
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
-#include "../ivorysql_ora/src/include/common_datatypes.h"
+
+
+#define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
+
 
 typedef struct
 {
@@ -30,33 +33,172 @@ PG_FUNCTION_INFO_V1(gbt_dsintv_penalty);
 PG_FUNCTION_INFO_V1(gbt_dsintv_same);
 
 
+/*
+ * Compatible oracle:
+ * For INTERVAL DAY TO SECOND type the field of "MONTH" is invalid.
+ * Only calculate the value of "interval->day" and "interval->time".
+ */
+static inline TimeOffset
+dsinterval_cmp_value(const Interval *interval)
+{
+	TimeOffset	span;
+
+	span = interval->time;
+
+#ifdef HAVE_INT64_TIMESTAMP
+	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
+#else
+	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
+#endif
+
+	return span;
+}
+
+static int
+dsinterval_cmp_internal(Interval *interval1, Interval *interval2)
+{
+	TimeOffset	span1 = dsinterval_cmp_value(interval1);
+	TimeOffset	span2 = dsinterval_cmp_value(interval2);
+
+	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+}
+
+/*****************************************************************************
+ *	 Operator Function														 *
+ *****************************************************************************/
+static Datum
+dsinterval_gt(PG_FUNCTION_ARGS)
+{
+	Interval   *interval1 = PG_GETARG_INTERVAL_P(0);
+	Interval   *interval2 = PG_GETARG_INTERVAL_P(1);
+
+	PG_RETURN_BOOL(dsinterval_cmp_internal(interval1, interval2) > 0);
+}
+
+static Datum
+dsinterval_ge(PG_FUNCTION_ARGS)
+{
+	Interval   *interval1 = PG_GETARG_INTERVAL_P(0);
+	Interval   *interval2 = PG_GETARG_INTERVAL_P(1);
+
+	PG_RETURN_BOOL(dsinterval_cmp_internal(interval1, interval2) >= 0);
+}
+
+static Datum
+dsinterval_eq(PG_FUNCTION_ARGS)
+{
+	Interval   *interval1 = PG_GETARG_INTERVAL_P(0);
+	Interval   *interval2 = PG_GETARG_INTERVAL_P(1);
+
+	PG_RETURN_BOOL(dsinterval_cmp_internal(interval1, interval2) == 0);
+}
+
+static Datum
+dsinterval_le(PG_FUNCTION_ARGS)
+{
+	Interval   *interval1 = PG_GETARG_INTERVAL_P(0);
+	Interval   *interval2 = PG_GETARG_INTERVAL_P(1);
+
+	PG_RETURN_BOOL(dsinterval_cmp_internal(interval1, interval2) <= 0);
+}
+
+static Datum
+dsinterval_lt(PG_FUNCTION_ARGS)
+{
+	Interval   *interval1 = PG_GETARG_INTERVAL_P(0);
+	Interval   *interval2 = PG_GETARG_INTERVAL_P(1);
+
+	PG_RETURN_BOOL(dsinterval_cmp_internal(interval1, interval2) < 0);
+}
+
+static Datum
+dsinterval_cmp(PG_FUNCTION_ARGS)
+{
+	Interval   *interval1 = PG_GETARG_INTERVAL_P(0);
+	Interval   *interval2 = PG_GETARG_INTERVAL_P(1);
+
+	PG_RETURN_INT32(dsinterval_cmp_internal(interval1, interval2));
+}
+
+/*
+ * '-' operator function
+ * left operand = interval day to second
+ * right operand = interval day to second
+ */
+static Datum
+dsinterval_mi(PG_FUNCTION_ARGS)
+{
+	Interval   *span1 = PG_GETARG_INTERVAL_P(0);
+	Interval   *span2 = PG_GETARG_INTERVAL_P(1);
+	Interval   *result;
+	TimeOffset	span1_usecs;
+	TimeOffset	span2_usecs;
+
+	span1_usecs = span1->time;
+	span1_usecs += span1->day * INT64CONST(24) * USECS_PER_HOUR;
+
+	span2_usecs = span2->time;
+	span2_usecs += span2->day * INT64CONST(24) * USECS_PER_HOUR;
+
+	result = (Interval *) palloc(sizeof(Interval));
+
+	/*
+	 * Compatible oracle
+	 * For Interval day to second, the field of datetime 'YEAR' 'MONTH' will be zero.
+	 * Recompute the value of result->day and result->time.
+	 */
+	result->month = 0;
+	result->day = (span1_usecs - span2_usecs) / USECS_PER_DAY;
+	result->time = (span1_usecs - span2_usecs) % USECS_PER_DAY;
+
+	/* overflow check copied from int4mi */
+	if (!SAMESIGN(span1->day, span2->day) &&
+		!SAMESIGN(result->day, span1->day))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+
+	if (!SAMESIGN(span1->time, span2->time) &&
+		!SAMESIGN(result->time, span1->time))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+
+	PG_RETURN_INTERVAL_P(result);
+}
+
 static bool
 gbt_dsintvgt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(dsinterval_gt, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_dsintvge(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(dsinterval_ge, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_dsintveq(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(dsinterval_eq, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_dsintvle(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(dsinterval_le, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
 static bool
 gbt_dsintvlt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(dsinterval_lt, IntervalPGetDatum(a), IntervalPGetDatum(b)));
 }
 
@@ -67,6 +209,7 @@ gbt_dsintvkey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 	intvKEY    *ib = (intvKEY *) (((const Nsrt *) b)->t);
 	int			res;
 
+	(void) flinfo;		/* not used */
 	res = DatumGetInt32(DirectFunctionCall2(dsinterval_cmp, IntervalPGetDatum(&ia->lower), IntervalPGetDatum(&ib->lower)));
 	if (res == 0)
 		return DatumGetInt32(DirectFunctionCall2(dsinterval_cmp, IntervalPGetDatum(&ia->upper), IntervalPGetDatum(&ib->upper)));
@@ -84,6 +227,7 @@ intr2num(const Interval *i)
 static float8
 gbt_dsintv_dist(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return fabs(intr2num((const Interval *) a) - intr2num((const Interval *) b));
 }
 
@@ -111,7 +255,7 @@ static const gbtree_ninfo tinfo =
 };
 
 
-Interval *
+static Interval *
 abs_dsinterval(Interval *a)
 {
 	static Interval zero = {0, 0, 0};

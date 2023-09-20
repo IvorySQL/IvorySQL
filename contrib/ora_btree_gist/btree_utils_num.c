@@ -1,5 +1,5 @@
 /*
- * contrib/btree_gist/btree_utils_num.c
+ * contrib/ora_btree_gist/btree_utils_num.c
  */
 #include "postgres.h"
 
@@ -321,6 +321,7 @@ gbt_num_distance(const GBT_NUMKEY_R *key,
 {
 	float8		retval;
 
+	(void) is_leaf;		/* not used */
 	if (tinfo->f_dist == NULL)
 		elog(ERROR, "KNN search is not supported for btree_gist type %d",
 			 (int) tinfo->t);

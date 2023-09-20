@@ -29,26 +29,31 @@ PG_FUNCTION_INFO_V1(gbt_binary_float_same);
 static bool
 gbt_binary_floatgt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float4 *) a) > *((const float4 *) b));
 }
 static bool
 gbt_binary_floatge(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float4 *) a) >= *((const float4 *) b));
 }
 static bool
 gbt_binary_floateq(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float4 *) a) == *((const float4 *) b));
 }
 static bool
 gbt_binary_floatle(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float4 *) a) <= *((const float4 *) b));
 }
 static bool
 gbt_binary_floatlt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float4 *) a) < *((const float4 *) b));
 }
 
@@ -58,6 +63,7 @@ gbt_binary_floatkey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 	float4KEY  *ia = (float4KEY *) (((const Nsrt *) a)->t);
 	float4KEY  *ib = (float4KEY *) (((const Nsrt *) b)->t);
 
+	(void) flinfo;		/* not used */
 	if (ia->lower == ib->lower)
 	{
 		if (ia->upper == ib->upper)
@@ -72,6 +78,7 @@ gbt_binary_floatkey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 static float8
 gbt_binary_float_dist(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return GET_FLOAT_DISTANCE(float4, a, b);
 }
 
