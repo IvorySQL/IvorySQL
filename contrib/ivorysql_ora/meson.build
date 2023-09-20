@@ -16,6 +16,8 @@ ivorysql_ora_sources = files(
   'src/datatype/compatible_oracle_precedence.c',
   'src/datatype/common_datatypes.c',
   'src/datatype/raw_long.c',
+  'src/datatype/binary_float.c',
+  'src/datatype/binary_double.c',
   'src/builtin_functions/character_datatype_functions.c',
   'src/builtin_functions/datetime_datatype_functions.c',
   'src/builtin_functions/numeric_datatype_functions.c',
