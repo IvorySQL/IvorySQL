@@ -1147,6 +1147,14 @@ exec_command_edit(PsqlScanState scan_state, bool active_branch,
 				else
 					status = PSQL_CMD_ERROR;
 			}
+
+			/*
+			 * On error while editing or if specifying an incorrect line
+			 * number, reset the query buffer.
+			 */
+			if (status == PSQL_CMD_ERROR)
+				resetPQExpBuffer(query_buf);
+
 			free(fname);
 			free(ln);
 		}
@@ -1258,6 +1266,13 @@ exec_command_ef_ev(PsqlScanState scan_state, bool active_branch,
 			else
 				status = PSQL_CMD_NEWEDIT;
 		}
+
+		/*
+		 * On error while doing object lookup or while editing, or if
+		 * specifying an incorrect line number, reset the query buffer.
+		 */
+		if (status == PSQL_CMD_ERROR)
+			resetPQExpBuffer(query_buf);
 
 		free(obj_desc);
 	}
