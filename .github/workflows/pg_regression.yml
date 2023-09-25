@@ -2,9 +2,9 @@ name: pg_regression
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master , IVORY_REL_3_STABLE ]
   pull_request:
-    branches: [ master ]
+    branches: [ master , IVORY_REL_3_STABLE ]
 
 jobs:
   pg_regression:
