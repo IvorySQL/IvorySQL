@@ -971,7 +971,8 @@ INSERT INTO hjtest_matchbits_t2 VALUES (2);
 -- Update should create a HOT tuple. If this status bit isn't cleared, we won't
 -- correctly emit the NULL-extended unmatching tuple in full hash join.
 UPDATE hjtest_matchbits_t2 set id = 2;
-SELECT * FROM hjtest_matchbits_t1 t1 FULL JOIN hjtest_matchbits_t2 t2 ON t1.id = t2.id;
+SELECT * FROM hjtest_matchbits_t1 t1 FULL JOIN hjtest_matchbits_t2 t2 ON t1.id = t2.id
+  ORDER BY t1.id;
  id | id 
 ----+----
   1 |   
@@ -1127,3 +1128,39 @@ WHERE
 (1 row)
 
 ROLLBACK;
+-- Verify that we behave sanely when the inner hash keys contain parameters
+-- (that is, outer or lateral references).  This situation has to defeat
+-- re-use of the inner hash table across rescans.
+begin;
+set local enable_hashjoin = on;
+explain (costs off)
+select i8.q2, ss.* from
+int8_tbl i8,
+lateral (select t1.fivethous, i4.f1 from tenk1 t1 join int4_tbl i4
+         on t1.fivethous = i4.f1+i8.q2 order by 1,2) ss;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on int8_tbl i8
+   ->  Sort
+         Sort Key: t1.fivethous, i4.f1
+         ->  Hash Join
+               Hash Cond: (t1.fivethous = (i4.f1 + i8.q2))
+               ->  Seq Scan on tenk1 t1
+               ->  Hash
+                     ->  Seq Scan on int4_tbl i4
+(9 rows)
+
+select i8.q2, ss.* from
+int8_tbl i8,
+lateral (select t1.fivethous, i4.f1 from tenk1 t1 join int4_tbl i4
+         on t1.fivethous = i4.f1+i8.q2 order by 1,2) ss;
+ q2  | fivethous | f1 
+-----+-----------+----
+ 456 |       456 |  0
+ 456 |       456 |  0
+ 123 |       123 |  0
+ 123 |       123 |  0
+(4 rows)
+
+rollback;

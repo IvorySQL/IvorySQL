@@ -503,6 +503,28 @@ process_subquery_nestloop_params(PlannerInfo *root, List *subplan_params)
  * Identify any NestLoopParams that should be supplied by a NestLoop plan
  * node with the specified lefthand rels.  Remove them from the active
  * root->curOuterParams list and return them as the result list.
+ *
+ * XXX Here we also hack up the returned Vars and PHVs so that they do not
+ * contain nullingrel sets exceeding what is available from the outer side.
+ * This is needed if we have applied outer join identity 3,
+ *		(A leftjoin B on (Pab)) leftjoin C on (Pb*c)
+ *		= A leftjoin (B leftjoin C on (Pbc)) on (Pab)
+ * and C contains lateral references to B.  It's still safe to apply the
+ * identity, but the parser will have created those references in the form
+ * "b*" (i.e., with varnullingrels listing the A/B join), while what we will
+ * have available from the nestloop's outer side is just "b".  We deal with
+ * that here by stripping the nullingrels down to what is available from the
+ * outer side according to leftrelids.
+ *
+ * That fixes matters for the case of forward application of identity 3.
+ * If the identity was applied in the reverse direction, we will have
+ * parameter Vars containing too few nullingrel bits rather than too many.
+ * Currently, that causes no problems because setrefs.c applies only a
+ * subset check to nullingrels in NestLoopParams, but we'd have to work
+ * harder if we ever want to tighten that check.  This is all pretty annoying
+ * because it greatly weakens setrefs.c's cross-check, but the alternative
+ * seems to be to generate multiple versions of each laterally-parameterized
+ * subquery, which'd be unduly expensive.
  */
 List *
 identify_current_nestloop_params(PlannerInfo *root, Relids leftrelids)
@@ -517,13 +539,19 @@ identify_current_nestloop_params(PlannerInfo *root, Relids leftrelids)
 
 		/*
 		 * We are looking for Vars and PHVs that can be supplied by the
-		 * lefthand rels.
+		 * lefthand rels.  When we find one, it's okay to modify it in-place
+		 * because all the routines above make a fresh copy to put into
+		 * curOuterParams.
 		 */
 		if (IsA(nlp->paramval, Var) &&
 			bms_is_member(nlp->paramval->varno, leftrelids))
 		{
+			Var		   *var = (Var *) nlp->paramval;
+
 			root->curOuterParams = foreach_delete_current(root->curOuterParams,
 														  cell);
+			var->varnullingrels = bms_intersect(var->varnullingrels,
+												leftrelids);
 			result = lappend(result, nlp);
 		}
 		else if (IsA(nlp->paramval, PlaceHolderVar) &&
@@ -531,8 +559,12 @@ identify_current_nestloop_params(PlannerInfo *root, Relids leftrelids)
 													 (PlaceHolderVar *) nlp->paramval)->ph_eval_at,
 							   leftrelids))
 		{
+			PlaceHolderVar *phv = (PlaceHolderVar *) nlp->paramval;
+
 			root->curOuterParams = foreach_delete_current(root->curOuterParams,
 														  cell);
+			phv->phnullingrels = bms_intersect(phv->phnullingrels,
+											   leftrelids);
 			result = lappend(result, nlp);
 		}
 	}

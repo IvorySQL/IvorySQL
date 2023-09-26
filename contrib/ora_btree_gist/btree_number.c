@@ -30,6 +30,8 @@ PG_FUNCTION_INFO_V1(gbt_number_same);
 static bool
 gbt_number_gt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) collation;		/* not used */
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(numeric_gt,
 											PointerGetDatum(a),
 											PointerGetDatum(b)));
@@ -38,6 +40,8 @@ gbt_number_gt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_number_ge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) collation;		/* not used */
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(numeric_ge,
 											PointerGetDatum(a),
 											PointerGetDatum(b)));
@@ -46,6 +50,8 @@ gbt_number_ge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_number_eq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) collation;		/* not used */
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(numeric_eq,
 											PointerGetDatum(a),
 											PointerGetDatum(b)));
@@ -54,6 +60,8 @@ gbt_number_eq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_number_le(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) collation;		/* not used */
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(numeric_le,
 											PointerGetDatum(a),
 											PointerGetDatum(b)));
@@ -62,6 +70,8 @@ gbt_number_le(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static bool
 gbt_number_lt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) collation;		/* not used */
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(numeric_lt,
 											PointerGetDatum(a),
 											PointerGetDatum(b)));
@@ -70,6 +80,8 @@ gbt_number_lt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static int32
 gbt_number_cmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
+	(void) collation;		/* not used */
+	(void) flinfo;		/* not used */
 	return DatumGetInt32(DirectFunctionCall2(numeric_cmp,
 											 PointerGetDatum(a),
 											 PointerGetDatum(b)));

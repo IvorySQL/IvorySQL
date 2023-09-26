@@ -1070,6 +1070,8 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 				relfilenumber2;
 	RelFileNumber swaptemp;
 	char		swptmpchr;
+	Oid			relam1,
+				relam2;
 
 	/* We need writable copies of both pg_class tuples. */
 	relRelation = table_open(RelationRelationId, RowExclusiveLock);
@@ -1086,6 +1088,8 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 
 	relfilenumber1 = relform1->relfilenode;
 	relfilenumber2 = relform2->relfilenode;
+	relam1 = relform1->relam;
+	relam2 = relform2->relam;
 
 	if (RelFileNumberIsValid(relfilenumber1) &&
 		RelFileNumberIsValid(relfilenumber2))
@@ -1255,6 +1259,31 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 		/* no update ... but we do still need relcache inval */
 		CacheInvalidateRelcacheByTuple(reltup1);
 		CacheInvalidateRelcacheByTuple(reltup2);
+	}
+
+	/*
+	 * Now that pg_class has been updated with its relevant information for
+	 * the swap, update the dependency of the relations to point to their new
+	 * table AM, if it has changed.
+	 */
+	if (relam1 != relam2)
+	{
+		if (changeDependencyFor(RelationRelationId,
+								r1,
+								AccessMethodRelationId,
+								relam1,
+								relam2) != 1)
+			elog(ERROR, "failed to change access method dependency for relation \"%s.%s\"",
+				 get_namespace_name(get_rel_namespace(r1)),
+				 get_rel_name(r1));
+		if (changeDependencyFor(RelationRelationId,
+								r2,
+								AccessMethodRelationId,
+								relam2,
+								relam1) != 1)
+			elog(ERROR, "failed to change access method dependency for relation \"%s.%s\"",
+				 get_namespace_name(get_rel_namespace(r2)),
+				 get_rel_name(r2));
 	}
 
 	/*
@@ -1694,10 +1723,13 @@ get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
 			continue;
 
 		/*
-		 * We already checked that the user has privileges to CLUSTER the
-		 * partitioned table when we locked it earlier, so there's no need to
-		 * check the privileges again here.
+		 * It's possible that the user does not have privileges to CLUSTER the
+		 * leaf partition despite having such privileges on the partitioned
+		 * table.  We skip any partitions which the user is not permitted to
+		 * CLUSTER.
 		 */
+		if (!cluster_is_permitted_for_relation(relid, GetUserId()))
+			continue;
 
 		/* Use a permanent memory context for the result list */
 		old_context = MemoryContextSwitchTo(cluster_context);
@@ -1720,8 +1752,7 @@ get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
 static bool
 cluster_is_permitted_for_relation(Oid relid, Oid userid)
 {
-	if (pg_class_aclcheck(relid, userid, ACL_MAINTAIN) == ACLCHECK_OK ||
-		has_partition_ancestor_privs(relid, userid, ACL_MAINTAIN))
+	if (pg_class_aclcheck(relid, userid, ACL_MAINTAIN) == ACLCHECK_OK)
 		return true;
 
 	ereport(WARNING,

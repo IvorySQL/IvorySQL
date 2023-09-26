@@ -508,6 +508,7 @@ _readRangeTblEntry(void)
 			READ_BOOL_FIELD(security_barrier);
 			/* we re-use these RELATION fields, too: */
 			READ_OID_FIELD(relid);
+			READ_CHAR_FIELD(relkind);
 			READ_INT_FIELD(rellockmode);
 			READ_UINT_FIELD(perminfoindex);
 			break;
@@ -701,8 +702,6 @@ _readExtensibleNode(void)
 Node *
 parseNodeString(void)
 {
-	void	   *return_value;
-
 	READ_TEMP_LOCALS();
 
 	/* Guard against stack overflow due to overly complex expressions */
@@ -713,16 +712,10 @@ parseNodeString(void)
 #define MATCH(tokname, namelen) \
 	(length == namelen && memcmp(token, tokname, namelen) == 0)
 
-	if (false)
-		;
 #include "readfuncs.switch.c"
-	else
-	{
-		elog(ERROR, "badly formatted node string \"%.32s\"...", token);
-		return_value = NULL;	/* keep compiler quiet */
-	}
 
-	return (Node *) return_value;
+	elog(ERROR, "badly formatted node string \"%.32s\"...", token);
+	return NULL;				/* keep compiler quiet */
 }
 
 

@@ -5,6 +5,7 @@ backend_sources = []
 backend_link_with = [pgport_srv, common_srv]
 
 generated_backend_sources = []
+post_export_backend_sources = []
 
 subdir('access')
 subdir('archive')
@@ -32,6 +33,7 @@ subdir('storage')
 subdir('tcop')
 subdir('tsearch')
 subdir('utils')
+#subdir('oracle_parser')
 
 subdir('po', if_found: libintl)
 
@@ -61,11 +63,13 @@ backend_link_depends = []
 # Can't name the static library 'postgres', because msbuild ends up with a
 # conflict for the .pdb file otherwise.
 
+ivory_inc = include_directories('../../contrib/ivorysql_ora/src/include')
 postgres_lib = static_library('postgres_lib',
   backend_sources + timezone_sources + generated_backend_sources,
   link_whole: backend_link_with,
   dependencies: backend_build_deps,
   c_pch: pch_postgres_h,
+  include_directories: [ivory_inc],
   kwargs: internal_lib_args,
 )
 
@@ -133,8 +137,15 @@ if dtrace.found() and host_system != 'darwin'
   )
 endif
 
+if host_system == 'windows'
+  post_export_backend_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
+    '--NAME', 'postgres',
+    '--FILEDESC', 'PostgreSQL Server',])
+endif
+
 postgres = executable('postgres',
   backend_input,
+  sources: post_export_backend_sources,
   objects: backend_objs,
   link_args: backend_link_args,
   link_with: backend_link_with,
@@ -203,3 +214,4 @@ subdir('replication/libpqwalreceiver')
 subdir('replication/pgoutput')
 subdir('snowball')
 subdir('utils/mb/conversion_procs')
+subdir('oracle_parser')

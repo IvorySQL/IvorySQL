@@ -15,7 +15,6 @@ subdir('interfaces')
 
 subdir('tools/pg_bsd_indent')
 
-
 ### Generate a Makefile.global that's complete enough for PGXS to work.
 #
 # This is somewhat ugly, but allows extensions to use a single buildsystem

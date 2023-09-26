@@ -1,5 +1,11 @@
 # Copyright (c) 2022-2023, PostgreSQL Global Development Group
 
+run_command(
+  [ln,
+   '-s',
+   '../backend/oracle_parser/ora_keywords.c'],
+  check:false)
+
 fe_utils_sources = files(
   'archive.c',
   'cancel.c',
@@ -13,7 +19,17 @@ fe_utils_sources = files(
   'recovery_gen.c',
   'simple_list.c',
   'string_utils.c',
+  'ora_keywords.c',
+  'ora_string_utils.c',
 )
+
+ora_parser_kwlist = custom_target('ora_kwlist',
+  input: files('../include/oracle_parser/ora_kwlist.h'),
+  output: 'ora_kwlist_d.h',
+  command: [perl, '-I', '@SOURCE_ROOT@/src/tools', files('../tools/ora_gen_keywordlist.pl'),
+      '--extern', '--output', '@OUTDIR@', '@INPUT@'])
+generated_sources += ora_parser_kwlist
+fe_utils_sources += ora_parser_kwlist
 
 psqlscan = custom_target('psqlscan',
   input: 'psqlscan.l',

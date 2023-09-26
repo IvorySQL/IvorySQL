@@ -32,7 +32,7 @@ pg_regress = executable('pg_regress',
   c_args: pg_regress_cflags,
   dependencies: [frontend_code],
   kwargs: default_bin_args + {
-    'install_dir': dir_pgxs / 'src/test/regress',
+    'install_dir': dir_pgxs / 'src/oracle_test/regress',
   },
 )
 bin_targets += pg_regress

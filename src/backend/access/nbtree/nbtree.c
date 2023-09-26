@@ -835,7 +835,7 @@ btvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 	if (stats == NULL)
 	{
 		/* Check if VACUUM operation can entirely avoid btvacuumscan() call */
-		if (!_bt_vacuum_needs_cleanup(info->index, info->heaprel))
+		if (!_bt_vacuum_needs_cleanup(info->index))
 			return NULL;
 
 		/*
@@ -871,7 +871,7 @@ btvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 	 */
 	Assert(stats->pages_deleted >= stats->pages_free);
 	num_delpages = stats->pages_deleted - stats->pages_free;
-	_bt_set_cleanup_info(info->index, info->heaprel, num_delpages);
+	_bt_set_cleanup_info(info->index, num_delpages);
 
 	/*
 	 * It's quite possible for us to be fooled by concurrent page splits into
@@ -1093,8 +1093,7 @@ backtrack:
 		 * can't be half-dead because only an interrupted VACUUM process can
 		 * leave pages in that state, so we'd definitely have dealt with it
 		 * back when the page was the scanblkno page (half-dead pages are
-		 * always marked fully deleted by _bt_pagedel()).  This assumes that
-		 * there can be only one vacuum process running at a time.
+		 * always marked fully deleted by _bt_pagedel(), barring corruption).
 		 */
 		if (!opaque || !P_ISLEAF(opaque) || P_ISHALFDEAD(opaque))
 		{

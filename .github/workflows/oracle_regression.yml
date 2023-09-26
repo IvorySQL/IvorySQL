@@ -2,9 +2,9 @@ name: oracle_regression
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master , IVORY_REL_3_STABLE ]
   pull_request:
-    branches: [ master ]
+    branches: [ master , IVORY_REL_3_STABLE ]
 
 jobs:
   oracle_regression:

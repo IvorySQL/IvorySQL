@@ -46,6 +46,7 @@ gbt_tsgt(const void *a, const void *b, FmgrInfo *flinfo)
 	const Timestamp *aa = (const Timestamp *) a;
 	const Timestamp *bb = (const Timestamp *) b;
 
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(timestamp_gt,
 											TimestampGetDatumFast(*aa),
 											TimestampGetDatumFast(*bb)));
@@ -57,6 +58,7 @@ gbt_tsge(const void *a, const void *b, FmgrInfo *flinfo)
 	const Timestamp *aa = (const Timestamp *) a;
 	const Timestamp *bb = (const Timestamp *) b;
 
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(timestamp_ge,
 											TimestampGetDatumFast(*aa),
 											TimestampGetDatumFast(*bb)));
@@ -68,6 +70,7 @@ gbt_tseq(const void *a, const void *b, FmgrInfo *flinfo)
 	const Timestamp *aa = (const Timestamp *) a;
 	const Timestamp *bb = (const Timestamp *) b;
 
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(timestamp_eq,
 											TimestampGetDatumFast(*aa),
 											TimestampGetDatumFast(*bb)));
@@ -79,6 +82,7 @@ gbt_tsle(const void *a, const void *b, FmgrInfo *flinfo)
 	const Timestamp *aa = (const Timestamp *) a;
 	const Timestamp *bb = (const Timestamp *) b;
 
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(timestamp_le,
 											TimestampGetDatumFast(*aa),
 											TimestampGetDatumFast(*bb)));
@@ -90,6 +94,7 @@ gbt_tslt(const void *a, const void *b, FmgrInfo *flinfo)
 	const Timestamp *aa = (const Timestamp *) a;
 	const Timestamp *bb = (const Timestamp *) b;
 
+	(void) flinfo;		/* not used */
 	return DatumGetBool(DirectFunctionCall2(timestamp_lt,
 											TimestampGetDatumFast(*aa),
 											TimestampGetDatumFast(*bb)));
@@ -103,6 +108,7 @@ gbt_tskey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 	tsKEY	   *ib = (tsKEY *) (((const Nsrt *) b)->t);
 	int			res;
 
+	(void) flinfo;		/* not used */
 	res = DatumGetInt32(DirectFunctionCall2(timestamp_cmp, TimestampGetDatumFast(ia->lower), TimestampGetDatumFast(ib->lower)));
 	if (res == 0)
 		return DatumGetInt32(DirectFunctionCall2(timestamp_cmp, TimestampGetDatumFast(ia->upper), TimestampGetDatumFast(ib->upper)));
@@ -117,6 +123,7 @@ gbt_ts_dist(const void *a, const void *b, FmgrInfo *flinfo)
 	const Timestamp *bb = (const Timestamp *) b;
 	Interval   *i;
 
+	(void) flinfo;		/* not used */
 	if (TIMESTAMP_NOT_FINITE(*aa) || TIMESTAMP_NOT_FINITE(*bb))
 		return get_float8_infinity();
 

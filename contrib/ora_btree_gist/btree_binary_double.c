@@ -29,26 +29,31 @@ PG_FUNCTION_INFO_V1(gbt_binary_double_same);
 static bool
 gbt_binary_doublegt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float8 *) a) > *((const float8 *) b));
 }
 static bool
 gbt_binary_doublege(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float8 *) a) >= *((const float8 *) b));
 }
 static bool
 gbt_binary_doubleeq(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float8 *) a) == *((const float8 *) b));
 }
 static bool
 gbt_binary_doublele(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float8 *) a) <= *((const float8 *) b));
 }
 static bool
 gbt_binary_doublelt(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	(void) flinfo;		/* not used */
 	return (*((const float8 *) a) < *((const float8 *) b));
 }
 
@@ -58,6 +63,7 @@ gbt_binary_doublekey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 	float8KEY  *ia = (float8KEY *) (((const Nsrt *) a)->t);
 	float8KEY  *ib = (float8KEY *) (((const Nsrt *) b)->t);
 
+	(void) flinfo;		/* not used */
 	if (ia->lower == ib->lower)
 	{
 		if (ia->upper == ib->upper)
@@ -76,6 +82,7 @@ gbt_binary_double_dist(const void *a, const void *b, FmgrInfo *flinfo)
 	float8		arg2 = *(const float8 *) b;
 	float8		r;
 
+	(void) flinfo;		/* not used */
 	r = arg1 - arg2;
 	if (unlikely(isinf(r)) && !isinf(arg1) && !isinf(arg2))
 		float_overflow_error();

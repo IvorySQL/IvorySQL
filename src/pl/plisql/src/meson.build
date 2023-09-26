@@ -6,6 +6,7 @@ plisql_sources = files(
   'pl_funcs.c',
   'pl_handler.c',
   'pl_scanner.c',
+  'pl_subproc_function.c',
 )
 
 pl_gram = custom_target('gram',
@@ -17,7 +18,7 @@ plisql_sources += pl_gram
 
 gen_plerrcodes = files('generate-plerrcodes.pl')
 pl_errcodes = custom_target('plerrcodes',
-  input: ['../../../../src/backend/utils/errcodes.txt'],
+  input: ['../../../../src/backend/utils/ora_errcodes.txt'],
   output: ['plerrcodes.h'],
   command: [perl, gen_plerrcodes, '@INPUT0@'],
   capture: true,
@@ -25,7 +26,7 @@ pl_errcodes = custom_target('plerrcodes',
 generated_sources += pl_errcodes
 plisql_sources += pl_errcodes
 
-gen_keywordlist = files('../../../../src/tools/gen_keywordlist.pl')
+gen_keywordlist = files('../../../../src/tools/ora_gen_keywordlist.pl')
 pl_reserved = custom_target('pl_reserved_kwlist',
   input: ['pl_reserved_kwlist.h'],
   output: ['pl_reserved_kwlist_d.h'],
@@ -52,6 +53,7 @@ plisql = shared_module('plisql',
   plisql_sources,
   c_pch: pch_postgres_h,
   include_directories: include_directories('.'),
+  link_with: ora_parser,
   kwargs: pg_mod_args,
 )
 pl_targets += plisql

@@ -4,7 +4,7 @@
 
 install_data(
   'PostgreSQL/Version.pm',
-  install_dir: dir_pgxs / 'src/test/perl/PostgreSQL')
+  install_dir: dir_pgxs / 'src/oracle_test/perl/PostgreSQL')
 
 install_data(
   'PostgreSQL/Test/Utils.pm',
@@ -12,4 +12,4 @@ install_data(
   'PostgreSQL/Test/RecursiveCopy.pm',
   'PostgreSQL/Test/BackgroundPsql.pm',
   'PostgreSQL/Test/Cluster.pm',
-  install_dir: dir_pgxs / 'src/test/perl/PostgreSQL/Test')
+  install_dir: dir_pgxs / 'src/oracle_test/perl/PostgreSQL/Test')

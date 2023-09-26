@@ -89,7 +89,7 @@ install_headers(
   'c.h',
   'port.h',
   'postgres_fe.h',
-  install_dir: dir_include_internal
+  install_dir: dir_include_internal,
 )
 
 install_headers(
@@ -144,6 +144,7 @@ header_subdirs = [
   'mb',
   'nodes',
   'optimizer',
+  'oracle_parser',
   'parser',
   'partitioning',
   'postmaster',

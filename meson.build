@@ -8,7 +8,7 @@
 
 project('postgresql',
   ['c'],
-  version: '16beta1',
+  version: '16beta2',
   license: 'PostgreSQL',
 
   # We want < 0.56 for python 3.5 compatibility on old platforms. EPEL for
@@ -150,7 +150,7 @@ cdata.set_quoted('PG_MAJORVERSION', pg_version_major.to_string())
 cdata.set('PG_MAJORVERSION_NUM', pg_version_major)
 cdata.set('PG_MINORVERSION_NUM', pg_version_minor)
 cdata.set('PG_VERSION_NUM', pg_version_num)
-# PG_VERSION_STR is built later, it depends compiler test results
+# PG_VERSION_STR is built later, it depends on compiler test results
 cdata.set_quoted('CONFIGURE_ARGS', '')
 
 
@@ -343,6 +343,7 @@ missing = find_program('config/missing', native: true)
 cp = find_program('cp', required: false, native: true)
 xmllint_bin = find_program(get_option('XMLLINT'), native: true, required: false)
 xsltproc_bin = find_program(get_option('XSLTPROC'), native: true, required: false)
+ln = find_program('ln', required: false, native: true)
 
 bison_flags = []
 if bison.found()
@@ -385,7 +386,7 @@ install_files = files('src/tools/install_files')
 # https://github.com/mesonbuild/meson/issues/8511
 meson_binpath_r = run_command(python, 'src/tools/find_meson', check: true)
 
-if meson_binpath_r.returncode() != 0 or meson_binpath_r.stdout() == ''
+if meson_binpath_r.stdout() == ''
   error('huh, could not run find_meson.\nerrcode: @0@\nstdout: @1@\nstderr: @2@'.format(
     meson_binpath_r.returncode(),
     meson_binpath_r.stdout(),
@@ -458,6 +459,8 @@ if get_option('system_tzdata') != ''
   cdata.set_quoted('SYSTEMTZDIR', get_option('system_tzdata'))
 endif
 
+cdata.set('DEF_ORAPORT', get_option('oraport'))
+cdata.set_quoted('DEF_ORAPORT_STR', get_option('oraport').to_string())
 
 
 ###############################################################
@@ -558,7 +561,7 @@ endif
 ###############################################################
 
 bonjouropt = get_option('bonjour')
-bonjour = dependency('', required : false)
+bonjour = not_found_dep
 if cc.check_header('dns_sd.h', required: bonjouropt,
     args: test_c_args, include_directories: postgres_inc) and \
    cc.has_function('DNSServiceRegister',
@@ -722,8 +725,6 @@ choke me
     endif
   endif
 
-  # XXX: this shouldn't be tested in the windows case, but should be tested in
-  # the dependency() success case
   if ldap.found() and cc.has_function('ldap_initialize',
       dependencies: ldap, args: test_c_args)
     cdata.set('HAVE_LDAP_INITIALIZE', 1)
@@ -1133,7 +1134,7 @@ if not get_option('readline').disabled()
       error('''readline header not found
 If you have @0@ already installed, see meson-log/meson-log.txt for details on the
 failure. It is possible the compiler isn't looking in the proper directory.
-Use -Dreadline=false to disable readline support.'''.format(readline_dep))
+Use -Dreadline=disabled to disable readline support.'''.format(readline_dep))
     endif
 
     check_funcs = [
@@ -1148,7 +1149,7 @@ Use -Dreadline=false to disable readline support.'''.format(readline_dep))
     foreach func : check_funcs
       found = cc.has_function(func, dependencies: [readline],
         args: test_c_args, include_directories: postgres_inc)
-      cdata.set('HAVE_'+func.to_upper(), found ? 1 : false)
+      cdata.set('HAVE_' + func.to_upper(), found ? 1 : false)
     endforeach
 
     check_vars = [
@@ -1158,7 +1159,7 @@ Use -Dreadline=false to disable readline support.'''.format(readline_dep))
     ]
 
     foreach var : check_vars
-      cdata.set('HAVE_'+var.to_upper(),
+      cdata.set('HAVE_' + var.to_upper(),
         cc.has_header_symbol(readline_h, var,
           args: test_c_args, include_directories: postgres_inc,
           prefix: '#include <stdio.h>',
@@ -1313,7 +1314,7 @@ if sslopt in ['auto', 'openssl']
       cdata.set('USE_OPENSSL', 1,
                 description: 'Define to 1 to build with OpenSSL support. (-Dssl=openssl)')
       cdata.set('OPENSSL_API_COMPAT', '0x10001000L',
-                description: '''Define to the OpenSSL API version in use. This avoids deprecation warnings from newer OpenSSL versions.''')
+                description: 'Define to the OpenSSL API version in use. This avoids deprecation warnings from newer OpenSSL versions.')
       ssl_library = 'openssl'
     else
       ssl = not_found_dep
@@ -1348,7 +1349,7 @@ if uuidopt != 'none'
     uuidfunc = 'uuid_export'
     uuidheader = 'uuid.h'
   else
-    error('huh')
+    error('unknown uuid build option value: @0@'.format(uuidopt))
   endif
 
   if not cc.has_header_symbol(uuidheader, uuidfunc, args: test_c_args, dependencies: uuid)
@@ -1601,8 +1602,7 @@ if cc.links('''
 
   if not buggy_int128
     cdata.set('PG_INT128_TYPE', '__int128')
-    cdata.set('ALIGNOF_PG_INT128_TYPE', cc.
-      alignment('__int128', args: test_c_args))
+    cdata.set('ALIGNOF_PG_INT128_TYPE', cc.alignment('__int128', args: test_c_args))
   endif
 endif
 
@@ -1644,8 +1644,8 @@ endif
 # We use <stdbool.h> if we have it and it declares type bool as having
 # size 1.  Otherwise, c.h will fall back to declaring bool as unsigned char.
 if cc.has_type('_Bool', args: test_c_args) \
-  and cc.has_type('bool', prefix: '#include <stdbool.h>', args: test_c_args) \
-  and cc.sizeof('bool', prefix: '#include <stdbool.h>', args: test_c_args) == 1
+    and cc.has_type('bool', prefix: '#include <stdbool.h>', args: test_c_args) \
+    and cc.sizeof('bool', prefix: '#include <stdbool.h>', args: test_c_args) == 1
   cdata.set('HAVE__BOOL', 1)
   cdata.set('PG_USE_STDBOOL', 1)
 endif
@@ -1672,11 +1672,11 @@ endforeach
 
 
 if cc.has_function_attribute('visibility:default') and \
-  cc.has_function_attribute('visibility:hidden')
+    cc.has_function_attribute('visibility:hidden')
   cdata.set('HAVE_VISIBILITY_ATTRIBUTE', 1)
 
   # Only newer versions of meson know not to apply gnu_symbol_visibility =
-  # inlineshidden to C code as well... Any either way, we want to put these
+  # inlineshidden to C code as well... And either way, we want to put these
   # flags into exported files (pgxs, .pc files).
   cflags_mod += '-fvisibility=hidden'
   cxxflags_mod += ['-fvisibility=hidden', '-fvisibility-inlines-hidden']
@@ -2543,7 +2543,7 @@ if not nlsopt.disabled()
   # warnings if not found.
   msgfmt = find_program('msgfmt', required: nlsopt.enabled(), native: true)
 
-  # meson 0.59 has this wrapped in dependency('int')
+  # meson 0.59 has this wrapped in dependency('intl')
   if (msgfmt.found() and
       cc.check_header('libintl.h', required: nlsopt,
         args: test_c_args, include_directories: postgres_inc))
@@ -2678,6 +2678,20 @@ gen_export_kwargs = {
   'build_by_default': false,
   'install': false,
 }
+
+
+
+###
+### Helpers for custom targets used across the tree
+###
+
+catalog_pm = files('src/backend/catalog/Catalog.pm')
+perfect_hash_pm = files('src/tools/PerfectHash.pm')
+gen_kwlist_deps = [perfect_hash_pm]
+gen_kwlist_cmd = [
+  perl, '-I', '@SOURCE_ROOT@/src/tools',
+  files('src/tools/gen_keywordlist.pl'),
+  '--output', '@OUTDIR@', '@INPUT@']
 
 
 
@@ -2829,11 +2843,12 @@ libpq_deps += [
 subdir('src/interfaces/libpq')
 # fe_utils depends on libpq
 subdir('src/fe_utils')
+subdir('src/oracle_fe_utils')
 
 # for frontend binaries
 frontend_code = declare_dependency(
   include_directories: [postgres_inc],
-  link_with: [fe_utils, common_static, pgport_static],
+  link_with: [fe_utils, ora_fe_utils, common_static, pgport_static],
   sources: generated_headers,
   dependencies: [os_deps, libintl],
 )
@@ -3034,7 +3049,7 @@ meson_install_args = meson_args + ['install'] + {
     'muon': []
 }[meson_impl]
 
-# setup tests should  be run first,
+# setup tests should be run first,
 # so define priority for these
 setup_tests_priority = 100
 test('tmp_install',

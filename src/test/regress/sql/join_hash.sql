@@ -523,7 +523,8 @@ INSERT INTO hjtest_matchbits_t2 VALUES (2);
 -- Update should create a HOT tuple. If this status bit isn't cleared, we won't
 -- correctly emit the NULL-extended unmatching tuple in full hash join.
 UPDATE hjtest_matchbits_t2 set id = 2;
-SELECT * FROM hjtest_matchbits_t1 t1 FULL JOIN hjtest_matchbits_t2 t2 ON t1.id = t2.id;
+SELECT * FROM hjtest_matchbits_t1 t1 FULL JOIN hjtest_matchbits_t2 t2 ON t1.id = t2.id
+  ORDER BY t1.id;
 -- Test serial full hash join.
 -- Resetting parallel_setup_cost should force a serial plan.
 -- Just to be safe, however, set enable_parallel_hash to off, as parallel full
@@ -603,3 +604,22 @@ WHERE
     AND hjtest_1.a <> hjtest_2.b;
 
 ROLLBACK;
+
+-- Verify that we behave sanely when the inner hash keys contain parameters
+-- (that is, outer or lateral references).  This situation has to defeat
+-- re-use of the inner hash table across rescans.
+begin;
+set local enable_hashjoin = on;
+
+explain (costs off)
+select i8.q2, ss.* from
+int8_tbl i8,
+lateral (select t1.fivethous, i4.f1 from tenk1 t1 join int4_tbl i4
+         on t1.fivethous = i4.f1+i8.q2 order by 1,2) ss;
+
+select i8.q2, ss.* from
+int8_tbl i8,
+lateral (select t1.fivethous, i4.f1 from tenk1 t1 join int4_tbl i4
+         on t1.fivethous = i4.f1+i8.q2 order by 1,2) ss;
+
+rollback;

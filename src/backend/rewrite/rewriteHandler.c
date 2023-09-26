@@ -484,6 +484,8 @@ rewriteRuleAction(Query *parsetree,
 					/* other RTE types don't contain bare expressions */
 					break;
 			}
+			sub_action->hasSubLinks |=
+				checkExprHasSubLink((Node *) rte->securityQuals);
 			if (sub_action->hasSubLinks)
 				break;			/* no need to keep scanning rtable */
 		}
@@ -1929,11 +1931,10 @@ ApplyRetrieveRule(Query *parsetree,
 
 	/*
 	 * Clear fields that should not be set in a subquery RTE.  Note that we
-	 * leave the relid, rellockmode, and perminfoindex fields set, so that the
-	 * view relation can be appropriately locked before execution and its
-	 * permissions checked.
+	 * leave the relid, relkind, rellockmode, and perminfoindex fields set, so
+	 * that the view relation can be appropriately locked before execution and
+	 * its permissions checked.
 	 */
-	rte->relkind = 0;
 	rte->tablesample = NULL;
 	rte->inh = false;			/* must not be set for a subquery */
 
@@ -3421,7 +3422,7 @@ rewriteTargetView(Query *parsetree, Relation view)
 								  view_targetlist,
 								  REPLACEVARS_REPORT_ERROR,
 								  0,
-								  &parsetree->hasSubLinks);
+								  NULL);
 
 	/*
 	 * Update all other RTI references in the query that point to the view
@@ -3441,7 +3442,7 @@ rewriteTargetView(Query *parsetree, Relation view)
 	 * columns to be affected.
 	 *
 	 * Note that this destroys the resno ordering of the targetlist, but that
-	 * will be fixed when we recurse through rewriteQuery, which will invoke
+	 * will be fixed when we recurse through RewriteQuery, which will invoke
 	 * rewriteTargetListIU again on the updated targetlist.
 	 */
 	if (parsetree->commandType != CMD_DELETE)

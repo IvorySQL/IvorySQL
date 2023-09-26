@@ -520,6 +520,21 @@ binary_float_in(PG_FUNCTION_ARGS)
 		{
 			if (ORA_PARSER == compatible_db && !isliteral)
 			{
+				/*
+				 * isinf() is cross-platform incompatible. We can using isinf() on linux,
+				 * but not on windows. Because the isinf of windows can't distinguish infinity
+				 * or -infinity. Of course, we can using HUGE_VALF and -HUGE_VALF on windows,
+				 * but VS2013 generates a spurious overflow warning for -HUGE_VALF, so currently
+				 * we raise a error for windows temporarily. In the future, we will upgrade the
+				 * compilation architecture of windows platform, it is ok, no need raise error again.
+				 */
+#if defined(_MSC_VER) && _MSC_VER < 1900
+				ereport(ERROR,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						 errmsg("\"%s\" is out of range for type binary_float",
+								orig_num),
+						 errhint("Please change the build infrastructure or upgrade the version of Visual Studio on Windows.")));
+#endif
 				if (
 #if !defined(HUGE_VALF) || (defined(_MSC_VER) && (_MSC_VER < 1900))
 					isinf(val) == 1

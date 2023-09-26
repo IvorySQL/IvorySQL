@@ -144,11 +144,7 @@ static char *lc_monetary = NULL;
 static char *lc_numeric = NULL;
 static char *lc_time = NULL;
 static char *lc_messages = NULL;
-#ifdef USE_ICU
-static char locale_provider = COLLPROVIDER_ICU;
-#else
 static char locale_provider = COLLPROVIDER_LIBC;
-#endif
 static char *icu_locale = NULL;
 static char *icu_rules = NULL;
 static const char *default_text_search_config = NULL;
@@ -2270,7 +2266,11 @@ check_locale_name(int category, const char *locale, char **canonname)
 	if (res == NULL)
 	{
 		if (*locale)
-			pg_fatal("invalid locale name \"%s\"", locale);
+		{
+			pg_log_error("invalid locale name \"%s\"", locale);
+			pg_log_error_hint("If the locale name is specific to ICU, use --icu-locale.");
+			exit(1);
+		}
 		else
 		{
 			/*
@@ -2351,23 +2351,10 @@ icu_language_tag(const char *loc_str)
 {
 #ifdef USE_ICU
 	UErrorCode	 status;
-	char		 lang[ULOC_LANG_CAPACITY];
 	char		*langtag;
 	size_t		 buflen = 32;	/* arbitrary starting buffer size */
 	const bool	 strict = true;
 
-	status = U_ZERO_ERROR;
-	uloc_getLanguage(loc_str, lang, ULOC_LANG_CAPACITY, &status);
-	if (U_FAILURE(status) || status == U_STRING_NOT_TERMINATED_WARNING)
-	{
-		pg_fatal("could not get language from locale \"%s\": %s",
-				 loc_str, u_errorName(status));
-		return NULL;
-	}
-
-	/* C/POSIX locales aren't handled by uloc_getLanguageTag() */
-	if (strcmp(lang, "c") == 0 || strcmp(lang, "posix") == 0)
-		return pstrdup("en-US-u-va-posix");
 
 	/*
 	 * A BCP47 language tag doesn't have a clearly-defined upper limit
@@ -2433,8 +2420,7 @@ icu_validate_locale(const char *loc_str)
 
 	/* check for special language name */
 	if (strcmp(lang, "") == 0 ||
-		strcmp(lang, "root") == 0 || strcmp(lang, "und") == 0 ||
-		strcmp(lang, "c") == 0 || strcmp(lang, "posix") == 0)
+		strcmp(lang, "root") == 0 || strcmp(lang, "und") == 0)
 		found = true;
 
 	/* search for matching language within ICU */
@@ -2461,48 +2447,6 @@ icu_validate_locale(const char *loc_str)
 }
 
 /*
- * Determine default ICU locale by opening the default collator and reading
- * its locale.
- *
- * NB: The default collator (opened using NULL) is different from the collator
- * for the root locale (opened with "", "und", or "root"). The former depends
- * on the environment (useful at initdb time) and the latter does not.
- */
-static char *
-default_icu_locale(void)
-{
-#ifdef USE_ICU
-	UCollator	*collator;
-	UErrorCode   status;
-	const char	*valid_locale;
-	char		*default_locale;
-
-	status = U_ZERO_ERROR;
-	collator = ucol_open(NULL, &status);
-	if (U_FAILURE(status))
-		pg_fatal("could not open collator for default locale: %s",
-				 u_errorName(status));
-
-	status = U_ZERO_ERROR;
-	valid_locale = ucol_getLocaleByType(collator, ULOC_VALID_LOCALE,
-										&status);
-	if (U_FAILURE(status))
-	{
-		ucol_close(collator);
-		pg_fatal("could not determine default ICU locale");
-	}
-
-	default_locale = pg_strdup(valid_locale);
-
-	ucol_close(collator);
-
-	return default_locale;
-#else
-	pg_fatal("ICU is not supported in this build");
-#endif
-}
-
-/*
  * set up the locale variables
  *
  * assumes we have called setlocale(LC_ALL, "") -- see set_pglocale_pgservice
@@ -2512,7 +2456,7 @@ setlocales(void)
 {
 	char	   *canonname;
 
-	/* set empty lc_* values to locale config if set */
+	/* set empty lc_* and iculocale values to locale config if set */
 
 	if (locale)
 	{
@@ -2528,6 +2472,8 @@ setlocales(void)
 			lc_monetary = locale;
 		if (!lc_messages)
 			lc_messages = locale;
+		if (!icu_locale && locale_provider == COLLPROVIDER_ICU)
+			icu_locale = locale;
 	}
 
 	/*
@@ -2559,10 +2505,7 @@ setlocales(void)
 
 		/* acquire default locale from the environment, if not specified */
 		if (icu_locale == NULL)
-		{
-			icu_locale = default_icu_locale();
-			printf(_("Using default ICU locale \"%s\".\n"), icu_locale);
-		}
+			pg_fatal("ICU locale must be specified");
 
 		/* canonicalize to a language tag */
 		langtag = icu_language_tag(icu_locale);
@@ -2617,7 +2560,7 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
-	printf(_("	-m, --dbmode=MODE 				set database mode, default is oracle\n"));
+	printf(_("  -m, --dbmode=MODE 	    set database mode, default is oracle\n"));
 	printf(_("  -C, --case-conversion-mode=MODE   set case conversion mode, default is interchange\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
@@ -3469,7 +3412,6 @@ main(int argc, char *argv[])
 				break;
 			case 8:
 				locale = "C";
-				locale_provider = COLLPROVIDER_LIBC;
 				break;
 			case 9:
 				pwfilename = pg_strdup(optarg);

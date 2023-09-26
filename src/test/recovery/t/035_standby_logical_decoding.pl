@@ -27,20 +27,6 @@ my $res;
 my $primary_slotname = 'primary_physical';
 my $standby_physical_slotname = 'standby_physical';
 
-# find $pat in logfile of $node after $off-th byte
-sub find_in_log
-{
-	my ($node, $pat, $off) = @_;
-
-	$off = 0 unless defined $off;
-	my $log = PostgreSQL::Test::Utils::slurp_file($node->logfile);
-	return 0 if (length($log) <= $off);
-
-	$log = substr($log, $off);
-
-	return $log =~ m/$pat/;
-}
-
 # Fetch xmin columns from slot's pg_replication_slots row, after waiting for
 # given boolean condition to be true to ensure we've reached a quiescent state.
 sub wait_for_xmins
@@ -214,13 +200,11 @@ sub check_for_invalidation
 	my $inactive_slot = $slot_prefix . 'inactiveslot';
 
 	# message should be issued
-	ok( find_in_log(
-		$node_standby,
+	ok( $node_standby->log_contains(
 		"invalidating obsolete replication slot \"$inactive_slot\"", $log_start),
 		"inactiveslot slot invalidation is logged $test_name");
 
-	ok( find_in_log(
-		$node_standby,
+	ok( $node_standby->log_contains(
 		"invalidating obsolete replication slot \"$active_slot\"", $log_start),
 		"activeslot slot invalidation is logged $test_name");
 
@@ -608,13 +592,11 @@ $node_primary->safe_psql('testdb', qq[
 $node_primary->wait_for_replay_catchup($node_standby);
 
 # message should not be issued
-ok( !find_in_log(
-   $node_standby,
+ok( !$node_standby->log_contains(
   "invalidating obsolete slot \"no_conflict_inactiveslot\"", $logstart),
   'inactiveslot slot invalidation is not logged with vacuum on conflict_test');
 
-ok( !find_in_log(
-   $node_standby,
+ok( !$node_standby->log_contains(
   "invalidating obsolete slot \"no_conflict_activeslot\"", $logstart),
   'activeslot slot invalidation is not logged with vacuum on conflict_test');
 

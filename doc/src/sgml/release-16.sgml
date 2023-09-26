@@ -6,7 +6,7 @@
 
   <formalpara>
    <title>Release date:</title>
-   <para>AS OF 2023-05-17, 2023-??-??</para>
+   <para>AS OF 2023-06-26, 2023-??-??</para>
   </formalpara>
 
   <sect2 id="release-16-highlights">
@@ -21,13 +21,13 @@
 
     <listitem>
      <para>
-      Allow parallel execution of queries with OUTER and FULL joins
+      Allow parallelization of FULL and internal right OUTER hash joins
      </para>
     </listitem>
 
     <listitem>
      <para>
-      Allow logical replication from standbys servers
+      Allow logical replication from standby servers
      </para>
     </listitem>
 
@@ -126,11 +126,11 @@ Author: Michael Paquier <michael@paquier.xyz>
 
 <listitem>
 <para>
-Change REINDEX DATABASE and reindexedb to not process indexes on system catalogs (Simon Riggs)
+Change REINDEX DATABASE and reindexdb to not process indexes on system catalogs (Simon Riggs)
 </para>
 
 <para>
-Processing such indexes is still possible using REINDEX SYSTEM and reindexedb --system.
+Processing such indexes is still possible using REINDEX SYSTEM and reindexdb --system.
 </para>
 </listitem>
 
@@ -156,7 +156,7 @@ Author: Michael Paquier <michael@paquier.xyz>
 
 <listitem>
 <para>
-Remove pg_walinspect functions pg_get_wal_records_info_till_end_of_wal() and pg_get_wal_stats_till_end_of_wal().
+Remove pg_walinspect functions pg_get_wal_records_info_till_end_of_wal() and pg_get_wal_stats_till_end_of_wal() (Bharath Rupireddy)
 </para>
 </listitem>
 
@@ -226,6 +226,39 @@ Remove server variable promote_trigger_file (Simon Riggs)
 
 <para>
 This was used to promote a standby to primary, but is now easier accomplished with pg_ctl promote or pg_promote().
+</para>
+</listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2023-06-07 [b0f6c4371] Remove read-only server settings lc_collate and lc_ctype
+-->
+
+<listitem>
+<para>
+Remove read-only server variables lc_collate and lc_ctype (Peter Eisentraut)
+</para>
+
+<para>
+Collations and locales can vary between databases so having them as read-only server variables was unhelpful.
+</para>
+</listitem>
+
+<!--
+Author: Nathan Bossart <nathan@postgresql.org>
+2023-05-21 [2dcd1578c] Rename some createuser options.
+Author: Nathan Bossart <nathan@postgresql.org>
+2023-05-23 [381d19b3e] Document deprecated createuser option.
+-->
+
+<listitem>
+<para>
+Deprecate createuser option --role (Nathan Bossart)
+</para>
+
+<para>
+This option could be easily confused with new createuser role membership options, so option --member-of has been added with the same functionality.
+The --role option can still be used.
 </para>
 </listitem>
 
@@ -322,7 +355,7 @@ Author: Thomas Munro <tmunro@postgresql.org>
 
 <listitem>
 <para>
-Allow outer and full joins to be performed in parallel (Melanie Plageman, Thomas Munro)
+Allow parallelization of FULL and internal right OUTER hash joins (Melanie Plageman, Thomas Munro)
 </para>
 </listitem>
 
@@ -474,6 +507,39 @@ Improve the speed of updating the process title (David Rowley)
 </para>
 </listitem>
 
+<!--
+Author: John Naylor <john.naylor@postgresql.org>
+2022-08-11 [37a6e5df3] Optimize xid/subxid searches in XidInMVCCSnapshot().
+Author: John Naylor <john.naylor@postgresql.org>
+2022-08-26 [121d2d3d7] Use SSE2 in is_valid_ascii() where available.
+Author: John Naylor <john.naylor@postgresql.org>
+2022-08-10 [b6ef16756] Introduce optimized routine for linear searches of array
+Author: John Naylor <john.naylor@postgresql.org>
+2022-08-26 [e813e0e16] Add optimized functions for linear search within byte ar
+-->
+
+<listitem>
+<para>
+Allow xid/subxid searches and ASCII string detection to use vector operations (Nathan Bossart, John Naylor)
+</para>
+
+<para>
+ASCII detection is particularly useful for COPY FROM.  Vector operations are also used for some C array searches.
+</para>
+
+</listitem>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2022-08-29 [c6e0fe1f2] Improve performance of and reduce overheads of memory ma
+-->
+
+<listitem>
+<para>
+Reduce overhead of memory allocations (Andres Freund, David Rowley)
+</para>
+</listitem>
+
      </itemizedlist>
 
     </sect4>
@@ -571,7 +637,7 @@ Create subscription statistics entries at subscription creation time so stats_re
 </para>
 
 <para>
-Previously entries were created only created when the first statistics were reported.
+Previously entries were created only when the first statistics were reported.
 </para>
 </listitem>
 
@@ -755,7 +821,7 @@ Simplify permissions for LOCK TABLE (Jeff Davis)
 </para>
 
 <para>
-Previously the ability to perform LOCK TABLE at various lock levels was bound to specific query-type permissions.  For example, UPDATE could could perform all lock levels except ACCESS SHARE, which
+Previously the ability to perform LOCK TABLE at various lock levels was bound to specific query-type permissions.  For example, UPDATE could perform all lock levels except ACCESS SHARE, which
 required SELECT permissions.  Now UPDATE can issue all lock levels.  MORE?
 </para>
 </listitem>
@@ -786,7 +852,7 @@ Restrict the privileges of CREATEROLE roles (Robert Haas)
 </para>
 
 <para>
-Previously roles with CREATEROLE privileges could change many aspects of any non-superuser role.  Such changes, including adding members, are now require the role requesting the change to have ADMIN OPTION
+Previously roles with CREATEROLE privileges could change many aspects of any non-superuser role.  Such changes, including adding members, now require the role requesting the change to have ADMIN OPTION
 permission.
 </para>
 </listitem>
@@ -924,7 +990,7 @@ Add dependency tracking of grantors for GRANT records (Robert Haas)
 </para>
 
 <para>
-This will guarantee that pg_auth_members.grantor values is always valid.
+This guarantees that pg_auth_members.grantor values are always valid.
 </para>
 </listitem>
 
@@ -987,6 +1053,12 @@ Previously only a single privilege name, like SELECT, was accepted.
 <!--
 Author: Stephen Frost <sfrost@snowman.net>
 2023-04-13 [6633cfb21] De-Revert "Add support for Kerberos credential delegatio
+Author: Bruce Momjian <bruce@momjian.us>
+2023-05-20 [9c0a0e2ed] rename "gss_accept_deleg" to "gss_accept_delegation".
+Author: Nathan Bossart <nathan@postgresql.org>
+2023-05-20 [f4001a553] Fix remaining references to gss_accept_deleg.
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2023-05-21 [a2eb99a01] Expand some more uses of "deleg" to "delegation" or "del
 -->
 
 <listitem>
@@ -1271,7 +1343,22 @@ Determine the ICU default locale from the environment (Jeff Davis)
 </para>
 
 <para>
-However, ICU doesn't support the C local so UTF-8 is used in such cases.  Previously the default was always UTF-8.
+However, ICU doesn't support the C locale so UTF-8 is used in such cases.  Previously the default was always UTF-8.
+</para>
+</listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+Date:   Fri Jun 16 10:27:32 2023 -0700
+-->
+
+<listitem>
+<para>
+Have CREATE DATABASE and CREATE COLLATION's LOCALE options, and initdb and createdb --locale options, control non-libc collation providers (Jeff Davis)
+</para>
+
+<para>
+Previously they only controlled libc providers.
 </para>
 </listitem>
 
@@ -1312,8 +1399,11 @@ Author: Peter Eisentraut <peter@eisentraut.org>
 
 <listitem>
 <para>
-Add Windows process the system collations (Jose Santamaria Flecha)
-ADD THIS?
+Allow Windows to import system locales automatically (Juan José Santamaría Flecha)
+</para>
+
+<para>
+Previously, only ICU locales could be imported on Windows.
 </para>
 </listitem>
 
@@ -1335,13 +1425,11 @@ Author: Andres Freund <andres@anarazel.de>
 2023-04-07 [be87200ef] Support invalidating replication slots due to horizon an
 Author: Andres Freund <andres@anarazel.de>
 2023-04-08 [26669757b] Handle logical slot conflicts on standby
-Author: Andres Freund <andres@anarazel.de>
-2023-04-08 [0fdab27ad] Allow logical decoding on standbys
 -->
 
 <listitem>
 <para>
-Allow logical decoding on standbys (Bertrand Drouvot, Andres Freund, Amit Khandekar, Bertrand Drouvot)
+Allow logical decoding on standbys (Bertrand Drouvot, Andres Freund, Amit Khandekar)
 </para>
 </listitem>
 
@@ -1435,7 +1523,7 @@ Allow logical replication subscribers to process only changes that have no origi
 </para>
 
 <para>
-This can be used to avoid replication loops.
+This can be used to avoid replication loops.  This is controlled by the new CREATE SUBSCRIPTION "origin" option.
 </para>
 </listitem>
 
@@ -1781,6 +1869,17 @@ The IS JSON checks include checks for values, arrays, objects, scalars, and uniq
 </listitem>
 
 <!--
+Author: John Naylor <john.naylor@postgresql.org>
+2022-09-02 [0a8de93a4] Speed up lexing of long JSON strings
+-->
+
+<listitem>
+<para>
+Allow JSON string parsing to use vector operations (John Naylor)
+</para>
+</listitem>
+
+<!--
 Author: Tom Lane <tgl@sss.pgh.pa.us>
 2023-01-19 [5a617d75d] Fix ts_headline() to handle ORs and phrase queries more 
 -->
@@ -2118,6 +2217,21 @@ Add "FOREIGN" designation to psql \d+ for foreign table children and partitions 
 </listitem>
 
 <!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2023-03-02 [3dfae91f7] Show "internal name" not "source code" in psql's \df+ co
+-->
+
+<listitem>
+<para>
+Prevent \df+ from showing function source code (Isaac Morland)
+</para>
+
+<para>
+Function bodies are more easily viewed with \ev and \ef.
+</para>
+</listitem>
+
+<!--
 Author: Peter Eisentraut <peter@eisentraut.org>
 2022-11-15 [5b66de343] psql: Add command to use extended query protocol
 -->
@@ -2317,6 +2431,8 @@ The option is "-c name=value".
 <!--
 Author: Michael Paquier <michael@paquier.xyz>
 2022-07-13 [08951a7c9] createuser: Add support for more clause types through ne
+Author: Nathan Bossart <nathan@postgresql.org>
+2023-05-21 [2dcd1578c] Rename some createuser options.
 -->
 
 <listitem>
@@ -2519,56 +2635,6 @@ Author: John Naylor <john.naylor@postgresql.org>
 <listitem>
 <para>
 Add support for Advanced SIMD (Single Instruction Multiple Data) (NEON) instructions on ARM architectures (Nathan Bossart)
-</para>
-</listitem>
-
-<!--
-Author: John Naylor <john.naylor@postgresql.org>
-2022-08-26 [121d2d3d7] Use SSE2 in is_valid_ascii() where available.
--->
-
-<listitem>
-<para>
-Allow ASCII string detection to use vector operations on x86-64 architectures (John Naylor)
-</para>
-</listitem>
-
-<!--
-Author: John Naylor <john.naylor@postgresql.org>
-2022-09-02 [0a8de93a4] Speed up lexing of long JSON strings
--->
-
-<listitem>
-<para>
-Allow JSON string processing to use vector operations on x86-64 architectures (John Naylor)
-</para>
-
-<para>
-ARM?
-</para>
-</listitem>
-
-<!--
-Author: John Naylor <john.naylor@postgresql.org>
-2022-08-10 [b6ef16756] Introduce optimized routine for linear searches of array
-Author: John Naylor <john.naylor@postgresql.org>
-2022-08-26 [e813e0e16] Add optimized functions for linear search within byte ar
--->
-
-<listitem>
-<para>
-Allow arrays searches to use vector operations on x86-64 architectures (John Naylor)
-</para>
-</listitem>
-
-<!--
-Author: John Naylor <john.naylor@postgresql.org>
-2022-08-11 [37a6e5df3] Optimize xid/subxid searches in XidInMVCCSnapshot().
--->
-
-<listitem>
-<para>
-Allow xid/subxid searches to use vector operations on x86-64 architectures (Nathan Bossart)
 </para>
 </listitem>
 
@@ -2853,12 +2919,12 @@ Author: Michael Paquier <michael@paquier.xyz>
 
 <listitem>
 <para>
-Allow auto_explain to log query parameters used in executing prepared statements (Dagfinn Ilmari Mannsåker)
+Allow auto_explain to log values passed to parameterized statements (Dagfinn Ilmari Mannsåker)
 </para>
 
 <para>
-This is controlled by auto_explain.log_parameter_max_length, and by default query parameters will be logged with no length restriction.
-SHOULD THIS BE MORE CLEARLY IDENTIFIED AS CONTROLLING THE EXECUTION OF PREPARED STATEMENTS?
+This affects queries using server-side PREPARE/EXECUTE and client-side parse/bind.  Logging is controlled by auto_explain.log_parameter_max_length;  by default query parameters will
+be logged with no length restriction.
 </para>
 </listitem>
 
@@ -2968,6 +3034,17 @@ This is similar to bt_page_stats() except it can report on a range of pages.
 </listitem>
 
 <!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2023-01-02 [1fd3dd204] Add bt_multi_page_stats() function to contrib/pageinspec
+-->
+
+<listitem>
+<para>
+Add empty range output column to pageinspect function brin_page_items() (Tomas Vondra)
+</para>
+</listitem>
+
+<!--
 Author: Michael Paquier <michael@paquier.xyz>
 2023-02-17 [35739b87d] Redesign archive modules
 -->
@@ -3033,7 +3110,7 @@ Author: Tom Lane <tgl@sss.pgh.pa.us>
 
 <listitem>
 <para>
-Allow required extensions to marked as non-relocatable using "no_relocate" (Regina Obe)
+Allow required extensions to be marked as non-relocatable using "no_relocate" (Regina Obe)
 </para>
 
 <para>

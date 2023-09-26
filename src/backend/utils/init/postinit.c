@@ -483,10 +483,6 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 							 quote_identifier(name))));
 	}
 
-	/* Make the locale settings visible as GUC variables, too */
-	SetConfigOption("lc_collate", collate, PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
-	SetConfigOption("lc_ctype", ctype, PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
-
 	ReleaseSysCache(tup);
 }
 
@@ -950,7 +946,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		if (nfree < SuperuserReservedConnections)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
-					 errmsg("remaining connection slots are reserved for roles with %s",
+					 errmsg("remaining connection slots are reserved for roles with the %s attribute",
 							"SUPERUSER")));
 
 		if (!has_privs_of_role(GetUserId(), ROLE_PG_USE_RESERVED_CONNECTIONS))

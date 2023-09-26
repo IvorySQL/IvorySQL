@@ -35,10 +35,12 @@
 
 /* local functions */
 static bool join_is_removable(PlannerInfo *root, SpecialJoinInfo *sjinfo);
-static void remove_rel_from_query(PlannerInfo *root, int relid, int ojrelid,
-								  Relids joinrelids);
+static void remove_rel_from_query(PlannerInfo *root, int relid,
+								  SpecialJoinInfo *sjinfo);
 static void remove_rel_from_restrictinfo(RestrictInfo *rinfo,
 										 int relid, int ojrelid);
+static void remove_rel_from_eclass(EquivalenceClass *ec,
+								   int relid, int ojrelid);
 static List *remove_rel_from_joinlist(List *joinlist, int relid, int *nremoved);
 static bool rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel);
 static bool rel_is_distinct_for(PlannerInfo *root, RelOptInfo *rel,
@@ -73,7 +75,6 @@ restart:
 	foreach(lc, root->join_info_list)
 	{
 		SpecialJoinInfo *sjinfo = (SpecialJoinInfo *) lfirst(lc);
-		Relids		joinrelids;
 		int			innerrelid;
 		int			nremoved;
 
@@ -88,12 +89,7 @@ restart:
 		 */
 		innerrelid = bms_singleton_member(sjinfo->min_righthand);
 
-		/* Compute the relid set for the join we are considering */
-		joinrelids = bms_union(sjinfo->min_lefthand, sjinfo->min_righthand);
-		if (sjinfo->ojrelid != 0)
-			joinrelids = bms_add_member(joinrelids, sjinfo->ojrelid);
-
-		remove_rel_from_query(root, innerrelid, sjinfo->ojrelid, joinrelids);
+		remove_rel_from_query(root, innerrelid, sjinfo);
 
 		/* We verify that exactly one reference gets removed from joinlist */
 		nremoved = 0;
@@ -324,20 +320,28 @@ join_is_removable(PlannerInfo *root, SpecialJoinInfo *sjinfo)
 
 
 /*
- * Remove the target relid from the planner's data structures, having
- * determined that there is no need to include it in the query.
+ * Remove the target relid and references to the target join from the
+ * planner's data structures, having determined that there is no need
+ * to include them in the query.
  *
  * We are not terribly thorough here.  We only bother to update parts of
  * the planner's data structures that will actually be consulted later.
  */
 static void
-remove_rel_from_query(PlannerInfo *root, int relid, int ojrelid,
-					  Relids joinrelids)
+remove_rel_from_query(PlannerInfo *root, int relid, SpecialJoinInfo *sjinfo)
 {
 	RelOptInfo *rel = find_base_rel(root, relid);
+	int			ojrelid = sjinfo->ojrelid;
+	Relids		joinrelids;
+	Relids		join_plus_commute;
 	List	   *joininfos;
 	Index		rti;
 	ListCell   *l;
+
+	/* Compute the relid set for the join we are considering */
+	joinrelids = bms_union(sjinfo->min_lefthand, sjinfo->min_righthand);
+	Assert(ojrelid != 0);
+	joinrelids = bms_add_member(joinrelids, ojrelid);
 
 	/*
 	 * Remove references to the rel from other baserels' attr_needed arrays.
@@ -386,21 +390,21 @@ remove_rel_from_query(PlannerInfo *root, int relid, int ojrelid,
 	 */
 	foreach(l, root->join_info_list)
 	{
-		SpecialJoinInfo *sjinfo = (SpecialJoinInfo *) lfirst(l);
+		SpecialJoinInfo *sjinf = (SpecialJoinInfo *) lfirst(l);
 
-		sjinfo->min_lefthand = bms_del_member(sjinfo->min_lefthand, relid);
-		sjinfo->min_righthand = bms_del_member(sjinfo->min_righthand, relid);
-		sjinfo->syn_lefthand = bms_del_member(sjinfo->syn_lefthand, relid);
-		sjinfo->syn_righthand = bms_del_member(sjinfo->syn_righthand, relid);
-		sjinfo->min_lefthand = bms_del_member(sjinfo->min_lefthand, ojrelid);
-		sjinfo->min_righthand = bms_del_member(sjinfo->min_righthand, ojrelid);
-		sjinfo->syn_lefthand = bms_del_member(sjinfo->syn_lefthand, ojrelid);
-		sjinfo->syn_righthand = bms_del_member(sjinfo->syn_righthand, ojrelid);
+		sjinf->min_lefthand = bms_del_member(sjinf->min_lefthand, relid);
+		sjinf->min_righthand = bms_del_member(sjinf->min_righthand, relid);
+		sjinf->syn_lefthand = bms_del_member(sjinf->syn_lefthand, relid);
+		sjinf->syn_righthand = bms_del_member(sjinf->syn_righthand, relid);
+		sjinf->min_lefthand = bms_del_member(sjinf->min_lefthand, ojrelid);
+		sjinf->min_righthand = bms_del_member(sjinf->min_righthand, ojrelid);
+		sjinf->syn_lefthand = bms_del_member(sjinf->syn_lefthand, ojrelid);
+		sjinf->syn_righthand = bms_del_member(sjinf->syn_righthand, ojrelid);
 		/* relid cannot appear in these fields, but ojrelid can: */
-		sjinfo->commute_above_l = bms_del_member(sjinfo->commute_above_l, ojrelid);
-		sjinfo->commute_above_r = bms_del_member(sjinfo->commute_above_r, ojrelid);
-		sjinfo->commute_below_l = bms_del_member(sjinfo->commute_below_l, ojrelid);
-		sjinfo->commute_below_r = bms_del_member(sjinfo->commute_below_r, ojrelid);
+		sjinf->commute_above_l = bms_del_member(sjinf->commute_above_l, ojrelid);
+		sjinf->commute_above_r = bms_del_member(sjinf->commute_above_r, ojrelid);
+		sjinf->commute_below_l = bms_del_member(sjinf->commute_below_l, ojrelid);
+		sjinf->commute_below_r = bms_del_member(sjinf->commute_below_r, ojrelid);
 	}
 
 	/*
@@ -423,7 +427,8 @@ remove_rel_from_query(PlannerInfo *root, int relid, int ojrelid,
 
 		Assert(!bms_is_member(relid, phinfo->ph_lateral));
 		if (bms_is_subset(phinfo->ph_needed, joinrelids) &&
-			bms_is_member(relid, phinfo->ph_eval_at))
+			bms_is_member(relid, phinfo->ph_eval_at) &&
+			!bms_is_member(ojrelid, phinfo->ph_eval_at))
 		{
 			root->placeholder_list = foreach_delete_current(root->placeholder_list,
 															l);
@@ -456,6 +461,18 @@ remove_rel_from_query(PlannerInfo *root, int relid, int ojrelid,
 	 * just discard them, though.  Only quals that logically belonged to the
 	 * outer join being discarded should be removed from the query.
 	 *
+	 * We might encounter a qual that is a clone of a deletable qual with some
+	 * outer-join relids added (see deconstruct_distribute_oj_quals).  To
+	 * ensure we get rid of such clones as well, add the relids of all OJs
+	 * commutable with this one to the set we test against for
+	 * pushed-down-ness.
+	 */
+	join_plus_commute = bms_union(joinrelids,
+								  sjinfo->commute_above_r);
+	join_plus_commute = bms_add_members(join_plus_commute,
+										sjinfo->commute_below_l);
+
+	/*
 	 * We must make a copy of the rel's old joininfo list before starting the
 	 * loop, because otherwise remove_join_clause_from_rels would destroy the
 	 * list while we're scanning it.
@@ -467,18 +484,45 @@ remove_rel_from_query(PlannerInfo *root, int relid, int ojrelid,
 
 		remove_join_clause_from_rels(root, rinfo, rinfo->required_relids);
 
-		if (RINFO_IS_PUSHED_DOWN(rinfo, joinrelids))
+		if (RINFO_IS_PUSHED_DOWN(rinfo, join_plus_commute))
 		{
 			/*
 			 * There might be references to relid or ojrelid in the
-			 * RestrictInfo, as a consequence of PHVs having ph_eval_at sets
-			 * that include those.  We already checked above that any such PHV
-			 * is safe, so we can just drop those references.
+			 * RestrictInfo's relid sets, as a consequence of PHVs having had
+			 * ph_eval_at sets that include those.  We already checked above
+			 * that any such PHV is safe (and updated its ph_eval_at), so we
+			 * can just drop those references.
 			 */
 			remove_rel_from_restrictinfo(rinfo, relid, ojrelid);
+
+			/*
+			 * Cross-check that the clause itself does not reference the
+			 * target rel or join.
+			 */
+#ifdef USE_ASSERT_CHECKING
+			{
+				Relids		clause_varnos = pull_varnos(root,
+														(Node *) rinfo->clause);
+
+				Assert(!bms_is_member(relid, clause_varnos));
+				Assert(!bms_is_member(ojrelid, clause_varnos));
+			}
+#endif
 			/* Now throw it back into the joininfo lists */
 			distribute_restrictinfo_to_rels(root, rinfo);
 		}
+	}
+
+	/*
+	 * Likewise remove references from EquivalenceClasses.
+	 */
+	foreach(l, root->eq_classes)
+	{
+		EquivalenceClass *ec = (EquivalenceClass *) lfirst(l);
+
+		if (bms_is_member(relid, ec->ec_relids) ||
+			bms_is_member(ojrelid, ec->ec_relids))
+			remove_rel_from_eclass(ec, relid, ojrelid);
 	}
 
 	/*
@@ -551,6 +595,60 @@ remove_rel_from_restrictinfo(RestrictInfo *rinfo, int relid, int ojrelid)
 			}
 		}
 	}
+}
+
+/*
+ * Remove any references to relid or ojrelid from the EquivalenceClass.
+ *
+ * Like remove_rel_from_restrictinfo, we don't worry about cleaning out
+ * any nullingrel bits in contained Vars and PHVs.  (This might have to be
+ * improved sometime.)  We do need to fix the EC and EM relid sets to ensure
+ * that implied join equalities will be generated at the appropriate join
+ * level(s).
+ */
+static void
+remove_rel_from_eclass(EquivalenceClass *ec, int relid, int ojrelid)
+{
+	ListCell   *lc;
+
+	/* Fix up the EC's overall relids */
+	ec->ec_relids = bms_del_member(ec->ec_relids, relid);
+	ec->ec_relids = bms_del_member(ec->ec_relids, ojrelid);
+
+	/*
+	 * Fix up the member expressions.  Any non-const member that ends with
+	 * empty em_relids must be a Var or PHV of the removed relation.  We don't
+	 * need it anymore, so we can drop it.
+	 */
+	foreach(lc, ec->ec_members)
+	{
+		EquivalenceMember *cur_em = (EquivalenceMember *) lfirst(lc);
+
+		if (bms_is_member(relid, cur_em->em_relids) ||
+			bms_is_member(ojrelid, cur_em->em_relids))
+		{
+			Assert(!cur_em->em_is_const);
+			cur_em->em_relids = bms_del_member(cur_em->em_relids, relid);
+			cur_em->em_relids = bms_del_member(cur_em->em_relids, ojrelid);
+			if (bms_is_empty(cur_em->em_relids))
+				ec->ec_members = foreach_delete_current(ec->ec_members, lc);
+		}
+	}
+
+	/* Fix up the source clauses, in case we can re-use them later */
+	foreach(lc, ec->ec_sources)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		remove_rel_from_restrictinfo(rinfo, relid, ojrelid);
+	}
+
+	/*
+	 * Rather than expend code on fixing up any already-derived clauses, just
+	 * drop them.  (At this point, any such clauses would be base restriction
+	 * clauses, which we'd not need anymore anyway.)
+	 */
+	ec->ec_derives = NIL;
 }
 
 /*
@@ -703,9 +801,9 @@ rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel)
 		/*
 		 * For a plain relation, we only know how to prove uniqueness by
 		 * reference to unique indexes.  Make sure there's at least one
-		 * suitable unique index.  It must be immediately enforced, and if
-		 * it's a partial index, it must match the query.  (Keep these
-		 * conditions in sync with relation_has_unique_index_for!)
+		 * suitable unique index.  It must be immediately enforced, and not a
+		 * partial index. (Keep these conditions in sync with
+		 * relation_has_unique_index_for!)
 		 */
 		ListCell   *lc;
 
@@ -713,8 +811,7 @@ rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel)
 		{
 			IndexOptInfo *ind = (IndexOptInfo *) lfirst(lc);
 
-			if (ind->unique && ind->immediate &&
-				(ind->indpred == NIL || ind->predOK))
+			if (ind->unique && ind->immediate && ind->indpred == NIL)
 				return true;
 		}
 	}

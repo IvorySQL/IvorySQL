@@ -573,7 +573,7 @@ bytea_string_agg_finalfn(PG_FUNCTION_ARGS)
 }
 
 /*
- *		textin			- converts "..." to internal representation
+ *		textin			- converts cstring to internal representation
  */
 Datum
 textin(PG_FUNCTION_ARGS)
@@ -584,7 +584,7 @@ textin(PG_FUNCTION_ARGS)
 }
 
 /*
- *		textout			- converts internal representation to "..."
+ *		textout			- converts internal representation to cstring
  */
 Datum
 textout(PG_FUNCTION_ARGS)
@@ -628,7 +628,7 @@ textsend(PG_FUNCTION_ARGS)
 
 
 /*
- *		unknownin			- converts "..." to internal representation
+ *		unknownin			- converts cstring to internal representation
  */
 Datum
 unknownin(PG_FUNCTION_ARGS)
@@ -640,7 +640,7 @@ unknownin(PG_FUNCTION_ARGS)
 }
 
 /*
- *		unknownout			- converts internal representation to "..."
+ *		unknownout			- converts internal representation to cstring
  */
 Datum
 unknownout(PG_FUNCTION_ARGS)
