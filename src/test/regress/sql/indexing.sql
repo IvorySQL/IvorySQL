@@ -874,3 +874,36 @@ delete from gidxpart where a = 150000 and b = 572814;
 create unique index on gidxpart (b) global;
 drop table gidxpart;
 
+-- Test partition attach and detach with global unique index (no existing index)
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (100000);
+insert into gidxpart (a, b, c) values (42, 572814, 'inserted first on gidxpart1');
+create unique index on gidxpart (b) global;
+create table gidxpart2 (a int, b int, c text);
+insert into gidxpart2 (a, b, c) values (150000, 572814, 'dup inserted on gidxpart2');
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999); -- should fail
+update gidxpart2 set b = 5000;
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999);
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be g
+alter table gidxpart detach partition gidxpart2;
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be i
+drop table gidxpart;
+drop table gidxpart2;
+
+-- Test partition attach and detach with global unique index (with duplicate index)
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (100000);
+insert into gidxpart (a, b, c) values (42, 572814, 'inserted first on gidxpart1');
+create unique index on gidxpart (b) global;
+create table gidxpart2 (a int, b int, c text);
+create unique index on gidxpart2 (b);
+insert into gidxpart2 (a, b, c) values (150000, 572814, 'dup inserted on gidxpart2');
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be i
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999); -- should fail
+update gidxpart2 set b = 5000;
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999);
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be g
+alter table gidxpart detach partition gidxpart2;
+drop table gidxpart;
+drop table gidxpart2;
+
