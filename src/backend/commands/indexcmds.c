@@ -717,7 +717,19 @@ DefineIndex(Oid relationId,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot create exclusion constraints on partitioned table \"%s\"",
 							RelationGetRelationName(rel))));
+
+		if (stmt->global_index && !stmt->unique)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot create global index without unique on partitioned table \"%s\"",
+							RelationGetRelationName(rel))));
 	}
+
+	if (stmt->global_index && rel->rd_rel->relkind == RELKIND_RELATION && !rel->rd_rel->relispartition)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot create global index on non-partitioned table \"%s\"",
+						RelationGetRelationName(rel))));
 
 	/*
 	 * Don't try to CREATE INDEX on temp tables of other backends.
@@ -931,7 +943,7 @@ DefineIndex(Oid relationId,
 	 * We could lift this limitation if we had global indexes, but those have
 	 * their own problems, so this is a useful feature combination.
 	 */
-	if (partitioned && (stmt->unique || stmt->primary))
+	if (partitioned && (stmt->unique || stmt->primary) && !stmt->global_index)
 	{
 		PartitionKey key = RelationGetPartitionKey(rel);
 		const char *constraint_type;
@@ -1034,7 +1046,7 @@ DefineIndex(Oid relationId,
 				}
 			}
 
-			if (!found)
+			if (!found && !stmt->global_index)
 			{
 				Form_pg_attribute att;
 
@@ -1153,6 +1165,8 @@ DefineIndex(Oid relationId,
 		if (pd->nparts != 0)
 			flags |= INDEX_CREATE_INVALID;
 	}
+	if (stmt->global_index)
+		flags |= INDEX_CREATE_GLOBAL;
 
 	if (stmt->deferrable)
 		constr_flags |= INDEX_CONSTR_CREATE_DEFERRABLE;
@@ -2861,6 +2875,7 @@ RangeVarCallbackForReindexIndex(const RangeVar *relation,
 	if (!relkind)
 		return;
 	if (relkind != RELKIND_INDEX &&
+		relkind != RELKIND_GLOBAL_INDEX &&
 		relkind != RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -3253,6 +3268,7 @@ ReindexPartitions(Oid relid, ReindexParams *params, bool isTopLevel)
 			continue;
 
 		Assert(partkind == RELKIND_INDEX ||
+			   partkind == RELKIND_GLOBAL_INDEX ||
 			   partkind == RELKIND_RELATION);
 
 		/* Save partition OID */
@@ -3345,7 +3361,8 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 			(void) ReindexRelationConcurrently(relid, &newparams);
 			/* ReindexRelationConcurrently() does the verbose output */
 		}
-		else if (relkind == RELKIND_INDEX)
+		else if (relkind == RELKIND_INDEX ||
+				 relkind == RELKIND_GLOBAL_INDEX)
 		{
 			ReindexParams newparams = *params;
 
@@ -3604,6 +3621,7 @@ ReindexRelationConcurrently(Oid relationOid, ReindexParams *params)
 				break;
 			}
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 			{
 				Oid			heapId = IndexGetRelation(relationOid,
 													  (params->options & REINDEXOPT_MISSING_OK) != 0);
@@ -4204,7 +4222,8 @@ ReindexRelationConcurrently(Oid relationOid, ReindexParams *params)
 	/* Log what we did */
 	if ((params->options & REINDEXOPT_VERBOSE) != 0)
 	{
-		if (relkind == RELKIND_INDEX)
+		if (relkind == RELKIND_INDEX ||
+			relkind == RELKIND_GLOBAL_INDEX)
 			ereport(INFO,
 					(errmsg("index \"%s.%s\" was reindexed",
 							relationNamespace, relationName),
@@ -4257,6 +4276,7 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 
 	/* Make sure this is an index */
 	Assert(partitionIdx->rd_rel->relkind == RELKIND_INDEX ||
+		   partitionIdx->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		   partitionIdx->rd_rel->relkind == RELKIND_PARTITIONED_INDEX);
 
 	/*

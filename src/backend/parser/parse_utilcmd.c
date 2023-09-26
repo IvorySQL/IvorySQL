@@ -3999,6 +3999,7 @@ transformPartitionCmd(CreateStmtContext *cxt, PartitionCmd *cmd)
 							RelationGetRelationName(parentRel))));
 			break;
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 			/* the index must be partitioned */
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),

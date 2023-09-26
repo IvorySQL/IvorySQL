@@ -28,6 +28,7 @@ CREATE [ UNIQUE ] INDEX [ CONCURRENTLY ] [ [ IF NOT EXISTS ] <replaceable class=
     [ WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
     [ TABLESPACE <replaceable class="parameter">tablespace_name</replaceable> ]
     [ WHERE <replaceable class="parameter">predicate</replaceable> ]
+    [ GLOBAL ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -376,6 +377,18 @@ CREATE [ UNIQUE ] INDEX [ CONCURRENTLY ] [ [ IF NOT EXISTS ] <replaceable class=
       <listitem>
        <para>
         The constraint expression for a partial index.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>GLOBAL</literal></term>
+      <listitem>
+       <para>
+        Used with <literal>UNIQUE</literal> to enable cross-partition
+        uniqueness check on a partitioned table. Attempts to insert or
+        update data which would result in duplicate entries in other 
+        partitions as a whole will generate an error.
        </para>
       </listitem>
      </varlistentry>

@@ -1205,7 +1205,8 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 	 */
 
 	/* set rel1's frozen Xid and minimum MultiXid */
-	if (relform1->relkind != RELKIND_INDEX)
+	if (relform1->relkind != RELKIND_INDEX &&
+		relform1->relkind != RELKIND_GLOBAL_INDEX)
 	{
 		Assert(!TransactionIdIsValid(frozenXid) ||
 			   TransactionIdIsNormal(frozenXid));
@@ -1717,7 +1718,8 @@ get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
 		RelToCluster *rtc;
 
 		/* consider only leaf indexes */
-		if (get_rel_relkind(indexrelid) != RELKIND_INDEX)
+		if (get_rel_relkind(indexrelid) != RELKIND_INDEX &&
+			get_rel_relkind(indexrelid) != RELKIND_GLOBAL_INDEX)
 			continue;
 
 		/* Silently skip partitions which the user has no access to. */
