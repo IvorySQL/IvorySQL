@@ -442,4 +442,13 @@ extern bool tuplesort_getdatum(Tuplesortstate *state, bool forward, bool copy,
 							   Datum *val, bool *isNull, Datum *abbrev);
 
 
+extern void tuplesort_mark_global_sort(Tuplesortstate *state);
+
+extern void tuplesort_copy_sharedsort(Sharedsort *shared1, Sharedsort *shared2);
+
+extern void tuplesort_copy_sharedsort2(Sharedsort *shared1, Tuplesortstate *state);
+
+extern int	tuplesort_get_curr_workers(Sharedsort *shared);
+
+extern void tuplesort_register_cleanup_callback(Sharedsort *shared, dsm_segment *seg);
 #endif							/* TUPLESORT_H */

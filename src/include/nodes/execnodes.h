@@ -199,6 +199,11 @@ typedef struct IndexInfo
 	int			ii_ParallelWorkers;
 	Oid			ii_Am;
 	void	   *ii_AmCache;
+	bool		ii_Global_index;	/* true if index is global */
+	int			ii_GlobalIndexPart; /* partition number indication */
+	bool		ii_BuildGlobalSpool;	/* indicate to build global spool only */
+	int			ii_Nparts;		/* num partitions for global index build in
+								 * parallel */
 	MemoryContext ii_Context;
 } IndexInfo;
 
