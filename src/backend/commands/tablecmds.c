@@ -646,6 +646,7 @@ static void ATDetachCheckNoForeignKeyRefs(Relation partition);
 static char GetAttributeCompression(Oid atttypid, char *compression);
 static char GetAttributeStorage(Oid atttypid, const char *storagemode);
 
+static bool HasGlobalChildIndex(Relation idxRel);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -1219,6 +1220,11 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			idxstmt =
 				generateClonedIndexStmt(NULL, idxRel,
 										attmap, &constraintOid);
+			if (HasGlobalChildIndex(idxRel))
+			{
+				elog(DEBUG2, "create global index for the new child partition table");
+				idxstmt->global_index = true;
+			}
 			DefineIndex(RelationGetRelid(rel),
 						idxstmt,
 						InvalidOid,
@@ -18054,6 +18060,7 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 	IndexInfo **attachInfos;
 	int			i;
 	ListCell   *cell;
+	ListCell   *cell2;
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
@@ -18197,15 +18204,184 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 		{
 			IndexStmt  *stmt;
 			Oid			conOid;
+			bool 		isGlobal = false;
 
+			isGlobal = HasGlobalChildIndex(idxRel);
 			stmt = generateClonedIndexStmt(NULL,
 										   idxRel, attmap,
 										   &conOid);
+			/*
+			 * Perform cross partition uniqueness check if it is a global
+			 * unique index
+			 */
+			if (isGlobal && idxRel->rd_index->indisunique)
+			{
+				PartitionDesc partdesc;
+				Relation		hRel;
+				Relation 		iRel;
+				int 			j = 0;
+				int 			nparts;
+				Oid 			*part_oids;
+
+				List       *childIndexList = find_inheritance_children(idx, ShareLock);
+
+				partdesc = RelationGetPartitionDesc(rel, true);
+				nparts = partdesc->nparts;
+				part_oids = palloc(sizeof(Oid) * nparts);
+
+				memcpy(part_oids, partdesc->oids, sizeof(Oid) * nparts);
+				for (j = 0; j < nparts; j++)
+				{
+					Oid 		childRelid = part_oids[j];
+					List		*childidxs;
+
+					if (childRelid == RelationGetRelid(attachrel))
+					{
+						elog(DEBUG2, "skip the partition-to-be from building global spool: %d", childRelid);
+						continue;
+					}
+					hRel = table_open(childRelid, AccessShareLock);
+
+					childidxs = RelationGetIndexList(hRel);
+					foreach(cell2, childidxs)
+					{
+						Oid 	cldidxid = lfirst_oid(cell2);
+
+						/*
+						 * only take a child index that is directly inherited
+						 * to parent index oid
+						 */
+						if (list_member_oid(childIndexList, cldidxid))
+						{
+							iRel = index_open(cldidxid, AccessShareLock);
+							elog(DEBUG2, "found a matching child index OID to build global spool %d", cldidxid);
+
+							/*
+							 * We need to construct a global spool structure
+							 * in nbtsort.c in order to determine global
+							 * uniqueness. Marking partitions now
+							 */
+							if (j == 0)
+							{
+								elog(DEBUG2, "mark as first partitioned to build global spool");
+								stmt->globalIndexPart = -1;
+							}
+							else
+								stmt->globalIndexPart = 0;
+
+							stmt->global_index = true;
+							stmt->nparts = nparts;
+
+							PopulateGlobalSpool(iRel, hRel, stmt);
+							index_close(iRel, AccessShareLock);
+							break;
+						}
+					}
+					table_close(hRel, AccessShareLock);
+				}
+				elog(DEBUG2, "mark as the last partitioned to utilize global spool");
+				stmt->globalIndexPart = 1;
+			}
+			else
+			{
+				elog(DEBUG2, "partitioned index %d is not a unique index, build it now...",
+						 RelationGetRelid(idxRel));
+			}
+
 			DefineIndex(RelationGetRelid(attachrel), stmt, InvalidOid,
 						RelationGetRelid(idxRel),
 						conOid,
 						-1,
 						true, false, false, false, false);
+		}
+		else
+		{
+			IndexStmt  *stmt;
+			Oid 		constraintOid;
+			bool 		isGlobal = false;
+
+			stmt = generateClonedIndexStmt(NULL,
+										   idxRel, attmap,
+										   &constraintOid);
+			isGlobal = HasGlobalChildIndex(idxRel);
+			if (isGlobal && idxRel->rd_index->indisunique)
+			{
+				PartitionDesc partdesc;
+				Relation        hRel;
+				Relation        iRel;
+				int 			j = 0;
+				int 			nparts;
+				Oid 			*part_oids;
+
+				List 			*childIndexList = find_inheritance_children(idx, ShareLock);
+
+				partdesc = RelationGetPartitionDesc(rel, true);
+				nparts = partdesc->nparts;
+				part_oids = palloc(sizeof(Oid) * nparts);
+
+				memcpy(part_oids, partdesc->oids, sizeof(Oid) * nparts);
+				for (j = 0; j < nparts; j++)
+				{
+					Oid 		childRelid = part_oids[j];
+					List 		*childidxs;
+
+					hRel = table_open(childRelid, AccessShareLock);
+
+					childidxs = RelationGetIndexList(hRel);
+					foreach(cell2, childidxs)
+					{
+						Oid 	cldidxid = lfirst_oid(cell2);
+
+						/*
+						 * only take a child index that is directly inherited
+						 * to parent index oid
+						 */
+						if (list_member_oid(childIndexList, cldidxid))
+						{
+							iRel = index_open(cldidxid, AccessShareLock);
+							elog(DEBUG2, "found a matching child index OID type %c to build global spool %d",
+									 iRel->rd_rel->relkind, cldidxid);
+
+							/*
+							 * change partition-to-be's duplicate unique index
+							 * relkind to RELKIND_GLOBAL_INDEX
+							 */
+							if (iRel->rd_rel->relkind != RELKIND_GLOBAL_INDEX)
+							{
+								elog(DEBUG2, "Update index relation %d to have relkind = RELKIND_GLOBAL_INDEX",
+										 RelationGetRelid(iRel));
+								ChangeRelKind(iRel, RELKIND_GLOBAL_INDEX);
+							}
+
+							/*
+							 * We need to construct a global spool structure
+							 * in nbtsort.c in order to determine global
+							 * uniqueness. Marking partitions now
+							 */
+							if (j == 0)
+							{
+								elog(DEBUG2, "mark as first partition to build global spool");
+								stmt->globalIndexPart = -1;
+							}
+							else if (j == nparts - 1)
+							{
+								elog(DEBUG2, "mark as last partition to build global spool");
+								stmt->globalIndexPart = 1;
+							}
+							else
+								stmt->globalIndexPart = 0;
+
+							stmt->global_index = true;
+							stmt->nparts = nparts;
+
+							PopulateGlobalSpool(iRel, hRel, stmt);
+							index_close(iRel, AccessShareLock);
+							break;
+						}
+					}
+					table_close(hRel, AccessShareLock);
+				}
+			}
 		}
 
 		index_close(idxRel, AccessShareLock);
@@ -18704,6 +18880,15 @@ DetachPartitionFinalize(Relation rel, Relation partRel, bool concurrent,
 		if (OidIsValid(constrOid))
 			ConstraintSetParentConstraint(constrOid, InvalidOid, InvalidOid);
 
+		/*
+		 * if it has any global index, make it a regular index relkind after
+		 * detach
+		 */
+		if (idx->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
+		{
+			elog(DEBUG2, "found a global index, transform it to RELKIND_INDEX at detach...");
+			ChangeRelKind(idx, RELKIND_INDEX);
+		}
 		index_close(idx, NoLock);
 	}
 
@@ -19434,4 +19619,32 @@ GetAttributeStorage(Oid atttypid, const char *storagemode)
 						format_type_be(atttypid))));
 
 	return cstorage;
+}
+
+static bool
+HasGlobalChildIndex(Relation idxRel)
+{
+	/* find out if current index contains child indexes that are global */
+	List	   *childIndexOidList;
+	ListCell   *cell;
+	bool		isGlobal = false;;
+
+	childIndexOidList = find_all_inheritors(RelationGetRelid(idxRel),
+											AccessExclusiveLock, NULL);
+
+	foreach(cell, childIndexOidList)
+	{
+		Oid			childIndexOid = lfirst_oid(cell);
+		Relation	idxChildRel;
+
+		idxChildRel = index_open(childIndexOid, AccessShareLock);
+		if (idxChildRel->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
+		{
+			isGlobal = true;
+			index_close(idxChildRel, NoLock);
+			break;
+		}
+		index_close(idxChildRel, NoLock);
+	}
+	return isGlobal;
 }
