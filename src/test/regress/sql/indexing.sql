@@ -863,3 +863,14 @@ select relname, relhasindex, relkind from pg_class where relname like '%gidx%' o
 drop index gidx_u;
 drop table gidxpart;
 
+-- Test the cross-partition uniqueness with non-partition key with global unique index
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (100000);
+create table gidxpart2 partition of gidxpart for values from (100000) to (199999);
+insert into gidxpart (a, b, c) values (42, 572814, 'inserted first on gidxpart1');
+insert into gidxpart (a, b, c) values (150000, 572814, 'inserted second on gidxpart2');
+create unique index on gidxpart (b) global; -- should fail
+delete from gidxpart where a = 150000 and b = 572814;
+create unique index on gidxpart (b) global;
+drop table gidxpart;
+
