@@ -1410,6 +1410,7 @@ extractRelOptions(HeapTuple tuple, TupleDesc tupdesc,
 			options = view_reloptions(datum, false);
 			break;
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 		case RELKIND_PARTITIONED_INDEX:
 			options = index_reloptions(amoptions, datum, false);
 			break;

@@ -744,6 +744,7 @@ index_create(Relation heapRelation,
 	bool		invalid = (flags & INDEX_CREATE_INVALID) != 0;
 	bool		concurrent = (flags & INDEX_CREATE_CONCURRENT) != 0;
 	bool		partitioned = (flags & INDEX_CREATE_PARTITIONED) != 0;
+	bool		globalindex = (flags & INDEX_CREATE_GLOBAL) != 0;
 	char		relkind;
 	TransactionId relfrozenxid;
 	MultiXactId relminmxid;
@@ -755,7 +756,10 @@ index_create(Relation heapRelation,
 	/* partitioned indexes must never be "built" by themselves */
 	Assert(!partitioned || (flags & INDEX_CREATE_SKIP_BUILD));
 
-	relkind = partitioned ? RELKIND_PARTITIONED_INDEX : RELKIND_INDEX;
+	if (globalindex)
+		relkind = partitioned ? RELKIND_PARTITIONED_INDEX : RELKIND_GLOBAL_INDEX;
+	else
+		relkind = partitioned ? RELKIND_PARTITIONED_INDEX : RELKIND_INDEX;
 	is_exclusion = (indexInfo->ii_ExclusionOps != NULL);
 
 	pg_class = table_open(RelationRelationId, RowExclusiveLock);
@@ -931,7 +935,7 @@ index_create(Relation heapRelation,
 			binary_upgrade_next_index_pg_class_oid = InvalidOid;
 
 			/* Override the index relfilenumber */
-			if ((relkind == RELKIND_INDEX) &&
+			if ((relkind == RELKIND_INDEX || relkind == RELKIND_GLOBAL_INDEX) &&
 				(!RelFileNumberIsValid(binary_upgrade_next_index_pg_class_relfilenumber)))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -2895,7 +2899,8 @@ index_update_stats(Relation rel,
 		BlockNumber relpages = RelationGetNumberOfBlocks(rel);
 		BlockNumber relallvisible;
 
-		if (rd_rel->relkind != RELKIND_INDEX)
+		if (rd_rel->relkind != RELKIND_INDEX &&
+			rd_rel->relkind != RELKIND_GLOBAL_INDEX)
 			visibilitymap_count(rel, &relallvisible, NULL);
 		else					/* don't bother for indexes */
 			relallvisible = 0;

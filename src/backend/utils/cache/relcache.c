@@ -480,6 +480,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 			amoptsfn = NULL;
 			break;
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 		case RELKIND_PARTITIONED_INDEX:
 			amoptsfn = relation->rd_indam->amoptions;
 			break;
@@ -1202,6 +1203,7 @@ retry:
 	 * initialize access method information
 	 */
 	if (relation->rd_rel->relkind == RELKIND_INDEX ||
+		relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 		RelationInitIndexAccessInfo(relation);
 	else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
@@ -2082,6 +2084,7 @@ RelationIdGetRelation(Oid relationId)
 			 * a headache for indexes that reload itself depends on.
 			 */
 			if (rd->rd_rel->relkind == RELKIND_INDEX ||
+				rd->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 				rd->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 				RelationReloadIndexInfo(rd);
 			else
@@ -2222,6 +2225,7 @@ RelationReloadIndexInfo(Relation relation)
 
 	/* Should be called only for invalidated, live indexes */
 	Assert((relation->rd_rel->relkind == RELKIND_INDEX ||
+			relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 			relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 		   !relation->rd_isvalid &&
 		   relation->rd_droppedSubid == InvalidSubTransactionId);
@@ -2349,7 +2353,8 @@ RelationReloadNailed(Relation relation)
 	if (!IsTransactionState() || relation->rd_refcnt <= 1)
 		return;
 
-	if (relation->rd_rel->relkind == RELKIND_INDEX)
+	if (relation->rd_rel->relkind == RELKIND_INDEX ||
+		relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 	{
 		/*
 		 * If it's a nailed-but-not-mapped index, then we need to re-read the
@@ -2543,6 +2548,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 	 * index, and we check for pg_index updates too.
 	 */
 	if ((relation->rd_rel->relkind == RELKIND_INDEX ||
+		 relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		 relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 		relation->rd_refcnt > 0 &&
 		relation->rd_indexcxt != NULL)
@@ -3722,7 +3728,8 @@ RelationSetNewRelfilenumber(Relation relation, char persistence)
 		newrelfilenumber = GetNewRelFileNumber(relation->rd_rel->reltablespace,
 											   NULL, persistence);
 	}
-	else if (relation->rd_rel->relkind == RELKIND_INDEX)
+	else if (relation->rd_rel->relkind == RELKIND_INDEX ||
+			 relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 	{
 		if (!OidIsValid(binary_upgrade_next_index_pg_class_relfilenumber))
 			ereport(ERROR,
@@ -6157,7 +6164,8 @@ load_relcache_init_file(bool shared)
 		 * If it's an index, there's more to do.  Note we explicitly ignore
 		 * partitioned indexes here.
 		 */
-		if (rel->rd_rel->relkind == RELKIND_INDEX)
+		if (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 		{
 			MemoryContext indexcxt;
 			Oid		   *opfamily;
@@ -6552,7 +6560,8 @@ write_relcache_init_file(bool shared)
 		 * If it's an index, there's more to do. Note we explicitly ignore
 		 * partitioned indexes here.
 		 */
-		if (rel->rd_rel->relkind == RELKIND_INDEX)
+		if (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 		{
 			/* write the pg_index tuple */
 			/* we assume this was created by heap_copytuple! */
