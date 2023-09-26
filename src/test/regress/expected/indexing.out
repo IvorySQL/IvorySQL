@@ -1549,3 +1549,43 @@ select indexrelid::regclass, indisvalid, indisreplident,
 (3 rows)
 
 drop table parted_replica_tab;
+-- create global index using non-partition key
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (10);
+create table gidxpart2 partition of gidxpart for values from (10) to (100);
+create unique index gidx_u on gidxpart using btree(b) global;
+select relname, relhasindex, relkind from pg_class where relname like '%gidx%' order by oid;
+     relname     | relhasindex | relkind 
+-----------------+-------------+---------
+ gidxpart        | t           | p
+ gidxpart1       | t           | r
+ gidxpart2       | t           | r
+ gidx_u          | f           | I
+ gidxpart1_b_idx | f           | g
+ gidxpart2_b_idx | f           | g
+(6 rows)
+
+\d+ gidxpart
+                            Partitioned table "public.gidxpart"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ a      | integer |           |          |         | plain    |              | 
+ b      | integer |           |          |         | plain    |              | 
+ c      | text    |           |          |         | extended |              | 
+Partition key: RANGE (a)
+Indexes:
+    "gidx_u" UNIQUE, btree (b)
+Partitions: gidxpart1 FOR VALUES FROM (0) TO (10),
+            gidxpart2 FOR VALUES FROM (10) TO (100)
+
+\d+ gidx_u
+               Partitioned index "public.gidx_u"
+ Column |  Type   | Key? | Definition | Storage | Stats target 
+--------+---------+------+------------+---------+--------------
+ b      | integer | yes  | b          | plain   | 
+unique, btree, for table "public.gidxpart"
+Partitions: gidxpart1_b_idx,
+            gidxpart2_b_idx
+
+drop index gidx_u;
+drop table gidxpart;
