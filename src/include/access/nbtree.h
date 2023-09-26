@@ -1293,4 +1293,9 @@ extern IndexBuildResult *btbuild(Relation heap, Relation index,
 								 struct IndexInfo *indexInfo);
 extern void _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc);
 
+extern TransactionId _bt_check_unique_gi(Relation rel, BTInsertState insertstate,
+										 Relation heapRel,
+										 IndexUniqueCheck checkUnique, bool *is_unique,
+										 uint32 *speculativeToken, Relation origHeapRel);
+
 #endif							/* NBTREE_H */

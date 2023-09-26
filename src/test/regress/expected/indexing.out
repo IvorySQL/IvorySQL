@@ -1451,3 +1451,249 @@ select indexrelid::regclass, indisvalid,
 (5 rows)
 
 drop table parted_inval_tab;
+-- Check setup of indisvalid across a complex partition tree on index
+-- creation.  If one index in a partition index is invalid, so should its
+-- partitioned index.
+create table parted_isvalid_tab (a int, b int) partition by range (a);
+create table parted_isvalid_tab_1 partition of parted_isvalid_tab
+  for values from (1) to (10) partition by range (a);
+create table parted_isvalid_tab_2 partition of parted_isvalid_tab
+  for values from (10) to (20) partition by range (a);
+create table parted_isvalid_tab_11 partition of parted_isvalid_tab_1
+  for values from (1) to (5);
+create table parted_isvalid_tab_12 partition of parted_isvalid_tab_1
+  for values from (5) to (10);
+-- create an invalid index on one of the partitions.
+insert into parted_isvalid_tab_11 values (1, 0);
+create index concurrently parted_isvalid_idx_11 on parted_isvalid_tab_11 ((a/b));
+ERROR:  division by zero
+-- The previous invalid index is selected, invalidating all the indexes up to
+-- the top-most parent.
+create index parted_isvalid_idx on parted_isvalid_tab ((a/b));
+select indexrelid::regclass, indisvalid,
+       indrelid::regclass, inhparent::regclass
+  from pg_index idx left join
+       pg_inherits inh on (idx.indexrelid = inh.inhrelid)
+  where indexrelid::regclass::text like 'parted_isvalid%'
+  order by indexrelid::regclass::text collate "C";
+           indexrelid           | indisvalid |       indrelid        |           inhparent           
+--------------------------------+------------+-----------------------+-------------------------------
+ parted_isvalid_idx             | f          | parted_isvalid_tab    | 
+ parted_isvalid_idx_11          | f          | parted_isvalid_tab_11 | parted_isvalid_tab_1_expr_idx
+ parted_isvalid_tab_12_expr_idx | t          | parted_isvalid_tab_12 | parted_isvalid_tab_1_expr_idx
+ parted_isvalid_tab_1_expr_idx  | f          | parted_isvalid_tab_1  | parted_isvalid_idx
+ parted_isvalid_tab_2_expr_idx  | t          | parted_isvalid_tab_2  | parted_isvalid_idx
+(5 rows)
+
+drop table parted_isvalid_tab;
+-- Check state of replica indexes when attaching a partition.
+begin;
+create table parted_replica_tab (id int not null) partition by range (id);
+create table parted_replica_tab_1 partition of parted_replica_tab
+  for values from (1) to (10) partition by range (id);
+create table parted_replica_tab_11 partition of parted_replica_tab_1
+  for values from (1) to (5);
+create unique index parted_replica_idx
+  on only parted_replica_tab using btree (id);
+create unique index parted_replica_idx_1
+  on only parted_replica_tab_1 using btree (id);
+-- This triggers an update of pg_index.indisreplident for parted_replica_idx.
+alter table only parted_replica_tab_1 replica identity
+  using index parted_replica_idx_1;
+create unique index parted_replica_idx_11 on parted_replica_tab_11 USING btree (id);
+select indexrelid::regclass, indisvalid, indisreplident,
+       indrelid::regclass, inhparent::regclass
+  from pg_index idx left join
+       pg_inherits inh on (idx.indexrelid = inh.inhrelid)
+  where indexrelid::regclass::text like 'parted_replica%'
+  order by indexrelid::regclass::text collate "C";
+      indexrelid       | indisvalid | indisreplident |       indrelid        | inhparent 
+-----------------------+------------+----------------+-----------------------+-----------
+ parted_replica_idx    | f          | f              | parted_replica_tab    | 
+ parted_replica_idx_1  | f          | t              | parted_replica_tab_1  | 
+ parted_replica_idx_11 | t          | f              | parted_replica_tab_11 | 
+(3 rows)
+
+-- parted_replica_idx is not valid yet here, because parted_replica_idx_1
+-- is not valid.
+alter index parted_replica_idx ATTACH PARTITION parted_replica_idx_1;
+select indexrelid::regclass, indisvalid, indisreplident,
+       indrelid::regclass, inhparent::regclass
+  from pg_index idx left join
+       pg_inherits inh on (idx.indexrelid = inh.inhrelid)
+  where indexrelid::regclass::text like 'parted_replica%'
+  order by indexrelid::regclass::text collate "C";
+      indexrelid       | indisvalid | indisreplident |       indrelid        |     inhparent      
+-----------------------+------------+----------------+-----------------------+--------------------
+ parted_replica_idx    | f          | f              | parted_replica_tab    | 
+ parted_replica_idx_1  | f          | t              | parted_replica_tab_1  | parted_replica_idx
+ parted_replica_idx_11 | t          | f              | parted_replica_tab_11 | 
+(3 rows)
+
+-- parted_replica_idx becomes valid here.
+alter index parted_replica_idx_1 ATTACH PARTITION parted_replica_idx_11;
+alter table only parted_replica_tab_1 replica identity
+  using index parted_replica_idx_1;
+commit;
+select indexrelid::regclass, indisvalid, indisreplident,
+       indrelid::regclass, inhparent::regclass
+  from pg_index idx left join
+       pg_inherits inh on (idx.indexrelid = inh.inhrelid)
+  where indexrelid::regclass::text like 'parted_replica%'
+  order by indexrelid::regclass::text collate "C";
+      indexrelid       | indisvalid | indisreplident |       indrelid        |      inhparent       
+-----------------------+------------+----------------+-----------------------+----------------------
+ parted_replica_idx    | t          | f              | parted_replica_tab    | 
+ parted_replica_idx_1  | t          | t              | parted_replica_tab_1  | parted_replica_idx
+ parted_replica_idx_11 | t          | f              | parted_replica_tab_11 | parted_replica_idx_1
+(3 rows)
+
+drop table parted_replica_tab;
+-- create global index using non-partition key
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (10);
+create table gidxpart2 partition of gidxpart for values from (10) to (100);
+create unique index gidx_u on gidxpart using btree(b) global;
+select relname, relhasindex, relkind from pg_class where relname like '%gidx%' order by oid;
+     relname     | relhasindex | relkind 
+-----------------+-------------+---------
+ gidxpart        | t           | p
+ gidxpart1       | t           | r
+ gidxpart2       | t           | r
+ gidx_u          | f           | I
+ gidxpart1_b_idx | f           | g
+ gidxpart2_b_idx | f           | g
+(6 rows)
+
+\d+ gidxpart
+                            Partitioned table "public.gidxpart"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ a      | integer |           |          |         | plain    |              | 
+ b      | integer |           |          |         | plain    |              | 
+ c      | text    |           |          |         | extended |              | 
+Partition key: RANGE (a)
+Indexes:
+    "gidx_u" UNIQUE, btree (b)
+Partitions: gidxpart1 FOR VALUES FROM (0) TO (10),
+            gidxpart2 FOR VALUES FROM (10) TO (100)
+
+\d+ gidx_u
+               Partitioned index "public.gidx_u"
+ Column |  Type   | Key? | Definition | Storage | Stats target 
+--------+---------+------+------------+---------+--------------
+ b      | integer | yes  | b          | plain   | 
+unique, btree, for table "public.gidxpart"
+Partitions: gidxpart1_b_idx,
+            gidxpart2_b_idx
+
+-- cross-partition uniqueness check for insert and update
+insert into gidxpart values (1, 1, 'first');
+insert into gidxpart values (11, 11, 'eleventh');
+insert into gidxpart values (2, 11, 'duplicated (b)=(11) on other partition');
+ERROR:  duplicate key value violates unique constraint "gidxpart2_b_idx"
+DETAIL:  Key (b)=(11) already exists.
+insert into gidxpart values (12, 1, 'duplicated (b)=(1) on other partition');
+ERROR:  duplicate key value violates unique constraint "gidxpart1_b_idx"
+DETAIL:  Key (b)=(1) already exists.
+insert into gidxpart values (2, 120, 'second');
+insert into gidxpart values (12, 2, 'twelfth');
+update gidxpart set b=2 where a=2;
+ERROR:  duplicate key value violates unique constraint "gidxpart2_b_idx"
+DETAIL:  Key (b)=(2) already exists.
+update gidxpart set b=1 where a=12;
+ERROR:  duplicate key value violates unique constraint "gidxpart1_b_idx"
+DETAIL:  Key (b)=(1) already exists.
+update gidxpart set b=12 where a=12;
+update gidxpart set b=2 where a=2;
+select * from gidxpart;
+ a  | b  |    c     
+----+----+----------
+  1 |  1 | first
+  2 |  2 | second
+ 11 | 11 | eleventh
+ 12 | 12 | twelfth
+(4 rows)
+
+-- cross-partition uniqueness check applys to newly created partition
+create table gidxpart3 partition of gidxpart for values from (100) to (200);
+select relname, relkind from pg_class where relname = 'gidxpart3_b_idx';
+     relname     | relkind 
+-----------------+---------
+ gidxpart3_b_idx | g
+(1 row)
+
+insert into gidxpart values (150, 11, 'duplicated (b)=(11) on other partition');
+ERROR:  duplicate key value violates unique constraint "gidxpart2_b_idx"
+DETAIL:  Key (b)=(11) already exists.
+insert into gidxpart values (150, 13, 'no duplicate b');
+-- clean up global index tests
+drop index gidx_u;
+drop table gidxpart;
+-- Test the cross-partition uniqueness with non-partition key with global unique index
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (100000);
+create table gidxpart2 partition of gidxpart for values from (100000) to (199999);
+insert into gidxpart (a, b, c) values (42, 572814, 'inserted first on gidxpart1');
+insert into gidxpart (a, b, c) values (150000, 572814, 'inserted second on gidxpart2');
+create unique index on gidxpart (b) global; -- should fail
+ERROR:  could not create unique index "gidxpart1_b_idx"
+DETAIL:  Key (b)=(572814) is duplicated.
+delete from gidxpart where a = 150000 and b = 572814;
+create unique index on gidxpart (b) global;
+drop table gidxpart;
+-- Test partition attach and detach with global unique index (no existing index)
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (100000);
+insert into gidxpart (a, b, c) values (42, 572814, 'inserted first on gidxpart1');
+create unique index on gidxpart (b) global;
+create table gidxpart2 (a int, b int, c text);
+insert into gidxpart2 (a, b, c) values (150000, 572814, 'dup inserted on gidxpart2');
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999); -- should fail
+ERROR:  could not create unique index "gidxpart1_b_idx"
+DETAIL:  Key (b)=(572814) is duplicated.
+update gidxpart2 set b = 5000;
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999);
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be g
+     relname     | relkind 
+-----------------+---------
+ gidxpart2_b_idx | g
+(1 row)
+
+alter table gidxpart detach partition gidxpart2;
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be i
+     relname     | relkind 
+-----------------+---------
+ gidxpart2_b_idx | i
+(1 row)
+
+drop table gidxpart;
+drop table gidxpart2;
+-- Test partition attach and detach with global unique index (with duplicate index)
+create table gidxpart (a int, b int, c text) partition by range (a);
+create table gidxpart1 partition of gidxpart for values from (0) to (100000);
+insert into gidxpart (a, b, c) values (42, 572814, 'inserted first on gidxpart1');
+create unique index on gidxpart (b) global;
+create table gidxpart2 (a int, b int, c text);
+create unique index on gidxpart2 (b);
+insert into gidxpart2 (a, b, c) values (150000, 572814, 'dup inserted on gidxpart2');
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be i
+     relname     | relkind 
+-----------------+---------
+ gidxpart2_b_idx | i
+(1 row)
+
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999); -- should fail
+ERROR:  could not create unique index "gidxpart1_b_idx"
+DETAIL:  Key (b)=(572814) is duplicated.
+update gidxpart2 set b = 5000;
+alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999);
+select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be g
+     relname     | relkind 
+-----------------+---------
+ gidxpart2_b_idx | g
+(1 row)
+
+alter table gidxpart detach partition gidxpart2;
+drop table gidxpart;
+drop table gidxpart2;
