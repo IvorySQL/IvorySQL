@@ -319,9 +319,9 @@ typedef void (*rsv_callback) (Node *node, deparse_context *context,
  */
 quote_identifier_hook_type quote_identifier_hook = NULL;
 static SPIPlanPtr plan_getrulebyoid = NULL;
-static const char *query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
+static const char *const query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
 static SPIPlanPtr plan_getviewrule = NULL;
-static const char *query_getviewrule = "SELECT * FROM pg_catalog.pg_rewrite WHERE ev_class = $1 AND rulename = $2";
+static const char *const query_getviewrule = "SELECT * FROM pg_catalog.pg_rewrite WHERE ev_class = $1 AND rulename = $2";
 
 /* GUC parameters */
 bool		quote_all_identifiers = false;
