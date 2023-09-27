@@ -85,12 +85,12 @@ INSERT INTO target_tbl(data)
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
 -- as is normal, the insert into target_tbl shows up
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
-                                                                                    data                                                                                    
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                            data                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  BEGIN
- table public.target_tbl: INSERT: id[integer]:1 data[text]:'BEGIN'
- table public.target_tbl: INSERT: id[integer]:2 data[text]:'table public.origin_tbl: INSERT: id[integer]:1 data[text]:''will be replicated and decoded and decoded again'''
- table public.target_tbl: INSERT: id[integer]:3 data[text]:'COMMIT'
+ table public.target_tbl: INSERT: id[pg_catalog.int4]:1 data[text]:'BEGIN'
+ table public.target_tbl: INSERT: id[pg_catalog.int4]:2 data[text]:'table public.origin_tbl: INSERT: id[pg_catalog.int4]:1 data[text]:''will be replicated and decoded and decoded again'''
+ table public.target_tbl: INSERT: id[pg_catalog.int4]:3 data[text]:'COMMIT'
  COMMIT
 (5 rows)
 
@@ -172,10 +172,10 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
 --but new original changes still show up
 INSERT INTO origin_tbl(data) VALUES ('will be replicated');
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1',  'only-local', '1');
-                                      data                                      
---------------------------------------------------------------------------------
+                                          data                                          
+----------------------------------------------------------------------------------------
  BEGIN
- table public.origin_tbl: INSERT: id[integer]:3 data[text]:'will be replicated'
+ table public.origin_tbl: INSERT: id[pg_catalog.int4]:3 data[text]:'will be replicated'
  COMMIT
 (3 rows)
 
@@ -238,13 +238,13 @@ SELECT local_id, external_id,
 (1 row)
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot_no_lsn', NULL, NULL, 'skip-empty-xacts', '1', 'include-xids', '0');
-                                        data                                         
--------------------------------------------------------------------------------------
+                                            data                                             
+---------------------------------------------------------------------------------------------
  BEGIN
- table public.origin_tbl: INSERT: id[integer]:4 data[text]:'no_lsn, commit'
+ table public.origin_tbl: INSERT: id[pg_catalog.int4]:4 data[text]:'no_lsn, commit'
  COMMIT
  BEGIN
- table public.origin_tbl: INSERT: id[integer]:6 data[text]:'no_lsn, commit prepared'
+ table public.origin_tbl: INSERT: id[pg_catalog.int4]:6 data[text]:'no_lsn, commit prepared'
  COMMIT
 (6 rows)
 
@@ -267,3 +267,59 @@ SELECT pg_replication_origin_drop('regress_test_decoding: regression_slot_no_lsn
  
 (1 row)
 
+-- Test that the pgoutput correctly filters changes corresponding to the provided origin value.
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'pgoutput');
+ ?column? 
+----------
+ init
+(1 row)
+
+CREATE PUBLICATION pub FOR TABLE target_tbl;
+SELECT pg_replication_origin_create('regress_test_decoding: regression_slot');
+ pg_replication_origin_create 
+------------------------------
+                            1
+(1 row)
+
+-- mark session as replaying
+SELECT pg_replication_origin_session_setup('regress_test_decoding: regression_slot');
+ pg_replication_origin_session_setup 
+-------------------------------------
+ 
+(1 row)
+
+INSERT INTO target_tbl(data) VALUES ('test data');
+-- The replayed change will be filtered.
+SELECT count(*) = 0 FROM pg_logical_slot_peek_binary_changes('regression_slot', NULL, NULL, 'proto_version', '4', 'publication_names', 'pub', 'origin', 'none');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- The replayed change will be output if the origin value is not specified.
+SELECT count(*) != 0 FROM pg_logical_slot_peek_binary_changes('regression_slot', NULL, NULL, 'proto_version', '4', 'publication_names', 'pub');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Clean up
+SELECT pg_replication_origin_session_reset();
+ pg_replication_origin_session_reset 
+-------------------------------------
+ 
+(1 row)
+
+SELECT pg_drop_replication_slot('regression_slot');
+ pg_drop_replication_slot 
+--------------------------
+ 
+(1 row)
+
+SELECT pg_replication_origin_drop('regress_test_decoding: regression_slot');
+ pg_replication_origin_drop 
+----------------------------
+ 
+(1 row)
+
+DROP PUBLICATION pub;
