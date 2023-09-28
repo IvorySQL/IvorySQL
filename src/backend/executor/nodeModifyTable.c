@@ -4410,17 +4410,6 @@ ExecEndModifyTable(ModifyTableState *node)
 	}
 
 	/*
-	 * Free the exprcontext
-	 */
-	ExecFreeExprContext(&node->ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	if (node->ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ps.ps_ResultTupleSlot);
-
-	/*
 	 * Terminate EPQ execution if active
 	 */
 	EvalPlanQualEnd(&node->mt_epqstate);
