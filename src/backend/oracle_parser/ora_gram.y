@@ -1197,75 +1197,13 @@ exec_func_application :
 											   COERCE_EXPLICIT_CALL,
 											   @1);
 				}
-			| ora_func_name '(' func_arg_list opt_sort_clause ')'
+			| ora_func_name '(' func_arg_list opt_sort_clause ')'						/* EXEC PROCEDURE(arg1, arg2, arg3, ...); */
 				{
 					FuncCall   *n = makeFuncCall($1, $3,
 												 COERCE_EXPLICIT_CALL,
 												 @1);
 
 					n->agg_order = $4;
-					$$ = (Node *) n;
-				}
-			| ora_func_name '(' VARIADIC func_arg_expr opt_sort_clause ')'
-				{
-					FuncCall   *n = makeFuncCall($1, list_make1($4),
-												 COERCE_EXPLICIT_CALL,
-												 @1);
-
-					n->func_variadic = true;
-					n->agg_order = $5;
-					$$ = (Node *) n;
-				}
-			| ora_func_name '(' func_arg_list ',' VARIADIC func_arg_expr opt_sort_clause ')'
-				{
-					FuncCall   *n = makeFuncCall($1, lappend($3, $6),
-												 COERCE_EXPLICIT_CALL,
-												 @1);
-
-					n->func_variadic = true;
-					n->agg_order = $7;
-					$$ = (Node *) n;
-				}
-			| ora_func_name '(' ALL func_arg_list opt_sort_clause ')'
-				{
-					FuncCall   *n = makeFuncCall($1, $4,
-												 COERCE_EXPLICIT_CALL,
-												 @1);
-
-					n->agg_order = $5;
-					/* Ideally we'd mark the FuncCall node to indicate
-					 * "must be an aggregate", but there's no provision
-					 * for that in FuncCall at the moment.
-					 */
-					$$ = (Node *) n;
-				}
-			| ora_func_name '(' DISTINCT func_arg_list opt_sort_clause ')'
-				{
-					FuncCall   *n = makeFuncCall($1, $4,
-												 COERCE_EXPLICIT_CALL,
-												 @1);
-
-					n->agg_order = $5;
-					n->agg_distinct = true;
-					$$ = (Node *) n;
-				}
-			| ora_func_name '(' '*' ')'
-				{
-					/*
-					 * We consider AGGREGATE(*) to invoke a parameterless
-					 * aggregate.  This does the right thing for COUNT(*),
-					 * and there are no other aggregates in SQL that accept
-					 * '*' as parameter.
-					 *
-					 * The FuncCall node is also marked agg_star = true,
-					 * so that later processing can detect what the argument
-					 * really was.
-					 */
-					FuncCall   *n = makeFuncCall($1, NIL,
-												 COERCE_EXPLICIT_CALL,
-												 @1);
-
-					n->agg_star = true;
 					$$ = (Node *) n;
 				}
 		; 

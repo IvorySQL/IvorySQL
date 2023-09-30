@@ -969,8 +969,10 @@ raise notice 'protest';
 end;
 / 
 
-exec protest;
-exec protest;
+CALL protest;  -- should failed 
+CALL protest();
+exec protest;      
+exec protest();
 drop  procedure protest ;
 
 create or replace procedure procedure_addtest (a int, b int)
@@ -982,3 +984,133 @@ end;
 
 exec procedure_addtest(12,13);
 drop procedure procedure_addtest;
+
+--
+-- Tests for procedures / exec syntax
+--
+CREATE or replace PROCEDURE test_proc1
+AS 
+BEGIN
+    NULL;
+END;
+/
+
+CALL test_proc1;  -- should failed 
+CALL test_proc1();
+EXEC test_proc1;   
+EXEC test_proc1();
+DROP PROCEDURE test_proc1;
+
+CREATE TABLE test1 (a int);
+CREATE OR REPLACE PROCEDURE test_proc3(x int)
+AS 
+BEGIN
+    INSERT INTO test1 VALUES (x);
+END;
+/
+
+EXEC test_proc3(55);
+SELECT * FROM test1;
+
+
+-- nested CALL
+TRUNCATE TABLE test1;
+CREATE or replace PROCEDURE test_proc4(y int)
+AS
+BEGIN
+    CALL test_proc3(y);
+    CALL test_proc3($1);
+END;
+/
+
+EXEC test_proc4(66);
+SELECT * FROM test1;
+
+EXEC test_proc4(66);
+SELECT * FROM test1;
+DROP PROCEDURE test_proc3;
+DROP PROCEDURE test_proc4;
+DROP TABLE test1;
+
+-- output arguments
+CREATE or replace PROCEDURE test_proc5(INOUT a text)
+AS 
+BEGIN
+    a := a || '+' || a;
+END;
+/
+
+CALL test_proc5('abc');
+EXEC test_proc5('abc');
+DROP PROCEDURE test_proc5;
+
+CREATE or replace PROCEDURE test_proc6(a int, INOUT b int, INOUT c int)
+AS 
+BEGIN
+    b := b * a;
+    c := c * a;
+END;
+/
+
+CALL test_proc6(2, 3, 4);
+EXEC test_proc6(2, 3, 4);
+DROP PROCEDURE test_proc6;
+-- recursive with output arguments
+
+CREATE OR REPLACE PROCEDURE test_proc7(x int, INOUT a int, INOUT b numeric)
+AS
+BEGIN
+IF x > 1 THEN
+    a := x / 10;
+    b := x / 2;
+    CALL test_proc7(b::int, a, b);
+END IF;
+END;
+/
+
+CALL test_proc7(100, -1, -1);
+EXEC test_proc7(100, -1, -1);
+DROP PROCEDURE test_proc7;
+
+CREATE OR REPLACE PROCEDURE test_proc8a(INOUT a int, INOUT b int)
+AS 
+BEGIN
+  RAISE NOTICE 'a: %, b: %', a, b;
+  a := a * 10;
+  b := b + 10;
+END;
+/
+
+EXEC test_proc8a(10, 20);
+EXEC test_proc8a(b => 20, a => 10);
+DROP PROCEDURE test_proc8a;
+
+CREATE OR REPLACE PROCEDURE test_proc8b( a  int,  b  int)
+AS 
+va int;
+vb int;
+BEGIN
+  va := a * 10;
+  vb := b + 10;
+  raise notice '% %', va, vb;
+END;
+/
+EXEC test_proc8b(100, 200);
+EXEC test_proc8b(b => 200, a => 100);
+DROP PROCEDURE test_proc8b;
+
+
+CREATE OR REPLACE PROCEDURE test_proc8c(a  int,  b  int default 200)
+AS 
+va varchar2(50);
+vb varchar2(50);
+BEGIN
+  va := a * 10;
+  vb := b + 10;
+   raise notice '% %', va, vb;
+END;
+/
+EXEC test_proc8c(10);
+EXEC test_proc8c(100, 500);
+EXEC test_proc8c(b => 500, a => 100);
+DROP PROCEDURE test_proc8c;
