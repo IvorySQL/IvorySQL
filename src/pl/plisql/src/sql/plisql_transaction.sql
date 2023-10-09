@@ -82,7 +82,7 @@ CREATE FUNCTION transaction_test3() RETURNS int
 LANGUAGE plisql
 AS $$
 BEGIN
-    CALL transaction_test1(9, 'error');
+    transaction_test1(9, 'error');
     RETURN 1;
 END;
 $$;
@@ -142,7 +142,7 @@ CREATE PROCEDURE transaction_test6(c text)
 LANGUAGE plisql
 AS $$
 BEGIN
-    CALL transaction_test1(9, c);
+    transaction_test1(9, c);
 END;
 $$;
 /
@@ -157,7 +157,7 @@ CREATE PROCEDURE transaction_test7()
 LANGUAGE plisql
 AS $$
 BEGIN
-    DO 'BEGIN CALL transaction_test1(9, $x$baz$x$); END;';
+    DO 'BEGIN transaction_test1(9, $x$baz$x$); END;';
 END;
 $$;
 /
@@ -533,7 +533,7 @@ $$;
 DO LANGUAGE plisql $$
 BEGIN
   ROLLBACK;
-  CALL transaction_test9();
+  transaction_test9();
 END
 $$;
 
@@ -558,9 +558,9 @@ $$;
 
 DO $$
 BEGIN
-    CALL transaction_test9b(report_count());
+    transaction_test9b(report_count());
     INSERT INTO test2 VALUES(43);
-    CALL transaction_test9b(report_count());
+    transaction_test9b(report_count());
 END
 $$;
 

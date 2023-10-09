@@ -111,7 +111,7 @@ static	PLiSQL_expr	*read_cursor_args(PLiSQL_var *cursor,
 										  int until);
 static	List			*read_raise_options(void);
 static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
-
+static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 %}
 
 %expect 0
@@ -1449,25 +1449,7 @@ stmt_perform	: K_PERFORM
 					}
 				;
 
-stmt_call		: K_CALL
-					{
-						PLiSQL_stmt_call *new;
-
-						new = palloc0(sizeof(PLiSQL_stmt_call));
-						new->cmd_type = PLISQL_STMT_CALL;
-						new->lineno = plisql_location_to_lineno(@1);
-						new->stmtid = ++plisql_curr_compile->nstatements;
-						plisql_push_back_token(K_CALL);
-						new->expr = read_sql_stmt();
-						new->is_call = true;
-
-						/* Remember we may need a procedure resource owner */
-						plisql_curr_compile->requires_procedure_resowner = true;
-
-						$$ = (PLiSQL_stmt *)new;
-
-					}
-				| K_DO
+stmt_call		: K_DO
 					{
 						/* use the same structures as for CALL, for simplicity */
 						PLiSQL_stmt_call *new;
@@ -2531,7 +2513,23 @@ stmt_execsql	: K_IMPORT
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							word_is_not_variable(&($1), @1);
-						$$ = make_execsql_stmt(T_WORD, @1);
+						if (tok == '(' || tok == ';')
+						{
+							PLiSQL_stmt_call *new;
+
+							new = palloc0(sizeof(PLiSQL_stmt_call));
+							new->cmd_type = PLISQL_STMT_CALL;
+							new->lineno = plisql_location_to_lineno(@1);
+							new->stmtid = ++plisql_curr_compile->nstatements;
+							new->expr = build_call_expr(T_WORD, @1);
+							new->is_call = true;
+
+							$$ = (PLiSQL_stmt *)new;
+						}
+						else
+						{
+							$$ = make_execsql_stmt(T_WORD, @1);
+						}
 					}
 				| T_CWORD
 					{
@@ -2542,7 +2540,23 @@ stmt_execsql	: K_IMPORT
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							cword_is_not_variable(&($1), @1);
-						$$ = make_execsql_stmt(T_CWORD, @1);
+						if (tok == '(' || tok == ';')
+						{
+							PLiSQL_stmt_call *new;
+
+							new = palloc0(sizeof(PLiSQL_stmt_call));
+							new->cmd_type = PLISQL_STMT_CALL;
+							new->lineno = plisql_location_to_lineno(@1);
+							new->stmtid = ++plisql_curr_compile->nstatements;
+							new->expr = build_call_expr(T_CWORD, @1);
+							new->is_call = true;
+
+							$$ = (PLiSQL_stmt *)new;
+						}
+						else
+						{
+							$$ = make_execsql_stmt(T_CWORD, @1);
+						}
 					}
 				;
 
@@ -3586,17 +3600,17 @@ read_datatype(int tok)
 static PLiSQL_stmt *
 make_execsql_stmt(int firsttoken, int location)
 {
-	StringInfoData ds;
-	IdentifierLookup save_IdentifierLookup;
+	StringInfoData		ds;
+	IdentifierLookup	save_IdentifierLookup;
 	PLiSQL_stmt_execsql *execsql;
 	PLiSQL_expr		*expr;
 	PLiSQL_variable	*target = NULL;
-	int			tok;
-	int			prev_tok;
-	bool		have_into = false;
-	bool		have_strict = false;
-	int			into_start_loc = -1;
-	int			into_end_loc = -1;
+	int					tok;
+	int					prev_tok;
+	bool				have_into = false;
+	bool				have_strict = false;
+	int					into_start_loc = -1;
+	int					into_end_loc = -1;
 
 	initStringInfo(&ds);
 
@@ -3682,11 +3696,11 @@ make_execsql_stmt(int firsttoken, int location)
 		ds.data[--ds.len] = '\0';
 
 	expr = palloc0(sizeof(PLiSQL_expr));
-	expr->query = pstrdup(ds.data);
-	expr->parseMode = RAW_PARSE_DEFAULT;
-	expr->plan = NULL;
-	expr->paramnos = NULL;
-	expr->target_param = -1;
+	expr->query			= pstrdup(ds.data);
+	expr->parseMode		= RAW_PARSE_DEFAULT;
+	expr->plan			= NULL;
+	expr->paramnos		= NULL;
+	expr->target_param	= -1;
 	expr->ns			= plisql_ns_top();
 	pfree(ds.data);
 
@@ -3697,14 +3711,61 @@ make_execsql_stmt(int firsttoken, int location)
 	execsql->lineno  = plisql_location_to_lineno(location);
 	execsql->stmtid  = ++plisql_curr_compile->nstatements;
 	execsql->sqlstmt = expr;
-	execsql->into = have_into;
-	execsql->strict = have_strict;
-	execsql->target = target;
+	execsql->into	 = have_into;
+	execsql->strict	 = have_strict;
+	execsql->target	 = target;
 
 	return (PLiSQL_stmt *) execsql;
 }
 
+static PLiSQL_expr *
+build_call_expr(int firsttoken, int location)
+{
+	StringInfoData		ds;
+	IdentifierLookup	save_IdentifierLookup;
+	PLiSQL_expr			*expr;
+	int					tok;
 
+	initStringInfo(&ds);
+
+	/* special lookup mode for identifiers within the SQL text */
+	save_IdentifierLookup = plisql_IdentifierLookup;
+	plisql_IdentifierLookup = IDENTIFIER_LOOKUP_EXPR;
+
+	tok = firsttoken;
+	for (;;)
+	{
+		tok = yylex();
+		if (tok == ';')
+			break;
+		if (tok == 0)
+			yyerror("unexpected end of function definition");
+	}
+
+	plisql_IdentifierLookup = save_IdentifierLookup;
+	plisql_append_source_text(&ds, location, yylloc);
+
+	/* trim any trailing whitespace, for neatness */
+	while (ds.len > 0 && scanner_isspace(ds.data[ds.len - 1]))
+		ds.data[--ds.len] = '\0';
+
+	/* build call expr */
+	if ((firsttoken == T_WORD || firsttoken ==T_CWORD) && tok == ';')
+		ds.data = psprintf("CALL %s", ds.data);
+
+	expr = palloc0(sizeof(PLiSQL_expr));
+	expr->query			= pstrdup(ds.data);
+	expr->parseMode		= RAW_PARSE_DEFAULT;
+	expr->plan			= NULL;
+	expr->paramnos		= NULL;
+	expr->target_param	= -1;
+	expr->ns			= plisql_ns_top();
+	pfree(ds.data);
+
+	check_sql_expr(expr->query, expr->parseMode, location);
+
+	return expr;
+}
 /*
  * Read FETCH or MOVE direction clause (everything through FROM/IN).
  */

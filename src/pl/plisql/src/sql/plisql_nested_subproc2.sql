@@ -392,8 +392,8 @@ declare
   end;
 begin
      name := 'xiexie';
-     call test(23);
-     call test(name);
+     test(23);
+     test(name);
 end;
 /
 
@@ -808,14 +808,14 @@ declare
    begin
         raise info 'test out name=%', name;
         name1 := 'must be assign to null';
-	call test_out(id, name1);
+	test_out(id, name1);
 	raise info 'name1=%', name1;
 	name := 'return to declare';
    end;
 begin
     name := 'must be assign to null';
     id := 1;
-    call test_out(id, name);
+    test_out(id, name);
     raise info 'declare name=%', name;
  end;
  /
@@ -1441,7 +1441,7 @@ end;
 declare
   id integer;
 begin
-  call test_mds(23);
+  test_mds(23);
 end;
 /
 
@@ -1466,7 +1466,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -1489,7 +1489,7 @@ as
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
   return mds;
 end;
@@ -1518,7 +1518,7 @@ end;
 	end;
 BEGIN
   var1 := 23;
-  call test_f(var1);
+  test_f(var1);
 END;
 /
 
@@ -1540,7 +1540,7 @@ AS
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -1549,7 +1549,7 @@ end;
 declare
   id integer;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
 end;
 /
 
@@ -1588,7 +1588,7 @@ begin
 
 --print 45 55 10000
 begin
-   call test_subprocproc(23);
+   test_subprocproc(23);
 end;
 /
 
@@ -1687,7 +1687,7 @@ declare
 begin
     ret := SQUARE();
     raise info 'ret=%', ret;
-    call test_nopar();
+    test_nopar();
 end;
 /
 
@@ -1838,13 +1838,13 @@ DECLARE
   -- Declare and define proc2:
   PROCEDURE proc2(number2 NUMBER) IS
   BEGIN
-    call proc1(number2);
+    proc1(number2);
   END;
 
   -- Define proc 1:
   PROCEDURE proc1(number1 NUMBER) IS
   BEGIN
-    call proc2 (number1);
+    proc2 (number1);
   END;
 BEGIN
   NULL;
@@ -1858,7 +1858,7 @@ DECLARE
 
 	PROCEDURE proc2(number2 NUMBER) IS
 	BEGIN
-		call proc1(number2);
+		proc1(number2);
 		raise info '%', number2;
 		raise info '%','proc2';
 	END;
@@ -1866,7 +1866,7 @@ DECLARE
 	PROCEDURE proc4(number2 NUMBER) IS
 	BEGIN
 		raise info '%','proc4';
-		call proc3(number2);
+		proc3(number2);
 		raise info 'proc3 out %', number2;
 	END;
 
@@ -1883,8 +1883,8 @@ DECLARE
 	END;
 
 BEGIN
-	call proc2(1);
-	call proc4(2);
+	proc2(1);
+	proc4(2);
 END;
 /
 
@@ -2558,7 +2558,7 @@ declare
   end;
 begin
   var1 := test_f(23);
-  call test_f(23);
+  test_f(23);
 end;
 /
 
@@ -2570,7 +2570,7 @@ declare
     raise info 'invoke test_f';
   end;
 begin
-  call test_f();
+  test_f();
 end;
 /
 
@@ -2610,7 +2610,7 @@ declare
     raise info '%',id;
   end;
 begin
-  call test_f(var1);
+  test_f(var1);
 end;
 /
 
@@ -2623,7 +2623,7 @@ declare
     raise info '%', id;
   end;
 begin
-  call test_p(var1);
+  test_p(var1);
 end;
 /
 
@@ -2645,7 +2645,7 @@ declare
   end;
 begin
   var3 := 25;
-  call test_p(24);
+  test_p(24);
 end;
 /
 
@@ -2699,7 +2699,7 @@ declare
     return 23;
   end;
 begin
-   call test_func1(var1);
+   test_func1(var1);
 end;
 /
 
@@ -2707,7 +2707,7 @@ end;
 declare
   var1 integer;
 begin
-   call test_func1(var1);
+   test_func1(var1);
 end;
 /
 
@@ -2966,7 +2966,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -2989,7 +2989,7 @@ as
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
   return mds;
 end;
@@ -3021,7 +3021,7 @@ AS
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -3030,7 +3030,7 @@ end;
 declare
   id integer;
 begin
-   call test_subprocproc(23);
+   test_subprocproc(23);
 end;
 /
 
@@ -3101,7 +3101,7 @@ end;
 
 --print 45 55 10000
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
 end;
 /
 
@@ -3562,9 +3562,9 @@ declare
   end;
 begin
   var1 := test_f(23);
-  call test_f(24);
+  test_f(24);
   var1 := test_f(23,'xiexie');
-  call test_f(24,'xiexie');
+  test_f(24,'xiexie');
 end;
 /
 

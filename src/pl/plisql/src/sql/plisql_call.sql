@@ -48,8 +48,8 @@ CREATE PROCEDURE test_proc4(y int)
 LANGUAGE plisql
 AS $$
 BEGIN
-    CALL test_proc3(y);
-    CALL test_proc3($1);
+     test_proc3(y);
+     test_proc3($1);
 END;
 $$;
 /
@@ -97,9 +97,9 @@ DECLARE
     x int := 3;
     y int := 4;
 BEGIN
-    CALL test_proc6(2, x, y);
+     test_proc6(2, x, y);
     RAISE INFO 'x = %, y = %', x, y;
-    CALL test_proc6(2, c => y, b => x);
+     test_proc6(2, c => y, b => x);
     RAISE INFO 'x = %, y = %', x, y;
 END;
 $$;
@@ -112,7 +112,7 @@ DECLARE
     x int := 3;
     y int := 4;
 BEGIN
-    CALL test_proc6(2, x + 1, y);  -- error
+     test_proc6(2, x + 1, y);  -- error
     RAISE INFO 'x = %, y = %', x, y;
 END;
 $$;
@@ -125,7 +125,7 @@ DECLARE
     x constant int := 3;
     y int := 4;
 BEGIN
-    CALL test_proc6(2, x, y);  -- error because x is constant
+     test_proc6(2, x, y);  -- error because x is constant
 END;
 $$;
 
@@ -154,7 +154,7 @@ BEGIN
 IF x > 1 THEN
     a := x / 10;
     b := x / 2;
-    CALL test_proc7(b::int, a, b);
+     test_proc7(b::int, a, b);
 END IF;
 END;
 $$;
@@ -180,7 +180,7 @@ LANGUAGE plisql
 AS $$
 DECLARE _a int; _b numeric;
 BEGIN
-  CALL test_proc7c(_x, _a, _b);
+   test_proc7c(_x, _a, _b);
   RAISE NOTICE '_x: %,_a: %, _b: %', _x, _a, _b;
 END
 $$;
@@ -209,9 +209,9 @@ DO $$
 DECLARE _a int; _b int;
 BEGIN
   _a := 10; _b := 30;
-  CALL test_proc8a(_a, _b);
+   test_proc8a(_a, _b);
   RAISE NOTICE '_a: %, _b: %', _a, _b;
-  CALL test_proc8a(b => _b, a => _a);
+   test_proc8a(b => _b, a => _a);
   RAISE NOTICE '_a: %, _b: %', _a, _b;
 END
 $$;
@@ -233,9 +233,9 @@ DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
   _a := 10; _b := 30; _c := 50;
-  CALL test_proc8b(_a, _b, _c);
+   test_proc8b(_a, _b, _c);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
-  CALL test_proc8b(_a, c => _c, b => _b);
+   test_proc8b(_a, c => _c, b => _b);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
@@ -257,22 +257,13 @@ DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
   _a := 10; _b := 30; _c := 50;
-  CALL test_proc8c(_a, _b, _c);
+   test_proc8c(_a, _b, _c);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
   _a := 10; _b := 30; _c := 50;
-  CALL test_proc8c(_a, c => _c, b => _b);
+   test_proc8c(_a, c => _c, b => _b);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
   _a := 10; _b := 30; _c := 50;
-  CALL test_proc8c(c => _c, b => _b, a => _a);
-  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
-END
-$$;
-
-DO $$
-DECLARE _a int; _b int; _c int;
-BEGIN
-  _a := 10; _b := 30; _c := 50;
-  CALL test_proc8c(_a, _b);  -- fail, no output argument for c
+   test_proc8c(c => _c, b => _b, a => _a);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
@@ -281,7 +272,16 @@ DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
   _a := 10; _b := 30; _c := 50;
-  CALL test_proc8c(_a, b => _b);  -- fail, no output argument for c
+   test_proc8c(_a, _b);  -- fail, no output argument for c
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 50;
+   test_proc8c(_a, b => _b);  -- fail, no output argument for c
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
@@ -303,7 +303,7 @@ DO $$
 DECLARE _a int; _b int;
 BEGIN
   _a := 10; _b := 30;
-  CALL test_proc9(_a, _b);
+   test_proc9(_a, _b);
   RAISE NOTICE '_a: %, _b: %', _a, _b;
 END
 $$;
@@ -322,31 +322,31 @@ DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc10(_a, _b, _c);
+   test_proc10(_a, _b, _c);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc10(_a, _b, c => _c);
+   test_proc10(_a, _b, c => _c);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc10(a => _a, b => _b, c => _c);
+   test_proc10(a => _a, b => _b, c => _c);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc10(_a, c => _c, b => _b);
+   test_proc10(_a, c => _c, b => _b);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc10(_a, _b);
+   test_proc10(_a, _b);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc10(_a, b => _b);
+   test_proc10(_a, b => _b);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc10(b => _b, a => _a);
+   test_proc10(b => _b, a => _a);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
@@ -367,7 +367,7 @@ DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
   _a := 10; _b := 30; _c := 7;
-  CALL test_proc11(_a, _b, _c);
+   test_proc11(_a, _b, _c);
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
@@ -383,7 +383,7 @@ AS $$
 DECLARE
     z int := 0;
 BEGIN
-    CALL test_proc6(2, NEW.a, NEW.a);
+     test_proc6(2, NEW.a, NEW.a);
     RETURN NEW;
 END;
 $$;
@@ -420,7 +420,7 @@ DECLARE
   v_Text text;
   v_cnt  integer := 42;
 BEGIN
-  CALL p1(v_cnt := v_cnt);  -- error, must supply something for v_Text
+   p1(v_cnt := v_cnt);  -- error, must supply something for v_Text
   RAISE NOTICE '%', v_Text;
 END;
 $$;
@@ -430,7 +430,7 @@ DECLARE
   v_Text text;
   v_cnt  integer := 42;
 BEGIN
-  CALL p1(v_cnt := v_cnt, v_Text := v_Text);
+   p1(v_cnt := v_cnt, v_Text := v_Text);
   RAISE NOTICE '%', v_Text;
 END;
 $$;
@@ -439,7 +439,7 @@ DO $$
 DECLARE
   v_Text text;
 BEGIN
-  CALL p1(10, v_Text := v_Text);
+   p1(10, v_Text := v_Text);
   RAISE NOTICE '%', v_Text;
 END;
 $$;
@@ -449,7 +449,7 @@ DECLARE
   v_Text text;
   v_cnt  integer;
 BEGIN
-  CALL p1(v_Text := v_Text, v_cnt := v_cnt);
+   p1(v_Text := v_Text, v_cnt := v_cnt);
   RAISE NOTICE '%', v_Text;
 END;
 $$;
