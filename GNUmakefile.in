@@ -93,7 +93,7 @@ GNUmakefile: GNUmakefile.in $(top_builddir)/config.status
 	./config.status $@
 
 
-$(call recurse,oracle-pg-check-world,src/test/regress,oracle-pg-check)
+$(call recurse,oracle-pg-check-world,src/test,oracle-pg-check)
 #add oracle regression
 $(call recurse,oracle-check-world,src/oracle_test src/pl src/interfaces/ecpg contrib/ivorysql_ora contrib/ora_btree_gist contrib/ora_btree_gin src/bin,oracle-check)
 $(call recurse,oracle-checkprep,  src/oracle_test src/pl src/interfaces/ecpg contrib src/bin)

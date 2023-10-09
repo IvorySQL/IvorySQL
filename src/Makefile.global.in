@@ -21,7 +21,8 @@
 
 #standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check checkprep installcheck init-po update-po
 # IvorySQL:BEGIN - SQL oracle_test
-standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check oracle-check checkprep oracle-checkprep installcheck oracle-installcheck init-po update-po
+standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check oracle-check checkprep oracle-checkprep installcheck oracle-installcheck init-po update-po \
+                    oracle-pg-check oracle-pg-checkprep
 # IvorySQL:END - SQL oracle_test
 # these targets should recurse even into subdirectories not being built:
 standard_always_targets = distprep clean distclean maintainer-clean
@@ -403,6 +404,7 @@ endif
 check: temp-install
 #IvorySQL:BEGIN - SQL oracle_test
 oracle-check: temp-install
+oracle-pg-check: temp-install
 #IvorySQL:END - SQL oracle_test
 
 .PHONY: temp-install
@@ -775,6 +777,17 @@ ora_pg_regress_check = \
     --bindir= \
     $(TEMP_CONF) \
     $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+
+oracle_pg_isolation_regress_check = \
+    echo "\# +++ ora pg isolation regress check in $(subdir) +++" && \
+    $(with_temp_install) \
+    $(top_builddir)/src/test/isolation/pg_isolation_regress \
+    --temp-instance=./tmp_check_iso \
+    --inputdir=$(srcdir) --outputdir=output_iso \
+    --bindir= \
+    $(TEMP_CONF) \
+    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+
 oracle_regress_check = \
     echo "\# +++ ora regress check in $(subdir) +++" && \
     $(with_temp_install) \
@@ -1004,7 +1017,7 @@ define _create_recursive_target
 $(1): $(1)-$(2)-recurse
 #$(1)-$(2)-recurse: $(if $(filter all install check installcheck, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install)
 #IvorySQL:BEGIN - SQL oracle_test
-$(1)-$(2)-recurse: $(if $(filter all install check oracle-check installcheck oracle-installcheck, $(3)), submake-generated-headers) $(if $(filter check oracle-check, $(3)), temp-install)
+$(1)-$(2)-recurse: $(if $(filter all install check oracle-check installcheck oracle-installcheck oracle-pg-check, $(3)), submake-generated-headers) $(if $(filter check oracle-check oracle-pg-check, $(3)), temp-install)
 #IvorySQL:END - SQL oracle_test
 	$$(MAKE) -C $(2) $(3)
 endef
