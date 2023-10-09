@@ -441,8 +441,8 @@ declare
   end;
 begin
      name := 'xiexie';
-     call test(23);
-     call test(name);
+     test(23);
+     test(name);
 end;
 /
 INFO:  23
@@ -887,14 +887,14 @@ declare
    begin
         raise info 'test out name=%', name;
         name1 := 'must be assign to null';
-	call test_out(id, name1);
+	test_out(id, name1);
 	raise info 'name1=%', name1;
 	name := 'return to declare';
    end;
 begin
     name := 'must be assign to null';
     id := 1;
-    call test_out(id, name);
+    test_out(id, name);
     raise info 'declare name=%', name;
  end;
  /
@@ -1540,7 +1540,7 @@ end;
 declare
   id integer;
 begin
-  call test_mds(23);
+  test_mds(23);
 end;
 /
 INFO:  23
@@ -1563,7 +1563,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -1587,7 +1587,7 @@ as
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
   return mds;
 end;
@@ -1616,7 +1616,7 @@ INFO:  test_subprocfunc
 	end;
 BEGIN
   var1 := 23;
-  call test_f(var1);
+  test_f(var1);
 END;
 /
 ERROR:  Only schema-level programs allow ACCESSIBLE BY at or near ")"
@@ -1635,7 +1635,7 @@ QUERY:  DECLARE
 	end;
 BEGIN
   var1 := 23;
-  call test_f(var1);
+  test_f(var1);
 END
 --test ok
 create or replace procedure test_subprocproc(id integer)
@@ -1655,7 +1655,7 @@ AS
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -1663,7 +1663,7 @@ end;
 declare
   id integer;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
 end;
 /
 INFO:  test_subprocproc
@@ -1701,7 +1701,7 @@ begin
 /
 --print 45 55 10000
 begin
-   call test_subprocproc(23);
+   test_subprocproc(23);
 end;
 /
 INFO:  45
@@ -1806,7 +1806,7 @@ declare
 begin
     ret := SQUARE();
     raise info 'ret=%', ret;
-    call test_nopar();
+    test_nopar();
 end;
 /
 INFO:  function no par
@@ -2001,12 +2001,12 @@ DECLARE
   -- Declare and define proc2:
   PROCEDURE proc2(number2 NUMBER) IS
   BEGIN
-    call proc1(number2);
+    proc1(number2);
   END;
   -- Define proc 1:
   PROCEDURE proc1(number1 NUMBER) IS
   BEGIN
-    call proc2 (number1);
+    proc2 (number1);
   END;
 BEGIN
   NULL;
@@ -2018,14 +2018,14 @@ DECLARE
 	PROCEDURE proc3(number1 out NUMBER);
 	PROCEDURE proc2(number2 NUMBER) IS
 	BEGIN
-		call proc1(number2);
+		proc1(number2);
 		raise info '%', number2;
 		raise info '%','proc2';
 	END;
 	PROCEDURE proc4(number2 NUMBER) IS
 	BEGIN
 		raise info '%','proc4';
-		call proc3(number2);
+		proc3(number2);
 		raise info 'proc3 out %', number2;
 	END;
 	PROCEDURE proc1(number1 out NUMBER) IS
@@ -2039,8 +2039,8 @@ DECLARE
 		number1 := 1;
 	END;
 BEGIN
-	call proc2(1);
-	call proc4(2);
+	proc2(1);
+	proc4(2);
 END;
 /
 INFO:  proc1
@@ -2823,7 +2823,7 @@ declare
   end;
 begin
   var1 := test_f(23);
-  call test_f(23);
+  test_f(23);
 end;
 /
 INFO:  function test_f
@@ -2836,7 +2836,7 @@ declare
     raise info 'invoke test_f';
   end;
 begin
-  call test_f();
+  test_f();
 end;
 /
 INFO:  invoke test_f
@@ -2877,7 +2877,7 @@ declare
     raise info '%',id;
   end;
 begin
-  call test_f(var1);
+  test_f(var1);
 end;
 /
 ERROR:  Only schema-level programs allow ACCESSIBLE BY at or near ")"
@@ -2891,7 +2891,7 @@ QUERY:  declare
     raise info '%',id;
   end;
 begin
-  call test_f(var1);
+  test_f(var1);
 end
 --test invoker_rights_clause failed
 declare
@@ -2902,7 +2902,7 @@ declare
     raise info '%', id;
   end;
 begin
-  call test_p(var1);
+  test_p(var1);
 end;
 /
 ERROR:  Only schema-level programs allow AUTHID at or near "definer"
@@ -2916,7 +2916,7 @@ QUERY:  declare
     raise info '%', id;
   end;
 begin
-  call test_p(var1);
+  test_p(var1);
 end
 --oracle failed, but we sucess
 declare
@@ -2936,7 +2936,7 @@ declare
   end;
 begin
   var3 := 25;
-  call test_p(24);
+  test_p(24);
 end;
 /
 INFO:  id = 24
@@ -2991,20 +2991,20 @@ declare
     return 23;
   end;
 begin
-   call test_func1(var1);
+   test_func1(var1);
 end;
 /
 ERROR:  'test_func1' is not a procedure
-LINE 1: call test_func1(var1)
+LINE 1: CALL test_func1(var1)
              ^
 HINT:  To call a function, use SELECT.
-QUERY:  call test_func1(var1)
+QUERY:  CALL test_func1(var1)
 CONTEXT:  PL/iSQL function inline_code_block line 8 at CALL
 --sucess
 declare
   var1 integer;
 begin
-   call test_func1(var1);
+   test_func1(var1);
 end;
 /
 INFO:  id = <NULL>
@@ -3294,7 +3294,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -3318,7 +3318,7 @@ as
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
   return mds;
 end;
@@ -3350,7 +3350,7 @@ AS
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end;
 /
@@ -3358,7 +3358,7 @@ end;
 declare
   id integer;
 begin
-   call test_subprocproc(23);
+   test_subprocproc(23);
 end;
 /
 INFO:  test_subprocproc
@@ -3430,7 +3430,7 @@ end;
 /
 --print 45 55 10000
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
 end;
 /
 INFO:  45
@@ -3918,9 +3918,9 @@ declare
   end;
 begin
   var1 := test_f(23);
-  call test_f(24);
+  test_f(24);
   var1 := test_f(23,'xiexie');
-  call test_f(24,'xiexie');
+  test_f(24,'xiexie');
 end;
 /
 INFO:  invoke func test_f(integer)
@@ -3973,15 +3973,12 @@ begin
   dbms_output.put_line('xiexie');
 end;
 /
-ERROR:  syntax error at or near "dbms_output"
-LINE 5:   dbms_output.put_line('xiexie');
-          ^
-QUERY:  declare
-  var1 integer;
-begin
-  var1 := test.test_f(23);
-  dbms_output.put_line('xiexie');
-end
+INFO:  var1 = 2
+ERROR:  schema "dbms_output" does not exist
+LINE 1: CALL dbms_output.put_line('xiexie')
+             ^
+QUERY:  CALL dbms_output.put_line('xiexie')
+CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 create or replace function test.test_f(id integer) return integer is
   var1 integer;
   function test_f(id integer) return integer;

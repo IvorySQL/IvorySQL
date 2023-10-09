@@ -1018,8 +1018,8 @@ TRUNCATE TABLE test1;
 CREATE or replace PROCEDURE test_proc4(y int)
 AS
 BEGIN
-    CALL test_proc3(y);
-    CALL test_proc3($1);
+     test_proc3(y);
+     test_proc3($1);
 END;
 /
 
@@ -1063,7 +1063,7 @@ BEGIN
 IF x > 1 THEN
     a := x / 10;
     b := x / 2;
-    CALL test_proc7(b::int, a, b);
+     test_proc7(b::int, a, b);
 END IF;
 END;
 /
@@ -1114,3 +1114,77 @@ EXEC test_proc8c(10);
 EXEC test_proc8c(100, 500);
 EXEC test_proc8c(b => 500, a => 100);
 DROP PROCEDURE test_proc8c;
+
+
+-- add test 
+CREATE OR REPLACE PROCEDURE protest 
+AS 
+BEGIN 
+raise notice 'protest';
+END;
+/
+
+-- function
+CREATE OR REPLACE FUNCTION functest()
+RETURN INT4
+AS 
+BEGIN
+protest();  -- No need to write "CALL" anymore.
+raise notice 'functest';
+RETURN 25;
+END;
+/
+
+SELECT functest();
+DROP FUNCTION functest;
+
+-- procedure
+CREATE OR REPLACE PROCEDURE protest2
+AS
+BEGIN 
+protest();          -- No need to write "CALL" anymore.
+raise notice 'protest2';
+END;
+/
+
+CALL protest2();
+
+DROP PROCEDURE  protest2;
+DROP PROCEDURE  protest;
+
+-- schema.procedure
+CREATE SCHEMA stest;
+CREATE OR REPLACE PROCEDURE stest.protest 
+AS 
+BEGIN 
+raise notice 'stest.protest';
+END;
+/
+
+-- function
+CREATE OR REPLACE FUNCTION functest2()
+RETURN INT4
+AS 
+BEGIN
+stest.protest();  -- No need to write "CALL" anymore.
+raise notice 'functest2';
+RETURN 25;
+END;
+/
+
+SELECT functest2();
+DROP FUNCTION functest2;
+
+-- procedure
+CREATE OR REPLACE PROCEDURE protest2
+AS
+BEGIN 
+stest.protest();          -- No need to write "CALL" anymore.
+raise notice 'protest2';
+END;
+/
+
+CALL protest2();
+
+DROP PROCEDURE  protest2;
+DROP PROCEDURE  stest.protest;

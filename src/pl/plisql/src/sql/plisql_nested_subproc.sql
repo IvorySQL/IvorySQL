@@ -410,8 +410,8 @@ declare
   end;
 begin
      name := 'xiexie';
-     call test(23);
-     call test(name);
+     test(23);
+     test(name);
 end;$$ language plisql;
 
 -- test subproc function'argument has default value
@@ -851,14 +851,14 @@ declare
    begin
         raise info 'test out name=%', name;
         name1 := 'must be assign to null';
-	call test_out(id, name1);
+	test_out(id, name1);
 	raise info 'name1=%', name1;
 	name := 'return to declare';
    end;
 begin
     name := 'must be assign to null';
     id := 1;
-    call test_out(id, name);
+    test_out(id, name);
     raise info 'declare name=%', name;
  end; $$ language plisql;
 
@@ -1549,7 +1549,7 @@ do $$
 declare
   id integer;
 begin
-  call test_mds(23);
+  test_mds(23);
 end; $$ language plisql;
 
 drop procedure test_mds(integer);
@@ -1576,7 +1576,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end; $$ language plisql;
 
@@ -1602,7 +1602,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
   return mds;
 end; $$ language plisql;
@@ -1632,7 +1632,7 @@ do $$
 	end;
 BEGIN
   var1 := 23;
-  call test_f(var1);
+  test_f(var1);
 END; $$ language plisql;
 
 --test ok
@@ -1657,7 +1657,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end; $$ language plisql;
 /
@@ -1667,7 +1667,7 @@ do $$
 declare
   id integer;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
 end; $$ language plisql;
 
 
@@ -1710,7 +1710,7 @@ begin
 --print 45 55 10000
 do $$
 begin
-   call test_subprocproc(23);
+   test_subprocproc(23);
 end; $$ language plisql;
 
 drop procedure test_subprocproc(integer);
@@ -1812,7 +1812,7 @@ declare
 begin
     ret := SQUARE();
     raise info 'ret=%', ret;
-    call test_nopar();
+    test_nopar();
 end; $$ language plisql;
 
 --check nocopy proper
@@ -1970,13 +1970,13 @@ DECLARE
   -- Declare and define proc2:
   PROCEDURE proc2(number2 NUMBER) IS
   BEGIN
-    call proc1(number2);
+    proc1(number2);
   END;
 
   -- Define proc 1:
   PROCEDURE proc1(number1 NUMBER) IS
   BEGIN
-    call proc2 (number1);
+    proc2 (number1);
   END;
 BEGIN
   NULL;
@@ -1990,7 +1990,7 @@ DECLARE
 
 	PROCEDURE proc2(number2 NUMBER) IS
 	BEGIN
-		call proc1(number2);
+		proc1(number2);
 		raise info '%', number2;
 		raise info '%','proc2';
 	END;
@@ -1998,7 +1998,7 @@ DECLARE
 	PROCEDURE proc4(number2 NUMBER) IS
 	BEGIN
 		raise info '%','proc4';
-		call proc3(number2);
+		proc3(number2);
 		raise info 'proc3 out %', number2;
 	END;
 
@@ -2015,8 +2015,8 @@ DECLARE
 	END;
 
 BEGIN
-	call proc2(1);
-	call proc4(2);
+	proc2(1);
+	proc4(2);
 END; $$ language plisql;
 
 --
@@ -2702,7 +2702,7 @@ declare
   end;
 begin
   var1 := test_f(23);
-  call test_f(23);
+  test_f(23);
 end; $$ language plisql;
 
 --ok
@@ -2714,7 +2714,7 @@ declare
     raise info 'invoke test_f';
   end;
 begin
-  call test_f();
+  test_f();
 end; $$ language plisql;
 
 
@@ -2754,7 +2754,7 @@ declare
     raise info '%',id;
   end;
 begin
-  call test_f(var1);
+  test_f(var1);
 end; $$ language plisql;
 
 --test invoker_rights_clause failed
@@ -2767,7 +2767,7 @@ declare
     raise info '%', id;
   end;
 begin
-  call test_p(var1);
+  test_p(var1);
 end; $$ language plisql;
 
 --oracle failed, but we sucess
@@ -2789,7 +2789,7 @@ declare
   end;
 begin
   var3 := 25;
-  call test_p(24);
+  test_p(24);
 end; $$ language plisql;
 
 
@@ -2848,7 +2848,7 @@ declare
     return 23;
   end;
 begin
-   call test_func1(var1);
+   test_func1(var1);
 end; $$ language plisql;
 
 --sucess
@@ -2856,7 +2856,7 @@ do $$
 declare
   var1 integer;
 begin
-   call test_func1(var1);
+   test_func1(var1);
 end; $$ language plisql;
 
 --raise error function keyword not as datum name
@@ -3117,7 +3117,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end; $$ language plisql;
 
@@ -3143,7 +3143,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
   return mds;
 end; $$ language plisql;
@@ -3178,7 +3178,7 @@ declare
      return id;
    end;
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
   mds := test_subprocfunc(23);
 end; $$ language plisql;
 /
@@ -3188,7 +3188,7 @@ do $$
 declare
   id integer;
 begin
-   call test_subprocproc(23);
+   test_subprocproc(23);
 end;$$ language plisql;
 
 DROP PROCEDURE test_subprocproc(integer);
@@ -3265,7 +3265,7 @@ end; $$ language plisql;
 --print 45 55 10000
 do $$
 begin
-  call test_subprocproc(23);
+  test_subprocproc(23);
 end; $$ language plisql;
 
 DROP PROCEDURE test_subprocproc(integer);
@@ -3739,9 +3739,9 @@ declare
   end;
 begin
   var1 := test_f(23);
-  call test_f(24);
+  test_f(24);
   var1 := test_f(23,'xiexie');
-  call test_f(24,'xiexie');
+  test_f(24,'xiexie');
 end; $$ language plisql;
 
 --test memory
