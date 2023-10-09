@@ -521,6 +521,16 @@ endif
 ifdef TAP_TESTS
 	$(prove_check)
 endif
+oracle-pg-check: submake $(REGRESS_PREP)
+ifdef REGRESS
+	$(ora_pg_regress_check) $(REGRESS_OPTS) $(REGRESS)
+endif
+ifdef ISOLATION
+	$(oracle_pg_isolation_regress_check) $(ISOLATION_OPTS) $(ISOLATION)
+endif
+ifdef TAP_TESTS
+	$(prove_check)
+endif
 #IvorySQL:BEGIN - SQL oracle_test
 oracle-check: oracle-submake $(REGRESS_PREP)
 ifdef ORA_REGRESS
@@ -540,6 +550,7 @@ checkprep: EXTRA_INSTALL+=$(subdir)
 #IvorySQL:BEGIN - SQL oracle_test
 oracle-checkprep: EXTRA_INSTALL+=$(subdir)
 #IvorySQL:END - SQL oracle_test
+oracle-pg-checkprep: EXTRA_INSTALL+=$(subdir)
 endif
 
 
