@@ -20,6 +20,8 @@
 
 #include "pg_regress.h"
 
+
+static int	psql_get_ivorysql_port(const char *database);
 /*
  * start a psql test process for specified file (including redirection),
  * and return process ID
@@ -78,9 +80,10 @@ psql_start_test(const char *testname,
 	 * against different AMs without unnecessary differences.
 	 */
 	offset += snprintf(psql_cmd + offset, sizeof(psql_cmd) - offset,
-					   "\"%s%spsql\" -X -a -q -d \"%s\" %s < \"%s\" > \"%s\" 2>&1",
+					   "\"%s%spsql\" -p %d -X -a -q -d \"%s\" %s < \"%s\" > \"%s\" 2>&1",
 					   bindir ? bindir : "",
 					   bindir ? "/" : "",
+					   psql_get_ivorysql_port(dblist->str),
 					   dblist->str,
 					   "-v HIDE_TABLEAM=on -v HIDE_TOAST_COMPRESSION=on",
 					   infile,
@@ -123,4 +126,24 @@ main(int argc, char *argv[])
 						   psql_init,
 						   psql_start_test,
 						   NULL /* no postfunc needed */ );
+}
+
+
+static int
+psql_get_ivorysql_port(const char *database)
+{
+	char psql_cmd[1024];
+	FILE *fp;
+	char port_ora[10];
+	char *temp_p;
+	snprintf(psql_cmd, sizeof(psql_cmd),
+			"\"%s%spsql\" -X -A -t -c \"show ivorysql.port\"  \"%s\"",
+			bindir ? bindir : "",
+			bindir ? "/" : "",
+			database);
+	fp = popen(psql_cmd,"r");
+	temp_p = fgets(port_ora, sizeof(port_ora), fp);
+	if (temp_p == NULL)
+		printf("get ivorysql.port failed\n");
+	return atoi(port_ora);
 }
