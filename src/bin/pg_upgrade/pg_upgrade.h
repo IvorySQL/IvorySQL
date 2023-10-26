@@ -257,7 +257,7 @@ typedef enum
 {
 	TRANSFER_MODE_CLONE,
 	TRANSFER_MODE_COPY,
-	TRANSFER_MODE_LINK
+	TRANSFER_MODE_LINK,
 } transferMode;
 
 /*
@@ -270,7 +270,7 @@ typedef enum
 	PG_REPORT_NONL,				/* these too */
 	PG_REPORT,
 	PG_WARNING,
-	PG_FATAL
+	PG_FATAL,
 } eLogType;
 
 

@@ -55,7 +55,7 @@
 typedef enum EditableObjectType
 {
 	EditableFunction,
-	EditableView
+	EditableView,
 } EditableObjectType;
 
 psql_scan_slash_option_hook_type psql_scan_slash_option_parser = pg_psql_scan_slash_option;
