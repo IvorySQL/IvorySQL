@@ -207,6 +207,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	PGconn	   *conn;
 	bool		pg_ctl_return = false;
 	char		socket_string[MAXPGPATH + 200];
+	PQExpBufferData pgoptions;
 
 	static bool exit_hook_registered = false;
 
@@ -233,8 +234,10 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 				 cluster->sockdir);
 #endif
 
+	initPQExpBuffer(&pgoptions);
+
 	/*
-	 * Use -b to disable autovacuum.
+	 * Construct a parameter string which is passed to the server process.
 	 *
 	 * Turn off durability requirements to improve object creation speed, and
 	 * we only modify the new cluster, so only use it there.  If there is a
@@ -244,6 +247,21 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	 * Force vacuum_defer_cleanup_age to 0 on the new cluster, so that
 	 * vacuumdb --freeze actually freezes the tuples.
 	 */
+	if (cluster == &new_cluster)
+		appendPQExpBufferStr(&pgoptions, " -c synchronous_commit=off -c fsync=off -c full_page_writes=off");
+
+	/*
+	 * Use max_slot_wal_keep_size as -1 to prevent the WAL removal by the
+	 * checkpointer process.  If WALs required by logical replication slots
+	 * are removed, the slots are unusable.  This setting prevents the
+	 * invalidation of slots during the upgrade. We set this option when
+	 * cluster is PG17 or later because logical replication slots can only be
+	 * migrated since then. Besides, max_slot_wal_keep_size is added in PG13.
+	 */
+	if (GET_MAJOR_VERSION(cluster->major_version) >= 1700)
+		appendPQExpBufferStr(&pgoptions, " -c max_slot_wal_keep_size=-1");
+
+	/* Use -b to disable autovacuum. */
 	if (cluster->controldata.database_mode_is_oracle)
 	{
 		snprintf(cmd, sizeof(cmd),
@@ -251,8 +269,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 				 cluster->bindir,
 				 log_opts.logdir,
 				 SERVER_LOG_FILE, cluster->pgconfig, cluster->port, cluster->oraport,
-				 (cluster == &new_cluster) ?
-				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
+				 pgoptions.data,
 				 cluster->pgopts ? cluster->pgopts : "", socket_string);
 	}
 	else
@@ -262,10 +279,11 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 				 cluster->bindir,
 				 log_opts.logdir,
 				 SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
-				 (cluster == &new_cluster) ?
-				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
+				 pgoptions.data,
 				 cluster->pgopts ? cluster->pgopts : "", socket_string);
 	}
+
+	termPQExpBuffer(&pgoptions);
 
 	/*
 	 * Don't throw an error right away, let connecting throw the error because
