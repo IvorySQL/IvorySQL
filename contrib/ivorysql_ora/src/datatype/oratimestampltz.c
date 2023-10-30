@@ -195,9 +195,12 @@ oratimestampltz_in(PG_FUNCTION_ARGS)
 
 	if (strcmp(nls_timestamp_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORATIMESTAMPLTZ_MASK))
 	{
-		Datum	datum;
-		datum = DirectFunctionCall3(timestamp_in, CStringGetDatum(str), ObjectIdGetDatum(InvalidOid), Int32GetDatum(typmod));
-		PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(DatumGetTimestamp(datum)));
+		/* Begin - BUG#M0000247 */
+		Timestamp res;
+
+		res = pg_oratimestamp_in(str, typmod);
+		PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(res));
+		/* End - BUG#M0000247 */
 	}
 	else
 	{

@@ -597,3 +597,17 @@ SELECT 123.456 * interval'365 11:11:11' day(3) to second;
 -- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
 SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
 select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+
+/* Begin - BUG#M0000247 */
+set client_min_messages = 'error';
+create table test_247(a date, b timestamp(7), c timestamp(7) with time zone, d timestamp(7) with local time zone);
+set ivorysql.datetime_ignore_nls_mask = 15;
+insert into test_247 values('2023-10-27 10:54:55.1234567', '2023-10-27 10:54:55.1234567', '2023-10-27 10:54:55.1234567', '2023-10-27 10:54:55.1234567');
+SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS';
+select * from test_247;
+
+drop table test_247;
+reset NLS_DATE_FORMAT;
+reset ivorysql.datetime_ignore_nls_mask;
+reset client_min_messages;
+/* End - BUG#M0000247 */
