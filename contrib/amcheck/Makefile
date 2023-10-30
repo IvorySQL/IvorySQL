@@ -13,6 +13,7 @@ PGFILEDESC = "amcheck - function for verifying relation integrity"
 REGRESS = check check_btree check_heap
 ORA_REGRESS = check ivy_check_btree ivy_check_heap
 
+EXTRA_INSTALL = contrib/pg_walinspect
 TAP_TESTS = 1
 
 ifdef USE_PGXS
