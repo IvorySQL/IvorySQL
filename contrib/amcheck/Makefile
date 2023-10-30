@@ -11,6 +11,7 @@ DATA = amcheck--1.2--1.3.sql amcheck--1.1--1.2.sql amcheck--1.0--1.1.sql amcheck
 PGFILEDESC = "amcheck - function for verifying relation integrity"
 
 REGRESS = check check_btree check_heap
+EXTRA_INSTALL = contrib/pg_walinspect
 ORA_REGRESS = check ivy_check_btree ivy_check_heap
 
 TAP_TESTS = 1
