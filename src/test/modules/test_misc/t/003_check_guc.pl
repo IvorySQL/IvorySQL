@@ -14,6 +14,7 @@ $node->start;
 # Grab the names of all the parameters that can be listed in the
 # configuration sample file.  config_file is an exception, it is not
 # in postgresql.conf.sample but is part of the lists from guc_tables.c.
+# Custom GUCs loaded by extensions are excluded.
 my $all_params = $node->safe_psql(
 	'postgres',
 	"SELECT name
