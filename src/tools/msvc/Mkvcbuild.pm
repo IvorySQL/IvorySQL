@@ -166,6 +166,7 @@ sub mkvcbuild
 		push(@pgcommonallfiles, 'md5.c');
 		push(@pgcommonallfiles, 'sha1.c');
 		push(@pgcommonallfiles, 'sha2.c');
+		push(@pgcommonallfiles, 'unicode_category.c');
 	}
 
 	our @pgcommonfrontendfiles = (
