@@ -593,3 +593,19 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 
 -- end
 reset ivorysql.enable_emptystring_to_null;
+
+show ivorysql.compatible_mode;
+create table test(id int primary key,name varchar(20));
+insert into test values(1,'a');
+insert into test values(2,'b');
+select name from test group by id;
+select id,name from test group by id;
+select id,name from test group by id,name;
+
+set ivorysql.compatible_mode to pg;
+show ivorysql.compatible_mode;
+select name from test group by id;
+select id,name from test group by id;
+select id,name from test group by id,name;
+drop table test;
+set ivorysql.compatible_mode to default;
