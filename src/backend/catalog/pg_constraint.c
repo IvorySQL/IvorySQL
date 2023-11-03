@@ -34,8 +34,8 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-
-
+#include "utils/ora_compatible.h"
+#include "utils/guc.h"
 /*
  * CreateConstraintEntry
  *	Create a constraint table entry.
@@ -1333,7 +1333,7 @@ check_functional_grouping(Oid relid,
 
 	/* If the rel has no PK, then we can't prove functional dependency */
 	pkattnos = get_primary_key_attnos(relid, false, &constraintOid);
-	if (pkattnos == NULL)
+	if (pkattnos == NULL || compatible_db == ORA_PARSER)
 		return false;
 
 	/* Identify all the rel's columns that appear in grouping_columns */
