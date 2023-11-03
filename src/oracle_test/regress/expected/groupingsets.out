@@ -354,14 +354,9 @@ select a, b, grouping(a, b), sum(t1.v), max(t2.c)
 select a, d, grouping(a,b,c)
   from gstest3
  group by grouping sets ((a,b), (a,c));
- a | d | grouping 
----+---+----------
- 1 | 1 |        1
- 2 | 2 |        1
- 1 | 1 |        2
- 2 | 2 |        2
-(4 rows)
-
+ERROR:  column "gstest3.d" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 1: select a, d, grouping(a,b,c)
+                  ^
 -- check that distinct grouping columns are kept separate
 -- even if they are equal()
 explain (costs off)
@@ -1283,26 +1278,16 @@ explain (costs off)
 select a, d, grouping(a,b,c)
   from gstest3
  group by grouping sets ((a,b), (a,c));
- a | d | grouping 
----+---+----------
- 1 | 1 |        1
- 2 | 2 |        1
- 1 | 1 |        2
- 2 | 2 |        2
-(4 rows)
-
+ERROR:  column "gstest3.d" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 1: select a, d, grouping(a,b,c)
+                  ^
 explain (costs off)
   select a, d, grouping(a,b,c)
     from gstest3
    group by grouping sets ((a,b), (a,c));
-        QUERY PLAN         
----------------------------
- HashAggregate
-   Hash Key: a, b
-   Hash Key: a, c
-   ->  Seq Scan on gstest3
-(4 rows)
-
+ERROR:  column "gstest3.d" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 2:   select a, d, grouping(a,b,c)
+                    ^
 -- simple rescan tests
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
@@ -2154,3 +2139,57 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
 
 -- end
 reset ivorysql.enable_emptystring_to_null;
+show ivorysql.compatible_mode;
+ ivorysql.compatible_mode 
+--------------------------
+ oracle
+(1 row)
+
+create table test(id int primary key,name varchar(20));
+insert into test values(1,'a');
+insert into test values(2,'b');
+select name from test group by id;
+ERROR:  column "test.name" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 1: select name from test group by id;
+               ^
+select id,name from test group by id;
+ERROR:  column "test.name" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 1: select id,name from test group by id;
+                  ^
+select id,name from test group by id,name;
+ id | name 
+----+------
+  2 | b
+  1 | a
+(2 rows)
+
+set ivorysql.compatible_mode to pg;
+show ivorysql.compatible_mode;
+ ivorysql.compatible_mode 
+--------------------------
+ pg
+(1 row)
+
+select name from test group by id;
+ name 
+------
+ b
+ a
+(2 rows)
+
+select id,name from test group by id;
+ id | name 
+----+------
+  2 | b
+  1 | a
+(2 rows)
+
+select id,name from test group by id,name;
+ id | name 
+----+------
+  2 | b
+  1 | a
+(2 rows)
+
+drop table test;
+set ivorysql.compatible_mode to default;
