@@ -5164,7 +5164,7 @@ InitIvorysql(void)
 			SetConfigOption("ivorysql.compatible_mode", "oracle", PGC_USERSET, PGC_S_OVERRIDE);
 			if (NULL == ora_raw_parser)
 				ereport(ERROR,
-						(errmsg("Invalid Oracle compatibility mdoe syntax library.")));
+						(errmsg("Invalid Oracle compatibility mode syntax library.")));
 		}
 	}
 
