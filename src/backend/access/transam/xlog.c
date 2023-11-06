@@ -4990,7 +4990,7 @@ CleanupAfterArchiveRecovery(TimeLineID EndOfLogTLI, XLogRecPtr EndOfLog,
 	}
 }
 
-/* IvorSQL: BEGIN - case sensitive indentify
+/* IvorySQL: BEGIN - case sensitive indentify
  * Read database compatibility mode from pg_control file
  *
  */
