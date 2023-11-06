@@ -64,8 +64,6 @@ ora_kwlist_d.h: $(top_srcdir)/src/include/oracle_parser/ora_kwlist.h $(GEN_KEYWO
 # that you don't get broken parsing code, even in a non-enable-depend build.
 ora_keywords.o: ora_kwlist_d.h
 
-distprep: psqlscan.c ora_keywords.c ora_string_utils.c
-
 ora_keywords.c: % : $(top_srcdir)/src/backend/oracle_parser/%
 	rm -f $@ && $(LN_S) $< .
 
@@ -84,8 +82,4 @@ uninstall:
 
 clean distclean:
 	rm -f libpgfeutils.a $(OBJS) lex.backup
-
-# psqlscan.c is supposed to be in the distribution tarball,
-# so do not clean it in the clean/distclean rules
-maintainer-clean: distclean
 	rm -f psqlscan.c ora_keywords.c ora_string_utils.c ora_kwlist_d.h

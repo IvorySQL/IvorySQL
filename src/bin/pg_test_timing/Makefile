@@ -37,6 +37,6 @@ oracle-installcheck:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_test_timing$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_test_timing$(X) $(OBJS)
 	rm -rf tmp_check

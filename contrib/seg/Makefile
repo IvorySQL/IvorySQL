@@ -17,7 +17,7 @@ HEADERS = segdata.h
 REGRESS = security seg
 ORA_REGRESS = ivy_security ivy_seg
 
-EXTRA_CLEAN = y.tab.c y.tab.h
+EXTRA_CLEAN = segparse.h segparse.c segscan.c
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
@@ -39,8 +39,3 @@ segparse.c: BISONFLAGS += -d
 
 # Force these dependencies to be known even without dependency info built:
 segparse.o segscan.o: segparse.h
-
-distprep: segparse.c segscan.c
-
-maintainer-clean:
-	rm -f segparse.h segparse.c segscan.c

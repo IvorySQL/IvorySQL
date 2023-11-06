@@ -152,9 +152,7 @@ POSTGRES_BKI_DATA = $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_type.dat \
 	)
 
-all: distprep generated-header-symlinks
-
-distprep: bki-stamp
+all: generated-header-symlinks
 
 .PHONY: generated-header-symlinks
 
@@ -175,14 +173,12 @@ bki-stamp: genbki.pl Catalog.pm $(POSTGRES_BKI_SRCS) $(POSTGRES_BKI_DATA) $(top_
 		--set-version=$(MAJORVERSION) $(POSTGRES_BKI_SRCS)
 	touch $@
 
-# The generated headers must all be symlinked into builddir/src/include/,
-# using absolute links for the reasons explained in src/backend/Makefile.
+# The generated headers must all be symlinked into src/include/.
 # We use header-stamp to record that we've done this because the symlinks
 # themselves may appear older than bki-stamp.
 $(top_builddir)/src/include/catalog/header-stamp: bki-stamp
-	prereqdir=`cd '$(dir $<)' >/dev/null && pwd` && \
 	cd '$(dir $@)' && for file in $(GENERATED_HEADERS); do \
-	  rm -f $$file && $(LN_S) "$$prereqdir/$$file" . ; \
+	  rm -f $$file && $(LN_S) "../../../$(subdir)/$$file" . ; \
 	done
 	touch $@
 
@@ -205,9 +201,5 @@ installdirs:
 uninstall-data:
 	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki postgres_oracle.bki system_constraints.sql system_functions.sql system_views.sql information_schema.sql sql_features.txt)
 
-# postgres.bki, system_constraints.sql, and the generated headers are
-# in the distribution tarball, so they are not cleaned here.
 clean:
-
-maintainer-clean: clean
 	rm -f bki-stamp postgres.bki postgres_oracle.bki system_constraints.sql $(GENERATED_HEADERS)
