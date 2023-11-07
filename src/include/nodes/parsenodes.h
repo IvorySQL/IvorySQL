@@ -30,13 +30,6 @@
 #include "partitioning/partdefs.h"
 
 
-typedef enum OverridingKind
-{
-	OVERRIDING_NOT_SET = 0,
-	OVERRIDING_USER_VALUE,
-	OVERRIDING_SYSTEM_VALUE,
-} OverridingKind;
-
 /* Possible sources of a Query */
 typedef enum QuerySource
 {
@@ -1681,23 +1674,6 @@ typedef struct MergeWhenClause
 	List	   *values;			/* VALUES to INSERT, or NULL */
 	struct MergeWhenClause *update_delete; /* ora_merge delete clause */
 } MergeWhenClause;
-
-/*
- * MergeAction -
- *		Transformed representation of a WHEN clause in a MERGE statement
- */
-typedef struct MergeAction
-{
-	NodeTag		type;
-	bool		matched;		/* true=MATCHED, false=NOT MATCHED */
-	CmdType		commandType;	/* INSERT/UPDATE/DELETE/DO NOTHING */
-	/* OVERRIDING clause */
-	OverridingKind override pg_node_attr(query_jumble_ignore);
-	Node	   *qual;			/* transformed WHEN conditions */
-	List	   *targetList;		/* the target list (of TargetEntry) */
-	/* target attribute numbers of an UPDATE */
-	List	   *updateColnos pg_node_attr(query_jumble_ignore);
-} MergeAction;
 
 /*
  * TriggerTransition -
