@@ -20,6 +20,7 @@
 #include <float.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include "access/hash.h"
 #include "access/xact.h"
@@ -1943,7 +1944,7 @@ in_range_yminterval_yminterval(PG_FUNCTION_ARGS)
 	bool		less = PG_GETARG_BOOL(4);
 	Interval   *sum;
 
-	if (int128_compare(yminterval_cmp_value(offset), int64_to_int128(0)) < 0)
+	if (int128_compare(int64_to_int128(yminterval_cmp_value(offset)), int64_to_int128(0)) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
 				 errmsg("invalid preceding or following size in window function")));
@@ -1988,7 +1989,7 @@ Datum
 yminterval_hash_extended(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	INT128		span = yminterval_cmp_value(interval);
+	INT128		span = int64_to_int128(yminterval_cmp_value(interval));
 	int64		span64;
 
 	/* Same approach as interval_hash */

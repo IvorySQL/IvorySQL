@@ -24,7 +24,6 @@
 #include "common/hashfn.h"
 #include "common/int.h"
 #include "common/unicode_norm.h"
-#include "common_datatypes.h"
 #include "funcapi.h"
 #include "lib/hyperloglog.h"
 #include "libpq/pqformat.h"
@@ -4344,6 +4343,8 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
 		}
 	}
 }
+
+#define REGEXP_REPLACE_BACKREF_CNT		10
 
 /*
  * replace_text_regexp
