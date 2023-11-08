@@ -56,4 +56,8 @@
  * as no symbols are declared with __declspec(dllexport). But we can end up
  * with some, e.g. plpython's Py_Init.
  */
+#ifndef _MSC_VER
 #define PGDLLEXPORT __declspec (dllexport)
+#else
+#define PGDLLEXPORT
+#endif

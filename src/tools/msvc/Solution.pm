@@ -50,6 +50,21 @@ sub _new
 	  unless grep { $_ == $options->{wal_blocksize} }
 	  (1, 2, 4, 8, 16, 32, 64);
 
+	$options->{max_funarg} = 100
+	  unless $options->{max_funarg};    # undef or 0 means default
+	 # The minimum value is 8 (GIN indexes use 8-argument support functions)
+	if ($options->{max_funarg} < 8)
+	{
+		die "Bad max_funarg $options->{max_funarg}";
+	}
+	if (   ($options->{blocksize} < 8 && $options->{max_funarg} > 100)
+		|| ($options->{blocksize} == 8 && $options->{max_funarg} > 600)
+		|| ($options->{blocksize} == 16 && $options->{max_funarg} > 1200)
+		|| ($options->{blocksize} == 32 && $options->{max_funarg} > 2400))
+	{
+		die "Bad max_funarg $options->{max_funarg}";
+	}
+
 	return $self;
 }
 
@@ -395,6 +410,7 @@ sub GenerateFiles
 		INT64_MODIFIER => qq{"ll"},
 		LOCALE_T_IN_XLOCALE => undef,
 		MAXIMUM_ALIGNOF => 8,
+		MAXIMUM_FUNARG => $self->{options}->{max_funarg},
 		MEMSET_LOOP_LIMIT => 1024,
 		OPENSSL_API_COMPAT => $openssl_api_compat,
 		PACKAGE_BUGREPORT => qq{"$package_bugreport"},
@@ -636,6 +652,17 @@ sub GenerateFiles
 		);
 	}
 
+
+	if (IsNewer(
+			'src/pl/plisql/src/plerrcodes.h', 'src/backend/utils/ora_errcodes.txt'))
+        {
+			print "Generating PL/SQL's plerrcodes.h...\n";
+			system(
+				'perl src/pl/plisql/src/generate-plerrcodes.pl src/backend/utils/ora_errcodes.txt > src/pl/plisql/src/plerrcodes.h'
+                );
+        }
+
+
 	if ($self->{options}->{tcl}
 		&& IsNewer(
 			'src/pl/tcl/pltclerrcodes.h', 'src/backend/utils/errcodes.txt'))
@@ -672,6 +699,14 @@ sub GenerateFiles
 		);
 	}
 
+	if (IsNewer('src/backend/oracle_parser/ora_kwlist_d.h', 'src/include/oracle_parser/ora_kwlist.h'))
+	{
+		print "Generating Oracle compatibility ora_kwlist_d.h...\n";
+		system(
+			'perl -I src/tools src/tools/ora_gen_keywordlist.pl --extern -o src/backend/oracle_parser src/include/oracle_parser/ora_kwlist.h'
+		);
+	}
+
 	if (IsNewer(
 			'src/pl/plpgsql/src/pl_reserved_kwlist_d.h',
 			'src/pl/plpgsql/src/pl_reserved_kwlist.h')
@@ -682,6 +717,25 @@ sub GenerateFiles
 		print
 		  "Generating pl_reserved_kwlist_d.h and pl_unreserved_kwlist_d.h...\n";
 		chdir('src/pl/plpgsql/src');
+		system(
+			'perl -I ../../../tools ../../../tools/gen_keywordlist.pl --varname ReservedPLKeywords pl_reserved_kwlist.h'
+		);
+		system(
+			'perl -I ../../../tools ../../../tools/gen_keywordlist.pl --varname UnreservedPLKeywords pl_unreserved_kwlist.h'
+		);
+		chdir('../../../..');
+	}
+	
+	if (IsNewer(
+			'src/pl/plisql/src/pl_reserved_kwlist_d.h',
+			'src/pl/plisql/src/pl_reserved_kwlist.h')
+		|| IsNewer(
+			'src/pl/plisql/src/pl_unreserved_kwlist_d.h',
+			'src/pl/plisql/src/pl_unreserved_kwlist.h'))
+	{
+		print
+		  "Generating Oracle compatibility pl_reserved_kwlist_d.h and pl_unreserved_kwlist_d.h...\n";
+		chdir('src/pl/plisql/src');
 		system(
 			'perl -I ../../../tools ../../../tools/gen_keywordlist.pl --varname ReservedPLKeywords pl_reserved_kwlist.h'
 		);
@@ -774,7 +828,10 @@ EOF
 		chdir('src/backend/catalog');
 		my $bki_srcs = join(' ../../../src/include/catalog/', @bki_srcs);
 		system(
-			"perl genbki.pl --include-path ../../../src/include/ --set-version=$majorver $bki_srcs"
+			"perl genbki.pl -M pg --include-path ../../../src/include/ --set-version=$majorver $bki_srcs"
+		);
+		system(
+			"perl genbki.pl -M oracle --include-path ../../../src/include/ --set-version=$majorver $bki_srcs"
 		);
 		open(my $f, '>', 'bki-stamp')
 		  || confess "Could not touch bki-stamp";
@@ -817,7 +874,6 @@ EOF
 	$versions =~ s/\.sql//g;
 	chdir('contrib/ivorysql_ora');
 	system("perl gensql.pl $versions");
-	close($f);
 	chdir('../..');
 
 	my $nmf = Project::read_file('src/backend/nodes/Makefile');
