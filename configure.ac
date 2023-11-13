@@ -17,7 +17,7 @@ dnl Read the Autoconf manual for details.
 dnl
 m4_pattern_forbid(^PGAC_)dnl to catch undefined macros
 
-AC_INIT([PostgreSQL], [16beta1], [bugs@ivorysql.org], [], [https://www.ivorysql.org/])
+AC_INIT([PostgreSQL], [16.0], [bugs@ivorysql.org], [], [https://www.ivorysql.org/])
 
 m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.69], [], [m4_fatal([Autoconf version 2.69 is required.
 Untested combinations of 'autoconf' and PostgreSQL versions are not
@@ -30,7 +30,7 @@ AC_PREFIX_DEFAULT(/usr/local/pgsql)
 AC_DEFINE_UNQUOTED(CONFIGURE_ARGS, ["$ac_configure_args"], [Saved arguments from configure])
 
 # IvorySQL version
-PACKAGE_IVORYSQL_VERSION='3.0 BETA'
+PACKAGE_IVORYSQL_VERSION='3.0'
 
 [PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\)'`]
 [PG_MINORVERSION=`expr "$PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`]
