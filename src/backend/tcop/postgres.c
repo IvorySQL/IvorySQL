@@ -4478,7 +4478,7 @@ PostgresMain(const char *dbname, const char *username)
 		 * query input buffer in the cleared MessageContext.
 		 */
 		MemoryContextSwitchTo(MessageContext);
-		MemoryContextResetAndDeleteChildren(MessageContext);
+		MemoryContextReset(MessageContext);
 
 		initStringInfo(&input_message);
 
