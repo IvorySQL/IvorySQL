@@ -778,7 +778,7 @@ const char *const config_group_names[] =
 	NULL
 };
 
-StaticAssertDecl(lengthof(config_group_names) == (COMPAT_ORACLE_OPTIONS + 2),
+StaticAssertDecl(lengthof(config_group_names) == (CONFIG_GROUP_NULL_TERMINATED + 1),
 				 "array length mismatch");
 
 /*
