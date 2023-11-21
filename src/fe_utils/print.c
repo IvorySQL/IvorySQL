@@ -1400,7 +1400,7 @@ print_aligned_vertical(const printTableContent *cont,
 	}
 
 	/* find longest data cell */
-	for (i = 0, ptr = cont->cells; *ptr; ptr++, i++)
+	for (ptr = cont->cells; *ptr; ptr++)
 	{
 		int			width,
 					height,
