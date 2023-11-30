@@ -68,7 +68,7 @@ use Test::More;
 
 =over
 
-=item PostgreSQL::Test::BackgroundPsql->new(interactive, @params)
+=item PostgreSQL::Test::BackgroundPsql->new(interactive, @psql_params, timeout)
 
 Builds a new object of class C<PostgreSQL::Test::BackgroundPsql> for either
 an interactive or background session and starts it. If C<interactive> is
@@ -81,8 +81,13 @@ string. For C<interactive> sessions, IO::Pty is required.
 sub new
 {
 	my $class = shift;
-	my ($interactive, $psql_params) = @_;
-	my $psql = {'stdin' => '', 'stdout' => '', 'stderr' => '', 'query_timer_restart' => undef};
+	my ($interactive, $psql_params, $timeout) = @_;
+	my $psql = {
+		'stdin' => '',
+		'stdout' => '',
+		'stderr' => '',
+		'query_timer_restart' => undef
+	};
 	my $run;
 
 	# This constructor should only be called from PostgreSQL::Test::Cluster
@@ -90,7 +95,10 @@ sub new
     die "Forbidden caller of constructor: package: $package, file: $file:$line"
 	  unless $package->isa('PostgreSQL::Test::Cluster');
 
-	$psql->{timeout} = IPC::Run::timeout($PostgreSQL::Test::Utils::timeout_default);
+	$psql->{timeout} = IPC::Run::timeout(
+		defined($timeout)
+		? $timeout
+		: $PostgreSQL::Test::Utils::timeout_default);
 
 	if ($interactive)
 	{
