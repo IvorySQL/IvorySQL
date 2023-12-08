@@ -204,7 +204,7 @@ FullTransactionIdAdvance(FullTransactionId *dest)
 #define MaxTypeObjectId			9100
 
 /*
- * VariableCache is a data structure in shared memory that is used to track
+ * TransamVariables is a data structure in shared memory that is used to track
  * OID and XID assignment state.  For largely historical reasons, there is
  * just one struct with different fields that are protected by different
  * LWLocks.
@@ -213,7 +213,7 @@ FullTransactionIdAdvance(FullTransactionId *dest)
  * used just to generate useful messages when xidWarnLimit or xidStopLimit
  * are exceeded.
  */
-typedef struct VariableCacheData
+typedef struct TransamVariablesData
 {
 	/*
 	 * These fields are protected by OidGenLock.
@@ -259,9 +259,7 @@ typedef struct VariableCacheData
 	 */
 	TransactionId oldestClogXid;	/* oldest it's safe to look up in clog */
 
-} VariableCacheData;
-
-typedef VariableCacheData *VariableCache;
+} TransamVariablesData;
 
 
 /* ----------------
@@ -273,7 +271,7 @@ typedef VariableCacheData *VariableCache;
 extern bool TransactionStartedDuringRecovery(void);
 
 /* in transam/varsup.c */
-extern PGDLLIMPORT VariableCache ShmemVariableCache;
+extern PGDLLIMPORT TransamVariablesData *TransamVariables;
 
 /*
  * prototypes for functions in transam/transam.c
