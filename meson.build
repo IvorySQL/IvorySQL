@@ -1879,7 +1879,6 @@ foreach w : negative_warning_flags
 endforeach
 
 
-# From Project.pm
 if cc.get_id() == 'msvc'
   cflags_warn += [
     '/wd4018', # signed/unsigned mismatch
