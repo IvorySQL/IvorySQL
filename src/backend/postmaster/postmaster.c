@@ -114,6 +114,7 @@
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
+#include "postmaster/walsummarizer.h"
 #include "replication/logicallauncher.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
@@ -259,6 +260,7 @@ static pid_t StartupPID = 0,
 			CheckpointerPID = 0,
 			WalWriterPID = 0,
 			WalReceiverPID = 0,
+			WalSummarizerPID = 0,
 			AutoVacPID = 0,
 			PgArchPID = 0,
 			SysLoggerPID = 0;
@@ -450,6 +452,7 @@ static bool CreateOptsFile(int argc, char *argv[], char *fullprogname);
 static pid_t StartChildProcess(AuxProcType type);
 static void StartAutovacuumWorker(void);
 static void MaybeStartWalReceiver(void);
+static void MaybeStartWalSummarizer(void);
 static void InitPostmasterDeathWatchHandle(void);
 
 /*
@@ -573,6 +576,7 @@ static void ShmemBackendArrayRemove(Backend *bn);
 #define StartCheckpointer()		StartChildProcess(CheckpointerProcess)
 #define StartWalWriter()		StartChildProcess(WalWriterProcess)
 #define StartWalReceiver()		StartChildProcess(WalReceiverProcess)
+#define StartWalSummarizer()	StartChildProcess(WalSummarizerProcess)
 
 /* Macros to check exit status of a child process */
 #define EXIT_STATUS_0(st)  ((st) == 0)
@@ -948,6 +952,9 @@ PostmasterMain(int argc, char *argv[])
 	if (max_wal_senders > 0 && wal_level == WAL_LEVEL_MINIMAL)
 		ereport(ERROR,
 				(errmsg("WAL streaming (max_wal_senders > 0) requires wal_level \"replica\" or \"logical\"")));
+	if (summarize_wal && wal_level == WAL_LEVEL_MINIMAL)
+		ereport(ERROR,
+				(errmsg("WAL cannot be summarized when wal_level is \"minimal\"")));
 
 	/*
 	 * Other one-time internal sanity checks can go here, if they are fast.
@@ -1946,6 +1953,9 @@ ServerLoop(void)
 		if (WalReceiverRequested)
 			MaybeStartWalReceiver();
 
+		/* If we need to start a WAL summarizer, try to do that now */
+		MaybeStartWalSummarizer();
+
 		/* Get other worker processes running, if needed */
 		if (StartWorkerNeeded || HaveCrashedWorker)
 			maybe_start_bgworkers();
@@ -2872,6 +2882,8 @@ process_pm_reload_request(void)
 			signal_child(WalWriterPID, SIGHUP);
 		if (WalReceiverPID != 0)
 			signal_child(WalReceiverPID, SIGHUP);
+		if (WalSummarizerPID != 0)
+			signal_child(WalSummarizerPID, SIGHUP);
 		if (AutoVacPID != 0)
 			signal_child(AutoVacPID, SIGHUP);
 		if (PgArchPID != 0)
@@ -3225,6 +3237,7 @@ process_pm_child_exit(void)
 				BgWriterPID = StartBackgroundWriter();
 			if (WalWriterPID == 0)
 				WalWriterPID = StartWalWriter();
+			MaybeStartWalSummarizer();
 
 			/*
 			 * Likewise, start other special children as needed.  In a restart
@@ -3340,6 +3353,20 @@ process_pm_child_exit(void)
 			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 				HandleChildCrash(pid, exitstatus,
 								 _("WAL receiver process"));
+			continue;
+		}
+
+		/*
+		 * Was it the wal summarizer? Normal exit can be ignored; we'll start
+		 * a new one at the next iteration of the postmaster's main loop, if
+		 * necessary.  Any other exit condition is treated as a crash.
+		 */
+		if (pid == WalSummarizerPID)
+		{
+			WalSummarizerPID = 0;
+			if (!EXIT_STATUS_0(exitstatus))
+				HandleChildCrash(pid, exitstatus,
+								 _("WAL summarizer process"));
 			continue;
 		}
 
@@ -3738,6 +3765,12 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	else if (WalReceiverPID != 0 && take_action)
 		sigquit_child(WalReceiverPID);
 
+	/* Take care of the walsummarizer too */
+	if (pid == WalSummarizerPID)
+		WalSummarizerPID = 0;
+	else if (WalSummarizerPID != 0 && take_action)
+		sigquit_child(WalSummarizerPID);
+
 	/* Take care of the autovacuum launcher too */
 	if (pid == AutoVacPID)
 		AutoVacPID = 0;
@@ -3888,6 +3921,8 @@ PostmasterStateMachine(void)
 			signal_child(StartupPID, SIGTERM);
 		if (WalReceiverPID != 0)
 			signal_child(WalReceiverPID, SIGTERM);
+		if (WalSummarizerPID != 0)
+			signal_child(WalSummarizerPID, SIGTERM);
 		/* checkpointer, archiver, stats, and syslogger may continue for now */
 
 		/* Now transition to PM_WAIT_BACKENDS state to wait for them to die */
@@ -3914,6 +3949,7 @@ PostmasterStateMachine(void)
 		if (CountChildren(BACKEND_TYPE_ALL - BACKEND_TYPE_WALSND) == 0 &&
 			StartupPID == 0 &&
 			WalReceiverPID == 0 &&
+			WalSummarizerPID == 0 &&
 			BgWriterPID == 0 &&
 			(CheckpointerPID == 0 ||
 			 (!FatalError && Shutdown < ImmediateShutdown)) &&
@@ -4011,6 +4047,7 @@ PostmasterStateMachine(void)
 			/* These other guys should be dead already */
 			Assert(StartupPID == 0);
 			Assert(WalReceiverPID == 0);
+			Assert(WalSummarizerPID == 0);
 			Assert(BgWriterPID == 0);
 			Assert(CheckpointerPID == 0);
 			Assert(WalWriterPID == 0);
@@ -4232,6 +4269,8 @@ TerminateChildren(int signal)
 		signal_child(WalWriterPID, signal);
 	if (WalReceiverPID != 0)
 		signal_child(WalReceiverPID, signal);
+	if (WalSummarizerPID != 0)
+		signal_child(WalSummarizerPID, signal);
 	if (AutoVacPID != 0)
 		signal_child(AutoVacPID, signal);
 	if (PgArchPID != 0)
@@ -5588,6 +5627,10 @@ StartChildProcess(AuxProcType type)
 				ereport(LOG,
 						(errmsg("could not fork WAL receiver process: %m")));
 				break;
+			case WalSummarizerProcess:
+				ereport(LOG,
+						(errmsg("could not fork WAL summarizer process: %m")));
+				break;
 			default:
 				ereport(LOG,
 						(errmsg("could not fork process: %m")));
@@ -5722,6 +5765,19 @@ MaybeStartWalReceiver(void)
 			WalReceiverRequested = false;
 		/* else leave the flag set, so we'll try again later */
 	}
+}
+
+/*
+ * MaybeStartWalSummarizer
+ *		Start the WAL summarizer process, if not running and our state allows.
+ */
+static void
+MaybeStartWalSummarizer(void)
+{
+	if (summarize_wal && WalSummarizerPID == 0 &&
+		(pmState == PM_RUN || pmState == PM_HOT_STANDBY) &&
+		Shutdown <= SmartShutdown)
+		WalSummarizerPID = StartWalSummarizer();
 }
 
 
