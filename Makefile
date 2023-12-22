@@ -19,13 +19,7 @@ all:
 all check oracle-check all-check install installdirs installcheck oracle-installcheck installcheck-parallel oracle-installcheck-parallel uninstall clean distclean maintainer-clean dist distcheck world check-world oracle-pg-check-world oracle-check-world all-check-world install-world installcheck-world oracle-installcheck-world all-installcheck-world:
 
 	@if [ ! -f GNUmakefile ] ; then \
-	   if [ -f INSTALL ] ; then \
-	     INSTRUCTIONS="INSTALL"; \
-	   else \
-	     INSTRUCTIONS="README.git"; \
-	   fi; \
-	   echo "You need to run the 'configure' program first. See the file"; \
-	   echo "'$$INSTRUCTIONS' for installation instructions, or visit: " ; \
+	   echo "You need to run the 'configure' program first. Please see"; \
 	   echo "<https://www.postgresql.org/docs/devel/installation.html>" ; \
 	   false ; \
 	 fi
