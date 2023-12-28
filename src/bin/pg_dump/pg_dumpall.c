@@ -1367,6 +1367,7 @@ dropDBs(PGconn *conn)
 		 */
 		if (strcmp(dbname, "template1") != 0 &&
 			strcmp(dbname, "template0") != 0 &&
+			strcmp(dbname, "ivorysql") != 0 &&
 			strcmp(dbname, "postgres") != 0)
 		{
 			fprintf(OPF, "DROP DATABASE %s%s;\n",
