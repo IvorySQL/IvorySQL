@@ -485,7 +485,7 @@ main(int argc, char *argv[])
 			exit_nicely(1);
 		}
 	}
-#ifdef IvorySQL
+#ifdef 
 		getDbCompatibleMode(conn);
 #endif
 
@@ -561,7 +561,7 @@ main(int argc, char *argv[])
 	fprintf(OPF, "SET standard_conforming_strings = %s;\n", std_strings);
 	if (strcmp(std_strings, "off") == 0)
 		fprintf(OPF, "SET escape_string_warning = off;\n");
-	fprintf(OPF, "SET ivorysql.identifier_case_switch = normal;\n");
+	fprintf(OPF, "SET .identifier_case_switch = normal;\n");
 	fprintf(OPF, "\n");
 
 	if (!data_only)
@@ -1361,7 +1361,7 @@ dropDBs(PGconn *conn)
 		char	   *dbname = PQgetvalue(res, i, 0);
 
 		/*
-		 * Skip "postgres" and "template1"; dumpDatabases() will deal with
+		 * Skip "postgres", "ivorysql", and "template1"; dumpDatabases() will deal with
 		 * them specially.  Also, be sure to skip "template0", even if for
 		 * some reason it's not marked !datallowconn.
 		 */
@@ -1522,7 +1522,7 @@ dumpDatabases(PGconn *conn)
 		fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", dbname);
 
 		/*
-		 * We assume that "template1" and "postgres" already exist in the
+		 * We assume that "template1", "postgres", and "ivorysql" already exist in the
 		 * target installation.  dropDBs() won't have removed them, for fear
 		 * of removing the DB the restore script is initially connected to. If
 		 * --clean was specified, tell pg_dump to drop and recreate them;
