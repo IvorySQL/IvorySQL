@@ -27,6 +27,8 @@ ORA_REGRESS = select ivy_dml cursors ivy_utility ivy_level_tracking planning \
 # which typical installcheck users do not have (e.g. buildfarm clients).
 NO_INSTALLCHECK = 1
 
+TAP_TESTS = 1
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
