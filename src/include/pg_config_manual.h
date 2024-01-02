@@ -341,7 +341,7 @@
 
 /*
  * Define this to force Bitmapset reallocation on each modification.  Helps
- * to find hangling pointers to Bitmapset's.
+ * to find dangling pointers to Bitmapset's.
  */
 /* #define REALLOCATE_BITMAPSETS */
 
