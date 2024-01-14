@@ -8570,7 +8570,6 @@ ATExecSetStatistics(Relation rel, const char *colName, int16 colNum, Node *newVa
 
 	if (newValue)
 	{
-		Assert(IsA(newValue, Integer));
 		newtarget = intVal(newValue);
 	}
 	else
