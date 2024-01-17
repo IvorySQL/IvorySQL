@@ -12808,13 +12808,11 @@ DELETE FROM async_pt WHERE b = 0 RETURNING *;
                Filter: (async_pt_3.b = '0'::number)
 (19 rows)
 
-DELETE FROM async_pt WHERE b = 0 RETURNING *;
-  a   | b |    c     
-------+---+----------
- 3000 | 0 | 00000000
- 1000 | 0 | 00000000
- 2000 | 0 | 00000000
-(3 rows)
+DELETE FROM async_pt WHERE b = 0;
+SELECT * FROM async_pt WHERE b = 0;
+ a | b | c 
+---+---+---
+(0 rows)
 
 -- Check EXPLAIN ANALYZE for a query that scans empty partitions asynchronously
 DELETE FROM async_p1;
