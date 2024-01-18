@@ -1091,7 +1091,7 @@ llvm_compile_expr(ExprState *state)
 					else
 					{
 						LLVMValueRef v_value =
-						LLVMValueRef v_resnull = l_load(b, TypeStorageBool, v_resnullp, "");
+							l_load(b, TypeSizeT, v_resvaluep, "");
 
 						v_value = LLVMBuildZExt(b,
 												LLVMBuildICmp(b, LLVMIntEQ,
@@ -2189,7 +2189,6 @@ llvm_compile_expr(ExprState *state)
 					 * [op->d.agg_trans.setoff]
 					 * [op->d.agg_trans.transno];
 					 */
-					v_allpergroupsp =
 					v_allpergroupsp = l_load_struct_gep(b,
 														StructAggState,
 														v_aggstatep,
