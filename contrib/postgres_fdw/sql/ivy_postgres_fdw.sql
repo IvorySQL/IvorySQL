@@ -3916,7 +3916,8 @@ UPDATE async_pt SET c = c || c WHERE b = 0 RETURNING *;
 UPDATE async_pt SET c = c || c WHERE b = 0 RETURNING *;
 EXPLAIN (VERBOSE, COSTS OFF)
 DELETE FROM async_pt WHERE b = 0 RETURNING *;
-DELETE FROM async_pt WHERE b = 0 RETURNING *;
+DELETE FROM async_pt WHERE b = 0;
+SELECT * FROM async_pt WHERE b = 0;
 
 -- Check EXPLAIN ANALYZE for a query that scans empty partitions asynchronously
 DELETE FROM async_p1;
