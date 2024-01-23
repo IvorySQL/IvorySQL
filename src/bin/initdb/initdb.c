@@ -298,6 +298,7 @@ static void load_ivorysql_ora(FILE *cmdfd);
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
 static void make_postgres(FILE *cmdfd);
+static void make_ivorysql(FILE *cmdfd);
 static void trapsig(SIGNAL_ARGS);
 static void check_ok(void);
 static char *escape_quotes(const char *src);
@@ -2102,6 +2103,16 @@ make_postgres(FILE *cmdfd)
 }
 
 /*
+ * copy template1 to ivorysql
+ */
+static void
+make_ivorysql(FILE *cmdfd)
+{
+	PG_CMD_PUTS("CREATE DATABASE ivorysql;\n\n");
+	PG_CMD_PUTS("COMMENT ON DATABASE ivorysql IS 'default administrative connection database';\n\n");
+}
+
+/*
  * signal handler in case we are interrupted.
  *
  * The Windows runtime docs at
@@ -3192,6 +3203,8 @@ initialize_data_directory(void)
 	make_template0(cmdfd);
 
 	make_postgres(cmdfd);
+	
+	make_ivorysql(cmdfd);
 
 	PG_CMD_CLOSE;
 
