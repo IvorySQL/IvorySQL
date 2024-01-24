@@ -432,6 +432,7 @@ _readConstraint(void)
 
 		case CONSTR_PRIMARY:
 			READ_NODE_FIELD(keys);
+			READ_BOOL_FIELD(without_overlaps);
 			READ_NODE_FIELD(including);
 			READ_NODE_FIELD(options);
 			READ_STRING_FIELD(indexname);
@@ -443,6 +444,7 @@ _readConstraint(void)
 		case CONSTR_UNIQUE:
 			READ_BOOL_FIELD(nulls_not_distinct);
 			READ_NODE_FIELD(keys);
+			READ_BOOL_FIELD(without_overlaps);
 			READ_NODE_FIELD(including);
 			READ_NODE_FIELD(options);
 			READ_STRING_FIELD(indexname);
