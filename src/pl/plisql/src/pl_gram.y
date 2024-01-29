@@ -467,7 +467,22 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 			new->body 	= $3;
 			new->exceptions = $4;
 
-			check_labels($1.label, $6, @6);
+			/* check_labels($1.label, $6, @6); */
+			/* Match END label with the function or procedure name. */
+			if ($6 &&
+				strcasecmp(plisql_error_funcname, $6) != 0)
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("END identifier '%s' must match '%s'",
+						$6, plisql_error_funcname),
+					parser_errposition(@6)));
+
+			/*
+			 * ignore $1->label, because we only match the END label
+			 * with function/procedure name. The first block's label
+			 * is not used.
+			 */
+
 			plisql_ns_pop();
 
 			$$ = (PLiSQL_stmt *)new;

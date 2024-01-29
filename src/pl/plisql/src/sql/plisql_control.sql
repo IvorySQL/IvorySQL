@@ -247,7 +247,7 @@ begin
     raise notice 'j = %', j;
     exit flbl2;
   end loop;
-end blbl;
+end end_label1;
 $$ language plisql;
 /
 
