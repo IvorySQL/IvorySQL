@@ -4650,6 +4650,7 @@ getSubscriptions(Archive *fout)
 	int			i_suborigin;
 	int			i_suboriginremotelsn;
 	int			i_subenabled;
+	int			i_subfailover;
 	int			i,
 				ntups;
 
@@ -4715,10 +4716,12 @@ getSubscriptions(Archive *fout)
 
 	if (dopt->binary_upgrade && fout->remoteVersion >= 170000)
 		appendPQExpBufferStr(query, " o.remote_lsn AS suboriginremotelsn,\n"
-							 " s.subenabled\n");
+							 " s.subenabled,\n"
+							 " s.subfailover\n");
 	else
 		appendPQExpBufferStr(query, " NULL AS suboriginremotelsn,\n"
-							 " false AS subenabled\n");
+							 " false AS subenabled,\n"
+							 " false AS subfailover\n");
 
 	appendPQExpBufferStr(query,
 						 "FROM pg_subscription s\n");
@@ -4757,6 +4760,7 @@ getSubscriptions(Archive *fout)
 	i_suborigin = PQfnumber(res, "suborigin");
 	i_suboriginremotelsn = PQfnumber(res, "suboriginremotelsn");
 	i_subenabled = PQfnumber(res, "subenabled");
+	i_subfailover = PQfnumber(res, "subfailover");
 
 	subinfo = pg_malloc(ntups * sizeof(SubscriptionInfo));
 
@@ -4801,6 +4805,8 @@ getSubscriptions(Archive *fout)
 				pg_strdup(PQgetvalue(res, i, i_suboriginremotelsn));
 		subinfo[i].subenabled =
 			pg_strdup(PQgetvalue(res, i, i_subenabled));
+		subinfo[i].subfailover =
+			pg_strdup(PQgetvalue(res, i, i_subfailover));
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(subinfo[i].dobj), fout);
@@ -5069,6 +5075,17 @@ dumpSubscription(Archive *fout, const SubscriptionInfo *subinfo)
 								 "SELECT pg_catalog.binary_upgrade_replorigin_advance(");
 			appendStringLiteralAH(query, subinfo->dobj.name, fout);
 			appendPQExpBuffer(query, ", '%s');\n", subinfo->suboriginremotelsn);
+		}
+
+		if (strcmp(subinfo->subfailover, "t") == 0)
+		{
+			/*
+			 * Enable the failover to allow the subscription's slot to be
+			 * synced to the standbys after the upgrade.
+			 */
+			appendPQExpBufferStr(query,
+								 "\n-- For binary upgrade, must preserve the subscriber's failover option.\n");
+			appendPQExpBuffer(query, "ALTER SUBSCRIPTION %s SET(failover = true);\n", qsubname);
 		}
 
 		if (strcmp(subinfo->subenabled, "t") == 0)
