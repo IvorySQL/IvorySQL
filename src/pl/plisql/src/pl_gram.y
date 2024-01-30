@@ -354,6 +354,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 %token <keyword>	K_OPTION
 %token <keyword>	K_OR
 %token <keyword>	K_OUT
+%token <keyword>	K_OUTER
 %token <keyword>	K_PACKAGE
 %token <keyword>	K_PARALLEL_ENABLE
 %token <keyword>	K_PERFORM
@@ -3091,6 +3092,7 @@ unreserved_keyword	:
 				| K_OPEN
 				| K_OPTION
 				| K_OUT
+				| K_OUTER
 				| K_PACKAGE
 				| K_PARALLEL_ENABLE
 				| K_PERFORM

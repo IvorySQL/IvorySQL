@@ -18123,6 +18123,33 @@ columnref:	ColId
 							$$ = (Node *) crorfc;
 						}
 					}
+				}			
+			| OUTER_P indirection
+				{
+					if (IsA(llast($2), A_Star))
+						$$ = makeColumnRef($1, $2, @1, yyscanner);
+					else
+					{
+						ListCell *lc = NULL;
+
+						foreach(lc, $2)
+						{
+							if (IsA(lfirst(lc), A_Indices))
+								break;
+						}
+
+						if (lc != NULL)
+							$$ = makeColumnRef($1, $2, @1, yyscanner);
+						else
+						{
+							List *fname = list_copy($2);
+							ColumnRefOrFuncCall *crorfc = makeNode(ColumnRefOrFuncCall);
+							fname = lcons(makeString($1), fname);
+							crorfc->func = (FuncCall *)makeFuncCall(fname, NIL, COERCE_EXPLICIT_CALL, @1);
+							crorfc->cref = (ColumnRef *) makeColumnRef($1, $2, @1, yyscanner);
+							$$ = (Node *) crorfc;
+						}
+					}
 				}
 		;
 
