@@ -697,3 +697,65 @@ select case_test(13);
  other
 (1 row)
 
+-- test end label match with function/procedure name
+create function end_label5() return int as
+begin
+  <<flbl1>>
+  for i in 1 .. 10 loop
+    raise notice 'i = %', i;
+    exit flbl1;
+  end loop flbl1;
+  <<flbl2>>
+  for j in 1 .. 10 loop
+    raise notice 'j = %', j;
+    exit flbl2;
+  end loop;
+  return 0;
+end end_label5;
+/
+select end_label5();
+NOTICE:  i = 1
+NOTICE:  j = 1
+ end_label5 
+------------
+          0
+(1 row)
+
+drop function end_label5;
+-- should fail: end label must match with function/procedure name
+create function end_label5() return int as
+begin
+  <<flbl1>>
+  for i in 1 .. 10 loop
+    raise notice 'i = %', i;
+    exit flbl1;
+  end loop flbl1;
+  <<flbl2>>
+  for j in 1 .. 10 loop
+    raise notice 'j = %', j;
+    exit flbl2;
+  end loop;
+  return 0;
+end end_label;
+/
+ERROR:  END identifier 'end_label' must match 'end_label5'
+LINE 13: end end_label
+             ^
+QUERY:  begin
+  <<flbl1>>
+  for i in 1 .. 10 loop
+    raise notice 'i = %', i;
+    exit flbl1;
+  end loop flbl1;
+  <<flbl2>>
+  for j in 1 .. 10 loop
+    raise notice 'j = %', j;
+    exit flbl2;
+  end loop;
+  return 0;
+end end_label
+select end_label5();
+ERROR:  function end_label5() does not exist
+LINE 1: select end_label5();
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
