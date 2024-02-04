@@ -247,7 +247,7 @@ begin
     raise notice 'j = %', j;
     exit flbl2;
   end loop;
-end blbl;
+end end_label1;
 $$ language plisql;
 /
 
@@ -502,3 +502,43 @@ select case_test(1);
 select case_test(2);
 select case_test(12);
 select case_test(13);
+
+-- test end label match with function/procedure name
+create function end_label5() return int as
+begin
+  <<flbl1>>
+  for i in 1 .. 10 loop
+    raise notice 'i = %', i;
+    exit flbl1;
+  end loop flbl1;
+  <<flbl2>>
+  for j in 1 .. 10 loop
+    raise notice 'j = %', j;
+    exit flbl2;
+  end loop;
+  return 0;
+end end_label5;
+/
+
+select end_label5();
+
+drop function end_label5;
+
+-- should fail: end label must match with function/procedure name
+create function end_label5() return int as
+begin
+  <<flbl1>>
+  for i in 1 .. 10 loop
+    raise notice 'i = %', i;
+    exit flbl1;
+  end loop flbl1;
+  <<flbl2>>
+  for j in 1 .. 10 loop
+    raise notice 'j = %', j;
+    exit flbl2;
+  end loop;
+  return 0;
+end end_label;
+/
+
+select end_label5();
