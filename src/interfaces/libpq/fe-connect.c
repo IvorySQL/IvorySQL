@@ -388,15 +388,10 @@ static const char uri_designator[] = "postgresql://";
 static const char short_uri_designator[] = "postgres://";
 
 static bool connectOptions1(PGconn *conn, const char *conninfo);
-static bool connectOptions2(PGconn *conn);
-static int	connectDBStart(PGconn *conn);
-static int	connectDBComplete(PGconn *conn);
 static PGPing internal_ping(PGconn *conn);
-static PGconn *makeEmptyPGconn(void);
 static void pqFreeCommandQueue(PGcmdQueueEntry *queue);
 static bool fillPGconn(PGconn *conn, PQconninfoOption *connOptions);
 static void freePGconn(PGconn *conn);
-static void closePGconn(PGconn *conn);
 static void release_conn_addrinfo(PGconn *conn);
 static int	store_conn_addrinfo(PGconn *conn, struct addrinfo *addrlist);
 static void sendTerminateConn(PGconn *conn);
@@ -645,8 +640,8 @@ pqDropServerData(PGconn *conn)
  * PQconnectStart or PQconnectStartParams (which differ in the same way as
  * PQconnectdb and PQconnectdbParams) and PQconnectPoll.
  *
- * Internally, the static functions connectDBStart, connectDBComplete
- * are part of the connection procedure.
+ * The non-exported functions pqConnectDBStart, pqConnectDBComplete are
+ * part of the connection procedure implementation.
  */
 
 /*
@@ -679,7 +674,7 @@ PQconnectdbParams(const char *const *keywords,
 	PGconn	   *conn = PQconnectStartParams(keywords, values, expand_dbname);
 
 	if (conn && conn->status != CONNECTION_BAD)
-		(void) connectDBComplete(conn);
+		(void) pqConnectDBComplete(conn);
 
 	return conn;
 }
@@ -732,7 +727,7 @@ PQconnectdb(const char *conninfo)
 	PGconn	   *conn = PQconnectStart(conninfo);
 
 	if (conn && conn->status != CONNECTION_BAD)
-		(void) connectDBComplete(conn);
+		(void) pqConnectDBComplete(conn);
 
 	return conn;
 }
@@ -786,7 +781,7 @@ PQconnectStartParams(const char *const *keywords,
 	 * to initialize conn->errorMessage to empty.  All subsequent steps during
 	 * connection initialization will only append to that buffer.
 	 */
-	conn = makeEmptyPGconn();
+	conn = pqMakeEmptyPGconn();
 	if (conn == NULL)
 		return NULL;
 
@@ -820,15 +815,15 @@ PQconnectStartParams(const char *const *keywords,
 	/*
 	 * Compute derived options
 	 */
-	if (!connectOptions2(conn))
+	if (!pqConnectOptions2(conn))
 		return conn;
 
 	/*
 	 * Connect to the database
 	 */
-	if (!connectDBStart(conn))
+	if (!pqConnectDBStart(conn))
 	{
-		/* Just in case we failed to set it in connectDBStart */
+		/* Just in case we failed to set it in pqConnectDBStart */
 		conn->status = CONNECTION_BAD;
 	}
 
@@ -864,7 +859,7 @@ PQconnectStart(const char *conninfo)
 	 * to initialize conn->errorMessage to empty.  All subsequent steps during
 	 * connection initialization will only append to that buffer.
 	 */
-	conn = makeEmptyPGconn();
+	conn = pqMakeEmptyPGconn();
 	if (conn == NULL)
 		return NULL;
 
@@ -877,15 +872,15 @@ PQconnectStart(const char *conninfo)
 	/*
 	 * Compute derived options
 	 */
-	if (!connectOptions2(conn))
+	if (!pqConnectOptions2(conn))
 		return conn;
 
 	/*
 	 * Connect to the database
 	 */
-	if (!connectDBStart(conn))
+	if (!pqConnectDBStart(conn))
 	{
-		/* Just in case we failed to set it in connectDBStart */
+		/* Just in case we failed to set it in pqConnectDBStart */
 		conn->status = CONNECTION_BAD;
 	}
 
@@ -896,7 +891,7 @@ PQconnectStart(const char *conninfo)
  * Move option values into conn structure
  *
  * Don't put anything cute here --- intelligence should be in
- * connectOptions2 ...
+ * pqConnectOptions2 ...
  *
  * Returns true on success. On failure, returns false and sets error message.
  */
@@ -934,7 +929,7 @@ fillPGconn(PGconn *conn, PQconninfoOption *connOptions)
  *
  * Internal subroutine to set up connection parameters given an already-
  * created PGconn and a conninfo string.  Derived settings should be
- * processed by calling connectOptions2 next.  (We split them because
+ * processed by calling pqConnectOptions2 next.  (We split them because
  * PQsetdbLogin overrides defaults in between.)
  *
  * Returns true if OK, false if trouble (in which case errorMessage is set
@@ -1056,15 +1051,15 @@ libpq_prng_init(PGconn *conn)
 }
 
 /*
- *		connectOptions2
+ *		pqConnectOptions2
  *
  * Compute derived connection options after absorbing all user-supplied info.
  *
  * Returns true if OK, false if trouble (in which case errorMessage is set
  * and so is conn->status).
  */
-static bool
-connectOptions2(PGconn *conn)
+bool
+pqConnectOptions2(PGconn *conn)
 {
 	int			i;
 
@@ -1823,7 +1818,7 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 	 * to initialize conn->errorMessage to empty.  All subsequent steps during
 	 * connection initialization will only append to that buffer.
 	 */
-	conn = makeEmptyPGconn();
+	conn = pqMakeEmptyPGconn();
 	if (conn == NULL)
 		return NULL;
 
@@ -1902,14 +1897,14 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 	/*
 	 * Compute derived options
 	 */
-	if (!connectOptions2(conn))
+	if (!pqConnectOptions2(conn))
 		return conn;
 
 	/*
 	 * Connect to the database
 	 */
-	if (connectDBStart(conn))
-		(void) connectDBComplete(conn);
+	if (pqConnectDBStart(conn))
+		(void) pqConnectDBComplete(conn);
 
 	return conn;
 
@@ -2278,14 +2273,14 @@ setTCPUserTimeout(PGconn *conn)
 }
 
 /* ----------
- * connectDBStart -
+ * pqConnectDBStart -
  *		Begin the process of making a connection to the backend.
  *
  * Returns 1 if successful, 0 if not.
  * ----------
  */
-static int
-connectDBStart(PGconn *conn)
+int
+pqConnectDBStart(PGconn *conn)
 {
 	if (!conn)
 		return 0;
@@ -2348,14 +2343,14 @@ connect_errReturn:
 
 
 /*
- *		connectDBComplete
+ *		pqConnectDBComplete
  *
  * Block and complete a connection.
  *
  * Returns 1 on success, 0 on failure.
  */
-static int
-connectDBComplete(PGconn *conn)
+int
+pqConnectDBComplete(PGconn *conn)
 {
 	PostgresPollingStatusType flag = PGRES_POLLING_WRITING;
 	time_t		finish_time = ((time_t) -1);
@@ -2705,7 +2700,7 @@ keep_going:						/* We will come back to here until there is
 			 * combining it with the insertion.
 			 *
 			 * We don't need to initialize conn->prng_state here, because that
-			 * already happened in connectOptions2.
+			 * already happened in pqConnectOptions2.
 			 */
 			for (int i = 1; i < conn->naddr; i++)
 			{
@@ -4182,7 +4177,7 @@ internal_ping(PGconn *conn)
 
 	/* Attempt to complete the connection */
 	if (conn->status != CONNECTION_BAD)
-		(void) connectDBComplete(conn);
+		(void) pqConnectDBComplete(conn);
 
 	/* Definitely OK if we succeeded */
 	if (conn->status != CONNECTION_BAD)
@@ -4234,11 +4229,11 @@ internal_ping(PGconn *conn)
 
 
 /*
- * makeEmptyPGconn
+ * pqMakeEmptyPGconn
  *	 - create a PGconn data structure with (as yet) no interesting data
  */
-static PGconn *
-makeEmptyPGconn(void)
+PGconn *
+pqMakeEmptyPGconn(void)
 {
 	PGconn	   *conn;
 
@@ -4331,7 +4326,7 @@ makeEmptyPGconn(void)
  * freePGconn
  *	 - free an idle (closed) PGconn data structure
  *
- * NOTE: this should not overlap any functionality with closePGconn().
+ * NOTE: this should not overlap any functionality with pqClosePGconn().
  * Clearing/resetting of transient state belongs there; what we do here is
  * release data that is to be held for the life of the PGconn structure.
  * If a value ought to be cleared/freed during PQreset(), do it there not here.
@@ -4518,15 +4513,15 @@ sendTerminateConn(PGconn *conn)
 }
 
 /*
- * closePGconn
+ * pqClosePGconn
  *	 - properly close a connection to the backend
  *
  * This should reset or release all transient state, but NOT the connection
  * parameters.  On exit, the PGconn should be in condition to start a fresh
  * connection with the same parameters (see PQreset()).
  */
-static void
-closePGconn(PGconn *conn)
+void
+pqClosePGconn(PGconn *conn)
 {
 	/*
 	 * If possible, send Terminate message to close the connection politely.
@@ -4569,7 +4564,7 @@ PQfinish(PGconn *conn)
 {
 	if (conn)
 	{
-		closePGconn(conn);
+		pqClosePGconn(conn);
 		freePGconn(conn);
 	}
 }
@@ -4583,9 +4578,9 @@ PQreset(PGconn *conn)
 {
 	if (conn)
 	{
-		closePGconn(conn);
+		pqClosePGconn(conn);
 
-		if (connectDBStart(conn) && connectDBComplete(conn))
+		if (pqConnectDBStart(conn) && pqConnectDBComplete(conn))
 		{
 			/*
 			 * Notify event procs of successful reset.
@@ -4616,9 +4611,9 @@ PQresetStart(PGconn *conn)
 {
 	if (conn)
 	{
-		closePGconn(conn);
+		pqClosePGconn(conn);
 
-		return connectDBStart(conn);
+		return pqConnectDBStart(conn);
 	}
 
 	return 0;
