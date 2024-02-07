@@ -245,4 +245,3 @@ SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FF
 drop table inaf;
 drop table xmltest;
 drop table xmlnstest;
-

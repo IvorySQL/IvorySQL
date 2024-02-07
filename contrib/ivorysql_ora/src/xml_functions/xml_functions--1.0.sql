@@ -165,4 +165,3 @@ CREATE FUNCTION sys.INSERTCHILDXMLAFTER(sys.xmltype, text, text, sys.xmltype, te
 RETURNS sys.xmltype
 AS 'MODULE_PATHNAME','ivy_insertchildxmlafter2'
 LANGUAGE C IMMUTABLE;
-

@@ -65,6 +65,8 @@ ORA_REGRESS = \
 	ora_like_operator \
 	ora_xml_functions
 
+SHLIB_LINK += -lxml2
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

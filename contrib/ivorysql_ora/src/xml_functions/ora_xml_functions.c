@@ -764,6 +764,7 @@ ivy_xml_addchildnode(xmlXPathObjectPtr xpathobj, xmlNodePtr cnode)
 {
 	int			num = 0;
 	int			i;
+	xmlDocPtr       	cnode_copy = NULL;
 
 	if (xpathobj->type == XPATH_NODESET)
 	{
@@ -772,7 +773,10 @@ ivy_xml_addchildnode(xmlXPathObjectPtr xpathobj, xmlNodePtr cnode)
 			num = xpathobj->nodesetval->nodeNr;
 			for (i = 0; i < num; i++)
 			{
-				xmlAddChild(xpathobj->nodesetval->nodeTab[i], cnode->children);
+				cnode_copy = xmlCopyNode(cnode, 1);
+				xmlAddChild(xpathobj->nodesetval->nodeTab[i], cnode_copy->children);
+				cnode_copy->children = NULL;
+				xmlFreeDoc(cnode_copy);
 			}
 		}
 	}
@@ -2280,4 +2284,3 @@ updatexml(List *args)
 	return NULL;
 #endif
 }
-
