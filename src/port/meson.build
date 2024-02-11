@@ -36,6 +36,7 @@ if host_system == 'windows'
     'win32error.c',
     'win32fdatasync.c',
     'win32fseek.c',
+    'win32gai_strerror.c',
     'win32getrusage.c',
     'win32link.c',
     'win32ntdll.c',
