@@ -2985,8 +2985,6 @@ quickdie(SIGNAL_ARGS)
 void
 die(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	/* Don't joggle the elbow of proc_exit */
 	if (!proc_exit_inprogress)
 	{
@@ -3008,8 +3006,6 @@ die(SIGNAL_ARGS)
 	 */
 	if (DoingCommandRead && whereToSendOutput != DestRemote)
 		ProcessInterrupts();
-
-	errno = save_errno;
 }
 
 /*
@@ -3019,8 +3015,6 @@ die(SIGNAL_ARGS)
 void
 StatementCancelHandler(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	/*
 	 * Don't joggle the elbow of proc_exit
 	 */
@@ -3032,8 +3026,6 @@ StatementCancelHandler(SIGNAL_ARGS)
 
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
-
-	errno = save_errno;
 }
 
 /* signal handler for floating point exception */
