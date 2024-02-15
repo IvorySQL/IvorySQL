@@ -3433,6 +3433,17 @@ ProcessInterrupts(void)
 			IdleInTransactionSessionTimeoutPending = false;
 	}
 
+	if (TransactionTimeoutPending)
+	{
+		/* As above, ignore the signal if the GUC has been reset to zero. */
+		if (TransactionTimeout > 0)
+			ereport(FATAL,
+					(errcode(ERRCODE_TRANSACTION_TIMEOUT),
+					 errmsg("terminating connection due to transaction timeout")));
+		else
+			TransactionTimeoutPending = false;
+	}
+
 	if (IdleSessionTimeoutPending)
 	{
 		/* As above, ignore the signal if the GUC has been reset to zero. */
@@ -3645,6 +3656,15 @@ check_log_stats(bool *newval, void **extra, GucSource source)
 		return false;
 	}
 	return true;
+}
+
+/* GUC assign hook for transaction_timeout */
+void
+assign_transaction_timeout(int newval, void *extra)
+{
+	if (TransactionTimeout <= 0 &&
+		get_timeout_active(TRANSACTION_TIMEOUT))
+		disable_timeout(TRANSACTION_TIMEOUT, false);
 }
 
 
@@ -4504,12 +4524,18 @@ PostgresMain(const char *dbname, const char *username)
 				pgstat_report_activity(STATE_IDLEINTRANSACTION_ABORTED, NULL);
 
 				/* Start the idle-in-transaction timer */
-				if (IdleInTransactionSessionTimeout > 0)
+				if (IdleInTransactionSessionTimeout > 0
+					&& (IdleInTransactionSessionTimeout < TransactionTimeout || TransactionTimeout == 0))
 				{
 					idle_in_transaction_timeout_enabled = true;
 					enable_timeout_after(IDLE_IN_TRANSACTION_SESSION_TIMEOUT,
 										 IdleInTransactionSessionTimeout);
 				}
+
+				/* Schedule or reschedule transaction timeout */
+				if (TransactionTimeout > 0 && !get_timeout_active(TRANSACTION_TIMEOUT))
+					enable_timeout_after(TRANSACTION_TIMEOUT,
+										 TransactionTimeout);
 			}
 			else if (IsTransactionOrTransactionBlock())
 			{
@@ -4517,12 +4543,18 @@ PostgresMain(const char *dbname, const char *username)
 				pgstat_report_activity(STATE_IDLEINTRANSACTION, NULL);
 
 				/* Start the idle-in-transaction timer */
-				if (IdleInTransactionSessionTimeout > 0)
+				if (IdleInTransactionSessionTimeout > 0
+					&& (IdleInTransactionSessionTimeout < TransactionTimeout || TransactionTimeout == 0))
 				{
 					idle_in_transaction_timeout_enabled = true;
 					enable_timeout_after(IDLE_IN_TRANSACTION_SESSION_TIMEOUT,
 										 IdleInTransactionSessionTimeout);
 				}
+
+				/* Schedule or reschedule transaction timeout */
+				if (TransactionTimeout > 0 && !get_timeout_active(TRANSACTION_TIMEOUT))
+					enable_timeout_after(TRANSACTION_TIMEOUT,
+										 TransactionTimeout);
 			}
 			else
 			{
@@ -4575,6 +4607,13 @@ PostgresMain(const char *dbname, const char *username)
 					enable_timeout_after(IDLE_SESSION_TIMEOUT,
 										 IdleSessionTimeout);
 				}
+
+				/*
+				 * If GUC is changed then it's handled in
+				 * assign_transaction_timeout().
+				 */
+				if (TransactionTimeout > 0 && get_timeout_active(TRANSACTION_TIMEOUT))
+					disable_timeout(TRANSACTION_TIMEOUT, false);
 			}
 
 			/* Report any recently-changed GUC options */
@@ -5133,7 +5172,8 @@ enable_statement_timeout(void)
 	/* must be within an xact */
 	Assert(xact_started);
 
-	if (StatementTimeout > 0)
+	if (StatementTimeout > 0
+		&& (StatementTimeout < TransactionTimeout || TransactionTimeout == 0))
 	{
 		if (!get_timeout_active(STATEMENT_TIMEOUT))
 			enable_timeout_after(STATEMENT_TIMEOUT, StatementTimeout);
