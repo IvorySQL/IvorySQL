@@ -1170,9 +1170,9 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 
 		/* Likewise, copy storage if requested */
 		if (table_like_clause->options & CREATE_TABLE_LIKE_STORAGE)
-			def->storage = attribute->attstorage;
+			def->storage_name = GetAttributeStorageName(attribute->attstorage);
 		else
-			def->storage = 0;
+			def->storage_name = NULL;
 
 		/* Likewise, copy invisible if requested */
 		if (table_like_clause->options & CREATE_TABLE_LIKE_INVISIBLE)
@@ -1183,8 +1183,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		/* Likewise, copy compression if requested */
 		if ((table_like_clause->options & CREATE_TABLE_LIKE_COMPRESSION) != 0
 			&& CompressionMethodIsValid(attribute->attcompression))
-			def->compression =
-				pstrdup(GetCompressionMethodName(attribute->attcompression));
+			def->compression = GetCompressionMethodName(attribute->attcompression);
 		else
 			def->compression = NULL;
 
