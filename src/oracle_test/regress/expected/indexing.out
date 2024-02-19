@@ -1464,7 +1464,7 @@ create table parted_isvalid_tab_11 partition of parted_isvalid_tab_1
 create table parted_isvalid_tab_12 partition of parted_isvalid_tab_1
   for values from (5) to (10);
 -- create an invalid index on one of the partitions.
-insert into parted_isvalid_tab_11 values (1, 0);
+insert into parted_isvalid_tab_11 values (1, 0); 
 create index concurrently parted_isvalid_idx_11 on parted_isvalid_tab_11 ((a/b));
 ERROR:  division by zero
 -- The previous invalid index is selected, invalidating all the indexes up to
@@ -1476,9 +1476,9 @@ select indexrelid::regclass, indisvalid,
        pg_inherits inh on (idx.indexrelid = inh.inhrelid)
   where indexrelid::regclass::text like 'parted_isvalid%'
   order by indexrelid::regclass::text collate "C";
-           indexrelid           | indisvalid |       indrelid        |           inhparent
+           indexrelid           | indisvalid |       indrelid        |           inhparent           
 --------------------------------+------------+-----------------------+-------------------------------
- parted_isvalid_idx             | f          | parted_isvalid_tab    |
+ parted_isvalid_idx             | f          | parted_isvalid_tab    | 
  parted_isvalid_idx_11          | f          | parted_isvalid_tab_11 | parted_isvalid_tab_1_expr_idx
  parted_isvalid_tab_12_expr_idx | t          | parted_isvalid_tab_12 | parted_isvalid_tab_1_expr_idx
  parted_isvalid_tab_1_expr_idx  | f          | parted_isvalid_tab_1  | parted_isvalid_idx
