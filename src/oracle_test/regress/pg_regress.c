@@ -1230,7 +1230,6 @@ spawn_process(const char *cmdline)
 #else
 	PROCESS_INFORMATION pi;
 	char	   *cmdline2;
-	HANDLE		restrictedToken;
 	const char *comspec;
 
 	/* Find CMD.EXE location using COMSPEC, if it's set */
@@ -1241,8 +1240,7 @@ spawn_process(const char *cmdline)
 	memset(&pi, 0, sizeof(pi));
 	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
 
-	if ((restrictedToken =
-		 CreateRestrictedProcess(cmdline2, &pi)) == 0)
+	if (!CreateRestrictedProcess(cmdline2, &pi))
 		exit(2);
 
 	CloseHandle(pi.hThread);
@@ -2297,6 +2295,7 @@ regression_main(int argc, char *argv[],
 
 	if (temp_instance)
 	{
+		StringInfoData cmd;
 		FILE	   *pg_conf;
 		const char *env_wait;
 		int			wait_seconds;
@@ -2322,22 +2321,27 @@ regression_main(int argc, char *argv[],
 			make_directory(buf);
 
 		/* initdb */
-		snprintf(buf, sizeof(buf),
-				 "\"%s%sinitdb\" -D \"%s/data\"  -m oracle -C normal --no-clean --no-sync%s%s > \"%s/log/initdb.log\" 2>&1",
-				 bindir ? bindir : "",
-				 bindir ? "/" : "",
-				 temp_instance,
-				 debug ? " --debug" : "",
-				 nolocale ? " --no-locale" : "",
-				 outputdir);
+		initStringInfo(&cmd);
+		appendStringInfo(&cmd,
+						 "\"%s%sinitdb\" -D \"%s/data\" -m oracle -C normal --no-clean --no-sync",
+						 bindir ? bindir : "",
+						 bindir ? "/" : "",
+						 temp_instance);
+		if (debug)
+			appendStringInfo(&cmd, " --debug");
+		if (nolocale)
+			appendStringInfo(&cmd, " --no-locale");
+		appendStringInfo(&cmd, " > \"%s/log/initdb.log\" 2>&1", outputdir);
 		fflush(NULL);
-		if (system(buf))
+		if (system(cmd.data))
 		{
 			bail("initdb failed\n"
 				 "# Examine \"%s/log/initdb.log\" for the reason.\n"
 				 "# Command was: %s",
-				 outputdir, buf);
+				 outputdir, cmd.data);
 		}
+
+		pfree(cmd.data);
 
 		/*
 		 * Adjust the default postgresql.conf for regression testing. The user
