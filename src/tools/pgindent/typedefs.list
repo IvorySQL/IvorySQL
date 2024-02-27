@@ -1273,6 +1273,7 @@ JsonManifestWALRangeField
 JsonObjectAgg
 JsonObjectConstructor
 JsonOutput
+JsonParseExpr
 JsonParseContext
 JsonParseErrorType
 JsonParseExpr
@@ -1302,6 +1303,7 @@ JsonQuotes
 JsonReturning
 JsonScalarExpr
 JsonSemAction
+JsonSerializeExpr
 JsonTokenType
 JsonTransformStringValuesAction
 JsonTypeCategory
@@ -1325,7 +1327,6 @@ JsonbIteratorToken
 JsonbPair
 JsonbParseState
 JsonbSubWorkspace
-JsonbTypeCategory
 JsonbValue
 JumbleState
 JunkFilter
@@ -2630,6 +2631,7 @@ Step
 StopList
 StrategyNumber
 StreamCtl
+StreamStopReason
 String
 StringInfo
 StringInfoData
@@ -2972,7 +2974,10 @@ WSANETWORKEVENTS
 WSAPROTOCOL_INFO
 WaitEvent
 WaitEventActivity
+WaitEventBufferPin
 WaitEventClient
+WaitEventExtension
+WaitEventExtensionCounterData
 WaitEventIO
 WaitEventIPC
 WaitEventSet
@@ -3824,6 +3829,7 @@ wchar2mb_with_len_converter
 wchar_t
 win32_deadchild_waitinfo
 wint_t
+worker_spi_state
 worker_state
 worktable
 wrap

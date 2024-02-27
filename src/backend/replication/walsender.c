@@ -1113,7 +1113,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			if (!XactReadOnly)
 				ereport(ERROR,
 				/*- translator: %s is a CREATE_REPLICATION_SLOT statement */
-						(errmsg("%s must be called in a read only transaction",
+						(errmsg("%s must be called in a read-only transaction",
 								"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
 
 			if (FirstSnapshotSet)
@@ -1197,7 +1197,6 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	 * - second field: LSN at which we became consistent
 	 * - third field: exported snapshot's name
 	 * - fourth field: output plugin
-	 *----------
 	 */
 	tupdesc = CreateTemplateTupleDesc(4);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, "slot_name",
@@ -2692,7 +2691,7 @@ WalSndSegmentOpen(XLogReaderState *state, XLogSegNo nextSegNo,
 	 * restored from the archive on this server, the file belonging to the old
 	 * timeline, 000000040000000000000013, might not exist. Their contents are
 	 * equal up to the switchpoint, because at a timeline switch, the used
-	 * portion of the old segment is copied to the new file.  -------
+	 * portion of the old segment is copied to the new file.
 	 */
 	*tli_p = sendTimeLine;
 	if (sendTimeLineIsHistoric)

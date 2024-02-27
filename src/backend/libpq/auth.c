@@ -312,7 +312,7 @@ auth_failed(Port *port, int status, const char *logdetail)
 			break;
 	}
 
-	cdetail = psprintf(_("Connection matched %s line %d: \"%s\""),
+	cdetail = psprintf(_("Connection matched file \"%s\" line %d: \"%s\""),
 					   port->hba->sourcefile, port->hba->linenumber,
 					   port->hba->rawline);
 	if (logdetail)
@@ -872,11 +872,6 @@ CheckMD5Auth(Port *port, char *shadow_pass, const char **logdetail)
 	char		md5Salt[4];		/* Password salt */
 	char	   *passwd;
 	int			result;
-
-	if (Db_user_namespace)
-		ereport(FATAL,
-				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-				 errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled")));
 
 	/* include the salt to use for computing the response */
 	if (!pg_strong_random(md5Salt, 4))
@@ -2611,31 +2606,6 @@ CheckLDAPAuth(Port *port)
 		pfree(filter);
 		ldap_memfree(dn);
 		ldap_msgfree(search_message);
-
-		/* Unbind and disconnect from the LDAP server */
-		r = ldap_unbind_s(ldap);
-		if (r != LDAP_SUCCESS)
-		{
-			ereport(LOG,
-					(errmsg("could not unbind after searching for user \"%s\" on server \"%s\"",
-							fulluser, server_name)));
-			pfree(passwd);
-			pfree(fulluser);
-			return STATUS_ERROR;
-		}
-
-		/*
-		 * Need to re-initialize the LDAP connection, so that we can bind to
-		 * it with a different username.
-		 */
-		if (InitializeLDAPConnection(port, &ldap) == STATUS_ERROR)
-		{
-			pfree(passwd);
-			pfree(fulluser);
-
-			/* Error message already sent */
-			return STATUS_ERROR;
-		}
 	}
 	else
 		fulluser = psprintf("%s%s%s",

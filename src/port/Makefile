@@ -59,7 +59,7 @@ OBJS = \
 	snprintf.o \
 	strerror.o \
 	tar.o \
-	thread.o
+	user.o
 
 override OBJS := $(OBJS) identifier_alpha_transfor.o
 
@@ -85,10 +85,6 @@ uninstall:
 libpgport.a: $(OBJS)
 	rm -f $@
 	$(AR) $(AROPT) $@ $^
-
-# thread.o and thread_shlib.o need PTHREAD_CFLAGS (but thread_srv.o does not)
-thread.o: CFLAGS+=$(PTHREAD_CFLAGS)
-thread_shlib.o: CFLAGS+=$(PTHREAD_CFLAGS)
 
 # all versions of pg_crc32c_sse42.o need CFLAGS_CRC
 pg_crc32c_sse42.o: CFLAGS+=$(CFLAGS_CRC)

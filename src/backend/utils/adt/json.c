@@ -19,7 +19,6 @@
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
-#include "parser/parse_coerce.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -28,21 +27,6 @@
 #include "utils/jsonfuncs.h"
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
-
-typedef enum					/* type categories for datum_to_json */
-{
-	JSONTYPE_NULL,				/* null, so we didn't bother to identify */
-	JSONTYPE_BOOL,				/* boolean (built-in types only) */
-	JSONTYPE_NUMERIC,			/* numeric (ditto) */
-	JSONTYPE_DATE,				/* we use special formatting for datetimes */
-	JSONTYPE_TIMESTAMP,
-	JSONTYPE_TIMESTAMPTZ,
-	JSONTYPE_JSON,				/* JSON itself (and JSONB) */
-	JSONTYPE_ARRAY,				/* array */
-	JSONTYPE_COMPOSITE,			/* composite */
-	JSONTYPE_CAST,				/* something with an explicit cast to JSON */
-	JSONTYPE_OTHER				/* all else */
-} JsonTypeCategory;
 
 
 /*
@@ -107,12 +91,9 @@ static void array_dim_to_json(StringInfo result, int dim, int ndims, int *dims,
 							  bool use_line_feeds);
 static void array_to_json_internal(Datum array, StringInfo result,
 								   bool use_line_feeds);
-static void json_categorize_type(Oid typoid,
-								 JsonTypeCategory *tcategory,
-								 Oid *outfuncoid);
-static void datum_to_json(Datum val, bool is_null, StringInfo result,
-						  JsonTypeCategory tcategory, Oid outfuncoid,
-						  bool key_scalar);
+static void datum_to_json_internal(Datum val, bool is_null, StringInfo result,
+								   JsonTypeCategory tcategory, Oid outfuncoid,
+								   bool key_scalar);
 static void add_json(Datum val, bool is_null, StringInfo result,
 					 Oid val_type, bool key_scalar);
 static text *catenate_stringinfo_string(StringInfo buffer, const char *addon);
@@ -183,106 +164,6 @@ json_recv(PG_FUNCTION_ARGS)
 }
 
 /*
- * Determine how we want to print values of a given type in datum_to_json.
- *
- * Given the datatype OID, return its JsonTypeCategory, as well as the type's
- * output function OID.  If the returned category is JSONTYPE_CAST, we
- * return the OID of the type->JSON cast function instead.
- */
-static void
-json_categorize_type(Oid typoid,
-					 JsonTypeCategory *tcategory,
-					 Oid *outfuncoid)
-{
-	bool		typisvarlena;
-
-	/* Look through any domain */
-	typoid = getBaseType(typoid);
-
-	*outfuncoid = InvalidOid;
-
-	/*
-	 * We need to get the output function for everything except date and
-	 * timestamp types, array and composite types, booleans, and non-builtin
-	 * types where there's a cast to json.
-	 */
-
-	switch (typoid)
-	{
-		case BOOLOID:
-			*tcategory = JSONTYPE_BOOL;
-			break;
-
-		case INT2OID:
-		case INT4OID:
-		case INT8OID:
-		case FLOAT4OID:
-		case FLOAT8OID:
-		case NUMERICOID:
-			getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
-			*tcategory = JSONTYPE_NUMERIC;
-			break;
-
-		case DATEOID:
-			*tcategory = JSONTYPE_DATE;
-			break;
-
-		case TIMESTAMPOID:
-			*tcategory = JSONTYPE_TIMESTAMP;
-			break;
-
-		case TIMESTAMPTZOID:
-			*tcategory = JSONTYPE_TIMESTAMPTZ;
-			break;
-
-		case JSONOID:
-		case JSONBOID:
-			getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
-			*tcategory = JSONTYPE_JSON;
-			break;
-
-		default:
-			/* Check for arrays and composites */
-			if (OidIsValid(get_element_type(typoid)) || typoid == ANYARRAYOID
-				|| typoid == ANYCOMPATIBLEARRAYOID || typoid == RECORDARRAYOID)
-				*tcategory = JSONTYPE_ARRAY;
-			else if (type_is_rowtype(typoid))	/* includes RECORDOID */
-				*tcategory = JSONTYPE_COMPOSITE;
-			else
-			{
-				/* It's probably the general case ... */
-				*tcategory = JSONTYPE_OTHER;
-				/* but let's look for a cast to json, if it's not built-in */
-				if (typoid >= FirstNormalObjectId)
-				{
-					Oid			castfunc;
-					CoercionPathType ctype;
-
-					ctype = find_coercion_pathway(JSONOID, typoid,
-												  COERCION_EXPLICIT,
-												  &castfunc);
-					if (ctype == COERCION_PATH_FUNC && OidIsValid(castfunc))
-					{
-						*tcategory = JSONTYPE_CAST;
-						*outfuncoid = castfunc;
-					}
-					else
-					{
-						/* non builtin type with no cast */
-						getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
-					}
-				}
-				else
-				{
-					/* any other builtin type */
-					getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
-				}
-			}
-			break;
-	}
-}
-
-/*
  * Turn a Datum into JSON text, appending the string to "result".
  *
  * tcategory and outfuncoid are from a previous call to json_categorize_type,
@@ -292,9 +173,9 @@ json_categorize_type(Oid typoid,
  * it's of an acceptable type, and force it to be quoted.
  */
 static void
-datum_to_json(Datum val, bool is_null, StringInfo result,
-			  JsonTypeCategory tcategory, Oid outfuncoid,
-			  bool key_scalar)
+datum_to_json_internal(Datum val, bool is_null, StringInfo result,
+					   JsonTypeCategory tcategory, Oid outfuncoid,
+					   bool key_scalar)
 {
 	char	   *outputstr;
 	text	   *jsontext;
@@ -540,8 +421,9 @@ array_dim_to_json(StringInfo result, int dim, int ndims, int *dims, Datum *vals,
 
 		if (dim + 1 == ndims)
 		{
-			datum_to_json(vals[*valcount], nulls[*valcount], result, tcategory,
-						  outfuncoid, false);
+			datum_to_json_internal(vals[*valcount], nulls[*valcount],
+								   result, tcategory,
+								   outfuncoid, false);
 			(*valcount)++;
 		}
 		else
@@ -591,7 +473,7 @@ array_to_json_internal(Datum array, StringInfo result, bool use_line_feeds)
 	get_typlenbyvalalign(element_type,
 						 &typlen, &typbyval, &typalign);
 
-	json_categorize_type(element_type,
+	json_categorize_type(element_type, false,
 						 &tcategory, &outfuncoid);
 
 	deconstruct_array(v, element_type, typlen, typbyval,
@@ -665,9 +547,11 @@ composite_to_json(Datum composite, StringInfo result, bool use_line_feeds)
 			outfuncoid = InvalidOid;
 		}
 		else
-			json_categorize_type(att->atttypid, &tcategory, &outfuncoid);
+			json_categorize_type(att->atttypid, false, &tcategory,
+								 &outfuncoid);
 
-		datum_to_json(val, isnull, result, tcategory, outfuncoid, false);
+		datum_to_json_internal(val, isnull, result, tcategory, outfuncoid,
+							   false);
 	}
 
 	appendStringInfoChar(result, '}');
@@ -699,10 +583,11 @@ add_json(Datum val, bool is_null, StringInfo result,
 		outfuncoid = InvalidOid;
 	}
 	else
-		json_categorize_type(val_type,
+		json_categorize_type(val_type, false,
 							 &tcategory, &outfuncoid);
 
-	datum_to_json(val, is_null, result, tcategory, outfuncoid, key_scalar);
+	datum_to_json_internal(val, is_null, result, tcategory, outfuncoid,
+						   key_scalar);
 }
 
 /*
@@ -784,12 +669,13 @@ to_json_is_immutable(Oid typoid)
 	JsonTypeCategory tcategory;
 	Oid			outfuncoid;
 
-	json_categorize_type(typoid, &tcategory, &outfuncoid);
+	json_categorize_type(typoid, false, &tcategory, &outfuncoid);
 
 	switch (tcategory)
 	{
 		case JSONTYPE_BOOL:
 		case JSONTYPE_JSON:
+		case JSONTYPE_JSONB:
 		case JSONTYPE_NULL:
 			return true;
 
@@ -821,7 +707,6 @@ to_json(PG_FUNCTION_ARGS)
 {
 	Datum		val = PG_GETARG_DATUM(0);
 	Oid			val_type = get_fn_expr_argtype(fcinfo->flinfo, 0);
-	StringInfo	result;
 	JsonTypeCategory tcategory;
 	Oid			outfuncoid;
 
@@ -830,14 +715,26 @@ to_json(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("could not determine input data type")));
 
-	json_categorize_type(val_type,
+	json_categorize_type(val_type, false,
 						 &tcategory, &outfuncoid);
 
-	result = makeStringInfo();
+	PG_RETURN_DATUM(datum_to_json(val, tcategory, outfuncoid));
+}
 
-	datum_to_json(val, false, result, tcategory, outfuncoid, false);
+/*
+ * Turn a Datum into JSON text.
+ *
+ * tcategory and outfuncoid are from a previous call to json_categorize_type.
+ */
+Datum
+datum_to_json(Datum val, JsonTypeCategory tcategory, Oid outfuncoid)
+{
+	StringInfo	result = makeStringInfo();
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(result->data, result->len));
+	datum_to_json_internal(val, false, result, tcategory, outfuncoid,
+						   false);
+
+	return PointerGetDatum(cstring_to_text_with_len(result->data, result->len));
 }
 
 /*
@@ -880,7 +777,7 @@ json_agg_transfn_worker(FunctionCallInfo fcinfo, bool absent_on_null)
 		MemoryContextSwitchTo(oldcontext);
 
 		appendStringInfoChar(state->str, '[');
-		json_categorize_type(arg_type, &state->val_category,
+		json_categorize_type(arg_type, false, &state->val_category,
 							 &state->val_output_func);
 	}
 	else
@@ -897,8 +794,8 @@ json_agg_transfn_worker(FunctionCallInfo fcinfo, bool absent_on_null)
 	/* fast path for NULLs */
 	if (PG_ARGISNULL(1))
 	{
-		datum_to_json((Datum) 0, true, state->str, JSONTYPE_NULL,
-					  InvalidOid, false);
+		datum_to_json_internal((Datum) 0, true, state->str, JSONTYPE_NULL,
+							   InvalidOid, false);
 		PG_RETURN_POINTER(state);
 	}
 
@@ -912,8 +809,8 @@ json_agg_transfn_worker(FunctionCallInfo fcinfo, bool absent_on_null)
 		appendStringInfoString(state->str, "\n ");
 	}
 
-	datum_to_json(val, false, state->str, state->val_category,
-				  state->val_output_func, false);
+	datum_to_json_internal(val, false, state->str, state->val_category,
+						   state->val_output_func, false);
 
 	/*
 	 * The transition type for json_agg() is declared to be "internal", which
@@ -1112,7 +1009,7 @@ json_object_agg_transfn_worker(FunctionCallInfo fcinfo,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("could not determine data type for argument %d", 1)));
 
-		json_categorize_type(arg_type, &state->key_category,
+		json_categorize_type(arg_type, false, &state->key_category,
 							 &state->key_output_func);
 
 		arg_type = get_fn_expr_argtype(fcinfo->flinfo, 2);
@@ -1122,7 +1019,7 @@ json_object_agg_transfn_worker(FunctionCallInfo fcinfo,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("could not determine data type for argument %d", 2)));
 
-		json_categorize_type(arg_type, &state->val_category,
+		json_categorize_type(arg_type, false, &state->val_category,
 							 &state->val_output_func);
 
 		appendStringInfoString(state->str, "{ ");
@@ -1176,8 +1073,8 @@ json_object_agg_transfn_worker(FunctionCallInfo fcinfo,
 
 	key_offset = out->len;
 
-	datum_to_json(arg, false, out, state->key_category,
-				  state->key_output_func, true);
+	datum_to_json_internal(arg, false, out, state->key_category,
+						   state->key_output_func, true);
 
 	if (unique_keys)
 	{
@@ -1199,8 +1096,9 @@ json_object_agg_transfn_worker(FunctionCallInfo fcinfo,
 	else
 		arg = PG_GETARG_DATUM(2);
 
-	datum_to_json(arg, PG_ARGISNULL(2), state->str, state->val_category,
-				  state->val_output_func, false);
+	datum_to_json_internal(arg, PG_ARGISNULL(2), state->str,
+						   state->val_category,
+						   state->val_output_func, false);
 
 	PG_RETURN_POINTER(state);
 }

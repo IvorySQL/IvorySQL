@@ -8,7 +8,7 @@
 
 project('postgresql',
   ['c'],
-  version: '16beta2',
+  version: '17devel',
   license: 'PostgreSQL',
 
   # We want < 0.56 for python 3.5 compatibility on old platforms. EPEL for
@@ -362,6 +362,10 @@ bison_kw = {
 }
 
 flex_flags = []
+if flex.found()
+  flex_version_c = run_command(flex, '--version', check: true)
+  flex_version = flex_version_c.stdout().split(' ')[1].split('\n')[0]
+endif
 flex_wrapper = files('src/tools/pgflex')
 flex_cmd = [python, flex_wrapper,
   '--builddir', '@BUILD_ROOT@',
@@ -745,8 +749,8 @@ endif
 ###############################################################
 
 llvmopt = get_option('llvm')
-if not llvmopt.disabled()
-  add_languages('cpp', required: true, native: false)
+llvm = not_found_dep
+if add_languages('cpp', required: llvmopt, native: false)
   llvm = dependency('llvm', version: '>=3.9', method: 'config-tool', required: llvmopt)
 
   if llvm.found()
@@ -760,8 +764,8 @@ if not llvmopt.disabled()
     ccache = find_program('ccache', native: true, required: false)
     clang = find_program(llvm_binpath / 'clang', required: true)
   endif
-else
-  llvm = not_found_dep
+elif llvmopt.auto()
+  message('llvm requires a C++ compiler')
 endif
 
 
@@ -772,8 +776,8 @@ endif
 
 icuopt = get_option('icu')
 if not icuopt.disabled()
-  icu = dependency('icu-uc', required: icuopt.enabled())
-  icu_i18n = dependency('icu-i18n', required: icuopt.enabled())
+  icu = dependency('icu-uc', required: icuopt)
+  icu_i18n = dependency('icu-i18n', required: icuopt)
 
   if icu.found()
     cdata.set('USE_ICU', 1)
@@ -1057,9 +1061,9 @@ endif
 pyopt = get_option('plpython')
 if not pyopt.disabled()
   pm = import('python')
-  python3_inst = pm.find_installation(required: pyopt.enabled())
-  python3_dep = python3_inst.dependency(embed: true, required: pyopt.enabled())
-  if not cc.check_header('Python.h', dependencies: python3_dep, required: pyopt.enabled())
+  python3_inst = pm.find_installation(required: pyopt)
+  python3_dep = python3_inst.dependency(embed: true, required: pyopt)
+  if not cc.check_header('Python.h', dependencies: python3_dep, required: pyopt)
     python3_dep = not_found_dep
   endif
 else
@@ -1082,7 +1086,7 @@ if not get_option('readline').disabled()
     readline = dependency(readline_dep, required: false)
     if not readline.found()
       readline = cc.find_library(readline_dep,
-        required: get_option('readline').enabled(),
+        required: get_option('readline'),
         dirs: test_lib_d)
     endif
     if readline.found()
@@ -1269,9 +1273,8 @@ if sslopt in ['auto', 'openssl']
       ['CRYPTO_new_ex_data', {'required': true}],
       ['SSL_new', {'required': true}],
 
-      # Functions introduced in OpenSSL 1.0.2.
-      ['X509_get_signature_nid'],
-      ['SSL_CTX_set_cert_cb'], # not in LibreSSL
+      # Function introduced in OpenSSL 1.0.2, not in LibreSSL.
+      ['SSL_CTX_set_cert_cb'],
 
       # Functions introduced in OpenSSL 1.1.0. We used to check for
       # OPENSSL_VERSION_NUMBER, but that didn't work with 1.1.0, because LibreSSL
@@ -1313,7 +1316,7 @@ if sslopt in ['auto', 'openssl']
     if are_openssl_funcs_complete
       cdata.set('USE_OPENSSL', 1,
                 description: 'Define to 1 to build with OpenSSL support. (-Dssl=openssl)')
-      cdata.set('OPENSSL_API_COMPAT', '0x10001000L',
+      cdata.set('OPENSSL_API_COMPAT', '0x10002000L',
                 description: 'Define to the OpenSSL API version in use. This avoids deprecation warnings from newer OpenSSL versions.')
       ssl_library = 'openssl'
     else
@@ -1382,7 +1385,7 @@ if not zlibopt.disabled()
     warning('did not find zlib')
   elif not cc.has_header('zlib.h',
       args: test_c_args, include_directories: postgres_inc,
-      dependencies: [zlib_t], required: zlibopt.enabled())
+      dependencies: [zlib_t], required: zlibopt)
     warning('zlib header not found')
   elif not cc.has_type('z_streamp',
       dependencies: [zlib_t], prefix: '#include <zlib.h>',
@@ -2283,17 +2286,13 @@ else
   cdata.set('STRERROR_R_INT', false)
 endif
 
-# Check for the locale_t type and find the right header file.  macOS
-# needs xlocale.h; standard is locale.h, but glibc also has an
-# xlocale.h file that we should not use.  MSVC has a replacement
-# defined in src/include/port/win32_port.h.
-if cc.has_type('locale_t', prefix: '#include <locale.h>')
-  cdata.set('HAVE_LOCALE_T', 1)
-elif cc.has_type('locale_t', prefix: '#include <xlocale.h>')
-  cdata.set('HAVE_LOCALE_T', 1)
+# Find the right header file for the locale_t type.  macOS needs xlocale.h;
+# standard is locale.h, but glibc <= 2.25 also had an xlocale.h file that
+# we should not use so we check the standard header first.  MSVC has a
+# replacement defined in src/include/port/win32_port.h.
+if not cc.has_type('locale_t', prefix: '#include <locale.h>') and \
+   cc.has_type('locale_t', prefix: '#include <xlocale.h>')
   cdata.set('LOCALE_T_IN_XLOCALE', 1)
-elif cc.get_id() == 'msvc'
-  cdata.set('HAVE_LOCALE_T', 1)
 endif
 
 # Check if the C compiler understands typeof or a variant.  Define
@@ -2489,13 +2488,6 @@ if cc.has_function('syslog', args: test_c_args) and \
 endif
 
 
-# MSVC has replacements defined in src/include/port/win32_port.h.
-if cc.get_id() == 'msvc'
-  cdata.set('HAVE_WCSTOMBS_L', 1)
-  cdata.set('HAVE_MBSTOWCS_L', 1)
-endif
-
-
 # if prerequisites for unnamed posix semas aren't fulfilled, fall back to sysv
 # semaphores
 if sema_kind == 'unnamed_posix' and \
@@ -2519,17 +2511,6 @@ cdata.set_quoted('PG_VERSION_STR',
 )
 
 
-
-###############################################################
-# Threading
-###############################################################
-
-# XXX: About to rely on thread safety in the autoconf build, so not worth
-# implementing a fallback.
-cdata.set('ENABLE_THREAD_SAFETY', 1)
-
-
-
 ###############################################################
 # NLS / Gettext
 ###############################################################
@@ -2541,7 +2522,7 @@ if not nlsopt.disabled()
   # otherwise there'd be lots of
   # "Gettext not found, all translation (po) targets will be ignored."
   # warnings if not found.
-  msgfmt = find_program('msgfmt', required: nlsopt.enabled(), native: true)
+  msgfmt = find_program('msgfmt', required: nlsopt, native: true)
 
   # meson 0.59 has this wrapped in dependency('intl')
   if (msgfmt.found() and
@@ -3375,6 +3356,7 @@ if meson.version().version_compare('>=0.57')
     {
       'bison': '@0@ @1@'.format(bison.full_path(), bison_version),
       'dtrace': dtrace,
+      'flex': '@0@ @1@'.format(flex.full_path(), flex_version),
     },
     section: 'Programs',
   )

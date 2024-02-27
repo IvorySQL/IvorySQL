@@ -467,8 +467,8 @@ ChangeToDataDir(void)
  * AuthenticatedUserId is determined at connection start and never changes.
  *
  * SessionUserId is initially the same as AuthenticatedUserId, but can be
- * changed by SET SESSION AUTHORIZATION (if AuthenticatedUserIsSuperuser).
- * This is the ID reported by the SESSION_USER SQL function.
+ * changed by SET SESSION AUTHORIZATION (if AuthenticatedUserId is a
+ * superuser).  This is the ID reported by the SESSION_USER SQL function.
  *
  * OuterUserId is the current user ID in effect at the "outer level" (outside
  * any transaction or function).  This is initially the same as SessionUserId,
@@ -492,8 +492,7 @@ static Oid	OuterUserId = InvalidOid;
 static Oid	CurrentUserId = InvalidOid;
 static const char *SystemUser = NULL;
 
-/* We also have to remember the superuser state of some of these levels */
-static bool AuthenticatedUserIsSuperuser = false;
+/* We also have to remember the superuser state of the session user */
 static bool SessionUserIsSuperuser = false;
 
 static int	SecurityRestrictionContext = 0;
@@ -731,6 +730,7 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 	HeapTuple	roleTup;
 	Form_pg_authid rform;
 	char	   *rname;
+	bool		is_superuser;
 
 	/*
 	 * Don't do scans if we're bootstrapping, none of the system catalogs
@@ -770,10 +770,10 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 	rname = NameStr(rform->rolname);
 
 	AuthenticatedUserId = roleid;
-	AuthenticatedUserIsSuperuser = rform->rolsuper;
+	is_superuser = rform->rolsuper;
 
 	/* This sets OuterUserId/CurrentUserId too */
-	SetSessionUserId(roleid, AuthenticatedUserIsSuperuser);
+	SetSessionUserId(roleid, is_superuser);
 
 	/* Also mark our PGPROC entry with the authenticated user id */
 	/* (We assume this is an atomic store so no lock is needed) */
@@ -806,7 +806,7 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 		 * just document that the connection limit is approximate.
 		 */
 		if (rform->rolconnlimit >= 0 &&
-			!AuthenticatedUserIsSuperuser &&
+			!is_superuser &&
 			CountUserBackends(roleid) > rform->rolconnlimit)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -818,7 +818,7 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 	SetConfigOption("session_authorization", rname,
 					PGC_BACKEND, PGC_S_OVERRIDE);
 	SetConfigOption("is_superuser",
-					AuthenticatedUserIsSuperuser ? "on" : "off",
+					is_superuser ? "on" : "off",
 					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 
 	ReleaseSysCache(roleTup);
@@ -841,8 +841,6 @@ InitializeSessionUserIdStandalone(void)
 	Assert(!OidIsValid(AuthenticatedUserId));
 
 	AuthenticatedUserId = BOOTSTRAP_SUPERUSERID;
-	AuthenticatedUserIsSuperuser = true;
-
 	SetSessionUserId(BOOTSTRAP_SUPERUSERID, true);
 }
 
@@ -889,28 +887,12 @@ system_user(PG_FUNCTION_ARGS)
 /*
  * Change session auth ID while running
  *
- * Only a superuser may set auth ID to something other than himself.  Note
- * that in case of multiple SETs in a single session, the original userid's
- * superuserness is what matters.  But we set the GUC variable is_superuser
- * to indicate whether the *current* session userid is a superuser.
- *
- * Note: this is not an especially clean place to do the permission check.
- * It's OK because the check does not require catalog access and can't
- * fail during an end-of-transaction GUC reversion, but we may someday
- * have to push it up into assign_session_authorization.
+ * Note that we set the GUC variable is_superuser to indicate whether the
+ * current role is a superuser.
  */
 void
 SetSessionAuthorization(Oid userid, bool is_superuser)
 {
-	/* Must have authenticated already, else can't make permission check */
-	Assert(OidIsValid(AuthenticatedUserId));
-
-	if (userid != AuthenticatedUserId &&
-		!AuthenticatedUserIsSuperuser)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied to set session authorization")));
-
 	SetSessionUserId(userid, is_superuser);
 
 	SetConfigOption("is_superuser",

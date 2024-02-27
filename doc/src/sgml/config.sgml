@@ -1182,62 +1182,10 @@ include_dir 'conf.d'
        <para>
         Sets whether GSSAPI delegation should be accepted from the client.
         The default is <literal>off</literal> meaning credentials from the client will
-        NOT be accepted.  Changing this to <literal>on</literal> will make the server
+        <emphasis>not</emphasis> be accepted.  Changing this to <literal>on</literal> will make the server
         accept credentials delegated to it from the client. This parameter can only be
         set in the <filename>postgresql.conf</filename> file or on the server command line.
        </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-db-user-namespace" xreflabel="db_user_namespace">
-      <term><varname>db_user_namespace</varname> (<type>boolean</type>)
-      <indexterm>
-       <primary><varname>db_user_namespace</varname> configuration parameter</primary>
-      </indexterm>
-      </term>
-      <listitem>
-       <para>
-        This parameter enables per-database user names.  It is off by default.
-        This parameter can only be set in the <filename>postgresql.conf</filename>
-        file or on the server command line.
-       </para>
-
-       <para>
-        If this is on, you should create users as <replaceable>username@dbname</replaceable>.
-        When <replaceable>username</replaceable> is passed by a connecting client,
-        <literal>@</literal> and the database name are appended to the user
-        name and that database-specific user name is looked up by the
-        server. Note that when you create users with names containing
-        <literal>@</literal> within the SQL environment, you will need to
-        quote the user name.
-       </para>
-
-       <para>
-        With this parameter enabled, you can still create ordinary global
-        users.  Simply append <literal>@</literal> when specifying the user
-        name in the client, e.g., <literal>joe@</literal>.  The <literal>@</literal>
-        will be stripped off before the user name is looked up by the
-        server.
-       </para>
-
-       <para>
-        <varname>db_user_namespace</varname> causes the client's and
-        server's user name representation to differ.
-        Authentication checks are always done with the server's user name
-        so authentication methods must be configured for the
-        server's user name, not the client's.  Because
-        <literal>md5</literal> uses the user name as salt on both the
-        client and server, <literal>md5</literal> cannot be used with
-        <varname>db_user_namespace</varname>.
-       </para>
-
-       <note>
-        <para>
-         This feature is intended as a temporary measure until a
-         complete solution is found.  At that time, this option will
-         be removed.
-        </para>
-       </note>
       </listitem>
      </varlistentry>
      </variablelist>
@@ -1727,7 +1675,9 @@ include_dir 'conf.d'
         server will try to request huge pages, but fall back to the default if
         that fails. With <literal>on</literal>, failure to request huge pages
         will prevent the server from starting up. With <literal>off</literal>,
-        huge pages will not be requested.
+        huge pages will not be requested. The actual state of huge pages is
+        indicated by the server variable
+        <xref linkend="guc-huge-pages-status"/>.
        </para>
 
        <para>
@@ -1889,9 +1839,8 @@ include_dir 'conf.d'
         fact in mind when choosing the value.  Sort operations are used
         for <literal>ORDER BY</literal>, <literal>DISTINCT</literal>,
         and merge joins.
-        Hash tables are used in hash joins, hash-based aggregation, result
-        cache nodes and hash-based processing of <literal>IN</literal>
-        subqueries.
+        Hash tables are used in hash joins, hash-based aggregation, memoize
+        nodes and hash-based processing of <literal>IN</literal> subqueries.
        </para>
        <para>
         Hash-based operations are generally more sensitive to memory
@@ -10734,6 +10683,25 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         <option>--enable-cassert</option>). By
         default <productname>PostgreSQL</productname> is built without
         assertions.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-huge-pages-status" xreflabel="huge_pages_status">
+      <term><varname>huge_pages_status</varname> (<type>enum</type>)
+      <indexterm>
+       <primary><varname>huge_pages_status</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Reports the state of huge pages in the current instance:
+        <literal>on</literal>, <literal>off</literal>, or
+        <literal>unknown</literal> (if displayed with
+        <literal>postgres -C</literal>).
+        This parameter is useful to determine whether allocation of huge pages
+        was successful under <literal>huge_pages=try</literal>.
+        See <xref linkend="guc-huge-pages"/> for more information.
        </para>
       </listitem>
      </varlistentry>

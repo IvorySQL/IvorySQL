@@ -52,12 +52,10 @@
 #include <netinet/tcp.h>
 #endif
 
-#ifdef ENABLE_THREAD_SAFETY
 #ifdef WIN32
 #include "pthread-win32.h"
 #else
 #include <pthread.h>
-#endif
 #endif
 
 #ifdef USE_LDAP
@@ -7785,7 +7783,6 @@ pqGetHomeDirectory(char *buf, int bufsize)
 static void
 default_threadlock(int acquire)
 {
-#ifdef ENABLE_THREAD_SAFETY
 #ifndef WIN32
 	static pthread_mutex_t singlethread_lock = PTHREAD_MUTEX_INITIALIZER;
 #else
@@ -7814,7 +7811,6 @@ default_threadlock(int acquire)
 		if (pthread_mutex_unlock(&singlethread_lock))
 			Assert(false);
 	}
-#endif
 }
 
 pgthreadlock_t

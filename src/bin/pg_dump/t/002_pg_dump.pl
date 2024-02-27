@@ -799,7 +799,7 @@ my %tests = (
 			\QREVOKE ALL ON TABLES FROM regress_dump_test_role;\E\n
 			\QALTER DEFAULT PRIVILEGES \E
 			\QFOR ROLE regress_dump_test_role \E
-			\QGRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLES TO regress_dump_test_role;\E
+			\QGRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO regress_dump_test_role;\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
 		unlike => { no_privs => 1, },
@@ -1910,6 +1910,17 @@ my %tests = (
 			pg_dumpall_exclude       => 1,
 			pg_dumpall_globals       => 1,
 			pg_dumpall_globals_clean => 1,
+		},
+	},
+
+	'CREATE DATABASE regression_invalid...' => {
+		create_order => 1,
+		create_sql => q(
+		    CREATE DATABASE regression_invalid;
+			UPDATE pg_database SET datconnlimit = -2 WHERE datname = 'regression_invalid'),
+		regexp => qr/^CREATE DATABASE regression_invalid/m,
+		not_like => {
+			pg_dumpall_dbprivs => 1,
 		},
 	},
 
@@ -4675,6 +4686,14 @@ command_fails_like(
 	[ 'pg_dump', '-p', "$port", 'qqq' ],
 	qr/pg_dump: error: connection to server .* failed: FATAL:  database "qqq" does not exist/,
 	'connecting to a non-existent database');
+
+#########################################
+# Test connecting to an invalid database
+
+$node->command_fails_like(
+	[ 'pg_dump', '-d', 'regression_invalid' ],
+	qr/pg_dump: error: connection to server .* failed: FATAL:  cannot connect to invalid database "regression_invalid"/,
+	'connecting to an invalid database');
 
 #########################################
 # Test connecting with an unprivileged user

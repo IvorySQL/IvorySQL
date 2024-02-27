@@ -1274,6 +1274,8 @@ typedef struct CaseWhen
  *	  see build_coercion_expression().
  *	* Nested FieldStore/SubscriptingRef assignment expressions in INSERT/UPDATE;
  *	  see transformAssignmentIndirection().
+ *	* Placeholder for intermediate results in some SQL/JSON expression nodes,
+ *	  such as JsonConstructorExpr.
  *
  * The uses in CaseExpr and ArrayCoerceExpr are safe only to the extent that
  * there is not any other CaseExpr or ArrayCoerceExpr between the value source
@@ -1602,12 +1604,16 @@ typedef struct JsonReturning
 /*
  * JsonValueExpr -
  *		representation of JSON value expression (expr [FORMAT JsonFormat])
+ *
+ * The actual value is obtained by evaluating formatted_expr.  raw_expr is
+ * only there for displaying the original user-written expression and is not
+ * evaluated by ExecInterpExpr() and eval_const_exprs_mutator().
  */
 typedef struct JsonValueExpr
 {
 	NodeTag		type;
 	Expr	   *raw_expr;		/* raw expression */
-	Expr	   *formatted_expr; /* formatted expression or NULL */
+	Expr	   *formatted_expr; /* formatted expression */
 	JsonFormat *format;			/* FORMAT clause, if specified */
 } JsonValueExpr;
 
@@ -1616,7 +1622,10 @@ typedef enum JsonConstructorType
 	JSCTOR_JSON_OBJECT = 1,
 	JSCTOR_JSON_ARRAY = 2,
 	JSCTOR_JSON_OBJECTAGG = 3,
-	JSCTOR_JSON_ARRAYAGG = 4
+	JSCTOR_JSON_ARRAYAGG = 4,
+	JSCTOR_JSON_PARSE = 5,
+	JSCTOR_JSON_SCALAR = 6,
+	JSCTOR_JSON_SERIALIZE = 7
 } JsonConstructorType;
 
 /*

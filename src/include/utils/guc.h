@@ -251,7 +251,7 @@ extern PGDLLIMPORT bool log_btree_build_stats;
 
 extern PGDLLIMPORT bool check_function_bodies;
 extern PGDLLIMPORT bool	enable_emptystring_to_NULL;
-extern PGDLLIMPORT bool session_auth_is_superuser;
+extern PGDLLIMPORT bool current_role_is_superuser;
 
 extern PGDLLIMPORT bool log_duration;
 extern PGDLLIMPORT int log_parameter_max_length;

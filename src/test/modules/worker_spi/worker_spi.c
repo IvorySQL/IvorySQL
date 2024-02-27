@@ -44,9 +44,27 @@
 
 PG_MODULE_MAGIC;
 
+PG_FUNCTION_INFO_V1(worker_spi_init);
 PG_FUNCTION_INFO_V1(worker_spi_launch);
 
 PGDLLEXPORT void worker_spi_main(Datum main_arg) pg_attribute_noreturn();
+
+/* Shared memory state */
+typedef struct worker_spi_state
+{
+	/* the wait event defined during initialization phase */
+	uint32		wait_event;
+} worker_spi_state;
+
+static worker_spi_state *wsstate = NULL;	/* pointer to shared memory */
+
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
+static shmem_request_hook_type prev_shmem_startup_hook = NULL;
+
+static void worker_spi_shmem_request(void);
+static void worker_spi_shmem_startup(void);
+static void worker_spi_shmem_init(void);
+static Size worker_spi_memsize(void);
 
 /* GUC variables */
 static int	worker_spi_naptime = 10;
@@ -59,6 +77,63 @@ typedef struct worktable
 	const char *schema;
 	const char *name;
 } worktable;
+
+static void
+worker_spi_shmem_request(void)
+{
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	RequestAddinShmemSpace(worker_spi_memsize());
+}
+
+static void
+worker_spi_shmem_startup(void)
+{
+	if (prev_shmem_startup_hook)
+		prev_shmem_startup_hook();
+
+	worker_spi_shmem_init();
+}
+
+static Size
+worker_spi_memsize(void)
+{
+	return MAXALIGN(sizeof(worker_spi_state));
+}
+
+/*
+ * Initialize the shared memory state of worker_spi.
+ *
+ * This routine allocates a new wait event when called the first time.
+ * On follow-up calls, the name of the wait event associated with the
+ * existing shared memory state is registered.
+ */
+static void
+worker_spi_shmem_init(void)
+{
+	bool		found;
+
+	wsstate = NULL;
+
+	/* Create or attach to the shared memory state */
+	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+	wsstate = ShmemInitStruct("worker_spi State",
+							  sizeof(worker_spi_state),
+							  &found);
+
+	/* Define a new wait event */
+	if (!found)
+		wsstate->wait_event = WaitEventExtensionNew();
+
+	LWLockRelease(AddinShmemInitLock);
+
+	/*
+	 * Register the wait event in the lookup table of the current process.
+	 */
+	WaitEventExtensionRegisterName(wsstate->wait_event, "worker_spi_main");
+	return;
+}
 
 /*
  * Initialize workspace for a worker process: create the schema if it doesn't
@@ -149,6 +224,9 @@ worker_spi_main(Datum main_arg)
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
 
+	/* Create (if necessary) and attach to our shared memory area. */
+	worker_spi_shmem_init();
+
 	/* Connect to our database */
 	BackgroundWorkerInitializeConnection(worker_spi_database, NULL, 0);
 
@@ -199,7 +277,7 @@ worker_spi_main(Datum main_arg)
 		(void) WaitLatch(MyLatch,
 						 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 						 worker_spi_naptime * 1000L,
-						 PG_WAIT_EXTENSION);
+						 wsstate->wait_event);
 		ResetLatch(MyLatch);
 
 		CHECK_FOR_INTERRUPTS();
@@ -283,6 +361,11 @@ _PG_init(void)
 	BackgroundWorker worker;
 
 	/* get the configuration */
+
+	/*
+	 * These GUCs are defined even if this library is not loaded with
+	 * shared_preload_libraries, for worker_spi_launch().
+	 */
 	DefineCustomIntVariable("worker_spi.naptime",
 							"Duration between each check (in seconds).",
 							NULL,
@@ -295,6 +378,15 @@ _PG_init(void)
 							NULL,
 							NULL,
 							NULL);
+
+	DefineCustomStringVariable("worker_spi.database",
+							   "Database to connect to.",
+							   NULL,
+							   &worker_spi_database,
+							   "postgres",
+							   PGC_SIGHUP,
+							   0,
+							   NULL, NULL, NULL);
 
 	if (!process_shared_preload_libraries_in_progress)
 		return;
@@ -312,16 +404,12 @@ _PG_init(void)
 							NULL,
 							NULL);
 
-	DefineCustomStringVariable("worker_spi.database",
-							   "Database to connect to.",
-							   NULL,
-							   &worker_spi_database,
-							   "postgres",
-							   PGC_POSTMASTER,
-							   0,
-							   NULL, NULL, NULL);
-
 	MarkGUCPrefixReserved("worker_spi");
+
+	prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = worker_spi_shmem_request;
+	prev_shmem_startup_hook = shmem_startup_hook;
+	shmem_startup_hook = worker_spi_shmem_startup;
 
 	/* set up common data for all our workers */
 	memset(&worker, 0, sizeof(worker));
@@ -347,6 +435,21 @@ _PG_init(void)
 }
 
 /*
+ * Wrapper to initialize a session with the shared memory state
+ * used by this module.  This is a convenience routine to be able to
+ * see the custom wait event stored in shared memory without loading
+ * through shared_preload_libraries.
+ */
+Datum
+worker_spi_init(PG_FUNCTION_ARGS)
+{
+	/* Create (if necessary) and attach to our shared memory area. */
+	worker_spi_shmem_init();
+
+	PG_RETURN_VOID();
+}
+
+/*
  * Dynamically launch an SPI worker.
  */
 Datum
@@ -358,6 +461,9 @@ worker_spi_launch(PG_FUNCTION_ARGS)
 	BgwHandleStatus status;
 	pid_t		pid;
 
+	/* Create (if necessary) and attach to our shared memory area. */
+	worker_spi_shmem_init();
+
 	memset(&worker, 0, sizeof(worker));
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
 		BGWORKER_BACKEND_DATABASE_CONNECTION;
@@ -365,8 +471,8 @@ worker_spi_launch(PG_FUNCTION_ARGS)
 	worker.bgw_restart_time = BGW_NEVER_RESTART;
 	sprintf(worker.bgw_library_name, "worker_spi");
 	sprintf(worker.bgw_function_name, "worker_spi_main");
-	snprintf(worker.bgw_name, BGW_MAXLEN, "worker_spi worker %d", i);
-	snprintf(worker.bgw_type, BGW_MAXLEN, "worker_spi");
+	snprintf(worker.bgw_name, BGW_MAXLEN, "worker_spi dynamic worker %d", i);
+	snprintf(worker.bgw_type, BGW_MAXLEN, "worker_spi dynamic");
 	worker.bgw_main_arg = Int32GetDatum(i);
 	/* set bgw_notify_pid so that we can use WaitForBackgroundWorkerStartup */
 	worker.bgw_notify_pid = MyProcPid;

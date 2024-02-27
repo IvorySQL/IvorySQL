@@ -275,7 +275,7 @@ documentation.  See standalone-profile.xsl for details.
       encrypted client connections.  <productname>OpenSSL</productname> is
       also required for random number generation on platforms that do not
       have <filename>/dev/urandom</filename> (except Windows).  The minimum
-      required version is 1.0.1.
+      required version is 1.0.2.
      </para>
     </listitem>
 
@@ -1302,19 +1302,6 @@ build-postgresql:
          platforms that lack such operations.  On platforms that do have
          them, this will result in poor performance.  This option is only
          useful for debugging or making performance comparisons.
-        </para>
-       </listitem>
-      </varlistentry>
-
-      <varlistentry id="configure-option-disable-thread-safety">
-       <term><option>--disable-thread-safety</option></term>
-       <listitem>
-        <para>
-         Disable the thread-safety of client libraries.  This prevents
-         concurrent threads in <application>libpq</application> and
-         <application>ECPG</application> programs from safely controlling
-         their private connection handles.  Use this only on platforms
-         with deficient threading support.
         </para>
        </listitem>
       </varlistentry>

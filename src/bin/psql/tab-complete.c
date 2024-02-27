@@ -1031,9 +1031,13 @@ static const SchemaQuery Query_for_trigger_of_table = {
 "   FROM pg_catalog.pg_roles "\
 "  WHERE rolname LIKE '%s'"
 
+/* add these to Query_for_list_of_roles in OWNER contexts */
+#define Keywords_for_list_of_owner_roles \
+"CURRENT_ROLE", "CURRENT_USER", "SESSION_USER"
+
 /* add these to Query_for_list_of_roles in GRANT contexts */
 #define Keywords_for_list_of_grant_roles \
-"PUBLIC", "CURRENT_ROLE", "CURRENT_USER", "SESSION_USER"
+Keywords_for_list_of_owner_roles, "PUBLIC"
 
 #define Query_for_all_table_constraints \
 "SELECT conname "\
@@ -1147,7 +1151,7 @@ static const SchemaQuery Query_for_trigger_of_table = {
 #define Privilege_options_of_grant_and_revoke \
 "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", \
 "CREATE", "CONNECT", "TEMPORARY", "EXECUTE", "USAGE", "SET", "ALTER SYSTEM", \
-"MAINTAIN", "ALL"
+"ALL"
 
 /* ALTER PROCEDURE options */
 #define Alter_procedure_options \
@@ -1709,7 +1713,7 @@ psql_completion(const char *text, int start, int end)
 		"\\des", "\\det", "\\deu", "\\dew", "\\dE", "\\df",
 		"\\dF", "\\dFd", "\\dFp", "\\dFt", "\\dg", "\\di", "\\dl", "\\dL",
 		"\\dm", "\\dn", "\\do", "\\dO", "\\dp", "\\dP", "\\dPi", "\\dPt",
-		"\\drds", "\\dRs", "\\dRp", "\\ds",
+		"\\drds", "\\drg", "\\dRs", "\\dRp", "\\ds",
 		"\\dt", "\\dT", "\\dv", "\\du", "\\dx", "\\dX", "\\dy",
 		"\\echo", "\\edit", "\\ef", "\\elif", "\\else", "\\encoding",
 		"\\endif", "\\errverbose", "\\ev",
@@ -1785,8 +1789,15 @@ psql_completion(const char *text, int start, int end)
 /* CREATE */
 	/* complete with something you can create */
 	else if (TailMatches("CREATE"))
-		matches = rl_completion_matches(text, create_command_generator);
-
+	{
+		/* only some object types can be created as part of CREATE SCHEMA */
+		if (HeadMatches("CREATE", "SCHEMA"))
+			COMPLETE_WITH("TABLE", "VIEW", "INDEX", "SEQUENCE", "TRIGGER",
+			/* for INDEX and TABLE/SEQUENCE, respectively */
+						  "UNIQUE", "UNLOGGED");
+		else
+			matches = rl_completion_matches(text, create_command_generator);
+	}
 	/* complete with something you can create or replace */
 	else if (TailMatches("CREATE", "OR", "REPLACE"))
 		COMPLETE_WITH("FUNCTION", "PROCEDURE", "LANGUAGE", "RULE", "VIEW",
@@ -3154,6 +3165,20 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatches("AS", "ON", "SELECT|UPDATE|INSERT|DELETE", "TO"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
 
+/* CREATE SCHEMA [ <name> ] [ AUTHORIZATION ] */
+	else if (Matches("CREATE", "SCHEMA"))
+		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_schemas,
+								 "AUTHORIZATION");
+	else if (Matches("CREATE", "SCHEMA", "AUTHORIZATION") ||
+			 Matches("CREATE", "SCHEMA", MatchAny, "AUTHORIZATION"))
+		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_roles,
+								 Keywords_for_list_of_owner_roles);
+	else if (Matches("CREATE", "SCHEMA", "AUTHORIZATION", MatchAny) ||
+			 Matches("CREATE", "SCHEMA", MatchAny, "AUTHORIZATION", MatchAny))
+		COMPLETE_WITH("CREATE", "GRANT");
+	else if (Matches("CREATE", "SCHEMA", MatchAny))
+		COMPLETE_WITH("AUTHORIZATION", "CREATE", "GRANT");
+
 /* CREATE SEQUENCE --- is allowed inside CREATE SCHEMA, so use TailMatches */
 	else if (TailMatches("CREATE", "SEQUENCE", MatchAny) ||
 			 TailMatches("CREATE", "TEMP|TEMPORARY", "SEQUENCE", MatchAny))
@@ -3185,9 +3210,15 @@ psql_completion(const char *text, int start, int end)
 	/* Complete "CREATE TEMP/TEMPORARY" with the possible temp objects */
 	else if (TailMatches("CREATE", "TEMP|TEMPORARY"))
 		COMPLETE_WITH("SEQUENCE", "TABLE", "VIEW");
-	/* Complete "CREATE UNLOGGED" with TABLE or MATVIEW */
+	/* Complete "CREATE UNLOGGED" with TABLE, SEQUENCE or MATVIEW */
 	else if (TailMatches("CREATE", "UNLOGGED"))
-		COMPLETE_WITH("TABLE", "MATERIALIZED VIEW");
+	{
+		/* but not MATVIEW in CREATE SCHEMA */
+		if (HeadMatches("CREATE", "SCHEMA"))
+			COMPLETE_WITH("TABLE", "SEQUENCE");
+		else
+			COMPLETE_WITH("TABLE", "SEQUENCE", "MATERIALIZED VIEW");
+	}
 	/* Complete PARTITION BY with RANGE ( or LIST ( or ... */
 	else if (TailMatches("PARTITION", "BY"))
 		COMPLETE_WITH("RANGE (", "LIST (", "HASH (");
@@ -3850,7 +3881,7 @@ psql_completion(const char *text, int start, int end)
 		if (HeadMatches("ALTER", "DEFAULT", "PRIVILEGES"))
 			COMPLETE_WITH("SELECT", "INSERT", "UPDATE",
 						  "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER",
-						  "CREATE", "EXECUTE", "USAGE", "MAINTAIN", "ALL");
+						  "CREATE", "EXECUTE", "USAGE", "ALL");
 		else if (TailMatches("GRANT"))
 			COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_roles,
 									 Privilege_options_of_grant_and_revoke);
@@ -3902,7 +3933,7 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatches("GRANT|REVOKE", MatchAny) ||
 			 TailMatches("REVOKE", "GRANT", "OPTION", "FOR", MatchAny))
 	{
-		if (TailMatches("SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|CREATE|CONNECT|TEMPORARY|TEMP|EXECUTE|USAGE|MAINTAIN|ALL"))
+		if (TailMatches("SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|CREATE|CONNECT|TEMPORARY|TEMP|EXECUTE|USAGE|ALL"))
 			COMPLETE_WITH("ON");
 		else if (TailMatches("GRANT", MatchAny))
 			COMPLETE_WITH("TO");
@@ -4263,9 +4294,7 @@ psql_completion(const char *text, int start, int end)
 /* OWNER TO  - complete with available roles */
 	else if (TailMatches("OWNER", "TO"))
 		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_roles,
-								 "CURRENT_ROLE",
-								 "CURRENT_USER",
-								 "SESSION_USER");
+								 Keywords_for_list_of_owner_roles);
 
 /* ORDER BY */
 	else if (TailMatches("FROM", MatchAny, "ORDER"))
@@ -4731,7 +4760,9 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
 	else if (TailMatchesCS("\\dT*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_datatypes);
-	else if (TailMatchesCS("\\du*") || TailMatchesCS("\\dg*"))
+	else if (TailMatchesCS("\\du*") ||
+			 TailMatchesCS("\\dg*") ||
+			 TailMatchesCS("\\drg*"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 	else if (TailMatchesCS("\\dv*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_views);

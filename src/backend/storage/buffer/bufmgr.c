@@ -1767,7 +1767,7 @@ LimitAdditionalPins(uint32 *additional_pins)
 	 */
 	max_proportional_pins -= PrivateRefCountOverflowed + REFCOUNT_ARRAY_ENTRIES;
 
-	if (max_proportional_pins < 0)
+	if (max_proportional_pins <= 0)
 		max_proportional_pins = 1;
 
 	if (*additional_pins > max_proportional_pins)
@@ -4901,7 +4901,7 @@ LockBufferForCleanup(Buffer buffer)
 			SetStartupBufferPinWaitBufId(-1);
 		}
 		else
-			ProcWaitForSignal(PG_WAIT_BUFFER_PIN);
+			ProcWaitForSignal(WAIT_EVENT_BUFFER_PIN);
 
 		/*
 		 * Remove flag marking us as waiter. Normally this will not be set

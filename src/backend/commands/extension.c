@@ -2750,7 +2750,7 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 {
 	Oid			extensionOid;
 	Oid			nspOid;
-	Oid			oldNspOid = InvalidOid;
+	Oid			oldNspOid;
 	AclResult	aclresult;
 	Relation	extRel;
 	ScanKeyData key[2];
@@ -2833,6 +2833,9 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 
 	objsMoved = new_object_addresses();
 
+	/* store the OID of the namespace to-be-changed */
+	oldNspOid = extForm->extnamespace;
+
 	/*
 	 * Scan pg_depend to find objects that depend directly on the extension,
 	 * and alter each one's schema.
@@ -2913,12 +2916,6 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 												 objsMoved);
 
 		/*
-		 * Remember previous namespace of first object that has one
-		 */
-		if (oldNspOid == InvalidOid && dep_oldNspOid != InvalidOid)
-			oldNspOid = dep_oldNspOid;
-
-		/*
 		 * If not all the objects had the same old namespace (ignoring any
 		 * that are not in namespaces), complain.
 		 */
@@ -2947,9 +2944,11 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 
 	table_close(extRel, RowExclusiveLock);
 
-	/* update dependencies to point to the new schema */
-	changeDependencyFor(ExtensionRelationId, extensionOid,
-						NamespaceRelationId, oldNspOid, nspOid);
+	/* update dependency to point to the new schema */
+	if (changeDependencyFor(ExtensionRelationId, extensionOid,
+							NamespaceRelationId, oldNspOid, nspOid) != 1)
+		elog(ERROR, "could not change schema dependency for extension %s",
+			 NameStr(extForm->extname));
 
 	InvokeObjectPostAlterHook(ExtensionRelationId, extensionOid, 0);
 

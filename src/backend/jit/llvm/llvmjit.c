@@ -221,6 +221,8 @@ llvm_release_context(JitContext *context)
 	}
 	list_free(llvm_context->handles);
 	llvm_context->handles = NIL;
+
+	llvm_leave_fatal_on_oom();
 }
 
 /*
@@ -719,8 +721,6 @@ llvm_compile_module(LLVMJitContext *context)
 		if (error)
 			elog(ERROR, "failed to JIT module: %s",
 				 llvm_error_message(error));
-
-		handle->lljit = compile_orc;
 
 		/* LLVMOrcLLJITAddLLVMIRModuleWithRT takes ownership of the module */
 	}

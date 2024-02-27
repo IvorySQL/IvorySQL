@@ -16001,6 +16001,73 @@ table2-mapping
         <returnvalue>{"a": "1", "b": "2"}</returnvalue>
        </para></entry>
       </row>
+      <row>
+       <entry role="func_table_entry">
+        <para role="func_signature">
+         <indexterm><primary>json constructor</primary></indexterm>
+         <function>json</function> (
+         <replaceable>expression</replaceable>
+         <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional></optional>
+         <optional> { <literal>WITH</literal> | <literal>WITHOUT</literal> } <literal>UNIQUE</literal> <optional> <literal>KEYS</literal> </optional></optional> )
+         <returnvalue>json</returnvalue>
+        </para>
+        <para>
+         Converts a given expression specified as <type>text</type> or
+         <type>bytea</type> string (in UTF8 encoding) into a JSON
+         value.  If <replaceable>expression</replaceable> is NULL, an
+         <acronym>SQL</acronym> null value is returned.
+         If <literal>WITH UNIQUE</literal> is specified, the
+         <replaceable>expression</replaceable> must not contain any duplicate
+         object keys.
+        </para>
+        <para>
+         <literal>json('{"a":123, "b":[true,"foo"], "a":"bar"}')</literal>
+         <returnvalue>{"a":123, "b":[true,"foo"], "a":"bar"}</returnvalue>
+        </para>
+       </entry>
+      </row>
+      <row>
+       <entry role="func_table_entry">
+        <para role="func_signature">
+        <indexterm><primary>json_scalar</primary></indexterm>
+        <function>json_scalar</function> ( <replaceable>expression</replaceable> )
+       </para>
+       <para>
+        Converts a given SQL scalar value into a JSON scalar value.
+        If the input is NULL, an <acronym>SQL</acronym> null is returned. If
+        the input is number or a boolean value, a corresponding JSON number
+        or boolean value is returned. For any other value, a JSON string is
+        returned.
+       </para>
+       <para>
+        <literal>json_scalar(123.45)</literal>
+        <returnvalue>123.45</returnvalue>
+       </para>
+       <para>
+        <literal>json_scalar(CURRENT_TIMESTAMP)</literal>
+        <returnvalue>"2022-05-10T10:51:04.62128-04:00"</returnvalue>
+      </para></entry>
+     </row>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        <function>json_serialize</function> (
+        <replaceable>expression</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional>
+        <optional> <literal>RETURNING</literal> <replaceable>data_type</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> </optional> )
+       </para>
+       <para>
+        Converts an SQL/JSON expression into a character or binary string. The
+        <replaceable>expression</replaceable> can be of any JSON type, any
+        character string type, or <type>bytea</type> in UTF8 encoding.
+        The returned type used in <literal> RETURNING</literal> can be any
+        character string type or <type>bytea</type>. The default is
+        <type>text</type>.
+       </para>
+       <para>
+        <literal>json_serialize('{ "a" : 1 } ' RETURNING bytea)</literal>
+        <returnvalue>\x7b20226122203a2031207d20</returnvalue>
+      </para></entry>
+     </row>
      </tbody>
     </tgroup>
    </table>
@@ -22127,7 +22194,7 @@ WHERE EXISTS (SELECT 1 FROM tab2 WHERE col2 = tab1.col2);
 
   <para>
    The right-hand side is a parenthesized list
-   of scalar expressions.  The result is <quote>true</quote> if the left-hand expression's
+   of expressions.  The result is <quote>true</quote> if the left-hand expression's
    result is equal to any of the right-hand expressions.  This is a shorthand
    notation for
 
@@ -22158,7 +22225,7 @@ OR
 
   <para>
    The right-hand side is a parenthesized list
-   of scalar expressions.  The result is <quote>true</quote> if the left-hand expression's
+   of expressions.  The result is <quote>true</quote> if the left-hand expression's
    result is unequal to all of the right-hand expressions.  This is a shorthand
    notation for
 
@@ -22269,25 +22336,23 @@ AND
   <para>
    Each side is a row constructor,
    as described in <xref linkend="sql-syntax-row-constructors"/>.
-   The two row values must have the same number of fields.
-   Each side is evaluated and they are compared row-wise.  Row constructor
-   comparisons are allowed when the <replaceable>operator</replaceable> is
+   The two row constructors must have the same number of fields.
+   The given <replaceable>operator</replaceable> is applied to each pair
+   of corresponding fields.  (Since the fields could be of different
+   types, this means that a different specific operator could be selected
+   for each pair.)
+   All the selected operators must be members of some B-tree operator
+   class, or be the negator of an <literal>=</literal> member of a B-tree
+   operator class, meaning that row constructor comparison is only
+   possible when the <replaceable>operator</replaceable> is
    <literal>=</literal>,
    <literal>&lt;&gt;</literal>,
    <literal>&lt;</literal>,
    <literal>&lt;=</literal>,
-   <literal>&gt;</literal> or
-   <literal>&gt;=</literal>.
-   Every row element must be of a type which has a default B-tree operator
-   class or the attempted comparison may generate an error.
+   <literal>&gt;</literal>, or
+   <literal>&gt;=</literal>,
+   or has semantics similar to one of these.
   </para>
-
-  <note>
-   <para>
-    Errors related to the number or types of elements might not occur if
-    the comparison is resolved using earlier columns.
-   </para>
-  </note>
 
   <para>
    The <literal>=</literal> and <literal>&lt;&gt;</literal> cases work slightly differently
@@ -22308,19 +22373,6 @@ AND
    yields true, not null, because the third pair of elements are not
    considered.
   </para>
-
-  <note>
-   <para>
-    Prior to <productname>PostgreSQL</productname> 8.2, the
-    <literal>&lt;</literal>, <literal>&lt;=</literal>, <literal>&gt;</literal> and <literal>&gt;=</literal>
-    cases were not handled per SQL specification.  A comparison like
-    <literal>ROW(a,b) &lt; ROW(c,d)</literal>
-    was implemented as
-    <literal>a &lt; c AND b &lt; d</literal>
-    whereas the correct behavior is equivalent to
-    <literal>a &lt; c OR (a = c AND b &lt; d)</literal>.
-   </para>
-  </note>
 
 <synopsis>
 <replaceable>row_constructor</replaceable> IS DISTINCT FROM <replaceable>row_constructor</replaceable>
@@ -23545,7 +23597,7 @@ SELECT has_function_privilege('joeuser', 'myfunc(int, text)', 'execute');
         are <literal>SELECT</literal>, <literal>INSERT</literal>,
         <literal>UPDATE</literal>, <literal>DELETE</literal>,
         <literal>TRUNCATE</literal>, <literal>REFERENCES</literal>,
-        <literal>TRIGGER</literal>, and <literal>MAINTAIN</literal>.
+        and <literal>TRIGGER</literal>.
        </para></entry>
       </row>
 

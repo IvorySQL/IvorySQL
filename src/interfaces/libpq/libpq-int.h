@@ -31,14 +31,12 @@
 #include <sys/time.h>
 #endif
 
-#ifdef ENABLE_THREAD_SAFETY
 #ifdef WIN32
 #include "pthread-win32.h"
 #else
 #include <pthread.h>
 #endif
 #include <signal.h>
-#endif
 
 /* include stuff common to fe and be */
 #include "libpq/pqcomm.h"
@@ -324,7 +322,7 @@ typedef enum
 	PGQUERY_PREPARE,			/* Parse only (PQprepare) */
 	PGQUERY_DESCRIBE,			/* Describe Statement or Portal */
 	PGQUERY_SYNC,				/* Sync (at end of a pipeline) */
-	PGQUERY_CLOSE
+	PGQUERY_CLOSE				/* Close Statement or Portal */
 } PGQueryClass;
 
 /*
@@ -683,15 +681,10 @@ extern int	pqPacketSend(PGconn *conn, char pack_type,
 						 const void *buf, size_t buf_len);
 extern bool pqGetHomeDirectory(char *buf, int bufsize);
 
-#ifdef ENABLE_THREAD_SAFETY
 extern pgthreadlock_t pg_g_threadlock;
 
 #define pglock_thread()		pg_g_threadlock(true)
 #define pgunlock_thread()	pg_g_threadlock(false)
-#else
-#define pglock_thread()		((void) 0)
-#define pgunlock_thread()	((void) 0)
-#endif
 
 /* === in fe-exec.c === */
 
@@ -767,7 +760,7 @@ extern ssize_t pqsecure_write(PGconn *, const void *ptr, size_t len);
 extern ssize_t pqsecure_raw_read(PGconn *, void *ptr, size_t len);
 extern ssize_t pqsecure_raw_write(PGconn *, const void *ptr, size_t len);
 
-#if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
+#if !defined(WIN32)
 extern int	pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending);
 extern void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
 							 bool got_epipe);
@@ -835,14 +828,8 @@ extern ssize_t pgtls_write(PGconn *conn, const void *ptr, size_t len);
  *
  * NULL is sent back to the caller in the event of an error, with an
  * error message for the caller to consume.
- *
- * This is not supported with old versions of OpenSSL that don't have
- * the X509_get_signature_nid() function.
  */
-#if defined(USE_OPENSSL) && (defined(HAVE_X509_GET_SIGNATURE_NID) || defined(HAVE_X509_GET_SIGNATURE_INFO))
-#define HAVE_PGTLS_GET_PEER_CERTIFICATE_HASH
 extern char *pgtls_get_peer_certificate_hash(PGconn *conn, size_t *len);
-#endif
 
 /*
  * Verify that the server certificate matches the host name we connected to.

@@ -236,7 +236,6 @@ sub GenerateFiles
 		DLSUFFIX => '".dll"',
 		ENABLE_GSS => $self->{options}->{gss} ? 1 : undef,
 		ENABLE_NLS => $self->{options}->{nls} ? 1 : undef,
-		ENABLE_THREAD_SAFETY => 1,
 		HAVE_APPEND_HISTORY => undef,
 		HAVE_ASN1_STRING_GET0_DATA => undef,
 		HAVE_ATOMICS => 1,
@@ -313,11 +312,10 @@ sub GenerateFiles
 		HAVE_LIBXSLT => undef,
 		HAVE_LIBZ => $self->{options}->{zlib} ? 1 : undef,
 		HAVE_LIBZSTD => undef,
-		HAVE_LOCALE_T => 1,
 		HAVE_LONG_INT_64 => undef,
 		HAVE_LONG_LONG_INT_64 => 1,
 		HAVE_MBARRIER_H => undef,
-		HAVE_MBSTOWCS_L => 1,
+		HAVE_MBSTOWCS_L => undef,
 		HAVE_MEMORY_H => 1,
 		HAVE_MEMSET_S => undef,
 		HAVE_MKDTEMP => undef,
@@ -386,9 +384,8 @@ sub GenerateFiles
 		HAVE_UUID_OSSP => undef,
 		HAVE_UUID_H => undef,
 		HAVE_UUID_UUID_H => undef,
-		HAVE_WCSTOMBS_L => 1,
+		HAVE_WCSTOMBS_L => undef,
 		HAVE_VISIBILITY_ATTRIBUTE => undef,
-		HAVE_X509_GET_SIGNATURE_NID => 1,
 		HAVE_X509_GET_SIGNATURE_INFO => undef,
 		HAVE_X86_64_POPCNTQ => undef,
 		HAVE__BOOL => undef,
@@ -506,6 +503,7 @@ sub GenerateFiles
 	if ($self->{options}->{openssl})
 	{
 		$define{USE_OPENSSL} = 1;
+		$define{HAVE_SSL_CTX_SET_CERT_CB} = 1;
 
 		my ($digit1, $digit2, $digit3) = $self->GetOpenSSLVersion();
 
@@ -526,14 +524,6 @@ sub GenerateFiles
 			$define{HAVE_HMAC_CTX_FREE} = 1;
 			$define{HAVE_HMAC_CTX_NEW} = 1;
 			$define{HAVE_OPENSSL_INIT_SSL} = 1;
-		}
-
-		# Symbols needed with OpenSSL 1.0.2 and above.
-		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
-			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0')
-			|| ($digit1 >= '1' && $digit2 >= '0' && $digit3 >= '2'))
-		{
-			$define{HAVE_SSL_CTX_SET_CERT_CB} = 1;
 		}
 	}
 
@@ -609,6 +599,25 @@ sub GenerateFiles
 		copyFile(
 			'src/backend/storage/lmgr/lwlocknames.h',
 			'src/include/storage/lwlocknames.h');
+	}
+
+	if (IsNewer(
+			'src/include/utils/wait_event_types.h',
+			'src/backend/utils/activity/wait_event_names.txt'))
+	{
+		print "Generating pgstat_wait_event.c and wait_event_types.h...\n";
+		my $activ = 'src/backend/utils/activity';
+		system(
+			"perl $activ/generate-wait_event_types.pl --outdir $activ --code $activ/wait_event_names.txt"
+		);
+	}
+	if (IsNewer(
+			'src/include/utils/wait_event_types.h',
+			'src/backend/utils/activity/wait_event_types.h'))
+	{
+		copyFile(
+			'src/backend/utils/activity/wait_event_types.h',
+			'src/include/utils/wait_event_types.h');
 	}
 
 	if (IsNewer('src/include/utils/probes.h', 'src/backend/utils/probes.d'))
@@ -1269,7 +1278,7 @@ sub GetFakeConfigure
 {
 	my $self = shift;
 
-	my $cfg = '--enable-thread-safety';
+	my $cfg = '';
 	$cfg .= ' --enable-cassert' if ($self->{options}->{asserts});
 	$cfg .= ' --enable-nls' if ($self->{options}->{nls});
 	$cfg .= ' --enable-tap-tests' if ($self->{options}->{tap_tests});

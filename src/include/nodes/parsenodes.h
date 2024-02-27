@@ -94,8 +94,7 @@ typedef uint64 AclMode;			/* a bitmask of privilege bits */
 #define ACL_CONNECT		(1<<11) /* for databases */
 #define ACL_SET			(1<<12) /* for configuration parameters */
 #define ACL_ALTER_SYSTEM (1<<13)	/* for configuration parameters */
-#define ACL_MAINTAIN		(1<<14) /* for relations */
-#define N_ACL_RIGHTS	15		/* 1 plus the last 1<<x */
+#define N_ACL_RIGHTS	14		/* 1 plus the last 1<<x */
 #define ACL_NO_RIGHTS	0
 /* Currently, SELECT ... FOR [KEY] UPDATE/SHARE requires UPDATE privileges */
 #define ACL_SELECT_FOR_UPDATE	ACL_UPDATE
@@ -1473,6 +1472,8 @@ typedef struct GroupingSet
  * if the clause originally came from WINDOW, and is NULL if it originally
  * was an OVER clause (but note that we collapse out duplicate OVERs).
  * partitionClause and orderClause are lists of SortGroupClause structs.
+ * partitionClause is sanitized by the query planner to remove any columns or
+ * expressions belonging to redundant PathKeys.
  * If we have RANGE with offset PRECEDING/FOLLOWING, the semantics of that are
  * specified by startInRangeFunc/inRangeColl/inRangeAsc/inRangeNullsFirst
  * for the start offset, or endInRangeFunc/inRange* for the end offset.
@@ -1738,6 +1739,43 @@ typedef struct JsonKeyValue
 	Expr	   *key;			/* key expression */
 	JsonValueExpr *value;		/* JSON value expression */
 } JsonKeyValue;
+
+/*
+ * JsonParseExpr -
+ *		untransformed representation of JSON()
+ */
+typedef struct JsonParseExpr
+{
+	NodeTag		type;
+	JsonValueExpr *expr;		/* string expression */
+	JsonOutput *output;			/* RETURNING clause, if specified */
+	bool		unique_keys;	/* WITH UNIQUE KEYS? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonParseExpr;
+
+/*
+ * JsonScalarExpr -
+ *		untransformed representation of JSON_SCALAR()
+ */
+typedef struct JsonScalarExpr
+{
+	NodeTag		type;
+	Expr	   *expr;			/* scalar expression */
+	JsonOutput *output;			/* RETURNING clause, if specified */
+	int			location;		/* token location, or -1 if unknown */
+} JsonScalarExpr;
+
+/*
+ * JsonSerializeExpr -
+ *		untransformed representation of JSON_SERIALIZE() function
+ */
+typedef struct JsonSerializeExpr
+{
+	NodeTag		type;
+	JsonValueExpr *expr;		/* json value expression */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	int			location;		/* token location, or -1 if unknown */
+} JsonSerializeExpr;
 
 /*
  * JsonObjectConstructor -
@@ -3502,9 +3540,12 @@ typedef struct TransactionStmt
 	NodeTag		type;
 	TransactionStmtKind kind;	/* see above */
 	List	   *options;		/* for BEGIN/START commands */
-	char	   *savepoint_name; /* for savepoint commands */
+	/* for savepoint commands */
+	char	   *savepoint_name pg_node_attr(query_jumble_ignore);
 	char	   *gid;			/* for two-phase-commit related commands */
 	bool		chain;			/* AND CHAIN option */
+	/* token location, or -1 if unknown */
+	int			location pg_node_attr(query_jumble_location);
 } TransactionStmt;
 
 /* ----------------------
