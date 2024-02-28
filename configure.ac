@@ -441,11 +441,6 @@ AC_DEFINE_UNQUOTED(MAXIMUM_FUNARG, $max_funarg, [Set maximum number of function 
 # C compiler
 #
 
-# For historical reasons you can also use --with-CC to specify the C compiler
-# to use, although the standard way to do this is to set the CC environment
-# variable.
-PGAC_ARG_REQ(with, CC, [CMD], [set compiler (deprecated)], [CC=$with_CC])
-
 # If you don't specify a list of compilers to test, the AC_PROG_CC and
 # AC_PROG_CXX macros test for a long list of unsupported compilers.
 pgac_cc_list="gcc cc"
