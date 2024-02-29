@@ -1990,7 +1990,6 @@ lreplace:
 									 &insert_destrel))
 		{
 			/* success! */
-			updateCxt->updated = true;
 			updateCxt->crossPartUpdate = true;
 
 			/*
@@ -2059,8 +2058,6 @@ lreplace:
 								true /* wait for commit */ ,
 								&context->tmfd, &updateCxt->lockmode,
 								&updateCxt->updateIndexes);
-	if (result == TM_Ok)
-		updateCxt->updated = true;
 
 	return result;
 }
@@ -2867,7 +2864,7 @@ lmerge_matched:
 					return true;
 				}
 
-				if (result == TM_Ok && updateCxt.updated)
+				if (result == TM_Ok)
 				{
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
 									   tupleid, NULL, newslot);

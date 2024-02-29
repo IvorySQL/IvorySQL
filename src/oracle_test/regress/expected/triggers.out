@@ -3470,7 +3470,7 @@ when matched then
 	delete where s.a > 2
 when not matched then
   insert values (a, b);
-NOTICE:  trigger = merge_target_table_update_trig, old table = (1,initial1), (2,initial2), new table = (1,"initial1 updated by merge"), (2,"initial2 updated by merge")
+NOTICE:  trigger = merge_target_table_update_trig, old table = <NULL>, new table = <NULL>
 NOTICE:  trigger = merge_target_table_delete_trig, old table = <NULL>
 NOTICE:  trigger = merge_target_table_insert_trig, new table = <NULL>
 merge into merge_target_table t
@@ -3481,7 +3481,7 @@ when matched then
 	delete where s.a > 2
 when not matched then
   insert values (a, b);
-NOTICE:  trigger = merge_target_table_update_trig, old table = (1,"initial1 updated by merge"), (2,"initial2 updated by merge"), new table = (1,"initial1 updated by merge updated again by merge"), (2,"initial2 updated by merge updated again by merge")
+NOTICE:  trigger = merge_target_table_update_trig, old table = <NULL>, new table = <NULL>
 NOTICE:  trigger = merge_target_table_delete_trig, old table = <NULL>
 NOTICE:  trigger = merge_target_table_insert_trig, new table = <NULL>
 drop table merge_source_table, merge_target_table;

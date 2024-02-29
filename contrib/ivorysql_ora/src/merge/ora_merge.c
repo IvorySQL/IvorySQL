@@ -190,7 +190,7 @@ lmerge_matched:;
 
 				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
 										 newslot, mtstate->canSetTag, &updateCxt);
-				if (result == TM_Ok && updateCxt.updated)
+				if (result == TM_Ok)
 				{
 					/* Fire row-level after update trigger */
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,

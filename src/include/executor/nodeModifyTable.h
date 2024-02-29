@@ -62,7 +62,6 @@ typedef struct ModifyTableContext
  */
 typedef struct UpdateContext
 {
-	bool		updated;		/* did UPDATE actually occur? */
 	bool		crossPartUpdate;	/* was it a cross-partition update? */
 	TU_UpdateIndexes updateIndexes;	/* Which index updates are required? */
 
