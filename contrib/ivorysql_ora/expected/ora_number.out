@@ -1547,7 +1547,7 @@ SELECT attname, atttypid, atttypmod FROM pg_attribute
   WHERE attrelid = (SELECT oid FROM pg_class WHERE relname LIKE 't0000045') AND attname LIKE 'a';
  attname | atttypid | atttypmod 
 ---------+----------+-----------
- a       |     9020 |        -1
+ a       |     9520 |        -1
 (1 row)
 
 DROP TABLE t0000045;
@@ -1556,7 +1556,7 @@ SELECT attname, atttypid, atttypmod FROM pg_attribute
   WHERE attrelid = (SELECT oid FROM pg_class WHERE relname LIKE 't0000045') AND attname LIKE 'a';
  attname | atttypid | atttypmod 
 ---------+----------+-----------
- a       |     9020 |        -1
+ a       |     9520 |        -1
 (1 row)
 
 DROP TABLE t0000045;

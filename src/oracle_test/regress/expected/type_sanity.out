@@ -469,12 +469,12 @@ FROM pg_type d JOIN pg_type t ON d.typbasetype = t.oid
 WHERE d.typanalyze != t.typanalyze;
  oid  |  typname  |    typanalyze    | oid | typname | typanalyze 
 ------+-----------+------------------+-----+---------+------------
- 9032 | _blob     | array_typanalyze |  17 | bytea   | -
- 9033 | _clob     | array_typanalyze |  25 | text    | -
- 9035 | _long_raw | array_typanalyze |  17 | bytea   | -
- 9037 | _nclob    | array_typanalyze |  25 | text    | -
- 9034 | _long     | array_typanalyze |  25 | text    | -
- 9036 | _raw      | array_typanalyze |  17 | bytea   | -
+ 9532 | _blob     | array_typanalyze |  17 | bytea   | -
+ 9533 | _clob     | array_typanalyze |  25 | text    | -
+ 9535 | _long_raw | array_typanalyze |  17 | bytea   | -
+ 9537 | _nclob    | array_typanalyze |  25 | text    | -
+ 9534 | _long     | array_typanalyze |  25 | text    | -
+ 9536 | _raw      | array_typanalyze |  17 | bytea   | -
 (6 rows)
 
 -- range_typanalyze should be used for all and only range types

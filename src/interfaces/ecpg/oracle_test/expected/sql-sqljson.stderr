@@ -234,7 +234,7 @@ SQL error: null value without indicator on line 84
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 96: correctly got 1 tuples with 1 fields
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 96: type (9003); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 96: type (9503); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 96: RESULT: { "a" : 1 }  offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000

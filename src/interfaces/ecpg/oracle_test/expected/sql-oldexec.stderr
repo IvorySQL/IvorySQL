@@ -54,7 +54,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 54: correctly got 8 tuples with 3 fields
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 54: type (9001); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 54: type (9501); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 54: RESULT: db: 'r1' offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000

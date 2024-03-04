@@ -299,36 +299,36 @@ IMMUTABLE;
 -- Register the basic I/O for 'oracharchar' in pg_type.
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oracharcharin')
-WHERE oid = 9000;
+WHERE oid = 9500;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oracharcharout')
-WHERE oid = 9000;
+WHERE oid = 9500;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oracharcharrecv')
-WHERE oid = 9000;
+WHERE oid = 9500;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oracharcharsend')
-WHERE oid = 9000;
+WHERE oid = 9500;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oracharchartypmodin')
-WHERE oid = 9000;
+WHERE oid = 9500;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oracharchartypmodout')
-WHERE oid = 9000;
+WHERE oid = 9500;
 
 -- Register the typmod inout for 'oracharchar' array type in pg_type.
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oracharchartypmodin')
-WHERE oid = 9004;
+WHERE oid = 9504;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oracharchartypmodout')
-WHERE oid = 9004;
+WHERE oid = 9504;
 
 /* CREATE CAST */
 ---------- Compatible Postgresql Cast ----------
@@ -723,36 +723,36 @@ IMMUTABLE;
 -- Register the basic I/O for 'oracharbyte' in pg_type.
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oracharbytein')
-WHERE oid = 9001;
+WHERE oid = 9501;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oracharbyteout')
-WHERE oid = 9001;
+WHERE oid = 9501;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oracharbyterecv')
-WHERE oid = 9001;
+WHERE oid = 9501;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oracharbytesend')
-WHERE oid = 9001;
+WHERE oid = 9501;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oracharbytetypmodin')
-WHERE oid = 9001;
+WHERE oid = 9501;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oracharbytetypmodout')
-WHERE oid = 9001;
+WHERE oid = 9501;
 
 -- Register the typmod inout for 'oracharbyte' array type in pg_type.
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oracharbytetypmodin')
-WHERE oid = 9005;
+WHERE oid = 9505;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oracharbytetypmodout')
-WHERE oid = 9005;
+WHERE oid = 9505;
 
 /* CREATE CAST */
 ----------- Compatible Postgresql cast -----------
@@ -1988,36 +1988,36 @@ LEAKPROOF;
 -- Register the basic I/O for 'oravarcharchar' in pg_type.
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oravarcharcharin')
-WHERE oid = 9002;
+WHERE oid = 9502;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oravarcharcharout')
-WHERE oid = 9002;
+WHERE oid = 9502;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oravarcharcharrecv')
-WHERE oid = 9002;
+WHERE oid = 9502;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oravarcharcharsend')
-WHERE oid = 9002;
+WHERE oid = 9502;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oravarcharchartypmodin')
-WHERE oid = 9002;
+WHERE oid = 9502;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oravarcharchartypmodout')
-WHERE oid = 9002;
+WHERE oid = 9502;
 
 -- Register the typmod inout for 'oravarcharchar' array type in pg_type.
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oravarcharchartypmodin')
-WHERE oid = 9006;
+WHERE oid = 9506;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oravarcharchartypmodout')
-WHERE oid = 9006;
+WHERE oid = 9506;
 
 UPDATE pg_proc
 SET prosupport=(SELECT oid FROM pg_proc WHERE proname='oravarcharchar_support')
@@ -2417,36 +2417,36 @@ LEAKPROOF;
 -- Register the basic I/O for 'oravarcharbyte' in pg_type.
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oravarcharbytein')
-WHERE oid = 9003;
+WHERE oid = 9503;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oravarcharbyteout')
-WHERE oid = 9003;
+WHERE oid = 9503;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oravarcharbyterecv')
-WHERE oid = 9003;
+WHERE oid = 9503;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oravarcharbytesend')
-WHERE oid = 9003;
+WHERE oid = 9503;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oravarcharbytetypmodin')
-WHERE oid = 9003;
+WHERE oid = 9503;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oravarcharbytetypmodout')
-WHERE oid = 9003;
+WHERE oid = 9503;
 
 -- Register the typmod inout for 'oravarcharbyte' array type in pg_type.
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oravarcharbytetypmodin')
-WHERE oid = 9007;
+WHERE oid = 9507;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oravarcharbytetypmodout')
-WHERE oid = 9007;
+WHERE oid = 9507;
 
 UPDATE pg_proc
 SET prosupport=(SELECT oid FROM pg_proc WHERE proname='oravarcharbyte_support')
@@ -3551,19 +3551,19 @@ IMMUTABLE;
 -- Register the basic I/O for 'oradate' in pg_type.
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oradate_in')
-WHERE oid = 9008;
+WHERE oid = 9508;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oradate_out')
-WHERE oid = 9008;
+WHERE oid = 9508;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oradate_recv')
-WHERE oid = 9008;
+WHERE oid = 9508;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oradate_send')
-WHERE oid = 9008;
+WHERE oid = 9508;
  
 /* CREATE CAST */
 ---------- Compatible Postgresql Cast ----------
@@ -4291,36 +4291,36 @@ IMMUTABLE;
 -- Register the basic I/O for 'oratimestamp' in pg_type.
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oratimestamp_in')
-WHERE oid = 9010;
+WHERE oid = 9510;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oratimestamp_out')
-WHERE oid = 9010;
+WHERE oid = 9510;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oratimestamp_recv')
-WHERE oid = 9010;
+WHERE oid = 9510;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oratimestamp_send')
-WHERE oid = 9010;
+WHERE oid = 9510;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oratimestamptypmodin')
-WHERE oid = 9010;
+WHERE oid = 9510;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oratimestamptypmodout')
-WHERE oid = 9010;
+WHERE oid = 9510;
 
 -- Register the typmod inout for 'oratimestamp' array type in pg_type.
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oratimestamptypmodin')
-WHERE oid = 9011;
+WHERE oid = 9511;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oratimestamptypmodout')
-WHERE oid = 9011;
+WHERE oid = 9511;
 
 /* CREATE CAST */
 ---------- Compatible Postgresql Cast ----------
@@ -5047,35 +5047,35 @@ IMMUTABLE;
 
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oratimestamptz_in')
-WHERE oid = 9012;
+WHERE oid = 9512;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oratimestamptz_out')
-WHERE oid = 9012;
+WHERE oid = 9512;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oratimestamptz_recv')
-WHERE oid = 9012;
+WHERE oid = 9512;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oratimestamptz_send')
-WHERE oid = 9012;
+WHERE oid = 9512;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oratimestamptztypmodin')
-WHERE oid = 9012;
+WHERE oid = 9512;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oratimestamptztypmodout')
-WHERE oid = 9012;
+WHERE oid = 9512;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oratimestamptztypmodin')
-WHERE oid = 9013;
+WHERE oid = 9513;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oratimestamptztypmodout')
-WHERE oid = 9013;
+WHERE oid = 9513;
 
 /* CREATE CAST */
 ----------- Compatible Postgresql Cast -----------
@@ -5786,36 +5786,36 @@ IMMUTABLE;
 -- Register the basic I/O for 'oratimestampltz' in pg_type.
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='oratimestampltz_in')
-WHERE oid = 9014;
+WHERE oid = 9514;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='oratimestampltz_out')
-WHERE oid = 9014;
+WHERE oid = 9514;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='oratimestampltz_recv')
-WHERE oid = 9014;
+WHERE oid = 9514;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='oratimestampltz_send')
-WHERE oid = 9014;
+WHERE oid = 9514;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oratimestampltztypmodin')
-WHERE oid = 9014;
+WHERE oid = 9514;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oratimestampltztypmodout')
-WHERE oid = 9014;
+WHERE oid = 9514;
 
 -- Register the typmod inout for 'oratimestampltz' array type in pg_type.
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='oratimestampltztypmodin')
-WHERE oid = 9015;
+WHERE oid = 9515;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='oratimestampltztypmodout')
-WHERE oid = 9015;
+WHERE oid = 9515;
 
 /* CREATE CAST */
 ---------- Compatible Oracle Cast ----------
@@ -6525,36 +6525,36 @@ IMMUTABLE;
 
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='yminterval_in')
-WHERE oid = 9016;
+WHERE oid = 9516;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='yminterval_out')
-WHERE oid = 9016;
+WHERE oid = 9516;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='yminterval_recv')
-WHERE oid = 9016;
+WHERE oid = 9516;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='yminterval_send')
-WHERE oid = 9016;
+WHERE oid = 9516;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='ymintervaltypmodin')
-WHERE oid = 9016;
+WHERE oid = 9516;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='ymintervaltypmodout')
-WHERE oid = 9016;
+WHERE oid = 9516;
 
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='ymintervaltypmodin')
-WHERE oid = 9017;
+WHERE oid = 9517;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='ymintervaltypmodout')
-WHERE oid = 9017;
+WHERE oid = 9517;
 
 /* CREATE CAST */
 --------- Compatible Oracle Cast ---------
@@ -6890,36 +6890,36 @@ IMMUTABLE;
 
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='dsinterval_in')
-WHERE oid = 9018;
+WHERE oid = 9518;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='dsinterval_out')
-WHERE oid = 9018;
+WHERE oid = 9518;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='dsinterval_recv')
-WHERE oid = 9018;
+WHERE oid = 9518;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='dsinterval_send')
-WHERE oid = 9018;
+WHERE oid = 9518;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='dsintervaltypmodin')
-WHERE oid = 9018;
+WHERE oid = 9518;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='dsintervaltypmodout')
-WHERE oid = 9018;
+WHERE oid = 9518;
 
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='dsintervaltypmodin')
-WHERE oid = 9019;
+WHERE oid = 9519;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='dsintervaltypmodout')
-WHERE oid = 9019;
+WHERE oid = 9519;
 
 /* CREATE CAST */
 CREATE FUNCTION sys.dsinterval(sys.dsinterval, integer)
@@ -8195,36 +8195,36 @@ IMMUTABLE;
 
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='number_in')
-WHERE oid = 9020;
+WHERE oid = 9520;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='number_out')
-WHERE oid = 9020;
+WHERE oid = 9520;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='number_recv')
-WHERE oid = 9020;
+WHERE oid = 9520;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='number_send')
-WHERE oid = 9020;
+WHERE oid = 9520;
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='numbertypmodin')
-WHERE oid = 9020;
+WHERE oid = 9520;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='numbertypmodout')
-WHERE oid = 9020;
+WHERE oid = 9520;
 
 
 UPDATE pg_type
 SET typmodin=(SELECT oid FROM pg_proc WHERE proname='numbertypmodin')
-WHERE oid = 9021;
+WHERE oid = 9521;
 
 UPDATE pg_type
 SET typmodout=(SELECT oid FROM pg_proc WHERE proname='numbertypmodout')
-WHERE oid = 9021;
+WHERE oid = 9521;
 
 /* CREATE CAST */
 ---------- Compatible Postgresql Cast ----------
@@ -9010,19 +9010,19 @@ IMMUTABLE;
 
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='binary_float_in')
-WHERE oid = 9022;
+WHERE oid = 9522;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='binary_float_out')
-WHERE oid = 9022;
+WHERE oid = 9522;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='binary_float_recv')
-WHERE oid = 9022;
+WHERE oid = 9522;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='binary_float_send')
-WHERE oid = 9022;
+WHERE oid = 9522;
 
 /* CREATE CAST */
 --------- Compatible Postgresql Cast ---------
@@ -9421,19 +9421,19 @@ IMMUTABLE;
 
 UPDATE pg_type
 SET typinput=(SELECT oid FROM pg_proc WHERE proname='binary_double_in')
-WHERE oid = 9024;
+WHERE oid = 9524;
 
 UPDATE pg_type
 SET typoutput=(SELECT oid FROM pg_proc WHERE proname='binary_double_out')
-WHERE oid = 9024;
+WHERE oid = 9524;
 
 UPDATE pg_type
 SET typreceive=(SELECT oid FROM pg_proc WHERE proname='binary_double_recv')
-WHERE oid = 9024;
+WHERE oid = 9524;
 
 UPDATE pg_type
 SET typsend=(SELECT oid FROM pg_proc WHERE proname='binary_double_send')
-WHERE oid = 9024;
+WHERE oid = 9524;
 
 /* CREATE CAST */
 --------- Compatible Postgresql Cast ---------
