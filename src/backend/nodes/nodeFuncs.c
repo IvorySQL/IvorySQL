@@ -218,6 +218,13 @@ exprType(const Node *expr)
 				type = BOOLOID;
 			else if (((const XmlExpr *) expr)->op == IS_XMLSERIALIZE)
 				type = TEXTOID;
+			else if (((const XmlExpr *) expr)->op == IS_UPDATEXML)
+			{
+				int32	typmod;
+
+				type = XMLOID;
+				(void) parseTypeString("XMLTYPE", &type, &typmod, NULL);
+			}
 			else
 				type = XMLOID;
 			break;
