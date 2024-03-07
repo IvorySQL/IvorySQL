@@ -398,6 +398,32 @@ SELECT updatexml(XMLTYPE('<a><b>b1</b><b>b2</b></a>'), '/b[1]/text()', '1000') F
  </a>
 (1 row)
 
+SELECT updatexml(XMLTYPE('<a><b>b1</b><b>b2</b></a>'), '//b/text()', '1000') FROM dual;
+   updatexml   
+---------------
+ <a>          +
+   <b>1000</b>+
+   <b>1000</b>+
+ </a>
+(1 row)
+
+SELECT updatexml(XMLTYPE('<a><b>b1</b><b>b2</b></a>'), '//b[1]/text()', '222') FROM dual;
+  updatexml   
+--------------
+ <a>         +
+   <b>222</b>+
+   <b>b2</b> +
+ </a>
+(1 row)
+
+UPDATE xmltest SET data = UPDATEXML(data, '/value/text()', 'second') WHERE id = 2;
+select * from xmltest;
+ id |         data          
+----+-----------------------
+  1 | <value>one</value>
+  2 | <value>second</value>
+(2 rows)
+
 SELECT updatexml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE/text()',123, 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
                                                                  updatexml                                                                  
 --------------------------------------------------------------------------------------------------------------------------------------------
