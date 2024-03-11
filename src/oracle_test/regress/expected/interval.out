@@ -190,7 +190,7 @@ ERROR:  relation "interval_tbl_of" does not exist
 LINE 1: INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483648 years'...
                     ^
 -- Test edge-case overflow detection in interval multiplication
-select extract(epoch from '256 microseconds'::interval * (2^55)::float8);
+select PGEXTRACT(epoch from '256 microseconds'::interval * (2^55)::float8);
 ERROR:  missing or invalid datetime field.
 SELECT r1.*, r2.*
    FROM INTERVAL_TBL_OF r1, INTERVAL_TBL_OF r2
@@ -1426,63 +1426,63 @@ select make_interval(secs := 7e12);
 -- test EXTRACT
 --
 SELECT f1,
-    EXTRACT(MICROSECOND FROM f1) AS MICROSECOND,
-    EXTRACT(MILLISECOND FROM f1) AS MILLISECOND,
-    EXTRACT(SECOND FROM f1) AS SECOND,
-    EXTRACT(MINUTE FROM f1) AS MINUTE,
-    EXTRACT(HOUR FROM f1) AS HOUR,
-    EXTRACT(DAY FROM f1) AS DAY,
-    EXTRACT(MONTH FROM f1) AS MONTH,
-    EXTRACT(QUARTER FROM f1) AS QUARTER,
-    EXTRACT(YEAR FROM f1) AS YEAR,
-    EXTRACT(DECADE FROM f1) AS DECADE,
-    EXTRACT(CENTURY FROM f1) AS CENTURY,
-    EXTRACT(MILLENNIUM FROM f1) AS MILLENNIUM,
-    EXTRACT(EPOCH FROM f1) AS EPOCH
+    PGEXTRACT(MICROSECOND FROM f1) AS MICROSECOND,
+    PGEXTRACT(MILLISECOND FROM f1) AS MILLISECOND,
+    PGEXTRACT(SECOND FROM f1) AS SECOND,
+    PGEXTRACT(MINUTE FROM f1) AS MINUTE,
+    PGEXTRACT(HOUR FROM f1) AS HOUR,
+    PGEXTRACT(DAY FROM f1) AS DAY,
+    PGEXTRACT(MONTH FROM f1) AS MONTH,
+    PGEXTRACT(QUARTER FROM f1) AS QUARTER,
+    PGEXTRACT(YEAR FROM f1) AS YEAR,
+    PGEXTRACT(DECADE FROM f1) AS DECADE,
+    PGEXTRACT(CENTURY FROM f1) AS CENTURY,
+    PGEXTRACT(MILLENNIUM FROM f1) AS MILLENNIUM,
+    PGEXTRACT(EPOCH FROM f1) AS EPOCH
     FROM INTERVAL_TBL;
 ERROR:  relation "interval_tbl" does not exist
 LINE 15:     FROM INTERVAL_TBL;
                   ^
-SELECT EXTRACT(FORTNIGHT FROM INTERVAL '2 days');  -- error
+SELECT PGEXTRACT(FORTNIGHT FROM INTERVAL '2 days');  -- error
 ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(FORTNIGHT FROM INTERVAL '2 days');
-                                                       ^
-SELECT EXTRACT(TIMEZONE FROM INTERVAL '2 days');  -- error
+LINE 1: SELECT PGEXTRACT(FORTNIGHT FROM INTERVAL '2 days');
+                                                         ^
+SELECT PGEXTRACT(TIMEZONE FROM INTERVAL '2 days');  -- error
 ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(TIMEZONE FROM INTERVAL '2 days');
-                                                      ^
-SELECT EXTRACT(DECADE FROM INTERVAL '100 y');
+LINE 1: SELECT PGEXTRACT(TIMEZONE FROM INTERVAL '2 days');
+                                                        ^
+SELECT PGEXTRACT(DECADE FROM INTERVAL '100 y');
 ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '100 y');
-                                                   ^
-SELECT EXTRACT(DECADE FROM INTERVAL '99 y');
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '99 y');
-                                                  ^
-SELECT EXTRACT(DECADE FROM INTERVAL '-99 y');
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '-99 y');
-                                                   ^
-SELECT EXTRACT(DECADE FROM INTERVAL '-100 y');
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '-100 y');
-                                                    ^
-SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');
-                                                    ^
-SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');
-                                                   ^
-SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');
-                                                    ^
-SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y');
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y');
+LINE 1: SELECT PGEXTRACT(DECADE FROM INTERVAL '100 y');
                                                      ^
+SELECT PGEXTRACT(DECADE FROM INTERVAL '99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT PGEXTRACT(DECADE FROM INTERVAL '99 y');
+                                                    ^
+SELECT PGEXTRACT(DECADE FROM INTERVAL '-99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT PGEXTRACT(DECADE FROM INTERVAL '-99 y');
+                                                     ^
+SELECT PGEXTRACT(DECADE FROM INTERVAL '-100 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT PGEXTRACT(DECADE FROM INTERVAL '-100 y');
+                                                      ^
+SELECT PGEXTRACT(CENTURY FROM INTERVAL '100 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT PGEXTRACT(CENTURY FROM INTERVAL '100 y');
+                                                      ^
+SELECT PGEXTRACT(CENTURY FROM INTERVAL '99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT PGEXTRACT(CENTURY FROM INTERVAL '99 y');
+                                                     ^
+SELECT PGEXTRACT(CENTURY FROM INTERVAL '-99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT PGEXTRACT(CENTURY FROM INTERVAL '-99 y');
+                                                      ^
+SELECT PGEXTRACT(CENTURY FROM INTERVAL '-100 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT PGEXTRACT(CENTURY FROM INTERVAL '-100 y');
+
 -- date_part implementation is mostly the same as extract, so only
 -- test a few cases for additional coverage.
 SELECT f1,
@@ -1495,7 +1495,7 @@ ERROR:  relation "interval_tbl" does not exist
 LINE 6:     FROM INTERVAL_TBL;
                  ^
 -- internal overflow test case
-SELECT extract(epoch from interval '1000000000 days');
+SELECT PGEXTRACT(epoch from interval '1000000000 days');
 ERROR:  syntax error at or near ")"
-LINE 1: SELECT extract(epoch from interval '1000000000 days');
+LINE 1: SELECT PGEXTRACT(epoch from interval '1000000000 days');
                                                             ^

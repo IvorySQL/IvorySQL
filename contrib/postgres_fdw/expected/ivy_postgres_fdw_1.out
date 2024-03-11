@@ -12847,13 +12847,11 @@ DELETE FROM async_pt WHERE b = 0 RETURNING *;
                Filter: (async_pt_3.b = '0'::number)
 (19 rows)
 
-DELETE FROM async_pt WHERE b = 0 RETURNING *;
-  a   | b |    c     
-------+---+----------
- 3000 | 0 | 00000000
- 2000 | 0 | 00000000
- 1000 | 0 | 00000000
-(3 rows)
+DELETE FROM async_pt WHERE b = 0;
+SELECT * FROM async_pt WHERE b = 0;
+ a | b | c 
+---+---+---
+(0 rows)
 
 -- Check EXPLAIN ANALYZE for a query that scans empty partitions asynchronously
 DELETE FROM async_p1;
@@ -12991,7 +12989,7 @@ ALTER SERVER loopback2 OPTIONS (SET application_name 'fdw_%C%c');
 SELECT count(*) FROM remote_application_name
   WHERE application_name =
     substring('fdw_' || current_setting('cluster_name') ||
-      to_hex(trunc(EXTRACT(EPOCH FROM (SELECT backend_start FROM
+      to_hex(trunc(PGEXTRACT(EPOCH FROM (SELECT backend_start FROM
       pg_stat_get_activity(pg_backend_pid()))))::integer) || '.' ||
       to_hex(pg_backend_pid())
       for current_setting('max_identifier_length')::int);

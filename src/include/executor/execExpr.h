@@ -18,6 +18,10 @@
 #include "nodes/execnodes.h"
 #include "nodes/miscnodes.h"
 
+/* Begin - ReqID:SRS-SQL-XML */
+#include "utils/xml.h"
+/* End - ReqID:SRS-SQL-XML */
+
 /* forward references to avoid circularity */
 struct ExprEvalStep;
 struct SubscriptingRefState;
@@ -861,5 +865,9 @@ extern void ExecEvalAggOrderedTransDatum(ExprState *state, ExprEvalStep *op,
 										 ExprContext *econtext);
 extern void ExecEvalAggOrderedTransTuple(ExprState *state, ExprEvalStep *op,
 										 ExprContext *econtext);
+/* Begin - ReqID:SRS-SQL-XML */
+typedef xmltype *(*ora_updatexml_hook_type)(List *args);
+extern PGDLLIMPORT ora_updatexml_hook_type ora_updatexml_hook;
+/* End - ReqID:SRS-SQL-XML */
 
 #endif							/* EXEC_EXPR_H */
