@@ -22,8 +22,9 @@
 
 static void cluster_one_database(const ConnParams *cparams, const char *table,
 								 const char *progname, bool verbose, bool echo);
-static void cluster_all_databases(ConnParams *cparams, const char *progname,
-								  bool verbose, bool echo, bool quiet);
+static void cluster_all_databases(ConnParams *cparams, SimpleStringList *tables,
+								  const char *progname, bool verbose, bool echo,
+								  bool quiet);
 static void help(const char *progname);
 
 
@@ -148,12 +149,10 @@ main(int argc, char *argv[])
 		if (dbname)
 			pg_fatal("cannot cluster all databases and a specific one at the same time");
 
-		if (tables.head != NULL)
-			pg_fatal("cannot cluster specific table(s) in all databases");
-
 		cparams.dbname = maintenance_db;
 
-		cluster_all_databases(&cparams, progname, verbose, echo, quiet);
+		cluster_all_databases(&cparams, &tables,
+							  progname, verbose, echo, quiet);
 	}
 	else
 	{
@@ -228,8 +227,9 @@ cluster_one_database(const ConnParams *cparams, const char *table,
 
 
 static void
-cluster_all_databases(ConnParams *cparams, const char *progname,
-					  bool verbose, bool echo, bool quiet)
+cluster_all_databases(ConnParams *cparams, SimpleStringList *tables,
+					  const char *progname, bool verbose, bool echo,
+					  bool quiet)
 {
 	PGconn	   *conn;
 	PGresult   *result;
@@ -253,7 +253,17 @@ cluster_all_databases(ConnParams *cparams, const char *progname,
 
 		cparams->override_dbname = dbname;
 
-		cluster_one_database(cparams, NULL, progname, verbose, echo);
+		if (tables->head != NULL)
+		{
+			SimpleStringListCell *cell;
+
+			for (cell = tables->head; cell; cell = cell->next)
+				cluster_one_database(cparams, cell->val,
+									 progname, verbose, echo);
+		}
+		else
+			cluster_one_database(cparams, NULL,
+								 progname, verbose, echo);
 	}
 
 	PQclear(result);
