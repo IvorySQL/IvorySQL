@@ -1970,6 +1970,11 @@ FigureColnameInternal(Node *node, char **name)
 				case IS_XMLSERIALIZE:
 					*name = "xmlserialize";
 					return 2;
+				/* Begin - ReqID:SRS-SQL-XML */
+				case IS_UPDATEXML:
+					*name = "updatexml";
+					return 2;
+				/* End - ReqID:SRS-SQL-XML */
 				case IS_DOCUMENT:
 					/* nothing */
 					break;

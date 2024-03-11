@@ -704,7 +704,7 @@ select pg_get_viewdef('tt20v', true);
 
 create view tt201v as
 select
-  extract(day from now()) as extr,
+  PGEXTRACT(day from now()) as extr,
   (now(), '1 day'::pg_catalog.interval) overlaps
     (current_timestamp(2), '1 day'::pg_catalog.interval) as o,
   'foo' is normalized isn,

@@ -1604,7 +1604,9 @@ typedef enum XmlExprOp
 	IS_XMLPI,					/* XMLPI(name [, args]) */
 	IS_XMLROOT,					/* XMLROOT(xml, version, standalone) */
 	IS_XMLSERIALIZE,			/* XMLSERIALIZE(is_document, xmlval, indent) */
-	IS_DOCUMENT,				/* xmlval IS DOCUMENT */
+	IS_DOCUMENT,					/* xmlval IS DOCUMENT */
+	IS_UPDATEXML					/* updatexml(args) */
+
 } XmlExprOp;
 
 typedef enum XmlOptionType

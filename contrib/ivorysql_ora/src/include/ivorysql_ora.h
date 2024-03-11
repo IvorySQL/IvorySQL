@@ -19,6 +19,9 @@
 #include "parser/parse_node.h"
 #include "executor/nodeModifyTable.h"
 
+/* Begin - ReqID:SRS-SQL-XML */
+#include "utils/xml.h"
+/* End - ReqID:SRS-SQL-XML */
 
 /* Hooks */
 extern bool pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_arg1, Oid *result_arg2);
@@ -30,5 +33,8 @@ extern TupleTableSlot *IvyExecMergeMatched(ModifyTableContext *context,
 										bool *matched);
 extern Query* IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt);
 
+/* Begin - ReqID:SRS-SQL-XML */
+extern xmltype* updatexml(List *args);
+/* End - ReqID:SRS-SQL-XML */
 
 #endif	/* IVORYSQL_ORA_H_ */

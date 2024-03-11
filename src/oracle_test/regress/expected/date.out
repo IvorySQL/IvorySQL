@@ -560,7 +560,7 @@ SELECT f1 as "date",
 --
 -- epoch
 --
-SELECT EXTRACT(EPOCH FROM DATE        '1970-01-01');     --  0
+SELECT PGEXTRACT(EPOCH FROM DATE        '1970-01-01');     --  0
  extract 
 ---------
        0
@@ -569,45 +569,45 @@ SELECT EXTRACT(EPOCH FROM DATE        '1970-01-01');     --  0
 --
 -- century
 --
-SELECT EXTRACT(CENTURY FROM DATE '0101-12-31 BC'); -- -2
+SELECT PGEXTRACT(CENTURY FROM DATE '0101-12-31 BC'); -- -2
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(CENTURY FROM DATE '0100-12-31 BC'); -- -1
+SELECT PGEXTRACT(CENTURY FROM DATE '0100-12-31 BC'); -- -1
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(CENTURY FROM DATE '0001-12-31 BC'); -- -1
+SELECT PGEXTRACT(CENTURY FROM DATE '0001-12-31 BC'); -- -1
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(CENTURY FROM DATE '0001-01-01');    --  1
+SELECT PGEXTRACT(CENTURY FROM DATE '0001-01-01');    --  1
  extract 
 ---------
        1
 (1 row)
 
-SELECT EXTRACT(CENTURY FROM DATE '0001-01-01 AD'); --  1
+SELECT PGEXTRACT(CENTURY FROM DATE '0001-01-01 AD'); --  1
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(CENTURY FROM DATE '1900-12-31');    -- 19
+SELECT PGEXTRACT(CENTURY FROM DATE '1900-12-31');    -- 19
  extract 
 ---------
       19
 (1 row)
 
-SELECT EXTRACT(CENTURY FROM DATE '1901-01-01');    -- 20
+SELECT PGEXTRACT(CENTURY FROM DATE '1901-01-01');    -- 20
  extract 
 ---------
       20
 (1 row)
 
-SELECT EXTRACT(CENTURY FROM DATE '2000-12-31');    -- 20
+SELECT PGEXTRACT(CENTURY FROM DATE '2000-12-31');    -- 20
  extract 
 ---------
       20
 (1 row)
 
-SELECT EXTRACT(CENTURY FROM DATE '2001-01-01');    -- 21
+SELECT PGEXTRACT(CENTURY FROM DATE '2001-01-01');    -- 21
  extract 
 ---------
       21
 (1 row)
 
-SELECT EXTRACT(CENTURY FROM CURRENT_DATE)>=21 AS True;     -- true
+SELECT PGEXTRACT(CENTURY FROM CURRENT_DATE)>=21 AS True;     -- true
  true 
 ------
  t
@@ -616,36 +616,36 @@ SELECT EXTRACT(CENTURY FROM CURRENT_DATE)>=21 AS True;     -- true
 --
 -- millennium
 --
-SELECT EXTRACT(MILLENNIUM FROM DATE '0001-12-31 BC'); -- -1
+SELECT PGEXTRACT(MILLENNIUM FROM DATE '0001-12-31 BC'); -- -1
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(MILLENNIUM FROM DATE '0001-01-01 AD'); --  1
+SELECT PGEXTRACT(MILLENNIUM FROM DATE '0001-01-01 AD'); --  1
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(MILLENNIUM FROM DATE '1000-12-31');    --  1
+SELECT PGEXTRACT(MILLENNIUM FROM DATE '1000-12-31');    --  1
  extract 
 ---------
        1
 (1 row)
 
-SELECT EXTRACT(MILLENNIUM FROM DATE '1001-01-01');    --  2
+SELECT PGEXTRACT(MILLENNIUM FROM DATE '1001-01-01');    --  2
  extract 
 ---------
        2
 (1 row)
 
-SELECT EXTRACT(MILLENNIUM FROM DATE '2000-12-31');    --  2
+SELECT PGEXTRACT(MILLENNIUM FROM DATE '2000-12-31');    --  2
  extract 
 ---------
        2
 (1 row)
 
-SELECT EXTRACT(MILLENNIUM FROM DATE '2001-01-01');    --  3
+SELECT PGEXTRACT(MILLENNIUM FROM DATE '2001-01-01');    --  3
  extract 
 ---------
        3
 (1 row)
 
 -- next test to be fixed on the turn of the next millennium;-)
-SELECT EXTRACT(MILLENNIUM FROM CURRENT_DATE);         --  3
+SELECT PGEXTRACT(MILLENNIUM FROM CURRENT_DATE);         --  3
  extract 
 ---------
        3
@@ -654,146 +654,146 @@ SELECT EXTRACT(MILLENNIUM FROM CURRENT_DATE);         --  3
 --
 -- decade
 --
-SELECT EXTRACT(DECADE FROM DATE '1994-12-25');    -- 199
+SELECT PGEXTRACT(DECADE FROM DATE '1994-12-25');    -- 199
  extract 
 ---------
      199
 (1 row)
 
-SELECT EXTRACT(DECADE FROM DATE '0010-01-01');    --   1
+SELECT PGEXTRACT(DECADE FROM DATE '0010-01-01');    --   1
  extract 
 ---------
        1
 (1 row)
 
-SELECT EXTRACT(DECADE FROM DATE '0009-12-31');    --   0
+SELECT PGEXTRACT(DECADE FROM DATE '0009-12-31');    --   0
  extract 
 ---------
        0
 (1 row)
 
-SELECT EXTRACT(DECADE FROM DATE '0001-01-01 BC'); --   0
+SELECT PGEXTRACT(DECADE FROM DATE '0001-01-01 BC'); --   0
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(DECADE FROM DATE '0002-12-31 BC'); --  -1
+SELECT PGEXTRACT(DECADE FROM DATE '0002-12-31 BC'); --  -1
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(DECADE FROM DATE '0011-01-01 BC'); --  -1
+SELECT PGEXTRACT(DECADE FROM DATE '0011-01-01 BC'); --  -1
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(DECADE FROM DATE '0012-12-31 BC'); --  -2
+SELECT PGEXTRACT(DECADE FROM DATE '0012-12-31 BC'); --  -2
 ERROR:  trailing characters remain in input string after datetime format
 --
 -- all possible fields
 --
-SELECT EXTRACT(MICROSECONDS  FROM DATE '2020-08-11');
+SELECT PGEXTRACT(MICROSECONDS  FROM DATE '2020-08-11');
 ERROR:  unit "microseconds" not supported for type pg_catalog.date
-SELECT EXTRACT(MILLISECONDS  FROM DATE '2020-08-11');
+SELECT PGEXTRACT(MILLISECONDS  FROM DATE '2020-08-11');
 ERROR:  unit "milliseconds" not supported for type pg_catalog.date
-SELECT EXTRACT(SECOND        FROM DATE '2020-08-11');
+SELECT PGEXTRACT(SECOND        FROM DATE '2020-08-11');
 ERROR:  unit "second" not supported for type pg_catalog.date
-SELECT EXTRACT(MINUTE        FROM DATE '2020-08-11');
+SELECT PGEXTRACT(MINUTE        FROM DATE '2020-08-11');
 ERROR:  unit "minute" not supported for type pg_catalog.date
-SELECT EXTRACT(HOUR          FROM DATE '2020-08-11');
+SELECT PGEXTRACT(HOUR          FROM DATE '2020-08-11');
 ERROR:  unit "hour" not supported for type pg_catalog.date
-SELECT EXTRACT(DAY           FROM DATE '2020-08-11');
+SELECT PGEXTRACT(DAY           FROM DATE '2020-08-11');
  extract 
 ---------
       11
 (1 row)
 
-SELECT EXTRACT(MONTH         FROM DATE '2020-08-11');
+SELECT PGEXTRACT(MONTH         FROM DATE '2020-08-11');
  extract 
 ---------
        8
 (1 row)
 
-SELECT EXTRACT(YEAR          FROM DATE '2020-08-11');
+SELECT PGEXTRACT(YEAR          FROM DATE '2020-08-11');
  extract 
 ---------
     2020
 (1 row)
 
-SELECT EXTRACT(YEAR          FROM DATE '2020-08-11 BC');
+SELECT PGEXTRACT(YEAR          FROM DATE '2020-08-11 BC');
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(DECADE        FROM DATE '2020-08-11');
+SELECT PGEXTRACT(DECADE        FROM DATE '2020-08-11');
  extract 
 ---------
      202
 (1 row)
 
-SELECT EXTRACT(CENTURY       FROM DATE '2020-08-11');
+SELECT PGEXTRACT(CENTURY       FROM DATE '2020-08-11');
  extract 
 ---------
       21
 (1 row)
 
-SELECT EXTRACT(MILLENNIUM    FROM DATE '2020-08-11');
+SELECT PGEXTRACT(MILLENNIUM    FROM DATE '2020-08-11');
  extract 
 ---------
        3
 (1 row)
 
-SELECT EXTRACT(ISOYEAR       FROM DATE '2020-08-11');
+SELECT PGEXTRACT(ISOYEAR       FROM DATE '2020-08-11');
  extract 
 ---------
     2020
 (1 row)
 
-SELECT EXTRACT(ISOYEAR       FROM DATE '2020-08-11 BC');
+SELECT PGEXTRACT(ISOYEAR       FROM DATE '2020-08-11 BC');
 ERROR:  trailing characters remain in input string after datetime format
-SELECT EXTRACT(QUARTER       FROM DATE '2020-08-11');
+SELECT PGEXTRACT(QUARTER       FROM DATE '2020-08-11');
  extract 
 ---------
        3
 (1 row)
 
-SELECT EXTRACT(WEEK          FROM DATE '2020-08-11');
+SELECT PGEXTRACT(WEEK          FROM DATE '2020-08-11');
  extract 
 ---------
       33
 (1 row)
 
-SELECT EXTRACT(DOW           FROM DATE '2020-08-11');
+SELECT PGEXTRACT(DOW           FROM DATE '2020-08-11');
  extract 
 ---------
        2
 (1 row)
 
-SELECT EXTRACT(DOW           FROM DATE '2020-08-16');
+SELECT PGEXTRACT(DOW           FROM DATE '2020-08-16');
  extract 
 ---------
        0
 (1 row)
 
-SELECT EXTRACT(ISODOW        FROM DATE '2020-08-11');
+SELECT PGEXTRACT(ISODOW        FROM DATE '2020-08-11');
  extract 
 ---------
        2
 (1 row)
 
-SELECT EXTRACT(ISODOW        FROM DATE '2020-08-16');
+SELECT PGEXTRACT(ISODOW        FROM DATE '2020-08-16');
  extract 
 ---------
        7
 (1 row)
 
-SELECT EXTRACT(DOY           FROM DATE '2020-08-11');
+SELECT PGEXTRACT(DOY           FROM DATE '2020-08-11');
  extract 
 ---------
      224
 (1 row)
 
-SELECT EXTRACT(TIMEZONE      FROM DATE '2020-08-11');
+SELECT PGEXTRACT(TIMEZONE      FROM DATE '2020-08-11');
 ERROR:  unit "timezone" not supported for type pg_catalog.date
-SELECT EXTRACT(TIMEZONE_M    FROM DATE '2020-08-11');
+SELECT PGEXTRACT(TIMEZONE_M    FROM DATE '2020-08-11');
 ERROR:  unit "timezone_m" not supported for type pg_catalog.date
-SELECT EXTRACT(TIMEZONE_H    FROM DATE '2020-08-11');
+SELECT PGEXTRACT(TIMEZONE_H    FROM DATE '2020-08-11');
 ERROR:  unit "timezone_h" not supported for type pg_catalog.date
-SELECT EXTRACT(EPOCH         FROM DATE '2020-08-11');
+SELECT PGEXTRACT(EPOCH         FROM DATE '2020-08-11');
   extract   
 ------------
  1597104000
 (1 row)
 
-SELECT EXTRACT(JULIAN        FROM DATE '2020-08-11');
+SELECT PGEXTRACT(JULIAN        FROM DATE '2020-08-11');
  extract 
 ---------
  2459073
@@ -879,69 +879,69 @@ DETAIL:  Value must be an integer.
 --
 -- oscillating fields from non-finite date:
 --
-SELECT EXTRACT(DAY FROM DATE 'infinity');      -- NULL
+SELECT PGEXTRACT(DAY FROM DATE 'infinity');      -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(DAY FROM DATE '-infinity');     -- NULL
+SELECT PGEXTRACT(DAY FROM DATE '-infinity');     -- NULL
 ERROR:  invalid value "-inf" for "YYYY"
 DETAIL:  Value must be an integer.
 -- all supported fields
-SELECT EXTRACT(DAY           FROM DATE 'infinity');    -- NULL
+SELECT PGEXTRACT(DAY           FROM DATE 'infinity');    -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(MONTH         FROM DATE 'infinity');    -- NULL
+SELECT PGEXTRACT(MONTH         FROM DATE 'infinity');    -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(QUARTER       FROM DATE 'infinity');    -- NULL
+SELECT PGEXTRACT(QUARTER       FROM DATE 'infinity');    -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(WEEK          FROM DATE 'infinity');    -- NULL
+SELECT PGEXTRACT(WEEK          FROM DATE 'infinity');    -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(DOW           FROM DATE 'infinity');    -- NULL
+SELECT PGEXTRACT(DOW           FROM DATE 'infinity');    -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(ISODOW        FROM DATE 'infinity');    -- NULL
+SELECT PGEXTRACT(ISODOW        FROM DATE 'infinity');    -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(DOY           FROM DATE 'infinity');    -- NULL
+SELECT PGEXTRACT(DOY           FROM DATE 'infinity');    -- NULL
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
 --
 -- monotonic fields from non-finite date:
 --
-SELECT EXTRACT(EPOCH FROM DATE 'infinity');         --  Infinity
+SELECT PGEXTRACT(EPOCH FROM DATE 'infinity');         --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(EPOCH FROM DATE '-infinity');        -- -Infinity
+SELECT PGEXTRACT(EPOCH FROM DATE '-infinity');        -- -Infinity
 ERROR:  invalid value "-inf" for "YYYY"
 DETAIL:  Value must be an integer.
 -- all supported fields
-SELECT EXTRACT(YEAR       FROM DATE 'infinity');    --  Infinity
+SELECT PGEXTRACT(YEAR       FROM DATE 'infinity');    --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(DECADE     FROM DATE 'infinity');    --  Infinity
+SELECT PGEXTRACT(DECADE     FROM DATE 'infinity');    --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(CENTURY    FROM DATE 'infinity');    --  Infinity
+SELECT PGEXTRACT(CENTURY    FROM DATE 'infinity');    --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(MILLENNIUM FROM DATE 'infinity');    --  Infinity
+SELECT PGEXTRACT(MILLENNIUM FROM DATE 'infinity');    --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(JULIAN     FROM DATE 'infinity');    --  Infinity
+SELECT PGEXTRACT(JULIAN     FROM DATE 'infinity');    --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(ISOYEAR    FROM DATE 'infinity');    --  Infinity
+SELECT PGEXTRACT(ISOYEAR    FROM DATE 'infinity');    --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
-SELECT EXTRACT(EPOCH      FROM DATE 'infinity');    --  Infinity
+SELECT PGEXTRACT(EPOCH      FROM DATE 'infinity');    --  Infinity
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
 --
 -- wrong fields from non-finite date:
 --
-SELECT EXTRACT(MICROSEC  FROM DATE 'infinity');     -- error
+SELECT PGEXTRACT(MICROSEC  FROM DATE 'infinity');     -- error
 ERROR:  invalid value "infi" for "YYYY"
 DETAIL:  Value must be an integer.
 -- test constructors

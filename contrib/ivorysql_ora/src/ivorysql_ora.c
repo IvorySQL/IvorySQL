@@ -20,8 +20,14 @@
 #include "miscadmin.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_merge.h"
+
+/* Begin - ReqID:SRS-SQL-XML */
+#include "executor/execExpr.h"
+/* End - ReqID:SRS-SQL-XML */
+
 #include "include/guc.h"
 #include "include/ivorysql_ora.h"
+
 
 /* Only include it once in any C file */
 PG_MODULE_MAGIC;
@@ -32,6 +38,10 @@ static oracle_datatype_precedence_hook_type pre_oracle_datatype_precedence_hook 
 /* The hook of the merge command */
 static exec_merge_matched_hook_type pre_exec_merge_matched_hook = NULL;
 static transform_merge_stmt_hook_type pre_transform_merge_stmt_hook = NULL;
+
+/* Begin - ReqID:SRS-SQL-XML */
+static ora_updatexml_hook_type pre_ora_updatexml_hook = NULL;
+/* End - ReqID:SRS-SQL-XML */
 
 void _PG_init(void);
 void _PG_fini(void);
@@ -63,6 +73,11 @@ _PG_init(void)
 	pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
 	pre_transform_merge_stmt_hook = pg_transform_merge_stmt_hook;
 	pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
+
+	/* Begin - ReqID:SRS-SQL-XML */
+	pre_ora_updatexml_hook = ora_updatexml_hook;
+	ora_updatexml_hook = updatexml;
+	/* End - ReqID:SRS-SQL-XML */
 }
 
 /*
@@ -80,4 +95,8 @@ _PG_fini(void)
 
 	pg_exec_merge_matched_hook = pre_exec_merge_matched_hook;
 	pg_transform_merge_stmt_hook = pre_transform_merge_stmt_hook;
+
+	/* Begin - ReqID:SRS-SQL-XML */
+	ora_updatexml_hook = pre_ora_updatexml_hook;
+	/* End - ReqID:SRS-SQL-XML */
 }
