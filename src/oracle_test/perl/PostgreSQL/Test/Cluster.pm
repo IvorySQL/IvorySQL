@@ -549,12 +549,10 @@ sub init
 		}
 		else
 		{
-note("jst mark 001");
-			@copycmd = qw(cp -a);
+			@copycmd = qw(cp -RPp);
 			$expected_exitcode = 0;
 		}
 
-note("jst mark 002");
 		@copycmd = (@copycmd, $ENV{INITDB_TEMPLATE}, $pgdata);
 
 		my $ret = PostgreSQL::Test::Utils::system_log(@copycmd);
