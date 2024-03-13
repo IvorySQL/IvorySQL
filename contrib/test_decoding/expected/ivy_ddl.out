@@ -502,6 +502,9 @@ WITH (user_catalog_table = true)
  options  | text[]          |           |          |                                                  | extended |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
+Not-null constraints:
+    "replication_metadata_id_not_null" NOT NULL "id"
+    "replication_metadata_relation_not_null" NOT NULL "relation"
 Options: user_catalog_table=true
 
 INSERT INTO replication_metadata(relation, options)
@@ -516,6 +519,9 @@ ALTER TABLE replication_metadata RESET (user_catalog_table);
  options  | text[]          |           |          |                                                  | extended |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
+Not-null constraints:
+    "replication_metadata_id_not_null" NOT NULL "id"
+    "replication_metadata_relation_not_null" NOT NULL "relation"
 
 INSERT INTO replication_metadata(relation, options)
 VALUES ('bar', ARRAY['a', 'b']);
@@ -529,6 +535,9 @@ ALTER TABLE replication_metadata SET (user_catalog_table = true);
  options  | text[]          |           |          |                                                  | extended |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
+Not-null constraints:
+    "replication_metadata_id_not_null" NOT NULL "id"
+    "replication_metadata_relation_not_null" NOT NULL "relation"
 Options: user_catalog_table=true
 
 INSERT INTO replication_metadata(relation, options)
@@ -548,6 +557,9 @@ ALTER TABLE replication_metadata SET (user_catalog_table = false);
  rewritemeornot | pg_catalog.int4 |           |          |                                                  | plain    |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
+Not-null constraints:
+    "replication_metadata_id_not_null" NOT NULL "id"
+    "replication_metadata_relation_not_null" NOT NULL "relation"
 Options: user_catalog_table=false
 
 INSERT INTO replication_metadata(relation, options)
