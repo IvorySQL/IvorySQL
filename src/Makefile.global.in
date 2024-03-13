@@ -402,11 +402,11 @@ endif
 
 check: temp-install
 #IvorySQL:BEGIN - SQL oracle_test
-oracle-check: temp-install
-oracle-pg-check: temp-install
+oracle-check: oracle-temp-install
+oracle-pg-check: oracle-temp-install
 #IvorySQL:END - SQL oracle_test
 
-.PHONY: temp-install
+.PHONY: temp-install oracle-temp-install
 
 
 # prepend to path if already set, else just set it
@@ -436,11 +436,24 @@ ifeq ($(MAKELEVEL),0)
 	$(MAKE) -C '$(top_builddir)' DESTDIR='$(abs_top_builddir)'/tmp_install install >'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
 	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) checkprep >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
 
-	$(with_temp_install) initdb -A trust -N --no-instructions '$(abs_top_builddir)'/tmp_install/initdb-template >>'$(abs_top_builddir)'/tmp_install/log/initdb-template.log 2>&1
+	$(with_temp_install) initdb -A trust -N -m pg --no-instructions '$(abs_top_builddir)'/tmp_install/initdb-template >>'$(abs_top_builddir)'/tmp_install/log/initdb-template.log 2>&1
 endif
 endif
 endif
 
+oracle-temp-install: | submake-generated-headers
+ifndef NO_TEMP_INSTALL
+ifneq ($(abs_top_builddir),)
+ifeq ($(MAKELEVEL),0)
+	rm -rf '$(abs_top_builddir)'/tmp_install
+	$(MKDIR_P) '$(abs_top_builddir)'/tmp_install/log
+	$(MAKE) -C '$(top_builddir)' DESTDIR='$(abs_top_builddir)'/tmp_install install >'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) checkprep >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+
+	$(with_temp_install) initdb -A trust -N -m oracle -C normal --no-instructions '$(abs_top_builddir)'/tmp_install/initdb-template >>'$(abs_top_builddir)'/tmp_install/log/initdb-template.log 2>&1
+endif
+endif
+endif
 # Tasks to run serially at the end of temp-install.  Some EXTRA_INSTALL
 # entries appear more than once in the tree, and parallel installs of the same
 # file can fail with EEXIST.
@@ -1020,7 +1033,7 @@ define _create_recursive_target
 $(1): $(1)-$(2)-recurse
 #$(1)-$(2)-recurse: $(if $(filter all install check installcheck, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install)
 #IvorySQL:BEGIN - SQL oracle_test
-$(1)-$(2)-recurse: $(if $(filter all install check oracle-check installcheck oracle-installcheck oracle-pg-check, $(3)), submake-generated-headers) $(if $(filter check oracle-check oracle-pg-check, $(3)), temp-install)
+$(1)-$(2)-recurse: $(if $(filter all install check oracle-check installcheck oracle-installcheck oracle-pg-check, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install) $(if $(filter oracle-check oracle-pg-check, $(3)), oracle-temp-install)
 #IvorySQL:END - SQL oracle_test
 	$$(MAKE) -C $(2) $(3)
 endef

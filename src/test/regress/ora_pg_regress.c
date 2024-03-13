@@ -1230,7 +1230,6 @@ spawn_process(const char *cmdline)
 #else
 	PROCESS_INFORMATION pi;
 	char	   *cmdline2;
-	HANDLE		restrictedToken;
 	const char *comspec;
 
 	/* Find CMD.EXE location using COMSPEC, if it's set */
@@ -1241,8 +1240,7 @@ spawn_process(const char *cmdline)
 	memset(&pi, 0, sizeof(pi));
 	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
 
-	if ((restrictedToken =
-		 CreateRestrictedProcess(cmdline2, &pi)) == 0)
+	if (!CreateRestrictedProcess(cmdline2, &pi))
 		exit(2);
 
 	CloseHandle(pi.hThread);
@@ -2298,9 +2296,11 @@ regression_main(int argc, char *argv[],
 
 	if (temp_instance)
 	{
+		StringInfoData cmd;
 		FILE	   *pg_conf;
 		const char *env_wait;
 		int			wait_seconds;
+		const char *initdb_template_dir;
 
 		/*
 		 * Prepare the temp instance
@@ -2322,23 +2322,69 @@ regression_main(int argc, char *argv[],
 		if (!directory_exists(buf))
 			make_directory(buf);
 
-		/* initdb */
-		snprintf(buf, sizeof(buf),
-				 "\"%s%sinitdb\" -D \"%s/data\" -m oracle --no-clean --no-sync%s%s > \"%s/log/initdb.log\" 2>&1",
-				 bindir ? bindir : "",
-				 bindir ? "/" : "",
-				 temp_instance,
-				 debug ? " --debug" : "",
-				 nolocale ? " --no-locale" : "",
-				 outputdir);
-		fflush(NULL);
-		if (system(buf))
+		initStringInfo(&cmd);
+
+		/*
+		 * Create data directory.
+		 *
+		 * If available, use a previously initdb'd cluster as a template by
+		 * copying it. For a lot of tests, that's substantially cheaper.
+		 *
+		 * There's very similar code in Cluster.pm, but we can't easily de
+		 * duplicate it until we require perl at build time.
+		 */
+		initdb_template_dir = getenv("INITDB_TEMPLATE");
+		if (initdb_template_dir == NULL || nolocale || debug)
 		{
-			bail("initdb failed\n"
-				 "# Examine \"%s/log/initdb.log\" for the reason.\n"
-				 "# Command was: %s",
-				 outputdir, buf);
+			note("initializing database system by running initdb");
+
+			appendStringInfo(&cmd,
+							 "\"%s%sinitdb\" -D \"%s/data\" -m oracle --no-clean --no-sync",
+							 bindir ? bindir : "",
+							 bindir ? "/" : "",
+							 temp_instance);
+			if (debug)
+				appendStringInfo(&cmd, " --debug");
+			if (nolocale)
+				appendStringInfo(&cmd, " --no-locale");
+			appendStringInfo(&cmd, " > \"%s/log/initdb.log\" 2>&1", outputdir);
+			fflush(NULL);
+			if (system(cmd.data))
+			{
+				bail("initdb failed\n"
+					 "# Examine \"%s/log/initdb.log\" for the reason.\n"
+					 "# Command was: %s",
+					 outputdir, cmd.data);
+			}
 		}
+		else
+		{
+#ifndef WIN32
+			const char *copycmd = "cp -a \"%s\" \"%s/data\"";
+			int			expected_exitcode = 0;
+#else
+			const char *copycmd = "robocopy /E /NJS /NJH /NFL /NDL /NP \"%s\" \"%s/data\"";
+			int			expected_exitcode = 1;	/* 1 denotes files were copied */
+#endif
+
+			note("initializing database system by copying initdb template");
+
+			appendStringInfo(&cmd,
+							 copycmd,
+							 initdb_template_dir,
+							 temp_instance);
+			appendStringInfo(&cmd, " > \"%s/log/initdb.log\" 2>&1", outputdir);
+			fflush(NULL);
+			if (system(cmd.data) != expected_exitcode)
+			{
+				bail("copying of initdb template failed\n"
+					 "# Examine \"%s/log/initdb.log\" for the reason.\n"
+					 "# Command was: %s",
+					 outputdir, cmd.data);
+			}
+		}
+
+		pfree(cmd.data);
 
 		/*
 		 * Adjust the default postgresql.conf for regression testing. The user
