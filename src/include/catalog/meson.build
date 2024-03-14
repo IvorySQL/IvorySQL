@@ -190,8 +190,7 @@ ora_generated_catalog_headers = custom_target('ora_generated_catalog_headers',
 generated_headers += ora_generated_catalog_headers.to_list()
 generated_headers += generated_catalog_headers.to_list()
 # autoconf generates the file there, ensure we get a conflict
-generated_sources_ac += {'src/backend/catalog': output_files + ['bki-stamp']}
-generated_sources_ac += {'src/include/catalog': ['header-stamp']}
+generated_sources_ac += {'src/include/catalog': output_files + ['bki-stamp']}
 
 # 'reformat-dat-files' is a convenience target for rewriting the
 # catalog data files in our standard format.  This includes collapsing
