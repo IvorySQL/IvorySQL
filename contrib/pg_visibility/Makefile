@@ -12,6 +12,7 @@ PGFILEDESC = "pg_visibility - page visibility information"
 
 REGRESS = pg_visibility
 ORA_REGRESS = ivy_pg_visibility
+TAP_TESTS = 1
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
