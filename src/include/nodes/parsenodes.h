@@ -3276,7 +3276,7 @@ typedef struct AlterStatsStmt
 {
 	NodeTag		type;
 	List	   *defnames;		/* qualified name (list of String) */
-	int			stxstattarget;	/* statistics target */
+	Node	   *stxstattarget;	/* statistics target */
 	bool		missing_ok;		/* skip error if statistics object is missing */
 } AlterStatsStmt;
 
