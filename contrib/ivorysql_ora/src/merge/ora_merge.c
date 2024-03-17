@@ -2,7 +2,7 @@
  *
  * Compatible with Oracle's Merge command.
  *
- * Copyright (c) 2023, Ivory SQL Global Development Team
+ * Copyright (c) 2024, Ivory SQL Global Development Team
  *
  * contrib/ivorysql_ora/src/merge/ora_merge.c
  *
@@ -31,7 +31,6 @@
 #include "executor/executor.h"
 #include "executor/nodeModifyTable.h"
 #include "foreign/fdwapi.h"
-#include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/makefuncs.h"
 #include "nodes/execnodes.h"
@@ -48,17 +47,15 @@
 #include "utils/combocid.h"
 #include "utils/snapmgr.h"
 #include "utils/inval.h"
-#include "utils/relcache.h"
 #include "parser/analyze.h"
-#include "parser/parse_collate.h"
-#include "parser/parsetree.h"
-#include "parser/parser.h"
 #include "parser/parse_clause.h"
+#include "parser/parse_collate.h"
 #include "parser/parse_cte.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_merge.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
+#include "parser/parsetree.h"
 #include "optimizer/prep.h"
 #include "optimizer/optimizer.h"
 #include "access/heapam.h"
@@ -76,16 +73,54 @@ static TM_Result heapTupleSatisfiesUpdate4Merge(HeapTuple htup, CommandId curcid
 							Buffer buffer);
 
 /*
+ * ExecProcessReturning --- evaluate a RETURNING list
+ *
+ * resultRelInfo: current result rel
+ * tupleSlot: slot holding tuple actually inserted/updated/deleted
+ * planSlot: slot holding tuple returned by top subplan node
+ *
+ * Note: If tupleSlot is NULL, the FDW should have already provided econtext's
+ * scan tuple.
+ *
+ * Returns a slot holding the result tuple
+ */
+static TupleTableSlot *
+IvyExecProcessReturning(ResultRelInfo *resultRelInfo,
+					 TupleTableSlot *tupleSlot,
+					 TupleTableSlot *planSlot)
+{
+	ProjectionInfo *projectReturning = resultRelInfo->ri_projectReturning;
+	ExprContext *econtext = projectReturning->pi_exprContext;
+
+	/* Make tuple and any needed join variables available to ExecProject */
+	if (tupleSlot)
+		econtext->ecxt_scantuple = tupleSlot;
+	econtext->ecxt_outertuple = planSlot;
+
+	/*
+	 * RETURNING expressions might reference the tableoid column, so
+	 * reinitialize tts_tableOid before evaluating them.
+	 */
+	econtext->ecxt_scantuple->tts_tableOid =
+		RelationGetRelid(resultRelInfo->ri_RelationDesc);
+
+	/* Compute the RETURNING expressions */
+	return ExecProject(projectReturning);
+}
+
+/*
  * IvyExecMergeMatched:
  *
  * execute oracle Merge UPDATE/UPDATE
  */
-bool
+TupleTableSlot *
 IvyExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-				  ItemPointer tupleid, bool canSetTag)
+				 ItemPointer tupleid, HeapTuple oldtuple, bool canSetTag,
+				 bool *matched)
 {
 	ModifyTableState *mtstate = context->mtstate;
-	TupleTableSlot *newslot;
+	TupleTableSlot *newslot = NULL;
+	TupleTableSlot *rslot = NULL;
 	EState 	*estate = context->estate;
 	ExprContext *econtext = mtstate->ps.ps_ExprContext;
 	bool		 isNull;
@@ -96,7 +131,10 @@ IvyExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	 * If there are no WHEN MATCHED actions, we are done.
 	 */
 	if (resultRelInfo->ri_matchedMergeAction == NIL)
-		return true;
+	{
+		*matched = true;
+		return NULL;
+	}
 
 	/*
 	 * Make tuple and any needed join variables available to ExecQual and
@@ -108,22 +146,34 @@ IvyExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	econtext->ecxt_innertuple = context->planSlot;
 	econtext->ecxt_outertuple = NULL;
 
+	/*
+	 * This routine is only invoked for matched rows, so we should either have
+	 * the tupleid of the target row, or an old tuple from the target wholerow
+	 * junk attr.
+	 */
+	Assert(tupleid != NULL || oldtuple != NULL);
+	if (oldtuple != NULL)
+		ExecForceStoreHeapTuple(oldtuple, resultRelInfo->ri_oldTupleSlot,
+								false);
+
 lmerge_matched:;
 
 	/*
-	 * This routine is only invoked for matched rows, and we must have found
-	 * the tupleid of the target row in that case; fetch that tuple.
+	 * If passed a tupleid, use it to fetch the old target row.
 	 *
 	 * We use SnapshotAny for this because we might get called again after
 	 * EvalPlanQual returns us a new tuple, which may not be visible to our
 	 * MVCC snapshot.
 	 */
 
-	if (!table_tuple_fetch_row_version(resultRelInfo->ri_RelationDesc,
-										tupleid,
-										SnapshotAny,
-										resultRelInfo->ri_oldTupleSlot))
-		elog(ERROR, "failed to fetch the target tuple");
+	if (tupleid != NULL)
+	{
+		if (!table_tuple_fetch_row_version(resultRelInfo->ri_RelationDesc,
+										   tupleid,
+										   SnapshotAny,
+										   resultRelInfo->ri_oldTupleSlot))
+			elog(ERROR, "failed to fetch the target tuple");
+	}
 
 	foreach(l, resultRelInfo->ri_matchedMergeAction)
 	{
@@ -147,13 +197,14 @@ lmerge_matched:;
 		 * UPDATE/DELETE RLS policies. If those checks fail, we throw an
 		 * error.
 		 *
-		 * The WITH CHECK quals are applied in ExecUpdate() and hence we need
-		 * not do anything special to handle them.
+		 * The WITH CHECK quals for UPDATE RLS policies are applied in
+		 * ExecUpdateAct() and hence we need not do anything special to handle
+		 * them.
 		 *
 		 * NOTE: We must do this after WHEN quals are evaluated, so that we
 		 * check policies only when they matter.
 		 */
-		if (resultRelInfo->ri_WithCheckOptions)
+		if (resultRelInfo->ri_WithCheckOptions && commandType != CMD_NOTHING)
 		{
 			ExecWithCheckOptions(commandType == CMD_UPDATE ?
 						  WCO_RLS_MERGE_UPDATE_CHECK : WCO_RLS_MERGE_DELETE_CHECK,
@@ -177,7 +228,7 @@ lmerge_matched:;
 				 */
 				newslot = ExecProject(relaction->mas_proj);
 
-				context->relaction = relaction;
+				mtstate->mt_merge_action = relaction;
 				context->cpUpdateRetrySlot = NULL;
 
 				/* Fire row-level before update trigger */
@@ -253,8 +304,29 @@ lmerge_matched:;
 			case TM_SelfModified:
 
 				/*
-				 * The SQL standard disallows this for MERGE.
+				 * The target tuple was already updated or deleted by the
+				 * current command, or by a later command in the current
+				 * transaction.  The former case is explicitly disallowed by
+				 * the SQL standard for MERGE, which insists that the MERGE
+				 * join condition should not join a target row to more than
+				 * one source row.
+				 *
+				 * The latter case arises if the tuple is modified by a
+				 * command in a BEFORE trigger, or perhaps by a command in a
+				 * volatile function used in the query.  In such situations we
+				 * should not ignore the MERGE action, but it is equally
+				 * unsafe to proceed.  We don't want to discard the original
+				 * MERGE action while keeping the triggered actions based on
+				 * it; and it would be no better to allow the original MERGE
+				 * action while discarding the updates that it triggered.  So
+				 * throwing an error is the only safe course.
 				 */
+				if (context->tmfd.cmax != estate->es_output_cid)
+					ereport(ERROR,
+							(errcode(ERRCODE_TRIGGERED_DATA_CHANGE_VIOLATION),
+							 errmsg("tuple to be updated or deleted was already modified by an operation triggered by the current command"),
+							 errhint("Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.")));
+
 				if (TransactionIdIsCurrentTransactionId(context->tmfd.xmax))
 					ereport(ERROR,
 							(errcode(ERRCODE_CARDINALITY_VIOLATION),
@@ -262,6 +334,7 @@ lmerge_matched:;
 							 errmsg("%s command cannot affect row a second time",
 									 "MERGE"),
 							 errhint("Ensure that not more than one source row matches any one target row.")));
+
 				/* This shouldn't happen */
 				elog(ERROR, "attempted to update or delete invisible tuple");
 				break;
@@ -276,7 +349,8 @@ lmerge_matched:;
 				 * If the tuple was already deleted, return to let caller
 				 * handle it under NOT MATCHED clauses.
 				 */
-				return false;
+				*matched = false;
+				return NULL;
 
 			case TM_Updated:
 				{
@@ -287,35 +361,13 @@ lmerge_matched:;
 
 					/*
 					 * The target tuple was concurrently updated by some other
-					 * transaction.
-					 */
-
-					/*
-					 * If cpUpdateRetrySlot is set, ExecCrossPartitionUpdate()
-					 * must have detected that the tuple was concurrently
-					 * updated, so we restart the search for an appropriate
-					 * WHEN MATCHED clause to process the updated tuple.
-					 *
-					 * In this case, ExecDelete() would already have performed
-					 * EvalPlanQual() on the latest version of the tuple,
-					 * which in turn would already have been loaded into
-					 * ri_oldTupleSlot, so no need to do either of those
-					 * things.
-					 *
-					 * XXX why do we not check the WHEN NOT MATCHED list in
-					 * this case?
-					 */
-					if (!TupIsNull(context->cpUpdateRetrySlot))
-						goto lmerge_matched;
-
-					/*
-					 * Otherwise, we run the EvalPlanQual() with the new
-					 * version of the tuple. If EvalPlanQual() does not return
-					 * a tuple, then we switch to the NOT MATCHED list of
-					 * actions. If it does return a tuple and the join qual is
-					 * still satisfied, then we just need to recheck the
-					 * MATCHED actions, starting from the top, and execute the
-					 * first qualifying action.
+					 * transaction. Run EvalPlanQual() with the new version of
+					 * the tuple. If it does not return a tuple, then we
+					 * switch to the NOT MATCHED list of actions. If it does
+					 * return a tuple and the join qual is still satisfied,
+					 * then we just need to recheck the MATCHED actions,
+					 * starting from the top, and execute the first qualifying
+					 * action.
 					 */
 					resultRelationDesc = resultRelInfo->ri_RelationDesc;
 					lockmode = ExecUpdateLockMode(estate, resultRelInfo);
@@ -344,13 +396,19 @@ lmerge_matched:;
 							 * NOT MATCHED actions.
 							 */
 							if (TupIsNull(epqslot))
-								return false;
+							{
+								*matched = false;
+								return NULL;
+							}
 
 							(void) ExecGetJunkAttribute(epqslot,
 														resultRelInfo->ri_RowIdAttNo,
 														&isNull);
 							if (isNull)
-								return false;
+							{
+								*matched = false;
+								return NULL;
+							}
 
 							/*
 							 * When a tuple was updated and migrated to
@@ -385,33 +443,42 @@ lmerge_matched:;
 							 * tuple already deleted; tell caller to run NOT
 							 * MATCHED actions
 							 */
-							return false;
+							*matched = false;
+							return NULL;
 
 						case TM_SelfModified:
 
 							/*
 							 * This can be reached when following an update
 							 * chain from a tuple updated by another session,
-							 * reaching a tuple that was already updated in
-							 * this transaction. If previously modified by
-							 * this command, ignore the redundant update,
-							 * otherwise error out.
-							 *
-							 * See also response to TM_SelfModified in
-							 * ExecUpdate().
+							 * reaching a tuple that was already updated or
+							 * deleted by the current command, or by a later
+							 * command in the current transaction. As above,
+							 * this should always be treated as an error.
 							 */
 							if (context->tmfd.cmax != estate->es_output_cid)
 								ereport(ERROR,
 										(errcode(ERRCODE_TRIGGERED_DATA_CHANGE_VIOLATION),
 										 errmsg("tuple to be updated or deleted was already modified by an operation triggered by the current command"),
 										 errhint("Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.")));
-							return false;
+
+							if (TransactionIdIsCurrentTransactionId(context->tmfd.xmax))
+								ereport(ERROR,
+										(errcode(ERRCODE_CARDINALITY_VIOLATION),
+								/* translator: %s is a SQL command name */
+										 errmsg("%s command cannot affect row a second time",
+												"MERGE"),
+										 errhint("Ensure that not more than one source row matches any one target row.")));
+
+							/* This shouldn't happen */
+							elog(ERROR, "attempted to update or delete invisible tuple");
+							return NULL;
 
 						default:
 							/* see table_tuple_lock call in ExecDelete() */
 							elog(ERROR, "unexpected table_tuple_lock status: %u",
 								 result);
-							return false;
+							return NULL;
 					}
 				}
 
@@ -421,6 +488,31 @@ lmerge_matched:;
 				/* these should not occur */
 				elog(ERROR, "unexpected tuple operation result: %d", result);
 				break;
+		}
+
+		/* Process RETURNING if present */
+		if (resultRelInfo->ri_projectReturning)
+		{
+			switch (commandType)
+			{
+				case CMD_UPDATE:
+					rslot = IvyExecProcessReturning(resultRelInfo, newslot,
+												 context->planSlot);
+					break;
+
+				case CMD_DELETE:
+					rslot = IvyExecProcessReturning(resultRelInfo,
+												 resultRelInfo->ri_oldTupleSlot,
+												 context->planSlot);
+					break;
+
+				case CMD_NOTHING:
+					break;
+
+				default:
+					elog(ERROR, "unrecognized commandType: %d",
+						 (int) commandType);
+			}
 		}
 
 		/*
@@ -433,8 +525,11 @@ lmerge_matched:;
 	/*
 	 * Successfully executed an action or no qualifying action was found.
 	 */
-	return true;
+	*matched = true;
+
+	return rslot;
 }
+
 
 /*
  * IvytransformMergeStmt
@@ -484,7 +579,11 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 		MergeWhenClause *delstmt = NULL;
 
 		/*
-		 * Collect action types so we can check target permissions
+		 * Collect permissions to check, according to action types. We require
+		 * SELECT privileges for DO NOTHING because it'd be irregular to have
+		 * a target relation with zero privileges checked, in case DO NOTHING
+		 * is the only action.  There's no damage from that: any meaningful
+		 * MERGE command requires at least some access to the table anyway.
 		 */
 		switch (mergeWhenClause->commandType)
 		{
@@ -511,6 +610,7 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 				targetPerms |= ACL_DELETE;
 				break;
 			case CMD_NOTHING:
+				targetPerms |= ACL_SELECT;
 				break;
 			default:
 				elog(ERROR, "unknown action in MERGE WHEN clause");
@@ -519,12 +619,12 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 		/*
 		 * Check for unreachable WHEN clauses
 		 */
-		if (mergeWhenClause->condition == NULL && delete_clause == -1)
-			is_terminal[when_type] = true;
-		else if (is_terminal[when_type])
+		if (is_terminal[when_type])
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("unreachable WHEN clause specified after unconditional WHEN clause")));
+		if (mergeWhenClause->condition == NULL && delete_clause == -1)
+			is_terminal[when_type] = true;
 	}
 
 	/*
@@ -597,6 +697,10 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 	 * will be constructed fully by transform_MERGE_to_join.
 	 */
 	qry->jointree = makeFromExpr(pstate->p_joinlist, joinExpr);
+
+	/* Transform the RETURNING list, if any */
+	qry->returningList = transformReturningList(pstate, stmt->returningList,
+												EXPR_KIND_MERGE_RETURNING);
 
 	/*
 	 * We now have a good query shape, so now look at the WHEN conditions and
@@ -770,9 +874,6 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 	}
 
 	qry->mergeActionList = mergeActionList;
-
-	/* RETURNING could potentially be added in the future, but not in SQL std */
-	qry->returningList = NULL;
 
 	qry->hasTargetSRFs = false;
 	qry->hasSubLinks = pstate->p_hasSubLinks;

@@ -22,8 +22,12 @@
 
 /* Hooks */
 extern bool pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_arg1, Oid *result_arg2);
-extern bool IvyExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-									ItemPointer tupleid, bool canSetTag);
+extern TupleTableSlot *IvyExecMergeMatched(ModifyTableContext *context,
+										ResultRelInfo *resultRelInfo,
+										ItemPointer tupleid,
+										HeapTuple oldtuple,
+										bool canSetTag,
+										bool *matched);
 extern Query* IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt);
 
 
