@@ -1046,6 +1046,15 @@ SELECT * FROM
    FROM empsalary) emp
 WHERE depname = 'sales';
 
+-- Ensure we remove references to reduced outer joins as nulling rels in run
+-- conditions
+EXPLAIN (COSTS OFF)
+SELECT 1 FROM
+  (SELECT ntile(e2.salary) OVER (PARTITION BY e1.depname) AS c
+   FROM empsalary e1 LEFT JOIN empsalary e2 ON TRUE
+   WHERE e1.empno = e2.empno) s
+WHERE s.c = 1;
+
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)
 SELECT * FROM
