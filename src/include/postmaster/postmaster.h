@@ -56,6 +56,8 @@ extern PGDLLIMPORT int postmaster_alive_fds[2];
 
 extern PGDLLIMPORT const char *progname;
 
+extern bool LoadedSSL;
+
 extern void PostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
 extern void ClosePostmasterPorts(bool am_syslogger);
 extern void InitProcessGlobals(void);
@@ -64,7 +66,7 @@ extern int	MaxLivePostmasterChildren(void);
 
 extern bool PostmasterMarkPIDForWorkerNotify(int);
 
-extern void BackendMain(char *startup_data, size_t startup_data_len) pg_attribute_noreturn();
+extern void processCancelRequest(int backendPID, int32 cancelAuthCode);
 
 #ifdef EXEC_BACKEND
 extern Size ShmemBackendArraySize(void);
