@@ -2550,7 +2550,8 @@ usage(const char *progname)
 			 "                            set default locale in the respective category for\n"
 			 "                            new databases (default taken from environment)\n"));
 	printf(_("      --no-locale           equivalent to --locale=C\n"));
-	printf(_("      --builtin-locale=LOCALE   set builtin locale name for new databases\n"));
+	printf(_("      --builtin-locale=LOCALE\n"
+			 "                            set builtin locale name for new databases\n"));
 	printf(_("      --locale-provider={builtin|libc|icu}\n"
 			 "                            set default locale provider for new databases\n"));
 	printf(_("      --pwfile=FILE         read password for the new superuser from file\n"));
@@ -2715,9 +2716,9 @@ setup_locale_encoding(void)
 	else
 	{
 		printf(_("The database cluster will be initialized with this locale configuration:\n"));
-		printf(_("  default collation provider:  %s\n"), collprovider_name(locale_provider));
+		printf(_("  locale provider:   %s\n"), collprovider_name(locale_provider));
 		if (locale_provider != COLLPROVIDER_LIBC)
-			printf(_("  default collation locale:    %s\n"), datlocale);
+			printf(_("  default collation: %s\n"), datlocale);
 		printf(_("  LC_COLLATE:  %s\n"
 				 "  LC_CTYPE:    %s\n"
 				 "  LC_MESSAGES: %s\n"
