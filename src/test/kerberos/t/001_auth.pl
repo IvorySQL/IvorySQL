@@ -113,7 +113,7 @@ append_to_file(
 	'*:*:*:*:abc123'
 );
 
-chmod 0600, $pgpass;
+chmod 0600, $pgpass or die $!;
 
 # Build the krb5.conf to use.
 #

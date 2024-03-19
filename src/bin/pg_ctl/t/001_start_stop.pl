@@ -24,8 +24,8 @@ command_ok([ $ENV{PG_REGRESS}, '--config-auth', "$tempdir/data" ],
 	'configure authentication');
 my $node_port = PostgreSQL::Test::Cluster::get_free_port();
 my $ivr_node_port = PostgreSQL::Test::Cluster::get_free_port();
-open my $conf, '>>', "$tempdir/data/postgresql.conf";
-open my $ivrconf, '>>', "$tempdir/data/ivorysql.conf";
+open my $conf, '>>', "$tempdir/data/postgresql.conf" or die $!;
+open my $ivrconf, '>>', "$tempdir/data/ivorysql.conf" or die $!;
 print $conf "fsync = off\n";
 print $conf "port = $node_port\n";
 print $ivrconf "\nivorysql.port = $ivr_node_port\n";
