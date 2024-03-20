@@ -19,6 +19,7 @@
 #endif
 
 #include "port/atomics.h"
+#include "storage/lwlocknames.h"
 #include "storage/proclist_types.h"
 
 struct PGPROC;
@@ -80,9 +81,6 @@ typedef struct NamedLWLockTranche
 
 extern PGDLLIMPORT NamedLWLockTranche *NamedLWLockTrancheArray;
 extern PGDLLIMPORT int NamedLWLockTrancheRequests;
-
-/* Names for fixed lwlocks */
-#include "storage/lwlocknames.h"
 
 /*
  * It's a bit odd to declare NUM_BUFFER_PARTITIONS and NUM_LOCK_PARTITIONS
