@@ -1381,6 +1381,18 @@ select * from mki4(42);
 drop function mki8(bigint, bigint);
 drop function mki4(int);
 
+-- test const-folding of a whole-row Var into a per-field Var
+-- (need to inline a function to reach this case, else parser does it)
+create function f_field_select(t onek) returns int4 as
+$$ select t.unique2; $$ language sql immutable;
+
+explain (verbose, costs off)
+select (t2.*).unique1, f_field_select(t2) from tenk1 t1
+    left join onek t2 on t1.unique1 = t2.unique1
+    left join int8_tbl t3 on true;
+
+drop function f_field_select(t onek);
+
 --
 -- test extraction of restriction OR clauses from join OR clause
 -- (we used to only do this for indexable clauses)
@@ -2509,6 +2521,18 @@ select * from
     lateral (select q1, coalesce(ss1.x,q2) as y from int8_tbl d) ss2
   ) on c.q2 = ss2.q1,
   lateral (select ss2.y offset 0) ss3;
+
+-- another case requiring nested PlaceHolderVars
+explain (verbose, costs off)
+select * from
+  (select 0 as val0) as ss0
+  left join (select 1 as val) as ss1 on true
+  left join lateral (select ss1.val as val_filtered where false) as ss2 on true;
+
+select * from
+  (select 0 as val0) as ss0
+  left join (select 1 as val) as ss1 on true
+  left join lateral (select ss1.val as val_filtered where false) as ss2 on true;
 
 -- case that breaks the old ph_may_need optimization
 explain (verbose, costs off)

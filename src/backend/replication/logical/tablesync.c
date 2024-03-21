@@ -540,15 +540,25 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 					/* Now safe to release the LWLock */
 					LWLockRelease(LogicalRepWorkerLock);
 
+					if (started_tx)
+					{
+						/*
+						 * We must commit the existing transaction to release
+						 * the existing locks before entering a busy loop.
+						 * This is required to avoid any undetected deadlocks
+						 * due to any existing lock as deadlock detector won't
+						 * be able to detect the waits on the latch.
+						 */
+						CommitTransactionCommand();
+						pgstat_report_stat(false);
+					}
+
 					/*
 					 * Enter busy loop and wait for synchronization worker to
 					 * reach expected state (or die trying).
 					 */
-					if (!started_tx)
-					{
-						StartTransactionCommand();
-						started_tx = true;
-					}
+					StartTransactionCommand();
+					started_tx = true;
 
 					wait_for_relation_state_change(rstate->relid,
 												   SUBREL_STATE_SYNCDONE);
@@ -1111,22 +1121,30 @@ copy_table(Relation rel)
 	/* Regular table with no row filter */
 	if (lrel.relkind == RELKIND_RELATION && qual == NIL)
 	{
-		appendStringInfo(&cmd, "COPY %s (",
+		appendStringInfo(&cmd, "COPY %s",
 						 quote_qualified_identifier(lrel.nspname, lrel.relname));
 
-		/*
-		 * XXX Do we need to list the columns in all cases? Maybe we're
-		 * replicating all columns?
-		 */
-		for (int i = 0; i < lrel.natts; i++)
+		/* If the table has columns, then specify the columns */
+		if (lrel.natts)
 		{
-			if (i > 0)
-				appendStringInfoString(&cmd, ", ");
+			appendStringInfoString(&cmd, " (");
 
-			appendStringInfoString(&cmd, quote_identifier(lrel.attnames[i]));
+			/*
+			 * XXX Do we need to list the columns in all cases? Maybe we're
+			 * replicating all columns?
+			 */
+			for (int i = 0; i < lrel.natts; i++)
+			{
+				if (i > 0)
+					appendStringInfoString(&cmd, ", ");
+
+				appendStringInfoString(&cmd, quote_identifier(lrel.attnames[i]));
+			}
+
+			appendStringInfoString(&cmd, ")");
 		}
 
-		appendStringInfoString(&cmd, ") TO STDOUT");
+		appendStringInfoString(&cmd, " TO STDOUT");
 	}
 	else
 	{

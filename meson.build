@@ -8,7 +8,7 @@
 
 project('postgresql',
   ['c'],
-  version: '16.1',
+  version: '16.2',
   license: 'PostgreSQL',
 
   # We want < 0.56 for python 3.5 compatibility on old platforms. EPEL for
@@ -159,12 +159,6 @@ cdata.set_quoted('CONFIGURE_ARGS', '')
 # Basic platform specific configuration
 ###############################################################
 
-# meson's system names don't quite map to our "traditional" names. In some
-# places we need the "traditional" name, e.g., for mapping
-# src/include/port/$os.h to src/include/pg_config_os.h. Define portname for
-# that purpose.
-portname = host_system
-
 exesuffix = '' # overridden below where necessary
 dlsuffix = '.so' # overridden below where necessary
 library_path_var = 'LD_LIBRARY_PATH'
@@ -191,6 +185,12 @@ if host_system == 'dragonfly'
   # apparently the most similar
   host_system = 'netbsd'
 endif
+
+# meson's system names don't quite map to our "traditional" names. In some
+# places we need the "traditional" name, e.g., for mapping
+# src/include/port/$os.h to src/include/pg_config_os.h. Define portname for
+# that purpose.
+portname = host_system
 
 if host_system == 'aix'
   library_path_var = 'LIBPATH'
@@ -1058,7 +1058,7 @@ pyopt = get_option('plpython')
 python3_dep = not_found_dep
 if not pyopt.disabled()
   pm = import('python')
-  python3_inst = pm.find_installation(required: pyopt)
+  python3_inst = pm.find_installation(python.path(), required: pyopt)
   if python3_inst.found()
     python3_dep = python3_inst.dependency(embed: true, required: pyopt)
     # Remove this check after we depend on Meson >= 1.1.0
@@ -1134,7 +1134,7 @@ if not get_option('readline').disabled()
 
     if not at_least_one_header_found
       error('''readline header not found
-If you have @0@ already installed, see meson-log/meson-log.txt for details on the
+If you have @0@ already installed, see meson-logs/meson-log.txt for details on the
 failure. It is possible the compiler isn't looking in the proper directory.
 Use -Dreadline=disabled to disable readline support.'''.format(readline_dep))
     endif
@@ -1281,7 +1281,6 @@ if sslopt in ['auto', 'openssl']
       # doesn't have these OpenSSL 1.1.0 functions. So check for individual
       # functions.
       ['OPENSSL_init_ssl'],
-      ['BIO_get_data'],
       ['BIO_meth_new'],
       ['ASN1_STRING_get0_data'],
       ['HMAC_CTX_new'],
@@ -2930,8 +2929,12 @@ potentially_conflicting_files = []
 foreach t : potentially_conflicting_files_t
   potentially_conflicting_files += t.full_path()
 endforeach
-foreach t : configure_files
-  t = '@0@'.format(t)
+foreach t1 : configure_files
+  if meson.version().version_compare('>=0.59')
+    t = fs.parent(t1) / fs.name(t1)
+  else
+    t = '@0@'.format(t1)
+  endif
   potentially_conflicting_files += meson.current_build_dir() / t
 endforeach
 foreach sub, fnames : generated_sources_ac

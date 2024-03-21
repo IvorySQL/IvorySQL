@@ -2966,8 +2966,16 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			/* Add days by converting to and from Julian */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+			/*
+			 * Add days by converting to and from Julian.  We need an overflow
+			 * check here since j2date expects a non-negative integer input.
+			 */
+			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
+			if (pg_add_s32_overflow(julian, span->day, &julian) ||
+				julian < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timestamp out of range")));
 			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
@@ -3080,8 +3088,19 @@ timestamptz_pl_interval_internal(TimestampTz timestamp,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			/* Add days by converting to and from Julian */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+			/*
+			 * Add days by converting to and from Julian.  We need an overflow
+			 * check here since j2date expects a non-negative integer input.
+			 * In practice though, it will give correct answers for small
+			 * negative Julian dates; we should allow -1 to avoid
+			 * timezone-dependent failures, as discussed in timestamp.h.
+			 */
+			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
+			if (pg_add_s32_overflow(julian, span->day, &julian) ||
+				julian < -1)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timestamp out of range")));
 			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
 			tz = DetermineTimeZoneOffset(tm, attimezone);
@@ -3315,19 +3334,13 @@ interval_mul(PG_FUNCTION_ARGS)
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result_double = span->month * factor;
-	if (isnan(result_double) ||
-		result_double > INT_MAX || result_double < INT_MIN)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
 	result->month = (int32) result_double;
 
 	result_double = span->day * factor;
-	if (isnan(result_double) ||
-		result_double > INT_MAX || result_double < INT_MIN)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
 	result->day = (int32) result_double;
 
 	/*
@@ -3361,20 +3374,30 @@ interval_mul(PG_FUNCTION_ARGS)
 	 */
 	if (fabs(sec_remainder) >= SECS_PER_DAY)
 	{
-		result->day += (int) (sec_remainder / SECS_PER_DAY);
+		if (pg_add_s32_overflow(result->day,
+								(int) (sec_remainder / SECS_PER_DAY),
+								&result->day))
+			goto out_of_range;
 		sec_remainder -= (int) (sec_remainder / SECS_PER_DAY) * SECS_PER_DAY;
 	}
 
 	/* cascade units down */
-	result->day += (int32) month_remainder_days;
+	if (pg_add_s32_overflow(result->day, (int32) month_remainder_days,
+							&result->day))
+		goto out_of_range;
 	result_double = rint(span->time * factor + sec_remainder * USECS_PER_SEC);
 	if (isnan(result_double) || !FLOAT8_FITS_IN_INT64(result_double))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+		goto out_of_range;
 	result->time = (int64) result_double;
 
 	PG_RETURN_INTERVAL_P(result);
+
+out_of_range:
+	ereport(ERROR,
+			errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			errmsg("interval out of range"));
+
+	PG_RETURN_NULL();			/* keep compiler quiet */
 }
 
 Datum
@@ -3393,7 +3416,8 @@ interval_div(PG_FUNCTION_ARGS)
 	Interval   *span = PG_GETARG_INTERVAL_P(0);
 	float8		factor = PG_GETARG_FLOAT8(1);
 	double		month_remainder_days,
-				sec_remainder;
+				sec_remainder,
+				result_double;
 	int32		orig_month = span->month,
 				orig_day = span->day;
 	Interval   *result;
@@ -3405,8 +3429,15 @@ interval_div(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
 
-	result->month = (int32) (span->month / factor);
-	result->day = (int32) (span->day / factor);
+	result_double = span->month / factor;
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
+	result->month = (int32) result_double;
+
+	result_double = span->day / factor;
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
+	result->day = (int32) result_double;
 
 	/*
 	 * Fractional months full days into days.  See comment in interval_mul().
@@ -3418,15 +3449,30 @@ interval_div(PG_FUNCTION_ARGS)
 	sec_remainder = TSROUND(sec_remainder);
 	if (fabs(sec_remainder) >= SECS_PER_DAY)
 	{
-		result->day += (int) (sec_remainder / SECS_PER_DAY);
+		if (pg_add_s32_overflow(result->day,
+								(int) (sec_remainder / SECS_PER_DAY),
+								&result->day))
+			goto out_of_range;
 		sec_remainder -= (int) (sec_remainder / SECS_PER_DAY) * SECS_PER_DAY;
 	}
 
 	/* cascade units down */
-	result->day += (int32) month_remainder_days;
-	result->time = rint(span->time / factor + sec_remainder * USECS_PER_SEC);
+	if (pg_add_s32_overflow(result->day, (int32) month_remainder_days,
+							&result->day))
+		goto out_of_range;
+	result_double = rint(span->time / factor + sec_remainder * USECS_PER_SEC);
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT64(result_double))
+		goto out_of_range;
+	result->time = (int64) result_double;
 
 	PG_RETURN_INTERVAL_P(result);
+
+out_of_range:
+	ereport(ERROR,
+			errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			errmsg("interval out of range"));
+
+	PG_RETURN_NULL();			/* keep compiler quiet */
 }
 
 
