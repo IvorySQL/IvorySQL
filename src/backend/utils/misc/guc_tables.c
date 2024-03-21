@@ -772,11 +772,13 @@ const char *const config_group_names[] =
 	gettext_noop("Customized Options"),
 	/* DEVELOPER_OPTIONS */
 	gettext_noop("Developer Options"),
+	/* COMPAT_ORACLE_OPTIONS */
+	gettext_noop("Compat Oracle Options"),
 	/* help_config wants this array to be null-terminated */
 	NULL
 };
 
-StaticAssertDecl(lengthof(config_group_names) == (DEVELOPER_OPTIONS + 2),
+StaticAssertDecl(lengthof(config_group_names) == (CONFIG_GROUP_NULL_TERMINATED + 1),
 				 "array length mismatch");
 
 /*
