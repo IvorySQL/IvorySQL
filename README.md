@@ -22,88 +22,16 @@ The IvorySQL project is released under the Apache 2 license and encourages all t
 We are committed to abiding by the principles of [open-source ways](https://opensource.com/open-source-way) and we strongly believe in building a healthy and inclusive community. We maintain that good ideas can come from anywhere, and the best ideas should win. Only by including diverse perspectives, we can reach the best decision. While the first version of IvorySQL is mainly focused on Oracle Compatibility features, going forward the future road map and feature set will be determined by the community in an open-source way.
 </br>
 
-## Compiling from source
-IvorySQL can be built on Linux, OSX, Unix and Windows platforms. This section describes the step to compile the source on the Linux based systems.
+## Installation
+We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v3.1/v3.1/3#quick-installation) for how to install and running IvorySQL.
 
-### Getting the source
-Clone the repository with either of the following command:
-
-```bash
-git clone https://github.com/IvorySQL/IvorySQL.git
-git clone git@github.com:IvorySQL/IvorySQL.git
-```
+Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v3.1/v3.1/6#introduction). We provide four installation methods for IvorySQL, as outlined below:
+- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v3.1/v3.1/6#Yum-installation)
+- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v3.1/v3.1/6#Docker-installation)
+- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v3.1/v3.1/6#Rpm-installation)
+- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v3.1/v3.1/6#Source-code-installation)
 
 
-### Requirements
-
-To compile the IvorySQL from the source code, you have to ensure that prerequisite packages are available on the system.
-
-* **Required Packages** The following software packages are required for
-  building IvorySQL:
-
-  * **make** - GNU make version 3.80 or newer
-  * **gcc** - ISO/ANSI C compiler (at least C99-compliant). Recent versions of
-    GCC are recommended.
-  * **libreadline** - The GNU Readline library is used by default. 
-  * **zlib** - zlib compression library is used by default.
-  * **Flex** - (Flex 2.5.31 or later)
-  * **Bison** - (Bison 1.875 or later)
-
-* **Optional Packages** The following packages are optional. They are not
-  required in the default configuration, but they are needed when certain build
-  options are enabled.
-
-  * **libperl** - (Perl 5.8.3 or later) To build the server programming language
-    PL/Perl. Perl library installation with the header files. libperl library
-    must be a shared library
-  * **libpython** - (Python 2.6 or later, Python 3.1 or later) To build the
-    PL/Python server programming language. Python installation with the header
-    files and the distutils module. libpython library must be a shared library.
-  * **Tcl** - (Tcl 8.4 or later) To build the PL/Tcl procedural language.
-  * **Gettext API** - (Tcl 8.4 or later) To enable Native Language Support
-    (NLS), to display a program's messages in a language other than English.
-  * **OpenSSL** - (1.0.1 or later) To support encrypted client connections.
-  * **LZ4** - To support compression of data.
-
-
-
-### Preparing System
-Following are the minimal packages needed to build from source:
-
-```bash
-sudo yum install -y bison-devel readline-devel zlib-devel openssl-devel wget
-sudo yum groupinstall -y 'Development Tools'
-```
-### Installation Procedure
-
-* **Configuration** The first step of the installation procedure is to configure
-  the source tree for your system and choose the options you would like. This is
-  done by running the configure script. For a default installation simply enter:
-  ```bash
-  ./configure
-  ```
-  The default configuration will build the server and utilities, as well as all
-  client applications and interfaces that require only a C compiler. All files
-  will be installed under /usr/local/pgsql by default. You can customize the
-  build and installation process by supplying one or more command line options
-  to configure see the details
-  [here](https://www.postgresql.org/docs/current/install-procedure.html#CONFIGURE-OPTIONS)
-
-* **Build** To start the build, type either of:
-  ```
-  make
-  make all
-  ```
-* **Regression Tests** To test the newly built server before you install it, you
-  can run the regression tests at this point. type either of:
-  ```
-  make check
-  make check-world
-  ```
-* **Installation** To install, enter:
-  ```
-  make install
-  ```
 
 ## Contributing to the IvorySQL
 There are plenty of ways to contribute to IvorySQL. You can contribute by providing the documentation updates, by providing the
