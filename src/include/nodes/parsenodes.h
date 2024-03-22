@@ -1030,6 +1030,16 @@ typedef struct RangeTblEntry
 
 	NodeTag		type;
 
+	/*
+	 * Fields valid in all RTEs:
+	 *
+	 * put alias + eref first to make dump more legible
+	 */
+	/* user-written alias clause, if any */
+	Alias	   *alias pg_node_attr(query_jumble_ignore);
+	/* expanded reference names */
+	Alias	   *eref pg_node_attr(query_jumble_ignore);
+
 	RTEKind		rtekind;		/* see above */
 
 	/*
@@ -1221,10 +1231,6 @@ typedef struct RangeTblEntry
 	/*
 	 * Fields valid in all RTEs:
 	 */
-	/* user-written alias clause, if any */
-	Alias	   *alias pg_node_attr(query_jumble_ignore);
-	/* expanded reference names */
-	Alias	   *eref pg_node_attr(query_jumble_ignore);
 	/* was LATERAL specified? */
 	bool		lateral pg_node_attr(query_jumble_ignore);
 	/* present in FROM clause? */
