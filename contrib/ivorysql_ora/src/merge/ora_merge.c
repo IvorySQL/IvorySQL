@@ -239,13 +239,16 @@ lmerge_matched:;
 					break;
 				}
 
-				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
-										 newslot, mtstate->canSetTag, &updateCxt);
+				result = ExecUpdateAct(context, resultRelInfo, tupleid, 
+									NULL, newslot, mtstate->canSetTag,
+									TABLE_MODIFY_WAIT, NULL,
+									&updateCxt);
 				if (result == TM_Ok)
 				{
 					/* Fire row-level after update trigger */
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
-										 tupleid, NULL, newslot);
+									   tupleid, NULL, newslot,
+									   resultRelInfo->ri_oldTupleSlot);
 					mtstate->mt_merge_updated += 1;
 
 					if (canSetTag)
@@ -270,7 +273,8 @@ lmerge_matched:;
 							if (result == TM_Ok)
 							{
 								/* Fire row-level after delete trigger */
-								ExecDeleteEpilogue(context, resultRelInfo, &newslot->tts_tid, NULL, false);
+								ExecDeleteEpilogue(context, resultRelInfo, &newslot->tts_tid, NULL, 
+												resultRelInfo->ri_oldTupleSlot, false);
 								mtstate->mt_merge_deleted += 1;
 							}
 						}

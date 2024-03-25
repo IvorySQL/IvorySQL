@@ -88,15 +88,19 @@ extern bool ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resul
 							ItemPointer tupleid, HeapTuple oldtuple,
 							TupleTableSlot **epqreturnslot, TM_Result *result);
 extern TM_Result ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-							ItemPointer tupleid, bool changingPart);
+							  ItemPointer tupleid, bool changingPart, int options,
+							  TupleTableSlot *oldSlot);
 extern void ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-							ItemPointer tupleid, HeapTuple oldtuple, bool changingPart);
+							   ItemPointer tupleid, HeapTuple oldtuple,
+							   TupleTableSlot *slot, bool changingPart);
 extern TM_Result ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-							bool canSetTag, UpdateContext *updateCxt);
+							  bool canSetTag, int options, TupleTableSlot *oldSlot,
+							  UpdateContext *updateCxt);
 extern void ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 							ResultRelInfo *resultRelInfo, ItemPointer tupleid,
-							HeapTuple oldtuple, TupleTableSlot *slot);
+							   HeapTuple oldtuple, TupleTableSlot *slot,
+							   TupleTableSlot *oldslot);
 extern bool ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
 							TM_Result *result);
