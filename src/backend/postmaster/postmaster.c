@@ -2308,22 +2308,22 @@ retry1:
 						if (database_name[0] == '"')
 						{
 							const char *cp;
-							int   len;
+							int   res_len;
 							char  *result;
 							char  *casename;
 
 							/* delete the double quote */
 							casename = identifier_case_transform(database_name, strlen(database_name));
 							result = (char *) palloc(strlen(database_name) + 1);
-							len = 0;
+							res_len = 0;
 							for (cp = casename; *cp != '\0'; cp++)
 							{
 								if (!(*cp == '"'))
 								{
-									result[len++] = *cp;
+									result[res_len++] = *cp;
 								}
 							}
-							result[len] = '\0';
+							result[res_len] = '\0';
 
 							port->database_name = result;
 							pfree(database_name);
@@ -2362,21 +2362,21 @@ retry1:
 						{
 							char  *casename;
 							const char *cp;
-							int	  len;
+							int	  res_len;
 							char  *result;
 
 							/* delete the double quote */
 							casename = identifier_case_transform(user_name, strlen(user_name));
 							result = (char *) palloc(strlen(user_name) + 1);
-							len = 0;
+							res_len = 0;
 							for (cp = casename; *cp != '\0'; cp++)
 							{
 								if (!(*cp == '"'))
 								{
-									result[len++] = *cp;
+									result[res_len++] = *cp;
 								}
 							}
-							result[len] = '\0';
+							result[res_len] = '\0';
 
 							port->user_name = result;
 							pfree(user_name);

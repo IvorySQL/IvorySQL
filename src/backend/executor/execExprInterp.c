@@ -3989,7 +3989,6 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 		case IS_UPDATEXML:
 		{
 			Datum	   *argvalue = op->d.xmlexpr.argvalue;
-			bool	   *argnull = op->d.xmlexpr.argnull;
 			List	   *values = NIL;
 
 			if (list_length(xexpr->args) < 3)
