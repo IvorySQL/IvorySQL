@@ -111,29 +111,25 @@ update-unicode: | submake-generated-headers submake-libpgport
 distdir	= postgresql-$(VERSION)
 dummy	= =install=
 
+GIT = git
+
 dist: $(distdir).tar.gz $(distdir).tar.bz2
-	rm -rf $(distdir)
 
-$(distdir).tar: distdir
-	$(TAR) chf $@ $(distdir)
-
-.INTERMEDIATE: $(distdir).tar
+.PHONY: $(distdir).tar.gz $(distdir).tar.bz2
 
 distdir-location:
 	@echo $(distdir)
 
-distdir:
-	rm -rf $(distdir)* $(dummy)
-	for x in `cd $(top_srcdir) && find . \( -name CVS -prune \) -o \( -name .git -prune \) -o -print`; do \
-	  file=`expr X$$x : 'X\./\(.*\)'`; \
-	  if test -d "$(top_srcdir)/$$file" ; then \
-	    mkdir "$(distdir)/$$file" && chmod 777 "$(distdir)/$$file";	\
-	  else \
-	    ln "$(top_srcdir)/$$file" "$(distdir)/$$file" >/dev/null 2>&1 \
-	      || cp "$(top_srcdir)/$$file" "$(distdir)/$$file"; \
-	  fi || exit; \
-	done
-	$(MAKE) -C $(distdir) distclean
+# Note: core.autocrlf=false is needed to avoid line-ending conversion
+# in case the environment has a different setting.  Without this, a
+# tarball created on Windows might be different than on, and unusable
+# on, Unix machines.
+
+$(distdir).tar.gz:
+	$(GIT) -C $(srcdir) -c core.autocrlf=false archive --format tar.gz -9 --prefix $(distdir)/ HEAD -o $(abs_top_builddir)/$@
+
+$(distdir).tar.bz2:
+	$(GIT) -C $(srcdir) -c core.autocrlf=false -c tar.tar.bz2.command='$(BZIP2) -c' archive --format tar.bz2 --prefix $(distdir)/ HEAD -o $(abs_top_builddir)/$@
 
 distcheck: dist
 	rm -rf $(dummy)
@@ -161,5 +157,5 @@ cpluspluscheck: submake-generated-headers
 
 #.PHONY: dist distdir distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck
 
-.PHONY: dist distdir distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck oracle-pg-check-world oracle-check-world oracle-installcheck-world all-check all-check-world all-installcheck-world
+.PHONY: dist distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck oracle-pg-check-world oracle-check-world oracle-installcheck-world all-check all-check-world all-installcheck-world
 
