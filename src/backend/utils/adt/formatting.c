@@ -4111,6 +4111,39 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				}
 				break;
 			case DCH_YYYY:
+				if (ORA_PARSER == compatible_db)
+				{
+					numlen = ivy_getnumlength(s);
+					if (numlen < 6)
+					{
+						if (numlen == 5)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+								  errmsg("Number value does not match the length of the format item.")));
+
+						n->sep = true;
+					}
+
+					if (fx_mode1 && numlen != n->key->len)
+						ereport(ERROR,
+									(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+								  errmsg("Number value does not match the length of the format item.")));
+				}
+
+				if(from_char_parse_int(&out->year, &s, n, escontext) < 0)
+					return;
+
+				if (ORA_PARSER == compatible_db)
+				{
+					if (out->year < -4712 || out->year > 9999 || out->year == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("YEAR must be between -4713 and +9999, and not be 0")));
+				}
+
+				out->yysz = 4;
+				SKIP_THth(s, n->suffix);
+				break;
 			case DCH_IYYY:
 				if (ORA_PARSER == compatible_db)
 				{
