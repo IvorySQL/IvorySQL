@@ -166,7 +166,7 @@ typedef struct RelationInfo
  * Query for determining if contrib's amcheck is installed.  If so, selects the
  * namespace name where amcheck's functions can be found.
  */
-static const char *amcheck_sql =
+static const char *const amcheck_sql =
 "SELECT n.nspname, x.extversion FROM pg_catalog.pg_extension x"
 "\nJOIN pg_catalog.pg_namespace n ON x.extnamespace = n.oid"
 "\nWHERE x.extname = 'amcheck'";
@@ -1590,7 +1590,7 @@ compile_database_list(PGconn *conn, SimplePtrList *databases,
 						 "FROM pg_catalog.pg_database d "
 						 "LEFT OUTER JOIN exclude_raw e "
 						 "ON d.datname ~ e.rgx "
-						 "\nWHERE d.datallowconn "
+						 "\nWHERE d.datallowconn AND datconnlimit != -2 "
 						 "AND e.pattern_id IS NULL"
 						 "),"
 

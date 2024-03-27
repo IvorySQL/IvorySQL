@@ -41,6 +41,25 @@ CALL test_proc3(55);
 SELECT * FROM test1;
 
 
+-- Check that plan revalidation doesn't prevent setting transaction properties
+-- (bug #18059).  This test must include the first temp-object creation in
+-- this script, or it won't exercise the bug scenario.  Hence we put it early.
+CREATE PROCEDURE test_proc3a()
+LANGUAGE plisql
+AS $$
+BEGIN
+   COMMIT;
+   SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+   RAISE NOTICE 'done';
+END;
+$$;
+/
+
+CALL test_proc3a();
+CREATE TEMP TABLE tt1(f1 int);
+CALL test_proc3a();
+
+
 -- nested CALL
 TRUNCATE TABLE test1;
 

@@ -22,6 +22,7 @@
 #include "common/file_perm.h"
 #include "common/restricted_token.h"
 #include "common/string.h"
+#include "fe_utils/option_utils.h"
 #include "fe_utils/recovery_gen.h"
 #include "fe_utils/string_utils.h"
 #include "file_ops.h"
@@ -74,6 +75,7 @@ bool		showprogress = false;
 bool		dry_run = false;
 bool		do_sync = true;
 bool		restore_wal = false;
+DataDirSyncMethod sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
 
 /* Target history */
 TimeLineHistoryEntry *targetHistory;
@@ -107,6 +109,7 @@ usage(const char *progname)
 			 "                                 file when running target cluster\n"));
 	printf(_("      --debug                    write a lot of debug messages\n"));
 	printf(_("      --no-ensure-shutdown       do not automatically fix unclean shutdown\n"));
+	printf(_("      --sync-method=METHOD       set method for syncing files to disk\n"));
 	printf(_("  -V, --version                  output version information, then exit\n"));
 	printf(_("  -?, --help                     show this help, then exit\n"));
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
@@ -131,6 +134,7 @@ main(int argc, char **argv)
 		{"no-sync", no_argument, NULL, 'N'},
 		{"progress", no_argument, NULL, 'P'},
 		{"debug", no_argument, NULL, 3},
+		{"sync-method", required_argument, NULL, 6},
 		{NULL, 0, NULL, 0}
 	};
 	int			option_index;
@@ -216,6 +220,11 @@ main(int argc, char **argv)
 
 			case 5:
 				config_file = pg_strdup(optarg);
+				break;
+
+			case 6:
+				if (!parse_sync_method(optarg, &sync_method))
+					exit(1);
 				break;
 
 			default:
@@ -1023,10 +1032,14 @@ digestControlFile(ControlFileData *ControlFile, const char *content,
 	WalSegSz = ControlFile->xlog_seg_size;
 
 	if (!IsValidWalSegSize(WalSegSz))
-		pg_fatal(ngettext("WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d byte",
-						  "WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d bytes",
-						  WalSegSz),
-				 WalSegSz);
+	{
+		pg_log_error(ngettext("invalid WAL segment size in control file (%d byte)",
+							  "invalid WAL segment size in control file (%d bytes)",
+							  WalSegSz),
+					 WalSegSz);
+		pg_log_error_detail("The WAL segment size must be a power of two between 1 MB and 1 GB.");
+		exit(1);
+	}
 
 	/* Additional checks on control file */
 	checkControlFile(ControlFile);

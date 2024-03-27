@@ -94,8 +94,7 @@ typedef uint64 AclMode;			/* a bitmask of privilege bits */
 #define ACL_CONNECT		(1<<11) /* for databases */
 #define ACL_SET			(1<<12) /* for configuration parameters */
 #define ACL_ALTER_SYSTEM (1<<13)	/* for configuration parameters */
-#define ACL_MAINTAIN		(1<<14) /* for relations */
-#define N_ACL_RIGHTS	15		/* 1 plus the last 1<<x */
+#define N_ACL_RIGHTS	14		/* 1 plus the last 1<<x */
 #define ACL_NO_RIGHTS	0
 /* Currently, SELECT ... FOR [KEY] UPDATE/SHARE requires UPDATE privileges */
 #define ACL_SELECT_FOR_UPDATE	ACL_UPDATE
@@ -1473,6 +1472,8 @@ typedef struct GroupingSet
  * if the clause originally came from WINDOW, and is NULL if it originally
  * was an OVER clause (but note that we collapse out duplicate OVERs).
  * partitionClause and orderClause are lists of SortGroupClause structs.
+ * partitionClause is sanitized by the query planner to remove any columns or
+ * expressions belonging to redundant PathKeys.
  * If we have RANGE with offset PRECEDING/FOLLOWING, the semantics of that are
  * specified by startInRangeFunc/inRangeColl/inRangeAsc/inRangeNullsFirst
  * for the start offset, or endInRangeFunc/inRange* for the end offset.
@@ -1738,6 +1739,43 @@ typedef struct JsonKeyValue
 	Expr	   *key;			/* key expression */
 	JsonValueExpr *value;		/* JSON value expression */
 } JsonKeyValue;
+
+/*
+ * JsonParseExpr -
+ *		untransformed representation of JSON()
+ */
+typedef struct JsonParseExpr
+{
+	NodeTag		type;
+	JsonValueExpr *expr;		/* string expression */
+	JsonOutput *output;			/* RETURNING clause, if specified */
+	bool		unique_keys;	/* WITH UNIQUE KEYS? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonParseExpr;
+
+/*
+ * JsonScalarExpr -
+ *		untransformed representation of JSON_SCALAR()
+ */
+typedef struct JsonScalarExpr
+{
+	NodeTag		type;
+	Expr	   *expr;			/* scalar expression */
+	JsonOutput *output;			/* RETURNING clause, if specified */
+	int			location;		/* token location, or -1 if unknown */
+} JsonScalarExpr;
+
+/*
+ * JsonSerializeExpr -
+ *		untransformed representation of JSON_SERIALIZE() function
+ */
+typedef struct JsonSerializeExpr
+{
+	NodeTag		type;
+	JsonValueExpr *expr;		/* json value expression */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	int			location;		/* token location, or -1 if unknown */
+} JsonSerializeExpr;
 
 /*
  * JsonObjectConstructor -
@@ -2178,8 +2216,8 @@ typedef enum AlterTableType
 	AT_CookedColumnDefault,		/* add a pre-cooked column default */
 	AT_DropNotNull,				/* alter column drop not null */
 	AT_SetNotNull,				/* alter column set not null */
+	AT_SetAttNotNull,			/* set attnotnull w/o a constraint */
 	AT_DropExpression,			/* alter column drop expression */
-	AT_CheckNotNull,			/* check column is already marked not null */
 	AT_SetStatistics,			/* alter column set statistics */
 	AT_SetOptions,				/* alter column set ( options ) */
 	AT_ResetOptions,			/* alter column reset ( options ) */
@@ -2462,10 +2500,10 @@ typedef struct VariableShowStmt
  *		Create Table Statement
  *
  * NOTE: in the raw gram.y output, ColumnDef and Constraint nodes are
- * intermixed in tableElts, and constraints is NIL.  After parse analysis,
- * tableElts contains just ColumnDefs, and constraints contains just
- * Constraint nodes (in fact, only CONSTR_CHECK nodes, in the present
- * implementation).
+ * intermixed in tableElts, and constraints and nnconstraints are NIL.  After
+ * parse analysis, tableElts contains just ColumnDefs, nnconstraints contains
+ * Constraint nodes of CONSTR_NOTNULL type from various sources, and
+ * constraints contains just CONSTR_CHECK Constraint nodes.
  * ----------------------
  */
 
@@ -2480,6 +2518,7 @@ typedef struct CreateStmt
 	PartitionSpec *partspec;	/* PARTITION BY clause */
 	TypeName   *ofTypename;		/* OF typename */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
+	List	   *nnconstraints;	/* NOT NULL constraints (ditto) */
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
@@ -2568,10 +2607,13 @@ typedef struct Constraint
 	char	   *cooked_expr;	/* expr, as nodeToString representation */
 	char		generated_when; /* ALWAYS or BY DEFAULT */
 
+	/* Fields used for "raw" NOT NULL constraints: */
+	int			inhcount;		/* initial inheritance count to apply */
+
 	/* Fields used for unique constraints (UNIQUE and PRIMARY KEY): */
 	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	List	   *keys;			/* String nodes naming referenced key
-								 * column(s) */
+								 * column(s); also used for NOT NULL */
 	List	   *including;		/* String nodes naming referenced nonkey
 								 * column(s) */
 
@@ -3336,11 +3378,12 @@ typedef struct InlineCodeBlock
 typedef struct CallStmt
 {
 	NodeTag		type;
-	FuncCall   *funccall;		/* from the parser */
+	/* from the parser */
+	FuncCall   *funccall pg_node_attr(query_jumble_ignore);
 	/* transformed call, with only input args */
-	FuncExpr   *funcexpr pg_node_attr(query_jumble_ignore);
+	FuncExpr   *funcexpr;
 	/* transformed output-argument expressions */
-	List	   *outargs pg_node_attr(query_jumble_ignore);
+	List	   *outargs;
 } CallStmt;
 
 typedef struct CallContext
@@ -3502,9 +3545,13 @@ typedef struct TransactionStmt
 	NodeTag		type;
 	TransactionStmtKind kind;	/* see above */
 	List	   *options;		/* for BEGIN/START commands */
-	char	   *savepoint_name; /* for savepoint commands */
-	char	   *gid;			/* for two-phase-commit related commands */
+	/* for savepoint commands */
+	char	   *savepoint_name pg_node_attr(query_jumble_ignore);
+	/* for two-phase-commit related commands */
+	char	   *gid pg_node_attr(query_jumble_ignore);
 	bool		chain;			/* AND CHAIN option */
+	/* token location, or -1 if unknown */
+	int			location pg_node_attr(query_jumble_location);
 } TransactionStmt;
 
 /* ----------------------
@@ -3885,8 +3932,12 @@ typedef struct ExecuteStmt
 typedef struct DeallocateStmt
 {
 	NodeTag		type;
-	char	   *name;			/* The name of the plan to remove */
-	/* NULL means DEALLOCATE ALL */
+	/* The name of the plan to remove, NULL if DEALLOCATE ALL */
+	char	   *name pg_node_attr(query_jumble_ignore);
+	/* true if DEALLOCATE ALL */
+	bool		isall;
+	/* token location, or -1 if unknown */
+	int			location pg_node_attr(query_jumble_location);
 } DeallocateStmt;
 
 /*

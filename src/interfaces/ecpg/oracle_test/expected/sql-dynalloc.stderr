@@ -52,7 +52,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ECPGget_desc: reading items for tuple 3
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 45: type (9003); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 45: type (9503); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_store_result on line 45: allocating memory for 2 tuples
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -70,7 +70,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ECPGget_desc: reading items for tuple 5
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 47: type (9001); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 47: type (9501); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_store_result on line 47: allocating memory for 2 tuples
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -80,7 +80,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ECPGget_desc: reading items for tuple 6
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 48: type (9012); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 48: type (9512); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_store_result on line 48: allocating memory for 2 tuples
 [NO_PID]: sqlca: code: 0, state: 00000

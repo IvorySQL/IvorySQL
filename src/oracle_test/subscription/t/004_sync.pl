@@ -80,7 +80,7 @@ $node_subscriber->safe_psql('postgres',
 
 # wait for it to start
 $node_subscriber->poll_query_until('postgres',
-	"SELECT pid IS NOT NULL FROM pg_stat_subscription WHERE subname = 'tap_sub2' AND relid IS NULL"
+	"SELECT pid IS NOT NULL FROM pg_stat_subscription WHERE subname = 'tap_sub2' AND worker_type = 'apply'"
 ) or die "Timed out while waiting for subscriber to start";
 
 # and drop both subscriptions
@@ -156,7 +156,7 @@ $node_subscriber->safe_psql('postgres',
 	"CREATE SUBSCRIPTION tap_sub CONNECTION '$publisher_connstr' PUBLICATION tap_pub"
 );
 
-$result = $node_subscriber->poll_query_until('postgres', $started_query)
+$node_subscriber->poll_query_until('postgres', $started_query)
   or die "Timed out while waiting for subscriber to start sync";
 
 # DROP SUBSCRIPTION must clean up slots on the publisher side when the

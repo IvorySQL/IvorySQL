@@ -1822,6 +1822,10 @@ typedef struct SubqueryScanPath
  * ForeignPath represents a potential scan of a foreign table, foreign join
  * or foreign upper-relation.
  *
+ * In the case of a foreign join, fdw_restrictinfo stores the RestrictInfos to
+ * apply to the join, which are used by createplan.c to get pseudoconstant
+ * clauses evaluated as one-time quals in a gating Result plan node.
+ *
  * fdw_private stores FDW private data about the scan.  While fdw_private is
  * not actually touched by the core code during normal operations, it's
  * generally a good idea to use a representation that can be dumped by
@@ -1832,19 +1836,27 @@ typedef struct ForeignPath
 {
 	Path		path;
 	Path	   *fdw_outerpath;
+	List	   *fdw_restrictinfo;
 	List	   *fdw_private;
 } ForeignPath;
 
 /*
- * CustomPath represents a table scan done by some out-of-core extension.
+ * CustomPath represents a table scan or a table join done by some out-of-core
+ * extension.
  *
  * We provide a set of hooks here - which the provider must take care to set
  * up correctly - to allow extensions to supply their own methods of scanning
- * a relation.  For example, a provider might provide GPU acceleration, a
- * cache-based scan, or some other kind of logic we haven't dreamed up yet.
+ * a relation or joing relations.  For example, a provider might provide GPU
+ * acceleration, a cache-based scan, or some other kind of logic we haven't
+ * dreamed up yet.
  *
- * CustomPaths can be injected into the planning process for a relation by
- * set_rel_pathlist_hook functions.
+ * CustomPaths can be injected into the planning process for a base or join
+ * relation by set_rel_pathlist_hook or set_join_pathlist_hook functions,
+ * respectively.
+ *
+ * In the case of a table join, custom_restrictinfo stores the RestrictInfos
+ * to apply to the join, which are used by createplan.c to get pseudoconstant
+ * clauses evaluated as one-time quals in a gating Result plan node.
  *
  * Core code must avoid assuming that the CustomPath is only as large as
  * the structure declared here; providers are allowed to make it the first
@@ -1862,6 +1874,7 @@ typedef struct CustomPath
 	uint32		flags;			/* mask of CUSTOMPATH_* flags, see
 								 * nodes/extensible.h */
 	List	   *custom_paths;	/* list of child Path nodes, if any */
+	List	   *custom_restrictinfo;
 	List	   *custom_private;
 	const struct CustomPathMethods *methods;
 } CustomPath;

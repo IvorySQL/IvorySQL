@@ -200,7 +200,9 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\gset [PREFIX]         execute query and store result in psql variables\n");
 	HELP0("  \\gx [(OPTIONS)] [FILE] as \\g, but forces expanded output mode\n");
 	HELP0("  \\q                     quit psql\n");
-	HELP0("  \\watch [[i=]SEC] [c=N] execute query every SEC seconds, up to N times\n");
+	HELP0("  \\watch [[i=]SEC] [c=N] [m=MIN]\n"
+		  "                         execute query every SEC seconds, up to N times\n"
+		  "                         stop if less than MIN rows are returned\n");
 	HELP0("\n");
 
 	HELP0("Help\n");
@@ -280,6 +282,7 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\dp[S]  [PATTERN]      list table, view, and sequence access privileges\n");
 	HELP0("  \\dP[itn+] [PATTERN]    list [only index/table] partitioned relations [n=nested]\n");
 	HELP0("  \\drds [ROLEPTRN [DBPTRN]] list per-database role settings\n");
+	HELP0("  \\drg[S] [PATTERN]      list role grants\n");
 	HELP0("  \\dRp[+] [PATTERN]      list replication publications\n");
 	HELP0("  \\dRs[+] [PATTERN]      list replication subscriptions\n");
 	HELP0("  \\ds[S+] [PATTERN]      list sequences\n");

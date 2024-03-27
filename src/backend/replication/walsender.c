@@ -603,7 +603,7 @@ SendTimeLineHistory(TimeLineHistoryCmd *cmd)
 	dest->rStartup(dest, CMD_SELECT, tupdesc);
 
 	/* Send a DataRow message */
-	pq_beginmessage(&buf, 'D');
+	pq_beginmessage(&buf, PqMsg_DataRow);
 	pq_sendint16(&buf, 2);		/* # of columns */
 	len = strlen(histfname);
 	pq_sendint32(&buf, len);	/* col1 len */
@@ -801,7 +801,7 @@ StartReplication(StartReplicationCmd *cmd)
 		WalSndSetState(WALSNDSTATE_CATCHUP);
 
 		/* Send a CopyBothResponse message, and start streaming */
-		pq_beginmessage(&buf, 'W');
+		pq_beginmessage(&buf, PqMsg_CopyBothResponse);
 		pq_sendbyte(&buf, 0);
 		pq_sendint16(&buf, 0);
 		pq_endmessage(&buf);
@@ -1113,7 +1113,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			if (!XactReadOnly)
 				ereport(ERROR,
 				/*- translator: %s is a CREATE_REPLICATION_SLOT statement */
-						(errmsg("%s must be called in a read only transaction",
+						(errmsg("%s must be called in a read-only transaction",
 								"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
 
 			if (FirstSnapshotSet)
@@ -1197,7 +1197,6 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	 * - second field: LSN at which we became consistent
 	 * - third field: exported snapshot's name
 	 * - fourth field: output plugin
-	 *----------
 	 */
 	tupdesc = CreateTemplateTupleDesc(4);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, "slot_name",
@@ -1295,7 +1294,7 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 	WalSndSetState(WALSNDSTATE_CATCHUP);
 
 	/* Send a CopyBothResponse message, and start streaming */
-	pq_beginmessage(&buf, 'W');
+	pq_beginmessage(&buf, PqMsg_CopyBothResponse);
 	pq_sendbyte(&buf, 0);
 	pq_sendint16(&buf, 0);
 	pq_endmessage(&buf);
@@ -1655,7 +1654,7 @@ WalSndWaitForWal(XLogRecPtr loc)
 		if (pq_is_send_pending())
 			wakeEvents |= WL_SOCKET_WRITEABLE;
 
-		WalSndWait(wakeEvents, sleeptime, WAIT_EVENT_WAL_SENDER_WAIT_WAL);
+		WalSndWait(wakeEvents, sleeptime, WAIT_EVENT_WAL_SENDER_WAIT_FOR_WAL);
 	}
 
 	/* reactivate latch so WalSndLoop knows to continue */
@@ -1924,11 +1923,11 @@ ProcessRepliesIfAny(void)
 		/* Validate message type and set packet size limit */
 		switch (firstchar)
 		{
-			case 'd':
+			case PqMsg_CopyData:
 				maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
 				break;
-			case 'c':
-			case 'X':
+			case PqMsg_CopyDone:
+			case PqMsg_Terminate:
 				maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 				break;
 			default:
@@ -1956,7 +1955,7 @@ ProcessRepliesIfAny(void)
 				/*
 				 * 'd' means a standby reply wrapped in a CopyData packet.
 				 */
-			case 'd':
+			case PqMsg_CopyData:
 				ProcessStandbyMessage();
 				received = true;
 				break;
@@ -1965,7 +1964,7 @@ ProcessRepliesIfAny(void)
 				 * CopyDone means the standby requested to finish streaming.
 				 * Reply with CopyDone, if we had not sent that already.
 				 */
-			case 'c':
+			case PqMsg_CopyDone:
 				if (!streamingDoneSending)
 				{
 					pq_putmessage_noblock('c', NULL, 0);
@@ -1979,7 +1978,7 @@ ProcessRepliesIfAny(void)
 				/*
 				 * 'X' means that the standby is closing down the socket.
 				 */
-			case 'X':
+			case PqMsg_Terminate:
 				proc_exit(0);
 
 			default:
@@ -2692,7 +2691,7 @@ WalSndSegmentOpen(XLogReaderState *state, XLogSegNo nextSegNo,
 	 * restored from the archive on this server, the file belonging to the old
 	 * timeline, 000000040000000000000013, might not exist. Their contents are
 	 * equal up to the switchpoint, because at a timeline switch, the used
-	 * portion of the old segment is copied to the new file.  -------
+	 * portion of the old segment is copied to the new file.
 	 */
 	*tli_p = sendTimeLine;
 	if (sendTimeLineIsHistoric)
@@ -3541,7 +3540,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	for (i = 0; i < max_wal_senders; i++)
 	{
 		WalSnd	   *walsnd = &WalSndCtl->walsnds[i];
-		XLogRecPtr	sentPtr;
+		XLogRecPtr	sent_ptr;
 		XLogRecPtr	write;
 		XLogRecPtr	flush;
 		XLogRecPtr	apply;
@@ -3565,7 +3564,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 			continue;
 		}
 		pid = walsnd->pid;
-		sentPtr = walsnd->sentPtr;
+		sent_ptr = walsnd->sentPtr;
 		state = walsnd->state;
 		write = walsnd->write;
 		flush = walsnd->flush;
@@ -3608,9 +3607,9 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 		{
 			values[1] = CStringGetTextDatum(WalSndGetStateString(state));
 
-			if (XLogRecPtrIsInvalid(sentPtr))
+			if (XLogRecPtrIsInvalid(sent_ptr))
 				nulls[2] = true;
-			values[2] = LSNGetDatum(sentPtr);
+			values[2] = LSNGetDatum(sent_ptr);
 
 			if (XLogRecPtrIsInvalid(write))
 				nulls[3] = true;

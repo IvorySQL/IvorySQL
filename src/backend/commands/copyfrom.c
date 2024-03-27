@@ -1533,8 +1533,6 @@ BeginCopyFrom(ParseState *pstate,
 		cstate->rteperminfos = pstate->p_rteperminfos;
 	}
 
-	tupDesc = RelationGetDescr(cstate->rel);
-	num_phys_attrs = tupDesc->natts;
 	num_defaults = 0;
 	volatile_defexprs = false;
 
@@ -1609,6 +1607,7 @@ BeginCopyFrom(ParseState *pstate,
 		}
 	}
 
+	cstate->defaults = (bool *) palloc0(tupDesc->natts * sizeof(bool));
 
 	/* initialize progress */
 	pgstat_progress_start_command(PROGRESS_COMMAND_COPY,

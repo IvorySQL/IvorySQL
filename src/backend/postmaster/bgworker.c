@@ -131,6 +131,9 @@ static const struct
 	},
 	{
 		"ParallelApplyWorkerMain", ParallelApplyWorkerMain
+	},
+	{
+		"TablesyncWorkerMain", TablesyncWorkerMain
 	}
 };
 
@@ -362,7 +365,7 @@ BackgroundWorkerStateChange(bool allow_new_workers)
 		ascii_safe_strlcpy(rw->rw_worker.bgw_type,
 						   slot->worker.bgw_type, BGW_MAXLEN);
 		ascii_safe_strlcpy(rw->rw_worker.bgw_library_name,
-						   slot->worker.bgw_library_name, BGW_MAXLEN);
+						   slot->worker.bgw_library_name, MAXPGPATH);
 		ascii_safe_strlcpy(rw->rw_worker.bgw_function_name,
 						   slot->worker.bgw_function_name, BGW_MAXLEN);
 

@@ -206,7 +206,6 @@ enable_debug	= @enable_debug@
 enable_dtrace	= @enable_dtrace@
 enable_coverage	= @enable_coverage@
 enable_tap_tests	= @enable_tap_tests@
-enable_thread_safety	= @enable_thread_safety@
 
 python_includespec	= @python_includespec@
 python_libdir		= @python_libdir@
@@ -364,7 +363,7 @@ DOWNLOAD = wget -O $@ --no-use-server-timestamps
 # Pick a release from here: <https://www.unicode.org/Public/>.  Note
 # that the most recent release listed there is often a pre-release;
 # don't pick that one, except for testing.
-UNICODE_VERSION = 15.0.0
+UNICODE_VERSION = 15.1.0
 
 # Pick a release from here: <http://cldr.unicode.org/index/downloads>
 CLDR_VERSION = 43
@@ -403,11 +402,30 @@ endif
 
 check: temp-install
 #IvorySQL:BEGIN - SQL oracle_test
-oracle-check: temp-install
-oracle-pg-check: temp-install
+oracle-check: oracle-temp-install
+oracle-pg-check: oracle-temp-install
 #IvorySQL:END - SQL oracle_test
 
-.PHONY: temp-install
+.PHONY: temp-install oracle-temp-install
+
+
+# prepend to path if already set, else just set it
+define add_to_path
+$(1)="$(if $($(1)),$(2):$$$(1),$(2))"
+endef
+
+# platform-specific environment variable to set shared library path
+# individual ports can override this later, this is the default name
+ld_library_path_var = LD_LIBRARY_PATH
+
+# with_temp_install_extra is for individual ports to define if they
+# need something more here. If not defined then the expansion does
+# nothing.
+with_temp_install = \
+	PATH="$(abs_top_builddir)/tmp_install$(bindir):$(CURDIR):$$PATH" \
+	$(call add_to_path,$(strip $(ld_library_path_var)),$(abs_top_builddir)/tmp_install$(libdir)) \
+	INITDB_TEMPLATE='$(abs_top_builddir)'/tmp_install/initdb-template \
+	$(with_temp_install_extra)
 
 temp-install: | submake-generated-headers
 ifndef NO_TEMP_INSTALL
@@ -417,10 +435,25 @@ ifeq ($(MAKELEVEL),0)
 	$(MKDIR_P) '$(abs_top_builddir)'/tmp_install/log
 	$(MAKE) -C '$(top_builddir)' DESTDIR='$(abs_top_builddir)'/tmp_install install >'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
 	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) checkprep >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+
+	$(with_temp_install) initdb -A trust -N -m pg --no-instructions --no-locale '$(abs_top_builddir)'/tmp_install/initdb-template >>'$(abs_top_builddir)'/tmp_install/log/initdb-template.log 2>&1
 endif
 endif
 endif
 
+oracle-temp-install: | submake-generated-headers
+ifndef NO_TEMP_INSTALL
+ifneq ($(abs_top_builddir),)
+ifeq ($(MAKELEVEL),0)
+	rm -rf '$(abs_top_builddir)'/tmp_install
+	$(MKDIR_P) '$(abs_top_builddir)'/tmp_install/log
+	$(MAKE) -C '$(top_builddir)' DESTDIR='$(abs_top_builddir)'/tmp_install install >'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) checkprep >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+
+	$(with_temp_install) initdb -A trust -N -m oracle -C normal --no-instructions '$(abs_top_builddir)'/tmp_install/initdb-template >>'$(abs_top_builddir)'/tmp_install/log/initdb-template.log 2>&1
+endif
+endif
+endif
 # Tasks to run serially at the end of temp-install.  Some EXTRA_INSTALL
 # entries appear more than once in the tree, and parallel installs of the same
 # file can fail with EEXIST.
@@ -441,23 +474,6 @@ ORACLE_PROVE_FLAGS = -I $(top_srcdir)/src/oracle_test/perl/ -I $(srcdir)
 #IvorySQL:END - SQL oracle_test
 # User-supplied prove flags such as --verbose can be provided in PROVE_FLAGS.
 PROVE_FLAGS =
-
-# prepend to path if already set, else just set it
-define add_to_path
-$(1)="$(if $($(1)),$(2):$$$(1),$(2))"
-endef
-
-# platform-specific environment variable to set shared library path
-# individual ports can override this later, this is the default name
-ld_library_path_var = LD_LIBRARY_PATH
-
-# with_temp_install_extra is for individual ports to define if they
-# need something more here. If not defined then the expansion does
-# nothing.
-with_temp_install = \
-	PATH="$(abs_top_builddir)/tmp_install$(bindir):$(CURDIR):$$PATH" \
-	$(call add_to_path,$(strip $(ld_library_path_var)),$(abs_top_builddir)/tmp_install$(libdir)) \
-	$(with_temp_install_extra)
 
 ifeq ($(enable_tap_tests),yes)
 
@@ -651,19 +667,27 @@ endif
 libpq = -L$(libpq_builddir) -lpq
 
 # libpq_pgport is for use by client executables (not libraries) that use libpq.
-# We force clients to pull symbols from the non-shared libraries libpgport
-# and libpgcommon rather than pulling some libpgport symbols from libpq just
-# because libpq uses those functions too.  This makes applications less
-# dependent on changes in libpq's usage of pgport (on platforms where we
-# don't have symbol export control for libpq).  To do this we link to
-# pgport before libpq.  This does cause duplicate -lpgport's to appear
-# on client link lines, since that also appears in $(LIBS).
+# We used to use this to force libpgport and libpgcommon to be linked before
+# libpq, ensuring that clients would pull symbols from those libraries rather
+# than possibly getting them from libpq (and thereby having an unwanted
+# dependency on which symbols libpq uses).  However, now that we can prevent
+# libpq from exporting those symbols on all platforms of interest, we don't
+# worry about that anymore.  The previous technique resulted in duplicate
+# libraries in link commands, since those libraries also appear in $(LIBS).
+# Some platforms warn about that, so avoiding those warnings is now more
+# important.  Hence, $(libpq_pgport) is now equivalent to $(libpq), but we
+# still recommend using it for client executables in case some other reason
+# appears to handle them differently.
+libpq_pgport = $(libpq)
+
 # libpq_pgport_shlib is the same idea, but for use in client shared libraries.
+# We need those clients to use the shlib variants.  (Ideally, users of this
+# macro would strip libpgport and libpgcommon from $(LIBS), but no harm is
+# done if they don't, since they will have satisfied all their references
+# from these libraries.)
 ifdef PGXS
-libpq_pgport = -L$(libdir) -lpgcommon -lpgport $(libpq)
 libpq_pgport_shlib = -L$(libdir) -lpgcommon_shlib -lpgport_shlib $(libpq)
 else
-libpq_pgport = -L$(top_builddir)/src/common -lpgcommon -L$(top_builddir)/src/port -lpgport $(libpq)
 libpq_pgport_shlib = -L$(top_builddir)/src/common -lpgcommon_shlib -L$(top_builddir)/src/port -lpgport_shlib $(libpq)
 endif
 
@@ -1017,7 +1041,7 @@ define _create_recursive_target
 $(1): $(1)-$(2)-recurse
 #$(1)-$(2)-recurse: $(if $(filter all install check installcheck, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install)
 #IvorySQL:BEGIN - SQL oracle_test
-$(1)-$(2)-recurse: $(if $(filter all install check oracle-check installcheck oracle-installcheck oracle-pg-check, $(3)), submake-generated-headers) $(if $(filter check oracle-check oracle-pg-check, $(3)), temp-install)
+$(1)-$(2)-recurse: $(if $(filter all install check oracle-check installcheck oracle-installcheck oracle-pg-check, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install) $(if $(filter oracle-check oracle-pg-check, $(3)), oracle-temp-install)
 #IvorySQL:END - SQL oracle_test
 	$$(MAKE) -C $(2) $(3)
 endef

@@ -170,11 +170,12 @@ PostgreSQL documentation
       <term><option>--clean</option></term>
       <listitem>
        <para>
-        Output commands to clean (drop)
+        Output commands to <command>DROP</command> all the dumped
         database objects prior to outputting the commands for creating them.
-        (Unless <option>--if-exists</option> is also specified,
-        restore might generate some harmless error messages, if any objects
-        were not present in the destination database.)
+        This option is useful when the restore is to overwrite an existing
+        database.  If any of the objects do not exist in the destination
+        database, ignorable error messages will be reported during
+        restore, unless <option>--if-exists</option> is also specified.
        </para>
 
        <para>
@@ -839,9 +840,11 @@ PostgreSQL documentation
       <term><option>--if-exists</option></term>
       <listitem>
        <para>
-        Use conditional commands (i.e., add an <literal>IF EXISTS</literal>
-        clause) when cleaning database objects.  This option is not valid
-        unless <option>--clean</option> is also specified.
+        Use <literal>DROP ... IF EXISTS</literal> commands to drop objects
+        in <option>--clean</option> mode.  This suppresses <quote>does not
+        exist</quote> errors that might otherwise be reported.  This
+        option is not valid unless <option>--clean</option> is also
+        specified.
        </para>
       </listitem>
      </varlistentry>
@@ -1175,6 +1178,27 @@ PostgreSQL documentation
         <option>-T</option>/<option>--exclude-table</option>,
         or <option>--exclude-table-data</option>.  An exclude pattern failing
         to match any objects is not considered an error.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--sync-method</option></term>
+      <listitem>
+       <para>
+        When set to <literal>fsync</literal>, which is the default,
+        <command>pg_dump --format=directory</command> will recursively open and
+        synchronize all files in the archive directory.
+       </para>
+       <para>
+        On Linux, <literal>syncfs</literal> may be used instead to ask the
+        operating system to synchronize the whole file system that contains the
+        archive directory.  See <xref linkend="syncfs"/> for more information
+        about using <function>syncfs()</function>.
+       </para>
+       <para>
+        This option has no effect when <option>--no-sync</option> is used or
+        <option>--format</option> is not set to <literal>directory</literal>.
        </para>
       </listitem>
      </varlistentry>

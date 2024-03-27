@@ -84,14 +84,6 @@
 /* Windows doesn't have fsync() as such, use _commit() */
 #define fsync(fd) _commit(fd)
 
-/*
- * For historical reasons, we allow setting wal_sync_method to
- * fsync_writethrough on Windows, even though it's really identical to fsync
- * (both code paths wind up at _commit()).
- */
-#define HAVE_FSYNC_WRITETHROUGH
-#define FSYNC_WRITETHROUGH_IS_FSYNC
-
 #define USES_WINSOCK
 
 /*
@@ -455,8 +447,6 @@ extern int	_pglstat64(const char *name, struct stat *buf);
 #define strcoll_l _strcoll_l
 #define strxfrm_l _strxfrm_l
 #define wcscoll_l _wcscoll_l
-#define wcstombs_l _wcstombs_l
-#define mbstowcs_l _mbstowcs_l
 
 /*
  * Versions of libintl >= 0.18? try to replace setlocale() with a macro

@@ -151,12 +151,12 @@ static int	Lock_AF_UNIX(const char *unixSocketDir, const char *unixSocketPath);
 static int	Setup_AF_UNIX(const char *sock_path);
 
 static const PQcommMethods PqCommSocketMethods = {
-	socket_comm_reset,
-	socket_flush,
-	socket_flush_if_writable,
-	socket_is_send_pending,
-	socket_putmessage,
-	socket_putmessage_noblock
+	.comm_reset = socket_comm_reset,
+	.flush = socket_flush,
+	.flush_if_writable = socket_flush_if_writable,
+	.is_send_pending = socket_is_send_pending,
+	.putmessage = socket_putmessage,
+	.putmessage_noblock = socket_putmessage_noblock
 };
 
 const PQcommMethods *PqCommMethods = &PqCommSocketMethods;
@@ -458,6 +458,9 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		}
 
 #ifndef WIN32
+		/* Don't give the listen socket to any subprograms we execute. */
+		if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0)
+			elog(FATAL, "fcntl(F_SETFD) failed on socket: %m");
 
 		/*
 		 * Without the SO_REUSEADDR flag, a new postmaster can't be started
@@ -831,7 +834,8 @@ StreamConnection(pgsocket server_fd, Port *port)
 void
 StreamClose(pgsocket sock)
 {
-	closesocket(sock);
+	if (closesocket(sock) != 0)
+		elog(LOG, "could not close client or listen socket: %m");
 }
 
 /*

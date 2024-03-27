@@ -83,21 +83,21 @@ create table test_concat1 as select id || id2 as test from test_concat;
 select attname,atttypid from pg_attribute attr left join pg_class r on r.oid = attr.attrelid where r.relname='test_concat1' and attname='test' order by attname;
  attname | atttypid 
 ---------+----------
- test    |     9002
+ test    |     9502
 (1 row)
 
 create table test_concat2 as select id|| id4 as test from test_concat;
 select attname,atttypid from pg_attribute attr left join pg_class r on r.oid = attr.attrelid where r.relname='test_concat2' and attname='test' order by attname;
  attname | atttypid 
 ---------+----------
- test    |     9002
+ test    |     9502
 (1 row)
 
 create table test_concat3 as select id3 || id4 as test from test_concat;
 select attname,atttypid from pg_attribute attr left join pg_class r on r.oid = attr.attrelid where r.relname='test_concat3' and attname='test' order by attname;
  attname | atttypid 
 ---------+----------
- test    |     9002
+ test    |     9502
 (1 row)
 
 insert into test_concat(id) values(2);
@@ -214,7 +214,7 @@ left join pg_class r on r.oid = attr.attrelid
 where r.relname='test_concat1' and attname='test' order by attname;
  attname | atttypid 
 ---------+----------
- test    |     9002
+ test    |     9502
 (1 row)
 
 create table test_concat2 as select concat(id, id4) as test from test_concat;
@@ -223,7 +223,7 @@ left join pg_class r on r.oid = attr.attrelid
 where r.relname='test_concat2' and attname='test' order by attname;
  attname | atttypid 
 ---------+----------
- test    |     9002
+ test    |     9502
 (1 row)
 
 create table test_concat3 as select concat(id3, id4) as test from test_concat;
@@ -232,7 +232,7 @@ left join pg_class r on r.oid = attr.attrelid
 where r.relname='test_concat3' and attname='test' order by attname;
  attname | atttypid 
 ---------+----------
- test    |     9002
+ test    |     9502
 (1 row)
 
 insert into test_concat(id) values(2);

@@ -58,7 +58,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 74: correctly got 1 tuples with 5 fields
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 74: type (9001); C (14); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 74: type (9501); C (14); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 74: RESULT: Mum      offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -66,7 +66,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 74: RESULT:  offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 74: type (9008); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 74: type (9508); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_store_result on line 74: allocating memory for 1 tuples
 [NO_PID]: sqlca: code: 0, state: 00000

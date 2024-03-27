@@ -71,18 +71,19 @@
  * DECLARE_UNIQUE_INDEX_PKEY.  ("PKEY" marks the index as being the catalog's
  * primary key; currently this is only cosmetically different from a regular
  * unique index.  By convention, we usually make a catalog's OID column its
- * pkey, if it has one.)  The first two arguments are the index's name and
- * OID, the rest is much like a standard 'create index' SQL command.
+ * pkey, if it has one.)
  *
- * For each index, we also provide a #define for its OID.  References to
- * the index in the C code should always use these #defines, not the actual
- * index name (much less the numeric OID).
+ * The first two arguments are the index's name and OID.  The third argument
+ * is the name of a #define to generate for its OID.  References to the index
+ * in the C code should always use these #defines, not the actual index name
+ * (much less the numeric OID).  The fourth argument is the table name.  The
+ * rest is much like a standard 'create index' SQL command.
  *
  * The macro definitions are just to keep the C compiler from spitting up.
  */
-#define DECLARE_INDEX(name,oid,oidmacro,decl) extern int no_such_variable
-#define DECLARE_UNIQUE_INDEX(name,oid,oidmacro,decl) extern int no_such_variable
-#define DECLARE_UNIQUE_INDEX_PKEY(name,oid,oidmacro,decl) extern int no_such_variable
+#define DECLARE_INDEX(name,oid,oidmacro,tblname,decl) extern int no_such_variable
+#define DECLARE_UNIQUE_INDEX(name,oid,oidmacro,tblname,decl) extern int no_such_variable
+#define DECLARE_UNIQUE_INDEX_PKEY(name,oid,oidmacro,tblname,decl) extern int no_such_variable
 
 /*
  * These lines inform genbki.pl about manually-assigned OIDs that do not

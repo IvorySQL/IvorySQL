@@ -197,6 +197,60 @@ SELECT pg_stat_statements_reset();
  
 (1 row)
 
+-- Two-phase transactions
+BEGIN;
+PREPARE TRANSACTION 'stat_trans1';
+COMMIT PREPARED 'stat_trans1';
+BEGIN;
+PREPARE TRANSACTION 'stat_trans2';
+ROLLBACK PREPARED 'stat_trans2';
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls | rows |               query               
+-------+------+-----------------------------------
+     2 |    0 | BEGIN
+     1 |    0 | COMMIT PREPARED $1
+     2 |    0 | PREPARE TRANSACTION $1
+     1 |    0 | ROLLBACK PREPARED $1
+     1 |    1 | SELECT pg_stat_statements_reset()
+(5 rows)
+
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
+-- Savepoints
+BEGIN;
+SAVEPOINT sp1;
+SAVEPOINT sp2;
+SAVEPOINT sp3;
+SAVEPOINT sp4;
+ROLLBACK TO sp4;
+ROLLBACK TO SAVEPOINT sp4;
+ROLLBACK TRANSACTION TO SAVEPOINT sp3;
+RELEASE sp3;
+RELEASE SAVEPOINT sp2;
+ROLLBACK TO sp1;
+RELEASE SAVEPOINT sp1;
+COMMIT;
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls | rows |               query               
+-------+------+-----------------------------------
+     1 |    0 | BEGIN
+     1 |    0 | COMMIT
+     3 |    0 | RELEASE $1
+     4 |    0 | ROLLBACK TO $1
+     4 |    0 | SAVEPOINT $1
+     1 |    1 | SELECT pg_stat_statements_reset()
+(6 rows)
+
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
 -- EXPLAIN statements
 -- A Query is used, normalized by the query jumbling.
 EXPLAIN (costs off) SELECT 1;
@@ -246,6 +300,27 @@ DECLARE
 BEGIN
   SELECT (i + j)::int INTO r;
 END; $$ LANGUAGE plpgsql;
+-- Overloaded functions.
+CREATE OR REPLACE PROCEDURE overload(i int) AS $$
+DECLARE
+  r int;
+BEGIN
+  SELECT (i + i)::int INTO r;
+END; $$ LANGUAGE plpgsql;
+CREATE OR REPLACE PROCEDURE overload(i text) AS $$
+DECLARE
+  r text;
+BEGIN
+  SELECT i::text INTO r;
+END; $$ LANGUAGE plpgsql;
+-- Mix of IN/OUT parameters.
+CREATE OR REPLACE PROCEDURE in_out(i int, i2 OUT int, i3 INOUT int) AS $$
+DECLARE
+  r int;
+BEGIN
+  i2 := i;
+  i3 := i3 + i;
+END; $$ LANGUAGE plpgsql;
 SELECT pg_stat_statements_reset();
  pg_stat_statements_reset 
 --------------------------
@@ -256,15 +331,30 @@ CALL sum_one(3);
 CALL sum_one(199);
 CALL sum_two(1,1);
 CALL sum_two(1,2);
+CALL overload(1);
+CALL overload('A');
+CALL in_out(1, NULL, 1);
+ i2 | i3 
+----+----
+  1 |  2
+(1 row)
+
+CALL in_out(2, 1, 2);
+ i2 | i3 
+----+----
+  2 |  4
+(1 row)
+
 SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
  calls | rows |               query               
 -------+------+-----------------------------------
-     1 |    0 | CALL sum_one(199)
-     1 |    0 | CALL sum_one(3)
-     1 |    0 | CALL sum_two(1,1)
-     1 |    0 | CALL sum_two(1,2)
+     2 |    0 | CALL in_out($1, $2, $3)
+     1 |    0 | CALL overload($1)
+     1 |    0 | CALL overload($1)
+     2 |    0 | CALL sum_one($1)
+     2 |    0 | CALL sum_two($1,$2)
      1 |    1 | SELECT pg_stat_statements_reset()
-(5 rows)
+(6 rows)
 
 -- COPY
 CREATE TABLE copy_stats (a int, b int);
@@ -409,6 +499,47 @@ SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
      1 |    0 | ALTER DOMAIN domain_stats SET DEFAULT '3'
      1 |    0 | CREATE DOMAIN domain_stats AS int CHECK (VALUE > 0)
      1 |    0 | DROP DOMAIN domain_stats
+     1 |    1 | SELECT pg_stat_statements_reset()
+(5 rows)
+
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
+-- Execution statements
+SELECT 1 as a;
+ a 
+---
+ 1
+(1 row)
+
+PREPARE stat_select AS SELECT $1 AS a;
+EXECUTE stat_select (1);
+ a 
+---
+ 1
+(1 row)
+
+DEALLOCATE stat_select;
+PREPARE stat_select AS SELECT $1 AS a;
+EXECUTE stat_select (2);
+ a 
+---
+ 2
+(1 row)
+
+DEALLOCATE PREPARE stat_select;
+DEALLOCATE ALL;
+DEALLOCATE PREPARE ALL;
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls | rows |                 query                 
+-------+------+---------------------------------------
+     2 |    0 | DEALLOCATE $1
+     2 |    0 | DEALLOCATE ALL
+     2 |    2 | PREPARE stat_select AS SELECT $1 AS a
+     1 |    1 | SELECT $1 as a
      1 |    1 | SELECT pg_stat_statements_reset()
 (5 rows)
 

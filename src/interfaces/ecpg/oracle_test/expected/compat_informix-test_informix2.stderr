@@ -26,7 +26,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 74: correctly got 1 tuples with 1 fields
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 74: type (9010); C (19); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 74: type (9510); C (19); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 74: RESULT: 2003-05-07 13:28:34.000000 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000

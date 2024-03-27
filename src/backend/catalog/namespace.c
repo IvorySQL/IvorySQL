@@ -68,9 +68,7 @@
  * may be included:
  *
  * 1. If a TEMP table namespace has been initialized in this session, it
- * is implicitly searched first.  (The only time this doesn't happen is
- * when we are obeying an override search path spec that says not to use the
- * temp namespace, or the temp namespace is included in the explicit list.)
+ * is implicitly searched first.
  *
  * 2. The system catalog namespace is always searched.  If the system
  * namespace is present in the explicit path then it will be searched in
@@ -109,19 +107,14 @@
  * namespace (if it exists), preceded by the user's personal namespace
  * (if one exists).
  *
- * We support a stack of "override" search path settings for use within
- * specific sections of backend code.  namespace_search_path is ignored
- * whenever the override stack is nonempty.  activeSearchPath is always
- * the actually active path; it points either to the search list of the
- * topmost stack entry, or to baseSearchPath which is the list derived
- * from namespace_search_path.
+ * activeSearchPath is always the actually active path; it points to
+ * to baseSearchPath which is the list derived from namespace_search_path.
  *
  * If baseSearchPathValid is false, then baseSearchPath (and other
  * derived variables) need to be recomputed from namespace_search_path.
  * We mark it invalid upon an assignment to namespace_search_path or receipt
  * of a syscache invalidation event for pg_namespace.  The recomputation
- * is done during the next non-overridden lookup attempt.  Note that an
- * override spec is never subject to recomputation.
+ * is done during the next lookup attempt.
  *
  * Any namespaces mentioned in namespace_search_path that are not readable
  * by the current user ID are simply left out of baseSearchPath; so
@@ -161,17 +154,6 @@ static Oid	namespaceUser = InvalidOid;
 
 /* The above four values are valid only if baseSearchPathValid */
 static bool baseSearchPathValid = true;
-
-/* Override requests are remembered in a stack of OverrideStackEntry structs */
-
-typedef struct
-{
-	List	   *searchPath;		/* the desired search path */
-	Oid			creationNamespace;	/* the desired creation namespace */
-	int			nestLevel;		/* subtransaction nesting level */
-} OverrideStackEntry;
-
-static List *overrideStack = NIL;
 
 /*
  * myTempNamespace is InvalidOid until and unless a TEMP namespace is set up
@@ -2850,7 +2832,7 @@ TSConfigIsVisible(Oid cfgid)
  * *nspname_p is set to NULL if there is no explicit schema name.
  */
 void
-DeconstructQualifiedName(List *names,
+DeconstructQualifiedName(const List *names,
 						 char **nspname_p,
 						 char **objname_p)
 {
@@ -3036,7 +3018,7 @@ CheckSetNamespace(Oid oldNspOid, Oid nspOid)
  * if we have to create or clean out the temp namespace.
  */
 Oid
-QualifiedNameGetCreationNamespace(List *names, char **objname_p)
+QualifiedNameGetCreationNamespace(const List *names, char **objname_p)
 {
 	char	   *schemaname;
 	Oid			namespaceId;
@@ -3103,7 +3085,7 @@ get_namespace_oid(const char *nspname, bool missing_ok)
  *		Utility routine to convert a qualified-name list into RangeVar form.
  */
 RangeVar *
-makeRangeVarFromNameList(List *names)
+makeRangeVarFromNameList(const List *names)
 {
 	RangeVar   *rel = makeRangeVar(NULL, NULL, -1);
 
@@ -3143,7 +3125,7 @@ makeRangeVarFromNameList(List *names)
  * but we also allow A_Star for the convenience of ColumnRef processing.
  */
 char *
-NameListToString(List *names)
+NameListToString(const List *names)
 {
 	StringInfoData string;
 	ListCell   *l;
@@ -3177,7 +3159,7 @@ NameListToString(List *names)
  * so the string could be re-parsed (eg, by textToQualifiedNameList).
  */
 char *
-NameListToQuotedString(List *names)
+NameListToQuotedString(const List *names)
 {
 	StringInfoData string;
 	ListCell   *l;
@@ -3393,17 +3375,16 @@ SetTempNamespaceState(Oid tempNamespaceId, Oid tempToastNamespaceId)
 
 
 /*
- * GetOverrideSearchPath - fetch current search path definition in form
- * used by PushOverrideSearchPath.
+ * GetSearchPathMatcher - fetch current search path definition.
  *
  * The result structure is allocated in the specified memory context
  * (which might or might not be equal to CurrentMemoryContext); but any
  * junk created by revalidation calculations will be in CurrentMemoryContext.
  */
-OverrideSearchPath *
-GetOverrideSearchPath(MemoryContext context)
+SearchPathMatcher *
+GetSearchPathMatcher(MemoryContext context)
 {
-	OverrideSearchPath *result;
+	SearchPathMatcher *result;
 	List	   *schemas;
 	MemoryContext oldcxt;
 
@@ -3411,7 +3392,7 @@ GetOverrideSearchPath(MemoryContext context)
 
 	oldcxt = MemoryContextSwitchTo(context);
 
-	result = (OverrideSearchPath *) palloc0(sizeof(OverrideSearchPath));
+	result = (SearchPathMatcher *) palloc0(sizeof(SearchPathMatcher));
 	schemas = list_copy(activeSearchPath);
 	while (schemas && linitial_oid(schemas) != activeCreationNamespace)
 	{
@@ -3464,16 +3445,16 @@ GetOverrideSearchPath(MemoryContext context)
 }
 
 /*
- * CopyOverrideSearchPath - copy the specified OverrideSearchPath.
+ * CopySearchPathMatcher - copy the specified SearchPathMatcher.
  *
  * The result structure is allocated in CurrentMemoryContext.
  */
-OverrideSearchPath *
-CopyOverrideSearchPath(OverrideSearchPath *path)
+SearchPathMatcher *
+CopySearchPathMatcher(SearchPathMatcher *path)
 {
-	OverrideSearchPath *result;
+	SearchPathMatcher *result;
 
-	result = (OverrideSearchPath *) palloc(sizeof(OverrideSearchPath));
+	result = (SearchPathMatcher *) palloc(sizeof(SearchPathMatcher));
 	result->schemas = list_copy(path->schemas);
 	result->addCatalog = path->addCatalog;
 	result->addTemp = path->addTemp;
@@ -3484,7 +3465,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
 }
 
 /*
- * OverrideSearchPathMatchesCurrent - does path match current setting?
+ * SearchPathMatchesCurrentEnvironment - does path match current environment?
  *
  * This is tested over and over in some common code paths, and in the typical
  * scenario where the active search path seldom changes, it'll always succeed.
@@ -3492,7 +3473,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
  * whenever the active search path changes.
  */
 bool
-OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
+SearchPathMatchesCurrentEnvironment(SearchPathMatcher *path)
 {
 	ListCell   *lc,
 			   *lcp;
@@ -3554,135 +3535,6 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 
 	return true;
 }
-
-/*
- * PushOverrideSearchPath - temporarily override the search path
- *
- * Do not use this function; almost any usage introduces a security
- * vulnerability.  It exists for the benefit of legacy code running in
- * non-security-sensitive environments.
- *
- * We allow nested overrides, hence the push/pop terminology.  The GUC
- * search_path variable is ignored while an override is active.
- *
- * It's possible that newpath->useTemp is set but there is no longer any
- * active temp namespace, if the path was saved during a transaction that
- * created a temp namespace and was later rolled back.  In that case we just
- * ignore useTemp.  A plausible alternative would be to create a new temp
- * namespace, but for existing callers that's not necessary because an empty
- * temp namespace wouldn't affect their results anyway.
- *
- * It's also worth noting that other schemas listed in newpath might not
- * exist anymore either.  We don't worry about this because OIDs that match
- * no existing namespace will simply not produce any hits during searches.
- */
-void
-PushOverrideSearchPath(OverrideSearchPath *newpath)
-{
-	OverrideStackEntry *entry;
-	List	   *oidlist;
-	Oid			firstNS;
-	MemoryContext oldcxt;
-
-	/*
-	 * Copy the list for safekeeping, and insert implicitly-searched
-	 * namespaces as needed.  This code should track recomputeNamespacePath.
-	 */
-	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-
-	oidlist = list_copy(newpath->schemas);
-
-	/*
-	 * Remember the first member of the explicit list.
-	 */
-	if (oidlist == NIL)
-		firstNS = InvalidOid;
-	else
-		firstNS = linitial_oid(oidlist);
-
-	/*
-	 * Add any implicitly-searched namespaces to the list.  Note these go on
-	 * the front, not the back; also notice that we do not check USAGE
-	 * permissions for these.
-	 */
-	if (newpath->addCatalog)
-		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
-
-	if (newpath->addSys)
-		oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
-
-	if (newpath->addTemp && OidIsValid(myTempNamespace))
-		oidlist = lcons_oid(myTempNamespace, oidlist);
-
-	/*
-	 * Build the new stack entry, then insert it at the head of the list.
-	 */
-	entry = (OverrideStackEntry *) palloc(sizeof(OverrideStackEntry));
-	entry->searchPath = oidlist;
-	entry->creationNamespace = firstNS;
-	entry->nestLevel = GetCurrentTransactionNestLevel();
-
-	overrideStack = lcons(entry, overrideStack);
-
-	/* And make it active. */
-	activeSearchPath = entry->searchPath;
-	activeCreationNamespace = entry->creationNamespace;
-	activeTempCreationPending = false;	/* XXX is this OK? */
-
-	/*
-	 * We always increment activePathGeneration when pushing/popping an
-	 * override path.  In current usage, these actions always change the
-	 * effective path state, so there's no value in checking to see if it
-	 * didn't change.
-	 */
-	activePathGeneration++;
-
-	MemoryContextSwitchTo(oldcxt);
-}
-
-/*
- * PopOverrideSearchPath - undo a previous PushOverrideSearchPath
- *
- * Any push during a (sub)transaction will be popped automatically at abort.
- * But it's caller error if a push isn't popped in normal control flow.
- */
-void
-PopOverrideSearchPath(void)
-{
-	OverrideStackEntry *entry;
-
-	/* Sanity checks. */
-	if (overrideStack == NIL)
-		elog(ERROR, "bogus PopOverrideSearchPath call");
-	entry = (OverrideStackEntry *) linitial(overrideStack);
-	if (entry->nestLevel != GetCurrentTransactionNestLevel())
-		elog(ERROR, "bogus PopOverrideSearchPath call");
-
-	/* Pop the stack and free storage. */
-	overrideStack = list_delete_first(overrideStack);
-	list_free(entry->searchPath);
-	pfree(entry);
-
-	/* Activate the next level down. */
-	if (overrideStack)
-	{
-		entry = (OverrideStackEntry *) linitial(overrideStack);
-		activeSearchPath = entry->searchPath;
-		activeCreationNamespace = entry->creationNamespace;
-		activeTempCreationPending = false;	/* XXX is this OK? */
-	}
-	else
-	{
-		/* If not baseSearchPathValid, this is useless but harmless */
-		activeSearchPath = baseSearchPath;
-		activeCreationNamespace = baseCreationNamespace;
-		activeTempCreationPending = baseTempCreationPending;
-	}
-
-	/* As above, the generation always increments. */
-	activePathGeneration++;
-}
-
 
 /*
  * get_collation_oid - find a collation by possibly qualified name
@@ -3840,10 +3692,6 @@ recomputeNamespacePath(void)
 	bool		pathChanged;
 	MemoryContext oldcxt;
 
-	/* Do nothing if an override search spec is active. */
-	if (overrideStack)
-		return;
-
 	/* Do nothing if path is already valid. */
 	if (baseSearchPathValid && namespaceUser == roleid)
 		return;
@@ -3989,10 +3837,7 @@ recomputeNamespacePath(void)
 
 	/*
 	 * Bump the generation only if something actually changed.  (Notice that
-	 * what we compared to was the old state of the base path variables; so
-	 * this does not deal with the situation where we have just popped an
-	 * override path and restored the prior state of the base path.  Instead
-	 * we rely on the override-popping logic to have bumped the generation.)
+	 * what we compared to was the old state of the base path variables.)
 	 */
 	if (pathChanged)
 		activePathGeneration++;
@@ -4195,29 +4040,6 @@ AtEOXact_Namespace(bool isCommit, bool parallel)
 		myTempNamespaceSubID = InvalidSubTransactionId;
 	}
 
-	/*
-	 * Clean up if someone failed to do PopOverrideSearchPath
-	 */
-	if (overrideStack)
-	{
-		if (isCommit)
-			elog(WARNING, "leaked override search path");
-		while (overrideStack)
-		{
-			OverrideStackEntry *entry;
-
-			entry = (OverrideStackEntry *) linitial(overrideStack);
-			overrideStack = list_delete_first(overrideStack);
-			list_free(entry->searchPath);
-			pfree(entry);
-		}
-		/* If not baseSearchPathValid, this is useless but harmless */
-		activeSearchPath = baseSearchPath;
-		activeCreationNamespace = baseCreationNamespace;
-		activeTempCreationPending = baseTempCreationPending;
-		/* Always bump generation --- see note in recomputeNamespacePath */
-		activePathGeneration++;
-	}
 }
 
 /*
@@ -4232,7 +4054,6 @@ void
 AtEOSubXact_Namespace(bool isCommit, SubTransactionId mySubid,
 					  SubTransactionId parentSubid)
 {
-	OverrideStackEntry *entry;
 
 	if (myTempNamespaceSubID == mySubid)
 	{
@@ -4257,51 +4078,6 @@ AtEOSubXact_Namespace(bool isCommit, SubTransactionId mySubid,
 			 */
 			MyProc->tempNamespaceId = InvalidOid;
 		}
-	}
-
-	/*
-	 * Clean up if someone failed to do PopOverrideSearchPath
-	 */
-	while (overrideStack)
-	{
-		entry = (OverrideStackEntry *) linitial(overrideStack);
-		if (entry->nestLevel < GetCurrentTransactionNestLevel())
-			break;
-		if (isCommit)
-			elog(WARNING, "leaked override search path");
-		overrideStack = list_delete_first(overrideStack);
-		list_free(entry->searchPath);
-		pfree(entry);
-		/* Always bump generation --- see note in recomputeNamespacePath */
-		activePathGeneration++;
-	}
-
-	/* Activate the next level down. */
-	if (overrideStack)
-	{
-		entry = (OverrideStackEntry *) linitial(overrideStack);
-		activeSearchPath = entry->searchPath;
-		activeCreationNamespace = entry->creationNamespace;
-		activeTempCreationPending = false;	/* XXX is this OK? */
-
-		/*
-		 * It's probably unnecessary to bump generation here, but this should
-		 * not be a performance-critical case, so better to be over-cautious.
-		 */
-		activePathGeneration++;
-	}
-	else
-	{
-		/* If not baseSearchPathValid, this is useless but harmless */
-		activeSearchPath = baseSearchPath;
-		activeCreationNamespace = baseCreationNamespace;
-		activeTempCreationPending = baseTempCreationPending;
-
-		/*
-		 * If we popped an override stack entry, then we already bumped the
-		 * generation above.  If we did not, then the above assignments did
-		 * nothing and we need not bump the generation.
-		 */
 	}
 }
 
@@ -4449,9 +4225,13 @@ InitializeSearchPath(void)
 	{
 		/*
 		 * In normal mode, arrange for a callback on any syscache invalidation
-		 * of pg_namespace rows.
+		 * of pg_namespace or pg_authid rows. (Changing a role name may affect
+		 * the meaning of the special string $user.)
 		 */
 		CacheRegisterSyscacheCallback(NAMESPACEOID,
+									  NamespaceCallback,
+									  (Datum) 0);
+		CacheRegisterSyscacheCallback(AUTHOID,
 									  NamespaceCallback,
 									  (Datum) 0);
 		/* Force search path to be recomputed on next use */

@@ -96,7 +96,6 @@
 #authentication_timeout = 1min		# 1s-600s
 #password_encryption = scram-sha-256	# scram-sha-256 or md5
 #scram_iterations = 4096
-#db_user_namespace = off
 
 # GSSAPI using Kerberos
 #krb_server_keyfile = 'FILE:${sysconfdir}/krb5.keytab'
@@ -198,8 +197,6 @@
 #max_parallel_workers = 8		# maximum number of max_worker_processes that
 					# can be used in parallel operations
 #parallel_leader_participation = on
-#old_snapshot_threshold = -1		# 1min-60d; -1 disables; 0 is immediate
-					# (change requires restart)
 
 
 #------------------------------------------------------------------------------
@@ -709,6 +706,7 @@
 #xmloption = 'content'
 #gin_pending_list_limit = 4MB
 #createrole_self_grant = ''		# set and/or inherit
+#event_triggers = on
 
 # - Locale and Formatting -
 

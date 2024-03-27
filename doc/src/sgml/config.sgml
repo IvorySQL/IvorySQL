@@ -656,10 +656,15 @@ include_dir 'conf.d'
          <literal>::</literal> allows listening for all IPv6 addresses.
          If the list is empty, the server does not listen on any IP interface
          at all, in which case only Unix-domain sockets can be used to connect
-         to it.
+         to it.  If the list is not empty, the server will start if it
+         can listen on at least one TCP/IP address.  A warning will be
+         emitted for any TCP/IP address which cannot be opened.
          The default value is <systemitem class="systemname">localhost</systemitem>,
          which allows only local TCP/IP <quote>loopback</quote> connections to be
-         made.  While client authentication (<xref
+         made.
+       </para>
+       <para>
+         While client authentication (<xref
          linkend="client-authentication"/>) allows fine-grained control
          over who can access the server, <varname>listen_addresses</varname>
          controls which interfaces accept connection attempts, which
@@ -1182,62 +1187,10 @@ include_dir 'conf.d'
        <para>
         Sets whether GSSAPI delegation should be accepted from the client.
         The default is <literal>off</literal> meaning credentials from the client will
-        NOT be accepted.  Changing this to <literal>on</literal> will make the server
+        <emphasis>not</emphasis> be accepted.  Changing this to <literal>on</literal> will make the server
         accept credentials delegated to it from the client. This parameter can only be
         set in the <filename>postgresql.conf</filename> file or on the server command line.
        </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-db-user-namespace" xreflabel="db_user_namespace">
-      <term><varname>db_user_namespace</varname> (<type>boolean</type>)
-      <indexterm>
-       <primary><varname>db_user_namespace</varname> configuration parameter</primary>
-      </indexterm>
-      </term>
-      <listitem>
-       <para>
-        This parameter enables per-database user names.  It is off by default.
-        This parameter can only be set in the <filename>postgresql.conf</filename>
-        file or on the server command line.
-       </para>
-
-       <para>
-        If this is on, you should create users as <replaceable>username@dbname</replaceable>.
-        When <replaceable>username</replaceable> is passed by a connecting client,
-        <literal>@</literal> and the database name are appended to the user
-        name and that database-specific user name is looked up by the
-        server. Note that when you create users with names containing
-        <literal>@</literal> within the SQL environment, you will need to
-        quote the user name.
-       </para>
-
-       <para>
-        With this parameter enabled, you can still create ordinary global
-        users.  Simply append <literal>@</literal> when specifying the user
-        name in the client, e.g., <literal>joe@</literal>.  The <literal>@</literal>
-        will be stripped off before the user name is looked up by the
-        server.
-       </para>
-
-       <para>
-        <varname>db_user_namespace</varname> causes the client's and
-        server's user name representation to differ.
-        Authentication checks are always done with the server's user name
-        so authentication methods must be configured for the
-        server's user name, not the client's.  Because
-        <literal>md5</literal> uses the user name as salt on both the
-        client and server, <literal>md5</literal> cannot be used with
-        <varname>db_user_namespace</varname>.
-       </para>
-
-       <note>
-        <para>
-         This feature is intended as a temporary measure until a
-         complete solution is found.  At that time, this option will
-         be removed.
-        </para>
-       </note>
       </listitem>
      </varlistentry>
      </variablelist>
@@ -1727,7 +1680,9 @@ include_dir 'conf.d'
         server will try to request huge pages, but fall back to the default if
         that fails. With <literal>on</literal>, failure to request huge pages
         will prevent the server from starting up. With <literal>off</literal>,
-        huge pages will not be requested.
+        huge pages will not be requested. The actual state of huge pages is
+        indicated by the server variable
+        <xref linkend="guc-huge-pages-status"/>.
        </para>
 
        <para>
@@ -1879,9 +1834,10 @@ include_dir 'conf.d'
         (such as a sort or hash table) before writing to temporary disk files.
         If this value is specified without units, it is taken as kilobytes.
         The default value is four megabytes (<literal>4MB</literal>).
-        Note that for a complex query, several sort or hash operations might be
-        running in parallel; each operation will generally be allowed
-        to use as much memory as this value specifies before it starts
+        Note that a complex query might perform several sort and hash
+        operations at the same time, with each operation generally being
+        allowed to use as much memory as this value specifies before
+        it starts
         to write data into temporary files.  Also, several running
         sessions could be doing such operations concurrently.
         Therefore, the total memory used could be many times the value
@@ -1889,14 +1845,13 @@ include_dir 'conf.d'
         fact in mind when choosing the value.  Sort operations are used
         for <literal>ORDER BY</literal>, <literal>DISTINCT</literal>,
         and merge joins.
-        Hash tables are used in hash joins, hash-based aggregation, result
-        cache nodes and hash-based processing of <literal>IN</literal>
-        subqueries.
+        Hash tables are used in hash joins, hash-based aggregation, memoize
+        nodes and hash-based processing of <literal>IN</literal> subqueries.
        </para>
        <para>
         Hash-based operations are generally more sensitive to memory
         availability than equivalent sort-based operations.  The
-        memory available for hash tables is computed by multiplying
+        memory limit for a hash table is computed by multiplying
         <varname>work_mem</varname> by
         <varname>hash_mem_multiplier</varname>.  This makes it
         possible for hash-based operations to use an amount of memory
@@ -2757,65 +2712,6 @@ include_dir 'conf.d'
          tuples can be produced.  The degree to which the leader can help or
          hinder performance depends on the plan type, number of workers and
          query duration.
-        </para>
-       </listitem>
-      </varlistentry>
-
-      <varlistentry id="guc-old-snapshot-threshold" xreflabel="old_snapshot_threshold">
-       <term><varname>old_snapshot_threshold</varname> (<type>integer</type>)
-       <indexterm>
-        <primary><varname>old_snapshot_threshold</varname> configuration parameter</primary>
-       </indexterm>
-       </term>
-       <listitem>
-        <para>
-         Sets the minimum amount of time that a query snapshot can be used
-         without risk of a <quote>snapshot too old</quote> error occurring
-         when using the snapshot.  Data that has been dead for longer than
-         this threshold is allowed to be vacuumed away.  This can help
-         prevent bloat in the face of snapshots which remain in use for a
-         long time.  To prevent incorrect results due to cleanup of data which
-         would otherwise be visible to the snapshot, an error is generated
-         when the snapshot is older than this threshold and the snapshot is
-         used to read a page which has been modified since the snapshot was
-         built.
-        </para>
-
-        <para>
-         If this value is specified without units, it is taken as minutes.
-         A value of <literal>-1</literal> (the default) disables this feature,
-         effectively setting the snapshot age limit to infinity.
-         This parameter can only be set at server start.
-        </para>
-
-        <para>
-         Useful values for production work probably range from a small number
-         of hours to a few days.  Small values (such as <literal>0</literal> or
-         <literal>1min</literal>) are only allowed because they may sometimes be
-         useful for testing.  While a setting as high as <literal>60d</literal> is
-         allowed, please note that in many workloads extreme bloat or
-         transaction ID wraparound may occur in much shorter time frames.
-        </para>
-
-        <para>
-         When this feature is enabled, freed space at the end of a relation
-         cannot be released to the operating system, since that could remove
-         information needed to detect the <quote>snapshot too old</quote>
-         condition.  All space allocated to a relation remains associated with
-         that relation for reuse only within that relation unless explicitly
-         freed (for example, with <command>VACUUM FULL</command>).
-        </para>
-
-        <para>
-         This setting does not attempt to guarantee that an error will be
-         generated under any particular circumstances.  In fact, if the
-         correct results can be generated from (for example) a cursor which
-         has materialized a result set, no error will be generated even if the
-         underlying rows in the referenced table have been vacuumed away.
-         Some tables cannot safely be vacuumed early, and so will not be
-         affected by this setting, such as system catalogs.  For such tables
-         this setting will neither reduce bloat nor create a possibility
-         of a <quote>snapshot too old</quote> error on scanning.
         </para>
        </listitem>
       </varlistentry>
@@ -4833,16 +4729,6 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         If cascaded replication is in use the feedback is passed upstream
         until it eventually reaches the primary.  Standbys make no other use
         of feedback they receive other than to pass upstream.
-       </para>
-       <para>
-        This setting does not override the behavior of
-        <varname>old_snapshot_threshold</varname> on the primary; a snapshot on the
-        standby which exceeds the primary's age threshold can become invalid,
-        resulting in cancellation of transactions on the standby.  This is
-        because <varname>old_snapshot_threshold</varname> is intended to provide an
-        absolute limit on the time which dead rows can contribute to bloat,
-        which would otherwise be violated because of the configuration of a
-        standby.
        </para>
       </listitem>
      </varlistentry>
@@ -7007,8 +6893,9 @@ local0.*    /var/log/postgresql
         and included in CSV log entries.  It can also be included in regular
         log entries via the <xref linkend="guc-log-line-prefix"/> parameter.
         Only printable ASCII characters may be used in the
-        <varname>application_name</varname> value. Other characters will be
-        replaced with question marks (<literal>?</literal>).
+        <varname>application_name</varname> value.
+        Other characters are replaced with <link
+        linkend="sql-syntax-strings-escape">C-style hexadecimal escapes</link>.
        </para>
       </listitem>
      </varlistentry>
@@ -8004,10 +7891,12 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
         The name can be any string of less
         than <symbol>NAMEDATALEN</symbol> characters (64 characters in a standard
         build). Only printable ASCII characters may be used in the
-        <varname>cluster_name</varname> value. Other characters will be
-        replaced with question marks (<literal>?</literal>).  No name is shown
-        if this parameter is set to the empty string <literal>''</literal> (which is
-        the default). This parameter can only be set at server start.
+        <varname>cluster_name</varname> value.
+        Other characters are replaced with <link
+        linkend="sql-syntax-strings-escape">C-style hexadecimal escapes</link>.
+        No name is shown if this parameter is set to the empty string
+        <literal>''</literal> (which is the default).
+        This parameter can only be set at server start.
        </para>
       </listitem>
      </varlistentry>
@@ -9545,6 +9434,25 @@ SET XML OPTION { DOCUMENT | CONTENT };
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-event-triggers" xreflabel="event_triggers">
+      <term><varname>event_triggers</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>event_triggers</varname></primary>
+       <secondary>configuration parameter</secondary>
+     </indexterm>
+     </term>
+     <listitem>
+      <para>
+       Allow temporarily disabling execution of event triggers in order to
+       troubleshoot and repair faulty event triggers. All event triggers will
+       be disabled by setting it to <literal>false</literal>. Setting the value
+       to <literal>true</literal> allows all event triggers to fire, this
+       is the default value. Only superusers and users with the appropriate
+       <literal>SET</literal> privilege can change this setting.
+      </para>
+     </listitem>
+     </varlistentry>
+
      </variablelist>
     </sect2>
      <sect2 id="runtime-config-client-format">
@@ -10631,15 +10539,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         On Linux, <literal>syncfs</literal> may be used instead, to ask the
         operating system to synchronize the whole file systems that contain the
         data directory, the WAL files and each tablespace (but not any other
-        file systems that may be reachable through symbolic links).  This may
-        be a lot faster than the <literal>fsync</literal> setting, because it
-        doesn't need to open each file one by one.  On the other hand, it may
-        be slower if a file system is shared by other applications that
-        modify a lot of files, since those files will also be written to disk.
-        Furthermore, on versions of Linux before 5.8, I/O errors encountered
-        while writing data to disk may not be reported to
-        <productname>PostgreSQL</productname>, and relevant error messages may
-        appear only in kernel logs.
+        file systems that may be reachable through symbolic links).  See
+        <xref linkend="syncfs"/> for more information about using
+        <function>syncfs()</function>.
        </para>
        <para>
         This parameter can only be set in the
@@ -10734,6 +10636,25 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         <option>--enable-cassert</option>). By
         default <productname>PostgreSQL</productname> is built without
         assertions.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-huge-pages-status" xreflabel="huge_pages_status">
+      <term><varname>huge_pages_status</varname> (<type>enum</type>)
+      <indexterm>
+       <primary><varname>huge_pages_status</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Reports the state of huge pages in the current instance:
+        <literal>on</literal>, <literal>off</literal>, or
+        <literal>unknown</literal> (if displayed with
+        <literal>postgres -C</literal>).
+        This parameter is useful to determine whether allocation of huge pages
+        was successful under <literal>huge_pages=try</literal>.
+        See <xref linkend="guc-huge-pages"/> for more information.
        </para>
       </listitem>
      </varlistentry>
@@ -11744,10 +11665,10 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-logical-replication-mode" xreflabel="logical_replication_mode">
-      <term><varname>logical_replication_mode</varname> (<type>enum</type>)
+     <varlistentry id="guc-debug-logical-replication-streaming" xreflabel="debug_logical_replication_streaming">
+      <term><varname>debug_logical_replication_streaming</varname> (<type>enum</type>)
       <indexterm>
-       <primary><varname>logical_replication_mode</varname> configuration parameter</primary>
+       <primary><varname>debug_logical_replication_streaming</varname> configuration parameter</primary>
       </indexterm>
       </term>
       <listitem>
@@ -11756,12 +11677,12 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
         <literal>immediate</literal>. The default is <literal>buffered</literal>.
         This parameter is intended to be used to test logical decoding and
         replication of large transactions.  The effect of
-        <varname>logical_replication_mode</varname> is different for the
+        <varname>debug_logical_replication_streaming</varname> is different for the
         publisher and subscriber:
        </para>
 
        <para>
-        On the publisher side, <varname>logical_replication_mode</varname>
+        On the publisher side, <varname>debug_logical_replication_streaming</varname>
         allows streaming or serializing changes immediately in logical decoding.
         When set to <literal>immediate</literal>, stream each change if the
         <link linkend="sql-createsubscription-with-streaming"><literal>streaming</literal></link>
@@ -11774,7 +11695,7 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 
        <para>
         On the subscriber side, if the <literal>streaming</literal> option is set to
-        <literal>parallel</literal>, <varname>logical_replication_mode</varname>
+        <literal>parallel</literal>, <varname>debug_logical_replication_streaming</varname>
         can be used to direct the leader apply worker to send changes to the
         shared memory queue or to serialize all changes to the file.  When set to
         <literal>buffered</literal>, the leader sends changes to parallel apply

@@ -569,7 +569,6 @@ extern void ExecAssignProjectionInfo(PlanState *planstate,
 									 TupleDesc inputDesc);
 extern void ExecConditionalAssignProjectionInfo(PlanState *planstate,
 												TupleDesc inputDesc, int varno);
-extern void ExecFreeExprContext(PlanState *planstate);
 extern void ExecAssignScanType(ScanState *scanstate, TupleDesc tupDesc);
 extern void ExecCreateScanSlotFromOuterPlan(EState *estate,
 											ScanState *scanstate,
@@ -646,6 +645,7 @@ extern void check_exclusion_constraint(Relation heap, Relation index,
 /*
  * prototypes from functions in execReplication.c
  */
+extern StrategyNumber get_equal_strategy_number_for_am(Oid am);
 extern bool RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 										 LockTupleMode lockmode,
 										 TupleTableSlot *searchslot,

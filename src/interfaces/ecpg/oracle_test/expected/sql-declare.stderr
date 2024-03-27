@@ -62,7 +62,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 82: RESULT: 10 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 82: type (9003); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 82: type (9503); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 82: RESULT: db on con2 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -112,7 +112,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 107: RESULT: 10 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 107: type (9003); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 107: type (9503); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 107: RESULT: db on con1 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000

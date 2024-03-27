@@ -2044,7 +2044,9 @@ pg_stat_progress_vacuum| SELECT s.pid,
     s.param4 AS heap_blks_vacuumed,
     s.param5 AS index_vacuum_count,
     s.param6 AS max_dead_tuples,
-    s.param7 AS num_dead_tuples
+    s.param7 AS num_dead_tuples,
+    s.param8 AS indexes_total,
+    s.param9 AS indexes_processed
    FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_recovery_prefetch| SELECT stats_reset,
@@ -2116,6 +2118,7 @@ pg_stat_ssl| SELECT pid,
   WHERE (client_port IS NOT NULL);
 pg_stat_subscription| SELECT su.oid AS subid,
     su.subname,
+    st.worker_type,
     st.pid,
     st.leader_pid,
     st.relid,
@@ -2125,7 +2128,7 @@ pg_stat_subscription| SELECT su.oid AS subid,
     st.latest_end_lsn,
     st.latest_end_time
    FROM (pg_subscription su
-     LEFT JOIN pg_stat_get_subscription(NULL::oid) st(subid, relid, pid, leader_pid, received_lsn, last_msg_send_time, last_msg_receipt_time, latest_end_lsn, latest_end_time) ON ((st.subid = su.oid)));
+     LEFT JOIN pg_stat_get_subscription(NULL::oid) st(subid, relid, pid, leader_pid, received_lsn, last_msg_send_time, last_msg_receipt_time, latest_end_lsn, latest_end_time, worker_type) ON ((st.subid = su.oid)));
 pg_stat_subscription_stats| SELECT ss.subid,
     s.subname,
     ss.apply_error_count,
@@ -2629,6 +2632,10 @@ pg_views| SELECT n.nspname AS schemaname,
    FROM (pg_class c
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
   WHERE (c.relkind = 'v'::"char");
+pg_wait_events| SELECT type,
+    name,
+    description
+   FROM pg_get_wait_events() pg_get_wait_events(type, name, description);
 SELECT tablename, rulename, definition FROM pg_rules
 WHERE schemaname = 'pg_catalog'
 ORDER BY tablename, rulename;

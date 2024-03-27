@@ -317,7 +317,7 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 	bool		failed = false;
 	int			items_count = 0;
 
-	conn = connectDatabase(cparams, progname, echo, false, false);
+	conn = connectDatabase(cparams, progname, echo, false, true);
 
 	if (concurrently && PQserverVersion(conn) < 120000)
 	{
@@ -722,7 +722,9 @@ reindex_all_databases(ConnParams *cparams,
 	int			i;
 
 	conn = connectMaintenanceDatabase(cparams, progname, echo);
-	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn ORDER BY 1;", echo);
+	result = executeQuery(conn,
+						  "SELECT datname FROM pg_database WHERE datallowconn AND datconnlimit <> -2 ORDER BY 1;",
+						  echo);
 	PQfinish(conn);
 
 	for (i = 0; i < PQntuples(result); i++)

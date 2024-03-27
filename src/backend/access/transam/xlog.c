@@ -377,7 +377,7 @@ typedef struct XLogwrtResult
 typedef struct
 {
 	LWLock		lock;
-	XLogRecPtr	insertingAt;
+	pg_atomic_uint64 insertingAt;
 	XLogRecPtr	lastImportantAt;
 } WALInsertLock;
 
@@ -1496,6 +1496,17 @@ WaitXLogInsertionsToFinish(XLogRecPtr upto)
 			 * calling LWLockUpdateVar.  But if it has to sleep, it will
 			 * advertise the insertion point with LWLockUpdateVar before
 			 * sleeping.
+			 *
+			 * In this loop we are only waiting for insertions that started
+			 * before WaitXLogInsertionsToFinish was called.  The lack of
+			 * memory barriers in the loop means that we might see locks as
+			 * "unused" that have since become used.  This is fine because
+			 * they only can be used for later insertions that we would not
+			 * want to wait on anyway.  Not taking a lock to acquire the
+			 * current insertingAt value means that we might see older
+			 * insertingAt values.  This is also fine, because if we read a
+			 * value too old, we will add ourselves to the wait queue, which
+			 * contains atomic operations.
 			 */
 			if (LWLockWaitForVar(&WALInsertLocks[i].l.lock,
 								 &WALInsertLocks[i].l.insertingAt,
@@ -1985,6 +1996,18 @@ assign_checkpoint_completion_target(double newval, void *extra)
 	CalculateCheckpointSegments();
 }
 
+bool
+check_wal_segment_size(int *newval, void **extra, GucSource source)
+{
+	if (!IsValidWalSegSize(*newval))
+	{
+		GUC_check_errdetail("The WAL segment size must be a power of two between 1 MB and 1 GB.");
+		return false;
+	}
+
+	return true;
+}
+
 /*
  * At a checkpoint, how many WAL segments to recycle as preallocated future
  * XLOG segments? Returns the highest segment that should be preallocated.
@@ -2204,10 +2227,10 @@ XLogWrite(XLogwrtRqst WriteRqst, TimeLineID tli, bool flexible)
 				 */
 				if (track_wal_io_timing)
 				{
-					instr_time	duration;
+					instr_time	end;
 
-					INSTR_TIME_SET_CURRENT(duration);
-					INSTR_TIME_ACCUM_DIFF(PendingWalStats.wal_write_time, duration, start);
+					INSTR_TIME_SET_CURRENT(end);
+					INSTR_TIME_ACCUM_DIFF(PendingWalStats.wal_write_time, end, start);
 				}
 
 				PendingWalStats.wal_write++;
@@ -2226,8 +2249,7 @@ XLogWrite(XLogwrtRqst WriteRqst, TimeLineID tli, bool flexible)
 					errno = save_errno;
 					ereport(PANIC,
 							(errcode_for_file_access(),
-							 errmsg("could not write to log file %s "
-									"at offset %u, length %zu: %m",
+							 errmsg("could not write to log file \"%s\" at offset %u, length %zu: %m",
 									xlogfname, startoffset, nleft)));
 				}
 				nleft -= written;
@@ -4135,10 +4157,11 @@ ReadControlFile(void)
 
 	if (!IsValidWalSegSize(wal_segment_size))
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg_plural("WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d byte",
-									  "WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d bytes",
+						errmsg_plural("invalid WAL segment size in control file (%d byte)",
+									  "invalid WAL segment size in control file (%d bytes)",
 									  wal_segment_size,
-									  wal_segment_size)));
+									  wal_segment_size),
+						errdetail("The WAL segment size must be a power of two between 1 MB and 1 GB.")));
 
 	snprintf(wal_segsz_str, sizeof(wal_segsz_str), "%d", wal_segment_size);
 	SetConfigOption("wal_segment_size", wal_segsz_str, PGC_INTERNAL,
@@ -4617,7 +4640,7 @@ XLOGShmemInit(void)
 	for (i = 0; i < NUM_XLOGINSERT_LOCKS; i++)
 	{
 		LWLockInitialize(&WALInsertLocks[i].l.lock, LWTRANCHE_WAL_INSERT);
-		WALInsertLocks[i].l.insertingAt = InvalidXLogRecPtr;
+		pg_atomic_init_u64(&WALInsertLocks[i].l.insertingAt, InvalidXLogRecPtr);
 		WALInsertLocks[i].l.lastImportantAt = InvalidXLogRecPtr;
 	}
 
@@ -7148,7 +7171,7 @@ static void
 CheckPointGuts(XLogRecPtr checkPointRedo, int flags)
 {
 	CheckPointRelationMap();
-	CheckPointReplicationSlots();
+	CheckPointReplicationSlots(flags & CHECKPOINT_IS_SHUTDOWN);
 	CheckPointSnapBuild();
 	CheckPointLogicalRewriteHeap();
 	CheckPointReplicationOrigin();
@@ -8362,10 +8385,10 @@ issue_xlog_fsync(int fd, XLogSegNo segno, TimeLineID tli)
 	 */
 	if (track_wal_io_timing)
 	{
-		instr_time	duration;
+		instr_time	end;
 
-		INSTR_TIME_SET_CURRENT(duration);
-		INSTR_TIME_ACCUM_DIFF(PendingWalStats.wal_sync_time, duration, start);
+		INSTR_TIME_SET_CURRENT(end);
+		INSTR_TIME_ACCUM_DIFF(PendingWalStats.wal_sync_time, end, start);
 	}
 
 	PendingWalStats.wal_sync++;

@@ -275,7 +275,7 @@ documentation.  See standalone-profile.xsl for details.
       encrypted client connections.  <productname>OpenSSL</productname> is
       also required for random number generation on platforms that do not
       have <filename>/dev/urandom</filename> (except Windows).  The minimum
-      required version is 1.0.1.
+      required version is 1.0.2.
      </para>
     </listitem>
 
@@ -1306,19 +1306,6 @@ build-postgresql:
        </listitem>
       </varlistentry>
 
-      <varlistentry id="configure-option-disable-thread-safety">
-       <term><option>--disable-thread-safety</option></term>
-       <listitem>
-        <para>
-         Disable the thread-safety of client libraries.  This prevents
-         concurrent threads in <application>libpq</application> and
-         <application>ECPG</application> programs from safely controlling
-         their private connection handles.  Use this only on platforms
-         with deficient threading support.
-        </para>
-       </listitem>
-      </varlistentry>
-
      </variablelist>
 
    </sect3>
@@ -1694,7 +1681,7 @@ build-postgresql:
        <term><option>--with-segsize-blocks=SEGSIZE_BLOCKS</option></term>
        <listitem>
         <para>
-         Specify the segment size in blocks. If both
+         Specify the relation segment size in blocks. If both
          <option>--with-segsize</option> and this option are specified, this
          option wins.
 
@@ -3191,7 +3178,7 @@ ninja install
        <term><option>-Dsegsize_blocks=SEGSIZE_BLOCKS</option></term>
        <listitem>
         <para>
-         Specify the segment size in blocks. If both
+         Specify the relation segment size in blocks. If both
          <option>-Dsegsize</option> and this option are specified, this option
          wins.
 

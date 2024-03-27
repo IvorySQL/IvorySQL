@@ -2305,6 +2305,7 @@ RelationReloadIndexInfo(Relation relation)
 		relation->rd_index->indcheckxmin = index->indcheckxmin;
 		relation->rd_index->indisready = index->indisready;
 		relation->rd_index->indislive = index->indislive;
+		relation->rd_index->indisreplident = index->indisreplident;
 
 		/* Copy xmin too, as that is needed to make sense of indcheckxmin */
 		HeapTupleHeaderSetXmin(relation->rd_indextuple->t_data,
@@ -4788,18 +4789,40 @@ RelationGetIndexList(Relation relation)
 		result = lappend_oid(result, index->indexrelid);
 
 		/*
-		 * Invalid, non-unique, non-immediate or predicate indexes aren't
-		 * interesting for either oid indexes or replication identity indexes,
-		 * so don't check them.
+		 * Non-unique, non-immediate or predicate indexes aren't interesting
+		 * for either oid indexes or replication identity indexes, so don't
+		 * check them.
 		 */
-		if (!index->indisvalid || !index->indisunique ||
+		if (!index->indisunique ||
 			!index->indimmediate ||
 			!heap_attisnull(htup, Anum_pg_index_indpred, NULL))
 			continue;
 
-		/* remember primary key index if any */
-		if (index->indisprimary)
+		/*
+		 * Remember primary key index, if any.  We do this only if the index
+		 * is valid; but if the table is partitioned, then we do it even if
+		 * it's invalid.
+		 *
+		 * The reason for returning invalid primary keys for foreign tables is
+		 * because of pg_dump of NOT NULL constraints, and the fact that PKs
+		 * remain marked invalid until the partitions' PKs are attached to it.
+		 * If we make rd_pkindex invalid, then the attnotnull flag is reset
+		 * after the PK is created, which causes the ALTER INDEX ATTACH
+		 * PARTITION to fail with 'column ... is not marked NOT NULL'.  With
+		 * this, dropconstraint_internal() will believe that the columns must
+		 * not have attnotnull reset, so the PKs-on-partitions can be attached
+		 * correctly, until finally the PK-on-parent is marked valid.
+		 *
+		 * Also, this doesn't harm anything, because rd_pkindex is not a
+		 * "real" index anyway, but a RELKIND_PARTITIONED_INDEX.
+		 */
+		if (index->indisprimary &&
+			(index->indisvalid ||
+			 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
 			pkeyIndex = index->indexrelid;
+
+		if (!index->indisvalid)
+			continue;
 
 		/* remember explicitly chosen replica index */
 		if (index->indisreplident)
@@ -5149,9 +5172,15 @@ RelationGetIndexPredicate(Relation relation)
  * simple index keys, but attributes used in expressions and partial-index
  * predicates.)
  *
- * Depending on attrKind, a bitmap covering the attnums for all index columns,
- * for all potential foreign key columns, or for all columns in the configured
- * replica identity index is returned.
+ * Depending on attrKind, a bitmap covering attnums for certain columns is
+ * returned:
+ *	INDEX_ATTR_BITMAP_KEY			Columns in non-partial unique indexes not
+ *									in expressions (i.e., usable for FKs)
+ *	INDEX_ATTR_BITMAP_PRIMARY_KEY	Columns in the table's primary key
+ *	INDEX_ATTR_BITMAP_IDENTITY_KEY	Columns in the table's replica identity
+ *									index (empty if FULL)
+ *	INDEX_ATTR_BITMAP_HOT_BLOCKING	Columns that block updates from being HOT
+ *	INDEX_ATTR_BITMAP_SUMMARIZED	Columns included in summarizing indexes
  *
  * Attribute numbers are offset by FirstLowInvalidHeapAttributeNumber so that
  * we can include system attributes (e.g., OID) in the bitmap representation.

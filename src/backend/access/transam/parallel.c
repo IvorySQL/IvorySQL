@@ -24,6 +24,7 @@
 #include "catalog/pg_enum.h"
 #include "catalog/storage.h"
 #include "commands/async.h"
+#include "commands/progress.h"
 #include "commands/vacuum.h"
 #include "executor/execParallel.h"
 #include "libpq/libpq.h"
@@ -326,7 +327,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	fps->database_id = MyDatabaseId;
 	fps->authenticated_user_id = GetAuthenticatedUserId();
 	fps->outer_user_id = GetCurrentRoleId();
-	fps->is_superuser = session_auth_is_superuser;
+	fps->is_superuser = current_role_is_superuser;
 	GetUserIdAndSecContext(&fps->current_user_id, &fps->sec_context);
 	GetTempNamespaceState(&fps->temp_namespace_id,
 						  &fps->temp_toast_namespace_id);
@@ -1126,7 +1127,7 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 
 	switch (msgtype)
 	{
-		case 'K':				/* BackendKeyData */
+		case PqMsg_BackendKeyData:
 			{
 				int32		pid = pq_getmsgint(msg, 4);
 
@@ -1136,8 +1137,8 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				break;
 			}
 
-		case 'E':				/* ErrorResponse */
-		case 'N':				/* NoticeResponse */
+		case PqMsg_ErrorResponse:
+		case PqMsg_NoticeResponse:
 			{
 				ErrorData	edata;
 				ErrorContextCallback *save_error_context_stack;
@@ -1182,7 +1183,7 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				break;
 			}
 
-		case 'A':				/* NotifyResponse */
+		case PqMsg_NotificationResponse:
 			{
 				/* Propagate NotifyResponse. */
 				int32		pid;
@@ -1199,7 +1200,24 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				break;
 			}
 
-		case 'X':				/* Terminate, indicating clean exit */
+		case 'P':				/* Parallel progress reporting */
+			{
+				/*
+				 * Only incremental progress reporting is currently supported.
+				 * However, it's possible to add more fields to the message to
+				 * allow for handling of other backend progress APIs.
+				 */
+				int			index = pq_getmsgint(msg, 4);
+				int64		incr = pq_getmsgint64(msg);
+
+				pq_getmsgend(msg);
+
+				pgstat_progress_incr_param(index, incr);
+
+				break;
+			}
+
+		case PqMsg_Terminate:
 			{
 				shm_mq_detach(pcxt->worker[i].error_mqh);
 				pcxt->worker[i].error_mqh = NULL;
@@ -1354,7 +1372,7 @@ ParallelWorkerMain(Datum main_arg)
 	 * protocol message is defined, but it won't actually be used for anything
 	 * in this case.
 	 */
-	pq_beginmessage(&msgbuf, 'K');
+	pq_beginmessage(&msgbuf, PqMsg_BackendKeyData);
 	pq_sendint32(&msgbuf, (int32) MyProcPid);
 	pq_sendint32(&msgbuf, (int32) MyCancelKey);
 	pq_endmessage(&msgbuf);
@@ -1532,7 +1550,7 @@ ParallelWorkerMain(Datum main_arg)
 	DetachSession();
 
 	/* Report success. */
-	pq_putmessage('X', NULL, 0);
+	pq_putmessage(PqMsg_Terminate, NULL, 0);
 }
 
 /*

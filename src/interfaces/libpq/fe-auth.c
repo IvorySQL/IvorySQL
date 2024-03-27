@@ -27,6 +27,7 @@
 #else
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/param.h>			/* for MAXHOSTNAMELEN on most */
 #include <sys/socket.h>
 #ifdef HAVE_SYS_UCRED_H
@@ -478,7 +479,7 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 			{
 				/* The server has offered SCRAM-SHA-256-PLUS. */
 
-#ifdef HAVE_PGTLS_GET_PEER_CERTIFICATE_HASH
+#ifdef USE_SSL
 				/*
 				 * The client supports channel binding, which is chosen if
 				 * channel_binding is not disabled.
@@ -585,7 +586,7 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 	/*
 	 * Build a SASLInitialResponse message, and send it.
 	 */
-	if (pqPutMsgStart('p', conn))
+	if (pqPutMsgStart(PqMsg_SASLInitialResponse, conn))
 		goto error;
 	if (pqPuts(selected_mechanism, conn))
 		goto error;
@@ -1179,15 +1180,6 @@ pg_fe_getusername(uid_t user_id, PQExpBuffer errorMessage)
 	char		pwdbuf[BUFSIZ];
 #endif
 
-	/*
-	 * Some users are using configure --enable-thread-safety-force, so we
-	 * might as well do the locking within our library to protect getpwuid().
-	 * In fact, application developers can use getpwuid() in their application
-	 * if they use the locking call we provide, or install their own locking
-	 * function using PQregisterThreadLock().
-	 */
-	pglock_thread();
-
 #ifdef WIN32
 	if (GetUserName(username, &namesize))
 		name = username;
@@ -1208,8 +1200,6 @@ pg_fe_getusername(uid_t user_id, PQExpBuffer errorMessage)
 		if (result == NULL && errorMessage)
 			libpq_append_error(errorMessage, "out of memory");
 	}
-
-	pgunlock_thread();
 
 	return result;
 }

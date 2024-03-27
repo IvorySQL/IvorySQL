@@ -1257,6 +1257,28 @@ get_opclass_opfamily_and_input_type(Oid opclass, Oid *opfamily, Oid *opcintype)
 	return true;
 }
 
+/*
+ * get_opclass_method
+ *
+ *		Returns the OID of the index access method the opclass belongs to.
+ */
+Oid
+get_opclass_method(Oid opclass)
+{
+	HeapTuple	tp;
+	Form_pg_opclass cla_tup;
+	Oid			result;
+
+	tp = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclass));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for opclass %u", opclass);
+	cla_tup = (Form_pg_opclass) GETSTRUCT(tp);
+
+	result = cla_tup->opcmethod;
+	ReleaseSysCache(tp);
+	return result;
+}
+
 /*				---------- OPERATOR CACHE ----------					 */
 
 /*
@@ -2086,7 +2108,8 @@ get_transform_fromsql(Oid typid, Oid langid, List *trftypes)
 	if (!list_member_oid(trftypes, typid))
 		return InvalidOid;
 
-	tup = SearchSysCache2(TRFTYPELANG, typid, langid);
+	tup = SearchSysCache2(TRFTYPELANG, ObjectIdGetDatum(typid),
+						  ObjectIdGetDatum(langid));
 	if (HeapTupleIsValid(tup))
 	{
 		Oid			funcid;
@@ -2107,7 +2130,8 @@ get_transform_tosql(Oid typid, Oid langid, List *trftypes)
 	if (!list_member_oid(trftypes, typid))
 		return InvalidOid;
 
-	tup = SearchSysCache2(TRFTYPELANG, typid, langid);
+	tup = SearchSysCache2(TRFTYPELANG, ObjectIdGetDatum(typid),
+						  ObjectIdGetDatum(langid));
 	if (HeapTupleIsValid(tup))
 	{
 		Oid			funcid;

@@ -295,7 +295,8 @@ AlterObjectRename_internal(Relation rel, Oid objectId, const char *new_name)
 	}
 	else if (classId == SubscriptionRelationId)
 	{
-		if (SearchSysCacheExists2(SUBSCRIPTIONNAME, MyDatabaseId,
+		if (SearchSysCacheExists2(SUBSCRIPTIONNAME,
+								  ObjectIdGetDatum(MyDatabaseId),
 								  CStringGetDatum(new_name)))
 			report_name_conflict(classId, new_name);
 
@@ -847,9 +848,11 @@ AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid)
 	pfree(nulls);
 	pfree(replaces);
 
-	/* update dependencies to point to the new schema */
-	changeDependencyFor(classId, objid,
-						NamespaceRelationId, oldNspOid, nspOid);
+	/* update dependency to point to the new schema */
+	if (changeDependencyFor(classId, objid,
+							NamespaceRelationId, oldNspOid, nspOid) != 1)
+		elog(ERROR, "could not change schema dependency for object %u",
+			 objid);
 
 	InvokeObjectPostAlterHook(classId, objid, 0);
 

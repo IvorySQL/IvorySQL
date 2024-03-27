@@ -2229,6 +2229,7 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 						List *pathkeys,
 						Relids required_outer,
 						Path *fdw_outerpath,
+						List *fdw_restrictinfo,
 						List *fdw_private)
 {
 	ForeignPath *pathnode = makeNode(ForeignPath);
@@ -2250,6 +2251,7 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.pathkeys = pathkeys;
 
 	pathnode->fdw_outerpath = fdw_outerpath;
+	pathnode->fdw_restrictinfo = fdw_restrictinfo;
 	pathnode->fdw_private = fdw_private;
 
 	return pathnode;
@@ -2273,6 +2275,7 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 						 List *pathkeys,
 						 Relids required_outer,
 						 Path *fdw_outerpath,
+						 List *fdw_restrictinfo,
 						 List *fdw_private)
 {
 	ForeignPath *pathnode = makeNode(ForeignPath);
@@ -2300,6 +2303,7 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.pathkeys = pathkeys;
 
 	pathnode->fdw_outerpath = fdw_outerpath;
+	pathnode->fdw_restrictinfo = fdw_restrictinfo;
 	pathnode->fdw_private = fdw_private;
 
 	return pathnode;
@@ -2322,6 +2326,7 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 						  double rows, Cost startup_cost, Cost total_cost,
 						  List *pathkeys,
 						  Path *fdw_outerpath,
+						  List *fdw_restrictinfo,
 						  List *fdw_private)
 {
 	ForeignPath *pathnode = makeNode(ForeignPath);
@@ -2345,6 +2350,7 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.pathkeys = pathkeys;
 
 	pathnode->fdw_outerpath = fdw_outerpath;
+	pathnode->fdw_restrictinfo = fdw_restrictinfo;
 	pathnode->fdw_private = fdw_private;
 
 	return pathnode;
@@ -3348,8 +3354,7 @@ create_minmaxagg_path(PlannerInfo *root,
 	/* For now, assume we are above any joins, so no parameterization */
 	pathnode->path.param_info = NULL;
 	pathnode->path.parallel_aware = false;
-	/* A MinMaxAggPath implies use of initplans, so cannot be parallel-safe */
-	pathnode->path.parallel_safe = false;
+	pathnode->path.parallel_safe = true;	/* might change below */
 	pathnode->path.parallel_workers = 0;
 	/* Result is one unordered row */
 	pathnode->path.rows = 1;
@@ -3358,13 +3363,15 @@ create_minmaxagg_path(PlannerInfo *root,
 	pathnode->mmaggregates = mmaggregates;
 	pathnode->quals = quals;
 
-	/* Calculate cost of all the initplans ... */
+	/* Calculate cost of all the initplans, and check parallel safety */
 	initplan_cost = 0;
 	foreach(lc, mmaggregates)
 	{
 		MinMaxAggInfo *mminfo = (MinMaxAggInfo *) lfirst(lc);
 
 		initplan_cost += mminfo->pathcost;
+		if (!mminfo->path->parallel_safe)
+			pathnode->path.parallel_safe = false;
 	}
 
 	/* add tlist eval cost for each output row, plus cpu_tuple_cost */
@@ -3384,6 +3391,17 @@ create_minmaxagg_path(PlannerInfo *root,
 		pathnode->path.startup_cost += qual_cost.startup;
 		pathnode->path.total_cost += qual_cost.startup + qual_cost.per_tuple;
 	}
+
+	/*
+	 * If the initplans were all parallel-safe, also check safety of the
+	 * target and quals.  (The Result node itself isn't parallelizable, but if
+	 * we are in a subquery then it can be useful for the outer query to know
+	 * that this one is parallel-safe.)
+	 */
+	if (pathnode->path.parallel_safe)
+		pathnode->path.parallel_safe =
+			is_parallel_safe(root, (Node *) target->exprs) &&
+			is_parallel_safe(root, (Node *) quals);
 
 	return pathnode;
 }
@@ -3445,8 +3463,7 @@ create_windowagg_path(PlannerInfo *root,
 	 */
 	cost_windowagg(&pathnode->path, root,
 				   windowFuncs,
-				   list_length(winclause->partitionClause),
-				   list_length(winclause->orderClause),
+				   winclause,
 				   subpath->startup_cost,
 				   subpath->total_cost,
 				   subpath->rows);
@@ -4138,6 +4155,8 @@ do { \
 				FLAT_COPY_PATH(fpath, path, ForeignPath);
 				if (fpath->fdw_outerpath)
 					REPARAMETERIZE_CHILD_PATH(fpath->fdw_outerpath);
+				if (fpath->fdw_restrictinfo)
+					ADJUST_CHILD_ATTRS(fpath->fdw_restrictinfo);
 
 				/* Hand over to FDW if needed. */
 				rfpc_func =
@@ -4155,6 +4174,8 @@ do { \
 
 				FLAT_COPY_PATH(cpath, path, CustomPath);
 				REPARAMETERIZE_CHILD_PATH_LIST(cpath->custom_paths);
+				if (cpath->custom_restrictinfo)
+					ADJUST_CHILD_ATTRS(cpath->custom_restrictinfo);
 				if (cpath->methods &&
 					cpath->methods->ReparameterizeCustomPathByChild)
 					cpath->custom_private =

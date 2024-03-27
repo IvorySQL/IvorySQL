@@ -94,6 +94,7 @@
 #include "access/xlogrecovery.h"
 #include "catalog/pg_control.h"
 #include "common/file_perm.h"
+#include "common/file_utils.h"
 #include "common/ip.h"
 #include "common/pg_prng.h"
 #include "common/string.h"
@@ -245,7 +246,6 @@ int			AuthenticationTimeout = 60;
 
 bool		log_hostname;		/* for ps display and logging */
 bool		Log_connections = false;
-bool		Db_user_namespace = false;
 
 bool		enable_bonjour = false;
 char	   *bonjour_name;
@@ -506,7 +506,6 @@ typedef struct
 	Port		port;
 	InheritableSocket portsocket;
 	char		DataDir[MAXPGPATH];
-	pgsocket	ListenSocket[MAXLISTEN];
 	int32		MyCancelKey;
 	int			MyPMChildSlot;
 #ifndef WIN32
@@ -1159,6 +1158,17 @@ PostmasterMain(int argc, char *argv[])
 						LOG_METAINFO_DATAFILE)));
 
 	/*
+	 * Initialize input sockets.
+	 *
+	 * Mark them all closed, and set up an on_proc_exit function that's
+	 * charged with closing the sockets again at postmaster shutdown.
+	 */
+	for (i = 0; i < MAXLISTEN; i++)
+		ListenSocket[i] = PGINVALID_SOCKET;
+
+	on_proc_exit(CloseServerPorts, 0);
+
+	/*
 	 * If enabled, start up syslogger collection subprocess
 	 */
 	SysLoggerPID = SysLogger_Start();
@@ -1192,15 +1202,7 @@ PostmasterMain(int argc, char *argv[])
 
 	/*
 	 * Establish input sockets.
-	 *
-	 * First, mark them all closed, and set up an on_proc_exit function that's
-	 * charged with closing the sockets again at postmaster shutdown.
 	 */
-	for (i = 0; i < MAXLISTEN; i++)
-		ListenSocket[i] = PGINVALID_SOCKET;
-
-	on_proc_exit(CloseServerPorts, 0);
-
 	if (ListenAddresses)
 	{
 		char	   *rawstring;
@@ -2479,33 +2481,6 @@ retry1:
 	if (port->database_name == NULL || port->database_name[0] == '\0')
 		port->database_name = pstrdup(port->user_name);
 
-	if (Db_user_namespace)
-	{
-		/*
-		 * If user@, it is a global user, remove '@'. We only want to do this
-		 * if there is an '@' at the end and no earlier in the user string or
-		 * they may fake as a local user of another database attaching to this
-		 * database.
-		 */
-		if (strchr(port->user_name, '@') ==
-			port->user_name + strlen(port->user_name) - 1)
-			*strchr(port->user_name, '@') = '\0';
-		else
-		{
-			/* Append '@' and dbname */
-			port->user_name = psprintf("%s@%s", port->user_name, port->database_name);
-		}
-	}
-
-	/*
-	 * Truncate given database and user names to length of a Postgres name.
-	 * This avoids lookup failures when overlength names are given.
-	 */
-	if (strlen(port->database_name) >= NAMEDATALEN)
-		port->database_name[NAMEDATALEN - 1] = '\0';
-	if (strlen(port->user_name) >= NAMEDATALEN)
-		port->user_name[NAMEDATALEN - 1] = '\0';
-
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
 	else
@@ -2592,7 +2567,7 @@ SendNegotiateProtocolVersion(List *unrecognized_protocol_options)
 	StringInfoData buf;
 	ListCell   *lc;
 
-	pq_beginmessage(&buf, 'v'); /* NegotiateProtocolVersion */
+	pq_beginmessage(&buf, PqMsg_NegotiateProtocolVersion);
 	pq_sendint32(&buf, PG_PROTOCOL_LATEST);
 	pq_sendint32(&buf, list_length(unrecognized_protocol_options));
 	foreach(lc, unrecognized_protocol_options)
@@ -2780,8 +2755,6 @@ ConnFree(Port *port)
 void
 ClosePostmasterPorts(bool am_syslogger)
 {
-	int			i;
-
 	/* Release resources held by the postmaster's WaitEventSet. */
 	if (pm_wait_set)
 	{
@@ -2808,8 +2781,12 @@ ClosePostmasterPorts(bool am_syslogger)
 	/*
 	 * Close the postmaster's listen sockets.  These aren't tracked by fd.c,
 	 * so we don't call ReleaseExternalFD() here.
+	 *
+	 * The listen sockets are marked as FD_CLOEXEC, so this isn't needed in
+	 * EXEC_BACKEND mode.
 	 */
-	for (i = 0; i < MAXLISTEN; i++)
+#ifndef EXEC_BACKEND
+	for (int i = 0; i < MAXLISTEN; i++)
 	{
 		if (ListenSocket[i] != PGINVALID_SOCKET)
 		{
@@ -2817,6 +2794,7 @@ ClosePostmasterPorts(bool am_syslogger)
 			ListenSocket[i] = PGINVALID_SOCKET;
 		}
 	}
+#endif
 
 	/*
 	 * If using syslogger, close the read side of the pipe.  We don't bother
@@ -6322,8 +6300,6 @@ save_backend_variables(BackendParameters *param, Port *port,
 
 	strlcpy(param->DataDir, DataDir, MAXPGPATH);
 
-	memcpy(&param->ListenSocket, &ListenSocket, sizeof(ListenSocket));
-
 	param->MyCancelKey = MyCancelKey;
 	param->MyPMChildSlot = MyPMChildSlot;
 
@@ -6554,8 +6530,6 @@ restore_backend_variables(BackendParameters *param, Port *port)
 	read_inheritable_socket(&port->sock, &param->portsocket);
 
 	SetDataDir(param->DataDir);
-
-	memcpy(&ListenSocket, &param->ListenSocket, sizeof(ListenSocket));
 
 	MyCancelKey = param->MyCancelKey;
 	MyPMChildSlot = param->MyPMChildSlot;

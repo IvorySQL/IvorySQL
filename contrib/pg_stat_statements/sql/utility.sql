@@ -115,6 +115,33 @@ COMMIT;
 SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
 SELECT pg_stat_statements_reset();
 
+-- Two-phase transactions
+BEGIN;
+PREPARE TRANSACTION 'stat_trans1';
+COMMIT PREPARED 'stat_trans1';
+BEGIN;
+PREPARE TRANSACTION 'stat_trans2';
+ROLLBACK PREPARED 'stat_trans2';
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT pg_stat_statements_reset();
+
+-- Savepoints
+BEGIN;
+SAVEPOINT sp1;
+SAVEPOINT sp2;
+SAVEPOINT sp3;
+SAVEPOINT sp4;
+ROLLBACK TO sp4;
+ROLLBACK TO SAVEPOINT sp4;
+ROLLBACK TRANSACTION TO SAVEPOINT sp3;
+RELEASE sp3;
+RELEASE SAVEPOINT sp2;
+ROLLBACK TO sp1;
+RELEASE SAVEPOINT sp1;
+COMMIT;
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT pg_stat_statements_reset();
+
 -- EXPLAIN statements
 -- A Query is used, normalized by the query jumbling.
 EXPLAIN (costs off) SELECT 1;
@@ -137,11 +164,36 @@ DECLARE
 BEGIN
   SELECT (i + j)::int INTO r;
 END; $$ LANGUAGE plpgsql;
+-- Overloaded functions.
+CREATE OR REPLACE PROCEDURE overload(i int) AS $$
+DECLARE
+  r int;
+BEGIN
+  SELECT (i + i)::int INTO r;
+END; $$ LANGUAGE plpgsql;
+CREATE OR REPLACE PROCEDURE overload(i text) AS $$
+DECLARE
+  r text;
+BEGIN
+  SELECT i::text INTO r;
+END; $$ LANGUAGE plpgsql;
+-- Mix of IN/OUT parameters.
+CREATE OR REPLACE PROCEDURE in_out(i int, i2 OUT int, i3 INOUT int) AS $$
+DECLARE
+  r int;
+BEGIN
+  i2 := i;
+  i3 := i3 + i;
+END; $$ LANGUAGE plpgsql;
 SELECT pg_stat_statements_reset();
 CALL sum_one(3);
 CALL sum_one(199);
 CALL sum_two(1,1);
 CALL sum_two(1,2);
+CALL overload(1);
+CALL overload('A');
+CALL in_out(1, NULL, 1);
+CALL in_out(2, 1, 2);
 SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
 
 -- COPY
@@ -207,6 +259,19 @@ CREATE DOMAIN domain_stats AS int CHECK (VALUE > 0);
 ALTER DOMAIN domain_stats SET DEFAULT '3';
 ALTER DOMAIN domain_stats ADD CONSTRAINT higher_than_one CHECK (VALUE > 1);
 DROP DOMAIN domain_stats;
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT pg_stat_statements_reset();
+
+-- Execution statements
+SELECT 1 as a;
+PREPARE stat_select AS SELECT $1 AS a;
+EXECUTE stat_select (1);
+DEALLOCATE stat_select;
+PREPARE stat_select AS SELECT $1 AS a;
+EXECUTE stat_select (2);
+DEALLOCATE PREPARE stat_select;
+DEALLOCATE ALL;
+DEALLOCATE PREPARE ALL;
 SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
 SELECT pg_stat_statements_reset();
 

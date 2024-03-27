@@ -6,8 +6,7 @@
  *
  * The theory of operation is fairly simple:
  *	  1. Read the existing pg_control (which will include the last
- *		 checkpoint record).  If it is an old format then update to
- *		 current format.
+ *		 checkpoint record).
  *	  2. If pg_control is corrupt, attempt to intuit reasonable values,
  *		 by scanning the old xlog if necessary.
  *	  3. Modify pg_control to reflect a "shutdown" state with a checkpoint
@@ -55,6 +54,7 @@
 #include "common/logging.h"
 #include "common/restricted_token.h"
 #include "common/string.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 #include "pg_getopt.h"
 #include "storage/large_object.h"
@@ -297,13 +297,16 @@ main(int argc, char *argv[])
 				break;
 
 			case 1:
-				errno = 0;
-				set_wal_segsize = strtol(optarg, &endptr, 10) * 1024 * 1024;
-				if (endptr == optarg || *endptr != '\0' || errno != 0)
-					pg_fatal("argument of --wal-segsize must be a number");
-				if (!IsValidWalSegSize(set_wal_segsize))
-					pg_fatal("argument of --wal-segsize must be a power of 2 between 1 and 1024");
-				break;
+				{
+					int			wal_segsize_mb;
+
+					if (!option_parse_int(optarg, "--wal-segsize", 1, 1024, &wal_segsize_mb))
+						exit(1);
+					set_wal_segsize = wal_segsize_mb * 1024 * 1024;
+					if (!IsValidWalSegSize(set_wal_segsize))
+						pg_fatal("argument of %s must be a power of two between 1 and 1024", "--wal-segsize");
+					break;
+				}
 
 			default:
 				/* getopt_long already emitted a complaint */
@@ -476,20 +479,22 @@ main(int argc, char *argv[])
 	if (minXlogSegNo > newXlogSegNo)
 		newXlogSegNo = minXlogSegNo;
 
-	/*
-	 * If we had to guess anything, and -f was not given, just print the
-	 * guessed values and exit.  Also print if -n is given.
-	 */
-	if ((guessed && !force) || noupdate)
+	if (noupdate)
 	{
 		PrintNewControlValues();
-		if (!noupdate)
-		{
-			printf(_("\nIf these values seem acceptable, use -f to force reset.\n"));
-			exit(1);
-		}
-		else
-			exit(0);
+		exit(0);
+	}
+
+	/*
+	 * If we had to guess anything, and -f was not given, just print the
+	 * guessed values and exit.
+	 */
+	if (guessed && !force)
+	{
+		PrintNewControlValues();
+		pg_log_error("not proceeding because control file values were guessed");
+		pg_log_error_hint("If these values seem acceptable, use -f to force reset.");
+		exit(1);
 	}
 
 	/*
@@ -497,9 +502,9 @@ main(int argc, char *argv[])
 	 */
 	if (ControlFile.state != DB_SHUTDOWNED && !force)
 	{
-		printf(_("The database server was not shut down cleanly.\n"
-				 "Resetting the write-ahead log might cause data to be lost.\n"
-				 "If you want to proceed anyway, use -f to force reset.\n"));
+		pg_log_error("database server was not shut down cleanly");
+		pg_log_error_detail("Resetting the write-ahead log might cause data to be lost.");
+		pg_log_error_hint("If you want to proceed anyway, use -f to force reset.");
 		exit(1);
 	}
 
@@ -1150,25 +1155,31 @@ static void
 usage(void)
 {
 	printf(_("%s resets the PostgreSQL write-ahead log.\n\n"), progname);
-	printf(_("Usage:\n  %s [OPTION]... DATADIR\n\n"), progname);
-	printf(_("Options:\n"));
+	printf(_("Usage:\n"));
+	printf(_("  %s [OPTION]... DATADIR\n"), progname);
+
+	printf(_("\nOptions:\n"));
+	printf(_(" [-D, --pgdata=]DATADIR  data directory\n"));
+	printf(_("  -f, --force            force update to be done even after unclean shutdown or\n"
+			 "                         if pg_control values had to be guessed\n"));
+	printf(_("  -n, --dry-run          no update, just show what would be done\n"));
+	printf(_("  -V, --version          output version information, then exit\n"));
+	printf(_("  -?, --help             show this help, then exit\n"));
+
+	printf(_("\nOptions to override control file values:\n"));
 	printf(_("  -c, --commit-timestamp-ids=XID,XID\n"
 			 "                                   set oldest and newest transactions bearing\n"
 			 "                                   commit timestamp (zero means no change)\n"));
-	printf(_(" [-D, --pgdata=]DATADIR            data directory\n"));
 	printf(_("  -e, --epoch=XIDEPOCH             set next transaction ID epoch\n"));
-	printf(_("  -f, --force                      force update to be done\n"));
 	printf(_("  -g, --dbmode                   set database mode\n"));
 	printf(_("  -l, --next-wal-file=WALFILE      set minimum starting location for new WAL\n"));
 	printf(_("  -m, --multixact-ids=MXID,MXID    set next and oldest multitransaction ID\n"));
-	printf(_("  -n, --dry-run                    no update, just show what would be done\n"));
 	printf(_("  -o, --next-oid=OID               set next OID\n"));
 	printf(_("  -O, --multixact-offset=OFFSET    set next multitransaction offset\n"));
 	printf(_("  -u, --oldest-transaction-id=XID  set oldest transaction ID\n"));
-	printf(_("  -V, --version                    output version information, then exit\n"));
 	printf(_("  -x, --next-transaction-id=XID    set next transaction ID\n"));
 	printf(_("      --wal-segsize=SIZE           size of WAL segments, in megabytes\n"));
-	printf(_("  -?, --help                       show this help, then exit\n"));
+
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
 	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 }

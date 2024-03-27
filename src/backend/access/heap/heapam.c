@@ -352,7 +352,6 @@ heapgetpage(TableScanDesc sscan, BlockNumber block)
 	LockBuffer(buffer, BUFFER_LOCK_SHARE);
 
 	page = BufferGetPage(buffer);
-	TestForOldSnapshot(snapshot, scan->rs_base.rs_rd, page);
 	lines = PageGetMaxOffsetNumber(page);
 	ntup = 0;
 
@@ -492,8 +491,6 @@ heapgettup_start_page(HeapScanDesc scan, ScanDirection dir, int *linesleft,
 	/* Caller is responsible for ensuring buffer is locked if needed */
 	page = BufferGetPage(scan->rs_cbuf);
 
-	TestForOldSnapshot(scan->rs_base.rs_snapshot, scan->rs_base.rs_rd, page);
-
 	*linesleft = PageGetMaxOffsetNumber(page) - FirstOffsetNumber + 1;
 
 	if (ScanDirectionIsForward(dir))
@@ -524,8 +521,6 @@ heapgettup_continue_page(HeapScanDesc scan, ScanDirection dir, int *linesleft,
 
 	/* Caller is responsible for ensuring buffer is locked if needed */
 	page = BufferGetPage(scan->rs_cbuf);
-
-	TestForOldSnapshot(scan->rs_base.rs_snapshot, scan->rs_base.rs_rd, page);
 
 	if (ScanDirectionIsForward(dir))
 	{
@@ -574,17 +569,6 @@ heapgettup_advance_block(HeapScanDesc scan, BlockNumber block, ScanDirection dir
 			if (block >= scan->rs_nblocks)
 				block = 0;
 
-			/* we're done if we're back at where we started */
-			if (block == scan->rs_startblock)
-				return InvalidBlockNumber;
-
-			/* check if the limit imposed by heap_setscanlimits() is met */
-			if (scan->rs_numblocks != InvalidBlockNumber)
-			{
-				if (--scan->rs_numblocks == 0)
-					return InvalidBlockNumber;
-			}
-
 			/*
 			 * Report our new scan position for synchronization purposes. We
 			 * don't do that when moving backwards, however. That would just
@@ -599,6 +583,17 @@ heapgettup_advance_block(HeapScanDesc scan, BlockNumber block, ScanDirection dir
 			 */
 			if (scan->rs_base.rs_flags & SO_ALLOW_SYNC)
 				ss_report_location(scan->rs_base.rs_rd, block);
+
+			/* we're done if we're back at where we started */
+			if (block == scan->rs_startblock)
+				return InvalidBlockNumber;
+
+			/* check if the limit imposed by heap_setscanlimits() is met */
+			if (scan->rs_numblocks != InvalidBlockNumber)
+			{
+				if (--scan->rs_numblocks == 0)
+					return InvalidBlockNumber;
+			}
 
 			return block;
 		}
@@ -791,7 +786,6 @@ heapgettup_pagemode(HeapScanDesc scan,
 		/* continue from previously returned page/tuple */
 		block = scan->rs_cblock;	/* current page */
 		page = BufferGetPage(scan->rs_cbuf);
-		TestForOldSnapshot(scan->rs_base.rs_snapshot, scan->rs_base.rs_rd, page);
 
 		lineindex = scan->rs_cindex + dir;
 		if (ScanDirectionIsForward(dir))
@@ -811,7 +805,6 @@ heapgettup_pagemode(HeapScanDesc scan,
 	{
 		heapgetpage((TableScanDesc) scan, block);
 		page = BufferGetPage(scan->rs_cbuf);
-		TestForOldSnapshot(scan->rs_base.rs_snapshot, scan->rs_base.rs_rd, page);
 		linesleft = scan->rs_ntuples;
 		lineindex = ScanDirectionIsForward(dir) ? 0 : linesleft - 1;
 
@@ -1299,7 +1292,6 @@ heap_fetch(Relation relation,
 	 */
 	LockBuffer(buffer, BUFFER_LOCK_SHARE);
 	page = BufferGetPage(buffer);
-	TestForOldSnapshot(snapshot, relation, page);
 
 	/*
 	 * We'd better check for out-of-range offnum in case of VACUUM since the
@@ -1590,7 +1582,6 @@ heap_get_latest_tid(TableScanDesc sscan,
 		buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(&ctid));
 		LockBuffer(buffer, BUFFER_LOCK_SHARE);
 		page = BufferGetPage(buffer);
-		TestForOldSnapshot(snapshot, relation, page);
 
 		/*
 		 * Check for bogus item number.  This is not treated as an error
@@ -1703,6 +1694,7 @@ GetBulkInsertState(void)
 	bistate->current_buf = InvalidBuffer;
 	bistate->next_free = InvalidBlockNumber;
 	bistate->last_free = InvalidBlockNumber;
+	bistate->already_extended_by = 0;
 	return bistate;
 }
 

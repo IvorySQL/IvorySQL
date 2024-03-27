@@ -76,7 +76,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 77: RESULT: 14.07 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 77: type (9001); C (1); array (no)
+[NO_PID]: ecpg_is_type_an_array on line 77: type (9501); C (1); array (no)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 77: RESULT: 0123456789 offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -94,7 +94,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 85: RESULT: klmnopqrst offset: -1; array: no
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 85: type (9011); C (19); array (yes)
+[NO_PID]: ecpg_is_type_an_array on line 85: type (9511); C (19); array (yes)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 85: RESULT: {"2000-01-01 00:00:00.000000","2000-01-01 01:00:00.000000","2000-01-01 02:00:00.000000","2000-01-01 03:00:00.000000","2000-01-01 04:00:00.000000","2000-01-01 05:00:00.000000","2000-01-01 06:00:00.000000","2000-01-01 07:00:00.000000","2000-01-01 08:00:00.000000","2000-01-01 09:00:00.000000"} offset: -1; array: yes
 [NO_PID]: sqlca: code: 0, state: 00000
@@ -102,7 +102,7 @@
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 85: RESULT: {0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0} offset: -1; array: yes
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ecpg_is_type_an_array on line 85: type (9009); C (18); array (yes)
+[NO_PID]: ecpg_is_type_an_array on line 85: type (9509); C (18); array (yes)
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_get_data on line 85: RESULT: {2000-01-10,2000-01-11,2000-01-12,2000-01-13,2000-01-14,2000-01-15,2000-01-16,2000-01-17,2000-01-18,2000-01-19} offset: -1; array: yes
 [NO_PID]: sqlca: code: 0, state: 00000

@@ -174,7 +174,7 @@ ReceiveCopyBegin(CopyFromState cstate)
 	int16		format = (cstate->opts.binary ? 1 : 0);
 	int			i;
 
-	pq_beginmessage(&buf, 'G');
+	pq_beginmessage(&buf, PqMsg_CopyInResponse);
 	pq_sendbyte(&buf, format);	/* overall format */
 	pq_sendint16(&buf, natts);
 	for (i = 0; i < natts; i++)
@@ -279,13 +279,13 @@ CopyGetData(CopyFromState cstate, void *databuf, int minread, int maxread)
 					/* Validate message type and set packet size limit */
 					switch (mtype)
 					{
-						case 'd':	/* CopyData */
+						case PqMsg_CopyData:
 							maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
 							break;
-						case 'c':	/* CopyDone */
-						case 'f':	/* CopyFail */
-						case 'H':	/* Flush */
-						case 'S':	/* Sync */
+						case PqMsg_CopyDone:
+						case PqMsg_CopyFail:
+						case PqMsg_Flush:
+						case PqMsg_Sync:
 							maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 							break;
 						default:
@@ -305,20 +305,20 @@ CopyGetData(CopyFromState cstate, void *databuf, int minread, int maxread)
 					/* ... and process it */
 					switch (mtype)
 					{
-						case 'd':	/* CopyData */
+						case PqMsg_CopyData:
 							break;
-						case 'c':	/* CopyDone */
+						case PqMsg_CopyDone:
 							/* COPY IN correctly terminated by frontend */
 							cstate->raw_reached_eof = true;
 							return bytesread;
-						case 'f':	/* CopyFail */
+						case PqMsg_CopyFail:
 							ereport(ERROR,
 									(errcode(ERRCODE_QUERY_CANCELED),
 									 errmsg("COPY from stdin failed: %s",
 											pq_getmsgstring(cstate->fe_msgbuf))));
 							break;
-						case 'H':	/* Flush */
-						case 'S':	/* Sync */
+						case PqMsg_Flush:
+						case PqMsg_Sync:
 
 							/*
 							 * Ignore Flush/Sync for the convenience of client
@@ -871,7 +871,7 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 	/* Initialize all values for row to NULL */
 	MemSet(values, 0, num_phys_attrs * sizeof(Datum));
 	MemSet(nulls, true, num_phys_attrs * sizeof(bool));
-	cstate->defaults = (bool *) palloc0(num_phys_attrs * sizeof(bool));
+	MemSet(cstate->defaults, false, num_phys_attrs * sizeof(bool));
 
 	if (!cstate->opts.binary)
 	{
@@ -1039,8 +1039,6 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 		values[defmap[i]] = ExecEvalExpr(defexprs[defmap[i]], econtext,
 										 &nulls[defmap[i]]);
 	}
-
-	pfree(cstate->defaults);
 
 	return true;
 }
@@ -1703,8 +1701,8 @@ CopyReadAttributesText(CopyFromState cstate)
 
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("unexpected DEFAULT in COPY data"),
-						 errdetail("Column \"%s\" has no DEFAULT value.",
+						 errmsg("unexpected default marker in COPY data"),
+						 errdetail("Column \"%s\" has no default value.",
 								   NameStr(att->attname))));
 			}
 		}
@@ -1918,8 +1916,8 @@ endfield:
 
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("unexpected DEFAULT in COPY data"),
-						 errdetail("Column \"%s\" has no DEFAULT value.",
+						 errmsg("unexpected default marker in COPY data"),
+						 errdetail("Column \"%s\" has no default value.",
 								   NameStr(att->attname))));
 			}
 		}

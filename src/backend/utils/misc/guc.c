@@ -116,7 +116,7 @@ typedef struct
 #error XLOG_BLCKSZ must be between 1KB and 1MB
 #endif
 
-static const char *memory_units_hint = gettext_noop("Valid units for this parameter are \"B\", \"kB\", \"MB\", \"GB\", and \"TB\".");
+static const char *const memory_units_hint = gettext_noop("Valid units for this parameter are \"B\", \"kB\", \"MB\", \"GB\", and \"TB\".");
 
 static const unit_conversion memory_unit_conversion_table[] =
 {
@@ -153,7 +153,7 @@ static const unit_conversion memory_unit_conversion_table[] =
 	{""}						/* end of table marker */
 };
 
-static const char *time_units_hint = gettext_noop("Valid units for this parameter are \"us\", \"ms\", \"s\", \"min\", \"h\", and \"d\".");
+static const char *const time_units_hint = gettext_noop("Valid units for this parameter are \"us\", \"ms\", \"s\", \"min\", \"h\", and \"d\".");
 
 static const unit_conversion time_unit_conversion_table[] =
 {
@@ -2597,7 +2597,7 @@ ReportGUCOption(struct config_generic *record)
 	{
 		StringInfoData msgbuf;
 
-		pq_beginmessage(&msgbuf, 'S');
+		pq_beginmessage(&msgbuf, PqMsg_ParameterStatus);
 		pq_sendstring(&msgbuf, record->name);
 		pq_sendstring(&msgbuf, val);
 		pq_endmessage(&msgbuf);
@@ -6219,14 +6219,12 @@ ParseLongOption(const char *string, char **name, char **value)
 
 
 /*
- * Handle options fetched from pg_db_role_setting.setconfig,
- * pg_proc.proconfig, etc.  Caller must specify proper context/source/action.
- *
- * The array parameter must be an array of TEXT (it must not be NULL).
+ * Transform array of GUC settings into lists of names and values. The lists
+ * are faster to process in cases where the settings must be applied
+ * repeatedly (e.g. for each function invocation).
  */
 void
-ProcessGUCArray(ArrayType *array,
-				GucContext context, GucSource source, GucAction action)
+TransformGUCArray(ArrayType *array, List **names, List **values)
 {
 	int			i;
 
@@ -6235,6 +6233,8 @@ ProcessGUCArray(ArrayType *array,
 	Assert(ARR_NDIM(array) == 1);
 	Assert(ARR_LBOUND(array)[0] == 1);
 
+	*names = NIL;
+	*values = NIL;
 	for (i = 1; i <= ARR_DIMS(array)[0]; i++)
 	{
 		Datum		d;
@@ -6266,14 +6266,45 @@ ProcessGUCArray(ArrayType *array,
 			continue;
 		}
 
+		*names = lappend(*names, name);
+		*values = lappend(*values, value);
+
+		pfree(s);
+	}
+}
+
+
+/*
+ * Handle options fetched from pg_db_role_setting.setconfig,
+ * pg_proc.proconfig, etc.  Caller must specify proper context/source/action.
+ *
+ * The array parameter must be an array of TEXT (it must not be NULL).
+ */
+void
+ProcessGUCArray(ArrayType *array,
+				GucContext context, GucSource source, GucAction action)
+{
+	List	   *gucNames;
+	List	   *gucValues;
+	ListCell   *lc1;
+	ListCell   *lc2;
+
+	TransformGUCArray(array, &gucNames, &gucValues);
+	forboth(lc1, gucNames, lc2, gucValues)
+	{
+		char	   *name = lfirst(lc1);
+		char	   *value = lfirst(lc2);
+
 		(void) set_config_option(name, value,
 								 context, source,
 								 action, true, 0, false);
 
 		pfree(name);
 		pfree(value);
-		pfree(s);
 	}
+
+	list_free(gucNames);
+	list_free(gucValues);
 }
 
 

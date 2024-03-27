@@ -55,6 +55,8 @@ static int	worker_spi_naptime = 10;
 static int	worker_spi_total_workers = 2;
 static char *worker_spi_database = NULL;
 
+/* value cached, fetched from shared memory */
+static uint32 worker_spi_wait_event_main = 0;
 
 typedef struct worktable
 {
@@ -192,6 +194,10 @@ worker_spi_main(Datum main_arg)
 	{
 		int			ret;
 
+		/* First time, allocate or get the custom wait event */
+		if (worker_spi_wait_event_main == 0)
+			worker_spi_wait_event_main = WaitEventExtensionNew("worker_spi_main");
+
 		/*
 		 * Background workers mustn't call usleep() or any direct equivalent:
 		 * instead, they may wait on their process latch, which sleeps as
@@ -201,7 +207,7 @@ worker_spi_main(Datum main_arg)
 		(void) WaitLatch(MyLatch,
 						 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 						 worker_spi_naptime * 1000L,
-						 PG_WAIT_EXTENSION);
+						 worker_spi_wait_event_main);
 		ResetLatch(MyLatch);
 
 		CHECK_FOR_INTERRUPTS();
@@ -285,6 +291,11 @@ _PG_init(void)
 	BackgroundWorker worker;
 
 	/* get the configuration */
+
+	/*
+	 * These GUCs are defined even if this library is not loaded with
+	 * shared_preload_libraries, for worker_spi_launch().
+	 */
 	DefineCustomIntVariable("worker_spi.naptime",
 							"Duration between each check (in seconds).",
 							NULL,
@@ -297,6 +308,15 @@ _PG_init(void)
 							NULL,
 							NULL,
 							NULL);
+
+	DefineCustomStringVariable("worker_spi.database",
+							   "Database to connect to.",
+							   NULL,
+							   &worker_spi_database,
+							   "postgres",
+							   PGC_SIGHUP,
+							   0,
+							   NULL, NULL, NULL);
 
 	if (!process_shared_preload_libraries_in_progress)
 		return;
@@ -313,15 +333,6 @@ _PG_init(void)
 							NULL,
 							NULL,
 							NULL);
-
-	DefineCustomStringVariable("worker_spi.database",
-							   "Database to connect to.",
-							   NULL,
-							   &worker_spi_database,
-							   "postgres",
-							   PGC_POSTMASTER,
-							   0,
-							   NULL, NULL, NULL);
 
 	MarkGUCPrefixReserved("worker_spi");
 
@@ -367,8 +378,8 @@ worker_spi_launch(PG_FUNCTION_ARGS)
 	worker.bgw_restart_time = BGW_NEVER_RESTART;
 	sprintf(worker.bgw_library_name, "worker_spi");
 	sprintf(worker.bgw_function_name, "worker_spi_main");
-	snprintf(worker.bgw_name, BGW_MAXLEN, "worker_spi worker %d", i);
-	snprintf(worker.bgw_type, BGW_MAXLEN, "worker_spi");
+	snprintf(worker.bgw_name, BGW_MAXLEN, "worker_spi dynamic worker %d", i);
+	snprintf(worker.bgw_type, BGW_MAXLEN, "worker_spi dynamic");
 	worker.bgw_main_arg = Int32GetDatum(i);
 	/* set bgw_notify_pid so that we can use WaitForBackgroundWorkerStartup */
 	worker.bgw_notify_pid = MyProcPid;

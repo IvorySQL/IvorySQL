@@ -49,6 +49,7 @@
 #include "storage/spin.h"
 #include "utils/guc.h"
 #include "utils/snapmgr.h"
+#include "utils/wait_event.h"
 
 /* GUCs */
 int			shared_memory_type = DEFAULT_SHARED_MEMORY_TYPE;
@@ -137,11 +138,11 @@ CalculateShmemSize(int *num_semaphores)
 	size = add_size(size, WalRcvShmemSize());
 	size = add_size(size, PgArchShmemSize());
 	size = add_size(size, ApplyLauncherShmemSize());
-	size = add_size(size, SnapMgrShmemSize());
 	size = add_size(size, BTreeShmemSize());
 	size = add_size(size, SyncScanShmemSize());
 	size = add_size(size, AsyncShmemSize());
 	size = add_size(size, StatsShmemSize());
+	size = add_size(size, WaitEventExtensionShmemSize());
 #ifdef EXEC_BACKEND
 	size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -189,6 +190,13 @@ CreateSharedMemoryAndSemaphores(void)
 		 * Create the shmem segment
 		 */
 		seghdr = PGSharedMemoryCreate(size, &shim);
+
+		/*
+		 * Make sure that huge pages are never reported as "unknown" while the
+		 * server is running.
+		 */
+		Assert(strcmp("unknown",
+					  GetConfigOption("huge_pages_status", false, false)) != 0);
 
 		InitShmemAccess(seghdr);
 
@@ -289,11 +297,11 @@ CreateSharedMemoryAndSemaphores(void)
 	/*
 	 * Set up other modules that need some shared memory space
 	 */
-	SnapMgrInit();
 	BTreeShmemInit();
 	SyncScanShmemInit();
 	AsyncShmemInit();
 	StatsShmemInit();
+	WaitEventExtensionShmemInit();
 
 #ifdef EXEC_BACKEND
 

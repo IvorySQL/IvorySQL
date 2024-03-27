@@ -46,12 +46,6 @@
 #include <dirent.h>
 #include <fcntl.h>
 
-typedef enum RecoveryInitSyncMethod
-{
-	RECOVERY_INIT_SYNC_METHOD_FSYNC,
-	RECOVERY_INIT_SYNC_METHOD_SYNCFS
-}			RecoveryInitSyncMethod;
-
 typedef int File;
 
 
@@ -194,9 +188,5 @@ extern int	durable_rename(const char *oldfile, const char *newfile, int elevel);
 extern int	durable_unlink(const char *fname, int elevel);
 extern void SyncDataDirectory(void);
 extern int	data_sync_elevel(int elevel);
-
-/* Filename components */
-#define PG_TEMP_FILES_DIR "pgsql_tmp"
-#define PG_TEMP_FILE_PREFIX "pgsql_tmp"
 
 #endif							/* FD_H */

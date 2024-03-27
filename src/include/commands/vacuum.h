@@ -116,16 +116,12 @@ typedef struct VacAttrStats
 {
 	/*
 	 * These fields are set up by the main ANALYZE code before invoking the
-	 * type-specific typanalyze function.
-	 *
-	 * Note: do not assume that the data being analyzed has the same datatype
-	 * shown in attr, ie do not trust attr->atttypid, attlen, etc.  This is
-	 * because some index opclasses store a different type than the underlying
-	 * column/expression.  Instead use attrtypid, attrtypmod, and attrtype for
+	 * type-specific typanalyze function.  They don't necessarily match what
+	 * is in pg_attribute, because some index opclasses store a different type
+	 * than the underlying column/expression.  Therefore, use these fields for
 	 * information about the datatype being fed to the typanalyze function.
-	 * Likewise, use attrcollid not attr->attcollation.
 	 */
-	Form_pg_attribute attr;		/* copy of pg_attribute row for column */
+	int			attstattarget;
 	Oid			attrtypid;		/* type of data being analyzed */
 	int32		attrtypmod;		/* typmod of data being analyzed */
 	Form_pg_type attrtype;		/* copy of pg_type row for attrtypid */
@@ -191,7 +187,6 @@ typedef struct VacAttrStats
 #define VACOPT_DISABLE_PAGE_SKIPPING 0x100	/* don't skip any pages */
 #define VACOPT_SKIP_DATABASE_STATS 0x200	/* skip vac_update_datfrozenxid() */
 #define VACOPT_ONLY_DATABASE_STATS 0x400	/* only vac_update_datfrozenxid() */
-#define VACOPT_SKIP_PRIVS 0x800 /* skip privilege checks */
 
 /*
  * Values used by index_cleanup and truncate params.
@@ -305,6 +300,13 @@ extern PGDLLIMPORT int vacuum_multixact_freeze_table_age;
 extern PGDLLIMPORT int vacuum_failsafe_age;
 extern PGDLLIMPORT int vacuum_multixact_failsafe_age;
 
+/*
+ * Maximum value for default_statistics_target and per-column statistics
+ * targets.  This is fairly arbitrary, mainly to prevent users from creating
+ * unreasonably large statistics that the system cannot handle well.
+ */
+#define MAX_STATISTICS_TARGET 10000
+
 /* Variables for cost-based parallel vacuum */
 extern PGDLLIMPORT pg_atomic_uint32 *VacuumSharedCostBalance;
 extern PGDLLIMPORT pg_atomic_uint32 *VacuumActiveNWorkers;
@@ -341,8 +343,8 @@ extern bool vacuum_get_cutoffs(Relation rel, const VacuumParams *params,
 extern bool vacuum_xid_failsafe_check(const struct VacuumCutoffs *cutoffs);
 extern void vac_update_datfrozenxid(void);
 extern void vacuum_delay_point(void);
-extern bool vacuum_is_permitted_for_relation(Oid relid, Form_pg_class reltuple,
-											 bits32 options);
+extern bool vacuum_is_relation_owner(Oid relid, Form_pg_class reltuple,
+									 bits32 options);
 extern Relation vacuum_open_relation(Oid relid, RangeVar *relation,
 									 bits32 options, bool verbose,
 									 LOCKMODE lmode);

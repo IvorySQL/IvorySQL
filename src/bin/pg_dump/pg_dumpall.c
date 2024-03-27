@@ -1291,7 +1291,16 @@ dumpTablespaces(PGconn *conn)
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
 
 		appendPQExpBufferStr(buf, " LOCATION ");
-		appendStringLiteralConn(buf, spclocation, conn);
+
+		/*
+		 * In-place tablespaces use a relative path, and need to be dumped
+		 * with an empty string as location.
+		 */
+		if (is_absolute_path(spclocation))
+			appendStringLiteralConn(buf, spclocation, conn);
+		else
+			appendStringLiteralConn(buf, "", conn);
+
 		appendPQExpBufferStr(buf, ";\n");
 
 		if (spcoptions && spcoptions[0] != '\0')
@@ -1350,7 +1359,7 @@ dropDBs(PGconn *conn)
 	res = executeQuery(conn,
 					   "SELECT datname "
 					   "FROM pg_database d "
-					   "WHERE datallowconn "
+					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY datname");
 
 	if (PQntuples(res) > 0)
@@ -1494,7 +1503,7 @@ dumpDatabases(PGconn *conn)
 	res = executeQuery(conn,
 					   "SELECT datname "
 					   "FROM pg_database d "
-					   "WHERE datallowconn "
+					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY (datname <> 'template1'), datname");
 
 	if (PQntuples(res) > 0)
@@ -1572,11 +1581,14 @@ dumpDatabases(PGconn *conn)
 static int
 runPgDump(const char *dbname, const char *create_opts)
 {
-	PQExpBuffer connstrbuf = createPQExpBuffer();
-	PQExpBuffer cmd = createPQExpBuffer();
+	PQExpBufferData connstrbuf;
+	PQExpBufferData cmd;
 	int			ret;
 
-	appendPQExpBuffer(cmd, "\"%s\" %s %s", pg_dump_bin,
+	initPQExpBuffer(&connstrbuf);
+	initPQExpBuffer(&cmd);
+
+	printfPQExpBuffer(&cmd, "\"%s\" %s %s", pg_dump_bin,
 					  pgdumpopts->data, create_opts);
 
 	/*
@@ -1584,27 +1596,27 @@ runPgDump(const char *dbname, const char *create_opts)
 	 * format.
 	 */
 	if (filename)
-		appendPQExpBufferStr(cmd, " -Fa ");
+		appendPQExpBufferStr(&cmd, " -Fa ");
 	else
-		appendPQExpBufferStr(cmd, " -Fp ");
+		appendPQExpBufferStr(&cmd, " -Fp ");
 
 	/*
 	 * Append the database name to the already-constructed stem of connection
 	 * string.
 	 */
-	appendPQExpBuffer(connstrbuf, "%s dbname=", connstr);
-	appendConnStrVal(connstrbuf, dbname);
+	appendPQExpBuffer(&connstrbuf, "%s dbname=", connstr);
+	appendConnStrVal(&connstrbuf, dbname);
 
-	appendShellString(cmd, connstrbuf->data);
+	appendShellString(&cmd, connstrbuf.data);
 
-	pg_log_info("running \"%s\"", cmd->data);
+	pg_log_info("running \"%s\"", cmd.data);
 
 	fflush(NULL);
 
-	ret = system(cmd->data);
+	ret = system(cmd.data);
 
-	destroyPQExpBuffer(cmd);
-	destroyPQExpBuffer(connstrbuf);
+	termPQExpBuffer(&cmd);
+	termPQExpBuffer(&connstrbuf);
 
 	return ret;
 }

@@ -23,7 +23,7 @@
 #define MAX_STRING			1024
 #define QUERY_ALLOC			8192
 
-#define MESSAGE_WIDTH		60
+#define MESSAGE_WIDTH		62
 
 #define GET_MAJOR_VERSION(v)	((v) / 100)
 
@@ -309,6 +309,7 @@ typedef struct
 	transferMode transfer_mode; /* copy files or link them? */
 	int			jobs;			/* number of processes/threads to use */
 	char	   *socketdir;		/* directory to use for Unix sockets */
+	char	   *sync_method;
 } UserOpts;
 
 typedef struct

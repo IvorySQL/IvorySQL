@@ -3453,6 +3453,33 @@ if (!ptr)
     </para>
    </sect2>
 
+   <sect2 id="xfunc-addin-wait-events">
+    <title>Custom Wait Events</title>
+
+    <para>
+     Add-ins can define custom wait events under the wait event type
+     <literal>Extension</literal> by calling:
+<programlisting>
+uint32 WaitEventExtensionNew(const char *wait_event_name)
+</programlisting>
+     The wait event is associated to a user-facing custom string.
+     An example can be found in <filename>src/test/modules/worker_spi</filename>
+     in the PostgreSQL source tree.
+    </para>
+    <para>
+     Custom wait events can be viewed in
+     <link linkend="monitoring-pg-stat-activity-view"><structname>pg_stat_activity</structname></link>:
+<screen>
+=# SELECT wait_event_type, wait_event FROM pg_stat_activity
+     WHERE backend_type ~ 'worker_spi';
+ wait_event_type |   wait_event
+-----------------+-----------------
+ Extension       | worker_spi_main
+(1 row)
+</screen>
+    </para>
+   </sect2>
+
    <sect2 id="extend-cpp">
     <title>Using C++ for Extensibility</title>
 
