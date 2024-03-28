@@ -3788,6 +3788,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_FF:
 				if (n->key->id == DCH_FF)
 					out->ff = 6;	/* FF default precision */
+				/* fall through */
 			case DCH_US:		/* microsecond */
 				if (ORA_PARSER == compatible_db)
 				{

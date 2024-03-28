@@ -18325,12 +18325,12 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 		else
 		{
 			IndexStmt  *stmt;
-			Oid 		constraintOid;
+			Oid 		tmp_Oid;
 			bool 		isGlobal = false;
 
 			stmt = generateClonedIndexStmt(NULL,
 										   idxRel, attmap,
-										   &constraintOid);
+										   &tmp_Oid);
 			isGlobal = HasGlobalChildIndex(idxRel);
 			if (isGlobal && idxRel->rd_index->indisunique)
 			{
