@@ -597,7 +597,10 @@ SELECT to_date('2015 366', 'YYYY DDD');
 SELECT to_date('2016 365', 'YYYY DDD');  -- ok
 SELECT to_date('2016 366', 'YYYY DDD');  -- ok
 SELECT to_date('2016 367', 'YYYY DDD');
-SELECT to_date('0000-02-01','YYYY-MM-DD');  -- allowed, though it shouldn't be
+SELECT to_date('0-02-01','Y-MM-DD');
+SELECT to_date('00-02-01','YY-MM-DD');
+SELECT to_date('000-02-01','YYY-MM-DD');
+SELECT to_date('0000-02-01','YYYY-MM-DD');
 
 --
 -- Check behavior with SQL-style fixed-GMT-offset time zone (cf bug #8572)
