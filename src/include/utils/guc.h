@@ -255,6 +255,7 @@ extern PGDLLIMPORT bool check_function_bodies;
 extern PGDLLIMPORT bool	enable_emptystring_to_NULL;
 extern PGDLLIMPORT bool current_role_is_superuser;
 
+extern PGDLLIMPORT bool AllowAlterSystem;
 extern PGDLLIMPORT bool log_duration;
 extern PGDLLIMPORT int log_parameter_max_length;
 extern PGDLLIMPORT int log_parameter_max_length_on_error;
