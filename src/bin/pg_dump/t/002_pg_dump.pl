@@ -109,11 +109,11 @@ my %pgdump_runs = (
 			'--format=directory',                   '--compress=gzip:1',
 			"--file=$tempdir/compression_gzip_dir", 'postgres',
 		],
-		# Give coverage for manually compressed blob.toc files during
+		# Give coverage for manually compressed blobs.toc files during
 		# restore.
 		compress_cmd => {
 			program => $ENV{'GZIP_PROGRAM'},
-			args    => [ '-f', "$tempdir/compression_gzip_dir/blobs.toc", ],
+			args => [ '-f', "$tempdir/compression_gzip_dir/blobs_*.toc", ],
 		},
 		# Verify that only data files were compressed
 		glob_patterns => [
@@ -174,16 +174,6 @@ my %pgdump_runs = (
 			'--format=directory',                   '--compress=lz4:1',
 			"--file=$tempdir/compression_lz4_dir", 'postgres',
 		],
-		# Give coverage for manually compressed blob.toc files during
-		# restore.
-		compress_cmd => {
-			program => $ENV{'LZ4'},
-			args    => [
-				'-z', '-f', '--rm',
-				"$tempdir/compression_lz4_dir/blobs.toc",
-				"$tempdir/compression_lz4_dir/blobs.toc.lz4",
-			],
-		},
 		# Verify that data files were compressed
 		glob_patterns => [
 			"$tempdir/compression_lz4_dir/toc.dat",
@@ -245,14 +235,13 @@ my %pgdump_runs = (
 			'--format=directory',                   '--compress=zstd:1',
 			"--file=$tempdir/compression_zstd_dir", 'postgres',
 		],
-		# Give coverage for manually compressed blob.toc files during
+		# Give coverage for manually compressed blobs.toc files during
 		# restore.
 		compress_cmd => {
 			program => $ENV{'ZSTD'},
-			args    => [
-				'-z', '-f', '--rm',
-				"$tempdir/compression_zstd_dir/blobs.toc",
-				"-o", "$tempdir/compression_zstd_dir/blobs.toc.zst",
+			args => [
+				'-z', '-f',
+				'--rm', "$tempdir/compression_zstd_dir/blobs_*.toc",
 			],
 		},
 		# Verify that data files were compressed
@@ -417,10 +406,9 @@ my %pgdump_runs = (
 		},
 		glob_patterns => [
 			"$tempdir/defaults_dir_format/toc.dat",
-			"$tempdir/defaults_dir_format/blobs.toc",
-			$supports_gzip ?
-			"$tempdir/defaults_dir_format/*.dat.gz" :
-			"$tempdir/defaults_dir_format/*.dat",
+			"$tempdir/defaults_dir_format/blobs_*.toc",
+			$supports_gzip ? "$tempdir/defaults_dir_format/*.dat.gz"
+			: "$tempdir/defaults_dir_format/*.dat",
 		],
 	},
 
@@ -925,10 +913,10 @@ my %tests = (
 		regexp => qr/^ALTER LARGE OBJECT \d+ OWNER TO .+;/m,
 		like   => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
@@ -1338,10 +1326,10 @@ my %tests = (
 		regexp => qr/^SELECT pg_catalog\.lo_create\('\d+'\);/m,
 		like   => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
@@ -1547,10 +1535,10 @@ my %tests = (
 			/xm,
 		like => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
@@ -4272,10 +4260,10 @@ my %tests = (
 			/xm,
 		like => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 			binary_upgrade         => 1,
 		},
@@ -4875,8 +4863,13 @@ foreach my $run (sort keys %pgdump_runs)
 		# not defined.
 		next if (!defined($compress_program) || $compress_program eq '');
 
-		my @full_compress_cmd =
-		  ($compress_cmd->{program}, @{ $compress_cmd->{args} });
+		# Arguments may require globbing.
+		my @full_compress_cmd = ($compress_program);
+		foreach my $arg (@{ $compress_cmd->{args} })
+		{
+			push @full_compress_cmd, glob($arg);
+		}
+
 		command_ok(\@full_compress_cmd, "$run: compression commands");
 	}
 

@@ -511,7 +511,20 @@ RestoreArchive(Archive *AHX)
 				 * don't necessarily emit it verbatim; at this point we add an
 				 * appropriate IF EXISTS clause, if the user requested it.
 				 */
-				if (*te->dropStmt != '\0')
+				if (strcmp(te->desc, "BLOB METADATA") == 0)
+				{
+					/* We must generate the per-blob commands */
+					if (ropt->if_exists)
+						IssueCommandPerBlob(AH, te,
+											"SELECT pg_catalog.lo_unlink(oid) "
+											"FROM pg_catalog.pg_largeobject_metadata "
+											"WHERE oid = '", "'");
+					else
+						IssueCommandPerBlob(AH, te,
+											"SELECT pg_catalog.lo_unlink('",
+											"')");
+				}
+				else if (*te->dropStmt != '\0')
 				{
 					if (!ropt->if_exists ||
 						strncmp(te->dropStmt, "--", 2) == 0)
@@ -527,12 +540,12 @@ RestoreArchive(Archive *AHX)
 					{
 						/*
 						 * Inject an appropriate spelling of "if exists".  For
-						 * large objects, we have a separate routine that
+						 * old-style large objects, we have a routine that
 						 * knows how to do it, without depending on
 						 * te->dropStmt; use that.  For other objects we need
 						 * to parse the command.
 						 */
-						if (strncmp(te->desc, "BLOB", 4) == 0)
+						if (strcmp(te->desc, "BLOB") == 0)
 						{
 							DropLOIfExists(AH, te->catalogId.oid);
 						}
@@ -1289,7 +1302,7 @@ EndLO(Archive *AHX, Oid oid)
  **********/
 
 /*
- * Called by a format handler before any LOs are restored
+ * Called by a format handler before a group of LOs is restored
  */
 void
 StartRestoreLOs(ArchiveHandle *AH)
@@ -1308,7 +1321,7 @@ StartRestoreLOs(ArchiveHandle *AH)
 }
 
 /*
- * Called by a format handler after all LOs are restored
+ * Called by a format handler after a group of LOs is restored
  */
 void
 EndRestoreLOs(ArchiveHandle *AH)
@@ -1342,6 +1355,12 @@ StartRestoreLO(ArchiveHandle *AH, Oid oid, bool drop)
 	AH->loCount++;
 
 	/* Initialize the LO Buffer */
+	if (AH->lo_buf == NULL)
+	{
+		/* First time through (in this process) so allocate the buffer */
+		AH->lo_buf_size = LOBBUFSIZE;
+		AH->lo_buf = (void *) pg_malloc(LOBBUFSIZE);
+	}
 	AH->lo_buf_used = 0;
 
 	pg_log_info("restoring large object with OID %u", oid);
@@ -2986,20 +3005,21 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	if (!te->hadDumper)
 	{
 		/*
-		 * Special Case: If 'SEQUENCE SET' or anything to do with LOs, then
-		 * it is considered a data entry.  We don't need to check for the
-		 * BLOBS entry or old-style BLOB COMMENTS, because they will have
-		 * hadDumper = true ... but we do need to check new-style BLOB ACLs,
-		 * comments, etc.
+		 * Special Case: If 'SEQUENCE SET' or anything to do with LOs, then it
+		 * is considered a data entry.  We don't need to check for BLOBS or
+		 * old-style BLOB COMMENTS entries, because they will have hadDumper =
+		 * true ... but we do need to check new-style BLOB ACLs, comments,
+		 * etc.
 		 */
 		if (strcmp(te->desc, "SEQUENCE SET") == 0 ||
 			strcmp(te->desc, "BLOB") == 0 ||
+			strcmp(te->desc, "BLOB METADATA") == 0 ||
 			(strcmp(te->desc, "ACL") == 0 &&
-			 strncmp(te->tag, "LARGE OBJECT ", 13) == 0) ||
+			 strncmp(te->tag, "LARGE OBJECT", 12) == 0) ||
 			(strcmp(te->desc, "COMMENT") == 0 &&
-			 strncmp(te->tag, "LARGE OBJECT ", 13) == 0) ||
+			 strncmp(te->tag, "LARGE OBJECT", 12) == 0) ||
 			(strcmp(te->desc, "SECURITY LABEL") == 0 &&
-			 strncmp(te->tag, "LARGE OBJECT ", 13) == 0))
+			 strncmp(te->tag, "LARGE OBJECT", 12) == 0))
 			res = res & REQ_DATA;
 		else
 			res = res & ~REQ_DATA;
@@ -3034,12 +3054,13 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 		if (!(ropt->sequence_data && strcmp(te->desc, "SEQUENCE SET") == 0) &&
 			!(ropt->binary_upgrade &&
 			  (strcmp(te->desc, "BLOB") == 0 ||
+			   strcmp(te->desc, "BLOB METADATA") == 0 ||
 			   (strcmp(te->desc, "ACL") == 0 &&
-				strncmp(te->tag, "LARGE OBJECT ", 13) == 0) ||
+				strncmp(te->tag, "LARGE OBJECT", 12) == 0) ||
 			   (strcmp(te->desc, "COMMENT") == 0 &&
-				strncmp(te->tag, "LARGE OBJECT ", 13) == 0) ||
+				strncmp(te->tag, "LARGE OBJECT", 12) == 0) ||
 			   (strcmp(te->desc, "SECURITY LABEL") == 0 &&
-				strncmp(te->tag, "LARGE OBJECT ", 13) == 0))))
+				strncmp(te->tag, "LARGE OBJECT", 12) == 0))))
 			res = res & REQ_SCHEMA;
 	}
 
@@ -3609,17 +3630,34 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 	}
 
 	/*
-	 * Actually print the definition.
+	 * Actually print the definition.  Normally we can just print the defn
+	 * string if any, but we have three special cases:
 	 *
-	 * Really crude hack for suppressing AUTHORIZATION clause that old pg_dump
+	 * 1. A crude hack for suppressing AUTHORIZATION clause that old pg_dump
 	 * versions put into CREATE SCHEMA.  Don't mutate the variant for schema
 	 * "public" that is a comment.  We have to do this when --no-owner mode is
 	 * selected.  This is ugly, but I see no other good way ...
+	 *
+	 * 2. BLOB METADATA entries need special processing since their defn
+	 * strings are just lists of OIDs, not complete SQL commands.
+	 *
+	 * 3. ACL LARGE OBJECTS entries need special processing because they
+	 * contain only one copy of the ACL GRANT/REVOKE commands, which we must
+	 * apply to each large object listed in the associated BLOB METADATA.
 	 */
 	if (ropt->noOwner &&
 		strcmp(te->desc, "SCHEMA") == 0 && strncmp(te->defn, "--", 2) != 0)
 	{
 		ahprintf(AH, "CREATE SCHEMA %s;\n\n\n", fmtId(te->tag));
+	}
+	else if (strcmp(te->desc, "BLOB METADATA") == 0)
+	{
+		IssueCommandPerBlob(AH, te, "SELECT pg_catalog.lo_create('", "')");
+	}
+	else if (strcmp(te->desc, "ACL") == 0 &&
+			 strncmp(te->tag, "LARGE OBJECTS", 13) == 0)
+	{
+		IssueACLPerBlob(AH, te);
 	}
 	else
 	{
@@ -3641,17 +3679,31 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 		te->owner && strlen(te->owner) > 0 &&
 		te->dropStmt && strlen(te->dropStmt) > 0)
 	{
-		PQExpBufferData temp;
+		if (strcmp(te->desc, "BLOB METADATA") == 0)
+		{
+			/* BLOB METADATA needs special code to handle multiple LOs */
+			char	   *cmdEnd = psprintf(" OWNER TO %s", fmtId(te->owner));
 
-		initPQExpBuffer(&temp);
-		_getObjectDescription(&temp, te);
-		/*
-		 * If _getObjectDescription() didn't fill the buffer, then there is no
-		 * owner.
-		 */
-		if (temp.data[0])
-			ahprintf(AH, "ALTER %s OWNER TO %s;\n\n", temp.data, fmtId(te->owner));
-		termPQExpBuffer(&temp);
+			IssueCommandPerBlob(AH, te, "ALTER LARGE OBJECT ", cmdEnd);
+			pg_free(cmdEnd);
+		}
+		else
+		{
+			/* For all other cases, we can use _getObjectDescription */
+			PQExpBufferData temp;
+
+			initPQExpBuffer(&temp);
+			_getObjectDescription(&temp, te);
+
+			/*
+			 * If _getObjectDescription() didn't fill the buffer, then there
+			 * is no owner.
+			 */
+			if (temp.data[0])
+				ahprintf(AH, "ALTER %s OWNER TO %s;\n\n",
+						 temp.data, fmtId(te->owner));
+			termPQExpBuffer(&temp);
+		}
 	}
 
 	/*
@@ -4749,6 +4801,9 @@ CloneArchive(ArchiveHandle *AH)
 
 	/* clone has its own error count, too */
 	clone->public.n_errors = 0;
+
+	/* clones should not share lo_buf */
+	clone->lo_buf = NULL;
 
 	/*
 	 * Connect our new clone object to the database, using the same connection
