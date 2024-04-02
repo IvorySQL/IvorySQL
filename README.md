@@ -13,9 +13,6 @@
 IvorySQL is advanced, fully featured, open source Oracle compatible PostgreSQL with a firm commitment to always remain 100% compatible and a Drop-in replacement of the latest PostgreSQL. IvorySQL adds a “compatible_db” toggle switch to switch between Oracle and PostgreSQL compatibility modes.
 One of the highlights of IvorySQL is PL/iSQL procedural language that supports oracle’s PL/SQL syntax and Oracle style Packages.
 
-IvorySQL has imported and enhanced the [Orafce](https://github.com/orafce/orafce) extension to add support
-for numerous Oracle compatibility features including built-in PACKAGES, data types, and conversion functions
-
 The IvorySQL project is released under the Apache 2 license and encourages all types of contributions. For IvorySQL community no contribution is too small, and we want to thank all our community contributors.
 
 </br>
@@ -45,4 +42,4 @@ by the IvorySQL community.
 * **Join IvorySQL [mailing lists](http://lists.ivorysql.org) to get started**
 
 ## Documentation
-Please check the [online documentation](https://www.ivorysql.org/docs/next/intro).
+Please check the [online documentation](https://docs.ivorysql.org/).
