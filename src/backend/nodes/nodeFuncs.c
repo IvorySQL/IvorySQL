@@ -2659,6 +2659,10 @@ expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(tf->coldefexprs))
 					return true;
+				if (WALK(tf->colvalexprs))
+					return true;
+				if (WALK(tf->passingvalexprs))
+					return true;
 			}
 			break;
 		default:
@@ -3712,6 +3716,8 @@ expression_tree_mutator_impl(Node *node,
 				MUTATE(newnode->rowexpr, tf->rowexpr, Node *);
 				MUTATE(newnode->colexprs, tf->colexprs, List *);
 				MUTATE(newnode->coldefexprs, tf->coldefexprs, List *);
+				MUTATE(newnode->colvalexprs, tf->colvalexprs, List *);
+				MUTATE(newnode->passingvalexprs, tf->passingvalexprs, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -4139,6 +4145,36 @@ raw_expression_tree_walker_impl(Node *node,
 					return true;
 			}
 			break;
+		case T_JsonTable:
+			{
+				JsonTable  *jt = (JsonTable *) node;
+
+				if (WALK(jt->context_item))
+					return true;
+				if (WALK(jt->pathspec))
+					return true;
+				if (WALK(jt->passing))
+					return true;
+				if (WALK(jt->columns))
+					return true;
+				if (WALK(jt->on_error))
+					return true;
+			}
+			break;
+		case T_JsonTableColumn:
+			{
+				JsonTableColumn *jtc = (JsonTableColumn *) node;
+
+				if (WALK(jtc->typeName))
+					return true;
+				if (WALK(jtc->on_empty))
+					return true;
+				if (WALK(jtc->on_error))
+					return true;
+			}
+			break;
+		case T_JsonTablePathSpec:
+			return WALK(((JsonTablePathSpec *) node)->string);
 		case T_NullTest:
 			return WALK(((NullTest *) node)->arg);
 		case T_BooleanTest:
