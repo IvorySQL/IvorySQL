@@ -3688,6 +3688,17 @@ struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"or_to_any_transform_limit", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Set the minimum length of the list of OR clauses to attempt the OR-to-ANY transformation."),
+			gettext_noop("Once the limit is reached, the planner will try to replace expression like "
+						 "'x=c1 OR x=c2 ..' to the expression 'x = ANY(ARRAY[c1,c2,..])'"),
+			GUC_EXPLAIN
+		},
+		&or_to_any_transform_limit,
+		5, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	#define IVY_GUC_INT_PARAMS
 	#include "ivy_guc.c"
