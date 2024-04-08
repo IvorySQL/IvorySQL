@@ -562,9 +562,8 @@ extern void compute_new_xmax_infomask(TransactionId xmax, uint16 old_infomask,
 extern XLogRecPtr log_heap_new_cid(Relation relation, HeapTuple tup);
 extern uint8 compute_infobits(uint16 infomask, uint16 infomask2);
 /* in heap/heapam_handler.c*/
-extern void heapam_scan_analyze_next_block(TableScanDesc scan,
-										   BlockNumber blockno,
-										   BufferAccessStrategy bstrategy);
+extern bool heapam_scan_analyze_next_block(TableScanDesc scan,
+										   ReadStream *stream);
 extern bool heapam_scan_analyze_next_tuple(TableScanDesc scan,
 										   TransactionId OldestXmin,
 										   double *liverows, double *deadrows,
