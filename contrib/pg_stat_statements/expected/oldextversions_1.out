@@ -250,4 +250,62 @@ SELECT count(*) > 0 AS has_data FROM pg_stat_statements;
  t
 (1 row)
 
+-- New views for pg_stat_statements in 1.11
+AlTER EXTENSION pg_stat_statements UPDATE TO '1.11';
+\d pg_stat_statements
+                       View "public.pg_stat_statements"
+         Column         |        Type        | Collation | Nullable | Default 
+------------------------+--------------------+-----------+----------+---------
+ userid                 | oid                |           |          | 
+ dbid                   | oid                |           |          | 
+ toplevel               | pg_catalog.bool    |           |          | 
+ queryid                | pg_catalog.int8    |           |          | 
+ query                  | text               |           |          | 
+ plans                  | pg_catalog.int8    |           |          | 
+ total_plan_time        | pg_catalog.float8  |           |          | 
+ min_plan_time          | pg_catalog.float8  |           |          | 
+ max_plan_time          | pg_catalog.float8  |           |          | 
+ mean_plan_time         | pg_catalog.float8  |           |          | 
+ stddev_plan_time       | pg_catalog.float8  |           |          | 
+ calls                  | pg_catalog.int8    |           |          | 
+ total_exec_time        | pg_catalog.float8  |           |          | 
+ min_exec_time          | pg_catalog.float8  |           |          | 
+ max_exec_time          | pg_catalog.float8  |           |          | 
+ mean_exec_time         | pg_catalog.float8  |           |          | 
+ stddev_exec_time       | pg_catalog.float8  |           |          | 
+ rows                   | pg_catalog.int8    |           |          | 
+ shared_blks_hit        | pg_catalog.int8    |           |          | 
+ shared_blks_read       | pg_catalog.int8    |           |          | 
+ shared_blks_dirtied    | pg_catalog.int8    |           |          | 
+ shared_blks_written    | pg_catalog.int8    |           |          | 
+ local_blks_hit         | pg_catalog.int8    |           |          | 
+ local_blks_read        | pg_catalog.int8    |           |          | 
+ local_blks_dirtied     | pg_catalog.int8    |           |          | 
+ local_blks_written     | pg_catalog.int8    |           |          | 
+ temp_blks_read         | pg_catalog.int8    |           |          | 
+ temp_blks_written      | pg_catalog.int8    |           |          | 
+ blk_read_time          | pg_catalog.float8  |           |          | 
+ blk_write_time         | pg_catalog.float8  |           |          | 
+ temp_blk_read_time     | pg_catalog.float8  |           |          | 
+ temp_blk_write_time    | pg_catalog.float8  |           |          | 
+ wal_records            | pg_catalog.int8    |           |          | 
+ wal_fpi                | pg_catalog.int8    |           |          | 
+ wal_bytes              | pg_catalog.numeric |           |          | 
+ jit_functions          | pg_catalog.int8    |           |          | 
+ jit_generation_time    | pg_catalog.float8  |           |          | 
+ jit_inlining_count     | pg_catalog.int8    |           |          | 
+ jit_inlining_time      | pg_catalog.float8  |           |          | 
+ jit_optimization_count | pg_catalog.int8    |           |          | 
+ jit_optimization_time  | pg_catalog.float8  |           |          | 
+ jit_emission_count     | pg_catalog.int8    |           |          | 
+ jit_emission_time      | pg_catalog.float8  |           |          | 
+ jit_deform_count       | pg_catalog.int8    |           |          | 
+ jit_deform_time        | pg_catalog.float8  |           |          | 
+
+SELECT count(*) > 0 AS has_data FROM pg_stat_statements;
+ has_data 
+----------
+ t
+(1 row)
+
 DROP EXTENSION pg_stat_statements;
