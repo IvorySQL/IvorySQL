@@ -32,6 +32,7 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
+#include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
@@ -3458,6 +3459,39 @@ transformRuleStmt(RuleStmt *stmt, const char *queryString,
 
 
 /*
+ * checkPartition
+ *		Check that partRelOid is an oid of partition of the parent table rel
+ */
+static void
+checkPartition(Relation rel, Oid partRelOid)
+{
+	Relation	partRel;
+
+	partRel = relation_open(partRelOid, AccessShareLock);
+
+	if (partRel->rd_rel->relkind != RELKIND_RELATION)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not a table",
+						RelationGetRelationName(partRel))));
+
+	if (!partRel->rd_rel->relispartition)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not a partition",
+						RelationGetRelationName(partRel))));
+
+	if (get_partition_parent(partRelOid, false) != RelationGetRelid(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("relation \"%s\" is not a partition of relation \"%s\"",
+						RelationGetRelationName(partRel),
+						RelationGetRelationName(rel))));
+
+	relation_close(partRel, AccessShareLock);
+}
+
+/*
  * transformPartitionCmdForSplit
  *		Analyze the ALTER TABLLE ... SPLIT PARTITION command
  *
@@ -3488,6 +3522,8 @@ transformPartitionCmdForSplit(CreateStmtContext *cxt, PartitionCmd *partcmd)
 	}
 
 	splitPartOid = RangeVarGetRelid(partcmd->name, NoLock, false);
+
+	checkPartition(parent, splitPartOid);
 
 	/* Then we should check partitions with transformed bounds. */
 	check_partitions_for_split(parent, splitPartOid, partcmd->name, partcmd->partlist, cxt->pstate);
@@ -3551,6 +3587,9 @@ transformPartitionCmdForMerge(CreateStmtContext *cxt, PartitionCmd *partcmd)
 		partOid = RangeVarGetRelid(name, NoLock, false);
 		if (partOid == defaultPartOid)
 			isDefaultPart = true;
+
+		checkPartition(parent, partOid);
+
 		partOids = lappend_oid(partOids, partOid);
 	}
 
