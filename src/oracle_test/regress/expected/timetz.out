@@ -240,7 +240,7 @@ ERROR:  syntax error at or near "WITH"
 LINE 1: SELECT date_part('epoch',       TIME WITH TIME ZONE '2020-05...
                                              ^
 --
--- AT LOCAL with timetz
+-- Test timetz_zone, timetz_izone, AT LOCAL
 --
 BEGIN;
 SET LOCAL TimeZone TO 'UTC';
@@ -248,7 +248,8 @@ CREATE VIEW timetz_local_view AS
   SELECT f1 AS dat,
        timezone(f1) AS dat_func,
        f1 AT LOCAL AS dat_at_local,
-       f1 AT TIME ZONE current_setting('TimeZone') AS dat_at_time
+       f1 AT TIME ZONE current_setting('TimeZone') AS dat_at_tz,
+       f1 AT TIME ZONE INTERVAL '00:00' AS dat_at_int
   FROM TIMETZ_TBL
   ORDER BY f1;
 ERROR:  syntax error at or near "LOCAL"
@@ -258,6 +259,4 @@ SELECT pg_get_viewdef('timetz_local_view', true);
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 TABLE timetz_local_view;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
-DROP VIEW timetz_local_view;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-COMMIT;
+ROLLBACK;
