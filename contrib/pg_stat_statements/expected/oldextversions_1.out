@@ -286,6 +286,8 @@ AlTER EXTENSION pg_stat_statements UPDATE TO '1.11';
  temp_blks_written      | pg_catalog.int8    |           |          | 
  shared_blk_read_time   | pg_catalog.float8  |           |          | 
  shared_blk_write_time  | pg_catalog.float8  |           |          | 
+ local_blk_read_time    | pg_catalog.float8  |           |          | 
+ local_blk_write_time   | pg_catalog.float8  |           |          | 
  temp_blk_read_time     | pg_catalog.float8  |           |          | 
  temp_blk_write_time    | pg_catalog.float8  |           |          | 
  wal_records            | pg_catalog.int8    |           |          | 
