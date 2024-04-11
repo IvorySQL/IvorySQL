@@ -34,6 +34,7 @@
 #include "common/username.h"
 #include "getopt_long.h"
 #include "lib/stringinfo.h"
+#include "libpq-fe.h"
 #include "libpq/pqcomm.h"		/* needed for UNIXSOCK_PATH() */
 #include "pg_config_paths.h"
 #include "pg_regress.h"
@@ -79,6 +80,12 @@ static int oraPort;	/* SQL PARSER */
  */
 #define TESTNAME_WIDTH 36
 
+/*
+ *  * The number times per second that pg_regress checks to see if the test
+ *   * instance server has started and is available for connection.
+ *    */
+#define WAIT_TICKS_PER_SECOND 20
+
 typedef enum TAPtype
 {
 	DIAG = 0,
@@ -111,6 +118,7 @@ static bool nolocale = false;
 static bool use_existing = false;
 static char *hostname = NULL;
 static int	port = -1;
+static char portstr[16];
 static bool port_specified_by_user = false;
 static char *dlpath = PKGLIBDIR;
 static char *user = NULL;
@@ -2110,7 +2118,6 @@ regression_main(int argc, char *argv[],
 	int			i;
 	int			option_index;
 	char		buf[MAXPGPATH * 4];
-	char		buf2[MAXPGPATH * 4];
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
@@ -2299,6 +2306,9 @@ regression_main(int argc, char *argv[],
 		const char *env_wait;
 		int			wait_seconds;
 		const char *initdb_template_dir;
+		const char *keywords[4];
+		const char *values[4];
+		PGPing		rv;
 
 		/*
 		 * Prepare the temp instance
@@ -2439,21 +2449,28 @@ regression_main(int argc, char *argv[],
 #endif
 
 		/*
+		 * Prepare the connection params for checking the state of the server
+		 * before starting the tests.
+		 */
+		sprintf(portstr, "%d", port);
+		keywords[0] = "dbname";
+		values[0] = "postgres";
+		keywords[1] = "port";
+		values[1] = portstr;
+		keywords[2] = "host";
+		values[2] = hostname ? hostname : sockdir;
+		keywords[3] = NULL;
+		values[3] = NULL;
+
+		/*
 		 * Check if there is a postmaster running already.
 		 */
-		snprintf(buf2, sizeof(buf2),
-				 "\"%s%spsql\" -X postgres <%s 2>%s",
-				 bindir ? bindir : "",
-				 bindir ? "/" : "",
-				 DEVNULL, DEVNULL);
-
 		for (i = 0; i < 16; i++)
 		{
-			fflush(NULL);
-			if (system(buf2) == 0)
-			{
-				char		s[16];
+			rv = PQpingParams(keywords, values, 1);
 
+			if (rv == PQPING_OK)
+			{
 				if (port_specified_by_user || i == 15)
 				{
 					note("port %d apparently in use", port);
@@ -2464,8 +2481,8 @@ regression_main(int argc, char *argv[],
 
 				note("port %d apparently in use, trying %d", port, port + 1);
 				port++;
-				sprintf(s, "%d", port);
-				setenv("PGPORT", s, 1);
+				sprintf(portstr, "%d", port);
+				setenv("PGPORT", portstr, 1);
 			}
 			else
 				break;
@@ -2476,10 +2493,10 @@ regression_main(int argc, char *argv[],
 
 		for (i = 0; i < 16; i++)
 		{
-			if (system(buf2) == 0)
-			{
-				char		s[16];
+			rv = PQpingParams(keywords, values, 1);
 
+			if (rv == PQPING_OK)
+			{
 				if (i == 15)
 				{
 					fprintf(stderr, _("port %d apparently in use in oracle compatible mode\n"), oraPort);
@@ -2489,8 +2506,8 @@ regression_main(int argc, char *argv[],
 
 				fprintf(stderr, _("port %d apparently in use, trying %d in oracle compatible mode\n"), oraPort, oraPort + 1);
 				oraPort++;
-				sprintf(s, "%d", oraPort);
-				setenv("PGPORT", s, 1);
+				sprintf(portstr, "%d", oraPort);
+				setenv("PGPORT", portstr, 1);
 			}
 			else
 			{
@@ -2522,11 +2539,11 @@ regression_main(int argc, char *argv[],
 			bail("could not spawn postmaster: %s", strerror(errno));
 
 		/*
-		 * Wait till postmaster is able to accept connections; normally this
-		 * is only a second or so, but Cygwin is reportedly *much* slower, and
-		 * test builds using Valgrind or similar tools might be too.  Hence,
-		 * allow the default timeout of 60 seconds to be overridden from the
-		 * PGCTLTIMEOUT environment variable.
+		 * Wait till postmaster is able to accept connections; normally takes
+		 * only a fraction of a second or so, but Cygwin is reportedly *much*
+		 * slower, and test builds using Valgrind or similar tools might be
+		 * too.  Hence, allow the default timeout of 60 seconds to be
+		 * overridden from the PGCTLTIMEOUT environment variable.
 		 */
 		env_wait = getenv("PGCTLTIMEOUT");
 		if (env_wait != NULL)
@@ -2538,12 +2555,23 @@ regression_main(int argc, char *argv[],
 		else
 			wait_seconds = 60;
 
-		for (i = 0; i < wait_seconds; i++)
+		for (i = 0; i < wait_seconds * WAIT_TICKS_PER_SECOND; i++)
 		{
-			/* Done if psql succeeds */
-			fflush(NULL);
-			if (system(buf2) == 0)
+			/*
+			 * It's fairly unlikely that the server is responding immediately
+			 * so we start with sleeping before checking instead of the other
+			 * way around.
+			 */
+			pg_usleep(1000000L / WAIT_TICKS_PER_SECOND);
+
+			rv = PQpingParams(keywords, values, 1);
+
+			/* Done if the server is running and accepts connections */
+			if (rv == PQPING_OK)
 				break;
+
+			if (rv == PQPING_NO_ATTEMPT)
+				bail("attempting to connect to postmaster failed");
 
 			/*
 			 * Fail immediately if postmaster has exited
@@ -2557,10 +2585,8 @@ regression_main(int argc, char *argv[],
 				bail("postmaster failed, examine \"%s/log/postmaster.log\" for the reason",
 					 outputdir);
 			}
-
-			pg_usleep(1000000L);
 		}
-		if (i >= wait_seconds)
+		if (i >= wait_seconds * WAIT_TICKS_PER_SECOND)
 		{
 			diag("postmaster did not respond within %d seconds, examine \"%s/log/postmaster.log\" for the reason",
 				 wait_seconds, outputdir);
