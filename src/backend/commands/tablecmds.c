@@ -6445,12 +6445,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 			/* Write the tuple out to the new relation */
 			if (newrel)
-			{
-				bool		insertIndexes;
-
 				table_tuple_insert(newrel, insertslot, mycid,
-								   ti_options, bistate, &insertIndexes);
-			}
+								   ti_options, bistate);
 
 			ResetExprContext(econtext);
 
@@ -21282,7 +21278,6 @@ moveSplitTableRows(Relation rel, Relation splitRel, List *partlist, List *newPar
 	while (table_scan_getnextslot(scan, ForwardScanDirection, srcslot))
 	{
 		bool		found = false;
-		bool		insert_indexes;
 		TupleTableSlot *insertslot;
 
 		/* Extract data from old tuple. */
@@ -21335,12 +21330,9 @@ moveSplitTableRows(Relation rel, Relation splitRel, List *partlist, List *newPar
 			ExecStoreVirtualTuple(insertslot);
 		}
 
-		/*
-		 * Write the tuple out to the new relation.  We ignore the
-		 * 'insert_indexes' flag since newPartRel has no indexes anyway.
-		 */
+		/* Write the tuple out to the new relation. */
 		(void) table_tuple_insert(pc->partRel, insertslot, mycid,
-								  ti_options, pc->bistate, &insert_indexes);
+								  ti_options, pc->bistate);
 
 		ResetExprContext(econtext);
 
@@ -21609,7 +21601,6 @@ moveMergedTablesRows(Relation rel, List *mergingPartitionsList,
 		while (table_scan_getnextslot(scan, ForwardScanDirection, srcslot))
 		{
 			TupleTableSlot *insertslot;
-			bool		insert_indexes;
 
 			/* Extract data from old tuple. */
 			slot_getallattrs(srcslot);
@@ -21634,12 +21625,9 @@ moveMergedTablesRows(Relation rel, List *mergingPartitionsList,
 				ExecStoreVirtualTuple(insertslot);
 			}
 
-			/*
-			 * Write the tuple out to the new relation.  We ignore the
-			 * 'insert_indexes' flag since newPartRel has no indexes anyway.
-			 */
+			/* Write the tuple out to the new relation. */
 			(void) table_tuple_insert(newPartRel, insertslot, mycid,
-									  ti_options, bistate, &insert_indexes);
+									  ti_options, bistate);
 
 			CHECK_FOR_INTERRUPTS();
 		}
