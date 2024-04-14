@@ -1577,6 +1577,12 @@ pqConnectOptions2(PGconn *conn)
 		}
 #endif
 	}
+	else
+	{
+		conn->sslmode = strdup(DefaultSSLMode);
+		if (!conn->sslmode)
+			goto oom_error;
+	}
 
 	/*
 	 * validate sslnegotiation option, default is "postgres" for the postgres
