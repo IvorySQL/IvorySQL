@@ -19795,6 +19795,11 @@ AttachPartitionEnsureIndexes(List **wqueue, Relation rel, Relation attachrel)
 					/* no dice */
 					if (!OidIsValid(cldConstrOid))
 						continue;
+
+					/* Ensure they're both the same type of constraint */
+					if (get_constraint_type(constraintOid) !=
+						get_constraint_type(cldConstrOid))
+						continue;
 				}
 
 				/* bingo. */
