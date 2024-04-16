@@ -1765,7 +1765,7 @@ typedef struct JsonBehavior
 	JsonBehaviorType btype;
 	Node	   *expr;
 	bool		coerce;
-	int			location;		/* token location, or -1 if unknown */
+	ParseLoc	location;		/* token location, or -1 if unknown */
 } JsonBehavior;
 
 /*
@@ -1834,7 +1834,7 @@ typedef struct JsonExpr
 	Oid			collation;
 
 	/* Original JsonFuncExpr's location */
-	int			location;
+	ParseLoc	location;
 } JsonExpr;
 
 /*
