@@ -1791,6 +1791,9 @@ typedef struct JsonExpr
 
 	JsonExprOp	op;
 
+	char	   *column_name;	/* JSON_TABLE() column name or NULL if this is
+								 * not for a JSON_TABLE() */
+
 	/* jsonb-valued expression to query */
 	Node	   *formatted_expr;
 

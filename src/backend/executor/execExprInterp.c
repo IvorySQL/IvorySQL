@@ -4321,7 +4321,8 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 		case JSON_QUERY_OP:
 			*op->resvalue = JsonPathQuery(item, path, jsexpr->wrapper, &empty,
 										  !throw_error ? &error : NULL,
-										  jsestate->args);
+										  jsestate->args,
+										  jsexpr->column_name);
 
 			*op->resnull = (DatumGetPointer(*op->resvalue) == NULL);
 
@@ -4346,7 +4347,8 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 			{
 				JsonbValue *jbv = JsonPathValue(item, path, &empty,
 												!throw_error ? &error : NULL,
-												jsestate->args);
+												jsestate->args,
+												jsexpr->column_name);
 
 				if (jbv == NULL)
 				{
@@ -4416,30 +4418,33 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 	/* Handle ON EMPTY. */
 	if (empty)
 	{
-		if (jsexpr->on_empty)
-		{
-			if (jsexpr->on_empty->btype == JSON_BEHAVIOR_ERROR)
-				ereport(ERROR,
-						errcode(ERRCODE_NO_SQL_JSON_ITEM),
-						errmsg("no SQL/JSON item"));
-			else
-				jsestate->empty.value = BoolGetDatum(true);
-
-			Assert(jsestate->jump_empty >= 0);
-			return jsestate->jump_empty;
-		}
-		else if (jsexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
-			ereport(ERROR,
-					errcode(ERRCODE_NO_SQL_JSON_ITEM),
-					errmsg("no SQL/JSON item"));
-		else
-			jsestate->error.value = BoolGetDatum(true);
-
 		*op->resvalue = (Datum) 0;
 		*op->resnull = true;
+		if (jsexpr->on_empty)
+		{
+			if (jsexpr->on_empty->btype != JSON_BEHAVIOR_ERROR)
+			{
+				jsestate->empty.value = BoolGetDatum(true);
+				Assert(jsestate->jump_empty >= 0);
+				return jsestate->jump_empty;
+			}
+		}
+		else if (jsexpr->on_error->btype != JSON_BEHAVIOR_ERROR)
+		{
+			jsestate->error.value = BoolGetDatum(true);
+			Assert(!throw_error && jsestate->jump_error >= 0);
+			return jsestate->jump_error;
+		}
 
-		Assert(!throw_error && jsestate->jump_error >= 0);
-		return jsestate->jump_error;
+		if (jsexpr->column_name)
+			ereport(ERROR,
+					errcode(ERRCODE_NO_SQL_JSON_ITEM),
+					errmsg("no SQL/JSON item found for specified path of column \"%s\"",
+						   jsexpr->column_name));
+		else
+			ereport(ERROR,
+					errcode(ERRCODE_NO_SQL_JSON_ITEM),
+					errmsg("no SQL/JSON item found for specified path"));
 	}
 
 	/*
