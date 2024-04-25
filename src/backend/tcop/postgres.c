@@ -4431,7 +4431,7 @@ PostgresMain(const char *dbname, const char *username)
 			ReplicationSlotRelease();
 
 		/* We also want to cleanup temporary slots on error. */
-		ReplicationSlotCleanup();
+		ReplicationSlotCleanup(false);
 
 		jit_reset_after_error();
 
