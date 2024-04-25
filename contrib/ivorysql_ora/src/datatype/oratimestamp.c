@@ -193,13 +193,14 @@ pg_oratimestamp_in(char *str, int32 typmod)
 	char	   *field[MAXDATEFIELDS];
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[MAXDATELEN + MAXDATEFIELDS];
+	DateTimeErrorExtra extra;
 
 	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
 						  field, ftype, MAXDATEFIELDS, &nf);
 	if (dterr == 0)
-		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
+		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz, &extra);
 	if (dterr != 0)
-		DateTimeParseError(dterr, str, "timestamp");
+		DateTimeParseError(dterr, &extra, str, "timestamp", NULL);
 
 	switch (dtype)
 	{
