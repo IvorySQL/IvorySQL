@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-12]
 
     steps:
     - uses: actions/checkout@v3
@@ -39,7 +39,7 @@ jobs:
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
             --with-icu
     - name: configure - macos
-      if: ${{ matrix.os == 'macos-latest' }}
+      if: ${{ matrix.os == 'macos-12' }}
       run: |
         export PKG_CONFIG_PATH="/usr/local/opt/icu4c/lib/pkgconfig"
         curl -L -o cpanm http://cpanmin.us && chmod +x cpanm && \

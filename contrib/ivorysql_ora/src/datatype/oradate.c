@@ -38,6 +38,7 @@
 #include "utils/timestamp.h"
 #include "utils/date.h"
 
+#include "../include/common_datatypes.h" /* BUG#M0000247 */
 
 PG_FUNCTION_INFO_V1(oradate_in);
 PG_FUNCTION_INFO_V1(oradate_out);
@@ -143,6 +144,68 @@ timestamp2timestamptz(Timestamp timestamp)
 	return result;
 }
 
+/* Begin - BUG#M0000247 */
+/*
+ * Same as timestamp_in(), In oracle mode, oradate type input is
+ * not affected by the nls parameter, and you can also choose to
+ * execute pg's input parsing logic.
+ */
+Timestamp
+pg_oradate_in(char *str, int32 typmod)
+{
+	Timestamp	result;
+	fsec_t		fsec;
+	struct pg_tm tt,
+			   *tm = &tt;
+	int			tz;
+	int			dtype;
+	int			nf;
+	int			dterr;
+	char	   *field[MAXDATEFIELDS];
+	int			ftype[MAXDATEFIELDS];
+	char		workbuf[MAXDATELEN + MAXDATEFIELDS];
+	DateTimeErrorExtra extra;
+
+	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+						  field, ftype, MAXDATEFIELDS, &nf);
+	if (dterr == 0)
+		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz, &extra);
+	if (dterr != 0)
+		DateTimeParseError(dterr, &extra, str, "date", NULL);
+
+	switch (dtype)
+	{
+		case DTK_DATE:
+			if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("date out of range: \"%s\"", str)));
+			break;
+
+		case DTK_EPOCH:
+			result = SetEpochTimestamp();
+			break;
+
+		case DTK_LATE:
+			TIMESTAMP_NOEND(result);
+			break;
+
+		case DTK_EARLY:
+			TIMESTAMP_NOBEGIN(result);
+			break;
+
+		default:
+			elog(ERROR, "unexpected dtype %d while parsing date \"%s\"",
+				 dtype, str);
+			TIMESTAMP_NOEND(result);
+	}
+
+	OraAdjustTimestampForTypmod(&result, typmod);
+
+	return result;
+}
+/* End - BUG#M0000247 */
+
 /*****************************************************************************
  *	 USER I/O ROUTINES														 *
  *****************************************************************************/
@@ -161,8 +224,10 @@ oradate_in(PG_FUNCTION_ARGS)
 
 	if (strcmp(nls_date_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORADATE_MASK))
 	{
-		return DirectFunctionCall1(date_timestamp,
-									DirectFunctionCall1(date_in, CStringGetDatum(str)));
+		/* Begin - BUG#M0000247 */
+		result = pg_oradate_in(str, 0);
+		PG_RETURN_TIMESTAMP(result);
+		/* End - BUG#M0000247 */
 	}
 	else
 	{
