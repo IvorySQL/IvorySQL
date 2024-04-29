@@ -810,3 +810,37 @@ select attname, typname from pg_attribute, pg_type where attrelid in (select oid
 (1 row)
 
 drop table systimestamp_test;
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval 'infinity');
+ERROR:  syntax error at or near ")"
+LINE 1: ...:12', timestamp '1996-08-06 12:12:12', interval 'infinity');
+                                                                     ^
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval '-infinity');
+ERROR:  syntax error at or near ")"
+LINE 1: ...12', timestamp '1996-08-06 12:12:12', interval '-infinity');
+                                                                     ^
+-- test arithmetic with infinite timestamps
+select timestamp 'infinity' - timestamp 'infinity';
+ERROR:  datetime string and format model does not match
+select timestamp 'infinity' - timestamp '-infinity';
+ERROR:  datetime string and format model does not match
+select timestamp '-infinity' - timestamp 'infinity';
+ERROR:  datetime string and format model does not match
+select timestamp '-infinity' - timestamp '-infinity';
+ERROR:  datetime string and format model does not match
+select timestamp 'infinity' - timestamp '1995-08-06 12:12:12';
+ERROR:  datetime string and format model does not match
+select timestamp '-infinity' - timestamp '1995-08-06 12:12:12';
+ERROR:  datetime string and format model does not match
+-- test age() with infinite timestamps
+select age(timestamp 'infinity');
+ERROR:  datetime string and format model does not match
+select age(timestamp '-infinity');
+ERROR:  datetime string and format model does not match
+select age(timestamp 'infinity', timestamp 'infinity');
+ERROR:  datetime string and format model does not match
+select age(timestamp 'infinity', timestamp '-infinity');
+ERROR:  datetime string and format model does not match
+select age(timestamp '-infinity', timestamp 'infinity');
+ERROR:  datetime string and format model does not match
+select age(timestamp '-infinity', timestamp '-infinity');
+ERROR:  datetime string and format model does not match

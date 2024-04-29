@@ -965,4 +965,25 @@ ERROR:  missing or invalid datetime field.
 DROP TABLE brin_interval_test;
 ERROR:  table "brin_interval_test" does not exist
 RESET enable_seqscan;
+-- test handling of infinite interval values
+CREATE TABLE brin_interval_test(a INTERVAL);
+ERROR:  missing or invalid datetime field.
+INSERT INTO brin_interval_test VALUES ('-infinity'), ('infinity');
+ERROR:  relation "brin_interval_test" does not exist
+LINE 1: INSERT INTO brin_interval_test VALUES ('-infinity'), ('infin...
+                    ^
+INSERT INTO brin_interval_test SELECT (i || ' days')::interval FROM generate_series(100, 140) s(i);
+ERROR:  missing or invalid datetime field.
+CREATE INDEX ON brin_interval_test USING brin (a interval_minmax_multi_ops) WITH (pages_per_range=1);
+ERROR:  relation "brin_interval_test" does not exist
+SET enable_seqscan = off;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_interval_test WHERE a = '-30 years'::interval;
+ERROR:  missing or invalid datetime field.
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
+SELECT * FROM brin_interval_test WHERE a = '30 years'::interval;
+ERROR:  missing or invalid datetime field.
+DROP TABLE brin_interval_test;
+ERROR:  table "brin_interval_test" does not exist
+RESET enable_seqscan;
 RESET datestyle;

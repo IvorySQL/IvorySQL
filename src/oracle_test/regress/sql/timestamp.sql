@@ -396,3 +396,21 @@ select * from generate_series('2020-01-01 00:00'::timestamp,
 create table systimestamp_test (v1 TIMESTAMP DEFAULT SYSTIMESTAMP);
 select attname, typname from pg_attribute, pg_type where attrelid in (select oid from pg_class where relname = 'systimestamp_test') and attnum > 0 and atttypid = pg_type.oid;
 drop table systimestamp_test;
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval 'infinity');
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval '-infinity');
+
+-- test arithmetic with infinite timestamps
+select timestamp 'infinity' - timestamp 'infinity';
+select timestamp 'infinity' - timestamp '-infinity';
+select timestamp '-infinity' - timestamp 'infinity';
+select timestamp '-infinity' - timestamp '-infinity';
+select timestamp 'infinity' - timestamp '1995-08-06 12:12:12';
+select timestamp '-infinity' - timestamp '1995-08-06 12:12:12';
+
+-- test age() with infinite timestamps
+select age(timestamp 'infinity');
+select age(timestamp '-infinity');
+select age(timestamp 'infinity', timestamp 'infinity');
+select age(timestamp 'infinity', timestamp '-infinity');
+select age(timestamp '-infinity', timestamp 'infinity');
+select age(timestamp '-infinity', timestamp '-infinity');
