@@ -2170,6 +2170,16 @@ expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(expr->aggfilter))
 					return true;
+				if (WALK(expr->runCondition))
+					return true;
+			}
+			break;
+		case T_WindowFuncRunCondition:
+			{
+				WindowFuncRunCondition *expr = (WindowFuncRunCondition *) node;
+
+				if (WALK(expr->arg))
+					return true;
 			}
 			break;
 		case T_SubscriptingRef:
@@ -2408,8 +2418,6 @@ expression_tree_walker_impl(Node *node,
 				if (WALK(wc->startOffset))
 					return true;
 				if (WALK(wc->endOffset))
-					return true;
-				if (WALK(wc->runCondition))
 					return true;
 			}
 			break;
@@ -2761,8 +2769,6 @@ query_tree_walker_impl(Query *query,
 				return true;
 			if (WALK(wc->endOffset))
 				return true;
-			if (WALK(wc->runCondition))
-				return true;
 		}
 	}
 
@@ -3059,6 +3065,16 @@ expression_tree_mutator_impl(Node *node,
 				FLATCOPY(newnode, wfunc, WindowFunc);
 				MUTATE(newnode->args, wfunc->args, List *);
 				MUTATE(newnode->aggfilter, wfunc->aggfilter, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowFuncRunCondition:
+			{
+				WindowFuncRunCondition *wfuncrc = (WindowFuncRunCondition *) node;
+				WindowFuncRunCondition *newnode;
+
+				FLATCOPY(newnode, wfuncrc, WindowFuncRunCondition);
+				MUTATE(newnode->arg, wfuncrc->arg, Expr *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3476,7 +3492,6 @@ expression_tree_mutator_impl(Node *node,
 				MUTATE(newnode->orderClause, wc->orderClause, List *);
 				MUTATE(newnode->startOffset, wc->startOffset, Node *);
 				MUTATE(newnode->endOffset, wc->endOffset, Node *);
-				MUTATE(newnode->runCondition, wc->runCondition, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3809,7 +3824,6 @@ query_tree_mutator_impl(Query *query,
 			FLATCOPY(newnode, wc, WindowClause);
 			MUTATE(newnode->startOffset, wc->startOffset, Node *);
 			MUTATE(newnode->endOffset, wc->endOffset, Node *);
-			MUTATE(newnode->runCondition, wc->runCondition, List *);
 
 			resultlist = lappend(resultlist, (Node *) newnode);
 		}

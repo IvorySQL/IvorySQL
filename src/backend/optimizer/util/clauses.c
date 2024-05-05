@@ -2576,6 +2576,7 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->inputcollid = expr->inputcollid;
 				newexpr->args = args;
 				newexpr->aggfilter = aggfilter;
+				newexpr->runCondition = expr->runCondition;
 				newexpr->winref = expr->winref;
 				newexpr->winstar = expr->winstar;
 				newexpr->winagg = expr->winagg;
