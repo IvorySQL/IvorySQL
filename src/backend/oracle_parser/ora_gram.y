@@ -655,7 +655,8 @@ static void determineLanguage(List *options);
 %type <list>	identity_clause identity_options drop_identity
 %type <boolean>	opt_with opt_by
 
-%type <node>		json_format_clause_opt
+%type <node>	json_format_clause
+				json_format_clause_opt
 					json_value_expr
 				json_returning_clause_opt
 					json_name_and_value
@@ -665,8 +666,7 @@ static void determineLanguage(List *options);
 					json_value_expr_list
 					json_array_aggregate_order_by_clause_opt
 
-%type <ival>		json_encoding_clause_opt
-					json_predicate_type_constraint
+%type <ival>	json_predicate_type_constraint
 
 %type <boolean>		json_key_uniqueness_constraint_opt
 					json_object_constructor_null_clause_opt
@@ -16548,12 +16548,11 @@ a_expr:		c_expr									{ $$ = $1; }
 			/*
 			 * Required by SQL/JSON, but there are conflicts
 			| a_expr
-				FORMAT_LA JSON json_encoding_clause_opt
+				json_format_clause
 				IS  json_predicate_type_constraint
 					json_key_uniqueness_constraint_opt		%prec IS
 				{
-					$3.location = @2;
-					$$ = makeJsonIsPredicate($1, $3, $5, $6, @1);
+					$$ = makeJsonIsPredicate($1, $2, $4, $5, @1);
 				}
 			*/
 			| a_expr IS NOT
@@ -16567,13 +16566,12 @@ a_expr:		c_expr									{ $$ = $1; }
 			/*
 			 * Required by SQL/JSON, but there are conflicts
 			| a_expr
-				FORMAT_LA JSON json_encoding_clause_opt
+				json_format_clause
 				IS NOT
 					json_predicate_type_constraint
 					json_key_uniqueness_constraint_opt		%prec IS
 				{
-					$3.location = @2;
-					$$ = makeNotExpr(makeJsonIsPredicate($1, $3, $6, $7, @1), @1);
+					$$ = makeNotExpr(makeJsonIsPredicate($1, $2, $5, $6, @1), @1);
 				}
 			*/
 			| DEFAULT
@@ -18328,20 +18326,39 @@ json_value_expr:
 			}
 		;
 
-json_format_clause_opt:
-			FORMAT_LA JSON json_encoding_clause_opt
+json_format_clause:
+			FORMAT_LA JSON ENCODING name
 				{
-					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, $3, @1);
+					int		encoding;
+
+					if (!pg_strcasecmp($4, "utf8"))
+						encoding = JS_ENC_UTF8;
+					else if (!pg_strcasecmp($4, "utf16"))
+						encoding = JS_ENC_UTF16;
+					else if (!pg_strcasecmp($4, "utf32"))
+						encoding = JS_ENC_UTF32;
+					else
+						ereport(ERROR,
+								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("unrecognized JSON encoding: %s", $4));
+
+					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, encoding, @1);
+				}
+			| FORMAT_LA JSON
+				{
+					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, JS_ENC_DEFAULT, @1);
+				}
+		;
+
+json_format_clause_opt:
+			json_format_clause
+				{
+					$$ = $1;
 				}
 			| /* EMPTY */
 				{
 					$$ = (Node *) makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 				}
-		;
-
-json_encoding_clause_opt:
-			ENCODING name					{ $$ = makeJsonEncoding($2); }
-			| /* EMPTY */					{ $$ = JS_ENC_DEFAULT; }
 		;
 
 json_returning_clause_opt:
