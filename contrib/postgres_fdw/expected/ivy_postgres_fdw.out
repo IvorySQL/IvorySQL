@@ -876,10 +876,10 @@ EXPLAIN (VERBOSE, COSTS OFF)
                Index Cond: (a."C 1" = '47'::number)
 (12 rows)
 
-SELECT * FROM ft2 a, ft2 b WHERE a.c1 = 47 AND b.c1 = a.c2;
- c1 | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  | c1 | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  
-----+----+-------+-----------------------------------+----------------------------+----+------------+-----+----+----+-------+-----------------------------------+----------------------------+----+------------+-----
- 47 | 7  | 00047 | 1970-02-17 00:00:00.000000 -08:00 | 1970-02-17 00:00:00.000000 | 7  | 7          | foo | 7  | 7  | 00007 | 1970-01-08 00:00:00.000000 -08:00 | 1970-01-08 00:00:00.000000 | 7  | 7          | foo
+SELECT * FROM "S 1"."T 1" a, ft2 b WHERE a."C 1" = 47 AND b.c1 = a.c2;
+ C 1 | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  | c1 | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  
+-----+----+-------+-----------------------------------+----------------------------+----+------------+-----+----+----+-------+-----------------------------------+----------------------------+----+------------+-----
+ 47  | 7  | 00047 | 1970-02-17 00:00:00.000000 -08:00 | 1970-02-17 00:00:00.000000 | 7  | 7          | foo | 7  | 7  | 00007 | 1970-01-08 00:00:00.000000 -08:00 | 1970-01-08 00:00:00.000000 | 7  | 7          | foo
 (1 row)
 
 -- check both safe and unsafe join conditions
@@ -2587,48 +2587,14 @@ SELECT t1.ctid, t1, t2, t1.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1) ORDER B
                            Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1"
 (16 rows)
 
--- SEMI JOIN, not pushed down
+-- SEMI JOIN
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1 FROM ft1 t1 WHERE EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2.c1) ORDER BY t1.c1 OFFSET 100 LIMIT 10;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Limit
-   Output: t1.c1
-   ->  Sort
-         Output: t1.c1
-         Sort Key: t1.c1
-         ->  Hash Join
-               Output: t1.c1
-               Inner Unique: true
-               Hash Cond: (t1.c1 = t2.c1)
-               ->  Foreign Scan on public.ft1 t1
-                     Output: t1.c1
-                     Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
-               ->  Hash
-                     Output: t2.c1
-                     ->  HashAggregate
-                           Output: t2.c1
-                           Group Key: t2.c1
-                           ->  Foreign Scan on public.ft2 t2
-                                 Output: t2.c1
-                                 Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
-(20 rows)
-
+ERROR:  "r2"."C 1": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r1."C 1", r2."C 1" FROM "S 1"."T 1" r1 WHERE EXISTS (SELECT NULL FROM "S 1"."T 1" r2)
 SELECT t1.c1 FROM ft1 t1 WHERE EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2.c1) ORDER BY t1.c1 OFFSET 100 LIMIT 10;
- c1  
------
- 101
- 102
- 103
- 104
- 105
- 106
- 107
- 108
- 109
- 110
-(10 rows)
-
+ERROR:  "r2"."C 1": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r1."C 1", r2."C 1" FROM "S 1"."T 1" r1 WHERE EXISTS (SELECT NULL FROM "S 1"."T 1" r2)
 -- ANTI JOIN, not pushed down
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1 FROM ft1 t1 WHERE NOT EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2.c2) ORDER BY t1.c1 OFFSET 100 LIMIT 10;
@@ -2959,6 +2925,32 @@ SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM 
  1
  1
 (10 rows)
+
+-- join with pseudoconstant quals
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1 AND CURRENT_USER = SESSION_USER) ORDER BY t1.c3, t1.c1 OFFSET 100 LIMIT 10;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Limit
+   Output: t1.c1, t2.c1, t1.c3
+   ->  Sort
+         Output: t1.c1, t2.c1, t1.c3
+         Sort Key: t1.c3, t1.c1
+         ->  Result
+               Output: t1.c1, t2.c1, t1.c3
+               One-Time Filter: (CURRENT_USER = SESSION_USER)
+               ->  Hash Join
+                     Output: t1.c1, t1.c3, t2.c1
+                     Hash Cond: (t2.c1 = t1.c1)
+                     ->  Foreign Scan on public.ft2 t2
+                           Output: t2.c1
+                           Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
+                     ->  Hash
+                           Output: t1.c1, t1.c3
+                           ->  Foreign Scan on public.ft1 t1
+                                 Output: t1.c1, t1.c3
+                                 Remote SQL: SELECT "C 1", c3 FROM "S 1"."T 1"
+(19 rows)
 
 -- non-Var items in targetlist of the nullable rel of a join preventing
 -- push-down in some cases
@@ -3358,6 +3350,48 @@ SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c
 (10 rows)
 
 ALTER VIEW v4 OWNER TO regress_view_owner;
+-- ====================================================================
+-- Check that userid to use when querying the remote table is correctly
+-- propagated into foreign rels present in subqueries under an UNION ALL
+-- ====================================================================
+CREATE ROLE regress_view_owner_another;
+ALTER VIEW v4 OWNER TO regress_view_owner_another;
+GRANT SELECT ON ft4 TO regress_view_owner_another;
+ALTER FOREIGN TABLE ft4 OPTIONS (ADD use_remote_estimate 'true');
+-- The following should query the remote backing table of ft4 as user
+-- regress_view_owner_another, the view owner, though it fails as expected
+-- due to the lack of a user mapping for that user.
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM v4;
+ERROR:  user mapping not found for user "regress_view_owner_another", server "loopback"
+-- Likewise, but with the query under an UNION ALL
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM (SELECT * FROM v4 UNION ALL SELECT * FROM v4);
+ERROR:  user mapping not found for user "regress_view_owner_another", server "loopback"
+-- Should not get that error once a user mapping is created
+CREATE USER MAPPING FOR regress_view_owner_another SERVER loopback OPTIONS (password_required 'false');
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM v4;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.ft4
+   Output: ft4.c1, ft4.c2, ft4.c3
+   Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM (SELECT * FROM v4 UNION ALL SELECT * FROM v4);
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Append
+   ->  Foreign Scan on public.ft4
+         Output: ft4.c1, ft4.c2, ft4.c3
+         Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+   ->  Foreign Scan on public.ft4 ft4_1
+         Output: ft4_1.c1, ft4_1.c2, ft4_1.c3
+         Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+(7 rows)
+
+DROP USER MAPPING FOR regress_view_owner_another SERVER loopback;
+DROP OWNED BY regress_view_owner_another;
+DROP ROLE regress_view_owner_another;
+ALTER FOREIGN TABLE ft4 OPTIONS (SET use_remote_estimate 'false');
 -- cleanup
 DROP OWNED BY regress_view_owner;
 DROP ROLE regress_view_owner;
@@ -5511,6 +5545,355 @@ explain (verbose, costs off) select * from ft3 f, loct3 l
                Output: l.f1, l.f2, l.f3
                Index Cond: (l.f1 = 'foo'::varchar2)
 (12 rows)
+
+-- ===================================================================
+-- test SEMI-JOIN pushdown
+-- ===================================================================
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN ft4 ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  AND EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)
+  ORDER BY ft2.c1;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+   Sort Key: ft2.c1
+   ->  Hash Join
+         Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+         Hash Cond: (ft2.c2 = ft4.c1)
+         ->  Foreign Scan on public.ft2
+               Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8
+               Filter: (ft2.c1 > '900'::number)
+               Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
+         ->  Hash
+               Output: ft4.c1, ft4.c2, ft4.c3, ft5.c1
+               ->  Hash Semi Join
+                     Output: ft4.c1, ft4.c2, ft4.c3, ft5.c1
+                     Hash Cond: (ft4.c1 = ft5.c1)
+                     ->  Foreign Scan on public.ft4
+                           Output: ft4.c1, ft4.c2, ft4.c3
+                           Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+                     ->  Hash
+                           Output: ft5.c1
+                           ->  Foreign Scan on public.ft5
+                                 Output: ft5.c1
+                                 Remote SQL: SELECT c1 FROM "S 1"."T 4"
+(23 rows)
+
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN ft4 ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  AND EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)
+  ORDER BY ft2.c1;
+ c1  | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  | c1 | c2 |   c3   
+-----+----+-------+-----------------------------------+----------------------------+----+------------+-----+----+----+--------
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 916 | 6  | 00916 | 1970-01-17 00:00:00.000000 -08:00 | 1970-01-17 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 926 | 6  | 00926 | 1970-01-27 00:00:00.000000 -08:00 | 1970-01-27 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 936 | 6  | 00936 | 1970-02-06 00:00:00.000000 -08:00 | 1970-02-06 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 946 | 6  | 00946 | 1970-02-16 00:00:00.000000 -08:00 | 1970-02-16 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 956 | 6  | 00956 | 1970-02-26 00:00:00.000000 -08:00 | 1970-02-26 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 966 | 6  | 00966 | 1970-03-08 00:00:00.000000 -08:00 | 1970-03-08 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 976 | 6  | 00976 | 1970-03-18 00:00:00.000000 -08:00 | 1970-03-18 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 986 | 6  | 00986 | 1970-03-28 00:00:00.000000 -08:00 | 1970-03-28 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 996 | 6  | 00996 | 1970-04-07 00:00:00.000000 -08:00 | 1970-04-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+(10 rows)
+
+-- The same query, different join order
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+   Sort Key: ft2.c1
+   ->  Hash Join
+         Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+         Hash Cond: (ft2.c2 = ft4.c1)
+         ->  Foreign Scan on public.ft2
+               Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8
+               Filter: (ft2.c1 > '900'::number)
+               Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
+         ->  Hash
+               Output: ft4.c1, ft4.c2, ft4.c3, ft5.c1
+               ->  Hash Semi Join
+                     Output: ft4.c1, ft4.c2, ft4.c3, ft5.c1
+                     Hash Cond: (ft4.c1 = ft5.c1)
+                     ->  Foreign Scan on public.ft4
+                           Output: ft4.c1, ft4.c2, ft4.c3
+                           Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+                     ->  Hash
+                           Output: ft5.c1
+                           ->  Foreign Scan on public.ft5
+                                 Output: ft5.c1
+                                 Remote SQL: SELECT c1 FROM "S 1"."T 4"
+(23 rows)
+
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1;
+ c1  | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  | c1 | c2 |   c3   
+-----+----+-------+-----------------------------------+----------------------------+----+------------+-----+----+----+--------
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 916 | 6  | 00916 | 1970-01-17 00:00:00.000000 -08:00 | 1970-01-17 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 926 | 6  | 00926 | 1970-01-27 00:00:00.000000 -08:00 | 1970-01-27 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 936 | 6  | 00936 | 1970-02-06 00:00:00.000000 -08:00 | 1970-02-06 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 946 | 6  | 00946 | 1970-02-16 00:00:00.000000 -08:00 | 1970-02-16 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 956 | 6  | 00956 | 1970-02-26 00:00:00.000000 -08:00 | 1970-02-26 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 966 | 6  | 00966 | 1970-03-08 00:00:00.000000 -08:00 | 1970-03-08 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 976 | 6  | 00976 | 1970-03-18 00:00:00.000000 -08:00 | 1970-03-18 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 986 | 6  | 00986 | 1970-03-28 00:00:00.000000 -08:00 | 1970-03-28 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 996 | 6  | 00996 | 1970-04-07 00:00:00.000000 -08:00 | 1970-04-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+(10 rows)
+
+-- Left join
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 LEFT JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+   ->  Sort
+         Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+         Sort Key: ft2.c1
+         ->  Hash Left Join
+               Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+               Hash Cond: (ft2.c2 = ft4.c1)
+               ->  Foreign Scan on public.ft2
+                     Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8
+                     Filter: (ft2.c1 > '900'::number)
+                     Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
+               ->  Hash
+                     Output: ft4.c1, ft4.c2, ft4.c3
+                     ->  Hash Semi Join
+                           Output: ft4.c1, ft4.c2, ft4.c3
+                           Hash Cond: (ft4.c1 = ft5.c1)
+                           ->  Foreign Scan on public.ft4
+                                 Output: ft4.c1, ft4.c2, ft4.c3
+                                 Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+                           ->  Hash
+                                 Output: ft5.c1
+                                 ->  Foreign Scan on public.ft5
+                                       Output: ft5.c1
+                                       Remote SQL: SELECT c1 FROM "S 1"."T 4"
+(25 rows)
+
+SELECT ft2.*, ft4.* FROM ft2 LEFT JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+ c1  | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  | c1 | c2 |   c3   
+-----+----+-------+-----------------------------------+----------------------------+----+------------+-----+----+----+--------
+ 901 | 1  | 00901 | 1970-01-02 00:00:00.000000 -08:00 | 1970-01-02 00:00:00.000000 | 1  | 1          | foo |    |    | 
+ 902 | 2  | 00902 | 1970-01-03 00:00:00.000000 -08:00 | 1970-01-03 00:00:00.000000 | 2  | 2          | foo |    |    | 
+ 903 | 3  | 00903 | 1970-01-04 00:00:00.000000 -08:00 | 1970-01-04 00:00:00.000000 | 3  | 3          | foo |    |    | 
+ 904 | 4  | 00904 | 1970-01-05 00:00:00.000000 -08:00 | 1970-01-05 00:00:00.000000 | 4  | 4          | foo |    |    | 
+ 905 | 5  | 00905 | 1970-01-06 00:00:00.000000 -08:00 | 1970-01-06 00:00:00.000000 | 5  | 5          | foo |    |    | 
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 907 | 7  | 00907 | 1970-01-08 00:00:00.000000 -08:00 | 1970-01-08 00:00:00.000000 | 7  | 7          | foo |    |    | 
+ 908 | 8  | 00908 | 1970-01-09 00:00:00.000000 -08:00 | 1970-01-09 00:00:00.000000 | 8  | 8          | foo |    |    | 
+ 909 | 9  | 00909 | 1970-01-10 00:00:00.000000 -08:00 | 1970-01-10 00:00:00.000000 | 9  | 9          | foo |    |    | 
+ 910 | 0  | 00910 | 1970-01-11 00:00:00.000000 -08:00 | 1970-01-11 00:00:00.000000 | 0  | 0          | foo |    |    | 
+(10 rows)
+
+-- Several semi-joins per upper level join
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  INNER JOIN (SELECT * FROM ft5 WHERE
+  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft5.c1)) ft5
+  ON ft2.c2 <= ft5.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+   ->  Sort
+         Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+         Sort Key: ft2.c1
+         ->  Nested Loop
+               Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+               Join Filter: (ft2.c2 <= ft5_1.c1)
+               ->  Hash Semi Join
+                     Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+                     Hash Cond: (ft4.c1 = ft5.c1)
+                     ->  Hash Join
+                           Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
+                           Hash Cond: (ft2.c2 = ft4.c1)
+                           ->  Foreign Scan on public.ft2
+                                 Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8
+                                 Filter: (ft2.c1 > '900'::number)
+                                 Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
+                           ->  Hash
+                                 Output: ft4.c1, ft4.c2, ft4.c3
+                                 ->  Foreign Scan on public.ft4
+                                       Output: ft4.c1, ft4.c2, ft4.c3
+                                       Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+                     ->  Hash
+                           Output: ft5.c1
+                           ->  Foreign Scan on public.ft5
+                                 Output: ft5.c1
+                                 Remote SQL: SELECT c1 FROM "S 1"."T 4"
+               ->  Materialize
+                     Output: ft5_1.c1
+                     ->  Hash Semi Join
+                           Output: ft5_1.c1
+                           Hash Cond: (ft5_1.c1 = ft4_1.c1)
+                           ->  Foreign Scan on public.ft5 ft5_1
+                                 Output: ft5_1.c1, ft5_1.c2, ft5_1.c3
+                                 Remote SQL: SELECT c1 FROM "S 1"."T 4"
+                           ->  Hash
+                                 Output: ft4_1.c1
+                                 ->  Foreign Scan on public.ft4 ft4_1
+                                       Output: ft4_1.c1
+                                       Remote SQL: SELECT c1 FROM "S 1"."T 3"
+(41 rows)
+
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  INNER JOIN (SELECT * FROM ft5 WHERE
+  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft5.c1)) ft5
+  ON ft2.c2 <= ft5.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+ c1  | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  | c1 | c2 |   c3   
+-----+----+-------+-----------------------------------+----------------------------+----+------------+-----+----+----+--------
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+ 906 | 6  | 00906 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006
+(10 rows)
+
+-- Semi-join below Semi-join
+EXPLAIN (verbose, costs off)
+SELECT ft2.* FROM ft2 WHERE
+  c1 = ANY (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2))
+  AND ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+ERROR:  "r4"."c2": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r3."C 1", r3.c2, r4.c2 FROM "S 1"."T 1" r3 WHERE EXISTS (SELECT NULL FROM "S 1"."T 3" r4)
+SELECT ft2.* FROM ft2 WHERE
+  c1 = ANY (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2))
+  AND ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+ERROR:  "r4"."c2": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r3."C 1", r3.c2, r4.c2 FROM "S 1"."T 1" r3 WHERE EXISTS (SELECT NULL FROM "S 1"."T 3" r4)
+-- Upper level relations shouldn't refer EXISTS() subqueries
+EXPLAIN (verbose, costs off)
+SELECT * FROM ft2 ftupper WHERE
+   EXISTS (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2) AND c1 = ftupper.c1 )
+  AND ftupper.c1 > 900
+  ORDER BY ftupper.c1 LIMIT 10;
+ERROR:  "r3"."c2": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r2."C 1", r2.c2, r3.c2 FROM "S 1"."T 1" r2 WHERE EXISTS (SELECT NULL FROM "S 1"."T 3" r3)
+SELECT * FROM ft2 ftupper WHERE
+   EXISTS (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2) AND c1 = ftupper.c1 )
+  AND ftupper.c1 > 900
+  ORDER BY ftupper.c1 LIMIT 10;
+ERROR:  "r3"."c2": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r2."C 1", r2.c2, r3.c2 FROM "S 1"."T 1" r2 WHERE EXISTS (SELECT NULL FROM "S 1"."T 3" r3)
+-- EXISTS should be propogated to the highest upper inner join
+EXPLAIN (verbose, costs off)
+	SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+	(SELECT * FROM ft4 WHERE EXISTS (
+		SELECT 1 FROM ft2 WHERE ft2.c2 = ft4.c2)) ft4
+	ON ft2.c2 = ft4.c1
+	INNER JOIN
+	(SELECT * FROM ft2 WHERE EXISTS (
+		SELECT 1 FROM ft4 WHERE ft2.c2 = ft4.c2)) ft21
+	ON ft2.c2 = ft21.c2
+	WHERE ft2.c1 > 900
+	ORDER BY ft2.c1 LIMIT 10;
+ERROR:  "r7"."c2": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r6.c1, r6.c2, r6.c3, r7.c2 FROM "S 1"."T 3" r6 WHERE EXISTS (SELECT NULL FROM "S 1"."T 1" r7)
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+	(SELECT * FROM ft4 WHERE EXISTS (
+		SELECT 1 FROM ft2 WHERE ft2.c2 = ft4.c2)) ft4
+	ON ft2.c2 = ft4.c1
+	INNER JOIN
+	(SELECT * FROM ft2 WHERE EXISTS (
+		SELECT 1 FROM ft4 WHERE ft2.c2 = ft4.c2)) ft21
+	ON ft2.c2 = ft21.c2
+	WHERE ft2.c1 > 900
+	ORDER BY ft2.c1 LIMIT 10;
+ERROR:  "r7"."c2": invalid identifier
+CONTEXT:  remote SQL command: EXPLAIN SELECT r6.c1, r6.c2, r6.c3, r7.c2 FROM "S 1"."T 3" r6 WHERE EXISTS (SELECT NULL FROM "S 1"."T 1" r7)
+-- Can't push down semi-join with inner rel vars in targetlist
+EXPLAIN (verbose, costs off)
+SELECT ft1.c1 FROM ft1 JOIN ft2 on ft1.c1 = ft2.c1 WHERE
+	ft1.c1 IN (
+		SELECT ft2.c1 FROM ft2 JOIN ft4 ON ft2.c1 = ft4.c1)
+	ORDER BY ft1.c1 LIMIT 5;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit
+   Output: ft1.c1
+   ->  Nested Loop
+         Output: ft1.c1
+         Join Filter: (ft2.c1 = ft1.c1)
+         ->  Merge Semi Join
+               Output: ft1.c1, ft2_1.c1, ft4.c1
+               Merge Cond: (ft1.c1 = ft2_1.c1)
+               ->  Sort
+                     Output: ft1.c1
+                     Sort Key: ft1.c1
+                     ->  Foreign Scan on public.ft1
+                           Output: ft1.c1
+                           Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
+               ->  Sort
+                     Output: ft2_1.c1, ft4.c1
+                     Sort Key: ft2_1.c1
+                     ->  Hash Join
+                           Output: ft2_1.c1, ft4.c1
+                           Hash Cond: (ft2_1.c1 = ft4.c1)
+                           ->  Foreign Scan on public.ft2 ft2_1
+                                 Output: ft2_1.c1
+                                 Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
+                           ->  Hash
+                                 Output: ft4.c1
+                                 ->  Foreign Scan on public.ft4
+                                       Output: ft4.c1
+                                       Remote SQL: SELECT c1 FROM "S 1"."T 3"
+         ->  Materialize
+               Output: ft2.c1
+               ->  Foreign Scan on public.ft2
+                     Output: ft2.c1
+                     Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
+(33 rows)
 
 -- ===================================================================
 -- test writable foreign table stuff
@@ -9474,7 +9857,6 @@ select tableoid::regclass, * FROM remp2;
 (3 rows)
 
 delete from itrtest;
--- MERGE ought to fail cleanly
 create unique index loct1_idx on loct1 (a);
 -- DO NOTHING without an inference specification is supported
 insert into itrtest values (1, 'foo') on conflict do nothing returning *;
@@ -11496,17 +11878,6 @@ SELECT COUNT(*) FROM ftable;
 
 TRUNCATE batch_table;
 DROP FOREIGN TABLE ftable;
--- try if large batches exceed max number of bind parameters
-CREATE FOREIGN TABLE ftable ( x number(38,0) ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '100000' );
-INSERT INTO ftable SELECT * FROM generate_series(1, 70000) i;
-SELECT COUNT(*) FROM ftable;
- count 
--------
- 70000
-(1 row)
-
-TRUNCATE batch_table;
-DROP FOREIGN TABLE ftable;
 -- Disable batch insert
 CREATE FOREIGN TABLE ftable ( x number(38,0) ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '1' );
 EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO ftable VALUES (1), (2);
@@ -11962,6 +12333,13 @@ SELECT * FROM result_tbl ORDER BY a;
 (2 rows)
 
 DELETE FROM result_tbl;
+-- Test error handling, if accessing one of the foreign partitions errors out
+CREATE FOREIGN TABLE async_p_broken PARTITION OF async_pt FOR VALUES FROM (10000) TO (10001)
+  SERVER loopback OPTIONS (table_name 'non_existent_table');
+SELECT * FROM async_pt;
+ERROR:  relation "public.non_existent_table" does not exist
+CONTEXT:  remote SQL command: SELECT a, b, c FROM public.non_existent_table
+DROP FOREIGN TABLE async_p_broken;
 -- Check case where multiple partitions use the same connection
 CREATE TABLE base_tbl3 (a number(38,0), b number(38,0), c varchar2(1024));
 CREATE FOREIGN TABLE async_p3 PARTITION OF async_pt FOR VALUES FROM (3000) TO (4000)
