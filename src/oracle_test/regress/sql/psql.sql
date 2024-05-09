@@ -1322,8 +1322,8 @@ rollback;
 drop role regress_psql_user;
 
 -- check \sf
-\sf information_schema._pg_expandarray
-\sf+ information_schema._pg_expandarray
+\sf information_schema._pg_index_position
+\sf+ information_schema._pg_index_position
 \sf+ interval_pl_time
 \sf ts_debug(text)
 \sf+ ts_debug(text)
