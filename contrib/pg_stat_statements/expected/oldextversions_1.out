@@ -52,6 +52,12 @@ SELECT pg_get_functiondef('pg_stat_statements_reset'::regproc);
  
 (1 row)
 
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
 \d pg_stat_statements
                      View "public.pg_stat_statements"
        Column        |       Type        | Collation | Nullable | Default 
@@ -88,6 +94,17 @@ SELECT count(*) > 0 AS has_data FROM pg_stat_statements;
 
 -- New functions and views for pg_stat_statements in 1.8
 AlTER EXTENSION pg_stat_statements UPDATE TO '1.8';
+SELECT pg_get_functiondef('pg_stat_statements_reset'::regproc);
+                                                           pg_get_functiondef                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION public.pg_stat_statements_reset(userid oid DEFAULT 0, dbid oid DEFAULT 0, queryid pg_catalog.int8 DEFAULT 0)+
+  RETURNS void                                                                                                                          +
+  LANGUAGE c                                                                                                                            +
+  PARALLEL SAFE STRICT                                                                                                                  +
+ AS '$libdir/pg_stat_statements', $function$pg_stat_statements_reset_1_7$function$                                                      +
+ 
+(1 row)
+
 \d pg_stat_statements
                      View "public.pg_stat_statements"
        Column        |        Type        | Collation | Nullable | Default 
@@ -125,15 +142,10 @@ AlTER EXTENSION pg_stat_statements UPDATE TO '1.8';
  wal_fpi             | pg_catalog.int8    |           |          | 
  wal_bytes           | pg_catalog.numeric |           |          | 
 
-SELECT pg_get_functiondef('pg_stat_statements_reset'::regproc);
-                                                           pg_get_functiondef                                                            
------------------------------------------------------------------------------------------------------------------------------------------
- CREATE OR REPLACE FUNCTION public.pg_stat_statements_reset(userid oid DEFAULT 0, dbid oid DEFAULT 0, queryid pg_catalog.int8 DEFAULT 0)+
-  RETURNS void                                                                                                                          +
-  LANGUAGE c                                                                                                                            +
-  PARALLEL SAFE STRICT                                                                                                                  +
- AS '$libdir/pg_stat_statements', $function$pg_stat_statements_reset_1_7$function$                                                      +
- 
+SELECT count(*) > 0 AS has_data FROM pg_stat_statements;
+ has_data 
+----------
+ t
 (1 row)
 
 -- New function pg_stat_statement_info, and new function
@@ -322,6 +334,12 @@ SELECT pg_get_functiondef('pg_stat_statements_reset'::regproc);
   PARALLEL SAFE STRICT                                                                                                                                                             +
  AS '$libdir/pg_stat_statements', $function$pg_stat_statements_reset_1_11$function$                                                                                                +
  
+(1 row)
+
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
 (1 row)
 
 DROP EXTENSION pg_stat_statements;
