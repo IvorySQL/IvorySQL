@@ -3498,6 +3498,11 @@ checkPartition(Relation rel, Oid partRelOid)
 						RelationGetRelationName(partRel),
 						RelationGetRelationName(rel))));
 
+	/* Permissions checks */
+	if (!object_ownercheck(RelationRelationId, RelationGetRelid(partRel), GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(partRel->rd_rel->relkind),
+					   RelationGetRelationName(partRel));
+
 	relation_close(partRel, AccessShareLock);
 }
 
