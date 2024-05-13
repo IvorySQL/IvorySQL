@@ -3229,7 +3229,7 @@ my %tests = (
 					   );',
 		regexp => qr/^
 			\QCREATE TABLE dump_test.fk_reference_test_table (\E
-			\n\s+\Qcol1 integer CONSTRAINT \E[a-z0-9_]*\Q NOT NULL NO INHERIT\E
+			\n\s+\Qcol1 integer NOT NULL\E
 			\n\);
 			/xm,
 		like =>
@@ -3327,8 +3327,8 @@ my %tests = (
 						FOR VALUES FROM (\'2006-02-01\') TO (\'2006-03-01\');',
 		regexp => qr/^
 			\QCREATE TABLE dump_test_second_schema.measurement_y2006m2 (\E\n
-			\s+\Qcity_id integer DEFAULT nextval('dump_test.measurement_city_id_seq'::regclass) CONSTRAINT measurement_city_id_not_null NOT NULL,\E\n
-			\s+\Qlogdate date CONSTRAINT measurement_logdate_not_null NOT NULL,\E\n
+			\s+\Qcity_id integer DEFAULT nextval('dump_test.measurement_city_id_seq'::regclass) NOT NULL,\E\n
+			\s+\Qlogdate date NOT NULL,\E\n
 			\s+\Qpeaktemp integer,\E\n
 			\s+\Qunitsales integer DEFAULT 0,\E\n
 			\s+\QCONSTRAINT measurement_peaktemp_check CHECK ((peaktemp >= '-460'::integer)),\E\n
@@ -3620,7 +3620,7 @@ my %tests = (
 					   );',
 		regexp => qr/^
 			\QCREATE TABLE dump_test.test_table_generated (\E\n
-			\s+\Qcol1 integer CONSTRAINT \E[a-z0-9_]*\Q NOT NULL NO INHERIT,\E\n
+			\s+\Qcol1 integer NOT NULL,\E\n
 			\s+\Qcol2 integer GENERATED ALWAYS AS ((col1 * 2)) STORED\E\n
 			\);
 			/xms,
@@ -3734,7 +3734,7 @@ my %tests = (
 						) INHERITS (dump_test.test_inheritance_parent);',
 		regexp => qr/^
 		\QCREATE TABLE dump_test.test_inheritance_child (\E\n
-		\s+\Qcol1 integer NOT NULL,\E\n
+		\s+\Qcol1 integer,\E\n
 		\s+\QCONSTRAINT test_inheritance_child CHECK ((col2 >= 142857))\E\n
 		\)\n
 		\QINHERITS (dump_test.test_inheritance_parent);\E\n
