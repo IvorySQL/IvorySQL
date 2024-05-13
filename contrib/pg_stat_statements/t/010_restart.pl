@@ -24,7 +24,7 @@ is( $node->safe_psql(
 		'postgres',
 		"SELECT query FROM pg_stat_statements WHERE query NOT LIKE '%pg_stat_statements%' ORDER BY query"
 	),
-	"CREATE TABLE t1 (a int)\nSELECT a FROM t1",
+	"CREATE TABLE t1 (a int)\nSELECT a FROM t1\nshow ivorysql.compatible_mode",
 	'pg_stat_statements populated');
 
 $node->restart;
@@ -33,7 +33,7 @@ is( $node->safe_psql(
 		'postgres',
 		"SELECT query FROM pg_stat_statements WHERE query NOT LIKE '%pg_stat_statements%' ORDER BY query"
 	),
-	"CREATE TABLE t1 (a int)\nSELECT a FROM t1",
+	"CREATE TABLE t1 (a int)\nSELECT a FROM t1\nshow ivorysql.compatible_mode",
 	'pg_stat_statements data kept across restart');
 
 $node->append_conf('postgresql.conf', "pg_stat_statements.save = false");
@@ -45,7 +45,7 @@ is( $node->safe_psql(
 		'postgres',
 		"SELECT count(*) FROM pg_stat_statements WHERE query NOT LIKE '%pg_stat_statements%'"
 	),
-	'0',
+	'1',
 	'pg_stat_statements data not kept across restart with .save=false');
 
 $node->stop;
