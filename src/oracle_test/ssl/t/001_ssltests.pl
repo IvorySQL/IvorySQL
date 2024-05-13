@@ -2,7 +2,7 @@
 # Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use Config qw ( %Config );
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
