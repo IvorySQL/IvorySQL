@@ -1218,4 +1218,60 @@ select seq.nextval from dual;
 (1 row)
 
 DROP SEQUENCE seq;
+create sequence test_conversion start with 100 scale extend maxvalue 9999;
+select test_conversion.nextval from dual;
+  nextval   
+------------
+ 1999990100
+(1 row)
+
+select test_conversion.nextval from dual;
+  nextval   
+------------
+ 1999990101
+(1 row)
+
+alter sequence test_conversion SESSION;
+select test_conversion.currval from dual;
+  currval   
+------------
+ 1999990101
+(1 row)
+
+select test_conversion.nextval from dual;
+ERROR:  sequence test_conversion.nextval exceeds MAXVALUE and cannot be instantiated
+select test_conversion.currval from dual;
+  currval   
+------------
+ 1999990101
+(1 row)
+
+DROP SEQUENCE test_conversion;
+create sequence test_conversion start with 100 scale extend  session maxvalue 9999;
+select test_conversion.nextval from dual;
+ nextval 
+---------
+     100
+(1 row)
+
+select test_conversion.nextval from dual;
+ nextval 
+---------
+     101
+(1 row)
+
+alter sequence test_conversion global;
+select test_conversion.currval from dual;
+ currval 
+---------
+     101
+(1 row)
+
+select test_conversion.nextval from dual;
+  nextval   
+------------
+ 1999990100
+(1 row)
+
+DROP SEQUENCE test_conversion;
 SET ivorysql.enable_seq_scale_fixed = FALSE;
