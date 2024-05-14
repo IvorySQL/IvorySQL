@@ -132,7 +132,6 @@ install-data: bki-stamp installdirs
 	$(INSTALL_DATA) $(call vpathsearch,postgres_oracle.bki) '$(DESTDIR)$(datadir)/postgres_oracle.bki'
 	$(INSTALL_DATA) $(srcdir)/system_views.sql '$(DESTDIR)$(datadir)/system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
-	$(INSTALL_DATA) $(srcdir)/ora_sys_schema.sql '$(DESTDIR)$(datadir)/ora_sys_schema.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
 
 installdirs:

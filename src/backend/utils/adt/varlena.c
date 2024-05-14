@@ -3575,7 +3575,7 @@ SplitIdentifierString(char *rawstring, char separator,
 			char	   *new_name;
 
 			new_name = identifier_case_transform(curname, strlen(curname));
-			strncpy(curname, new_name, strlen(new_name));
+			strncpy(curname, new_name, strlen(curname));
 			pfree(new_name);
 		}
 

@@ -5,7 +5,7 @@
 ALTER SEQUENCE fkey_table_seq
   MINVALUE 10
   START WITH 20
-  CACHE 1
+  NOCACHE
   NOCYCLE;
 
 ALTER SEQUENCE fkey_table_seq

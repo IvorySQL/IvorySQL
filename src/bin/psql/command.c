@@ -222,8 +222,8 @@ HandleSlashCmds(PsqlScanState scan_state,
 				PQExpBuffer previous_buf)
 {
 	backslashResult status;
-	char	   *cmd;
-	char	   *arg;
+	char	   *cmd = NULL;
+	char	   *arg = NULL;
 
 	Assert(scan_state != NULL);
 	Assert(cstack != NULL);
@@ -239,6 +239,8 @@ HandleSlashCmds(PsqlScanState scan_state,
 		cmd = ora_psql_scan_slash_command(scan_state);
 		psql_scan_slash_option_parser = ora_psql_scan_slash_option;
 	}
+
+	Assert(cmd != NULL);
 
 	/* And try to execute it */
 	status = exec_command(cmd, scan_state, cstack, query_buf, previous_buf);
