@@ -801,3 +801,12 @@ select * from generate_series('2020-01-01 00:00'::timestamp,
                               '2020-01-02 03:00'::timestamp,
                               '0 hour'::interval);
 ERROR:  missing or invalid datetime field.
+-- oracle systimestamp func
+create table systimestamp_test (v1 TIMESTAMP DEFAULT SYSTIMESTAMP);
+select attname, typname from pg_attribute, pg_type where attrelid in (select oid from pg_class where relname = 'systimestamp_test') and attnum > 0 and atttypid = pg_type.oid;
+ attname |   typname    
+---------+--------------
+ v1      | oratimestamp
+(1 row)
+
+drop table systimestamp_test;

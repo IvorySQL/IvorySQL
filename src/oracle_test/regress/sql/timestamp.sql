@@ -391,3 +391,8 @@ select generate_series('2022-01-01 00:00'::timestamp,
 select * from generate_series('2020-01-01 00:00'::timestamp,
                               '2020-01-02 03:00'::timestamp,
                               '0 hour'::interval);
+
+-- oracle systimestamp func
+create table systimestamp_test (v1 TIMESTAMP DEFAULT SYSTIMESTAMP);
+select attname, typname from pg_attribute, pg_type where attrelid in (select oid from pg_class where relname = 'systimestamp_test') and attnum > 0 and atttypid = pg_type.oid;
+drop table systimestamp_test;
