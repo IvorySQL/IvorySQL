@@ -1778,6 +1778,10 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	if (isInit)
 		seqdataform->log_cnt = 0;
 
+	if (start_value && !isInit && !restart_value &&
+			compatible_db == ORA_PARSER && !for_identity)
+		elog(ERROR, "cannot alter starting sequence number");
+
 	/* AS type */
 	if (as_type != NULL)
 	{
@@ -1863,9 +1867,11 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				errcod = geterrcode();
 				if (errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
 				{
-					ereport(WARNING,
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							errmsg("Increment value is out of range for data type bigint")));
+					if(internal_warning)	
+						ereport(WARNING,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								errmsg("Increment value is out of range for data type bigint")));
+
 					if (seqform->seqincrement < 0)
 						seqform->seqincrement = PG_INT64_MIN;
 					else
@@ -1926,9 +1932,11 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				errcod = geterrcode();
 				if (errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
 				{
-					ereport(WARNING,
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							errmsg("Maxvalue is out of range for data type bigint")));
+					if(internal_warning)	
+						ereport(WARNING,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								errmsg("Maxvalue is out of range for data type bigint")));
+
 					if (seqform->seqincrement < 0)
 						seqform->seqmax = PG_INT64_MIN;
 					else
@@ -1992,9 +2000,11 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				errcod = geterrcode();
 				if (errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
 				{
-					ereport(WARNING,
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							errmsg("Minvalue is out of range for data type bigint")));
+					if(internal_warning)	
+						ereport(WARNING,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								errmsg("Minvalue is out of range for data type bigint")));
+
 					if (seqform->seqincrement < 0)
 						seqform->seqmin = PG_INT64_MIN;
 					else
@@ -2067,9 +2077,11 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				errcod = geterrcode();
 				if(errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
 				{
-					ereport(WARNING,
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							errmsg("Start value is out of range for data type bigint")));
+					if(internal_warning)	
+						ereport(WARNING,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								errmsg("Start value is out of range for data type bigint")));
+
 					if (seqform->seqincrement < 0)
 						seqform->seqstart = PG_INT64_MIN;
 					else
@@ -2122,9 +2134,23 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			/* Change sequence maxvavalue/minvalue */
 			seqform->flags |= EXTEND_FLAG;
 			if(seqform->seqmax > PG_SCALE_MAX && seqform->seqincrement > 0)
+			{
+				if(internal_warning)	
+					ereport(WARNING,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						errmsg("Scale extend value is greater than 9999999999999")));
+
 				seqform->seqmax = PG_SCALE_MAX;
+			}
 			else if(seqform->seqmin < PG_SCALE_MIN&& seqform->seqincrement < 0)
+			{
+				if(internal_warning)
+					ereport(WARNING,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						errmsg("Scale extend value is less than -9999999999999")));
+
 				seqform->seqmin = PG_SCALE_MIN;
+			}
 		}
 		else if (!isInit && !extend_flag)
 		{
@@ -2295,9 +2321,11 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				errcod = geterrcode();
 				if (errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
 				{
-					ereport(WARNING,
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							errmsg("Cache value is out of range for data type bigint")));
+					if(internal_warning)	
+						ereport(WARNING,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								errmsg("Cache value is out of range for data type bigint")));
+
 					if (seqform->seqincrement < 0)
 						seqform->seqcache = PG_INT64_MIN;
 					else
