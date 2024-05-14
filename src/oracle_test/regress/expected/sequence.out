@@ -1274,4 +1274,19 @@ select test_conversion.nextval from dual;
 (1 row)
 
 DROP SEQUENCE test_conversion;
+set ivorysql.enable_internal_warning = true;
+CREATE SEQUENCE seq scale extend;
+WARNING:  Scale extend value is greater than 9999999999999
+create sequence seq_scale2 minvalue 1 maxvalue 9999999999999999 scale extend;
+WARNING:  Scale extend value is greater than 9999999999999
+DROP SEQUENCE seq;
+DROP SEQUENCE seq_scale2;
+set ivorysql.enable_internal_warning = false;
+CREATE SEQUENCE seq scale extend;
+create sequence seq_scale2 minvalue 1 maxvalue 9999999999999999 scale extend;
+DROP SEQUENCE seq;
+DROP SEQUENCE seq_scale2;
+create sequence seq_restart3 increment by 1 start with 32 minvalue 10 maxvalue 50;
+alter sequence seq_restart3 start with 20;
+ERROR:  cannot alter starting sequence number
 SET ivorysql.enable_seq_scale_fixed = FALSE;

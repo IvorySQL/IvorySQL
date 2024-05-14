@@ -183,6 +183,7 @@ create table other_stx1(userid number generated always as identity increment 2,u
 ERROR:  missing BY keyword
 create table other_stx2(userid number generated always as identity start  2,uname varchar2(20));
 ERROR:  missing WITH keyword
+set ivorysql.enable_internal_warning = true;
 create table other_start_max1(userid number generated always as identity start with 9999999999999999999999999999,uname varchar2(20));
 WARNING:  Start value is out of range for data type bigint
 create table other_max1(userid number generated always as identity  maxvalue 9999999999999999999999999999,uname varchar2(20));
@@ -306,3 +307,4 @@ DROP TABLE other_max1;
 create table cache_max1(userid number generated always as identity  increment by 1 cache 999999999999999999999,uname varchar2(20));
 WARNING:  Cache value is out of range for data type bigint
 DROP TABLE cache_max1;
+SET ivorysql.enable_seq_scale_fixed = FALSE;
