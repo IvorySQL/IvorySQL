@@ -30,6 +30,7 @@ CATALOG(pg_sequence,2224,SequenceRelationId)
 	int64		seqmin;
 	int64		seqcache;
 	bool		seqcycle;
+	int16		flags;
 } FormData_pg_sequence;
 
 /* ----------------
