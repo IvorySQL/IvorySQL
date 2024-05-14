@@ -771,7 +771,7 @@ static void determineLanguage(List *options);
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRIP_P
-	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSID SYSTEM_P SYSTEM_USER
+	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
 
 	TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN
 	TIES TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM
@@ -16854,6 +16854,22 @@ func_expr_common_subexpr:
 											   COERCE_SQL_SYNTAX,
 											   @1);
 				}
+			| SYSDATE
+				{
+					if (ORA_PARSER == compatible_db)
+						$$ = (Node *) makeFuncCall(OracleSystemFuncName("sysdate"),
+												   NIL,
+												   COERCE_EXPLICIT_CALL,
+												   @1);
+				}
+			| SYSTIMESTAMP
+				{
+					if (ORA_PARSER == compatible_db)
+						$$ = (Node *) makeFuncCall(OracleSystemFuncName("systimestamp"),
+												   NIL,
+												   COERCE_EXPLICIT_CALL,
+												   @1);
+				}
 			| CURRENT_DATE
 				{
 					if (ORA_PARSER == compatible_db)
@@ -19292,6 +19308,8 @@ type_func_name_keyword:
 			| OVERLAPS
 			| RIGHT
 			| SIMILAR
+			| SYSDATE
+			| SYSTIMESTAMP
 			| TABLESAMPLE
 			| VERBOSE
 		;
@@ -19807,9 +19825,11 @@ bare_label_keyword:
 			| SUBSTRING
 			| SUPPORT
 			| SYMMETRIC
+			| SYSDATE
 			| SYSID
 			| SYSTEM_P
 			| SYSTEM_USER
+			| SYSTIMESTAMP
 			| TABLE
 			| TABLES
 			| TABLESAMPLE
