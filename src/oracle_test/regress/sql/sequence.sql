@@ -581,4 +581,21 @@ select seq.nextval from dual;
 DISCARD sequences;
 select seq.nextval from dual;
 DROP SEQUENCE seq;
+
+create sequence test_conversion start with 100 scale extend maxvalue 9999;
+select test_conversion.nextval from dual;
+select test_conversion.nextval from dual;
+alter sequence test_conversion SESSION;
+select test_conversion.currval from dual;
+select test_conversion.nextval from dual;
+select test_conversion.currval from dual;
+DROP SEQUENCE test_conversion;
+
+create sequence test_conversion start with 100 scale extend  session maxvalue 9999;
+select test_conversion.nextval from dual;
+select test_conversion.nextval from dual;
+alter sequence test_conversion global;
+select test_conversion.currval from dual;
+select test_conversion.nextval from dual;
+DROP SEQUENCE test_conversion;
 SET ivorysql.enable_seq_scale_fixed = FALSE;

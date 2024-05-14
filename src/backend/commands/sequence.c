@@ -696,15 +696,18 @@ nextval_internal(Oid relid, bool check_permissions)
 		}
 
 		elm->increment = pgsform->seqincrement;
-		elm->last += elm->increment;
-		if(elm->last > pgsform->seqmax && !pgsform->seqcycle)
+		result = elm->last + elm->increment;
+		if(result > pgsform->seqmax && !pgsform->seqcycle)
 			elog(ERROR, "sequence %s.nextval exceeds MAXVALUE and cannot be instantiated",get_rel_name(relid));
-		else if(elm->last < pgsform->seqmin && !pgsform->seqcycle)
+		else if(result < pgsform->seqmin && !pgsform->seqcycle)
 			elog(ERROR, "sequence %s.nextval goes below MINVALUE and cannot be instantiated",get_rel_name(relid));
-		else if(elm->last > pgsform->seqmax && pgsform->seqcycle && pgsform->seqincrement > 0)
+		else if(result > pgsform->seqmax && pgsform->seqcycle && pgsform->seqincrement > 0)
 			elm->last = pgsform->seqmin;
-		else if(elm->last < pgsform->seqmin && pgsform->seqcycle && pgsform->seqincrement < 0)
+		else if(result < pgsform->seqmin && pgsform->seqcycle && pgsform->seqincrement < 0)
 			elm->last = pgsform->seqmax;
+		else
+			elm->last += elm->increment;
+
 		relation_close(seqrel, NoLock);
 		ReleaseSysCache(pgstuple);
 
@@ -1080,6 +1083,9 @@ currval_oid(PG_FUNCTION_ARGS)
 	int		maxvalue_bits = 0;
 	int		minvalue_bits = 0;
 	char		maxstr[MAXINT8LEN + 1];
+	Buffer		buf;
+	Form_pg_sequence_data	seq;
+	HeapTupleData	seqdatatuple;
 
 
 	/* open and lock sequence */
@@ -1096,6 +1102,8 @@ currval_oid(PG_FUNCTION_ARGS)
 	isScale = seq_is_scale(pgsform->flags);
 	isExtend = seq_is_extend(pgsform->flags);
 
+	seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
+
 	if (isSession)
 	{
 		if (!elm->last_valid)
@@ -1105,6 +1113,7 @@ currval_oid(PG_FUNCTION_ARGS)
 							RelationGetRelationName(seqrel))));
 		relation_close(seqrel, NoLock);
 		ReleaseSysCache(pgstuple);
+		UnlockReleaseBuffer(buf);
 
 		PG_RETURN_INT64(elm->last);
 	}
@@ -1126,8 +1135,9 @@ currval_oid(PG_FUNCTION_ARGS)
 	result = elm->last;
 
 	relation_close(seqrel, NoLock);
+	UnlockReleaseBuffer(buf);
 
-	if (isScale)
+	if (isScale && seq->is_called)
 	{
 		int64	instanc_id;
 		int64	sessionid;
@@ -2183,10 +2193,55 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 
 	if (session_flag)
 	{
+		int64	instanc_id;
+		int64	sessionid;
+		int 		maxvalue_bits;
+		int			minvalue_bits;
+		char		maxstr[MAXINT8LEN + 1];
+
 		seqform->flags |= SESSION_FLAG;
+		if (!isInit && seq_is_scale(seqform->flags))
+		{
+			maxvalue_bits = pg_lltoa((int64)Abs(seqform->seqmax), maxstr);
+			minvalue_bits = pg_lltoa((int64)Abs(seqform->seqmin), maxstr);
+			maxvalue_bits = minvalue_bits > maxvalue_bits ? minvalue_bits : maxvalue_bits;
+			if (!seqelm->scale_value)
+			{
+				instanc_id = GetSystemIdentifier();
+				instanc_id = instanc_id%100 + 100;
+				if (!session_id)
+					session_id = get_sessionid();
+				sessionid = session_id;
+				sessionid = sessionid%1000;
+				last_used_seq = seqelm;
+				if (seq_scale_fixed)
+					scale_value = 199999;
+				else
+					scale_value = instanc_id * pow(10, 3) + sessionid;
+			}
+
+			if (seq_is_extend(seqform->flags))
+			{
+				if (seqelm->last >= 0)
+					seqelm->scale_value = (int64)(scale_value * (int64)pow(10, maxvalue_bits));
+				else
+					seqelm->scale_value = -(int64)(scale_value * (int64)pow(10, maxvalue_bits));
+			}
+			else
+			{
+				if(seqelm->last >= 0)
+					seqelm->scale_value = scale_value * (int64)pow(10, maxvalue_bits - 6);
+				else
+					seqelm->scale_value = -(scale_value * (int64)pow(10, maxvalue_bits - 6));
+			}
+			seqelm->last += seqelm->scale_value;
+		}
 	}
 	else if(global_flag)
 	{
+		if (seq_is_session(seqform->flags))
+			seqdataform->is_called = false;
+
 		seqform->flags &= ~(SESSION_FLAG);
 	}
 
