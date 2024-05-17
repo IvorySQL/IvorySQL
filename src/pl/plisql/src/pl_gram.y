@@ -973,8 +973,9 @@ decl_const		:
 decl_datatype	:
 					{
 						/*
-						 * If there's a lookahead token, read_datatype
-						 * should consume it.
+						 * If there's a lookahead token, read_datatype() will
+						 * consume it, and then we must tell bison to forget
+						 * it.
 						 */
 						$$ = read_datatype(yychar);
 						yyclearin;
@@ -3457,13 +3458,17 @@ read_sql_construct(int until,
 	return expr;
 }
 
+/*
+ * Read a datatype declaration, consuming the current lookahead token if any.
+ * Returns a PLiSQL_type struct.
+ */
 static PLiSQL_type *
 read_datatype(int tok)
 {
 	StringInfoData ds;
 	char	   *type_name;
 	int			startlocation;
-	PLiSQL_type *result;
+	PLiSQL_type *result = NULL;
 	int			parenlevel = 0;
 
 	/* Should only be called while parsing DECLARE sections */
@@ -3473,11 +3478,15 @@ read_datatype(int tok)
 	if (tok == YYEMPTY)
 		tok = yylex();
 
+	/* The current token is the start of what we'll pass to parse_datatype */
 	startlocation = yylloc;
 
 	/*
-	 * If we have a simple or composite identifier, check for %TYPE
-	 * and %ROWTYPE constructs.
+	 * If we have a simple or composite identifier, check for %TYPE and
+	 * %ROWTYPE constructs.  (Note that if plisql_parse_wordtype et al fail
+	 * to recognize the identifier, we'll fall through and pass the whole
+	 * string to parse_datatype, which will assuredly give an unhelpful
+	 * "syntax error".  Should we try to give a more specific error?)
 	 */
 	if (tok == T_WORD)
 	{
@@ -3489,18 +3498,10 @@ read_datatype(int tok)
 			tok = yylex();
 			if (tok_is_keyword(tok, &yylval,
 							   K_TYPE, "type"))
-			{
 				result = plisql_parse_wordtype(dtname);
-				if (result)
-					return result;
-			}
 			else if (tok_is_keyword(tok, &yylval,
 									K_ROWTYPE, "rowtype"))
-			{
 				result = plisql_parse_wordrowtype(dtname);
-				if (result)
-					return result;
-			}
 		}
 	}
 	else if (plisql_token_is_unreserved_keyword(tok))
@@ -3513,18 +3514,10 @@ read_datatype(int tok)
 			tok = yylex();
 			if (tok_is_keyword(tok, &yylval,
 							   K_TYPE, "type"))
-			{
 				result = plisql_parse_wordtype(dtname);
-				if (result)
-					return result;
-			}
 			else if (tok_is_keyword(tok, &yylval,
 									K_ROWTYPE, "rowtype"))
-			{
 				result = plisql_parse_wordrowtype(dtname);
-				if (result)
-					return result;
-			}
 		}
 	}
 	else if (tok == T_CWORD)
@@ -3537,21 +3530,56 @@ read_datatype(int tok)
 			tok = yylex();
 			if (tok_is_keyword(tok, &yylval,
 							   K_TYPE, "type"))
-			{
 				result = plisql_parse_cwordtype(dtnames);
-				if (result)
-					return result;
-			}
 			else if (tok_is_keyword(tok, &yylval,
 									K_ROWTYPE, "rowtype"))
-			{
 				result = plisql_parse_cwordrowtype(dtnames);
-				if (result)
-					return result;
-			}
 		}
 	}
 
+	/*
+	 * If we recognized a %TYPE or %ROWTYPE construct, see if it is followed
+	 * by array decoration: [ ARRAY ] [ '[' [ iconst ] ']' [ ... ] ]
+	 *
+	 * Like the core parser, we ignore the specific numbers and sizes of
+	 * dimensions; arrays of different dimensionality are still the same type
+	 * in Postgres.
+	 */
+	if (result)
+	{
+		bool		is_array = false;
+
+		tok = yylex();
+		if (tok_is_keyword(tok, &yylval,
+						   K_ARRAY, "array"))
+		{
+			is_array = true;
+			tok = yylex();
+		}
+		while (tok == '[')
+		{
+			is_array = true;
+			tok = yylex();
+			if (tok == ICONST)
+				tok = yylex();
+			if (tok != ']')
+				yyerror("syntax error, expected \"]\"");
+			tok = yylex();
+		}
+		plisql_push_back_token(tok);
+
+		if (is_array)
+			result = plisql_build_datatype_arrayof(result);
+
+		return result;
+	}
+
+	/*
+	 * Not %TYPE or %ROWTYPE, so scan to the end of the datatype declaration,
+	 * which could include typmod or array decoration.  We are not very picky
+	 * here, instead relying on parse_datatype to complain about garbage.  But
+	 * we must count parens to handle typmods within cursor_arg correctly.
+	 */
 	while (tok != ';')
 	{
 		if (tok == 0)
