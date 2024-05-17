@@ -41,6 +41,7 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
+#include "common/hashfn.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -68,9 +69,7 @@
  * may be included:
  *
  * 1. If a TEMP table namespace has been initialized in this session, it
- * is implicitly searched first.  (The only time this doesn't happen is
- * when we are obeying an override search path spec that says not to use the
- * temp namespace, or the temp namespace is included in the explicit list.)
+ * is implicitly searched first.
  *
  * 2. The system catalog namespace is always searched.  If the system
  * namespace is present in the explicit path then it will be searched in
@@ -109,19 +108,16 @@
  * namespace (if it exists), preceded by the user's personal namespace
  * (if one exists).
  *
- * We support a stack of "override" search path settings for use within
- * specific sections of backend code.  namespace_search_path is ignored
- * whenever the override stack is nonempty.  activeSearchPath is always
- * the actually active path; it points either to the search list of the
- * topmost stack entry, or to baseSearchPath which is the list derived
- * from namespace_search_path.
+ * activeSearchPath is always the actually active path; it points to
+ * to baseSearchPath which is the list derived from namespace_search_path.
  *
- * If baseSearchPathValid is false, then baseSearchPath (and other
- * derived variables) need to be recomputed from namespace_search_path.
- * We mark it invalid upon an assignment to namespace_search_path or receipt
- * of a syscache invalidation event for pg_namespace.  The recomputation
- * is done during the next non-overridden lookup attempt.  Note that an
- * override spec is never subject to recomputation.
+ * If baseSearchPathValid is false, then baseSearchPath (and other derived
+ * variables) need to be recomputed from namespace_search_path, or retrieved
+ * from the search path cache if there haven't been any syscache
+ * invalidations.  We mark it invalid upon an assignment to
+ * namespace_search_path or receipt of a syscache invalidation event for
+ * pg_namespace or pg_authid.  The recomputation is done during the next
+ * lookup attempt.
  *
  * Any namespaces mentioned in namespace_search_path that are not readable
  * by the current user ID are simply left out of baseSearchPath; so
@@ -161,17 +157,27 @@ static Oid	namespaceUser = InvalidOid;
 
 /* The above four values are valid only if baseSearchPathValid */
 static bool baseSearchPathValid = true;
+static bool searchPathCacheValid = false;
+static MemoryContext SearchPathCacheContext = NULL;
 
-/* Override requests are remembered in a stack of OverrideStackEntry structs */
-
-typedef struct
+typedef struct SearchPathCacheKey
 {
-	List	   *searchPath;		/* the desired search path */
-	Oid			creationNamespace;	/* the desired creation namespace */
-	int			nestLevel;		/* subtransaction nesting level */
-} OverrideStackEntry;
+	const char *searchPath;
+	Oid			roleid;
+}			SearchPathCacheKey;
 
-static List *overrideStack = NIL;
+typedef struct SearchPathCacheEntry
+{
+	SearchPathCacheKey key;
+	List	   *oidlist;		/* namespace OIDs that pass ACL checks */
+	List	   *finalPath;		/* cached final computed search path */
+	Oid			firstNS;		/* first explicitly-listed namespace */
+	bool		temp_missing;
+	bool		forceRecompute; /* force recompute of finalPath */
+
+	/* needed for simplehash */
+	char		status;
+}			SearchPathCacheEntry;
 
 /*
  * myTempNamespace is InvalidOid until and unless a TEMP namespace is set up
@@ -202,6 +208,19 @@ char	   *namespace_search_path = NULL;
 
 
 /* Local functions */
+static bool RelationIsVisibleExt(Oid relid, bool *is_missing);
+static bool TypeIsVisibleExt(Oid typid, bool *is_missing);
+static bool FunctionIsVisibleExt(Oid funcid, bool *is_missing);
+static bool OperatorIsVisibleExt(Oid oprid, bool *is_missing);
+static bool OpclassIsVisibleExt(Oid opcid, bool *is_missing);
+static bool OpfamilyIsVisibleExt(Oid opfid, bool *is_missing);
+static bool CollationIsVisibleExt(Oid collid, bool *is_missing);
+static bool ConversionIsVisibleExt(Oid conid, bool *is_missing);
+static bool StatisticsObjIsVisibleExt(Oid stxid, bool *is_missing);
+static bool TSParserIsVisibleExt(Oid prsId, bool *is_missing);
+static bool TSDictionaryIsVisibleExt(Oid dictId, bool *is_missing);
+static bool TSTemplateIsVisibleExt(Oid tmplId, bool *is_missing);
+static bool TSConfigIsVisibleExt(Oid cfgid, bool *is_missing);
 static void recomputeNamespacePath(void);
 static void AccessTempTableNamespace(bool force);
 static void InitTempTableNamespace(void);
@@ -212,6 +231,156 @@ static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 						   bool include_out_arguments, int pronargs,
 						   int **argnumbers);
 
+/*
+ * Recomputing the namespace path can be costly when done frequently, such as
+ * when a function has search_path set in proconfig. Add a search path cache
+ * that can be used by recomputeNamespacePath().
+ *
+ * The cache is also used to remember already-validated strings in
+ * check_search_path() to avoid the need to call SplitIdentifierString()
+ * repeatedly.
+ *
+ * The search path cache is based on a wrapper around a simplehash hash table
+ * (nsphash, defined below). The spcache wrapper deals with OOM while trying
+ * to initialize a key, optimizes repeated lookups of the same key, and also
+ * offers a more convenient API.
+ */
+
+static inline uint32
+spcachekey_hash(SearchPathCacheKey key)
+{
+	const unsigned char *bytes = (const unsigned char *) key.searchPath;
+	int			blen = strlen(key.searchPath);
+
+	return hash_combine(hash_bytes(bytes, blen),
+						hash_uint32(key.roleid));
+}
+
+static inline bool
+spcachekey_equal(SearchPathCacheKey a, SearchPathCacheKey b)
+{
+	return a.roleid == b.roleid &&
+		strcmp(a.searchPath, b.searchPath) == 0;
+}
+
+#define SH_PREFIX		nsphash
+#define SH_ELEMENT_TYPE	SearchPathCacheEntry
+#define SH_KEY_TYPE		SearchPathCacheKey
+#define SH_KEY			key
+#define SH_HASH_KEY(tb, key)   	spcachekey_hash(key)
+#define SH_EQUAL(tb, a, b)		spcachekey_equal(a, b)
+#define SH_SCOPE		static inline
+#define SH_DECLARE
+#define SH_DEFINE
+#include "lib/simplehash.h"
+
+/*
+ * We only expect a small number of unique search_path strings to be used. If
+ * this cache grows to an unreasonable size, reset it to avoid steady-state
+ * memory growth. Most likely, only a few of those entries will benefit from
+ * the cache, and the cache will be quickly repopulated with such entries.
+ */
+#define SPCACHE_RESET_THRESHOLD		256
+
+static nsphash_hash * SearchPathCache = NULL;
+static SearchPathCacheEntry * LastSearchPathCacheEntry = NULL;
+
+/*
+ * Create or reset search_path cache as necessary.
+ */
+static void
+spcache_init(void)
+{
+	Assert(SearchPathCacheContext);
+
+	if (SearchPathCache && searchPathCacheValid &&
+		SearchPathCache->members < SPCACHE_RESET_THRESHOLD)
+		return;
+
+	MemoryContextReset(SearchPathCacheContext);
+	LastSearchPathCacheEntry = NULL;
+	/* arbitrary initial starting size of 16 elements */
+	SearchPathCache = nsphash_create(SearchPathCacheContext, 16, NULL);
+	searchPathCacheValid = true;
+}
+
+/*
+ * Look up entry in search path cache without inserting. Returns NULL if not
+ * present.
+ */
+static SearchPathCacheEntry *
+spcache_lookup(const char *searchPath, Oid roleid)
+{
+	if (LastSearchPathCacheEntry &&
+		LastSearchPathCacheEntry->key.roleid == roleid &&
+		strcmp(LastSearchPathCacheEntry->key.searchPath, searchPath) == 0)
+	{
+		return LastSearchPathCacheEntry;
+	}
+	else
+	{
+		SearchPathCacheEntry *entry;
+		SearchPathCacheKey cachekey = {
+			.searchPath = searchPath,
+			.roleid = roleid
+		};
+
+		entry = nsphash_lookup(SearchPathCache, cachekey);
+
+		LastSearchPathCacheEntry = entry;
+		return entry;
+	}
+}
+
+/*
+ * Look up or insert entry in search path cache.
+ *
+ * Initialize key safely, so that OOM does not leave an entry without a valid
+ * key. Caller must ensure that non-key contents are properly initialized.
+ */
+static SearchPathCacheEntry *
+spcache_insert(const char *searchPath, Oid roleid)
+{
+	if (LastSearchPathCacheEntry &&
+		LastSearchPathCacheEntry->key.roleid == roleid &&
+		strcmp(LastSearchPathCacheEntry->key.searchPath, searchPath) == 0)
+	{
+		return LastSearchPathCacheEntry;
+	}
+	else
+	{
+		SearchPathCacheEntry *entry;
+		SearchPathCacheKey cachekey = {
+			.searchPath = searchPath,
+			.roleid = roleid
+		};
+
+		/*
+		 * searchPath is not saved in SearchPathCacheContext. First perform a
+		 * lookup, and copy searchPath only if we need to create a new entry.
+		 */
+		entry = nsphash_lookup(SearchPathCache, cachekey);
+
+		if (!entry)
+		{
+			bool		found;
+
+			cachekey.searchPath = MemoryContextStrdup(SearchPathCacheContext, searchPath);
+			entry = nsphash_insert(SearchPathCache, cachekey, &found);
+			Assert(!found);
+
+			entry->oidlist = NIL;
+			entry->finalPath = NIL;
+			entry->firstNS = InvalidOid;
+			entry->temp_missing = false;
+			entry->forceRecompute = false;
+			/* do not touch entry->status, used by simplehash */
+		}
+
+		LastSearchPathCacheEntry = entry;
+		return entry;
+	}
+}
 
 /*
  * RangeVarGetRelidExtended
@@ -711,6 +880,18 @@ RelnameGetRelid(const char *relname)
 bool
 RelationIsVisible(Oid relid)
 {
+	return RelationIsVisibleExt(relid, NULL);
+}
+
+/*
+ * RelationIsVisibleExt
+ *		As above, but if the relation isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+RelationIsVisibleExt(Oid relid, bool *is_missing)
+{
 	HeapTuple	reltup;
 	Form_pg_class relform;
 	Oid			relnamespace;
@@ -718,7 +899,14 @@ RelationIsVisible(Oid relid)
 
 	reltup = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(reltup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for relation %u", relid);
+	}
 	relform = (Form_pg_class) GETSTRUCT(reltup);
 
 	recomputeNamespacePath();
@@ -819,6 +1007,18 @@ TypenameGetTypidExtended(const char *typname, bool temp_ok)
 bool
 TypeIsVisible(Oid typid)
 {
+	return TypeIsVisibleExt(typid, NULL);
+}
+
+/*
+ * TypeIsVisibleExt
+ *		As above, but if the type isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+TypeIsVisibleExt(Oid typid, bool *is_missing)
+{
 	HeapTuple	typtup;
 	Form_pg_type typform;
 	Oid			typnamespace;
@@ -826,7 +1026,14 @@ TypeIsVisible(Oid typid)
 
 	typtup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
 	if (!HeapTupleIsValid(typtup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for type %u", typid);
+	}
 	typform = (Form_pg_type) GETSTRUCT(typtup);
 
 	recomputeNamespacePath();
@@ -1456,6 +1663,18 @@ MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 bool
 FunctionIsVisible(Oid funcid)
 {
+	return FunctionIsVisibleExt(funcid, NULL);
+}
+
+/*
+ * FunctionIsVisibleExt
+ *		As above, but if the function isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+FunctionIsVisibleExt(Oid funcid, bool *is_missing)
+{
 	HeapTuple	proctup;
 	Form_pg_proc procform;
 	Oid			pronamespace;
@@ -1463,7 +1682,14 @@ FunctionIsVisible(Oid funcid)
 
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(proctup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for function %u", funcid);
+	}
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 
 	recomputeNamespacePath();
@@ -1790,6 +2016,18 @@ OpernameGetCandidates(List *names, char oprkind, bool missing_schema_ok)
 bool
 OperatorIsVisible(Oid oprid)
 {
+	return OperatorIsVisibleExt(oprid, NULL);
+}
+
+/*
+ * OperatorIsVisibleExt
+ *		As above, but if the operator isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+OperatorIsVisibleExt(Oid oprid, bool *is_missing)
+{
 	HeapTuple	oprtup;
 	Form_pg_operator oprform;
 	Oid			oprnamespace;
@@ -1797,7 +2035,14 @@ OperatorIsVisible(Oid oprid)
 
 	oprtup = SearchSysCache1(OPEROID, ObjectIdGetDatum(oprid));
 	if (!HeapTupleIsValid(oprtup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for operator %u", oprid);
+	}
 	oprform = (Form_pg_operator) GETSTRUCT(oprtup);
 
 	recomputeNamespacePath();
@@ -1876,6 +2121,18 @@ OpclassnameGetOpcid(Oid amid, const char *opcname)
 bool
 OpclassIsVisible(Oid opcid)
 {
+	return OpclassIsVisibleExt(opcid, NULL);
+}
+
+/*
+ * OpclassIsVisibleExt
+ *		As above, but if the opclass isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+OpclassIsVisibleExt(Oid opcid, bool *is_missing)
+{
 	HeapTuple	opctup;
 	Form_pg_opclass opcform;
 	Oid			opcnamespace;
@@ -1883,7 +2140,14 @@ OpclassIsVisible(Oid opcid)
 
 	opctup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opcid));
 	if (!HeapTupleIsValid(opctup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for opclass %u", opcid);
+	}
 	opcform = (Form_pg_opclass) GETSTRUCT(opctup);
 
 	recomputeNamespacePath();
@@ -1959,6 +2223,18 @@ OpfamilynameGetOpfid(Oid amid, const char *opfname)
 bool
 OpfamilyIsVisible(Oid opfid)
 {
+	return OpfamilyIsVisibleExt(opfid, NULL);
+}
+
+/*
+ * OpfamilyIsVisibleExt
+ *		As above, but if the opfamily isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+OpfamilyIsVisibleExt(Oid opfid, bool *is_missing)
+{
 	HeapTuple	opftup;
 	Form_pg_opfamily opfform;
 	Oid			opfnamespace;
@@ -1966,7 +2242,14 @@ OpfamilyIsVisible(Oid opfid)
 
 	opftup = SearchSysCache1(OPFAMILYOID, ObjectIdGetDatum(opfid));
 	if (!HeapTupleIsValid(opftup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for opfamily %u", opfid);
+	}
 	opfform = (Form_pg_opfamily) GETSTRUCT(opftup);
 
 	recomputeNamespacePath();
@@ -2091,6 +2374,18 @@ CollationGetCollid(const char *collname)
 bool
 CollationIsVisible(Oid collid)
 {
+	return CollationIsVisibleExt(collid, NULL);
+}
+
+/*
+ * CollationIsVisibleExt
+ *		As above, but if the collation isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+CollationIsVisibleExt(Oid collid, bool *is_missing)
+{
 	HeapTuple	colltup;
 	Form_pg_collation collform;
 	Oid			collnamespace;
@@ -2098,7 +2393,14 @@ CollationIsVisible(Oid collid)
 
 	colltup = SearchSysCache1(COLLOID, ObjectIdGetDatum(collid));
 	if (!HeapTupleIsValid(colltup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for collation %u", collid);
+	}
 	collform = (Form_pg_collation) GETSTRUCT(colltup);
 
 	recomputeNamespacePath();
@@ -2174,6 +2476,18 @@ ConversionGetConid(const char *conname)
 bool
 ConversionIsVisible(Oid conid)
 {
+	return ConversionIsVisibleExt(conid, NULL);
+}
+
+/*
+ * ConversionIsVisibleExt
+ *		As above, but if the conversion isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+ConversionIsVisibleExt(Oid conid, bool *is_missing)
+{
 	HeapTuple	contup;
 	Form_pg_conversion conform;
 	Oid			connamespace;
@@ -2181,7 +2495,14 @@ ConversionIsVisible(Oid conid)
 
 	contup = SearchSysCache1(CONVOID, ObjectIdGetDatum(conid));
 	if (!HeapTupleIsValid(contup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for conversion %u", conid);
+	}
 	conform = (Form_pg_conversion) GETSTRUCT(contup);
 
 	recomputeNamespacePath();
@@ -2276,16 +2597,35 @@ get_statistics_object_oid(List *names, bool missing_ok)
  *		for the unqualified statistics object name".
  */
 bool
-StatisticsObjIsVisible(Oid relid)
+StatisticsObjIsVisible(Oid stxid)
+{
+	return StatisticsObjIsVisibleExt(stxid, NULL);
+}
+
+/*
+ * StatisticsObjIsVisibleExt
+ *		As above, but if the statistics object isn't found and is_missing is
+ *		not NULL, then set *is_missing = true and return false instead of
+ *		throwing an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+StatisticsObjIsVisibleExt(Oid stxid, bool *is_missing)
 {
 	HeapTuple	stxtup;
 	Form_pg_statistic_ext stxform;
 	Oid			stxnamespace;
 	bool		visible;
 
-	stxtup = SearchSysCache1(STATEXTOID, ObjectIdGetDatum(relid));
+	stxtup = SearchSysCache1(STATEXTOID, ObjectIdGetDatum(stxid));
 	if (!HeapTupleIsValid(stxtup))
-		elog(ERROR, "cache lookup failed for statistics object %u", relid);
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
+		elog(ERROR, "cache lookup failed for statistics object %u", stxid);
+	}
 	stxform = (Form_pg_statistic_ext) GETSTRUCT(stxtup);
 
 	recomputeNamespacePath();
@@ -2401,6 +2741,18 @@ get_ts_parser_oid(List *names, bool missing_ok)
 bool
 TSParserIsVisible(Oid prsId)
 {
+	return TSParserIsVisibleExt(prsId, NULL);
+}
+
+/*
+ * TSParserIsVisibleExt
+ *		As above, but if the parser isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+TSParserIsVisibleExt(Oid prsId, bool *is_missing)
+{
 	HeapTuple	tup;
 	Form_pg_ts_parser form;
 	Oid			namespace;
@@ -2408,7 +2760,14 @@ TSParserIsVisible(Oid prsId)
 
 	tup = SearchSysCache1(TSPARSEROID, ObjectIdGetDatum(prsId));
 	if (!HeapTupleIsValid(tup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for text search parser %u", prsId);
+	}
 	form = (Form_pg_ts_parser) GETSTRUCT(tup);
 
 	recomputeNamespacePath();
@@ -2527,6 +2886,18 @@ get_ts_dict_oid(List *names, bool missing_ok)
 bool
 TSDictionaryIsVisible(Oid dictId)
 {
+	return TSDictionaryIsVisibleExt(dictId, NULL);
+}
+
+/*
+ * TSDictionaryIsVisibleExt
+ *		As above, but if the dictionary isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+TSDictionaryIsVisibleExt(Oid dictId, bool *is_missing)
+{
 	HeapTuple	tup;
 	Form_pg_ts_dict form;
 	Oid			namespace;
@@ -2534,8 +2905,15 @@ TSDictionaryIsVisible(Oid dictId)
 
 	tup = SearchSysCache1(TSDICTOID, ObjectIdGetDatum(dictId));
 	if (!HeapTupleIsValid(tup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for text search dictionary %u",
 			 dictId);
+	}
 	form = (Form_pg_ts_dict) GETSTRUCT(tup);
 
 	recomputeNamespacePath();
@@ -2654,6 +3032,18 @@ get_ts_template_oid(List *names, bool missing_ok)
 bool
 TSTemplateIsVisible(Oid tmplId)
 {
+	return TSTemplateIsVisibleExt(tmplId, NULL);
+}
+
+/*
+ * TSTemplateIsVisibleExt
+ *		As above, but if the template isn't found and is_missing is not NULL,
+ *		then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+TSTemplateIsVisibleExt(Oid tmplId, bool *is_missing)
+{
 	HeapTuple	tup;
 	Form_pg_ts_template form;
 	Oid			namespace;
@@ -2661,7 +3051,14 @@ TSTemplateIsVisible(Oid tmplId)
 
 	tup = SearchSysCache1(TSTEMPLATEOID, ObjectIdGetDatum(tmplId));
 	if (!HeapTupleIsValid(tup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for text search template %u", tmplId);
+	}
 	form = (Form_pg_ts_template) GETSTRUCT(tup);
 
 	recomputeNamespacePath();
@@ -2780,6 +3177,18 @@ get_ts_config_oid(List *names, bool missing_ok)
 bool
 TSConfigIsVisible(Oid cfgid)
 {
+	return TSConfigIsVisibleExt(cfgid, NULL);
+}
+
+/*
+ * TSConfigIsVisibleExt
+ *		As above, but if the configuration isn't found and is_missing is not
+ *		NULL, then set *is_missing = true and return false instead of throwing
+ *		an error.  (Caller must initialize *is_missing = false.)
+ */
+static bool
+TSConfigIsVisibleExt(Oid cfgid, bool *is_missing)
+{
 	HeapTuple	tup;
 	Form_pg_ts_config form;
 	Oid			namespace;
@@ -2787,8 +3196,15 @@ TSConfigIsVisible(Oid cfgid)
 
 	tup = SearchSysCache1(TSCONFIGOID, ObjectIdGetDatum(cfgid));
 	if (!HeapTupleIsValid(tup))
+	{
+		if (is_missing != NULL)
+		{
+			*is_missing = true;
+			return false;
+		}
 		elog(ERROR, "cache lookup failed for text search configuration %u",
 			 cfgid);
+	}
 	form = (Form_pg_ts_config) GETSTRUCT(tup);
 
 	recomputeNamespacePath();
@@ -2850,7 +3266,7 @@ TSConfigIsVisible(Oid cfgid)
  * *nspname_p is set to NULL if there is no explicit schema name.
  */
 void
-DeconstructQualifiedName(List *names,
+DeconstructQualifiedName(const List *names,
 						 char **nspname_p,
 						 char **objname_p)
 {
@@ -3036,7 +3452,7 @@ CheckSetNamespace(Oid oldNspOid, Oid nspOid)
  * if we have to create or clean out the temp namespace.
  */
 Oid
-QualifiedNameGetCreationNamespace(List *names, char **objname_p)
+QualifiedNameGetCreationNamespace(const List *names, char **objname_p)
 {
 	char	   *schemaname;
 	Oid			namespaceId;
@@ -3103,7 +3519,7 @@ get_namespace_oid(const char *nspname, bool missing_ok)
  *		Utility routine to convert a qualified-name list into RangeVar form.
  */
 RangeVar *
-makeRangeVarFromNameList(List *names)
+makeRangeVarFromNameList(const List *names)
 {
 	RangeVar   *rel = makeRangeVar(NULL, NULL, -1);
 
@@ -3143,7 +3559,7 @@ makeRangeVarFromNameList(List *names)
  * but we also allow A_Star for the convenience of ColumnRef processing.
  */
 char *
-NameListToString(List *names)
+NameListToString(const List *names)
 {
 	StringInfoData string;
 	ListCell   *l;
@@ -3177,7 +3593,7 @@ NameListToString(List *names)
  * so the string could be re-parsed (eg, by textToQualifiedNameList).
  */
 char *
-NameListToQuotedString(List *names)
+NameListToQuotedString(const List *names)
 {
 	StringInfoData string;
 	ListCell   *l;
@@ -3389,21 +3805,21 @@ SetTempNamespaceState(Oid tempNamespaceId, Oid tempToastNamespaceId)
 	 */
 
 	baseSearchPathValid = false;	/* may need to rebuild list */
+	searchPathCacheValid = false;
 }
 
 
 /*
- * GetOverrideSearchPath - fetch current search path definition in form
- * used by PushOverrideSearchPath.
+ * GetSearchPathMatcher - fetch current search path definition.
  *
  * The result structure is allocated in the specified memory context
  * (which might or might not be equal to CurrentMemoryContext); but any
  * junk created by revalidation calculations will be in CurrentMemoryContext.
  */
-OverrideSearchPath *
-GetOverrideSearchPath(MemoryContext context)
+SearchPathMatcher *
+GetSearchPathMatcher(MemoryContext context)
 {
-	OverrideSearchPath *result;
+	SearchPathMatcher *result;
 	List	   *schemas;
 	MemoryContext oldcxt;
 
@@ -3411,7 +3827,7 @@ GetOverrideSearchPath(MemoryContext context)
 
 	oldcxt = MemoryContextSwitchTo(context);
 
-	result = (OverrideSearchPath *) palloc0(sizeof(OverrideSearchPath));
+	result = (SearchPathMatcher *) palloc0(sizeof(SearchPathMatcher));
 	schemas = list_copy(activeSearchPath);
 	while (schemas && linitial_oid(schemas) != activeCreationNamespace)
 	{
@@ -3464,16 +3880,16 @@ GetOverrideSearchPath(MemoryContext context)
 }
 
 /*
- * CopyOverrideSearchPath - copy the specified OverrideSearchPath.
+ * CopySearchPathMatcher - copy the specified SearchPathMatcher.
  *
  * The result structure is allocated in CurrentMemoryContext.
  */
-OverrideSearchPath *
-CopyOverrideSearchPath(OverrideSearchPath *path)
+SearchPathMatcher *
+CopySearchPathMatcher(SearchPathMatcher *path)
 {
-	OverrideSearchPath *result;
+	SearchPathMatcher *result;
 
-	result = (OverrideSearchPath *) palloc(sizeof(OverrideSearchPath));
+	result = (SearchPathMatcher *) palloc(sizeof(SearchPathMatcher));
 	result->schemas = list_copy(path->schemas);
 	result->addCatalog = path->addCatalog;
 	result->addTemp = path->addTemp;
@@ -3484,7 +3900,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
 }
 
 /*
- * OverrideSearchPathMatchesCurrent - does path match current setting?
+ * SearchPathMatchesCurrentEnvironment - does path match current environment?
  *
  * This is tested over and over in some common code paths, and in the typical
  * scenario where the active search path seldom changes, it'll always succeed.
@@ -3492,7 +3908,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
  * whenever the active search path changes.
  */
 bool
-OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
+SearchPathMatchesCurrentEnvironment(SearchPathMatcher *path)
 {
 	ListCell   *lc,
 			   *lcp;
@@ -3554,135 +3970,6 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 
 	return true;
 }
-
-/*
- * PushOverrideSearchPath - temporarily override the search path
- *
- * Do not use this function; almost any usage introduces a security
- * vulnerability.  It exists for the benefit of legacy code running in
- * non-security-sensitive environments.
- *
- * We allow nested overrides, hence the push/pop terminology.  The GUC
- * search_path variable is ignored while an override is active.
- *
- * It's possible that newpath->useTemp is set but there is no longer any
- * active temp namespace, if the path was saved during a transaction that
- * created a temp namespace and was later rolled back.  In that case we just
- * ignore useTemp.  A plausible alternative would be to create a new temp
- * namespace, but for existing callers that's not necessary because an empty
- * temp namespace wouldn't affect their results anyway.
- *
- * It's also worth noting that other schemas listed in newpath might not
- * exist anymore either.  We don't worry about this because OIDs that match
- * no existing namespace will simply not produce any hits during searches.
- */
-void
-PushOverrideSearchPath(OverrideSearchPath *newpath)
-{
-	OverrideStackEntry *entry;
-	List	   *oidlist;
-	Oid			firstNS;
-	MemoryContext oldcxt;
-
-	/*
-	 * Copy the list for safekeeping, and insert implicitly-searched
-	 * namespaces as needed.  This code should track recomputeNamespacePath.
-	 */
-	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-
-	oidlist = list_copy(newpath->schemas);
-
-	/*
-	 * Remember the first member of the explicit list.
-	 */
-	if (oidlist == NIL)
-		firstNS = InvalidOid;
-	else
-		firstNS = linitial_oid(oidlist);
-
-	/*
-	 * Add any implicitly-searched namespaces to the list.  Note these go on
-	 * the front, not the back; also notice that we do not check USAGE
-	 * permissions for these.
-	 */
-	if (newpath->addCatalog)
-		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
-
-	if (newpath->addSys)
-		oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
-
-	if (newpath->addTemp && OidIsValid(myTempNamespace))
-		oidlist = lcons_oid(myTempNamespace, oidlist);
-
-	/*
-	 * Build the new stack entry, then insert it at the head of the list.
-	 */
-	entry = (OverrideStackEntry *) palloc(sizeof(OverrideStackEntry));
-	entry->searchPath = oidlist;
-	entry->creationNamespace = firstNS;
-	entry->nestLevel = GetCurrentTransactionNestLevel();
-
-	overrideStack = lcons(entry, overrideStack);
-
-	/* And make it active. */
-	activeSearchPath = entry->searchPath;
-	activeCreationNamespace = entry->creationNamespace;
-	activeTempCreationPending = false;	/* XXX is this OK? */
-
-	/*
-	 * We always increment activePathGeneration when pushing/popping an
-	 * override path.  In current usage, these actions always change the
-	 * effective path state, so there's no value in checking to see if it
-	 * didn't change.
-	 */
-	activePathGeneration++;
-
-	MemoryContextSwitchTo(oldcxt);
-}
-
-/*
- * PopOverrideSearchPath - undo a previous PushOverrideSearchPath
- *
- * Any push during a (sub)transaction will be popped automatically at abort.
- * But it's caller error if a push isn't popped in normal control flow.
- */
-void
-PopOverrideSearchPath(void)
-{
-	OverrideStackEntry *entry;
-
-	/* Sanity checks. */
-	if (overrideStack == NIL)
-		elog(ERROR, "bogus PopOverrideSearchPath call");
-	entry = (OverrideStackEntry *) linitial(overrideStack);
-	if (entry->nestLevel != GetCurrentTransactionNestLevel())
-		elog(ERROR, "bogus PopOverrideSearchPath call");
-
-	/* Pop the stack and free storage. */
-	overrideStack = list_delete_first(overrideStack);
-	list_free(entry->searchPath);
-	pfree(entry);
-
-	/* Activate the next level down. */
-	if (overrideStack)
-	{
-		entry = (OverrideStackEntry *) linitial(overrideStack);
-		activeSearchPath = entry->searchPath;
-		activeCreationNamespace = entry->creationNamespace;
-		activeTempCreationPending = false;	/* XXX is this OK? */
-	}
-	else
-	{
-		/* If not baseSearchPathValid, this is useless but harmless */
-		activeSearchPath = baseSearchPath;
-		activeCreationNamespace = baseCreationNamespace;
-		activeTempCreationPending = baseTempCreationPending;
-	}
-
-	/* As above, the generation always increments. */
-	activePathGeneration++;
-}
-
 
 /*
  * get_collation_oid - find a collation by possibly qualified name
@@ -3824,32 +4111,19 @@ FindDefaultConversionProc(int32 for_encoding, int32 to_encoding)
 }
 
 /*
- * recomputeNamespacePath - recompute path derived variables if needed.
+ * Look up namespace IDs and perform ACL checks. Return newly-allocated list.
  */
-static void
-recomputeNamespacePath(void)
+static List *
+preprocessNamespacePath(const char *searchPath, Oid roleid,
+						bool *temp_missing)
 {
-	Oid			roleid = GetUserId();
 	char	   *rawname;
 	List	   *namelist;
 	List	   *oidlist;
-	List	   *newpath;
 	ListCell   *l;
-	bool		temp_missing;
-	Oid			firstNS;
-	bool		pathChanged;
-	MemoryContext oldcxt;
 
-	/* Do nothing if an override search spec is active. */
-	if (overrideStack)
-		return;
-
-	/* Do nothing if path is already valid. */
-	if (baseSearchPathValid && namespaceUser == roleid)
-		return;
-
-	/* Need a modifiable copy of namespace_search_path string */
-	rawname = pstrdup(namespace_search_path);
+	/* Need a modifiable copy */
+	rawname = pstrdup(searchPath);
 
 	/* Parse string into list of identifiers */
 	if (!SplitIdentifierStringForSearchPath(rawname, ',', &namelist))
@@ -3866,7 +4140,7 @@ recomputeNamespacePath(void)
 	 * already been accepted.)	Don't make duplicate entries, either.
 	 */
 	oidlist = NIL;
-	temp_missing = false;
+	*temp_missing = false;
 	foreach(l, namelist)
 	{
 		char	   *curname = (char *) lfirst(l);
@@ -3887,10 +4161,8 @@ recomputeNamespacePath(void)
 				namespaceId = get_namespace_oid(rname, true);
 				ReleaseSysCache(tuple);
 				if (OidIsValid(namespaceId) &&
-					!list_member_oid(oidlist, namespaceId) &&
 					object_aclcheck(NamespaceRelationId, namespaceId, roleid,
-										  ACL_USAGE) == ACLCHECK_OK &&
-					InvokeNamespaceSearchHook(namespaceId, false))
+									ACL_USAGE) == ACLCHECK_OK)
 					oidlist = lappend_oid(oidlist, namespaceId);
 			}
 		}
@@ -3898,16 +4170,12 @@ recomputeNamespacePath(void)
 		{
 			/* pg_temp --- substitute temp namespace, if any */
 			if (OidIsValid(myTempNamespace))
-			{
-				if (!list_member_oid(oidlist, myTempNamespace) &&
-					InvokeNamespaceSearchHook(myTempNamespace, false))
-					oidlist = lappend_oid(oidlist, myTempNamespace);
-			}
+				oidlist = lappend_oid(oidlist, myTempNamespace);
 			else
 			{
 				/* If it ought to be the creation namespace, set flag */
 				if (oidlist == NIL)
-					temp_missing = true;
+					*temp_missing = true;
 			}
 		}
 		else
@@ -3915,11 +4183,42 @@ recomputeNamespacePath(void)
 			/* normal namespace reference */
 			namespaceId = get_namespace_oid(curname, true);
 			if (OidIsValid(namespaceId) &&
-				!list_member_oid(oidlist, namespaceId) &&
 				object_aclcheck(NamespaceRelationId, namespaceId, roleid,
-									  ACL_USAGE) == ACLCHECK_OK &&
-				InvokeNamespaceSearchHook(namespaceId, false))
+								ACL_USAGE) == ACLCHECK_OK)
 				oidlist = lappend_oid(oidlist, namespaceId);
+		}
+	}
+
+	pfree(rawname);
+	list_free(namelist);
+
+	return oidlist;
+}
+
+/*
+ * Remove duplicates, run namespace search hooks, and prepend
+ * implicitly-searched namespaces. Return newly-allocated list.
+ *
+ * If an object_access_hook is present, this must always be recalculated. It
+ * may seem that duplicate elimination is not dependent on the result of the
+ * hook, but if a hook returns different results on different calls for the
+ * same namespace ID, then it could affect the order in which that namespace
+ * appears in the final list.
+ */
+static List *
+finalNamespacePath(List *oidlist, Oid *firstNS)
+{
+	List	   *finalPath = NIL;
+	ListCell   *lc;
+
+	foreach(lc, oidlist)
+	{
+		Oid			namespaceId = lfirst_oid(lc);
+
+		if (!list_member_oid(finalPath, namespaceId))
+		{
+			if (InvokeNamespaceSearchHook(namespaceId, false))
+				finalPath = lappend_oid(finalPath, namespaceId);
 		}
 	}
 
@@ -3928,54 +4227,127 @@ recomputeNamespacePath(void)
 	 * nominally wrong if temp_missing, but we need it anyway to distinguish
 	 * explicit from implicit mention of pg_catalog.)
 	 */
-	if (oidlist == NIL)
-		firstNS = InvalidOid;
+	if (finalPath == NIL)
+		*firstNS = InvalidOid;
 	else
-		firstNS = linitial_oid(oidlist);
+		*firstNS = linitial_oid(finalPath);
 
 	/*
 	 * Add any implicitly-searched namespaces to the list.  Note these go on
 	 * the front, not the back; also notice that we do not check USAGE
 	 * permissions for these.
 	 */
-	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
-		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+	if (!list_member_oid(finalPath, PG_CATALOG_NAMESPACE))
+		finalPath = lcons_oid(PG_CATALOG_NAMESPACE, finalPath);
 
 	if (IsNormalProcessingMode() && ORA_PARSER == compatible_db)
 	{
-		if (!list_member_oid(oidlist, PG_SYS_NAMESPACE))
-			oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
+		if (!list_member_oid(finalPath, PG_SYS_NAMESPACE))
+			finalPath = lcons_oid(PG_SYS_NAMESPACE, finalPath);
 	}
 
 	if (OidIsValid(myTempNamespace) &&
-		!list_member_oid(oidlist, myTempNamespace))
-		oidlist = lcons_oid(myTempNamespace, oidlist);
+		!list_member_oid(finalPath, myTempNamespace))
+		finalPath = lcons_oid(myTempNamespace, finalPath);
+
+	return finalPath;
+}
+
+/*
+ * Retrieve search path information from the cache; or if not there, fill
+ * it. The returned entry is valid only until the next call to this function.
+ */
+static const SearchPathCacheEntry *
+cachedNamespacePath(const char *searchPath, Oid roleid)
+{
+	MemoryContext oldcxt;
+	SearchPathCacheEntry *entry;
+
+	spcache_init();
+
+	entry = spcache_insert(searchPath, roleid);
 
 	/*
-	 * We want to detect the case where the effective value of the base search
-	 * path variables didn't change.  As long as we're doing so, we can avoid
-	 * copying the OID list unnecessarily.
+	 * An OOM may have resulted in a cache entry with mising 'oidlist' or
+	 * 'finalPath', so just compute whatever is missing.
 	 */
-	if (baseCreationNamespace == firstNS &&
-		baseTempCreationPending == temp_missing &&
-		equal(oidlist, baseSearchPath))
+
+	if (entry->oidlist == NIL)
+	{
+		oldcxt = MemoryContextSwitchTo(SearchPathCacheContext);
+		entry->oidlist = preprocessNamespacePath(searchPath, roleid,
+												 &entry->temp_missing);
+		MemoryContextSwitchTo(oldcxt);
+	}
+
+	/*
+	 * If a hook is set, we must recompute finalPath from the oidlist each
+	 * time, because the hook may affect the result. This is still much faster
+	 * than recomputing from the string (and doing catalog lookups and ACL
+	 * checks).
+	 */
+	if (entry->finalPath == NIL || object_access_hook ||
+		entry->forceRecompute)
+	{
+		list_free(entry->finalPath);
+		entry->finalPath = NIL;
+
+		oldcxt = MemoryContextSwitchTo(SearchPathCacheContext);
+		entry->finalPath = finalNamespacePath(entry->oidlist,
+											  &entry->firstNS);
+		MemoryContextSwitchTo(oldcxt);
+
+		/*
+		 * If an object_access_hook is set when finalPath is calculated, the
+		 * result may be affected by the hook. Force recomputation of
+		 * finalPath the next time this cache entry is used, even if the
+		 * object_access_hook is not set at that time.
+		 */
+		entry->forceRecompute = object_access_hook ? true : false;
+	}
+
+	return entry;
+}
+
+/*
+ * recomputeNamespacePath - recompute path derived variables if needed.
+ */
+static void
+recomputeNamespacePath(void)
+{
+	Oid			roleid = GetUserId();
+	bool		pathChanged;
+	const		SearchPathCacheEntry *entry;
+
+	/* Do nothing if path is already valid. */
+	if (baseSearchPathValid && namespaceUser == roleid)
+		return;
+
+	entry = cachedNamespacePath(namespace_search_path, roleid);
+
+	if (baseCreationNamespace == entry->firstNS &&
+		baseTempCreationPending == entry->temp_missing &&
+		equal(entry->finalPath, baseSearchPath))
 	{
 		pathChanged = false;
 	}
 	else
 	{
+		MemoryContext oldcxt;
+		List	   *newpath;
+
 		pathChanged = true;
 
 		/* Must save OID list in permanent storage. */
 		oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-		newpath = list_copy(oidlist);
+		newpath = list_copy(entry->finalPath);
 		MemoryContextSwitchTo(oldcxt);
 
 		/* Now safe to assign to state variables. */
 		list_free(baseSearchPath);
 		baseSearchPath = newpath;
-		baseCreationNamespace = firstNS;
-		baseTempCreationPending = temp_missing;
+		baseCreationNamespace = entry->firstNS;
+		baseTempCreationPending = entry->temp_missing;
 	}
 
 	/* Mark the path valid. */
@@ -3989,18 +4361,10 @@ recomputeNamespacePath(void)
 
 	/*
 	 * Bump the generation only if something actually changed.  (Notice that
-	 * what we compared to was the old state of the base path variables; so
-	 * this does not deal with the situation where we have just popped an
-	 * override path and restored the prior state of the base path.  Instead
-	 * we rely on the override-popping logic to have bumped the generation.)
+	 * what we compared to was the old state of the base path variables.)
 	 */
 	if (pathChanged)
 		activePathGeneration++;
-
-	/* Clean up. */
-	pfree(rawname);
-	list_free(namelist);
-	list_free(oidlist);
 }
 
 /*
@@ -4155,6 +4519,7 @@ InitTempTableNamespace(void)
 	myTempNamespaceSubID = GetCurrentSubTransactionId();
 
 	baseSearchPathValid = false;	/* need to rebuild list */
+	searchPathCacheValid = false;
 }
 
 /*
@@ -4180,6 +4545,7 @@ AtEOXact_Namespace(bool isCommit, bool parallel)
 			myTempNamespace = InvalidOid;
 			myTempToastNamespace = InvalidOid;
 			baseSearchPathValid = false;	/* need to rebuild list */
+			searchPathCacheValid = false;
 
 			/*
 			 * Reset the temporary namespace flag in MyProc.  We assume that
@@ -4195,29 +4561,6 @@ AtEOXact_Namespace(bool isCommit, bool parallel)
 		myTempNamespaceSubID = InvalidSubTransactionId;
 	}
 
-	/*
-	 * Clean up if someone failed to do PopOverrideSearchPath
-	 */
-	if (overrideStack)
-	{
-		if (isCommit)
-			elog(WARNING, "leaked override search path");
-		while (overrideStack)
-		{
-			OverrideStackEntry *entry;
-
-			entry = (OverrideStackEntry *) linitial(overrideStack);
-			overrideStack = list_delete_first(overrideStack);
-			list_free(entry->searchPath);
-			pfree(entry);
-		}
-		/* If not baseSearchPathValid, this is useless but harmless */
-		activeSearchPath = baseSearchPath;
-		activeCreationNamespace = baseCreationNamespace;
-		activeTempCreationPending = baseTempCreationPending;
-		/* Always bump generation --- see note in recomputeNamespacePath */
-		activePathGeneration++;
-	}
 }
 
 /*
@@ -4232,7 +4575,6 @@ void
 AtEOSubXact_Namespace(bool isCommit, SubTransactionId mySubid,
 					  SubTransactionId parentSubid)
 {
-	OverrideStackEntry *entry;
 
 	if (myTempNamespaceSubID == mySubid)
 	{
@@ -4245,6 +4587,7 @@ AtEOSubXact_Namespace(bool isCommit, SubTransactionId mySubid,
 			myTempNamespace = InvalidOid;
 			myTempToastNamespace = InvalidOid;
 			baseSearchPathValid = false;	/* need to rebuild list */
+			searchPathCacheValid = false;
 
 			/*
 			 * Reset the temporary namespace flag in MyProc.  We assume that
@@ -4257,51 +4600,6 @@ AtEOSubXact_Namespace(bool isCommit, SubTransactionId mySubid,
 			 */
 			MyProc->tempNamespaceId = InvalidOid;
 		}
-	}
-
-	/*
-	 * Clean up if someone failed to do PopOverrideSearchPath
-	 */
-	while (overrideStack)
-	{
-		entry = (OverrideStackEntry *) linitial(overrideStack);
-		if (entry->nestLevel < GetCurrentTransactionNestLevel())
-			break;
-		if (isCommit)
-			elog(WARNING, "leaked override search path");
-		overrideStack = list_delete_first(overrideStack);
-		list_free(entry->searchPath);
-		pfree(entry);
-		/* Always bump generation --- see note in recomputeNamespacePath */
-		activePathGeneration++;
-	}
-
-	/* Activate the next level down. */
-	if (overrideStack)
-	{
-		entry = (OverrideStackEntry *) linitial(overrideStack);
-		activeSearchPath = entry->searchPath;
-		activeCreationNamespace = entry->creationNamespace;
-		activeTempCreationPending = false;	/* XXX is this OK? */
-
-		/*
-		 * It's probably unnecessary to bump generation here, but this should
-		 * not be a performance-critical case, so better to be over-cautious.
-		 */
-		activePathGeneration++;
-	}
-	else
-	{
-		/* If not baseSearchPathValid, this is useless but harmless */
-		activeSearchPath = baseSearchPath;
-		activeCreationNamespace = baseCreationNamespace;
-		activeTempCreationPending = baseTempCreationPending;
-
-		/*
-		 * If we popped an override stack entry, then we already bumped the
-		 * generation above.  If we did not, then the above assignments did
-		 * nothing and we need not bump the generation.
-		 */
 	}
 }
 
@@ -4375,11 +4673,40 @@ ResetTempTableNamespace(void)
 bool
 check_search_path(char **newval, void **extra, GucSource source)
 {
+	Oid			roleid = InvalidOid;
+	const char *searchPath = *newval;
 	char	   *rawname;
 	List	   *namelist;
+	bool		use_cache = (SearchPathCacheContext != NULL);
 
-	/* Need a modifiable copy of string */
-	rawname = pstrdup(*newval);
+	/*
+	 * We used to try to check that the named schemas exist, but there are
+	 * many valid use-cases for having search_path settings that include
+	 * schemas that don't exist; and often, we are not inside a transaction
+	 * here and so can't consult the system catalogs anyway.  So now, the only
+	 * requirement is syntactic validity of the identifier list.
+	 */
+
+	/*
+	 * Checking only the syntactic validity also allows us to use the search
+	 * path cache (if available) to avoid calling SplitIdentifierString() on
+	 * the same string repeatedly.
+	 */
+	if (use_cache)
+	{
+		spcache_init();
+
+		roleid = GetUserId();
+
+		if (spcache_lookup(searchPath, roleid) != NULL)
+			return true;
+	}
+
+	/*
+	 * Ensure validity check succeeds before creating cache entry.
+	 */
+
+	rawname = pstrdup(searchPath);	/* need a modifiable copy */
 
 	/* Parse string into list of identifiers */
 	if (!SplitIdentifierString(rawname, ',', &namelist))
@@ -4402,6 +4729,10 @@ check_search_path(char **newval, void **extra, GucSource source)
 	pfree(rawname);
 	list_free(namelist);
 
+	/* create empty cache entry */
+	if (use_cache)
+		(void) spcache_insert(searchPath, roleid);
+
 	return true;
 }
 
@@ -4413,6 +4744,10 @@ assign_search_path(const char *newval, void *extra)
 	 * We mark the path as needing recomputation, but don't do anything until
 	 * it's needed.  This avoids trying to do database access during GUC
 	 * initialization, or outside a transaction.
+	 *
+	 * This does not invalidate the search path cache, so if this value had
+	 * been previously set and no syscache invalidations happened,
+	 * recomputation may not be necessary.
 	 */
 	baseSearchPathValid = false;
 }
@@ -4447,15 +4782,24 @@ InitializeSearchPath(void)
 	}
 	else
 	{
+		SearchPathCacheContext = AllocSetContextCreate(
+													   TopMemoryContext, "search_path processing cache",
+													   ALLOCSET_DEFAULT_SIZES);
+
 		/*
 		 * In normal mode, arrange for a callback on any syscache invalidation
-		 * of pg_namespace rows.
+		 * of pg_namespace or pg_authid rows. (Changing a role name may affect
+		 * the meaning of the special string $user.)
 		 */
 		CacheRegisterSyscacheCallback(NAMESPACEOID,
 									  NamespaceCallback,
 									  (Datum) 0);
+		CacheRegisterSyscacheCallback(AUTHOID,
+									  NamespaceCallback,
+									  (Datum) 0);
 		/* Force search path to be recomputed on next use */
 		baseSearchPathValid = false;
+		searchPathCacheValid = false;
 	}
 }
 
@@ -4466,8 +4810,13 @@ InitializeSearchPath(void)
 static void
 NamespaceCallback(Datum arg, int cacheid, uint32 hashvalue)
 {
-	/* Force search path to be recomputed on next use */
+	/*
+	 * Force search path to be recomputed on next use, also invalidating the
+	 * search path cache (because namespace names, ACLs, or role names may
+	 * have changed).
+	 */
 	baseSearchPathValid = false;
+	searchPathCacheValid = false;
 }
 
 /*
@@ -4553,152 +4902,189 @@ fetch_search_path_array(Oid *sarray, int sarray_len)
  * condition errors when a query that's scanning a catalog using an MVCC
  * snapshot uses one of these functions.  The underlying IsVisible functions
  * always use an up-to-date snapshot and so might see the object as already
- * gone when it's still visible to the transaction snapshot.  (There is no race
- * condition in the current coding because we don't accept sinval messages
- * between the SearchSysCacheExists test and the subsequent lookup.)
+ * gone when it's still visible to the transaction snapshot.
  */
 
 Datum
 pg_table_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(oid)))
+	result = RelationIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(RelationIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_type_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(TYPEOID, ObjectIdGetDatum(oid)))
+	result = TypeIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(TypeIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_function_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(PROCOID, ObjectIdGetDatum(oid)))
+	result = FunctionIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(FunctionIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_operator_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(OPEROID, ObjectIdGetDatum(oid)))
+	result = OperatorIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(OperatorIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_opclass_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(CLAOID, ObjectIdGetDatum(oid)))
+	result = OpclassIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(OpclassIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_opfamily_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(OPFAMILYOID, ObjectIdGetDatum(oid)))
+	result = OpfamilyIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(OpfamilyIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_collation_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(COLLOID, ObjectIdGetDatum(oid)))
+	result = CollationIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(CollationIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_conversion_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(CONVOID, ObjectIdGetDatum(oid)))
+	result = ConversionIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(ConversionIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_statistics_obj_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(STATEXTOID, ObjectIdGetDatum(oid)))
+	result = StatisticsObjIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(StatisticsObjIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_ts_parser_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(TSPARSEROID, ObjectIdGetDatum(oid)))
+	result = TSParserIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(TSParserIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_ts_dict_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(TSDICTOID, ObjectIdGetDatum(oid)))
+	result = TSDictionaryIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(TSDictionaryIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_ts_template_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(TSTEMPLATEOID, ObjectIdGetDatum(oid)))
+	result = TSTemplateIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(TSTemplateIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 pg_ts_config_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
+	bool		result;
+	bool		is_missing = false;
 
-	if (!SearchSysCacheExists1(TSCONFIGOID, ObjectIdGetDatum(oid)))
+	result = TSConfigIsVisibleExt(oid, &is_missing);
+
+	if (is_missing)
 		PG_RETURN_NULL();
-
-	PG_RETURN_BOOL(TSConfigIsVisible(oid));
+	PG_RETURN_BOOL(result);
 }
 
 Datum

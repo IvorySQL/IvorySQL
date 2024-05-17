@@ -3,7 +3,7 @@
 
 # Minimal test testing streaming replication
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -45,6 +45,25 @@ $node_standby_2->start;
 # Create some content on primary and check its presence in standby nodes
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE tab_int AS SELECT generate_series(1,1002) AS a");
+
+$node_primary->safe_psql(
+	'postgres', q{
+CREATE TABLE user_logins(id serial, who text);
+
+CREATE FUNCTION on_login_proc() RETURNS EVENT_TRIGGER AS $$
+BEGIN
+  IF NOT pg_is_in_recovery() THEN
+    INSERT INTO user_logins (who) VALUES (session_user);
+  END IF;
+  IF session_user = 'regress_hacker' THEN
+    RAISE EXCEPTION 'You are not welcome!';
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE EVENT TRIGGER on_login_trigger ON login EXECUTE FUNCTION on_login_proc();
+ALTER EVENT TRIGGER on_login_trigger ENABLE ALWAYS;
+});
 
 # Wait for standbys to catch up
 $node_primary->wait_for_replay_catchup($node_standby_1);
@@ -384,6 +403,13 @@ sub replay_check
 
 replay_check();
 
+my $evttrig = $node_standby_1->safe_psql('postgres',
+	"SELECT evtname FROM pg_event_trigger WHERE evtevent = 'login'");
+is($evttrig, 'on_login_trigger', 'Name of login trigger');
+$evttrig = $node_standby_2->safe_psql('postgres',
+	"SELECT evtname FROM pg_event_trigger WHERE evtevent = 'login'");
+is($evttrig, 'on_login_trigger', 'Name of login trigger');
+
 note "enabling hot_standby_feedback";
 
 # Enable hs_feedback. The slot should gain an xmin. We set the status interval
@@ -496,11 +522,7 @@ $node_primary->safe_psql('postgres',
 my $segment_removed = $node_primary->safe_psql('postgres',
 	'SELECT pg_walfile_name(pg_current_wal_lsn())');
 chomp($segment_removed);
-$node_primary->psql(
-	'postgres', "
-	CREATE TABLE tab_phys_slot (a int);
-	INSERT INTO tab_phys_slot VALUES (generate_series(1,10));
-	SELECT pg_switch_wal();");
+$node_primary->advance_wal(1);
 my $current_lsn =
   $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn();");
 chomp($current_lsn);

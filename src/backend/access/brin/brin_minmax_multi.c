@@ -1660,6 +1660,9 @@ ensure_free_space_in_buffer(BrinDesc *bdesc, Oid colloid,
 	/* build the expanded ranges */
 	eranges = build_expanded_ranges(cmpFn, colloid, range, &neranges);
 
+	/* Is the expanded representation of ranges correct? */
+	AssertCheckExpandedRanges(bdesc, colloid, attno, attr, eranges, neranges);
+
 	/* and we'll also need the 'distance' procedure */
 	distanceFn = minmax_multi_get_procinfo(bdesc, attno, PROCNUM_DISTANCE);
 
@@ -1674,6 +1677,9 @@ ensure_free_space_in_buffer(BrinDesc *bdesc, Oid colloid,
 	neranges = reduce_expanded_ranges(eranges, neranges, distances,
 									  range->maxvalues * MINMAX_BUFFER_LOAD_FACTOR,
 									  cmpFn, colloid);
+
+	/* Is the result of reducing expanded ranges correct? */
+	AssertCheckExpandedRanges(bdesc, colloid, attno, attr, eranges, neranges);
 
 	/* Make sure we've sufficiently reduced the number of ranges. */
 	Assert(count_values(eranges, neranges) <= range->maxvalues * MINMAX_BUFFER_LOAD_FACTOR);
@@ -2075,13 +2081,15 @@ brin_minmax_multi_distance_uuid(PG_FUNCTION_ARGS)
 Datum
 brin_minmax_multi_distance_date(PG_FUNCTION_ARGS)
 {
+	float8		delta = 0;
 	DateADT		dateVal1 = PG_GETARG_DATEADT(0);
 	DateADT		dateVal2 = PG_GETARG_DATEADT(1);
 
-	if (DATE_NOT_FINITE(dateVal1) || DATE_NOT_FINITE(dateVal2))
-		PG_RETURN_FLOAT8(0);
+	delta = (float8) dateVal2 - (float8) dateVal1;
 
-	PG_RETURN_FLOAT8(dateVal1 - dateVal2);
+	Assert(delta >= 0);
+
+	PG_RETURN_FLOAT8(delta);
 }
 
 /*
@@ -2135,10 +2143,7 @@ brin_minmax_multi_distance_timestamp(PG_FUNCTION_ARGS)
 	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
 	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
 
-	if (TIMESTAMP_NOT_FINITE(dt1) || TIMESTAMP_NOT_FINITE(dt2))
-		PG_RETURN_FLOAT8(0);
-
-	delta = dt2 - dt1;
+	delta = (float8) dt2 - (float8) dt1;
 
 	Assert(delta >= 0);
 
@@ -2155,34 +2160,9 @@ brin_minmax_multi_distance_interval(PG_FUNCTION_ARGS)
 
 	Interval   *ia = PG_GETARG_INTERVAL_P(0);
 	Interval   *ib = PG_GETARG_INTERVAL_P(1);
-	Interval   *result;
 
 	int64		dayfraction;
 	int64		days;
-
-	result = (Interval *) palloc(sizeof(Interval));
-
-	result->month = ib->month - ia->month;
-	/* overflow check copied from int4mi */
-	if (!SAMESIGN(ib->month, ia->month) &&
-		!SAMESIGN(result->month, ib->month))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
-
-	result->day = ib->day - ia->day;
-	if (!SAMESIGN(ib->day, ia->day) &&
-		!SAMESIGN(result->day, ib->day))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
-
-	result->time = ib->time - ia->time;
-	if (!SAMESIGN(ib->time, ia->time) &&
-		!SAMESIGN(result->time, ib->time))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
 
 	/*
 	 * Delta is (fractional) number of days between the intervals. Assume
@@ -2190,10 +2170,10 @@ brin_minmax_multi_distance_interval(PG_FUNCTION_ARGS)
 	 * don't need to be exact, in the worst case we'll build a bit less
 	 * efficient ranges. But we should not contradict interval_cmp.
 	 */
-	dayfraction = result->time % USECS_PER_DAY;
-	days = result->time / USECS_PER_DAY;
-	days += result->month * INT64CONST(30);
-	days += result->day;
+	dayfraction = (ib->time % USECS_PER_DAY) - (ia->time % USECS_PER_DAY);
+	days = (ib->time / USECS_PER_DAY) - (ia->time / USECS_PER_DAY);
+	days += (int64) ib->day - (int64) ia->day;
+	days += ((int64) ib->month - (int64) ia->month) * INT64CONST(30);
 
 	/* convert to double precision */
 	delta = (double) days + dayfraction / (double) USECS_PER_DAY;
@@ -2602,7 +2582,7 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 
 		for (keyno = 0; keyno < nkeys; keyno++)
 		{
-			Datum		matches;
+			bool		matches;
 			ScanKey		key = keys[keyno];
 
 			/* NULL keys are handled and filtered-out in bringetbitmap */
@@ -2618,7 +2598,7 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 					finfo = minmax_multi_get_strategy_procinfo(bdesc, attno, subtype,
 															   key->sk_strategy);
 					/* first value from the array */
-					matches = FunctionCall2Coll(finfo, colloid, minval, value);
+					matches = DatumGetBool(FunctionCall2Coll(finfo, colloid, minval, value));
 					break;
 
 				case BTEqualStrategyNumber:
@@ -2664,18 +2644,18 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 					finfo = minmax_multi_get_strategy_procinfo(bdesc, attno, subtype,
 															   key->sk_strategy);
 					/* last value from the array */
-					matches = FunctionCall2Coll(finfo, colloid, maxval, value);
+					matches = DatumGetBool(FunctionCall2Coll(finfo, colloid, maxval, value));
 					break;
 
 				default:
 					/* shouldn't happen */
 					elog(ERROR, "invalid strategy number %d", key->sk_strategy);
-					matches = 0;
+					matches = false;
 					break;
 			}
 
 			/* the range has to match all the scan keys */
-			matching &= DatumGetBool(matches);
+			matching &= matches;
 
 			/* once we find a non-matching key, we're done */
 			if (!matching)
@@ -2686,7 +2666,7 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 		 * have we found a range matching all scan keys? if yes, we're done
 		 */
 		if (matching)
-			PG_RETURN_DATUM(BoolGetDatum(true));
+			PG_RETURN_BOOL(true);
 	}
 
 	/*
@@ -2703,7 +2683,7 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 
 		for (keyno = 0; keyno < nkeys; keyno++)
 		{
-			Datum		matches;
+			bool		matches;
 			ScanKey		key = keys[keyno];
 
 			/* we've already dealt with NULL keys at the beginning */
@@ -2723,18 +2703,18 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 
 					finfo = minmax_multi_get_strategy_procinfo(bdesc, attno, subtype,
 															   key->sk_strategy);
-					matches = FunctionCall2Coll(finfo, colloid, val, value);
+					matches = DatumGetBool(FunctionCall2Coll(finfo, colloid, val, value));
 					break;
 
 				default:
 					/* shouldn't happen */
 					elog(ERROR, "invalid strategy number %d", key->sk_strategy);
-					matches = 0;
+					matches = false;
 					break;
 			}
 
 			/* the range has to match all the scan keys */
-			matching &= DatumGetBool(matches);
+			matching &= matches;
 
 			/* once we find a non-matching key, we're done */
 			if (!matching)
@@ -2743,10 +2723,10 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 
 		/* have we found a range matching all scan keys? if yes, we're done */
 		if (matching)
-			PG_RETURN_DATUM(BoolGetDatum(true));
+			PG_RETURN_BOOL(true);
 	}
 
-	PG_RETURN_DATUM(BoolGetDatum(false));
+	PG_RETURN_BOOL(false);
 }
 
 /*
@@ -2858,6 +2838,9 @@ brin_minmax_multi_union(PG_FUNCTION_ARGS)
 	neranges = reduce_expanded_ranges(eranges, neranges, distances,
 									  ranges_a->maxvalues,
 									  cmpFn, colloid);
+
+	/* Is the result of reducing expanded ranges correct? */
+	AssertCheckExpandedRanges(bdesc, colloid, attno, attr, eranges, neranges);
 
 	/* update the first range summary */
 	store_expanded_ranges(ranges_a, eranges, neranges);

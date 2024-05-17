@@ -190,6 +190,7 @@ xlog_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		case XLOG_FPI_FOR_HINT:
 		case XLOG_FPI:
 		case XLOG_OVERWRITE_CONTRECORD:
+		case XLOG_CHECKPOINT_REDO:
 			break;
 		default:
 			elog(ERROR, "unexpected RM_XLOG_ID record type: %u", info);
@@ -422,8 +423,7 @@ heap2_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	switch (info)
 	{
 		case XLOG_HEAP2_MULTI_INSERT:
-			if (!ctx->fast_forward &&
-				SnapBuildProcessChange(builder, xid, buf->origptr))
+			if (SnapBuildProcessChange(builder, xid, buf->origptr))
 				DecodeMultiInsert(ctx, buf);
 			break;
 		case XLOG_HEAP2_NEW_CID:
@@ -600,12 +600,8 @@ logicalmsg_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 	ReorderBufferProcessXid(ctx->reorder, XLogRecGetXid(r), buf->origptr);
 
-	/*
-	 * If we don't have snapshot or we are just fast-forwarding, there is no
-	 * point in decoding messages.
-	 */
-	if (SnapBuildCurrentState(builder) < SNAPBUILD_FULL_SNAPSHOT ||
-		ctx->fast_forward)
+	/* If we don't have snapshot, there is no point in decoding messages */
+	if (SnapBuildCurrentState(builder) < SNAPBUILD_FULL_SNAPSHOT)
 		return;
 
 	message = (xl_logical_message *) XLogRecGetData(r);
@@ -621,6 +617,26 @@ logicalmsg_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			 (SnapBuildCurrentState(builder) != SNAPBUILD_CONSISTENT ||
 			  SnapBuildXactNeedsSkip(builder, buf->origptr)))
 		return;
+
+	/*
+	 * We also skip decoding in fast_forward mode. This check must be last
+	 * because we don't want to set the processing_required flag unless we
+	 * have a decodable message.
+	 */
+	if (ctx->fast_forward)
+	{
+		/*
+		 * We need to set processing_required flag to notify the message's
+		 * existence to the caller. Usually, the flag is set when either the
+		 * COMMIT or ABORT records are decoded, but this must be turned on
+		 * here because the non-transactional logical message is decoded
+		 * without waiting for these records.
+		 */
+		if (!message->transactional)
+			ctx->processing_required = true;
+
+		return;
+	}
 
 	/*
 	 * If this is a non-transactional change, get the snapshot we're expected
@@ -1090,7 +1106,7 @@ DecodeTruncate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 }
 
 /*
- * Decode XLOG_HEAP2_MULTI_INSERT_insert record into multiple tuplebufs.
+ * Decode XLOG_HEAP2_MULTI_INSERT record into multiple tuplebufs.
  *
  * Currently MULTI_INSERT will always contain the full tuples.
  */
@@ -1286,7 +1302,21 @@ static bool
 DecodeTXNNeedSkip(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 				  Oid txn_dbid, RepOriginId origin_id)
 {
-	return (SnapBuildXactNeedsSkip(ctx->snapshot_builder, buf->origptr) ||
-			(txn_dbid != InvalidOid && txn_dbid != ctx->slot->data.database) ||
-			ctx->fast_forward || FilterByOrigin(ctx, origin_id));
+	if (SnapBuildXactNeedsSkip(ctx->snapshot_builder, buf->origptr) ||
+		(txn_dbid != InvalidOid && txn_dbid != ctx->slot->data.database) ||
+		FilterByOrigin(ctx, origin_id))
+		return true;
+
+	/*
+	 * We also skip decoding in fast_forward mode. In passing set the
+	 * processing_required flag to indicate that if it were not for
+	 * fast_forward mode, processing would have been required.
+	 */
+	if (ctx->fast_forward)
+	{
+		ctx->processing_required = true;
+		return true;
+	}
+
+	return false;
 }

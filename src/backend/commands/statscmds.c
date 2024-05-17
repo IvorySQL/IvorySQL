@@ -498,7 +498,7 @@ CreateStatistics(CreateStatsStmt *stmt)
 	values[Anum_pg_statistic_ext_stxrelid - 1] = ObjectIdGetDatum(relid);
 	values[Anum_pg_statistic_ext_stxname - 1] = NameGetDatum(&stxname);
 	values[Anum_pg_statistic_ext_stxnamespace - 1] = ObjectIdGetDatum(namespaceId);
-	values[Anum_pg_statistic_ext_stxstattarget - 1] = Int32GetDatum(-1);
+	values[Anum_pg_statistic_ext_stxstattarget - 1] = Int16GetDatum(-1);
 	values[Anum_pg_statistic_ext_stxowner - 1] = ObjectIdGetDatum(stxowner);
 	values[Anum_pg_statistic_ext_stxkeys - 1] = PointerGetDatum(stxkeys);
 	values[Anum_pg_statistic_ext_stxkind - 1] = PointerGetDatum(stxkind);
@@ -619,9 +619,9 @@ AlterStatistics(AlterStatsStmt *stmt)
 				 errmsg("statistics target %d is too low",
 						newtarget)));
 	}
-	else if (newtarget > 10000)
+	else if (newtarget > MAX_STATISTICS_TARGET)
 	{
-		newtarget = 10000;
+		newtarget = MAX_STATISTICS_TARGET;
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("lowering statistics target to %d",
@@ -676,7 +676,7 @@ AlterStatistics(AlterStatsStmt *stmt)
 
 	/* replace the stxstattarget column */
 	repl_repl[Anum_pg_statistic_ext_stxstattarget - 1] = true;
-	repl_val[Anum_pg_statistic_ext_stxstattarget - 1] = Int32GetDatum(newtarget);
+	repl_val[Anum_pg_statistic_ext_stxstattarget - 1] = Int16GetDatum(newtarget);
 
 	newtup = heap_modify_tuple(oldtup, RelationGetDescr(rel),
 							   repl_val, repl_null, repl_repl);
@@ -734,17 +734,10 @@ void
 RemoveStatisticsById(Oid statsOid)
 {
 	Relation	relation;
+	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_statistic_ext statext;
 	Oid			relid;
-
-	/*
-	 * First delete the pg_statistic_ext_data tuples holding the actual
-	 * statistical data. There might be data with/without inheritance, so
-	 * attempt deleting both.
-	 */
-	RemoveStatisticsDataById(statsOid, true);
-	RemoveStatisticsDataById(statsOid, false);
 
 	/*
 	 * Delete the pg_statistic_ext tuple.  Also send out a cache inval on the
@@ -760,11 +753,25 @@ RemoveStatisticsById(Oid statsOid)
 	statext = (Form_pg_statistic_ext) GETSTRUCT(tup);
 	relid = statext->stxrelid;
 
+	/*
+	 * Delete the pg_statistic_ext_data tuples holding the actual statistical
+	 * data. There might be data with/without inheritance, so attempt deleting
+	 * both. We lock the user table first, to prevent other processes (e.g.
+	 * DROP STATISTICS) from removing the row concurrently.
+	 */
+	rel = table_open(relid, ShareUpdateExclusiveLock);
+
+	RemoveStatisticsDataById(statsOid, true);
+	RemoveStatisticsDataById(statsOid, false);
+
 	CacheInvalidateRelcacheByRelid(relid);
 
 	CatalogTupleDelete(relation, &tup->t_self);
 
 	ReleaseSysCache(tup);
+
+	/* Keep lock until the end of the transaction. */
+	table_close(rel, NoLock);
 
 	table_close(relation, RowExclusiveLock);
 }

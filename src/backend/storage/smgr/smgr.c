@@ -54,11 +54,14 @@ typedef struct f_smgr
 	void		(*smgr_zeroextend) (SMgrRelation reln, ForkNumber forknum,
 									BlockNumber blocknum, int nblocks, bool skipFsync);
 	bool		(*smgr_prefetch) (SMgrRelation reln, ForkNumber forknum,
-								  BlockNumber blocknum);
-	void		(*smgr_read) (SMgrRelation reln, ForkNumber forknum,
-							  BlockNumber blocknum, void *buffer);
-	void		(*smgr_write) (SMgrRelation reln, ForkNumber forknum,
-							   BlockNumber blocknum, const void *buffer, bool skipFsync);
+								  BlockNumber blocknum, int nblocks);
+	void		(*smgr_readv) (SMgrRelation reln, ForkNumber forknum,
+							   BlockNumber blocknum,
+							   void **buffers, BlockNumber nblocks);
+	void		(*smgr_writev) (SMgrRelation reln, ForkNumber forknum,
+								BlockNumber blocknum,
+								const void **buffers, BlockNumber nblocks,
+								bool skipFsync);
 	void		(*smgr_writeback) (SMgrRelation reln, ForkNumber forknum,
 								   BlockNumber blocknum, BlockNumber nblocks);
 	BlockNumber (*smgr_nblocks) (SMgrRelation reln, ForkNumber forknum);
@@ -80,8 +83,8 @@ static const f_smgr smgrsw[] = {
 		.smgr_extend = mdextend,
 		.smgr_zeroextend = mdzeroextend,
 		.smgr_prefetch = mdprefetch,
-		.smgr_read = mdread,
-		.smgr_write = mdwrite,
+		.smgr_readv = mdreadv,
+		.smgr_writev = mdwritev,
 		.smgr_writeback = mdwriteback,
 		.smgr_nblocks = mdnblocks,
 		.smgr_truncate = mdtruncate,
@@ -152,6 +155,8 @@ smgropen(RelFileLocator rlocator, BackendId backend)
 	RelFileLocatorBackend brlocator;
 	SMgrRelation reln;
 	bool		found;
+
+	Assert(RelFileNumberIsValid(rlocator.relNumber));
 
 	if (SMgrRelationHash == NULL)
 	{
@@ -296,6 +301,7 @@ smgrrelease(SMgrRelation reln)
 		smgrsw[reln->smgr_which].smgr_close(reln, forknum);
 		reln->smgr_cached_nblocks[forknum] = InvalidBlockNumber;
 	}
+	reln->smgr_targblock = InvalidBlockNumber;
 }
 
 /*
@@ -544,28 +550,30 @@ smgrzeroextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
  * record).
  */
 bool
-smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
+smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
+			 int nblocks)
 {
-	return smgrsw[reln->smgr_which].smgr_prefetch(reln, forknum, blocknum);
+	return smgrsw[reln->smgr_which].smgr_prefetch(reln, forknum, blocknum, nblocks);
 }
 
 /*
- * smgrread() -- read a particular block from a relation into the supplied
- *				 buffer.
+ * smgrreadv() -- read a particular block range from a relation into the
+ *				 supplied buffers.
  *
  * This routine is called from the buffer manager in order to
  * instantiate pages in the shared buffer cache.  All storage managers
  * return pages in the format that POSTGRES expects.
  */
 void
-smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		 void *buffer)
+smgrreadv(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
+		  void **buffers, BlockNumber nblocks)
 {
-	smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
+	smgrsw[reln->smgr_which].smgr_readv(reln, forknum, blocknum, buffers,
+										nblocks);
 }
 
 /*
- * smgrwrite() -- Write the supplied buffer out.
+ * smgrwritev() -- Write the supplied buffers out.
  *
  * This is to be used only for updating already-existing blocks of a
  * relation (ie, those before the current EOF).  To extend a relation,
@@ -580,13 +588,12 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
  * do not require fsync.
  */
 void
-smgrwrite(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
-		  const void *buffer, bool skipFsync)
+smgrwritev(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
+		   const void **buffers, BlockNumber nblocks, bool skipFsync)
 {
-	smgrsw[reln->smgr_which].smgr_write(reln, forknum, blocknum,
-										buffer, skipFsync);
+	smgrsw[reln->smgr_which].smgr_writev(reln, forknum, blocknum,
+										 buffers, nblocks, skipFsync);
 }
-
 
 /*
  * smgrwriteback() -- Trigger kernel writeback for the supplied range of

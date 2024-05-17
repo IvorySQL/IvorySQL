@@ -779,9 +779,6 @@ makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid, List *expressions,
 	n->ii_ExclusionProcs = NULL;
 	n->ii_ExclusionStrats = NULL;
 
-	/* opclass options */
-	n->ii_OpclassOptions = NULL;
-
 	/* speculative inserts */
 	n->ii_UniqueOps = NULL;
 	n->ii_UniqueProcs = NULL;
@@ -850,36 +847,16 @@ makeJsonFormat(JsonFormatType type, JsonEncoding encoding, int location)
  *	  creates a JsonValueExpr node
  */
 JsonValueExpr *
-makeJsonValueExpr(Expr *expr, JsonFormat *format)
+makeJsonValueExpr(Expr *raw_expr, Expr *formatted_expr,
+				  JsonFormat *format)
 {
 	JsonValueExpr *jve = makeNode(JsonValueExpr);
 
-	jve->raw_expr = expr;
-	jve->formatted_expr = NULL;
+	jve->raw_expr = raw_expr;
+	jve->formatted_expr = formatted_expr;
 	jve->format = format;
 
 	return jve;
-}
-
-/*
- * makeJsonEncoding -
- *	  converts JSON encoding name to enum JsonEncoding
- */
-JsonEncoding
-makeJsonEncoding(char *name)
-{
-	if (!pg_strcasecmp(name, "utf8"))
-		return JS_ENC_UTF8;
-	if (!pg_strcasecmp(name, "utf16"))
-		return JS_ENC_UTF16;
-	if (!pg_strcasecmp(name, "utf32"))
-		return JS_ENC_UTF32;
-
-	ereport(ERROR,
-			errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("unrecognized JSON encoding: %s", name));
-
-	return JS_ENC_DEFAULT;
 }
 
 /*

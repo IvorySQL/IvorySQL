@@ -54,10 +54,7 @@ extern void tuplestore_puttupleslot(Tuplestorestate *state,
 									TupleTableSlot *slot);
 extern void tuplestore_puttuple(Tuplestorestate *state, HeapTuple tuple);
 extern void tuplestore_putvalues(Tuplestorestate *state, TupleDesc tdesc,
-								 Datum *values, bool *isnull);
-
-/* Backwards compatibility macro */
-#define tuplestore_donestoring(state)	((void) 0)
+								 const Datum *values, const bool *isnull);
 
 extern int	tuplestore_alloc_read_pointer(Tuplestorestate *state, int eflags);
 

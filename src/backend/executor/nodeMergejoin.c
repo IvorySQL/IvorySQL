@@ -145,7 +145,7 @@ typedef enum
 {
 	MJEVAL_MATCHABLE,			/* normal, potentially matchable tuple */
 	MJEVAL_NONMATCHABLE,		/* tuple cannot join because it has a null */
-	MJEVAL_ENDOFJOIN			/* end of input (physical or effective) */
+	MJEVAL_ENDOFJOIN,			/* end of input (physical or effective) */
 } MJEvalResult;
 
 
@@ -1642,17 +1642,6 @@ ExecEndMergeJoin(MergeJoinState *node)
 {
 	MJ1_printf("ExecEndMergeJoin: %s\n",
 			   "ending node processing");
-
-	/*
-	 * Free the exprcontext
-	 */
-	ExecFreeExprContext(&node->js.ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	ExecClearTuple(node->js.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->mj_MarkedTupleSlot);
 
 	/*
 	 * shut down the subplans

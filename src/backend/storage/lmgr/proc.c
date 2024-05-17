@@ -291,7 +291,7 @@ InitProcGlobal(void)
 }
 
 /*
- * InitProcess -- initialize a per-process data structure for this backend
+ * InitProcess -- initialize a per-process PGPROC entry for this backend
  */
 void
 InitProcess(void)
@@ -461,6 +461,16 @@ InitProcess(void)
 	 */
 	InitLWLockAccess();
 	InitDeadLockChecking();
+
+#ifdef EXEC_BACKEND
+
+	/*
+	 * Initialize backend-local pointers to all the shared data structures.
+	 * (We couldn't do this until now because it needs LWLocks.)
+	 */
+	if (IsUnderPostmaster)
+		AttachSharedMemoryStructs();
+#endif
 }
 
 /*
@@ -468,7 +478,7 @@ InitProcess(void)
  *
  * This is separate from InitProcess because we can't acquire LWLocks until
  * we've created a PGPROC, but in the EXEC_BACKEND case ProcArrayAdd won't
- * work until after we've done CreateSharedMemoryAndSemaphores.
+ * work until after we've done AttachSharedMemoryStructs.
  */
 void
 InitProcessPhase2(void)
@@ -487,7 +497,7 @@ InitProcessPhase2(void)
 }
 
 /*
- * InitAuxiliaryProcess -- create a per-auxiliary-process data structure
+ * InitAuxiliaryProcess -- create a PGPROC entry for an auxiliary process
  *
  * This is called by bgwriter and similar processes so that they will have a
  * MyProc value that's real enough to let them wait for LWLocks.  The PGPROC
@@ -614,6 +624,23 @@ InitAuxiliaryProcess(void)
 	 * Arrange to clean up at process exit.
 	 */
 	on_shmem_exit(AuxiliaryProcKill, Int32GetDatum(proctype));
+
+	/*
+	 * Now that we have a PGPROC, we could try to acquire lightweight locks.
+	 * Initialize local state needed for them.  (Heavyweight locks cannot be
+	 * acquired in aux processes.)
+	 */
+	InitLWLockAccess();
+
+#ifdef EXEC_BACKEND
+
+	/*
+	 * Initialize backend-local pointers to all the shared data structures.
+	 * (We couldn't do this until now because it needs LWLocks.)
+	 */
+	if (IsUnderPostmaster)
+		AttachSharedMemoryStructs();
+#endif
 }
 
 /*
@@ -806,6 +833,10 @@ ProcKill(int code, Datum arg)
 
 	Assert(MyProc != NULL);
 
+	/* not safe if forked by system(), etc. */
+	if (MyProc->pid != (int) getpid())
+		elog(PANIC, "ProcKill() called in child process");
+
 	/* Make sure we're out of the sync rep lists */
 	SyncRepCleanupAtProcExit();
 
@@ -926,6 +957,10 @@ AuxiliaryProcKill(int code, Datum arg)
 
 	Assert(proctype >= 0 && proctype < NUM_AUXILIARY_PROCS);
 
+	/* not safe if forked by system(), etc. */
+	if (MyProc->pid != (int) getpid())
+		elog(PANIC, "AuxiliaryProcKill() called in child process");
+
 	auxproc = &AuxiliaryProcs[proctype];
 
 	Assert(MyProc == auxproc);
@@ -1021,12 +1056,12 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	/*
 	 * If group locking is in use, locks held by members of my locking group
 	 * need to be included in myHeldLocks.  This is not required for relation
-	 * extension or page locks which conflict among group members. However,
-	 * including them in myHeldLocks will give group members the priority to
-	 * get those locks as compared to other backends which are also trying to
-	 * acquire those locks.  OTOH, we can avoid giving priority to group
-	 * members for that kind of locks, but there doesn't appear to be a clear
-	 * advantage of the same.
+	 * extension lock which conflict among group members. However, including
+	 * them in myHeldLocks will give group members the priority to get those
+	 * locks as compared to other backends which are also trying to acquire
+	 * those locks.  OTOH, we can avoid giving priority to group members for
+	 * that kind of locks, but there doesn't appear to be a clear advantage of
+	 * the same.
 	 */
 	if (leader != NULL)
 	{

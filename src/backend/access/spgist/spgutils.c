@@ -60,6 +60,7 @@ spghandler(PG_FUNCTION_ARGS)
 	amroutine->amclusterable = false;
 	amroutine->ampredlocks = false;
 	amroutine->amcanparallel = false;
+	amroutine->amcanbuildparallel = false;
 	amroutine->amcaninclude = true;
 	amroutine->amusemaintenanceworkmem = false;
 	amroutine->amsummarizing = false;
@@ -70,6 +71,7 @@ spghandler(PG_FUNCTION_ARGS)
 	amroutine->ambuild = spgbuild;
 	amroutine->ambuildempty = spgbuildempty;
 	amroutine->aminsert = spginsert;
+	amroutine->aminsertcleanup = NULL;
 	amroutine->ambulkdelete = spgbulkdelete;
 	amroutine->amvacuumcleanup = spgvacuumcleanup;
 	amroutine->amcanreturn = spgcanreturn;
@@ -186,8 +188,6 @@ spgGetCache(Relation index)
 		Oid			atttype;
 		spgConfigIn in;
 		FmgrInfo   *procinfo;
-		Buffer		metabuffer;
-		SpGistMetaPageData *metadata;
 
 		cache = MemoryContextAllocZero(index->rd_indexcxt,
 									   sizeof(SpGistCache));
@@ -255,19 +255,28 @@ spgGetCache(Relation index)
 		fillTypeDesc(&cache->attPrefixType, cache->config.prefixType);
 		fillTypeDesc(&cache->attLabelType, cache->config.labelType);
 
-		/* Last, get the lastUsedPages data from the metapage */
-		metabuffer = ReadBuffer(index, SPGIST_METAPAGE_BLKNO);
-		LockBuffer(metabuffer, BUFFER_LOCK_SHARE);
+		/*
+		 * Finally, if it's a real index (not a partitioned one), get the
+		 * lastUsedPages data from the metapage
+		 */
+		if (index->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
+		{
+			Buffer		metabuffer;
+			SpGistMetaPageData *metadata;
 
-		metadata = SpGistPageGetMeta(BufferGetPage(metabuffer));
+			metabuffer = ReadBuffer(index, SPGIST_METAPAGE_BLKNO);
+			LockBuffer(metabuffer, BUFFER_LOCK_SHARE);
 
-		if (metadata->magicNumber != SPGIST_MAGIC_NUMBER)
-			elog(ERROR, "index \"%s\" is not an SP-GiST index",
-				 RelationGetRelationName(index));
+			metadata = SpGistPageGetMeta(BufferGetPage(metabuffer));
 
-		cache->lastUsedPages = metadata->lastUsedPages;
+			if (metadata->magicNumber != SPGIST_MAGIC_NUMBER)
+				elog(ERROR, "index \"%s\" is not an SP-GiST index",
+					 RelationGetRelationName(index));
 
-		UnlockReleaseBuffer(metabuffer);
+			cache->lastUsedPages = metadata->lastUsedPages;
+
+			UnlockReleaseBuffer(metabuffer);
+		}
 
 		index->rd_amcache = (void *) cache;
 	}
@@ -405,7 +414,7 @@ SpGistNewBuffer(Relation index)
 		ReleaseBuffer(buffer);
 	}
 
-	buffer = ExtendBufferedRel(EB_REL(index), MAIN_FORKNUM, NULL,
+	buffer = ExtendBufferedRel(BMR_REL(index), MAIN_FORKNUM, NULL,
 							   EB_LOCK_FIRST);
 
 	return buffer;
@@ -788,7 +797,7 @@ memcpyInnerDatum(void *target, SpGistTypeDesc *att, Datum datum)
  */
 Size
 SpGistGetLeafTupleSize(TupleDesc tupleDescriptor,
-					   Datum *datums, bool *isnulls)
+					   const Datum *datums, const bool *isnulls)
 {
 	Size		size;
 	Size		data_size;
@@ -841,7 +850,7 @@ SpGistGetLeafTupleSize(TupleDesc tupleDescriptor,
  */
 SpGistLeafTuple
 spgFormLeafTuple(SpGistState *state, ItemPointer heapPtr,
-				 Datum *datums, bool *isnulls)
+				 const Datum *datums, const bool *isnulls)
 {
 	SpGistLeafTuple tup;
 	TupleDesc	tupleDescriptor = state->leafTupDesc;

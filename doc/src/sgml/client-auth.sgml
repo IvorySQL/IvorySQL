@@ -74,6 +74,35 @@
   </para>
 
   <para>
+   The <filename>pg_hba.conf</filename> file is read on start-up and when
+   the main server process receives a
+   <systemitem>SIGHUP</systemitem><indexterm><primary>SIGHUP</primary></indexterm>
+   signal. If you edit the file on an
+   active system, you will need to signal the postmaster
+   (using <literal>pg_ctl reload</literal>, calling the SQL function
+   <function>pg_reload_conf()</function>, or using <literal>kill
+   -HUP</literal>) to make it re-read the file.
+  </para>
+
+  <note>
+   <para>
+    The preceding statement is not true on Microsoft Windows: there, any
+    changes in the <filename>pg_hba.conf</filename> file are immediately
+    applied by subsequent new connections.
+   </para>
+  </note>
+
+  <para>
+   The system view
+   <link linkend="view-pg-hba-file-rules"><structname>pg_hba_file_rules</structname></link>
+   can be helpful for pre-testing changes to the <filename>pg_hba.conf</filename>
+   file, or for diagnosing problems if loading of the file did not have the
+   desired effects.  Rows in the view with
+   non-null <structfield>error</structfield> fields indicate problems in the
+   corresponding lines of the file.
+  </para>
+
+  <para>
    The general format of the <filename>pg_hba.conf</filename> file is
    a set of records, one per line. Blank lines are ignored, as is any
    text after the <literal>#</literal> comment character.
@@ -733,35 +762,6 @@ openssl x509 -in myclient.crt -noout --subject -nameopt RFC2253 | sed "s/^subjec
    range of allowed client IP addresses.
   </para>
 
-  <para>
-   The <filename>pg_hba.conf</filename> file is read on start-up and when
-   the main server process receives a
-   <systemitem>SIGHUP</systemitem><indexterm><primary>SIGHUP</primary></indexterm>
-   signal. If you edit the file on an
-   active system, you will need to signal the postmaster
-   (using <literal>pg_ctl reload</literal>, calling the SQL function
-   <function>pg_reload_conf()</function>, or using <literal>kill
-   -HUP</literal>) to make it re-read the file.
-  </para>
-
-  <note>
-   <para>
-    The preceding statement is not true on Microsoft Windows: there, any
-    changes in the <filename>pg_hba.conf</filename> file are immediately
-    applied by subsequent new connections.
-   </para>
-  </note>
-
-  <para>
-   The system view
-   <link linkend="view-pg-hba-file-rules"><structname>pg_hba_file_rules</structname></link>
-   can be helpful for pre-testing changes to the <filename>pg_hba.conf</filename>
-   file, or for diagnosing problems if loading of the file did not have the
-   desired effects.  Rows in the view with
-   non-null <structfield>error</structfield> fields indicate problems in the
-   corresponding lines of the file.
-  </para>
-
   <tip>
    <para>
     To connect to a particular database, a user must not only pass the
@@ -933,6 +933,28 @@ local   db1,db2,@demodbs  all                                   md5
    As for <filename>pg_hba.conf</filename>, the lines in this file can
    be include directives, following the same rules.
   </para>
+
+  <para>
+   The <filename>pg_ident.conf</filename> file is read on start-up and
+   when the main server process receives a
+   <systemitem>SIGHUP</systemitem><indexterm><primary>SIGHUP</primary></indexterm>
+   signal. If you edit the file on an
+   active system, you will need to signal the postmaster
+   (using <literal>pg_ctl reload</literal>, calling the SQL function
+   <function>pg_reload_conf()</function>, or using <literal>kill
+   -HUP</literal>) to make it re-read the file.
+  </para>
+
+  <para>
+   The system view
+   <link linkend="view-pg-ident-file-mappings"><structname>pg_ident_file_mappings</structname></link>
+   can be helpful for pre-testing changes to the
+   <filename>pg_ident.conf</filename> file, or for diagnosing problems if
+   loading of the file did not have the desired effects.  Rows in the view with
+   non-null <structfield>error</structfield> fields indicate problems in the
+   corresponding lines of the file.
+  </para>
+
   <para>
    There is no restriction regarding how many database users a given
    operating system user can correspond to, nor vice versa.  Thus, entries
@@ -984,7 +1006,7 @@ mymap   /^(.*)@otherdomain\.com$   guest
    a slash (<literal>/</literal>), the remainder of the field is treated
    as a regular expression (see <xref linkend="posix-syntax-details"/>
    for details of <productname>PostgreSQL</productname>'s regular
-   expression syntax. It is not possible to use <literal>\1</literal>
+   expression syntax). It is not possible to use <literal>\1</literal>
    to use a capture from regular expression on
    <replaceable>system-username</replaceable> for a regular expression
    on <replaceable>database-username</replaceable>.
@@ -998,27 +1020,6 @@ mymap   /^(.*)@otherdomain\.com$   guest
     system user name.
    </para>
   </tip>
-
-  <para>
-   The <filename>pg_ident.conf</filename> file is read on start-up and
-   when the main server process receives a
-   <systemitem>SIGHUP</systemitem><indexterm><primary>SIGHUP</primary></indexterm>
-   signal. If you edit the file on an
-   active system, you will need to signal the postmaster
-   (using <literal>pg_ctl reload</literal>, calling the SQL function
-   <function>pg_reload_conf()</function>, or using <literal>kill
-   -HUP</literal>) to make it re-read the file.
-  </para>
-
-  <para>
-   The system view
-   <link linkend="view-pg-ident-file-mappings"><structname>pg_ident_file_mappings</structname></link>
-   can be helpful for pre-testing changes to the
-   <filename>pg_ident.conf</filename> file, or for diagnosing problems if
-   loading of the file did not have the desired effects.  Rows in the view with
-   non-null <structfield>error</structfield> fields indicate problems in the
-   corresponding lines of the file.
-  </para>
 
   <para>
    A <filename>pg_ident.conf</filename> file that could be used in
@@ -1251,11 +1252,6 @@ omicron         bryanh                  guest1
        manages to steal the password hash from the server.  Also, the MD5 hash
        algorithm is nowadays no longer considered secure against determined
        attacks.
-      </para>
-
-      <para>
-       The <literal>md5</literal> method cannot be used with
-       the <xref linkend="guc-db-user-namespace"/> feature.
       </para>
 
       <para>
@@ -1510,10 +1506,12 @@ omicron         bryanh                  guest1
     <literal>negotiate</literal> mode, which will use
     <productname>Kerberos</productname> when possible and automatically
     fall back to <productname>NTLM</productname> in other cases.
-    <productname>SSPI</productname> authentication only works when both
-    server and client are running <productname>Windows</productname>,
-    or, on non-Windows platforms, when <productname>GSSAPI</productname>
-    is available.
+    <productname>SSPI</productname> and <productname>GSSAPI</productname>
+    interoperate as clients and servers, e.g., an
+    <productname>SSPI</productname> client can authenticate to an
+    <productname>GSSAPI</productname> server.  It is recommended to use
+    <productname>SSPI</productname> on Windows clients and servers and
+    <productname>GSSAPI</productname> on non-Windows platforms.
    </para>
 
    <para>
@@ -1775,13 +1773,13 @@ omicron         bryanh                  guest1
     do an exact match of the attribute specified in
     <replaceable>ldapsearchattribute</replaceable>.
     Once the user has been found in
-    this search, the server disconnects and re-binds to the directory as
+    this search, the server re-binds to the directory as
     this user, using the password specified by the client, to verify that the
     login is correct. This mode is the same as that used by LDAP authentication
     schemes in other software, such as Apache <literal>mod_authnz_ldap</literal> and <literal>pam_ldap</literal>.
     This method allows for significantly more flexibility
     in where the user objects are located in the directory, but will cause
-    two separate connections to the LDAP server to be made.
+    two additional requests to the LDAP server to be made.
    </para>
 
    <para>
@@ -2008,7 +2006,7 @@ host ... ldap ldapserver=ldap.example.net ldapbasedn="dc=example, dc=net" ldapse
     the LDAP server, perform a search for <literal>(uid=someuser)</literal>
     under the specified base DN.  If an entry is found, it will then attempt to
     bind using that found information and the password supplied by the client.
-    If that second connection succeeds, the database access is granted.
+    If that second bind succeeds, the database access is granted.
    </para>
 
    <para>
@@ -2170,7 +2168,8 @@ host ... radius radiusservers="server1,server2" radiussecrets="""secret one"",""
 
    <para>
     This authentication method uses SSL client certificates to perform
-    authentication. It is therefore only available for SSL connections.
+    authentication. It is therefore only available for SSL connections;
+    see <xref linkend="ssl-openssl-config"/> for SSL configuration instructions.
     When using this authentication method, the server will require that
     the client provide a valid, trusted certificate.  No password prompt
     will be sent to the client.  The <literal>cn</literal> (Common Name)

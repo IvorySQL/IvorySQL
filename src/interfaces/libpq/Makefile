@@ -27,9 +27,6 @@ ifneq ($(PORTNAME), win32)
 override CFLAGS += $(PTHREAD_CFLAGS)
 endif
 
-# The MSVC build system scrapes OBJS from this file.  If you change any of
-# the conditional additions of files to OBJS, update Mkvcbuild.pm to match.
-
 OBJS = \
 	$(WIN32RES) \
 	fe-auth-scram.o \
@@ -69,11 +66,8 @@ endif
 
 ifeq ($(PORTNAME), win32)
 OBJS += \
+	pthread-win32.o \
 	win32.o
-
-ifeq ($(enable_thread_safety), yes)
-OBJS += pthread-win32.o
-endif
 endif
 
 
@@ -171,6 +165,3 @@ clean distclean: clean-lib
 	rm -f $(OBJS) pthread.h libpq-refs-stamp
 # Might be left over from a Win32 client-only build
 	rm -f pg_config_paths.h
-
-maintainer-clean: distclean
-	$(MAKE) -C test $@

@@ -35,9 +35,6 @@ OBJS = \
 	streamutil.o \
 	walmethods.o
 
-# If you add or remove files here, also update Mkvcbuild.pm, which only knows
-# about OBJS, not BBOBJS, and thus has to be manually updated to stay in sync
-# with this list.
 BBOBJS = \
 	pg_basebackup.o \
 	bbstreamer_file.o \
@@ -71,7 +68,7 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_receivewal$(X)'
 	rm -f '$(DESTDIR)$(bindir)/pg_recvlogical$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_basebackup$(X) pg_receivewal$(X) pg_recvlogical$(X) \
 		$(BBOBJS) pg_receivewal.o pg_recvlogical.o \
 		$(OBJS)

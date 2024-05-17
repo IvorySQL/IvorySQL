@@ -82,7 +82,7 @@ typedef enum
 	DO_PUBLICATION,
 	DO_PUBLICATION_REL,
 	DO_PUBLICATION_TABLE_IN_SCHEMA,
-	DO_SUBSCRIPTION
+	DO_SUBSCRIPTION,
 } DumpableObjectType;
 
 /*
@@ -345,8 +345,13 @@ typedef struct _tableInfo
 	char	   *attcompression; /* per-attribute compression method */
 	char	  **attfdwoptions;	/* per-attribute fdw options */
 	char	  **attmissingval;	/* per attribute missing value */
-	bool	   *notnull;		/* NOT NULL constraints on attributes */
-	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
+	char	  **notnull_constrs;	/* NOT NULL constraint names. If null,
+									 * there isn't one on this column. If
+									 * empty string, unnamed constraint
+									 * (pre-v17) */
+	bool	   *notnull_noinh;	/* NOT NULL is NO INHERIT */
+	bool	   *notnull_throwaway;	/* drop the NOT NULL constraint later */
+	bool	   *notnull_inh;	/* true if NOT NULL has no local definition */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
 	bool		needs_override; /* has GENERATED ALWAYS AS IDENTITY */
@@ -418,7 +423,8 @@ typedef struct _indexAttachInfo
 typedef struct _statsExtInfo
 {
 	DumpableObject dobj;
-	const char *rolname;
+	const char *rolname;		/* owner */
+	TableInfo  *stattable;		/* link to table the stats are for */
 	int			stattarget;		/* statistics target */
 } StatsExtInfo;
 
@@ -655,16 +661,17 @@ typedef struct _SubscriptionInfo
 {
 	DumpableObject dobj;
 	const char *rolname;
-	char	   *subconninfo;
-	char	   *subslotname;
 	char	   *subbinary;
 	char	   *substream;
 	char	   *subtwophasestate;
 	char	   *subdisableonerr;
-	char	   *suborigin;
+	char	   *subpasswordrequired;
+	char	   *subrunasowner;
+	char	   *subconninfo;
+	char	   *subslotname;
 	char	   *subsynccommit;
 	char	   *subpublications;
-	char	   *subpasswordrequired;
+	char	   *suborigin;
 } SubscriptionInfo;
 
 /*

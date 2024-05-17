@@ -47,7 +47,7 @@ infobits_desc(StringInfo buf, uint8 infobits, const char *keyname)
 		buf->data[buf->len] = '\0';
 	}
 
-	appendStringInfoString(buf, "]");
+	appendStringInfoChar(buf, ']');
 }
 
 static void
@@ -68,7 +68,7 @@ truncate_flags_desc(StringInfo buf, uint8 flags)
 		buf->data[buf->len] = '\0';
 	}
 
-	appendStringInfoString(buf, "]");
+	appendStringInfoChar(buf, ']');
 }
 
 static void
@@ -88,7 +88,7 @@ plan_elem_desc(StringInfo buf, void *plan, void *data)
 
 	*offsets += new_plan->ntuples;
 
-	appendStringInfo(buf, " }");
+	appendStringInfoString(buf, " }");
 }
 
 void
@@ -179,10 +179,11 @@ heap2_desc(StringInfo buf, XLogReaderState *record)
 	{
 		xl_heap_prune *xlrec = (xl_heap_prune *) rec;
 
-		appendStringInfo(buf, "snapshotConflictHorizon: %u, nredirected: %u, ndead: %u",
+		appendStringInfo(buf, "snapshotConflictHorizon: %u, nredirected: %u, ndead: %u, isCatalogRel: %c",
 						 xlrec->snapshotConflictHorizon,
 						 xlrec->nredirected,
-						 xlrec->ndead);
+						 xlrec->ndead,
+						 xlrec->isCatalogRel ? 'T' : 'F');
 
 		if (XLogRecHasBlockData(record, 0))
 		{
@@ -238,8 +239,9 @@ heap2_desc(StringInfo buf, XLogReaderState *record)
 	{
 		xl_heap_freeze_page *xlrec = (xl_heap_freeze_page *) rec;
 
-		appendStringInfo(buf, "snapshotConflictHorizon: %u, nplans: %u",
-						 xlrec->snapshotConflictHorizon, xlrec->nplans);
+		appendStringInfo(buf, "snapshotConflictHorizon: %u, nplans: %u, isCatalogRel: %c",
+						 xlrec->snapshotConflictHorizon, xlrec->nplans,
+						 xlrec->isCatalogRel ? 'T' : 'F');
 
 		if (XLogRecHasBlockData(record, 0))
 		{

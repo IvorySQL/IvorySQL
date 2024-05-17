@@ -243,7 +243,28 @@ CREATE VIEW pg_stats WITH (security_barrier) AS
             WHEN stakind3 = 5 THEN stanumbers3
             WHEN stakind4 = 5 THEN stanumbers4
             WHEN stakind5 = 5 THEN stanumbers5
-        END AS elem_count_histogram
+        END AS elem_count_histogram,
+        CASE
+            WHEN stakind1 = 6 THEN stavalues1
+            WHEN stakind2 = 6 THEN stavalues2
+            WHEN stakind3 = 6 THEN stavalues3
+            WHEN stakind4 = 6 THEN stavalues4
+            WHEN stakind5 = 6 THEN stavalues5
+        END AS range_length_histogram,
+        CASE
+            WHEN stakind1 = 6 THEN stanumbers1[1]
+            WHEN stakind2 = 6 THEN stanumbers2[1]
+            WHEN stakind3 = 6 THEN stanumbers3[1]
+            WHEN stakind4 = 6 THEN stanumbers4[1]
+            WHEN stakind5 = 6 THEN stanumbers5[1]
+        END AS range_empty_frac,
+        CASE
+            WHEN stakind1 = 7 THEN stavalues1
+            WHEN stakind2 = 7 THEN stavalues2
+            WHEN stakind3 = 7 THEN stavalues3
+            WHEN stakind4 = 7 THEN stavalues4
+            WHEN stakind5 = 7 THEN stavalues5
+            END AS range_bounds_histogram
     FROM pg_statistic s JOIN pg_class c ON (c.oid = s.starelid)
          JOIN pg_attribute a ON (c.oid = attrelid AND attnum = s.staattnum)
          LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
@@ -949,6 +970,7 @@ CREATE VIEW pg_stat_subscription AS
     SELECT
             su.oid AS subid,
             su.subname,
+            st.worker_type,
             st.pid,
             st.leader_pid,
             st.relid,
@@ -1110,17 +1132,22 @@ CREATE VIEW pg_stat_archiver AS
 
 CREATE VIEW pg_stat_bgwriter AS
     SELECT
-        pg_stat_get_bgwriter_timed_checkpoints() AS checkpoints_timed,
-        pg_stat_get_bgwriter_requested_checkpoints() AS checkpoints_req,
-        pg_stat_get_checkpoint_write_time() AS checkpoint_write_time,
-        pg_stat_get_checkpoint_sync_time() AS checkpoint_sync_time,
-        pg_stat_get_bgwriter_buf_written_checkpoints() AS buffers_checkpoint,
         pg_stat_get_bgwriter_buf_written_clean() AS buffers_clean,
         pg_stat_get_bgwriter_maxwritten_clean() AS maxwritten_clean,
-        pg_stat_get_buf_written_backend() AS buffers_backend,
-        pg_stat_get_buf_fsync_backend() AS buffers_backend_fsync,
         pg_stat_get_buf_alloc() AS buffers_alloc,
         pg_stat_get_bgwriter_stat_reset_time() AS stats_reset;
+
+CREATE VIEW pg_stat_checkpointer AS
+    SELECT
+        pg_stat_get_checkpointer_num_timed() AS num_timed,
+        pg_stat_get_checkpointer_num_requested() AS num_requested,
+        pg_stat_get_checkpointer_restartpoints_timed() AS restartpoints_timed,
+        pg_stat_get_checkpointer_restartpoints_requested() AS restartpoints_req,
+        pg_stat_get_checkpointer_restartpoints_performed() AS restartpoints_done,
+        pg_stat_get_checkpointer_write_time() AS write_time,
+        pg_stat_get_checkpointer_sync_time() AS sync_time,
+        pg_stat_get_checkpointer_buffers_written() AS buffers_written,
+        pg_stat_get_checkpointer_stat_reset_time() AS stats_reset;
 
 CREATE VIEW pg_stat_io AS
 SELECT
@@ -1192,7 +1219,8 @@ CREATE VIEW pg_stat_progress_vacuum AS
                       END AS phase,
         S.param2 AS heap_blks_total, S.param3 AS heap_blks_scanned,
         S.param4 AS heap_blks_vacuumed, S.param5 AS index_vacuum_count,
-        S.param6 AS max_dead_tuples, S.param7 AS num_dead_tuples
+        S.param6 AS max_dead_tuples, S.param7 AS num_dead_tuples,
+        S.param8 AS indexes_total, S.param9 AS indexes_processed
     FROM pg_stat_get_progress_info('VACUUM') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
 
@@ -1341,3 +1369,6 @@ CREATE VIEW pg_stat_subscription_stats AS
         ss.stats_reset
     FROM pg_subscription as s,
          pg_stat_get_subscription_stats(s.oid) as ss;
+
+CREATE VIEW pg_wait_events AS
+    SELECT * FROM pg_get_wait_events();

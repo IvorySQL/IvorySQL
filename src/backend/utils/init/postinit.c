@@ -681,8 +681,10 @@ BaseInit(void)
  * Parameters:
  *	in_dbname, dboid: specify database to connect to, as described below
  *	username, useroid: specify role to connect as, as described below
- *	load_session_libraries: TRUE to honor [session|local]_preload_libraries
- *	override_allow_connections: TRUE to connect despite !datallowconn
+ *	flags:
+ *	  - INIT_PG_LOAD_SESSION_LIBS to honor [session|local]_preload_libraries.
+ *	  - INIT_PG_OVERRIDE_ALLOW_CONNS to connect despite !datallowconn.
+ *	  - INIT_PG_OVERRIDE_ROLE_LOGIN to connect despite !rolcanlogin.
  *	out_dbname: optional output parameter, see below; pass NULL if not used
  *
  * The database can be specified by name, using the in_dbname parameter, or by
@@ -701,8 +703,8 @@ BaseInit(void)
  * database but not a username; conversely, a physical walsender specifies
  * username but not database.
  *
- * By convention, load_session_libraries should be passed as true in
- * "interactive" sessions (including standalone backends), but false in
+ * By convention, INIT_PG_LOAD_SESSION_LIBS should be passed in "flags" in
+ * "interactive" sessions (including standalone backends), but not in
  * background processes such as autovacuum.  Note in particular that it
  * shouldn't be true in parallel worker processes; those have another
  * mechanism for replicating their leader's set of loaded libraries.
@@ -717,8 +719,7 @@ BaseInit(void)
 void
 InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
-			 bool load_session_libraries,
-			 bool override_allow_connections,
+			 bits32 flags,
 			 char *out_dbname)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
@@ -901,7 +902,8 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		}
 		else
 		{
-			InitializeSessionUserId(username, useroid);
+			InitializeSessionUserId(username, useroid,
+									(flags & INIT_PG_OVERRIDE_ROLE_LOGIN) != 0);
 			am_superuser = superuser();
 		}
 	}
@@ -910,7 +912,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		/* normal multiuser case */
 		Assert(MyProcPort != NULL);
 		PerformAuthentication(MyProcPort);
-		InitializeSessionUserId(username, useroid);
+		InitializeSessionUserId(username, useroid, false);
 		/* ensure that auth_method is actually valid, aka authn_id is not NULL */
 		if (MyClientConnectionInfo.authn_id)
 			InitializeSystemUser(MyClientConnectionInfo.authn_id,
@@ -1006,7 +1008,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 */
 	if (bootstrap)
 	{
-		MyDatabaseId = Template1DbOid;
+		dboid = Template1DbOid;
 		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
 	}
 	else if (in_dbname != NULL)
@@ -1020,32 +1022,9 @@ InitPostgres(const char *in_dbname, Oid dboid,
 					(errcode(ERRCODE_UNDEFINED_DATABASE),
 					 errmsg("database \"%s\" does not exist", in_dbname)));
 		dbform = (Form_pg_database) GETSTRUCT(tuple);
-		MyDatabaseId = dbform->oid;
-		MyDatabaseTableSpace = dbform->dattablespace;
-		/* take database name from the caller, just for paranoia */
-		strlcpy(dbname, in_dbname, sizeof(dbname));
+		dboid = dbform->oid;
 	}
-	else if (OidIsValid(dboid))
-	{
-		/* caller specified database by OID */
-		HeapTuple	tuple;
-		Form_pg_database dbform;
-
-		tuple = GetDatabaseTupleByOid(dboid);
-		if (!HeapTupleIsValid(tuple))
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database %u does not exist", dboid)));
-		dbform = (Form_pg_database) GETSTRUCT(tuple);
-		MyDatabaseId = dbform->oid;
-		MyDatabaseTableSpace = dbform->dattablespace;
-		Assert(MyDatabaseId == dboid);
-		strlcpy(dbname, NameStr(dbform->datname), sizeof(dbname));
-		/* pass the database name back to the caller */
-		if (out_dbname)
-			strcpy(out_dbname, dbname);
-	}
-	else
+	else if (!OidIsValid(dboid))
 	{
 		/*
 		 * If this is a background worker not bound to any particular
@@ -1083,8 +1062,65 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 * CREATE DATABASE.
 	 */
 	if (!bootstrap)
-		LockSharedObject(DatabaseRelationId, MyDatabaseId, 0,
-						 RowExclusiveLock);
+		LockSharedObject(DatabaseRelationId, dboid, 0, RowExclusiveLock);
+
+	/*
+	 * Recheck pg_database to make sure the target database hasn't gone away.
+	 * If there was a concurrent DROP DATABASE, this ensures we will die
+	 * cleanly without creating a mess.
+	 */
+	if (!bootstrap)
+	{
+		HeapTuple	tuple;
+		Form_pg_database datform;
+
+		tuple = GetDatabaseTupleByOid(dboid);
+		if (HeapTupleIsValid(tuple))
+			datform = (Form_pg_database) GETSTRUCT(tuple);
+
+		if (!HeapTupleIsValid(tuple) ||
+			(in_dbname && namestrcmp(&datform->datname, in_dbname)))
+		{
+			if (in_dbname)
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database \"%s\" does not exist", in_dbname),
+						 errdetail("It seems to have just been dropped or renamed.")));
+			else
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database %u does not exist", dboid)));
+		}
+
+		strlcpy(dbname, NameStr(datform->datname), sizeof(dbname));
+
+		if (database_is_invalid_form(datform))
+		{
+			ereport(FATAL,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					errmsg("cannot connect to invalid database \"%s\"", dbname),
+					errhint("Use DROP DATABASE to drop invalid databases."));
+		}
+
+		MyDatabaseTableSpace = datform->dattablespace;
+		MyDatabaseHasLoginEventTriggers = datform->dathasloginevt;
+		/* pass the database name back to the caller */
+		if (out_dbname)
+			strcpy(out_dbname, dbname);
+	}
+
+	/*
+	 * Now that we rechecked, we are certain to be connected to a database and
+	 * thus can set MyDatabaseId.
+	 *
+	 * It is important that MyDatabaseId only be set once we are sure that the
+	 * target database can no longer be concurrently dropped or renamed.  For
+	 * example, without this guarantee, pgstat_update_dbstats() could create
+	 * entries for databases that were just dropped in the pgstat shutdown
+	 * callback, which could confuse other code paths like the autovacuum
+	 * scheduler.
+	 */
+	MyDatabaseId = dboid;
 
 	/*
 	 * Now we can mark our PGPROC entry with the database ID.
@@ -1107,25 +1143,6 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 * if the snapshot has been invalidated.  Assume it's no good anymore.
 	 */
 	InvalidateCatalogSnapshot();
-
-	/*
-	 * Recheck pg_database to make sure the target database hasn't gone away.
-	 * If there was a concurrent DROP DATABASE, this ensures we will die
-	 * cleanly without creating a mess.
-	 */
-	if (!bootstrap)
-	{
-		HeapTuple	tuple;
-
-		tuple = GetDatabaseTuple(dbname);
-		if (!HeapTupleIsValid(tuple) ||
-			MyDatabaseId != ((Form_pg_database) GETSTRUCT(tuple))->oid ||
-			MyDatabaseTableSpace != ((Form_pg_database) GETSTRUCT(tuple))->dattablespace)
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database \"%s\" does not exist", dbname),
-					 errdetail("It seems to have just been dropped or renamed.")));
-	}
 
 	/*
 	 * Now we should be able to access the database directory safely. Verify
@@ -1175,7 +1192,8 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 * user is a superuser, so the above stuff has to happen first.)
 	 */
 	if (!bootstrap)
-		CheckMyDatabase(dbname, am_superuser, override_allow_connections);
+		CheckMyDatabase(dbname, am_superuser,
+						(flags & INIT_PG_OVERRIDE_ALLOW_CONNS) != 0);
 
 	/*
 	 * Now process any command-line switches and any additional GUC variable
@@ -1213,7 +1231,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 * during the initial transaction in case anything that requires database
 	 * access needs to be done.
 	 */
-	if (load_session_libraries)
+	if ((flags & INIT_PG_LOAD_SESSION_LIBS) != 0)
 		process_session_preload_libraries();
 
 	/* report this backend in the PgBackendStatus array */

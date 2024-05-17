@@ -23,6 +23,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
+#include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_relation.h"
 #include "tcop/utility.h"
@@ -34,7 +35,7 @@ typedef enum
 {
 	NRM_EQUAL,					/* expect exact match of nullingrels */
 	NRM_SUBSET,					/* actual Var may have a subset of input */
-	NRM_SUPERSET				/* actual Var may have a superset of input */
+	NRM_SUPERSET,				/* actual Var may have a superset of input */
 } NullingRelsMatch;
 
 typedef struct
@@ -1519,19 +1520,30 @@ clean_up_removed_plan_level(Plan *parent, Plan *child)
 {
 	/*
 	 * We have to be sure we don't lose any initplans, so move any that were
-	 * attached to the parent plan to the child.  If we do move any, the child
-	 * is no longer parallel-safe.
+	 * attached to the parent plan to the child.  If any are parallel-unsafe,
+	 * the child is no longer parallel-safe.  As a cosmetic matter, also add
+	 * the initplans' run costs to the child's costs.
 	 */
 	if (parent->initPlan)
-		child->parallel_safe = false;
+	{
+		Cost		initplan_cost;
+		bool		unsafe_initplans;
 
-	/*
-	 * Attach plans this way so that parent's initplans are processed before
-	 * any pre-existing initplans of the child.  Probably doesn't matter, but
-	 * let's preserve the ordering just in case.
-	 */
-	child->initPlan = list_concat(parent->initPlan,
-								  child->initPlan);
+		SS_compute_initplan_cost(parent->initPlan,
+								 &initplan_cost, &unsafe_initplans);
+		child->startup_cost += initplan_cost;
+		child->total_cost += initplan_cost;
+		if (unsafe_initplans)
+			child->parallel_safe = false;
+
+		/*
+		 * Attach plans this way so that parent's initplans are processed
+		 * before any pre-existing initplans of the child.  Probably doesn't
+		 * matter, but let's preserve the ordering just in case.
+		 */
+		child->initPlan = list_concat(parent->initPlan,
+									  child->initPlan);
+	}
 
 	/*
 	 * We also have to transfer the parent's column labeling info into the
@@ -1979,10 +1991,10 @@ fix_expr_common(PlannerInfo *root, Node *node)
 		set_sa_opfuncid(saop);
 		record_plan_function_dependency(root, saop->opfuncid);
 
-		if (!OidIsValid(saop->hashfuncid))
+		if (OidIsValid(saop->hashfuncid))
 			record_plan_function_dependency(root, saop->hashfuncid);
 
-		if (!OidIsValid(saop->negfuncid))
+		if (OidIsValid(saop->negfuncid))
 			record_plan_function_dependency(root, saop->negfuncid);
 	}
 	else if (IsA(node, Const))
@@ -2181,22 +2193,14 @@ fix_scan_expr_mutator(Node *node, fix_scan_expr_context *context)
 	if (IsA(node, Aggref))
 	{
 		Aggref	   *aggref = (Aggref *) node;
+		Param	   *aggparam;
 
 		/* See if the Aggref should be replaced by a Param */
-		if (context->root->minmax_aggs != NIL &&
-			list_length(aggref->args) == 1)
+		aggparam = find_minmax_agg_replacement_param(context->root, aggref);
+		if (aggparam != NULL)
 		{
-			TargetEntry *curTarget = (TargetEntry *) linitial(aggref->args);
-			ListCell   *lc;
-
-			foreach(lc, context->root->minmax_aggs)
-			{
-				MinMaxAggInfo *mminfo = (MinMaxAggInfo *) lfirst(lc);
-
-				if (mminfo->aggfnoid == aggref->aggfnoid &&
-					equal(mminfo->target, curTarget->expr))
-					return (Node *) copyObject(mminfo->param);
-			}
+			/* Make a copy of the Param for paranoia's sake */
+			return (Node *) copyObject(aggparam);
 		}
 		/* If no match, just fall through to process it normally */
 	}
@@ -2932,7 +2936,14 @@ search_indexed_tlist_for_sortgroupref(Expr *node,
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
 
-		/* The equal() check should be redundant, but let's be paranoid */
+		/*
+		 * Usually the equal() check is redundant, but in setop plans it may
+		 * not be, since prepunion.c assigns ressortgroupref equal to the
+		 * column resno without regard to whether that matches the topmost
+		 * level's sortgrouprefs and without regard to whether any implicit
+		 * coercions are added in the setop tree.  We might have to clean that
+		 * up someday; but for now, just ignore any false matches.
+		 */
 		if (tle->ressortgroupref == sortgroupref &&
 			equal(node, tle->expr))
 		{
@@ -3225,22 +3236,14 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 	if (IsA(node, Aggref))
 	{
 		Aggref	   *aggref = (Aggref *) node;
+		Param	   *aggparam;
 
 		/* See if the Aggref should be replaced by a Param */
-		if (context->root->minmax_aggs != NIL &&
-			list_length(aggref->args) == 1)
+		aggparam = find_minmax_agg_replacement_param(context->root, aggref);
+		if (aggparam != NULL)
 		{
-			TargetEntry *curTarget = (TargetEntry *) linitial(aggref->args);
-			ListCell   *lc;
-
-			foreach(lc, context->root->minmax_aggs)
-			{
-				MinMaxAggInfo *mminfo = (MinMaxAggInfo *) lfirst(lc);
-
-				if (mminfo->aggfnoid == aggref->aggfnoid &&
-					equal(mminfo->target, curTarget->expr))
-					return (Node *) copyObject(mminfo->param);
-			}
+			/* Make a copy of the Param for paranoia's sake */
+			return (Node *) copyObject(aggparam);
 		}
 		/* If no match, just fall through to process it normally */
 	}
@@ -3395,6 +3398,38 @@ set_windowagg_runcondition_references(PlannerInfo *root,
 	return newlist;
 }
 
+/*
+ * find_minmax_agg_replacement_param
+ *		If the given Aggref is one that we are optimizing into a subquery
+ *		(cf. planagg.c), then return the Param that should replace it.
+ *		Else return NULL.
+ *
+ * This is exported so that SS_finalize_plan can use it before setrefs.c runs.
+ * Note that it will not find anything until we have built a Plan from a
+ * MinMaxAggPath, as root->minmax_aggs will never be filled otherwise.
+ */
+Param *
+find_minmax_agg_replacement_param(PlannerInfo *root, Aggref *aggref)
+{
+	if (root->minmax_aggs != NIL &&
+		list_length(aggref->args) == 1)
+	{
+		TargetEntry *curTarget = (TargetEntry *) linitial(aggref->args);
+		ListCell   *lc;
+
+		foreach(lc, root->minmax_aggs)
+		{
+			MinMaxAggInfo *mminfo = (MinMaxAggInfo *) lfirst(lc);
+
+			if (mminfo->aggfnoid == aggref->aggfnoid &&
+				equal(mminfo->target, curTarget->expr))
+				return mminfo->param;
+		}
+	}
+	return NULL;
+}
+
+
 /*****************************************************************************
  *					QUERY DEPENDENCY MANAGEMENT
  *****************************************************************************/
@@ -3537,8 +3572,27 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 		if (query->commandType == CMD_UTILITY)
 		{
 			/*
-			 * Ignore utility statements, except those (such as EXPLAIN) that
-			 * contain a parsed-but-not-planned query.
+			 * This logic must handle any utility command for which parse
+			 * analysis was nontrivial (cf. stmt_requires_parse_analysis).
+			 *
+			 * Notably, CALL requires its own processing.
+			 */
+			if (IsA(query->utilityStmt, CallStmt))
+			{
+				CallStmt   *callstmt = (CallStmt *) query->utilityStmt;
+
+				/* We need not examine funccall, just the transformed exprs */
+				(void) extract_query_dependencies_walker((Node *) callstmt->funcexpr,
+														 context);
+				(void) extract_query_dependencies_walker((Node *) callstmt->outargs,
+														 context);
+				return false;
+			}
+
+			/*
+			 * Ignore other utility statements, except those (such as EXPLAIN)
+			 * that contain a parsed-but-not-planned query.  For those, we
+			 * just need to transfer our attention to the contained query.
 			 */
 			query = UtilityContainsQuery(query->utilityStmt);
 			if (query == NULL)

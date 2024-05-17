@@ -887,6 +887,9 @@ CopyFrom(CopyFromState cstate)
 		 * Can't support multi-inserts if there are any volatile function
 		 * expressions in WHERE clause.  Similarly to the trigger case above,
 		 * such expressions may query the table we're inserting into.
+		 *
+		 * Note: the whereClause was already preprocessed in DoCopy(), so it's
+		 * okay to use contain_volatile_functions() directly.
 		 */
 		insertMethod = CIM_SINGLE;
 	}
@@ -1393,7 +1396,9 @@ BeginCopyFrom(ParseState *pstate,
 
 	/* Convert FORCE_NOT_NULL name list to per-column flags, check validity */
 	cstate->opts.force_notnull_flags = (bool *) palloc0(num_phys_attrs * sizeof(bool));
-	if (cstate->opts.force_notnull)
+	if (cstate->opts.force_notnull_all)
+		MemSet(cstate->opts.force_notnull_flags, true, num_phys_attrs * sizeof(bool));
+	else if (cstate->opts.force_notnull)
 	{
 		List	   *attnums;
 		ListCell   *cur;
@@ -1416,7 +1421,9 @@ BeginCopyFrom(ParseState *pstate,
 
 	/* Convert FORCE_NULL name list to per-column flags, check validity */
 	cstate->opts.force_null_flags = (bool *) palloc0(num_phys_attrs * sizeof(bool));
-	if (cstate->opts.force_null)
+	if (cstate->opts.force_null_all)
+		MemSet(cstate->opts.force_null_flags, true, num_phys_attrs * sizeof(bool));
+	else if (cstate->opts.force_null)
 	{
 		List	   *attnums;
 		ListCell   *cur;
@@ -1481,6 +1488,12 @@ BeginCopyFrom(ParseState *pstate,
 		cstate->need_transcoding = true;
 		cstate->conversion_proc = FindDefaultConversionProc(cstate->file_encoding,
 															GetDatabaseEncoding());
+		if (!OidIsValid(cstate->conversion_proc))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("default conversion function for encoding \"%s\" to \"%s\" does not exist",
+							pg_encoding_to_char(cstate->file_encoding),
+							pg_encoding_to_char(GetDatabaseEncoding()))));
 	}
 
 	cstate->copy_src = COPY_FILE;	/* default */
@@ -1533,8 +1546,6 @@ BeginCopyFrom(ParseState *pstate,
 		cstate->rteperminfos = pstate->p_rteperminfos;
 	}
 
-	tupDesc = RelationGetDescr(cstate->rel);
-	num_phys_attrs = tupDesc->natts;
 	num_defaults = 0;
 	volatile_defexprs = false;
 
@@ -1569,7 +1580,14 @@ BeginCopyFrom(ParseState *pstate,
 		/* Get default info if available */
 		defexprs[attnum - 1] = NULL;
 
-		if (!att->attgenerated)
+		/*
+		 * We only need the default values for columns that do not appear in
+		 * the column list, unless the DEFAULT option was given. We never need
+		 * default values for generated columns.
+		 */
+		if ((cstate->opts.default_print != NULL ||
+			 !list_member_int(cstate->attnumlist, attnum)) &&
+			!att->attgenerated)
 		{
 			Expr	   *defexpr = (Expr *) build_column_default(cstate->rel,
 																attnum);
@@ -1601,7 +1619,8 @@ BeginCopyFrom(ParseState *pstate,
 				 * known to be safe for use with the multi-insert
 				 * optimization. Hence we use this special case function
 				 * checker rather than the standard check for
-				 * contain_volatile_functions().
+				 * contain_volatile_functions().  Note also that we already
+				 * ran the expression through expression_planner().
 				 */
 				if (!volatile_defexprs)
 					volatile_defexprs = contain_volatile_functions_not_nextval((Node *) defexpr);
@@ -1609,6 +1628,7 @@ BeginCopyFrom(ParseState *pstate,
 		}
 	}
 
+	cstate->defaults = (bool *) palloc0(tupDesc->natts * sizeof(bool));
 
 	/* initialize progress */
 	pgstat_progress_start_command(PROGRESS_COMMAND_COPY,

@@ -116,7 +116,7 @@ typedef struct
 #error XLOG_BLCKSZ must be between 1KB and 1MB
 #endif
 
-static const char *memory_units_hint = gettext_noop("Valid units for this parameter are \"B\", \"kB\", \"MB\", \"GB\", and \"TB\".");
+static const char *const memory_units_hint = gettext_noop("Valid units for this parameter are \"B\", \"kB\", \"MB\", \"GB\", and \"TB\".");
 
 static const unit_conversion memory_unit_conversion_table[] =
 {
@@ -153,7 +153,7 @@ static const unit_conversion memory_unit_conversion_table[] =
 	{""}						/* end of table marker */
 };
 
-static const char *time_units_hint = gettext_noop("Valid units for this parameter are \"us\", \"ms\", \"s\", \"min\", \"h\", and \"d\".");
+static const char *const time_units_hint = gettext_noop("Valid units for this parameter are \"us\", \"ms\", \"s\", \"min\", \"h\", and \"d\".");
 
 static const unit_conversion time_unit_conversion_table[] =
 {
@@ -254,6 +254,8 @@ static void write_auto_conf_file(int fd, const char *filename, ConfigVariable *h
 static void replace_auto_config_value(ConfigVariable **head_p, ConfigVariable **tail_p,
 									  const char *name, const char *value);
 static bool valid_custom_variable_name(const char *name);
+static bool assignable_custom_variable_name(const char *name, bool skip_errors,
+											int elevel);
 static void do_serialize(char **destptr, Size *maxbytes,
 						 const char *fmt,...) pg_attribute_printf(3, 4);
 static bool call_bool_check_hook(struct config_bool *conf, bool *newval,
@@ -1067,7 +1069,7 @@ add_guc_variable(struct config_generic *var, int elevel)
  *
  * It must be two or more identifiers separated by dots, where the rules
  * for what is an identifier agree with scan.l.  (If you change this rule,
- * adjust the errdetail in find_option().)
+ * adjust the errdetail in assignable_custom_variable_name().)
  */
 static bool
 valid_custom_variable_name(const char *name)
@@ -1100,6 +1102,71 @@ valid_custom_variable_name(const char *name)
 		return false;			/* empty name component */
 	/* OK if we found at least one separator */
 	return saw_sep;
+}
+
+/*
+ * Decide whether an unrecognized variable name is allowed to be SET.
+ *
+ * It must pass the syntactic rules of valid_custom_variable_name(),
+ * and it must not be in any namespace already reserved by an extension.
+ * (We make this separate from valid_custom_variable_name() because we don't
+ * apply the reserved-namespace test when reading configuration files.)
+ *
+ * If valid, return true.  Otherwise, return false if skip_errors is true,
+ * else throw a suitable error at the specified elevel (and return false
+ * if that's less than ERROR).
+ */
+static bool
+assignable_custom_variable_name(const char *name, bool skip_errors, int elevel)
+{
+	/* If there's no separator, it can't be a custom variable */
+	const char *sep = strchr(name, GUC_QUALIFIER_SEPARATOR);
+
+	if (sep != NULL)
+	{
+		size_t		classLen = sep - name;
+		ListCell   *lc;
+
+		/* The name must be syntactically acceptable ... */
+		if (!valid_custom_variable_name(name))
+		{
+			if (!skip_errors)
+				ereport(elevel,
+						(errcode(ERRCODE_INVALID_NAME),
+						 errmsg("invalid configuration parameter name \"%s\"",
+								name),
+						 errdetail("Custom parameter names must be two or more simple identifiers separated by dots.")));
+			return false;
+		}
+		/* ... and it must not match any previously-reserved prefix */
+		foreach(lc, reserved_class_prefix)
+		{
+			const char *rcprefix = lfirst(lc);
+
+			if (strlen(rcprefix) == classLen &&
+				strncmp(name, rcprefix, classLen) == 0)
+			{
+				if (!skip_errors)
+					ereport(elevel,
+							(errcode(ERRCODE_INVALID_NAME),
+							 errmsg("invalid configuration parameter name \"%s\"",
+									name),
+							 errdetail("\"%s\" is a reserved prefix.",
+									   rcprefix)));
+				return false;
+			}
+		}
+		/* OK to create it */
+		return true;
+	}
+
+	/* Unrecognized single-part name */
+	if (!skip_errors)
+		ereport(elevel,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("unrecognized configuration parameter \"%s\"",
+						name)));
+	return false;
 }
 
 /*
@@ -1195,52 +1262,15 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 	if (create_placeholders)
 	{
 		/*
-		 * Check if the name is valid, and if so, add a placeholder.  If it
-		 * doesn't contain a separator, don't assume that it was meant to be a
-		 * placeholder.
+		 * Check if the name is valid, and if so, add a placeholder.
 		 */
-		const char *sep = strchr(name, GUC_QUALIFIER_SEPARATOR);
-
-		if (sep != NULL)
-		{
-			size_t		classLen = sep - name;
-			ListCell   *lc;
-
-			/* The name must be syntactically acceptable ... */
-			if (!valid_custom_variable_name(name))
-			{
-				if (!skip_errors)
-					ereport(elevel,
-							(errcode(ERRCODE_INVALID_NAME),
-							 errmsg("invalid configuration parameter name \"%s\"",
-									name),
-							 errdetail("Custom parameter names must be two or more simple identifiers separated by dots.")));
-				return NULL;
-			}
-			/* ... and it must not match any previously-reserved prefix */
-			foreach(lc, reserved_class_prefix)
-			{
-				const char *rcprefix = lfirst(lc);
-
-				if (strlen(rcprefix) == classLen &&
-					strncmp(name, rcprefix, classLen) == 0)
-				{
-					if (!skip_errors)
-						ereport(elevel,
-								(errcode(ERRCODE_INVALID_NAME),
-								 errmsg("invalid configuration parameter name \"%s\"",
-										name),
-								 errdetail("\"%s\" is a reserved prefix.",
-										   rcprefix)));
-					return NULL;
-				}
-			}
-			/* OK, create it */
+		if (assignable_custom_variable_name(name, skip_errors, elevel))
 			return add_placeholder_variable(name, elevel);
-		}
+		else
+			return NULL;		/* error message, if any, already emitted */
 	}
 
-	/* Unknown name */
+	/* Unknown name and we're not supposed to make a placeholder */
 	if (!skip_errors)
 		ereport(elevel,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1373,18 +1403,16 @@ convert_GUC_name_for_parameter_acl(const char *name)
 /*
  * Check whether we should allow creation of a pg_parameter_acl entry
  * for the given name.  (This can be applied either before or after
- * canonicalizing it.)
+ * canonicalizing it.)  Throws error if not.
  */
-bool
+void
 check_GUC_name_for_parameter_acl(const char *name)
 {
 	/* OK if the GUC exists. */
-	if (find_option(name, false, true, DEBUG1) != NULL)
-		return true;
+	if (find_option(name, false, true, DEBUG5) != NULL)
+		return;
 	/* Otherwise, it'd better be a valid custom GUC name. */
-	if (valid_custom_variable_name(name))
-		return true;
-	return false;
+	(void) assignable_custom_variable_name(name, false, ERROR);
 }
 
 /*
@@ -1449,7 +1477,9 @@ check_GUC_init(struct config_generic *gconf)
 			{
 				struct config_string *conf = (struct config_string *) gconf;
 
-				if (*conf->variable != NULL && strcmp(*conf->variable, conf->boot_val) != 0)
+				if (*conf->variable != NULL &&
+					(conf->boot_val == NULL ||
+					 strcmp(*conf->variable, conf->boot_val) != 0))
 				{
 					elog(LOG, "GUC (PGC_STRING) %s, boot_val=%s, C-var=%s",
 						 conf->gen.name, conf->boot_val ? conf->boot_val : "<null>", *conf->variable);
@@ -1847,7 +1877,7 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	else
 	{
 		write_stderr("%s does not know where to find the database system data.\n"
-					 "This can be specified as \"data_directory\" in \"%s\", "
+					 "This can be specified as data_directory in \"%s\", "
 					 "or by the -D invocation option, or by the "
 					 "PGDATA environment variable.\n",
 					 progname, ConfigFileName);
@@ -2597,7 +2627,7 @@ ReportGUCOption(struct config_generic *record)
 	{
 		StringInfoData msgbuf;
 
-		pq_beginmessage(&msgbuf, 'S');
+		pq_beginmessage(&msgbuf, PqMsg_ParameterStatus);
 		pq_sendstring(&msgbuf, record->name);
 		pq_sendstring(&msgbuf, val);
 		pq_endmessage(&msgbuf);
@@ -3303,10 +3333,10 @@ set_config_option(const char *name, const char *value,
 	else
 		srole = BOOTSTRAP_SUPERUSERID;
 
-	return set_config_option_ext(name, value,
-								 context, source, srole,
-								 action, changeVal, elevel,
-								 is_reload);
+	return set_config_with_handle(name, NULL, value,
+								  context, source, srole,
+								  action, changeVal, elevel,
+								  is_reload);
 }
 
 /*
@@ -3329,6 +3359,27 @@ set_config_option_ext(const char *name, const char *value,
 					  GucContext context, GucSource source, Oid srole,
 					  GucAction action, bool changeVal, int elevel,
 					  bool is_reload)
+{
+	return set_config_with_handle(name, NULL, value,
+								  context, source, srole,
+								  action, changeVal, elevel,
+								  is_reload);
+}
+
+
+/*
+ * set_config_with_handle: takes an optional 'handle' argument, which can be
+ * obtained by the caller from get_config_handle().
+ *
+ * This should be used by callers which repeatedly set the same config
+ * option(s), and want to avoid the overhead of a hash lookup each time.
+ */
+int
+set_config_with_handle(const char *name, config_handle *handle,
+					   const char *value,
+					   GucContext context, GucSource source, Oid srole,
+					   GucAction action, bool changeVal, int elevel,
+					   bool is_reload)
 {
 	struct config_generic *record;
 	union config_var_val newval_union;
@@ -3365,13 +3416,22 @@ set_config_option_ext(const char *name, const char *value,
 	 * Other changes might need to affect other workers, so forbid them.
 	 */
 	if (IsInParallelMode() && changeVal && action != GUC_ACTION_SAVE)
+	{
 		ereport(elevel,
 				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
 				 errmsg("cannot set parameters during a parallel operation")));
+		return -1;
+	}
 
-	record = find_option(name, true, false, elevel);
-	if (record == NULL)
-		return 0;
+	/* if handle is specified, no need to look up option */
+	if (!handle)
+	{
+		record = find_option(name, true, false, elevel);
+		if (record == NULL)
+			return 0;
+	}
+	else
+		record = handle;
 
 	/*
 	 * Check if the option can be set at this time. See guc.h for the precise
@@ -3462,6 +3522,10 @@ set_config_option_ext(const char *name, const char *value,
 				 * backends.  This is a tad klugy, but necessary because we
 				 * don't re-read the config file during backend start.
 				 *
+				 * However, if changeVal is false then plow ahead anyway since
+				 * we are trying to find out if the value is potentially good,
+				 * not actually use it.
+				 *
 				 * In EXEC_BACKEND builds, this works differently: we load all
 				 * non-default settings from the CONFIG_EXEC_PARAMS file
 				 * during backend start.  In that case we must accept
@@ -3472,7 +3536,7 @@ set_config_option_ext(const char *name, const char *value,
 				 * started it. is_reload will be true when either situation
 				 * applies.
 				 */
-				if (IsUnderPostmaster && !is_reload)
+				if (IsUnderPostmaster && changeVal && !is_reload)
 					return -1;
 			}
 			else if (context != PGC_POSTMASTER &&
@@ -4141,6 +4205,22 @@ set_config_option_ext(const char *name, const char *value,
 
 
 /*
+ * Retrieve a config_handle for the given name, suitable for calling
+ * set_config_with_handle(). Only return handle to permanent GUC.
+ */
+config_handle *
+get_config_handle(const char *name)
+{
+	struct config_generic *gen = find_option(name, false, false, 0);
+
+	if (gen && ((gen->flags & GUC_CUSTOM_PLACEHOLDER) == 0))
+		return gen;
+
+	return NULL;
+}
+
+
+/*
  * Set the fields for source file and line number the setting came from.
  */
 static void
@@ -4189,8 +4269,7 @@ SetConfigOption(const char *name, const char *value,
 /*
  * Fetch the current value of the option `name', as a string.
  *
- * If the option doesn't exist, return NULL if missing_ok is true (NOTE that
- * this cannot be distinguished from a string variable with a NULL value!),
+ * If the option doesn't exist, return NULL if missing_ok is true,
  * otherwise throw an ereport and don't return.
  *
  * If restrict_privileged is true, we also enforce that only superusers and
@@ -4233,7 +4312,8 @@ GetConfigOption(const char *name, bool missing_ok, bool restrict_privileged)
 			return buffer;
 
 		case PGC_STRING:
-			return *((struct config_string *) record)->variable;
+			return *((struct config_string *) record)->variable ?
+				*((struct config_string *) record)->variable : "";
 
 		case PGC_ENUM:
 			return config_enum_lookup_by_value((struct config_enum *) record,
@@ -4280,7 +4360,8 @@ GetConfigOptionResetString(const char *name)
 			return buffer;
 
 		case PGC_STRING:
-			return ((struct config_string *) record)->reset_val;
+			return ((struct config_string *) record)->reset_val ?
+				((struct config_string *) record)->reset_val : "";
 
 		case PGC_ENUM:
 			return config_enum_lookup_by_value((struct config_enum *) record,
@@ -4519,52 +4600,64 @@ AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt)
 	{
 		struct config_generic *record;
 
-		record = find_option(name, false, false, ERROR);
-		Assert(record != NULL);
-
-		/*
-		 * Don't allow parameters that can't be set in configuration files to
-		 * be set in PG_AUTOCONF_FILENAME file.
-		 */
-		if ((record->context == PGC_INTERNAL) ||
-			(record->flags & GUC_DISALLOW_IN_FILE) ||
-			(record->flags & GUC_DISALLOW_IN_AUTO_FILE))
-			ereport(ERROR,
-					(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-					 errmsg("parameter \"%s\" cannot be changed",
-							name)));
-
-		/*
-		 * If a value is specified, verify that it's sane.
-		 */
-		if (value)
+		/* We don't want to create a placeholder if there's not one already */
+		record = find_option(name, false, true, DEBUG5);
+		if (record != NULL)
 		{
-			union config_var_val newval;
-			void	   *newextra = NULL;
-
-			/* Check that it's acceptable for the indicated parameter */
-			if (!parse_and_validate_value(record, name, value,
-										  PGC_S_FILE, ERROR,
-										  &newval, &newextra))
+			/*
+			 * Don't allow parameters that can't be set in configuration files
+			 * to be set in PG_AUTOCONF_FILENAME file.
+			 */
+			if ((record->context == PGC_INTERNAL) ||
+				(record->flags & GUC_DISALLOW_IN_FILE) ||
+				(record->flags & GUC_DISALLOW_IN_AUTO_FILE))
 				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid value for parameter \"%s\": \"%s\"",
-								name, value)));
-
-			if (record->vartype == PGC_STRING && newval.stringval != NULL)
-				guc_free(newval.stringval);
-			guc_free(newextra);
+						(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+						 errmsg("parameter \"%s\" cannot be changed",
+								name)));
 
 			/*
-			 * We must also reject values containing newlines, because the
-			 * grammar for config files doesn't support embedded newlines in
-			 * string literals.
+			 * If a value is specified, verify that it's sane.
 			 */
-			if (strchr(value, '\n'))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("parameter value for ALTER SYSTEM must not contain a newline")));
+			if (value)
+			{
+				union config_var_val newval;
+				void	   *newextra = NULL;
+
+				if (!parse_and_validate_value(record, name, value,
+											  PGC_S_FILE, ERROR,
+											  &newval, &newextra))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									name, value)));
+
+				if (record->vartype == PGC_STRING && newval.stringval != NULL)
+					guc_free(newval.stringval);
+				guc_free(newextra);
+			}
 		}
+		else
+		{
+			/*
+			 * Variable not known; check we'd be allowed to create it.  (We
+			 * cannot validate the value, but that's fine.  A non-core GUC in
+			 * the config file cannot cause postmaster start to fail, so we
+			 * don't have to be too tense about possibly installing a bad
+			 * value.)
+			 */
+			(void) assignable_custom_variable_name(name, false, ERROR);
+		}
+
+		/*
+		 * We must also reject values containing newlines, because the grammar
+		 * for config files doesn't support embedded newlines in string
+		 * literals.
+		 */
+		if (value && strchr(value, '\n'))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("parameter value for ALTER SYSTEM must not contain a newline")));
 	}
 
 	/*
@@ -5219,7 +5312,14 @@ get_explain_guc_options(int *num)
 				{
 					struct config_string *lconf = (struct config_string *) conf;
 
-					modified = (strcmp(lconf->boot_val, *(lconf->variable)) != 0);
+					if (lconf->boot_val == NULL &&
+						*lconf->variable == NULL)
+						modified = false;
+					else if (lconf->boot_val == NULL ||
+							 *lconf->variable == NULL)
+						modified = true;
+					else
+						modified = (strcmp(lconf->boot_val, *(lconf->variable)) != 0);
 				}
 				break;
 
@@ -5446,7 +5546,8 @@ write_one_nondefault_variable(FILE *fp, struct config_generic *gconf)
 			{
 				struct config_string *conf = (struct config_string *) gconf;
 
-				fprintf(fp, "%s", *conf->variable);
+				if (*conf->variable)
+					fprintf(fp, "%s", *conf->variable);
 			}
 			break;
 
@@ -6219,14 +6320,12 @@ ParseLongOption(const char *string, char **name, char **value)
 
 
 /*
- * Handle options fetched from pg_db_role_setting.setconfig,
- * pg_proc.proconfig, etc.  Caller must specify proper context/source/action.
- *
- * The array parameter must be an array of TEXT (it must not be NULL).
+ * Transform array of GUC settings into lists of names and values. The lists
+ * are faster to process in cases where the settings must be applied
+ * repeatedly (e.g. for each function invocation).
  */
 void
-ProcessGUCArray(ArrayType *array,
-				GucContext context, GucSource source, GucAction action)
+TransformGUCArray(ArrayType *array, List **names, List **values)
 {
 	int			i;
 
@@ -6235,6 +6334,8 @@ ProcessGUCArray(ArrayType *array,
 	Assert(ARR_NDIM(array) == 1);
 	Assert(ARR_LBOUND(array)[0] == 1);
 
+	*names = NIL;
+	*values = NIL;
 	for (i = 1; i <= ARR_DIMS(array)[0]; i++)
 	{
 		Datum		d;
@@ -6266,14 +6367,45 @@ ProcessGUCArray(ArrayType *array,
 			continue;
 		}
 
+		*names = lappend(*names, name);
+		*values = lappend(*values, value);
+
+		pfree(s);
+	}
+}
+
+
+/*
+ * Handle options fetched from pg_db_role_setting.setconfig,
+ * pg_proc.proconfig, etc.  Caller must specify proper context/source/action.
+ *
+ * The array parameter must be an array of TEXT (it must not be NULL).
+ */
+void
+ProcessGUCArray(ArrayType *array,
+				GucContext context, GucSource source, GucAction action)
+{
+	List	   *gucNames;
+	List	   *gucValues;
+	ListCell   *lc1;
+	ListCell   *lc2;
+
+	TransformGUCArray(array, &gucNames, &gucValues);
+	forboth(lc1, gucNames, lc2, gucValues)
+	{
+		char	   *name = lfirst(lc1);
+		char	   *value = lfirst(lc2);
+
 		(void) set_config_option(name, value,
 								 context, source,
 								 action, true, 0, false);
 
 		pfree(name);
 		pfree(value);
-		pfree(s);
 	}
+
+	list_free(gucNames);
+	list_free(gucValues);
 }
 
 

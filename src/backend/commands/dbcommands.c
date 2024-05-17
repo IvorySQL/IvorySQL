@@ -83,7 +83,7 @@
 typedef enum CreateDBStrategy
 {
 	CREATEDB_WAL_LOG,
-	CREATEDB_FILE_COPY
+	CREATEDB_FILE_COPY,
 } CreateDBStrategy;
 
 typedef struct
@@ -116,7 +116,7 @@ static void movedb(const char *dbname, const char *tblspcname);
 static void movedb_failure_callback(int code, Datum arg);
 static bool get_db_info(const char *name, LOCKMODE lockmode,
 						Oid *dbIdP, Oid *ownerIdP,
-						int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP,
+						int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP, bool *dbHasLoginEvtP,
 						TransactionId *dbFrozenXidP, MultiXactId *dbMinMultiP,
 						Oid *dbTablespace, char **dbCollate, char **dbCtype, char **dbIculocale,
 						char **dbIcurules,
@@ -680,6 +680,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	char		src_locprovider = '\0';
 	char	   *src_collversion = NULL;
 	bool		src_istemplate;
+	bool		src_hasloginevt;
 	bool		src_allowconn;
 	TransactionId src_frozenxid = InvalidTransactionId;
 	MultiXactId src_minmxid = InvalidMultiXactId;
@@ -719,7 +720,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			encoding = -1;
 	bool		dbistemplate = false;
 	bool		dballowconnections = true;
-	int			dbconnlimit = -1;
+	int			dbconnlimit = DATCONNLIMIT_UNLIMITED;
 	char	   *dbcollversion = NULL;
 	int			notherbackends;
 	int			npreparedxacts;
@@ -926,7 +927,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	if (dconnlimit && dconnlimit->arg)
 	{
 		dbconnlimit = defGetInt32(dconnlimit);
-		if (dbconnlimit < -1)
+		if (dbconnlimit < DATCONNLIMIT_UNLIMITED)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid connection limit: %d", dbconnlimit)));
@@ -968,7 +969,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	if (!get_db_info(dbtemplate, ShareLock,
 					 &src_dboid, &src_owner, &src_encoding,
-					 &src_istemplate, &src_allowconn,
+					 &src_istemplate, &src_allowconn, &src_hasloginevt,
 					 &src_frozenxid, &src_minmxid, &src_deftablespace,
 					 &src_collate, &src_ctype, &src_iculocale, &src_icurules, &src_locprovider,
 					 &src_collversion))
@@ -976,6 +977,16 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("template database \"%s\" does not exist",
 						dbtemplate)));
+
+	/*
+	 * If the source database was in the process of being dropped, we can't
+	 * use it as a template.
+	 */
+	if (database_is_invalid_oid(src_dboid))
+		ereport(ERROR,
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg("cannot use invalid database \"%s\" as template", dbtemplate),
+				errhint("Use DROP DATABASE to drop invalid databases."));
 
 	/*
 	 * Permission check: to copy a DB that's not marked datistemplate, you
@@ -1365,6 +1376,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_datlocprovider - 1] = CharGetDatum(dblocprovider);
 	new_record[Anum_pg_database_datistemplate - 1] = BoolGetDatum(dbistemplate);
 	new_record[Anum_pg_database_datallowconn - 1] = BoolGetDatum(dballowconnections);
+	new_record[Anum_pg_database_dathasloginevt - 1] = BoolGetDatum(src_hasloginevt);
 	new_record[Anum_pg_database_datconnlimit - 1] = Int32GetDatum(dbconnlimit);
 	new_record[Anum_pg_database_datfrozenxid - 1] = TransactionIdGetDatum(src_frozenxid);
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
@@ -1576,6 +1588,7 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 	bool		db_istemplate;
 	Relation	pgdbrel;
 	HeapTuple	tup;
+	Form_pg_database datform;
 	int			notherbackends;
 	int			npreparedxacts;
 	int			nslots,
@@ -1592,7 +1605,7 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 	pgdbrel = table_open(DatabaseRelationId, RowExclusiveLock);
 
 	if (!get_db_info(dbname, AccessExclusiveLock, &db_id, NULL, NULL,
-					 &db_istemplate, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL))
+					 &db_istemplate, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL))
 	{
 		if (!missing_ok)
 		{
@@ -1692,17 +1705,6 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 				 errdetail_busy_db(notherbackends, npreparedxacts)));
 
 	/*
-	 * Remove the database's tuple from pg_database.
-	 */
-	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(db_id));
-	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for database %u", db_id);
-
-	CatalogTupleDelete(pgdbrel, &tup->t_self);
-
-	ReleaseSysCache(tup);
-
-	/*
 	 * Delete any comments or security labels associated with the database.
 	 */
 	DeleteSharedComments(db_id, DatabaseRelationId);
@@ -1719,6 +1721,37 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 	dropDatabaseDependencies(db_id);
 
 	/*
+	 * Tell the cumulative stats system to forget it immediately, too.
+	 */
+	pgstat_drop_database(db_id);
+
+	tup = SearchSysCacheCopy1(DATABASEOID, ObjectIdGetDatum(db_id));
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for database %u", db_id);
+	datform = (Form_pg_database) GETSTRUCT(tup);
+
+	/*
+	 * Except for the deletion of the catalog row, subsequent actions are not
+	 * transactional (consider DropDatabaseBuffers() discarding modified
+	 * buffers). But we might crash or get interrupted below. To prevent
+	 * accesses to a database with invalid contents, mark the database as
+	 * invalid using an in-place update.
+	 *
+	 * We need to flush the WAL before continuing, to guarantee the
+	 * modification is durable before performing irreversible filesystem
+	 * operations.
+	 */
+	datform->datconnlimit = DATCONNLIMIT_INVALID_DB;
+	heap_inplace_update(pgdbrel, tup);
+	XLogFlush(XactLastRecEnd);
+
+	/*
+	 * Also delete the tuple - transactionally. If this transaction commits,
+	 * the row will be gone, but if we fail, dropdb() can be invoked again.
+	 */
+	CatalogTupleDelete(pgdbrel, &tup->t_self);
+
+	/*
 	 * Drop db-specific replication slots.
 	 */
 	ReplicationSlotsDropDBSlots(db_id);
@@ -1729,11 +1762,6 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 	 * dirty buffer to the dead database later...
 	 */
 	DropDatabaseBuffers(db_id);
-
-	/*
-	 * Tell the cumulative stats system to forget it immediately, too.
-	 */
-	pgstat_drop_database(db_id);
 
 	/*
 	 * Tell checkpointer to forget any pending fsync and unlink requests for
@@ -1791,7 +1819,7 @@ RenameDatabase(const char *oldname, const char *newname)
 	 */
 	rel = table_open(DatabaseRelationId, RowExclusiveLock);
 
-	if (!get_db_info(oldname, AccessExclusiveLock, &db_id, NULL, NULL,
+	if (!get_db_info(oldname, AccessExclusiveLock, &db_id, NULL, NULL, NULL,
 					 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
@@ -1901,7 +1929,7 @@ movedb(const char *dbname, const char *tblspcname)
 	 */
 	pgdbrel = table_open(DatabaseRelationId, RowExclusiveLock);
 
-	if (!get_db_info(dbname, AccessExclusiveLock, &db_id, NULL, NULL,
+	if (!get_db_info(dbname, AccessExclusiveLock, &db_id, NULL, NULL, NULL,
 					 NULL, NULL, NULL, NULL, &src_tblspcoid, NULL, NULL, NULL, NULL, NULL, NULL))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
@@ -2248,7 +2276,7 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	ListCell   *option;
 	bool		dbistemplate = false;
 	bool		dballowconnections = true;
-	int			dbconnlimit = -1;
+	int			dbconnlimit = DATCONNLIMIT_UNLIMITED;
 	DefElem    *distemplate = NULL;
 	DefElem    *dallowconnections = NULL;
 	DefElem    *dconnlimit = NULL;
@@ -2319,7 +2347,7 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	if (dconnlimit && dconnlimit->arg)
 	{
 		dbconnlimit = defGetInt32(dconnlimit);
-		if (dbconnlimit < -1)
+		if (dbconnlimit < DATCONNLIMIT_UNLIMITED)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid connection limit: %d", dbconnlimit)));
@@ -2345,6 +2373,14 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 
 	datform = (Form_pg_database) GETSTRUCT(tuple);
 	dboid = datform->oid;
+
+	if (database_is_invalid_form(datform))
+	{
+		ereport(FATAL,
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg("cannot alter invalid database \"%s\"", stmt->dbname),
+				errhint("Use DROP DATABASE to drop invalid databases."));
+	}
 
 	if (!object_ownercheck(DatabaseRelationId, dboid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
@@ -2659,7 +2695,7 @@ pg_database_collation_actual_version(PG_FUNCTION_ARGS)
 static bool
 get_db_info(const char *name, LOCKMODE lockmode,
 			Oid *dbIdP, Oid *ownerIdP,
-			int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP,
+			int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP, bool *dbHasLoginEvtP,
 			TransactionId *dbFrozenXidP, MultiXactId *dbMinMultiP,
 			Oid *dbTablespace, char **dbCollate, char **dbCtype, char **dbIculocale,
 			char **dbIcurules,
@@ -2744,6 +2780,9 @@ get_db_info(const char *name, LOCKMODE lockmode,
 				/* allowed as template? */
 				if (dbIsTemplateP)
 					*dbIsTemplateP = dbform->datistemplate;
+				/* Has on login event trigger? */
+				if (dbHasLoginEvtP)
+					*dbHasLoginEvtP = dbform->dathasloginevt;
 				/* allowing connections? */
 				if (dbAllowConnP)
 					*dbAllowConnP = dbform->datallowconn;
@@ -3063,6 +3102,42 @@ get_database_name(Oid dbid)
 
 	return result;
 }
+
+
+/*
+ * While dropping a database the pg_database row is marked invalid, but the
+ * catalog contents still exist. Connections to such a database are not
+ * allowed.
+ */
+bool
+database_is_invalid_form(Form_pg_database datform)
+{
+	return datform->datconnlimit == DATCONNLIMIT_INVALID_DB;
+}
+
+
+/*
+ * Convenience wrapper around database_is_invalid_form()
+ */
+bool
+database_is_invalid_oid(Oid dboid)
+{
+	HeapTuple	dbtup;
+	Form_pg_database dbform;
+	bool		invalid;
+
+	dbtup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(dboid));
+	if (!HeapTupleIsValid(dbtup))
+		elog(ERROR, "cache lookup failed for database %u", dboid);
+	dbform = (Form_pg_database) GETSTRUCT(dbtup);
+
+	invalid = database_is_invalid_form(dbform);
+
+	ReleaseSysCache(dbtup);
+
+	return invalid;
+}
+
 
 /*
  * recovery_create_dbdir()

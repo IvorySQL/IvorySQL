@@ -743,6 +743,18 @@ pg_decode_message(LogicalDecodingContext *ctx,
 				  ReorderBufferTXN *txn, XLogRecPtr lsn, bool transactional,
 				  const char *prefix, Size sz, const char *message)
 {
+	TestDecodingData *data = ctx->output_plugin_private;
+	TestDecodingTxnData *txndata;
+
+	txndata = transactional ? txn->output_plugin_private : NULL;
+
+	/* output BEGIN if we haven't yet for transactional messages */
+	if (transactional && data->skip_empty_xacts && !txndata->xact_wrote_changes)
+		pg_output_begin(ctx, data, txn, false);
+
+	if (transactional)
+		txndata->xact_wrote_changes = true;
+
 	OutputPluginPrepareWrite(ctx, true);
 	appendStringInfo(ctx->out, "message: transactional: %d prefix: %s, sz: %zu content:",
 					 transactional, prefix, sz);
@@ -932,6 +944,19 @@ pg_decode_stream_message(LogicalDecodingContext *ctx,
 						 ReorderBufferTXN *txn, XLogRecPtr lsn, bool transactional,
 						 const char *prefix, Size sz, const char *message)
 {
+	/* Output stream start if we haven't yet for transactional messages. */
+	if (transactional)
+	{
+		TestDecodingData *data = ctx->output_plugin_private;
+		TestDecodingTxnData *txndata = txn->output_plugin_private;
+
+		if (data->skip_empty_xacts && !txndata->stream_wrote_changes)
+		{
+			pg_output_stream_start(ctx, data, txn, false);
+		}
+		txndata->xact_wrote_changes = txndata->stream_wrote_changes = true;
+	}
+
 	OutputPluginPrepareWrite(ctx, true);
 
 	if (transactional)

@@ -26,7 +26,6 @@
 #include "jit/jit.h"
 #include "miscadmin.h"
 #include "utils/fmgrprotos.h"
-#include "utils/resowner_private.h"
 
 /* GUCs */
 bool		jit_enabled = true;
@@ -140,7 +139,6 @@ jit_release_context(JitContext *context)
 	if (provider_successfully_loaded)
 		provider.release_context(context);
 
-	ResourceOwnerForgetJIT(context->resowner, PointerGetDatum(context));
 	pfree(context);
 }
 
@@ -185,6 +183,7 @@ InstrJitAgg(JitInstrumentation *dst, JitInstrumentation *add)
 {
 	dst->created_functions += add->created_functions;
 	INSTR_TIME_ADD(dst->generation_counter, add->generation_counter);
+	INSTR_TIME_ADD(dst->deform_counter, add->deform_counter);
 	INSTR_TIME_ADD(dst->inlining_counter, add->inlining_counter);
 	INSTR_TIME_ADD(dst->optimization_counter, add->optimization_counter);
 	INSTR_TIME_ADD(dst->emission_counter, add->emission_counter);

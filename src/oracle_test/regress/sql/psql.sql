@@ -87,6 +87,10 @@ select 1 as var1, NULL as var2, 3 as var3 \gset
 select 10 as test01, 20 as test02 from generate_series(1,3) \gset
 select 10 as test01, 20 as test02 from generate_series(1,0) \gset
 
+-- \gset returns no tuples
+select a from generate_series(1, 10) as a where a = 11 \gset
+\echo :ROW_COUNT
+
 -- \gset should work in FETCH_COUNT mode too
 \set FETCH_COUNT 1
 
@@ -1318,8 +1322,8 @@ rollback;
 drop role regress_psql_user;
 
 -- check \sf
-\sf information_schema._pg_expandarray
-\sf+ information_schema._pg_expandarray
+\sf information_schema._pg_index_position
+\sf+ information_schema._pg_index_position
 \sf+ interval_pl_time
 \sf ts_debug(text)
 \sf+ ts_debug(text)
@@ -1586,6 +1590,7 @@ COMMIT;
 SELECT COUNT(*) AS "#mum"
 FROM bla WHERE s = 'Mum' \;               -- no mum here
 SELECT * FROM bla ORDER BY 1;
+COMMIT;
 
 -- reset all
 \set AUTOCOMMIT on
@@ -1835,3 +1840,61 @@ DROP FUNCTION psql_error;
 \dP "no.such.database"."no.such.schema"."no.such.partitioned.relation"
 \dT "no.such.database"."no.such.schema"."no.such.data.type"
 \dX "no.such.database"."no.such.schema"."no.such.extended.statistics"
+
+-- check \drg and \du
+CREATE ROLE regress_du_role0;
+CREATE ROLE regress_du_role1;
+CREATE ROLE regress_du_role2;
+CREATE ROLE regress_du_admin;
+
+GRANT regress_du_role0 TO regress_du_admin WITH ADMIN TRUE;
+GRANT regress_du_role1 TO regress_du_admin WITH ADMIN TRUE;
+GRANT regress_du_role2 TO regress_du_admin WITH ADMIN TRUE;
+
+GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN TRUE,  INHERIT TRUE,  SET TRUE  GRANTED BY regress_du_admin;
+GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN TRUE,  INHERIT FALSE, SET FALSE GRANTED BY regress_du_admin;
+GRANT regress_du_role1 TO regress_du_role2 WITH ADMIN TRUE , INHERIT FALSE, SET TRUE  GRANTED BY regress_du_admin;
+GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN FALSE, INHERIT TRUE,  SET FALSE GRANTED BY regress_du_role1;
+GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN FALSE, INHERIT TRUE , SET TRUE  GRANTED BY regress_du_role1;
+GRANT regress_du_role0 TO regress_du_role1 WITH ADMIN FALSE, INHERIT FALSE, SET TRUE  GRANTED BY regress_du_role2;
+GRANT regress_du_role0 TO regress_du_role2 WITH ADMIN FALSE, INHERIT FALSE, SET FALSE GRANTED BY regress_du_role2;
+
+\drg regress_du_role*
+\du regress_du_role*
+
+DROP ROLE regress_du_role0;
+DROP ROLE regress_du_role1;
+DROP ROLE regress_du_role2;
+DROP ROLE regress_du_admin;
+
+-- Test display of empty privileges.
+BEGIN;
+-- Create an owner for tested objects because output contains owner name.
+CREATE ROLE regress_zeropriv_owner;
+SET LOCAL ROLE regress_zeropriv_owner;
+
+CREATE DOMAIN regress_zeropriv_domain AS int;
+REVOKE ALL ON DOMAIN regress_zeropriv_domain FROM CURRENT_USER, PUBLIC;
+\dD+ regress_zeropriv_domain
+
+CREATE PROCEDURE regress_zeropriv_proc() LANGUAGE sql AS $$ $$;
+/
+REVOKE ALL ON PROCEDURE regress_zeropriv_proc() FROM CURRENT_USER, PUBLIC;
+\df+ regress_zeropriv_proc
+
+CREATE TABLE regress_zeropriv_tbl (a int);
+REVOKE ALL ON TABLE regress_zeropriv_tbl FROM CURRENT_USER;
+\dp regress_zeropriv_tbl
+
+CREATE TYPE regress_zeropriv_type AS (a int);
+REVOKE ALL ON TYPE regress_zeropriv_type FROM CURRENT_USER, PUBLIC;
+\dT+ regress_zeropriv_type
+
+ROLLBACK;
+
+-- Test display of default privileges with \pset null.
+CREATE TABLE defprivs (a int);
+\pset null '(default)'
+\z defprivs
+\pset null ''
+DROP TABLE defprivs;

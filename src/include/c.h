@@ -75,6 +75,11 @@
 #include <libintl.h>
 #endif
 
+/* Define before including zlib.h to add const decorations to zlib API. */
+#ifdef HAVE_LIBZ
+#define ZLIB_CONST
+#endif
+
 
 /* ----------------------------------------------------------------
  *				Section 1: compiler characteristics
@@ -1061,30 +1066,6 @@ extern void ExceptionalCondition(const char *conditionName,
 
 
 /*
- * MemSetTest/MemSetLoop are a variant version that allow all the tests in
- * MemSet to be done at compile time in cases where "val" and "len" are
- * constants *and* we know the "start" pointer must be word-aligned.
- * If MemSetTest succeeds, then it is okay to use MemSetLoop, otherwise use
- * MemSetAligned.  Beware of multiple evaluations of the arguments when using
- * this approach.
- */
-#define MemSetTest(val, len) \
-	( ((len) & LONG_ALIGN_MASK) == 0 && \
-	(len) <= MEMSET_LOOP_LIMIT && \
-	MEMSET_LOOP_LIMIT != 0 && \
-	(val) == 0 )
-
-#define MemSetLoop(start, val, len) \
-	do \
-	{ \
-		long * _start = (long *) (start); \
-		long * _stop = (long *) ((char *) _start + (Size) (len)); \
-	\
-		while (_start < _stop) \
-			*_start++ = 0; \
-	} while (0)
-
-/*
  * Macros for range-checking float values before converting to integer.
  * We must be careful here that the boundary values are expressed exactly
  * in the float domain.  PG_INTnn_MIN is an exact power of 2, so it will
@@ -1245,7 +1226,10 @@ typedef union PGAlignedXLogBlock
  * Note that this only works in function scope, not for global variables (it'd
  * be nice, but not trivial, to improve that).
  */
-#if defined(HAVE__BUILTIN_TYPES_COMPATIBLE_P)
+#if defined(__cplusplus)
+#define unconstify(underlying_type, expr) const_cast<underlying_type>(expr)
+#define unvolatize(underlying_type, expr) const_cast<underlying_type>(expr)
+#elif defined(HAVE__BUILTIN_TYPES_COMPATIBLE_P)
 #define unconstify(underlying_type, expr) \
 	(StaticAssertExpr(__builtin_types_compatible_p(__typeof(expr), const underlying_type), \
 					  "wrong cast"), \

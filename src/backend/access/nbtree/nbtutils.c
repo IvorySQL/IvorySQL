@@ -62,14 +62,6 @@ static int	_bt_keep_natts(Relation rel, IndexTuple lastleft,
  *		Build an insertion scan key that contains comparison data from itup
  *		as well as comparator routines appropriate to the key datatypes.
  *
- *		When itup is a non-pivot tuple, the returned insertion scan key is
- *		suitable for finding a place for it to go on the leaf level.  Pivot
- *		tuples can be used to re-find leaf page with matching high key, but
- *		then caller needs to set scan key's pivotsearch field to true.  This
- *		allows caller to search for a leaf page with a matching high key,
- *		which is usually to the left of the first leaf page a non-pivot match
- *		might appear on.
- *
  *		The result is intended for use with _bt_compare() and _bt_truncate().
  *		Callers that don't need to fill out the insertion scankey arguments
  *		(e.g. they use an ad-hoc comparison routine, or only need a scankey
@@ -120,8 +112,8 @@ _bt_mkscankey(Relation rel, IndexTuple itup)
 		key->allequalimage = false;
 	}
 	key->anynullkeys = false;	/* initial assumption */
-	key->nextkey = false;
-	key->pivotsearch = false;
+	key->nextkey = false;		/* usual case, required by btinsert */
+	key->backward = false;		/* usual case, required by btinsert */
 	key->keysz = Min(indnkeyatts, tupnatts);
 	key->scantid = key->heapkeyspace && itup ?
 		BTreeTupleGetHeapTID(itup) : NULL;
@@ -539,6 +531,8 @@ _bt_start_array_keys(IndexScanDesc scan, ScanDirection dir)
 			curArrayKey->cur_elem = 0;
 		skey->sk_argument = curArrayKey->elem_values[curArrayKey->cur_elem];
 	}
+
+	so->arraysStarted = true;
 }
 
 /*
@@ -598,6 +592,14 @@ _bt_advance_array_keys(IndexScanDesc scan, ScanDirection dir)
 	if (scan->parallel_scan != NULL)
 		_bt_parallel_advance_array_keys(scan);
 
+	/*
+	 * When no new array keys were found, the scan is "past the end" of the
+	 * array keys.  _bt_start_array_keys can still "restart" the array keys if
+	 * a rescan is required.
+	 */
+	if (!found)
+		so->arraysStarted = false;
+
 	return found;
 }
 
@@ -651,8 +653,13 @@ _bt_restore_array_keys(IndexScanDesc scan)
 	 * If we changed any keys, we must redo _bt_preprocess_keys.  That might
 	 * sound like overkill, but in cases with multiple keys per index column
 	 * it seems necessary to do the full set of pushups.
+	 *
+	 * Also do this whenever the scan's set of array keys "wrapped around" at
+	 * the end of the last primitive index scan.  There won't have been a call
+	 * to _bt_preprocess_keys from some other place following wrap around, so
+	 * we do it for ourselves.
 	 */
-	if (changed)
+	if (changed || !so->arraysStarted)
 	{
 		_bt_preprocess_keys(scan);
 		/* The mark should have been set on a consistent set of keys... */
@@ -1357,10 +1364,15 @@ _bt_mark_scankey_required(ScanKey skey)
  * tupnatts: number of attributes in tupnatts (high key may be truncated)
  * dir: direction we are scanning in
  * continuescan: output parameter (will be set correctly in all cases)
+ * continuescanPrechecked: indicates that *continuescan flag is known to
+ * 						   be true for the last item on the page
+ * haveFirstMatch: indicates that we already have at least one match
+ * 							  in the current page
  */
 bool
 _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple, int tupnatts,
-			  ScanDirection dir, bool *continuescan)
+			  ScanDirection dir, bool *continuescan,
+			  bool continuescanPrechecked, bool haveFirstMatch)
 {
 	TupleDesc	tupdesc;
 	BTScanOpaque so;
@@ -1381,6 +1393,39 @@ _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple, int tupnatts,
 		Datum		datum;
 		bool		isNull;
 		Datum		test;
+		bool		requiredSameDir = false,
+					requiredOppositeDir = false;
+
+		/*
+		 * Check if the key is required for ordered scan in the same or
+		 * opposite direction.  Save as flag variables for future usage.
+		 */
+		if (((key->sk_flags & SK_BT_REQFWD) && ScanDirectionIsForward(dir)) ||
+			((key->sk_flags & SK_BT_REQBKWD) && ScanDirectionIsBackward(dir)))
+			requiredSameDir = true;
+		else if (((key->sk_flags & SK_BT_REQFWD) && ScanDirectionIsBackward(dir)) ||
+				 ((key->sk_flags & SK_BT_REQBKWD) && ScanDirectionIsForward(dir)))
+			requiredOppositeDir = true;
+
+		/*
+		 * If the caller told us the *continuescan flag is known to be true
+		 * for the last item on the page, then we know the keys required for
+		 * the current direction scan should be matched.  Otherwise, the
+		 * *continuescan flag would be set for the current item and
+		 * subsequently the last item on the page accordingly.
+		 *
+		 * If the key is required for the opposite direction scan, we can skip
+		 * the check if the caller tells us there was already at least one
+		 * matching item on the page. Also, we require the *continuescan flag
+		 * to be true for the last item on the page to know there are no
+		 * NULLs.
+		 *
+		 * Both cases above work except for the row keys, where NULLs could be
+		 * found in the middle of matching values.
+		 */
+		if ((requiredSameDir || (requiredOppositeDir && haveFirstMatch)) &&
+			!(key->sk_flags & SK_ROW_HEADER) && continuescanPrechecked)
+			continue;
 
 		if (key->sk_attno > tupnatts)
 		{
@@ -1429,11 +1474,7 @@ _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple, int tupnatts,
 			 * scan direction, then we can conclude no further tuples will
 			 * pass, either.
 			 */
-			if ((key->sk_flags & SK_BT_REQFWD) &&
-				ScanDirectionIsForward(dir))
-				*continuescan = false;
-			else if ((key->sk_flags & SK_BT_REQBKWD) &&
-					 ScanDirectionIsBackward(dir))
+			if (requiredSameDir)
 				*continuescan = false;
 
 			/*
@@ -1483,8 +1524,23 @@ _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple, int tupnatts,
 			return false;
 		}
 
-		test = FunctionCall2Coll(&key->sk_func, key->sk_collation,
-								 datum, key->sk_argument);
+		/*
+		 * Apply the key-checking function.  When the key is required for the
+		 * opposite direction scan, it must be already satisfied as soon as
+		 * there is already match on the page.  Except for the NULLs checking,
+		 * which have already done above.
+		 */
+		if (!(requiredOppositeDir && haveFirstMatch))
+		{
+			test = FunctionCall2Coll(&key->sk_func, key->sk_collation,
+									 datum, key->sk_argument);
+		}
+		else
+		{
+			test = true;
+			Assert(test == FunctionCall2Coll(&key->sk_func, key->sk_collation,
+											 datum, key->sk_argument));
+		}
 
 		if (!DatumGetBool(test))
 		{
@@ -1498,11 +1554,7 @@ _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple, int tupnatts,
 			 * initial positioning in _bt_first() when they are available. See
 			 * comments in _bt_first().
 			 */
-			if ((key->sk_flags & SK_BT_REQFWD) &&
-				ScanDirectionIsForward(dir))
-				*continuescan = false;
-			else if ((key->sk_flags & SK_BT_REQBKWD) &&
-					 ScanDirectionIsBackward(dir))
+			if (requiredSameDir)
 				*continuescan = false;
 
 			/*

@@ -283,6 +283,24 @@ RelationAddBlocks(Relation relation, BulkInsertState bistate,
 		 */
 		extend_by_pages += extend_by_pages * waitcount;
 
+		/* ---
+		 * If we previously extended using the same bistate, it's very likely
+		 * we'll extend some more. Try to extend by as many pages as
+		 * before. This can be important for performance for several reasons,
+		 * including:
+		 *
+		 * - It prevents mdzeroextend() switching between extending the
+		 *   relation in different ways, which is inefficient for some
+		 *   filesystems.
+		 *
+		 * - Contention is often intermittent. Even if we currently don't see
+		 *   other waiters (see above), extending by larger amounts can
+		 *   prevent future contention.
+		 * ---
+		 */
+		if (bistate)
+			extend_by_pages = Max(extend_by_pages, bistate->already_extended_by);
+
 		/*
 		 * Can't extend by more than MAX_BUFFERS_TO_EXTEND_BY, we need to pin
 		 * them all concurrently.
@@ -321,7 +339,7 @@ RelationAddBlocks(Relation relation, BulkInsertState bistate,
 	 * [auto]vacuum trying to truncate later pages as REL_TRUNCATE_MINIMUM is
 	 * way larger.
 	 */
-	first_block = ExtendBufferedRelBy(EB_REL(relation), MAIN_FORKNUM,
+	first_block = ExtendBufferedRelBy(BMR_REL(relation), MAIN_FORKNUM,
 									  bistate ? bistate->strategy : NULL,
 									  EB_LOCK_FIRST,
 									  extend_by_pages,
@@ -409,6 +427,7 @@ RelationAddBlocks(Relation relation, BulkInsertState bistate,
 		/* maintain bistate->current_buf */
 		IncrBufferRefCount(buffer);
 		bistate->current_buf = buffer;
+		bistate->already_extended_by += extend_by_pages;
 	}
 
 	return buffer;
@@ -544,7 +563,7 @@ RelationGetBufferForTuple(Relation relation, Size len,
 	 * on, as cached in the BulkInsertState or relcache entry.  If that
 	 * doesn't work, we ask the Free Space Map to locate a suitable page.
 	 * Since the FSM's info might be out of date, we have to be prepared to
-	 * loop around and retry multiple times. (To insure this isn't an infinite
+	 * loop around and retry multiple times. (To ensure this isn't an infinite
 	 * loop, we must update the FSM with the correct amount of free space on
 	 * each page that proves not to be suitable.)  If the FSM has no record of
 	 * a page with enough free space, we give up and extend the relation.

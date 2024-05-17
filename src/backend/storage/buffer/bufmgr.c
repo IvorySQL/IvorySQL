@@ -47,6 +47,7 @@
 #include "postmaster/bgwriter.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
 #include "storage/proc.h"
@@ -55,7 +56,7 @@
 #include "utils/memdebug.h"
 #include "utils/ps_status.h"
 #include "utils/rel.h"
-#include "utils/resowner_private.h"
+#include "utils/resowner.h"
 #include "utils/timestamp.h"
 
 
@@ -204,6 +205,30 @@ static PrivateRefCountEntry *NewPrivateRefCountEntry(Buffer buffer);
 static PrivateRefCountEntry *GetPrivateRefCountEntry(Buffer buffer, bool do_move);
 static inline int32 GetPrivateRefCount(Buffer buffer);
 static void ForgetPrivateRefCountEntry(PrivateRefCountEntry *ref);
+
+/* ResourceOwner callbacks to hold in-progress I/Os and buffer pins */
+static void ResOwnerReleaseBufferIO(Datum res);
+static char *ResOwnerPrintBufferIO(Datum res);
+static void ResOwnerReleaseBufferPin(Datum res);
+static char *ResOwnerPrintBufferPin(Datum res);
+
+const ResourceOwnerDesc buffer_io_resowner_desc =
+{
+	.name = "buffer io",
+	.release_phase = RESOURCE_RELEASE_BEFORE_LOCKS,
+	.release_priority = RELEASE_PRIO_BUFFER_IOS,
+	.ReleaseResource = ResOwnerReleaseBufferIO,
+	.DebugPrint = ResOwnerPrintBufferIO
+};
+
+const ResourceOwnerDesc buffer_pin_resowner_desc =
+{
+	.name = "buffer pin",
+	.release_phase = RESOURCE_RELEASE_BEFORE_LOCKS,
+	.release_priority = RELEASE_PRIO_BUFFER_PINS,
+	.ReleaseResource = ResOwnerReleaseBufferPin,
+	.DebugPrint = ResOwnerPrintBufferPin
+};
 
 /*
  * Ensure that the PrivateRefCountArray has sufficient space to store one more
@@ -451,7 +476,7 @@ static Buffer ReadBuffer_common(SMgrRelation smgr, char relpersistence,
 								ForkNumber forkNum, BlockNumber blockNum,
 								ReadBufferMode mode, BufferAccessStrategy strategy,
 								bool *hit);
-static BlockNumber ExtendBufferedRelCommon(ExtendBufferedWhat eb,
+static BlockNumber ExtendBufferedRelCommon(BufferManagerRelation bmr,
 										   ForkNumber fork,
 										   BufferAccessStrategy strategy,
 										   uint32 flags,
@@ -459,7 +484,7 @@ static BlockNumber ExtendBufferedRelCommon(ExtendBufferedWhat eb,
 										   BlockNumber extend_upto,
 										   Buffer *buffers,
 										   uint32 *extended_by);
-static BlockNumber ExtendBufferedRelShared(ExtendBufferedWhat eb,
+static BlockNumber ExtendBufferedRelShared(BufferManagerRelation bmr,
 										   ForkNumber fork,
 										   BufferAccessStrategy strategy,
 										   uint32 flags,
@@ -470,6 +495,7 @@ static BlockNumber ExtendBufferedRelShared(ExtendBufferedWhat eb,
 static bool PinBuffer(BufferDesc *buf, BufferAccessStrategy strategy);
 static void PinBuffer_Locked(BufferDesc *buf);
 static void UnpinBuffer(BufferDesc *buf);
+static void UnpinBufferNoOwner(BufferDesc *buf);
 static void BufferSync(int flags);
 static uint32 WaitBufHdrUnlocked(BufferDesc *buf);
 static int	SyncOneBuffer(int buf_id, bool skip_recently_used,
@@ -477,7 +503,8 @@ static int	SyncOneBuffer(int buf_id, bool skip_recently_used,
 static void WaitIO(BufferDesc *buf);
 static bool StartBufferIO(BufferDesc *buf, bool forInput);
 static void TerminateBufferIO(BufferDesc *buf, bool clear_dirty,
-							  uint32 set_flag_bits);
+							  uint32 set_flag_bits, bool forget_owner);
+static void AbortBufferIO(Buffer buffer);
 static void shared_buffer_write_error_callback(void *arg);
 static void local_buffer_write_error_callback(void *arg);
 static BufferDesc *BufferAlloc(SMgrRelation smgr,
@@ -542,7 +569,7 @@ PrefetchSharedBuffer(SMgrRelation smgr_reln,
 		 * recovery if the relation file doesn't exist.
 		 */
 		if ((io_direct_flags & IO_DIRECT_DATA) == 0 &&
-			smgrprefetch(smgr_reln, forkNum, blockNum))
+			smgrprefetch(smgr_reln, forkNum, blockNum, 1))
 		{
 			result.initiated_io = true;
 		}
@@ -639,7 +666,7 @@ ReadRecentBuffer(RelFileLocator rlocator, ForkNumber forkNum, BlockNumber blockN
 
 	Assert(BufferIsValid(recent_buffer));
 
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 	ReservePrivateRefCountEntry();
 	InitBufferTag(&tag, &rlocator, forkNum, blockNum);
 
@@ -809,7 +836,7 @@ ReadBufferWithoutRelcache(RelFileLocator rlocator, ForkNumber forkNum,
  * Convenience wrapper around ExtendBufferedRelBy() extending by one block.
  */
 Buffer
-ExtendBufferedRel(ExtendBufferedWhat eb,
+ExtendBufferedRel(BufferManagerRelation bmr,
 				  ForkNumber forkNum,
 				  BufferAccessStrategy strategy,
 				  uint32 flags)
@@ -817,7 +844,7 @@ ExtendBufferedRel(ExtendBufferedWhat eb,
 	Buffer		buf;
 	uint32		extend_by = 1;
 
-	ExtendBufferedRelBy(eb, forkNum, strategy, flags, extend_by,
+	ExtendBufferedRelBy(bmr, forkNum, strategy, flags, extend_by,
 						&buf, &extend_by);
 
 	return buf;
@@ -841,7 +868,7 @@ ExtendBufferedRel(ExtendBufferedWhat eb,
  * be empty.
  */
 BlockNumber
-ExtendBufferedRelBy(ExtendBufferedWhat eb,
+ExtendBufferedRelBy(BufferManagerRelation bmr,
 					ForkNumber fork,
 					BufferAccessStrategy strategy,
 					uint32 flags,
@@ -849,17 +876,17 @@ ExtendBufferedRelBy(ExtendBufferedWhat eb,
 					Buffer *buffers,
 					uint32 *extended_by)
 {
-	Assert((eb.rel != NULL) != (eb.smgr != NULL));
-	Assert(eb.smgr == NULL || eb.relpersistence != 0);
+	Assert((bmr.rel != NULL) != (bmr.smgr != NULL));
+	Assert(bmr.smgr == NULL || bmr.relpersistence != 0);
 	Assert(extend_by > 0);
 
-	if (eb.smgr == NULL)
+	if (bmr.smgr == NULL)
 	{
-		eb.smgr = RelationGetSmgr(eb.rel);
-		eb.relpersistence = eb.rel->rd_rel->relpersistence;
+		bmr.smgr = RelationGetSmgr(bmr.rel);
+		bmr.relpersistence = bmr.rel->rd_rel->relpersistence;
 	}
 
-	return ExtendBufferedRelCommon(eb, fork, strategy, flags,
+	return ExtendBufferedRelCommon(bmr, fork, strategy, flags,
 								   extend_by, InvalidBlockNumber,
 								   buffers, extended_by);
 }
@@ -873,7 +900,7 @@ ExtendBufferedRelBy(ExtendBufferedWhat eb,
  * crash recovery).
  */
 Buffer
-ExtendBufferedRelTo(ExtendBufferedWhat eb,
+ExtendBufferedRelTo(BufferManagerRelation bmr,
 					ForkNumber fork,
 					BufferAccessStrategy strategy,
 					uint32 flags,
@@ -885,14 +912,14 @@ ExtendBufferedRelTo(ExtendBufferedWhat eb,
 	Buffer		buffer = InvalidBuffer;
 	Buffer		buffers[64];
 
-	Assert((eb.rel != NULL) != (eb.smgr != NULL));
-	Assert(eb.smgr == NULL || eb.relpersistence != 0);
+	Assert((bmr.rel != NULL) != (bmr.smgr != NULL));
+	Assert(bmr.smgr == NULL || bmr.relpersistence != 0);
 	Assert(extend_to != InvalidBlockNumber && extend_to > 0);
 
-	if (eb.smgr == NULL)
+	if (bmr.smgr == NULL)
 	{
-		eb.smgr = RelationGetSmgr(eb.rel);
-		eb.relpersistence = eb.rel->rd_rel->relpersistence;
+		bmr.smgr = RelationGetSmgr(bmr.rel);
+		bmr.relpersistence = bmr.rel->rd_rel->relpersistence;
 	}
 
 	/*
@@ -901,21 +928,21 @@ ExtendBufferedRelTo(ExtendBufferedWhat eb,
 	 * an smgrexists call.
 	 */
 	if ((flags & EB_CREATE_FORK_IF_NEEDED) &&
-		(eb.smgr->smgr_cached_nblocks[fork] == 0 ||
-		 eb.smgr->smgr_cached_nblocks[fork] == InvalidBlockNumber) &&
-		!smgrexists(eb.smgr, fork))
+		(bmr.smgr->smgr_cached_nblocks[fork] == 0 ||
+		 bmr.smgr->smgr_cached_nblocks[fork] == InvalidBlockNumber) &&
+		!smgrexists(bmr.smgr, fork))
 	{
-		LockRelationForExtension(eb.rel, ExclusiveLock);
+		LockRelationForExtension(bmr.rel, ExclusiveLock);
 
 		/* could have been closed while waiting for lock */
-		if (eb.rel)
-			eb.smgr = RelationGetSmgr(eb.rel);
+		if (bmr.rel)
+			bmr.smgr = RelationGetSmgr(bmr.rel);
 
 		/* recheck, fork might have been created concurrently */
-		if (!smgrexists(eb.smgr, fork))
-			smgrcreate(eb.smgr, fork, flags & EB_PERFORMING_RECOVERY);
+		if (!smgrexists(bmr.smgr, fork))
+			smgrcreate(bmr.smgr, fork, flags & EB_PERFORMING_RECOVERY);
 
-		UnlockRelationForExtension(eb.rel, ExclusiveLock);
+		UnlockRelationForExtension(bmr.rel, ExclusiveLock);
 	}
 
 	/*
@@ -923,13 +950,13 @@ ExtendBufferedRelTo(ExtendBufferedWhat eb,
 	 * kernel.
 	 */
 	if (flags & EB_CLEAR_SIZE_CACHE)
-		eb.smgr->smgr_cached_nblocks[fork] = InvalidBlockNumber;
+		bmr.smgr->smgr_cached_nblocks[fork] = InvalidBlockNumber;
 
 	/*
 	 * Estimate how many pages we'll need to extend by. This avoids acquiring
 	 * unnecessarily many victim buffers.
 	 */
-	current_size = smgrnblocks(eb.smgr, fork);
+	current_size = smgrnblocks(bmr.smgr, fork);
 
 	/*
 	 * Since no-one else can be looking at the page contents yet, there is no
@@ -948,14 +975,14 @@ ExtendBufferedRelTo(ExtendBufferedWhat eb,
 		if ((uint64) current_size + num_pages > extend_to)
 			num_pages = extend_to - current_size;
 
-		first_block = ExtendBufferedRelCommon(eb, fork, strategy, flags,
+		first_block = ExtendBufferedRelCommon(bmr, fork, strategy, flags,
 											  num_pages, extend_to,
 											  buffers, &extended_by);
 
 		current_size = first_block + extended_by;
 		Assert(num_pages != 0 || current_size >= extend_to);
 
-		for (int i = 0; i < extended_by; i++)
+		for (uint32 i = 0; i < extended_by; i++)
 		{
 			if (first_block + i != extend_to - 1)
 				ReleaseBuffer(buffers[i]);
@@ -975,7 +1002,7 @@ ExtendBufferedRelTo(ExtendBufferedWhat eb,
 		bool		hit;
 
 		Assert(extended_by == 0);
-		buffer = ReadBuffer_common(eb.smgr, eb.relpersistence,
+		buffer = ReadBuffer_common(bmr.smgr, bmr.relpersistence,
 								   fork, extend_to - 1, mode, strategy,
 								   &hit);
 	}
@@ -1019,12 +1046,9 @@ ReadBuffer_common(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 		if (mode == RBM_ZERO_AND_LOCK || mode == RBM_ZERO_AND_CLEANUP_LOCK)
 			flags |= EB_LOCK_FIRST;
 
-		return ExtendBufferedRel(EB_SMGR(smgr, relpersistence),
+		return ExtendBufferedRel(BMR_SMGR(smgr, relpersistence),
 								 forkNum, strategy, flags);
 	}
-
-	/* Make sure we will have room to remember the buffer pin */
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
 
 	TRACE_POSTGRESQL_BUFFER_READ_START(forkNum, blockNum,
 									   smgr->smgr_rlocator.locator.spcOid,
@@ -1119,7 +1143,7 @@ ReadBuffer_common(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 		MemSet((char *) bufBlock, 0, BLCKSZ);
 	else
 	{
-		instr_time	io_start = pgstat_prepare_io_time();
+		instr_time	io_start = pgstat_prepare_io_time(track_io_timing);
 
 		smgrread(smgr, forkNum, blockNum, bufBlock);
 
@@ -1176,7 +1200,7 @@ ReadBuffer_common(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 	else
 	{
 		/* Set BM_VALID, terminate IO, and wake up any waiters */
-		TerminateBufferIO(bufHdr, false, BM_VALID);
+		TerminateBufferIO(bufHdr, false, BM_VALID, true);
 	}
 
 	VacuumPageMiss++;
@@ -1229,6 +1253,10 @@ BufferAlloc(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 	Buffer		victim_buffer;
 	BufferDesc *victim_buf_hdr;
 	uint32		victim_buf_state;
+
+	/* Make sure we will have room to remember the buffer pin */
+	ResourceOwnerEnlarge(CurrentResourceOwner);
+	ReservePrivateRefCountEntry();
 
 	/* create a tag so we can lookup the buffer */
 	InitBufferTag(&newTag, &smgr->smgr_rlocator.locator, forkNum, blockNum);
@@ -1314,9 +1342,8 @@ BufferAlloc(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 		 * use.
 		 *
 		 * We could do this after releasing the partition lock, but then we'd
-		 * have to call ResourceOwnerEnlargeBuffers() &
-		 * ReservePrivateRefCountEntry() before acquiring the lock, for the
-		 * rare case of such a collision.
+		 * have to call ResourceOwnerEnlarge() & ReservePrivateRefCountEntry()
+		 * before acquiring the lock, for the rare case of such a collision.
 		 */
 		UnpinBuffer(victim_buf_hdr);
 
@@ -1591,10 +1618,10 @@ GetVictimBuffer(BufferAccessStrategy strategy, IOContext io_context)
 
 	/*
 	 * Ensure, while the spinlock's not yet held, that there's a free refcount
-	 * entry.
+	 * entry, and a resource owner slot for the pin.
 	 */
 	ReservePrivateRefCountEntry();
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 
 	/* we return here if a prospective victim buffer gets used concurrently */
 again:
@@ -1767,7 +1794,7 @@ LimitAdditionalPins(uint32 *additional_pins)
 	 */
 	max_proportional_pins -= PrivateRefCountOverflowed + REFCOUNT_ARRAY_ENTRIES;
 
-	if (max_proportional_pins < 0)
+	if (max_proportional_pins <= 0)
 		max_proportional_pins = 1;
 
 	if (*additional_pins > max_proportional_pins)
@@ -1779,7 +1806,7 @@ LimitAdditionalPins(uint32 *additional_pins)
  * avoid duplicating the tracing and relpersistence related logic.
  */
 static BlockNumber
-ExtendBufferedRelCommon(ExtendBufferedWhat eb,
+ExtendBufferedRelCommon(BufferManagerRelation bmr,
 						ForkNumber fork,
 						BufferAccessStrategy strategy,
 						uint32 flags,
@@ -1791,27 +1818,27 @@ ExtendBufferedRelCommon(ExtendBufferedWhat eb,
 	BlockNumber first_block;
 
 	TRACE_POSTGRESQL_BUFFER_EXTEND_START(fork,
-										 eb.smgr->smgr_rlocator.locator.spcOid,
-										 eb.smgr->smgr_rlocator.locator.dbOid,
-										 eb.smgr->smgr_rlocator.locator.relNumber,
-										 eb.smgr->smgr_rlocator.backend,
+										 bmr.smgr->smgr_rlocator.locator.spcOid,
+										 bmr.smgr->smgr_rlocator.locator.dbOid,
+										 bmr.smgr->smgr_rlocator.locator.relNumber,
+										 bmr.smgr->smgr_rlocator.backend,
 										 extend_by);
 
-	if (eb.relpersistence == RELPERSISTENCE_TEMP)
-		first_block = ExtendBufferedRelLocal(eb, fork, flags,
+	if (bmr.relpersistence == RELPERSISTENCE_TEMP)
+		first_block = ExtendBufferedRelLocal(bmr, fork, flags,
 											 extend_by, extend_upto,
 											 buffers, &extend_by);
 	else
-		first_block = ExtendBufferedRelShared(eb, fork, strategy, flags,
+		first_block = ExtendBufferedRelShared(bmr, fork, strategy, flags,
 											  extend_by, extend_upto,
 											  buffers, &extend_by);
 	*extended_by = extend_by;
 
 	TRACE_POSTGRESQL_BUFFER_EXTEND_DONE(fork,
-										eb.smgr->smgr_rlocator.locator.spcOid,
-										eb.smgr->smgr_rlocator.locator.dbOid,
-										eb.smgr->smgr_rlocator.locator.relNumber,
-										eb.smgr->smgr_rlocator.backend,
+										bmr.smgr->smgr_rlocator.locator.spcOid,
+										bmr.smgr->smgr_rlocator.locator.dbOid,
+										bmr.smgr->smgr_rlocator.locator.relNumber,
+										bmr.smgr->smgr_rlocator.backend,
 										*extended_by,
 										first_block);
 
@@ -1823,7 +1850,7 @@ ExtendBufferedRelCommon(ExtendBufferedWhat eb,
  * shared buffers.
  */
 static BlockNumber
-ExtendBufferedRelShared(ExtendBufferedWhat eb,
+ExtendBufferedRelShared(BufferManagerRelation bmr,
 						ForkNumber fork,
 						BufferAccessStrategy strategy,
 						uint32 flags,
@@ -1859,9 +1886,6 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 		MemSet((char *) buf_block, 0, BLCKSZ);
 	}
 
-	/* in case we need to pin an existing buffer below */
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
-
 	/*
 	 * Lock relation against concurrent extensions, unless requested not to.
 	 *
@@ -1874,9 +1898,9 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 	 */
 	if (!(flags & EB_SKIP_EXTENSION_LOCK))
 	{
-		LockRelationForExtension(eb.rel, ExclusiveLock);
-		if (eb.rel)
-			eb.smgr = RelationGetSmgr(eb.rel);
+		LockRelationForExtension(bmr.rel, ExclusiveLock);
+		if (bmr.rel)
+			bmr.smgr = RelationGetSmgr(bmr.rel);
 	}
 
 	/*
@@ -1884,9 +1908,9 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 	 * kernel.
 	 */
 	if (flags & EB_CLEAR_SIZE_CACHE)
-		eb.smgr->smgr_cached_nblocks[fork] = InvalidBlockNumber;
+		bmr.smgr->smgr_cached_nblocks[fork] = InvalidBlockNumber;
 
-	first_block = smgrnblocks(eb.smgr, fork);
+	first_block = smgrnblocks(bmr.smgr, fork);
 
 	/*
 	 * Now that we have the accurate relation size, check if the caller wants
@@ -1918,7 +1942,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 		if (extend_by == 0)
 		{
 			if (!(flags & EB_SKIP_EXTENSION_LOCK))
-				UnlockRelationForExtension(eb.rel, ExclusiveLock);
+				UnlockRelationForExtension(bmr.rel, ExclusiveLock);
 			*extended_by = extend_by;
 			return first_block;
 		}
@@ -1929,7 +1953,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("cannot extend relation %s beyond %u blocks",
-						relpath(eb.smgr->smgr_rlocator, fork),
+						relpath(bmr.smgr->smgr_rlocator, fork),
 						MaxBlockNumber)));
 
 	/*
@@ -1938,7 +1962,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 	 * This needs to happen before we extend the relation, because as soon as
 	 * we do, other backends can start to read in those pages.
 	 */
-	for (int i = 0; i < extend_by; i++)
+	for (uint32 i = 0; i < extend_by; i++)
 	{
 		Buffer		victim_buf = buffers[i];
 		BufferDesc *victim_buf_hdr = GetBufferDescriptor(victim_buf - 1);
@@ -1947,7 +1971,11 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 		LWLock	   *partition_lock;
 		int			existing_id;
 
-		InitBufferTag(&tag, &eb.smgr->smgr_rlocator.locator, fork, first_block + i);
+		/* in case we need to pin an existing buffer below */
+		ResourceOwnerEnlarge(CurrentResourceOwner);
+		ReservePrivateRefCountEntry();
+
+		InitBufferTag(&tag, &bmr.smgr->smgr_rlocator.locator, fork, first_block + i);
 		hash = BufTableHashCode(&tag);
 		partition_lock = BufMappingPartitionLock(hash);
 
@@ -1996,7 +2024,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 			if (valid && !PageIsNew((Page) buf_block))
 				ereport(ERROR,
 						(errmsg("unexpected data beyond EOF in block %u of relation %s",
-								existing_hdr->tag.blockNum, relpath(eb.smgr->smgr_rlocator, fork)),
+								existing_hdr->tag.blockNum, relpath(bmr.smgr->smgr_rlocator, fork)),
 						 errhint("This has been seen to occur with buggy kernels; consider updating your system.")));
 
 			/*
@@ -2030,7 +2058,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 			victim_buf_hdr->tag = tag;
 
 			buf_state |= BM_TAG_VALID | BUF_USAGECOUNT_ONE;
-			if (eb.relpersistence == RELPERSISTENCE_PERMANENT || fork == INIT_FORKNUM)
+			if (bmr.relpersistence == RELPERSISTENCE_PERMANENT || fork == INIT_FORKNUM)
 				buf_state |= BM_PERMANENT;
 
 			UnlockBufHdr(victim_buf_hdr, buf_state);
@@ -2042,7 +2070,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 		}
 	}
 
-	io_start = pgstat_prepare_io_time();
+	io_start = pgstat_prepare_io_time(track_io_timing);
 
 	/*
 	 * Note: if smgrzeroextend fails, we will end up with buffers that are
@@ -2054,7 +2082,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 	 *
 	 * We don't need to set checksum for all-zero pages.
 	 */
-	smgrzeroextend(eb.smgr, fork, first_block, extend_by, false);
+	smgrzeroextend(bmr.smgr, fork, first_block, extend_by, false);
 
 	/*
 	 * Release the file-extension lock; it's now OK for someone else to extend
@@ -2064,13 +2092,13 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 	 * take noticeable time.
 	 */
 	if (!(flags & EB_SKIP_EXTENSION_LOCK))
-		UnlockRelationForExtension(eb.rel, ExclusiveLock);
+		UnlockRelationForExtension(bmr.rel, ExclusiveLock);
 
 	pgstat_count_io_op_time(IOOBJECT_RELATION, io_context, IOOP_EXTEND,
 							io_start, extend_by);
 
 	/* Set BM_VALID, terminate IO, and wake up any waiters */
-	for (int i = 0; i < extend_by; i++)
+	for (uint32 i = 0; i < extend_by; i++)
 	{
 		Buffer		buf = buffers[i];
 		BufferDesc *buf_hdr = GetBufferDescriptor(buf - 1);
@@ -2088,7 +2116,7 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 		if (lock)
 			LWLockAcquire(BufferDescriptorGetContentLock(buf_hdr), LW_EXCLUSIVE);
 
-		TerminateBufferIO(buf_hdr, false, BM_VALID);
+		TerminateBufferIO(buf_hdr, false, BM_VALID, true);
 	}
 
 	pgBufferUsage.shared_blks_written += extend_by;
@@ -2096,6 +2124,65 @@ ExtendBufferedRelShared(ExtendBufferedWhat eb,
 	*extended_by = extend_by;
 
 	return first_block;
+}
+
+/*
+ * BufferIsExclusiveLocked
+ *
+ *      Checks if buffer is exclusive-locked.
+ *
+ * Buffer must be pinned.
+ */
+bool
+BufferIsExclusiveLocked(Buffer buffer)
+{
+	BufferDesc *bufHdr;
+
+	if (BufferIsLocal(buffer))
+	{
+		int			bufid = -buffer - 1;
+
+		bufHdr = GetLocalBufferDescriptor(bufid);
+	}
+	else
+	{
+		bufHdr = GetBufferDescriptor(buffer - 1);
+	}
+
+	Assert(BufferIsPinned(buffer));
+	return LWLockHeldByMeInMode(BufferDescriptorGetContentLock(bufHdr),
+								LW_EXCLUSIVE);
+}
+
+/*
+ * BufferIsDirty
+ *
+ *		Checks if buffer is already dirty.
+ *
+ * Buffer must be pinned and exclusive-locked.  (Without an exclusive lock,
+ * the result may be stale before it's returned.)
+ */
+bool
+BufferIsDirty(Buffer buffer)
+{
+	BufferDesc *bufHdr;
+
+	if (BufferIsLocal(buffer))
+	{
+		int			bufid = -buffer - 1;
+
+		bufHdr = GetLocalBufferDescriptor(bufid);
+	}
+	else
+	{
+		bufHdr = GetBufferDescriptor(buffer - 1);
+	}
+
+	Assert(BufferIsPinned(buffer));
+	Assert(LWLockHeldByMeInMode(BufferDescriptorGetContentLock(bufHdr),
+								LW_EXCLUSIVE));
+
+	return pg_atomic_read_u32(&bufHdr->state) & BM_DIRTY;
 }
 
 /*
@@ -2222,7 +2309,8 @@ ReleaseAndReadBuffer(Buffer buffer,
  * taking the buffer header lock; instead update the state variable in loop of
  * CAS operations. Hopefully it's just a single CAS.
  *
- * Note that ResourceOwnerEnlargeBuffers must have been done already.
+ * Note that ResourceOwnerEnlarge() and ReservePrivateRefCountEntry()
+ * must have been done already.
  *
  * Returns true if buffer is BM_VALID, else false.  This provision allows
  * some callers to avoid an extra spinlock cycle.
@@ -2235,6 +2323,7 @@ PinBuffer(BufferDesc *buf, BufferAccessStrategy strategy)
 	PrivateRefCountEntry *ref;
 
 	Assert(!BufferIsLocal(b));
+	Assert(ReservedRefCountEntry != NULL);
 
 	ref = GetPrivateRefCountEntry(b, true);
 
@@ -2243,7 +2332,6 @@ PinBuffer(BufferDesc *buf, BufferAccessStrategy strategy)
 		uint32		buf_state;
 		uint32		old_buf_state;
 
-		ReservePrivateRefCountEntry();
 		ref = NewPrivateRefCountEntry(b);
 
 		old_buf_state = pg_atomic_read_u32(&buf->state);
@@ -2316,7 +2404,8 @@ PinBuffer(BufferDesc *buf, BufferAccessStrategy strategy)
  * The spinlock is released before return.
  *
  * As this function is called with the spinlock held, the caller has to
- * previously call ReservePrivateRefCountEntry().
+ * previously call ReservePrivateRefCountEntry() and
+ * ResourceOwnerEnlarge(CurrentResourceOwner);
  *
  * Currently, no callers of this function want to modify the buffer's
  * usage_count at all, so there's no need for a strategy parameter.
@@ -2378,6 +2467,15 @@ PinBuffer_Locked(BufferDesc *buf)
 static void
 UnpinBuffer(BufferDesc *buf)
 {
+	Buffer		b = BufferDescriptorGetBuffer(buf);
+
+	ResourceOwnerForgetBuffer(CurrentResourceOwner, b);
+	UnpinBufferNoOwner(buf);
+}
+
+static void
+UnpinBufferNoOwner(BufferDesc *buf)
+{
 	PrivateRefCountEntry *ref;
 	Buffer		b = BufferDescriptorGetBuffer(buf);
 
@@ -2386,9 +2484,6 @@ UnpinBuffer(BufferDesc *buf)
 	/* not moving as we're likely deleting it soon anyway */
 	ref = GetPrivateRefCountEntry(b, false);
 	Assert(ref != NULL);
-
-	ResourceOwnerForgetBuffer(CurrentResourceOwner, b);
-
 	Assert(ref->refcount > 0);
 	ref->refcount--;
 	if (ref->refcount == 0)
@@ -2490,9 +2585,6 @@ BufferSync(int flags)
 	int			i;
 	int			mask = BM_DIRTY;
 	WritebackContext wb_context;
-
-	/* Make sure we can handle the pin inside SyncOneBuffer */
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
 
 	/*
 	 * Unless this is a shutdown checkpoint or we have been explicitly told,
@@ -2692,7 +2784,7 @@ BufferSync(int flags)
 			if (SyncOneBuffer(buf_id, false, &wb_context) & BUF_WRITTEN)
 			{
 				TRACE_POSTGRESQL_BUFFER_SYNC_WRITTEN(buf_id);
-				PendingCheckpointerStats.buf_written_checkpoints++;
+				PendingCheckpointerStats.buffers_written++;
 				num_written++;
 			}
 		}
@@ -2970,9 +3062,6 @@ BgBufferSync(WritebackContext *wb_context)
 	 * requirements, or hit the bgwriter_lru_maxpages limit.
 	 */
 
-	/* Make sure we can handle the pin inside SyncOneBuffer */
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
-
 	num_to_scan = bufs_to_lap;
 	num_written = 0;
 	reusable_buffers = reusable_buffers_est;
@@ -3054,8 +3143,6 @@ BgBufferSync(WritebackContext *wb_context)
  *
  * (BUF_WRITTEN could be set in error if FlushBuffer finds the buffer clean
  * after locking it, but we don't care all that much.)
- *
- * Note: caller must have done ResourceOwnerEnlargeBuffers.
  */
 static int
 SyncOneBuffer(int buf_id, bool skip_recently_used, WritebackContext *wb_context)
@@ -3065,7 +3152,9 @@ SyncOneBuffer(int buf_id, bool skip_recently_used, WritebackContext *wb_context)
 	uint32		buf_state;
 	BufferTag	tag;
 
+	/* Make sure we can handle the pin */
 	ReservePrivateRefCountEntry();
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 
 	/*
 	 * Check whether buffer needs writing.
@@ -3195,6 +3284,7 @@ CheckForBufferLeaks(void)
 	int			RefCountErrors = 0;
 	PrivateRefCountEntry *res;
 	int			i;
+	char	   *s;
 
 	/* check the array */
 	for (i = 0; i < REFCOUNT_ARRAY_ENTRIES; i++)
@@ -3203,7 +3293,10 @@ CheckForBufferLeaks(void)
 
 		if (res->buffer != InvalidBuffer)
 		{
-			PrintBufferLeakWarning(res->buffer);
+			s = DebugPrintBufferRefcount(res->buffer);
+			elog(WARNING, "buffer refcount leak: %s", s);
+			pfree(s);
+
 			RefCountErrors++;
 		}
 	}
@@ -3216,7 +3309,9 @@ CheckForBufferLeaks(void)
 		hash_seq_init(&hstat, PrivateRefCountHash);
 		while ((res = (PrivateRefCountEntry *) hash_seq_search(&hstat)) != NULL)
 		{
-			PrintBufferLeakWarning(res->buffer);
+			s = DebugPrintBufferRefcount(res->buffer);
+			elog(WARNING, "buffer refcount leak: %s", s);
+			pfree(s);
 			RefCountErrors++;
 		}
 	}
@@ -3228,12 +3323,13 @@ CheckForBufferLeaks(void)
 /*
  * Helper routine to issue warnings when a buffer is unexpectedly pinned
  */
-void
-PrintBufferLeakWarning(Buffer buffer)
+char *
+DebugPrintBufferRefcount(Buffer buffer)
 {
 	BufferDesc *buf;
 	int32		loccount;
 	char	   *path;
+	char	   *result;
 	BackendId	backend;
 	uint32		buf_state;
 
@@ -3255,13 +3351,13 @@ PrintBufferLeakWarning(Buffer buffer)
 	path = relpathbackend(BufTagGetRelFileLocator(&buf->tag), backend,
 						  BufTagGetForkNum(&buf->tag));
 	buf_state = pg_atomic_read_u32(&buf->state);
-	elog(WARNING,
-		 "buffer refcount leak: [%03d] "
-		 "(rel=%s, blockNum=%u, flags=0x%x, refcount=%u %d)",
-		 buffer, path,
-		 buf->tag.blockNum, buf_state & BUF_FLAG_MASK,
-		 BUF_STATE_GET_REFCOUNT(buf_state), loccount);
+
+	result = psprintf("[%03d] (rel=%s, blockNum=%u, flags=0x%x, refcount=%u %d)",
+					  buffer, path,
+					  buf->tag.blockNum, buf_state & BUF_FLAG_MASK,
+					  BUF_STATE_GET_REFCOUNT(buf_state), loccount);
 	pfree(path);
+	return result;
 }
 
 /*
@@ -3427,7 +3523,7 @@ FlushBuffer(BufferDesc *buf, SMgrRelation reln, IOObject io_object,
 	 */
 	bufToWrite = PageSetChecksumCopy((Page) bufBlock, buf->tag.blockNum);
 
-	io_start = pgstat_prepare_io_time();
+	io_start = pgstat_prepare_io_time(track_io_timing);
 
 	/*
 	 * bufToWrite is either the shared buffer or a copy, as appropriate.
@@ -3465,7 +3561,7 @@ FlushBuffer(BufferDesc *buf, SMgrRelation reln, IOObject io_object,
 	 * Mark the buffer as clean (unless BM_JUST_DIRTIED has become set) and
 	 * end the BM_IO_IN_PROGRESS state.
 	 */
-	TerminateBufferIO(buf, true, 0);
+	TerminateBufferIO(buf, true, 0, true);
 
 	TRACE_POSTGRESQL_BUFFER_FLUSH_DONE(BufTagGetForkNum(&buf->tag),
 									   buf->tag.blockNum,
@@ -4085,7 +4181,7 @@ FlushRelationBuffers(Relation rel)
 
 				PageSetChecksumInplace(localpage, bufHdr->tag.blockNum);
 
-				io_start = pgstat_prepare_io_time();
+				io_start = pgstat_prepare_io_time(track_io_timing);
 
 				smgrwrite(RelationGetSmgr(rel),
 						  BufTagGetForkNum(&bufHdr->tag),
@@ -4110,9 +4206,6 @@ FlushRelationBuffers(Relation rel)
 		return;
 	}
 
-	/* Make sure we can handle the pin inside the loop */
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
-
 	for (i = 0; i < NBuffers; i++)
 	{
 		uint32		buf_state;
@@ -4126,7 +4219,9 @@ FlushRelationBuffers(Relation rel)
 		if (!BufTagMatchesRelFileLocator(&bufHdr->tag, &rel->rd_locator))
 			continue;
 
+		/* Make sure we can handle the pin */
 		ReservePrivateRefCountEntry();
+		ResourceOwnerEnlarge(CurrentResourceOwner);
 
 		buf_state = LockBufHdr(bufHdr);
 		if (BufTagMatchesRelFileLocator(&bufHdr->tag, &rel->rd_locator) &&
@@ -4183,9 +4278,6 @@ FlushRelationsAllBuffers(SMgrRelation *smgrs, int nrels)
 	if (use_bsearch)
 		pg_qsort(srels, nrels, sizeof(SMgrSortArray), rlocator_comparator);
 
-	/* Make sure we can handle the pin inside the loop */
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
-
 	for (i = 0; i < NBuffers; i++)
 	{
 		SMgrSortArray *srelent = NULL;
@@ -4224,7 +4316,9 @@ FlushRelationsAllBuffers(SMgrRelation *smgrs, int nrels)
 		if (srelent == NULL)
 			continue;
 
+		/* Make sure we can handle the pin */
 		ReservePrivateRefCountEntry();
+		ResourceOwnerEnlarge(CurrentResourceOwner);
 
 		buf_state = LockBufHdr(bufHdr);
 		if (BufTagMatchesRelFileLocator(&bufHdr->tag, &srelent->rlocator) &&
@@ -4419,9 +4513,6 @@ FlushDatabaseBuffers(Oid dbid)
 	int			i;
 	BufferDesc *bufHdr;
 
-	/* Make sure we can handle the pin inside the loop */
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
-
 	for (i = 0; i < NBuffers; i++)
 	{
 		uint32		buf_state;
@@ -4435,7 +4526,9 @@ FlushDatabaseBuffers(Oid dbid)
 		if (bufHdr->tag.dbOid != dbid)
 			continue;
 
+		/* Make sure we can handle the pin */
 		ReservePrivateRefCountEntry();
+		ResourceOwnerEnlarge(CurrentResourceOwner);
 
 		buf_state = LockBufHdr(bufHdr);
 		if (bufHdr->tag.dbOid == dbid &&
@@ -4512,7 +4605,7 @@ void
 IncrBufferRefCount(Buffer buffer)
 {
 	Assert(BufferIsPinned(buffer));
-	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 	if (BufferIsLocal(buffer))
 		LocalRefCount[-buffer - 1]++;
 	else
@@ -4901,7 +4994,7 @@ LockBufferForCleanup(Buffer buffer)
 			SetStartupBufferPinWaitBufId(-1);
 		}
 		else
-			ProcWaitForSignal(PG_WAIT_BUFFER_PIN);
+			ProcWaitForSignal(WAIT_EVENT_BUFFER_PIN);
 
 		/*
 		 * Remove flag marking us as waiter. Normally this will not be set
@@ -4923,8 +5016,8 @@ LockBufferForCleanup(Buffer buffer)
 }
 
 /*
- * Check called from RecoveryConflictInterrupt handler when Startup
- * process requests cancellation of all pin holders that are blocking it.
+ * Check called from ProcessRecoveryConflictInterrupts() when Startup process
+ * requests cancellation of all pin holders that are blocking it.
  */
 bool
 HoldingBufferPinThatDelaysRecovery(void)
@@ -5110,7 +5203,7 @@ StartBufferIO(BufferDesc *buf, bool forInput)
 {
 	uint32		buf_state;
 
-	ResourceOwnerEnlargeBufferIOs(CurrentResourceOwner);
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 
 	for (;;)
 	{
@@ -5155,9 +5248,14 @@ StartBufferIO(BufferDesc *buf, bool forInput)
  * set_flag_bits gets ORed into the buffer's flags.  It must include
  * BM_IO_ERROR in a failure case.  For successful completion it could
  * be 0, or BM_VALID if we just finished reading in the page.
+ *
+ * If forget_owner is true, we release the buffer I/O from the current
+ * resource owner. (forget_owner=false is used when the resource owner itself
+ * is being released)
  */
 static void
-TerminateBufferIO(BufferDesc *buf, bool clear_dirty, uint32 set_flag_bits)
+TerminateBufferIO(BufferDesc *buf, bool clear_dirty, uint32 set_flag_bits,
+				  bool forget_owner)
 {
 	uint32		buf_state;
 
@@ -5172,8 +5270,9 @@ TerminateBufferIO(BufferDesc *buf, bool clear_dirty, uint32 set_flag_bits)
 	buf_state |= set_flag_bits;
 	UnlockBufHdr(buf, buf_state);
 
-	ResourceOwnerForgetBufferIO(CurrentResourceOwner,
-								BufferDescriptorGetBuffer(buf));
+	if (forget_owner)
+		ResourceOwnerForgetBufferIO(CurrentResourceOwner,
+									BufferDescriptorGetBuffer(buf));
 
 	ConditionVariableBroadcast(BufferDescriptorGetIOCV(buf));
 }
@@ -5186,8 +5285,12 @@ TerminateBufferIO(BufferDesc *buf, bool clear_dirty, uint32 set_flag_bits)
  *
  *	If I/O was in progress, we always set BM_IO_ERROR, even though it's
  *	possible the error condition wasn't related to the I/O.
+ *
+ *  Note: this does not remove the buffer I/O from the resource owner.
+ *  That's correct when we're releasing the whole resource owner, but
+ *  beware if you use this in other contexts.
  */
-void
+static void
 AbortBufferIO(Buffer buffer)
 {
 	BufferDesc *buf_hdr = GetBufferDescriptor(buffer - 1);
@@ -5223,7 +5326,7 @@ AbortBufferIO(Buffer buffer)
 		}
 	}
 
-	TerminateBufferIO(buf_hdr, false, BM_IO_ERROR);
+	TerminateBufferIO(buf_hdr, false, BM_IO_ERROR, false);
 }
 
 /*
@@ -5511,7 +5614,7 @@ IssuePendingWritebacks(WritebackContext *wb_context, IOContext io_context)
 	sort_pending_writebacks(wb_context->pending_writebacks,
 							wb_context->nr_pending);
 
-	io_start = pgstat_prepare_io_time();
+	io_start = pgstat_prepare_io_time(track_io_timing);
 
 	/*
 	 * Coalesce neighbouring writes, but nothing else. For that we iterate
@@ -5576,19 +5679,41 @@ IssuePendingWritebacks(WritebackContext *wb_context, IOContext io_context)
 	wb_context->nr_pending = 0;
 }
 
+/* ResourceOwner callbacks */
 
-/*
- * Implement slower/larger portions of TestForOldSnapshot
- *
- * Smaller/faster portions are put inline, but the entire set of logic is too
- * big for that.
- */
-void
-TestForOldSnapshot_impl(Snapshot snapshot, Relation relation)
+static void
+ResOwnerReleaseBufferIO(Datum res)
 {
-	if (RelationAllowsEarlyPruning(relation)
-		&& (snapshot)->whenTaken < GetOldSnapshotThresholdTimestamp())
-		ereport(ERROR,
-				(errcode(ERRCODE_SNAPSHOT_TOO_OLD),
-				 errmsg("snapshot too old")));
+	Buffer		buffer = DatumGetInt32(res);
+
+	AbortBufferIO(buffer);
+}
+
+static char *
+ResOwnerPrintBufferIO(Datum res)
+{
+	Buffer		buffer = DatumGetInt32(res);
+
+	return psprintf("lost track of buffer IO on buffer %d", buffer);
+}
+
+static void
+ResOwnerReleaseBufferPin(Datum res)
+{
+	Buffer		buffer = DatumGetInt32(res);
+
+	/* Like ReleaseBuffer, but don't call ResourceOwnerForgetBuffer */
+	if (!BufferIsValid(buffer))
+		elog(ERROR, "bad buffer ID: %d", buffer);
+
+	if (BufferIsLocal(buffer))
+		UnpinLocalBufferNoOwner(buffer);
+	else
+		UnpinBufferNoOwner(GetBufferDescriptor(buffer - 1));
+}
+
+static char *
+ResOwnerPrintBufferPin(Datum res)
+{
+	return DebugPrintBufferRefcount(DatumGetInt32(res));
 }

@@ -166,11 +166,11 @@ typedef FormData_pg_constraint *Form_pg_constraint;
 
 DECLARE_TOAST(pg_constraint, 2832, 2833);
 
-DECLARE_INDEX(pg_constraint_conname_nsp_index, 2664, ConstraintNameNspIndexId, on pg_constraint using btree(conname name_ops, connamespace oid_ops));
-DECLARE_UNIQUE_INDEX(pg_constraint_conrelid_contypid_conname_index, 2665, ConstraintRelidTypidNameIndexId, on pg_constraint using btree(conrelid oid_ops, contypid oid_ops, conname name_ops));
-DECLARE_INDEX(pg_constraint_contypid_index, 2666, ConstraintTypidIndexId, on pg_constraint using btree(contypid oid_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_constraint_oid_index, 2667, ConstraintOidIndexId, on pg_constraint using btree(oid oid_ops));
-DECLARE_INDEX(pg_constraint_conparentid_index, 2579, ConstraintParentIndexId, on pg_constraint using btree(conparentid oid_ops));
+DECLARE_INDEX(pg_constraint_conname_nsp_index, 2664, ConstraintNameNspIndexId, pg_constraint, btree(conname name_ops, connamespace oid_ops));
+DECLARE_UNIQUE_INDEX(pg_constraint_conrelid_contypid_conname_index, 2665, ConstraintRelidTypidNameIndexId, pg_constraint, btree(conrelid oid_ops, contypid oid_ops, conname name_ops));
+DECLARE_INDEX(pg_constraint_contypid_index, 2666, ConstraintTypidIndexId, pg_constraint, btree(contypid oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_constraint_oid_index, 2667, ConstraintOidIndexId, pg_constraint, btree(oid oid_ops));
+DECLARE_INDEX(pg_constraint_conparentid_index, 2579, ConstraintParentIndexId, pg_constraint, btree(conparentid oid_ops));
 
 /* conkey can contain zero (InvalidAttrNumber) if a whole-row Var is used */
 DECLARE_ARRAY_FOREIGN_KEY_OPT((conrelid, conkey), pg_attribute, (attrelid, attnum));
@@ -181,6 +181,7 @@ DECLARE_ARRAY_FOREIGN_KEY((confrelid, confkey), pg_attribute, (attrelid, attnum)
 /* Valid values for contype */
 #define CONSTRAINT_CHECK			'c'
 #define CONSTRAINT_FOREIGN			'f'
+#define CONSTRAINT_NOTNULL			'n'
 #define CONSTRAINT_PRIMARY			'p'
 #define CONSTRAINT_UNIQUE			'u'
 #define CONSTRAINT_TRIGGER			't'
@@ -201,7 +202,7 @@ typedef enum ConstraintCategory
 {
 	CONSTRAINT_RELATION,
 	CONSTRAINT_DOMAIN,
-	CONSTRAINT_ASSERTION		/* for future expansion */
+	CONSTRAINT_ASSERTION,		/* for future expansion */
 } ConstraintCategory;
 
 
@@ -237,15 +238,23 @@ extern Oid	CreateConstraintEntry(const char *constraintName,
 								  bool conNoInherit,
 								  bool is_internal);
 
-extern void RemoveConstraintById(Oid conId);
-extern void RenameConstraintById(Oid conId, const char *newname);
-
 extern bool ConstraintNameIsUsed(ConstraintCategory conCat, Oid objId,
 								 const char *conname);
 extern bool ConstraintNameExists(const char *conname, Oid namespaceid);
 extern char *ChooseConstraintName(const char *name1, const char *name2,
 								  const char *label, Oid namespaceid,
 								  List *others);
+
+extern HeapTuple findNotNullConstraintAttnum(Oid relid, AttrNumber attnum);
+extern HeapTuple findNotNullConstraint(Oid relid, const char *colname);
+extern AttrNumber extractNotNullColumn(HeapTuple constrTup);
+extern bool AdjustNotNullInheritance1(Oid relid, AttrNumber attnum, int count,
+									  bool is_no_inherit);
+extern void AdjustNotNullInheritance(Oid relid, Bitmapset *columns, int count);
+extern List *RelationGetNotNullConstraints(Oid relid, bool cooked);
+
+extern void RemoveConstraintById(Oid conId);
+extern void RenameConstraintById(Oid conId, const char *newname);
 
 extern void AlterConstraintNamespaces(Oid ownerId, Oid oldNspId,
 									  Oid newNspId, bool isType, ObjectAddresses *objsMoved);

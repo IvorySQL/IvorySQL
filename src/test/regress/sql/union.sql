@@ -540,3 +540,21 @@ select * from
    union all
    select *, 1 as x from int8_tbl b) ss
 where (x = 0) or (q1 >= q2 and q1 <= q2);
+
+--
+-- Test the planner's ability to produce cheap startup plans with Append nodes
+--
+
+-- Ensure we get a Nested Loop join between tenk1 and tenk2
+explain (costs off)
+select t1.unique1 from tenk1 t1
+inner join tenk2 t2 on t1.tenthous = t2.tenthous
+   union all
+(values(1)) limit 1;
+
+-- Ensure there is no problem if cheapest_startup_path is NULL
+explain (costs off)
+select * from tenk1 t1
+left join lateral
+  (select t1.tenthous from tenk2 t2 union all (values(1)))
+on true limit 1;

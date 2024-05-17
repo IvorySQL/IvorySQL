@@ -115,8 +115,8 @@ char	   *Log_destination_string = NULL;
 bool		syslog_sequence_numbers = true;
 bool		syslog_split_messages = true;
 
-/* Processed form of backtrace_symbols GUC */
-static char *backtrace_symbol_list;
+/* Processed form of backtrace_functions GUC */
+static char *backtrace_function_list;
 
 #ifdef HAVE_SYSLOG
 
@@ -498,9 +498,11 @@ errfinish(const char *filename, int lineno, const char *funcname)
 
 	/* Collect backtrace, if enabled and we didn't already */
 	if (!edata->backtrace &&
-		edata->funcname &&
-		backtrace_functions &&
-		matches_backtrace_functions(edata->funcname))
+		((edata->funcname &&
+		  backtrace_functions &&
+		  matches_backtrace_functions(edata->funcname)) ||
+		 (edata->sqlerrcode == ERRCODE_INTERNAL_ERROR &&
+		  backtrace_on_internal_error)))
 		set_backtrace(edata, 2);
 
 	/*
@@ -831,13 +833,13 @@ matches_backtrace_functions(const char *funcname)
 {
 	const char *p;
 
-	if (!backtrace_symbol_list || funcname == NULL || funcname[0] == '\0')
+	if (!backtrace_function_list || funcname == NULL || funcname[0] == '\0')
 		return false;
 
-	p = backtrace_symbol_list;
+	p = backtrace_function_list;
 	for (;;)
 	{
-		if (*p == '\0')			/* end of backtrace_symbol_list */
+		if (*p == '\0')			/* end of backtrace_function_list */
 			break;
 
 		if (strcmp(funcname, p) == 0)
@@ -1833,7 +1835,7 @@ FlushErrorState(void)
 	errordata_stack_depth = -1;
 	recursion_depth = 0;
 	/* Delete all data in ErrorContext */
-	MemoryContextResetAndDeleteChildren(ErrorContext);
+	MemoryContextReset(ErrorContext);
 }
 
 /*
@@ -2180,7 +2182,7 @@ check_backtrace_functions(char **newval, void **extra, GucSource source)
 void
 assign_backtrace_functions(const char *newval, void *extra)
 {
-	backtrace_symbol_list = (char *) extra;
+	backtrace_function_list = (char *) extra;
 }
 
 /*
@@ -3465,7 +3467,10 @@ send_message_to_frontend(ErrorData *edata)
 		char		tbuf[12];
 
 		/* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
-		pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');
+		if (edata->elevel < ERROR)
+			pq_beginmessage(&msgbuf, PqMsg_NoticeResponse);
+		else
+			pq_beginmessage(&msgbuf, PqMsg_ErrorResponse);
 
 		sev = error_severity(edata->elevel);
 		pq_sendbyte(&msgbuf, PG_DIAG_SEVERITY);
@@ -3731,26 +3736,28 @@ write_stderr(const char *fmt,...)
 
 
 /*
- * Adjust the level of a recovery-related message per trace_recovery_messages.
+ * Write a message to STDERR using only async-signal-safe functions.  This can
+ * be used to safely emit a message from a signal handler.
  *
- * The argument is the default log level of the message, eg, DEBUG2.  (This
- * should only be applied to DEBUGn log messages, otherwise it's a no-op.)
- * If the level is >= trace_recovery_messages, we return LOG, causing the
- * message to be logged unconditionally (for most settings of
- * log_min_messages).  Otherwise, we return the argument unchanged.
- * The message will then be shown based on the setting of log_min_messages.
- *
- * Intention is to keep this for at least the whole of the 9.0 production
- * release, so we can more easily diagnose production problems in the field.
- * It should go away eventually, though, because it's an ugly and
- * hard-to-explain kluge.
+ * TODO: It is likely possible to safely do a limited amount of string
+ * interpolation (e.g., %s and %d), but that is not presently supported.
  */
-int
-trace_recovery(int trace_level)
+void
+write_stderr_signal_safe(const char *str)
 {
-	if (trace_level < LOG &&
-		trace_level >= trace_recovery_messages)
-		return LOG;
+	int			nwritten = 0;
+	int			ntotal = strlen(str);
 
-	return trace_level;
+	while (nwritten < ntotal)
+	{
+		int			rc;
+
+		rc = write(STDERR_FILENO, str + nwritten, ntotal - nwritten);
+
+		/* Just give up on error.  There isn't much else we can do. */
+		if (rc == -1)
+			return;
+
+		nwritten += rc;
+	}
 }

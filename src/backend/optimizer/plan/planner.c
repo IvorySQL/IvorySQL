@@ -330,11 +330,13 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * functions are present in the query tree.
 	 *
 	 * (Note that we do allow CREATE TABLE AS, SELECT INTO, and CREATE
-	 * MATERIALIZED VIEW to use parallel plans, but as of now, only the leader
-	 * backend writes into a completely new table.  In the future, we can
-	 * extend it to allow workers to write into the table.  However, to allow
-	 * parallel updates and deletes, we have to solve other problems,
-	 * especially around combo CIDs.)
+	 * MATERIALIZED VIEW to use parallel plans, but this is safe only because
+	 * the command is writing into a completely new table which workers won't
+	 * be able to see.  If the workers could see the table, the fact that
+	 * group locking would cause them to ignore the leader's heavyweight GIN
+	 * page locks would make this unsafe.  We'll have to fix that somehow if
+	 * we want to allow parallel inserts in general; updates and deletes have
+	 * additional problems especially around combo CIDs.)
 	 *
 	 * For now, we don't try to use parallel mode if we're running inside a
 	 * parallel worker.  We might eventually be able to relax this
@@ -430,16 +432,23 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	/*
 	 * Optionally add a Gather node for testing purposes, provided this is
 	 * actually a safe thing to do.
+	 *
+	 * We can add Gather even when top_plan has parallel-safe initPlans, but
+	 * then we have to move the initPlans to the Gather node because of
+	 * SS_finalize_plan's limitations.  That would cause cosmetic breakage of
+	 * regression tests when debug_parallel_query = regress, because initPlans
+	 * that would normally appear on the top_plan move to the Gather, causing
+	 * them to disappear from EXPLAIN output.  That doesn't seem worth kluging
+	 * EXPLAIN to hide, so skip it when debug_parallel_query = regress.
 	 */
-	if (debug_parallel_query != DEBUG_PARALLEL_OFF && top_plan->parallel_safe)
+	if (debug_parallel_query != DEBUG_PARALLEL_OFF &&
+		top_plan->parallel_safe &&
+		(top_plan->initPlan == NIL ||
+		 debug_parallel_query != DEBUG_PARALLEL_REGRESS))
 	{
 		Gather	   *gather = makeNode(Gather);
-
-		/*
-		 * Top plan must not have any initPlans, else it shouldn't have been
-		 * marked parallel-safe.
-		 */
-		Assert(top_plan->initPlan == NIL);
+		Cost		initplan_cost;
+		bool		unsafe_initplans;
 
 		gather->plan.targetlist = top_plan->targetlist;
 		gather->plan.qual = NIL;
@@ -448,6 +457,10 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		gather->num_workers = 1;
 		gather->single_copy = true;
 		gather->invisible = (debug_parallel_query == DEBUG_PARALLEL_REGRESS);
+
+		/* Transfer any initPlans to the new top node */
+		gather->plan.initPlan = top_plan->initPlan;
+		top_plan->initPlan = NIL;
 
 		/*
 		 * Since this Gather has no parallel-aware descendants to signal to,
@@ -467,6 +480,15 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		gather->plan.plan_width = top_plan->plan_width;
 		gather->plan.parallel_aware = false;
 		gather->plan.parallel_safe = false;
+
+		/*
+		 * Delete the initplans' cost from top_plan.  We needn't add it to the
+		 * Gather node, since the above coding already included it there.
+		 */
+		SS_compute_initplan_cost(gather->plan.initPlan,
+								 &initplan_cost, &unsafe_initplans);
+		top_plan->startup_cost -= initplan_cost;
+		top_plan->total_cost -= initplan_cost;
 
 		/* use parallel mode for parallel plans. */
 		root->glob->parallelModeNeeded = true;
@@ -1778,6 +1800,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 														   parse->resultRelation);
 				int			resultRelation = -1;
 
+				/* Pass the root result rel forward to the executor. */
+				rootRelation = parse->resultRelation;
+
 				/* Add only leaf children to ModifyTable. */
 				while ((resultRelation = bms_next_member(root->leaf_result_relids,
 														 resultRelation)) >= 0)
@@ -1901,6 +1926,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			else
 			{
 				/* Single-relation INSERT/UPDATE/DELETE/MERGE. */
+				rootRelation = 0;	/* there's no separate root rel */
 				resultRelations = list_make1_int(parse->resultRelation);
 				if (parse->commandType == CMD_UPDATE)
 					updateColnosLists = list_make1(root->update_colnos);
@@ -1911,16 +1937,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				if (parse->mergeActionList)
 					mergeActionLists = list_make1(parse->mergeActionList);
 			}
-
-			/*
-			 * If target is a partition root table, we need to mark the
-			 * ModifyTable node appropriately for that.
-			 */
-			if (rt_fetch(parse->resultRelation, parse->rtable)->relkind ==
-				RELKIND_PARTITIONED_TABLE)
-				rootRelation = parse->resultRelation;
-			else
-				rootRelation = 0;
 
 			/*
 			 * If there was a FOR [KEY] UPDATE/SHARE clause, the LockRows node
@@ -2240,11 +2256,12 @@ preprocess_rowmarks(PlannerInfo *root)
 	else
 	{
 		/*
-		 * We only need rowmarks for UPDATE, DELETE, or FOR [KEY]
+		 * We only need rowmarks for UPDATE, DELETE, MERGE, or FOR [KEY]
 		 * UPDATE/SHARE.
 		 */
 		if (parse->commandType != CMD_UPDATE &&
-			parse->commandType != CMD_DELETE)
+			parse->commandType != CMD_DELETE &&
+			parse->commandType != CMD_MERGE)
 			return;
 	}
 
@@ -4593,6 +4610,7 @@ create_one_window_path(PlannerInfo *root,
 			 * Note: a WindowFunc adds nothing to the target's eval costs; but
 			 * we do need to account for the increase in tlist width.
 			 */
+			int64		tuple_width = window_target->width;
 			ListCell   *lc2;
 
 			window_target = copy_pathtarget(window_target);
@@ -4601,8 +4619,9 @@ create_one_window_path(PlannerInfo *root,
 				WindowFunc *wfunc = lfirst_node(WindowFunc, lc2);
 
 				add_column_to_pathtarget(window_target, (Expr *) wfunc, 0);
-				window_target->width += get_typavgwidth(wfunc->wintype, -1);
+				tuple_width += get_typavgwidth(wfunc->wintype, -1);
 			}
+			window_target->width = clamp_width_est(tuple_width);
 		}
 		else
 		{
@@ -5999,6 +6018,9 @@ make_window_input_target(PlannerInfo *root,
  *		Create a pathkeys list describing the required input ordering
  *		for the given WindowClause.
  *
+ * Modifies wc's partitionClause to remove any clauses which are deemed
+ * redundant by the pathkey logic.
+ *
  * The required ordering is first the PARTITION keys, then the ORDER keys.
  * In the future we might try to implement windowing using hashing, in which
  * case the ordering could be relaxed, but for now we always sort.
@@ -6007,8 +6029,7 @@ static List *
 make_pathkeys_for_window(PlannerInfo *root, WindowClause *wc,
 						 List *tlist)
 {
-	List	   *window_pathkeys;
-	List	   *window_sortclauses;
+	List	   *window_pathkeys = NIL;
 
 	/* Throw error if can't sort */
 	if (!grouping_is_sortable(wc->partitionClause))
@@ -6022,12 +6043,45 @@ make_pathkeys_for_window(PlannerInfo *root, WindowClause *wc,
 				 errmsg("could not implement window ORDER BY"),
 				 errdetail("Window ordering columns must be of sortable datatypes.")));
 
-	/* Okay, make the combined pathkeys */
-	window_sortclauses = list_concat_copy(wc->partitionClause, wc->orderClause);
-	window_pathkeys = make_pathkeys_for_sortclauses(root,
-													window_sortclauses,
-													tlist);
-	list_free(window_sortclauses);
+	/*
+	 * First fetch the pathkeys for the PARTITION BY clause.  We can safely
+	 * remove any clauses from the wc->partitionClause for redundant pathkeys.
+	 */
+	if (wc->partitionClause != NIL)
+	{
+		bool		sortable;
+
+		window_pathkeys = make_pathkeys_for_sortclauses_extended(root,
+																 &wc->partitionClause,
+																 tlist,
+																 true,
+																 &sortable);
+
+		Assert(sortable);
+	}
+
+	/*
+	 * In principle, we could also consider removing redundant ORDER BY items
+	 * too as doing so does not alter the result of peer row checks done by
+	 * the executor.  However, we must *not* remove the ordering column for
+	 * RANGE OFFSET cases, as the executor needs that for in_range tests even
+	 * if it's known to be equal to some partitioning column.
+	 */
+	if (wc->orderClause != NIL)
+	{
+		List	   *orderby_pathkeys;
+
+		orderby_pathkeys = make_pathkeys_for_sortclauses(root,
+														 wc->orderClause,
+														 tlist);
+
+		/* Okay, make the combined pathkeys */
+		if (window_pathkeys != NIL)
+			window_pathkeys = append_pathkeys(window_pathkeys, orderby_pathkeys);
+		else
+			window_pathkeys = orderby_pathkeys;
+	}
+
 	return window_pathkeys;
 }
 

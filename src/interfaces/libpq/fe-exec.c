@@ -77,8 +77,8 @@ static void parseInput(PGconn *conn);
 static PGresult *getCopyResult(PGconn *conn, ExecStatusType copytype);
 static bool PQexecStart(PGconn *conn);
 static PGresult *PQexecFinish(PGconn *conn);
-static int	PQsendDescribe(PGconn *conn, char desc_type,
-						   const char *desc_target);
+static int	PQsendTypedCommand(PGconn *conn, char command, char type,
+							   const char *target);
 static int	check_field_number(const PGresult *res, int field_num);
 static void pqPipelineProcessQueue(PGconn *conn);
 static int	pqPipelineFlush(PGconn *conn);
@@ -1458,7 +1458,7 @@ PQsendQueryInternal(PGconn *conn, const char *query, bool newQuery)
 
 	/* Send the query message(s) */
 	/* construct the outgoing Query message */
-	if (pqPutMsgStart('Q', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Query, conn) < 0 ||
 		pqPuts(query, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 	{
@@ -1571,7 +1571,7 @@ PQsendPrepare(PGconn *conn,
 		return 0;				/* error msg already set */
 
 	/* construct the Parse message */
-	if (pqPutMsgStart('P', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Parse, conn) < 0 ||
 		pqPuts(stmtName, conn) < 0 ||
 		pqPuts(query, conn) < 0)
 		goto sendFailed;
@@ -1599,7 +1599,7 @@ PQsendPrepare(PGconn *conn,
 	/* Add a Sync, unless in pipeline mode. */
 	if (conn->pipelineStatus == PQ_PIPELINE_OFF)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			goto sendFailed;
 	}
@@ -1784,7 +1784,7 @@ PQsendQueryGuts(PGconn *conn,
 	if (command)
 	{
 		/* construct the Parse message */
-		if (pqPutMsgStart('P', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Parse, conn) < 0 ||
 			pqPuts(stmtName, conn) < 0 ||
 			pqPuts(command, conn) < 0)
 			goto sendFailed;
@@ -1808,7 +1808,7 @@ PQsendQueryGuts(PGconn *conn,
 	}
 
 	/* Construct the Bind message */
-	if (pqPutMsgStart('B', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Bind, conn) < 0 ||
 		pqPuts("", conn) < 0 ||
 		pqPuts(stmtName, conn) < 0)
 		goto sendFailed;
@@ -1874,14 +1874,14 @@ PQsendQueryGuts(PGconn *conn,
 		goto sendFailed;
 
 	/* construct the Describe Portal message */
-	if (pqPutMsgStart('D', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Describe, conn) < 0 ||
 		pqPutc('P', conn) < 0 ||
 		pqPuts("", conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 		goto sendFailed;
 
 	/* construct the Execute message */
-	if (pqPutMsgStart('E', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Execute, conn) < 0 ||
 		pqPuts("", conn) < 0 ||
 		pqPutInt(0, 4, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
@@ -1890,7 +1890,7 @@ PQsendQueryGuts(PGconn *conn,
 	/* construct the Sync message if not in pipeline mode */
 	if (conn->pipelineStatus == PQ_PIPELINE_OFF)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			goto sendFailed;
 	}
@@ -2113,19 +2113,12 @@ PQgetResult(PGconn *conn)
 			break;
 
 		case PGASYNC_READY:
-
-			/*
-			 * For any query type other than simple query protocol, we advance
-			 * the command queue here.  This is because for simple query
-			 * protocol we can get the READY state multiple times before the
-			 * command is actually complete, since the command string can
-			 * contain many queries.  In simple query protocol, the queue
-			 * advance is done by fe-protocol3 when it receives ReadyForQuery.
-			 */
-			if (conn->cmd_queue_head &&
-				conn->cmd_queue_head->queryclass != PGQUERY_SIMPLE)
-				pqCommandQueueAdvance(conn);
 			res = pqPrepareAsyncResult(conn);
+
+			/* Advance the queue as appropriate */
+			pqCommandQueueAdvance(conn, false,
+								  res->resultStatus == PGRES_PIPELINE_SYNC);
+
 			if (conn->pipelineStatus != PQ_PIPELINE_OFF)
 			{
 				/*
@@ -2423,7 +2416,7 @@ PQdescribePrepared(PGconn *conn, const char *stmt)
 {
 	if (!PQexecStart(conn))
 		return NULL;
-	if (!PQsendDescribe(conn, 'S', stmt))
+	if (!PQsendTypedCommand(conn, PqMsg_Describe, 'S', stmt))
 		return NULL;
 	return PQexecFinish(conn);
 }
@@ -2442,7 +2435,7 @@ PQdescribePortal(PGconn *conn, const char *portal)
 {
 	if (!PQexecStart(conn))
 		return NULL;
-	if (!PQsendDescribe(conn, 'P', portal))
+	if (!PQsendTypedCommand(conn, PqMsg_Describe, 'P', portal))
 		return NULL;
 	return PQexecFinish(conn);
 }
@@ -2457,7 +2450,7 @@ PQdescribePortal(PGconn *conn, const char *portal)
 int
 PQsendDescribePrepared(PGconn *conn, const char *stmt)
 {
-	return PQsendDescribe(conn, 'S', stmt);
+	return PQsendTypedCommand(conn, PqMsg_Describe, 'S', stmt);
 }
 
 /*
@@ -2470,26 +2463,96 @@ PQsendDescribePrepared(PGconn *conn, const char *stmt)
 int
 PQsendDescribePortal(PGconn *conn, const char *portal)
 {
-	return PQsendDescribe(conn, 'P', portal);
+	return PQsendTypedCommand(conn, PqMsg_Describe, 'P', portal);
 }
 
 /*
- * PQsendDescribe
- *	 Common code to send a Describe command
+ * PQclosePrepared
+ *	  Close a previously prepared statement
  *
- * Available options for desc_type are
- *	 'S' to describe a prepared statement; or
- *	 'P' to describe a portal.
+ * If the query was not even sent, return NULL; conn->errorMessage is set to
+ * a relevant message.
+ * If the query was sent, a new PGresult is returned (which could indicate
+ * either success or failure).  On success, the PGresult contains status
+ * PGRES_COMMAND_OK. The user is responsible for freeing the PGresult via
+ * PQclear() when done with it.
+ */
+PGresult *
+PQclosePrepared(PGconn *conn, const char *stmt)
+{
+	if (!PQexecStart(conn))
+		return NULL;
+	if (!PQsendTypedCommand(conn, PqMsg_Close, 'S', stmt))
+		return NULL;
+	return PQexecFinish(conn);
+}
+
+/*
+ * PQclosePortal
+ *	  Close a previously created portal
+ *
+ * This is exactly like PQclosePrepared, but for portals.  Note that at the
+ * moment, libpq doesn't really expose portals to the client; but this can be
+ * used with a portal created by a SQL DECLARE CURSOR command.
+ */
+PGresult *
+PQclosePortal(PGconn *conn, const char *portal)
+{
+	if (!PQexecStart(conn))
+		return NULL;
+	if (!PQsendTypedCommand(conn, PqMsg_Close, 'P', portal))
+		return NULL;
+	return PQexecFinish(conn);
+}
+
+/*
+ * PQsendClosePrepared
+ *	 Submit a Close Statement command, but don't wait for it to finish
+ *
+ * Returns: 1 if successfully submitted
+ *			0 if error (conn->errorMessage is set)
+ */
+int
+PQsendClosePrepared(PGconn *conn, const char *stmt)
+{
+	return PQsendTypedCommand(conn, PqMsg_Close, 'S', stmt);
+}
+
+/*
+ * PQsendClosePortal
+ *	 Submit a Close Portal command, but don't wait for it to finish
+ *
+ * Returns: 1 if successfully submitted
+ *			0 if error (conn->errorMessage is set)
+ */
+int
+PQsendClosePortal(PGconn *conn, const char *portal)
+{
+	return PQsendTypedCommand(conn, PqMsg_Close, 'P', portal);
+}
+
+/*
+ * PQsendTypedCommand
+ *	 Common code to send a Describe or Close command
+ *
+ * Available options for "command" are
+ *	 PqMsg_Close for Close; or
+ *	 PqMsg_Describe for Describe.
+ *
+ * Available options for "type" are
+ *	 'S' to run a command on a prepared statement; or
+ *	 'P' to run a command on a portal.
+ *
  * Returns 1 on success and 0 on failure.
  */
 static int
-PQsendDescribe(PGconn *conn, char desc_type, const char *desc_target)
+PQsendTypedCommand(PGconn *conn, char command, char type, const char *target)
 {
 	PGcmdQueueEntry *entry = NULL;
 
-	/* Treat null desc_target as empty string */
-	if (!desc_target)
-		desc_target = "";
+	/* Treat null target as empty string */
+	if (!target)
+		target = "";
 
 	if (!PQsendQueryStart(conn, true))
 		return 0;
@@ -2498,23 +2561,35 @@ PQsendDescribe(PGconn *conn, char desc_type, const char *desc_target)
 	if (entry == NULL)
 		return 0;				/* error msg already set */
 
-	/* construct the Describe message */
-	if (pqPutMsgStart('D', conn) < 0 ||
-		pqPutc(desc_type, conn) < 0 ||
-		pqPuts(desc_target, conn) < 0 ||
+	/* construct the Close message */
+	if (pqPutMsgStart(command, conn) < 0 ||
+		pqPutc(type, conn) < 0 ||
+		pqPuts(target, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 		goto sendFailed;
 
 	/* construct the Sync message */
 	if (conn->pipelineStatus == PQ_PIPELINE_OFF)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			goto sendFailed;
 	}
 
-	/* remember we are doing a Describe */
-	entry->queryclass = PGQUERY_DESCRIBE;
+	/* remember if we are doing a Close or a Describe */
+	if (command == PqMsg_Close)
+	{
+		entry->queryclass = PGQUERY_CLOSE;
+	}
+	else if (command == PqMsg_Describe)
+	{
+		entry->queryclass = PGQUERY_DESCRIBE;
+	}
+	else
+	{
+		libpq_append_conn_error(conn, "unknown command type provided");
+		goto sendFailed;
+	}
 
 	/*
 	 * Give the data a push (in pipeline mode, only if we're past the size
@@ -2615,7 +2690,7 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 				return pqIsnonblocking(conn) ? 0 : -1;
 		}
 		/* Send the data (too simple to delegate to fe-protocol files) */
-		if (pqPutMsgStart('d', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_CopyData, conn) < 0 ||
 			pqPutnchar(buffer, nbytes, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
@@ -2628,8 +2703,7 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
  *
  * After calling this, use PQgetResult() to check command completion status.
  *
- * Returns 1 if successful, 0 if data could not be sent (only possible
- * in nonblock mode), or -1 if an error occurs.
+ * Returns 1 if successful, or -1 if an error occurs.
  */
 int
 PQputCopyEnd(PGconn *conn, const char *errormsg)
@@ -2650,7 +2724,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 	if (errormsg)
 	{
 		/* Send COPY FAIL */
-		if (pqPutMsgStart('f', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_CopyFail, conn) < 0 ||
 			pqPuts(errormsg, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
@@ -2658,7 +2732,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 	else
 	{
 		/* Send COPY DONE */
-		if (pqPutMsgStart('c', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_CopyDone, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
 	}
@@ -2670,7 +2744,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 	if (conn->cmd_queue_head &&
 		conn->cmd_queue_head->queryclass != PGQUERY_SIMPLE)
 	{
-		if (pqPutMsgStart('S', conn) < 0 ||
+		if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 			pqPutMsgEnd(conn) < 0)
 			return -1;
 	}
@@ -3008,18 +3082,44 @@ PQexitPipelineMode(PGconn *conn)
 
 /*
  * pqCommandQueueAdvance
- *		Remove one query from the command queue, when we receive
- *		all results from the server that pertain to it.
+ *		Remove one query from the command queue, if appropriate.
+ *
+ * If we have received all results corresponding to the head element
+ * in the command queue, remove it.
+ *
+ * In simple query protocol we must not advance the command queue until the
+ * ReadyForQuery message has been received.  This is because in simple mode a
+ * command can have multiple queries, and we must process result for all of
+ * them before moving on to the next command.
+ *
+ * Another consideration is synchronization during error processing in
+ * extended query protocol: we refuse to advance the queue past a SYNC queue
+ * element, unless the result we've received is also a SYNC.  In particular
+ * this protects us from advancing when an error is received at an
+ * inappropriate moment.
  */
 void
-pqCommandQueueAdvance(PGconn *conn)
+pqCommandQueueAdvance(PGconn *conn, bool isReadyForQuery, bool gotSync)
 {
 	PGcmdQueueEntry *prevquery;
 
 	if (conn->cmd_queue_head == NULL)
 		return;
 
-	/* delink from queue */
+	/*
+	 * If processing a query of simple query protocol, we only advance the
+	 * queue when we receive the ReadyForQuery message for it.
+	 */
+	if (conn->cmd_queue_head->queryclass == PGQUERY_SIMPLE && !isReadyForQuery)
+		return;
+
+	/*
+	 * If we're waiting for a SYNC, don't advance the queue until we get one.
+	 */
+	if (conn->cmd_queue_head->queryclass == PGQUERY_SYNC && !gotSync)
+		return;
+
+	/* delink element from queue */
 	prevquery = conn->cmd_queue_head;
 	conn->cmd_queue_head = conn->cmd_queue_head->next;
 
@@ -3027,7 +3127,7 @@ pqCommandQueueAdvance(PGconn *conn)
 	if (conn->cmd_queue_head == NULL)
 		conn->cmd_queue_tail = NULL;
 
-	/* and make it recyclable */
+	/* and make the queue element recyclable */
 	prevquery->next = NULL;
 	pqRecycleCmdQueueEntry(conn, prevquery);
 }
@@ -3181,7 +3281,7 @@ PQpipelineSync(PGconn *conn)
 	entry->query = NULL;
 
 	/* construct the Sync message */
-	if (pqPutMsgStart('S', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Sync, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 		goto sendFailed;
 
@@ -3229,11 +3329,19 @@ PQsendFlushRequest(PGconn *conn)
 		return 0;
 	}
 
-	if (pqPutMsgStart('H', conn) < 0 ||
+	if (pqPutMsgStart(PqMsg_Flush, conn) < 0 ||
 		pqPutMsgEnd(conn) < 0)
 	{
 		return 0;
 	}
+
+	/*
+	 * Give the data a push (in pipeline mode, only if we're past the size
+	 * threshold).  In nonblock mode, don't complain if we're unable to send
+	 * it all; PQgetResult() will do any additional flushing needed.
+	 */
+	if (pqPipelineFlush(conn) < 0)
+		return 0;
 
 	return 1;
 }
@@ -3824,11 +3932,7 @@ PQisnonblocking(const PGconn *conn)
 int
 PQisthreadsafe(void)
 {
-#ifdef ENABLE_THREAD_SAFETY
 	return true;
-#else
-	return false;
-#endif
 }
 
 

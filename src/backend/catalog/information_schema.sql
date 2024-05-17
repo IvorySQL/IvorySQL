@@ -43,11 +43,8 @@ SET search_path TO information_schema;
 CREATE FUNCTION _pg_expandarray(IN anyarray, OUT x anyelement, OUT n int)
     RETURNS SETOF RECORD
     LANGUAGE sql STRICT IMMUTABLE PARALLEL SAFE
-    AS 'select $1[s],
-        s operator(pg_catalog.-) pg_catalog.array_lower($1,1) operator(pg_catalog.+) 1
-        from pg_catalog.generate_series(pg_catalog.array_lower($1,1),
-                                        pg_catalog.array_upper($1,1),
-                                        1) as g(s)';
+    ROWS 100 SUPPORT pg_catalog.array_unnest_support
+    AS 'SELECT * FROM pg_catalog.unnest($1) WITH ORDINALITY';
 
 /* Given an index's OID and an underlying-table column number, return the
  * column's position in the index (NULL if not there) */
@@ -435,8 +432,7 @@ CREATE VIEW check_constraints AS
     SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
            CAST(rs.nspname AS sql_identifier) AS constraint_schema,
            CAST(con.conname AS sql_identifier) AS constraint_name,
-           CAST(substring(pg_get_constraintdef(con.oid) from 7) AS character_data)
-             AS check_clause
+           CAST(pg_get_expr(con.conbin, coalesce(c.oid, 0)) AS character_data) AS check_clause
     FROM pg_constraint con
            LEFT OUTER JOIN pg_namespace rs ON (rs.oid = con.connamespace)
            LEFT OUTER JOIN pg_class c ON (c.oid = con.conrelid)
@@ -444,22 +440,19 @@ CREATE VIEW check_constraints AS
     WHERE pg_has_role(coalesce(c.relowner, t.typowner), 'USAGE')
       AND con.contype = 'c'
 
-    UNION
+    UNION ALL
     -- not-null constraints
-
-    SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
-           CAST(n.nspname AS sql_identifier) AS constraint_schema,
-           CAST(CAST(n.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name, -- XXX
-           CAST(a.attname || ' IS NOT NULL' AS character_data)
-             AS check_clause
-    FROM pg_namespace n, pg_class r, pg_attribute a
-    WHERE n.oid = r.relnamespace
-      AND r.oid = a.attrelid
-      AND a.attnum > 0
-      AND NOT a.attisdropped
-      AND a.attnotnull
-      AND r.relkind IN ('r', 'p')
-      AND pg_has_role(r.relowner, 'USAGE');
+    SELECT current_database()::information_schema.sql_identifier AS constraint_catalog,
+           rs.nspname::information_schema.sql_identifier AS constraint_schema,
+           con.conname::information_schema.sql_identifier AS constraint_name,
+           pg_catalog.format('%s IS NOT NULL', at.attname)::information_schema.character_data AS check_clause
+     FROM pg_constraint con
+            LEFT JOIN pg_namespace rs ON rs.oid = con.connamespace
+            LEFT JOIN pg_class c ON c.oid = con.conrelid
+            LEFT JOIN pg_type t ON t.oid = con.contypid
+            LEFT JOIN pg_attribute at ON (con.conrelid = at.attrelid AND con.conkey[1] = at.attnum)
+     WHERE pg_has_role(coalesce(c.relowner, t.typowner), 'USAGE'::text)
+       AND con.contype = 'n';
 
 GRANT SELECT ON check_constraints TO PUBLIC;
 
@@ -825,6 +818,20 @@ CREATE VIEW constraint_column_usage AS
             AND c.contype = 'c'
             AND r.relkind IN ('r', 'p')
             AND NOT a.attisdropped
+
+        UNION ALL
+
+        /* not-null constraints */
+        SELECT DISTINCT nr.nspname, r.relname, r.relowner, a.attname, nc.nspname, c.conname
+          FROM pg_namespace nr, pg_class r, pg_attribute a, pg_namespace nc, pg_constraint c
+          WHERE nr.oid = r.relnamespace
+            AND r.oid = a.attrelid
+            AND r.oid = c.conrelid
+            AND a.attnum = c.conkey[1]
+            AND c.connamespace = nc.oid
+            AND c.contype = 'n'
+            AND r.relkind in ('r', 'p')
+            AND not a.attisdropped
 
         UNION ALL
 
@@ -1828,6 +1835,7 @@ CREATE VIEW table_constraints AS
            CAST(r.relname AS sql_identifier) AS table_name,
            CAST(
              CASE c.contype WHEN 'c' THEN 'CHECK'
+                            WHEN 'n' THEN 'CHECK'
                             WHEN 'f' THEN 'FOREIGN KEY'
                             WHEN 'p' THEN 'PRIMARY KEY'
                             WHEN 'u' THEN 'UNIQUE' END
@@ -1850,38 +1858,6 @@ CREATE VIEW table_constraints AS
     WHERE nc.oid = c.connamespace AND nr.oid = r.relnamespace
           AND c.conrelid = r.oid
           AND c.contype NOT IN ('t', 'x')  -- ignore nonstandard constraints
-          AND r.relkind IN ('r', 'p')
-          AND (NOT pg_is_other_temp_schema(nr.oid))
-          AND (pg_has_role(r.relowner, 'USAGE')
-               -- SELECT privilege omitted, per SQL standard
-               OR has_table_privilege(r.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
-               OR has_any_column_privilege(r.oid, 'INSERT, UPDATE, REFERENCES') )
-
-    UNION ALL
-
-    -- not-null constraints
-
-    SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
-           CAST(nr.nspname AS sql_identifier) AS constraint_schema,
-           CAST(CAST(nr.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name, -- XXX
-           CAST(current_database() AS sql_identifier) AS table_catalog,
-           CAST(nr.nspname AS sql_identifier) AS table_schema,
-           CAST(r.relname AS sql_identifier) AS table_name,
-           CAST('CHECK' AS character_data) AS constraint_type,
-           CAST('NO' AS yes_or_no) AS is_deferrable,
-           CAST('NO' AS yes_or_no) AS initially_deferred,
-           CAST('YES' AS yes_or_no) AS enforced,
-           CAST(NULL AS yes_or_no) AS nulls_distinct
-
-    FROM pg_namespace nr,
-         pg_class r,
-         pg_attribute a
-
-    WHERE nr.oid = r.relnamespace
-          AND r.oid = a.attrelid
-          AND a.attnotnull
-          AND a.attnum > 0
-          AND NOT a.attisdropped
           AND r.relkind IN ('r', 'p')
           AND (NOT pg_is_other_temp_schema(nr.oid))
           AND (pg_has_role(r.relowner, 'USAGE')
@@ -2740,8 +2716,6 @@ CREATE VIEW element_types AS
            CAST(null AS cardinal_number) AS datetime_precision,
            CAST(null AS character_data) AS interval_type,
            CAST(null AS cardinal_number) AS interval_precision,
-
-           CAST(null AS character_data) AS domain_default, -- XXX maybe a bug in the standard
 
            CAST(current_database() AS sql_identifier) AS udt_catalog,
            CAST(nbt.nspname AS sql_identifier) AS udt_schema,

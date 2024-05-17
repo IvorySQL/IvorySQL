@@ -112,14 +112,17 @@ query_planner(PlannerInfo *root,
 				 * quals are parallel-restricted.  (We need not check
 				 * final_rel->reltarget because it's empty at this point.
 				 * Anything parallel-restricted in the query tlist will be
-				 * dealt with later.)  This is normally pretty silly, because
-				 * a Result-only plan would never be interesting to
-				 * parallelize.  However, if debug_parallel_query is on, then
-				 * we want to execute the Result in a parallel worker if
-				 * possible, so we must do this.
+				 * dealt with later.)  We should always do this in a subquery,
+				 * since it might be useful to use the subquery in parallel
+				 * paths in the parent level.  At top level this is normally
+				 * not worth the cycles, because a Result-only plan would
+				 * never be interesting to parallelize.  However, if
+				 * debug_parallel_query is on, then we want to execute the
+				 * Result in a parallel worker if possible, so we must check.
 				 */
 				if (root->glob->parallelModeOK &&
-					debug_parallel_query != DEBUG_PARALLEL_OFF)
+					(root->query_level > 1 ||
+					 debug_parallel_query != DEBUG_PARALLEL_OFF))
 					final_rel->consider_parallel =
 						is_parallel_safe(root, parse->jointree->quals);
 
@@ -227,6 +230,11 @@ query_planner(PlannerInfo *root,
 	 * Likewise, this can't be done until now for lack of needed info.
 	 */
 	reduce_unique_semijoins(root);
+
+	/*
+	 * Remove self joins on a unique column.
+	 */
+	joinlist = remove_useless_self_joins(root, joinlist);
 
 	/*
 	 * Now distribute "placeholders" to base rels as needed.  This has to be

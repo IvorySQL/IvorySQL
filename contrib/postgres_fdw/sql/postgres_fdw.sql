@@ -344,7 +344,7 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c8 = 'foo';  -- can't be
 -- parameterized remote path for foreign table
 EXPLAIN (VERBOSE, COSTS OFF)
   SELECT * FROM "S 1"."T 1" a, ft2 b WHERE a."C 1" = 47 AND b.c1 = a.c2;
-SELECT * FROM ft2 a, ft2 b WHERE a.c1 = 47 AND b.c1 = a.c2;
+SELECT * FROM "S 1"."T 1" a, ft2 b WHERE a."C 1" = 47 AND b.c1 = a.c2;
 
 -- check both safe and unsafe join conditions
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -600,7 +600,7 @@ WITH t (c1_1, c1_3, c2_1) AS MATERIALIZED (SELECT t1.c1, t1.c3, t2.c1 FROM ft1 t
 -- ctid with whole-row reference
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.ctid, t1, t2, t1.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c3, t1.c1 OFFSET 100 LIMIT 10;
--- SEMI JOIN, not pushed down
+-- SEMI JOIN
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1 FROM ft1 t1 WHERE EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2.c1) ORDER BY t1.c1 OFFSET 100 LIMIT 10;
 SELECT t1.c1 FROM ft1 t1 WHERE EXISTS (SELECT 1 FROM ft2 t2 WHERE t1.c1 = t2.c1) ORDER BY t1.c1 OFFSET 100 LIMIT 10;
@@ -640,6 +640,9 @@ SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
+-- join with pseudoconstant quals
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1 AND CURRENT_USER = SESSION_USER) ORDER BY t1.c3, t1.c1 OFFSET 100 LIMIT 10;
 
 -- non-Var items in targetlist of the nullable rel of a join preventing
 -- push-down in some cases
@@ -713,6 +716,29 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can be pushed down
 SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
 ALTER VIEW v4 OWNER TO regress_view_owner;
+
+-- ====================================================================
+-- Check that userid to use when querying the remote table is correctly
+-- propagated into foreign rels present in subqueries under an UNION ALL
+-- ====================================================================
+CREATE ROLE regress_view_owner_another;
+ALTER VIEW v4 OWNER TO regress_view_owner_another;
+GRANT SELECT ON ft4 TO regress_view_owner_another;
+ALTER FOREIGN TABLE ft4 OPTIONS (ADD use_remote_estimate 'true');
+-- The following should query the remote backing table of ft4 as user
+-- regress_view_owner_another, the view owner, though it fails as expected
+-- due to the lack of a user mapping for that user.
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM v4;
+-- Likewise, but with the query under an UNION ALL
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM (SELECT * FROM v4 UNION ALL SELECT * FROM v4);
+-- Should not get that error once a user mapping is created
+CREATE USER MAPPING FOR regress_view_owner_another SERVER loopback OPTIONS (password_required 'false');
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM v4;
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM (SELECT * FROM v4 UNION ALL SELECT * FROM v4);
+DROP USER MAPPING FOR regress_view_owner_another SERVER loopback;
+DROP OWNED BY regress_view_owner_another;
+DROP ROLE regress_view_owner_another;
+ALTER FOREIGN TABLE ft4 OPTIONS (SET use_remote_estimate 'false');
 
 -- cleanup
 DROP OWNED BY regress_view_owner;
@@ -1096,11 +1122,15 @@ PREPARE st1(int, int) AS SELECT t1.c3, t2.c3 FROM ft1 t1, ft2 t2 WHERE t1.c1 = $
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st1(1, 2);
 EXECUTE st1(1, 1);
 EXECUTE st1(101, 101);
+SET enable_hashjoin TO off;
+SET enable_sort TO off;
 -- subquery using stable function (can't be sent to remote)
 PREPARE st2(int) AS SELECT * FROM ft1 t1 WHERE t1.c1 < $2 AND t1.c3 IN (SELECT c3 FROM ft2 t2 WHERE c1 > $1 AND date(c4) = '1970-01-17'::date) ORDER BY c1;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st2(10, 20);
 EXECUTE st2(10, 20);
 EXECUTE st2(101, 121);
+RESET enable_hashjoin;
+RESET enable_sort;
 -- subquery using immutable function (can be sent to remote)
 PREPARE st3(int) AS SELECT * FROM ft1 t1 WHERE t1.c1 < $2 AND t1.c3 IN (SELECT c3 FROM ft2 t2 WHERE c1 > $1 AND date(c5) = '1970-01-17'::date) ORDER BY c1;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st3(10, 20);
@@ -1274,6 +1304,130 @@ explain (verbose, costs off) select * from ft3 where f2 COLLATE "C" = 'foo';
 explain (verbose, costs off) select * from ft3 where f2 = 'foo' COLLATE "C";
 explain (verbose, costs off) select * from ft3 f, loct3 l
   where f.f3 = l.f3 COLLATE "POSIX" and l.f1 = 'foo';
+
+-- ===================================================================
+-- test SEMI-JOIN pushdown
+-- ===================================================================
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN ft4 ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  AND EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)
+  ORDER BY ft2.c1;
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN ft4 ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  AND EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)
+  ORDER BY ft2.c1;
+
+-- The same query, different join order
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1;
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1;
+
+-- Left join
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 LEFT JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+SELECT ft2.*, ft4.* FROM ft2 LEFT JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+
+-- Several semi-joins per upper level join
+EXPLAIN (verbose, costs off)
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  INNER JOIN (SELECT * FROM ft5 WHERE
+  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft5.c1)) ft5
+  ON ft2.c2 <= ft5.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+  (SELECT * FROM ft4 WHERE
+  EXISTS (SELECT 1 FROM ft5 WHERE ft4.c1 = ft5.c1)) ft4
+  ON ft2.c2 = ft4.c1
+  INNER JOIN (SELECT * FROM ft5 WHERE
+  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft5.c1)) ft5
+  ON ft2.c2 <= ft5.c1
+  WHERE ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+
+-- Semi-join below Semi-join
+EXPLAIN (verbose, costs off)
+SELECT ft2.* FROM ft2 WHERE
+  c1 = ANY (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2))
+  AND ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+SELECT ft2.* FROM ft2 WHERE
+  c1 = ANY (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2))
+  AND ft2.c1 > 900
+  ORDER BY ft2.c1 LIMIT 10;
+
+-- Upper level relations shouldn't refer EXISTS() subqueries
+EXPLAIN (verbose, costs off)
+SELECT * FROM ft2 ftupper WHERE
+   EXISTS (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2) AND c1 = ftupper.c1 )
+  AND ftupper.c1 > 900
+  ORDER BY ftupper.c1 LIMIT 10;
+SELECT * FROM ft2 ftupper WHERE
+   EXISTS (
+	SELECT c1 FROM ft2 WHERE
+	  EXISTS (SELECT 1 FROM ft4 WHERE ft4.c2 = ft2.c2) AND c1 = ftupper.c1 )
+  AND ftupper.c1 > 900
+  ORDER BY ftupper.c1 LIMIT 10;
+
+-- EXISTS should be propogated to the highest upper inner join
+EXPLAIN (verbose, costs off)
+	SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+	(SELECT * FROM ft4 WHERE EXISTS (
+		SELECT 1 FROM ft2 WHERE ft2.c2 = ft4.c2)) ft4
+	ON ft2.c2 = ft4.c1
+	INNER JOIN
+	(SELECT * FROM ft2 WHERE EXISTS (
+		SELECT 1 FROM ft4 WHERE ft2.c2 = ft4.c2)) ft21
+	ON ft2.c2 = ft21.c2
+	WHERE ft2.c1 > 900
+	ORDER BY ft2.c1 LIMIT 10;
+SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
+	(SELECT * FROM ft4 WHERE EXISTS (
+		SELECT 1 FROM ft2 WHERE ft2.c2 = ft4.c2)) ft4
+	ON ft2.c2 = ft4.c1
+	INNER JOIN
+	(SELECT * FROM ft2 WHERE EXISTS (
+		SELECT 1 FROM ft4 WHERE ft2.c2 = ft4.c2)) ft21
+	ON ft2.c2 = ft21.c2
+	WHERE ft2.c1 > 900
+	ORDER BY ft2.c1 LIMIT 10;
+
+-- Can't push down semi-join with inner rel vars in targetlist
+EXPLAIN (verbose, costs off)
+SELECT ft1.c1 FROM ft1 JOIN ft2 on ft1.c1 = ft2.c1 WHERE
+	ft1.c1 IN (
+		SELECT ft2.c1 FROM ft2 JOIN ft4 ON ft2.c1 = ft4.c1)
+	ORDER BY ft1.c1 LIMIT 5;
 
 -- ===================================================================
 -- test writable foreign table stuff
@@ -3318,13 +3472,6 @@ SELECT COUNT(*) FROM ftable;
 TRUNCATE batch_table;
 DROP FOREIGN TABLE ftable;
 
--- try if large batches exceed max number of bind parameters
-CREATE FOREIGN TABLE ftable ( x int ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '100000' );
-INSERT INTO ftable SELECT * FROM generate_series(1, 70000) i;
-SELECT COUNT(*) FROM ftable;
-TRUNCATE batch_table;
-DROP FOREIGN TABLE ftable;
-
 -- Disable batch insert
 CREATE FOREIGN TABLE ftable ( x int ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '1' );
 EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO ftable VALUES (1), (2);
@@ -3583,6 +3730,12 @@ INSERT INTO result_tbl SELECT a, b, 'AAA' || c FROM async_pt WHERE b === 505;
 
 SELECT * FROM result_tbl ORDER BY a;
 DELETE FROM result_tbl;
+
+-- Test error handling, if accessing one of the foreign partitions errors out
+CREATE FOREIGN TABLE async_p_broken PARTITION OF async_pt FOR VALUES FROM (10000) TO (10001)
+  SERVER loopback OPTIONS (table_name 'non_existent_table');
+SELECT * FROM async_pt;
+DROP FOREIGN TABLE async_p_broken;
 
 -- Check case where multiple partitions use the same connection
 CREATE TABLE base_tbl3 (a int, b int, c text);

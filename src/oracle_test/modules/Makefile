@@ -13,12 +13,12 @@ SUBDIRS = \
 		  dummy_seclabel \
 		  libpq_pipeline \
 		  plsample \
-		  snapshot_too_old \
 		  spgist_name_ops \
 		  test_bloomfilter \
 		  test_copy_callbacks \
 		  test_custom_rmgrs \
 		  test_ddl_deparse \
+		  test_dsa \
 		  test_extensions \
 		  test_ginpostinglist \
 		  test_integerset \
@@ -30,11 +30,13 @@ SUBDIRS = \
 		  test_predtest \
 		  test_rbtree \
 		  test_regex \
+		  test_resowner \
 		  test_rls_hooks \
 		  test_shm_mq \
 		  test_slru \
 		  unsafe_tests \
-		  worker_spi
+		  worker_spi \
+		  xid_wraparound
 
 ifeq ($(with_ssl),openssl)
 SUBDIRS += ssl_passphrase_callback

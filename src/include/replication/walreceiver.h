@@ -13,7 +13,6 @@
 #define _WALRECEIVER_H
 
 #include <netdb.h>
-#include <sys/socket.h>
 
 #include "access/xlog.h"
 #include "access/xlogdefs.h"
@@ -52,7 +51,7 @@ typedef enum
 	WALRCV_STREAMING,			/* walreceiver is streaming */
 	WALRCV_WAITING,				/* stopped streaming, waiting for orders */
 	WALRCV_RESTARTING,			/* asked to restart streaming */
-	WALRCV_STOPPING				/* requested to stop, but still running */
+	WALRCV_STOPPING,			/* requested to stop, but still running */
 } WalRcvState;
 
 /* Shared memory area for management of walreceiver process */
@@ -207,7 +206,7 @@ typedef enum
 	WALRCV_OK_TUPLES,			/* Query returned tuples. */
 	WALRCV_OK_COPY_IN,			/* Query started COPY FROM. */
 	WALRCV_OK_COPY_OUT,			/* Query started COPY TO. */
-	WALRCV_OK_COPY_BOTH			/* Query started COPY BOTH replication
+	WALRCV_OK_COPY_BOTH,		/* Query started COPY BOTH replication
 								 * protocol. */
 } WalRcvExecStatus;
 

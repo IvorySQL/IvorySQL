@@ -15,6 +15,8 @@ subdir = src/bin/pg_resetwal
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils
+
 OBJS = \
 	$(WIN32RES) \
 	pg_resetwal.o
@@ -33,7 +35,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_resetwal$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_resetwal$(X) $(OBJS)
 	rm -rf tmp_check
 

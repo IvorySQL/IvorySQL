@@ -59,6 +59,7 @@
 #include "utils/dsa.h"
 #include "utils/freepage.h"
 #include "utils/memutils.h"
+#include "utils/resowner.h"
 
 /*
  * The size of the initial DSM segment that backs a dsa_area created by
@@ -368,8 +369,13 @@ struct dsa_area
 	/* Pointer to the control object in shared memory. */
 	dsa_area_control *control;
 
-	/* Has the mapping been pinned? */
-	bool		mapping_pinned;
+	/*
+	 * All the mappings are owned by this.  The dsa_area itself is not
+	 * directly tracked by the ResourceOwner, but the effect is the same. NULL
+	 * if the attachment has session lifespan, i.e if dsa_pin_mapping() has
+	 * been called.
+	 */
+	ResourceOwner resowner;
 
 	/*
 	 * This backend's array of segment maps, ordered by segment index
@@ -418,6 +424,7 @@ static dsa_area *attach_internal(void *place, dsm_segment *segment,
 								 dsa_handle handle);
 static void check_for_freed_segments(dsa_area *area);
 static void check_for_freed_segments_locked(dsa_area *area);
+static void rebin_segment(dsa_area *area, dsa_segment_map *segment_map);
 
 /*
  * Create a new shared area in a new DSM segment.  Further DSM segments will
@@ -644,12 +651,14 @@ dsa_pin_mapping(dsa_area *area)
 {
 	int			i;
 
-	Assert(!area->mapping_pinned);
-	area->mapping_pinned = true;
+	if (area->resowner != NULL)
+	{
+		area->resowner = NULL;
 
-	for (i = 0; i <= area->high_segment_index; ++i)
-		if (area->segment_maps[i].segment != NULL)
-			dsm_pin_mapping(area->segment_maps[i].segment);
+		for (i = 0; i <= area->high_segment_index; ++i)
+			if (area->segment_maps[i].segment != NULL)
+				dsm_pin_mapping(area->segment_maps[i].segment);
+	}
 }
 
 /*
@@ -869,7 +878,11 @@ dsa_free(dsa_area *area, dsa_pointer dp)
 		FreePageManagerPut(segment_map->fpm,
 						   DSA_EXTRACT_OFFSET(span->start) / FPM_PAGE_SIZE,
 						   span->npages);
+
+		/* Move segment to appropriate bin if necessary. */
+		rebin_segment(area, segment_map);
 		LWLockRelease(DSA_AREA_LOCK(area));
+
 		/* Unlink span. */
 		LWLockAcquire(DSA_SCLASS_LOCK(area, DSA_SCLASS_SPAN_LARGE),
 					  LW_EXCLUSIVE);
@@ -1259,7 +1272,7 @@ create_internal(void *place, size_t size,
 	 */
 	area = palloc(sizeof(dsa_area));
 	area->control = control;
-	area->mapping_pinned = false;
+	area->resowner = CurrentResourceOwner;
 	memset(area->segment_maps, 0, sizeof(dsa_segment_map) * DSA_MAX_SEGMENTS);
 	area->high_segment_index = 0;
 	area->freed_segment_counter = 0;
@@ -1315,7 +1328,7 @@ attach_internal(void *place, dsm_segment *segment, dsa_handle handle)
 	/* Build the backend-local area object. */
 	area = palloc(sizeof(dsa_area));
 	area->control = control;
-	area->mapping_pinned = false;
+	area->resowner = CurrentResourceOwner;
 	memset(&area->segment_maps[0], 0,
 		   sizeof(dsa_segment_map) * DSA_MAX_SEGMENTS);
 	area->high_segment_index = 0;
@@ -1738,6 +1751,7 @@ get_segment_by_index(dsa_area *area, dsa_segment_index index)
 		dsm_handle	handle;
 		dsm_segment *segment;
 		dsa_segment_map *segment_map;
+		ResourceOwner oldowner;
 
 		/*
 		 * If we are reached by dsa_free or dsa_get_address, there must be at
@@ -1756,11 +1770,12 @@ get_segment_by_index(dsa_area *area, dsa_segment_index index)
 			elog(ERROR,
 				 "dsa_area could not attach to a segment that has been freed");
 
+		oldowner = CurrentResourceOwner;
+		CurrentResourceOwner = area->resowner;
 		segment = dsm_attach(handle);
+		CurrentResourceOwner = oldowner;
 		if (segment == NULL)
 			elog(ERROR, "dsa_area could not attach to segment");
-		if (area->mapping_pinned)
-			dsm_pin_mapping(segment);
 		segment_map = &area->segment_maps[index];
 		segment_map->segment = segment;
 		segment_map->mapped_address = dsm_segment_address(segment);
@@ -1858,6 +1873,11 @@ destroy_superblock(dsa_area *area, dsa_pointer span_pointer)
 			segment_map->mapped_address = NULL;
 		}
 	}
+
+	/* Move segment to appropriate bin if necessary. */
+	if (segment_map->header != NULL)
+		rebin_segment(area, segment_map);
+
 	LWLockRelease(DSA_AREA_LOCK(area));
 
 	/*
@@ -2021,28 +2041,7 @@ get_best_segment(dsa_area *area, size_t npages)
 			/* Re-bin it if it's no longer in the appropriate bin. */
 			if (contiguous_pages < threshold)
 			{
-				size_t		new_bin;
-
-				new_bin = contiguous_pages_to_segment_bin(contiguous_pages);
-
-				/* Remove it from its current bin. */
-				unlink_segment(area, segment_map);
-
-				/* Push it onto the front of its new bin. */
-				segment_map->header->prev = DSA_SEGMENT_INDEX_NONE;
-				segment_map->header->next =
-					area->control->segment_bins[new_bin];
-				segment_map->header->bin = new_bin;
-				area->control->segment_bins[new_bin] = segment_index;
-				if (segment_map->header->next != DSA_SEGMENT_INDEX_NONE)
-				{
-					dsa_segment_map *next;
-
-					next = get_segment_by_index(area,
-												segment_map->header->next);
-					Assert(next->header->bin == new_bin);
-					next->header->prev = segment_index;
-				}
+				rebin_segment(area, segment_map);
 
 				/*
 				 * But fall through to see if it's enough to satisfy this
@@ -2078,6 +2077,7 @@ make_new_segment(dsa_area *area, size_t requested_pages)
 	size_t		usable_pages;
 	dsa_segment_map *segment_map;
 	dsm_segment *segment;
+	ResourceOwner oldowner;
 
 	Assert(LWLockHeldByMe(DSA_AREA_LOCK(area)));
 
@@ -2162,12 +2162,13 @@ make_new_segment(dsa_area *area, size_t requested_pages)
 	}
 
 	/* Create the segment. */
+	oldowner = CurrentResourceOwner;
+	CurrentResourceOwner = area->resowner;
 	segment = dsm_create(total_size, 0);
+	CurrentResourceOwner = oldowner;
 	if (segment == NULL)
 		return NULL;
 	dsm_pin_segment(segment);
-	if (area->mapping_pinned)
-		dsm_pin_mapping(segment);
 
 	/* Store the handle in shared memory to be found by index. */
 	area->control->segment_handles[new_index] =
@@ -2295,5 +2296,37 @@ check_for_freed_segments_locked(dsa_area *area)
 			}
 		}
 		area->freed_segment_counter = freed_segment_counter;
+	}
+}
+
+/*
+ * Re-bin segment if it's no longer in the appropriate bin.
+ */
+static void
+rebin_segment(dsa_area *area, dsa_segment_map *segment_map)
+{
+	size_t		new_bin;
+	dsa_segment_index segment_index;
+
+	new_bin = contiguous_pages_to_segment_bin(fpm_largest(segment_map->fpm));
+	if (segment_map->header->bin == new_bin)
+		return;
+
+	/* Remove it from its current bin. */
+	unlink_segment(area, segment_map);
+
+	/* Push it onto the front of its new bin. */
+	segment_index = get_segment_index(area, segment_map);
+	segment_map->header->prev = DSA_SEGMENT_INDEX_NONE;
+	segment_map->header->next = area->control->segment_bins[new_bin];
+	segment_map->header->bin = new_bin;
+	area->control->segment_bins[new_bin] = segment_index;
+	if (segment_map->header->next != DSA_SEGMENT_INDEX_NONE)
+	{
+		dsa_segment_map *next;
+
+		next = get_segment_by_index(area, segment_map->header->next);
+		Assert(next->header->bin == new_bin);
+		next->header->prev = segment_index;
 	}
 }

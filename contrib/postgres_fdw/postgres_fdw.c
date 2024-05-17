@@ -57,7 +57,7 @@ PG_MODULE_MAGIC;
 #define DEFAULT_FDW_STARTUP_COST	100.0
 
 /* Default CPU cost to process 1 row (above and beyond cpu_tuple_cost). */
-#define DEFAULT_FDW_TUPLE_COST		0.01
+#define DEFAULT_FDW_TUPLE_COST		0.2
 
 /* If no remote estimates, assume a sort costs 20% extra */
 #define DEFAULT_FDW_SORT_MULTIPLIER 1.2
@@ -82,7 +82,7 @@ enum FdwScanPrivateIndex
 	 * String describing join i.e. names of relations being joined and types
 	 * of join, added when the scan is join
 	 */
-	FdwScanPrivateRelations
+	FdwScanPrivateRelations,
 };
 
 /*
@@ -108,7 +108,7 @@ enum FdwModifyPrivateIndex
 	/* has-returning flag (as a Boolean node) */
 	FdwModifyPrivateHasReturning,
 	/* Integer list of attribute numbers retrieved by RETURNING */
-	FdwModifyPrivateRetrievedAttrs
+	FdwModifyPrivateRetrievedAttrs,
 };
 
 /*
@@ -129,7 +129,7 @@ enum FdwDirectModifyPrivateIndex
 	/* Integer list of attribute numbers retrieved by RETURNING */
 	FdwDirectModifyPrivateRetrievedAttrs,
 	/* set-processed flag (as a Boolean node) */
-	FdwDirectModifyPrivateSetProcessed
+	FdwDirectModifyPrivateSetProcessed,
 };
 
 /*
@@ -285,7 +285,7 @@ enum FdwPathPrivateIndex
 	/* has-final-sort flag (as a Boolean node) */
 	FdwPathPrivateHasFinalSort,
 	/* has-limit flag (as a Boolean node) */
-	FdwPathPrivateHasLimit
+	FdwPathPrivateHasLimit,
 };
 
 /* Struct for extra information passed to estimate_path_cost_size() */
@@ -524,7 +524,7 @@ static List *get_useful_pathkeys_for_relation(PlannerInfo *root,
 											  RelOptInfo *rel);
 static List *get_useful_ecs_for_relation(PlannerInfo *root, RelOptInfo *rel);
 static void add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
-											Path *epq_path);
+											Path *epq_path, List *restrictlist);
 static void add_foreign_grouping_paths(PlannerInfo *root,
 									   RelOptInfo *input_rel,
 									   RelOptInfo *grouped_rel,
@@ -779,6 +779,7 @@ postgresGetForeignRelSize(PlannerInfo *root,
 	fpinfo->make_outerrel_subquery = false;
 	fpinfo->make_innerrel_subquery = false;
 	fpinfo->lower_subquery_rels = NULL;
+	fpinfo->hidden_subquery_rels = NULL;
 	/* Set the relation index. */
 	fpinfo->relation_index = baserel->relid;
 }
@@ -1034,11 +1035,12 @@ postgresGetForeignPaths(PlannerInfo *root,
 								   NIL, /* no pathkeys */
 								   baserel->lateral_relids,
 								   NULL,	/* no extra plan */
+								   NIL, /* no fdw_restrictinfo list */
 								   NIL);	/* no fdw_private list */
 	add_path(baserel, (Path *) path);
 
 	/* Add paths with pathkeys */
-	add_paths_with_pathkeys_for_rel(root, baserel, NULL);
+	add_paths_with_pathkeys_for_rel(root, baserel, NULL, NIL);
 
 	/*
 	 * If we're not using remote estimates, stop here.  We have no way to
@@ -1206,6 +1208,7 @@ postgresGetForeignPaths(PlannerInfo *root,
 									   NIL, /* no pathkeys */
 									   param_info->ppi_req_outer,
 									   NULL,
+									   NIL, /* no fdw_restrictinfo list */
 									   NIL);	/* no fdw_private list */
 		add_path(baserel, (Path *) path);
 	}
@@ -5724,6 +5727,45 @@ postgresImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 }
 
 /*
+ * Check if reltarget is safe enough to push down semi-join.  Reltarget is not
+ * safe, if it contains references to inner rel relids, which do not belong to
+ * outer rel.
+ */
+static bool
+semijoin_target_ok(PlannerInfo *root, RelOptInfo *joinrel, RelOptInfo *outerrel, RelOptInfo *innerrel)
+{
+	List	   *vars;
+	ListCell   *lc;
+	bool		ok = true;
+
+	Assert(joinrel->reltarget);
+
+	vars = pull_var_clause((Node *) joinrel->reltarget->exprs, PVC_INCLUDE_PLACEHOLDERS);
+
+	foreach(lc, vars)
+	{
+		Var		   *var = (Var *) lfirst(lc);
+
+		if (!IsA(var, Var))
+			continue;
+
+		if (bms_is_member(var->varno, innerrel->relids) &&
+			!bms_is_member(var->varno, outerrel->relids))
+		{
+			/*
+			 * The planner can create semi-join, which refers to inner rel
+			 * vars in its target list. However, we deparse semi-join as an
+			 * exists() subquery, so can't handle references to inner rel in
+			 * the target list.
+			 */
+			ok = false;
+			break;
+		}
+	}
+	return ok;
+}
+
+/*
  * Assess whether the join between inner and outer relations can be pushed down
  * to the foreign server. As a side effect, save information we obtain in this
  * function to PgFdwRelationInfo passed in.
@@ -5740,12 +5782,19 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 	List	   *joinclauses;
 
 	/*
-	 * We support pushing down INNER, LEFT, RIGHT and FULL OUTER joins.
-	 * Constructing queries representing SEMI and ANTI joins is hard, hence
-	 * not considered right now.
+	 * We support pushing down INNER, LEFT, RIGHT, FULL OUTER and SEMI joins.
+	 * Constructing queries representing ANTI joins is hard, hence not
+	 * considered right now.
 	 */
 	if (jointype != JOIN_INNER && jointype != JOIN_LEFT &&
-		jointype != JOIN_RIGHT && jointype != JOIN_FULL)
+		jointype != JOIN_RIGHT && jointype != JOIN_FULL &&
+		jointype != JOIN_SEMI)
+		return false;
+
+	/*
+	 * We can't push down semi-join if its reltarget is not safe
+	 */
+	if ((jointype == JOIN_SEMI) && !semijoin_target_ok(root, joinrel, outerrel, innerrel))
 		return false;
 
 	/*
@@ -5857,6 +5906,8 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 	Assert(bms_is_subset(fpinfo_i->lower_subquery_rels, innerrel->relids));
 	fpinfo->lower_subquery_rels = bms_union(fpinfo_o->lower_subquery_rels,
 											fpinfo_i->lower_subquery_rels);
+	fpinfo->hidden_subquery_rels = bms_union(fpinfo_o->hidden_subquery_rels,
+											 fpinfo_i->hidden_subquery_rels);
 
 	/*
 	 * Pull the other remote conditions from the joining relations into join
@@ -5869,6 +5920,12 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 	 * after the join is evaluated. The clauses from inner side are added to
 	 * the joinclauses, since they need to be evaluated while constructing the
 	 * join.
+	 *
+	 * For SEMI-JOIN clauses from inner relation can not be added to
+	 * remote_conds, but should be treated as join clauses (as they are
+	 * deparsed to EXISTS subquery, where inner relation can be referred). A
+	 * list of relation ids, which can't be referred to from higher levels, is
+	 * preserved as a hidden_subquery_rels list.
 	 *
 	 * For a FULL OUTER JOIN, the other clauses from either relation can not
 	 * be added to the joinclauses or remote_conds, since each relation acts
@@ -5898,6 +5955,16 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 											  fpinfo_o->remote_conds);
 			fpinfo->remote_conds = list_concat(fpinfo->remote_conds,
 											   fpinfo_i->remote_conds);
+			break;
+
+		case JOIN_SEMI:
+			fpinfo->joinclauses = list_concat(fpinfo->joinclauses,
+											  fpinfo_i->remote_conds);
+			fpinfo->joinclauses = list_concat(fpinfo->joinclauses,
+											  fpinfo->remote_conds);
+			fpinfo->remote_conds = list_copy(fpinfo_o->remote_conds);
+			fpinfo->hidden_subquery_rels = bms_union(fpinfo->hidden_subquery_rels,
+													 innerrel->relids);
 			break;
 
 		case JOIN_FULL:
@@ -5941,6 +6008,24 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 		Assert(!fpinfo->joinclauses);
 		fpinfo->joinclauses = fpinfo->remote_conds;
 		fpinfo->remote_conds = NIL;
+	}
+	else if (jointype == JOIN_LEFT || jointype == JOIN_RIGHT || jointype == JOIN_FULL)
+	{
+		/*
+		 * Conditions, generated from semi-joins, should be evaluated before
+		 * LEFT/RIGHT/FULL join.
+		 */
+		if (!bms_is_empty(fpinfo_o->hidden_subquery_rels))
+		{
+			fpinfo->make_outerrel_subquery = true;
+			fpinfo->lower_subquery_rels = bms_add_members(fpinfo->lower_subquery_rels, outerrel->relids);
+		}
+
+		if (!bms_is_empty(fpinfo_i->hidden_subquery_rels))
+		{
+			fpinfo->make_innerrel_subquery = true;
+			fpinfo->lower_subquery_rels = bms_add_members(fpinfo->lower_subquery_rels, innerrel->relids);
+		}
 	}
 
 	/* Mark that this join can be pushed down safely */
@@ -5992,7 +6077,7 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 
 static void
 add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
-								Path *epq_path)
+								Path *epq_path, List *restrictlist)
 {
 	List	   *useful_pathkeys_list = NIL; /* List of all pathkeys */
 	ListCell   *lc;
@@ -6086,6 +6171,8 @@ add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
 											 useful_pathkeys,
 											 rel->lateral_relids,
 											 sorted_epq_path,
+											 NIL,	/* no fdw_restrictinfo
+													 * list */
 											 NIL));
 		else
 			add_path(rel, (Path *)
@@ -6097,6 +6184,7 @@ add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
 											  useful_pathkeys,
 											  rel->lateral_relids,
 											  sorted_epq_path,
+											  restrictlist,
 											  NIL));
 	}
 }
@@ -6349,13 +6437,15 @@ postgresGetForeignJoinPaths(PlannerInfo *root,
 										NIL,	/* no pathkeys */
 										joinrel->lateral_relids,
 										epq_path,
+										extra->restrictlist,
 										NIL);	/* no fdw_private */
 
 	/* Add generated path into joinrel by add_path(). */
 	add_path(joinrel, (Path *) joinpath);
 
 	/* Consider pathkeys for the join relation */
-	add_paths_with_pathkeys_for_rel(root, joinrel, epq_path);
+	add_paths_with_pathkeys_for_rel(root, joinrel, epq_path,
+									extra->restrictlist);
 
 	/* XXX Consider parameterized paths for the join relation */
 }
@@ -6736,6 +6826,7 @@ add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 										  total_cost,
 										  NIL,	/* no pathkeys */
 										  NULL,
+										  NIL,	/* no fdw_restrictinfo list */
 										  NIL); /* no fdw_private */
 
 	/* Add generated path into grouped_rel by add_path(). */
@@ -6869,6 +6960,8 @@ add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 											 total_cost,
 											 root->sort_pathkeys,
 											 NULL,	/* no extra plan */
+											 NIL,	/* no fdw_restrictinfo
+													 * list */
 											 fdw_private);
 
 	/* and add it to the ordered_rel */
@@ -6984,7 +7077,9 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 													   path->total_cost,
 													   path->pathkeys,
 													   NULL,	/* no extra plan */
-													   NULL);	/* no fdw_private */
+													   NIL, /* no fdw_restrictinfo
+															 * list */
+													   NIL);	/* no fdw_private */
 
 				/* and add it to the final_rel */
 				add_path(final_rel, (Path *) final_path);
@@ -7104,6 +7199,7 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 										   total_cost,
 										   pathkeys,
 										   NULL,	/* no extra plan */
+										   NIL, /* no fdw_restrictinfo list */
 										   fdw_private);
 
 	/* and add it to the final_rel */
@@ -7680,6 +7776,8 @@ find_em_for_rel(PlannerInfo *root, EquivalenceClass *ec, RelOptInfo *rel)
 {
 	ListCell   *lc;
 
+	PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) rel->fdw_private;
+
 	foreach(lc, ec->ec_members)
 	{
 		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
@@ -7690,6 +7788,7 @@ find_em_for_rel(PlannerInfo *root, EquivalenceClass *ec, RelOptInfo *rel)
 		 */
 		if (bms_is_subset(em->em_relids, rel->relids) &&
 			!bms_is_empty(em->em_relids) &&
+			bms_is_empty(bms_intersect(em->em_relids, fpinfo->hidden_subquery_rels)) &&
 			is_foreign_expr(root, rel, em->em_expr))
 			return em;
 	}

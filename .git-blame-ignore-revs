@@ -14,11 +14,56 @@
 #
 # $ git log --pretty=format:"%H # %cd%n# %s" $PGINDENTGITHASH -1 --date=iso
 
-7b93f806db6606d0a5d15b65eac5f9472e9a9a42 # 2023-06-20 09:50:43 -0400
+611806cd726fc92989ac918eac48fd8d684869c7 # 2023-10-26 09:20:54 +0200
+# Add trailing commas to enum definitions
+
+e9718b4bd3e4234ffd5a4907a903367fc483c843 # 2023-10-16 09:36:31 +0900
+# Fix code indentation violations in e83d1b0c40cc
+
+01529c7040088db2718628d0814058598152bd39 # 2023-10-16 13:32:41 +1300
+# Fix comment from commit 22655aa231.
+
+b6a77c6a6ccf698787201b001cbbbf9c89fe5715 # 2023-10-11 17:14:31 -0400
+# Reindent comment in GenericXLogFinish().
+
+bc6041b61f6678d32a5cfb70744653cd8f8d01c0 # 2023-08-30 15:56:22 +0900
+# Fix code indentation vioaltion introduced in commit 3c662643c4.
+
+89be0b89ae60c63856fd26d82a104781540e2312 # 2023-08-15 17:45:00 +0900
+# Fix code indentation vioaltion introduced in commit 9e9931d2b.
+
+5dc456b7dda4f7d0d7735b066607c190c74d174a # 2023-08-11 20:43:34 +0900
+# Fix code indentation violations introduced by recent commit
+
+62e9af4c63fbd36fb9af8450fb44bece76d7766f # 2023-07-25 12:35:58 +0530
+# Fix code indentation vioaltion introduced in commit d38ad8e31d.
+
+4e465aac36ce9a9533c68dbdc83e67579880e628 # 2023-07-18 14:04:31 +0900
+# Fix indentation in twophase.c
+
+328f492d2565cfbe383f13a69425d751fd79415f # 2023-07-13 22:26:10 +0900
+# Fix code indentation violation in commit b6e1157e7d
+
+69a674a170058e63e8178aec8a36a673efce8801 # 2023-07-06 11:49:18 +0530
+# Fix code indentation vioaltion introduced in commit cc32ec24fd.
+
+a4cfeeca5a97f2b5969c31aa69ba775af95ee5a3 # 2023-07-03 12:47:49 +0200
+# Fix code indentation violations
+
+b334612b8aee9f9a34378982d8938b201dfad323 # 2023-06-20 09:50:43 -0400
 # Pre-beta2 mechanical code beautification.
 
-d39f49b640db56e1059f884fcd16e24ffe99bee8 # 2023-05-19 17:24:48 -0400
+0245f8db36f375326c2bae0c3420d3c77714e72d # 2023-05-19 17:24:48 -0400
 # Pre-beta mechanical code beautification.
+
+b6dfee28f2b44e28b123b77a91fb05c47da63501 # 2023-03-09 15:09:45 +0900
+# Run pgindent on libpq's fe-auth.c, fe-auth-scram.c and fe-connect.c
+
+250c8ee07ede8a104ae1471f6ebca204d94267dd # 2023-01-13 15:23:17 -0800
+# Manual cleanup and pgindent of pgstat and bufmgr related code
+
+b2e6e768230be334b12dae536ba4c147fba4e9c9 # 2022-09-08 14:01:13 +0700
+# Run perltidy over Catalog.pm
 
 82d0ffae3219e4bc153a1306ce23013d168e04a2 # 2022-06-30 11:03:03 -0400
 # pgindent run prior to branching v15.

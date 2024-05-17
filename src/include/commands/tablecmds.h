@@ -27,6 +27,8 @@ struct AlterTableUtilityContext;	/* avoid including tcop/utility.h here */
 extern ObjectAddress DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 									ObjectAddress *typaddress, const char *queryString);
 
+extern TupleDesc BuildDescForRelation(const List *columns);
+
 extern void RemoveRelations(DropStmt *drop);
 
 extern Oid	AlterTableLookupRelation(AlterTableStmt *stmt, LOCKMODE lockmode);
@@ -96,9 +98,8 @@ extern void AtEOSubXact_on_commit_actions(bool isCommit,
 										  SubTransactionId mySubid,
 										  SubTransactionId parentSubid);
 
-extern void RangeVarCallbackMaintainsTable(const RangeVar *relation,
-										   Oid relId, Oid oldRelId,
-										   void *arg);
+extern void RangeVarCallbackOwnsTable(const RangeVar *relation,
+									  Oid relId, Oid oldRelId, void *arg);
 
 extern void RangeVarCallbackOwnsRelation(const RangeVar *relation,
 										 Oid relId, Oid oldRelId, void *arg);

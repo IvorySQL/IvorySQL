@@ -446,6 +446,26 @@ LANGUAGE INTERNAL
 VOLATILE ROWS 1000 COST 1000
 AS 'pg_logical_slot_peek_binary_changes';
 
+CREATE OR REPLACE FUNCTION pg_logical_emit_message(
+    transactional boolean,
+    prefix text,
+    message text,
+    flush boolean DEFAULT false)
+RETURNS pg_lsn
+LANGUAGE INTERNAL
+STRICT VOLATILE
+AS 'pg_logical_emit_message_text';
+
+CREATE OR REPLACE FUNCTION pg_logical_emit_message(
+    transactional boolean,
+    prefix text,
+    message bytea,
+    flush boolean DEFAULT false)
+RETURNS pg_lsn
+LANGUAGE INTERNAL
+STRICT VOLATILE
+AS 'pg_logical_emit_message_bytea';
+
 CREATE OR REPLACE FUNCTION pg_create_physical_replication_slot(
     IN slot_name name, IN immediately_reserve boolean DEFAULT false,
     IN temporary boolean DEFAULT false,
@@ -600,6 +620,20 @@ RETURNS boolean
 LANGUAGE internal
 STRICT IMMUTABLE PARALLEL SAFE
 AS 'unicode_is_normalized';
+
+CREATE OR REPLACE FUNCTION
+  pg_stat_reset_shared(target text DEFAULT NULL)
+RETURNS void
+LANGUAGE INTERNAL
+CALLED ON NULL INPUT VOLATILE PARALLEL SAFE
+AS 'pg_stat_reset_shared';
+
+CREATE OR REPLACE FUNCTION
+  pg_stat_reset_slru(target text DEFAULT NULL)
+RETURNS void
+LANGUAGE INTERNAL
+CALLED ON NULL INPUT VOLATILE PARALLEL SAFE
+AS 'pg_stat_reset_slru';
 
 --
 -- The default permissions for functions mean that anyone can execute them.

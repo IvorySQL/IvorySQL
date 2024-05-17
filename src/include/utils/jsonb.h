@@ -26,7 +26,7 @@ typedef enum
 	WJB_BEGIN_ARRAY,
 	WJB_END_ARRAY,
 	WJB_BEGIN_OBJECT,
-	WJB_END_OBJECT
+	WJB_END_OBJECT,
 } JsonbIteratorToken;
 
 /* Strategy numbers for GIN index opclasses */
@@ -335,7 +335,7 @@ typedef enum
 	JBI_ARRAY_ELEM,
 	JBI_OBJECT_START,
 	JBI_OBJECT_KEY,
-	JBI_OBJECT_VALUE
+	JBI_OBJECT_VALUE,
 } JsonbIterState;
 
 typedef struct JsonbIterator
@@ -430,10 +430,10 @@ extern Datum jsonb_set_element(Jsonb *jb, Datum *path, int path_len,
 extern Datum jsonb_get_element(Jsonb *jb, Datum *path, int npath,
 							   bool *isnull, bool as_text);
 extern bool to_jsonb_is_immutable(Oid typoid);
-extern Datum jsonb_build_object_worker(int nargs, Datum *args, bool *nulls,
-									   Oid *types, bool absent_on_null,
+extern Datum jsonb_build_object_worker(int nargs, const Datum *args, const bool *nulls,
+									   const Oid *types, bool absent_on_null,
 									   bool unique_keys);
-extern Datum jsonb_build_array_worker(int nargs, Datum *args, bool *nulls,
-									  Oid *types, bool absent_on_null);
+extern Datum jsonb_build_array_worker(int nargs, const Datum *args, const bool *nulls,
+									  const Oid *types, bool absent_on_null);
 
 #endif							/* __JSONB_H__ */

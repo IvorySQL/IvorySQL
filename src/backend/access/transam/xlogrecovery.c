@@ -133,7 +133,7 @@ static TimeLineID curFileTLI;
  * currently performing crash recovery using only XLOG files in pg_wal, but
  * will switch to using offline XLOG archives as soon as we reach the end of
  * WAL in pg_wal.
-*/
+ */
 bool		ArchiveRecoveryRequested = false;
 bool		InArchiveRecovery = false;
 
@@ -211,7 +211,7 @@ typedef enum
 	XLOG_FROM_ANY = 0,			/* request to read WAL from any source */
 	XLOG_FROM_ARCHIVE,			/* restored using restore_command */
 	XLOG_FROM_PG_WAL,			/* existing file in pg_wal */
-	XLOG_FROM_STREAM			/* streamed from primary */
+	XLOG_FROM_STREAM,			/* streamed from primary */
 } XLogSource;
 
 /* human-readable names for XLogSources, for debugging output */
@@ -540,42 +540,17 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 	readRecoverySignalFile();
 	validateRecoveryParameters();
 
-	if (ArchiveRecoveryRequested)
-	{
-		if (StandbyModeRequested)
-			ereport(LOG,
-					(errmsg("entering standby mode")));
-		else if (recoveryTarget == RECOVERY_TARGET_XID)
-			ereport(LOG,
-					(errmsg("starting point-in-time recovery to XID %u",
-							recoveryTargetXid)));
-		else if (recoveryTarget == RECOVERY_TARGET_TIME)
-			ereport(LOG,
-					(errmsg("starting point-in-time recovery to %s",
-							timestamptz_to_str(recoveryTargetTime))));
-		else if (recoveryTarget == RECOVERY_TARGET_NAME)
-			ereport(LOG,
-					(errmsg("starting point-in-time recovery to \"%s\"",
-							recoveryTargetName)));
-		else if (recoveryTarget == RECOVERY_TARGET_LSN)
-			ereport(LOG,
-					(errmsg("starting point-in-time recovery to WAL location (LSN) \"%X/%X\"",
-							LSN_FORMAT_ARGS(recoveryTargetLSN))));
-		else if (recoveryTarget == RECOVERY_TARGET_IMMEDIATE)
-			ereport(LOG,
-					(errmsg("starting point-in-time recovery to earliest consistent point")));
-		else
-			ereport(LOG,
-					(errmsg("starting archive recovery")));
-	}
-
 	/*
 	 * Take ownership of the wakeup latch if we're going to sleep during
-	 * recovery.
+	 * recovery, if required.
 	 */
 	if (ArchiveRecoveryRequested)
 		OwnLatch(&XLogRecoveryCtl->recoveryWakeupLatch);
 
+	/*
+	 * Set the WAL reading processor now, as it will be needed when reading
+	 * the checkpoint record required (backup_label or not).
+	 */
 	private = palloc0(sizeof(XLogPageReadPrivate));
 	xlogreader =
 		XLogReaderAllocate(wal_segment_size, NULL,
@@ -609,6 +584,11 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 	replay_image_masked = (char *) palloc(BLCKSZ);
 	primary_image_masked = (char *) palloc(BLCKSZ);
 
+	/*
+	 * Read the backup_label file.  We want to run this part of the recovery
+	 * process after checking for signal files and after performing validation
+	 * of the recovery parameters.
+	 */
 	if (read_backup_label(&CheckPointLoc, &CheckPointTLI, &backupEndRequired,
 						  &backupFromStandby))
 	{
@@ -651,20 +631,20 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 								checkPoint.ThisTimeLineID))
 					ereport(FATAL,
 							(errmsg("could not find redo location referenced by checkpoint record"),
-							 errhint("If you are restoring from a backup, touch \"%s/recovery.signal\" and add required recovery options.\n"
+							 errhint("If you are restoring from a backup, touch \"%s/recovery.signal\" or \"%s/standby.signal\" and add required recovery options.\n"
 									 "If you are not restoring from a backup, try removing the file \"%s/backup_label\".\n"
 									 "Be careful: removing \"%s/backup_label\" will result in a corrupt cluster if restoring from a backup.",
-									 DataDir, DataDir, DataDir)));
+									 DataDir, DataDir, DataDir, DataDir)));
 			}
 		}
 		else
 		{
 			ereport(FATAL,
 					(errmsg("could not locate required checkpoint record"),
-					 errhint("If you are restoring from a backup, touch \"%s/recovery.signal\" and add required recovery options.\n"
+					 errhint("If you are restoring from a backup, touch \"%s/recovery.signal\" or \"%s/standby.signal\" and add required recovery options.\n"
 							 "If you are not restoring from a backup, try removing the file \"%s/backup_label\".\n"
 							 "Be careful: removing \"%s/backup_label\" will result in a corrupt cluster if restoring from a backup.",
-							 DataDir, DataDir, DataDir)));
+							 DataDir, DataDir, DataDir, DataDir)));
 			wasShutdown = false;	/* keep compiler quiet */
 		}
 
@@ -678,7 +658,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 				tablespaceinfo *ti = lfirst(lc);
 				char	   *linkloc;
 
-				linkloc = psprintf("pg_tblspc/%s", ti->oid);
+				linkloc = psprintf("pg_tblspc/%u", ti->oid);
 
 				/*
 				 * Remove the existing symlink if any and Create the symlink
@@ -692,7 +672,6 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 							 errmsg("could not create symbolic link \"%s\": %m",
 									linkloc)));
 
-				pfree(ti->oid);
 				pfree(ti->path);
 				pfree(ti);
 			}
@@ -706,6 +685,8 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 	}
 	else
 	{
+		/* No backup_label file has been found if we are here. */
+
 		/*
 		 * If tablespace_map file is present without backup_label file, there
 		 * is no use of such file.  There is no harm in retaining it, but it
@@ -787,6 +768,35 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		}
 		memcpy(&checkPoint, XLogRecGetData(xlogreader), sizeof(CheckPoint));
 		wasShutdown = ((record->xl_info & ~XLR_INFO_MASK) == XLOG_CHECKPOINT_SHUTDOWN);
+	}
+
+	if (ArchiveRecoveryRequested)
+	{
+		if (StandbyModeRequested)
+			ereport(LOG,
+					(errmsg("entering standby mode")));
+		else if (recoveryTarget == RECOVERY_TARGET_XID)
+			ereport(LOG,
+					(errmsg("starting point-in-time recovery to XID %u",
+							recoveryTargetXid)));
+		else if (recoveryTarget == RECOVERY_TARGET_TIME)
+			ereport(LOG,
+					(errmsg("starting point-in-time recovery to %s",
+							timestamptz_to_str(recoveryTargetTime))));
+		else if (recoveryTarget == RECOVERY_TARGET_NAME)
+			ereport(LOG,
+					(errmsg("starting point-in-time recovery to \"%s\"",
+							recoveryTargetName)));
+		else if (recoveryTarget == RECOVERY_TARGET_LSN)
+			ereport(LOG,
+					(errmsg("starting point-in-time recovery to WAL location (LSN) \"%X/%X\"",
+							LSN_FORMAT_ARGS(recoveryTargetLSN))));
+		else if (recoveryTarget == RECOVERY_TARGET_IMMEDIATE)
+			ereport(LOG,
+					(errmsg("starting point-in-time recovery to earliest consistent point")));
+		else
+			ereport(LOG,
+					(errmsg("starting archive recovery")));
 	}
 
 	/*
@@ -1285,6 +1295,12 @@ read_backup_label(XLogRecPtr *checkPointLoc, TimeLineID *backupLabelTLI,
 								 tli_from_file, BACKUP_LABEL_FILE)));
 	}
 
+	if (fscanf(lfp, "INCREMENTAL FROM LSN: %X/%X\n", &hi, &lo) > 0)
+		ereport(FATAL,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("this is an incremental backup, not a data directory"),
+				 errhint("Use pg_combinebackup to reconstruct a valid data directory.")));
+
 	if (ferror(lfp) || FreeFile(lfp))
 		ereport(FATAL,
 				(errcode_for_file_access(),
@@ -1341,6 +1357,8 @@ read_tablespace_map(List **tablespaces)
 	{
 		if (!was_backslash && (ch == '\n' || ch == '\r'))
 		{
+			char	   *endp;
+
 			if (i == 0)
 				continue;		/* \r immediately followed by \n */
 
@@ -1360,7 +1378,12 @@ read_tablespace_map(List **tablespaces)
 			str[n++] = '\0';
 
 			ti = palloc0(sizeof(tablespaceinfo));
-			ti->oid = pstrdup(str);
+			errno = 0;
+			ti->oid = strtoul(str, &endp, 10);
+			if (*endp != '\0' || errno == EINVAL || errno == ERANGE)
+				ereport(FATAL,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("invalid data in file \"%s\"", TABLESPACE_MAP)));
 			ti->path = pstrdup(str + n);
 			*tablespaces = lappend(*tablespaces, ti);
 
@@ -1638,6 +1661,17 @@ PerformWalRecovery(void)
 		replayTLI = RedoStartTLI;
 		XLogPrefetcherBeginRead(xlogprefetcher, RedoStartLSN);
 		record = ReadRecord(xlogprefetcher, PANIC, false, replayTLI);
+
+		/*
+		 * If a checkpoint record's redo pointer points back to an earlier
+		 * LSN, the record at that LSN should be an XLOG_CHECKPOINT_REDO
+		 * record.
+		 */
+		if (record->xl_rmid != RM_XLOG_ID ||
+			(record->xl_info & ~XLR_INFO_MASK) != XLOG_CHECKPOINT_REDO)
+			ereport(FATAL,
+					(errmsg("unexpected record type found at redo point %X/%X",
+							LSN_FORMAT_ARGS(xlogreader->ReadRecPtr))));
 	}
 	else
 	{
@@ -1676,9 +1710,7 @@ PerformWalRecovery(void)
 										 LSN_FORMAT_ARGS(xlogreader->ReadRecPtr));
 
 #ifdef WAL_DEBUG
-			if (XLOG_DEBUG ||
-				(record->xl_rmid == RM_XACT_ID && trace_recovery_messages <= DEBUG2) ||
-				(record->xl_rmid != RM_XACT_ID && trace_recovery_messages <= DEBUG3))
+			if (XLOG_DEBUG)
 			{
 				StringInfoData buf;
 
@@ -1841,7 +1873,7 @@ ApplyWalRecord(XLogReaderState *xlogreader, XLogRecord *record, TimeLineID *repl
 	error_context_stack = &errcallback;
 
 	/*
-	 * ShmemVariableCache->nextXid must be beyond record's xid.
+	 * TransamVariables->nextXid must be beyond record's xid.
 	 */
 	AdvanceNextFullTransactionIdPastXid(record->xl_xid);
 

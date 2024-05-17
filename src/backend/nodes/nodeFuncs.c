@@ -225,9 +225,7 @@ exprType(const Node *expr)
 			{
 				const JsonValueExpr *jve = (const JsonValueExpr *) expr;
 
-				type = exprType((Node *)
-								(jve->formatted_expr ? jve->formatted_expr :
-								 jve->raw_expr));
+				type = exprType((Node *) jve->formatted_expr);
 			}
 			break;
 		case T_JsonConstructorExpr:
@@ -3910,6 +3908,36 @@ raw_expression_tree_walker_impl(Node *node,
 				if (WALK(jve->formatted_expr))
 					return true;
 				if (WALK(jve->format))
+					return true;
+			}
+			break;
+		case T_JsonParseExpr:
+			{
+				JsonParseExpr *jpe = (JsonParseExpr *) node;
+
+				if (WALK(jpe->expr))
+					return true;
+				if (WALK(jpe->output))
+					return true;
+			}
+			break;
+		case T_JsonScalarExpr:
+			{
+				JsonScalarExpr *jse = (JsonScalarExpr *) node;
+
+				if (WALK(jse->expr))
+					return true;
+				if (WALK(jse->output))
+					return true;
+			}
+			break;
+		case T_JsonSerializeExpr:
+			{
+				JsonSerializeExpr *jse = (JsonSerializeExpr *) node;
+
+				if (WALK(jse->expr))
+					return true;
+				if (WALK(jse->output))
 					return true;
 			}
 			break;

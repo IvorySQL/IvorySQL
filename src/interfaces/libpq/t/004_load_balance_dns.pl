@@ -1,12 +1,12 @@
 # Copyright (c) 2023, PostgreSQL Global Development Group
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use Config;
 use PostgreSQL::Test::Utils;
 use PostgreSQL::Test::Cluster;
 use Test::More;
 
-if ($ENV{PG_TEST_EXTRA} !~ /\bload_balance\b/)
+if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bload_balance\b/)
 {
 	plan skip_all =>
 	  'Potentially unsafe test load_balance not enabled in PG_TEST_EXTRA';

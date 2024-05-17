@@ -73,6 +73,7 @@ hashhandler(PG_FUNCTION_ARGS)
 	amroutine->amclusterable = false;
 	amroutine->ampredlocks = true;
 	amroutine->amcanparallel = false;
+	amroutine->amcanbuildparallel = false;
 	amroutine->amcaninclude = false;
 	amroutine->amusemaintenanceworkmem = false;
 	amroutine->amsummarizing = false;
@@ -83,6 +84,7 @@ hashhandler(PG_FUNCTION_ARGS)
 	amroutine->ambuild = hashbuild;
 	amroutine->ambuildempty = hashbuildempty;
 	amroutine->aminsert = hashinsert;
+	amroutine->aminsertcleanup = NULL;
 	amroutine->ambulkdelete = hashbulkdelete;
 	amroutine->amvacuumcleanup = hashvacuumcleanup;
 	amroutine->amcanreturn = NULL;
@@ -824,11 +826,16 @@ hashbucketcleanup(Relation rel, Bucket cur_bucket, Buffer bucket_buf,
 				XLogRegisterData((char *) &xlrec, SizeOfHashDelete);
 
 				/*
-				 * bucket buffer needs to be registered to ensure that we can
-				 * acquire a cleanup lock on it during replay.
+				 * bucket buffer was not changed, but still needs to be
+				 * registered to ensure that we can acquire a cleanup lock on
+				 * it during replay.
 				 */
 				if (!xlrec.is_primary_bucket_page)
-					XLogRegisterBuffer(0, bucket_buf, REGBUF_STANDARD | REGBUF_NO_IMAGE);
+				{
+					uint8		flags = REGBUF_STANDARD | REGBUF_NO_IMAGE | REGBUF_NO_CHANGE;
+
+					XLogRegisterBuffer(0, bucket_buf, flags);
+				}
 
 				XLogRegisterBuffer(1, buf, REGBUF_STANDARD);
 				XLogRegisterBufData(1, (char *) deletable,

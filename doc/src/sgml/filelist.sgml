@@ -38,10 +38,11 @@
 <!ENTITY high-availability      SYSTEM "high-availability.sgml">
 <!ENTITY installbin    SYSTEM "install-binaries.sgml">
 <!ENTITY installation  SYSTEM "installation.sgml">
-<!ENTITY installw      SYSTEM "install-windows.sgml">
+<!ENTITY targets-meson  SYSTEM "targets-meson.sgml">
 <!ENTITY maintenance   SYSTEM "maintenance.sgml">
 <!ENTITY manage-ag     SYSTEM "manage-ag.sgml">
 <!ENTITY monitoring    SYSTEM "monitoring.sgml">
+<!ENTITY wait_event_types    SYSTEM "wait_event_types.sgml">
 <!ENTITY regress       SYSTEM "regress.sgml">
 <!ENTITY runtime       SYSTEM "runtime.sgml">
 <!ENTITY config        SYSTEM "config.sgml">
@@ -137,7 +138,6 @@
 <!ENTITY lo              SYSTEM "lo.sgml">
 <!ENTITY ltree           SYSTEM "ltree.sgml">
 <!ENTITY oid2name        SYSTEM "oid2name.sgml">
-<!ENTITY oldsnapshot     SYSTEM "oldsnapshot.sgml">
 <!ENTITY pageinspect     SYSTEM "pageinspect.sgml">
 <!ENTITY passwordcheck   SYSTEM "passwordcheck.sgml">
 <!ENTITY pgbuffercache   SYSTEM "pgbuffercache.sgml">
@@ -177,12 +177,13 @@
 <!ENTITY sourcerepo SYSTEM "sourcerepo.sgml">
 
 <!ENTITY release    SYSTEM "release.sgml">
-<!ENTITY release-16 SYSTEM "release-16.sgml">
+<!ENTITY release-17 SYSTEM "release-17.sgml">
 
 <!ENTITY limits     SYSTEM "limits.sgml">
 <!ENTITY acronyms   SYSTEM "acronyms.sgml">
 <!ENTITY glossary   SYSTEM "glossary.sgml">
 <!ENTITY color      SYSTEM "color.sgml">
+<!ENTITY syncfs     SYSTEM "syncfs.sgml">
 
 <!ENTITY features-supported   SYSTEM "features-supported.sgml">
 <!ENTITY features-unsupported SYSTEM "features-unsupported.sgml">

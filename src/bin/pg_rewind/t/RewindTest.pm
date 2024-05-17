@@ -32,7 +32,7 @@ package RewindTest;
 # to run psql against the primary and standby servers, respectively.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use Carp;
 use Exporter 'import';
@@ -131,6 +131,7 @@ sub setup_cluster
 	$node_primary->append_conf(
 		'postgresql.conf', qq(
 wal_keep_size = 320MB
+allow_in_place_tablespaces = on
 ));
 	return;
 }

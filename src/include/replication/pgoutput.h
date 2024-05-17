@@ -21,6 +21,9 @@ typedef struct PGOutputData
 								 * allocations */
 	MemoryContext cachectx;		/* private memory context for cache data */
 
+	bool		in_streaming;	/* true if we are streaming a chunk of
+								 * transaction */
+
 	/* client-supplied info: */
 	uint32		protocol_version;
 	List	   *publication_names;
@@ -29,7 +32,7 @@ typedef struct PGOutputData
 	char		streaming;
 	bool		messages;
 	bool		two_phase;
-	char	   *origin;
+	bool		publish_no_origin;
 } PGOutputData;
 
 #endif							/* PGOUTPUT_H */

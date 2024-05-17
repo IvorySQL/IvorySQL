@@ -632,7 +632,7 @@ hash_xlog_squeeze_page(XLogReaderState *record)
 	XLogRecPtr	lsn = record->EndRecPtr;
 	xl_hash_squeeze_page *xldata = (xl_hash_squeeze_page *) XLogRecGetData(record);
 	Buffer		bucketbuf = InvalidBuffer;
-	Buffer		writebuf;
+	Buffer		writebuf = InvalidBuffer;
 	Buffer		ovflbuf;
 	Buffer		prevbuf = InvalidBuffer;
 	Buffer		mapbuf;
@@ -655,7 +655,10 @@ hash_xlog_squeeze_page(XLogReaderState *record)
 		 */
 		(void) XLogReadBufferForRedoExtended(record, 0, RBM_NORMAL, true, &bucketbuf);
 
-		action = XLogReadBufferForRedo(record, 1, &writebuf);
+		if (xldata->ntups > 0 || xldata->is_prev_bucket_same_wrt)
+			action = XLogReadBufferForRedo(record, 1, &writebuf);
+		else
+			action = BLK_NOTFOUND;
 	}
 
 	/* replay the record for adding entries in overflow buffer */

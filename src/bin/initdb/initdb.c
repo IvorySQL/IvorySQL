@@ -76,6 +76,7 @@
 #include "common/restricted_token.h"
 #include "common/string.h"
 #include "common/username.h"
+#include "fe_utils/option_utils.h"
 #include "fe_utils/string_utils.h"
 #include "getopt_long.h"
 #include "mb/pg_wchar.h"
@@ -164,8 +165,8 @@ static bool sync_only = false;
 static bool show_setting = false;
 static bool data_checksums = false;
 static char *xlog_dir = NULL;
-static char *str_wal_segment_size_mb = NULL;
-static int	wal_segment_size_mb;
+static int	wal_segment_size_mb = (DEFAULT_XLOG_SEG_SIZE) / (1024 * 1024);
+static DataDirSyncMethod sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
 
 
 /* internal vars */
@@ -227,8 +228,8 @@ static bool authwarning = false;
  * but here it is more convenient to pass it as an environment variable
  * (no quoting to worry about).
  */
-static const char *boot_options = "-F -c log_checkpoints=false";
-static const char *backend_options = "--single -F -O -j -c search_path=pg_catalog -c exit_on_error=true -c log_checkpoints=false";
+static const char *const boot_options = "-F -c log_checkpoints=false";
+static const char *const backend_options = "--single -F -O -j -c search_path=pg_catalog -c exit_on_error=true -c log_checkpoints=false";
 
 /* Additional switches to pass to backend (either boot or standalone) */
 static char *extra_options = "";
@@ -236,6 +237,7 @@ static char *extra_options = "";
 static const char *const subdirs[] = {
 	"global",
 	"pg_wal/archive_status",
+	"pg_wal/summaries",
 	"pg_commit_ts",
 	"pg_dynshmem",
 	"pg_notify",
@@ -323,16 +325,16 @@ void		initialize_data_directory(void);
 /*
  * macros for running pipes to postgres
  */
-#define PG_CMD_DECL		char cmd[MAXPGPATH]; FILE *cmdfd
+#define PG_CMD_DECL		FILE *cmdfd
 
-#define PG_CMD_OPEN \
+#define PG_CMD_OPEN(cmd) \
 do { \
 	cmdfd = popen_check(cmd, "w"); \
 	if (cmdfd == NULL) \
 		exit(1); /* message already printed by popen_check */ \
 } while (0)
 
-#define PG_CMD_CLOSE \
+#define PG_CMD_CLOSE() \
 do { \
 	if (pclose_check(cmdfd)) \
 		exit(1); /* message already printed by pclose_check */ \
@@ -1169,13 +1171,15 @@ test_config_settings(void)
 static bool
 test_specific_config_settings(int test_conns, int test_buffs)
 {
-	PQExpBuffer cmd = createPQExpBuffer();
+	PQExpBufferData cmd;
 	_stringlist *gnames,
 			   *gvalues;
 	int			status;
 
+	initPQExpBuffer(&cmd);
+
 	/* Set up the test postmaster invocation */
-	printfPQExpBuffer(cmd,
+	printfPQExpBuffer(&cmd,
 					  "\"%s\" --check %s %s "
 					  "-c max_connections=%d "
 					  "-c shared_buffers=%d "
@@ -1189,18 +1193,18 @@ test_specific_config_settings(int test_conns, int test_buffs)
 		 gnames != NULL;		/* assume lists have the same length */
 		 gnames = gnames->next, gvalues = gvalues->next)
 	{
-		appendPQExpBuffer(cmd, " -c %s=", gnames->str);
-		appendShellString(cmd, gvalues->str);
+		appendPQExpBuffer(&cmd, " -c %s=", gnames->str);
+		appendShellString(&cmd, gvalues->str);
 	}
 
-	appendPQExpBuffer(cmd,
+	appendPQExpBuffer(&cmd,
 					  " < \"%s\" > \"%s\" 2>&1",
 					  DEVNULL, DEVNULL);
 
 	fflush(NULL);
-	status = system(cmd->data);
+	status = system(cmd.data);
 
-	destroyPQExpBuffer(cmd);
+	termPQExpBuffer(&cmd);
 
 	return (status == 0);
 }
@@ -1531,6 +1535,7 @@ static void
 bootstrap_template1(void)
 {
 	PG_CMD_DECL;
+	PQExpBufferData cmd;
 	char	  **line;
 	char	  **bki_lines;
 	char		headerline[MAXPGPATH];
@@ -1592,18 +1597,18 @@ bootstrap_template1(void)
 	/* Also ensure backend isn't confused by this environment var: */
 	unsetenv("PGCLIENTENCODING");
 
-	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" --boot -C ivorysql.identifier_case_switch=%d -X %d %s %s %s %s %s",
-			 backend_exec,
-			 caseswitchmode,
-			 wal_segment_size_mb * (1024 * 1024),
-			 pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg",
-			 data_checksums ? "-k" : "",
-			 boot_options, extra_options,
-			 debug ? "-d 5" : "");
+	initPQExpBuffer(&cmd);
+
+	printfPQExpBuffer(&cmd, "\"%s\" --boot -C ivorysql.identifier_case_switch=%d %s %s %s", 
+			 backend_exec, caseswitchmode, boot_options, extra_options, pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg");
+	appendPQExpBuffer(&cmd, " -X %d", wal_segment_size_mb * (1024 * 1024));
+	if (data_checksums)
+		appendPQExpBuffer(&cmd, " -k");
+	if (debug)
+		appendPQExpBuffer(&cmd, " -d 5");
 
 
-	PG_CMD_OPEN;
+	PG_CMD_OPEN(cmd.data);
 
 	for (line = bki_lines; *line != NULL; line++)
 	{
@@ -1611,8 +1616,9 @@ bootstrap_template1(void)
 		free(*line);
 	}
 
-	PG_CMD_CLOSE;
+	PG_CMD_CLOSE();
 
+	termPQExpBuffer(&cmd);
 	free(bki_lines);
 
 	check_ok();
@@ -2582,6 +2588,7 @@ usage(const char *progname)
 	printf(_("  -N, --no-sync             do not wait for changes to be written safely to disk\n"));
 	printf(_("      --no-instructions     do not print instructions for next steps\n"));
 	printf(_("  -s, --show                show internal settings\n"));
+	printf(_("      --sync-method=METHOD  set method for syncing files to disk\n"));
 	printf(_("  -S, --sync-only           only sync database files to disk, then exit\n"));
 	printf(_("\nOther options:\n"));
 	printf(_("  -V, --version             output version information, then exit\n"));
@@ -3084,6 +3091,7 @@ void
 initialize_data_directory(void)
 {
 	PG_CMD_DECL;
+	PQExpBufferData cmd;
 	int			i;
 
 	setup_signals();
@@ -3148,17 +3156,19 @@ initialize_data_directory(void)
 	fflush(stdout);
 
 	if (strcmp(dbmode, "pg") == 0)
-		snprintf(cmd, sizeof(cmd),
-				 "\"%s\" %s %s template1 >%s",
-				 backend_exec, backend_options, extra_options,
-				 DEVNULL);
+	{
+		initPQExpBuffer(&cmd);
+		printfPQExpBuffer(&cmd, "\"%s\" %s %s template1 >%s",
+						  backend_exec, backend_options, extra_options, DEVNULL);
+	}
 	else
-		snprintf(cmd, sizeof(cmd),
-				 "\"%s\" %s %s %s template1 >%s",
-				 backend_exec, backend_options, extra_options, ora_options,
-				 DEVNULL);
+	{
+		initPQExpBuffer(&cmd);
+		printfPQExpBuffer(&cmd, "\"%s\" %s %s %s template1 >%s",
+						  backend_exec, backend_options, extra_options, ora_options, DEVNULL);
+	}
 
-	PG_CMD_OPEN;
+	PG_CMD_OPEN(cmd.data);
 
 	setup_auth(cmdfd);
 
@@ -3206,7 +3216,8 @@ initialize_data_directory(void)
 	
 	make_ivorysql(cmdfd);
 
-	PG_CMD_CLOSE;
+	PG_CMD_CLOSE();
+	termPQExpBuffer(&cmd);
 
 	check_ok();
 }
@@ -3254,6 +3265,7 @@ main(int argc, char *argv[])
 		{"locale-provider", required_argument, NULL, 15},
 		{"icu-locale", required_argument, NULL, 16},
 		{"icu-rules", required_argument, NULL, 17},
+		{"sync-method", required_argument, NULL, 18},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -3439,7 +3451,8 @@ main(int argc, char *argv[])
 				xlog_dir = pg_strdup(optarg);
 				break;
 			case 12:
-				str_wal_segment_size_mb = pg_strdup(optarg);
+				if (!option_parse_int(optarg, "--wal-segsize", 1, 1024, &wal_segment_size_mb))
+					exit(1);
 				break;
 			case 13:
 				noinstructions = true;
@@ -3465,6 +3478,10 @@ main(int argc, char *argv[])
 				break;
 			case 17:
 				icu_rules = pg_strdup(optarg);
+				break;
+			case 18:
+				if (!parse_sync_method(optarg, &sync_method))
+					exit(1);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -3502,7 +3519,7 @@ main(int argc, char *argv[])
 
 	atexit(cleanup_directories_atexit);
 
-	/* If we only need to fsync, just do it and exit */
+	/* If we only need to sync, just do it and exit */
 	if (sync_only)
 	{
 		setup_pgdata();
@@ -3513,7 +3530,7 @@ main(int argc, char *argv[])
 
 		fputs(_("syncing data to disk ... "), stdout);
 		fflush(stdout);
-		fsync_pgdata(pg_data, PG_VERSION_NUM);
+		sync_pgdata(pg_data, PG_VERSION_NUM, sync_method);
 		check_ok();
 		return 0;
 	}
@@ -3529,22 +3546,8 @@ main(int argc, char *argv[])
 
 	check_need_password(authmethodlocal, authmethodhost);
 
-	/* set wal segment size */
-	if (str_wal_segment_size_mb == NULL)
-		wal_segment_size_mb = (DEFAULT_XLOG_SEG_SIZE) / (1024 * 1024);
-	else
-	{
-		char	   *endptr;
-
-		/* check that the argument is a number */
-		wal_segment_size_mb = strtol(str_wal_segment_size_mb, &endptr, 10);
-
-		/* verify that wal segment size is valid */
-		if (endptr == str_wal_segment_size_mb || *endptr != '\0')
-			pg_fatal("argument of --wal-segsize must be a number");
-		if (!IsValidWalSegSize(wal_segment_size_mb * 1024 * 1024))
-			pg_fatal("argument of --wal-segsize must be a power of 2 between 1 and 1024");
-	}
+	if (!IsValidWalSegSize(wal_segment_size_mb * 1024 * 1024))
+		pg_fatal("argument of %s must be a power of two between 1 and 1024", "--wal-segsize");
 
 	get_restricted_token();
 
@@ -3599,7 +3602,7 @@ main(int argc, char *argv[])
 	{
 		fputs(_("syncing data to disk ... "), stdout);
 		fflush(stdout);
-		fsync_pgdata(pg_data, PG_VERSION_NUM);
+		sync_pgdata(pg_data, PG_VERSION_NUM, sync_method);
 		check_ok();
 	}
 	else

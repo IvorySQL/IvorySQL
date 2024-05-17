@@ -27,6 +27,8 @@ test_install_data += files(
   'test_ext_cyclic1.control',
   'test_ext_cyclic2--1.0.sql',
   'test_ext_cyclic2.control',
+  'test_ext_extschema--1.0.sql',
+  'test_ext_extschema.control',
   'test_ext_evttrig--1.0--2.0.sql',
   'test_ext_evttrig--1.0.sql',
   'test_ext_evttrig.control',
@@ -47,6 +49,6 @@ tests += {
       'test_extensions',
       'test_extdepend',
     ],
-    'regress_args': ['--no-locale', '--encoding=UTF8'],
+    'regress_args': ['--no-locale'],
   },
 }

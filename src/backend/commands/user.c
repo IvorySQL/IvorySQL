@@ -64,7 +64,7 @@ typedef enum
 	RRG_REMOVE_ADMIN_OPTION,
 	RRG_REMOVE_INHERIT_OPTION,
 	RRG_REMOVE_SET_OPTION,
-	RRG_DELETE_GRANT
+	RRG_DELETE_GRANT,
 } RevokeRoleGrantAction;
 
 /* Potentially set by pg_upgrade_support functions */
@@ -1935,7 +1935,7 @@ AddRoleMems(Oid currentUserId, const char *rolename, Oid roleid,
 				HeapTuple		mrtup;
 				Form_pg_authid	mrform;
 
-				mrtup = SearchSysCache1(AUTHOID, memberid);
+				mrtup = SearchSysCache1(AUTHOID, ObjectIdGetDatum(memberid));
 				if (!HeapTupleIsValid(mrtup))
 					elog(ERROR, "cache lookup failed for role %u", memberid);
 				mrform = (Form_pg_authid) GETSTRUCT(mrtup);

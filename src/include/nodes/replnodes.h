@@ -20,7 +20,7 @@
 typedef enum ReplicationKind
 {
 	REPLICATION_KIND_PHYSICAL,
-	REPLICATION_KIND_LOGICAL
+	REPLICATION_KIND_LOGICAL,
 } ReplicationKind;
 
 
@@ -107,5 +107,14 @@ typedef struct TimeLineHistoryCmd
 	NodeTag		type;
 	TimeLineID	timeline;
 } TimeLineHistoryCmd;
+
+/* ----------------------
+ *		UPLOAD_MANIFEST command
+ * ----------------------
+ */
+typedef struct UploadManifestCmd
+{
+	NodeTag		type;
+} UploadManifestCmd;
 
 #endif							/* REPLNODES_H */

@@ -37,12 +37,12 @@ static int	mq_putmessage(char msgtype, const char *s, size_t len);
 static void mq_putmessage_noblock(char msgtype, const char *s, size_t len);
 
 static const PQcommMethods PqCommMqMethods = {
-	mq_comm_reset,
-	mq_flush,
-	mq_flush_if_writable,
-	mq_is_send_pending,
-	mq_putmessage,
-	mq_putmessage_noblock
+	.comm_reset = mq_comm_reset,
+	.flush = mq_flush,
+	.flush_if_writable = mq_flush_if_writable,
+	.is_send_pending = mq_is_send_pending,
+	.putmessage = mq_putmessage,
+	.putmessage_noblock = mq_putmessage_noblock
 };
 
 /*
@@ -182,7 +182,7 @@ mq_putmessage(char msgtype, const char *s, size_t len)
 			break;
 
 		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
-						 WAIT_EVENT_MQ_PUT_MESSAGE);
+						 WAIT_EVENT_MESSAGE_QUEUE_PUT_MESSAGE);
 		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
 	}

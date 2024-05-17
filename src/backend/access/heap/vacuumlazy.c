@@ -135,7 +135,7 @@ typedef enum
 	VACUUM_ERRCB_PHASE_VACUUM_INDEX,
 	VACUUM_ERRCB_PHASE_VACUUM_HEAP,
 	VACUUM_ERRCB_PHASE_INDEX_CLEANUP,
-	VACUUM_ERRCB_PHASE_TRUNCATE
+	VACUUM_ERRCB_PHASE_TRUNCATE,
 } VacErrPhase;
 
 typedef struct LVRelState
@@ -1046,18 +1046,6 @@ lazy_scan_heap(LVRelState *vacrel)
 				dead_items->num_items = 0;
 
 				/*
-				 * Periodically perform FSM vacuuming to make newly-freed
-				 * space visible on upper FSM pages.  Note we have not yet
-				 * performed FSM processing for blkno.
-				 */
-				if (blkno - next_fsm_block_to_vacuum >= VACUUM_FSM_EVERY_PAGES)
-				{
-					FreeSpaceMapVacuumRange(vacrel->rel, next_fsm_block_to_vacuum,
-											blkno);
-					next_fsm_block_to_vacuum = blkno;
-				}
-
-				/*
 				 * Now perform FSM processing for blkno, and move on to next
 				 * page.
 				 *
@@ -1070,6 +1058,24 @@ lazy_scan_heap(LVRelState *vacrel)
 
 				UnlockReleaseBuffer(buf);
 				RecordPageWithFreeSpace(vacrel->rel, blkno, freespace);
+
+				/*
+				 * Periodically perform FSM vacuuming to make newly-freed
+				 * space visible on upper FSM pages. FreeSpaceMapVacuumRange()
+				 * vacuums the portion of the freespace map covering heap
+				 * pages from start to end - 1. Include the block we just
+				 * vacuumed by passing it blkno + 1. Overflow isn't an issue
+				 * because MaxBlockNumber + 1 is InvalidBlockNumber which
+				 * causes FreeSpaceMapVacuumRange() to vacuum freespace map
+				 * pages covering the remainder of the relation.
+				 */
+				if (blkno - next_fsm_block_to_vacuum >= VACUUM_FSM_EVERY_PAGES)
+				{
+					FreeSpaceMapVacuumRange(vacrel->rel, next_fsm_block_to_vacuum,
+											blkno + 1);
+					next_fsm_block_to_vacuum = blkno + 1;
+				}
+
 				continue;
 			}
 
@@ -1523,12 +1529,13 @@ lazy_scan_new_or_empty(LVRelState *vacrel, Buffer buf, BlockNumber blkno,
  * of complexity just so we could deal with tuples that were DEAD to VACUUM,
  * but nevertheless were left with storage after pruning.
  *
- * The approach we take now is to restart pruning when the race condition is
- * detected.  This allows heap_page_prune() to prune the tuples inserted by
- * the now-aborted transaction.  This is a little crude, but it guarantees
- * that any items that make it into the dead_items array are simple LP_DEAD
- * line pointers, and that every remaining item with tuple storage is
- * considered as a candidate for freezing.
+ * As of Postgres 17, we circumvent this problem altogether by reusing the
+ * result of heap_page_prune()'s visibility check. Without the second call to
+ * HeapTupleSatisfiesVacuum(), there is no new HTSV_Result and there can be no
+ * disagreement. We'll just handle such tuples as if they had become fully dead
+ * right after this operation completes instead of in the middle of it. Note that
+ * any tuple that becomes dead after the call to heap_page_prune() can't need to
+ * be frozen, because it was visible to another session when vacuum started.
  */
 static void
 lazy_scan_prune(LVRelState *vacrel,
@@ -1541,14 +1548,11 @@ lazy_scan_prune(LVRelState *vacrel,
 	OffsetNumber offnum,
 				maxoff;
 	ItemId		itemid;
-	HeapTupleData tuple;
-	HTSV_Result res;
-	int			tuples_deleted,
-				tuples_frozen,
+	PruneResult presult;
+	int			tuples_frozen,
 				lpdead_items,
 				live_tuples,
 				recently_dead_tuples;
-	int			nnewlpdead;
 	HeapPageFreeze pagefrz;
 	int64		fpi_before = pgWalUsage.wal_fpi;
 	OffsetNumber deadoffsets[MaxHeapTuplesPerPage];
@@ -1563,15 +1567,12 @@ lazy_scan_prune(LVRelState *vacrel,
 	 */
 	maxoff = PageGetMaxOffsetNumber(page);
 
-retry:
-
 	/* Initialize (or reset) page-level state */
 	pagefrz.freeze_required = false;
 	pagefrz.FreezePageRelfrozenXid = vacrel->NewRelfrozenXid;
 	pagefrz.FreezePageRelminMxid = vacrel->NewRelminMxid;
 	pagefrz.NoFreezePageRelfrozenXid = vacrel->NewRelfrozenXid;
 	pagefrz.NoFreezePageRelminMxid = vacrel->NewRelminMxid;
-	tuples_deleted = 0;
 	tuples_frozen = 0;
 	lpdead_items = 0;
 	live_tuples = 0;
@@ -1580,15 +1581,12 @@ retry:
 	/*
 	 * Prune all HOT-update chains in this page.
 	 *
-	 * We count tuples removed by the pruning step as tuples_deleted.  Its
-	 * final value can be thought of as the number of tuples that have been
-	 * deleted from the table.  It should not be confused with lpdead_items;
+	 * We count the number of tuples removed from the page by the pruning step
+	 * in presult.ndeleted. It should not be confused with lpdead_items;
 	 * lpdead_items's final value can be thought of as the number of tuples
 	 * that were deleted from indexes.
 	 */
-	tuples_deleted = heap_page_prune(rel, buf, vacrel->vistest,
-									 InvalidTransactionId, 0, &nnewlpdead,
-									 &vacrel->offnum);
+	heap_page_prune(rel, buf, vacrel->vistest, &presult, &vacrel->offnum);
 
 	/*
 	 * Now scan the page to collect LP_DEAD items and check for tuples
@@ -1604,6 +1602,7 @@ retry:
 		 offnum <= maxoff;
 		 offnum = OffsetNumberNext(offnum))
 	{
+		HeapTupleHeader htup;
 		bool		totally_frozen;
 
 		/*
@@ -1646,22 +1645,7 @@ retry:
 
 		Assert(ItemIdIsNormal(itemid));
 
-		ItemPointerSet(&(tuple.t_self), blkno, offnum);
-		tuple.t_data = (HeapTupleHeader) PageGetItem(page, itemid);
-		tuple.t_len = ItemIdGetLength(itemid);
-		tuple.t_tableOid = RelationGetRelid(rel);
-
-		/*
-		 * DEAD tuples are almost always pruned into LP_DEAD line pointers by
-		 * heap_page_prune(), but it's possible that the tuple state changed
-		 * since heap_page_prune() looked.  Handle that here by restarting.
-		 * (See comments at the top of function for a full explanation.)
-		 */
-		res = HeapTupleSatisfiesVacuum(&tuple, vacrel->cutoffs.OldestXmin,
-									   buf);
-
-		if (unlikely(res == HEAPTUPLE_DEAD))
-			goto retry;
+		htup = (HeapTupleHeader) PageGetItem(page, itemid);
 
 		/*
 		 * The criteria for counting a tuple as live in this block need to
@@ -1682,7 +1666,7 @@ retry:
 		 * (Cases where we bypass index vacuuming will violate this optimistic
 		 * assumption, but the overall impact of that should be negligible.)
 		 */
-		switch (res)
+		switch (htsv_get_valid_status(presult.htsv[offnum]))
 		{
 			case HEAPTUPLE_LIVE:
 
@@ -1704,7 +1688,7 @@ retry:
 				{
 					TransactionId xmin;
 
-					if (!HeapTupleHeaderXminCommitted(tuple.t_data))
+					if (!HeapTupleHeaderXminCommitted(htup))
 					{
 						prunestate->all_visible = false;
 						break;
@@ -1714,7 +1698,7 @@ retry:
 					 * The inserter definitely committed. But is it old enough
 					 * that everyone sees it as committed?
 					 */
-					xmin = HeapTupleHeaderGetXmin(tuple.t_data);
+					xmin = HeapTupleHeaderGetXmin(htup);
 					if (!TransactionIdPrecedes(xmin,
 											   vacrel->cutoffs.OldestXmin))
 					{
@@ -1768,7 +1752,7 @@ retry:
 		prunestate->hastup = true;	/* page makes rel truncation unsafe */
 
 		/* Tuple with storage -- consider need to freeze */
-		if (heap_prepare_freeze_tuple(tuple.t_data, &vacrel->cutoffs, &pagefrz,
+		if (heap_prepare_freeze_tuple(htup, &vacrel->cutoffs, &pagefrz,
 									  &frozen[tuples_frozen], &totally_frozen))
 		{
 			/* Save prepared freeze plan for later */
@@ -1928,7 +1912,7 @@ retry:
 	}
 
 	/* Finally, add page-local counts to whole-VACUUM counts */
-	vacrel->tuples_deleted += tuples_deleted;
+	vacrel->tuples_deleted += presult.ndeleted;
 	vacrel->tuples_frozen += tuples_frozen;
 	vacrel->lpdead_items += lpdead_items;
 	vacrel->live_tuples += live_tuples;
@@ -2318,6 +2302,17 @@ lazy_vacuum_all_indexes(LVRelState *vacrel)
 {
 	bool		allindexes = true;
 	double		old_live_tuples = vacrel->rel->rd_rel->reltuples;
+	const int	progress_start_index[] = {
+		PROGRESS_VACUUM_PHASE,
+		PROGRESS_VACUUM_INDEXES_TOTAL
+	};
+	const int	progress_end_index[] = {
+		PROGRESS_VACUUM_INDEXES_TOTAL,
+		PROGRESS_VACUUM_INDEXES_PROCESSED,
+		PROGRESS_VACUUM_NUM_INDEX_VACUUMS
+	};
+	int64		progress_start_val[2];
+	int64		progress_end_val[3];
 
 	Assert(vacrel->nindexes > 0);
 	Assert(vacrel->do_index_vacuuming);
@@ -2330,9 +2325,13 @@ lazy_vacuum_all_indexes(LVRelState *vacrel)
 		return false;
 	}
 
-	/* Report that we are now vacuuming indexes */
-	pgstat_progress_update_param(PROGRESS_VACUUM_PHASE,
-								 PROGRESS_VACUUM_PHASE_VACUUM_INDEX);
+	/*
+	 * Report that we are now vacuuming indexes and the number of indexes to
+	 * vacuum.
+	 */
+	progress_start_val[0] = PROGRESS_VACUUM_PHASE_VACUUM_INDEX;
+	progress_start_val[1] = vacrel->nindexes;
+	pgstat_progress_update_multi_param(2, progress_start_index, progress_start_val);
 
 	if (!ParallelVacuumIsActive(vacrel))
 	{
@@ -2344,6 +2343,10 @@ lazy_vacuum_all_indexes(LVRelState *vacrel)
 			vacrel->indstats[idx] = lazy_vacuum_one_index(indrel, istat,
 														  old_live_tuples,
 														  vacrel);
+
+			/* Report the number of indexes vacuumed */
+			pgstat_progress_update_param(PROGRESS_VACUUM_INDEXES_PROCESSED,
+										 idx + 1);
 
 			if (lazy_check_wraparound_failsafe(vacrel))
 			{
@@ -2379,14 +2382,17 @@ lazy_vacuum_all_indexes(LVRelState *vacrel)
 	Assert(allindexes || VacuumFailsafeActive);
 
 	/*
-	 * Increase and report the number of index scans.
+	 * Increase and report the number of index scans.  Also, we reset
+	 * PROGRESS_VACUUM_INDEXES_TOTAL and PROGRESS_VACUUM_INDEXES_PROCESSED.
 	 *
 	 * We deliberately include the case where we started a round of bulk
 	 * deletes that we weren't able to finish due to the failsafe triggering.
 	 */
 	vacrel->num_index_scans++;
-	pgstat_progress_update_param(PROGRESS_VACUUM_NUM_INDEX_VACUUMS,
-								 vacrel->num_index_scans);
+	progress_end_val[0] = 0;
+	progress_end_val[1] = 0;
+	progress_end_val[2] = vacrel->num_index_scans;
+	pgstat_progress_update_multi_param(3, progress_end_index, progress_end_val);
 
 	return allindexes;
 }
@@ -2623,6 +2629,12 @@ lazy_check_wraparound_failsafe(LVRelState *vacrel)
 
 	if (unlikely(vacuum_xid_failsafe_check(&vacrel->cutoffs)))
 	{
+		const int	progress_index[] = {
+			PROGRESS_VACUUM_INDEXES_TOTAL,
+			PROGRESS_VACUUM_INDEXES_PROCESSED
+		};
+		int64		progress_val[2] = {0, 0};
+
 		VacuumFailsafeActive = true;
 
 		/*
@@ -2637,12 +2649,15 @@ lazy_check_wraparound_failsafe(LVRelState *vacrel)
 		vacrel->do_index_cleanup = false;
 		vacrel->do_rel_truncate = false;
 
+		/* Reset the progress counters */
+		pgstat_progress_update_multi_param(2, progress_index, progress_val);
+
 		ereport(WARNING,
 				(errmsg("bypassing nonessential maintenance of table \"%s.%s.%s\" as a failsafe after %d index scans",
 						vacrel->dbname, vacrel->relnamespace, vacrel->relname,
 						vacrel->num_index_scans),
 				 errdetail("The table's relfrozenxid or relminmxid is too far in the past."),
-				 errhint("Consider increasing configuration parameter \"maintenance_work_mem\" or \"autovacuum_work_mem\".\n"
+				 errhint("Consider increasing configuration parameter maintenance_work_mem or autovacuum_work_mem.\n"
 						 "You might also need to consider other ways for VACUUM to keep up with the allocation of transaction IDs.")));
 
 		/* Stop applying cost limits from this point on */
@@ -2663,13 +2678,27 @@ lazy_cleanup_all_indexes(LVRelState *vacrel)
 {
 	double		reltuples = vacrel->new_rel_tuples;
 	bool		estimated_count = vacrel->scanned_pages < vacrel->rel_pages;
+	const int	progress_start_index[] = {
+		PROGRESS_VACUUM_PHASE,
+		PROGRESS_VACUUM_INDEXES_TOTAL
+	};
+	const int	progress_end_index[] = {
+		PROGRESS_VACUUM_INDEXES_TOTAL,
+		PROGRESS_VACUUM_INDEXES_PROCESSED
+	};
+	int64		progress_start_val[2];
+	int64		progress_end_val[2] = {0, 0};
 
 	Assert(vacrel->do_index_cleanup);
 	Assert(vacrel->nindexes > 0);
 
-	/* Report that we are now cleaning up indexes */
-	pgstat_progress_update_param(PROGRESS_VACUUM_PHASE,
-								 PROGRESS_VACUUM_PHASE_INDEX_CLEANUP);
+	/*
+	 * Report that we are now cleaning up indexes and the number of indexes to
+	 * cleanup.
+	 */
+	progress_start_val[0] = PROGRESS_VACUUM_PHASE_INDEX_CLEANUP;
+	progress_start_val[1] = vacrel->nindexes;
+	pgstat_progress_update_multi_param(2, progress_start_index, progress_start_val);
 
 	if (!ParallelVacuumIsActive(vacrel))
 	{
@@ -2681,6 +2710,10 @@ lazy_cleanup_all_indexes(LVRelState *vacrel)
 			vacrel->indstats[idx] =
 				lazy_cleanup_one_index(indrel, istat, reltuples,
 									   estimated_count, vacrel);
+
+			/* Report the number of indexes cleaned up */
+			pgstat_progress_update_param(PROGRESS_VACUUM_INDEXES_PROCESSED,
+										 idx + 1);
 		}
 	}
 	else
@@ -2690,6 +2723,9 @@ lazy_cleanup_all_indexes(LVRelState *vacrel)
 											vacrel->num_index_scans,
 											estimated_count);
 	}
+
+	/* Reset the progress counters */
+	pgstat_progress_update_multi_param(2, progress_end_index, progress_end_val);
 }
 
 /*
@@ -2812,18 +2848,13 @@ lazy_cleanup_one_index(Relation indrel, IndexBulkDeleteResult *istat,
  * in effect in any case.  lazy_scan_prune makes the optimistic assumption
  * that any LP_DEAD items it encounters will always be LP_UNUSED by the time
  * we're called.
- *
- * Also don't attempt it if we are doing early pruning/vacuuming, because a
- * scan which cannot find a truncated heap page cannot determine that the
- * snapshot is too old to read that page.
  */
 static bool
 should_attempt_truncation(LVRelState *vacrel)
 {
 	BlockNumber possibly_freeable;
 
-	if (!vacrel->do_rel_truncate || VacuumFailsafeActive ||
-		old_snapshot_threshold >= 0)
+	if (!vacrel->do_rel_truncate || VacuumFailsafeActive)
 		return false;
 
 	possibly_freeable = vacrel->rel_pages - vacrel->nonempty_pages;

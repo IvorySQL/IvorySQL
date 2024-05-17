@@ -203,6 +203,8 @@ extern PGDLLIMPORT Oid MyDatabaseId;
 
 extern PGDLLIMPORT Oid MyDatabaseTableSpace;
 
+extern PGDLLIMPORT bool MyDatabaseHasLoginEventTriggers;
+
 /*
  * Date/Time Configuration
  *
@@ -300,10 +302,6 @@ extern void PreventCommandIfReadOnly(const char *cmdname);
 extern void PreventCommandIfParallelMode(const char *cmdname);
 extern void PreventCommandDuringRecovery(const char *cmdname);
 
-/* in utils/misc/guc_tables.c */
-extern PGDLLIMPORT int trace_recovery_messages;
-extern int	trace_recovery(int trace_level);
-
 /*****************************************************************************
  *	  pdir.h --																 *
  *			POSTGRES directory path definitions.                             *
@@ -338,6 +336,7 @@ typedef enum BackendType
 	B_STARTUP,
 	B_WAL_RECEIVER,
 	B_WAL_SENDER,
+	B_WAL_SUMMARIZER,
 	B_WAL_WRITER,
 } BackendType;
 
@@ -364,7 +363,8 @@ extern bool InSecurityRestrictedOperation(void);
 extern bool InNoForceRLSOperation(void);
 extern void GetUserIdAndContext(Oid *userid, bool *sec_def_context);
 extern void SetUserIdAndContext(Oid userid, bool sec_def_context);
-extern void InitializeSessionUserId(const char *rolename, Oid roleid);
+extern void InitializeSessionUserId(const char *rolename, Oid roleid,
+									bool bypass_login_check);
 extern void InitializeSessionUserIdStandalone(void);
 extern void SetSessionAuthorization(Oid userid, bool is_superuser);
 extern Oid	GetCurrentRoleId(void);
@@ -406,7 +406,7 @@ typedef enum ProcessingMode
 {
 	BootstrapProcessing,		/* bootstrap creation of template database */
 	InitProcessing,				/* initializing system */
-	NormalProcessing			/* normal processing */
+	NormalProcessing,			/* normal processing */
 } ProcessingMode;
 
 extern PGDLLIMPORT ProcessingMode Mode;
@@ -443,6 +443,7 @@ typedef enum
 	CheckpointerProcess,
 	WalWriterProcess,
 	WalReceiverProcess,
+	WalSummarizerProcess,
 
 	NUM_AUXPROCTYPES			/* Must be last! */
 } AuxProcType;
@@ -455,6 +456,7 @@ extern PGDLLIMPORT AuxProcType MyAuxProcType;
 #define AmCheckpointerProcess()		(MyAuxProcType == CheckpointerProcess)
 #define AmWalWriterProcess()		(MyAuxProcType == WalWriterProcess)
 #define AmWalReceiverProcess()		(MyAuxProcType == WalReceiverProcess)
+#define AmWalSummarizerProcess()	(MyAuxProcType == WalSummarizerProcess)
 
 
 /*****************************************************************************
@@ -463,12 +465,15 @@ extern PGDLLIMPORT AuxProcType MyAuxProcType;
  *****************************************************************************/
 
 /* in utils/init/postinit.c */
+/* flags for InitPostgres() */
+#define INIT_PG_LOAD_SESSION_LIBS		0x0001
+#define INIT_PG_OVERRIDE_ALLOW_CONNS	0x0002
+#define INIT_PG_OVERRIDE_ROLE_LOGIN		0x0004
 extern void pg_split_opts(char **argv, int *argcp, const char *optstr);
 extern void InitializeMaxBackends(void);
 extern void InitPostgres(const char *in_dbname, Oid dboid,
 						 const char *username, Oid useroid,
-						 bool load_session_libraries,
-						 bool override_allow_connections,
+						 bits32 flags,
 						 char *out_dbname);
 extern void BaseInit(void);
 

@@ -74,7 +74,7 @@ typedef enum pushdown_safe_type
 {
 	PUSHDOWN_UNSAFE,			/* unsafe to push qual into subquery */
 	PUSHDOWN_SAFE,				/* safe to push qual into subquery */
-	PUSHDOWN_WINDOWCLAUSE_RUNCOND	/* unsafe, but may work as WindowClause
+	PUSHDOWN_WINDOWCLAUSE_RUNCOND,	/* unsafe, but may work as WindowClause
 									 * run condition */
 } pushdown_safe_type;
 
@@ -563,7 +563,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	set_cheapest(rel);
 
 #ifdef OPTIMIZER_DEBUG
-	debug_print_rel(root, rel);
+	pprint(rel);
 #endif
 }
 
@@ -1307,6 +1307,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 {
 	List	   *subpaths = NIL;
 	bool		subpaths_valid = true;
+	List	   *startup_subpaths = NIL;
+	bool		startup_subpaths_valid = true;
 	List	   *partial_subpaths = NIL;
 	List	   *pa_partial_subpaths = NIL;
 	List	   *pa_nonpartial_subpaths = NIL;
@@ -1345,6 +1347,23 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 									  &subpaths, NULL);
 		else
 			subpaths_valid = false;
+
+		/*
+		 * When the planner is considering cheap startup plans, we'll also
+		 * collect all the cheapest_startup_paths (if set) and build an
+		 * AppendPath containing those as subpaths.
+		 */
+		if (rel->consider_startup && childrel->cheapest_startup_path != NULL)
+		{
+			/* cheapest_startup_path must not be a parameterized path. */
+			Assert(childrel->cheapest_startup_path->param_info == NULL);
+			accumulate_append_subpath(childrel->cheapest_startup_path,
+									  &startup_subpaths,
+									  NULL);
+		}
+		else
+			startup_subpaths_valid = false;
+
 
 		/* Same idea, but for a partial plan. */
 		if (childrel->partial_pathlist != NIL)
@@ -1477,6 +1496,11 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 		add_path(rel, (Path *) create_append_path(root, rel, subpaths, NIL,
 												  NIL, NULL, 0, false,
 												  -1));
+
+	/* build an AppendPath for the cheap startup paths, if valid */
+	if (startup_subpaths_valid)
+		add_path(rel, (Path *) create_append_path(root, rel, startup_subpaths,
+												  NIL, NIL, NULL, 0, false, -1));
 
 	/*
 	 * Consider an append of unordered, unparameterized partial paths.  Make
@@ -2166,28 +2190,6 @@ set_dummy_rel_pathlist(RelOptInfo *rel)
 	set_cheapest(rel);
 }
 
-/* quick-and-dirty test to see if any joining is needed */
-static bool
-has_multiple_baserels(PlannerInfo *root)
-{
-	int			num_base_rels = 0;
-	Index		rti;
-
-	for (rti = 1; rti < root->simple_rel_array_size; rti++)
-	{
-		RelOptInfo *brel = root->simple_rel_array[rti];
-
-		if (brel == NULL)
-			continue;
-
-		/* ignore RTEs that are "other rels" */
-		if (brel->reloptkind == RELOPT_BASEREL)
-			if (++num_base_rels > 1)
-				return true;
-	}
-	return false;
-}
-
 /*
  * find_window_run_conditions
  *		Determine if 'wfunc' is really a WindowFunc and call its prosupport
@@ -2637,7 +2639,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		root->hasHavingQual ||
 		parse->distinctClause ||
 		parse->sortClause ||
-		has_multiple_baserels(root))
+		bms_membership(root->all_baserels) == BMS_MULTIPLE)
 		tuple_fraction = 0.0;	/* default case */
 	else
 		tuple_fraction = root->tuple_fraction;
@@ -3473,7 +3475,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 			/*
 			 * Except for the topmost scan/join rel, consider gathering
 			 * partial paths.  We'll do the same for the topmost scan/join rel
-			 * once we know the final targetlist (see grouping_planner).
+			 * once we know the final targetlist (see grouping_planner's and
+			 * its call to apply_scanjoin_target_to_paths).
 			 */
 			if (!bms_equal(rel->relids, root->all_query_rels))
 				generate_useful_gather_paths(root, rel, false);
@@ -3482,7 +3485,7 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 			set_cheapest(rel);
 
 #ifdef OPTIMIZER_DEBUG
-			debug_print_rel(root, rel);
+			pprint(rel);
 #endif
 		}
 	}
@@ -4350,7 +4353,7 @@ generate_partitionwise_join_paths(PlannerInfo *root, RelOptInfo *rel)
 			continue;
 
 #ifdef OPTIMIZER_DEBUG
-		debug_print_rel(root, child_rel);
+		pprint(child_rel);
 #endif
 
 		live_children = lappend(live_children, child_rel);
@@ -4367,322 +4370,3 @@ generate_partitionwise_join_paths(PlannerInfo *root, RelOptInfo *rel)
 	add_paths_to_append_rel(root, rel, live_children);
 	list_free(live_children);
 }
-
-
-/*****************************************************************************
- *			DEBUG SUPPORT
- *****************************************************************************/
-
-#ifdef OPTIMIZER_DEBUG
-
-static void
-print_relids(PlannerInfo *root, Relids relids)
-{
-	int			x;
-	bool		first = true;
-
-	x = -1;
-	while ((x = bms_next_member(relids, x)) >= 0)
-	{
-		if (!first)
-			printf(" ");
-		if (x < root->simple_rel_array_size &&
-			root->simple_rte_array[x])
-			printf("%s", root->simple_rte_array[x]->eref->aliasname);
-		else
-			printf("%d", x);
-		first = false;
-	}
-}
-
-static void
-print_restrictclauses(PlannerInfo *root, List *clauses)
-{
-	ListCell   *l;
-
-	foreach(l, clauses)
-	{
-		RestrictInfo *c = lfirst(l);
-
-		print_expr((Node *) c->clause, root->parse->rtable);
-		if (lnext(clauses, l))
-			printf(", ");
-	}
-}
-
-static void
-print_path(PlannerInfo *root, Path *path, int indent)
-{
-	const char *ptype;
-	bool		join = false;
-	Path	   *subpath = NULL;
-	int			i;
-
-	switch (nodeTag(path))
-	{
-		case T_Path:
-			switch (path->pathtype)
-			{
-				case T_SeqScan:
-					ptype = "SeqScan";
-					break;
-				case T_SampleScan:
-					ptype = "SampleScan";
-					break;
-				case T_FunctionScan:
-					ptype = "FunctionScan";
-					break;
-				case T_TableFuncScan:
-					ptype = "TableFuncScan";
-					break;
-				case T_ValuesScan:
-					ptype = "ValuesScan";
-					break;
-				case T_CteScan:
-					ptype = "CteScan";
-					break;
-				case T_NamedTuplestoreScan:
-					ptype = "NamedTuplestoreScan";
-					break;
-				case T_Result:
-					ptype = "Result";
-					break;
-				case T_WorkTableScan:
-					ptype = "WorkTableScan";
-					break;
-				default:
-					ptype = "???Path";
-					break;
-			}
-			break;
-		case T_IndexPath:
-			ptype = "IdxScan";
-			break;
-		case T_BitmapHeapPath:
-			ptype = "BitmapHeapScan";
-			break;
-		case T_BitmapAndPath:
-			ptype = "BitmapAndPath";
-			break;
-		case T_BitmapOrPath:
-			ptype = "BitmapOrPath";
-			break;
-		case T_TidPath:
-			ptype = "TidScan";
-			break;
-		case T_SubqueryScanPath:
-			ptype = "SubqueryScan";
-			break;
-		case T_ForeignPath:
-			ptype = "ForeignScan";
-			break;
-		case T_CustomPath:
-			ptype = "CustomScan";
-			break;
-		case T_NestPath:
-			ptype = "NestLoop";
-			join = true;
-			break;
-		case T_MergePath:
-			ptype = "MergeJoin";
-			join = true;
-			break;
-		case T_HashPath:
-			ptype = "HashJoin";
-			join = true;
-			break;
-		case T_AppendPath:
-			ptype = "Append";
-			break;
-		case T_MergeAppendPath:
-			ptype = "MergeAppend";
-			break;
-		case T_GroupResultPath:
-			ptype = "GroupResult";
-			break;
-		case T_MaterialPath:
-			ptype = "Material";
-			subpath = ((MaterialPath *) path)->subpath;
-			break;
-		case T_MemoizePath:
-			ptype = "Memoize";
-			subpath = ((MemoizePath *) path)->subpath;
-			break;
-		case T_UniquePath:
-			ptype = "Unique";
-			subpath = ((UniquePath *) path)->subpath;
-			break;
-		case T_GatherPath:
-			ptype = "Gather";
-			subpath = ((GatherPath *) path)->subpath;
-			break;
-		case T_GatherMergePath:
-			ptype = "GatherMerge";
-			subpath = ((GatherMergePath *) path)->subpath;
-			break;
-		case T_ProjectionPath:
-			ptype = "Projection";
-			subpath = ((ProjectionPath *) path)->subpath;
-			break;
-		case T_ProjectSetPath:
-			ptype = "ProjectSet";
-			subpath = ((ProjectSetPath *) path)->subpath;
-			break;
-		case T_SortPath:
-			ptype = "Sort";
-			subpath = ((SortPath *) path)->subpath;
-			break;
-		case T_IncrementalSortPath:
-			ptype = "IncrementalSort";
-			subpath = ((SortPath *) path)->subpath;
-			break;
-		case T_GroupPath:
-			ptype = "Group";
-			subpath = ((GroupPath *) path)->subpath;
-			break;
-		case T_UpperUniquePath:
-			ptype = "UpperUnique";
-			subpath = ((UpperUniquePath *) path)->subpath;
-			break;
-		case T_AggPath:
-			ptype = "Agg";
-			subpath = ((AggPath *) path)->subpath;
-			break;
-		case T_GroupingSetsPath:
-			ptype = "GroupingSets";
-			subpath = ((GroupingSetsPath *) path)->subpath;
-			break;
-		case T_MinMaxAggPath:
-			ptype = "MinMaxAgg";
-			break;
-		case T_WindowAggPath:
-			ptype = "WindowAgg";
-			subpath = ((WindowAggPath *) path)->subpath;
-			break;
-		case T_SetOpPath:
-			ptype = "SetOp";
-			subpath = ((SetOpPath *) path)->subpath;
-			break;
-		case T_RecursiveUnionPath:
-			ptype = "RecursiveUnion";
-			break;
-		case T_LockRowsPath:
-			ptype = "LockRows";
-			subpath = ((LockRowsPath *) path)->subpath;
-			break;
-		case T_ModifyTablePath:
-			ptype = "ModifyTable";
-			break;
-		case T_LimitPath:
-			ptype = "Limit";
-			subpath = ((LimitPath *) path)->subpath;
-			break;
-		default:
-			ptype = "???Path";
-			break;
-	}
-
-	for (i = 0; i < indent; i++)
-		printf("\t");
-	printf("%s", ptype);
-
-	if (path->parent)
-	{
-		printf("(");
-		print_relids(root, path->parent->relids);
-		printf(")");
-	}
-	if (path->param_info)
-	{
-		printf(" required_outer (");
-		print_relids(root, path->param_info->ppi_req_outer);
-		printf(")");
-	}
-	printf(" rows=%.0f cost=%.2f..%.2f\n",
-		   path->rows, path->startup_cost, path->total_cost);
-
-	if (path->pathkeys)
-	{
-		for (i = 0; i < indent; i++)
-			printf("\t");
-		printf("  pathkeys: ");
-		print_pathkeys(path->pathkeys, root->parse->rtable);
-	}
-
-	if (join)
-	{
-		JoinPath   *jp = (JoinPath *) path;
-
-		for (i = 0; i < indent; i++)
-			printf("\t");
-		printf("  clauses: ");
-		print_restrictclauses(root, jp->joinrestrictinfo);
-		printf("\n");
-
-		if (IsA(path, MergePath))
-		{
-			MergePath  *mp = (MergePath *) path;
-
-			for (i = 0; i < indent; i++)
-				printf("\t");
-			printf("  sortouter=%d sortinner=%d materializeinner=%d\n",
-				   ((mp->outersortkeys) ? 1 : 0),
-				   ((mp->innersortkeys) ? 1 : 0),
-				   ((mp->materialize_inner) ? 1 : 0));
-		}
-
-		print_path(root, jp->outerjoinpath, indent + 1);
-		print_path(root, jp->innerjoinpath, indent + 1);
-	}
-
-	if (subpath)
-		print_path(root, subpath, indent + 1);
-}
-
-void
-debug_print_rel(PlannerInfo *root, RelOptInfo *rel)
-{
-	ListCell   *l;
-
-	printf("RELOPTINFO (");
-	print_relids(root, rel->relids);
-	printf("): rows=%.0f width=%d\n", rel->rows, rel->reltarget->width);
-
-	if (rel->baserestrictinfo)
-	{
-		printf("\tbaserestrictinfo: ");
-		print_restrictclauses(root, rel->baserestrictinfo);
-		printf("\n");
-	}
-
-	if (rel->joininfo)
-	{
-		printf("\tjoininfo: ");
-		print_restrictclauses(root, rel->joininfo);
-		printf("\n");
-	}
-
-	printf("\tpath list:\n");
-	foreach(l, rel->pathlist)
-		print_path(root, lfirst(l), 1);
-	if (rel->cheapest_parameterized_paths)
-	{
-		printf("\n\tcheapest parameterized paths:\n");
-		foreach(l, rel->cheapest_parameterized_paths)
-			print_path(root, lfirst(l), 1);
-	}
-	if (rel->cheapest_startup_path)
-	{
-		printf("\n\tcheapest startup path:\n");
-		print_path(root, rel->cheapest_startup_path, 1);
-	}
-	if (rel->cheapest_total_path)
-	{
-		printf("\n\tcheapest total path:\n");
-		print_path(root, rel->cheapest_total_path, 1);
-	}
-	printf("\n");
-	fflush(stdout);
-}
-
-#endif							/* OPTIMIZER_DEBUG */

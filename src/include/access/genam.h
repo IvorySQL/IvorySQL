@@ -117,7 +117,7 @@ typedef enum IndexUniqueCheck
 	UNIQUE_CHECK_NO,			/* Don't do any uniqueness checking */
 	UNIQUE_CHECK_YES,			/* Enforce uniqueness at insertion time */
 	UNIQUE_CHECK_PARTIAL,		/* Test uniqueness, but no error */
-	UNIQUE_CHECK_EXISTING		/* Check if existing tuple is unique */
+	UNIQUE_CHECK_EXISTING,		/* Check if existing tuple is unique */
 } IndexUniqueCheck;
 
 
@@ -148,6 +148,8 @@ extern bool index_insert(Relation indexRelation,
 						 IndexUniqueCheck checkUnique,
 						 bool indexUnchanged,
 						 struct IndexInfo *indexInfo);
+extern void index_insert_cleanup(Relation indexRelation,
+								 struct IndexInfo *indexInfo);
 
 extern IndexScanDesc index_beginscan(Relation heapRelation,
 									 Relation indexRelation,
@@ -204,7 +206,7 @@ extern IndexScanDesc RelationGetIndexScan(Relation indexRelation,
 										  int nkeys, int norderbys);
 extern void IndexScanEnd(IndexScanDesc scan);
 extern char *BuildIndexValueDescription(Relation indexRelation,
-										Datum *values, bool *isnull);
+										const Datum *values, const bool *isnull);
 extern TransactionId index_compute_xid_horizon_for_tuples(Relation irel,
 														  Relation hrel,
 														  Buffer ibuf,

@@ -385,7 +385,7 @@ typedef enum GistOptBufferingMode
 {
 	GIST_OPTION_BUFFERING_AUTO,
 	GIST_OPTION_BUFFERING_ON,
-	GIST_OPTION_BUFFERING_OFF
+	GIST_OPTION_BUFFERING_OFF,
 } GistOptBufferingMode;
 
 /*
@@ -502,9 +502,9 @@ extern IndexTuple gistgetadjusted(Relation r,
 								  IndexTuple addtup,
 								  GISTSTATE *giststate);
 extern IndexTuple gistFormTuple(GISTSTATE *giststate,
-								Relation r, Datum *attdata, bool *isnull, bool isleaf);
+								Relation r, const Datum *attdata, const bool *isnull, bool isleaf);
 extern void gistCompressValues(GISTSTATE *giststate, Relation r,
-							   Datum *attdata, bool *isnull, bool isleaf, Datum *compatt);
+							   const Datum *attdata, const bool *isnull, bool isleaf, Datum *compatt);
 
 extern OffsetNumber gistchoose(Relation r, Page p,
 							   IndexTuple it,

@@ -51,7 +51,7 @@ typedef enum CopyDest
 {
 	COPY_FILE,					/* to file (or a piped program) */
 	COPY_FRONTEND,				/* to frontend */
-	COPY_CALLBACK				/* to callback function */
+	COPY_CALLBACK,				/* to callback function */
 } CopyDest;
 
 /*
@@ -144,7 +144,7 @@ SendCopyBegin(CopyToState cstate)
 	int16		format = (cstate->opts.binary ? 1 : 0);
 	int			i;
 
-	pq_beginmessage(&buf, 'H');
+	pq_beginmessage(&buf, PqMsg_CopyOutResponse);
 	pq_sendbyte(&buf, format);	/* overall format */
 	pq_sendint16(&buf, natts);
 	for (i = 0; i < natts; i++)
@@ -159,7 +159,7 @@ SendCopyEnd(CopyToState cstate)
 	/* Shouldn't have any unsent data */
 	Assert(cstate->fe_msgbuf->len == 0);
 	/* Send Copy Done message */
-	pq_putemptymessage('c');
+	pq_putemptymessage(PqMsg_CopyDone);
 }
 
 /*----------
@@ -247,7 +247,7 @@ CopySendEndOfRow(CopyToState cstate)
 				CopySendChar(cstate, '\n');
 
 			/* Dump the accumulated row as one CopyData message */
-			(void) pq_putmessage('d', fe_msgbuf->data, fe_msgbuf->len);
+			(void) pq_putmessage(PqMsg_CopyData, fe_msgbuf->data, fe_msgbuf->len);
 			break;
 		case COPY_CALLBACK:
 			cstate->data_dest_cb(fe_msgbuf->data, fe_msgbuf->len);
@@ -582,10 +582,7 @@ BeginCopyTo(ParseState *pstate,
 	cstate->opts.force_quote_flags = (bool *) palloc0(num_phys_attrs * sizeof(bool));
 	if (cstate->opts.force_quote_all)
 	{
-		int			i;
-
-		for (i = 0; i < num_phys_attrs; i++)
-			cstate->opts.force_quote_flags[i] = true;
+		MemSet(cstate->opts.force_quote_flags, true, num_phys_attrs * sizeof(bool));
 	}
 	else if (cstate->opts.force_quote)
 	{

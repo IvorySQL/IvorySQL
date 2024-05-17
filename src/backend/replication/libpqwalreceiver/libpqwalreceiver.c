@@ -196,7 +196,7 @@ libpqrcv_connect(const char *conninfo, bool logical, bool must_use_password,
 				(errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
 				 errmsg("password is required"),
 				 errdetail("Non-superuser cannot connect if the server does not request a password."),
-				 errhint("Target server's authentication method must be changed. or set password_required=false in the subscription attributes.")));
+				 errhint("Target server's authentication method must be changed, or set password_required=false in the subscription parameters.")));
 	}
 
 	if (logical)
@@ -381,6 +381,11 @@ libpqrcv_identify_system(WalReceiverConn *conn, TimeLineID *primary_tli)
 						"the primary server: %s",
 						pchomp(PQerrorMessage(conn->streamConn)))));
 	}
+
+	/*
+	 * IDENTIFY_SYSTEM returns 3 columns in 9.3 and earlier, and 4 columns in
+	 * 9.4 and onwards.
+	 */
 	if (PQnfields(res) < 3 || PQntuples(res) != 1)
 	{
 		int			ntuples = PQntuples(res);
@@ -391,7 +396,7 @@ libpqrcv_identify_system(WalReceiverConn *conn, TimeLineID *primary_tli)
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("invalid response from primary server"),
 				 errdetail("Could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields.",
-						   ntuples, nfields, 3, 1)));
+						   ntuples, nfields, 1, 3)));
 	}
 	primary_sysid = pstrdup(PQgetvalue(res, 0, 0));
 	*primary_tli = pg_strtoint32(PQgetvalue(res, 0, 1));

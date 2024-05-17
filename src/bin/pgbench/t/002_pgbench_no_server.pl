@@ -6,7 +6,7 @@
 #
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -38,7 +38,6 @@ sub pgbench_scripts
 
 	my ($opts, $stat, $out, $err, $name, $files) = @_;
 	my @cmd = ('pgbench', split /\s+/, $opts);
-	my @filenames = ();
 	if (defined $files)
 	{
 		for my $fn (sort keys %$files)

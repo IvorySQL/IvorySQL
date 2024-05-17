@@ -237,7 +237,7 @@ autoprewarm_main(Datum main_arg)
 			(void) WaitLatch(MyLatch,
 							 WL_LATCH_SET | WL_EXIT_ON_PM_DEATH,
 							 -1L,
-							 PG_WAIT_EXTENSION);
+							 WAIT_EVENT_EXTENSION);
 		}
 		else
 		{
@@ -264,7 +264,7 @@ autoprewarm_main(Datum main_arg)
 			(void) WaitLatch(MyLatch,
 							 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 							 delay_in_ms,
-							 PG_WAIT_EXTENSION);
+							 WAIT_EVENT_EXTENSION);
 		}
 
 		/* Reset the latch, loop. */
@@ -877,7 +877,7 @@ apw_start_database_worker(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 				 errmsg("registering dynamic bgworker autoprewarm failed"),
-				 errhint("Consider increasing configuration parameter \"max_worker_processes\".")));
+				 errhint("Consider increasing configuration parameter max_worker_processes.")));
 
 	/*
 	 * Ignore return value; if it fails, postmaster has died, but we have

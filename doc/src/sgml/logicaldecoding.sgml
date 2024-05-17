@@ -144,7 +144,7 @@ postgres=# SELECT pg_drop_replication_slot('regression_slot');
 </programlisting>
 
    <para>
-    The following examples shows how logical decoding is controlled over the
+    The following examples show how logical decoding is controlled over the
     streaming replication protocol, using the
     program <xref linkend="app-pgrecvlogical"/> included in the PostgreSQL
     distribution.  This requires that client authentication is set up to allow
@@ -326,11 +326,12 @@ postgres=# select * from pg_logical_slot_get_changes('regression_slot', NULL, NU
      will work but only while the connection is alive (for example a node
      restart would break it). Then, the primary may delete system catalog rows
      that could be needed by the logical decoding on the standby (as it does
-     not know about the catalog_xmin on the standby). Existing logical slots
-     on standby also get invalidated if <varname>wal_level</varname> on the
-     primary is reduced to less than <literal>logical</literal>.
+     not know about the <literal>catalog_xmin</literal> on the standby).
+     Existing logical slots on standby also get invalidated if
+     <varname>wal_level</varname> on the primary is reduced to less than
+     <literal>logical</literal>.
      This is done as soon as the standby detects such a change in the WAL stream.
-     It means that, for walsenders which are lagging (if any), some WAL records up
+     It means that, for walsenders that are lagging (if any), some WAL records up
      to the <varname>wal_level</varname> parameter change on the primary won't be
      decoded.
     </para>
@@ -1196,9 +1197,8 @@ OutputPluginWrite(ctx, true);
       </listitem>
      </itemizedlist>
 
-     Note that these commands that can cause deadlock apply to not only explicitly
-     indicated system catalog tables above but also to any other [user] catalog
-     table.
+     Note that these commands can cause deadlocks not only for the system
+     catalog tables listed above but for other catalog tables.
     </para>
    </sect2>
   </sect1>

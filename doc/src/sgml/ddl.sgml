@@ -651,17 +651,38 @@ CREATE TABLE products (
     price numeric
 );
 </programlisting>
+    An explicit constraint name can also be specified, for example:
+<programlisting>
+CREATE TABLE products (
+    product_no integer NOT NULL,
+    name text <emphasis>CONSTRAINT products_name_not_null</emphasis> NOT NULL,
+    price numeric
+);
+</programlisting>
    </para>
 
    <para>
-    A not-null constraint is always written as a column constraint.  A
-    not-null constraint is functionally equivalent to creating a check
+    A not-null constraint is usually written as a column constraint.  The
+    syntax for writing it as a table constraint is
+<programlisting>
+CREATE TABLE products (
+    product_no integer,
+    name text,
+    price numeric,
+    <emphasis>NOT NULL product_no</emphasis>,
+    <emphasis>NOT NULL name</emphasis>
+);
+</programlisting>
+    But this syntax is not standard and mainly intended for use by
+    <application>pg_dump</application>.
+   </para>
+
+   <para>
+    A not-null constraint is functionally equivalent to creating a check
     constraint <literal>CHECK (<replaceable>column_name</replaceable>
     IS NOT NULL)</literal>, but in
     <productname>PostgreSQL</productname> creating an explicit
-    not-null constraint is more efficient.  The drawback is that you
-    cannot give explicit names to not-null constraints created this
-    way.
+    not-null constraint is more efficient.
    </para>
 
    <para>
@@ -676,6 +697,10 @@ CREATE TABLE products (
 </programlisting>
     The order doesn't matter.  It does not necessarily determine in which
     order the constraints are checked.
+   </para>
+
+   <para>
+    However, a column can have at most one explicit not-null constraint.
    </para>
 
    <para>
@@ -871,7 +896,7 @@ CREATE TABLE example (
 
    <para>
     A table can have at most one primary key.  (There can be any number
-    of unique and not-null constraints, which are functionally almost the
+    of unique constraints, which combined with not-null constraints are functionally almost the
     same thing, but only one can be identified as the primary key.)
     Relational database theory
     dictates that every table must have a primary key.  This rule is
@@ -1531,11 +1556,16 @@ ALTER TABLE products ADD CHECK (name &lt;&gt; '');
 ALTER TABLE products ADD CONSTRAINT some_name UNIQUE (product_no);
 ALTER TABLE products ADD FOREIGN KEY (product_group_id) REFERENCES product_groups;
 </programlisting>
-    To add a not-null constraint, which cannot be written as a table
-    constraint, use this syntax:
+   </para>
+
+   <para>
+    To add a not-null constraint, which is normally not written as a table
+    constraint, this special syntax is available:
 <programlisting>
 ALTER TABLE products ALTER COLUMN product_no SET NOT NULL;
 </programlisting>
+    This command silently does nothing if the column already has a
+    not-null constraint.
    </para>
 
    <para>
@@ -1576,12 +1606,15 @@ ALTER TABLE products DROP CONSTRAINT some_name;
    </para>
 
    <para>
-    This works the same for all constraint types except not-null
-    constraints. To drop a not null constraint use:
+    Simplified syntax is available to drop a not-null constraint:
 <programlisting>
 ALTER TABLE products ALTER COLUMN product_no DROP NOT NULL;
 </programlisting>
-    (Recall that not-null constraints do not have names.)
+    This mirrors the <literal>SET NOT NULL</literal> syntax for adding a
+    not-null constraint.  This command will silently do nothing if the column
+    does not have a not-null constraint.  (Recall that a column can have at
+    most one not-null constraint, so it is never ambiguous which constraint
+    this command acts on.)
    </para>
   </sect2>
 
@@ -1704,6 +1737,11 @@ ALTER TABLE products RENAME TO items;
    <primary>ACL</primary>
   </indexterm>
 
+  <indexterm zone="ddl-priv-default">
+   <primary>privilege</primary>
+   <secondary>default</secondary>
+  </indexterm>
+
   <para>
    When an object is created, it is assigned an owner. The
    owner is normally the role that executed the creation statement.
@@ -1718,8 +1756,8 @@ ALTER TABLE products RENAME TO items;
    <literal>INSERT</literal>, <literal>UPDATE</literal>, <literal>DELETE</literal>,
    <literal>TRUNCATE</literal>, <literal>REFERENCES</literal>, <literal>TRIGGER</literal>,
    <literal>CREATE</literal>, <literal>CONNECT</literal>, <literal>TEMPORARY</literal>,
-   <literal>EXECUTE</literal>, <literal>USAGE</literal>, <literal>SET</literal>,
-   <literal>ALTER SYSTEM</literal>, and <literal>MAINTAIN</literal>.
+   <literal>EXECUTE</literal>, <literal>USAGE</literal>, <literal>SET</literal>
+   and <literal>ALTER SYSTEM</literal>.
    The privileges applicable to a particular
    object vary depending on the object's type (table, function, etc.).
    More detail about the meanings of these privileges appears below.
@@ -2010,25 +2048,13 @@ REVOKE ALL ON accounts FROM PUBLIC;
       </para>
      </listitem>
     </varlistentry>
-
-   <varlistentry id="ddl-priv-maintain">
-    <term><literal>MAINTAIN</literal></term>
-    <listitem>
-     <para>
-      Allows <command>VACUUM</command>, <command>ANALYZE</command>,
-      <command>CLUSTER</command>, <command>REFRESH MATERIALIZED VIEW</command>,
-      <command>REINDEX</command>, and <command>LOCK TABLE</command> on a
-      relation.
-     </para>
-    </listitem>
-   </varlistentry>
-  </variablelist>
+   </variablelist>
 
    The privileges required by other commands are listed on the
    reference page of the respective command.
   </para>
 
-  <para>
+  <para id="ddl-priv-default">
    PostgreSQL grants privileges on some types of objects to
    <literal>PUBLIC</literal> by default when the objects are created.
    No privileges are granted to <literal>PUBLIC</literal> by default on
@@ -2171,11 +2197,6 @@ REVOKE ALL ON accounts FROM PUBLIC;
       <entry><literal>A</literal></entry>
       <entry><literal>PARAMETER</literal></entry>
      </row>
-     <row>
-      <entry><literal>MAINTAIN</literal></entry>
-      <entry><literal>m</literal></entry>
-      <entry><literal>TABLE</literal></entry>
-     </row>
      </tbody>
    </tgroup>
   </table>
@@ -2266,7 +2287,7 @@ REVOKE ALL ON accounts FROM PUBLIC;
      </row>
      <row>
       <entry><literal>TABLE</literal> (and table-like objects)</entry>
-      <entry><literal>arwdDxtm</literal></entry>
+      <entry><literal>arwdDxt</literal></entry>
       <entry>none</entry>
       <entry><literal>\dp</literal></entry>
      </row>
@@ -2297,9 +2318,16 @@ REVOKE ALL ON accounts FROM PUBLIC;
     <primary><type>aclitem</type></primary>
    </indexterm>
    The privileges that have been granted for a particular object are
-   displayed as a list of <type>aclitem</type> entries, where each
-   <type>aclitem</type> describes the permissions of one grantee that
-   have been granted by a particular grantor.  For example,
+   displayed as a list of <type>aclitem</type> entries, each having the
+   format:
+<synopsis>
+<replaceable>grantee</replaceable><literal>=</literal><replaceable>privilege-abbreviation</replaceable><optional><literal>*</literal></optional>...<literal>/</literal><replaceable>grantor</replaceable>
+</synopsis>
+   Each <type>aclitem</type> lists all the permissions of one grantee that
+   have been granted by a particular grantor.  Specific privileges are
+   represented by one-letter abbreviations from
+   <xref linkend="privilege-abbrevs-table"/>, with <literal>*</literal>
+   appended if the privilege was granted with grant option.  For example,
    <literal>calvin=r*w/hobbes</literal> specifies that the role
    <literal>calvin</literal> has the privilege
    <literal>SELECT</literal> (<literal>r</literal>) with grant option
@@ -2325,11 +2353,11 @@ GRANT SELECT (col1), UPDATE (col1) ON mytable TO miriam_rw;
 <programlisting>
 =&gt; \dp mytable
                                   Access privileges
- Schema |  Name   | Type  |   Access privileges    |   Column privileges   | Policies
---------+---------+-------+------------------------+-----------------------+----------
- public | mytable | table | miriam=arwdDxtm/miriam+| col1:                +|
-        |         |       | =r/miriam             +|   miriam_rw=rw/miriam |
-        |         |       | admin=arw/miriam       |                       |
+ Schema |  Name   | Type  |   Access privileges   |   Column privileges   | Policies
+--------+---------+-------+-----------------------+-----------------------+----------
+ public | mytable | table | miriam=arwdDxt/miriam+| col1:                +|
+        |         |       | =r/miriam            +|   miriam_rw=rw/miriam |
+        |         |       | admin=arw/miriam      |                       |
 (1 row)
 </programlisting>
   </para>
@@ -2358,6 +2386,15 @@ GRANT SELECT (col1), UPDATE (col1) ON mytable TO miriam_rw;
    Notice that the owner's implicit grant options are not marked in the
    access privileges display.  A <literal>*</literal> will appear only when
    grant options have been explicitly granted to someone.
+  </para>
+
+  <para>
+   The <quote>Access privileges</quote> column
+   shows <literal>(none)</literal> when the object's privileges entry is
+   non-null but empty.  This means that no privileges are granted at all,
+   even to the object's owner &mdash; a rare situation.  (The owner still
+   has implicit grant options in this case, and so could re-grant her own
+   privileges; but she has none at the moment.)
   </para>
  </sect1>
 
@@ -4192,7 +4229,7 @@ ALTER TABLE measurement ATTACH PARTITION measurement_y2008m02
 <programlisting>
 CREATE INDEX measurement_usls_idx ON ONLY measurement (unitsales);
 
-CREATE INDEX measurement_usls_200602_idx
+CREATE INDEX CONCURRENTLY measurement_usls_200602_idx
     ON measurement_y2006m02 (unitsales);
 ALTER INDEX measurement_usls_idx
     ATTACH PARTITION measurement_usls_200602_idx;
@@ -4233,11 +4270,13 @@ ALTER INDEX measurement_city_id_logdate_key
 
      <listitem>
       <para>
-       There is no way to create an exclusion constraint spanning the
-       whole partitioned table.  It is only possible to put such a
-       constraint on each leaf partition individually.  Again, this
-       limitation stems from not being able to enforce cross-partition
-       restrictions.
+       Similarly an exclusion constraint must include all the
+       partition key columns. Furthermore the constraint must compare those
+       columns for equality (not e.g. <literal>&amp;&amp;</literal>).
+       Again, this limitation stems from not being able to enforce
+       cross-partition restrictions. The constraint may include additional
+       columns that aren't part of the partition key, and it may compare
+       those with any operators you like.
       </para>
      </listitem>
 

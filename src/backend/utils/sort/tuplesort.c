@@ -162,7 +162,7 @@ typedef enum
 	TSS_BUILDRUNS,				/* Loading tuples; writing to tape */
 	TSS_SORTEDINMEM,			/* Sort completed entirely in memory */
 	TSS_SORTEDONTAPE,			/* Sort completed, final run is on tape */
-	TSS_FINALMERGE				/* Performing final merge on-the-fly */
+	TSS_FINALMERGE,				/* Performing final merge on-the-fly */
 } TupSortStatus;
 
 /*
@@ -296,7 +296,7 @@ struct Tuplesortstate
 	bool		eof_reached;	/* reached EOF (needed for cursors) */
 
 	/* markpos_xxx holds marked position for mark and restore */
-	long		markpos_block;	/* tape block# (only used if SORTEDONTAPE) */
+	int64		markpos_block;	/* tape block# (only used if SORTEDONTAPE) */
 	int			markpos_offset; /* saved "current", or offset in tape block */
 	bool		markpos_eof;	/* saved "eof_reached" */
 
@@ -485,9 +485,6 @@ static void tuplesort_updatemax(Tuplesortstate *state);
  * is to try to sort two tuples without having to follow the pointers to the
  * comparator or the tuple.
  *
- * XXX: For now, these fall back to comparator functions that will compare the
- * leading datum a second time.
- *
  * XXX: For now, there is no specialization for cases where datum1 is
  * authoritative and we don't even need to fall back to a callback at all (that
  * would be true for types like int4/int8/timestamp/date, but not true for
@@ -513,7 +510,7 @@ qsort_tuple_unsigned_compare(SortTuple *a, SortTuple *b, Tuplesortstate *state)
 	if (state->base.onlyKey != NULL)
 		return 0;
 
-	return state->base.comparetup(a, b, state);
+	return state->base.comparetup_tiebreak(a, b, state);
 }
 
 #if SIZEOF_DATUM >= 8
@@ -537,7 +534,7 @@ qsort_tuple_signed_compare(SortTuple *a, SortTuple *b, Tuplesortstate *state)
 	if (state->base.onlyKey != NULL)
 		return 0;
 
-	return state->base.comparetup(a, b, state);
+	return state->base.comparetup_tiebreak(a, b, state);
 }
 #endif
 
@@ -561,7 +558,7 @@ qsort_tuple_int32_compare(SortTuple *a, SortTuple *b, Tuplesortstate *state)
 	if (state->base.onlyKey != NULL)
 		return 0;
 
-	return state->base.comparetup(a, b, state);
+	return state->base.comparetup_tiebreak(a, b, state);
 }
 
 /*
@@ -906,7 +903,7 @@ tuplesort_free(Tuplesortstate *state)
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->base.sortcontext);
 
 #ifdef TRACE_SORT
-	long		spaceUsed;
+	int64		spaceUsed;
 
 	if (state->tapeset)
 		spaceUsed = LogicalTapeSetBlocks(state->tapeset);
@@ -931,13 +928,13 @@ tuplesort_free(Tuplesortstate *state)
 	if (trace_sort)
 	{
 		if (state->tapeset)
-			elog(LOG, "%s of worker %d ended, %ld disk blocks used: %s",
+			elog(LOG, "%s of worker %d ended, %lld disk blocks used: %s",
 				 SERIAL(state) ? "external sort" : "parallel external sort",
-				 state->worker, spaceUsed, pg_rusage_show(&state->ru_start));
+				 state->worker, (long long) spaceUsed, pg_rusage_show(&state->ru_start));
 		else
-			elog(LOG, "%s of worker %d ended, %ld KB used: %s",
+			elog(LOG, "%s of worker %d ended, %lld KB used: %s",
 				 SERIAL(state) ? "internal sort" : "unperformed parallel sort",
-				 state->worker, spaceUsed, pg_rusage_show(&state->ru_start));
+				 state->worker, (long long) spaceUsed, pg_rusage_show(&state->ru_start));
 	}
 
 	TRACE_POSTGRESQL_SORT_DONE(state->tapeset != NULL, spaceUsed);

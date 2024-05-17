@@ -159,15 +159,16 @@ analyze_rel(Oid relid, RangeVar *relation,
 		return;
 
 	/*
-	 * Check if relation needs to be skipped based on privileges.  This check
+	 * Check if relation needs to be skipped based on ownership.  This check
 	 * happens also when building the relation list to analyze for a manual
 	 * operation, and needs to be done additionally here as ANALYZE could
-	 * happen across multiple transactions where privileges could have changed
-	 * in-between.  Make sure to generate only logs for ANALYZE in this case.
+	 * happen across multiple transactions where relation ownership could have
+	 * changed in-between.  Make sure to generate only logs for ANALYZE in
+	 * this case.
 	 */
-	if (!vacuum_is_permitted_for_relation(RelationGetRelid(onerel),
-										  onerel->rd_rel,
-										  params->options & ~VACOPT_VACUUM))
+	if (!vacuum_is_relation_owner(RelationGetRelid(onerel),
+								  onerel->rd_rel,
+								  params->options & VACOPT_ANALYZE))
 	{
 		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
@@ -572,7 +573,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 			 * If the appropriate flavor of the n_distinct option is
 			 * specified, override with the corresponding value.
 			 */
-			aopt = get_attribute_options(onerel->rd_id, stats->attr->attnum);
+			aopt = get_attribute_options(onerel->rd_id, stats->tupattnum);
 			if (aopt != NULL)
 			{
 				float8		n_distinct;
@@ -582,7 +583,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 					stats->stadistinct = n_distinct;
 			}
 
-			MemoryContextResetAndDeleteChildren(col_context);
+			MemoryContextReset(col_context);
 		}
 
 		if (nindexes > 0)
@@ -633,7 +634,10 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	{
 		BlockNumber relallvisible;
 
-		visibilitymap_count(onerel, &relallvisible, NULL);
+		if (RELKIND_HAS_STORAGE(onerel->rd_rel->relkind))
+			visibilitymap_count(onerel, &relallvisible, NULL);
+		else
+			relallvisible = 0;
 
 		/* Update pg_class for table relation */
 		vac_update_relstats(onerel,
@@ -927,7 +931,7 @@ compute_index_stats(Relation onerel, double totalrows,
 				for (i = 0; i < attr_cnt; i++)
 				{
 					VacAttrStats *stats = thisdata->vacattrstats[i];
-					int			attnum = stats->attr->attnum;
+					int			attnum = stats->tupattnum;
 
 					if (isnull[attnum - 1])
 					{
@@ -971,7 +975,7 @@ compute_index_stats(Relation onerel, double totalrows,
 									 numindexrows,
 									 totalindexrows);
 
-				MemoryContextResetAndDeleteChildren(col_context);
+				MemoryContextReset(col_context);
 			}
 		}
 
@@ -980,7 +984,7 @@ compute_index_stats(Relation onerel, double totalrows,
 
 		ExecDropSingleTupleTableSlot(slot);
 		FreeExecutorState(estate);
-		MemoryContextResetAndDeleteChildren(ind_context);
+		MemoryContextReset(ind_context);
 	}
 
 	MemoryContextSwitchTo(old_context);
@@ -1014,12 +1018,10 @@ examine_attribute(Relation onerel, int attnum, Node *index_expr)
 		return NULL;
 
 	/*
-	 * Create the VacAttrStats struct.  Note that we only have a copy of the
-	 * fixed fields of the pg_attribute tuple.
+	 * Create the VacAttrStats struct.
 	 */
 	stats = (VacAttrStats *) palloc0(sizeof(VacAttrStats));
-	stats->attr = (Form_pg_attribute) palloc(ATTRIBUTE_FIXED_PART_SIZE);
-	memcpy(stats->attr, attr, ATTRIBUTE_FIXED_PART_SIZE);
+	stats->attstattarget = attr->attstattarget;
 
 	/*
 	 * When analyzing an expression index, believe the expression tree's type
@@ -1086,7 +1088,6 @@ examine_attribute(Relation onerel, int attnum, Node *index_expr)
 	if (!ok || stats->compute_stats == NULL || stats->minrows <= 0)
 	{
 		heap_freetuple(typtuple);
-		pfree(stats->attr);
 		pfree(stats);
 		return NULL;
 	}
@@ -1533,8 +1534,25 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 		AcquireSampleRowsFunc acquirefunc = acquirefuncs[i];
 		double		childblocks = relblocks[i];
 
-		pgstat_progress_update_param(PROGRESS_ANALYZE_CURRENT_CHILD_TABLE_RELID,
-									 RelationGetRelid(childrel));
+		/*
+		 * Report progress.  The sampling function will normally report blocks
+		 * done/total, but we need to reset them to 0 here, so that they don't
+		 * show an old value until that.
+		 */
+		{
+			const int	progress_index[] = {
+				PROGRESS_ANALYZE_CURRENT_CHILD_TABLE_RELID,
+				PROGRESS_ANALYZE_BLOCKS_DONE,
+				PROGRESS_ANALYZE_BLOCKS_TOTAL
+			};
+			const int64 progress_vals[] = {
+				RelationGetRelid(childrel),
+				0,
+				0,
+			};
+
+			pgstat_progress_update_multi_param(3, progress_index, progress_vals);
+		}
 
 		if (childblocks > 0)
 		{
@@ -1659,7 +1677,7 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 		}
 
 		values[Anum_pg_statistic_starelid - 1] = ObjectIdGetDatum(relid);
-		values[Anum_pg_statistic_staattnum - 1] = Int16GetDatum(stats->attr->attnum);
+		values[Anum_pg_statistic_staattnum - 1] = Int16GetDatum(stats->tupattnum);
 		values[Anum_pg_statistic_stainherit - 1] = BoolGetDatum(inh);
 		values[Anum_pg_statistic_stanullfrac - 1] = Float4GetDatum(stats->stanullfrac);
 		values[Anum_pg_statistic_stawidth - 1] = Int32GetDatum(stats->stawidth);
@@ -1725,7 +1743,7 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 		/* Is there already a pg_statistic tuple for this attribute? */
 		oldtup = SearchSysCache3(STATRELATTINH,
 								 ObjectIdGetDatum(relid),
-								 Int16GetDatum(stats->attr->attnum),
+								 Int16GetDatum(stats->tupattnum),
 								 BoolGetDatum(inh));
 
 		/* Open index information when we know we need it */
@@ -1860,15 +1878,13 @@ static int	analyze_mcv_list(int *mcv_counts,
 bool
 std_typanalyze(VacAttrStats *stats)
 {
-	Form_pg_attribute attr = stats->attr;
 	Oid			ltopr;
 	Oid			eqopr;
 	StdAnalyzeData *mystats;
 
 	/* If the attstattarget column is negative, use the default value */
-	/* NB: it is okay to scribble on stats->attr since it's a copy */
-	if (attr->attstattarget < 0)
-		attr->attstattarget = default_statistics_target;
+	if (stats->attstattarget < 0)
+		stats->attstattarget = default_statistics_target;
 
 	/* Look for default "<" and "=" operators for column's type */
 	get_sort_group_operators(stats->attrtypid,
@@ -1909,21 +1925,21 @@ std_typanalyze(VacAttrStats *stats)
 		 * know it at this point.
 		 *--------------------
 		 */
-		stats->minrows = 300 * attr->attstattarget;
+		stats->minrows = 300 * stats->attstattarget;
 	}
 	else if (OidIsValid(eqopr))
 	{
 		/* We can still recognize distinct values */
 		stats->compute_stats = compute_distinct_stats;
 		/* Might as well use the same minrows as above */
-		stats->minrows = 300 * attr->attstattarget;
+		stats->minrows = 300 * stats->attstattarget;
 	}
 	else
 	{
 		/* Can't do much but the trivial stuff */
 		stats->compute_stats = compute_trivial_stats;
 		/* Might as well use the same minrows as above */
-		stats->minrows = 300 * attr->attstattarget;
+		stats->minrows = 300 * stats->attstattarget;
 	}
 
 	return true;
@@ -2051,7 +2067,7 @@ compute_distinct_stats(VacAttrStatsP stats,
 	TrackItem  *track;
 	int			track_cnt,
 				track_max;
-	int			num_mcv = stats->attr->attstattarget;
+	int			num_mcv = stats->attstattarget;
 	StdAnalyzeData *mystats = (StdAnalyzeData *) stats->extra_data;
 
 	/*
@@ -2392,8 +2408,8 @@ compute_scalar_stats(VacAttrStatsP stats,
 	int		   *tupnoLink;
 	ScalarMCVItem *track;
 	int			track_cnt = 0;
-	int			num_mcv = stats->attr->attstattarget;
-	int			num_bins = stats->attr->attstattarget;
+	int			num_mcv = stats->attstattarget;
+	int			num_bins = stats->attstattarget;
 	StdAnalyzeData *mystats = (StdAnalyzeData *) stats->extra_data;
 
 	values = (ScalarItem *) palloc(samplerows * sizeof(ScalarItem));

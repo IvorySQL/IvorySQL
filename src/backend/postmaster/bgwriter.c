@@ -182,7 +182,7 @@ BackgroundWriterMain(void)
 		FlushErrorState();
 
 		/* Flush any leaked data in the top-level context */
-		MemoryContextResetAndDeleteChildren(bgwriter_context);
+		MemoryContextReset(bgwriter_context);
 
 		/* re-initialize to avoid repeated errors causing problems */
 		WritebackContextInit(&wb_context, &bgwriter_flush_after);
@@ -241,6 +241,7 @@ BackgroundWriterMain(void)
 
 		/* Report pending statistics to the cumulative stats system */
 		pgstat_report_bgwriter();
+		pgstat_report_wal(true);
 
 		if (FirstCallSinceLastCheckpoint())
 		{

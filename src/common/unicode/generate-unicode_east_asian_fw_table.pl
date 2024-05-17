@@ -7,7 +7,7 @@
 # Copyright (c) 2019-2023, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 my $range_start = undef;
 my ($first, $last);
@@ -23,7 +23,7 @@ foreach my $line (<ARGV>)
 	chomp $line;
 	$line =~ s/\s*#.*$//;
 	next if $line eq '';
-	my ($codepoint, $width) = split ';', $line;
+	my ($codepoint, $width) = split /\s*;\s*/, $line;
 
 	if ($codepoint =~ /\.\./)
 	{

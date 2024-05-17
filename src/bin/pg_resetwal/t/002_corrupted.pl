@@ -4,7 +4,7 @@
 # Tests for handling a corrupted pg_control
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -14,7 +14,7 @@ my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
 
 my $pg_control = $node->data_dir . '/global/pg_control';
-my $size       = (stat($pg_control))[7];
+my $size = -s $pg_control;
 
 # Read out the head of the file to get PG_CONTROL_VERSION in
 # particular.
@@ -54,5 +54,13 @@ command_checks_all(
 		qr/\Qpg_resetwal: warning: pg_control specifies invalid WAL segment size (0 bytes); proceed with caution\E/
 	],
 	'processes zero WAL segment size');
+
+# now try to run it
+command_fails_like(
+	[ 'pg_resetwal', $node->data_dir ],
+	qr/not proceeding because control file values were guessed/,
+	'does not run when control file values were guessed');
+command_ok([ 'pg_resetwal', '-f', $node->data_dir ],
+	'runs with force when control file values were guessed');
 
 done_testing();

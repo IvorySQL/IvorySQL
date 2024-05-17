@@ -1270,7 +1270,8 @@
        <structfield>attnotnull</structfield> <type>bool</type>
       </para>
       <para>
-       This represents a not-null constraint.
+       This column is marked not-null, either by a not-null constraint
+       or a primary key.
       </para></entry>
      </row>
 
@@ -1892,8 +1893,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
   </indexterm>
 
   <para>
-   The catalog <structname>pg_class</structname> catalogs tables and most
-   everything else that has columns or is otherwise similar to a
+   The catalog <structname>pg_class</structname> describes tables and
+   other objects that have columns or are otherwise similar to a
    table.  This includes indexes (but see also <link
    linkend="catalog-pg-index"><structname>pg_index</structname></link>),
    sequences (but see also <link
@@ -1901,8 +1902,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
    views, materialized views, composite types, and TOAST tables;
    see <structfield>relkind</structfield>.
    Below, when we mean all of these kinds of objects we speak of
-   <quote>relations</quote>.  Not all columns are meaningful for all relation
-   types.
+   <quote>relations</quote>.  Not all of <structname>pg_class</structname>'s
+   columns are meaningful for all relation kinds.
   </para>
 
   <table>
@@ -2484,13 +2485,10 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
   </indexterm>
 
   <para>
-   The catalog <structname>pg_constraint</structname> stores check, primary
-   key, unique, foreign key, and exclusion constraints on tables.
+   The catalog <structname>pg_constraint</structname> stores check, not-null,
+   primary key, unique, foreign key, and exclusion constraints on tables.
    (Column constraints are not treated specially.  Every column constraint is
    equivalent to some table constraint.)
-   Not-null constraints are represented in the
-   <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>
-   catalog, not here.
   </para>
 
   <para>
@@ -2552,6 +2550,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       <para>
        <literal>c</literal> = check constraint,
        <literal>f</literal> = foreign key constraint,
+       <literal>n</literal> = not-null constraint,
        <literal>p</literal> = primary key constraint,
        <literal>u</literal> = unique constraint,
        <literal>t</literal> = constraint trigger,
@@ -3038,11 +3037,25 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>dathasloginevt</structfield> <type>bool</type>
+      </para>
+      <para>
+        Indicates that there are login event triggers defined for this database.
+        This flag is used to avoid extra lookups on the
+        <structname>pg_event_trigger</structname> table during each backend
+        startup.  This flag is used internally by <productname>PostgreSQL</productname>
+        and should not be manually altered or read for monitoring purposes.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>datconnlimit</structfield> <type>int4</type>
       </para>
       <para>
        Sets maximum number of concurrent connections that can be made
-       to this database.  -1 means no limit.
+       to this database.  -1 means no limit, -2 indicates the database is
+       invalid.
       </para></entry>
      </row>
 
@@ -7622,7 +7635,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>stxstattarget</structfield> <type>int4</type>
+       <structfield>stxstattarget</structfield> <type>int2</type>
       </para>
       <para>
        <structfield>stxstattarget</structfield> controls the level of detail
@@ -7930,7 +7943,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        disk and apply at once after the transaction is committed on the
        publisher and received by the subscriber,
        <literal>p</literal> = apply changes directly using a parallel apply
-       worker if available (same as 't' if no worker is available)
+       worker if available (same as <literal>t</literal> if no worker is
+       available)
       </para></entry>
      </row>
 

@@ -80,13 +80,14 @@
 #include "storage/smgr.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/relmapper.h"
-#include "utils/resowner_private.h"
+#include "utils/resowner.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
@@ -273,6 +274,7 @@ static HTAB *OpClassCache = NULL;
 
 /* non-export function prototypes */
 
+static void RelationCloseCleanup(Relation relation);
 static void RelationDestroyRelation(Relation relation, bool remember_tupdesc);
 static void RelationClearRelation(Relation relation, bool rebuild);
 
@@ -2115,6 +2117,31 @@ RelationIdGetRelation(Oid relationId)
  * ----------------------------------------------------------------
  */
 
+/* ResourceOwner callbacks to track relcache references */
+static void ResOwnerReleaseRelation(Datum res);
+static char *ResOwnerPrintRelCache(Datum res);
+
+static const ResourceOwnerDesc relref_resowner_desc =
+{
+	.name = "relcache reference",
+	.release_phase = RESOURCE_RELEASE_BEFORE_LOCKS,
+	.release_priority = RELEASE_PRIO_RELCACHE_REFS,
+	.ReleaseResource = ResOwnerReleaseRelation,
+	.DebugPrint = ResOwnerPrintRelCache
+};
+
+/* Convenience wrappers over ResourceOwnerRemember/Forget */
+static inline void
+ResourceOwnerRememberRelationRef(ResourceOwner owner, Relation rel)
+{
+	ResourceOwnerRemember(owner, PointerGetDatum(rel), &relref_resowner_desc);
+}
+static inline void
+ResourceOwnerForgetRelationRef(ResourceOwner owner, Relation rel)
+{
+	ResourceOwnerForget(owner, PointerGetDatum(rel), &relref_resowner_desc);
+}
+
 /*
  * RelationIncrementReferenceCount
  *		Increments relation reference count.
@@ -2126,7 +2153,7 @@ RelationIdGetRelation(Oid relationId)
 void
 RelationIncrementReferenceCount(Relation rel)
 {
-	ResourceOwnerEnlargeRelationRefs(CurrentResourceOwner);
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 	rel->rd_refcnt += 1;
 	if (!IsBootstrapProcessingMode())
 		ResourceOwnerRememberRelationRef(CurrentResourceOwner, rel);
@@ -2162,6 +2189,12 @@ RelationClose(Relation relation)
 	/* Note: no locking manipulations needed */
 	RelationDecrementReferenceCount(relation);
 
+	RelationCloseCleanup(relation);
+}
+
+static void
+RelationCloseCleanup(Relation relation)
+{
 	/*
 	 * If the relation is no longer open in this session, we can clean up any
 	 * stale partition descriptors it has.  This is unlikely, so check to see
@@ -2305,6 +2338,7 @@ RelationReloadIndexInfo(Relation relation)
 		relation->rd_index->indcheckxmin = index->indcheckxmin;
 		relation->rd_index->indisready = index->indisready;
 		relation->rd_index->indislive = index->indislive;
+		relation->rd_index->indisreplident = index->indisreplident;
 
 		/* Copy xmin too, as that is needed to make sense of indcheckxmin */
 		HeapTupleHeaderSetXmin(relation->rd_indextuple->t_data,
@@ -4788,18 +4822,40 @@ RelationGetIndexList(Relation relation)
 		result = lappend_oid(result, index->indexrelid);
 
 		/*
-		 * Invalid, non-unique, non-immediate or predicate indexes aren't
-		 * interesting for either oid indexes or replication identity indexes,
-		 * so don't check them.
+		 * Non-unique, non-immediate or predicate indexes aren't interesting
+		 * for either oid indexes or replication identity indexes, so don't
+		 * check them.
 		 */
-		if (!index->indisvalid || !index->indisunique ||
+		if (!index->indisunique ||
 			!index->indimmediate ||
 			!heap_attisnull(htup, Anum_pg_index_indpred, NULL))
 			continue;
 
-		/* remember primary key index if any */
-		if (index->indisprimary)
+		/*
+		 * Remember primary key index, if any.  We do this only if the index
+		 * is valid; but if the table is partitioned, then we do it even if
+		 * it's invalid.
+		 *
+		 * The reason for returning invalid primary keys for foreign tables is
+		 * because of pg_dump of NOT NULL constraints, and the fact that PKs
+		 * remain marked invalid until the partitions' PKs are attached to it.
+		 * If we make rd_pkindex invalid, then the attnotnull flag is reset
+		 * after the PK is created, which causes the ALTER INDEX ATTACH
+		 * PARTITION to fail with 'column ... is not marked NOT NULL'.  With
+		 * this, dropconstraint_internal() will believe that the columns must
+		 * not have attnotnull reset, so the PKs-on-partitions can be attached
+		 * correctly, until finally the PK-on-parent is marked valid.
+		 *
+		 * Also, this doesn't harm anything, because rd_pkindex is not a
+		 * "real" index anyway, but a RELKIND_PARTITIONED_INDEX.
+		 */
+		if (index->indisprimary &&
+			(index->indisvalid ||
+			 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
 			pkeyIndex = index->indexrelid;
+
+		if (!index->indisvalid)
+			continue;
 
 		/* remember explicitly chosen replica index */
 		if (index->indisreplident)
@@ -5149,9 +5205,15 @@ RelationGetIndexPredicate(Relation relation)
  * simple index keys, but attributes used in expressions and partial-index
  * predicates.)
  *
- * Depending on attrKind, a bitmap covering the attnums for all index columns,
- * for all potential foreign key columns, or for all columns in the configured
- * replica identity index is returned.
+ * Depending on attrKind, a bitmap covering attnums for certain columns is
+ * returned:
+ *	INDEX_ATTR_BITMAP_KEY			Columns in non-partial unique indexes not
+ *									in expressions (i.e., usable for FKs)
+ *	INDEX_ATTR_BITMAP_PRIMARY_KEY	Columns in the table's primary key
+ *	INDEX_ATTR_BITMAP_IDENTITY_KEY	Columns in the table's replica identity
+ *									index (empty if FULL)
+ *	INDEX_ATTR_BITMAP_HOT_BLOCKING	Columns that block updates from being HOT
+ *	INDEX_ATTR_BITMAP_SUMMARIZED	Columns included in summarizing indexes
  *
  * Attribute numbers are offset by FirstLowInvalidHeapAttributeNumber so that
  * we can include system attributes (e.g., OID) in the bitmap representation.
@@ -5790,35 +5852,6 @@ RelationBuildPublicationDesc(Relation relation, PublicationDesc *pubdesc)
 	relation->rd_pubdesc = palloc(sizeof(PublicationDesc));
 	memcpy(relation->rd_pubdesc, pubdesc, sizeof(PublicationDesc));
 	MemoryContextSwitchTo(oldcxt);
-}
-
-/*
- * RelationGetIndexRawAttOptions -- get AM/opclass-specific options for the index
- */
-Datum *
-RelationGetIndexRawAttOptions(Relation indexrel)
-{
-	Oid			indexrelid = RelationGetRelid(indexrel);
-	int16		natts = RelationGetNumberOfAttributes(indexrel);
-	Datum	   *options = NULL;
-	int16		attnum;
-
-	for (attnum = 1; attnum <= natts; attnum++)
-	{
-		if (indexrel->rd_indam->amoptsprocnum == 0)
-			continue;
-
-		if (!OidIsValid(index_getprocid(indexrel, attnum,
-										indexrel->rd_indam->amoptsprocnum)))
-			continue;
-
-		if (!options)
-			options = palloc0(sizeof(Datum) * natts);
-
-		options[attnum - 1] = get_attoptions(indexrelid, attnum);
-	}
-
-	return options;
 }
 
 static bytea **
@@ -6812,4 +6845,31 @@ unlink_initfile(const char *initfilename, int elevel)
 					 errmsg("could not remove cache file \"%s\": %m",
 							initfilename)));
 	}
+}
+
+/*
+ * ResourceOwner callbacks
+ */
+static char *
+ResOwnerPrintRelCache(Datum res)
+{
+	Relation	rel = (Relation) DatumGetPointer(res);
+
+	return psprintf("relation \"%s\"", RelationGetRelationName(rel));
+}
+
+static void
+ResOwnerReleaseRelation(Datum res)
+{
+	Relation	rel = (Relation) DatumGetPointer(res);
+
+	/*
+	 * This reference has already been removed from the resource owner, so
+	 * just decrement reference count without calling
+	 * ResourceOwnerForgetRelationRef.
+	 */
+	Assert(rel->rd_refcnt > 0);
+	rel->rd_refcnt -= 1;
+
+	RelationCloseCleanup((Relation) res);
 }

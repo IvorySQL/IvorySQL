@@ -61,8 +61,8 @@ typedef enum ScanOptions
 	SO_ALLOW_PAGEMODE = 1 << 8,
 
 	/* unregister snapshot at scan end? */
-	SO_TEMP_SNAPSHOT = 1 << 9
-} ScanOptions;
+	SO_TEMP_SNAPSHOT = 1 << 9,
+}			ScanOptions;
 
 /*
  * Result codes for table_{update,delete,lock_tuple}, and for visibility
@@ -99,7 +99,7 @@ typedef enum TM_Result
 	TM_BeingModified,
 
 	/* lock couldn't be acquired, action skipped. Only used by lock_tuple */
-	TM_WouldBlock
+	TM_WouldBlock,
 } TM_Result;
 
 /*
@@ -115,7 +115,7 @@ typedef enum TU_UpdateIndexes
 	TU_All,
 
 	/* Only summarized columns were updated, TID is unchanged */
-	TU_Summarizing
+	TU_Summarizing,
 } TU_UpdateIndexes;
 
 /*
@@ -1479,8 +1479,8 @@ table_multi_insert(Relation rel, TupleTableSlot **slots, int nslots,
  * TM_BeingModified (the last only possible if wait == false).
  *
  * In the failure cases, the routine fills *tmfd with the tuple's t_ctid,
- * t_xmax, and, if possible, and, if possible, t_cmax.  See comments for
- * struct TM_FailureData for additional info.
+ * t_xmax, and, if possible, t_cmax.  See comments for struct
+ * TM_FailureData for additional info.
  */
 static inline TM_Result
 table_tuple_delete(Relation rel, ItemPointer tid, CommandId cid,
@@ -2095,6 +2095,12 @@ extern void table_block_relation_estimate_size(Relation rel,
  */
 
 extern const TableAmRoutine *GetTableAmRoutine(Oid amhandler);
+
+/* ----------------------------------------------------------------------------
+ * Functions in heapam_handler.c
+ * ----------------------------------------------------------------------------
+ */
+
 extern const TableAmRoutine *GetHeapamTableAmRoutine(void);
 
 #endif							/* TABLEAM_H */

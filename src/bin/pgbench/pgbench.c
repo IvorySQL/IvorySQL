@@ -137,7 +137,7 @@ typedef struct socket_set
 	EnterSynchronizationBarrier((barrier), \
 								SYNCHRONIZATION_BARRIER_FLAGS_BLOCK_ONLY)
 #define THREAD_BARRIER_DESTROY(barrier)
-#elif defined(ENABLE_THREAD_SAFETY)
+#else
 /* Use POSIX threads */
 #include "port/pg_pthread.h"
 #define THREAD_T pthread_t
@@ -153,16 +153,6 @@ typedef struct socket_set
 	pthread_barrier_init((barrier), NULL, (n))
 #define THREAD_BARRIER_WAIT(barrier) pthread_barrier_wait((barrier))
 #define THREAD_BARRIER_DESTROY(barrier) pthread_barrier_destroy((barrier))
-#else
-/* No threads implementation, use none (-j 1) */
-#define THREAD_T void *
-#define THREAD_FUNC_RETURN_TYPE void *
-#define THREAD_FUNC_RETURN return NULL
-#define THREAD_FUNC_CC
-#define THREAD_BARRIER_T int
-#define THREAD_BARRIER_INIT(barrier, n) (*(barrier) = 0)
-#define THREAD_BARRIER_WAIT(barrier)
-#define THREAD_BARRIER_DESTROY(barrier)
 #endif
 
 
@@ -237,11 +227,11 @@ typedef enum
 {
 	PART_NONE,					/* no partitioning */
 	PART_RANGE,					/* range partitioning */
-	PART_HASH					/* hash partitioning */
+	PART_HASH,					/* hash partitioning */
 } partition_method_t;
 
 static partition_method_t partition_method = PART_NONE;
-static const char *PARTITION_METHOD[] = {"none", "range", "hash"};
+static const char *const PARTITION_METHOD[] = {"none", "range", "hash"};
 
 /* random seed used to initialize base_random_sequence */
 int64		random_seed = -1;
@@ -469,7 +459,7 @@ typedef enum EStatus
 	/* SQL errors */
 	ESTATUS_SERIALIZATION_ERROR,
 	ESTATUS_DEADLOCK_ERROR,
-	ESTATUS_OTHER_SQL_ERROR
+	ESTATUS_OTHER_SQL_ERROR,
 } EStatus;
 
 /*
@@ -480,7 +470,7 @@ typedef enum TStatus
 	TSTATUS_IDLE,
 	TSTATUS_IN_BLOCK,
 	TSTATUS_CONN_ERROR,
-	TSTATUS_OTHER_ERROR
+	TSTATUS_OTHER_ERROR,
 } TStatus;
 
 /* Various random sequences are initialized from this one. */
@@ -597,7 +587,7 @@ typedef enum
 	 * aborted because a command failed, CSTATE_FINISHED means success.
 	 */
 	CSTATE_ABORTED,
-	CSTATE_FINISHED
+	CSTATE_FINISHED,
 } ConnectionStateEnum;
 
 /*
@@ -707,7 +697,7 @@ typedef enum MetaCommand
 	META_ELSE,					/* \else */
 	META_ENDIF,					/* \endif */
 	META_STARTPIPELINE,			/* \startpipeline */
-	META_ENDPIPELINE			/* \endpipeline */
+	META_ENDPIPELINE,			/* \endpipeline */
 } MetaCommand;
 
 typedef enum QueryMode
@@ -719,7 +709,7 @@ typedef enum QueryMode
 } QueryMode;
 
 static QueryMode querymode = QUERY_SIMPLE;
-static const char *QUERYMODE[] = {"simple", "extended", "prepared"};
+static const char *const QUERYMODE[] = {"simple", "extended", "prepared"};
 
 /*
  * struct Command represents one command in a script.
@@ -774,6 +764,8 @@ static int	num_scripts;		/* number of scripts in sql_script[] */
 static int64 total_weight = 0;
 
 static bool verbose_errors = false; /* print verbose messages of all errors */
+
+static bool exit_on_abort = false;	/* exit when any client is aborted */
 
 /* Builtin test scripts */
 typedef struct BuiltinScript
@@ -845,6 +837,8 @@ static void add_socket_to_set(socket_set *sa, int fd, int idx);
 static int	wait_on_socket_set(socket_set *sa, int64 usecs);
 static bool socket_has_input(socket_set *sa, int fd, int idx);
 
+/* callback used to build rows for COPY during data loading */
+typedef void (*initRowMethod) (PQExpBufferData *sql, int64 curr);
 
 /* callback functions for our flex lexer */
 static const PsqlScanCallbacks pgbench_callbacks = {
@@ -879,7 +873,14 @@ usage(void)
 		   "\nInitialization options:\n"
 		   "  -i, --initialize         invokes initialization mode\n"
 		   "  -I, --init-steps=[" ALL_INIT_STEPS "]+ (default \"" DEFAULT_INIT_STEPS "\")\n"
-		   "                           run selected initialization steps\n"
+		   "                           run selected initialization steps, in the specified order\n"
+		   "                           d: drop any existing pgbench tables\n"
+		   "                           t: create the tables used by the standard pgbench scenario\n"
+		   "                           g: generate data, client-side\n"
+		   "                           G: generate data, server-side\n"
+		   "                           v: invoke VACUUM on the standard tables\n"
+		   "                           p: create primary key indexes on the standard tables\n"
+		   "                           f: create foreign keys between the standard tables\n"
 		   "  -F, --fillfactor=NUM     set fill factor\n"
 		   "  -n, --no-vacuum          do not run VACUUM during initialization\n"
 		   "  -q, --quiet              quiet logging (one message each 5 seconds)\n"
@@ -919,6 +920,7 @@ usage(void)
 		   "  -T, --time=NUM           duration of benchmark test in seconds\n"
 		   "  -v, --vacuum-all         vacuum all four standard tables before tests\n"
 		   "  --aggregate-interval=NUM aggregate data over NUM seconds\n"
+		   "  --exit-on-abort          exit when any client is aborted\n"
 		   "  --failures-detailed      report the failures grouped by basic types\n"
 		   "  --log-prefix=PREFIX      prefix for transaction time log file\n"
 		   "                           (default: \"pgbench_log\")\n"
@@ -2247,9 +2249,14 @@ evalStandardFunc(CState *st,
 {
 	/* evaluate all function arguments */
 	int			nargs = 0;
-	PgBenchValue vargs[MAX_FARGS];
 	PgBenchExprLink *l = args;
 	bool		has_null = false;
+
+	/*
+	 * This value is double braced to workaround GCC bug 53119, which seems to
+	 * exist at least on gcc (Debian 4.7.2-5) 4.7.2, 32-bit.
+	 */
+	PgBenchValue vargs[MAX_FARGS] = {{0}};
 
 	for (nargs = 0; nargs < MAX_FARGS && l != NULL; nargs++, l = l->next)
 	{
@@ -4869,17 +4876,45 @@ initTruncateTables(PGconn *con)
 					 "pgbench_tellers");
 }
 
-/*
- * Fill the standard tables with some data generated and sent from the client
- */
 static void
-initGenerateDataClientSide(PGconn *con)
+initBranch(PQExpBufferData *sql, int64 curr)
 {
-	PQExpBufferData sql;
-	PGresult   *res;
-	int			i;
+	/* "filler" column uses NULL */
+	printfPQExpBuffer(sql,
+					  INT64_FORMAT "\t0\t\\N\n",
+					  curr + 1);
+}
+
+static void
+initTeller(PQExpBufferData *sql, int64 curr)
+{
+	/* "filler" column uses NULL */
+	printfPQExpBuffer(sql,
+					  INT64_FORMAT "\t" INT64_FORMAT "\t0\t\\N\n",
+					  curr + 1, curr / ntellers + 1);
+}
+
+static void
+initAccount(PQExpBufferData *sql, int64 curr)
+{
+	/* "filler" column defaults to blank padded empty string */
+	printfPQExpBuffer(sql,
+					  INT64_FORMAT "\t" INT64_FORMAT "\t0\t\n",
+					  curr + 1, curr / naccounts + 1);
+}
+
+static void
+initPopulateTable(PGconn *con, const char *table, int64 base,
+				  initRowMethod init_row)
+{
+	int			n;
 	int64		k;
-	char	   *copy_statement;
+	int			chars = 0;
+	PGresult   *res;
+	PQExpBufferData sql;
+	char		copy_statement[256];
+	const char *copy_statement_fmt = "copy %s from stdin";
+	int64		total = base * scale;
 
 	/* used to track elapsed time and estimate of the remaining time */
 	pg_time_usec_t start;
@@ -4888,50 +4923,24 @@ initGenerateDataClientSide(PGconn *con)
 	/* Stay on the same line if reporting to a terminal */
 	char		eol = isatty(fileno(stderr)) ? '\r' : '\n';
 
-	fprintf(stderr, "generating data (client-side)...\n");
-
-	/*
-	 * we do all of this in one transaction to enable the backend's
-	 * data-loading optimizations
-	 */
-	executeStatement(con, "begin");
-
-	/* truncate away any old data */
-	initTruncateTables(con);
-
 	initPQExpBuffer(&sql);
 
 	/*
-	 * fill branches, tellers, accounts in that order in case foreign keys
-	 * already exist
+	 * Use COPY with FREEZE on v14 and later for all the tables except
+	 * pgbench_accounts when it is partitioned.
 	 */
-	for (i = 0; i < nbranches * scale; i++)
+	if (PQserverVersion(con) >= 140000)
 	{
-		/* "filler" column defaults to NULL */
-		printfPQExpBuffer(&sql,
-						  "insert into pgbench_branches(bid,bbalance) values(%d,0)",
-						  i + 1);
-		executeStatement(con, sql.data);
+		if (strcmp(table, "pgbench_accounts") != 0 ||
+			partitions == 0)
+			copy_statement_fmt = "copy %s from stdin with (freeze on)";
 	}
 
-	for (i = 0; i < ntellers * scale; i++)
-	{
-		/* "filler" column defaults to NULL */
-		printfPQExpBuffer(&sql,
-						  "insert into pgbench_tellers(tid,bid,tbalance) values (%d,%d,0)",
-						  i + 1, i / ntellers + 1);
-		executeStatement(con, sql.data);
-	}
-
-	/*
-	 * accounts is big enough to be worth using COPY and tracking runtime
-	 */
-
-	/* use COPY with FREEZE on v14 and later without partitioning */
-	if (partitions == 0 && PQserverVersion(con) >= 140000)
-		copy_statement = "copy pgbench_accounts from stdin with (freeze on)";
-	else
-		copy_statement = "copy pgbench_accounts from stdin";
+	n = pg_snprintf(copy_statement, sizeof(copy_statement), copy_statement_fmt, table);
+	if (n >= sizeof(copy_statement))
+		pg_fatal("invalid buffer size: must be at least %d characters long", n);
+	else if (n == -1)
+		pg_fatal("invalid format string");
 
 	res = PQexec(con, copy_statement);
 
@@ -4941,14 +4950,11 @@ initGenerateDataClientSide(PGconn *con)
 
 	start = pg_time_now();
 
-	for (k = 0; k < (int64) naccounts * scale; k++)
+	for (k = 0; k < total; k++)
 	{
 		int64		j = k + 1;
 
-		/* "filler" column defaults to blank padded empty string */
-		printfPQExpBuffer(&sql,
-						  INT64_FORMAT "\t" INT64_FORMAT "\t%d\t\n",
-						  j, k / naccounts + 1, 0);
+		init_row(&sql, k);
 		if (PQputline(con, sql.data))
 			pg_fatal("PQputline failed");
 
@@ -4962,25 +4968,26 @@ initGenerateDataClientSide(PGconn *con)
 		if ((!use_quiet) && (j % 100000 == 0))
 		{
 			double		elapsed_sec = PG_TIME_GET_DOUBLE(pg_time_now() - start);
-			double		remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
+			double		remaining_sec = ((double) total - j) * elapsed_sec / j;
 
-			fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c",
-					j, (int64) naccounts * scale,
-					(int) (((int64) j * 100) / (naccounts * (int64) scale)),
-					elapsed_sec, remaining_sec, eol);
+			chars = fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) of %s done (elapsed %.2f s, remaining %.2f s)%c",
+							j, total,
+							(int) ((j * 100) / total),
+							table, elapsed_sec, remaining_sec, eol);
 		}
 		/* let's not call the timing for each row, but only each 100 rows */
 		else if (use_quiet && (j % 100 == 0))
 		{
 			double		elapsed_sec = PG_TIME_GET_DOUBLE(pg_time_now() - start);
-			double		remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
+			double		remaining_sec = ((double) total - j) * elapsed_sec / j;
 
 			/* have we reached the next interval (or end)? */
-			if ((j == scale * naccounts) || (elapsed_sec >= log_interval * LOG_STEP_SECONDS))
+			if ((j == total) || (elapsed_sec >= log_interval * LOG_STEP_SECONDS))
 			{
-				fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c",
-						j, (int64) naccounts * scale,
-						(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec, eol);
+				chars = fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) of %s done (elapsed %.2f s, remaining %.2f s)%c",
+								j, total,
+								(int) ((j * 100) / total),
+								table, elapsed_sec, remaining_sec, eol);
 
 				/* skip to the next interval */
 				log_interval = (int) ceil(elapsed_sec / LOG_STEP_SECONDS);
@@ -4988,8 +4995,8 @@ initGenerateDataClientSide(PGconn *con)
 		}
 	}
 
-	if (eol != '\n')
-		fputc('\n', stderr);	/* Need to move to next line */
+	if (chars != 0 && eol != '\n')
+		fprintf(stderr, "%*c\r", chars - 1, ' ');	/* Clear the current line */
 
 	if (PQputline(con, "\\.\n"))
 		pg_fatal("very last PQputline failed");
@@ -4997,6 +5004,35 @@ initGenerateDataClientSide(PGconn *con)
 		pg_fatal("PQendcopy failed");
 
 	termPQExpBuffer(&sql);
+}
+
+/*
+ * Fill the standard tables with some data generated and sent from the client.
+ *
+ * The filler column is NULL in pgbench_branches and pgbench_tellers, and is
+ * a blank-padded string in pgbench_accounts.
+ */
+static void
+initGenerateDataClientSide(PGconn *con)
+{
+	fprintf(stderr, "generating data (client-side)...\n");
+
+	/*
+	 * we do all of this in one transaction to enable the backend's
+	 * data-loading optimizations
+	 */
+	executeStatement(con, "begin");
+
+	/* truncate away any old data */
+	initTruncateTables(con);
+
+	/*
+	 * fill branches, tellers, accounts in that order in case foreign keys
+	 * already exist
+	 */
+	initPopulateTable(con, "pgbench_branches", nbranches, initBranch);
+	initPopulateTable(con, "pgbench_tellers", ntellers, initTeller);
+	initPopulateTable(con, "pgbench_accounts", naccounts, initAccount);
 
 	executeStatement(con, "commit");
 }
@@ -6591,6 +6627,7 @@ main(int argc, char **argv)
 		{"failures-detailed", no_argument, NULL, 13},
 		{"max-tries", required_argument, NULL, 14},
 		{"verbose-errors", no_argument, NULL, 15},
+		{"exit-on-abort", no_argument, NULL, 16},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -6749,10 +6786,6 @@ main(int argc, char **argv)
 				{
 					exit(1);
 				}
-#ifndef ENABLE_THREAD_SAFETY
-				if (nthreads != 1)
-					pg_fatal("threads are not supported on this platform; use -j1");
-#endif							/* !ENABLE_THREAD_SAFETY */
 				break;
 			case 'l':
 				benchmarking_option_set = true;
@@ -6927,6 +6960,10 @@ main(int argc, char **argv)
 			case 15:			/* verbose-errors */
 				benchmarking_option_set = true;
 				verbose_errors = true;
+				break;
+			case 16:			/* exit-on-abort */
+				benchmarking_option_set = true;
+				exit_on_abort = true;
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -7236,7 +7273,6 @@ main(int argc, char **argv)
 	if (errno != 0)
 		pg_fatal("could not initialize barrier: %m");
 
-#ifdef ENABLE_THREAD_SAFETY
 	/* start all threads but thread 0 which is executed directly later */
 	for (i = 1; i < nthreads; i++)
 	{
@@ -7248,9 +7284,6 @@ main(int argc, char **argv)
 		if (errno != 0)
 			pg_fatal("could not create thread: %m");
 	}
-#else
-	Assert(nthreads == 1);
-#endif							/* ENABLE_THREAD_SAFETY */
 
 	/* compute when to stop */
 	threads[0].create_time = pg_time_now();
@@ -7268,10 +7301,8 @@ main(int argc, char **argv)
 	{
 		TState	   *thread = &threads[i];
 
-#ifdef ENABLE_THREAD_SAFETY
 		if (i > 0)
 			THREAD_JOIN(thread->thread);
-#endif							/* ENABLE_THREAD_SAFETY */
 
 		for (int j = 0; j < thread->nstate; j++)
 			if (thread->state[j].state != CSTATE_FINISHED)
@@ -7543,10 +7574,18 @@ threadRun(void *arg)
 			advanceConnectionState(thread, st, &aggs);
 
 			/*
+			 * If --exit-on-abort is used, the program is going to exit when
+			 * any client is aborted.
+			 */
+			if (exit_on_abort && st->state == CSTATE_ABORTED)
+				goto done;
+
+			/*
 			 * If advanceConnectionState changed client to finished state,
 			 * that's one fewer client that remains.
 			 */
-			if (st->state == CSTATE_FINISHED || st->state == CSTATE_ABORTED)
+			else if (st->state == CSTATE_FINISHED ||
+					 st->state == CSTATE_ABORTED)
 				remains--;
 		}
 
@@ -7579,6 +7618,22 @@ threadRun(void *arg)
 	}
 
 done:
+	if (exit_on_abort)
+	{
+		/*
+		 * Abort if any client is not finished, meaning some error occurred.
+		 */
+		for (int i = 0; i < nstate; i++)
+		{
+			if (state[i].state != CSTATE_FINISHED)
+			{
+				pg_log_error("Run was aborted due to an error in thread %d",
+							 thread->tid);
+				exit(2);
+			}
+		}
+	}
+
 	disconnect_all(state, nstate);
 
 	if (thread->logfile)
@@ -7782,14 +7837,23 @@ clear_socket_set(socket_set *sa)
 static void
 add_socket_to_set(socket_set *sa, int fd, int idx)
 {
+	/* See connect_slot() for background on this code. */
+#ifdef WIN32
+	if (sa->fds.fd_count + 1 >= FD_SETSIZE)
+	{
+		pg_log_error("too many concurrent database clients for this platform: %d",
+					 sa->fds.fd_count + 1);
+		exit(1);
+	}
+#else
 	if (fd < 0 || fd >= FD_SETSIZE)
 	{
-		/*
-		 * Doing a hard exit here is a bit grotty, but it doesn't seem worth
-		 * complicating the API to make it less grotty.
-		 */
-		pg_fatal("too many client connections for select()");
+		pg_log_error("socket file descriptor out of range for select(): %d",
+					 fd);
+		pg_log_error_hint("Try fewer concurrent database clients.");
+		exit(1);
 	}
+#endif
 	FD_SET(fd, &sa->fds);
 	if (fd > sa->maxfd)
 		sa->maxfd = fd;

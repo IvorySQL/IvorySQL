@@ -139,39 +139,18 @@ typedef struct Node
  *
  * !WARNING!: Avoid using newNode directly. You should be using the
  *	  macro makeNode.  eg. to create a Query node, use makeNode(Query)
- *
- * Note: the size argument should always be a compile-time constant, so the
- * apparent risk of multiple evaluation doesn't matter in practice.
  */
-#ifdef __GNUC__
+static inline Node *
+newNode(size_t size, NodeTag tag)
+{
+	Node	   *result;
 
-/* With GCC, we can use a compound statement within an expression */
-#define newNode(size, tag) \
-({	Node   *_result; \
-	AssertMacro((size) >= sizeof(Node));		/* need the tag, at least */ \
-	_result = (Node *) palloc0fast(size); \
-	_result->type = (tag); \
-	_result; \
-})
-#else
+	Assert(size >= sizeof(Node));	/* need the tag, at least */
+	result = (Node *) palloc0(size);
+	result->type = tag;
 
-/*
- *	There is no way to dereference the palloc'ed pointer to assign the
- *	tag, and also return the pointer itself, so we need a holder variable.
- *	Fortunately, this macro isn't recursive so we just define
- *	a global variable for this purpose.
- */
-extern PGDLLIMPORT Node *newNodeMacroHolder;
-
-#define newNode(size, tag) \
-( \
-	AssertMacro((size) >= sizeof(Node)),		/* need the tag, at least */ \
-	newNodeMacroHolder = (Node *) palloc0fast(size), \
-	newNodeMacroHolder->type = (tag), \
-	newNodeMacroHolder \
-)
-#endif							/* __GNUC__ */
-
+	return result;
+}
 
 #define makeNode(_type_)		((_type_ *) newNode(sizeof(_type_),T_##_type_))
 #define NodeSetTag(nodeptr,t)	(((Node*)(nodeptr))->type = (t))
@@ -251,9 +230,9 @@ extern bool equal(const void *a, const void *b);
 
 
 /*
- * Typedefs for identifying qualifier selectivities and plan costs as such.
- * These are just plain "double"s, but declaring a variable as Selectivity
- * or Cost makes the intent more obvious.
+ * Typedefs for identifying qualifier selectivities, plan costs, and row
+ * counts as such.  These are just plain "double"s, but declaring a variable
+ * as Selectivity, Cost, or Cardinality makes the intent more obvious.
  *
  * These could have gone into plannodes.h or some such, but many files
  * depend on them...
@@ -280,7 +259,7 @@ typedef enum CmdType
 	CMD_MERGE,					/* merge stmt */
 	CMD_UTILITY,				/* cmds like create, destroy, copy, vacuum,
 								 * etc. */
-	CMD_NOTHING					/* dummy command for instead nothing rules
+	CMD_NOTHING,				/* dummy command for instead nothing rules
 								 * with qual */
 } CmdType;
 
@@ -324,7 +303,7 @@ typedef enum JoinType
 	 * by the executor (nor, indeed, by most of the planner).
 	 */
 	JOIN_UNIQUE_OUTER,			/* LHS path must be made unique */
-	JOIN_UNIQUE_INNER			/* RHS path must be made unique */
+	JOIN_UNIQUE_INNER,			/* RHS path must be made unique */
 
 	/*
 	 * We might need additional join types someday.
@@ -364,7 +343,7 @@ typedef enum AggStrategy
 	AGG_PLAIN,					/* simple agg across all input rows */
 	AGG_SORTED,					/* grouped agg, input must be sorted */
 	AGG_HASHED,					/* grouped agg, use internal hashtable */
-	AGG_MIXED					/* grouped agg, hash and sort both used */
+	AGG_MIXED,					/* grouped agg, hash and sort both used */
 } AggStrategy;
 
 /*
@@ -388,7 +367,7 @@ typedef enum AggSplit
 	/* Initial phase of partial aggregation, with serialization: */
 	AGGSPLIT_INITIAL_SERIAL = AGGSPLITOP_SKIPFINAL | AGGSPLITOP_SERIALIZE,
 	/* Final phase of partial aggregation, with deserialization: */
-	AGGSPLIT_FINAL_DESERIAL = AGGSPLITOP_COMBINE | AGGSPLITOP_DESERIALIZE
+	AGGSPLIT_FINAL_DESERIAL = AGGSPLITOP_COMBINE | AGGSPLITOP_DESERIALIZE,
 } AggSplit;
 
 /* Test whether an AggSplit value selects each primitive option: */
@@ -408,13 +387,13 @@ typedef enum SetOpCmd
 	SETOPCMD_INTERSECT,
 	SETOPCMD_INTERSECT_ALL,
 	SETOPCMD_EXCEPT,
-	SETOPCMD_EXCEPT_ALL
+	SETOPCMD_EXCEPT_ALL,
 } SetOpCmd;
 
 typedef enum SetOpStrategy
 {
 	SETOP_SORTED,				/* input must be sorted */
-	SETOP_HASHED				/* use internal hashtable */
+	SETOP_HASHED,				/* use internal hashtable */
 } SetOpStrategy;
 
 /*
@@ -427,7 +406,7 @@ typedef enum OnConflictAction
 {
 	ONCONFLICT_NONE,			/* No "ON CONFLICT" clause */
 	ONCONFLICT_NOTHING,			/* ON CONFLICT ... DO NOTHING */
-	ONCONFLICT_UPDATE			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_UPDATE,			/* ON CONFLICT ... DO UPDATE */
 } OnConflictAction;
 
 /*
@@ -440,7 +419,6 @@ typedef enum LimitOption
 {
 	LIMIT_OPTION_COUNT,			/* FETCH FIRST... ONLY */
 	LIMIT_OPTION_WITH_TIES,		/* FETCH FIRST... WITH TIES */
-	LIMIT_OPTION_DEFAULT,		/* No limit present */
 } LimitOption;
 
 #endif							/* NODES_H */

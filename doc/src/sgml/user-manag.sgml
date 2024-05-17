@@ -103,11 +103,10 @@ SELECT rolname FROM pg_roles WHERE rolcanlogin;
   <para>
    In order to bootstrap the database system, a freshly initialized
    system always contains one predefined login-capable role. This role
-   is always a <quote>superuser</quote>, and by default it will have
+   is always a <quote>superuser</quote>, and it will have
    the same name as the operating system user that initialized the
-   database cluster, unless another name is specified while
-   running <command>initdb</command>.
-   It is common, but not required, to arrange for this role to be named
+   database cluster with <command>initdb</command> unless a different name
+   is specified.  This role is often named
    <literal>postgres</literal>. In order to create more roles you
    first have to connect as this initial role.
   </para>
@@ -682,18 +681,6 @@ DROP ROLE doomed_role;
        <entry>Allow executing
        the <link linkend="sql-checkpoint"><command>CHECKPOINT</command></link>
        command.</entry>
-      </row>
-      <row>
-       <entry>pg_maintain</entry>
-       <entry>Allow executing
-       <link linkend="sql-vacuum"><command>VACUUM</command></link>,
-       <link linkend="sql-analyze"><command>ANALYZE</command></link>,
-       <link linkend="sql-cluster"><command>CLUSTER</command></link>,
-       <link linkend="sql-refreshmaterializedview"><command>REFRESH MATERIALIZED VIEW</command></link>,
-       <link linkend="sql-reindex"><command>REINDEX</command></link>,
-       and <link linkend="sql-lock"><command>LOCK TABLE</command></link> on all
-       relations, as if having <literal>MAINTAIN</literal> rights on those
-       objects, even without having it explicitly.</entry>
       </row>
       <row>
        <entry>pg_use_reserved_connections</entry>

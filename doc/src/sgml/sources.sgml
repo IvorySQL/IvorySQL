@@ -105,7 +105,8 @@ less -x4
 
    <para>
     There are two required elements for every message: a severity level
-    (ranging from <literal>DEBUG</literal> to <literal>PANIC</literal>) and a primary
+    (ranging from <literal>DEBUG</literal> to <literal>PANIC</literal>, defined
+    in <filename>src/include/utils/elog.h</filename>) and a primary
     message text.  In addition there are optional elements, the most
     common of which is an error identifier code that follows the SQL spec's
     SQLSTATE conventions.
@@ -470,7 +471,7 @@ IpcMemoryCreate: shmget(key=%d, size=%u, 0%o) failed: %m
 <programlisting>
 Primary:    could not create shared memory segment: %m
 Detail:     Failed syscall was shmget(key=%d, size=%u, 0%o).
-Hint:       the addendum
+Hint:       The addendum, written as a complete sentence.
 </programlisting>
    </para>
 
@@ -535,6 +536,14 @@ Hint:       the addendum
     Always use quotes to delimit file names, user-supplied identifiers, and
     other variables that might contain words.  Do not use them to mark up
     variables that will not contain words (for example, operator names).
+   </para>
+
+   <para>
+    In messages containing configuration variable names, do not include quotes
+    when the names are visibly not natural English words, such as when they
+    have underscores, are all-uppercase or have mixed case. Otherwise, quotes
+    must be added. Do include quotes in a message where an arbitrary variable
+    name is to be expanded.
    </para>
 
    <para>

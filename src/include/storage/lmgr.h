@@ -31,7 +31,7 @@ typedef enum XLTW_Oper
 	XLTW_InsertIndex,
 	XLTW_InsertIndexUnique,
 	XLTW_FetchUpdated,
-	XLTW_RecheckExclusionConstr
+	XLTW_RecheckExclusionConstr,
 } XLTW_Oper;
 
 extern void RelationInitLockInfo(Relation relation);
@@ -99,6 +99,8 @@ extern void UnlockDatabaseObject(Oid classid, Oid objid, uint16 objsubid,
 /* Lock a shared-across-databases object (other than a relation) */
 extern void LockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 							 LOCKMODE lockmode);
+extern bool ConditionalLockSharedObject(Oid classid, Oid objid, uint16 objsubid,
+										LOCKMODE lockmode);
 extern void UnlockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 							   LOCKMODE lockmode);
 

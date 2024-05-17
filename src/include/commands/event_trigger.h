@@ -29,6 +29,8 @@ typedef struct EventTriggerData
 	CommandTag	tag;
 } EventTriggerData;
 
+extern PGDLLIMPORT bool event_triggers;
+
 #define AT_REWRITE_ALTER_PERSISTENCE	0x01
 #define AT_REWRITE_DEFAULT_VAL			0x02
 #define AT_REWRITE_COLUMN_REWRITE		0x04
@@ -54,6 +56,7 @@ extern void EventTriggerDDLCommandStart(Node *parsetree);
 extern void EventTriggerDDLCommandEnd(Node *parsetree);
 extern void EventTriggerSQLDrop(Node *parsetree);
 extern void EventTriggerTableRewrite(Node *parsetree, Oid tableOid, int reason);
+extern void EventTriggerOnLogin(void);
 
 extern bool EventTriggerBeginCompleteQuery(void);
 extern void EventTriggerEndCompleteQuery(void);

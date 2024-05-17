@@ -151,12 +151,12 @@ static int	Lock_AF_UNIX(const char *unixSocketDir, const char *unixSocketPath);
 static int	Setup_AF_UNIX(const char *sock_path);
 
 static const PQcommMethods PqCommSocketMethods = {
-	socket_comm_reset,
-	socket_flush,
-	socket_flush_if_writable,
-	socket_is_send_pending,
-	socket_putmessage,
-	socket_putmessage_noblock
+	.comm_reset = socket_comm_reset,
+	.flush = socket_flush,
+	.flush_if_writable = socket_flush_if_writable,
+	.is_send_pending = socket_is_send_pending,
+	.putmessage = socket_putmessage,
+	.putmessage_noblock = socket_putmessage_noblock
 };
 
 const PQcommMethods *PqCommMethods = &PqCommSocketMethods;
@@ -207,7 +207,7 @@ pq_init(void)
 		elog(FATAL, "fcntl(F_SETFD) failed on socket: %m");
 #endif
 
-	FeBeWaitSet = CreateWaitEventSet(TopMemoryContext, FeBeWaitSetNEvents);
+	FeBeWaitSet = CreateWaitEventSet(NULL, FeBeWaitSetNEvents);
 	socket_pos = AddWaitEventToSet(FeBeWaitSet, WL_SOCKET_WRITEABLE,
 								   MyProcPort->sock, NULL, NULL);
 	latch_pos = AddWaitEventToSet(FeBeWaitSet, WL_LATCH_SET, PGINVALID_SOCKET,
@@ -311,16 +311,17 @@ socket_close(int code, Datum arg)
  * specified.  For TCP ports, hostName is either NULL for all interfaces or
  * the interface to listen on, and unixSocketDir is ignored (can be NULL).
  *
- * Successfully opened sockets are added to the ListenSocket[] array (of
- * length MaxListen), at the first position that isn't PGINVALID_SOCKET.
+ * Successfully opened sockets are appended to the ListenSockets[] array.  On
+ * entry, *NumListenSockets holds the number of elements currently in the
+ * array, and it is updated to reflect the opened sockets.  MaxListen is the
+ * allocated size of the array.
  *
  * RETURNS: STATUS_OK or STATUS_ERROR
  */
-
 int
 StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 				 const char *unixSocketDir,
-				 pgsocket ListenSocket[], int MaxListen)
+				 pgsocket ListenSockets[], int *NumListenSockets, int MaxListen)
 {
 	pgsocket	fd;
 	int			err;
@@ -335,7 +336,6 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 	struct addrinfo *addrs = NULL,
 			   *addr;
 	struct addrinfo hint;
-	int			listen_index = 0;
 	int			added = 0;
 	char		unixSocketPath[MAXPGPATH];
 #if !defined(WIN32) || defined(IPV6_V6ONLY)
@@ -401,12 +401,7 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		}
 
 		/* See if there is still room to add 1 more socket. */
-		for (; listen_index < MaxListen; listen_index++)
-		{
-			if (ListenSocket[listen_index] == PGINVALID_SOCKET)
-				break;
-		}
-		if (listen_index >= MaxListen)
+		if (*NumListenSockets == MaxListen)
 		{
 			ereport(LOG,
 					(errmsg("could not bind to all requested addresses: MAXLISTEN (%d) exceeded",
@@ -458,6 +453,9 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		}
 
 #ifndef WIN32
+		/* Don't give the listen socket to any subprograms we execute. */
+		if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0)
+			elog(FATAL, "fcntl(F_SETFD) failed on socket: %m");
 
 		/*
 		 * Without the SO_REUSEADDR flag, a new postmaster can't be started
@@ -570,7 +568,8 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 					(errmsg("listening on %s address \"%s\", port %d",
 							familyDesc, addrDesc, (int) portNumber)));
 
-		ListenSocket[listen_index] = fd;
+		ListenSockets[*NumListenSockets] = fd;
+		(*NumListenSockets)++;
 		added++;
 	}
 
@@ -831,7 +830,8 @@ StreamConnection(pgsocket server_fd, Port *port)
 void
 StreamClose(pgsocket sock)
 {
-	closesocket(sock);
+	if (closesocket(sock) != 0)
+		elog(LOG, "could not close client or listen socket: %m");
 }
 
 /*
@@ -936,6 +936,8 @@ pq_recvbuf(void)
 	{
 		int			r;
 
+		errno = 0;
+
 		r = secure_read(MyProcPort, PqRecvBuffer + PqRecvLength,
 						PQ_RECV_BUFFER_SIZE - PqRecvLength);
 
@@ -948,10 +950,13 @@ pq_recvbuf(void)
 			 * Careful: an ereport() that tries to write to the client would
 			 * cause recursion to here, leading to stack overflow and core
 			 * dump!  This message must go *only* to the postmaster log.
+			 *
+			 * If errno is zero, assume it's EOF and let the caller complain.
 			 */
-			ereport(COMMERROR,
-					(errcode_for_socket_access(),
-					 errmsg("could not receive data from client: %m")));
+			if (errno != 0)
+				ereport(COMMERROR,
+						(errcode_for_socket_access(),
+						 errmsg("could not receive data from client: %m")));
 			return EOF;
 		}
 		if (r == 0)
@@ -1028,6 +1033,8 @@ pq_getbyte_if_available(unsigned char *c)
 	/* Put the socket into non-blocking mode */
 	socket_set_nonblocking(true);
 
+	errno = 0;
+
 	r = secure_read(MyProcPort, c, 1);
 	if (r < 0)
 	{
@@ -1044,10 +1051,13 @@ pq_getbyte_if_available(unsigned char *c)
 			 * Careful: an ereport() that tries to write to the client would
 			 * cause recursion to here, leading to stack overflow and core
 			 * dump!  This message must go *only* to the postmaster log.
+			 *
+			 * If errno is zero, assume it's EOF and let the caller complain.
 			 */
-			ereport(COMMERROR,
-					(errcode_for_socket_access(),
-					 errmsg("could not receive data from client: %m")));
+			if (errno != 0)
+				ereport(COMMERROR,
+						(errcode_for_socket_access(),
+						 errmsg("could not receive data from client: %m")));
 			r = EOF;
 		}
 	}

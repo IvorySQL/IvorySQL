@@ -63,10 +63,6 @@ extern void create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 extern void generate_partitionwise_join_paths(PlannerInfo *root,
 											  RelOptInfo *rel);
 
-#ifdef OPTIMIZER_DEBUG
-extern void debug_print_rel(PlannerInfo *root, RelOptInfo *rel);
-#endif
-
 /*
  * indxpath.c
  *	  routines to generate index paths
@@ -75,6 +71,9 @@ extern void create_index_paths(PlannerInfo *root, RelOptInfo *rel);
 extern bool relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 										  List *restrictlist,
 										  List *exprlist, List *oprlist);
+extern bool relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
+										  List *restrictlist, List *exprlist,
+										  List *oprlist, List **extra_clauses);
 extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
 												IndexOptInfo *index,
 												int indexcol);
@@ -199,7 +198,7 @@ typedef enum
 	PATHKEYS_EQUAL,				/* pathkeys are identical */
 	PATHKEYS_BETTER1,			/* pathkey 1 is a superset of pathkey 2 */
 	PATHKEYS_BETTER2,			/* vice versa */
-	PATHKEYS_DIFFERENT			/* neither pathkey includes the other */
+	PATHKEYS_DIFFERENT,			/* neither pathkey includes the other */
 } PathKeysComparison;
 
 extern PathKeysComparison compare_pathkeys(List *keys1, List *keys2);

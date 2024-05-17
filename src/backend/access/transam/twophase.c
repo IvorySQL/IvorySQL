@@ -86,6 +86,7 @@
 #include "access/xlog.h"
 #include "access/xloginsert.h"
 #include "access/xlogreader.h"
+#include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "catalog/pg_type.h"
 #include "catalog/storage.h"
@@ -941,8 +942,46 @@ TwoPhaseGetDummyProc(TransactionId xid, bool lock_held)
 /* State file support													*/
 /************************************************************************/
 
-#define TwoPhaseFilePath(path, xid) \
-	snprintf(path, MAXPGPATH, TWOPHASE_DIR "/%08X", xid)
+/*
+ * Compute the FullTransactionId for the given TransactionId.
+ *
+ * The wrap logic is safe here because the span of active xids cannot exceed one
+ * epoch at any given time.
+ */
+static inline FullTransactionId
+AdjustToFullTransactionId(TransactionId xid)
+{
+	FullTransactionId nextFullXid;
+	TransactionId nextXid;
+	uint32		epoch;
+
+	Assert(TransactionIdIsValid(xid));
+
+	LWLockAcquire(XidGenLock, LW_SHARED);
+	nextFullXid = TransamVariables->nextXid;
+	LWLockRelease(XidGenLock);
+
+	nextXid = XidFromFullTransactionId(nextFullXid);
+	epoch = EpochFromFullTransactionId(nextFullXid);
+	if (unlikely(xid > nextXid))
+	{
+		/* Wraparound occurred, must be from a prev epoch. */
+		Assert(epoch > 0);
+		epoch--;
+	}
+
+	return FullTransactionIdFromEpochAndXid(epoch, xid);
+}
+
+static inline int
+TwoPhaseFilePath(char *path, TransactionId xid)
+{
+	FullTransactionId fxid = AdjustToFullTransactionId(xid);
+
+	return snprintf(path, MAXPGPATH, TWOPHASE_DIR "/%08X%08X",
+					EpochFromFullTransactionId(fxid),
+					XidFromFullTransactionId(fxid));
+}
 
 /*
  * 2PC state file format:
@@ -1881,13 +1920,15 @@ restoreTwoPhaseData(void)
 	cldir = AllocateDir(TWOPHASE_DIR);
 	while ((clde = ReadDir(cldir, TWOPHASE_DIR)) != NULL)
 	{
-		if (strlen(clde->d_name) == 8 &&
-			strspn(clde->d_name, "0123456789ABCDEF") == 8)
+		if (strlen(clde->d_name) == 16 &&
+			strspn(clde->d_name, "0123456789ABCDEF") == 16)
 		{
 			TransactionId xid;
+			FullTransactionId fxid;
 			char	   *buf;
 
-			xid = (TransactionId) strtoul(clde->d_name, NULL, 16);
+			fxid = FullTransactionIdFromU64(strtou64(clde->d_name, NULL, 16));
+			xid = XidFromFullTransactionId(fxid);
 
 			buf = ProcessTwoPhaseBuffer(xid, InvalidXLogRecPtr,
 										true, false, false);
@@ -1907,7 +1948,7 @@ restoreTwoPhaseData(void)
  *
  * Scan the shared memory entries of TwoPhaseState and determine the range
  * of valid XIDs present.  This is run during database startup, after we
- * have completed reading WAL.  ShmemVariableCache->nextXid has been set to
+ * have completed reading WAL.  TransamVariables->nextXid has been set to
  * one more than the highest XID for which evidence exists in WAL.
  *
  * We throw away any prepared xacts with main XID beyond nextXid --- if any
@@ -1926,7 +1967,7 @@ restoreTwoPhaseData(void)
  * backup should be rolled in.
  *
  * Our other responsibility is to determine and return the oldest valid XID
- * among the prepared xacts (if none, return ShmemVariableCache->nextXid).
+ * among the prepared xacts (if none, return TransamVariables->nextXid).
  * This is needed to synchronize pg_subtrans startup properly.
  *
  * If xids_p and nxids_p are not NULL, pointer to a palloc'd array of all
@@ -1936,7 +1977,7 @@ restoreTwoPhaseData(void)
 TransactionId
 PrescanPreparedTransactions(TransactionId **xids_p, int *nxids_p)
 {
-	FullTransactionId nextXid = ShmemVariableCache->nextXid;
+	FullTransactionId nextXid = TransamVariables->nextXid;
 	TransactionId origNextXid = XidFromFullTransactionId(nextXid);
 	TransactionId result = origNextXid;
 	TransactionId *xids = NULL;
@@ -2155,7 +2196,7 @@ RecoverPreparedTransactions(void)
  *
  * If setParent is true, set up subtransaction parent linkages.
  *
- * If setNextXid is true, set ShmemVariableCache->nextXid to the newest
+ * If setNextXid is true, set TransamVariables->nextXid to the newest
  * value scanned.
  */
 static char *
@@ -2164,7 +2205,7 @@ ProcessTwoPhaseBuffer(TransactionId xid,
 					  bool fromdisk,
 					  bool setParent, bool setNextXid)
 {
-	FullTransactionId nextXid = ShmemVariableCache->nextXid;
+	FullTransactionId nextXid = TransamVariables->nextXid;
 	TransactionId origNextXid = XidFromFullTransactionId(nextXid);
 	TransactionId *subxids;
 	char	   *buf;
@@ -2476,6 +2517,38 @@ PrepareRedoAdd(char *buf, XLogRecPtr start_lsn,
 	 * The gxact also gets marked with gxact->inredo set to true to indicate
 	 * that it got added in the redo phase
 	 */
+
+	/*
+	 * In the event of a crash while a checkpoint was running, it may be
+	 * possible that some two-phase data found its way to disk while its
+	 * corresponding record needs to be replayed in the follow-up recovery. As
+	 * the 2PC data was on disk, it has already been restored at the beginning
+	 * of recovery with restoreTwoPhaseData(), so skip this record to avoid
+	 * duplicates in TwoPhaseState.  If a consistent state has been reached,
+	 * the record is added to TwoPhaseState and it should have no
+	 * corresponding file in pg_twophase.
+	 */
+	if (!XLogRecPtrIsInvalid(start_lsn))
+	{
+		char		path[MAXPGPATH];
+
+		TwoPhaseFilePath(path, hdr->xid);
+
+		if (access(path, F_OK) == 0)
+		{
+			ereport(reachedConsistency ? ERROR : WARNING,
+					(errmsg("could not recover two-phase state file for transaction %u",
+							hdr->xid),
+					 errdetail("Two-phase state file has been found in WAL record %X/%X, but this transaction has already been restored from disk.",
+							   LSN_FORMAT_ARGS(start_lsn))));
+			return;
+		}
+
+		if (errno != ENOENT)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not access file \"%s\": %m", path)));
+	}
 
 	/* Get a free gxact from the freelist */
 	if (TwoPhaseState->freeGXacts == NULL)

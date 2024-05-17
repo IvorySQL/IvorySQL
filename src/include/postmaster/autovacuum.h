@@ -22,7 +22,7 @@
  */
 typedef enum
 {
-	AVW_BRINSummarizeRange
+	AVW_BRINSummarizeRange,
 } AutoVacuumWorkItemType;
 
 
@@ -66,8 +66,6 @@ extern void AutoVacWorkerFailed(void);
 #ifdef EXEC_BACKEND
 extern void AutoVacLauncherMain(int argc, char *argv[]) pg_attribute_noreturn();
 extern void AutoVacWorkerMain(int argc, char *argv[]) pg_attribute_noreturn();
-extern void AutovacuumWorkerIAm(void);
-extern void AutovacuumLauncherIAm(void);
 #endif
 
 extern bool AutoVacuumRequestWork(AutoVacuumWorkItemType type,

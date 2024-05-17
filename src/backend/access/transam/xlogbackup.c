@@ -58,7 +58,7 @@ build_backup_content(BackupState *state, bool ishistoryfile)
 
 	appendStringInfo(result, "CHECKPOINT LOCATION: %X/%X\n",
 					 LSN_FORMAT_ARGS(state->checkpointloc));
-	appendStringInfo(result, "BACKUP METHOD: streamed\n");
+	appendStringInfoString(result, "BACKUP METHOD: streamed\n");
 	appendStringInfo(result, "BACKUP FROM: %s\n",
 					 state->started_in_recovery ? "standby" : "primary");
 	appendStringInfo(result, "START TIME: %s\n", startstrbuf);
@@ -75,6 +75,16 @@ build_backup_content(BackupState *state, bool ishistoryfile)
 
 		appendStringInfo(result, "STOP TIME: %s\n", stopstrfbuf);
 		appendStringInfo(result, "STOP TIMELINE: %u\n", state->stoptli);
+	}
+
+	/* either both istartpoint and istarttli should be set, or neither */
+	Assert(XLogRecPtrIsInvalid(state->istartpoint) == (state->istarttli == 0));
+	if (!XLogRecPtrIsInvalid(state->istartpoint))
+	{
+		appendStringInfo(result, "INCREMENTAL FROM LSN: %X/%X\n",
+						 LSN_FORMAT_ARGS(state->istartpoint));
+		appendStringInfo(result, "INCREMENTAL FROM TLI: %u\n",
+						 state->istarttli);
 	}
 
 	data = result->data;

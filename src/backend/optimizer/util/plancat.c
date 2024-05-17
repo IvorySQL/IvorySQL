@@ -1137,7 +1137,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 int32
 get_rel_data_width(Relation rel, int32 *attr_widths)
 {
-	int32		tuple_width = 0;
+	int64		tuple_width = 0;
 	int			i;
 
 	for (i = 1; i <= RelationGetNumberOfAttributes(rel); i++)
@@ -1167,7 +1167,7 @@ get_rel_data_width(Relation rel, int32 *attr_widths)
 		tuple_width += item_width;
 	}
 
-	return tuple_width;
+	return clamp_width_est(tuple_width);
 }
 
 /*
@@ -1549,16 +1549,17 @@ relation_excluded_by_constraints(PlannerInfo *root,
 
 	/*
 	 * Regardless of the setting of constraint_exclusion, detect
-	 * constant-FALSE-or-NULL restriction clauses.  Because const-folding will
-	 * reduce "anything AND FALSE" to just "FALSE", any such case should
-	 * result in exactly one baserestrictinfo entry.  This doesn't fire very
-	 * often, but it seems cheap enough to be worth doing anyway.  (Without
-	 * this, we'd miss some optimizations that 9.5 and earlier found via much
-	 * more roundabout methods.)
+	 * constant-FALSE-or-NULL restriction clauses.  Although const-folding
+	 * will reduce "anything AND FALSE" to just "FALSE", the baserestrictinfo
+	 * list can still have other members besides the FALSE constant, due to
+	 * qual pushdown and other mechanisms; so check them all.  This doesn't
+	 * fire very often, but it seems cheap enough to be worth doing anyway.
+	 * (Without this, we'd miss some optimizations that 9.5 and earlier found
+	 * via much more roundabout methods.)
 	 */
-	if (list_length(rel->baserestrictinfo) == 1)
+	foreach(lc, rel->baserestrictinfo)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) linitial(rel->baserestrictinfo);
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 		Expr	   *clause = rinfo->clause;
 
 		if (clause && IsA(clause, Const) &&
@@ -1644,6 +1645,8 @@ relation_excluded_by_constraints(PlannerInfo *root,
 	 * Currently, attnotnull constraints must be treated as NO INHERIT unless
 	 * this is a partitioned table.  In future we might track their
 	 * inheritance status more accurately, allowing this to be refined.
+	 *
+	 * XXX do we need/want to change this?
 	 */
 	include_notnull = (!rte->inh || rte->relkind == RELKIND_PARTITIONED_TABLE);
 

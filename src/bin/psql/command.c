@@ -55,7 +55,7 @@
 typedef enum EditableObjectType
 {
 	EditableFunction,
-	EditableView
+	EditableView,
 } EditableObjectType;
 
 psql_scan_slash_option_hook_type psql_scan_slash_option_parser = pg_psql_scan_slash_option;
@@ -167,7 +167,7 @@ static bool do_connect(enum trivalue reuse_previous_specification,
 static bool do_edit(const char *filename_arg, PQExpBuffer query_buf,
 					int lineno, bool discard_on_quit, bool *edited);
 static bool do_shell(const char *command);
-static bool do_watch(PQExpBuffer query_buf, double sleep, int iter);
+static bool do_watch(PQExpBuffer query_buf, double sleep, int iter, int min_rows);
 static bool lookup_object_oid(EditableObjectType obj_type, const char *desc,
 							  Oid *obj_oid);
 static bool get_create_object_cmd(EditableObjectType obj_type, Oid oid,
@@ -938,6 +938,8 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 
 					free(pattern2);
 				}
+				else if (cmd[2] == 'g')
+					success = describeRoleGrants(pattern, show_system);
 				else
 					status = PSQL_CMD_UNKNOWN;
 				break;
@@ -1145,6 +1147,14 @@ exec_command_edit(PsqlScanState scan_state, bool active_branch,
 				else
 					status = PSQL_CMD_ERROR;
 			}
+
+			/*
+			 * On error while editing or if specifying an incorrect line
+			 * number, reset the query buffer.
+			 */
+			if (status == PSQL_CMD_ERROR)
+				resetPQExpBuffer(query_buf);
+
 			free(fname);
 			free(ln);
 		}
@@ -1256,6 +1266,13 @@ exec_command_ef_ev(PsqlScanState scan_state, bool active_branch,
 			else
 				status = PSQL_CMD_NEWEDIT;
 		}
+
+		/*
+		 * On error while doing object lookup or while editing, or if
+		 * specifying an incorrect line number, reset the query buffer.
+		 */
+		if (status == PSQL_CMD_ERROR)
+			resetPQExpBuffer(query_buf);
 
 		free(obj_desc);
 	}
@@ -2795,13 +2812,15 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 	{
 		bool		have_sleep = false;
 		bool		have_iter = false;
+		bool		have_min_rows = false;
 		double		sleep = 2;
 		int			iter = 0;
+		int			min_rows = 0;
 
 		/*
 		 * Parse arguments.  We allow either an unlabeled interval or
 		 * "name=value", where name is from the set ('i', 'interval', 'c',
-		 * 'count').
+		 * 'count', 'm', 'min_rows').
 		 */
 		while (success)
 		{
@@ -2858,6 +2877,26 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 						}
 					}
 				}
+				else if (strncmp("m=", opt, strlen("m=")) == 0 ||
+						 strncmp("min_rows=", opt, strlen("min_rows=")) == 0)
+				{
+					if (have_min_rows)
+					{
+						pg_log_error("\\watch: minimum row count specified more than once");
+						success = false;
+					}
+					else
+					{
+						have_min_rows = true;
+						errno = 0;
+						min_rows = strtoint(valptr, &opt_end, 10);
+						if (min_rows <= 0 || *opt_end || errno == ERANGE)
+						{
+							pg_log_error("\\watch: incorrect minimum row count \"%s\"", valptr);
+							success = false;
+						}
+					}
+				}
 				else
 				{
 					pg_log_error("\\watch: unrecognized parameter \"%s\"", opt);
@@ -2894,7 +2933,7 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 			/* If query_buf is empty, recall and execute previous query */
 			(void) copy_previous_query(query_buf, previous_buf);
 
-			success = do_watch(query_buf, sleep, iter);
+			success = do_watch(query_buf, sleep, iter, min_rows);
 		}
 
 		/* Reset the query buffer as though for \r */
@@ -5191,7 +5230,7 @@ do_shell(const char *command)
  * onto a bunch of exec_command's variables to silence stupider compilers.
  */
 static bool
-do_watch(PQExpBuffer query_buf, double sleep, int iter)
+do_watch(PQExpBuffer query_buf, double sleep, int iter, int min_rows)
 {
 	long		sleep_ms = (long) (sleep * 1000);
 	printQueryOpt myopt = pset.popt;
@@ -5321,7 +5360,7 @@ do_watch(PQExpBuffer query_buf, double sleep, int iter)
 		myopt.title = title;
 
 		/* Run the query and print out the result */
-		res = PSQLexecWatch(query_buf->data, &myopt, pagerpipe);
+		res = PSQLexecWatch(query_buf->data, &myopt, pagerpipe, min_rows);
 
 		/*
 		 * PSQLexecWatch handles the case where we can no longer repeat the
@@ -5442,16 +5481,16 @@ echo_hidden_command(const char *query)
 {
 	if (pset.echo_hidden != PSQL_ECHO_HIDDEN_OFF)
 	{
-		printf(_("********* QUERY **********\n"
+		printf(_("/******** QUERY *********/\n"
 				 "%s\n"
-				 "**************************\n\n"), query);
+				 "/************************/\n\n"), query);
 		fflush(stdout);
 		if (pset.logfile)
 		{
 			fprintf(pset.logfile,
-					_("********* QUERY **********\n"
+					_("/******** QUERY *********/\n"
 					  "%s\n"
-					  "**************************\n\n"), query);
+					  "/************************/\n\n"), query);
 			fflush(pset.logfile);
 		}
 

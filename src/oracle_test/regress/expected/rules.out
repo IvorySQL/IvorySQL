@@ -1814,17 +1814,19 @@ pg_stat_archiver| SELECT archived_count,
     last_failed_time,
     stats_reset
    FROM pg_stat_get_archiver() s(archived_count, last_archived_wal, last_archived_time, failed_count, last_failed_wal, last_failed_time, stats_reset);
-pg_stat_bgwriter| SELECT pg_stat_get_bgwriter_timed_checkpoints() AS checkpoints_timed,
-    pg_stat_get_bgwriter_requested_checkpoints() AS checkpoints_req,
-    pg_stat_get_checkpoint_write_time() AS checkpoint_write_time,
-    pg_stat_get_checkpoint_sync_time() AS checkpoint_sync_time,
-    pg_stat_get_bgwriter_buf_written_checkpoints() AS buffers_checkpoint,
-    pg_stat_get_bgwriter_buf_written_clean() AS buffers_clean,
+pg_stat_bgwriter| SELECT pg_stat_get_bgwriter_buf_written_clean() AS buffers_clean,
     pg_stat_get_bgwriter_maxwritten_clean() AS maxwritten_clean,
-    pg_stat_get_buf_written_backend() AS buffers_backend,
-    pg_stat_get_buf_fsync_backend() AS buffers_backend_fsync,
     pg_stat_get_buf_alloc() AS buffers_alloc,
     pg_stat_get_bgwriter_stat_reset_time() AS stats_reset;
+pg_stat_checkpointer| SELECT pg_stat_get_checkpointer_num_timed() AS num_timed,
+    pg_stat_get_checkpointer_num_requested() AS num_requested,
+    pg_stat_get_checkpointer_restartpoints_timed() AS restartpoints_timed,
+    pg_stat_get_checkpointer_restartpoints_requested() AS restartpoints_req,
+    pg_stat_get_checkpointer_restartpoints_performed() AS restartpoints_done,
+    pg_stat_get_checkpointer_write_time() AS write_time,
+    pg_stat_get_checkpointer_sync_time() AS sync_time,
+    pg_stat_get_checkpointer_buffers_written() AS buffers_written,
+    pg_stat_get_checkpointer_stat_reset_time() AS stats_reset;
 pg_stat_database| SELECT oid AS datid,
     datname,
         CASE
@@ -2042,7 +2044,9 @@ pg_stat_progress_vacuum| SELECT s.pid,
     s.param4 AS heap_blks_vacuumed,
     s.param5 AS index_vacuum_count,
     s.param6 AS max_dead_tuples,
-    s.param7 AS num_dead_tuples
+    s.param7 AS num_dead_tuples,
+    s.param8 AS indexes_total,
+    s.param9 AS indexes_processed
    FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_recovery_prefetch| SELECT stats_reset,
@@ -2114,6 +2118,7 @@ pg_stat_ssl| SELECT pid,
   WHERE (client_port IS NOT NULL);
 pg_stat_subscription| SELECT su.oid AS subid,
     su.subname,
+    st.worker_type,
     st.pid,
     st.leader_pid,
     st.relid,
@@ -2123,7 +2128,7 @@ pg_stat_subscription| SELECT su.oid AS subid,
     st.latest_end_lsn,
     st.latest_end_time
    FROM (pg_subscription su
-     LEFT JOIN pg_stat_get_subscription(NULL::oid) st(subid, relid, pid, leader_pid, received_lsn, last_msg_send_time, last_msg_receipt_time, latest_end_lsn, latest_end_time) ON ((st.subid = su.oid)));
+     LEFT JOIN pg_stat_get_subscription(NULL::oid) st(subid, relid, pid, leader_pid, received_lsn, last_msg_send_time, last_msg_receipt_time, latest_end_lsn, latest_end_time, worker_type) ON ((st.subid = su.oid)));
 pg_stat_subscription_stats| SELECT ss.subid,
     s.subname,
     ss.apply_error_count,
@@ -2462,7 +2467,31 @@ pg_stats| SELECT n.nspname AS schemaname,
             WHEN (s.stakind4 = 5) THEN s.stanumbers4
             WHEN (s.stakind5 = 5) THEN s.stanumbers5
             ELSE NULL::pg_catalog.float4[]
-        END AS elem_count_histogram
+        END AS elem_count_histogram,
+        CASE
+            WHEN (s.stakind1 = 6) THEN s.stavalues1
+            WHEN (s.stakind2 = 6) THEN s.stavalues2
+            WHEN (s.stakind3 = 6) THEN s.stavalues3
+            WHEN (s.stakind4 = 6) THEN s.stavalues4
+            WHEN (s.stakind5 = 6) THEN s.stavalues5
+            ELSE NULL::anyarray
+        END AS range_length_histogram,
+        CASE
+            WHEN (s.stakind1 = 6) THEN s.stanumbers1[1]
+            WHEN (s.stakind2 = 6) THEN s.stanumbers2[1]
+            WHEN (s.stakind3 = 6) THEN s.stanumbers3[1]
+            WHEN (s.stakind4 = 6) THEN s.stanumbers4[1]
+            WHEN (s.stakind5 = 6) THEN s.stanumbers5[1]
+            ELSE NULL::pg_catalog.float4
+        END AS range_empty_frac,
+        CASE
+            WHEN (s.stakind1 = 7) THEN s.stavalues1
+            WHEN (s.stakind2 = 7) THEN s.stavalues2
+            WHEN (s.stakind3 = 7) THEN s.stavalues3
+            WHEN (s.stakind4 = 7) THEN s.stavalues4
+            WHEN (s.stakind5 = 7) THEN s.stavalues5
+            ELSE NULL::anyarray
+        END AS range_bounds_histogram
    FROM (((pg_statistic s
      JOIN pg_class c ON ((c.oid = s.starelid)))
      JOIN pg_attribute a ON (((c.oid = a.attrelid) AND (a.attnum = s.staattnum))))
@@ -2627,6 +2656,10 @@ pg_views| SELECT n.nspname AS schemaname,
    FROM (pg_class c
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
   WHERE (c.relkind = 'v'::"char");
+pg_wait_events| SELECT type,
+    name,
+    description
+   FROM pg_get_wait_events() pg_get_wait_events(type, name, description);
 SELECT tablename, rulename, definition FROM pg_rules
 WHERE schemaname = 'pg_catalog'
 ORDER BY tablename, rulename;

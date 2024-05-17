@@ -321,6 +321,7 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	slot->candidate_xmin_lsn = InvalidXLogRecPtr;
 	slot->candidate_restart_valid = InvalidXLogRecPtr;
 	slot->candidate_restart_lsn = InvalidXLogRecPtr;
+	slot->last_saved_confirmed_flush = InvalidXLogRecPtr;
 
 	/*
 	 * Create the slot on disk.  We haven't actually marked the slot allocated
@@ -536,6 +537,16 @@ retry:
 	 */
 	if (SlotIsLogical(s))
 		pgstat_acquire_replslot(s);
+
+	if (am_walsender)
+	{
+		ereport(log_replication_commands ? LOG : DEBUG1,
+				SlotIsLogical(s)
+				? errmsg("acquired logical replication slot \"%s\"",
+						 NameStr(s->data.name))
+				: errmsg("acquired physical replication slot \"%s\"",
+						 NameStr(s->data.name)));
+	}
 }
 
 /*
@@ -548,8 +559,16 @@ void
 ReplicationSlotRelease(void)
 {
 	ReplicationSlot *slot = MyReplicationSlot;
+	char	   *slotname = NULL;	/* keep compiler quiet */
+	bool		is_logical = false; /* keep compiler quiet */
 
 	Assert(slot != NULL && slot->active_pid != 0);
+
+	if (am_walsender)
+	{
+		slotname = pstrdup(NameStr(slot->data.name));
+		is_logical = SlotIsLogical(slot);
+	}
 
 	if (slot->data.persistency == RS_EPHEMERAL)
 	{
@@ -595,6 +614,18 @@ ReplicationSlotRelease(void)
 	MyProc->statusFlags &= ~PROC_IN_LOGICAL_DECODING;
 	ProcGlobal->statusFlags[MyProc->pgxactoff] = MyProc->statusFlags;
 	LWLockRelease(ProcArrayLock);
+
+	if (am_walsender)
+	{
+		ereport(log_replication_commands ? LOG : DEBUG1,
+				is_logical
+				? errmsg("released logical replication slot \"%s\"",
+						 slotname)
+				: errmsg("released physical replication slot \"%s\"",
+						 slotname));
+
+		pfree(slotname);
+	}
 }
 
 /*
@@ -1263,18 +1294,25 @@ ReportSlotInvalidation(ReplicationSlotInvalidationCause cause,
 	switch (cause)
 	{
 		case RS_INVAL_WAL_REMOVED:
-			hint = true;
-			appendStringInfo(&err_detail, _("The slot's restart_lsn %X/%X exceeds the limit by %llu bytes."),
-							 LSN_FORMAT_ARGS(restart_lsn),
-							 (unsigned long long) (oldestLSN - restart_lsn));
-			break;
+			{
+				unsigned long long ex = oldestLSN - restart_lsn;
+
+				hint = true;
+				appendStringInfo(&err_detail,
+								 ngettext("The slot's restart_lsn %X/%X exceeds the limit by %llu byte.",
+										  "The slot's restart_lsn %X/%X exceeds the limit by %llu bytes.",
+										  ex),
+								 LSN_FORMAT_ARGS(restart_lsn),
+								 ex);
+				break;
+			}
 		case RS_INVAL_HORIZON:
 			appendStringInfo(&err_detail, _("The slot conflicted with xid horizon %u."),
 							 snapshotConflictHorizon);
 			break;
 
 		case RS_INVAL_WAL_LEVEL:
-			appendStringInfo(&err_detail, _("Logical decoding on standby requires wal_level >= logical on the primary server."));
+			appendStringInfoString(&err_detail, _("Logical decoding on standby requires wal_level >= logical on the primary server."));
 			break;
 		case RS_INVAL_NONE:
 			pg_unreachable();
@@ -1414,6 +1452,14 @@ InvalidatePossiblyObsoleteSlot(ReplicationSlotInvalidationCause cause,
 		}
 
 		SpinLockRelease(&s->mutex);
+
+		/*
+		 * The logical replication slots shouldn't be invalidated as GUC
+		 * max_slot_wal_keep_size is set to -1 during the binary upgrade. See
+		 * check_old_cluster_for_valid_slots() where we ensure that no
+		 * invalidated before the upgrade.
+		 */
+		Assert(!(*invalidated && SlotIsLogical(s) && IsBinaryUpgrade));
 
 		if (active_pid != 0)
 		{
@@ -1565,11 +1611,13 @@ restart:
 /*
  * Flush all replication slots to disk.
  *
- * This needn't actually be part of a checkpoint, but it's a convenient
- * location.
+ * It is convenient to flush dirty replication slots at the time of checkpoint.
+ * Additionally, in case of a shutdown checkpoint, we also identify the slots
+ * for which the confirmed_flush LSN has been updated since the last time it
+ * was saved and flush them.
  */
 void
-CheckPointReplicationSlots(void)
+CheckPointReplicationSlots(bool is_shutdown)
 {
 	int			i;
 
@@ -1594,6 +1642,30 @@ CheckPointReplicationSlots(void)
 
 		/* save the slot to disk, locking is handled in SaveSlotToPath() */
 		sprintf(path, "pg_replslot/%s", NameStr(s->data.name));
+
+		/*
+		 * Slot's data is not flushed each time the confirmed_flush LSN is
+		 * updated as that could lead to frequent writes.  However, we decide
+		 * to force a flush of all logical slot's data at the time of shutdown
+		 * if the confirmed_flush LSN is changed since we last flushed it to
+		 * disk.  This helps in avoiding an unnecessary retreat of the
+		 * confirmed_flush LSN after restart.
+		 */
+		if (is_shutdown && SlotIsLogical(s))
+		{
+			SpinLockAcquire(&s->mutex);
+
+			Assert(s->data.confirmed_flush >= s->last_saved_confirmed_flush);
+
+			if (s->data.invalidated == RS_INVAL_NONE &&
+				s->data.confirmed_flush != s->last_saved_confirmed_flush)
+			{
+				s->just_dirtied = true;
+				s->dirty = true;
+			}
+			SpinLockRelease(&s->mutex);
+		}
+
 		SaveSlotToPath(s, path, LOG);
 	}
 	LWLockRelease(ReplicationSlotAllocationLock);
@@ -1866,11 +1938,12 @@ SaveSlotToPath(ReplicationSlot *slot, const char *dir, int elevel)
 
 	/*
 	 * Successfully wrote, unset dirty bit, unless somebody dirtied again
-	 * already.
+	 * already and remember the confirmed_flush LSN value.
 	 */
 	SpinLockAcquire(&slot->mutex);
 	if (!slot->just_dirtied)
 		slot->dirty = false;
+	slot->last_saved_confirmed_flush = cp.slotdata.confirmed_flush;
 	SpinLockRelease(&slot->mutex);
 
 	LWLockRelease(&slot->io_in_progress_lock);
@@ -2067,6 +2140,7 @@ RestoreSlotFromDisk(const char *name)
 		/* initialize in memory state */
 		slot->effective_xmin = cp.slotdata.xmin;
 		slot->effective_catalog_xmin = cp.slotdata.catalog_xmin;
+		slot->last_saved_confirmed_flush = cp.slotdata.confirmed_flush;
 
 		slot->candidate_catalog_xmin = InvalidTransactionId;
 		slot->candidate_xmin_lsn = InvalidXLogRecPtr;

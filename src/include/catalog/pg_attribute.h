@@ -165,7 +165,7 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	 * that no value has been explicitly set for this column, so ANALYZE
 	 * should use the default setting.
 	 *
-	 * int16 is sufficient because the max value is currently 10000.
+	 * int16 is sufficient for the current max value (MAX_STATISTICS_TARGET).
 	 */
 	int16		attstattarget BKI_DEFAULT(-1);
 
@@ -208,8 +208,8 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
  */
 typedef FormData_pg_attribute *Form_pg_attribute;
 
-DECLARE_UNIQUE_INDEX(pg_attribute_relid_attnam_index, 2658, AttributeRelidNameIndexId, on pg_attribute using btree(attrelid oid_ops, attname name_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, AttributeRelidNumIndexId, on pg_attribute using btree(attrelid oid_ops, attnum int2_ops));
+DECLARE_UNIQUE_INDEX(pg_attribute_relid_attnam_index, 2658, AttributeRelidNameIndexId, pg_attribute, btree(attrelid oid_ops, attname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, AttributeRelidNumIndexId, pg_attribute, btree(attrelid oid_ops, attnum int2_ops));
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

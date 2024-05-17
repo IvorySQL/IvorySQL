@@ -1373,6 +1373,7 @@ ExecDelete(ModifyTableContext *context,
 		   bool processReturning,
 		   bool changingPart,
 		   bool canSetTag,
+		   TM_Result *tmresult,
 		   bool *tupleDeleted,
 		   TupleTableSlot **epqreturnslot)
 {
@@ -1389,7 +1390,7 @@ ExecDelete(ModifyTableContext *context,
 	 * done if it says we are.
 	 */
 	if (!ExecDeletePrologue(context, resultRelInfo, tupleid, oldtuple,
-							epqreturnslot, NULL))
+							epqreturnslot, tmresult))
 		return NULL;
 
 	/* INSTEAD OF ROW DELETE Triggers */
@@ -1443,6 +1444,9 @@ ExecDelete(ModifyTableContext *context,
 		 */
 ldelete:
 		result = ExecDeleteAct(context, resultRelInfo, tupleid, changingPart);
+
+		if (tmresult)
+			*tmresult = result;
 
 		switch (result)
 		{
@@ -1682,6 +1686,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 						 TupleTableSlot *slot,
 						 bool canSetTag,
 						 UpdateContext *updateCxt,
+						 TM_Result *tmresult,
 						 TupleTableSlot **retry_slot,
 						 TupleTableSlot **inserted_tuple,
 						 ResultRelInfo **insert_destrel)
@@ -1745,7 +1750,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 			   false,			/* processReturning */
 			   true,			/* changingPart */
 			   false,			/* canSetTag */
-			   &tuple_deleted, &epqslot);
+			   tmresult, &tuple_deleted, &epqslot);
 
 	/*
 	 * For some reason if DELETE didn't happen (e.g. trigger prevented it, or
@@ -1777,7 +1782,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
 		 * action entirely).
 		 */
 		if (context->relaction != NULL)
-			return false;
+			return *tmresult == TM_Ok;
 		else if (TupIsNull(epqslot))
 			return true;
 		else
@@ -1979,6 +1984,7 @@ lreplace:
 		if (ExecCrossPartitionUpdate(context, resultRelInfo,
 									 tupleid, oldtuple, slot,
 									 canSetTag, updateCxt,
+									 &result,
 									 &retry_slot,
 									 &inserted_tuple,
 									 &insert_destrel))
@@ -2018,7 +2024,7 @@ lreplace:
 		 * here; instead let it handle that on its own rules.
 		 */
 		if (context->relaction != NULL)
-			return TM_Updated;
+			return result;
 
 		/*
 		 * ExecCrossPartitionUpdate installed an updated version of the new
@@ -2809,13 +2815,14 @@ lmerge_matched:
 		 * UPDATE/DELETE RLS policies. If those checks fail, we throw an
 		 * error.
 		 *
-		 * The WITH CHECK quals are applied in ExecUpdate() and hence we need
-		 * not do anything special to handle them.
+		 * The WITH CHECK quals for UPDATE RLS policies are applied in
+		 * ExecUpdateAct() and hence we need not do anything special to handle
+		 * them.
 		 *
 		 * NOTE: We must do this after WHEN quals are evaluated, so that we
 		 * check policies only when they matter.
 		 */
-		if (resultRelInfo->ri_WithCheckOptions)
+		if (resultRelInfo->ri_WithCheckOptions && commandType != CMD_NOTHING)
 		{
 			ExecWithCheckOptions(commandType == CMD_UPDATE ?
 								 WCO_RLS_MERGE_UPDATE_CHECK : WCO_RLS_MERGE_DELETE_CHECK,
@@ -2845,7 +2852,21 @@ lmerge_matched:
 					break;		/* concurrent update/delete */
 				}
 				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
-									   newslot, false, &updateCxt);
+									   newslot, canSetTag, &updateCxt);
+
+				/*
+				 * As in ExecUpdate(), if ExecUpdateAct() reports that a
+				 * cross-partition update was done, then there's nothing else
+				 * for us to do --- the UPDATE has been turned into a DELETE
+				 * and an INSERT, and we must not perform any of the usual
+				 * post-update tasks.
+				 */
+				if (updateCxt.crossPartUpdate)
+				{
+					mtstate->mt_merge_updated += 1;
+					return true;
+				}
+
 				if (result == TM_Ok && updateCxt.updated)
 				{
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
@@ -3789,7 +3810,7 @@ ExecModifyTable(PlanState *pstate)
 
 			case CMD_DELETE:
 				slot = ExecDelete(&context, resultRelInfo, tupleid, oldtuple,
-								  true, false, node->canSetTag, NULL, NULL);
+								  true, false, node->canSetTag, NULL, NULL, NULL);
 				break;
 
 			case CMD_MERGE:
@@ -3928,10 +3949,10 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 *   must be converted, and
 	 * - the root partitioned table used for tuple routing.
 	 *
-	 * If it's a partitioned table, the root partition doesn't appear
-	 * elsewhere in the plan and its RT index is given explicitly in
-	 * node->rootRelation.  Otherwise (i.e. table inheritance) the target
-	 * relation is the first relation in the node->resultRelations list.
+	 * If it's a partitioned or inherited table, the root partition or
+	 * appendrel RTE doesn't appear elsewhere in the plan and its RT index is
+	 * given explicitly in node->rootRelation.  Otherwise, the target relation
+	 * is the sole relation in the node->resultRelations list.
 	 *----------
 	 */
 	if (node->rootRelation > 0)
@@ -3942,6 +3963,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	}
 	else
 	{
+		Assert(list_length(node->resultRelations) == 1);
 		mtstate->rootResultRelInfo = mtstate->resultRelInfo;
 		ExecInitResultRelation(estate, mtstate->resultRelInfo,
 							   linitial_int(node->resultRelations));
@@ -4246,9 +4268,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	/*
 	 * If we have any secondary relations in an UPDATE or DELETE, they need to
-	 * be treated like non-locked relations in SELECT FOR UPDATE, ie, the
-	 * EvalPlanQual mechanism needs to be told about them.  Locate the
-	 * relevant ExecRowMarks.
+	 * be treated like non-locked relations in SELECT FOR UPDATE, i.e., the
+	 * EvalPlanQual mechanism needs to be told about them.  This also goes for
+	 * the source relations in a MERGE.  Locate the relevant ExecRowMarks.
 	 */
 	arowmarks = NIL;
 	foreach(l, node->rowMarks)
@@ -4407,17 +4429,6 @@ ExecEndModifyTable(ModifyTableState *node)
 		if (node->mt_root_tuple_slot)
 			ExecDropSingleTupleTableSlot(node->mt_root_tuple_slot);
 	}
-
-	/*
-	 * Free the exprcontext
-	 */
-	ExecFreeExprContext(&node->ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	if (node->ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
 	/*
 	 * Terminate EPQ execution if active

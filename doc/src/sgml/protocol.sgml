@@ -2222,8 +2222,10 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
       </para>
 
       <para>
-       WAL data is sent as a series of CopyData messages.  (This allows
-       other information to be intermixed; in particular the server can send
+       WAL data is sent as a series of CopyData messages;
+       see <xref linkend="protocol-message-types"/> and <xref
+       linkend="protocol-message-formats"/> for details.
+       (This allows other information to be intermixed; in particular the server can send
        an ErrorResponse message if it encounters a failure after beginning
        to stream.)  The payload of each CopyData message from server to the
        client contains a message of one of the following formats:
@@ -2437,11 +2439,12 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
            <term>Int32</term>
            <listitem>
             <para>
-             The standby's current global xmin, excluding the catalog_xmin from any
-             replication slots. If both this value and the following
-             catalog_xmin are 0 this is treated as a notification that hot standby
-             feedback will no longer be sent on this connection. Later non-zero
-             messages may reinitiate the feedback mechanism.
+             The standby's current global <literal>xmin</literal>, excluding the
+             <literal>catalog_xmin</literal> from any replication slots. If both
+             this value and the following <literal>catalog_xmin</literal>
+             are 0, this is treated as a notification that hot standby feedback
+             will no longer be sent on this connection. Later non-zero messages
+             may reinitiate the feedback mechanism.
             </para>
            </listitem>
           </varlistentry>
@@ -2450,7 +2453,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
            <term>Int32</term>
            <listitem>
             <para>
-             The epoch of the global xmin xid on the standby.
+             The epoch of the global <literal>xmin</literal> xid on the standby.
             </para>
            </listitem>
           </varlistentry>
@@ -2459,8 +2462,9 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
            <term>Int32</term>
            <listitem>
             <para>
-             The lowest catalog_xmin of any replication slots on the standby. Set to 0
-             if no catalog_xmin exists on the standby or if hot standby feedback is being
+             The lowest <literal>catalog_xmin</literal> of any replication
+             slots on the standby. Set to 0 if no <literal>catalog_xmin</literal>
+             exists on the standby or if hot standby feedback is being
              disabled.
             </para>
            </listitem>
@@ -2470,7 +2474,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
            <term>Int32</term>
            <listitem>
             <para>
-             The epoch of the catalog_xmin xid on the standby.
+             The epoch of the <literal>catalog_xmin</literal> xid on the standby.
             </para>
            </listitem>
           </varlistentry>
@@ -2541,7 +2545,10 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
         <term><replaceable class="parameter">option_name</replaceable></term>
         <listitem>
          <para>
-          The name of an option passed to the slot's logical decoding plugin.
+          The name of an option passed to the slot's logical decoding output
+          plugin.  See <xref linkend="protocol-logical-replication"/> for
+          options that are accepted by the standard (<literal>pgoutput</literal>)
+          plugin.
          </para>
         </listitem>
        </varlistentry>
@@ -2592,6 +2599,19 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
         </listitem>
        </varlistentry>
       </variablelist>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry id="protocol-replication-upload-manifest">
+     <term>
+      <literal>UPLOAD_MANIFEST</literal>
+      <indexterm><primary>UPLOAD_MANIFEST</primary></indexterm>
+     </term>
+     <listitem>
+      <para>
+       Uploads a backup manifest in preparation for taking an incremental
+       backup.
+      </para>
      </listitem>
     </varlistentry>
 
@@ -2831,6 +2851,17 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
            <literal>SHA224</literal>, <literal>SHA256</literal>,
            <literal>SHA384</literal>, and <literal>SHA512</literal>.
            The default is <literal>CRC32C</literal>.
+          </para>
+         </listitem>
+        </varlistentry>
+
+        <varlistentry>
+         <term><literal>INCREMENTAL</literal></term>
+         <listitem>
+          <para>
+           Requests an incremental backup. The
+           <literal>UPLOAD_MANIFEST</literal> command must be executed
+           before running a base backup with this option.
           </para>
          </listitem>
         </varlistentry>
@@ -3078,12 +3109,18 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
   the physical streaming replication protocol.
  </para>
 
+ <para>
+  <productname>PostgreSQL</productname> logical decoding supports output
+  plugins.  <literal>pgoutput</literal> is the standard one used for
+  the built-in logical replication.
+ </para>
+
  <sect2 id="protocol-logical-replication-params">
   <title>Logical Streaming Replication Parameters</title>
 
   <para>
-   The logical replication <literal>START_REPLICATION</literal> command
-   accepts following parameters:
+   Using the <literal>START_REPLICATION</literal> command,
+   <literal>pgoutput</literal> accepts the following options:
 
    <variablelist>
     <varlistentry>
@@ -3093,7 +3130,8 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
      <listitem>
       <para>
        Protocol version. Currently versions <literal>1</literal>, <literal>2</literal>,
-       <literal>3</literal>, and <literal>4</literal> are supported.
+       <literal>3</literal>, and <literal>4</literal> are supported.  A valid
+       version is required.
       </para>
       <para>
        Version <literal>2</literal> is supported only for server version 14
@@ -3120,6 +3158,73 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
        Comma separated list of publication names for which to subscribe
        (receive changes). The individual publication names are treated
        as standard objects names and can be quoted the same as needed.
+       At least one publication name is required.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      binary
+     </term>
+     <listitem>
+      <para>
+       Boolean option to use binary transfer mode.  Binary mode is faster
+       than the text mode but slightly less robust.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      messages
+     </term>
+     <listitem>
+      <para>
+       Boolean option to enable sending the messages that are written
+       by <function>pg_logical_emit_message</function>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      streaming
+     </term>
+     <listitem>
+      <para>
+       Boolean option to enable streaming of in-progress transactions.
+       It accepts an additional value "parallel" to enable sending extra
+       information with some messages to be used for parallelisation.
+       Minimum protocol version 2 is required to turn it on.  Minimum protocol
+       version 4 is required for the "parallel" option.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      two_phase
+     </term>
+     <listitem>
+      <para>
+       Boolean option to enable two-phase transactions.   Minimum protocol
+       version 3 is required to turn it on.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      origin
+     </term>
+     <listitem>
+      <para>
+       Option to send changes by their origin.  Possible values are "none"
+       to only send the changes that have no origin associated, or "any"
+       to send the changes regardless of their origin.  This can be used
+       to avoid loops (infinite replication of the same data) among
+       replication nodes.
       </para>
      </listitem>
     </varlistentry>

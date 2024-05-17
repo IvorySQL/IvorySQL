@@ -1358,6 +1358,22 @@ SELECT * FROM pg_largeobject LIMIT 0;
 SET SESSION AUTHORIZATION regress_priv_user1;
 SELECT * FROM pg_largeobject LIMIT 0;			-- to be denied
 
+-- pg_signal_backend can't signal superusers
+RESET SESSION AUTHORIZATION;
+BEGIN;
+CREATE OR REPLACE FUNCTION terminate_nothrow(pid int) RETURNS bool
+	LANGUAGE plpgsql SECURITY DEFINER SET client_min_messages = error AS $$
+BEGIN
+	RETURN pg_terminate_backend($1);
+EXCEPTION WHEN OTHERS THEN
+	RETURN false;
+END$$;
+/
+ALTER FUNCTION terminate_nothrow OWNER TO pg_signal_backend;
+SELECT backend_type FROM pg_stat_activity
+WHERE CASE WHEN COALESCE(usesysid, 10) = 10 THEN terminate_nothrow(pid) END;
+ROLLBACK;
+
 -- test pg_database_owner
 RESET SESSION AUTHORIZATION;
 GRANT pg_database_owner TO regress_priv_user1;
@@ -1793,21 +1809,6 @@ COMMIT;
 \c
 REVOKE TRUNCATE ON lock_table FROM regress_locktable_user;
 
--- LOCK TABLE and MAINTAIN permission
-GRANT MAINTAIN ON lock_table TO regress_locktable_user;
-SET SESSION AUTHORIZATION regress_locktable_user;
-BEGIN;
-LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
-ROLLBACK;
-BEGIN;
-LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
-COMMIT;
-BEGIN;
-LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
-COMMIT;
-\c
-REVOKE MAINTAIN ON lock_table FROM regress_locktable_user;
-
 -- clean up
 DROP TABLE lock_table;
 DROP USER regress_locktable_user;
@@ -1891,56 +1892,3 @@ DROP SCHEMA regress_roleoption;
 DROP ROLE regress_roleoption_protagonist;
 DROP ROLE regress_roleoption_donor;
 DROP ROLE regress_roleoption_recipient;
-
--- MAINTAIN
-CREATE ROLE regress_no_maintain;
-CREATE ROLE regress_maintain;
-CREATE ROLE regress_maintain_all IN ROLE pg_maintain;
-
-CREATE TABLE maintain_test (a INT);
-CREATE INDEX ON maintain_test (a);
-GRANT MAINTAIN ON maintain_test TO regress_maintain;
-CREATE MATERIALIZED VIEW refresh_test AS SELECT 1;
-GRANT MAINTAIN ON refresh_test TO regress_maintain;
-CREATE SCHEMA reindex_test;
-
--- negative tests; should fail
-SET ROLE regress_no_maintain;
-VACUUM maintain_test;
-ANALYZE maintain_test;
-VACUUM (ANALYZE) maintain_test;
-CLUSTER maintain_test USING maintain_test_a_idx;
-REFRESH MATERIALIZED VIEW refresh_test;
-REINDEX TABLE maintain_test;
-REINDEX INDEX maintain_test_a_idx;
-REINDEX SCHEMA reindex_test;
-RESET ROLE;
-
-SET ROLE regress_maintain;
-VACUUM maintain_test;
-ANALYZE maintain_test;
-VACUUM (ANALYZE) maintain_test;
-CLUSTER maintain_test USING maintain_test_a_idx;
-REFRESH MATERIALIZED VIEW refresh_test;
-REINDEX TABLE maintain_test;
-REINDEX INDEX maintain_test_a_idx;
-REINDEX SCHEMA reindex_test;
-RESET ROLE;
-
-SET ROLE regress_maintain_all;
-VACUUM maintain_test;
-ANALYZE maintain_test;
-VACUUM (ANALYZE) maintain_test;
-CLUSTER maintain_test USING maintain_test_a_idx;
-REFRESH MATERIALIZED VIEW refresh_test;
-REINDEX TABLE maintain_test;
-REINDEX INDEX maintain_test_a_idx;
-REINDEX SCHEMA reindex_test;
-RESET ROLE;
-
-DROP TABLE maintain_test;
-DROP MATERIALIZED VIEW refresh_test;
-DROP SCHEMA reindex_test;
-DROP ROLE regress_no_maintain;
-DROP ROLE regress_maintain;
-DROP ROLE regress_maintain_all;

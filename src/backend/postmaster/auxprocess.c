@@ -21,6 +21,7 @@
 #include "postmaster/auxprocess.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/startup.h"
+#include "postmaster/walsummarizer.h"
 #include "postmaster/walwriter.h"
 #include "replication/walreceiver.h"
 #include "storage/bufmgr.h"
@@ -80,6 +81,9 @@ AuxiliaryProcessMain(AuxProcType auxtype)
 		case WalReceiverProcess:
 			MyBackendType = B_WAL_RECEIVER;
 			break;
+		case WalSummarizerProcess:
+			MyBackendType = B_WAL_SUMMARIZER;
+			break;
 		default:
 			elog(PANIC, "unrecognized process type: %d", (int) MyAuxProcType);
 			MyBackendType = B_INVALID;
@@ -97,12 +101,9 @@ AuxiliaryProcessMain(AuxProcType auxtype)
 	 */
 
 	/*
-	 * Create a PGPROC so we can use LWLocks.  In the EXEC_BACKEND case, this
-	 * was already done by SubPostmasterMain().
+	 * Create a PGPROC so we can use LWLocks and access shared memory.
 	 */
-#ifndef EXEC_BACKEND
 	InitAuxiliaryProcess();
-#endif
 
 	BaseInit();
 
@@ -159,6 +160,10 @@ AuxiliaryProcessMain(AuxProcType auxtype)
 
 		case WalReceiverProcess:
 			WalReceiverMain();
+			proc_exit(1);
+
+		case WalSummarizerProcess:
+			WalSummarizerMain();
 			proc_exit(1);
 
 		default:

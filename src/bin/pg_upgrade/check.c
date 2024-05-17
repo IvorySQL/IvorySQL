@@ -26,10 +26,15 @@ static void check_for_tables_with_oids(ClusterInfo *cluster);
 static void check_for_composite_data_type_usage(ClusterInfo *cluster);
 static void check_for_reg_data_type_usage(ClusterInfo *cluster);
 static void check_for_aclitem_data_type_usage(ClusterInfo *cluster);
+static void check_for_removed_data_type_usage(ClusterInfo *cluster,
+											  const char *version,
+											  const char *datatype);
 static void check_for_jsonb_9_4_usage(ClusterInfo *cluster);
 static void check_for_pg_role_prefix(ClusterInfo *cluster);
-static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
+static void check_for_new_tablespace_dir(void);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
+static void check_new_cluster_logical_replication_slots(void);
+static void check_old_cluster_for_valid_slots(bool live_check);
 
 
 /*
@@ -86,8 +91,11 @@ check_and_dump_old_cluster(bool live_check)
 	if (!live_check)
 		start_postmaster(&old_cluster, true);
 
-	/* Extract a list of databases and tables from the old cluster */
-	get_db_and_rel_infos(&old_cluster);
+	/*
+	 * Extract a list of databases, tables, and logical replication slots from
+	 * the old cluster.
+	 */
+	get_db_rel_and_slot_infos(&old_cluster, live_check);
 
 	init_tablespaces();
 
@@ -105,11 +113,28 @@ check_and_dump_old_cluster(bool live_check)
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
 
 	/*
-	 * PG 16 increased the size of the 'aclitem' type, which breaks the on-disk
-	 * format for existing data.
+	 * Logical replication slots can be migrated since PG17. See comments atop
+	 * get_old_cluster_logical_slot_infos().
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) >= 1700)
+		check_old_cluster_for_valid_slots(live_check);
+
+	/*
+	 * PG 16 increased the size of the 'aclitem' type, which breaks the
+	 * on-disk format for existing data.
 	 */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1500)
 		check_for_aclitem_data_type_usage(&old_cluster);
+
+	/*
+	 * PG 12 removed types abstime, reltime, tinterval.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
+	{
+		check_for_removed_data_type_usage(&old_cluster, "12", "abstime");
+		check_for_removed_data_type_usage(&old_cluster, "12", "reltime");
+		check_for_removed_data_type_usage(&old_cluster, "12", "tinterval");
+	}
 
 	/*
 	 * PG 14 changed the function signature of encoding conversion functions.
@@ -187,7 +212,7 @@ check_and_dump_old_cluster(bool live_check)
 void
 check_new_cluster(void)
 {
-	get_db_and_rel_infos(&new_cluster);
+	get_db_rel_and_slot_infos(&new_cluster, false);
 
 	check_new_cluster_is_empty();
 
@@ -209,7 +234,9 @@ check_new_cluster(void)
 
 	check_for_prepared_transactions(&new_cluster);
 
-	check_for_new_tablespace_dir(&new_cluster);
+	check_for_new_tablespace_dir();
+
+	check_new_cluster_logical_replication_slots();
 }
 
 
@@ -377,7 +404,7 @@ check_new_cluster_is_empty(void)
  * during schema restore.
  */
 static void
-check_for_new_tablespace_dir(ClusterInfo *new_cluster)
+check_for_new_tablespace_dir(void)
 {
 	int			tblnum;
 	char		new_tablespace_dir[MAXPGPATH];
@@ -390,7 +417,7 @@ check_for_new_tablespace_dir(ClusterInfo *new_cluster)
 
 		snprintf(new_tablespace_dir, MAXPGPATH, "%s%s",
 				 os_info.old_tablespaces[tblnum],
-				 new_cluster->tablespace_suffix);
+				 new_cluster.tablespace_suffix);
 
 		if (stat(new_tablespace_dir, &statbuf) == 0 || errno != ENOENT)
 			pg_fatal("new cluster tablespace directory already exists: \"%s\"",
@@ -1133,7 +1160,7 @@ check_for_composite_data_type_usage(ClusterInfo *cluster)
 	if (found)
 	{
 		pg_log(PG_REPORT, "fatal");
-		pg_fatal("Your installation contains system-defined composite type(s) in user tables.\n"
+		pg_fatal("Your installation contains system-defined composite types in user tables.\n"
 				 "These type OIDs are not stable across PostgreSQL versions,\n"
 				 "so this cluster cannot currently be upgraded.  You can\n"
 				 "drop the problem columns and restart the upgrade.\n"
@@ -1215,7 +1242,8 @@ check_for_aclitem_data_type_usage(ClusterInfo *cluster)
 {
 	char		output_path[MAXPGPATH];
 
-	prep_status("Checking for incompatible \"aclitem\" data type in user tables");
+	prep_status("Checking for incompatible \"%s\" data type in user tables",
+				"aclitem");
 
 	snprintf(output_path, sizeof(output_path), "tables_using_aclitem.txt");
 
@@ -1232,6 +1260,41 @@ check_for_aclitem_data_type_usage(ClusterInfo *cluster)
 	else
 		check_ok();
 }
+
+/*
+ * check_for_removed_data_type_usage
+ *
+ *	Check for in-core data types that have been removed.  Callers know
+ *	the exact list.
+ */
+static void
+check_for_removed_data_type_usage(ClusterInfo *cluster, const char *version,
+								  const char *datatype)
+{
+	char		output_path[MAXPGPATH];
+	char		typename[NAMEDATALEN];
+
+	prep_status("Checking for removed \"%s\" data type in user tables",
+				datatype);
+
+	snprintf(output_path, sizeof(output_path), "tables_using_%s.txt",
+			 datatype);
+	snprintf(typename, sizeof(typename), "pg_catalog.%s", datatype);
+
+	if (check_for_data_type_usage(cluster, typename, output_path))
+	{
+		pg_log(PG_REPORT, "fatal");
+		pg_fatal("Your installation contains the \"%s\" data type in user tables.\n"
+				 "The \"%s\" type has been removed in PostgreSQL version %s,\n"
+				 "so this cluster cannot currently be upgraded.  You can drop the\n"
+				 "problem columns, or change them to another data type, and restart\n"
+				 "the upgrade.  A list of the problem columns is in the file:\n"
+				 "    %s", datatype, datatype, version, output_path);
+	}
+	else
+		check_ok();
+}
+
 
 /*
  * check_for_jsonb_9_4_usage()
@@ -1401,4 +1464,152 @@ check_for_user_defined_encoding_conversions(ClusterInfo *cluster)
 	}
 	else
 		check_ok();
+}
+
+/*
+ * check_new_cluster_logical_replication_slots()
+ *
+ * Verify that there are no logical replication slots on the new cluster and
+ * that the parameter settings necessary for creating slots are sufficient.
+ */
+static void
+check_new_cluster_logical_replication_slots(void)
+{
+	PGresult   *res;
+	PGconn	   *conn;
+	int			nslots_on_old;
+	int			nslots_on_new;
+	int			max_replication_slots;
+	char	   *wal_level;
+
+	/* Logical slots can be migrated since PG17. */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1600)
+		return;
+
+	nslots_on_old = count_old_cluster_logical_slots();
+
+	/* Quick return if there are no logical slots to be migrated. */
+	if (nslots_on_old == 0)
+		return;
+
+	conn = connectToServer(&new_cluster, "template1");
+
+	prep_status("Checking for new cluster logical replication slots");
+
+	res = executeQueryOrDie(conn, "SELECT count(*) "
+							"FROM pg_catalog.pg_replication_slots "
+							"WHERE slot_type = 'logical' AND "
+							"temporary IS FALSE;");
+
+	if (PQntuples(res) != 1)
+		pg_fatal("could not count the number of logical replication slots");
+
+	nslots_on_new = atoi(PQgetvalue(res, 0, 0));
+
+	if (nslots_on_new)
+		pg_fatal("Expected 0 logical replication slots but found %d.",
+				 nslots_on_new);
+
+	PQclear(res);
+
+	res = executeQueryOrDie(conn, "SELECT setting FROM pg_settings "
+							"WHERE name IN ('wal_level', 'max_replication_slots') "
+							"ORDER BY name DESC;");
+
+	if (PQntuples(res) != 2)
+		pg_fatal("could not determine parameter settings on new cluster");
+
+	wal_level = PQgetvalue(res, 0, 0);
+
+	if (strcmp(wal_level, "logical") != 0)
+		pg_fatal("wal_level must be \"logical\", but is set to \"%s\"",
+				 wal_level);
+
+	max_replication_slots = atoi(PQgetvalue(res, 1, 0));
+
+	if (nslots_on_old > max_replication_slots)
+		pg_fatal("max_replication_slots (%d) must be greater than or equal to the number of "
+				 "logical replication slots (%d) on the old cluster",
+				 max_replication_slots, nslots_on_old);
+
+	PQclear(res);
+	PQfinish(conn);
+
+	check_ok();
+}
+
+/*
+ * check_old_cluster_for_valid_slots()
+ *
+ * Verify that all the logical slots are valid and have consumed all the WAL
+ * before shutdown.
+ */
+static void
+check_old_cluster_for_valid_slots(bool live_check)
+{
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+
+	prep_status("Checking for valid logical replication slots");
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "invalid_logical_slots.txt");
+
+	for (int dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		LogicalSlotInfoArr *slot_arr = &old_cluster.dbarr.dbs[dbnum].slot_arr;
+
+		for (int slotnum = 0; slotnum < slot_arr->nslots; slotnum++)
+		{
+			LogicalSlotInfo *slot = &slot_arr->slots[slotnum];
+
+			/* Is the slot usable? */
+			if (slot->invalid)
+			{
+				if (script == NULL &&
+					(script = fopen_priv(output_path, "w")) == NULL)
+					pg_fatal("could not open file \"%s\": %s",
+							 output_path, strerror(errno));
+
+				fprintf(script, "The slot \"%s\" is invalid\n",
+						slot->slotname);
+
+				continue;
+			}
+
+			/*
+			 * Do additional check to ensure that all logical replication
+			 * slots have consumed all the WAL before shutdown.
+			 *
+			 * Note: This can be satisfied only when the old cluster has been
+			 * shut down, so we skip this for live checks.
+			 */
+			if (!live_check && !slot->caught_up)
+			{
+				if (script == NULL &&
+					(script = fopen_priv(output_path, "w")) == NULL)
+					pg_fatal("could not open file \"%s\": %s",
+							 output_path, strerror(errno));
+
+				fprintf(script,
+						"The slot \"%s\" has not consumed the WAL yet\n",
+						slot->slotname);
+			}
+		}
+	}
+
+	if (script)
+	{
+		fclose(script);
+
+		pg_log(PG_REPORT, "fatal");
+		pg_fatal("Your installation contains logical replication slots that can't be upgraded.\n"
+				 "You can remove invalid slots and/or consume the pending WAL for other slots,\n"
+				 "and then restart the upgrade.\n"
+				 "A list of the problematic slots is in the file:\n"
+				 "    %s", output_path);
+	}
+
+	check_ok();
 }

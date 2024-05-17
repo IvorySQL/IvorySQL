@@ -44,12 +44,10 @@
 
 #include <sys/stat.h>
 
-#ifdef ENABLE_THREAD_SAFETY
 #ifdef WIN32
 #include "pthread-win32.h"
 #else
 #include <pthread.h>
-#endif
 #endif
 
 /*
@@ -91,7 +89,6 @@ static bool pq_init_crypto_lib = true;
 
 static bool ssl_lib_initialized = false;
 
-#ifdef ENABLE_THREAD_SAFETY
 static long crypto_open_connections = 0;
 
 #ifndef WIN32
@@ -100,7 +97,6 @@ static pthread_mutex_t ssl_config_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t ssl_config_mutex = NULL;
 static long win32_ssl_create_mutex = 0;
 #endif
-#endif							/* ENABLE_THREAD_SAFETY */
 
 static PQsslKeyPassHook_OpenSSL_type PQsslKeyPassHook = NULL;
 static int	ssl_protocol_version_to_openssl(const char *protocol);
@@ -112,15 +108,12 @@ static int	ssl_protocol_version_to_openssl(const char *protocol);
 void
 pgtls_init_library(bool do_ssl, int do_crypto)
 {
-#ifdef ENABLE_THREAD_SAFETY
-
 	/*
 	 * Disallow changing the flags while we have open connections, else we'd
 	 * get completely confused.
 	 */
 	if (crypto_open_connections != 0)
 		return;
-#endif
 
 	pq_init_ssl_lib = do_ssl;
 	pq_init_crypto_lib = do_crypto;
@@ -207,7 +200,7 @@ rloop:
 			 */
 			goto rloop;
 		case SSL_ERROR_SYSCALL:
-			if (n < 0)
+			if (n < 0 && SOCK_ERRNO != 0)
 			{
 				result_errno = SOCK_ERRNO;
 				if (result_errno == EPIPE ||
@@ -308,7 +301,13 @@ pgtls_write(PGconn *conn, const void *ptr, size_t len)
 			n = 0;
 			break;
 		case SSL_ERROR_SYSCALL:
-			if (n < 0)
+
+			/*
+			 * If errno is still zero then assume it's a read EOF situation,
+			 * and report EOF.  (This seems possible because SSL_write can
+			 * also do reads.)
+			 */
+			if (n < 0 && SOCK_ERRNO != 0)
 			{
 				result_errno = SOCK_ERRNO;
 				if (result_errno == EPIPE || result_errno == ECONNRESET)
@@ -364,7 +363,6 @@ pgtls_write(PGconn *conn, const void *ptr, size_t len)
 	return n;
 }
 
-#if defined(HAVE_X509_GET_SIGNATURE_NID) || defined(HAVE_X509_GET_SIGNATURE_INFO)
 char *
 pgtls_get_peer_certificate_hash(PGconn *conn, size_t *len)
 {
@@ -439,7 +437,6 @@ pgtls_get_peer_certificate_hash(PGconn *conn, size_t *len)
 
 	return cert_hash;
 }
-#endif							/* HAVE_X509_GET_SIGNATURE_NID */
 
 /* ------------------------------------------------------------ */
 /*						OpenSSL specific code					*/
@@ -720,7 +717,7 @@ pgtls_verify_peer_name_matches_certificate_guts(PGconn *conn,
 	return rc;
 }
 
-#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE_CRYPTO_LOCK)
+#if defined(HAVE_CRYPTO_LOCK)
 /*
  *	Callback functions for OpenSSL internal locking.  (OpenSSL 1.1.0
  *	does its own locking, and doesn't need these anymore.  The
@@ -761,7 +758,7 @@ pq_lockingcallback(int mode, int n, const char *file, int line)
 			Assert(false);
 	}
 }
-#endif							/* ENABLE_THREAD_SAFETY && HAVE_CRYPTO_LOCK */
+#endif							/* HAVE_CRYPTO_LOCK */
 
 /*
  * Initialize SSL library.
@@ -776,7 +773,6 @@ pq_lockingcallback(int mode, int n, const char *file, int line)
 int
 pgtls_init(PGconn *conn, bool do_ssl, bool do_crypto)
 {
-#ifdef ENABLE_THREAD_SAFETY
 #ifdef WIN32
 	/* Also see similar code in fe-connect.c, default_threadlock() */
 	if (ssl_config_mutex == NULL)
@@ -842,7 +838,6 @@ pgtls_init(PGconn *conn, bool do_ssl, bool do_crypto)
 		}
 	}
 #endif							/* HAVE_CRYPTO_LOCK */
-#endif							/* ENABLE_THREAD_SAFETY */
 
 	if (!ssl_lib_initialized && do_ssl)
 	{
@@ -859,9 +854,7 @@ pgtls_init(PGconn *conn, bool do_ssl, bool do_crypto)
 		ssl_lib_initialized = true;
 	}
 
-#ifdef ENABLE_THREAD_SAFETY
 	pthread_mutex_unlock(&ssl_config_mutex);
-#endif
 	return 0;
 }
 
@@ -880,7 +873,7 @@ pgtls_init(PGconn *conn, bool do_ssl, bool do_crypto)
 static void
 destroy_ssl_system(void)
 {
-#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE_CRYPTO_LOCK)
+#if defined(HAVE_CRYPTO_LOCK)
 	/* Mutex is created in pgtls_init() */
 	if (pthread_mutex_lock(&ssl_config_mutex))
 		return;
@@ -1523,11 +1516,12 @@ open_client_SSL(PGconn *conn)
 					 * was using the system CA pool. For other errors, log them
 					 * using the normal SYSCALL logging.
 					 */
-					if (!save_errno && vcode == X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY &&
+					if (save_errno == 0 &&
+						vcode == X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY &&
 						strcmp(conn->sslrootcert, "system") == 0)
 						libpq_append_conn_error(conn, "SSL error: certificate verify failed: %s",
 												X509_verify_cert_error_string(vcode));
-					else if (r == -1)
+					else if (r == -1 && save_errno != 0)
 						libpq_append_conn_error(conn, "SSL SYSCALL error: %s",
 										  SOCK_STRERROR(save_errno, sebuf, sizeof(sebuf)));
 					else
@@ -1826,15 +1820,9 @@ PQsslAttribute(PGconn *conn, const char *attribute_name)
  *
  * These functions are closely modelled on the standard socket BIO in OpenSSL;
  * see sock_read() and sock_write() in OpenSSL's crypto/bio/bss_sock.c.
- * XXX OpenSSL 1.0.1e considers many more errcodes than just EINTR as reasons
- * to retry; do we need to adopt their logic for that?
  */
 
-#ifndef HAVE_BIO_GET_DATA
-#define BIO_get_data(bio) (bio->ptr)
-#define BIO_set_data(bio, data) (bio->ptr = data)
-#endif
-
+/* protected by ssl_config_mutex */
 static BIO_METHOD *my_bio_methods;
 
 static int
@@ -1842,7 +1830,7 @@ my_sock_read(BIO *h, char *buf, int size)
 {
 	int			res;
 
-	res = pqsecure_raw_read((PGconn *) BIO_get_data(h), buf, size);
+	res = pqsecure_raw_read((PGconn *) BIO_get_app_data(h), buf, size);
 	BIO_clear_retry_flags(h);
 	if (res < 0)
 	{
@@ -1872,7 +1860,7 @@ my_sock_write(BIO *h, const char *buf, int size)
 {
 	int			res;
 
-	res = pqsecure_raw_write((PGconn *) BIO_get_data(h), buf, size);
+	res = pqsecure_raw_write((PGconn *) BIO_get_app_data(h), buf, size);
 	BIO_clear_retry_flags(h);
 	if (res < 0)
 	{
@@ -1900,6 +1888,13 @@ my_sock_write(BIO *h, const char *buf, int size)
 static BIO_METHOD *
 my_BIO_s_socket(void)
 {
+	BIO_METHOD *res;
+
+	if (pthread_mutex_lock(&ssl_config_mutex))
+		return NULL;
+
+	res = my_bio_methods;
+
 	if (!my_bio_methods)
 	{
 		BIO_METHOD *biom = (BIO_METHOD *) BIO_s_socket();
@@ -1908,39 +1903,51 @@ my_BIO_s_socket(void)
 
 		my_bio_index = BIO_get_new_index();
 		if (my_bio_index == -1)
-			return NULL;
+			goto err;
 		my_bio_index |= (BIO_TYPE_DESCRIPTOR | BIO_TYPE_SOURCE_SINK);
-		my_bio_methods = BIO_meth_new(my_bio_index, "libpq socket");
-		if (!my_bio_methods)
-			return NULL;
+		res = BIO_meth_new(my_bio_index, "libpq socket");
+		if (!res)
+			goto err;
 
 		/*
 		 * As of this writing, these functions never fail. But check anyway,
 		 * like OpenSSL's own examples do.
 		 */
-		if (!BIO_meth_set_write(my_bio_methods, my_sock_write) ||
-			!BIO_meth_set_read(my_bio_methods, my_sock_read) ||
-			!BIO_meth_set_gets(my_bio_methods, BIO_meth_get_gets(biom)) ||
-			!BIO_meth_set_puts(my_bio_methods, BIO_meth_get_puts(biom)) ||
-			!BIO_meth_set_ctrl(my_bio_methods, BIO_meth_get_ctrl(biom)) ||
-			!BIO_meth_set_create(my_bio_methods, BIO_meth_get_create(biom)) ||
-			!BIO_meth_set_destroy(my_bio_methods, BIO_meth_get_destroy(biom)) ||
-			!BIO_meth_set_callback_ctrl(my_bio_methods, BIO_meth_get_callback_ctrl(biom)))
+		if (!BIO_meth_set_write(res, my_sock_write) ||
+			!BIO_meth_set_read(res, my_sock_read) ||
+			!BIO_meth_set_gets(res, BIO_meth_get_gets(biom)) ||
+			!BIO_meth_set_puts(res, BIO_meth_get_puts(biom)) ||
+			!BIO_meth_set_ctrl(res, BIO_meth_get_ctrl(biom)) ||
+			!BIO_meth_set_create(res, BIO_meth_get_create(biom)) ||
+			!BIO_meth_set_destroy(res, BIO_meth_get_destroy(biom)) ||
+			!BIO_meth_set_callback_ctrl(res, BIO_meth_get_callback_ctrl(biom)))
 		{
-			BIO_meth_free(my_bio_methods);
-			my_bio_methods = NULL;
-			return NULL;
+			goto err;
 		}
 #else
-		my_bio_methods = malloc(sizeof(BIO_METHOD));
-		if (!my_bio_methods)
-			return NULL;
-		memcpy(my_bio_methods, biom, sizeof(BIO_METHOD));
-		my_bio_methods->bread = my_sock_read;
-		my_bio_methods->bwrite = my_sock_write;
+		res = malloc(sizeof(BIO_METHOD));
+		if (!res)
+			goto err;
+		memcpy(res, biom, sizeof(BIO_METHOD));
+		res->bread = my_sock_read;
+		res->bwrite = my_sock_write;
 #endif
 	}
-	return my_bio_methods;
+
+	my_bio_methods = res;
+	pthread_mutex_unlock(&ssl_config_mutex);
+	return res;
+
+err:
+#ifdef HAVE_BIO_METH_NEW
+	if (res)
+		BIO_meth_free(res);
+#else
+	if (res)
+		free(res);
+#endif
+	pthread_mutex_unlock(&ssl_config_mutex);
+	return NULL;
 }
 
 /* This should exactly match OpenSSL's SSL_set_fd except for using my BIO */
@@ -1963,7 +1970,7 @@ my_SSL_set_fd(PGconn *conn, int fd)
 		SSLerr(SSL_F_SSL_SET_FD, ERR_R_BUF_LIB);
 		goto err;
 	}
-	BIO_set_data(bio, conn);
+	BIO_set_app_data(bio, conn);
 
 	SSL_set_bio(conn->ssl, bio, bio);
 	BIO_set_fd(bio, fd, BIO_NOCLOSE);

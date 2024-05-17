@@ -253,8 +253,6 @@ tts_virtual_copyslot(TupleTableSlot *dstslot, TupleTableSlot *srcslot)
 {
 	TupleDesc	srcdesc = srcslot->tts_tupleDescriptor;
 
-	Assert(srcdesc->natts <= dstslot->tts_tupleDescriptor->natts);
-
 	tts_virtual_clear(dstslot);
 
 	slot_getallattrs(srcslot);
@@ -2273,7 +2271,7 @@ begin_tup_output_tupdesc(DestReceiver *dest,
  * write a single tuple
  */
 void
-do_tup_output(TupOutputState *tstate, Datum *values, bool *isnull)
+do_tup_output(TupOutputState *tstate, const Datum *values, const bool *isnull)
 {
 	TupleTableSlot *slot = tstate->slot;
 	int			natts = slot->tts_tupleDescriptor->natts;

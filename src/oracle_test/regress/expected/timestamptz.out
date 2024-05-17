@@ -1221,6 +1221,14 @@ select * from generate_series('2020-01-01 00:00'::timestamptz,
                               '2020-01-02 03:00'::timestamptz,
                               '0 hour'::interval);
 ERROR:  missing or invalid datetime field.
+select generate_series(timestamptz '1995-08-06 12:12:12', timestamptz '1996-08-06 12:12:12', interval 'infinity');
+ERROR:  syntax error at or near ")"
+LINE 1: ...2', timestamptz '1996-08-06 12:12:12', interval 'infinity');
+                                                                     ^
+select generate_series(timestamptz '1995-08-06 12:12:12', timestamptz '1996-08-06 12:12:12', interval '-infinity');
+ERROR:  syntax error at or near ")"
+LINE 1: ...', timestamptz '1996-08-06 12:12:12', interval '-infinity');
+                                                                     ^
 -- Interval crossing time shift for Europe/Warsaw timezone (with DST)
 SET TimeZone to 'UTC';
 SELECT date_add('2022-10-30 00:00:00+01'::timestamptz,
@@ -1793,6 +1801,48 @@ LINE 1: SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE '...
                ^
 DETAIL:  Value must be an integer.
 --
+-- Test LOCAL time zone
+--
+BEGIN;
+SET LOCAL TIME ZONE 'Europe/Paris';
+VALUES (CAST('1978-07-07 19:38 America/New_York' AS TIMESTAMP WITH TIME ZONE) AT LOCAL);
+ERROR:  syntax error at or near "LOCAL"
+LINE 1: ...38 America/New_York' AS TIMESTAMP WITH TIME ZONE) AT LOCAL);
+                                                                ^
+VALUES (TIMESTAMP '1978-07-07 19:38' AT LOCAL);
+ERROR:  syntax error at or near "LOCAL"
+LINE 1: VALUES (TIMESTAMP '1978-07-07 19:38' AT LOCAL);
+                                                ^
+SET LOCAL TIME ZONE 'Australia/Sydney';
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+VALUES (CAST('1978-07-07 19:38 America/New_York' AS TIMESTAMP WITH TIME ZONE) AT LOCAL);
+ERROR:  syntax error at or near "LOCAL"
+LINE 1: ...38 America/New_York' AS TIMESTAMP WITH TIME ZONE) AT LOCAL);
+                                                                ^
+VALUES (TIMESTAMP '1978-07-07 19:38' AT LOCAL);
+ERROR:  syntax error at or near "LOCAL"
+LINE 1: VALUES (TIMESTAMP '1978-07-07 19:38' AT LOCAL);
+                                                ^
+SET LOCAL TimeZone TO 'UTC';
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+CREATE VIEW timestamp_local_view AS
+  SELECT CAST('1978-07-07 19:38 America/New_York' AS TIMESTAMP WITH TIME ZONE) AT LOCAL AS ttz_at_local,
+         timezone(CAST('1978-07-07 19:38 America/New_York' AS TIMESTAMP WITH TIME ZONE)) AS ttz_func,
+         TIMESTAMP '1978-07-07 19:38' AT LOCAL AS t_at_local,
+         timezone(TIMESTAMP '1978-07-07 19:38') AS t_func;
+ERROR:  syntax error at or near "LOCAL"
+LINE 2: ...America/New_York' AS TIMESTAMP WITH TIME ZONE) AT LOCAL AS t...
+                                                             ^
+SELECT pg_get_viewdef('timestamp_local_view', true);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+\x
+TABLE timestamp_local_view;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+\x
+DROP VIEW timestamp_local_view;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+COMMIT;
+--
 -- Test that AT TIME ZONE isn't misoptimized when using an index (bug #14504)
 --
 create temp table tmptz (f1 timestamptz primary key);
@@ -1810,3 +1860,61 @@ select * from tmptz where f1 at time zone 'utc' = '2017-01-18 00:00';
 ----
 (0 rows)
 
+-- test arithmetic with infinite timestamps
+SELECT timestamptz 'infinity' - timestamptz 'infinity';
+ERROR:  interval out of range
+SELECT timestamptz 'infinity' - timestamptz '-infinity';
+ ?column? 
+----------
+ infinity
+(1 row)
+
+SELECT timestamptz '-infinity' - timestamptz 'infinity';
+ ?column?  
+-----------
+ -infinity
+(1 row)
+
+SELECT timestamptz '-infinity' - timestamptz '-infinity';
+ERROR:  interval out of range
+SELECT timestamptz 'infinity' - timestamptz '1995-08-06 12:12:12';
+ ?column? 
+----------
+ infinity
+(1 row)
+
+SELECT timestamptz '-infinity' - timestamptz '1995-08-06 12:12:12';
+ ?column?  
+-----------
+ -infinity
+(1 row)
+
+-- test age() with infinite timestamps
+SELECT age(timestamptz 'infinity');
+    age    
+-----------
+ -infinity
+(1 row)
+
+SELECT age(timestamptz '-infinity');
+   age    
+----------
+ infinity
+(1 row)
+
+SELECT age(timestamptz 'infinity', timestamptz 'infinity');
+ERROR:  interval out of range
+SELECT age(timestamptz 'infinity', timestamptz '-infinity');
+   age    
+----------
+ infinity
+(1 row)
+
+SELECT age(timestamptz '-infinity', timestamptz 'infinity');
+    age    
+-----------
+ -infinity
+(1 row)
+
+SELECT age(timestamptz '-infinity', timestamptz '-infinity');
+ERROR:  interval out of range

@@ -7,6 +7,11 @@ contrib_data_args = {
   'install_dir': contrib_data_dir,
 }
 
+contrib_doc_dir = dir_doc_extension
+contrib_doc_args = {
+  'install_dir': contrib_doc_dir,
+}
+
 subdir('adminpack')
 subdir('amcheck')
 subdir('auth_delay')
@@ -38,7 +43,6 @@ subdir('lo')
 subdir('ltree')
 subdir('ltree_plpython')
 subdir('oid2name')
-subdir('old_snapshot')
 subdir('ora_btree_gist')
 subdir('ora_btree_gin')
 subdir('pageinspect')

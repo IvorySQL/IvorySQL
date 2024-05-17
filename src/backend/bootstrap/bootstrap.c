@@ -297,16 +297,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 			}
 			break;
 			case 'X':
-				{
-					int			WalSegSz = strtoul(optarg, NULL, 0);
-
-					if (!IsValidWalSegSize(WalSegSz))
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("-X requires a power of two value between 1 MB and 1 GB")));
-					SetConfigOption("wal_segment_size", optarg, PGC_INTERNAL,
-									PGC_S_DYNAMIC_DEFAULT);
-				}
+				SetConfigOption("wal_segment_size", optarg, PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 				break;
 			default:
 				write_stderr("Try \"%s --help\" for more information.\n",
@@ -371,7 +362,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	if (pg_link_canary_is_frontend())
 		elog(ERROR, "backend is incorrectly linked to frontend functions");
 
-	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, false, false, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, 0, NULL);
 
 	/* Initialize stuff for bootstrap-file processing */
 	for (i = 0; i < MAXATTR; i++)
@@ -931,7 +922,7 @@ AllocateAttribute(void)
 void
 index_register(Oid heap,
 			   Oid ind,
-			   IndexInfo *indexInfo)
+			   const IndexInfo *indexInfo)
 {
 	IndexList  *newind;
 	MemoryContext oldcxt;

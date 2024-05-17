@@ -68,8 +68,6 @@ ora_psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 ora_psqlscanslash.c: FLEX_NO_BACKUP=yes
 ora_psqlscanslash.c: FLEX_FIX_WARNING=yes
 
-distprep: ora_psqlscanslash.c sql_help.h sql_help.c psqlscanslash.c
-
 install: all installdirs
 	$(INSTALL_PROGRAM) psql$(X) '$(DESTDIR)$(bindir)/psql$(X)'
 	$(INSTALL_DATA) $(srcdir)/psqlrc.sample '$(DESTDIR)$(datadir)/psqlrc.sample'
@@ -83,10 +81,6 @@ uninstall:
 clean distclean:
 	rm -f psql$(X) $(OBJS) lex.backup ora_psqlscanslash.c
 	rm -rf tmp_check
-
-# files removed here are supposed to be in the distribution tarball,
-# so do not clean them in the clean/distclean rules
-maintainer-clean: distclean
 	rm -f ora_psqlscanslash.c sql_help.h sql_help.c psqlscanslash.c
 
 check:

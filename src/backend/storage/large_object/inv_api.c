@@ -58,11 +58,11 @@
 bool		lo_compat_privileges;
 
 /*
- * All accesses to pg_largeobject and its index make use of a single Relation
- * reference, so that we only need to open pg_relation once per transaction.
- * To avoid problems when the first such reference occurs inside a
- * subtransaction, we execute a slightly klugy maneuver to assign ownership of
- * the Relation reference to TopTransactionResourceOwner.
+ * All accesses to pg_largeobject and its index make use of a single
+ * Relation reference.  To guarantee that the relcache entry remains
+ * in the cache, on the first reference inside a subtransaction, we
+ * execute a slightly klugy maneuver to assign ownership of the
+ * Relation reference to TopTransactionResourceOwner.
  */
 static Relation lo_heap_r = NULL;
 static Relation lo_index_r = NULL;
@@ -221,11 +221,10 @@ inv_create(Oid lobjId)
 	/*
 	 * dependency on the owner of largeobject
 	 *
-	 * The reason why we use LargeObjectRelationId instead of
-	 * LargeObjectMetadataRelationId here is to provide backward compatibility
-	 * to the applications which utilize a knowledge about internal layout of
-	 * system catalogs. OID of pg_largeobject_metadata and loid of
-	 * pg_largeobject are same value, so there are no actual differences here.
+	 * Note that LO dependencies are recorded using classId
+	 * LargeObjectRelationId for backwards-compatibility reasons.  Using
+	 * LargeObjectMetadataRelationId instead would simplify matters for the
+	 * backend, but it'd complicate pg_dump and possibly break other clients.
 	 */
 	recordDependencyOnOwner(LargeObjectRelationId,
 							lobjId_new, GetUserId());

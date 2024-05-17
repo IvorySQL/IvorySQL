@@ -374,10 +374,6 @@ pg_last_wal_replay_lsn(PG_FUNCTION_ARGS)
 /*
  * Compute an xlog file name and decimal byte offset given a WAL location,
  * such as is returned by pg_backup_stop() or pg_switch_wal().
- *
- * Note that a location exactly at a segment boundary is taken to be in
- * the previous segment.  This is usually the right thing, since the
- * expected usage is to determine which xlog file(s) are ready to archive.
  */
 Datum
 pg_walfile_name_offset(PG_FUNCTION_ARGS)
@@ -414,7 +410,7 @@ pg_walfile_name_offset(PG_FUNCTION_ARGS)
 	/*
 	 * xlogfilename
 	 */
-	XLByteToPrevSeg(locationpoint, xlogsegno, wal_segment_size);
+	XLByteToSeg(locationpoint, xlogsegno, wal_segment_size);
 	XLogFileName(xlogfilename, GetWALInsertionTimeLine(), xlogsegno,
 				 wal_segment_size);
 
@@ -457,7 +453,7 @@ pg_walfile_name(PG_FUNCTION_ARGS)
 				 errhint("%s cannot be executed during recovery.",
 						 "pg_walfile_name()")));
 
-	XLByteToPrevSeg(locationpoint, xlogsegno, wal_segment_size);
+	XLByteToSeg(locationpoint, xlogsegno, wal_segment_size);
 	XLogFileName(xlogfilename, GetWALInsertionTimeLine(), xlogsegno,
 				 wal_segment_size);
 
@@ -711,10 +707,10 @@ pg_promote(PG_FUNCTION_ARGS)
 	/* signal the postmaster */
 	if (kill(PostmasterPid, SIGUSR1) != 0)
 	{
-		ereport(WARNING,
-				(errmsg("failed to send signal to postmaster: %m")));
 		(void) unlink(PROMOTE_SIGNAL_FILE);
-		PG_RETURN_BOOL(false);
+		ereport(ERROR,
+				(errcode(ERRCODE_SYSTEM_ERROR),
+				 errmsg("failed to send signal to postmaster: %m")));
 	}
 
 	/* return immediately if waiting was not requested */
@@ -744,7 +740,10 @@ pg_promote(PG_FUNCTION_ARGS)
 		 * necessity for manual cleanup of all postmaster children.
 		 */
 		if (rc & WL_POSTMASTER_DEATH)
-			PG_RETURN_BOOL(false);
+			ereport(FATAL,
+					(errcode(ERRCODE_ADMIN_SHUTDOWN),
+					 errmsg("terminating connection due to unexpected postmaster exit"),
+					 errcontext("while waiting on promotion")));
 	}
 
 	ereport(WARNING,

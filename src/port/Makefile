@@ -35,8 +35,6 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(top_builddir)/src/port -DFRONTEND $(CPPFLAGS)
 LIBS += $(PTHREAD_LIBS)
 
-# If you add objects here, see also src/tools/msvc/Mkvcbuild.pm
-
 OBJS = \
 	$(LIBOBJS) \
 	$(PG_CRC32C_OBJS) \
@@ -59,7 +57,7 @@ OBJS = \
 	snprintf.o \
 	strerror.o \
 	tar.o \
-	thread.o
+	user.o
 
 override OBJS := $(OBJS) identifier_alpha_transfor.o
 
@@ -85,10 +83,6 @@ uninstall:
 libpgport.a: $(OBJS)
 	rm -f $@
 	$(AR) $(AROPT) $@ $^
-
-# thread.o and thread_shlib.o need PTHREAD_CFLAGS (but thread_srv.o does not)
-thread.o: CFLAGS+=$(PTHREAD_CFLAGS)
-thread_shlib.o: CFLAGS+=$(PTHREAD_CFLAGS)
 
 # all versions of pg_crc32c_sse42.o need CFLAGS_CRC
 pg_crc32c_sse42.o: CFLAGS+=$(CFLAGS_CRC)
@@ -160,6 +154,6 @@ pg_config_paths.h: $(top_builddir)/src/Makefile.global
 	echo "#define HTMLDIR \"$(htmldir)\"" >>$@
 	echo "#define MANDIR \"$(mandir)\"" >>$@
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f libpgport.a libpgport_shlib.a libpgport_srv.a
 	rm -f $(OBJS) $(OBJS_SHLIB) $(OBJS_SRV) pg_config_paths.h

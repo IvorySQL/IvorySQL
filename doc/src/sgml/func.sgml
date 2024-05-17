@@ -718,7 +718,19 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
     <literal>IS NULL</literal> and <literal>IS NOT NULL</literal> do not always return
     inverse results for row-valued expressions; in particular, a row-valued
     expression that contains both null and non-null fields will return false
-    for both tests.  In some cases, it may be preferable to
+    for both tests.  For example:
+
+<programlisting>
+SELECT ROW(1,2.5,'this is a test') = ROW(1, 3, 'not the same');
+
+SELECT ROW(table.*) IS NULL FROM table;  -- detect all-null rows
+
+SELECT ROW(table.*) IS NOT NULL FROM table;  -- detect all-non-null rows
+
+SELECT NOT(ROW(table.*) IS NOT NULL) FROM TABLE; -- detect at least one null in rows
+</programlisting>
+
+    In some cases, it may be preferable to
     write <replaceable>row</replaceable> <literal>IS DISTINCT FROM NULL</literal>
     or <replaceable>row</replaceable> <literal>IS NOT DISTINCT FROM NULL</literal>,
     which will simply check whether the overall row value is null without any
@@ -2862,6 +2874,22 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>unicode_assigned</primary>
+        </indexterm>
+        <function>unicode_assigned</function> ( <type>text</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Returns <literal>true</literal> if all characters in the string are
+        assigned Unicode codepoints; <literal>false</literal> otherwise. This
+        function can only be used when the server encoding is
+        <literal>UTF8</literal>.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>upper</primary>
         </indexterm>
         <function>upper</function> ( <type>text</type> )
@@ -3740,6 +3768,32 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>to_bin</primary>
+        </indexterm>
+        <function>to_bin</function> ( <type>integer</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para role="func_signature">
+        <function>to_bin</function> ( <type>bigint</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Converts the number to its equivalent two's complement binary
+        representation.
+       </para>
+       <para>
+        <literal>to_bin(2147483647)</literal>
+        <returnvalue>1111111111111111111111111111111</returnvalue>
+       </para>
+       <para>
+        <literal>to_bin(-1234)</literal>
+        <returnvalue>11111111111111111111101100101110</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>to_hex</primary>
         </indexterm>
         <function>to_hex</function> ( <type>integer</type> )
@@ -3750,11 +3804,42 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
         <returnvalue>text</returnvalue>
        </para>
        <para>
-        Converts the number to its equivalent hexadecimal representation.
+        Converts the number to its equivalent two's complement hexadecimal
+        representation.
        </para>
        <para>
         <literal>to_hex(2147483647)</literal>
         <returnvalue>7fffffff</returnvalue>
+       </para>
+       <para>
+        <literal>to_hex(-1234)</literal>
+        <returnvalue>fffffb2e</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>to_oct</primary>
+        </indexterm>
+        <function>to_oct</function> ( <type>integer</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para role="func_signature">
+        <function>to_oct</function> ( <type>bigint</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Converts the number to its equivalent two's complement octal
+        representation.
+       </para>
+       <para>
+        <literal>to_oct(2147483647)</literal>
+        <returnvalue>17777777777</returnvalue>
+       </para>
+       <para>
+        <literal>to_oct(-1234)</literal>
+        <returnvalue>37777775456</returnvalue>
        </para></entry>
       </row>
 
@@ -8507,6 +8592,14 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
 
      <listitem>
       <para>
+       If the format provides fewer fractional digits than the number being
+       formatted, <function>to_char()</function> will round the number to
+       the specified number of fractional digits.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
        The pattern characters <literal>S</literal>, <literal>L</literal>, <literal>D</literal>,
        and <literal>G</literal> represent the sign, currency symbol, decimal point,
        and thousands separator characters defined by the current locale
@@ -8654,6 +8747,12 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
        <row>
         <entry><literal>to_char(current_timestamp, 'FMDay,&nbsp;FMDD&nbsp;&nbsp;HH12:MI:SS')</literal></entry>
         <entry><literal>'Tuesday,&nbsp;6&nbsp;&nbsp;05:39:18'</literal></entry>
+       </row>
+       <row>
+        <entry><literal>to_char(current_timestamp AT TIME ZONE
+        'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')</literal></entry>
+        <entry><literal>'2022-12-06T05:39:18Z'</literal>,
+        <acronym>ISO</acronym> 8601 extended format</entry>
        </row>
        <row>
         <entry><literal>to_char(-0.1, '99.99')</literal></entry>
@@ -9472,7 +9571,7 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
          <returnvalue>boolean</returnvalue>
         </para>
         <para>
-         Test for finite interval (currently always true)
+         Test for finite interval (not +/-infinity)
         </para>
         <para>
          <literal>isfinite(interval '4 hours')</literal>
@@ -10369,7 +10468,11 @@ SELECT EXTRACT(YEAR FROM TIMESTAMP '2001-02-16 20:38:40');
      When the input value is +/-Infinity, <function>extract</function> returns
      +/-Infinity for monotonically-increasing fields (<literal>epoch</literal>,
      <literal>julian</literal>, <literal>year</literal>, <literal>isoyear</literal>,
-     <literal>decade</literal>, <literal>century</literal>, and <literal>millennium</literal>).
+     <literal>decade</literal>, <literal>century</literal>, and <literal>millennium</literal>
+     for <type>timestamp</type> inputs; <literal>epoch</literal>, <literal>hour</literal>,
+     <literal>day</literal>, <literal>year</literal>, <literal>decade</literal>,
+     <literal>century</literal>, and <literal>millennium</literal> for
+     <type>interval</type> inputs).
      For other fields, NULL is returned.  <productname>PostgreSQL</productname>
      versions before 9.6 returned zero for all cases of infinite input.
     </para>
@@ -10546,7 +10649,7 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
   </sect2>
 
   <sect2 id="functions-datetime-zoneconvert">
-   <title><literal>AT TIME ZONE</literal></title>
+   <title><literal>AT TIME ZONE and AT LOCAL</literal></title>
 
    <indexterm>
     <primary>time zone</primary>
@@ -10555,6 +10658,10 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
 
    <indexterm>
     <primary>AT TIME ZONE</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>AT LOCAL</primary>
    </indexterm>
 
    <para>
@@ -10567,7 +10674,7 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
    </para>
 
     <table id="functions-datetime-zoneconvert-table">
-     <title><literal>AT TIME ZONE</literal> Variants</title>
+     <title><literal>AT TIME ZONE</literal> and <literal>AT LOCAL</literal> Variants</title>
      <tgroup cols="1">
       <thead>
        <row>
@@ -10602,6 +10709,22 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
 
        <row>
         <entry role="func_table_entry"><para role="func_signature">
+         <type>timestamp without time zone</type> <literal>AT LOCAL</literal>
+         <returnvalue>timestamp with time zone</returnvalue>
+        </para>
+        <para>
+         Converts given time stamp <emphasis>without</emphasis> time zone to
+         time stamp <emphasis>with</emphasis> the session's
+         <varname>TimeZone</varname> value as time zone.
+        </para>
+        <para>
+         <literal>timestamp '2001-02-16 20:38:40' at local</literal>
+         <returnvalue>2001-02-17 03:38:40+00</returnvalue>
+        </para></entry>
+       </row>
+
+       <row>
+        <entry role="func_table_entry"><para role="func_signature">
          <type>timestamp with time zone</type> <literal>AT TIME ZONE</literal> <replaceable>zone</replaceable>
          <returnvalue>timestamp without time zone</returnvalue>
         </para>
@@ -10612,6 +10735,22 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
         </para>
         <para>
          <literal>timestamp with time zone '2001-02-16 20:38:40-05' at time zone 'America/Denver'</literal>
+         <returnvalue>2001-02-16 18:38:40</returnvalue>
+        </para></entry>
+       </row>
+
+       <row>
+        <entry role="func_table_entry"><para role="func_signature">
+         <type>timestamp with time zone</type> <literal>AT LOCAL</literal>
+         <returnvalue>timestamp without time zone</returnvalue>
+        </para>
+        <para>
+         Converts given time stamp <emphasis>with</emphasis> time zone to
+         time stamp <emphasis>without</emphasis> time zone, as the time would
+         appear with the session's <varname>TimeZone</varname> value as time zone.
+        </para>
+        <para>
+         <literal>timestamp with time zone '2001-02-16 20:38:40-05' at local</literal>
          <returnvalue>2001-02-16 18:38:40</returnvalue>
         </para></entry>
        </row>
@@ -10631,6 +10770,25 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
          <returnvalue>10:34:17+00</returnvalue>
         </para></entry>
        </row>
+
+       <row>
+        <entry role="func_table_entry"><para role="func_signature">
+         <type>time with time zone</type> <literal>AT LOCAL</literal>
+         <returnvalue>time with time zone</returnvalue>
+        </para>
+        <para>
+         Converts given time <emphasis>with</emphasis> time zone to a new time
+         zone.  Since no date is supplied, this uses the currently active UTC
+         offset for the session's <varname>TimeZone</varname> value.
+        </para>
+        <para>
+         Assuming the session's <varname>TimeZone</varname> is set to <literal>UTC</literal>:
+        </para>
+        <para>
+         <literal>time with time zone '05:34:17-05' at local</literal>
+         <returnvalue>10:34:17+00</returnvalue>
+        </para></entry>
+       </row>
       </tbody>
      </tgroup>
     </table>
@@ -10646,6 +10804,13 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
    </para>
 
    <para>
+    The syntax <literal>AT LOCAL</literal> may be used as shorthand for
+    <literal>AT TIME ZONE <replaceable>local</replaceable></literal>, where
+    <replaceable>local</replaceable> is the session's
+    <varname>TimeZone</varname> value.
+   </para>
+
+   <para>
     Examples (assuming the current <xref linkend="guc-timezone"/> setting
     is <literal>America/Los_Angeles</literal>):
 <screen>
@@ -10657,6 +10822,12 @@ SELECT TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40-05' AT TIME ZONE 'America/D
 
 SELECT TIMESTAMP '2001-02-16 20:38:40' AT TIME ZONE 'Asia/Tokyo' AT TIME ZONE 'America/Chicago';
 <lineannotation>Result: </lineannotation><computeroutput>2001-02-16 05:38:40</computeroutput>
+
+SELECT TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40-05' AT LOCAL;
+<lineannotation>Result: </lineannotation><computeroutput>2001-02-16 17:38:40</computeroutput>
+
+SELECT TIME WITH TIME ZONE '20:38:40-05' AT LOCAL;
+<lineannotation>Result: </lineannotation><computeroutput>17:38:40</computeroutput>
 </screen>
     The first example adds a time zone to a value that lacks it, and
     displays the value using the current <varname>TimeZone</varname>
@@ -10664,7 +10835,18 @@ SELECT TIMESTAMP '2001-02-16 20:38:40' AT TIME ZONE 'Asia/Tokyo' AT TIME ZONE 'A
     to the specified time zone, and returns the value without a time zone.
     This allows storage and display of values different from the current
     <varname>TimeZone</varname> setting.  The third example converts
-    Tokyo time to Chicago time.
+    Tokyo time to Chicago time.  The fourth example shifts the time stamp
+    with time zone value to the time zone currently specified by the
+    <varname>TimeZone</varname> setting and returns the value without a
+    time zone.
+   </para>
+
+   <para>
+    The fifth example is a cautionary tale. Due to the fact that there is no
+    date associated with the input value, the conversion is made using the
+    current date of the session. Therefore, this static example may show a wrong
+    result depending on the time of the year it is viewed because
+    <literal>'America/Los_Angeles'</literal> observes Daylight Savings Time.
    </para>
 
    <para>
@@ -10672,6 +10854,25 @@ SELECT TIMESTAMP '2001-02-16 20:38:40' AT TIME ZONE 'Asia/Tokyo' AT TIME ZONE 'A
     <replaceable>timestamp</replaceable>)</literal> is equivalent to the SQL-conforming construct
     <literal><replaceable>timestamp</replaceable> AT TIME ZONE
     <replaceable>zone</replaceable></literal>.
+   </para>
+
+   <para>
+    The function <literal><function>timezone</function>(<replaceable>zone</replaceable>,
+    <replaceable>time</replaceable>)</literal> is equivalent to the SQL-conforming construct
+    <literal><replaceable>time</replaceable> AT TIME ZONE
+    <replaceable>zone</replaceable></literal>.
+   </para>
+
+   <para>
+    The function <literal><function>timezone</function>(<replaceable>timestamp</replaceable>)</literal>
+    is equivalent to the SQL-conforming construct <literal><replaceable>timestamp</replaceable>
+    AT LOCAL</literal>.
+   </para>
+
+   <para>
+    The function <literal><function>timezone</function>(<replaceable>time</replaceable>)</literal>
+    is equivalent to the SQL-conforming construct <literal><replaceable>time</replaceable>
+    AT LOCAL</literal>.
    </para>
   </sect2>
 
@@ -12947,24 +13148,6 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
-        <type>tsvector</type> <literal>@@@</literal> <type>tsquery</type>
-        <returnvalue>boolean</returnvalue>
-       </para>
-       <para role="func_signature">
-        <type>tsquery</type> <literal>@@@</literal> <type>tsvector</type>
-        <returnvalue>boolean</returnvalue>
-       </para>
-       <para>
-        This is a deprecated synonym for <literal>@@</literal>.
-       </para>
-       <para>
-        <literal>to_tsvector('fat cats ate rats') @@@ to_tsquery('cat &amp; rat')</literal>
-        <returnvalue>t</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
         <type>tsvector</type> <literal>||</literal> <type>tsvector</type>
         <returnvalue>tsvector</returnvalue>
        </para>
@@ -14000,6 +14183,36 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
     particularly suitable for formatting query results into XML
     documents for processing in client applications.
    </para>
+
+  <sect3 id="functions-producing-xml-xmltext">
+    <title><literal>xmltext</literal></title>
+
+    <indexterm>
+     <primary>xmltext</primary>
+    </indexterm>
+
+<synopsis>
+<function>xmltext</function> ( <type>text</type> ) <returnvalue>xml</returnvalue>
+</synopsis>
+
+    <para>
+     The function <function>xmltext</function> returns an XML value with a single
+     text node containing the input argument as its content. Predefined entities
+     like ampersand (<literal><![CDATA[&]]></literal>), left and right angle brackets
+     (<literal><![CDATA[< >]]></literal>), and quotation marks (<literal><![CDATA[""]]></literal>)
+     are escaped.
+    </para>
+
+    <para>
+     Example:
+<screen><![CDATA[
+SELECT xmltext('< foo & bar >');
+         xmltext
+-------------------------
+ &lt; foo &amp; bar &gt;
+]]></screen>
+    </para>
+   </sect3>
 
    <sect3 id="functions-producing-xml-xmlcomment">
     <title><literal>xmlcomment</literal></title>
@@ -16001,6 +16214,73 @@ table2-mapping
         <returnvalue>{"a": "1", "b": "2"}</returnvalue>
        </para></entry>
       </row>
+      <row>
+       <entry role="func_table_entry">
+        <para role="func_signature">
+         <indexterm><primary>json constructor</primary></indexterm>
+         <function>json</function> (
+         <replaceable>expression</replaceable>
+         <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional></optional>
+         <optional> { <literal>WITH</literal> | <literal>WITHOUT</literal> } <literal>UNIQUE</literal> <optional> <literal>KEYS</literal> </optional></optional> )
+         <returnvalue>json</returnvalue>
+        </para>
+        <para>
+         Converts a given expression specified as <type>text</type> or
+         <type>bytea</type> string (in UTF8 encoding) into a JSON
+         value.  If <replaceable>expression</replaceable> is NULL, an
+         <acronym>SQL</acronym> null value is returned.
+         If <literal>WITH UNIQUE</literal> is specified, the
+         <replaceable>expression</replaceable> must not contain any duplicate
+         object keys.
+        </para>
+        <para>
+         <literal>json('{"a":123, "b":[true,"foo"], "a":"bar"}')</literal>
+         <returnvalue>{"a":123, "b":[true,"foo"], "a":"bar"}</returnvalue>
+        </para>
+       </entry>
+      </row>
+      <row>
+       <entry role="func_table_entry">
+        <para role="func_signature">
+        <indexterm><primary>json_scalar</primary></indexterm>
+        <function>json_scalar</function> ( <replaceable>expression</replaceable> )
+       </para>
+       <para>
+        Converts a given SQL scalar value into a JSON scalar value.
+        If the input is NULL, an <acronym>SQL</acronym> null is returned. If
+        the input is number or a boolean value, a corresponding JSON number
+        or boolean value is returned. For any other value, a JSON string is
+        returned.
+       </para>
+       <para>
+        <literal>json_scalar(123.45)</literal>
+        <returnvalue>123.45</returnvalue>
+       </para>
+       <para>
+        <literal>json_scalar(CURRENT_TIMESTAMP)</literal>
+        <returnvalue>"2022-05-10T10:51:04.62128-04:00"</returnvalue>
+      </para></entry>
+     </row>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        <function>json_serialize</function> (
+        <replaceable>expression</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional>
+        <optional> <literal>RETURNING</literal> <replaceable>data_type</replaceable> <optional> <literal>FORMAT JSON</literal> <optional> <literal>ENCODING UTF8</literal> </optional> </optional> </optional> )
+       </para>
+       <para>
+        Converts an SQL/JSON expression into a character or binary string. The
+        <replaceable>expression</replaceable> can be of any JSON type, any
+        character string type, or <type>bytea</type> in UTF8 encoding.
+        The returned type used in <literal> RETURNING</literal> can be any
+        character string type or <type>bytea</type>. The default is
+        <type>text</type>.
+       </para>
+       <para>
+        <literal>json_serialize('{ "a" : 1 } ' RETURNING bytea)</literal>
+        <returnvalue>\x7b20226122203a2031207d20</returnvalue>
+      </para></entry>
+     </row>
      </tbody>
     </tgroup>
    </table>
@@ -19675,7 +19955,7 @@ SELECT NULLIF(value, '(none)') ...
        </para>
        <para>
         Extracts the lower bound of the range (<literal>NULL</literal> if the
-        range is empty or the lower bound is infinite).
+        range is empty or has no lower bound).
        </para>
        <para>
         <literal>lower(numrange(1.1,2.2))</literal>
@@ -19693,7 +19973,7 @@ SELECT NULLIF(value, '(none)') ...
        </para>
        <para>
         Extracts the upper bound of the range (<literal>NULL</literal> if the
-        range is empty or the upper bound is infinite).
+        range is empty or has no upper bound).
        </para>
        <para>
         <literal>upper(numrange(1.1,2.2))</literal>
@@ -19761,7 +20041,8 @@ SELECT NULLIF(value, '(none)') ...
         <returnvalue>boolean</returnvalue>
        </para>
        <para>
-        Is the range's lower bound infinite?
+        Does the range have no lower bound?  (A lower bound of
+        <literal>-Infinity</literal> returns false.)
        </para>
        <para>
         <literal>lower_inf('(,)'::daterange)</literal>
@@ -19778,7 +20059,8 @@ SELECT NULLIF(value, '(none)') ...
         <returnvalue>boolean</returnvalue>
        </para>
        <para>
-        Is the range's upper bound infinite?
+        Does the range have no upper bound?  (An upper bound of
+        <literal>Infinity</literal> returns false.)
        </para>
        <para>
         <literal>upper_inf('(,)'::daterange)</literal>
@@ -19833,7 +20115,7 @@ SELECT NULLIF(value, '(none)') ...
        </para>
        <para>
         Extracts the lower bound of the multirange (<literal>NULL</literal> if the
-        multirange is empty or the lower bound is infinite).
+        multirange is empty has no lower bound).
        </para>
        <para>
         <literal>lower('{[1.1,2.2)}'::nummultirange)</literal>
@@ -19851,7 +20133,7 @@ SELECT NULLIF(value, '(none)') ...
        </para>
        <para>
         Extracts the upper bound of the multirange (<literal>NULL</literal> if the
-        multirange is empty or the upper bound is infinite).
+        multirange is empty or has no upper bound).
        </para>
        <para>
         <literal>upper('{[1.1,2.2)}'::nummultirange)</literal>
@@ -19919,7 +20201,8 @@ SELECT NULLIF(value, '(none)') ...
         <returnvalue>boolean</returnvalue>
        </para>
        <para>
-        Is the multirange's lower bound infinite?
+        Does the multirange have no lower bound?  (A lower bound of
+        <literal>-Infinity</literal> returns false.)
        </para>
        <para>
         <literal>lower_inf('{(,)}'::datemultirange)</literal>
@@ -19936,7 +20219,8 @@ SELECT NULLIF(value, '(none)') ...
         <returnvalue>boolean</returnvalue>
        </para>
        <para>
-        Is the multirange's upper bound infinite?
+        Does the multirange have no upper bound?  (An upper bound of
+        <literal>Infinity</literal> returns false.)
        </para>
        <para>
         <literal>upper_inf('{(,)}'::datemultirange)</literal>
@@ -19988,8 +20272,7 @@ SELECT NULLIF(value, '(none)') ...
         <returnvalue>setof anyrange</returnvalue>
        </para>
        <para>
-        Expands a multirange into a set of ranges.
-        The ranges are read out in storage order (ascending).
+        Expands a multirange into a set of ranges in ascending order.
        </para>
        <para>
         <literal>unnest('{[1,2), [3,4)}'::int4multirange)</literal>
@@ -20043,6 +20326,13 @@ SELECT NULLIF(value, '(none)') ...
    aggregation.
   </para>
 
+  <para>
+   While all aggregates below accept an optional
+   <literal>ORDER BY</literal> clause (as outlined in <xref
+   linkend="syntax-aggregates"/>), the clause has only been added to
+   aggregates whose output is affected by ordering.
+  </para>
+
    <table id="functions-aggregate-table">
     <title>General-Purpose Aggregate Functions</title>
     <tgroup cols="2">
@@ -20080,7 +20370,7 @@ SELECT NULLIF(value, '(none)') ...
         <indexterm>
          <primary>array_agg</primary>
         </indexterm>
-        <function>array_agg</function> ( <type>anynonarray</type> )
+        <function>array_agg</function> ( <type>anynonarray</type> <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>anyarray</returnvalue>
        </para>
        <para>
@@ -20091,7 +20381,7 @@ SELECT NULLIF(value, '(none)') ...
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
-        <function>array_agg</function> ( <type>anyarray</type> )
+        <function>array_agg</function> ( <type>anyarray</type> <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>anyarray</returnvalue>
        </para>
        <para>
@@ -20296,14 +20586,14 @@ SELECT NULLIF(value, '(none)') ...
         <indexterm>
          <primary>json_agg</primary>
         </indexterm>
-        <function>json_agg</function> ( <type>anyelement</type> )
+        <function>json_agg</function> ( <type>anyelement</type> <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>json</returnvalue>
        </para>
        <para role="func_signature">
         <indexterm>
          <primary>jsonb_agg</primary>
         </indexterm>
-        <function>jsonb_agg</function> ( <type>anyelement</type> )
+        <function>jsonb_agg</function> ( <type>anyelement</type> <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>jsonb</returnvalue>
        </para>
        <para>
@@ -20343,7 +20633,8 @@ SELECT NULLIF(value, '(none)') ...
         </indexterm>
         <function>json_object_agg</function> ( <parameter>key</parameter>
          <type>"any"</type>, <parameter>value</parameter>
-         <type>"any"</type> )
+         <type>"any"</type>
+         <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>json</returnvalue>
        </para>
        <para role="func_signature">
@@ -20352,7 +20643,8 @@ SELECT NULLIF(value, '(none)') ...
         </indexterm>
         <function>jsonb_object_agg</function> ( <parameter>key</parameter>
          <type>"any"</type>, <parameter>value</parameter>
-         <type>"any"</type> )
+         <type>"any"</type>
+         <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>jsonb</returnvalue>
        </para>
        <para>
@@ -20589,7 +20881,8 @@ SELECT NULLIF(value, '(none)') ...
        </para>
        <para role="func_signature">
         <function>string_agg</function> ( <parameter>value</parameter>
-         <type>bytea</type>, <parameter>delimiter</parameter> <type>bytea</type> )
+         <type>bytea</type>, <parameter>delimiter</parameter> <type>bytea</type>
+         <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>bytea</returnvalue>
        </para>
        <para>
@@ -20647,7 +20940,7 @@ SELECT NULLIF(value, '(none)') ...
         <indexterm>
          <primary>xmlagg</primary>
         </indexterm>
-        <function>xmlagg</function> ( <type>xml</type> )
+        <function>xmlagg</function> ( <type>xml</type> <literal>ORDER BY</literal> <literal>input_sort_columns</literal> )
         <returnvalue>xml</returnvalue>
        </para>
        <para>
@@ -22127,7 +22420,7 @@ WHERE EXISTS (SELECT 1 FROM tab2 WHERE col2 = tab1.col2);
 
   <para>
    The right-hand side is a parenthesized list
-   of scalar expressions.  The result is <quote>true</quote> if the left-hand expression's
+   of expressions.  The result is <quote>true</quote> if the left-hand expression's
    result is equal to any of the right-hand expressions.  This is a shorthand
    notation for
 
@@ -22158,7 +22451,7 @@ OR
 
   <para>
    The right-hand side is a parenthesized list
-   of scalar expressions.  The result is <quote>true</quote> if the left-hand expression's
+   of expressions.  The result is <quote>true</quote> if the left-hand expression's
    result is unequal to all of the right-hand expressions.  This is a shorthand
    notation for
 
@@ -22269,25 +22562,23 @@ AND
   <para>
    Each side is a row constructor,
    as described in <xref linkend="sql-syntax-row-constructors"/>.
-   The two row values must have the same number of fields.
-   Each side is evaluated and they are compared row-wise.  Row constructor
-   comparisons are allowed when the <replaceable>operator</replaceable> is
+   The two row constructors must have the same number of fields.
+   The given <replaceable>operator</replaceable> is applied to each pair
+   of corresponding fields.  (Since the fields could be of different
+   types, this means that a different specific operator could be selected
+   for each pair.)
+   All the selected operators must be members of some B-tree operator
+   class, or be the negator of an <literal>=</literal> member of a B-tree
+   operator class, meaning that row constructor comparison is only
+   possible when the <replaceable>operator</replaceable> is
    <literal>=</literal>,
    <literal>&lt;&gt;</literal>,
    <literal>&lt;</literal>,
    <literal>&lt;=</literal>,
-   <literal>&gt;</literal> or
-   <literal>&gt;=</literal>.
-   Every row element must be of a type which has a default B-tree operator
-   class or the attempted comparison may generate an error.
+   <literal>&gt;</literal>, or
+   <literal>&gt;=</literal>,
+   or has semantics similar to one of these.
   </para>
-
-  <note>
-   <para>
-    Errors related to the number or types of elements might not occur if
-    the comparison is resolved using earlier columns.
-   </para>
-  </note>
 
   <para>
    The <literal>=</literal> and <literal>&lt;&gt;</literal> cases work slightly differently
@@ -22308,19 +22599,6 @@ AND
    yields true, not null, because the third pair of elements are not
    considered.
   </para>
-
-  <note>
-   <para>
-    Prior to <productname>PostgreSQL</productname> 8.2, the
-    <literal>&lt;</literal>, <literal>&lt;=</literal>, <literal>&gt;</literal> and <literal>&gt;=</literal>
-    cases were not handled per SQL specification.  A comparison like
-    <literal>ROW(a,b) &lt; ROW(c,d)</literal>
-    was implemented as
-    <literal>a &lt; c AND b &lt; d</literal>
-    whereas the correct behavior is equivalent to
-    <literal>a &lt; c OR (a = c AND b &lt; d)</literal>.
-   </para>
-  </note>
 
 <synopsis>
 <replaceable>row_constructor</replaceable> IS DISTINCT FROM <replaceable>row_constructor</replaceable>
@@ -22734,7 +23012,7 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
   <para>
    In addition to the functions listed in this section, there are a number of
    functions related to the statistics system that also provide system
-   information. See <xref linkend="monitoring-stats-views"/> for more
+   information. See <xref linkend="monitoring-stats-functions"/> for more
    information.
   </para>
 
@@ -23213,25 +23491,6 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
         This is equivalent to <function>current_user</function>.
        </para></entry>
       </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>version</primary>
-        </indexterm>
-        <function>version</function> ()
-        <returnvalue>text</returnvalue>
-       </para>
-       <para>
-        Returns a string describing the <productname>PostgreSQL</productname>
-        server's version.  You can also get this information from
-        <xref linkend="guc-server-version"/>, or for a machine-readable
-        version use <xref linkend="guc-server-version-num"/>.  Software
-        developers should use <varname>server_version_num</varname> (available
-        since 8.2) or <xref linkend="libpq-PQserverVersion"/> instead of
-        parsing the text version.
-       </para></entry>
-      </row>
      </tbody>
     </tgroup>
    </table>
@@ -23545,7 +23804,7 @@ SELECT has_function_privilege('joeuser', 'myfunc(int, text)', 'execute');
         are <literal>SELECT</literal>, <literal>INSERT</literal>,
         <literal>UPDATE</literal>, <literal>DELETE</literal>,
         <literal>TRUNCATE</literal>, <literal>REFERENCES</literal>,
-        <literal>TRIGGER</literal>, and <literal>MAINTAIN</literal>.
+        and <literal>TRIGGER</literal>.
        </para></entry>
       </row>
 
@@ -25592,6 +25851,34 @@ SELECT collation for ('foo' COLLATE "de_DE");
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>age</primary>
+        </indexterm>
+        <function>age</function>  ( <type>xid</type> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Returns the number of transactions between the supplied
+        transaction id and the current transaction counter.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>mxid_age</primary>
+        </indexterm>
+        <function>mxid_age</function>  ( <type>xid</type> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Returns the number of multixacts IDs between the supplied
+        multixact ID and the current multixacts counter.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>txid_current</primary>
         </indexterm>
         <function>txid_current</function> ()
@@ -25707,7 +25994,8 @@ SELECT collation for ('foo' COLLATE "de_DE");
     They only provide useful data when the
     <xref linkend="guc-track-commit-timestamp"/> configuration option is
     enabled, and only for transactions that were committed after it was
-    enabled.
+    enabled.  Commit timestamp information is routinely removed during
+    vacuum.
    </para>
 
    <table id="functions-commit-timestamp">
@@ -26112,6 +26400,80 @@ SELECT collation for ('foo' COLLATE "de_DE");
        <entry><type>boolean</type></entry>
       </row>
 
+     </tbody>
+    </tgroup>
+   </table>
+
+  </sect2>
+
+  <sect2 id="functions-info-version">
+   <title>Version Information Functions</title>
+
+   <para>
+    The functions shown in <xref linkend="functions-version"/>
+    print version information.
+   </para>
+
+   <table id="functions-version">
+    <title>Version Information Functions</title>
+    <tgroup cols="1">
+     <thead>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+       </para></entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>version</primary>
+        </indexterm>
+        <function>version</function> ()
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Returns a string describing the <productname>PostgreSQL</productname>
+        server's version.  You can also get this information from
+        <xref linkend="guc-server-version"/>, or for a machine-readable
+        version use <xref linkend="guc-server-version-num"/>.  Software
+        developers should use <varname>server_version_num</varname> (available
+        since 8.2) or <xref linkend="libpq-PQserverVersion"/> instead of
+        parsing the text version.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>unicode_version</primary>
+        </indexterm>
+        <function>unicode_version</function> ()
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Returns a string representing the version of Unicode used by
+        <productname>PostgreSQL</productname>.
+       </para></entry>
+      </row>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>icu_unicode_version</primary>
+        </indexterm>
+        <function>icu_unicode_version</function> ()
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Returns a string representing the version of Unicode used by ICU, if
+        the server was built with ICU support; otherwise returns
+        <literal>NULL</literal> </para></entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
@@ -26719,11 +27081,6 @@ postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
 (1 row)
 </programlisting>
     Similarly, <function>pg_walfile_name</function> extracts just the write-ahead log file name.
-    When the given write-ahead log location is exactly at a write-ahead log file boundary, both
-    these functions return the name of the preceding write-ahead log file.
-    This is usually the desired behavior for managing write-ahead log archiving
-    behavior, since the preceding file is the last one that currently
-    needs to be archived.
    </para>
 
    <para>
@@ -27525,11 +27882,11 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
         <indexterm>
          <primary>pg_logical_emit_message</primary>
         </indexterm>
-        <function>pg_logical_emit_message</function> ( <parameter>transactional</parameter> <type>boolean</type>, <parameter>prefix</parameter> <type>text</type>, <parameter>content</parameter> <type>text</type> )
+        <function>pg_logical_emit_message</function> ( <parameter>transactional</parameter> <type>boolean</type>, <parameter>prefix</parameter> <type>text</type>, <parameter>content</parameter> <type>text</type> [, <parameter>flush</parameter> <type>boolean</type> <literal>DEFAULT</literal> <literal>false</literal>] )
         <returnvalue>pg_lsn</returnvalue>
        </para>
        <para role="func_signature">
-        <function>pg_logical_emit_message</function> ( <parameter>transactional</parameter> <type>boolean</type>, <parameter>prefix</parameter> <type>text</type>, <parameter>content</parameter> <type>bytea</type> )
+        <function>pg_logical_emit_message</function> ( <parameter>transactional</parameter> <type>boolean</type>, <parameter>prefix</parameter> <type>text</type>, <parameter>content</parameter> <type>bytea</type> [, <parameter>flush</parameter> <type>boolean</type> <literal>DEFAULT</literal> <literal>false</literal>] )
         <returnvalue>pg_lsn</returnvalue>
        </para>
        <para>
@@ -27543,6 +27900,11 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
         recognize messages that are interesting for them.
         The <parameter>content</parameter> parameter is the content of the
         message, given either in text or binary form.
+        The <parameter>flush</parameter> parameter (default set to
+        <literal>false</literal>) controls if the message is immediately
+        flushed to WAL or not. <parameter>flush</parameter> has no effect
+        with <parameter>transactional</parameter>, as the message's WAL
+        record is flushed along with its transaction.
        </para></entry>
       </row>
      </tbody>

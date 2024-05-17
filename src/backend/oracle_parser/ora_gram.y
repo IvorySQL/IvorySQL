@@ -570,7 +570,7 @@ static void determineLanguage(List *options);
 %type <list>	copy_options
 
 %type <typnam>	Typename SimpleTypename ConstTypename
-				GenericType Numeric opt_float
+				GenericType Numeric opt_float JsonType
 				Character ConstCharacter
 				CharacterWithLength CharacterWithoutLength
 				ConstDatetime ConstInterval
@@ -655,9 +655,10 @@ static void determineLanguage(List *options);
 %type <list>	identity_clause identity_options drop_identity
 %type <boolean>	opt_with opt_by
 
-%type <node>		json_format_clause_opt
+%type <node>	json_format_clause
+				json_format_clause_opt
 					json_value_expr
-					json_output_clause_opt
+				json_returning_clause_opt
 					json_name_and_value
 					json_aggregate_func
 
@@ -665,8 +666,7 @@ static void determineLanguage(List *options);
 					json_value_expr_list
 					json_array_aggregate_order_by_clause_opt
 
-%type <ival>		json_encoding_clause_opt
-					json_predicate_type_constraint
+%type <ival>	json_predicate_type_constraint
 
 %type <boolean>		json_key_uniqueness_constraint_opt
 					json_object_constructor_null_clause_opt
@@ -737,6 +737,7 @@ static void determineLanguage(List *options);
 	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_OBJECT JSON_OBJECTAGG
+	JSON_SCALAR JSON_SERIALIZE
 
 	KEY KEYS
 
@@ -855,7 +856,6 @@ static void determineLanguage(List *options);
 
 
 /* Precedence: lowest to highest */
-%nonassoc	SET				/* see relation_expr_opt_alias */
 %left		UNION EXCEPT
 %left		INTERSECT
 %left		OR
@@ -866,18 +866,23 @@ static void determineLanguage(List *options);
 %nonassoc	BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
 %nonassoc	ESCAPE			/* ESCAPE must be just above LIKE/ILIKE/SIMILAR */
 
-/* SQL/JSON related keywords */
-%nonassoc	UNIQUE JSON
-%nonassoc	KEYS OBJECT_P SCALAR VALUE_P
-%nonassoc	WITH WITHOUT
-
 /*
- * To support target_el without AS, it used to be necessary to assign IDENT an
- * explicit precedence just less than Op.  While that's not really necessary
- * since we removed postfix operators, it's still helpful to do so because
- * there are some other unreserved keywords that need precedence assignments.
- * If those keywords have the same precedence as IDENT then they clearly act
- * the same as non-keywords, reducing the risk of unwanted precedence effects.
+ * Sometimes it is necessary to assign precedence to keywords that are not
+ * really part of the operator hierarchy, in order to resolve grammar
+ * ambiguities.  It's best to avoid doing so whenever possible, because such
+ * assignments have global effect and may hide ambiguities besides the one
+ * you intended to solve.  (Attaching a precedence to a single rule with
+ * %prec is far safer and should be preferred.)  If you must give precedence
+ * to a new keyword, try very hard to give it the same precedence as IDENT.
+ * If the keyword has IDENT's precedence then it clearly acts the same as
+ * non-keywords and other similar keywords, thus reducing the risk of
+ * unexpected precedence effects.
+ *
+ * We used to need to assign IDENT an explicit precedence just less than Op,
+ * to support target_el without AS.  While that's not really necessary since
+ * we removed postfix operators, we continue to do so because it provides a
+ * reference point for a precedence level that we can assign to other
+ * keywords that lack a natural precedence level.
  *
  * We need to do this for PARTITION, RANGE, ROWS, and GROUPS to support
  * opt_existing_window_name (see comment there).
@@ -895,15 +900,24 @@ static void determineLanguage(List *options);
  * an explicit priority lower than '(', so that a rule with CUBE '(' will shift
  * rather than reducing a conflicting rule that takes CUBE as a function name.
  * Using the same precedence as IDENT seems right for the reasons given above.
+ *
+ * SET is likewise assigned the same precedence as IDENT, to support the
+ * relation_expr_opt_alias production (see comment there).
+ *
+ * KEYS, OBJECT_P, SCALAR, VALUE_P, WITH, and WITHOUT are similarly assigned
+ * the same precedence as IDENT.  This allows resolving conflicts in the
+ * json_predicate_type_constraint and json_key_uniqueness_constraint_opt
+ * productions (see comments there).
  */
 %nonassoc	UNBOUNDED		/* ideally would have same precedence as IDENT */
 %nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
+			SET KEYS OBJECT_P SCALAR VALUE_P WITH WITHOUT
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
 %left		'^'
 /* Unary Operators */
-%left		AT				/* sets precedence for AT TIME ZONE */
+%left		AT				/* sets precedence for AT TIME ZONE, AT LOCAL */
 %left		COLLATE
 %right		UMINUS
 %left		'[' ']'
@@ -3565,9 +3579,17 @@ copy_opt_item:
 				{
 					$$ = makeDefElem("force_not_null", (Node *) $4, @1);
 				}
+			| FORCE NOT NULL_P '*'
+				{
+					$$ = makeDefElem("force_not_null", (Node *) makeNode(A_Star), @1);
+				}
 			| FORCE NULL_P columnList
 				{
 					$$ = makeDefElem("force_null", (Node *) $3, @1);
+				}
+			| FORCE NULL_P '*'
+				{
+					$$ = makeDefElem("force_null", (Node *) makeNode(A_Star), @1);
 				}
 			| ENCODING Sconst
 				{
@@ -3983,12 +4005,15 @@ ColConstraint:
  * or be part of a_expr NOT LIKE or similar constructs).
  */
 ColConstraintElem:
-			NOT NULL_P
+			NOT NULL_P opt_no_inherit
 				{
 					Constraint *n = makeNode(Constraint);
 
 					n->contype = CONSTR_NOTNULL;
 					n->location = @1;
+					n->is_no_inherit = $3;
+					n->skip_validation = false;
+					n->initially_valid = true;
 					$$ = (Node *) n;
 				}
 			| NULL_P
@@ -4229,6 +4254,20 @@ ConstraintElem:
 								   NULL, NULL, &n->skip_validation,
 								   &n->is_no_inherit, yyscanner);
 					n->initially_valid = !n->skip_validation;
+					$$ = (Node *) n;
+				}
+			| NOT NULL_P ColId ConstraintAttributeSpec
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_NOTNULL;
+					n->location = @1;
+					n->keys = list_make1(makeString($3));
+					/* no NOT VALID support yet */
+					processCASbits($4, @4, "NOT NULL",
+								   NULL, NULL, NULL,
+								   &n->is_no_inherit, yyscanner);
+					n->initially_valid = true;
 					$$ = (Node *) n;
 				}
 			| UNIQUE opt_unique_null_treatment '(' columnList ')' opt_c_include opt_definition OptConsTableSpace
@@ -6550,6 +6589,33 @@ AlterEnumStmt:
 				n->newValIsAfter = false;
 				n->skipIfNewValExists = false;
 				$$ = (Node *) n;
+			}
+		 | ALTER TYPE_P any_name DROP VALUE_P Sconst
+			{
+				/*
+				 * The following problems must be solved before this can be
+				 * implemented:
+				 *
+				 * - There must be no instance of the target value in
+				 *   any table.
+				 *
+				 * - The value must not appear in any catalog metadata,
+				 *   such as stored view expressions or column defaults.
+				 *
+				 * - The value must not appear in any non-leaf page of a
+				 *   btree (and similar issues with other index types).
+				 *   This is problematic because a value could persist
+				 *   there long after it's gone from user-visible data.
+				 *
+				 * - Concurrent sessions must not be able to insert the
+				 *   value while the preceding conditions are being checked.
+				 *
+				 * - Possibly more...
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("dropping an enum value is not implemented"),
+						 parser_errposition(@4)));
 			}
 		 ;
 
@@ -10886,6 +10952,8 @@ operator_def_elem: ColLabel '=' NONE
 						{ $$ = makeDefElem($1, NULL, @1); }
 				   | ColLabel '=' operator_def_arg
 						{ $$ = makeDefElem($1, (Node *) $3, @1); }
+				   | ColLabel
+						{ $$ = makeDefElem($1, NULL, @1); }
 		;
 
 /* must be similar enough to def_arg to avoid reduce/reduce conflicts */
@@ -11628,6 +11696,7 @@ TransactionStmt:
 					n->kind = TRANS_STMT_ROLLBACK;
 					n->options = NIL;
 					n->chain = $3;
+					n->location = -1;
 					$$ = (Node *) n;
 				}
 			| START TRANSACTION transaction_mode_list_or_empty
@@ -11636,6 +11705,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_START;
 					n->options = $3;
+					n->location = -1;
 					$$ = (Node *) n;
 				}
 			| COMMIT opt_transaction opt_transaction_chain
@@ -11645,6 +11715,7 @@ TransactionStmt:
 					n->kind = TRANS_STMT_COMMIT;
 					n->options = NIL;
 					n->chain = $3;
+					n->location = -1;
 					$$ = (Node *) n;
 				}
 			| ROLLBACK opt_transaction opt_transaction_chain
@@ -11654,6 +11725,7 @@ TransactionStmt:
 					n->kind = TRANS_STMT_ROLLBACK;
 					n->options = NIL;
 					n->chain = $3;
+					n->location = -1;
 					$$ = (Node *) n;
 				}
 			| SAVEPOINT ColId
@@ -11662,6 +11734,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_SAVEPOINT;
 					n->savepoint_name = $2;
+					n->location = @2;
 					$$ = (Node *) n;
 				}
 			| RELEASE SAVEPOINT ColId
@@ -11670,6 +11743,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $3;
+					n->location = @3;
 					$$ = (Node *) n;
 				}
 			| RELEASE ColId
@@ -11678,6 +11752,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $2;
+					n->location = @2;
 					$$ = (Node *) n;
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
@@ -11686,6 +11761,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $5;
+					n->location = @5;
 					$$ = (Node *) n;
 				}
 			| ROLLBACK opt_transaction TO ColId
@@ -11694,6 +11770,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $4;
+					n->location = @4;
 					$$ = (Node *) n;
 				}
 			| PREPARE TRANSACTION Sconst
@@ -11702,6 +11779,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_PREPARE;
 					n->gid = $3;
+					n->location = @3;
 					$$ = (Node *) n;
 				}
 			| COMMIT PREPARED Sconst
@@ -11710,6 +11788,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_COMMIT_PREPARED;
 					n->gid = $3;
+					n->location = @3;
 					$$ = (Node *) n;
 				}
 			| ROLLBACK PREPARED Sconst
@@ -11718,6 +11797,7 @@ TransactionStmt:
 
 					n->kind = TRANS_STMT_ROLLBACK_PREPARED;
 					n->gid = $3;
+					n->location = @3;
 					$$ = (Node *) n;
 				}
 		;
@@ -11729,6 +11809,7 @@ TransactionStmtLegacy:
 
 					n->kind = TRANS_STMT_BEGIN;
 					n->options = $3;
+					n->location = -1;
 					$$ = (Node *) n;
 				}
 			| END_P opt_transaction opt_transaction_chain
@@ -11738,6 +11819,7 @@ TransactionStmtLegacy:
 					n->kind = TRANS_STMT_COMMIT;
 					n->options = NIL;
 					n->chain = $3;
+					n->location = -1;
 					$$ = (Node *) n;
 				}
 		;
@@ -12700,6 +12782,8 @@ DeallocateStmt: DEALLOCATE name
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 
 						n->name = $2;
+						n->isall = false;
+						n->location = @2;
 						$$ = (Node *) n;
 					}
 				| DEALLOCATE PREPARE name
@@ -12707,6 +12791,8 @@ DeallocateStmt: DEALLOCATE name
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 
 						n->name = $3;
+						n->isall = false;
+						n->location = @3;
 						$$ = (Node *) n;
 					}
 				| DEALLOCATE ALL
@@ -12714,6 +12800,8 @@ DeallocateStmt: DEALLOCATE name
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 
 						n->name = NULL;
+						n->isall = true;
+						n->location = -1;
 						$$ = (Node *) n;
 					}
 				| DEALLOCATE PREPARE ALL
@@ -12721,6 +12809,8 @@ DeallocateStmt: DEALLOCATE name
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 
 						n->name = NULL;
+						n->isall = true;
+						n->location = -1;
 						$$ = (Node *) n;
 					}
 		;
@@ -14776,6 +14866,7 @@ SimpleTypename:
 					$$->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
 											 makeIntConst($3, @3));
 				}
+			| JsonType								{ $$ = $1; }
 		;
 
 LongTypename:
@@ -14802,6 +14893,7 @@ ConstTypename:
 			| ConstBit								{ $$ = $1; }
 			| ConstCharacter						{ $$ = $1; }
 			| ConstDatetime							{ $$ = $1; }
+			| JsonType								{ $$ = $1; }
 		;
 
 /*
@@ -15958,6 +16050,13 @@ opt_interval_type:
 				{ $$ = NIL; }
 		;
 
+JsonType:
+			JSON
+				{
+					$$ = SystemTypeName("json");
+					$$->location = @1;
+				}
+		;
 
 /*****************************************************************************
  *
@@ -16449,12 +16548,11 @@ a_expr:		c_expr									{ $$ = $1; }
 			/*
 			 * Required by SQL/JSON, but there are conflicts
 			| a_expr
-				FORMAT_LA JSON json_encoding_clause_opt
+				json_format_clause
 				IS  json_predicate_type_constraint
 					json_key_uniqueness_constraint_opt		%prec IS
 				{
-					$3.location = @2;
-					$$ = makeJsonIsPredicate($1, $3, $5, $6, @1);
+					$$ = makeJsonIsPredicate($1, $2, $4, $5, @1);
 				}
 			*/
 			| a_expr IS NOT
@@ -16468,13 +16566,12 @@ a_expr:		c_expr									{ $$ = $1; }
 			/*
 			 * Required by SQL/JSON, but there are conflicts
 			| a_expr
-				FORMAT_LA JSON json_encoding_clause_opt
+				json_format_clause
 				IS NOT
 					json_predicate_type_constraint
 					json_key_uniqueness_constraint_opt		%prec IS
 				{
-					$3.location = @2;
-					$$ = makeNotExpr(makeJsonIsPredicate($1, $3, $6, $7, @1), @1);
+					$$ = makeNotExpr(makeJsonIsPredicate($1, $2, $5, $6, @1), @1);
 				}
 			*/
 			| DEFAULT
@@ -17252,7 +17349,7 @@ func_expr_common_subexpr:
 			| JSON_OBJECT '(' json_name_and_value_list
 				json_object_constructor_null_clause_opt
 				json_key_uniqueness_constraint_opt
-				json_output_clause_opt ')'
+				json_returning_clause_opt ')'
 				{
 					JsonObjectConstructor *n = makeNode(JsonObjectConstructor);
 
@@ -17263,7 +17360,7 @@ func_expr_common_subexpr:
 					n->location = @1;
 					$$ = (Node *) n;
 				}
-			| JSON_OBJECT '(' json_output_clause_opt ')'
+			| JSON_OBJECT '(' json_returning_clause_opt ')'
 				{
 					JsonObjectConstructor *n = makeNode(JsonObjectConstructor);
 
@@ -17277,7 +17374,7 @@ func_expr_common_subexpr:
 			| JSON_ARRAY '('
 				json_value_expr_list
 				json_array_constructor_null_clause_opt
-				json_output_clause_opt
+				json_returning_clause_opt
 			')'
 				{
 					JsonArrayConstructor *n = makeNode(JsonArrayConstructor);
@@ -17292,7 +17389,7 @@ func_expr_common_subexpr:
 				select_no_parens
 				json_format_clause_opt
 				/* json_array_constructor_null_clause_opt */
-				json_output_clause_opt
+				json_returning_clause_opt
 			')'
 				{
 					JsonArrayQueryConstructor *n = makeNode(JsonArrayQueryConstructor);
@@ -17305,7 +17402,7 @@ func_expr_common_subexpr:
 					$$ = (Node *) n;
 				}
 			| JSON_ARRAY '('
-				json_output_clause_opt
+				json_returning_clause_opt
 			')'
 				{
 					JsonArrayConstructor *n = makeNode(JsonArrayConstructor);
@@ -17316,7 +17413,36 @@ func_expr_common_subexpr:
 					n->location = @1;
 					$$ = (Node *) n;
 				}
-		;
+			| JSON '(' json_value_expr json_key_uniqueness_constraint_opt ')'
+				{
+					JsonParseExpr *n = makeNode(JsonParseExpr);
+
+					n->expr = (JsonValueExpr *) $3;
+					n->unique_keys = $4;
+					n->output = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| JSON_SCALAR '(' a_expr ')'
+				{
+					JsonScalarExpr *n = makeNode(JsonScalarExpr);
+
+					n->expr = (Expr *) $3;
+					n->output = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| JSON_SERIALIZE '(' json_value_expr json_returning_clause_opt ')'
+				{
+					JsonSerializeExpr *n = makeNode(JsonSerializeExpr);
+
+					n->expr = (JsonValueExpr *) $3;
+					n->output = (JsonOutput *) $4;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			;
+
 
 /*
  * SQL/XML support
@@ -18194,14 +18320,40 @@ opt_asymmetric: ASYMMETRIC
 json_value_expr:
 			a_expr json_format_clause_opt
 			{
-				$$ = (Node *) makeJsonValueExpr((Expr *) $1, castNode(JsonFormat, $2));
+				/* formatted_expr will be set during parse-analysis. */
+				$$ = (Node *) makeJsonValueExpr((Expr *) $1, NULL,
+								castNode(JsonFormat, $2));
 			}
 		;
 
-json_format_clause_opt:
-			FORMAT_LA JSON json_encoding_clause_opt
+json_format_clause:
+			FORMAT_LA JSON ENCODING name
 				{
-					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, $3, @1);
+					int		encoding;
+
+					if (!pg_strcasecmp($4, "utf8"))
+						encoding = JS_ENC_UTF8;
+					else if (!pg_strcasecmp($4, "utf16"))
+						encoding = JS_ENC_UTF16;
+					else if (!pg_strcasecmp($4, "utf32"))
+						encoding = JS_ENC_UTF32;
+					else
+						ereport(ERROR,
+								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("unrecognized JSON encoding: %s", $4));
+
+					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, encoding, @1);
+				}
+			| FORMAT_LA JSON
+				{
+					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, JS_ENC_DEFAULT, @1);
+				}
+		;
+
+json_format_clause_opt:
+			json_format_clause
+				{
+					$$ = $1;
 				}
 			| /* EMPTY */
 				{
@@ -18209,12 +18361,7 @@ json_format_clause_opt:
 				}
 		;
 
-json_encoding_clause_opt:
-			ENCODING name					{ $$ = makeJsonEncoding($2); }
-			| /* EMPTY */					{ $$ = JS_ENC_DEFAULT; }
-		;
-
-json_output_clause_opt:
+json_returning_clause_opt:
 			RETURNING Typename json_format_clause_opt
 				{
 					JsonOutput *n = makeNode(JsonOutput);
@@ -18227,21 +18374,35 @@ json_output_clause_opt:
 			| /* EMPTY */							{ $$ = NULL; }
 		;
 
+/*
+ * We must assign the only-JSON production a precedence less than IDENT in
+ * order to favor shifting over reduction when JSON is followed by VALUE_P,
+ * OBJECT_P, or SCALAR.  (ARRAY doesn't need that treatment, because it's a
+ * fully reserved word.)  Because json_predicate_type_constraint is always
+ * followed by json_key_uniqueness_constraint_opt, we also need the only-JSON
+ * production to have precedence less than WITH and WITHOUT.  UNBOUNDED isn't
+ * really related to this syntax, but it's a convenient choice because it
+ * already has a precedence less than IDENT for other reasons.
+ */
 json_predicate_type_constraint:
-			JSON									{ $$ = JS_TYPE_ANY; }
+			JSON					%prec UNBOUNDED	{ $$ = JS_TYPE_ANY; }
 			| JSON VALUE_P							{ $$ = JS_TYPE_ANY; }
 			| JSON ARRAY							{ $$ = JS_TYPE_ARRAY; }
 			| JSON OBJECT_P							{ $$ = JS_TYPE_OBJECT; }
 			| JSON SCALAR							{ $$ = JS_TYPE_SCALAR; }
 		;
 
-/* KEYS is a noise word here */
+/*
+ * KEYS is a noise word here.  To avoid shift/reduce conflicts, assign the
+ * KEYS-less productions a precedence less than IDENT (i.e., less than KEYS).
+ * This prevents reducing them when the next token is KEYS.
+ */
 json_key_uniqueness_constraint_opt:
 			WITH UNIQUE KEYS							{ $$ = true; }
-			| WITH UNIQUE								{ $$ = true; }
+			| WITH UNIQUE				%prec UNBOUNDED	{ $$ = true; }
 			| WITHOUT UNIQUE KEYS						{ $$ = false; }
-			| WITHOUT UNIQUE							{ $$ = false; }
-			| /* EMPTY */ 				%prec KEYS		{ $$ = false; }
+			| WITHOUT UNIQUE			%prec UNBOUNDED	{ $$ = false; }
+			| /* EMPTY */ 				%prec UNBOUNDED	{ $$ = false; }
 		;
 
 json_name_and_value_list:
@@ -18287,7 +18448,7 @@ json_aggregate_func:
 				json_name_and_value
 				json_object_constructor_null_clause_opt
 				json_key_uniqueness_constraint_opt
-				json_output_clause_opt
+				json_returning_clause_opt
 			')'
 				{
 					JsonObjectAgg *n = makeNode(JsonObjectAgg);
@@ -18305,7 +18466,7 @@ json_aggregate_func:
 				json_value_expr
 				json_array_aggregate_order_by_clause_opt
 				json_array_constructor_null_clause_opt
-				json_output_clause_opt
+				json_returning_clause_opt
 			')'
 				{
 					JsonArrayAgg *n = makeNode(JsonArrayAgg);
@@ -18992,7 +19153,6 @@ unreserved_keyword:
 			| INVOKER
 			| ISOLATION
 			| IVYSQL
-			| JSON
 			| KEY
 			| KEYS
 			| LABEL
@@ -19234,10 +19394,13 @@ col_name_keyword:
 			| INT_P
 			| INTEGER
 			| INTERVAL
+			| JSON
 			| JSON_ARRAY
 			| JSON_ARRAYAGG
 			| JSON_OBJECT
 			| JSON_OBJECTAGG
+			| JSON_SCALAR
+			| JSON_SERIALIZE
 			| LEAST
 			| NATIONAL
 			| NCHAR
@@ -19632,6 +19795,8 @@ bare_label_keyword:
 			| JSON_ARRAYAGG
 			| JSON_OBJECT
 			| JSON_OBJECTAGG
+			| JSON_SCALAR
+			| JSON_SERIALIZE
 			| KEY
 			| KEYS
 			| LABEL
@@ -20324,7 +20489,7 @@ insertSelectOptions(SelectStmt *stmt,
 					 parser_errposition(exprLocation(limitClause->limitCount))));
 		stmt->limitCount = limitClause->limitCount;
 	}
-	if (limitClause && limitClause->limitOption != LIMIT_OPTION_DEFAULT)
+	if (limitClause)
 	{
 		if (stmt->limitOption)
 			ereport(ERROR,

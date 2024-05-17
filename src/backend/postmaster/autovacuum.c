@@ -250,7 +250,7 @@ typedef enum
 {
 	AutoVacForkFailed,			/* failed trying to start a worker */
 	AutoVacRebalance,			/* rebalance the cost limits */
-	AutoVacNumSignals			/* must be last */
+	AutoVacNumSignals,			/* must be last */
 }			AutoVacuumSignal;
 
 /*
@@ -386,15 +386,6 @@ avlauncher_forkexec(void)
 
 	return postmaster_forkexec(ac, av);
 }
-
-/*
- * We need this set from the outside, before InitProcess is called
- */
-void
-AutovacuumLauncherIAm(void)
-{
-	am_autovacuum_launcher = true;
-}
 #endif
 
 /*
@@ -476,19 +467,15 @@ AutoVacLauncherMain(int argc, char *argv[])
 	pqsignal(SIGCHLD, SIG_DFL);
 
 	/*
-	 * Create a per-backend PGPROC struct in shared memory, except in the
-	 * EXEC_BACKEND case where this was done in SubPostmasterMain. We must do
-	 * this before we can use LWLocks (and in the EXEC_BACKEND case we already
-	 * had to do some stuff with LWLocks).
+	 * Create a per-backend PGPROC struct in shared memory.  We must do this
+	 * before we can use LWLocks or access any shared memory.
 	 */
-#ifndef EXEC_BACKEND
 	InitProcess();
-#endif
 
 	/* Early initialization */
 	BaseInit();
 
-	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, false, false, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, 0, NULL);
 
 	SetProcessingMode(NormalProcessing);
 
@@ -555,7 +542,7 @@ AutoVacLauncherMain(int argc, char *argv[])
 		FlushErrorState();
 
 		/* Flush any leaked data in the top-level context */
-		MemoryContextResetAndDeleteChildren(AutovacMemCxt);
+		MemoryContextReset(AutovacMemCxt);
 
 		/* don't leave dangling pointers to freed memory */
 		DatabaseListCxt = NULL;
@@ -1457,15 +1444,6 @@ avworker_forkexec(void)
 
 	return postmaster_forkexec(ac, av);
 }
-
-/*
- * We need this set from the outside, before InitProcess is called
- */
-void
-AutovacuumWorkerIAm(void)
-{
-	am_autovacuum_worker = true;
-}
 #endif
 
 /*
@@ -1548,14 +1526,10 @@ AutoVacWorkerMain(int argc, char *argv[])
 	pqsignal(SIGCHLD, SIG_DFL);
 
 	/*
-	 * Create a per-backend PGPROC struct in shared memory, except in the
-	 * EXEC_BACKEND case where this was done in SubPostmasterMain. We must do
-	 * this before we can use LWLocks (and in the EXEC_BACKEND case we already
-	 * had to do some stuff with LWLocks).
+	 * Create a per-backend PGPROC struct in shared memory.  We must do this
+	 * before we can use LWLocks or access any shared memory.
 	 */
-#ifndef EXEC_BACKEND
 	InitProcess();
-#endif
 
 	/* Early initialization */
 	BaseInit();
@@ -1706,8 +1680,7 @@ AutoVacWorkerMain(int argc, char *argv[])
 		 * Note: if we have selected a just-deleted database (due to using
 		 * stale stats info), we'll fail and exit here.
 		 */
-		InitPostgres(NULL, dbid, NULL, InvalidOid, false, false,
-					 dbname);
+		InitPostgres(NULL, dbid, NULL, InvalidOid, 0, dbname);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(dbname);
 		ereport(DEBUG1,
@@ -1971,6 +1944,18 @@ get_database_list(void)
 		Form_pg_database pgdatabase = (Form_pg_database) GETSTRUCT(tup);
 		avw_dbase  *avdb;
 		MemoryContext oldcxt;
+
+		/*
+		 * If database has partially been dropped, we can't, nor need to,
+		 * vacuum it.
+		 */
+		if (database_is_invalid_form(pgdatabase))
+		{
+			elog(DEBUG2,
+				 "autovacuum: skipping invalid database \"%s\"",
+				 NameStr(pgdatabase->datname));
+			continue;
+		}
 
 		/*
 		 * Allocate our results in the caller's context, not the
@@ -2510,7 +2495,7 @@ do_autovacuum(void)
 
 
 		/* clean up memory before each iteration */
-		MemoryContextResetAndDeleteChildren(PortalContext);
+		MemoryContextReset(PortalContext);
 
 		/*
 		 * Save the relation name for a possible error message, to avoid a
@@ -2565,7 +2550,7 @@ do_autovacuum(void)
 			/* this resets ProcGlobal->statusFlags[i] too */
 			AbortOutOfAnyTransaction();
 			FlushErrorState();
-			MemoryContextResetAndDeleteChildren(PortalContext);
+			MemoryContextReset(PortalContext);
 
 			/* restart our transaction for the following operations */
 			StartTransactionCommand();
@@ -2655,8 +2640,8 @@ deleted:
 	 *
 	 * Even if we didn't vacuum anything, it may still be important to do
 	 * this, because one indirect effect of vac_update_datfrozenxid() is to
-	 * update ShmemVariableCache->xidVacLimit.  That might need to be done
-	 * even if we haven't vacuumed anything, because relations with older
+	 * update TransamVariables->xidVacLimit.  That might need to be done even
+	 * if we haven't vacuumed anything, because relations with older
 	 * relfrozenxid values or other databases with older datfrozenxid values
 	 * might have been dropped, allowing xidVacLimit to advance.
 	 *
@@ -2707,7 +2692,7 @@ perform_work_item(AutoVacuumWorkItem *workitem)
 	autovac_report_workitem(workitem, cur_nspname, cur_relname);
 
 	/* clean up memory before each work item */
-	MemoryContextResetAndDeleteChildren(PortalContext);
+	MemoryContextReset(PortalContext);
 
 	/*
 	 * We will abort the current work item if something errors out, and
@@ -2759,7 +2744,7 @@ perform_work_item(AutoVacuumWorkItem *workitem)
 		/* this resets ProcGlobal->statusFlags[i] too */
 		AbortOutOfAnyTransaction();
 		FlushErrorState();
-		MemoryContextResetAndDeleteChildren(PortalContext);
+		MemoryContextReset(PortalContext);
 
 		/* restart our transaction for the following operations */
 		StartTransactionCommand();

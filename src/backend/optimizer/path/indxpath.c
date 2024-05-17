@@ -45,7 +45,7 @@ typedef enum
 {
 	ST_INDEXSCAN,				/* must support amgettuple */
 	ST_BITMAPSCAN,				/* must support amgetbitmap */
-	ST_ANYSCAN					/* either is okay */
+	ST_ANYSCAN,					/* either is okay */
 } ScanTypeControl;
 
 /* Data structure for collecting qual clauses that match an index */
@@ -974,14 +974,20 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	}
 	else if (index->amcanorderbyop && pathkeys_possibly_useful)
 	{
-		/* see if we can generate ordering operators for query_pathkeys */
+		/*
+		 * See if we can generate ordering operators for query_pathkeys or at
+		 * least some prefix thereof.  Matching to just a prefix of the
+		 * query_pathkeys will allow an incremental sort to be considered on
+		 * the index's partially sorted results.
+		 */
 		match_pathkeys_to_index(index, root->query_pathkeys,
 								&orderbyclauses,
 								&orderbyclausecols);
-		if (orderbyclauses)
+		if (list_length(root->query_pathkeys) == list_length(orderbyclauses))
 			useful_pathkeys = root->query_pathkeys;
 		else
-			useful_pathkeys = NIL;
+			useful_pathkeys = list_copy_head(root->query_pathkeys,
+											 list_length(orderbyclauses));
 	}
 	else
 	{
@@ -3054,24 +3060,24 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 
 /*
  * match_pathkeys_to_index
- *		Test whether an index can produce output ordered according to the
- *		given pathkeys using "ordering operators".
+ *		For the given 'index' and 'pathkeys', output a list of suitable ORDER
+ *		BY expressions, each of the form "indexedcol operator pseudoconstant",
+ *		along with an integer list of the index column numbers (zero based)
+ *		that each clause would be used with.
  *
- * If it can, return a list of suitable ORDER BY expressions, each of the form
- * "indexedcol operator pseudoconstant", along with an integer list of the
- * index column numbers (zero based) that each clause would be used with.
- * NIL lists are returned if the ordering is not achievable this way.
- *
- * On success, the result list is ordered by pathkeys, and in fact is
- * one-to-one with the requested pathkeys.
+ * This attempts to find an ORDER BY and index column number for all items in
+ * the pathkey list, however, if we're unable to match any given pathkey to an
+ * index column, we return just the ones matched by the function so far.  This
+ * allows callers who are interested in partial matches to get them.  Callers
+ * can determine a partial match vs a full match by checking the outputted
+ * list lengths.  A full match will have one item in the output lists for each
+ * item in the given 'pathkeys' list.
  */
 static void
 match_pathkeys_to_index(IndexOptInfo *index, List *pathkeys,
 						List **orderby_clauses_p,
 						List **clause_columns_p)
 {
-	List	   *orderby_clauses = NIL;
-	List	   *clause_columns = NIL;
 	ListCell   *lc1;
 
 	*orderby_clauses_p = NIL;	/* set default results */
@@ -3087,10 +3093,6 @@ match_pathkeys_to_index(IndexOptInfo *index, List *pathkeys,
 		bool		found = false;
 		ListCell   *lc2;
 
-		/*
-		 * Note: for any failure to match, we just return NIL immediately.
-		 * There is no value in matching just some of the pathkeys.
-		 */
 
 		/* Pathkey must request default sort order for the target opfamily */
 		if (pathkey->pk_strategy != BTLessStrategyNumber ||
@@ -3136,8 +3138,8 @@ match_pathkeys_to_index(IndexOptInfo *index, List *pathkeys,
 												   pathkey->pk_opfamily);
 				if (expr)
 				{
-					orderby_clauses = lappend(orderby_clauses, expr);
-					clause_columns = lappend_int(clause_columns, indexcol);
+					*orderby_clauses_p = lappend(*orderby_clauses_p, expr);
+					*clause_columns_p = lappend_int(*clause_columns_p, indexcol);
 					found = true;
 					break;
 				}
@@ -3147,12 +3149,13 @@ match_pathkeys_to_index(IndexOptInfo *index, List *pathkeys,
 				break;
 		}
 
-		if (!found)				/* fail if no match for this pathkey */
+		/*
+		 * Return the matches found so far when this pathkey couldn't be
+		 * matched to the index.
+		 */
+		if (!found)
 			return;
 	}
-
-	*orderby_clauses_p = orderby_clauses;	/* success! */
-	*clause_columns_p = clause_columns;
 }
 
 /*
@@ -3495,6 +3498,22 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 							  List *restrictlist,
 							  List *exprlist, List *oprlist)
 {
+	return relation_has_unique_index_ext(root, rel, restrictlist,
+										 exprlist, oprlist, NULL);
+}
+
+/*
+ * relation_has_unique_index_ext
+ *	  Same as relation_has_unique_index_for(), but supports extra_clauses
+ *	  parameter.  If extra_clauses isn't NULL, return baserestrictinfo clauses
+ *	  which were used to derive uniqueness.
+ */
+bool
+relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
+							  List *restrictlist,
+							  List *exprlist, List *oprlist,
+							  List **extra_clauses)
+{
 	ListCell   *ic;
 
 	Assert(list_length(exprlist) == list_length(oprlist));
@@ -3549,6 +3568,7 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 	{
 		IndexOptInfo *ind = (IndexOptInfo *) lfirst(ic);
 		int			c;
+		List	   *exprs = NIL;
 
 		/*
 		 * If the index is not unique, or not immediately enforced, or if it's
@@ -3600,6 +3620,24 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 				if (match_index_to_operand(rexpr, c, ind))
 				{
 					matched = true; /* column is unique */
+
+					if (bms_membership(rinfo->clause_relids) == BMS_SINGLETON)
+					{
+						MemoryContext oldMemCtx =
+							MemoryContextSwitchTo(root->planner_cxt);
+
+						/*
+						 * Add filter clause into a list allowing caller to
+						 * know if uniqueness have made not only by join
+						 * clauses.
+						 */
+						Assert(bms_is_empty(rinfo->left_relids) ||
+							   bms_is_empty(rinfo->right_relids));
+						if (extra_clauses)
+							exprs = lappend(exprs, rinfo);
+						MemoryContextSwitchTo(oldMemCtx);
+					}
+
 					break;
 				}
 			}
@@ -3642,7 +3680,11 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 		/* Matched all key columns of this index? */
 		if (c == ind->nkeycolumns)
+		{
+			if (extra_clauses)
+				*extra_clauses = exprs;
 			return true;
+		}
 	}
 
 	return false;

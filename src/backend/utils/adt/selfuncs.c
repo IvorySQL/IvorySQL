@@ -4802,6 +4802,10 @@ convert_timevalue_to_scalar(Datum value, Oid typid, bool *failure)
 				 * Convert the month part of Interval to days using assumed
 				 * average month length of 365.25/12.0 days.  Not too
 				 * accurate, but plenty good enough for our purposes.
+				 *
+				 * This also works for infinite intervals, which just have all
+				 * fields set to INT_MIN/INT_MAX, and so will produce a result
+				 * smaller/larger than any finite interval.
 				 */
 				return interval->time + interval->day * (double) USECS_PER_DAY +
 					interval->month * ((DAYS_PER_YEAR / (double) MONTHS_PER_YEAR) * USECS_PER_DAY);
@@ -5024,22 +5028,27 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 
 	onerel = NULL;
 
-	switch (bms_membership(varnos))
+	if (bms_is_empty(varnos))
 	{
-		case BMS_EMPTY_SET:
-			/* No Vars at all ... must be pseudo-constant clause */
-			break;
-		case BMS_SINGLETON:
-			if (varRelid == 0 || bms_is_member(varRelid, varnos))
+		/* No Vars at all ... must be pseudo-constant clause */
+	}
+	else
+	{
+		int			relid;
+
+		if (bms_get_singleton_member(varnos, &relid))
+		{
+			if (varRelid == 0 || varRelid == relid)
 			{
-				onerel = find_base_rel(root,
-									   (varRelid ? varRelid : bms_singleton_member(varnos)));
+				onerel = find_base_rel(root, relid);
 				vardata->rel = onerel;
 				node = basenode;	/* strip any relabeling */
 			}
 			/* else treat it as a constant */
-			break;
-		case BMS_MULTIPLE:
+		}
+		else
+		{
+			/* varnos has multiple relids */
 			if (varRelid == 0)
 			{
 				/* treat it as a variable of a join relation */
@@ -5054,7 +5063,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 				/* note: no point in expressional-index search here */
 			}
 			/* else treat it as a constant */
-			break;
+		}
 	}
 
 	bms_free(varnos);
@@ -5359,7 +5368,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
  *		Handle a simple Var for examine_variable
  *
  * This is split out as a subroutine so that we can recurse to deal with
- * Vars referencing subqueries.
+ * Vars referencing subqueries (either sub-SELECT-in-FROM or CTE style).
  *
  * We already filled in all the fields of *vardata except for the stats tuple.
  */
@@ -5493,13 +5502,19 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 			vardata->acl_ok = true;
 		}
 	}
-	else if (rte->rtekind == RTE_SUBQUERY && !rte->inh)
+	else if ((rte->rtekind == RTE_SUBQUERY && !rte->inh) ||
+			 (rte->rtekind == RTE_CTE && !rte->self_reference))
 	{
 		/*
-		 * Plain subquery (not one that was converted to an appendrel).
+		 * Plain subquery (not one that was converted to an appendrel) or
+		 * non-recursive CTE.  In either case, we can try to find out what the
+		 * Var refers to within the subquery.  We skip this for appendrel and
+		 * recursive-CTE cases because any column stats we did find would
+		 * likely not be very relevant.
 		 */
-		Query	   *subquery = rte->subquery;
-		RelOptInfo *rel;
+		PlannerInfo *subroot;
+		Query	   *subquery;
+		List	   *subtlist;
 		TargetEntry *ste;
 
 		/*
@@ -5507,6 +5522,85 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 		 */
 		if (var->varattno == InvalidAttrNumber)
 			return;
+
+		/*
+		 * Otherwise, find the subquery's planner subroot.
+		 */
+		if (rte->rtekind == RTE_SUBQUERY)
+		{
+			RelOptInfo *rel;
+
+			/*
+			 * Fetch RelOptInfo for subquery.  Note that we don't change the
+			 * rel returned in vardata, since caller expects it to be a rel of
+			 * the caller's query level.  Because we might already be
+			 * recursing, we can't use that rel pointer either, but have to
+			 * look up the Var's rel afresh.
+			 */
+			rel = find_base_rel(root, var->varno);
+
+			subroot = rel->subroot;
+		}
+		else
+		{
+			/* CTE case is more difficult */
+			PlannerInfo *cteroot;
+			Index		levelsup;
+			int			ndx;
+			int			plan_id;
+			ListCell   *lc;
+
+			/*
+			 * Find the referenced CTE, and locate the subroot previously made
+			 * for it.
+			 */
+			levelsup = rte->ctelevelsup;
+			cteroot = root;
+			while (levelsup-- > 0)
+			{
+				cteroot = cteroot->parent_root;
+				if (!cteroot)	/* shouldn't happen */
+					elog(ERROR, "bad levelsup for CTE \"%s\"", rte->ctename);
+			}
+
+			/*
+			 * Note: cte_plan_ids can be shorter than cteList, if we are still
+			 * working on planning the CTEs (ie, this is a side-reference from
+			 * another CTE).  So we mustn't use forboth here.
+			 */
+			ndx = 0;
+			foreach(lc, cteroot->parse->cteList)
+			{
+				CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+
+				if (strcmp(cte->ctename, rte->ctename) == 0)
+					break;
+				ndx++;
+			}
+			if (lc == NULL)		/* shouldn't happen */
+				elog(ERROR, "could not find CTE \"%s\"", rte->ctename);
+			if (ndx >= list_length(cteroot->cte_plan_ids))
+				elog(ERROR, "could not find plan for CTE \"%s\"", rte->ctename);
+			plan_id = list_nth_int(cteroot->cte_plan_ids, ndx);
+			if (plan_id <= 0)
+				elog(ERROR, "no plan was made for CTE \"%s\"", rte->ctename);
+			subroot = list_nth(root->glob->subroots, plan_id - 1);
+		}
+
+		/* If the subquery hasn't been planned yet, we have to punt */
+		if (subroot == NULL)
+			return;
+		Assert(IsA(subroot, PlannerInfo));
+
+		/*
+		 * We must use the subquery parsetree as mangled by the planner, not
+		 * the raw version from the RTE, because we need a Var that will refer
+		 * to the subroot's live RelOptInfos.  For instance, if any subquery
+		 * pullup happened during planning, Vars in the targetlist might have
+		 * gotten replaced, and we need to see the replacement expressions.
+		 */
+		subquery = subroot->parse;
+		Assert(IsA(subquery, Query));
 
 		/*
 		 * Punt if subquery uses set operations or GROUP BY, as these will
@@ -5521,33 +5615,12 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 			subquery->groupingSets)
 			return;
 
-		/*
-		 * OK, fetch RelOptInfo for subquery.  Note that we don't change the
-		 * rel returned in vardata, since caller expects it to be a rel of the
-		 * caller's query level.  Because we might already be recursing, we
-		 * can't use that rel pointer either, but have to look up the Var's
-		 * rel afresh.
-		 */
-		rel = find_base_rel(root, var->varno);
-
-		/* If the subquery hasn't been planned yet, we have to punt */
-		if (rel->subroot == NULL)
-			return;
-		Assert(IsA(rel->subroot, PlannerInfo));
-
-		/*
-		 * Switch our attention to the subquery as mangled by the planner. It
-		 * was okay to look at the pre-planning version for the tests above,
-		 * but now we need a Var that will refer to the subroot's live
-		 * RelOptInfos.  For instance, if any subquery pullup happened during
-		 * planning, Vars in the targetlist might have gotten replaced, and we
-		 * need to see the replacement expressions.
-		 */
-		subquery = rel->subroot->parse;
-		Assert(IsA(subquery, Query));
-
 		/* Get the subquery output expression referenced by the upper Var */
-		ste = get_tle_by_resno(subquery->targetList, var->varattno);
+		if (subquery->returningList)
+			subtlist = subquery->returningList;
+		else
+			subtlist = subquery->targetList;
+		ste = get_tle_by_resno(subtlist, var->varattno);
 		if (ste == NULL || ste->resjunk)
 			elog(ERROR, "subquery %s does not have attribute %d",
 				 rte->eref->aliasname, var->varattno);
@@ -5595,16 +5668,16 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 			 * if the underlying column is unique, the subquery may have
 			 * joined to other tables in a way that creates duplicates.
 			 */
-			examine_simple_variable(rel->subroot, var, vardata);
+			examine_simple_variable(subroot, var, vardata);
 		}
 	}
 	else
 	{
 		/*
-		 * Otherwise, the Var comes from a FUNCTION, VALUES, or CTE RTE.  (We
-		 * won't see RTE_JOIN here because join alias Vars have already been
+		 * Otherwise, the Var comes from a FUNCTION or VALUES RTE.  (We won't
+		 * see RTE_JOIN here because join alias Vars have already been
 		 * flattened.)	There's not much we can do with function outputs, but
-		 * maybe someday try to be smarter about VALUES and/or CTEs.
+		 * maybe someday try to be smarter about VALUES.
 		 */
 	}
 }
@@ -6313,17 +6386,14 @@ find_join_input_rel(PlannerInfo *root, Relids relids)
 {
 	RelOptInfo *rel = NULL;
 
-	switch (bms_membership(relids))
+	if (!bms_is_empty(relids))
 	{
-		case BMS_EMPTY_SET:
-			/* should not happen */
-			break;
-		case BMS_SINGLETON:
-			rel = find_base_rel(root, bms_singleton_member(relids));
-			break;
-		case BMS_MULTIPLE:
+		int			relid;
+
+		if (bms_get_singleton_member(relids, &relid))
+			rel = find_base_rel(root, relid);
+		else
 			rel = find_join_rel(root, relids);
-			break;
 	}
 
 	if (rel == NULL)

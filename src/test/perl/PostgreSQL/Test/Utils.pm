@@ -42,7 +42,7 @@ aimed at controlling command execution, logging and test functions.
 package PostgreSQL::Test::Utils;
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use Carp;
 use Config;
@@ -71,6 +71,7 @@ our @EXPORT = qw(
   chmod_recursive
   check_pg_config
   dir_symlink
+  scan_server_header
   system_or_bail
   system_log
   run_log
@@ -271,7 +272,7 @@ sub all_tests_passing
 
 Securely create a temporary directory inside C<$tmp_check>, like C<mkdtemp>,
 and return its name.  The directory will be removed automatically at the
-end of the tests.
+end of the tests, unless the environment variable PG_TEST_NOCLEAN is provided.
 
 If C<prefix> is given, the new directory is templated as C<${prefix}_XXXX>.
 Otherwise the template is C<tmp_test_XXXX>.
@@ -284,8 +285,8 @@ sub tempdir
 	$prefix = "tmp_test" unless defined $prefix;
 	return File::Temp::tempdir(
 		$prefix . '_XXXX',
-		DIR     => $tmp_check,
-		CLEANUP => 1);
+		DIR => $tmp_check,
+		CLEANUP => not defined $ENV{'PG_TEST_NOCLEAN'});
 }
 
 =pod
@@ -300,7 +301,8 @@ name, to avoid path length issues.
 sub tempdir_short
 {
 
-	return File::Temp::tempdir(CLEANUP => 1);
+	return File::Temp::tempdir(
+		CLEANUP => not defined $ENV{'PG_TEST_NOCLEAN'});
 }
 
 =pod
@@ -562,8 +564,8 @@ sub string_replace_file
 {
 	my ($filename, $find, $replace) = @_;
 	open(my $in, '<', $filename);
-	my $content;
-	while(<$in>)
+	my $content = '';
+	while (<$in>)
 	{
 		$_ =~ s/$find/$replace/;
 		$content = $content.$_;
@@ -696,6 +698,46 @@ sub chmod_recursive
 		},
 		$dir);
 	return;
+}
+
+=pod
+
+=item scan_server_header(header_path, regexp)
+
+Returns an array that stores all the matches of the given regular expression
+within the PostgreSQL installation's C<header_path>.  This can be used to
+retrieve specific value patterns from the installation's header files.
+
+=cut
+
+sub scan_server_header
+{
+	my ($header_path, $regexp) = @_;
+
+	my ($stdout, $stderr);
+	my $result = IPC::Run::run [ 'pg_config', '--includedir-server' ], '>',
+	  \$stdout, '2>', \$stderr
+	  or die "could not execute pg_config";
+	chomp($stdout);
+	$stdout =~ s/\r$//;
+
+	open my $header_h, '<', "$stdout/$header_path" or die "$!";
+
+	my @match = undef;
+	while (<$header_h>)
+	{
+		my $line = $_;
+
+		if (@match = $line =~ /^$regexp/)
+		{
+			last;
+		}
+	}
+
+	close $header_h;
+	die "could not find match in header $header_path\n"
+	  unless @match;
+	return @match;
 }
 
 =pod
@@ -841,6 +883,15 @@ sub program_help_ok
 	ok($result, "$cmd --help exit code 0");
 	isnt($stdout, '', "$cmd --help goes to stdout");
 	is($stderr, '', "$cmd --help nothing to stderr");
+
+	# This value isn't set in stone, it reflects the current
+	# convention in use.  Most output actually tries to aim for 80.
+	my $max_line_length = 95;
+	my @long_lines = grep { length > $max_line_length } split /\n/, $stdout;
+	is(scalar @long_lines, 0, "$cmd --help maximum line length")
+	  or diag("These lines are too long (>$max_line_length):\n",
+		join("\n", @long_lines));
+
 	return;
 }
 

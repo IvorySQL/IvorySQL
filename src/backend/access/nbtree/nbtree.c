@@ -56,7 +56,7 @@ typedef enum
 	BTPARALLEL_NOT_INITIALIZED,
 	BTPARALLEL_ADVANCING,
 	BTPARALLEL_IDLE,
-	BTPARALLEL_DONE
+	BTPARALLEL_DONE,
 } BTPS_State;
 
 /*
@@ -112,6 +112,7 @@ bthandler(PG_FUNCTION_ARGS)
 	amroutine->amclusterable = true;
 	amroutine->ampredlocks = true;
 	amroutine->amcanparallel = true;
+	amroutine->amcanbuildparallel = true;
 	amroutine->amcaninclude = true;
 	amroutine->amusemaintenanceworkmem = false;
 	amroutine->amsummarizing = false;
@@ -122,6 +123,7 @@ bthandler(PG_FUNCTION_ARGS)
 	amroutine->ambuild = btbuild;
 	amroutine->ambuildempty = btbuildempty;
 	amroutine->aminsert = btinsert;
+	amroutine->aminsertcleanup = NULL;
 	amroutine->ambulkdelete = btbulkdelete;
 	amroutine->amvacuumcleanup = btvacuumcleanup;
 	amroutine->amcanreturn = btcanreturn;
@@ -151,31 +153,33 @@ bthandler(PG_FUNCTION_ARGS)
 void
 btbuildempty(Relation index)
 {
+	bool		allequalimage = _bt_allequalimage(index, false);
+	Buffer		metabuf;
 	Page		metapage;
 
-	/* Construct metapage. */
-	metapage = (Page) palloc_aligned(BLCKSZ, PG_IO_ALIGN_SIZE, 0);
-	_bt_initmetapage(metapage, P_NONE, 0, _bt_allequalimage(index, false));
-
 	/*
-	 * Write the page and log it.  It might seem that an immediate sync would
-	 * be sufficient to guarantee that the file exists on disk, but recovery
-	 * itself might remove it while replaying, for example, an
-	 * XLOG_DBASE_CREATE* or XLOG_TBLSPC_CREATE record.  Therefore, we need
-	 * this even when wal_level=minimal.
+	 * Initalize the metapage.
+	 *
+	 * Regular index build bypasses the buffer manager and uses smgr functions
+	 * directly, with an smgrimmedsync() call at the end.  That makes sense
+	 * when the index is large, but for an empty index, it's better to use the
+	 * buffer cache to avoid the smgrimmedsync().
 	 */
-	PageSetChecksumInplace(metapage, BTREE_METAPAGE);
-	smgrwrite(RelationGetSmgr(index), INIT_FORKNUM, BTREE_METAPAGE,
-			  metapage, true);
-	log_newpage(&RelationGetSmgr(index)->smgr_rlocator.locator, INIT_FORKNUM,
-				BTREE_METAPAGE, metapage, true);
+	metabuf = ReadBufferExtended(index, INIT_FORKNUM, P_NEW, RBM_NORMAL, NULL);
+	Assert(BufferGetBlockNumber(metabuf) == BTREE_METAPAGE);
+	_bt_lockbuf(index, metabuf, BT_WRITE);
 
-	/*
-	 * An immediate sync is required even if we xlog'd the page, because the
-	 * write did not go through shared_buffers and therefore a concurrent
-	 * checkpoint may have moved the redo pointer past our xlog record.
-	 */
-	smgrimmedsync(RelationGetSmgr(index), INIT_FORKNUM);
+	START_CRIT_SECTION();
+
+	metapage = BufferGetPage(metabuf);
+	_bt_initmetapage(metapage, P_NONE, 0, allequalimage);
+	MarkBufferDirty(metabuf);
+	log_newpage_buffer(metabuf, true);
+
+	END_CRIT_SECTION();
+
+	_bt_unlockbuf(index, metabuf);
+	ReleaseBuffer(metabuf);
 }
 
 /*
@@ -362,6 +366,7 @@ btbeginscan(Relation rel, int nkeys, int norderbys)
 		so->keyData = NULL;
 
 	so->arrayKeyData = NULL;	/* assume no array keys for now */
+	so->arraysStarted = false;
 	so->numArrayKeys = 0;
 	so->arrayKeys = NULL;
 	so->arrayContext = NULL;

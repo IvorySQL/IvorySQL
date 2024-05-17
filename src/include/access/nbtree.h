@@ -763,13 +763,8 @@ typedef BTStackData *BTStack;
  * bit, but may not when inserting into an INCLUDE index (tuple header value
  * is affected by the NULL-ness of both key and non-key attributes).
  *
- * When nextkey is false (the usual case), _bt_search and _bt_binsrch will
- * locate the first item >= scankey.  When nextkey is true, they will locate
- * the first item > scan key.
- *
- * pivotsearch is set to true by callers that want to re-find a leaf page
- * using a scankey built from a leaf page's high key.  Most callers set this
- * to false.
+ * See comments in _bt_first for an explanation of the nextkey and backward
+ * fields.
  *
  * scantid is the heap TID that is used as a final tiebreaker attribute.  It
  * is set to NULL when index scan doesn't need to find a position for a
@@ -792,7 +787,7 @@ typedef struct BTScanInsertData
 	bool		allequalimage;
 	bool		anynullkeys;
 	bool		nextkey;
-	bool		pivotsearch;
+	bool		backward;		/* backward index scan? */
 	ItemPointer scantid;		/* tiebreaker for scankeys */
 	int			keysz;			/* Size of scankeys array */
 	ScanKeyData scankeys[INDEX_MAX_KEYS];	/* Must appear last */
@@ -1043,6 +1038,8 @@ typedef struct BTScanOpaqueData
 
 	/* workspace for SK_SEARCHARRAY support */
 	ScanKey		arrayKeyData;	/* modified copy of scan->keyData */
+	bool		arraysStarted;	/* Started array keys, but have yet to "reach
+								 * past the end" of all arrays? */
 	int			numArrayKeys;	/* number of equality-type array keys (-1 if
 								 * there are any unsatisfiable array keys) */
 	int			arrayKeyCount;	/* count indicating number of array scan keys
@@ -1231,16 +1228,15 @@ extern void _bt_pendingfsm_finalize(Relation rel, BTVacState *vstate);
  * prototypes for functions in nbtsearch.c
  */
 extern BTStack _bt_search(Relation rel, Relation heaprel, BTScanInsert key,
-						  Buffer *bufP, int access, Snapshot snapshot);
+						  Buffer *bufP, int access);
 extern Buffer _bt_moveright(Relation rel, Relation heaprel, BTScanInsert key,
 							Buffer buf, bool forupdate, BTStack stack,
-							int access, Snapshot snapshot);
+							int access);
 extern OffsetNumber _bt_binsrch_insert(Relation rel, BTInsertState insertstate);
 extern int32 _bt_compare(Relation rel, BTScanInsert key, Page page, OffsetNumber offnum);
 extern bool _bt_first(IndexScanDesc scan, ScanDirection dir);
 extern bool _bt_next(IndexScanDesc scan, ScanDirection dir);
-extern Buffer _bt_get_endpoint(Relation rel, uint32 level, bool rightmost,
-							   Snapshot snapshot);
+extern Buffer _bt_get_endpoint(Relation rel, uint32 level, bool rightmost);
 
 /*
  * prototypes for functions in nbtutils.c
@@ -1254,7 +1250,8 @@ extern void _bt_mark_array_keys(IndexScanDesc scan);
 extern void _bt_restore_array_keys(IndexScanDesc scan);
 extern void _bt_preprocess_keys(IndexScanDesc scan);
 extern bool _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple,
-						  int tupnatts, ScanDirection dir, bool *continuescan);
+						  int tupnatts, ScanDirection dir, bool *continuescan,
+						  bool requiredMatchedByPrecheck, bool haveFirstMatch);
 extern void _bt_killitems(IndexScanDesc scan);
 extern BTCycleId _bt_vacuum_cycleid(Relation rel);
 extern BTCycleId _bt_start_vacuum(Relation rel);

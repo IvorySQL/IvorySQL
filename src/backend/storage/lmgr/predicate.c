@@ -437,7 +437,7 @@ static void SetPossibleUnsafeConflict(SERIALIZABLEXACT *roXact, SERIALIZABLEXACT
 static void ReleaseRWConflict(RWConflict conflict);
 static void FlagSxactUnsafe(SERIALIZABLEXACT *sxact);
 
-static bool SerialPagePrecedesLogically(int page1, int page2);
+static bool SerialPagePrecedesLogically(int64 page1, int64 page2);
 static void SerialInit(void);
 static void SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo);
 static SerCommitSeqNo SerialGetMinConflictCommitSeqNo(TransactionId xid);
@@ -724,7 +724,7 @@ FlagSxactUnsafe(SERIALIZABLEXACT *sxact)
  * Analogous to CLOGPagePrecedes().
  */
 static bool
-SerialPagePrecedesLogically(int page1, int page2)
+SerialPagePrecedesLogically(int64 page1, int64 page2)
 {
 	TransactionId xid1;
 	TransactionId xid2;
@@ -744,7 +744,7 @@ SerialPagePrecedesLogicallyUnitTests(void)
 {
 	int			per_page = SERIAL_ENTRIESPERPAGE,
 				offset = per_page / 2;
-	int			newestPage,
+	int64		newestPage,
 				oldestPage,
 				headPage,
 				targetPage;
@@ -809,7 +809,8 @@ SerialInit(void)
 	SerialSlruCtl->PagePrecedes = SerialPagePrecedesLogically;
 	SimpleLruInit(SerialSlruCtl, "Serial",
 				  NUM_SERIAL_BUFFERS, 0, SerialSLRULock, "pg_serial",
-				  LWTRANCHE_SERIAL_BUFFER, SYNC_HANDLER_NONE);
+				  LWTRANCHE_SERIAL_BUFFER, SYNC_HANDLER_NONE,
+				  false);
 #ifdef USE_ASSERT_CHECKING
 	SerialPagePrecedesLogicallyUnitTests();
 #endif
@@ -842,9 +843,9 @@ static void
 SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo)
 {
 	TransactionId tailXid;
-	int			targetPage;
+	int64		targetPage;
 	int			slotno;
-	int			firstZeroPage;
+	int64		firstZeroPage;
 	bool		isNewPage;
 
 	Assert(TransactionIdIsValid(xid));
@@ -1004,7 +1005,7 @@ SerialSetActiveSerXmin(TransactionId xid)
 void
 CheckPointPredicate(void)
 {
-	int			tailPage;
+	int			truncateCutoffPage;
 
 	LWLockAcquire(SerialSLRULock, LW_EXCLUSIVE);
 
@@ -1017,8 +1018,24 @@ CheckPointPredicate(void)
 
 	if (TransactionIdIsValid(serialControl->tailXid))
 	{
-		/* We can truncate the SLRU up to the page containing tailXid */
+		int			tailPage;
+
 		tailPage = SerialPage(serialControl->tailXid);
+
+		/*
+		 * It is possible for the tailXid to be ahead of the headXid.  This
+		 * occurs if we checkpoint while there are in-progress serializable
+		 * transaction(s) advancing the tail but we are yet to summarize the
+		 * transactions.  In this case, we cutoff up to the headPage and the
+		 * next summary will advance the headXid.
+		 */
+		if (SerialPagePrecedesLogically(tailPage, serialControl->headPage))
+		{
+			/* We can truncate the SLRU up to the page containing tailXid */
+			truncateCutoffPage = tailPage;
+		}
+		else
+			truncateCutoffPage = serialControl->headPage;
 	}
 	else
 	{
@@ -1051,14 +1068,14 @@ CheckPointPredicate(void)
 		 *   transaction instigating the summarize fails in
 		 *   SimpleLruReadPage().
 		 */
-		tailPage = serialControl->headPage;
+		truncateCutoffPage = serialControl->headPage;
 		serialControl->headPage = -1;
 	}
 
 	LWLockRelease(SerialSLRULock);
 
 	/* Truncate away pages that are no longer required */
-	SimpleLruTruncate(SerialSlruCtl, tailPage);
+	SimpleLruTruncate(SerialSlruCtl, truncateCutoffPage);
 
 	/*
 	 * Write dirty SLRU pages to disk
@@ -1627,7 +1644,7 @@ GetSerializableTransactionSnapshot(Snapshot snapshot)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot use serializable mode in a hot standby"),
-				 errdetail("\"default_transaction_isolation\" is set to \"serializable\"."),
+				 errdetail("default_transaction_isolation is set to \"serializable\"."),
 				 errhint("You can use \"SET default_transaction_isolation = 'repeatable read'\" to change the default.")));
 
 	/*
@@ -3373,7 +3390,7 @@ ReleasePredicateLocks(bool isCommit, bool isReadOnlySafe)
 	 * transaction to complete before freeing some RAM; correctness of visible
 	 * behavior is not affected.
 	 */
-	MySerializableXact->finishedBefore = XidFromFullTransactionId(ShmemVariableCache->nextXid);
+	MySerializableXact->finishedBefore = XidFromFullTransactionId(TransamVariables->nextXid);
 
 	/*
 	 * If it's not a commit it's either a rollback or a read-only transaction

@@ -182,6 +182,8 @@ SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
 
 SELECT CAST(time '01:02' AS interval) AS "+01:02";
 SELECT CAST(interval '02:03' AS time) AS "02:03:00";
+SELECT CAST(interval '-02:03' AS time) AS "21:57:00";
+SELECT CAST(interval '-9223372022400000000 us' AS time) AS "00:00:00";
 SELECT time '01:30' + interval '02:01' AS "03:31:00";
 SELECT time '01:30' - interval '02:01' AS "23:29:00";
 SELECT time '02:30' + interval '36:01' AS "14:31:00";
@@ -211,10 +213,12 @@ SELECT t.d1 AS t, i.f1 AS i, t.d1 + i.f1 AS "add", t.d1 - i.f1 AS "subtract"
 
 SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
   FROM TIME_TBL t, INTERVAL_TBL i
+  WHERE isfinite(i.f1)
   ORDER BY 1,2;
 
 SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
   FROM TIMETZ_TBL t, INTERVAL_TBL i
+  WHERE isfinite(i.f1)
   ORDER BY 1,2;
 
 -- SQL9x OVERLAPS operator
@@ -291,7 +295,6 @@ SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
 
 SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 - t.f1 AS minus
   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
-  WHERE isfinite(d.f1)
   ORDER BY minus, "timestamp", "interval";
 
 SELECT d.f1 AS "timestamp",

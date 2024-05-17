@@ -869,7 +869,7 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 	load_file("libpqwalreceiver", false);
 
 	/* Try to connect to the publisher. */
-	must_use_password = !superuser_arg(sub->owner) && sub->passwordrequired;
+	must_use_password = sub->passwordrequired && !sub->ownersuperuser;
 	wrconn = walrcv_connect(sub->conninfo, true, must_use_password,
 							sub->name, &err);
 	if (!wrconn)
@@ -1204,6 +1204,13 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 						= true;
 				}
 
+				if (IsSet(opts.specified_opts, SUBOPT_RUN_AS_OWNER))
+				{
+					values[Anum_pg_subscription_subrunasowner - 1] =
+						BoolGetDatum(opts.runasowner);
+					replaces[Anum_pg_subscription_subrunasowner - 1] = true;
+				}
+
 				if (IsSet(opts.specified_opts, SUBOPT_ORIGIN))
 				{
 					values[Anum_pg_subscription_suborigin - 1] =
@@ -1242,7 +1249,7 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 			load_file("libpqwalreceiver", false);
 			/* Check the connection info string. */
 			walrcv_check_conninfo(stmt->conninfo,
-								  sub->passwordrequired && !superuser_arg(sub->owner));
+								  sub->passwordrequired && !sub->ownersuperuser);
 
 			values[Anum_pg_subscription_subconninfo - 1] =
 				CStringGetTextDatum(stmt->conninfo);
@@ -1647,6 +1654,12 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	replorigin_drop_by_name(originname, true, false);
 
 	/*
+	 * Tell the cumulative stats system that the subscription is getting
+	 * dropped.
+	 */
+	pgstat_drop_subscription(subid);
+
+	/*
 	 * If there is no slot associated with the subscription, we can finish
 	 * here.
 	 */
@@ -1733,12 +1746,6 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 		walrcv_disconnect(wrconn);
 	}
 	PG_END_TRY();
-
-	/*
-	 * Tell the cumulative stats system that the subscription is getting
-	 * dropped.
-	 */
-	pgstat_drop_subscription(subid);
 
 	table_close(rel, NoLock);
 }
@@ -2023,8 +2030,8 @@ check_publications_origin(WalReceiverConn *wrconn, List *publications,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("subscription \"%s\" requested copy_data with origin = NONE but might copy data that had a different origin",
 					   subname),
-				errdetail_plural("Subscribed publication %s is subscribing to other publications.",
-								 "Subscribed publications %s are subscribing to other publications.",
+				errdetail_plural("The subscription being created subscribes to a publication (%s) that contains tables that are written to by other subscriptions.",
+								 "The subscription being created subscribes to publications (%s) that contain tables that are written to by other subscriptions.",
 								 list_length(publist), pubnames->data),
 				errhint("Verify that initial data copied from the publisher tables did not come from other origins."));
 	}
