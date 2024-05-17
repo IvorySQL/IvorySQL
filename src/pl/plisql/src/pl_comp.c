@@ -1599,8 +1599,8 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 
 
 /* ----------
- * plisql_parse_wordtype	The scanner found word%TYPE. word can be
- *				a variable name or a basetype.
+ * plisql_parse_wordtype	The scanner found word%TYPE. word should be
+ *				a pre-existing variable name.
  *
  * Returns datatype struct, or NULL if no match found for word.
  * ----------
@@ -1608,10 +1608,7 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 PLiSQL_type *
 plisql_parse_wordtype(char *ident)
 {
-	PLiSQL_type *dtype;
 	PLiSQL_nsitem *nse;
-	TypeName   *typeName;
-	HeapTuple	typeTup;
 
 	/*
 	 * Do a lookup in the current namespace stack
@@ -1626,37 +1623,11 @@ plisql_parse_wordtype(char *ident)
 		{
 			case PLISQL_NSTYPE_VAR:
 				return ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
-
-				/* XXX perhaps allow REC/ROW here? */
-
+			case PLISQL_NSTYPE_REC:
+				return ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
 			default:
 				return NULL;
 		}
-	}
-
-	/*
-	 * Word wasn't found in the namespace stack. Try to find a data type with
-	 * that name, but ignore shell types and complex types.
-	 */
-	typeName = makeTypeName(ident);
-	typeTup = LookupTypeName(NULL, typeName, NULL, false);
-	if (typeTup)
-	{
-		Form_pg_type typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
-
-		if (!typeStruct->typisdefined ||
-			typeStruct->typrelid != InvalidOid)
-		{
-			ReleaseSysCache(typeTup);
-			return NULL;
-		}
-
-		dtype = build_datatype(typeTup, -1,
-							   plisql_curr_compile->fn_input_collation,
-							   typeName);
-
-		ReleaseSysCache(typeTup);
-		return dtype;
 	}
 
 	/*
@@ -1669,6 +1640,9 @@ plisql_parse_wordtype(char *ident)
 
 /* ----------
  * plisql_parse_cwordtype		Same lookup for compositeword%TYPE
+ *
+ * Here, we allow either a block-qualified variable name, or a reference
+ * to a column of some table.
  * ----------
  */
 PLiSQL_type *
@@ -1676,6 +1650,7 @@ plisql_parse_cwordtype(List *idents)
 {
 	PLiSQL_type *dtype = NULL;
 	PLiSQL_nsitem *nse;
+	int			nnames;
 	const char *fldname;
 	Oid			classOid;
 	HeapTuple	classtup = NULL;
@@ -1691,19 +1666,25 @@ plisql_parse_cwordtype(List *idents)
 	if (list_length(idents) == 2)
 	{
 		/*
-		 * Do a lookup in the current namespace stack. We don't need to check
-		 * number of names matched, because we will only consider scalar
-		 * variables.
+		 * Do a lookup in the current namespace stack
 		 */
 		nse = plisql_ns_lookup(plisql_ns_top(), false,
 								strVal(linitial(idents)),
 								strVal(lsecond(idents)),
 								NULL,
-								NULL);
+								&nnames);
 
 		if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_VAR)
 		{
+			/* Block-qualified reference to scalar variable. */
 			dtype = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
+			goto done;
+		}
+		else if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_REC &&
+				 nnames == 2)
+		{
+			/* Block-qualified reference to record variable. */
+			dtype = ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
 			goto done;
 		}
 
@@ -1719,6 +1700,12 @@ plisql_parse_cwordtype(List *idents)
 	{
 		RangeVar   *relvar;
 
+		/*
+		 * We could check for a block-qualified reference to a field of a
+		 * record variable, but %TYPE is documented as applying to variables,
+		 * not fields of variables.  Things would get rather ambiguous if we
+		 * allowed either interpretation.
+		 */
 		relvar = makeRangeVar(strVal(linitial(idents)),
 							  strVal(lsecond(idents)),
 							  -1);
