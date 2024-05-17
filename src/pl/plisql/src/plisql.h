@@ -1268,6 +1268,7 @@ extern PLiSQL_type *plisql_parse_cwordrowtype(List *idents);
 extern PGDLLEXPORT PLiSQL_type *plisql_build_datatype(Oid typeOid, int32 typmod,
 											Oid collation,
 											TypeName *origtypname);
+extern PLiSQL_type *plisql_build_datatype_arrayof(PLiSQL_type *dtype);
 extern PLiSQL_variable *plisql_build_variable(const char *refname, int lineno,
 												PLiSQL_type *dtype,
 												bool add2namespace);
