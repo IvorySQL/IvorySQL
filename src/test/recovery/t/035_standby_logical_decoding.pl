@@ -751,7 +751,9 @@ check_slots_conflict_reason('wal_level_', 'wal_level_insufficient');
 
 $handle = make_slot_active($node_standby, 'wal_level_', 0, \$stdout, \$stderr);
 # We are not able to read from the slot as it requires wal_level >= logical on the primary server
-check_pg_recvlogical_stderr($handle, "logical decoding on standby requires wal_level >= logical on the primary");
+check_pg_recvlogical_stderr($handle,
+	"logical decoding on standby requires \"wal_level\" >= \"logical\" on the primary"
+);
 
 # Restore primary wal_level
 $node_primary->append_conf('postgresql.conf',q[

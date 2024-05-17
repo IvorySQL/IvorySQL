@@ -1658,7 +1658,7 @@ pqConnectOptions2(PGconn *conn)
 	if (!sslVerifyProtocolVersion(conn->ssl_min_protocol_version))
 	{
 		conn->status = CONNECTION_BAD;
-		libpq_append_conn_error(conn, "invalid %s value: \"%s\"",
+		libpq_append_conn_error(conn, "invalid \"%s\" value: \"%s\"",
 								"ssl_min_protocol_version",
 								conn->ssl_min_protocol_version);
 		return false;
@@ -1666,7 +1666,7 @@ pqConnectOptions2(PGconn *conn)
 	if (!sslVerifyProtocolVersion(conn->ssl_max_protocol_version))
 	{
 		conn->status = CONNECTION_BAD;
-		libpq_append_conn_error(conn, "invalid %s value: \"%s\"",
+		libpq_append_conn_error(conn, "invalid \"%s\" value: \"%s\"",
 								"ssl_max_protocol_version",
 								conn->ssl_max_protocol_version);
 		return false;

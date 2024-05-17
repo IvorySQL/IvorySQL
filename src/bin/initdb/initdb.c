@@ -1121,7 +1121,7 @@ test_config_settings(void)
 	 * Probe for max_connections before shared_buffers, since it is subject to
 	 * more constraints than shared_buffers.
 	 */
-	printf(_("selecting default max_connections ... "));
+	printf(_("selecting default \"max_connections\" ... "));
 	fflush(stdout);
 
 	for (i = 0; i < connslen; i++)
@@ -1141,7 +1141,7 @@ test_config_settings(void)
 
 	printf("%d\n", n_connections);
 
-	printf(_("selecting default shared_buffers ... "));
+	printf(_("selecting default \"shared_buffers\" ... "));
 	fflush(stdout);
 
 	for (i = 0; i < bufslen; i++)
