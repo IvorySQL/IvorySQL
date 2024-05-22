@@ -416,6 +416,8 @@ main(int argc, char *argv[])
 					ora_psql_scan_set_passthrough(scan_state, (void *) cond_stack);
 				}
 
+				Assert(scan_state != NULL);
+
 				successResult = HandleSlashCmds(scan_state,
 												cond_stack,
 												NULL,

@@ -45,6 +45,12 @@ typedef FormData_pg_sequence_data *Form_pg_sequence_data;
 /* XLOG stuff */
 #define XLOG_SEQ_LOG			0x00
 
+/* scale and session stuff */
+#define SCALE_FLAG			16
+#define EXTEND_FLAG			2048
+#define SESSION_FLAG			64
+
+
 typedef struct xl_seq_rec
 {
 	RelFileLocator locator;
@@ -66,5 +72,6 @@ extern void seq_redo(XLogReaderState *record);
 extern void seq_desc(StringInfo buf, XLogReaderState *record);
 extern const char *seq_identify(uint8 info);
 extern void seq_mask(char *page, BlockNumber blkno);
+extern int64 get_sessionid(void);
 
 #endif							/* SEQUENCE_H */

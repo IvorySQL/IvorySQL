@@ -68,6 +68,8 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include <math.h> 
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
 
 
 /* State shared by transformCreateStmt and its subroutines */
@@ -477,6 +479,10 @@ generateSerialExtraStmts(CreateStmtContext *cxt, ColumnDef *column,
 	seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 	seqstmt->sequence->relpersistence = cxt->relation->relpersistence;
 	seqstmt->options = seqoptions;
+
+	if (compatible_db == ORA_PARSER)
+		seqstmt->options = lcons(makeDefElem("nocache", NULL, -1), seqstmt->options);
+
 	if (seq_type)
 		seqstmt->seq_type = seq_type;
 

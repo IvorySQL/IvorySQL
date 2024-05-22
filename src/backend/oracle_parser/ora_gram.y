@@ -721,7 +721,7 @@ static void determineLanguage(List *options);
 	DOUBLE_P DROP
 
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT EXCEPT
-	EXCLUDE EXCLUDING EXCLUSIVE EXEC EXECUTE EXISTS EXPLAIN EXPRESSION
+	EXCLUDE EXCLUDING EXCLUSIVE EXEC EXECUTE EXISTS EXPLAIN EXPRESSION EXTEND
 	EXTENSION EXTERNAL EXTRACT
 
 	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
@@ -739,7 +739,7 @@ static void determineLanguage(List *options);
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_OBJECT JSON_OBJECTAGG
 	JSON_SCALAR JSON_SERIALIZE
 
-	KEY KEYS
+	KEEP KEY KEYS 
 
 	LABEL LANGUAGE LARGE_P LAST_P LATERAL_P
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
@@ -750,7 +750,7 @@ static void determineLanguage(List *options);
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
 	NOMAXVALUE NOMINVALUE NONE NOORDER
-	NORMALIZE NORMALIZED
+	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD	
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMBER_P NUMERIC NVL NVL2
 
@@ -770,9 +770,9 @@ static void determineLanguage(List *options);
 	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWS  ROWTYPE RULE
 
-	SAVEPOINT SCALAR SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
+	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
-	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
+	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
@@ -4905,24 +4905,24 @@ RefreshMatViewStmt:
  *****************************************************************************/
 
 CreateSeqStmt:
-			CREATE OptTemp SEQUENCE qualified_name OptSeqOptList
+			CREATE OptTemp SEQUENCE qualified_name OptSharing OptSeqOptList
 				{
 					CreateSeqStmt *n = makeNode(CreateSeqStmt);
 
 					$4->relpersistence = $2;
 					n->sequence = $4;
-					n->options = $5;
+					n->options = $6;
 					n->ownerId = InvalidOid;
 					n->if_not_exists = false;
 					$$ = (Node *) n;
 				}
-			| CREATE OptTemp SEQUENCE IF_P NOT EXISTS qualified_name OptSeqOptList
+			| CREATE OptTemp SEQUENCE IF_P NOT EXISTS qualified_name OptSharing OptSeqOptList
 				{
 					CreateSeqStmt *n = makeNode(CreateSeqStmt);
 
 					$7->relpersistence = $2;
 					n->sequence = $7;
-					n->options = $8;
+					n->options = $9;
 					n->ownerId = InvalidOid;
 					n->if_not_exists = true;
 					$$ = (Node *) n;
@@ -4951,6 +4951,17 @@ AlterSeqStmt:
 
 		;
 
+OptSharing:
+			SHARING '=' sharing_mode
+			|
+		;
+
+sharing_mode:
+	    		METADATA
+			| DATA_P
+			| NONE
+		;
+
 OptSeqOptList: SeqOptList							{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
@@ -4975,7 +4986,7 @@ SeqOptElem: AS SimpleTypename
 				}
 			| NOCACHE
 				{
-					$$ = makeDefElem("cache", (Node *)makeInteger(1), @1);
+					$$ = makeDefElem("nocache", NULL, @1);
 				}
 			| CYCLE
 				{
@@ -5032,6 +5043,19 @@ SeqOptElem: AS SimpleTypename
 				}
 			| ORDER { $$ = makeDefElem("order", NULL, @1); }
 			| NOORDER { $$ = makeDefElem("noorder", NULL, @1); }
+			| KEEP	{ $$ = makeDefElem("keep", NULL, @1); }
+			| NOKEEP	{ $$ = makeDefElem("nokeep", NULL, @1); }
+			| SESSION	{ $$ = makeDefElem("session", NULL, @1); }
+			| GLOBAL	{ $$ = makeDefElem("global", NULL, @1); }
+			| SCALE EXTEND	{ $$ = makeDefElem("scale_extend", NULL, @1); }
+			| SCALE NOEXTEND	{ $$ = makeDefElem("scale_noextend", NULL, @1); }
+			| SCALE	{ $$ = makeDefElem("scale_noextend", NULL, @1); }
+			| NOSCALE	{ $$ = makeDefElem("noscale", NULL, @1); }
+			| NOSHARD	{ $$ = makeDefElem("noshard", NULL, @1);}
+			| SHARD		{ $$ = makeDefElem("shard_noextend", NULL, @1); }
+			| SHARD EXTEND	{ $$ = makeDefElem("shard_extend", NULL, @1); }
+			| SHARD NOEXTEND	{ $$ = makeDefElem("shard_noextend", NULL, @1); }
+
 		;
 
 opt_by:		BY				{ $$ = true; }
@@ -19110,6 +19134,7 @@ unreserved_keyword:
 			| EXECUTE
 			| EXPLAIN
 			| EXPRESSION
+			| EXTEND
 			| EXTENSION
 			| EXTERNAL
 			| FAMILY
@@ -19153,6 +19178,7 @@ unreserved_keyword:
 			| INVOKER
 			| ISOLATION
 			| IVYSQL
+			| KEEP
 			| KEY
 			| KEYS
 			| LABEL
@@ -19194,11 +19220,15 @@ unreserved_keyword:
 			| NFKD
 			| NO
 			| NOCACHE
+			| NOEXTEND
+			| NOKEEP
 			| NOMAXVALUE
 			| NOMINVALUE
 			| NONEDITIONABLE
 			| NOORDER
 			| NORMALIZED
+			| NOSCALE
+			| NOSHARD
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
@@ -19277,6 +19307,7 @@ unreserved_keyword:
 			| RULE
 			| SAVEPOINT
 			| SCALAR
+			| SCALE
 			| SCHEMA
 			| SCHEMAS
 			| SCROLL
@@ -19291,6 +19322,7 @@ unreserved_keyword:
 			| SET
 			| SETS
 			| SETTINGS
+			| SHARD
 			| SHARE
 			| SHARING
 			| SHOW
@@ -19730,6 +19762,7 @@ bare_label_keyword:
 			| EXISTS
 			| EXPLAIN
 			| EXPRESSION
+			| EXTEND
 			| EXTENSION
 			| EXTERNAL
 			| EXTRACT
@@ -19797,6 +19830,7 @@ bare_label_keyword:
 			| JSON_OBJECTAGG
 			| JSON_SCALAR
 			| JSON_SERIALIZE
+			| KEEP
 			| KEY
 			| KEYS
 			| LABEL
@@ -19849,12 +19883,16 @@ bare_label_keyword:
 			| NOCACHE
 			| NOCOPY
 			| NOCYCLE
+			| NOEXTEND
+			| NOKEEP
 			| NOMAXVALUE
 			| NOMINVALUE
 			| NONE
 			| NONEDITIONABLE
 			| NORMALIZE
 			| NORMALIZED
+			| NOSCALE
+			| NOSHARD
 			| NOT
 			| NOTHING
 			| NOTIFY
@@ -19951,6 +19989,7 @@ bare_label_keyword:
 			| RULE
 			| SAVEPOINT
 			| SCALAR
+			| SCALE	
 			| SCHEMA
 			| SCHEMAS
 			| SCROLL
@@ -19967,6 +20006,7 @@ bare_label_keyword:
 			| SETOF
 			| SETS
 			| SETTINGS
+			| SHARD
 			| SHARE
 			| SHARING
 			| SHOW

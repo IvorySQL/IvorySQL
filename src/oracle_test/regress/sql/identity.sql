@@ -133,6 +133,8 @@ insert into maxval4 (uname) values ('xiaoming');
 DROP TABLE maxval4;
 create table other_stx1(userid number generated always as identity increment 2,uname varchar2(20));
 create table other_stx2(userid number generated always as identity start  2,uname varchar2(20));
+
+set ivorysql.enable_internal_warning = true;
 create table other_start_max1(userid number generated always as identity start with 9999999999999999999999999999,uname varchar2(20));
 create table other_max1(userid number generated always as identity  maxvalue 9999999999999999999999999999,uname varchar2(20));
 DROP TABLE other_start_max1;
@@ -204,3 +206,4 @@ DROP TABLE other_max1;
 
 create table cache_max1(userid number generated always as identity  increment by 1 cache 999999999999999999999,uname varchar2(20));
 DROP TABLE cache_max1;
+SET ivorysql.enable_seq_scale_fixed = FALSE;

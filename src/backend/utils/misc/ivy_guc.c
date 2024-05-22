@@ -34,6 +34,8 @@ bool			enable_emptystring_to_NULL = false;
 int	database_mode = DB_PG;
 int	compatible_db = PG_PARSER;
 
+bool	seq_scale_fixed = false;
+bool	internal_warning = false;
 #endif
 
 #ifdef IVY_GUC_VAR_STRUCT
@@ -123,7 +125,27 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"ivorysql.enable_seq_scale_fixed", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sequence scale value switch."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&seq_scale_fixed,
+		false,
+		NULL, NULL, NULL
+	},
 
+	{
+		{"ivorysql.enable_internal_warning", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Whether to print internal warning information."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&internal_warning,
+		false,
+		NULL, NULL, NULL
+	},
 
 
 #endif
