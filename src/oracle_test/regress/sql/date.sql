@@ -373,3 +373,8 @@ select make_date(2013, 13, 1);
 select make_date(2013, 11, -1);
 select make_time(10, 55, 100.1);
 select make_time(24, 0, 2.1);
+
+-- oracle sysdate func
+create table sysdate_test (v1 DATE DEFAULT SYSDATE);
+select attname, typname from pg_attribute, pg_type where attrelid in (select oid from pg_class where relname = 'sysdate_test') and attnum > 0 and atttypid = pg_type.oid;
+drop table sysdate_test;
