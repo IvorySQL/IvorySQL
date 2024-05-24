@@ -2088,7 +2088,11 @@ select jsonb_path_query('"2023-08-15 12:34:56"', '$.date()');
 (1 row)
 
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.date()');
-ERROR:  date format is not recognized: "2023-08-15 12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "2023-08-15"
+(1 row)
+
 select jsonb_path_query('"2023-08-15"', '$.date(2)');
 ERROR:  syntax error at or near "2" of jsonpath input
 LINE 1: select jsonb_path_query('"2023-08-15"', '$.date(2)');
@@ -2626,7 +2630,11 @@ select jsonb_path_query('"12:34:56"', '$.time().type()');
 select jsonb_path_query('"2023-08-15"', '$.time()');
 ERROR:  time format is not recognized: "2023-08-15"
 select jsonb_path_query('"12:34:56 +05:30"', '$.time()');
-ERROR:  time format is not recognized: "12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "12:34:56"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56"', '$.time()');
  jsonb_path_query 
 ------------------
@@ -2696,13 +2704,21 @@ ERROR:  time_tz format is not recognized: "bogus"
 select jsonb '"12:34:56 +05:30"' @? '$.time_tz()';
  ?column? 
 ----------
- 
+ t
 (1 row)
 
 select jsonb_path_query('"12:34:56 +05:30"', '$.time_tz()');
-ERROR:  time_tz format is not recognized: "12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "12:34:56+05:30"
+(1 row)
+
 select jsonb_path_query('"12:34:56 +05:30"', '$.time_tz().type()');
-ERROR:  time_tz format is not recognized: "12:34:56 +05:30"
+   jsonb_path_query    
+-----------------------
+ "time with time zone"
+(1 row)
+
 select jsonb_path_query('"2023-08-15"', '$.time_tz()');
 ERROR:  time_tz format is not recognized: "2023-08-15"
 select jsonb_path_query('"2023-08-15 12:34:56"', '$.time_tz()');
@@ -2718,15 +2734,37 @@ LINE 1: select jsonb_path_query('"12:34:56.789 +05:30"', '$.time_tz(...
 select jsonb_path_query('"12:34:56.789 +05:30"', '$.time_tz(12345678901)');
 ERROR:  time precision of jsonpath item method .time_tz() is out of range for type integer
 select jsonb_path_query('"12:34:56.789 +05:30"', '$.time_tz(0)');
-ERROR:  time_tz format is not recognized: "12:34:56.789 +05:30"
+ jsonb_path_query 
+------------------
+ "12:34:57+05:30"
+(1 row)
+
 select jsonb_path_query('"12:34:56.789 +05:30"', '$.time_tz(2)');
-ERROR:  time_tz format is not recognized: "12:34:56.789 +05:30"
+  jsonb_path_query   
+---------------------
+ "12:34:56.79+05:30"
+(1 row)
+
 select jsonb_path_query('"12:34:56.789 +05:30"', '$.time_tz(5)');
-ERROR:  time_tz format is not recognized: "12:34:56.789 +05:30"
+   jsonb_path_query   
+----------------------
+ "12:34:56.789+05:30"
+(1 row)
+
 select jsonb_path_query('"12:34:56.789 +05:30"', '$.time_tz(10)');
-ERROR:  time_tz format is not recognized: "12:34:56.789 +05:30"
+WARNING:  TIME(10) WITH TIME ZONE precision reduced to maximum allowed, 6
+   jsonb_path_query   
+----------------------
+ "12:34:56.789+05:30"
+(1 row)
+
 select jsonb_path_query('"12:34:56.789012 +05:30"', '$.time_tz(8)');
-ERROR:  time_tz format is not recognized: "12:34:56.789012 +05:30"
+WARNING:  TIME(8) WITH TIME ZONE precision reduced to maximum allowed, 6
+    jsonb_path_query     
+-------------------------
+ "12:34:56.789012+05:30"
+(1 row)
+
 -- Test .timestamp()
 select jsonb_path_query('null', '$.timestamp()');
 ERROR:  jsonpath item method .timestamp() can only be applied to a string
@@ -2836,13 +2874,21 @@ ERROR:  timestamp_tz format is not recognized: "bogus"
 select jsonb '"2023-08-15 12:34:56 +05:30"' @? '$.timestamp_tz()';
  ?column? 
 ----------
- 
+ t
 (1 row)
 
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.timestamp_tz()');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56 +05:30"
+      jsonb_path_query       
+-----------------------------
+ "2023-08-15T12:34:56+05:30"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.timestamp_tz().type()');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56 +05:30"
+      jsonb_path_query      
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
 select jsonb_path_query('"2023-08-15"', '$.timestamp_tz()');
       jsonb_path_query       
 -----------------------------
@@ -2864,20 +2910,50 @@ LINE 1: ...nb_path_query('"2023-08-15 12:34:56.789 +05:30"', '$.timesta...
 select jsonb_path_query('"2023-08-15 12:34:56.789 +05:30"', '$.timestamp_tz(12345678901)');
 ERROR:  time precision of jsonpath item method .timestamp_tz() is out of range for type integer
 select jsonb_path_query('"2023-08-15 12:34:56.789 +05:30"', '$.timestamp_tz(0)');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56.789 +05:30"
+      jsonb_path_query       
+-----------------------------
+ "2023-08-15T12:34:57+05:30"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56.789 +05:30"', '$.timestamp_tz(2)');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56.789 +05:30"
+        jsonb_path_query        
+--------------------------------
+ "2023-08-15T12:34:56.79+05:30"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56.789 +05:30"', '$.timestamp_tz(5)');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56.789 +05:30"
+        jsonb_path_query         
+---------------------------------
+ "2023-08-15T12:34:56.789+05:30"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56.789 +05:30"', '$.timestamp_tz(10)');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56.789 +05:30"
+WARNING:  TIMESTAMP(10) WITH TIME ZONE precision reduced to maximum allowed, 6
+        jsonb_path_query         
+---------------------------------
+ "2023-08-15T12:34:56.789+05:30"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56.789012 +05:30"', '$.timestamp_tz(8)');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56.789012 +05:30"
+WARNING:  TIMESTAMP(8) WITH TIME ZONE precision reduced to maximum allowed, 6
+          jsonb_path_query          
+------------------------------------
+ "2023-08-15T12:34:56.789012+05:30"
+(1 row)
+
 set time zone '+00';
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.time()');
-ERROR:  time format is not recognized: "2023-08-15 12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "07:04:56"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.time_tz()');
-ERROR:  time_tz format is not recognized: "2023-08-15 12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "07:04:56+00:00"
+(1 row)
+
 select jsonb_path_query('"12:34:56"', '$.time_tz()');
  jsonb_path_query 
 ------------------
@@ -2885,7 +2961,11 @@ select jsonb_path_query('"12:34:56"', '$.time_tz()');
 (1 row)
 
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.timestamp()');
-ERROR:  timestamp format is not recognized: "2023-08-15 12:34:56 +05:30"
+   jsonb_path_query    
+-----------------------
+ "2023-08-15T07:04:56"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56"', '$.timestamp_tz()');
       jsonb_path_query       
 -----------------------------
@@ -2958,11 +3038,23 @@ select jsonb_path_query('"12:34 -05:20"', '$.datetime("HH24:MI TZH:TZM")');
 
 set time zone '+10';
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.time()');
-ERROR:  time format is not recognized: "2023-08-15 12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "17:04:56"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.time_tz()');
-ERROR:  time_tz format is not recognized: "2023-08-15 12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "17:04:56+10:00"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.timestamp()');
-ERROR:  timestamp format is not recognized: "2023-08-15 12:34:56 +05:30"
+   jsonb_path_query    
+-----------------------
+ "2023-08-15T17:04:56"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56"', '$.timestamp_tz()');
       jsonb_path_query       
 -----------------------------
@@ -2970,7 +3062,11 @@ select jsonb_path_query('"2023-08-15 12:34:56"', '$.timestamp_tz()');
 (1 row)
 
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.timestamp_tz()');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56 +05:30"
+      jsonb_path_query       
+-----------------------------
+ "2023-08-15T12:34:56+05:30"
+(1 row)
+
 select jsonb_path_query('"10-03-2017 12:34"', '$.datetime("dd-mm-yyyy HH24:MI")');
    jsonb_path_query    
 -----------------------
@@ -3037,13 +3133,29 @@ select jsonb_path_query('"12:34 -05:20"', '$.datetime("HH24:MI TZH:TZM")');
 
 set time zone default;
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.time()');
-ERROR:  time format is not recognized: "2023-08-15 12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "00:04:56"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.time_tz()');
-ERROR:  time_tz format is not recognized: "2023-08-15 12:34:56 +05:30"
+ jsonb_path_query 
+------------------
+ "00:04:56-07:00"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.timestamp()');
-ERROR:  timestamp format is not recognized: "2023-08-15 12:34:56 +05:30"
+   jsonb_path_query    
+-----------------------
+ "2023-08-15T00:04:56"
+(1 row)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +05:30"', '$.timestamp_tz()');
-ERROR:  timestamp_tz format is not recognized: "2023-08-15 12:34:56 +05:30"
+      jsonb_path_query       
+-----------------------------
+ "2023-08-15T12:34:56+05:30"
+(1 row)
+
 select jsonb_path_query('"2017-03-10"', '$.datetime().type()');
  jsonb_path_query 
 ------------------
@@ -3116,6 +3228,18 @@ select jsonb_path_query('"2017-03-10T12:34:56.789+3:10"', '$.datetime()');
 select jsonb_path_query('"2017-03-10t12:34:56.789+3:10"', '$.datetime()');
 ERROR:  datetime format is not recognized: "2017-03-10t12:34:56.789+3:10"
 HINT:  Use a datetime template argument to specify the input data format.
+select jsonb_path_query('"2017-03-10T12:34:56.789EST"', '$.datetime()');
+        jsonb_path_query         
+---------------------------------
+ "2017-03-10T12:34:56.789-05:00"
+(1 row)
+
+select jsonb_path_query('"2017-03-10T12:34:56.789Z"', '$.datetime()');
+        jsonb_path_query         
+---------------------------------
+ "2017-03-10T12:34:56.789+00:00"
+(1 row)
+
 select jsonb_path_query('"12:34:56"', '$.datetime().type()');
      jsonb_path_query     
 --------------------------
