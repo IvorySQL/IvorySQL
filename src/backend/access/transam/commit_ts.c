@@ -12,7 +12,7 @@
  * XLOG records for these events and will re-perform the status update on
  * redo; so we need make no additional XLOG entry here.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/commit_ts.c
@@ -689,9 +689,7 @@ ActivateCommitTs(void)
 	/*
 	 * Re-Initialize our idea of the latest page number.
 	 */
-	LWLockAcquire(CommitTsSLRULock, LW_EXCLUSIVE);
-	CommitTsCtl->shared->latest_page_number = pageno;
-	LWLockRelease(CommitTsSLRULock);
+	pg_atomic_write_u64(&CommitTsCtl->shared->latest_page_number, pageno);
 
 	/*
 	 * If CommitTs is enabled, but it wasn't in the previous server run, we
@@ -1006,7 +1004,8 @@ commit_ts_redo(XLogReaderState *record)
 		 * During XLOG replay, latest_page_number isn't set up yet; insert a
 		 * suitable value to bypass the sanity test in SimpleLruTruncate.
 		 */
-		CommitTsCtl->shared->latest_page_number = trunc->pageno;
+		pg_atomic_write_u64(&CommitTsCtl->shared->latest_page_number,
+							trunc->pageno);
 
 		SimpleLruTruncate(CommitTsCtl, trunc->pageno);
 	}

@@ -2509,30 +2509,27 @@ const char *PQparameterStatus(const PGconn *conn, const char *paramName);
       </para>
 
       <para>
-       Parameters reported as of the current release include
-       <varname>server_version</varname>,
-       <varname>server_encoding</varname>,
-       <varname>client_encoding</varname>,
-       <varname>application_name</varname>,
-       <varname>default_transaction_read_only</varname>,
-       <varname>in_hot_standby</varname>,
-       <varname>is_superuser</varname>,
-       <varname>session_authorization</varname>,
-       <varname>DateStyle</varname>,
-       <varname>IntervalStyle</varname>,
-       <varname>TimeZone</varname>,
-       <varname>integer_datetimes</varname>, and
-       <varname>standard_conforming_strings</varname>.
-       (<varname>server_encoding</varname>, <varname>TimeZone</varname>, and
-       <varname>integer_datetimes</varname> were not reported by releases before 8.0;
-       <varname>standard_conforming_strings</varname> was not reported by releases
-       before 8.1;
-       <varname>IntervalStyle</varname> was not reported by releases before 8.4;
-       <varname>application_name</varname> was not reported by releases before
-       9.0;
-       <varname>default_transaction_read_only</varname> and
+       Parameters reported as of the current release include:
+       <simplelist type="vert" columns="2">
+        <member><varname>application_name</varname></member>
+        <member><varname>client_encoding</varname></member>
+        <member><varname>DateStyle</varname></member>
+        <member><varname>default_transaction_read_only</varname></member>
+        <member><varname>in_hot_standby</varname></member>
+        <member><varname>integer_datetimes</varname></member>
+        <member><varname>IntervalStyle</varname></member>
+        <member><varname>is_superuser</varname></member>
+        <member><varname>scram_iterations</varname></member>
+        <member><varname>server_encoding</varname></member>
+        <member><varname>server_version</varname></member>
+        <member><varname>session_authorization</varname></member>
+        <member><varname>standard_conforming_strings</varname></member>
+        <member><varname>TimeZone</varname></member>
+       </simplelist>
+       (<varname>default_transaction_read_only</varname> and
        <varname>in_hot_standby</varname> were not reported by releases before
-       14.)
+       14; <varname>scram_iterations</varname> was not reported by releases
+       before 16.)
        Note that
        <varname>server_version</varname>,
        <varname>server_encoding</varname> and
@@ -3547,8 +3544,9 @@ ExecStatusType PQresultStatus(const PGresult *res);
           <listitem>
            <para>
             The <structname>PGresult</structname> represents a
-            synchronization point in pipeline mode, requested by
-            <xref linkend="libpq-PQpipelineSync"/>.
+            synchronization point in pipeline mode, requested by either
+            <xref linkend="libpq-PQpipelineSync"/> or
+            <xref linkend="libpq-PQsendPipelineSync"/>.
             This status occurs only when pipeline mode has been selected.
            </para>
           </listitem>
@@ -5122,7 +5120,8 @@ int PQsendClosePortal(PGconn *conn, const char *portalName);
        <xref linkend="libpq-PQsendDescribePrepared"/>,
        <xref linkend="libpq-PQsendDescribePortal"/>,
        <xref linkend="libpq-PQsendClosePrepared"/>,
-       <xref linkend="libpq-PQsendClosePortal"/>, or
+       <xref linkend="libpq-PQsendClosePortal"/>,
+       <xref linkend="libpq-PQsendPipelineSync"/>, or
        <xref linkend="libpq-PQpipelineSync"/>
        call, and returns it.
        A null pointer is returned when the command is complete and there
@@ -5507,8 +5506,9 @@ int PQflush(PGconn *conn);
      client sends them.  The server will begin executing the commands in the
      pipeline immediately, not waiting for the end of the pipeline.
      Note that results are buffered on the server side; the server flushes
-     that buffer when a synchronization point is established with
-     <function>PQpipelineSync</function>, or when
+     that buffer when a synchronization point is established with either
+     <function>PQpipelineSync</function> or
+     <function>PQsendPipelineSync</function>, or when
      <function>PQsendFlushRequest</function> is called.
      If any statement encounters an error, the server aborts the current
      transaction and does not execute any subsequent command in the queue
@@ -5565,7 +5565,8 @@ int PQflush(PGconn *conn);
      <type>PGresult</type> types <literal>PGRES_PIPELINE_SYNC</literal>
      and <literal>PGRES_PIPELINE_ABORTED</literal>.
      <literal>PGRES_PIPELINE_SYNC</literal> is reported exactly once for each
-     <function>PQpipelineSync</function> at the corresponding point
+     <function>PQpipelineSync</function> or
+     <function>PQsendPipelineSync</function> at the corresponding point
      in the pipeline.
      <literal>PGRES_PIPELINE_ABORTED</literal> is emitted in place of a normal
      query result for the first error and all subsequent results
@@ -5603,7 +5604,8 @@ int PQflush(PGconn *conn);
      <function>PQresultStatus</function> will report a
      <literal>PGRES_PIPELINE_ABORTED</literal> result for each remaining queued
      operation in an aborted pipeline. The result for
-     <function>PQpipelineSync</function> is reported as
+     <function>PQpipelineSync</function> or
+     <function>PQsendPipelineSync</function> is reported as
      <literal>PGRES_PIPELINE_SYNC</literal> to signal the end of the aborted pipeline
      and resumption of normal result processing.
     </para>
@@ -5810,31 +5812,57 @@ int PQpipelineSync(PGconn *conn);
      </listitem>
     </varlistentry>
 
+    <varlistentry id="libpq-PQsendPipelineSync">
+     <term><function>PQsendPipelineSync</function><indexterm><primary>PQsendPipelineSync</primary></indexterm></term>
+
+     <listitem>
+      <para>
+       Marks a synchronization point in a pipeline by sending a
+       <link linkend="protocol-flow-ext-query">sync message</link>
+       without flushing the send buffer. This serves as
+       the delimiter of an implicit transaction and an error recovery
+       point; see <xref linkend="libpq-pipeline-errors"/>.
+
+<synopsis>
+int PQsendPipelineSync(PGconn *conn);
+</synopsis>
+      </para>
+      <para>
+       Returns 1 for success. Returns 0 if the connection is not in
+       pipeline mode or sending a
+       <link linkend="protocol-flow-ext-query">sync message</link>
+       failed.
+       Note that the message is not itself flushed to the server automatically;
+       use <function>PQflush</function> if necessary.
+      </para>
+     </listitem>
+    </varlistentry>
+
     <varlistentry id="libpq-PQsendFlushRequest">
      <term><function>PQsendFlushRequest</function><indexterm><primary>PQsendFlushRequest</primary></indexterm></term>
 
-      <listitem>
-       <para>
-        Sends a request for the server to flush its output buffer.
+     <listitem>
+      <para>
+       Sends a request for the server to flush its output buffer.
 <synopsis>
 int PQsendFlushRequest(PGconn *conn);
 </synopsis>
-       </para>
+      </para>
 
-       <para>
-        Returns 1 for success.  Returns 0 on any failure.
-       </para>
-       <para>
-        The server flushes its output buffer automatically as a result of
-        <function>PQpipelineSync</function> being called, or
-        on any request when not in pipeline mode; this function is useful
-        to cause the server to flush its output buffer in pipeline mode
-        without establishing a synchronization point.
-        Note that the request is not itself flushed to the server automatically;
-        use <function>PQflush</function> if necessary.
-       </para>
-      </listitem>
-     </varlistentry>
+      <para>
+       Returns 1 for success.  Returns 0 on any failure.
+      </para>
+      <para>
+       The server flushes its output buffer automatically as a result of
+       <function>PQpipelineSync</function> being called, or
+       on any request when not in pipeline mode; this function is useful
+       to cause the server to flush its output buffer in pipeline mode
+       without establishing a synchronization point.
+       Note that the request is not itself flushed to the server automatically;
+       use <function>PQflush</function> if necessary.
+      </para>
+     </listitem>
+    </varlistentry>
    </variablelist>
   </sect2>
 
@@ -7116,6 +7144,45 @@ char *PQencryptPasswordConn(PGconn *conn, const char *passwd, const char *user, 
     </listitem>
    </varlistentry>
 
+   <varlistentry id="libpq-PQchangePassword">
+    <term><function>PQchangePassword</function><indexterm><primary>PQchangePassword</primary></indexterm></term>
+
+    <listitem>
+     <para>
+      Changes a <productname>PostgreSQL</productname> password.
+<synopsis>
+PGresult *PQchangePassword(PGconn *conn, const char *user, const char *passwd);
+</synopsis>
+      This function uses <function>PQencryptPasswordConn</function>
+      to build and execute the command <literal>ALTER USER ... PASSWORD
+      '...'</literal>, thereby changing the user's password. It exists for
+      the same reason as <function>PQencryptPasswordConn</function>, but
+      is more convenient as it both builds and runs the command for you.
+      <xref linkend="libpq-PQencryptPasswordConn"/> is passed a
+      <symbol>NULL</symbol> for the algorithm argument, hence encryption is
+      done according to the server's <xref linkend="guc-password-encryption"/>
+      setting.
+     </para>
+
+     <para>
+      The <parameter>user</parameter> and <parameter>passwd</parameter> arguments
+      are the SQL name of the target user, and the new cleartext password.
+     </para>
+
+     <para>
+      Returns a <structname>PGresult</structname> pointer representing
+      the result of the <literal>ALTER USER</literal> command, or
+      a null pointer if the routine failed before issuing any command.
+      The <xref linkend="libpq-PQresultStatus"/> function should be called
+      to check the return value for any errors (including the value of a null
+      pointer, in which case it will return
+      <symbol>PGRES_FATAL_ERROR</symbol>). Use
+      <xref linkend="libpq-PQerrorMessage"/> to get more information about
+      such errors.
+     </para>
+    </listitem>
+   </varlistentry>
+
    <varlistentry id="libpq-PQencryptPassword">
     <term><function>PQencryptPassword</function><indexterm><primary>PQencryptPassword</primary></indexterm></term>
 
@@ -7555,7 +7622,7 @@ defaultNoticeProcessor(void *arg, const char *message)
        is called.  It is the ideal time to initialize any
        <literal>instanceData</literal> an event procedure may need.  Only one
        register event will be fired per event handler per connection.  If the
-       event procedure fails (returns zero), the registration is cancelled.
+       event procedure fails (returns zero), the registration is canceled.
 
 <synopsis>
 typedef struct

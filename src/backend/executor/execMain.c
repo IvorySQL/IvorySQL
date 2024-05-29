@@ -26,7 +26,7 @@
  *	before ExecutorEnd.  This can be omitted only in case of EXPLAIN,
  *	which should also omit ExecutorRun.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1851,7 +1851,7 @@ ExecPartitionCheck(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 	econtext->ecxt_scantuple = slot;
 
 	/*
-	 * As in case of the catalogued constraints, we treat a NULL result as
+	 * As in case of the cataloged constraints, we treat a NULL result as
 	 * success here, not a failure.
 	 */
 	success = ExecCheck(resultRelInfo->ri_PartitionCheckExpr, econtext);

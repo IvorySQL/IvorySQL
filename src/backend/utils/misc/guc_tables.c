@@ -10,7 +10,7 @@
  * their fields are intended to be constant, some fields change at runtime.
  *
  *
- * Copyright (c) 2000-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2024, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
@@ -1075,6 +1075,16 @@ struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN | GUC_NOT_IN_SAMPLE
 		},
 		&enable_self_join_removal,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_group_by_reordering", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables reordering of GROUP BY keys."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&enable_group_by_reordering,
 		true,
 		NULL, NULL, NULL
 	},

@@ -4,7 +4,7 @@
  *	  WAL replay logic for GiST.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -495,12 +495,12 @@ gist_mask(char *pagedata, BlockNumber blkno)
  */
 XLogRecPtr
 gistXLogSplit(bool page_is_leaf,
-			  SplitedPageLayout *dist,
+			  SplitPageLayout *dist,
 			  BlockNumber origrlink, GistNSN orignsn,
 			  Buffer leftchildbuf, bool markfollowright)
 {
 	gistxlogPageSplit xlrec;
-	SplitedPageLayout *ptr;
+	SplitPageLayout *ptr;
 	int			npage = 0;
 	XLogRecPtr	recptr;
 	int			i;

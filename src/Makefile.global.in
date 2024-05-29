@@ -80,8 +80,6 @@ VPATH = $(srcdir)
 endif
 endif # not PGXS
 
-vpathsearch = `for f in $(addsuffix /$(1),$(subst :, ,. $(VPATH))); do test -r $$f && echo $$f && break; done`
-
 
 ##########################################################################
 #
@@ -207,6 +205,7 @@ enable_nls	= @enable_nls@
 enable_debug	= @enable_debug@
 enable_dtrace	= @enable_dtrace@
 enable_coverage	= @enable_coverage@
+enable_injection_points = @enable_injection_points@
 enable_tap_tests	= @enable_tap_tests@
 
 python_includespec	= @python_includespec@

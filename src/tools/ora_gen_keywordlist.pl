@@ -72,7 +72,7 @@ printf $kwdef <<EOM, $base_filename, uc $base_filename, uc $base_filename;
  * %s.h
  *    List of keywords represented as a ScanKeywordList.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES

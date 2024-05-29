@@ -2568,7 +2568,7 @@ reset join_collapse_limit;
 reset enable_seqscan;
 
 -- Check that clauses from the join filter list is not lost on the self-join removal
-CREATE TABLE emp1 ( id SERIAL PRIMARY KEY NOT NULL, code int);
+CREATE TABLE emp1 (id SERIAL PRIMARY KEY NOT NULL, code int);
 explain (verbose, costs off)
 SELECT * FROM emp1 e1, emp1 e2 WHERE e1.id = e2.id AND e2.code <> e1.code;
 
@@ -2600,6 +2600,14 @@ select * from emp1 t1 left join
         on true)
 on true;
 
+-- Check that SJE removes the whole PHVs correctly
+explain (verbose, costs off)
+select 1 from emp1 t1 left join
+    ((select 1 as x, * from emp1 t2) s1 inner join
+        (select * from emp1 t3) s2 on s1.id = s2.id)
+    on true
+where s1.x = 1;
+
 -- Check that PHVs do not impose any constraints on removing self joins
 explain (verbose, costs off)
 select * from emp1 t1 join emp1 t2 on t1.id = t2.id left join
@@ -2615,6 +2623,51 @@ explain (costs off)
 select * from emp1 t1
    inner join emp1 t2 on t1.id = t2.id
     left join emp1 t3 on t1.id > 1 and t1.id < 2;
+
+-- Check that SJE doesn't replace the target relation
+explain (costs off)
+WITH t1 AS (SELECT * FROM emp1)
+UPDATE emp1 SET code = t1.code + 1 FROM t1
+WHERE t1.id = emp1.id RETURNING emp1.id, emp1.code, t1.code;
+INSERT INTO emp1 VALUES (1, 1), (2, 1);
+WITH t1 AS (SELECT * FROM emp1)
+UPDATE emp1 SET code = t1.code + 1 FROM t1
+WHERE t1.id = emp1.id RETURNING emp1.id, emp1.code, t1.code;
+TRUNCATE emp1;
+
+EXPLAIN (COSTS OFF)
+UPDATE sj sq SET b = 1 FROM sj as sz WHERE sq.a = sz.a;
+
+CREATE RULE sj_del_rule AS ON DELETE TO sj
+  DO INSTEAD
+    UPDATE sj SET a = 1 WHERE a = old.a;
+EXPLAIN (COSTS OFF) DELETE FROM sj;
+DROP RULE sj_del_rule ON sj CASCADE;
+
+-- Check that SJE does not mistakenly omit qual clauses (bug #18187)
+insert into emp1 values (1, 1);
+explain (costs off)
+select 1 from emp1 full join
+    (select * from emp1 t1 join
+        emp1 t2 join emp1 t3 on t2.id = t3.id
+        on true
+    where false) s on true
+where false;
+select 1 from emp1 full join
+    (select * from emp1 t1 join
+        emp1 t2 join emp1 t3 on t2.id = t3.id
+        on true
+    where false) s on true
+where false;
+
+-- Check that SJE does not mistakenly re-use knowledge of relation uniqueness
+-- made with different set of quals
+insert into emp1 values (2, 1);
+explain (costs off)
+select * from emp1 t1 where exists (select * from emp1 t2
+                                    where t2.id = t1.code and t2.code > 0);
+select * from emp1 t1 where exists (select * from emp1 t2
+                                    where t2.id = t1.code and t2.code > 0);
 
 -- We can remove the join even if we find the join can't duplicate rows and
 -- the base quals of each side are different.  In the following case we end up
@@ -2650,7 +2703,7 @@ SELECT * FROM
 WHERE q0.a = 1;
 
 --
----- Only one side is unqiue
+---- Only one side is unique
 --select * from sl t1, sl t2 where t1.a = t2.a and t1.b = 1;
 --select * from sl t1, sl t2 where t1.a = t2.a and t2.b = 1;
 --
@@ -2698,18 +2751,8 @@ ON sj_t1.id = _t2t3t4.id;
 -- Test RowMarks-related code
 --
 
--- TODO: Why this select returns two copies of ctid field? Should we fix it?
 EXPLAIN (COSTS OFF) -- Both sides have explicit LockRows marks
 SELECT a1.a FROM sj a1,sj a2 WHERE (a1.a=a2.a) FOR UPDATE;
-
-EXPLAIN (COSTS OFF) -- A RowMark exists for the table being kept
-UPDATE sj sq SET b = 1 FROM sj as sz WHERE sq.a = sz.a;
-
-CREATE RULE sj_del_rule AS ON DELETE TO sj
-  DO INSTEAD
-    UPDATE sj SET a = 1 WHERE a = old.a;
-EXPLAIN (COSTS OFF) DELETE FROM sj; -- A RowMark exists for the table being dropped
-DROP RULE sj_del_rule ON sj CASCADE;
 
 reset enable_hashjoin;
 reset enable_mergejoin;
@@ -2914,6 +2957,18 @@ select * from
     lateral (select q1, coalesce(ss1.x,q2) as y from int8_tbl d) ss2
   ) on c.q2 = ss2.q1,
   lateral (select ss2.y offset 0) ss3;
+
+-- another case requiring nested PlaceHolderVars
+explain (verbose, costs off)
+select * from
+  (select 0 as val0) as ss0
+  left join (select 1 as val) as ss1 on true
+  left join lateral (select ss1.val as val_filtered where false) as ss2 on true;
+
+select * from
+  (select 0 as val0) as ss0
+  left join (select 1 as val) as ss1 on true
+  left join lateral (select ss1.val as val_filtered where false) as ss2 on true;
 
 -- case that breaks the old ph_may_need optimization
 explain (verbose, costs off)

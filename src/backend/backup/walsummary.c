@@ -3,7 +3,7 @@
  * walsummary.c
  *	  Functions for accessing and managing WAL summary data.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
  *
  * src/backend/backup/walsummary.c
  *
@@ -251,8 +251,15 @@ RemoveWalSummaryIfOlderThan(WalSummaryFile *ws, time_t cutoff_time)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not stat file \"%s\": %m", path)));
+	/* XXX temporarily changed to debug buildfarm failures */
+#if 0
 	ereport(DEBUG2,
 			(errmsg_internal("removing file \"%s\"", path)));
+#else
+	ereport(LOG,
+			(errmsg_internal("removing file \"%s\" cutoff_time=%llu", path,
+							 (unsigned long long) cutoff_time)));
+#endif
 }
 
 /*

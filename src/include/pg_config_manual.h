@@ -6,7 +6,7 @@
  * for developers.  If you edit any of these, be sure to do a *full*
  * rebuild (and an initdb if noted).
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/pg_config_manual.h
@@ -341,7 +341,7 @@
 
 /*
  * Define this to force Bitmapset reallocation on each modification.  Helps
- * to find hangling pointers to Bitmapset's.
+ * to find dangling pointers to Bitmapset's.
  */
 /* #define REALLOCATE_BITMAPSETS */
 

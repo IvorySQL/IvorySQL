@@ -989,6 +989,7 @@ select \if false \\ (bogus \else \\ 42 \endif \\ forty_two;
 	\echo `nosuchcommand` :foo :'foo' :"foo"
 	\pset fieldsep | `nosuchcommand` :foo :'foo' :"foo"
 	\a
+	SELECT $1 \bind 1 \g
 	\C arg1
 	\c arg1 arg2 arg3 arg4
 	\cd arg1
@@ -1315,7 +1316,7 @@ drop role regress_psql_user;
 \sf information_schema._pg_index_position
 \sf+ information_schema._pg_index_position
 \sf+ interval_pl_time
-\sf ts_debug(text)
+\sf ts_debug(text);
 \sf+ ts_debug(text)
 
 -- AUTOCOMMIT

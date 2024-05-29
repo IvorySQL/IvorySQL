@@ -3,7 +3,7 @@
  * relcache.c
  *	  POSTGRES relation descriptor cache code
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -3044,7 +3044,7 @@ RelationCacheInvalidate(bool debug_discard)
 	 * start to rebuild entries, since that may involve catalog fetches which
 	 * will re-open catalog files.
 	 */
-	smgrcloseall();
+	smgrdestroyall();
 
 	/* Phase 2: rebuild the items found to need rebuild in phase 1 */
 	foreach(l, rebuildFirstList)
@@ -3064,25 +3064,6 @@ RelationCacheInvalidate(bool debug_discard)
 		/* Any RelationBuildDesc() on the stack must start over. */
 		for (i = 0; i < in_progress_list_len; i++)
 			in_progress_list[i].invalidated = true;
-}
-
-/*
- * RelationCloseSmgrByOid - close a relcache entry's smgr link
- *
- * Needed in some cases where we are changing a relation's physical mapping.
- * The link will be automatically reopened on next use.
- */
-void
-RelationCloseSmgrByOid(Oid relationId)
-{
-	Relation	relation;
-
-	RelationIdCacheLookup(relationId, relation);
-
-	if (!PointerIsValid(relation))
-		return;					/* not in cache, nothing to do */
-
-	RelationCloseSmgr(relation);
 }
 
 static void
@@ -5568,11 +5549,14 @@ RelationGetIdentityKeyBitmap(Relation relation)
 /*
  * RelationGetExclusionInfo -- get info about index's exclusion constraint
  *
- * This should be called only for an index that is known to have an
- * associated exclusion constraint.  It returns arrays (palloc'd in caller's
- * context) of the exclusion operator OIDs, their underlying functions'
- * OIDs, and their strategy numbers in the index's opclasses.  We cache
- * all this information since it requires a fair amount of work to get.
+ * This should be called only for an index that is known to have an associated
+ * exclusion constraint or primary key/unique constraint using WITHOUT
+ * OVERLAPS.
+
+ * It returns arrays (palloc'd in caller's context) of the exclusion operator
+ * OIDs, their underlying functions' OIDs, and their strategy numbers in the
+ * index's opclasses.  We cache all this information since it requires a fair
+ * amount of work to get.
  */
 void
 RelationGetExclusionInfo(Relation indexRelation,
@@ -5636,7 +5620,10 @@ RelationGetExclusionInfo(Relation indexRelation,
 		int			nelem;
 
 		/* We want the exclusion constraint owning the index */
-		if (conform->contype != CONSTRAINT_EXCLUSION ||
+		if ((conform->contype != CONSTRAINT_EXCLUSION &&
+			 !(conform->conwithoutoverlaps && (
+											   conform->contype == CONSTRAINT_PRIMARY
+											   || conform->contype == CONSTRAINT_UNIQUE))) ||
 			conform->conindid != RelationGetRelid(indexRelation))
 			continue;
 

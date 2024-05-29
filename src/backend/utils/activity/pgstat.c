@@ -83,7 +83,7 @@
  * specific kinds of stats.
  *
  *
- * Copyright (c) 2001-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2024, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat.c
@@ -942,6 +942,9 @@ pgstat_snapshot_fixed(PgStat_Kind kind)
 {
 	Assert(pgstat_is_kind_valid(kind));
 	Assert(pgstat_get_kind_info(kind)->fixed_amount);
+
+	if (force_stats_snapshot_clear)
+		pgstat_clear_snapshot();
 
 	if (pgstat_fetch_consistency == PGSTAT_FETCH_CONSISTENCY_SNAPSHOT)
 		pgstat_build_snapshot();

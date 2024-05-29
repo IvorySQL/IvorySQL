@@ -3,7 +3,7 @@
  * arrayfuncs.c
  *	  Support functions for arrays.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -6340,7 +6340,7 @@ array_unnest_support(PG_FUNCTION_ARGS)
 			/* We can use estimated argument values here */
 			arg1 = estimate_expression_value(req->root, linitial(args));
 
-			req->rows = estimate_array_length(arg1);
+			req->rows = estimate_array_length(req->root, arg1);
 			ret = (Node *) req;
 		}
 	}

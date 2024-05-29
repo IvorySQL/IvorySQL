@@ -3,7 +3,7 @@
  *
  *	main source file
  *
- *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.c
  */
 
@@ -930,8 +930,10 @@ create_logical_replication_slots(void)
 			appendStringLiteralConn(query, slot_info->slotname, conn);
 			appendPQExpBuffer(query, ", ");
 			appendStringLiteralConn(query, slot_info->plugin, conn);
-			appendPQExpBuffer(query, ", false, %s);",
-							  slot_info->two_phase ? "true" : "false");
+
+			appendPQExpBuffer(query, ", false, %s, %s);",
+							  slot_info->two_phase ? "true" : "false",
+							  slot_info->failover ? "true" : "false");
 
 			PQclear(executeQueryOrDie(conn, "%s", query->data));
 

@@ -2,7 +2,7 @@
  *
  * isolation_main --- pg_regress test launcher for isolation tests (Oracle compatibility)
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/oracle_test/isolation/isolation_main.c

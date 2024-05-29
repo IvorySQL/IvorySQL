@@ -955,7 +955,7 @@ FROM generate_series(-3.5, 3.5, 1) as x;
      <para>
       This section describes a PostgreSQL-specific way to create an
       autoincrementing column.  Another way is to use the SQL-standard
-      identity column feature, described at <xref linkend="sql-createtable"/>.
+      identity column feature, described at <xref linkend="ddl-identity-columns"/>.
      </para>
     </note>
 
@@ -3590,7 +3590,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     </indexterm>
 
     <para>
-     Polygons are represented by lists of points (the vertexes of the
+     Polygons are represented by lists of points (the vertices of the
      polygon). Polygons are very similar to closed paths; the essential
      difference is that a polygon is considered to include the area
      within it, while a path is not.

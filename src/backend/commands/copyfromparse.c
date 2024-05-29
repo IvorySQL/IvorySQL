@@ -25,10 +25,10 @@
  *    is copied into 'line_buf', with quotes and escape characters still
  *    intact.
  *
- * 4. CopyReadAttributesText/CSV() function takes the input line from
- *    'line_buf', and splits it into fields, unescaping the data as required.
- *    The fields are stored in 'attribute_buf', and 'raw_fields' array holds
- *    pointers to each field.
+ * 4. CopyReadAttributesText/CSV() function (via copy_read_attribute) takes
+ *    the input line from 'line_buf', and splits it into fields, unescaping
+ *    the data as required.  The fields are stored in 'attribute_buf', and
+ *    'raw_fields' array holds pointers to each field.
  *
  * If encoding conversion is not required, a shortcut is taken in step 2 to
  * avoid copying the data unnecessarily.  The 'input_buf' pointer is set to
@@ -47,7 +47,7 @@
  * and 'attribute_buf' are expanded on demand, to hold the longest line
  * encountered so far.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -70,6 +70,7 @@
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/miscnodes.h"
 #include "pgstat.h"
 #include "port/pg_bswap.h"
 #include "utils/builtins.h"
@@ -151,8 +152,6 @@ static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 /* non-export function prototypes */
 static bool CopyReadLine(CopyFromState cstate);
 static bool CopyReadLineText(CopyFromState cstate);
-static int	CopyReadAttributesText(CopyFromState cstate);
-static int	CopyReadAttributesCSV(CopyFromState cstate);
 static Datum CopyReadBinaryAttribute(CopyFromState cstate, FmgrInfo *flinfo,
 									 Oid typioparam, int32 typmod,
 									 bool *isnull);
@@ -774,10 +773,7 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 		{
 			int			fldnum;
 
-			if (cstate->opts.csv_mode)
-				fldct = CopyReadAttributesCSV(cstate);
-			else
-				fldct = CopyReadAttributesText(cstate);
+			fldct = cstate->copy_read_attributes(cstate);
 
 			if (fldct != list_length(cstate->attnumlist))
 				ereport(ERROR,
@@ -829,10 +825,7 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 		return false;
 
 	/* Parse the line into de-escaped field values */
-	if (cstate->opts.csv_mode)
-		fldct = CopyReadAttributesCSV(cstate);
-	else
-		fldct = CopyReadAttributesText(cstate);
+	fldct = cstate->copy_read_attributes(cstate);
 
 	*fields = cstate->raw_fields;
 	*nfields = fldct;
@@ -955,11 +948,21 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 
 				values[m] = ExecEvalExpr(defexprs[m], econtext, &nulls[m]);
 			}
-			else
-				values[m] = InputFunctionCall(&in_functions[m],
-											  string,
-											  typioparams[m],
-											  att->atttypmod);
+
+			/*
+			 * If ON_ERROR is specified with IGNORE, skip rows with soft
+			 * errors
+			 */
+			else if (!InputFunctionCallSafe(&in_functions[m],
+											string,
+											typioparams[m],
+											att->atttypmod,
+											(Node *) cstate->escontext,
+											&values[m]))
+			{
+				cstate->num_errors++;
+				return true;
+			}
 
 			cstate->cur_attname = NULL;
 			cstate->cur_attval = NULL;
@@ -1491,7 +1494,7 @@ GetDecimalFromHex(char hex)
  *
  * The return value is the number of fields actually read.
  */
-static int
+int
 CopyReadAttributesText(CopyFromState cstate)
 {
 	char		delimc = cstate->opts.delim[0];
@@ -1745,7 +1748,7 @@ CopyReadAttributesText(CopyFromState cstate)
  * CopyReadAttributesText, except we parse the fields according to
  * "standard" (i.e. common) CSV usage.
  */
-static int
+int
 CopyReadAttributesCSV(CopyFromState cstate)
 {
 	char		delimc = cstate->opts.delim[0];

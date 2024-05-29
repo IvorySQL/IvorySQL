@@ -31,7 +31,7 @@
  * should be killed by SIGQUIT and then a recovery cycle started.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -77,9 +77,6 @@ int			WalWriterFlushAfter = DEFAULT_WAL_WRITER_FLUSH_AFTER;
  */
 #define LOOPS_UNTIL_HIBERNATE		50
 #define HIBERNATE_FACTOR			25
-
-/* Prototypes for private functions */
-static void HandleWalWriterInterrupts(void);
 
 /*
  * Main entry point for walwriter process
@@ -189,13 +186,6 @@ WalWriterMain(void)
 		 * fast as we can.
 		 */
 		pg_usleep(1000000L);
-
-		/*
-		 * Close all open files after any error.  This is helpful on Windows,
-		 * where holding deleted files open causes various strange errors.
-		 * It's not clear we need it elsewhere, but shouldn't hurt.
-		 */
-		smgrcloseall();
 	}
 
 	/* We can now handle ereport(ERROR) */
@@ -245,7 +235,7 @@ WalWriterMain(void)
 		ResetLatch(MyLatch);
 
 		/* Process any signals received recently */
-		HandleWalWriterInterrupts();
+		HandleMainLoopInterrupts();
 
 		/*
 		 * Do what we're here for; then, if XLogBackgroundFlush() found useful
@@ -274,27 +264,4 @@ WalWriterMain(void)
 						 cur_timeout,
 						 WAIT_EVENT_WAL_WRITER_MAIN);
 	}
-}
-
-/*
- * Interrupt handler for main loops of WAL writer process.
- */
-static void
-HandleWalWriterInterrupts(void)
-{
-	if (ProcSignalBarrierPending)
-		ProcessProcSignalBarrier();
-
-	if (ConfigReloadPending)
-	{
-		ConfigReloadPending = false;
-		ProcessConfigFile(PGC_SIGHUP);
-	}
-
-	if (ShutdownRequestPending)
-		proc_exit(0);
-
-	/* Perform logging of memory contexts of this process */
-	if (LogMemoryContextPending)
-		ProcessLogMemoryContextInterrupt();
 }

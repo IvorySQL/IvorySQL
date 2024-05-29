@@ -4,7 +4,7 @@
  *	  Definitions for using the POSTGRES copy command.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/copy.h
@@ -29,6 +29,16 @@ typedef enum CopyHeaderChoice
 	COPY_HEADER_TRUE,
 	COPY_HEADER_MATCH,
 } CopyHeaderChoice;
+
+/*
+ * Represents where to save input processing errors.  More values to be added
+ * in the future.
+ */
+typedef enum CopyOnErrorChoice
+{
+	COPY_ON_ERROR_STOP = 0,		/* immediately throw errors, default */
+	COPY_ON_ERROR_IGNORE,		/* ignore errors */
+} CopyOnErrorChoice;
 
 /*
  * A struct to hold COPY options, in a parsed form. All of these are related
@@ -62,6 +72,7 @@ typedef struct CopyFormatOptions
 	bool		force_null_all; /* FORCE_NULL *? */
 	bool	   *force_null_flags;	/* per-column CSV FN flags */
 	bool		convert_selectively;	/* do selective binary conversion? */
+	CopyOnErrorChoice on_error; /* what to do when error happened */
 	List	   *convert_select; /* list of column names (can be NIL) */
 } CopyFormatOptions;
 

@@ -4,7 +4,7 @@
  *	  definition of the system catalog for mappings between relations and
  *	  publications (pg_publication_rel)
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_publication_rel.h
@@ -50,5 +50,8 @@ DECLARE_TOAST(pg_publication_rel, 6228, 6229);
 DECLARE_UNIQUE_INDEX_PKEY(pg_publication_rel_oid_index, 6112, PublicationRelObjectIndexId, pg_publication_rel, btree(oid oid_ops));
 DECLARE_UNIQUE_INDEX(pg_publication_rel_prrelid_prpubid_index, 6113, PublicationRelPrrelidPrpubidIndexId, pg_publication_rel, btree(prrelid oid_ops, prpubid oid_ops));
 DECLARE_INDEX(pg_publication_rel_prpubid_index, 6116, PublicationRelPrpubidIndexId, pg_publication_rel, btree(prpubid oid_ops));
+
+MAKE_SYSCACHE(PUBLICATIONREL, pg_publication_rel_oid_index, 64);
+MAKE_SYSCACHE(PUBLICATIONRELMAP, pg_publication_rel_prrelid_prpubid_index, 64);
 
 #endif							/* PG_PUBLICATION_REL_H */
