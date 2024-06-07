@@ -287,29 +287,10 @@ DO $$
 DECLARE _a int; _b int; _c int;
 BEGIN
   _a := 10; _b := 30; _c := 50;
-  CALL test_proc8c(_a, _b);  -- fail, no output argument for c
-  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
-END
-$$ language plisql;
-
-DO $$
-DECLARE _a int; _b int; _c int;
-BEGIN
-  _a := 10; _b := 30; _c := 50;
   CALL test_proc8c(_a, b => _b);  -- fail, no output argument for c
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$ language plpgsql;
-
-DO $$
-DECLARE _a int; _b int; _c int;
-BEGIN
-  _a := 10; _b := 30; _c := 50;
-  CALL test_proc8c(_a, b => _b);  -- fail, no output argument for c
-  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
-END
-$$ language plisql;
-
 
 -- OUT parameters
 
@@ -479,16 +460,6 @@ DECLARE
   v_Text text;
   v_cnt  integer := 42;
 BEGIN
-  CALL p1(v_cnt := v_cnt);  -- error, must supply something for v_Text
-  RAISE NOTICE '%', v_Text;
-END;
-$$ language plisql;
-
-DO $$
-DECLARE
-  v_Text text;
-  v_cnt  integer := 42;
-BEGIN
   CALL p1(v_cnt := v_cnt, v_Text := v_Text);
   RAISE NOTICE '%', v_Text;
 END;
@@ -550,3 +521,53 @@ CREATE FUNCTION f(int) RETURNS int AS $$ SELECT $1 + 2 $$ LANGUAGE sql;
 
 CALL outer_p(42);
 SELECT outer_f(42);
+
+-- Check that stable functions in CALL see the correct snapshot
+
+CREATE TABLE t_test (x int);
+INSERT INTO t_test VALUES (0);
+
+CREATE FUNCTION f_get_x () RETURNS int
+AS $$
+DECLARE l_result int;
+BEGIN
+  SELECT x INTO l_result FROM t_test;
+  RETURN l_result;
+END
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE PROCEDURE f_print_x (x int)
+AS $$
+BEGIN
+  RAISE NOTICE 'f_print_x(%)', x;
+END
+$$ LANGUAGE plpgsql;
+
+-- test in non-atomic context
+DO $$
+BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  ROLLBACK;
+END
+$$;
+
+-- test in atomic context
+BEGIN;
+
+DO $$
+BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+END
+$$;
+
+ROLLBACK;
