@@ -2628,7 +2628,7 @@ PQsendTypedCommand(PGconn *conn, char command, char type, const char *target)
 	}
 	else
 	{
-		libpq_append_conn_error(conn, "unknown command type provided");
+		libpq_append_conn_error(conn, "unrecognized message type \"%c\"", command);
 		goto sendFailed;
 	}
 
