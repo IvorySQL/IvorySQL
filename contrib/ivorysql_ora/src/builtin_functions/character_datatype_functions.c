@@ -49,6 +49,7 @@ PG_FUNCTION_INFO_V1(ora_substrb_no_length);
 PG_FUNCTION_INFO_V1(ora_substrb);
 PG_FUNCTION_INFO_V1(ora_replace);
 PG_FUNCTION_INFO_V1(ora_instrb);
+PG_FUNCTION_INFO_V1(ora_asciistr);
 
 #define PG_STR_GET_TEXT(str_) \
 	DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(str_)))
@@ -1690,4 +1691,84 @@ text_position_prev(int start_pos, TextPositionState *state)
 	}
 
 	return pos;
+}
+
+/*
+ *	appendUTF16Escape
+ *
+ *	Converts a UTF-16 code unit to a Unicode escape sequence (\xxxx) 
+ * 	and appends it to the output string.
+ */
+static void 
+appendUTF16Escape(StringInfoData* outputString, uint16_t codePoint) {
+    char buffer[10];
+    snprintf(buffer, sizeof(buffer), "\\%04X", codePoint);
+    appendStringInfoString(outputString, buffer);
+}
+
+/********************************************************************
+ * ora_asciistr
+ *
+ * Purpose:
+ *	 It takes string as a argument, or an expression that resolves to 
+ * 	 a string, in any character set and returns an ASCII 
+ *   version of the string in the database character set. 
+ *   Non-ASCII characters are converted to the form \xxxx, 
+ *   where xxxx represents a UTF-16 code unit. 
+ ********************************************************************/
+Datum 
+ora_asciistr(PG_FUNCTION_ARGS) {
+	StringInfoData 	output;
+	text 			*str_arg = NULL;
+	char 			*str = NULL;
+    char			*end = NULL;
+	
+	initStringInfo(&output);
+	str_arg = PG_GETARG_TEXT_PP(0);
+	str = VARDATA_ANY(str_arg);
+	end = str + VARSIZE_ANY_EXHDR(str_arg);
+
+    while (str < end) {
+        unsigned char c = *str;
+        uint32_t codePoint;
+		
+		if (c == '\\') {
+			/* Handle backslash character */
+			appendUTF16Escape(&output, 0x005C);  // UTF-16 representation of backslash
+			str++;
+        } 
+        else if (c < 0x80) {
+            /* ASCII character */
+            appendStringInfoChar(&output, c);
+            str++;
+        } else if ((c & 0xE0) == 0xC0) {
+            /* Two-byte UTF-8 sequence */
+            codePoint = ((c & 0x1F) << 6) | (str[1] & 0x3F);
+            appendUTF16Escape(&output, (uint16_t) codePoint);
+            str += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            /* Three-byte UTF-8 sequence */
+            codePoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
+            appendUTF16Escape(&output, (uint16_t) codePoint);
+            str += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            /* Four-byte UTF-8 sequence */
+			uint16_t highSurrogate, lowSurrogate;
+
+            codePoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
+            codePoint -= 0x10000;
+            highSurrogate = 0xD800 | (codePoint >> 10);
+            lowSurrogate = 0xDC00 | (codePoint & 0x3FF);
+            appendUTF16Escape(&output, highSurrogate);
+            appendUTF16Escape(&output, lowSurrogate);
+            str += 4;
+        } else {
+            /* Invalid UTF-8 byte */
+			ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid bytes")));
+            str++;
+        }
+    }
+	
+    PG_RETURN_TEXT_P(cstring_to_text_with_len(output.data, output.len));
 }
