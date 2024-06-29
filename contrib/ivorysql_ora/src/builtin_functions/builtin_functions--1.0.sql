@@ -4,6 +4,15 @@
  *
  ***************************************************************/
 /* length/lengthb for CHAR(n char/byte) */
+
+CREATE FUNCTION sys.asciistr(text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_asciistr'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 CREATE FUNCTION sys.length(text)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharlen'
