@@ -22,7 +22,7 @@ all check oracle-check all-check install installdirs installcheck oracle-install
 
 	@if [ ! -f GNUmakefile ] ; then \
 	   echo "You need to run the 'configure' program first. Please see"; \
-	   echo "<https://www.postgresql.org/docs/devel/installation.html>" ; \
+	   echo "<https://www.postgresql.org/docs/17/installation.html>" ; \
 	   false ; \
 	 fi
 	@IFS=':' ; \
