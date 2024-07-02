@@ -1304,13 +1304,14 @@ pg_available_extensions| SELECT e.name,
 pg_backend_memory_contexts| SELECT name,
     ident,
     parent,
+    type,
     level,
     total_bytes,
     total_nblocks,
     free_bytes,
     free_chunks,
     used_bytes
-   FROM pg_get_backend_memory_contexts() pg_get_backend_memory_contexts(name, ident, parent, level, total_bytes, total_nblocks, free_bytes, free_chunks, used_bytes);
+   FROM pg_get_backend_memory_contexts() pg_get_backend_memory_contexts(name, ident, parent, type, level, total_bytes, total_nblocks, free_bytes, free_chunks, used_bytes);
 pg_config| SELECT name,
     setting
    FROM pg_config() pg_config(name, setting);
@@ -1697,10 +1698,7 @@ pg_sequences| SELECT n.nspname AS schemaname,
     s.seqincrement AS increment_by,
     s.seqcycle AS cycle,
     s.seqcache AS cache_size,
-        CASE
-            WHEN has_sequence_privilege(c.oid, 'SELECT,USAGE'::text) THEN pg_sequence_last_value((c.oid)::regclass)
-            ELSE NULL::pg_catalog.int8
-        END AS last_value
+    pg_sequence_last_value((c.oid)::regclass) AS last_value
    FROM ((pg_sequence s
      JOIN pg_class c ON ((c.oid = s.seqrelid)))
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
