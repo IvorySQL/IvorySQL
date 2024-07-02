@@ -4288,7 +4288,7 @@ listPartitionedTables(const char *reltypes, const char *pattern, bool verbose)
 	PQExpBufferData title;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
-	bool		translate_columns[] = {false, false, false, false, false, false, false, false, false};
+	bool		translate_columns[] = {false, false, false, false, false, false, false, false, false, false};
 	const char *tabletitle;
 	bool		mixed_output = false;
 
@@ -4356,6 +4356,13 @@ listPartitionedTables(const char *reltypes, const char *pattern, bool verbose)
 
 	if (verbose)
 	{
+		/*
+		 * Table access methods were introduced in v12, and can be set on
+		 * partitioned tables since v17.
+		 */
+		appendPQExpBuffer(&buf, ",\n  am.amname as \"%s\"",
+						  gettext_noop("Access method"));
+
 		if (showNested)
 		{
 			appendPQExpBuffer(&buf,
@@ -4391,6 +4398,9 @@ listPartitionedTables(const char *reltypes, const char *pattern, bool verbose)
 
 	if (verbose)
 	{
+		appendPQExpBufferStr(&buf,
+							 "\n     LEFT JOIN pg_catalog.pg_am am ON c.relam = am.oid");
+
 		if (pset.sversion < 120000)
 		{
 			appendPQExpBufferStr(&buf,
