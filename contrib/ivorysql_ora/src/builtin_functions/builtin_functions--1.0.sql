@@ -3,7 +3,6 @@
  * Character datatype functions.
  *
  ***************************************************************/
-/* length/lengthb for CHAR(n char/byte) */
 
 CREATE FUNCTION sys.asciistr(text)
 RETURNS text
@@ -13,6 +12,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+/* length/lengthb for CHAR(n char/byte) */
 CREATE FUNCTION sys.length(text)
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharlen'
