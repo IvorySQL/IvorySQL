@@ -12,6 +12,34 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+
+CREATE FUNCTION sys.decompose(text, text DEFAULT 'canonical')
+RETURNS text
+AS $$
+BEGIN
+    IF LOWER($2) = 'canonical' THEN
+        RETURN pg_catalog.normalize($1, 'NFD');
+    ELSIF LOWER($2) = 'compatibility' THEN
+        RETURN pg_catalog.normalize($1, 'NFKD');
+    ELSE
+        RAISE 'Invalid parameter string used in SQL function';
+    END IF;
+END;
+$$
+LANGUAGE plpgsql
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+
+CREATE FUNCTION sys.compose(text)
+RETURNS text
+AS $$ SELECT pg_catalog.normalize($1, 'NFC');$$
+LANGUAGE SQL
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 /* length/lengthb for CHAR(n char/byte) */
 CREATE FUNCTION sys.length(text)
 RETURNS integer
