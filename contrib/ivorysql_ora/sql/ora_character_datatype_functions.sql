@@ -1222,3 +1222,31 @@ drop table test_decode;
  select asciistr('Café') from dual;
  select asciistr('Αλφάβητο') from dual;
  select asciistr('Привет') from dual;
+
+/*
+ * compose & decompose
+ */
+
+select asciistr(decompose('é')) from dual;
+select asciistr(compose('e'||chr(769))) from dual;
+select asciistr(decompose('áéíóú')) from dual;
+select asciistr(compose('a'||chr(769)||'e'||chr(769)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+select asciistr(decompose('àèìòù')) from dual;
+select asciistr(compose('a'||chr(768)||'e'||chr(768)||'i'||chr(768)||'o'||chr(768)||'u'||chr(768))) from dual;
+select asciistr(decompose('áèíóú')) from dual;
+select asciistr(compose('a'||chr(769)||'e'||chr(768)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+select asciistr(decompose('hello')) from dual;
+select asciistr(compose('hello')) from dual;
+select asciistr(compose(chr(101)||chr(769))) from dual;
+select asciistr(decompose('é')) from dual;
+select unistr('\00e9') from dual;
+select compose('a'||chr(768)) from dual;
+
+-- Nested Composition and Decomposition 
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('é'))) FROM DUAL;
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('áéíóú'))) FROM DUAL;
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('àèìòù'))) FROM DUAL;
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('áèíóú'))) FROM DUAL;
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('hello'))) FROM DUAL;
+SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E9')))) FROM DUAL;
+SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E1\00E9\00ED\00F3\00FA')))) FROM DUAL;

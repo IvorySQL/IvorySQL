@@ -3219,3 +3219,133 @@ drop table test_decode;
  \041F\0440\0438\0432\0435\0442
 (1 row)
 
+/*
+ * compose & decompose
+ */
+select asciistr(decompose('é')) from dual;
+ asciistr 
+----------
+ e\0301
+(1 row)
+
+select asciistr(compose('e'||chr(769))) from dual;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+select asciistr(decompose('áéíóú')) from dual;
+            asciistr            
+--------------------------------
+ a\0301e\0301i\0301o\0301u\0301
+(1 row)
+
+select asciistr(compose('a'||chr(769)||'e'||chr(769)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+         asciistr          
+---------------------------
+ \00E1\00E9\00ED\00F3\00FA
+(1 row)
+
+select asciistr(decompose('àèìòù')) from dual;
+            asciistr            
+--------------------------------
+ a\0300e\0300i\0300o\0300u\0300
+(1 row)
+
+select asciistr(compose('a'||chr(768)||'e'||chr(768)||'i'||chr(768)||'o'||chr(768)||'u'||chr(768))) from dual;
+         asciistr          
+---------------------------
+ \00E0\00E8\00EC\00F2\00F9
+(1 row)
+
+select asciistr(decompose('áèíóú')) from dual;
+            asciistr            
+--------------------------------
+ a\0301e\0300i\0301o\0301u\0301
+(1 row)
+
+select asciistr(compose('a'||chr(769)||'e'||chr(768)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+         asciistr          
+---------------------------
+ \00E1\00E8\00ED\00F3\00FA
+(1 row)
+
+select asciistr(decompose('hello')) from dual;
+ asciistr 
+----------
+ hello
+(1 row)
+
+select asciistr(compose('hello')) from dual;
+ asciistr 
+----------
+ hello
+(1 row)
+
+select asciistr(compose(chr(101)||chr(769))) from dual;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+select asciistr(decompose('é')) from dual;
+ asciistr 
+----------
+ e\0301
+(1 row)
+
+select unistr('\00e9') from dual;
+ unistr 
+--------
+ é
+(1 row)
+
+select compose('a'||chr(768)) from dual;
+ compose 
+---------
+ à
+(1 row)
+
+-- Nested Composition and Decomposition 
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('é'))) FROM DUAL;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('áéíóú'))) FROM DUAL;
+         asciistr          
+---------------------------
+ \00E1\00E9\00ED\00F3\00FA
+(1 row)
+
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('àèìòù'))) FROM DUAL;
+         asciistr          
+---------------------------
+ \00E0\00E8\00EC\00F2\00F9
+(1 row)
+
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('áèíóú'))) FROM DUAL;
+         asciistr          
+---------------------------
+ \00E1\00E8\00ED\00F3\00FA
+(1 row)
+
+SELECT ASCIISTR(COMPOSE(DECOMPOSE('hello'))) FROM DUAL;
+ asciistr 
+----------
+ hello
+(1 row)
+
+SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E9')))) FROM DUAL;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E1\00E9\00ED\00F3\00FA')))) FROM DUAL;
+         asciistr          
+---------------------------
+ \00E1\00E9\00ED\00F3\00FA
+(1 row)
+
