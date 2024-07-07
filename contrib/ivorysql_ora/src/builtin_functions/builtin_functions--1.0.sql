@@ -12,7 +12,6 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-
 CREATE FUNCTION sys.decompose(text, text DEFAULT 'canonical')
 RETURNS text
 AS $$
@@ -31,7 +30,6 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-
 CREATE FUNCTION sys.compose(text)
 RETURNS text
 AS $$ SELECT pg_catalog.normalize($1, 'NFC');$$
@@ -39,7 +37,6 @@ LANGUAGE SQL
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
-
 
 CREATE FUNCTION sys.to_multi_byte(str text)
 RETURNS text
@@ -58,7 +55,6 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE; 
 COMMENT ON FUNCTION sys.to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
-
 
 /* length/lengthb for CHAR(n char/byte) */
 CREATE FUNCTION sys.length(text)

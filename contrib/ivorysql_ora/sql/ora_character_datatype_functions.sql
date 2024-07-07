@@ -1243,13 +1243,13 @@ select unistr('\00e9') from dual;
 select compose('a'||chr(768)) from dual;
 
 -- Nested Composition and Decomposition 
-SELECT ASCIISTR(COMPOSE(DECOMPOSE('é'))) FROM DUAL;
-SELECT ASCIISTR(COMPOSE(DECOMPOSE('áéíóú'))) FROM DUAL;
-SELECT ASCIISTR(COMPOSE(DECOMPOSE('àèìòù'))) FROM DUAL;
-SELECT ASCIISTR(COMPOSE(DECOMPOSE('áèíóú'))) FROM DUAL;
-SELECT ASCIISTR(COMPOSE(DECOMPOSE('hello'))) FROM DUAL;
-SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E9')))) FROM DUAL;
-SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E1\00E9\00ED\00F3\00FA')))) FROM DUAL;
+select asciistr(compose(decompose('é'))) from dual;
+select asciistr(compose(decompose('áéíóú'))) from dual;
+select asciistr(compose(decompose('àèìòù'))) from dual;
+select asciistr(compose(decompose('áèíóú'))) from dual;
+select asciistr(compose(decompose('hello'))) from dual;
+select asciistr(compose(decompose(unistr('\00E9')))) from dual;
+select asciistr(compose(decompose(unistr('\00E1\00E9\00ED\00F3\00FA')))) from dual;
 
 -- Tests for to_multi_byte
 select to_multi_byte('123$test');
