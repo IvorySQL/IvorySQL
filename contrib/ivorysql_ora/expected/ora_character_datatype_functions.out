@@ -3349,3 +3349,120 @@ SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E1\00E9\00ED\00F3\00FA')))) FROM DU
  \00E1\00E9\00ED\00F3\00FA
 (1 row)
 
+-- Tests for to_multi_byte
+select to_multi_byte('123$test');
+  to_multi_byte   
+------------------
+ １２３＄ｔｅｓｔ
+(1 row)
+
+-- Check internal representation difference
+select octet_length('abc');
+ octet_length 
+--------------
+            3
+(1 row)
+
+select octet_length(to_multi_byte('abc'));
+ octet_length 
+--------------
+            9
+(1 row)
+
+select to_multi_byte('abc'::text);
+ to_multi_byte 
+---------------
+ ａｂｃ
+(1 row)
+
+select to_multi_byte('1.2'::text) ;
+ to_multi_byte 
+---------------
+ １．２
+(1 row)
+
+select to_multi_byte(1.2::float);
+ERROR:  function to_multi_byte(pg_catalog.float8) does not exist
+LINE 1: select to_multi_byte(1.2::float);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte(1::int);
+ERROR:  function to_multi_byte(pg_catalog.int4) does not exist
+LINE 1: select to_multi_byte(1::int);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte(1.4::numeric);
+ERROR:  function to_multi_byte(pg_catalog.numeric) does not exist
+LINE 1: select to_multi_byte(1.4::numeric);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte('abc'::bpchar);
+ to_multi_byte 
+---------------
+ ａｂｃ
+(1 row)
+
+select to_multi_byte(6.4);
+ERROR:  function to_multi_byte(pg_catalog.numeric) does not exist
+LINE 1: select to_multi_byte(6.4);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte(NULL);
+ to_multi_byte 
+---------------
+ 
+(1 row)
+
+-- Tests for to_single_byte
+select to_single_byte('123$test');
+ to_single_byte 
+----------------
+ 123$test
+(1 row)
+
+select to_single_byte('１２３＄ｔｅｓｔ');
+ to_single_byte 
+----------------
+ 123$test
+(1 row)
+
+-- Check internal representation difference
+select octet_length('ａｂｃ');
+ octet_length 
+--------------
+            9
+(1 row)
+
+select octet_length(to_single_byte('ａｂｃ'));
+ octet_length 
+--------------
+            3
+(1 row)
+
+select to_single_byte('ａｂｃ');
+ to_single_byte 
+----------------
+ abc
+(1 row)
+
+select to_single_byte('１．２');
+ to_single_byte 
+----------------
+ 1.2
+(1 row)
+
+select to_single_byte(１．２);
+ERROR:  "１．２": invalid identifier
+LINE 1: select to_single_byte(１．２);
+                              ^
+select to_single_byte(3.4);
+ERROR:  function to_single_byte(pg_catalog.numeric) does not exist
+LINE 1: select to_single_byte(3.4);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_single_byte(NULL);
+ to_single_byte 
+----------------
+ 
+(1 row)
+

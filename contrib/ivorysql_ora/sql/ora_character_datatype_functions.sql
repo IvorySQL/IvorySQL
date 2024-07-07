@@ -1250,3 +1250,31 @@ SELECT ASCIISTR(COMPOSE(DECOMPOSE('áèíóú'))) FROM DUAL;
 SELECT ASCIISTR(COMPOSE(DECOMPOSE('hello'))) FROM DUAL;
 SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E9')))) FROM DUAL;
 SELECT ASCIISTR(COMPOSE(DECOMPOSE(UNISTR('\00E1\00E9\00ED\00F3\00FA')))) FROM DUAL;
+
+-- Tests for to_multi_byte
+select to_multi_byte('123$test');
+-- Check internal representation difference
+select octet_length('abc');
+select octet_length(to_multi_byte('abc'));
+
+select to_multi_byte('abc'::text);
+select to_multi_byte('1.2'::text) ;
+select to_multi_byte(1.2::float);
+select to_multi_byte(1::int);
+select to_multi_byte(1.4::numeric);
+select to_multi_byte('abc'::bpchar);
+select to_multi_byte(6.4);
+select to_multi_byte(NULL);
+
+-- Tests for to_single_byte
+select to_single_byte('123$test');
+select to_single_byte('１２３＄ｔｅｓｔ');
+-- Check internal representation difference
+select octet_length('ａｂｃ');
+select octet_length(to_single_byte('ａｂｃ'));
+
+select to_single_byte('ａｂｃ');
+select to_single_byte('１．２');
+select to_single_byte(１．２);
+select to_single_byte(3.4);
+select to_single_byte(NULL);
