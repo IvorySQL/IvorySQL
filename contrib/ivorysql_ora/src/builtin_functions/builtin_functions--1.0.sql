@@ -40,6 +40,26 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+
+CREATE FUNCTION sys.to_multi_byte(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_to_multi_byte'
+LANGUAGE C 
+STRICT
+PARALLEL SAFE
+IMMUTABLE; 
+COMMENT ON FUNCTION sys.to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
+
+CREATE FUNCTION sys.to_single_byte(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_to_single_byte'
+LANGUAGE C 
+STRICT
+PARALLEL SAFE
+IMMUTABLE; 
+COMMENT ON FUNCTION sys.to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
+
+
 /* length/lengthb for CHAR(n char/byte) */
 CREATE FUNCTION sys.length(text)
 RETURNS integer
