@@ -3185,12 +3185,11 @@ SELECT 1 FROM
    FROM empsalary e1 LEFT JOIN empsalary e2 ON TRUE
    WHERE e1.empno = e2.empno) s
 WHERE s.c = 1;
-                       QUERY PLAN                        
----------------------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Subquery Scan on s
    Filter: (s.c = 1)
    ->  WindowAgg
-         Run Condition: (ntile(e2.salary) OVER (?) <= 1)
          ->  Sort
                Sort Key: e1.depname
                ->  Merge Join
@@ -3201,7 +3200,7 @@ WHERE s.c = 1;
                      ->  Sort
                            Sort Key: e2.empno
                            ->  Seq Scan on empsalary e2
-(14 rows)
+(13 rows)
 
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)

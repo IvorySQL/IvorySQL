@@ -20,7 +20,6 @@ my $node_standby = PostgreSQL::Test::Cluster->new('standby');
 my $node_cascading_standby = PostgreSQL::Test::Cluster->new('cascading_standby');
 my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
 my $default_timeout = $PostgreSQL::Test::Utils::timeout_default;
-my $psql_timeout    = IPC::Run::timer($default_timeout);
 my $res;
 
 # Name for the physical slot on primary
@@ -72,7 +71,21 @@ sub make_slot_active
 	my $slot_user_handle;
 
 	my $active_slot = $slot_prefix . 'activeslot';
-	$slot_user_handle = IPC::Run::start(['pg_recvlogical', '-d', $node->connstr('testdb'), '-S', qq($active_slot), '-o', 'include-xids=0', '-o', 'skip-empty-xacts=1', '--no-loop', '--start', '-f', '-'], '>', $to_stdout, '2>', $to_stderr);
+	$slot_user_handle = IPC::Run::start(
+		[
+			'pg_recvlogical', '-d',
+			$node->connstr('testdb'), '-S',
+			qq($active_slot), '-o',
+			'include-xids=0', '-o',
+			'skip-empty-xacts=1', '--no-loop',
+			'--start', '-f',
+			'-'
+		],
+		'>',
+		$to_stdout,
+		'2>',
+		$to_stderr,
+		IPC::Run::timeout($default_timeout));
 
 	if ($wait)
 	{
@@ -314,7 +327,7 @@ $psql_subscriber{run} = IPC::Run::start(
 	\$psql_subscriber{subscriber_stdout},
 	'2>',
 	\$psql_subscriber{subscriber_stderr},
-	$psql_timeout);
+	IPC::Run::timeout($default_timeout));
 
 ##################################################
 # Test that logical decoding on the standby
@@ -436,8 +449,8 @@ $psql_subscriber{subscriber_stdin} .= "\n";
 
 $psql_subscriber{run}->pump_nb();
 
-# Speed up the subscription creation
-$node_primary->safe_psql('postgres', "SELECT pg_log_standby_snapshot()");
+# Log the standby snapshot to speed up the subscription creation
+$node_primary->log_standby_snapshot($node_standby, 'tap_sub');
 
 # Explicitly shut down psql instance gracefully - to avoid hangs
 # or worse on windows

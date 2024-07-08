@@ -204,3 +204,22 @@ DROP TABLE other_max1;
 
 create table cache_max1(userid number generated always as identity  increment by 1 cache 999999999999999999999,uname varchar2(20));
 DROP TABLE cache_max1;
+
+-- check that unlogged propagates to sequence
+CREATE UNLOGGED TABLE itest17 (a int NOT NULL, b text);
+ALTER TABLE itest17 ALTER COLUMN a ADD GENERATED ALWAYS AS IDENTITY;
+ALTER TABLE itest17 ADD COLUMN c int GENERATED ALWAYS AS IDENTITY;
+\d itest17
+\d itest17_a_seq
+\d itest17_c_seq
+CREATE TABLE itest18 (a int NOT NULL, b text);
+ALTER TABLE itest18 SET UNLOGGED, ALTER COLUMN a ADD GENERATED ALWAYS AS IDENTITY;
+\d itest18
+\d itest18_a_seq
+ALTER TABLE itest18 SET LOGGED;
+\d itest18
+\d itest18_a_seq
+ALTER TABLE itest18 SET UNLOGGED;
+\d itest18
+\d itest18_a_seq
+

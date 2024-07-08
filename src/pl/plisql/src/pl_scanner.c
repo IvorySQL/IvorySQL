@@ -187,6 +187,8 @@ plisql_yylex(void)
 							tok1 = T_DATUM;
 						else
 							tok1 = T_CWORD;
+						/* Adjust token length to include A.B.C */
+						aux1.leng = aux5.lloc - aux1.lloc + aux5.leng;
 					}
 					else
 					{
@@ -200,6 +202,8 @@ plisql_yylex(void)
 							tok1 = T_DATUM;
 						else
 							tok1 = T_CWORD;
+						/* Adjust token length to include A.B */
+						aux1.leng = aux3.lloc - aux1.lloc + aux3.leng;
 					}
 				}
 				else
@@ -213,6 +217,8 @@ plisql_yylex(void)
 						tok1 = T_DATUM;
 					else
 						tok1 = T_CWORD;
+					/* Adjust token length to include A.B */
+					aux1.leng = aux3.lloc - aux1.lloc + aux3.leng;
 				}
 			}
 			else
@@ -299,6 +305,17 @@ plisql_yylex(void)
 	plisql_yyleng = aux1.leng;
 	plisql_yytoken = tok1;
 	return tok1;
+}
+
+/*
+ * Return the length of the token last returned by plisql_yylex().
+ *
+ * In the case of compound tokens, the length includes all the parts.
+ */
+int
+plisql_token_length(void)
+{
+	return plisql_yyleng;
 }
 
 /*

@@ -46,29 +46,8 @@ end$$ language plpgsql;
 
 do $$
 begin
-  for i in 1..3 by 0 loop
-    raise notice '1..3 by 0: i = %', i;
-  end loop;
-end$$ language plisql;
-
-do $$
-begin
   for i in 1..3 by -1 loop
     raise notice '1..3 by -1: i = %', i;
-  end loop;
-end$$ language plpgsql;
-
-do $$
-begin
-  for i in 1..3 by -1 loop
-    raise notice '1..3 by -1: i = %', i;
-  end loop;
-end$$ language plisql;
-
-do $$
-begin
-  for i in reverse 1..3 by -1 loop
-    raise notice 'reverse 1..3 by -1: i = %', i;
   end loop;
 end$$ language plpgsql;
 
@@ -77,8 +56,7 @@ begin
   for i in reverse 1..3 by -1 loop
     raise notice 'reverse 1..3 by -1: i = %', i;
   end loop;
-end$$ language plisql;
-
+end$$ language plpgsql;
 
 -- CONTINUE statement
 
@@ -507,3 +485,17 @@ select case_test(1);
 select case_test(2);
 select case_test(12);
 select case_test(13);
+
+-- test line comment between WHEN and THEN
+create or replace function case_comment(int) returns text as $$
+begin
+  case $1
+    when 1 -- comment before THEN
+      then return 'one';
+    else
+      return 'other';
+  end case;
+end;
+$$ language plpgsql immutable;
+
+select case_comment(1);

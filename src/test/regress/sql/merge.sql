@@ -4,6 +4,8 @@
 
 CREATE USER regress_merge_privs;
 CREATE USER regress_merge_no_privs;
+CREATE USER regress_merge_none;
+
 DROP TABLE IF EXISTS target;
 DROP TABLE IF EXISTS source;
 CREATE TABLE target (tid integer, balance integer)
@@ -118,6 +120,14 @@ DROP MATERIALIZED VIEW mv;
 
 -- permissions
 
+SET SESSION AUTHORIZATION regress_merge_none;
+MERGE INTO target
+USING (SELECT 1)
+ON true
+WHEN MATCHED THEN
+	DO NOTHING;
+
+SET SESSION AUTHORIZATION regress_merge_privs;
 MERGE INTO target
 USING source2
 ON target.tid = source2.sid
@@ -938,6 +948,23 @@ WHEN MATCHED AND t.a < 10 THEN
 DROP TABLE ex_msource, ex_mtarget;
 DROP FUNCTION explain_merge(text);
 
+-- EXPLAIN SubPlans and InitPlans
+CREATE TABLE src (a int, b int, c int, d int);
+CREATE TABLE tgt (a int, b int, c int, d int);
+CREATE TABLE ref (ab int, cd int);
+
+EXPLAIN (verbose, costs off)
+MERGE INTO tgt t
+USING (SELECT *, (SELECT count(*) FROM ref r
+                   WHERE r.ab = s.a + s.b
+                     AND r.cd = s.c - s.d) cnt
+         FROM src s) s
+ON t.a = s.a AND t.b < s.cnt
+WHEN MATCHED AND t.c > s.cnt THEN
+  UPDATE SET (b, c) = (SELECT s.b, s.cnt);
+
+DROP TABLE src, tgt, ref;
+
 -- Subqueries
 BEGIN;
 MERGE INTO sq_target t
@@ -1471,3 +1498,4 @@ DROP TABLE source, source2;
 DROP FUNCTION merge_trigfunc();
 DROP USER regress_merge_privs;
 DROP USER regress_merge_no_privs;
+DROP USER regress_merge_none;

@@ -31,6 +31,7 @@ pgc_files = [
 
 pgc_extra_flags = {
   'oldexec': ['-r', 'questionmarks'],
+  'define': ['-DCMDLINESYM=123', files('define_prelim.pgc')],
 }
 
 foreach pgc_file : pgc_files
