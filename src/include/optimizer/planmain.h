@@ -4,7 +4,7 @@
  *	  prototypes for various files in optimizer/plan
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/planmain.h
@@ -76,6 +76,10 @@ extern void add_vars_to_targetlist(PlannerInfo *root, List *vars,
 extern void find_lateral_references(PlannerInfo *root);
 extern void create_lateral_join_info(PlannerInfo *root);
 extern List *deconstruct_jointree(PlannerInfo *root);
+extern bool restriction_is_always_true(PlannerInfo *root,
+									   RestrictInfo *restrictinfo);
+extern bool restriction_is_always_false(PlannerInfo *root,
+										RestrictInfo *restrictinfo);
 extern void distribute_restrictinfo_to_rels(PlannerInfo *root,
 											RestrictInfo *restrictinfo);
 extern RestrictInfo *process_implied_equality(PlannerInfo *root,

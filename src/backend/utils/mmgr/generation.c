@@ -6,7 +6,7 @@
  * Generation is a custom MemoryContext implementation designed for cases of
  * chunks with similar lifespan.
  *
- * Portions Copyright (c) 2017-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2024, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/mmgr/generation.c
@@ -271,8 +271,10 @@ GenerationContextCreate(MemoryContext parent,
  * GenerationReset
  *		Frees all memory which is allocated in the given set.
  *
- * The code simply frees all the blocks in the context - we don't keep any
- * keeper blocks or anything like that.
+ * The initial "keeper" block (which shares a malloc chunk with the context
+ * header) is not given back to the operating system though.  In this way, we
+ * don't thrash malloc() when a context is repeatedly reset after small
+ * allocations.
  */
 void
 GenerationReset(MemoryContext context)

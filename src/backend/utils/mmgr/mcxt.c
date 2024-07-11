@@ -9,7 +9,7 @@
  * context's MemoryContextMethods struct.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -685,6 +685,19 @@ MemoryContextMemAllocated(MemoryContext context, bool recurse)
 	}
 
 	return total;
+}
+
+/*
+ * Return the memory consumption statistics about the given context and its
+ * children.
+ */
+void
+MemoryContextMemConsumed(MemoryContext context,
+						 MemoryContextCounters *consumed)
+{
+	memset(consumed, 0, sizeof(*consumed));
+
+	MemoryContextStatsInternal(context, 0, false, 0, consumed, false);
 }
 
 /*

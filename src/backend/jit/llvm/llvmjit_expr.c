@@ -3,7 +3,7 @@
  * llvmjit_expr.c
  *	  JIT compile expressions.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1431,6 +1431,12 @@ llvm_compile_expr(ExprState *state)
 					break;
 				}
 
+			case EEOP_IOCOERCE_SAFE:
+				build_EvalXFunc(b, mod, "ExecEvalCoerceViaIOSafe",
+								v_state, op);
+				LLVMBuildBr(b, opblocks[opno + 1]);
+				break;
+
 			case EEOP_DISTINCT:
 			case EEOP_NOT_DISTINCT:
 				{
@@ -2645,12 +2651,8 @@ create_LifetimeEnd(LLVMModuleRef mod)
 	LLVMTypeRef param_types[2];
 	LLVMContextRef lc;
 
-	/* LLVM 5+ has a variadic pointer argument */
-#if LLVM_VERSION_MAJOR < 5
-	const char *nm = "llvm.lifetime.end";
-#else
+	/* variadic pointer argument */
 	const char *nm = "llvm.lifetime.end.p0i8";
-#endif
 
 	fn = LLVMGetNamedFunction(mod, nm);
 	if (fn)

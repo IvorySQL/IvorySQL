@@ -4,7 +4,7 @@
  *	  Internal definitions for COPY FROM command.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/copyfrom_internal.h
@@ -16,6 +16,7 @@
 
 #include "commands/copy.h"
 #include "commands/trigger.h"
+#include "nodes/miscnodes.h"
 
 /*
  * Represents the different source cases we need to worry about at
@@ -50,6 +51,13 @@ typedef enum CopyInsertMethod
 	CIM_MULTI_CONDITIONAL,		/* use table_multi_insert or
 								 * ExecForeignBatchInsert only if valid */
 } CopyInsertMethod;
+
+/*
+ * Per-format callback to parse a line into separate fields.
+ *
+ * Returns the number of fields read.
+ */
+typedef int (*CopyReadAttributes) (CopyFromState cstate);
 
 /*
  * This struct contains all the state variables used throughout a COPY FROM
@@ -94,6 +102,10 @@ typedef struct CopyFromStateData
 								 * default value */
 	FmgrInfo   *in_functions;	/* array of input functions for each attrs */
 	Oid		   *typioparams;	/* array of element types for in_functions */
+	ErrorSaveContext *escontext;	/* soft error trapper during in_functions
+									 * execution */
+	uint64		num_errors;		/* total number of rows which contained soft
+								 * errors */
 	int		   *defmap;			/* array of default att numbers related to
 								 * missing att */
 	ExprState **defexprs;		/* array of default att expressions for all
@@ -124,6 +136,12 @@ typedef struct CopyFromStateData
 
 	int			max_fields;
 	char	  **raw_fields;
+
+	/*
+	 * Per-format callback to parse lines, then fill raw_fields and
+	 * attribute_buf.
+	 */
+	CopyReadAttributes copy_read_attributes;
 
 	/*
 	 * Similarly, line_buf holds the whole input line being processed. The
@@ -177,5 +195,9 @@ typedef struct CopyFromStateData
 
 extern void ReceiveCopyBegin(CopyFromState cstate);
 extern void ReceiveCopyBinaryHeader(CopyFromState cstate);
+
+/* Callbacks for copy_read_attributes */
+extern int	CopyReadAttributesCSV(CopyFromState cstate);
+extern int	CopyReadAttributesText(CopyFromState cstate);
 
 #endif							/* COPYFROM_INTERNAL_H */

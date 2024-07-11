@@ -7,7 +7,7 @@
  * information for an old server, but not to fail outright.  (But failing
  * against a pre-9.2 server is allowed.)
  *
- * Copyright (c) 2000-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2024, PostgreSQL Global Development Group
  *
  * src/bin/psql/describe.c
  */
@@ -2395,6 +2395,10 @@ describeOneTableDetails(const char *schemaname,
 			else
 				appendPQExpBufferStr(&buf, ", false AS indisreplident");
 			appendPQExpBufferStr(&buf, ", c2.reltablespace");
+			if (pset.sversion >= 170000)
+				appendPQExpBufferStr(&buf, ", con.conwithoutoverlaps");
+			else
+				appendPQExpBufferStr(&buf, ", false AS conwithoutoverlaps");
 			appendPQExpBuffer(&buf,
 							  "\nFROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i\n"
 							  "  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))\n"
@@ -2416,8 +2420,12 @@ describeOneTableDetails(const char *schemaname,
 					printfPQExpBuffer(&buf, "    \"%s\"",
 									  PQgetvalue(result, i, 0));
 
-					/* If exclusion constraint, print the constraintdef */
-					if (strcmp(PQgetvalue(result, i, 7), "x") == 0)
+					/*
+					 * If exclusion constraint or PK/UNIQUE constraint WITHOUT
+					 * OVERLAPS, print the constraintdef
+					 */
+					if (strcmp(PQgetvalue(result, i, 7), "x") == 0 ||
+						strcmp(PQgetvalue(result, i, 12), "t") == 0)
 					{
 						appendPQExpBuffer(&buf, " %s",
 										  PQgetvalue(result, i, 6));
@@ -6585,7 +6593,8 @@ describeSubscriptions(const char *pattern, bool verbose)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 	static const bool translate_columns[] = {false, false, false, false,
-	false, false, false, false, false, false, false, false, false, false};
+		false, false, false, false, false, false, false, false, false, false,
+	false};
 
 	if (pset.sversion < 100000)
 	{
@@ -6648,6 +6657,11 @@ describeSubscriptions(const char *pattern, bool verbose)
 							  gettext_noop("Origin"),
 							  gettext_noop("Password required"),
 							  gettext_noop("Run as owner?"));
+
+		if (pset.sversion >= 170000)
+			appendPQExpBuffer(&buf,
+							  ", subfailover AS \"%s\"\n",
+							  gettext_noop("Failover"));
 
 		appendPQExpBuffer(&buf,
 						  ",  subsynccommit AS \"%s\"\n"

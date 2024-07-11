@@ -3,7 +3,7 @@
  * proc.c
  *	  routines to manage per-process shared memory data structure
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1353,7 +1353,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 			 * coding means that there is a tiny chance that the process
 			 * terminates its current transaction and starts a different one
 			 * before we have a change to send the signal; the worst possible
-			 * consequence is that a for-wraparound vacuum is cancelled.  But
+			 * consequence is that a for-wraparound vacuum is canceled.  But
 			 * that could happen in any case unless we were to do kill() with
 			 * the lock held, which is much more undesirable.
 			 */

@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2023, PostgreSQL Global Development Group
+# Copyright (c) 2022-2024, PostgreSQL Global Development Group
 
 # test/ is entered via top-level meson.build, that way it can use the default
 # args for executables (which depend on libpq).
@@ -6,6 +6,7 @@
 libpq_sources = files(
   'fe-auth-scram.c',
   'fe-auth.c',
+  'fe-cancel.c',
   'fe-connect.c',
   'fe-exec.c',
   'fe-lobj.c',

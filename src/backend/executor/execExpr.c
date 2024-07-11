@@ -19,7 +19,7 @@
  *	and "Expression Evaluation" sections.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -216,7 +216,6 @@ ExecInitQual(List *qual, PlanState *parent)
 	ExprState  *state;
 	ExprEvalStep scratch = {0};
 	List	   *adjust_jumps = NIL;
-	ListCell   *lc;
 
 	/* short-circuit (here and in ExecQual) for empty restriction list */
 	if (qual == NIL)
@@ -250,10 +249,8 @@ ExecInitQual(List *qual, PlanState *parent)
 	scratch.resvalue = &state->resvalue;
 	scratch.resnull = &state->resnull;
 
-	foreach(lc, qual)
+	foreach_ptr(Expr, node, qual)
 	{
-		Expr	   *node = (Expr *) lfirst(lc);
-
 		/* first evaluate expression */
 		ExecInitExprRec(node, state, &state->resvalue, &state->resnull);
 
@@ -265,9 +262,9 @@ ExecInitQual(List *qual, PlanState *parent)
 	}
 
 	/* adjust jump targets */
-	foreach(lc, adjust_jumps)
+	foreach_int(jump, adjust_jumps)
 	{
-		ExprEvalStep *as = &state->steps[lfirst_int(lc)];
+		ExprEvalStep *as = &state->steps[jump];
 
 		Assert(as->opcode == EEOP_QUAL);
 		Assert(as->d.qualexpr.jumpdone == -1);
@@ -1563,7 +1560,10 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				 * We don't check permissions here as a type's input/output
 				 * function are assumed to be executable by everyone.
 				 */
-				scratch.opcode = EEOP_IOCOERCE;
+				if (state->escontext == NULL)
+					scratch.opcode = EEOP_IOCOERCE;
+				else
+					scratch.opcode = EEOP_IOCOERCE_SAFE;
 
 				/* lookup the source type's output function */
 				scratch.d.iocoerce.finfo_out = palloc0(sizeof(FmgrInfo));
@@ -1598,6 +1598,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				fcinfo_in->args[1].isnull = false;
 				fcinfo_in->args[2].value = Int32GetDatum(-1);
 				fcinfo_in->args[2].isnull = false;
+
+				fcinfo_in->context = (Node *) state->escontext;
 
 				ExprEvalPushStep(state, &scratch);
 				break;
@@ -3321,6 +3323,7 @@ ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 	/* we'll allocate workspace only if needed */
 	scratch->d.domaincheck.checkvalue = NULL;
 	scratch->d.domaincheck.checknull = NULL;
+	scratch->d.domaincheck.escontext = state->escontext;
 
 	/*
 	 * Evaluate argument - it's fine to directly store it into resv/resnull,

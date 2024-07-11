@@ -1,4 +1,4 @@
-# Copyright (c) 2023, PostgreSQL Global Development Group
+# Copyright (c) 2023-2024, PostgreSQL Global Development Group
 
 # Tests for upgrading logical replication slots
 
@@ -22,6 +22,19 @@ $oldpub->append_conf('postgresql.conf', 'autovacuum = off');
 # Initialize new cluster
 my $newpub = PostgreSQL::Test::Cluster->new('newpub');
 $newpub->init(allows_streaming => 'logical');
+
+# During upgrade, when pg_restore performs CREATE DATABASE, bgwriter or
+# checkpointer may flush buffers and hold a file handle for the system table.
+# So, if later due to some reason we need to re-create the file with the same
+# name like a TRUNCATE command on the same table, then the command will fail
+# if OS (such as older Windows versions) doesn't remove an unlinked file
+# completely till it is open. The probability of seeing this behavior is
+# higher in this test because we use wal_level as logical via
+# allows_streaming => 'logical' which in turn set shared_buffers as 1MB.
+$newpub->append_conf('postgresql.conf', q{
+bgwriter_lru_maxpages = 0
+checkpoint_timeout = 1h
+});
 
 # Setup a common pg_upgrade command to be used by all the test cases
 my @pg_upgrade_cmd = (
@@ -159,7 +172,7 @@ $sub->start;
 $sub->safe_psql(
 	'postgres', qq[
 	CREATE TABLE tbl (a int);
-	CREATE SUBSCRIPTION regress_sub CONNECTION '$old_connstr' PUBLICATION regress_pub WITH (two_phase = 'true')
+	CREATE SUBSCRIPTION regress_sub CONNECTION '$old_connstr' PUBLICATION regress_pub WITH (two_phase = 'true', failover = 'true')
 ]);
 $sub->wait_for_subscription_sync($oldpub, 'regress_sub');
 
@@ -179,8 +192,8 @@ command_ok([@pg_upgrade_cmd], 'run of pg_upgrade of old cluster');
 # Check that the slot 'regress_sub' has migrated to the new cluster
 $newpub->start;
 my $result = $newpub->safe_psql('postgres',
-	"SELECT slot_name, two_phase FROM pg_replication_slots");
-is($result, qq(regress_sub|t), 'check the slot exists on new cluster');
+	"SELECT slot_name, two_phase, failover FROM pg_replication_slots");
+is($result, qq(regress_sub|t|t), 'check the slot exists on new cluster');
 
 # Update the connection
 my $new_connstr = $newpub->connstr . ' dbname=postgres';
