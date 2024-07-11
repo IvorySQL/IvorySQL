@@ -134,13 +134,8 @@
  *	SerializableXactHashLock
  *		- Protects both PredXact and SerializableXidHash.
  *
- *	SerialControlLock
- *		- Protects SerialControlData members
  *
- *	SerialSLRULock
- *		- Protects SerialSlruCtl
- *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -833,11 +828,9 @@ SerialInit(void)
 		/*
 		 * Set control information to reflect empty SLRU.
 		 */
-		LWLockAcquire(SerialControlLock, LW_EXCLUSIVE);
 		serialControl->headPage = -1;
 		serialControl->headXid = InvalidTransactionId;
 		serialControl->tailXid = InvalidTransactionId;
-		LWLockRelease(SerialControlLock);
 	}
 }
 
@@ -859,12 +852,7 @@ SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo)
 
 	targetPage = SerialPage(xid);
 
-	/*
-	 * In this routine, we must hold both SerialControlLock and SerialSLRULock
-	 * simultaneously while making the SLRU data catch up with the new state
-	 * that we determine.
-	 */
-	LWLockAcquire(SerialControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(SerialSLRULock, LW_EXCLUSIVE);
 
 	/*
 	 * If no serializable transactions are active, there shouldn't be anything
@@ -898,8 +886,6 @@ SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo)
 	if (isNewPage)
 		serialControl->headPage = targetPage;
 
-	LWLockAcquire(SerialSLRULock, LW_EXCLUSIVE);
-
 	if (isNewPage)
 	{
 		/* Initialize intervening pages. */
@@ -917,7 +903,6 @@ SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo)
 	SerialSlruCtl->shared->page_dirty[slotno] = true;
 
 	LWLockRelease(SerialSLRULock);
-	LWLockRelease(SerialControlLock);
 }
 
 /*
@@ -935,10 +920,10 @@ SerialGetMinConflictCommitSeqNo(TransactionId xid)
 
 	Assert(TransactionIdIsValid(xid));
 
-	LWLockAcquire(SerialControlLock, LW_SHARED);
+	LWLockAcquire(SerialSLRULock, LW_SHARED);
 	headXid = serialControl->headXid;
 	tailXid = serialControl->tailXid;
-	LWLockRelease(SerialControlLock);
+	LWLockRelease(SerialSLRULock);
 
 	if (!TransactionIdIsValid(headXid))
 		return 0;
@@ -969,7 +954,7 @@ SerialGetMinConflictCommitSeqNo(TransactionId xid)
 static void
 SerialSetActiveSerXmin(TransactionId xid)
 {
-	LWLockAcquire(SerialControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(SerialSLRULock, LW_EXCLUSIVE);
 
 	/*
 	 * When no sxacts are active, nothing overlaps, set the xid values to
@@ -981,7 +966,7 @@ SerialSetActiveSerXmin(TransactionId xid)
 	{
 		serialControl->tailXid = InvalidTransactionId;
 		serialControl->headXid = InvalidTransactionId;
-		LWLockRelease(SerialControlLock);
+		LWLockRelease(SerialSLRULock);
 		return;
 	}
 
@@ -999,7 +984,7 @@ SerialSetActiveSerXmin(TransactionId xid)
 		{
 			serialControl->tailXid = xid;
 		}
-		LWLockRelease(SerialControlLock);
+		LWLockRelease(SerialSLRULock);
 		return;
 	}
 
@@ -1008,7 +993,7 @@ SerialSetActiveSerXmin(TransactionId xid)
 
 	serialControl->tailXid = xid;
 
-	LWLockRelease(SerialControlLock);
+	LWLockRelease(SerialSLRULock);
 }
 
 /*
@@ -1022,12 +1007,12 @@ CheckPointPredicate(void)
 {
 	int			truncateCutoffPage;
 
-	LWLockAcquire(SerialControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(SerialSLRULock, LW_EXCLUSIVE);
 
 	/* Exit quickly if the SLRU is currently not in use. */
 	if (serialControl->headPage < 0)
 	{
-		LWLockRelease(SerialControlLock);
+		LWLockRelease(SerialSLRULock);
 		return;
 	}
 
@@ -1087,13 +1072,9 @@ CheckPointPredicate(void)
 		serialControl->headPage = -1;
 	}
 
-	LWLockRelease(SerialControlLock);
+	LWLockRelease(SerialSLRULock);
 
-	/*
-	 * Truncate away pages that are no longer required.  Note that no
-	 * additional locking is required, because this is only called as part of
-	 * a checkpoint, and the validity limits have already been determined.
-	 */
+	/* Truncate away pages that are no longer required */
 	SimpleLruTruncate(SerialSlruCtl, truncateCutoffPage);
 
 	/*

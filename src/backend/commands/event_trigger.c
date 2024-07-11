@@ -3,7 +3,7 @@
  * event_trigger.c
  *	  PostgreSQL EVENT TRIGGER support code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -174,7 +174,7 @@ CreateEventTrigger(CreateEventTrigStmt *stmt)
 	else if (strcmp(stmt->eventname, "login") == 0 && tags != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("tag filtering is not supported for login event trigger")));
+				 errmsg("Tag filtering is not supported for login event trigger")));
 
 	/*
 	 * Give user a nice error message if an event trigger of the same name
@@ -387,7 +387,7 @@ SetDatatabaseHasLoginEventTriggers(void)
 	HeapTuple	tuple;
 
 	/*
-	 * Use shared lock to prevent a conflict with EventTriggerOnLogin() trying
+	 * Use shared lock to prevent a conflit with EventTriggerOnLogin() trying
 	 * to reset pg_database.dathasloginevt flag.  Note, this lock doesn't
 	 * effectively blocks database or other objection.  It's just custom lock
 	 * tag used to prevent multiple backends changing

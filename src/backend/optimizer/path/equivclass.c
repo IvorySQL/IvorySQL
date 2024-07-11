@@ -6,7 +6,7 @@
  * See src/backend/optimizer/README for discussion of EquivalenceClasses.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -652,18 +652,7 @@ get_eclass_for_sort_expr(PlannerInfo *root,
 
 			if (opcintype == cur_em->em_datatype &&
 				equal(expr, cur_em->em_expr))
-			{
-				/*
-				 * Match!
-				 *
-				 * Copy the sortref if it wasn't set yet.  That may happen if
-				 * the ec was constructed from a WHERE clause, i.e. it doesn't
-				 * have a target reference at all.
-				 */
-				if (cur_ec->ec_sortref == 0 && sortref > 0)
-					cur_ec->ec_sortref = sortref;
-				return cur_ec;
-			}
+				return cur_ec;	/* Match! */
 		}
 	}
 

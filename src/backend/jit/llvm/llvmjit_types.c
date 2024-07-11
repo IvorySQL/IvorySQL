@@ -16,7 +16,7 @@
  * bitcode.
  *
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/jit/llvm/llvmjit_types.c
@@ -162,7 +162,6 @@ void	   *referenced_functions[] =
 	ExecEvalRow,
 	ExecEvalRowNotNull,
 	ExecEvalRowNull,
-	ExecEvalCoerceViaIOSafe,
 	ExecEvalSQLValueFunction,
 	ExecEvalScalarArrayOp,
 	ExecEvalHashedScalarArrayOp,

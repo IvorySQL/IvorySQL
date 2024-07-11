@@ -3,7 +3,7 @@
  * fe-exec.c
  *	  functions related to sending a query down to the backend
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -81,7 +81,6 @@ static int	PQsendTypedCommand(PGconn *conn, char command, char type,
 							   const char *target);
 static int	check_field_number(const PGresult *res, int field_num);
 static void pqPipelineProcessQueue(PGconn *conn);
-static int	pqPipelineSyncInternal(PGconn *conn, bool immediate_flush);
 static int	pqPipelineFlush(PGconn *conn);
 
 
@@ -842,8 +841,6 @@ pqSaveWriteError(PGconn *conn)
  * using whatever is in conn->errorMessage.  In any case, clear the async
  * result storage, and update our notion of how much error text has been
  * returned to the application.
- *
- * Note that in no case (not even OOM) do we return NULL.
  */
 PGresult *
 pqPrepareAsyncResult(PGconn *conn)
@@ -2141,7 +2138,7 @@ PQgetResult(PGconn *conn)
 				 * (In other words: we don't return a NULL after a pipeline
 				 * sync.)
 				 */
-				if (res->resultStatus == PGRES_PIPELINE_SYNC)
+				if (res && res->resultStatus == PGRES_PIPELINE_SYNC)
 					pqPipelineProcessQueue(conn);
 			}
 			else
@@ -3227,31 +3224,25 @@ pqPipelineProcessQueue(PGconn *conn)
 /*
  * PQpipelineSync
  *		Send a Sync message as part of a pipeline, and flush to server
+ *
+ * It's legal to start submitting more commands in the pipeline immediately,
+ * without waiting for the results of the current pipeline. There's no need to
+ * end pipeline mode and start it again.
+ *
+ * If a command in a pipeline fails, every subsequent command up to and including
+ * the result to the Sync message sent by PQpipelineSync gets set to
+ * PGRES_PIPELINE_ABORTED state. If the whole pipeline is processed without
+ * error, a PGresult with PGRES_PIPELINE_SYNC is produced.
+ *
+ * Queries can already have been sent before PQpipelineSync is called, but
+ * PQpipelineSync need to be called before retrieving command results.
+ *
+ * The connection will remain in pipeline mode and unavailable for new
+ * synchronous command execution functions until all results from the pipeline
+ * are processed by the client.
  */
 int
 PQpipelineSync(PGconn *conn)
-{
-	return pqPipelineSyncInternal(conn, true);
-}
-
-/*
- * PQsendPipelineSync
- *		Send a Sync message as part of a pipeline, without flushing to server
- */
-int
-PQsendPipelineSync(PGconn *conn)
-{
-	return pqPipelineSyncInternal(conn, false);
-}
-
-/*
- * Workhorse function for PQpipelineSync and PQsendPipelineSync.
- *
- * immediate_flush controls if the flush happens immediately after sending the
- * Sync message or not.
- */
-static int
-pqPipelineSyncInternal(PGconn *conn, bool immediate_flush)
 {
 	PGcmdQueueEntry *entry;
 
@@ -3297,19 +3288,9 @@ pqPipelineSyncInternal(PGconn *conn, bool immediate_flush)
 	/*
 	 * Give the data a push.  In nonblock mode, don't complain if we're unable
 	 * to send it all; PQgetResult() will do any additional flushing needed.
-	 * If immediate_flush is disabled, the data is pushed if we are past the
-	 * size threshold.
 	 */
-	if (immediate_flush)
-	{
-		if (pqFlush(conn) < 0)
-			goto sendFailed;
-	}
-	else
-	{
-		if (pqPipelineFlush(conn) < 0)
-			goto sendFailed;
-	}
+	if (PQflush(conn) < 0)
+		goto sendFailed;
 
 	/* OK, it's launched! */
 	pqAppendCmdQueueEntry(conn, entry);

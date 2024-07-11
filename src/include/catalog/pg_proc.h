@@ -3,7 +3,7 @@
  * pg_proc.h
  *	  definition of the "procedure" system catalog (pg_proc)
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_proc.h
@@ -139,9 +139,6 @@ DECLARE_TOAST(pg_proc, 2836, 2837);
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_proc_oid_index, 2690, ProcedureOidIndexId, pg_proc, btree(oid oid_ops));
 DECLARE_UNIQUE_INDEX(pg_proc_proname_args_nsp_index, 2691, ProcedureNameArgsNspIndexId, pg_proc, btree(proname name_ops, proargtypes oidvector_ops, pronamespace oid_ops));
-
-MAKE_SYSCACHE(PROCOID, pg_proc_oid_index, 128);
-MAKE_SYSCACHE(PROCNAMEARGSNSP, pg_proc_proname_args_nsp_index, 128);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

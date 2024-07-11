@@ -19,7 +19,7 @@
  * not provided.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/execnodes.h
@@ -34,7 +34,6 @@
 #include "fmgr.h"
 #include "lib/ilist.h"
 #include "lib/pairingheap.h"
-#include "nodes/miscnodes.h"
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
 #include "nodes/tidbitmap.h"
@@ -130,12 +129,6 @@ typedef struct ExprState
 
 	Datum	   *innermost_domainval;
 	bool	   *innermost_domainnull;
-
-	/*
-	 * For expression nodes that support soft errors.  Should be set to NULL
-	 * before calling ExecInitExprRec() if the caller wants errors thrown.
-	 */
-	ErrorSaveContext *escontext;
 } ExprState;
 
 

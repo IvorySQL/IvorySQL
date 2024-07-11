@@ -4,7 +4,7 @@
  *	  utilities routines for the postgres GiST index access method.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -23,7 +23,6 @@
 #include "storage/indexfsm.h"
 #include "storage/lmgr.h"
 #include "utils/float.h"
-#include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -1056,46 +1055,4 @@ gistGetFakeLSN(Relation rel)
 		Assert(rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED);
 		return GetFakeLSNForUnloggedRel();
 	}
-}
-
-/*
- * Returns the same number that was received.
- *
- * This is for GiST opclasses that use the RT*StrategyNumber constants.
- */
-Datum
-gist_stratnum_identity(PG_FUNCTION_ARGS)
-{
-	StrategyNumber strat = PG_GETARG_UINT16(0);
-
-	PG_RETURN_UINT16(strat);
-}
-
-/*
- * Returns the opclass's private stratnum used for the given strategy.
- *
- * Calls the opclass's GIST_STRATNUM_PROC support function, if any,
- * and returns the result.
- * Returns InvalidStrategy if the function is not defined.
- */
-StrategyNumber
-GistTranslateStratnum(Oid opclass, StrategyNumber strat)
-{
-	Oid			opfamily;
-	Oid			opcintype;
-	Oid			funcid;
-	Datum		result;
-
-	/* Look up the opclass family and input datatype. */
-	if (!get_opclass_opfamily_and_input_type(opclass, &opfamily, &opcintype))
-		return InvalidStrategy;
-
-	/* Check whether the function is provided. */
-	funcid = get_opfamily_proc(opfamily, opcintype, opcintype, GIST_STRATNUM_PROC);
-	if (!OidIsValid(funcid))
-		return InvalidStrategy;
-
-	/* Ask the translation function */
-	result = OidFunctionCall1Coll(funcid, InvalidOid, UInt16GetDatum(strat));
-	return DatumGetUInt16(result);
 }

@@ -13,7 +13,7 @@
 # No output if everything is OK, else compiler errors.
 #
 # src/tools/pginclude/cpluspluscheck
-# Copyright (c) 2009-2024, PostgreSQL Global Development Group
+# Copyright (c) 2009-2023, PostgreSQL Global Development Group
 
 if [ -z "$1" ]; then
     srcdir="."
@@ -118,11 +118,6 @@ do
 	# Also not meant to be included standalone.
 	test "$f" = src/include/common/unicode_nonspacing_table.h && continue
 	test "$f" = src/include/common/unicode_east_asian_fw_table.h && continue
-
-	test "$f" = src/backend/catalog/syscache_ids.h && continue
-	test "$f" = src/backend/catalog/syscache_info.h && continue
-	test "$f" = src/include/catalog/syscache_ids.h && continue
-	test "$f" = src/include/catalog/syscache_info.h && continue
 
 	# We can't make these Bison output files compilable standalone
 	# without using "%code require", which old Bison versions lack.

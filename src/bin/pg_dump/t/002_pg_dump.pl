@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -1017,42 +1017,6 @@ my %tests = (
 			exclude_dump_test_schema => 1,
 			exclude_test_table       => 1,
 			only_dump_measurement    => 1,
-		},
-	},
-
-	'CONSTRAINT PRIMARY KEY / WITHOUT OVERLAPS' => {
-		create_sql => 'CREATE TABLE dump_test.test_table_tpk (
-							col1 int4range,
-							col2 tstzrange,
-							CONSTRAINT test_table_tpk_pkey PRIMARY KEY (col1, col2 WITHOUT OVERLAPS));',
-		regexp => qr/^
-			\QALTER TABLE ONLY dump_test.test_table_tpk\E \n^\s+
-			\QADD CONSTRAINT test_table_tpk_pkey PRIMARY KEY (col1, col2 WITHOUT OVERLAPS);\E
-			/xm,
-		like => {
-			%full_runs, %dump_test_schema_runs, section_post_data => 1,
-		},
-		unlike => {
-			exclude_dump_test_schema => 1,
-			only_dump_measurement => 1,
-		},
-	},
-
-	'CONSTRAINT UNIQUE / WITHOUT OVERLAPS' => {
-		create_sql => 'CREATE TABLE dump_test.test_table_tuq (
-							col1 int4range,
-							col2 tstzrange,
-							CONSTRAINT test_table_tuq_uq UNIQUE (col1, col2 WITHOUT OVERLAPS));',
-		regexp => qr/^
-			\QALTER TABLE ONLY dump_test.test_table_tuq\E \n^\s+
-			\QADD CONSTRAINT test_table_tuq_uq UNIQUE (col1, col2 WITHOUT OVERLAPS);\E
-			/xm,
-		like => {
-			%full_runs, %dump_test_schema_runs, section_post_data => 1,
-		},
-		unlike => {
-			exclude_dump_test_schema => 1,
-			only_dump_measurement => 1,
 		},
 	},
 

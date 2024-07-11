@@ -3,7 +3,7 @@
  * pgoutput.c
  *		Logical Replication output plugin
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/replication/pgoutput/pgoutput.c
@@ -1473,7 +1473,7 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (change->data.tp.oldtuple)
 	{
 		old_slot = relentry->old_slot;
-		ExecStoreHeapTuple(change->data.tp.oldtuple, old_slot, false);
+		ExecStoreHeapTuple(&change->data.tp.oldtuple->tuple, old_slot, false);
 
 		/* Convert tuple if needed. */
 		if (relentry->attrmap)
@@ -1488,7 +1488,7 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (change->data.tp.newtuple)
 	{
 		new_slot = relentry->new_slot;
-		ExecStoreHeapTuple(change->data.tp.newtuple, new_slot, false);
+		ExecStoreHeapTuple(&change->data.tp.newtuple->tuple, new_slot, false);
 
 		/* Convert tuple if needed. */
 		if (relentry->attrmap)
@@ -2234,6 +2234,7 @@ cleanup_rel_sync_cache(TransactionId xid, bool is_commit)
 {
 	HASH_SEQ_STATUS hash_seq;
 	RelationSyncEntry *entry;
+	ListCell   *lc;
 
 	Assert(RelationSyncCache != NULL);
 
@@ -2246,15 +2247,15 @@ cleanup_rel_sync_cache(TransactionId xid, bool is_commit)
 		 * corresponding schema and we don't need to send it unless there is
 		 * any invalidation for that relation.
 		 */
-		foreach_xid(streamed_txn, entry->streamed_txns)
+		foreach(lc, entry->streamed_txns)
 		{
-			if (xid == streamed_txn)
+			if (xid == lfirst_xid(lc))
 			{
 				if (is_commit)
 					entry->schema_sent = true;
 
 				entry->streamed_txns =
-					foreach_delete_current(entry->streamed_txns, streamed_txn);
+					foreach_delete_current(entry->streamed_txns, lc);
 				break;
 			}
 		}

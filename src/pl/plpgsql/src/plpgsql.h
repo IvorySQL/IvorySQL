@@ -3,7 +3,7 @@
  * plpgsql.h		- Definitions for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1249,7 +1249,6 @@ extern PLpgSQL_type *plpgsql_parse_cwordrowtype(List *idents);
 extern PGDLLEXPORT PLpgSQL_type *plpgsql_build_datatype(Oid typeOid, int32 typmod,
 														Oid collation,
 														TypeName *origtypname);
-extern PLpgSQL_type *plpgsql_build_datatype_arrayof(PLpgSQL_type *dtype);
 extern PLpgSQL_variable *plpgsql_build_variable(const char *refname, int lineno,
 												PLpgSQL_type *dtype,
 												bool add2namespace);

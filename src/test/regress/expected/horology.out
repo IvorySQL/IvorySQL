@@ -482,8 +482,6 @@ SELECT timestamp without time zone 'Jan 1, 4713 BC' + interval '109203489 days' 
  Sun Dec 31 00:00:00 294276
 (1 row)
 
-SELECT timestamp without time zone '2000-01-01' - interval '2483590 days' AS "out of range";
-ERROR:  timestamp out of range
 SELECT timestamp without time zone '12/31/294276' - timestamp without time zone '12/23/1999' AS "106751991 Days";
   106751991 Days  
 ------------------
@@ -744,8 +742,6 @@ SELECT timestamp with time zone '1999-12-01' + interval '1 month - 1 second' AS 
  Fri Dec 31 23:59:59 1999 PST
 (1 row)
 
-SELECT timestamp with time zone '2000-01-01' - interval '2483590 days' AS "out of range";
-ERROR:  timestamp out of range
 SELECT (timestamp with time zone 'today' = (timestamp with time zone 'yesterday' + interval '1 day')) as "True";
  True 
 ------
@@ -3144,66 +3140,8 @@ SELECT to_timestamp('2011-12-18 11:38 20',     'YYYY-MM-DD HH12:MI TZM');
  Sun Dec 18 03:18:00 2011 PST
 (1 row)
 
-SELECT to_timestamp('2011-12-18 11:38 EST', 'YYYY-MM-DD HH12:MI TZ');
-         to_timestamp         
-------------------------------
- Sun Dec 18 08:38:00 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38 -05', 'YYYY-MM-DD HH12:MI TZ');
-         to_timestamp         
-------------------------------
- Sun Dec 18 08:38:00 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38 +01:30', 'YYYY-MM-DD HH12:MI TZ');
-         to_timestamp         
-------------------------------
- Sun Dec 18 02:08:00 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38 MSK', 'YYYY-MM-DD HH12:MI TZ');  -- dyntz
-         to_timestamp         
-------------------------------
- Sat Dec 17 23:38:00 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38ESTFOO24', 'YYYY-MM-DD HH12:MITZFOOSS');
-         to_timestamp         
-------------------------------
- Sun Dec 18 08:38:24 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38-05FOO24', 'YYYY-MM-DD HH12:MITZFOOSS');
-         to_timestamp         
-------------------------------
- Sun Dec 18 08:38:24 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38 JUNK', 'YYYY-MM-DD HH12:MI TZ');  -- error
-ERROR:  invalid value "JUNK" for "TZ"
-DETAIL:  Time zone abbreviation is not recognized.
-SELECT to_timestamp('2011-12-18 11:38 ...', 'YYYY-MM-DD HH12:MI TZ');  -- error
-ERROR:  invalid value ".." for "TZ"
-DETAIL:  Value must be an integer.
-SELECT to_timestamp('2011-12-18 11:38 -05', 'YYYY-MM-DD HH12:MI OF');
-         to_timestamp         
-------------------------------
- Sun Dec 18 08:38:00 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38 +01:30', 'YYYY-MM-DD HH12:MI OF');
-         to_timestamp         
-------------------------------
- Sun Dec 18 02:08:00 2011 PST
-(1 row)
-
-SELECT to_timestamp('2011-12-18 11:38 +xyz', 'YYYY-MM-DD HH12:MI OF');  -- error
-ERROR:  invalid value "xy" for "OF"
-DETAIL:  Value must be an integer.
-SELECT to_timestamp('2011-12-18 11:38 +01:xyz', 'YYYY-MM-DD HH12:MI OF');  -- error
-ERROR:  invalid value "xy" for "OF"
-DETAIL:  Value must be an integer.
+SELECT to_timestamp('2011-12-18 11:38 PST', 'YYYY-MM-DD HH12:MI TZ');  -- NYI
+ERROR:  formatting field "TZ" is only supported in to_char
 SELECT to_timestamp('2018-11-02 12:34:56.025', 'YYYY-MM-DD HH24:MI:SS.MS');
            to_timestamp           
 ----------------------------------
@@ -3619,19 +3557,6 @@ SELECT to_date('0000-02-01','YYYY-MM-DD');  -- allowed, though it shouldn't be
  02-01-0001 BC
 (1 row)
 
--- to_char's TZ format code produces zone abbrev if known
-SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZ');
-         to_char         
--------------------------
- 2012-12-12 12:00:00 PST
-(1 row)
-
-SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS tz');
-         to_char         
--------------------------
- 2012-12-12 12:00:00 pst
-(1 row)
-
 --
 -- Check behavior with SQL-style fixed-GMT-offset time zone (cf bug #8572)
 --
@@ -3671,13 +3596,6 @@ SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD SSSSS');
      to_char      
 ------------------
  2012-12-12 43200
-(1 row)
-
-SET TIME ZONE '+2';
-SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZ');
-         to_char         
--------------------------
- 2012-12-12 12:00:00 +02
 (1 row)
 
 RESET TIME ZONE;

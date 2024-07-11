@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 # Minimal test testing streaming replication
 use strict;
@@ -601,7 +601,7 @@ is( $node_primary->poll_query_until(
 ok( pump_until(
 		$sigchld_bb, $sigchld_bb_timeout,
 		\$sigchld_bb_stderr, qr/backup is not in progress/),
-	'base backup cleanly canceled');
+	'base backup cleanly cancelled');
 $sigchld_bb->finish();
 
 done_testing();

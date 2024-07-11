@@ -5,16 +5,7 @@
 #define __PTHREAD_H
 
 typedef ULONG pthread_key_t;
-
-typedef struct pthread_mutex_t
-{
-	/* initstate = 0: not initialized; 1: init done; 2: init in progress */
-	LONG		initstate;
-	CRITICAL_SECTION csection;
-} pthread_mutex_t;
-
-#define PTHREAD_MUTEX_INITIALIZER	{ 0 }
-
+typedef CRITICAL_SECTION *pthread_mutex_t;
 typedef int pthread_once_t;
 
 DWORD		pthread_self(void);

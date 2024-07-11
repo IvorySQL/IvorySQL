@@ -3,7 +3,7 @@
  * llvmjit.c
  *	  Core part of the LLVM JIT provider.
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/jit/llvm/llvmjit.c
@@ -34,7 +34,9 @@
 #include <llvm-c/Transforms/IPO.h>
 #include <llvm-c/Transforms/PassManagerBuilder.h>
 #include <llvm-c/Transforms/Scalar.h>
+#if LLVM_VERSION_MAJOR > 6
 #include <llvm-c/Transforms/Utils.h>
+#endif
 #endif
 
 #include "jit/llvmjit.h"
@@ -379,7 +381,10 @@ llvm_expand_funcname(struct LLVMJitContext *context, const char *basename)
 void *
 llvm_get_function(LLVMJitContext *context, const char *funcname)
 {
+#if LLVM_VERSION_MAJOR > 11 || \
+	defined(HAVE_DECL_LLVMORCGETSYMBOLADDRESSIN) && HAVE_DECL_LLVMORCGETSYMBOLADDRESSIN
 	ListCell   *lc;
+#endif
 
 	llvm_assert_in_fatal_section();
 
@@ -427,7 +432,7 @@ llvm_get_function(LLVMJitContext *context, const char *funcname)
 		if (addr)
 			return (void *) (uintptr_t) addr;
 	}
-#else
+#elif defined(HAVE_DECL_LLVMORCGETSYMBOLADDRESSIN) && HAVE_DECL_LLVMORCGETSYMBOLADDRESSIN
 	foreach(lc, context->handles)
 	{
 		LLVMOrcTargetAddress addr;
@@ -435,6 +440,28 @@ llvm_get_function(LLVMJitContext *context, const char *funcname)
 
 		addr = 0;
 		if (LLVMOrcGetSymbolAddressIn(handle->stack, &addr, handle->orc_handle, funcname))
+			elog(ERROR, "failed to look up symbol \"%s\"", funcname);
+		if (addr)
+			return (void *) (uintptr_t) addr;
+	}
+#elif LLVM_VERSION_MAJOR < 5
+	{
+		LLVMOrcTargetAddress addr;
+
+		if ((addr = LLVMOrcGetSymbolAddress(llvm_opt0_orc, funcname)))
+			return (void *) (uintptr_t) addr;
+		if ((addr = LLVMOrcGetSymbolAddress(llvm_opt3_orc, funcname)))
+			return (void *) (uintptr_t) addr;
+	}
+#else
+	{
+		LLVMOrcTargetAddress addr;
+
+		if (LLVMOrcGetSymbolAddress(llvm_opt0_orc, &addr, funcname))
+			elog(ERROR, "failed to look up symbol \"%s\"", funcname);
+		if (addr)
+			return (void *) (uintptr_t) addr;
+		if (LLVMOrcGetSymbolAddress(llvm_opt3_orc, &addr, funcname))
 			elog(ERROR, "failed to look up symbol \"%s\"", funcname);
 		if (addr)
 			return (void *) (uintptr_t) addr;
@@ -526,8 +553,12 @@ llvm_copy_attributes_at_index(LLVMValueRef v_from, LLVMValueRef v_to, uint32 ind
 	int			num_attributes;
 	LLVMAttributeRef *attrs;
 
-	num_attributes = LLVMGetAttributeCountAtIndex(v_from, index);
+	num_attributes = LLVMGetAttributeCountAtIndexPG(v_from, index);
 
+	/*
+	 * Not just for efficiency: LLVM <= 3.9 crashes when
+	 * LLVMGetAttributesAtIndex() is called for an index with 0 attributes.
+	 */
 	if (num_attributes == 0)
 		return;
 
@@ -821,7 +852,7 @@ llvm_compile_module(LLVMJitContext *context)
 
 		/* LLVMOrcLLJITAddLLVMIRModuleWithRT takes ownership of the module */
 	}
-#else
+#elif LLVM_VERSION_MAJOR > 6
 	{
 		handle->stack = compile_orc;
 		if (LLVMOrcAddEagerlyCompiledIR(compile_orc, &handle->orc_handle, context->module,
@@ -829,6 +860,26 @@ llvm_compile_module(LLVMJitContext *context)
 			elog(ERROR, "failed to JIT module");
 
 		/* LLVMOrcAddEagerlyCompiledIR takes ownership of the module */
+	}
+#elif LLVM_VERSION_MAJOR > 4
+	{
+		LLVMSharedModuleRef smod;
+
+		smod = LLVMOrcMakeSharedModule(context->module);
+		handle->stack = compile_orc;
+		if (LLVMOrcAddEagerlyCompiledIR(compile_orc, &handle->orc_handle, smod,
+										llvm_resolve_symbol, NULL))
+			elog(ERROR, "failed to JIT module");
+
+		LLVMOrcDisposeSharedModuleRef(smod);
+	}
+#else							/* LLVM 4.0 and 3.9 */
+	{
+		handle->stack = compile_orc;
+		handle->orc_handle = LLVMOrcAddEagerlyCompiledIR(compile_orc, context->module,
+														 llvm_resolve_symbol, NULL);
+
+		LLVMDisposeModule(context->module);
 	}
 #endif
 

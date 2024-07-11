@@ -17,8 +17,7 @@
  * per-buffer LWLocks that synchronize I/O for each buffer.  The control lock
  * must be held to examine or modify any shared state.  A process that is
  * reading in or writing out a page buffer does not hold the control lock,
- * only the per-buffer lock for the buffer it is working on.  One exception
- * is latest_page_number, which is read and written using atomic ops.
+ * only the per-buffer lock for the buffer it is working on.
  *
  * "Holding the control lock" means exclusive lock in all cases except for
  * SimpleLruReadPage_ReadOnly(); see comments for SlruRecentlyUsed() for
@@ -39,7 +38,7 @@
  * by re-setting the page's page_dirty flag.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/slru.c
@@ -240,7 +239,8 @@ SimpleLruInit(SlruCtl ctl, const char *name, int nslots, int nlsns,
 		shared->lsn_groups_per_page = nlsns;
 
 		shared->cur_lru_count = 0;
-		pg_atomic_init_u64(&shared->latest_page_number, 0);
+
+		/* shared->latest_page_number will be set later */
 
 		shared->slru_stats_idx = pgstat_get_slru_index(name);
 
@@ -329,15 +329,8 @@ SimpleLruZeroPage(SlruCtl ctl, int64 pageno)
 	/* Set the LSNs for this new page to zero */
 	SimpleLruZeroLSNs(ctl, slotno);
 
-	/*
-	 * Assume this page is now the latest active page.
-	 *
-	 * Note that because both this routine and SlruSelectLRUPage run with
-	 * ControlLock held, it is not possible for this to be zeroing a page that
-	 * SlruSelectLRUPage is going to evict simultaneously.  Therefore, there's
-	 * no memory barrier here.
-	 */
-	pg_atomic_write_u64(&shared->latest_page_number, pageno);
+	/* Assume this page is now the latest active page */
+	shared->latest_page_number = pageno;
 
 	/* update the stats counter of zeroed pages */
 	pgstat_count_slru_page_zeroed(shared->slru_stats_idx);
@@ -1120,17 +1113,9 @@ SlruSelectLRUPage(SlruCtl ctl, int64 pageno)
 				shared->page_lru_count[slotno] = cur_count;
 				this_delta = 0;
 			}
-
-			/*
-			 * If this page is the one most recently zeroed, don't consider it
-			 * an eviction candidate. See comments in SimpleLruZeroPage for an
-			 * explanation about the lack of a memory barrier here.
-			 */
 			this_page_number = shared->page_number[slotno];
-			if (this_page_number ==
-				pg_atomic_read_u64(&shared->latest_page_number))
+			if (this_page_number == shared->latest_page_number)
 				continue;
-
 			if (shared->page_status[slotno] == SLRU_PAGE_VALID)
 			{
 				if (this_delta > best_valid_delta ||
@@ -1269,6 +1254,7 @@ void
 SimpleLruTruncate(SlruCtl ctl, int64 cutoffPage)
 {
 	SlruShared	shared = ctl->shared;
+	int			slotno;
 
 	/* update the stats counter of truncates */
 	pgstat_count_slru_truncate(shared->slru_stats_idx);
@@ -1284,13 +1270,10 @@ SimpleLruTruncate(SlruCtl ctl, int64 cutoffPage)
 restart:
 
 	/*
-	 * An important safety check: the current endpoint page must not be
-	 * eligible for removal.  This check is just a backstop against wraparound
-	 * bugs elsewhere in SLRU handling, so we don't care if we read a slightly
-	 * outdated value; therefore we don't add a memory barrier.
+	 * While we are holding the lock, make an important safety check: the
+	 * current endpoint page must not be eligible for removal.
 	 */
-	if (ctl->PagePrecedes(pg_atomic_read_u64(&shared->latest_page_number),
-						  cutoffPage))
+	if (ctl->PagePrecedes(shared->latest_page_number, cutoffPage))
 	{
 		LWLockRelease(shared->ControlLock);
 		ereport(LOG,
@@ -1299,7 +1282,7 @@ restart:
 		return;
 	}
 
-	for (int slotno = 0; slotno < shared->num_slots; slotno++)
+	for (slotno = 0; slotno < shared->num_slots; slotno++)
 	{
 		if (shared->page_status[slotno] == SLRU_PAGE_EMPTY)
 			continue;

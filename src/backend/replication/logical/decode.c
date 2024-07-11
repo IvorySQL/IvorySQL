@@ -16,7 +16,7 @@
  *		contents of records in here except turning them into a more usable
  *		format.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -62,7 +62,7 @@ static void DecodePrepare(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 
 
 /* common function to decode tuples */
-static void DecodeXLogTuple(char *data, Size len, HeapTuple tuple);
+static void DecodeXLogTuple(char *data, Size len, ReorderBufferTupleBuf *tuple);
 
 /* helper functions for decoding transactions */
 static inline bool FilterPrepare(LogicalDecodingContext *ctx,
@@ -890,7 +890,7 @@ DecodeAbort(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 /*
  * Parse XLOG_HEAP_INSERT (not MULTI_INSERT!) records into tuplebufs.
  *
- * Inserts can contain the new tuple.
+ * Deletes can contain the new tuple.
  */
 static void
 DecodeInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
@@ -1152,7 +1152,7 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		ReorderBufferChange *change;
 		xl_multi_insert_tuple *xlhdr;
 		int			datalen;
-		HeapTuple	tuple;
+		ReorderBufferTupleBuf *tuple;
 		HeapTupleHeader header;
 
 		change = ReorderBufferGetChange(ctx->reorder);
@@ -1169,21 +1169,21 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			ReorderBufferGetTupleBuf(ctx->reorder, datalen);
 
 		tuple = change->data.tp.newtuple;
-		header = tuple->t_data;
+		header = tuple->tuple.t_data;
 
 		/* not a disk based tuple */
-		ItemPointerSetInvalid(&tuple->t_self);
+		ItemPointerSetInvalid(&tuple->tuple.t_self);
 
 		/*
 		 * We can only figure this out after reassembling the transactions.
 		 */
-		tuple->t_tableOid = InvalidOid;
+		tuple->tuple.t_tableOid = InvalidOid;
 
-		tuple->t_len = datalen + SizeofHeapTupleHeader;
+		tuple->tuple.t_len = datalen + SizeofHeapTupleHeader;
 
 		memset(header, 0, SizeofHeapTupleHeader);
 
-		memcpy((char *) tuple->t_data + SizeofHeapTupleHeader,
+		memcpy((char *) tuple->tuple.t_data + SizeofHeapTupleHeader,
 			   (char *) data,
 			   datalen);
 		header->t_infomask = xlhdr->t_infomask;
@@ -1253,7 +1253,7 @@ DecodeSpecConfirm(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
  * computed outside as they are record specific.
  */
 static void
-DecodeXLogTuple(char *data, Size len, HeapTuple tuple)
+DecodeXLogTuple(char *data, Size len, ReorderBufferTupleBuf *tuple)
 {
 	xl_heap_header xlhdr;
 	int			datalen = len - SizeOfHeapHeader;
@@ -1261,14 +1261,14 @@ DecodeXLogTuple(char *data, Size len, HeapTuple tuple)
 
 	Assert(datalen >= 0);
 
-	tuple->t_len = datalen + SizeofHeapTupleHeader;
-	header = tuple->t_data;
+	tuple->tuple.t_len = datalen + SizeofHeapTupleHeader;
+	header = tuple->tuple.t_data;
 
 	/* not a disk based tuple */
-	ItemPointerSetInvalid(&tuple->t_self);
+	ItemPointerSetInvalid(&tuple->tuple.t_self);
 
 	/* we can only figure this out after reassembling the transactions */
-	tuple->t_tableOid = InvalidOid;
+	tuple->tuple.t_tableOid = InvalidOid;
 
 	/* data is not stored aligned, copy to aligned storage */
 	memcpy((char *) &xlhdr,
@@ -1277,7 +1277,7 @@ DecodeXLogTuple(char *data, Size len, HeapTuple tuple)
 
 	memset(header, 0, SizeofHeapTupleHeader);
 
-	memcpy(((char *) tuple->t_data) + SizeofHeapTupleHeader,
+	memcpy(((char *) tuple->tuple.t_data) + SizeofHeapTupleHeader,
 		   data + SizeOfHeapHeader,
 		   datalen);
 

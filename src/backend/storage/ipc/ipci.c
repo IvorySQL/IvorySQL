@@ -3,7 +3,7 @@
  * ipci.c
  *	  POSTGRES inter-process communication initialization code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -40,7 +40,6 @@
 #include "replication/walsender.h"
 #include "storage/bufmgr.h"
 #include "storage/dsm.h"
-#include "storage/dsm_registry.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
@@ -51,7 +50,6 @@
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
 #include "utils/guc.h"
-#include "utils/injection_point.h"
 #include "utils/snapmgr.h"
 #include "utils/wait_event.h"
 
@@ -117,7 +115,6 @@ CalculateShmemSize(int *num_semaphores)
 	size = add_size(size, hash_estimate_size(SHMEM_INDEX_SIZE,
 											 sizeof(ShmemIndexEnt)));
 	size = add_size(size, dsm_estimate_size());
-	size = add_size(size, DSMRegistryShmemSize());
 	size = add_size(size, BufferShmemSize());
 	size = add_size(size, LockShmemSize());
 	size = add_size(size, PredicateLockShmemSize());
@@ -152,7 +149,6 @@ CalculateShmemSize(int *num_semaphores)
 	size = add_size(size, AsyncShmemSize());
 	size = add_size(size, StatsShmemSize());
 	size = add_size(size, WaitEventExtensionShmemSize());
-	size = add_size(size, InjectionPointShmemSize());
 #ifdef EXEC_BACKEND
 	size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -293,7 +289,6 @@ CreateOrAttachShmemStructs(void)
 	InitShmemIndex();
 
 	dsm_shmem_init();
-	DSMRegistryShmemInit();
 
 	/*
 	 * Set up xlog, clog, and buffers
@@ -356,7 +351,6 @@ CreateOrAttachShmemStructs(void)
 	AsyncShmemInit();
 	StatsShmemInit();
 	WaitEventExtensionShmemInit();
-	InjectionPointShmemInit();
 }
 
 /*

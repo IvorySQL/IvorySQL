@@ -172,8 +172,7 @@ task:
     su postgres <<-EOF
       meson setup \
         --buildtype=debug \
-        -Dcassert=true -Dinjection_points=true \
-        -Duuid=bsd -Dtcl_version=tcl86 -Ddtrace=auto \
+        -Dcassert=true -Duuid=bsd -Dtcl_version=tcl86 -Ddtrace=auto \
         -DPG_TEST_EXTRA="$PG_TEST_EXTRA" \
         -Dextra_lib_dirs=/usr/local/lib -Dextra_include_dirs=/usr/local/include/ \
         build
@@ -328,8 +327,8 @@ task:
       configure_script: |
         su postgres <<-EOF
           ./configure \
-            --enable-cassert --enable-injection-points --enable-debug \
-            --enable-tap-tests --enable-nls \
+            --enable-cassert --enable-debug --enable-tap-tests \
+            --enable-nls \
             --with-segsize-blocks=6 \
             \
             ${LINUX_CONFIGURE_FEATURES} \
@@ -358,7 +357,7 @@ task:
         su postgres <<-EOF
           meson setup \
             --buildtype=debug \
-            -Dcassert=true -Dinjection_points=true \
+            -Dcassert=true \
             ${LINUX_MESON_FEATURES} \
             -DPG_TEST_EXTRA="$PG_TEST_EXTRA" \
             build
@@ -371,7 +370,7 @@ task:
           export CC='ccache gcc -m32'
           meson setup \
             --buildtype=debug \
-            -Dcassert=true -Dinjection_points=true \
+            -Dcassert=true \
             ${LINUX_MESON_FEATURES} \
             -Dllvm=disabled \
             --pkg-config-path /usr/lib/i386-linux-gnu/pkgconfig/ \
@@ -483,7 +482,7 @@ task:
       --buildtype=debug \
       -Dextra_include_dirs=/opt/local/include \
       -Dextra_lib_dirs=/opt/local/lib \
-      -Dcassert=true -Dinjection_points=true \
+      -Dcassert=true \
       -Duuid=e2fs -Ddtrace=auto \
       -DPG_TEST_EXTRA="$PG_TEST_EXTRA" \
       build
@@ -557,7 +556,7 @@ task:
   # Use /DEBUG:FASTLINK to avoid high memory usage during linking
   configure_script: |
     vcvarsall x64
-    meson setup --backend ninja --buildtype debug -Dc_link_args=/DEBUG:FASTLINK -Dcassert=true -Dinjection_points=true -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=%TAR% -DPG_TEST_EXTRA="%PG_TEST_EXTRA%" build
+    meson setup --backend ninja --buildtype debug -Dc_link_args=/DEBUG:FASTLINK -Dcassert=true -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=%TAR% -DPG_TEST_EXTRA="%PG_TEST_EXTRA%" build
 
   build_script: |
     vcvarsall x64
@@ -617,7 +616,7 @@ task:
 
   # disable -Dnls as the number of files it creates cause a noticable slowdown
   configure_script: |
-    %BASH% -c "meson setup -Ddebug=true -Doptimization=g -Dcassert=true -Dinjection_points=true -Db_pch=true -Dnls=disabled -DTAR=%TAR% build"
+    %BASH% -c "meson setup -Ddebug=true -Doptimization=g -Dcassert=true -Db_pch=true -Dnls=disabled -DTAR=%TAR% build"
 
   build_script: |
     %BASH% -c "ninja -C build"

@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2023, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
  *
@@ -1023,8 +1023,7 @@ CREATE VIEW pg_replication_slots AS
             L.wal_status,
             L.safe_wal_size,
             L.two_phase,
-            L.conflict_reason,
-            L.failover
+            L.conflicting
     FROM pg_get_replication_slots() AS L
             LEFT JOIN pg_database D ON (L.datoid = D.oid);
 
@@ -1319,8 +1318,7 @@ CREATE VIEW pg_stat_progress_copy AS
         S.param1 AS bytes_processed,
         S.param2 AS bytes_total,
         S.param3 AS tuples_processed,
-        S.param4 AS tuples_excluded,
-        S.param7 AS tuples_skipped
+        S.param4 AS tuples_excluded
     FROM pg_stat_get_progress_info('COPY') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
 
@@ -1358,7 +1356,7 @@ REVOKE ALL ON pg_replication_origin_status FROM public;
 REVOKE ALL ON pg_subscription FROM public;
 GRANT SELECT (oid, subdbid, subskiplsn, subname, subowner, subenabled,
               subbinary, substream, subtwophasestate, subdisableonerr,
-			  subpasswordrequired, subrunasowner, subfailover,
+			  subpasswordrequired, subrunasowner,
               subslotname, subsynccommit, subpublications, suborigin)
     ON pg_subscription TO public;
 

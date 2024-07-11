@@ -4,7 +4,7 @@
  *	  definition of the "tablespace" system catalog (pg_tablespace)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_tablespace.h
@@ -51,7 +51,5 @@ DECLARE_TOAST_WITH_MACRO(pg_tablespace, 4185, 4186, PgTablespaceToastTable, PgTa
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_tablespace_oid_index, 2697, TablespaceOidIndexId, pg_tablespace, btree(oid oid_ops));
 DECLARE_UNIQUE_INDEX(pg_tablespace_spcname_index, 2698, TablespaceNameIndexId, pg_tablespace, btree(spcname name_ops));
-
-MAKE_SYSCACHE(TABLESPACEOID, pg_tablespace_oid_index, 4);
 
 #endif							/* PG_TABLESPACE_H */

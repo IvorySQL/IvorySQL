@@ -2,7 +2,7 @@
  * launcher.c
  *	   PostgreSQL logical replication worker launcher process
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/launcher.c
@@ -925,14 +925,7 @@ ApplyLauncherRegister(void)
 {
 	BackgroundWorker bgw;
 
-	/*
-	 * The logical replication launcher is disabled during binary upgrades, to
-	 * prevent logical replication workers from running on the source cluster.
-	 * That could cause replication origins to move forward after having been
-	 * copied to the target cluster, potentially creating conflicts with the
-	 * copied data files.
-	 */
-	if (max_logical_replication_workers == 0 || IsBinaryUpgrade)
+	if (max_logical_replication_workers == 0)
 		return;
 
 	memset(&bgw, 0, sizeof(bgw));

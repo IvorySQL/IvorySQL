@@ -51,11 +51,11 @@ SELECT * FROM t;
 
 -- UNION DISTINCT requires hashable type
 WITH RECURSIVE t(n) AS (
-    VALUES ('01'::varbit)
+    VALUES (1::money)
 UNION
-    SELECT n || '10'::varbit FROM t WHERE n < '100'::varbit
+    SELECT n+1::money FROM t WHERE n < 100::money
 )
-SELECT n FROM t;
+SELECT sum(n) FROM t;
 ERROR:  could not implement recursive UNION
 DETAIL:  All column datatypes must be hashable.
 -- recursive view
@@ -653,24 +653,6 @@ select count(*) from tenk1 a
          ->  Hash
                ->  CTE Scan on x
 (8 rows)
-
-explain (costs off)
-with x as materialized (insert into tenk1 default values returning unique1)
-select count(*) from tenk1 a
-  where unique1 in (select * from x);
-                         QUERY PLAN                         
-------------------------------------------------------------
- Aggregate
-   CTE x
-     ->  Insert on tenk1
-           ->  Result
-   ->  Nested Loop
-         ->  HashAggregate
-               Group Key: x.unique1
-               ->  CTE Scan on x
-         ->  Index Only Scan using tenk1_unique1 on tenk1 a
-               Index Cond: (unique1 = x.unique1)
-(10 rows)
 
 -- SEARCH clause
 create temp table graph0( f int, t int, label text );

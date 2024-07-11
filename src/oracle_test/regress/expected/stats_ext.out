@@ -363,7 +363,7 @@ CREATE TABLE ndistinct (
 WITH (autovacuum_enabled = off);
 -- over-estimates when using only per-column statistics
 INSERT INTO ndistinct (a, b, c, filler1)
-     SELECT i/100, i/100, i/100, (i/100) || ' dollars and zero cents'
+     SELECT i/100, i/100, i/100, cash_words((i/100)::money)
        FROM generate_series(1,1000) s(i);
 ANALYZE ndistinct;
 -- Group Aggregate, due to over-estimate of the number of groups
@@ -503,7 +503,7 @@ TRUNCATE TABLE ndistinct;
 -- under-estimates when using only per-column statistics
 INSERT INTO ndistinct (a, b, c, filler1)
      SELECT mod(i,13), mod(i,17), mod(i,19),
-            mod(i,23) || ' dollars and zero cents'
+            cash_words(mod(i,23)::int::money)
        FROM generate_series(1,1000) s(i);
 ANALYZE ndistinct;
 SELECT s.stxkind, d.stxdndistinct

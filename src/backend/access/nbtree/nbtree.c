@@ -8,7 +8,7 @@
  *	  This file contains only the public interface routines.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -158,7 +158,7 @@ btbuildempty(Relation index)
 	Page		metapage;
 
 	/*
-	 * Initialize the metapage.
+	 * Initalize the metapage.
 	 *
 	 * Regular index build bypasses the buffer manager and uses smgr functions
 	 * directly, with an smgrimmedsync() call at the end.  That makes sense

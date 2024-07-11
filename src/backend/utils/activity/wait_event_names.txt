@@ -2,7 +2,7 @@
 # wait_event_names.txt
 #      PostgreSQL wait events
 #
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023, PostgreSQL Global Development Group
 #
 # This list serves as the basis for generating source and documentation files
 # related to wait events.
@@ -236,7 +236,6 @@ TIMELINE_HISTORY_WRITE	"Waiting for a write of a newly created timeline history 
 TWOPHASE_FILE_READ	"Waiting for a read of a two phase state file."
 TWOPHASE_FILE_SYNC	"Waiting for a two phase state file to reach durable storage."
 TWOPHASE_FILE_WRITE	"Waiting for a write of a two phase state file."
-VERSION_FILE_SYNC	"Waiting for the version file to reach durable storage while creating a database."
 VERSION_FILE_WRITE	"Waiting for the version file to be written while creating a database."
 WALSENDER_TIMELINE_HISTORY_READ	"Waiting for a read from a timeline history file during a walsender timeline command."
 WAL_BOOTSTRAP_SYNC	"Waiting for WAL to reach durable storage during bootstrapping."
@@ -276,10 +275,6 @@ Extension	"Waiting in an extension."
 #
 # This class of wait events has its own set of C structure, so these are
 # only used for the documentation.
-#
-# NB: Predefined LWLocks (i.e., those declared in lwlocknames.txt) must be
-# listed in the top section of locks and must be listed in the same order as in
-# lwlocknames.txt.
 #
 
 Section: ClassName - WaitEventLWLock
@@ -329,18 +324,6 @@ XactTruncation	"Waiting to execute <function>pg_xact_status</function> or update
 WrapLimitsVacuum	"Waiting to update limits on transaction id and multixact consumption."
 NotifyQueueTail	"Waiting to update limit on <command>NOTIFY</command> message storage."
 WaitEventExtension	"Waiting to read or update custom wait events information for extensions."
-WALSummarizer	"Waiting to read or update WAL summarization state."
-DSMRegistry	"Waiting to read or update the dynamic shared memory registry."
-InjectionPoint	"Waiting to read or update information related to injection points."
-SerialControl	"Waiting to read or update shared <filename>pg_serial</filename> state."
-
-#
-# END OF PREDEFINED LWLOCKS (DO NOT CHANGE THIS LINE)
-#
-# Predefined LWLocks (i.e., those declared in lwlocknames.txt) must be listed
-# in the section above and must be listed in the same order as in
-# lwlocknames.txt.  Other LWLocks must be listed in the section below.
-#
 
 XactBuffer	"Waiting for I/O on a transaction status SLRU buffer."
 CommitTsBuffer	"Waiting for I/O on a commit timestamp SLRU buffer."
@@ -371,8 +354,6 @@ PgStatsHash	"Waiting for stats shared memory hash table access."
 PgStatsData	"Waiting for shared memory stats data access."
 LogicalRepLauncherDSA	"Waiting to access logical replication launcher's dynamic shared memory allocator."
 LogicalRepLauncherHash	"Waiting to access logical replication launcher's shared hash table."
-DSMRegistryDSA	"Waiting to access dynamic shared memory registry's dynamic shared memory allocator."
-DSMRegistryHash	"Waiting to access dynamic shared memory registry's shared hash table."
 
 #
 # Wait Events - Lock

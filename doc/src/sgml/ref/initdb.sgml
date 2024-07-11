@@ -417,10 +417,10 @@ PostgreSQL documentation
       <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
       <listitem>
        <para>
-        Sets the user name of the
+        Selects the user name of the
         <glossterm linkend="glossary-bootstrap-superuser">bootstrap superuser</glossterm>.
-        This defaults to the name of the operating-system user running
-        <command>initdb</command>.
+        This defaults to the name of the
+        <glossterm linkend="glossary-cluster-owner">cluster owner</glossterm>.
        </para>
       </listitem>
      </varlistentry>

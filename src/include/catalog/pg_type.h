@@ -4,7 +4,7 @@
  *	  definition of the "type" system catalog (pg_type)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_type.h
@@ -264,9 +264,6 @@ DECLARE_TOAST(pg_type, 4171, 4172);
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_type_oid_index, 2703, TypeOidIndexId, pg_type, btree(oid oid_ops));
 DECLARE_UNIQUE_INDEX(pg_type_typname_nsp_index, 2704, TypeNameNspIndexId, pg_type, btree(typname name_ops, typnamespace oid_ops));
-
-MAKE_SYSCACHE(TYPEOID, pg_type_oid_index, 64);
-MAKE_SYSCACHE(TYPENAMENSP, pg_type_typname_nsp_index, 64);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

@@ -3,7 +3,7 @@
  * fd.c
  *	  Virtual file descriptor code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -491,29 +491,6 @@ retry:
 		goto retry;
 
 	return rc;
-}
-
-/*
- * pg_file_exists -- check that a file exists.
- *
- * This requires an absolute path to the file.  Returns true if the file is
- * not a directory, false otherwise.
- */
-bool
-pg_file_exists(const char *name)
-{
-	struct stat st;
-
-	Assert(name != NULL);
-
-	if (stat(name, &st) == 0)
-		return !S_ISDIR(st.st_mode);
-	else if (!(errno == ENOENT || errno == ENOTDIR || errno == EACCES))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not access file \"%s\": %m", name)));
-
-	return false;
 }
 
 /*
@@ -3961,7 +3938,7 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 
 	if (!SplitGUCList(rawstring, ',', &elemlist))
 	{
-		GUC_check_errdetail("Invalid list syntax in parameter %s",
+		GUC_check_errdetail("invalid list syntax in parameter %s",
 							"debug_io_direct");
 		pfree(rawstring);
 		list_free(elemlist);
@@ -3981,7 +3958,7 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 			flags |= IO_DIRECT_WAL_INIT;
 		else
 		{
-			GUC_check_errdetail("Invalid option \"%s\"", item);
+			GUC_check_errdetail("invalid option \"%s\"", item);
 			result = false;
 			break;
 		}

@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2023, PostgreSQL Global Development Group
 
 tests += {
   'name': 'recovery',
@@ -45,7 +45,6 @@ tests += {
       't/037_invalid_database.pl',
       't/038_save_logical_slots_shutdown.pl',
       't/039_end_of_wal.pl',
-      't/040_standby_failover_slots_sync.pl',
     ],
   },
 }

@@ -3,7 +3,7 @@
  * explain.c
  *	  Explain query execution plans
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -120,11 +120,9 @@ static void show_instrumentation_count(const char *qlabel, int which,
 static void show_foreignscan_info(ForeignScanState *fsstate, ExplainState *es);
 static void show_eval_params(Bitmapset *bms_params, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
-static bool peek_buffer_usage(ExplainState *es, const BufferUsage *usage);
-static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
+static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
+							  bool planning);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
-static void show_memory_counters(ExplainState *es,
-								 const MemoryContextCounters *mem_counters);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 									ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
@@ -205,8 +203,6 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 			summary_set = true;
 			es->summary = defGetBoolean(opt);
 		}
-		else if (strcmp(opt->defname, "memory") == 0)
-			es->memory = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "format") == 0)
 		{
 			char	   *p = defGetString(opt);
@@ -402,25 +398,6 @@ ExplainOneQuery(Query *query, int cursorOptions,
 					planduration;
 		BufferUsage bufusage_start,
 					bufusage;
-		MemoryContextCounters mem_counters;
-		MemoryContext planner_ctx = NULL;
-		MemoryContext saved_ctx = NULL;
-
-		if (es->memory)
-		{
-			/*
-			 * Create a new memory context to measure planner's memory
-			 * consumption accurately.  Note that if the planner were to be
-			 * modified to use a different memory context type, here we would
-			 * be changing that to AllocSet, which might be undesirable.
-			 * However, we don't have a way to create a context of the same
-			 * type as another, so we pray and hope that this is OK.
-			 */
-			planner_ctx = AllocSetContextCreate(CurrentMemoryContext,
-												"explain analyze planner context",
-												ALLOCSET_DEFAULT_SIZES);
-			saved_ctx = MemoryContextSwitchTo(planner_ctx);
-		}
 
 		if (es->buffers)
 			bufusage_start = pgBufferUsage;
@@ -432,12 +409,6 @@ ExplainOneQuery(Query *query, int cursorOptions,
 		INSTR_TIME_SET_CURRENT(planduration);
 		INSTR_TIME_SUBTRACT(planduration, planstart);
 
-		if (es->memory)
-		{
-			MemoryContextSwitchTo(saved_ctx);
-			MemoryContextMemConsumed(planner_ctx, &mem_counters);
-		}
-
 		/* calc differences of buffer counters. */
 		if (es->buffers)
 		{
@@ -447,8 +418,7 @@ ExplainOneQuery(Query *query, int cursorOptions,
 
 		/* run it (if needed) and produce output */
 		ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
-					   &planduration, (es->buffers ? &bufusage : NULL),
-					   es->memory ? &mem_counters : NULL);
+					   &planduration, (es->buffers ? &bufusage : NULL));
 	}
 }
 
@@ -558,8 +528,7 @@ void
 ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			   const char *queryString, ParamListInfo params,
 			   QueryEnvironment *queryEnv, const instr_time *planduration,
-			   const BufferUsage *bufusage,
-			   const MemoryContextCounters *mem_counters)
+			   const BufferUsage *bufusage)
 {
 	DestReceiver *dest;
 	QueryDesc  *queryDesc;
@@ -647,27 +616,11 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	/* Create textual dump of plan tree */
 	ExplainPrintPlan(es, queryDesc);
 
-	/* Show buffer and/or memory usage in planning */
-	if (peek_buffer_usage(es, bufusage) || mem_counters)
+	/* Show buffer usage in planning */
+	if (bufusage)
 	{
 		ExplainOpenGroup("Planning", "Planning", true, es);
-
-		if (es->format == EXPLAIN_FORMAT_TEXT)
-		{
-			ExplainIndentText(es);
-			appendStringInfoString(es->str, "Planning:\n");
-			es->indent++;
-		}
-
-		if (bufusage)
-			show_buffer_usage(es, bufusage);
-
-		if (mem_counters)
-			show_memory_counters(es, mem_counters);
-
-		if (es->format == EXPLAIN_FORMAT_TEXT)
-			es->indent--;
-
+		show_buffer_usage(es, bufusage, true);
 		ExplainCloseGroup("Planning", "Planning", true, es);
 	}
 
@@ -2154,7 +2107,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 	/* Show buffer/WAL usage */
 	if (es->buffers && planstate->instrument)
-		show_buffer_usage(es, &planstate->instrument->bufusage);
+		show_buffer_usage(es, &planstate->instrument->bufusage, false);
 	if (es->wal && planstate->instrument)
 		show_wal_usage(es, &planstate->instrument->walusage);
 
@@ -2173,7 +2126,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 			ExplainOpenWorker(n, es);
 			if (es->buffers)
-				show_buffer_usage(es, &instrument->bufusage);
+				show_buffer_usage(es, &instrument->bufusage, false);
 			if (es->wal)
 				show_wal_usage(es, &instrument->walusage);
 			ExplainCloseWorker(n, es);
@@ -2443,7 +2396,7 @@ show_sort_keys(SortState *sortstate, List *ancestors, ExplainState *es)
 }
 
 /*
- * Show the sort keys for an IncrementalSort node.
+ * Show the sort keys for a IncrementalSort node.
  */
 static void
 show_incremental_sort_keys(IncrementalSortState *incrsortstate,
@@ -3593,52 +3546,10 @@ explain_get_index_name(Oid indexId)
 }
 
 /*
- * Return whether show_buffer_usage would have anything to print, if given
- * the same 'usage' data.  Note that when the format is anything other than
- * text, we print even if the counters are all zeroes.
- */
-static bool
-peek_buffer_usage(ExplainState *es, const BufferUsage *usage)
-{
-	bool		has_shared;
-	bool		has_local;
-	bool		has_temp;
-	bool		has_shared_timing;
-	bool		has_local_timing;
-	bool		has_temp_timing;
-
-	if (usage == NULL)
-		return false;
-
-	if (es->format != EXPLAIN_FORMAT_TEXT)
-		return true;
-
-	has_shared = (usage->shared_blks_hit > 0 ||
-				  usage->shared_blks_read > 0 ||
-				  usage->shared_blks_dirtied > 0 ||
-				  usage->shared_blks_written > 0);
-	has_local = (usage->local_blks_hit > 0 ||
-				 usage->local_blks_read > 0 ||
-				 usage->local_blks_dirtied > 0 ||
-				 usage->local_blks_written > 0);
-	has_temp = (usage->temp_blks_read > 0 ||
-				usage->temp_blks_written > 0);
-	has_shared_timing = (!INSTR_TIME_IS_ZERO(usage->shared_blk_read_time) ||
-						 !INSTR_TIME_IS_ZERO(usage->shared_blk_write_time));
-	has_local_timing = (!INSTR_TIME_IS_ZERO(usage->local_blk_read_time) ||
-						!INSTR_TIME_IS_ZERO(usage->local_blk_write_time));
-	has_temp_timing = (!INSTR_TIME_IS_ZERO(usage->temp_blk_read_time) ||
-					   !INSTR_TIME_IS_ZERO(usage->temp_blk_write_time));
-
-	return has_shared || has_local || has_temp || has_shared_timing ||
-		has_local_timing || has_temp_timing;
-}
-
-/*
- * Show buffer usage details.  This better be sync with peek_buffer_usage.
+ * Show buffer usage details.
  */
 static void
-show_buffer_usage(ExplainState *es, const BufferUsage *usage)
+show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 {
 	if (es->format == EXPLAIN_FORMAT_TEXT)
 	{
@@ -3658,6 +3569,18 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage)
 										!INSTR_TIME_IS_ZERO(usage->local_blk_write_time));
 		bool		has_temp_timing = (!INSTR_TIME_IS_ZERO(usage->temp_blk_read_time) ||
 									   !INSTR_TIME_IS_ZERO(usage->temp_blk_write_time));
+		bool		show_planning = (planning && (has_shared ||
+												  has_local || has_temp ||
+												  has_shared_timing ||
+												  has_local_timing ||
+												  has_temp_timing));
+
+		if (show_planning)
+		{
+			ExplainIndentText(es);
+			appendStringInfoString(es->str, "Planning:\n");
+			es->indent++;
+		}
 
 		/* Show only positive counter values. */
 		if (has_shared || has_local || has_temp)
@@ -3756,6 +3679,9 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage)
 			}
 			appendStringInfoChar(es->str, '\n');
 		}
+
+		if (show_planning)
+			es->indent--;
 	}
 	else
 	{
@@ -3840,32 +3766,6 @@ show_wal_usage(ExplainState *es, const WalUsage *usage)
 								usage->wal_bytes, es);
 	}
 }
-
-/*
- * Show memory usage details.
- */
-static void
-show_memory_counters(ExplainState *es, const MemoryContextCounters *mem_counters)
-{
-	if (es->format == EXPLAIN_FORMAT_TEXT)
-	{
-		ExplainIndentText(es);
-		appendStringInfo(es->str,
-						 "Memory: used=%lld bytes  allocated=%lld bytes",
-						 (long long) (mem_counters->totalspace - mem_counters->freespace),
-						 (long long) mem_counters->totalspace);
-		appendStringInfoChar(es->str, '\n');
-	}
-	else
-	{
-		ExplainPropertyInteger("Memory Used", "bytes",
-							   mem_counters->totalspace - mem_counters->freespace,
-							   es);
-		ExplainPropertyInteger("Memory Allocated", "bytes",
-							   mem_counters->totalspace, es);
-	}
-}
-
 
 /*
  * Add some additional details about an IndexScan or IndexOnlyScan

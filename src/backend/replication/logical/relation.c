@@ -2,7 +2,7 @@
  * relation.c
  *	   PostgreSQL logical replication relation mapping cache
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/relation.c
@@ -746,9 +746,11 @@ static Oid
 FindUsableIndexForReplicaIdentityFull(Relation localrel, AttrMap *attrmap)
 {
 	List	   *idxlist = RelationGetIndexList(localrel);
+	ListCell   *lc;
 
-	foreach_oid(idxoid, idxlist)
+	foreach(lc, idxlist)
 	{
+		Oid			idxoid = lfirst_oid(lc);
 		bool		isUsableIdx;
 		Relation	idxRel;
 		IndexInfo  *idxInfo;

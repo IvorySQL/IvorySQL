@@ -9,7 +9,7 @@
  * Reading data from the input file or client and parsing it into Datums
  * is handled in copyfromparse.c.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -42,7 +42,6 @@
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
-#include "nodes/miscnodes.h"
 #include "optimizer/optimizer.h"
 #include "pgstat.h"
 #include "rewrite/rewriteHandler.h"
@@ -650,16 +649,12 @@ CopyFrom(CopyFromState cstate)
 	CopyMultiInsertInfo multiInsertInfo = {0};	/* pacify compiler */
 	int64		processed = 0;
 	int64		excluded = 0;
-	int64		skipped = 0;
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
-
-	if (cstate->opts.on_error != COPY_ON_ERROR_STOP)
-		Assert(cstate->escontext);
 
 	/*
 	 * The target must be a plain, foreign, or partitioned relation, or have
@@ -997,29 +992,6 @@ CopyFrom(CopyFromState cstate)
 		if (!NextCopyFrom(cstate, econtext, myslot->tts_values, myslot->tts_isnull))
 			break;
 
-		if (cstate->opts.on_error != COPY_ON_ERROR_STOP &&
-			cstate->escontext->error_occurred)
-		{
-			/*
-			 * Soft error occured, skip this tuple and deal with error
-			 * information according to ON_ERROR.
-			 */
-			if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
-
-				/*
-				 * Just make ErrorSaveContext ready for the next NextCopyFrom.
-				 * Since we don't set details_wanted and error_data is not to
-				 * be filled, just resetting error_occurred is enough.
-				 */
-				cstate->escontext->error_occurred = false;
-
-			/* Report that this tuple was skipped by the ON_ERROR clause */
-			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_SKIPPED,
-										 ++skipped);
-
-			continue;
-		}
-
 		ExecStoreVirtualTuple(myslot);
 
 		/*
@@ -1312,14 +1284,6 @@ CopyFrom(CopyFromState cstate)
 	/* Done, clean up */
 	error_context_stack = errcallback.previous;
 
-	if (cstate->opts.on_error != COPY_ON_ERROR_STOP &&
-		cstate->num_errors > 0)
-		ereport(NOTICE,
-				errmsg_plural("%llu row was skipped due to data type incompatibility",
-							  "%llu rows were skipped due to data type incompatibility",
-							  (unsigned long long) cstate->num_errors,
-							  (unsigned long long) cstate->num_errors));
-
 	if (bistate != NULL)
 		FreeBulkInsertState(bistate);
 
@@ -1454,23 +1418,6 @@ BeginCopyFrom(ParseState *pstate,
 			cstate->opts.force_notnull_flags[attnum - 1] = true;
 		}
 	}
-
-	/* Set up soft error handler for ON_ERROR */
-	if (cstate->opts.on_error != COPY_ON_ERROR_STOP)
-	{
-		cstate->escontext = makeNode(ErrorSaveContext);
-		cstate->escontext->type = T_ErrorSaveContext;
-		cstate->escontext->error_occurred = false;
-
-		/*
-		 * Currently we only support COPY_ON_ERROR_IGNORE. We'll add other
-		 * options later
-		 */
-		if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
-			cstate->escontext->details_wanted = false;
-	}
-	else
-		cstate->escontext = NULL;
 
 	/* Convert FORCE_NULL name list to per-column flags, check validity */
 	cstate->opts.force_null_flags = (bool *) palloc0(num_phys_attrs * sizeof(bool));
@@ -1776,11 +1723,6 @@ BeginCopyFrom(ParseState *pstate,
 
 		cstate->max_fields = attr_count;
 		cstate->raw_fields = (char **) palloc(attr_count * sizeof(char *));
-
-		if (cstate->opts.csv_mode)
-			cstate->copy_read_attributes = CopyReadAttributesCSV;
-		else
-			cstate->copy_read_attributes = CopyReadAttributesText;
 	}
 
 	MemoryContextSwitchTo(oldcontext);

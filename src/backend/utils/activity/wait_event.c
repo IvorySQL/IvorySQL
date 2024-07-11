@@ -2,7 +2,7 @@
  * wait_event.c
  *	  Wait event reporting infrastructure.
  *
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2023, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -49,7 +49,7 @@ uint32	   *my_wait_event_info = &local_my_wait_event_info;
  * Hash tables for storing custom wait event ids and their names in
  * shared memory.
  *
- * WaitEventExtensionHashById is used to find the name from an event id.
+ * WaitEventExtensionHashById is used to find the name from a event id.
  * Any backend can search it to find custom wait events.
  *
  * WaitEventExtensionHashByName is used to find the event ID from a name.

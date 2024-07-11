@@ -40,7 +40,7 @@
  * doesn't really save much executor work anyway.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -90,8 +90,7 @@ assign_param_for_var(PlannerInfo *root, Var *var)
 				pvar->varattno == var->varattno &&
 				pvar->vartype == var->vartype &&
 				pvar->vartypmod == var->vartypmod &&
-				pvar->varcollid == var->varcollid &&
-				bms_equal(pvar->varnullingrels, var->varnullingrels))
+				pvar->varcollid == var->varcollid)
 				return pitem->paramId;
 		}
 	}

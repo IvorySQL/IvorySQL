@@ -3,7 +3,7 @@
  * pg_constraint.c
  *	  routines to support manipulation of the pg_constraint relation
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -78,7 +78,6 @@ CreateConstraintEntry(const char *constraintName,
 					  bool conIsLocal,
 					  int conInhCount,
 					  bool conNoInherit,
-					  bool conWithoutOverlaps,
 					  bool is_internal)
 {
 	Relation	conDesc;
@@ -194,7 +193,6 @@ CreateConstraintEntry(const char *constraintName,
 	values[Anum_pg_constraint_conislocal - 1] = BoolGetDatum(conIsLocal);
 	values[Anum_pg_constraint_coninhcount - 1] = Int16GetDatum(conInhCount);
 	values[Anum_pg_constraint_connoinherit - 1] = BoolGetDatum(conNoInherit);
-	values[Anum_pg_constraint_conwithoutoverlaps - 1] = BoolGetDatum(conWithoutOverlaps);
 
 	if (conkeyArray)
 		values[Anum_pg_constraint_conkey - 1] = PointerGetDatum(conkeyArray);
@@ -1292,7 +1290,7 @@ get_relation_constraint_attnos(Oid relid, const char *conname,
 
 /*
  * Return the OID of the constraint enforced by the given index in the
- * given relation; or InvalidOid if no such index is cataloged.
+ * given relation; or InvalidOid if no such index is catalogued.
  *
  * Much like get_constraint_index, this function is concerned only with the
  * one constraint that "owns" the given index.  Therefore, constraints of

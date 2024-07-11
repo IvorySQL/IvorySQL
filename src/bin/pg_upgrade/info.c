@@ -3,7 +3,7 @@
  *
  *	information support functions
  *
- *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2023, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/info.c
  */
 
@@ -28,7 +28,6 @@ static void print_db_infos(DbInfoArr *db_arr);
 static void print_rel_infos(RelInfoArr *rel_arr);
 static void print_slot_infos(LogicalSlotInfoArr *slot_arr);
 static void get_old_cluster_logical_slot_infos(DbInfo *dbinfo, bool live_check);
-static void get_db_subscription_count(DbInfo *dbinfo);
 
 
 /*
@@ -294,14 +293,10 @@ get_db_rel_and_slot_infos(ClusterInfo *cluster, bool live_check)
 		get_rel_infos(cluster, pDbInfo);
 
 		/*
-		 * Retrieve the logical replication slots infos and the subscriptions
-		 * count for the old cluster.
+		 * Retrieve the logical replication slots infos for the old cluster.
 		 */
 		if (cluster == &old_cluster)
-		{
 			get_old_cluster_logical_slot_infos(pDbInfo, live_check);
-			get_db_subscription_count(pDbInfo);
-		}
 	}
 
 	if (cluster == &old_cluster)
@@ -666,14 +661,14 @@ get_old_cluster_logical_slot_infos(DbInfo *dbinfo, bool live_check)
 	 * started and stopped several times causing any temporary slots to be
 	 * removed.
 	 */
-	res = executeQueryOrDie(conn, "SELECT slot_name, plugin, two_phase, failover, "
-							"%s as caught_up, conflict_reason IS NOT NULL as invalid "
+	res = executeQueryOrDie(conn, "SELECT slot_name, plugin, two_phase, "
+							"%s as caught_up, conflicting as invalid "
 							"FROM pg_catalog.pg_replication_slots "
 							"WHERE slot_type = 'logical' AND "
 							"database = current_database() AND "
 							"temporary IS FALSE;",
 							live_check ? "FALSE" :
-							"(CASE WHEN conflict_reason IS NOT NULL THEN FALSE "
+							"(CASE WHEN conflicting THEN FALSE "
 							"ELSE (SELECT pg_catalog.binary_upgrade_logical_slot_has_caught_up(slot_name)) "
 							"END)");
 
@@ -684,7 +679,6 @@ get_old_cluster_logical_slot_infos(DbInfo *dbinfo, bool live_check)
 		int			i_slotname;
 		int			i_plugin;
 		int			i_twophase;
-		int			i_failover;
 		int			i_caught_up;
 		int			i_invalid;
 
@@ -693,7 +687,6 @@ get_old_cluster_logical_slot_infos(DbInfo *dbinfo, bool live_check)
 		i_slotname = PQfnumber(res, "slot_name");
 		i_plugin = PQfnumber(res, "plugin");
 		i_twophase = PQfnumber(res, "two_phase");
-		i_failover = PQfnumber(res, "failover");
 		i_caught_up = PQfnumber(res, "caught_up");
 		i_invalid = PQfnumber(res, "invalid");
 
@@ -704,7 +697,6 @@ get_old_cluster_logical_slot_infos(DbInfo *dbinfo, bool live_check)
 			curr->slotname = pg_strdup(PQgetvalue(res, slotnum, i_slotname));
 			curr->plugin = pg_strdup(PQgetvalue(res, slotnum, i_plugin));
 			curr->two_phase = (strcmp(PQgetvalue(res, slotnum, i_twophase), "t") == 0);
-			curr->failover = (strcmp(PQgetvalue(res, slotnum, i_failover), "t") == 0);
 			curr->caught_up = (strcmp(PQgetvalue(res, slotnum, i_caught_up), "t") == 0);
 			curr->invalid = (strcmp(PQgetvalue(res, slotnum, i_invalid), "t") == 0);
 		}
@@ -736,55 +728,6 @@ count_old_cluster_logical_slots(void)
 		slot_count += old_cluster.dbarr.dbs[dbnum].slot_arr.nslots;
 
 	return slot_count;
-}
-
-/*
- * get_db_subscription_count()
- *
- * Gets the number of subscriptions in the database referred to by "dbinfo".
- *
- * Note: This function will not do anything if the old cluster is pre-PG17.
- * This is because before that the logical slots are not upgraded, so we will
- * not be able to upgrade the logical replication clusters completely.
- */
-static void
-get_db_subscription_count(DbInfo *dbinfo)
-{
-	PGconn	   *conn;
-	PGresult   *res;
-
-	/* Subscriptions can be migrated since PG17. */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) < 1700)
-		return;
-
-	conn = connectToServer(&old_cluster, dbinfo->db_name);
-	res = executeQueryOrDie(conn, "SELECT count(*) "
-							"FROM pg_catalog.pg_subscription WHERE subdbid = %u",
-							dbinfo->db_oid);
-	dbinfo->nsubs = atoi(PQgetvalue(res, 0, 0));
-
-	PQclear(res);
-	PQfinish(conn);
-}
-
-/*
- * count_old_cluster_subscriptions()
- *
- * Returns the number of subscriptions for all databases.
- *
- * Note: this function always returns 0 if the old_cluster is PG16 and prior
- * because we gather subscriptions only for cluster versions greater than or
- * equal to PG17. See get_db_subscription_count().
- */
-int
-count_old_cluster_subscriptions(void)
-{
-	int			nsubs = 0;
-
-	for (int dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
-		nsubs += old_cluster.dbarr.dbs[dbnum].nsubs;
-
-	return nsubs;
 }
 
 static void

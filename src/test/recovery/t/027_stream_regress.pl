@@ -1,6 +1,3 @@
-
-# Copyright (c) 2024, PostgreSQL Global Development Group
-
 # Run the standard regression tests with streaming replication
 use strict;
 use warnings FATAL => 'all';

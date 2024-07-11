@@ -14,7 +14,7 @@
  *		remove_useless_result_rtes
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -2435,13 +2435,8 @@ pullup_replace_vars_callback(Var *var,
 			else if (newnode && IsA(newnode, PlaceHolderVar) &&
 					 ((PlaceHolderVar *) newnode)->phlevelsup == 0)
 			{
-				/* The same rules apply for a PlaceHolderVar */
-				if (rcon->target_rte->lateral &&
-					!bms_is_subset(((PlaceHolderVar *) newnode)->phrels,
-								   rcon->relids))
-					wrap = true;
-				else
-					wrap = false;
+				/* No need to wrap a PlaceHolderVar with another one, either */
+				wrap = false;
 			}
 			else
 			{

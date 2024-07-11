@@ -3,7 +3,7 @@
  * explain.h
  *	  prototypes for explain.c
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * src/include/commands/explain.h
@@ -45,7 +45,6 @@ typedef struct ExplainState
 	bool		wal;			/* print WAL usage */
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
-	bool		memory;			/* print planner's memory usage information */
 	bool		settings;		/* print modified settings */
 	bool		generic;		/* generate a generic plan */
 	ExplainFormat format;		/* output format */
@@ -93,8 +92,7 @@ extern void ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into,
 						   ExplainState *es, const char *queryString,
 						   ParamListInfo params, QueryEnvironment *queryEnv,
 						   const instr_time *planduration,
-						   const BufferUsage *bufusage,
-						   const MemoryContextCounters *mem_counters);
+						   const BufferUsage *bufusage);
 
 extern void ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc);
 extern void ExplainPrintTriggers(ExplainState *es, QueryDesc *queryDesc);

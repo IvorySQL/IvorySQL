@@ -53,7 +53,7 @@
  * |	  |__|	|__||________________________||___________________|		   |
  * |_______________________________________________________________________|
  *
- * Copyright (c) 2019-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/jsonpath.c
@@ -295,7 +295,6 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 		case jpiDiv:
 		case jpiMod:
 		case jpiStartsWith:
-		case jpiDecimal:
 			{
 				/*
 				 * First, reserve place for left/right arg's positions, then
@@ -356,10 +355,6 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 		case jpiMinus:
 		case jpiExists:
 		case jpiDatetime:
-		case jpiTime:
-		case jpiTimeTz:
-		case jpiTimestamp:
-		case jpiTimestampTz:
 			{
 				int32		arg = reserveSpaceForItemPointer(buf);
 
@@ -449,12 +444,6 @@ flattenJsonPathParseItem(StringInfo buf,  int *result, struct Node *escontext,
 		case jpiCeiling:
 		case jpiDouble:
 		case jpiKeyValue:
-		case jpiBigint:
-		case jpiBoolean:
-		case jpiDate:
-		case jpiInteger:
-		case jpiNumber:
-		case jpiStringFunc:
 			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", item->type);
@@ -530,7 +519,16 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 		case jpiNull:
 			appendStringInfoString(buf, "null");
 			break;
+		case jpiKey:
+			if (inKey)
+				appendStringInfoChar(buf, '.');
+			escape_json(buf, jspGetString(v, NULL));
+			break;
 		case jpiString:
+			escape_json(buf, jspGetString(v, NULL));
+			break;
+		case jpiVariable:
+			appendStringInfoChar(buf, '$');
 			escape_json(buf, jspGetString(v, NULL));
 			break;
 		case jpiNumeric:
@@ -578,17 +576,39 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			if (printBracketes)
 				appendStringInfoChar(buf, ')');
 			break;
-		case jpiNot:
-			appendStringInfoString(buf, "!(");
-			jspGetArg(v, &elem);
-			printJsonPathItem(buf, &elem, false, false);
-			appendStringInfoChar(buf, ')');
-			break;
-		case jpiIsUnknown:
-			appendStringInfoChar(buf, '(');
-			jspGetArg(v, &elem);
-			printJsonPathItem(buf, &elem, false, false);
-			appendStringInfoString(buf, ") is unknown");
+		case jpiLikeRegex:
+			if (printBracketes)
+				appendStringInfoChar(buf, '(');
+
+			jspInitByBuffer(&elem, v->base, v->content.like_regex.expr);
+			printJsonPathItem(buf, &elem, false,
+							  operationPriority(elem.type) <=
+							  operationPriority(v->type));
+
+			appendStringInfoString(buf, " like_regex ");
+
+			escape_json(buf, v->content.like_regex.pattern);
+
+			if (v->content.like_regex.flags)
+			{
+				appendStringInfoString(buf, " flag \"");
+
+				if (v->content.like_regex.flags & JSP_REGEX_ICASE)
+					appendStringInfoChar(buf, 'i');
+				if (v->content.like_regex.flags & JSP_REGEX_DOTALL)
+					appendStringInfoChar(buf, 's');
+				if (v->content.like_regex.flags & JSP_REGEX_MLINE)
+					appendStringInfoChar(buf, 'm');
+				if (v->content.like_regex.flags & JSP_REGEX_WSPACE)
+					appendStringInfoChar(buf, 'x');
+				if (v->content.like_regex.flags & JSP_REGEX_QUOTE)
+					appendStringInfoChar(buf, 'q');
+
+				appendStringInfoChar(buf, '"');
+			}
+
+			if (printBracketes)
+				appendStringInfoChar(buf, ')');
 			break;
 		case jpiPlus:
 		case jpiMinus:
@@ -601,6 +621,41 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 							  operationPriority(v->type));
 			if (printBracketes)
 				appendStringInfoChar(buf, ')');
+			break;
+		case jpiFilter:
+			appendStringInfoString(buf, "?(");
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoChar(buf, ')');
+			break;
+		case jpiNot:
+			appendStringInfoString(buf, "!(");
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoChar(buf, ')');
+			break;
+		case jpiIsUnknown:
+			appendStringInfoChar(buf, '(');
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoString(buf, ") is unknown");
+			break;
+		case jpiExists:
+			appendStringInfoString(buf, "exists (");
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoChar(buf, ')');
+			break;
+		case jpiCurrent:
+			Assert(!inKey);
+			appendStringInfoChar(buf, '@');
+			break;
+		case jpiRoot:
+			Assert(!inKey);
+			appendStringInfoChar(buf, '$');
+			break;
+		case jpiLast:
+			appendStringInfoString(buf, "last");
 			break;
 		case jpiAnyArray:
 			appendStringInfoString(buf, "[*]");
@@ -657,35 +712,6 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 								 v->content.anybounds.first,
 								 v->content.anybounds.last);
 			break;
-		case jpiKey:
-			if (inKey)
-				appendStringInfoChar(buf, '.');
-			escape_json(buf, jspGetString(v, NULL));
-			break;
-		case jpiCurrent:
-			Assert(!inKey);
-			appendStringInfoChar(buf, '@');
-			break;
-		case jpiRoot:
-			Assert(!inKey);
-			appendStringInfoChar(buf, '$');
-			break;
-		case jpiVariable:
-			appendStringInfoChar(buf, '$');
-			escape_json(buf, jspGetString(v, NULL));
-			break;
-		case jpiFilter:
-			appendStringInfoString(buf, "?(");
-			jspGetArg(v, &elem);
-			printJsonPathItem(buf, &elem, false, false);
-			appendStringInfoChar(buf, ')');
-			break;
-		case jpiExists:
-			appendStringInfoString(buf, "exists (");
-			jspGetArg(v, &elem);
-			printJsonPathItem(buf, &elem, false, false);
-			appendStringInfoChar(buf, ')');
-			break;
 		case jpiType:
 			appendStringInfoString(buf, ".type()");
 			break;
@@ -716,112 +742,6 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 		case jpiKeyValue:
 			appendStringInfoString(buf, ".keyvalue()");
 			break;
-		case jpiLast:
-			appendStringInfoString(buf, "last");
-			break;
-		case jpiLikeRegex:
-			if (printBracketes)
-				appendStringInfoChar(buf, '(');
-
-			jspInitByBuffer(&elem, v->base, v->content.like_regex.expr);
-			printJsonPathItem(buf, &elem, false,
-							  operationPriority(elem.type) <=
-							  operationPriority(v->type));
-
-			appendStringInfoString(buf, " like_regex ");
-
-			escape_json(buf, v->content.like_regex.pattern);
-
-			if (v->content.like_regex.flags)
-			{
-				appendStringInfoString(buf, " flag \"");
-
-				if (v->content.like_regex.flags & JSP_REGEX_ICASE)
-					appendStringInfoChar(buf, 'i');
-				if (v->content.like_regex.flags & JSP_REGEX_DOTALL)
-					appendStringInfoChar(buf, 's');
-				if (v->content.like_regex.flags & JSP_REGEX_MLINE)
-					appendStringInfoChar(buf, 'm');
-				if (v->content.like_regex.flags & JSP_REGEX_WSPACE)
-					appendStringInfoChar(buf, 'x');
-				if (v->content.like_regex.flags & JSP_REGEX_QUOTE)
-					appendStringInfoChar(buf, 'q');
-
-				appendStringInfoChar(buf, '"');
-			}
-
-			if (printBracketes)
-				appendStringInfoChar(buf, ')');
-			break;
-		case jpiBigint:
-			appendStringInfoString(buf, ".bigint()");
-			break;
-		case jpiBoolean:
-			appendStringInfoString(buf, ".boolean()");
-			break;
-		case jpiDate:
-			appendStringInfoString(buf, ".date()");
-			break;
-		case jpiDecimal:
-			appendStringInfoString(buf, ".decimal(");
-			if (v->content.args.left)
-			{
-				jspGetLeftArg(v, &elem);
-				printJsonPathItem(buf, &elem, false, false);
-			}
-			if (v->content.args.right)
-			{
-				appendStringInfoChar(buf, ',');
-				jspGetRightArg(v, &elem);
-				printJsonPathItem(buf, &elem, false, false);
-			}
-			appendStringInfoChar(buf, ')');
-			break;
-		case jpiInteger:
-			appendStringInfoString(buf, ".integer()");
-			break;
-		case jpiNumber:
-			appendStringInfoString(buf, ".number()");
-			break;
-		case jpiStringFunc:
-			appendStringInfoString(buf, ".string()");
-			break;
-		case jpiTime:
-			appendStringInfoString(buf, ".time(");
-			if (v->content.arg)
-			{
-				jspGetArg(v, &elem);
-				printJsonPathItem(buf, &elem, false, false);
-			}
-			appendStringInfoChar(buf, ')');
-			break;
-		case jpiTimeTz:
-			appendStringInfoString(buf, ".time_tz(");
-			if (v->content.arg)
-			{
-				jspGetArg(v, &elem);
-				printJsonPathItem(buf, &elem, false, false);
-			}
-			appendStringInfoChar(buf, ')');
-			break;
-		case jpiTimestamp:
-			appendStringInfoString(buf, ".timestamp(");
-			if (v->content.arg)
-			{
-				jspGetArg(v, &elem);
-				printJsonPathItem(buf, &elem, false, false);
-			}
-			appendStringInfoChar(buf, ')');
-			break;
-		case jpiTimestampTz:
-			appendStringInfoString(buf, ".timestamp_tz(");
-			if (v->content.arg)
-			{
-				jspGetArg(v, &elem);
-				printJsonPathItem(buf, &elem, false, false);
-			}
-			appendStringInfoChar(buf, ')');
-			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", v->type);
 	}
@@ -851,11 +771,11 @@ jspOperationName(JsonPathItemType type)
 			return "<=";
 		case jpiGreaterOrEqual:
 			return ">=";
-		case jpiAdd:
 		case jpiPlus:
+		case jpiAdd:
 			return "+";
-		case jpiSub:
 		case jpiMinus:
+		case jpiSub:
 			return "-";
 		case jpiMul:
 			return "*";
@@ -863,48 +783,26 @@ jspOperationName(JsonPathItemType type)
 			return "/";
 		case jpiMod:
 			return "%";
+		case jpiStartsWith:
+			return "starts with";
+		case jpiLikeRegex:
+			return "like_regex";
 		case jpiType:
 			return "type";
 		case jpiSize:
 			return "size";
+		case jpiKeyValue:
+			return "keyvalue";
+		case jpiDouble:
+			return "double";
 		case jpiAbs:
 			return "abs";
 		case jpiFloor:
 			return "floor";
 		case jpiCeiling:
 			return "ceiling";
-		case jpiDouble:
-			return "double";
 		case jpiDatetime:
 			return "datetime";
-		case jpiKeyValue:
-			return "keyvalue";
-		case jpiStartsWith:
-			return "starts with";
-		case jpiLikeRegex:
-			return "like_regex";
-		case jpiBigint:
-			return "bigint";
-		case jpiBoolean:
-			return "boolean";
-		case jpiDate:
-			return "date";
-		case jpiDecimal:
-			return "decimal";
-		case jpiInteger:
-			return "integer";
-		case jpiNumber:
-			return "number";
-		case jpiStringFunc:
-			return "string";
-		case jpiTime:
-			return "time";
-		case jpiTimeTz:
-			return "time_tz";
-		case jpiTimestamp:
-			return "timestamp";
-		case jpiTimestampTz:
-			return "timestamp_tz";
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", type);
 			return NULL;
@@ -1001,15 +899,9 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiDouble:
 		case jpiKeyValue:
 		case jpiLast:
-		case jpiBigint:
-		case jpiBoolean:
-		case jpiDate:
-		case jpiInteger:
-		case jpiNumber:
-		case jpiStringFunc:
 			break;
-		case jpiString:
 		case jpiKey:
+		case jpiString:
 		case jpiVariable:
 			read_int32(v->content.value.datalen, base, pos);
 			/* FALLTHROUGH */
@@ -1019,33 +911,34 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			break;
 		case jpiAnd:
 		case jpiOr:
+		case jpiAdd:
+		case jpiSub:
+		case jpiMul:
+		case jpiDiv:
+		case jpiMod:
 		case jpiEqual:
 		case jpiNotEqual:
 		case jpiLess:
 		case jpiGreater:
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
-		case jpiAdd:
-		case jpiSub:
-		case jpiMul:
-		case jpiDiv:
-		case jpiMod:
 		case jpiStartsWith:
-		case jpiDecimal:
 			read_int32(v->content.args.left, base, pos);
 			read_int32(v->content.args.right, base, pos);
 			break;
+		case jpiLikeRegex:
+			read_int32(v->content.like_regex.flags, base, pos);
+			read_int32(v->content.like_regex.expr, base, pos);
+			read_int32(v->content.like_regex.patternlen, base, pos);
+			v->content.like_regex.pattern = base + pos;
+			break;
 		case jpiNot:
-		case jpiIsUnknown:
 		case jpiExists:
+		case jpiIsUnknown:
 		case jpiPlus:
 		case jpiMinus:
 		case jpiFilter:
 		case jpiDatetime:
-		case jpiTime:
-		case jpiTimeTz:
-		case jpiTimestamp:
-		case jpiTimestampTz:
 			read_int32(v->content.arg, base, pos);
 			break;
 		case jpiIndexArray:
@@ -1057,12 +950,6 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			read_int32(v->content.anybounds.first, base, pos);
 			read_int32(v->content.anybounds.last, base, pos);
 			break;
-		case jpiLikeRegex:
-			read_int32(v->content.like_regex.flags, base, pos);
-			read_int32(v->content.like_regex.expr, base, pos);
-			read_int32(v->content.like_regex.patternlen, base, pos);
-			v->content.like_regex.pattern = base + pos;
-			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", v->type);
 	}
@@ -1071,17 +958,13 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 void
 jspGetArg(JsonPathItem *v, JsonPathItem *a)
 {
-	Assert(v->type == jpiNot ||
+	Assert(v->type == jpiFilter ||
+		   v->type == jpiNot ||
 		   v->type == jpiIsUnknown ||
+		   v->type == jpiExists ||
 		   v->type == jpiPlus ||
 		   v->type == jpiMinus ||
-		   v->type == jpiFilter ||
-		   v->type == jpiExists ||
-		   v->type == jpiDatetime ||
-		   v->type == jpiTime ||
-		   v->type == jpiTimeTz ||
-		   v->type == jpiTimestamp ||
-		   v->type == jpiTimestampTz);
+		   v->type == jpiDatetime);
 
 	jspInitByBuffer(a, v->base, v->content.arg);
 }
@@ -1091,20 +974,21 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 {
 	if (jspHasNext(v))
 	{
-		Assert(v->type == jpiNull ||
-			   v->type == jpiString ||
+		Assert(v->type == jpiString ||
 			   v->type == jpiNumeric ||
 			   v->type == jpiBool ||
-			   v->type == jpiAnd ||
-			   v->type == jpiOr ||
-			   v->type == jpiNot ||
-			   v->type == jpiIsUnknown ||
-			   v->type == jpiEqual ||
-			   v->type == jpiNotEqual ||
-			   v->type == jpiLess ||
-			   v->type == jpiGreater ||
-			   v->type == jpiLessOrEqual ||
-			   v->type == jpiGreaterOrEqual ||
+			   v->type == jpiNull ||
+			   v->type == jpiKey ||
+			   v->type == jpiAny ||
+			   v->type == jpiAnyArray ||
+			   v->type == jpiAnyKey ||
+			   v->type == jpiIndexArray ||
+			   v->type == jpiFilter ||
+			   v->type == jpiCurrent ||
+			   v->type == jpiExists ||
+			   v->type == jpiRoot ||
+			   v->type == jpiVariable ||
+			   v->type == jpiLast ||
 			   v->type == jpiAdd ||
 			   v->type == jpiSub ||
 			   v->type == jpiMul ||
@@ -1112,16 +996,16 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			   v->type == jpiMod ||
 			   v->type == jpiPlus ||
 			   v->type == jpiMinus ||
-			   v->type == jpiAnyArray ||
-			   v->type == jpiAnyKey ||
-			   v->type == jpiIndexArray ||
-			   v->type == jpiAny ||
-			   v->type == jpiKey ||
-			   v->type == jpiCurrent ||
-			   v->type == jpiRoot ||
-			   v->type == jpiVariable ||
-			   v->type == jpiFilter ||
-			   v->type == jpiExists ||
+			   v->type == jpiEqual ||
+			   v->type == jpiNotEqual ||
+			   v->type == jpiGreater ||
+			   v->type == jpiGreaterOrEqual ||
+			   v->type == jpiLess ||
+			   v->type == jpiLessOrEqual ||
+			   v->type == jpiAnd ||
+			   v->type == jpiOr ||
+			   v->type == jpiNot ||
+			   v->type == jpiIsUnknown ||
 			   v->type == jpiType ||
 			   v->type == jpiSize ||
 			   v->type == jpiAbs ||
@@ -1130,20 +1014,8 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			   v->type == jpiDouble ||
 			   v->type == jpiDatetime ||
 			   v->type == jpiKeyValue ||
-			   v->type == jpiLast ||
 			   v->type == jpiStartsWith ||
-			   v->type == jpiLikeRegex ||
-			   v->type == jpiBigint ||
-			   v->type == jpiBoolean ||
-			   v->type == jpiDate ||
-			   v->type == jpiDecimal ||
-			   v->type == jpiInteger ||
-			   v->type == jpiNumber ||
-			   v->type == jpiStringFunc ||
-			   v->type == jpiTime ||
-			   v->type == jpiTimeTz ||
-			   v->type == jpiTimestamp ||
-			   v->type == jpiTimestampTz);
+			   v->type == jpiLikeRegex);
 
 		if (a)
 			jspInitByBuffer(a, v->base, v->nextPos);
@@ -1169,8 +1041,7 @@ jspGetLeftArg(JsonPathItem *v, JsonPathItem *a)
 		   v->type == jpiMul ||
 		   v->type == jpiDiv ||
 		   v->type == jpiMod ||
-		   v->type == jpiStartsWith ||
-		   v->type == jpiDecimal);
+		   v->type == jpiStartsWith);
 
 	jspInitByBuffer(a, v->base, v->content.args.left);
 }
@@ -1191,8 +1062,7 @@ jspGetRightArg(JsonPathItem *v, JsonPathItem *a)
 		   v->type == jpiMul ||
 		   v->type == jpiDiv ||
 		   v->type == jpiMod ||
-		   v->type == jpiStartsWith ||
-		   v->type == jpiDecimal);
+		   v->type == jpiStartsWith);
 
 	jspInitByBuffer(a, v->base, v->content.args.right);
 }

@@ -1,6 +1,4 @@
 /schemapg.h
-/syscache_ids.h
-/syscache_info.h
 /system_fk_info.h
 /pg_*_d.h
 /header-stamp

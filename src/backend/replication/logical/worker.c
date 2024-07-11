@@ -2,7 +2,7 @@
  * worker.c
  *	   PostgreSQL logical replication worker (apply)
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/worker.c
@@ -132,13 +132,6 @@
  * avoid such deadlocks, we generate a unique GID (consisting of the
  * subscription oid and the xid of the prepared transaction) for each prepare
  * transaction on the subscriber.
- *
- * FAILOVER
- * ----------------------
- * The logical slot on the primary can be synced to the standby by specifying
- * failover = true when creating the subscription. Enabling failover allows us
- * to smoothly transition to the promoted standby, ensuring that we can
- * subscribe to the new primary without losing any data.
  *-------------------------------------------------------------------------
  */
 
@@ -339,7 +332,7 @@ static TransactionId stream_xid = InvalidTransactionId;
  */
 static uint32 parallel_stream_nchanges = 0;
 
-/* Are we initializing an apply worker? */
+/* Are we initializing a apply worker? */
 bool		InitializingApplyWorker = false;
 
 /*
@@ -4519,7 +4512,7 @@ run_apply_worker()
 		!MySubscription->ownersuperuser;
 
 	LogRepWorkerWalRcvConn = walrcv_connect(MySubscription->conninfo, true,
-											true, must_use_password,
+											must_use_password,
 											MySubscription->name, &err);
 
 	if (LogRepWorkerWalRcvConn == NULL)

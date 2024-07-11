@@ -109,6 +109,18 @@
    `LLVMCreatePerfJITEventListener', and to 0 if you don't. */
 #undef HAVE_DECL_LLVMCREATEPERFJITEVENTLISTENER
 
+/* Define to 1 if you have the declaration of `LLVMGetHostCPUFeatures', and to
+   0 if you don't. */
+#undef HAVE_DECL_LLVMGETHOSTCPUFEATURES
+
+/* Define to 1 if you have the declaration of `LLVMGetHostCPUName', and to 0
+   if you don't. */
+#undef HAVE_DECL_LLVMGETHOSTCPUNAME
+
+/* Define to 1 if you have the declaration of `LLVMOrcGetSymbolAddressIn', and
+   to 0 if you don't. */
+#undef HAVE_DECL_LLVMORCGETSYMBOLADDRESSIN
+
 /* Define to 1 if you have the declaration of `posix_fadvise', and to 0 if you
    don't. */
 #undef HAVE_DECL_POSIX_FADVISE
@@ -697,9 +709,6 @@
 
 /* Define to build with ICU support. (--with-icu) */
 #undef USE_ICU
-
-/* Define to 1 to build with injection points. (--enable-injection-points) */
-#undef USE_INJECTION_POINTS
 
 /* Define to 1 to build with LDAP support. (--with-ldap) */
 #undef USE_LDAP

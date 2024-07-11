@@ -9,7 +9,7 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/interfaces/libpq/libpq-int.h
@@ -677,20 +677,9 @@ extern char *const pgresStatus[];
 /* === in fe-connect.c === */
 
 extern void pqDropConnection(PGconn *conn, bool flushInput);
-extern bool pqConnectOptions2(PGconn *conn);
-#if defined(WIN32) && defined(SIO_KEEPALIVE_VALS)
-extern int	pqSetKeepalivesWin32(pgsocket sock, int idle, int interval);
-#endif
-extern int	pqConnectDBStart(PGconn *conn);
-extern int	pqConnectDBComplete(PGconn *conn);
-extern PGconn *pqMakeEmptyPGconn(void);
-extern void pqReleaseConnHosts(PGconn *conn);
-extern void pqClosePGconn(PGconn *conn);
 extern int	pqPacketSend(PGconn *conn, char pack_type,
 						 const void *buf, size_t buf_len);
 extern bool pqGetHomeDirectory(char *buf, int bufsize);
-extern bool pqParseIntParam(const char *value, int *result, PGconn *conn,
-							const char *context);
 
 extern pgthreadlock_t pg_g_threadlock;
 

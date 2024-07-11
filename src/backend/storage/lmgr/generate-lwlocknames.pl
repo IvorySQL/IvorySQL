@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # Generate lwlocknames.h and lwlocknames.c from lwlocknames.txt
-# Copyright (c) 2000-2024, PostgreSQL Global Development Group
+# Copyright (c) 2000-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -16,7 +16,6 @@ GetOptions(
 	'outdir:s'       => \$output_path);
 
 open my $lwlocknames, '<', $ARGV[0] or die;
-open my $wait_event_names, '<', $ARGV[1] or die;
 
 # Include PID in suffix in case parallel make runs this multiple times.
 my $htmp = "$output_path/lwlocknames.h.tmp$$";
@@ -32,40 +31,6 @@ print $c $autogen, "\n";
 
 print $c "const char *const IndividualLWLockNames[] = {";
 
-#
-# First, record the predefined LWLocks listed in wait_event_names.txt.  We'll
-# cross-check those with the ones in lwlocknames.txt.
-#
-my @wait_event_lwlocks;
-my $record_lwlocks = 0;
-
-while (<$wait_event_names>)
-{
-	chomp;
-
-	# Check for end marker.
-	last if /^# END OF PREDEFINED LWLOCKS/;
-
-	# Skip comments and empty lines.
-	next if /^#/;
-	next if /^\s*$/;
-
-	# Start recording LWLocks when we find the WaitEventLWLock section.
-	if (/^Section: ClassName - WaitEventLWLock$/)
-	{
-		$record_lwlocks = 1;
-		next;
-	}
-
-	# Go to the next line if we are not yet recording LWLocks.
-	next if not $record_lwlocks;
-
-	# Record the LWLock.
-	(my $waiteventname, my $waitevendocsentence) = split(/\t/, $_);
-	push(@wait_event_lwlocks, $waiteventname . "Lock");
-}
-
-my $i = 0;
 while (<$lwlocknames>)
 {
 	chomp;
@@ -86,15 +51,6 @@ while (<$lwlocknames>)
 	die "lwlocknames.txt not in order"   if $lockidx < $lastlockidx;
 	die "lwlocknames.txt has duplicates" if $lockidx == $lastlockidx;
 
-	die "$lockname defined in lwlocknames.txt but missing from "
-	  . "wait_event_names.txt"
-	  if $i >= scalar @wait_event_lwlocks;
-	die "lists of predefined LWLocks do not match (first mismatch at "
-	  . "$wait_event_lwlocks[$i] in wait_event_names.txt and $lockname in "
-	  . "lwlocknames.txt)"
-	  if $wait_event_lwlocks[$i] ne $lockname;
-	$i++;
-
 	while ($lastlockidx < $lockidx - 1)
 	{
 		++$lastlockidx;
@@ -107,11 +63,6 @@ while (<$lwlocknames>)
 
 	print $h "#define $lockname (&MainLWLockArray[$lockidx].lock)\n";
 }
-
-die
-  "$wait_event_lwlocks[$i] defined in wait_event_names.txt but missing from "
-  . "lwlocknames.txt"
-  if $i < scalar @wait_event_lwlocks;
 
 printf $c "\n};\n";
 print $h "\n";

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -290,7 +290,7 @@ select column1::jsonb from (values (:value), (:long)) as q;
 my $log = PostgreSQL::Test::Utils::slurp_file($node->logfile);
 unlike(
 	$log,
-	qr[DETAIL:  Parameters: \$1 = '\{ invalid ',],
+	qr[DETAIL:  parameters: \$1 = '\{ invalid ',],
 	"no parameters logged");
 $log = undef;
 
@@ -331,7 +331,7 @@ select column1::jsonb from (values (:value), (:long)) as q;
 $log = PostgreSQL::Test::Utils::slurp_file($node->logfile);
 like(
 	$log,
-	qr[DETAIL:  Parameters: \$1 = '\{ invalid ', \$2 = '''Valame Dios!'' dijo Sancho; ''no le dije yo a vuestra merced que mirase bien lo que hacia\?'''],
+	qr[DETAIL:  parameters: \$1 = '\{ invalid ', \$2 = '''Valame Dios!'' dijo Sancho; ''no le dije yo a vuestra merced que mirase bien lo que hacia\?'''],
 	"parameter report does not truncate");
 $log = undef;
 
@@ -376,7 +376,7 @@ select column1::jsonb from (values (:value), (:long)) as q;
 $log = PostgreSQL::Test::Utils::slurp_file($node->logfile);
 like(
 	$log,
-	qr[DETAIL:  Parameters: \$1 = '\{ inval\.\.\.', \$2 = '''Valame\.\.\.'],
+	qr[DETAIL:  parameters: \$1 = '\{ inval\.\.\.', \$2 = '''Valame\.\.\.'],
 	"parameter report truncates");
 $log = undef;
 
@@ -814,27 +814,6 @@ $node->pgbench(
 }
 	});
 
-# Working \startpipeline with \syncpipeline
-$node->pgbench(
-	'-t 1 -n -M extended',
-	0,
-	[ qr{type: .*/001_pgbench_pipeline_sync}, qr{actually processed: 1/1} ],
-	[],
-	'working \startpipeline with \syncpipeline',
-	{
-		'001_pgbench_pipeline_sync' => q{
--- test startpipeline
-\startpipeline
-select 1;
-\syncpipeline
-\syncpipeline
-select 2;
-\syncpipeline
-select 3;
-\endpipeline
-}
-	});
-
 # Working \startpipeline in prepared query mode
 $node->pgbench(
 	'-t 1 -n -M prepared',
@@ -894,49 +873,6 @@ $node->pgbench(
 \startpipeline
 select 1 \gset f
 \endpipeline
-}
-	});
-
-# Try \startpipeline without \endpipeline in a single transaction
-$node->pgbench(
-	'-t 1 -n -M extended',
-	2,
-	[],
-	[qr{end of script reached with pipeline open}],
-	'error: call \startpipeline without \endpipeline in a single transaction',
-	{
-		'001_pgbench_pipeline_5' => q{
--- startpipeline only with single transaction
-\startpipeline
-}
-	});
-
-# Try \startpipeline without \endpipeline
-$node->pgbench(
-	'-t 2 -n -M extended',
-	2,
-	[],
-	[qr{end of script reached with pipeline open}],
-	'error: call \startpipeline without \endpipeline',
-	{
-		'001_pgbench_pipeline_6' => q{
--- startpipeline only
-\startpipeline
-}
-	});
-
-# Try \startpipeline with \syncpipeline without \endpipeline
-$node->pgbench(
-	'-t 2 -n -M extended',
-	2,
-	[],
-	[qr{end of script reached with pipeline open}],
-	'error: call \startpipeline and \syncpipeline without \endpipeline',
-	{
-		'001_pgbench_pipeline_7' => q{
--- startpipeline with \syncpipeline only
-\startpipeline
-\syncpipeline
 }
 	});
 
