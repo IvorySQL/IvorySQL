@@ -7,7 +7,7 @@
  *	  IvorySQL BISON rules/actions  (Oracle compatible)
  *
  * Portions Copyright (c) 2023, IvorySQL Global Development Team
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -340,7 +340,6 @@ static void determineLanguage(List *options);
 %type <list>	alter_table_cmds alter_type_cmds
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
-%type <node>	set_statistics_value
 
 %type <list>	createdb_opt_list createdb_opt_items copy_opt_list
 				transaction_mode_list
@@ -533,7 +532,7 @@ static void determineLanguage(List *options);
 				columnref in_expr having_clause func_table xmltable array_expr
 				OptWhereClause operator_def_arg
 %type <list>	rowsfrom_item rowsfrom_list opt_col_def_list
-%type <boolean> opt_ordinality opt_without_overlaps
+%type <boolean> opt_ordinality
 %type <list>	ExclusionConstraintList ExclusionConstraintElem
 %type <list>	func_arg_list func_arg_list_opt
 %type <node>	func_arg_expr
@@ -2512,16 +2511,6 @@ alter_table_cmd:
 					n->name = $3;
 					$$ = (Node *) n;
 				}
-			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET EXPRESSION AS <expr> */
-			| ALTER opt_column ColId SET EXPRESSION AS '(' a_expr ')'
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-
-					n->subtype = AT_SetExpression;
-					n->name = $3;
-					n->def = $8;
-					$$ = (Node *) n;
-				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP EXPRESSION */
 			| ALTER opt_column ColId DROP EXPRESSION
 				{
@@ -2541,18 +2530,18 @@ alter_table_cmd:
 					n->missing_ok = true;
 					$$ = (Node *) n;
 				}
-			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STATISTICS */
-			| ALTER opt_column ColId SET STATISTICS set_statistics_value
+			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STATISTICS <SignedIconst> */
+			| ALTER opt_column ColId SET STATISTICS SignedIconst
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_SetStatistics;
 					n->name = $3;
-					n->def = $6;
+					n->def = (Node *) makeInteger($6);
 					$$ = (Node *) n;
 				}
-			/* ALTER TABLE <name> ALTER [COLUMN] <colnum> SET STATISTICS */
-			| ALTER opt_column Iconst SET STATISTICS set_statistics_value
+			/* ALTER TABLE <name> ALTER [COLUMN] <colnum> SET STATISTICS <SignedIconst> */
+			| ALTER opt_column Iconst SET STATISTICS SignedIconst
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -2564,7 +2553,7 @@ alter_table_cmd:
 
 					n->subtype = AT_SetStatistics;
 					n->num = (int16) $3;
-					n->def = $6;
+					n->def = (Node *) makeInteger($6);
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET ( column_parameter = value [, ... ] ) */
@@ -3164,11 +3153,6 @@ alter_identity_column_option:
 					$$ = makeDefElem("generated", (Node *) makeInteger($3), @1);
 				}
 		;
-set_statistics_value:
-			SignedIconst					{ $$ = (Node *) makeInteger($1); }
-			| DEFAULT						{ $$ = NULL; }
-		;
-
 identity_clause:
 		'(' identity_options ')'		{ $$ = $2; }
 		| identity_options				{ $$ = $1; }
@@ -4286,7 +4270,7 @@ ConstraintElem:
 					n->initially_valid = true;
 					$$ = (Node *) n;
 				}
-			| UNIQUE opt_unique_null_treatment '(' columnList opt_without_overlaps ')' opt_c_include opt_definition OptConsTableSpace
+			| UNIQUE opt_unique_null_treatment '(' columnList ')' opt_c_include opt_definition OptConsTableSpace
 				ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
@@ -4295,12 +4279,11 @@ ConstraintElem:
 					n->location = @1;
 					n->nulls_not_distinct = !$2;
 					n->keys = $4;
-					n->without_overlaps = $5;
-					n->including = $7;
-					n->options = $8;
+					n->including = $6;
+					n->options = $7;
 					n->indexname = NULL;
-					n->indexspace = $9;
-					processCASbits($10, @10, "UNIQUE",
+					n->indexspace = $8;
+					processCASbits($9, @9, "UNIQUE",
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
 					$$ = (Node *) n;
@@ -4321,7 +4304,7 @@ ConstraintElem:
 								   NULL, yyscanner);
 					$$ = (Node *) n;
 				}
-			| PRIMARY KEY '(' columnList opt_without_overlaps ')' opt_c_include opt_definition OptConsTableSpace
+			| PRIMARY KEY '(' columnList ')' opt_c_include opt_definition OptConsTableSpace
 				ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
@@ -4329,12 +4312,11 @@ ConstraintElem:
 					n->contype = CONSTR_PRIMARY;
 					n->location = @1;
 					n->keys = $4;
-					n->without_overlaps = $5;
-					n->including = $7;
-					n->options = $8;
+					n->including = $6;
+					n->options = $7;
 					n->indexname = NULL;
-					n->indexspace = $9;
-					processCASbits($10, @10, "PRIMARY KEY",
+					n->indexspace = $8;
+					processCASbits($9, @9, "PRIMARY KEY",
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
 					$$ = (Node *) n;
@@ -4401,11 +4383,6 @@ ConstraintElem:
 opt_no_inherit:	NO INHERIT							{  $$ = true; }
 			| /* EMPTY */							{  $$ = false; }
 		;
-
-opt_without_overlaps:
-			WITHOUT OVERLAPS						{ $$ = true; }
-			| /*EMPTY*/								{ $$ = false; }
-	;
 
 opt_column_list:
 			'(' columnList ')'						{ $$ = $2; }

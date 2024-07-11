@@ -1,6 +1,3 @@
-
-# Copyright (c) 2024, PostgreSQL Global Development Group
-
 use strict;
 use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;

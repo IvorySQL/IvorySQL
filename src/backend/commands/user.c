@@ -3,7 +3,7 @@
  * user.c
  *	  Commands for manipulating roles (formerly called users).
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/commands/user.c
@@ -868,7 +868,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("permission denied to alter role"),
-					 errdetail("The bootstrap superuser must have the %s attribute.",
+					 errdetail("The bootstrap user must have the %s attribute.",
 							   "SUPERUSER")));
 
 		new_record[Anum_pg_authid_rolsuper - 1] = BoolGetDatum(should_be_super);
@@ -1093,7 +1093,7 @@ DropRole(DropRoleStmt *stmt)
 	Relation	pg_authid_rel,
 				pg_auth_members_rel;
 	ListCell   *item;
-	List	   *role_oids = NIL;
+	List	   *role_addresses = NIL;
 
 	if (!have_createrole_privilege())
 		ereport(ERROR,
@@ -1119,6 +1119,7 @@ DropRole(DropRoleStmt *stmt)
 		ScanKeyData scankey;
 		SysScanDesc sscan;
 		Oid			roleid;
+		ObjectAddress *role_address;
 
 		if (rolspec->roletype != ROLESPEC_CSTRING)
 			ereport(ERROR,
@@ -1259,16 +1260,21 @@ DropRole(DropRoleStmt *stmt)
 		 */
 		CommandCounterIncrement();
 
-		/* Looks tentatively OK, add it to the list if not there yet. */
-		role_oids = list_append_unique_oid(role_oids, roleid);
+		/* Looks tentatively OK, add it to the list. */
+		role_address = palloc(sizeof(ObjectAddress));
+		role_address->classId = AuthIdRelationId;
+		role_address->objectId = roleid;
+		role_address->objectSubId = 0;
+		role_addresses = lappend(role_addresses, role_address);
 	}
 
 	/*
 	 * Second pass over the roles to be removed.
 	 */
-	foreach(item, role_oids)
+	foreach(item, role_addresses)
 	{
-		Oid			roleid = lfirst_oid(item);
+		ObjectAddress *role_address = lfirst(item);
+		Oid			roleid = role_address->objectId;
 		HeapTuple	tuple;
 		Form_pg_authid roleform;
 		char	   *detail;

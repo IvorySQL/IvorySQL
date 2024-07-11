@@ -15,7 +15,7 @@
  * allows approximate solutions in polynomial time (the general case of the
  * exact problem is NP-hard).
  *
- * Copyright (c) 2017-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/knapsack.c
@@ -89,7 +89,10 @@ DiscreteKnapsack(int max_weight, int num_items,
 			{
 				/* copy sets[ow] to sets[j] without realloc */
 				if (j != ow)
-					sets[j] = bms_replace_members(sets[j], sets[ow]);
+				{
+					sets[j] = bms_del_members(sets[j], sets[j]);
+					sets[j] = bms_add_members(sets[j], sets[ow]);
+				}
 
 				sets[j] = bms_add_member(sets[j], i);
 

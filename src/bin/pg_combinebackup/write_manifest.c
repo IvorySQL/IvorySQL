@@ -2,7 +2,7 @@
  *
  * Write a new backup manifest.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_combinebackup/write_manifest.c
@@ -241,6 +241,8 @@ escape_json(StringInfo buf, const char *str)
 static void
 flush_manifest(manifest_writer *mwriter)
 {
+	char		pathname[MAXPGPATH];
+
 	if (mwriter->fd == -1 &&
 		(mwriter->fd = open(mwriter->pathname,
 							O_WRONLY | O_CREAT | O_EXCL | PG_BINARY,
@@ -258,15 +260,13 @@ flush_manifest(manifest_writer *mwriter)
 				pg_fatal("could not write \"%s\": %m", mwriter->pathname);
 			else
 				pg_fatal("could not write file \"%s\": wrote only %d of %d bytes",
-						 mwriter->pathname, (int) wb, mwriter->buf.len);
+						 pathname, (int) wb, mwriter->buf.len);
 		}
 
-		if (mwriter->still_checksumming &&
+		if (mwriter->still_checksumming)
 			pg_checksum_update(&mwriter->manifest_ctx,
 							   (uint8 *) mwriter->buf.data,
-							   mwriter->buf.len) < 0)
-			pg_fatal("could not update checksum of file \"%s\"",
-					 mwriter->pathname);
+							   mwriter->buf.len);
 		resetStringInfo(&mwriter->buf);
 	}
 }

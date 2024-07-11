@@ -1,10 +1,10 @@
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023, PostgreSQL Global Development Group
 
 # Tests for checking that pg_stat_statements contents are preserved
 # across restarts.
 
 use strict;
-use warnings FATAL => 'all';
+use warnings;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;

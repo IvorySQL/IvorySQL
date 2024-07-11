@@ -999,8 +999,7 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
        <literal>client backend</literal>, <literal>checkpointer</literal>,
        <literal>archiver</literal>, <literal>standalone backend</literal>,
        <literal>startup</literal>, <literal>walreceiver</literal>,
-       <literal>walsender</literal>, <literal>walwriter</literal> and
-       <literal>walsummarizer</literal>.
+       <literal>walsender</literal> and <literal>walwriter</literal>.
        In addition, background workers registered by extensions may have
        additional types.
       </para></entry>
@@ -2584,7 +2583,7 @@ description | Waiting for a newly initialized WAL file to reach durable storage
           <literal>vacuum</literal>: I/O operations performed outside of shared
           buffers while vacuuming and analyzing permanent relations. Temporary
           table vacuums use the same local buffer pool as other temporary table
-          I/O operations and are tracked in <varname>context</varname>
+          IO operations and are tracked in <varname>context</varname>
           <literal>normal</literal>.
          </para>
         </listitem>
@@ -2860,7 +2859,7 @@ description | Waiting for a newly initialized WAL file to reach durable storage
     Columns tracking I/O time will only be non-zero when
     <xref linkend="guc-track-io-timing"/> is enabled. The user should be
     careful when referencing these columns in combination with their
-    corresponding I/O operations in case <varname>track_io_timing</varname>
+    corresponding IO operations in case <varname>track_io_timing</varname>
     was not enabled for the entire time since the last stats reset.
    </para>
   </note>
@@ -5734,7 +5733,7 @@ FROM pg_stat_get_backend_idset() AS backendid;
        <structfield>type</structfield> <type>text</type>
       </para>
       <para>
-       The I/O type that the data is read from or written to:
+       The io type that the data is read from or written to:
        <literal>FILE</literal>, <literal>PROGRAM</literal>,
        <literal>PIPE</literal> (for <command>COPY FROM STDIN</command> and
        <command>COPY TO STDOUT</command>), or <literal>CALLBACK</literal>
@@ -5778,18 +5777,6 @@ FROM pg_stat_get_backend_idset() AS backendid;
       <para>
        Number of tuples not processed because they were excluded by the
        <command>WHERE</command> clause of the <command>COPY</command> command.
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>tuples_skipped</structfield> <type>bigint</type>
-      </para>
-      <para>
-       Number of tuples skipped because they contain malformed data.
-       This counter only advances when a value other than
-       <literal>stop</literal> is specified to the <literal>ON_ERROR</literal>
-       option.
       </para></entry>
      </row>
     </tbody>

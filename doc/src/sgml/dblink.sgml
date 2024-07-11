@@ -37,15 +37,6 @@
     </para>
    </listitem>
   </varlistentry>
-
-  <varlistentry>
-   <term><literal>DblinkGetResult</literal></term>
-   <listitem>
-    <para>
-     Waiting to receive the results of a query from a remote server.
-    </para>
-   </listitem>
-  </varlistentry>
  </variablelist>
 
  <para>

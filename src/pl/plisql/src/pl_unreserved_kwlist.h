@@ -8,7 +8,7 @@
  * be defined by the caller for special purposes.
  *
  * Portions Copyright (c) 2023, IvorySQL Global Development Team
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/pl/plisql/src/pl_unreserved_kwlist.h

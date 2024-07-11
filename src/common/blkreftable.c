@@ -18,7 +18,7 @@
  * later be marked as modified again; if that happens, it means the relation
  * was re-extended.
  *
- * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * src/common/blkreftable.c
  *
@@ -988,7 +988,8 @@ BlockRefTableEntryMarkBlockModified(BlockRefTableEntry *entry,
 		 */
 		max_chunks = Max(16, entry->nchunks);
 		while (max_chunks < chunkno + 1)
-			max_chunks *= 2;
+			chunkno *= 2;
+		Assert(max_chunks > chunkno);
 		extra_chunks = max_chunks - entry->nchunks;
 
 		if (entry->nchunks == 0)

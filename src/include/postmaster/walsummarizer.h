@@ -4,7 +4,7 @@
  *
  * Header file for background WAL summarization process.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/include/postmaster/walsummarizer.h
@@ -16,17 +16,13 @@
 
 #include "access/xlogdefs.h"
 
-extern PGDLLIMPORT bool summarize_wal;
-extern PGDLLIMPORT int wal_summary_keep_time;
+extern bool summarize_wal;
+extern int	wal_summary_keep_time;
 
 extern Size WalSummarizerShmemSize(void);
 extern void WalSummarizerShmemInit(void);
 extern void WalSummarizerMain(void) pg_attribute_noreturn();
 
-extern void GetWalSummarizerState(TimeLineID *summarized_tli,
-								  XLogRecPtr *summarized_lsn,
-								  XLogRecPtr *pending_lsn,
-								  int *summarizer_pid);
 extern XLogRecPtr GetOldestUnsummarizedLSN(TimeLineID *tli,
 										   bool *lsn_is_exact,
 										   bool reset_pending_lsn);

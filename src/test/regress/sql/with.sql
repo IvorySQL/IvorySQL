@@ -33,11 +33,11 @@ SELECT * FROM t;
 
 -- UNION DISTINCT requires hashable type
 WITH RECURSIVE t(n) AS (
-    VALUES ('01'::varbit)
+    VALUES (1::money)
 UNION
-    SELECT n || '10'::varbit FROM t WHERE n < '100'::varbit
+    SELECT n+1::money FROM t WHERE n < 100::money
 )
-SELECT n FROM t;
+SELECT sum(n) FROM t;
 
 -- recursive view
 CREATE RECURSIVE VIEW nums (n) AS
@@ -351,11 +351,6 @@ SELECT t1.id, t2.path, t2 FROM t AS t1 JOIN t AS t2 ON
 -- to upper planner (otherwise, we'd get a stupider plan)
 explain (costs off)
 with x as materialized (select unique1 from tenk1 b)
-select count(*) from tenk1 a
-  where unique1 in (select * from x);
-
-explain (costs off)
-with x as materialized (insert into tenk1 default values returning unique1)
 select count(*) from tenk1 a
   where unique1 in (select * from x);
 

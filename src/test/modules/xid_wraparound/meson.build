@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023, PostgreSQL Global Development Group
 
 xid_wraparound_sources = files(
   'xid_wraparound.c',
@@ -12,13 +12,14 @@ endif
 
 xid_wraparound = shared_module('xid_wraparound',
   xid_wraparound_sources,
-  kwargs: pg_test_mod_args,
+  kwargs: pg_mod_args,
 )
-test_install_libs += xid_wraparound
+testprep_targets += xid_wraparound
 
-test_install_data += files(
+install_data(
   'xid_wraparound.control',
   'xid_wraparound--1.0.sql',
+  kwargs: contrib_data_args,
 )
 
 tests += {

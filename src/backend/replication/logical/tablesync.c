@@ -2,7 +2,7 @@
  * tablesync.c
  *	  PostgreSQL logical replication: initial table data synchronization
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/tablesync.c
@@ -1036,11 +1036,11 @@ fetch_remote_table_info(char *nspname, char *relname,
 
 		/* Build the pubname list. */
 		initStringInfo(&pub_names);
-		foreach_node(String, pubstr, MySubscription->publications)
+		foreach(lc, MySubscription->publications)
 		{
-			char	   *pubname = strVal(pubstr);
+			char	   *pubname = strVal(lfirst(lc));
 
-			if (foreach_current_index(pubstr) > 0)
+			if (foreach_current_index(lc) > 0)
 				appendStringInfoString(&pub_names, ", ");
 
 			appendStringInfoString(&pub_names, quote_literal_cstr(pubname));
@@ -1329,7 +1329,7 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 	 * so that synchronous replication can distinguish them.
 	 */
 	LogRepWorkerWalRcvConn =
-		walrcv_connect(MySubscription->conninfo, true, true,
+		walrcv_connect(MySubscription->conninfo, true,
 					   must_use_password,
 					   slotname, &err);
 	if (LogRepWorkerWalRcvConn == NULL)
@@ -1430,7 +1430,6 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 	 */
 	walrcv_create_slot(LogRepWorkerWalRcvConn,
 					   slotname, false /* permanent */ , false /* two_phase */ ,
-					   MySubscription->failover,
 					   CRS_USE_SNAPSHOT, origin_startpos);
 
 	/*

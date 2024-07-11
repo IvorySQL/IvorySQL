@@ -85,7 +85,6 @@ AlterOwnerStmt
 AlterPolicyStmt
 AlterPublicationAction
 AlterPublicationStmt
-AlterReplicationSlotCmd
 AlterRoleSetStmt
 AlterRoleStmt
 AlterSeqStmt
@@ -98,7 +97,6 @@ AlterTSConfigurationStmt
 AlterTSDictionaryStmt
 AlterTableCmd
 AlterTableMoveAllStmt
-AlterTablePass
 AlterTableSpaceOptionsStmt
 AlterTableStmt
 AlterTableType
@@ -479,7 +477,6 @@ CopyHeaderChoice
 CopyInsertMethod
 CopyMultiInsertBuffer
 CopyMultiInsertInfo
-CopyOnErrorChoice
 CopySource
 CopyStmt
 CopyToState
@@ -612,8 +609,6 @@ DropSubscriptionStmt
 DropTableSpaceStmt
 DropUserMappingStmt
 DropdbStmt
-DSMRegistryCtxStruct
-DSMRegistryEntry
 DumpComponents
 DumpId
 DumpOptions
@@ -1206,8 +1201,6 @@ InheritableSocket
 InitSampleScan_function
 InitializeDSMForeignScan_function
 InitializeWorkerForeignScan_function
-InjectionPointCacheEntry
-InjectionPointEntry
 InlineCodeBlock
 InsertStmt
 Instrumentation
@@ -1411,6 +1404,7 @@ LPVOID
 LPWSTR
 LSEG
 LUID
+LVPagePruneState
 LVRelState
 LVSavedErrInfo
 LWLock
@@ -2352,6 +2346,7 @@ ReorderBufferStreamTruncateCB
 ReorderBufferTXN
 ReorderBufferTXNByIdEnt
 ReorderBufferToastEnt
+ReorderBufferTupleBuf
 ReorderBufferTupleCidEnt
 ReorderBufferTupleCidKey
 ReorderBufferUpdateProgressTxnCB
@@ -2484,8 +2479,6 @@ ScanState
 ScanTypeControl
 ScannerCallbackState
 SchemaQuery
-SearchPathCacheEntry
-SearchPathCacheKey
 SearchPathMatcher
 SecBuffer
 SecBufferDesc
@@ -2640,10 +2633,10 @@ SpecialJoinInfo
 SpinDelayStatus
 SplitInterval
 SplitLR
-SplitPageLayout
 SplitPoint
 SplitTextOutputData
 SplitVar
+SplitedPageLayout
 StackElem
 StartDataPtrType
 StartLOPtrType
@@ -2675,7 +2668,6 @@ SubLinkType
 SubOpts
 SubPlan
 SubPlanState
-SubRelInfo
 SubRemoveRels
 SubTransactionId
 SubXactCallback
@@ -2758,7 +2750,6 @@ TSQuerySign
 TSReadPointer
 TSTemplateInfo
 TSTernaryValue
-TSTokenTypeItem
 TSTokenTypeStorage
 TSVector
 TSVectorBuildState
@@ -2804,7 +2795,6 @@ Tcl_NotifierProcs
 Tcl_Obj
 Tcl_Time
 TempNamespaceStatus
-TestDSMRegistryStruct
 TestDecodingData
 TestDecodingTxnData
 TestSpec
@@ -3335,7 +3325,6 @@ exec_thread_arg
 execution_state
 explain_get_index_name_hook_type
 f_smgr
-fasthash_state
 fd_set
 fe_scram_state
 fe_scram_state_enum
@@ -3524,7 +3513,6 @@ needs_fmgr_hook_type
 network_sortsupport_state
 nodeitem
 normal_rand_fctx
-nsphash_hash
 ntile_context
 numeric
 object_access_hook_type
@@ -3881,7 +3869,6 @@ varattrib_1b_e
 varattrib_4b
 vbits
 verifier_context
-walrcv_alter_slot_fn
 walrcv_check_conninfo_fn
 walrcv_connect_fn
 walrcv_create_slot_fn
@@ -4047,6 +4034,3 @@ cb_tablespace_mapping
 manifest_data
 manifest_writer
 rfile
-ws_options
-ws_file_info
-PathKeyInfo

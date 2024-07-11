@@ -3,7 +3,7 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -872,6 +872,33 @@ get_attnum(Oid relid, const char *attname)
 	}
 	else
 		return InvalidAttrNumber;
+}
+
+/*
+ * get_attstattarget
+ *
+ *		Given the relation id and the attribute number,
+ *		return the "attstattarget" field from the attribute relation.
+ *
+ *		Errors if not found.
+ */
+int
+get_attstattarget(Oid relid, AttrNumber attnum)
+{
+	HeapTuple	tp;
+	Form_pg_attribute att_tup;
+	int			result;
+
+	tp = SearchSysCache2(ATTNUM,
+						 ObjectIdGetDatum(relid),
+						 Int16GetDatum(attnum));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+			 attnum, relid);
+	att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+	result = att_tup->attstattarget;
+	ReleaseSysCache(tp);
+	return result;
 }
 
 /*

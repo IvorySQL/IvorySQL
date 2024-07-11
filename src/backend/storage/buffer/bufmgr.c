@@ -3,7 +3,7 @@
  * bufmgr.c
  *	  buffer manager interface routines
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -934,6 +934,10 @@ ExtendBufferedRelTo(BufferManagerRelation bmr,
 	{
 		LockRelationForExtension(bmr.rel, ExclusiveLock);
 
+		/* could have been closed while waiting for lock */
+		if (bmr.rel)
+			bmr.smgr = RelationGetSmgr(bmr.rel);
+
 		/* recheck, fork might have been created concurrently */
 		if (!smgrexists(bmr.smgr, fork))
 			smgrcreate(bmr.smgr, fork, flags & EB_PERFORMING_RECOVERY);
@@ -1344,8 +1348,8 @@ BufferAlloc(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 		UnpinBuffer(victim_buf_hdr);
 
 		/*
-		 * The victim buffer we acquired previously is clean and unused, let
-		 * it be found again quickly
+		 * The victim buffer we acquired peviously is clean and unused, let it
+		 * be found again quickly
 		 */
 		StrategyFreeBuffer(victim_buf_hdr);
 
@@ -1893,7 +1897,11 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 	 * we get the lock.
 	 */
 	if (!(flags & EB_SKIP_EXTENSION_LOCK))
+	{
 		LockRelationForExtension(bmr.rel, ExclusiveLock);
+		if (bmr.rel)
+			bmr.smgr = RelationGetSmgr(bmr.rel);
+	}
 
 	/*
 	 * If requested, invalidate size cache, so that smgrnblocks asks the
@@ -1924,7 +1932,7 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 			BufferDesc *buf_hdr = GetBufferDescriptor(buffers[i] - 1);
 
 			/*
-			 * The victim buffer we acquired previously is clean and unused,
+			 * The victim buffer we acquired peviously is clean and unused,
 			 * let it be found again quickly
 			 */
 			StrategyFreeBuffer(buf_hdr);
@@ -2004,7 +2012,7 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 			LWLockRelease(partition_lock);
 
 			/*
-			 * The victim buffer we acquired previously is clean and unused,
+			 * The victim buffer we acquired peviously is clean and unused,
 			 * let it be found again quickly
 			 */
 			StrategyFreeBuffer(victim_buf_hdr);
@@ -4147,7 +4155,6 @@ FlushRelationBuffers(Relation rel)
 {
 	int			i;
 	BufferDesc *bufHdr;
-	SMgrRelation srel = RelationGetSmgr(rel);
 
 	if (RelationUsesLocalBuffers(rel))
 	{
@@ -4176,7 +4183,7 @@ FlushRelationBuffers(Relation rel)
 
 				io_start = pgstat_prepare_io_time(track_io_timing);
 
-				smgrwrite(srel,
+				smgrwrite(RelationGetSmgr(rel),
 						  BufTagGetForkNum(&bufHdr->tag),
 						  bufHdr->tag.blockNum,
 						  localpage,
@@ -4222,7 +4229,7 @@ FlushRelationBuffers(Relation rel)
 		{
 			PinBuffer_Locked(bufHdr);
 			LWLockAcquire(BufferDescriptorGetContentLock(bufHdr), LW_SHARED);
-			FlushBuffer(bufHdr, srel, IOOBJECT_RELATION, IOCONTEXT_NORMAL);
+			FlushBuffer(bufHdr, RelationGetSmgr(rel), IOOBJECT_RELATION, IOCONTEXT_NORMAL);
 			LWLockRelease(BufferDescriptorGetContentLock(bufHdr));
 			UnpinBuffer(bufHdr);
 		}
@@ -4435,16 +4442,12 @@ void
 CreateAndCopyRelationData(RelFileLocator src_rlocator,
 						  RelFileLocator dst_rlocator, bool permanent)
 {
+	RelFileLocatorBackend rlocator;
 	char		relpersistence;
-	SMgrRelation src_rel;
-	SMgrRelation dst_rel;
 
 	/* Set the relpersistence. */
 	relpersistence = permanent ?
 		RELPERSISTENCE_PERMANENT : RELPERSISTENCE_UNLOGGED;
-
-	src_rel = smgropen(src_rlocator, InvalidBackendId);
-	dst_rel = smgropen(dst_rlocator, InvalidBackendId);
 
 	/*
 	 * Create and copy all forks of the relation.  During create database we
@@ -4462,9 +4465,9 @@ CreateAndCopyRelationData(RelFileLocator src_rlocator,
 	for (ForkNumber forkNum = MAIN_FORKNUM + 1;
 		 forkNum <= MAX_FORKNUM; forkNum++)
 	{
-		if (smgrexists(src_rel, forkNum))
+		if (smgrexists(smgropen(src_rlocator, InvalidBackendId), forkNum))
 		{
-			smgrcreate(dst_rel, forkNum, false);
+			smgrcreate(smgropen(dst_rlocator, InvalidBackendId), forkNum, false);
 
 			/*
 			 * WAL log creation if the relation is persistent, or this is the
@@ -4478,6 +4481,15 @@ CreateAndCopyRelationData(RelFileLocator src_rlocator,
 										   permanent);
 		}
 	}
+
+	/* close source and destination smgr if exists. */
+	rlocator.backend = InvalidBackendId;
+
+	rlocator.locator = src_rlocator;
+	smgrcloserellocator(rlocator);
+
+	rlocator.locator = dst_rlocator;
+	smgrcloserellocator(rlocator);
 }
 
 /* ---------------------------------------------------------------------

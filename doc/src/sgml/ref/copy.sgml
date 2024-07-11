@@ -43,7 +43,6 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
     FORCE_QUOTE { ( <replaceable class="parameter">column_name</replaceable> [, ...] ) | * }
     FORCE_NOT_NULL { ( <replaceable class="parameter">column_name</replaceable> [, ...] ) | * }
     FORCE_NULL { ( <replaceable class="parameter">column_name</replaceable> [, ...] ) | * }
-    ON_ERROR '<replaceable class="parameter">error_action</replaceable>'
     ENCODING '<replaceable class="parameter">encoding_name</replaceable>'
 </synopsis>
  </refsynopsisdiv>
@@ -90,13 +89,6 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
     in the <structname>pg_stat_progress_copy</structname> view. See
     <xref linkend="copy-progress-reporting"/> for details.
   </para>
-
-  <para>
-    By default, <command>COPY</command> will fail if it encounters an error
-    during processing. For use cases where a best-effort attempt at loading
-    the entire file is desired, the <literal>ON_ERROR</literal> clause can
-    be used to specify some other behavior.
-  </para>
  </refsect1>
 
  <refsect1>
@@ -136,10 +128,10 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
      </para>
      <para>
       For <command>INSERT</command>, <command>UPDATE</command> and
-      <command>DELETE</command> queries a <literal>RETURNING</literal> clause
-      must be provided, and the target relation must not have a conditional
-      rule, nor an <literal>ALSO</literal> rule, nor an
-      <literal>INSTEAD</literal> rule that expands to multiple statements.
+      <command>DELETE</command> queries a RETURNING clause must be provided,
+      and the target relation must not have a conditional rule, nor
+      an <literal>ALSO</literal> rule, nor an <literal>INSTEAD</literal> rule
+      that expands to multiple statements.
      </para>
     </listitem>
    </varlistentry>
@@ -382,28 +374,6 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
    </varlistentry>
 
    <varlistentry>
-    <term><literal>ON_ERROR</literal></term>
-    <listitem>
-     <para>
-      Specifies how to behave when encountering an error converting a column's
-      input value into its data type.
-      An <replaceable class="parameter">error_action</replaceable> value of
-      <literal>stop</literal> means fail the command, while
-      <literal>ignore</literal> means discard the input row and continue with the next one.
-      The default is <literal>stop</literal>.
-     </para>
-     <para>
-      The <literal>ignore</literal> option is applicable only for <command>COPY FROM</command>
-      when the <literal>FORMAT</literal> is <literal>text</literal> or <literal>csv</literal>.
-     </para>
-     <para>
-      A <literal>NOTICE</literal> message containing the ignored row count is emitted at the end
-      of the <command>COPY FROM</command> if at least one row was discarded.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   <varlistentry>
     <term><literal>ENCODING</literal></term>
     <listitem>
      <para>
@@ -586,13 +556,14 @@ COPY <replaceable class="parameter">count</replaceable>
    </para>
 
    <para>
-    The <command>COPY FROM</command> command physically inserts input rows
-    into the table as it progresses.  If the command fails, these rows are
-    left in a deleted state; these rows will not be visible, but still
-    occupy disk space. This might amount to considerable
-    wasted disk space if the failure happened well into a large copy
-    operation. <command>VACUUM</command> should be used to recover the
-    wasted space.
+    <command>COPY</command> stops operation at the first error. This
+    should not lead to problems in the event of a <command>COPY
+    TO</command>, but the target table will already have received
+    earlier rows in a <command>COPY FROM</command>. These rows will not
+    be visible or accessible, but they still occupy disk space. This might
+    amount to a considerable amount of wasted disk space if the failure
+    happened well into a large copy operation. You might wish to invoke
+    <command>VACUUM</command> to recover the wasted space.
    </para>
 
    <para>

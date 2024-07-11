@@ -46,7 +46,7 @@
  * exported rather than being "static" in this file.)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -63,7 +63,6 @@
 #include "executor/nodeSubplan.h"
 #include "funcapi.h"
 #include "miscadmin.h"
-#include "nodes/miscnodes.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
 #include "pgstat.h"
@@ -453,7 +452,6 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_CASE_TESTVAL,
 		&&CASE_EEOP_MAKE_READONLY,
 		&&CASE_EEOP_IOCOERCE,
-		&&CASE_EEOP_IOCOERCE_SAFE,
 		&&CASE_EEOP_DISTINCT,
 		&&CASE_EEOP_NOT_DISTINCT,
 		&&CASE_EEOP_NULLIF,
@@ -1152,9 +1150,6 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * Evaluate a CoerceViaIO node.  This can be quite a hot path, so
 			 * inline as much work as possible.  The source value is in our
 			 * result variable.
-			 *
-			 * Also look at ExecEvalCoerceViaIOSafe() if you change anything
-			 * here.
 			 */
 			char	   *str;
 
@@ -1207,12 +1202,6 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 				}
 			}
 
-			EEO_NEXT();
-		}
-
-		EEO_CASE(EEOP_IOCOERCE_SAFE)
-		{
-			ExecEvalCoerceViaIOSafe(state, op);
 			EEO_NEXT();
 		}
 
@@ -2522,71 +2511,6 @@ ExecEvalParamExtern(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 }
 
 /*
- * Evaluate a CoerceViaIO node in soft-error mode.
- *
- * The source value is in op's result variable.
- *
- * Note: This implements EEOP_IOCOERCE_SAFE. If you change anything here,
- * also look at the inline code for EEOP_IOCOERCE.
- */
-void
-ExecEvalCoerceViaIOSafe(ExprState *state, ExprEvalStep *op)
-{
-	char	   *str;
-
-	/* call output function (similar to OutputFunctionCall) */
-	if (*op->resnull)
-	{
-		/* output functions are not called on nulls */
-		str = NULL;
-	}
-	else
-	{
-		FunctionCallInfo fcinfo_out;
-
-		fcinfo_out = op->d.iocoerce.fcinfo_data_out;
-		fcinfo_out->args[0].value = *op->resvalue;
-		fcinfo_out->args[0].isnull = false;
-
-		fcinfo_out->isnull = false;
-		str = DatumGetCString(FunctionCallInvoke(fcinfo_out));
-
-		/* OutputFunctionCall assumes result isn't null */
-		Assert(!fcinfo_out->isnull);
-	}
-
-	/* call input function (similar to InputFunctionCallSafe) */
-	if (!op->d.iocoerce.finfo_in->fn_strict || str != NULL)
-	{
-		FunctionCallInfo fcinfo_in;
-
-		fcinfo_in = op->d.iocoerce.fcinfo_data_in;
-		fcinfo_in->args[0].value = PointerGetDatum(str);
-		fcinfo_in->args[0].isnull = *op->resnull;
-		/* second and third arguments are already set up */
-
-		/* ErrorSaveContext must be present. */
-		Assert(IsA(fcinfo_in->context, ErrorSaveContext));
-
-		fcinfo_in->isnull = false;
-		*op->resvalue = FunctionCallInvoke(fcinfo_in);
-
-		if (SOFT_ERROR_OCCURRED(fcinfo_in->context))
-		{
-			*op->resnull = true;
-			*op->resvalue = (Datum) 0;
-			return;
-		}
-
-		/* Should get null result if and only if str is NULL */
-		if (str == NULL)
-			Assert(*op->resnull);
-		else
-			Assert(!*op->resnull);
-	}
-}
-
-/*
  * Evaluate a SQLValueFunction expression.
  */
 void
@@ -3815,7 +3739,7 @@ void
 ExecEvalConstraintNotNull(ExprState *state, ExprEvalStep *op)
 {
 	if (*op->resnull)
-		errsave((Node *) op->d.domaincheck.escontext,
+		ereport(ERROR,
 				(errcode(ERRCODE_NOT_NULL_VIOLATION),
 				 errmsg("domain %s does not allow null values",
 						format_type_be(op->d.domaincheck.resulttype)),
@@ -3830,7 +3754,7 @@ ExecEvalConstraintCheck(ExprState *state, ExprEvalStep *op)
 {
 	if (!*op->d.domaincheck.checknull &&
 		!DatumGetBool(*op->d.domaincheck.checkvalue))
-		errsave((Node *) op->d.domaincheck.escontext,
+		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
 				 errmsg("value for domain %s violates check constraint \"%s\"",
 						format_type_be(op->d.domaincheck.resulttype),
@@ -4664,16 +4588,12 @@ ExecEvalPreOrderedDistinctSingle(AggState *aggstate, AggStatePerTrans pertrans)
 /*
  * ExecEvalPreOrderedDistinctMulti
  *		Returns true when the aggregate input is distinct from the previous
- *		input and returns false when the input matches the previous input, or
- *		when there was no previous input.
+ *		input and returns false when the input matches the previous input.
  */
 bool
 ExecEvalPreOrderedDistinctMulti(AggState *aggstate, AggStatePerTrans pertrans)
 {
 	ExprContext *tmpcontext = aggstate->tmpcontext;
-	bool		isdistinct = false; /* for now */
-	TupleTableSlot *save_outer;
-	TupleTableSlot *save_inner;
 
 	for (int i = 0; i < pertrans->numTransInputs; i++)
 	{
@@ -4684,10 +4604,6 @@ ExecEvalPreOrderedDistinctMulti(AggState *aggstate, AggStatePerTrans pertrans)
 	ExecClearTuple(pertrans->sortslot);
 	pertrans->sortslot->tts_nvalid = pertrans->numInputs;
 	ExecStoreVirtualTuple(pertrans->sortslot);
-
-	/* save the previous slots before we overwrite them */
-	save_outer = tmpcontext->ecxt_outertuple;
-	save_inner = tmpcontext->ecxt_innertuple;
 
 	tmpcontext->ecxt_outertuple = pertrans->sortslot;
 	tmpcontext->ecxt_innertuple = pertrans->uniqslot;
@@ -4700,15 +4616,9 @@ ExecEvalPreOrderedDistinctMulti(AggState *aggstate, AggStatePerTrans pertrans)
 
 		pertrans->haslast = true;
 		ExecCopySlot(pertrans->uniqslot, pertrans->sortslot);
-
-		isdistinct = true;
+		return true;
 	}
-
-	/* restore the original slots */
-	tmpcontext->ecxt_outertuple = save_outer;
-	tmpcontext->ecxt_innertuple = save_inner;
-
-	return isdistinct;
+	return false;
 }
 
 /*

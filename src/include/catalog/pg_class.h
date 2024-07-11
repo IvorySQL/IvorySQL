@@ -4,7 +4,7 @@
  *	  definition of the "relation" system catalog (pg_class)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_class.h
@@ -155,9 +155,6 @@ typedef FormData_pg_class *Form_pg_class;
 DECLARE_UNIQUE_INDEX_PKEY(pg_class_oid_index, 2662, ClassOidIndexId, pg_class, btree(oid oid_ops));
 DECLARE_UNIQUE_INDEX(pg_class_relname_nsp_index, 2663, ClassNameNspIndexId, pg_class, btree(relname name_ops, relnamespace oid_ops));
 DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeIndexId, pg_class, btree(reltablespace oid_ops, relfilenode oid_ops));
-
-MAKE_SYSCACHE(RELOID, pg_class_oid_index, 128);
-MAKE_SYSCACHE(RELNAMENSP, pg_class_relname_nsp_index, 128);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

@@ -2,7 +2,7 @@
  * reorderbuffer.h
  *	  PostgreSQL logical replay/reorder buffer management.
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2023, PostgreSQL Global Development Group
  *
  * src/include/replication/reorderbuffer.h
  */
@@ -27,6 +27,25 @@ typedef enum
 	DEBUG_LOGICAL_REP_STREAMING_BUFFERED,
 	DEBUG_LOGICAL_REP_STREAMING_IMMEDIATE,
 }			DebugLogicalRepStreamingMode;
+
+/* an individual tuple, stored in one chunk of memory */
+typedef struct ReorderBufferTupleBuf
+{
+	/* position in preallocated list */
+	slist_node	node;
+
+	/* tuple header, the interesting bit for users of logical decoding */
+	HeapTupleData tuple;
+
+	/* pre-allocated size of tuple buffer, different from tuple size */
+	Size		alloc_tuple_size;
+
+	/* actual tuple data follows */
+} ReorderBufferTupleBuf;
+
+/* pointer to the data stored in a TupleBuf */
+#define ReorderBufferTupleBufData(p) \
+	((HeapTupleHeader) MAXALIGN(((char *) p) + sizeof(ReorderBufferTupleBuf)))
 
 /*
  * Types of the change passed to a 'change' callback.
@@ -95,9 +114,9 @@ typedef struct ReorderBufferChange
 			bool		clear_toast_afterwards;
 
 			/* valid for DELETE || UPDATE */
-			HeapTuple	oldtuple;
+			ReorderBufferTupleBuf *oldtuple;
 			/* valid for INSERT || UPDATE */
-			HeapTuple	newtuple;
+			ReorderBufferTupleBuf *newtuple;
 		}			tp;
 
 		/*
@@ -659,10 +678,10 @@ struct ReorderBuffer
 extern ReorderBuffer *ReorderBufferAllocate(void);
 extern void ReorderBufferFree(ReorderBuffer *rb);
 
-extern HeapTuple ReorderBufferGetTupleBuf(ReorderBuffer *rb,
-										  Size tuple_len);
-extern void ReorderBufferReturnTupleBuf(HeapTuple tuple);
-
+extern ReorderBufferTupleBuf *ReorderBufferGetTupleBuf(ReorderBuffer *rb,
+													   Size tuple_len);
+extern void ReorderBufferReturnTupleBuf(ReorderBuffer *rb,
+										ReorderBufferTupleBuf *tuple);
 extern ReorderBufferChange *ReorderBufferGetChange(ReorderBuffer *rb);
 extern void ReorderBufferReturnChange(ReorderBuffer *rb,
 									  ReorderBufferChange *change, bool upd_mem);

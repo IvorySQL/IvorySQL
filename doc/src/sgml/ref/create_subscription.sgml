@@ -122,16 +122,14 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
           (You cannot combine setting <literal>connect</literal>
           to <literal>false</literal> with
           setting <literal>create_slot</literal>, <literal>enabled</literal>,
-          <literal>copy_data</literal>, or <literal>failover</literal> to
-          <literal>true</literal>.)
+          or <literal>copy_data</literal> to <literal>true</literal>.)
          </para>
 
          <para>
           Since no connection is made when this option is
           <literal>false</literal>, no tables are subscribed. To initiate
           replication, you must manually create the replication slot, enable
-          the failover if required, enable the subscription, and refresh the
-          subscription. See
+          the subscription, and refresh the subscription. See
           <xref linkend="logical-replication-subscription-examples-deferred-slot"/>
           for examples.
          </para>
@@ -359,12 +357,11 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
         <term><literal>password_required</literal> (<type>boolean</type>)</term>
         <listitem>
          <para>
-          If set to <literal>true</literal>, connections to the publisher made
-          as a result of this subscription must use password authentication
-          and the password must be specified as a part of the connection
-          string. This setting is ignored when the subscription is owned by a
-          superuser.  The default is <literal>true</literal>. Only superusers
-          can set this value to <literal>false</literal>.
+          Specifies whether connections to the publisher made as a result
+          of this subscription must use password authentication. This setting
+          is ignored when the subscription is owned by a superuser.
+          The default is <literal>true</literal>. Only superusers can set
+          this value to <literal>false</literal>.
          </para>
         </listitem>
        </varlistentry>
@@ -399,18 +396,6 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
           See <xref linkend="sql-createsubscription-notes"/> for details of how
           <literal>copy_data = true</literal> can interact with the
           <literal>origin</literal> parameter.
-         </para>
-        </listitem>
-       </varlistentry>
-
-       <varlistentry id="sql-createsubscription-params-with-failover">
-        <term><literal>failover</literal> (<type>boolean</type>)</term>
-        <listitem>
-         <para>
-          Specifies whether the replication slots associated with the subscription
-          are enabled to be synced to the standbys so that logical
-          replication can be resumed from the new primary after failover.
-          The default is <literal>false</literal>.
          </para>
         </listitem>
        </varlistentry>

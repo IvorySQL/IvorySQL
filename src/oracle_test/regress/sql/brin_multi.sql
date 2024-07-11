@@ -592,12 +592,12 @@ CREATE TABLE brin_timestamp_test(a TIMESTAMPTZ);
 
 SET datestyle TO iso;
 
--- values close to timestamp minimum
+-- values close to timetamp minimum
 INSERT INTO brin_timestamp_test
 SELECT '4713-01-01 00:00:01 BC'::timestamptz + (i || ' seconds')::interval
   FROM generate_series(1,30) s(i);
 
--- values close to timestamp maximum
+-- values close to timetamp maximum
 INSERT INTO brin_timestamp_test
 SELECT '294276-12-01 00:00:01'::timestamptz + (i || ' seconds')::interval
   FROM generate_series(1,30) s(i);

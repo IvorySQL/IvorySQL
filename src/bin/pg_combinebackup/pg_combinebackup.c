@@ -3,7 +3,7 @@
  * pg_combinebackup.c
  *		Combine incremental backups with prior backups.
  *
- * Copyright (c) 2017-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/bin/pg_combinebackup/pg_combinebackup.c
@@ -773,8 +773,8 @@ process_directory_recursively(Oid tsoid,
 	 */
 	if (relative_path == NULL)
 	{
-		strlcpy(ifulldir, input_directory, MAXPGPATH);
-		strlcpy(ofulldir, output_directory, MAXPGPATH);
+		strncpy(ifulldir, input_directory, MAXPGPATH);
+		strncpy(ofulldir, output_directory, MAXPGPATH);
 		if (OidIsValid(tsoid))
 			snprintf(manifest_prefix, MAXPGPATH, "pg_tblspc/%u/", tsoid);
 		else
@@ -855,7 +855,7 @@ process_directory_recursively(Oid tsoid,
 
 			/* Append new pathname component to relative path. */
 			if (relative_path == NULL)
-				strlcpy(new_relative_path, de->d_name, MAXPGPATH);
+				strncpy(new_relative_path, de->d_name, MAXPGPATH);
 			else
 				snprintf(new_relative_path, MAXPGPATH, "%s/%s", relative_path,
 						 de->d_name);
@@ -1131,7 +1131,7 @@ scan_for_existing_tablespaces(char *pathname, cb_options *opt)
 	pg_log_debug("scanning \"%s\"", pg_tblspc);
 
 	if ((dir = opendir(pg_tblspc)) == NULL)
-		pg_fatal("could not open directory \"%s\": %m", pg_tblspc);
+		pg_fatal("could not open directory \"%s\": %m", pathname);
 
 	while (errno = 0, (de = readdir(dir)) != NULL)
 	{
@@ -1203,8 +1203,8 @@ scan_for_existing_tablespaces(char *pathname, cb_options *opt)
 			{
 				if (strcmp(tsmap->old_dir, link_target) == 0)
 				{
-					strlcpy(ts->old_dir, tsmap->old_dir, MAXPGPATH);
-					strlcpy(ts->new_dir, tsmap->new_dir, MAXPGPATH);
+					strncpy(ts->old_dir, tsmap->old_dir, MAXPGPATH);
+					strncpy(ts->new_dir, tsmap->new_dir, MAXPGPATH);
 					ts->in_place = false;
 					break;
 				}
@@ -1237,9 +1237,6 @@ scan_for_existing_tablespaces(char *pathname, cb_options *opt)
 		ts->next = tslist;
 		tslist = ts;
 	}
-
-	if (closedir(dir) != 0)
-		pg_fatal("could not close directory \"%s\": %m", pg_tblspc);
 
 	return tslist;
 }

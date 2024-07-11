@@ -4,7 +4,7 @@
  *	  Low level infrastructure related to expression evaluation
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/execExpr.h
@@ -16,7 +16,6 @@
 
 #include "executor/nodeAgg.h"
 #include "nodes/execnodes.h"
-#include "nodes/miscnodes.h"
 
 /* forward references to avoid circularity */
 struct ExprEvalStep;
@@ -169,7 +168,6 @@ typedef enum ExprEvalOp
 
 	/* evaluate assorted special-purpose expression types */
 	EEOP_IOCOERCE,
-	EEOP_IOCOERCE_SAFE,
 	EEOP_DISTINCT,
 	EEOP_NOT_DISTINCT,
 	EEOP_NULLIF,
@@ -549,7 +547,6 @@ typedef struct ExprEvalStep
 			bool	   *checknull;
 			/* OID of domain type */
 			Oid			resulttype;
-			ErrorSaveContext *escontext;
 		}			domaincheck;
 
 		/* for EEOP_CONVERT_ROWTYPE */
@@ -779,7 +776,6 @@ extern void ExecEvalParamExec(ExprState *state, ExprEvalStep *op,
 							  ExprContext *econtext);
 extern void ExecEvalParamExtern(ExprState *state, ExprEvalStep *op,
 								ExprContext *econtext);
-extern void ExecEvalCoerceViaIOSafe(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalSQLValueFunction(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalCurrentOfExpr(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op);

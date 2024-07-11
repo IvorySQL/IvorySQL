@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2023, PostgreSQL Global Development Group
 
 #
 # Test pg_rewind when the target's pg_wal directory is a symlink.
@@ -52,7 +52,7 @@ sub run_test
 
 	# Insert a row in the old primary. This causes the primary and standby
 	# to have "diverged", it's no longer possible to just apply the
-	# standby's logs over primary directory - you need to rewind.
+	# standy's logs over primary directory - you need to rewind.
 	primary_psql("INSERT INTO tbl1 VALUES ('in primary, after promotion')");
 
 	# Also insert a new row in the standby, which won't be present in the

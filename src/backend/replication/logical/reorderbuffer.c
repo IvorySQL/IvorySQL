@@ -4,7 +4,7 @@
  *	  PostgreSQL logical replay/reorder buffer management
  *
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2023, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -498,13 +498,13 @@ ReorderBufferReturnChange(ReorderBuffer *rb, ReorderBufferChange *change,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_INSERT:
 			if (change->data.tp.newtuple)
 			{
-				ReorderBufferReturnTupleBuf(change->data.tp.newtuple);
+				ReorderBufferReturnTupleBuf(rb, change->data.tp.newtuple);
 				change->data.tp.newtuple = NULL;
 			}
 
 			if (change->data.tp.oldtuple)
 			{
-				ReorderBufferReturnTupleBuf(change->data.tp.oldtuple);
+				ReorderBufferReturnTupleBuf(rb, change->data.tp.oldtuple);
 				change->data.tp.oldtuple = NULL;
 			}
 			break;
@@ -547,29 +547,32 @@ ReorderBufferReturnChange(ReorderBuffer *rb, ReorderBufferChange *change,
 }
 
 /*
- * Get a fresh HeapTuple fitting a tuple of size tuple_len (excluding header
- * overhead).
+ * Get a fresh ReorderBufferTupleBuf fitting at least a tuple of size
+ * tuple_len (excluding header overhead).
  */
-HeapTuple
+ReorderBufferTupleBuf *
 ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 {
-	HeapTuple	tuple;
+	ReorderBufferTupleBuf *tuple;
 	Size		alloc_len;
 
 	alloc_len = tuple_len + SizeofHeapTupleHeader;
 
-	tuple = (HeapTuple) MemoryContextAlloc(rb->tup_context,
-										   HEAPTUPLESIZE + alloc_len);
-	tuple->t_data = (HeapTupleHeader) ((char *) tuple + HEAPTUPLESIZE);
+	tuple = (ReorderBufferTupleBuf *)
+		MemoryContextAlloc(rb->tup_context,
+						   sizeof(ReorderBufferTupleBuf) +
+						   MAXIMUM_ALIGNOF + alloc_len);
+	tuple->alloc_tuple_size = alloc_len;
+	tuple->tuple.t_data = ReorderBufferTupleBufData(tuple);
 
 	return tuple;
 }
 
 /*
- * Free a HeapTuple returned by ReorderBufferGetTupleBuf().
+ * Free a ReorderBufferTupleBuf.
  */
 void
-ReorderBufferReturnTupleBuf(HeapTuple tuple)
+ReorderBufferReturnTupleBuf(ReorderBuffer *rb, ReorderBufferTupleBuf *tuple)
 {
 	pfree(tuple);
 }
@@ -3756,8 +3759,8 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_INSERT:
 			{
 				char	   *data;
-				HeapTuple	oldtup,
-							newtup;
+				ReorderBufferTupleBuf *oldtup,
+						   *newtup;
 				Size		oldlen = 0;
 				Size		newlen = 0;
 
@@ -3767,14 +3770,14 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				if (oldtup)
 				{
 					sz += sizeof(HeapTupleData);
-					oldlen = oldtup->t_len;
+					oldlen = oldtup->tuple.t_len;
 					sz += oldlen;
 				}
 
 				if (newtup)
 				{
 					sz += sizeof(HeapTupleData);
-					newlen = newtup->t_len;
+					newlen = newtup->tuple.t_len;
 					sz += newlen;
 				}
 
@@ -3787,19 +3790,19 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 				if (oldlen)
 				{
-					memcpy(data, oldtup, sizeof(HeapTupleData));
+					memcpy(data, &oldtup->tuple, sizeof(HeapTupleData));
 					data += sizeof(HeapTupleData);
 
-					memcpy(data, oldtup->t_data, oldlen);
+					memcpy(data, oldtup->tuple.t_data, oldlen);
 					data += oldlen;
 				}
 
 				if (newlen)
 				{
-					memcpy(data, newtup, sizeof(HeapTupleData));
+					memcpy(data, &newtup->tuple, sizeof(HeapTupleData));
 					data += sizeof(HeapTupleData);
 
-					memcpy(data, newtup->t_data, newlen);
+					memcpy(data, newtup->tuple.t_data, newlen);
 					data += newlen;
 				}
 				break;
@@ -4115,8 +4118,8 @@ ReorderBufferChangeSize(ReorderBufferChange *change)
 		case REORDER_BUFFER_CHANGE_DELETE:
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_INSERT:
 			{
-				HeapTuple	oldtup,
-							newtup;
+				ReorderBufferTupleBuf *oldtup,
+						   *newtup;
 				Size		oldlen = 0;
 				Size		newlen = 0;
 
@@ -4126,14 +4129,14 @@ ReorderBufferChangeSize(ReorderBufferChange *change)
 				if (oldtup)
 				{
 					sz += sizeof(HeapTupleData);
-					oldlen = oldtup->t_len;
+					oldlen = oldtup->tuple.t_len;
 					sz += oldlen;
 				}
 
 				if (newtup)
 				{
 					sz += sizeof(HeapTupleData);
-					newlen = newtup->t_len;
+					newlen = newtup->tuple.t_len;
 					sz += newlen;
 				}
 
@@ -4362,16 +4365,16 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					ReorderBufferGetTupleBuf(rb, tuplelen - SizeofHeapTupleHeader);
 
 				/* restore ->tuple */
-				memcpy(change->data.tp.oldtuple, data,
+				memcpy(&change->data.tp.oldtuple->tuple, data,
 					   sizeof(HeapTupleData));
 				data += sizeof(HeapTupleData);
 
 				/* reset t_data pointer into the new tuplebuf */
-				change->data.tp.oldtuple->t_data =
-					(HeapTupleHeader) ((char *) change->data.tp.oldtuple + HEAPTUPLESIZE);
+				change->data.tp.oldtuple->tuple.t_data =
+					ReorderBufferTupleBufData(change->data.tp.oldtuple);
 
 				/* restore tuple data itself */
-				memcpy(change->data.tp.oldtuple->t_data, data, tuplelen);
+				memcpy(change->data.tp.oldtuple->tuple.t_data, data, tuplelen);
 				data += tuplelen;
 			}
 
@@ -4387,16 +4390,16 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					ReorderBufferGetTupleBuf(rb, tuplelen - SizeofHeapTupleHeader);
 
 				/* restore ->tuple */
-				memcpy(change->data.tp.newtuple, data,
+				memcpy(&change->data.tp.newtuple->tuple, data,
 					   sizeof(HeapTupleData));
 				data += sizeof(HeapTupleData);
 
 				/* reset t_data pointer into the new tuplebuf */
-				change->data.tp.newtuple->t_data =
-					(HeapTupleHeader) ((char *) change->data.tp.newtuple + HEAPTUPLESIZE);
+				change->data.tp.newtuple->tuple.t_data =
+					ReorderBufferTupleBufData(change->data.tp.newtuple);
 
 				/* restore tuple data itself */
-				memcpy(change->data.tp.newtuple->t_data, data, tuplelen);
+				memcpy(change->data.tp.newtuple->tuple.t_data, data, tuplelen);
 				data += tuplelen;
 			}
 
@@ -4643,7 +4646,7 @@ ReorderBufferToastAppendChunk(ReorderBuffer *rb, ReorderBufferTXN *txn,
 							  Relation relation, ReorderBufferChange *change)
 {
 	ReorderBufferToastEnt *ent;
-	HeapTuple	newtup;
+	ReorderBufferTupleBuf *newtup;
 	bool		found;
 	int32		chunksize;
 	bool		isnull;
@@ -4658,9 +4661,9 @@ ReorderBufferToastAppendChunk(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	Assert(IsToastRelation(relation));
 
 	newtup = change->data.tp.newtuple;
-	chunk_id = DatumGetObjectId(fastgetattr(newtup, 1, desc, &isnull));
+	chunk_id = DatumGetObjectId(fastgetattr(&newtup->tuple, 1, desc, &isnull));
 	Assert(!isnull);
-	chunk_seq = DatumGetInt32(fastgetattr(newtup, 2, desc, &isnull));
+	chunk_seq = DatumGetInt32(fastgetattr(&newtup->tuple, 2, desc, &isnull));
 	Assert(!isnull);
 
 	ent = (ReorderBufferToastEnt *)
@@ -4683,7 +4686,7 @@ ReorderBufferToastAppendChunk(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		elog(ERROR, "got sequence entry %d for toast chunk %u instead of seq %d",
 			 chunk_seq, chunk_id, ent->last_chunk_seq + 1);
 
-	chunk = DatumGetPointer(fastgetattr(newtup, 3, desc, &isnull));
+	chunk = DatumGetPointer(fastgetattr(&newtup->tuple, 3, desc, &isnull));
 	Assert(!isnull);
 
 	/* calculate size so we can allocate the right size at once later */
@@ -4734,7 +4737,7 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	Relation	toast_rel;
 	TupleDesc	toast_desc;
 	MemoryContext oldcontext;
-	HeapTuple	newtup;
+	ReorderBufferTupleBuf *newtup;
 	Size		old_size;
 
 	/* no toast tuples changed */
@@ -4774,7 +4777,7 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	newtup = change->data.tp.newtuple;
 
-	heap_deform_tuple(newtup, desc, attrs, isnull);
+	heap_deform_tuple(&newtup->tuple, desc, attrs, isnull);
 
 	for (natt = 0; natt < desc->natts; natt++)
 	{
@@ -4839,12 +4842,12 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		{
 			bool		cisnull;
 			ReorderBufferChange *cchange;
-			HeapTuple	ctup;
+			ReorderBufferTupleBuf *ctup;
 			Pointer		chunk;
 
 			cchange = dlist_container(ReorderBufferChange, node, it.cur);
 			ctup = cchange->data.tp.newtuple;
-			chunk = DatumGetPointer(fastgetattr(ctup, 3, toast_desc, &cisnull));
+			chunk = DatumGetPointer(fastgetattr(&ctup->tuple, 3, toast_desc, &cisnull));
 
 			Assert(!cisnull);
 			Assert(!VARATT_IS_EXTERNAL(chunk));
@@ -4879,11 +4882,11 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	 * the tuplebuf because attrs[] will point back into the current content.
 	 */
 	tmphtup = heap_form_tuple(desc, attrs, isnull);
-	Assert(newtup->t_len <= MaxHeapTupleSize);
-	Assert(newtup->t_data == (HeapTupleHeader) ((char *) newtup + HEAPTUPLESIZE));
+	Assert(newtup->tuple.t_len <= MaxHeapTupleSize);
+	Assert(ReorderBufferTupleBufData(newtup) == newtup->tuple.t_data);
 
-	memcpy(newtup->t_data, tmphtup->t_data, tmphtup->t_len);
-	newtup->t_len = tmphtup->t_len;
+	memcpy(newtup->tuple.t_data, tmphtup->t_data, tmphtup->t_len);
+	newtup->tuple.t_len = tmphtup->t_len;
 
 	/*
 	 * free resources we won't further need, more persistent stuff will be

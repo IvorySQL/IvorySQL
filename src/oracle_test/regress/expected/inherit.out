@@ -1097,23 +1097,6 @@ Inherits: inht1,
           inhs1
 
 DROP TABLE inhts;
--- Test for adding a column to a parent table with complex inheritance
-CREATE TABLE inhta ();
-CREATE TABLE inhtb () INHERITS (inhta);
-CREATE TABLE inhtc () INHERITS (inhtb);
-CREATE TABLE inhtd () INHERITS (inhta, inhtb, inhtc);
-ALTER TABLE inhta ADD COLUMN i int;
-NOTICE:  merging definition of column "i" for child "inhtd"
-NOTICE:  merging definition of column "i" for child "inhtd"
-\d+ inhta
-                                       Table "public.inhta"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- i      | pg_catalog.int4 |           |          |         | plain   |              | 
-Child tables: inhtb,
-              inhtd
-
-DROP TABLE inhta, inhtb, inhtc, inhtd;
 -- Test for renaming in diamond inheritance
 CREATE TABLE inht2 (x int) INHERITS (inht1);
 CREATE TABLE inht3 (y int) INHERITS (inht1);
@@ -1723,29 +1706,6 @@ order by t1.b limit 10;
 (14 rows)
 
 reset enable_nestloop;
-drop table matest0 cascade;
-NOTICE:  drop cascades to table matest1
--- Test a MergeAppend plan where one child requires a sort
-create table matest0(a int primary key);
-create table matest1() inherits (matest0);
-insert into matest0 select generate_series(1, 400);
-insert into matest1 select generate_series(1, 200);
-analyze matest0;
-analyze matest1;
-explain (costs off)
-select * from matest0 where a < 100 order by a;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Merge Append
-   Sort Key: matest0.a
-   ->  Index Only Scan using matest0_pkey on matest0 matest0_1
-         Index Cond: (a < 100)
-   ->  Sort
-         Sort Key: matest0_2.a
-         ->  Seq Scan on matest1 matest0_2
-               Filter: (a < 100)
-(8 rows)
-
 drop table matest0 cascade;
 NOTICE:  drop cascades to table matest1
 --

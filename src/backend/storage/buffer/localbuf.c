@@ -4,7 +4,7 @@
  *	  local buffer manager. Fast buffer manager for temporary tables,
  *	  which never need to be WAL-logged or checkpointed, etc.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  *
@@ -374,16 +374,13 @@ ExtendBufferedRelLocal(BufferManagerRelation bmr,
 		victim_buf_id = -buffers[i] - 1;
 		victim_buf_hdr = GetLocalBufferDescriptor(victim_buf_id);
 
-		/* in case we need to pin an existing buffer below */
-		ResourceOwnerEnlarge(CurrentResourceOwner);
-
 		InitBufferTag(&tag, &bmr.smgr->smgr_rlocator.locator, fork, first_block + i);
 
 		hresult = (LocalBufferLookupEnt *)
 			hash_search(LocalBufHash, (void *) &tag, HASH_ENTER, &found);
 		if (found)
 		{
-			BufferDesc *existing_hdr;
+			BufferDesc *existing_hdr = GetLocalBufferDescriptor(hresult->id);
 			uint32		buf_state;
 
 			UnpinLocalBuffer(BufferDescriptorGetBuffer(victim_buf_hdr));
@@ -395,7 +392,7 @@ ExtendBufferedRelLocal(BufferManagerRelation bmr,
 			buf_state = pg_atomic_read_u32(&existing_hdr->state);
 			Assert(buf_state & BM_TAG_VALID);
 			Assert(!(buf_state & BM_DIRTY));
-			buf_state &= ~BM_VALID;
+			buf_state &= BM_VALID;
 			pg_atomic_unlocked_write_u32(&existing_hdr->state, buf_state);
 		}
 		else
@@ -649,8 +646,6 @@ InitLocalBuffers(void)
  * XXX: We could have a slightly more efficient version of PinLocalBuffer()
  * that does not support adjusting the usagecount - but so far it does not
  * seem worth the trouble.
- *
- * Note that ResourceOwnerEnlarge() must have been done already.
  */
 bool
 PinLocalBuffer(BufferDesc *buf_hdr, bool adjust_usagecount)

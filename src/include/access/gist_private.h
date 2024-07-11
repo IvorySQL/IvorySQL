@@ -4,7 +4,7 @@
  *	  private declarations for GiST -- declarations related to the
  *	  internal implementation of GiST, not the public API
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/gist_private.h
@@ -187,8 +187,8 @@ typedef struct gistxlogPage
 	int			num;			/* number of index tuples following */
 } gistxlogPage;
 
-/* SplitPageLayout - gistSplit function result */
-typedef struct SplitPageLayout
+/* SplitedPageLayout - gistSplit function result */
+typedef struct SplitedPageLayout
 {
 	gistxlogPage block;
 	IndexTupleData *list;
@@ -197,8 +197,8 @@ typedef struct SplitPageLayout
 	Page		page;			/* to operate */
 	Buffer		buffer;			/* to write after all proceed */
 
-	struct SplitPageLayout *next;
-} SplitPageLayout;
+	struct SplitedPageLayout *next;
+} SplitedPageLayout;
 
 /*
  * GISTInsertStack used for locking buffers and transfer arguments during
@@ -432,8 +432,8 @@ extern bool gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
 							Relation heapRel,
 							bool is_build);
 
-extern SplitPageLayout *gistSplit(Relation r, Page page, IndexTuple *itup,
-								  int len, GISTSTATE *giststate);
+extern SplitedPageLayout *gistSplit(Relation r, Page page, IndexTuple *itup,
+									int len, GISTSTATE *giststate);
 
 /* gistxlog.c */
 extern XLogRecPtr gistXLogPageDelete(Buffer buffer,
@@ -453,7 +453,7 @@ extern XLogRecPtr gistXLogDelete(Buffer buffer, OffsetNumber *todelete,
 								 Relation heaprel);
 
 extern XLogRecPtr gistXLogSplit(bool page_is_leaf,
-								SplitPageLayout *dist,
+								SplitedPageLayout *dist,
 								BlockNumber origrlink, GistNSN orignsn,
 								Buffer leftchildbuf, bool markfollowright);
 

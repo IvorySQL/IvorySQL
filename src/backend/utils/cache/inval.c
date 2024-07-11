@@ -98,7 +98,7 @@
  *	support the decoding of the in-progress transactions.  See
  *	CommandEndInvalidationMessages.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -756,7 +756,7 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 
 		rlocator.locator = msg->sm.rlocator;
 		rlocator.backend = (msg->sm.backend_hi << 16) | (int) msg->sm.backend_lo;
-		smgrreleaserellocator(rlocator);
+		smgrcloserellocator(rlocator);
 	}
 	else if (msg->id == SHAREDINVALRELMAP_ID)
 	{

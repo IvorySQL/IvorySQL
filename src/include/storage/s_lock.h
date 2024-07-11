@@ -86,7 +86,7 @@
  *	when using the SysV semaphore code.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	  src/include/storage/s_lock.h
@@ -821,6 +821,7 @@ extern int	tas(volatile slock_t *lock);		/* in port/.../tas.s, or
 #define TAS_SPIN(lock)	TAS(lock)
 #endif	 /* TAS_SPIN */
 
+extern PGDLLIMPORT slock_t dummy_spinlock;
 
 /*
  * Platform-independent out-of-line support routines

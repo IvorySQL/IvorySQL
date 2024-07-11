@@ -3,7 +3,7 @@
  * slotfuncs.c
  *	   Support functions for replication slots
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/slotfuncs.c
@@ -42,8 +42,7 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(name, false,
-						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
-						  false);
+						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false);
 
 	if (immediately_reserve)
 	{
@@ -118,7 +117,6 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 static void
 create_logical_replication_slot(char *name, char *plugin,
 								bool temporary, bool two_phase,
-								bool failover,
 								XLogRecPtr restart_lsn,
 								bool find_startpoint)
 {
@@ -135,8 +133,7 @@ create_logical_replication_slot(char *name, char *plugin,
 	 * error as well.
 	 */
 	ReplicationSlotCreate(name, true,
-						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
-						  failover);
+						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase);
 
 	/*
 	 * Create logical decoding context to find start point or, if we don't
@@ -174,7 +171,6 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	Name		plugin = PG_GETARG_NAME(1);
 	bool		temporary = PG_GETARG_BOOL(2);
 	bool		two_phase = PG_GETARG_BOOL(3);
-	bool		failover = PG_GETARG_BOOL(4);
 	Datum		result;
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
@@ -192,7 +188,6 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 									NameStr(*plugin),
 									temporary,
 									two_phase,
-									failover,
 									InvalidXLogRecPtr,
 									true);
 
@@ -237,7 +232,7 @@ pg_drop_replication_slot(PG_FUNCTION_ARGS)
 Datum
 pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
-#define PG_GET_REPLICATION_SLOTS_COLS 16
+#define PG_GET_REPLICATION_SLOTS_COLS 15
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	XLogRecPtr	currlsn;
 	int			slotno;
@@ -411,27 +406,11 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			nulls[i++] = true;
 		else
 		{
-			switch (slot_contents.data.invalidated)
-			{
-				case RS_INVAL_NONE:
-					nulls[i++] = true;
-					break;
-
-				case RS_INVAL_WAL_REMOVED:
-					values[i++] = CStringGetTextDatum("wal_removed");
-					break;
-
-				case RS_INVAL_HORIZON:
-					values[i++] = CStringGetTextDatum("rows_removed");
-					break;
-
-				case RS_INVAL_WAL_LEVEL:
-					values[i++] = CStringGetTextDatum("wal_level_insufficient");
-					break;
-			}
+			if (slot_contents.data.invalidated != RS_INVAL_NONE)
+				values[i++] = BoolGetDatum(true);
+			else
+				values[i++] = BoolGetDatum(false);
 		}
-
-		values[i++] = BoolGetDatum(slot_contents.data.failover);
 
 		Assert(i == PG_GET_REPLICATION_SLOTS_COLS);
 
@@ -700,7 +679,6 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 	XLogRecPtr	src_restart_lsn;
 	bool		src_islogical;
 	bool		temporary;
-	bool		failover;
 	char	   *plugin;
 	Datum		values[2];
 	bool		nulls[2];
@@ -756,7 +734,6 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 	src_islogical = SlotIsLogical(&first_slot_contents);
 	src_restart_lsn = first_slot_contents.data.restart_lsn;
 	temporary = (first_slot_contents.data.persistency == RS_TEMPORARY);
-	failover = first_slot_contents.data.failover;
 	plugin = logical_slot ? NameStr(first_slot_contents.data.plugin) : NULL;
 
 	/* Check type of replication slot */
@@ -796,7 +773,6 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 										plugin,
 										temporary,
 										false,
-										failover,
 										src_restart_lsn,
 										false);
 	}

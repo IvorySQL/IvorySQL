@@ -1,6 +1,0 @@
-# src/bin/pg_combinebackup/nls.mk
-CATALOG_NAME     = pg_walsummary
-GETTEXT_FILES    = $(FRONTEND_COMMON_GETTEXT_FILES) \
-		   pg_walsummary.c
-GETTEXT_TRIGGERS = $(FRONTEND_COMMON_GETTEXT_TRIGGERS)
-GETTEXT_FLAGS    = $(FRONTEND_COMMON_GETTEXT_FLAGS)

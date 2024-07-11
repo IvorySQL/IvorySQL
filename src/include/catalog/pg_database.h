@@ -4,7 +4,7 @@
  *	  definition of the "database" system catalog (pg_database)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_database.h
@@ -99,8 +99,6 @@ DECLARE_TOAST_WITH_MACRO(pg_database, 4177, 4178, PgDatabaseToastTable, PgDataba
 
 DECLARE_UNIQUE_INDEX(pg_database_datname_index, 2671, DatabaseNameIndexId, pg_database, btree(datname name_ops));
 DECLARE_UNIQUE_INDEX_PKEY(pg_database_oid_index, 2672, DatabaseOidIndexId, pg_database, btree(oid oid_ops));
-
-MAKE_SYSCACHE(DATABASEOID, pg_database_oid_index, 4);
 
 /*
  * pg_database.dat contains an entry for template1, but not for the template0

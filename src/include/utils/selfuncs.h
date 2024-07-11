@@ -5,7 +5,7 @@
  *	  infrastructure for selectivity and cost estimation.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/selfuncs.h
@@ -200,7 +200,7 @@ extern Selectivity scalararraysel(PlannerInfo *root,
 								  ScalarArrayOpExpr *clause,
 								  bool is_join_clause,
 								  int varRelid, JoinType jointype, SpecialJoinInfo *sjinfo);
-extern double estimate_array_length(PlannerInfo *root, Node *arrayexpr);
+extern int	estimate_array_length(Node *arrayexpr);
 extern Selectivity rowcomparesel(PlannerInfo *root,
 								 RowCompareExpr *clause,
 								 int varRelid, JoinType jointype, SpecialJoinInfo *sjinfo);

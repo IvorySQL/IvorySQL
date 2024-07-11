@@ -20,7 +20,7 @@
  * appropriate value for a free lock.  The meaning of the variable is up to
  * the caller, the lightweight lock code just assigns and compares it.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -132,41 +132,68 @@ StaticAssertDecl(LW_VAL_EXCLUSIVE > (uint32) MAX_BACKENDS,
 extern const char *const IndividualLWLockNames[];	/* in lwlocknames.c */
 
 static const char *const BuiltinTrancheNames[] = {
-	[LWTRANCHE_XACT_BUFFER] = "XactBuffer",
-	[LWTRANCHE_COMMITTS_BUFFER] = "CommitTsBuffer",
-	[LWTRANCHE_SUBTRANS_BUFFER] = "SubtransBuffer",
-	[LWTRANCHE_MULTIXACTOFFSET_BUFFER] = "MultiXactOffsetBuffer",
-	[LWTRANCHE_MULTIXACTMEMBER_BUFFER] = "MultiXactMemberBuffer",
-	[LWTRANCHE_NOTIFY_BUFFER] = "NotifyBuffer",
-	[LWTRANCHE_SERIAL_BUFFER] = "SerialBuffer",
-	[LWTRANCHE_WAL_INSERT] = "WALInsert",
-	[LWTRANCHE_BUFFER_CONTENT] = "BufferContent",
-	[LWTRANCHE_REPLICATION_ORIGIN_STATE] = "ReplicationOriginState",
-	[LWTRANCHE_REPLICATION_SLOT_IO] = "ReplicationSlotIO",
-	[LWTRANCHE_LOCK_FASTPATH] = "LockFastPath",
-	[LWTRANCHE_BUFFER_MAPPING] = "BufferMapping",
-	[LWTRANCHE_LOCK_MANAGER] = "LockManager",
-	[LWTRANCHE_PREDICATE_LOCK_MANAGER] = "PredicateLockManager",
-	[LWTRANCHE_PARALLEL_HASH_JOIN] = "ParallelHashJoin",
-	[LWTRANCHE_PARALLEL_QUERY_DSA] = "ParallelQueryDSA",
-	[LWTRANCHE_PER_SESSION_DSA] = "PerSessionDSA",
-	[LWTRANCHE_PER_SESSION_RECORD_TYPE] = "PerSessionRecordType",
-	[LWTRANCHE_PER_SESSION_RECORD_TYPMOD] = "PerSessionRecordTypmod",
-	[LWTRANCHE_SHARED_TUPLESTORE] = "SharedTupleStore",
-	[LWTRANCHE_SHARED_TIDBITMAP] = "SharedTidBitmap",
-	[LWTRANCHE_PARALLEL_APPEND] = "ParallelAppend",
-	[LWTRANCHE_PER_XACT_PREDICATE_LIST] = "PerXactPredicateList",
-	[LWTRANCHE_PGSTATS_DSA] = "PgStatsDSA",
-	[LWTRANCHE_PGSTATS_HASH] = "PgStatsHash",
-	[LWTRANCHE_PGSTATS_DATA] = "PgStatsData",
-	[LWTRANCHE_LAUNCHER_DSA] = "LogicalRepLauncherDSA",
-	[LWTRANCHE_LAUNCHER_HASH] = "LogicalRepLauncherHash",
-	[LWTRANCHE_DSM_REGISTRY_DSA] = "DSMRegistryDSA",
-	[LWTRANCHE_DSM_REGISTRY_HASH] = "DSMRegistryHash",
+	/* LWTRANCHE_XACT_BUFFER: */
+	"XactBuffer",
+	/* LWTRANCHE_COMMITTS_BUFFER: */
+	"CommitTsBuffer",
+	/* LWTRANCHE_SUBTRANS_BUFFER: */
+	"SubtransBuffer",
+	/* LWTRANCHE_MULTIXACTOFFSET_BUFFER: */
+	"MultiXactOffsetBuffer",
+	/* LWTRANCHE_MULTIXACTMEMBER_BUFFER: */
+	"MultiXactMemberBuffer",
+	/* LWTRANCHE_NOTIFY_BUFFER: */
+	"NotifyBuffer",
+	/* LWTRANCHE_SERIAL_BUFFER: */
+	"SerialBuffer",
+	/* LWTRANCHE_WAL_INSERT: */
+	"WALInsert",
+	/* LWTRANCHE_BUFFER_CONTENT: */
+	"BufferContent",
+	/* LWTRANCHE_REPLICATION_ORIGIN_STATE: */
+	"ReplicationOriginState",
+	/* LWTRANCHE_REPLICATION_SLOT_IO: */
+	"ReplicationSlotIO",
+	/* LWTRANCHE_LOCK_FASTPATH: */
+	"LockFastPath",
+	/* LWTRANCHE_BUFFER_MAPPING: */
+	"BufferMapping",
+	/* LWTRANCHE_LOCK_MANAGER: */
+	"LockManager",
+	/* LWTRANCHE_PREDICATE_LOCK_MANAGER: */
+	"PredicateLockManager",
+	/* LWTRANCHE_PARALLEL_HASH_JOIN: */
+	"ParallelHashJoin",
+	/* LWTRANCHE_PARALLEL_QUERY_DSA: */
+	"ParallelQueryDSA",
+	/* LWTRANCHE_PER_SESSION_DSA: */
+	"PerSessionDSA",
+	/* LWTRANCHE_PER_SESSION_RECORD_TYPE: */
+	"PerSessionRecordType",
+	/* LWTRANCHE_PER_SESSION_RECORD_TYPMOD: */
+	"PerSessionRecordTypmod",
+	/* LWTRANCHE_SHARED_TUPLESTORE: */
+	"SharedTupleStore",
+	/* LWTRANCHE_SHARED_TIDBITMAP: */
+	"SharedTidBitmap",
+	/* LWTRANCHE_PARALLEL_APPEND: */
+	"ParallelAppend",
+	/* LWTRANCHE_PER_XACT_PREDICATE_LIST: */
+	"PerXactPredicateList",
+	/* LWTRANCHE_PGSTATS_DSA: */
+	"PgStatsDSA",
+	/* LWTRANCHE_PGSTATS_HASH: */
+	"PgStatsHash",
+	/* LWTRANCHE_PGSTATS_DATA: */
+	"PgStatsData",
+	/* LWTRANCHE_LAUNCHER_DSA: */
+	"LogicalRepLauncherDSA",
+	/* LWTRANCHE_LAUNCHER_HASH: */
+	"LogicalRepLauncherHash",
 };
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
-				 LWTRANCHE_FIRST_USER_DEFINED,
+				 LWTRANCHE_FIRST_USER_DEFINED - NUM_INDIVIDUAL_LWLOCKS,
 				 "missing entries in BuiltinTrancheNames[]");
 
 /*
@@ -744,7 +771,7 @@ GetLWTrancheName(uint16 trancheId)
 
 	/* Built-in tranche? */
 	if (trancheId < LWTRANCHE_FIRST_USER_DEFINED)
-		return BuiltinTrancheNames[trancheId];
+		return BuiltinTrancheNames[trancheId - NUM_INDIVIDUAL_LWLOCKS];
 
 	/*
 	 * It's an extension tranche, so look in LWLockTrancheNames[].  However,
@@ -1903,7 +1930,7 @@ LWLockHeldByMe(LWLock *lock)
 }
 
 /*
- * LWLockAnyHeldByMe - test whether my process holds any of an array of locks
+ * LWLockHeldByMe - test whether my process holds any of an array of locks
  *
  * This is meant as debug support only.
  */

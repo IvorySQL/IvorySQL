@@ -8,7 +8,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/oracle_test/regress/pg_regress.c
@@ -1245,7 +1245,7 @@ spawn_process(const char *cmdline)
 		comspec = "CMD";
 
 	memset(&pi, 0, sizeof(pi));
-	cmdline2 = psprintf("\"%s\" /d /c \"%s\"", comspec, cmdline);
+	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
 
 	if (!CreateRestrictedProcess(cmdline2, &pi))
 		exit(2);

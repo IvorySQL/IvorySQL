@@ -10,7 +10,7 @@
  * backup manifest supplied by the user taking the incremental backup
  * and extract the required information from it.
  *
- * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/backup/basebackup_incremental.c
@@ -436,12 +436,12 @@ PrepareForIncrementalBackup(IncrementalBackupInfo *ib,
 		 * drifting to something that is not a multiple of ten.
 		 */
 		timeout_in_ms -=
-			TimestampDifferenceMilliseconds(initial_time, current_time) %
+			TimestampDifferenceMilliseconds(current_time, initial_time) %
 			timeout_in_ms;
 
 		/* Wait for up to 10 seconds. */
 		summarized_lsn = WaitForWalSummarization(backup_state->startpoint,
-												 timeout_in_ms, &pending_lsn);
+												 10000, &pending_lsn);
 
 		/* If WAL summarization has progressed sufficiently, stop waiting. */
 		if (summarized_lsn >= backup_state->startpoint)

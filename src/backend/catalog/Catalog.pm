@@ -4,7 +4,7 @@
 #    Perl module that extracts info from catalog files into Perl
 #    data structures
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/backend/catalog/Catalog.pm
@@ -128,16 +128,6 @@ sub ParseHeader
 				is_pkey => $2 ? 1 : 0,
 				%+,
 			  };
-		}
-		elsif (
-			/^MAKE_SYSCACHE\(\s*
-			(?<syscache_name>\w+),\s*
-			(?<index_name>\w+),\s*
-			(?<syscache_nbuckets>\w+)\s*
-			\)/x
-		  )
-		{
-			push @{ $catalog{syscaches} }, {%+};
 		}
 		elsif (
 			/^DECLARE_OID_DEFINING_MACRO\(\s*

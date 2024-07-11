@@ -9,7 +9,7 @@
  * bootstrap file from these header files.)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/genbki.h
@@ -119,12 +119,6 @@
 #define DECLARE_FOREIGN_KEY_OPT(cols,reftbl,refcols) extern int no_such_variable
 #define DECLARE_ARRAY_FOREIGN_KEY(cols,reftbl,refcols) extern int no_such_variable
 #define DECLARE_ARRAY_FOREIGN_KEY_OPT(cols,reftbl,refcols) extern int no_such_variable
-
-/*
- * Create a syscache with the given name, index, and bucket size.  See
- * syscache.c.
- */
-#define MAKE_SYSCACHE(name,idxname,nbuckets) extern int no_such_variable
 
 /* The following are never defined; they are here only for documentation. */
 

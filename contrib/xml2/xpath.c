@@ -74,6 +74,9 @@ pgxml_parser_init(PgXmlStrictness strictness)
 	/* Initialize libxml */
 	xmlInitParser();
 
+	xmlSubstituteEntitiesDefault(1);
+	xmlLoadExtDtdDefaultValue = 1;
+
 	return xmlerrcxt;
 }
 
@@ -377,9 +380,8 @@ pgxml_xpath(text *document, xmlChar *xpath, xpath_workspace *workspace)
 
 	PG_TRY();
 	{
-		workspace->doctree = xmlReadMemory((char *) VARDATA_ANY(document),
-										   docsize, NULL, NULL,
-										   XML_PARSE_NOENT);
+		workspace->doctree = xmlParseMemory((char *) VARDATA_ANY(document),
+											docsize);
 		if (workspace->doctree != NULL)
 		{
 			workspace->ctxt = xmlXPathNewContext(workspace->doctree);
@@ -622,9 +624,7 @@ xpath_table(PG_FUNCTION_ARGS)
 
 			/* Parse the document */
 			if (xmldoc)
-				doctree = xmlReadMemory(xmldoc, strlen(xmldoc),
-										NULL, NULL,
-										XML_PARSE_NOENT);
+				doctree = xmlParseMemory(xmldoc, strlen(xmldoc));
 			else				/* treat NULL as not well-formed */
 				doctree = NULL;
 
