@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2023, PostgreSQL Global Development Group
+# Copyright (c) 2022-2024, PostgreSQL Global Development Group
 
 # Entry point for building PostgreSQL with meson
 #
@@ -432,6 +432,7 @@ meson_bin = find_program(meson_binpath, native: true)
 ###############################################################
 
 cdata.set('USE_ASSERT_CHECKING', get_option('cassert') ? 1 : false)
+cdata.set('USE_INJECTION_POINTS', get_option('injection_points') ? 1 : false)
 
 blocksize = get_option('blocksize').to_int() * 1024
 
@@ -590,7 +591,7 @@ if not docs_opt.disabled()
   if xmllint_bin.found() and xsltproc_bin.found()
     docs_dep = declare_dependency()
   elif docs_opt.enabled()
-    error('missing required tools for docs in HTML / man page format')
+    error('missing required tools (xmllint and xsltproc needed) for docs in HTML / man page format')
   endif
 endif
 

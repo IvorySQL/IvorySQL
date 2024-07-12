@@ -4,7 +4,7 @@
  *
  * Author: Magnus Hagander <magnus@hagander.net>
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/pg_basebackup.c
@@ -415,7 +415,7 @@ usage(void)
 	printf(_("  -Z, --compress=none    do not compress tar output\n"));
 	printf(_("\nGeneral options:\n"));
 	printf(_("  -c, --checkpoint=fast|spread\n"
-			 "                         set fast or spread checkpointing\n"));
+			 "                         set fast or spread (default) checkpointing\n"));
 	printf(_("  -C, --create-slot      create replication slot\n"));
 	printf(_("  -l, --label=LABEL      set backup label\n"));
 	printf(_("  -n, --no-clean         do not clean up after errors\n"));
@@ -709,7 +709,7 @@ StartLogStreamer(char *startpos, uint32 timeline, char *sysidentifier,
 					 PQserverVersion(conn) < MINIMUM_VERSION_FOR_PG_WAL ?
 					 "pg_xlog" : "pg_wal");
 
-			if (pg_mkdir_p(statusdir, pg_dir_create_mode) != 0 &&
+			if (pg_mkdir_p(summarydir, pg_dir_create_mode) != 0 &&
 				errno != EEXIST)
 				pg_fatal("could not create directory \"%s\": %m", summarydir);
 		}

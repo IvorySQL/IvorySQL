@@ -43,7 +43,7 @@
  * overflow.)
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -2140,7 +2140,7 @@ check_backtrace_functions(char **newval, void **extra, GucSource source)
 					  ", \n\t");
 	if (validlen != newvallen)
 	{
-		GUC_check_errdetail("invalid character");
+		GUC_check_errdetail("Invalid character");
 		return false;
 	}
 

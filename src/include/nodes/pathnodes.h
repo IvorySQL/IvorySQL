@@ -6,7 +6,7 @@
  * We don't support copying RelOptInfo, IndexOptInfo, or Path nodes.
  * There are some subsidiary structs that are useful to copy, though.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/pathnodes.h
@@ -1455,6 +1455,16 @@ typedef struct PathKey
 	int			pk_strategy;	/* sort direction (ASC or DESC) */
 	bool		pk_nulls_first; /* do NULLs come before normal values? */
 } PathKey;
+
+/*
+ * Combines the information about pathkeys and the associated clauses.
+ */
+typedef struct PathKeyInfo
+{
+	NodeTag		type;
+	List	   *pathkeys;
+	List	   *clauses;
+} PathKeyInfo;
 
 /*
  * VolatileFunctionStatus -- allows nodes to cache their
@@ -3406,6 +3416,12 @@ typedef struct UniqueRelInfo
 	 * of other relation(s).
 	 */
 	Relids		outerrelids;
+
+	/*
+	 * The relation in consideration is unique when considering only clauses
+	 * suitable for self-join (passed split_selfjoin_quals()).
+	 */
+	bool		self_join;
 
 	/*
 	 * Additional clauses from a baserestrictinfo list that were used to prove

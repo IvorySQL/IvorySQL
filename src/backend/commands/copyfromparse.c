@@ -47,7 +47,7 @@
  * and 'attribute_buf' are expanded on demand, to hold the longest line
  * encountered so far.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -70,6 +70,7 @@
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/miscnodes.h"
 #include "pgstat.h"
 #include "port/pg_bswap.h"
 #include "utils/builtins.h"
@@ -955,11 +956,21 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 
 				values[m] = ExecEvalExpr(defexprs[m], econtext, &nulls[m]);
 			}
-			else
-				values[m] = InputFunctionCall(&in_functions[m],
-											  string,
-											  typioparams[m],
-											  att->atttypmod);
+
+			/*
+			 * If ON_ERROR is specified with IGNORE, skip rows with soft
+			 * errors
+			 */
+			else if (!InputFunctionCallSafe(&in_functions[m],
+											string,
+											typioparams[m],
+											att->atttypmod,
+											(Node *) cstate->escontext,
+											&values[m]))
+			{
+				cstate->num_errors++;
+				return true;
+			}
 
 			cstate->cur_attname = NULL;
 			cstate->cur_attval = NULL;

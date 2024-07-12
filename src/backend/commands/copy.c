@@ -3,7 +3,7 @@
  * copy.c
  *		Implements the COPY utility command
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -395,6 +395,42 @@ defGetCopyHeaderChoice(DefElem *def, bool is_from)
 }
 
 /*
+ * Extract a CopyOnErrorChoice value from a DefElem.
+ */
+static CopyOnErrorChoice
+defGetCopyOnErrorChoice(DefElem *def, ParseState *pstate, bool is_from)
+{
+	char	   *sval;
+
+	if (!is_from)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("COPY ON_ERROR cannot be used with COPY TO"),
+				 parser_errposition(pstate, def->location)));
+
+	/*
+	 * If no parameter value given, assume the default value.
+	 */
+	if (def->arg == NULL)
+		return COPY_ON_ERROR_STOP;
+
+	/*
+	 * Allow "stop", or "ignore" values.
+	 */
+	sval = defGetString(def);
+	if (pg_strcasecmp(sval, "stop") == 0)
+		return COPY_ON_ERROR_STOP;
+	if (pg_strcasecmp(sval, "ignore") == 0)
+		return COPY_ON_ERROR_IGNORE;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("COPY ON_ERROR \"%s\" not recognized", sval),
+			 parser_errposition(pstate, def->location)));
+	return COPY_ON_ERROR_STOP;	/* keep compiler quiet */
+}
+
+/*
  * Process the statement option list for COPY.
  *
  * Scan the options list (a list of DefElem) and transpose the information
@@ -419,6 +455,7 @@ ProcessCopyOptions(ParseState *pstate,
 	bool		format_specified = false;
 	bool		freeze_specified = false;
 	bool		header_specified = false;
+	bool		on_error_specified = false;
 	ListCell   *option;
 
 	/* Support external use for option sanity checking */
@@ -571,6 +608,13 @@ ProcessCopyOptions(ParseState *pstate,
 								defel->defname),
 						 parser_errposition(pstate, defel->location)));
 		}
+		else if (strcmp(defel->defname, "on_error") == 0)
+		{
+			if (on_error_specified)
+				errorConflictingDefElem(defel, pstate);
+			on_error_specified = true;
+			opts_out->on_error = defGetCopyOnErrorChoice(defel, pstate, is_from);
+		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -597,6 +641,11 @@ ProcessCopyOptions(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("cannot specify DEFAULT in BINARY mode")));
+
+	if (opts_out->binary && opts_out->on_error != COPY_ON_ERROR_STOP)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("only ON_ERROR STOP is allowed in BINARY mode")));
 
 	/* Set defaults for omitted options */
 	if (!opts_out->delim)

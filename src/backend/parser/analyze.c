@@ -14,7 +14,7 @@
  * contain optimizable statements, which we should transform.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/parser/analyze.c
@@ -2516,7 +2516,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
-		if (attrno == InvalidAttrNumber)
+		if (attrno == InvalidAttrNumber && compatible_db == DB_ORACLE)
 		{
 			if (origTarget->indirection)
 			{
@@ -2568,8 +2568,23 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 						 errmsg("column \"%s\" of relation \"%s\" does not exist",
 								origTarget->name,
 								RelationGetRelationName(pstate->p_target_relation)),
+						 (origTarget->indirection != NIL &&
+						  strcmp(origTarget->name, pstate->p_target_nsitem->p_names->aliasname) == 0) ?
+						 errhint("SET target columns cannot be qualified with the relation name.") : 0,
 						 parser_errposition(pstate, origTarget->location)));
 			}
+		}
+		if (attrno == InvalidAttrNumber && compatible_db == DB_PG)
+		{
+			ereport(ERROR,
+			(errcode(ERRCODE_UNDEFINED_COLUMN),
+			 errmsg("column \"%s\" of relation \"%s\" does not exist",
+					origTarget->name,
+					RelationGetRelationName(pstate->p_target_relation)),
+			 (origTarget->indirection != NIL &&
+			  strcmp(origTarget->name, pstate->p_target_nsitem->p_names->aliasname) == 0) ?
+			 errhint("SET target columns cannot be qualified with the relation name.") : 0,
+			 parser_errposition(pstate, origTarget->location)));
 		}
 
 		if (colname_temp)

@@ -5826,7 +5826,7 @@ SELECT * FROM ft2 ftupper WHERE
   ORDER BY ftupper.c1 LIMIT 10;
 ERROR:  "r3"."c2": invalid identifier
 CONTEXT:  remote SQL command: EXPLAIN SELECT r2."C 1", r2.c2, r3.c2 FROM "S 1"."T 1" r2 WHERE EXISTS (SELECT NULL FROM "S 1"."T 3" r3)
--- EXISTS should be propogated to the highest upper inner join
+-- EXISTS should be propagated to the highest upper inner join
 EXPLAIN (verbose, costs off)
 	SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
 	(SELECT * FROM ft4 WHERE EXISTS (

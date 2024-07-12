@@ -3,7 +3,7 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -2494,7 +2494,7 @@ errdetail_params(ParamListInfo params)
 
 		str = BuildParamLogString(params, NULL, log_parameter_max_length);
 		if (str && str[0] != '\0')
-			errdetail("parameters: %s", str);
+			errdetail("Parameters: %s", str);
 	}
 
 	return 0;
@@ -2509,7 +2509,7 @@ static int
 errdetail_abort(void)
 {
 	if (MyProc->recoveryConflictPending)
-		errdetail("abort reason: recovery conflict");
+		errdetail("Abort reason: recovery conflict");
 
 	return 0;
 }

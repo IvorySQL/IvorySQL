@@ -4,7 +4,7 @@
  *	  header file for postgres vacuum cleaner and statistics analyzer
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/vacuum.h
@@ -121,7 +121,7 @@ typedef struct VacAttrStats
 	 * than the underlying column/expression.  Therefore, use these fields for
 	 * information about the datatype being fed to the typanalyze function.
 	 */
-	int			attstattarget;
+	int			attstattarget;	/* -1 to use default */
 	Oid			attrtypid;		/* type of data being analyzed */
 	int32		attrtypmod;		/* typmod of data being analyzed */
 	Form_pg_type attrtype;		/* copy of pg_type row for attrtypid */

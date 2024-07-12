@@ -11,7 +11,7 @@
 # This configure script is free software; the Free Software Foundation
 # gives unlimited permission to copy, distribute and modify it.
 #
-# Copyright (c) 1996-2023, PostgreSQL Global Development Group
+# Copyright (c) 1996-2024, PostgreSQL Global Development Group
 ## -------------------- ##
 ## M4sh Initialization. ##
 ## -------------------- ##
@@ -759,6 +759,7 @@ CPPFLAGS
 LDFLAGS
 CFLAGS
 CC
+enable_injection_points
 enable_tap_tests
 enable_dtrace
 DTRACEFLAGS
@@ -841,6 +842,7 @@ enable_profiling
 enable_coverage
 enable_dtrace
 enable_tap_tests
+enable_injection_points
 with_blocksize
 with_segsize
 with_segsize_blocks
@@ -1535,6 +1537,8 @@ Optional Features:
   --enable-coverage       build with coverage testing instrumentation
   --enable-dtrace         build with DTrace support
   --enable-tap-tests      enable TAP tests (requires Perl and IPC::Run)
+  --enable-injection-points
+                          enable injection points (for testing)
   --enable-depend         turn on automatic dependency tracking
   --enable-cassert        enable assertion checks (for debugging)
   --disable-largefile     omit support for large files
@@ -1698,7 +1702,7 @@ Copyright (C) 2012 Free Software Foundation, Inc.
 This configure script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it.
 
-Copyright (c) 1996-2023, PostgreSQL Global Development Group
+Copyright (c) 1996-2024, PostgreSQL Global Development Group
 _ACEOF
   exit
 fi
@@ -3732,6 +3736,36 @@ if test "${enable_tap_tests+set}" = set; then :
 
 else
   enable_tap_tests=no
+
+fi
+
+
+
+
+#
+# Injection points
+#
+
+
+# Check whether --enable-injection-points was given.
+if test "${enable_injection_points+set}" = set; then :
+  enableval=$enable_injection_points;
+  case $enableval in
+    yes)
+
+$as_echo "#define USE_INJECTION_POINTS 1" >>confdefs.h
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      as_fn_error $? "no argument expected for --enable-injection-points option" "$LINENO" 5
+      ;;
+  esac
+
+else
+  enable_injection_points=no
 
 fi
 

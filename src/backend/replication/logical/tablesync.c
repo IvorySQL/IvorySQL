@@ -2,7 +2,7 @@
  * tablesync.c
  *	  PostgreSQL logical replication: initial table data synchronization
  *
- * Copyright (c) 2012-2023, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2024, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/tablesync.c
@@ -1036,11 +1036,11 @@ fetch_remote_table_info(char *nspname, char *relname,
 
 		/* Build the pubname list. */
 		initStringInfo(&pub_names);
-		foreach(lc, MySubscription->publications)
+		foreach_node(String, pubstr, MySubscription->publications)
 		{
-			char	   *pubname = strVal(lfirst(lc));
+			char	   *pubname = strVal(pubstr);
 
-			if (foreach_current_index(lc) > 0)
+			if (foreach_current_index(pubstr) > 0)
 				appendStringInfoString(&pub_names, ", ");
 
 			appendStringInfoString(&pub_names, quote_literal_cstr(pubname));

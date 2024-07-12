@@ -18,6 +18,7 @@ SUBDIRS = \
 		  test_custom_rmgrs \
 		  test_ddl_deparse \
 		  test_dsa \
+		  test_dsm_registry \
 		  test_extensions \
 		  test_ginpostinglist \
 		  test_integerset \
@@ -36,6 +37,13 @@ SUBDIRS = \
 		  unsafe_tests \
 		  worker_spi \
 		  xid_wraparound
+
+
+ifeq ($(enable_injection_points),yes)
+SUBDIRS += injection_points
+else
+ALWAYS_SUBDIRS += injection_points
+endif
 
 ifeq ($(with_ssl),openssl)
 SUBDIRS += ssl_passphrase_callback

@@ -4,7 +4,7 @@
  *	  Lightweight lock manager
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/lwlock.h
@@ -206,6 +206,8 @@ typedef enum BuiltinTrancheIds
 	LWTRANCHE_PGSTATS_DATA,
 	LWTRANCHE_LAUNCHER_DSA,
 	LWTRANCHE_LAUNCHER_HASH,
+	LWTRANCHE_DSM_REGISTRY_DSA,
+	LWTRANCHE_DSM_REGISTRY_HASH,
 	LWTRANCHE_FIRST_USER_DEFINED,
 }			BuiltinTrancheIds;
 

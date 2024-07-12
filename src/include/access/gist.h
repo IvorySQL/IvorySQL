@@ -6,7 +6,7 @@
  *	  changes should be made with care.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/gist.h
@@ -38,7 +38,8 @@
 #define GIST_FETCH_PROC					9
 #define GIST_OPTIONS_PROC				10
 #define GIST_SORTSUPPORT_PROC			11
-#define GISTNProcs					11
+#define GIST_STRATNUM_PROC				12
+#define GISTNProcs					12
 
 /*
  * Page opaque data in a GiST index page.

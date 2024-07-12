@@ -3,7 +3,7 @@
  * joinpath.c
  *	  Routines to find all possible paths for processing a set of joins
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -635,7 +635,7 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 	 */
 	if (extra->inner_unique &&
 		(inner_path->param_info == NULL ||
-		 list_length(inner_path->param_info->ppi_clauses) <
+		 bms_num_members(inner_path->param_info->ppi_serials) <
 		 list_length(extra->restrictlist)))
 		return NULL;
 
@@ -730,8 +730,11 @@ try_nestloop_path(PlannerInfo *root,
 		return;
 
 	/*
-	 * Paths are parameterized by top-level parents, so run parameterization
-	 * tests on the parent relids.
+	 * Any parameterization of the input paths refers to topmost parents of
+	 * the relevant relations, because reparameterize_path_by_child() hasn't
+	 * been called yet.  So we must consider topmost parents of the relations
+	 * being joined, too, while determining parameterization of the result and
+	 * checking for disallowed parameterization cases.
 	 */
 	if (innerrel->top_parent_relids)
 		innerrelids = innerrel->top_parent_relids;

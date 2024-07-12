@@ -9,7 +9,7 @@
  * and implementing search-path-controlled searches.
  *
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -41,7 +41,7 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
-#include "common/hashfn.h"
+#include "common/hashfn_unstable.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -157,6 +157,11 @@ static Oid	namespaceUser = InvalidOid;
 
 /* The above four values are valid only if baseSearchPathValid */
 static bool baseSearchPathValid = true;
+
+/*
+ * Storage for search path cache.  Clear searchPathCacheValid as a simple
+ * way to invalidate *all* the cache entries, not just the active one.
+ */
 static bool searchPathCacheValid = false;
 static MemoryContext SearchPathCacheContext = NULL;
 
@@ -164,7 +169,7 @@ typedef struct SearchPathCacheKey
 {
 	const char *searchPath;
 	Oid			roleid;
-}			SearchPathCacheKey;
+} SearchPathCacheKey;
 
 typedef struct SearchPathCacheEntry
 {
@@ -177,7 +182,7 @@ typedef struct SearchPathCacheEntry
 
 	/* needed for simplehash */
 	char		status;
-}			SearchPathCacheEntry;
+} SearchPathCacheEntry;
 
 /*
  * myTempNamespace is InvalidOid until and unless a TEMP namespace is set up
@@ -249,11 +254,21 @@ static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 static inline uint32
 spcachekey_hash(SearchPathCacheKey key)
 {
-	const unsigned char *bytes = (const unsigned char *) key.searchPath;
-	int			blen = strlen(key.searchPath);
+	fasthash_state hs;
+	int			sp_len;
 
-	return hash_combine(hash_bytes(bytes, blen),
-						hash_uint32(key.roleid));
+	fasthash_init(&hs, FH_UNKNOWN_LENGTH, 0);
+
+	hs.accum = key.roleid;
+	fasthash_combine(&hs);
+
+	/*
+	 * Combine search path into the hash and save the length for tweaking the
+	 * final mix.
+	 */
+	sp_len = fasthash_accum_cstring(&hs, key.searchPath);
+
+	return fasthash_final32(&hs, sp_len);
 }
 
 static inline bool
@@ -282,8 +297,8 @@ spcachekey_equal(SearchPathCacheKey a, SearchPathCacheKey b)
  */
 #define SPCACHE_RESET_THRESHOLD		256
 
-static nsphash_hash * SearchPathCache = NULL;
-static SearchPathCacheEntry * LastSearchPathCacheEntry = NULL;
+static nsphash_hash *SearchPathCache = NULL;
+static SearchPathCacheEntry *LastSearchPathCacheEntry = NULL;
 
 /*
  * Create or reset search_path cache as necessary.
@@ -297,8 +312,11 @@ spcache_init(void)
 		SearchPathCache->members < SPCACHE_RESET_THRESHOLD)
 		return;
 
-	MemoryContextReset(SearchPathCacheContext);
+	/* make sure we don't leave dangling pointers if nsphash_create fails */
+	SearchPathCache = NULL;
 	LastSearchPathCacheEntry = NULL;
+
+	MemoryContextReset(SearchPathCacheContext);
 	/* arbitrary initial starting size of 16 elements */
 	SearchPathCache = nsphash_create(SearchPathCacheContext, 16, NULL);
 	searchPathCacheValid = true;
@@ -326,8 +344,8 @@ spcache_lookup(const char *searchPath, Oid roleid)
 		};
 
 		entry = nsphash_lookup(SearchPathCache, cachekey);
-
-		LastSearchPathCacheEntry = entry;
+		if (entry)
+			LastSearchPathCacheEntry = entry;
 		return entry;
 	}
 }
@@ -4268,7 +4286,7 @@ cachedNamespacePath(const char *searchPath, Oid roleid)
 	entry = spcache_insert(searchPath, roleid);
 
 	/*
-	 * An OOM may have resulted in a cache entry with mising 'oidlist' or
+	 * An OOM may have resulted in a cache entry with missing 'oidlist' or
 	 * 'finalPath', so just compute whatever is missing.
 	 */
 
@@ -4317,7 +4335,7 @@ recomputeNamespacePath(void)
 {
 	Oid			roleid = GetUserId();
 	bool		pathChanged;
-	const		SearchPathCacheEntry *entry;
+	const SearchPathCacheEntry *entry;
 
 	/* Do nothing if path is already valid. */
 	if (baseSearchPathValid && namespaceUser == roleid)
@@ -4685,9 +4703,7 @@ check_search_path(char **newval, void **extra, GucSource source)
 	 * schemas that don't exist; and often, we are not inside a transaction
 	 * here and so can't consult the system catalogs anyway.  So now, the only
 	 * requirement is syntactic validity of the identifier list.
-	 */
-
-	/*
+	 *
 	 * Checking only the syntactic validity also allows us to use the search
 	 * path cache (if available) to avoid calling SplitIdentifierString() on
 	 * the same string repeatedly.
@@ -4717,19 +4733,10 @@ check_search_path(char **newval, void **extra, GucSource source)
 		list_free(namelist);
 		return false;
 	}
-
-	/*
-	 * We used to try to check that the named schemas exist, but there are
-	 * many valid use-cases for having search_path settings that include
-	 * schemas that don't exist; and often, we are not inside a transaction
-	 * here and so can't consult the system catalogs anyway.  So now, the only
-	 * requirement is syntactic validity of the identifier list.
-	 */
-
 	pfree(rawname);
 	list_free(namelist);
 
-	/* create empty cache entry */
+	/* OK to create empty cache entry */
 	if (use_cache)
 		(void) spcache_insert(searchPath, roleid);
 
@@ -4782,8 +4789,9 @@ InitializeSearchPath(void)
 	}
 	else
 	{
-		SearchPathCacheContext = AllocSetContextCreate(
-													   TopMemoryContext, "search_path processing cache",
+		/* Make the context we'll keep search path cache hashtable in */
+		SearchPathCacheContext = AllocSetContextCreate(TopMemoryContext,
+													   "search_path processing cache",
 													   ALLOCSET_DEFAULT_SIZES);
 
 		/*

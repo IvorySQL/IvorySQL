@@ -6,7 +6,7 @@
  * gram.y
  *	  POSTGRESQL BISON rules/actions
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -337,6 +337,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>	alter_table_cmds alter_type_cmds
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
+%type <node>	set_statistics_value
 
 %type <list>	createdb_opt_list createdb_opt_items copy_opt_list
 				transaction_mode_list
@@ -2417,6 +2418,16 @@ alter_table_cmd:
 					n->name = $3;
 					$$ = (Node *) n;
 				}
+			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET EXPRESSION AS <expr> */
+			| ALTER opt_column ColId SET EXPRESSION AS '(' a_expr ')'
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					n->subtype = AT_SetExpression;
+					n->name = $3;
+					n->def = $8;
+					$$ = (Node *) n;
+				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP EXPRESSION */
 			| ALTER opt_column ColId DROP EXPRESSION
 				{
@@ -2436,18 +2447,18 @@ alter_table_cmd:
 					n->missing_ok = true;
 					$$ = (Node *) n;
 				}
-			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STATISTICS <SignedIconst> */
-			| ALTER opt_column ColId SET STATISTICS SignedIconst
+			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STATISTICS */
+			| ALTER opt_column ColId SET STATISTICS set_statistics_value
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_SetStatistics;
 					n->name = $3;
-					n->def = (Node *) makeInteger($6);
+					n->def = $6;
 					$$ = (Node *) n;
 				}
-			/* ALTER TABLE <name> ALTER [COLUMN] <colnum> SET STATISTICS <SignedIconst> */
-			| ALTER opt_column Iconst SET STATISTICS SignedIconst
+			/* ALTER TABLE <name> ALTER [COLUMN] <colnum> SET STATISTICS */
+			| ALTER opt_column Iconst SET STATISTICS set_statistics_value
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -2459,7 +2470,7 @@ alter_table_cmd:
 
 					n->subtype = AT_SetStatistics;
 					n->num = (int16) $3;
-					n->def = (Node *) makeInteger($6);
+					n->def = $6;
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET ( column_parameter = value [, ... ] ) */
@@ -3058,6 +3069,11 @@ alter_identity_column_option:
 				{
 					$$ = makeDefElem("generated", (Node *) makeInteger($3), @1);
 				}
+		;
+
+set_statistics_value:
+			SignedIconst					{ $$ = (Node *) makeInteger($1); }
+			| DEFAULT						{ $$ = NULL; }
 		;
 
 PartitionBoundSpec:

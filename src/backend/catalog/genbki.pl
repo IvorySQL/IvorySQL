@@ -6,7 +6,7 @@
 #    headers from specially formatted header files and data files.
 #    postgres.bki is used to initialize the postgres template database.
 #
-# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/backend/catalog/genbki.pl
@@ -865,7 +865,6 @@ sub gen_pg_attribute
 				my %row;
 				$row{attnum} = $attnum;
 				$row{attrelid} = $table->{relation_oid};
-				$row{attstattarget} = '0';
 
 				morph_row_for_pgattr(\%row, $schema, $attr, 1);
 				print_bki_insert(\%row, $schema);
@@ -1103,7 +1102,7 @@ sub print_boilerplate
  * %s
  *    %s
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES

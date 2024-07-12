@@ -3,7 +3,7 @@
  * rewriteHandler.c
  *		Primary module of query rewriter.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,6 +24,7 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "catalog/dependency.h"
+#include "catalog/partition.h"
 #include "catalog/pg_type.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
@@ -1306,8 +1307,24 @@ build_column_default(Relation rel, int attrno)
 	if (att_tup->attidentity)
 	{
 		NextValueExpr *nve = makeNode(NextValueExpr);
+		Oid			reloid;
 
-		nve->seqid = getIdentitySequence(RelationGetRelid(rel), attrno, false);
+		/*
+		 * The identity sequence is associated with the topmost partitioned
+		 * table.
+		 */
+		if (rel->rd_rel->relispartition)
+		{
+			List	   *ancestors =
+				get_partition_ancestors(RelationGetRelid(rel));
+
+			reloid = llast_oid(ancestors);
+			list_free(ancestors);
+		}
+		else
+			reloid = RelationGetRelid(rel);
+
+		nve->seqid = getIdentitySequence(reloid, attrno, false);
 		nve->typeId = att_tup->atttypid;
 		nvetype = exprType((Node*)nve);
 		if(atttype == NUMBEROID)
