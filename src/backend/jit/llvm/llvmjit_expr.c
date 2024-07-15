@@ -2766,7 +2766,7 @@ create_LifetimeEnd(LLVMModuleRef mod)
 	LLVMContextRef lc;
 
 	/* variadic pointer argument */
-	const char *nm = "llvm.lifetime.end.p0i8";
+	const char *nm = "llvm.lifetime.end.p0";
 
 	fn = LLVMGetNamedFunction(mod, nm);
 	if (fn)
