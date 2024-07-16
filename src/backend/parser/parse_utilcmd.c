@@ -477,7 +477,16 @@ generateSerialExtraStmts(CreateStmtContext *cxt, ColumnDef *column,
 	seqstmt = makeNode(CreateSeqStmt);
 	seqstmt->for_identity = for_identity;
 	seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
-	seqstmt->sequence->relpersistence = cxt->relation->relpersistence;
+
+	/*
+	 * Copy the persistence of the table.  For CREATE TABLE, we get the
+	 * persistence from cxt->relation, which comes from the CreateStmt in
+	 * progress.  For ALTER TABLE, the parser won't set
+	 * cxt->relation->relpersistence, but we have cxt->rel as the existing
+	 * table, so we copy the persistence from there.
+	 */
+	seqstmt->sequence->relpersistence = cxt->rel ? cxt->rel->rd_rel->relpersistence : cxt->relation->relpersistence;
+
 	seqstmt->options = seqoptions;
 
 	if (compatible_db == ORA_PARSER)
@@ -1752,6 +1761,7 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
 	index->unique = idxrec->indisunique;
 	index->nulls_not_distinct = idxrec->indnullsnotdistinct;
 	index->primary = idxrec->indisprimary;
+	index->iswithoutoverlaps = (idxrec->indisprimary || idxrec->indisunique) && idxrec->indisexclusion;
 	index->transformed = true;	/* don't need transformIndexStmt */
 	index->concurrent = false;
 	index->if_not_exists = false;
@@ -1801,7 +1811,9 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
 				int			nElems;
 				int			i;
 
-				Assert(conrec->contype == CONSTRAINT_EXCLUSION);
+				Assert(conrec->contype == CONSTRAINT_EXCLUSION ||
+					   (index->iswithoutoverlaps &&
+						(conrec->contype == CONSTRAINT_PRIMARY || conrec->contype == CONSTRAINT_UNIQUE)));
 				/* Extract operator OIDs from the pg_constraint tuple */
 				datum = SysCacheGetAttrNotNull(CONSTROID, ht_constr,
 											   Anum_pg_constraint_conexclop);
@@ -2341,6 +2353,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	}
 	index->nulls_not_distinct = constraint->nulls_not_distinct;
 	index->isconstraint = true;
+	index->iswithoutoverlaps = constraint->without_overlaps;
 	index->deferrable = constraint->deferrable;
 	index->initdeferred = constraint->initdeferred;
 
@@ -2433,6 +2446,11 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 					 errmsg("index \"%s\" is not valid", index_name),
 					 parser_errposition(cxt->pstate, constraint->location)));
 
+		/*
+		 * Today we forbid non-unique indexes, but we could permit GiST
+		 * indexes whose last entry is a range type and use that to create a
+		 * WITHOUT OVERLAPS constraint (i.e. a temporal constraint).
+		 */
 		if (!index_form->indisunique)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -2709,6 +2727,23 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				notnullcmds = lappend(notnullcmds, notnullcmd);
 			}
 		}
+
+		if (constraint->without_overlaps)
+		{
+			/*
+			 * This enforces that there is at least one equality column
+			 * besides the WITHOUT OVERLAPS columns.  This is per SQL
+			 * standard.  XXX Do we need this?
+			 */
+			if (list_length(constraint->keys) < 2)
+				ereport(ERROR,
+						errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("constraint using WITHOUT OVERLAPS needs at least two columns"));
+
+			/* WITHOUT OVERLAPS requires a GiST index */
+			index->accessMethod = "gist";
+		}
+
 	}
 
 	/*

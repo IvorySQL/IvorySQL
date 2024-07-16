@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_walsummary
 #
-# Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/bin/pg_walsummary/Makefile
@@ -40,6 +40,7 @@ uninstall:
 
 clean distclean maintainer-clean:
 	rm -f pg_walsummary$(X) $(OBJS)
+	rm -rf tmp_check
 
 check:
 	$(prove_check)

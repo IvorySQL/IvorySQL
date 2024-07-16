@@ -21,7 +21,9 @@
 #include "replication/decode.h"
 #include "replication/logical.h"
 #include "replication/slot.h"
+#include "replication/slotsync.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/pg_lsn.h"
 #include "utils/resowner.h"
@@ -42,7 +44,8 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(name, false,
-						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false);
+						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
+						  false, false);
 
 	if (immediately_reserve)
 	{
@@ -117,6 +120,7 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 static void
 create_logical_replication_slot(char *name, char *plugin,
 								bool temporary, bool two_phase,
+								bool failover,
 								XLogRecPtr restart_lsn,
 								bool find_startpoint)
 {
@@ -133,7 +137,8 @@ create_logical_replication_slot(char *name, char *plugin,
 	 * error as well.
 	 */
 	ReplicationSlotCreate(name, true,
-						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase);
+						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
+						  failover, false);
 
 	/*
 	 * Create logical decoding context to find start point or, if we don't
@@ -171,6 +176,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	Name		plugin = PG_GETARG_NAME(1);
 	bool		temporary = PG_GETARG_BOOL(2);
 	bool		two_phase = PG_GETARG_BOOL(3);
+	bool		failover = PG_GETARG_BOOL(4);
 	Datum		result;
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
@@ -188,6 +194,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 									NameStr(*plugin),
 									temporary,
 									two_phase,
+									failover,
 									InvalidXLogRecPtr,
 									true);
 
@@ -232,7 +239,7 @@ pg_drop_replication_slot(PG_FUNCTION_ARGS)
 Datum
 pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
-#define PG_GET_REPLICATION_SLOTS_COLS 15
+#define PG_GET_REPLICATION_SLOTS_COLS 17
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	XLogRecPtr	currlsn;
 	int			slotno;
@@ -413,18 +420,22 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 					break;
 
 				case RS_INVAL_WAL_REMOVED:
-					values[i++] = CStringGetTextDatum("wal_removed");
+					values[i++] = CStringGetTextDatum(SLOT_INVAL_WAL_REMOVED_TEXT);
 					break;
 
 				case RS_INVAL_HORIZON:
-					values[i++] = CStringGetTextDatum("rows_removed");
+					values[i++] = CStringGetTextDatum(SLOT_INVAL_HORIZON_TEXT);
 					break;
 
 				case RS_INVAL_WAL_LEVEL:
-					values[i++] = CStringGetTextDatum("wal_level_insufficient");
+					values[i++] = CStringGetTextDatum(SLOT_INVAL_WAL_LEVEL_TEXT);
 					break;
 			}
 		}
+
+		values[i++] = BoolGetDatum(slot_contents.data.failover);
+
+		values[i++] = BoolGetDatum(slot_contents.data.synced);
 
 		Assert(i == PG_GET_REPLICATION_SLOTS_COLS);
 
@@ -782,10 +793,19 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 		 * We must not try to read WAL, since we haven't reserved it yet --
 		 * hence pass find_startpoint false.  confirmed_flush will be set
 		 * below, by copying from the source slot.
+		 *
+		 * To avoid potential issues with the slot synchronization where the
+		 * restart_lsn of a replication slot can go backward, we set the
+		 * failover option to false here.  This situation occurs when a slot
+		 * on the primary server is dropped and immediately replaced with a
+		 * new slot of the same name, created by copying from another existing
+		 * slot.  However, the slot synchronization will only observe the
+		 * restart_lsn of the same slot going backward.
 		 */
 		create_logical_replication_slot(NameStr(*dst_name),
 										plugin,
 										temporary,
+										false,
 										false,
 										src_restart_lsn,
 										false);
@@ -932,4 +952,50 @@ Datum
 pg_copy_physical_replication_slot_b(PG_FUNCTION_ARGS)
 {
 	return copy_replication_slot(fcinfo, false);
+}
+
+/*
+ * Synchronize failover enabled replication slots to a standby server
+ * from the primary server.
+ */
+Datum
+pg_sync_replication_slots(PG_FUNCTION_ARGS)
+{
+	WalReceiverConn *wrconn;
+	char	   *err;
+	StringInfoData app_name;
+
+	CheckSlotPermissions();
+
+	if (!RecoveryInProgress())
+		ereport(ERROR,
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg("replication slots can only be synchronized to a standby server"));
+
+	/* Load the libpq-specific functions */
+	load_file("libpqwalreceiver", false);
+
+	ValidateSlotSyncParams();
+
+	initStringInfo(&app_name);
+	if (cluster_name[0])
+		appendStringInfo(&app_name, "%s_slotsync", cluster_name);
+	else
+		appendStringInfoString(&app_name, "slotsync");
+
+	/* Connect to the primary server. */
+	wrconn = walrcv_connect(PrimaryConnInfo, false, false, false,
+							app_name.data, &err);
+	pfree(app_name.data);
+
+	if (!wrconn)
+		ereport(ERROR,
+				errcode(ERRCODE_CONNECTION_FAILURE),
+				errmsg("could not connect to the primary server: %s", err));
+
+	SyncReplicationSlots(wrconn);
+
+	walrcv_disconnect(wrconn);
+
+	PG_RETURN_VOID();
 }

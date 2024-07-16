@@ -190,10 +190,12 @@ static void create_one_window_path(PlannerInfo *root,
 								   WindowFuncLists *wflists,
 								   List *activeWindows);
 static RelOptInfo *create_distinct_paths(PlannerInfo *root,
-										 RelOptInfo *input_rel);
+										 RelOptInfo *input_rel,
+										 PathTarget *target);
 static void create_partial_distinct_paths(PlannerInfo *root,
 										  RelOptInfo *input_rel,
-										  RelOptInfo *final_distinct_rel);
+										  RelOptInfo *final_distinct_rel,
+										  PathTarget *target);
 static RelOptInfo *create_final_distinct_paths(PlannerInfo *root,
 											   RelOptInfo *input_rel,
 											   RelOptInfo *distinct_rel);
@@ -1644,8 +1646,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 */
 		root->upper_targets[UPPERREL_FINAL] = final_target;
 		root->upper_targets[UPPERREL_ORDERED] = final_target;
-		root->upper_targets[UPPERREL_PARTIAL_DISTINCT] = sort_input_target;
 		root->upper_targets[UPPERREL_DISTINCT] = sort_input_target;
+		root->upper_targets[UPPERREL_PARTIAL_DISTINCT] = sort_input_target;
 		root->upper_targets[UPPERREL_WINDOW] = sort_input_target;
 		root->upper_targets[UPPERREL_GROUP_AGG] = grouping_target;
 
@@ -1695,7 +1697,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if (parse->distinctClause)
 		{
 			current_rel = create_distinct_paths(root,
-												current_rel);
+												current_rel,
+												sort_input_target);
 		}
 	}							/* end of if (setOperations) */
 
@@ -4568,12 +4571,14 @@ create_one_window_path(PlannerInfo *root,
  * Build a new upperrel containing Paths for SELECT DISTINCT evaluation.
  *
  * input_rel: contains the source-data Paths
+ * target: the pathtarget for the result Paths to compute
  *
  * Note: input paths should already compute the desired pathtarget, since
  * Sort/Unique won't project anything.
  */
 static RelOptInfo *
-create_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel)
+create_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
+					  PathTarget *target)
 {
 	RelOptInfo *distinct_rel;
 
@@ -4601,7 +4606,7 @@ create_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel)
 	create_final_distinct_paths(root, input_rel, distinct_rel);
 
 	/* now build distinct paths based on input_rel's partial_pathlist */
-	create_partial_distinct_paths(root, input_rel, distinct_rel);
+	create_partial_distinct_paths(root, input_rel, distinct_rel, target);
 
 	/* Give a helpful error if we failed to create any paths */
 	if (distinct_rel->pathlist == NIL)
@@ -4643,7 +4648,8 @@ create_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel)
  */
 static void
 create_partial_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
-							  RelOptInfo *final_distinct_rel)
+							  RelOptInfo *final_distinct_rel,
+							  PathTarget *target)
 {
 	RelOptInfo *partial_distinct_rel;
 	Query	   *parse;
@@ -4664,7 +4670,7 @@ create_partial_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 	partial_distinct_rel = fetch_upper_rel(root, UPPERREL_PARTIAL_DISTINCT,
 										   NULL);
-	partial_distinct_rel->reltarget = root->upper_targets[UPPERREL_PARTIAL_DISTINCT];
+	partial_distinct_rel->reltarget = target;
 	partial_distinct_rel->consider_parallel = input_rel->consider_parallel;
 
 	/*
@@ -4737,11 +4743,45 @@ create_partial_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 																		-1.0);
 			}
 
-			add_partial_path(partial_distinct_rel, (Path *)
-							 create_upper_unique_path(root, partial_distinct_rel,
-													  sorted_path,
-													  list_length(root->distinct_pathkeys),
-													  numDistinctRows));
+			/*
+			 * An empty distinct_pathkeys means all tuples have the same value
+			 * for the DISTINCT clause.  See create_final_distinct_paths()
+			 */
+			if (root->distinct_pathkeys == NIL)
+			{
+				Node	   *limitCount;
+
+				limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid,
+												sizeof(int64),
+												Int64GetDatum(1), false,
+												FLOAT8PASSBYVAL);
+
+				/*
+				 * Apply a LimitPath onto the partial path to restrict the
+				 * tuples from each worker to 1.  create_final_distinct_paths
+				 * will need to apply an additional LimitPath to restrict this
+				 * to a single row after the Gather node.  If the query
+				 * already has a LIMIT clause, then we could end up with three
+				 * Limit nodes in the final plan.  Consolidating the top two
+				 * of these could be done, but does not seem worth troubling
+				 * over.
+				 */
+				add_partial_path(partial_distinct_rel, (Path *)
+								 create_limit_path(root, partial_distinct_rel,
+												   sorted_path,
+												   NULL,
+												   limitCount,
+												   LIMIT_OPTION_COUNT,
+												   0, 1));
+			}
+			else
+			{
+				add_partial_path(partial_distinct_rel, (Path *)
+								 create_upper_unique_path(root, partial_distinct_rel,
+														  sorted_path,
+														  list_length(root->distinct_pathkeys),
+														  numDistinctRows));
+			}
 		}
 	}
 
@@ -4785,7 +4825,7 @@ create_partial_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 	if (partial_distinct_rel->partial_pathlist != NIL)
 	{
-		generate_gather_paths(root, partial_distinct_rel, true);
+		generate_useful_gather_paths(root, partial_distinct_rel, true);
 		set_cheapest(partial_distinct_rel);
 
 		/*
@@ -5102,8 +5142,9 @@ create_ordered_paths(PlannerInfo *root,
 	 * have generated order-preserving Gather Merge plans which can be used
 	 * without sorting if they happen to match the sort_pathkeys, and the loop
 	 * above will have handled those as well.  However, there's one more
-	 * possibility: it may make sense to sort the cheapest partial path
-	 * according to the required output order and then use Gather Merge.
+	 * possibility: it may make sense to sort the cheapest partial path or
+	 * incrementally sort any partial path that is partially sorted according
+	 * to the required output order and then use Gather Merge.
 	 */
 	if (ordered_rel->consider_parallel && root->sort_pathkeys != NIL &&
 		input_rel->partial_pathlist != NIL)
@@ -5112,97 +5153,65 @@ create_ordered_paths(PlannerInfo *root,
 
 		cheapest_partial_path = linitial(input_rel->partial_pathlist);
 
-		/*
-		 * If cheapest partial path doesn't need a sort, this is redundant
-		 * with what's already been tried.
-		 */
-		if (!pathkeys_contained_in(root->sort_pathkeys,
-								   cheapest_partial_path->pathkeys))
+		foreach(lc, input_rel->partial_pathlist)
 		{
-			Path	   *path;
+			Path	   *input_path = (Path *) lfirst(lc);
+			Path	   *sorted_path;
+			bool		is_sorted;
+			int			presorted_keys;
 			double		total_groups;
 
-			path = (Path *) create_sort_path(root,
-											 ordered_rel,
-											 cheapest_partial_path,
-											 root->sort_pathkeys,
-											 limit_tuples);
+			is_sorted = pathkeys_count_contained_in(root->sort_pathkeys,
+													input_path->pathkeys,
+													&presorted_keys);
 
-			total_groups = cheapest_partial_path->rows *
-				cheapest_partial_path->parallel_workers;
-			path = (Path *)
-				create_gather_merge_path(root, ordered_rel,
-										 path,
-										 path->pathtarget,
-										 root->sort_pathkeys, NULL,
-										 &total_groups);
+			if (is_sorted)
+				continue;
 
-			/* Add projection step if needed */
-			if (path->pathtarget != target)
-				path = apply_projection_to_path(root, ordered_rel,
-												path, target);
+			/*
+			 * Try at least sorting the cheapest path and also try
+			 * incrementally sorting any path which is partially sorted
+			 * already (no need to deal with paths which have presorted keys
+			 * when incremental sort is disabled unless it's the cheapest
+			 * partial path).
+			 */
+			if (input_path != cheapest_partial_path &&
+				(presorted_keys == 0 || !enable_incremental_sort))
+				continue;
 
-			add_path(ordered_rel, path);
-		}
-
-		/*
-		 * Consider incremental sort with a gather merge on partial paths.
-		 *
-		 * We can also skip the entire loop when we only have a single-item
-		 * sort_pathkeys because then we can't possibly have a presorted
-		 * prefix of the list without having the list be fully sorted.
-		 */
-		if (enable_incremental_sort && list_length(root->sort_pathkeys) > 1)
-		{
-			foreach(lc, input_rel->partial_pathlist)
-			{
-				Path	   *input_path = (Path *) lfirst(lc);
-				Path	   *sorted_path;
-				bool		is_sorted;
-				int			presorted_keys;
-				double		total_groups;
-
-				/*
-				 * We don't care if this is the cheapest partial path - we
-				 * can't simply skip it, because it may be partially sorted in
-				 * which case we want to consider adding incremental sort
-				 * (instead of full sort, which is what happens above).
-				 */
-
-				is_sorted = pathkeys_count_contained_in(root->sort_pathkeys,
-														input_path->pathkeys,
-														&presorted_keys);
-
-				/* No point in adding incremental sort on fully sorted paths. */
-				if (is_sorted)
-					continue;
-
-				if (presorted_keys == 0)
-					continue;
-
-				/* Since we have presorted keys, consider incremental sort. */
+			/*
+			 * We've no need to consider both a sort and incremental sort.
+			 * We'll just do a sort if there are no presorted keys and an
+			 * incremental sort when there are presorted keys.
+			 */
+			if (presorted_keys == 0 || !enable_incremental_sort)
+				sorted_path = (Path *) create_sort_path(root,
+														ordered_rel,
+														input_path,
+														root->sort_pathkeys,
+														limit_tuples);
+			else
 				sorted_path = (Path *) create_incremental_sort_path(root,
 																	ordered_rel,
 																	input_path,
 																	root->sort_pathkeys,
 																	presorted_keys,
 																	limit_tuples);
-				total_groups = input_path->rows *
-					input_path->parallel_workers;
-				sorted_path = (Path *)
-					create_gather_merge_path(root, ordered_rel,
-											 sorted_path,
-											 sorted_path->pathtarget,
-											 root->sort_pathkeys, NULL,
-											 &total_groups);
+			total_groups = input_path->rows *
+				input_path->parallel_workers;
+			sorted_path = (Path *)
+				create_gather_merge_path(root, ordered_rel,
+										 sorted_path,
+										 sorted_path->pathtarget,
+										 root->sort_pathkeys, NULL,
+										 &total_groups);
 
-				/* Add projection step if needed */
-				if (sorted_path->pathtarget != target)
-					sorted_path = apply_projection_to_path(root, ordered_rel,
-														   sorted_path, target);
+			/* Add projection step if needed */
+			if (sorted_path->pathtarget != target)
+				sorted_path = apply_projection_to_path(root, ordered_rel,
+													   sorted_path, target);
 
-				add_path(ordered_rel, sorted_path);
-			}
+			add_path(ordered_rel, sorted_path);
 		}
 	}
 
@@ -7322,44 +7331,9 @@ gather_grouping_paths(PlannerInfo *root, RelOptInfo *rel)
 	/* Try Gather for unordered paths and Gather Merge for ordered ones. */
 	generate_useful_gather_paths(root, rel, true);
 
-	/* Try cheapest partial path + explicit Sort + Gather Merge. */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
-	if (!pathkeys_contained_in(root->group_pathkeys,
-							   cheapest_partial_path->pathkeys))
-	{
-		Path	   *path;
-		double		total_groups;
 
-		total_groups =
-			cheapest_partial_path->rows * cheapest_partial_path->parallel_workers;
-		path = (Path *) create_sort_path(root, rel, cheapest_partial_path,
-										 root->group_pathkeys,
-										 -1.0);
-		path = (Path *)
-			create_gather_merge_path(root,
-									 rel,
-									 path,
-									 rel->reltarget,
-									 root->group_pathkeys,
-									 NULL,
-									 &total_groups);
-
-		add_path(rel, path);
-	}
-
-	/*
-	 * Consider incremental sort on all partial paths, if enabled.
-	 *
-	 * We can also skip the entire loop when we only have a single-item
-	 * group_pathkeys because then we can't possibly have a presorted prefix
-	 * of the list without having the list be fully sorted.
-	 *
-	 * XXX Shouldn't this also consider the group-key-reordering?
-	 */
-	if (!enable_incremental_sort || list_length(root->group_pathkeys) == 1)
-		return;
-
-	/* also consider incremental sort on partial paths, if enabled */
+	/* XXX Shouldn't this also consider the group-key-reordering? */
 	foreach(lc, rel->partial_pathlist)
 	{
 		Path	   *path = (Path *) lfirst(lc);
@@ -7374,15 +7348,34 @@ gather_grouping_paths(PlannerInfo *root, RelOptInfo *rel)
 		if (is_sorted)
 			continue;
 
-		if (presorted_keys == 0)
+		/*
+		 * Try at least sorting the cheapest path and also try incrementally
+		 * sorting any path which is partially sorted already (no need to deal
+		 * with paths which have presorted keys when incremental sort is
+		 * disabled unless it's the cheapest input path).
+		 */
+		if (path != cheapest_partial_path &&
+			(presorted_keys == 0 || !enable_incremental_sort))
 			continue;
 
-		path = (Path *) create_incremental_sort_path(root,
-													 rel,
-													 path,
-													 root->group_pathkeys,
-													 presorted_keys,
-													 -1.0);
+		total_groups = path->rows * path->parallel_workers;
+
+		/*
+		 * We've no need to consider both a sort and incremental sort. We'll
+		 * just do a sort if there are no presorted keys and an incremental
+		 * sort when there are presorted keys.
+		 */
+		if (presorted_keys == 0 || !enable_incremental_sort)
+			path = (Path *) create_sort_path(root, rel, path,
+											 root->group_pathkeys,
+											 -1.0);
+		else
+			path = (Path *) create_incremental_sort_path(root,
+														 rel,
+														 path,
+														 root->group_pathkeys,
+														 presorted_keys,
+														 -1.0);
 
 		path = (Path *)
 			create_gather_merge_path(root,

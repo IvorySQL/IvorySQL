@@ -1904,6 +1904,7 @@ index_concurrently_set_dead(Oid heapId, Oid indexId)
  *		INDEX_CONSTR_CREATE_UPDATE_INDEX: update the pg_index row
  *		INDEX_CONSTR_CREATE_REMOVE_OLD_DEPS: remove existing dependencies
  *			of index on table's columns
+ *		INDEX_CONSTR_CREATE_WITHOUT_OVERLAPS: constraint uses WITHOUT OVERLAPS
  * allow_system_table_mods: allow table to be a system catalog
  * is_internal: index is constructed due to internal process
  */
@@ -1927,11 +1928,13 @@ index_constraint_create(Relation heapRelation,
 	bool		mark_as_primary;
 	bool		islocal;
 	bool		noinherit;
+	bool		is_without_overlaps;
 	int			inhcount;
 
 	deferrable = (constr_flags & INDEX_CONSTR_CREATE_DEFERRABLE) != 0;
 	initdeferred = (constr_flags & INDEX_CONSTR_CREATE_INIT_DEFERRED) != 0;
 	mark_as_primary = (constr_flags & INDEX_CONSTR_CREATE_MARK_AS_PRIMARY) != 0;
+	is_without_overlaps = (constr_flags & INDEX_CONSTR_CREATE_WITHOUT_OVERLAPS) != 0;
 
 	/* constraint creation support doesn't work while bootstrapping */
 	Assert(!IsBootstrapProcessingMode());
@@ -2008,6 +2011,7 @@ index_constraint_create(Relation heapRelation,
 								   islocal,
 								   inhcount,
 								   noinherit,
+								   is_without_overlaps,
 								   is_internal);
 
 	/*
@@ -3913,7 +3917,7 @@ reindex_relation(const ReindexStmt *stmt, Oid relid, int flags,
 	Oid			toast_relid;
 	List	   *indexIds;
 	char		persistence;
-	bool		result;
+	bool		result = false;
 	ListCell   *indexId;
 	int			i;
 
@@ -3943,9 +3947,8 @@ reindex_relation(const ReindexStmt *stmt, Oid relid, int flags,
 	toast_relid = rel->rd_rel->reltoastrelid;
 
 	/*
-	 * Get the list of index OIDs for this relation.  (We trust to the
-	 * relcache to get this with a sequential scan if ignoring system
-	 * indexes.)
+	 * Get the list of index OIDs for this relation.  (We trust the relcache
+	 * to get this with a sequential scan if ignoring system indexes.)
 	 */
 	indexIds = RelationGetIndexList(rel);
 
@@ -3959,6 +3962,35 @@ reindex_relation(const ReindexStmt *stmt, Oid relid, int flags,
 		 * inconsistent!
 		 */
 		CommandCounterIncrement();
+	}
+
+	/*
+	 * Reindex the toast table, if any, before the main table.
+	 *
+	 * This helps in cases where a corruption in the toast table's index would
+	 * otherwise error and stop REINDEX TABLE command when it tries to fetch a
+	 * toasted datum.  This way. the toast table's index is rebuilt and fixed
+	 * before it is used for reindexing the main table.
+	 *
+	 * It is critical to call reindex_relation() *after* the call to
+	 * RelationGetIndexList() returning the list of indexes on the relation,
+	 * because reindex_relation() will call CommandCounterIncrement() after
+	 * every reindex_index().  See REINDEX_REL_SUPPRESS_INDEX_USE for more
+	 * details.
+	 */
+	if ((flags & REINDEX_REL_PROCESS_TOAST) && OidIsValid(toast_relid))
+	{
+		/*
+		 * Note that this should fail if the toast relation is missing, so
+		 * reset REINDEXOPT_MISSING_OK.  Even if a new tablespace is set for
+		 * the parent relation, the indexes on its toast table are not moved.
+		 * This rule is enforced by setting tablespaceOid to InvalidOid.
+		 */
+		ReindexParams newparams = *params;
+
+		newparams.options &= ~(REINDEXOPT_MISSING_OK);
+		newparams.tablespaceOid = InvalidOid;
+		result |= reindex_relation(stmt, toast_relid, flags, &newparams);
 	}
 
 	/*
@@ -4014,26 +4046,7 @@ reindex_relation(const ReindexStmt *stmt, Oid relid, int flags,
 	 */
 	table_close(rel, NoLock);
 
-	result = (indexIds != NIL);
-
-	/*
-	 * If the relation has a secondary toast rel, reindex that too while we
-	 * still hold the lock on the main table.
-	 */
-	if ((flags & REINDEX_REL_PROCESS_TOAST) && OidIsValid(toast_relid))
-	{
-		/*
-		 * Note that this should fail if the toast relation is missing, so
-		 * reset REINDEXOPT_MISSING_OK.  Even if a new tablespace is set for
-		 * the parent relation, the indexes on its toast table are not moved.
-		 * This rule is enforced by setting tablespaceOid to InvalidOid.
-		 */
-		ReindexParams newparams = *params;
-
-		newparams.options &= ~(REINDEXOPT_MISSING_OK);
-		newparams.tablespaceOid = InvalidOid;
-		result |= reindex_relation(stmt, toast_relid, flags, &newparams);
-	}
+	result |= (indexIds != NIL);
 
 	return result;
 }

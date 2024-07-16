@@ -72,6 +72,7 @@
 #include "postmaster/interrupt.h"
 #include "replication/decode.h"
 #include "replication/logical.h"
+#include "replication/slotsync.h"
 #include "replication/slot.h"
 #include "replication/snapbuild.h"
 #include "replication/syncrep.h"
@@ -243,7 +244,6 @@ static void WalSndShutdown(void) pg_attribute_noreturn();
 static void XLogSendPhysical(void);
 static void XLogSendLogical(void);
 static void WalSndDone(WalSndSendDataCallback send_data);
-static XLogRecPtr GetStandbyFlushRecPtr(TimeLineID *tli);
 static void IdentifySystem(void);
 static void UploadManifest(void);
 static bool HandleUploadManifestPacket(StringInfo buf, off_t *offset,
@@ -1126,12 +1126,13 @@ static void
 parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						   bool *reserve_wal,
 						   CRSSnapshotAction *snapshot_action,
-						   bool *two_phase)
+						   bool *two_phase, bool *failover)
 {
 	ListCell   *lc;
 	bool		snapshot_action_given = false;
 	bool		reserve_wal_given = false;
 	bool		two_phase_given = false;
+	bool		failover_given = false;
 
 	/* Parse options */
 	foreach(lc, cmd->options)
@@ -1181,6 +1182,15 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			two_phase_given = true;
 			*two_phase = defGetBoolean(defel);
 		}
+		else if (strcmp(defel->defname, "failover") == 0)
+		{
+			if (failover_given || cmd->kind != REPLICATION_KIND_LOGICAL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			failover_given = true;
+			*failover = defGetBoolean(defel);
+		}
 		else
 			elog(ERROR, "unrecognized option: %s", defel->defname);
 	}
@@ -1197,6 +1207,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	char	   *slot_name;
 	bool		reserve_wal = false;
 	bool		two_phase = false;
+	bool		failover = false;
 	CRSSnapshotAction snapshot_action = CRS_EXPORT_SNAPSHOT;
 	DestReceiver *dest;
 	TupOutputState *tstate;
@@ -1206,13 +1217,14 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 	Assert(!MyReplicationSlot);
 
-	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase);
+	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase,
+							   &failover);
 
 	if (cmd->kind == REPLICATION_KIND_PHYSICAL)
 	{
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
-							  false);
+							  false, false, false);
 
 		if (reserve_wal)
 		{
@@ -1243,7 +1255,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		 */
 		ReplicationSlotCreate(cmd->slotname, true,
 							  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
-							  two_phase);
+							  two_phase, failover, false);
 
 		/*
 		 * Do options check early so that we can bail before calling the
@@ -1396,6 +1408,43 @@ static void
 DropReplicationSlot(DropReplicationSlotCmd *cmd)
 {
 	ReplicationSlotDrop(cmd->slotname, !cmd->wait);
+}
+
+/*
+ * Process extra options given to ALTER_REPLICATION_SLOT.
+ */
+static void
+ParseAlterReplSlotOptions(AlterReplicationSlotCmd *cmd, bool *failover)
+{
+	bool		failover_given = false;
+
+	/* Parse options */
+	foreach_ptr(DefElem, defel, cmd->options)
+	{
+		if (strcmp(defel->defname, "failover") == 0)
+		{
+			if (failover_given)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			failover_given = true;
+			*failover = defGetBoolean(defel);
+		}
+		else
+			elog(ERROR, "unrecognized option: %s", defel->defname);
+	}
+}
+
+/*
+ * Change the definition of a replication slot.
+ */
+static void
+AlterReplicationSlot(AlterReplicationSlotCmd *cmd)
+{
+	bool		failover = false;
+
+	ParseAlterReplSlotOptions(cmd, &failover);
+	ReplicationSlotAlter(cmd->slotname, failover);
 }
 
 /*
@@ -1968,6 +2017,13 @@ exec_replication_command(const char *cmd_string)
 			cmdtag = "DROP_REPLICATION_SLOT";
 			set_ps_display(cmdtag);
 			DropReplicationSlot((DropReplicationSlotCmd *) cmd_node);
+			EndReplicationCommand(cmdtag);
+			break;
+
+		case T_AlterReplicationSlotCmd:
+			cmdtag = "ALTER_REPLICATION_SLOT";
+			set_ps_display(cmdtag);
+			AlterReplicationSlot((AlterReplicationSlotCmd *) cmd_node);
 			EndReplicationCommand(cmdtag);
 			break;
 
@@ -2910,6 +2966,7 @@ XLogSendPhysical(void)
 	Size		nbytes;
 	XLogSegNo	segno;
 	WALReadError errinfo;
+	Size		rbytes;
 
 	/* If requested switch the WAL sender to the stopping state. */
 	if (got_STOPPING)
@@ -3125,7 +3182,16 @@ XLogSendPhysical(void)
 	enlargeStringInfo(&output_message, nbytes);
 
 retry:
-	if (!WALRead(xlogreader,
+	/* attempt to read WAL from WAL buffers first */
+	rbytes = WALReadFromBuffers(&output_message.data[output_message.len],
+								startptr, nbytes, xlogreader->seg.ws_tli);
+	output_message.len += rbytes;
+	startptr += rbytes;
+	nbytes -= rbytes;
+
+	/* now read the remaining WAL from WAL file */
+	if (nbytes > 0 &&
+		!WALRead(xlogreader,
 				 &output_message.data[output_message.len],
 				 startptr,
 				 nbytes,
@@ -3319,14 +3385,17 @@ WalSndDone(WalSndSendDataCallback send_data)
 }
 
 /*
- * Returns the latest point in WAL that has been safely flushed to disk, and
- * can be sent to the standby. This should only be called when in recovery,
- * ie. we're streaming to a cascaded standby.
+ * Returns the latest point in WAL that has been safely flushed to disk.
+ * This should only be called when in recovery.
+ *
+ * This is called either by cascading walsender to find WAL postion to be sent
+ * to a cascaded standby or by slot synchronization function to validate remote
+ * slot's lsn before syncing it locally.
  *
  * As a side-effect, *tli is updated to the TLI of the last
  * replayed WAL record.
  */
-static XLogRecPtr
+XLogRecPtr
 GetStandbyFlushRecPtr(TimeLineID *tli)
 {
 	XLogRecPtr	replayPtr;
@@ -3334,6 +3403,8 @@ GetStandbyFlushRecPtr(TimeLineID *tli)
 	XLogRecPtr	receivePtr;
 	TimeLineID	receiveTLI;
 	XLogRecPtr	result;
+
+	Assert(am_cascading_walsender || IsSyncingReplicationSlots());
 
 	/*
 	 * We can safely send what's already been replayed. Also, if walreceiver

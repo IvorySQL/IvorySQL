@@ -159,12 +159,6 @@ cdata.set_quoted('CONFIGURE_ARGS', '')
 # Basic platform specific configuration
 ###############################################################
 
-# meson's system names don't quite map to our "traditional" names. In some
-# places we need the "traditional" name, e.g., for mapping
-# src/include/port/$os.h to src/include/pg_config_os.h. Define portname for
-# that purpose.
-portname = host_system
-
 exesuffix = '' # overridden below where necessary
 dlsuffix = '.so' # overridden below where necessary
 library_path_var = 'LD_LIBRARY_PATH'
@@ -190,7 +184,17 @@ sema_kind = 'sysv'
 if host_system == 'dragonfly'
   # apparently the most similar
   host_system = 'netbsd'
+elif host_system == 'android'
+  # while android isn't quite a normal linux, it seems close enough
+  # for our purposes so far
+  host_system = 'linux'
 endif
+
+# meson's system names don't quite map to our "traditional" names. In some
+# places we need the "traditional" name, e.g., for mapping
+# src/include/port/$os.h to src/include/pg_config_os.h. Define portname for
+# that purpose.
+portname = host_system
 
 if host_system == 'aix'
   library_path_var = 'LIBPATH'
@@ -756,7 +760,7 @@ endif
 llvmopt = get_option('llvm')
 llvm = not_found_dep
 if add_languages('cpp', required: llvmopt, native: false)
-  llvm = dependency('llvm', version: '>=3.9', method: 'config-tool', required: llvmopt)
+  llvm = dependency('llvm', version: '>=10', method: 'config-tool', required: llvmopt)
 
   if llvm.found()
 

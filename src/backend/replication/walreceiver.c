@@ -296,7 +296,7 @@ WalReceiverMain(void)
 	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);
 
 	/* Establish the connection to the primary for XLOG streaming */
-	wrconn = walrcv_connect(conninfo, false, false,
+	wrconn = walrcv_connect(conninfo, true, false, false,
 							cluster_name[0] ? cluster_name : "walreceiver",
 							&err);
 	if (!wrconn)
@@ -387,7 +387,7 @@ WalReceiverMain(void)
 					 "pg_walreceiver_%lld",
 					 (long long int) walrcv_get_backend_pid(wrconn));
 
-			walrcv_create_slot(wrconn, slotname, true, false, 0, NULL);
+			walrcv_create_slot(wrconn, slotname, true, false, false, 0, NULL);
 
 			SpinLockAcquire(&walrcv->mutex);
 			strlcpy(walrcv->slotname, slotname, NAMEDATALEN);

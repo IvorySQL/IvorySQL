@@ -107,6 +107,12 @@ CATALOG(pg_constraint,2606,ConstraintRelationId)
 	/* Has a local definition and cannot be inherited */
 	bool		connoinherit;
 
+	/*
+	 * For primary keys and unique constraints, signifies the last column uses
+	 * overlaps instead of equals.
+	 */
+	bool		conwithoutoverlaps;
+
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 
 	/*
@@ -146,7 +152,8 @@ CATALOG(pg_constraint,2606,ConstraintRelationId)
 
 	/*
 	 * If an exclusion constraint, the OIDs of the exclusion operators for
-	 * each column of the constraint
+	 * each column of the constraint.  Also set for unique constraints/primary
+	 * keys using WITHOUT OVERLAPS.
 	 */
 	Oid			conexclop[1] BKI_LOOKUP(pg_operator);
 
@@ -171,6 +178,8 @@ DECLARE_UNIQUE_INDEX(pg_constraint_conrelid_contypid_conname_index, 2665, Constr
 DECLARE_INDEX(pg_constraint_contypid_index, 2666, ConstraintTypidIndexId, pg_constraint, btree(contypid oid_ops));
 DECLARE_UNIQUE_INDEX_PKEY(pg_constraint_oid_index, 2667, ConstraintOidIndexId, pg_constraint, btree(oid oid_ops));
 DECLARE_INDEX(pg_constraint_conparentid_index, 2579, ConstraintParentIndexId, pg_constraint, btree(conparentid oid_ops));
+
+MAKE_SYSCACHE(CONSTROID, pg_constraint_oid_index, 16);
 
 /* conkey can contain zero (InvalidAttrNumber) if a whole-row Var is used */
 DECLARE_ARRAY_FOREIGN_KEY_OPT((conrelid, conkey), pg_attribute, (attrelid, attnum));
@@ -236,6 +245,7 @@ extern Oid	CreateConstraintEntry(const char *constraintName,
 								  bool conIsLocal,
 								  int conInhCount,
 								  bool conNoInherit,
+								  bool conWithoutOverlaps,
 								  bool is_internal);
 
 extern bool ConstraintNameIsUsed(ConstraintCategory conCat, Oid objId,

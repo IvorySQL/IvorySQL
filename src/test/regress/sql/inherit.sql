@@ -372,6 +372,15 @@ ALTER TABLE inhts RENAME d TO dd;
 
 DROP TABLE inhts;
 
+-- Test for adding a column to a parent table with complex inheritance
+CREATE TABLE inhta ();
+CREATE TABLE inhtb () INHERITS (inhta);
+CREATE TABLE inhtc () INHERITS (inhtb);
+CREATE TABLE inhtd () INHERITS (inhta, inhtb, inhtc);
+ALTER TABLE inhta ADD COLUMN i int;
+\d+ inhta
+DROP TABLE inhta, inhtb, inhtc, inhtd;
+
 -- Test for renaming in diamond inheritance
 CREATE TABLE inht2 (x int) INHERITS (inht1);
 CREATE TABLE inht3 (y int) INHERITS (inht1);
@@ -612,6 +621,19 @@ where t1.b = t2.b and t2.c = t2.d
 order by t1.b limit 10;
 
 reset enable_nestloop;
+
+drop table matest0 cascade;
+
+-- Test a MergeAppend plan where one child requires a sort
+create table matest0(a int primary key);
+create table matest1() inherits (matest0);
+insert into matest0 select generate_series(1, 400);
+insert into matest1 select generate_series(1, 200);
+analyze matest0;
+analyze matest1;
+
+explain (costs off)
+select * from matest0 where a < 100 order by a;
 
 drop table matest0 cascade;
 

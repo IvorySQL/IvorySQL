@@ -119,7 +119,7 @@ static void ClosePipeToProgram(CopyToState cstate);
 static void CopyOneRowTo(CopyToState cstate, TupleTableSlot *slot);
 static void CopyAttributeOutText(CopyToState cstate, const char *string);
 static void CopyAttributeOutCSV(CopyToState cstate, const char *string,
-								bool use_quote, bool single_attr);
+								bool use_quote);
 
 /* Low-level communications functions */
 static void SendCopyBegin(CopyToState cstate);
@@ -612,13 +612,15 @@ BeginCopyTo(ParseState *pstate,
 		cstate->file_encoding = cstate->opts.file_encoding;
 
 	/*
-	 * Set up encoding conversion info.  Even if the file and server encodings
-	 * are the same, we must apply pg_any_to_server() to validate data in
-	 * multibyte encodings.
+	 * Set up encoding conversion info if the file and server encodings differ
+	 * (see also pg_server_to_any).
 	 */
-	cstate->need_transcoding =
-		(cstate->file_encoding != GetDatabaseEncoding() ||
-		 pg_database_encoding_max_length() > 1);
+	if (cstate->file_encoding == GetDatabaseEncoding() ||
+		cstate->file_encoding == PG_SQL_ASCII)
+		cstate->need_transcoding = false;
+	else
+		cstate->need_transcoding = true;
+
 	/* See Multibyte encoding comment above */
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->file_encoding);
 
@@ -837,8 +839,7 @@ DoCopyTo(CopyToState cstate)
 				colname = NameStr(TupleDescAttr(tupDesc, attnum - 1)->attname);
 
 				if (cstate->opts.csv_mode)
-					CopyAttributeOutCSV(cstate, colname, false,
-										list_length(cstate->attnumlist) == 1);
+					CopyAttributeOutCSV(cstate, colname, false);
 				else
 					CopyAttributeOutText(cstate, colname);
 			}
@@ -952,8 +953,7 @@ CopyOneRowTo(CopyToState cstate, TupleTableSlot *slot)
 											value);
 				if (cstate->opts.csv_mode)
 					CopyAttributeOutCSV(cstate, string,
-										cstate->opts.force_quote_flags[attnum - 1],
-										list_length(cstate->attnumlist) == 1);
+										cstate->opts.force_quote_flags[attnum - 1]);
 				else
 					CopyAttributeOutText(cstate, string);
 			}
@@ -1139,7 +1139,7 @@ CopyAttributeOutText(CopyToState cstate, const char *string)
  */
 static void
 CopyAttributeOutCSV(CopyToState cstate, const char *string,
-					bool use_quote, bool single_attr)
+					bool use_quote)
 {
 	const char *ptr;
 	const char *start;
@@ -1147,6 +1147,7 @@ CopyAttributeOutCSV(CopyToState cstate, const char *string,
 	char		delimc = cstate->opts.delim[0];
 	char		quotec = cstate->opts.quote[0];
 	char		escapec = cstate->opts.escape[0];
+	bool		single_attr = (list_length(cstate->attnumlist) == 1);
 
 	/* force quoting if it matches null_print (before conversion!) */
 	if (!use_quote && strcmp(string, cstate->opts.null_print) == 0)

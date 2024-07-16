@@ -85,6 +85,7 @@ AlterOwnerStmt
 AlterPolicyStmt
 AlterPublicationAction
 AlterPublicationStmt
+AlterReplicationSlotCmd
 AlterRoleSetStmt
 AlterRoleStmt
 AlterSeqStmt
@@ -2324,6 +2325,7 @@ RelocationBufferInfo
 RelptrFreePageBtree
 RelptrFreePageManager
 RelptrFreePageSpanLeader
+RemoteSlot
 RenameStmt
 ReopenPtrType
 ReorderBuffer
@@ -2351,7 +2353,6 @@ ReorderBufferStreamTruncateCB
 ReorderBufferTXN
 ReorderBufferTXNByIdEnt
 ReorderBufferToastEnt
-ReorderBufferTupleBuf
 ReorderBufferTupleCidEnt
 ReorderBufferTupleCidKey
 ReorderBufferUpdateProgressTxnCB
@@ -2584,6 +2585,7 @@ SlabBlock
 SlabContext
 SlabSlot
 SlotNumber
+SlotSyncCtxStruct
 SlruCtl
 SlruCtlData
 SlruErrorCause
@@ -2758,6 +2760,7 @@ TSQuerySign
 TSReadPointer
 TSTemplateInfo
 TSTernaryValue
+TSTokenTypeItem
 TSTokenTypeStorage
 TSVector
 TSVectorBuildState
@@ -3880,6 +3883,7 @@ varattrib_1b_e
 varattrib_4b
 vbits
 verifier_context
+walrcv_alter_slot_fn
 walrcv_check_conninfo_fn
 walrcv_connect_fn
 walrcv_create_slot_fn

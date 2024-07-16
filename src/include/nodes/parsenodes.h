@@ -2591,6 +2591,7 @@ typedef struct Constraint
 	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	List	   *keys;			/* String nodes naming referenced key
 								 * column(s); also used for NOT NULL */
+	bool		without_overlaps;	/* WITHOUT OVERLAPS specified */
 	List	   *including;		/* String nodes naming referenced nonkey
 								 * column(s) */
 
@@ -3221,6 +3222,7 @@ typedef struct IndexStmt
 	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	bool		primary;		/* is index a primary key? */
 	bool		isconstraint;	/* is it for a pkey/unique constraint? */
+	bool		iswithoutoverlaps;	/* is the constraint WITHOUT OVERLAPS? */
 	bool		deferrable;		/* is the constraint DEFERRABLE? */
 	bool		initdeferred;	/* is the constraint INITIALLY DEFERRED? */
 	bool		transformed;	/* true when transformIndexStmt is finished */

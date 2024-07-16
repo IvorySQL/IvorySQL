@@ -479,6 +479,8 @@ typedef struct _constraintInfo
 	DumpId		conindex;		/* identifies associated index if any */
 	bool		condeferrable;	/* true if constraint is DEFERRABLE */
 	bool		condeferred;	/* true if constraint is INITIALLY DEFERRED */
+	bool		conwithoutoverlaps; /* true if the constraint is WITHOUT
+									 * OVERLAPS */
 	bool		conislocal;		/* true if constraint has local definition */
 	bool		separate;		/* true if must dump as separate item */
 } ConstraintInfo;
@@ -665,6 +667,7 @@ typedef struct _SubscriptionInfo
 	char	   *subpublications;
 	char	   *suborigin;
 	char	   *suboriginremotelsn;
+	char	   *subfailover;
 } SubscriptionInfo;
 
 /*

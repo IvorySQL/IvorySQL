@@ -49,11 +49,11 @@ $old_sub->safe_psql(
 # Setup logical replication
 my $connstr = $publisher->connstr . ' dbname=postgres';
 
-# Setup an enabled subscription to verify that the running status is retained
-# after upgrade.
+# Setup an enabled subscription to verify that the running status and failover
+# option are retained after the upgrade.
 $publisher->safe_psql('postgres', "CREATE PUBLICATION regress_pub1");
 $old_sub->safe_psql('postgres',
-	"CREATE SUBSCRIPTION regress_sub1 CONNECTION '$connstr' PUBLICATION regress_pub1"
+	"CREATE SUBSCRIPTION regress_sub1 CONNECTION '$connstr' PUBLICATION regress_pub1 WITH (failover = true)"
 );
 $old_sub->wait_for_subscription_sync($publisher, 'regress_sub1');
 
@@ -108,8 +108,8 @@ $old_sub->stop;
 # ------------------------------------------------------
 # Check that pg_upgrade is successful when all tables are in ready or in
 # init state (tab_upgraded1 table is in ready state and tab_upgraded2 table is
-# in init state) along with retaining the replication origin's remote lsn
-# and subscription's running status.
+# in init state) along with retaining the replication origin's remote lsn,
+# subscription's running status, and failover option.
 # ------------------------------------------------------
 command_ok(
 	[
@@ -137,15 +137,15 @@ $publisher->safe_psql(
 
 $new_sub->start;
 
-# The subscription's running status should be preserved. Old subscription
-# regress_sub1 should be enabled and old subscription regress_sub2 should be
-# disabled.
+# The subscription's running status and failover option should be preserved
+# in the upgraded instance. So regress_sub1 should still have subenabled and
+# subfailover set to true, while regress_sub2 should have both set to false.
 $result =
   $new_sub->safe_psql('postgres',
-	"SELECT subname, subenabled FROM pg_subscription ORDER BY subname");
-is( $result, qq(regress_sub1|t
-regress_sub2|f),
-	"check that the subscription's running status are preserved");
+	"SELECT subname, subenabled, subfailover FROM pg_subscription ORDER BY subname");
+is( $result, qq(regress_sub1|t|t
+regress_sub2|f|f),
+	"check that the subscription's running status and failover are preserved");
 
 my $sub_oid = $new_sub->safe_psql('postgres',
 	"SELECT oid FROM pg_subscription WHERE subname = 'regress_sub2'");

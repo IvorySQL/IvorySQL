@@ -301,13 +301,6 @@ CheckpointerMain(void)
 		 * fast as we can.
 		 */
 		pg_usleep(1000000L);
-
-		/*
-		 * Close all open files after any error.  This is helpful on Windows,
-		 * where holding deleted files open causes various strange errors.
-		 * It's not clear we need it elsewhere, but shouldn't hurt.
-		 */
-		smgrcloseall();
 	}
 
 	/* We can now handle ereport(ERROR) */
@@ -469,10 +462,12 @@ CheckpointerMain(void)
 				ckpt_performed = CreateRestartPoint(flags);
 
 			/*
-			 * After any checkpoint, close all smgr files.  This is so we
-			 * won't hang onto smgr references to deleted files indefinitely.
+			 * After any checkpoint, free all smgr objects.  Otherwise we
+			 * would never do so for dropped relations, as the checkpointer
+			 * does not process shared invalidation messages or call
+			 * AtEOXact_SMgr().
 			 */
-			smgrcloseall();
+			smgrdestroyall();
 
 			/*
 			 * Indicate checkpoint completion to any waiting backends.
@@ -958,11 +953,8 @@ RequestCheckpoint(int flags)
 		 */
 		CreateCheckPoint(flags | CHECKPOINT_IMMEDIATE);
 
-		/*
-		 * After any checkpoint, close all smgr files.  This is so we won't
-		 * hang onto smgr references to deleted files indefinitely.
-		 */
-		smgrcloseall();
+		/* Free all smgr objects, as CheckpointerMain() normally would. */
+		smgrdestroyall();
 
 		return;
 	}

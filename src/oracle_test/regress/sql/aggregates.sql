@@ -1195,7 +1195,7 @@ CREATE TABLE btg AS SELECT
   'abc' || i % 10 AS z,
   i AS w
 FROM generate_series(1,10000) AS i;
-CREATE INDEX abc ON btg(x,y);
+CREATE INDEX btg_x_y_idx ON btg(x,y);
 ANALYZE btg;
 
 -- GROUP BY optimization by reorder columns by frequency
@@ -1237,6 +1237,25 @@ SELECT y,x,array_agg(distinct w) FROM btg WHERE y < 0 GROUP BY x,y;
 RESET enable_incremental_sort;
 
 DROP TABLE btg;
+
+-- Check we don't pick aggregate path key instead of grouping path key
+CREATE TABLE group_agg_pk AS SELECT
+  i % 10 AS x,
+  i % 2 AS y,
+  i % 2 AS z,
+  2 AS w,
+  i % 10 AS f
+FROM generate_series(1,100) AS i;
+ANALYZE group_agg_pk;
+SET enable_nestloop = off;
+SET enable_hashjoin = off;
+SELECT
+  c1.z, c1.w, string_agg(''::text, repeat(''::text, c1.f) ORDER BY c1.x,c1.y)
+FROM group_agg_pk c1 JOIN group_agg_pk c2 ON (c1.x = c2.f)
+GROUP BY c1.w, c1.z;
+RESET enable_nestloop;
+RESET enable_hashjoin;
+DROP TABLE group_agg_pk;
 
 -- The case, when scanning sort order correspond to aggregate sort order but
 -- can not be found in the group-by list
