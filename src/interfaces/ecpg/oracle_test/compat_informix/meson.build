@@ -3,7 +3,7 @@
 pgc_files = [
   'charfuncs',
   'dec_test',
-  'describe',
+  'intoasc',
   'rfmtdate',
   'rfmtlong',
   'rnull',
