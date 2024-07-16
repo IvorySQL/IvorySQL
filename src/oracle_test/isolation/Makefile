@@ -80,6 +80,3 @@ oracle-installcheck-prepared-txns: all temp-install
 
 oracle-check-prepared-txns: all temp-install
 	$(oracle_isolation_regress_check) --schedule=$(srcdir)/isolation_schedule prepared-transactions prepared-transactions-cic
-
-oracle-check-timeouts: all temp-install
-	$(oracle_isolation_regress_check) timeouts timeouts-long
