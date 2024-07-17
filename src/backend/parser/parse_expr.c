@@ -4114,7 +4114,6 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 	Node	   *res;
 	int			location;
 	Oid			exprtype = exprType(expr);
-	int32		baseTypmod = returning->typmod;
 
 	/* if output type is not specified or equals to function type, return */
 	if (!OidIsValid(returning->typid) || returning->typid == exprtype)
@@ -4144,19 +4143,18 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 	}
 
 	/*
-	 * For domains, consider the base type's typmod to decide whether to setup
-	 * an implicit or explicit cast.
+	 * For other cases, try to coerce expression to the output type using
+	 * assignment-level casts, erroring out if none available.  This basically
+	 * allows coercing the jsonb value to any string type (typcategory = 'S').
+	 *
+	 * Requesting assignment-level here means that typmod / length coercion
+	 * assumes implicit coercion which is the behavior we want; see
+	 * build_coercion_expression().
 	 */
-	if (get_typtype(returning->typid) == TYPTYPE_DOMAIN)
-		(void) getBaseTypeAndTypmod(returning->typid, &baseTypmod);
-
-	/* try to coerce expression to the output type */
 	res = coerce_to_target_type(pstate, expr, exprtype,
-								returning->typid, baseTypmod,
-								baseTypmod > 0 ? COERCION_IMPLICIT :
-								COERCION_EXPLICIT,
-								baseTypmod > 0 ? COERCE_IMPLICIT_CAST :
-								COERCE_EXPLICIT_CAST,
+								returning->typid, returning->typmod,
+								COERCION_ASSIGNMENT,
+								COERCE_IMPLICIT_CAST,
 								location);
 
 	if (!res && report_error)
@@ -4181,7 +4179,6 @@ makeJsonConstructorExpr(ParseState *pstate, JsonConstructorType type,
 	JsonConstructorExpr *jsctor = makeNode(JsonConstructorExpr);
 	Node	   *placeholder;
 	Node	   *coercion;
-	int32		baseTypmod = returning->typmod;
 
 	jsctor->args = args;
 	jsctor->func = fexpr;
@@ -4219,17 +4216,6 @@ makeJsonConstructorExpr(ParseState *pstate, JsonConstructorType type,
 		placeholder = (Node *) cte;
 	}
 
-	/*
-	 * Convert the source expression to text, because coerceJsonFuncExpr()
-	 * will create an implicit cast to the RETURNING types with typmod and
-	 * there are no implicit casts from json(b) to such types.  For domains,
-	 * the base type's typmod will be considered, so do so here too.
-	 */
-	if (get_typtype(returning->typid) == TYPTYPE_DOMAIN)
-		(void) getBaseTypeAndTypmod(returning->typid, &baseTypmod);
-	if (baseTypmod > 0)
-		placeholder = coerce_to_specific_type(pstate, placeholder, TEXTOID,
-											  "JSON_CONSTRUCTOR()");
 	coercion = coerceJsonFuncExpr(pstate, placeholder, returning, true);
 
 	if (coercion != placeholder)
