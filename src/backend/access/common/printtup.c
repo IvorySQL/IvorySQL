@@ -17,6 +17,7 @@
 
 #include "access/printtup.h"
 #include "libpq/pqformat.h"
+#include "libpq/protocol.h"
 #include "tcop/pquery.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -173,7 +174,7 @@ SendRowDescriptionMessage(StringInfo buf, TupleDesc typeinfo,
 	ListCell   *tlist_item = list_head(targetlist);
 
 	/* tuple descriptor message type */
-	pq_beginmessage_reuse(buf, 'T');
+	pq_beginmessage_reuse(buf, PqMsg_RowDescription);
 	/* # of attrs in tuples */
 	pq_sendint16(buf, natts);
 
@@ -325,7 +326,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 	/*
 	 * Prepare a DataRow message (note buffer is in per-query context)
 	 */
-	pq_beginmessage_reuse(buf, 'D');
+	pq_beginmessage_reuse(buf, PqMsg_DataRow);
 
 	pq_sendint16(buf, natts);
 
