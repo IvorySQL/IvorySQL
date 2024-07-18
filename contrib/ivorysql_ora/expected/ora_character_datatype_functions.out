@@ -3128,3 +3128,341 @@ select decode(null, null, 2018, 2, 3) from test_decode; --expect:all
 (4 rows)
 
 drop table test_decode;
+/*
+ * asciistr
+ */
+  
+ -- string with only ascii chars
+ select asciistr('Hello, World!') from dual;
+   asciistr    
+---------------
+ Hello, World!
+(1 row)
+
+ select asciistr('Hello\nWorld') from dual;
+     asciistr     
+------------------
+ Hello\005CnWorld
+(1 row)
+
+ select asciistr('') from dual;
+ asciistr 
+----------
+ 
+(1 row)
+
+ -- string with non-ascii chars
+ select asciistr('こんにちは') from dual;
+         asciistr          
+---------------------------
+ \3053\3093\306B\3061\306F
+(1 row)
+
+ select asciistr('你好') from dual;
+  asciistr  
+------------
+ \4F60\597D
+(1 row)
+
+ select asciistr('😊👍') from dual;
+       asciistr       
+----------------------
+ \D83D\DE0A\D83D\DC4D
+(1 row)
+
+ -- string with mixed ascii and non-ascii
+ select asciistr('ABÄCDE') from dual;
+  asciistr  
+------------
+ AB\00C4CDE
+(1 row)
+
+ select asciistr('ABCÄÊ') from dual;
+   asciistr    
+---------------
+ ABC\00C4\00CA
+(1 row)
+
+ select asciistr('ABCÕØ') from dual;
+   asciistr    
+---------------
+ ABC\00D5\00D8
+(1 row)
+
+ select asciistr('ABCÄÊÍÕØ') from dual;
+           asciistr           
+------------------------------
+ ABC\00C4\00CA\00CD\00D5\00D8
+(1 row)
+
+ select asciistr('Hello, こんにちは!') from dual;
+             asciistr              
+-----------------------------------
+ Hello, \3053\3093\306B\3061\306F!
+(1 row)
+
+ select asciistr('Café') from dual;
+ asciistr 
+----------
+ Caf\00E9
+(1 row)
+
+ select asciistr('Αλφάβητο') from dual;
+                 asciistr                 
+------------------------------------------
+ \0391\03BB\03C6\03AC\03B2\03B7\03C4\03BF
+(1 row)
+
+ select asciistr('Привет') from dual;
+            asciistr            
+--------------------------------
+ \041F\0440\0438\0432\0435\0442
+(1 row)
+
+/*
+ * compose & decompose
+ */
+select asciistr(decompose('é')) from dual;
+ asciistr 
+----------
+ e\0301
+(1 row)
+
+select asciistr(compose('e'||chr(769))) from dual;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+select asciistr(decompose('áéíóú')) from dual;
+            asciistr            
+--------------------------------
+ a\0301e\0301i\0301o\0301u\0301
+(1 row)
+
+select asciistr(compose('a'||chr(769)||'e'||chr(769)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+         asciistr          
+---------------------------
+ \00E1\00E9\00ED\00F3\00FA
+(1 row)
+
+select asciistr(decompose('àèìòù')) from dual;
+            asciistr            
+--------------------------------
+ a\0300e\0300i\0300o\0300u\0300
+(1 row)
+
+select asciistr(compose('a'||chr(768)||'e'||chr(768)||'i'||chr(768)||'o'||chr(768)||'u'||chr(768))) from dual;
+         asciistr          
+---------------------------
+ \00E0\00E8\00EC\00F2\00F9
+(1 row)
+
+select asciistr(decompose('áèíóú')) from dual;
+            asciistr            
+--------------------------------
+ a\0301e\0300i\0301o\0301u\0301
+(1 row)
+
+select asciistr(compose('a'||chr(769)||'e'||chr(768)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+         asciistr          
+---------------------------
+ \00E1\00E8\00ED\00F3\00FA
+(1 row)
+
+select asciistr(decompose('hello')) from dual;
+ asciistr 
+----------
+ hello
+(1 row)
+
+select asciistr(compose('hello')) from dual;
+ asciistr 
+----------
+ hello
+(1 row)
+
+select asciistr(compose(chr(101)||chr(769))) from dual;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+select asciistr(decompose('é')) from dual;
+ asciistr 
+----------
+ e\0301
+(1 row)
+
+select unistr('\00e9') from dual;
+ unistr 
+--------
+ é
+(1 row)
+
+select compose('a'||chr(768)) from dual;
+ compose 
+---------
+ à
+(1 row)
+
+-- Nested Composition and Decomposition 
+select asciistr(compose(decompose('é'))) from dual;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+select asciistr(compose(decompose('áéíóú'))) from dual;
+         asciistr          
+---------------------------
+ \00E1\00E9\00ED\00F3\00FA
+(1 row)
+
+select asciistr(compose(decompose('àèìòù'))) from dual;
+         asciistr          
+---------------------------
+ \00E0\00E8\00EC\00F2\00F9
+(1 row)
+
+select asciistr(compose(decompose('áèíóú'))) from dual;
+         asciistr          
+---------------------------
+ \00E1\00E8\00ED\00F3\00FA
+(1 row)
+
+select asciistr(compose(decompose('hello'))) from dual;
+ asciistr 
+----------
+ hello
+(1 row)
+
+select asciistr(compose(decompose(unistr('\00E9')))) from dual;
+ asciistr 
+----------
+ \00E9
+(1 row)
+
+select asciistr(compose(decompose(unistr('\00E1\00E9\00ED\00F3\00FA')))) from dual;
+         asciistr          
+---------------------------
+ \00E1\00E9\00ED\00F3\00FA
+(1 row)
+
+-- Tests for to_multi_byte
+select to_multi_byte('123$test');
+  to_multi_byte   
+------------------
+ １２３＄ｔｅｓｔ
+(1 row)
+
+-- Check internal representation difference
+select octet_length('abc');
+ octet_length 
+--------------
+            3
+(1 row)
+
+select octet_length(to_multi_byte('abc'));
+ octet_length 
+--------------
+            9
+(1 row)
+
+select to_multi_byte('abc'::text);
+ to_multi_byte 
+---------------
+ ａｂｃ
+(1 row)
+
+select to_multi_byte('1.2'::text) ;
+ to_multi_byte 
+---------------
+ １．２
+(1 row)
+
+select to_multi_byte(1.2::float);
+ERROR:  function to_multi_byte(pg_catalog.float8) does not exist
+LINE 1: select to_multi_byte(1.2::float);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte(1::int);
+ERROR:  function to_multi_byte(pg_catalog.int4) does not exist
+LINE 1: select to_multi_byte(1::int);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte(1.4::numeric);
+ERROR:  function to_multi_byte(pg_catalog.numeric) does not exist
+LINE 1: select to_multi_byte(1.4::numeric);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte('abc'::bpchar);
+ to_multi_byte 
+---------------
+ ａｂｃ
+(1 row)
+
+select to_multi_byte(6.4);
+ERROR:  function to_multi_byte(pg_catalog.numeric) does not exist
+LINE 1: select to_multi_byte(6.4);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_multi_byte(NULL);
+ to_multi_byte 
+---------------
+ 
+(1 row)
+
+-- Tests for to_single_byte
+select to_single_byte('123$test');
+ to_single_byte 
+----------------
+ 123$test
+(1 row)
+
+select to_single_byte('１２３＄ｔｅｓｔ');
+ to_single_byte 
+----------------
+ 123$test
+(1 row)
+
+-- Check internal representation difference
+select octet_length('ａｂｃ');
+ octet_length 
+--------------
+            9
+(1 row)
+
+select octet_length(to_single_byte('ａｂｃ'));
+ octet_length 
+--------------
+            3
+(1 row)
+
+select to_single_byte('ａｂｃ');
+ to_single_byte 
+----------------
+ abc
+(1 row)
+
+select to_single_byte('１．２');
+ to_single_byte 
+----------------
+ 1.2
+(1 row)
+
+select to_single_byte(１．２);
+ERROR:  "１．２": invalid identifier
+LINE 1: select to_single_byte(１．２);
+                              ^
+select to_single_byte(3.4);
+ERROR:  function to_single_byte(pg_catalog.numeric) does not exist
+LINE 1: select to_single_byte(3.4);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select to_single_byte(NULL);
+ to_single_byte 
+----------------
+ 
+(1 row)
+

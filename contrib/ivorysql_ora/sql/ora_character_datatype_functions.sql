@@ -1197,3 +1197,84 @@ select decode(null, b, 2018, 2, 3) from test_decode;
 select decode(null, null, 2018, 2, 3) from test_decode; --expect:all
 
 drop table test_decode;
+
+
+/*
+ * asciistr
+ */
+  
+ -- string with only ascii chars
+ select asciistr('Hello, World!') from dual;
+ select asciistr('Hello\nWorld') from dual;
+ select asciistr('') from dual;
+
+ -- string with non-ascii chars
+ select asciistr('こんにちは') from dual;
+ select asciistr('你好') from dual;
+ select asciistr('😊👍') from dual;
+
+ -- string with mixed ascii and non-ascii
+ select asciistr('ABÄCDE') from dual;
+ select asciistr('ABCÄÊ') from dual;
+ select asciistr('ABCÕØ') from dual;
+ select asciistr('ABCÄÊÍÕØ') from dual;
+ select asciistr('Hello, こんにちは!') from dual;
+ select asciistr('Café') from dual;
+ select asciistr('Αλφάβητο') from dual;
+ select asciistr('Привет') from dual;
+
+/*
+ * compose & decompose
+ */
+
+select asciistr(decompose('é')) from dual;
+select asciistr(compose('e'||chr(769))) from dual;
+select asciistr(decompose('áéíóú')) from dual;
+select asciistr(compose('a'||chr(769)||'e'||chr(769)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+select asciistr(decompose('àèìòù')) from dual;
+select asciistr(compose('a'||chr(768)||'e'||chr(768)||'i'||chr(768)||'o'||chr(768)||'u'||chr(768))) from dual;
+select asciistr(decompose('áèíóú')) from dual;
+select asciistr(compose('a'||chr(769)||'e'||chr(768)||'i'||chr(769)||'o'||chr(769)||'u'||chr(769))) from dual;
+select asciistr(decompose('hello')) from dual;
+select asciistr(compose('hello')) from dual;
+select asciistr(compose(chr(101)||chr(769))) from dual;
+select asciistr(decompose('é')) from dual;
+select unistr('\00e9') from dual;
+select compose('a'||chr(768)) from dual;
+
+-- Nested Composition and Decomposition 
+select asciistr(compose(decompose('é'))) from dual;
+select asciistr(compose(decompose('áéíóú'))) from dual;
+select asciistr(compose(decompose('àèìòù'))) from dual;
+select asciistr(compose(decompose('áèíóú'))) from dual;
+select asciistr(compose(decompose('hello'))) from dual;
+select asciistr(compose(decompose(unistr('\00E9')))) from dual;
+select asciistr(compose(decompose(unistr('\00E1\00E9\00ED\00F3\00FA')))) from dual;
+
+-- Tests for to_multi_byte
+select to_multi_byte('123$test');
+-- Check internal representation difference
+select octet_length('abc');
+select octet_length(to_multi_byte('abc'));
+
+select to_multi_byte('abc'::text);
+select to_multi_byte('1.2'::text) ;
+select to_multi_byte(1.2::float);
+select to_multi_byte(1::int);
+select to_multi_byte(1.4::numeric);
+select to_multi_byte('abc'::bpchar);
+select to_multi_byte(6.4);
+select to_multi_byte(NULL);
+
+-- Tests for to_single_byte
+select to_single_byte('123$test');
+select to_single_byte('１２３＄ｔｅｓｔ');
+-- Check internal representation difference
+select octet_length('ａｂｃ');
+select octet_length(to_single_byte('ａｂｃ'));
+
+select to_single_byte('ａｂｃ');
+select to_single_byte('１．２');
+select to_single_byte(１．２);
+select to_single_byte(3.4);
+select to_single_byte(NULL);
