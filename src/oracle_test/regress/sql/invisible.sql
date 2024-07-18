@@ -2,8 +2,7 @@
 SELECT attrelid, attname, attisinvisible FROM pg_attribute WHERE attisinvisible;
 
 
-CREATE TABLE htest0 (a int PRIMARY KEY, b text NOT NULL);
-ALTER TABLE htest0 ALTER COLUMN b SET INVISIBLE;
+CREATE TABLE htest0 (a int PRIMARY KEY, b text NOT NULL INVISIBLE);
 INSERT INTO htest0 (a, b) VALUES (1, 'htest0 one');
 INSERT INTO htest0 (a, b) VALUES (2, 'htest0 two');
 -- we allow that all columns of a relation be invisible
@@ -11,7 +10,7 @@ ALTER TABLE htest0 ALTER COLUMN a SET INVISIBLE;
 SELECT * FROM htest0;
 ALTER TABLE htest0 ALTER COLUMN a DROP INVISIBLE;
 
-CREATE TABLE htest1 (a bigserial PRIMARY KEY, b text);
+CREATE TABLE htest1 (a bigserial PRIMARY KEY INVISIBLE, b text);
 ALTER TABLE htest1 ALTER COLUMN a SET INVISIBLE;
 -- Insert without named column must not include the invisible column
 INSERT INTO htest1 VALUES ('htest1 one');
@@ -101,6 +100,8 @@ SELECT a,b,c FROM htest2;
 DROP TABLE htest2 CASCADE;
 
 -- a table can NOT have all columns invisible
+CREATE TABLE htest3 (a serial INVISIBLE, b int INVISIBLE);
+
 CREATE TABLE htest3 (a serial, b int);
 ALTER TABLE htest3
     ALTER COLUMN a SET INVISIBLE,
@@ -108,18 +109,15 @@ ALTER TABLE htest3
 DROP TABLE htest3;
 
 -- inheritance with an additional single invisible column is possible
-CREATE TABLE htest3 (a serial, b int);
-ALTER TABLE htest3 ALTER COLUMN a SET INVISIBLE;
+CREATE TABLE htest3 (a serial INVISIBLE, b int);
 SELECT * FROM htest3;
-CREATE TABLE htest3_1 (c int) INHERITS (htest3);
-ALTER TABLE htest3_1 ALTER COLUMN c SET INVISIBLE;
+CREATE TABLE htest3_1 (c int INVISIBLE) INHERITS (htest3);
 SELECT * FROM htest3_1;
 \d+ htest3_1
 DROP TABLE htest3_1, htest3;
 
 -- Ordering do not include the invisible column
-CREATE TABLE t1 (col1 integer NOT NULL, col2 integer);
-ALTER TABLE t1 ALTER COLUMN col1 SET INVISIBLE;
+CREATE TABLE t1 (col1 integer NOT NULL INVISIBLE, col2 integer);
 INSERT INTO t1 (col1, col2) VALUES (1, 6), (3, 4);
 SELECT * FROM t1 ORDER BY 1 DESC;
 SELECT col1,col2 FROM t1 ORDER BY 2 DESC;
@@ -130,11 +128,10 @@ DROP TABLE t1;
 -- A table can be partitioned by an invisible column
 CREATE TABLE measurement (
 	city_id         int not null,
-	logdate         date not null,
+	logdate         date not null INVISIBLE,
 	peaktemp        int,
 	unitsales       int
 ) PARTITION BY RANGE (logdate);
-ALTER TABLE measurement ALTER COLUMN logdate SET INVISIBLE;
 CREATE TABLE measurement_y2006m02 PARTITION OF measurement
     FOR VALUES FROM ('2021-01-01') TO ('2021-03-01');
 CREATE TABLE measurement_y2006m03 PARTITION OF measurement
@@ -150,9 +147,8 @@ CREATE TABLE measurement (
 	city_id         int not null,
 	logdate         date not null,
 	peaktemp        int,
-	unitsales       int
+	unitsales       int INVISIBLE
 ) PARTITION BY RANGE (logdate);
-ALTER TABLE measurement ALTER COLUMN unitsales SET INVISIBLE;
 CREATE TABLE measurement_y2006m02 PARTITION OF measurement
     FOR VALUES FROM ('2021-01-01') TO ('2021-03-01');
 CREATE TABLE measurement_y2006m03 PARTITION OF measurement
@@ -166,7 +162,7 @@ SELECT * FROM measurement_y2006m03;
 DROP TABLE measurement CASCADE;
 
 -- Temporary tables can have invisible columns too.
-CREATE TEMPORARY TABLE htest_tmp (col1 integer NOT NULL, col2 integer);
+CREATE TEMPORARY TABLE htest_tmp (col1 integer NOT NULL INVISIBLE, col2 integer);
 ALTER TABLE htest_tmp ALTER COLUMN col1 SET INVISIBLE;
 INSERT INTO htest_tmp (col1, col2) VALUES (1, 6), (3, 4);
 SELECT * FROM htest_tmp ORDER BY 1 DESC;
@@ -176,24 +172,21 @@ DROP TABLE htest_tmp;
 CREATE TYPE compfoo AS (f1 int, f2 text);
 CREATE TABLE htest4 (
     a int,
-    b compfoo
+    b compfoo INVISIBLE
 );
-ALTER TABLE htest4 ALTER COLUMN b SET INVISIBLE;
 SELECT * FROM htest4;
 DROP TABLE htest4;
 DROP TYPE compfoo;
 
 -- Foreign key constraints can be defined on invisible columns, or invisible columns can be referenced.
-CREATE TABLE t1 (col1 integer UNIQUE, col2 integer);
-ALTER TABLE t1 ALTER COLUMN col1 SET INVISIBLE;
-CREATE TABLE t2 (col1 integer PRIMARY KEY, col2 integer);
-ALTER TABLE t2 ALTER COLUMN col1 SET INVISIBLE;
+CREATE TABLE t1 (col1 integer UNIQUE INVISIBLE, col2 integer);
+CREATE TABLE t2 (col1 integer PRIMARY KEY INVISIBLE, col2 integer);
 ALTER TABLE t1 ADD CONSTRAINT fk_t1_col1 FOREIGN KEY (col1) REFERENCES t2(col1);
 ALTER TABLE t2 ADD CONSTRAINT fk_t2_col1 FOREIGN KEY (col1) REFERENCES t1(col1);
 DROP TABLE t1, t2 CASCADE;
 
 -- CHECK constraints can be defined on invisible columns.
-CREATE TABLE t1 (col1 integer CHECK (col1 > 2), col2 integer NOT NULL);
+CREATE TABLE t1 (col1 integer CHECK (col1 > 2) INVISIBLE, col2 integer NOT NULL);
 ALTER TABLE t1 ALTER COLUMN col1 SET INVISIBLE;
 INSERT INTO t1 (col1, col2) VALUES (1, 6); -- error
 INSERT INTO t1 (col1, col2) VALUES (3, 6);
