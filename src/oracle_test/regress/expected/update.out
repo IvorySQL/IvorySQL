@@ -746,14 +746,14 @@ DROP TRIGGER d15_insert_trig ON part_d_15_20;
 :init_range_parted;
 create table part_def partition of range_parted default;
 \d+ part_def
-                                       Table "public.part_def"
- Column |        Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+--------------------+-----------+----------+---------+----------+--------------+-------------
- a      | text               |           |          |         | extended |              | 
- b      | pg_catalog.int8    |           |          |         | plain    |              | 
- c      | pg_catalog.numeric |           |          |         | main     |              | 
- d      | pg_catalog.int4    |           |          |         | plain    |              | 
- e      | varchar2(4000)     |           |          |         | extended |              | 
+                                             Table "public.part_def"
+ Column |        Type        | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+--------------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text               |           |          |         |           | extended |              | 
+ b      | pg_catalog.int8    |           |          |         |           | plain    |              | 
+ c      | pg_catalog.numeric |           |          |         |           | main     |              | 
+ d      | pg_catalog.int4    |           |          |         |           | plain    |              | 
+ e      | varchar2(4000)     |           |          |         |           | extended |              | 
 Partition of: range_parted DEFAULT
 Partition constraint: (NOT ((a IS NOT NULL) AND (b IS NOT NULL) AND (((a = 'a'::text) AND (b >= '1'::pg_catalog.int8) AND (b < '10'::pg_catalog.int8)) OR ((a = 'a'::text) AND (b >= '10'::pg_catalog.int8) AND (b < '20'::pg_catalog.int8)) OR ((a = 'b'::text) AND (b >= '1'::pg_catalog.int8) AND (b < '10'::pg_catalog.int8)) OR ((a = 'b'::text) AND (b >= '10'::pg_catalog.int8) AND (b < '20'::pg_catalog.int8)) OR ((a = 'b'::text) AND (b >= '20'::pg_catalog.int8) AND (b < '30'::pg_catalog.int8)))))
 
