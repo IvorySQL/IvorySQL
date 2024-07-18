@@ -1326,6 +1326,12 @@ buildNSItemFromTupleDesc(RangeTblEntry *rte, Index rtindex,
 		nscolumns[varattno].p_varcollid = attr->attcollation;
 		nscolumns[varattno].p_varnosyn = rtindex;
 		nscolumns[varattno].p_varattnosyn = varattno + 1;
+		/*
+		 * For an hidden column, the entry will not
+		 * be included in star expansion.
+		 */
+		if (attr->attisinvisible)
+			nscolumns[varattno].p_dontexpand = true;
 	}
 
 	/* ... and build the nsitem */

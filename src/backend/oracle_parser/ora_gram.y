@@ -602,6 +602,7 @@ static void determineLanguage(List *options);
 %type <node>	TableConstraint TableLikeClause
 %type <ival>	TableLikeOptionList TableLikeOption
 %type <str>		column_compression opt_column_compression column_storage opt_column_storage
+%type <keyword>	column_invisible
 %type <list>	ColQualList
 %type <node>	ColConstraint ColConstraintElem ConstraintAttr
 %type <ival>	key_match
@@ -735,7 +736,7 @@ static void determineLanguage(List *options);
 	IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
 	INCLUDING INCREMENT INDENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
 	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
-	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
+	INTERSECT INTERVAL INTO INVISIBLE INVOKER IS ISNULL ISOLATION
 
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_OBJECT JSON_OBJECTAGG
 	JSON_SCALAR JSON_SERIALIZE
@@ -787,7 +788,7 @@ static void determineLanguage(List *options);
 	UNLISTEN UNLOGGED UNTIL UPDATE USER USERENV USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
-	VERBOSE VERSION_P VIEW VIEWS VOLATILE
+	VERBOSE VERSION_P VIEW VIEWS VISIBLE VOLATILE
 
 	WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
@@ -2494,6 +2495,22 @@ alter_table_cmd:
 					n->def = $4;
 					$$ = (Node *) n;
 				}
+						/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP INVISIBLE */
+			| ALTER opt_column ColId DROP INVISIBLE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_DropInvisible;
+					n->name = $3;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET INVISIBLE */
+			| ALTER opt_column ColId SET INVISIBLE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SetInvisible;
+					n->name = $3;
+					$$ = (Node *)n;
+				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP NOT NULL */
 			| ALTER opt_column ColId DROP NOT NULL_P
 				{
@@ -3889,7 +3906,7 @@ TypedTableElement:
 			| TableConstraint					{ $$ = $1; }
 		;
 
-columnDef:	ColId Typename opt_column_storage opt_column_compression create_generic_options ColQualList
+columnDef:	ColId Typename opt_column_storage opt_column_compression create_generic_options ColQualList column_invisible
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 
@@ -3908,12 +3925,13 @@ columnDef:	ColId Typename opt_column_storage opt_column_compression create_gener
 					n->fdwoptions = $5;
 					SplitColQualList($6, &n->constraints, &n->collClause,
 									 yyscanner);
+					n->is_invisible = $7;
 					n->location = @1;
 					$$ = (Node *) n;
 				}
 		;
 
-columnOptions:	ColId ColQualList
+columnOptions:	ColId ColQualList column_invisible
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 
@@ -3929,6 +3947,7 @@ columnOptions:	ColId ColQualList
 					n->collOid = InvalidOid;
 					SplitColQualList($2, &n->constraints, &n->collClause,
 									 yyscanner);
+					n->is_invisible = $3;
 					n->location = @1;
 					$$ = (Node *) n;
 				}
@@ -3951,6 +3970,12 @@ columnOptions:	ColId ColQualList
 					n->location = @1;
 					$$ = (Node *) n;
 				}
+		;
+
+column_invisible:
+			INVISIBLE								{ $$ = $1; }
+			| VISIBLE								{ $$ = false; }
+			| /*EMPTY*/								{ $$ = false; }
 		;
 
 column_compression:
@@ -4237,6 +4262,7 @@ TableLikeOption:
 				| INDEXES			{ $$ = CREATE_TABLE_LIKE_INDEXES; }
 				| STATISTICS		{ $$ = CREATE_TABLE_LIKE_STATISTICS; }
 				| STORAGE			{ $$ = CREATE_TABLE_LIKE_STORAGE; }
+				| INVISIBLE			{ $$ = CREATE_TABLE_LIKE_INVISIBLE; }
 				| ALL				{ $$ = CREATE_TABLE_LIKE_ALL; }
 		;
 
@@ -19198,6 +19224,7 @@ unreserved_keyword:
 			| INSENSITIVE
 			| INSERT
 			| INSTEAD
+			| INVISIBLE
 			| INVOKER
 			| ISOLATION
 			| IVYSQL
@@ -19402,6 +19429,7 @@ unreserved_keyword:
 			| VERSION_P
 			| VIEW
 			| VIEWS
+			| VISIBLE
 			| VOLATILE
 			| WHITESPACE_P
 			| WITHIN
@@ -19841,6 +19869,7 @@ bare_label_keyword:
 			| INT_P
 			| INTEGER
 			| INTERVAL
+			| INVISIBLE
 			| INVOKER
 			| IS
 			| ISOLATION
@@ -20111,6 +20140,7 @@ bare_label_keyword:
 			| VERSION_P
 			| VIEW
 			| VIEWS
+			| VISIBLE
 			| VOLATILE
 			| WHEN
 			| WHITESPACE_P
