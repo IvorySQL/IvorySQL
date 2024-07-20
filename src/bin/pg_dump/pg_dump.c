@@ -16492,14 +16492,10 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			}
 			
 			/*
-			 * Dump per-column invisible information. We only issue an ALTER
-			 * TABLE statement if the attisinvisible entry for this column is
-			 * true (i.e. it's not the default value)
+			 * Dump per-column invisible information.
 			 */
 			if (tbinfo->attisinvisible[j])
-				appendPQExpBuffer(q, "ALTER %sTABLE ONLY %s ALTER COLUMN %s SET INVISIBLE;\n",
-								  foreign, qualrelname,
-								  fmtId(tbinfo->attnames[j]));
+				appendPQExpBufferStr(q, " INVISIBLE");
 
 
 			/*
