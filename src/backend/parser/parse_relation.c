@@ -1327,7 +1327,7 @@ buildNSItemFromTupleDesc(RangeTblEntry *rte, Index rtindex,
 		nscolumns[varattno].p_varnosyn = rtindex;
 		nscolumns[varattno].p_varattnosyn = varattno + 1;
 		/*
-		 * For an hidden column, the entry will not
+		 * For an invisible column, the entry will not
 		 * be included in star expansion.
 		 */
 		if (attr->attisinvisible)

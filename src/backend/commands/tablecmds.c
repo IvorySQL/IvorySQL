@@ -965,7 +965,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 		/*
 		* Verify that we have at least one visible column
-		* when there is hidden ones
+		* when there is invisible ones
 		*/
 		if (attnum > 1 && !has_visible_col)
 			ereport(ERROR,
@@ -7683,14 +7683,14 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 	 */
 	if (!((Form_pg_attribute) GETSTRUCT(tuple))->attisinvisible)
 	{
-		bool            has_expanded_cols = false;
+		bool            has_visible_cols = false;
 		HeapTuple	chk_tuple;
 		ScanKeyData     key[1];
 		((Form_pg_attribute) GETSTRUCT(tuple))->attisinvisible = true;
 
 		/*
 		 * Look if we will have at least one other column that is
-		 * expanded, we do not allow all columns of a relation to
+		 * visible, we do not allow all columns of a relation to
 		 * be invisible.
 		 */
 		ScanKeyInit(&key[0],
@@ -7708,7 +7708,7 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 				continue;
 			if (!attr->attisinvisible)
 			{
-				has_expanded_cols = true;
+				has_visible_cols = true;
 				break;
 			}
 
@@ -7717,7 +7717,7 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 		/* Clean up after the scan */
 		systable_endscan(scan);
 
-		if (!has_expanded_cols)
+		if (!has_visible_cols)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("relation \"%s\" can not have all columns invisible",

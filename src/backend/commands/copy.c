@@ -828,7 +828,7 @@ ProcessCopyOptions(ParseState *pstate,
  *
  * The input attnamelist is either the user-specified column list,
  * or NIL if there was none (in which case we want all the non-dropped
- * and not hidden columns).
+ * and not invisible columns).
  *
  * We don't include generated columns in the generated full list and we don't
  * allow them to be specified explicitly.  They don't make sense for COPY

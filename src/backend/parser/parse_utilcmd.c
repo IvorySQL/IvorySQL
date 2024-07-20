@@ -1174,7 +1174,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		else
 			def->storage = 0;
 
-		/* Likewise, copy hidden if requested */
+		/* Likewise, copy invisible if requested */
 		if (table_like_clause->options & CREATE_TABLE_LIKE_INVISIBLE)
 			def->is_invisible = attribute->attisinvisible;
 		else

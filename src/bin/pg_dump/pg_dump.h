@@ -344,7 +344,7 @@ typedef struct _tableInfo
 	char	  **attoptions;		/* per-attribute options */
 	Oid		   *attcollation;	/* per-attribute collation selection */
 	char	   *attcompression; /* per-attribute compression method */
-	bool	   *attisinvisible;	/* hidden column */
+	bool	   *attisinvisible;	/* invisible column */
 	char	  **attfdwoptions;	/* per-attribute fdw options */
 	char	  **attmissingval;	/* per attribute missing value */
 	char	  **notnull_constrs;	/* NOT NULL constraint names. If null,

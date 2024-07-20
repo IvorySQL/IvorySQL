@@ -159,9 +159,9 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	int16		attinhcount BKI_DEFAULT(0);
 
 	/*
-	 * This flag specifies whether this column is expendable in
+	 * This flag specifies whether this column is visible in
 	 * a SELECT *, an INSERT without column list, or not. It is true when
-	 * a column is defined with the HIDDEN attribute, false otherwise.
+	 * a column is defined with the INVISIBLE attribute, false otherwise.
 	 */
 	bool		attisinvisible BKI_DEFAULT(f);
 
