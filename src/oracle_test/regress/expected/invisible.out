@@ -8,7 +8,7 @@ CREATE TABLE htest0 (a int PRIMARY KEY, b text NOT NULL INVISIBLE);
 INSERT INTO htest0 (a, b) VALUES (1, 'htest0 one');
 INSERT INTO htest0 (a, b) VALUES (2, 'htest0 two');
 -- we allow that all columns of a relation be invisible
-ALTER TABLE htest0 ALTER COLUMN a SET INVISIBLE;
+ALTER TABLE htest0 MODIFY a INVISIBLE;
 ERROR:  relation "htest0" can not have all columns invisible
 SELECT * FROM htest0;
  a 
@@ -17,15 +17,15 @@ SELECT * FROM htest0;
  2
 (2 rows)
 
-ALTER TABLE htest0 ALTER COLUMN a DROP INVISIBLE;
+ALTER TABLE htest0 MODIFY a VISIBLE;
 CREATE TABLE htest1 (a bigserial PRIMARY KEY INVISIBLE, b text);
-ALTER TABLE htest1 ALTER COLUMN a SET INVISIBLE;
+ALTER TABLE htest1 MODIFY a INVISIBLE;
 -- Insert without named column must not include the invisible column
 INSERT INTO htest1 VALUES ('htest1 one');
 INSERT INTO htest1 VALUES ('htest1 two');
 -- INSERT + SELECT * should handle the invisible column
 CREATE TABLE htest1_1 (a bigserial PRIMARY KEY, b text);
-ALTER TABLE htest1_1 ALTER COLUMN a SET INVISIBLE;
+ALTER TABLE htest1_1 MODIFY a INVISIBLE;
 INSERT INTO htest1_1 VALUES ('htest1 one');
 WITH cte AS (
 	DELETE FROM htest1_1 RETURNING *
@@ -63,7 +63,7 @@ Not-null constraints:
     "htest1_a_not_null" NOT NULL "a"
 
 -- DROP/SET invisible attribute
-ALTER TABLE htest0 ALTER COLUMN b DROP INVISIBLE;
+ALTER TABLE htest0 MODIFY b VISIBLE;
 \d+ htest0
                                              Table "public.htest0"
  Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
@@ -75,7 +75,7 @@ Indexes:
 Not-null constraints:
     "htest0_b_not_null" NOT NULL "b"
 
-ALTER TABLE htest0 ALTER COLUMN b SET INVISIBLE;
+ALTER TABLE htest0 MODIFY b INVISIBLE;
 -- Hidden column are not expandable and must not be returned
 SELECT * FROM htest0; -- return only column a
  a 
@@ -231,8 +231,8 @@ SELECT a,b FROM htest0;
 
 -- same but with drop/add the column between invisible columns (virtual columns can be made invisible)
 CREATE TABLE htest2 (a serial, b int, c int GENERATED ALWAYS AS (a * 2) STORED);
-ALTER TABLE htest2 ALTER COLUMN a SET INVISIBLE;
-ALTER TABLE htest2 ALTER COLUMN c SET INVISIBLE;
+ALTER TABLE htest2 MODIFY a INVISIBLE;
+ALTER TABLE htest2 MODIFY c INVISIBLE;
 SELECT * FROM htest2;
  b 
 ---
@@ -262,7 +262,7 @@ ERROR:  a table must have at least one visible column
 CREATE TABLE htest3 (a serial, b int);
 ALTER TABLE htest3
     ALTER COLUMN a SET INVISIBLE,
-    ALTER COLUMN b SET INVISIBLE; -- error
+    MODIFY b INVISIBLE; -- error
 ERROR:  relation "htest3" can not have all columns invisible
 DROP TABLE htest3;
 -- inheritance with an additional single invisible column is possible
@@ -400,7 +400,7 @@ SELECT * FROM measurement_y2006m03;
 DROP TABLE measurement CASCADE;
 -- Temporary tables can have invisible columns too.
 CREATE TEMPORARY TABLE htest_tmp (col1 integer NOT NULL INVISIBLE, col2 integer);
-ALTER TABLE htest_tmp ALTER COLUMN col1 SET INVISIBLE;
+ALTER TABLE htest_tmp MODIFY col1 INVISIBLE;
 INSERT INTO htest_tmp (col1, col2) VALUES (1, 6), (3, 4);
 SELECT * FROM htest_tmp ORDER BY 1 DESC;
  col2 
@@ -431,7 +431,7 @@ ALTER TABLE t2 ADD CONSTRAINT fk_t2_col1 FOREIGN KEY (col1) REFERENCES t1(col1);
 DROP TABLE t1, t2 CASCADE;
 -- CHECK constraints can be defined on invisible columns.
 CREATE TABLE t1 (col1 integer CHECK (col1 > 2) INVISIBLE, col2 integer NOT NULL);
-ALTER TABLE t1 ALTER COLUMN col1 SET INVISIBLE;
+ALTER TABLE t1 MODIFY col1 INVISIBLE;
 INSERT INTO t1 (col1, col2) VALUES (1, 6); -- error
 ERROR:  new row for relation "t1" violates check constraint "t1_col1_check"
 DETAIL:  Failing row contains (1, 6).
@@ -441,7 +441,7 @@ CREATE INDEX ON t1 (col1);
 ALTER TABLE t1
   ALTER COLUMN col1 TYPE bigint,
   ALTER COLUMN col1 DROP INVISIBLE,
-  ALTER COLUMN col2 SET INVISIBLE;
+  MODIFY col2 INVISIBLE;
 \d+ t1
                                               Table "public.t1"
  Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
@@ -472,7 +472,7 @@ SELECT * FROM viewt1;
 (2 rows)
 
 -- If the invisible attribute on the column is removed the view result must not change
-ALTER TABLE htest1 ALTER COLUMN a DROP INVISIBLE;
+ALTER TABLE htest1 MODIFY a VISIBLE;
 SELECT * FROM viewt1;
      b      
 ------------
@@ -480,7 +480,7 @@ SELECT * FROM viewt1;
  htest1 two
 (2 rows)
 
-ALTER TABLE htest1 ALTER COLUMN a SET INVISIBLE;
+ALTER TABLE htest1 MODIFY a INVISIBLE;
 DROP VIEW viewt1;
 -- Materialized view must include the invisible column when explicitly listed
 -- but the column is not invisible in the materialized view.
@@ -537,7 +537,7 @@ SELECT * FROM mviewt1;
 -- typed tables with invisible column is not supported
 CREATE TYPE htest_type AS (f1 integer, f2 text, f3 bigint);
 CREATE TABLE htest28 OF htest_type (f1 WITH OPTIONS DEFAULT 3);
-ALTER TABLE htest28 ALTER COLUMN f1 SET INVISIBLE; -- error
+ALTER TABLE htest28 MODIFY f1 INVISIBLE; -- error
 ERROR:  cannot set INVISIBLE attribute on a column of a typed table
 DROP TYPE htest_type CASCADE;
 NOTICE:  drop cascades to table htest28
@@ -550,10 +550,10 @@ EXECUTE q1(0);
  htest1 two
 (2 rows)
 
-ALTER TABLE htest1 ALTER COLUMN a DROP INVISIBLE;
+ALTER TABLE htest1 MODIFY a VISIBLE;
 EXECUTE q1(0); -- error: cached plan change result type
 ERROR:  cached plan must not change result type
-ALTER TABLE htest1 ALTER COLUMN a SET INVISIBLE;
+ALTER TABLE htest1 MODIFY a INVISIBLE;
 EXECUTE q1(0);
      b      
 ------------
