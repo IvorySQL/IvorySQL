@@ -3064,11 +3064,11 @@ create rule r7 as on delete to rules_src do instead
   returning trgt.f1, trgt.f2;
 -- check display of all rules added above
 \d+ rules_src
-                                     Table "public.rules_src"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           |          |         | plain   |              | 
- f2     | pg_catalog.int4 |           |          | 0       | plain   |              | 
+                                           Table "public.rules_src"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ f2     | pg_catalog.int4 |           |          | 0       |           | plain   |              | 
 Rules:
     r1 AS
     ON UPDATE TO rules_src DO  INSERT INTO rules_log (f1, f2, tag, id) VALUES (old.f1,old.f2,'old'::text,DEFAULT), (new.f1,new.f2,'new'::text,DEFAULT)
@@ -3117,11 +3117,11 @@ create rule rr as on update to rule_t1 do instead UPDATE rule_dest trgt
   SET (f2[1], f1, tag) = (SELECT new.f2, new.f1, 'updated'::varchar)
   WHERE trgt.f1 = new.f1 RETURNING new.*;
 \d+ rule_t1
-                                      Table "public.rule_t1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           |          |         | plain   |              | 
- f2     | pg_catalog.int4 |           |          |         | plain   |              | 
+                                            Table "public.rule_t1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ f2     | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Rules:
     rr AS
     ON UPDATE TO rule_t1 DO INSTEAD  UPDATE rule_dest trgt SET (f2[1], f1, tag) = ( SELECT new.f2,

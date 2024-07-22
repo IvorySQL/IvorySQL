@@ -2287,12 +2287,12 @@ ERROR:  column data type pg_catalog.int4 can only have storage PLAIN
 create index test_storage_idx on test_storage (b, a);
 alter table test_storage alter column a set storage external;
 \d+ test_storage
-                                             Table "public.test_storage"
- Column |      Type       | Collation | Nullable |          Default          | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------------------------+----------+--------------+-------------
- a      | text            |           |          |                           | external |              | 
- c      | text            |           |          |                           | plain    |              | 
- b      | pg_catalog.int4 |           |          | random()::pg_catalog.int4 | plain    |              | 
+                                                   Table "public.test_storage"
+ Column |      Type       | Collation | Nullable |          Default          | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------------------------+-----------+----------+--------------+-------------
+ a      | text            |           |          |                           |           | external |              | 
+ c      | text            |           |          |                           |           | plain    |              | 
+ b      | pg_catalog.int4 |           |          | random()::pg_catalog.int4 |           | plain    |              | 
 Indexes:
     "test_storage_idx" btree (b, a)
 
@@ -3860,12 +3860,12 @@ ALTER TABLE atnotnull1
   ADD COLUMN c INT,
   ADD PRIMARY KEY (c);
 \d+ atnotnull1
-                                    Table "public.atnotnull1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain   |              | 
- b      | pg_catalog.int4 |           | not null |         | plain   |              | 
- c      | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                          Table "public.atnotnull1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Indexes:
     "atnotnull1_pkey" PRIMARY KEY, btree (c)
 Not-null constraints:
@@ -4340,10 +4340,10 @@ DROP TABLE part_rpd;
 -- works fine
 ALTER TABLE range_parted2 DETACH PARTITION part_rp CONCURRENTLY;
 \d+ range_parted2
-                             Partitioned table "public.range_parted2"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                   Partitioned table "public.range_parted2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition key: RANGE (a)
 Number of partitions: 0
 
@@ -4687,10 +4687,10 @@ create publication pub1 for table alter1.t1, tables in schema alter2;
 reset client_min_messages;
 alter table alter1.t1 set schema alter2;
 \d+ alter2.t1
-                                        Table "alter2.t1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                              Table "alter2.t1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Publications:
     "pub1"
 

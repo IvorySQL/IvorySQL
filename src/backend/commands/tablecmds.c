@@ -661,6 +661,10 @@ static List *GetParentedForeignKeyRefs(Relation partition);
 static void ATDetachCheckNoForeignKeyRefs(Relation partition);
 static char GetAttributeCompression(Oid atttypid, const char *compression);
 static char GetAttributeStorage(Oid atttypid, const char *storagemode);
+static ObjectAddress ATExecDropInvisible(Relation rel, const char *colName,
+									  LOCKMODE lockmode);
+static ObjectAddress ATExecSetInvisible(Relation rel, const char *colName,
+									  LOCKMODE lockmode);
 
 
 /* ----------------------------------------------------------------
@@ -708,6 +712,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	LOCKMODE	parentLockmode;
 	const char *accessMethod = NULL;
 	Oid			accessMethodId = InvalidOid;
+	bool	   has_visible_col = false;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -952,6 +957,22 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			cookedDefaults = lappend(cookedDefaults, cooked);
 			attr->atthasdef = true;
 		}
+
+		if (colDef->is_invisible)
+			attr->attisinvisible = true;
+		else
+			has_visible_col = true;
+
+		/*
+		* Verify that we have at least one visible column
+		* when there is invisible ones
+		*/
+		if (attnum > 1 && !has_visible_col)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("a table must have at least one visible column")));
+
+
 	}
 
 	/*
@@ -1360,6 +1381,7 @@ BuildDescForRelation(const List *columns)
 		has_not_null |= entry->is_not_null;
 		att->attislocal = entry->is_local;
 		att->attinhcount = entry->inhcount;
+		att->attisinvisible = entry->is_invisible;
 		att->attidentity = entry->identity;
 		att->attgenerated = entry->generated;
 		att->attcompression = GetAttributeCompression(att->atttypid, entry->compression);
@@ -2555,6 +2577,7 @@ MergeAttributes(List *columns, const List *supers, char relpersistence,
 					coldef->cooked_default = restdef->cooked_default;
 					coldef->constraints = restdef->constraints;
 					coldef->is_from_type = false;
+					coldef->is_invisible = restdef->is_invisible;
 					columns = list_delete_nth_cell(columns, restpos);
 				}
 				else
@@ -2725,6 +2748,8 @@ MergeAttributes(List *columns, const List *supers, char relpersistence,
 			if (CompressionMethodIsValid(attribute->attcompression))
 				newdef->compression =
 					pstrdup(GetCompressionMethodName(attribute->attcompression));
+
+			newdef->is_invisible = attribute->attisinvisible;
 
 			/*
 			 * Regular inheritance children are independent enough not to
@@ -3048,6 +3073,7 @@ MergeAttributes(List *columns, const List *supers, char relpersistence,
 									 errhint("A child table column cannot be generated unless its parent column is.")));
 					}
 
+					coldef->is_invisible |= restdef->is_invisible;
 					/*
 					 * Override the parent's default value for this column
 					 * (coldef->cooked_default) with the partition's local
@@ -3284,6 +3310,11 @@ MergeChildAttribute(List *inh_columns, int exist_attno, int newcol_attno, const 
 	inhdef->is_not_null |= newdef->is_not_null;
 
 	/*
+	 * Merge of INVISIBLE attribute = OR 'em together 
+	*/
+	inhdef->is_invisible |= newdef->is_invisible;
+
+	/*
 	 * Check for conflicts related to generated columns.
 	 *
 	 * If the parent column is generated, the child column will be made a
@@ -3434,6 +3465,11 @@ MergeInheritedAttribute(List *inh_columns,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("inherited column \"%s\" has a generation conflict",
 						attributeName)));
+
+	/* 
+	 * Merge of INVISIBLE attribute = OR 'em together 
+	*/
+	prevdef->is_invisible |= newdef->is_invisible;
 
 	/*
 	 * Default and other constraints are handled by the caller.
@@ -4604,6 +4640,8 @@ AlterTableGetLockLevel(List *cmds)
 			case AT_SetExpression:
 			case AT_DropExpression:
 			case AT_SetCompression:
+			case AT_DropInvisible:
+			case AT_SetInvisible:
 				cmd_lockmode = AccessExclusiveLock;
 				break;
 
@@ -4886,6 +4924,16 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* Set up recursion for phase 2; no other prep needed */
 			if (recurse)
 				cmd->recurse = true;
+			pass = AT_PASS_DROP;
+			break;
+		case AT_SetInvisible:
+			ATSimplePermissions(cmd->subtype, rel, ATT_TABLE);
+			/* No command-specific prep needed */
+			pass = AT_PASS_MISC;
+			break;
+		case AT_DropInvisible:
+			ATSimplePermissions(cmd->subtype, rel, ATT_TABLE);
+			/* This command never recurses */
 			pass = AT_PASS_DROP;
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
@@ -5287,6 +5335,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 			break;
 		case AT_DropIdentity:
 			address = ATExecDropIdentity(rel, cmd->name, cmd->missing_ok, lockmode, cmd->recurse, false);
+			break;
+		case AT_SetInvisible:		/* ALTER COLUMN SET INVISIBLE  */
+			address = ATExecSetInvisible(rel, cmd->name, lockmode);
+			break;
+		case AT_DropInvisible:		/* ALTER COLUMN DROP INVISIBLE  */
+			address = ATExecDropInvisible(rel, cmd->name, lockmode);
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
 			address = ATExecDropNotNull(rel, cmd->name, cmd->recurse, lockmode);
@@ -6544,6 +6598,10 @@ alter_table_type_to_string(AlterTableType cmdtype)
 			return "ALTER COLUMN ... DROP IDENTITY";
 		case AT_ReAddStatistics:
 			return NULL;		/* not real grammar */
+		case AT_DropInvisible:
+			return "ALTER COLUMN ... DROP INVISIBLE";
+		case AT_SetInvisible:
+			return "ALTER COLUMN ... SET INVISIBLE";
 	}
 
 	return NULL;
@@ -7504,6 +7562,185 @@ add_column_collation_dependency(Oid relid, int32 attnum, Oid collid)
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}
 }
+
+ 
+/*
+ * Return the address of the modified column.  If the column was already
+ * part of star expansion, InvalidObjectAddress is returned.
+ */
+static ObjectAddress
+ATExecDropInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
+{
+	HeapTuple	tuple;
+	Form_pg_attribute attTup;
+	AttrNumber	attnum;
+	Relation	attr_rel;
+	ObjectAddress address;
+
+	/*
+	 * lookup the attribute
+	 */
+	attr_rel = table_open(AttributeRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), colName);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("column \"%s\" of relation \"%s\" does not exist",
+						colName, RelationGetRelationName(rel))));
+	attTup = (Form_pg_attribute) GETSTRUCT(tuple);
+	attnum = attTup->attnum;
+
+	/* Prevent them from altering a system attribute */
+	if (attnum <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot alter system column \"%s\"",
+						colName)));
+
+	/* If rel is partition, shouldn't drop INVISIBLE if parent has the same */
+	if (rel->rd_rel->relispartition)
+	{
+		Oid		parentId = get_partition_parent(RelationGetRelid(rel), false);
+		Relation	parent = table_open(parentId, AccessShareLock);
+		TupleDesc	tupDesc = RelationGetDescr(parent);
+		AttrNumber	parent_attnum;
+
+		parent_attnum = get_attnum(parentId, colName);
+		if (TupleDescAttr(tupDesc, parent_attnum - 1)->attisinvisible)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("column \"%s\" is marked INVISIBLE in parent table",
+							colName)));
+		table_close(parent, AccessShareLock);
+	}
+
+	/*
+	 * Okay, actually perform the catalog change ... if needed
+	 */
+	if (attTup->attisinvisible)
+	{
+		attTup->attisinvisible = false;
+
+		CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
+
+		ObjectAddressSubSet(address, RelationRelationId,
+							RelationGetRelid(rel), attnum);
+	}
+	else
+		address = InvalidObjectAddress;
+
+	InvokeObjectPostAlterHook(RelationRelationId,
+							  RelationGetRelid(rel), attnum);
+
+	table_close(attr_rel, RowExclusiveLock);
+
+	return address;
+}
+
+/*
+ * Return the address of the modified column.  If the column was already
+ * INVISIBLE, InvalidObjectAddress is returned.
+ */
+static ObjectAddress
+ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
+{
+	HeapTuple	tuple;
+	AttrNumber	attnum;
+	Relation	attr_rel;
+	ObjectAddress   address;
+	SysScanDesc     scan;
+
+	if (rel->rd_rel->reloftype)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot set INVISIBLE attribute on a column of a typed table")));
+
+	attr_rel = table_open(AttributeRelationId, RowExclusiveLock);
+
+	/*
+	 * lookup the attribute
+	 */
+	tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), colName);
+
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("column \"%s\" of relation \"%s\" does not exist",
+						colName, RelationGetRelationName(rel))));
+
+	attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+
+	/* Prevent them from altering a system attribute */
+	if (attnum <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot alter system column \"%s\"",
+						colName)));
+
+	/*
+	 * Okay, actually perform the catalog change ... if needed
+	 */
+	if (!((Form_pg_attribute) GETSTRUCT(tuple))->attisinvisible)
+	{
+		bool            has_visible_cols = false;
+		HeapTuple	chk_tuple;
+		ScanKeyData     key[1];
+		((Form_pg_attribute) GETSTRUCT(tuple))->attisinvisible = true;
+
+		/*
+		 * Look if we will have at least one other column that is
+		 * visible, we do not allow all columns of a relation to
+		 * be invisible.
+		 */
+		ScanKeyInit(&key[0],
+					Anum_pg_attribute_attrelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(rel->rd_rel->oid));
+
+		scan = systable_beginscan(attr_rel, AttributeRelidNumIndexId, true,
+								  NULL, 1, key);
+
+		while ((chk_tuple = systable_getnext(scan)) != NULL)
+		{
+			Form_pg_attribute attr = (Form_pg_attribute) GETSTRUCT(chk_tuple);
+			if (attr->attnum <= 0 || attr->attisdropped || attr->attnum == attnum)
+				continue;
+			if (!attr->attisinvisible)
+			{
+				has_visible_cols = true;
+				break;
+			}
+
+		}
+
+		/* Clean up after the scan */
+		systable_endscan(scan);
+
+		if (!has_visible_cols)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("relation \"%s\" can not have all columns invisible",
+							RelationGetRelationName(rel))));
+
+
+		/* Now we can update the catalog */
+		CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
+
+		ObjectAddressSubSet(address, RelationRelationId,
+							RelationGetRelid(rel), attnum);
+	}
+	else
+		address = InvalidObjectAddress;
+
+	InvokeObjectPostAlterHook(RelationRelationId,
+							RelationGetRelid(rel), attnum);
+
+	table_close(attr_rel, RowExclusiveLock);
+
+	return address;
+}
+
 
 /*
  * ALTER TABLE ALTER COLUMN DROP NOT NULL

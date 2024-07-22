@@ -593,10 +593,10 @@ end $$ language plpgsql immutable;
 /
 alter table check_con_tbl add check (check_con_function(check_con_tbl.*));
 \d+ check_con_tbl
-                                   Table "public.check_con_tbl"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           |          |         | plain   |              | 
+                                         Table "public.check_con_tbl"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Check constraints:
     "check_con_tbl_check" CHECK (check_con_function(check_con_tbl.*))
 

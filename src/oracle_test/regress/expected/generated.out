@@ -309,12 +309,12 @@ ERROR:  column "b" inherits from generated column but specifies default
 CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- ok, overrides parent
 NOTICE:  merging column "b" with inherited definition
 \d+ gtestx
-                                                    Table "public.gtestx"
- Column |      Type       | Collation | Nullable |               Default               | Storage | Stats target | Description 
---------+-----------------+-----------+----------+-------------------------------------+---------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |                                     | plain   |              | 
- b      | pg_catalog.int4 |           |          | generated always as (a * 22) stored | plain   |              | 
- x      | pg_catalog.int4 |           |          |                                     | plain   |              | 
+                                                          Table "public.gtestx"
+ Column |      Type       | Collation | Nullable |               Default               | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+-------------------------------------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |                                     |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          | generated always as (a * 22) stored |           | plain   |              | 
+ x      | pg_catalog.int4 |           |          |                                     |           | plain   |              | 
 Not-null constraints:
     "gtestx_a_not_null" NOT NULL "a" (inherited)
 Inherits: gtest1

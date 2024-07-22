@@ -163,11 +163,11 @@ create rule irule3 as on insert to inserttest2 do also
   insert into inserttest (f4[1].if1, f4[1].if2[2])
   select new.f1, new.f2;
 \d+ inserttest2
-                                    Table "public.inserttest2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int8 |           |          |         | plain    |              | 
- f2     | text            |           |          |         | extended |              | 
+                                          Table "public.inserttest2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int8 |           |          |         |           | plain    |              | 
+ f2     | text            |           |          |         |           | extended |              | 
 Rules:
     irule1 AS
     ON INSERT TO inserttest2 DO  INSERT INTO inserttest (f3.if2[1], f3.if2[2])
@@ -447,11 +447,11 @@ from hash_parted order by part;
 -- test \d+ output on a table which has both partitioned and unpartitioned
 -- partitions
 \d+ list_parted
-                              Partitioned table "public.list_parted"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                    Partitioned table "public.list_parted"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition key: LIST (lower(a))
 Partitions: part_aa_bb FOR VALUES IN ('aa', 'bb'),
             part_cc_dd FOR VALUES IN ('cc', 'dd'),
@@ -469,10 +469,10 @@ drop table hash_parted;
 create table list_parted (a int) partition by list (a);
 create table part_default partition of list_parted default;
 \d+ part_default
-                                   Table "public.part_default"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                         Table "public.part_default"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition of: list_parted DEFAULT
 No partition constraint
 
@@ -856,11 +856,11 @@ create table mcrparted6_common_ge_10 partition of mcrparted for values from ('co
 create table mcrparted7_gt_common_lt_d partition of mcrparted for values from ('common', maxvalue) to ('d', minvalue);
 create table mcrparted8_ge_d partition of mcrparted for values from ('d', minvalue) to (maxvalue, maxvalue);
 \d+ mcrparted
-                               Partitioned table "public.mcrparted"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                     Partitioned table "public.mcrparted"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition key: RANGE (a, b)
 Partitions: mcrparted1_lt_b FOR VALUES FROM (MINVALUE, MINVALUE) TO ('b', MINVALUE),
             mcrparted2_b FOR VALUES FROM ('b', MINVALUE) TO ('c', MINVALUE),
@@ -872,74 +872,74 @@ Partitions: mcrparted1_lt_b FOR VALUES FROM (MINVALUE, MINVALUE) TO ('b', MINVAL
             mcrparted8_ge_d FOR VALUES FROM ('d', MINVALUE) TO (MAXVALUE, MAXVALUE)
 
 \d+ mcrparted1_lt_b
-                                  Table "public.mcrparted1_lt_b"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                        Table "public.mcrparted1_lt_b"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM (MINVALUE, MINVALUE) TO ('b', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a < 'b'::text))
 
 \d+ mcrparted2_b
-                                    Table "public.mcrparted2_b"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                          Table "public.mcrparted2_b"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('b', MINVALUE) TO ('c', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a >= 'b'::text) AND (a < 'c'::text))
 
 \d+ mcrparted3_c_to_common
-                               Table "public.mcrparted3_c_to_common"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                     Table "public.mcrparted3_c_to_common"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('c', MINVALUE) TO ('common', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a >= 'c'::text) AND (a < 'common'::text))
 
 \d+ mcrparted4_common_lt_0
-                               Table "public.mcrparted4_common_lt_0"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                     Table "public.mcrparted4_common_lt_0"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', MINVALUE) TO ('common', 0)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a = 'common'::text) AND (b < 0))
 
 \d+ mcrparted5_common_0_to_10
-                             Table "public.mcrparted5_common_0_to_10"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                   Table "public.mcrparted5_common_0_to_10"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', 0) TO ('common', 10)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a = 'common'::text) AND (b >= 0) AND (b < 10))
 
 \d+ mcrparted6_common_ge_10
-                              Table "public.mcrparted6_common_ge_10"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                    Table "public.mcrparted6_common_ge_10"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', 10) TO ('common', MAXVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a = 'common'::text) AND (b >= 10))
 
 \d+ mcrparted7_gt_common_lt_d
-                             Table "public.mcrparted7_gt_common_lt_d"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                   Table "public.mcrparted7_gt_common_lt_d"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('common', MAXVALUE) TO ('d', MINVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a > 'common'::text) AND (a < 'd'::text))
 
 \d+ mcrparted8_ge_d
-                                  Table "public.mcrparted8_ge_d"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           |          |         | plain    |              | 
+                                        Table "public.mcrparted8_ge_d"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Partition of: mcrparted FOR VALUES FROM ('d', MINVALUE) TO (MAXVALUE, MAXVALUE)
 Partition constraint: ((a IS NOT NULL) AND (b IS NOT NULL) AND (a >= 'd'::text))
 

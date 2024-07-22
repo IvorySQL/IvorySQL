@@ -26,6 +26,7 @@
 #include "fe_utils/mbprint.h"
 #include "fe_utils/print.h"
 #include "fe_utils/string_utils.h"
+#include "oracle_fe_utils/ora_string_utils.h"
 #include "settings.h"
 #include "variables.h"
 
@@ -1556,6 +1557,7 @@ describeOneTableDetails(const char *schemaname,
 				atttype_col = -1,
 				attrdef_col = -1,
 				attnotnull_col = -1,
+				attisinvisible_col = -1,
 				attcoll_col = -1,
 				attidentity_col = -1,
 				attgenerated_col = -1,
@@ -1953,6 +1955,15 @@ describeOneTableDetails(const char *schemaname,
 			appendPQExpBufferStr(&buf, ",\n  pg_catalog.col_description(a.attrelid, a.attnum)");
 			attdescr_col = cols++;
 		}
+
+		/* column visibility in a SELECT *, if relevant to relkind */
+		if ((db_mode == DB_ORACLE) &&
+			(tableinfo.relkind == RELKIND_RELATION ||
+			tableinfo.relkind == RELKIND_PARTITIONED_TABLE))
+		{
+			appendPQExpBufferStr(&buf, ",\n  a.attisinvisible AS attisinvisible");
+			attisinvisible_col = cols++;
+		}
 	}
 
 	appendPQExpBufferStr(&buf, "\nFROM pg_catalog.pg_attribute a");
@@ -2040,6 +2051,8 @@ describeOneTableDetails(const char *schemaname,
 		headers[cols++] = gettext_noop("Nullable");
 		headers[cols++] = gettext_noop("Default");
 	}
+	if ((attisinvisible_col >= 0) && (db_mode == DB_ORACLE) )
+		headers[cols++] = gettext_noop("Invisible");
 	if (isindexkey_col >= 0)
 		headers[cols++] = gettext_noop("Key?");
 	if (indexdef_col >= 0)
@@ -2072,7 +2085,7 @@ describeOneTableDetails(const char *schemaname,
 		/* Type */
 		printTableAddCell(&cont, PQgetvalue(res, i, atttype_col), false, false);
 
-		/* Collation, Nullable, Default */
+		/* Collation, Nullable, INVISIBLE, Default */
 		if (show_column_details)
 		{
 			char	   *identity;
@@ -2085,7 +2098,6 @@ describeOneTableDetails(const char *schemaname,
 			printTableAddCell(&cont,
 							  strcmp(PQgetvalue(res, i, attnotnull_col), "t") == 0 ? "not null" : "",
 							  false, false);
-
 			identity = PQgetvalue(res, i, attidentity_col);
 			generated = PQgetvalue(res, i, attgenerated_col);
 
@@ -2116,6 +2128,12 @@ describeOneTableDetails(const char *schemaname,
 		/* FDW options for foreign table columns */
 		if (fdwopts_col >= 0)
 			printTableAddCell(&cont, PQgetvalue(res, i, fdwopts_col), false, false);
+
+		/* Column invisible in SELECT *, if relevant */
+		if ((attisinvisible_col >= 0) && (db_mode == DB_ORACLE))
+			printTableAddCell(&cont,
+						  strcmp(PQgetvalue(res, i, attisinvisible_col), "t") == 0 ? "invisible" : "",
+						  false, false);
 
 		/* Storage mode, if relevant */
 		if (attstorage_col >= 0)

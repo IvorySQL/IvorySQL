@@ -3579,6 +3579,7 @@ RelationBuildLocalRelation(const char *relname,
 		datt->attidentity = satt->attidentity;
 		datt->attgenerated = satt->attgenerated;
 		datt->attnotnull = satt->attnotnull;
+		datt->attisinvisible = satt->attisinvisible;
 		has_not_null |= satt->attnotnull;
 	}
 

@@ -1407,12 +1407,12 @@ CREATE TABLE fd_pt1 (
 CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
   SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
 Child tables: ft2, FOREIGN
@@ -1432,12 +1432,12 @@ Inherits: fd_pt1
 
 DROP FOREIGN TABLE ft2;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
 
@@ -1460,12 +1460,12 @@ FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
 Child tables: ft2, FOREIGN
@@ -1509,12 +1509,12 @@ Child tables: ct3,
               ft3, FOREIGN
 
 \d+ ct3
-                                        Table "public.ct3"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                              Table "public.ct3"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (inherited)
 Inherits: ft2
@@ -1538,17 +1538,17 @@ ALTER TABLE fd_pt1 ADD COLUMN c6 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c7 integer NOT NULL;
 ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
- c4     | pg_catalog.int4 |           |          |         | plain    |              | 
- c5     | pg_catalog.int4 |           |          | 0       | plain    |              | 
- c6     | pg_catalog.int4 |           |          |         | plain    |              | 
- c7     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c8     | pg_catalog.int4 |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
+ c4     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ c5     | pg_catalog.int4 |           |          | 0       |           | plain    |              | 
+ c6     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ c7     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c8     | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
     "fd_pt1_c7_not_null" NOT NULL "c7"
@@ -1576,17 +1576,17 @@ Child tables: ct3,
               ft3, FOREIGN
 
 \d+ ct3
-                                        Table "public.ct3"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
- c4     | pg_catalog.int4 |           |          |         | plain    |              | 
- c5     | pg_catalog.int4 |           |          | 0       | plain    |              | 
- c6     | pg_catalog.int4 |           |          |         | plain    |              | 
- c7     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c8     | pg_catalog.int4 |           |          |         | plain    |              | 
+                                              Table "public.ct3"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
+ c4     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ c5     | pg_catalog.int4 |           |          | 0       |           | plain    |              | 
+ c6     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ c7     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c8     | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (inherited)
     "fd_pt1_c7_not_null" NOT NULL "c7" (inherited)
@@ -1624,17 +1624,17 @@ ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    | 10000        | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
- c4     | pg_catalog.int4 |           |          | 0       | plain    |              | 
- c5     | pg_catalog.int4 |           |          |         | plain    |              | 
- c6     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c7     | pg_catalog.int4 |           |          |         | plain    |              | 
- c8     | text            |           |          |         | external |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    | 10000        | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
+ c4     | pg_catalog.int4 |           |          | 0       |           | plain    |              | 
+ c5     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ c6     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c7     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ c8     | text            |           |          |         |           | external |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
     "fd_pt1_c6_not_null" NOT NULL "c6"
@@ -1668,12 +1668,12 @@ ALTER TABLE fd_pt1 DROP COLUMN c6;
 ALTER TABLE fd_pt1 DROP COLUMN c7;
 ALTER TABLE fd_pt1 DROP COLUMN c8;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    | 10000        | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    | 10000        | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
 Child tables: ft2, FOREIGN
@@ -1710,12 +1710,12 @@ SELECT relname, conname, contype, conislocal, coninhcount, connoinherit
 
 -- child does not inherit NO INHERIT constraints
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    | 10000        | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    | 10000        | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Check constraints:
     "fd_pt1chk1" CHECK (c1 > 0) NO INHERIT
     "fd_pt1chk2" CHECK (c2 <> ''::text)
@@ -1761,12 +1761,12 @@ ALTER FOREIGN TABLE ft2 ADD CONSTRAINT fd_pt1chk2 CHECK (c2 <> '');
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 -- child does not inherit NO INHERIT constraints
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    | 10000        | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    | 10000        | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Check constraints:
     "fd_pt1chk1" CHECK (c1 > 0) NO INHERIT
     "fd_pt1chk2" CHECK (c2 <> ''::text)
@@ -1796,12 +1796,12 @@ ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk2 CASCADE;
 INSERT INTO fd_pt1 VALUES (1, 'fd_pt1'::text, '1994-01-01'::date);
 ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk3 CHECK (c2 <> '') NOT VALID;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    | 10000        | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    | 10000        | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Check constraints:
     "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
 Not-null constraints:
@@ -1827,12 +1827,12 @@ Inherits: fd_pt1
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    | 10000        | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    | 10000        | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Check constraints:
     "fd_pt1chk3" CHECK (c2 <> ''::text)
 Not-null constraints:
@@ -1862,12 +1862,12 @@ ALTER TABLE fd_pt1 RENAME COLUMN c3 TO f3;
 -- changes name of a constraint recursively
 ALTER TABLE fd_pt1 RENAME CONSTRAINT fd_pt1chk3 TO f2_check;
 \d+ fd_pt1
-                                       Table "public.fd_pt1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain    | 10000        | 
- f2     | text            |           |          |         | extended |              | 
- f3     | date            |           |          |         | plain    |              | 
+                                             Table "public.fd_pt1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain    | 10000        | 
+ f2     | text            |           |          |         |           | extended |              | 
+ f3     | date            |           |          |         |           | plain    |              | 
 Check constraints:
     "f2_check" CHECK (f2 <> ''::text)
 Not-null constraints:
@@ -1925,12 +1925,12 @@ CREATE TABLE fd_pt2 (
 CREATE FOREIGN TABLE fd_pt2_1 PARTITION OF fd_pt2 FOR VALUES IN (1)
   SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
 \d+ fd_pt2
-                                 Partitioned table "public.fd_pt2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                       Partitioned table "public.fd_pt2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
@@ -1976,12 +1976,12 @@ ERROR:  table "fd_pt2_1" contains column "c4" not found in parent "fd_pt2"
 DETAIL:  The new partition may contain only the columns present in parent.
 DROP FOREIGN TABLE fd_pt2_1;
 \d+ fd_pt2
-                                 Partitioned table "public.fd_pt2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                       Partitioned table "public.fd_pt2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
@@ -2007,12 +2007,12 @@ FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 -- no attach partition validation occurs for foreign tables
 ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
 \d+ fd_pt2
-                                 Partitioned table "public.fd_pt2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                       Partitioned table "public.fd_pt2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
@@ -2039,12 +2039,12 @@ ERROR:  cannot add column to a partition
 ALTER TABLE fd_pt2_1 ALTER c3 SET NOT NULL;
 ALTER TABLE fd_pt2_1 ADD CONSTRAINT p21chk CHECK (c2 <> '');
 \d+ fd_pt2
-                                 Partitioned table "public.fd_pt2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           |          |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                       Partitioned table "public.fd_pt2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           |          |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
@@ -2074,12 +2074,12 @@ ERROR:  column "c1" is marked NOT NULL in parent table
 ALTER TABLE fd_pt2 DETACH PARTITION fd_pt2_1;
 ALTER TABLE fd_pt2 ALTER c2 SET NOT NULL;
 \d+ fd_pt2
-                                 Partitioned table "public.fd_pt2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           | not null |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                       Partitioned table "public.fd_pt2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           | not null |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
@@ -2108,12 +2108,12 @@ ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
 ALTER TABLE fd_pt2 DETACH PARTITION fd_pt2_1;
 ALTER TABLE fd_pt2 ADD CONSTRAINT fd_pt2chk1 CHECK (c1 > 0);
 \d+ fd_pt2
-                                 Partitioned table "public.fd_pt2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- c1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- c2     | text            |           | not null |         | extended |              | 
- c3     | date            |           |          |         | plain    |              | 
+                                       Partitioned table "public.fd_pt2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ c2     | text            |           | not null |         |           | extended |              | 
+ c3     | date            |           |          |         |           | plain    |              | 
 Partition key: LIST (c1)
 Check constraints:
     "fd_pt2chk1" CHECK (c1 > 0)

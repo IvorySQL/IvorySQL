@@ -1086,13 +1086,13 @@ ALTER TABLE inhts RENAME aa TO aaa;      -- to be failed
 ERROR:  cannot rename inherited column "aa"
 ALTER TABLE inhts RENAME d TO dd;
 \d+ inhts
-                                       Table "public.inhts"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- aa     | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- c      | pg_catalog.int4 |           |          |         | plain   |              | 
- dd     | pg_catalog.int4 |           |          |         | plain   |              | 
+                                             Table "public.inhts"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ aa     | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ dd     | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Inherits: inht1,
           inhs1
 
@@ -1106,10 +1106,10 @@ ALTER TABLE inhta ADD COLUMN i int;
 NOTICE:  merging definition of column "i" for child "inhtd"
 NOTICE:  merging definition of column "i" for child "inhtd"
 \d+ inhta
-                                       Table "public.inhta"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- i      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                             Table "public.inhta"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ i      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Child tables: inhtb,
               inhtd
 
@@ -1122,14 +1122,14 @@ NOTICE:  merging multiple inherited definitions of column "aa"
 NOTICE:  merging multiple inherited definitions of column "b"
 ALTER TABLE inht1 RENAME aa TO aaa;
 \d+ inht4
-                                       Table "public.inht4"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- aaa    | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- x      | pg_catalog.int4 |           |          |         | plain   |              | 
- y      | pg_catalog.int4 |           |          |         | plain   |              | 
- z      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                             Table "public.inht4"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ aaa    | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ x      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ y      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ z      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Inherits: inht2,
           inht3
 
@@ -1139,14 +1139,14 @@ ALTER TABLE inht1 RENAME aaa TO aaaa;
 ALTER TABLE inht1 RENAME b TO bb;                -- to be failed
 ERROR:  cannot rename inherited column "b"
 \d+ inhts
-                                       Table "public.inhts"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- aaaa   | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- x      | pg_catalog.int4 |           |          |         | plain   |              | 
- c      | pg_catalog.int4 |           |          |         | plain   |              | 
- d      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                             Table "public.inhts"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ aaaa   | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ x      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ d      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Inherits: inht2,
           inhs1
 
@@ -1186,33 +1186,33 @@ drop cascades to table inht4
 CREATE TABLE test_constraints (id int, val1 varchar, val2 int, UNIQUE(val1, val2));
 CREATE TABLE test_constraints_inh () INHERITS (test_constraints);
 \d+ test_constraints
-                                  Table "public.test_constraints"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- id     | pg_catalog.int4 |           |          |         | plain    |              | 
- val1   | varchar2(4000)  |           |          |         | extended |              | 
- val2   | pg_catalog.int4 |           |          |         | plain    |              | 
+                                        Table "public.test_constraints"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ val1   | varchar2(4000)  |           |          |         |           | extended |              | 
+ val2   | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Indexes:
     "test_constraints_val1_val2_key" UNIQUE CONSTRAINT, btree (val1, val2)
 Child tables: test_constraints_inh
 
 ALTER TABLE ONLY test_constraints DROP CONSTRAINT test_constraints_val1_val2_key;
 \d+ test_constraints
-                                  Table "public.test_constraints"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- id     | pg_catalog.int4 |           |          |         | plain    |              | 
- val1   | varchar2(4000)  |           |          |         | extended |              | 
- val2   | pg_catalog.int4 |           |          |         | plain    |              | 
+                                        Table "public.test_constraints"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ val1   | varchar2(4000)  |           |          |         |           | extended |              | 
+ val2   | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Child tables: test_constraints_inh
 
 \d+ test_constraints_inh
-                                Table "public.test_constraints_inh"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- id     | pg_catalog.int4 |           |          |         | plain    |              | 
- val1   | varchar2(4000)  |           |          |         | extended |              | 
- val2   | pg_catalog.int4 |           |          |         | plain    |              | 
+                                      Table "public.test_constraints_inh"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ val1   | varchar2(4000)  |           |          |         |           | extended |              | 
+ val2   | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Inherits: test_constraints
 
 DROP TABLE test_constraints_inh;
@@ -1223,27 +1223,27 @@ CREATE TABLE test_ex_constraints (
 );
 CREATE TABLE test_ex_constraints_inh () INHERITS (test_ex_constraints);
 \d+ test_ex_constraints
-                           Table "public.test_ex_constraints"
- Column |  Type  | Collation | Nullable | Default | Storage | Stats target | Description 
---------+--------+-----------+----------+---------+---------+--------------+-------------
- c      | circle |           |          |         | plain   |              | 
+                                 Table "public.test_ex_constraints"
+ Column |  Type  | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+--------+-----------+----------+---------+-----------+---------+--------------+-------------
+ c      | circle |           |          |         |           | plain   |              | 
 Indexes:
     "test_ex_constraints_c_excl" EXCLUDE USING gist (c WITH &&)
 Child tables: test_ex_constraints_inh
 
 ALTER TABLE test_ex_constraints DROP CONSTRAINT test_ex_constraints_c_excl;
 \d+ test_ex_constraints
-                           Table "public.test_ex_constraints"
- Column |  Type  | Collation | Nullable | Default | Storage | Stats target | Description 
---------+--------+-----------+----------+---------+---------+--------------+-------------
- c      | circle |           |          |         | plain   |              | 
+                                 Table "public.test_ex_constraints"
+ Column |  Type  | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+--------+-----------+----------+---------+-----------+---------+--------------+-------------
+ c      | circle |           |          |         |           | plain   |              | 
 Child tables: test_ex_constraints_inh
 
 \d+ test_ex_constraints_inh
-                         Table "public.test_ex_constraints_inh"
- Column |  Type  | Collation | Nullable | Default | Storage | Stats target | Description 
---------+--------+-----------+----------+---------+---------+--------------+-------------
- c      | circle |           |          |         | plain   |              | 
+                               Table "public.test_ex_constraints_inh"
+ Column |  Type  | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+--------+-----------+----------+---------+-----------+---------+--------------+-------------
+ c      | circle |           |          |         |           | plain   |              | 
 Inherits: test_ex_constraints
 
 DROP TABLE test_ex_constraints_inh;
@@ -1253,37 +1253,37 @@ CREATE TABLE test_primary_constraints(id int PRIMARY KEY);
 CREATE TABLE test_foreign_constraints(id1 int REFERENCES test_primary_constraints(id));
 CREATE TABLE test_foreign_constraints_inh () INHERITS (test_foreign_constraints);
 \d+ test_primary_constraints
-                             Table "public.test_primary_constraints"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- id     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                   Table "public.test_primary_constraints"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Indexes:
     "test_primary_constraints_pkey" PRIMARY KEY, btree (id)
 Referenced by:
     TABLE "test_foreign_constraints" CONSTRAINT "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
 
 \d+ test_foreign_constraints
-                             Table "public.test_foreign_constraints"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- id1    | pg_catalog.int4 |           |          |         | plain   |              | 
+                                   Table "public.test_foreign_constraints"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ id1    | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Foreign-key constraints:
     "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
 Child tables: test_foreign_constraints_inh
 
 ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
 \d+ test_foreign_constraints
-                             Table "public.test_foreign_constraints"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- id1    | pg_catalog.int4 |           |          |         | plain   |              | 
+                                   Table "public.test_foreign_constraints"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ id1    | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Child tables: test_foreign_constraints_inh
 
 \d+ test_foreign_constraints_inh
-                           Table "public.test_foreign_constraints_inh"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- id1    | pg_catalog.int4 |           |          |         | plain   |              | 
+                                 Table "public.test_foreign_constraints_inh"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ id1    | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Inherits: test_foreign_constraints
 
 DROP TABLE test_foreign_constraints_inh;
@@ -2061,27 +2061,27 @@ Inherits: pp1,
 -- named NOT NULL constraint
 alter table cc1 add column a2 int constraint nn not null;
 \d+ cc1
-                                        Table "public.cc1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int4 |           |          |         | plain    |              | 
- f2     | text            |           |          |         | extended |              | 
- f3     | pg_catalog.int4 |           |          |         | plain    |              | 
- a2     | pg_catalog.int4 |           | not null |         | plain    |              | 
+                                              Table "public.cc1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ f2     | text            |           |          |         |           | extended |              | 
+ f3     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ a2     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
 Not-null constraints:
     "nn" NOT NULL "a2"
 Inherits: pp1
 Child tables: cc2
 
 \d+ cc2
-                                         Table "public.cc2"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int4   |           |          |         | plain    |              | 
- f2     | text              |           |          |         | extended |              | 
- f3     | pg_catalog.int4   |           |          |         | plain    |              | 
- f4     | pg_catalog.float8 |           |          |         | plain    |              | 
- a2     | pg_catalog.int4   |           | not null |         | plain    |              | 
+                                               Table "public.cc2"
+ Column |       Type        | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-------------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4   |           |          |         |           | plain    |              | 
+ f2     | text              |           |          |         |           | extended |              | 
+ f3     | pg_catalog.int4   |           |          |         |           | plain    |              | 
+ f4     | pg_catalog.float8 |           |          |         |           | plain    |              | 
+ a2     | pg_catalog.int4   |           | not null |         |           | plain    |              | 
 Not-null constraints:
     "nn" NOT NULL "a2" (inherited)
 Inherits: pp1,
@@ -2089,23 +2089,23 @@ Inherits: pp1,
 
 alter table pp1 alter column f1 set not null;
 \d+ pp1
-                                        Table "public.pp1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                              Table "public.pp1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1"
 Child tables: cc1,
               cc2
 
 \d+ cc1
-                                        Table "public.cc1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- f2     | text            |           |          |         | extended |              | 
- f3     | pg_catalog.int4 |           |          |         | plain    |              | 
- a2     | pg_catalog.int4 |           | not null |         | plain    |              | 
+                                              Table "public.cc1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ f2     | text            |           |          |         |           | extended |              | 
+ f3     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ a2     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
     "nn" NOT NULL "a2"
@@ -2113,14 +2113,14 @@ Inherits: pp1
 Child tables: cc2
 
 \d+ cc2
-                                         Table "public.cc2"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int4   |           | not null |         | plain    |              | 
- f2     | text              |           |          |         | extended |              | 
- f3     | pg_catalog.int4   |           |          |         | plain    |              | 
- f4     | pg_catalog.float8 |           |          |         | plain    |              | 
- a2     | pg_catalog.int4   |           | not null |         | plain    |              | 
+                                               Table "public.cc2"
+ Column |       Type        | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-------------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4   |           | not null |         |           | plain    |              | 
+ f2     | text              |           |          |         |           | extended |              | 
+ f3     | pg_catalog.int4   |           |          |         |           | plain    |              | 
+ f4     | pg_catalog.float8 |           |          |         |           | plain    |              | 
+ a2     | pg_catalog.int4   |           | not null |         |           | plain    |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
     "nn" NOT NULL "a2" (inherited)
@@ -2142,13 +2142,13 @@ ERROR:  cannot drop inherited constraint "nn" of relation "cc2"
 -- remove constraint cc1, should succeed
 alter table cc1 alter column a2 drop not null;
 \d+ cc1
-                                        Table "public.cc1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain    |              | 
- f2     | text            |           |          |         | extended |              | 
- f3     | pg_catalog.int4 |           |          |         | plain    |              | 
- a2     | pg_catalog.int4 |           |          |         | plain    |              | 
+                                              Table "public.cc1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ f2     | text            |           |          |         |           | extended |              | 
+ f3     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ a2     | pg_catalog.int4 |           |          |         |           | plain    |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
 Inherits: pp1
@@ -2158,14 +2158,14 @@ Child tables: cc2
 alter table cc2 alter column f1 drop not null;
 ERROR:  cannot drop inherited constraint "pp1_f1_not_null" of relation "cc2"
 \d+ cc2
-                                         Table "public.cc2"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+--------------+-------------
- f1     | pg_catalog.int4   |           | not null |         | plain    |              | 
- f2     | text              |           |          |         | extended |              | 
- f3     | pg_catalog.int4   |           |          |         | plain    |              | 
- f4     | pg_catalog.float8 |           |          |         | plain    |              | 
- a2     | pg_catalog.int4   |           |          |         | plain    |              | 
+                                               Table "public.cc2"
+ Column |       Type        | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-------------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4   |           | not null |         |           | plain    |              | 
+ f2     | text              |           |          |         |           | extended |              | 
+ f3     | pg_catalog.int4   |           |          |         |           | plain    |              | 
+ f4     | pg_catalog.float8 |           |          |         |           | plain    |              | 
+ a2     | pg_catalog.int4   |           |          |         |           | plain    |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
 Inherits: pp1,
@@ -2177,10 +2177,10 @@ ERROR:  cannot drop inherited constraint "pp1_f1_not_null" of relation "cc1"
 -- remove from pp1, should succeed
 alter table pp1 alter column f1 drop not null;
 \d+ pp1
-                                        Table "public.pp1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           |          |         | plain   |              | 
+                                              Table "public.pp1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Child tables: cc1,
               cc2
 
@@ -2191,11 +2191,11 @@ create table inh_parent1(a int constraint nn not null);
 create table inh_parent2(b int constraint nn not null);
 create table inh_child () inherits (inh_parent1, inh_parent2);
 \d+ inh_child
-                                     Table "public.inh_child"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain   |              | 
- b      | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                           Table "public.inh_child"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "nn" NOT NULL "a" (inherited)
     "inh_child_b_not_null" NOT NULL "b" (inherited)
@@ -2223,14 +2223,14 @@ select conrelid::regclass, conname, contype, conkey,
 (5 rows)
 
 \d+ inh_child
-                                     Table "public.inh_child"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain   |              | 
- b      | pg_catalog.int4 |           | not null |         | plain   |              | 
- c      | pg_catalog.int4 |           |          |         | plain   |              | 
- d      | pg_catalog.int4 |           | not null |         | plain   |              | 
- e      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                           Table "public.inh_child"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ d      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
+ e      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Not-null constraints:
     "inh_child_a_not_null" NOT NULL "a" (inherited)
     "inh_child_b_not_null" NOT NULL "b" (inherited)
@@ -2256,22 +2256,22 @@ select conrelid::regclass, conname, contype, conkey,
 (1 row)
 
 \d+ inh_nn*
-                                   Table "public.inh_nn_child"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                         Table "public.inh_nn_child"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Inherits: inh_nn_parent
 
-                                   Table "public.inh_nn_child2"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                         Table "public.inh_nn_child2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Inherits: inh_nn_parent
 
-                                   Table "public.inh_nn_parent"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                         Table "public.inh_nn_parent"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "inh_nn_parent_a_not_null" NOT NULL "a" NO INHERIT
 Child tables: inh_nn_child,
@@ -2294,29 +2294,29 @@ alter table inh_child2 inherit inh_child1;
 -- add NOT NULL constraint recursively
 alter table inh_parent alter column f1 set not null;
 \d+ inh_parent
-                                    Table "public.inh_parent"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                          Table "public.inh_parent"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "inh_parent_f1_not_null" NOT NULL "f1"
 Child tables: inh_child1
 
 \d+ inh_child1
-                                    Table "public.inh_child1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                          Table "public.inh_child1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "inh_child1_f1_not_null" NOT NULL "f1" (local, inherited)
 Inherits: inh_parent
 Child tables: inh_child2
 
 \d+ inh_child2
-                                    Table "public.inh_child2"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                          Table "public.inh_child2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "inh_child2_f1_not_null" NOT NULL "f1" (local, inherited)
 Inherits: inh_child1
@@ -2339,28 +2339,28 @@ select conrelid::regclass, conname, contype, coninhcount, conislocal
 create table inh_child3 () inherits (inh_child1);
 alter table inh_child1 no inherit inh_parent;
 \d+ inh_parent
-                                    Table "public.inh_parent"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                          Table "public.inh_parent"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "inh_parent_f1_not_null" NOT NULL "f1"
 
 \d+ inh_child1
-                                    Table "public.inh_child1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                          Table "public.inh_child1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "inh_child1_f1_not_null" NOT NULL "f1"
 Child tables: inh_child2,
               inh_child3
 
 \d+ inh_child2
-                                    Table "public.inh_child2"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- f1     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                          Table "public.inh_child2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ f1     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "inh_child2_f1_not_null" NOT NULL "f1" (local, inherited)
 Inherits: inh_child1

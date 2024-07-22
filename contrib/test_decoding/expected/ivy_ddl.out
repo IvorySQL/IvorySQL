@@ -494,12 +494,12 @@ CREATE TABLE replication_metadata (
 WITH (user_catalog_table = true)
 ;
 \d+ replication_metadata
-                                                     Table "public.replication_metadata"
-  Column  |      Type       | Collation | Nullable |                     Default                      | Storage  | Stats target | Description 
-----------+-----------------+-----------+----------+--------------------------------------------------+----------+--------------+-------------
- id       | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) | plain    |              | 
- relation | name            |           | not null |                                                  | plain    |              | 
- options  | text[]          |           |          |                                                  | extended |              | 
+                                                           Table "public.replication_metadata"
+  Column  |      Type       | Collation | Nullable |                     Default                      | Invisible | Storage  | Stats target | Description 
+----------+-----------------+-----------+----------+--------------------------------------------------+-----------+----------+--------------+-------------
+ id       | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) |           | plain    |              | 
+ relation | name            |           | not null |                                                  |           | plain    |              | 
+ options  | text[]          |           |          |                                                  |           | extended |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
 Not-null constraints:
@@ -511,12 +511,12 @@ INSERT INTO replication_metadata(relation, options)
 VALUES ('foo', ARRAY['a', 'b']);
 ALTER TABLE replication_metadata RESET (user_catalog_table);
 \d+ replication_metadata
-                                                     Table "public.replication_metadata"
-  Column  |      Type       | Collation | Nullable |                     Default                      | Storage  | Stats target | Description 
-----------+-----------------+-----------+----------+--------------------------------------------------+----------+--------------+-------------
- id       | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) | plain    |              | 
- relation | name            |           | not null |                                                  | plain    |              | 
- options  | text[]          |           |          |                                                  | extended |              | 
+                                                           Table "public.replication_metadata"
+  Column  |      Type       | Collation | Nullable |                     Default                      | Invisible | Storage  | Stats target | Description 
+----------+-----------------+-----------+----------+--------------------------------------------------+-----------+----------+--------------+-------------
+ id       | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) |           | plain    |              | 
+ relation | name            |           | not null |                                                  |           | plain    |              | 
+ options  | text[]          |           |          |                                                  |           | extended |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
 Not-null constraints:
@@ -527,12 +527,12 @@ INSERT INTO replication_metadata(relation, options)
 VALUES ('bar', ARRAY['a', 'b']);
 ALTER TABLE replication_metadata SET (user_catalog_table = true);
 \d+ replication_metadata
-                                                     Table "public.replication_metadata"
-  Column  |      Type       | Collation | Nullable |                     Default                      | Storage  | Stats target | Description 
-----------+-----------------+-----------+----------+--------------------------------------------------+----------+--------------+-------------
- id       | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) | plain    |              | 
- relation | name            |           | not null |                                                  | plain    |              | 
- options  | text[]          |           |          |                                                  | extended |              | 
+                                                           Table "public.replication_metadata"
+  Column  |      Type       | Collation | Nullable |                     Default                      | Invisible | Storage  | Stats target | Description 
+----------+-----------------+-----------+----------+--------------------------------------------------+-----------+----------+--------------+-------------
+ id       | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) |           | plain    |              | 
+ relation | name            |           | not null |                                                  |           | plain    |              | 
+ options  | text[]          |           |          |                                                  |           | extended |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
 Not-null constraints:
@@ -548,13 +548,13 @@ ALTER TABLE replication_metadata ALTER COLUMN rewritemeornot TYPE text;
 ERROR:  cannot rewrite table "replication_metadata" used as a catalog table
 ALTER TABLE replication_metadata SET (user_catalog_table = false);
 \d+ replication_metadata
-                                                        Table "public.replication_metadata"
-     Column     |      Type       | Collation | Nullable |                     Default                      | Storage  | Stats target | Description 
-----------------+-----------------+-----------+----------+--------------------------------------------------+----------+--------------+-------------
- id             | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) | plain    |              | 
- relation       | name            |           | not null |                                                  | plain    |              | 
- options        | text[]          |           |          |                                                  | extended |              | 
- rewritemeornot | pg_catalog.int4 |           |          |                                                  | plain    |              | 
+                                                              Table "public.replication_metadata"
+     Column     |      Type       | Collation | Nullable |                     Default                      | Invisible | Storage  | Stats target | Description 
+----------------+-----------------+-----------+----------+--------------------------------------------------+-----------+----------+--------------+-------------
+ id             | pg_catalog.int4 |           | not null | nextval('replication_metadata_id_seq'::regclass) |           | plain    |              | 
+ relation       | name            |           | not null |                                                  |           | plain    |              | 
+ options        | text[]          |           |          |                                                  |           | extended |              | 
+ rewritemeornot | pg_catalog.int4 |           |          |                                                  |           | plain    |              | 
 Indexes:
     "replication_metadata_pkey" PRIMARY KEY, btree (id)
 Not-null constraints:
