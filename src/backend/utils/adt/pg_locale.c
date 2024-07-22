@@ -2811,6 +2811,7 @@ icu_set_collation_attributes(UCollator *collator, const char *loc,
 	char	   *icu_locale_id;
 	char	   *lower_str;
 	char	   *str;
+	char	   *token;
 
 	/*
 	 * The input locale may be a BCP 47 language tag, e.g.
@@ -2836,7 +2837,7 @@ icu_set_collation_attributes(UCollator *collator, const char *loc,
 		return;
 	str++;
 
-	for (char *token = strtok(str, ";"); token; token = strtok(NULL, ";"))
+	while ((token = strsep(&str, ";")))
 	{
 		char	   *e = strchr(token, '=');
 
