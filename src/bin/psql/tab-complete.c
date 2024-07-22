@@ -2350,7 +2350,17 @@ psql_completion(const char *text, int start, int end)
 					  "OWNER TO", "SET", "VALIDATE CONSTRAINT",
 					  "REPLICA IDENTITY", "ATTACH PARTITION",
 					  "DETACH PARTITION", "FORCE ROW LEVEL SECURITY",
-					  "OF", "NOT OF");
+					  "OF", "NOT OF", "MODIFY");
+	
+	/* 
+	 * Oracle Command 
+	 * ALTER TABLE xxx MODIFY 
+	 */ 
+	else if (Matches("ALTER", "TABLE", MatchAny, "MODIFY", MatchAny))
+	{
+		/* make sure to keep this list and the !Matches() below in sync */
+		COMPLETE_WITH("INVISIBLE", "VISIBLE");
+	}
 	/* ALTER TABLE xxx ADD */
 	else if (Matches("ALTER", "TABLE", MatchAny, "ADD"))
 	{
