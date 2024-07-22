@@ -71,6 +71,7 @@ replace_funcs_neg = [
   ['strlcat'],
   ['strlcpy'],
   ['strnlen'],
+  ['strsep'],
 ]
 
 if host_system != 'windows'

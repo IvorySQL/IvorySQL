@@ -1878,7 +1878,7 @@ AC_CHECK_DECLS(posix_fadvise, [], [], [#include <fcntl.h>])
 ]) # fi
 
 AC_CHECK_DECLS(fdatasync, [], [], [#include <unistd.h>])
-AC_CHECK_DECLS([strlcat, strlcpy, strnlen])
+AC_CHECK_DECLS([strlcat, strlcpy, strnlen, strsep])
 
 # We can't use AC_CHECK_FUNCS to detect these functions, because it
 # won't handle deployment target restrictions on macOS
@@ -1897,6 +1897,7 @@ AC_REPLACE_FUNCS(m4_normalize([
 	strlcat
 	strlcpy
 	strnlen
+	strsep
 ]))
 
 AC_REPLACE_FUNCS(pthread_barrier_wait)

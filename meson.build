@@ -2420,6 +2420,7 @@ decl_checks = [
   ['strlcat', 'string.h'],
   ['strlcpy', 'string.h'],
   ['strnlen', 'string.h'],
+  ['strsep',  'string.h'],
 ]
 
 # Need to check for function declarations for these functions, because
@@ -2688,6 +2689,7 @@ func_checks = [
   ['strlcat'],
   ['strlcpy'],
   ['strnlen'],
+  ['strsep'],
   ['strsignal'],
   ['sync_file_range'],
   ['syncfs'],
