@@ -106,7 +106,6 @@
 #include "utils/varlena.h"
 #include "utils/ora_compatible.h"
 
-extern uint32 bootstrap_data_checksum_version;
 extern int       bootstrap_database_mode;
 /* timeline ID to be used when bootstrapping */
 #define BootstrapTimeLineID		1
@@ -684,7 +683,7 @@ static void ValidateXLOGDirectoryStructure(void);
 static void CleanupBackupHistory(void);
 static void UpdateMinRecoveryPoint(XLogRecPtr lsn, bool force);
 static bool PerformRecoveryXLogAction(void);
-static void InitControlFile(uint64 sysidentifier);
+static void InitControlFile(uint64 sysidentifier, uint32 data_checksum_version);
 static void WriteControlFile(void);
 static void ReadControlFile(void);
 static void UpdateControlFile(void);
@@ -4191,7 +4190,7 @@ CleanupBackupHistory(void)
  */
 
 static void
-InitControlFile(uint64 sysidentifier)
+InitControlFile(uint64 sysidentifier, uint32 data_checksum_version)
 {
 	char		mock_auth_nonce[MOCK_AUTH_NONCE_LEN];
 
@@ -4222,7 +4221,7 @@ InitControlFile(uint64 sysidentifier)
 	ControlFile->wal_level = wal_level;
 	ControlFile->wal_log_hints = wal_log_hints;
 	ControlFile->track_commit_timestamp = track_commit_timestamp;
-	ControlFile->data_checksum_version = bootstrap_data_checksum_version;
+	ControlFile->data_checksum_version = data_checksum_version;
 }
 
 static void
@@ -5003,7 +5002,7 @@ XLOGShmemInit(void)
  * and the initial XLOG segment.
  */
 void
-BootStrapXLOG(void)
+BootStrapXLOG(uint32 data_checksum_version)
 {
 	CheckPoint	checkPoint;
 	char	   *buffer;
@@ -5145,7 +5144,7 @@ BootStrapXLOG(void)
 	openLogFile = -1;
 
 	/* Now create pg_control */
-	InitControlFile(sysidentifier);
+	InitControlFile(sysidentifier, data_checksum_version);
 	ControlFile->time = checkPoint.time;
 	ControlFile->checkPoint = checkPoint.redo;
 	ControlFile->checkPointCopy = checkPoint;
