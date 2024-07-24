@@ -34,6 +34,7 @@
 #include "access/xlog_internal.h"
 #include "access/xlogprefetcher.h"
 #include "access/xlogrecovery.h"
+#include "access/xlogutils.h"
 #include "archive/archive_module.h"
 #include "catalog/namespace.h"
 #include "catalog/storage.h"
@@ -73,10 +74,12 @@
 #include "replication/slotsync.h"
 #include "replication/syncrep.h"
 #include "storage/bufmgr.h"
+#include "storage/bufpage.h"
 #include "storage/large_object.h"
 #include "storage/pg_shmem.h"
 #include "storage/predicate.h"
 #include "storage/standby.h"
+#include "tcop/backend_startup.h"
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
@@ -98,6 +101,10 @@
 #include "ivy_guc.c"
 #undef IVY_GUC_VAR_DEFINE
 
+#ifdef TRACE_SYNCSCAN
+#include "access/syncscan.h"
+#endif
+
 /* This value is normally passed in from the Makefile */
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -106,24 +113,6 @@
 #define IVY_GUC_FUNC_DECLARE
 #include "ivy_guc.c"
 #undef IVY_GUC_FUNC_DECLARE
-
-/* XXX these should appear in other modules' header files */
-extern bool Log_disconnections;
-extern bool Trace_connection_negotiation;
-extern int	CommitDelay;
-extern int	CommitSiblings;
-extern char *default_tablespace;
-extern char *temp_tablespaces;
-extern bool ignore_checksum_failure;
-extern bool ignore_invalid_pages;
-
-#ifdef TRACE_SYNCSCAN
-extern bool trace_syncscan;
-#endif
-#ifdef DEBUG_BOUNDED_SORT
-extern bool optimize_bounded_sort;
-#endif
-
 
 /*
  * Options for enum values defined in this module.

@@ -250,6 +250,7 @@ extern PGDLLIMPORT bool log_planner_stats;
 extern PGDLLIMPORT bool log_executor_stats;
 extern PGDLLIMPORT bool log_statement_stats;
 extern PGDLLIMPORT bool log_btree_build_stats;
+extern PGDLLIMPORT char *event_source;
 
 extern PGDLLIMPORT bool check_function_bodies;
 extern PGDLLIMPORT bool	enable_emptystring_to_NULL;
@@ -286,6 +287,9 @@ extern PGDLLIMPORT int tcp_keepalives_interval;
 extern PGDLLIMPORT int tcp_keepalives_count;
 extern PGDLLIMPORT int tcp_user_timeout;
 
+extern PGDLLIMPORT char *role_string;
+extern PGDLLIMPORT bool in_hot_standby_guc;
+
 #ifdef TRACE_SORT
 extern PGDLLIMPORT bool trace_sort;
 #endif
@@ -316,6 +320,26 @@ extern PGDLLIMPORT int rowid_seq_cache;
 #define ORATIMESTAMPTZ_MASK		0x04
 #define ORATIMESTAMPLTZ_MASK	0x08
 #define DATETIME_IGNORE_NLS(i, m) (((i) & (m)) != 0) 
+#ifdef DEBUG_BOUNDED_SORT
+extern PGDLLIMPORT bool optimize_bounded_sort;
+#endif
+
+/*
+ * Declarations for options for enum values
+ *
+ * For most parameters, these are defined statically inside guc_tables.c.  But
+ * for some parameters, the definitions require symbols that are not easily
+ * available inside guc_tables.c, so they are instead defined in their home
+ * modules.  For those, we keep the extern declarations here.  (An alternative
+ * would be to put the extern declarations in the modules' header files, but
+ * that would then require including the definition of struct
+ * config_enum_entry into those header files.)
+ */
+extern const struct config_enum_entry archive_mode_options[];
+extern const struct config_enum_entry dynamic_shared_memory_options[];
+extern const struct config_enum_entry recovery_target_action_options[];
+extern const struct config_enum_entry wal_level_options[];
+extern const struct config_enum_entry wal_sync_method_options[];
 
 /*
  * Functions exported by guc.c
