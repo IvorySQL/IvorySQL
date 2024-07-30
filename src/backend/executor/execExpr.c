@@ -93,6 +93,7 @@ static void ExecInitJsonExpr(JsonExpr *jsexpr, ExprState *state,
 							 ExprEvalStep *scratch);
 static void ExecInitJsonCoercion(ExprState *state, JsonReturning *returning,
 								 ErrorSaveContext *escontext, bool omit_quotes,
+								 bool exists_coerce,
 								 Datum *resv, bool *resnull);
 
 
@@ -4344,7 +4345,9 @@ ExecInitJsonExpr(JsonExpr *jsexpr, ExprState *state,
 		jsestate->jump_eval_coercion = state->steps_len;
 
 		ExecInitJsonCoercion(state, jsexpr->returning, escontext,
-							 jsexpr->omit_quotes, resv, resnull);
+							 jsexpr->omit_quotes,
+							 jsexpr->op == JSON_EXISTS_OP,
+							 resv, resnull);
 	}
 	else if (jsexpr->use_io_coercion)
 	{
@@ -4425,7 +4428,8 @@ ExecInitJsonExpr(JsonExpr *jsexpr, ExprState *state,
 		/* Step to coerce the ON ERROR expression if needed */
 		if (jsexpr->on_error->coerce)
 			ExecInitJsonCoercion(state, jsexpr->returning, escontext,
-								 jsexpr->omit_quotes, resv, resnull);
+								 jsexpr->omit_quotes, false,
+								 resv, resnull);
 
 		/*
 		 * Add a COERCION_FINISH step to check for errors that may occur when
@@ -4481,7 +4485,8 @@ ExecInitJsonExpr(JsonExpr *jsexpr, ExprState *state,
 		/* Step to coerce the ON EMPTY expression if needed */
 		if (jsexpr->on_empty->coerce)
 			ExecInitJsonCoercion(state, jsexpr->returning, escontext,
-								 jsexpr->omit_quotes, resv, resnull);
+								 jsexpr->omit_quotes, false,
+								 resv, resnull);
 
 		/*
 		 * Add a COERCION_FINISH step to check for errors that may occur when
@@ -4517,6 +4522,7 @@ ExecInitJsonExpr(JsonExpr *jsexpr, ExprState *state,
 static void
 ExecInitJsonCoercion(ExprState *state, JsonReturning *returning,
 					 ErrorSaveContext *escontext, bool omit_quotes,
+					 bool exists_coerce,
 					 Datum *resv, bool *resnull)
 {
 	ExprEvalStep scratch = {0};
@@ -4527,8 +4533,13 @@ ExecInitJsonCoercion(ExprState *state, JsonReturning *returning,
 	scratch.resnull = resnull;
 	scratch.d.jsonexpr_coercion.targettype = returning->typid;
 	scratch.d.jsonexpr_coercion.targettypmod = returning->typmod;
-	scratch.d.jsonexpr_coercion.json_populate_type_cache = NULL;
+	scratch.d.jsonexpr_coercion.json_coercion_cache = NULL;
 	scratch.d.jsonexpr_coercion.escontext = escontext;
 	scratch.d.jsonexpr_coercion.omit_quotes = omit_quotes;
+	scratch.d.jsonexpr_coercion.exists_coerce = exists_coerce;
+	scratch.d.jsonexpr_coercion.exists_cast_to_int = exists_coerce &&
+		getBaseType(returning->typid) == INT4OID;
+	scratch.d.jsonexpr_coercion.exists_check_domain = exists_coerce &&
+		DomainHasConstraints(returning->typid);
 	ExprEvalPushStep(state, &scratch);
 }
