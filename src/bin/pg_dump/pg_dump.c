@@ -110,6 +110,24 @@ typedef struct
 	RelFileNumber toast_index_relfilenumber;	/* toast table index filenode */
 } BinaryUpgradeClassOidItem;
 
+/* sequence types */
+typedef enum SeqType
+{
+	SEQTYPE_SMALLINT,
+	SEQTYPE_INTEGER,
+	SEQTYPE_BIGINT,
+} SeqType;
+
+const char *const SeqTypeNames[] =
+{
+	[SEQTYPE_SMALLINT] = "smallint",
+	[SEQTYPE_INTEGER] = "integer",
+	[SEQTYPE_BIGINT] = "bigint",
+};
+
+StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_BIGINT + 1),
+				 "array length mismatch");
+
 typedef enum OidOptions
 {
 	zeroIsError = 1,
@@ -5479,7 +5497,6 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 {
 	BinaryUpgradeClassOidItem key = {0};
 	BinaryUpgradeClassOidItem *entry;
-
 	Assert(binaryUpgradeClassOids);
 
 	/*
@@ -17499,6 +17516,19 @@ dumpTableConstraintComment(Archive *fout, const ConstraintInfo *coninfo)
 	free(qtabname);
 }
 
+static inline SeqType
+parse_sequence_type(const char *name)
+{
+	for (int i = 0; i < lengthof(SeqTypeNames); i++)
+	{
+		if (strcmp(SeqTypeNames[i], name) == 0)
+			return (SeqType) i;
+	}
+
+	pg_fatal("unrecognized sequence type: %s", name);
+	return (SeqType) 0;			/* keep compiler quiet */
+}
+
 /*
  * dumpSequence
  *	  write the declaration (not data) of one user-defined sequence
@@ -17508,19 +17538,17 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 {
 	DumpOptions *dopt = fout->dopt;
 	PGresult   *res;
-	char	   *startv,
-			   *incby,
-			   *maxv,
-			   *minv,
-			   *cache,
-			   *seqtype;
+	SeqType		seqtype;
+	bool		is_ora_identity = false;
 	bool		cycled;
 	bool		is_ascending;
-	bool		is_ora_identity = false;
-	int64		default_minv = 0,
-			default_maxv = 0;
-	char		bufm[32],
-				bufx[32];
+	int64		default_minv,
+				default_maxv,
+				minv,
+				maxv,
+				startv,
+				incby,
+				cache;
 	PQExpBuffer query = createPQExpBuffer();
 	PQExpBuffer delqry = createPQExpBuffer();
 	char	   *qseqname;
@@ -17569,50 +17597,39 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 						  PQntuples(res)),
 				 tbinfo->dobj.name, PQntuples(res));
 
-	seqtype = PQgetvalue(res, 0, 0);
-	startv = PQgetvalue(res, 0, 1);
-	incby = PQgetvalue(res, 0, 2);
-	maxv = PQgetvalue(res, 0, 3);
-	minv = PQgetvalue(res, 0, 4);
-	cache = PQgetvalue(res, 0, 5);
+	seqtype = parse_sequence_type(PQgetvalue(res, 0, 0));
+	startv = strtoi64(PQgetvalue(res, 0, 1), NULL, 10);
+	incby = strtoi64(PQgetvalue(res, 0, 2), NULL, 10);
+	maxv = strtoi64(PQgetvalue(res, 0, 3), NULL, 10);
+	minv = strtoi64(PQgetvalue(res, 0, 4), NULL, 10);
+	cache = strtoi64(PQgetvalue(res, 0, 5), NULL, 10);
 	cycled = (strcmp(PQgetvalue(res, 0, 6), "t") == 0);
 	flags = atoi(PQgetvalue(res, 0, 7));
 
+	PQclear(res);
+
 	/* Calculate default limits for a sequence of this type */
-	is_ascending = (incby[0] != '-');
-	if (strcmp(seqtype, "smallint") == 0)
+	is_ascending = (incby >= 0);
+	if (seqtype == SEQTYPE_SMALLINT)
 	{
 		default_minv = is_ascending ? 1 : PG_INT16_MIN;
 		default_maxv = is_ascending ? PG_INT16_MAX : -1;
 	}
-	else if (strcmp(seqtype, "integer") == 0)
+	else if (seqtype == SEQTYPE_INTEGER)
 	{
 		default_minv = is_ascending ? 1 : PG_INT32_MIN;
 		default_maxv = is_ascending ? PG_INT32_MAX : -1;
 	}
-	else if (strcmp(seqtype, "bigint") == 0)
+	else if (seqtype == SEQTYPE_BIGINT)
 	{
 		default_minv = is_ascending ? 1 : PG_INT64_MIN;
 		default_maxv = is_ascending ? PG_INT64_MAX : -1;
 	}
 	else if (db_mode == DB_PG)
 	{
-		pg_fatal("unrecognized sequence type: %s", seqtype);
+		pg_fatal("unrecognized sequence type: %d", seqtype);
 		default_minv = default_maxv = 0;	/* keep compiler quiet */
 	}
-
-	/*
-	 * 64-bit strtol() isn't very portable, so convert the limits to strings
-	 * and compare that way.
-	 */
-	snprintf(bufm, sizeof(bufm), INT64_FORMAT, default_minv);
-	snprintf(bufx, sizeof(bufx), INT64_FORMAT, default_maxv);
-
-	/* Don't print minv/maxv if they match the respective default limit */
-	if (strcmp(minv, bufm) == 0)
-		minv = NULL;
-	if (strcmp(maxv, bufx) == 0)
-		maxv = NULL;
 
 	/*
 	 * Identity sequences are not to be dropped separately.
@@ -17635,7 +17652,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		 * and up don't use that, so don't attempt to preserve the type OID.
 		 */
 	}
-
+	
 	if (tbinfo->is_identity_sequence)
 	{
 		owning_tab = findTableByOid(tbinfo->owning_tab);
@@ -17685,37 +17702,35 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 						  "UNLOGGED " : "",
 						  fmtQualifiedDumpable(tbinfo));
 
-		if (strcmp(seqtype, "bigint") != 0)
-			appendPQExpBuffer(query, "    AS %s\n", seqtype);
+		if (seqtype != SEQTYPE_BIGINT)
+			appendPQExpBuffer(query, "    AS %s\n", SeqTypeNames[seqtype]);
 	}
+	appendPQExpBuffer(query, "    START WITH " INT64_FORMAT "\n", startv);
 
-	appendPQExpBuffer(query, "    START WITH %s\n", startv);
+	appendPQExpBuffer(query, "    INCREMENT BY " INT64_FORMAT "\n", incby);
 
-	appendPQExpBuffer(query, "    INCREMENT BY %s\n", incby);
-
-	if (minv)
-		appendPQExpBuffer(query, "    MINVALUE %s\n", minv);
-	else if (!is_ora_identity && db_mode == DB_PG)
-		appendPQExpBufferStr(query, "    NO MINVALUE\n");
+	if (minv != default_minv)
+		appendPQExpBuffer(query, "    MINVALUE " INT64_FORMAT "\n", minv);
 	else if (db_mode == DB_ORACLE)
 		appendPQExpBufferStr(query, "    NOMINVALUE\n");
+	else
+		appendPQExpBufferStr(query, "    NO MINVALUE\n");
 
-	if (maxv)
-		appendPQExpBuffer(query, "    MAXVALUE %s\n", maxv);
-	else if (!is_ora_identity && db_mode == DB_PG)
-		appendPQExpBufferStr(query, "    NO MAXVALUE\n");
+	if (maxv != default_maxv)
+		appendPQExpBuffer(query, "    MAXVALUE " INT64_FORMAT "\n", maxv);
 	else if (db_mode == DB_ORACLE)
 		appendPQExpBufferStr(query, "    NOMAXVALUE\n");
+	else
+		appendPQExpBufferStr(query, "    NO MAXVALUE\n");
 
-	if (strcmp(cache, "1") == 0 && db_mode == DB_ORACLE)
+	if ( cache && db_mode == DB_ORACLE)
 		appendPQExpBuffer(query,
 						"    NOCACHE %s",
 						(cycled ? "\n    CYCLE" : ""));
 	else
 		appendPQExpBuffer(query,
-						"    CACHE %s%s",
-						cache, (cycled ? "\n    CYCLE" : ""));
-
+					  "    CACHE " INT64_FORMAT "%s",
+					  cache, (cycled ? "\n    CYCLE" : ""));
 	is_scale = (flags & SCALE_FLAG) == SCALE_FLAG ? true : false;
 	if(is_scale)
 		is_extend = (flags & EXTEND_FLAG) == EXTEND_FLAG ? true : false;
@@ -17810,8 +17825,6 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		dumpSecLabel(fout, "SEQUENCE", qseqname,
 					 tbinfo->dobj.namespace->dobj.name, tbinfo->rolname,
 					 tbinfo->dobj.catId, 0, tbinfo->dobj.dumpId);
-
-	PQclear(res);
 
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(delqry);
