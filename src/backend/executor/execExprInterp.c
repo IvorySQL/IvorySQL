@@ -460,6 +460,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_PARAM_EXEC,
 		&&CASE_EEOP_PARAM_EXTERN,
 		&&CASE_EEOP_PARAM_CALLBACK,
+		&&CASE_EEOP_PARAM_SET,
 		&&CASE_EEOP_CASE_TESTVAL,
 		&&CASE_EEOP_MAKE_READONLY,
 		&&CASE_EEOP_IOCOERCE,
@@ -1100,6 +1101,13 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			/* allow an extension module to supply a PARAM_EXTERN value */
 			op->d.cparam.paramfunc(state, op, econtext);
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_PARAM_SET)
+		{
+			/* out of line, unlikely to matter performancewise */
+			ExecEvalParamSet(state, op, econtext);
 			EEO_NEXT();
 		}
 
@@ -2563,6 +2571,24 @@ ExecEvalParamExtern(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	ereport(ERROR,
 			(errcode(ERRCODE_UNDEFINED_OBJECT),
 			 errmsg("no value found for parameter %d", paramId)));
+}
+
+/*
+ * Set value of a param (currently always PARAM_EXEC) from
+ * state->res{value,null}.
+ */
+void
+ExecEvalParamSet(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
+{
+	ParamExecData *prm;
+
+	prm = &(econtext->ecxt_param_exec_vals[op->d.param.paramid]);
+
+	/* Shouldn't have a pending evaluation anymore */
+	Assert(prm->execPlan == NULL);
+
+	prm->value = state->resvalue;
+	prm->isnull = state->resnull;
 }
 
 /*
