@@ -5786,7 +5786,7 @@ StartupXLOG(void)
 	if (didCrash)
 		pgstat_discard_stats();
 	else
-		pgstat_restore_stats();
+		pgstat_restore_stats(checkPoint.redo);
 
 	lastFullPageWrites = checkPoint.fullPageWrites;
 
