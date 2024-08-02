@@ -51,4 +51,5 @@ backend_sources += files(
   'variable.c',
   'view.c',
   'packagecmds.c',
+  'waitlsn.c',
 )
