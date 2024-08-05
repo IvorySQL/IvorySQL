@@ -22,6 +22,11 @@ override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -I$(top_builddir)/src/include/
 
 OBJS = \
 	archive.o \
+	astreamer_file.o \
+	astreamer_gzip.o \
+	astreamer_lz4.o \
+	astreamer_tar.o \
+	astreamer_zstd.o \
 	cancel.o \
 	conditional.o \
 	connect_utils.o \
