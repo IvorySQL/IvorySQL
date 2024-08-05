@@ -688,6 +688,7 @@ static char *recovery_target_string;
 static char *recovery_target_xid_string;
 static char *recovery_target_name_string;
 static char *recovery_target_lsn_string;
+static char *restrict_nonsystem_relation_kind_string;
 
 
 /* should be static, but commands/variable.c needs to get at this */
@@ -4639,7 +4640,18 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		check_backtrace_functions, assign_backtrace_functions, NULL
 	},
-	
+
+	{
+		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets relation kinds of non-system relation to restrict use"),
+			NULL,
+			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
+		},
+		&restrict_nonsystem_relation_kind_string,
+		"",
+		check_restrict_nonsystem_relation_kind, assign_restrict_nonsystem_relation_kind, NULL
+	},
+
 	#define IVY_GUC_STRING_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_STRING_PARAMS
