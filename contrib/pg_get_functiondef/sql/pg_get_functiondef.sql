@@ -8,3 +8,5 @@ SELECT pg_get_functiondef('pg_get_functiondef');
 SELECT * FROM pg_get_functiondef('pg_get_functiondef');
 SELECT pg_get_functiondef('char_length', 'substring');
 SELECT * FROM pg_get_functiondef('char_length', 'substring');
+
+DROP EXTENSION pg_get_functiondef;

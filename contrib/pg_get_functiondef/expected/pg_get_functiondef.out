@@ -242,3 +242,4 @@ SELECT * FROM pg_get_functiondef('char_length', 'substring');
              | AS $function$bitsubstr$function$                                          +
              | 
 (2 rows)
+DROP EXTENSION pg_get_functiondef;

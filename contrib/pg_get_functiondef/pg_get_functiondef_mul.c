@@ -7,8 +7,8 @@
 #include "catalog/pg_type_d.h"
 #include "funcapi.h"
 
-typedef struct FunctionDefInfo *FunctionDefInfo;
-struct FunctionDefInfo
+typedef struct FunctionInfo_fctx *FunctionInfo_fctx;
+struct FunctionInfo_fctx
 {
     TupleDesc result_desc;
     AttInMetadata *result_tuple_meta;
@@ -23,7 +23,7 @@ PG_FUNCTION_INFO_V1(pg_get_functiondef_mul);
 Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
 {
     FuncCallContext *funcctx;
-    FunctionDefInfo info = NULL;
+    FunctionInfo_fctx info = NULL;
     if (SRF_IS_FIRSTCALL())
     {
         StringInfoData query;
@@ -39,7 +39,7 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         }
 
         funcctx = SRF_FIRSTCALL_INIT();
-        info = (struct FunctionDefInfo *)palloc(sizeof(struct FunctionDefInfo));
+        info = (struct FunctionInfo_fctx *)palloc(sizeof(struct FunctionInfo_fctx));
         funcctx->user_fctx = info;
 
         if (get_call_result_type(fcinfo, NULL, &tuple_desc) != TYPEFUNC_COMPOSITE)
@@ -75,7 +75,7 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         info->cursor = 1;
     }
     funcctx = SRF_PERCALL_SETUP();
-    info = (FunctionDefInfo)(funcctx->user_fctx);
+    info = (FunctionInfo_fctx)(funcctx->user_fctx);
     if (info->cursor > info->count)
     {
         pfree(info->oids);

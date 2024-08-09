@@ -13,8 +13,8 @@
 #include "utils/syscache.h"
 #include "access/htup_details.h"
 
-typedef struct FunctionInfo *FunctionInfo;
-struct FunctionInfo
+typedef struct FunctionInfo_fctx *FunctionInfo_fctx;
+struct FunctionInfo_fctx
 {
 	char **function_name;
 	int cursor;
@@ -58,7 +58,7 @@ PG_FUNCTION_INFO_V1(pg_get_functiondef_extend);
 Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx = NULL;
-	FunctionInfo info = NULL;
+	FunctionInfo_fctx info = NULL;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -73,7 +73,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 		arguments_raw = PG_GETARG_ARRAYTYPE_P(0);
 		deconstruct_array_builtin((ArrayType *)arguments_raw, TEXTOID, &arguments, NULL, &count_of_arguments);
 
-		info = (struct FunctionInfo *)palloc0(sizeof(struct FunctionInfo));
+		info = (struct FunctionInfo_fctx *)palloc0(sizeof(struct FunctionInfo_fctx));
 		funcctx->user_fctx = info;
 
 		info->function_name = palloc0(count_of_arguments * sizeof(char *));
@@ -94,7 +94,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
-	info = (FunctionInfo)(funcctx->user_fctx);
+	info = (FunctionInfo_fctx)(funcctx->user_fctx);
 
 	if (info->cursor == info->count_of_arguments)
 	{

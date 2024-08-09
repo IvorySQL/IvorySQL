@@ -9,7 +9,7 @@ OBJS = \
 
 EXTENSION = pg_get_functiondef
 DATA = pg_get_functiondef--1.0.sql
-PGFILEDESC = "pg_get_functiondef - Enhancement of pg_get-functionaldef"
+PGFILEDESC = "pg_get_functiondef - Enhancement of existing pg_get_functiondef"
 
 REGRESS = pg_get_functiondef
 ORA_REGRESS = pg_get_functiondef
@@ -19,7 +19,7 @@ PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 else
-subdir = contrib/hstore
+subdir = contrib/pg_get_functiondef
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
