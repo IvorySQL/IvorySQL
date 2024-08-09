@@ -1,0 +1,6 @@
+# pg_get_functiondef extension
+comment = 'Get function\'s definition'
+default_version = '1.0'
+module_pathname = '$libdir/pg_get_functiondef'
+relocatable = false
+trusted = true
