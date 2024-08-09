@@ -1642,7 +1642,7 @@ DetermineSleepTime(void)
 
 	if (HaveCrashedWorker)
 	{
-		slist_mutable_iter siter;
+		dlist_mutable_iter iter;
 
 		/*
 		 * When there are crashed bgworkers, we sleep just long enough that
@@ -1650,12 +1650,12 @@ DetermineSleepTime(void)
 		 * determine the minimum of all wakeup times according to most recent
 		 * crash time and requested restart interval.
 		 */
-		slist_foreach_modify(siter, &BackgroundWorkerList)
+		dlist_foreach_modify(iter, &BackgroundWorkerList)
 		{
 			RegisteredBgWorker *rw;
 			TimestampTz this_wakeup;
 
-			rw = slist_container(RegisteredBgWorker, rw_lnode, siter.cur);
+			rw = dlist_container(RegisteredBgWorker, rw_lnode, iter.cur);
 
 			if (rw->rw_crashed_at == 0)
 				continue;
@@ -1663,7 +1663,7 @@ DetermineSleepTime(void)
 			if (rw->rw_worker.bgw_restart_time == BGW_NEVER_RESTART
 				|| rw->rw_terminate)
 			{
-				ForgetBackgroundWorker(&siter);
+				ForgetBackgroundWorker(rw);
 				continue;
 			}
 
@@ -2736,13 +2736,13 @@ CleanupBackgroundWorker(int pid,
 						int exitstatus) /* child's exit status */
 {
 	char		namebuf[MAXPGPATH];
-	slist_mutable_iter iter;
+	dlist_mutable_iter iter;
 
-	slist_foreach_modify(iter, &BackgroundWorkerList)
+	dlist_foreach_modify(iter, &BackgroundWorkerList)
 	{
 		RegisteredBgWorker *rw;
 
-		rw = slist_container(RegisteredBgWorker, rw_lnode, iter.cur);
+		rw = dlist_container(RegisteredBgWorker, rw_lnode, iter.cur);
 
 		if (rw->rw_pid != pid)
 			continue;
@@ -2805,7 +2805,7 @@ CleanupBackgroundWorker(int pid,
 		rw->rw_backend = NULL;
 		rw->rw_pid = 0;
 		rw->rw_child_slot = 0;
-		ReportBackgroundWorkerExit(&iter);	/* report child death */
+		ReportBackgroundWorkerExit(rw); /* report child death */
 
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG1 : LOG,
 					 namebuf, pid, exitstatus);
@@ -2907,8 +2907,8 @@ CleanupBackend(int pid,
 static void
 HandleChildCrash(int pid, int exitstatus, const char *procname)
 {
-	dlist_mutable_iter iter;
-	slist_iter	siter;
+	dlist_iter	iter;
+	dlist_mutable_iter miter;
 	Backend    *bp;
 	bool		take_action;
 
@@ -2930,11 +2930,11 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	}
 
 	/* Process background workers. */
-	slist_foreach(siter, &BackgroundWorkerList)
+	dlist_foreach(iter, &BackgroundWorkerList)
 	{
 		RegisteredBgWorker *rw;
 
-		rw = slist_container(RegisteredBgWorker, rw_lnode, siter.cur);
+		rw = dlist_container(RegisteredBgWorker, rw_lnode, iter.cur);
 		if (rw->rw_pid == 0)
 			continue;			/* not running */
 		if (rw->rw_pid == pid)
@@ -2964,9 +2964,9 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	}
 
 	/* Process regular backends */
-	dlist_foreach_modify(iter, &BackendList)
+	dlist_foreach_modify(miter, &BackendList)
 	{
-		bp = dlist_container(Backend, elem, iter.cur);
+		bp = dlist_container(Backend, elem, miter.cur);
 
 		if (bp->pid == pid)
 		{
@@ -2977,7 +2977,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			{
 				(void) ReleasePostmasterChildSlot(bp->child_slot);
 			}
-			dlist_delete(iter.cur);
+			dlist_delete(miter.cur);
 			pfree(bp);
 			/* Keep looping so we can signal remaining backends */
 		}
@@ -4288,7 +4288,7 @@ maybe_start_bgworkers(void)
 #define MAX_BGWORKERS_TO_LAUNCH 100
 	int			num_launched = 0;
 	TimestampTz now = 0;
-	slist_mutable_iter iter;
+	dlist_mutable_iter iter;
 
 	/*
 	 * During crash recovery, we have no need to be called until the state
@@ -4305,11 +4305,11 @@ maybe_start_bgworkers(void)
 	StartWorkerNeeded = false;
 	HaveCrashedWorker = false;
 
-	slist_foreach_modify(iter, &BackgroundWorkerList)
+	dlist_foreach_modify(iter, &BackgroundWorkerList)
 	{
 		RegisteredBgWorker *rw;
 
-		rw = slist_container(RegisteredBgWorker, rw_lnode, iter.cur);
+		rw = dlist_container(RegisteredBgWorker, rw_lnode, iter.cur);
 
 		/* ignore if already running */
 		if (rw->rw_pid != 0)
@@ -4318,7 +4318,7 @@ maybe_start_bgworkers(void)
 		/* if marked for death, clean up and remove from list */
 		if (rw->rw_terminate)
 		{
-			ForgetBackgroundWorker(&iter);
+			ForgetBackgroundWorker(rw);
 			continue;
 		}
 
@@ -4337,7 +4337,7 @@ maybe_start_bgworkers(void)
 
 				notify_pid = rw->rw_worker.bgw_notify_pid;
 
-				ForgetBackgroundWorker(&iter);
+				ForgetBackgroundWorker(rw);
 
 				/* Report worker is gone now. */
 				if (notify_pid != 0)
