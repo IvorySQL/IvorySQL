@@ -8732,7 +8732,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		appendPQExpBufferStr(q,
 							 "'' AS attcompression,\n");
 	
-	if (fout->remoteVersion >= 150000)
+	if (fout->remoteVersion >= 170000)
 		appendPQExpBuffer(q,
 						"a.attisinvisible,\n");
 	else
