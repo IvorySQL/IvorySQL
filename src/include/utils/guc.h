@@ -296,10 +296,7 @@ extern PGDLLIMPORT int tcp_user_timeout;
 
 extern PGDLLIMPORT char *role_string;
 extern PGDLLIMPORT bool in_hot_standby_guc;
-
-#ifdef TRACE_SORT
 extern PGDLLIMPORT bool trace_sort;
-#endif
 
 extern PGDLLIMPORT int identifier_case_switch;
 extern PGDLLIMPORT bool identifier_case_from_pg_dump;
