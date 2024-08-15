@@ -1,5 +1,6 @@
 /*
     pg_get_functiondef_no_input.c
+        The achieve of pg_get_functiondef()
 */
 #include "postgres.h"
 #include "fmgr.h"
@@ -13,7 +14,10 @@ Datum pg_get_functiondef_no_input(PG_FUNCTION_ARGS)
 {
     if (PG_NARGS() <= 0)
     {
-        ereport(ERROR, errmsg("Nothing Input"), errhint("target should be the name or the oid of the function."), errdetail("SELECT pg_get_functiondef(target, ...);"));
+        ereport(ERROR, errmsg("Nothing Input"),
+                errhint("target should be the name or the oid of \ 
+                the function."),
+                errdetail("SELECT pg_get_functiondef(target, ...);"));
         PG_RETURN_NULL();
     }
     PG_RETURN_NULL();

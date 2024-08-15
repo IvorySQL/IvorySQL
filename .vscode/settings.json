@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "elog.h": "c",
+        "stringinfo.h": "c"
+    }
+}
