@@ -344,6 +344,7 @@ static void exec_eval_cleanup(PLiSQL_execstate *estate);
 static void exec_prepare_plan(PLiSQL_execstate *estate,
 							  PLiSQL_expr *expr, int cursorOptions);
 static void exec_simple_check_plan(PLiSQL_execstate *estate, PLiSQL_expr *expr);
+static bool exec_is_simple_query(PLiSQL_expr *expr);
 static void exec_save_simple_expr(PLiSQL_expr *expr, CachedPlan *cplan);
 static void exec_check_rw_parameter(PLiSQL_expr *expr);
 static void exec_check_assignable(PLiSQL_execstate *estate, int dno);
@@ -6211,12 +6212,18 @@ exec_eval_simple_expr(PLiSQL_execstate *estate,
 		 * release it, so we don't leak plans intra-transaction.
 		 */
 		if (expr->expr_simple_plan_lxid == curlxid)
-		{
 			ReleaseCachedPlan(expr->expr_simple_plan,
 							  estate->simple_eval_resowner);
-			expr->expr_simple_plan = NULL;
-			expr->expr_simple_plan_lxid = InvalidLocalTransactionId;
-		}
+
+		/*
+		 * Reset to "not simple" to leave sane state (with no dangling
+		 * pointers) in case we fail while replanning.  expr_simple_plansource
+		 * can be left alone however, as that cannot move.
+		 */
+		expr->expr_simple_expr = NULL;
+		expr->expr_rw_param = NULL;
+		expr->expr_simple_plan = NULL;
+		expr->expr_simple_plan_lxid = InvalidLocalTransactionId;
 
 		/* Do the replanning work in the eval_mcontext */
 		oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
@@ -6232,11 +6239,15 @@ exec_eval_simple_expr(PLiSQL_execstate *estate,
 		Assert(cplan != NULL);
 
 		/*
-		 * This test probably can't fail either, but if it does, cope by
-		 * declaring the plan to be non-simple.  On success, we'll acquire a
-		 * refcount on the new plan, stored in simple_eval_resowner.
+		 * Recheck exec_is_simple_query, which could now report false in
+		 * edge-case scenarios such as a non-SRF having been replaced with a
+		 * SRF.  Also recheck CachedPlanAllowsSimpleValidityCheck, just to be
+		 * sure.  If either test fails, cope by declaring the plan to be
+		 * non-simple.  On success, we'll acquire a refcount on the new plan,
+		 * stored in simple_eval_resowner.
 		 */
-		if (CachedPlanAllowsSimpleValidityCheck(expr->expr_simple_plansource,
+		if (exec_is_simple_query(expr) &&
+			CachedPlanAllowsSimpleValidityCheck(expr->expr_simple_plansource,
 												cplan,
 												estate->simple_eval_resowner))
 		{
@@ -6248,9 +6259,6 @@ exec_eval_simple_expr(PLiSQL_execstate *estate,
 		{
 			/* Release SPI_plan_get_cached_plan's refcount */
 			ReleaseCachedPlan(cplan, CurrentResourceOwner);
-			/* Mark expression as non-simple, and fail */
-			expr->expr_simple_expr = NULL;
-			expr->expr_rw_param = NULL;
 			return false;
 		}
 
@@ -8091,7 +8099,6 @@ exec_simple_check_plan(PLiSQL_execstate *estate, PLiSQL_expr *expr)
 {
 	List	   *plansources;
 	CachedPlanSource *plansource;
-	Query	   *query;
 	CachedPlan *cplan;
 	MemoryContext oldcontext;
 
@@ -8107,65 +8114,15 @@ exec_simple_check_plan(PLiSQL_execstate *estate, PLiSQL_expr *expr)
 	 * called immediately after creating the CachedPlanSource, we need not
 	 * worry about the query being stale.
 	 */
-
-	/*
-	 * We can only test queries that resulted in exactly one CachedPlanSource
-	 */
-	plansources = SPI_plan_get_plan_sources(expr->plan);
-	if (list_length(plansources) != 1)
+	if (!exec_is_simple_query(expr))
 		return;
+
+	/* exec_is_simple_query verified that there's just one CachedPlanSource */
+	plansources = SPI_plan_get_plan_sources(expr->plan);
 	plansource = (CachedPlanSource *) linitial(plansources);
 
 	/*
-	 * 1. There must be one single querytree.
-	 */
-	if (list_length(plansource->query_list) != 1)
-		return;
-	query = (Query *) linitial(plansource->query_list);
-
-	/*
-	 * 2. It must be a plain SELECT query without any input tables
-	 */
-	if (!IsA(query, Query))
-		return;
-	if (query->commandType != CMD_SELECT)
-		return;
-	if (query->rtable != NIL)
-		return;
-
-	/*
-	 * 3. Can't have any subplans, aggregates, qual clauses either.  (These
-	 * tests should generally match what inline_function() checks before
-	 * inlining a SQL function; otherwise, inlining could change our
-	 * conclusion about whether an expression is simple, which we don't want.)
-	 */
-	if (query->hasAggs ||
-		query->hasWindowFuncs ||
-		query->hasTargetSRFs ||
-		query->hasSubLinks ||
-		query->cteList ||
-		query->jointree->fromlist ||
-		query->jointree->quals ||
-		query->groupClause ||
-		query->groupingSets ||
-		query->havingQual ||
-		query->windowClause ||
-		query->distinctClause ||
-		query->sortClause ||
-		query->limitOffset ||
-		query->limitCount ||
-		query->setOperations)
-		return;
-
-	/*
-	 * 4. The query must have a single attribute as result
-	 */
-	if (list_length(query->targetList) != 1)
-		return;
-
-	/*
-	 * OK, we can treat it as a simple plan.
-	 *
+	 * We can only test queries that resulted in exactly one CachedPlanSource
 	 * Get the generic plan for the query.  If replanning is needed, do that
 	 * work in the eval_mcontext.  (Note that replanning could throw an error,
 	 * in which case the expr is left marked "not simple", which is fine.)
@@ -8200,6 +8157,81 @@ exec_simple_check_plan(PLiSQL_execstate *estate, PLiSQL_expr *expr)
 	 * refcount is held by the wrong resowner, so we can't just repurpose it.)
 	 */
 	ReleaseCachedPlan(cplan, CurrentResourceOwner);
+}
+
+/*
+ * exec_is_simple_query - precheck a query tree to see if it might be simple
+ *
+ * Check the analyzed-and-rewritten form of a query to see if we will be
+ * able to treat it as a simple expression.  It is caller's responsibility
+ * that the CachedPlanSource be up-to-date.
+ */
+static bool
+exec_is_simple_query(PLiSQL_expr *expr)
+{
+	List	   *plansources;
+	CachedPlanSource *plansource;
+	Query	   *query;
+
+	/*
+	 * We can only test queries that resulted in exactly one CachedPlanSource.
+	 */
+	plansources = SPI_plan_get_plan_sources(expr->plan);
+	if (list_length(plansources) != 1)
+		return false;
+	plansource = (CachedPlanSource *) linitial(plansources);
+
+	/*
+	 * 1. There must be one single querytree.
+	 */
+	if (list_length(plansource->query_list) != 1)
+		return false;
+	query = (Query *) linitial(plansource->query_list);
+
+	/*
+	 * 2. It must be a plain SELECT query without any input tables.
+	 */
+	if (!IsA(query, Query))
+		return false;
+	if (query->commandType != CMD_SELECT)
+		return false;
+	if (query->rtable != NIL)
+		return false;
+
+	/*
+	 * 3. Can't have any subplans, aggregates, qual clauses either.  (These
+	 * tests should generally match what inline_function() checks before
+	 * inlining a SQL function; otherwise, inlining could change our
+	 * conclusion about whether an expression is simple, which we don't want.)
+	 */
+	if (query->hasAggs ||
+		query->hasWindowFuncs ||
+		query->hasTargetSRFs ||
+		query->hasSubLinks ||
+		query->cteList ||
+		query->jointree->fromlist ||
+		query->jointree->quals ||
+		query->groupClause ||
+		query->groupingSets ||
+		query->havingQual ||
+		query->windowClause ||
+		query->distinctClause ||
+		query->sortClause ||
+		query->limitOffset ||
+		query->limitCount ||
+		query->setOperations)
+		return false;
+
+	/*
+	 * 4. The query must have a single attribute as result.
+	 */
+	if (list_length(query->targetList) != 1)
+		return false;
+
+	/*
+	 * OK, we can treat it as a simple plan.
+	 */
+	return true;
 }
 
 /*

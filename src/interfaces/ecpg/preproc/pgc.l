@@ -376,7 +376,7 @@ octfail			0[oO]_?
 binfail			0[bB]_?
 
 numeric			(({decinteger}\.{decinteger}?)|(\.{decinteger}))
-numericfail		{decdigit}+\.\.
+numericfail		{decinteger}\.\.
 
 real			({decinteger}|{numeric})[Ee][-+]?{decinteger}
 realfail		({decinteger}|{numeric})[Ee][-+]
@@ -388,8 +388,9 @@ bininteger_junk	{bininteger}{ident_start}
 numeric_junk	{numeric}{ident_start}
 real_junk		{real}{ident_start}
 
-param			\${decinteger}
-param_junk		\${decinteger}{ident_start}
+/* Positional parameters don't accept underscores. */
+param			\${decdigit}+
+param_junk		\${decdigit}+{ident_start}
 
 /* special characters for other dbms */
 /* we have to react differently in compat mode */

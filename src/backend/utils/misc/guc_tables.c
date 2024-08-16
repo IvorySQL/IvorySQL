@@ -589,6 +589,7 @@ static char *server_encoding_string;
 static char *server_version_string;
 static int	server_version_num;
 static char *debug_io_direct_string;
+static char *restrict_nonsystem_relation_kind_string;
 
 #ifdef HAVE_SYSLOG
 #define	DEFAULT_SYSLOG_FACILITY LOG_LOCAL0
@@ -4589,11 +4590,22 @@ struct config_string ConfigureNamesString[] =
 		check_debug_io_direct, assign_debug_io_direct, NULL
 	},
 
+	{
+		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets relation kinds of non-system relation to restrict use"),
+			NULL,
+			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
+		},
+		&restrict_nonsystem_relation_kind_string,
+		"",
+		check_restrict_nonsystem_relation_kind, assign_restrict_nonsystem_relation_kind, NULL
+	},
+
 	#define IVY_GUC_STRING_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_STRING_PARAMS
-
 	/* End-of-list marker */
+
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL
 	}

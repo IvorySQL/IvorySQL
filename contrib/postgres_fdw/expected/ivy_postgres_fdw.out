@@ -758,6 +758,17 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft_empty ORDER BY c1;
          Remote SQL: SELECT c1, c2 FROM public.loct_empty
 (6 rows)
 
+-- test restriction on non-system foreign tables.
+SET restrict_nonsystem_relation_kind TO 'foreign-table';
+SELECT * from ft1 where c1 < 1; -- ERROR
+ERROR:  access to non-system foreign table is restricted
+INSERT INTO ft1 (c1) VALUES (1); -- ERROR
+ERROR:  access to non-system foreign table is restricted
+DELETE FROM ft1 WHERE c1 = 1; -- ERROR
+ERROR:  access to non-system foreign table is restricted
+TRUNCATE ft1; -- ERROR
+ERROR:  access to non-system foreign table is restricted
+RESET restrict_nonsystem_relation_kind;
 -- ===================================================================
 -- WHERE with remotely-executable conditions
 -- ===================================================================
@@ -1195,6 +1206,31 @@ SELECT * FROM ft1 t1 WHERE t1.c1 === t1.c2 order by t1.c2 limit 1;
 ----+----+-------+-----------------------------------+----------------------------+----+------------+-----
  1  | 1  | 00001 | 1970-01-02 00:00:00.000000 -08:00 | 1970-01-02 00:00:00.000000 | 1  | 1          | foo
 (1 row)
+
+-- Ensure we don't ship FETCH FIRST .. WITH TIES
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c2 FROM ft1 t1 WHERE t1.c1 > 960 ORDER BY t1.c2 FETCH FIRST 2 ROWS WITH TIES;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Limit
+   Output: c2
+   ->  Sort
+         Output: c2
+         Sort Key: t1.c2
+         ->  Foreign Scan on public.ft1 t1
+               Output: c2
+               Filter: (t1.c1 > '960'::number)
+               Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
+(9 rows)
+
+SELECT t1.c2 FROM ft1 t1 WHERE t1.c1 > 960 ORDER BY t1.c2 FETCH FIRST 2 ROWS WITH TIES;
+ c2 
+----
+ 0
+ 0
+ 0
+ 0
+(4 rows)
 
 -- Test CASE pushdown
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -6873,9 +6909,26 @@ UPDATE ft2 SET c3 = 'foo'
   FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
   WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
   RETURNING ft2, ft2.*, ft4, ft4.*;
-ERROR:  cursor can only scan forward
-HINT:  Declare it with SCROLL option to enable backward scan.
-CONTEXT:  remote SQL command: MOVE BACKWARD ALL IN c4
+              ft2               |  c1  | c2 | c3  | c4 | c5 | c6 |     c7     | c8 |      ft4       | c1 | c2 |   c3   
+--------------------------------+------+----+-----+----+----+----+------------+----+----------------+----+----+--------
+ (1206,6,foo,,,,"ft2       ",)  | 1206 | 6  | foo |    |    |    | ft2        |    | (6,7,AAA006)   | 6  | 7  | AAA006
+ (1212,12,foo,,,,"ft2       ",) | 1212 | 12 | foo |    |    |    | ft2        |    | (12,13,AAA012) | 12 | 13 | AAA012
+ (1218,18,foo,,,,"ft2       ",) | 1218 | 18 | foo |    |    |    | ft2        |    | (18,19,AAA018) | 18 | 19 | AAA018
+ (1224,24,foo,,,,"ft2       ",) | 1224 | 24 | foo |    |    |    | ft2        |    | (24,25,AAA024) | 24 | 25 | AAA024
+ (1230,30,foo,,,,"ft2       ",) | 1230 | 30 | foo |    |    |    | ft2        |    | (30,31,AAA030) | 30 | 31 | AAA030
+ (1236,36,foo,,,,"ft2       ",) | 1236 | 36 | foo |    |    |    | ft2        |    | (36,37,AAA036) | 36 | 37 | AAA036
+ (1242,42,foo,,,,"ft2       ",) | 1242 | 42 | foo |    |    |    | ft2        |    | (42,43,AAA042) | 42 | 43 | AAA042
+ (1248,48,foo,,,,"ft2       ",) | 1248 | 48 | foo |    |    |    | ft2        |    | (48,49,AAA048) | 48 | 49 | AAA048
+ (1254,54,foo,,,,"ft2       ",) | 1254 | 54 | foo |    |    |    | ft2        |    | (54,55,AAA054) | 54 | 55 | AAA054
+ (1260,60,foo,,,,"ft2       ",) | 1260 | 60 | foo |    |    |    | ft2        |    | (60,61,AAA060) | 60 | 61 | AAA060
+ (1266,66,foo,,,,"ft2       ",) | 1266 | 66 | foo |    |    |    | ft2        |    | (66,67,AAA066) | 66 | 67 | AAA066
+ (1272,72,foo,,,,"ft2       ",) | 1272 | 72 | foo |    |    |    | ft2        |    | (72,73,AAA072) | 72 | 73 | AAA072
+ (1278,78,foo,,,,"ft2       ",) | 1278 | 78 | foo |    |    |    | ft2        |    | (78,79,AAA078) | 78 | 79 | AAA078
+ (1284,84,foo,,,,"ft2       ",) | 1284 | 84 | foo |    |    |    | ft2        |    | (84,85,AAA084) | 84 | 85 | AAA084
+ (1290,90,foo,,,,"ft2       ",) | 1290 | 90 | foo |    |    |    | ft2        |    | (90,91,AAA090) | 90 | 91 | AAA090
+ (1296,96,foo,,,,"ft2       ",) | 1296 | 96 | foo |    |    |    | ft2        |    | (96,97,AAA096) | 96 | 97 | AAA096
+(16 rows)
+
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2
   USING ft4 LEFT JOIN ft5 ON (ft4.c1 = ft5.c1)
@@ -7053,9 +7106,11 @@ UPDATE ft2 SET c3 = 'baz'
   FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
   WHERE ft2.c1 > 2000 AND ft2.c2 === ft4.c1
   RETURNING ft2.*, ft4.*, ft5.*;
-ERROR:  cursor can only scan forward
-HINT:  Declare it with SCROLL option to enable backward scan.
-CONTEXT:  remote SQL command: MOVE BACKWARD ALL IN c4
+  c1  | c2 | c3  | c4 | c5 | c6 |     c7     | c8 | c1 | c2 |   c3   | c1 | c2 |   c3   
+------+----+-----+----+----+----+------------+----+----+----+--------+----+----+--------
+ 2006 | 6  | baz |    |    |    | ft2        |    | 6  | 7  | AAA006 | 6  | 7  | AAA006
+(1 row)
+
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2
   USING ft4 INNER JOIN ft5 ON (ft4.c1 === ft5.c1)
@@ -7098,7 +7153,7 @@ DELETE FROM ft2
   RETURNING ft2.c1, ft2.c2, ft2.c3;
   c1  | c2 | c3  
 ------+----+-----
- 2006 | 6  | bar
+ 2006 | 6  | baz
 (1 row)
 
 DELETE FROM ft2 WHERE ft2.c1 > 2000;
@@ -7594,6 +7649,51 @@ SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
  40   | 42  | 00040_trig_update | 1970-02-10 00:00:00.000000 -08:00 | 1970-02-10 00:00:00.000000 | 0    | 0          | foo
 (10 rows)
 
+-- Test ReScan code path that recreates the cursor even when no parameters
+-- change (bug #17889)
+CREATE TABLE loct1 (c1 int);
+CREATE TABLE loct2 (c1 int, c2 text);
+INSERT INTO loct1 VALUES (1001);
+INSERT INTO loct1 VALUES (1002);
+INSERT INTO loct2 SELECT id, to_char(id, 'FM0000') FROM generate_series(1, 1000) id;
+INSERT INTO loct2 VALUES (1001, 'foo');
+INSERT INTO loct2 VALUES (1002, 'bar');
+CREATE FOREIGN TABLE remt2 (c1 int, c2 text) SERVER loopback OPTIONS (table_name 'loct2');
+ANALYZE loct1;
+ANALYZE remt2;
+SET enable_mergejoin TO false;
+SET enable_hashjoin TO false;
+SET enable_material TO false;
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE remt2 SET c2 = remt2.c2 || remt2.c2 FROM loct1 WHERE loct1.c1 = remt2.c1 RETURNING remt2.*;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Update on public.remt2
+   Output: remt2.c1, remt2.c2
+   Remote SQL: UPDATE public.loct2 SET c2 = $2 WHERE ctid = $1 RETURNING c1, c2
+   ->  Nested Loop
+         Output: (remt2.c2 || remt2.c2), remt2.ctid, remt2.*, loct1.ctid
+         Join Filter: (remt2.c1 = loct1.c1)
+         ->  Seq Scan on public.loct1
+               Output: loct1.ctid, loct1.c1
+         ->  Foreign Scan on public.remt2
+               Output: remt2.c2, remt2.ctid, remt2.*, remt2.c1
+               Remote SQL: SELECT c1, c2, ctid FROM public.loct2 FOR UPDATE
+(11 rows)
+
+UPDATE remt2 SET c2 = remt2.c2 || remt2.c2 FROM loct1 WHERE loct1.c1 = remt2.c1 RETURNING remt2.*;
+  c1  |   c2   
+------+--------
+ 1001 | foofoo
+ 1002 | barbar
+(2 rows)
+
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+RESET enable_material;
+DROP FOREIGN TABLE remt2;
+DROP TABLE loct1;
+DROP TABLE loct2;
 -- ===================================================================
 -- test check constraints
 -- ===================================================================
