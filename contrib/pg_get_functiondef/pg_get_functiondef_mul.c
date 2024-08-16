@@ -50,10 +50,12 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         info = (FunctionInfo)palloc(sizeof(struct FunctionInfoData));
         funcctx->user_fctx = info;
 
-        /* PostgreSQL support return the result? */
+        /* If can't return composite type, end the work */
         if (get_call_result_type(fcinfo, NULL, &tuple_desc) != TYPEFUNC_COMPOSITE)
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("function returning record called in context that cannot accept type record")));
+            SPI_finish();
+            SRF_RETURN_DONE(funcctx);
         }
         info->result_tuple_meta = TupleDescGetAttInMetadata(tuple_desc);
         info->result_desc = tuple_desc;
