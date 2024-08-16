@@ -3798,7 +3798,7 @@ keep_going:						/* We will come back to here until there is
 						return PGRES_POLLING_READING;
 					}
 					/* OK, we read the message; mark data consumed */
-					conn->inStart = conn->inCursor;
+					pqParseDone(conn, conn->inCursor);
 
 					/*
 					 * Before 7.2, the postmaster didn't always end its
@@ -3848,7 +3848,7 @@ keep_going:						/* We will come back to here until there is
 						goto error_return;
 					}
 					/* OK, we read the message; mark data consumed */
-					conn->inStart = conn->inCursor;
+					pqParseDone(conn, conn->inCursor);
 
 					/*
 					 * If error is "cannot connect now", try the next host if
@@ -3877,7 +3877,7 @@ keep_going:						/* We will come back to here until there is
 						goto error_return;
 					}
 					/* OK, we read the message; mark data consumed */
-					conn->inStart = conn->inCursor;
+					pqParseDone(conn, conn->inCursor);
 					goto error_return;
 				}
 
@@ -3902,7 +3902,11 @@ keep_going:						/* We will come back to here until there is
 				 */
 				res = pg_fe_sendauth(areq, msgLength, conn);
 
-				/* OK, we have processed the message; mark data consumed */
+				/*
+				 * OK, we have processed the message; mark data consumed.  We
+				 * don't call pqParseDone here because we already traced this
+				 * message inside pg_fe_sendauth.
+				 */
 				conn->inStart = conn->inCursor;
 
 				if (res != STATUS_OK)
