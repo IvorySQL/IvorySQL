@@ -53,7 +53,7 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         /* If can't return composite type, end the work */
         if (get_call_result_type(fcinfo, NULL, &tuple_desc) != TYPEFUNC_COMPOSITE)
         {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("function returning record called in context that cannot accept type record")));
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("function returning non-composite called in context that cannot accept type non-composite")));
             SPI_finish();
             SRF_RETURN_DONE(funcctx);
         }
