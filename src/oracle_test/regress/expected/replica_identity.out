@@ -153,13 +153,13 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
 (1 row)
 
 \d+ test_replica_identity
-                                                    Table "public.test_replica_identity"
- Column |      Type       | Collation | Nullable |                      Default                      | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------------------------------------------------+----------+--------------+-------------
- id     | pg_catalog.int4 |           | not null | nextval('test_replica_identity_id_seq'::regclass) | plain    |              | 
- keya   | text            |           | not null |                                                   | extended |              | 
- keyb   | text            |           | not null |                                                   | extended |              | 
- nonkey | text            |           |          |                                                   | extended |              | 
+                                                          Table "public.test_replica_identity"
+ Column |      Type       | Collation | Nullable |                      Default                      | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------------------------------------------------+-----------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null | nextval('test_replica_identity_id_seq'::regclass) |           | plain    |              | 
+ keya   | text            |           | not null |                                                   |           | extended |              | 
+ keyb   | text            |           | not null |                                                   |           | extended |              | 
+ nonkey | text            |           |          |                                                   |           | extended |              | 
 Indexes:
     "test_replica_identity_pkey" PRIMARY KEY, btree (id)
     "test_replica_identity_expr" UNIQUE, btree (keya, keyb, (3))
@@ -249,10 +249,10 @@ ALTER TABLE ONLY test_replica_identity4
 ALTER TABLE ONLY test_replica_identity4_1
   ADD CONSTRAINT test_replica_identity4_1_pkey PRIMARY KEY (id);
 \d+ test_replica_identity4
-                        Partitioned table "public.test_replica_identity4"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- id     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                              Partitioned table "public.test_replica_identity4"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Partition key: LIST (id)
 Indexes:
     "test_replica_identity4_pkey" PRIMARY KEY, btree (id) INVALID REPLICA IDENTITY
@@ -263,10 +263,10 @@ Partitions: test_replica_identity4_1 FOR VALUES IN (1)
 ALTER INDEX test_replica_identity4_pkey
   ATTACH PARTITION test_replica_identity4_1_pkey;
 \d+ test_replica_identity4
-                        Partitioned table "public.test_replica_identity4"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- id     | pg_catalog.int4 |           | not null |         | plain   |              | 
+                              Partitioned table "public.test_replica_identity4"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Partition key: LIST (id)
 Indexes:
     "test_replica_identity4_pkey" PRIMARY KEY, btree (id) REPLICA IDENTITY

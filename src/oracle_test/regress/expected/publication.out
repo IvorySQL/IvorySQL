@@ -184,11 +184,11 @@ SELECT pubname, puballtables FROM pg_publication WHERE pubname = 'testpub_forall
 (1 row)
 
 \d+ testpub_tbl2
-                                                    Table "public.testpub_tbl2"
- Column |      Type       | Collation | Nullable |                 Default                  | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+------------------------------------------+----------+--------------+-------------
- id     | pg_catalog.int4 |           | not null | nextval('testpub_tbl2_id_seq'::regclass) | plain    |              | 
- data   | text            |           |          |                                          | extended |              | 
+                                                          Table "public.testpub_tbl2"
+ Column |      Type       | Collation | Nullable |                 Default                  | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+------------------------------------------+-----------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null | nextval('testpub_tbl2_id_seq'::regclass) |           | plain    |              | 
+ data   | text            |           |          |                                          |           | extended |              | 
 Indexes:
     "testpub_tbl2_pkey" PRIMARY KEY, btree (id)
 Publications:
@@ -748,12 +748,12 @@ UPDATE testpub_tbl6 SET a = 1;
 CREATE TABLE testpub_tbl7 (a int primary key, b text, c text);
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl7 (a, b);
 \d+ testpub_tbl7
-                                    Table "public.testpub_tbl7"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain    |              | 
- b      | text            |           |          |         | extended |              | 
- c      | text            |           |          |         | extended |              | 
+                                          Table "public.testpub_tbl7"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
+ c      | text            |           |          |         |           | extended |              | 
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, btree (a)
 Publications:
@@ -762,12 +762,12 @@ Publications:
 -- ok: the column list is the same, we should skip this table (or at least not fail)
 ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, b);
 \d+ testpub_tbl7
-                                    Table "public.testpub_tbl7"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain    |              | 
- b      | text            |           |          |         | extended |              | 
- c      | text            |           |          |         | extended |              | 
+                                          Table "public.testpub_tbl7"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
+ c      | text            |           |          |         |           | extended |              | 
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, btree (a)
 Publications:
@@ -776,12 +776,12 @@ Publications:
 -- ok: the column list changes, make sure the catalog gets updated
 ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, c);
 \d+ testpub_tbl7
-                                    Table "public.testpub_tbl7"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain    |              | 
- b      | text            |           |          |         | extended |              | 
- c      | text            |           |          |         | extended |              | 
+                                          Table "public.testpub_tbl7"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
+ c      | text            |           |          |         |           | extended |              | 
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, btree (a)
 Publications:
@@ -912,12 +912,12 @@ Tables:
     "public.testpub_tbl_both_filters" (a, c) WHERE (c <> 1)
 
 \d+ testpub_tbl_both_filters
-                             Table "public.testpub_tbl_both_filters"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           | not null |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- c      | pg_catalog.int4 |           | not null |         | plain   |              | 
+                                   Table "public.testpub_tbl_both_filters"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Indexes:
     "testpub_tbl_both_filters_pkey" PRIMARY KEY, btree (a, c) REPLICA IDENTITY
 Publications:
@@ -1129,22 +1129,22 @@ ALTER PUBLICATION testpub_default SET TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default ADD TABLE pub_test.testpub_nopk;
 ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tbl1;
 \d+ pub_test.testpub_nopk
-                                  Table "pub_test.testpub_nopk"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- foo    | pg_catalog.int4 |           |          |         | plain   |              | 
- bar    | pg_catalog.int4 |           |          |         | plain   |              | 
+                                        Table "pub_test.testpub_nopk"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ foo    | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ bar    | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Publications:
     "testpib_ins_trunct"
     "testpub_default"
     "testpub_fortbl"
 
 \d+ testpub_tbl1
-                                                    Table "public.testpub_tbl1"
- Column |      Type       | Collation | Nullable |                 Default                  | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+------------------------------------------+----------+--------------+-------------
- id     | pg_catalog.int4 |           | not null | nextval('testpub_tbl1_id_seq'::regclass) | plain    |              | 
- data   | text            |           |          |                                          | extended |              | 
+                                                          Table "public.testpub_tbl1"
+ Column |      Type       | Collation | Nullable |                 Default                  | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+------------------------------------------+-----------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null | nextval('testpub_tbl1_id_seq'::regclass) |           | plain    |              | 
+ data   | text            |           |          |                                          |           | extended |              | 
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, btree (id)
 Publications:
@@ -1168,11 +1168,11 @@ ALTER PUBLICATION testpub_default DROP TABLE testpub_tbl1, pub_test.testpub_nopk
 ALTER PUBLICATION testpub_default DROP TABLE pub_test.testpub_nopk;
 ERROR:  relation "testpub_nopk" is not part of the publication
 \d+ testpub_tbl1
-                                                    Table "public.testpub_tbl1"
- Column |      Type       | Collation | Nullable |                 Default                  | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+------------------------------------------+----------+--------------+-------------
- id     | pg_catalog.int4 |           | not null | nextval('testpub_tbl1_id_seq'::regclass) | plain    |              | 
- data   | text            |           |          |                                          | extended |              | 
+                                                          Table "public.testpub_tbl1"
+ Column |      Type       | Collation | Nullable |                 Default                  | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+------------------------------------------+-----------+----------+--------------+-------------
+ id     | pg_catalog.int4 |           | not null | nextval('testpub_tbl1_id_seq'::regclass) |           | plain    |              | 
+ data   | text            |           |          |                                          |           | extended |              | 
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, btree (id)
 Publications:

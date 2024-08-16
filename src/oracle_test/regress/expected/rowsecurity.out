@@ -939,14 +939,14 @@ CREATE POLICY pp1 ON part_document AS PERMISSIVE
 CREATE POLICY pp1r ON part_document AS RESTRICTIVE TO regress_rls_dave
     USING (cid < 55);
 \d+ part_document
-                        Partitioned table "regress_rls_schema.part_document"
- Column  |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
----------+-----------------+-----------+----------+---------+----------+--------------+-------------
- did     | pg_catalog.int4 |           |          |         | plain    |              | 
- cid     | pg_catalog.int4 |           |          |         | plain    |              | 
- dlevel  | pg_catalog.int4 |           | not null |         | plain    |              | 
- dauthor | name            |           |          |         | plain    |              | 
- dtitle  | text            |           |          |         | extended |              | 
+                              Partitioned table "regress_rls_schema.part_document"
+ Column  |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+---------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ did     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ cid     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ dlevel  | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ dauthor | name            |           |          |         |           | plain    |              | 
+ dtitle  | text            |           |          |         |           | extended |              | 
 Partition key: RANGE (cid)
 Policies:
     POLICY "pp1"
