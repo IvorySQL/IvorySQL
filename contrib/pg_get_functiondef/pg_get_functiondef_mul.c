@@ -1,3 +1,7 @@
+/*
+    pg_get_functiondef_mul.c
+        The achieve of pg_get_functiondef(oid, oid, ...)
+*/
 #include "postgres.h"
 #include "fmgr.h"
 #include "utils/elog.h"
@@ -7,15 +11,18 @@
 #include "catalog/pg_type_d.h"
 #include "funcapi.h"
 
-typedef struct FunctionInfo_fctx *FunctionInfo_fctx;
-struct FunctionInfo_fctx
+/*
+    Store the function's information
+*/
+typedef struct FunctionInfoData *FunctionInfo;
+struct FunctionInfoData
 {
-    TupleDesc result_desc;
-    AttInMetadata *result_tuple_meta;
-    Oid *oids;
-    int cursor;
-    int count;
-    SPITupleTable *spi_table;
+    TupleDesc result_desc; /* Describle the tuple */
+    AttInMetadata *result_tuple_meta; /* the tuple's attribute */
+    Oid *oids; /* user input */
+    int cursor; /* the current of the oids[] */
+    int count; /* How many tuples will return? */
+    SPITupleTable *spi_table; /* The result of SPI_execute */
 };
 
 PG_FUNCTION_INFO_V1(pg_get_functiondef_mul);
@@ -23,8 +30,9 @@ PG_FUNCTION_INFO_V1(pg_get_functiondef_mul);
 Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
 {
     FuncCallContext *funcctx;
-    FunctionInfo_fctx info = NULL;
-    if (SRF_IS_FIRSTCALL())
+    FunctionInfo info = NULL;
+    /* First Call */
+    if (SRF_IS_FIRSTCALL()) 
     {
         StringInfoData query;
         AnyArrayType *oids_array = PG_GETARG_ANY_ARRAY_P(1);
@@ -39,9 +47,10 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         }
 
         funcctx = SRF_FIRSTCALL_INIT();
-        info = (struct FunctionInfo_fctx *)palloc(sizeof(struct FunctionInfo_fctx));
+        info = (FunctionInfo)palloc(sizeof(struct FunctionInfoData));
         funcctx->user_fctx = info;
 
+        /* PostgreSQL support return the result? */
         if (get_call_result_type(fcinfo, NULL, &tuple_desc) != TYPEFUNC_COMPOSITE)
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("function returning record called in context that cannot accept type record")));
@@ -49,6 +58,7 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         info->result_tuple_meta = TupleDescGetAttInMetadata(tuple_desc);
         info->result_desc = tuple_desc;
 
+        /* Get user input, store to oids[] */
         deconstruct_array_builtin((ArrayType *)oids_array, OIDOID, &oids, NULL, &count);
         info->oids = palloc((count + 1) * sizeof(Oid));
         info->oids[0] = PG_GETARG_OID(0);
@@ -58,6 +68,7 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         }
         info->count = count + 1;
         initStringInfo(&query);
+        /* Build the query statement */
         appendStringInfo(&query, "SELECT ");
         appendStringInfo(&query, "pg_get_functiondef(%d)", info->oids[0]);
         for (int i = 1; i < count; i++)
@@ -75,8 +86,9 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         info->cursor = 1;
     }
     funcctx = SRF_PERCALL_SETUP();
-    info = (FunctionInfo_fctx)(funcctx->user_fctx);
-    if (info->cursor > info->count)
+    info = (FunctionInfo)(funcctx->user_fctx);
+    /* If cursor > count, means that all the tuple returned */
+    if (info->cursor > info->count) 
     {
         pfree(info->oids);
         FreeTupleDesc(info->result_desc);

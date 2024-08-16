@@ -1,3 +1,7 @@
+/*
+    pg_get_functiondef_extend.c
+        The achieve of pg_get_functiondef('function_name', 'function_name', ...)
+*/
 #include "postgres.h"
 #include "fmgr.h"
 #include "utils/elog.h"
@@ -13,16 +17,20 @@
 #include "utils/syscache.h"
 #include "access/htup_details.h"
 
-typedef struct FunctionInfo_fctx *FunctionInfo_fctx;
-struct FunctionInfo_fctx
+typedef struct FunctionInfoData *FunctionInfo;
+struct FunctionInfoData
 {
-	char **function_name;
-	int cursor;
-	int count_of_arguments;
-	TupleDesc result_desc;
-	AttInMetadata *result_tuple_meta;
+	char **function_name; /* The user's input */
+	int cursor; /* The cursor of the function_name[] */
+	int count_of_arguments; /* How many tuples will return? */
+	TupleDesc result_desc; /* Describle the tuple */
+	AttInMetadata *result_tuple_meta; /* Describle the tuple's attribute */
 };
 
+/*
+	DescibleFunctionByName
+		Export the oid based on the function name, the use the oid get the definition
+ */
 char *DescibleFunctionByName(char *function_name);
 char *DescibleFunctionByName(char *function_name)
 {
@@ -36,6 +44,7 @@ char *DescibleFunctionByName(char *function_name)
 	}
 	else
 	{
+		/* A function name may correspond to multiple different results */
 		for (int i = 0; i < catlist->n_members; i++)
 		{
 			HeapTuple proctup = &catlist->members[i]->tuple;
@@ -58,7 +67,7 @@ PG_FUNCTION_INFO_V1(pg_get_functiondef_extend);
 Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx = NULL;
-	FunctionInfo_fctx info = NULL;
+	FunctionInfo info = NULL;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -73,7 +82,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 		arguments_raw = PG_GETARG_ARRAYTYPE_P(0);
 		deconstruct_array_builtin((ArrayType *)arguments_raw, TEXTOID, &arguments, NULL, &count_of_arguments);
 
-		info = (struct FunctionInfo_fctx *)palloc0(sizeof(struct FunctionInfo_fctx));
+		info = (FunctionInfo)palloc0(sizeof(struct FunctionInfoData));
 		funcctx->user_fctx = info;
 
 		info->function_name = palloc0(count_of_arguments * sizeof(char *));
@@ -94,7 +103,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
-	info = (FunctionInfo_fctx)(funcctx->user_fctx);
+	info = (FunctionInfo)(funcctx->user_fctx);
 
 	if (info->cursor == info->count_of_arguments)
 	{
