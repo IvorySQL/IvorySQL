@@ -23,15 +23,15 @@ struct FunctionInfoData
 	char **function_name; /* The user's input */
 	int cursor; /* The cursor of the function_name[] */
 	int count_of_tuples; /* How many tuples will return? */
-	TupleDesc result_desc; /* Describle the tuple */
-	AttInMetadata *result_tuple_meta; /* Describle the tuple's attribute */
+	TupleDesc result_desc; /* Describe the tuple */
+	AttInMetadata *result_tuple_meta; /* Describe the tuple's attribute */
 };
 
 /*
-	DescribleFunctionByName
+	GetFuncDefByName
 		Export the oid based on the function name, the use the oid get the definition
  */
-char *DescribleFunctionByName(char *function_name)
+char *GetFuncDefByName(char *function_name)
 {
 	CatCList *catlist = NULL;
 	StringInfoData result = {};
@@ -116,7 +116,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 		char **values;
 		values = palloc0(sizeof(char *) * 2);
 		values[0] = pstrdup(info->function_name[info->cursor]);
-		values[1] = DescribleFunctionByName(info->function_name[info->cursor]);
+		values[1] = GetFuncDefByName(info->function_name[info->cursor]);
 		info->cursor++;
 		tuple = BuildTupleFromCStrings(info->result_tuple_meta, values);
 		tuple_return = HeapTupleGetDatum(tuple);
