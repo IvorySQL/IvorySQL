@@ -1,6 +1,6 @@
 /*
     pg_get_functiondef_extend.c
-        The achieve of pg_get_functiondef('function_name', 'function_name', ...)
+        The implementation of pg_get_functiondef('function_name', 'function_name', ...)
 */
 #include "postgres.h"
 #include "fmgr.h"
@@ -22,22 +22,22 @@ struct FunctionInfoData
 {
 	char **function_name; /* The user's input */
 	int cursor; /* The cursor of the function_name[] */
-	int count_of_arguments; /* How many tuples will return? */
+	int count_of_tuples; /* How many tuples will return? */
 	TupleDesc result_desc; /* Describle the tuple */
 	AttInMetadata *result_tuple_meta; /* Describle the tuple's attribute */
 };
 
 /*
-	DescibleFunctionByName
+	DescribleFunctionByName
 		Export the oid based on the function name, the use the oid get the definition
  */
-char *DescibleFunctionByName(char *function_name);
-char *DescibleFunctionByName(char *function_name)
+char *DescribleFunctionByName(char *function_name)
 {
-	CatCList *catlist;
-	StringInfoData result;
+	CatCList *catlist = NULL;
+	StringInfoData result = {};
 	initStringInfo(&result);
 	catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(function_name));
+	
 	if (catlist->n_members == 0)
 	{
 		appendStringInfo(&result, "/* Not Found */");
@@ -92,7 +92,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 		}
 
 		info->cursor = 0;
-		info->count_of_arguments = count_of_arguments;
+		info->count_of_tuples = count_of_arguments;
 
 		if (get_call_result_type(fcinfo, NULL, &info->result_desc) != TYPEFUNC_COMPOSITE)
 		{
@@ -105,7 +105,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 	funcctx = SRF_PERCALL_SETUP();
 	info = (FunctionInfo)(funcctx->user_fctx);
 
-	if (info->cursor == info->count_of_arguments)
+	if (info->cursor == info->count_of_tuples)
 	{
 		SRF_RETURN_DONE(funcctx);
 	}
@@ -116,7 +116,7 @@ Datum pg_get_functiondef_extend(PG_FUNCTION_ARGS)
 		char **values;
 		values = palloc0(sizeof(char *) * 2);
 		values[0] = pstrdup(info->function_name[info->cursor]);
-		values[1] = DescibleFunctionByName(info->function_name[info->cursor]);
+		values[1] = DescribleFunctionByName(info->function_name[info->cursor]);
 		info->cursor++;
 		tuple = BuildTupleFromCStrings(info->result_tuple_meta, values);
 		tuple_return = HeapTupleGetDatum(tuple);

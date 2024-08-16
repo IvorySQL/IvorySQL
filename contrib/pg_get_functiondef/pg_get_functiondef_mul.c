@@ -1,6 +1,6 @@
 /*
     pg_get_functiondef_mul.c
-        The achieve of pg_get_functiondef(oid, oid, ...)
+        The implementation of pg_get_functiondef(oid, oid, ...)
 */
 #include "postgres.h"
 #include "fmgr.h"
@@ -17,22 +17,22 @@
 typedef struct FunctionInfoData *FunctionInfo;
 struct FunctionInfoData
 {
-    TupleDesc result_desc; /* Describle the tuple */
+    TupleDesc result_desc;            /* the tuple's description */
     AttInMetadata *result_tuple_meta; /* the tuple's attribute */
-    Oid *oids; /* user input */
-    int cursor; /* the current of the oids[] */
-    int count; /* How many tuples will return? */
-    SPITupleTable *spi_table; /* The result of SPI_execute */
+    Oid *oids;                        /* user input */
+    int cursor;                       /* the current indexof the oids[] */
+    int count;                        /* How many tuples will return? */
+    SPITupleTable *spi_table;         /* The result of SPI_execute */
 };
 
 PG_FUNCTION_INFO_V1(pg_get_functiondef_mul);
 
 Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
 {
-    FuncCallContext *funcctx;
+    FuncCallContext *funcctx = NULL;
     FunctionInfo info = NULL;
     /* First Call */
-    if (SRF_IS_FIRSTCALL()) 
+    if (SRF_IS_FIRSTCALL())
     {
         StringInfoData query;
         AnyArrayType *oids_array = PG_GETARG_ANY_ARRAY_P(1);
@@ -42,7 +42,7 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
 
         if (SPI_OK_CONNECT != SPI_connect())
         {
-            ereport(ERROR, errmsg("SPI connect failed!"));
+            ereport(ERROR, (errmsg("SPI connect failed: %s", SPI_result_code_string(SPI_result))));
             PG_RETURN_NULL();
         }
 
@@ -69,13 +69,12 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
         info->count = count + 1;
         initStringInfo(&query);
         /* Build the query statement */
-        appendStringInfo(&query, "SELECT ");
-        appendStringInfo(&query, "pg_get_functiondef(%d)", info->oids[0]);
-        for (int i = 1; i < count; i++)
+        appendStringInfo(&query, "SELECT pg_get_functiondef(%d)", info->oids[0]);
+        for (int i = 1; i < info->count; i++)
         {
             appendStringInfo(&query, ", pg_get_functiondef(%d)", info->oids[i]);
         }
-        appendStringInfo(&query, ", pg_get_functiondef(%d);", info->oids[info->count - 1]);
+        appendStringInfoChar(&query, ';');
         if (SPI_execute(query.data, true, 0) != SPI_OK_SELECT)
         {
             ereport(ERROR, errmsg("SPI select failed!"));
@@ -88,7 +87,7 @@ Datum pg_get_functiondef_mul(PG_FUNCTION_ARGS)
     funcctx = SRF_PERCALL_SETUP();
     info = (FunctionInfo)(funcctx->user_fctx);
     /* If cursor > count, means that all the tuple returned */
-    if (info->cursor > info->count) 
+    if (info->cursor > info->count)
     {
         pfree(info->oids);
         FreeTupleDesc(info->result_desc);
