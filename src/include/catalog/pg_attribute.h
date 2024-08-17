@@ -158,6 +158,13 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	/* Number of times inherited from direct parent relation(s) */
 	int16		attinhcount BKI_DEFAULT(0);
 
+	/*
+	 * This flag specifies whether this column is visible in
+	 * a SELECT *, an INSERT without column list, or not. It is true when
+	 * a column is defined with the INVISIBLE attribute, false otherwise.
+	 */
+	bool		attisinvisible BKI_DEFAULT(f);
+
 	/* attribute's collation, if any */
 	Oid			attcollation BKI_LOOKUP_OPT(pg_collation);
 

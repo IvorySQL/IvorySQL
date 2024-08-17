@@ -289,11 +289,11 @@ Partition key: RANGE (a oid_ops, plusone(b), c, d COLLATE "C")
 Number of partitions: 0
 
 \d+ partitioned2
-                              Partitioned table "public.partitioned2"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain    |              | 
- b      | text            |           |          |         | extended |              | 
+                                    Partitioned table "public.partitioned2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
 Partition key: RANGE (((a + 1)), substr(b, 1, 5))
 Number of partitions: 0
 
@@ -302,11 +302,11 @@ ERROR:  no partition of relation "partitioned2" found for row
 DETAIL:  Partition key of the failing row contains ((a + 1), substr(b, 1, 5)) = (2, hello).
 CREATE TABLE part2_1 PARTITION OF partitioned2 FOR VALUES FROM (-1, 'aaaaa') TO (100, 'ccccc');
 \d+ part2_1
-                                      Table "public.part2_1"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain    |              | 
- b      | text            |           |          |         | extended |              | 
+                                            Table "public.part2_1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
 Partition of: partitioned2 FOR VALUES FROM ('-1', 'aaaaa') TO (100, 'ccccc')
 Partition constraint: (((a + 1) IS NOT NULL) AND (substr(b, 1, 5) IS NOT NULL) AND (((a + 1) > '-1'::pg_catalog.int4) OR (((a + 1) = '-1'::pg_catalog.int4) AND (substr(b, 1, 5) >= 'aaaaa'::text))) AND (((a + 1) < 100) OR (((a + 1) = 100) AND (substr(b, 1, 5) < 'ccccc'::text))))
 
@@ -343,11 +343,11 @@ select * from partitioned where partitioned = '(1,2)'::partitioned;
 (2 rows)
 
 \d+ partitioned1
-                                   Table "public.partitioned1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                         Table "public.partitioned1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition of: partitioned FOR VALUES IN ('(1,2)')
 Partition constraint: (((partitioned1.*)::partitioned IS DISTINCT FROM NULL) AND ((partitioned1.*)::partitioned = '(1,2)'::partitioned))
 
@@ -400,10 +400,10 @@ CREATE TABLE part_p2 PARTITION OF list_parted FOR VALUES IN (2);
 CREATE TABLE part_p3 PARTITION OF list_parted FOR VALUES IN ((2+1));
 CREATE TABLE part_null PARTITION OF list_parted FOR VALUES IN (null);
 \d+ list_parted
-                              Partitioned table "public.list_parted"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                    Partitioned table "public.list_parted"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition key: LIST (a)
 Partitions: part_null FOR VALUES IN (NULL),
             part_p1 FOR VALUES IN (1),
@@ -851,11 +851,11 @@ create table test_part_coll_cast2 partition of test_part_coll_posix for values f
 drop table test_part_coll_posix;
 -- Partition bound in describe output
 \d+ part_b
-                                       Table "public.part_b"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           | not null | 1       | plain    |              | 
+                                             Table "public.part_b"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           | not null | 1       |           | plain    |              | 
 Partition of: parted FOR VALUES IN ('b')
 Partition constraint: ((a IS NOT NULL) AND (a = 'b'::text))
 Not-null constraints:
@@ -863,11 +863,11 @@ Not-null constraints:
 
 -- Both partition bound and partition key in describe output
 \d+ part_c
-                                 Partitioned table "public.part_c"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           | not null | 0       | plain    |              | 
+                                       Partitioned table "public.part_c"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           | not null | 0       |           | plain    |              | 
 Partition of: parted FOR VALUES IN ('c')
 Partition constraint: ((a IS NOT NULL) AND (a = 'c'::text))
 Partition key: RANGE (b)
@@ -877,11 +877,11 @@ Partitions: part_c_1_10 FOR VALUES FROM (1) TO (10)
 
 -- a level-2 partition's constraint will include the parent's expressions
 \d+ part_c_1_10
-                                    Table "public.part_c_1_10"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-----------------+-----------+----------+---------+----------+--------------+-------------
- a      | text            |           |          |         | extended |              | 
- b      | pg_catalog.int4 |           | not null | 0       | plain    |              | 
+                                          Table "public.part_c_1_10"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | text            |           |          |         |           | extended |              | 
+ b      | pg_catalog.int4 |           | not null | 0       |           | plain    |              | 
 Partition of: part_c FOR VALUES FROM (1) TO (10)
 Partition constraint: ((a IS NOT NULL) AND (a = 'c'::text) AND (b IS NOT NULL) AND (b >= 1) AND (b < 10))
 Not-null constraints:
@@ -912,46 +912,46 @@ Number of partitions: 4 (Use \d+ to list them.)
 CREATE TABLE range_parted4 (a int, b int, c int) PARTITION BY RANGE (abs(a), abs(b), c);
 CREATE TABLE unbounded_range_part PARTITION OF range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (MAXVALUE, MAXVALUE, MAXVALUE);
 \d+ unbounded_range_part
-                               Table "public.unbounded_range_part"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- c      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                     Table "public.unbounded_range_part"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (MAXVALUE, MAXVALUE, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL))
 
 DROP TABLE unbounded_range_part;
 CREATE TABLE range_parted4_1 PARTITION OF range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (1, MAXVALUE, MAXVALUE);
 \d+ range_parted4_1
-                                  Table "public.range_parted4_1"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- c      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                        Table "public.range_parted4_1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (1, MAXVALUE, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL) AND (abs(a) <= 1))
 
 CREATE TABLE range_parted4_2 PARTITION OF range_parted4 FOR VALUES FROM (3, 4, 5) TO (6, 7, MAXVALUE);
 \d+ range_parted4_2
-                                  Table "public.range_parted4_2"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- c      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                        Table "public.range_parted4_2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (3, 4, 5) TO (6, 7, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL) AND ((abs(a) > 3) OR ((abs(a) = 3) AND (abs(b) > 4)) OR ((abs(a) = 3) AND (abs(b) = 4) AND (c >= 5))) AND ((abs(a) < 6) OR ((abs(a) = 6) AND (abs(b) <= 7))))
 
 CREATE TABLE range_parted4_3 PARTITION OF range_parted4 FOR VALUES FROM (6, 8, MINVALUE) TO (9, MAXVALUE, MAXVALUE);
 \d+ range_parted4_3
-                                  Table "public.range_parted4_3"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.int4 |           |          |         | plain   |              | 
- b      | pg_catalog.int4 |           |          |         | plain   |              | 
- c      | pg_catalog.int4 |           |          |         | plain   |              | 
+                                        Table "public.range_parted4_3"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ b      | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (6, 8, MINVALUE) TO (9, MAXVALUE, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL) AND ((abs(a) > 6) OR ((abs(a) = 6) AND (abs(b) >= 8))) AND (abs(a) <= 9))
 
@@ -984,11 +984,11 @@ SELECT obj_description('parted_col_comment'::regclass);
 (1 row)
 
 \d+ parted_col_comment
-                            Partitioned table "public.parted_col_comment"
- Column |      Type       | Collation | Nullable | Default | Storage  | Stats target |  Description  
---------+-----------------+-----------+----------+---------+----------+--------------+---------------
- a      | pg_catalog.int4 |           |          |         | plain    |              | Partition key
- b      | text            |           |          |         | extended |              | 
+                                  Partitioned table "public.parted_col_comment"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target |  Description  
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+---------------
+ a      | pg_catalog.int4 |           |          |         |           | plain    |              | Partition key
+ b      | text            |           |          |         |           | extended |              | 
 Partition key: LIST (a)
 Number of partitions: 0
 
@@ -1001,10 +1001,10 @@ HINT:  Specify storage parameters for its leaf partitions instead.
 CREATE TABLE arrlp (a int[]) PARTITION BY LIST (a);
 CREATE TABLE arrlp12 PARTITION OF arrlp FOR VALUES IN ('{1}', '{2}');
 \d+ arrlp12
-                                       Table "public.arrlp12"
- Column |       Type        | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+--------------+-------------
- a      | pg_catalog.int4[] |           |          |         | extended |              | 
+                                             Table "public.arrlp12"
+ Column |       Type        | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-------------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4[] |           |          |         |           | extended |              | 
 Partition of: arrlp FOR VALUES IN ('{1}', '{2}')
 Partition constraint: ((a IS NOT NULL) AND ((a = '{1}'::pg_catalog.int4[]) OR (a = '{2}'::pg_catalog.int4[])))
 
@@ -1014,10 +1014,10 @@ create table boolspart (a bool) partition by list (a);
 create table boolspart_t partition of boolspart for values in (true);
 create table boolspart_f partition of boolspart for values in (false);
 \d+ boolspart
-                               Partitioned table "public.boolspart"
- Column |      Type       | Collation | Nullable | Default | Storage | Stats target | Description 
---------+-----------------+-----------+----------+---------+---------+--------------+-------------
- a      | pg_catalog.bool |           |          |         | plain   |              | 
+                                     Partitioned table "public.boolspart"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.bool |           |          |         |           | plain   |              | 
 Partition key: LIST (a)
 Partitions: boolspart_f FOR VALUES IN (false),
             boolspart_t FOR VALUES IN (true)

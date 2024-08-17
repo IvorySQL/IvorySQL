@@ -155,6 +155,7 @@ CreateTupleDescCopy(TupleDesc tupdesc)
 		att->atthasmissing = false;
 		att->attidentity = '\0';
 		att->attgenerated = '\0';
+		att->attisinvisible = false;
 	}
 
 	/* We can copy the tuple type identification, too */
@@ -483,6 +484,8 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 			return false;
 		if (attr1->attcollation != attr2->attcollation)
 			return false;
+		if (attr1->attisinvisible != attr2->attisinvisible)
+			return false;
 		/* variable-length fields are not even present... */
 	}
 
@@ -665,6 +668,7 @@ TupleDescInitEntry(TupleDesc desc,
 	att->attstorage = typeForm->typstorage;
 	att->attcompression = InvalidCompressionMethod;
 	att->attcollation = typeForm->typcollation;
+	att->attisinvisible = false;
 
 	ReleaseSysCache(tuple);
 }
@@ -713,6 +717,7 @@ TupleDescInitBuiltinEntry(TupleDesc desc,
 	att->attisdropped = false;
 	att->attislocal = true;
 	att->attinhcount = 0;
+	att->attisinvisible = false;
 	/* variable-length fields are not present in tupledescs */
 
 	att->atttypid = oidtypeid;
