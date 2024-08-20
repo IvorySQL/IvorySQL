@@ -969,9 +969,11 @@ ExecInsert(IvyModifyTableContext *context,
 			/* Perform a speculative insertion. */
 			uint32		specToken;
 			ItemPointerData conflictTid;
+			ItemPointerData invalidItemPtr;
 			bool		specConflict;
 			List	   *arbiterIndexes;
 
+			ItemPointerSetInvalid(&invalidItemPtr);
 			arbiterIndexes = resultRelInfo->ri_onConflictArbiterIndexes;
 
 			/*
@@ -991,7 +993,8 @@ ExecInsert(IvyModifyTableContext *context,
 			CHECK_FOR_INTERRUPTS();
 			specConflict = false;
 			if (!ExecCheckIndexConstraints(resultRelInfo, slot, estate,
-										   &conflictTid, arbiterIndexes))
+										   &conflictTid, &invalidItemPtr,
+										   arbiterIndexes))
 			{
 				/* committed conflict tuple found */
 				if (onconflict == ONCONFLICT_UPDATE)
