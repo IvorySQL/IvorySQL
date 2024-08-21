@@ -1,0 +1,592 @@
+-- sanity check of system catalog
+SELECT attrelid, attname, attisinvisible FROM pg_attribute WHERE attisinvisible;
+ attrelid | attname | attisinvisible 
+----------+---------+----------------
+(0 rows)
+
+CREATE TABLE htest0 (a int PRIMARY KEY, b text NOT NULL INVISIBLE);
+INSERT INTO htest0 (a, b) VALUES (1, 'htest0 one');
+INSERT INTO htest0 (a, b) VALUES (2, 'htest0 two');
+-- we allow that all columns of a relation be invisible
+ALTER TABLE htest0 MODIFY a INVISIBLE;
+ERROR:  relation "htest0" can not have all columns invisible
+SELECT * FROM htest0;
+ a 
+---
+ 1
+ 2
+(2 rows)
+
+ALTER TABLE htest0 MODIFY a VISIBLE;
+CREATE TABLE htest1 (a bigserial PRIMARY KEY INVISIBLE, b text);
+ALTER TABLE htest1 MODIFY a INVISIBLE;
+-- Insert without named column must not include the invisible column
+INSERT INTO htest1 VALUES ('htest1 one');
+INSERT INTO htest1 VALUES ('htest1 two');
+-- INSERT + SELECT * should handle the invisible column
+CREATE TABLE htest1_1 (a bigserial PRIMARY KEY, b text);
+ALTER TABLE htest1_1 MODIFY a INVISIBLE;
+INSERT INTO htest1_1 VALUES ('htest1 one');
+WITH cte AS (
+	DELETE FROM htest1_1 RETURNING *
+) SELECT * FROM cte;
+     b      
+------------
+ htest1 one
+(1 row)
+
+INSERT INTO htest1_1 SELECT * FROM htest0;
+SELECT a, b FROM htest1_1;
+ a | b 
+---+---
+ 2 | 1
+ 3 | 2
+(2 rows)
+
+DROP TABLE htest1_1;
+SELECT attrelid::regclass, attname, attisinvisible FROM pg_attribute WHERE attisinvisible;
+ attrelid | attname | attisinvisible 
+----------+---------+----------------
+ htest0   | b       | t
+ htest1   | a       | t
+(2 rows)
+
+\d+ htest1
+                                                          Table "public.htest1"
+ Column |      Type       | Collation | Nullable |              Default              | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+-----------------------------------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int8 |           | not null | nextval('htest1_a_seq'::regclass) | invisible | plain    |              | 
+ b      | text            |           |          |                                   |           | extended |              | 
+Indexes:
+    "htest1_pkey" PRIMARY KEY, btree (a)
+Not-null constraints:
+    "htest1_a_not_null" NOT NULL "a"
+
+-- DROP/SET invisible attribute
+ALTER TABLE htest0 MODIFY b VISIBLE;
+\d+ htest0
+                                             Table "public.htest0"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain    |              | 
+ b      | text            |           | not null |         |           | extended |              | 
+Indexes:
+    "htest0_pkey" PRIMARY KEY, btree (a)
+Not-null constraints:
+    "htest0_b_not_null" NOT NULL "b"
+
+ALTER TABLE htest0 MODIFY b INVISIBLE;
+-- Hidden column are not expandable and must not be returned
+SELECT * FROM htest0; -- return only column a
+ a 
+---
+ 1
+ 2
+(2 rows)
+
+SELECT t.* FROM htest1 t; -- return only column b
+     b      
+------------
+ htest1 one
+ htest1 two
+(2 rows)
+
+-- the whole-row syntax do not take care of the invisible attribute
+SELECT t FROM htest1 t; -- return column a and b
+        t         
+------------------
+ (1,"htest1 one")
+ (2,"htest1 two")
+(2 rows)
+
+-- CTEs based on SELECT * only have visible column returned
+WITH foo AS (SELECT * FROM htest1) SELECT * FROM foo; -- Only column b is returned here
+     b      
+------------
+ htest1 one
+ htest1 two
+(2 rows)
+
+-- Use of wildcard or whole-row in a function do not apply the invisible attribute
+SELECT row_to_json(t.*) FROM htest0 t;
+       row_to_json        
+--------------------------
+ {"a":1,"b":"htest0 one"}
+ {"a":2,"b":"htest0 two"}
+(2 rows)
+
+SELECT row_to_json(t) FROM htest0 t;
+       row_to_json        
+--------------------------
+ {"a":1,"b":"htest0 one"}
+ {"a":2,"b":"htest0 two"}
+(2 rows)
+
+-- inheritance, the invisible attribute is inherited
+CREATE TABLE htest1_1 () INHERITS (htest1);
+SELECT * FROM htest1_1;
+ b 
+---
+(0 rows)
+
+\d htest1_1
+                               Table "public.htest1_1"
+ Column |      Type       | Collation | Nullable |              Default              
+--------+-----------------+-----------+----------+-----------------------------------
+ a      | pg_catalog.int8 |           | not null | nextval('htest1_a_seq'::regclass)
+ b      | text            |           |          | 
+Inherits: htest1
+
+INSERT INTO htest1_1 VALUES ('htest1 three');
+SELECT * FROM htest1_1;
+      b       
+--------------
+ htest1 three
+(1 row)
+
+SELECT * FROM htest1;
+      b       
+--------------
+ htest1 one
+ htest1 two
+ htest1 three
+(3 rows)
+
+-- invisible column must be explicitely named to be returned
+SELECT a,b FROM htest1_1;
+ a |      b       
+---+--------------
+ 3 | htest1 three
+(1 row)
+
+SELECT a,b FROM htest1;
+ a |      b       
+---+--------------
+ 1 | htest1 one
+ 2 | htest1 two
+ 3 | htest1 three
+(3 rows)
+
+DROP TABLE htest1_1;
+-- Default CREATE TABLE ... LIKE includes invisible columns, and they are not uinexpanded in the new table.
+CREATE TABLE htest_like1 (LIKE htest1);
+\d+ htest_like1
+                                          Table "public.htest_like1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int8 |           | not null |         |           | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
+Not-null constraints:
+    "htest1_a_not_null" NOT NULL "a"
+
+-- CREATE TABLE ... LIKE includes invisible columns, and they are invisible if requested
+CREATE TABLE htest_like2 (LIKE htest1 INCLUDING INVISIBLE);
+\d+ htest_like2
+                                          Table "public.htest_like2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int8 |           | not null |         | invisible | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
+Not-null constraints:
+    "htest1_a_not_null" NOT NULL "a"
+
+CREATE TABLE htest_like3 (LIKE htest1 INCLUDING ALL);
+\d+ htest_like3
+                                                       Table "public.htest_like3"
+ Column |      Type       | Collation | Nullable |              Default              | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+-----------------------------------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int8 |           | not null | nextval('htest1_a_seq'::regclass) | invisible | plain    |              | 
+ b      | text            |           |          |                                   |           | extended |              | 
+Indexes:
+    "htest_like3_pkey" PRIMARY KEY, btree (a)
+Not-null constraints:
+    "htest1_a_not_null" NOT NULL "a"
+
+DROP TABLE htest_like1, htest_like2, htest_like3;
+-- Insert without named column with and a not null invisible column must have a default value
+INSERT INTO htest0 VALUES (3); -- error
+ERROR:  null value in column "b" of relation "htest0" violates not-null constraint
+DETAIL:  Failing row contains (3, null).
+ALTER TABLE htest0 ALTER COLUMN b SET DEFAULT 'unknown';
+INSERT INTO htest0 VALUES (3);
+-- Same with COPY
+COPY htest0 TO stdout;
+1
+2
+3
+COPY htest0 (a, b) TO stdout;
+1	htest0 one
+2	htest0 two
+3	unknown
+COPY htest0 FROM stdin;
+SELECT a,b FROM htest0;
+ a |     b      
+---+------------
+ 1 | htest0 one
+ 2 | htest0 two
+ 3 | unknown
+ 4 | unknown
+ 5 | unknown
+(5 rows)
+
+-- same but with drop/add the column between invisible columns (virtual columns can be made invisible)
+CREATE TABLE htest2 (a serial, b int, c int GENERATED ALWAYS AS (a * 2) STORED);
+ALTER TABLE htest2 MODIFY a INVISIBLE;
+ALTER TABLE htest2 MODIFY c INVISIBLE;
+SELECT * FROM htest2;
+ b 
+---
+(0 rows)
+
+INSERT INTO htest2 VALUES (2);
+SELECT a,b,c FROM htest2;
+ a | b | c 
+---+---+---
+ 1 | 2 | 2
+(1 row)
+
+ALTER TABLE htest2 DROP COLUMN b;
+ALTER TABLE htest2 ADD COLUMN b int;
+INSERT INTO htest2 VALUES (4);
+SELECT a,b,c FROM htest2;
+ a | b | c 
+---+---+---
+ 1 |   | 2
+ 2 | 4 | 4
+(2 rows)
+
+DROP TABLE htest2 CASCADE;
+-- a table can NOT have all columns invisible
+CREATE TABLE htest3 (a serial INVISIBLE, b int INVISIBLE);
+ERROR:  a table must have at least one visible column
+CREATE TABLE htest3 (a serial, b int);
+ALTER TABLE htest3
+    ALTER COLUMN a SET INVISIBLE,
+    MODIFY b INVISIBLE; -- error
+ERROR:  relation "htest3" can not have all columns invisible
+DROP TABLE htest3;
+-- inheritance with an additional single invisible column is possible
+CREATE TABLE htest3 (a serial INVISIBLE, b int);
+SELECT * FROM htest3;
+ b 
+---
+(0 rows)
+
+CREATE TABLE htest3_1 (c int INVISIBLE) INHERITS (htest3);
+SELECT * FROM htest3_1;
+ b 
+---
+(0 rows)
+
+\d+ htest3_1
+                                                        Table "public.htest3_1"
+ Column |      Type       | Collation | Nullable |              Default              | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+-----------------------------------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null | nextval('htest3_a_seq'::regclass) | invisible | plain   |              | 
+ b      | pg_catalog.int4 |           |          |                                   |           | plain   |              | 
+ c      | pg_catalog.int4 |           |          |                                   | invisible | plain   |              | 
+Not-null constraints:
+    "htest3_a_not_null" NOT NULL "a" (inherited)
+Inherits: htest3
+
+DROP TABLE htest3_1, htest3;
+-- Ordering do not include the invisible column
+CREATE TABLE t1 (col1 integer NOT NULL INVISIBLE, col2 integer);
+INSERT INTO t1 (col1, col2) VALUES (1, 6), (3, 4);
+SELECT * FROM t1 ORDER BY 1 DESC;
+ col2 
+------
+    6
+    4
+(2 rows)
+
+SELECT col1,col2 FROM t1 ORDER BY 2 DESC;
+ col1 | col2 
+------+------
+    1 |    6
+    3 |    4
+(2 rows)
+
+-- unless it is called explicitly
+SELECT * FROM t1 ORDER BY col1 DESC;
+ col2 
+------
+    4
+    6
+(2 rows)
+
+DROP TABLE t1;
+-- A table can be partitioned by an invisible column
+CREATE TABLE measurement (
+	city_id         int not null,
+	logdate         date not null INVISIBLE,
+	peaktemp        int,
+	unitsales       int
+) PARTITION BY RANGE (logdate);
+CREATE TABLE measurement_y2006m02 PARTITION OF measurement
+    FOR VALUES FROM ('2021-01-01') TO ('2021-03-01');
+CREATE TABLE measurement_y2006m03 PARTITION OF measurement
+    FOR VALUES FROM ('2021-03-01') TO ('2021-05-01');
+INSERT INTO measurement (city_id, logdate, peaktemp, unitsales) VALUES (1, '2021-02-28', 34, 4);
+INSERT INTO measurement (city_id, logdate, peaktemp, unitsales) VALUES (1, '2021-04-12', 42, 6);
+EXPLAIN VERBOSE SELECT * FROM measurement;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append  (cost=0.00..71.00 rows=3400 width=12)
+   ->  Seq Scan on public.measurement_y2006m02 measurement_1  (cost=0.00..27.00 rows=1700 width=12)
+         Output: measurement_1.city_id, measurement_1.peaktemp, measurement_1.unitsales
+   ->  Seq Scan on public.measurement_y2006m03 measurement_2  (cost=0.00..27.00 rows=1700 width=12)
+         Output: measurement_2.city_id, measurement_2.peaktemp, measurement_2.unitsales
+(5 rows)
+
+SELECT * FROM measurement;
+ city_id | peaktemp | unitsales 
+---------+----------+-----------
+       1 |       34 |         4
+       1 |       42 |         6
+(2 rows)
+
+SELECT city_id, logdate, peaktemp, unitsales FROM measurement;
+ city_id |  logdate   | peaktemp | unitsales 
+---------+------------+----------+-----------
+       1 | 2021-02-28 |       34 |         4
+       1 | 2021-04-12 |       42 |         6
+(2 rows)
+
+DROP TABLE measurement CASCADE;
+-- Same but unitsales is invisible instead of the partition key
+CREATE TABLE measurement (
+	city_id         int not null,
+	logdate         date not null,
+	peaktemp        int,
+	unitsales       int INVISIBLE
+) PARTITION BY RANGE (logdate);
+CREATE TABLE measurement_y2006m02 PARTITION OF measurement
+    FOR VALUES FROM ('2021-01-01') TO ('2021-03-01');
+CREATE TABLE measurement_y2006m03 PARTITION OF measurement
+    FOR VALUES FROM ('2021-03-01') TO ('2021-05-01');
+INSERT INTO measurement (city_id, logdate, peaktemp, unitsales) VALUES (1, '2021-02-28', 34, 4);
+INSERT INTO measurement (city_id, logdate, peaktemp, unitsales) VALUES (1, '2021-04-12', 42, 6);
+EXPLAIN VERBOSE SELECT * FROM measurement;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append  (cost=0.00..71.00 rows=3400 width=16)
+   ->  Seq Scan on public.measurement_y2006m02 measurement_1  (cost=0.00..27.00 rows=1700 width=16)
+         Output: measurement_1.city_id, measurement_1.logdate, measurement_1.peaktemp
+   ->  Seq Scan on public.measurement_y2006m03 measurement_2  (cost=0.00..27.00 rows=1700 width=16)
+         Output: measurement_2.city_id, measurement_2.logdate, measurement_2.peaktemp
+(5 rows)
+
+SELECT * FROM measurement;
+ city_id |  logdate   | peaktemp 
+---------+------------+----------
+       1 | 2021-02-28 |       34
+       1 | 2021-04-12 |       42
+(2 rows)
+
+SELECT city_id, logdate, peaktemp, unitsales FROM measurement;
+ city_id |  logdate   | peaktemp | unitsales 
+---------+------------+----------+-----------
+       1 | 2021-02-28 |       34 |         4
+       1 | 2021-04-12 |       42 |         6
+(2 rows)
+
+SELECT * FROM measurement_y2006m03;
+ city_id |  logdate   | peaktemp 
+---------+------------+----------
+       1 | 2021-04-12 |       42
+(1 row)
+
+DROP TABLE measurement CASCADE;
+-- Temporary tables can have invisible columns too.
+CREATE TEMPORARY TABLE htest_tmp (col1 integer NOT NULL INVISIBLE, col2 integer);
+ALTER TABLE htest_tmp MODIFY col1 INVISIBLE;
+INSERT INTO htest_tmp (col1, col2) VALUES (1, 6), (3, 4);
+SELECT * FROM htest_tmp ORDER BY 1 DESC;
+ col2 
+------
+    6
+    4
+(2 rows)
+
+DROP TABLE htest_tmp;
+-- A table can use a composite type as an invisible column
+CREATE TYPE compfoo AS (f1 int, f2 text);
+CREATE TABLE htest4 (
+    a int,
+    b compfoo INVISIBLE
+);
+SELECT * FROM htest4;
+ a 
+---
+(0 rows)
+
+DROP TABLE htest4;
+DROP TYPE compfoo;
+-- Foreign key constraints can be defined on invisible columns, or invisible columns can be referenced.
+CREATE TABLE t1 (col1 integer UNIQUE INVISIBLE, col2 integer);
+CREATE TABLE t2 (col1 integer PRIMARY KEY INVISIBLE, col2 integer);
+ALTER TABLE t1 ADD CONSTRAINT fk_t1_col1 FOREIGN KEY (col1) REFERENCES t2(col1);
+ALTER TABLE t2 ADD CONSTRAINT fk_t2_col1 FOREIGN KEY (col1) REFERENCES t1(col1);
+DROP TABLE t1, t2 CASCADE;
+-- CHECK constraints can be defined on invisible columns.
+CREATE TABLE t1 (col1 integer CHECK (col1 > 2) INVISIBLE, col2 integer NOT NULL);
+ALTER TABLE t1 MODIFY col1 INVISIBLE;
+INSERT INTO t1 (col1, col2) VALUES (1, 6); -- error
+ERROR:  new row for relation "t1" violates check constraint "t1_col1_check"
+DETAIL:  Failing row contains (1, 6).
+INSERT INTO t1 (col1, col2) VALUES (3, 6);
+-- An index can reference a invisible column
+CREATE INDEX ON t1 (col1);
+ALTER TABLE t1
+  ALTER COLUMN col1 TYPE bigint,
+  ALTER COLUMN col1 DROP INVISIBLE,
+  MODIFY col2 INVISIBLE;
+\d+ t1
+                                              Table "public.t1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ col1   | pg_catalog.int8 |           |          |         |           | plain   |              | 
+ col2   | pg_catalog.int4 |           | not null |         | invisible | plain   |              | 
+Indexes:
+    "t1_col1_idx" btree (col1)
+Check constraints:
+    "t1_col1_check" CHECK (col1 > 2)
+Not-null constraints:
+    "t1_col2_not_null" NOT NULL "col2"
+
+DROP TABLE t1;
+-- View must not include the invisible column when not explicitly listed
+CREATE VIEW viewt1 AS SELECT * FROM htest1;
+\d viewt1
+              View "public.viewt1"
+ Column | Type | Collation | Nullable | Default 
+--------+------+-----------+----------+---------
+ b      | text |           |          | 
+
+SELECT * FROM viewt1;
+     b      
+------------
+ htest1 one
+ htest1 two
+(2 rows)
+
+-- If the invisible attribute on the column is removed the view result must not change
+ALTER TABLE htest1 MODIFY a VISIBLE;
+SELECT * FROM viewt1;
+     b      
+------------
+ htest1 one
+ htest1 two
+(2 rows)
+
+ALTER TABLE htest1 MODIFY a INVISIBLE;
+DROP VIEW viewt1;
+-- Materialized view must include the invisible column when explicitly listed
+-- but the column is not invisible in the materialized view.
+CREATE VIEW viewt1 AS SELECT a, b FROM htest1;
+\d viewt1
+                   View "public.viewt1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int8 |           |          | 
+ b      | text            |           |          | 
+
+SELECT * FROM viewt1;
+ a |     b      
+---+------------
+ 1 | htest1 one
+ 2 | htest1 two
+(2 rows)
+
+-- Materialized view must not include the invisible column when not explicitly listed
+CREATE MATERIALIZED VIEW mviewt1 AS SELECT * FROM htest1;
+\d mviewt1
+       Materialized view "public.mviewt1"
+ Column | Type | Collation | Nullable | Default 
+--------+------+-----------+----------+---------
+ b      | text |           |          | 
+
+REFRESH MATERIALIZED VIEW mviewt1;
+SELECT * FROM mviewt1;
+     b      
+------------
+ htest1 one
+ htest1 two
+(2 rows)
+
+DROP MATERIALIZED VIEW mviewt1;
+-- Materialized view must include the invisible column when explicitly listed
+-- but the column is not invisible in the materialized view.
+CREATE MATERIALIZED VIEW mviewt1 AS SELECT a, b FROM htest1;
+\d mviewt1
+            Materialized view "public.mviewt1"
+ Column |      Type       | Collation | Nullable | Default 
+--------+-----------------+-----------+----------+---------
+ a      | pg_catalog.int8 |           |          | 
+ b      | text            |           |          | 
+
+REFRESH MATERIALIZED VIEW mviewt1;
+SELECT * FROM mviewt1;
+ a |     b      
+---+------------
+ 1 | htest1 one
+ 2 | htest1 two
+(2 rows)
+
+-- typed tables with invisible column is not supported
+CREATE TYPE htest_type AS (f1 integer, f2 text, f3 bigint);
+CREATE TABLE htest28 OF htest_type (f1 WITH OPTIONS DEFAULT 3);
+ALTER TABLE htest28 MODIFY f1 INVISIBLE; -- error
+ERROR:  cannot set INVISIBLE attribute on a column of a typed table
+DROP TYPE htest_type CASCADE;
+NOTICE:  drop cascades to table htest28
+-- Prepared statements
+PREPARE q1 AS SELECT * FROM htest1 WHERE a > $1;
+EXECUTE q1(0);
+     b      
+------------
+ htest1 one
+ htest1 two
+(2 rows)
+
+ALTER TABLE htest1 MODIFY a VISIBLE;
+EXECUTE q1(0); -- error: cached plan change result type
+ERROR:  cached plan must not change result type
+ALTER TABLE htest1 MODIFY a INVISIBLE;
+EXECUTE q1(0);
+     b      
+------------
+ htest1 one
+ htest1 two
+(2 rows)
+
+DEALLOCATE q1;
+-- SELECT * INTO and RETURNING * INTO has the same
+-- behavior, the invisible column is not returned.
+CREATE OR REPLACE PROCEDURE test_plpgsq_returning (p_a integer)
+AS $$
+DECLARE
+    v_lbl text;
+BEGIN
+    SELECT * INTO v_lbl FROM htest1 WHERE a = p_a;
+    RAISE NOTICE 'SELECT INTO Col b : %', v_lbl;
+
+    DELETE FROM htest1 WHERE a = p_a
+        RETURNING * INTO v_lbl; 
+    IF FOUND THEN
+	RAISE NOTICE 'RETURNING INTO Col b : %', v_lbl;
+    ELSE
+        RAISE NOTICE 'Noting found';
+    END IF;
+END
+$$
+LANGUAGE plpgsql;
+CALL test_plpgsq_returning(1);
+-- Cleanup
+DROP TABLE htest0, htest1 CASCADE;
+NOTICE:  SELECT INTO Col b : htest1 one
+NOTICE:  RETURNING INTO Col b : htest1 one
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to view viewt1
+drop cascades to materialized view mviewt1

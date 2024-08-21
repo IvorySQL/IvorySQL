@@ -2350,7 +2350,17 @@ psql_completion(const char *text, int start, int end)
 					  "OWNER TO", "SET", "VALIDATE CONSTRAINT",
 					  "REPLICA IDENTITY", "ATTACH PARTITION",
 					  "DETACH PARTITION", "FORCE ROW LEVEL SECURITY",
-					  "OF", "NOT OF");
+					  "OF", "NOT OF", "MODIFY");
+	
+	/* 
+	 * Oracle Command 
+	 * ALTER TABLE xxx MODIFY 
+	 */ 
+	else if (Matches("ALTER", "TABLE", MatchAny, "MODIFY", MatchAny))
+	{
+		/* make sure to keep this list and the !Matches() below in sync */
+		COMPLETE_WITH("INVISIBLE", "VISIBLE");
+	}
 	/* ALTER TABLE xxx ADD */
 	else if (Matches("ALTER", "TABLE", MatchAny, "ADD"))
 	{
@@ -2504,7 +2514,7 @@ psql_completion(const char *text, int start, int end)
 	/* ALTER TABLE ALTER [COLUMN] <foo> SET */
 	else if (Matches("ALTER", "TABLE", MatchAny, "ALTER", "COLUMN", MatchAny, "SET") ||
 			 Matches("ALTER", "TABLE", MatchAny, "ALTER", MatchAny, "SET"))
-		COMPLETE_WITH("(", "COMPRESSION", "DEFAULT", "EXPRESSION", "GENERATED", "NOT NULL", "STATISTICS", "STORAGE",
+		COMPLETE_WITH("(", "COMPRESSION", "DEFAULT", "EXPRESSION", "GENERATED", "NOT NULL", "STATISTICS", "STORAGE", "INVISIBLE"
 		/* a subset of ALTER SEQUENCE options */
 					  "INCREMENT", "MINVALUE", "MAXVALUE", "START", "NO", "CACHE", "CYCLE");
 	/* ALTER TABLE ALTER [COLUMN] <foo> SET ( */
@@ -2544,7 +2554,7 @@ psql_completion(const char *text, int start, int end)
 	/* ALTER TABLE ALTER [COLUMN] <foo> DROP */
 	else if (Matches("ALTER", "TABLE", MatchAny, "ALTER", "COLUMN", MatchAny, "DROP") ||
 			 Matches("ALTER", "TABLE", MatchAny, "ALTER", MatchAny, "DROP"))
-		COMPLETE_WITH("DEFAULT", "EXPRESSION", "IDENTITY", "NOT NULL");
+		COMPLETE_WITH("DEFAULT", "EXPRESSION", "IDENTITY", "NOT NULL", "INVISIBLE");
 	else if (Matches("ALTER", "TABLE", MatchAny, "CLUSTER"))
 		COMPLETE_WITH("ON");
 	else if (Matches("ALTER", "TABLE", MatchAny, "CLUSTER", "ON"))
