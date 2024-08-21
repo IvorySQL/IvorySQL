@@ -15,8 +15,7 @@ Datum pg_get_functiondef_no_input(PG_FUNCTION_ARGS)
     if (PG_NARGS() <= 0)
     {
         ereport(ERROR, errmsg("Nothing Input"),
-                errhint("target should be the name or the oid of \ 
-                the function."),
+                errhint("target should be the name or the oid of the function."),
                 errdetail("SELECT pg_get_functiondef(target, ...);"));
         PG_RETURN_NULL();
     }

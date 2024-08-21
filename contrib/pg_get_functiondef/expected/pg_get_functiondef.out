@@ -1,4 +1,8 @@
 CREATE EXTENSION pg_get_functiondef;
+SELECT pg_get_functiondef();
+ERROR:  Nothing Input
+DETAIL:  SELECT pg_get_functiondef(target, ...);
+HINT:  target should be the name or the oid of the function.
 SELECT pg_get_functiondef(1, 2, 3);
                             pg_get_functiondef                            
 --------------------------------------------------------------------------
