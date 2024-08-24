@@ -1226,12 +1226,6 @@ ProcessUtilitySlow(ParseState *pstate,
 
 							morestmts = expandTableLikeClause(table_rv, like);
 							stmts = list_concat(morestmts, stmts);
-
-							/*
-							 * Store the OID of newly created relation to the
-							 * TableLikeClause for the caller to use it.
-							 */
-							like->newRelationOid = address.objectId;
 						}
 						else
 						{
