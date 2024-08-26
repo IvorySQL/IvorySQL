@@ -31,6 +31,7 @@ struct FunctionInfoData
 	GetFuncDefByName
 		Export the oid based on the function name, the use the oid get the definition
  */
+char *GetFuncDefByName(char *function_name);
 char *GetFuncDefByName(char *function_name)
 {
 	CatCList *catlist = NULL;
