@@ -1213,7 +1213,7 @@ check_effective_io_concurrency(int *newval, void **extra, GucSource source)
 #ifndef USE_PREFETCH
 	if (*newval != 0)
 	{
-		GUC_check_errdetail("\"effective_io_concurrency\" must be set to 0 on platforms that lack posix_fadvise().");
+		GUC_check_errdetail("\"effective_io_concurrency\" must be set to 0 on platforms that lack support for issuing read-ahead advice.");
 		return false;
 	}
 #endif							/* USE_PREFETCH */
@@ -1226,7 +1226,7 @@ check_maintenance_io_concurrency(int *newval, void **extra, GucSource source)
 #ifndef USE_PREFETCH
 	if (*newval != 0)
 	{
-		GUC_check_errdetail("\"maintenance_io_concurrency\" must be set to 0 on platforms that lack posix_fadvise().");
+		GUC_check_errdetail("\"maintenance_io_concurrency\" must be set to 0 on platforms that lack support for issuing read-ahead advice.");
 		return false;
 	}
 #endif							/* USE_PREFETCH */
