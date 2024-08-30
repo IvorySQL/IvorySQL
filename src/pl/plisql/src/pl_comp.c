@@ -292,6 +292,7 @@ do_compile(FunctionCallInfo fcinfo,
 	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	char		**argtypenames = NULL;
 	char		*rettypename = NULL;
+	PLiSQL_type	*rettype = NULL;
 	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/*
@@ -515,6 +516,28 @@ do_compile(FunctionCallInfo fcinfo,
 					add_parameter_name(argitemtype, argvariable->dno,
 									   argnames[i]);
 			}
+
+			/* Begin - ReqID:SRS-SQL-PACKAGE */
+			if (rettypename != NULL)
+			{
+				TypeName		*tname;
+
+				tname = (TypeName *) stringToNode(rettypename);
+				if (tname->pct_type)
+					rettype = plisql_parse_package_type(tname, parse_by_var_type, false);
+				else
+					rettype = plisql_parse_package_type(tname, parse_by_pkg_type, false);
+
+				if (rettype == NULL)
+				{
+					elog(ERROR, "doesn't recognise package type %s", TypeNameToString(tname));
+				}
+				pfree(tname);
+				rettypeid = rettype->typoid;
+			}
+			/* End - ReqID:SRS-SQL-PACKAGE */
+			else
+				rettypeid = procStruct->prorettype;
 
 			/*
 			 * If there's just one OUT parameter, out_param_varno points
@@ -1928,8 +1951,6 @@ plisql_parse_wordtype(char *ident)
 			}
 			list_free(idents);
 		}
-		/* End - ReqID:SRS-SQL-PACKAGE */
-
 	}
 
 	/* No match, complain */
@@ -1991,11 +2012,6 @@ plisql_parse_cwordtype(List *idents)
 		}
 
 		/* Begin - ReqID:SRS-SQL-PACKAGE */
-		if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_REC)
-		{
-			dtype = ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
-			goto done;
-		}
 		/* maybe type comes from package */
 		if ((dtype = plisql_parse_package_type(makeTypeNameFromNameList(idents),
 				parse_by_var_type, false)) != NULL)
