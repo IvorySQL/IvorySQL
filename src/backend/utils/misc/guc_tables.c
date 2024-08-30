@@ -4815,7 +4815,7 @@ struct config_string ConfigureNamesString[] =
 	#undef IVY_GUC_STRING_PARAMS
 	{
 		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Sets relation kinds of non-system relation to restrict use"),
+			gettext_noop("Prohibits access to non-system relations of specified kinds."),
 			NULL,
 			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
 		},
