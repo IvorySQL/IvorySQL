@@ -8833,11 +8833,11 @@ ora_function_source_clause_item:
 ora_invoker_rights_clause:
 	AUTHID DEFINER
 		{
-			$$ = makeDefElem("authid", (Node *)makeBoolean(true), @1);
+			$$ = makeDefElem("authid", (Node *)makeInteger(true), @1);
 		}
 	| AUTHID CURRENT_USER
 		{
-			$$ = makeDefElem("authid", (Node *)makeBoolean(false), @1);
+			$$ = makeDefElem("authid", (Node *)makeInteger(false), @1);
 		}
 		;
 
