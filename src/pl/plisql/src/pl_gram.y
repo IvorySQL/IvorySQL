@@ -1595,6 +1595,23 @@ stmt_call		: K_DO
 						$$ = (PLiSQL_stmt *)new;
 
 					}
+			| K_CALL
+					{
+						PLiSQL_stmt_call *new;
+
+                                                new = palloc0(sizeof(PLiSQL_stmt_call));
+                                                new->cmd_type = PLISQL_STMT_CALL;
+                                                new->lineno = plisql_location_to_lineno(@1);
+                                                new->stmtid = ++plisql_curr_compile->nstatements;
+                                                plisql_push_back_token(K_CALL);
+                                                new->expr = read_sql_stmt();
+                                                new->is_call = true;
+
+                                                /* Remember we may need a procedure resource owner */
+                                                plisql_curr_compile->requires_procedure_resowner = true;
+
+                                                $$ = (PLiSQL_stmt *)new;
+					}
 				;
 
 stmt_assign		: T_DATUM
