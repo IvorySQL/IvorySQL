@@ -8811,6 +8811,51 @@ exec_check_rw_parameter(PLiSQL_expr *expr)
 	}
 }
 
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+/*
+ * check package datum can be assigned
+ */
+static void
+exec_check_packagedatum_assignable(PLiSQL_pkg_datum *pkg_datum, PLiSQL_execstate *estate)
+{
+        PLiSQL_datum *datum = pkg_datum->pkgvar;
+        PackageCacheItem *item = pkg_datum->item;
+        PLiSQL_package *psource = (PLiSQL_package *) item->source;
+        PLiSQL_function *func = (PLiSQL_function *) &psource->source;
+
+        switch (datum->dtype)
+        {
+                case PLISQL_DTYPE_PACKAGE_DATUM:
+                        {
+                                PLiSQL_pkg_datum *pkg1_datum = (PLiSQL_pkg_datum *) datum;
+
+                                exec_check_packagedatum_assignable(pkg1_datum, estate);
+                        }
+                        break;
+                case PLISQL_DTYPE_VAR:
+                case PLISQL_DTYPE_PROMISE:
+                case PLISQL_DTYPE_REC:
+                        if (((PLiSQL_variable *) datum)->isconst)
+                                ereport(ERROR,
+                                                (errcode(ERRCODE_ERROR_IN_ASSIGNMENT),
+                                                 errmsg("variable \"%s\" is declared CONSTANT",
+                                                                ((PLiSQL_variable *) datum)->refname)));
+                        break;
+                case PLISQL_DTYPE_ROW:
+                        /* always assignable; member vars were checked at compile time */
+                        break;
+                case PLISQL_DTYPE_RECFIELD:
+                        /* assignable if parent record is */
+                        exec_check_assignable(estate, ((PLiSQL_recfield *) datum)->recparentno);
+                        break;
+                default:
+                        elog(ERROR, "unrecognized dtype: %d", datum->dtype);
+                        break;
+        }
+}
+/* End - ReqID:SRS-SQL-PACKAGE */
+
+
 /*
  * exec_check_assignable --- is it OK to assign to the indicated datum?
  *
@@ -8842,6 +8887,11 @@ exec_check_assignable(PLiSQL_execstate *estate, int dno)
 			exec_check_assignable(estate,
 								  ((PLiSQL_recfield *) datum)->recparentno);
 			break;
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case PLISQL_DTYPE_PACKAGE_DATUM:
+			exec_check_packagedatum_assignable((PLiSQL_pkg_datum *) datum, estate) ; 
+			break;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
