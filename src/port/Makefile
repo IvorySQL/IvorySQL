@@ -57,8 +57,7 @@ OBJS = \
 	quotes.o \
 	snprintf.o \
 	strerror.o \
-	tar.o \
-	user.o
+	tar.o
 
 override OBJS := $(OBJS) identifier_alpha_transfor.o
 
