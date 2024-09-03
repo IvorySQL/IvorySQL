@@ -793,6 +793,37 @@ SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FF
  </soapenv:Envelope>
 (1 row)
 
+---
+--- xmlisvalid
+---
+SELECT xmlisvalid(XMLType('<a/>'));
+ xmlisvalid 
+------------
+ t
+(1 row)
+
+SELECT xmlisvalid(XMLType('<a>'));
+ xmlisvalid 
+------------
+ f
+(1 row)
+
+---
+--- xmlelement
+---
+SELECT XMLELEMENT("Employee") FROM dual;
+ xmlelement  
+-------------
+ <Employee/>
+(1 row)
+
+SELECT XMLELEMENT("Employee"), XMLELEMENT("Id", x.id), XMLELEMENT("Data", x.data) AS "Result" FROM xmltest x;
+ xmlelement  | xmlelement |                     Result                     
+-------------+------------+------------------------------------------------
+ <Employee/> | <Id>1</Id> | <Data>&lt;value&gt;one&lt;/value&gt;</Data>
+ <Employee/> | <Id>2</Id> | <Data>&lt;value&gt;second&lt;/value&gt;</Data>
+(2 rows)
+
 drop table inaf;
 drop table xmltest;
 drop table xmlnstest;
