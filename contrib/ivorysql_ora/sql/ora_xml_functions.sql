@@ -254,6 +254,20 @@ SELECT insertchildxmlafter(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[1]', 'b
 
 SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FFF', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
+---
+--- xmlisvalid
+---
+SELECT xmlisvalid(XMLType('<a/>'));
+
+SELECT xmlisvalid(XMLType('<a>'));
+
+---
+--- xmlelement
+---
+SELECT XMLELEMENT("Employee") FROM dual;
+
+SELECT XMLELEMENT("Employee"), XMLELEMENT("Id", x.id), XMLELEMENT("Data", x.data) AS "Result" FROM xmltest x;
+
 drop table inaf;
 drop table xmltest;
 drop table xmlnstest;
