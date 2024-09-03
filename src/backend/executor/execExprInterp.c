@@ -1111,7 +1111,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 
 		EEO_CASE(EEOP_PARAM_SET)
 		{
-			/* out of line, unlikely to matter performancewise */
+			/* out of line, unlikely to matter performance-wise */
 			ExecEvalParamSet(state, op, econtext);
 			EEO_NEXT();
 		}
@@ -4808,7 +4808,7 @@ ExecEvalJsonCoercionFinish(ExprState *state, ExprEvalStep *op)
 	if (SOFT_ERROR_OCCURRED(&jsestate->escontext))
 	{
 		/*
-		 * jsestate->error or jsetate->empty being set means that the error
+		 * jsestate->error or jsestate->empty being set means that the error
 		 * occurred when coercing the JsonBehavior value.  Throw the error in
 		 * that case with the actual coercion error message shown in the
 		 * DETAIL part.
