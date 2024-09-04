@@ -17139,7 +17139,7 @@ func_expr_common_subexpr:
 					$$ = makeXmlExpr(IS_XMLELEMENT, $4, NIL, $6, @1);
 				}
 			| XMLELEMENT '(' NAME_P ColLabel ',' xml_attributes ',' expr_list ')'
-				{;
+				{
 					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, $8, @1);
 				}
 			| XMLELEMENT '(' ColLabel ')'
@@ -17155,7 +17155,7 @@ func_expr_common_subexpr:
 					$$ = makeXmlExpr(IS_XMLELEMENT, $3, NIL, $5, @1);
 				}
 			| XMLELEMENT '(' ColLabel ',' xml_attributes ',' expr_list ')'
-				{;
+				{
 					$$ = makeXmlExpr(IS_XMLELEMENT, $3, $5, $7, @1);
 				}
 			| XMLEXISTS '(' c_expr xmlexists_argument ')'
