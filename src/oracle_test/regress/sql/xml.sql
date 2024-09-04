@@ -68,7 +68,9 @@ SELECT xmlelement(name foo, xmlattributes('infinity'::timestamp as bar));
 SELECT xmlelement(name foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
 
 SELECT xmlelement("a");
-SELECT xmlelement("employee"), xmlelement("id", x.id), xmlelement("Data", x.data) AS "result" FROM xmltest x;
+SELECT xmlelement(name foo, xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
+SELECT xmlelement(name foo, array[1, 2, 3]);
+SELECT xmlelement(name foo, xmlattributes('2024-09-04 21:16:37'::timestamp as bar),  array[1, 2, 3]);
 
 SELECT xmlparse(content '');
 SELECT xmlparse(content '  ');

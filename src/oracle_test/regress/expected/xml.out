@@ -234,12 +234,23 @@ SELECT xmlelement("a");
  <a/>
 (1 row)
 
-SELECT xmlelement("employee"), xmlelement("id", x.id), xmlelement("Data", x.data) AS "result" FROM xmltest x;
- xmlelement  | xmlelement |             result              
--------------+------------+---------------------------------
- <employee/> | <id>1</id> | <Data><value>one</value></Data>
- <employee/> | <id>2</id> | <Data><value>two</value></Data>
-(2 rows)
+SELECT xmlelement(name foo, xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
+               xmlelement                
+-----------------------------------------
+ <foo bar="2024-09-04 21:16:37.000000"/>
+(1 row)
+
+SELECT xmlelement(name foo, array[1, 2, 3]);
+                               xmlelement                                
+-------------------------------------------------------------------------
+ <foo><element>1</element><element>2</element><element>3</element></foo>
+(1 row)
+
+SELECT xmlelement(name foo, xmlattributes('2024-09-04 21:16:37'::timestamp as bar),  array[1, 2, 3]);
+                                                xmlelement                                                
+----------------------------------------------------------------------------------------------------------
+ <foo bar="2024-09-04 21:16:37.000000"><element>1</element><element>2</element><element>3</element></foo>
+(1 row)
 
 SELECT xmlparse(content '');
  xmlparse 
