@@ -262,14 +262,6 @@ SELECT xmlisvalid(XMLType('<a/>'));
 
 SELECT xmlisvalid(XMLType('<a>'));
 
---
--- xmlelement
---
-
-SELECT xmlelement('a');
-
-SELECT xmlelement("Employee"), xmlelement("Id", x.id), xmlelement("Data", x.data) as "Result" from xmltest x;
-
 drop table inaf;
 drop table xmltest;
 drop table xmlnstest;

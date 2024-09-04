@@ -228,6 +228,19 @@ SELECT xmlelement(name foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as fun
  <foo funny="&lt;&gt;&amp;&quot;'" funnier="b&lt;a/&gt;r"/>
 (1 row)
 
+SELECT xmlelement("a");
+ xmlelement 
+------------
+ <a/>
+(1 row)
+
+SELECT xmlelement("employee"), xmlelement("id", x.id), xmlelement("Data", x.data) AS "result" FROM xmltest x;
+ xmlelement  | xmlelement |             result              
+-------------+------------+---------------------------------
+ <employee/> | <id>1</id> | <Data><value>one</value></Data>
+ <employee/> | <id>2</id> | <Data><value>two</value></Data>
+(2 rows)
+
 SELECT xmlparse(content '');
  xmlparse 
 ----------
