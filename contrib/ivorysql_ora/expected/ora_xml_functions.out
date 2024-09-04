@@ -793,6 +793,35 @@ SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FF
  </soapenv:Envelope>
 (1 row)
 
+--
+-- xmlisvalid
+--
+SELECT xmlisvalid(XMLType('<a/>'));
+ xmlisvalid 
+------------
+ t
+(1 row)
+
+SELECT xmlisvalid(XMLType('<a>'));
+ xmlisvalid 
+------------
+ f
+(1 row)
+
+--
+-- xmlelement
+--
+SELECT xmlelement('a');
+ERROR:  syntax error at or near "'a'"
+LINE 1: SELECT xmlelement('a');
+                          ^
+SELECT xmlelement("Employee"), xmlelement("Id", x.id), xmlelement("Data", x.data) as "Result" from xmltest x;
+ xmlelement  | xmlelement |                     Result                     
+-------------+------------+------------------------------------------------
+ <Employee/> | <Id>1</Id> | <Data>&lt;value&gt;one&lt;/value&gt;</Data>
+ <Employee/> | <Id>2</Id> | <Data>&lt;value&gt;second&lt;/value&gt;</Data>
+(2 rows)
+
 drop table inaf;
 drop table xmltest;
 drop table xmlnstest;
