@@ -1782,6 +1782,7 @@ func_get_detail(List *funcname,
 				 best_candidate->oid);
 		pform = (Form_pg_proc) GETSTRUCT(ftup);
 
+		*rettype = pform->prorettype;
 		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		/* return a package.xxx */
 		if (ORA_PARSER == compatible_db)
@@ -1790,7 +1791,6 @@ func_get_detail(List *funcname,
 		}
 		/* End - ReqID:SRS-SQL-PACKAGE */
 
-		*rettype = pform->prorettype;
 		*retset = pform->proretset;
 		*vatype = pform->provariadic;
 		/* fetch default args if caller wants 'em */
