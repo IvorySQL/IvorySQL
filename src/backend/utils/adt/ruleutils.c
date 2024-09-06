@@ -12041,6 +12041,7 @@ get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
 					   bool showimplicit)
 {
 	StringInfo	buf = context->buf;
+	JsonExpr   *jexpr = castNode(JsonExpr, tf->docexpr);
 	ListCell   *lc_colname;
 	ListCell   *lc_coltype;
 	ListCell   *lc_coltypmod;
@@ -12093,10 +12094,6 @@ get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
 		if (ordinality)
 			continue;
 
-		/*
-		 * Set default_behavior to guide get_json_expr_options() on whether to
-		 * to emit the ON ERROR / EMPTY clauses.
-		 */
 		if (colexpr->op == JSON_EXISTS_OP)
 		{
 			appendStringInfoString(buf, " EXISTS");
@@ -12119,6 +12116,9 @@ get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
 
 			default_behavior = JSON_BEHAVIOR_NULL;
 		}
+
+		if (jexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
+			default_behavior = JSON_BEHAVIOR_ERROR;
 
 		appendStringInfoString(buf, " PATH ");
 
@@ -12197,7 +12197,7 @@ get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
 	get_json_table_columns(tf, castNode(JsonTablePathScan, tf->plan), context,
 						   showimplicit);
 
-	if (jexpr->on_error->btype != JSON_BEHAVIOR_EMPTY_ARRAY)
+	if (jexpr->on_error->btype != JSON_BEHAVIOR_EMPTY)
 		get_json_behavior(jexpr->on_error, context, "ERROR");
 
 	if (PRETTY_INDENT(context))
