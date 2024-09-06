@@ -4581,6 +4581,7 @@ recheck_cast_function_args(List *args, Oid result_type,
 	Oid			actual_arg_types[FUNC_MAX_ARGS];
 	Oid			declared_arg_types[FUNC_MAX_ARGS];
 	Oid			rettype;
+	Oid			declared_rettype;
 	ListCell   *lc;
 
 	if (list_length(args) > FUNC_MAX_ARGS)
@@ -4592,10 +4593,13 @@ recheck_cast_function_args(List *args, Oid result_type,
 	}
 	Assert(nargs == pronargs);
 	memcpy(declared_arg_types, proargtypes, pronargs * sizeof(Oid));
+
+	declared_rettype = get_func_real_rettype(func_tuple);
+
 	rettype = enforce_generic_type_consistency(actual_arg_types,
 											   declared_arg_types,
 											   nargs,
-											   funcform->prorettype,
+											   declared_rettype,
 											   false);
 	/* let's just check we got the same answer as the parser did ... */
 	if (rettype != result_type)
