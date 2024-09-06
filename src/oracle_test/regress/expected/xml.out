@@ -240,22 +240,22 @@ SELECT xmlelement("a", xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
  <a bar="2024-09-04 21:16:37.000000"/>
 (1 row)
 
-SELECT xmlelement(name foo, xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
-               xmlelement                
------------------------------------------
- <foo bar="2024-09-04 21:16:37.000000"/>
+SELECT xmlelement("a", xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
+              xmlelement               
+---------------------------------------
+ <a bar="2024-09-04 21:16:37.000000"/>
 (1 row)
 
-SELECT xmlelement(name foo, array[1, 2, 3]);
-                               xmlelement                                
--------------------------------------------------------------------------
- <foo><element>1</element><element>2</element><element>3</element></foo>
+SELECT xmlelement("a", array[1, 2, 3]);
+                             xmlelement                              
+---------------------------------------------------------------------
+ <a><element>1</element><element>2</element><element>3</element></a>
 (1 row)
 
-SELECT xmlelement(name foo, xmlattributes('2024-09-04 21:16:37'::timestamp as bar),  array[1, 2, 3]);
-                                                xmlelement                                                
-----------------------------------------------------------------------------------------------------------
- <foo bar="2024-09-04 21:16:37.000000"><element>1</element><element>2</element><element>3</element></foo>
+SELECT xmlelement("a", xmlattributes('2024-09-04 21:16:37'::timestamp as bar),  array[1, 2, 3]);
+                                              xmlelement                                              
+------------------------------------------------------------------------------------------------------
+ <a bar="2024-09-04 21:16:37.000000"><element>1</element><element>2</element><element>3</element></a>
 (1 row)
 
 SELECT xmlparse(content '');
