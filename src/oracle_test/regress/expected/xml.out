@@ -234,6 +234,12 @@ SELECT xmlelement("a");
  <a/>
 (1 row)
 
+SELECT xmlelement("a", xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
+              xmlelement               
+---------------------------------------
+ <a bar="2024-09-04 21:16:37.000000"/>
+(1 row)
+
 SELECT xmlelement(name foo, xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
                xmlelement                
 -----------------------------------------
