@@ -4423,8 +4423,8 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 				/* Set up to catch coercion errors of the ON EMPTY value. */
 				jsestate->escontext.error_occurred = false;
 				jsestate->escontext.details_wanted = true;
-				Assert(jsestate->jump_empty >= 0);
-				return jsestate->jump_empty;
+				/* Jump to end if the ON EMPTY behavior is to return NULL */
+				return jsestate->jump_empty >= 0 ? jsestate->jump_empty : jsestate->jump_end;
 			}
 		}
 		else if (jsexpr->on_error->btype != JSON_BEHAVIOR_ERROR)
@@ -4433,8 +4433,9 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 			/* Set up to catch coercion errors of the ON ERROR value. */
 			jsestate->escontext.error_occurred = false;
 			jsestate->escontext.details_wanted = true;
-			Assert(!throw_error && jsestate->jump_error >= 0);
-			return jsestate->jump_error;
+			Assert(!throw_error);
+			/* Jump to end if the ON ERROR behavior is to return NULL */
+			return jsestate->jump_error >= 0 ? jsestate->jump_error : jsestate->jump_end;
 		}
 
 		if (jsexpr->column_name)
@@ -4454,14 +4455,15 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 	 */
 	if (error)
 	{
-		Assert(!throw_error && jsestate->jump_error >= 0);
+		Assert(!throw_error);
 		*op->resvalue = (Datum) 0;
 		*op->resnull = true;
 		jsestate->error.value = BoolGetDatum(true);
 		/* Set up to catch coercion errors of the ON ERROR value. */
 		jsestate->escontext.error_occurred = false;
 		jsestate->escontext.details_wanted = true;
-		return jsestate->jump_error;
+		/* Jump to end if the ON ERROR behavior is to return NULL */
+		return jsestate->jump_error >= 0 ? jsestate->jump_error : jsestate->jump_end;
 	}
 
 	return jump_eval_coercion >= 0 ? jump_eval_coercion : jsestate->jump_end;
