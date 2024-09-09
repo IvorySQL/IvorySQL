@@ -810,8 +810,7 @@ pltcl_func_handler(PG_FUNCTION_ARGS, pltcl_call_state *call_state,
 		!castNode(CallContext, fcinfo->context)->atomic;
 
 	/* Connect to SPI manager */
-	if (SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0) != SPI_OK_CONNECT)
-		elog(ERROR, "could not connect to SPI manager");
+	SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0);
 
 	/* Find or compile the function */
 	prodesc = compile_pltcl_function(fcinfo->flinfo->fn_oid, InvalidOid,
@@ -1074,8 +1073,7 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS, pltcl_call_state *call_state,
 	call_state->trigdata = trigdata;
 
 	/* Connect to SPI manager */
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "could not connect to SPI manager");
+	SPI_connect();
 
 	/* Make transition tables visible to this SPI connection */
 	rc = SPI_register_trigger_data(trigdata);
@@ -1323,8 +1321,7 @@ pltcl_event_trigger_handler(PG_FUNCTION_ARGS, pltcl_call_state *call_state,
 	int			tcl_rc;
 
 	/* Connect to SPI manager */
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "could not connect to SPI manager");
+	SPI_connect();
 
 	/* Find or compile the function */
 	prodesc = compile_pltcl_function(fcinfo->flinfo->fn_oid,

@@ -1948,8 +1948,7 @@ plperl_inline_handler(PG_FUNCTION_ARGS)
 
 		current_call_data = &this_call_data;
 
-		if (SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC) != SPI_OK_CONNECT)
-			elog(ERROR, "could not connect to SPI manager");
+		SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC);
 
 		select_perl_context(desc.lanpltrusted);
 
@@ -2413,8 +2412,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		IsA(fcinfo->context, CallContext) &&
 		!castNode(CallContext, fcinfo->context)->atomic;
 
-	if (SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0) != SPI_OK_CONNECT)
-		elog(ERROR, "could not connect to SPI manager");
+	SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0);
 
 	prodesc = compile_plperl_function(fcinfo->flinfo->fn_oid, false, false);
 	current_call_data->prodesc = prodesc;
@@ -2531,8 +2529,7 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 	int			rc PG_USED_FOR_ASSERTS_ONLY;
 
 	/* Connect to SPI manager */
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "could not connect to SPI manager");
+	SPI_connect();
 
 	/* Make transition tables visible to this SPI connection */
 	tdata = (TriggerData *) fcinfo->context;
@@ -2639,8 +2636,7 @@ plperl_event_trigger_handler(PG_FUNCTION_ARGS)
 	ErrorContextCallback pl_error_context;
 
 	/* Connect to SPI manager */
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "could not connect to SPI manager");
+	SPI_connect();
 
 	/* Find or compile the function */
 	prodesc = compile_plperl_function(fcinfo->flinfo->fn_oid, false, true);
