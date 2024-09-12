@@ -87,13 +87,13 @@ handle_package_proper(List *proper, bool *define_invok,
 
 			if (strcmp(def->defname, "authid") == 0)
 			{
-				Assert(nodeTag(def->arg) == T_Integer);
+				Assert(nodeTag(def->arg) == T_Boolean);
 
 				if (has_invok_proper)
 					elog(ERROR, "at most one declaration 'AUTHID' in package");
 				has_invok_proper = true;
 
-				*define_invok = intVal(def->arg);
+				*define_invok = boolVal(def->arg);
 			}
 			else if (strcmp(def->defname, "collation") == 0)
 			{
