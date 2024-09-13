@@ -2379,7 +2379,7 @@ Datum ivy_xmlisvalid(PG_FUNCTION_ARGS)
 #ifdef USE_LIBXML
 	if (fcinfo->args[0].isnull)
 	{
-		PG_RETURN_BOOL(true);
+		PG_RETURN_UINT32(1);
 	}
 	else
 	{
@@ -2395,11 +2395,11 @@ Datum ivy_xmlisvalid(PG_FUNCTION_ARGS)
 		if (doc)
 		{
 			xmlFreeDoc(doc);
-			PG_RETURN_BOOL(true);
+			PG_RETURN_UINT32(1);
 		}
 		else
 		{
-			PG_RETURN_BOOL(false);
+			PG_RETURN_UINT32(0);
 		}
 	}
 #else

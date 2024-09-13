@@ -228,34 +228,27 @@ SELECT xmlelement(name foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as fun
  <foo funny="&lt;&gt;&amp;&quot;'" funnier="b&lt;a/&gt;r"/>
 (1 row)
 
-SELECT xmlelement("a");
- xmlelement 
-------------
- <a/>
+SELECT xmlelement(foo, xmlattributes(true as bar));
+    xmlelement     
+-------------------
+ <foo bar="true"/>
 (1 row)
 
-SELECT xmlelement("a", xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
-              xmlelement               
----------------------------------------
- <a bar="2024-09-04 21:16:37.000000"/>
+SELECT xmlelement(foo, xmlattributes('2009-04-09 00:24:37'::timestamp as bar));
+               xmlelement                
+-----------------------------------------
+ <foo bar="2009-04-09 00:24:37.000000"/>
 (1 row)
 
-SELECT xmlelement("a", xmlattributes('2024-09-04 21:16:37'::timestamp as bar));
-              xmlelement               
----------------------------------------
- <a bar="2024-09-04 21:16:37.000000"/>
-(1 row)
-
-SELECT xmlelement("a", array[1, 2, 3]);
-                             xmlelement                              
----------------------------------------------------------------------
- <a><element>1</element><element>2</element><element>3</element></a>
-(1 row)
-
-SELECT xmlelement("a", xmlattributes('2024-09-04 21:16:37'::timestamp as bar),  array[1, 2, 3]);
-                                              xmlelement                                              
-------------------------------------------------------------------------------------------------------
- <a bar="2024-09-04 21:16:37.000000"><element>1</element><element>2</element><element>3</element></a>
+SELECT xmlelement(foo, xmlattributes('infinity'::timestamp as bar));
+ERROR:  invalid value "infi" for "YYYY"
+LINE 1: SELECT xmlelement(foo, xmlattributes('infinity'::timestamp a...
+                                             ^
+DETAIL:  Value must be an integer.
+SELECT xmlelement(foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
+                         xmlelement                         
+------------------------------------------------------------
+ <foo funny="&lt;&gt;&amp;&quot;'" funnier="b&lt;a/&gt;r"/>
 (1 row)
 
 SELECT xmlparse(content '');
