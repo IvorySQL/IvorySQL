@@ -2389,7 +2389,7 @@ Datum ivy_xmlisvalid(PG_FUNCTION_ARGS)
 		xmlDocPtr doc = NULL;
 		if (len <= 0) /* Avoid crash */
 		{
-			PG_RETURN_BOOL(true);
+			PG_RETURN_BOOL(1);
 		}
 		doc = xmlReadMemory((const char *)datastr, len, NULL, NULL, XML_PARSE_NOBLANKS);
 		if (doc)
