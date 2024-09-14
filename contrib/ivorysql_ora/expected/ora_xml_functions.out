@@ -799,13 +799,13 @@ SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FF
 SELECT xmlisvalid(XMLType('<a/>'));
  xmlisvalid 
 ------------
- t
+ 1
 (1 row)
 
 SELECT xmlisvalid(XMLType('<a>'));
  xmlisvalid 
 ------------
- f
+ 0
 (1 row)
 
 drop table inaf;
