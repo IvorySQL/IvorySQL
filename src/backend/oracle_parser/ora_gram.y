@@ -15034,6 +15034,12 @@ CharacterWithLength:  character '(' Iconst ')'
 						}
 						else
 						{
+							if ($3 > CHAR_TYPE_LENGTH_MAX)
+                                                                ereport(ERROR,
+                                                                        (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+									errmsg("specified length too long for its datatype"),
+                                                                        parser_errposition(@3)));
+
 							if (nls_length_semantics == NLS_LENGTH_CHAR)
 								$1 = "oracharchar";
 							else

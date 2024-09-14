@@ -19,6 +19,8 @@
 #define ORA_SEARCH_PATH "sys,\"$user\", public"
 #define DB_MODE_PARMATER "ivorysql.database_mode"
 
+#define CHAR_TYPE_LENGTH_MAX    2000
+
 typedef enum DBMode
 {
 	DB_PG = 0,
