@@ -92,7 +92,7 @@ jobs:
                     "
     - name: upload regression files
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: results
         path: ${{ github.workspace }}/regression.tar.gz
