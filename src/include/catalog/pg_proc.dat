@@ -12318,6 +12318,8 @@
   proallargtypes => '{int8,pg_lsn,pg_lsn,int4}', proargmodes => '{o,o,o,o}',
   proargnames => '{summarized_tli,summarized_lsn,pending_lsn,summarizer_pid}',
   prosrc => 'pg_get_wal_summarizer_state' },
+
+#Oracle compatible mode
 { oid => '4645', descr => 'is package visible in search path?',
   proname => 'pg_package_is_visible', procost => '10', provolatile => 's',
   prorettype => 'bool', proargtypes => 'oid', prosrc => 'pg_package_is_visible' },
@@ -12334,4 +12336,11 @@
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{oid,namespace,owner,package_name,proc_name,fno,kind,nargs,ndefaults,rettype,rettypname,argtypes,argtypenames,argmodes,argnames,argdefaults,prosecdef}',
   prosrc => 'pg_get_subprocs_in_package' },
+
+# GiST stratnum implementations
+{ oid => '8047', descr => 'GiST support',
+  proname => 'gist_stratnum_identity', prorettype => 'int2',
+  proargtypes => 'int2',
+  prosrc => 'gist_stratnum_identity' },
+
 ]
