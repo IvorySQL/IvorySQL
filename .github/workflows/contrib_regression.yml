@@ -47,7 +47,7 @@ jobs:
                 xargs -0 tar -czf pg_regression.tar.gz
     - name: upload pg_regression files
       if: failure()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: results
         path: ${{ github.workspace }}/pg_regression.tar.gz
