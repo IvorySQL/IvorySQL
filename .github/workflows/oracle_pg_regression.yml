@@ -66,7 +66,7 @@ jobs:
                 xargs -0 tar -czf oracle_pg_regression.tar.gz
     - name: upload oracle_pg_regression files
       if: failure()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: results
         path: ${{ github.workspace }}/oracle_pg_regression.tar.gz
