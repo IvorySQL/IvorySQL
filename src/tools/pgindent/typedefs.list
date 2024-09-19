@@ -3041,6 +3041,7 @@ UnresolvedTupData
 IvyUpdateContext
 UpdateStmt
 UpgradeTask
+UpgradeTaskProcessCB
 UpgradeTaskReport
 UpgradeTaskSlot
 UpgradeTaskSlotState
