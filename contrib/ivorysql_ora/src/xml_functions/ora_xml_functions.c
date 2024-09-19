@@ -363,6 +363,7 @@ PG_FUNCTION_INFO_V1(ivy_insertchildxmlbefore);
 PG_FUNCTION_INFO_V1(ivy_insertchildxmlbefore2);
 PG_FUNCTION_INFO_V1(ivy_insertchildxmlafter);
 PG_FUNCTION_INFO_V1(ivy_insertchildxmlafter2);
+PG_FUNCTION_INFO_V1(ivy_xmlisvalid);
 /*
  * ----------------------------------------------------------------------------
  *	Helper Function definition
@@ -2367,6 +2368,40 @@ updatexml(List *args)
 	cleanup_ws(&ws);
 
 	return ret;
+#else
+	NO_XML_SUPPORT();
+	return NULL;
+#endif
+}
+
+Datum ivy_xmlisvalid(PG_FUNCTION_ARGS)
+{
+#ifdef USE_LIBXML
+	if (fcinfo->args[0].isnull)
+	{
+		PG_RETURN_UINT32(1);
+	}
+	else
+	{
+		text *data = PG_GETARG_TEXT_PP(0);
+		char *datastr = VARDATA(data);
+		int32 len = VARSIZE(data) - VARHDRSZ;
+		xmlDocPtr doc = NULL;
+		if (len <= 0) /* Avoid crash */
+		{
+			PG_RETURN_BOOL(1);
+		}
+		doc = xmlReadMemory((const char *)datastr, len, NULL, NULL, XML_PARSE_NOBLANKS);
+		if (doc)
+		{
+			xmlFreeDoc(doc);
+			PG_RETURN_UINT32(1);
+		}
+		else
+		{
+			PG_RETURN_UINT32(0);
+		}
+	}
 #else
 	NO_XML_SUPPORT();
 	return NULL;
