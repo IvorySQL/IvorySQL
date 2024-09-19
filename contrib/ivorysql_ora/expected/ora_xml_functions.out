@@ -793,6 +793,21 @@ SELECT insertchildxmlafter(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FF
  </soapenv:Envelope>
 (1 row)
 
+--
+-- xmlisvalid
+--
+SELECT xmlisvalid(XMLType('<a/>'));
+ xmlisvalid 
+------------
+          1
+(1 row)
+
+SELECT xmlisvalid(XMLType('<a>'));
+ xmlisvalid 
+------------
+          0
+(1 row)
+
 drop table inaf;
 drop table xmltest;
 drop table xmlnstest;
