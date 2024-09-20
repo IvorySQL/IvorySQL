@@ -624,6 +624,7 @@ DROP TABLE toasttest;
 --
 
 SELECT length('abcdef') AS "length_6";
+CREATE TABLE toasttest (c char(2001));
 
 --
 -- test strpos
