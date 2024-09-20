@@ -1970,6 +1970,10 @@ SELECT length('abcdef') AS "length_6";
         6
 (1 row)
 
+CREATE TABLE toasttest (c char(2001));
+ERROR:  specified length too long for its datatype
+LINE 1: CREATE TABLE toasttest (c char(2001));
+                                       ^
 --
 -- test strpos
 --
