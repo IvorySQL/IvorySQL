@@ -613,7 +613,7 @@ DROP TABLE toasttest;
 -- datum must be given a 4-byte header because there are no bits to indicate
 -- compression in a 1-byte header
 
-CREATE TABLE toasttest (c char(4096));
+CREATE TABLE toasttest (c char(2000));
 INSERT INTO toasttest VALUES('x');
 SELECT length(c), c::text FROM toasttest;
 SELECT c FROM toasttest;
@@ -624,6 +624,7 @@ DROP TABLE toasttest;
 --
 
 SELECT length('abcdef') AS "length_6";
+CREATE TABLE toasttest (c char(2001));
 
 --
 -- test strpos
