@@ -321,6 +321,9 @@ ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
 ALTER TABLE onek ADD CONSTRAINT onek_check_constraint CHECK (unique1 >= 0);
 ALTER TABLE onek RENAME CONSTRAINT onek_check_constraint TO onek_check_constraint_foo;
 ALTER TABLE onek DROP CONSTRAINT onek_check_constraint_foo;
+-- support constraint in parenthesis
+ALTER TABLE onek ADD (CONSTRAINT onek_check_constraint CHECK (unique1 >= 0));
+ALTER TABLE onek DROP CONSTRAINT onek_check_constraint;
 -- renaming constraint should rename index as well
 ALTER TABLE onek ADD CONSTRAINT onek_unique1_constraint UNIQUE (unique1);
 DROP INDEX onek_unique1_constraint;  -- to see whether it's there
