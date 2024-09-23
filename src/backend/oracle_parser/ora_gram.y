@@ -2656,6 +2656,15 @@ alter_table_cmd:
 					n->def = $2;
 					$$ = (Node *) n;
 				}
+			/* ALTER TABLE <name> ADD (CONSTRAINT ...) */
+			| ADD_P '(' TableConstraint ')'
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+										
+					n->subtype = AT_AddConstraint;
+					n->def = $3;
+					$$ = (Node *) n;
+				}
 			/* ALTER TABLE <name> ALTER CONSTRAINT ... */
 			| ALTER CONSTRAINT name ConstraintAttributeSpec
 				{
