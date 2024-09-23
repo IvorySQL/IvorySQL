@@ -38,6 +38,10 @@
 #include <termios.h>
 #endif
 
+#include "postgres.h"
+#include "catalog/pg_type.h"
+#include "commands/sequence.h"
+
 #include "access/attnum.h"
 #include "access/sysattr.h"
 #include "access/transam.h"
@@ -17049,14 +17053,18 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 	bool		cycled;
 	bool		is_ascending;
 	bool		is_ora_identity = false;
-	int64		default_minv,
-				default_maxv;
+	int64		default_minv = 0,
+			default_maxv = 0;
 	char		bufm[32],
 				bufx[32];
 	PQExpBuffer query = createPQExpBuffer();
 	PQExpBuffer delqry = createPQExpBuffer();
 	char	   *qseqname;
 	TableInfo  *owning_tab = NULL;
+	bool 		is_scale = false;
+	bool		is_extend = false;
+	bool		is_session = false;
+	int16		flags = 0;
 
 	qseqname = pg_strdup(fmtId(tbinfo->dobj.name));
 
@@ -17066,7 +17074,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 						  "SELECT format_type(seqtypid, NULL), "
 						  "seqstart, seqincrement, "
 						  "seqmax, seqmin, "
-						  "seqcache, seqcycle "
+						  "seqcache, seqcycle, flags "
 						  "FROM pg_catalog.pg_sequence "
 						  "WHERE seqrelid = '%u'::oid",
 						  tbinfo->dobj.catId.oid);
@@ -17082,7 +17090,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		appendPQExpBuffer(query,
 						  "SELECT 'bigint' AS sequence_type, "
 						  "start_value, increment_by, max_value, min_value, "
-						  "cache_value, is_cycled FROM %s",
+						  "cache_value, is_cycled, flags FROM %s",
 						  fmtQualifiedDumpable(tbinfo));
 	}
 
@@ -17101,6 +17109,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 	minv = PQgetvalue(res, 0, 4);
 	cache = PQgetvalue(res, 0, 5);
 	cycled = (strcmp(PQgetvalue(res, 0, 6), "t") == 0);
+	flags = atoi(PQgetvalue(res, 0, 7));
 
 	/* Calculate default limits for a sequence of this type */
 	is_ascending = (incby[0] != '-');
@@ -17231,9 +17240,25 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 	else if (db_mode == DB_ORACLE)
 		appendPQExpBufferStr(query, "    NOMAXVALUE\n");
 
-	appendPQExpBuffer(query,
-					  "    CACHE %s%s",
-					  cache, (cycled ? "\n    CYCLE" : ""));
+	if (strcmp(cache, "1") == 0 && db_mode == DB_ORACLE)
+		appendPQExpBuffer(query,
+						"    NOCACHE %s",
+						(cycled ? "\n    CYCLE" : ""));
+	else
+		appendPQExpBuffer(query,
+						"    CACHE %s%s",
+						cache, (cycled ? "\n    CYCLE" : ""));
+
+	is_scale = (flags & SCALE_FLAG) == SCALE_FLAG ? true : false;
+	if(is_scale)
+		is_extend = (flags & EXTEND_FLAG) == EXTEND_FLAG ? true : false;
+	is_session = (flags & SESSION_FLAG) == SESSION_FLAG ? true : false;
+	if (is_scale && is_extend)
+		appendPQExpBuffer(query, " SCALE EXTEND");
+	else if (is_scale && !is_extend)
+		appendPQExpBuffer(query, " SCALE NOEXTEND");
+	if (is_session)
+		appendPQExpBuffer(query, " SESSION");
 
 	if (tbinfo->is_identity_sequence)
 	{

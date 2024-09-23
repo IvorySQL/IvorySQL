@@ -302,6 +302,9 @@ extern PGDLLIMPORT char *nls_timestamp_format;
 extern PGDLLIMPORT char *nls_timestamp_tz_format;
 extern PGDLLIMPORT int	datetime_ignore_nls_mask;
 
+extern PGDLLIMPORT bool	seq_scale_fixed;
+extern PGDLLIMPORT bool internal_warning;
+
 #define ORADATE_MASK			0x01
 #define ORATIMESTAMP_MASK		0x02
 #define ORATIMESTAMPTZ_MASK		0x04

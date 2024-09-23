@@ -1,6 +1,7 @@
 --
 -- CREATE SEQUENCE
 --
+SET ivorysql.enable_seq_scale_fixed = TRUE;
 -- various error cases
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 ERROR:  INCREMENT must not be zero
@@ -11,7 +12,7 @@ ERROR:  MINVALUE (1) must be less than MAXVALUE (-20)
 CREATE SEQUENCE sequence_testx INCREMENT BY 1 START WITH -10;
 ERROR:  START value (-10) cannot be less than MINVALUE (1)
 CREATE SEQUENCE sequence_testx CACHE 0;
-ERROR:  CACHE (0) must be greater than zero
+ERROR:  the number of values to CACHE must be greater than 1
 -- OWNED BY errors
 CREATE SEQUENCE sequence_testx OWNED BY nobody;  -- nonsense word
 ERROR:  invalid OWNED BY option
@@ -26,16 +27,16 @@ CREATE SEQUENCE sequence_testx OWNED BY sequence_test_table.b;  -- wrong column
 ERROR:  column "b" of relation "sequence_test_table" does not exist
 DROP TABLE sequence_test_table;
 -- sequence data types
-CREATE SEQUENCE sequence_test5 AS integer;
-CREATE SEQUENCE sequence_test6 AS smallint;
-CREATE SEQUENCE sequence_test7 AS bigint;
-CREATE SEQUENCE sequence_test8 AS integer MAXVALUE 100000;
-CREATE SEQUENCE sequence_test9 AS integer INCREMENT BY -1;
-CREATE SEQUENCE sequence_test10 AS integer MINVALUE -100000 START WITH 1;
-CREATE SEQUENCE sequence_test11 AS smallint;
-CREATE SEQUENCE sequence_test12 AS smallint INCREMENT BY -1;
-CREATE SEQUENCE sequence_test13 AS smallint MINVALUE -32768;
-CREATE SEQUENCE sequence_test14 AS smallint MAXVALUE 32767 INCREMENT BY -1;
+CREATE SEQUENCE sequence_test5 AS integer NOCACHE;
+CREATE SEQUENCE sequence_test6 AS smallint NOCACHE;
+CREATE SEQUENCE sequence_test7 AS bigint NOCACHE;
+CREATE SEQUENCE sequence_test8 AS integer MAXVALUE 100000 NOCACHE;
+CREATE SEQUENCE sequence_test9 AS integer INCREMENT BY -1 NOCACHE;
+CREATE SEQUENCE sequence_test10 AS integer MINVALUE -100000 START WITH 1 NOCACHE;
+CREATE SEQUENCE sequence_test11 AS smallint NOCACHE;
+CREATE SEQUENCE sequence_test12 AS smallint INCREMENT BY -1 NOCACHE;
+CREATE SEQUENCE sequence_test13 AS smallint MINVALUE -32768 NOCACHE;
+CREATE SEQUENCE sequence_test14 AS smallint MAXVALUE 32767 INCREMENT BY -1 NOCACHE;
 CREATE SEQUENCE sequence_testx AS text;
 ERROR:  sequence type must be a numeric type
 CREATE SEQUENCE sequence_testx AS nosuchtype;
@@ -236,7 +237,7 @@ SELECT currval('sequence_test'::regclass);
 ERROR:  currval of sequence "sequence_test" is not yet defined in this session
 DROP SEQUENCE sequence_test;
 -- renaming sequences
-CREATE SEQUENCE foo_seq;
+CREATE SEQUENCE foo_seq nocache;
 ALTER TABLE foo_seq RENAME TO foo_seq_new;
 SELECT * FROM foo_seq_new;
  last_value | log_cnt | is_called 
@@ -312,8 +313,8 @@ ALTER SEQUENCE IF EXISTS sequence_test2 RESTART WITH 24
 NOTICE:  relation "sequence_test2" does not exist, skipping
 ALTER SEQUENCE serialTest1 CYCLE;  -- error, not a sequence
 ERROR:  "serialtest1" is not a sequence
-CREATE SEQUENCE sequence_test2 START WITH 32;
-CREATE SEQUENCE sequence_test4 INCREMENT BY -1;
+CREATE SEQUENCE sequence_test2 START WITH 32 NOCACHE;
+CREATE SEQUENCE sequence_test4 INCREMENT BY -1 NOCACHE;
 SELECT nextval('sequence_test2');
  nextval 
 ---------
@@ -330,13 +331,13 @@ ALTER SEQUENCE sequence_test2 RESTART;
 SELECT nextval('sequence_test2');
  nextval 
 ---------
-      32
+       1
 (1 row)
 
 ALTER SEQUENCE sequence_test2 RESTART WITH 0;  -- error
-ERROR:  RESTART value (0) cannot be less than MINVALUE (1)
+ERROR:  SQL command not properly ended
 -- test CYCLE and NO CYCLE
-ALTER SEQUENCE sequence_test2 RESTART WITH 24
+ALTER SEQUENCE sequence_test2 RESTART START WITH 24
   INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
 SELECT nextval('sequence_test2');
  nextval 
@@ -368,7 +369,7 @@ SELECT nextval('sequence_test2');  -- cycled
        5
 (1 row)
 
-ALTER SEQUENCE sequence_test2 RESTART WITH 24
+ALTER SEQUENCE sequence_test2 RESTART START WITH 24
   NOCYCLE;
 SELECT nextval('sequence_test2');
  nextval 
@@ -396,7 +397,7 @@ SELECT nextval('sequence_test2');
 
 SELECT nextval('sequence_test2');  -- error
 ERROR:  nextval: reached maximum value of sequence "sequence_test2" (36)
-ALTER SEQUENCE sequence_test2 RESTART WITH -24 START WITH -24
+ALTER SEQUENCE sequence_test2 RESTART START WITH -24
   INCREMENT BY -4 MINVALUE -36 MAXVALUE -5 CYCLE;
 SELECT nextval('sequence_test2');
  nextval 
@@ -428,7 +429,7 @@ SELECT nextval('sequence_test2');  -- cycled
       -5
 (1 row)
 
-ALTER SEQUENCE sequence_test2 RESTART WITH -24
+ALTER SEQUENCE sequence_test2 RESTART START WITH -24
   NOCYCLE;
 SELECT nextval('sequence_test2');
  nextval 
@@ -457,7 +458,7 @@ SELECT nextval('sequence_test2');
 SELECT nextval('sequence_test2');  -- error
 ERROR:  nextval: reached minimum value of sequence "sequence_test2" (-36)
 -- reset
-ALTER SEQUENCE IF EXISTS sequence_test2 RESTART WITH 32 START WITH 32
+ALTER SEQUENCE IF EXISTS sequence_test2 RESTART START WITH 32
   INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
 SELECT setval('sequence_test2', -100);  -- error
 ERROR:  setval: value -100 is out of bounds for sequence "sequence_test2" (5..36)
@@ -469,7 +470,7 @@ SELECT setval('sequence_test2', 5);
       5
 (1 row)
 
-CREATE SEQUENCE sequence_test3;  -- not read from, to test is_called
+CREATE SEQUENCE sequence_test3 NOCACHE;  -- not read from, to test is_called
 -- Information schema
 SELECT * FROM information_schema.sequences
   WHERE sequence_name ~ ANY(ARRAY['sequence_test', 'serialtest'])
@@ -602,14 +603,14 @@ ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
                        Sequence "public.sequence_test_unlogged"
       Type       | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 -----------------+-------+---------+---------------------+-----------+---------+-------
- pg_catalog.int8 |     1 |       1 | 9223372036854775807 |         1 | no      |     1
+ pg_catalog.int8 |     1 |       1 | 9223372036854775807 |         1 | no      |    20
 
 ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
 \d sequence_test_unlogged
                    Unlogged sequence "public.sequence_test_unlogged"
       Type       | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 -----------------+-------+---------+---------------------+-----------+---------+-------
- pg_catalog.int8 |     1 |       1 | 9223372036854775807 |         1 | no      |     1
+ pg_catalog.int8 |     1 |       1 | 9223372036854775807 |         1 | no      |    20
 
 DROP SEQUENCE sequence_test_unlogged;
 -- Test sequences in read-only transactions
@@ -835,3 +836,457 @@ SELECT nextval('test_seq1');
 (1 row)
 
 DROP SEQUENCE test_seq1;
+--
+-- Test oracle compatible fetures
+--
+--just for syntax
+CREATE SEQUENCE seq_sharing1 SHARING=METADATA INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_sharing1;
+CREATE SEQUENCE seq_sharing2 SHARING=DATA INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_sharing2;
+CREATE SEQUENCE seq_sharing3 SHARING=NONE INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_sharing3;
+CREATE SEQUENCE seq_order1 INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_order1;
+CREATE SEQUENCE seq_order2 INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 NOORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_order2;
+CREATE SEQUENCE seq_shard1 SHARING=NONE INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE SHARD EXTEND GLOBAL;
+DROP SEQUENCE seq_shard1;
+CREATE SEQUENCE seq_shard2 SHARING=NONE INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE SHARD NOEXTEND GLOBAL;
+DROP SEQUENCE seq_shard2;
+create sequence seq_shard3 shard;
+DROP SEQUENCE seq_shard3;
+create sequence seq_shard4 noshard;
+DROP SEQUENCE seq_shard4;
+create sequence seq_shard5 shard extend ;
+alter sequence seq_shard5 noshard ;
+DROP SEQUENCE seq_shard5;
+create sequence seq;
+SELECT seq.NEXTVAL FROM DUAL;--result:1
+ nextval 
+---------
+       1
+(1 row)
+
+alter sequence seq restart start with 10;
+SELECT seq.NEXTVAL FROM DUAL;--result:10
+ nextval 
+---------
+      10
+(1 row)
+
+DROP SEQUENCE seq;
+CREATE SEQUENCE seq_restart1 INCREMENT BY 1 START WITH 32 MINVALUE 10 MAXVALUE 50;
+select seq_restart1.nextval from dual;
+ nextval 
+---------
+      32
+(1 row)
+
+alter sequence seq_restart1 restart;
+select seq_restart1.nextval from dual;
+ nextval 
+---------
+      10
+(1 row)
+
+DROP SEQUENCE seq_restart1;
+create sequence seq_restart2 increment by -1 start with 32 minvalue 10 maxvalue 50;
+select seq_restart2.nextval from dual;
+ nextval 
+---------
+      32
+(1 row)
+
+alter sequence seq_restart2 restart;
+select seq_restart2.nextval from dual;
+ nextval 
+---------
+      50
+(1 row)
+
+DROP SEQUENCE seq_restart2;
+create sequence seq_max4 increment by 2 start with 15 maxvalue 10;--error
+ERROR:  START value (15) cannot be greater than MAXVALUE (10)
+create sequence seq_max4 increment by -2 start with 15 maxvalue 10;--error
+ERROR:  START value (15) cannot be greater than MAXVALUE (10)
+create sequence seq_min4 increment by 2 start with 10 minvalue 15;--error
+ERROR:  START value (10) cannot be less than MINVALUE (15)
+create sequence seq_min4 increment by -2 start with 10 minvalue 15 maxvalue 25;--error
+ERROR:  START value (10) cannot be less than MINVALUE (15)
+create sequence seq_cache1 cache 1;--error
+ERROR:  the number of values to CACHE must be greater than 1
+create sequence seq_cache1 cache 2;--ok
+select cache_size from all_sequences where sequence_name='seq_cache1';
+ cache_size 
+------------
+          2
+(1 row)
+
+DROP SEQUENCE seq_cache1;
+create sequence seq_cache2 nocache;
+select cache_size from all_sequences where sequence_name='seq_cache2';
+ cache_size 
+------------
+          1
+(1 row)
+
+DROP SEQUENCE seq_cache2;
+create sequence seq_cache3;
+select cache_size from all_sequences where sequence_name='seq_cache3';
+ cache_size 
+------------
+         20
+(1 row)
+
+DROP SEQUENCE seq_cache3;
+create sequence seq_scale4 minvalue 1 maxvalue 100 noscale;
+select seq_scale5.nextval from dual;
+ERROR:  relation "seq_scale5" does not exist
+LINE 1: select seq_scale5.nextval from dual;
+               ^
+DROP SEQUENCE seq_cache4;
+ERROR:  sequence "seq_cache4" does not exist
+create sequence seq_session1 session ;
+select session_flag from all_sequences where sequence_name='seq_session1';
+ session_flag 
+--------------
+ Y
+(1 row)
+
+select seq_session1.nextval from dual;
+ nextval 
+---------
+       1
+(1 row)
+
+select seq_session1.nextval from dual;
+ nextval 
+---------
+       2
+(1 row)
+
+DROP SEQUENCE seq_session1;
+create sequence seq start with 6 minvalue 3 maxvalue 8 cycle session nocache;
+select seq.nextval from dual;
+ nextval 
+---------
+       6
+(1 row)
+
+select seq.nextval from dual;
+ nextval 
+---------
+       7
+(1 row)
+
+select seq.nextval from dual;
+ nextval 
+---------
+       8
+(1 row)
+
+select seq.nextval from dual; --cycle from minavlue 3
+ nextval 
+---------
+       3
+(1 row)
+
+DROP SEQUENCE seq;
+create sequence seq start with -2 minvalue -5 maxvalue -1 increment by -2 cycle session nocache;
+select seq.nextval from dual;
+ nextval 
+---------
+      -2
+(1 row)
+
+select seq.nextval from dual;
+ nextval 
+---------
+      -4
+(1 row)
+
+select seq.nextval from dual; --cycle from  maxvalue -1
+ nextval 
+---------
+      -1
+(1 row)
+
+DROP SEQUENCE seq;
+--nocacle
+create sequence seq start with -2 minvalue -5 maxvalue -1 increment by -2 session nocache;
+select seq.nextval from dual;
+ nextval 
+---------
+      -2
+(1 row)
+
+select seq.nextval from dual;
+ nextval 
+---------
+      -4
+(1 row)
+
+select seq.nextval from dual; --error
+ERROR:  sequence seq.nextval goes below MINVALUE and cannot be instantiated
+DROP SEQUENCE seq;
+-- Exceeded the maximum value of scale extend
+create sequence seq scale extend maxvalue 99999999999999;--maximum value will decrease to 9999999999999
+select min_value, max_value from user_sequences where sequence_name = 'seq';
+ min_value |   max_value   
+-----------+---------------
+         1 | 9999999999999
+(1 row)
+
+DROP SEQUENCE seq;
+create sequence seq scale extend increment by -1 minvalue -99999999999999;--minvalue -9999999999999 maxvalue -1
+select min_value, max_value from user_sequences where sequence_name = 'seq';
+   min_value    | max_value 
+----------------+-----------
+ -9999999999999 |        -1
+(1 row)
+
+DROP SEQUENCE seq;
+-- test seq number after alter table
+create sequence seq start with 100;
+select seq.nextval from dual;
+ nextval 
+---------
+     100
+(1 row)
+
+select seq.nextval from dual;
+ nextval 
+---------
+     101
+(1 row)
+
+alter sequence seq session;
+select seq.currval from dual;
+ currval 
+---------
+     101
+(1 row)
+
+select seq.nextval from dual;
+ nextval 
+---------
+     102
+(1 row)
+
+DROP SEQUENCE seq;
+--test scale option
+CREATE SEQUENCE seq scale extend;
+select seq.nextval from dual;
+       nextval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+select seq.currval from dual;
+       currval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+DROP SEQUENCE seq;
+create sequence seq scale noextend;
+select seq.nextval from dual;
+       nextval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+select seq.currval from dual;
+       currval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+DROP SEQUENCE seq;
+CREATE SEQUENCE seq scale extend;
+select seq.nextval from dual;
+       nextval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+ALTER SEQUENCE seq SCALE NOEXTEND RESTART;
+select seq.nextval from dual;
+       nextval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+select seq.currval from dual;
+       currval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+DROP SEQUENCE seq;
+CREATE SEQUENCE scale_err_seq START WITH 1 MAXVALUE 999 SCALE;
+SELECT scale_err_seq.nextval FROM dual;--ERROR
+ERROR:  NEXTVAL cannot be instantiated for scale_err_seq. Widen the sequence by 4 digits or alter sequence with SCALE EXTEND
+DROP SEQUENCE scale_err_seq;
+CREATE SEQUENCE scale_seq START WITH 8 MAXVALUE 9999999 SCALE;
+SELECT scale_seq.nextval FROM dual;--OK
+ nextval 
+---------
+ 1999998
+(1 row)
+
+SELECT scale_seq.nextval FROM dual;--OK
+ nextval 
+---------
+ 1999999
+(1 row)
+
+SELECT scale_seq.nextval FROM dual;--ERROR
+ERROR:  NEXTVAL cannot be instantiated for scale_seq. Widen the sequence by 1 digits or alter sequence with SCALE EXTEND
+DROP SEQUENCE scale_seq;
+create sequence seq_scale1 minvalue 1 maxvalue 100 scale extend;
+select seq_scale1.nextval from dual;
+  nextval  
+-----------
+ 199999001
+(1 row)
+
+alter sequence seq_scale1 maxvalue 9999999999999 noscale;
+select seq_scale1.nextval from dual;
+  nextval  
+-----------
+ 199999002
+(1 row)
+
+DROP SEQUENCE seq_scale1;
+create sequence seq_scale2 minvalue 1 maxvalue 100 scale extend;
+alter sequence seq_scale2 maxvalue 9999999999999 noscale;
+select seq_scale2.nextval from dual;
+ nextval 
+---------
+       1
+(1 row)
+
+DROP SEQUENCE seq_scale2;
+create sequence seq maxvalue -1 minvalue -99999999 start with -2 scale extend;
+select seq.nextval from dual;
+     nextval     
+-----------------
+ -19999900000002
+(1 row)
+
+select seq.nextval from dual;
+     nextval     
+-----------------
+ -19999900000001
+(1 row)
+
+select seq.currval from dual;
+     currval     
+-----------------
+ -19999900000001
+(1 row)
+
+DROP SEQUENCE seq;
+create sequence seq maxvalue -1 minvalue -99999999 start with -2 increment by -1 scale extend;
+select seq.nextval from dual;
+     nextval     
+-----------------
+ -19999900000002
+(1 row)
+
+select seq.currval from dual;
+     currval     
+-----------------
+ -19999900000002
+(1 row)
+
+DROP SEQUENCE seq;
+create sequence seq session start with 10 increment by 2 maxvalue 20 cycle;
+select seq.nextval from dual;
+ nextval 
+---------
+      10
+(1 row)
+
+DISCARD sequences;
+select seq.nextval from dual;
+ nextval 
+---------
+      10
+(1 row)
+
+DROP SEQUENCE seq;
+create sequence test_conversion start with 100 scale extend maxvalue 9999;
+select test_conversion.nextval from dual;
+  nextval   
+------------
+ 1999990100
+(1 row)
+
+select test_conversion.nextval from dual;
+  nextval   
+------------
+ 1999990101
+(1 row)
+
+alter sequence test_conversion SESSION;
+select test_conversion.currval from dual;
+  currval   
+------------
+ 1999990101
+(1 row)
+
+select test_conversion.nextval from dual;
+ERROR:  sequence test_conversion.nextval exceeds MAXVALUE and cannot be instantiated
+select test_conversion.currval from dual;
+  currval   
+------------
+ 1999990101
+(1 row)
+
+DROP SEQUENCE test_conversion;
+create sequence test_conversion start with 100 scale extend  session maxvalue 9999;
+select test_conversion.nextval from dual;
+ nextval 
+---------
+     100
+(1 row)
+
+select test_conversion.nextval from dual;
+ nextval 
+---------
+     101
+(1 row)
+
+alter sequence test_conversion global;
+select test_conversion.currval from dual;
+ currval 
+---------
+     101
+(1 row)
+
+select test_conversion.nextval from dual;
+  nextval   
+------------
+ 1999990100
+(1 row)
+
+DROP SEQUENCE test_conversion;
+set ivorysql.enable_internal_warning = true;
+CREATE SEQUENCE seq scale extend;
+WARNING:  Scale extend value is greater than 9999999999999
+create sequence seq_scale2 minvalue 1 maxvalue 9999999999999999 scale extend;
+WARNING:  Scale extend value is greater than 9999999999999
+DROP SEQUENCE seq;
+DROP SEQUENCE seq_scale2;
+set ivorysql.enable_internal_warning = false;
+CREATE SEQUENCE seq scale extend;
+create sequence seq_scale2 minvalue 1 maxvalue 9999999999999999 scale extend;
+DROP SEQUENCE seq;
+DROP SEQUENCE seq_scale2;
+create sequence seq_restart3 increment by 1 start with 32 minvalue 10 maxvalue 50;
+alter sequence seq_restart3 start with 20;
+ERROR:  cannot alter starting sequence number
+SET ivorysql.enable_seq_scale_fixed = FALSE;

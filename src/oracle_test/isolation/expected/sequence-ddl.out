@@ -14,7 +14,7 @@ step s2nv: <... completed>
 ERROR:  nextval: reached maximum value of sequence "seq1" (10)
 
 starting permutation: s1restart s2nv s1commit
-step s1restart: ALTER SEQUENCE seq1 RESTART WITH 5;
+step s1restart: ALTER SEQUENCE seq1 RESTART START WITH 5;
 step s2nv: SELECT nextval('seq1') FROM generate_series(1, 15); <waiting ...>
 step s1commit: COMMIT;
 step s2nv: <... completed>
@@ -39,7 +39,7 @@ nextval
 
 
 starting permutation: s1restart s2nv s1commit
-step s1restart: ALTER SEQUENCE seq1 RESTART WITH 5;
+step s1restart: ALTER SEQUENCE seq1 RESTART START WITH 5;
 step s2nv: SELECT nextval('seq1') FROM generate_series(1, 15); <waiting ...>
 step s1commit: COMMIT;
 step s2nv: <... completed>

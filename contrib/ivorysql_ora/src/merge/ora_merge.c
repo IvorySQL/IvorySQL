@@ -64,6 +64,7 @@
 #include "access/heapam.h"
 
 #include "../include/ivorysql_ora.h"
+#include "nodes/nodes.h"
 
 
 static TM_Result execDelete4Merge(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
@@ -232,6 +233,7 @@ lmerge_matched:;
 				break;
 
 			case CMD_DELETE:
+				result = TM_Ok;
 				 break;
 
 			case CMD_NOTHING:
