@@ -575,6 +575,8 @@ typedef unsigned PG_INT128_TYPE uint128
 #define PG_INT64_MIN	(-INT64CONST(0x7FFFFFFFFFFFFFFF) - 1)
 #define PG_INT64_MAX	INT64CONST(0x7FFFFFFFFFFFFFFF)
 #define PG_UINT64_MAX	UINT64CONST(0xFFFFFFFFFFFFFFFF)
+#define PG_SCALE_MAX	9999999999999	
+#define PG_SCALE_MIN	-9999999999999	
 
 /*
  * We now always use int64 timestamps, but keep this symbol defined for the
