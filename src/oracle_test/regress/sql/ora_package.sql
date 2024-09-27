@@ -2770,7 +2770,7 @@ end;
 drop package pkg;
 
 --test
-create table emp1(empno int,ename char(10),job char(20),mgr int,hiredate date,sal number,comm number,deptno int);
+create table emp2(empno int,ename char(10),job char(20),mgr int,hiredate date,sal number,comm number,deptno int);
 create or replace package pg_myfirst
 is
 procedure sp_emp_insert;
@@ -2786,7 +2786,7 @@ is
 procedure sp_emp_insert
 is
 begin
-insert into emp1(empno,ename,job,mgr,hiredate,sal,comm,deptno)
+insert into emp2(empno,ename,job,mgr,hiredate,sal,comm,deptno)
 values(7384,'WangYi','SALESMAN',7698,to_date('2011-07-29','yyyy-mm-dd'),1250.00,1400.00,30);
 end;
 function f_getename(i_empno number)
@@ -2794,7 +2794,7 @@ return varchar2
 is
 v_ename varchar2(200);
 begin
-select ename into v_ename from emp1 where empno=i_empno;
+select ename into v_ename from emp2 where empno=i_empno;
 return v_ename;
 end;
 function f_out(id integer, name varchar) return varchar is
@@ -2848,7 +2848,7 @@ SELECT * FROM pg_myfirst.f2_out(23,NULL);
 
 -- drop data
 drop package pg_myfirst;
-drop table emp1;
+drop table emp2;
 
 --test
 create or replace package pkg is

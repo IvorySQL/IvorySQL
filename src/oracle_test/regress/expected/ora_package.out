@@ -2851,7 +2851,7 @@ end;
 --clean data
 drop package pkg;
 --test
-create table emp1(empno int,ename char(10),job char(20),mgr int,hiredate date,sal number,comm number,deptno int);
+create table emp2(empno int,ename char(10),job char(20),mgr int,hiredate date,sal number,comm number,deptno int);
 create or replace package pg_myfirst
 is
 procedure sp_emp_insert;
@@ -2866,7 +2866,7 @@ is
 procedure sp_emp_insert
 is
 begin
-insert into emp1(empno,ename,job,mgr,hiredate,sal,comm,deptno)
+insert into emp2(empno,ename,job,mgr,hiredate,sal,comm,deptno)
 values(7384,'WangYi','SALESMAN',7698,to_date('2011-07-29','yyyy-mm-dd'),1250.00,1400.00,30);
 end;
 function f_getename(i_empno number)
@@ -2874,7 +2874,7 @@ return varchar2
 is
 v_ename varchar2(200);
 begin
-select ename into v_ename from emp1 where empno=i_empno;
+select ename into v_ename from emp2 where empno=i_empno;
 return v_ename;
 end;
 function f_out(id integer, name varchar) return varchar is
@@ -2952,7 +2952,7 @@ SELECT * FROM pg_myfirst.f2_out(23,NULL);
 
 -- drop data
 drop package pg_myfirst;
-drop table emp1;
+drop table emp2;
 --test
 create or replace package pkg is
 function test(id integer) return integer;
@@ -4228,7 +4228,7 @@ end;
 select *from test1;
  id |  name   
 ----+---------
-  1 | welcome
+  1 | 1
   1 | welcome
 (2 rows)
 
@@ -4810,7 +4810,7 @@ begin
 end;
 /
 INFO:  var1=43,var2=5.5
-ERROR:  operator does not exist: point + pg_catalog.integer
+ERROR:  operator does not exist: point + pg_catalog.int4
 LINE 1: x + 1
           ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
@@ -4985,10 +4985,10 @@ INFO:  schema test_p1 invoke
 --drop schema
 DROP SCHEMA test_schema cascade;
 NOTICE:  drop cascades to 4 other objects
-DETAIL:  drop cascades to function test_schema.test_f(pg_catalog.integer)
-drop cascades to function test_schema.test_p(integer)
-drop cascades to function test_schema.test_f1(integer)
-drop cascades to function test_schema.test_p1(integer)
+DETAIL:  drop cascades to function test_schema.test_f(pg_catalog.int4)
+drop cascades to function test_schema.test_p(pg_catalog.int4)
+drop cascades to function test_schema.test_f1(pg_catalog.int4)
+drop cascades to function test_schema.test_p1(pg_catalog.int4)
 -- privileges on packages
 CREATE USER test_user;
 create user test_user1;
@@ -5603,12 +5603,10 @@ INFO:  23-<NULL>
 INFO:  23
 INFO:  24-<NULL>
 INFO:  24
-
 create or replace package test_pkg is
   var1 varchar2(256);
 end;
 /
-
 --ok
 select test_f('abc') from dual;
  test_f 
@@ -5636,7 +5634,9 @@ INFO:  abc-<NULL>
 INFO:  abc
 INFO:  abc-<NULL>
 INFO:  abc
-
+ALTER function test_f compile;
+ALTER PROCEDURE test_p compile;
+ALTER PROCEDURE test_p1 compile;
 create or replace package test_pkg is
   var1 integer;
 end;
@@ -5668,7 +5668,6 @@ INFO:  23-<NULL>
 INFO:  23
 INFO:  24-<NULL>
 INFO:  24
-
 create or replace function test_f(id test_pkg.var1%type) return test_pkg.var1%type is
 begin
    return id;
@@ -5714,7 +5713,6 @@ INFO:  23-<NULL>
 INFO:  23
 INFO:  24-<NULL>
 INFO:  24
-
 --clear
 DROP VIEW test_view;
 DROP FUNCTION test_f;
@@ -5725,4 +5723,3 @@ DROP package test_pkg;
 DROP FUNCTION test_event_trigger;
 DROP TABLE mds;
 DROP TABLE mdss;
-

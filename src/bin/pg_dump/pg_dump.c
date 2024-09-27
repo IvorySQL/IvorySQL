@@ -6725,8 +6725,8 @@ getPackages(Archive *fout, int *numPkgs)
 	appendPQExpBuffer(query,
 					"SELECT p.tableoid, p.pkgname, p.oid, p.pkgnamespace,"
 					"p.pkgowner,"
-					"p.pkgacl"
-					"acldefault('P', p.pkgowner) AS acldefault, "
+					"p.pkgacl,"
+					"acldefault('P', p.pkgowner) AS acldefault "
 					"FROM pg_package p "
 					"LEFT JOIN pg_init_privs pip ON "
 					"(p.oid = pip.objoid "
