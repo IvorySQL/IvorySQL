@@ -4301,8 +4301,6 @@ getPublications(Archive *fout)
 
 	query = createPQExpBuffer();
 
-	resetPQExpBuffer(query);
-
 	/* Get the publications. */
 	if (fout->remoteVersion >= 130000)
 		appendPQExpBufferStr(query,
