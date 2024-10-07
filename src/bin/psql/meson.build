@@ -13,7 +13,6 @@ psql_sources = files(
   'prompt.c',
   'startup.c',
   'stringutils.c',
-  'tab-complete.c',
   'variables.c',
   'ora_prompt.c',
 )
@@ -44,6 +43,16 @@ psqlplusparse = custom_target('psqlplusparse',
 )
 generated_sources += psqlplusparse.to_list()
 psql_sources += psqlplusparse
+tabcomplete = custom_target('tabcomplete',
+  input: 'tab-complete.in.c',
+  output: 'tab-complete.c',
+  command: [
+    perl, files('gen_tabcomplete.pl'), files('tab-complete.in.c'),
+    '--outfile', '@OUTPUT@', '@INPUT@',
+  ],
+)
+generated_sources += tabcomplete
+psql_sources += tabcomplete
 
 sql_help = custom_target('psql_help',
   output: ['sql_help.c', 'sql_help.h'],
