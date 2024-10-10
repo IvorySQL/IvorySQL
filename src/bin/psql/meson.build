@@ -47,8 +47,8 @@ tabcomplete = custom_target('tabcomplete',
   input: 'tab-complete.in.c',
   output: 'tab-complete.c',
   command: [
-    perl, files('gen_tabcomplete.pl'), files('tab-complete.in.c'),
-    '--outfile', '@OUTPUT@', '@INPUT@',
+    perl, files('gen_tabcomplete.pl'), '@INPUT@',
+    '--outfile', '@OUTPUT@',
   ],
 )
 generated_sources += tabcomplete
