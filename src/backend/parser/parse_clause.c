@@ -3002,7 +3002,7 @@ transformWindowDefinitions(ParseState *pstate,
 					 sortcl->sortop);
 			/* Record properties of sort ordering */
 			wc->inRangeColl = exprCollation(sortkey);
-			wc->inRangeAsc = (rangestrategy == BTLessStrategyNumber);
+			wc->inRangeAsc = !sortcl->reverse_sort;
 			wc->inRangeNullsFirst = sortcl->nulls_first;
 		}
 
@@ -3558,6 +3558,7 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 		sortcl->eqop = eqop;
 		sortcl->sortop = sortop;
 		sortcl->hashable = hashable;
+		sortcl->reverse_sort = reverse;
 
 		switch (sortby->sortby_nulls)
 		{
@@ -3640,6 +3641,8 @@ addTargetToGroupList(ParseState *pstate, TargetEntry *tle,
 		grpcl->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
 		grpcl->eqop = eqop;
 		grpcl->sortop = sortop;
+		grpcl->reverse_sort = false;	/* sortop is "less than", or
+										 * InvalidOid */
 		grpcl->nulls_first = false; /* OK with or without sortop */
 		grpcl->hashable = hashable;
 
