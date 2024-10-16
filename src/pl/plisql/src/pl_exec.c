@@ -2231,7 +2231,7 @@ exec_stmt_call(PLiSQL_execstate *estate, PLiSQL_stmt_call *stmt)
 
 	paramLI = setup_param_list(estate, expr);
 
-	before_lxid = MyProc->lxid;
+	before_lxid = MyProc->vxid.lxid;
 
 	/*
 	 * If we have a procedure-lifespan resowner, use that to hold the refcount
@@ -2252,7 +2252,7 @@ exec_stmt_call(PLiSQL_execstate *estate, PLiSQL_stmt_call *stmt)
 		elog(ERROR, "SPI_execute_plan_extended failed executing query \"%s\": %s",
 			 expr->query, SPI_result_code_string(rc));
 
-	after_lxid = MyProc->lxid;
+	after_lxid = MyProc->vxid.lxid;
 
 	if (before_lxid != after_lxid)
 	{
@@ -6156,7 +6156,7 @@ exec_eval_simple_expr(PLiSQL_execstate *estate,
 					  int32 *rettypmod)
 {
 	ExprContext *econtext = estate->eval_econtext;
-	LocalTransactionId curlxid = MyProc->lxid;
+	LocalTransactionId curlxid = MyProc->vxid.lxid;
 	ParamListInfo paramLI;
 	void	   *save_setup_arg;
 	bool		need_snapshot;
@@ -8062,7 +8062,7 @@ get_cast_hashentry(PLiSQL_execstate *estate,
 	 * functions do; DO blocks have private simple_eval_estates, and private
 	 * cast hash tables to go with them.)
 	 */
-	curlxid = MyProc->lxid;
+	curlxid = MyProc->vxid.lxid;
 	if (cast_entry->cast_lxid != curlxid || cast_entry->cast_in_use)
 	{
 		oldcontext = MemoryContextSwitchTo(estate->simple_eval_estate->es_query_cxt);
@@ -8189,7 +8189,7 @@ exec_simple_check_plan(PLiSQL_execstate *estate, PLiSQL_expr *expr)
 		/* Remember that we have the refcount */
 		expr->expr_simple_plansource = plansource;
 		expr->expr_simple_plan = cplan;
-		expr->expr_simple_plan_lxid = MyProc->lxid;
+		expr->expr_simple_plan_lxid = MyProc->vxid.lxid;
 
 		/* Share the remaining work with the replan code path */
 		exec_save_simple_expr(expr, cplan);
