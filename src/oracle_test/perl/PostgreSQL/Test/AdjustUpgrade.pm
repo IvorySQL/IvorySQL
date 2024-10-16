@@ -106,6 +106,14 @@ sub adjust_database_contents
 			'drop extension if exists test_ext7');
 	}
 
+	# we removed the adminpack extension in v17
+	if ($old_version < 17)
+	{
+		_add_st($result, 'postgres',
+			'drop database if exists contrib_regression_adminpack');
+		delete($dbnames{'contrib_regression_adminpack'});
+	}
+
 	# we removed this test-support function in v17
 	if ($old_version >= 15 && $old_version < 17)
 	{
