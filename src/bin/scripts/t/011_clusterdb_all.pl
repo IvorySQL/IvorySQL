@@ -39,6 +39,9 @@ $node->safe_psql('postgres',
 $node->safe_psql('template1',
 	'CREATE TABLE test1 (a int); CREATE INDEX test1x ON test1 (a); CLUSTER test1 USING test1x'
 );
+$node->safe_psql('ivorysql',
+	'CREATE TABLE test1 (a int); CREATE INDEX test1x ON test1 (a); CLUSTER test1 USING test1x'
+);
 $node->issues_sql_like(
 	[ 'clusterdb', '-a', '-t', 'test1' ],
 	qr/statement: CLUSTER public\.test1/s,
