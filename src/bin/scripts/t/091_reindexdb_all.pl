@@ -17,6 +17,8 @@ $node->safe_psql('postgres',
 	'CREATE TABLE test1 (a int); CREATE INDEX test1x ON test1 (a);');
 $node->safe_psql('template1',
 	'CREATE TABLE test1 (a int); CREATE INDEX test1x ON test1 (a);');
+$node->safe_psql('ivorysql',
+	'CREATE TABLE test1 (a int); CREATE INDEX test1x ON test1 (a);');
 $node->issues_sql_like(
 	[ 'reindexdb', '-a' ],
 	qr/statement: REINDEX.*statement: REINDEX/s,
