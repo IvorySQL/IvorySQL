@@ -62,7 +62,6 @@ OBJS = \
 	vacuumparallel.o \
 	variable.o \
 	view.o \
-	packagecmds.o \
-	waitlsn.o
+	packagecmds.o
 
 include $(top_srcdir)/src/backend/common.mk
