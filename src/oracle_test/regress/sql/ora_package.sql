@@ -4243,11 +4243,6 @@ begin
 end;
 /
 
-begin
-  raise info '%',test_pkg.var1.name;
-end;
-/
-
 drop package test_pkg;
 
 create or replace package test_pkg is

@@ -4318,12 +4318,6 @@ begin
 end;
 /
 INFO:  test_fds integer
-begin
-  raise info '%',test_pkg.var1.name;
-end;
-/
-INFO:  init package
-INFO:  <NULL>
 drop package test_pkg;
 create or replace package test_pkg is
   var1 integer;
@@ -5634,9 +5628,6 @@ INFO:  abc-<NULL>
 INFO:  abc
 INFO:  abc-<NULL>
 INFO:  abc
-ALTER function test_f compile;
-ALTER PROCEDURE test_p compile;
-ALTER PROCEDURE test_p1 compile;
 create or replace package test_pkg is
   var1 integer;
 end;
