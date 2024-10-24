@@ -22,6 +22,9 @@
 #include "nodes/pathnodes.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+#include "utils/packagecache.h"
+/* End - ReqID:SRS-SQL-PACKAGE */
 
 static bool expression_returns_set_walker(Node *node, void *context);
 static int	leftmostLoc(int loc1, int loc2);
@@ -73,7 +76,19 @@ exprType(const Node *expr)
 			type = ((const SubscriptingRef *) expr)->refrestype;
 			break;
 		case T_FuncExpr:
-			type = ((const FuncExpr *) expr)->funcresulttype;
+			{
+				/* Begin - ReqID:SRS-SQL-PACKAGE */
+				FuncExpr *funcexpr = (FuncExpr *) expr;
+
+				if (FUNC_EXPR_FROM_PACKAGE(funcexpr->function_from))
+					set_pkginfo_from_funcexpr(funcexpr);
+				if (funcexpr->ref_pkgtype &&
+					FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+					set_pkgtype_from_funcexpr(funcexpr);
+
+				type = funcexpr->funcresulttype;
+				/* End - ReqID:SRS-SQL-PACKAGE */
+			}
 			break;
 		case T_NamedArgExpr:
 			type = exprType((Node *) ((const NamedArgExpr *) expr)->arg);

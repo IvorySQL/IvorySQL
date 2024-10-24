@@ -25,6 +25,10 @@
 #include "catalog/pg_type.h"
 #include "parser/parse_coerce.h"
 #include "utils/syscache.h"
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+#include "utils/lsyscache.h"
+/* End - ReqID:SRS-SQL-PACKAGE */
+
 
 
 /*
@@ -163,7 +167,8 @@ check_amproc_signature(Oid funcid, Oid restype, bool exact,
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(tp);
 
-	if (procform->prorettype != restype || procform->proretset ||
+	if (get_func_real_rettype(tp) != restype || /* ReqID:SRS-SQL-PACKAGE */
+		procform->proretset || 
 		procform->pronargs < minargs || procform->pronargs > maxargs)
 		result = false;
 

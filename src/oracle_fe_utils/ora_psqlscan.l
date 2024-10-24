@@ -1076,6 +1076,7 @@ other			.
 					if (pg_strcasecmp(yytext, "create") == 0 ||
 						pg_strcasecmp(yytext, "function") == 0 ||
 						pg_strcasecmp(yytext, "procedure") == 0 ||
+						pg_strcasecmp(yytext, "package") == 0 || /* ReqID:SRS-SQL-PACKAGE */
 						pg_strcasecmp(yytext, "or") == 0 ||
 						pg_strcasecmp(yytext, "replace") == 0)
 					{

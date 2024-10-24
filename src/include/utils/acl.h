@@ -163,6 +163,7 @@ typedef struct ArrayType Acl;
 #define ACL_ALL_RIGHTS_FDW			(ACL_USAGE)
 #define ACL_ALL_RIGHTS_FOREIGN_SERVER (ACL_USAGE)
 #define ACL_ALL_RIGHTS_FUNCTION		(ACL_EXECUTE)
+#define ACL_ALL_RIGHTS_PACKAGE		(ACL_EXECUTE) /* ReqID:SRS-SQL-PACKAGE */
 #define ACL_ALL_RIGHTS_LANGUAGE		(ACL_USAGE)
 #define ACL_ALL_RIGHTS_LARGEOBJECT	(ACL_SELECT|ACL_UPDATE)
 #define ACL_ALL_RIGHTS_PARAMETER_ACL (ACL_SET|ACL_ALTER_SYSTEM)
@@ -239,6 +240,11 @@ extern void RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid);
 
 extern AclMode pg_class_aclmask(Oid table_oid, Oid roleid,
 								AclMode mask, AclMaskHow how);
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+extern AclMode pg_package_aclmask(Oid pkg_oid, Oid roleid,
+								AclMode mask, AclMaskHow how);
+extern AclResult pg_package_aclcheck(Oid pkgoid, Oid roleid, AclMode mode);
+/* End - ReqID:SRS-SQL-PACKAGE */
 
 /* generic functions */
 extern AclResult object_aclcheck(Oid classid, Oid objectid,

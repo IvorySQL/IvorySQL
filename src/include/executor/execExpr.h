@@ -398,6 +398,9 @@ typedef struct ExprEvalStep
 			void	   *paramarg;	/* private data for same */
 			int			paramid;	/* numeric ID for parameter */
 			Oid			paramtype;	/* OID of parameter's datatype */
+			/* Begin - ReqID:SRS-SQL-PACKAGE */
+			Oid			pkgoid; 	/* param comes from a package'var */
+			/* End - ReqID:SRS-SQL-PACKAGE */
 		}			cparam;
 
 		/* for EEOP_CASE_TESTVAL/DOMAIN_TESTVAL */

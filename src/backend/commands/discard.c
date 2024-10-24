@@ -21,6 +21,10 @@
 #include "commands/sequence.h"
 #include "utils/guc.h"
 #include "utils/portal.h"
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+#include "utils/packagecache.h"
+/* End - ReqID:SRS-SQL-PACKAGE */
+
 
 static void DiscardAll(bool isTopLevel);
 
@@ -43,6 +47,12 @@ DiscardCommand(DiscardStmt *stmt, bool isTopLevel)
 		case DISCARD_SEQUENCES:
 			ResetSequenceCaches();
 			break;
+
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case DISCARD_PACKAGES:
+			ResetPackageCaches();
+			break;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		case DISCARD_TEMP:
 			ResetTempTableNamespace();
@@ -75,4 +85,7 @@ DiscardAll(bool isTopLevel)
 	ResetPlanCache();
 	ResetTempTableNamespace();
 	ResetSequenceCaches();
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	ResetPackageCaches();
+	/* End - ReqID:SRS-SQL-PACKAGE */
 }

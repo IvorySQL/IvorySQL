@@ -36,6 +36,10 @@ typedef enum OraBodyStyle
 	OraBody_UNKOWN,
 	OraBody_FUNC,
 	OraBody_ANONYMOUS_BLOCK,
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	OraBody_PACKAGE,
+	OraBody_PACKAGEBODY,
+	/* End - ReqID:SRS-SQL-PACKAGE */
 	OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN,
 	OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE
 }OraBodyStyle;

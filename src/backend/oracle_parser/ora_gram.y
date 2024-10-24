@@ -282,6 +282,7 @@ static void determineLanguage(List *options);
 	MergeWhenClause *mergewhen;
 	struct KeyActions *keyactions;
 	struct KeyAction *keyaction;
+	package_alter_flag	alter_flag;
 }
 
 %type <node>	stmt toplevel_stmt schema_stmt routine_body_stmt
@@ -723,7 +724,7 @@ static void determineLanguage(List *options);
 	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BINARY_DOUBLE
-	BINARY_FLOAT BIT
+	BINARY_FLOAT BIT BODY 
 	BOOLEAN_P BOTH BREADTH BY BYTE_P
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
@@ -776,7 +777,7 @@ static void determineLanguage(List *options);
 
 	OBJECT_P OF OFF OFFSET OIDS OLD OMIT ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
-	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER
+	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES 
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PARTITIONS PASSING PASSWORD PATH
 	PLACING PLAN PLANS POLICY
@@ -793,7 +794,7 @@ static void determineLanguage(List *options);
 	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
-	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SPLIT SOURCE SQL_P STABLE STANDALONE_P
+	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SPLIT SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
 
@@ -848,6 +849,13 @@ static void determineLanguage(List *options);
 	BINARY_DOUBLE_NAN BINARY_DOUBLE_INFINITY
 %token <keyword> NAN_P INFINITE_P
 
+%type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
+%type <node> package_proper_item
+%type <list> package_proper package_proper_list package_names package_names_list
+%type <str> package_src
+%type <objtype> package_type
+%type <boolean> package_is_or_as package_body_is_or_as
+
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
  * list and so can never be entered directly.  The filter in parser.c
@@ -859,7 +867,7 @@ static void determineLanguage(List *options);
  * FORMAT_LA, NULLS_LA, WITH_LA, and WITHOUT_LA are needed to make the grammar
  * LALR(1).
  */
-%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA
+%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA PACKAGE_BODY 
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -1171,6 +1179,9 @@ stmt:
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| CreatePackageStmt
+			| CreatePackageBodyStmt
+			| AlterPackageStmt
 			| /*EMPTY*/
 				{ $$ = NULL; }
 		;
@@ -2144,6 +2155,12 @@ DiscardStmt:
 					DiscardStmt *n = makeNode(DiscardStmt);
 
 					n->target = DISCARD_PLANS;
+					$$ = (Node *) n;
+				}
+			| DISCARD PACKAGE
+				{
+					DiscardStmt *n = makeNode(DiscardStmt);
+					n->target = DISCARD_PACKAGES;
 					$$ = (Node *) n;
 				}
 			| DISCARD SEQUENCES
@@ -5553,6 +5570,15 @@ AlterExtensionContentsStmt:
 					n->object = (Node *) $6;
 					$$ = (Node *) n;
 				}
+			| ALTER EXTENSION name add_drop PACKAGE package_names
+				{
+					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
+					n->extname = $3;
+					n->action = $4;
+					n->objtype = OBJECT_PACKAGE;
+					n->object = (Node *) $6;
+					$$ = (Node *)n;
+				}
 			| ALTER EXTENSION name add_drop OPERATOR operator_with_argtypes
 				{
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
@@ -7155,6 +7181,26 @@ DropStmt:	DROP object_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 					n->concurrent = false;
 					$$ = (Node *) n;
 				}
+			| DROP package_type IF_P EXISTS package_names_list opt_drop_behavior
+				{
+					DropStmt *n = makeNode(DropStmt);
+					n->removeType = $2;
+					n->missing_ok = true;
+					n->objects = $5;
+					n->behavior = $6;
+					n->concurrent = false;
+					$$ = (Node *)n;
+				}
+			| DROP package_type package_names_list opt_drop_behavior
+				{
+					DropStmt *n = makeNode(DropStmt);
+					n->removeType = $2;
+					n->missing_ok = false;
+					n->objects = $3;
+					n->behavior = $4;
+					n->concurrent = false;
+					$$ = (Node *)n;
+				}
 			| DROP object_type_name_on_any_name name ON any_name opt_drop_behavior
 				{
 					DropStmt *n = makeNode(DropStmt);
@@ -7405,6 +7451,14 @@ CommentStmt:
 					CommentStmt *n = makeNode(CommentStmt);
 
 					n->objtype = OBJECT_FUNCTION;
+					n->object = (Node *) $4;
+					n->comment = $6;
+					$$ = (Node *) n;
+				}
+			| COMMENT ON PACKAGE package_names IS comment_text
+				{
+					CommentStmt *n = makeNode(CommentStmt);
+					n->objtype = OBJECT_PACKAGE;
 					n->object = (Node *) $4;
 					n->comment = $6;
 					$$ = (Node *) n;
@@ -8047,6 +8101,14 @@ privilege_target:
 					n->objs = $2;
 					$$ = n;
 				}
+			| PACKAGE package_names_list
+				{
+					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					n->targtype = ACL_TARGET_OBJECT;
+					n->objtype = OBJECT_PACKAGE;
+					n->objs = $2;
+					$$ = n;
+				}
 			| PROCEDURE function_with_argtypes_list
 				{
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
@@ -8160,6 +8222,14 @@ privilege_target:
 
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_FUNCTION;
+					n->objs = $5;
+					$$ = n;
+				}
+			| ALL PACKAGES IN_P SCHEMA name_list
+				{
+					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
+					n->objtype = OBJECT_PACKAGE;
 					n->objs = $5;
 					$$ = n;
 				}
@@ -8378,6 +8448,7 @@ defacl_privilege_target:
 			| SEQUENCES		{ $$ = OBJECT_SEQUENCE; }
 			| TYPES_P		{ $$ = OBJECT_TYPE; }
 			| SCHEMAS		{ $$ = OBJECT_SCHEMA; }
+			| PACKAGES		{ $$ = OBJECT_PACKAGE; }
 		;
 
 
@@ -9905,6 +9976,100 @@ operator_with_argtypes:
 
 /*****************************************************************************
  *
+ *		some package stmt
+ *
+ *****************************************************************************/
+CreatePackageStmt:
+			CREATE opt_or_replace opt_ora_editioned PACKAGE package_names
+			opt_ora_sharing_clause package_proper package_is_or_as package_src
+				{
+					CreatePackageStmt *n = makeNode(CreatePackageStmt);
+					n->replace = $2;
+					n->editable = $3;
+					n->pkgname = $5;
+					n->propers = $7;
+					n->pkgsrc = $9;
+					$$ = (Node *) n;
+				}
+			;
+package_names_list:
+			package_names
+				{
+					$$ = list_make1($1);
+				}
+			| package_names_list ',' package_names
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+package_names: ora_func_name { $$ = $1; }
+		;
+package_proper:
+			package_proper_list { $$ = $1; }
+			| { $$ = NIL; }
+			;
+package_proper_list:
+			package_proper_item
+				{
+					$$ = list_make1($1);
+				}
+			| package_proper_list package_proper_item
+				{
+					$$ = lappend($1, $2);
+				}
+			;
+package_proper_item:
+			ora_invoker_rights_clause
+				{
+					$$ = (Node *) $1;
+				}
+			|ora_accessible_by_clause
+				{
+					$$ = (Node *) $1;
+				}
+			|ora_default_collation_clause
+				{
+					$$ = (Node *) $1;
+				}
+			;
+package_type:	PACKAGE	{ $$ = OBJECT_PACKAGE; }
+				|PACKAGE_BODY BODY { $$ = OBJECT_PACKAGE_BODY; }
+				;
+package_is_or_as:
+				IS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGE); }
+				|AS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGE); }
+				;
+package_src:	Sconst	{ $$ = $1; }
+		;
+CreatePackageBodyStmt:
+			CREATE opt_or_replace opt_ora_editioned PACKAGE_BODY BODY package_names
+			opt_ora_sharing_clause package_body_is_or_as package_src
+				{
+					CreatePackageBodyStmt *n = makeNode(CreatePackageBodyStmt);
+					n->replace = $2;
+					n->editable = $3;
+					n->pkgname = $6;
+					n->bodysrc = $9;
+					$$ = (Node *)n;
+				}
+			;
+package_body_is_or_as:
+				IS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }
+				|AS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }
+				;
+AlterPackageStmt:
+			ALTER PACKAGE package_names ora_editioned
+				{
+					AlterPackageStmt *stmt = makeNode(AlterPackageStmt);
+					stmt->pkgname = $3;
+					stmt->alter_flag = alter_editable_flag;
+					stmt->editable = $4;
+					$$ = (Node *) stmt;
+				}
+			;
+
+/*****************************************************************************
+ *
  *		DO <anonymous code block> [ LANGUAGE language ]
  *
  * We use a DefElem list for future extensibility, and to allow flexibility
@@ -10216,6 +10381,15 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 					n->newname = $6;
 					n->missing_ok = false;
 					$$ = (Node *) n;
+				}
+			| ALTER PACKAGE package_names RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_PACKAGE;
+					n->object = (Node *) $3;
+					n->newname = $6;
+					n->missing_ok = false;
+					$$ = (Node *)n;
 				}
 			| ALTER CONVERSION_P any_name RENAME TO name
 				{
@@ -10924,6 +11098,15 @@ AlterObjectSchemaStmt:
 					n->missing_ok = false;
 					$$ = (Node *) n;
 				}
+			| ALTER PACKAGE package_names SET SCHEMA name
+				{
+					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
+					n->objectType = OBJECT_PACKAGE;
+					n->object = (Node *) $3;
+					n->newschema = $6;
+					n->missing_ok = false;
+					$$ = (Node *)n;
+				}
 			| ALTER FUNCTION function_with_argtypes SET SCHEMA name
 				{
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
@@ -11226,6 +11409,14 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 					n->object = (Node *) $3;
 					n->newowner = $6;
 					$$ = (Node *) n;
+				}
+			| ALTER PACKAGE package_names OWNER TO RoleSpec
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_PACKAGE;
+					n->object = (Node *) $3;
+					n->newowner = $6;
+					$$ = (Node *)n;
 				}
 			| ALTER CONVERSION_P any_name OWNER TO RoleSpec
 				{
@@ -19585,6 +19776,7 @@ unreserved_keyword:
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
+			| BODY		
 			| BREADTH
 			| BY
 			| CACHE
@@ -19778,6 +19970,7 @@ unreserved_keyword:
 			| OWNED
 			| OWNER
 			| PACKAGE
+			| PACKAGES	
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
@@ -19864,6 +20057,7 @@ unreserved_keyword:
 			| SKIP
 			| SNAPSHOT
 			| SOURCE
+			| SPECIFICATION 
 			| SPLIT
 			| SQL_P
 			| SQL_MACRO
@@ -20203,6 +20397,7 @@ bare_label_keyword:
 			| BINARY_FLOAT_INFINITY
 			| BINARY_FLOAT_NAN
 			| BIT
+			| BODY			
 			| BOOLEAN_P
 			| BOTH
 			| BREADTH
@@ -20479,6 +20674,7 @@ bare_label_keyword:
 			| OWNED
 			| OWNER
 			| PACKAGE
+			| PACKAGES	
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
@@ -20577,6 +20773,7 @@ bare_label_keyword:
 			| SNAPSHOT
 			| SOME
 			| SOURCE
+			| SPECIFICATION 
 			| SPLIT
 			| SQL_P
 			| SQL_MACRO

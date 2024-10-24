@@ -3,7 +3,7 @@
  * pl_funcs.c		- Misc functions for the PL/iSQL
  *			  procedural language
  *
- * Portions Copyright (c) 2023, IvorySQL Global Development Team
+ * Portions Copyright (c) 2024, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -19,6 +19,9 @@
 
 #include "plisql.h"
 #include "pl_subproc_function.h"
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+#include "pl_package.h"
+/* End - ReqID:SRS-SQL-PACKAGE */
 #include "utils/memutils.h"
 
 /* ----------
@@ -741,6 +744,10 @@ plisql_free_function_memory(PLiSQL_function *func,
 	/* Better not call this on an in-use function */
 	Assert(func->use_count == 0);
 
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	plisql_remove_function_relations(func);
+	/* End - ReqID:SRS-SQL-PACKAGE */
+
 	/* Release plans associated with variable declarations */
 	for (i = start_datum; i < func->ndatums; i++)
 	{
@@ -755,6 +762,13 @@ plisql_free_function_memory(PLiSQL_function *func,
 
 					free_expr(var->default_val);
 					free_expr(var->cursor_explicit_expr);
+					/* Begin - ReqID:SRS-SQL-PACKAGE */
+					/* we should close package explicit cursor */
+					if (OidIsValid(var->pkgoid) &&
+						var->datatype->typoid == REFCURSOROID &&
+						plisql_cursor_is_open(var))
+						plisql_close_package_cursorvar(var);
+					/* End - ReqID:SRS-SQL-PACKAGE */
 				}
 				break;
 			case PLISQL_DTYPE_ROW:
@@ -768,6 +782,10 @@ plisql_free_function_memory(PLiSQL_function *func,
 				break;
 			case PLISQL_DTYPE_RECFIELD:
 				break;
+			/* Begin - ReqID:SRS-SQL-PACKAGE */
+			case PLISQL_DTYPE_PACKAGE_DATUM:
+				break;
+			/* End - ReqID:SRS-SQL-PACKAGE */
 			default:
 				elog(ERROR, "unrecognized data type: %d", d->dtype);
 		}
@@ -791,7 +809,8 @@ plisql_free_function_memory(PLiSQL_function *func,
 
 			free_expr(argitem->defexpr);
 		}
-		if (!subprocfunc->has_poly_argument)
+		if (!subprocfunc->has_poly_argument ||
+			subprocfunc->poly_tab == NULL)
 		{
 			/*
 			 * if no action, the lastoutvardno and lastoutinlinefno is invalid
@@ -1657,7 +1676,7 @@ dump_expr(PLiSQL_expr *expr)
 }
 
 void
-plisql_dumptree(PLiSQL_function *func)
+plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc) /* ReqID:SRS-SQL-PACKAGE */
 {
 	int			i;
 	PLiSQL_datum *d;
@@ -1666,7 +1685,8 @@ plisql_dumptree(PLiSQL_function *func)
 		   func->fn_signature);
 
 	printf("\nFunction's data area:\n");
-	for (i = 0; i < func->ndatums; i++)
+
+	for (i = start_datum; i < func->ndatums; i++)
 	{
 		d = func->datums[i];
 
@@ -1739,15 +1759,63 @@ plisql_dumptree(PLiSQL_function *func)
 					   ((PLiSQL_recfield *) d)->fieldname,
 					   ((PLiSQL_recfield *) d)->recparentno);
 				break;
+			/* Begin - ReqID:SRS-SQL-PACKAGE */
+			case PLISQL_DTYPE_PACKAGE_DATUM:
+				{
+					PLiSQL_pkg_datum *pkg_datum = (PLiSQL_pkg_datum *) d;
+
+					printf("PACKAGE VAR :%s\n", pkg_datum->refname);
+				}
+				break;
+			/* End - ReqID:SRS-SQL-PACKAGE */
 			default:
 				printf("??? unknown data type %d\n", d->dtype);
 		}
 	}
-	printf("\nFunction's statements:\n");
 
-	dump_indent = 0;
-	printf("%3d:", func->action->lineno);
-	dump_block(func->action);
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	printf("\nSubprocFuncs:\n");
+	for (i = start_subprocfunc; i < func->nsubprocfuncs; i++)
+	{
+		PLiSQL_subproc_function *subprocfunc = (PLiSQL_subproc_function *) func->subprocfuncs[i];
+
+		printf("    entry %d: ", i);
+		printf("SubprocFunc: name:%s\n", subprocfunc->func_name);
+		if (subprocfunc->arg == NIL)
+			printf("Arguments: 0\n");
+		else
+		{
+			ListCell *lc;
+			int j = 0;
+
+			printf("Arguments: %d\n", list_length(subprocfunc->arg));
+			foreach (lc, subprocfunc->arg)
+			{
+				PLiSQL_function_argitem *argitem = (PLiSQL_function_argitem *) lfirst(lc);
+				char *typname;
+
+				printf("    entry %d: ", j);
+				typname = argitem->type->typname;
+
+				printf("Argument: argno:%d, argname:%s, argtype:%s\n",
+						j++, argitem->argname, typname);
+			}
+		}
+		plisql_dumptree(subprocfunc->function, subprocfunc->lastoutvardno,
+								subprocfunc->lastoutsubprocfno);
+		printf("\nEnd of subprocfunction %s\n\n", subprocfunc->func_name);
+	}
+
+	if (func->action != NULL)
+	{
+		printf("\nFunction's statements:\n");
+
+		dump_indent = 0;
+		printf("%3d:", func->action->lineno);
+		dump_block(func->action);
+	}
+	/* End - ReqID:SRS-SQL-PACKAGE */
+
 	printf("\nEnd of execution tree of function %s\n\n", func->fn_signature);
 	fflush(stdout);
 }

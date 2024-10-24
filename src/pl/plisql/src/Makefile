@@ -33,6 +33,7 @@ OBJS = \
 	pl_handler.o \
 	pl_scanner.o \
 	pl_subproc_function.o \
+	pl_package.o \
 	$(top_builddir)/src/backend/oracle_parser/ora_scan.o
 
 DATA = plisql.control plisql--1.0.sql
@@ -70,6 +71,7 @@ install-data: installdirs
 install-headers: installdirs
 	$(INSTALL_DATA) '$(srcdir)/plisql.h' '$(DESTDIR)$(includedir_server)'
 	$(INSTALL_DATA) '$(srcdir)/pl_subproc_function.h' '$(DESTDIR)$(includedir_server)'
+	$(INSTALL_DATA) '$(srcdir)/pl_package.h' '$(DESTDIR)$(includedir_server)'
 
 uninstall-data:
 	rm -f $(addprefix '$(DESTDIR)$(datadir)/extension'/, $(notdir $(DATA)))
@@ -77,12 +79,13 @@ uninstall-data:
 uninstall-headers:
 	rm -f '$(DESTDIR)$(includedir_server)/plisql.h'
 	rm -f '$(DESTDIR)$(includedir_server)/pl_subproc_function.h'
+	rm -f '$(DESTDIR)$(includedir_server)/pl_package.h'
 
 .PHONY: install-data install-headers uninstall-data uninstall-headers
 
 
 # Force these dependencies to be known even without dependency info built:
-pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o: plisql.h pl_gram.h plerrcodes.h pl_subproc_function.h
+pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o: plisql.h pl_gram.h plerrcodes.h pl_subproc_function.h pl_package.h
 pl_scanner.o: pl_reserved_kwlist_d.h pl_unreserved_kwlist_d.h
 
 # See notes in src/backend/parser/Makefile about the following two rules

@@ -535,6 +535,11 @@ makeFuncExpr(Oid funcid, Oid rettype, List *args,
 	funcexpr->args = args;
 	funcexpr->function_from = FUNC_FROM_PG_PROC;
 	funcexpr->parent_func = NULL;
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	funcexpr->function_name = NULL;
+	funcexpr->ref_pkgtype = false;
+	funcexpr->pkgoid = InvalidOid;
+	/* End - ReqID:SRS-SQL-PACKAGE */
 	funcexpr->location = -1;
 
 	return funcexpr;

@@ -20,6 +20,9 @@
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+#include "parser/parse_package.h"
+/* End - ReqID:SRS-SQL-PACKAGE */
 #include "parser/parser.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -233,6 +236,17 @@ LookupTypeNameOid(ParseState *pstate, const TypeName *typeName, bool missing_ok)
 {
 	Oid			typoid;
 	Type		tup;
+
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	/* maybe comes from a package */
+	PkgType		*pkgtype = LookupPkgTypeByTypename(typeName->names, missing_ok);
+	if (pkgtype != NULL)
+	{
+		typoid = pkgtype->basetypid;
+		pfree(pkgtype);
+		return typoid;
+	}
+	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	tup = LookupTypeName(pstate, typeName, NULL, missing_ok);
 	if (tup == NULL)
@@ -483,6 +497,58 @@ TypeNameToString(const TypeName *typeName)
 	appendTypeNameToBuffer(typeName, &string);
 	return string.data;
 }
+
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+
+/*
+ * like appendTypeNameToBuffer, but quote TypeName
+ */
+static void
+appendQuoteTypeNameToBuffer(const TypeName *typeName, StringInfo string)
+{
+	if (typeName->names != NIL)
+	{
+		/* Emit possibly-qualified name as-is */
+		ListCell   *l;
+
+		foreach(l, typeName->names)
+		{
+			if (l != list_head(typeName->names))
+				appendStringInfoChar(string, '.');
+			appendStringInfoString(string, quote_identifier(strVal(lfirst(l))));
+		}
+	}
+	else
+	{
+		/* Look up internally-specified type */
+		appendStringInfoString(string, format_type_be(typeName->typeOid));
+	}
+
+	/*
+	 * Add decoration as needed, but only for fields considered by
+	 * LookupTypeName
+	 */
+	if (typeName->pct_type)
+		appendStringInfoString(string, "%TYPE");
+
+	if (typeName->arrayBounds != NIL)
+		appendStringInfoString(string, "[]");
+}
+
+/*
+ * like TypeNameToString
+ * but quote name
+ */
+char *
+TypeNameToQuoteString(const TypeName *typeName)
+{
+	StringInfoData string;
+
+	initStringInfo(&string);
+	appendQuoteTypeNameToBuffer(typeName, &string);
+	return string.data;
+}
+/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * TypeNameListToString

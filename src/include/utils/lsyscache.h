@@ -16,6 +16,10 @@
 #include "access/attnum.h"
 #include "access/htup.h"
 #include "nodes/pg_list.h"
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+#include "utils/array.h"
+/* End - ReqID:SRS-SQL-PACKAGE */
+
 
 /* avoid including subscripting.h here */
 struct SubscriptRoutines;
@@ -123,6 +127,11 @@ extern RegProcedure get_oprjoin(Oid opno);
 extern char *get_func_name(Oid funcid);
 extern Oid	get_func_namespace(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+extern Oid get_func_real_rettype(HeapTuple proc_tup);
+extern void repl_func_real_argtype(HeapTuple proc_tup, Oid *args, int nargs);
+extern ArrayType *get_func_real_allargtype(HeapTuple proc_tup);
+/* End - ReqID:SRS-SQL-PACKAGE */
 extern int	get_func_nargs(Oid funcid);
 extern Oid	get_func_signature(Oid funcid, Oid **argtypes, int *nargs);
 extern Oid	get_func_variadictype(Oid funcid);

@@ -151,6 +151,17 @@ AC_SUBST(enable_nls)
 AC_SUBST(WANTED_LANGUAGES)
 
 #
+# ReqID:SRS-SQL-PACKAGE
+# CURSOR_UNNAME
+#
+AC_MSG_CHECKING([whether CURSOR_UNNAME is wanted])
+PGAC_ARG_BOOL(enable, cursor-unname,
+                no, [enable explicit cursor uname],
+                [AC_DEFINE(ENABLE_CURSOR_UNNAME, 1,
+                           [Define to 1 if you want explicit cursor with unname. (--enable-cursor-uname)])])
+
+
+#
 # Default port number (--with-pgport), default 5432
 #
 AC_MSG_CHECKING([for default port number])

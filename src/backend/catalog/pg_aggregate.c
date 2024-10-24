@@ -640,7 +640,12 @@ AggregateCreate(const char *aggName,
 							 PointerGetDatum(NULL), /* proconfig */
 							 InvalidOid,	/* no prosupport */
 							 1, /* procost */
-							 0);	/* prorows */
+							 0, /* prorows */
+							 /* Begin - ReqID:SRS-SQL-PACKAGE */
+							 PointerGetDatum(NULL),
+							 NULL);
+							 /* End - ReqID:SRS-SQL-PACKAGE */
+
 	procOid = myself.objectId;
 
 	/*

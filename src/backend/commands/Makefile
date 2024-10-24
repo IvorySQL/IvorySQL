@@ -61,6 +61,7 @@ OBJS = \
 	vacuum.o \
 	vacuumparallel.o \
 	variable.o \
-	view.o
+	view.o \
+	packagecmds.o
 
 include $(top_srcdir)/src/backend/common.mk

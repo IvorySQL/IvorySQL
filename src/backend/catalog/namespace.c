@@ -41,12 +41,15 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_package.h"
+#include "commands/packagecmds.h"
 #include "commands/dbcommands.h"
 #include "common/hashfn_unstable.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "parser/parse_package.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
 #include "storage/procarray.h"
@@ -888,6 +891,95 @@ RelnameGetRelid(const char *relname)
 	return InvalidOid;
 }
 
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+/*
+ * like RelnameGetRelid
+ * we get package oid according to its name
+ */
+Oid
+PkgnameGetPkgid(const char *pkgname)
+{
+	Oid 		pkgoid;
+	ListCell   *l;
+
+	recomputeNamespacePath();
+
+	foreach(l, activeSearchPath)
+	{
+		Oid 		namespaceId = lfirst_oid(l);
+
+		pkgoid = get_package_pkgid(pkgname, namespaceId);
+		if (OidIsValid(pkgoid))
+			return pkgoid;
+	}
+
+	/* Not found in path */
+	return InvalidOid;
+}
+
+
+/*
+ * like RelationIsVisible,we check package is visible
+ */
+bool
+PackageIsVisible(Oid pkgoid)
+{
+	HeapTuple	pkgtup;
+	Form_pg_package pkgform;
+	Oid 		pkgnamespace;
+	bool		visible;
+
+	pkgtup = SearchSysCache1(PKGOID, ObjectIdGetDatum(pkgoid));
+	if (!HeapTupleIsValid(pkgtup))
+		elog(ERROR, "cache lookup failed for package %u", pkgoid);
+	pkgform = (Form_pg_package) GETSTRUCT(pkgtup);
+
+	recomputeNamespacePath();
+
+	/*
+	 * Quick check: if it ain't in the path at all, it ain't visible. Items in
+	 * the system namespace are surely in the path and so we needn't even do
+	 * list_member_oid() for them.
+	 */
+	pkgnamespace = pkgform->pkgnamespace;
+	if (pkgnamespace != PG_CATALOG_NAMESPACE &&
+		pkgnamespace != PG_SYS_NAMESPACE &&
+		!list_member_oid(activeSearchPath, pkgnamespace))
+		visible = false;
+	else
+	{
+		/*
+		 * If it is in the path, it might still not be visible; it could be
+		 * hidden by another relation of the same name earlier in the path. So
+		 * we must do a slow check for conflicting relations.
+		 */
+		char	   *pkgname = NameStr(pkgform->pkgname);
+		ListCell   *l;
+
+		visible = false;
+		foreach(l, activeSearchPath)
+		{
+			Oid 		namespaceId = lfirst_oid(l);
+
+			if (namespaceId == pkgnamespace)
+			{
+				/* Found it first in path */
+				visible = true;
+				break;
+			}
+			if (OidIsValid(get_package_pkgid(pkgname, namespaceId)))
+			{
+				/* Found something else first in path */
+				break;
+			}
+		}
+	}
+
+	ReleaseSysCache(pkgtup);
+
+	return visible;
+}
+/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * RelationIsVisible
@@ -1223,6 +1315,9 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		Oid			va_elem_type;
 		int		   *argnumbers = NULL;
 		FuncCandidateList newResult;
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		char		**argtypenames = NULL;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		if (OidIsValid(namespaceId))
 		{
@@ -1375,17 +1470,95 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		newResult->nominalnargs = pronargs;
 		newResult->nargs = effective_nargs;
 		newResult->argnumbers = argnumbers;
+
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		/* maybe argtype from a package */
+		if (ORA_PARSER == compatible_db)
+		{
+			Datum protypenames;
+			bool	isNull;
+			Datum	   *elems;
+			int			nelems;
+
+			protypenames = SysCacheGetAttr(PROCNAMEARGSNSP, proctup,
+										Anum_pg_proc_protypenames,
+										&isNull);
+			if (!isNull)
+			{
+				deconstruct_array(DatumGetArrayTypeP(protypenames),
+									TEXTOID, -1, false, 'i',
+									&elems, NULL, &nelems);
+				argtypenames = (char **) palloc(sizeof(char *) * nelems);
+				for (i = 0; i < nelems; i++)
+					argtypenames[i] = TextDatumGetCString(elems[i]);
+			}
+		}
+		/* End - ReqID:SRS-SQL-PACKAGE */
+
 		if (argnumbers)
 		{
 			/* Re-order the argument types into call's logical order */
 			for (int j = 0; j < pronargs; j++)
+			{
 				newResult->args[j] = proargtypes[argnumbers[j]];
+
+				/* Begin - ReqID:SRS-SQL-PACKAGE */
+				if (argtypenames != NULL && strcmp(argtypenames[argnumbers[i]], "") != 0)
+				{
+					TypeName	*tname;
+					PkgType *pkgtype;
+
+					tname = (TypeName *) stringToNode(argtypenames[argnumbers[i]]);
+
+					pkgtype = LookupPkgTypeByTypename(tname->names, false);
+					if (pkgtype != NULL)
+					{
+						newResult->args[i] = pkgtype->basetypid;
+						pfree(pkgtype);
+					}
+					pfree(tname);
+				}
+				/* End - ReqID:SRS-SQL-PACKAGE */
+			}
 		}
 		else
 		{
 			/* Simple positional case, just copy proargtypes as-is */
-			memcpy(newResult->args, proargtypes, pronargs * sizeof(Oid));
+			/* Begin - ReqID:SRS-SQL-PACKAGE */
+			if (argtypenames != NULL)
+			{
+				int i;
+
+				for (i = 0; i < pronargs; i++)
+				{
+					newResult->args[i] = proargtypes[i];
+
+					if (strcmp(argtypenames[i], "") != 0)
+					{
+						TypeName	*tname;
+						PkgType *pkgtype;
+
+						tname = (TypeName *) stringToNode(argtypenames[i]);
+
+						pkgtype = LookupPkgTypeByTypename(tname->names, false);
+						if (pkgtype != NULL)
+						{
+							newResult->args[i] = pkgtype->basetypid;
+							pfree(pkgtype);
+						}
+						pfree(tname);
+					}
+				}
+			}
+			else
+				memcpy(newResult->args, proargtypes, pronargs * sizeof(Oid));
+			/* End - ReqID:SRS-SQL-PACKAGE */
 		}
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		if (argtypenames != NULL)
+			pfree(argtypenames);
+		/* End - ReqID:SRS-SQL-PACKAGE */
+
 		if (variadic)
 		{
 			newResult->nvargs = effective_nargs - pronargs + 1;
@@ -4929,6 +5102,19 @@ pg_table_is_visible(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	PG_RETURN_BOOL(result);
 }
+
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+Datum
+pg_package_is_visible(PG_FUNCTION_ARGS)
+{
+	Oid			oid = PG_GETARG_OID(0);
+
+	if (!SearchSysCacheExists1(PKGOID, ObjectIdGetDatum(oid)))
+		PG_RETURN_NULL();
+
+	PG_RETURN_BOOL(PackageIsVisible(oid));
+}
+/* End - ReqID:SRS-SQL-PACKAGE */
 
 Datum
 pg_type_is_visible(PG_FUNCTION_ARGS)

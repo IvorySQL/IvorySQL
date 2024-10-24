@@ -61,6 +61,9 @@ enum dbObjectTypePriorities
 	PRIO_EXTENSION,
 	PRIO_TYPE,					/* used for DO_TYPE and DO_SHELL_TYPE */
 	PRIO_CAST,
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	PRIO_PACKAGE,
+	/* End - ReqID:SRS-SQL-PACKAGE */
 	PRIO_FUNC,
 	PRIO_AGG,
 	PRIO_ACCESS_METHOD,
@@ -108,6 +111,7 @@ static const int dbObjectTypePriority[] =
 	[DO_EXTENSION] = PRIO_EXTENSION,
 	[DO_TYPE] = PRIO_TYPE,
 	[DO_SHELL_TYPE] = PRIO_TYPE,
+	[PRIO_PACKAGE] = PRIO_PACKAGE,
 	[DO_FUNC] = PRIO_FUNC,
 	[DO_AGG] = PRIO_AGG,
 	[DO_OPERATOR] = PRIO_OPERATOR,
@@ -1269,6 +1273,13 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 					 "SHELL TYPE %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case DO_PACKAGE:
+			snprintf(buf, bufsize,
+					" PACKAGE %s(ID %d OID %u)",
+					obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 		case DO_FUNC:
 			snprintf(buf, bufsize,
 					 "FUNCTION %s  (ID %d OID %u)",

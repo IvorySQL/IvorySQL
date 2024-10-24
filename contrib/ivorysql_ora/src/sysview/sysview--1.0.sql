@@ -1013,3 +1013,4 @@ SELECT
 	decode(bitand(s.flags, 64), 64, 'Y', 'N') AS session_flag,null AS keep_value
 	FROM PG_SEQUENCE s,pg_class c where s.seqrelid = c.oid and c.relowner::regrole = current_user::regrole;
 
+

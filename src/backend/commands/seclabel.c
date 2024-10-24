@@ -92,6 +92,10 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_TSPARSER:
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case OBJECT_PACKAGE:
+		case OBJECT_PACKAGE_BODY:
+		/* End - ReqID:SRS-SQL-PACKAGE */
 			return false;
 
 			/*

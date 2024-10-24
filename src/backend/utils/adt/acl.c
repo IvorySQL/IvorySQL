@@ -850,6 +850,12 @@ acldefault(ObjectType objtype, Oid ownerId)
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_PARAMETER_ACL;
 			break;
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case OBJECT_PACKAGE:
+			world_default = ACL_NO_RIGHTS;
+			owner_default = ACL_ALL_RIGHTS_PACKAGE;
+			break;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			elog(ERROR, "unrecognized object type: %d", (int) objtype);
 			world_default = ACL_NO_RIGHTS;	/* keep compiler quiet */
@@ -947,6 +953,11 @@ acldefault_sql(PG_FUNCTION_ARGS)
 		case 'T':
 			objtype = OBJECT_TYPE;
 			break;
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case 'P':
+			objtype = OBJECT_PACKAGE;
+			break;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			elog(ERROR, "unrecognized object type abbreviation: %c", objtypec);
 	}
@@ -3477,6 +3488,40 @@ has_function_privilege_id(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
+
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+/*
+ * has_package_privilege_id
+ *		Check user privileges on a pakcage given
+ *		package oid, and text priv name.
+ *		current_user is assumed
+ */
+Datum
+has_package_privilege_id(PG_FUNCTION_ARGS)
+{
+	Oid 		pakcageoid = PG_GETARG_OID(0);
+	text	   *priv_type_text = PG_GETARG_TEXT_PP(1);
+	Oid 		roleid;
+	AclMode 	mode;
+	AclResult	aclresult;
+	static const priv_map package_priv_map[] = {
+		{"EXECUTE", ACL_EXECUTE},
+		{"EXECUTE WITH GRANT OPTION", ACL_GRANT_OPTION_FOR(ACL_EXECUTE)},
+		{NULL, 0}
+	};
+
+	roleid = GetUserId();
+
+	mode =  convert_any_priv_string(priv_type_text, package_priv_map);
+
+	if (!SearchSysCacheExists1(PKGOID, ObjectIdGetDatum(pakcageoid)))
+		PG_RETURN_NULL();
+
+	aclresult = pg_package_aclcheck(pakcageoid, roleid, mode);
+
+	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
+}
+/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * has_function_privilege_id_name

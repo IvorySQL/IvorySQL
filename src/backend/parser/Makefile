@@ -34,7 +34,8 @@ OBJS = \
 	parse_utilcmd.o \
 	parser.o \
 	scan.o \
-	scansup.o
+	scansup.o \
+	parse_package.o
 
 include $(top_srcdir)/src/backend/common.mk
 

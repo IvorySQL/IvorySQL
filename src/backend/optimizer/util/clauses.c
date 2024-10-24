@@ -53,6 +53,7 @@
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -559,6 +560,17 @@ contain_volatile_functions_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+
+		if (!FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+			return true;
+	}
+	/* End - ReqID:SRS-SQL-PACKAGE */
+
 	/* Check for volatile functions in node itself */
 	if (check_functions_in_node(node, contain_volatile_functions_checker,
 								context))
@@ -2599,6 +2611,12 @@ eval_const_expressions_mutator(Node *node,
 				 * eventual Const if so.
 				 */
 					if (FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+					{
+						/* Begin - ReqID:SRS-SQL-PACKAGE */
+						if (expr->ref_pkgtype)
+							set_pkgtype_from_funcexpr(expr);
+						/* End - ReqID:SRS-SQL-PACKAGE */
+
 						simple = simplify_function(expr->funcid,
 										   expr->funcresulttype,
 										   exprTypmod(node),
@@ -2609,8 +2627,14 @@ eval_const_expressions_mutator(Node *node,
 										   true,
 										   true,
 										   context);
+					}
 				if (simple)		/* successfully simplified it */
 					return (Node *) simple;
+
+				/* Begin - ReqID:SRS-SQL-PACKAGE */
+				if (FUNC_EXPR_FROM_PACKAGE(expr->function_from))
+					set_pkginfo_from_funcexpr(expr);
+				/* End - ReqID:SRS-SQL-PACKAGE */
 
 				/*
 				 * The expression cannot be simplified any further, so build
@@ -2629,6 +2653,15 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->args = args;
 				newexpr->function_from = expr->function_from;
 				newexpr->parent_func = expr->parent_func;
+				/* Begin - ReqID:SRS-SQL-PACKAGE */
+				newexpr->ref_pkgtype = expr->ref_pkgtype;
+				if (expr->function_name != NULL)
+					newexpr->function_name = pstrdup(expr->function_name);
+				else
+					newexpr->function_name = NULL;
+				newexpr->pkgoid = expr->pkgoid;
+				/* End - ReqID:SRS-SQL-PACKAGE */
+
 				newexpr->location = expr->location;
 				return (Node *) newexpr;
 			}
@@ -4271,6 +4304,11 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 		fexpr.args = args;
 		fexpr.function_from = FUNC_FROM_PG_PROC;
 		fexpr.parent_func = NULL;
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		fexpr.function_name = NULL;
+		fexpr.ref_pkgtype = false;
+		fexpr.pkgoid = InvalidOid;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 		fexpr.location = -1;
 
 		req.type = T_SupportRequestSimplify;
@@ -4355,6 +4393,19 @@ expand_function_arguments(List *args, bool include_out_arguments,
 			proargtypes = (Oid *) ARR_DATA_PTR(arr);
 		}
 	}
+
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	/* argtype maybe from a package */
+	if (ORA_PARSER == compatible_db)
+	{
+		Size size_len = sizeof(Oid) * pronargs;
+		Oid *rel_proargtypes = palloc0(size_len);
+
+		memcpy(rel_proargtypes, proargtypes, size_len);
+		repl_func_real_argtype(func_tuple, rel_proargtypes, pronargs);
+		proargtypes = rel_proargtypes;
+	}
+	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* Do we have any named arguments? */
 	foreach(lc, args)
@@ -4594,7 +4645,7 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 	 * null constant with no remaining indication of which concrete record
 	 * type it is.  For now, seems best to leave the function call unreduced.
 	 */
-	if (funcform->prorettype == RECORDOID)
+	if (get_func_real_rettype(func_tuple) == RECORDOID) /* ReqID:SRS-SQL-PACKAGE */
 		return NULL;
 
 	/*
@@ -4656,6 +4707,11 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 	newexpr->args = args;
 	newexpr->function_from = FUNC_FROM_PG_PROC;
 	newexpr->parent_func = NULL;
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	newexpr->function_name = NULL;
+	newexpr->ref_pkgtype = false;
+	newexpr->pkgoid = InvalidOid;
+	/* End - ReqID:SRS-SQL-PACKAGE */
 	newexpr->location = -1;
 
 	return evaluate_expr((Expr *) newexpr, result_type, result_typmod,
@@ -4728,7 +4784,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 		funcform->prokind != PROKIND_FUNCTION ||
 		funcform->prosecdef ||
 		funcform->proretset ||
-		funcform->prorettype == RECORDOID ||
+		get_func_real_rettype(func_tuple) == RECORDOID || /* ReqID:SRS-SQL-PACKAGE */
 		!heap_attisnull(func_tuple, Anum_pg_proc_proconfig, NULL) ||
 		funcform->pronargs != list_length(args))
 		return NULL;
@@ -4770,6 +4826,11 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	fexpr->args = args;
 	fexpr->function_from = FUNC_FROM_PG_PROC;
 	fexpr->parent_func = NULL;
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	fexpr->function_name = NULL;
+	fexpr->ref_pkgtype = false;
+	fexpr->pkgoid = InvalidOid;
+	/* End - ReqID:SRS-SQL-PACKAGE */
 	fexpr->location = -1;
 
 	/* Fetch the function body */
@@ -5310,7 +5371,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 		funcform->prokind != PROKIND_FUNCTION ||
 		funcform->proisstrict ||
 		funcform->provolatile == PROVOLATILE_VOLATILE ||
-		funcform->prorettype == VOIDOID ||
+		get_func_real_rettype(func_tuple) == VOIDOID || /* ReqID:SRS-SQL-PACKAGE */
 		funcform->prosecdef ||
 		!funcform->proretset ||
 		list_length(fexpr->args) != funcform->pronargs ||

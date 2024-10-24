@@ -835,6 +835,7 @@ with_libraries
 with_libs
 enable_integer_datetimes
 enable_nls
+enable_cursor_unname
 with_pgport
 with_oraport
 enable_rpath
@@ -1530,6 +1531,7 @@ Optional Features:
                           obsolete option, no longer supported
   --enable-nls[=LANGUAGES]
                           enable Native Language Support
+  --enable-cursor-unname  enable explicit cursor uname
   --disable-rpath         do not embed shared library search path in
                           executables
   --disable-spinlocks     do not use spinlocks
@@ -3187,6 +3189,33 @@ fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_nls" >&5
 $as_echo "$enable_nls" >&6; }
+
+
+
+#
+# ReqID:SRS-SQL-PACKAGE
+# CURSOR_UNNAME
+#
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether CURSOR_UNNAME is wanted" >&5
+$as_echo_n "checking whether CURSOR_UNNAME is wanted... " >&6; }
+# Check whether --enable-cursor-unname was given.
+if test "${enable_cursor_unname+set}" = set; then :
+  enableval=$enable_cursor_unname;
+  case $enableval in
+    yes)
+$as_echo "#define ENABLE_CURSOR_UNNAME 1" >>confdefs.h
+      ;;
+    no)
+      :
+      ;;
+    *)
+      as_fn_error $? "no argument expected for --enable-cursor-unname option" "$LINENO" 5
+      ;;
+  esac
+else
+  enable_cursor_unname=no
+fi
+
 
 
 

@@ -33,6 +33,9 @@ extern void typenameTypeIdAndMod(ParseState *pstate, const TypeName *typeName,
 								 Oid *typeid_p, int32 *typmod_p);
 
 extern char *TypeNameToString(const TypeName *typeName);
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+extern char *TypeNameToQuoteString(const TypeName *typeName);
+/* End - ReqID:SRS-SQL-PACKAGE */
 extern char *TypeNameListToString(List *typenames);
 
 extern Oid	LookupCollation(ParseState *pstate, List *collnames, int location);

@@ -563,6 +563,114 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		cur_token = SCONST;
 	}
 
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	else if ((yyextra->body_style == OraBody_PACKAGE ||
+		yyextra->body_style == OraBody_PACKAGEBODY) &&
+			cur_token != SCONST)
+	{
+		int beginpos = yyextra->body_start;
+		int blocklevel = yyextra->body_level;
+		bool found_end = false;
+		int sub_proc_level = 0;
+
+		while (cur_token != 0)
+		{
+			if (beginpos < 0)
+				beginpos = *llocp;
+
+			if (yyextra->body_style == OraBody_PACKAGEBODY &&
+				(cur_token == FUNCTION || cur_token == PROCEDURE))
+			{
+				while(true)
+				{
+					cur_token = internal_yylex(yyscanner, llocp, &aux1);
+
+					if (cur_token == IS || cur_token == AS)
+					{
+						sub_proc_level++;
+						break;
+					}
+					if (cur_token == ';' || cur_token == 0)
+						break;
+				}
+			}
+
+			while (cur_token == BEGIN_P)
+			{
+				cur_token = internal_yylex(yyscanner, llocp, &aux1);
+				if (cur_token != ';' && cur_token != '(')
+				{
+					blocklevel++;
+				}
+			}
+
+			if (cur_token == CASE)
+			{
+				blocklevel++;
+			}
+			else if (cur_token == END_P)
+			{
+				if (blocklevel > 0)
+				{
+					cur_token = internal_yylex(yyscanner, llocp, &aux1);
+					if (cur_token == ';')
+					{
+						blocklevel--;
+					}
+					else if (cur_token == 0)
+					{
+						blocklevel--;
+						break;
+					}
+					else if (cur_token != LOOP_P && cur_token != IF_P)
+					{
+						blocklevel--;
+					}
+
+					/*
+					 * there, maybe package body has init block
+					 */
+					if (yyextra->body_style == OraBody_PACKAGEBODY &&
+						blocklevel == 0)
+					{
+						if (sub_proc_level > 0)
+							sub_proc_level--;
+						else
+							found_end = true;
+					}
+				}
+				else
+					found_end = true;
+			}
+			if (blocklevel == 0 && found_end && cur_token == ';')
+			{
+				break;
+			}
+
+			cur_token = internal_yylex(yyscanner, llocp, &aux1);
+		}
+
+		if ((cur_token == ';'  && blocklevel == 0) ||
+			(cur_token == 0    && blocklevel > 0))
+		{
+			aux1.lval.str = ";";
+			ora_push_back_token(yyscanner, ';', aux1.lval.core_yystype,
+				aux1.lloc, 1);
+
+
+			/* Now revert the un-truncation of the current token */
+			yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
+				aux1.lloc;
+			yyextra->lookahead_hold_char = *(yyextra->lookahead_end);
+			*(yyextra->lookahead_end) = '\0';
+		}
+
+		lvalp->core_yystype.str = pstrdup(yyextra->core_yy_extra.scanbuf + beginpos);
+		*llocp = beginpos;
+		cur_token = SCONST;
+	}
+	/* End - ReqID:SRS-SQL-PACKAGE */
+
 	set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
 
 	/*
@@ -595,6 +703,11 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		case LONG_P:
 			cur_token_length = 4;
 			break;
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case PACKAGE:
+			cur_token_length = 7;
+			break;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			return cur_token;
 	}
@@ -666,6 +779,14 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 					break;
 			}
 			break;
+
+		/* Begin - ReqID:SRS-SQL-PACKAGE */
+		case PACKAGE:
+			/* Replace PACKAGE by PACKAGE_BODY if it's followed by BODY */
+			if (next_token == BODY)
+				cur_token = PACKAGE_BODY;
+			break;
+		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		case WITH:
 			/* Replace WITH by WITH_LA if it's followed by TIME or ORDINALITY */

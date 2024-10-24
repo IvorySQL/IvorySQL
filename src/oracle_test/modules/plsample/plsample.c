@@ -170,7 +170,9 @@ plsample_func_handler(PG_FUNCTION_ARGS)
 	}
 
 	/* Type of the result */
-	prorettype = pl_struct->prorettype;
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	prorettype = get_func_real_rettype(pl_tuple);
+	/* End - ReqID:SRS-SQL-PACKAGE */
 	ReleaseSysCache(pl_tuple);
 
 	/*

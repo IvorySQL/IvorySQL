@@ -39,6 +39,10 @@ static DumpableObject **dumpIdMap = NULL;
 static int	allocedDumpIds = 0;
 static DumpId lastDumpId = 0;	/* Note: 0 is InvalidDumpId */
 
+/* Begin - ReqID:SRS-SQL-PACKAGE */
+static int	numPkgs;
+/* End - ReqID:SRS-SQL-PACKAGE */
+
 /*
  * Infrastructure for mapping CatalogId to DumpableObject
  *
@@ -140,6 +144,11 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 
 	pg_log_info("reading schemas");
 	(void) getNamespaces(fout, &numNamespaces);
+
+	/* Begin - ReqID:SRS-SQL-PACKAGE */
+	pg_log_info("reading user-defined packages");
+	getPackages(fout, &numPkgs);
+	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/*
 	 * getTables should be done as soon as possible, so as to minimize the
