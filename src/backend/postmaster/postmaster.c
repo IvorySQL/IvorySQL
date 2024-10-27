@@ -92,8 +92,6 @@
 #include "access/xlog.h"
 #include "access/xlogrecovery.h"
 #include "common/file_perm.h"
-#include "common/file_utils.h"
-#include "common/ip.h"
 #include "common/pg_prng.h"
 #include "lib/ilist.h"
 #include "libpq/libpq.h"
@@ -103,7 +101,6 @@
 #include "parser/scansup.h"
 #include "port/pg_bswap.h"
 #include "postmaster/autovacuum.h"
-#include "postmaster/auxprocess.h"
 #include "postmaster/bgworker_internals.h"
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
@@ -115,7 +112,6 @@
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
-#include "storage/proc.h"
 #include "tcop/backend_startup.h"
 #include "tcop/tcopprot.h"
 #include "utils/datetime.h"
@@ -128,6 +124,7 @@
 #include "parser/parser.h"
 
 #ifdef EXEC_BACKEND
+#include "common/file_utils.h"
 #include "storage/pg_shmem.h"
 #endif
 
