@@ -104,6 +104,9 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 #include "utils/ora_compatible.h"
+#ifdef WAL_DEBUG
+#include "utils/memutils.h"
+#endif
 
 extern int       bootstrap_database_mode;
 /* timeline ID to be used when bootstrapping */
