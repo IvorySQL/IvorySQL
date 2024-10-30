@@ -278,6 +278,7 @@ static void determineLanguage(List *options);
 	struct SelectLimit *selectlimit;
 	SetQuantifier setquantifier;
 	struct GroupClause *groupclause;
+	MergeMatchKind mergematch;
 	MergeWhenClause *mergewhen;
 	struct KeyActions *keyactions;
 	struct KeyAction *keyaction;
@@ -520,6 +521,7 @@ static void determineLanguage(List *options);
 %type <onconflict> opt_on_conflict
 %type <mergewhen>	merge_insert merge_update merge_delete
 
+%type <mergematch> merge_when_tgt_matched merge_when_tgt_not_matched
 %type <node>	merge_when_clause merge_error_clause
 %type <list>	merge_when_list
 
@@ -785,11 +787,11 @@ static void determineLanguage(List *options);
 	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
-	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P
+	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
 
-	TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN
+	TABLE TABLES TABLESAMPLE TABLESPACE TARGET TEMP TEMPLATE TEMPORARY TEXT_P THEN
 	TIES TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM
 	TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P TYPES_P
@@ -13264,7 +13266,7 @@ MergeStmt:
 					m->sourceRelation = $6;
 					m->joinCondition = $8;
 					m->mergeWhenClauses = $9;
-					m->returningList = $10;
+					m->returningList = $11;
 
 					$$ = (Node *)m;
 				}
@@ -13275,23 +13277,39 @@ merge_when_list:
 			| merge_when_list merge_when_clause		{ $$ = lappend($1,$2); }
 		;
 
+/*
+ * A WHEN clause may be WHEN MATCHED, WHEN NOT MATCHED BY SOURCE, or WHEN NOT
+ * MATCHED [BY TARGET]. The first two cases match target tuples, and support
+ * UPDATE/DELETE/DO NOTHING actions. The third case does not match target
+ * tuples, and only supports INSERT/DO NOTHING actions.
+ */
 merge_when_clause:
-		WHEN MATCHED THEN merge_update
+		merge_when_tgt_matched THEN merge_update
 			{
-				$4->matched = true;
-				$4->commandType = CMD_UPDATE;
+				$3->matchKind = $1;
+				$3->commandType = CMD_UPDATE;
 
-				$$ = (Node *) $4;
+				$$ = (Node *) $3;
 			}
-		| WHEN NOT MATCHED THEN merge_insert where_clause
+		| merge_when_tgt_not_matched THEN merge_insert where_clause
 			{
-				$5->matched = false;
-				$5->commandType = CMD_INSERT;
-				$5->condition = $6;
+				$3->matchKind = $1;
+				$3->commandType = CMD_INSERT;
+				$3->condition = $4;
 
-				$$ = (Node *) $5;
+				$$ = (Node *) $3;
 			}
 	;
+
+merge_when_tgt_matched:
+			WHEN MATCHED					{ $$ = MERGE_WHEN_MATCHED; }
+			| WHEN NOT MATCHED BY SOURCE	{ $$ = MERGE_WHEN_NOT_MATCHED_BY_SOURCE; }
+		;
+
+merge_when_tgt_not_matched:
+			WHEN NOT MATCHED				{ $$ = MERGE_WHEN_NOT_MATCHED_BY_TARGET; }
+			| WHEN NOT MATCHED BY TARGET	{ $$ = MERGE_WHEN_NOT_MATCHED_BY_TARGET; }
+		;
 
 merge_update:
 			UPDATE SET set_clause_list where_clause merge_delete
@@ -13317,7 +13335,6 @@ merge_delete:
 				{
 					MergeWhenClause *n = makeNode(MergeWhenClause);
 
-					n->matched = true;
 					n->commandType = CMD_DELETE;
 					n->condition = $2;
 
@@ -19594,6 +19611,7 @@ unreserved_keyword:
 			| SIMPLE
 			| SKIP
 			| SNAPSHOT
+			| SOURCE
 			| SQL_P
 			| SQL_MACRO
 			| STABLE
@@ -19614,6 +19632,7 @@ unreserved_keyword:
 			| SYSTEM_P
 			| TABLES
 			| TABLESPACE
+			| TARGET
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY
@@ -20299,6 +20318,7 @@ bare_label_keyword:
 			| SMALLINT
 			| SNAPSHOT
 			| SOME
+			| SOURCE
 			| SQL_P
 			| SQL_MACRO
 			| STABLE
@@ -20326,6 +20346,7 @@ bare_label_keyword:
 			| TABLES
 			| TABLESAMPLE
 			| TABLESPACE
+			| TARGET
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY

@@ -3520,7 +3520,7 @@ WITH RECURSIVE t(action, a) AS (
 		RETURNING merge_action(), (SELECT a FROM t)
 )
 SELECT * FROM t;
-ERROR:  WITH query "t" has 0 columns available but 2 columns specified
+ERROR:  recursive query "t" must not contain data-modifying statements
 LINE 1: WITH RECURSIVE t(action, a) AS (
                        ^
 -- data-modifying WITH allowed only at the top level
