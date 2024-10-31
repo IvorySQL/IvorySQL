@@ -47,6 +47,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/ora_compatible.h"
+#include "utils/guc.h"
 
 
 static int	extractRemainingColumns(ParseState *pstate,

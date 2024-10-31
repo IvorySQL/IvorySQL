@@ -3497,6 +3497,7 @@ typedef struct FunctionParameter
 	TypeName   *argType;		/* TypeName for parameter type */
 	FunctionParameterMode mode; /* IN/OUT/etc */
 	Node	   *defexpr;		/* raw default expr, or NULL if not given */
+	ParseLoc	location;		/* token location, or -1 if unknown */
 } FunctionParameter;
 
 typedef struct AlterFunctionStmt

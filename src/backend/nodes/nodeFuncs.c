@@ -1748,8 +1748,7 @@ exprLocation(const Node *expr)
 			loc = ((const Constraint *) expr)->location;
 			break;
 		case T_FunctionParameter:
-			/* just use typename's location */
-			loc = exprLocation((Node *) ((const FunctionParameter *) expr)->argType);
+			loc = ((const FunctionParameter *) expr)->location;
 			break;
 		case T_XmlSerialize:
 			/* XMLSERIALIZE keyword should always be the first thing */
