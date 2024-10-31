@@ -496,7 +496,7 @@ test_pipeline_abort(PGconn *conn)
 				 PQerrorMessage(conn));
 
 	/* Try to send two queries in one command */
-	if (PQsendQuery(conn, "SELECT 1; SELECT 2") != 1)
+	if (PQsendQueryParams(conn, "SELECT 1; SELECT 2", 0, NULL, NULL, NULL, NULL, 0) != 1)
 		pg_fatal("failed to send query: %s", PQerrorMessage(conn));
 	if (PQpipelineSync(conn) != 1)
 		pg_fatal("pipeline sync failed: %s", PQerrorMessage(conn));
@@ -528,7 +528,8 @@ test_pipeline_abort(PGconn *conn)
 	fprintf(stderr, "ok\n");
 
 	/* Test single-row mode with an error partways */
-	if (PQsendQuery(conn, "SELECT 1.0/g FROM generate_series(3, -1, -1) g") != 1)
+	if (PQsendQueryParams(conn, "SELECT 1.0/g FROM generate_series(3, -1, -1) g",
+						  0, NULL, NULL, NULL, NULL, 0) != 1)
 		pg_fatal("failed to send query: %s", PQerrorMessage(conn));
 	if (PQpipelineSync(conn) != 1)
 		pg_fatal("pipeline sync failed: %s", PQerrorMessage(conn));
