@@ -294,6 +294,86 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			else
 				buf = pstrdup("character varying");
 			break;
+		
+		case ORACHARCHAROID:
+		case ORACHARBYTEOID:
+			if (with_typemod)
+				buf = printTypmod("char", typemod, typeform->typmodout);
+			else if ((flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0)
+			{
+				/*
+				 * oracharchar or oracharbyte with typmod -1 is not the same
+				 * as CHARACTER, which means CHARACTER(1) per SQL spec.
+				 * Report it as bpchar so that parser will not assign a bogus typmod.
+				 */
+			}
+			else
+				buf = pstrdup("char");
+			break;
+			
+		case ORAVARCHARCHAROID:
+		case ORAVARCHARBYTEOID:
+			if (with_typemod)
+				buf = printTypmod("varchar2", typemod, typeform->typmodout);
+			else
+				buf = pstrdup("varchar2");
+			break;
+		
+		case ORADATEOID:
+		case DATEOID:
+			buf = pstrdup("date");
+			break;
+		
+		case ORATIMESTAMPOID:
+			if (with_typemod)
+				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			else
+				buf = pstrdup("timestamp");
+			break;
+		
+		case ORATIMESTAMPTZOID:
+			if (with_typemod)
+				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			else
+				buf = pstrdup("timestamp with time zone");
+			break;
+		
+		case ORATIMESTAMPLTZOID:
+			if (with_typemod)
+				buf = printTypmod("timestamp", typemod, typeform->typmodout);
+			else
+				buf = pstrdup("timestamp with local time zone");
+			break;
+		
+		case YMINTERVALOID:
+			if (with_typemod)
+				buf = printTypmod("interval", typemod, typeform->typmodout);
+			else
+				buf = pstrdup("interval year to month");
+			break;
+		
+		case DSINTERVALOID:
+			if (with_typemod)
+				buf = printTypmod("interval", typemod, typeform->typmodout);
+			else
+				buf = pstrdup("interval day to second");
+			break;	
+			
+		case NUMBEROID:
+			if (with_typemod)
+				buf = printTypmod("number", typemod, typeform->typmodout);
+			else
+				buf = pstrdup("number");
+			break;
+		
+		case BINARY_FLOATOID:
+			buf = pstrdup("binary_float");
+			break;
+		case BINARY_DOUBLEOID:
+			buf = pstrdup("binary_double");
+			break;
+		
+		
 	}
 
 	if (buf == NULL)

@@ -659,7 +659,7 @@ bqarr_out(PG_FUNCTION_ARGS)
 }
 
 
-/* Useless old "debugging" function for a fundamentally wrong algorithm */
+
 Datum
 querytree(PG_FUNCTION_ARGS)
 {

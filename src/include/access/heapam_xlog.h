@@ -367,7 +367,7 @@ typedef struct xl_heap_new_cid
 	TransactionId top_xid;
 	CommandId	cmin;
 	CommandId	cmax;
-	CommandId	combocid;		/* just for debugging */
+	CommandId	combocid;		
 
 	/*
 	 * Store the relfilenode/ctid pair to facilitate lookups.

@@ -103,14 +103,14 @@ typedef struct ArrayType
  * this situation.  Once we start modifying array elements, new pass-by-ref
  * elements are separately palloc'd within the memory context.
  */
-#define EA_MAGIC 689375833		/* ID for debugging crosschecks */
+#define EA_MAGIC 689375833		
 
 typedef struct ExpandedArrayHeader
 {
 	/* Standard header for expanded objects */
 	ExpandedObjectHeader hdr;
 
-	/* Magic value identifying an expanded array (for debugging only) */
+	
 	int			ea_magic;
 
 	/* Dimensionality info (always valid) */

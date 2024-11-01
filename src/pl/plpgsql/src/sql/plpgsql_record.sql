@@ -46,10 +46,16 @@ $$ declare r two_int8s; begin r := row($1::int8, 1::int8, 42); return r; end $$;
 select retc(42);
 
 do $$ declare c two_int8s;
-begin c := row(1,2); raise notice 'c = %', c; end$$;
+begin c := row(1,2); raise notice 'c = %', c; end$$ language plpgsql;
 
 do $$ declare c two_int8s;
-begin for c in select 1,2 loop raise notice 'c = %', c; end loop; end$$;
+begin c := row(1,2); raise notice 'c = %', c; end$$ language plisql;
+
+do $$ declare c two_int8s;
+begin for c in select 1,2 loop raise notice 'c = %', c; end loop; end$$ language plpgsql;
+
+do $$ declare c two_int8s;
+begin for c in select 1,2 loop raise notice 'c = %', c; end loop; end$$ language plisql;
 
 do $$ declare c4 two_int4s; c8 two_int8s;
 begin
@@ -58,7 +64,16 @@ begin
   c8 := c4;
   raise notice 'c4 = %', c4;
   raise notice 'c8 = %', c8;
-end$$;
+end$$ language plpgsql;
+
+do $$ declare c4 two_int4s; c8 two_int8s;
+begin
+  c8 := row(1,2);
+  c4 := c8;
+  c8 := c4;
+  raise notice 'c4 = %', c4;
+  raise notice 'c8 = %', c8;
+end$$ language plisql;
 
 do $$ declare c two_int8s; d nested_int8s;
 begin
@@ -72,7 +87,21 @@ begin
   raise notice 'c.q1 = %, d.c2 = %', c.q1, d.c2;
   raise notice '(d).c2.q2 = %', (d).c2.q2;  -- doesn't work without parens
   raise notice '(d.c2).q2 = %', (d.c2).q2;  -- doesn't work without parens
-end$$;
+end$$ language plpgsql;
+
+do $$ declare c two_int8s; d nested_int8s;
+begin
+  c := row(1,2);
+  d := row(c, row(c.q1, c.q2+1));
+  raise notice 'c = %, d = %', c, d;
+  c.q1 := 10;
+  d.c1 := row(11,12);
+  d.c2.q2 := 42;
+  raise notice 'c = %, d = %', c, d;
+  raise notice 'c.q1 = %, d.c2 = %', c.q1, d.c2;
+  raise notice '(d).c2.q2 = %', (d).c2.q2;  -- doesn't work without parens
+  raise notice '(d.c2).q2 = %', (d.c2).q2;  -- doesn't work without parens
+end$$ language plisql;
 
 -- block-qualified naming
 do $$ <<b>> declare c two_int8s; d nested_int8s;
@@ -87,19 +116,43 @@ begin
   raise notice 'b.c.q1 = %, b.d.c2 = %', b.c.q1, b.d.c2;
   raise notice '(b.d).c2.q2 = %', (b.d).c2.q2;  -- doesn't work without parens
   raise notice '(b.d.c2).q2 = %', (b.d.c2).q2;  -- doesn't work without parens
-end$$;
+end$$ language plpgsql;
+
+do $$ <<b>> declare c two_int8s; d nested_int8s;
+begin
+  b.c := row(1,2);
+  b.d := row(b.c, row(b.c.q1, b.c.q2+1));
+  raise notice 'b.c = %, b.d = %', b.c, b.d;
+  b.c.q1 := 10;
+  b.d.c1 := row(11,12);
+  b.d.c2.q2 := 42;
+  raise notice 'b.c = %, b.d = %', b.c, b.d;
+  raise notice 'b.c.q1 = %, b.d.c2 = %', b.c.q1, b.d.c2;
+  raise notice '(b.d).c2.q2 = %', (b.d).c2.q2;  -- doesn't work without parens
+  raise notice '(b.d.c2).q2 = %', (b.d.c2).q2;  -- doesn't work without parens
+end$$ language plisql;
 
 -- error cases
-do $$ declare c two_int8s; begin c.x = 1; end $$;
-do $$ declare c nested_int8s; begin c.x = 1; end $$;
-do $$ declare c nested_int8s; begin c.x.q1 = 1; end $$;
-do $$ declare c nested_int8s; begin c.c2.x = 1; end $$;
-do $$ declare c nested_int8s; begin d.c2.x = 1; end $$;
-do $$ <<b>> declare c two_int8s; begin b.c.x = 1; end $$;
-do $$ <<b>> declare c nested_int8s; begin b.c.x = 1; end $$;
-do $$ <<b>> declare c nested_int8s; begin b.c.x.q1 = 1; end $$;
-do $$ <<b>> declare c nested_int8s; begin b.c.c2.x = 1; end $$;
-do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end $$;
+do $$ declare c two_int8s; begin c.x = 1; end $$ language plpgsql;
+do $$ declare c two_int8s; begin c.x = 1; end $$ language plisql;
+do $$ declare c nested_int8s; begin c.x = 1; end $$ language plpgsql;
+do $$ declare c nested_int8s; begin c.x = 1; end $$ language plisql;
+do $$ declare c nested_int8s; begin c.x.q1 = 1; end $$ language plpgsql;
+do $$ declare c nested_int8s; begin c.x.q1 = 1; end $$ language plisql;
+do $$ declare c nested_int8s; begin c.c2.x = 1; end $$ language plpgsql;
+do $$ declare c nested_int8s; begin c.c2.x = 1; end $$ language plisql;
+do $$ declare c nested_int8s; begin d.c2.x = 1; end $$ language plpgsql;
+do $$ declare c nested_int8s; begin d.c2.x = 1; end $$ language plisql;
+do $$ <<b>> declare c two_int8s; begin b.c.x = 1; end $$ language plpgsql;
+do $$ <<b>> declare c two_int8s; begin b.c.x = 1; end $$ language plisql;
+do $$ <<b>> declare c nested_int8s; begin b.c.x = 1; end $$ language plpgsql;
+do $$ <<b>> declare c nested_int8s; begin b.c.x = 1; end $$ language plisql;
+do $$ <<b>> declare c nested_int8s; begin b.c.x.q1 = 1; end $$ language plpgsql;
+do $$ <<b>> declare c nested_int8s; begin b.c.x.q1 = 1; end $$ language plisql;
+do $$ <<b>> declare c nested_int8s; begin b.c.c2.x = 1; end $$ language plpgsql;
+do $$ <<b>> declare c nested_int8s; begin b.c.c2.x = 1; end $$ language plisql;
+do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end $$ language plpgsql;
+do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end $$ language plisql;
 
 -- check passing composite result to another function
 create function getq1(two_int8s) returns int8 language plpgsql as $$
@@ -119,7 +172,20 @@ begin
   perform getq1(r2);
   x := getq1(r2);
   raise notice 'x = %', x;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r1 two_int8s; r2 record; x int8;
+begin
+  r1 := retc(345);
+  perform getq1(r1);
+  x := getq1(r1);
+  raise notice 'x = %', x;
+  r2 := retc(346);
+  perform getq1(r2);
+  x := getq1(r2);
+  raise notice 'x = %', x;
+end$$ language plisql;
 
 -- check assignments of composites
 do $$
@@ -155,7 +221,42 @@ begin
   raise notice 'r4 = %', r4;
   r4.q2 := r4.q2 + 1;  -- r4's field names have changed
   raise notice 'r4 = %', r4;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r1 two_int8s; r2 two_int8s; r3 record; r4 record;
+begin
+  r1 := row(1,2);
+  raise notice 'r1 = %', r1;
+  r1 := r1;  -- shouldn't do anything
+  raise notice 'r1 = %', r1;
+  r2 := r1;
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r2.q2 = r1.q1 + 3;  -- check that r2 has distinct storage
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r1 := null;
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r1 := row(7,11)::two_int8s;
+  r2 := r1;
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r3 := row(1,2);
+  r4 := r3;
+  raise notice 'r3 = %', r3;
+  raise notice 'r4 = %', r4;
+  r4.f1 := r4.f1 + 3;  -- check that r4 has distinct storage
+  raise notice 'r3 = %', r3;
+  raise notice 'r4 = %', r4;
+  r1 := r3;
+  raise notice 'r1 = %', r1;
+  r4 := r1;
+  raise notice 'r4 = %', r4;
+  r4.q2 := r4.q2 + 1;  -- r4's field names have changed
+  raise notice 'r4 = %', r4;
+end$$ language plisql;
 
 -- fields of named-type vars read as null if uninitialized
 do $$
@@ -165,7 +266,16 @@ begin
   raise notice 'r1.q1 = %', r1.q1;
   raise notice 'r1.q2 = %', r1.q2;
   raise notice 'r1 = %', r1;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r1 two_int8s;
+begin
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.q1 = %', r1.q1;
+  raise notice 'r1.q2 = %', r1.q2;
+  raise notice 'r1 = %', r1;
+end$$ language plisql;
 
 do $$
 declare r1 two_int8s;
@@ -174,7 +284,16 @@ begin
   raise notice 'r1.q2 = %', r1.q2;
   raise notice 'r1 = %', r1;
   raise notice 'r1.nosuchfield = %', r1.nosuchfield;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r1 two_int8s;
+begin
+  raise notice 'r1.q1 = %', r1.q1;
+  raise notice 'r1.q2 = %', r1.q2;
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.nosuchfield = %', r1.nosuchfield;
+end$$ language plisql;
 
 -- records, not so much
 do $$
@@ -184,7 +303,16 @@ begin
   raise notice 'r1.f1 = %', r1.f1;
   raise notice 'r1.f2 = %', r1.f2;
   raise notice 'r1 = %', r1;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r1 record;
+begin
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.f1 = %', r1.f1;
+  raise notice 'r1.f2 = %', r1.f2;
+  raise notice 'r1 = %', r1;
+end$$ language plisql;
 
 -- but OK if you assign first
 do $$
@@ -196,7 +324,18 @@ begin
   raise notice 'r1.f2 = %', r1.f2;
   raise notice 'r1 = %', r1;
   raise notice 'r1.nosuchfield = %', r1.nosuchfield;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r1 record;
+begin
+  raise notice 'r1 = %', r1;
+  r1 := row(1,2);
+  raise notice 'r1.f1 = %', r1.f1;
+  raise notice 'r1.f2 = %', r1.f2;
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.nosuchfield = %', r1.nosuchfield;
+end$$ language plisql;
 
 -- check repeated assignments to composite fields
 create table some_table (id int, data text);
@@ -210,7 +349,18 @@ begin
     r.data := r.data || ' ' || i;
   end loop;
   raise notice 'r = %', r;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r some_table;
+begin
+  r := (23, 'skidoo');
+  for i in 1 .. 10 loop
+    r.id := r.id + i;
+    r.data := r.data || ' ' || i;
+  end loop;
+  raise notice 'r = %', r;
+end$$ language plisql;
 
 -- check behavior of function declared to return "record"
 
@@ -272,7 +422,16 @@ begin
   loop
     raise notice 'r = %', r;
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r two_int8s;
+begin
+  for r in select i, i+1 from generate_series(1,4) i
+  loop
+    raise notice 'r = %', r;
+  end loop;
+end$$ language plisql;
 
 -- check behavior when returning setof composite
 create function returnssetofholes() returns setof has_hole language plpgsql as
@@ -447,7 +606,16 @@ begin
   r.q2 := 43;
   r.q1 := 42;
   r.q2 := 41;  -- fail
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r ordered_int8s;
+begin
+  r.q1 := null;
+  r.q2 := 43;
+  r.q1 := 42;
+  r.q2 := 41;  -- fail
+end$$ language plisql;
 
 -- check whole-row assignment
 do $$
@@ -457,7 +625,16 @@ begin
   r := row(null,null);
   r := row(1,2);
   r := row(2,1);  -- fail
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r ordered_int8s;
+begin
+  r := null;
+  r := row(null,null);
+  r := row(1,2);
+  r := row(2,1);  -- fail
+end$$ language plisql;
 
 -- check assignment in for-loop
 do $$
@@ -466,7 +643,15 @@ begin
   for r in values (1,2),(3,4),(6,5) loop
     raise notice 'r = %', r;
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r ordered_int8s;
+begin
+  for r in values (1,2),(3,4),(6,5) loop
+    raise notice 'r = %', r;
+  end loop;
+end$$ language plisql;
 
 -- check behavior with toastable fields, too
 
@@ -487,7 +672,15 @@ begin
   for d in select a, b from sometable loop
     raise notice 'succeeded at "%"', d.f1;
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare d ordered_texts;
+begin
+  for d in select a, b from sometable loop
+    raise notice 'succeeded at "%"', d.f1;
+  end loop;
+end$$ language plisql;
 
 do $$
 declare r record; d ordered_texts;
@@ -496,7 +689,16 @@ begin
     raise notice 'processing row %', r.id;
     d := row(r.a, r.b);
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r record; d ordered_texts;
+begin
+  for r in select * from sometable loop
+    raise notice 'processing row %', r.id;
+    d := row(r.a, r.b);
+  end loop;
+end$$ language plisql;
 
 do $$
 declare r record; d ordered_texts;
@@ -507,7 +709,18 @@ begin
     d.f1 := r.a;
     d.f2 := r.b;
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+declare r record; d ordered_texts;
+begin
+  for r in select * from sometable loop
+    raise notice 'processing row %', r.id;
+    d := null;
+    d.f1 := r.a;
+    d.f2 := r.b;
+  end loop;
+end$$ language plisql;
 
 -- check coercion of a record result to named-composite function output type
 create function compresult(int8) returns two_int8s language plpgsql as

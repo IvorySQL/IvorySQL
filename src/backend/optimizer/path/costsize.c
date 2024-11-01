@@ -3235,7 +3235,7 @@ initial_cost_mergejoin(PlannerInfo *root, JoinCostWorkspace *workspace,
 		Assert(ipathkeys);
 		opathkey = (PathKey *) linitial(opathkeys);
 		ipathkey = (PathKey *) linitial(ipathkeys);
-		/* debugging check */
+		
 		if (opathkey->pk_opfamily != ipathkey->pk_opfamily ||
 			opathkey->pk_eclass->ec_collation != ipathkey->pk_eclass->ec_collation ||
 			opathkey->pk_strategy != ipathkey->pk_strategy ||
@@ -5086,7 +5086,7 @@ calc_joinrel_size_estimate(PlannerInfo *root,
 						   SpecialJoinInfo *sjinfo,
 						   List *restrictlist_in)
 {
-	/* This apparently-useless variable dodges a compiler bug in VS2013: */
+	
 	List	   *restrictlist = restrictlist_in;
 	JoinType	jointype = sjinfo->jointype;
 	Selectivity fkselec;

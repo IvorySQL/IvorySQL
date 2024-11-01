@@ -112,6 +112,29 @@ copy_special_str(char *const result, const bool sign, const bool exponent, const
 	return sign + 1;
 }
 
+
+static inline int
+ivy_copy_special_str(char *const result, const bool sign, const bool exponent, const bool mantissa)
+{
+	if (mantissa)
+	{
+		memcpy(result, "Nan", 3);
+		return 3;
+	}
+	if (sign)
+	{
+		result[0] = '-';
+	}
+	if (exponent)
+	{
+		memcpy(result + sign, "Inf", 3);
+		return sign + 3;
+	}
+	result[sign] = '0';
+	return sign + 1;
+}
+
+
 static inline uint32
 float_to_bits(const float f)
 {

@@ -17,6 +17,12 @@ installcheck: all
 	SRCDIR='$(top_srcdir)' SUBDIR='$(subdir)' \
 		   $(PERL) $(top_srcdir)/$(subdir)/regress.pl
 
+#BEGIN - SQL PARSER
+oracle-installcheck: all
+	SRCDIR='$(top_srcdir)' SUBDIR='$(subdir)' \
+		   $(PERL) $(top_srcdir)/$(subdir)/regress.pl
+#END - SQL PARSER
+
 clean distclean maintainer-clean:
 	rm -f $(PROGS) *.o
 	rm -f regress.out regress.diff

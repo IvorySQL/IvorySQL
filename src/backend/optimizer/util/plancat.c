@@ -1970,6 +1970,21 @@ add_function_cost(PlannerInfo *root, Oid funcid, Node *node,
 	HeapTuple	proctup;
 	Form_pg_proc procform;
 
+	
+	if (node != NULL && nodeTag(node) == T_FuncExpr)
+	{
+		FuncExpr *funcexpr = (FuncExpr *) node;
+
+		/* not pg_proc function use default cost */
+		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+		{
+			/* use the default */
+			cost->per_tuple += 100 * cpu_operator_cost;
+			return;
+		}
+	}
+	
+
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(proctup))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
@@ -2145,6 +2160,10 @@ has_row_triggers(PlannerInfo *root, Index rti, CmdType event)
 				(trigDesc->trig_delete_after_row ||
 				 trigDesc->trig_delete_before_row))
 				result = true;
+			break;
+			/* There is no separate event for MERGE, only INSERT/UPDATE/DELETE */
+		case CMD_MERGE:
+			result = false;
 			break;
 		default:
 			elog(ERROR, "unrecognized CmdType: %d", (int) event);

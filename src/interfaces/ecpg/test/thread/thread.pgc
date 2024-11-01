@@ -42,7 +42,7 @@ int main()
 
  /* Do not switch on debug output for regression tests. The threads get executed in
   * more or less random order */
- /* ECPGdebug(1, stderr); */
+ 
 
   /* setup test_thread table */
   EXEC SQL CONNECT TO REGRESSDB1;

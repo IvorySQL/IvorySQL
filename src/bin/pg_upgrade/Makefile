@@ -61,5 +61,10 @@ NOTSUBMAKEMAKE=$(MAKE)
 check: test.sh all temp-install
 	MAKE=$(NOTSUBMAKEMAKE) $(with_temp_install) bindir=$(abs_top_builddir)/tmp_install/$(bindir) EXTRA_REGRESS_OPTS="$(EXTRA_REGRESS_OPTS)" $(SHELL) $<
 
+#BEGIN - SQL PARSER
+oracle-check: oracle_test.sh all temp-install
+	MAKE=$(NOTSUBMAKEMAKE) $(with_temp_install) bindir=$(abs_top_builddir)/tmp_install/$(bindir) EXTRA_REGRESS_OPTS="$(EXTRA_REGRESS_OPTS)" $(SHELL) $<
+#END - SQL PARSER
+
 # installcheck is not supported because there's no meaningful way to test
 # pg_upgrade against a single already-running server

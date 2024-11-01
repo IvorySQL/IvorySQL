@@ -55,4 +55,9 @@ extern TupleDesc expandRecordVariable(ParseState *pstate, Var *var,
 extern char *FigureColname(Node *node);
 extern char *FigureIndexColname(Node *node);
 
+
+typedef int (* OraGetAttrnoHooktype)(ParseState *pstate, ResTarget  *col);
+extern PGDLLIMPORT OraGetAttrnoHooktype OraGetAttrnoHook;
+
+
 #endif							/* PARSE_TARGET_H */

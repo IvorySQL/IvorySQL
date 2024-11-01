@@ -4213,4 +4213,4 @@ debug_print_rel(PlannerInfo *root, RelOptInfo *rel)
 	fflush(stdout);
 }
 
-#endif							/* OPTIMIZER_DEBUG */
+#endif							

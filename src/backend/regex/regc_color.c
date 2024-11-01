@@ -1183,4 +1183,4 @@ dumpchr(chr c,
 		fprintf(f, "\\u%04lx", (long) c);
 }
 
-#endif							/* REG_DEBUG */
+#endif							

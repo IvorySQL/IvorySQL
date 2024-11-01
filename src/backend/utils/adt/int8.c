@@ -598,7 +598,7 @@ int8div(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		
 		PG_RETURN_NULL();
 	}
 
@@ -656,7 +656,7 @@ int8mod(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		
 		PG_RETURN_NULL();
 	}
 
@@ -983,7 +983,7 @@ int84div(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		
 		PG_RETURN_NULL();
 	}
 
@@ -1063,7 +1063,7 @@ int48div(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		
 		PG_RETURN_NULL();
 	}
 
@@ -1125,7 +1125,7 @@ int82div(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		
 		PG_RETURN_NULL();
 	}
 
@@ -1205,7 +1205,7 @@ int28div(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		
 		PG_RETURN_NULL();
 	}
 

@@ -39,6 +39,9 @@
 #include "utils/tuplesort.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
+#include "utils/ora_compatible.h"
+#include "funcapi.h" 
+
 
 
 /* Hook for plugins to get control in ExplainOneQuery() */
@@ -79,8 +82,8 @@ static void show_scan_qual(List *qual, const char *qlabel,
 						   PlanState *planstate, List *ancestors,
 						   ExplainState *es);
 static void show_upper_qual(List *qual, const char *qlabel,
-							PlanState *planstate, List *ancestors,
-							ExplainState *es);
+						   PlanState *planstate,
+						   List *ancestors, ExplainState *es);
 static void show_sort_keys(SortState *sortstate, List *ancestors,
 						   ExplainState *es);
 static void show_incremental_sort_keys(IncrementalSortState *incrsortstate,
@@ -115,7 +118,7 @@ static void show_hashagg_info(AggState *hashstate, ExplainState *es);
 static void show_tidbitmap_info(BitmapHeapScanState *planstate,
 								ExplainState *es);
 static void show_instrumentation_count(const char *qlabel, int which,
-									   PlanState *planstate, ExplainState *es);
+								PlanState *planstate, ExplainState *es);
 static void show_foreignscan_info(ForeignScanState *fsstate, ExplainState *es);
 static void show_eval_params(Bitmapset *bms_params, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
@@ -1187,6 +1190,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					break;
 				case CMD_DELETE:
 					pname = operation = "Delete";
+					break;
+				case CMD_MERGE:
+					pname = operation = "Merge";
 					break;
 				default:
 					pname = "???";
@@ -3783,10 +3789,17 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 						FuncExpr   *funcexpr = (FuncExpr *) rtfunc->funcexpr;
 						Oid			funcid = funcexpr->funcid;
 
-						objectname = get_func_name(funcid);
-						if (es->verbose)
-							namespace =
-								get_namespace_name(get_func_namespace(funcid));
+						
+						if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+						{
+							objectname = get_func_name(funcid);
+							if (es->verbose)
+								namespace =
+									get_namespace_name(get_func_namespace(funcid));
+						}
+						else
+							objectname = get_internal_function_name(funcexpr);
+						
 					}
 				}
 				objecttag = "Function Name";
@@ -3877,6 +3890,11 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 		case CMD_DELETE:
 			operation = "Delete";
 			foperation = "Foreign Delete";
+			break;
+		case CMD_MERGE:
+			operation = "Merge";
+			/* XXX unsupported for now, but avoid compiler noise */
+			foperation = "Foreign Merge";
 			break;
 		default:
 			operation = "???";
@@ -3998,6 +4016,44 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 								 insert_path, 0, es);
 			ExplainPropertyFloat("Conflicting Tuples", NULL,
 								 other_path, 0, es);
+		}
+	}
+	else if (node->operation == CMD_MERGE)
+	{
+		/* EXPLAIN ANALYZE display of tuples processed */
+		if (es->analyze && mtstate->ps.instrument)
+		{
+			double		total;
+			double		insert_path;
+			double		update_path;
+			double		delete_path;
+			double		skipped_path;
+
+			InstrEndLoop(outerPlanState(mtstate)->instrument);
+
+			/* count the number of source rows */
+			total = outerPlanState(mtstate)->instrument->ntuples;
+			insert_path = mtstate->mt_merge_inserted;
+			update_path = mtstate->mt_merge_updated;
+			delete_path = mtstate->mt_merge_deleted;
+			skipped_path = total - insert_path - update_path - delete_path;
+
+			
+			if (compatible_db == DB_ORACLE)
+			{
+				ExplainPropertyFloat("Tuples Inserted", NULL, insert_path, 0, es);
+				ExplainPropertyFloat("Tuples Updated", NULL, update_path, 0, es);
+				ExplainPropertyFloat("Tuples Deleted", NULL, delete_path, 0, es);
+			}
+			else
+			{
+				Assert(skipped_path >= 0);
+
+				ExplainPropertyFloat("Tuples Inserted", NULL, insert_path, 0, es);
+				ExplainPropertyFloat("Tuples Updated", NULL, update_path, 0, es);
+				ExplainPropertyFloat("Tuples Deleted", NULL, delete_path, 0, es);
+				ExplainPropertyFloat("Tuples Skipped", NULL, skipped_path, 0, es);
+			}
 		}
 	}
 

@@ -20,6 +20,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/functions.h"
+#include "executor/spi.h"	
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -31,6 +32,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "commands/proclang.h" 
 
 /*
  * Hooks for function calls
@@ -127,6 +129,55 @@ fmgr_info(Oid functionId, FmgrInfo *finfo)
 {
 	fmgr_info_cxt_security(functionId, finfo, CurrentMemoryContext, false);
 }
+
+
+/*
+ * like fmgr_info, we handle function not from pg_proc
+ * but we force it to plisql_call_handle
+ */
+void
+fmgr_subproc_info_cxt(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt)
+{
+	Oid			language = get_language_oid("plisql", false);
+	HeapTuple	languageTuple;
+	Form_pg_language languageStruct;
+	FmgrInfo	plfinfo;
+
+	/*
+	 * fn_oid *must* be filled in last.  Some code assumes that if fn_oid is
+	 * valid, the whole struct is valid.  Some FmgrInfo struct's do survive
+	 * elogs.
+	 */
+	finfo->fn_oid = InvalidOid;
+	finfo->fn_extra = NULL;
+	finfo->fn_mcxt = mcxt;
+	finfo->fn_expr = NULL;		/* caller may set this later */
+
+	finfo->fn_strict = false; /* inline function is awalys not strict */
+
+
+	languageTuple = SearchSysCache1(LANGOID, language);
+	if (!HeapTupleIsValid(languageTuple))
+		elog(ERROR, "cache lookup failed for language %u", language);
+	languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
+
+	/*
+	 * Look up the language's call handler function, ignoring any attributes
+	 * that would normally cause insertion of fmgr_security_definer.  We need
+	 * to get back a bare pointer to the actual C-language function.
+	 */
+	fmgr_info_cxt_security(languageStruct->lanplcallfoid, &plfinfo,
+						   CurrentMemoryContext, true);
+	finfo->fn_addr = plfinfo.fn_addr;
+
+	ReleaseSysCache(languageTuple);
+	finfo->fn_stats = TRACK_FUNC_OFF;	/* ie, track if not OFF */
+
+	finfo->fn_oid = functionId;
+}
+
+
+
 
 /*
  * Fill a FmgrInfo struct, specifying a memory context in which its
@@ -1575,6 +1626,16 @@ OutputFunctionCall(FmgrInfo *flinfo, Datum val)
 	return DatumGetCString(FunctionCall1(flinfo, val));
 }
 
+/* 
+ * Pass typmod to output function .
+ */
+char *
+OutputFunctionCallWithTypmod(FmgrInfo *flinfo, Datum val, Datum typmod)
+{
+	return DatumGetCString(FunctionCall2(flinfo, val, typmod));
+}
+
+
 /*
  * Call a previously-looked-up datatype binary-input function.
  *
@@ -1657,6 +1718,19 @@ OidOutputFunctionCall(Oid functionId, Datum val)
 	fmgr_info(functionId, &flinfo);
 	return OutputFunctionCall(&flinfo, val);
 }
+
+/* 
+ * Pass typmod to output function .
+ */
+char *
+OidOutputFunctionCallWithTypmod(Oid functionId, Datum val, Datum typmod)
+{
+	FmgrInfo	flinfo;
+
+	fmgr_info(functionId, &flinfo);
+	return OutputFunctionCallWithTypmod(&flinfo, val, typmod);
+}
+
 
 Datum
 OidReceiveFunctionCall(Oid functionId, StringInfo buf,

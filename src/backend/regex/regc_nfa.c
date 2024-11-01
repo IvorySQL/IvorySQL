@@ -1564,7 +1564,7 @@ specialcolors(struct nfa *nfa)
  */
 static long						/* re_info bits */
 optimize(struct nfa *nfa,
-		 FILE *f)				/* for debug output; NULL none */
+		 FILE *f)				
 {
 #ifdef REG_DEBUG
 	int			verbose = (f != NULL) ? 1 : 0;
@@ -1604,7 +1604,7 @@ optimize(struct nfa *nfa,
  */
 static void
 pullback(struct nfa *nfa,
-		 FILE *f)				/* for debug output; NULL none */
+		 FILE *f)				
 {
 	struct state *s;
 	struct state *nexts;
@@ -1775,7 +1775,7 @@ pull(struct nfa *nfa,
  */
 static void
 pushfwd(struct nfa *nfa,
-		FILE *f)				/* for debug output; NULL none */
+		FILE *f)				
 {
 	struct state *s;
 	struct state *nexts;
@@ -2038,7 +2038,7 @@ combine(struct nfa *nfa,
  */
 static void
 fixempties(struct nfa *nfa,
-		   FILE *f)				/* for debug output; NULL none */
+		   FILE *f)				
 {
 	struct state *s;
 	struct state *s2;
@@ -2332,7 +2332,7 @@ hasconstraintout(struct state *s)
  */
 static void
 fixconstraintloops(struct nfa *nfa,
-				   FILE *f)		/* for debug output; NULL none */
+				   FILE *f)		
 {
 	struct state *s;
 	struct state *nexts;
@@ -3747,7 +3747,7 @@ dumparc(struct arc *a,
 	if (aa == NULL)
 		fprintf(f, "?!?");		/* missing from in-chain */
 }
-#endif							/* REG_DEBUG */
+#endif							
 
 /*
  * dumpcnfa - dump a compacted NFA in human-readable form
@@ -3821,4 +3821,4 @@ dumpcstate(int st,
 	fflush(f);
 }
 
-#endif							/* REG_DEBUG */
+#endif							

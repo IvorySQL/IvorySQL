@@ -4176,7 +4176,7 @@ parallel_vacuum_main(dsm_segment *seg, shm_toc *toc)
 	else
 		elog(DEBUG1, "starting parallel vacuum worker for bulk delete");
 
-	/* Set debug_query_string for individual workers */
+	
 	sharedquery = shm_toc_lookup(toc, PARALLEL_VACUUM_KEY_QUERY_TEXT, true);
 	debug_query_string = sharedquery;
 	pgstat_report_activity(STATE_RUNNING, debug_query_string);

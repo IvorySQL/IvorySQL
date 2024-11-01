@@ -1,0 +1,1408 @@
+--
+-- HOROLOGY
+--
+SET DateStyle = 'Postgres, MDY';
+SHOW TimeZone;  -- Many of these tests depend on the prevailing setting
+ TimeZone 
+----------
+ PST8PDT
+(1 row)
+
+--
+-- Test various input formats
+--
+SELECT timestamp with time zone '20011227 040506+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227 040506+08';
+                         ^
+SELECT timestamp with time zone '20011227 040506-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227 040506-08';
+                         ^
+SELECT timestamp with time zone '20011227 040506.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227 040506.789+08';
+                         ^
+SELECT timestamp with time zone '20011227 040506.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227 040506.789-08';
+                         ^
+SELECT timestamp with time zone '20011227T040506+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227T040506+08';
+                         ^
+SELECT timestamp with time zone '20011227T040506-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227T040506-08';
+                         ^
+SELECT timestamp with time zone '20011227T040506.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227T040506.789+08';
+                         ^
+SELECT timestamp with time zone '20011227T040506.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '20011227T040506.789-08';
+                         ^
+SELECT timestamp with time zone '2001-12-27 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2001-12-27 04:05:06.789-08'...
+                         ^
+SELECT timestamp with time zone '2001.12.27 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2001.12.27 04:05:06.789-08'...
+                         ^
+SELECT timestamp with time zone '2001/12/27 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2001/12/27 04:05:06.789-08'...
+                         ^
+SELECT timestamp with time zone '12/27/2001 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '12/27/2001 04:05:06.789-08'...
+                         ^
+-- should fail in mdy mode:
+SELECT timestamp with time zone '27/12/2001 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '27/12/2001 04:05:06.789-08'...
+                         ^
+set datestyle to dmy;
+SELECT timestamp with time zone '27/12/2001 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '27/12/2001 04:05:06.789-08'...
+                         ^
+reset datestyle;
+SELECT timestamp with time zone 'Y2001M12D27H04M05S06.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'Y2001M12D27H04M05S06.789+08...
+                         ^
+SELECT timestamp with time zone 'Y2001M12D27H04M05S06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'Y2001M12D27H04M05S06.789-08...
+                         ^
+SELECT timestamp with time zone 'Y2001M12D27H04MM05S06.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'Y2001M12D27H04MM05S06.789+0...
+                         ^
+SELECT timestamp with time zone 'Y2001M12D27H04MM05S06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'Y2001M12D27H04MM05S06.789-0...
+                         ^
+SELECT timestamp with time zone 'J2452271+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271+08';
+                         ^
+SELECT timestamp with time zone 'J2452271-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271-08';
+                         ^
+SELECT timestamp with time zone 'J2452271.5+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271.5+08';
+                         ^
+SELECT timestamp with time zone 'J2452271.5-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271.5-08';
+                         ^
+SELECT timestamp with time zone 'J2452271 04:05:06+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271 04:05:06+08';
+                         ^
+SELECT timestamp with time zone 'J2452271 04:05:06-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271 04:05:06-08';
+                         ^
+SELECT timestamp with time zone 'J2452271T040506+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271T040506+08';
+                         ^
+SELECT timestamp with time zone 'J2452271T040506-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271T040506-08';
+                         ^
+SELECT timestamp with time zone 'J2452271T040506.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271T040506.789+08';
+                         ^
+SELECT timestamp with time zone 'J2452271T040506.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone 'J2452271T040506.789-08';
+                         ^
+-- German/European-style dates with periods as delimiters
+SELECT timestamp with time zone '12.27.2001 04:05:06.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '12.27.2001 04:05:06.789+08'...
+                         ^
+SELECT timestamp with time zone '12.27.2001 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '12.27.2001 04:05:06.789-08'...
+                         ^
+SET DateStyle = 'German';
+SELECT timestamp with time zone '27.12.2001 04:05:06.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '27.12.2001 04:05:06.789+08'...
+                         ^
+SELECT timestamp with time zone '27.12.2001 04:05:06.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '27.12.2001 04:05:06.789-08'...
+                         ^
+SET DateStyle = 'ISO';
+-- As of 7.4, allow time without time zone having a time zone specified
+SELECT time without time zone '040506.789+08';
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT time without time zone '040506.789+08';
+                    ^
+SELECT time without time zone '040506.789-08';
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT time without time zone '040506.789-08';
+                    ^
+SELECT time without time zone 'T040506.789+08';
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT time without time zone 'T040506.789+08';
+                    ^
+SELECT time without time zone 'T040506.789-08';
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT time without time zone 'T040506.789-08';
+                    ^
+SELECT time with time zone '040506.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone '040506.789+08';
+                    ^
+SELECT time with time zone '040506.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone '040506.789-08';
+                    ^
+SELECT time with time zone 'T040506.789+08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone 'T040506.789+08';
+                    ^
+SELECT time with time zone 'T040506.789-08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone 'T040506.789-08';
+                    ^
+SELECT time with time zone 'T040506.789 +08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone 'T040506.789 +08';
+                    ^
+SELECT time with time zone 'T040506.789 -08';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone 'T040506.789 -08';
+                    ^
+SET DateStyle = 'Postgres, MDY';
+-- Check Julian dates BC
+SELECT date 'J1520447' AS "Confucius' Birthday";
+ERROR:  invalid value "J152" for "YYYY"
+DETAIL:  Value must be an integer.
+SELECT date 'J0' AS "Julian Epoch";
+ERROR:  invalid value "J0" for "YYYY"
+DETAIL:  Value must be an integer.
+--
+-- date, time arithmetic
+--
+SELECT date '1981-02-03' + time '04:05:06' AS "Date + Time";
+       Date + Time        
+--------------------------
+ Tue Feb 03 04:05:06 1981
+(1 row)
+
+SELECT date '1991-02-03' + time with time zone '04:05:06 PST' AS "Date + Time PST";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT date '1991-02-03' + time with time zone '04:05:06 PST...
+                                        ^
+SELECT date '2001-02-03' + time with time zone '04:05:06 UTC' AS "Date + Time UTC";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT date '2001-02-03' + time with time zone '04:05:06 UTC...
+                                        ^
+SELECT date '1991-02-03' + interval '2 years' AS "Add Two Years";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT date '1991-02-03' + interval '2 years' AS "Add Two Ye...
+                                                      ^
+SELECT date '2001-12-13' - interval '2 years' AS "Subtract Two Years";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT date '2001-12-13' - interval '2 years' AS "Subtract T...
+                                                      ^
+-- subtract time from date should not make sense; use interval instead
+SELECT date '1991-02-03' - time '04:05:06' AS "Subtract Time";
+      Subtract Time       
+--------------------------
+ Sat Feb 02 19:54:54 1991
+(1 row)
+
+SELECT date '1991-02-03' - time with time zone '04:05:06 UTC' AS "Subtract Time UTC";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT date '1991-02-03' - time with time zone '04:05:06 UTC...
+                                        ^
+--
+-- timestamp, interval arithmetic
+--
+SELECT timestamp without time zone '1996-03-01' - interval '1 second' AS "Feb 29";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone '1996-03-01' - interval '...
+                         ^
+SELECT timestamp without time zone '1999-03-01' - interval '1 second' AS "Feb 28";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone '1999-03-01' - interval '...
+                         ^
+SELECT timestamp without time zone '2000-03-01' - interval '1 second' AS "Feb 29";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone '2000-03-01' - interval '...
+                         ^
+SELECT timestamp without time zone '1999-12-01' + interval '1 month - 1 second' AS "Dec 31";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone '1999-12-01' + interval '...
+                         ^
+SELECT timestamp without time zone 'Jan 1, 4713 BC' + interval '106000000 days' AS "Feb 23, 285506";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone 'Jan 1, 4713 BC' + interv...
+                         ^
+SELECT timestamp without time zone 'Jan 1, 4713 BC' + interval '107000000 days' AS "Jan 20, 288244";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone 'Jan 1, 4713 BC' + interv...
+                         ^
+SELECT timestamp without time zone 'Jan 1, 4713 BC' + interval '109203489 days' AS "Dec 31, 294276";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone 'Jan 1, 4713 BC' + interv...
+                         ^
+SELECT timestamp without time zone '12/31/294276' - timestamp without time zone '12/23/1999' AS "106751991 Days";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone '12/31/294276' - timestam...
+                         ^
+-- Shorthand values
+-- Not directly usable for regression testing since these are not constants.
+-- So, just try to test parser and hope for the best - thomas 97/04/26
+SELECT (timestamp without time zone 'today' = (timestamp without time zone 'yesterday' + interval '1 day')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone 'today' = (timestamp wit...
+                          ^
+SELECT (timestamp without time zone 'today' = (timestamp without time zone 'tomorrow' - interval '1 day')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone 'today' = (timestamp wit...
+                          ^
+SELECT (timestamp without time zone 'today 10:30' = (timestamp without time zone 'yesterday' + interval '1 day 10 hr 30 min')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone 'today 10:30' = (timesta...
+                          ^
+SELECT (timestamp without time zone '10:30 today' = (timestamp without time zone 'yesterday' + interval '1 day 10 hr 30 min')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '10:30 today' = (timesta...
+                          ^
+SELECT (timestamp without time zone 'tomorrow' = (timestamp without time zone 'yesterday' + interval '2 days')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone 'tomorrow' = (timestamp ...
+                          ^
+SELECT (timestamp without time zone 'tomorrow 16:00:00' = (timestamp without time zone 'today' + interval '1 day 16 hours')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone 'tomorrow 16:00:00' = (t...
+                          ^
+SELECT (timestamp without time zone '16:00:00 tomorrow' = (timestamp without time zone 'today' + interval '1 day 16 hours')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '16:00:00 tomorrow' = (t...
+                          ^
+SELECT (timestamp without time zone 'yesterday 12:34:56' = (timestamp without time zone 'tomorrow' - interval '2 days - 12:34:56')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone 'yesterday 12:34:56' = (...
+                          ^
+SELECT (timestamp without time zone '12:34:56 yesterday' = (timestamp without time zone 'tomorrow' - interval '2 days - 12:34:56')) as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '12:34:56 yesterday' = (...
+                          ^
+SELECT (timestamp without time zone 'tomorrow' > 'now') as "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone 'tomorrow' > 'now') as "...
+                          ^
+-- Convert from date and time to timestamp
+-- This test used to be timestamp(date,time) but no longer allowed by grammar
+-- to enable support for SQL99 timestamp type syntax.
+SELECT date '1994-01-01' + time '11:00' AS "Jan_01_1994_11am";
+     Jan_01_1994_11am     
+--------------------------
+ Sat Jan 01 11:00:00 1994
+(1 row)
+
+SELECT date '1994-01-01' + time '10:00' AS "Jan_01_1994_10am";
+     Jan_01_1994_10am     
+--------------------------
+ Sat Jan 01 10:00:00 1994
+(1 row)
+
+SELECT date '1994-01-01' + timetz '11:00-5' AS "Jan_01_1994_8am";
+       Jan_01_1994_8am        
+------------------------------
+ Sat Jan 01 08:00:00 1994 PST
+(1 row)
+
+SELECT timestamptz(date '1994-01-01', time with time zone '11:00-5') AS "Jan_01_1994_8am";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamptz(date '1994-01-01', time with time zone '1...
+                                                   ^
+SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL;
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL...
+                                      ^
+SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL;
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL...
+                                      ^
+SELECT timestamp with time zone '1996-03-01' - interval '1 second' AS "Feb 29";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '1996-03-01' - interval '1 s...
+                         ^
+SELECT timestamp with time zone '1999-03-01' - interval '1 second' AS "Feb 28";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '1999-03-01' - interval '1 s...
+                         ^
+SELECT timestamp with time zone '2000-03-01' - interval '1 second' AS "Feb 29";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2000-03-01' - interval '1 s...
+                         ^
+SELECT timestamp with time zone '1999-12-01' + interval '1 month - 1 second' AS "Dec 31";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '1999-12-01' + interval '1 m...
+                         ^
+SELECT (timestamp with time zone 'today' = (timestamp with time zone 'yesterday' + interval '1 day')) as "True";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone 'today' = (timestamp with t...
+                          ^
+SELECT (timestamp with time zone 'today' = (timestamp with time zone 'tomorrow' - interval '1 day')) as "True";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone 'today' = (timestamp with t...
+                          ^
+SELECT (timestamp with time zone 'tomorrow' = (timestamp with time zone 'yesterday' + interval '2 days')) as "True";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone 'tomorrow' = (timestamp wit...
+                          ^
+SELECT (timestamp with time zone 'tomorrow' > 'now') as "True";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone 'tomorrow' > 'now') as "Tru...
+                          ^
+-- timestamp with time zone, interval arithmetic around DST change
+-- (just for fun, let's use an intentionally nonstandard POSIX zone spec)
+SET TIME ZONE 'CST7CDT,M4.1.0,M10.5.0';
+SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '1 day' as "Apr 3, 12:00";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2005-04-02 12:00-07' + inte...
+                         ^
+SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '24 hours' as "Apr 3, 13:00";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2005-04-02 12:00-07' + inte...
+                         ^
+SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '1 day' as "Apr 2, 12:00";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2005-04-03 12:00-06' - inte...
+                         ^
+SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '24 hours' as "Apr 2, 11:00";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '2005-04-03 12:00-06' - inte...
+                         ^
+RESET TIME ZONE;
+SELECT timestamptz(date '1994-01-01', time '11:00') AS "Jan_01_1994_10am";
+       Jan_01_1994_10am       
+------------------------------
+ Sat Jan 01 11:00:00 1994 PST
+(1 row)
+
+SELECT timestamptz(date '1994-01-01', time '10:00') AS "Jan_01_1994_9am";
+       Jan_01_1994_9am        
+------------------------------
+ Sat Jan 01 10:00:00 1994 PST
+(1 row)
+
+SELECT timestamptz(date '1994-01-01', time with time zone '11:00-8') AS "Jan_01_1994_11am";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamptz(date '1994-01-01', time with time zone '1...
+                                                   ^
+SELECT timestamptz(date '1994-01-01', time with time zone '10:00-8') AS "Jan_01_1994_10am";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamptz(date '1994-01-01', time with time zone '1...
+                                                   ^
+SELECT timestamptz(date '1994-01-01', time with time zone '11:00-5') AS "Jan_01_1994_8am";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamptz(date '1994-01-01', time with time zone '1...
+                                                   ^
+SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_T...
+                                      ^
+SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_T...
+                                      ^
+--
+-- time, interval arithmetic
+--
+SELECT CAST(time '01:02' AS interval) AS "+01:02";
+ERROR:  missing or invalid datetime field.
+SELECT CAST(interval '02:03' AS time) AS "02:03:00";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT CAST(interval '02:03' AS time) AS "02:03:00";
+                                     ^
+SELECT time '01:30' + interval '02:01' AS "03:31:00";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT time '01:30' + interval '02:01' AS "03:31:00";
+                                               ^
+SELECT time '01:30' - interval '02:01' AS "23:29:00";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT time '01:30' - interval '02:01' AS "23:29:00";
+                                               ^
+SELECT time '02:30' + interval '36:01' AS "14:31:00";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT time '02:30' + interval '36:01' AS "14:31:00";
+                                               ^
+SELECT time '03:30' + interval '1 month 04:01' AS "07:31:00";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT time '03:30' + interval '1 month 04:01' AS "07:31:00"...
+                                                       ^
+SELECT CAST(time with time zone '01:02-08' AS interval) AS "+00:01";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT CAST(time with time zone '01:02-08' AS interval) AS "...
+                         ^
+SELECT CAST(interval '02:03' AS time with time zone) AS "02:03:00-08";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT CAST(interval '02:03' AS time with time zone) AS "02:...
+                                     ^
+SELECT time with time zone '01:30-08' - interval '02:01' AS "23:29:00-08";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone '01:30-08' - interval '02:01' AS ...
+                    ^
+SELECT time with time zone '02:30-08' + interval '36:01' AS "14:31:00-08";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT time with time zone '02:30-08' + interval '36:01' AS ...
+                    ^
+-- These two tests cannot be used because they default to current timezone,
+-- which may be either -08 or -07 depending on the time of year.
+-- SELECT time with time zone '01:30' + interval '02:01' AS "03:31:00-08";
+-- SELECT time with time zone '03:30' + interval '1 month 04:01' AS "07:31:00-08";
+-- Try the following two tests instead, as a poor substitute
+SELECT CAST(CAST(date 'today' + time with time zone '05:30'
+            + interval '02:01' AS time with time zone) AS time) AS "07:31:00";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT CAST(CAST(date 'today' + time with time zone '05:30'
+                                             ^
+SELECT CAST(cast(date 'today' + time with time zone '03:30'
+  + interval '1 month 04:01' as timestamp without time zone) AS time) AS "07:31:00";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT CAST(cast(date 'today' + time with time zone '03:30'
+                                             ^
+SELECT t.d1 AS t, i.f1 AS i, t.d1 + i.f1 AS "add", t.d1 - i.f1 AS "subtract"
+  FROM TIMESTAMP_TBL t, INTERVAL_TBL i
+  WHERE t.d1 BETWEEN '1990-01-01' AND '2001-01-01'
+    AND i.f1 BETWEEN '00:00' AND '23:00'
+  ORDER BY 1,2;
+ERROR:  relation "interval_tbl" does not exist
+LINE 2:   FROM TIMESTAMP_TBL t, INTERVAL_TBL i
+                                ^
+SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
+  FROM TIME_TBL t, INTERVAL_TBL i
+  ORDER BY 1,2;
+ERROR:  relation "interval_tbl" does not exist
+LINE 2:   FROM TIME_TBL t, INTERVAL_TBL i
+                           ^
+SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
+  FROM TIMETZ_TBL t, INTERVAL_TBL i
+  ORDER BY 1,2;
+ERROR:  relation "interval_tbl" does not exist
+LINE 2:   FROM TIMETZ_TBL t, INTERVAL_TBL i
+                             ^
+-- SQL9x OVERLAPS operator
+-- test with time zone
+SELECT (timestamp with time zone '2000-11-27', timestamp with time zone '2000-11-28')
+  OVERLAPS (timestamp with time zone '2000-11-27 12:00', timestamp with time zone '2000-11-30') AS "True";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone '2000-11-27', timestamp wit...
+                          ^
+SELECT (timestamp with time zone '2000-11-26', timestamp with time zone '2000-11-27')
+  OVERLAPS (timestamp with time zone '2000-11-27 12:00', timestamp with time zone '2000-11-30') AS "False";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone '2000-11-26', timestamp wit...
+                          ^
+SELECT (timestamp with time zone '2000-11-27', timestamp with time zone '2000-11-28')
+  OVERLAPS (timestamp with time zone '2000-11-27 12:00', interval '1 day') AS "True";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone '2000-11-27', timestamp wit...
+                          ^
+SELECT (timestamp with time zone '2000-11-27', interval '12 hours')
+  OVERLAPS (timestamp with time zone '2000-11-27 12:00', timestamp with time zone '2000-11-30') AS "False";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone '2000-11-27', interval '12 ...
+                          ^
+SELECT (timestamp with time zone '2000-11-27', interval '12 hours')
+  OVERLAPS (timestamp with time zone '2000-11-27', interval '12 hours') AS "True";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone '2000-11-27', interval '12 ...
+                          ^
+SELECT (timestamp with time zone '2000-11-27', interval '12 hours')
+  OVERLAPS (timestamp with time zone '2000-11-27 12:00', interval '12 hours') AS "False";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT (timestamp with time zone '2000-11-27', interval '12 ...
+                          ^
+-- test without time zone
+SELECT (timestamp without time zone '2000-11-27', timestamp without time zone '2000-11-28')
+  OVERLAPS (timestamp without time zone '2000-11-27 12:00', timestamp without time zone '2000-11-30') AS "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '2000-11-27', timestamp ...
+                          ^
+SELECT (timestamp without time zone '2000-11-26', timestamp without time zone '2000-11-27')
+  OVERLAPS (timestamp without time zone '2000-11-27 12:00', timestamp without time zone '2000-11-30') AS "False";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '2000-11-26', timestamp ...
+                          ^
+SELECT (timestamp without time zone '2000-11-27', timestamp without time zone '2000-11-28')
+  OVERLAPS (timestamp without time zone '2000-11-27 12:00', interval '1 day') AS "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '2000-11-27', timestamp ...
+                          ^
+SELECT (timestamp without time zone '2000-11-27', interval '12 hours')
+  OVERLAPS (timestamp without time zone '2000-11-27 12:00', timestamp without time zone '2000-11-30') AS "False";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '2000-11-27', interval '...
+                          ^
+SELECT (timestamp without time zone '2000-11-27', interval '12 hours')
+  OVERLAPS (timestamp without time zone '2000-11-27', interval '12 hours') AS "True";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '2000-11-27', interval '...
+                          ^
+SELECT (timestamp without time zone '2000-11-27', interval '12 hours')
+  OVERLAPS (timestamp without time zone '2000-11-27 12:00', interval '12 hours') AS "False";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT (timestamp without time zone '2000-11-27', interval '...
+                          ^
+-- test time and interval
+SELECT (time '00:00', time '01:00')
+  OVERLAPS (time '00:30', time '01:30') AS "True";
+ True 
+------
+ t
+(1 row)
+
+SELECT (time '00:00', interval '1 hour')
+  OVERLAPS (time '00:30', interval '1 hour') AS "True";
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT (time '00:00', interval '1 hour')
+                                               ^
+SELECT (time '00:00', interval '1 hour')
+  OVERLAPS (time '01:30', interval '1 hour') AS "False";
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT (time '00:00', interval '1 hour')
+                                               ^
+-- SQL99 seems to want this to be false (and we conform to the spec).
+-- istm that this *should* return true, on the theory that time
+-- intervals can wrap around the day boundary - thomas 2001-09-25
+SELECT (time '00:00', interval '1 hour')
+  OVERLAPS (time '01:30', interval '1 day') AS "False";
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT (time '00:00', interval '1 hour')
+                                               ^
+CREATE TABLE TEMP_TIMESTAMP (f1 timestamp with time zone);
+-- get some candidate input values
+INSERT INTO TEMP_TIMESTAMP (f1)
+  SELECT d1 FROM TIMESTAMP_TBL
+  WHERE d1 BETWEEN '13-jun-1957' AND '1-jan-1997'
+   OR d1 BETWEEN '1-jan-1999' AND '1-jan-2010';
+ERROR:  invalid value "ju" for "MM"
+LINE 3:   WHERE d1 BETWEEN '13-jun-1957' AND '1-jan-1997'
+                           ^
+DETAIL:  Value must be an integer.
+SELECT f1 AS "timestamp"
+  FROM TEMP_TIMESTAMP
+  ORDER BY "timestamp";
+ timestamp 
+-----------
+(0 rows)
+
+SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
+  FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+  ORDER BY plus, "timestamp", "interval";
+ERROR:  relation "interval_tbl" does not exist
+LINE 2:   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+                                 ^
+SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 - t.f1 AS minus
+  FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+  WHERE isfinite(d.f1)
+  ORDER BY minus, "timestamp", "interval";
+ERROR:  relation "interval_tbl" does not exist
+LINE 2:   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+                                 ^
+SELECT d.f1 AS "timestamp",
+   timestamp with time zone '1980-01-06 00:00 GMT' AS gpstime_zero,
+   d.f1 - timestamp with time zone '1980-01-06 00:00 GMT' AS difference
+  FROM TEMP_TIMESTAMP d
+  ORDER BY difference;
+ERROR:  syntax error at or near "with"
+LINE 2:    timestamp with time zone '1980-01-06 00:00 GMT' AS gpstim...
+                     ^
+SELECT d1.f1 AS timestamp1, d2.f1 AS timestamp2, d1.f1 - d2.f1 AS difference
+  FROM TEMP_TIMESTAMP d1, TEMP_TIMESTAMP d2
+  ORDER BY timestamp1, timestamp2, difference;
+ timestamp1 | timestamp2 | difference 
+------------+------------+------------
+(0 rows)
+
+--
+-- Conversions
+--
+SELECT f1 AS "timestamp", date(f1) AS date
+  FROM TEMP_TIMESTAMP
+  WHERE f1 <> timestamp 'now'
+  ORDER BY date, "timestamp";
+ERROR:  syntax error at or near "("
+LINE 1: SELECT f1 AS "timestamp", date(f1) AS date
+                                      ^
+DROP TABLE TEMP_TIMESTAMP;
+--
+-- Comparisons between datetime types, especially overflow cases
+---
+SELECT '2202020-10-05'::date::timestamp;  -- fail
+ERROR:  Number value does not match the length of the format item.
+LINE 1: SELECT '2202020-10-05'::date::timestamp;
+               ^
+SELECT '2202020-10-05'::date > '2020-10-05'::timestamp as t;
+ERROR:  Number value does not match the length of the format item.
+LINE 1: SELECT '2202020-10-05'::date > '2020-10-05'::timestamp as t;
+               ^
+SELECT '2020-10-05'::timestamp > '2202020-10-05'::date as f;
+ERROR:  Number value does not match the length of the format item.
+LINE 1: SELECT '2020-10-05'::timestamp > '2202020-10-05'::date as f;
+                                         ^
+SELECT '2202020-10-05'::date::timestamptz;  -- fail
+ERROR:  Number value does not match the length of the format item.
+LINE 1: SELECT '2202020-10-05'::date::timestamptz;
+               ^
+SELECT '2202020-10-05'::date > '2020-10-05'::timestamptz as t;
+ERROR:  Number value does not match the length of the format item.
+LINE 1: SELECT '2202020-10-05'::date > '2020-10-05'::timestamptz as ...
+               ^
+SELECT '2020-10-05'::timestamptz > '2202020-10-05'::date as f;
+ERROR:  Number value does not match the length of the format item.
+LINE 1: SELECT '2020-10-05'::timestamptz > '2202020-10-05'::date as ...
+                                           ^
+-- This conversion may work depending on timezone
+SELECT '4714-11-24 BC'::date::timestamptz;
+ERROR:  datetime format picture ends before converting entire input string
+LINE 1: SELECT '4714-11-24 BC'::date::timestamptz;
+               ^
+SET TimeZone = 'UTC-2';
+SELECT '4714-11-24 BC'::date::timestamptz;  -- fail
+ERROR:  datetime format picture ends before converting entire input string
+LINE 1: SELECT '4714-11-24 BC'::date::timestamptz;
+               ^
+SELECT '4714-11-24 BC'::date < '2020-10-05'::timestamptz as t;
+ERROR:  datetime format picture ends before converting entire input string
+LINE 1: SELECT '4714-11-24 BC'::date < '2020-10-05'::timestamptz as ...
+               ^
+SELECT '2020-10-05'::timestamptz >= '4714-11-24 BC'::date as t;
+ERROR:  datetime format picture ends before converting entire input string
+LINE 1: SELECT '2020-10-05'::timestamptz >= '4714-11-24 BC'::date as...
+                                            ^
+SELECT '4714-11-24 BC'::timestamp < '2020-10-05'::timestamptz as t;
+ERROR:  invalid value "BC" for "HH24"
+LINE 1: SELECT '4714-11-24 BC'::timestamp < '2020-10-05'::timestampt...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2020-10-05'::timestamptz >= '4714-11-24 BC'::timestamp as t;
+ERROR:  invalid value "BC" for "HH24"
+LINE 1: SELECT '2020-10-05'::timestamptz >= '4714-11-24 BC'::timesta...
+                                            ^
+DETAIL:  Value must be an integer.
+RESET TimeZone;
+--
+-- Formats
+--
+SET DateStyle TO 'US,Postgres';
+SHOW DateStyle;
+   DateStyle   
+---------------
+ Postgres, MDY
+(1 row)
+
+SELECT d1 AS us_postgres FROM TIMESTAMP_TBL;
+        us_postgres         
+----------------------------
+ 1997-01-02 00:00:00.000000
+ 1997-01-02 03:04:05.000000
+(2 rows)
+
+SET DateStyle TO 'US,ISO';
+SELECT d1 AS us_iso FROM TIMESTAMP_TBL;
+           us_iso           
+----------------------------
+ 1997-01-02 00:00:00.000000
+ 1997-01-02 03:04:05.000000
+(2 rows)
+
+SET DateStyle TO 'US,SQL';
+SHOW DateStyle;
+ DateStyle 
+-----------
+ SQL, MDY
+(1 row)
+
+SELECT d1 AS us_sql FROM TIMESTAMP_TBL;
+           us_sql           
+----------------------------
+ 1997-01-02 00:00:00.000000
+ 1997-01-02 03:04:05.000000
+(2 rows)
+
+SET DateStyle TO 'European,Postgres';
+SHOW DateStyle;
+   DateStyle   
+---------------
+ Postgres, DMY
+(1 row)
+
+INSERT INTO TIMESTAMP_TBL VALUES('13/06/1957');
+ERROR:  The hour value must be between 0 and 23.
+LINE 1: INSERT INTO TIMESTAMP_TBL VALUES('13/06/1957');
+                                         ^
+SELECT count(*) as one FROM TIMESTAMP_TBL WHERE d1 = 'Jun 13 1957';
+ERROR:  invalid value "Jun " for "YYYY"
+LINE 1: ...ECT count(*) as one FROM TIMESTAMP_TBL WHERE d1 = 'Jun 13 19...
+                                                             ^
+DETAIL:  Value must be an integer.
+SELECT d1 AS european_postgres FROM TIMESTAMP_TBL;
+     european_postgres      
+----------------------------
+ 1997-01-02 00:00:00.000000
+ 1997-01-02 03:04:05.000000
+(2 rows)
+
+SET DateStyle TO 'European,ISO';
+SHOW DateStyle;
+ DateStyle 
+-----------
+ ISO, DMY
+(1 row)
+
+SELECT d1 AS european_iso FROM TIMESTAMP_TBL;
+        european_iso        
+----------------------------
+ 1997-01-02 00:00:00.000000
+ 1997-01-02 03:04:05.000000
+(2 rows)
+
+SET DateStyle TO 'European,SQL';
+SHOW DateStyle;
+ DateStyle 
+-----------
+ SQL, DMY
+(1 row)
+
+SELECT d1 AS european_sql FROM TIMESTAMP_TBL;
+        european_sql        
+----------------------------
+ 1997-01-02 00:00:00.000000
+ 1997-01-02 03:04:05.000000
+(2 rows)
+
+RESET DateStyle;
+--
+-- to_timestamp()
+--
+SELECT to_timestamp('0097/Feb/16 --> 08:14:30', 'YYYY/Mon/DD --> HH:MI:SS');
+        to_timestamp        
+----------------------------
+ 0097-02-16 08:14:30.000000
+(1 row)
+
+SELECT to_timestamp('97/2/16 8:14:30', 'FMYYYY/FMMM/FMDD FMHH:FMMI:FMSS');
+        to_timestamp        
+----------------------------
+ 0097-02-16 08:14:30.000000
+(1 row)
+
+SELECT to_timestamp('2011$03!18 23_38_15', 'YYYY-MM-DD HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 2011-03-18 23:38:15.000000
+(1 row)
+
+SELECT to_timestamp('1985 January 12', 'YYYY FMMonth DD');
+        to_timestamp        
+----------------------------
+ 1985-01-12 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('1,582nd VIII 21', 'Y,YYYth FMRM DD');
+        to_timestamp        
+----------------------------
+ 1582-08-21 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2000January09Sunday', 'YYYYFMMonthDDFMDay');
+        to_timestamp        
+----------------------------
+ 2000-01-09 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('97/Feb/16', 'YYMonDD');
+ERROR:  invalid value "/Feb/16" for "Mon"
+DETAIL:  The given value did not match any of the allowed values for this field.
+SELECT to_timestamp('97/Feb/16', 'YY:Mon:DD');
+        to_timestamp        
+----------------------------
+ 2097-02-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('97/Feb/16', 'FXYY:Mon:DD');
+ERROR:  unmatched format separator ":"
+SELECT to_timestamp('97/Feb/16', 'FXYY/Mon/DD');
+        to_timestamp        
+----------------------------
+ 2097-02-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('19971116', 'YYYYMMDD');
+        to_timestamp        
+----------------------------
+ 1997-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('20000-1116', 'YYYY-MMDD');
+ERROR:  Number value does not match the length of the format item.
+SELECT to_timestamp('1997 AD 11 16', 'YYYY BC MM DD');
+        to_timestamp        
+----------------------------
+ 1997-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('1997 BC 11 16', 'YYYY BC MM DD');
+        to_timestamp        
+----------------------------
+ 1997-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('1997 A.D. 11 16', 'YYYY B.C. MM DD');
+        to_timestamp        
+----------------------------
+ 1997-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('1997 B.C. 11 16', 'YYYY B.C. MM DD');
+        to_timestamp        
+----------------------------
+ 1997-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('9-1116', 'Y-MMDD');
+        to_timestamp        
+----------------------------
+ 2029-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('95-1116', 'YY-MMDD');
+        to_timestamp        
+----------------------------
+ 2095-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('995-1116', 'YYY-MMDD');
+        to_timestamp        
+----------------------------
+ 2995-11-16 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2005426', 'YYYYWWD');
+        to_timestamp        
+----------------------------
+ 2005-10-15 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2005300', 'YYYYDDD');
+        to_timestamp        
+----------------------------
+ 2005-10-27 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2005527', 'IYYYIWID');
+        to_timestamp        
+----------------------------
+ 2006-01-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('005527', 'IYYIWID');
+        to_timestamp        
+----------------------------
+ 2006-01-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('05527', 'IYIWID');
+        to_timestamp        
+----------------------------
+ 2006-01-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('5527', 'IIWID');
+        to_timestamp        
+----------------------------
+ 2025-12-28 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2005364', 'IYYYIDDD');
+        to_timestamp        
+----------------------------
+ 2006-01-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('20050302', 'YYYYMMDD');
+        to_timestamp        
+----------------------------
+ 2005-03-02 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2005 03 02', 'YYYYMMDD');
+        to_timestamp        
+----------------------------
+ 2005-03-02 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp(' 2005 03 02', 'YYYYMMDD');
+        to_timestamp        
+----------------------------
+ 2005-03-02 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('  20050302', 'YYYYMMDD');
+        to_timestamp        
+----------------------------
+ 2005-03-02 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 AM', 'YYYY-MM-DD HH12:MI PM');
+        to_timestamp        
+----------------------------
+ 2011-12-18 11:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 PM', 'YYYY-MM-DD HH12:MI PM');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 A.M.', 'YYYY-MM-DD HH12:MI P.M.');
+        to_timestamp        
+----------------------------
+ 2011-12-18 11:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 P.M.', 'YYYY-MM-DD HH12:MI P.M.');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 +05',    'YYYY-MM-DD HH12:MI TZH');
+        to_timestamp        
+----------------------------
+ 2011-12-18 11:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 -05',    'YYYY-MM-DD HH12:MI TZH');
+        to_timestamp        
+----------------------------
+ 2011-12-18 11:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 +05:20', 'YYYY-MM-DD HH12:MI TZH:TZM');
+        to_timestamp        
+----------------------------
+ 2011-12-18 11:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 -05:20', 'YYYY-MM-DD HH12:MI TZH:TZM');
+        to_timestamp        
+----------------------------
+ 2011-12-18 11:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 20',     'YYYY-MM-DD HH12:MI TZM');
+        to_timestamp        
+----------------------------
+ 2011-12-18 11:38:00.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 PST', 'YYYY-MM-DD HH12:MI TZ');  -- NYI
+ERROR:  formatting field "TZ" is only supported in to_char
+SELECT to_timestamp('2018-11-02 12:34:56.025', 'YYYY-MM-DD HH24:MI:SS.MS');
+        to_timestamp        
+----------------------------
+ 2018-11-02 12:34:56.025000
+(1 row)
+
+SELECT i, to_timestamp('2018-11-02 12:34:56', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ i |        to_timestamp        
+---+----------------------------
+ 1 | 2018-11-02 12:34:56.000000
+ 2 | 2018-11-02 12:34:56.000000
+ 3 | 2018-11-02 12:34:56.000000
+ 4 | 2018-11-02 12:34:56.000000
+ 5 | 2018-11-02 12:34:56.000000
+ 6 | 2018-11-02 12:34:56.000000
+(6 rows)
+
+SELECT i, to_timestamp('2018-11-02 12:34:56.1', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ i |        to_timestamp        
+---+----------------------------
+ 1 | 2018-11-02 12:34:56.100000
+ 2 | 2018-11-02 12:34:56.100000
+ 3 | 2018-11-02 12:34:56.100000
+ 4 | 2018-11-02 12:34:56.100000
+ 5 | 2018-11-02 12:34:56.100000
+ 6 | 2018-11-02 12:34:56.100000
+(6 rows)
+
+SELECT i, to_timestamp('2018-11-02 12:34:56.12', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ERROR:  date format picture ends before converting entire input string.
+SELECT i, to_timestamp('2018-11-02 12:34:56.123', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ERROR:  date format picture ends before converting entire input string.
+SELECT i, to_timestamp('2018-11-02 12:34:56.1234', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ERROR:  date format picture ends before converting entire input string.
+SELECT i, to_timestamp('2018-11-02 12:34:56.12345', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ERROR:  date format picture ends before converting entire input string.
+SELECT i, to_timestamp('2018-11-02 12:34:56.123456', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ERROR:  date format picture ends before converting entire input string.
+SELECT i, to_timestamp('2018-11-02 12:34:56.123456789', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
+ERROR:  date format picture ends before converting entire input string.
+SELECT to_date('1 4 1902', 'Q MM YYYY');  -- Q is ignored
+  to_date   
+------------
+ 1902-04-01
+(1 row)
+
+SELECT to_date('3 4 21 01', 'W MM CC YY');
+  to_date   
+------------
+ 2001-04-15
+(1 row)
+
+SELECT to_date('2458872', 'J');
+  to_date   
+------------
+ 2020-01-23
+(1 row)
+
+--
+-- Check handling of BC dates
+--
+SELECT to_date('44-02-01 BC','YYYY-MM-DD BC');
+  to_date   
+------------
+ 0044-02-01
+(1 row)
+
+SELECT to_date('-44-02-01','YYYY-MM-DD');
+  to_date   
+------------
+ 0044-02-01
+(1 row)
+
+SELECT to_date('-44-02-01 BC','YYYY-MM-DD BC');
+  to_date   
+------------
+ 0044-02-01
+(1 row)
+
+SELECT to_timestamp('44-02-01 11:12:13 BC','YYYY-MM-DD HH24:MI:SS BC');
+        to_timestamp        
+----------------------------
+ 0044-02-01 11:12:13.000000
+(1 row)
+
+SELECT to_timestamp('-44-02-01 11:12:13','YYYY-MM-DD HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 0044-02-01 11:12:13.000000
+(1 row)
+
+SELECT to_timestamp('-44-02-01 11:12:13 BC','YYYY-MM-DD HH24:MI:SS BC');
+        to_timestamp        
+----------------------------
+ 0044-02-01 11:12:13.000000
+(1 row)
+
+--
+-- Check handling of multiple spaces in format and/or input
+--
+SELECT to_timestamp('2011-12-18 23:38:15', 'YYYY-MM-DD  HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:15.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD  HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:15.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18   23:38:15', 'YYYY-MM-DD  HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:15.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:15.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD  HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:15.000000
+(1 row)
+
+SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD   HH24:MI:SS');
+        to_timestamp        
+----------------------------
+ 2011-12-18 23:38:15.000000
+(1 row)
+
+SELECT to_timestamp('2000+   JUN', 'YYYY/MON');
+        to_timestamp        
+----------------------------
+ 2000-06-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('  2000 +JUN', 'YYYY/MON');
+        to_timestamp        
+----------------------------
+ 2000-06-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp(' 2000 +JUN', 'YYYY//MON');
+        to_timestamp        
+----------------------------
+ 2000-06-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2000  +JUN', 'YYYY//MON');
+        to_timestamp        
+----------------------------
+ 2000-06-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2000 + JUN', 'YYYY MON');
+        to_timestamp        
+----------------------------
+ 2000-06-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2000 ++ JUN', 'YYYY  MON');
+        to_timestamp        
+----------------------------
+ 2000-06-01 00:00:00.000000
+(1 row)
+
+SELECT to_timestamp('2000 + + JUN', 'YYYY  MON');
+ERROR:  invalid value "+" for "MON"
+DETAIL:  The given value did not match any of the allowed values for this field.
+SELECT to_timestamp('2000 + + JUN', 'YYYY   MON');
+        to_timestamp        
+----------------------------
+ 2000-06-01 00:00:00.000000
+(1 row)
+
+SELECT to_date('2011 12  18', 'YYYY MM DD');
+  to_date   
+------------
+ 2011-12-18
+(1 row)
+
+SELECT to_date('2011 12  18', 'YYYY MM  DD');
+  to_date   
+------------
+ 2011-12-18
+(1 row)
+
+SELECT to_date('2011 12  18', 'YYYY MM   DD');
+  to_date   
+------------
+ 2011-12-18
+(1 row)
+
+SELECT to_date('2011 12 18', 'YYYY  MM DD');
+  to_date   
+------------
+ 2011-12-18
+(1 row)
+
+SELECT to_date('2011  12 18', 'YYYY  MM DD');
+  to_date   
+------------
+ 2011-12-18
+(1 row)
+
+SELECT to_date('2011   12 18', 'YYYY  MM DD');
+  to_date   
+------------
+ 2011-12-18
+(1 row)
+
+SELECT to_date('2011 12 18', 'YYYYxMMxDD');
+ERROR:  date format not recognized
+SELECT to_date('2011x 12x 18', 'YYYYxMMxDD');
+ERROR:  date format not recognized
+SELECT to_date('2011 x12 x18', 'YYYYxMMxDD');
+ERROR:  date format not recognized
+--
+-- Check errors for some incorrect usages of to_timestamp() and to_date()
+--
+-- Mixture of date conventions (ISO week and Gregorian):
+SELECT to_timestamp('2005527', 'YYYYIWID');
+ERROR:  invalid combination of date conventions
+HINT:  Do not mix Gregorian and ISO week date conventions in a formatting template.
+-- Insufficient characters in the source string:
+SELECT to_timestamp('19971', 'YYYYMMDD');
+ERROR:  Number value does not match the length of the format item.
+-- Insufficient digit characters for a single node:
+SELECT to_timestamp('19971)24', 'YYYYMMDD');
+ERROR:  Number value does not match the length of the format item.
+-- We don't accept full-length day or month names if short form is specified:
+SELECT to_timestamp('Friday 1-January-1999', 'DY DD MON YYYY');
+ERROR:  invalid value "da" for "DD"
+DETAIL:  Value must be an integer.
+SELECT to_timestamp('Fri 1-January-1999', 'DY DD MON YYYY');
+ERROR:  invalid value "uary" for "YYYY"
+DETAIL:  Value must be an integer.
+SELECT to_timestamp('Fri 1-Jan-1999', 'DY DD MON YYYY');  -- ok
+        to_timestamp        
+----------------------------
+ 1999-01-01 00:00:00.000000
+(1 row)
+
+-- Value clobbering:
+SELECT to_timestamp('1997-11-Jan-16', 'YYYY-MM-Mon-DD');
+ERROR:  conflicting values for "Mon" field in formatting string
+DETAIL:  This value contradicts a previous setting for the same field type.
+-- Non-numeric input:
+SELECT to_timestamp('199711xy', 'YYYYMMDD');
+ERROR:  invalid value "xy" for "DD"
+DETAIL:  Value must be an integer.
+-- Input that doesn't fit in an int:
+SELECT to_timestamp('10000000000', 'FMYYYY');
+ERROR:  value for "YYYY" in source string is out of range
+DETAIL:  Value must be in the range -2147483648 to 2147483647.
+-- Out-of-range and not-quite-out-of-range fields:
+SELECT to_timestamp('2016-06-13 25:00:00', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  The hour value must be between 0 and 23.
+SELECT to_timestamp('2016-06-13 15:60:00', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  The minute value must be between 0 and 59.
+SELECT to_timestamp('2016-06-13 15:50:60', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  The second must be between 0 and 59.
+SELECT to_timestamp('2016-06-13 15:50:55', 'YYYY-MM-DD HH24:MI:SS');  -- ok
+        to_timestamp        
+----------------------------
+ 2016-06-13 15:50:55.000000
+(1 row)
+
+SELECT to_timestamp('2016-06-13 15:50:55', 'YYYY-MM-DD HH:MI:SS');
+ERROR:  The hour value must be between 1 and 12.
+SELECT to_timestamp('2016-13-01 15:50:55', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  The value of month is invalid.
+SELECT to_timestamp('2016-02-30 15:50:55', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  The value of day must be between 1 and the last day of the month.
+SELECT to_timestamp('2016-02-29 15:50:55', 'YYYY-MM-DD HH24:MI:SS');  -- ok
+        to_timestamp        
+----------------------------
+ 2016-02-29 15:50:55.000000
+(1 row)
+
+SELECT to_timestamp('2015-02-29 15:50:55', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  The value of day must be between 1 and the last day of the month.
+SELECT to_timestamp('2015-02-11 86000', 'YYYY-MM-DD SSSS');  -- ok
+        to_timestamp        
+----------------------------
+ 2015-02-11 23:53:20.000000
+(1 row)
+
+SELECT to_timestamp('2015-02-11 86400', 'YYYY-MM-DD SSSS');
+ERROR:  date/time field value out of range: "2015-02-11 86400"
+SELECT to_timestamp('2015-02-11 86000', 'YYYY-MM-DD SSSSS');  -- ok
+        to_timestamp        
+----------------------------
+ 2015-02-11 23:53:20.000000
+(1 row)
+
+SELECT to_timestamp('2015-02-11 86400', 'YYYY-MM-DD SSSSS');
+ERROR:  date/time field value out of range: "2015-02-11 86400"
+SELECT to_date('2016-13-10', 'YYYY-MM-DD');
+ERROR:  The value of month is invalid.
+SELECT to_date('2016-02-30', 'YYYY-MM-DD');
+ERROR:  The value of day must be between 1 and the last day of the month.
+SELECT to_date('2016-02-29', 'YYYY-MM-DD');  -- ok
+  to_date   
+------------
+ 2016-02-29
+(1 row)
+
+SELECT to_date('2015-02-29', 'YYYY-MM-DD');
+ERROR:  The value of day must be between 1 and the last day of the month.
+SELECT to_date('2015 365', 'YYYY DDD');  -- ok
+  to_date   
+------------
+ 2015-12-31
+(1 row)
+
+SELECT to_date('2015 366', 'YYYY DDD');
+ERROR:  date/time field value out of range: "2015 366"
+SELECT to_date('2016 365', 'YYYY DDD');  -- ok
+  to_date   
+------------
+ 2016-12-30
+(1 row)
+
+SELECT to_date('2016 366', 'YYYY DDD');  -- ok
+  to_date   
+------------
+ 2016-12-31
+(1 row)
+
+SELECT to_date('2016 367', 'YYYY DDD');
+ERROR:  date/time field value out of range: "2016 367"
+SELECT to_date('0000-02-01','YYYY-MM-DD');  -- allowed, though it shouldn't be
+  to_date   
+------------
+ 2024-02-01
+(1 row)
+
+--
+-- Check behavior with SQL-style fixed-GMT-offset time zone (cf bug #8572)
+--
+SET TIME ZONE 'America/New_York';
+SET TIME ZONE '-1.5';
+SHOW TIME ZONE;
+    TimeZone    
+----------------
+ <-01:30>+01:30
+(1 row)
+
+SELECT '2012-12-12 12:00'::timestamptz;
+          oratimestamptz           
+-----------------------------------
+ 2012-12-12 12:00:00.000000 -01:30
+(1 row)
+
+SELECT '2012-12-12 12:00 America/New_York'::timestamptz;
+ERROR:  invalid value "Am" for "SS"
+LINE 1: SELECT '2012-12-12 12:00 America/New_York'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZ');
+          to_char           
+----------------------------
+ 2012-12-12 12:00:00 -01:30
+(1 row)
+
+SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD SSSS');
+     to_char      
+------------------
+ 2012-12-12 43200
+(1 row)
+
+SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD SSSSS');
+     to_char      
+------------------
+ 2012-12-12 43200
+(1 row)
+
+RESET TIME ZONE;

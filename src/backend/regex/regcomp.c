@@ -2248,7 +2248,7 @@ cleanst(struct vars *v)
 static long						/* optimize results from top node */
 nfatree(struct vars *v,
 		struct subre *t,
-		FILE *f)				/* for debug output */
+		FILE *f)				
 {
 	struct subre *t2;
 
@@ -2269,7 +2269,7 @@ static long						/* optimize results */
 nfanode(struct vars *v,
 		struct subre *t,
 		int converttosearch,
-		FILE *f)				/* for debug output */
+		FILE *f)				
 {
 	struct nfa *nfa;
 	long		ret = 0;
@@ -2571,7 +2571,7 @@ stid(struct subre *t,
 		sprintf(buf, "%p", t);
 	return buf;
 }
-#endif							/* REG_DEBUG */
+#endif							
 
 
 #include "regc_lex.c"

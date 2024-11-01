@@ -19,7 +19,10 @@
 #
 # Meta configuration
 
-standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check checkprep installcheck init-po update-po
+#standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check checkprep installcheck init-po update-po
+#BEGIN - SQL PARSER
+standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check oracle-check checkprep oracle-checkprep installcheck oracle-installcheck init-po update-po
+#END - SQL PARSER
 # these targets should recurse even into subdirectories not being built:
 standard_always_targets = distprep clean distclean maintainer-clean
 
@@ -378,7 +381,10 @@ CLDR_VERSION = 39
 # If a particular subdirectory knows this isn't needed in itself or its
 # children, it can set NO_GENERATED_HEADERS.
 
-all install check installcheck: submake-generated-headers
+#all install check installcheck: submake-generated-headers
+#BEGIN - SQL PARSER
+all install check oracle-check installcheck oracle-installcheck: submake-generated-headers
+#END - SQL PARSER
 
 .PHONY: submake-generated-headers
 
@@ -397,6 +403,9 @@ endif
 # on abs_top_builddir prevents doing anything foolish to the root directory.
 
 check: temp-install
+#BEGIN - SQL PARSER
+oracle-check: temp-install
+#END - SQL PARSER
 
 .PHONY: temp-install
 
@@ -418,10 +427,18 @@ endif
 checkprep:
 	$(if $(EXTRA_INSTALL),for extra in $(EXTRA_INSTALL); do $(MAKE) -C '$(top_builddir)'/$$extra DESTDIR='$(abs_top_builddir)'/tmp_install install || exit; done)
 
+#BEGIN - SQL PARSER
+oracle-checkprep:
+	$(if $(EXTRA_INSTALL),for extra in $(EXTRA_INSTALL); do $(MAKE) -C '$(top_builddir)'/$$extra DESTDIR='$(abs_top_builddir)'/tmp_install install || exit; done)
+#END - SQL PARSER
+
 PROVE = @PROVE@
 # There are common routines in src/test/perl, and some test suites have
 # extra perl modules in their own directory.
 PG_PROVE_FLAGS = -I $(top_srcdir)/src/test/perl/ -I $(srcdir)
+#BEGIN - SQL PARSER
+ORACLE_PROVE_FLAGS = -I $(top_srcdir)/src/oracle_test/perl/ -I $(srcdir)
+#END - SQL PARSER
 # User-supplied prove flags such as --verbose can be provided in PROVE_FLAGS.
 PROVE_FLAGS =
 
@@ -454,6 +471,17 @@ cd $(srcdir) && \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
+#BEGIN - SQL PARSER
+define oracle_prove_installcheck
+rm -rf '$(CURDIR)'/tmp_check
+$(MKDIR_P) '$(CURDIR)'/tmp_check
+cd $(srcdir) && \
+   TESTDIR='$(CURDIR)' PATH="$(bindir):$(CURDIR):$$PATH" \
+   PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
+   PG_REGRESS='$(CURDIR)/$(top_builddir)/src/oracle_test/regress/pg_regress' \
+   $(PROVE) $(ORACLE_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
+endef
+#END - SQL PARSER
 else # PGXS case
 define prove_installcheck
 rm -rf '$(CURDIR)'/tmp_check
@@ -464,6 +492,17 @@ cd $(srcdir) && \
    PG_REGRESS='$(top_builddir)/src/test/regress/pg_regress' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
+#BEGIN - SQL PARSER
+define oracle_prove_installcheck
+rm -rf '$(CURDIR)'/tmp_check
+$(MKDIR_P) '$(CURDIR)'/tmp_check
+cd $(srcdir) && \
+   TESTDIR='$(CURDIR)' PATH="$(bindir):$(CURDIR):$$PATH" \
+   PGPORT='6$(DEF_PGPORT)' top_builddir='$(top_builddir)' \
+   PG_REGRESS='$(top_builddir)/src/oracle_test/regress/pg_regress' \
+   $(PROVE) $(ORACLE_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
+endef
+#END - SQL PARSER
 endif # PGXS
 
 define prove_check
@@ -474,10 +513,24 @@ cd $(srcdir) && \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
+#BEGIN - SQL PARSER
+define oracle_prove_check
+rm -rf '$(CURDIR)'/tmp_check
+$(MKDIR_P) '$(CURDIR)'/tmp_check
+cd $(srcdir) && \
+   TESTDIR='$(CURDIR)' $(with_temp_install) PGPORT='6$(DEF_PGPORT)' \
+   PG_REGRESS='$(CURDIR)/$(top_builddir)/src/oracle_test/regress/pg_regress' \
+   $(PROVE) $(ORACLE_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
+endef
+#END - SQL PARSER
 
 else
 prove_installcheck = @echo "TAP tests not enabled"
 prove_check = $(prove_installcheck)
+#BEGIN - SQL PARSER
+oracle_prove_installcheck = @echo "TAP tests not enabled"
+oracle_prove_check = $(oracle_prove_installcheck)
+#END - SQL PARSER
 endif
 
 # Installation.
@@ -656,7 +709,13 @@ TEMP_CONF += --temp-config=$(TEMP_CONFIG)
 endif
 
 pg_regress_locale_flags = $(if $(ENCODING),--encoding=$(ENCODING)) $(NOLOCALE)
+#BEGIN - SQL PARSER
+oracle_regress_locale_flags = $(if $(ENCODING),--encoding=$(ENCODING)) $(NOLOCALE)
+#END - SQL PARSER
 pg_regress_clean_files = results/ regression.diffs regression.out tmp_check/ tmp_check_iso/ log/ output_iso/
+#BEGIN - SQL PARSER
+oracle_regress_clean_files = results/ regression.diffs regression.out tmp_check/ tmp_check_iso/ log/ output_iso/
+#END - SQL PARSER
 
 pg_regress_check = \
     $(with_temp_install) \
@@ -685,6 +744,44 @@ pg_isolation_regress_installcheck = \
     --inputdir=$(srcdir) --outputdir=output_iso \
     --bindir='$(bindir)' \
     $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+
+#BEGIN - SQL PARSER
+ora_pg_regress_check = \
+    $(with_temp_install) \
+    $(top_builddir)/src/test/regress/ora_pg_regress \
+    --temp-instance=./tmp_check \
+    --inputdir=$(srcdir) \
+    --bindir= \
+    $(TEMP_CONF) \
+    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+oracle_regress_check = \
+    $(with_temp_install) \
+    $(top_builddir)/src/oracle_test/regress/pg_regress \
+    --temp-instance=./tmp_check \
+    --inputdir=$(srcdir) \
+    --bindir= \
+    $(TEMP_CONF) \
+    $(oracle_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+oracle_regress_installcheck = \
+    $(top_builddir)/src/oracle_test/regress/pg_regress \
+    --inputdir=$(srcdir) \
+    --bindir='$(bindir)' \
+    $(oracle_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+
+oracle_isolation_regress_check = \
+    $(with_temp_install) \
+    $(top_builddir)/src/oracle_test/isolation/pg_isolation_regress \
+    --temp-instance=./tmp_check_iso \
+    --inputdir=$(srcdir) --outputdir=output_iso \
+    --bindir= \
+    $(TEMP_CONF) \
+    $(oracle_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+oracle_isolation_regress_installcheck = \
+    $(top_builddir)/src/oracle_test/isolation/pg_isolation_regress \
+    --inputdir=$(srcdir) --outputdir=output_iso \
+    --bindir='$(bindir)' \
+    $(oracle_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+#END - SQL PARSER
 
 ##########################################################################
 #
@@ -881,7 +978,10 @@ endif
 define _create_recursive_target
 .PHONY: $(1)-$(2)-recurse
 $(1): $(1)-$(2)-recurse
-$(1)-$(2)-recurse: $(if $(filter all install check installcheck, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install)
+#$(1)-$(2)-recurse: $(if $(filter all install check installcheck, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install)
+#BEGIN - SQL PARSER
+$(1)-$(2)-recurse: $(if $(filter all install check oracle-check installcheck oracle-installcheck, $(3)), submake-generated-headers) $(if $(filter check oracle-check, $(3)), temp-install)
+#END - SQL PARSER
 	$$(MAKE) -C $(2) $(3)
 endef
 # Note that the use of $$ on the last line above is important; we want

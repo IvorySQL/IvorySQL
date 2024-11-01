@@ -701,6 +701,17 @@ scanNSItemForColumn(ParseState *pstate, ParseNamespaceItem *nsitem,
 						colname),
 				 parser_errposition(pstate, location)));
 
+	/*
+	 * In a MERGE WHEN condition, no system column is allowed except tableOid
+	 */
+	if (pstate->p_expr_kind == EXPR_KIND_MERGE_WHEN &&
+		attnum < InvalidAttrNumber && attnum != TableOidAttributeNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+				 errmsg("cannot use system column \"%s\" in MERGE WHEN condition",
+						colname),
+				 parser_errposition(pstate, location)));
+
 	/* Found a valid match, so build a Var */
 	if (attnum > InvalidAttrNumber)
 	{
@@ -1199,7 +1210,12 @@ chooseScalarFunctionAlias(Node *funcexpr, char *funcname,
 	 */
 	if (funcexpr && IsA(funcexpr, FuncExpr))
 	{
-		pname = get_func_result_name(((FuncExpr *) funcexpr)->funcid);
+		
+		if (FUNC_EXPR_FROM_PG_PROC(((FuncExpr *) funcexpr)->function_from))
+			pname = get_func_result_name(((FuncExpr *) funcexpr)->funcid);
+		else
+			pname = get_internal_function_result_name((FuncExpr *) funcexpr);
+		
 		if (pname)
 			return pname;
 	}
@@ -3136,11 +3152,12 @@ expandNSItemVars(ParseNamespaceItem *nsitem,
  *	  for the attributes of the nsitem
  *
  * pstate->p_next_resno determines the resnos assigned to the TLEs.
- * The referenced columns are marked as requiring SELECT access.
+ * The referenced columns are marked as requiring SELECT access, if
+ * caller requests that.
  */
 List *
 expandNSItemAttrs(ParseState *pstate, ParseNamespaceItem *nsitem,
-				  int sublevels_up, int location)
+				  int sublevels_up, bool require_col_privs, int location)
 {
 	RangeTblEntry *rte = nsitem->p_rte;
 	List	   *names,
@@ -3174,8 +3191,11 @@ expandNSItemAttrs(ParseState *pstate, ParseNamespaceItem *nsitem,
 							 false);
 		te_list = lappend(te_list, te);
 
-		/* Require read access to each column */
-		markVarForSelectPriv(pstate, varnode);
+		if (require_col_privs)
+		{
+			/* Require read access to each column */
+			markVarForSelectPriv(pstate, varnode);
+		}
 	}
 
 	Assert(name == NULL && var == NULL);	/* lists not the same length? */

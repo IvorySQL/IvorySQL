@@ -22,4 +22,9 @@
   descr => 'standard public schema',
   nspname => 'public', nspacl => '_null_' },
 
+{ oid => '9900', oid_symbol => 'PG_SYS_NAMESPACE',
+  descr => 'Similar Oracle sys schema',
+  nspname => 'sys', nspacl => '_null_' },
+
+
 ]

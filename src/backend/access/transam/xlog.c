@@ -81,8 +81,14 @@
 #include "utils/pg_rusage.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
+/* BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
 
 extern uint32 bootstrap_data_checksum_version;
+/* BEGIN - SQL PARSER */
+extern int	  bootstrap_database_mode;
+/* END - SQL PARSER */
 
 /* Unsupported old recovery command file names (relative to $PGDATA) */
 #define RECOVERY_COMMAND_FILE	"recovery.conf"
@@ -805,7 +811,7 @@ typedef enum
 	XLOG_FROM_STREAM			/* streamed from primary */
 } XLogSource;
 
-/* human-readable names for XLogSources, for debugging output */
+
 static const char *const xlogSourceNames[] = {"any", "archive", "pg_wal", "stream"};
 
 /*
@@ -4976,6 +4982,13 @@ ReadControlFile(void)
 	/* Make the initdb settings visible as GUC variables, too */
 	SetConfigOption("data_checksums", DataChecksumsEnabled() ? "yes" : "no",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
+	
+	/* BEGIN - SQL PARSER */
+	/* set guc parameters' value about database compatible mode  */
+	SetConfigOption("ivorysql.database_mode", ControlFile->dbmode == DB_PG ? "pg" : "oracle",
+					PGC_INTERNAL, PGC_S_OVERRIDE);
+	/* END - SQL PARSER */
+	
 }
 
 /*
@@ -5423,6 +5436,13 @@ BootStrapXLOG(void)
 	ControlFile->checkPoint = checkPoint.redo;
 	ControlFile->checkPointCopy = checkPoint;
 
+	/* BEGIN - SQL PARSER */
+	/* save database compatible level value */
+	ControlFile->dbmode = bootstrap_database_mode;
+	/* BEGIN - case sensitive indentify */
+	ControlFile->casemode = identifier_case_switch;
+	/* END - case sensitive indentify */
+	/* END - SQL PARSER */
 	/* some additional ControlFile fields are set in WriteControlFile() */
 	WriteControlFile();
 
@@ -6340,6 +6360,130 @@ GetCurrentChunkReplayStartTime(void)
 	return xtime;
 }
 
+
+/* BEGIN - case sensitive indentify
+ * Read database compatibility mode from pg_control file
+ *
+ */
+int GetDatabaseStyleFromControl(char* path)
+{
+	int			fd;
+	int			len;
+	char		pathname[1024];
+	char		*configdir;
+	ControlFileData confile;
+
+	if (path)
+		configdir = make_absolute_path(path);
+	else
+		configdir = make_absolute_path(getenv("PGDATA"));
+
+	sprintf(pathname,"%s/%s",configdir,XLOG_CONTROL_FILE);
+
+	fd = open(pathname, O_RDONLY | PG_BINARY, 0);
+
+	if (fd < 0)
+	{
+		fprintf(stderr, _("could not open file \"%s\" for reading: %s\n"),
+			pathname, strerror(errno));
+
+		return -1;
+	}
+
+	len = read(fd, &confile, sizeof(ControlFileData));
+	if (len < 0)
+	{
+		fprintf(stderr, _("could not read file \"%s\": %s\n"),
+			pathname, strerror(errno));
+
+		return -1;
+	}
+	close(fd);
+
+	return confile.dbmode;
+}
+
+
+/*
+ * Read case conversion mode from pg_control file
+ *
+ */
+int GetCaseSwitchModeFromControl(char* path)
+{
+	int			fd;
+	int			len;
+	char		pathname[1024];
+	char		*configdir;
+	ControlFileData confile;
+
+	if (path)
+		configdir = make_absolute_path(path);
+	else
+		configdir = make_absolute_path(getenv("PGDATA"));
+
+	sprintf(pathname,"%s/%s",configdir,XLOG_CONTROL_FILE);
+
+	fd = open(pathname, O_RDONLY | PG_BINARY, 0);
+
+	if (fd < 0)
+	{
+		fprintf(stderr, _("could not open file \"%s\" for reading: %s\n"),
+			pathname, strerror(errno));
+
+		return -1;
+	}
+
+	len = read(fd, &confile, sizeof(ControlFileData));
+	if (len < 0)
+	{
+		fprintf(stderr, _("could not read file \"%s\": %s\n"),
+			pathname, strerror(errno));
+
+		return -1;
+	}
+	close(fd);
+
+	return confile.casemode;
+}
+
+/*
+ * Get the database compatibility mode, and set up in the system
+ *
+ **/
+void SetCaseGucOption(char* path)
+{
+	int dbstyle;
+
+	dbstyle = GetDatabaseStyleFromControl(path);
+
+	//the pg mode does not need to set
+	if (DB_ORACLE == dbstyle)
+	{
+		int casemode;
+
+		casemode = GetCaseSwitchModeFromControl(path);
+		if (casemode == NORMAL)
+		{
+			SetConfigOption("ivorysql.identifier_case_switch", "normal",
+				PGC_USERSET, PGC_S_OVERRIDE);	
+		}
+		else if (casemode == INTERCHANGE)
+		{
+			SetConfigOption("ivorysql.identifier_case_switch", "interchange",
+				PGC_USERSET, PGC_S_OVERRIDE);	
+		}
+		else if (casemode == LOWERCASE)
+		{
+			SetConfigOption("ivorysql.identifier_case_switch", "lowercase",
+				PGC_USERSET, PGC_S_OVERRIDE);	
+		}
+		else
+			ereport(FATAL,
+					(errmsg("Incorrect case conversion mode value \"%d\"", casemode)));
+	}
+}
+/* END - case sensitive indentify */
+
 /*
  * Returns time of receipt of current chunk of XLOG data, as well as
  * whether it was received from streaming replication or from archives.
@@ -6581,7 +6725,7 @@ StartupXLOG(void)
 					(errmsg("control file contains invalid database cluster state")));
 	}
 
-	/* This is just to allow attaching to startup process with a debugger */
+	
 #ifdef XLOG_REPLAY_DELAY
 	if (ControlFile->state != DB_SHUTDOWNED)
 		pg_usleep(60000000L);
@@ -10696,7 +10840,7 @@ xlog_outrec(StringInfo buf, XLogReaderState *record)
 
 	xlog_block_info(buf, record);
 }
-#endif							/* WAL_DEBUG */
+#endif							
 
 /*
  * Returns a string giving information about all the blocks in an

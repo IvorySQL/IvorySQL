@@ -65,7 +65,7 @@ int main()
 
  /* Do not switch on debug output for regression tests. The threads get executed in
   * more or less random order */
- /* ECPGdebug(1, stderr); */
+ 
 
   /* setup test_thread table */
   { ECPGconnect(__LINE__, 0, "ecpg1_regression" , NULL, NULL , NULL, 0); }

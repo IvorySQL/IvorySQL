@@ -12,7 +12,9 @@ subdir = src/pl
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS = plpgsql
+# BEGIN - SQL PARSER
+SUBDIRS = plpgsql plisql
+# END - SQL PARSER
 
 ifeq ($(with_perl), yes)
 SUBDIRS += plperl

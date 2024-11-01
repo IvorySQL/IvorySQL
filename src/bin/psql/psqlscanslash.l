@@ -541,7 +541,7 @@ psql_scan_slash_command(PsqlScanState state)
  * need to worry about flushing remaining input.
  */
 char *
-psql_scan_slash_option(PsqlScanState state,
+pg_psql_scan_slash_option(PsqlScanState state,
 					   enum slash_option_type type,
 					   char *quote,
 					   bool semicolon)

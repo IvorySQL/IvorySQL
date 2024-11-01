@@ -1,0 +1,3 @@
+test_ddl_deparse is an example of how to use the pg_ddl_command datatype.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_ddl_deparse" directory.

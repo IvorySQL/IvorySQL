@@ -1579,7 +1579,7 @@ make_inner_pathkeys_for_merge(PlannerInfo *root,
 		}
 
 		/* outer eclass should match current or next pathkeys */
-		/* we check this carefully for debugging reasons */
+		
 		if (oeclass != lastoeclass)
 		{
 			if (!lop)

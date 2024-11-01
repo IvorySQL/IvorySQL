@@ -68,10 +68,16 @@ select retc(42);
 (1 row)
 
 do $$ declare c two_int8s;
-begin c := row(1,2); raise notice 'c = %', c; end$$;
+begin c := row(1,2); raise notice 'c = %', c; end$$ language plpgsql;
 NOTICE:  c = (1,2)
 do $$ declare c two_int8s;
-begin for c in select 1,2 loop raise notice 'c = %', c; end loop; end$$;
+begin c := row(1,2); raise notice 'c = %', c; end$$ language plisql;
+NOTICE:  c = (1,2)
+do $$ declare c two_int8s;
+begin for c in select 1,2 loop raise notice 'c = %', c; end loop; end$$ language plpgsql;
+NOTICE:  c = (1,2)
+do $$ declare c two_int8s;
+begin for c in select 1,2 loop raise notice 'c = %', c; end loop; end$$ language plisql;
 NOTICE:  c = (1,2)
 do $$ declare c4 two_int4s; c8 two_int8s;
 begin
@@ -80,7 +86,17 @@ begin
   c8 := c4;
   raise notice 'c4 = %', c4;
   raise notice 'c8 = %', c8;
-end$$;
+end$$ language plpgsql;
+NOTICE:  c4 = (1,2)
+NOTICE:  c8 = (1,2)
+do $$ declare c4 two_int4s; c8 two_int8s;
+begin
+  c8 := row(1,2);
+  c4 := c8;
+  c8 := c4;
+  raise notice 'c4 = %', c4;
+  raise notice 'c8 = %', c8;
+end$$ language plisql;
 NOTICE:  c4 = (1,2)
 NOTICE:  c8 = (1,2)
 do $$ declare c two_int8s; d nested_int8s;
@@ -95,7 +111,25 @@ begin
   raise notice 'c.q1 = %, d.c2 = %', c.q1, d.c2;
   raise notice '(d).c2.q2 = %', (d).c2.q2;  -- doesn't work without parens
   raise notice '(d.c2).q2 = %', (d.c2).q2;  -- doesn't work without parens
-end$$;
+end$$ language plpgsql;
+NOTICE:  c = (1,2), d = ("(1,2)","(1,3)")
+NOTICE:  c = (10,2), d = ("(11,12)","(1,42)")
+NOTICE:  c.q1 = 10, d.c2 = (1,42)
+NOTICE:  (d).c2.q2 = 42
+NOTICE:  (d.c2).q2 = 42
+do $$ declare c two_int8s; d nested_int8s;
+begin
+  c := row(1,2);
+  d := row(c, row(c.q1, c.q2+1));
+  raise notice 'c = %, d = %', c, d;
+  c.q1 := 10;
+  d.c1 := row(11,12);
+  d.c2.q2 := 42;
+  raise notice 'c = %, d = %', c, d;
+  raise notice 'c.q1 = %, d.c2 = %', c.q1, d.c2;
+  raise notice '(d).c2.q2 = %', (d).c2.q2;  -- doesn't work without parens
+  raise notice '(d.c2).q2 = %', (d.c2).q2;  -- doesn't work without parens
+end$$ language plisql;
 NOTICE:  c = (1,2), d = ("(1,2)","(1,3)")
 NOTICE:  c = (10,2), d = ("(11,12)","(1,42)")
 NOTICE:  c.q1 = 10, d.c2 = (1,42)
@@ -114,54 +148,116 @@ begin
   raise notice 'b.c.q1 = %, b.d.c2 = %', b.c.q1, b.d.c2;
   raise notice '(b.d).c2.q2 = %', (b.d).c2.q2;  -- doesn't work without parens
   raise notice '(b.d.c2).q2 = %', (b.d.c2).q2;  -- doesn't work without parens
-end$$;
+end$$ language plpgsql;
+NOTICE:  b.c = (1,2), b.d = ("(1,2)","(1,3)")
+NOTICE:  b.c = (10,2), b.d = ("(11,12)","(1,42)")
+NOTICE:  b.c.q1 = 10, b.d.c2 = (1,42)
+NOTICE:  (b.d).c2.q2 = 42
+NOTICE:  (b.d.c2).q2 = 42
+do $$ <<b>> declare c two_int8s; d nested_int8s;
+begin
+  b.c := row(1,2);
+  b.d := row(b.c, row(b.c.q1, b.c.q2+1));
+  raise notice 'b.c = %, b.d = %', b.c, b.d;
+  b.c.q1 := 10;
+  b.d.c1 := row(11,12);
+  b.d.c2.q2 := 42;
+  raise notice 'b.c = %, b.d = %', b.c, b.d;
+  raise notice 'b.c.q1 = %, b.d.c2 = %', b.c.q1, b.d.c2;
+  raise notice '(b.d).c2.q2 = %', (b.d).c2.q2;  -- doesn't work without parens
+  raise notice '(b.d.c2).q2 = %', (b.d.c2).q2;  -- doesn't work without parens
+end$$ language plisql;
 NOTICE:  b.c = (1,2), b.d = ("(1,2)","(1,3)")
 NOTICE:  b.c = (10,2), b.d = ("(11,12)","(1,42)")
 NOTICE:  b.c.q1 = 10, b.d.c2 = (1,42)
 NOTICE:  (b.d).c2.q2 = 42
 NOTICE:  (b.d.c2).q2 = 42
 -- error cases
-do $$ declare c two_int8s; begin c.x = 1; end $$;
+do $$ declare c two_int8s; begin c.x = 1; end $$ language plpgsql;
 ERROR:  record "c" has no field "x"
 CONTEXT:  PL/pgSQL assignment "c.x = 1"
 PL/pgSQL function inline_code_block line 1 at assignment
-do $$ declare c nested_int8s; begin c.x = 1; end $$;
+do $$ declare c two_int8s; begin c.x = 1; end $$ language plisql;
+ERROR:  record "c" has no field "x"
+CONTEXT:  PL/pgSQL assignment "c.x = 1"
+PL/iSQL function inline_code_block line 1 at assignment
+do $$ declare c nested_int8s; begin c.x = 1; end $$ language plpgsql;
 ERROR:  record "c" has no field "x"
 CONTEXT:  PL/pgSQL assignment "c.x = 1"
 PL/pgSQL function inline_code_block line 1 at assignment
-do $$ declare c nested_int8s; begin c.x.q1 = 1; end $$;
+do $$ declare c nested_int8s; begin c.x = 1; end $$ language plisql;
+ERROR:  record "c" has no field "x"
+CONTEXT:  PL/pgSQL assignment "c.x = 1"
+PL/iSQL function inline_code_block line 1 at assignment
+do $$ declare c nested_int8s; begin c.x.q1 = 1; end $$ language plpgsql;
 ERROR:  record "c" has no field "x"
 CONTEXT:  PL/pgSQL assignment "c.x.q1 = 1"
 PL/pgSQL function inline_code_block line 1 at assignment
-do $$ declare c nested_int8s; begin c.c2.x = 1; end $$;
+do $$ declare c nested_int8s; begin c.x.q1 = 1; end $$ language plisql;
+ERROR:  record "c" has no field "x"
+CONTEXT:  PL/pgSQL assignment "c.x.q1 = 1"
+PL/iSQL function inline_code_block line 1 at assignment
+do $$ declare c nested_int8s; begin c.c2.x = 1; end $$ language plpgsql;
 ERROR:  cannot assign to field "x" of column "c" because there is no such column in data type two_int8s
 LINE 1: c.c2.x = 1
         ^
 QUERY:  c.c2.x = 1
 CONTEXT:  PL/pgSQL function inline_code_block line 1 at assignment
-do $$ declare c nested_int8s; begin d.c2.x = 1; end $$;
+do $$ declare c nested_int8s; begin c.c2.x = 1; end $$ language plisql;
+ERROR:  cannot assign to field "x" of column "c" because there is no such column in data type two_int8s
+LINE 1: c.c2.x = 1
+        ^
+QUERY:  c.c2.x = 1
+CONTEXT:  PL/iSQL function inline_code_block line 1 at assignment
+do $$ declare c nested_int8s; begin d.c2.x = 1; end $$ language plpgsql;
 ERROR:  "d.c2.x" is not a known variable
-LINE 1: do $$ declare c nested_int8s; begin d.c2.x = 1; end $$;
+LINE 1: do $$ declare c nested_int8s; begin d.c2.x = 1; end $$ langu...
                                             ^
-do $$ <<b>> declare c two_int8s; begin b.c.x = 1; end $$;
+do $$ declare c nested_int8s; begin d.c2.x = 1; end $$ language plisql;
+ERROR:  "d.c2.x" is not a known variable
+LINE 1: do $$ declare c nested_int8s; begin d.c2.x = 1; end $$ langu...
+                                            ^
+do $$ <<b>> declare c two_int8s; begin b.c.x = 1; end $$ language plpgsql;
 ERROR:  record "c" has no field "x"
 CONTEXT:  PL/pgSQL assignment "b.c.x = 1"
 PL/pgSQL function inline_code_block line 1 at assignment
-do $$ <<b>> declare c nested_int8s; begin b.c.x = 1; end $$;
+do $$ <<b>> declare c two_int8s; begin b.c.x = 1; end $$ language plisql;
+ERROR:  record "c" has no field "x"
+CONTEXT:  PL/pgSQL assignment "b.c.x = 1"
+PL/iSQL function inline_code_block line 1 at assignment
+do $$ <<b>> declare c nested_int8s; begin b.c.x = 1; end $$ language plpgsql;
 ERROR:  record "c" has no field "x"
 CONTEXT:  PL/pgSQL assignment "b.c.x = 1"
 PL/pgSQL function inline_code_block line 1 at assignment
-do $$ <<b>> declare c nested_int8s; begin b.c.x.q1 = 1; end $$;
+do $$ <<b>> declare c nested_int8s; begin b.c.x = 1; end $$ language plisql;
+ERROR:  record "c" has no field "x"
+CONTEXT:  PL/pgSQL assignment "b.c.x = 1"
+PL/iSQL function inline_code_block line 1 at assignment
+do $$ <<b>> declare c nested_int8s; begin b.c.x.q1 = 1; end $$ language plpgsql;
 ERROR:  record "c" has no field "x"
 CONTEXT:  PL/pgSQL assignment "b.c.x.q1 = 1"
 PL/pgSQL function inline_code_block line 1 at assignment
-do $$ <<b>> declare c nested_int8s; begin b.c.c2.x = 1; end $$;
+do $$ <<b>> declare c nested_int8s; begin b.c.x.q1 = 1; end $$ language plisql;
+ERROR:  record "c" has no field "x"
+CONTEXT:  PL/pgSQL assignment "b.c.x.q1 = 1"
+PL/iSQL function inline_code_block line 1 at assignment
+do $$ <<b>> declare c nested_int8s; begin b.c.c2.x = 1; end $$ language plpgsql;
 ERROR:  cannot assign to field "x" of column "b" because there is no such column in data type two_int8s
 LINE 1: b.c.c2.x = 1
         ^
 QUERY:  b.c.c2.x = 1
 CONTEXT:  PL/pgSQL function inline_code_block line 1 at assignment
-do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end $$;
+do $$ <<b>> declare c nested_int8s; begin b.c.c2.x = 1; end $$ language plisql;
+ERROR:  cannot assign to field "x" of column "b" because there is no such column in data type two_int8s
+LINE 1: b.c.c2.x = 1
+        ^
+QUERY:  b.c.c2.x = 1
+CONTEXT:  PL/iSQL function inline_code_block line 1 at assignment
+do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end $$ language plpgsql;
+ERROR:  "b.d.c2" is not a known variable
+LINE 1: do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end ...
+                                                  ^
+do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end $$ language plisql;
 ERROR:  "b.d.c2" is not a known variable
 LINE 1: do $$ <<b>> declare c nested_int8s; begin b.d.c2.x = 1; end ...
                                                   ^
@@ -191,7 +287,21 @@ begin
   perform getq1(r2);
   x := getq1(r2);
   raise notice 'x = %', x;
-end$$;
+end$$ language plpgsql;
+NOTICE:  x = 345
+NOTICE:  x = 346
+do $$
+declare r1 two_int8s; r2 record; x int8;
+begin
+  r1 := retc(345);
+  perform getq1(r1);
+  x := getq1(r1);
+  raise notice 'x = %', x;
+  r2 := retc(346);
+  perform getq1(r2);
+  x := getq1(r2);
+  raise notice 'x = %', x;
+end$$ language plisql;
 NOTICE:  x = 345
 NOTICE:  x = 346
 -- check assignments of composites
@@ -228,7 +338,58 @@ begin
   raise notice 'r4 = %', r4;
   r4.q2 := r4.q2 + 1;  -- r4's field names have changed
   raise notice 'r4 = %', r4;
-end$$;
+end$$ language plpgsql;
+NOTICE:  r1 = (1,2)
+NOTICE:  r1 = (1,2)
+NOTICE:  r1 = (1,2)
+NOTICE:  r2 = (1,2)
+NOTICE:  r1 = (1,2)
+NOTICE:  r2 = (1,4)
+NOTICE:  r1 = <NULL>
+NOTICE:  r2 = (1,4)
+NOTICE:  r1 = (7,11)
+NOTICE:  r2 = (7,11)
+NOTICE:  r3 = (1,2)
+NOTICE:  r4 = (1,2)
+NOTICE:  r3 = (1,2)
+NOTICE:  r4 = (4,2)
+NOTICE:  r1 = (1,2)
+NOTICE:  r4 = (1,2)
+NOTICE:  r4 = (1,3)
+do $$
+declare r1 two_int8s; r2 two_int8s; r3 record; r4 record;
+begin
+  r1 := row(1,2);
+  raise notice 'r1 = %', r1;
+  r1 := r1;  -- shouldn't do anything
+  raise notice 'r1 = %', r1;
+  r2 := r1;
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r2.q2 = r1.q1 + 3;  -- check that r2 has distinct storage
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r1 := null;
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r1 := row(7,11)::two_int8s;
+  r2 := r1;
+  raise notice 'r1 = %', r1;
+  raise notice 'r2 = %', r2;
+  r3 := row(1,2);
+  r4 := r3;
+  raise notice 'r3 = %', r3;
+  raise notice 'r4 = %', r4;
+  r4.f1 := r4.f1 + 3;  -- check that r4 has distinct storage
+  raise notice 'r3 = %', r3;
+  raise notice 'r4 = %', r4;
+  r1 := r3;
+  raise notice 'r1 = %', r1;
+  r4 := r1;
+  raise notice 'r4 = %', r4;
+  r4.q2 := r4.q2 + 1;  -- r4's field names have changed
+  raise notice 'r4 = %', r4;
+end$$ language plisql;
 NOTICE:  r1 = (1,2)
 NOTICE:  r1 = (1,2)
 NOTICE:  r1 = (1,2)
@@ -254,7 +415,19 @@ begin
   raise notice 'r1.q1 = %', r1.q1;
   raise notice 'r1.q2 = %', r1.q2;
   raise notice 'r1 = %', r1;
-end$$;
+end$$ language plpgsql;
+NOTICE:  r1 = <NULL>
+NOTICE:  r1.q1 = <NULL>
+NOTICE:  r1.q2 = <NULL>
+NOTICE:  r1 = <NULL>
+do $$
+declare r1 two_int8s;
+begin
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.q1 = %', r1.q1;
+  raise notice 'r1.q2 = %', r1.q2;
+  raise notice 'r1 = %', r1;
+end$$ language plisql;
 NOTICE:  r1 = <NULL>
 NOTICE:  r1.q1 = <NULL>
 NOTICE:  r1.q2 = <NULL>
@@ -266,13 +439,27 @@ begin
   raise notice 'r1.q2 = %', r1.q2;
   raise notice 'r1 = %', r1;
   raise notice 'r1.nosuchfield = %', r1.nosuchfield;
-end$$;
+end$$ language plpgsql;
 NOTICE:  r1.q1 = <NULL>
 NOTICE:  r1.q2 = <NULL>
 NOTICE:  r1 = <NULL>
 ERROR:  record "r1" has no field "nosuchfield"
 CONTEXT:  SQL expression "r1.nosuchfield"
 PL/pgSQL function inline_code_block line 7 at RAISE
+do $$
+declare r1 two_int8s;
+begin
+  raise notice 'r1.q1 = %', r1.q1;
+  raise notice 'r1.q2 = %', r1.q2;
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.nosuchfield = %', r1.nosuchfield;
+end$$ language plisql;
+NOTICE:  r1.q1 = <NULL>
+NOTICE:  r1.q2 = <NULL>
+NOTICE:  r1 = <NULL>
+ERROR:  record "r1" has no field "nosuchfield"
+CONTEXT:  SQL expression "r1.nosuchfield"
+PL/iSQL function inline_code_block line 7 at RAISE
 -- records, not so much
 do $$
 declare r1 record;
@@ -281,12 +468,25 @@ begin
   raise notice 'r1.f1 = %', r1.f1;
   raise notice 'r1.f2 = %', r1.f2;
   raise notice 'r1 = %', r1;
-end$$;
+end$$ language plpgsql;
 NOTICE:  r1 = <NULL>
 ERROR:  record "r1" is not assigned yet
 DETAIL:  The tuple structure of a not-yet-assigned record is indeterminate.
 CONTEXT:  SQL expression "r1.f1"
 PL/pgSQL function inline_code_block line 5 at RAISE
+do $$
+declare r1 record;
+begin
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.f1 = %', r1.f1;
+  raise notice 'r1.f2 = %', r1.f2;
+  raise notice 'r1 = %', r1;
+end$$ language plisql;
+NOTICE:  r1 = <NULL>
+ERROR:  record "r1" is not assigned yet
+DETAIL:  The tuple structure of a not-yet-assigned record is indeterminate.
+CONTEXT:  SQL expression "r1.f1"
+PL/iSQL function inline_code_block line 5 at RAISE
 -- but OK if you assign first
 do $$
 declare r1 record;
@@ -297,7 +497,7 @@ begin
   raise notice 'r1.f2 = %', r1.f2;
   raise notice 'r1 = %', r1;
   raise notice 'r1.nosuchfield = %', r1.nosuchfield;
-end$$;
+end$$ language plpgsql;
 NOTICE:  r1 = <NULL>
 NOTICE:  r1.f1 = 1
 NOTICE:  r1.f2 = 2
@@ -305,6 +505,23 @@ NOTICE:  r1 = (1,2)
 ERROR:  record "r1" has no field "nosuchfield"
 CONTEXT:  SQL expression "r1.nosuchfield"
 PL/pgSQL function inline_code_block line 9 at RAISE
+do $$
+declare r1 record;
+begin
+  raise notice 'r1 = %', r1;
+  r1 := row(1,2);
+  raise notice 'r1.f1 = %', r1.f1;
+  raise notice 'r1.f2 = %', r1.f2;
+  raise notice 'r1 = %', r1;
+  raise notice 'r1.nosuchfield = %', r1.nosuchfield;
+end$$ language plisql;
+NOTICE:  r1 = <NULL>
+NOTICE:  r1.f1 = 1
+NOTICE:  r1.f2 = 2
+NOTICE:  r1 = (1,2)
+ERROR:  record "r1" has no field "nosuchfield"
+CONTEXT:  SQL expression "r1.nosuchfield"
+PL/iSQL function inline_code_block line 9 at RAISE
 -- check repeated assignments to composite fields
 create table some_table (id int, data text);
 do $$
@@ -316,7 +533,18 @@ begin
     r.data := r.data || ' ' || i;
   end loop;
   raise notice 'r = %', r;
-end$$;
+end$$ language plpgsql;
+NOTICE:  r = (78,"skidoo 1 2 3 4 5 6 7 8 9 10")
+do $$
+declare r some_table;
+begin
+  r := (23, 'skidoo');
+  for i in 1 .. 10 loop
+    r.id := r.id + i;
+    r.data := r.data || ' ' || i;
+  end loop;
+  raise notice 'r = %', r;
+end$$ language plisql;
 NOTICE:  r = (78,"skidoo 1 2 3 4 5 6 7 8 9 10")
 -- check behavior of function declared to return "record"
 create function returnsrecord(int) returns record language plpgsql as
@@ -446,7 +674,19 @@ begin
   loop
     raise notice 'r = %', r;
   end loop;
-end$$;
+end$$ language plpgsql;
+NOTICE:  r = (1,2)
+NOTICE:  r = (2,3)
+NOTICE:  r = (3,4)
+NOTICE:  r = (4,5)
+do $$
+declare r two_int8s;
+begin
+  for r in select i, i+1 from generate_series(1,4) i
+  loop
+    raise notice 'r = %', r;
+  end loop;
+end$$ language plisql;
 NOTICE:  r = (1,2)
 NOTICE:  r = (2,3)
 NOTICE:  r = (3,4)
@@ -703,9 +943,19 @@ begin
   r.q2 := 43;
   r.q1 := 42;
   r.q2 := 41;  -- fail
-end$$;
+end$$ language plpgsql;
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
 CONTEXT:  PL/pgSQL function inline_code_block line 7 at assignment
+do $$
+declare r ordered_int8s;
+begin
+  r.q1 := null;
+  r.q2 := 43;
+  r.q1 := 42;
+  r.q2 := 41;  -- fail
+end$$ language plisql;
+ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
+CONTEXT:  PL/iSQL function inline_code_block line 7 at assignment
 -- check whole-row assignment
 do $$
 declare r ordered_int8s;
@@ -714,9 +964,19 @@ begin
   r := row(null,null);
   r := row(1,2);
   r := row(2,1);  -- fail
-end$$;
+end$$ language plpgsql;
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
 CONTEXT:  PL/pgSQL function inline_code_block line 7 at assignment
+do $$
+declare r ordered_int8s;
+begin
+  r := null;
+  r := row(null,null);
+  r := row(1,2);
+  r := row(2,1);  -- fail
+end$$ language plisql;
+ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
+CONTEXT:  PL/iSQL function inline_code_block line 7 at assignment
 -- check assignment in for-loop
 do $$
 declare r ordered_int8s;
@@ -724,11 +984,22 @@ begin
   for r in values (1,2),(3,4),(6,5) loop
     raise notice 'r = %', r;
   end loop;
-end$$;
+end$$ language plpgsql;
 NOTICE:  r = (1,2)
 NOTICE:  r = (3,4)
 ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
 CONTEXT:  PL/pgSQL function inline_code_block line 4 at FOR over SELECT rows
+do $$
+declare r ordered_int8s;
+begin
+  for r in values (1,2),(3,4),(6,5) loop
+    raise notice 'r = %', r;
+  end loop;
+end$$ language plisql;
+NOTICE:  r = (1,2)
+NOTICE:  r = (3,4)
+ERROR:  value for domain ordered_int8s violates check constraint "ordered_int8s_check"
+CONTEXT:  PL/iSQL function inline_code_block line 4 at FOR over SELECT rows
 -- check behavior with toastable fields, too
 create type two_texts as (f1 text, f2 text);
 create domain ordered_texts as two_texts check((value).f1 <= (value).f2);
@@ -745,11 +1016,22 @@ begin
   for d in select a, b from sometable loop
     raise notice 'succeeded at "%"', d.f1;
   end loop;
-end$$;
+end$$ language plpgsql;
 NOTICE:  succeeded at "a"
 NOTICE:  succeeded at "a"
 ERROR:  value for domain ordered_texts violates check constraint "ordered_texts_check"
 CONTEXT:  PL/pgSQL function inline_code_block line 4 at FOR over SELECT rows
+do $$
+declare d ordered_texts;
+begin
+  for d in select a, b from sometable loop
+    raise notice 'succeeded at "%"', d.f1;
+  end loop;
+end$$ language plisql;
+NOTICE:  succeeded at "a"
+NOTICE:  succeeded at "a"
+ERROR:  value for domain ordered_texts violates check constraint "ordered_texts_check"
+CONTEXT:  PL/iSQL function inline_code_block line 4 at FOR over SELECT rows
 do $$
 declare r record; d ordered_texts;
 begin
@@ -757,7 +1039,7 @@ begin
     raise notice 'processing row %', r.id;
     d := row(r.a, r.b);
   end loop;
-end$$;
+end$$ language plpgsql;
 NOTICE:  processing row 1
 NOTICE:  processing row 2
 NOTICE:  processing row 3
@@ -768,16 +1050,44 @@ declare r record; d ordered_texts;
 begin
   for r in select * from sometable loop
     raise notice 'processing row %', r.id;
+    d := row(r.a, r.b);
+  end loop;
+end$$ language plisql;
+NOTICE:  processing row 1
+NOTICE:  processing row 2
+NOTICE:  processing row 3
+ERROR:  value for domain ordered_texts violates check constraint "ordered_texts_check"
+CONTEXT:  PL/iSQL function inline_code_block line 6 at assignment
+do $$
+declare r record; d ordered_texts;
+begin
+  for r in select * from sometable loop
+    raise notice 'processing row %', r.id;
     d := null;
     d.f1 := r.a;
     d.f2 := r.b;
   end loop;
-end$$;
+end$$ language plpgsql;
 NOTICE:  processing row 1
 NOTICE:  processing row 2
 NOTICE:  processing row 3
 ERROR:  value for domain ordered_texts violates check constraint "ordered_texts_check"
 CONTEXT:  PL/pgSQL function inline_code_block line 8 at assignment
+do $$
+declare r record; d ordered_texts;
+begin
+  for r in select * from sometable loop
+    raise notice 'processing row %', r.id;
+    d := null;
+    d.f1 := r.a;
+    d.f2 := r.b;
+  end loop;
+end$$ language plisql;
+NOTICE:  processing row 1
+NOTICE:  processing row 2
+NOTICE:  processing row 3
+ERROR:  value for domain ordered_texts violates check constraint "ordered_texts_check"
+CONTEXT:  PL/iSQL function inline_code_block line 8 at assignment
 -- check coercion of a record result to named-composite function output type
 create function compresult(int8) returns two_int8s language plpgsql as
 $$ declare r record; begin r := row($1,$1); return r; end $$;

@@ -23,6 +23,9 @@
 #include "fe_utils/query_utils.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
+/* Begin - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* END - SQL PARSER */
 
 
 /* vacuum options controlled by user flags */
@@ -533,6 +536,10 @@ vacuum_one_database(ConnParams *cparams,
 					 "--parallel", "13");
 		exit(1);
 	}
+
+	/* BEGIN - SQL PARSER */
+	getDbCompatibleMode(conn);
+	/* END - SQL PARSER */
 
 	if (!quiet)
 	{

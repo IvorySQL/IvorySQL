@@ -18,6 +18,9 @@
 
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
+/* BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
 
 /* Global variables controlling behavior of fmtId() and fmtQualifiedId() */
 extern int	quote_all_identifiers;

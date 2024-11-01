@@ -11,6 +11,9 @@ ISOLATION = mxact delayed_startup ondisk_startup concurrent_ddl_dml \
 	twophase_snapshot
 
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
+#BEGIN - SQL PARSER
+ORACLE_REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
+#END - SQL PARSER
 ISOLATION_OPTS = --temp-config $(top_srcdir)/contrib/test_decoding/logical.conf
 
 # Disabled because these tests require "wal_level=logical", which

@@ -42,13 +42,6 @@
 	(PG_NARGS() > (_n) ? PG_GETARG_TEXT_PP(_n) : NULL)
 
 
-/* all the options of interest for regex functions */
-typedef struct pg_re_flags
-{
-	int			cflags;			/* compile flags for Spencer's regex code */
-	bool		glob;			/* do it globally (for each occurrence) */
-} pg_re_flags;
-
 /* cross-call state for regexp_match and regexp_split functions */
 typedef struct regexp_matches_ctx
 {
@@ -65,6 +58,9 @@ typedef struct regexp_matches_ctx
 	pg_wchar   *wide_str;		/* wide-char version of original string */
 	char	   *conv_buf;		/* conversion buffer, if needed */
 	int			conv_bufsiz;	/* size thereof */
+	
+	bool       use_subpatterns; /* use_subpatterns */
+	
 } regexp_matches_ctx;
 
 /*
@@ -119,6 +115,14 @@ static regexp_matches_ctx *setup_regexp_matches(text *orig_str, text *pattern,
 												bool fetching_unmatched);
 static ArrayType *build_regexp_match_result(regexp_matches_ctx *matchctx);
 static Datum build_regexp_split_result(regexp_matches_ctx *splitctx);
+
+static bool
+ora_build_regexp_substr_matches_result(regexp_matches_ctx *matchctx ,
+					int subexpr_pos,Datum *subpatterns);
+static bool
+ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,
+													int ret_opt,int subexpr_pos,
+													Datum *subpattern);
 
 
 /*
@@ -247,6 +251,14 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 
 	return &re_array[0].cre_re;
 }
+
+
+regex_t *
+ora_re_compile_and_cache(text *text_re, int cflags, Oid collation)
+{
+      return RE_compile_and_cache(text_re, cflags, collation);
+}
+
 
 /*
  * RE_wchar_execute - execute a RE on pg_wchar data
@@ -430,6 +442,14 @@ parse_re_flags(pg_re_flags *flags, text *opts)
 		}
 	}
 }
+
+
+void
+ora_parse_re_flags(pg_re_flags *flags, text *opts)
+{
+	parse_re_flags(flags,opts);
+}
+
 
 
 /*
@@ -1055,6 +1075,348 @@ regexp_matches(PG_FUNCTION_ARGS)
 
 	SRF_RETURN_DONE(funcctx);
 }
+
+
+/*
+ * ora_build_regexp_matches_result - return submatch for current match
+ */
+static bool 
+ora_build_regexp_substr_matches_result(regexp_matches_ctx *matchctx ,int subexpr_pos,Datum *subpattern)
+{
+	int	loc;
+	
+	/* Extract matching substrings from the original string */
+	loc = matchctx->next_match * matchctx->npatterns * 2;
+	if (subexpr_pos <= matchctx->npatterns)
+	{
+		int	so = 0;
+		int	eo = 0;
+
+		if (matchctx->npatterns >= 1 && matchctx->use_subpatterns && subexpr_pos > 0)
+		{
+			so = matchctx->match_locs[loc + 2 *(subexpr_pos - 1)];
+			eo = matchctx->match_locs[loc + 2 * subexpr_pos - 1];
+		}
+		else if (matchctx->npatterns == 1 && !matchctx->use_subpatterns && subexpr_pos > 0)
+		{
+			return false;
+		}
+		else if ((matchctx->npatterns == 1 && matchctx->use_subpatterns) || subexpr_pos == 0 )
+		{
+			so = matchctx->match_locs[loc];
+			eo = matchctx->match_locs[loc + matchctx->npatterns * 2 -1];  
+		}
+
+		if (so < 0 || eo < 0)
+		{
+			return false;
+		}
+		else
+		{
+			*subpattern = DirectFunctionCall3(text_substr,
+							 PointerGetDatum(matchctx->orig_str),
+								   Int32GetDatum(so + 1),
+								   Int32GetDatum(eo - so));
+		}
+		return true;
+	}	
+	else
+		return false;
+}
+
+/*
+ * ora_setup_regexp_substr_matches 
+ *		Return Find substring return ture otherwise return false
+ *
+ * To avoid having to re-find the compiled pattern on each call, we do
+ * all the matching in one swoop.  The returned regexp_matches_ctx contains
+ * the locations of all the substrings matching the pattern.
+ *
+ */
+bool
+ora_setup_regexp_substr_matches(text *src_text,
+	                                      regex_t *re, pg_re_flags re_flags,
+	                                      int start_posn, int occur_posn,
+	                                      int subexpr_pos,Datum *substr,
+	                                      bool ignore_degenerate)
+{
+	regexp_matches_ctx *matchctx = palloc0(sizeof(regexp_matches_ctx));
+	int			array_len;
+	int			array_idx;
+	int			prev_match_end = 0;
+	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
+	regmatch_t		pmatch[10];
+	pg_wchar		*data;
+	size_t			data_len;
+	int			search_start;
+	bool			use_subpatterns;
+
+	/* save original string --- we'll extract result substrings from it */
+	matchctx->orig_str = src_text;
+
+	/* do we want to remember subpatterns? */
+	if (re->re_nsub > 0 && subexpr_pos != 0)
+	{
+		use_subpatterns = true;
+		matchctx->use_subpatterns = true;
+		matchctx->npatterns = re->re_nsub;
+	}
+	else
+	{
+		use_subpatterns = false;
+		matchctx->use_subpatterns = false;
+		matchctx->npatterns = 1;
+	}
+
+	/* the real output space (grown dynamically if needed) */
+	array_len = re_flags.glob ? 256 : 32;
+	matchctx->match_locs = (int *) palloc(sizeof(int) * array_len);
+	array_idx = 0;
+
+	/* Convert data string to wide characters. */
+	data = (pg_wchar *) palloc((src_text_len + 1) * sizeof(pg_wchar));
+	data_len = pg_mb2wchar_with_len(VARDATA_ANY(src_text), data, src_text_len);
+
+	/* start_ptr points to the data_pos'th character of src_text */
+	search_start = 0;
+
+	if(start_posn > 1) 
+		search_start = start_posn - 1;
+	while (RE_wchar_execute(re, data, data_len, search_start,
+							10, pmatch))
+	{
+		matchctx->nmatches++;		
+		
+		if (matchctx->nmatches != occur_posn)  
+		{
+			search_start = pmatch[0].rm_eo;
+
+			if (pmatch[0].rm_so == pmatch[0].rm_eo)
+				search_start++;
+			if (search_start > data_len)
+				break;
+			continue;
+		}
+		else
+		{
+			if (pmatch[0].rm_so >= 0)
+			{
+				if (!ignore_degenerate ||
+					(pmatch[0].rm_so < data_len &&
+			 		 pmatch[0].rm_eo > prev_match_end))
+				{
+					/* enlarge output space if needed */
+					while (array_idx + matchctx->npatterns * 2 > array_len)
+					{
+						array_len *= 2;
+						matchctx->match_locs = (int *) repalloc(matchctx->match_locs,
+										sizeof(int) * array_len);
+					}
+					/* save this match's locations */
+					if (use_subpatterns)
+					{
+						int			i;
+						for (i = 1; i <= matchctx->npatterns; i++)
+						{
+							matchctx->match_locs[array_idx++] = pmatch[i].rm_so;
+							matchctx->match_locs[array_idx++] = pmatch[i].rm_eo;
+						}	
+					}
+					else
+					{
+						matchctx->match_locs[array_idx++] = pmatch[0].rm_so;
+						matchctx->match_locs[array_idx++] = pmatch[0].rm_eo;
+					}
+				}
+				break;
+			}
+		}
+	}
+
+	/*
+ 	 * If the substring position of the regular expression is not specified, 
+ 	 * or if there is no string matching the regular expression, 
+ 	 * the entire string that matches is directly returned. 
+ 	 */
+	if (array_idx > 0 && /* Req#1057 */
+		ora_build_regexp_substr_matches_result(matchctx,subexpr_pos,substr))
+		return true;
+	else
+		return false;
+}
+
+static bool
+ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,int subexpr_pos,Datum *subpattern)
+{
+	int	loc;
+	char    ret_str_val[100] = {0};
+
+	/* Extract matching substrings from the original string */
+	loc = matchctx->next_match * matchctx->npatterns * 2;
+	if (subexpr_pos <= matchctx->npatterns)
+	{
+		int	so = 0;
+		int	eo = 0;
+
+		if (matchctx->npatterns >= 1 && matchctx->use_subpatterns && subexpr_pos > 0)
+		{
+			so = matchctx->match_locs[loc + 2 *(subexpr_pos - 1)];
+			eo = matchctx->match_locs[loc + 2 * subexpr_pos - 1];
+		}
+		else if (matchctx->npatterns == 1)
+		{
+			so = matchctx->match_locs[loc];
+			eo = matchctx->match_locs[loc + matchctx->npatterns * 2 -1] - 1;
+			if(eo < 0)
+				eo = 0;
+			if(so == eo)
+				return false;
+		}
+
+		if (so < 0 || eo < 0)
+		{
+			return false;
+		}
+		else
+		{
+			if (ret_opt == 0)
+			{
+				sprintf(ret_str_val,"%d",so + 1);
+				*subpattern = PointerGetDatum(cstring_to_text(ret_str_val));
+			}
+			else
+			{
+				sprintf(ret_str_val,"%d",eo + 2);
+				*subpattern = PointerGetDatum(cstring_to_text(ret_str_val));
+			}
+		}
+		return true;
+	}
+	else
+		return false;
+}
+
+/*
+ * ora_setup_regexp_instr_matches
+ *		Return Find substring return ture otherwise return false
+ *
+ * To avoid having to re-find the compiled pattern on each call, we do
+ * all the matching in one swoop.  The returned regexp_matches_ctx contains
+ * the locations of all the substrings matching the pattern.
+ *
+ */
+bool
+ora_setup_regexp_instr_matches(text *src_text,
+											regex_t *re, pg_re_flags re_flags,
+											int start_posn, int occur_posn,
+											int ret_opt,int subexpr_pos,
+											Datum *substr,bool ignore_degenerate)
+{
+	regexp_matches_ctx *matchctx = palloc0(sizeof(regexp_matches_ctx));
+	int			array_len;
+	int			array_idx;
+	int			prev_match_end = 0;
+	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
+	regmatch_t	pmatch[10];
+	pg_wchar   *data;
+	size_t		data_len;
+	int			search_start;
+	bool		use_subpatterns;
+
+	/* save original string --- we'll extract result substrings from it */
+	matchctx->orig_str = src_text;
+
+	/* do we want to remember subpatterns? */
+	if (re->re_nsub > 0 && subexpr_pos != 0)
+	{
+		use_subpatterns = true;
+		matchctx->use_subpatterns = true;
+		matchctx->npatterns = re->re_nsub;
+	}
+	else
+	{
+		use_subpatterns = false;
+		matchctx->use_subpatterns = false;
+		matchctx->npatterns = 1;
+	}
+
+	/* the real output space (grown dynamically if needed) */
+	array_len = re_flags.glob ? 256 : 32;
+	matchctx->match_locs = (int *) palloc(sizeof(int) * array_len);
+	array_idx = 0;
+
+	/* Convert data string to wide characters. */
+	data = (pg_wchar *) palloc((src_text_len + 1) * sizeof(pg_wchar));
+	data_len = pg_mb2wchar_with_len(VARDATA_ANY(src_text), data, src_text_len);
+
+	/* start_ptr points to the data_pos'th character of src_text */
+	search_start = 0;
+
+	if(start_posn > 1)
+		search_start = start_posn - 1;
+	while (RE_wchar_execute(re, data, data_len, search_start,
+							10, pmatch))
+	{
+		matchctx->nmatches++;
+
+		if (matchctx->nmatches != occur_posn)
+		{
+			search_start = pmatch[0].rm_eo;
+
+			if (pmatch[0].rm_so == pmatch[0].rm_eo)
+				search_start++;
+			if (search_start > data_len)
+				break;
+			continue;
+		}
+		else
+		{
+			if (pmatch[0].rm_so >= 0)
+			{
+				if (!ignore_degenerate ||
+					(pmatch[0].rm_so < data_len &&
+					 pmatch[0].rm_eo > prev_match_end))
+				{
+					/* enlarge output space if needed */
+					while (array_idx + matchctx->npatterns * 2 > array_len)
+					{
+						array_len *= 2;
+						matchctx->match_locs = (int *) repalloc(matchctx->match_locs,
+										sizeof(int) * array_len);
+					}
+					/* save this match's locations */
+					if (use_subpatterns)
+					{
+						int			i;
+						for (i = 1; i <= matchctx->npatterns; i++)
+						{
+							matchctx->match_locs[array_idx++] = pmatch[i].rm_so;
+							matchctx->match_locs[array_idx++] = pmatch[i].rm_eo;
+						}
+					}
+					else
+					{
+						matchctx->match_locs[array_idx++] = pmatch[0].rm_so;
+						matchctx->match_locs[array_idx++] = pmatch[0].rm_eo;
+					}
+				}
+				break;
+			}
+		}
+	}
+
+	/*
+	 * If the substring position of the regular expression is not specified,
+	 * or if there is no string matching the regular expression,
+	 * the entire string that matches is directly returned.
+	 */
+	if (ora_build_regexp_instr_matches_result(matchctx,ret_opt,subexpr_pos,substr))
+		return true;
+	else
+		return false;
+}
+
+
 
 /* This is separate to keep the opr_sanity regression test from complaining */
 Datum

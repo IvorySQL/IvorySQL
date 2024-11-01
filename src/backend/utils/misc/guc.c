@@ -109,6 +109,21 @@
 #include "utils/inval.h"
 #include "utils/varlena.h"
 #include "utils/xml.h"
+/* BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
+
+#include "executor/nodeModifyTable.h"
+#include "parser/parse_node.h"
+#include "access/heapam.h"
+#include "parser/parse_merge.h"
+
+
+
+#define IVY_GUC_VAR_DEFINE
+#include "ivy_guc.c"
+#undef IVY_GUC_VAR_DEFINE
+
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -236,9 +251,19 @@ static void assign_recovery_target_lsn(const char *newval, void *extra);
 static bool check_primary_slot_name(char **newval, void **extra, GucSource source);
 static bool check_default_with_oids(bool *newval, void **extra, GucSource source);
 
+#define IVY_GUC_FUNC_DECLARE
+#include "ivy_guc.c"
+#undef IVY_GUC_FUNC_DECLARE
+
+
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
 												 bool applySettings, int elevel);
+
+
+#define IVY_GUC_VAR_STRUCT
+#include "ivy_guc.c"
+#undef IVY_GUC_VAR_STRUCT
 
 
 /*
@@ -510,6 +535,7 @@ const struct config_enum_entry ssl_protocol_versions_info[] = {
 	{NULL, 0, false}
 };
 
+
 StaticAssertDecl(lengthof(ssl_protocol_versions_info) == (PG_TLS1_3_VERSION + 2),
 				 "array length mismatch");
 
@@ -571,6 +597,7 @@ char	   *event_source;
 bool		row_security;
 bool		check_function_bodies = true;
 
+
 /*
  * This GUC exists solely for backward compatibility, check its definition for
  * details.
@@ -626,6 +653,7 @@ int			ssl_renegotiation_limit;
 int			huge_pages;
 int			huge_page_size;
 
+
 /*
  * These variables are all dummies that don't do anything, except in some
  * cases provide the value for SHOW to display.  The real state is elsewhere
@@ -664,7 +692,6 @@ static char *recovery_target_lsn_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
-
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -2122,7 +2149,11 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
-
+	
+	#define IVY_GUC_BOOL_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_BOOL_PARAMS
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -3552,7 +3583,11 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX,
 		check_client_connection_check_interval, NULL, NULL
 	},
-
+	
+	#define IVY_GUC_INT_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_INT_PARAMS
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -3821,7 +3856,11 @@ static struct config_real ConfigureNamesReal[] =
 		0.0, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
-
+	
+	#define IVY_GUC_REAL_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_REAL_PARAMS
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL, NULL
@@ -4600,7 +4639,11 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		check_backtrace_functions, assign_backtrace_functions, NULL
 	},
-
+	
+	#define IVY_GUC_STRING_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_STRING_PARAMS
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL
@@ -4966,7 +5009,11 @@ static struct config_enum ConfigureNamesEnum[] =
 		RECOVERY_INIT_SYNC_METHOD_FSYNC, recovery_init_sync_method_options,
 		NULL, NULL, NULL
 	},
-
+	
+	#define IVY_GUC_ENUM_PARAMS
+	#include "ivy_guc.c"
+	#undef IVY_GUC_ENUM_PARAMS
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL, NULL
@@ -8711,6 +8758,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 		case VAR_SET_CURRENT:
 			if (stmt->is_local)
 				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
+
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
 									 (superuser() ? PGC_SUSET : PGC_USERSET),
@@ -12542,5 +12590,10 @@ check_default_with_oids(bool *newval, void **extra, GucSource source)
 
 	return true;
 }
+
+#define IVY_GUC_FUNC_DEFINE
+#include "ivy_guc.c"
+#undef IVY_GUC_FUNC_DEFINE
+
 
 #include "guc-file.c"

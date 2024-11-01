@@ -163,7 +163,7 @@ bool		data_sync_retry = false;
 /* How SyncDataDirectory() should do its job. */
 int			recovery_init_sync_method = RECOVERY_INIT_SYNC_METHOD_FSYNC;
 
-/* Debugging.... */
+
 
 #ifdef FDDEBUG
 #define DO_DB(A) \
@@ -1179,7 +1179,7 @@ _dump_lru(void)
 	snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), "LEAST");
 	elog(LOG, "%s", buf);
 }
-#endif							/* FDDEBUG */
+#endif							
 
 static void
 Delete(File file)

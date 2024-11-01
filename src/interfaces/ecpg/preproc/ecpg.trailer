@@ -358,7 +358,7 @@ ECPGCursorStmt:  DECLARE cursor_name cursor_options CURSOR opt_hold FOR prepared
 			{
 				if (strcmp_fn($2, ptr->name) == 0)
 				{
-					/* re-definition is a bug */
+					
 					if ($2[0] == ':')
 						mmerror(PARSE_ERROR, ET_ERROR, "using variable \"%s\" in different declare statements is not supported", $2+1);
 					else
@@ -774,7 +774,7 @@ struct_union_type_with_symbol: s_struct_union_symbol
 			for (ptr = types; ptr != NULL; ptr = ptr->next)
 			{
 					if (strcmp(su_type.type_str, ptr->name) == 0)
-							/* re-definition is a bug */
+							
 							mmerror(PARSE_ERROR, ET_ERROR, "type \"%s\" is already defined", su_type.type_str);
 			}
 

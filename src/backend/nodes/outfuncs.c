@@ -100,6 +100,12 @@ static void outChar(StringInfo str, char c);
 #define WRITE_LOCATION_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " %d", node->fldname)
 
+
+#define WRITE_VOID_FIELD(fldname) \
+	appendStringInfo(str, " :" CppAsString(fldname) " %d", 0)
+
+
+
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
 	(appendStringInfoString(str, " :" CppAsString(fldname) " "), \
@@ -422,6 +428,7 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(onConflictWhere);
 	WRITE_UINT_FIELD(exclRelRTI);
 	WRITE_NODE_FIELD(exclRelTlist);
+	WRITE_NODE_FIELD(mergeActionLists);
 }
 
 static void
@@ -1247,6 +1254,10 @@ _outFuncExpr(StringInfo str, const FuncExpr *node)
 	WRITE_OID_FIELD(funccollid);
 	WRITE_OID_FIELD(inputcollid);
 	WRITE_NODE_FIELD(args);
+	
+	WRITE_CHAR_FIELD(function_from);
+	WRITE_VOID_FIELD(parent_func);
+	
 	WRITE_LOCATION_FIELD(location);
 }
 
@@ -1485,6 +1496,9 @@ _outCaseExpr(StringInfo str, const CaseExpr *node)
 	WRITE_NODE_FIELD(args);
 	WRITE_NODE_FIELD(defresult);
 	WRITE_LOCATION_FIELD(location);
+	
+	WRITE_BOOL_FIELD(is_decode);
+	
 }
 
 static void
@@ -2197,6 +2211,7 @@ _outModifyTablePath(StringInfo str, const ModifyTablePath *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(onconflict);
 	WRITE_INT_FIELD(epqParam);
+	WRITE_NODE_FIELD(mergeActionLists);
 }
 
 static void
@@ -2890,6 +2905,17 @@ _outFuncCall(StringInfo str, const FuncCall *node)
 	WRITE_LOCATION_FIELD(location);
 }
 
+
+static void
+_outColumnRefOrFuncCall(StringInfo str, const ColumnRefOrFuncCall*node)
+{
+	WRITE_NODE_TYPE("COLUMNREFORFUNCCALL");
+
+	WRITE_NODE_FIELD(cref);
+	WRITE_NODE_FIELD(func);
+}
+
+
 static void
 _outDefElem(StringInfo str, const DefElem *node)
 {
@@ -3094,6 +3120,8 @@ _outQuery(StringInfo str, const Query *node)
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(constraintDeps);
 	WRITE_NODE_FIELD(withCheckOptions);
+	WRITE_NODE_FIELD(mergeActionList);
+	WRITE_BOOL_FIELD(mergeUseOuterJoin);
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_INT_FIELD(stmt_len);
 }
@@ -3220,6 +3248,32 @@ _outCommonTableExpr(StringInfo str, const CommonTableExpr *node)
 	WRITE_NODE_FIELD(ctecoltypes);
 	WRITE_NODE_FIELD(ctecoltypmods);
 	WRITE_NODE_FIELD(ctecolcollations);
+}
+
+static void
+_outMergeWhenClause(StringInfo str, const MergeWhenClause *node)
+{
+	WRITE_NODE_TYPE("MERGEWHENCLAUSE");
+
+	WRITE_BOOL_FIELD(matched);
+	WRITE_ENUM_FIELD(commandType, CmdType);
+	WRITE_ENUM_FIELD(override, OverridingKind);
+	WRITE_NODE_FIELD(condition);
+	WRITE_NODE_FIELD(targetList);
+	WRITE_NODE_FIELD(values);
+}
+
+static void
+_outMergeAction(StringInfo str, const MergeAction *node)
+{
+	WRITE_NODE_TYPE("MERGEACTION");
+
+	WRITE_BOOL_FIELD(matched);
+	WRITE_ENUM_FIELD(commandType, CmdType);
+	WRITE_ENUM_FIELD(override, OverridingKind);
+	WRITE_NODE_FIELD(qual);
+	WRITE_NODE_FIELD(targetList);
+	WRITE_NODE_FIELD(updateColnos);
 }
 
 static void
@@ -4420,6 +4474,12 @@ outNode(StringInfo str, const void *obj)
 			case T_CommonTableExpr:
 				_outCommonTableExpr(str, obj);
 				break;
+			case T_MergeWhenClause:
+				_outMergeWhenClause(str, obj);
+				break;
+			case T_MergeAction:
+				_outMergeAction(str, obj);
+				break;
 			case T_SetOperationStmt:
 				_outSetOperationStmt(str, obj);
 				break;
@@ -4492,6 +4552,11 @@ outNode(StringInfo str, const void *obj)
 			case T_FuncCall:
 				_outFuncCall(str, obj);
 				break;
+			
+			case T_ColumnRefOrFuncCall:
+				_outColumnRefOrFuncCall(str, obj);
+				break;
+			
 			case T_DefElem:
 				_outDefElem(str, obj);
 				break;

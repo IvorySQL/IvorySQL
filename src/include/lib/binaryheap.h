@@ -31,7 +31,7 @@ typedef struct binaryheap
 {
 	int			bh_size;
 	int			bh_space;
-	bool		bh_has_heap_property;	/* debugging cross-check */
+	bool		bh_has_heap_property;	
 	binaryheap_comparator bh_compare;
 	void	   *bh_arg;
 	Datum		bh_nodes[FLEXIBLE_ARRAY_MEMBER];

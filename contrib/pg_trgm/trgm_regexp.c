@@ -203,7 +203,7 @@
  * This produces three graph files in /tmp, in Graphviz .gv format.
  * Some progress information is also printed to postmaster stderr.
  */
-/* #define TRGM_REGEXP_DEBUG */
+
 
 /*
  * These parameters are used to limit the amount of work done.
@@ -2359,4 +2359,4 @@ printTrgmPackedGraph(TrgmPackedGraph *packedGraph, TRGM *trigrams)
 	pfree(buf.data);
 }
 
-#endif							/* TRGM_REGEXP_DEBUG */
+#endif							

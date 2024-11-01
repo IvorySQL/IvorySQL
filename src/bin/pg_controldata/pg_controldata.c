@@ -328,5 +328,14 @@ main(int argc, char *argv[])
 		   ControlFile->data_checksum_version);
 	printf(_("Mock authentication nonce:            %s\n"),
 		   mock_auth_nonce_str);
+	/* BEGIN - SQL PARSER */
+	/* database compatible mode */
+	printf(_("database mode:                        %u\n"),
+		   ControlFile->dbmode);
+	/* END - SQL PARSER */
+	/* BEGIN - case sensitive indentify */
+	printf(_("case conversion mode:                 %u\n"),
+		ControlFile->casemode);
+	/* END - case sensitive indentify */
 	return 0;
 }

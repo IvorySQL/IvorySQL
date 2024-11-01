@@ -869,9 +869,9 @@ p_isspecial(TParser *prs)
 			0x19C0,				/* NEW TAI LUE VOWEL SIGN IY */
 			0x19C8,				/* NEW TAI LUE TONE MARK-1 */
 			0x19C9,				/* NEW TAI LUE TONE MARK-2 */
-			0x1A19,				/* BUGINESE VOWEL SIGN E */
-			0x1A1A,				/* BUGINESE VOWEL SIGN O */
-			0x1A1B,				/* BUGINESE VOWEL SIGN AE */
+			0x1A19,				
+			0x1A1A,				
+			0x1A1B,				
 			0x1B04,				/* BALINESE SIGN BISAH */
 			0x1B35,				/* BALINESE VOWEL SIGN TEDUNG */
 			0x1B3B,				/* BALINESE VOWEL SIGN RA REPA TEDUNG */
@@ -1596,7 +1596,7 @@ typedef struct
 	const TParserStateActionItem *action;	/* the actual state info */
 	TParserState state;			/* only for Assert crosscheck */
 #ifdef WPARSER_TRACE
-	const char *state_name;		/* only for debug printout */
+	const char *state_name;		
 #endif
 } TParserStateAction;
 

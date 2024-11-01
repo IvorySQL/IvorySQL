@@ -17,6 +17,45 @@
 #ifndef _FORMATTING_H_
 #define _FORMATTING_H_
 
+#include "pgtime.h"
+#include "datatype/timestamp.h"	
+#include "utils/numeric.h"		
+
+/* Copy from formatting.c to here */
+typedef struct TmToChar
+{
+	struct pg_tm tm;			/* classic 'tm' struct */
+	fsec_t		fsec;			/* fractional seconds */
+	const char *tzn;			/* timezone */
+} TmToChar;
+
+#define tmtcTm(_X)	(&(_X)->tm)
+#define tmtcTzn(_X) ((_X)->tzn)
+#define tmtcFsec(_X)	((_X)->fsec)
+
+
+/*
+ * The default date values are determined as follows:
+ *	the year is the current year, as returned by SYSDATE.
+ *	the month is the current month, as returned by SYSDATE.
+ *	the day is 01 (the first day of the month).
+ *	the hour, minute, and second are all 0.
+ */
+#define ORA_ZERO_tm(_X) \
+do {	\
+	(_X)->tm_sec  = (_X)->tm_year = (_X)->tm_min = (_X)->tm_wday = \
+	(_X)->tm_hour = (_X)->tm_yday = (_X)->tm_isdst = (_X)->tm_mon  = 0; \
+	(_X)->tm_mday = 1; \
+	(_X)->tm_zone = NULL; \
+} while(0)
+
+#define ORA_ZERO_tmtc(_X) \
+do { \
+	ORA_ZERO_tm( tmtcTm(_X) ); \
+	tmtcFsec(_X) = 0; \
+	tmtcTzn(_X) = NULL; \
+} while(0)
+
 
 extern char *str_tolower(const char *buff, size_t nbytes, Oid collid);
 extern char *str_toupper(const char *buff, size_t nbytes, Oid collid);
@@ -30,4 +69,15 @@ extern Datum parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 							Oid *typid, int32 *typmod, int *tz,
 							bool *have_error);
 
+
+/* export datetime_to_char_body from formatting.c used in ivorysql_ora */
+extern text *datetime_to_char_body(TmToChar *tmtc, text *fmt,
+											bool is_interval, Oid collid);
+
+extern void
+ora_do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
+				struct pg_tm *tm, fsec_t *fsec, int *fprec,
+				uint32 *flags, bool *have_error, bool is_conv_func);
+
+extern Numeric ora_to_number_internal(text *value, text *fmt);	
 #endif

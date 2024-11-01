@@ -77,4 +77,6 @@ extern Numeric numeric_mod_opt_error(Numeric num1, Numeric num2,
 									 bool *have_error);
 extern int32 numeric_int4_opt_error(Numeric num, bool *error);
 
+Numeric numeric_bitand(Numeric arg1, Numeric arg2);
+
 #endif							/* _PG_NUMERIC_H_ */

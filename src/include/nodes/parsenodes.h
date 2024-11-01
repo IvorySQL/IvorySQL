@@ -117,7 +117,7 @@ typedef struct Query
 {
 	NodeTag		type;
 
-	CmdType		commandType;	/* select|insert|update|delete|utility */
+	CmdType		commandType;	/* select|insert|update|delete|merge|utility */
 
 	QuerySource querySource;	/* where did I come from? */
 
@@ -128,7 +128,7 @@ typedef struct Query
 	Node	   *utilityStmt;	/* non-null if commandType == CMD_UTILITY */
 
 	int			resultRelation; /* rtable index of target relation for
-								 * INSERT/UPDATE/DELETE; 0 for SELECT */
+								 * INSERT/UPDATE/DELETE/MERGE; 0 for SELECT */
 
 	bool		hasAggs;		/* has aggregates in tlist or havingQual */
 	bool		hasWindowFuncs; /* has window functions in tlist */
@@ -145,7 +145,11 @@ typedef struct Query
 	List	   *cteList;		/* WITH list (of CommonTableExpr's) */
 
 	List	   *rtable;			/* list of range table entries */
-	FromExpr   *jointree;		/* table join tree (FROM and WHERE clauses) */
+	FromExpr   *jointree;		/* table join tree (FROM and WHERE clauses);
+								 * also USING clause for MERGE */
+
+	List	   *mergeActionList;	/* list of actions for MERGE (only) */
+	bool		mergeUseOuterJoin;	/* whether to use outer join */
 
 	List	   *targetList;		/* target list (of TargetEntry) */
 
@@ -1206,7 +1210,9 @@ typedef enum WCOKind
 	WCO_VIEW_CHECK,				/* WCO on an auto-updatable view */
 	WCO_RLS_INSERT_CHECK,		/* RLS INSERT WITH CHECK policy */
 	WCO_RLS_UPDATE_CHECK,		/* RLS UPDATE WITH CHECK policy */
-	WCO_RLS_CONFLICT_CHECK		/* RLS ON CONFLICT DO UPDATE USING policy */
+	WCO_RLS_CONFLICT_CHECK,		/* RLS ON CONFLICT DO UPDATE USING policy */
+	WCO_RLS_MERGE_UPDATE_CHECK, /* RLS MERGE UPDATE USING policy */
+	WCO_RLS_MERGE_DELETE_CHECK	/* RLS MERGE DELETE USING policy */
 } WCOKind;
 
 typedef struct WithCheckOption
@@ -1523,6 +1529,42 @@ typedef struct CommonTableExpr
 	 ((Query *) (cte)->ctequery)->returningList)
 
 /*
+ * MergeWhenClause -
+ *		raw parser representation of a WHEN clause in a MERGE statement
+ *
+ * This is transformed into MergeAction by parse analysis
+ */
+typedef struct MergeWhenClause
+{
+	NodeTag		type;
+	bool		matched;		/* true=MATCHED, false=NOT MATCHED */
+	CmdType		commandType;	/* INSERT/UPDATE/DELETE/DO NOTHING */
+	OverridingKind override;	/* OVERRIDING clause */
+	Node	   *condition;		/* WHEN conditions (raw parser) */
+	List	   *targetList;		/* INSERT/UPDATE targetlist */
+	/* the following members are only used in INSERT actions */
+	List	   *values;			/* VALUES to INSERT, or NULL */
+	
+	struct MergeWhenClause *update_delete; /* ora_merge delete clause */
+	
+} MergeWhenClause;
+
+/*
+ * MergeAction -
+ *		Transformed representation of a WHEN clause in a MERGE statement
+ */
+typedef struct MergeAction
+{
+	NodeTag		type;
+	bool		matched;		/* true=MATCHED, false=NOT MATCHED */
+	CmdType		commandType;	/* INSERT/UPDATE/DELETE/DO NOTHING */
+	OverridingKind override;	/* OVERRIDING clause */
+	Node	   *qual;			/* transformed WHEN conditions */
+	List	   *targetList;		/* the target list (of TargetEntry) */
+	List	   *updateColnos;	/* target attribute numbers of an UPDATE */
+} MergeAction;
+
+/*
  * TriggerTransition -
  *	   representation of transition row or table naming clause
  *
@@ -1614,6 +1656,20 @@ typedef struct UpdateStmt
 	List	   *returningList;	/* list of expressions to return */
 	WithClause *withClause;		/* WITH clause */
 } UpdateStmt;
+
+/* ----------------------
+ *		Merge Statement
+ * ----------------------
+ */
+typedef struct MergeStmt
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* target relation to merge into */
+	Node	   *sourceRelation; /* source relation */
+	Node	   *joinCondition;	/* join condition between source and target */
+	List	   *mergeWhenClauses;	/* list of MergeWhenClause(es) */
+	WithClause *withClause;		/* WITH clause */
+} MergeStmt;
 
 /* ----------------------
  *		Select Statement
@@ -2647,6 +2703,7 @@ typedef struct CreateSeqStmt
 	Oid			ownerId;		/* ID of owner, or InvalidOid for default */
 	bool		for_identity;
 	bool		if_not_exists;	/* just do nothing if it already exists? */
+	char            seq_type;	/* is oracle compatible type or original type */ 
 } CreateSeqStmt;
 
 typedef struct AlterSeqStmt
@@ -3685,5 +3742,59 @@ typedef struct DropSubscriptionStmt
 	bool		missing_ok;		/* Skip error if missing? */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
 } DropSubscriptionStmt;
+
+
+typedef enum AccessorItemUnitKind
+{
+	ACCESSOR_FUNCTION,
+	ACCESSOR_PROCEDURE,
+	ACCESSOR_PACKAGE,
+	ACCESSOR_TRIGGER,
+	ACCESSOR_TYPE,
+	ACCESSOR_UNKNOW
+} AccessorItemUnitKind;
+
+typedef struct AccessorItem
+{
+	NodeTag		type;
+	List		*unitname;			/* qualified name (list of Value strings) */
+	AccessorItemUnitKind unitkind;	/* ACCESSOR_FUNCTION, etc */
+} AccessorItem;
+
+typedef struct AccessibleByClause
+{
+	NodeTag		type;
+	List		*accessors;		/* List of AccessorItem nodes */
+} AccessibleByClause;
+
+/*
+ * support alter a function like
+ * alter function func editable|noneditable or compile
+ * we doesn't use the AlterFunctionStmt, because we doesn't
+ * want to use AlterFunction function, which will modify the
+ * pg_proc catalog table,compile doesn't change the system catalog.
+ * another reason is AlterFunction which fun should
+ * bring function arguments and find function rely on its
+ * arguments, this struct will doesn't consider function arguments.
+ */
+typedef struct CompileFunctionStmt
+{
+	NodeTag		type;
+	
+	ObjectType	objtype;
+	ObjectWithArgs *func;		/* name and args of function */
+	
+	bool		is_compile;		/* if false, it is change the editable|noneditable */
+	bool		editable;
+	List		*parameters;
+} CompileFunctionStmt;
+
+typedef struct ColumnRefOrFuncCall
+{
+	NodeTag		type;
+	ColumnRef	*cref;
+	FuncCall	*func;
+} ColumnRefOrFuncCall;
+
 
 #endif							/* PARSENODES_H */

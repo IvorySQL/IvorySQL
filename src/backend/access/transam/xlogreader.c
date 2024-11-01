@@ -1131,7 +1131,7 @@ WALRead(XLogReaderState *state,
 			XLByteToSeg(recptr, nextSegNo, state->segcxt.ws_segsize);
 			state->routine.segment_open(state, nextSegNo, &tli);
 
-			/* This shouldn't happen -- indicates a bug in segment_open */
+			
 			Assert(state->seg.ws_file >= 0);
 
 			/* Update the current segment info. */

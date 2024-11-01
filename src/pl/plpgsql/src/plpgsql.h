@@ -468,7 +468,7 @@ typedef struct PLpgSQL_stmt
 typedef struct PLpgSQL_condition
 {
 	int			sqlerrstate;	/* SQLSTATE code */
-	char	   *condname;		/* condition name (for debugging) */
+	char	   *condname;		
 	struct PLpgSQL_condition *next;
 } PLpgSQL_condition;
 

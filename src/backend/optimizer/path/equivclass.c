@@ -377,7 +377,7 @@ process_equivalence(PlannerInfo *root,
 								   ec2->ec_max_security);
 		ec2->ec_merged = ec1;
 		root->eq_classes = list_delete_nth_cell(root->eq_classes, ec2_idx);
-		/* just to avoid debugging confusion w/ dangling pointers: */
+		
 		ec2->ec_members = NIL;
 		ec2->ec_sources = NIL;
 		ec2->ec_derives = NIL;

@@ -1981,6 +1981,76 @@ findTargetlistEntrySQL92(ParseState *pstate, Node *node, List **tlist,
 			}
 		}
 	}
+
+	
+	if (IsA(node, ColumnRefOrFuncCall) &&
+		list_length(((ColumnRefOrFuncCall *) node)->cref->fields) == 1 &&
+		IsA(linitial(((ColumnRefOrFuncCall *) node)->cref->fields), String))
+	{
+		char	   *name = strVal(linitial(((ColumnRefOrFuncCall *) node)->cref->fields));
+		int			location = ((ColumnRefOrFuncCall *) node)->cref->location;
+
+		if (exprKind == EXPR_KIND_GROUP_BY)
+		{
+			/*
+			 * In GROUP BY, we must prefer a match against a FROM-clause
+			 * column to one against the targetlist.  Look to see if there is
+			 * a matching column.  If so, fall through to use SQL99 rules.
+			 * NOTE: if name could refer ambiguously to more than one column
+			 * name exposed by FROM, colNameToVar will ereport(ERROR). That's
+			 * just what we want here.
+			 *
+			 * Small tweak for 7.4.3: ignore matches in upper query levels.
+			 * This effectively changes the search order for bare names to (1)
+			 * local FROM variables, (2) local targetlist aliases, (3) outer
+			 * FROM variables, whereas before it was (1) (3) (2). SQL92 and
+			 * SQL99 do not allow GROUPing BY an outer reference, so this
+			 * breaks no cases that are legal per spec, and it seems a more
+			 * self-consistent behavior.
+			 */
+			if (colNameToVar(pstate, name, true, location) != NULL)
+				name = NULL;
+		}
+
+		if (name != NULL)
+		{
+			TargetEntry *target_result = NULL;
+
+			foreach(tl, *tlist)
+			{
+				TargetEntry *tle = (TargetEntry *) lfirst(tl);
+
+				if (!tle->resjunk &&
+					strcmp(tle->resname, name) == 0)
+				{
+					if (target_result != NULL)
+					{
+						if (!equal(target_result->expr, tle->expr))
+							ereport(ERROR,
+									(errcode(ERRCODE_AMBIGUOUS_COLUMN),
+
+							/*------
+							  translator: first %s is name of a SQL construct, eg ORDER BY */
+									 errmsg("%s \"%s\" is ambiguous",
+											ParseExprKindName(exprKind),
+											name),
+									 parser_errposition(pstate, location)));
+					}
+					else
+						target_result = tle;
+					/* Stay in loop to check for ambiguity */
+				}
+			}
+			if (target_result != NULL)
+			{
+				/* return the first match, after suitable validation */
+				checkTargetlistEntrySQL92(pstate, target_result, exprKind);
+				return target_result;
+			}
+		}
+	}
+	
+
 	if (IsA(node, A_Const))
 	{
 		Value	   *val = &((A_Const *) node)->val;

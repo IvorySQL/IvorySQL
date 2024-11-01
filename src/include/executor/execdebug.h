@@ -76,7 +76,7 @@
 #define NL_printf(s)
 #define NL1_printf(s, a)
 #define ENL1_printf(message)
-#endif							/* EXEC_NESTLOOPDEBUG */
+#endif							
 
 /* ----------------
  *		sort node debugging defines
@@ -92,7 +92,7 @@
 #define SO_printf(s)
 #define SO1_printf(s, p)
 #define SO2_printf(s, p1, p2)
-#endif							/* EXEC_SORTDEBUG */
+#endif							
 
 /* ----------------
  *		merge join debugging defines
@@ -125,6 +125,6 @@
 #define MJ_DEBUG_COMPARE(res)
 #define MJ_DEBUG_QUAL(clause, res)
 #define MJ_DEBUG_PROC_NODE(slot)
-#endif							/* EXEC_MERGEJOINDEBUG */
+#endif							
 
-#endif							/* EXECDEBUG_H */
+#endif							

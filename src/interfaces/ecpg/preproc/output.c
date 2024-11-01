@@ -93,7 +93,7 @@ whenever_action(int mode)
 char *
 hashline_number(void)
 {
-	/* do not print line numbers if we are in debug mode */
+	
 	if (input_filename
 #ifdef YYDEBUG
 		&& !base_yydebug

@@ -47,7 +47,11 @@ parseCommandLine(int argc, char *argv[])
 		{"new-options", required_argument, NULL, 'O'},
 		{"old-port", required_argument, NULL, 'p'},
 		{"new-port", required_argument, NULL, 'P'},
-
+		
+		{"old-oraport", required_argument, NULL, 'q'},
+		{"new-oraport", required_argument, NULL, 'Q'},
+		{"using-ora-pg", no_argument, NULL, 'g'},
+		
 		{"username", required_argument, NULL, 'U'},
 		{"check", no_argument, NULL, 'c'},
 		{"link", no_argument, NULL, 'k'},
@@ -73,6 +77,10 @@ parseCommandLine(int argc, char *argv[])
 	/* Process libpq env. variables; load values here for usage() output */
 	old_cluster.port = getenv("PGPORTOLD") ? atoi(getenv("PGPORTOLD")) : DEF_PGUPORT;
 	new_cluster.port = getenv("PGPORTNEW") ? atoi(getenv("PGPORTNEW")) : DEF_PGUPORT;
+	
+	old_cluster.oraport = getenv("ORAPORTOLD") ? atoi(getenv("ORAPORTOLD")) : DEF_ORAUPORT;
+	new_cluster.oraport = getenv("ORAPORTNEW") ? atoi(getenv("ORAPORTNEW")) : DEF_ORAUPORT;
+	
 
 	os_user_effective_id = get_user_info(&os_info.user);
 	/* we override just the database user name;  we got the OS id above */
@@ -101,7 +109,7 @@ parseCommandLine(int argc, char *argv[])
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root\n", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "d:D:b:B:cj:ko:O:p:P:rs:U:v",
+	while ((option = getopt_long(argc, argv, "d:D:b:B:cj:ko:O:p:P:q:Q:rs:U:v",	
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -125,6 +133,12 @@ parseCommandLine(int argc, char *argv[])
 			case 'D':
 				new_cluster.pgdata = pg_strdup(optarg);
 				break;
+
+			
+			case 'g':
+				pg_cluster_within_oracle_mode = true;
+				break;
+			
 
 			case 'j':
 				user_opts.jobs = atoi(optarg);
@@ -174,6 +188,18 @@ parseCommandLine(int argc, char *argv[])
 				if ((new_cluster.port = atoi(optarg)) <= 0)
 					pg_fatal("invalid new port number\n");
 				break;
+
+			
+			case 'q':
+				if ((old_cluster.oraport = atoi(optarg)) <= 0)
+					pg_fatal("invalid old port number\n");
+				break;
+
+			case 'Q':
+				if ((new_cluster.oraport = atoi(optarg)) <= 0)
+					pg_fatal("invalid new port number\n");
+				break;
+			
 
 			case 'r':
 				log_opts.retain = true;
@@ -301,6 +327,11 @@ usage(void)
 	printf(_("  -O, --new-options=OPTIONS     new cluster options to pass to the server\n"));
 	printf(_("  -p, --old-port=PORT           old cluster port number (default %d)\n"), old_cluster.port);
 	printf(_("  -P, --new-port=PORT           new cluster port number (default %d)\n"), new_cluster.port);
+	
+	printf(_("  -q, --old-oraport=PORT        old cluster oracle port number (default %d)\n"), old_cluster.oraport);
+	printf(_("  -Q, --new-oraport=PORT        new cluster oracle port number (default %d)\n"), new_cluster.oraport);
+	printf(_("  -g, --using-ora-pg            upgrade the PG cluster in Oracle mode, please use this option\n"));
+	
 	printf(_("  -r, --retain                  retain SQL and log files after success\n"));
 	printf(_("  -s, --socketdir=DIR           socket directory to use (default current dir.)\n"));
 	printf(_("  -U, --username=NAME           cluster superuser (default \"%s\")\n"), os_info.user);

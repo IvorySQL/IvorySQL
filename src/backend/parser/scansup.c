@@ -80,6 +80,76 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 }
 
 
+/* BEGIN - case sensitive indentify */
+char *
+upcase_identifier(const char *ident, int len, bool warn, bool truncate)
+{
+	char	   *result;
+	int			i;
+	bool		enc_is_single_byte;
+
+	result = palloc(len + 1);
+	enc_is_single_byte = pg_database_encoding_max_length() == 1;
+
+	/*
+	 * SQL99 specifies Unicode-aware case normalization, which we don't yet
+	 * have the infrastructure for.  Instead we use toupper() to provide a
+	 * locale-aware translation.  However, there are some locales where this
+	 * locale-aware translation.  However, there are some locales where this
+	 * is not right either (eg, Turkish may do strange things with 'i' and
+	 * 'I').  Our current compromise is to use toupper() for characters with
+	 * the high bit set, as long as they aren't part of a multi-byte
+	 * character, and use an ASCII-only downcasing for 7-bit characters.
+	 */
+	for (i = 0; i < len; i++)
+	{
+		unsigned char ch = (unsigned char) ident[i];
+
+		if (ch >= 'a' && ch <= 'z')
+			ch -= 'a' - 'A';
+		else if (enc_is_single_byte && IS_HIGHBIT_SET(ch) && islower(ch))
+			ch = toupper(ch);
+		result[i] = (char) ch;
+	}
+	result[i] = '\0';
+
+	if (i >= NAMEDATALEN && truncate)
+		truncate_identifier(result, i, warn);
+
+	return result;
+}
+
+
+char *
+identifier_case_transform(const char *ident, int len)
+{
+	char *upper_ident = NULL, *lower_ident = NULL, *result = NULL;
+
+	upper_ident = upcase_identifier(ident, len, true, true);
+	lower_ident = downcase_identifier(ident, len, true, true);
+
+	if (strcmp(upper_ident, ident) == 0)
+	{
+		result = lower_ident;
+		pfree(upper_ident);
+	}
+	else if (strcmp(lower_ident, ident) == 0)
+	{
+		result = upper_ident;
+		pfree(lower_ident);
+	}
+	else
+	{
+		result = palloc0(len + 1);
+		memcpy(result, ident, len);
+		pfree(upper_ident);
+		pfree(lower_ident);
+	}
+
+	return result;
+}
+
+
 /*
  * truncate_identifier() --- truncate an identifier to NAMEDATALEN-1 bytes.
  *

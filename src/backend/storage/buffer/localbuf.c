@@ -25,7 +25,7 @@
 #include "utils/resowner_private.h"
 
 
-/*#define LBDEBUG*/
+
 
 /* entry for buffer lookup hashtable */
 typedef struct

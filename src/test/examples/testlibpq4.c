@@ -158,6 +158,6 @@ main(int argc, char **argv)
 	PQfinish(conn1);
 	PQfinish(conn2);
 
-/*	 fclose(debug); */
+
 	return 0;
 }

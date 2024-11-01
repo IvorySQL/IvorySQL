@@ -35,21 +35,80 @@ my $oids = Catalog::FindAllOidsFromHeaders(@input_files);
 # Also push FirstGenbkiObjectId to serve as a terminator for the last gap.
 my $FirstGenbkiObjectId =
   Catalog::FindDefinedSymbol('access/transam.h', '..', 'FirstGenbkiObjectId');
+# BEGIN - SQL PARSER
+my $MinTypeObjectId =
+  Catalog::FindDefinedSymbol('access/transam.h', '..', 'MinTypeObjectId');
+my $MaxTypeObjectId =
+  Catalog::FindDefinedSymbol('access/transam.h', '..', 'MaxTypeObjectId');
+# END - SQL PARSER
 push @{$oids}, $FirstGenbkiObjectId;
 
 my $prev_oid = 0;
+# BEGIN - SQL PARSER
+my $min = 0;
+my $max = 0;
+# END - SQL PARSER
 my @sortedoids = sort { $a <=> $b } @{$oids};
+# The unused OID values between 9000 and 9100 are specified for the newly added type in IvorySQl2.0,
+# so they are not shown in the search results executed by the script "unused_OIDS".
 foreach my $oid (@sortedoids)
 {
 	if ($oid > $prev_oid + 1)
 	{
 		if ($oid > $prev_oid + 2)
 		{
-			printf "%d - %d\n", $prev_oid + 1, $oid - 1;
+			# BEGIN - SQL PARSER
+			$min = $prev_oid + 1;
+			$max = $oid - 1;
+
+			if ($min == $MinTypeObjectId || $min == $MaxTypeObjectId)
+			{
+				$min = $min + 1;
+			}
+
+			if ($max == $MinTypeObjectId || $max == $MaxTypeObjectId)
+			{
+				$max = $max - 1;
+			}
+
+			if ($min > $MaxTypeObjectId || $max < $MinTypeObjectId)
+			{
+				printf "%d - %d\n", $min, $max;
+			}
+			elsif ($min > $MinTypeObjectId && $max < $MaxTypeObjectId)
+			{
+				next;
+			}
+			elsif ($min < $MinTypeObjectId && $max > $MaxTypeObjectId)
+			{
+				printf "%d - %d\n", $min, 8999;
+				printf "%d - %d\n", 9101, $max;
+			}
+			elsif (($min < $MinTypeObjectId) && ($MinTypeObjectId < $max < $MaxTypeObjectId))
+			{
+				printf "%d - %d\n", $min, 8999;
+			}
+			elsif (($MinTypeObjectId < $min < $MaxTypeObjectId) && ($max > $MaxTypeObjectId))
+			{
+				printf "%d - %d\n", 9101, $max;
+			}
+			# END - SQL PARSER
+			#printf "%d - %d\n", $prev_oid + 1, $oid - 1;
 		}
 		else
 		{
-			printf "%d\n", $prev_oid + 1;
+			# BEGIN - SQL PARSER
+			$min = $prev_oid + 1;
+
+			if ($MinTypeObjectId <= $min <= $MaxTypeObjectId)
+			{
+				next;
+			}
+			else
+			{
+			# END - SQL PARSER
+				printf "%d\n", $min;
+			}
 		}
 	}
 	$prev_oid = $oid;
@@ -59,7 +118,9 @@ my $suggestion;
 do
 {
 	$suggestion = int(8000 + rand(2000));
-} while (grep(/^$suggestion$/, @{$oids}));
+# BEGIN - SQL PARSER
+} while (grep(/^$suggestion$/, @{$oids}) || ($MinTypeObjectId <= $suggestion <= $MaxTypeObjectId));
+# END - SQL PARSER
 
 my $navailable = 0;
 foreach my $oid (@sortedoids)

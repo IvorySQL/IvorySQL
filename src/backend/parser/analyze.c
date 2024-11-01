@@ -39,6 +39,7 @@
 #include "parser/parse_cte.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
+#include "parser/parse_merge.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_param.h"
 #include "parser/parse_relation.h"
@@ -52,6 +53,8 @@
 #include "utils/queryjumble.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/ora_compatible.h"
+#include "funcapi.h" 
 
 
 /* Hook for plugins to get control at end of parse analysis */
@@ -60,9 +63,6 @@ post_parse_analyze_hook_type post_parse_analyze_hook = NULL;
 static Query *transformOptionalSelectInto(ParseState *pstate, Node *parseTree);
 static Query *transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt);
 static Query *transformInsertStmt(ParseState *pstate, InsertStmt *stmt);
-static List *transformInsertRow(ParseState *pstate, List *exprlist,
-								List *stmtcols, List *icolumns, List *attrnos,
-								bool strip_indirection);
 static OnConflictExpr *transformOnConflictClause(ParseState *pstate,
 												 OnConflictClause *onConflictClause);
 static int	count_rowexpr_columns(ParseState *pstate, Node *expr);
@@ -76,8 +76,6 @@ static void determineRecursiveColTypes(ParseState *pstate,
 static Query *transformReturnStmt(ParseState *pstate, ReturnStmt *stmt);
 static Query *transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt);
 static List *transformReturningList(ParseState *pstate, List *returningList);
-static List *transformUpdateTargetList(ParseState *pstate,
-									   List *targetList);
 static Query *transformPLAssignStmt(ParseState *pstate,
 									PLAssignStmt *stmt);
 static Query *transformDeclareCursorStmt(ParseState *pstate,
@@ -289,6 +287,7 @@ transformStmt(ParseState *pstate, Node *parseTree)
 		case T_InsertStmt:
 		case T_UpdateStmt:
 		case T_DeleteStmt:
+		case T_MergeStmt:
 			(void) test_raw_expression_coverage(parseTree, NULL);
 			break;
 		default:
@@ -311,6 +310,10 @@ transformStmt(ParseState *pstate, Node *parseTree)
 
 		case T_UpdateStmt:
 			result = transformUpdateStmt(pstate, (UpdateStmt *) parseTree);
+			break;
+
+		case T_MergeStmt:
+			result = (*pg_transform_merge_stmt_hook)(pstate, (MergeStmt *) parseTree);
 			break;
 
 		case T_SelectStmt:
@@ -397,6 +400,7 @@ analyze_requires_snapshot(RawStmt *parseTree)
 		case T_InsertStmt:
 		case T_DeleteStmt:
 		case T_UpdateStmt:
+		case T_MergeStmt:
 		case T_SelectStmt:
 		case T_PLAssignStmt:
 			result = true;
@@ -915,7 +919,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
  * attrnos: integer column numbers (must be same length as icolumns)
  * strip_indirection: if true, remove any field/array assignment nodes
  */
-static List *
+List *
 transformInsertRow(ParseState *pstate, List *exprlist,
 				   List *stmtcols, List *icolumns, List *attrnos,
 				   bool strip_indirection)
@@ -1546,7 +1550,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	 * Generate a targetlist as though expanding "*"
 	 */
 	Assert(pstate->p_next_resno == 1);
-	qry->targetList = expandNSItemAttrs(pstate, nsitem, 0, -1);
+	qry->targetList = expandNSItemAttrs(pstate, nsitem, 0, true, -1);
 
 	/*
 	 * The grammar allows attaching ORDER BY, LIMIT, and FOR UPDATE to a
@@ -2371,9 +2375,9 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 
 /*
  * transformUpdateTargetList -
- *	handle SET clause in UPDATE/INSERT ... ON CONFLICT UPDATE
+ *	handle SET clause in UPDATE/MERGE/INSERT ... ON CONFLICT UPDATE
  */
-static List *
+List *
 transformUpdateTargetList(ParseState *pstate, List *origTlist)
 {
 	List	   *tlist = NIL;
@@ -2397,6 +2401,8 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		TargetEntry *tle = (TargetEntry *) lfirst(tl);
 		ResTarget  *origTarget;
 		int			attrno;
+		char  	   *colname_temp = NULL;
+		RangeTblEntry *alias_temp = NULL;
 
 		if (tle->resjunk)
 		{
@@ -2417,17 +2423,76 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
 		if (attrno == InvalidAttrNumber)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" of relation \"%s\" does not exist",
+		{
+			if (origTarget->indirection)
+			{
+				colname_temp = strVal(lfirst(list_head(origTarget->indirection)));
+				alias_temp = lfirst(list_head(pstate->p_rtable));
+
+				if (alias_temp->alias)
+				{
+					if (alias_temp->alias->aliasname)
+					{
+						if (strcmp(origTarget->name, alias_temp->alias->aliasname))
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_UNDEFINED_COLUMN),
+									 errmsg("Perhaps you meant to reference the table alias \"%s\"",
+											alias_temp->alias->aliasname)));
+						}
+						else
+						{
+							if (colname_temp)
+							{
+								attrno = attnameAttNum(pstate->p_target_relation, colname_temp, true);
+							}
+						}
+					}
+				}
+				else
+				{
+					if (origTarget->name && strcmp(origTarget->name, RelationGetRelationName(pstate->p_target_relation)))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_COLUMN),
+								 errmsg("Perhaps you meant to assign the table alias \"%s\"",
+										origTarget->name)));
+					}
+					else
+					{
+						if (colname_temp)
+						{
+							attrno = attnameAttNum(pstate->p_target_relation, colname_temp, true);
+						}
+					}
+				}
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+							errmsg("column \"%s\" of relation \"%s\" does not exist",
 							origTarget->name,
 							RelationGetRelationName(pstate->p_target_relation)),
-					 parser_errposition(pstate, origTarget->location)));
+							parser_errposition(pstate, origTarget->location)));
+			}
+		}
 
-		updateTargetListEntry(pstate, tle, origTarget->name,
-							  attrno,
-							  origTarget->indirection,
-							  origTarget->location);
+		if (colname_temp)
+		{
+			updateTargetListEntry(pstate, tle, colname_temp,
+								  attrno,
+								  NULL,
+								  origTarget->location);
+		}
+		else
+		{
+			updateTargetListEntry(pstate, tle, origTarget->name,
+								  attrno,
+								  origTarget->indirection,
+								  origTarget->location);
+
+		}
 
 		/* Mark the target column as requiring update permissions */
 		target_rte->updatedCols = bms_add_member(target_rte->updatedCols,
@@ -2980,6 +3045,15 @@ transformCallStmt(ParseState *pstate, CallStmt *stmt)
 
 	fexpr = castNode(FuncExpr, node);
 
+	
+	if (!FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+	{
+		stmt->funcexpr = fexpr;
+		stmt->outargs = get_internal_function_outargs(fexpr);
+		goto SKIP_PG_PROC_CHECK;
+	}
+	
+
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(fexpr->funcid));
 	if (!HeapTupleIsValid(proctup))
 		elog(ERROR, "cache lookup failed for function %u", fexpr->funcid);
@@ -3055,6 +3129,11 @@ transformCallStmt(ParseState *pstate, CallStmt *stmt)
 	stmt->outargs = outargs;
 
 	ReleaseSysCache(proctup);
+	
+
+
+SKIP_PG_PROC_CHECK:
+
 
 	/* represent the command as a utility Query */
 	result = makeNode(Query);

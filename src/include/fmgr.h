@@ -123,6 +123,12 @@ typedef struct FunctionCallInfoBaseData
  */
 extern void fmgr_info(Oid functionId, FmgrInfo *finfo);
 
+
+extern void fmgr_subproc_info_cxt(Oid functionId, FmgrInfo *finfo,
+						  MemoryContext mcxt);
+
+
+
 /*
  * Same, when the FmgrInfo struct is in a memory context longer-lived than
  * CurrentMemoryContext.  The specified context will be set as fn_mcxt
@@ -694,6 +700,10 @@ extern Datum OidReceiveFunctionCall(Oid functionId, fmStringInfo buf,
 									Oid typioparam, int32 typmod);
 extern bytea *SendFunctionCall(FmgrInfo *flinfo, Datum val);
 extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
+
+extern char *OutputFunctionCallWithTypmod(FmgrInfo *flinfo, Datum val, Datum typmod);
+extern char *OidOutputFunctionCallWithTypmod(Oid functionId, Datum val, Datum typmod);
+
 
 
 /*

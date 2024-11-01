@@ -25,7 +25,9 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/guc.h"			
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"	
 #include "utils/typcache.h"
 
 
@@ -406,7 +408,21 @@ record_out(PG_FUNCTION_ARGS)
 		}
 
 		attr = values[i];
-		value = OutputFunctionCall(&column_info->proc, attr);
+
+		/*
+		 * Compatible oracle , pass typmod to output function
+		 */
+		if (ORA_PARSER == compatible_db &&
+			(att->atttypid == YMINTERVALOID ||
+			 att->atttypid == DSINTERVALOID))
+		{
+			value = OutputFunctionCallWithTypmod(&column_info->proc, attr, att->atttypmod);
+		}
+		else
+		{
+			value = OutputFunctionCall(&column_info->proc, attr);
+		}
+		
 
 		/* Detect whether we need double quotes for this value */
 		nq = (value[0] == '\0');	/* force quotes for empty string */

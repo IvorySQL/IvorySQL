@@ -64,7 +64,12 @@ get_db_conn(ClusterInfo *cluster, const char *db_name)
 	appendConnStrVal(&conn_opts, db_name);
 	appendPQExpBufferStr(&conn_opts, " user=");
 	appendConnStrVal(&conn_opts, os_info.user);
-	appendPQExpBuffer(&conn_opts, " port=%d", cluster->port);
+	
+	if (pg_cluster_within_oracle_mode)
+		appendPQExpBuffer(&conn_opts, " port=%d", cluster->port);
+	else
+		appendPQExpBuffer(&conn_opts, " port=%d", cluster->controldata.database_mode_is_oracle ? cluster->oraport : cluster->port);
+	
 	if (cluster->sockdir)
 	{
 		appendPQExpBufferStr(&conn_opts, " host=");
@@ -103,7 +108,14 @@ cluster_conn_opts(ClusterInfo *cluster)
 		appendShellString(buf, cluster->sockdir);
 		appendPQExpBufferChar(buf, ' ');
 	}
-	appendPQExpBuffer(buf, "--port %d --username ", cluster->port);
+
+	
+	if (pg_cluster_within_oracle_mode)
+		appendPQExpBuffer(buf, "--port %d --username ", cluster->port);
+	else
+		appendPQExpBuffer(buf, "--port %d --username ", cluster->controldata.database_mode_is_oracle ? cluster->oraport : cluster->port);
+	
+	
 	appendShellString(buf, os_info.user);
 
 	return buf->data;
@@ -244,15 +256,32 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	 * Force vacuum_defer_cleanup_age to 0 on the new cluster, so that
 	 * vacuumdb --freeze actually freezes the tuples.
 	 */
-	snprintf(cmd, sizeof(cmd),
-			 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d%s%s %s%s\" start",
-			 cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
-			 (cluster->controldata.cat_ver >=
-			  BINARY_UPGRADE_SERVER_FLAG_CAT_VER) ? " -b" :
-			 " -c autovacuum=off -c autovacuum_freeze_max_age=2000000000",
-			 (cluster == &new_cluster) ?
-			 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off -c vacuum_defer_cleanup_age=0" : "",
-			 cluster->pgopts ? cluster->pgopts : "", socket_string);
+	
+	if (cluster->controldata.database_mode_is_oracle)
+	{
+		snprintf(cmd, sizeof(cmd),
+				 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d -o %d%s%s %s%s\" start",
+				 cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port, cluster->oraport,
+				 (cluster->controldata.cat_ver >=
+				  BINARY_UPGRADE_SERVER_FLAG_CAT_VER) ? " -b" :
+				 " -c autovacuum=off -c autovacuum_freeze_max_age=2000000000",
+				 (cluster == &new_cluster) ?
+				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off -c vacuum_defer_cleanup_age=0" : "",
+				 cluster->pgopts ? cluster->pgopts : "", socket_string);
+	}
+	else
+	
+	{
+		snprintf(cmd, sizeof(cmd),
+				 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d%s%s %s%s\" start",
+				 cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
+				 (cluster->controldata.cat_ver >=
+				  BINARY_UPGRADE_SERVER_FLAG_CAT_VER) ? " -b" :
+				 " -c autovacuum=off -c autovacuum_freeze_max_age=2000000000",
+				 (cluster == &new_cluster) ?
+				 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off -c vacuum_defer_cleanup_age=0" : "",
+				 cluster->pgopts ? cluster->pgopts : "", socket_string);
+	}
 
 	/*
 	 * Don't throw an error right away, let connecting throw the error because

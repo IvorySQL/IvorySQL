@@ -143,8 +143,8 @@ static void add_module_to_inline_search_path(InlineSearchPath& path, llvm::Strin
 static llvm::SmallVector<llvm::GlobalValueSummary *, 1>
 summaries_for_guid(const InlineSearchPath& path, llvm::GlobalValue::GUID guid);
 
-/* verbose debugging for inliner development */
-/* #define INLINE_DEBUG */
+
+
 #ifdef INLINE_DEBUG
 #define ilog		elog
 #else

@@ -1,0 +1,9 @@
+Test extensions and libraries
+=============================
+
+src/oracle_test/modules contains IvorySQL-2.0 extensions that are primarily or entirely
+intended for testing IvorySQL-2.0 and/or to serve as example code. The extensions
+here aren't intended to be installed in a production server and aren't suitable
+for "real work".
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules" directory.

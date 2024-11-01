@@ -16,6 +16,9 @@
 #include "common/string.h"
 #include "fe_utils/option_utils.h"
 #include "fe_utils/string_utils.h"
+/* Begin - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* END - SQL PARSER */
 
 
 static void help(const char *progname);
@@ -131,6 +134,7 @@ main(int argc, char *argv[])
 			exit(0);
 	}
 
+	/* BEGIN - SQL PARSER */
 	cparams.dbname = NULL;		/* this program lacks any dbname option... */
 	cparams.pghost = host;
 	cparams.pgport = port;
@@ -140,10 +144,24 @@ main(int argc, char *argv[])
 
 	conn = connectMaintenanceDatabase(&cparams, progname, echo);
 
+	getDbCompatibleMode(conn);
+	/* END - SQL PARSER */
+
 	initPQExpBuffer(&sql);
 	appendPQExpBuffer(&sql, "DROP ROLE %s%s;",
 					  (if_exists ? "IF EXISTS " : ""), fmtId(dropuser));
+#if 0
+	/* BEGIN - SQL PARSER */
+	cparams.dbname = NULL;		/* this program lacks any dbname option... */
+	cparams.pghost = host;
+	cparams.pgport = port;
+	cparams.pguser = username;
+	cparams.prompt_password = prompt_password;
+	cparams.override_dbname = NULL;
 
+	conn = connectMaintenanceDatabase(&cparams, progname, echo);
+	/* END - SQL PARSER */
+#endif
 	if (echo)
 		printf("%s\n", sql.data);
 	result = PQexec(conn, sql.data);

@@ -13,6 +13,7 @@
 #ifndef TRIGGER_H
 #define TRIGGER_H
 
+#include "access/tableam.h"
 #include "catalog/objectaddress.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
@@ -213,7 +214,8 @@ extern void ExecARDeleteTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 ItemPointer tupleid,
 								 HeapTuple fdw_trigtuple,
-								 TransitionCaptureState *transition_capture);
+								 TransitionCaptureState *transition_capture,
+								 bool is_crosspart_update);
 extern bool ExecIRDeleteTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 HeapTuple trigtuple);
@@ -222,19 +224,21 @@ extern void ExecBSUpdateTriggers(EState *estate,
 extern void ExecASUpdateTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 TransitionCaptureState *transition_capture);
-extern bool ExecBRUpdateTriggers(EState *estate,
-								 EPQState *epqstate,
-								 ResultRelInfo *relinfo,
-								 ItemPointer tupleid,
-								 HeapTuple fdw_trigtuple,
-								 TupleTableSlot *slot);
-extern void ExecARUpdateTriggers(EState *estate,
-								 ResultRelInfo *relinfo,
-								 ItemPointer tupleid,
-								 HeapTuple fdw_trigtuple,
-								 TupleTableSlot *slot,
-								 List *recheckIndexes,
-								 TransitionCaptureState *transition_capture);
+extern bool ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
+									ResultRelInfo *relinfo,
+									ItemPointer tupleid,
+									HeapTuple fdw_trigtuple,
+									TupleTableSlot *newslot,
+									TM_FailureData *tmfd);
+extern void ExecARUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
+					 ResultRelInfo *src_partinfo,
+					 ResultRelInfo *dst_partinfo,
+					 ItemPointer tupleid,
+					 HeapTuple fdw_trigtuple,
+					 TupleTableSlot *newslot,
+					 List *recheckIndexes,
+					 TransitionCaptureState *transition_capture,
+					 bool is_crosspart_update);
 extern bool ExecIRUpdateTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 HeapTuple trigtuple,

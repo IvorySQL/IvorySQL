@@ -38,6 +38,11 @@ typedef struct polymorphic_actuals
 	Oid			anymultirange_type; /* anymultirange mapping, if known */
 } polymorphic_actuals;
 
+
+PLiSQL_funcs_call plisql_internal_funcs = {NULL, NULL, NULL, NULL, NULL, false};
+
+
+
 static void shutdown_MultiFuncCall(Datum arg);
 static TypeFuncClass internal_get_result_type(Oid funcid,
 											  Node *call_expr,
@@ -48,10 +53,6 @@ static void resolve_anyelement_from_others(polymorphic_actuals *actuals);
 static void resolve_anyarray_from_others(polymorphic_actuals *actuals);
 static void resolve_anyrange_from_others(polymorphic_actuals *actuals);
 static void resolve_anymultirange_from_others(polymorphic_actuals *actuals);
-static bool resolve_polymorphic_tupdesc(TupleDesc tupdesc,
-										oidvector *declared_args,
-										Node *call_expr);
-static TypeFuncClass get_type_func_class(Oid typid, Oid *base_typeid);
 
 
 /*
@@ -329,6 +330,19 @@ internal_get_result_type(Oid funcid,
 	Oid			rettype;
 	Oid			base_rettype;
 	TupleDesc	tupdesc;
+
+	
+	if (call_expr != NULL && nodeTag(call_expr) == T_FuncExpr)
+	{
+		FuncExpr *funcexpr = (FuncExpr *) call_expr;
+
+		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+			return get_internal_function_result_type(funcexpr,
+													rsinfo,
+													resultTypeId,
+													resultTupleDesc);
+	}
+	
 
 	/* First fetch the function's pg_proc row to inspect its rettype */
 	tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
@@ -629,7 +643,7 @@ resolve_anymultirange_from_others(polymorphic_actuals *actuals)
  * Returns true if able to deduce all types, false if necessary information
  * is not provided (call_expr is NULL or arg types aren't identifiable).
  */
-static bool
+bool
 resolve_polymorphic_tupdesc(TupleDesc tupdesc, oidvector *declared_args,
 							Node *call_expr)
 {
@@ -1213,7 +1227,7 @@ resolve_polymorphic_argtypes(int numargs, Oid *argtypes, char *argmodes,
  * classifying types.  The categories used here are useful for deciding
  * how to handle functions returning the datatype.
  */
-static TypeFuncClass
+TypeFuncClass
 get_type_func_class(Oid typid, Oid *base_typeid)
 {
 	*base_typeid = typid;
@@ -1636,6 +1650,84 @@ build_function_result_tupdesc_t(HeapTuple procTuple)
 										   proargmodes,
 										   proargnames);
 }
+
+
+
+/*
+ * build internal function result tupdesc
+ */
+TupleDesc
+build_internal_function_result_tupdesc_t(FuncExpr *fexpr)
+{
+	if (!plisql_internal_funcs.isload)
+		elog(ERROR, "internal funcs have not been loaded");
+
+	return plisql_internal_funcs.get_internal_func_result_tupdesc(fexpr);
+}
+
+/*
+ * get internal func name
+ */
+char*
+get_internal_function_name(FuncExpr *fexpr)
+{
+	if (!plisql_internal_funcs.isload)
+		elog(ERROR, "internal funcs have not been loaded");
+
+	return plisql_internal_funcs.get_internal_func_name(fexpr);
+}
+
+/*
+ * get inernal func result type class
+ */
+TypeFuncClass
+get_internal_function_result_type(FuncExpr *fexpr,
+						 ReturnSetInfo *rsinfo,
+						 Oid *resultTypeId,
+						 TupleDesc *resultTupleDesc)
+{
+	if (!plisql_internal_funcs.isload)
+				elog(ERROR, "internal funcs have not been loaded");
+	return plisql_internal_funcs.get_internal_func_result_type(fexpr,
+												NULL,
+												resultTypeId,
+												resultTupleDesc);
+}
+
+/*
+ * call get_type_func_class from external
+ */
+TypeFuncClass
+external_get_type_func_class(Oid typid, Oid *base_typeid)
+{
+	return get_type_func_class(typid, base_typeid);
+}
+
+
+/*
+ * get plisql internal function out args for call procedure
+ */
+List *
+get_internal_function_outargs(FuncExpr *fexpr)
+{
+	if (!plisql_internal_funcs.isload)
+				elog(ERROR, "internal funcs have not been loaded");
+	return plisql_internal_funcs.get_internal_func_outargs(fexpr);
+}
+
+/*
+ * get plisql internal function result name
+ */
+char *
+get_internal_function_result_name(FuncExpr *fexpr)
+{
+	if (!plisql_internal_funcs.isload)
+				elog(ERROR, "internal funcs have not been loaded");
+	return plisql_internal_funcs.get_inernal_func_result_name(fexpr);
+}
+
+
+
 
 /*
  * build_function_result_tupdesc_d

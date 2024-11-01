@@ -811,7 +811,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 	plpgsql_finish_datums(function);
 
-	/* Debug dump for completed functions */
+	
 	if (plpgsql_DumpExecTree)
 		plpgsql_dumptree(function);
 

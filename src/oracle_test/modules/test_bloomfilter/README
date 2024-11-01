@@ -1,0 +1,10 @@
+test_bloomfilter overview
+=========================
+
+test_bloomfilter is a test harness module for testing Bloom filter library set
+membership operations.  It consists of a single SQL-callable function,
+test_bloomfilter(), plus a regression test that calls test_bloomfilter().
+Membership tests are performed against a dataset that the test harness module
+generates.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_bloomfilter" directory.

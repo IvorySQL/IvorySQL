@@ -243,9 +243,13 @@
 { oid => '1257', descr => 'length',
   proname => 'textlen', prorettype => 'int4', proargtypes => 'text',
   prosrc => 'textlen' },
+
+
+# Change proisstrict to false.
 { oid => '1258',
   proname => 'textcat', prorettype => 'text', proargtypes => 'text text',
-  prosrc => 'textcat' },
+  proisstrict => 'f', prosrc => 'textcat' },
+
 
 { oid => '84',
   proname => 'boolne', proleakproof => 't', prorettype => 'bool',
@@ -5777,14 +5781,17 @@
   proname => 'timetz', prosupport => 'time_support', prorettype => 'timetz',
   proargtypes => 'timetz int4', prosrc => 'timetz_scale' },
 
+
+# Change proisstrict to false.
 { oid => '2003',
   proname => 'textanycat', prolang => 'sql', provolatile => 's',
-  prorettype => 'text', proargtypes => 'text anynonarray',
+  proisstrict => 'f', prorettype => 'text', proargtypes => 'text anynonarray',
   prosrc => 'select $1 operator(pg_catalog.||) $2::pg_catalog.text' },
 { oid => '2004',
   proname => 'anytextcat', prolang => 'sql', provolatile => 's',
-  prorettype => 'text', proargtypes => 'anynonarray text',
+  proisstrict => 'f', prorettype => 'text', proargtypes => 'anynonarray text',
   prosrc => 'select $1::pg_catalog.text operator(pg_catalog.||) $2' },
+
 
 { oid => '2005',
   proname => 'bytealike', prosupport => 'textlike_support',
@@ -11620,5 +11627,15 @@
   proname => 'brin_minmax_multi_summary_send', provolatile => 's',
   prorettype => 'bytea', proargtypes => 'pg_brin_minmax_multi_summary',
   prosrc => 'brin_minmax_multi_summary_send' },
+
+
+{ oid => '4642', descr => 'PostgreSQL connection mode',
+  proname => 'pg_get_connection_mode', provolatile => 's', prorettype => 'text',
+  proargtypes => '', prosrc => 'pg_get_connection_mode' },
+
+
+{ oid => '4643', descr => 'definition of a plisql function',
+  proname => 'ivy_get_plisql_functiondef', provolatile => 's', prorettype => 'text',
+  proargtypes => 'oid', prosrc => 'ivy_get_plisql_functiondef' },
 
 ]

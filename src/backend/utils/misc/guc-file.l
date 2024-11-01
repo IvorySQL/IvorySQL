@@ -808,7 +808,7 @@ ParseConfigFp(FILE *fp, const char *config_file, int depth, int elevel,
 		{
 			if (token != 0)
 				goto parse_error;
-			/* treat EOF like \n for line numbering purposes, cf bug 4752 */
+			
 			ConfigFileLineno++;
 		}
 

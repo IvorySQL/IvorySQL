@@ -1903,8 +1903,11 @@ find_expr_references_walker(Node *node,
 	{
 		FuncExpr   *funcexpr = (FuncExpr *) node;
 
-		add_object_address(OCLASS_PROC, funcexpr->funcid, 0,
+		
+		if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+			add_object_address(OCLASS_PROC, funcexpr->funcid, 0,
 						   context->addrs);
+		
 		/* fall through to examine arguments */
 	}
 	else if (IsA(node, OpExpr))

@@ -1,0 +1,118 @@
+show ivorysql.enable_emptystring_to_NULL;
+ ivorysql.enable_emptystring_to_NULL 
+-------------------------------------
+ on
+(1 row)
+
+CREATE TABLE null_tb (id number);
+ALTER TABLE null_tb add (salary float default '');
+INSERT INTO null_tb (id) VALUES (1);
+SELECT id FROM null_tb WHERE salary is NULL;
+ id 
+----
+ 1
+(1 row)
+
+DROP TABLE null_tb;
+CREATE TABLE null_student
+(id number NOT NULL,name varchar2(8)
+,special_id number
+,grade float
+,birthday date
+,remark varchar2(255));
+INSERT INTO null_student (id,grade) VALUES (6,'');
+SELECT * FROM null_student;
+ id | name | special_id | grade | birthday | remark 
+----+------+------------+-------+----------+--------
+ 6  |      |            |       |          | 
+(1 row)
+
+DROP TABLE null_student;
+CREATE TABLE test1(a int,b varchar(20) default '' not null);
+INSERT INTO test1(a) VALUES(1);	--error
+ERROR:  null value in column "b" of relation "test1" violates not-null constraint
+DETAIL:  Failing row contains (1, null).
+INSERT INTO test1(a,b) VALUES(2,'aa');
+INSERT INTO test1(a,b) VALUES(3, 'aaa');
+INSERT INTO test1(b) VALUES (''); --error
+ERROR:  null value in column "b" of relation "test1" violates not-null constraint
+DETAIL:  Failing row contains (null, null).
+DROP TABLE test1;
+CREATE TABLE test2(x int, n numeric, t timestamp,d date,r real,p double precision);
+INSERT INTO test2 VALUES (1,1.23, to_timestamp_tz('2021-01-13 16:44:43.566308+08','YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'),to_date('2021-01-13','YYYY-MM-DD'),1.2, 12.344444);
+INSERT INTO test2 VALUES (2,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO test2 VALUES (3,'','','','','');
+SELECT * FROM test2 WHERE n is NULL;
+ x | n | t | d | r | p 
+---+---+---+---+---+---
+ 2 |   |   |   |   |  
+ 3 |   |   |   |   |  
+(2 rows)
+
+SELECT * FROM test2 WHERE n=NULL;
+ x | n | t | d | r | p 
+---+---+---+---+---+---
+(0 rows)
+
+SELECT * FROM test2 WHERE n='';
+ x | n | t | d | r | p 
+---+---+---+---+---+---
+(0 rows)
+
+UPDATE test2 set t='' WHERE x=1;
+SELECT * FROM test2 WHERE t is NULL;
+ x |  n   | t |     d      |  r  |     p     
+---+------+---+------------+-----+-----------
+ 2 |      |   |            |     |          
+ 3 |      |   |            |     |          
+ 1 | 1.23 |   | 2021-01-13 | 1.2 | 12.344444
+(3 rows)
+
+UPDATE test2 set d=null WHERE x=1;
+SELECT * FROM test2 WHERE d is NULL;
+ x |  n   | t | d |  r  |     p     
+---+------+---+---+-----+-----------
+ 2 |      |   |   |     |          
+ 3 |      |   |   |     |          
+ 1 | 1.23 |   |   | 1.2 | 12.344444
+(3 rows)
+
+DROP TABLE test2;
+SELECT 1+'';
+ ?column? 
+----------
+         
+(1 row)
+
+SELECT 1-'';
+ ?column? 
+----------
+         
+(1 row)
+
+SELECT 1*'';
+ ?column? 
+----------
+         
+(1 row)
+
+SELECT 1/'';
+ ?column? 
+----------
+         
+(1 row)
+
+SELECT 1%'';
+ ?column? 
+----------
+         
+(1 row)
+
+set temp_tablespaces to '';
+reset temp_tablespaces;
+SELECT length('') FROM dual;
+ length 
+--------
+       
+(1 row)
+

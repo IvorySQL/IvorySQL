@@ -306,10 +306,10 @@ LOG_LWDEBUG(const char *where, LWLock *lock, const char *msg)
 	}
 }
 
-#else							/* not LOCK_DEBUG */
+#else							
 #define PRINT_LWDEBUG(a,b,c) ((void)0)
 #define LOG_LWDEBUG(a,b,c) ((void)0)
-#endif							/* LOCK_DEBUG */
+#endif							
 
 #ifdef LWLOCK_STATS
 
@@ -1143,7 +1143,7 @@ LWLockDequeueSelf(LWLock *lock)
 	/* XXX: combine with fetch_and above? */
 	LWLockWaitListUnlock(lock);
 
-	/* clear waiting state again, nice for debugging */
+	
 	if (found)
 		MyProc->lwWaiting = false;
 	else

@@ -301,7 +301,7 @@ main(int argc, char **argv)
 	{
 		switch (c)
 		{
-			case 'd':			/* Debug mode */
+			case 'd':			
 				pg_logging_increase_verbosity();
 				break;
 			case 'n':			/* Dry-Run mode */

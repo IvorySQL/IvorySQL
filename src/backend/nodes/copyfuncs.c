@@ -224,6 +224,7 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(onConflictWhere);
 	COPY_SCALAR_FIELD(exclRelRTI);
 	COPY_NODE_FIELD(exclRelTlist);
+	COPY_NODE_FIELD(mergeActionLists);
 
 	return newnode;
 }
@@ -1617,6 +1618,10 @@ _copyFuncExpr(const FuncExpr *from)
 	COPY_SCALAR_FIELD(funccollid);
 	COPY_SCALAR_FIELD(inputcollid);
 	COPY_NODE_FIELD(args);
+	
+	COPY_SCALAR_FIELD(function_from);
+	COPY_SCALAR_FIELD(parent_func);
+	
 	COPY_LOCATION_FIELD(location);
 
 	return newnode;
@@ -1923,6 +1928,9 @@ _copyCaseExpr(const CaseExpr *from)
 	COPY_NODE_FIELD(args);
 	COPY_NODE_FIELD(defresult);
 	COPY_LOCATION_FIELD(location);
+	
+	COPY_SCALAR_FIELD(is_decode);
+	
 
 	return newnode;
 }
@@ -2690,6 +2698,35 @@ _copyCommonTableExpr(const CommonTableExpr *from)
 	return newnode;
 }
 
+static MergeWhenClause *
+_copyMergeWhenClause(const MergeWhenClause *from)
+{
+	MergeWhenClause *newnode = makeNode(MergeWhenClause);
+
+	COPY_SCALAR_FIELD(matched);
+	COPY_SCALAR_FIELD(commandType);
+	COPY_SCALAR_FIELD(override);
+	COPY_NODE_FIELD(condition);
+	COPY_NODE_FIELD(targetList);
+	COPY_NODE_FIELD(values);
+	return newnode;
+}
+
+static MergeAction *
+_copyMergeAction(const MergeAction *from)
+{
+	MergeAction *newnode = makeNode(MergeAction);
+
+	COPY_SCALAR_FIELD(matched);
+	COPY_SCALAR_FIELD(commandType);
+	COPY_SCALAR_FIELD(override);
+	COPY_NODE_FIELD(qual);
+	COPY_NODE_FIELD(targetList);
+	COPY_NODE_FIELD(updateColnos);
+
+	return newnode;
+}
+
 static A_Expr *
 _copyAExpr(const A_Expr *from)
 {
@@ -2776,6 +2813,19 @@ _copyFuncCall(const FuncCall *from)
 
 	return newnode;
 }
+
+
+static ColumnRefOrFuncCall *
+_copyColumnRefOrFuncCall(const ColumnRefOrFuncCall *from)
+{
+	ColumnRefOrFuncCall  *newnode = makeNode(ColumnRefOrFuncCall);
+
+	newnode->cref = _copyColumnRef(from->cref);
+	newnode->func = _copyFuncCall(from->func);
+
+	return newnode;
+}
+
 
 static A_Star *
 _copyAStar(const A_Star *from)
@@ -3186,6 +3236,8 @@ _copyQuery(const Query *from)
 	COPY_NODE_FIELD(setOperations);
 	COPY_NODE_FIELD(constraintDeps);
 	COPY_NODE_FIELD(withCheckOptions);
+	COPY_NODE_FIELD(mergeActionList);
+	COPY_SCALAR_FIELD(mergeUseOuterJoin);
 	COPY_LOCATION_FIELD(stmt_location);
 	COPY_SCALAR_FIELD(stmt_len);
 
@@ -3244,6 +3296,20 @@ _copyUpdateStmt(const UpdateStmt *from)
 	COPY_NODE_FIELD(whereClause);
 	COPY_NODE_FIELD(fromClause);
 	COPY_NODE_FIELD(returningList);
+	COPY_NODE_FIELD(withClause);
+
+	return newnode;
+}
+
+static MergeStmt *
+_copyMergeStmt(const MergeStmt *from)
+{
+	MergeStmt  *newnode = makeNode(MergeStmt);
+
+	COPY_NODE_FIELD(relation);
+	COPY_NODE_FIELD(sourceRelation);
+	COPY_NODE_FIELD(joinCondition);
+	COPY_NODE_FIELD(mergeWhenClauses);
 	COPY_NODE_FIELD(withClause);
 
 	return newnode;
@@ -4870,6 +4936,24 @@ _copyDropSubscriptionStmt(const DropSubscriptionStmt *from)
 	return newnode;
 }
 
+
+static CompileFunctionStmt *
+_copyCompileFunctionStmt(const CompileFunctionStmt *from)
+{
+	CompileFunctionStmt	*newnode = makeNode(CompileFunctionStmt);
+
+	
+	COPY_SCALAR_FIELD(objtype);
+	COPY_NODE_FIELD(func);
+	
+	COPY_SCALAR_FIELD(is_compile);
+	COPY_SCALAR_FIELD(editable);
+	COPY_NODE_FIELD(parameters);
+
+	return newnode;
+}
+
+
 /* ****************************************************************
  *					extensible.h copy functions
  * ****************************************************************
@@ -5356,6 +5440,9 @@ copyObjectImpl(const void *from)
 		case T_UpdateStmt:
 			retval = _copyUpdateStmt(from);
 			break;
+		case T_MergeStmt:
+			retval = _copyMergeStmt(from);
+			break;
 		case T_SelectStmt:
 			retval = _copySelectStmt(from);
 			break;
@@ -5446,6 +5533,11 @@ copyObjectImpl(const void *from)
 		case T_AlterFunctionStmt:
 			retval = _copyAlterFunctionStmt(from);
 			break;
+		
+		case T_CompileFunctionStmt:
+			retval = _copyCompileFunctionStmt(from);
+			break;
+		
 		case T_DoStmt:
 			retval = _copyDoStmt(from);
 			break;
@@ -5719,6 +5811,11 @@ copyObjectImpl(const void *from)
 		case T_FuncCall:
 			retval = _copyFuncCall(from);
 			break;
+		
+		case T_ColumnRefOrFuncCall:
+			retval = _copyColumnRefOrFuncCall(from);
+			break;
+		
 		case T_A_Star:
 			retval = _copyAStar(from);
 			break;
@@ -5826,6 +5923,12 @@ copyObjectImpl(const void *from)
 			break;
 		case T_CommonTableExpr:
 			retval = _copyCommonTableExpr(from);
+			break;
+		case T_MergeWhenClause:
+			retval = _copyMergeWhenClause(from);
+			break;
+		case T_MergeAction:
+			retval = _copyMergeAction(from);
 			break;
 		case T_ObjectWithArgs:
 			retval = _copyObjectWithArgs(from);

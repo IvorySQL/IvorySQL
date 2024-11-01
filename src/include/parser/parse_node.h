@@ -55,6 +55,7 @@ typedef enum ParseExprKind
 	EXPR_KIND_INSERT_TARGET,	/* INSERT target list item */
 	EXPR_KIND_UPDATE_SOURCE,	/* UPDATE assignment source item */
 	EXPR_KIND_UPDATE_TARGET,	/* UPDATE assignment target item */
+	EXPR_KIND_MERGE_WHEN,		/* MERGE WHEN [NOT] MATCHED condition */
 	EXPR_KIND_GROUP_BY,			/* GROUP BY */
 	EXPR_KIND_ORDER_BY,			/* ORDER BY */
 	EXPR_KIND_DISTINCT_ON,		/* DISTINCT ON */
@@ -92,6 +93,25 @@ typedef Node *(*ParseParamRefHook) (ParseState *pstate, ParamRef *pref);
 typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
 								  Oid targetTypeId, int32 targetTypeMod,
 								  int location);
+
+
+typedef int (*ParseSubprocFuncHook) (ParseState *pstate, List *funcname,
+				List **fargs, /* return value */
+				List *fargnames,
+				int nargs,
+				Oid *argtypes,
+				bool expand_variadic,
+				bool expand_defaults,
+				bool proc_call,
+				Oid *funcid,	/* return value */
+				Oid *rettype,	/* return value */
+				bool *retset,	/* return value */
+				int *nvargs,	/* return value */
+				Oid *vatype,	/* return value */
+				Oid **true_typeids, /* return value */
+				List **argdefaults, /* return value */
+				void **pfunc);		/* return value */
+
 
 
 /*
@@ -135,7 +155,7 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
  * p_parent_cte: CommonTableExpr that immediately contains the current query,
  * if any.
  *
- * p_target_relation: target relation, if query is INSERT, UPDATE, or DELETE.
+ * p_target_relation: target relation, if query is INSERT/UPDATE/DELETE/MERGE
  *
  * p_target_nsitem: target relation's ParseNamespaceItem.
  *
@@ -189,7 +209,7 @@ struct ParseState
 	List	   *p_ctenamespace; /* current namespace for common table exprs */
 	List	   *p_future_ctes;	/* common table exprs not yet in namespace */
 	CommonTableExpr *p_parent_cte;	/* this query's containing CTE */
-	Relation	p_target_relation;	/* INSERT/UPDATE/DELETE target rel */
+	Relation	p_target_relation;	/* INSERT/UPDATE/DELETE/MERGE target rel */
 	ParseNamespaceItem *p_target_nsitem;	/* target rel's NSItem, or NULL */
 	bool		p_is_insert;	/* process assignment like INSERT not UPDATE */
 	List	   *p_windowdefs;	/* raw representations of window clauses */
@@ -221,7 +241,14 @@ struct ParseState
 	PostParseColumnRefHook p_post_columnref_hook;
 	ParseParamRefHook p_paramref_hook;
 	CoerceParamHook p_coerce_param_hook;
+	
+	ParseSubprocFuncHook p_subprocfunc_hook;
+	
 	void	   *p_ref_hook_state;	/* common passthrough link for above */
+	
+	uint16	    merge_on_attr_size;
+	uint8 	   *merge_on_attrno;
+	
 };
 
 /*

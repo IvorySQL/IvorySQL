@@ -19,7 +19,7 @@ all: pg_config.h pg_config_ext.h pg_config_os.h
 # Subdirectories containing installable headers
 SUBDIRS = access bootstrap catalog commands common datatype \
 	executor fe_utils foreign jit \
-	lib libpq mb nodes optimizer parser partitioning postmaster \
+	lib libpq mb nodes optimizer oracle_fe_utils oracle_parser parser partitioning postmaster \
 	regex replication rewrite \
 	statistics storage tcop snowball snowball/libstemmer tsearch \
 	tsearch/dicts utils port port/atomics port/win32 port/win32_msvc \
@@ -54,7 +54,7 @@ install: all installdirs
 	  cp $(srcdir)/$$dir/*.h '$(DESTDIR)$(includedir_server)'/$$dir/ || exit; \
 	done
 ifeq ($(vpath_build),yes)
-	for file in catalog/schemapg.h catalog/system_fk_info.h catalog/pg_*_d.h parser/gram.h storage/lwlocknames.h utils/probes.h; do \
+	for file in catalog/schemapg.h catalog/system_fk_info.h catalog/pg_*_d.h oracle_parser/ora_gram.h parser/gram.h storage/lwlocknames.h utils/probes.h; do \
 	  cp $$file '$(DESTDIR)$(includedir_server)'/$$file || exit; \
 	done
 endif
@@ -78,7 +78,7 @@ uninstall:
 
 clean:
 	rm -f utils/fmgroids.h utils/fmgrprotos.h utils/errcodes.h utils/header-stamp
-	rm -f parser/gram.h storage/lwlocknames.h utils/probes.h
+	rm -f oracle_parser/ora_gram.h parser/gram.h storage/lwlocknames.h utils/probes.h
 	rm -f catalog/schemapg.h catalog/system_fk_info.h
 	rm -f catalog/pg_*_d.h catalog/header-stamp
 

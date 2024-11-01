@@ -117,7 +117,7 @@ typedef struct ResourceOwnerData
 	ResourceOwner parent;		/* NULL if no parent (toplevel owner) */
 	ResourceOwner firstchild;	/* head of linked list of children */
 	ResourceOwner nextchild;	/* next child of same parent */
-	const char *name;			/* name (just for debugging) */
+	const char *name;			
 
 	/* We have built-in support for remembering: */
 	ResourceArray bufferarr;	/* owned buffers */

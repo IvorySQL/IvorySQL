@@ -196,6 +196,10 @@ EOF
 			{
 				$outputFile =~
 				  s{^src\\pl\\plpgsql\\src\\gram.c$}{src\\pl\\plpgsql\\src\\pl_gram.c};
+				# BEGIN - SQL PARSER
+				$outputFile =~
+				  s{^src\\pl\\plisql\\src\\gram.c$}{src\\pl\\plisql\\src\\pl_gram.c};
+				# END - SQL PARSER
 				print $f <<EOF;
     <CustomBuild Include="$grammarFile">
       <Message Condition="'\$(Configuration)|\$(Platform)'=='Debug|$self->{platform}'">Running bison on $grammarFile</Message>

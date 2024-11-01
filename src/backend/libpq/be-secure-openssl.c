@@ -419,7 +419,7 @@ be_tls_open_server(Port *port)
 		return -1;
 	}
 
-	/* set up debugging/info callback */
+	
 	SSL_CTX_set_info_callback(SSL_context, info_cb);
 
 	if (!(port->ssl = SSL_new(SSL_context)))

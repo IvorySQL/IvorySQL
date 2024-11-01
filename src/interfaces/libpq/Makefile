@@ -122,6 +122,11 @@ install: all installdirs install-lib
 installcheck:
 	$(MAKE) -C test $@
 
+#BEGIN - SQL PARSER
+oracle-installcheck:
+	$(MAKE) -C test $@
+#END - SQL PARSER
+
 installdirs: installdirs-lib
 	$(MKDIR_P) '$(DESTDIR)$(includedir)' '$(DESTDIR)$(includedir_internal)' '$(DESTDIR)$(datadir)'
 

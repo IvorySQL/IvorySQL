@@ -47,7 +47,7 @@ typedef struct ReindexParams
 typedef struct ValidateIndexState
 {
 	Tuplesortstate *tuplesort;	/* for sorting the index TIDs */
-	/* statistics (for debug purposes only): */
+	
 	double		htups,
 				itups,
 				tups_inserted;

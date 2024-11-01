@@ -74,8 +74,10 @@
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
+#include "utils/guc.h"				
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	
 #include "utils/ps_status.h"
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
@@ -98,7 +100,7 @@ int			log_statement = LOGSTMT_NONE;
 /* GUC variable for maximum stack depth (measured in kilobytes) */
 int			max_stack_depth = 100;
 
-/* wait N seconds to allow attach from a debugger */
+
 int			PostAuthDelay = 0;
 
 /* Time between checks that the client is still connected. */
@@ -205,6 +207,7 @@ static void drop_unnamed_stmt(void);
 static void log_disconnections(int code, Datum arg);
 static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
+static void InitIvorysql(void);				
 
 
 /* ----------------------------------------------------------------
@@ -605,7 +608,7 @@ pg_parse_query(const char *query_string)
 		ShowUsage("PARSER STATISTICS");
 
 #ifdef COPY_PARSE_PLAN_TREES
-	/* Optional debugging check: pass raw parsetrees through copyObject() */
+	
 	{
 		List	   *new_list = copyObject(raw_parsetree_list);
 
@@ -759,7 +762,7 @@ pg_rewrite_query(Query *query)
 		ShowUsage("REWRITER STATISTICS");
 
 #ifdef COPY_PARSE_PLAN_TREES
-	/* Optional debugging check: pass querytree through copyObject() */
+	
 	{
 		List	   *new_list;
 
@@ -773,7 +776,7 @@ pg_rewrite_query(Query *query)
 #endif
 
 #ifdef WRITE_READ_PARSE_PLAN_TREES
-	/* Optional debugging check: pass querytree through outfuncs/readfuncs */
+	
 	{
 		List	   *new_list = NIL;
 		ListCell   *lc;
@@ -849,7 +852,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 		ShowUsage("PLANNER STATISTICS");
 
 #ifdef COPY_PARSE_PLAN_TREES
-	/* Optional debugging check: pass plan tree through copyObject() */
+	
 	{
 		PlannedStmt *new_plan = copyObject(plan);
 
@@ -868,7 +871,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 #endif
 
 #ifdef WRITE_READ_PARSE_PLAN_TREES
-	/* Optional debugging check: pass plan tree through outfuncs/readfuncs */
+	
 	{
 		char	   *str;
 		PlannedStmt *new_plan;
@@ -1788,14 +1791,29 @@ exec_bind_message(StringInfo input_message)
 				 * as to maintain the convention that StringInfos have a
 				 * trailing null.  This is grotty but is a big win when
 				 * dealing with very large parameter strings.
+				 *
+				 * should consider enable_emptystring_to_NULL
 				 */
-				pbuf.data = unconstify(char *, pvalue);
-				pbuf.maxlen = plength + 1;
-				pbuf.len = plength;
-				pbuf.cursor = 0;
+				
+				if (compatible_db == ORA_PARSER &&
+					enable_emptystring_to_NULL &&
+					plength == 0)
+				{
+					pbuf.data = NULL;		/* keep compiler quiet */
+					csave = 0;
+					isNull = true;
+					plength = -1;
+				}
+				else
+				{
+					pbuf.data = unconstify(char *, pvalue);
+					pbuf.maxlen = plength + 1;
+					pbuf.len = plength;
+					pbuf.cursor = 0;
 
-				csave = pbuf.data[plength];
-				pbuf.data[plength] = '\0';
+					csave = pbuf.data[plength];
+					pbuf.data[plength] = '\0';
+				}
 			}
 			else
 			{
@@ -4056,6 +4074,13 @@ PostgresMain(int argc, char *argv[],
 		 */
 		CreateDataDirLockFile(false);
 
+		
+		/*
+		 * process any libraries that should be preloaded at postmaster start
+		 */
+		process_shared_preload_libraries();
+		
+
 		/* read control file (error checking and contains config ) */
 		LocalProcessControlFile(false);
 
@@ -4103,6 +4128,13 @@ PostgresMain(int argc, char *argv[],
 		MemoryContextDelete(PostmasterContext);
 		PostmasterContext = NULL;
 	}
+
+	
+	/*
+	 * Initialize backend ivorysql parser
+	 */
+	InitIvorysql();
+	
 
 	SetProcessingMode(NormalProcessing);
 
@@ -4966,3 +4998,27 @@ disable_statement_timeout(void)
 	if (get_timeout_active(STATEMENT_TIMEOUT))
 		disable_timeout(STATEMENT_TIMEOUT, false);
 }
+
+
+/*
+ * Initialize backend ivorysql parser
+ */
+static void
+InitIvorysql(void)
+{
+	if (MyProcPort)
+	{
+		if (MyProcPort->connmode == 'p')
+		{
+			SetConfigOption("ivorysql.compatible_mode", "pg", PGC_USERSET, PGC_S_OVERRIDE);  
+		}
+		else if (MyProcPort->connmode == 'o')
+		{
+			SetConfigOption("ivorysql.compatible_mode", "oracle", PGC_USERSET, PGC_S_OVERRIDE);      
+			if (NULL == ora_raw_parser)
+				ereport(ERROR,
+					(errmsg("Invalid Oracle compatibility mode syntax library.")));
+		}
+	}
+}
+

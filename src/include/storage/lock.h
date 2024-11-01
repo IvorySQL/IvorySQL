@@ -42,7 +42,7 @@ extern bool Trace_locks;
 extern bool Trace_userlocks;
 extern int	Trace_lock_table;
 extern bool Debug_deadlocks;
-#endif							/* LOCK_DEBUG */
+#endif							
 
 
 /*

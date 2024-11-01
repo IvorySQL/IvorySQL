@@ -58,6 +58,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "commands/tablecmds.h"
+#include "funcapi.h" 
 
 /*
  * Global context for foreign_expr_walker's search of an expression tree.
@@ -468,6 +469,11 @@ foreign_expr_walker(Node *node,
 		case T_FuncExpr:
 			{
 				FuncExpr   *fe = (FuncExpr *) node;
+
+				
+				if (!FUNC_EXPR_FROM_PG_PROC(fe->function_from))
+					return false;
+				
 
 				/*
 				 * If function used by the expression is not shippable, it
@@ -1419,7 +1425,7 @@ get_jointype_name(JoinType jointype)
 			return "FULL";
 
 		default:
-			/* Shouldn't come here, but protect from buggy code. */
+			
 			elog(ERROR, "unsupported join type %d", jointype);
 	}
 
@@ -2826,7 +2832,12 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	/*
 	 * Normal function: display as proname(args).
 	 */
-	appendFunctionName(node->funcid, context);
+	
+	if (FUNC_EXPR_FROM_PG_PROC(node->function_from))
+		appendFunctionName(node->funcid, context);
+	else
+		appendStringInfo(buf, "%s", get_internal_function_name(node));
+	
 	appendStringInfoChar(buf, '(');
 
 	/* ... and all the arguments */

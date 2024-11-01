@@ -31,7 +31,9 @@
 #include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"			
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"	
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
@@ -261,7 +263,22 @@ BuildIndexValueDescription(Relation indexRelation,
 			 */
 			getTypeOutputInfo(indexRelation->rd_opcintype[i],
 							  &foutoid, &typisvarlena);
-			val = OidOutputFunctionCall(foutoid, values[i]);
+
+			/*
+			 * Compatible oracle , pass typmod to output function
+			 */
+			if (ORA_PARSER == compatible_db &&
+				indexRelation->rd_att != NULL &&
+				(TupleDescAttr(indexRelation->rd_att, i)->atttypid == YMINTERVALOID ||
+				 TupleDescAttr(indexRelation->rd_att, i)->atttypid == DSINTERVALOID))
+			{
+				val = OidOutputFunctionCallWithTypmod(foutoid, values[i], TupleDescAttr(indexRelation->rd_att, i)->atttypmod);
+			}
+			else
+			{
+				val = OidOutputFunctionCall(foutoid, values[i]);
+			}
+			
 		}
 
 		if (i > 0)

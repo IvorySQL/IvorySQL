@@ -45,6 +45,10 @@
 
 int			double_to_shortest_decimal_bufn(double f, char *result);
 int			double_to_shortest_decimal_buf(double f, char *result);
+
+int			binary_double_to_shortest_decimal_bufn(double f, char *result);
+int			binary_double_to_shortest_decimal_buf(double f, char *result);
+
 char	   *double_to_shortest_decimal(double f);
 
 /*
@@ -58,6 +62,10 @@ char	   *double_to_shortest_decimal(double f);
 
 int			float_to_shortest_decimal_bufn(float f, char *result);
 int			float_to_shortest_decimal_buf(float f, char *result);
+
+int			binary_float_to_shortest_decimal_buf(float f, char *result);
+int			binary_float_to_shortest_decimal_bufn(float f, char *result);
+
 char	   *float_to_shortest_decimal(float f);
 
 #endif							/* SHORTEST_DEC_H */

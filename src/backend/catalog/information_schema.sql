@@ -756,8 +756,8 @@ CREATE VIEW columns AS
            CAST(a.attnum AS sql_identifier) AS dtd_identifier,
            CAST('NO' AS yes_or_no) AS is_self_referencing,
 
-           CAST(CASE WHEN a.attidentity IN ('a', 'd') THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_identity,
-           CAST(CASE a.attidentity WHEN 'a' THEN 'ALWAYS' WHEN 'd' THEN 'BY DEFAULT' END AS character_data) AS identity_generation,
+           CAST(CASE WHEN a.attidentity IN ('a', 'd', 'n', 'i', 'o') THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_identity,	
+           CAST(CASE WHEN a.attidentity IN ('a','i') THEN 'ALWAYS' WHEN a.attidentity IN ('d','o') THEN 'BY DEFAULT' END AS character_data) AS identity_generation,
            CAST(seq.seqstart AS character_data) AS identity_start,
            CAST(seq.seqincrement AS character_data) AS identity_increment,
            CAST(seq.seqmax AS character_data) AS identity_maximum,

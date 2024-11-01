@@ -42,21 +42,42 @@ begin
   for i in 1..3 by 0 loop
     raise notice '1..3 by 0: i = %', i;
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+begin
+  for i in 1..3 by 0 loop
+    raise notice '1..3 by 0: i = %', i;
+  end loop;
+end$$ language plisql;
 
 do $$
 begin
   for i in 1..3 by -1 loop
     raise notice '1..3 by -1: i = %', i;
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+begin
+  for i in 1..3 by -1 loop
+    raise notice '1..3 by -1: i = %', i;
+  end loop;
+end$$ language plisql;
 
 do $$
 begin
   for i in reverse 1..3 by -1 loop
     raise notice 'reverse 1..3 by -1: i = %', i;
   end loop;
-end$$;
+end$$ language plpgsql;
+
+do $$
+begin
+  for i in reverse 1..3 by -1 loop
+    raise notice 'reverse 1..3 by -1: i = %', i;
+  end loop;
+end$$ language plisql;
 
 
 -- CONTINUE statement

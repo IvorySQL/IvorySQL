@@ -18,14 +18,16 @@
  */
 
 #include "postgres.h"
-
+#include "funcapi.h" 
 #include "access/printtup.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/pathnodes.h"
 #include "nodes/print.h"
 #include "parser/parsetree.h"
+#include "utils/guc.h"			
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"	
 
 
 /*
@@ -376,7 +378,21 @@ print_expr(const Node *expr, const List *rtable)
 		getTypeOutputInfo(c->consttype,
 						  &typoutput, &typIsVarlena);
 
-		outputstr = OidOutputFunctionCall(typoutput, c->constvalue);
+		/*
+		 * Compatible oracle , pass typmod to output function
+		 */
+		if (ORA_PARSER == compatible_db &&
+			(c->consttype == YMINTERVALOID ||
+			 c->consttype == DSINTERVALOID))
+		{
+			outputstr = OidOutputFunctionCallWithTypmod(typoutput, c->constvalue, c->consttypmod);
+		}
+		else
+		{
+			outputstr = OidOutputFunctionCall(typoutput, c->constvalue);
+		}
+		
+
 		printf("%s", outputstr);
 		pfree(outputstr);
 	}
@@ -404,7 +420,12 @@ print_expr(const Node *expr, const List *rtable)
 		char	   *funcname;
 		ListCell   *l;
 
-		funcname = get_func_name(e->funcid);
+		
+		if (FUNC_EXPR_FROM_PG_PROC(e->function_from))
+			funcname = get_func_name(e->funcid);
+		else
+			funcname = get_internal_function_name((FuncExpr *) e);
+		
 		printf("%s(", ((funcname != NULL) ? funcname : "(invalid function)"));
 		foreach(l, e->args)
 		{

@@ -37,8 +37,14 @@ SHLIB_LINK += $(python_libspec) $(python_additional_libs)
 endif
 
 REGRESS_OPTS += --load-extension=ltree
+#BEGIN - SQL PARSER
+ORACLE_REGRESS_OPTS += --load-extension=ltree
+#END - SQL PARSER
 ifeq ($(python_majorversion),2)
 REGRESS_OPTS += --load-extension=plpythonu --load-extension=ltree_plpythonu
+#BEGIN - SQL PARSER
+ORACLE_REGRESS_OPTS += --load-extension=plpythonu --load-extension=ltree_plpythonu
+#END - SQL PARSER
 endif
 EXTRA_INSTALL += contrib/ltree
 

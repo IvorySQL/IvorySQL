@@ -72,6 +72,9 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+/* BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -519,7 +522,8 @@ compute_common_attribute(ParseState *pstate,
 						 DefElem **support_item,
 						 DefElem **parallel_item)
 {
-	if (strcmp(defel->defname, "volatility") == 0)
+	if (strcmp(defel->defname, "volatility") == 0 ||
+		(ORA_PARSER == compatible_db && strcmp(defel->defname, "deterministic") == 0)) 
 	{
 		if (is_procedure)
 			goto procedure_error;
@@ -537,7 +541,8 @@ compute_common_attribute(ParseState *pstate,
 
 		*strict_item = defel;
 	}
-	else if (strcmp(defel->defname, "security") == 0)
+	else if (strcmp(defel->defname, "security") == 0 ||
+			(ORA_PARSER == compatible_db && strcmp(defel->defname, "authid") == 0)) 
 	{
 		if (*security_item)
 			goto duplicate_error;
@@ -584,7 +589,8 @@ compute_common_attribute(ParseState *pstate,
 
 		*support_item = defel;
 	}
-	else if (strcmp(defel->defname, "parallel") == 0)
+	else if (strcmp(defel->defname, "parallel") == 0 ||
+			(ORA_PARSER == compatible_db && strcmp(defel->defname, "parallel_enable") == 0)) 
 	{
 		if (is_procedure)
 			goto procedure_error;
@@ -758,6 +764,14 @@ compute_function_attributes(ParseState *pstate,
 	DefElem    *rows_item = NULL;
 	DefElem    *support_item = NULL;
 	DefElem    *parallel_item = NULL;
+	
+	DefElem    *accessible_item = NULL;
+	DefElem    *default_collation_item = NULL;
+	DefElem    *aggregate_item = NULL;
+	DefElem    *sql_macro_item = NULL;
+	DefElem    *pipelined_item = NULL;
+	DefElem    *result_cache_item = NULL;
+	
 
 	foreach(option, options)
 	{
@@ -804,6 +818,62 @@ compute_function_attributes(ParseState *pstate,
 						 parser_errposition(pstate, defel->location)));
 			windowfunc_item = defel;
 		}
+		
+		else if (ORA_PARSER == compatible_db && strcmp(defel->defname, "accessible") == 0)
+		{
+			if (accessible_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			accessible_item = defel;
+		}
+		else if (ORA_PARSER == compatible_db && strcmp(defel->defname, "collation") == 0)
+		{
+			if (default_collation_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			default_collation_item = defel;
+		}
+		else if (ORA_PARSER == compatible_db && strcmp(defel->defname, "aggregate") == 0)
+		{
+			if (aggregate_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			aggregate_item = defel;
+		}
+		else if (ORA_PARSER == compatible_db && strcmp(defel->defname, "sql_macro") == 0)
+		{
+			if (sql_macro_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			sql_macro_item = defel;
+		}
+		else if (ORA_PARSER == compatible_db && strcmp(defel->defname, "pipelined") == 0)
+		{
+			if (pipelined_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			pipelined_item = defel;
+		}
+		else if (ORA_PARSER == compatible_db && strcmp(defel->defname, "result_cache") == 0)
+		{
+			if (result_cache_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			result_cache_item = defel;
+		}
+		
 		else if (compute_common_attribute(pstate,
 										  is_procedure,
 										  defel,
@@ -839,6 +909,15 @@ compute_function_attributes(ParseState *pstate,
 		*strict_p = intVal(strict_item->arg);
 	if (security_item)
 		*security_definer = intVal(security_item->arg);
+	
+	else
+		{
+			if (ORA_PARSER == compatible_db &&
+				language_item &&
+				strcmp(*language, "plisql") == 0)
+				*security_definer = true;	/* default is DEFINER in oracle */
+		}
+	
 	if (leakproof_item)
 		*leakproof_p = intVal(leakproof_item->arg);
 	if (set_items)
@@ -1313,6 +1392,122 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 						   procost,
 						   prorows);
 }
+
+
+/*
+ * support oracle grammer like
+ * alter function func editionable|noneditionable or compile
+ * this function we doesn't consider function arguments and
+ * search pg_proc directly, if we found more than one or less
+ * than one, we report error.
+ */
+ObjectAddress
+CompileFunction(CompileFunctionStmt *stmt)
+{
+	HeapTuple	tup;
+	Oid			funcOid;
+	Form_pg_proc procForm;
+	Relation	rel;
+	ObjectAddress address;
+	HeapTuple	languageTuple;
+	Form_pg_language langForm;
+	Oid			lanvalidator;
+
+	rel = table_open(ProcedureRelationId, RowExclusiveLock);
+
+	funcOid = LookupFuncWithArgs(stmt->objtype, stmt->func, false);	
+
+	tup = SearchSysCacheCopy1(PROCOID, ObjectIdGetDatum(funcOid));
+	if (!HeapTupleIsValid(tup)) /* should not happen */
+	{
+		if (stmt->objtype == OBJECT_PROCEDURE) 
+			elog(ERROR, "cache lookup failed for procedure %u", funcOid);
+		else if (stmt->objtype == OBJECT_FUNCTION) 
+			elog(ERROR, "cache lookup failed for function %u", funcOid);
+	}
+	procForm = (Form_pg_proc) GETSTRUCT(tup);
+
+	/* The OID of plisql language is not fixed */
+	languageTuple = SearchSysCache1(LANGOID, PointerGetDatum(procForm->prolang));
+	if (!HeapTupleIsValid(languageTuple))
+		elog(ERROR, "cache lookup failed for language %u", procForm->prolang);
+
+	langForm = (Form_pg_language) GETSTRUCT(languageTuple);
+	lanvalidator = langForm->lanvalidator;
+
+	/*
+	 * alter editable|noneditionable, we only support grammer
+	 * we only compile plisql function
+	 */
+	if (!stmt->is_compile || strcmp(NameStr(langForm->lanname), "plisql"))
+	{
+		InvokeObjectPostAlterHook(ProcedureRelationId, funcOid, 0);
+		ObjectAddressSet(address, ProcedureRelationId, funcOid);
+		table_close(rel, NoLock);
+		heap_freetuple(tup);
+		ReleaseSysCache(languageTuple);
+		return address;
+	}
+
+	if (OidIsValid(lanvalidator))
+	{
+		ArrayType  *set_items = NULL;
+		int			save_nestlevel = 0;
+		int			saved_check_function_bodies;
+		bool		isnull;
+		Datum		datum;
+
+		/*
+		 * Set per-function configuration parameters so that the validation is
+		 * done with the environment the function expects.  However, if
+		 * check_function_bodies is off, we don't do this, because that would
+		 * create dump ordering hazards that pg_dump doesn't know how to deal
+		 * with.  (For example, a SET clause might refer to a not-yet-created
+		 * text search configuration.)	This means that the validator
+		 * shouldn't complain about anything that might depend on a GUC
+		 * parameter when check_function_bodies is off.
+		 */
+		/* we change check_function_bodies to true to recompile function */
+		saved_check_function_bodies = check_function_bodies;
+		check_function_bodies = true;
+
+		PG_TRY();
+		{
+			datum = SysCacheGetAttr(PROCOID, tup, Anum_pg_proc_proconfig,
+									&isnull);
+			if (!isnull)
+				set_items = DatumGetArrayTypeP(datum);
+			if (set_items)		/* Need a new GUC nesting level */
+			{
+				save_nestlevel = NewGUCNestLevel();
+				ProcessGUCArray(set_items,
+								(superuser() ? PGC_SUSET : PGC_USERSET),
+								PGC_S_SESSION,
+								GUC_ACTION_SAVE);
+			}
+
+			OidFunctionCall1(lanvalidator, ObjectIdGetDatum(funcOid));
+
+			if (set_items)
+				AtEOXact_GUC(true, save_nestlevel);
+		}
+		PG_CATCH();
+		{
+			check_function_bodies = saved_check_function_bodies;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
+
+	ReleaseSysCache(languageTuple);
+	InvokeObjectPostAlterHook(ProcedureRelationId, funcOid, 0);
+	ObjectAddressSet(address, ProcedureRelationId, funcOid);
+	table_close(rel, NoLock);
+	heap_freetuple(tup);
+
+	return address;
+}
+
 
 /*
  * Guts of function deletion.
@@ -2120,7 +2315,17 @@ ExecuteDoStmt(DoStmt *stmt, bool atomic)
 	if (language_item)
 		language = strVal(language_item->arg);
 	else
-		language = "plpgsql";
+	/* BEGIN - SQL PARSER */
+	{
+		/* anonymous block's language default value is plsql
+		 * in oracle compatibility mode
+		 */
+		if (DB_ORACLE == compatible_db)
+			language = "plisql";
+		else
+	/* END - SQL PARSER */
+			language = "plpgsql";
+	}
 
 	/* Look up the language and validate permissions */
 	languageTuple = SearchSysCache1(LANGNAME, PointerGetDatum(language));
@@ -2218,6 +2423,16 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 	Assert(fexpr);
 	Assert(IsA(fexpr, FuncExpr));
 
+	
+	if (!FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+	{
+		callcontext = makeNode(CallContext);
+		callcontext->atomic = atomic;
+
+		goto SKIP_PG_PROC_CHECK;
+	}
+	
+
 	aclresult = pg_proc_aclcheck(fexpr->funcid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_PROCEDURE, get_func_name(fexpr->funcid));
@@ -2250,6 +2465,10 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 
 	ReleaseSysCache(tp);
 
+
+SKIP_PG_PROC_CHECK:
+
+
 	/* safety check; see ExecInitFunc() */
 	nargs = list_length(fexpr->args);
 	if (nargs > FUNC_MAX_ARGS)
@@ -2260,9 +2479,18 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 							   FUNC_MAX_ARGS,
 							   FUNC_MAX_ARGS)));
 
-	/* Initialize function call structure */
-	InvokeFunctionExecuteHook(fexpr->funcid);
-	fmgr_info(fexpr->funcid, &flinfo);
+	
+	if (!FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+	{
+		 fmgr_subproc_info_cxt(fexpr->funcid, &flinfo, CurrentMemoryContext);
+	}
+	else
+	{
+		/* Initialize function call structure */
+		InvokeFunctionExecuteHook(fexpr->funcid);
+		fmgr_info(fexpr->funcid, &flinfo);
+	}
+	
 	fmgr_info_set_expr((Node *) fexpr, &flinfo);
 	InitFunctionCallInfoData(*fcinfo, &flinfo, nargs, fexpr->inputcollid,
 							 (Node *) callcontext, NULL);
@@ -2383,13 +2611,20 @@ CallStmtResultDesc(CallStmt *stmt)
 
 	fexpr = stmt->funcexpr;
 
-	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(fexpr->funcid));
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for procedure %u", fexpr->funcid);
+	
+	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+	{
+		tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(fexpr->funcid));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for procedure %u", fexpr->funcid);
 
-	tupdesc = build_function_result_tupdesc_t(tuple);
+		tupdesc = build_function_result_tupdesc_t(tuple);
 
-	ReleaseSysCache(tuple);
+		ReleaseSysCache(tuple);
+	}
+	else
+		tupdesc = build_internal_function_result_tupdesc_t(fexpr);
+	
 
 	return tupdesc;
 }

@@ -31,7 +31,9 @@
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"				
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"	
 #include "utils/syscache.h"
 
 
@@ -114,9 +116,13 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	bool		retset;
 	int			nvargs;
 	Oid			vatype;
-	FuncDetailCode fdresult;
+	FuncDetailCode fdresult = FUNCDETAIL_NOTFOUND; 
 	char		aggkind = 0;
 	ParseCallbackState pcbstate;
+	
+	char function_from = FUNC_FROM_PG_PROC;
+	void *pfunc = NULL;
+	
 
 	/*
 	 * If there's an aggregate filter, transform it using transformWhereClause
@@ -263,12 +269,26 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 	setup_parser_errposition_callback(&pcbstate, pstate, location);
 
-	fdresult = func_get_detail(funcname, fargs, argnames, nargs,
+	
+	if (pstate->p_subprocfunc_hook != NULL)
+	{
+		fdresult = pstate->p_subprocfunc_hook(pstate, funcname, &fargs, argnames, nargs,
+											actual_arg_types,
+											!func_variadic, true, proc_call,
+											&funcid, &rettype, &retset,
+											&nvargs, &vatype,
+											&declared_arg_types, &argdefaults, &pfunc);
+		if (fdresult != FUNCDETAIL_NOTFOUND)
+			function_from = FUNC_FROM_SUBPROCFUNC;
+	}
+	if (fdresult == FUNCDETAIL_NOTFOUND)
+		fdresult = func_get_detail(funcname, fargs, argnames, nargs,
 							   actual_arg_types,
 							   !func_variadic, true, proc_call,
 							   &funcid, &rettype, &retset,
 							   &nvargs, &vatype,
 							   &declared_arg_types, &argdefaults);
+	
 
 	cancel_parser_errposition_callback(&pcbstate);
 
@@ -755,6 +775,10 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		/* funccollid and inputcollid will be set by parse_collate.c */
 		funcexpr->args = fargs;
 		funcexpr->location = location;
+		
+		funcexpr->parent_func = pfunc;
+		funcexpr->function_from = function_from;
+		
 
 		retval = (Node *) funcexpr;
 	}
@@ -1009,7 +1033,8 @@ func_select_candidate(int nargs,
 {
 	FuncCandidateList current_candidate,
 				first_candidate,
-				last_candidate;
+				last_candidate,
+				candidate;		
 	Oid		   *current_typeids;
 	Oid			current_type;
 	int			i;
@@ -1065,6 +1090,7 @@ func_select_candidate(int nargs,
 	 */
 	ncandidates = 0;
 	nbestMatch = 0;
+	first_candidate = NULL;		
 	last_candidate = NULL;
 	for (current_candidate = candidates;
 		 current_candidate != NULL;
@@ -1136,6 +1162,7 @@ func_select_candidate(int nargs,
 			nbestMatch = nmatch;
 			candidates = current_candidate;
 			last_candidate = current_candidate;
+			first_candidate = last_candidate;		
 			ncandidates = 1;
 		}
 		else if (nmatch == nbestMatch)
@@ -1159,7 +1186,40 @@ func_select_candidate(int nargs,
 	 * and must fail.
 	 */
 	if (nunknowns == 0)
-		return NULL;			/* failed to select a best candidate */
+	{
+		/*
+		 * There are more than one candidates, then check those namespace.
+		 * If they are not in the same namespace, then return the one in
+		 * the frontest namespace.
+		 */
+		if (PG_PARSER == compatible_db)
+			return NULL;			/* failed to select a best candidate */
+		else
+		{
+			int times;
+			
+			candidate = first_candidate;
+			times = 1;
+			for (current_candidate = first_candidate;
+				 current_candidate != NULL;
+				 current_candidate = current_candidate->next)
+			{
+				if (current_candidate->pathpos == candidate->pathpos)
+					times++;
+				else if (current_candidate->pathpos < candidate->pathpos)
+				{
+					candidate = current_candidate;
+					times = 1;
+				}
+			}
+	
+			if (times == 1)
+				return candidate;
+			else
+				return NULL;
+			
+		}
+	}
 
 	/*
 	 * The next step examines each unknown argument position to see if we can
@@ -1343,6 +1403,10 @@ func_select_candidate(int nargs,
 					if (++ncandidates > 1)
 						break;	/* not unique, give up */
 					last_candidate = current_candidate;
+					
+					if (first_candidate == NULL)
+						first_candidate = last_candidate;
+					
 				}
 			}
 			if (ncandidates == 1)
@@ -1351,6 +1415,26 @@ func_select_candidate(int nargs,
 				last_candidate->next = NULL;
 				return last_candidate;
 			}
+			
+			else if (ncandidates > 1)
+			{
+				if (PG_PARSER == compatible_db)
+					return NULL;			/* failed to select a best candidate */
+				else
+				{
+					candidate = first_candidate;
+					for (current_candidate = first_candidate;
+						 current_candidate != NULL;
+						 current_candidate = current_candidate->next)
+					{
+						if (current_candidate->pathpos < candidate->pathpos)
+							candidate = current_candidate;
+					}
+				
+					return candidate;
+				}
+			}
+			
 		}
 	}
 
@@ -2610,6 +2694,9 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 		case EXPR_KIND_VALUES_SINGLE:
 			/* okay, since we process this like a SELECT tlist */
 			pstate->p_hasTargetSRFs = true;
+			break;
+		case EXPR_KIND_MERGE_WHEN:
+			err = _("set-returning functions are not allowed in MERGE WHEN conditions");
 			break;
 		case EXPR_KIND_CHECK_CONSTRAINT:
 		case EXPR_KIND_DOMAIN_CHECK:

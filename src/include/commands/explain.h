@@ -75,7 +75,6 @@ extern PGDLLIMPORT ExplainOneQuery_hook_type ExplainOneQuery_hook;
 typedef const char *(*explain_get_index_name_hook_type) (Oid indexId);
 extern PGDLLIMPORT explain_get_index_name_hook_type explain_get_index_name_hook;
 
-
 extern void ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 						 ParamListInfo params, DestReceiver *dest);
 

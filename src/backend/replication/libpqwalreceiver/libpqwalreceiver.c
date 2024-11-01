@@ -287,7 +287,7 @@ libpqrcv_get_conninfo(WalReceiverConn *conn)
 	{
 		bool		obfuscate;
 
-		/* Skip debug and empty options */
+		
 		if (strchr(conn_opt->dispchar, 'D') ||
 			conn_opt->val == NULL ||
 			conn_opt->val[0] == '\0')

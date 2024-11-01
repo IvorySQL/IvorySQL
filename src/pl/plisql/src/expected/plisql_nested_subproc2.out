@@ -1,0 +1,4581 @@
+--test ok
+--print 10 and 121
+declare
+  mds integer;
+  originial integer;
+  function square(original integer) return integer;
+  function square(original integer) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    mds := 10;
+    raise info '%',mds;
+    originial := 11;
+    mds := square(originial);
+    raise info '%',mds;
+end;
+/
+INFO:  10
+INFO:  121
+--test ok
+create or replace function test_subproc_func(a in integer) return integer as
+  mds integer;
+  original integer;
+  function square(original in integer) return integer;
+  function square(original in integer) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       original := original_squared + 1;
+       return original_squared;
+   end;
+begin
+    mds := 10;
+    original := square(mds);
+    raise info '%',original;
+    a := original + 1;
+    return mds;
+end;
+/
+--print 100 and 10
+select * from test_subproc_func(23);
+INFO:  100
+ test_subproc_func 
+-------------------
+                10
+(1 row)
+
+drop function test_subproc_func(integer);
+--test the var in different block ok
+--print 23 45 529
+declare
+  var1 integer;
+  function square(original integer) return integer;
+  function square(original integer) return integer
+  AS
+       original_squared integer;
+       var1 integer;
+  begin
+       var1 := 45;
+       original_squared := original * original;
+       raise info '%',var1;
+       return original_squared;
+   end;
+begin
+    var1 := 23;
+    raise info '%',var1;
+    var1 := square(var1);
+    raise info '%', var1;
+end;
+/
+INFO:  23
+INFO:  45
+INFO:  529
+--test failed
+declare
+  var1 integer;
+  function square(original integer) return integer;
+begin
+    function square(original integer) return integer as
+       original_squared integer;
+       var1 integer;
+  begin
+       var1 := 45;
+       original_squared := original * original;
+       raise info '%',var1;
+       return original_squared;
+   end;
+    var1 := 23;
+    raise info '%',var1;
+ end;
+ /
+ERROR:  syntax error at or near "function"
+LINE 5:     function square(original integer) return integer as
+            ^
+QUERY:  declare
+  var1 integer;
+  function square(original integer) return integer;
+begin
+    function square(original integer) return integer as
+       original_squared integer;
+       var1 integer;
+  begin
+       var1 := 45;
+       original_squared := original * original;
+       raise info '%',var1;
+       return original_squared;
+   end;
+    var1 := 23;
+    raise info '%',var1;
+ end
+--test ok
+--print 23 45 55 65 529
+declare
+  var1 integer;
+  function square(original integer) return integer;
+  function square(original integer) return integer
+  AS
+       original_squared integer;
+       var1 integer;
+       function test(test integer) return integer
+       AS
+          var1 integer;
+	      var2 integer;
+       begin
+           var1 := 55;
+	   raise info '%',var1;
+           var2 := var1 + 10;
+	   return var2;
+       end;
+  begin
+       var1 := 45;
+       original_squared := original * original;
+       raise info '%',var1;
+       var1 := test(var1);
+       raise info '%', var1;
+       return original_squared;
+   end;
+begin
+    var1 := 23;
+    raise info '%',var1;
+    var1 := square(var1);
+    raise info '%', var1;
+ end;
+ /
+INFO:  23
+INFO:  45
+INFO:  55
+INFO:  65
+INFO:  529
+--test ok
+declare
+  mds integer;
+  function test1(id integer) return integer IS
+     mds integer;
+  begin
+       mds := 1;
+       return mds;
+  end;
+  function test2(id integer) return integer AS
+      mds integer;
+   begin
+      mds := 2;
+      return mds;
+   end;
+begin
+   mds := 3;
+END;
+/
+--test ok
+--print 45 529 529 529
+declare
+  var1 integer;
+  function square(original integer) return integer AS
+  begin
+    return original;
+  end;
+begin
+   declare
+      function square(original integer) return integer
+      AS
+         original_squared integer;
+         var1 integer;
+      begin
+         var1 := 45;
+         original_squared := original * original;
+         raise info '%', var1;
+         return original_squared;
+     end;
+   begin
+      var1 := 23;
+      var1 := square(var1);
+      raise info '%',var1;
+   end;
+   raise info '%', var1;
+   var1 := square(var1);
+   raise info '%',var1;
+ end;
+ /
+INFO:  45
+INFO:  529
+INFO:  529
+INFO:  529
+--subproc use global variable
+--print we are in main function
+--res = 45 a square function assign 11
+--
+--there originial not like oracle
+--for out argmuments
+declare
+  mds varchar(256);
+  originial integer;
+  res integer;
+  function square(original in out integer) return integer;
+  function square(original in out integer) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       raise info '%', mds;
+       mds := 'a square function assign';
+       original := 45;
+       --return original_squared;
+   end;
+begin
+    mds := 'we are in main function';
+    originial := 11;
+    res := square(originial);
+    raise info 'res=%',res;
+    raise info '%',mds;
+    raise info 'originial=%', originial;
+end;
+/
+INFO:  we are in main function
+INFO:  res=45
+INFO:  a square function assign
+INFO:  originial=11
+--test function reload
+--test failed
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer) return integer
+  as
+  begin
+       raise info '%',id;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+     name2 varchar(256);
+  begin
+         raise info '%',name;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(23);
+     id := test(23);
+ END;
+ /
+ERROR:  2 functions or procedures match this call
+LINE 1: name := test(23)
+                ^
+QUERY:  name := test(23)
+CONTEXT:  PL/iSQL function inline_code_block line 18 at assignment
+--test ok
+--print 24 xiexie 23 id=23
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer) return integer
+  as
+  begin
+       raise info '%',id;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+     name2 varchar(256);
+  begin
+         raise info '%',name;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(name=>24);
+     raise info 'name=%',name;
+     id := test(id=>23);
+     raise info 'id=%',id;
+ end;
+ /
+INFO:  24
+INFO:  name=xiexie
+INFO:  23
+INFO:  id=23
+--test ok
+--print 23 23
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer) return integer;
+  function test(name integer) return varchar;
+  function test(id integer) return integer
+  as
+  begin
+       raise info '%',id;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+  declare
+     name2 varchar(256);
+  begin
+         raise info '%', name;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(name=>23);
+     id := test(id=>23);
+end;
+/
+INFO:  23
+INFO:  23
+ --reload argument number
+ --test ok
+ --print 23 23
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer,name varchar) return integer
+  as
+  begin
+       raise info '%',id;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+     name2 varchar(256);
+  begin
+         raise info '%',name;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(23);
+     id := test(23,name);
+end;
+/
+INFO:  23
+INFO:  23
+--test ok
+--print 23 23 xiexie
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer,name varchar) return integer
+  as
+  begin
+       raise info '%',id;
+       raise info '%',name;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+     name2 varchar(256);
+  begin
+         raise info '%',name;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(23);
+     id := test(name=>name,id=>23);
+end;
+/
+INFO:  23
+INFO:  23
+INFO:  xiexie
+ --test failed for different return type
+ declare
+  name varchar(23);
+  id integer;
+  function test(name integer) return integer
+  as
+  begin
+       raise info '%',name;
+       return 23;
+   end;
+  function test(name integer) return varchar as
+  begin
+         raise info '%',name;
+	 return 'beijing';
+  end;
+begin
+     name := test(23);
+     id := test(23);
+end;
+/
+ERROR:  2 functions or procedures match this call
+LINE 1: name := test(23)
+                ^
+QUERY:  name := test(23)
+CONTEXT:  PL/iSQL function inline_code_block line 16 at assignment
+--no reference is ok
+--print ok
+ declare
+  name varchar(23);
+  id integer;
+  function test(name integer) return integer
+  as
+  begin
+       raise info '%',name;
+       return 23;
+   end;
+  function test(name integer) return varchar as
+  begin
+         raise info '%',name;
+	 return 'beijing';
+  end;
+begin
+     raise info 'ok';
+end;
+/
+INFO:  ok
+--test procedure reload ok
+--print 23 xiexie
+declare
+  name varchar(23);
+  id integer;
+  procedure test(name varchar);
+  procedure test(name integer);
+  procedure test(name varchar)
+  as
+  begin
+       raise info '%', name;
+   end;
+  procedure test(name integer) as
+  begin
+         raise info '%', name;
+  end;
+begin
+     name := 'xiexie';
+     call test(23);
+     call test(name);
+end;
+/
+INFO:  23
+INFO:  xiexie
+-- test subproc function'argument has default value
+--test ok
+--print 529
+declare
+  ret integer;
+  function square(original integer default 10) return integer;
+  function square(original integer default 10) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    ret = square(23);
+    raise info '%', ret;
+end;
+/
+INFO:  529
+ --test ok
+ --print 100
+declare
+  ret integer;
+  function square(original integer default 10) return integer;
+  function square(original integer default 10) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    ret = square();
+    raise info '%', ret;
+ end;
+ /
+INFO:  100
+--test ok
+--print 529 100
+declare
+  b integer;
+  ret integer;
+  function square(original integer default b) return integer;
+  function square(original integer default b) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    b := 23;
+    ret := square();
+    raise info '%', ret;
+    b := 10;
+    ret := square();
+    raise info '%', ret;
+end;
+/
+INFO:  529
+INFO:  100
+--test ok
+--print 144
+declare
+   ret integer;
+  function square(original integer default 10,mds integer) return integer;
+  function square(original integer default 10, mds integer) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    ret := square(12,23);
+    raise info '%', ret;
+end;
+/
+INFO:  144
+--test failed
+declare
+   ret integer;
+  function square(original integer default 10,mds integer) return integer;
+  function square(original integer default 10, mds integer) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    ret := square(23);
+    raise info '%', ret;
+end;
+/
+ERROR:  wrong number or types of arguments in call to "square"
+LINE 1: ret := square(23)
+               ^
+QUERY:  ret := square(23)
+CONTEXT:  PL/iSQL function inline_code_block line 12 at assignment
+ --test ok
+ --print 100
+ declare
+  ret integer;
+  function square(original integer default 10,mds integer) return integer;
+  function square(original integer default 10, mds integer) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    ret := square(mds=>23);
+    raise info '%', ret;
+end;
+/
+INFO:  100
+--test failed
+declare
+  ret integer;
+  function square(original integer,mds integer default 10) return integer;
+  function square(original integer, mds integer default 10) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original + mds;
+       return original_squared;
+   end;
+begin
+    ret := square(mds=>23);
+    raise info '%', ret;
+end;
+/
+ERROR:  wrong number or types of arguments in call to "square"
+LINE 1: ret := square(mds=>23)
+               ^
+QUERY:  ret := square(mds=>23)
+CONTEXT:  PL/iSQL function inline_code_block line 12 at assignment
+ --test ok
+ --print 539
+ declare
+  ret integer;
+  function square(original integer,mds integer default 10) return integer;
+  function square(original integer, mds integer default 10) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original + mds;
+       return original_squared;
+   end;
+begin
+    ret := square(original=>23);
+    raise info '%', ret;
+ end;
+ /
+INFO:  539
+ --test ok
+ --print 539
+declare
+  ret integer;
+  function square(original integer,mds integer default 10) return integer;
+  function square(original integer, mds integer default 10) return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := original * original + mds;
+       return original_squared;
+   end;
+begin
+    ret := square(23);
+    raise info '%', ret;
+ end;
+ /
+INFO:  539
+ --test ok
+ --print 23 10 24 xiexie 100
+ declare
+  ret integer;
+  function square(mds integer,original integer default 10,mdss integer, md2 varchar default 'xiexie') return integer;
+  function square(mds integer,original integer default 10, mdss integer, md2 varchar default 'xiexie') return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'mds=%', mds;
+       raise info 'original=%', original;
+       raise info 'mdss=%', mdss;
+       raise info 'md2=%', md2;
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    ret := square(mds=>23, mdss=>24);
+    raise info '%', ret;
+ end;
+ /
+INFO:  mds=23
+INFO:  original=10
+INFO:  mdss=24
+INFO:  md2=xiexie
+INFO:  100
+ ---test failed
+declare
+  ret integer;
+  function square(mds integer,original integer default 10,mdss integer, md2 varchar default 'xiexie') return integer;
+  function square(mds integer,original integer default 10, mdss integer, md2 varchar default 'xiexie') return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'mds=%', mds;
+       raise info 'original=%', original;
+       raise info 'mdss=%', mdss;
+       raise info 'md2=%', md2;
+       original_squared := original * original;
+       return original_squared;
+   end;
+begin
+    ret := square(23,24);
+    raise info '%', ret;
+ end;
+ /
+ERROR:  wrong number or types of arguments in call to "square"
+LINE 1: ret := square(23,24)
+               ^
+QUERY:  ret := square(23,24)
+CONTEXT:  PL/iSQL function inline_code_block line 16 at assignment
+ --test type exchange
+ --test ok
+ --print float mds2=24 529
+ declare
+  ret integer;
+  function square(mds integer, mds2 varchar) return integer;
+  function square(mds integer, mds2 float) return integer;
+  function square(mds integer, mds2 varchar) return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'varchar mds2=%', mds2;
+       original_squared := mds * mds;
+       return original_squared;
+   end;
+  function square(mds integer, mds2 float) return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'float mds2=%', mds2;
+       original_squared := mds * mds;
+       return original_squared;
+   end;
+begin
+    ret := square(23,24);
+    raise info '%', ret;
+end;
+/
+INFO:  float mds2=24
+INFO:  529
+--test ok
+--print float mds2=24 529
+declare
+  ret integer;
+  function square(mds integer, mds2 int8) return integer;
+  function square(mds integer, mds2 float) return integer;
+  function square(mds integer, mds2 int8) return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'int8 mds2=%', mds2;
+       original_squared := mds * mds;
+       return original_squared;
+   end;
+  function square(mds integer, mds2 float) return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'float mds2=%', mds2;
+       original_squared := mds * mds;
+       return original_squared;
+   end;
+begin
+    ret := square(23,24);
+    raise info '%', ret;
+end;
+/
+INFO:  float mds2=24
+INFO:  529
+ --test ok
+ --print text mds2=abc 529
+ declare
+  ret integer;
+  function square(mds integer, mds2 varchar) return integer;
+  function square(mds integer, mds2 char) return integer;
+  function square(mds integer, mds2 text) return integer;
+  function square(mds integer, mds2 text) return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'text mds2=%', mds2;
+       original_squared := mds * mds;
+       return original_squared;
+   end;
+  function square(mds integer, mds2 varchar) return integer
+  AS
+       original_squared integer;
+  begin
+       raise info 'varchar mds2=%', mds2;
+       original_squared := mds * mds;
+       return original_squared;
+   end;
+  function square(mds integer, mds2 char) return integer
+  As
+       original_squared integer;
+  begin
+       raise info 'char mds2=%', mds2;
+       original_squared := mds * mds;
+       return original_squared;
+   end;
+begin
+    ret := square(23,'abc');
+    raise info '%', ret;
+end;
+/
+INFO:  text mds2=abc
+INFO:  529
+---global variable the name as local variable
+--test ok
+create or replace function test_subproc_func(a in out integer) return integer AS
+  mds integer;
+  original integer;
+  function square(original in out integer) return integer;
+  function square(original in out integer) return integer
+  AS
+       original_squared integer;
+	   a integer;
+  BEGIN
+       a := 23;
+       original_squared := original * original;
+       raise info 'mds=%', mds;
+       raise info 'original=%', original;
+	   raise info 'local var a = %',a;
+	   raise info 'global a = %', test_subproc_func.a;
+       original := original_squared + 1;
+       --return original_squared;
+   end;
+begin
+    mds := 10;
+    original := 21;
+    original := square(mds);
+    raise info '%', original;
+    a := original + 1;
+    --return mds;
+end;
+/
+--print mds=10 original=10 local var a =23
+--global a =21 101 102
+select * from test_subproc_func(21);
+INFO:  mds=10
+INFO:  original=10
+INFO:  local var a = 23
+INFO:  global a = 21
+INFO:  101
+  a  
+-----
+ 102
+(1 row)
+
+drop function test_subproc_func(integer);
+--function the name as global variable
+--test failed
+declare
+  mds integer;
+  function mds(a integer) return integer;
+  function mds(a integer) return integer AS
+	mdss integer;
+  begin
+       mdss := a;
+       return mdss;
+   end;
+begin
+    mds := 100;
+    mds := mds(mds);
+end;
+/
+ERROR:  "mds" duplicate declaration
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 2
+--test subproc function out variable ok
+--print var = (1,101)  var2=(2,102)
+declare
+  salary integer;
+  var2 record;
+  id integer;
+  function test_out(id in out integer, salary out integer) return record
+  IS
+       var1 record;
+       function test_out(id in out integer,salary out integer) return record
+       IS
+       declare
+            var2 integer;
+	   begin
+	     salary := 101;
+	     var2 := id + 2;
+	     id := 1;
+	     --return var2;
+	end;
+   begin
+     var1 := test_out(id, salary);
+	 raise info 'var=%', var1;
+	 salary := 102;
+	 id := 2;
+	 --return var1;
+   end;
+begin
+    var2 := test_out(id, salary);
+    raise info 'var2 = %', var2;
+end;
+/
+INFO:  var=(1,101)
+INFO:  var2 = (2,102)
+--ok
+--this because out parameter we have don't handle
+-- so it doesn't like oracle
+-- test out name=must be assign to null
+-- test_out.test_out name=must be assign to null
+-- name1= must be assign to null
+-- declare name=must be assign to null
+declare
+  name varchar(256);
+  id integer;
+  procedure test_out(id integer, name out varchar)
+  IS
+      name1 varchar(256);
+      procedure test_out(id integer,name out varchar)
+      IS
+         var1 integer;
+      begin
+         raise info 'test_out.test_out name=%', name;
+	     name := 'a test_out.test_out';
+      end;
+   begin
+        raise info 'test out name=%', name;
+        name1 := 'must be assign to null';
+	call test_out(id, name1);
+	raise info 'name1=%', name1;
+	name := 'return to declare';
+   end;
+begin
+    name := 'must be assign to null';
+    id := 1;
+    call test_out(id, name);
+    raise info 'declare name=%', name;
+ end;
+ /
+INFO:  test out name=must be assign to null
+INFO:  test_out.test_out name=must be assign to null
+INFO:  name1=must be assign to null
+INFO:  declare name=must be assign to null
+---schema function and subproc function as the same name
+create or replace function test_subproc(id integer) return integer
+AS
+   var1 integer;
+begin
+    var1 := id;
+    raise info 'schema function test_subproc';
+    return var1;
+END;
+/
+--print subproc function test_subproc
+declare
+ var1 integer;
+ function test_subproc(id integer) return integer
+ IS
+    var1 integer;
+ begin
+     var1 := id;
+     raise info 'subproc function test_subproc';
+     return var1;
+  end;
+begin
+   var1 := test_subproc(23);
+end;
+/
+INFO:  subproc function test_subproc
+--print schema function test_subproc
+declare
+  var1 integer;
+begin
+   var1 := test_subproc(23);
+end;
+/
+INFO:  schema function test_subproc
+--failed wrong number
+declare
+ var1 integer;
+ function test_subproc(id integer,name varchar) return integer
+ IS
+    var1 integer;
+ begin
+     var1 := 23;
+     raise info 'subproc function test_subproc';
+     return var1;
+  end;
+begin
+   var1 := test_subproc(23);
+end;
+/
+ERROR:  wrong number or types of arguments in call to "test_subproc"
+LINE 1: var1 := test_subproc(23)
+                ^
+QUERY:  var1 := test_subproc(23)
+CONTEXT:  PL/iSQL function inline_code_block line 12 at assignment
+drop function test_subproc(integer);
+---subproc function return object_type
+create type test_subproc_type as (id integer,name varchar(23));
+--test ok
+--print var1=(23, "a object type")
+declare
+    var1 test_subproc_type;
+    function test_subproc(id integer) return test_subproc_type
+    IS
+        var1 test_subproc_type;
+    begin
+         var1.id := 23;
+	 var1.name := 'a object type';
+	 return var1;
+    end;
+begin
+    var1 := test_subproc(23);
+    raise info 'var1=%', var1;
+end;
+/
+INFO:  var1=(23,"a object type")
+--print id = (1, "welcome to beiing")
+--print var1=(23, "a object type")
+declare
+    var1 test_subproc_type;
+    function test_subproc(id test_subproc_type) return test_subproc_type
+    IS
+        var1 test_subproc_type;
+    begin
+         var1.id := 23;
+	 var1.name := 'a object type';
+	 raise info 'id = %',id;
+	 return var1;
+    end;
+BEGIN
+    var1.id := 1;
+	var1.name := 'welcome to beiing';
+    var1 := test_subproc(var1);
+    raise info 'var1=%', var1;
+end;
+/
+INFO:  id = (1,"welcome to beiing")
+INFO:  var1=(23,"a object type")
+drop type test_subproc_type;
+--test function and procedure properties
+--test ok
+--print 23
+declare
+  id integer;
+  function test_subproc(id integer) return integer DETERMINISTIC;
+  function test_subproc(id integer) return integer DETERMINISTIC
+  IS
+   var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    id := test_subproc(23);
+    raise info '%', id;
+end;
+/
+INFO:  23
+--test ok
+--print 23
+declare
+  id integer;
+  function test_subproc(id integer) return integer DETERMINISTIC;
+  function test_subproc(id integer) return integer
+  IS
+    var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    id := test_subproc(23);
+    raise info '%', id;
+end;
+/
+INFO:  23
+--test ok
+--print 23
+declare
+  id integer;
+  function test_subproc(id integer) return integer;
+  function test_subproc(id integer) return integer DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    id := test_subproc(23);
+    raise info '%', id;
+end;
+/
+INFO:  23
+--test failed
+declare
+  id integer;
+  function test_subproc(id integer) return integer result_cache;
+  function test_subproc(id integer) return integer result_cache
+ Is
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    id := test_subproc(23);
+    raise info '%', id;
+end;
+/
+ERROR:  RESULT_CACHE is disallowed on subprograms in anonymous blocks at or near ";"
+LINE 3: ...nction test_subproc(id integer) return integer result_cache;
+                                                                      ^
+QUERY:  declare
+  id integer;
+  function test_subproc(id integer) return integer result_cache;
+  function test_subproc(id integer) return integer result_cache
+ Is
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    id := test_subproc(23);
+    raise info '%', id;
+end
+--test ok
+create or replace function test_mds(id integer) return integer AS
+  ids integer;
+  function test_subproc(id integer) return integer result_cache;
+  function test_subproc(id integer) return integer result_cache
+ IS
+  declare
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+ id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test failed
+create or replace function test_mds(id integer) return integer AS
+  ids integer;
+  function test_subproc(id integer) return integer result_cache relies_on (mds);
+  function test_subproc(id integer) return integer result_cache relies_on (mds)
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  RELIES_ON clause is disallowed on function declaration
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test ok
+create or replace function test_mds(id integer) return integer as
+  ids integer;
+  function test_subproc(id integer) return integer result_cache;
+  function test_subproc(id integer) return integer result_cache relies_on (mds)
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+  id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--print 23 23
+select * from test_mds(23);
+INFO:  23
+ test_mds 
+----------
+       23
+(1 row)
+
+--test ok
+create or replace function test_mds(id integer) return integer AS
+  ids integer;
+  function test_subproc(id integer) return integer DETERMINISTIC result_cache;
+  function test_subproc(id integer) return integer DETERMINISTIC result_cache
+  IS
+    var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+ id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test ok
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer  result_cache DETERMINISTIC;
+  function test_subproc(id integer) return integer  result_cache DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+ id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test ok
+create or replace function test_mds(id integer) return integer AS
+  ids integer;
+  function test_subproc(id integer) return integer  result_cache;
+  function test_subproc(id integer) return integer  result_cache DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+ id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test ok
+create or replace function test_mds(id integer) return integer AS
+  ids integer;
+  function test_subproc(id integer) return integer;
+  function test_subproc(id integer) return integer DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+  id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test ok
+create or replace function test_mds(id integer) return integer is
+ids integer;
+  function test_subproc(id integer) return integer DETERMINISTIC;
+  function test_subproc(id integer) return integer
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+  id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test failed
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer RESULT_CACHE;
+  function test_subproc(id integer) return integer
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test failed
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer;
+  function test_subproc(id integer) return integer RESULT_CACHE
+ Is
+   var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test failed
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer;
+  function test_subproc(id integer) return integer RESULT_CACHE DETERMINISTIC
+ Is
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test failed
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer RESULT_CACHE DETERMINISTIC;
+  function test_subproc(id integer) return integer
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test failed
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer RESULT_CACHE;
+  function test_subproc(id integer) return integer DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test failed
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer DETERMINISTIC;
+  function test_subproc(id integer) return integer RESULT_CACHE
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test failed
+declare
+ids integer;
+  function test_subproc(id integer) return integer;
+  function test_subproc(id integer) return integer  DETERMINISTIC DETERMINISTIC
+ IS
+ declare
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  at most one declaration for 'DETERMINISTIC' is permitted
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 2
+--test failed
+create or replace function test_mds(id integer) return integer AS
+  ids integer;
+  function test_subproc(id integer) return integer result_cache result_cache;
+  function test_subproc(id integer) return integer  result_cache result_cache
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+ERROR:  at most one declaration for 'RESULT_CACHE' is permitted
+CONTEXT:  compilation of PL/iSQL function "test_mds" near line 1
+--test ok
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer DETERMINISTIC RESULT_CACHE;
+  function test_subproc(id integer) return integer RESULT_CACHE
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+ id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test ok
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer RESULT_CACHE;
+  function test_subproc(id integer) return integer RESULT_CACHE DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+ id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+--test ok
+create or replace function test_mds(id integer) return integer AS
+ids integer;
+  function test_subproc(id integer) return integer RESULT_CACHE;
+  function test_subproc(id integer) return integer RESULT_CACHE relies_on (mds,sds) DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+    return id;
+end;
+/
+--print 23
+declare
+ id integer;
+begin
+  id := test_mds(23);
+end;
+/
+INFO:  23
+drop function test_mds(integer);
+--test ok
+create or replace procedure test_mds(id integer) AS
+ids integer;
+  function test_subproc(id integer) return integer RESULT_CACHE;
+  function test_subproc(id integer) return integer RESULT_CACHE DETERMINISTIC
+ IS
+  var1 integer;
+  begin
+     var1 := id;
+     return var1;
+  end;
+begin
+    ids := test_subproc(23);
+    raise info '%', id;
+end;
+/
+--print 23
+declare
+  id integer;
+begin
+  call test_mds(23);
+end;
+/
+INFO:  23
+drop procedure test_mds(integer);
+--test ok
+--print test_subprocproc test_subprocfunc
+declare
+  mds integer;
+  function test_subprocfunc(id integer) return integer;
+  procedure test_subprocproc(id integer);
+  procedure test_subprocproc(id integer) IS
+    var1 integer;
+  begin
+    raise info  'test_subprocproc';
+  end;
+  function test_subprocfunc(id integer) return integer IS
+    var1 integer;
+   begin
+     raise info 'test_subprocfunc';
+     return id;
+   end;
+begin
+  call test_subprocproc(23);
+  mds := test_subprocfunc(23);
+end;
+/
+INFO:  test_subprocproc
+INFO:  test_subprocfunc
+--test ok
+create or replace function test_subprocfunc(id integer) return integer
+as
+  mds integer;
+  function test_subprocfunc(id integer) return integer;
+  procedure test_subprocproc(id integer);
+  procedure test_subprocproc(id integer) IS
+    var1 integer;
+  begin
+    raise info 'test_subprocproc';
+  end;
+  function test_subprocfunc(id integer) return integer IS
+    var1 integer;
+   begin
+     raise info 'test_subprocfunc';
+     return id;
+   end;
+begin
+  call test_subprocproc(23);
+  mds := test_subprocfunc(23);
+  return mds;
+end;
+/
+--print test_subprocproc test_subprocfunc
+declare
+  id integer;
+begin
+  id := test_subprocfunc(23);
+end;
+/
+INFO:  test_subprocproc
+INFO:  test_subprocfunc
+--test accessible by
+--failed
+ DECLARE
+    var1 integer;
+	PROCEDURE test_f(id integer) accessible BY (FUNCTION test_d test_d,
+	test_schema test_d,PACKAGE test_d,test_d,PACKAGE PACKAGE PACKAGE,
+	TYPE PACKAGE,PACAGE);
+	PROCEDURE test_f(id integer) accessible BY (FUNCTION test_d test_d,
+	test_schema test_d,PACKAGE test_d,test_d,PACKAGE PACKAGE PACKAGE,
+	TYPE PACKAGE,PACAGE) IS
+	BEGIN
+       raise info 'id=%', id;
+	end;
+BEGIN
+  var1 := 23;
+  call test_f(var1);
+END;
+/
+ERROR:  Only schema-level programs allow ACCESSIBLE BY at or near ")"
+LINE 5:  TYPE PACKAGE,PACAGE);
+                            ^
+QUERY:  DECLARE
+    var1 integer;
+	PROCEDURE test_f(id integer) accessible BY (FUNCTION test_d test_d,
+	test_schema test_d,PACKAGE test_d,test_d,PACKAGE PACKAGE PACKAGE,
+	TYPE PACKAGE,PACAGE);
+	PROCEDURE test_f(id integer) accessible BY (FUNCTION test_d test_d,
+	test_schema test_d,PACKAGE test_d,test_d,PACKAGE PACKAGE PACKAGE,
+	TYPE PACKAGE,PACAGE) IS
+	BEGIN
+       raise info 'id=%', id;
+	end;
+BEGIN
+  var1 := 23;
+  call test_f(var1);
+END
+--test ok
+create or replace procedure test_subprocproc(id integer)
+AS
+  mds integer;
+  function test_subprocfunc(id integer) return integer;
+  procedure test_subprocproc(id integer);
+  procedure test_subprocproc(id integer) IS
+    var1 integer;
+  begin
+    raise info 'test_subprocproc';
+  end;
+  function test_subprocfunc(id integer) return integer IS
+    var1 integer;
+   begin
+     raise info 'test_subprocfunc';
+     return id;
+   end;
+begin
+  call test_subprocproc(23);
+  mds := test_subprocfunc(23);
+end;
+/
+--print test_subprocproc test_subprocfunc
+declare
+  id integer;
+begin
+  call test_subprocproc(23);
+end;
+/
+INFO:  test_subprocproc
+INFO:  test_subprocfunc
+--test ok
+create or replace procedure test_subprocproc(id integer) AS
+  var1 integer;
+  function square(original integer) return integer;
+  function square(original integer) return integer
+  AS
+       original_squared integer;
+       var1 integer;
+       function test(test integer) return integer
+       AS
+          var1 integer;
+	      var2 integer;
+       begin
+           var1 := 55;
+	   raise info '%',var1;
+           var2 := var1 + 10;
+	   return var2;
+       end;
+  begin
+       var1 := 45;
+       original_squared := original * original;
+       raise info '%',var1;
+       var1 := test(23);
+       return original_squared;
+   end;
+begin
+    var1 := 23;
+    var1 := square(100);
+    raise info '%', var1;
+ end;
+/
+--print 45 55 10000
+begin
+   call test_subprocproc(23);
+end;
+/
+INFO:  45
+INFO:  55
+INFO:  10000
+drop procedure test_subprocproc(integer);
+drop function test_subprocfunc(integer);
+create table mds(id integer,name varchar(23));
+insert into mds values(1,'a insert value');
+--test global variable assign out
+--print before function
+-- id=23,id1=14
+-- name=we are,name1=global
+-- row_var=NULL,row_var1=NULL
+-- after function
+-- id=23 id1=15
+-- name=we are,name1=print a change
+-- row_var=NULL,row_var1=(24,"print a change")
+declare
+	id integer := 23;
+	id1 integer;
+	tmp_var mds%rowtype;
+	name varchar(23);
+	name1 varchar(23);
+	row_var mds%rowtype;
+	row_var1 mds%rowtype;
+	ret integer;
+	function change_global(id integer) return integer IS
+		var1 integer;
+	begin
+	   id1 := 15;
+	   tmp_var.id := 0;
+	   tmp_var.name := 'subproc array[0]';
+	   tmp_var.id := 1;
+	   tmp_var.name := 'subproc array[1]';
+	   tmp_var.id := 2;
+	   tmp_var.name := 'subproc array[2]';
+	   tmp_var.id := 3;
+	   tmp_var.name := 'subproc array[3]';
+	   name1 := 'print a change';
+	   row_var1.id := 24;
+	   row_var1.name := 'print a change';
+	   var1 := 16;
+	   return var1;
+end;
+begin
+   id1 := 14;
+   tmp_var.id := 0;
+   tmp_var.name := 'array[0]';
+   tmp_var.id := 1;
+   tmp_var.name := 'array[1]';
+   tmp_var.id := 2;
+   tmp_var.name := 'array[2]';
+   tmp_var.id := 3;
+   tmp_var.name := 'array[3]';
+   name := 'we are';
+   name1 := 'global';
+   row_var := row_var1;
+   raise info 'before function';
+   raise info 'id=%,id1=%',id,id1;
+   raise info 'name=%,name1=%', name,name1;
+   raise info 'row_var=%,row_var1=%', row_var,row_var1;
+   ret := change_global(23);
+   raise info 'after function';
+   raise info 'id=%,id1=%',id,id1;
+   raise info 'name=%,name1=%', name,name1;
+   raise info 'row_var=%,row_var1=%', row_var,row_var1;
+end;
+/
+INFO:  before function
+INFO:  id=23,id1=14
+INFO:  name=we are,name1=global
+INFO:  row_var=<NULL>,row_var1=<NULL>
+INFO:  after function
+INFO:  id=23,id1=15
+INFO:  name=we are,name1=print a change
+INFO:  row_var=<NULL>,row_var1=(24,"print a change")
+drop table mds;
+---check call function only by function name
+--print function no par
+--ret=100
+-- procedure no par
+declare
+  ret integer;
+  function square return integer;
+  procedure test_nopar;
+  function square return integer
+  AS
+       original_squared integer;
+  begin
+       original_squared := 10 * 10;
+       raise info 'function no par';
+       return original_squared;
+  end;
+  procedure test_nopar
+  AS
+      original_squared integer;
+  begin
+      original_squared := 10 * 10;
+      raise info 'procedure no par';
+  end;
+begin
+    ret := SQUARE();
+    raise info 'ret=%', ret;
+    call test_nopar();
+end;
+/
+INFO:  function no par
+INFO:  ret=100
+INFO:  procedure no par
+--check nocopy proper
+--test ok out arguments has not handle
+--print id=46,name=before function
+--ret = (46, "test a nocopy")
+declare
+   ret record;
+   out_var integer;
+   name varchar(256);
+   function square(id out nocopy integer, name in out nocopy varchar) return record
+   IS
+     var1 integer;
+   begin
+     var1 := 23;
+     id := var1 + 23;
+     raise info 'id=%,name=%', id,name;
+     name := 'test a nocopy';
+     --return var1;
+   end;
+begin
+  name := 'before function';
+  ret := square(out_var, name);
+  raise info 'ret=%', ret;
+end;
+/
+INFO:  id=46,name=before function
+INFO:  ret=(46,"test a nocopy")
+--test failed
+declare
+   ret record;
+   out_var integer;
+   name varchar(256);
+   function square(id nocopy integer, name in out nocopy varchar) return record
+   IS
+     var1 integer;
+   begin
+     var1 := 23;
+     id := var1 + 23;
+     raise info 'id=%,name=%', id,name;
+     name := 'test a nocopy';
+     --return var1;
+   end;
+begin
+  name := 'before function';
+  ret := square(out_var, name);
+  raise info 'ret=%', ret;
+end;
+/
+ERROR:  only out mode argument allow to have nocopy proper at or near ","
+LINE 5:    function square(id nocopy integer, name in out nocopy var...
+                                            ^
+QUERY:  declare
+   ret record;
+   out_var integer;
+   name varchar(256);
+   function square(id nocopy integer, name in out nocopy varchar) return record
+   IS
+     var1 integer;
+   begin
+     var1 := 23;
+     id := var1 + 23;
+     raise info 'id=%,name=%', id,name;
+     name := 'test a nocopy';
+     
+   end;
+begin
+  name := 'before function';
+  ret := square(out_var, name);
+  raise info 'ret=%', ret;
+end
+--test repeate declare
+--test failed
+declare
+  function mds(id integer) return integer;
+  function mds(id integer) return integer;
+begin
+  NULL;
+end;
+/
+ERROR:  duplicate declaration at or near ";"
+LINE 3:   function mds(id integer) return integer;
+                                                 ^
+QUERY:  declare
+  function mds(id integer) return integer;
+  function mds(id integer) return integer;
+begin
+  NULL;
+end
+--test failed
+declare
+  procedure mds(id integer);
+  procedure mds(id integer);
+begin
+  NULL;
+end;
+/
+ERROR:  duplicate declaration at or near ";"
+LINE 3:   procedure mds(id integer);
+                                   ^
+QUERY:  declare
+  procedure mds(id integer);
+  procedure mds(id integer);
+begin
+  NULL;
+end
+--only declare but no define and no use ok
+DECLARE
+  var1 integer;
+  function mds(id integer) return integer;
+begin
+  var1 := 23;
+end;
+/
+--no define but use failed
+DECLARE
+  var1 integer;
+  function mds(id integer) return integer;
+begin
+  var1 := mds(23);
+end;
+/
+ERROR:  subproc function doesn't define
+CONTEXT:  PL/iSQL function inline_code_block line 5 at assignment
+--again
+DECLARE
+  var1 integer;
+  function mds(id integer) return integer;
+begin
+  var1 := mds(23);
+end;
+/
+ERROR:  subproc function doesn't define
+CONTEXT:  PL/iSQL function inline_code_block line 5 at assignment
+--define before declare faield
+declare
+   function mds(id integer) return integer IS
+      var1 integer;
+   begin
+      var1 := id;
+      return id;
+   end;
+   function mds(id integer) return integer;
+begin
+   NULL;
+end;
+/
+ERROR:  function or procedure "mds" has already define
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 4
+--duplicate define failed
+declare
+   function mds(id integer) return integer IS
+      var1 integer;
+   begin
+      var1 := id;
+      return id;
+   end;
+   function mds(id integer) return integer IS
+      var2 integer;
+   begin
+      var2 := id;
+      return id;
+    end;
+begin
+   NULL;
+end;
+/
+ERROR:  function or procedure "mds" has already define
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 4
+--test ok
+create or replace function test(id integer) return integer
+AS
+  function mds(id integer) return integer;
+begin
+  return 23;
+end;
+/
+--ok
+SELECT test(23) FROM dual;
+ test 
+------
+   23
+(1 row)
+
+DROP FUNCTION test(integer);
+DECLARE
+  -- Declare proc1 (forward declaration):
+  PROCEDURE proc1(number1 NUMBER);
+  -- Declare and define proc2:
+  PROCEDURE proc2(number2 NUMBER) IS
+  BEGIN
+    call proc1(number2);
+  END;
+  -- Define proc 1:
+  PROCEDURE proc1(number1 NUMBER) IS
+  BEGIN
+    call proc2 (number1);
+  END;
+BEGIN
+  NULL;
+END;
+/
+--ok
+DECLARE
+	PROCEDURE proc1(number1 out NUMBER);
+	PROCEDURE proc3(number1 out NUMBER);
+	PROCEDURE proc2(number2 NUMBER) IS
+	BEGIN
+		call proc1(number2);
+		raise info '%', number2;
+		raise info '%','proc2';
+	END;
+	PROCEDURE proc4(number2 NUMBER) IS
+	BEGIN
+		raise info '%','proc4';
+		call proc3(number2);
+		raise info 'proc3 out %', number2;
+	END;
+	PROCEDURE proc1(number1 out NUMBER) IS
+	BEGIN
+		raise info '%','proc1';
+		number1 := 0;
+	END;
+	PROCEDURE proc3(number1 out NUMBER) IS
+	BEGIN
+		raise info '%', 'proc3';
+		number1 := 1;
+	END;
+BEGIN
+	call proc2(1);
+	call proc4(2);
+END;
+/
+INFO:  proc1
+INFO:  1
+INFO:  proc2
+INFO:  proc4
+INFO:  proc3
+INFO:  proc3 out 2
+--
+--
+-- subproc function support polymorphic type
+--
+--point raise error others is ok
+DECLARE
+   var1 integer;
+   var2 number;
+   var3 point;
+   function f1(x anyelement) return anyelement as
+   begin
+	return x + 1;
+   END;
+BEGIN
+   var1 := f1(42);
+   var2 := f1(4.5);
+   raise info 'var1=%,var2=%',var1,var2;
+   var3 := f1(point(3,4));
+end;
+/
+INFO:  var1=43,var2=5.5
+ERROR:  operator does not exist: point + integer
+LINE 1: x + 1
+          ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+QUERY:  x + 1
+CONTEXT:  PL/iSQL function f1 line 3 at RETURN
+PL/iSQL function inline_code_block line 13 at assignment
+--global var
+CREATE TABLE mds(id integer,name varchar2(1024));
+--ok
+DECLARE
+   var1 integer;
+   var2 number;
+   var3 mds%rowtype;
+   function f1(x anyelement) return anyelement as
+   BEGIN
+    var3.id := var3.id + 1;
+	var3.name := var3.name || x;
+	return x + 1;
+   END;
+BEGIN
+   var3.id := 1;
+   var3.name := 'ok';
+   var1 := f1(42);
+   var2 := f1(4.5);
+   raise info 'var1=%,var2=%',var1,var2;
+   raise info '%', var3;
+end;
+/
+INFO:  var1=43,var2=5.5
+INFO:  (3,ok424.5)
+--two nested ok
+DECLARE
+   var1 integer;
+   var2 number;
+   var3 mds%rowtype;
+   function f1(x anyelement) return anyelement AS
+      var1 integer;
+	  var2 number;
+      FUNCTION test_f(x anyelement) RETURN  anyelement AS
+      BEGIN
+          var3.id := var3.id + 1;
+		  var3.name := var3.name || x;
+		  RETURN x + 1;
+	  end;
+   BEGIN
+    var1 := test_f(24);
+	var2 := test_f(5.4);
+    var3.id := var3.id + 1;
+	var3.name := var3.name || x;
+	return x + 1;
+   END;
+BEGIN
+   var3.id := 1;
+   var3.name := 'ok';
+   var1 := f1(42);
+   var2 := f1(4.5);
+   raise info 'var1=%,var2=%',var1,var2;
+   raise info '%', var3;
+end;
+/
+INFO:  var1=43,var2=5.5
+INFO:  (7,ok245.442245.44.5)
+--ok
+DECLARE
+    function f1(x anyelement) return anyarray as
+	begin
+	  return array[x + 1, x + 2];
+	end;
+BEGIN
+   raise info '%', f1(42);
+   raise info '%', f1(4.5);
+end;
+/
+INFO:  {43,44}
+INFO:  {5.5,6.5}
+--ok
+declare
+	function f1(x anyarray) return anyelement as
+	begin
+	  return x[1];
+	END;
+BEGIN
+   raise info '%,%', f1(array[2,4]),f1(array[4.5,7.7]);
+END;
+/
+INFO:  2,4.5
+declare
+  function f1(x anyarray) return anyarray as
+  begin
+     return x;
+  end;
+BEGIN
+  raise info '%,%', f1(array[2,4]),f1(array[4.5, 7.7]);
+end;
+/
+INFO:  {2,4},{4.5,7.7}
+-- fail, can't infer type:
+declare
+  function f1(x anyelement) return anyrange as
+  begin
+    return array[x + 1, x + 2];
+  end;
+BEGIN
+  NULL;
+end;
+/
+ERROR:  cannot determine result data type
+DETAIL:  A result of type anyrange requires at least one input of type anyrange or anymultirange.
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 1
+--ok
+DECLARE
+   function f1(x anyrange) return anyarray as
+   begin
+       return array[lower(x), upper(x)];
+   end;
+BEGIN
+  raise info '%,%', f1(int4range(42,49)), f1(int8range(430,460));
+end;
+/
+INFO:  {42,49},{430,460}
+--ok
+declare
+   function f1(x anycompatible, y anycompatible) RETURN anycompatiblearray AS
+	begin
+	  return array[x, y];
+	end;
+BEGIN
+   raise info '%,%', f1(2,4),f1(2,4.5);
+end;
+/
+INFO:  {2,4},{2,4.5}
+--failed
+declare
+  function f1(x anycompatiblerange, y anycompatible, z anycompatible) return anycompatiblearray as
+  begin
+      return array[lower(x), upper(x), y, z];
+  end;
+BEGIN
+  raise info '%',f1(int4range(42, 49), 11, 2::smallint);
+  raise info '%',f1(int4range(42, 49), 11, 4.5); --failed
+end;
+/
+INFO:  {42,49,11,2}
+ERROR:  wrong number or types of arguments in call to "f1"
+LINE 1: f1(int4range(42, 49), 11, 4.5)
+        ^
+QUERY:  f1(int4range(42, 49), 11, 4.5)
+CONTEXT:  PL/iSQL function inline_code_block line 8 at RAISE
+-- fail, can't infer type:
+declare
+   function f1(x anycompatible) return anycompatiblerange as
+   begin
+     return array[x + 1, x + 2];
+   end;
+BEGIN
+  NULL;
+end;
+/
+ERROR:  cannot determine result data type
+DETAIL:  A result of type anycompatiblerange requires at least one input of type anycompatiblerange or anycompatiblemultirange.
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 1
+declare
+   function f1(x anycompatiblerange, y anycompatiblearray) return anycompatiblerange as
+   begin
+      return x;
+   end;
+BEGIN
+   raise info '%,%',f1(int4range(42, 49), array[11]), f1(int4range(42, 50), array[11]);
+END;
+/
+INFO:  [42,49),[42,50)
+DECLARE
+   r record;
+   function f1(a anyelement, b anyarray,
+                   c anycompatible, d anycompatible,
+                   x OUT anyarray, y OUT anycompatiblearray) RETURN record
+	as
+	begin
+	  x := a || b;
+	  y := array[c, d];
+	end;
+begin
+	r := f1(11, array[1, 2], 42, 34.5, NULL,NULL);
+	raise info 'r=%',r;
+	r := f1(11, array[1, 2], point(1,2), point(3,4), NULL,NULL);
+	raise info 'r=%',r;
+	r := f1(11, '{1,2}', point(1,2), '(3,4)', NULL,NULL);
+	raise info 'r=%',r;
+	r := f1(11, array[1, 2.2], 42, 34.5, NULL,NULL);  -- fail
+	raise info 'r=%',r;
+END;
+/
+INFO:  r=("{11,1,2}","{42,34.5}")
+INFO:  r=("{11,1,2}","{""(1,2)"",""(3,4)""}")
+INFO:  r=("{11,1,2}","{""(1,2)"",""(3,4)""}")
+ERROR:  wrong number or types of arguments in call to "f1"
+LINE 1: r := f1(11, array[1, 2.2], 42, 34.5, NULL,NULL)
+             ^
+QUERY:  r := f1(11, array[1, 2.2], 42, 34.5, NULL,NULL)
+CONTEXT:  PL/iSQL function inline_code_block line 18 at assignment
+--
+-- Test handling of OUT parameters, including polymorphic cases.
+-- Note that RETURN is optional with OUT params; we try both ways.
+--
+DECLARE
+   var1 integer;
+   function f1(i IN int, j out int) RETURN integer is
+   begin
+     j := i+1;
+     return;
+   end;
+BEGIN
+  raise info '%', f1(42, 23);
+  SELECT f1(42,23) INTO var1;
+  raise info '%', var1;
+end;
+/
+INFO:  43
+INFO:  43
+declare
+  function duplic(i IN anyelement, j out anyelement, k out anyarray) RETURN record is
+   begin
+	  j := i;
+	  k := array[j,j];
+	  return;
+  end;
+BEGIN
+  raise info '%,%',duplic(42,45,NULL), duplic('foo'::text,'45',NULL);
+END;
+/
+INFO:  (42,"{42,42}"),(foo,"{foo,foo}")
+declare
+    function duplic(i IN anycompatiblerange, j out anycompatible, k out anycompatiblearray) RETURN record as
+	begin
+		j := lower(i);
+		k := array[lower(i),upper(i)];
+		return;
+	end;
+BEGIN
+	raise info '%,%',duplic(int4range(42,49), NULL,NULL),duplic(int4range('23', '45'), NULL,NULL);
+end;
+/
+INFO:  (42,"{42,49}"),(23,"{23,45}")
+--test extral
+--error test_f is is out of scope
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer IS
+  declare
+    var2 integer;
+  begin
+    var2 := 23;
+    return 23;
+  end;
+begin
+  var1 := test_f.id;
+  var1 := test_f.var2;
+  var1 := test_f(23,'xiexie');
+end;
+/
+ERROR:  "test_f"."id": invalid identifier
+LINE 1: var1 := test_f.id
+                ^
+QUERY:  var1 := test_f.id
+CONTEXT:  PL/iSQL function inline_code_block line 11 at assignment
+--raise error test_f is out of scope
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer IS
+    var2 integer;
+  begin
+    var2 := 23;
+    return 23;
+  end;
+begin
+  var1 := test_f.var2;
+  var1 := test_f(23,'xiexie');
+end;
+/
+ERROR:  "test_f"."var2": invalid identifier
+LINE 1: var1 := test_f.var2
+                ^
+QUERY:  var1 := test_f.var2
+CONTEXT:  PL/iSQL function inline_code_block line 10 at assignment
+--raise error 'TEST_F' reference is out of scope
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer IS
+    var2 integer;
+  begin
+    var2 := 23;
+    return 23;
+  end;
+  function test_f1(id integer,name varchar2) return integer IS
+    var3 integer;
+  begin
+     var3 := test_f.var2;
+     return 24;
+   end;
+begin
+  var1 := test_f1(23,'xiexie');
+end;
+/
+ERROR:  "test_f"."var2": invalid identifier
+LINE 1: var3 := test_f.var2
+                ^
+QUERY:  var3 := test_f.var2
+CONTEXT:  PL/iSQL function test_f1 line 12 at assignment
+PL/iSQL function inline_code_block line 16 at assignment
+--ok
+declare
+  var1 integer;
+  function test_f(id integer) return integer IS
+    var3 integer;
+  begin
+    var1 := test_f.id;
+    var3 := test_f.id + 1;
+    return var3;
+  end;
+begin
+  var1 := test_f(23);
+  raise info '%',var1;
+end;
+/
+INFO:  24
+--error
+DECLARE
+  x  NUMBER := 5;
+  function test_f(id integer) return integer;
+  function test_f(id integer) return integer;
+  function test_f(id integer) return integer is
+  begin
+    return 1;
+  end;
+BEGIN
+  x := 24;
+END;
+/
+ERROR:  duplicate declaration at or near ";"
+LINE 4:   function test_f(id integer) return integer;
+                                                    ^
+QUERY:  DECLARE
+  x  NUMBER := 5;
+  function test_f(id integer) return integer;
+  function test_f(id integer) return integer;
+  function test_f(id integer) return integer is
+  begin
+    return 1;
+  end;
+BEGIN
+  x := 24;
+END
+--ok
+DECLARE
+  x  NUMBER := 5;
+  function test_f(id integer) return integer;
+  function test_f(id integer) return integer is
+  begin
+    return 1;
+  end;
+BEGIN
+  x := 24;
+END;
+/
+---raise info var1=23 var1=24
+declare
+  var1 integer := 1;
+  function test_f(id integer) return integer IS
+    var2 integer;
+    function test_f1(id integer) return integer is
+    begin
+      raise info 'var1=%',var1;
+      var1 := 24;
+      return id;
+    end;
+  begin
+    var1 := 23;
+    var2 := test_f1(23);
+    raise info 'var1 = %', var1;
+    return var2;
+  end;
+begin
+  var1 := test_f(23);
+end;
+/
+INFO:  var1=23
+INFO:  var1 = 24
+--oracle raise error,but we success
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer is
+  begin
+    return id;
+  end;
+  var2 integer;
+begin
+  var2 := test_f(var1,'ok');
+end;
+/
+--ok
+declare
+  function test_f(id integer) return integer;
+  var1 integer;
+  function test_f(id integer) return integer is
+  begin
+    var1 := 23;
+    return var1;
+  end;
+begin
+  var1 := test_f(23);
+end;
+/
+--oracle raiser error,but we sucess
+create or replace function test_f(id integer) return integer as
+  function test_f(id integer) return integer is
+  begin
+    return 23;
+  end;
+  var1 integer;
+begin
+  var1 := 23;
+  return 23;
+end;
+/
+--ok
+SELECT test_f(23) FROM dual;
+ test_f 
+--------
+     23
+(1 row)
+
+--drop function
+DROP FUNCTION test_f(integer);
+--var1 = 23:23
+declare
+  var1 integer;
+  function test_f(id integer) return integer is
+  begin
+    id := 23;
+	var1 := id;
+    return id;
+  end;
+begin
+   var1 := 1;
+   raise info 'var1 = %:%', test_f(var1),var1;
+end;
+/
+INFO:  var1 = 23:23
+--raise error
+declare
+  var1 integer;
+  var2 integer;
+  function test_f(id out integer default 23) return integer is
+  begin
+    raise info 'id = %',id;
+    id := 25;
+    return id;
+  end;
+begin
+   var2 := test_f(var1);
+end;
+/
+ERROR:  OUT and IN OUT formal parameters may not have default expressions at or near ")"
+LINE 4:   function test_f(id out integer default 23) return integer ...
+                                                   ^
+QUERY:  declare
+  var1 integer;
+  var2 integer;
+  function test_f(id out integer default 23) return integer is
+  begin
+    raise info 'id = %',id;
+    id := 25;
+    return id;
+  end;
+begin
+   var2 := test_f(var1);
+end
+--raise error
+declare
+  var1 integer;
+  var2 integer;
+  function test_f(id in out integer default 23) return integer is
+  begin
+    raise info 'id = %',id;
+    id := 25;
+    return id;
+  end;
+begin
+   var2 := test_f(var1);
+end;
+/
+ERROR:  OUT and IN OUT formal parameters may not have default expressions at or near ")"
+LINE 4:   function test_f(id in out integer default 23) return integ...
+                                                      ^
+QUERY:  declare
+  var1 integer;
+  var2 integer;
+  function test_f(id in out integer default 23) return integer is
+  begin
+    raise info 'id = %',id;
+    id := 25;
+    return id;
+  end;
+begin
+   var2 := test_f(var1);
+end
+--ok
+declare
+  var1 integer;
+  var2 integer;
+  function test_f(id in integer default 23) return integer is
+  begin
+    raise info 'id = %',id;
+    return id;
+  end;
+begin
+   var2 := test_f(var1);
+end;
+/
+INFO:  id = <NULL>
+--error
+declare
+  var1 integer;
+  var2 integer;
+  function test_f(id in integer default 23, id2 in out integer default 25) return integer is
+  begin
+    dbms_output.put_line('id = ' || id);
+    return id;
+  end;
+begin
+   var2 := test_f(var1);
+end;
+/
+ERROR:  OUT and IN OUT formal parameters may not have default expressions at or near ")"
+LINE 4: ... integer default 23, id2 in out integer default 25) return i...
+                                                             ^
+QUERY:  declare
+  var1 integer;
+  var2 integer;
+  function test_f(id in integer default 23, id2 in out integer default 25) return integer is
+  begin
+    dbms_output.put_line('id = ' || id);
+    return id;
+  end;
+begin
+   var2 := test_f(var1);
+end
+----ok default value can be discontinuous
+declare
+  var1 integer;
+  function test_f(id integer default 2,id1 integer,id2 integer default 23) return integer
+  is
+  begin
+     return id + id1 + id2;
+  end;
+begin
+  var1 := test_f(23,25,26);
+end;
+/
+--ok
+declare
+  var1 integer;
+  function test_f(id integer default 2,id1 integer,id2 integer default 23) return integer
+  is
+  begin
+     return id + id1 + id2;
+  end;
+begin
+  var1 := test_f(id1=>2);
+  raise info 'var1=%', var1;
+end;
+/
+INFO:  var1=27
+--ok
+declare
+  var1 integer;
+  var2 integer;
+  function test_f(id integer default 23,id2 out integer) return integer is
+  begin
+    id2 := id;
+    --return id;
+  end;
+begin
+  var1 := test_f(23,var2);
+  raise info 'var1=%', var1;
+end;
+/
+INFO:  var1=23
+--ok
+declare
+  var1 integer;
+  function test_f(id out nocopy integer) return integer is
+  begin
+   id := 23;
+  end;
+begin
+  var1 := test_f(var1);
+end;
+/
+--error
+declare
+  var1 integer;
+  function test_f(id in nocopy integer) return integer is
+  begin
+   return 23;
+  end;
+begin
+  var1 := test_f(var1);
+end;
+/
+ERROR:  only out mode argument allow to have nocopy proper at or near ")"
+LINE 3:   function test_f(id in nocopy integer) return integer is
+                                              ^
+QUERY:  declare
+  var1 integer;
+  function test_f(id in nocopy integer) return integer is
+  begin
+   return 23;
+  end;
+begin
+  var1 := test_f(var1);
+end
+--ok
+declare
+  var1 integer;
+  function test_f(id in out nocopy integer) return integer is
+  begin
+   id := 23;
+  end;
+begin
+  var1 := test_f(var1);
+end;
+/
+--error
+declare
+  var1 integer;
+  function test_f(id in nocopy integer) return integer is
+  begin
+   return 23;
+  end;
+begin
+  var1 := test_f(var1);
+end;
+/
+ERROR:  only out mode argument allow to have nocopy proper at or near ")"
+LINE 3:   function test_f(id in nocopy integer) return integer is
+                                              ^
+QUERY:  declare
+  var1 integer;
+  function test_f(id in nocopy integer) return integer is
+  begin
+   return 23;
+  end;
+begin
+  var1 := test_f(var1);
+end
+--ok
+declare
+  var1 integer;
+  function test_f return integer is
+  begin
+    return 23;
+  end;
+begin
+  var1 := test_f();
+end;
+/
+--dynamic include subproc function ok var1=25
+declare
+  var1 integer;
+  function test_f(id integer) return integer IS
+    var2 integer;
+  begin
+    execute  'declare
+        var1 integer;
+		function test_f(id integer) return integer is
+		begin
+		  return 24;
+		end;
+       begin
+          var1 := test_f(23);
+	end;';
+      return 25;
+   end;
+begin
+   var1 := test_f(23);
+   raise info 'var1 = %', var1;
+end;
+/
+INFO:  var1 = 25
+--ok
+declare
+  var1 integer;
+  function test_f(id integer) return integer IS
+  declare
+    var2 integer;
+  begin
+    execute  'declare
+        var1 integer;
+	function test_f(id integer) return integer is
+	begin
+	  return 24;
+	end;
+       begin
+          var1 := test_f(23);
+	end;';
+      return 25;
+   end;
+begin
+   var1 := test_f(23);
+   raise info 'var1 = %', var1;
+end;
+/
+INFO:  var1 = 25
+--ok
+declare
+  var1 integer;
+  function test_f(id integer) return integer IS
+    var2 integer;
+  begin
+    execute  'declare
+        var1 integer;
+	function test_f1(id integer) return integer is
+	begin
+	  return 24;
+	end;
+       begin
+          var1 := test_f1(23);
+	end;';
+      return 25;
+   end;
+begin
+   var1 := test_f(23);
+   raise info 'var1 = %',var1;
+end;
+/
+INFO:  var1 = 25
+--ok
+declare
+  var1 integer;
+  function test_f(id integer) return integer IS
+    var1 integer;
+  begin
+    raise info 'function test_f';
+    return var1;
+  end;
+  procedure test_f(id integer) is
+  begin
+     raise info 'procedure test_f';
+  end;
+begin
+  var1 := test_f(23);
+  call test_f(23);
+end;
+/
+INFO:  function test_f
+INFO:  procedure test_f
+--ok
+declare
+  var1 integer;
+  procedure test_f is
+  begin
+    raise info 'invoke test_f';
+  end;
+begin
+  call test_f();
+end;
+/
+INFO:  invoke test_f
+--test pipelined failed
+declare
+  var1 integer;
+  function test_f(id integer) return integer pipelined pipelined is
+  begin
+    return 23;
+  end;
+begin
+  var1 := test_f(23);
+end;
+/
+ERROR:  aggregate/table functions are not allowed in PLi/SQL scope
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 2
+--failed
+declare
+  var1 integer;
+  function test_f(id integer) return integer pipelined pipelined;
+  function test_f(id integer) return integer pipelined pipelined is
+  begin
+    return 23;
+  end;
+begin
+  var1 := test_f(23);
+end;
+/
+ERROR:  aggregate/table functions are not allowed in PLi/SQL scope
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 2
+--test access by
+--failed
+declare
+  var1 integer;
+  procedure test_f(id integer) accessible by ( package test_pkg,function test_func);
+  procedure test_f(id integer) is
+  begin
+    raise info '%',id;
+  end;
+begin
+  call test_f(var1);
+end;
+/
+ERROR:  Only schema-level programs allow ACCESSIBLE BY at or near ")"
+LINE 3: ...teger) accessible by ( package test_pkg,function test_func);
+                                                                     ^
+QUERY:  declare
+  var1 integer;
+  procedure test_f(id integer) accessible by ( package test_pkg,function test_func);
+  procedure test_f(id integer) is
+  begin
+    raise info '%',id;
+  end;
+begin
+  call test_f(var1);
+end
+--test invoker_rights_clause failed
+declare
+  var1 integer;
+  procedure test_p(id integer) authid definer;
+  procedure test_p(id integer) authid define is
+  begin
+    raise info '%', id;
+  end;
+begin
+  call test_p(var1);
+end;
+/
+ERROR:  Only schema-level programs allow AUTHID at or near "definer"
+LINE 3:   procedure test_p(id integer) authid definer;
+                                              ^
+QUERY:  declare
+  var1 integer;
+  procedure test_p(id integer) authid definer;
+  procedure test_p(id integer) authid define is
+  begin
+    raise info '%', id;
+  end;
+begin
+  call test_p(var1);
+end
+--oracle failed, but we sucess
+declare
+  var1 integer;
+  function test_f(id integer) return integer;
+  var2 integer;
+  procedure test_p(id integer) is
+  begin
+    raise info 'id = %',id;
+    var2 := test_f(23);
+  end;
+  var3 integer;
+  function test_f(id integer) return integer is
+  begin
+    raise info 'welcome to beijing:%', var3;
+    return id;
+  end;
+begin
+  var3 := 25;
+  call test_p(24);
+end;
+/
+INFO:  id = 24
+INFO:  welcome to beijing:25
+--system func/proc vs subproc func/proc
+--ok
+create or replace function test_proc1(id integer) return integer as
+  var1 integer;
+begin
+  var1 := 23;
+  return var1;
+end;
+/
+--raise error
+declare
+  var1 integer;
+  procedure test_proc1(id integer) IS
+    var1 integer;
+  begin
+    raise info 'xiexie';
+  end;
+begin
+  var1 := test_proc1(23);
+end;
+/
+ERROR:  'test_proc1' is a procedure
+LINE 1: var1 := test_proc1(23)
+                ^
+HINT:  To call a procedure, use CALL.
+QUERY:  var1 := test_proc1(23)
+CONTEXT:  PL/iSQL function inline_code_block line 9 at assignment
+--surcess
+declare
+  var1 integer;
+begin
+  var1 := test_proc1(23);
+end;
+/
+DROP function test_proc1(integer);
+--ok
+create or replace procedure test_func1(id integer) as
+  var1 integer;
+begin
+  raise info 'id = %', id;
+end;
+/
+--error
+declare
+  var1 integer;
+  function test_func1(id integer) return integer is
+  begin
+    return 23;
+  end;
+begin
+   call test_func1(var1);
+end;
+/
+ERROR:  'test_func1' is not a procedure
+LINE 1: call test_func1(var1)
+             ^
+HINT:  To call a function, use SELECT.
+QUERY:  call test_func1(var1)
+CONTEXT:  PL/iSQL function inline_code_block line 8 at CALL
+--sucess
+declare
+  var1 integer;
+begin
+   call test_func1(var1);
+end;
+/
+INFO:  id = <NULL>
+--raise error function keyword not as datum name
+declare
+	function integer;
+begin
+	function := 1;
+end;
+/
+ERROR:  syntax error at or near ";"
+LINE 2:  function integer;
+                         ^
+QUERY:  declare
+	function integer;
+begin
+	function := 1;
+end
+--raise error
+declare
+	procedure integer;
+begin
+	procedure := 1;
+end;
+/
+ERROR:  syntax error at or near "procedure"
+LINE 4:  procedure := 1;
+         ^
+QUERY:  declare
+	procedure integer;
+begin
+	procedure := 1;
+end
+--ok
+DECLARE
+	package integer;
+BEGIN
+	package := 1;
+end;
+/
+--ok
+declare
+	trigger integer;
+BEGIN
+	trigger := 1;
+end;
+/
+--oracle failed,but we sucess
+DECLARE
+	type integer;
+begin
+	type := 1;
+end;
+/
+---
+--ok and print two test_f
+declare
+  var1 integer;
+  function test_f(id integer) return integer DETERMINISTIC is
+  begin
+    raise info 'test_f';
+    return id;
+  end;
+begin
+  var1 := test_f(23) + test_f(23);
+end;
+/
+INFO:  test_f
+INFO:  test_f
+--oracle failed,but we success
+declare
+  var1 integer;
+  var2 integer;
+  function test_f(id integer) return integer DETERMINISTIC is
+  begin
+    raise info 'test_f';
+    return id;
+  end;
+begin
+  select test_f(23),test_f(23) into var1,var2 from dual;
+end;
+/
+INFO:  test_f
+INFO:  test_f
+--raise error
+declare
+  name varchar(23);
+  id integer;
+  function test(name integer) return integer
+  as
+  begin
+       raise info '%',name;
+       return 23;
+   end;
+  function test(name integer) return varchar as
+  begin
+     raise info '%',name;
+	 return 'beijing';
+  end;
+begin
+     name := test(23);
+     id := test(23);
+end;
+/
+ERROR:  2 functions or procedures match this call
+LINE 1: name := test(23)
+                ^
+QUERY:  name := test(23)
+CONTEXT:  PL/iSQL function inline_code_block line 16 at assignment
+--ok
+declare
+  name varchar(23);
+  id integer;
+  function test(name integer) return integer
+  as
+  begin
+       raise info '%',name;
+       return 23;
+   end;
+  function test(name integer) return varchar as
+  begin
+     raise info '%',name;
+	 return 'beijing';
+  end;
+begin
+     raise info 'xiexie';
+end;
+/
+INFO:  xiexie
+--ok
+declare
+  name varchar(23);
+  id integer;
+  function test(name integer) return integer;
+  function test(name integer) return varchar;
+  function test(name integer) return integer
+  as
+  begin
+       raise info '%',name;
+       return 23;
+   end;
+  function test(name integer) return varchar as
+  begin
+     raise info '%',name;
+	 return 'beijing';
+  end;
+begin
+     raise info 'xiexie';
+end;
+/
+INFO:  xiexie
+--error
+declare
+  name varchar(23);
+  id integer;
+  function test(name integer) return integer;
+  function test(name integer) return integer;
+  function test(name integer) return integer
+  as
+  begin
+       raise info '%',name;
+       return 23;
+   end;
+  function test(name integer) return integer as
+  begin
+     raise info '%',name;
+	 return '23';
+  end;
+begin
+     raise info 'xiexie';
+end;
+/
+ERROR:  duplicate declaration at or near ";"
+LINE 5:   function test(name integer) return integer;
+                                                    ^
+QUERY:  declare
+  name varchar(23);
+  id integer;
+  function test(name integer) return integer;
+  function test(name integer) return integer;
+  function test(name integer) return integer
+  as
+  begin
+       raise info '%',name;
+       return 23;
+   end;
+  function test(name integer) return integer as
+  begin
+     raise info '%',name;
+	 return '23';
+  end;
+begin
+     raise info 'xiexie';
+end
+--test in trigger
+create table test_trig_subproc(id integer,name varchar2(256));
+--statement trigger
+CREATE OR REPLACE FUNCTION after_insert_trig() returns TRIGGER AS $$
+declare
+   var1 integer;
+   function test_f(id integer) return integer is
+   begin
+      raise info 'var1 :%',var1;
+      return id + var1;
+    end;
+begin
+   var1 := 45;
+   raise info '%', test_f(23);
+   RETURN NULL;
+end; $$ language plisql;
+/
+--ok
+create or replace trigger after_insert_trig1 after insert on test_trig_subproc
+EXECUTE PROCEDURE after_insert_trig();
+--raise info var1:45 and 68
+insert into test_trig_subproc values(1,'xiexie');
+INFO:  var1 :45
+INFO:  68
+drop trigger after_insert_trig1 ON test_trig_subproc;
+DROP FUNCTION after_insert_trig();
+---dml trigger
+CREATE OR REPLACE FUNCTION after_insert_trig() returns TRIGGER AS $$
+declare
+   var1 integer;
+   function test_f(id integer) return integer is
+   begin
+      raise info 'new name :%',new.name;
+      return id + new.id;
+    end;
+begin
+   var1 := 45;
+   raise info 'old name :%',old.name;
+   raise info '%', test_f(23);
+   RETURN new;
+end; $$ language plisql;
+/
+create or replace trigger after_insert_trig1 after insert on test_trig_subproc
+for each row EXECUTE PROCEDURE after_insert_trig();
+--info old name : new name : xiexie 24
+insert into test_trig_subproc values(1,'xiexie');
+INFO:  old name :<NULL>
+INFO:  new name :xiexie
+INFO:  24
+drop trigger after_insert_trig1 ON test_trig_subproc;
+DROP FUNCTION after_insert_trig();
+drop table test_trig_subproc;
+---event trigger
+create function test_event_trigger() returns event_trigger as $$
+DECLARE
+   var1 integer;
+   function test_f(id integer) return integer is
+    begin
+      --global var
+      raise info 'test_event_trigger: % %', tg_event, tg_tag;
+      return var1 + id;
+    end;
+BEGIN
+    RAISE NOTICE 'test_event_trigger: % %', tg_event, tg_tag;
+	var1 := 24;
+    var1 := test_f(var1);
+END
+$$ language plisql;
+/
+create event trigger regress_event_trigger on ddl_command_start
+   execute procedure test_event_trigger();
+create table test_subproc_system(id integer);
+NOTICE:  test_event_trigger: ddl_command_start CREATE TABLE
+INFO:  test_event_trigger: ddl_command_start CREATE TABLE
+DROP event TRIGGER regress_event_trigger;
+DROP FUNCTION test_event_trigger();
+drop table test_subproc_system;
+--requite documents example
+--ok and print test_subprocproc and test_linefunc
+declare
+  mds integer;
+  function test_subprocfunc(id integer) return integer;
+  procedure test_subprocproc(id integer);
+  procedure test_subprocproc(id integer) IS
+    var1 integer;
+  begin
+    raise info 'test_subprocproc';
+  end;
+  function test_subprocfunc(id integer) return integer IS
+    var1 integer;
+   begin
+     raise info 'test_subprocfunc';
+     return id;
+   end;
+begin
+  call test_subprocproc(23);
+  mds := test_subprocfunc(23);
+end;
+/
+INFO:  test_subprocproc
+INFO:  test_subprocfunc
+--ok
+create or replace function test_subprocfunc(id integer) return integer
+as
+  mds integer;
+  function test_subprocfunc(id integer) return integer;
+  procedure test_subprocproc(id integer);
+  procedure test_subprocproc(id integer) IS
+    var1 integer;
+  begin
+    raise info 'test_subprocproc';
+  end;
+  function test_subprocfunc(id integer) return integer IS
+    var1 integer;
+   begin
+     raise info 'test_subprocfunc';
+     return id;
+   end;
+begin
+  call test_subprocproc(23);
+  mds := test_subprocfunc(23);
+  return mds;
+end;
+/
+--ok
+declare
+ id integer;
+begin
+ id := test_subprocfunc(23);
+end;
+/
+INFO:  test_subprocproc
+INFO:  test_subprocfunc
+--ok
+create or replace procedure test_subprocproc(id integer)
+AS
+  mds integer;
+  function test_subprocfunc(id integer) return integer;
+  procedure test_subprocproc(id integer);
+  procedure test_subprocproc(id integer) Is
+    var1 integer;
+  begin
+     raise info 'test_subprocproc';
+  end;
+  function test_subprocfunc(id integer) return integer IS
+    var1 integer;
+   begin
+     raise info 'test_subprocfunc';
+     return id;
+   end;
+begin
+  call test_subprocproc(23);
+  mds := test_subprocfunc(23);
+end;
+/
+--ok
+declare
+  id integer;
+begin
+   call test_subprocproc(23);
+end;
+/
+INFO:  test_subprocproc
+INFO:  test_subprocfunc
+DROP PROCEDURE test_subprocproc(integer);
+DROP FUNCTION test_subprocfunc(integer);
+--print 45 55 10000
+declare
+  var1 integer;
+  function square(original number) return number;
+  function square(original number) return number
+  AS
+       original_squared number;
+       var1 integer;
+       function test(test number) return number
+       AS
+          var1 integer;
+		  var2 number;
+       begin
+           var1 := 55;
+	       raise info '%',var1;
+           var2 := var1 + 10;
+	       return var2;
+       end;
+  begin
+       var1 := 45;
+       original_squared := original * original;
+       raise info '%', var1;
+       var1 := test(23);
+       return original_squared;
+   end;
+begin
+    var1 := 23;
+    raise info '%', square(100);
+end;
+/
+INFO:  45
+INFO:  55
+INFO:  10000
+create or replace procedure test_subprocproc(id integer) AS
+  var1 integer;
+  function square(original integer) return integer;
+  function square(original integer) return integer
+  AS
+       original_squared integer;
+       var1 integer;
+       function test(test integer) return integer
+       AS
+          var1 integer;
+	  var2 integer;
+       begin
+           var1 := 55;
+	   raise info '%', var1;
+           var2 := var1 + 10;
+	   return var2;
+       end;
+  begin
+       var1 := 45;
+       original_squared := original * original;
+       raise info '%', var1;
+       var1 := test(23);
+       return original_squared;
+   end;
+begin
+    var1 := 23;
+    var1 := square(100);
+    raise info '%', var1;
+end;
+/
+--print 45 55 10000
+begin
+  call test_subprocproc(23);
+end;
+/
+INFO:  45
+INFO:  55
+INFO:  10000
+DROP PROCEDURE test_subprocproc(integer);
+create or replace function test_nested_f(id integer) return integer AS
+  var1 integer;
+  function test_f(id integer) return integer is
+  begin
+    raise info 'inner test_f';
+    return 1;
+  end;
+begin
+  var1 := test_f(23);
+  return var1;
+end;
+/
+--ok
+select test_nested_f(23) from dual;
+INFO:  inner test_f
+ test_nested_f 
+---------------
+             1
+(1 row)
+
+--failed
+select test_f(23) from dual;
+ERROR:  function test_f(integer) does not exist
+LINE 1: select test_f(23) from dual;
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DROP function test_nested_f(id integer);
+CREATE TABLE r1(id integer,name varchar2(23));
+--print var1.id=2 var1.name=welcome
+declare
+  var1 r1%rowtype;
+  var3 integer;
+  function test_f(id integer) return integer IS
+    var2 r1;
+  begin
+    var2.id := 1;
+    var2.name := 'welcome';
+    var1.id := var2.id;
+    var1.name := var2.name;
+    return 1;
+  end;
+begin
+  var3 := test_f(23);
+  var1.id := var1.id + 1;
+  raise info 'var1.id= % var1.name = %', var1.id, var1.name;
+end;
+/
+INFO:  var1.id= 2 var1.name = welcome
+--print var1=23 var1 = 24
+declare
+  var1 integer := 1;
+  function test_f(id integer) return integer IS
+    var2 integer;
+    function test_f1(id integer) return integer is
+    begin
+      raise info 'var1=%', var1;
+      var1 := 24;
+      return id;
+    end;
+  begin
+    var1 := 23;
+    var2 := test_f1(23);
+    raise info 'var1=%', var1;
+    return var2;
+  end;
+begin
+  var1 := test_f(23);
+end;
+/
+INFO:  var1=23
+INFO:  var1=24
+--ok
+declare
+  function test_f(id integer) return integer;
+  var1 integer;
+  function test_f(id integer) return integer is
+  begin
+    var1 := 23;
+    return var1;
+  end;
+begin
+  var1 := test_f(23);
+end;
+/
+--error
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer IS
+    var2 integer;
+  begin
+    var2 := 23;
+    return 23;
+  end;
+begin
+  var1 := test_f.id;
+  var1 := test_f.var2;
+  var1 := test_f(23,'xiexie');
+end;
+/
+ERROR:  "test_f"."id": invalid identifier
+LINE 1: var1 := test_f.id
+                ^
+QUERY:  var1 := test_f.id
+CONTEXT:  PL/iSQL function inline_code_block line 10 at assignment
+--raise error
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer IS
+    var2 integer;
+  begin
+    var2 := 23;
+    return 23;
+  end;
+begin
+  var1 := test_f.var2;
+  var1 := test_f(23,'xiexie');
+end;
+/
+ERROR:  "test_f"."var2": invalid identifier
+LINE 1: var1 := test_f.var2
+                ^
+QUERY:  var1 := test_f.var2
+CONTEXT:  PL/iSQL function inline_code_block line 10 at assignment
+--raise error
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer IS
+    var2 integer;
+  begin
+    var2 := 23;
+    return 23;
+  end;
+  function test_f1(id integer,name varchar2) return integer IS
+    var3 integer;
+  begin
+     var3 := test_f.var2;
+     return 24;
+   end;
+begin
+  var1 := test_f1(23,'xiexie');
+end;
+/
+ERROR:  "test_f"."var2": invalid identifier
+LINE 1: var3 := test_f.var2
+                ^
+QUERY:  var3 := test_f.var2
+CONTEXT:  PL/iSQL function test_f1 line 12 at assignment
+PL/iSQL function inline_code_block line 16 at assignment
+--print 23 23
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer,name varchar) return integer
+  as
+  begin
+       raise info '%', id;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+     name2 varchar(256);
+  begin
+     raise info '%', name;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(23);
+     id := test(23,name);
+ end;
+ /
+INFO:  23
+INFO:  23
+--print 23 and xiexie
+declare
+  name varchar(23);
+  id integer;
+  function test(name varchar) return integer
+  as
+  begin
+       raise info '%', name;
+       return id;
+   end;
+  function test(name integer) return integer as
+  begin
+         raise info '%', name;
+	  return id;
+  end;
+begin
+     name := 'xiexie';
+     id := test(23);
+     id := test(name);
+end;
+/
+INFO:  23
+INFO:  xiexie
+--ok print NULL and 23
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer) return integer;
+  function test(name integer) return varchar;
+  function test(id integer) return integer
+  as
+  begin
+       raise info '%',id;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+     name2 varchar(256);
+  begin
+     raise info '%',id;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(name=>23);
+     id := test(id=>23);
+end;
+/
+INFO:  <NULL>
+INFO:  23
+--raise error
+declare
+  name varchar(23);
+  id integer;
+  function test(id integer) return integer;
+  function test(name integer) return varchar;
+  function test(id integer) return integer
+  as
+  begin
+       raise info '%',id;
+       return id;
+   end;
+  function test(name integer) return varchar AS
+     name2 varchar(256);
+  begin
+     raise info '%',id;
+	 name2 := 'xiexie';
+	 return name2;
+  end;
+begin
+     name := test(23);
+     id := test(23);
+end;
+/
+ERROR:  2 functions or procedures match this call
+LINE 1: name := test(23)
+                ^
+QUERY:  name := test(23)
+CONTEXT:  PL/iSQL function inline_code_block line 20 at assignment
+--ok print invoke test_f(integer,varchar2)
+-- invoke test_f(varchar2,integer)
+declare
+  var1 integer;
+  function test_f(id integer,name varchar2) return integer;
+  function test_f(name varchar2,id integer) return integer;
+  function test_f(name varchar2, id integer) return integer is
+  begin
+    raise info 'invoke test_f(varchar2,integer)';
+    return 23;
+  end;
+  function test_f(id integer,name varchar2) return integer is
+  begin
+    raise info 'invoke test_f(integer,varchar2)';
+    return 24;
+  end;
+begin
+  var1 := test_f(23,'xiexie');
+  var1 := test_f('xiexie', 23);
+end;
+/
+INFO:  invoke test_f(integer,varchar2)
+INFO:  invoke test_f(varchar2,integer)
+--ok
+declare
+   function test_f(id anyelement) return anyelement is
+   begin
+     return id + 1;
+   end;
+ begin
+    raise info '%', test_f(23);
+    raise info '%', test_f(24.1);
+ end;
+ /
+INFO:  24
+INFO:  25.1
+--oracle raise error,but we sucess
+CREATE TABLE mds(id integer,name varchar2(256));
+ERROR:  relation "mds" already exists
+DECLARE
+  FUNCTION test_f(id integer) RETURN integer;
+  FUNCTION test_f1(id integer) RETURN integer IS
+    var1 integer;
+  BEGIN
+    var1 := test_f(23);
+	RETURN var1;
+  end;
+  var2 mds%rowtype;
+  FUNCTION test_f(id integer) RETURN integer IS
+  BEGIN
+    var2.id := var2.id + 1;
+	var2.name := var2.name || 'ok';
+	RETURN var2.id;
+  end;
+ BEGIN
+   var2.id := 1;
+   var2.name := 'I am ';
+   var2.id := test_f1(23);
+   raise info '%', var2;
+ end;
+ /
+INFO:  (2,"I am ok")
+ DROP TABLE mds;
+ --test found variable in subproc
+create table test_found(id integer,name varchar2(256));
+--print out function not found
+--subproc not found
+declare
+  var1 integer;
+  function test_f(id integer) return integer is
+  begin
+    if found then
+      raise info 'subproc found';
+    else
+      raise info 'subproc not found';
+    end if;
+    return id;
+  end;
+begin
+   update test_found set id = 2;
+   if found then
+     raise info 'out function found';
+     var1 := test_f(23);
+   else
+     raise info 'out function not found';
+     var1 := test_f(23);
+   end if;
+end;
+/
+INFO:  out function not found
+INFO:  subproc not found
+insert into test_found values(1,'one');
+--print out function found
+--subproc found
+declare
+  var1 integer;
+  function test_f(id integer) return integer is
+  begin
+    if found then
+      raise info 'subproc found';
+    else
+      raise info 'subproc not found';
+    end if;
+    return id;
+  end;
+begin
+   update test_found set id = 2;
+   if found then
+     raise info 'out function found';
+     var1 := test_f(23);
+   else
+     raise info 'out function not found';
+     var1 := test_f(23);
+   end if;
+end;
+/
+INFO:  out function found
+INFO:  subproc found
+--subproc change found variable
+--print out function not found
+--subproc found
+--out function found
+declare
+  var1 integer;
+  function test_f(id integer) return integer is
+  begin
+    update test_found set id = 2;
+    if found then
+      raise info 'subproc found';
+    else
+      raise info 'subproc not found';
+    end if;
+    return id;
+  end;
+begin
+   if found then
+     raise info 'out function found';
+     var1 := test_f(23);
+   else
+     raise info 'out function not found';
+     var1 := test_f(23);
+   end if;
+   if found then
+     raise info 'out function found';
+   else
+     raise info 'out function not found';
+   end if;
+ end;
+ /
+INFO:  out function not found
+INFO:  subproc found
+INFO:  out function found
+--ok
+--INFO:  var5=(27,"var3 var1 ")
+--INFO:  var1 = (29,"var3 var1  add1 add2"),
+--info:  var3 = (28,"var3 var1  add1")
+declare
+ var1 test_found%rowtype;
+ var2 integer;
+ var3 test_found%rowtype;
+ FUNCTION test_f(id integer) RETURN integer IS
+    var4 integer;
+	var5 test_found%rowtype;
+ BEGIN
+    var4 := 1;
+	var5.id := var4 + id; --27
+	var5.name := var3.name || var1.name; --'var3 var1 '
+	var3.name := var5.name || ' add1'; --'var3 var1 add1'
+	var3.id := var5.id + var1.id; --27 + 1 = 28
+	var1.name := var3.name || ' add2'; --'var3 var1 add1 add2'
+	var1.id := var3.id + var1.id; --28 + 1 = 29
+	raise info 'var5=%', var5; --print var5 = (27, "var3 var1" )
+	RETURN var1.id + var3.id;
+ end;
+BEGIN
+  var1.id := 1;
+  var1.name := 'var1 ';
+  var3.id := 2;
+  var3.name := 'var3 ';
+  var2 = test_f(26);
+  --print var1 = (29,"var3 var1 add1 add2")
+  -- var3 = (28,"var3 var1 add1")
+  raise info 'var1 = %,var3 = %', var1,var3;
+end;
+/
+INFO:  var5=(27,"var3 var1 ")
+INFO:  var1 = (29,"var3 var1  add1 add2"),var3 = (28,"var3 var1  add1")
+DROP TABLE test_found;
+--test explain
+DECLARE
+  var1 integer;
+  var2 text;
+  FUNCTION test_f(id integer) RETURN integer IS
+  BEGIN
+	RETURN 23;
+  end;
+BEGIN
+  SELECT test_f(23) INTO var1 FROM dual;
+  raise info '%', var1;
+  explain SELECT test_f(23) INTO var2;
+  explain SELECT * into var2 FROM test_f(23);
+  SELECT * INTO var1 FROM test_f(23);
+  raise info '%', var1;
+end;
+/
+INFO:  23
+INFO:  23
+--ok print invoke func test_f
+-- invoke proc test_f
+declare
+  var1 integer;
+  procedure test_f(id integer) is
+  begin
+    raise info 'invoke proc test_f(integer)';
+  end;
+  PROCEDURE test_f(id integer,name varchar2) IS
+  BEGIN
+    raise info 'invoke proc test_f(integer,varchar2)';
+  end;
+  function test_f(id integer) return integer is
+  begin
+    raise info 'invoke func test_f(integer)';
+    return 23;
+  end;
+  function test_f(id integer, name varchar2) return integer is
+  begin
+    raise info 'invoke func test_f(integer,varchar2)';
+    return 23;
+  end;
+begin
+  var1 := test_f(23);
+  call test_f(24);
+  var1 := test_f(23,'xiexie');
+  call test_f(24,'xiexie');
+end;
+/
+INFO:  invoke func test_f(integer)
+INFO:  invoke proc test_f(integer)
+INFO:  invoke func test_f(integer,varchar2)
+INFO:  invoke proc test_f(integer,varchar2)
+--test memory
+create table rec_typ2(id integer,name varchar2(256));
+declare
+  i integer;
+  var2 rec_typ2;
+  function test_subproc(id integer) return rec_typ2
+  is
+  begin
+      var2.name := 'var2.name';
+      var2.id := id;
+      var2.id := 25;
+      var2.name := 'record include record';
+      return var2;
+  end;
+begin
+   for i in 1 .. 10000000 LOOP
+      var2 := test_subproc(23);
+   end loop;
+end;
+/
+DROP TABLE rec_typ2;
+--ok
+create schema test;
+create or replace function test.test_f(id integer) return integer is
+  var1 integer;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  return var1;
+end;
+/
+declare
+  var1 integer;
+begin
+  var1 := test.test_f(23);
+end;
+/
+INFO:  var1 = 2
+--raise error no dbms_output
+declare
+  var1 integer;
+begin
+  var1 := test.test_f(23);
+  dbms_output.put_line('xiexie');
+end;
+/
+ERROR:  syntax error at or near "dbms_output"
+LINE 5:   dbms_output.put_line('xiexie');
+          ^
+QUERY:  declare
+  var1 integer;
+begin
+  var1 := test.test_f(23);
+  dbms_output.put_line('xiexie');
+end
+create or replace function test.test_f(id integer) return integer is
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   procedure test_p2(id integer);
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	return 1;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         raise info 'xiexie';
+       else
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f(id integer) return integer;
+     function test_f(id integer) return integer is
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+	return var1;
+     end;
+  begin
+     var1 := test_f(23);
+  end;
+  return var1;
+end;
+/
+select test.test_f(23) from dual;
+INFO:  var1 = 2
+INFO:  begin in subproc
+ test_f 
+--------
+      1
+(1 row)
+
+create or replace function test.test_f(id integer) return integer is
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p2(id integer);
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	raise info 'invoke test_f1.test_p2';
+	return var3;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         var4 := 1;
+         raise info 'xiexie';
+       else
+         var4 := 5;
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+      procedure test_p2(id integer) is
+      begin
+        var3 := 1;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      var3 := test_f1(var3);
+      var3 := test_p2(var3);
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer is
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+	return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+     var1 := test_f(23);
+  end;
+  return var1;
+end;
+/
+--ok and print
+--var1 = 2
+--begin in subproc
+--subproc level 1 test_f
+--welcome
+--invoke test_f1.test_p2
+select test.test_f(23) from dual;
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  subproc level 1 test_f
+INFO:  welcome
+INFO:  invoke test_f1.test_p2
+ test_f 
+--------
+      4
+(1 row)
+
+create or replace procedure test.test_proc(id integer) is
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p2(id integer);
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	raise info 'invoke test_f1.test_p2';
+	return var3;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         var4 := 1;
+         raise info 'xiexie';
+       else
+         var4 := 5;
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+      procedure test_p2(id integer) is
+      begin
+        var3 := 1;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      var3 := test_f1(var3);
+      var3 := test_p2(var3);
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+     var1 := test_f(23);
+  end;
+end;
+/
+call test.test_proc(23);
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+INFO:  subproc level 1 test_f
+INFO:  welcome
+INFO:  invoke test_f1.test_p2
+create or replace procedure test.test_proc1(id integer) is
+  var1 integer;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+  end;
+end;
+/
+call test.test_proc1(23);
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+--ok
+declare
+   function test_f(id anyarray) return anyarray is
+   begin
+     return id;
+   end;
+ begin
+    raise info '%', test_f(ARRAY['m','n']);
+    raise info '%', test_f(ARRAY[2,3]);
+    raise info '%', test_f(ARRAY[14.1,14.2]);
+end;
+/
+INFO:  {m,n}
+INFO:  {2,3}
+INFO:  {14.1,14.2}
+--raise error
+declare
+mds varchar2(100);
+  function infunc(last_name varchar2,first_name varchar2) return varchar2 parallel_enable is
+  begin
+    return last_name||first_name;
+  end;
+begin
+  mds:=infunc('a','b');
+  raise info '%',mds;
+end;
+/
+ERROR:  illegal option for subprogram "infunc"
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 2
+--raise error
+create or replace function test_f(id integer) return varchar2  PARALLEL_ENABLE is
+ mds varchar2(100);
+  function infunc(last_name varchar2,first_name varchar2) RETURN
+		varchar2 PARALLEL_ENABLE
+    is
+  begin
+    return last_name||first_name;
+  end;
+begin
+  mds:=infunc('a','b');
+  return 23;
+  raise info '%',mds;
+end;
+/
+ERROR:  illegal option for subprogram "infunc"
+CONTEXT:  compilation of PL/iSQL function "test_f" near line 1
+--raise error
+create or replace function test_f(id integer) return integer pipelined is
+  mds integer;
+  function infunc return  integer pipelined is
+  begin
+     RETURN 1;
+  end;
+begin
+  mds:=infunc();
+  RETURN 1;
+end;
+/
+ERROR:  aggregate/table functions are not allowed in PLi/SQL scope
+CONTEXT:  compilation of PL/iSQL function "test_f" near line 1
+--ok
+declare
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p2(id integer);
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	raise info 'invoke test_f1.test_p2';
+	return var3;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         var4 := 1;
+         raise info 'xiexie';
+       else
+         var4 := 5;
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+      procedure test_p2(id integer) is
+      begin
+        var3 := 1;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      var3 := test_f1(var3);
+      var3 := test_p2(var3);
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+     var1 := test_f(23);
+  end;
+end;
+/
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+INFO:  subproc level 1 test_f
+INFO:  welcome
+INFO:  invoke test_f1.test_p2
+--ok and print
+BEGIN
+   raise info 'welccome to begin';
+declare
+  var1 integer;
+  function test_f(id integer) return integer;
+  procedure test_p2(id integer);
+  procedure test_p(id integer) is
+    var2 integer;
+  begin
+     var2 := 1;
+     raise info 'subproc level 1 test_p';
+   end;
+   function test_f(id integer) return integer as
+     var3 integer;
+     function test_f1(id integer) return integer;
+     procedure test_p2(id integer);
+     function test_p2(id integer) return integer as
+       var3 integer;
+     begin
+        var3 := 4;
+	raise info 'invoke test_f1.test_p2';
+	return var3;
+     end;
+     function test_f1(id integer) return integer is
+       var4 integer;
+     begin
+       if var4 = 23 then
+         var4 := 1;
+         raise info 'xiexie';
+       else
+         var4 := 5;
+         raise info 'welcome';
+       end if;
+       return var4;
+      end;
+      procedure test_p2(id integer) is
+      begin
+        var3 := 1;
+      end;
+   begin
+      var3 := 1;
+      raise info 'subproc level 1 test_f';
+      var3 := test_f1(var3);
+      var3 := test_p2(var3);
+      return var3;
+   end;
+   procedure test_p2(id integer) is
+     var2 integer;
+   begin
+      var2 := 23;
+      raise info 'subproc level 1 test_p2';
+   end;
+begin
+  var1 := 2;
+  raise info 'var1 = %', var1;
+  declare
+     function test_f1(id integer) return integer;
+     function test_f1(id integer) return integer IS
+        i integer;
+     begin
+        var1 := 1;
+        raise info 'begin in subproc';
+		FOR i IN 0..9 LOOP
+           raise info '%',i;
+			IF i % 2 = 0 THEN
+				raise info 'even number';
+			ELSE
+				raise info 'odd number';
+			END IF;
+		END LOOP;
+		return var1;
+     end;
+  begin
+     var1 := test_f1(var1);
+     var1 := test_f(23);
+  end;
+end;
+end;
+/
+INFO:  welccome to begin
+INFO:  var1 = 2
+INFO:  begin in subproc
+INFO:  0
+INFO:  even number
+INFO:  1
+INFO:  odd number
+INFO:  2
+INFO:  even number
+INFO:  3
+INFO:  odd number
+INFO:  4
+INFO:  even number
+INFO:  5
+INFO:  odd number
+INFO:  6
+INFO:  even number
+INFO:  7
+INFO:  odd number
+INFO:  8
+INFO:  even number
+INFO:  9
+INFO:  odd number
+INFO:  subproc level 1 test_f
+INFO:  welcome
+INFO:  invoke test_f1.test_p2
+create or replace function func_tinc001111019(fc integer) return integer is
+	mds integer;
+	function test_inlinefunc(id integer) return NUMBER result_cache is
+	    rtn number;
+	begin
+	    rtn := id *10;
+	    return rtn;
+	end;
+begin
+	mds:=test_inlinefunc(1);
+	return mds;
+end;
+/
+SELECT func_tinc001111019(23) FROM dual;
+ func_tinc001111019 
+--------------------
+                 10
+(1 row)
+
+DROP FUNCTION func_tinc001111019;
+--clean data
+DROP PROCEDURE test.test_proc;
+DROP PROCEDURE test.test_proc1;
+DROP FUNCTION test.test_f;
+DROP SCHEMA test;
+DROP TABLE r1;

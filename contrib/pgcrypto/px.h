@@ -34,7 +34,7 @@
 
 #include <sys/param.h>
 
-/* keep debug messages? */
+
 #define PX_DEBUG
 
 /* max salt returned */

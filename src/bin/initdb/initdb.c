@@ -74,6 +74,9 @@
 #include "getopt_long.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+/* BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
 
 
 /* Ideally this would be in a .h file, but it hardly seems worth the trouble */
@@ -162,6 +165,9 @@ static char *features_file;
 static char *system_constraints_file;
 static char *system_functions_file;
 static char *system_views_file;
+/* BEGIN - SQL PARSER */
+static char *ora_sys_schema_file;
+/* END - SQL PARSER */
 static bool success = false;
 static bool made_new_pgdata = false;
 static bool found_existing_pgdata = false;
@@ -173,12 +179,23 @@ static bool output_failed = false;
 static int	output_errno = 0;
 static char *pgdata_native;
 
+/* BEGIN - case sensitive indentify */
+static char  *switchmode = "interchange";
+static int   caseswitchmode = INTERCHANGE;
+/* END - case sensitive indentify */
 /* defaults */
 static int	n_connections = 10;
 static int	n_buffers = 50;
 static const char *dynamic_shared_memory_type = NULL;
 static const char *default_timezone = NULL;
 
+/* BEGIN - SQL PARSER */
+static const char *ora_options = "-c session_preload_libraries=liboracle_parser ";
+
+static char  *dbmode = "oracle";
+static char  *ora_conf_file;
+static int	database_mode = DB_ORACLE;
+/* END - SQL PARSER */
 /*
  * Warning messages for authentication methods
  */
@@ -257,12 +274,19 @@ static void setup_auth(FILE *cmdfd);
 static void get_su_pwd(void);
 static void setup_depend(FILE *cmdfd);
 static void setup_run_file(FILE *cmdfd, const char *filename);
+/* BEGIN - SQL PARSER */
+static void setup_ora_sys_schema(FILE *cmdfd);
+/* END - SQL PARSER */
 static void setup_description(FILE *cmdfd);
 static void setup_collation(FILE *cmdfd);
 static void setup_privileges(FILE *cmdfd);
 static void set_info_version(void);
 static void setup_schema(FILE *cmdfd);
 static void load_plpgsql(FILE *cmdfd);
+/* BEGIN - SQL PARSER */
+static void load_plisql(FILE *cmdfd);
+/* END - SQL PARSER */
+static void load_ivorysql_ora(FILE *cmdfd);		
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
 static void make_postgres(FILE *cmdfd);
@@ -862,6 +886,25 @@ set_null_conf(void)
 		exit(1);
 	}
 	free(path);
+
+	/* BEGIN - SQL PARSER */
+	if (database_mode == DB_ORACLE)
+	{
+		path = psprintf("%s/ivorysql.conf", pg_data);
+		conf_file = fopen(path, PG_BINARY_W);
+		if (conf_file == NULL)
+		{
+			pg_log_error("could not open file \"%s\" for writing: %m", path);
+			exit(1);
+		}
+		if (fclose(conf_file))
+		{
+			pg_log_error("could not write file \"%s\": %m", path);
+			exit(1);
+		}
+		free(path);
+	}
+	/* END - SQL PARSER */
 }
 
 /*
@@ -1059,7 +1102,6 @@ setup_config(void)
 	fflush(stdout);
 
 	/* postgresql.conf */
-
 	conflines = readfile(conf_file);
 
 	snprintf(repltok, sizeof(repltok), "max_connections = %d", n_connections);
@@ -1209,6 +1251,18 @@ setup_config(void)
 								  "log_file_mode = 0640");
 	}
 
+	
+	/*
+	 * In pg mode we don't need ivorysql configuration file
+	 */
+	if (database_mode == DB_PG)
+	{
+		conflines = replace_token(conflines,
+							  "include_if_exists = 'ivorysql.conf'",
+							  "#include_if_exists = 'ivorysql.conf'");
+	}
+	
+
 	snprintf(path, sizeof(path), "%s/postgresql.conf", pg_data);
 
 	writefile(path, conflines);
@@ -1217,6 +1271,23 @@ setup_config(void)
 		pg_log_error("could not change permissions of \"%s\": %m", path);
 		exit(1);
 	}
+
+	/* BEGIN - SQL PARSER */
+	if (database_mode == DB_ORACLE)
+	{
+		/* oracle compatibility conf file */
+		conflines = readfile(ora_conf_file);
+
+		snprintf(path, sizeof(path), "%s/ivorysql.conf", pg_data);
+
+		writefile(path, conflines);
+		if (chmod(path, pg_file_create_mode) != 0)
+		{
+			pg_log_error("could not change permissions of \"%s\": %m", path);
+			exit(1);
+		}
+	}
+	/* END - SQL PARSER */
 
 	/*
 	 * create the automatic configuration file to store the configuration
@@ -1406,9 +1477,15 @@ bootstrap_template1(void)
 	unsetenv("PGCLIENTENCODING");
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" --boot -x1 -X %u %s %s %s %s",
+			 /* BEGIN - SQL PARSER */
+			 "\"%s\" --boot -x1 -c ivorysql.identifier_case_switch=%d -X %u %s %s %s %s %s",
+			 /* END - SQL PARSER */
 			 backend_exec,
+			 caseswitchmode,	/* case sensitive indentify: add guc "identifier_case_switch" */
 			 wal_segment_size_mb * (1024 * 1024),
+			 /* BEGIN - SQL PARSER */
+			 pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg",
+			 /* END - SQL PARSER */
 			 data_checksums ? "-k" : "",
 			 boot_options, extra_options,
 			 debug ? "-d 5" : "");
@@ -1629,6 +1706,34 @@ setup_run_file(FILE *cmdfd, const char *filename)
 
 	free(lines);
 }
+
+/* BEGIN - SQL PARSER */
+/* load oracle compatible objects */
+static void
+setup_ora_sys_schema(FILE *cmdfd)
+{
+	char	  **line;
+	char	  **ora_sys_schema_setup;
+
+	ora_sys_schema_setup = readfile(ora_sys_schema_file);
+
+	
+	/* BEGIN - case sensitive indentify */
+	PG_CMD_PUTS("set ivorysql.identifier_case_switch = normal;\n");
+	/* END - case sensitive indentify */
+	
+
+	for (line = ora_sys_schema_setup; *line != NULL; line++)
+	{
+		PG_CMD_PUTS(*line);
+		free(*line);
+	}
+
+	PG_CMD_PUTS("\n\n");
+
+	free(ora_sys_schema_setup);
+}
+/* END - SQL PARSER */
 
 /*
  * fill in extra description data
@@ -1892,6 +1997,29 @@ load_plpgsql(FILE *cmdfd)
 {
 	PG_CMD_PUTS("CREATE EXTENSION plpgsql;\n\n");
 }
+
+/* BEGIN - SQL PARSER */
+/* load plsq language */
+static void
+load_plisql(FILE *cmdfd)
+{
+	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
+}
+/* END - SQL PARSER */
+
+
+/*
+ * load PL/pgSQL server-side language
+ */
+static void
+load_ivorysql_ora(FILE *cmdfd)
+{
+	/* switch to oracle parser and load extenison */
+	PG_CMD_PUTS("set ivorysql.compatible_mode to oracle;\n\n");	
+	PG_CMD_PUTS("CREATE EXTENSION ivorysql_ora;\n\n");
+	PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");	
+}
+
 
 /*
  * clean everything up in template1
@@ -2265,6 +2393,10 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
+	/* BEGIN - SQL PARSER */
+	printf(_("  -m, --dbmode=MODE         set database mode, default is oracle\n"));
+	printf(_("  -c, --case-conversion-mode=MODE   set case conversion mode, default is interchange\n"));
+	/* END - SQL PARSER */
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
 	printf(_("      --discard-caches      set debug_discard_caches=1\n"));
@@ -2503,7 +2635,13 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
-	set_input(&bki_file, "postgres.bki");
+	/* BEGIN - SQL PARSER */
+	if (DB_PG == database_mode)
+		set_input(&bki_file, "postgres.bki");
+	else
+		set_input(&bki_file, "postgres_oracle.bki");
+	/* END - SQL PARSER */
+
 	set_input(&hba_file, "pg_hba.conf.sample");
 	set_input(&ident_file, "pg_ident.conf.sample");
 	set_input(&conf_file, "postgresql.conf.sample");
@@ -2513,7 +2651,13 @@ setup_data_file_paths(void)
 	set_input(&system_constraints_file, "system_constraints.sql");
 	set_input(&system_functions_file, "system_functions.sql");
 	set_input(&system_views_file, "system_views.sql");
-
+	/* BEGIN - SQL PARSER */
+	if (database_mode == DB_ORACLE)
+	{
+		set_input(&ora_sys_schema_file, "ora_sys_schema.sql");
+		set_input(&ora_conf_file, "ivorysql.conf.sample");
+	}
+	/* END - SQL PARSER */
 	if (show_setting || debug)
 	{
 		fprintf(stderr,
@@ -2541,6 +2685,13 @@ setup_data_file_paths(void)
 	check_input(system_constraints_file);
 	check_input(system_functions_file);
 	check_input(system_views_file);
+	/* BEGIN - SQL PARSER */
+	if (database_mode == DB_ORACLE)
+	{
+		check_input(ora_sys_schema_file);
+		check_input(ora_conf_file);
+	}
+	/* END - SQL PARSER */
 }
 
 
@@ -2866,16 +3017,31 @@ initialize_data_directory(void)
 	fputs(_("performing post-bootstrap initialization ... "), stdout);
 	fflush(stdout);
 
-	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s %s template1 >%s",
-			 backend_exec, backend_options, extra_options,
-			 DEVNULL);
+	/* BEGIN - SQL PARSER */
+	if (strcmp(dbmode, "pg") == 0)
+	/* END - SQL PARSER */
+		snprintf(cmd, sizeof(cmd),
+				 "\"%s\" %s %s template1 >%s",
+				 backend_exec, backend_options, extra_options,
+				 DEVNULL);
+	/* BEGIN - SQL PARSER */
+	else
+		snprintf(cmd, sizeof(cmd),
+				 "\"%s\" %s %s %s template1 >%s",
+				 backend_exec, backend_options, extra_options, ora_options,
+				 DEVNULL);
+	/* END - SQL PARSER */
 
 	PG_CMD_OPEN;
 
 	setup_auth(cmdfd);
 
 	setup_run_file(cmdfd, system_constraints_file);
+
+	
+	if (database_mode == DB_ORACLE)
+		PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
+	
 
 	setup_run_file(cmdfd, system_functions_file);
 
@@ -2899,6 +3065,16 @@ initialize_data_directory(void)
 	setup_schema(cmdfd);
 
 	load_plpgsql(cmdfd);
+
+/* BEGIN - SQL PARSER */
+  /* load oracle compatible objects and plisql language */
+	if (database_mode == DB_ORACLE)
+	{
+		load_plisql(cmdfd);
+		load_ivorysql_ora(cmdfd);	
+		setup_ora_sys_schema(cmdfd);
+	}
+/* END - SQL PARSER */
 
 	vacuum_db(cmdfd);
 
@@ -2947,6 +3123,10 @@ main(int argc, char *argv[])
 		{"wal-segsize", required_argument, NULL, 12},
 		{"data-checksums", no_argument, NULL, 'k'},
 		{"allow-group-access", no_argument, NULL, 'g'},
+	/* BEGIN - SQL PARSER */
+		{"dbmode", required_argument, NULL, 'm'},
+		{"case-conversion-mode", required_argument, NULL, 'c'},	/* case sensitive indentify */
+	/* END - SQL PARSER */
 		{"discard-caches", no_argument, NULL, 14},
 		{NULL, 0, NULL, 0}
 	};
@@ -2989,7 +3169,10 @@ main(int argc, char *argv[])
 
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "A:dD:E:gkL:nNsST:U:WX:", long_options, &option_index)) != -1)
+	/* BEGIN - SQL PARSER */
+	/* case sensitive indentify: add "-c" option for specifing case conversion mode */
+	while ((c = getopt_long(argc, argv, "A:c:dD:E:gkL:m:nNsST:U:WX:", long_options, &option_index)) != -1)
+	/* END - SQL PARSER */
 	{
 		switch (c)
 		{
@@ -3024,10 +3207,48 @@ main(int argc, char *argv[])
 			case 'U':
 				username = pg_strdup(optarg);
 				break;
+			/* BEGIN - case sensitive indentify */
+			case 'c':
+				switchmode = pg_strdup(optarg);
+
+				if(0 == strcmp(switchmode,"normal")||0 == strcmp(switchmode,"0"))
+				{
+					caseswitchmode = NORMAL;	//Case conversion is prohibited.
+				}
+				else if (0 == strcmp(switchmode,"interchange")||0 == strcmp(switchmode,"1"))
+				{
+					caseswitchmode = INTERCHANGE;//Uppercase and lowercase characters convert to each other.
+				}
+				else if (0 == strcmp(switchmode,"lowercase")||0 == strcmp(switchmode,"2"))
+				{
+					caseswitchmode = LOWERCASE;//The characters are all converted to lowercase.
+				}
+				else
+				{
+					printf(_("UnKnow case conversion mode, use the default interchange.\n"));
+				}
+
+				break;
+			/* END - case sensitive indentify */
 			case 'd':
 				debug = true;
 				printf(_("Running in debug mode.\n"));
 				break;
+			/* BEGIN - SQL PARSER */
+			case 'm':
+				dbmode = pg_strdup(optarg);
+
+				if (pg_strcasecmp(dbmode, "pg") == 0 || pg_strcasecmp(dbmode, "0") == 0)
+					database_mode = DB_PG;
+				else if (pg_strcasecmp(dbmode, "oracle") == 0 || pg_strcasecmp(dbmode, "1") == 0)
+					database_mode = DB_ORACLE;
+				else
+				{
+					fprintf(stderr, _("unrecognized database mode.\n"));
+					exit(1);
+				}
+			break;
+			/* END - SQL PARSER */
 			case 'n':
 				noclean = true;
 				printf(_("Running in no-clean mode.  Mistakes will not be cleaned up.\n"));
@@ -3195,6 +3416,17 @@ main(int argc, char *argv[])
 		pg_log_error("superuser name \"%s\" is disallowed; role names cannot begin with \"pg_\"", username);
 		exit(1);
 	}
+
+	/* BEGIN - case sensitive indentify */
+	/* Oracle compatibility username transfor upper to lower */
+	if (database_mode == DB_ORACLE && username != NULL
+		&& is_all_upper(username, strlen(username)))
+	{
+		char *lowerusername = username;
+		username = down_character(username, strlen(username));
+		free(lowerusername);
+	}
+	/* END - case sensitive indentify */
 
 	printf(_("The files belonging to this database system will be owned "
 			 "by user \"%s\".\n"

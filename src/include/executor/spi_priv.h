@@ -46,6 +46,9 @@ typedef struct
 	uint64		outer_processed;
 	SPITupleTable *outer_tuptable;
 	int			outer_result;
+	
+	void		*current_func;	/* remember current invoke func */
+	
 } _SPI_connection;
 
 /*

@@ -545,6 +545,8 @@ sub contribcheck
 		next if ($module =~ /_plperl$/   && !defined($config->{perl}));
 		next if ($module =~ /_plpython$/ && !defined($config->{python}));
 		next if ($module eq "sepgsql");
+		# Native PostgreSQL does not perform the test of ivorysql_ora.
+		next if ($module eq "ivorysql_ora");
 
 		subdircheck($module);
 		my $status = $? >> 8;
@@ -583,7 +585,9 @@ sub recoverycheck
 sub standard_initdb
 {
 	return (
-		system('initdb', '-N') == 0 and system(
+		#BEGIN - SQL PARSER
+		system('initdb', '-N', '-m', 'pg', '-c', 'normal') == 0 and system(
+		#END - SQL PARSER
 			"$topdir/$Config/pg_regress/pg_regress", '--config-auth',
 			$ENV{PGDATA}) == 0);
 }

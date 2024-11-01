@@ -211,6 +211,9 @@ endif
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_hba.conf.sample '$(DESTDIR)$(datadir)/pg_hba.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_ident.conf.sample '$(DESTDIR)$(datadir)/pg_ident.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/utils/misc/postgresql.conf.sample '$(DESTDIR)$(datadir)/postgresql.conf.sample'
+	# BEGIN - SQL PARSER
+	$(INSTALL_DATA) $(srcdir)/utils/misc/ivorysql.conf.sample '$(DESTDIR)$(datadir)/ivorysql.conf.sample'
+	# END - SQL PARSER
 
 ifeq ($(with_llvm), yes)
 install-bin: install-postgres-bitcode

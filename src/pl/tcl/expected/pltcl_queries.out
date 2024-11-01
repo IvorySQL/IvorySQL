@@ -270,30 +270,30 @@ RAISE 'my message'
 ;
 END$$;"
 $tcl$);
-                   tcl_error_handling_test                    
---------------------------------------------------------------
- SQLSTATE: P0001                                             +
- column: my column                                           +
- condition: raise_exception                                  +
- constraint: my constraint                                   +
- context: PL/pgSQL function inline_code_block line 3 at RAISE+
-         SQL statement "DO $$                                +
-         BEGIN                                               +
-         RAISE 'my message'                                  +
-                 USING HINT = 'my hint'                      +
-                 , DETAIL = 'my detail'                      +
-                 , SCHEMA = 'my schema'                      +
-                 , TABLE = 'my table'                        +
-                 , COLUMN = 'my column'                      +
-                 , CONSTRAINT = 'my constraint'              +
-                 , DATATYPE = 'my datatype'                  +
-         ;                                                   +
-         END$$;"                                             +
- datatype: my datatype                                       +
- detail: my detail                                           +
- hint: my hint                                               +
- message: my message                                         +
- schema: my schema                                           +
+                   tcl_error_handling_test                   
+-------------------------------------------------------------
+ SQLSTATE: P0001                                            +
+ column: my column                                          +
+ condition: raise_exception                                 +
+ constraint: my constraint                                  +
+ context: PL/iSQL function inline_code_block line 3 at RAISE+
+         SQL statement "DO $$                               +
+         BEGIN                                              +
+         RAISE 'my message'                                 +
+                 USING HINT = 'my hint'                     +
+                 , DETAIL = 'my detail'                     +
+                 , SCHEMA = 'my schema'                     +
+                 , TABLE = 'my table'                       +
+                 , COLUMN = 'my column'                     +
+                 , CONSTRAINT = 'my constraint'             +
+                 , DATATYPE = 'my datatype'                 +
+         ;                                                  +
+         END$$;"                                            +
+ datatype: my datatype                                      +
+ detail: my detail                                          +
+ hint: my hint                                              +
+ message: my message                                        +
+ schema: my schema                                          +
  table: my table
 (1 row)
 

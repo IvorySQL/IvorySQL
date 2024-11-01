@@ -1,0 +1,695 @@
+-- Tests the case conversion rule for quoted identifiers.
+-- 1. if guc parameter "identifier_case_switch" value is "interchange":
+-- 	  1). If the alphas in the identifier quoted by double quotes are all the upper case, convert the upper case to the lower case.
+-- 	  2). If the alphas in the identifier quoted by double quotes are all the lower case, convert the lower case to the upper case.
+-- 	  3). If the alphas in the identifier quoted by double quotes are case-mixed, leave the identifier unchanged.
+-- 2. if guc parameter "identifier_case_switch" value is "lowcase", convert all identifiers to the lower case.
+-- 3. if guc parameter "identifier_case_switch" value is "normal", The rules for converting identifiers are the same as for native PG.
+----1. "identifier_case_switch" value is "interchange"
+SET ivorysql.enable_case_switch = true;
+SET ivorysql.identifier_case_switch = interchange;
+CREATE TABLE "ABC"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+ ABC
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "ABC";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC;
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM ABC;
+                      ^
+SELECT * FROM abc;
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM abc;
+                      ^
+SELECT * FROM Abc;
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM Abc;
+                      ^
+SELECT * FROM "Abc"; -- ERROR
+ERROR:  relation "Abc" does not exist
+LINE 1: SELECT * FROM "Abc";
+                      ^
+DROP TABLE abc;
+ERROR:  table "abc" does not exist
+CREATE TABLE "Abc"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+ ABC
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = 'Abc';
+ relname 
+---------
+ Abc
+(1 row)
+
+SELECT * FROM "ABC"; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM ABC;
+                      ^
+SELECT * FROM abc; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM abc;
+                      ^
+SELECT * FROM Abc; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM Abc;
+                      ^
+SELECT * FROM "Abc";
+ c1 | c2 
+----+----
+(0 rows)
+
+DROP TABLE "Abc";
+CREATE TABLE "abc"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+ ABC
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+ abc
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'Abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "ABC"; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM abc; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM Abc; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM "Abc"; -- ERROR
+ERROR:  relation "Abc" does not exist
+LINE 1: SELECT * FROM "Abc";
+                      ^
+SELECT * FROM "abc";
+ c1 | c2 
+----+----
+(0 rows)
+
+DROP TABLE "abc";
+CREATE TABLE "中国ABC中国"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = '中国ABC中国';
+   relname   
+-------------
+ 中国ABC中国
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = '中国abc中国';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = '中国Abc中国';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "中国ABC中国";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM 中国ABC中国;
+ERROR:  relation "中国abc中国" does not exist
+LINE 1: SELECT * FROM 中国ABC中国;
+                      ^
+SELECT * FROM 中国abc中国;
+ERROR:  relation "中国abc中国" does not exist
+LINE 1: SELECT * FROM 中国abc中国;
+                      ^
+SELECT * FROM "中国Abc中国"; -- ERROR
+ERROR:  relation "中国Abc中国" does not exist
+LINE 1: SELECT * FROM "中国Abc中国";
+                      ^
+DROP TABLE "中国ABC中国";
+CREATE TABLE "中国Abc中国"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = '中国ABC中国';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = '中国abc中国';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = '中国Abc中国';
+   relname   
+-------------
+ 中国Abc中国
+(1 row)
+
+SELECT * FROM "中国ABC中国"; -- ERROR
+ERROR:  relation "中国ABC中国" does not exist
+LINE 1: SELECT * FROM "中国ABC中国";
+                      ^
+SELECT * FROM 中国ABC中国; -- ERROR
+ERROR:  relation "中国abc中国" does not exist
+LINE 1: SELECT * FROM 中国ABC中国;
+                      ^
+SELECT * FROM 中国abc中国; -- ERROR
+ERROR:  relation "中国abc中国" does not exist
+LINE 1: SELECT * FROM 中国abc中国;
+                      ^
+SELECT * FROM "中国Abc中国";
+ c1 | c2 
+----+----
+(0 rows)
+
+DROP TABLE "中国Abc中国";
+CREATE TABLE "中国abc中国"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = '中国ABC中国';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = '中国abc中国';
+   relname   
+-------------
+ 中国abc中国
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = '中国Abc中国';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "中国ABC中国"; -- ERROR
+ERROR:  relation "中国ABC中国" does not exist
+LINE 1: SELECT * FROM "中国ABC中国";
+                      ^
+SELECT * FROM 中国ABC中国; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM 中国abc中国; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM "中国Abc中国"; -- ERROR
+ERROR:  relation "中国Abc中国" does not exist
+LINE 1: SELECT * FROM "中国Abc中国";
+                      ^
+SELECT * FROM "中国abc中国";
+ c1 | c2 
+----+----
+(0 rows)
+
+DROP TABLE "中国abc中国";
+CREATE TABLE t_48("ABC" int);
+SELECT "ABC" FROM t_48;
+ ABC 
+-----
+(0 rows)
+
+SELECT ABC FROM t_48;
+ERROR:  column "abc" does not exist
+LINE 1: SELECT ABC FROM t_48;
+               ^
+SELECT "abc" FROM t_48; -- ERROR
+ERROR:  column "abc" does not exist
+LINE 1: SELECT "abc" FROM t_48;
+               ^
+SELECT abc FROM t_48;
+ERROR:  column "abc" does not exist
+LINE 1: SELECT abc FROM t_48;
+               ^
+SELECT "Abc" FROM t_48; -- ERROR
+ERROR:  column "Abc" does not exist
+LINE 1: SELECT "Abc" FROM t_48;
+               ^
+SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = 't_48');
+ attname  
+----------
+ ABC
+ cmax
+ cmin
+ ctid
+ tableoid
+ xmax
+ xmin
+(7 rows)
+
+DROP TABLE t_48;
+CREATE TABLE t_48("Abc" int);
+SELECT "ABC" FROM t_48; -- ERROR
+ERROR:  column "ABC" does not exist
+LINE 1: SELECT "ABC" FROM t_48;
+               ^
+SELECT ABC FROM t_48; -- ERROR
+ERROR:  column "abc" does not exist
+LINE 1: SELECT ABC FROM t_48;
+               ^
+HINT:  Perhaps you meant to reference the column "t_48.Abc".
+SELECT "abc" FROM t_48; -- ERROR
+ERROR:  column "abc" does not exist
+LINE 1: SELECT "abc" FROM t_48;
+               ^
+HINT:  Perhaps you meant to reference the column "t_48.Abc".
+SELECT abc FROM t_48; -- ERROR
+ERROR:  column "abc" does not exist
+LINE 1: SELECT abc FROM t_48;
+               ^
+HINT:  Perhaps you meant to reference the column "t_48.Abc".
+SELECT "Abc" FROM t_48;
+ Abc 
+-----
+(0 rows)
+
+SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = 't_48');
+ attname  
+----------
+ Abc
+ cmax
+ cmin
+ ctid
+ tableoid
+ xmax
+ xmin
+(7 rows)
+
+DROP TABLE t_48;
+CREATE TABLE t_48("abc" int);
+SELECT "ABC" FROM t_48; -- ERROR
+ERROR:  column "ABC" does not exist
+LINE 1: SELECT "ABC" FROM t_48;
+               ^
+SELECT ABC FROM t_48; -- ERROR
+ abc 
+-----
+(0 rows)
+
+SELECT "abc" FROM t_48;
+ abc 
+-----
+(0 rows)
+
+SELECT abc FROM t_48; -- ERROR
+ abc 
+-----
+(0 rows)
+
+SELECT "Abc" FROM t_48; -- ERROR
+ERROR:  column "Abc" does not exist
+LINE 1: SELECT "Abc" FROM t_48;
+               ^
+HINT:  Perhaps you meant to reference the column "t_48.abc".
+SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = 't_48');
+ attname  
+----------
+ abc
+ cmax
+ cmin
+ ctid
+ tableoid
+ xmax
+ xmin
+(7 rows)
+
+DROP TABLE t_48;
+CREATE TABLE "ABC"(a INT, b INT);
+ERROR:  relation "ABC" already exists
+CREATE TABLE "abc"(a INT, b INT);
+SELECT relname FROM pg_class WHERE relname in ('abc', 'ABC') order by relname;
+ relname 
+---------
+ ABC
+ abc
+(2 rows)
+
+INSERT INTO abc VALUES(1,1);
+INSERT INTO "ABC" VALUES(2,2);
+INSERT INTO ABC VALUES(3,3);
+INSERT INTO "abc" VALUES(4,4);
+SELECT * FROM "ABC";
+ c1 | c2 
+----+----
+  2 |  2
+(1 row)
+
+SELECT * FROM "abc";
+ a | b 
+---+---
+ 1 | 1
+ 3 | 3
+ 4 | 4
+(3 rows)
+
+DROP TABLE "ABC";
+DROP TABLE "abc";
+RESET ivorysql.identifier_case_switch;
+----2. "ivorysql.identifier_case_switch" value is "lowercase"
+SET ivorysql.identifier_case_switch = lowercase;
+CREATE TABLE "ABC"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+ ABC
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "ABC";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC;	
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM ABC;
+                      ^
+SELECT * FROM abc;
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM abc;
+                      ^
+DROP TABLE "ABC";
+CREATE TABLE "abc"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+ abc
+(1 row)
+
+SELECT * FROM "abc";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC;
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM abc;
+ c1 | c2 
+----+----
+(0 rows)
+
+DROP TABLE "abc";
+CREATE TABLE "Abc"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'Abc';
+ relname 
+---------
+ Abc
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "Abc";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM ABC;
+                      ^
+SELECT * FROM abc; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM abc;
+                      ^
+SELECT * FROM Abc; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM Abc;
+                      ^
+DROP TABLE "Abc";
+RESET ivorysql.identifier_case_switch;
+----3. "identifier_case_switch" value is "normal"
+SET ivorysql.identifier_case_switch = normal;
+CREATE TABLE "ABC"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+ ABC
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "ABC";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC; --ERROR	
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM ABC;
+                      ^
+SELECT * FROM abc; --ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM abc;
+                      ^
+DROP TABLE "ABC";
+CREATE TABLE "abc"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+ abc
+(1 row)
+
+SELECT * FROM "abc";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC;
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM abc;
+ c1 | c2 
+----+----
+(0 rows)
+
+DROP TABLE "abc";
+CREATE TABLE "Abc"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'Abc';
+ relname 
+---------
+ Abc
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "Abc";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM ABC;
+                      ^
+SELECT * FROM abc; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM abc;
+                      ^
+SELECT * FROM Abc; -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM Abc;
+                      ^
+DROP TABLE "Abc";
+RESET ivorysql.identifier_case_switch;
+RESET ivorysql.enable_case_switch;
+----test guc parameter "enable_case_switch" feature
+SET ivorysql.enable_case_switch = false;
+SET ivorysql.identifier_case_switch = interchange;
+CREATE TABLE "ABC"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+ ABC
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "ABC";
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM ABC;	 -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM ABC;
+                      ^
+SELECT * FROM abc; 	 -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM abc;
+                      ^
+SELECT * FROM Abc; 	 -- ERROR
+ERROR:  relation "abc" does not exist
+LINE 1: SELECT * FROM Abc;
+                      ^
+SELECT * FROM "Abc"; -- ERROR
+ERROR:  relation "Abc" does not exist
+LINE 1: SELECT * FROM "Abc";
+                      ^
+DROP TABLE "ABC";
+CREATE TABLE "abc"(c1 int, c2 int);
+SELECT relname FROM pg_class WHERE relname = 'ABC';
+ relname 
+---------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = 'abc';
+ relname 
+---------
+ abc
+(1 row)
+
+SELECT relname FROM pg_class WHERE relname = 'Abc';
+ relname 
+---------
+(0 rows)
+
+SELECT * FROM "ABC"; -- ERROR
+ERROR:  relation "ABC" does not exist
+LINE 1: SELECT * FROM "ABC";
+                      ^
+SELECT * FROM ABC; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM abc; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM Abc; -- ERROR
+ c1 | c2 
+----+----
+(0 rows)
+
+SELECT * FROM "Abc"; -- ERROR
+ERROR:  relation "Abc" does not exist
+LINE 1: SELECT * FROM "Abc";
+                      ^
+SELECT * FROM "abc";
+ c1 | c2 
+----+----
+(0 rows)
+
+DROP TABLE "abc";
+CREATE TABLE t_48("Abc" int);
+SELECT "ABC" FROM t_48; -- ERROR
+ERROR:  column "ABC" does not exist
+LINE 1: SELECT "ABC" FROM t_48;
+               ^
+SELECT ABC FROM t_48; -- ERROR
+ERROR:  column "abc" does not exist
+LINE 1: SELECT ABC FROM t_48;
+               ^
+HINT:  Perhaps you meant to reference the column "t_48.Abc".
+SELECT "abc" FROM t_48; -- ERROR
+ERROR:  column "abc" does not exist
+LINE 1: SELECT "abc" FROM t_48;
+               ^
+HINT:  Perhaps you meant to reference the column "t_48.Abc".
+SELECT abc FROM t_48; -- ERROR
+ERROR:  column "abc" does not exist
+LINE 1: SELECT abc FROM t_48;
+               ^
+HINT:  Perhaps you meant to reference the column "t_48.Abc".
+SELECT "Abc" FROM t_48;
+ Abc 
+-----
+(0 rows)
+
+SELECT attname FROM pg_attribute WHERE attrelid = (SELECT oid FROM pg_class WHERE relname = 't_48');
+ attname  
+----------
+ Abc
+ cmax
+ cmin
+ ctid
+ tableoid
+ xmax
+ xmin
+(7 rows)
+
+DROP TABLE t_48;
+RESET ivorysql.identifier_case_switch;
+RESET ivorysql.enable_case_switch;

@@ -3094,6 +3094,12 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 		ahprintf(AH, "SET row_security = on;\n");
 	else
 		ahprintf(AH, "SET row_security = off;\n");
+	
+	ahprintf(AH, "SET ivorysql.identifier_case_switch = normal;\n");	/* case sensitive indentify */
+	
+	ahprintf(AH, "SET ivorysql.enable_emptystring_to_NULL = off;\n");
+	
+	
 
 	ahprintf(AH, "\n");
 }

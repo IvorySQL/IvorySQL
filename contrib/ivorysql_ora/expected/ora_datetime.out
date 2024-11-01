@@ -1,0 +1,1238 @@
+--
+-- ORADATE
+--
+--build tables and test 'nls_date_format' parameter, don't do the validity check.
+CREATE TABLE TEST_DATE(a date);
+SET NLS_DATE_FORMAT='YYYY-MM-DD';
+INSERT INTO TEST_DATE VALUES('1990-1-19');
+INSERT INTO TEST_DATE VALUES('1990-1-19 11:11:11');		-- hour/minute/second is zero 
+ERROR:  datetime format picture ends before converting entire input string
+LINE 1: INSERT INTO TEST_DATE VALUES('1990-1-19 11:11:11');
+                                     ^
+SELECT * FROM TEST_DATE;
+     a      
+------------
+ 1990-01-19
+(1 row)
+
+DELETE FROM TEST_DATE;
+set nls_date_format='YYYY-MM-DD HH24:MI:SS';
+INSERT INTO TEST_DATE VALUES('1990-2-19');				-- hour/minute/second is zero 	
+INSERT INTO TEST_DATE VALUES('1990-2-19 11:11:11');
+SELECT * FROM TEST_DATE;
+          a          
+---------------------
+ 1990-02-19 00:00:00
+ 1990-02-19 11:11:11
+(2 rows)
+
+-- check for leap year
+INSERT INTO TEST_DATE VALUES('1989-2-30');
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_DATE VALUES('1989-2-30');
+                                     ^
+INSERT INTO TEST_DATE VALUES('1989-2-29');
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_DATE VALUES('1989-2-29');
+                                     ^
+INSERT INTO TEST_DATE VALUES('1989-2-28');
+INSERT INTO TEST_DATE VALUES('2000-2-30');
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_DATE VALUES('2000-2-30');
+                                     ^
+INSERT INTO TEST_DATE VALUES('2000-2-29');
+INSERT INTO TEST_DATE VALUES('2000-2-28');
+-- The ANSI date literal contains no time portion, and must be specified in the format 'YYYY-MM-DD'
+SELECT DATE'1990-1-1';
+       oradate       
+---------------------
+ 1990-01-01 00:00:00
+(1 row)
+
+SELECT DATE'1990-1-1 11:11:11';			-- hour/minute/second is zero 
+ERROR:  trailing characters remain in input string after datetime format
+-- Comparison operator
+DELETE FROM TEST_DATE;
+set nls_date_format='YYYY-MM-DD HH24:MI:SS';
+INSERT INTO TEST_DATE VALUES('2016-11-24');
+INSERT INTO TEST_DATE VALUES('2016-11-24 11:00:00');
+INSERT INTO TEST_DATE VALUES('2016-11-24 11:11:11');
+INSERT INTO TEST_DATE VALUES('2016-11-25');
+INSERT INTO TEST_DATE VALUES('2016-11-25 11:00:00');
+INSERT INTO TEST_DATE VALUES('2016-11-25 11:11:11');
+-- date/date
+SELECT * FROM TEST_DATE WHERE A = '2016-11-24';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+(1 row)
+
+SELECT * FROM TEST_DATE WHERE A <> '2016-11-24';
+          a          
+---------------------
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(5 rows)
+
+SELECT * FROM TEST_DATE WHERE A > '2016-11-24';
+          a          
+---------------------
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(5 rows)
+
+SELECT * FROM TEST_DATE WHERE A >= '2016-11-24';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(6 rows)
+
+SELECT * FROM TEST_DATE WHERE A < '2016-11-24';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_DATE WHERE A <= '2016-11-24';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+(1 row)
+
+-- date/timestamp
+SELECT * FROM TEST_DATE WHERE A = TIMESTAMP'2016-11-24 00:00:00';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+(1 row)
+
+SELECT * FROM TEST_DATE WHERE A <> TIMESTAMP'2016-11-24 00:00:00';
+          a          
+---------------------
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(5 rows)
+
+SELECT * FROM TEST_DATE WHERE A > TIMESTAMP'2016-11-24 00:00:00';
+          a          
+---------------------
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(5 rows)
+
+SELECT * FROM TEST_DATE WHERE A >= TIMESTAMP'2016-11-24 00:00:00';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(6 rows)
+
+SELECT * FROM TEST_DATE WHERE A < TIMESTAMP'2016-11-24 00:00:00';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_DATE WHERE A <= TIMESTAMP'2016-11-24 00:00:00';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+(1 row)
+
+-- date/timestamp with time zone
+SELECT * FROM TEST_DATE WHERE A = TIMESTAMP'2016-11-24 00:00:00 +04:00';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_DATE WHERE A <> TIMESTAMP'2016-11-24 00:00:00 +04:00';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(6 rows)
+
+SELECT * FROM TEST_DATE WHERE A > TIMESTAMP'2016-11-24 00:00:00 +04:00';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(6 rows)
+
+SELECT * FROM TEST_DATE WHERE A >= TIMESTAMP'2016-11-24 00:00:00 +04:00';
+          a          
+---------------------
+ 2016-11-24 00:00:00
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(6 rows)
+
+SELECT * FROM TEST_DATE WHERE A < TIMESTAMP'2016-11-24 00:00:00 +04:00';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_DATE WHERE A <= TIMESTAMP'2016-11-24 00:00:00 +04:00';
+ a 
+---
+(0 rows)
+
+-- date/timestamp with local time zone
+SELECT * FROM TEST_DATE WHERE A = TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+          a          
+---------------------
+ 2016-11-24 00:00:00
+(1 row)
+
+SELECT * FROM TEST_DATE WHERE A <> TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+          a          
+---------------------
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(5 rows)
+
+SELECT * FROM TEST_DATE WHERE A > TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+          a          
+---------------------
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(5 rows)
+
+SELECT * FROM TEST_DATE WHERE A >= TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+          a          
+---------------------
+ 2016-11-24 00:00:00
+ 2016-11-24 11:00:00
+ 2016-11-24 11:11:11
+ 2016-11-25 00:00:00
+ 2016-11-25 11:00:00
+ 2016-11-25 11:11:11
+(6 rows)
+
+SELECT * FROM TEST_DATE WHERE A < TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_DATE WHERE A <= TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+          a          
+---------------------
+ 2016-11-24 00:00:00
+(1 row)
+
+-- AGGREGATE
+SELECT MAX(a) FROM TEST_DATE;
+         max         
+---------------------
+ 2016-11-25 11:11:11
+(1 row)
+
+SELECT MIN(a) FROM TEST_DATE;
+         min         
+---------------------
+ 2016-11-24 00:00:00
+(1 row)
+
+-- index 
+CREATE INDEX TEST_DATE_BTREE ON TEST_DATE (A);
+CREATE INDEX TEST_DATE_HASH ON TEST_DATE USING HASH (A);
+CREATE INDEX TEST_DATE_BRIN ON TEST_DATE USING BRIN (A);
+--
+-- ORATIMESTAMP
+--
+-- The default precision of fractional second is 6.
+-- Build tables and test 'NLS_TIMESTAMP_FORMAT' parameter, don't do the validity check.
+CREATE TABLE TEST_TIMESTAMP(a TIMESTAMP);
+SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
+-- effective number of fractional seconds is 6,the part of excess is 0
+INSERT INTO TEST_TIMESTAMP VALUES('1990-1-19 11:11:11.123456789');
+INSERT INTO TEST_TIMESTAMP VALUES('1990-2-19');		-- hour、minute、second、fractional second is zero.
+INSERT INTO TEST_TIMESTAMP VALUES('1990-2-19 11:11:11');
+SELECT * FROM TEST_TIMESTAMP;
+               a               
+-------------------------------
+ 1990-01-19 11:11:11.123457000
+ 1990-02-19 00:00:00.000000000
+ 1990-02-19 11:11:11.000000000
+(3 rows)
+
+-- check for leap year
+INSERT INTO TEST_TIMESTAMP VALUES('1989-2-30');
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_TIMESTAMP VALUES('1989-2-30');
+                                          ^
+INSERT INTO TEST_TIMESTAMP VALUES('1989-2-29');
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_TIMESTAMP VALUES('1989-2-29');
+                                          ^
+INSERT INTO TEST_TIMESTAMP VALUES('1989-2-28');
+INSERT INTO TEST_TIMESTAMP VALUES('2000-2-30');
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_TIMESTAMP VALUES('2000-2-30');
+                                          ^
+INSERT INTO TEST_TIMESTAMP VALUES('2000-2-29');
+INSERT INTO TEST_TIMESTAMP VALUES('2000-2-28');
+-- TIMESTAMP literal
+SELECT TIMESTAMP'1990-1-1';		-- ERROR 
+ERROR:  datetime string and format model does not match
+SELECT TIMESTAMP'1990-1-1 11:11:11';
+         oratimestamp          
+-------------------------------
+ 1990-01-01 11:11:11.000000000
+(1 row)
+
+-- Comparison operator
+DELETE FROM TEST_TIMESTAMP;
+SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
+INSERT INTO TEST_TIMESTAMP VALUES('2016-11-24 11:00:00');
+INSERT INTO TEST_TIMESTAMP VALUES('2016-11-24 11:00:00.123456789');
+INSERT INTO TEST_TIMESTAMP VALUES('2016-11-24 11:11:11');
+INSERT INTO TEST_TIMESTAMP VALUES('2016-11-25 11:00:00');
+INSERT INTO TEST_TIMESTAMP VALUES('2016-11-25 11:00:00.123456789');
+INSERT INTO TEST_TIMESTAMP VALUES('2016-11-25 11:11:11');
+-- timestamp/timestamp
+SELECT * FROM TEST_TIMESTAMP WHERE A = '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.123457000
+(1 row)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <> '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(5 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A > '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(4 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A >= '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(5 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A < '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+(1 row)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <= '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+(2 rows)
+
+-- timestamp/date
+SELECT * FROM TEST_TIMESTAMP WHERE A = DATE'2016-11-24';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <> DATE'2016-11-24';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A > DATE'2016-11-24';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A >= DATE'2016-11-24';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A < DATE'2016-11-24';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <= DATE'2016-11-24';
+ a 
+---
+(0 rows)
+
+-- timestamp/timestamp with time zone
+SELECT * FROM TEST_TIMESTAMP WHERE A = TIMESTAMP'2016-11-24 00:00:00 +04:00';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <> TIMESTAMP'2016-11-24 00:00:00 +04:00';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A > TIMESTAMP'2016-11-24 00:00:00 +04:00';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A >= TIMESTAMP'2016-11-24 00:00:00 +04:00';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A < TIMESTAMP'2016-11-24 00:00:00 +04:00';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <= TIMESTAMP'2016-11-24 00:00:00 +04:00';
+ a 
+---
+(0 rows)
+
+-- timestamp/timestamp with local time zone
+SELECT * FROM TEST_TIMESTAMP WHERE A = TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <> TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A > TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A >= TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A < TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMP WHERE A <= TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+ a 
+---
+(0 rows)
+
+--
+-- AGGREGATE
+--
+SELECT MAX(a) FROM TEST_TIMESTAMP;
+              max              
+-------------------------------
+ 2016-11-25 11:11:11.000000000
+(1 row)
+
+SELECT MIN(a) FROM TEST_TIMESTAMP;
+              min              
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+(1 row)
+
+--
+-- index 
+--
+CREATE INDEX TEST_TIMESTAMP_BTREE ON TEST_TIMESTAMP (A);
+CREATE INDEX TEST_TIMESTAMP_HASH ON TEST_TIMESTAMP USING HASH (A);
+CREATE INDEX TEST_TIMESTAMP_BRIN ON TEST_TIMESTAMP USING BRIN (A);
+--
+-- ORATIMESTAMPTZ
+--
+-- The default precision of fractional second is 6.
+-- Build tables and test 'NLS_TIMESTAMP_TZ_FORMAT' parameter, don't do the validity check.
+CREATE TABLE TEST_TIMESTAMPTZ(a TIMESTAMP WITH TIME ZONE);
+SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
+-- effective number of fractional seconds is 6,the part of excess is 0
+INSERT INTO TEST_TIMESTAMPTZ VALUES('1990-1-19 11:11:11.123456789');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('1990-2-19');		-- hour、minute、second、fractional second is zero.
+INSERT INTO TEST_TIMESTAMPTZ VALUES('1990-2-19 11:11:11');
+SELECT * FROM TEST_TIMESTAMPTZ;
+               a               
+-------------------------------
+ 1990-01-19 11:11:11.123457000
+ 1990-02-19 00:00:00.000000000
+ 1990-02-19 11:11:11.000000000
+(3 rows)
+
+-- check for leap year
+INSERT INTO TEST_TIMESTAMPTZ VALUES('1989-2-30');	--ERROR
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_TIMESTAMPTZ VALUES('1989-2-30');
+                                            ^
+INSERT INTO TEST_TIMESTAMPTZ VALUES('1989-2-29');	--ERROR
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_TIMESTAMPTZ VALUES('1989-2-29');
+                                            ^
+INSERT INTO TEST_TIMESTAMPTZ VALUES('1989-2-28');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2000-2-30');	--ERROR
+ERROR:  The value of day must be between 1 and the last day of the month.
+LINE 1: INSERT INTO TEST_TIMESTAMPTZ VALUES('2000-2-30');
+                                            ^
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2000-2-29');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2000-2-28');
+-- TIMESTAMPTZ literal 
+SELECT TIMESTAMP'1990-1-1 11:11:11 +04:30';
+         oratimestamp          
+-------------------------------
+ 1989-12-31 22:41:11.000000000
+(1 row)
+
+-- Comparison operator
+DELETE FROM TEST_TIMESTAMPTZ;
+SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2016-11-24 11:00:00');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2016-11-24 11:00:00.123456789');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2016-11-24 11:11:11');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2016-11-25 11:00:00');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2016-11-25 11:00:00.123456789');
+INSERT INTO TEST_TIMESTAMPTZ VALUES('2016-11-25 11:11:11');
+-- timestamptz/timestamptz
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A = '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.123457000
+(1 row)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <> '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(5 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A > '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(4 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A >= '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(5 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A < '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+(1 row)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <= '2016-11-24 11:00:00.123456789';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+(2 rows)
+
+-- timestamptz/date
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A = DATE'2016-11-24';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <> DATE'2016-11-24';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A > DATE'2016-11-24';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A >= DATE'2016-11-24';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A < DATE'2016-11-24';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <= DATE'2016-11-24';
+ a 
+---
+(0 rows)
+
+-- timestamptz/timestamp
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A = TIMESTAMP'2016-11-24 00:00:00';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <> TIMESTAMP'2016-11-24 00:00:00';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A > TIMESTAMP'2016-11-24 00:00:00';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A >= TIMESTAMP'2016-11-24 00:00:00';
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A < TIMESTAMP'2016-11-24 00:00:00';
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <= TIMESTAMP'2016-11-24 00:00:00';
+ a 
+---
+(0 rows)
+
+-- timestamptz/timestamp with local time zone
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A = TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <> TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A > TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A >= TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+               a               
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+ 2016-11-24 11:00:00.123457000
+ 2016-11-24 11:11:11.000000000
+ 2016-11-25 11:00:00.000000000
+ 2016-11-25 11:00:00.123457000
+ 2016-11-25 11:11:11.000000000
+(6 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A < TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+ a 
+---
+(0 rows)
+
+SELECT * FROM TEST_TIMESTAMPTZ WHERE A <= TIMESTAMP'2016-11-24 00:00:00'::TIMESTAMP WITH LOCAL TIME ZONE;
+ a 
+---
+(0 rows)
+
+--
+-- AGGREGATE
+--
+SELECT MAX(a) FROM TEST_TIMESTAMPTZ;
+              max              
+-------------------------------
+ 2016-11-25 11:11:11.000000000
+(1 row)
+
+SELECT MIN(a) FROM TEST_TIMESTAMPTZ;
+              min              
+-------------------------------
+ 2016-11-24 11:00:00.000000000
+(1 row)
+
+--
+-- index 
+--
+CREATE INDEX TEST_TIMESTAMPTZ_BTREE ON TEST_TIMESTAMPTZ (A);
+CREATE INDEX TEST_TIMESTAMPTZ_HASH ON TEST_TIMESTAMPTZ USING HASH (A);
+CREATE INDEX TEST_TIMESTAMPTZ_BRIN ON TEST_TIMESTAMPTZ USING BRIN (A);
+-- drop table
+DROP TABLE TEST_DATE;
+DROP TABLE TEST_TIMESTAMP;
+DROP TABLE TEST_TIMESTAMPTZ;
+--
+-- Datetime/Interval Arithmetic
+--
+-- set datetime style
+SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS';
+SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF9';
+SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF9';	-- now, can not support specify time zone format!
+-- oradate - oradate
+SELECT date'2016-11-26' - date'2015-10-26';
+ ?column? 
+----------
+ 397
+(1 row)
+
+-- oradate - oratimestamp
+SELECT date'2016-11-26' - timestamp'2015-10-26 11:11:11';
+           ?column?            
+-------------------------------
+ +000000396 12:48:49.000000000
+(1 row)
+
+-- oradate - oratimestamptz
+SELECT date'2016-11-26' - timestamp'2015-10-26 11:11:11 +06:00';
+           ?column?            
+-------------------------------
+ +000000397 01:48:49.000000000
+(1 row)
+
+-- oradate - oratimestampltz
+SELECT date'2016-11-26' - timestamp '2015-10-26 11:11:11'::timestamp with local time zone;
+           ?column?            
+-------------------------------
+ +000000396 12:48:49.000000000
+(1 row)
+
+-- oradate - interval year to month
+SELECT date'2016-11-26' - interval'10-11' year to month;
+      ?column?       
+---------------------
+ 2005-12-26 00:00:00
+(1 row)
+
+-- oradate - interval day to second 
+SELECT date'2016-11-26' - interval'365 11:11:11' day(3) to second;
+      ?column?       
+---------------------
+ 2015-11-26 12:48:49
+(1 row)
+
+-- oradate - number
+SELECT date'2016-11-26' - 11.11;
+      ?column?       
+---------------------
+ 2016-11-14 21:21:36
+(1 row)
+
+-- oradate + interval year to month
+SELECT date'2016-11-26' + interval'10-11' year to month;
+      ?column?       
+---------------------
+ 2027-10-26 00:00:00
+(1 row)
+
+-- oradate + interval day to second 
+SELECT date'2016-11-26' + interval'365 11:11:11' day(3) to second;
+      ?column?       
+---------------------
+ 2017-11-26 11:11:11
+(1 row)
+
+-- oradate + number
+SELECT date'2016-11-26' + 11.11;
+      ?column?       
+---------------------
+ 2016-12-07 02:38:24
+(1 row)
+
+-- oratimestamp - oratimestamp
+SELECT timestamp'2016-11-26 23:30:59.123456' - timestamp'2015-9-20 13:45:45.111111';
+           ?column?            
+-------------------------------
+ +000000433 09:45:14.012345000
+(1 row)
+
+-- oratimestamp - oradate
+SELECT timestamp'2016-11-26 23:30:59.123456' - date'2015-9-20';
+           ?column?            
+-------------------------------
+ +000000433 23:30:59.123456000
+(1 row)
+
+-- oratimestamp - oratimestamptz
+SELECT timestamp'2016-11-26 23:30:59.123456' - timestamp'2015-9-20 13:45:45.111111 +04:30';
+           ?column?            
+-------------------------------
+ +000000433 21:15:14.012345000
+(1 row)
+
+-- oratimestamp - oratimestampltz
+SELECT timestamp'2016-11-26 23:30:59.123456' - timestamp '2015-9-20 13:45:45.111111'::timestamp with local time zone;
+           ?column?            
+-------------------------------
+ +000000433 09:45:14.012345000
+(1 row)
+
+-- oratimestamp - interval year to month
+SELECT timestamp'2016-11-26 23:30:59.123456' - interval'10-11' year to month;
+           ?column?            
+-------------------------------
+ 2005-12-26 23:30:59.123456000
+(1 row)
+
+-- oratimestamp - interval day to second 
+SELECT timestamp'2016-11-26 23:30:59.123456' - interval'365 11:11:11' day(3) to second;
+           ?column?            
+-------------------------------
+ 2015-11-27 12:19:48.123456000
+(1 row)
+
+-- oratimestamp - number
+SELECT timestamp'2016-11-26 23:30:59.123456' - 11.11;
+      ?column?       
+---------------------
+ 2016-11-15 20:52:35
+(1 row)
+
+-- oratimestamp + interval year to month
+SELECT timestamp'2016-11-26 23:30:59.123456' + interval'10-11' year to month;
+           ?column?            
+-------------------------------
+ 2027-10-26 23:30:59.123456000
+(1 row)
+
+-- oratimestamp + interval day to second 
+SELECT timestamp'2016-11-26 23:30:59.123456' + interval'365 11:11:11' day(3) to second;
+           ?column?            
+-------------------------------
+ 2017-11-27 10:42:10.123456000
+(1 row)
+
+-- oratimestamp + number
+SELECT timestamp'2016-11-26 23:30:59.123456' + 11.11;
+      ?column?       
+---------------------
+ 2016-12-08 02:09:23
+(1 row)
+
+-- oratimestamptz - oratimestamptz
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' - timestamp'2015-9-20 13:45:45.111111 +04:30';
+           ?column?            
+-------------------------------
+ +000000433 07:45:14.012345000
+(1 row)
+
+-- oratimestamptz - oradate
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' - date'2015-9-20';
+           ?column?            
+-------------------------------
+ +000000433 09:00:59.123456000
+(1 row)
+
+-- oratimestamptz - oratimestamp
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' - timestamp'2015-9-20 13:45:45.111111';
+           ?column?            
+-------------------------------
+ +000000432 19:15:14.012345000
+(1 row)
+
+-- oratimestamptz - oratimestampltz
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' - timestamp '2015-9-20 13:45:45.111111'::timestamp with local time zone;
+           ?column?            
+-------------------------------
+ +000000432 20:15:14.012345000
+(1 row)
+
+-- oratimestamptz - interval year to month
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' - interval'10-11' year to month;
+           ?column?            
+-------------------------------
+ 2005-12-26 09:00:59.123456000
+(1 row)
+
+-- oratimestamptz - interval day to second 
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' - interval'365 11:11:11' day(3) to second;
+           ?column?            
+-------------------------------
+ 2015-11-26 21:49:48.123456000
+(1 row)
+
+-- oratimestamptz - number
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' - 11.11;
+      ?column?       
+---------------------
+ 2016-11-15 06:22:35
+(1 row)
+
+-- oratimestamptz + interval year to month
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' + interval'10-11' year to month;
+           ?column?            
+-------------------------------
+ 2027-10-26 09:00:59.123456000
+(1 row)
+
+-- oratimestamptz + interval day to second 
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' + interval'365 11:11:11' day(3) to second;
+           ?column?            
+-------------------------------
+ 2017-11-26 20:12:10.123456000
+(1 row)
+
+-- oratimestamptz + number
+SELECT timestamp'2016-11-26 23:30:59.123456 +06:30' + 11.11;
+      ?column?       
+---------------------
+ 2016-12-07 11:39:23
+(1 row)
+
+-- oratimestampltz - oratimestampltz
+SELECT timestamp '2016-10-20 13:45:45.123456'::timestamp with local time zone - timestamp '2015-9-20 13:45:45.111111'::timestamp with local time zone;
+           ?column?            
+-------------------------------
+ +000000396 00:00:00.012345000
+(1 row)
+
+-- oratimestampltz - oradate
+SELECT timestamp '2016-12-12 14:41:11.123456000'::timestamp with local time zone - date'2016-11-26';
+           ?column?            
+-------------------------------
+ +000000016 14:41:11.123456000
+(1 row)
+
+-- oratimestampltz - oratimestamp
+SELECT timestamp '2016-12-12 14:41:11.123456000'::timestamp with local time zone - timestamp'2016-11-26 00:00:00';
+           ?column?            
+-------------------------------
+ +000000016 14:41:11.123456000
+(1 row)
+
+-- oratimestampltz - oratimestamptz
+SELECT timestamp '2016-10-20 13:45:45.123456'::timestamp with local time zone - timestamp'2015-9-20 13:45:45.111111 +06:30';
+           ?column?            
+-------------------------------
+ +000000396 13:30:00.012345000
+(1 row)
+
+-- oratimestampltz - interval year to month
+SELECT timestamp '2016-11-26 23:30:59.123456'::timestamp with local time zone - interval'10-11' year to month;
+           ?column?            
+-------------------------------
+ 2005-12-26 23:30:59.123456000
+(1 row)
+
+-- oratimestampltz - interval day to second 
+SELECT timestamp '2016-11-26 23:30:59.123456'::timestamp with local time zone - interval'365 11:11:11' day(3) to second;
+           ?column?            
+-------------------------------
+ 2015-11-27 12:19:48.123456000
+(1 row)
+
+-- oratimestampltz - number
+SELECT timestamp '2016-11-26 23:30:59.123456'::timestamp with local time zone - 11.11;
+      ?column?       
+---------------------
+ 2016-11-15 20:52:35
+(1 row)
+
+-- oratimestampltz + interval year to month
+SELECT timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone + interval'10-11' year to month;
+           ?column?            
+-------------------------------
+ 2027-11-12 14:41:11.123456000
+(1 row)
+
+-- oratimestampltz + interval day to second 
+SELECT timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone + interval'365 11:11:11' day(3) to second;
+           ?column?            
+-------------------------------
+ 2017-12-13 01:52:22.123456000
+(1 row)
+
+-- oratimestampltz + number
+SELECT timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone + 11.11;
+      ?column?       
+---------------------
+ 2016-12-23 17:19:35
+(1 row)
+
+-- interval year to month + oradate
+SELECT interval'10-11' year to month + date'2016-11-26';
+      ?column?       
+---------------------
+ 2027-10-26 00:00:00
+(1 row)
+
+-- interval day to second + oradate
+SELECT interval'365 11:11:11' day(3) to second + date'2016-11-26';
+      ?column?       
+---------------------
+ 2017-11-26 11:11:11
+(1 row)
+
+-- interval year to month + oratimestamp
+SELECT interval'10-11' year to month + timestamp'2016-11-26 11:11:11.123456';
+           ?column?            
+-------------------------------
+ 2027-10-26 11:11:11.123456000
+(1 row)
+
+-- interval day to second + oratimestamp
+SELECT interval'365 11:11:11' day(3) to second + timestamp'2016-11-26 11:11:11.123456';
+           ?column?            
+-------------------------------
+ 2017-11-26 22:22:22.123456000
+(1 row)
+
+-- interval year to month + oratimestamptz
+SELECT interval'10-11' year to month + timestamp'2016-11-26 11:11:11.123456 +06:30';
+           ?column?            
+-------------------------------
+ 2027-10-25 20:41:11.123456000
+(1 row)
+
+-- interval day to second + oratimestamptz
+SELECT interval'365 11:11:11' day(3) to second + timestamp'2016-11-26 11:11:11.123456 +06:30';
+           ?column?            
+-------------------------------
+ 2017-11-26 07:52:22.123456000
+(1 row)
+
+-- interval year to month + oratimestampltz
+SELECT interval'10-11' year to month + timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone;
+           ?column?            
+-------------------------------
+ 2027-11-12 14:41:11.123456000
+(1 row)
+
+-- interval day to second + oratimestampltz
+SELECT interval'365 11:11:11' day(3) to second + timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone;
+           ?column?            
+-------------------------------
+ 2017-12-13 01:52:22.123456000
+(1 row)
+
+-- interval year to month * number
+SELECT interval'10-11' year to month * 12.34;
+   ?column?    
+---------------
+ +000000134-08
+(1 row)
+
+-- interval day to second * number
+SELECT interval'365 11:11:11' day(3) to second * 12.34;
+           ?column?            
+-------------------------------
+ +000004509 20:26:24.140000000
+(1 row)
+
+-- interval year to month / number
+SELECT interval'10-11' year to month / 12.34;
+   ?column?    
+---------------
+ +000000000-10
+(1 row)
+
+-- interval day to second / number
+SELECT interval'365 11:11:11' day(3) to second / 12.34;
+           ?column?            
+-------------------------------
+ +000000029 14:47:35.024311000
+(1 row)
+
+-- number + oradate
+SELECT 123.456 + date'2016-11-26';
+      ?column?       
+---------------------
+ 2017-03-29 10:56:38
+(1 row)
+
+-- number + oratimestamp
+SELECT 123.456 + timestamp'2016-11-26 11:11:11.123456';
+      ?column?       
+---------------------
+ 2017-03-29 22:07:49
+(1 row)
+
+-- number + oratimestamptz
+SELECT 123.456 + timestamp'2016-11-26 11:11:11.123456 +06:30';
+      ?column?       
+---------------------
+ 2017-03-29 07:37:49
+(1 row)
+
+-- number + oratimestampltz
+SELECT 123.456 + timestamp '2016-11-26 11:11:11.123456'::timestamp with local time zone;
+      ?column?       
+---------------------
+ 2017-03-29 22:07:49
+(1 row)
+
+-- number * interval year to month 
+SELECT 123.456 * interval'10-11' year to month;
+   ?column?    
+---------------
+ +000001347-08
+(1 row)
+
+-- number * interval day to second
+SELECT 123.456 * interval'365 11:11:11' day(3) to second;
+           ?column?            
+-------------------------------
+ +000045118 23:35:12.576000000
+(1 row)
+
+-- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
+SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
+select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+ ?column? 
+----------
+ t
+(1 row)
+

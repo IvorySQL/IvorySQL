@@ -33,8 +33,10 @@
 #include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/bytea.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* SQL PARSER */
 #include "utils/pg_locale.h"
 #include "utils/sortsupport.h"
 #include "utils/varlena.h"
@@ -729,8 +731,30 @@ textoctetlen(PG_FUNCTION_ARGS)
 Datum
 textcat(PG_FUNCTION_ARGS)
 {
-	text	   *t1 = PG_GETARG_TEXT_PP(0);
-	text	   *t2 = PG_GETARG_TEXT_PP(1);
+	
+	text	   *t1 = NULL;
+	text	   *t2 = NULL;
+
+	if (ORA_PARSER == compatible_db)
+	{
+		if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+			PG_RETURN_NULL();
+		else if (!PG_ARGISNULL(0) && PG_ARGISNULL(1))
+			PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
+		else if (!PG_ARGISNULL(1) && PG_ARGISNULL(0))
+			PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(1));
+	}
+	else
+	{
+		if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		{
+			PG_RETURN_NULL();
+		}
+	}
+
+	t1 = PG_GETARG_TEXT_PP(0);
+	t2 = PG_GETARG_TEXT_PP(1);
+	
 
 	PG_RETURN_TEXT_P(text_catenate(t1, t2));
 }
@@ -781,8 +805,10 @@ text_catenate(text *t1, text *t2)
  *
  * It is caller's responsibility that there actually are n characters;
  * the string need not be null-terminated.
+ *
+ * remove static.
  */
-static int
+int
 charlen_to_bytelen(const char *p, int n)
 {
 	if (pg_database_encoding_max_length() == 1)
@@ -2041,7 +2067,8 @@ varstr_sortsupport(SortSupport ssup, Oid typid, Oid collid)
 	 */
 	if (lc_collate_is_c(collid))
 	{
-		if (typid == BPCHAROID)
+		if (typid == BPCHAROID || 
+			(database_mode == DB_ORACLE && (typid == ORACHARCHAROID || typid == ORACHARBYTEOID)))	
 			ssup->comparator = bpcharfastcmp_c;
 		else if (typid == NAMEOID)
 		{
@@ -2331,7 +2358,8 @@ varstrfastcmp_locale(char *a1p, int len1, char *a2p, int len2, SortSupport ssup)
 		return 0;
 	}
 
-	if (sss->typid == BPCHAROID)
+	if (sss->typid == BPCHAROID ||
+		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))	
 	{
 		/* Get true number of bytes, ignoring trailing spaces */
 		len1 = bpchartruelen(a1p, len1);
@@ -2501,7 +2529,8 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 	len = VARSIZE_ANY_EXHDR(authoritative);
 
 	/* Get number of bytes, ignoring trailing spaces */
-	if (sss->typid == BPCHAROID)
+	if (sss->typid == BPCHAROID ||
+		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))	
 		len = bpchartruelen(authoritative_data, len);
 
 	/*
@@ -3762,6 +3791,126 @@ SplitIdentifierString(char *rawstring, char separator,
 	{
 		char	   *curname;
 		char	   *endp;
+		bool		need_case_switch = false;	
+
+		if (*nextp == '"')
+		{
+			/* Quoted name --- collapse quote-quote pairs, no downcasing */
+			curname = nextp + 1;
+			for (;;)
+			{
+				endp = strchr(nextp + 1, '"');
+				if (endp == NULL)
+					return false;	/* mismatched quotes */
+				if (endp[1] != '"')
+					break;		/* found end of quoted name */
+				/* Collapse adjacent quotes into one quote, and look again */
+				memmove(endp, endp + 1, strlen(endp));
+				nextp = endp;
+			}
+			/* endp now points at the terminating quote */
+			nextp = endp + 1;
+			need_case_switch = true;	
+		}
+		else
+		{
+			/* Unquoted name --- extends to separator or whitespace */
+			char	   *downname;
+			int			len;
+
+			curname = nextp;
+			while (*nextp && *nextp != separator &&
+				   !scanner_isspace(*nextp))
+				nextp++;
+			endp = nextp;
+			if (curname == nextp)
+				return false;	/* empty unquoted name not allowed */
+
+			/*
+			 * Downcase the identifier, using same code as main lexer does.
+			 *
+			 * XXX because we want to overwrite the input in-place, we cannot
+			 * support a downcasing transformation that increases the string
+			 * length.  This is not a problem given the current implementation
+			 * of downcase_truncate_identifier, but we'll probably have to do
+			 * something about this someday.
+			 */
+			len = endp - curname;
+			downname = downcase_truncate_identifier(curname, len, false);
+			Assert(strlen(downname) <= len);
+			strncpy(curname, downname, len);	/* strncpy is required here */
+			pfree(downname);
+		}
+
+		while (scanner_isspace(*nextp))
+			nextp++;			/* skip trailing whitespace */
+
+		if (*nextp == separator)
+		{
+			nextp++;
+			while (scanner_isspace(*nextp))
+				nextp++;		/* skip leading whitespace for next */
+			/* we expect another name, so done remains false */
+		}
+		else if (*nextp == '\0')
+			done = true;
+		else
+			return false;		/* invalid syntax */
+
+		/* Now safe to overwrite separator with a null */
+		*endp = '\0';
+
+		/* BEGIN - case sensitive indentify */
+		/* transform the case for the identifier that is
+		 * quoted by double quotes.
+		 */
+		if (compatible_db == DB_ORACLE && enable_case_switch
+			 && identifier_case_switch == INTERCHANGE && need_case_switch)
+		{
+			char	   *new_name;
+
+			new_name = identifier_case_transform(curname, strlen(curname));
+			strncpy(curname, new_name, strlen(new_name));
+			pfree(new_name);
+		}
+		/* END - case sensitive indentify */
+
+		/* Truncate name if it's overlength */
+		truncate_identifier(curname, strlen(curname), false);
+
+		/*
+		 * Finished isolating current name --- add it to list
+		 */
+		*namelist = lappend(*namelist, curname);
+
+		/* Loop back if we didn't reach end of string */
+	} while (!done);
+
+	return true;
+}
+
+
+/* Resolve query specified schema failure issue due to case conversion */
+bool
+SplitIdentifierStringForSearchPath(char *rawstring, char separator,
+					  				List **namelist)
+{
+	char	   *nextp = rawstring;
+	bool		done = false;
+
+	*namelist = NIL;
+
+	while (scanner_isspace(*nextp))
+		nextp++;				/* skip leading whitespace */
+
+	if (*nextp == '\0')
+		return true;			/* allow empty string */
+
+	/* At the top of the loop, we are at start of a new identifier. */
+	do
+	{
+		char	   *curname;
+		char	   *endp;
 
 		if (*nextp == '"')
 		{
@@ -4010,6 +4159,7 @@ SplitGUCList(char *rawstring, char separator,
 	{
 		char	   *curname;
 		char	   *endp;
+		bool		need_case_switch = false;	
 
 		if (*nextp == '"')
 		{
@@ -4028,6 +4178,7 @@ SplitGUCList(char *rawstring, char separator,
 			}
 			/* endp now points at the terminating quote */
 			nextp = endp + 1;
+			need_case_switch = true;	
 		}
 		else
 		{
@@ -4058,6 +4209,21 @@ SplitGUCList(char *rawstring, char separator,
 
 		/* Now safe to overwrite separator with a null */
 		*endp = '\0';
+
+		/* BEGIN - case sensitive indentify */
+		/* transform the case for the identifier that is
+		 * quoted by double quotes.
+		 */
+		if (compatible_db == DB_ORACLE && enable_case_switch
+			 && identifier_case_switch == INTERCHANGE && need_case_switch)
+		{
+			char	   *new_name;
+
+			new_name = identifier_case_transform(curname, strlen(curname));
+			strncpy(curname, new_name, strlen(new_name));
+			pfree(new_name);
+		}
+		/* END - case sensitive indentify */
 
 		/*
 		 * Finished isolating current name --- add it to list
@@ -4861,6 +5027,223 @@ text_to_table_null(PG_FUNCTION_ARGS)
 {
 	return text_to_table(fcinfo);
 }
+
+
+/*
+ * ora_replace_text_regexp
+ *
+ * Find the string that matches the regular rule expression from the source string,
+ * replace it, replace all by default
+ *
+ *src_text is a character expression that serves as the search value.
+ *
+ *regexp is the regular expression.
+ *
+ *replace_text can be of any of the data types CHAR, VARCHAR2, NCHAR, NVARCHAR2, CLOB, or NCLOB.
+ *
+ *start_posn is a positive integer indicating the character of source_char where Oracle 
+ *should begin the search. The default is 1.
+ *
+ *occurr_posn is a nonnegative integer indicating the occurrence of the replace operation
+ *
+ */
+text *
+ora_replace_text_regexp(text *src_text, regex_t *regexp,
+					text *replace_text, int start_posn,int occur_posn)
+{
+	text	   *ret_text = NULL;
+	regex_t    *re = regexp;
+	int	   src_text_len = VARSIZE_ANY_EXHDR(src_text);
+	StringInfoData buf;
+	regmatch_t	pmatch[REGEXP_REPLACE_BACKREF_CNT];
+	pg_wchar   *data;
+	size_t	   data_len;
+	int	   search_start;
+	int	   data_pos;
+	char	   *start_ptr;
+	bool	   have_escape = false;
+	int        replace_occur_posn = 1;
+
+	initStringInfo(&buf);
+
+	/* Convert data string to wide characters. */
+	data = (pg_wchar *) palloc((src_text_len + 1) * sizeof(pg_wchar));
+	data_len = pg_mb2wchar_with_len(VARDATA_ANY(src_text), data, src_text_len);
+
+	/* Check whether replace_text has escape char. */
+	if(replace_text != NULL)
+		have_escape = check_replace_text_has_escape_char(replace_text);
+
+	/* start_ptr points to the data_pos'th character of src_text */
+	start_ptr = (char *) VARDATA_ANY(src_text);
+	data_pos = 0;
+	
+	search_start = 0;
+	if(start_posn > 1) 
+		search_start = start_posn - 1;
+
+	while (search_start <= data_len)
+	{
+		int			regexec_result;
+
+		CHECK_FOR_INTERRUPTS();
+
+		regexec_result = pg_regexec(re,
+									data,
+									data_len,
+									search_start,
+									NULL,		/* no details */
+									REGEXP_REPLACE_BACKREF_CNT,
+									pmatch,
+									0);
+
+		if (regexec_result == REG_NOMATCH)
+			break;
+
+		if (regexec_result != REG_OKAY)
+		{
+			char		errMsg[100];
+
+			CHECK_FOR_INTERRUPTS();
+			pg_regerror(regexec_result, re, errMsg, sizeof(errMsg));
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
+					 errmsg("regular expression failed: %s", errMsg)));
+		}
+
+		if (occur_posn >= 1)
+		{
+			if(replace_occur_posn != occur_posn)  
+			{
+				replace_occur_posn += 1;
+				//search_start = pmatch[0].rm_eo;
+				if (pmatch[0].rm_eo == search_start)
+					search_start++;
+				else
+					search_start = pmatch[0].rm_eo;
+				continue;
+			}
+			else
+			{
+				replace_occur_posn += 1;
+			}
+		}
+		
+
+		/*
+		 * Copy the text to the left of the match position.  Note we are given
+		 * character not byte indexes.
+		 */
+		if (pmatch[0].rm_so - data_pos > 0)
+		{
+			int			chunk_len;
+
+			chunk_len = charlen_to_bytelen(start_ptr,
+										   pmatch[0].rm_so - data_pos);
+			appendBinaryStringInfo(&buf, start_ptr, chunk_len);
+
+			/*
+			 * Advance start_ptr over that text, to avoid multiple rescans of
+			 * it if the replace_text contains multiple back-references.
+			 */
+			start_ptr += chunk_len;
+			data_pos = pmatch[0].rm_so;
+		}
+
+		/*
+		 * Copy the replace_text. Process back references when the
+		 * replace_text has escape characters.
+		 */
+		if(replace_text != NULL)
+		{
+			if (have_escape)
+				appendStringInfoRegexpSubstr(&buf, replace_text, pmatch,
+											 start_ptr, data_pos);
+			else
+				appendStringInfoText(&buf, replace_text);
+		}
+		
+		/* Advance start_ptr and data_pos over the matched text. */
+		start_ptr += charlen_to_bytelen(start_ptr,
+										pmatch[0].rm_eo - data_pos);
+		data_pos = pmatch[0].rm_eo;
+			
+		/*
+		 * Advance search position.  Normally we start the next search at the
+		 * end of the previous match; but if the match was of zero length, we
+		 * have to advance by one character, or we'd just find the same match
+		 * again.
+		 */
+		search_start = data_pos;
+		if (pmatch[0].rm_so == pmatch[0].rm_eo)
+			search_start++;
+	}
+
+	/*
+	 * Copy the text to the right of the last match.
+	 */
+	if (data_pos < data_len)
+	{
+		int			chunk_len;
+
+		chunk_len = ((char *) src_text + VARSIZE_ANY(src_text)) - start_ptr;
+		appendBinaryStringInfo(&buf, start_ptr, chunk_len);
+	}
+
+	ret_text = cstring_to_text_with_len(buf.data, buf.len);
+	pfree(buf.data);
+	pfree(data);
+
+	return ret_text;
+}
+
+/*
+ * ora_substr_text_substr 
+ * src_text is a character expression that serves as the search value.
+ *
+ * regexp is the regular expression.
+ *
+ * start_posn is a positive integer indicating the character of source_char where Oracle 
+ * should begin the search. The default is 1, meaning that Oracle begins the 
+ * search at the first character of source_char.
+ *
+ * occur_posn is a positive integer indicating which occurrence of pattern in source_char 
+ * Oracle should search for. The default is 1, meaning that Oracle searches for 
+ * the first occurrence of pattern.
+ *
+ * */
+bool
+ora_substr_text_regexp(text *src_text,text *pattern_arg ,
+                          text *match_para,Oid collation,
+                          int start_posn, int occur_posn,
+                          int subexpr_pos, Datum * substr)
+{
+	regex_t    *re;
+	pg_re_flags flags;
+
+	ora_parse_re_flags(&flags, match_para);
+	re = ora_re_compile_and_cache(pattern_arg, flags.cflags, collation);
+	return ora_setup_regexp_substr_matches(src_text,re,flags,start_posn,
+                                                      occur_posn,subexpr_pos,
+                                                      substr,false);
+}
+
+bool
+ora_instr_text_regexp(text *src_text,text *pattern_arg,
+					  text *match_para,Oid collation,
+					  int start_posn, int occur_posn,
+					  int ret_opt,int subexpr_pos, Datum * substr)
+{
+	regex_t    *re;
+	pg_re_flags flags;
+
+	ora_parse_re_flags(&flags, match_para);
+	re = ora_re_compile_and_cache(pattern_arg, flags.cflags, collation);
+	return ora_setup_regexp_instr_matches(src_text,re,flags,start_posn,
+										  occur_posn,ret_opt,subexpr_pos,
+										  substr,false);
+}
+
 
 /*
  * Common code for text_to_array, text_to_array_null, text_to_table

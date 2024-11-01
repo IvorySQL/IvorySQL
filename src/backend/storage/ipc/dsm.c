@@ -261,7 +261,7 @@ dsm_cleanup_using_control_segment(dsm_handle old_control_handle)
 		if (is_main_region_dsm_handle(handle))
 			continue;
 
-		/* Log debugging information. */
+		
 		elog(DEBUG2, "cleaning up orphaned dynamic shared memory with ID %u (reference count %u)",
 			 handle, refcnt);
 
@@ -365,7 +365,7 @@ dsm_postmaster_shutdown(int code, Datum arg)
 		if (is_main_region_dsm_handle(handle))
 			continue;
 
-		/* Log debugging information. */
+		
 		elog(DEBUG2, "cleaning up orphaned dynamic shared memory with ID %u",
 			 handle);
 

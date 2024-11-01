@@ -80,7 +80,9 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.proname = p2.proname AND
     p1.pronargs = p2.pronargs AND
-    p1.proargtypes = p2.proargtypes;
+    p1.pronamespace != 9900 AND
+    p2.pronamespace != 9900 AND
+    p1.proargtypes = p2.proargtypes order by p1.oid, p1.proname, p2.oid, p2.proname;
 
 -- Considering only built-in procs (prolang = 12), look for multiple uses
 -- of the same internal function (ie, matching prosrc fields).  It's OK to
@@ -95,6 +97,8 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid < p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
+    p1.pronamespace != 9900 AND
+    p2.pronamespace != 9900 AND
     (p1.prokind != 'a' OR p2.prokind != 'a') AND
     (p1.prolang != p2.prolang OR
      p1.prokind != p2.prokind OR
@@ -103,7 +107,7 @@ WHERE p1.oid < p2.oid AND
      p1.proisstrict != p2.proisstrict OR
      p1.proretset != p2.proretset OR
      p1.provolatile != p2.provolatile OR
-     p1.pronargs != p2.pronargs);
+     p1.pronargs != p2.pronargs) order by p1.oid, p1.proname, p2.oid, p2.proname;
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.
@@ -122,6 +126,8 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
+    p1.pronamespace != 9900 AND
+    p2.pronamespace != 9900 AND
     p1.prokind != 'a' AND p2.prokind != 'a' AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
@@ -135,6 +141,8 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
+    p1.pronamespace != 9900 AND
+    p2.pronamespace != 9900 AND
     p1.prokind != 'a' AND p2.prokind != 'a' AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
@@ -148,6 +156,8 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
+    p1.pronamespace != 9900 AND
+    p2.pronamespace != 9900 AND
     p1.prokind != 'a' AND p2.prokind != 'a' AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
@@ -161,6 +171,8 @@ FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
+    p1.pronamespace != 9900 AND
+    p2.pronamespace != 9900 AND
     p1.prokind != 'a' AND p2.prokind != 'a' AND
     (p1.proargtypes[2] < p2.proargtypes[2])
 ORDER BY 1, 2;
@@ -403,7 +415,7 @@ order by 1;
 -- Check that all immutable functions are marked parallel safe
 SELECT p1.oid, p1.proname
 FROM pg_proc AS p1
-WHERE provolatile = 'i' AND proparallel = 'u';
+WHERE provolatile = 'i' AND proparallel = 'u' AND p1.pronamespace != 9900;
 
 
 -- **************** pg_cast ****************

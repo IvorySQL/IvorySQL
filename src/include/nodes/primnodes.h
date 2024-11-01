@@ -486,6 +486,16 @@ typedef enum CoercionForm
 	COERCE_SQL_SYNTAX			/* display with SQL-mandated special syntax */
 } CoercionForm;
 
+
+#define FUNC_FROM_SUBPROCFUNC	'i'
+#define FUNC_FROM_PG_PROC		's'
+
+
+
+#define FUNC_EXPR_FROM_PG_PROC(function_from) \
+	(function_from != FUNC_FROM_SUBPROCFUNC)
+
+
 /*
  * FuncExpr - expression node for a function call
  */
@@ -501,6 +511,10 @@ typedef struct FuncExpr
 	Oid			funccollid;		/* OID of collation of result */
 	Oid			inputcollid;	/* OID of collation that function should use */
 	List	   *args;			/* arguments to the function */
+	
+	char		function_from;	/* proc func, subproc func, package func */
+	void		*parent_func;	/* subproc funcs'parent func address */
+	
 	int			location;		/* token location, or -1 if unknown */
 } FuncExpr;
 
@@ -740,7 +754,7 @@ typedef struct SubPlan
 	List	   *paramIds;		/* IDs of Params embedded in the above */
 	/* Identification of the Plan tree to use: */
 	int			plan_id;		/* Index (from 1) in PlannedStmt.subplans */
-	/* Identification of the SubPlan for EXPLAIN and debugging purposes: */
+	
 	char	   *plan_name;		/* A name assigned during planning */
 	/* Extra data useful for determining subplan's output type: */
 	Oid			firstColType;	/* Type of first column of subplan result */
@@ -969,6 +983,7 @@ typedef struct CaseExpr
 	List	   *args;			/* the arguments (list of WHEN clauses) */
 	Expr	   *defresult;		/* the default result (ELSE clause) */
 	int			location;		/* token location, or -1 if unknown */
+	bool		is_decode;			
 } CaseExpr;
 
 /*
@@ -978,6 +993,7 @@ typedef struct CaseWhen
 {
 	Expr		xpr;
 	Expr	   *expr;			/* condition expression */
+	Expr	   *orig_expr;		
 	Expr	   *result;			/* substitution result */
 	int			location;		/* token location, or -1 if unknown */
 } CaseWhen;

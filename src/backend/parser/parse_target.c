@@ -31,6 +31,13 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/typcache.h"
+#include "utils/guc.h"
+
+
+#include "utils/ora_compatible.h"
+
+OraGetAttrnoHooktype OraGetAttrnoHook = NULL;
+
 
 static void markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 								 Var *var, int levelsup);
@@ -1057,6 +1064,14 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 
 			/* Lookup column name, ereport on failure */
 			attrno = attnameAttNum(pstate->p_target_relation, name, false);
+
+			
+			if (attrno == InvalidAttrNumber && compatible_db == DB_ORACLE)
+			{
+				if (OraGetAttrnoHook && insert_enable_alias)
+					attrno = (* OraGetAttrnoHook)(pstate, col);
+			}
+			
 			if (attrno == InvalidAttrNumber)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -1308,6 +1323,7 @@ ExpandAllTables(ParseState *pstate, int location)
 							 expandNSItemAttrs(pstate,
 											   nsitem,
 											   0,
+											   true,
 											   location));
 	}
 
@@ -1370,7 +1386,7 @@ ExpandSingleTable(ParseState *pstate, ParseNamespaceItem *nsitem,
 	if (make_target_entry)
 	{
 		/* expandNSItemAttrs handles permissions marking */
-		return expandNSItemAttrs(pstate, nsitem, sublevels_up, location);
+		return expandNSItemAttrs(pstate, nsitem, sublevels_up, true, location);
 	}
 	else
 	{
@@ -1779,6 +1795,11 @@ FigureColnameInternal(Node *node, char **name)
 		case T_FuncCall:
 			*name = strVal(llast(((FuncCall *) node)->funcname));
 			return 2;
+		
+		case T_ColumnRefOrFuncCall:
+			*name = strVal(llast(((ColumnRefOrFuncCall *)node)->func->funcname));
+			return 2;
+		
 		case T_A_Expr:
 			if (((A_Expr *) node)->kind == AEXPR_NULLIF)
 			{

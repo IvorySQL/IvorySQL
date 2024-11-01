@@ -59,6 +59,7 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 	bool		got_large_object = false;
 	bool		got_date_is_int = false;
 	bool		got_data_checksum_version = false;
+	bool		got_database_mode_is_oracle = false;	
 	bool		got_cluster_state = false;
 	char	   *lc_collate = NULL;
 	char	   *lc_ctype = NULL;
@@ -497,6 +498,19 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 			cluster->controldata.data_checksum_version = str2uint(p);
 			got_data_checksum_version = true;
 		}
+		
+		else if ((p = strstr(bufin, "database mode:")) != NULL)
+		{
+			p = strchr(p, ':');
+
+			if (p == NULL || strlen(p) <= 1)
+				pg_fatal("%d: controldata retrieval problem\n", __LINE__);
+
+			p++;				/* remove ':' char */
+			cluster->controldata.database_mode_is_oracle = str2uint(p);
+			got_database_mode_is_oracle = true;
+		}
+		
 	}
 
 	pclose(output);
@@ -565,7 +579,8 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 		!got_index || !got_toast ||
 		(!got_large_object &&
 		 cluster->controldata.ctrl_ver >= LARGE_OBJECT_SIZE_PG_CONTROL_VER) ||
-		!got_date_is_int || !got_data_checksum_version)
+		!got_date_is_int || !got_data_checksum_version ||
+		!got_database_mode_is_oracle)	
 	{
 		if (cluster == &old_cluster)
 			pg_log(PG_REPORT,
@@ -634,6 +649,11 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 		if (!got_data_checksum_version)
 			pg_log(PG_REPORT, "  data checksum version\n");
 
+		
+		if (!got_database_mode_is_oracle)
+			pg_log(PG_REPORT, "  database mode\n");
+		
+
 		pg_fatal("Cannot continue without required control information, terminating\n");
 	}
 }
@@ -698,6 +718,11 @@ check_control_data(ControlData *oldctrl,
 		pg_fatal("old cluster uses data checksums but the new one does not\n");
 	else if (oldctrl->data_checksum_version != newctrl->data_checksum_version)
 		pg_fatal("old and new cluster pg_controldata checksum versions do not match\n");
+
+	
+	if (oldctrl->database_mode_is_oracle != newctrl->database_mode_is_oracle)
+		pg_fatal("old and new pg_controldata database mode do not match\n");
+	
 }
 
 

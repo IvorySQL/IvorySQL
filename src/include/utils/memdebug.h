@@ -34,7 +34,7 @@
 
 #ifdef CLOBBER_FREED_MEMORY
 
-/* Wipe freed memory for debugging purposes */
+
 static inline void
 wipe_mem(void *ptr, size_t size)
 {
@@ -79,4 +79,4 @@ void		randomize_mem(char *ptr, size_t size);
 #endif							/* RANDOMIZE_ALLOCATED_MEMORY */
 
 
-#endif							/* MEMDEBUG_H */
+#endif							

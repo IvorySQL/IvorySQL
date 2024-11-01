@@ -108,9 +108,9 @@
  * debugging facilities
  */
 #ifdef REG_DEBUG
-/* FDEBUG does finite-state tracing */
+
 #define FDEBUG(arglist) { if (v->eflags&REG_FTRACE) printf arglist; }
-/* MDEBUG does higher-level tracing */
+
 #define MDEBUG(arglist) { if (v->eflags&REG_MTRACE) printf arglist; }
 #else
 #define FDEBUG(arglist) {}

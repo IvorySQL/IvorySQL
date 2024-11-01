@@ -488,7 +488,7 @@ compute_array_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 		}
 		Assert(track_len <= i);
 
-		/* emit some statistics for debug purposes */
+		
 		elog(DEBUG3, "compute_array_stats: target # mces = %d, "
 			 "bucket width = %d, "
 			 "# elements = " INT64_FORMAT ", hashtable size = %d, "

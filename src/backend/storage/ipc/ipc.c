@@ -187,7 +187,7 @@ proc_exit_prepare(int code)
 	 * elog(FATAL) for example.)
 	 */
 	error_context_stack = NULL;
-	/* For the same reason, reset debug_query_string before it's clobbered */
+	
 	debug_query_string = NULL;
 
 	/* do our shared memory exits first */

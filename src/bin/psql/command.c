@@ -34,6 +34,9 @@
 #include "fe_utils/cancel.h"
 #include "fe_utils/print.h"
 #include "fe_utils/string_utils.h"
+/* Begin - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* END - SQL PARSER */
 #include "help.h"
 #include "input.h"
 #include "large_obj.h"
@@ -43,6 +46,7 @@
 #include "portability/instr_time.h"
 #include "pqexpbuffer.h"
 #include "psqlscanslash.h"
+#include "ora_psqlscanslash.h" 
 #include "settings.h"
 #include "variables.h"
 
@@ -54,6 +58,10 @@ typedef enum EditableObjectType
 	EditableFunction,
 	EditableView
 } EditableObjectType;
+
+
+psql_scan_slash_option_hook_type psql_scan_slash_option_parser = pg_psql_scan_slash_option;
+
 
 /* local function declarations */
 static backslashResult exec_command(const char *cmd,
@@ -139,6 +147,7 @@ static backslashResult exec_command_x(PsqlScanState scan_state, bool active_bran
 static backslashResult exec_command_z(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_shell_escape(PsqlScanState scan_state, bool active_branch);
 static backslashResult exec_command_slash_command_help(PsqlScanState scan_state, bool active_branch);
+static backslashResult exec_command_parser(PsqlScanState scan_state, bool active_branch); 
 static char *read_connect_arg(PsqlScanState scan_state);
 static PQExpBuffer gather_boolean_expression(PsqlScanState scan_state);
 static bool is_true_boolean_expression(PsqlScanState scan_state, const char *name);
@@ -219,12 +228,24 @@ HandleSlashCmds(PsqlScanState scan_state,
 	Assert(scan_state != NULL);
 	Assert(cstack != NULL);
 
+	
 	/* Parse off the command name */
-	cmd = psql_scan_slash_command(scan_state);
+	if (db_mode == DB_PG)
+	{
+		cmd = psql_scan_slash_command(scan_state);
+		psql_scan_slash_option_parser = pg_psql_scan_slash_option;
+	}
+	else if (db_mode == DB_ORACLE)
+	{
+		cmd = ora_psql_scan_slash_command(scan_state);
+		psql_scan_slash_option_parser = ora_psql_scan_slash_option;
+	}
+	
 
 	/* And try to execute it */
 	status = exec_command(cmd, scan_state, cstack, query_buf, previous_buf);
 
+	
 	if (status == PSQL_CMD_UNKNOWN)
 	{
 		pg_log_error("invalid command \\%s", cmd);
@@ -236,15 +257,15 @@ HandleSlashCmds(PsqlScanState scan_state,
 	if (status != PSQL_CMD_ERROR)
 	{
 		/*
-		 * Eat any remaining arguments after a valid command.  We want to
-		 * suppress evaluation of backticks in this situation, so transiently
-		 * push an inactive conditional-stack entry.
-		 */
+		* Eat any remaining arguments after a valid command.  We want to
+		* suppress evaluation of backticks in this situation, so transiently
+		* push an inactive conditional-stack entry.
+		*/
 		bool		active_branch = conditional_active(cstack);
 
 		conditional_stack_push(cstack, IFSTATE_IGNORED);
 		while ((arg = psql_scan_slash_option(scan_state,
-											 OT_NORMAL, NULL, false)))
+												OT_NORMAL, NULL, false)))
 		{
 			if (active_branch)
 				pg_log_warning("\\%s: extra argument \"%s\" ignored", cmd, arg);
@@ -256,12 +277,16 @@ HandleSlashCmds(PsqlScanState scan_state,
 	{
 		/* silently throw away rest of line after an erroneous command */
 		while ((arg = psql_scan_slash_option(scan_state,
-											 OT_WHOLE_LINE, NULL, false)))
+												OT_WHOLE_LINE, NULL, false)))
 			free(arg);
 	}
 
 	/* if there is a trailing \\, swallow it */
-	psql_scan_slash_command_end(scan_state);
+	if (db_mode == DB_PG)
+		psql_scan_slash_command_end(scan_state);
+	else if(db_mode == DB_ORACLE)
+		ora_psql_scan_slash_command_end(scan_state);
+	
 
 	free(cmd);
 
@@ -412,6 +437,10 @@ exec_command(const char *cmd,
 		status = exec_command_shell_escape(scan_state, active_branch);
 	else if (strcmp(cmd, "?") == 0)
 		status = exec_command_slash_command_help(scan_state, active_branch);
+	
+	else if (strcmp(cmd, "parser") == 0)
+		status = exec_command_parser(scan_state, active_branch);
+	
 	else
 		status = PSQL_CMD_UNKNOWN;
 
@@ -715,6 +744,9 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 
 		show_verbose = strchr(cmd, '+') ? true : false;
 		show_system = strchr(cmd, 'S') ? true : false;
+		/* BEGIN - SQL PARSER */
+		getDbCompatibleMode(pset.db);
+		/* END - SQL PARSER */
 
 		switch (cmd[1])
 		{
@@ -1244,6 +1276,8 @@ exec_command_echo(PsqlScanState scan_state, bool active_branch, const char *cmd)
 			}
 			free(value);
 		}
+
+
 		if (!no_newline)
 			fputs("\n", fout);
 	}
@@ -1263,7 +1297,6 @@ exec_command_encoding(PsqlScanState scan_state, bool active_branch)
 	{
 		char	   *encoding = psql_scan_slash_option(scan_state,
 													  OT_NORMAL, NULL, false);
-
 		if (!encoding)
 		{
 			/* show encoding */
@@ -1900,7 +1933,6 @@ exec_command_lo(PsqlScanState scan_state, bool active_branch, const char *cmd)
 	{
 		char	   *opt1,
 				   *opt2;
-
 		opt1 = psql_scan_slash_option(scan_state,
 									  OT_NORMAL, NULL, true);
 		opt2 = psql_scan_slash_option(scan_state,
@@ -1975,7 +2007,6 @@ exec_command_out(PsqlScanState scan_state, bool active_branch)
 	{
 		char	   *fname = psql_scan_slash_option(scan_state,
 												   OT_FILEPIPE, NULL, true);
-
 		expand_tilde(&fname);
 		success = setQFout(fname);
 		free(fname);
@@ -2067,6 +2098,9 @@ exec_command_password(PsqlScanState scan_state, bool active_branch)
 			{
 				PGresult   *res;
 
+				/* BEGIN - SQL PARSER */
+				getDbCompatibleMode(pset.db);
+				/* END - SQL PARSER */
 				printfPQExpBuffer(&buf, "ALTER USER %s PASSWORD ",
 								  fmtId(user));
 				appendStringLiteralConn(&buf, encrypted_password, pset.db);
@@ -2105,7 +2139,6 @@ exec_command_prompt(PsqlScanState scan_state, bool active_branch,
 				   *prompt_text = NULL;
 		char	   *arg1,
 				   *arg2;
-
 		arg1 = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, false);
 		arg2 = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, false);
 
@@ -2305,9 +2338,9 @@ exec_command_set(PsqlScanState scan_state, bool active_branch)
 
 			opt = psql_scan_slash_option(scan_state,
 										 OT_NORMAL, NULL, false);
+
 			newval = pg_strdup(opt ? opt : "");
 			free(opt);
-
 			while ((opt = psql_scan_slash_option(scan_state,
 												 OT_NORMAL, NULL, false)))
 			{
@@ -2315,7 +2348,6 @@ exec_command_set(PsqlScanState scan_state, bool active_branch)
 				strcat(newval, opt);
 				free(opt);
 			}
-
 			if (!SetVariable(pset.vars, opt0, newval))
 				success = false;
 
@@ -2344,7 +2376,6 @@ exec_command_setenv(PsqlScanState scan_state, bool active_branch,
 													OT_NORMAL, NULL, false);
 		char	   *envval = psql_scan_slash_option(scan_state,
 													OT_NORMAL, NULL, false);
-
 		if (!envvar)
 		{
 			pg_log_error("\\%s: missing required argument", cmd);
@@ -2395,8 +2426,10 @@ exec_command_sf_sv(PsqlScanState scan_state, bool active_branch,
 		EditableObjectType eot = is_func ? EditableFunction : EditableView;
 
 		buf = createPQExpBuffer();
+
 		obj_desc = psql_scan_slash_option(scan_state,
 										  OT_WHOLE_LINE, NULL, true);
+
 		if (pset.sversion < (is_func ? 80400 : 70400))
 		{
 			char		sverbuf[32];
@@ -2691,7 +2724,6 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 		char	   *opt = psql_scan_slash_option(scan_state,
 												 OT_NORMAL, NULL, true);
 		double		sleep = 2;
-
 		/* Convert optional sleep-length argument */
 		if (opt)
 		{
@@ -2749,7 +2781,7 @@ exec_command_z(PsqlScanState scan_state, bool active_branch)
 	if (active_branch)
 	{
 		char	   *pattern = psql_scan_slash_option(scan_state,
-													 OT_NORMAL, NULL, true);
+															 OT_NORMAL, NULL, true);
 
 		success = permissionsList(pattern);
 		if (pattern)
@@ -2782,6 +2814,36 @@ exec_command_shell_escape(PsqlScanState scan_state, bool active_branch)
 
 	return success ? PSQL_CMD_SKIP_LINE : PSQL_CMD_ERROR;
 }
+
+
+/*
+ * \parser -- switch the psql parser
+ */
+static backslashResult
+exec_command_parser(PsqlScanState scan_state, bool active_branch)
+{
+	bool		success = true;
+	if (active_branch)
+	{
+		getDbCompatibleMode(pset.db);
+		if (db_mode == DB_PG)
+		{
+			psql_scan_slash_option_parser = pg_psql_scan_slash_option;
+			printf(_("PG parser.\n"));
+		}
+		else if (db_mode == DB_ORACLE)
+		{
+			psql_scan_slash_option_parser = ora_psql_scan_slash_option;
+			printf(_("Oracle parser.\n"));
+		}
+		else
+			success = false;
+	}
+	else
+		ignore_slash_options(scan_state);
+	return success ? PSQL_CMD_SKIP_LINE : PSQL_CMD_ERROR;
+}
+
 
 /*
  * \? -- print help about backslash commands
@@ -2834,7 +2896,6 @@ read_connect_arg(PsqlScanState scan_state)
 	 * of OT_SQLIDHACK.
 	 */
 	result = psql_scan_slash_option(scan_state, OT_SQLIDHACK, &quote, true);
-
 	if (!result)
 		return NULL;
 
@@ -2876,7 +2937,6 @@ gather_boolean_expression(PsqlScanState scan_state)
 		num_options++;
 		free(value);
 	}
-
 	return exp_buf;
 }
 
@@ -2925,7 +2985,6 @@ static void
 ignore_slash_options(PsqlScanState scan_state)
 {
 	char	   *arg;
-
 	while ((arg = psql_scan_slash_option(scan_state,
 										 OT_NORMAL, NULL, false)) != NULL)
 		free(arg);
@@ -5217,6 +5276,9 @@ get_create_object_cmd(EditableObjectType obj_type, Oid oid,
 							result = false;
 							break;
 					}
+					/* BEGIN - SQL PARSER */
+					getDbCompatibleMode(pset.db);
+					/* END - SQL PARSER */
 					appendPQExpBuffer(buf, "%s.", fmtId(nspname));
 					appendPQExpBufferStr(buf, fmtId(relname));
 

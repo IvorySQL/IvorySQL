@@ -58,7 +58,7 @@ struct FreePageManager
 	bool		contiguous_pages_dirty;
 	RelptrFreePageSpanLeader freelist[FPM_NUM_FREELISTS];
 #ifdef FPM_EXTRA_ASSERTS
-	/* For debugging only, pages put minus pages gotten. */
+	
 	Size		free_pages;
 #endif
 };

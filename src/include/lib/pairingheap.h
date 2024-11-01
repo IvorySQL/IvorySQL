@@ -13,8 +13,8 @@
 
 #include "lib/stringinfo.h"
 
-/* Enable if you need the pairingheap_dump() debug function */
-/* #define PAIRINGHEAP_DEBUG */
+
+
 
 /*
  * This represents an element stored in the heap. Embed this in a larger

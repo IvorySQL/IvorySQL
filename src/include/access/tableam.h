@@ -869,7 +869,6 @@ extern const TupleTableSlotOps *table_slot_callbacks(Relation rel);
  */
 extern TupleTableSlot *table_slot_create(Relation rel, List **reglist);
 
-
 /* ----------------------------------------------------------------------------
  * Table scan functions.
  * ----------------------------------------------------------------------------
@@ -2071,5 +2070,6 @@ extern const TableAmRoutine *GetTableAmRoutine(Oid amhandler);
 extern const TableAmRoutine *GetHeapamTableAmRoutine(void);
 extern bool check_default_table_access_method(char **newval, void **extra,
 											  GucSource source);
+
 
 #endif							/* TABLEAM_H */

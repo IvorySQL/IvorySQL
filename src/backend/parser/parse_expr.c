@@ -34,9 +34,15 @@
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
+#include "utils/guc.h"	
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
+#include "utils/ora_compatible.h"	
 #include "utils/xml.h"
+
+#include "utils/fmgroids.h"
+#include "access/htup_details.h"
+
 
 /* GUC parameters */
 bool		Transform_null_equals = false;
@@ -55,6 +61,11 @@ static Node *transformBoolExpr(ParseState *pstate, BoolExpr *a);
 static Node *transformFuncCall(ParseState *pstate, FuncCall *fn);
 static Node *transformMultiAssignRef(ParseState *pstate, MultiAssignRef *maref);
 static Node *transformCaseExpr(ParseState *pstate, CaseExpr *c);
+
+
+static Node *transformdecodeexpr(ParseState *pstate, CaseExpr *c);
+
+
 static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
 static Node *transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 								Oid array_type, Oid element_type, int32 typmod);
@@ -82,6 +93,24 @@ static Expr *make_distinct_op(ParseState *pstate, List *opname,
 							  Node *ltree, Node *rtree, int location);
 static Node *make_nulltest_from_distinct(ParseState *pstate,
 										 A_Expr *distincta, Node *arg);
+
+static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func);
+
+
+
+static inline void
+set_merge_on_attrno(ParseState *pstate, char *colname)
+{
+	AttrNumber	attno = InvalidAttrNumber;
+
+	if (colname && pstate->merge_on_attrno != NULL && pstate->p_expr_kind == EXPR_KIND_JOIN_ON)
+		attno = attnameAttNum(pstate->p_target_relation, colname, true);
+
+	if (attno > InvalidAttrNumber && attno <= pstate->merge_on_attr_size)
+	{
+		pstate->merge_on_attrno[attno - 1] = 1;
+	}
+}
 
 
 /*
@@ -208,6 +237,12 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			result = transformFuncCall(pstate, (FuncCall *) expr);
 			break;
 
+		
+		case T_ColumnRefOrFuncCall:
+			result = transformColumnRefOrFunCall(pstate, ((ColumnRefOrFuncCall *)expr));
+			break;
+		
+
 		case T_MultiAssignRef:
 			result = transformMultiAssignRef(pstate, (MultiAssignRef *) expr);
 			break;
@@ -230,8 +265,22 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			break;
 
 		case T_CaseExpr:
-			result = transformCaseExpr(pstate, (CaseExpr *) expr);
-			break;
+			{
+				
+				CaseExpr *n = (CaseExpr *) expr;
+
+				if (!n->is_decode)
+					result = transformCaseExpr(pstate, n);
+				else
+				{
+					/* 
+					 * change name transformCaseExpr_for_decode to transformdecodeexpr 
+					 */
+					result = transformdecodeexpr(pstate, n);
+				}
+				
+				break;
+			}
 
 		case T_RowExpr:
 			result = transformRowExpr(pstate, (RowExpr *) expr, false);
@@ -305,6 +354,14 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 				result = (Node *) expr;
 				break;
 			}
+
+		
+		case T_ResTarget:
+			{
+				result = transformExprRecurse(pstate, ((ResTarget *)expr)->val);
+				break;
+			}
+		
 
 		default:
 			/* should not reach here */
@@ -435,13 +492,16 @@ transformIndirection(ParseState *pstate, A_Indirection *ind)
 	return result;
 }
 
+
 /*
- * Transform a ColumnRef.
- *
- * If you find yourself changing this code, see also ExpandColumnRefStar.
+ * This is a copy of transformColumnRef, except that we have added
+ * a boolean missing_ok parameter to control whether an error is 
+ * reported when the column does not exist. The native PG reports
+ * an error directly. We hope to return a NULL Node instead of 
+ * reporting an error in some cases.
  */
 static Node *
-transformColumnRef(ParseState *pstate, ColumnRef *cref)
+transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 {
 	Node	   *node = NULL;
 	char	   *nspname = NULL;
@@ -487,6 +547,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 		case EXPR_KIND_INSERT_TARGET:
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
+		case EXPR_KIND_MERGE_WHEN:
 		case EXPR_KIND_GROUP_BY:
 		case EXPR_KIND_ORDER_BY:
 		case EXPR_KIND_DISTINCT_ON:
@@ -575,6 +636,9 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 
 				Assert(IsA(field1, String));
 				colname = strVal(field1);
+				
+				set_merge_on_attrno(pstate, colname);
+				
 
 				/* Try to identify as an unqualified column */
 				node = colNameToVar(pstate, colname, false, cref->location);
@@ -629,6 +693,9 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 
 				Assert(IsA(field2, String));
 				colname = strVal(field2);
+				
+				set_merge_on_attrno(pstate, colname);
+				
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
@@ -679,6 +746,9 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 
 				Assert(IsA(field3, String));
 				colname = strVal(field3);
+				
+				set_merge_on_attrno(pstate, colname);
+				
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
@@ -742,6 +812,9 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 
 				Assert(IsA(field4, String));
 				colname = strVal(field4);
+				
+				set_merge_on_attrno(pstate, colname);
+				
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
@@ -793,36 +866,52 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 	/*
 	 * Throw error if no translation found.
 	 */
-	if (node == NULL)
+	if ((compatible_db == ORA_PARSER && !missing_ok) ||
+		compatible_db == PG_PARSER)
 	{
-		switch (crerr)
+		if (node == NULL)
 		{
-			case CRERR_NO_COLUMN:
-				errorMissingColumn(pstate, relname, colname, cref->location);
-				break;
-			case CRERR_NO_RTE:
-				errorMissingRTE(pstate, makeRangeVar(nspname, relname,
-													 cref->location));
-				break;
-			case CRERR_WRONG_DB:
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cross-database references are not implemented: %s",
-								NameListToString(cref->fields)),
-						 parser_errposition(pstate, cref->location)));
-				break;
-			case CRERR_TOO_MANY:
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("improper qualified name (too many dotted names): %s",
-								NameListToString(cref->fields)),
-						 parser_errposition(pstate, cref->location)));
-				break;
+			switch (crerr)
+			{
+				case CRERR_NO_COLUMN:
+					errorMissingColumn(pstate, relname, colname, cref->location);
+					break;
+				case CRERR_NO_RTE:
+					errorMissingRTE(pstate, makeRangeVar(nspname, relname,
+														 cref->location));
+					break;
+				case CRERR_WRONG_DB:
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cross-database references are not implemented: %s",
+									NameListToString(cref->fields)),
+							 parser_errposition(pstate, cref->location)));
+					break;
+				case CRERR_TOO_MANY:
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("improper qualified name (too many dotted names): %s",
+									NameListToString(cref->fields)),
+							 parser_errposition(pstate, cref->location)));
+					break;
+			}
 		}
 	}
 
 	return node;
 }
+
+/*
+ * Transform a ColumnRef.
+ *
+ * If you find yourself changing this code, see also ExpandColumnRefStar.
+ */
+static Node *
+transformColumnRef(ParseState *pstate, ColumnRef *cref)
+{
+	return transformColumnRefInternal(pstate, cref, false);
+}
+
 
 static Node *
 transformParamRef(ParseState *pstate, ParamRef *pref)
@@ -1396,6 +1485,50 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 fn->location);
 }
 
+
+/*
+ * First we assume it's a ColumnRef, if it's not a ColumnRef
+ * we assume it's a FuncCall, still not, report an error.
+ */
+Node *
+transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func)
+{
+	Node *node = transformColumnRefInternal(pstate, cref_func->cref, true);
+
+	if (node == NULL)
+	{
+		PG_TRY();
+		{
+			node = transformFuncCall(pstate, cref_func->func);
+		}
+		PG_CATCH();
+		{
+			char str[264] = {'\0'};
+			ListCell	*lc;
+			int			i = 1;
+
+			strcpy(str, "\"");
+			foreach(lc, cref_func->cref->fields)
+			{
+				if (i > 1)
+					strcat(str, "\".\"");
+				strcat(str, ((Value *)lfirst(lc))->val.str);
+				i++;
+			}
+			strcat(str, "\"");
+
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_NAME),
+					 errmsg("%s: invalid identifier", str),
+					 parser_errposition(pstate, cref_func->cref->location)));
+		}
+		PG_END_TRY();
+	}
+
+	return node;
+}
+
+
 static Node *
 transformMultiAssignRef(ParseState *pstate, MultiAssignRef *maref)
 {
@@ -1680,9 +1813,392 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 									exprLocation(pstate->p_last_srf))));
 
 	newc->location = c->location;
+	
+	newc->is_decode = c->is_decode;
+	
 
 	return (Node *) newc;
 }
+
+/* 
+ * change function name, 
+ * transformCaseExpr_for_decode to transformdecodeexpr
+ */
+static Node *
+transformdecodeexpr(ParseState *pstate, CaseExpr *c)
+{
+	CaseExpr   *newc;
+	Node	   *arg;
+	CaseTestExpr *placeholder;
+	List	   *newargs;
+	List	   *resultexprs;
+	ListCell   *l;
+	Node	   *defresult;
+	Oid			ptype = InvalidOid;
+	List	   *whenexprs;
+
+	newc = makeNode(CaseExpr);
+
+	/* transform the test expression, if any */
+	arg = transformExprRecurse(pstate, (Node *) c->arg);
+
+	whenexprs = NIL;
+	if (database_mode == DB_ORACLE)
+	{
+		foreach(l, c->args)
+		{
+			CaseWhen   *w = (CaseWhen *) lfirst(l);
+			Node	   *warg;
+			Expr	   *tmp;
+
+			Assert(IsA(w, CaseWhen));
+
+			warg = (Node *) w->expr;
+
+			tmp = (Expr *) transformExprRecurse(pstate, warg);
+			whenexprs = lappend(whenexprs, tmp);
+		}
+		ptype = select_common_type_for_nvl(pstate, whenexprs, "DECODE", NULL);
+
+		l = lnext(whenexprs, list_head(whenexprs));
+		while (l)
+		{
+			Expr   *w = (Expr *) lfirst(l);
+			Oid			ntype = exprType((Node *) w);
+
+			if (!can_coerce_type(1, &ntype, &ptype, COERCION_IMPLICIT))
+				ereport(ERROR,
+						(errcode(ERRCODE_CANNOT_COERCE),
+				/* translator: first %s is name of a SQL construct, eg CASE */
+						 errmsg("%s could not convert type %s to %s",
+								"DECODE",
+								format_type_be(ntype),
+								format_type_be(ptype)),
+						 parser_errposition(pstate, exprLocation((Node *) w))));
+
+			l = lnext(whenexprs, l);
+		}
+	}
+
+	/* generate placeholder for test expression */
+	if (arg)
+	{
+		/*
+		 * If test expression is an untyped literal, force it to text. We have
+		 * to do something now because we won't be able to do this coercion on
+		 * the placeholder.  This is not as flexible as what was done in 7.4
+		 * and before, but it's good enough to handle the sort of silly coding
+		 * commonly seen.
+		 */
+		if (exprType(arg) == UNKNOWNOID)
+		{
+			if (compatible_db == PG_PARSER)
+				arg = coerce_to_common_type(pstate, arg, TEXTOID, "DECODE");
+			else if (compatible_db == ORA_PARSER)
+			{
+				if (nls_length_semantics == NLS_LENGTH_BYTE) 
+					arg = coerce_to_common_type(pstate, arg, ORAVARCHARBYTEOID, "DECODE");
+				else
+					arg = coerce_to_common_type(pstate, arg, ORAVARCHARCHAROID, "DECODE");
+			}
+		}
+
+		if (OidIsValid(ptype))
+			arg = coerce_to_common_type(pstate,
+									  (Node *) arg,
+									  ptype,
+									  "DECODE");
+
+		/*
+		 * Run collation assignment on the test expression so that we know
+		 * what collation to mark the placeholder with.  In principle we could
+		 * leave it to parse_collate.c to do that later, but propagating the
+		 * result to the CaseTestExpr would be unnecessarily complicated.
+		 */
+		assign_expr_collations(pstate, arg);
+
+		placeholder = makeNode(CaseTestExpr);
+		placeholder->typeId = exprType(arg);
+		placeholder->typeMod = exprTypmod(arg);
+		placeholder->collation = exprCollation(arg);
+	}
+	else
+		placeholder = NULL;
+
+	newc->arg = (Expr *) arg;
+
+	/* transform the list of arguments */
+	newargs = NIL;
+	resultexprs = NIL;
+
+	foreach(l, c->args)
+	{
+		CaseWhen   *w = (CaseWhen *) lfirst(l);
+		CaseWhen   *neww = makeNode(CaseWhen);
+		Node	   *warg;
+
+		Assert(IsA(w, CaseWhen));
+
+		warg = (Node *) w->expr;
+		if (!c->is_decode)
+		{
+			if (placeholder)
+			{
+				/* shorthand form was specified, so expand... */
+				warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+												 (Node *) placeholder,
+												 warg,
+												 w->location);
+			}
+			neww->expr = (Expr *) transformExprRecurse(pstate, warg);
+
+			neww->expr = (Expr *) coerce_to_boolean(pstate,
+													(Node *) neww->expr,
+													"DECODE");
+		}
+		else
+		{
+			/* 
+			 * Here you need to consider dealing 
+			 * with decode null values, so the original method was changed.
+			 */
+			CaseExpr	*innernewexpr;
+			CaseWhen	*innerneww;
+			NullTest	*innernulltest;
+			List		*blist = NIL;
+			List		*blist1 = NIL;
+			A_Expr 		*aexpr = NULL;
+				
+			if (placeholder)
+			{
+				/* decode(a, b, c) ==>> 
+						case when
+							case when a is null and b is null then true  --first step
+								 when a is not null and b is not null and a = b then true --second step
+								 else false
+							end
+							then c
+						end;
+				 */
+				A_Const *ac = makeNode(A_Const);
+				A_Const *ac1 = makeNode(A_Const);
+				TypeCast *tc = makeNode(TypeCast);
+				TypeCast *tc1 = makeNode(TypeCast);
+				
+				innernewexpr = makeNode(CaseExpr);
+				innerneww = makeNode(CaseWhen);
+					
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: a is null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(c->arg);
+				innernulltest->nulltesttype = IS_NULL;
+				innernulltest->location = -1;
+				blist = lappend(blist, innernulltest);
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: b is null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(w->expr);
+				innernulltest->nulltesttype = IS_NULL;
+				innernulltest->location = -1;
+				blist = lappend(blist, innernulltest);				
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: a is null and b is null 
+				 */
+				innerneww->expr =  makeBoolExpr(AND_EXPR, blist, -1);
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: then true
+				 */
+				ac->val.type = T_String;
+				ac->val.val.str = "t";
+				ac->location = -1;
+				tc->arg = (Node*)ac;
+				tc->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"), 
+											makeString("bool")));
+				tc->location = -1;
+				
+				innerneww->result = (Expr *)tc;
+				innerneww->location = -1;
+
+				/* 
+				 * first step: 
+				 *  case when a is null and b is null then true
+				 *  current step: case when a is null and b is null then true
+				 */
+				innernewexpr->args = lappend(innernewexpr->args, innerneww);
+				
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: a is not null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(c->arg);
+				innernulltest->nulltesttype = IS_NOT_NULL;
+				innernulltest->location = -1;
+				blist1 = lappend(blist1, innernulltest);
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: b is not null
+				 */
+				innernulltest = makeNode(NullTest);
+				innernulltest->arg = copyObject(w->expr);
+				innernulltest->nulltesttype = IS_NOT_NULL;
+				innernulltest->location = -1;
+				blist1 = lappend(blist1, innernulltest);			
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: a = b
+				 */
+				aexpr = makeSimpleA_Expr(AEXPR_OP, "=",
+												 (Node *) c->arg,
+												 warg,
+												 w->location);
+				blist1 = lappend(blist1, aexpr);
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: a is not null and b is not null and a = b
+				 */
+				innerneww = makeNode(CaseWhen);
+				innerneww->expr =  makeBoolExpr(AND_EXPR, blist1, -1);
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: then true
+				 */
+				innerneww->result = (Expr *)tc;
+				innerneww->location = -1;
+
+				/* 
+				 * second step: 
+				 *  case when a is not null and b is not null and a = b then true
+				 *  current step: case when a is not null and b is not null and a = b then true
+				 */
+				innernewexpr->args = lappend(innernewexpr->args, innerneww);
+			
+				/* 
+				 * third step: 
+				 *  else false, default value (true of false)
+				 *  current step: else false
+				 */
+				ac1->val.type = T_String;
+				ac1->val.val.str = "f";
+				ac1->location = -1;
+				tc1->arg = (Node*)ac1;
+				tc1->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"), 
+											makeString("bool")));
+				tc1->location = -1;
+
+				/* 
+				 * last step: new case expr
+				 */
+				innernewexpr->defresult = (Expr *)tc1;					
+				innernewexpr->location = -1;
+				
+				warg = (Node *)innernewexpr;
+				
+				
+			}
+			neww->expr = (Expr *) transformExprRecurse(pstate, warg);
+
+			neww->expr = (Expr *) coerce_to_boolean(pstate,
+													(Node *) neww->expr,
+													"DECODE");
+
+			warg = (Node *) w->orig_expr;
+			neww->orig_expr = (Expr *) transformExprRecurse(pstate, warg);
+			if (OidIsValid(ptype))
+				neww->orig_expr = (Expr *) coerce_to_common_type(pstate,
+													(Node *) neww->orig_expr,
+													ptype,
+													"DECODE");
+		}
+
+		warg = (Node *) w->result;
+		neww->result = (Expr *) transformExprRecurse(pstate, warg);
+		neww->location = w->location;
+
+		newargs = lappend(newargs, neww);
+		resultexprs = lappend(resultexprs, neww->result);
+	}
+
+	newc->args = newargs;
+
+	/* transform the default clause */
+	defresult = (Node *) c->defresult;
+	if (defresult == NULL)
+	{
+		A_Const    *n = makeNode(A_Const);
+
+		n->val.type = T_Null;
+		n->location = -1;
+		defresult = (Node *) n;
+	}
+	newc->defresult = (Expr *) transformExprRecurse(pstate, defresult);
+
+	/*
+	 * Note: default result is considered the most significant type in
+	 * determining preferred type. This is how the code worked before, but it
+	 * seems a little bogus to me --- tgl
+	 */
+	if (database_mode == DB_PG)
+		resultexprs = lcons(newc->defresult, resultexprs);
+	else if (database_mode == DB_ORACLE)
+		resultexprs = lappend(resultexprs, newc->defresult);
+
+	if (database_mode == DB_PG)
+		ptype = select_common_type(pstate, resultexprs, "DECODE", NULL);
+	else if (database_mode == DB_ORACLE)
+		ptype = select_common_type_for_nvl(pstate, resultexprs, "DECODE", NULL);
+	Assert(OidIsValid(ptype));
+	newc->casetype = ptype;
+	/* casecollid will be set by parse_collate.c */
+
+	/* Convert default result clause, if necessary */
+	newc->defresult = (Expr *)
+		coerce_to_common_type(pstate,
+							  (Node *) newc->defresult,
+							  ptype,
+							  "DECODE");
+
+	/* Convert when-clause results, if necessary */
+	foreach(l, newc->args)
+	{
+		CaseWhen   *w = (CaseWhen *) lfirst(l);
+
+		w->result = (Expr *)
+			coerce_to_common_type(pstate,
+								  (Node *) w->result,
+								  ptype,
+								  "DECODE");
+	}
+
+	newc->location = c->location;
+	newc->is_decode = c->is_decode;
+
+	return (Node *) newc;
+}
+
 
 static Node *
 transformSubLink(ParseState *pstate, SubLink *sublink)
@@ -1722,6 +2238,7 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 		case EXPR_KIND_INSERT_TARGET:
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
+		case EXPR_KIND_MERGE_WHEN:
 		case EXPR_KIND_GROUP_BY:
 		case EXPR_KIND_ORDER_BY:
 		case EXPR_KIND_DISTINCT_ON:
@@ -2134,7 +2651,12 @@ transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c)
 		newargs = lappend(newargs, newe);
 	}
 
-	newc->coalescetype = select_common_type(pstate, newargs, "COALESCE", NULL);
+	
+	if (compatible_db == PG_PARSER)
+		newc->coalescetype = select_common_type(pstate, newargs, "COALESCE", NULL);
+	else if (compatible_db == ORA_PARSER)
+		newc->coalescetype = select_common_type_for_nvl(pstate, newargs, "COALESCE", NULL);
+	
 	/* coalescecollid will be set by parse_collate.c */
 
 	/* Convert arguments if necessary */
@@ -2292,7 +2814,7 @@ transformXmlExpr(ParseState *pstate, XmlExpr *x)
 
 		if (r->name)
 			argname = map_sql_identifier_to_xml_name(r->name, false, false);
-		else if (IsA(r->val, ColumnRef))
+		else if (IsA(r->val, ColumnRef) || IsA(r->val, ColumnRefOrFuncCall))	
 			argname = map_sql_identifier_to_xml_name(FigureColname(r->val),
 													 true, false);
 		else
@@ -3057,6 +3579,8 @@ ParseExprKindName(ParseExprKind exprKind)
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
 			return "UPDATE";
+		case EXPR_KIND_MERGE_WHEN:
+			return "MERGE WHEN";
 		case EXPR_KIND_GROUP_BY:
 			return "GROUP BY";
 		case EXPR_KIND_ORDER_BY:

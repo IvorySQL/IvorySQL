@@ -787,6 +787,64 @@ float_to_shortest_decimal_buf(float f, char *result)
 	return index;
 }
 
+
+/*
+ * Store the shortest decimal representation of the given float as an
+ * UNTERMINATED string in the caller's supplied buffer (which must be at least
+ * FLOAT_SHORTEST_DECIMAL_LEN-1 bytes long).
+ *
+ * Returns the number of bytes stored.
+ */
+int
+binary_float_to_shortest_decimal_bufn(float f, char *result)
+{
+	/*
+	 * Step 1: Decode the floating-point number, and unify normalized and
+	 * subnormal cases.
+	 */
+	const uint32 bits = float_to_bits(f);
+
+	/* Decode bits into sign, mantissa, and exponent. */
+	const bool	ieeeSign = ((bits >> (FLOAT_MANTISSA_BITS + FLOAT_EXPONENT_BITS)) & 1) != 0;
+	const uint32 ieeeMantissa = bits & ((1u << FLOAT_MANTISSA_BITS) - 1);
+	const uint32 ieeeExponent = (bits >> FLOAT_MANTISSA_BITS) & ((1u << FLOAT_EXPONENT_BITS) - 1);
+
+	/* Case distinction; exit early for the easy cases. */
+	if (ieeeExponent == ((1u << FLOAT_EXPONENT_BITS) - 1u) || (ieeeExponent == 0 && ieeeMantissa == 0))
+	{
+		return ivy_copy_special_str(result, ieeeSign, (ieeeExponent != 0), (ieeeMantissa != 0));
+	}
+
+	floating_decimal_32 v;
+	const bool	isSmallInt = f2d_small_int(ieeeMantissa, ieeeExponent, &v);
+
+	if (!isSmallInt)
+	{
+		v = f2d(ieeeMantissa, ieeeExponent);
+	}
+
+	return to_chars(v, ieeeSign, result);
+}
+
+/*
+ * Store the shortest decimal representation of the given float as a
+ * null-terminated string in the caller's supplied buffer (which must be at
+ * least FLOAT_SHORTEST_DECIMAL_LEN bytes long).
+ *
+ * Returns the string length.
+ */
+int
+binary_float_to_shortest_decimal_buf(float f, char *result)
+{
+	const int	index = binary_float_to_shortest_decimal_bufn(f, result);
+
+	/* Terminate the string. */
+	Assert(index < FLOAT_SHORTEST_DECIMAL_LEN);
+	result[index] = '\0';
+	return index;
+}
+
+
 /*
  * Return the shortest decimal representation as a null-terminated palloc'd
  * string (outside the backend, uses malloc() instead).

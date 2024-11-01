@@ -36,6 +36,9 @@ endif
 
 ifeq ($(python_majorversion),2)
 REGRESS_OPTS += --load-extension=plpythonu --load-extension=jsonb_plpythonu
+#BEGIN - SQL PARSER
+ORACLE_REGRESS_OPTS += --load-extension=plpythonu --load-extension=jsonb_plpythonu
+#END - SQL PARSER
 endif
 
 include $(top_srcdir)/src/pl/plpython/regress-python3-mangle.mk

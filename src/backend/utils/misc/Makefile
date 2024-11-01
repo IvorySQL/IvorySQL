@@ -16,6 +16,7 @@ override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 
 OBJS = \
 	guc.o \
+	ivy_guc.o \
 	help_config.o \
 	pg_config.o \
 	pg_controldata.o \

@@ -22,6 +22,10 @@
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
 
+/* Begin - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* END - SQL PARSER */
+
 typedef enum ReindexType
 {
 	REINDEX_DATABASE,
@@ -362,6 +366,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 					 "tablespace", "14");
 		exit(1);
 	}
+
+	/* BEGIN - SQL PARSER */
+	getDbCompatibleMode(conn);
+	/* END - SQL PARSER */
 
 	if (!parallel)
 	{

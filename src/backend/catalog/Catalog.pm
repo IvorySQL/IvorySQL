@@ -254,7 +254,9 @@ sub ParseHeader
 # lines. If a caller just wants to consume the data, leave it unset.
 sub ParseData
 {
-	my ($input_file, $schema, $preserve_formatting) = @_;
+	#BEGIN - SQL PARSER
+	my ($input_file, $schema, $preserve_formatting, $compatible_type) = @_;
+	#END - SQL PARSER
 
 	open(my $ifd, '<', $input_file) || die "$input_file: $!";
 	$input_file =~ /(\w+)\.dat$/
@@ -262,10 +264,39 @@ sub ParseData
 	my $catname = $1;
 	my $data    = [];
 
+	#BEGIN - SQL PARSER
+	my  $match_oracle_regex_begin = 0;
+	my  $match_oracle_regex_end = 0;
+	#END - SQL PARSER
+
 	# Scan the input file.
 	while (<$ifd>)
 	{
 		my $hash_ref;
+
+		#BEGIN - SQL PARSER
+		die "$input_file: Oracle Compatibility comments more than once and mismatching.\n"
+			if ($match_oracle_regex_begin > 1 || $match_oracle_regex_end > 1);
+
+		if (/^\/\*BEGIN\sOracle\sCompatibility\sMetadatas\*\//)
+		{
+			$match_oracle_regex_begin++;
+			next;
+		}
+		if (/^\/\*END\sOracle\sCompatibility\sMetadatas\*\//)
+		{
+			$match_oracle_regex_end++;
+			next;
+		}
+
+		if ($match_oracle_regex_begin == 1)
+		{
+			if ($compatible_type eq 'pg')
+			{
+				next;
+			}
+		}
+		#END - SQL PARSER
 
 		if (/{/)
 		{
@@ -328,6 +359,10 @@ sub ParseData
 	}
 	close $ifd;
 
+	#BEGIN - SQL PARSER
+	die "$input_file: Oracle Compatibility comments missing and can't generate BKI file successfully.\n"
+		if ($match_oracle_regex_begin != $match_oracle_regex_end);
+	#END - SQL PARSER
 	# If this is pg_type, auto-generate array types too.
 	GenerateArrayTypes($schema, $data) if $catname eq 'pg_type';
 
@@ -543,8 +578,10 @@ sub FindAllOidsFromHeaders
 		# Not all catalogs have a data file.
 		if (-e $datfile)
 		{
+			#BEGIN - SQL PARSER
 			my $catdata =
-			  Catalog::ParseData($datfile, $catalog->{columns}, 0);
+			  Catalog::ParseData($datfile, $catalog->{columns}, 0, "oracle");
+			#END - SQL PARSER
 
 			foreach my $row (@$catdata)
 			{

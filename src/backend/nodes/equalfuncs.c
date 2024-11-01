@@ -298,6 +298,10 @@ _equalFuncExpr(const FuncExpr *a, const FuncExpr *b)
 	COMPARE_SCALAR_FIELD(funccollid);
 	COMPARE_SCALAR_FIELD(inputcollid);
 	COMPARE_NODE_FIELD(args);
+	
+	COMPARE_SCALAR_FIELD(function_from);
+	COMPARE_SCALAR_FIELD(parent_func);
+	
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -568,6 +572,9 @@ _equalCaseExpr(const CaseExpr *a, const CaseExpr *b)
 	COMPARE_NODE_FIELD(args);
 	COMPARE_NODE_FIELD(defresult);
 	COMPARE_LOCATION_FIELD(location);
+	
+	COMPARE_SCALAR_FIELD(is_decode);
+	
 
 	return true;
 }
@@ -998,6 +1005,8 @@ _equalQuery(const Query *a, const Query *b)
 	COMPARE_NODE_FIELD(setOperations);
 	COMPARE_NODE_FIELD(constraintDeps);
 	COMPARE_NODE_FIELD(withCheckOptions);
+	COMPARE_NODE_FIELD(mergeActionList);
+	COMPARE_SCALAR_FIELD(mergeUseOuterJoin);
 	COMPARE_LOCATION_FIELD(stmt_location);
 	COMPARE_SCALAR_FIELD(stmt_len);
 
@@ -1048,6 +1057,18 @@ _equalUpdateStmt(const UpdateStmt *a, const UpdateStmt *b)
 	COMPARE_NODE_FIELD(whereClause);
 	COMPARE_NODE_FIELD(fromClause);
 	COMPARE_NODE_FIELD(returningList);
+	COMPARE_NODE_FIELD(withClause);
+
+	return true;
+}
+
+static bool
+_equalMergeStmt(const MergeStmt *a, const MergeStmt *b)
+{
+	COMPARE_NODE_FIELD(relation);
+	COMPARE_NODE_FIELD(sourceRelation);
+	COMPARE_NODE_FIELD(joinCondition);
+	COMPARE_NODE_FIELD(mergeWhenClauses);
 	COMPARE_NODE_FIELD(withClause);
 
 	return true;
@@ -1458,6 +1479,22 @@ _equalAlterFunctionStmt(const AlterFunctionStmt *a, const AlterFunctionStmt *b)
 
 	return true;
 }
+
+
+static bool
+_equalCompileFunctionStmt(const CompileFunctionStmt *a, const CompileFunctionStmt *b)
+{
+	
+	COMPARE_SCALAR_FIELD(objtype);
+	COMPARE_NODE_FIELD(func);
+	
+	COMPARE_SCALAR_FIELD(is_compile);
+	COMPARE_SCALAR_FIELD(editable);
+	COMPARE_NODE_FIELD(parameters);
+
+	return true;
+}
+
 
 static bool
 _equalDoStmt(const DoStmt *a, const DoStmt *b)
@@ -2429,6 +2466,19 @@ _equalFuncCall(const FuncCall *a, const FuncCall *b)
 	return true;
 }
 
+
+static bool
+_equalColumnRefOrFuncCall(const ColumnRefOrFuncCall *a, const ColumnRefOrFuncCall *b)
+{
+	COMPARE_SCALAR_FIELD(type);
+
+	if (_equalColumnRef(a->cref, b->cref) && _equalFuncCall(a->func, b->func))
+		return true;
+	else
+		return false;
+}
+
+
 static bool
 _equalAStar(const A_Star *a, const A_Star *b)
 {
@@ -2933,6 +2983,32 @@ _equalCommonTableExpr(const CommonTableExpr *a, const CommonTableExpr *b)
 }
 
 static bool
+_equalMergeWhenClause(const MergeWhenClause *a, const MergeWhenClause *b)
+{
+	COMPARE_SCALAR_FIELD(matched);
+	COMPARE_SCALAR_FIELD(commandType);
+	COMPARE_SCALAR_FIELD(override);
+	COMPARE_NODE_FIELD(condition);
+	COMPARE_NODE_FIELD(targetList);
+	COMPARE_NODE_FIELD(values);
+
+	return true;
+}
+
+static bool
+_equalMergeAction(const MergeAction *a, const MergeAction *b)
+{
+	COMPARE_SCALAR_FIELD(matched);
+	COMPARE_SCALAR_FIELD(commandType);
+	COMPARE_SCALAR_FIELD(override);
+	COMPARE_NODE_FIELD(qual);
+	COMPARE_NODE_FIELD(targetList);
+	COMPARE_NODE_FIELD(updateColnos);
+
+	return true;
+}
+
+static bool
 _equalXmlSerialize(const XmlSerialize *a, const XmlSerialize *b)
 {
 	COMPARE_SCALAR_FIELD(xmloption);
@@ -3356,6 +3432,9 @@ equal(const void *a, const void *b)
 		case T_UpdateStmt:
 			retval = _equalUpdateStmt(a, b);
 			break;
+		case T_MergeStmt:
+			retval = _equalMergeStmt(a, b);
+			break;
 		case T_SelectStmt:
 			retval = _equalSelectStmt(a, b);
 			break;
@@ -3446,6 +3525,11 @@ equal(const void *a, const void *b)
 		case T_AlterFunctionStmt:
 			retval = _equalAlterFunctionStmt(a, b);
 			break;
+		
+		case T_CompileFunctionStmt:
+			retval = _equalCompileFunctionStmt(a, b);
+			break;
+		
 		case T_DoStmt:
 			retval = _equalDoStmt(a, b);
 			break;
@@ -3719,6 +3803,11 @@ equal(const void *a, const void *b)
 		case T_FuncCall:
 			retval = _equalFuncCall(a, b);
 			break;
+		
+		case T_ColumnRefOrFuncCall:
+			retval = _equalColumnRefOrFuncCall(a, b);
+			break;
+		
 		case T_A_Star:
 			retval = _equalAStar(a, b);
 			break;
@@ -3826,6 +3915,12 @@ equal(const void *a, const void *b)
 			break;
 		case T_CommonTableExpr:
 			retval = _equalCommonTableExpr(a, b);
+			break;
+		case T_MergeWhenClause:
+			retval = _equalMergeWhenClause(a, b);
+			break;
+		case T_MergeAction:
+			retval = _equalMergeAction(a, b);
 			break;
 		case T_ObjectWithArgs:
 			retval = _equalObjectWithArgs(a, b);

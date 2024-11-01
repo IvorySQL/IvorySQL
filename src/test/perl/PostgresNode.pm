@@ -455,7 +455,7 @@ sub init
 	mkdir $self->backup_dir;
 	mkdir $self->archive_dir;
 
-	TestLib::system_or_bail('initdb', '-D', $pgdata, '-A', 'trust', '-N',
+	TestLib::system_or_bail('initdb', '-D', $pgdata, '-A', 'trust', '-N', '-m', 'pg', '-c', 'normal',
 		@{ $params{extra} });
 	TestLib::system_or_bail($ENV{PG_REGRESS}, '--config-auth', $pgdata,
 		@{ $params{auth_extra} });
@@ -507,6 +507,10 @@ sub init
 	}
 
 	print $conf "port = $port\n";
+
+	my $ora_port = get_free_port();
+	print $conf "ivorysql.port = $ora_port\n";
+
 	if ($use_tcp)
 	{
 		print $conf "unix_socket_directories = ''\n";
@@ -740,10 +744,12 @@ sub init_from_backup
 	chmod(0700, $data_path);
 
 	# Base configuration for this node
+	my $ora_port = get_free_port();
 	$self->append_conf(
 		'postgresql.conf',
 		qq(
 port = $port
+ivorysql.port = $ora_port
 ));
 	if ($use_tcp)
 	{

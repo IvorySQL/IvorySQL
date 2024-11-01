@@ -1,0 +1,3121 @@
+/*
+ * length/lengthb
+ */
+-- char
+CREATE TABLE TEST_ORACHAR(a char(5 byte), b char(5 char));
+INSERT INTO TEST_ORACHAR VALUES('aaa', 'bbb');
+INSERT INTO TEST_ORACHAR VALUES('aaa ', 'bbb ');
+SELECT a, b, LENGTH(a), LENGTH(b) FROM TEST_ORACHAR;
+   a   |   b   | length | length 
+-------+-------+--------+--------
+ aaa   | bbb   |      5 |      5
+ aaa   | bbb   |      5 |      5
+(2 rows)
+
+SELECT a, b, LENGTHB(a), LENGTHB(b) FROM TEST_ORACHAR;
+   a   |   b   | lengthb | lengthb 
+-------+-------+---------+---------
+ aaa   | bbb   |       5 |       5
+ aaa   | bbb   |       5 |       5
+(2 rows)
+
+--varchar2
+CREATE TABLE TEST_ORAVARCHAR(a varchar2(5 char), b varchar2(5 byte));
+INSERT INTO TEST_ORAVARCHAR VALUES('aaa', 'bbb');
+INSERT INTO TEST_ORAVARCHAR VALUES('aaa ', 'bbb ');
+SELECT a, b, LENGTH(a), LENGTH(b) FROM TEST_ORAVARCHAR;
+  a   |  b   | length | length 
+------+------+--------+--------
+ aaa  | bbb  |      3 |      3
+ aaa  | bbb  |      4 |      4
+(2 rows)
+
+SELECT a, b, LENGTHB(a), LENGTHB(b) FROM TEST_ORAVARCHAR;
+  a   |  b   | lengthb | lengthb 
+------+------+---------+---------
+ aaa  | bbb  |       3 |       3
+ aaa  | bbb  |       4 |       4
+(2 rows)
+
+-- drop table
+DROP TABLE TEST_ORACHAR;
+DROP TABLE TEST_ORAVARCHAR;
+/*
+ * ||
+ */
+SET nls_date_format = 'DD-MON-YY';
+SET nls_timestamp_format = 'DD-MON-YY HH24:MI:SS.US';
+create table test_concat(id number,id2 integer,id3 timestamp,id4 date);
+--insert a row
+insert into test_concat values(1,2,'01-FEB-21','01-FEB-21');
+--integer || number
+select id || id2 from test_concat;
+ ?column? 
+----------
+ 12
+(1 row)
+
+--integer || timestamp
+select id || id3 from test_concat;
+          ?column?          
+----------------------------
+ 101-FEB-21 00:00:00.000000
+(1 row)
+
+--timestamp || date
+select id3 || id4 from test_concat;
+              ?column?              
+------------------------------------
+ 01-FEB-21 00:00:00.00000001-FEB-21
+(1 row)
+
+--integer || number || timestamp || date
+select id || id2 || id3 || id4 from test_concat;
+               ?column?               
+--------------------------------------
+ 1201-FEB-21 00:00:00.00000001-FEB-21
+(1 row)
+
+--as a table column
+create table test_concat1 as select id || id2 as test from test_concat;
+--column type
+select attname,atttypid from pg_attribute attr left join pg_class r on r.oid = attr.attrelid where r.relname='test_concat1' and attname='test' order by attname;
+ attname | atttypid 
+---------+----------
+ test    |     9002
+(1 row)
+
+create table test_concat2 as select id|| id4 as test from test_concat;
+select attname,atttypid from pg_attribute attr left join pg_class r on r.oid = attr.attrelid where r.relname='test_concat2' and attname='test' order by attname;
+ attname | atttypid 
+---------+----------
+ test    |     9002
+(1 row)
+
+create table test_concat3 as select id3 || id4 as test from test_concat;
+select attname,atttypid from pg_attribute attr left join pg_class r on r.oid = attr.attrelid where r.relname='test_concat3' and attname='test' order by attname;
+ attname | atttypid 
+---------+----------
+ test    |     9002
+(1 row)
+
+insert into test_concat(id) values(2);
+--integer || null
+select id || id2 from test_concat;
+ ?column? 
+----------
+ 12
+ 2
+(2 rows)
+
+--null || number
+select  id2 || id from test_concat;
+ ?column? 
+----------
+ 21
+ 2
+(2 rows)
+
+--clean data
+drop table test_concat;
+drop table test_concat1;
+drop table test_concat2;
+drop table test_concat3;
+/*
+ * concat
+ */
+-- table null_special
+create table null_special
+(
+	id number not null,
+	special_name varchar2(255),
+	teacher varchar2(8),
+	remark varchar2(255)
+);
+-- truncate table null_special;
+insert into null_special(id,special_name,teacher) values (1,'语文','小王');
+insert into null_special (id,special_name,remark)
+	values (2,'体育','体育teacher IS NULL');
+insert into null_special (id,special_name,teacher,remark)
+	values (3,'音乐',' ','音乐teacher is 空了一格');
+insert into null_special (id,special_name,teacher,remark)
+	values (4,'英语','','英语teacher is empty');
+insert into null_special (id,special_name,teacher) values (5,'数学','小刘');
+-- table null_specialbk
+create table null_specialbk
+(
+	id number not null,
+	special_name varchar2(255),
+	teacher varchar2(8),
+	remark varchar2(255)
+);
+-- truncate table null_special;
+insert into null_specialbk (id,special_name,teacher) values (1,'语文','小王');
+insert into null_specialbk (id,special_name,teacher,remark)
+values (2,'体育','','体育teacher ie empty');
+insert into null_specialbk (id,special_name,teacher,remark)
+values (3,'音乐',' ','音乐teacher is 空了一格');
+insert into null_specialbk (id,special_name,remark)
+values (4,'英语','英语teacher IS NULL');
+-- query
+select sp.* from
+(
+	select
+		sp1.id, sp1.special_name, concat(sp1.teacher, sp2.teacher) tch, sp1.remark
+	from null_special sp1, null_specialbk sp2
+	where sp1.id = sp2.id
+) sp where sp.tch is null;
+ id | special_name | tch |        remark        
+----+--------------+-----+----------------------
+ 2  | 体育         |     | 体育teacher IS NULL
+ 4  | 英语         |     | 英语teacher is empty
+(2 rows)
+
+-- other types
+SET nls_date_format = 'DD-MON-YY';
+SET nls_timestamp_format = 'DD-MON-YY HH24:MI:SS.US';
+create table test_concat(id number,id2 integer,id3 timestamp,id4 date);
+-- insert a row
+insert into test_concat values(1,2,'01-FEB-21','01-FEB-21');
+-- concat(integer, number)
+select concat(id, id2) from test_concat;
+ concat 
+--------
+ 12
+(1 row)
+
+-- concat(integer, timestamp)
+select concat(id, id3) from test_concat;
+           concat           
+----------------------------
+ 101-FEB-21 00:00:00.000000
+(1 row)
+
+-- concat(timestamp, date)
+select concat(id3, id4) from test_concat;
+               concat               
+------------------------------------
+ 01-FEB-21 00:00:00.00000001-FEB-21
+(1 row)
+
+-- concat(integer, concat(number, concat(timestamp, date)))
+select concat(id, concat(id2, concat(id3, id4))) from test_concat;
+                concat                
+--------------------------------------
+ 1201-FEB-21 00:00:00.00000001-FEB-21
+(1 row)
+
+-- as a table column
+create table test_concat1 as select concat(id, id2) as test from test_concat;
+-- column type
+select attname,atttypid from pg_attribute attr
+left join pg_class r on r.oid = attr.attrelid
+where r.relname='test_concat1' and attname='test' order by attname;
+ attname | atttypid 
+---------+----------
+ test    |     9002
+(1 row)
+
+create table test_concat2 as select concat(id, id4) as test from test_concat;
+select attname,atttypid from pg_attribute attr
+left join pg_class r on r.oid = attr.attrelid
+where r.relname='test_concat2' and attname='test' order by attname;
+ attname | atttypid 
+---------+----------
+ test    |     9002
+(1 row)
+
+create table test_concat3 as select concat(id3, id4) as test from test_concat;
+select attname,atttypid from pg_attribute attr
+left join pg_class r on r.oid = attr.attrelid
+where r.relname='test_concat3' and attname='test' order by attname;
+ attname | atttypid 
+---------+----------
+ test    |     9002
+(1 row)
+
+insert into test_concat(id) values(2);
+-- concat(integer, null)
+select concat(id, id2) from test_concat;
+ concat 
+--------
+ 12
+ 2
+(2 rows)
+
+-- concat(null, number)
+select concat(id2, id) from test_concat;
+ concat 
+--------
+ 21
+ 2
+(2 rows)
+
+-- clean data
+drop table test_concat;
+drop table test_concat1;
+drop table test_concat2;
+drop table test_concat3;
+/*
+ * lpad/rpad
+ */
+--create test table
+create table test_lpad(id integer);
+--ok
+select lpad('*', (select count(*) from test_lpad), '*') from dual;
+ lpad 
+------
+ 
+(1 row)
+
+--ok
+select rpad('*', (select count(*) from test_lpad), '*') from dual;
+ rpad 
+------
+ 
+(1 row)
+
+--insert one row
+insert into test_lpad values(1);
+--*
+select lpad('*', (select count(*) from test_lpad), '*') from dual;
+ lpad 
+------
+ *
+(1 row)
+
+--*
+select rpad('*', (select count(*) from test_lpad), '*') from dual;
+ rpad 
+------
+ *
+(1 row)
+
+--insert another
+insert into test_lpad values(2);
+--1*
+select lpad('*', (select count(*) from test_lpad), '1') from dual;
+ lpad 
+------
+ 1*
+(1 row)
+
+--*1
+select rpad('*', (select count(*) from test_lpad), '1') from dual;
+ rpad 
+------
+ *1
+(1 row)
+
+--x *welcome
+select 'x' || lpad('*', (select count(*) from test_lpad)) ||'welceom' from dual;
+  ?column?  
+------------
+ x *welceom
+(1 row)
+
+--x* welcome
+select 'x' || rpad('*', (select count(*) from test_lpad)) ||'welceom' from dual;
+  ?column?  
+------------
+ x* welceom
+(1 row)
+
+--001234
+select lpad(1234,6,'0') from dual;
+  lpad  
+--------
+ 001234
+(1 row)
+
+--123400
+select rpad(1234,6,'0') from dual;
+  rpad  
+--------
+ 123400
+(1 row)
+
+--null
+select lpad(NULL,6,'0') from dual;
+ lpad 
+------
+ 
+(1 row)
+
+--null
+select rpad(NULL,6,'0') from dual;
+ rpad 
+------
+ 
+(1 row)
+
+--create view
+create table test_t(id varchar2(23));
+insert into test_t values('sfljdsf');
+create view test_view as select lpad('*', (select count(*) from test_lpad), '*') || id as name from test_t;
+select *from test_view order by name;
+   name    
+-----------
+ **sfljdsf
+(1 row)
+
+--clean data
+drop view test_view;
+drop table test_t;
+drop table test_lpad;
+/*
+ * trim/ltrim/rtrim
+ */
+select rtrim('123 '::number);	
+ rtrim 
+-------
+ 123
+(1 row)
+
+SELECT LTRIM('<=====>BROWNING<=====>', '<>=') "LTRIM Example" FROM DUAL;
+  LTRIM Example  
+-----------------
+ BROWNING<=====>
+(1 row)
+
+SELECT RTRIM('<=====>BROWNING<=====>', '<>=') "RTRIM Example" FROM DUAL;
+  RTRIM Example  
+-----------------
+ <=====>BROWNING
+(1 row)
+
+create table test_trim(id number);
+select trim(id) from test_trim;
+ trim 
+------
+(0 rows)
+
+insert into test_trim values(124.35);
+select trim(id) from test_trim;
+  trim  
+--------
+ 124.35
+(1 row)
+
+select trim('35' from id) from test_trim;
+ trim 
+------
+ 124.
+(1 row)
+
+--clean data
+drop table test_trim;
+/*
+ * regexp_replace
+ */
+set ivorysql.enable_emptystring_to_null to on;
+--Return empty
+select regexp_replace('', '[0-9]+','') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace(NULL, '[0-9]+',NULL) from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace('', '[0-9]+','A') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace(NULL, '[0-9]+','A') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace('', '[a-z]+','',1,3,'i') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace(NULL, '[a-z]+',NULL,1,3,'i') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace('', '[0-9]+', '', 1, 3, 'i') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace(NULL, '[0-9]+', NULL, 1, 3, 'i') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', '') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', NULL) from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 1, '') from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 1, NULL) from  dual;
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+--Too few parameters
+select regexp_replace('') from  dual;
+ERROR:  not enough arguments for function
+select regexp_replace(NULL) from  dual;
+ERROR:  not enough arguments for function
+select regexp_replace('662 regEXP_REplaCe TEst 172') from  dual;
+ERROR:  not enough arguments for function
+--Return source string
+select regexp_replace('662 regEXP_REplaCe TEst 172', '') from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst 172
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', NULL) from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst 172
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '','AA',1,1,'i') from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst 172
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', NULL,'AA',1,1,'i') from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst 172
+(1 row)
+
+--Remove matching characters from the source string
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+') from  dual;
+    regexp_replace     
+-----------------------
+  regEXP_REplaCe TEst 
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+','') from  dual;
+    regexp_replace     
+-----------------------
+  regEXP_REplaCe TEst 
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', NULL) from  dual;
+    regexp_replace     
+-----------------------
+  regEXP_REplaCe TEst 
+(1 row)
+
+--Return source string
+select regexp_replace('662 regEXP_REplaCe TEst 172', '', 'ZZZ') from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst 172
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', NULL, 'ZZZ') from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst 172
+(1 row)
+
+--Replace 2 or more spaces with a space
+select regexp_replace('500   Oracle     Parkway,    Redwood  Shores, CA', '( ){2,}', ' ') from dual;
+             regexp_replace             
+----------------------------------------
+ 500 Oracle Parkway, Redwood Shores, CA
+(1 row)
+
+--Replace the matched substring with a new string
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ') from  dual;
+       regexp_replace        
+-----------------------------
+ ZZZ regEXP_REplaCe TEst ZZZ
+(1 row)
+
+--Look backwards from the specified location 8
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 8) from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst ZZZ
+(1 row)
+
+--Remove matching characters from the source string
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', '', 8) from  dual;
+      regexp_replace      
+--------------------------
+ 662 regEXP_REplaCe TEst 
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', NULL, 8) from  dual;
+      regexp_replace      
+--------------------------
+ 662 regEXP_REplaCe TEst 
+(1 row)
+
+--Incorrect parameter type
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', '', a) from  dual;
+ERROR:  "a": invalid identifier
+LINE 1: ...lace('662 regEXP_REplaCe TEst 172', '[0-9]+', '', a) from  d...
+                                                             ^
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', NULL, a) from  dual;
+ERROR:  "a": invalid identifier
+LINE 1: ...ce('662 regEXP_REplaCe TEst 172', '[0-9]+', NULL, a) from  d...
+                                                             ^
+--Searched position is less than 1 out of range
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 0) from  dual;
+ERROR:  argument '0' is out of range
+--Replace all strings that match
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 1, 0) from  dual;
+       regexp_replace        
+-----------------------------
+ ZZZ regEXP_REplaCe TEst ZZZ
+(1 row)
+
+--Replace the second matching string starting with the third character
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 3, 2) from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst ZZZ
+(1 row)
+
+--Match string is less than 0 out of range
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 5, -1) from  dual;
+ERROR:  argument '-1' is out of range
+--specifies case-insensitive matching
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 1, 1, '') from  dual;
+       regexp_replace        
+-----------------------------
+ ZZZ regEXP_REplaCe TEst 172
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 1, 1, NULL) from  dual;
+       regexp_replace        
+-----------------------------
+ ZZZ regEXP_REplaCe TEst 172
+(1 row)
+
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[a-c]+', 'ZZZ', 1, 1, 'i')  from  dual;
+        regexp_replace        
+------------------------------
+ 662 regEXP_REplZZZe TEst 172
+(1 row)
+
+--specifies case-sensitive matching.
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[0-9]+', 'ZZZ', 4, 3, 'c')  from  dual;
+       regexp_replace        
+-----------------------------
+ 662 regEXP_REplaCe TEst 172
+(1 row)
+
+--allows the period (.), which is the match-any-character character
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'n')  from  dual;
+        regexp_replace         
+-------------------------------
+ 662 regEXP_REplaZZZe TEst 172
+(1 row)
+
+--treats the source string as multiple lines
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'm')  from  dual;
+        regexp_replace         
+-------------------------------
+ 662 regEXP_REplaZZZe TEst 172
+(1 row)
+
+--ignores whitespace characters
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'x')  from  dual;
+        regexp_replace         
+-------------------------------
+ 662 regEXP_REplaZZZe TEst 172
+(1 row)
+
+--Match only the last character
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'ic')  from  dual;
+        regexp_replace         
+-------------------------------
+ 662 regEXP_REplaZZZe TEst 172
+(1 row)
+
+--Wrong matching pattern
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'a')  from  dual;
+ERROR:  illegal argument for function
+--Too many parameters
+select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+', 'ZZZ', 1, 1, 'ic',8)  from  dual;
+ERROR:  function regexp_replace(unknown, unknown, unknown, integer, integer, unknown, integer) does not exist
+LINE 1: select regexp_replace('662 regEXP_REplaCe TEst 172', '[A-C]+...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--Replace all uppercase letters
+select regexp_replace('regexp_REPLACE 4567', '[[:upper:]]', 'x-', 1, 0, 'ic')  from  dual;
+       regexp_replace       
+----------------------------
+ regexp_x-x-x-x-x-x-x- 4567
+(1 row)
+
+--Replace all letters, numbers
+select regexp_replace('regexp-23-replace 345', '[[:alnum:]]', 'x:') from  dual;
+             regexp_replace              
+-----------------------------------------
+ x:x:x:x:x:x:-x:x:-x:x:x:x:x:x:x: x:x:x:
+(1 row)
+
+--Replace the specified string
+select regexp_replace('for,forty,horse,morning,sport', 'or', '!') from  dual;
+      regexp_replace      
+--------------------------
+ f!,f!ty,h!se,m!ning,sp!t
+(1 row)
+
+--Replace plus sign
+select regexp_replace('(19 + 35 * 2 + 8 - 3) / 2', '\+', '-', 1, 1) from  dual;
+      regexp_replace       
+---------------------------
+ (19 - 35 * 2 + 8 - 3) / 2
+(1 row)
+
+--Separate each letter
+select regexp_replace('australia', '(.)', '\1 ') from dual;
+   regexp_replace   
+--------------------
+ a u s t r a l i a 
+(1 row)
+
+--Match to the specified format
+select regexp_replace('515.123.4444 515.123.4888','([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})','(\1) \2-\3') from dual;
+        regexp_replace         
+-------------------------------
+ (515) 123-4444 (515) 123-4888
+(1 row)
+
+/*
+ * regexp_substr
+ */
+--Return empty
+select regexp_substr('', '[0-9]+','') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr(NULL, '[0-9]+',NULL) from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('', '[0-9]+','') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr(NULL, '[0-9]+','') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('', '[a-z]+',1,3,'i') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr(NULL, '[a-z]+',1,3,'i') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', NULL) from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '', 1) from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', NULL, 1) from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '',1,1,'i') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', NULL,1,1,'i') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', '') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', NULL) from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', 1, '') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', 1, NULL) from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', 1, 1, 'i', '') from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', 1, 1, 'i', NULL) from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+--Too few parameters
+select regexp_substr('') from  dual;
+ERROR:  not enough arguments for function
+select regexp_substr(NULL) from  dual;
+ERROR:  not enough arguments for function
+select regexp_substr('345 REGEXP_substr 789') from  dual;
+ERROR:  not enough arguments for function
+--Returns the first string matched
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+') from  dual;
+ regexp_substr 
+---------------
+ 345
+(1 row)
+
+--Return the first string that matches to the specified position
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', 8) from  dual;
+ regexp_substr 
+---------------
+ 789
+(1 row)
+
+--Incorrect parameter type
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+',  a) from  dual;
+ERROR:  "a": invalid identifier
+LINE 1: ...regexp_substr('345 REGEXP_substr 789', '[0-9]+',  a) from  d...
+                                                             ^
+--Searched position is less than 1 out of range
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+',  0) from  dual;
+ERROR:  argument '0' is out of range
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+',  1, 0) from  dual;
+ERROR:  argument '0' is out of range
+select regexp_substr('345 REGEXP_substr 789', '[0-9]+', 5, -1) from  dual;
+ERROR:  argument '-1' is out of range
+--specifies case-insensitive matching
+select regexp_substr('345 REGEXP_substr 789', '[a-z]+', 1, 1, '') from  dual;
+ regexp_substr 
+---------------
+ substr
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[a-z]+', 1, 1, NULL) from  dual;
+ regexp_substr 
+---------------
+ substr
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[a-z]+', 1, 1, 'i')  from  dual;
+ regexp_substr 
+---------------
+ REGEXP
+(1 row)
+
+--specifies case-sensitive matching.
+select regexp_substr('345 REGEXP_substr 789', '[a-z]+', 4, 3, 'c')  from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+--allows the period (.), which is the match-any-character character
+select regexp_substr('345 REGEXP_substr 789', '[A-Z]+', 1, 1, 'n')  from  dual;
+ regexp_substr 
+---------------
+ REGEXP
+(1 row)
+
+--treats the source string as multiple lines
+select regexp_substr('345 REGEXP_substr 789', '[A-Z]+', 1, 1, 'm')  from  dual;
+ regexp_substr 
+---------------
+ REGEXP
+(1 row)
+
+--ignores whitespace characters
+select regexp_substr('345 REGEXP_substr 789', '[A-Z]+', 1, 1, 'x')  from  dual;
+ regexp_substr 
+---------------
+ REGEXP
+(1 row)
+
+--Match only the last character
+select regexp_substr('345 REGEXP_substr 789', '[A-Z]+', 1, 1, 'ic')  from  dual;
+ regexp_substr 
+---------------
+ REGEXP
+(1 row)
+
+--Wrong matching pattern
+select regexp_substr('345 REGEXP_substr 789', '[A-Z]+', 1, 1, 'a')  from  dual;
+ERROR:  illegal argument for function
+-- find the first uppercase letters
+select regexp_substr('regexp_REPLACE 4567', '[[:upper:]]', 1, 1, 'ic')  from  dual;
+ regexp_substr 
+---------------
+ R
+(1 row)
+
+--Return the first character found or this number
+select regexp_substr('regexp-23-replace 345', '[[:alnum:]]') from  dual;
+ regexp_substr 
+---------------
+ r
+(1 row)
+
+select regexp_substr('(19 + 35 * 2 + 8 - 3) / 2', '\+', 1, 1) from  dual;
+ regexp_substr 
+---------------
+ +
+(1 row)
+
+select regexp_substr('australia', '(.)') from dual;
+ regexp_substr 
+---------------
+ a
+(1 row)
+
+select regexp_substr('515.123.4444 515.123.4888','([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})') from dual;
+ regexp_substr 
+---------------
+ 515.123.4444
+(1 row)
+
+--Returns the first string found by the regular expression
+select regexp_substr('500 Oracle Parkway, Redwood Shores, CA',',[^,]+,') from dual;
+   regexp_substr   
+-------------------
+ , Redwood Shores,
+(1 row)
+
+select regexp_substr('http://www.example.com/products','http://([[:alnum:]]+\.?){3,4}/?') from dual;
+      regexp_substr      
+-------------------------
+ http://www.example.com/
+(1 row)
+
+--Use the subexpr argument to return a specific subexpression of pattern
+select regexp_substr('barbar', 'b[^b]+',1,1,'i',0) from dual;
+ regexp_substr 
+---------------
+ bar
+(1 row)
+
+select regexp_substr('barbar', 'b[^b]+',1,1,'i',1) from dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('barbar', '(b[^b]+)',1,1,'i',0) from dual;
+ regexp_substr 
+---------------
+ bar
+(1 row)
+
+select regexp_substr('barbar', '(b[^b]+)',1,1,'i',1) from dual;
+ regexp_substr 
+---------------
+ bar
+(1 row)
+
+select regexp_substr('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 1, 1, 'i',2) from dual;
+ regexp_substr 
+---------------
+ beque
+(1 row)
+
+select regexp_substr('345 REGEXP_substr 789', '[A-Z]+', 1, 1, 'ic',8)  from  dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 1, 1, 'i',3) from dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',8) from dual;
+ regexp_substr 
+---------------
+ 9010
+(1 row)
+
+select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',9) from dual;
+ regexp_substr 
+---------------
+ 0
+(1 row)
+
+--The number of submodes is more than 9 and returns empty
+select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',10) from dual;
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+--Too many parameters
+select regexp_substr('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 1, 1, 'i',2,8) from dual;
+ERROR:  function regexp_substr(unknown, unknown, integer, integer, unknown, integer, integer) does not exist
+LINE 1: select regexp_substr('foobarbequebazilbarfbonk', '(b[^b]+)(b...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+/*
+ * regexp_instr
+ */
+--Return empty or error
+----two parameters
+select regexp_instr('', '[0-9]+') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', NULL) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+----three parameters
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+',0) from dual;	--fail
+ERROR:  argument '0' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+',-1) from dual; --fail
+ERROR:  argument '-1' is out of range
+ 
+select regexp_instr('', '[0-9]+','') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr(NULL, '[0-9]+',NULL) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('', '[0-9]+',NULL) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr(NULL, '[0-9]+','') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '', 1) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', NULL, 1) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', '') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', NULL) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+----four parameters
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+',1,0) from dual;	--fail
+ERROR:  argument '0' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+',1,-1) from dual;	--fail
+ERROR:  argument '-1' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 1, '') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 1, NULL) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+----five parameters
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, -1) from dual; --fail
+ERROR:  argument '-1' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, -2) from dual; --fail
+ERROR:  argument '-2' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, -100) from dual; --fail
+ERROR:  argument '-100' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, '') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, NULL) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+----six parameters
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, 'q') from dual;	--fail
+ERROR:  illegal argument for function
+select regexp_instr('', '[a-z]+', 1, 1, 0, 'i') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr(NULL, '[a-z]+', 1, 1, 0, 'i') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '', 1, 1, 0, 'i') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', NULL, 1, 1, 0, 'i') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+----seven parameters
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 1, 1, 0, 'i', -1) from dual; --fail
+ERROR:  argument '-1' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 1, 1, 0, 'i', '') from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 1, 1, 0, 'i', NULL) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('', '[0-9]+', 1, 1, 0, 'i', 1) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr(NULL, '[0-9]+', 1, 1, 0, 'i', 1) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '', 1, 1, 0, 'i', 1) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', NULL, 1, 1, 0, 'i', 1) from dual;
+ regexp_instr 
+--------------
+ 
+(1 row)
+
+--Too few parameters
+select regexp_instr('') from dual;	--fail
+ERROR:  not enough arguments for function
+select regexp_instr(NULL) from dual;--fail
+ERROR:  not enough arguments for function
+select regexp_instr('345 REGEXP_instr 789') from dual;
+ERROR:  not enough arguments for function
+--Returns the first string location matched
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+') from dual;
+ regexp_instr 
+--------------
+ 1
+(1 row)
+
+--Return the first string location that matches to the specified position
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 8) from dual;
+ regexp_instr 
+--------------
+ 18
+(1 row)
+
+--Incorrect parameter type
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+',  a) from dual;	  --fail
+ERROR:  "a": invalid identifier
+LINE 1: ...t regexp_instr('345 REGEXP_instr 789', '[0-9]+',  a) from du...
+                                                             ^
+--Searched position is less than 1 out of range
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+',  0) from dual;	  --fail
+ERROR:  argument '0' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+',  -1) from dual;	  --fail
+ERROR:  argument '-1' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+',  1, 0) from dual;   --fail
+ERROR:  argument '0' is out of range
+select regexp_instr('345 REGEXP_instr 789', '[0-9]+', 5, -1) from dual;	  --fail
+ERROR:  argument '-1' is out of range
+--verify case-insensitive matching
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, '') from dual;
+ regexp_instr 
+--------------
+ 12
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, NULL) from dual;
+ regexp_instr 
+--------------
+ 12
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, 'i') from dual;
+ regexp_instr 
+--------------
+ 5
+(1 row)
+
+--specifies case-sensitive matching.
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, 'c') from dual;
+ regexp_instr 
+--------------
+ 12
+(1 row)
+
+--allows the period (.), which is the match-any-character character
+select regexp_instr('345 REGEXP_instr 789', '[A-Z]+', 1, 1, 0, 'n') from dual;
+ regexp_instr 
+--------------
+ 5
+(1 row)
+
+--treats the source string as multiple lines
+select regexp_instr('345 REG^EX$P_instr 789', '[A-Z]+', 1, 1, 0, 'm')  from dual;
+ regexp_instr 
+--------------
+ 5
+(1 row)
+
+select regexp_instr('34^5 REG$EXP_instr 789', '[A-Z]+', 1, 1, 0, 'm')  from dual;
+ regexp_instr 
+--------------
+ 6
+(1 row)
+
+--ignores whitespace characters
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, 'x')  from dual;
+ regexp_instr 
+--------------
+ 12
+(1 row)
+
+--If specify multiple contradictory values, then Match only the last character.
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, 'ic')  from dual;
+ regexp_instr 
+--------------
+ 12
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[a-z]+', 1, 1, 0, 'ci')  from dual;
+ regexp_instr 
+--------------
+ 5
+(1 row)
+
+--Wrong matching pattern
+select regexp_instr('345 REGEXP_instr 789', '[A-Z]+', 1, 1, 0, 'a')  from dual;	--fail
+ERROR:  illegal argument for function
+--Too many parameters
+select regexp_instr('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 1, 1, 0, 'i', 0, 3) from dual;	--fail
+ERROR:  function regexp_instr(unknown, unknown, integer, integer, integer, unknown, integer, integer) does not exist
+LINE 1: select regexp_instr('foobarbequebazilbarfbonk', '(b[^b]+)(b[...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--Returns the character or number location about string found by the regular expression
+select regexp_instr('500 Oracle Parkway, Redwood Shores, CA',',[^,]+,') from dual;
+ regexp_instr 
+--------------
+ 19
+(1 row)
+
+select regexp_instr('http://www.example.com/products','/([[:alnum:]]+\.?){3,4}/?') from dual;
+ regexp_instr 
+--------------
+ 7
+(1 row)
+
+select regexp_instr('515.123.4444 515.123.4888','([[:digit:]]{3})\.([[:digit:]]{3})', 1, 2, 0) from dual;
+ regexp_instr 
+--------------
+ 14
+(1 row)
+
+--If the number of subexpression is more than 9, then returns zero
+select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',10) from dual;
+ regexp_instr 
+--------------
+ 0
+(1 row)
+
+--Use the subexpr argument to return a specific subexpression of pattern
+select regexp_instr('barbar', 'b[^b]+', 1, 1, 0, 'i',0) from dual;
+ regexp_instr 
+--------------
+ 1
+(1 row)
+
+select regexp_instr('barbar', 'b[^b]+', 1, 1, 1, 'i',0) from dual;
+ regexp_instr 
+--------------
+ 4
+(1 row)
+
+select regexp_instr('barbar', '(b[^b]+)', 1, 2, 0, 'i',0) from dual;
+ regexp_instr 
+--------------
+ 4
+(1 row)
+
+select regexp_instr('barbar', '(b[^b]+)', 1, 2, 1, 'i',0) from dual;
+ regexp_instr 
+--------------
+ 7
+(1 row)
+
+select regexp_instr('foobarbequebazilbarfbonk', '(b[^b]+)(b[^b]+)', 1, 1, 0, 'i') from dual;
+ regexp_instr 
+--------------
+ 4
+(1 row)
+
+select regexp_instr('345 REGEXP_instr 789', '[A-Z]+', 1, 1, 0, 'ic')  from dual;
+ regexp_instr 
+--------------
+ 5
+(1 row)
+
+select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',8) from dual;
+ regexp_instr 
+--------------
+ 9
+(1 row)
+
+select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',9) from dual;
+ regexp_instr 
+--------------
+ 10
+(1 row)
+
+/*
+ * regexp_like
+ */
+create table t_regexp_like
+(
+  id varchar(4),
+  value varchar(10)
+);
+insert into t_regexp_like values ('1','1234560');
+insert into t_regexp_like values ('2','1234560');
+insert into t_regexp_like values ('3','1b3b560');
+insert into t_regexp_like values ('4','abc');
+insert into t_regexp_like values ('5','abcde');
+insert into t_regexp_like values ('6','ADREasx');
+insert into t_regexp_like values ('7','123  45');
+insert into t_regexp_like values ('8','adc  de');
+insert into t_regexp_like values ('9','adc,.de');
+insert into t_regexp_like values ('10','1B');
+insert into t_regexp_like values ('10','abcbvbnb');
+insert into t_regexp_like values ('11','11114560');
+insert into t_regexp_like values ('11','11124560');
+-------------------------------------------------------
+select * from t_regexp_like where regexp_like(value,'ABC', 'i');
+ id |  value   
+----+----------
+ 4  | abc
+ 5  | abcde
+ 10 | abcbvbnb
+(3 rows)
+
+select * from t_regexp_like where regexp_like(value,'ABC', 'n');
+ id | value 
+----+-------
+(0 rows)
+
+select * from t_regexp_like where regexp_like(value,'ABC', 'p');
+ERROR:  invalid option of regexp_like: p
+select * from t_regexp_like where regexp_like(value,'ABC', 'c');
+ id | value 
+----+-------
+(0 rows)
+
+select * from t_regexp_like where regexp_like(value,'a b c', 'x');
+ id |  value   
+----+----------
+ 4  | abc
+ 5  | abcde
+ 10 | abcbvbnb
+(3 rows)
+
+select * from t_regexp_like where value like '1____60';
+ id |  value  
+----+---------
+ 1  | 1234560
+ 2  | 1234560
+ 3  | 1b3b560
+(3 rows)
+
+select * from t_regexp_like where regexp_like(value,'1....60');
+ id |  value   
+----+----------
+ 1  | 1234560
+ 2  | 1234560
+ 3  | 1b3b560
+ 11 | 11114560
+ 11 | 11124560
+(5 rows)
+
+select * from t_regexp_like where regexp_like(value,'1[0-9]{4}60');
+ id |  value   
+----+----------
+ 1  | 1234560
+ 2  | 1234560
+ 11 | 11114560
+ 11 | 11124560
+(4 rows)
+
+select * from t_regexp_like where regexp_like(value,'1[[:digit:]]{4}60');
+ id |  value   
+----+----------
+ 1  | 1234560
+ 2  | 1234560
+ 11 | 11114560
+ 11 | 11124560
+(4 rows)
+
+select * from t_regexp_like where regexp_like(value, '^[[:digit:]]+[[:alpha:]]+.*[[:digit:]]+$');
+ id |  value  
+----+---------
+ 3  | 1b3b560
+(1 row)
+
+select * from t_regexp_like where regexp_like(value,'^[^[:digit:]]+$');
+ id |  value   
+----+----------
+ 4  | abc
+ 5  | abcde
+ 6  | ADREasx
+ 8  | adc  de
+ 9  | adc,.de
+ 10 | abcbvbnb
+(6 rows)
+
+select * from t_regexp_like where regexp_like(value,'^1[2b]','i');
+ id |  value  
+----+---------
+ 1  | 1234560
+ 2  | 1234560
+ 3  | 1b3b560
+ 7  | 123  45
+ 10 | 1B
+(5 rows)
+
+select * from t_regexp_like where regexp_like(value,'^1[2B]');
+ id |  value  
+----+---------
+ 1  | 1234560
+ 2  | 1234560
+ 7  | 123  45
+ 10 | 1B
+(4 rows)
+
+select * from t_regexp_like where regexp_like(value,'[[:space:]]');
+ id |  value  
+----+---------
+ 7  | 123  45
+ 8  | adc  de
+(2 rows)
+
+select * from t_regexp_like where regexp_like(value,'^([a-z]+|[0-9]+)$');
+ id |  value   
+----+----------
+ 1  | 1234560
+ 2  | 1234560
+ 4  | abc
+ 5  | abcde
+ 10 | abcbvbnb
+ 11 | 11114560
+ 11 | 11124560
+(7 rows)
+
+select * from t_regexp_like where regexp_like(value,'[[:punct:]]');
+ id |  value  
+----+---------
+ 9  | adc,.de
+(1 row)
+
+select * from t_regexp_like where regexp_like('','');
+ id | value 
+----+-------
+(0 rows)
+
+select * from t_regexp_like where regexp_like(null, '');
+ id | value 
+----+-------
+(0 rows)
+
+select * from t_regexp_like where regexp_like('', null);
+ id | value 
+----+-------
+(0 rows)
+
+select * from t_regexp_like where regexp_like(null, null);
+ id | value 
+----+-------
+(0 rows)
+
+select * from t_regexp_like where regexp_like(null, null, null);
+ id | value 
+----+-------
+(0 rows)
+
+DROP table t_regexp_like;
+/*
+ * regexp_count
+ */
+--following test cases from Oracle.
+SELECT REGEXP_COUNT('123123123123123', '(12)3', 1, 'i') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            5
+(1 row)
+
+SELECT REGEXP_COUNT('123123123123', '123', 3, 'i') COUNT FROM DUAL;
+ count 
+-------
+     3
+(1 row)
+
+select regexp_count('ABC123', '[A-Z]'), regexp_count('A1B2C3', '[A-Z]') from dual;
+ regexp_count | regexp_count 
+--------------+--------------
+            3 |            3
+(1 row)
+
+select regexp_count('ABC123', '[A-Z][0-9]'), regexp_count('A1B2C3', '[A-Z][0-9]') from dual;
+ regexp_count | regexp_count 
+--------------+--------------
+            1 |            3
+(1 row)
+
+select regexp_count('ABC123', '^[A-Z][0-9]'), regexp_count('A1B2C3', '^[A-Z][0-9]') from dual;
+ regexp_count | regexp_count 
+--------------+--------------
+            0 |            1
+(1 row)
+
+select regexp_count('ABC123', '[A-Z][0-9]{2}'), regexp_count('A1B2C3', '[A-Z][0-9]{2}') from dual;
+ regexp_count | regexp_count 
+--------------+--------------
+            1 |            0
+(1 row)
+
+select regexp_count('ABC123', '([A-Z][0-9]){2}'), regexp_count('A1B2C3', '([A-Z][0-9]){2}') from dual;
+ regexp_count | regexp_count 
+--------------+--------------
+            0 |            1
+(1 row)
+
+select regexp_count('ABC123', '[A-Z]') Match_char_ABC_count, regexp_count('A1B2C3', '[A-Z]') Match_char_ABC_count from dual;
+ match_char_abc_count | match_char_abc_count 
+----------------------+----------------------
+                    3 |                    3
+(1 row)
+
+select regexp_count('ABC123', '[A-Z][0-9]') Match_string_C1_count, regexp_count('A1B2C3', '[A-Z][0-9]')  Match_strings_A1_B2_C3_count from dual;
+ match_string_c1_count | match_strings_a1_b2_c3_count 
+-----------------------+------------------------------
+                     1 |                            3
+(1 row)
+
+select regexp_count('ABC123A5', '^[A-Z][0-9]') Char_num_like_A1_at_start, regexp_count('A1B2C3', '^[A-Z][0-9]') Char_num_like_A1_at_start from dual;
+ char_num_like_a1_at_start | char_num_like_a1_at_start 
+---------------------------+---------------------------
+                         0 |                         1
+(1 row)
+
+select regexp_count('ABC123', '[A-Z][0-9]{2}') Char_num_like_A12_anywhere, regexp_count('A1B2C34', '[A-Z][0-9]{2}') Char_num_like_A12_anywhere from dual;
+ char_num_like_a12_anywhere | char_num_like_a12_anywhere 
+----------------------------+----------------------------
+                          1 |                          1
+(1 row)
+
+select regexp_count('ABC12D3', '([A-Z][0-9]){2}') Char_num_within_2_places, regexp_count('A1B2C3', '([A-Z][0-9]){2}') Char_num_within_2_places from dual;
+ char_num_within_2_places | char_num_within_2_places 
+--------------------------+--------------------------
+                        0 |                        1
+(1 row)
+
+CREATE TABLE regexp_temp(empName varchar2(20));
+INSERT INTO regexp_temp (empName) VALUES ('John Doe');
+INSERT INTO regexp_temp (empName) VALUES ('Jane Doe');
+SELECT empName, REGEXP_COUNT(empName, 'e', 1, 'c') "CASE_SENSITIVE_E" From regexp_temp;
+ empname  | CASE_SENSITIVE_E 
+----------+------------------
+ John Doe |                1
+ Jane Doe |                2
+(2 rows)
+
+SELECT empName, REGEXP_COUNT(empName, 'o', 1, 'c') "CASE_SENSITIVE_O" From regexp_temp;
+ empname  | CASE_SENSITIVE_O 
+----------+------------------
+ John Doe |                2
+ Jane Doe |                1
+(2 rows)
+
+SELECT empName, REGEXP_COUNT(empName, 'E', 1, 'i') "CASE_INSENSITIVE_E" From regexp_temp;
+ empname  | CASE_INSENSITIVE_E 
+----------+--------------------
+ John Doe |                  1
+ Jane Doe |                  2
+(2 rows)
+
+SELECT empName, REGEXP_COUNT(empName, 'do', 1, 'i') "CASE_INSENSITIVE_STRING" From regexp_temp;
+ empname  | CASE_INSENSITIVE_STRING 
+----------+-------------------------
+ John Doe |                       1
+ Jane Doe |                       1
+(2 rows)
+
+SELECT empName, REGEXP_COUNT(empName, 'an', 1, 'c') "CASE_SENSITIVE_STRING" From regexp_temp;
+ empname  | CASE_SENSITIVE_STRING 
+----------+-----------------------
+ John Doe |                     0
+ Jane Doe |                     1
+(2 rows)
+
+DROP TABLE regexp_temp;
+/*
+ * substrb
+ */
+SELECT SUBSTRB('ABCDEFG',5,4.2) "Substring with bytes" FROM DUAL;
+ Substring with bytes 
+----------------------
+ EFG
+(1 row)
+
+SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
+ Substring with bytes 
+----------------------
+ EFG
+(1 row)
+
+/*
+ * instrb
+ */
+SELECT INSTRB('CORPORATE FLOOR','OR',5,2) "Instring in bytes" FROM DUAL;
+ Instring in bytes 
+-------------------
+                14
+(1 row)
+
+SELECT INSTRB('CORPORATE FLOOR','OR',5) "Instring in bytes" FROM DUAL;
+ Instring in bytes 
+-------------------
+                 5
+(1 row)
+
+SELECT INSTRB('CORPORATE FLOOR','OR') "Instring in bytes" FROM DUAL;
+ Instring in bytes 
+-------------------
+                 2
+(1 row)
+
+/*
+ * replace
+ */
+SELECT REPLACE('JACK and JUE','J','BL') "Changes" FROM DUAL;
+    Changes     
+----------------
+ BLACK and BLUE
+(1 row)
+
+SELECT REPLACE('JACK and JUE','J') "Changes" FROM DUAL;
+  Changes   
+------------
+ ACK and UE
+(1 row)
+
+/*
+ * REGEXP_COUNT
+ */
+set ivorysql.enable_emptystring_to_NULL to on;
+SELECT REGEXP_COUNT(1231, 123::int2, 1::int2, 'c'::char) REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT(123123::int4, 2312::int4, 1::int4, 'cd') REGEXP_COUNT FROM DUAL;
+ERROR:  invalid regular expression option: "d"
+SELECT REGEXP_COUNT(12312312312, 231, 1, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            3
+(1 row)
+
+SELECT REGEXP_COUNT(1231.2312312312355, 1.23, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT('12312312312312355', '123', 4.9, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            4
+(1 row)
+
+SELECT REGEXP_COUNT(123123123::int, 123::int, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            2
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'c') COUNT FROM DUAL;
+ count 
+-------
+     2
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'i') COUNT FROM DUAL;
+ count 
+-------
+     4
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 6::int, 'i') COUNT FROM DUAL;
+ count 
+-------
+     3
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abcd'::text, 3::int, 'i') COUNT FROM DUAL;
+ count 
+-------
+     0
+(1 row)
+
+SELECT REGEXP_COUNT('Abcdefg'::text, 'c'::varchar, 2, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT('Abcdefg'::varchar2, 'c'::text, 2, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT('Abcacdefg'::text, 'cd'::char, 2, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            2
+(1 row)
+
+SELECT REGEXP_COUNT('Abcacdefg'::text, 'cd'::char(2), 2, 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT('Abcacdefg'::text, 'cd'::text, '2', 'c') REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+set datestyle to ISO,YMD;
+alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24.MI.SS.FF';
+SELECT REGEXP_COUNT(to_date('2019-12-12','yy-MM-dd'), to_date('2019-12-12','yy-MM-dd'), 1.9::number, 'c'::char) REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT(to_date('2019-12-12','yy-MM-dd'), to_date('2019-12-12','yy-MM-dd'), 1::int, 'c'::char) REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT('2019-12-12 00:00:00'::timestamp, '2019-12-12 00:00:00'::timestamp, 1::int, 'c'::char) REGEXP_COUNT FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+reset NLS_TIMESTAMP_FORMAT;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'c') COUNT FROM DUAL;
+ count 
+-------
+     2
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4) COUNT FROM DUAL;
+ count 
+-------
+     2
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 1, 'c') COUNT FROM DUAL;
+ count 
+-------
+     2
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc') COUNT FROM DUAL;
+ count 
+-------
+     2
+(1 row)
+
+SELECT REGEXP_COUNT(null, null) COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT(null, null, null) COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT(null, null, null, null) COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ') COUNT FROM DUAL;
+ count 
+-------
+     1
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 0) COUNT FROM DUAL;
+ERROR:  argument "0" is out of range
+SELECT REGEXP_COUNT('', '', 0.99) COUNT FROM DUAL;
+ERROR:  argument "0" is out of range
+SELECT REGEXP_COUNT('', '', -0.9) COUNT FROM DUAL;
+ERROR:  argument "0" is out of range
+SELECT REGEXP_COUNT('', '', -100) COUNT FROM DUAL;
+ERROR:  argument "-100" is out of range
+SELECT REGEXP_COUNT('', '', 100) COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ', 0) COUNT FROM DUAL;
+ERROR:  argument "0" is out of range
+SELECT REGEXP_COUNT(' ', ' ', 0.99) COUNT FROM DUAL;
+ERROR:  argument "0" is out of range
+SELECT REGEXP_COUNT(' ', ' ', -0.9) COUNT FROM DUAL;
+ERROR:  argument "0" is out of range
+SELECT REGEXP_COUNT(' ', ' ', -100) COUNT FROM DUAL;
+ERROR:  argument "-100" is out of range
+SELECT REGEXP_COUNT(' ', ' ', 100) COUNT FROM DUAL;
+ count 
+-------
+     0
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, '') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, ' ') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT('', '', 1, '0') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT('', '', 1, 'x') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, 'm') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, 'i') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, 'c') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, 'n') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, 't') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT('', '', 1, 'dc') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT('', '', 1, 'ie') COUNT FROM DUAL;
+ count 
+-------
+      
+(1 row)
+
+SELECT REGEXP_COUNT('', '', 1, '-100') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT('', '', 1, '100') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT('', '', 1, '1') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT(' ', ' ', 1, ' ') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT(' ', ' ', 1, '0') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT(' ', ' ', 1, 'x') COUNT FROM DUAL;
+ count 
+-------
+     2
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ', 1, 'm') COUNT FROM DUAL;
+ count 
+-------
+     1
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ', 1, 'i') COUNT FROM DUAL;
+ count 
+-------
+     1
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ', 1, 'c') COUNT FROM DUAL;
+ count 
+-------
+     1
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ', 1, 'n') COUNT FROM DUAL;
+ count 
+-------
+     1
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ', 1, 't') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT(' ', ' ', 1, 'dc') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT(' ', ' ', 1, 'ie') COUNT FROM DUAL;
+ count 
+-------
+     1
+(1 row)
+
+SELECT REGEXP_COUNT(' ', ' ', 1, '-100') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT(' ', ' ', 1, '100') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT(' ', ' ', 1, '1') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 0, 'c') COUNT FROM DUAL;
+ERROR:  argument "0" is out of range
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'gg') COUNT FROM DUAL;
+ count 
+-------
+     2
+(1 row)
+
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 2147483648, 'c') COUNT FROM DUAL;
+ERROR:  integer out of range
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 4, 'o') COUNT FROM DUAL;
+ERROR:  the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.
+--20
+select regexp_count('
+hello
+Hello.hello
+good', '.', 1, 'i') from dual; 
+ regexp_count 
+--------------
+           20
+(1 row)
+
+--25
+select regexp_count('
+hello
+
+Hello hello
+good
+','.',1,'n') from dual;
+ regexp_count 
+--------------
+           25
+(1 row)
+
+--1
+select regexp_count('gooddd', '^', 1, 'm') from dual;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+--4
+select regexp_count('
+hello
+Hello.hello
+good
+', '^', 1, 'm') from dual;
+ regexp_count 
+--------------
+            4
+(1 row)
+
+--3
+select regexp_count('hello
+Hello.hello
+good', '$', 1, 'm') from dual;
+ regexp_count 
+--------------
+            3
+(1 row)
+
+--23
+select regexp_count('hello
+
+Hello.hello
+good', '.', 1, 'n') from dual;
+ regexp_count 
+--------------
+           23
+(1 row)
+
+/*
+ * length
+ */
+alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS';
+alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS';
+select length(192) from dual;
+ length 
+--------
+      3
+(1 row)
+
+select length(cast(192 as int2)) from dual;
+ length 
+--------
+      3
+(1 row)
+
+select length(cast(192 as int4)) from dual;
+ length 
+--------
+      3
+(1 row)
+
+select length(cast(192 as int8)) from dual;
+ length 
+--------
+      3
+(1 row)
+
+select length(192.922) from dual;
+ length 
+--------
+      7
+(1 row)
+
+select length(cast(192.922 as numeric)) from dual;
+ length 
+--------
+      7
+(1 row)
+
+select length('192') from dual;
+ length 
+--------
+      3
+(1 row)
+
+select length('IvorySQL DB!') from dual;
+ length 
+--------
+     12
+(1 row)
+
+select length('今天') from dual;
+ length 
+--------
+      2
+(1 row)
+
+select length(cast('IvorySQL DB!' as char(10))) from dual;
+ length 
+--------
+     10
+(1 row)
+
+select length(cast('IvorySQL DB!' as char(20))) from dual;
+ length 
+--------
+     20
+(1 row)
+
+select length(cast('IvorySQL DB!' as varchar(20))) from dual;
+ length 
+--------
+     12
+(1 row)
+
+select length(cast('IvorySQL DB!' as oravarcharchar(20))) from dual;
+ length 
+--------
+     12
+(1 row)
+
+select length(cast('IvorySQL DB!' as oravarcharchar(20))) from dual;
+ length 
+--------
+     12
+(1 row)
+
+select length(cast('IvorySQL DB!' as text)) from dual;
+ length 
+--------
+     12
+(1 row)
+
+select length(cast('今天' as text)) from dual;
+ length 
+--------
+      2
+(1 row)
+
+select length(cast('今天是Monday' as char(20))) from dual;
+ length 
+--------
+     14
+(1 row)
+
+select length(cast('2019-12-12' as date)) from dual;
+ length 
+--------
+     19
+(1 row)
+
+select length(cast('2019-12-12' as timestamp)) from dual;
+ length 
+--------
+     19
+(1 row)
+
+select length(null) from dual;
+ length 
+--------
+       
+(1 row)
+
+select length('') from dual;
+ length 
+--------
+       
+(1 row)
+
+select length(' ') from dual;
+ length 
+--------
+      1
+(1 row)
+
+select length(0::int) from dual;
+ length 
+--------
+      1
+(1 row)
+
+select length(-2::int) from dual;
+ length 
+--------
+      2
+(1 row)
+
+select length(123.14) from dual;
+ length 
+--------
+      6
+(1 row)
+
+select length(cast('2020-06-18 14:40:20' as date)) from dual;
+ length 
+--------
+     19
+(1 row)
+
+select length(cast('2020-06-18 14:40:20' as timestamp)) from dual;
+ length 
+--------
+     19
+(1 row)
+
+/*
+ * lengthb
+ */
+select lengthb(192) from dual;
+ lengthb 
+---------
+       3
+(1 row)
+
+--select lengthb(192::int2) from dual;
+select lengthb(192::int4) from dual;
+ lengthb 
+---------
+       3
+(1 row)
+
+--select lengthb(192::int8) from dual;
+select lengthb(192.922) from dual;
+ lengthb 
+---------
+       7
+(1 row)
+
+select lengthb(cast(192.922 as numeric)) from dual;
+ lengthb 
+---------
+       7
+(1 row)
+
+select lengthb(cast(192.922 as number)) from dual;
+ lengthb 
+---------
+       7
+(1 row)
+
+select lengthb('192') from dual;
+ lengthb 
+---------
+       3
+(1 row)
+
+select lengthb('IvorySQL DB!') from dual;
+ lengthb 
+---------
+      12
+(1 row)
+
+select lengthb('今天') from dual;
+ lengthb 
+---------
+       6
+(1 row)
+
+select lengthb(cast('IvorySQL DB!' as char(10))) from dual;
+ lengthb 
+---------
+      10
+(1 row)
+
+select lengthb(cast('IvorySQL DB!' as char(20))) from dual;
+ lengthb 
+---------
+      20
+(1 row)
+
+select lengthb(cast('IvorySQL DB!' as varchar(20))) from dual;
+ lengthb 
+---------
+      12
+(1 row)
+
+select lengthb(cast('IvorySQL DB!' as varchar2(20))) from dual;
+ lengthb 
+---------
+      12
+(1 row)
+
+--select lengthb('IvorySQL DB!'::nvarchar2(20)) from dual;
+select lengthb(cast('IvorySQL DB!' as text)) from dual;
+ lengthb 
+---------
+      12
+(1 row)
+
+select lengthb(cast('今天' as text)) from dual;
+ lengthb 
+---------
+       6
+(1 row)
+
+select lengthb(cast('今天是Monday' as char(20))) from dual;
+ lengthb 
+---------
+      20
+(1 row)
+
+select lengthb(cast('2019-12-12' as date)) from dual;
+ lengthb 
+---------
+      19
+(1 row)
+
+select lengthb(cast('2019-12-12' as timestamp)) from dual;
+ lengthb 
+---------
+      19
+(1 row)
+
+select lengthb(null) from dual;
+ lengthb 
+---------
+        
+(1 row)
+
+select lengthb('') from dual;
+ lengthb 
+---------
+        
+(1 row)
+
+select lengthb(' ') from dual;
+ lengthb 
+---------
+       1
+(1 row)
+
+select lengthb(0::int) from dual;
+ lengthb 
+---------
+       1
+(1 row)
+
+select lengthb(-2::int) from dual;
+ lengthb 
+---------
+       2
+(1 row)
+
+select  lengthb(1234.123) from dual;
+ lengthb 
+---------
+       8
+(1 row)
+
+select lengthb(cast('2020-06-18 14:40:20' as date)) from dual;
+ lengthb 
+---------
+      19
+(1 row)
+
+select lengthb(cast('2020-06-18 14:40:20' as timestamp)) from dual;
+ lengthb 
+---------
+      19
+(1 row)
+
+/*
+ * round
+ */
+select round(cast(1.234 as double precision), 2), trunc(cast(1.234 as double precision), 2) from dual;
+ round | trunc 
+-------+-------
+  1.23 | 1.23
+(1 row)
+
+select round(cast(1.234 as float), 2), trunc(cast(1.234 as float), 2) from dual;
+ round | trunc 
+-------+-------
+  1.23 | 1.23
+(1 row)
+
+select round(cast('1.2345' as oravarcharchar)), trunc(cast('1.2345' as oravarcharchar)) from dual;
+ round | trunc 
+-------+-------
+ 1     | 1
+(1 row)
+
+select round(cast('1.2345' as oravarcharchar), 3), trunc(cast('1.2345' as oravarcharchar), 3) from dual;
+ round | trunc 
+-------+-------
+ 1.235 | 1.234
+(1 row)
+
+select round(cast('1.2345' as oravarcharchar), 6), trunc(cast('1.2345' as oravarcharchar), 6) from dual;
+  round   |  trunc   
+----------+----------
+ 1.234500 | 1.234500
+(1 row)
+
+select round(cast('-1.2345' as oravarcharchar)), trunc(cast('-1.2345' as oravarcharchar)) from dual;
+ round | trunc 
+-------+-------
+ -1    | -1
+(1 row)
+
+select round(cast('-1.2345' as oravarcharchar), 3), trunc(cast('-1.2345' as oravarcharchar), 3) from dual;
+ round  | trunc  
+--------+--------
+ -1.235 | -1.234
+(1 row)
+
+select round(cast('-1.2345' as oravarcharbyte), 6), trunc(cast('-1.2345' as oravarcharbyte), 6) from dual;
+   round   |   trunc   
+-----------+-----------
+ -1.234500 | -1.234500
+(1 row)
+
+select round(cast('12345.12345' as text), -1), trunc(cast('12345.12345' as text), -1) from dual;
+ round | trunc 
+-------+-------
+ 12350 | 12340
+(1 row)
+
+select round('123456') from dual;
+ round  
+--------
+ 123456
+(1 row)
+
+/*
+ * trunc
+ */
+select trunc('123456') from dual;
+ trunc  
+--------
+ 123456
+(1 row)
+
+/*
+ * to_char
+ */
+select to_char(22) from dual;
+ to_char 
+---------
+ 22
+(1 row)
+
+select to_char(cast(99 as smallint)) from dual;
+ to_char 
+---------
+ 99
+(1 row)
+
+select to_char(-44444) from dual;
+ to_char 
+---------
+ -44444
+(1 row)
+
+select to_char(cast(1234567890123456 as bigint)) from dual;
+     to_char      
+------------------
+ 1234567890123456
+(1 row)
+
+select to_char(cast(123.456 as real)) from dual;
+ to_char 
+---------
+ 123.456
+(1 row)
+
+select to_char(cast(1234.5678 as double precision)) from dual;
+  to_char  
+-----------
+ 1234.5678
+(1 row)
+
+select to_char(cast(12345678901234567890 as numeric)) from dual;
+       to_char        
+----------------------
+ 12345678901234567890
+(1 row)
+
+select to_char(1234567890.12345) from dual;
+     to_char      
+------------------
+ 1234567890.12345
+(1 row)
+
+select to_char(cast('4.00' as numeric)) from dual;
+ to_char 
+---------
+ 4.00
+(1 row)
+
+select to_char(cast('4.0010' as numeric)) from dual;
+ to_char 
+---------
+ 4.0010
+(1 row)
+
+select to_char(cast('4.0010' as number)) from dual;
+ to_char 
+---------
+ 4.0010
+(1 row)
+
+select to_char('4.0010') from dual;
+ to_char 
+---------
+ 4.0010
+(1 row)
+
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('14-Jan08 11:44:49')) from dual;
+      to_char      
+-------------------
+ 14-Jan08 11:44:49
+(1 row)
+
+set nls_date_format='YY-DDMon HH24:MI:SS';
+select to_char(to_date('14-08Jan 11:44:49')) from dual;
+      to_char      
+-------------------
+ 14-08Jan 11:44:49
+(1 row)
+
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('21052014 12:13:44')) from dual;
+      to_char      
+-------------------
+ 21052014 12:13:44
+(1 row)
+
+set nls_date_format='DDMMYY HH24:MI:SS';
+select to_char(to_date('210514 12:13:44')) from dual;
+     to_char     
+-----------------
+ 210514 12:13:44
+(1 row)
+
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('2014/04/25 10:13', 'YYYY/MM/DD HH:MI')) from dual;
+      to_char      
+-------------------
+ 25042014 10:13:00
+(1 row)
+
+set nls_date_format='YY-DDMon HH24:MI:SS';
+select to_char(to_date('16-Feb-09 10:11:11', 'DD-Mon-YY HH:MI:SS')) from dual;
+      to_char      
+-------------------
+ 09-16Feb 10:11:11
+(1 row)
+
+set nls_date_format='YY-DDMon HH24:MI:SS';
+select to_char(to_date('02/16/09 04:12:12', 'MM/DD/YY HH24:MI:SS')) from dual;
+      to_char      
+-------------------
+ 09-16Feb 04:12:12
+(1 row)
+
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('021609 111213', 'MMDDYY HHMISS')) from dual;
+      to_char      
+-------------------
+ 09-Feb16 11:12:13
+(1 row)
+
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('16-Feb-09 11:12:12', 'DD-Mon-YY HH:MI:SS')) from dual;
+      to_char      
+-------------------
+ 16022009 11:12:12
+(1 row)
+
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('Feb/16/09 11:21:23', 'Mon/DD/YY HH:MI:SS')) from dual;
+      to_char      
+-------------------
+ 16022009 11:21:23
+(1 row)
+
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('February.16.2009 10:11:12', 'Month.DD.YYYY HH:MI:SS')) from dual;
+      to_char      
+-------------------
+ 16022009 10:11:12
+(1 row)
+
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('20020315111212', 'yyyymmddhh12miss')) from dual;
+      to_char      
+-------------------
+ 02-Mar15 11:12:12
+(1 row)
+
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('January 15, 1989, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.')) from dual;
+      to_char      
+-------------------
+ 15011989 11:00:00
+(1 row)
+
+set nls_date_format='DDMMYY HH24:MI:SS';
+select to_char(to_date('14-Jan08 11:44:49' ,'YY-MonDD HH24:MI:SS')) from dual;
+     to_char     
+-----------------
+ 080114 11:44:49
+(1 row)
+
+set nls_date_format='DDMMYYYY HH24:MI:SS';
+select to_char(to_date('14-08Jan 11:44:49','YY-DDMon HH24:MI:SS')) from dual;
+      to_char      
+-------------------
+ 08012014 11:44:49
+(1 row)
+
+set nls_date_format='YY-MonDD HH24:MI:SS';
+select to_char(to_date('21052014 12:13:44','DDMMYYYY HH24:MI:SS')) from dual;
+      to_char      
+-------------------
+ 14-May21 12:13:44
+(1 row)
+
+set nls_date_format='DDMMYY HH24:MI:SS';
+select to_char(to_date('210514 12:13:44','DDMMYY HH24:MI:SS')) from dual;
+     to_char     
+-----------------
+ 210514 12:13:44
+(1 row)
+
+select to_char(1234567890123456) from dual;
+     to_char      
+------------------
+ 1234567890123456
+(1 row)
+
+select to_char(1234.123456789012) from dual;
+      to_char      
+-------------------
+ 1234.123456789012
+(1 row)
+
+/*
+ * to_number
+ */
+SELECT to_number(cast('123' as text)) from dual;
+ to_number 
+-----------
+ 123
+(1 row)
+
+SELECT to_number(cast('123.456' as text)) from dual;
+ to_number 
+-----------
+ 123.456
+(1 row)
+
+SELECT to_number(123) from dual;
+ to_number 
+-----------
+ 123
+(1 row)
+
+SELECT to_number(cast(123 as smallint)) from dual;
+ to_number 
+-----------
+ 123
+(1 row)
+
+SELECT to_number(cast(123 as int)) from dual;
+ to_number 
+-----------
+ 123
+(1 row)
+
+SELECT to_number(cast(123 as bigint)) from dual;
+ to_number 
+-----------
+ 123
+(1 row)
+
+SELECT to_number(cast(123 as numeric)) from dual;
+ to_number 
+-----------
+ 123
+(1 row)
+
+SELECT to_number(123.456) from dual;
+ to_number 
+-----------
+ 123.456
+(1 row)
+
+SELECT to_number(1210.7, 9999.99) from dual;
+ to_number 
+-----------
+ 1210.7
+(1 row)
+
+SELECT to_number(1210.73, 9999.99) from dual;
+ to_number 
+-----------
+ 1210.73
+(1 row)
+
+SELECT to_number(1210.733, 9999.99) from dual; --err
+ERROR:  invalid number format model
+CONTEXT:  SQL function "to_number" statement 1
+SELECT to_number(cast(1210 as smallint), cast(9999 as smallint)) from dual;
+ to_number 
+-----------
+ 1210
+(1 row)
+
+SELECT to_number(cast(1210 as int), cast(9999 as int)) from dual;
+ to_number 
+-----------
+ 1210
+(1 row)
+
+SELECT to_number(cast(1210 as bigint), cast(9999 as bigint)) from dual;
+ to_number 
+-----------
+ 1210
+(1 row)
+
+SELECT to_number(cast(1210.73 as numeric), cast(9999.99 as numeric)) from dual;
+ to_number 
+-----------
+ 1210.73
+(1 row)
+
+--select to_number('$12345.67', '$99999999.99') from dual;
+--select to_number('1,2,6,7,8', '99,99,99,9,999') from dual;
+select to_number('1;2;6;7;8', '99,99,99,9,999') from dual; --error
+ERROR:  invalid number
+select to_number('1.1,2,6,7,8', '9999,99,99,9,999') from dual; --error
+ERROR:  invalid number
+select to_number('1.1,2,6,77,8', '9999,99,99,9,999') from dual; --error
+ERROR:  invalid number
+select to_number(123) from dual;
+ to_number 
+-----------
+ 123
+(1 row)
+
+SELECT to_number(12.34) from dual;
+ to_number 
+-----------
+ 12.34
+(1 row)
+
+/*
+ * instrb
+ */
+select instrb(1, 1) from dual;
+ instrb 
+--------
+      1
+(1 row)
+
+select instrb('a', 1) from dual;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2, 4) "instrb" FROM DUAL; --err
+ERROR:  function instrb(integer, integer, text, integer, integer) does not exist
+LINE 1: SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2,...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT instrb(20121209, cast(12 as int), cast(1 as varchar2), '2') "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2, '4', 5) "instrb" FROM DUAL; --err
+ERROR:  function instrb(integer, integer, text, integer, unknown, integer) does not exist
+LINE 1: SELECT instrb(20121209, cast(12 as int), cast(1 as text), 2,...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT instrb(20121209) "instrb" FROM DUAL;
+ERROR:  function instrb(integer) does not exist
+LINE 1: SELECT instrb(20121209) "instrb" FROM DUAL;
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT instrb(20121209,12, 1, 2) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(20121209,12, 1) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(20121209,12) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(2012 as int2), cast(12 as int2), cast(1 as int2), cast(2 as int2)) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(2012 as int2), cast(12 as int2), cast(1 as int2)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(2012 as int2), cast(12 as int2)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121209 as int), cast(12 as int), cast(1.9 as int), cast(2.99 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(20121209 as int), cast(12 as int), cast(1.9 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121209 as int), cast(12 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121212 as int8), cast(1212 as int8), cast(1.9 as int8), cast(1.99 as int8)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(cast(20121212 as int8), cast(1212 as int8), cast(1.9 as int8)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(20121212 as int8), cast(1212 as int8)) "instrb" FROM DUAL;
+ instrb 
+--------
+      3
+(1 row)
+
+SELECT instrb(cast(201212.09 as int),cast(12.9 as int), cast(1.9 as numeric), 2.99::numeric) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric), cast(1.9 as int), cast(1.99 as int)) "instrb" FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric), cast(1.9 as numeric), cast(1.99 as numeric)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric), cast(1.9 as numeric)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(cast(201212.12 as numeric),cast(12.12 as numeric)) "instrb" FROM DUAL;
+ instrb 
+--------
+      5
+(1 row)
+
+SELECT instrb(null,null,null,null) FROM DUAL;
+ instrb 
+--------
+       
+(1 row)
+
+SELECT instrb(null,null,null) FROM DUAL;
+ instrb 
+--------
+       
+(1 row)
+
+SELECT instrb(null,null) FROM DUAL;
+ instrb 
+--------
+       
+(1 row)
+
+select instrb(1, 1) from dual;
+ instrb 
+--------
+      1
+(1 row)
+
+select instrb('a', 1) from dual;
+ instrb 
+--------
+      0
+(1 row)
+
+reset nls_timestamp_format;
+reset nls_date_format;
+select instrb(cast('2022-09-27' as date), 2) from dual;
+ instrb 
+--------
+      1
+(1 row)
+
+/*
+ * decode
+ */
+ 
+select  decode('b', null, 2018, 111) from dual; --expect:111
+ decode 
+--------
+ 111
+(1 row)
+
+select  decode(1, null, 2018, 111, 2222, 3333, 22, 1, 99, 5) from dual; --expect:99
+ decode 
+--------
+ 99
+(1 row)
+
+select  decode(null, 1, 2018, 111, 2222, 3333, 22, 1, 99, 5) from dual; --expect:5
+ decode 
+--------
+ 5
+(1 row)
+
+select  decode(null, 1, 2018, 111, 2222, 3333, 22, 1, null, 5) from dual; --expect:5
+ decode 
+--------
+ 5
+(1 row)
+
+create table test_decode(a int, b int);
+insert into test_decode values(null, null);
+select decode(a, b, 2018, 2, 3) from test_decode;
+ decode 
+--------
+ 2018
+(1 row)
+
+select decode(a, 1, 2018, b, 3) from test_decode;
+ decode 
+--------
+ 3
+(1 row)
+
+select decode(a, 1, 2018, 2, 3, 4) from test_decode;
+ decode 
+--------
+ 4
+(1 row)
+
+insert into test_decode values(1, 1);
+insert into test_decode values(1, null);
+insert into test_decode values(null, 1);
+select * from test_decode;
+ a | b 
+---+---
+   |  
+ 1 | 1
+ 1 |  
+   | 1
+(4 rows)
+
+select decode(a, b, 2018, 2, 3) from test_decode;
+ decode 
+--------
+ 2018
+ 2018
+ 
+ 
+(4 rows)
+
+select decode(a, b, 2018, 1, 3) from test_decode;
+ decode 
+--------
+ 2018
+ 2018
+ 3
+ 
+(4 rows)
+
+select decode(a, null, 2018, 1, 3) from test_decode;
+ decode 
+--------
+ 2018
+ 3
+ 3
+ 2018
+(4 rows)
+
+select decode(a, null, 2018, 2, 3) from test_decode;
+ decode 
+--------
+ 2018
+ 
+ 
+ 2018
+(4 rows)
+
+select decode(null, a, 2018, 2, 3) from test_decode;
+ decode 
+--------
+ 2018
+ 
+ 
+ 2018
+(4 rows)
+
+select decode(null, b, 2018, 2, 3) from test_decode;
+ decode 
+--------
+ 2018
+ 
+ 2018
+ 
+(4 rows)
+
+select decode(null, null, 2018, 2, 3) from test_decode; --expect:all
+ decode 
+--------
+ 2018
+ 2018
+ 2018
+ 2018
+(4 rows)
+
+drop table test_decode;

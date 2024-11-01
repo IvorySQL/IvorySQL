@@ -13,6 +13,10 @@ PGFILEDESC = "dblink - connect to other PostgreSQL databases"
 
 REGRESS = paths dblink
 REGRESS_OPTS = --dlpath=$(top_builddir)/src/test/regress
+# BEGIN - SQL PARSER
+ORACLE_REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
+# END - SQL PARSER
+
 EXTRA_CLEAN = sql/paths.sql expected/paths.out
 
 ifdef USE_PGXS
@@ -26,3 +30,8 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+all: ../../src/oracle_test/regress/regress$(DLSUFFIX)
+
+../../src/oracle_test/regress/egress$(DLSUFFIX): ../../src/oracle_test/regress/oraregress$(DLSUFFIX)
+	        cp $< $@

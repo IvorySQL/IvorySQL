@@ -322,7 +322,7 @@ static long xc_slow_answer = 0;
 #define xc_slow_answer_inc()		(xc_slow_answer++)
 
 static void DisplayXidCache(void);
-#else							/* !XIDCACHE_DEBUG */
+#else							
 
 #define xc_by_recent_xmin_inc()		((void) 0)
 #define xc_by_known_xact_inc()		((void) 0)
@@ -333,7 +333,7 @@ static void DisplayXidCache(void);
 #define xc_by_known_assigned_inc()	((void) 0)
 #define xc_no_overflow_inc()		((void) 0)
 #define xc_slow_answer_inc()		((void) 0)
-#endif							/* XIDCACHE_DEBUG */
+#endif							
 
 static VirtualTransactionId *GetVirtualXIDsDelayingChkptGuts(int *nvxids,
 															 int type);
@@ -621,7 +621,7 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 			&ProcGlobal->statusFlags[myoff + 1],
 			movecount * sizeof(*ProcGlobal->statusFlags));
 
-	arrayP->pgprocnos[arrayP->numProcs - 1] = -1;	/* for debugging */
+	arrayP->pgprocnos[arrayP->numProcs - 1] = -1;	
 	arrayP->numProcs--;
 
 	/*
@@ -4080,7 +4080,7 @@ DisplayXidCache(void)
 			xc_no_overflow,
 			xc_slow_answer);
 }
-#endif							/* XIDCACHE_DEBUG */
+#endif							
 
 /*
  * If rel != NULL, return test state appropriate for relation, otherwise

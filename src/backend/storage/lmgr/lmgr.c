@@ -322,7 +322,7 @@ CheckRelationLockedByMe(Relation relation, LOCKMODE lockmode, bool orstronger)
 			if (LockHeldByMe(&tag, slockmode))
 			{
 #ifdef NOT_USED
-				/* Sometimes this might be useful for debugging purposes */
+				
 				elog(WARNING, "lock mode %s substituted for %s on relation %s",
 					 GetLockmodeName(tag.locktag_lockmethodid, slockmode),
 					 GetLockmodeName(tag.locktag_lockmethodid, lockmode),

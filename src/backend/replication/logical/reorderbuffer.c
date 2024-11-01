@@ -128,7 +128,7 @@ typedef struct ReorderBufferTupleCidEnt
 	ReorderBufferTupleCidKey key;
 	CommandId	cmin;
 	CommandId	cmax;
-	CommandId	combocid;		/* just for debugging */
+	CommandId	combocid;		
 } ReorderBufferTupleCidEnt;
 
 /* Virtual file descriptor with file offset tracking */

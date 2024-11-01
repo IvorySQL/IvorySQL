@@ -16,6 +16,7 @@
 
 #include "catalog/pg_cast.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_collation.h"	
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -25,9 +26,14 @@
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/date.h"			
+#include "utils/datetime.h"		
 #include "utils/datum.h"		/* needed for datumIsEqual() */
 #include "utils/fmgroids.h"
+#include "utils/formatting.h"	
+#include "utils/guc.h"			
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"	
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -276,10 +282,20 @@ coerce_type(ParseState *pstate, Node *node,
 		 * or it won't be able to obey the bizarre SQL-spec input rules. (Ugly
 		 * as sin, but so is this part of the spec...)
 		 */
-		if (baseTypeId == INTERVALOID)
+		 /*
+		   * TIMESTAMP/TIMESTAMPTZ/TIMESTAMPLTZ type,  we *must* pass 
+		   * the typmod, and be used in oratimestamp_in function.
+		   */
+		if (baseTypeId == INTERVALOID ||
+			baseTypeId == ORATIMESTAMPOID ||
+			baseTypeId == ORATIMESTAMPTZOID ||
+			baseTypeId == ORATIMESTAMPLTZOID ||
+			baseTypeId == YMINTERVALOID ||
+			baseTypeId == DSINTERVALOID)
 			inputTypeMod = baseTypeMod;
 		else
 			inputTypeMod = -1;
+		
 
 		baseType = typeidType(baseTypeId);
 
@@ -304,17 +320,263 @@ coerce_type(ParseState *pstate, Node *node,
 		setup_parser_errposition_callback(&pcbstate, pstate, con->location);
 
 		/*
-		 * We assume here that UNKNOWN's internal representation is the same
-		 * as CSTRING.
+		 * Compatible oracle fix input format of datetime literals.
+		 * eg: TIMESTAMP '1997-01-31 09:26:50.124'
+		 * TODO: 
+		 *	Perhaps we should add a field to the Const struct instead of relying on -2.
 		 */
-		if (!con->constisnull)
-			newcon->constvalue = stringTypeDatum(baseType,
-												 DatumGetCString(con->constvalue),
-												 inputTypeMod);
+		if (ORA_PARSER == compatible_db && con->location == (-2))
+		{
+			/* date'1990-1-1' input format */
+			if (baseTypeId == ORADATEOID)
+			{
+				text	*date_txt;
+				text	*fmt;
+				struct pg_tm tm;
+				fsec_t		fsec;
+				Timestamp	result;
+			
+				date_txt = cstring_to_text(DatumGetCString(con->constvalue));
+				fmt = cstring_to_text("YYYY-MM-DD");
+				ora_do_to_timestamp(date_txt, fmt, C_COLLATION_OID, true, &tm, &fsec, NULL, NULL, NULL, false);
+				
+				/* truncate timezone and fractional second*/
+				fsec = 0;
+				if (tm2timestamp(&tm, fsec, NULL, &result) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("date out of range")));
+				
+				newcon->constvalue = TimestampGetDatum(result);
+			}
+			/* timestamp'1990-1-1 11:11:11' input format */
+			else if (baseTypeId == ORATIMESTAMPOID)
+			{
+				char	*str;
+				char	workbuf[MAXDATELEN + MAXDATEFIELDS];
+				char	*field[MAXDATEFIELDS];
+				int		ftype[MAXDATEFIELDS];
+				int		nf;
+				int		dterr;
+				int		dtype;
+				struct pg_tm tt,
+		   				   *tm = &tt;
+				fsec_t		fsec;
+				int		tz;
+				Timestamp	result;
+
+				str = DatumGetCString(con->constvalue);
+
+				dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+					 				  field, ftype, MAXDATEFIELDS, &nf);
+				
+				/*At least the date and time fields*/
+				if (dterr != 0 || nf < 2 || nf > 3)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+							 errmsg("datetime string and format model does not match")));			
+
+				if (nf == 2 && ftype[0] == DTK_DATE && ftype[1] == DTK_TIME)
+				{
+					dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
+					
+					if (dterr != 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+
+					if (dtype == DTK_DATE)
+					{
+						if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+									 errmsg("datetime string and format model does not match")));
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+					}
+					
+					newcon->constvalue = TimestampGetDatum(result);
+					newcon->location = 2;
+					
+				}
+				else if(nf == 3 && ftype[0] == DTK_DATE && ftype[1] == DTK_TIME)
+				{
+					Type		baseType_tmp;
+							
+					dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
+					if (dterr != 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+
+					if (dtype == DTK_DATE)
+					{
+						if (tm2timestamp(tm, fsec, &tz, &result) != 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+									 errmsg("datetime string and format model does not match")));
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+					}
+
+					baseType_tmp = typeidType(ORATIMESTAMPTZOID);
+					newcon->consttype = ORATIMESTAMPTZOID;
+					newcon->consttypmod = inputTypeMod;
+					newcon->constcollid = typeTypeCollation(baseType_tmp);
+					newcon->constlen = typeLen(baseType_tmp);
+					newcon->constbyval = typeByVal(baseType_tmp);
+					newcon->constvalue = TimestampGetDatum(result);
+					newcon->location = 2;
+
+					ReleaseSysCache(baseType_tmp);
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+							 errmsg("datetime string and format model does not match")));
+				}
+			}
+			/* time '11:11:11.111111111 +08:00' input format */
+			else if (baseTypeId == TIMEOID)
+			{
+				char	*str;
+				char	workbuf[MAXDATELEN + MAXDATEFIELDS];
+				char	*field[MAXDATEFIELDS];
+				int 	ftype[MAXDATEFIELDS];
+				int 	nf;
+				int 	dterr;
+				int 	dtype;
+				struct pg_tm tt,
+						   *tm = &tt;
+				fsec_t		fsec;
+				int 	tz;
+
+				str = DatumGetCString(con->constvalue);
+
+				dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+									  field, ftype, MAXDATEFIELDS, &nf);
+				
+				/*At least the date and time fields*/
+				if (dterr != 0 || nf < 1 || nf > 2)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+							 errmsg("datetime string and format model does not match")));			
+
+				if (nf == 1 && ftype[0] == DTK_TIME)
+				{
+					TimeADT result;
+					dterr = DecodeTimeOnly(field, ftype, nf, &dtype, tm, &fsec, &tz);
+					
+					if (dterr != 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+
+					if (dtype == DTK_TIME)
+					{
+						if (tm2time(tm, fsec, &result) != 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+									 errmsg("datetime string and format model does not match")));
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+					}
+					
+					newcon->constvalue = TimeADTGetDatum(result);
+					newcon->location = 2;
+					
+				}
+				else if(nf == 2 && ftype[0] == DTK_TIME &&
+					(ftype[1] == DTK_TZ || ftype[1] == DTK_STRING || ftype[1] == DTK_SPECIAL))
+				{
+					TimeTzADT *result = (TimeTzADT *) palloc(sizeof(TimeTzADT));
+					Type		baseType_tmp;
+							
+					dterr = DecodeTimeOnly(field, ftype, nf, &dtype, tm, &fsec, &tz);
+					if (dterr != 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+
+					if (dtype == DTK_TIME)
+					{
+						if (tm2timetz(tm, fsec, tz, result) != 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+									 errmsg("datetime string and format model does not match")));
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("datetime string and format model does not match")));
+					}
+
+					baseType_tmp = typeidType(TIMETZOID);
+					newcon->consttype = TIMETZOID;
+					newcon->consttypmod = inputTypeMod;
+					newcon->constcollid = typeTypeCollation(baseType_tmp);
+					newcon->constlen = typeLen(baseType_tmp);
+					newcon->constbyval = typeByVal(baseType_tmp);
+					newcon->constvalue = TimeTzADTPGetDatum(result);
+					newcon->location = 2;
+
+					ReleaseSysCache(baseType_tmp);
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+							 errmsg("datetime string and format model does not match")));
+				}
+			}
+			else
+			{
+				/*
+				 * We assume here that UNKNOWN's internal representation is the same
+				 * as CSTRING.
+				 */
+				
+				if (!con->constisnull)
+					newcon->constvalue = stringTypeDatum(baseType,
+													DatumGetCString(con->constvalue),
+														 inputTypeMod);
+				else
+					newcon->constvalue = stringTypeDatum(baseType,
+														 NULL,
+														 inputTypeMod);
+			}
+		}
 		else
-			newcon->constvalue = stringTypeDatum(baseType,
-												 NULL,
-												 inputTypeMod);
+		{
+			/*
+			 * We assume here that UNKNOWN's internal representation is the same
+			 * as CSTRING.
+			 */
+
+			if (!con->constisnull)
+				newcon->constvalue = stringTypeDatum(baseType,
+												DatumGetCString(con->constvalue),
+													 inputTypeMod);
+			else
+				newcon->constvalue = stringTypeDatum(baseType,
+													 NULL,
+												 	inputTypeMod);
+		}
+		
 
 		/*
 		 * If it's a varlena value, force it to be in non-expanded
@@ -1420,6 +1682,86 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 		*which_expr = pexpr;
 	return ptype;
 }
+
+
+Oid
+select_common_type_for_nvl(ParseState *pstate, List *exprs, const char *context,
+				   Node **which_expr)
+{
+	Node	   *pexpr;
+	Oid			ptype;
+	ListCell   *lc;
+
+	Assert(exprs != NIL);
+	pexpr = (Node *) linitial(exprs);
+	lc = lnext(exprs, list_head(exprs));
+	ptype = exprType(pexpr);
+
+	if (ptype == UNKNOWNOID)
+	{
+		if (!IsA(pexpr, Const) || !((Const *)pexpr)->constisnull)
+		{
+			if (compatible_db  == PG_PARSER)
+				ptype = TEXTOID;
+			else if (compatible_db == ORA_PARSER)
+			{
+				if (nls_length_semantics == NLS_LENGTH_CHAR) 
+					ptype = ORAVARCHARBYTEOID;
+				else
+					ptype = ORAVARCHARCHAROID;
+			}
+		}
+		else
+		{
+			for_each_cell(lc, exprs, lc)
+			{
+				Node	   *nexpr = (Node *) lfirst(lc);
+				Oid			ntype = getBaseType(exprType(nexpr));
+
+				/* move on to next one if no new information... */
+				if (ntype != UNKNOWNOID && ntype != ptype)
+				{
+					TYPCATEGORY ncategory;
+					bool		nispreferred;
+
+					get_type_category_preferred(ntype, &ncategory, &nispreferred);
+
+					/* so far, only unknowns so take anything... */
+					pexpr = nexpr;
+					ptype = ntype;
+
+					break;
+				}
+			}
+
+			if (ptype == UNKNOWNOID)
+			{
+				if (compatible_db == PG_PARSER)
+					ptype = TEXTOID;
+				else if (compatible_db == ORA_PARSER)
+				{
+					if (nls_length_semantics == NLS_LENGTH_CHAR) 
+						ptype = ORAVARCHARBYTEOID;
+					else
+						ptype = ORAVARCHARCHAROID;
+				}
+			}
+		}
+	}
+
+	/*
+	 * Nope, so set up for the full algorithm.  Note that at this point, lc
+	 * points to the first list item with type different from pexpr's; we need
+	 * not re-examine any items the previous loop advanced over.
+	 */
+	ptype = getBaseType(ptype);
+	ptype = get_preferred_type(ptype);
+
+	if (which_expr)
+		*which_expr = pexpr;
+	return ptype;
+}
+
 
 /*
  * select_common_type_from_oids()
@@ -3278,6 +3620,18 @@ find_typmod_coercion_function(Oid typeId,
 		typeId = typeForm->typelem;
 		result = COERCION_PATH_ARRAYCOERCE;
 	}
+
+	
+	if (compatible_db == ORA_PARSER && typeForm->typbasetype != InvalidOid)
+	{
+		if ((strcmp(typeForm->typname.data, "raw") == 0)||
+			(strcmp(typeForm->typname.data,"long") == 0))
+		{
+			typeId = typeForm->typbasetype;
+		}
+	}
+	
+
 	ReleaseSysCache(targetType);
 
 	/* Look in pg_cast */

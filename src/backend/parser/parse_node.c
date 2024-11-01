@@ -64,6 +64,9 @@ make_parsestate(ParseState *parentParseState)
 		pstate->p_ref_hook_state = parentParseState->p_ref_hook_state;
 		/* query environment stays in context for the whole parse analysis */
 		pstate->p_queryEnv = parentParseState->p_queryEnv;
+		
+		pstate->p_subprocfunc_hook = parentParseState->p_subprocfunc_hook;
+		
 	}
 
 	return pstate;
@@ -437,6 +440,58 @@ make_const(ParseState *pstate, Value *value, int location)
 			typelen = -1;
 			typebyval = false;
 			break;
+
+		
+		case T_BFloat:
+			{
+				Oid		typinput, typioparam;
+				char	*bfconst = (char *) palloc0(strlen(strVal(value)) + 3);	/* original value, 'BF' prefix, '\0' */
+
+				/*
+				 * Oracle will throw an error when float-point literals out of range,
+				 * other case convert it to inf/-inf. we pass the float-point literals
+				 * in ivorysql by appending the BF flag to the header of the string.
+				 * Example:
+				 *	select 3.40282E+39F from dual;	-- error, out of range
+				 *	select cast(3.40282E+39 as binary_float) from dual;	-- OK, inf
+				 */
+				strcpy(bfconst, "BF");
+				strcpy(bfconst + 2, strVal(value));
+				
+				getTypeInputInfo(BINARY_FLOATOID, &typinput, &typioparam);
+				
+				/* arrange to report location if binary_float_in() fails */
+				setup_parser_errposition_callback(&pcbstate, pstate, location);
+				val = OidInputFunctionCall(typinput, bfconst, typioparam, -1);
+				cancel_parser_errposition_callback(&pcbstate);
+
+				typeid = BINARY_FLOATOID;
+				typelen = sizeof(float4);
+				typebyval = true;
+			}
+			break;
+
+		case T_BDouble:
+			{
+				Oid		typinput, typioparam;
+				char	*bdconst = (char *) palloc0(strlen(strVal(value)) + 3);	/* original value, 'BD' prefix, '\0' */
+
+				strcpy(bdconst, "BD");
+				strcpy(bdconst + 2, strVal(value));
+
+				getTypeInputInfo(BINARY_DOUBLEOID, &typinput, &typioparam);
+				
+				/* arrange to report location if binary_double_in() fails */
+				setup_parser_errposition_callback(&pcbstate, pstate, location);
+				val = OidInputFunctionCall(typinput, bdconst, typioparam, -1);
+				cancel_parser_errposition_callback(&pcbstate);
+
+				typeid = BINARY_DOUBLEOID;
+				typelen = sizeof(float8);
+				typebyval = FLOAT8PASSBYVAL;
+			}
+			break;
+		
 
 		case T_Null:
 			/* return a null const */

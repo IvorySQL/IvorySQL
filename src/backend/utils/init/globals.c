@@ -70,7 +70,7 @@ char	   *DataDir = NULL;
  */
 int			data_directory_mode = PG_DIR_MODE_OWNER;
 
-char		OutputFileName[MAXPGPATH];	/* debugging output file */
+char		OutputFileName[MAXPGPATH];	
 
 char		my_exec_path[MAXPGPATH];	/* full path to my executable */
 char		pkglib_path[MAXPGPATH]; /* full path to lib directory */

@@ -104,7 +104,7 @@ static const LOCKMASK LockConflicts[] = {
 
 };
 
-/* Names of lock modes, for debug printouts */
+
 static const char *const lock_mode_names[] =
 {
 	"INVALID",
@@ -359,11 +359,11 @@ PROCLOCK_PRINT(const char *where, const PROCLOCK *proclockP)
 			 PROCLOCK_LOCKMETHOD(*(proclockP)),
 			 proclockP->tag.myProc, (int) proclockP->holdMask);
 }
-#else							/* not LOCK_DEBUG */
+#else							
 
 #define LOCK_PRINT(where, lock, type)  ((void) 0)
 #define PROCLOCK_PRINT(where, proclockP)  ((void) 0)
-#endif							/* not LOCK_DEBUG */
+#endif							
 
 
 static uint32 proclock_hash(const void *key, Size keysize);
@@ -4177,7 +4177,7 @@ DumpAllLocks(void)
 			elog(LOG, "DumpAllLocks: proclock->tag.myLock = NULL");
 	}
 }
-#endif							/* LOCK_DEBUG */
+#endif							
 
 /*
  * LOCK 2PC resource manager's routines

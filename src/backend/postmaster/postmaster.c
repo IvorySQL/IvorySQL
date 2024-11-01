@@ -76,6 +76,7 @@
 #include <sys/param.h>
 #include <netdb.h>
 #include <limits.h>
+#include "parser/parser.h"
 
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -107,6 +108,7 @@
 #include "libpq/pqsignal.h"
 #include "pg_getopt.h"
 #include "pgstat.h"
+//#include "port.h"					/* SQL PARSER */
 #include "port/pg_bswap.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgworker_internals.h"
@@ -125,18 +127,26 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "utils/guc.h"				/* SQL PARSER */
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* SQL PARSER */
 #include "utils/pidfile.h"
 #include "utils/ps_status.h"
 #include "utils/queryjumble.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
+/* BEGIN - case sensitive indentify */
+#include "parser/scansup.h"
+/* End - case sensitive indentify */
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
 #endif
 
+#include "executor/nodeModifyTable.h"
+#include "access/heapam.h"
+#include "parser/parse_merge.h"
 
 /*
  * Possible types of a backend. Beyond being the possible bkend_type values in
@@ -198,12 +208,15 @@ BackgroundWorker *MyBgworkerEntry = NULL;
 
 /* The socket number we are listening for connections on */
 int			PostPortNumber;
+int			OraPortNumber;	
+
 
 /* The directory names for Unix socket(s) */
 char	   *Unix_socket_directories;
 
 /* The TCP listen address(es) */
 char	   *ListenAddresses;
+char	   *OraListenAddresses;	
 
 /*
  * ReservedBackends is the number of backends reserved for superuser use.
@@ -219,6 +232,7 @@ int			ReservedBackends;
 /* The socket(s) we're listening to. */
 #define MAXLISTEN	64
 static pgsocket ListenSocket[MAXLISTEN];
+
 
 /*
  * These globals control the behavior of the postmaster in case some
@@ -702,7 +716,7 @@ PostmasterMain(int argc, char *argv[])
 	 * tcop/postgres.c (the option sets should not conflict) and with the
 	 * common help() function in main/main.c.
 	 */
-	while ((opt = getopt(argc, argv, "B:bc:C:D:d:EeFf:h:ijk:lN:nOPp:r:S:sTt:W:-:")) != -1)
+	while ((opt = getopt(argc, argv, "B:bc:C:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:W:-:")) != -1)	
 	{
 		switch (opt)
 		{
@@ -780,6 +794,12 @@ PostmasterMain(int argc, char *argv[])
 			case 'O':
 				SetConfigOption("allow_system_table_mods", "true", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+
+			
+			case 'o':
+				SetConfigOption("ivorysql.port", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+			
 
 			case 'P':
 				SetConfigOption("ignore_system_indexes", "true", PGC_POSTMASTER, PGC_S_ARGV);
@@ -886,6 +906,9 @@ PostmasterMain(int argc, char *argv[])
 	if (!SelectConfigFiles(userDoption, progname))
 		ExitPostmaster(2);
 
+	/* set database_style here */
+	SetCaseGucOption(userDoption);
+
 	if (output_config_variable != NULL)
 	{
 		/*
@@ -945,7 +968,7 @@ PostmasterMain(int argc, char *argv[])
 	optreset = 1;				/* some systems need this too */
 #endif
 
-	/* For debugging: display postmaster environment */
+	
 	{
 		extern char **environ;
 		char	  **p;
@@ -1192,11 +1215,73 @@ PostmasterMain(int argc, char *argv[])
 
 		if (!success && elemlist != NIL)
 			ereport(FATAL,
-					(errmsg("could not create any TCP/IP sockets")));
+					(errmsg("could not create any PostgreSQL TCP/IP sockets")));
 
 		list_free(elemlist);
 		pfree(rawstring);
 	}
+
+	
+	if (DB_ORACLE == database_mode
+		 && OraListenAddresses)
+	{
+		char	   *rawstring;
+		List	   *elemlist;
+		ListCell   *l;
+		int 		success = 0;
+
+		/* Need a modifiable copy of ListenAddresses */
+		rawstring = pstrdup(OraListenAddresses);
+
+		/* Parse string into list of hostnames */
+		if (!SplitGUCList(rawstring, ',', &elemlist))
+		{
+			/* syntax error in list */
+			ereport(FATAL,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid list syntax in parameter \"%s\"",
+							"listen_addresses")));
+		}
+
+		foreach(l, elemlist)
+		{
+			char	   *curhost = (char *) lfirst(l);
+
+			if (strcmp(curhost, "*") == 0)
+				status = StreamServerPort(AF_UNSPEC, NULL,
+										  (unsigned short) OraPortNumber,
+										  NULL,
+										  ListenSocket, MAXLISTEN);
+			else
+				status = StreamServerPort(AF_UNSPEC, curhost,
+										  (unsigned short) OraPortNumber,
+										  NULL,
+										  ListenSocket, MAXLISTEN);
+
+			if (status == STATUS_OK)
+			{
+				success++;
+				/* record the first successful host addr in lockfile */
+				if (!listen_addr_saved)
+				{
+					AddToDataDirLockFile(LOCK_FILE_LINE_LISTEN_ADDR, curhost);
+					listen_addr_saved = true;
+				}
+			}
+			else
+				ereport(WARNING,
+						(errmsg("could not create listen socket for \"%s\"",
+								curhost)));
+		}
+
+		if (!success && elemlist != NIL)
+			ereport(FATAL,
+					(errmsg("could not create any Oracle TCP/IP sockets")));
+
+		list_free(elemlist);
+		pfree(rawstring);
+	}
+	
 
 #ifdef USE_BONJOUR
 	/* Register for Bonjour only if we opened TCP socket(s) */
@@ -1280,9 +1365,42 @@ PostmasterMain(int argc, char *argv[])
 								socketdir)));
 		}
 
+		
 		if (!success && elemlist != NIL)
 			ereport(FATAL,
-					(errmsg("could not create any Unix-domain sockets")));
+					(errmsg("could not create any PostgreSQL Unix-domain sockets")));
+
+		/* Oracle unix domain socket */
+		if (DB_ORACLE == database_mode)
+		{
+			success = 0;
+			foreach(l, elemlist)
+			{
+				char	   *socketdir = (char *) lfirst(l);
+
+				status = StreamServerPort(AF_UNIX, NULL,
+										  (unsigned short) OraPortNumber,
+										  socketdir,
+										  ListenSocket, MAXLISTEN);
+
+				if (status == STATUS_OK)
+				{
+					success++;
+					/* record the first successful Unix socket in lockfile */
+					if (success == 1)
+						AddToDataDirLockFile(LOCK_FILE_LINE_SOCKET_DIR, socketdir);
+				}
+				else
+					ereport(WARNING,
+							(errmsg("could not create Oracle Unix-domain socket in directory \"%s\"",
+									socketdir)));
+			}
+
+			if (!success && elemlist != NIL)
+				ereport(FATAL,
+						(errmsg("could not create any Oracle Unix-domain sockets")));
+		}
+		
 
 		list_free_deep(elemlist);
 		pfree(rawstring);
@@ -2173,9 +2291,113 @@ retry1:
 			valptr = buf + valoffset;
 
 			if (strcmp(nameptr, "database") == 0)
-				port->database_name = pstrdup(valptr);
+			{
+				/* BEGIN - case sensitive indentify */
+				/* Oracle compatibility tranfor upper to lower */
+				char *database_name = pstrdup(valptr);
+
+				if (DB_ORACLE == compatible_db && database_name != NULL)
+				{
+					if (identifier_case_switch == LOWERCASE &&
+						is_all_upper(database_name, strlen(database_name)))
+					{
+						port->database_name = down_character(database_name, strlen(database_name));
+						pfree(database_name);
+					}
+					else if (identifier_case_switch == INTERCHANGE)
+					{
+						if (database_name[0] == '"')
+						{
+							/* delete the double quote */
+							char  *casename = identifier_case_transform(database_name, strlen(database_name));
+							const char *cp;
+							int   len;
+							char  *result;
+
+							result = (char *) palloc(strlen(database_name) + 1);
+							len = 0;
+							for (cp = casename; *cp != '\0'; cp++)
+							{
+								if (!(*cp == '"'))
+								{
+									result[len++] = *cp;
+								}
+							}
+							result[len] = '\0';
+
+							port->database_name = result;
+							pfree(database_name);
+							pfree(casename);
+						}
+						else if (is_all_upper(database_name, strlen(database_name)))
+						{
+							port->database_name = down_character(database_name, strlen(database_name));
+							pfree(database_name);
+						}
+						else
+							port->database_name = database_name;
+					}
+					else
+						port->database_name = database_name;
+				}
+				else
+					port->database_name = database_name;
+				/* END - case sensitive indentify */
+			}
 			else if (strcmp(nameptr, "user") == 0)
-				port->user_name = pstrdup(valptr);
+			{
+				/* BEGIN - case sensitive indentify */
+				/* Oracle compatibility tranfor upper to lower */
+				char *user_name = pstrdup(valptr);
+
+				if (DB_ORACLE == compatible_db && user_name != NULL)
+				{
+					if (identifier_case_switch == LOWERCASE &&
+						is_all_upper(user_name, strlen(user_name)))
+					{
+						port->user_name = down_character(user_name, strlen(user_name));
+						pfree(user_name);
+					}
+					else if (identifier_case_switch == INTERCHANGE)
+					{
+						if (user_name[0] == '"')
+						{
+							/* delete the double quote */
+							char  *casename = identifier_case_transform(user_name, strlen(user_name));
+							const char *cp;
+							int	  len;
+							char  *result;
+
+							result = (char *) palloc(strlen(user_name) + 1);
+							len = 0;
+							for (cp = casename; *cp != '\0'; cp++)
+							{
+								if (!(*cp == '"'))
+								{
+									result[len++] = *cp;
+								}
+							}
+							result[len] = '\0';
+
+							port->user_name = result;
+							pfree(user_name);
+							pfree(casename);
+						}
+						else if (is_all_upper(user_name, strlen(user_name)))
+						{
+							port->user_name = down_character(user_name, strlen(user_name));
+							pfree(user_name);
+						}
+						else
+							port->user_name = user_name;
+					}
+					else
+						port->user_name = user_name;
+				}
+				else
+					port->user_name = user_name;
+				/* END - case sensitive indentify */
+			}
 			else if (strcmp(nameptr, "options") == 0)
 				port->cmdline_options = pstrdup(valptr);
 			else if (strcmp(nameptr, "replication") == 0)
@@ -4337,8 +4559,10 @@ BackendInitialize(Port *port)
 {
 	int			status;
 	int			ret;
+	int			localport;				
 	char		remote_host[NI_MAXHOST];
 	char		remote_port[NI_MAXSERV];
+	char		service[NI_MAXHOST];	
 	StringInfoData ps_data;
 
 	/* Save port etc. for ps status */
@@ -4406,6 +4630,55 @@ BackendInitialize(Port *port)
 	port->remote_host = strdup(remote_host);
 	port->remote_port = strdup(remote_port);
 
+	
+	/*
+	 * Get the local(server) port number to determine whether the current 
+	 * connection is in oracle mode or postgres mode.
+	 */
+	service[0] = '\0';
+	if ((ret = pg_getnameinfo_all(&port->laddr.addr, port->laddr.salen,
+								  NULL, 0,
+								  service, sizeof(service),
+								  NI_NUMERICSERV)) != 0)
+		ereport(WARNING,
+				(errmsg_internal("pg_getnameinfo_all() failed: %s",
+								 gai_strerror(ret))));
+
+	localport = atoi(service);
+	if (localport == 0)
+	{
+		char	PostPortNumberStr[32];
+		char	OraPortNumberStr[32];
+		
+		snprintf(PostPortNumberStr, sizeof(PostPortNumberStr), "%d", PostPortNumber);
+		snprintf(OraPortNumberStr, sizeof(OraPortNumberStr), "%d", OraPortNumber);
+
+		if (strstr(service, PostPortNumberStr) != NULL)
+		{
+			port->connmode = 'p';
+		}
+		else if (strstr(service, OraPortNumberStr) != NULL)
+		{
+			port->connmode = 'o';
+		}
+		else
+			port->connmode = 'u';
+	}
+	else
+	{
+		if (localport == PostPortNumber)
+		{
+			port->connmode = 'p';
+		}
+		else if (localport == OraPortNumber)
+		{
+			port->connmode = 'o';
+		}
+		else
+			port->connmode = 'u';
+	}
+	
+		
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)
 	{
@@ -4419,6 +4692,7 @@ BackendInitialize(Port *port)
 					(errmsg("connection received: host=%s",
 							remote_host)));
 	}
+
 
 	/*
 	 * If we did a reverse lookup to name, we might as well save the results

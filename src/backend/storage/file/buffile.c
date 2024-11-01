@@ -379,7 +379,7 @@ BufFileExportShared(BufFile *file)
 	/* Must be a file belonging to a SharedFileSet. */
 	Assert(file->fileset != NULL);
 
-	/* It's probably a bug if someone calls this twice. */
+	
 	Assert(!file->readOnly);
 
 	BufFileFlush(file);

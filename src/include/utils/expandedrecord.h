@@ -37,14 +37,14 @@
  * change for the lifetime of the expanded record.  (This frammish is mainly
  * meant to avoid unnecessary data copying in trigger functions.)
  */
-#define ER_MAGIC 1384727874		/* ID for debugging crosschecks */
+#define ER_MAGIC 1384727874		
 
 typedef struct ExpandedRecordHeader
 {
 	/* Standard header for expanded objects */
 	ExpandedObjectHeader hdr;
 
-	/* Magic value identifying an expanded record (for debugging only) */
+	
 	int			er_magic;
 
 	/* Assorted flag bits */

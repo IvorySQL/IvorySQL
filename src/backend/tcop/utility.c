@@ -112,6 +112,7 @@ CommandIsReadOnly(PlannedStmt *pstmt)
 		case CMD_UPDATE:
 		case CMD_INSERT:
 		case CMD_DELETE:
+		case CMD_MERGE:
 			return false;
 		case CMD_UTILITY:
 			/* For now, treat all utility commands as read/write */
@@ -166,6 +167,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterTypeStmt:
 		case T_AlterUserMappingStmt:
 		case T_CommentStmt:
+		case T_CompileFunctionStmt:	
 		case T_CompositeTypeStmt:
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
@@ -1644,6 +1646,12 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = AlterFunction(pstate, (AlterFunctionStmt *) parsetree);
 				break;
 
+			
+			case T_CompileFunctionStmt:
+				address = CompileFunction((CompileFunctionStmt *) parsetree);
+				break;
+			
+
 			case T_RuleStmt:	/* CREATE RULE */
 				address = DefineRule((RuleStmt *) parsetree, queryString);
 				break;
@@ -2121,6 +2129,8 @@ QueryReturnsTuples(Query *parsetree)
 		case CMD_SELECT:
 			/* returns tuples */
 			return true;
+		case CMD_MERGE:
+			return false;
 		case CMD_INSERT:
 		case CMD_UPDATE:
 		case CMD_DELETE:
@@ -2360,6 +2370,10 @@ CreateCommandTag(Node *parsetree)
 
 		case T_UpdateStmt:
 			tag = CMDTAG_UPDATE;
+			break;
+
+		case T_MergeStmt:
+			tag = CMDTAG_MERGE;
 			break;
 
 		case T_SelectStmt:
@@ -2696,6 +2710,15 @@ CreateCommandTag(Node *parsetree)
 					tag = CMDTAG_UNKNOWN;
 			}
 			break;
+
+
+		case T_CompileFunctionStmt:
+			if (((CompileFunctionStmt *) parsetree)->objtype == OBJECT_PROCEDURE)
+				tag = CMDTAG_ALTER_PROCEDURE;
+			else if (((CompileFunctionStmt *) parsetree)->objtype == OBJECT_FUNCTION)
+				tag = CMDTAG_ALTER_FUNCTION;
+			break;
+
 
 		case T_GrantStmt:
 			{
@@ -3124,6 +3147,9 @@ CreateCommandTag(Node *parsetree)
 					case CMD_DELETE:
 						tag = CMDTAG_DELETE;
 						break;
+					case CMD_MERGE:
+						tag = CMDTAG_MERGE;
+						break;
 					case CMD_UTILITY:
 						tag = CreateCommandTag(stmt->utilityStmt);
 						break;
@@ -3184,6 +3210,9 @@ CreateCommandTag(Node *parsetree)
 					case CMD_DELETE:
 						tag = CMDTAG_DELETE;
 						break;
+					case CMD_MERGE:
+						tag = CMDTAG_MERGE;
+						break;
 					case CMD_UTILITY:
 						tag = CreateCommandTag(stmt->utilityStmt);
 						break;
@@ -3232,6 +3261,7 @@ GetCommandLogLevel(Node *parsetree)
 		case T_InsertStmt:
 		case T_DeleteStmt:
 		case T_UpdateStmt:
+		case T_MergeStmt:
 			lev = LOGSTMT_MOD;
 			break;
 
@@ -3421,6 +3451,12 @@ GetCommandLogLevel(Node *parsetree)
 		case T_AlterFunctionStmt:
 			lev = LOGSTMT_DDL;
 			break;
+
+		
+		case T_CompileFunctionStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
 
 		case T_IndexStmt:
 			lev = LOGSTMT_DDL;
@@ -3683,6 +3719,7 @@ GetCommandLogLevel(Node *parsetree)
 					case CMD_UPDATE:
 					case CMD_INSERT:
 					case CMD_DELETE:
+					case CMD_MERGE:
 						lev = LOGSTMT_MOD;
 						break;
 
@@ -3713,6 +3750,7 @@ GetCommandLogLevel(Node *parsetree)
 					case CMD_UPDATE:
 					case CMD_INSERT:
 					case CMD_DELETE:
+					case CMD_MERGE:
 						lev = LOGSTMT_MOD;
 						break;
 

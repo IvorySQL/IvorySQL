@@ -21,6 +21,9 @@
 #include "common/string.h"
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
+/* Begin - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* END - SQL PARSER */
 #include "parallel.h"
 #include "pg_backup_archiver.h"
 #include "pg_backup_db.h"
@@ -95,6 +98,10 @@ ReconnectToServer(ArchiveHandle *AH, const char *dbname)
 	AH->connection = NULL;		/* dodge error check in ConnectDatabase */
 
 	ConnectDatabase((Archive *) AH, &ropt->cparams, true);
+
+	/* BEGIN - SQL PARSER */
+	getDbCompatibleMode(AH->connection);
+	/* END - SQL PARSER */
 
 	PQfinish(oldConn);
 }

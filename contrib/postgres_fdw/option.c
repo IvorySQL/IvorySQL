@@ -296,7 +296,7 @@ InitPgFdwOptions(void)
 	popt = postgres_fdw_options;
 	for (lopt = libpq_options; lopt->keyword; lopt++)
 	{
-		/* Hide debug options, as well as settings we override internally. */
+		
 		if (strchr(lopt->dispchar, 'D') ||
 			strcmp(lopt->keyword, "fallback_application_name") == 0 ||
 			strcmp(lopt->keyword, "client_encoding") == 0)

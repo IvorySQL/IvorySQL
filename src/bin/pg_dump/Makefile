@@ -57,6 +57,14 @@ check:
 installcheck:
 	$(prove_installcheck)
 
+#BEGIN - SQL PARSER
+oracle-check:
+	$(oracle_prove_check)
+
+oracle-installcheck:
+	$(oracle_prove_installcheck)
+#END - SQL PARSER
+
 uninstall:
 	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, pg_dump$(X) pg_restore$(X) pg_dumpall$(X))
 

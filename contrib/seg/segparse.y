@@ -118,7 +118,7 @@ range: boundary PLUMIN deviation
 
 boundary: SEGFLOAT
 	{
-		/* temp variable avoids a gcc 3.3.x bug on Sparc64 */
+		
 		float val = seg_atof($1);
 
 		$$.ext = '\0';
@@ -127,7 +127,7 @@ boundary: SEGFLOAT
 	}
 	| EXTENSION SEGFLOAT
 	{
-		/* temp variable avoids a gcc 3.3.x bug on Sparc64 */
+		
 		float val = seg_atof($2);
 
 		$$.ext = $1[0];
@@ -138,7 +138,7 @@ boundary: SEGFLOAT
 
 deviation: SEGFLOAT
 	{
-		/* temp variable avoids a gcc 3.3.x bug on Sparc64 */
+		
 		float val = seg_atof($1);
 
 		$$.ext = '\0';

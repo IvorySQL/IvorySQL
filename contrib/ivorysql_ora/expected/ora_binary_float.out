@@ -1,0 +1,453 @@
+--
+-- BINARY_FLOAT
+--
+set ivorysql.enable_emptystring_to_NULL = on;
+set extra_float_digits = 0;
+CREATE TABLE BINARY_FLOAT_TBL (f1 binary_float);
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('    0.0');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('1004.30   ');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('     -34.84    ');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('1.2345678901234e+20');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('1.2345678901234e-20');
+-- test for over and under flow
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('10e70');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('-10e70');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('10e-70');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('-10e-70');
+-- bad input
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('');
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('       ');
+ERROR:  invalid input syntax for type binary_float: "       "
+LINE 1: INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('       ');
+                                                 ^
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('xyz');
+ERROR:  invalid input syntax for type binary_float: "xyz"
+LINE 1: INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('xyz');
+                                                 ^
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5.0.0');
+ERROR:  invalid input syntax for type binary_float: "5.0.0"
+LINE 1: INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5.0.0');
+                                                 ^
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5 . 0');
+ERROR:  invalid input syntax for type binary_float: "5 . 0"
+LINE 1: INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5 . 0');
+                                                 ^
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5.   0');
+ERROR:  invalid input syntax for type binary_float: "5.   0"
+LINE 1: INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('5.   0');
+                                                 ^
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('     - 3.0');
+ERROR:  invalid input syntax for type binary_float: "     - 3.0"
+LINE 1: INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('     - 3.0');
+                                                 ^
+INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('123            5');
+ERROR:  invalid input syntax for type binary_float: "123            5"
+LINE 1: INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('123            5')...
+                                                 ^
+-- special inputs
+SELECT 'NaN'::binary_float;
+ binary_float 
+--------------
+ Nan
+(1 row)
+
+SELECT 'nan'::binary_float;
+ binary_float 
+--------------
+ Nan
+(1 row)
+
+SELECT '   NAN  '::binary_float;
+ binary_float 
+--------------
+ Nan
+(1 row)
+
+SELECT 'infinity'::binary_float;
+ binary_float 
+--------------
+ Inf
+(1 row)
+
+SELECT '          -INFINiTY   '::binary_float;
+ binary_float 
+--------------
+ -Inf
+(1 row)
+
+-- bad special inputs
+SELECT 'N A N'::binary_float;
+ERROR:  invalid input syntax for type binary_float: "N A N"
+LINE 1: SELECT 'N A N'::binary_float;
+               ^
+SELECT 'NaN x'::binary_float;
+ERROR:  invalid input syntax for type binary_float: "NaN x"
+LINE 1: SELECT 'NaN x'::binary_float;
+               ^
+SELECT ' INFINITY    x'::binary_float;
+ERROR:  invalid input syntax for type binary_float: " INFINITY    x"
+LINE 1: SELECT ' INFINITY    x'::binary_float;
+               ^
+SELECT 'Infinity'::binary_float + 100.0;
+ ?column? 
+----------
+ Inf
+(1 row)
+
+SELECT 'Infinity'::binary_float / 'Infinity'::binary_float;
+ ?column? 
+----------
+ Nan
+(1 row)
+
+SELECT 'nan'::binary_float / 'nan'::binary_float;
+ ?column? 
+----------
+ Nan
+(1 row)
+
+SELECT 'nan'::number::binary_float;
+ binary_float 
+--------------
+ Nan
+(1 row)
+
+SELECT '' AS five, * FROM BINARY_FLOAT_TBL;
+ five |     f1      
+------+-------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.23457e+20
+      | 1.23457e-20
+      | Inf
+      | -Inf
+      | 0
+      | 0
+      | 
+(10 rows)
+
+SELECT '' AS four, f.* FROM BINARY_FLOAT_TBL f WHERE f.f1 <> '1004.3';
+ four |     f1      
+------+-------------
+      | 0
+      | -34.84
+      | 1.23457e+20
+      | 1.23457e-20
+      | Inf
+      | -Inf
+      | 0
+      | 0
+(8 rows)
+
+SELECT '' AS one, f.* FROM BINARY_FLOAT_TBL f WHERE f.f1 = '1004.3';
+ one |   f1   
+-----+--------
+     | 1004.3
+(1 row)
+
+SELECT '' AS three, f.* FROM BINARY_FLOAT_TBL f WHERE '1004.3' > f.f1;
+ three |     f1      
+-------+-------------
+       | 0
+       | -34.84
+       | 1.23457e-20
+       | -Inf
+       | 0
+       | 0
+(6 rows)
+
+SELECT '' AS three, f.* FROM BINARY_FLOAT_TBL f WHERE  f.f1 < '1004.3';
+ three |     f1      
+-------+-------------
+       | 0
+       | -34.84
+       | 1.23457e-20
+       | -Inf
+       | 0
+       | 0
+(6 rows)
+
+SELECT '' AS four, f.* FROM BINARY_FLOAT_TBL f WHERE '1004.3' >= f.f1;
+ four |     f1      
+------+-------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.23457e-20
+      | -Inf
+      | 0
+      | 0
+(7 rows)
+
+SELECT '' AS four, f.* FROM BINARY_FLOAT_TBL f WHERE  f.f1 <= '1004.3';
+ four |     f1      
+------+-------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.23457e-20
+      | -Inf
+      | 0
+      | 0
+(7 rows)
+
+SELECT '' AS three, f.f1, f.f1 * '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+ three |     f1      |      x       
+-------+-------------+--------------
+       | 1004.3      | -10043
+       | 1.23457e+20 | -1.23457e+21
+       | 1.23457e-20 | -1.23457e-19
+       | Inf         | -Inf
+(4 rows)
+
+SELECT '' AS three, f.f1, f.f1 + '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+ three |     f1      |      x      
+-------+-------------+-------------
+       | 1004.3      | 994.3
+       | 1.23457e+20 | 1.23457e+20
+       | 1.23457e-20 | -10
+       | Inf         | Inf
+(4 rows)
+
+SELECT '' AS three, f.f1, f.f1 / '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+ three |     f1      |      x       
+-------+-------------+--------------
+       | 1004.3      | -100.43
+       | 1.23457e+20 | -1.23457e+19
+       | 1.23457e-20 | -1.23457e-21
+       | Inf         | -Inf
+(4 rows)
+
+SELECT '' AS three, f.f1, f.f1 - '-10' AS x FROM BINARY_FLOAT_TBL f
+   WHERE f.f1 > '0.0';
+ three |     f1      |      x      
+-------+-------------+-------------
+       | 1004.3      | 1014.3
+       | 1.23457e+20 | 1.23457e+20
+       | 1.23457e-20 | 10
+       | Inf         | Inf
+(4 rows)
+
+-- test divide by zero
+SELECT '' AS bad, f.f1 / '0.0' from BINARY_FLOAT_TBL f;
+ERROR:  division by zero
+SELECT '' AS five, * FROM BINARY_FLOAT_TBL;
+ five |     f1      
+------+-------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.23457e+20
+      | 1.23457e-20
+      | Inf
+      | -Inf
+      | 0
+      | 0
+      | 
+(10 rows)
+
+-- test the unary abs operator
+SELECT '' AS five, f.f1, @f.f1 AS abs_f1 FROM BINARY_FLOAT_TBL f;
+ five |     f1      |        abs_f1        
+------+-------------+----------------------
+      | 0           |                    0
+      | 1004.3      |     1004.29998779297
+      | -34.84      |     34.8400001525879
+      | 1.23457e+20 | 1.23456789557014e+20
+      | 1.23457e-20 | 1.23456787202896e-20
+      | Inf         |             Infinity
+      | -Inf        |             Infinity
+      | 0           |                    0
+      | 0           |                    0
+      |             |                     
+(10 rows)
+
+UPDATE BINARY_FLOAT_TBL
+   SET f1 = BINARY_FLOAT_TBL.f1 * '-1'
+   WHERE BINARY_FLOAT_TBL.f1 > '0.0';
+SELECT '' AS five, * FROM BINARY_FLOAT_TBL;
+ five |      f1      
+------+--------------
+      | 0
+      | -34.84
+      | -Inf
+      | 0
+      | 0
+      | 
+      | -1004.3
+      | -1.23457e+20
+      | -1.23457e-20
+      | -Inf
+(10 rows)
+
+-- drop table
+DROP TABLE BINARY_FLOAT_TBL;
+--SIMPLE_FLOAT
+CREATE TABLE SIMPLE_FLOAT_TBL (f1 binary_float);
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('    0.0');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('1004.30   ');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('     -34.84    ');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('1.2345678901234e+20');
+INSERT INTO SIMPLE_FLOAT_TBL(f1) VALUES ('1.2345678901234e-20');
+SELECT * FROM SIMPLE_FLOAT_TBL;
+     f1      
+-------------
+ 0
+ 1004.3
+ -34.84
+ 1.23457e+20
+ 1.23457e-20
+(5 rows)
+
+DROP TABLE SIMPLE_FLOAT_TBL;
+--SIMPLE_DOUBLE
+CREATE TABLE SIMPLE_DOUBLE_TBL(f1 binary_double);
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('    0.0   ');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1004.30  ');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('   -34.84');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1.2345678901234e+200');
+INSERT INTO SIMPLE_DOUBLE_TBL(f1) VALUES ('1.2345678901234e-200');
+SELECT * FROM SIMPLE_DOUBLE_TBL;
+          f1          
+----------------------
+ 0
+ 1004.3
+ -34.84
+ 1.2345678901234e+200
+ 1.2345678901234e-200
+(5 rows)
+
+DROP TABLE SIMPLE_DOUBLE_TBL;
+create table test_bf(a binary_float);
+insert into test_bf values(3.40282E+38F);	-- ok
+insert into test_bf values(-3.40282E+38F);	-- ok
+insert into test_bf values(3.40282E+39F);	-- overflow
+ERROR:  "3.40282E+39" is out of range for type binary_float
+LINE 1: insert into test_bf values(3.40282E+39F);
+                                   ^
+insert into test_bf values(-3.40282E+39F);	-- overflow
+ERROR:  "3.40282E+39" is out of range for type binary_float
+LINE 1: insert into test_bf values(-3.40282E+39F);
+                                   ^
+insert into test_bf values(3.40282E+39);	-- inf
+insert into test_bf values(-3.40282E+39);	-- -inf
+insert into test_bf values('3.40282E+39');	-- inf
+insert into test_bf values('-3.40282E+39');-- -inf
+select * from test_bf;
+      a       
+--------------
+ 3.40282e+38
+ -3.40282e+38
+ Inf
+ -Inf
+ Inf
+ -Inf
+(6 rows)
+
+delete from test_bf;
+insert into test_bf values(1.17549E-38F);	-- ok
+insert into test_bf values(-1.17549E-38F);	-- ok
+insert into test_bf values(1.17549E-39F);	-- ok
+insert into test_bf values(-1.17549E-39F);	-- ok
+insert into test_bf values(1.17549E-70F);	-- overflow
+ERROR:  "1.17549E-70" is out of range for type binary_float
+LINE 1: insert into test_bf values(1.17549E-70F);
+                                   ^
+insert into test_bf values(-1.17549E-70F); -- overflow
+ERROR:  "1.17549E-70" is out of range for type binary_float
+LINE 1: insert into test_bf values(-1.17549E-70F);
+                                   ^
+insert into test_bf values(1.17549E-70);	-- 0
+insert into test_bf values(-1.17549E-70);	-- 0
+insert into test_bf values('1.17549E-70');	-- 0
+insert into test_bf values('-1.17549E-70'); -- 0
+select * from test_bf;
+      a       
+--------------
+ 1.17549e-38
+ -1.17549e-38
+ 1.17549e-39
+ -1.17549e-39
+ 0
+ 0
+ 0
+ 0
+(8 rows)
+
+drop table test_bf;
+create table float_point_conditions(a binary_float);
+insert into float_point_conditions values(1.17549E-38F);
+insert into float_point_conditions values(-1.17549E-38F);
+insert into float_point_conditions values('inf');
+insert into float_point_conditions values('+inf');
+insert into float_point_conditions values('-inf');
+insert into float_point_conditions values('+nan');
+insert into float_point_conditions values('-nan');
+select * from float_point_conditions where a is nan;
+  a  
+-----
+ Nan
+ Nan
+(2 rows)
+
+select * from float_point_conditions where a is not nan;
+      a       
+--------------
+ 1.17549e-38
+ -1.17549e-38
+ Inf
+ Inf
+ -Inf
+(5 rows)
+
+select * from float_point_conditions where a is infinite;
+  a   
+------
+ Inf
+ Inf
+ -Inf
+(3 rows)
+
+select * from float_point_conditions where a is not infinite;
+      a       
+--------------
+ 1.17549e-38
+ -1.17549e-38
+ Nan
+ Nan
+(4 rows)
+
+drop table float_point_conditions;
+create table binaryf_tb(binaryf_clo binary_float);
+insert into binaryf_tb values (BINARY_FLOAT_NAN);
+insert into binaryf_tb values (binary_float_nan);
+insert into binaryf_tb values (Binary_Float_Nan);
+insert into binaryf_tb values (BINARY_FLOAT_INFINITY);
+insert into binaryf_tb values (binary_float_infinity);
+insert into binaryf_tb values (Binary_Float_Infinity);
+select * from binaryf_tb;
+ binaryf_clo 
+-------------
+ Nan
+ Nan
+ Nan
+ Inf
+ Inf
+ Inf
+(6 rows)
+
+drop table binaryf_tb;
+create table binaryf_tbtidb002145521(a binary_float, b binary_double);
+insert into binaryf_tbtidb002145521 values(-3.40282e39, -3.40282e666);
+insert into binaryf_tbtidb002145521 values(-3.40283e38, -3.40282e666);
+select * from binaryf_tbtidb002145521;
+  a   |  b   
+------+------
+ -Inf | -Inf
+ -Inf | -Inf
+(2 rows)
+

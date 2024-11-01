@@ -909,7 +909,7 @@ AddWaitEventToSet(WaitEventSet *set, uint32 events, pgsocket fd, Latch *latch,
 			elog(ERROR, "cannot wait on latch without a specified latch");
 	}
 
-	/* waiting for socket readiness without a socket indicates a bug */
+	
 	if (fd == PGINVALID_SOCKET && (events & WL_SOCKET_MASK))
 		elog(ERROR, "cannot wait on socket event without a socket");
 

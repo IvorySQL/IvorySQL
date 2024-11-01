@@ -1,0 +1,4 @@
+The dummy_seclabel module exists only to support regression testing of
+the SECURITY LABEL statement.  It is not intended to be used in production.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/dummy_seclabel" directory.

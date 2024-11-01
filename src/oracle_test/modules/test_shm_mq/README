@@ -1,0 +1,7 @@
+test_shm_mq is an example of how to use dynamic shared memory
+and the shared memory message queue facilities to coordinate a user backend
+with the efforts of one or more background workers.  It is not intended to
+do anything useful on its own; rather, it is a demonstration of how these
+facilities can be used, and a unit test of those facilities.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_shm_mq" directory.

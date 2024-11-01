@@ -77,7 +77,7 @@ extern char *map_sql_value_to_xml_value(Datum value, Oid type, bool xml_escape_s
 
 extern int	xmlbinary;			/* XmlBinaryType, but int for guc enum */
 
-extern int	xmloption;			/* XmlOptionType, but int for guc enum */
+extern PGDLLIMPORT int	xmloption;			/* XmlOptionType, but int for guc enum */	
 
 extern const TableFuncRoutine XmlTableRoutine;
 

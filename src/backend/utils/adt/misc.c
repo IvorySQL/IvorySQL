@@ -43,7 +43,21 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/ruleutils.h"
+/* Begin - SQL PARSER */
+#include "oracle_parser/ora_parser_hook.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
 #include "utils/timestamp.h"
+
+
+/* Hook for plugins to get control in get_keywords() */
+/* BEGIN - SQL PARSER */
+get_keywords_hook_type get_keywords_hook = NULL;
+fill_in_constant_lengths_hook_type fill_in_constant_lengths_hook = NULL;
+
+static Datum standard_pg_get_keywords(PG_FUNCTION_ARGS);
+/* END - SQL PARSER */
 
 /*
  * Common subroutine for num_nulls() and num_nonnulls().
@@ -438,6 +452,28 @@ pg_sleep(PG_FUNCTION_ARGS)
 Datum
 pg_get_keywords(PG_FUNCTION_ARGS)
 {
+	/*BEGIN - SQL PARSER */
+	/* Slove the issue of using the same global variable in static lib and dynamic lib */
+	if (get_keywords_hook && compatible_db != PG_PARSER)
+	{
+		if (((ReturnSetInfo *) (fcinfo->resultinfo))->isDone != ExprEndResult)
+			PG_RETURN_DATUM((*get_keywords_hook) (fcinfo));
+		else
+			PG_RETURN_NULL();
+	}
+	else
+	{
+		if (((ReturnSetInfo *) (fcinfo->resultinfo))->isDone != ExprEndResult)
+			PG_RETURN_DATUM(standard_pg_get_keywords(fcinfo));
+		else
+			PG_RETURN_NULL();
+	}
+}
+
+static Datum
+standard_pg_get_keywords(PG_FUNCTION_ARGS)
+{
+	/*END - SQL PARSER */
 	FuncCallContext *funcctx;
 
 	if (SRF_IS_FIRSTCALL())

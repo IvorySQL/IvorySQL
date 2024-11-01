@@ -70,6 +70,7 @@
 #include "utils/relcache.h"
 #include "utils/snapmgr.h"
 #include "utils/spccache.h"
+#include "utils/ora_compatible.h"
 
 
 static HeapTuple heap_prepare_insert(Relation relation, HeapTuple tup,
@@ -83,14 +84,6 @@ static Bitmapset *HeapDetermineColumnsInfo(Relation relation,
 										   Bitmapset *external_cols,
 										   HeapTuple oldtup, HeapTuple newtup,
 										   bool *has_external);
-static bool heap_acquire_tuplock(Relation relation, ItemPointer tid,
-								 LockTupleMode mode, LockWaitPolicy wait_policy,
-								 bool *have_tuple_lock);
-static void compute_new_xmax_infomask(TransactionId xmax, uint16 old_infomask,
-									  uint16 old_infomask2, TransactionId add_to_xmax,
-									  LockTupleMode mode, bool is_update,
-									  TransactionId *result_xmax, uint16 *result_infomask,
-									  uint16 *result_infomask2);
 static TM_Result heap_lock_updated_tuple(Relation rel, HeapTuple tuple,
 										 ItemPointer ctid, TransactionId xid,
 										 LockTupleMode mode);
@@ -98,76 +91,10 @@ static void GetMultiXactIdHintBits(MultiXactId multi, uint16 *new_infomask,
 								   uint16 *new_infomask2);
 static TransactionId MultiXactIdGetUpdateXid(TransactionId xmax,
 											 uint16 t_infomask);
-static bool DoesMultiXactIdConflict(MultiXactId multi, uint16 infomask,
-									LockTupleMode lockmode, bool *current_is_member);
-static void MultiXactIdWait(MultiXactId multi, MultiXactStatus status, uint16 infomask,
-							Relation rel, ItemPointer ctid, XLTW_Oper oper,
-							int *remaining);
 static bool ConditionalMultiXactIdWait(MultiXactId multi, MultiXactStatus status,
 									   uint16 infomask, Relation rel, int *remaining);
 static void index_delete_sort(TM_IndexDeleteOp *delstate);
 static int	bottomup_sort_and_shrink(TM_IndexDeleteOp *delstate);
-static XLogRecPtr log_heap_new_cid(Relation relation, HeapTuple tup);
-static HeapTuple ExtractReplicaIdentity(Relation rel, HeapTuple tup, bool key_required,
-										bool *copy);
-
-
-/*
- * Each tuple lock mode has a corresponding heavyweight lock, and one or two
- * corresponding MultiXactStatuses (one to merely lock tuples, another one to
- * update them).  This table (and the macros below) helps us determine the
- * heavyweight lock mode and MultiXactStatus values to use for any particular
- * tuple lock strength.
- *
- * Don't look at lockstatus/updstatus directly!  Use get_mxact_status_for_lock
- * instead.
- */
-static const struct
-{
-	LOCKMODE	hwlock;
-	int			lockstatus;
-	int			updstatus;
-}
-
-			tupleLockExtraInfo[MaxLockTupleMode + 1] =
-{
-	{							/* LockTupleKeyShare */
-		AccessShareLock,
-		MultiXactStatusForKeyShare,
-		-1						/* KeyShare does not allow updating tuples */
-	},
-	{							/* LockTupleShare */
-		RowShareLock,
-		MultiXactStatusForShare,
-		-1						/* Share does not allow updating tuples */
-	},
-	{							/* LockTupleNoKeyExclusive */
-		ExclusiveLock,
-		MultiXactStatusForNoKeyUpdate,
-		MultiXactStatusNoKeyUpdate
-	},
-	{							/* LockTupleExclusive */
-		AccessExclusiveLock,
-		MultiXactStatusForUpdate,
-		MultiXactStatusUpdate
-	}
-};
-
-/* Get the LOCKMODE for a given MultiXactStatus */
-#define LOCKMODE_from_mxstatus(status) \
-			(tupleLockExtraInfo[TUPLOCK_from_mxstatus((status))].hwlock)
-
-/*
- * Acquire heavyweight locks on tuples, using a LockTupleMode strength value.
- * This is more readable than having every caller translate it to lock.h's
- * LOCKMODE.
- */
-#define LockTupleTuplock(rel, tup, mode) \
-	LockTuple((rel), (tup), tupleLockExtraInfo[mode].hwlock)
-#define UnlockTupleTuplock(rel, tup, mode) \
-	UnlockTuple((rel), (tup), tupleLockExtraInfo[mode].hwlock)
-#define ConditionalLockTupleTuplock(rel, tup, mode) \
-	ConditionalLockTuple((rel), (tup), tupleLockExtraInfo[mode].hwlock)
 
 #ifdef USE_PREFETCH
 /*
@@ -2009,7 +1936,7 @@ heap_get_latest_tid(TableScanDesc sscan,
  *
  * Note this is not allowed for tuples whose xmax is a multixact.
  */
-static void
+void
 UpdateXmaxHintBits(HeapTupleHeader tuple, Buffer buffer, TransactionId xid)
 {
 	Assert(TransactionIdEquals(HeapTupleHeaderGetRawXmax(tuple), xid));
@@ -2679,7 +2606,7 @@ simple_heap_insert(Relation relation, HeapTuple tup)
  *
  * See fix_infomask_from_infobits.
  */
-static uint8
+uint8
 compute_infobits(uint16 infomask, uint16 infomask2)
 {
 	return
@@ -2692,26 +2619,6 @@ compute_infobits(uint16 infomask, uint16 infomask2)
 		 XLHL_KEYS_UPDATED : 0);
 }
 
-/*
- * Given two versions of the same t_infomask for a tuple, compare them and
- * return whether the relevant status for a tuple Xmax has changed.  This is
- * used after a buffer lock has been released and reacquired: we want to ensure
- * that the tuple state continues to be the same it was when we previously
- * examined it.
- *
- * Note the Xmax field itself must be compared separately.
- */
-static inline bool
-xmax_infomask_changed(uint16 new_infomask, uint16 old_infomask)
-{
-	const uint16 interesting =
-	HEAP_XMAX_IS_MULTI | HEAP_XMAX_LOCK_ONLY | HEAP_LOCK_MASK;
-
-	if ((new_infomask & interesting) != (old_infomask & interesting))
-		return true;
-
-	return false;
-}
 
 /*
  *	heap_delete - delete a tuple
@@ -5020,7 +4927,7 @@ out_unlocked:
  * Returns false if it was unable to obtain the lock; this can only happen if
  * wait_policy is Skip.
  */
-static bool
+bool
 heap_acquire_tuplock(Relation relation, ItemPointer tid, LockTupleMode mode,
 					 LockWaitPolicy wait_policy, bool *have_tuple_lock)
 {
@@ -5069,7 +4976,7 @@ heap_acquire_tuplock(Relation relation, ItemPointer tid, LockTupleMode mode,
  * window, but it's still possible to end up creating an unnecessary
  * MultiXactId.  Fortunately this is harmless.
  */
-static void
+void
 compute_new_xmax_infomask(TransactionId xmax, uint16 old_infomask,
 						  uint16 old_infomask2, TransactionId add_to_xmax,
 						  LockTupleMode mode, bool is_update,
@@ -6916,7 +6823,7 @@ HeapTupleGetUpdateXid(HeapTupleHeader tuple)
  * If current_is_member is not NULL, it is set to 'true' if the current
  * transaction is a member of the given multixact.
  */
-static bool
+bool
 DoesMultiXactIdConflict(MultiXactId multi, uint16 infomask,
 						LockTupleMode lockmode, bool *current_is_member)
 {
@@ -7093,7 +7000,7 @@ Do_MultiXactIdWait(MultiXactId multi, MultiXactStatus status,
  * We return (in *remaining, if not NULL) the number of members that are still
  * running, including any (non-aborted) subtransactions of our own transaction.
  */
-static void
+void
 MultiXactIdWait(MultiXactId multi, MultiXactStatus status, uint16 infomask,
 				Relation rel, ItemPointer ctid, XLTW_Oper oper,
 				int *remaining)
@@ -8309,7 +8216,7 @@ log_heap_update(Relation reln, Buffer oldbuf,
  * This is only used in wal_level >= WAL_LEVEL_LOGICAL, and only for catalog
  * tuples.
  */
-static XLogRecPtr
+XLogRecPtr
 log_heap_new_cid(Relation relation, HeapTuple tup)
 {
 	xl_heap_new_cid xlrec;
@@ -8385,14 +8292,14 @@ log_heap_new_cid(Relation relation, HeapTuple tup)
  * Returns NULL if there's no need to log an identity or if there's no suitable
  * key defined.
  *
- * Pass key_required true if any replica identity columns changed value, or if
+ * Pass key_changed true if any replica identity columns changed value, or if
  * any of them have any external data.  Delete must always pass true.
  *
  * *copy is set to true if the returned tuple is a modified copy rather than
  * the same tuple that was passed in.
  */
-static HeapTuple
-ExtractReplicaIdentity(Relation relation, HeapTuple tp, bool key_required,
+HeapTuple
+ExtractReplicaIdentity(Relation relation, HeapTuple tp, bool key_changed,
 					   bool *copy)
 {
 	TupleDesc	desc = RelationGetDescr(relation);
@@ -8425,7 +8332,7 @@ ExtractReplicaIdentity(Relation relation, HeapTuple tp, bool key_required,
 	}
 
 	/* if the key isn't required and we're only logging the key, we're done */
-	if (!key_required)
+	if (!key_changed)
 		return NULL;
 
 	/* find out the replica identity columns */
@@ -8433,10 +8340,10 @@ ExtractReplicaIdentity(Relation relation, HeapTuple tp, bool key_required,
 										 INDEX_ATTR_BITMAP_IDENTITY_KEY);
 
 	/*
-	 * If there's no defined replica identity columns, treat as !key_required.
+	 * If there's no defined replica identity columns, treat as !key_changed.
 	 * (This case should not be reachable from heap_update, since that should
-	 * calculate key_required accurately.  But heap_delete just passes
-	 * constant true for key_required, so we can hit this case in deletes.)
+	 * calculate key_changed accurately.  But heap_delete just passes
+	 * constant true for key_changed, so we can hit this case in deletes.)
 	 */
 	if (bms_is_empty(idattrs))
 		return NULL;

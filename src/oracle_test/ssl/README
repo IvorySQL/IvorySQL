@@ -1,0 +1,10 @@
+src/oracle_test/ssl/README
+
+SSL regression tests
+====================
+
+This directory contains a test suite for SSL support. It tests both
+client-side functionality, i.e. verifying server certificates, and
+server-side functionality, i.e. certificate authorization.
+
+For more detailed instructions, refer to the "README" file in the "src/test/ssl" directory.

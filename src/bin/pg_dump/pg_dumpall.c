@@ -24,6 +24,9 @@
 #include "common/string.h"
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
+/* Begin - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* END - SQL PARSER */
 #include "getopt_long.h"
 #include "pg_backup.h"
 
@@ -472,6 +475,12 @@ main(int argc, char *argv[])
 		}
 	}
 
+#ifdef KingbaseES
+	/* BEGIN - SQL PARSER */
+	getDbCompatibleMode(conn);
+	/* END - SQL PARSER */
+#endif
+
 	/*
 	 * Get a list of database names that match the exclude patterns
 	 */
@@ -550,6 +559,9 @@ main(int argc, char *argv[])
 	fprintf(OPF, "SET standard_conforming_strings = %s;\n", std_strings);
 	if (strcmp(std_strings, "off") == 0)
 		fprintf(OPF, "SET escape_string_warning = off;\n");
+	
+	fprintf(OPF, "SET ivorysql.identifier_case_switch = normal;\n");	/* case sensitive indentify */
+	
 	fprintf(OPF, "\n");
 
 	if (!data_only)

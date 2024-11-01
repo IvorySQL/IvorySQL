@@ -2971,7 +2971,7 @@ pgstat_send(void *msg, int len)
 	} while (rc < 0 && errno == EINTR);
 
 #ifdef USE_ASSERT_CHECKING
-	/* In debug builds, log send failures ... */
+	
 	if (rc < 0)
 		elog(LOG, "could not send to statistics collector: %m");
 #endif

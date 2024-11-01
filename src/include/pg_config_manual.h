@@ -40,7 +40,13 @@
  * Changing this does not require an initdb, but it does require a full
  * backend recompile (including any user-defined C functions).
  */
+
+#ifdef MAXIMUM_FUNARG
+#define FUNC_MAX_ARGS	MAXIMUM_FUNARG
+#else
 #define FUNC_MAX_ARGS		100
+#endif
+
 
 /*
  * Maximum number of columns in an index.  There is little point in making
@@ -384,13 +390,13 @@
 /*
  * Enable debugging print statements for lock-related operations.
  */
-/* #define LOCK_DEBUG */
+
 
 /*
  * Enable debugging print statements for WAL-related operations; see
  * also the wal_debug GUC var.
  */
-/* #define WAL_DEBUG */
+
 
 /*
  * Enable tracing of resource consumption during sort operations;

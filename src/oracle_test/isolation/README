@@ -1,0 +1,14 @@
+src/oracle_test/isolation/README
+
+Isolation tests
+===============
+
+This directory contains a set of tests for concurrent behaviors in
+IvorySQL-2.0.  These tests require running multiple interacting transactions,
+which requires management of multiple concurrent connections, and therefore
+can't be tested using the normal pg_regress program.  The name "isolation"
+comes from the fact that the original motivation was to test the
+serializable isolation level; but tests for other sorts of concurrent
+behaviors have been added as well.
+
+For more detailed instructions, refer to the "README" file in the "src/test/isolation" directory.

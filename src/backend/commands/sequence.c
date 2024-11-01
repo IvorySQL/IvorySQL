@@ -47,6 +47,10 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+
+
 
 /*
  * We don't want to log each fetching of a value from a sequence,
@@ -101,7 +105,7 @@ static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
 static Form_pg_sequence_data read_seq_tuple(Relation rel,
 											Buffer *buf, HeapTuple seqdatatuple);
 static void init_params(ParseState *pstate, List *options, bool for_identity,
-						bool isInit,
+						bool isInit, char seq_type,	
 						Form_pg_sequence seqform,
 						Form_pg_sequence_data seqdataform,
 						bool *need_seq_rewrite,
@@ -166,7 +170,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	}
 
 	/* Check and set all option values */
-	init_params(pstate, seq->options, seq->for_identity, true,
+	init_params(pstate, seq->options, seq->for_identity, true, seq->seq_type,	
 				&seqform, &seqdataform,
 				&need_seq_rewrite, &owned_by);
 
@@ -478,7 +482,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	UnlockReleaseBuffer(buf);
 
 	/* Check and set new values */
-	init_params(pstate, stmt->options, stmt->for_identity, false,
+	init_params(pstate, stmt->options, stmt->for_identity, false, 0,	
 				seqform, newdataform,
 				&need_seq_rewrite, &owned_by);
 
@@ -658,6 +662,11 @@ nextval_internal(Oid relid, bool check_permissions)
 	last = next = result = seq->last_value;
 	fetch = cache;
 	log = seq->log_cnt;
+
+	
+	if(result > maxv && compatible_db == ORA_PARSER)
+		elog(ERROR, "sequence %s.nextval exceeds MAXVALUE and cannot be instantiated",get_rel_name(relid));
+	
 
 	if (!seq->is_called)
 	{
@@ -1241,7 +1250,7 @@ read_seq_tuple(Relation rel, Buffer *buf, HeapTuple seqdatatuple)
  */
 static void
 init_params(ParseState *pstate, List *options, bool for_identity,
-			bool isInit,
+			bool isInit, char seq_type,	
 			Form_pg_sequence seqform,
 			Form_pg_sequence_data seqdataform,
 			bool *need_seq_rewrite,
@@ -1258,6 +1267,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	ListCell   *option;
 	bool		reset_max_value = false;
 	bool		reset_min_value = false;
+	int			ordercnt = 0;	
 
 	*need_seq_rewrite = false;
 	*owned_by = NIL;
@@ -1367,6 +1377,19 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 					 errmsg("invalid sequence option SEQUENCE NAME"),
 					 parser_errposition(pstate, defel->location)));
 		}
+		
+		else if(strcmp(defel->defname, "order") == 0 || strcmp(defel->defname, "noorder") == 0)
+		{
+			ordercnt++;
+			if(ordercnt > 1)
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("dumplicate or conflicting ORDER/NOORDER specifications"),
+					 parser_errposition(pstate, defel->location)));
+			}
+		}
+		
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -1383,15 +1406,35 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	if (as_type != NULL)
 	{
 		Oid			newtypid = typenameTypeId(pstate, defGetTypeName(as_type));
-
-		if (newtypid != INT2OID &&
-			newtypid != INT4OID &&
-			newtypid != INT8OID)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 for_identity
-					 ? errmsg("identity column type must be smallint, integer, or bigint")
-					 : errmsg("sequence type must be smallint, integer, or bigint")));
+		
+		if (seq_type == ATTRIBUTE_IDENTITY_ALWAYS || seq_type == ATTRIBUTE_IDENTITY_BY_DEFAULT || compatible_db == PG_PARSER)	
+		{
+			if (newtypid != INT2OID &&
+				newtypid != INT4OID &&
+				newtypid != INT8OID)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 for_identity
+						 ? errmsg("identity column type must be smallint, integer, or bigint")
+						 : errmsg("sequence type must be smallint, integer, or bigint")));
+		}
+		else if(seq_type == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL || seq_type == ATTRIBUTE_ORA_IDENTITY_ALWAYS
+						|| seq_type == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT || compatible_db == ORA_PARSER)	
+		{
+			if (newtypid != INT2OID &&
+				newtypid != INT4OID &&
+				newtypid != INT8OID &&
+				newtypid != FLOAT4OID	&&
+				newtypid != FLOAT8OID	&&
+				newtypid != NUMBEROID	&&
+				newtypid != NUMERICOID)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 for_identity
+						 ? errmsg("identity column type must be a numeric type")
+						 : errmsg("sequence type must be a numeric type")));
+		}
+		
 
 		if (!isInit)
 		{
@@ -1403,11 +1446,21 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			 */
 			if ((seqform->seqtypid == INT2OID && seqform->seqmax == PG_INT16_MAX) ||
 				(seqform->seqtypid == INT4OID && seqform->seqmax == PG_INT32_MAX) ||
-				(seqform->seqtypid == INT8OID && seqform->seqmax == PG_INT64_MAX))
+				
+				(seqform->seqtypid == INT8OID && seqform->seqmax == PG_INT64_MAX) ||
+				(seqform->seqtypid == FLOAT4OID && seqform->seqmax == PG_INT32_MAX) ||
+				(seqform->seqtypid == FLOAT8OID && seqform->seqmax == PG_INT64_MAX) ||
+				(seqform->seqtypid == NUMBEROID && seqform->seqmax == PG_INT64_MAX))
+				
 				reset_max_value = true;
 			if ((seqform->seqtypid == INT2OID && seqform->seqmin == PG_INT16_MIN) ||
 				(seqform->seqtypid == INT4OID && seqform->seqmin == PG_INT32_MIN) ||
-				(seqform->seqtypid == INT8OID && seqform->seqmin == PG_INT64_MIN))
+				
+				(seqform->seqtypid == INT8OID && seqform->seqmin == PG_INT64_MIN) ||
+				(seqform->seqtypid == FLOAT4OID && seqform->seqmin == PG_INT32_MAX) ||
+				(seqform->seqtypid == FLOAT8OID && seqform->seqmin == PG_INT64_MAX) ||
+				(seqform->seqtypid == NUMBEROID && seqform->seqmin == PG_INT64_MIN))
+				
 				reset_min_value = true;
 		}
 
@@ -1421,12 +1474,54 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* INCREMENT BY */
 	if (increment_by != NULL)
 	{
-		seqform->seqincrement = defGetInt64(increment_by);
-		if (seqform->seqincrement == 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("INCREMENT must not be zero")));
-		seqdataform->log_cnt = 0;
+		
+		if (compatible_db == ORA_PARSER)
+		{
+			PG_TRY();
+			{
+				seqform->seqincrement = defGetInt64(increment_by);
+				if (seqform->seqincrement == 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("INCREMENT must not be zero")));
+				seqdataform->log_cnt = 0;
+			}
+			PG_CATCH();
+			{
+				int		errcod;
+				char   *intval;
+
+				errcod = geterrcode();
+				if(errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							errmsg("Increment value is out of range for data type bigint")));
+					intval = strVal(increment_by->arg);
+					if(*intval == '-')
+						seqform->seqincrement = PG_INT64_MIN;
+					else
+						seqform->seqincrement = PG_INT64_MAX;
+					seqdataform->log_cnt = 0;
+				}
+				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION || errcod == ERRCODE_INVALID_PARAMETER_VALUE)
+				{
+					PG_RE_THROW();
+				}
+				FlushErrorState();
+			}
+			PG_END_TRY();
+		}
+		else
+		{
+			seqform->seqincrement = defGetInt64(increment_by);
+			if (seqform->seqincrement == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("INCREMENT must not be zero")));
+			seqdataform->log_cnt = 0;
+		}
+		
 	}
 	else if (isInit)
 	{
@@ -1448,8 +1543,48 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* MAXVALUE (null arg means NO MAXVALUE) */
 	if (max_value != NULL && max_value->arg)
 	{
-		seqform->seqmax = defGetInt64(max_value);
-		seqdataform->log_cnt = 0;
+		
+		if (compatible_db == ORA_PARSER)
+		{
+			
+			PG_TRY();
+			{
+				seqform->seqmax = defGetInt64(max_value);
+				seqdataform->log_cnt = 0;
+			}
+			PG_CATCH();
+			{
+				int		errcod;
+				char   *intval;
+
+				errcod = geterrcode();
+				if(errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							errmsg("Maxvalue is out of range for data type bigint")));
+					intval = strVal(max_value->arg);
+					if(*intval == '-')
+						seqform->seqmax = PG_INT64_MIN;
+					else
+						seqform->seqmax = PG_INT64_MAX;
+					seqdataform->log_cnt = 0;
+				}
+				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION)
+				{
+					PG_RE_THROW();
+				}
+				FlushErrorState();
+			}
+			PG_END_TRY();
+			
+		}
+		else
+		{
+			seqform->seqmax = defGetInt64(max_value);
+			seqdataform->log_cnt = 0;
+		}
+		
 	}
 	else if (isInit || max_value != NULL || reset_max_value)
 	{
@@ -1485,8 +1620,46 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* MINVALUE (null arg means NO MINVALUE) */
 	if (min_value != NULL && min_value->arg)
 	{
-		seqform->seqmin = defGetInt64(min_value);
-		seqdataform->log_cnt = 0;
+		
+		if (compatible_db == ORA_PARSER)
+		{
+			PG_TRY();
+			{
+				seqform->seqmin = defGetInt64(min_value);
+				seqdataform->log_cnt = 0;
+			}
+			PG_CATCH();
+			{
+				int		errcod;
+				char   *intval;
+
+				errcod = geterrcode();
+				if (errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							errmsg("Minvalue is out of range for data type bigint")));
+					intval = strVal(max_value->arg);
+					if (*intval == '-')
+						seqform->seqmin = PG_INT64_MIN;
+					else
+						seqform->seqmin = PG_INT64_MAX;
+					seqdataform->log_cnt = 0;
+				}
+				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION)
+				{
+					PG_RE_THROW();
+				}
+				FlushErrorState();
+			}
+			PG_END_TRY();
+		}
+		else
+		{
+			seqform->seqmin = defGetInt64(min_value);
+			seqdataform->log_cnt = 0;
+		}
+		
 	}
 	else if (isInit || min_value != NULL || reset_min_value)
 	{
@@ -1536,7 +1709,51 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* START WITH */
 	if (start_value != NULL)
 	{
-		seqform->seqstart = defGetInt64(start_value);
+		
+		if (compatible_db == ORA_PARSER)
+		{
+			
+			PG_TRY();
+			{
+				seqform->seqstart = defGetInt64(start_value);
+				seqdataform->log_cnt = 0;
+				seqdataform->last_value = seqform->seqstart;
+				seqdataform->is_called = false;
+			}
+			PG_CATCH();
+			{
+				int		errcod;
+				char   *intval;	
+
+				errcod = geterrcode();
+				if(errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							errmsg("Start value is out of range for data type bigint")));
+					
+					intval = strVal(start_value->arg);
+					if(*intval == '-')
+						seqform->seqstart = PG_INT64_MIN;
+					else
+						seqform->seqstart = PG_INT64_MAX;
+					seqdataform->log_cnt = 0;
+					seqdataform->last_value = seqform->seqstart;
+					seqdataform->is_called = false;
+					
+				}
+				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION)
+				{
+					PG_RE_THROW();
+				}
+				FlushErrorState();
+			}
+			PG_END_TRY();
+			
+		}
+		else
+		
+			seqform->seqstart = defGetInt64(start_value);
 	}
 	else if (isInit)
 	{
@@ -1559,7 +1776,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				 errmsg("START value (%s) cannot be less than MINVALUE (%s)",
 						bufs, bufm)));
 	}
-	if (seqform->seqstart > seqform->seqmax)
+	if (seqform->seqstart > seqform->seqmax && compatible_db == PG_PARSER)	
 	{
 		char		bufs[100],
 					bufm[100];
@@ -1601,7 +1818,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				 errmsg("RESTART value (%s) cannot be less than MINVALUE (%s)",
 						bufs, bufm)));
 	}
-	if (seqdataform->last_value > seqform->seqmax)
+	if (seqdataform->last_value > seqform->seqmax && compatible_db == PG_PARSER)	
 	{
 		char		bufs[100],
 					bufm[100];
@@ -1617,22 +1834,87 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* CACHE */
 	if (cache_value != NULL)
 	{
-		seqform->seqcache = defGetInt64(cache_value);
-		if (seqform->seqcache <= 0)
+		
+		if (compatible_db == ORA_PARSER)
 		{
-			char		buf[100];
+			PG_TRY();
+			{
+				seqform->seqcache = defGetInt64(cache_value);
+				if (seqform->seqcache <= 0)
+				{
+					char		buf[100];
 
-			snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("CACHE (%s) must be greater than zero",
-							buf)));
+					snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("CACHE (%s) must be greater than zero",
+									buf)));
+				}
+				seqdataform->log_cnt = 0;
+			}
+			PG_CATCH();
+			{
+				int		errcod;
+				char   *intval;
+
+				errcod = geterrcode();
+				if (errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							errmsg("Cache value is out of range for data type bigint")));
+					intval = strVal(cache_value->arg);
+					if(*intval == '-')
+						seqform->seqcache = PG_INT64_MIN;
+					else
+						seqform->seqcache = PG_INT64_MAX;
+					if (seqform->seqcache <= 0)
+					{
+						char		buf[100];
+
+						snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("CACHE (%s) must be greater than zero",
+										buf)));
+					}
+					seqdataform->log_cnt = 0;
+				}
+				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION || errcod == ERRCODE_INVALID_PARAMETER_VALUE)
+				{
+					PG_RE_THROW();
+				}
+				FlushErrorState();
+			}
+			PG_END_TRY();
 		}
-		seqdataform->log_cnt = 0;
+		else
+		{
+			seqform->seqcache = defGetInt64(cache_value);
+			if (seqform->seqcache <= 0)
+			{
+				char		buf[100];
+
+				snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("CACHE (%s) must be greater than zero",
+								buf)));
+			}
+			seqdataform->log_cnt = 0;
+		}
+		
 	}
 	else if (isInit)
 	{
-		seqform->seqcache = 1;
+		
+		/* Set default cache size */
+		if (seq_type == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL || seq_type == ATTRIBUTE_ORA_IDENTITY_ALWAYS
+						|| seq_type == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
+			seqform->seqcache = 20;
+		
+		else
+			seqform->seqcache = 1;
 	}
 }
 

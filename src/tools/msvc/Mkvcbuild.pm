@@ -32,6 +32,10 @@ my $libpgcommon;
 my $libpgfeutils;
 my $postgres;
 my $libpq;
+# BEGIN - SQL PARSER
+my $liborafeutils;
+# END - SQL PARSER
+
 my @unlink_on_exit;
 
 # Set of variables for modules in contrib/ and src/test/modules/
@@ -82,7 +86,11 @@ my $frontend_extraincludes = {
 	'psql'   => ['src/backend']
 };
 my $frontend_extrasource = {
-	'psql' => ['src/bin/psql/psqlscanslash.l'],
+	
+	# BEGIN - SQL PARSER
+	'psql' => ['src/bin/psql/psqlscanslash.l', 'src/bin/psql/ora_psqlscanslash.l', 'src/oracle_fe_utils/ora_string_utils.c', 'src/oracle_fe_utils/ora_psqlscan.l', 'src/backend/oracle_parser/ora_keywords.c'],
+	# END - SQL PARSER
+	
 	'pgbench' =>
 	  [ 'src/bin/pgbench/exprscan.l', 'src/bin/pgbench/exprparse.y' ]
 };
@@ -111,7 +119,7 @@ sub mkvcbuild
 	  pg_strong_random.c pgcheckdir.c pgmkdirp.c pgsleep.c pgstrcasecmp.c
 	  pqsignal.c mkdtemp.c qsort.c qsort_arg.c bsearch_arg.c quotes.c system.c
 	  strerror.c tar.c thread.c
-	  win32env.c win32error.c win32security.c win32setlocale.c win32stat.c);
+	  win32env.c win32error.c win32security.c win32setlocale.c win32stat.c identifier_alpha_transfor.c);
 
 	push(@pgportfiles, 'strtof.c') if ($vsVersion < '14.00');
 
@@ -161,6 +169,13 @@ sub mkvcbuild
 	  parallel_slot.c print.c psqlscan.l psqlscan.c query_utils.c simple_list.c
 	  string_utils.c recovery_gen.c);
 
+	
+	# BEGIN - SQL PARSER
+	our @orafeutilsfiles = qw(
+	  ora_string_utils.c ora_psqlscan.l ora_psqlscan.c);
+	# END - SQL PARSER
+	
+
 	$libpgport = $solution->AddProject('libpgport', 'lib', 'misc');
 	$libpgport->AddDefine('FRONTEND');
 	$libpgport->AddFiles('src/port', @pgportfiles);
@@ -173,6 +188,14 @@ sub mkvcbuild
 	$libpgfeutils->AddDefine('FRONTEND');
 	$libpgfeutils->AddIncludeDir('src/interfaces/libpq');
 	$libpgfeutils->AddFiles('src/fe_utils', @pgfeutilsfiles);
+
+	# BEGIN - SQL PARSER
+	$liborafeutils = $solution->AddProject('liborafeutils', 'lib', 'misc');
+	$liborafeutils->AddDefine('FRONTEND');
+	$liborafeutils->AddIncludeDir('src/interfaces/libpq');
+	$liborafeutils->AddFiles('src/oracle_fe_utils', @orafeutilsfiles);
+	$liborafeutils->AddFile('src/backend/oracle_parser/ora_keywords.c');
+	# END - SQL PARSER
 
 	$postgres = $solution->AddProject('postgres', 'exe', '', 'src/backend');
 	$postgres->AddIncludeDir('src/backend');
@@ -287,6 +310,21 @@ sub mkvcbuild
 	$libpqwalreceiver->AddIncludeDir('src/interfaces/libpq');
 	$libpqwalreceiver->AddReference($postgres, $libpq);
 
+	# BEGIN - SQL PARSER
+	my $libparser_oracle =
+	  $solution->AddProject('liboracle_parser', 'dll', '',
+		'src/backend/oracle_parser');
+	$libparser_oracle->AddPrefixInclude('src/include/oracle_parser');
+	$libparser_oracle->AddFiles('src/backend/oracle_parser', 'ora_scan.l', 'ora_gram.y');
+	$libparser_oracle->AddReference($postgres);
+
+	my $plisql =
+	  $solution->AddProject('plisql', 'dll', 'PLs', 'src/pl/plisql/src');
+	$plisql->AddPrefixInclude('src/include/oracle_parser');
+	$plisql->AddFiles('src/pl/plisql/src', 'pl_gram.y');
+	$plisql->AddReference($postgres, $libparser_oracle);
+	# END - SQL PARSER
+
 	my $pgoutput = $solution->AddProject('pgoutput', 'dll', '',
 		'src/backend/replication/pgoutput');
 	$pgoutput->AddReference($postgres);
@@ -339,6 +377,19 @@ sub mkvcbuild
 	$pgregress_ecpg->AddDirResourceFile('src/interfaces/ecpg/test');
 	$pgregress_ecpg->AddReference($libpgcommon, $libpgport);
 
+	#BEGIN - SQL PARSER
+	my $oraregress_ecpg =
+	  $solution->AddProject('ora_regress_ecpg', 'exe', 'misc');
+	$oraregress_ecpg->AddFile('src/interfaces/ecpg/oracle_test/pg_regress_ecpg.c');
+	$oraregress_ecpg->AddFile('src/oracle_test/regress/pg_regress.c');
+	$oraregress_ecpg->AddIncludeDir('src/port');
+	$oraregress_ecpg->AddIncludeDir('src/oracle_test/regress');
+	$oraregress_ecpg->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$oraregress_ecpg->AddLibrary('ws2_32.lib');
+	$oraregress_ecpg->AddDirResourceFile('src/interfaces/ecpg/oracle_test');
+	$oraregress_ecpg->AddReference($libpgcommon, $libpgport);
+	#END - SQL PARSER
+
 	my $isolation_tester =
 	  $solution->AddProject('isolationtester', 'exe', 'misc');
 	$isolation_tester->AddFile('src/test/isolation/isolationtester.c');
@@ -354,6 +405,23 @@ sub mkvcbuild
 	$isolation_tester->AddDirResourceFile('src/test/isolation');
 	$isolation_tester->AddReference($libpq, $libpgcommon, $libpgport);
 
+	#BEGIN - SQL PARSER
+	my $ora_isolation_tester =
+	  $solution->AddProject('ora_isolationtester', 'exe', 'misc');
+	$ora_isolation_tester->AddFile('src/oracle_test/isolation/isolationtester.c');
+	$ora_isolation_tester->AddFile('src/oracle_test/isolation/specparse.y');
+	$ora_isolation_tester->AddFile('src/oracle_test/isolation/specscanner.l');
+	$ora_isolation_tester->AddFile('src/oracle_test/isolation/specparse.c');
+	$ora_isolation_tester->AddIncludeDir('src/oracle_test/isolation');
+	$ora_isolation_tester->AddIncludeDir('src/port');
+	$ora_isolation_tester->AddIncludeDir('src/oracle_test/regress');
+	$ora_isolation_tester->AddIncludeDir('src/interfaces/libpq');
+	$ora_isolation_tester->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$ora_isolation_tester->AddLibrary('ws2_32.lib');
+	$ora_isolation_tester->AddDirResourceFile('src/oracle_test/isolation');
+	$ora_isolation_tester->AddReference($libpq, $libpgcommon, $libpgport);
+	#END - SQL PARSER
+
 	my $pgregress_isolation =
 	  $solution->AddProject('pg_isolation_regress', 'exe', 'misc');
 	$pgregress_isolation->AddFile('src/test/isolation/isolation_main.c');
@@ -364,6 +432,19 @@ sub mkvcbuild
 	$pgregress_isolation->AddLibrary('ws2_32.lib');
 	$pgregress_isolation->AddDirResourceFile('src/test/isolation');
 	$pgregress_isolation->AddReference($libpgcommon, $libpgport);
+
+	#BEGIN - SQL PARSER
+	my $oraregress_isolation =
+	  $solution->AddProject('ora_isolation_regress', 'exe', 'misc');
+	$oraregress_isolation->AddFile('src/oracle_test/isolation/isolation_main.c');
+	$oraregress_isolation->AddFile('src/oracle_test/regress/pg_regress.c');
+	$oraregress_isolation->AddIncludeDir('src/port');
+	$oraregress_isolation->AddIncludeDir('src/oracle_test/regress');
+	$oraregress_isolation->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$oraregress_isolation->AddLibrary('ws2_32.lib');
+	$oraregress_isolation->AddDirResourceFile('src/oracle_test/isolation');
+	$oraregress_isolation->AddReference($libpgcommon, $libpgport);
+	#END - SQL PARSER
 
 	# src/bin
 	my $D;
@@ -831,7 +912,9 @@ sub mkvcbuild
 			}
 		}
 		$proj->AddIncludeDir('src/interfaces/libpq');
-		$proj->AddReference($libpq, $libpgfeutils, $libpgcommon, $libpgport);
+		# BEGIN - SQL PARSER
+		$proj->AddReference($libpq, $libpgfeutils, $liborafeutils, $libpgcommon, $libpgport);
+		# END - SQL PARSER
 		$proj->AddDirResourceFile('src/bin/scripts');
 		$proj->AddLibrary('ws2_32.lib');
 	}
@@ -850,6 +933,38 @@ sub mkvcbuild
 	$pgregress->AddLibrary('ws2_32.lib');
 	$pgregress->AddDirResourceFile('src/test/regress');
 	$pgregress->AddReference($libpgcommon, $libpgport);
+
+	#BEGIN - SQL PARSER
+	#Oracle Regression DDL and EXE
+	my $ora_regress = $solution->AddProject('oraregress', 'dll', 'misc');
+	$ora_regress->AddFile('src/oracle_test/regress/regress.c');
+	$ora_regress->AddDirResourceFile('src/oracle_test/regress');
+	$ora_regress->AddReference($postgres);
+
+	my $oraregress = $solution->AddProject('ora_regress', 'exe', 'misc');
+	$oraregress->AddFile('src/oracle_test/regress/pg_regress.c');
+	$oraregress->AddFile('src/oracle_test/regress/pg_regress_main.c');
+	$oraregress->AddIncludeDir('src/port');
+	$oraregress->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$oraregress->AddLibrary('ws2_32.lib');
+	$oraregress->AddDirResourceFile('src/oracle_test/regress');
+	$oraregress->AddReference($libpgcommon, $libpgport);
+
+	#PostgreSQL Regression DDL and EXE in Oracle compatible mode
+	my $orapg_regress = $solution->AddProject('orapgregress', 'dll', 'misc');
+	$orapg_regress->AddFile('src/test/regress/regress.c');
+	$orapg_regress->AddDirResourceFile('src/test/regress');
+	$orapg_regress->AddReference($postgres);
+
+	my $orapgregress = $solution->AddProject('ora_pg_regress', 'exe', 'misc');
+	$orapgregress->AddFile('src/test/regress/ora_pg_regress.c');
+	$orapgregress->AddFile('src/test/regress/pg_regress_main.c');
+	$orapgregress->AddIncludeDir('src/port');
+	$orapgregress->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$orapgregress->AddLibrary('ws2_32.lib');
+	$orapgregress->AddDirResourceFile('src/test/regress');
+	$orapgregress->AddReference($libpgcommon, $libpgport);
+	#END - SQL PARSER
 
 	# fix up pg_waldump once it's been set up
 	# files symlinked on Unix are copied on windows
@@ -877,7 +992,9 @@ sub AddSimpleFrontend
 
 	my $p = $solution->AddProject($n, 'exe', 'bin');
 	$p->AddDir('src/bin/' . $n);
-	$p->AddReference($libpgfeutils, $libpgcommon, $libpgport);
+	# BEGIN - SQL PARSER
+	$p->AddReference($libpgfeutils, $liborafeutils, $libpgcommon, $libpgport);
+	# END - SQL PARSER
 	if ($uselibpq)
 	{
 		$p->AddIncludeDir('src/interfaces/libpq');

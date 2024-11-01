@@ -110,7 +110,7 @@
  * Enable for extra debugging. This is rather expensive, so it's not enabled by
  * default even when USE_ASSERT_CHECKING.
  */
-/* #define ILIST_DEBUG */
+
 
 /*
  * Node of a doubly linked list.
@@ -266,7 +266,7 @@ extern void slist_check(slist_head *head);
  */
 #define dlist_check(head)	((void) (head))
 #define slist_check(head)	((void) (head))
-#endif							/* ILIST_DEBUG */
+#endif							
 
 /* doubly linked list implementation */
 

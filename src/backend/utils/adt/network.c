@@ -2127,3 +2127,24 @@ clean_ipv6_addr(int addr_family, char *addr)
 	}
 #endif
 }
+
+
+/*
+ * Returns the mode information of the current connection.
+ */
+Datum
+pg_get_connection_mode(PG_FUNCTION_ARGS)
+{
+	Port	   *port = MyProcPort;
+
+	if (port == NULL)
+		PG_RETURN_NULL();
+
+	if (port->connmode == 'p')
+		PG_RETURN_DATUM(CStringGetTextDatum("PostgreSQL"));
+	else if (port->connmode == 'o')
+		PG_RETURN_DATUM(CStringGetTextDatum("Oracle"));
+	else
+		PG_RETURN_DATUM(CStringGetTextDatum("Unknown"));
+}
+

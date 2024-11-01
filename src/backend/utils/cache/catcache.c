@@ -40,7 +40,7 @@
 #include "utils/syscache.h"
 
 
- /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
+ 	
 
 /*
  * Given a hash value and the size of the hash table, find the bucket

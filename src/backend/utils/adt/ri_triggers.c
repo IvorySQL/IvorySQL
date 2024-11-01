@@ -39,6 +39,7 @@
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
+#include "parser/scansup.h"			/* case sensitive indentify */
 #include "storage/bufmgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -48,6 +49,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	/* SQL PARSER */
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
@@ -1208,6 +1210,12 @@ RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
 	TransactionId xmin;
 	bool		isnull;
 
+	/*
+	 * AfterTriggerSaveEvent() handles things such that this function is never
+	 * called for partitioned tables.
+	 */
+	Assert(fk_rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE);
+
 	riinfo = ri_FetchConstraintInfo(trigger, fk_rel, false);
 
 	ri_nullcheck = ri_NullCheck(RelationGetDescr(fk_rel), newslot, riinfo, false);
@@ -1801,16 +1809,34 @@ RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 static void
 quoteOneName(char *buffer, const char *name)
 {
+	char *new_name = NULL, *prev;
+
 	/* Rather than trying to be smart, just always quote it. */
 	*buffer++ = '"';
-	while (*name)
+
+	/* BEGIN - case sensitive indentify */
+	if (compatible_db == DB_ORACLE && enable_case_switch
+		 && identifier_case_switch == INTERCHANGE)
+		new_name = identifier_case_transform(name, strlen(name));
+	else
 	{
-		if (*name == '"')
+		int	len = strlen(name) + 1;
+		new_name = palloc0(len);
+		memcpy(new_name, name, len);
+	}
+	/* END - case sensitive indentify */
+
+	prev = new_name;
+	while (*new_name)
+	{
+		if (*new_name == '"')
 			*buffer++ = '"';
-		*buffer++ = *name++;
+		*buffer++ = *new_name++;
 	}
 	*buffer++ = '"';
 	*buffer = '\0';
+
+	pfree(prev);	/* case sensitive indentify */
 }
 
 /*

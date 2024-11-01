@@ -24,7 +24,7 @@ standard_initdb() {
 	# without increasing test runtime, run these tests with a custom setting.
 	# Also, specify "-A trust" explicitly to suppress initdb's warning.
 	# --allow-group-access and --wal-segsize have been added in v11.
-	"$1" -N --wal-segsize 1 --allow-group-access -A trust
+	"$1" -N --wal-segsize 1 --allow-group-access -A trust -m pg
 	if [ -n "$TEMP_CONFIG" -a -r "$TEMP_CONFIG" ]
 	then
 		cat "$TEMP_CONFIG" >> "$PGDATA/postgresql.conf"

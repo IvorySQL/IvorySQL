@@ -50,8 +50,14 @@
 #include "utils/ps_status.h"
 #include "utils/rel.h"
 #include "utils/relmapper.h"
+/* BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
 
 uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
+/* BEGIN - SQL PARSER */
+int			bootstrap_database_mode = DB_ORACLE;
+/* END - SQL PARSER */
 
 
 static void CheckerModeMain(void);
@@ -183,6 +189,9 @@ typedef struct _IndexList
 } IndexList;
 
 static IndexList *ILHead = NULL;
+/* BEGIN - SQL PARSER */
+static char  *bootstrap_dbmode = "pg";
+/* END - SQL PARSER */
 
 
 /*
@@ -225,7 +234,10 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	/* If no -x argument, we are a CheckerProcess */
 	MyAuxProcType = CheckerProcess;
 
-	while ((flag = getopt(argc, argv, "B:c:d:D:Fkr:x:X:-:")) != -1)
+	/* BEGIN - SQL PARSER */
+	/* add parameter "-y" for sql parser mode option */
+	while ((flag = getopt(argc, argv, "B:c:d:D:Fkr:x:X:-:y:")) != -1)
+	/* END - SQL PARSER */
 	{
 		switch (flag)
 		{
@@ -237,7 +249,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				break;
 			case 'd':
 				{
-					/* Turn on debugging for the bootstrap process. */
+					
 					char	   *debugstr;
 
 					debugstr = psprintf("debug%s", optarg);
@@ -254,6 +266,22 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			case 'k':
 				bootstrap_data_checksum_version = PG_DATA_CHECKSUM_VERSION;
 				break;
+			/* BEGIN - SQL PARSER */
+			case 'y':
+				{
+					bootstrap_dbmode = strdup(optarg);
+
+					if (pg_strcasecmp(bootstrap_dbmode, "pg") == 0 || pg_strcasecmp(bootstrap_dbmode, "0") == 0)
+						bootstrap_database_mode = DB_PG;
+					else if (pg_strcasecmp(bootstrap_dbmode, "oracle") == 0 || pg_strcasecmp(bootstrap_dbmode, "1") == 0)
+						bootstrap_database_mode = DB_ORACLE;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("unrecognized database mode in bootstrap mode.\n")));
+				}
+				break;
+			/* END - SQL PARSER */
 			case 'r':
 				strlcpy(OutputFileName, optarg, MAXPGPATH);
 				break;

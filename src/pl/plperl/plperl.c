@@ -35,6 +35,7 @@
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -3076,7 +3077,19 @@ plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc, bool include_generate
 				/* XXX should have a way to cache these lookups */
 				getTypeOutputInfo(att->atttypid, &typoutput, &typisvarlena);
 
-				outputstr = OidOutputFunctionCall(typoutput, attr);
+				
+				if (ORA_PARSER == compatible_db &&
+					(att->atttypid == YMINTERVALOID ||
+					 att->atttypid == DSINTERVALOID))
+				{
+					outputstr = OidOutputFunctionCallWithTypmod(typoutput, attr, att->atttypmod);
+				}
+				else
+				{
+					outputstr = OidOutputFunctionCall(typoutput, attr);
+				}
+				
+				
 				sv = cstr2sv(outputstr);
 				pfree(outputstr);
 			}

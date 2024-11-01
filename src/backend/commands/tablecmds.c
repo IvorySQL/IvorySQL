@@ -7692,7 +7692,14 @@ ATExecDropIdentity(Relation rel, const char *colName, bool missing_ok, LOCKMODE 
 			return InvalidObjectAddress;
 		}
 	}
-
+	
+	
+	if(attTup->attidentity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL ||
+		attTup->attidentity == ATTRIBUTE_ORA_IDENTITY_ALWAYS ||
+		attTup->attidentity == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
+		attTup->attnotnull = false;
+	
+	
 	attTup->attidentity = '\0';
 	CatalogTupleUpdate(attrelation, &tuple->t_self, tuple);
 
@@ -11912,6 +11919,11 @@ ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno)
 		else if (IsA(expr, FuncExpr))
 		{
 			FuncExpr   *f = (FuncExpr *) expr;
+
+			
+			if (!FUNC_EXPR_FROM_PG_PROC(f->function_from))
+				return true;
+			
 
 			switch (f->funcid)
 			{

@@ -25,6 +25,14 @@
 #include "parser/gramparse.h"
 #include "parser/parser.h"
 #include "parser/scansup.h"
+/* BEGIN - SQL PARSER */
+#include "utils/ora_compatible.h"
+
+
+/* Hook for plugins to get control in raw_parser() */
+raw_parser_hook_type sql_raw_parser= standard_raw_parser;
+raw_parser_hook_type ora_raw_parser= NULL;
+/* END - SQL PARSER */
 
 static bool check_uescapechar(unsigned char escape);
 static char *str_udeescape(const char *str, char escape,
@@ -38,9 +46,24 @@ static char *str_udeescape(const char *str, char escape,
  * Returns a list of raw (un-analyzed) parse trees.  The contents of the
  * list have the form required by the specified RawParseMode.
  */
+
+/* BEGIN - SQL PARSER */
 List *
 raw_parser(const char *str, RawParseMode mode)
 {
+	if (sql_raw_parser == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYSTEM_ERROR),
+				 errmsg("liboracle_parser not found!"),
+				 errhint("You must load liboracle_parser to use oracle parser.")));
+
+	return (*sql_raw_parser)(str, mode);
+}
+
+List *
+standard_raw_parser(const char *str, RawParseMode mode)
+{
+/* END - SQL PARSER */
 	core_yyscan_t yyscanner;
 	base_yy_extra_type yyextra;
 	int			yyresult;

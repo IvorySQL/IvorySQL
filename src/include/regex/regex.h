@@ -150,19 +150,30 @@ typedef struct
 #define REG_ERANGE	11			/* invalid character range */
 #define REG_ESPACE	12			/* out of memory */
 #define REG_BADRPT	13			/* quantifier operand invalid */
-#define REG_ASSERT	15			/* "can't happen" -- you found a bug */
+#define REG_ASSERT	15			
 #define REG_INVARG	16			/* invalid argument to regex function */
 #define REG_MIXED	17			/* character widths of regex and string differ */
 #define REG_BADOPT	18			/* invalid embedded option */
 #define REG_ETOOBIG 19			/* regular expression is too complex */
 #define REG_ECOLORS 20			/* too many colors */
 #define REG_CANCEL	21			/* operation cancelled */
-/* two specials for debugging and testing */
+
 #define REG_ATOI	101			/* convert error-code name to number */
 #define REG_ITOA	102			/* convert error-code number to name */
 /* non-error result codes for pg_regprefix */
 #define REG_PREFIX	(-1)		/* identified a common prefix */
 #define REG_EXACT	(-2)		/* identified an exact match */
+
+
+/*
+ * all the options of interest for regex functions.
+ * move from regexp.c to here.
+ */
+typedef struct pg_re_flags
+{
+	int			cflags;			/* compile flags for Spencer's regex code */
+	bool		glob;			/* do it globally (for each occurrence) */
+} pg_re_flags;
 
 
 
@@ -182,5 +193,33 @@ extern regex_t *RE_compile_and_cache(text *text_re, int cflags, Oid collation);
 extern bool RE_compile_and_execute(text *text_re, char *dat, int dat_len,
 								   int cflags, Oid collation,
 								   int nmatch, regmatch_t *pmatch);
+
+
+extern regex_t *ora_re_compile_and_cache(text *text_re, int cflags, Oid collation);
+extern void ora_parse_re_flags(pg_re_flags *flags, text *opts);
+extern text *ora_replace_text_regexp(text *src_text, regex_t *regexp,
+	                text *replace_text, int start_posn,int occur_posn);
+extern bool
+ora_substr_text_regexp(text *src_text,text *pattern_arg ,text *match_para,
+                                    Oid collation,int start_posn, 
+                                    int occur_posn,int subexpr_pos,
+                                    Datum *substr);
+extern bool
+ora_setup_regexp_substr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
+											  int start_posn, int occur_posn,
+											  int subexpr_pos,Datum *substr,
+											  bool ignore_degenerate);
+extern int charlen_to_bytelen(const char *p, int n);
+
+extern bool
+ora_instr_text_regexp(text *src_text,text *pattern_arg ,text *match_para,
+					  Oid collation,int start_posn,
+					  int occur_posn,int ret_opt,
+					  int subexpr_pos,Datum *substr);
+extern bool
+ora_setup_regexp_instr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
+											int start_posn, int occur_posn,
+											int ret_opt,int subexpr_pos,
+											Datum *substr,bool ignore_degenerate);
 
 #endif							/* _REGEX_H_ */

@@ -1,0 +1,1678 @@
+--
+-- TIMESTAMPTZ
+--
+CREATE TABLE TIMESTAMPTZ_TBL (d1 timestamp(2) with time zone);
+-- Test shorthand input values
+-- We can't just "select" the results since they aren't constants; test for
+-- equality instead.  We can do that by running the test inside a transaction
+-- block, within which the value of 'now' shouldn't change, and so these
+-- related values shouldn't either.
+BEGIN;
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('today');
+ERROR:  invalid value "toda" for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('today');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('yesterday');
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('tomorrow');
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('tomorrow EST');
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('tomorrow zulu');
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+SELECT count(*) AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time zone 'today';
+ERROR:  syntax error at or near "with"
+LINE 1: ... AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time ...
+                                                             ^
+SELECT count(*) AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time zone 'tomorrow';
+ERROR:  syntax error at or near "with"
+LINE 1: ... AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time ...
+                                                             ^
+SELECT count(*) AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time zone 'yesterday';
+ERROR:  syntax error at or near "with"
+LINE 1: ... AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time ...
+                                                             ^
+SELECT count(*) AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time zone 'tomorrow EST';
+ERROR:  syntax error at or near "with"
+LINE 1: ... AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time ...
+                                                             ^
+SELECT count(*) AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time zone 'tomorrow zulu';
+ERROR:  syntax error at or near "with"
+LINE 1: ... AS One FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp with time ...
+                                                             ^
+COMMIT;
+DELETE FROM TIMESTAMPTZ_TBL;
+-- Verify that 'now' *does* change over a reasonable interval such as 100 msec,
+-- and that it doesn't change over the same interval within a transaction block
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('now');
+ERROR:  invalid value "now" for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('now');
+                                            ^
+DETAIL:  Value must be an integer.
+SELECT pg_sleep(0.1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+BEGIN;
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('now');
+ERROR:  invalid value "now" for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('now');
+                                            ^
+DETAIL:  Value must be an integer.
+SELECT pg_sleep(0.1);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('now');
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+SELECT pg_sleep(0.1);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+SELECT count(*) AS two FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp(2) with time zone 'now';
+ERROR:  syntax error at or near "("
+LINE 1: ...) AS two FROM TIMESTAMPTZ_TBL WHERE d1 = timestamp(2) with t...
+                                                             ^
+SELECT count(d1) AS three, count(DISTINCT d1) AS two FROM TIMESTAMPTZ_TBL;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+COMMIT;
+TRUNCATE TIMESTAMPTZ_TBL;
+-- Special values
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('-infinity');
+ERROR:  invalid value "-inf" for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('-infinity');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('infinity');
+ERROR:  invalid value "infi" for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('infinity');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('epoch');
+ERROR:  invalid value "epoc" for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('epoch');
+                                            ^
+DETAIL:  Value must be an integer.
+-- Postgres v6.0 standard output format
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01 1997 PST');
+ERROR:  invalid value "Mon " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01 199...
+                                            ^
+DETAIL:  Value must be an integer.
+-- Variations on Postgres v6.1 standard output format
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.000001 1997 PST');
+ERROR:  invalid value "Mon " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.000...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.999999 1997 PST');
+ERROR:  invalid value "Mon " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.999...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.4 1997 PST');
+ERROR:  invalid value "Mon " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.4 1...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.5 1997 PST');
+ERROR:  invalid value "Mon " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.5 1...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.6 1997 PST');
+ERROR:  invalid value "Mon " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mon Feb 10 17:32:01.6 1...
+                                            ^
+DETAIL:  Value must be an integer.
+-- ISO 8601 format
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-01-02');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-01-02 03:04:05');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-02-10 17:32:01-08');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-02-10 17:32:01-0800');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-02-10 17:32:01 -08:00');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 -0800');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-06-10 17:32:01 -07:00');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('2001-09-22T18:19:20');
+ERROR:  invalid value "T1" for "HH24"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2001-09-22T18:19:20');
+                                            ^
+DETAIL:  Value must be an integer.
+-- POSIX format (note that the timezone abbrev is just decoration here)
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 08:14:01 GMT+8');
+ERROR:  invalid value "GM" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 08:14:01 GMT...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 13:14:02 GMT-1');
+ERROR:  invalid value "GM" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 13:14:02 GMT...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 12:14:03 GMT-2');
+ERROR:  invalid value "GM" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 12:14:03 GMT...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 03:14:04 PST+8');
+ERROR:  invalid value "PS" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 03:14:04 PST...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 02:14:05 MST+7:00');
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('2000-03-15 02:14:05 MST...
+                                            ^
+DETAIL:  Value must be an integer.
+-- Variations for acceptable input formats
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 17:32:01 1997 -0800');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 17:32:01 1997 -0...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 5:32PM 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 5:32PM 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997/02/10 17:32:01-0800');
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-02-10 17:32:01 PST');
+ERROR:  invalid value "PS" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-02-10 17:32:01 PST...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb-10-1997 17:32:01 PST');
+ERROR:  invalid value "Feb-" for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb-10-1997 17:32:01 PS...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('02-10-1997 17:32:01 PST');
+ERROR:  The hour value must be between 0 and 23.
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('02-10-1997 17:32:01 PST...
+                                            ^
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 PST');
+ERROR:  invalid value "PS" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 PST');
+                                            ^
+DETAIL:  Value must be an integer.
+set datestyle to ymd;
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('97FEB10 5:32:01PM UTC');
+ERROR:  invalid value "FE" for "MM"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('97FEB10 5:32:01PM UTC')...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('97/02/10 17:32:01 UTC');
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('97/02/10 17:32:01 UTC')...
+                                            ^
+DETAIL:  Value must be an integer.
+reset datestyle;
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997.041 17:32:01 UTC');
+ERROR:  Number value does not match the length of the format item.
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997.041 17:32:01 UTC')...
+                                            ^
+-- timestamps at different timezones
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 America/New_York');
+ERROR:  invalid value "Am" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970210 173201 America...
+                                            ^
+DETAIL:  Value must be an integer.
+SELECT '19970210 173201' AT TIME ZONE 'America/New_York';
+          timezone          
+----------------------------
+ 1997-02-10 20:32:01.000000
+(1 row)
+
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America/New_York');
+ERROR:  invalid value "Am" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America...
+                                            ^
+DETAIL:  Value must be an integer.
+SELECT '19970710 173201' AT TIME ZONE 'America/New_York';
+          timezone          
+----------------------------
+ 1997-07-10 20:32:01.000000
+(1 row)
+
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America/Does_not_exist');
+ERROR:  invalid value "Am" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('19970710 173201 America...
+                                            ^
+DETAIL:  Value must be an integer.
+SELECT '19970710 173201' AT TIME ZONE 'America/Does_not_exist';
+ERROR:  time zone "America/Does_not_exist" not recognized
+-- Daylight saving time for timestamps beyond 32-bit time_t range.
+SELECT '20500710 173201 Europe/Helsinki'::timestamptz; -- DST
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '20500710 173201 Europe/Helsinki'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '20500110 173201 Europe/Helsinki'::timestamptz; -- non-DST
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '20500110 173201 Europe/Helsinki'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '205000-07-10 17:32:01 Europe/Helsinki'::timestamptz; -- DST
+ERROR:  The value of month is invalid.
+LINE 1: SELECT '205000-07-10 17:32:01 Europe/Helsinki'::timestamptz;
+               ^
+SELECT '205000-01-10 17:32:01 Europe/Helsinki'::timestamptz; -- non-DST
+ERROR:  The value of month is invalid.
+LINE 1: SELECT '205000-01-10 17:32:01 Europe/Helsinki'::timestamptz;
+               ^
+-- Check date conversion and date arithmetic
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-06-10 18:32:01 PDT');
+ERROR:  invalid value "PD" for "TZH"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('1997-06-10 18:32:01 PDT...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 10 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 11 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 11 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 12 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 12 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 13 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 13 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 14 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 14 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 15 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 15 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 0097 BC');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 0097 BC...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 0097');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 0097');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 0597');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 0597');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1097');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1097');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1697');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1697');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1797');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1797');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1897');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1897');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 2097');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 2097');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 28 17:32:01 1996');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 28 17:32:01 1996');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 29 17:32:01 1996');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 29 17:32:01 1996');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mar 01 17:32:01 1996');
+ERROR:  invalid value "Mar " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mar 01 17:32:01 1996');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 30 17:32:01 1996');
+ERROR:  invalid value "Dec " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 30 17:32:01 1996');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 1996');
+ERROR:  invalid value "Dec " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 1996');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Jan 01 17:32:01 1997');
+ERROR:  invalid value "Jan " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Jan 01 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 28 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 28 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 29 17:32:01 1997');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 29 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mar 01 17:32:01 1997');
+ERROR:  invalid value "Mar " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Mar 01 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 30 17:32:01 1997');
+ERROR:  invalid value "Dec " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 30 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 1997');
+ERROR:  invalid value "Dec " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 1997');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 1999');
+ERROR:  invalid value "Dec " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 1999');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Jan 01 17:32:01 2000');
+ERROR:  invalid value "Jan " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Jan 01 17:32:01 2000');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 2000');
+ERROR:  invalid value "Dec " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Dec 31 17:32:01 2000');
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Jan 01 17:32:01 2001');
+ERROR:  invalid value "Jan " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Jan 01 17:32:01 2001');
+                                            ^
+DETAIL:  Value must be an integer.
+-- Currently unsupported syntax and ranges
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 -0097');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 -0097')...
+                                            ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 5097 BC');
+ERROR:  invalid value "Feb " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 5097 BC...
+                                            ^
+DETAIL:  Value must be an integer.
+-- Alternative field order that we've historically supported (sort of)
+-- with regular and POSIXy timezone specs
+SELECT 'Wed Jul 11 10:51:14 America/New_York 2001'::timestamptz;
+ERROR:  invalid value "Wed " for "YYYY"
+LINE 1: SELECT 'Wed Jul 11 10:51:14 America/New_York 2001'::timestam...
+               ^
+DETAIL:  Value must be an integer.
+SELECT 'Wed Jul 11 10:51:14 GMT-4 2001'::timestamptz;
+ERROR:  invalid value "Wed " for "YYYY"
+LINE 1: SELECT 'Wed Jul 11 10:51:14 GMT-4 2001'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT 'Wed Jul 11 10:51:14 GMT+4 2001'::timestamptz;
+ERROR:  invalid value "Wed " for "YYYY"
+LINE 1: SELECT 'Wed Jul 11 10:51:14 GMT+4 2001'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT 'Wed Jul 11 10:51:14 PST-03:00 2001'::timestamptz;
+ERROR:  invalid value "Wed " for "YYYY"
+LINE 1: SELECT 'Wed Jul 11 10:51:14 PST-03:00 2001'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT 'Wed Jul 11 10:51:14 PST+03:00 2001'::timestamptz;
+ERROR:  invalid value "Wed " for "YYYY"
+LINE 1: SELECT 'Wed Jul 11 10:51:14 PST+03:00 2001'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT d1 FROM TIMESTAMPTZ_TBL;
+                d1                 
+-----------------------------------
+ 1997-01-02 00:00:00.000000 -08:00
+ 1997-01-02 03:04:05.000000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-02-10 01:32:01.000000 -08:00
+ 1997-06-10 03:32:01.000000 -07:00
+ 1997-02-10 01:32:01.000000 -08:00
+(8 rows)
+
+-- Check behavior at the boundaries of the timestamp range
+SELECT '4714-11-24 00:00:00+00 BC'::timestamptz;
+ERROR:  invalid value "BC" for "TZM"
+LINE 1: SELECT '4714-11-24 00:00:00+00 BC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '4714-11-23 16:00:00-08 BC'::timestamptz;
+ERROR:  invalid value "BC" for "TZM"
+LINE 1: SELECT '4714-11-23 16:00:00-08 BC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT 'Sun Nov 23 16:00:00 4714 PST BC'::timestamptz;
+ERROR:  invalid value "Sun " for "YYYY"
+LINE 1: SELECT 'Sun Nov 23 16:00:00 4714 PST BC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '4714-11-23 23:59:59+00 BC'::timestamptz;  -- out of range
+ERROR:  invalid value "BC" for "TZM"
+LINE 1: SELECT '4714-11-23 23:59:59+00 BC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '294276-12-31 23:59:59+00'::timestamptz;
+ERROR:  The value of month is invalid.
+LINE 1: SELECT '294276-12-31 23:59:59+00'::timestamptz;
+               ^
+SELECT '294276-12-31 15:59:59-08'::timestamptz;
+ERROR:  The value of month is invalid.
+LINE 1: SELECT '294276-12-31 15:59:59-08'::timestamptz;
+               ^
+SELECT '294277-01-01 00:00:00+00'::timestamptz;  -- out of range
+ERROR:  The value of month is invalid.
+LINE 1: SELECT '294277-01-01 00:00:00+00'::timestamptz;
+               ^
+SELECT '294277-12-31 16:00:00-08'::timestamptz;  -- out of range
+ERROR:  The value of month is invalid.
+LINE 1: SELECT '294277-12-31 16:00:00-08'::timestamptz;
+               ^
+-- Demonstrate functions and operators
+SELECT d1 FROM TIMESTAMPTZ_TBL
+   WHERE d1 > timestamp with time zone '1997-01-02';
+ERROR:  syntax error at or near "with"
+LINE 2:    WHERE d1 > timestamp with time zone '1997-01-02';
+                                ^
+SELECT d1 FROM TIMESTAMPTZ_TBL
+   WHERE d1 < timestamp with time zone '1997-01-02';
+ERROR:  syntax error at or near "with"
+LINE 2:    WHERE d1 < timestamp with time zone '1997-01-02';
+                                ^
+SELECT d1 FROM TIMESTAMPTZ_TBL
+   WHERE d1 = timestamp with time zone '1997-01-02';
+ERROR:  syntax error at or near "with"
+LINE 2:    WHERE d1 = timestamp with time zone '1997-01-02';
+                                ^
+SELECT d1 FROM TIMESTAMPTZ_TBL
+   WHERE d1 != timestamp with time zone '1997-01-02';
+ERROR:  syntax error at or near "with"
+LINE 2:    WHERE d1 != timestamp with time zone '1997-01-02';
+                                 ^
+SELECT d1 FROM TIMESTAMPTZ_TBL
+   WHERE d1 <= timestamp with time zone '1997-01-02';
+ERROR:  syntax error at or near "with"
+LINE 2:    WHERE d1 <= timestamp with time zone '1997-01-02';
+                                 ^
+SELECT d1 FROM TIMESTAMPTZ_TBL
+   WHERE d1 >= timestamp with time zone '1997-01-02';
+ERROR:  syntax error at or near "with"
+LINE 2:    WHERE d1 >= timestamp with time zone '1997-01-02';
+                                 ^
+SELECT d1 - timestamp with time zone '1997-01-02' AS diff
+   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT d1 - timestamp with time zone '1997-01-02' AS diff
+                              ^
+SELECT date_trunc( 'week', timestamp with time zone '2004-02-29 15:44:17.71393' ) AS week_trunc;
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT date_trunc( 'week', timestamp with time zone '2004-02...
+                                             ^
+SELECT date_trunc('day', timestamp with time zone '2001-02-16 20:38:40+00', 'Australia/Sydney') as sydney_trunc;  -- zone name
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT date_trunc('day', timestamp with time zone '2001-02-1...
+                                           ^
+SELECT date_trunc('day', timestamp with time zone '2001-02-16 20:38:40+00', 'GMT') as gmt_trunc;  -- fixed-offset abbreviation
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT date_trunc('day', timestamp with time zone '2001-02-1...
+                                           ^
+SELECT date_trunc('day', timestamp with time zone '2001-02-16 20:38:40+00', 'VET') as vet_trunc;  -- variable-offset abbreviation
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT date_trunc('day', timestamp with time zone '2001-02-1...
+                                           ^
+-- verify date_bin behaves the same as date_trunc for relevant intervals
+SELECT
+  str,
+  interval,
+  date_trunc(str, ts, 'Australia/Sydney') = date_bin(interval::interval, ts, timestamp with time zone '2001-01-01+11') AS equal
+FROM (
+  VALUES
+  ('day', '1 d'),
+  ('hour', '1 h'),
+  ('minute', '1 m'),
+  ('second', '1 s'),
+  ('millisecond', '1 ms'),
+  ('microsecond', '1 us')
+) intervals (str, interval),
+(VALUES (timestamptz '2020-02-29 15:44:17.71393+00')) ts (ts);
+ERROR:  missing or invalid datetime field.
+-- bin timestamps into arbitrary intervals
+SELECT
+  interval,
+  ts,
+  origin,
+  date_bin(interval::interval, ts, origin)
+FROM (
+  VALUES
+  ('15 days'),
+  ('2 hours'),
+  ('1 hour 30 minutes'),
+  ('15 minutes'),
+  ('10 seconds'),
+  ('100 milliseconds'),
+  ('250 microseconds')
+) intervals (interval),
+(VALUES (timestamptz '2020-02-11 15:44:17.71393')) ts (ts),
+(VALUES (timestamptz '2001-01-01')) origin (origin);
+ERROR:  missing or invalid datetime field.
+-- shift bins using the origin parameter:
+SELECT date_bin('5 min'::interval, timestamptz '2020-02-01 01:01:01+00', timestamptz '2020-02-01 00:02:30+00');
+ERROR:  missing or invalid datetime field.
+-- disallow intervals with months or years
+SELECT date_bin('5 months'::interval, timestamp with time zone '2020-02-01 01:01:01+00', timestamp with time zone '2001-01-01+00');
+ERROR:  missing or invalid datetime field.
+SELECT date_bin('5 years'::interval,  timestamp with time zone '2020-02-01 01:01:01+00', timestamp with time zone '2001-01-01+00');
+ERROR:  missing or invalid datetime field.
+-- disallow zero intervals
+SELECT date_bin('0 days'::interval, timestamp with time zone '1970-01-01 01:00:00+00' , timestamp with time zone '1970-01-01 00:00:00+00');
+ERROR:  missing or invalid datetime field.
+-- disallow negative intervals
+SELECT date_bin('-2 days'::interval, timestamp with time zone '1970-01-01 01:00:00+00' , timestamp with time zone '1970-01-01 00:00:00+00');
+ERROR:  missing or invalid datetime field.
+-- Test casting within a BETWEEN qualifier
+SELECT d1 - timestamp with time zone '1997-01-02' AS diff
+  FROM TIMESTAMPTZ_TBL
+  WHERE d1 BETWEEN timestamp with time zone '1902-01-01' AND timestamp with time zone '2038-01-01';
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT d1 - timestamp with time zone '1997-01-02' AS diff
+                              ^
+-- DATE_PART (timestamptz_part)
+SELECT d1 as timestamptz,
+   date_part( 'year', d1) AS year, date_part( 'month', d1) AS month,
+   date_part( 'day', d1) AS day, date_part( 'hour', d1) AS hour,
+   date_part( 'minute', d1) AS minute, date_part( 'second', d1) AS second
+   FROM TIMESTAMPTZ_TBL;
+            timestamptz            | year | month | day | hour | minute | second 
+-----------------------------------+------+-------+-----+------+--------+--------
+ 1997-01-02 00:00:00.000000 -08:00 | 1997 |     1 |   2 |    0 |      0 |      0
+ 1997-01-02 03:04:05.000000 -08:00 | 1997 |     1 |   2 |    3 |      4 |      5
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+ 1997-06-10 03:32:01.000000 -07:00 | 1997 |     6 |  10 |    3 |     32 |      1
+ 1997-02-10 01:32:01.000000 -08:00 | 1997 |     2 |  10 |    1 |     32 |      1
+(8 rows)
+
+SELECT d1 as timestamptz,
+   date_part( 'quarter', d1) AS quarter, date_part( 'msec', d1) AS msec,
+   date_part( 'usec', d1) AS usec
+   FROM TIMESTAMPTZ_TBL;
+            timestamptz            | quarter | msec |  usec   
+-----------------------------------+---------+------+---------
+ 1997-01-02 00:00:00.000000 -08:00 |       1 |    0 |       0
+ 1997-01-02 03:04:05.000000 -08:00 |       1 | 5000 | 5000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+ 1997-06-10 03:32:01.000000 -07:00 |       2 | 1000 | 1000000
+ 1997-02-10 01:32:01.000000 -08:00 |       1 | 1000 | 1000000
+(8 rows)
+
+SELECT d1 as timestamptz,
+   date_part( 'isoyear', d1) AS isoyear, date_part( 'week', d1) AS week,
+   date_part( 'isodow', d1) AS isodow, date_part( 'dow', d1) AS dow,
+   date_part( 'doy', d1) AS doy
+   FROM TIMESTAMPTZ_TBL;
+            timestamptz            | isoyear | week | isodow | dow | doy 
+-----------------------------------+---------+------+--------+-----+-----
+ 1997-01-02 00:00:00.000000 -08:00 |    1997 |    1 |      4 |   4 |   2
+ 1997-01-02 03:04:05.000000 -08:00 |    1997 |    1 |      4 |   4 |   2
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+ 1997-06-10 03:32:01.000000 -07:00 |    1997 |   24 |      2 |   2 | 161
+ 1997-02-10 01:32:01.000000 -08:00 |    1997 |    7 |      1 |   1 |  41
+(8 rows)
+
+SELECT d1 as timestamptz,
+   date_part( 'decade', d1) AS decade,
+   date_part( 'century', d1) AS century,
+   date_part( 'millennium', d1) AS millennium,
+   round(date_part( 'julian', d1)) AS julian,
+   date_part( 'epoch', d1) AS epoch
+   FROM TIMESTAMPTZ_TBL;
+            timestamptz            | decade | century | millennium | julian  |   epoch   
+-----------------------------------+--------+---------+------------+---------+-----------
+ 1997-01-02 00:00:00.000000 -08:00 |    199 |      20 |          2 | 2450451 | 852192000
+ 1997-01-02 03:04:05.000000 -08:00 |    199 |      20 |          2 | 2450451 | 852203045
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+ 1997-06-10 03:32:01.000000 -07:00 |    199 |      20 |          2 | 2450610 | 865938721
+ 1997-02-10 01:32:01.000000 -08:00 |    199 |      20 |          2 | 2450490 | 855567121
+(8 rows)
+
+SELECT d1 as timestamptz,
+   date_part( 'timezone', d1) AS timezone,
+   date_part( 'timezone_hour', d1) AS timezone_hour,
+   date_part( 'timezone_minute', d1) AS timezone_minute
+   FROM TIMESTAMPTZ_TBL;
+            timestamptz            | timezone | timezone_hour | timezone_minute 
+-----------------------------------+----------+---------------+-----------------
+ 1997-01-02 00:00:00.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-01-02 03:04:05.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+ 1997-06-10 03:32:01.000000 -07:00 |   -25200 |            -7 |               0
+ 1997-02-10 01:32:01.000000 -08:00 |   -28800 |            -8 |               0
+(8 rows)
+
+-- extract implementation is mostly the same as date_part, so only
+-- test a few cases for additional coverage.
+SELECT d1 as "timestamp",
+   extract(microseconds from d1) AS microseconds,
+   extract(milliseconds from d1) AS milliseconds,
+   extract(seconds from d1) AS seconds,
+   round(extract(julian from d1)) AS julian,
+   extract(epoch from d1) AS epoch
+   FROM TIMESTAMPTZ_TBL;
+             timestamp             | microseconds | milliseconds | seconds  | julian  |      epoch       
+-----------------------------------+--------------+--------------+----------+---------+------------------
+ 1997-01-02 00:00:00.000000 -08:00 |            0 |        0.000 | 0.000000 | 2450451 | 852192000.000000
+ 1997-01-02 03:04:05.000000 -08:00 |      5000000 |     5000.000 | 5.000000 | 2450451 | 852203045.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+ 1997-06-10 03:32:01.000000 -07:00 |      1000000 |     1000.000 | 1.000000 | 2450610 | 865938721.000000
+ 1997-02-10 01:32:01.000000 -08:00 |      1000000 |     1000.000 | 1.000000 | 2450490 | 855567121.000000
+(8 rows)
+
+-- value near upper bound uses special case in code
+SELECT date_part('epoch', '294270-01-01 00:00:00+00'::timestamptz);
+ERROR:  The value of month is invalid.
+LINE 1: SELECT date_part('epoch', '294270-01-01 00:00:00+00'::timest...
+                                  ^
+SELECT extract(epoch from '294270-01-01 00:00:00+00'::timestamptz);
+ERROR:  The value of month is invalid.
+LINE 1: SELECT extract(epoch from '294270-01-01 00:00:00+00'::timest...
+                                  ^
+-- another internal overflow test case
+SELECT extract(epoch from '5000-01-01 00:00:00+00'::timestamptz);
+      extract       
+--------------------
+ 95617584000.000000
+(1 row)
+
+-- TO_CHAR()
+SELECT to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon')
+   FROM TIMESTAMPTZ_TBL;
+                                         to_char                                          
+------------------------------------------------------------------------------------------
+ THURSDAY  Thursday  thursday  THU Thu thu JANUARY   January   january   I    JAN Jan jan
+ THURSDAY  Thursday  thursday  THU Thu thu JANUARY   January   january   I    JAN Jan jan
+ MONDAY    Monday    monday    MON Mon mon FEBRUARY  February  february  II   FEB Feb feb
+ MONDAY    Monday    monday    MON Mon mon FEBRUARY  February  february  II   FEB Feb feb
+ MONDAY    Monday    monday    MON Mon mon FEBRUARY  February  february  II   FEB Feb feb
+ MONDAY    Monday    monday    MON Mon mon FEBRUARY  February  february  II   FEB Feb feb
+ TUESDAY   Tuesday   tuesday   TUE Tue tue JUNE      June      june      VI   JUN Jun jun
+ MONDAY    Monday    monday    MON Mon mon FEBRUARY  February  february  II   FEB Feb feb
+(8 rows)
+
+SELECT to_char(d1, 'FMDAY FMDay FMday FMMONTH FMMonth FMmonth FMRM')
+   FROM TIMESTAMPTZ_TBL;
+                       to_char                        
+------------------------------------------------------
+ THURSDAY Thursday thursday JANUARY January january I
+ THURSDAY Thursday thursday JANUARY January january I
+ MONDAY Monday monday FEBRUARY February february II
+ MONDAY Monday monday FEBRUARY February february II
+ MONDAY Monday monday FEBRUARY February february II
+ MONDAY Monday monday FEBRUARY February february II
+ TUESDAY Tuesday tuesday JUNE June june VI
+ MONDAY Monday monday FEBRUARY February february II
+(8 rows)
+
+SELECT to_char(d1, 'Y,YYY YYYY YYY YY Y CC Q MM WW DDD DD D J')
+   FROM TIMESTAMPTZ_TBL;
+                     to_char                     
+-------------------------------------------------
+ 1,997 1997 997 97 7 20 1 01 01 002 02 5 2450451
+ 1,997 1997 997 97 7 20 1 01 01 002 02 5 2450451
+ 1,997 1997 997 97 7 20 1 02 06 041 10 2 2450490
+ 1,997 1997 997 97 7 20 1 02 06 041 10 2 2450490
+ 1,997 1997 997 97 7 20 1 02 06 041 10 2 2450490
+ 1,997 1997 997 97 7 20 1 02 06 041 10 2 2450490
+ 1,997 1997 997 97 7 20 2 06 23 161 10 3 2450610
+ 1,997 1997 997 97 7 20 1 02 06 041 10 2 2450490
+(8 rows)
+
+SELECT to_char(d1, 'FMY,YYY FMYYYY FMYYY FMYY FMY FMCC FMQ FMMM FMWW FMDDD FMDD FMD FMJ')
+   FROM TIMESTAMPTZ_TBL;
+                    to_char                     
+------------------------------------------------
+ 1,997 1997 997 97 7 20 1 1 1 2 2 5 2450451
+ 1,997 1997 997 97 7 20 1 1 1 2 2 5 2450451
+ 1,997 1997 997 97 7 20 1 2 6 41 10 2 2450490
+ 1,997 1997 997 97 7 20 1 2 6 41 10 2 2450490
+ 1,997 1997 997 97 7 20 1 2 6 41 10 2 2450490
+ 1,997 1997 997 97 7 20 1 2 6 41 10 2 2450490
+ 1,997 1997 997 97 7 20 2 6 23 161 10 3 2450610
+ 1,997 1997 997 97 7 20 1 2 6 41 10 2 2450490
+(8 rows)
+
+SELECT to_char(d1, 'HH HH12 HH24 MI SS SSSS')
+   FROM TIMESTAMPTZ_TBL;
+       to_char        
+----------------------
+ 12 12 00 00 00 0
+ 03 03 03 04 05 11045
+ 01 01 01 32 01 5521
+ 01 01 01 32 01 5521
+ 01 01 01 32 01 5521
+ 01 01 01 32 01 5521
+ 03 03 03 32 01 12721
+ 01 01 01 32 01 5521
+(8 rows)
+
+SELECT to_char(d1, E'"HH:MI:SS is" HH:MI:SS "\\"text between quote marks\\""')
+   FROM TIMESTAMPTZ_TBL;
+                     to_char                     
+-------------------------------------------------
+ HH:MI:SS is 12:00:00 "text between quote marks"
+ HH:MI:SS is 03:04:05 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+ HH:MI:SS is 03:32:01 "text between quote marks"
+ HH:MI:SS is 01:32:01 "text between quote marks"
+(8 rows)
+
+SELECT to_char(d1, 'HH24--text--MI--text--SS')
+   FROM TIMESTAMPTZ_TBL;
+ERROR:  date format not recognized
+SELECT to_char(d1, 'YYYYTH YYYYth Jth')
+   FROM TIMESTAMPTZ_TBL;
+         to_char         
+-------------------------
+ 1997TH 1997th 2450451st
+ 1997TH 1997th 2450451st
+ 1997TH 1997th 2450490th
+ 1997TH 1997th 2450490th
+ 1997TH 1997th 2450490th
+ 1997TH 1997th 2450490th
+ 1997TH 1997th 2450610th
+ 1997TH 1997th 2450490th
+(8 rows)
+
+SELECT to_char(d1, 'YYYY A.D. YYYY a.d. YYYY bc HH:MI:SS P.M. HH:MI:SS p.m. HH:MI:SS pm')
+   FROM TIMESTAMPTZ_TBL;
+                               to_char                               
+---------------------------------------------------------------------
+ 1997 A.D. 1997 a.d. 1997 ad 12:00:00 A.M. 12:00:00 a.m. 12:00:00 am
+ 1997 A.D. 1997 a.d. 1997 ad 03:04:05 A.M. 03:04:05 a.m. 03:04:05 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 03:32:01 A.M. 03:32:01 a.m. 03:32:01 am
+ 1997 A.D. 1997 a.d. 1997 ad 01:32:01 A.M. 01:32:01 a.m. 01:32:01 am
+(8 rows)
+
+SELECT to_char(d1, 'IYYY IYY IY I IW IDDD ID')
+   FROM TIMESTAMPTZ_TBL;
+        to_char         
+------------------------
+ 1997 997 97 7 01 004 4
+ 1997 997 97 7 01 004 4
+ 1997 997 97 7 07 043 1
+ 1997 997 97 7 07 043 1
+ 1997 997 97 7 07 043 1
+ 1997 997 97 7 07 043 1
+ 1997 997 97 7 24 163 2
+ 1997 997 97 7 07 043 1
+(8 rows)
+
+SELECT to_char(d1, 'FMIYYY FMIYY FMIY FMI FMIW FMIDDD FMID')
+   FROM TIMESTAMPTZ_TBL;
+        to_char         
+------------------------
+ 1997 997 97 7 1 4 4
+ 1997 997 97 7 1 4 4
+ 1997 997 97 7 7 43 1
+ 1997 997 97 7 7 43 1
+ 1997 997 97 7 7 43 1
+ 1997 997 97 7 7 43 1
+ 1997 997 97 7 24 163 2
+ 1997 997 97 7 7 43 1
+(8 rows)
+
+SELECT to_char(d, 'FF1 FF2 FF3 FF4 FF5 FF6  ff1 ff2 ff3 ff4 ff5 ff6  MS US')
+   FROM (VALUES
+       ('2018-11-02 12:34:56'::timestamptz),
+       ('2018-11-02 12:34:56.78'),
+       ('2018-11-02 12:34:56.78901'),
+       ('2018-11-02 12:34:56.78901234')
+   ) d(d);
+ERROR:  date format picture ends before converting entire input string.
+LINE 6:        ('2018-11-02 12:34:56.78901234')
+                ^
+-- Check OF, TZH, TZM with various zone offsets, particularly fractional hours
+SET timezone = '00:00';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+ OF  | TZH:TZM 
+-----+---------
+ +00 | +00:00
+(1 row)
+
+SET timezone = '+02:00';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+ OF  | TZH:TZM 
+-----+---------
+ -02 | -02:00
+(1 row)
+
+SET timezone = '-13:00';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+ OF  | TZH:TZM 
+-----+---------
+ +13 | +13:00
+(1 row)
+
+SET timezone = '-00:30';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+   OF   | TZH:TZM 
+--------+---------
+ +00:30 | +00:30
+(1 row)
+
+SET timezone = '00:30';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+   OF   | TZH:TZM 
+--------+---------
+ -00:30 | -00:30
+(1 row)
+
+SET timezone = '-04:30';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+   OF   | TZH:TZM 
+--------+---------
+ +04:30 | +04:30
+(1 row)
+
+SET timezone = '04:30';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+   OF   | TZH:TZM 
+--------+---------
+ -04:30 | -04:30
+(1 row)
+
+SET timezone = '-04:15';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+   OF   | TZH:TZM 
+--------+---------
+ +04:15 | +04:15
+(1 row)
+
+SET timezone = '04:15';
+SELECT to_char(now(), 'OF') as "OF", to_char(now(), 'TZH:TZM') as "TZH:TZM";
+   OF   | TZH:TZM 
+--------+---------
+ -04:15 | -04:15
+(1 row)
+
+RESET timezone;
+CREATE TABLE TIMESTAMPTZ_TST (a int , b timestamptz);
+-- Test year field value with len > 4
+INSERT INTO TIMESTAMPTZ_TST VALUES(1, 'Sat Mar 12 23:58:48 1000 IST');
+ERROR:  invalid value "Sat " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(1, 'Sat Mar 12 23:58:48 1...
+                                              ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TST VALUES(2, 'Sat Mar 12 23:58:48 10000 IST');
+ERROR:  invalid value "Sat " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(2, 'Sat Mar 12 23:58:48 1...
+                                              ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TST VALUES(3, 'Sat Mar 12 23:58:48 100000 IST');
+ERROR:  invalid value "Sat " for "YYYY"
+LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(3, 'Sat Mar 12 23:58:48 1...
+                                              ^
+DETAIL:  Value must be an integer.
+INSERT INTO TIMESTAMPTZ_TST VALUES(3, '10000 Mar 12 23:58:48 IST');
+ERROR:  Number value does not match the length of the format item.
+LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(3, '10000 Mar 12 23:58:48...
+                                              ^
+INSERT INTO TIMESTAMPTZ_TST VALUES(4, '100000312 23:58:48 IST');
+ERROR:  The value of month is invalid.
+LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(4, '100000312 23:58:48 IS...
+                                              ^
+INSERT INTO TIMESTAMPTZ_TST VALUES(4, '1000000312 23:58:48 IST');
+ERROR:  The value of month is invalid.
+LINE 1: INSERT INTO TIMESTAMPTZ_TST VALUES(4, '1000000312 23:58:48 I...
+                                              ^
+--Verify data
+SELECT * FROM TIMESTAMPTZ_TST ORDER BY a;
+ a | b 
+---+---
+(0 rows)
+
+--Cleanup
+DROP TABLE TIMESTAMPTZ_TST;
+-- test timestamptz constructors
+set TimeZone to 'America/New_York';
+-- numeric timezone
+SELECT make_timestamptz(1973, 07, 15, 08, 15, 55.33);
+        make_timestamptz         
+---------------------------------
+ Sun Jul 15 08:15:55.33 1973 EDT
+(1 row)
+
+SELECT make_timestamptz(1973, 07, 15, 08, 15, 55.33, '+2');
+        make_timestamptz         
+---------------------------------
+ Sun Jul 15 02:15:55.33 1973 EDT
+(1 row)
+
+SELECT make_timestamptz(1973, 07, 15, 08, 15, 55.33, '-2');
+        make_timestamptz         
+---------------------------------
+ Sun Jul 15 06:15:55.33 1973 EDT
+(1 row)
+
+WITH tzs (tz) AS (VALUES
+    ('+1'), ('+1:'), ('+1:0'), ('+100'), ('+1:00'), ('+01:00'),
+    ('+10'), ('+1000'), ('+10:'), ('+10:0'), ('+10:00'), ('+10:00:'),
+    ('+10:00:1'), ('+10:00:01'),
+    ('+10:00:10'))
+     SELECT make_timestamptz(2010, 2, 27, 3, 45, 00, tz), tz FROM tzs;
+       make_timestamptz       |    tz     
+------------------------------+-----------
+ Fri Feb 26 21:45:00 2010 EST | +1
+ Fri Feb 26 21:45:00 2010 EST | +1:
+ Fri Feb 26 21:45:00 2010 EST | +1:0
+ Fri Feb 26 21:45:00 2010 EST | +100
+ Fri Feb 26 21:45:00 2010 EST | +1:00
+ Fri Feb 26 21:45:00 2010 EST | +01:00
+ Fri Feb 26 12:45:00 2010 EST | +10
+ Fri Feb 26 12:45:00 2010 EST | +1000
+ Fri Feb 26 12:45:00 2010 EST | +10:
+ Fri Feb 26 12:45:00 2010 EST | +10:0
+ Fri Feb 26 12:45:00 2010 EST | +10:00
+ Fri Feb 26 12:45:00 2010 EST | +10:00:
+ Fri Feb 26 12:44:59 2010 EST | +10:00:1
+ Fri Feb 26 12:44:59 2010 EST | +10:00:01
+ Fri Feb 26 12:44:50 2010 EST | +10:00:10
+(15 rows)
+
+-- these should fail
+SELECT make_timestamptz(1973, 07, 15, 08, 15, 55.33, '2');
+ERROR:  invalid input syntax for type numeric time zone: "2"
+HINT:  Numeric time zones must have "-" or "+" as first character.
+SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, '+16');
+ERROR:  numeric time zone "+16" out of range
+SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, '-16');
+ERROR:  numeric time zone "-16" out of range
+-- should be true
+SELECT make_timestamptz(1973, 07, 15, 08, 15, 55.33, '+2') = '1973-07-15 08:15:55.33+02'::timestamptz;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- full timezone names
+SELECT make_timestamptz(2014, 12, 10, 0, 0, 0, 'Europe/Prague') = timestamptz '2014-12-10 00:00:00 Europe/Prague';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT make_timestamptz(2014, 12, 10, 0, 0, 0, 'Europe/Prague') AT TIME ZONE 'UTC';
+          timezone          
+----------------------------
+ 2014-12-09 23:00:00.000000
+(1 row)
+
+SELECT make_timestamptz(1846, 12, 10, 0, 0, 0, 'Asia/Manila') AT TIME ZONE 'UTC';
+          timezone          
+----------------------------
+ 1846-12-09 15:56:00.000000
+(1 row)
+
+SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Europe/Paris') AT TIME ZONE 'UTC';
+          timezone          
+----------------------------
+ 1881-12-09 23:50:39.000000
+(1 row)
+
+SELECT make_timestamptz(1910, 12, 24, 0, 0, 0, 'Nehwon/Lankhmar');
+ERROR:  time zone "Nehwon/Lankhmar" not recognized
+-- abbreviations
+SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EST');
+       make_timestamptz       
+------------------------------
+ Wed Dec 10 10:10:10 2008 EST
+(1 row)
+
+SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EDT');
+       make_timestamptz       
+------------------------------
+ Wed Dec 10 09:10:10 2008 EST
+(1 row)
+
+SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'PST8PDT');
+       make_timestamptz       
+------------------------------
+ Wed Dec 10 13:10:10 2014 EST
+(1 row)
+
+RESET TimeZone;
+--
+-- Test behavior with a dynamic (time-varying) timezone abbreviation.
+-- These tests rely on the knowledge that MSK (Europe/Moscow standard time)
+-- moved forwards in Mar 2011 and backwards again in Oct 2014.
+--
+SET TimeZone to 'UTC';
+SELECT '2011-03-27 00:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 00:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 01:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 01:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 01:59:59 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 01:59:59 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 02:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 02:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 02:00:01 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 02:00:01 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 02:59:59 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 02:59:59 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 03:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 03:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 03:00:01 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 03:00:01 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 04:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2011-03-27 04:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 00:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 00:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 01:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 01:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 01:59:59 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 01:59:59 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 02:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 02:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 02:00:01 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 02:00:01 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 02:59:59 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 02:59:59 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 03:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 03:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 03:00:01 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 03:00:01 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 04:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2011-03-27 04:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 00:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2014-10-26 00:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 00:59:59 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2014-10-26 00:59:59 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 01:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2014-10-26 01:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 01:00:01 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2014-10-26 01:00:01 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 02:00:00 Europe/Moscow'::timestamptz;
+ERROR:  invalid value "Eu" for "TZH"
+LINE 1: SELECT '2014-10-26 02:00:00 Europe/Moscow'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 00:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2014-10-26 00:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 00:59:59 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2014-10-26 00:59:59 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 01:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2014-10-26 01:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 01:00:01 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2014-10-26 01:00:01 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-26 02:00:00 MSK'::timestamptz;
+ERROR:  invalid value "MS" for "TZH"
+LINE 1: SELECT '2014-10-26 02:00:00 MSK'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 00:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 21:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 01:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 22:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 01:59:59'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 22:59:59.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 02:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 23:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 02:00:01'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 23:00:01.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 02:59:59'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 23:59:59.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 03:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 23:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 03:00:01'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-26 23:00:01.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 04:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2011-03-27 00:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 00:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 21:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 01:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 22:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 01:59:59'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 22:59:59.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 02:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 22:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 02:00:01'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 22:00:01.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 02:59:59'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 22:59:59.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 03:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 23:00:00.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 03:00:01'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-26 23:00:01.000000 +00:00
+(1 row)
+
+SELECT '2011-03-27 04:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2011-03-27 00:00:00.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 00:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2014-10-25 20:00:00.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 00:59:59'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2014-10-25 20:59:59.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 01:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2014-10-25 22:00:00.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 01:00:01'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2014-10-25 22:00:01.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 02:00:00'::timestamp AT TIME ZONE 'Europe/Moscow';
+             timezone              
+-----------------------------------
+ 2014-10-25 23:00:00.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 00:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2014-10-25 20:00:00.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 00:59:59'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2014-10-25 20:59:59.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 01:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2014-10-25 22:00:00.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 01:00:01'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2014-10-25 22:00:01.000000 +00:00
+(1 row)
+
+SELECT '2014-10-26 02:00:00'::timestamp AT TIME ZONE 'MSK';
+             timezone              
+-----------------------------------
+ 2014-10-25 23:00:00.000000 +00:00
+(1 row)
+
+SELECT make_timestamptz(2014, 10, 26, 0, 0, 0, 'MSK');
+       make_timestamptz       
+------------------------------
+ Sat Oct 25 20:00:00 2014 UTC
+(1 row)
+
+SELECT make_timestamptz(2014, 10, 26, 1, 0, 0, 'MSK');
+       make_timestamptz       
+------------------------------
+ Sat Oct 25 22:00:00 2014 UTC
+(1 row)
+
+SELECT to_timestamp(         0);          -- 1970-01-01 00:00:00+00
+         to_timestamp         
+------------------------------
+ Thu Jan 01 00:00:00 1970 UTC
+(1 row)
+
+SELECT to_timestamp( 946684800);          -- 2000-01-01 00:00:00+00
+         to_timestamp         
+------------------------------
+ Sat Jan 01 00:00:00 2000 UTC
+(1 row)
+
+SELECT to_timestamp(1262349296.7890123);  -- 2010-01-01 12:34:56.789012+00
+            to_timestamp             
+-------------------------------------
+ Fri Jan 01 12:34:56.789012 2010 UTC
+(1 row)
+
+-- edge cases
+SELECT to_timestamp(-210866803200);       --   4714-11-24 00:00:00+00 BC
+          to_timestamp           
+---------------------------------
+ Mon Nov 24 00:00:00 4714 UTC BC
+(1 row)
+
+-- upper limit varies between integer and float timestamps, so hard to test
+-- nonfinite values
+SELECT to_timestamp(' Infinity'::float);
+ to_timestamp 
+--------------
+ infinity
+(1 row)
+
+SELECT to_timestamp('-Infinity'::float);
+ to_timestamp 
+--------------
+ -infinity
+(1 row)
+
+SELECT to_timestamp('NaN'::float);
+ERROR:  timestamp cannot be NaN
+SET TimeZone to 'Europe/Moscow';
+SELECT '2011-03-26 21:00:00 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 21:00:00 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 22:00:00 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 22:00:00 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 22:59:59 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 22:59:59 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:00:00 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:00:00 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:00:01 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:00:01 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:59:59 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:59:59 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 00:00:00 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-27 00:00:00 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 21:00:00 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 21:00:00 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 21:59:59 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 21:59:59 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 22:00:00 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 22:00:00 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 22:00:01 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 22:00:01 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 23:00:00 UTC'::timestamptz;
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 23:00:00 UTC'::timestamptz;
+               ^
+DETAIL:  Value must be an integer.
+RESET TimeZone;
+SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE 'Europe/Moscow';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 21:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 22:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 22:59:59 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:00:01 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-26 23:59:59 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2011-03-27 00:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 21:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 21:59:59 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 22:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 22:00:01 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE 'MSK';
+ERROR:  invalid value "UT" for "TZH"
+LINE 1: SELECT '2014-10-25 23:00:00 UTC'::timestamptz AT TIME ZONE '...
+               ^
+DETAIL:  Value must be an integer.
+--
+-- Test that AT TIME ZONE isn't misoptimized when using an index (bug #14504)
+--
+create temp table tmptz (f1 timestamptz primary key);
+insert into tmptz values ('2017-01-18 00:00+00');
+explain (costs off)
+select * from tmptz where f1 at time zone 'utc' = '2017-01-18 00:00';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Seq Scan on tmptz
+   Filter: (timezone('utc'::text, f1) = '2017-01-18 00:00:00.000000'::timestamp)
+(2 rows)
+
+select * from tmptz where f1 at time zone 'utc' = '2017-01-18 00:00';
+ f1 
+----
+(0 rows)
+

@@ -152,6 +152,31 @@ typedef enum TypeFuncClass
 	TYPEFUNC_OTHER				/* bogus type, eg pseudotype */
 } TypeFuncClass;
 
+
+/*
+ * function come from subproc
+ * we should use function pointer to
+ * get its informations, because its struct
+ * is PLiSQL_xxx
+ */
+typedef struct
+{
+	TupleDesc (*get_internal_func_result_tupdesc) (FuncExpr *fexpr);
+	char* (*get_internal_func_name) (FuncExpr *fexpr);
+	TypeFuncClass (*get_internal_func_result_type) (FuncExpr *fexpr,
+						 ReturnSetInfo *rsinfo,
+						 Oid *resultTypeId,
+						 TupleDesc *resultTupleDesc);
+	List* (*get_internal_func_outargs) (FuncExpr *fexpr);
+	char *(*get_inernal_func_result_name) (FuncExpr *fexpr);
+	bool isload;
+} PLiSQL_funcs_call;
+
+extern PGDLLIMPORT PLiSQL_funcs_call plisql_internal_funcs;
+
+
+
+
 extern TypeFuncClass get_call_result_type(FunctionCallInfo fcinfo,
 										  Oid *resultTypeId,
 										  TupleDesc *resultTupleDesc);
@@ -183,6 +208,24 @@ extern TupleDesc build_function_result_tupdesc_d(char prokind,
 												 Datum proargmodes,
 												 Datum proargnames);
 extern TupleDesc build_function_result_tupdesc_t(HeapTuple procTuple);
+
+
+extern bool resolve_polymorphic_tupdesc(TupleDesc tupdesc,
+										oidvector *declared_args,
+										Node *call_expr);
+extern TypeFuncClass get_type_func_class(Oid typid, Oid *base_typeid);
+extern TupleDesc build_internal_function_result_tupdesc_t(FuncExpr *fexpr);
+extern char	*get_internal_function_name(FuncExpr *fexpr);
+extern TypeFuncClass get_internal_function_result_type(FuncExpr *fexpr,
+						 ReturnSetInfo *rsinfo,
+						 Oid *resultTypeId,
+						 TupleDesc *resultTupleDesc);
+extern TypeFuncClass external_get_type_func_class(Oid typid, Oid *base_typeid);
+extern List *get_internal_function_outargs(FuncExpr *fexpr);
+extern char *get_internal_function_result_name(FuncExpr *fexpr);
+
+
+
 
 
 /*----------

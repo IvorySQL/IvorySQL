@@ -105,7 +105,7 @@ struct GenerationChunk
 	/* size is always the size of the usable space in the chunk */
 	Size		size;
 #ifdef MEMORY_CONTEXT_CHECKING
-	/* when debugging memory usage, also store actual requested size */
+	
 	/* this is zero in a free chunk */
 	Size		requested_size;
 

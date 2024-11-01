@@ -2588,6 +2588,11 @@ match_funcclause_to_indexcol(PlannerInfo *root,
 	int			indexarg;
 	ListCell   *lc;
 
+	
+	if (!FUNC_EXPR_FROM_PG_PROC(clause->function_from))
+		elog(ERROR, "invalid funcexpr, because it is a subproc");
+	
+
 	/*
 	 * We have no built-in intelligence about function clauses, but if there's
 	 * a planner support function, it might be able to do something.  But, to

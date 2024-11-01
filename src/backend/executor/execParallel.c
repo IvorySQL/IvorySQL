@@ -1417,7 +1417,7 @@ ParallelQueryMain(dsm_segment *seg, shm_toc *toc)
 										 true);
 	queryDesc = ExecParallelGetQueryDesc(toc, receiver, instrument_options);
 
-	/* Setting debug_query_string for individual workers */
+	
 	debug_query_string = queryDesc->sourceText;
 
 	/* Report workers' query and queryId for monitoring purposes */

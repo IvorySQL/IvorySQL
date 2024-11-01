@@ -37,8 +37,9 @@ elsif (!-e $input)
 
 (my $output = $input) =~ s/\.y$/.c/;
 
-# plpgsql just has to be different
+# plpgsql and plisql just has to be different
 $output =~ s/gram\.c$/pl_gram.c/ if $input =~ /src.pl.plpgsql.src.gram\.y$/;
+$output =~ s/gram\.c$/pl_gram.c/ if $input =~ /src.pl.plisql.src.gram\.y$/;
 
 my $makefile = dirname($input) . "/Makefile";
 my ($mf, $make);

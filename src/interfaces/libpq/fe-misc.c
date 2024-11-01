@@ -502,7 +502,7 @@ pqPutMsgBytes(const void *buf, size_t len, PGconn *conn)
 	/* okay, save the data */
 	memcpy(conn->outBuffer + conn->outMsgEnd, buf, len);
 	conn->outMsgEnd += len;
-	/* no Pfdebug call here, caller should do it */
+	
 	return 0;
 }
 

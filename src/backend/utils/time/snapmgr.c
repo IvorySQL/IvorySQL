@@ -1947,7 +1947,7 @@ MaintainOldSnapshotTimeMapping(TimestampTz whenTaken, TransactionId xmin)
 	}
 	else if (ts < oldSnapshotControl->head_timestamp)
 	{
-		/* old ts; log it at DEBUG */
+		
 		LWLockRelease(OldSnapshotTimeMapLock);
 		elog(DEBUG1,
 			 "MaintainOldSnapshotTimeMapping called with old whenTaken = %ld",

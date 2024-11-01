@@ -44,6 +44,7 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
+#include "catalog/partition.h"
 #include "catalog/pg_publication.h"
 #include "commands/matview.h"
 #include "commands/trigger.h"
@@ -59,8 +60,10 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/backend_status.h"
+#include "utils/guc.h"	
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	
 #include "utils/partcache.h"
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
@@ -232,6 +235,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		case CMD_INSERT:
 		case CMD_DELETE:
 		case CMD_UPDATE:
+		case CMD_MERGE:
 			estate->es_output_cid = GetCurrentCommandId(true);
 			break;
 
@@ -1243,6 +1247,8 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_ReturningSlot = NULL;
 	resultRelInfo->ri_TrigOldSlot = NULL;
 	resultRelInfo->ri_TrigNewSlot = NULL;
+	resultRelInfo->ri_matchedMergeAction = NIL;
+	resultRelInfo->ri_notMatchedMergeAction = NIL;
 
 	/*
 	 * Only ExecInitPartitionInfo() and ExecInitPartitionDispatchInfo() pass
@@ -1279,7 +1285,8 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
  * in es_trig_target_relations.
  */
 ResultRelInfo *
-ExecGetTriggerResultRel(EState *estate, Oid relid)
+ExecGetTriggerResultRel(EState *estate, Oid relid,
+						ResultRelInfo *rootRelInfo)
 {
 	ResultRelInfo *rInfo;
 	ListCell   *l;
@@ -1330,7 +1337,7 @@ ExecGetTriggerResultRel(EState *estate, Oid relid)
 	InitResultRelInfo(rInfo,
 					  rel,
 					  0,		/* dummy rangetable index */
-					  NULL,
+					  rootRelInfo,
 					  estate->es_instrument);
 	estate->es_trig_target_relations =
 		lappend(estate->es_trig_target_relations, rInfo);
@@ -1342,6 +1349,69 @@ ExecGetTriggerResultRel(EState *estate, Oid relid)
 	 */
 
 	return rInfo;
+}
+
+/*
+ * Return the ancestor relations of a given leaf partition result relation
+ * up to and including the query's root target relation.
+ *
+ * These work much like the ones opened by ExecGetTriggerResultRel, except
+ * that we need to keep them in a separate list.
+ *
+ * These are closed by ExecCloseResultRelations.
+ */
+List *
+ExecGetAncestorResultRels(EState *estate, ResultRelInfo *resultRelInfo)
+{
+	ResultRelInfo *rootRelInfo = resultRelInfo->ri_RootResultRelInfo;
+	Relation	partRel = resultRelInfo->ri_RelationDesc;
+	Oid			rootRelOid;
+
+	if (!partRel->rd_rel->relispartition)
+		elog(ERROR, "cannot find ancestors of a non-partition result relation");
+	Assert(rootRelInfo != NULL);
+	rootRelOid = RelationGetRelid(rootRelInfo->ri_RelationDesc);
+	if (resultRelInfo->ri_ancestorResultRels == NIL)
+	{
+		ListCell   *lc;
+		List	   *oids = get_partition_ancestors(RelationGetRelid(partRel));
+		List	   *ancResultRels = NIL;
+
+		foreach(lc, oids)
+		{
+			Oid			ancOid = lfirst_oid(lc);
+			Relation	ancRel;
+			ResultRelInfo *rInfo;
+
+			/*
+			 * Ignore the root ancestor here, and use ri_RootResultRelInfo
+			 * (below) for it instead.  Also, we stop climbing up the
+			 * hierarchy when we find the table that was mentioned in the
+			 * query.
+			 */
+			if (ancOid == rootRelOid)
+				break;
+
+			/*
+			 * All ancestors up to the root target relation must have been
+			 * locked by the planner or AcquireExecutorLocks().
+			 */
+			ancRel = table_open(ancOid, NoLock);
+			rInfo = makeNode(ResultRelInfo);
+
+			/* dummy rangetable index */
+			InitResultRelInfo(rInfo, ancRel, 0, NULL,
+							  estate->es_instrument);
+			ancResultRels = lappend(ancResultRels, rInfo);
+		}
+		ancResultRels = lappend(ancResultRels, rootRelInfo);
+		resultRelInfo->ri_ancestorResultRels = ancResultRels;
+	}
+
+	/* We must have found some ancestor */
+	Assert(resultRelInfo->ri_ancestorResultRels != NIL);
+
+	return resultRelInfo->ri_ancestorResultRels;
 }
 
 /* ----------------------------------------------------------------
@@ -1443,12 +1513,30 @@ ExecCloseResultRelations(EState *estate)
 	/*
 	 * close indexes of result relation(s) if any.  (Rels themselves are
 	 * closed in ExecCloseRangeTableRelations())
+	 *
+	 * In addition, close the stub RTs that may be in each resultrel's
+	 * ri_ancestorResultRels.
 	 */
 	foreach(l, estate->es_opened_result_relations)
 	{
 		ResultRelInfo *resultRelInfo = lfirst(l);
+		ListCell   *lc;
 
 		ExecCloseIndices(resultRelInfo);
+		foreach(lc, resultRelInfo->ri_ancestorResultRels)
+		{
+			ResultRelInfo *rInfo = lfirst(lc);
+
+			/*
+			 * Ancestors with RTI > 0 (should only be the root ancestor) are
+			 * closed by ExecCloseRangeTableRelations.
+			 */
+			if (rInfo->ri_RangeTableIndex > 0)
+				continue;
+
+			table_close(rInfo->ri_RelationDesc, NoLock);
+		}
+
 	}
 
 	/* Close any relations that have been opened by ExecGetTriggerResultRel(). */
@@ -2060,6 +2148,19 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 								 errmsg("new row violates row-level security policy for table \"%s\"",
 										wco->relname)));
 					break;
+				case WCO_RLS_MERGE_UPDATE_CHECK:
+				case WCO_RLS_MERGE_DELETE_CHECK:
+					if (wco->polname != NULL)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								 errmsg("target row violates row-level security policy \"%s\" (USING expression) for table \"%s\"",
+										wco->polname, wco->relname)));
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								 errmsg("target row violates row-level security policy (USING expression) for table \"%s\"",
+										wco->relname)));
+					break;
 				case WCO_RLS_CONFLICT_CHECK:
 					if (wco->polname != NULL)
 						ereport(ERROR,
@@ -2193,7 +2294,21 @@ ExecBuildSlotValueDescription(Oid reloid,
 
 				getTypeOutputInfo(att->atttypid,
 								  &foutoid, &typisvarlena);
-				val = OidOutputFunctionCall(foutoid, slot->tts_values[i]);
+
+				/*
+				 * Compatible oracle , pass typmod to output function
+				 */
+				if (ORA_PARSER == compatible_db &&
+					(att->atttypid == YMINTERVALOID ||
+					 att->atttypid == DSINTERVALOID))
+				{
+					val = OidOutputFunctionCallWithTypmod(foutoid, slot->tts_values[i], att->atttypmod);
+				}
+				else
+				{
+					val = OidOutputFunctionCall(foutoid, slot->tts_values[i]);
+				}
+				
 			}
 
 			if (write_comma)

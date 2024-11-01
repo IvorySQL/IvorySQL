@@ -486,7 +486,7 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 		resultRelInfo->ri_TrigDesc->trig_update_before_row)
 	{
 		if (!ExecBRUpdateTriggers(estate, epqstate, resultRelInfo,
-								  tid, NULL, slot))
+								  tid, NULL, slot, NULL))
 			skip_tuple = true;	/* "do nothing" */
 	}
 
@@ -517,8 +517,9 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 
 		/* AFTER ROW UPDATE Triggers */
 		ExecARUpdateTriggers(estate, resultRelInfo,
+							 NULL, NULL,
 							 tid, NULL, slot,
-							 recheckIndexes, NULL);
+							 recheckIndexes, NULL, false);
 
 		list_free(recheckIndexes);
 	}
@@ -557,7 +558,7 @@ ExecSimpleRelationDelete(ResultRelInfo *resultRelInfo,
 
 		/* AFTER ROW DELETE Triggers */
 		ExecARDeleteTriggers(estate, resultRelInfo,
-							 tid, NULL, NULL);
+							 tid, NULL, NULL, false);
 	}
 }
 

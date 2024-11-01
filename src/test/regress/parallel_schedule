@@ -31,7 +31,8 @@ test: strings numerology point lseg line box path polygon circle date time timet
 # opr_sanity depends on create_function_0
 # ----------
 test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc
-
+##merge maybe result type_sanity failed
+test: merge
 # ----------
 # These four each depend on the previous one
 # ----------

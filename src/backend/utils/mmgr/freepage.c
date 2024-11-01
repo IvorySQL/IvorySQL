@@ -549,7 +549,7 @@ FreePageBtreeAdjustAncestorKeys(FreePageManager *fpm, FreePageBtree *btp)
 		}
 
 #ifdef USE_ASSERT_CHECKING
-		/* Debugging double-check. */
+		
 		{
 			FreePageBtree *check;
 

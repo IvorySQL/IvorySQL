@@ -213,6 +213,95 @@ psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 }
 
 
+char *
+ora_psql_get_variable(const char *varname, Ora_psqlScanQuoteType quote,
+				void *passthrough)
+{
+	char		 *result = NULL;
+	const char *value;
+
+	/* In an inactive \if branch, suppress all variable substitutions */
+	if (passthrough && !conditional_active((ConditionalStack) passthrough))
+		return NULL;
+
+	value = GetVariable(pset.vars, varname);
+	if (!value)
+		return NULL;
+
+	switch (quote)
+	{
+		case ORAPQUOTE_PLAIN:
+			result = pg_strdup(value);
+			break;
+		case ORAPQUOTE_SQL_LITERAL:
+		case ORAPQUOTE_SQL_IDENT:
+		  {
+			   /*
+				* For these cases, we use libpq's quoting functions, which
+				* assume the string is in the connection's client encoding.
+				*/
+				char		 *escaped_value;
+
+				if (!pset.db)
+				{
+					pg_log_error("cannot escape without active connection");
+					return NULL;
+				}
+
+				if (quote == ORAPQUOTE_SQL_LITERAL)
+					escaped_value =
+					  PQescapeLiteral(pset.db, value, strlen(value));
+				else
+					escaped_value =
+					  PQescapeIdentifier(pset.db, value, strlen(value));
+
+				if (escaped_value == NULL)
+				{
+					const char *error = PQerrorMessage(pset.db);
+
+					pg_log_info("%s", error);
+					return NULL;
+				}
+
+				/*
+				* Rather than complicate the lexer's API with a notion of
+				* which free() routine to use, just pay the price of an extra
+				* strdup().
+				*/
+				result = pg_strdup(escaped_value);
+				PQfreemem(escaped_value);
+				break;
+			}
+		case ORAPQUOTE_SHELL_ARG:
+		  {
+				/*
+				* For this we use appendShellStringNoError, which is
+				* encoding-agnostic, which is fine since the shell probably
+				* is too.  In any case, the only special character is "'",
+				* which is not known to appear in valid multibyte characters.
+				*/
+				PQExpBufferData buf;
+
+				initPQExpBuffer(&buf);
+				if (!appendShellStringNoError(&buf, value))
+				{
+					pg_log_error("shell command argument contains a newline or carriage return: \"%s\"",
+							   value);
+					free(buf.data);
+					return NULL;
+				}
+				result = buf.data;
+				break;
+			}
+
+		  /* No default: we want a compiler warning for missing cases */
+	}
+
+  return result;
+}
+
+
+
 /*
  * for backend Notice messages (INFO, WARNING, etc)
  */

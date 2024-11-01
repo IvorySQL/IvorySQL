@@ -1,0 +1,6 @@
+test_regex is a module for testing the regular expression package.
+It is mostly meant to allow us to absorb Tcl's regex test suite.
+Therefore, there are provisions to exercise regex features that
+aren't currently exposed at the SQL level by PostgreSQL.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_regex" directory.

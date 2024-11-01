@@ -1821,7 +1821,7 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 	Assert((MyProc->statusFlags == 0) ||
 		   (MyProc->statusFlags == PROC_IN_SAFE_IC));
 
-	/* Set debug_query_string for individual workers first */
+	
 	sharedquery = shm_toc_lookup(toc, PARALLEL_KEY_QUERY_TEXT, true);
 	debug_query_string = sharedquery;
 

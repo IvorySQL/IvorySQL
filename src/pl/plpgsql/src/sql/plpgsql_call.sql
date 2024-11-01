@@ -251,7 +251,16 @@ BEGIN
   CALL test_proc8c(_a, _b);  -- fail, no output argument for c
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
-$$;
+$$ language plpgsql;
+
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 50;
+  CALL test_proc8c(_a, _b);  -- fail, no output argument for c
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$ language plisql;
 
 DO $$
 DECLARE _a int; _b int; _c int;
@@ -260,7 +269,16 @@ BEGIN
   CALL test_proc8c(_a, b => _b);  -- fail, no output argument for c
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
-$$;
+$$ language plpgsql;
+
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 50;
+  CALL test_proc8c(_a, b => _b);  -- fail, no output argument for c
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$ language plisql;
 
 
 -- OUT parameters
@@ -394,7 +412,17 @@ BEGIN
   CALL p1(v_cnt := v_cnt);  -- error, must supply something for v_Text
   RAISE NOTICE '%', v_Text;
 END;
-$$;
+$$ language plpgsql;
+
+DO $$
+DECLARE
+  v_Text text;
+  v_cnt  integer := 42;
+BEGIN
+  CALL p1(v_cnt := v_cnt);  -- error, must supply something for v_Text
+  RAISE NOTICE '%', v_Text;
+END;
+$$ language plisql;
 
 DO $$
 DECLARE

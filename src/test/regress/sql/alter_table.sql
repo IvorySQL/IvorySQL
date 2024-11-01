@@ -2929,7 +2929,7 @@ drop operator class at_test_sql_partop using btree;
 drop function at_test_sql_partop;
 
 
-/* Test case for bug #16242 */
+
 
 -- We create a parent and child where the child has missing
 -- non-null attribute values, and arrange to pass them through
@@ -2965,9 +2965,9 @@ create trigger xtrig
 
 update bar1 set a = a + 1;
 
-/* End test case for bug #16242 */
 
-/* Test case for bug #17409 */
+
+
 
 create table attbl (p1 int constraint pk_attbl primary key);
 create table atref (c1 int references attbl(p1));
@@ -2983,7 +2983,7 @@ alter table attbl alter column p1 set data type bigint;
 alter table atref alter column c1 set data type bigint;
 drop table attbl, atref;
 
-/* End test case for bug #17409 */
+
 
 -- Test that ALTER TABLE rewrite preserves a clustered index
 -- for normal indexes and indexes on constraints.

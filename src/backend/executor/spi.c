@@ -30,6 +30,7 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -167,6 +168,10 @@ SPI_connect_ext(int options)
 												  ALLOCSET_DEFAULT_SIZES);
 	/* ... and switch to procedure's context */
 	_SPI_current->savedcxt = MemoryContextSwitchTo(_SPI_current->procCxt);
+
+	
+	_SPI_current->current_func = NULL;
+	
 
 	/*
 	 * Reset API global variables so that current caller cannot accidentally
@@ -1232,6 +1237,7 @@ SPI_getvalue(HeapTuple tuple, TupleDesc tupdesc, int fnumber)
 	Oid			typoid,
 				foutoid;
 	bool		typisvarlena;
+	char		*value;		
 
 	SPI_result = 0;
 
@@ -1253,7 +1259,23 @@ SPI_getvalue(HeapTuple tuple, TupleDesc tupdesc, int fnumber)
 
 	getTypeOutputInfo(typoid, &foutoid, &typisvarlena);
 
-	return OidOutputFunctionCall(foutoid, val);
+	/*
+	 * Compatible oracle , pass typmod to output function
+	 */
+	if (fnumber > 0 &&
+		ORA_PARSER == compatible_db &&
+		(typoid == YMINTERVALOID ||
+		 typoid == DSINTERVALOID))
+	{
+		value = OidOutputFunctionCallWithTypmod(foutoid, val, TupleDescAttr(tupdesc, fnumber - 1)->atttypmod);
+	}
+	else
+	{
+		value = OidOutputFunctionCall(foutoid, val);
+	}
+
+	return value;
+	
 }
 
 Datum
@@ -2891,6 +2913,9 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 			else
 				res = SPI_OK_UPDATE;
 			break;
+		case CMD_MERGE:
+			res = SPI_OK_MERGE;
+			break;
 		default:
 			return SPI_ERROR_OPUNKNOWN;
 	}
@@ -3258,7 +3283,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 static EphemeralNamedRelation
 _SPI_find_ENR_by_name(const char *name)
 {
-	/* internal static function; any error is bug in SPI itself */
+	
 	Assert(name != NULL);
 
 	/* fast exit if no tuplestores have been added */
@@ -3381,3 +3406,50 @@ SPI_register_trigger_data(TriggerData *tdata)
 
 	return SPI_OK_TD_REGISTER;
 }
+
+
+/*
+ * get _SPI_connected
+ */
+int
+SPI_get_connected(void)
+{
+	return _SPI_connected;
+}
+
+/*
+ * record this level SPI execute func
+ */
+void
+SPI_remember_func(void *func)
+{
+	Assert(_SPI_current != NULL);
+	_SPI_current->current_func = func;
+}
+
+/*
+ * get current_func according to level
+ */
+void*
+SPI_get_func(int level)
+{
+	if (level > _SPI_connected ||
+		level < 0)
+		elog(ERROR, "invalid SPI level");
+
+	return _SPI_stack[level].current_func;
+}
+
+/*
+ * get procCxt according to level
+ */
+MemoryContext
+SPI_get_proccxt(int level)
+{
+	if (level > _SPI_connected ||
+		level < 0)
+		elog(ERROR, "invalid SPI level");
+
+	return _SPI_stack[level].procCxt;
+}
+

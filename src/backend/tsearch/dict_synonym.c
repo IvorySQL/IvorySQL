@@ -216,7 +216,7 @@ dsynonym_lexize(PG_FUNCTION_ARGS)
 			   *found;
 	TSLexeme   *res;
 
-	/* note: d->len test protects against Solaris bsearch-of-no-items bug */
+	
 	if (len <= 0 || d->len <= 0)
 		PG_RETURN_POINTER(NULL);
 

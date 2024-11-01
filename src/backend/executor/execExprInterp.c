@@ -76,6 +76,7 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
+#include "utils/numeric.h"	
 
 /*
  * Use computed-goto-based opcode dispatch when computed gotos are available.
@@ -2560,6 +2561,17 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 		case INT8OID:
 			*op->resvalue = Int64GetDatum((int64) newval);
 			break;
+		
+		case FLOAT4OID:
+			*op->resvalue = Float4GetDatum((float4) newval);
+			break;
+		case FLOAT8OID:
+			*op->resvalue = Float8GetDatum((float8) newval);
+			break;
+		case NUMBEROID:
+			*op->resvalue = NumericGetDatum(int64_to_numeric(newval));
+			break;
+		
 		default:
 			elog(ERROR, "unsupported sequence type %u",
 				 op->d.nextvalueexpr.seqtypid);

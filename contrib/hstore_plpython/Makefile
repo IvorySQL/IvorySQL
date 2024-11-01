@@ -37,8 +37,14 @@ SHLIB_LINK += $(python_libspec) $(python_additional_libs)
 endif
 
 REGRESS_OPTS += --load-extension=hstore
+# BEGIN - SQL PARSER
+ORACLE_REGRESS_OPTS += --load-extension=hstore
+# END - SQL PARSER
 ifeq ($(python_majorversion),2)
 REGRESS_OPTS += --load-extension=plpythonu --load-extension=hstore_plpythonu
+# BEGIN - SQL PARSER
+ORACLE_REGRESS_OPTS += --load-extension=plpythonu --load-extension=hstore_plpythonu
+# END - SQL PARSER
 endif
 EXTRA_INSTALL += contrib/hstore
 

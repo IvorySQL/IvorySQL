@@ -3024,7 +3024,7 @@ is_valid_dblink_option(const PQconninfoOption *options, const char *option,
 	if (opt->keyword == NULL)
 		return false;
 
-	/* Disallow debug options (particularly "replication") */
+	
 	if (strchr(opt->dispchar, 'D'))
 		return false;
 

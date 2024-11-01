@@ -45,6 +45,7 @@
 #define PSQLSCAN_INT_H
 
 #include "fe_utils/psqlscan.h"
+#include "oracle_fe_utils/ora_psqlscan.h"	
 
 /*
  * These are just to allow this file to be compilable standalone for header
@@ -109,6 +110,7 @@ typedef struct PsqlScanStateData
 	 * reset by psql_scan_reset.  start_state is adopted by yylex() on entry,
 	 * and updated with its finishing state on exit.
 	 */
+	int			postion_len;	/* record the postion of the first symmetric char */	
 	int			start_state;	/* yylex's starting/finishing state */
 	int			state_before_str_stop;	/* start cond. before end quote */
 	int			paren_depth;	/* depth of nesting in parentheses */
@@ -123,11 +125,38 @@ typedef struct PsqlScanStateData
 	char		identifiers[4]; /* records the first few identifiers */
 	int			begin_depth;	/* depth of begin/end pairs */
 
+	
+	bool		cancel_semicolon_terminator; /* not send command when semicolon found */
+
+	/*
+	 * State to track boundaries of Oracle ANONYMOUS BLOCK.
+	 * Case 1: Statements starting with << ident >> is Oracle anonymous block.
+	 */
+	int			token_count;			/* # of tokens, not blank or newline since start of statement */
+	bool		anonymous_label_start;	/* T if the first token is "<<" */
+	bool		anonymous_label_ident;	/* T if the second token is an identifier */
+	bool		anonymous_label_end;	/* T if the third token is ">>" */
+
+	/*
+	 * Case 2: DECLARE BEGIN ... END is Oracle anonymous block sytax.
+	 * DECLARE can also be a PostgreSQL cursor declaration statement, we need to distinguish it.
+	 */
+	bool		maybe_anonymous_declare_start;	/* T if the first token is DECLARE */
+	int			token_cursor_idx;				/* the position of keyword CURSOR in SQL statement */
+
+	/*
+	 * Case 3: DECLARE BEGIN ... END is Oracle anonymous block sytax.
+	 * BEGIN can also be a PostgreSQL transaction statement.
+	 */
+	bool		maybe_anonymous_begin_start;	/* T if the first token is BEGIN */
+	
+
 	/*
 	 * Callback functions provided by the program making use of the lexer,
 	 * plus a void* callback passthrough argument.
 	 */
 	const PsqlScanCallbacks *callbacks;
+	const Ora_psqlScanCallbacks *oracallbacks;	
 	void	   *cb_passthrough;
 } PsqlScanStateData;
 
@@ -153,5 +182,24 @@ extern void psqlscan_escape_variable(PsqlScanState state,
 									 PsqlScanQuoteType quote);
 extern void psqlscan_test_variable(PsqlScanState state,
 								   const char *txt, int len);
+
+
+/*
+ * for oracle parser
+ */
+extern void ora_psqlscan_push_new_buffer(PsqlScanState state, const char *newstr,
+									const char *varname);
+extern void ora_psqlscan_pop_buffer_stack(PsqlScanState state);
+extern void ora_psqlscan_select_top_buffer(PsqlScanState state);
+extern bool ora_psqlscan_var_is_current_source(PsqlScanState state, const char *varname);
+extern YY_BUFFER_STATE ora_psqlscan_prepare_buffer(PsqlScanState state, const char *txt, int len,
+									char **txtcopy);
+extern void ora_psqlscan_emit(PsqlScanState state, const char *txt, int len);
+extern char * ora_psqlscan_extract_substring(PsqlScanState state, const char *txt, int len);
+extern void ora_psqlscan_escape_variable(PsqlScanState state, const char *txt, int len,
+									PsqlScanQuoteType quote);
+extern void ora_psqlscan_test_variable(PsqlScanState state, const char *txt, int len);
+
+
 
 #endif							/* PSQLSCAN_INT_H */

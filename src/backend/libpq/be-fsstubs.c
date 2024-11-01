@@ -53,7 +53,7 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
-/* define this to enable debug logging */
+
 /* #define FSDB 1 */
 /* chunk size for lo_import/lo_export transfers */
 #define BUFSIZE			8192

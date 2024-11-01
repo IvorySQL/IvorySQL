@@ -17,6 +17,9 @@
 #include "fe_utils/query_utils.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
+/* Begin - SQL PARSER */
+#include "oracle_fe_utils/ora_string_utils.h"
+/* END - SQL PARSER */
 
 
 static void cluster_one_database(const ConnParams *cparams, const char *table,
@@ -201,6 +204,9 @@ cluster_one_database(const ConnParams *cparams, const char *table,
 	PGconn	   *conn;
 
 	conn = connectDatabase(cparams, progname, echo, false, false);
+	/* BEGIN - SQL PARSER */
+	getDbCompatibleMode(conn);
+	/* END - SQL PARSER */
 
 	initPQExpBuffer(&sql);
 

@@ -21,6 +21,11 @@
 
 typedef HeapTuple Operator;
 
+
+typedef bool (*oracle_datatype_precedence_hook_type) (Oid arg1, Oid arg2, char *opname_p, Oid *result_arg1, Oid *result_arg2);
+extern PGDLLIMPORT oracle_datatype_precedence_hook_type oracle_datatype_precedence_hook;
+
+
 /* Routines to look up an operator given name and exact input type(s) */
 extern Oid	LookupOperName(ParseState *pstate, List *opername,
 						   Oid oprleft, Oid oprright,

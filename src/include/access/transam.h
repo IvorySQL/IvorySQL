@@ -190,6 +190,15 @@ FullTransactionIdAdvance(FullTransactionId *dest)
 #define FirstGenbkiObjectId		10000
 #define FirstBootstrapObjectId	12000
 #define FirstNormalObjectId		16384
+/* BEGIN - SQL PARSER */
+/* 1."MinTypeObjectId" specifies the minimum value
+ *  to assign an OID to a new data type In IvorySQL-2.0.
+ * 2."MaxTypeObjectId" specifies the maximum value
+ *  to assign an OID to a new data type In IvorySQL-2.0.
+ */
+#define MinTypeObjectId			9000
+#define MaxTypeObjectId			9100
+/* END - SQL PARSER */
 
 /*
  * VariableCache is a data structure in shared memory that is used to track

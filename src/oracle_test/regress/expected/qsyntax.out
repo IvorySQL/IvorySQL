@@ -1,0 +1,575 @@
+select q'''s is good'';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'['s is good]';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'{'s is good}';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'\'s is good\';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'<'s is good>';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'a's is gooda';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'2's is good2';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'='s is good=';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'-'s is good-';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'*'s is good*';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'&'s is good&';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'%'s is good%';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'#'s is good#';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'^'s is good^';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'|'s is good|';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q','s is good,';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q';'s is good;';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select q'!'s is good!';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'''s is good'';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'['s is good]';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'\'s is good\';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'<'s is good>';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'a's is gooda';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'2's is good2';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'='s is good=';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'-'s is good-';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'*'s is good*';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'&'s is good&';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'%'s is good%';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'#'s is good#';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select Q'!'s is good!';
+  ?column?  
+------------
+ 's is good
+(1 row)
+
+select 'bequq' || chr(10) || 'baz';
+ ?column? 
+----------
+ bequq   +
+ baz
+(1 row)
+
+select 'bequq' || 'baz';
+ ?column? 
+----------
+ bequqbaz
+(1 row)
+
+select 'ddq'||'dc'||q'fdgdgf'||'qddq'||q'qsfsq';
+     ?column?     
+------------------
+ ddqdcdgdgqddqsfs
+(1 row)
+
+select 'ddq'||'dc'||'qddq'||q'dsfsd';
+   ?column?   
+--------------
+ ddqdcqddqsfs
+(1 row)
+
+select  q'qsfsq'||'ddq'||'dc'||'qddq'||'fhsq';
+     ?column?     
+------------------
+ sfsddqdcqddqfhsq
+(1 row)
+
+select 'baq'||'adq';
+ ?column? 
+----------
+ baqadq
+(1 row)
+
+select 'abq'||q'|'|adc|';
+ ?column? 
+----------
+ abq'|adc
+(1 row)
+
+select q'aa';
+ ?column? 
+----------
+ 
+(1 row)
+
+select q'a'a'a;
+ a 
+---
+ '
+(1 row)
+
+select q'a'sfsdf a'a;
+    a    
+---------
+ 'sfsdf 
+(1 row)
+
+select q'a'b'a'dda;
+ dda 
+-----
+ 'b'
+(1 row)
+
+select q'>ada>';
+ ?column? 
+----------
+ ada
+(1 row)
+
+select q')ada)';
+ ?column? 
+----------
+ ada
+(1 row)
+
+select q'}ada}';
+ ?column? 
+----------
+ ada
+(1 row)
+
+select q']ada]';
+ ?column? 
+----------
+ ada
+(1 row)
+
+select q'Ab'cA';
+ ?column? 
+----------
+ b'c
+(1 row)
+
+select q'……a……d…………';
+ ?column? 
+----------
+ …a……d………
+(1 row)
+
+select q'【abc【';
+ ?column? 
+----------
+ abc
+(1 row)
+
+select q'，ddd ，' ;
+ ?column? 
+----------
+ ddd 
+(1 row)
+
+select q'。abc。';
+ ?column? 
+----------
+ abc
+(1 row)
+
+select q'；abc；';
+ ?column? 
+----------
+ abc
+(1 row)
+
+select q'(a(q'adda') a)' || q'改改 as 改';
+      ?column?      
+--------------------
+ a(q'adda') a改 as 
+(1 row)
+
+select q'abbc is a' || q'啊 奥利给 啊';
+    ?column?     
+-----------------
+ bbc is  奥利给 
+(1 row)
+
+select q'改add改';
+ ?column? 
+----------
+ add
+(1 row)
+
+select q'('改'改'变'自'己'改')';
+      ?column?       
+---------------------
+ '改'改'变'自'己'改'
+(1 row)
+
+select q'ａ a ａ';
+ ?column? 
+----------
+  a 
+(1 row)
+
+select q'ａａaａ ａ';
+ ?column? 
+----------
+ ａaａ 
+(1 row)
+
+select q'ａq'aabca'ａ';
+ ?column? 
+----------
+ q'aabca'
+(1 row)
+
+select q'改改变自己改';
+ ?column? 
+----------
+ 改变自己
+(1 row)
+
+select q'a'b'a';
+ ?column? 
+----------
+ 'b'
+(1 row)
+
+select q'' ''||'adc';
+ ?column? 
+----------
+  adc
+(1 row)
+
+select q''||'adc'';
+ ?column? 
+----------
+ ||'adc
+(1 row)
+
+select 'q';
+ ?column? 
+----------
+ q
+(1 row)
+
+select q'qqqq';
+ ?column? 
+----------
+ qq
+(1 row)
+
+select q'adda';
+ ?column? 
+----------
+ dd
+(1 row)
+
+select q'|---|';
+ ?column? 
+----------
+ ---
+(1 row)
+
+select 'ddq'||'dc';
+ ?column? 
+----------
+ ddqdc
+(1 row)
+
+select 'ddq' || 'dc' || 'qddq' || q'dsfsd';
+   ?column?   
+--------------
+ ddqdcqddqsfs
+(1 row)
+
+select 'ddq'||'dc'||'qddq'||q'qsfsq';
+   ?column?   
+--------------
+ ddqdcqddqsfs
+(1 row)
+
+select q'('a'b'c'd'e'f')';
+   ?column?    
+---------------
+ 'a'b'c'd'e'f'
+(1 row)
+
+select q'('a'b'c'd'e')'||q'qqddq';
+    ?column?    
+----------------
+ 'a'b'c'd'e'qdd
+(1 row)
+
+select q'('a'b'c'd'e'f')'||q'qqddq';
+     ?column?     
+------------------
+ 'a'b'c'd'e'f'qdd
+(1 row)
+
+select q'('a'b'c'd'e'f')'||'qq';
+    ?column?     
+-----------------
+ 'a'b'c'd'e'f'qq
+(1 row)
+
+select q'('a'b'c'd'e'f')'||q'qqq';
+    ?column?    
+----------------
+ 'a'b'c'd'e'f'q
+(1 row)
+
+select q'aq'bab'a';
+ ?column? 
+----------
+ q'bab'
+(1 row)
+
+select q'a'a a';
+ ?column? 
+----------
+ 'a 
+(1 row)
+
+select q'(a()a)';
+ ?column? 
+----------
+ a()a
+(1 row)
+
+select q'(a(q'adda')a)';
+  ?column?   
+-------------
+ a(q'adda')a
+(1 row)
+
+select q'<daddd'''sf>';
+  ?column?  
+------------
+ daddd'''sf
+(1 row)
+
+select 'baq','adq';
+ ?column? | ?column? 
+----------+----------
+ baq      | adq
+(1 row)
+
+select q'aaa
+aa';
+ ?column? 
+----------
+ aa      +
+ a
+(1 row)
+
+create table test(id int,name varchar(20));
+insert into test values(1,'K'||q'aima');
+insert into test values(2,'T'||q'aima');
+select * from test;
+ id | name 
+----+------
+  1 | Kim
+  2 | Tim
+(2 rows)
+
+update test set name = 'B'||q'[ob]' where id = 1 ;
+select * from test order by id;
+ id | name 
+----+------
+  1 | Bob
+  2 | Tim
+(2 rows)
+
+update test set name = 'J'||q'<im>' where id =2 ;
+select * from test order by id;
+ id | name 
+----+------
+  1 | Bob
+  2 | Jim
+(2 rows)
+
+create or replace function test_q() returns text as 
+$$
+	declare
+		a text := q'> It's good>';
+	begin
+		return a;
+	end;
+$$language plisql;
+/
+select test_q();
+   test_q   
+------------
+  It's good
+(1 row)
+
+drop function test_q;
+create or replace function getname(idd int) returns text as $$
+declare
+	names text default q'{name is}';
+	rec_name record;
+	cur_test cursor(idd int) for select name from test where id = idd;
+begin
+	open cur_test(idd);
+	loop
+		fetch cur_test into rec_name;
+		exit when not found;
+			names = names || ' '||rec_name;
+	end loop;
+	close cur_test;
+	return names;
+end;$$
+language plisql;
+/
+select  getname(1);
+    getname    
+---------------
+ name is (Bob)
+(1 row)
+
+drop function getname;
+create or replace procedure test_q1(idd int) as $$
+declare
+	cur_test cursor for select * from test where id <= idd;
+begin
+	for rec_name in cur_test loop
+		raise notice 'id = %,name=%',rec_name.id,rec_name.name||q'a'sa';
+	end loop;
+end;$$
+language plisql;
+/
+call test_q1(2);
+NOTICE:  id = 1,name=Bob's
+NOTICE:  id = 2,name=Jim's
+drop procedure test_q1;

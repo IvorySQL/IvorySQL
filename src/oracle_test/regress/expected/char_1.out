@@ -1,0 +1,121 @@
+--
+-- CHAR
+--
+-- fixed-length by value
+-- internally passed by value if <= 4 bytes in storage
+set ivorysql.enable_emptystring_to_null to false;
+SELECT char 'c' = char 'c' AS true;
+ true 
+------
+ t
+(1 row)
+
+--
+-- Build a table for testing
+--
+CREATE TABLE CHAR_TBL(f1 char);
+INSERT INTO CHAR_TBL (f1) VALUES ('a');
+INSERT INTO CHAR_TBL (f1) VALUES ('A');
+-- any of the following three input formats are acceptable
+INSERT INTO CHAR_TBL (f1) VALUES ('1');
+INSERT INTO CHAR_TBL (f1) VALUES (2);
+INSERT INTO CHAR_TBL (f1) VALUES ('3');
+-- zero-length char
+INSERT INTO CHAR_TBL (f1) VALUES ('');
+-- try char's of greater than 1 length
+INSERT INTO CHAR_TBL (f1) VALUES ('cd');
+ERROR:  value too long for type char(1 byte)
+INSERT INTO CHAR_TBL (f1) VALUES ('c     ');
+ERROR:  value too long for type char(1 byte)
+SELECT * FROM CHAR_TBL;
+ f1 
+----
+ a
+ A
+ 1
+ 2
+ 3
+  
+(6 rows)
+
+SELECT c.*
+   FROM CHAR_TBL c
+   WHERE c.f1 <> 'a';
+ f1 
+----
+ A
+ 1
+ 2
+ 3
+  
+(5 rows)
+
+SELECT c.*
+   FROM CHAR_TBL c
+   WHERE c.f1 = 'a';
+ f1 
+----
+ a
+(1 row)
+
+SELECT c.*
+   FROM CHAR_TBL c
+   WHERE c.f1 < 'a';
+ f1 
+----
+ 1
+ 2
+ 3
+  
+(4 rows)
+
+SELECT c.*
+   FROM CHAR_TBL c
+   WHERE c.f1 <= 'a';
+ f1 
+----
+ a
+ 1
+ 2
+ 3
+  
+(5 rows)
+
+SELECT c.*
+   FROM CHAR_TBL c
+   WHERE c.f1 > 'a';
+ f1 
+----
+ A
+(1 row)
+
+SELECT c.*
+   FROM CHAR_TBL c
+   WHERE c.f1 >= 'a';
+ f1 
+----
+ a
+ A
+(2 rows)
+
+DROP TABLE CHAR_TBL;
+--
+-- Now test longer arrays of char
+--
+CREATE TABLE CHAR_TBL(f1 char(4));
+INSERT INTO CHAR_TBL (f1) VALUES ('a');
+INSERT INTO CHAR_TBL (f1) VALUES ('ab');
+INSERT INTO CHAR_TBL (f1) VALUES ('abcd');
+INSERT INTO CHAR_TBL (f1) VALUES ('abcde');
+ERROR:  value too long for type char(4 byte)
+INSERT INTO CHAR_TBL (f1) VALUES ('abcd    ');
+ERROR:  value too long for type char(4 byte)
+SELECT * FROM CHAR_TBL;
+  f1  
+------
+ a   
+ ab  
+ abcd
+(3 rows)
+
+reset ivorysql.enable_emptystring_to_null;

@@ -29,6 +29,9 @@ $ENV{PGCLIENTENCODING} = 'LATIN1';
 # total number of tested characters to what will fit in four names.
 # The odds of finding something interesting by testing all ASCII letters
 # seem too small to justify the cycles of testing a fifth name.
+
+# IvorySQL: the ASCII larger than 127 is a bit troubles 
+# in the Windows Chinese environment.
 my $dbname1 =
     'regression'
   . generate_ascii_string(1,  9)
@@ -39,9 +42,9 @@ my $dbname1 =
   . generate_ascii_string(45, 54);
 my $dbname2 = 'regression' . generate_ascii_string(55, 65)    # skip 'B'-'W'
   . generate_ascii_string(88,  99)                            # skip 'd'-'w'
-  . generate_ascii_string(120, 149);
-my $dbname3 = 'regression' . generate_ascii_string(150, 202);
-my $dbname4 = 'regression' . generate_ascii_string(203, 255);
+  . ($TestLib::windows_os ? generate_ascii_string(120, 127) : generate_ascii_string(120, 149));
+my $dbname3 = 'regression' . ($TestLib::windows_os ? generate_ascii_string(120, 127) : generate_ascii_string(150, 202));
+my $dbname4 = 'regression' . ($TestLib::windows_os ? generate_ascii_string(120, 127) : generate_ascii_string(203, 255));
 
 (my $username1 = $dbname1) =~ s/^regression/regress_/;
 (my $username2 = $dbname2) =~ s/^regression/regress_/;

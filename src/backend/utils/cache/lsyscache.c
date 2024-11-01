@@ -42,7 +42,9 @@
 #include "utils/catcache.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"	
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"	
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -2513,7 +2515,8 @@ getBaseTypeAndTypmod(Oid typid, int32 *typmod)
 			break;
 		}
 
-		Assert(*typmod == -1);
+		if (typid != LONGOID && typid != RAWOID)	
+			Assert(*typmod == -1);
 		typid = typTup->typbasetype;
 		*typmod = typTup->typtypmod;
 
@@ -2677,6 +2680,72 @@ get_type_category_preferred(Oid typid, char *typcategory, bool *typispreferred)
 	*typispreferred = typtup->typispreferred;
 	ReleaseSysCache(tp);
 }
+
+
+Oid
+get_preferred_type(Oid typid)
+{
+	HeapTuple	tp;
+	Form_pg_type typtup;
+	Oid			result = InvalidOid;
+
+	tp = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for type %u", typid);
+	typtup = (Form_pg_type) GETSTRUCT(tp);
+
+	if (typtup->typispreferred)
+		result = typid;
+	else
+	{
+		switch (typtup->typcategory)
+		{
+			case TYPCATEGORY_STRING:
+				if (compatible_db == PG_PARSER)
+					result = TEXTOID;
+				else if (compatible_db == ORA_PARSER)
+				{
+					if (typid == ORAVARCHARBYTEOID ||
+						typid == ORACHARBYTEOID)
+						result = ORAVARCHARBYTEOID;
+					else if (typid == ORAVARCHARCHAROID ||
+						typid == ORACHARCHAROID)
+						result = ORAVARCHARCHAROID;
+					else
+						result = typid;
+				}
+				break;
+			case TYPCATEGORY_DATETIME:
+				result = typid;
+				break;
+			case TYPCATEGORY_TIMESPAN:
+				result = typid;
+				break;
+			case TYPCATEGORY_NUMERIC:
+				if (compatible_db == PG_PARSER)
+					result = NUMERICOID;
+				else if (compatible_db == ORA_PARSER)
+				{
+					if (typid == BINARY_DOUBLEOID || typid == BINARY_FLOATOID)
+						result = BINARY_DOUBLEOID;
+					else
+						result = NUMBEROID;
+				}
+				break;
+			case TYPCATEGORY_BITSTRING:
+				result = VARBITOID;
+				break;
+			default:
+				result = typid;
+				break;
+		}
+	}
+
+	ReleaseSysCache(tp);
+
+	return result;
+}
+
 
 /*
  * get_typ_typrelid

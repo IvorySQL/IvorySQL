@@ -1,0 +1,753 @@
+--
+-- INTERVAL
+--
+SET DATESTYLE = 'ISO';
+SET IntervalStyle to postgres;
+-- check acceptance of "time zone style"
+SELECT INTERVAL '01:00' AS "One hour";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT INTERVAL '01:00' AS "One hour";
+                                ^
+SELECT INTERVAL '+02:00' AS "Two hours";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT INTERVAL '+02:00' AS "Two hours";
+                                 ^
+SELECT INTERVAL '-08:00' AS "Eight hours";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT INTERVAL '-08:00' AS "Eight hours";
+                                 ^
+SELECT INTERVAL '-1 +02:03' AS "22 hours ago...";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT INTERVAL '-1 +02:03' AS "22 hours ago...";
+                                    ^
+SELECT INTERVAL '-1 days +02:03' AS "22 hours ago...";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT INTERVAL '-1 days +02:03' AS "22 hours ago...";
+                                         ^
+SELECT INTERVAL '1.5 weeks' AS "Ten days twelve hours";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT INTERVAL '1.5 weeks' AS "Ten days twelve hours";
+                                    ^
+SELECT INTERVAL '1.5 months' AS "One month 15 days";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT INTERVAL '1.5 months' AS "One month 15 days";
+                                     ^
+SELECT INTERVAL '10 years -11 month -12 days +13:14' AS "9 years...";
+ERROR:  syntax error at or near "AS"
+LINE 1: ...ECT INTERVAL '10 years -11 month -12 days +13:14' AS "9 year...
+                                                             ^
+CREATE TABLE INTERVAL_TBL (f1 interval);
+ERROR:  missing or invalid datetime field.
+INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 1 minute');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 1 minute');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 5 hour');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 5 hour');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 10 day');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 10 day');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 34 year');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 34 year');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 3 months');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 3 months');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 14 seconds ago');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 14 seconds ago');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('1 day 2 hours 3 minutes 4 seconds');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('1 day 2 hours 3 minut...
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('6 years');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('6 years');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months');
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months 12 hours');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months 12 hours');
+                    ^
+-- badly formatted interval
+INSERT INTO INTERVAL_TBL (f1) VALUES ('badly formatted interval');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('badly formatted inter...
+                    ^
+INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
+                    ^
+-- test interval operators
+SELECT * FROM INTERVAL_TBL;
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: SELECT * FROM INTERVAL_TBL;
+                      ^
+SELECT * FROM INTERVAL_TBL
+   WHERE INTERVAL_TBL.f1 <> interval '@ 10 days';
+ERROR:  syntax error at or near ";"
+LINE 2:    WHERE INTERVAL_TBL.f1 <> interval '@ 10 days';
+                                                        ^
+SELECT * FROM INTERVAL_TBL
+   WHERE INTERVAL_TBL.f1 <= interval '@ 5 hours';
+ERROR:  syntax error at or near ";"
+LINE 2:    WHERE INTERVAL_TBL.f1 <= interval '@ 5 hours';
+                                                        ^
+SELECT * FROM INTERVAL_TBL
+   WHERE INTERVAL_TBL.f1 < interval '@ 1 day';
+ERROR:  syntax error at or near ";"
+LINE 2:    WHERE INTERVAL_TBL.f1 < interval '@ 1 day';
+                                                     ^
+SELECT * FROM INTERVAL_TBL
+   WHERE INTERVAL_TBL.f1 = interval '@ 34 years';
+ERROR:  syntax error at or near ";"
+LINE 2:    WHERE INTERVAL_TBL.f1 = interval '@ 34 years';
+                                                        ^
+SELECT * FROM INTERVAL_TBL
+   WHERE INTERVAL_TBL.f1 >= interval '@ 1 month';
+ERROR:  syntax error at or near ";"
+LINE 2:    WHERE INTERVAL_TBL.f1 >= interval '@ 1 month';
+                                                        ^
+SELECT * FROM INTERVAL_TBL
+   WHERE INTERVAL_TBL.f1 > interval '@ 3 seconds ago';
+ERROR:  syntax error at or near ";"
+LINE 2:    WHERE INTERVAL_TBL.f1 > interval '@ 3 seconds ago';
+                                                             ^
+SELECT r1.*, r2.*
+   FROM INTERVAL_TBL r1, INTERVAL_TBL r2
+   WHERE r1.f1 > r2.f1
+   ORDER BY r1.f1, r2.f1;
+ERROR:  relation "interval_tbl" does not exist
+LINE 2:    FROM INTERVAL_TBL r1, INTERVAL_TBL r2
+                ^
+-- Test intervals that are large enough to overflow 64 bits in comparisons
+CREATE TEMP TABLE INTERVAL_TBL_OF (f1 interval);
+ERROR:  missing or invalid datetime field.
+INSERT INTO INTERVAL_TBL_OF (f1) VALUES
+  ('2147483647 days 2147483647 months'),
+  ('2147483647 days -2147483648 months'),
+  ('1 year'),
+  ('-2147483648 days 2147483647 months'),
+  ('-2147483648 days -2147483648 months');
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL_OF (f1) VALUES
+                    ^
+-- these should fail as out-of-range
+INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483648 days');
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483648 days');
+                    ^
+INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483649 days');
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483649 days')...
+                    ^
+INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483647 years');
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483647 years')...
+                    ^
+INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483648 years');
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 1: INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483648 years'...
+                    ^
+-- Test edge-case overflow detection in interval multiplication
+select extract(epoch from '256 microseconds'::interval * (2^55)::float8);
+ERROR:  missing or invalid datetime field.
+SELECT r1.*, r2.*
+   FROM INTERVAL_TBL_OF r1, INTERVAL_TBL_OF r2
+   WHERE r1.f1 > r2.f1
+   ORDER BY r1.f1, r2.f1;
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 2:    FROM INTERVAL_TBL_OF r1, INTERVAL_TBL_OF r2
+                ^
+CREATE INDEX ON INTERVAL_TBL_OF USING btree (f1);
+ERROR:  relation "interval_tbl_of" does not exist
+SET enable_seqscan TO false;
+EXPLAIN (COSTS OFF)
+SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 2: SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
+                       ^
+SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
+ERROR:  relation "interval_tbl_of" does not exist
+LINE 1: SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
+                       ^
+RESET enable_seqscan;
+DROP TABLE INTERVAL_TBL_OF;
+ERROR:  table "interval_tbl_of" does not exist
+-- Test multiplication and division with intervals.
+-- Floating point arithmetic rounding errors can lead to unexpected results,
+-- though the code attempts to do the right thing and round up to days and
+-- minutes to avoid results such as '3 days 24:00 hours' or '14:20:60'.
+-- Note that it is expected for some day components to be greater than 29 and
+-- some time components be greater than 23:59:59 due to how intervals are
+-- stored internally.
+CREATE TABLE INTERVAL_MULDIV_TBL (span interval);
+ERROR:  missing or invalid datetime field.
+COPY INTERVAL_MULDIV_TBL FROM STDIN;
+ERROR:  relation "interval_muldiv_tbl" does not exist
+41 mon 12 days 360:00
+-41 mon -12 days +360:00
+-12 days
+9 mon -27 days 12:34:56
+-3 years 482 days 76:54:32.189
+4 mon
+14 mon
+999 mon 999 days
+\.
+invalid command \.
+SELECT span * 0.3 AS product
+FROM INTERVAL_MULDIV_TBL;
+ERROR:  syntax error at or near "41"
+LINE 1: 41 mon 12 days 360:00
+        ^
+SELECT span * 8.2 AS product
+FROM INTERVAL_MULDIV_TBL;
+ERROR:  relation "interval_muldiv_tbl" does not exist
+LINE 2: FROM INTERVAL_MULDIV_TBL;
+             ^
+SELECT span / 10 AS quotient
+FROM INTERVAL_MULDIV_TBL;
+ERROR:  relation "interval_muldiv_tbl" does not exist
+LINE 2: FROM INTERVAL_MULDIV_TBL;
+             ^
+SELECT span / 100 AS quotient
+FROM INTERVAL_MULDIV_TBL;
+ERROR:  relation "interval_muldiv_tbl" does not exist
+LINE 2: FROM INTERVAL_MULDIV_TBL;
+             ^
+DROP TABLE INTERVAL_MULDIV_TBL;
+ERROR:  table "interval_muldiv_tbl" does not exist
+SET DATESTYLE = 'postgres';
+SET IntervalStyle to postgres_verbose;
+SELECT * FROM INTERVAL_TBL;
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: SELECT * FROM INTERVAL_TBL;
+                      ^
+-- test avg(interval), which is somewhat fragile since people have been
+-- known to change the allowed input syntax for type interval without
+-- updating pg_aggregate.agginitval
+select avg(f1) from interval_tbl;
+ERROR:  relation "interval_tbl" does not exist
+LINE 1: select avg(f1) from interval_tbl;
+                            ^
+-- test long interval input
+select '4 millenniums 5 centuries 4 decades 1 year 4 months 4 days 17 minutes 31 seconds'::interval;
+ERROR:  missing or invalid datetime field.
+-- test long interval output
+-- Note: the actual maximum length of the interval output is longer,
+-- but we need the test to work for both integer and floating-point
+-- timestamps.
+select '100000000y 10mon -1000000000d -100000h -10min -10.000001s ago'::interval;
+ERROR:  missing or invalid datetime field.
+-- test justify_hours() and justify_days()
+SELECT justify_hours(interval '6 months 3 days 52 hours 3 minutes 2 seconds') as "6 mons 5 days 4 hours 3 mins 2 seconds";
+ERROR:  syntax error at or near ")"
+LINE 1: ...val '6 months 3 days 52 hours 3 minutes 2 seconds') as "6 mo...
+                                                             ^
+SELECT justify_days(interval '6 months 36 days 5 hours 4 minutes 3 seconds') as "7 mons 6 days 5 hours 4 mins 3 seconds";
+ERROR:  syntax error at or near ")"
+LINE 1: ...val '6 months 36 days 5 hours 4 minutes 3 seconds') as "7 mo...
+                                                             ^
+-- test justify_interval()
+SELECT justify_interval(interval '1 month -1 hour') as "1 month -1 hour";
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT justify_interval(interval '1 month -1 hour') as "1 mo...
+                                                          ^
+-- test fractional second input, and detection of duplicate units
+SET DATESTYLE = 'ISO';
+SET IntervalStyle TO postgres;
+SELECT '1 millisecond'::interval, '1 microsecond'::interval,
+       '500 seconds 99 milliseconds 51 microseconds'::interval;
+ERROR:  missing or invalid datetime field.
+SELECT '3 days 5 milliseconds'::interval;
+ERROR:  missing or invalid datetime field.
+SELECT '1 second 2 seconds'::interval;              -- error
+ERROR:  missing or invalid datetime field.
+SELECT '10 milliseconds 20 milliseconds'::interval; -- error
+ERROR:  missing or invalid datetime field.
+SELECT '5.5 seconds 3 milliseconds'::interval;      -- error
+ERROR:  missing or invalid datetime field.
+SELECT '1:20:05 5 microseconds'::interval;          -- error
+ERROR:  missing or invalid datetime field.
+SELECT '1 day 1 day'::interval;                     -- error
+ERROR:  missing or invalid datetime field.
+SELECT interval '1-2';  -- SQL year-month literal
+ERROR:  syntax error at or near ";"
+LINE 1: SELECT interval '1-2';
+                             ^
+SELECT interval '999' second;  -- oversize leading field is ok
+     dsinterval      
+---------------------
+ +00 00:16:39.000000
+(1 row)
+
+SELECT interval '999' minute;
+  dsinterval  
+--------------
+ +00 16:39:00
+(1 row)
+
+SELECT interval '999' hour;
+  dsinterval  
+--------------
+ +41 15:00:00
+(1 row)
+
+SELECT interval '999' day;
+ERROR:  Leading precision of the interval is too small
+LINE 1: SELECT interval '999' day;
+                        ^
+SELECT interval '999' month;
+ yminterval 
+------------
+ +83-03
+(1 row)
+
+-- test SQL-spec syntaxes for restricted field sets
+SELECT interval '1' year;
+ yminterval 
+------------
+ +01-00
+(1 row)
+
+SELECT interval '2' month;
+ yminterval 
+------------
+ +00-02
+(1 row)
+
+SELECT interval '3' day;
+  dsinterval  
+--------------
+ +03 00:00:00
+(1 row)
+
+SELECT interval '4' hour;
+  dsinterval  
+--------------
+ +00 04:00:00
+(1 row)
+
+SELECT interval '5' minute;
+  dsinterval  
+--------------
+ +00 00:05:00
+(1 row)
+
+SELECT interval '6' second;
+     dsinterval      
+---------------------
+ +00 00:00:06.000000
+(1 row)
+
+SELECT interval '1' year to month;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1' year to month;
+                        ^
+SELECT interval '1-2' year to month;
+ yminterval 
+------------
+ +01-02
+(1 row)
+
+SELECT interval '1 2' day to hour;
+  dsinterval  
+--------------
+ +01 02:00:00
+(1 row)
+
+SELECT interval '1 2:03' day to hour;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03' day to hour;
+                        ^
+SELECT interval '1 2:03:04' day to hour;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03:04' day to hour;
+                        ^
+SELECT interval '1 2' day to minute;
+ERROR:  invalid input syntax for type interval: "1 2"
+LINE 1: SELECT interval '1 2' day to minute;
+                        ^
+SELECT interval '1 2:03' day to minute;
+  dsinterval  
+--------------
+ +01 02:03:00
+(1 row)
+
+SELECT interval '1 2:03:04' day to minute;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03:04' day to minute;
+                        ^
+SELECT interval '1 2' day to second;
+ERROR:  invalid input syntax for type interval: "1 2"
+LINE 1: SELECT interval '1 2' day to second;
+                        ^
+SELECT interval '1 2:03' day to second;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03' day to second;
+                        ^
+SELECT interval '1 2:03:04' day to second;
+     dsinterval      
+---------------------
+ +01 02:03:04.000000
+(1 row)
+
+SELECT interval '1 2' hour to minute;
+ERROR:  invalid input syntax for type interval: "1 2"
+LINE 1: SELECT interval '1 2' hour to minute;
+                        ^
+SELECT interval '1 2:03' hour to minute;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03' hour to minute;
+                        ^
+SELECT interval '1 2:03:04' hour to minute;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03:04' hour to minute;
+                        ^
+SELECT interval '1 2' hour to second;
+ERROR:  invalid input syntax for type interval: "1 2"
+LINE 1: SELECT interval '1 2' hour to second;
+                        ^
+SELECT interval '1 2:03' hour to second;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03' hour to second;
+                        ^
+SELECT interval '1 2:03:04' hour to second;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03:04' hour to second;
+                        ^
+SELECT interval '1 2' minute to second;
+ERROR:  invalid input syntax for type interval: "1 2"
+LINE 1: SELECT interval '1 2' minute to second;
+                        ^
+SELECT interval '1 2:03' minute to second;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03' minute to second;
+                        ^
+SELECT interval '1 2:03:04' minute to second;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03:04' minute to second;
+                        ^
+SELECT interval '1 +2:03' minute to second;
+ERROR:  the interval is invalid
+LINE 1: SELECT interval '1 +2:03' minute to second;
+                        ^
+SELECT interval '1 +2:03:04' minute to second;
+ERROR:  the interval is invalid
+LINE 1: SELECT interval '1 +2:03:04' minute to second;
+                        ^
+SELECT interval '1 -2:03' minute to second;
+ERROR:  the interval is invalid
+LINE 1: SELECT interval '1 -2:03' minute to second;
+                        ^
+SELECT interval '1 -2:03:04' minute to second;
+ERROR:  the interval is invalid
+LINE 1: SELECT interval '1 -2:03:04' minute to second;
+                        ^
+SELECT interval '123 11' day to hour; -- ok
+ERROR:  Leading precision of the interval is too small
+LINE 1: SELECT interval '123 11' day to hour;
+                        ^
+SELECT interval '123 11' day; -- not ok
+ERROR:  invalid input syntax for type interval: "123 11"
+LINE 1: SELECT interval '123 11' day;
+                        ^
+SELECT interval '123 11'; -- not ok, too ambiguous
+ERROR:  syntax error at or near ";"
+LINE 1: SELECT interval '123 11';
+                                ^
+SELECT interval '123 2:03 -2:04'; -- not ok, redundant hh:mm fields
+ERROR:  syntax error at or near ";"
+LINE 1: SELECT interval '123 2:03 -2:04';
+                                        ^
+-- test syntaxes for restricted precision
+SELECT interval(0) '1 day 01:23:45.6789';
+ERROR:  missing or invalid datetime field.
+SELECT interval(2) '1 day 01:23:45.6789';
+ERROR:  missing or invalid datetime field.
+SELECT interval '12:34.5678' minute to second(2);  -- per SQL spec
+   dsinterval    
+-----------------
+ +00 00:12:34.57
+(1 row)
+
+SELECT interval '1.234' second;
+     dsinterval      
+---------------------
+ +00 00:00:01.234000
+(1 row)
+
+SELECT interval '1.234' second(2);
+   dsinterval    
+-----------------
+ +00 00:00:01.23
+(1 row)
+
+SELECT interval '1 2.345' day to second(2);
+ERROR:  invalid input syntax for type interval: "1 2.345"
+LINE 1: SELECT interval '1 2.345' day to second(2);
+                        ^
+SELECT interval '1 2:03' day to second(2);
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03' day to second(2);
+                        ^
+SELECT interval '1 2:03.4567' day to second(2);
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03.4567' day to second(2);
+                        ^
+SELECT interval '1 2:03:04.5678' day to second(2);
+   dsinterval    
+-----------------
+ +01 02:03:04.57
+(1 row)
+
+SELECT interval '1 2.345' hour to second(2);
+ERROR:  invalid input syntax for type interval: "1 2.345"
+LINE 1: SELECT interval '1 2.345' hour to second(2);
+                        ^
+SELECT interval '1 2:03.45678' hour to second(2);
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03.45678' hour to second(2);
+                        ^
+SELECT interval '1 2:03:04.5678' hour to second(2);
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03:04.5678' hour to second(2);
+                        ^
+SELECT interval '1 2.3456' minute to second(2);
+ERROR:  invalid input syntax for type interval: "1 2.3456"
+LINE 1: SELECT interval '1 2.3456' minute to second(2);
+                        ^
+SELECT interval '1 2:03.5678' minute to second(2);
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03.5678' minute to second(2);
+                        ^
+SELECT interval '1 2:03:04.5678' minute to second(2);
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT interval '1 2:03:04.5678' minute to second(2);
+                        ^
+-- test casting to restricted precision (bug #14479)
+SELECT f1, f1::INTERVAL DAY TO MINUTE AS "minutes",
+  (f1 + INTERVAL '1 month')::INTERVAL MONTH::INTERVAL YEAR AS "years"
+  FROM interval_tbl;
+ERROR:  unsupported interval type.
+-- test inputting and outputting SQL standard interval literals
+SET IntervalStyle TO sql_standard;
+SELECT  interval '0'                       AS "zero",
+        interval '1-2' year to month       AS "year-month",
+        interval '1 2:03:04' day to second AS "day-time",
+        - interval '1-2'                   AS "negative year-month",
+        - interval '1 2:03:04'             AS "negative day-time";
+ERROR:  syntax error at or near "AS"
+LINE 1: SELECT  interval '0'                       AS "zero",
+                                                   ^
+-- test input of some not-quite-standard interval values in the sql style
+SET IntervalStyle TO postgres;
+SELECT  interval '+1 -1:00:00',
+        interval '-1 +1:00:00',
+        interval '+1-2 -3 +4:05:06.789',
+        interval '-1-2 +3 -4:05:06.789';
+ERROR:  syntax error at or near ","
+LINE 1: SELECT  interval '+1 -1:00:00',
+                                      ^
+-- test output of couple non-standard interval values in the sql style
+SET IntervalStyle TO sql_standard;
+SELECT  interval '1 day -1 hours',
+        interval '-1 days +1 hours',
+        interval '1 years 2 months -3 days 4 hours 5 minutes 6.789 seconds',
+        - interval '1 years 2 months -3 days 4 hours 5 minutes 6.789 seconds';
+ERROR:  syntax error at or near ","
+LINE 1: SELECT  interval '1 day -1 hours',
+                                         ^
+-- test outputting iso8601 intervals
+SET IntervalStyle to iso_8601;
+select  interval '0'                                AS "zero",
+        interval '1-2'                              AS "a year 2 months",
+        interval '1 2:03:04'                        AS "a bit over a day",
+        interval '2:03:04.45679'                    AS "a bit over 2 hours",
+        (interval '1-2' + interval '3 4:05:06.7')   AS "all fields",
+        (interval '1-2' - interval '3 4:05:06.7')   AS "mixed sign",
+        (- interval '1-2' + interval '3 4:05:06.7') AS "negative";
+ERROR:  syntax error at or near "AS"
+LINE 1: ...lect  interval '0'                                AS "zero",
+                                                             ^
+-- test inputting ISO 8601 4.4.2.1 "Format With Time Unit Designators"
+SET IntervalStyle to sql_standard;
+select  interval 'P0Y'                    AS "zero",
+        interval 'P1Y2M'                  AS "a year 2 months",
+        interval 'P1W'                    AS "a week",
+        interval 'P1DT2H3M4S'             AS "a bit over a day",
+        interval 'P1Y2M3DT4H5M6.7S'       AS "all fields",
+        interval 'P-1Y-2M-3DT-4H-5M-6.7S' AS "negative",
+        interval 'PT-0.1S'                AS "fractional second";
+ERROR:  syntax error at or near "AS"
+LINE 1: select  interval 'P0Y'                    AS "zero",
+                                                  ^
+-- test inputting ISO 8601 4.4.2.2 "Alternative Format"
+SET IntervalStyle to postgres;
+select  interval 'P00021015T103020'       AS "ISO8601 Basic Format",
+        interval 'P0002-10-15T10:30:20'   AS "ISO8601 Extended Format";
+ERROR:  syntax error at or near "AS"
+LINE 1: select  interval 'P00021015T103020'       AS "ISO8601 Basic ...
+                                                  ^
+-- Make sure optional ISO8601 alternative format fields are optional.
+select  interval 'P0002'                  AS "year only",
+        interval 'P0002-10'               AS "year month",
+        interval 'P0002-10-15'            AS "year month day",
+        interval 'P0002T1S'               AS "year only plus time",
+        interval 'P0002-10T1S'            AS "year month plus time",
+        interval 'P0002-10-15T1S'         AS "year month day plus time",
+        interval 'PT10'                   AS "hour only",
+        interval 'PT10:30'                AS "hour minute";
+ERROR:  syntax error at or near "AS"
+LINE 1: select  interval 'P0002'                  AS "year only",
+                                                  ^
+-- test a couple rounding cases that changed since 8.3 w/ HAVE_INT64_TIMESTAMP.
+SET IntervalStyle to postgres_verbose;
+select interval '-10 mons -3 days +03:55:06.70';
+ERROR:  syntax error at or near ";"
+LINE 1: select interval '-10 mons -3 days +03:55:06.70';
+                                                       ^
+select interval '1 year 2 mons 3 days 04:05:06.699999';
+ERROR:  syntax error at or near ";"
+LINE 1: select interval '1 year 2 mons 3 days 04:05:06.699999';
+                                                              ^
+select interval '0:0:0.7', interval '@ 0.70 secs', interval '0.7 seconds';
+ERROR:  syntax error at or near ","
+LINE 1: select interval '0:0:0.7', interval '@ 0.70 secs', interval ...
+                                 ^
+-- check that '30 days' equals '1 month' according to the hash function
+select '30 days'::interval = '1 month'::interval as t;
+ERROR:  missing or invalid datetime field.
+select interval_hash('30 days'::interval) = interval_hash('1 month'::interval) as t;
+ERROR:  missing or invalid datetime field.
+-- numeric constructor
+select make_interval(years := 2);
+ make_interval 
+---------------
+ @ 2 years
+(1 row)
+
+select make_interval(years := 1, months := 6);
+  make_interval  
+-----------------
+ @ 1 year 6 mons
+(1 row)
+
+select make_interval(years := 1, months := -1, weeks := 5, days := -7, hours := 25, mins := -180);
+       make_interval        
+----------------------------
+ @ 11 mons 28 days 22 hours
+(1 row)
+
+select make_interval() = make_interval(years := 0, months := 0, weeks := 0, days := 0, mins := 0, secs := 0.0);
+ ?column? 
+----------
+ t
+(1 row)
+
+select make_interval(hours := -2, mins := -10, secs := -25.3);
+          make_interval          
+---------------------------------
+ @ 2 hours 10 mins 25.3 secs ago
+(1 row)
+
+select make_interval(years := 'inf'::float::int);
+ERROR:  integer out of range
+select make_interval(months := 'NaN'::float::int);
+ERROR:  integer out of range
+select make_interval(secs := 'inf');
+ERROR:  interval out of range
+select make_interval(secs := 'NaN');
+ERROR:  interval out of range
+select make_interval(secs := 7e12);
+           make_interval            
+------------------------------------
+ @ 1944444444 hours 26 mins 40 secs
+(1 row)
+
+--
+-- test EXTRACT
+--
+SELECT f1,
+    EXTRACT(MICROSECOND FROM f1) AS MICROSECOND,
+    EXTRACT(MILLISECOND FROM f1) AS MILLISECOND,
+    EXTRACT(SECOND FROM f1) AS SECOND,
+    EXTRACT(MINUTE FROM f1) AS MINUTE,
+    EXTRACT(HOUR FROM f1) AS HOUR,
+    EXTRACT(DAY FROM f1) AS DAY,
+    EXTRACT(MONTH FROM f1) AS MONTH,
+    EXTRACT(QUARTER FROM f1) AS QUARTER,
+    EXTRACT(YEAR FROM f1) AS YEAR,
+    EXTRACT(DECADE FROM f1) AS DECADE,
+    EXTRACT(CENTURY FROM f1) AS CENTURY,
+    EXTRACT(MILLENNIUM FROM f1) AS MILLENNIUM,
+    EXTRACT(EPOCH FROM f1) AS EPOCH
+    FROM INTERVAL_TBL;
+ERROR:  relation "interval_tbl" does not exist
+LINE 15:     FROM INTERVAL_TBL;
+                  ^
+SELECT EXTRACT(FORTNIGHT FROM INTERVAL '2 days');  -- error
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(FORTNIGHT FROM INTERVAL '2 days');
+                                                       ^
+SELECT EXTRACT(TIMEZONE FROM INTERVAL '2 days');  -- error
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(TIMEZONE FROM INTERVAL '2 days');
+                                                      ^
+SELECT EXTRACT(DECADE FROM INTERVAL '100 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '100 y');
+                                                   ^
+SELECT EXTRACT(DECADE FROM INTERVAL '99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '99 y');
+                                                  ^
+SELECT EXTRACT(DECADE FROM INTERVAL '-99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '-99 y');
+                                                   ^
+SELECT EXTRACT(DECADE FROM INTERVAL '-100 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(DECADE FROM INTERVAL '-100 y');
+                                                    ^
+SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');
+                                                    ^
+SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');
+                                                   ^
+SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');
+                                                    ^
+SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y');
+                                                     ^
+-- date_part implementation is mostly the same as extract, so only
+-- test a few cases for additional coverage.
+SELECT f1,
+    date_part('microsecond', f1) AS microsecond,
+    date_part('millisecond', f1) AS millisecond,
+    date_part('second', f1) AS second,
+    date_part('epoch', f1) AS epoch
+    FROM INTERVAL_TBL;
+ERROR:  relation "interval_tbl" does not exist
+LINE 6:     FROM INTERVAL_TBL;
+                 ^
+-- internal overflow test case
+SELECT extract(epoch from interval '1000000000 days');
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT extract(epoch from interval '1000000000 days');
+                                                            ^

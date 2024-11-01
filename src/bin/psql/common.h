@@ -12,6 +12,7 @@
 
 #include "fe_utils/print.h"
 #include "fe_utils/psqlscan.h"
+#include "oracle_fe_utils/ora_psqlscan.h"  
 #include "libpq-fe.h"
 
 extern bool openQueryOutputFile(const char *fname, FILE **fout, bool *is_pipe);
@@ -19,6 +20,9 @@ extern bool setQFout(const char *fname);
 
 extern char *psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 							   void *passthrough);
+
+extern char *ora_psql_get_variable(const char *varname, Ora_psqlScanQuoteType quote,
+								void *passthrough); 
 
 extern void NoticeProcessor(void *arg, const char *message);
 

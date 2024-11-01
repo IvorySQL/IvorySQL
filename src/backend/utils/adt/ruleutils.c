@@ -65,6 +65,10 @@
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
+/* Begin - SQL PARSER */
+#include "oracle_parser/ora_parser_hook.h"
+#include "utils/ora_compatible.h"
+/* END - SQL PARSER */
 #include "utils/partcache.h"
 #include "utils/rel.h"
 #include "utils/ruleutils.h"
@@ -310,6 +314,9 @@ typedef void (*rsv_callback) (Node *node, deparse_context *context,
  * Global data
  * ----------
  */
+/* BEGIN - SQL PARSER */
+quote_identifier_hook_type quote_identifier_hook = NULL;
+/* END - SQL PARSER */
 static SPIPlanPtr plan_getrulebyoid = NULL;
 static const char *query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
 static SPIPlanPtr plan_getviewrule = NULL;
@@ -494,6 +501,11 @@ static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
+/* BEGIN - SQL PARSER */
+static const char *standard_quote_identifier(const char *ident);
+/* END - SQL PARSER */
+
+Datum pg_get_functiondef_internal(PG_FUNCTION_ARGS); 
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -2776,13 +2788,50 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
  *		Returns the complete "CREATE OR REPLACE FUNCTION ..." statement for
  *		the specified function.
  *
+ * Note: An wrap of native postgres pg_get_functiondef, creating syntax 
+ * for different functions selected by language.
+ */
+Datum
+pg_get_functiondef(PG_FUNCTION_ARGS)
+{
+	Datum		funcid = PG_GETARG_DATUM(0);
+	Datum		result;
+	HeapTuple	proctup;
+	Form_pg_proc proc;
+
+	proctup = SearchSysCache1(PROCOID, funcid);
+	if (!HeapTupleIsValid(proctup))
+		PG_RETURN_NULL();
+
+	proc = (Form_pg_proc) GETSTRUCT(proctup);
+	
+	if (strcmp("plisql", get_language_name(proc->prolang, false)) == 0)
+		result = DirectFunctionCall1(ivy_get_plisql_functiondef, funcid);
+	else
+		result = DirectFunctionCall1(pg_get_functiondef_internal, funcid);
+
+	ReleaseSysCache(proctup);
+	PG_RETURN_DATUM(result);
+}
+
+
+
+/*
+ * pg_get_functiondef_internal
+ *		Returns the complete "CREATE OR REPLACE FUNCTION ..." statement for
+ *		the specified function.
+ *
  * Note: if you change the output format of this function, be careful not
  * to break psql's rules (in \ef and \sf) for identifying the start of the
  * function body.  To wit: the function body starts on a line that begins
  * with "AS ", and no preceding line will look like that.
+ *
+ * we rename pg_get_functiondef to pg_get_functiondef_internal for warp a
+ * new pg_get_functiondef function.
  */
 Datum
-pg_get_functiondef(PG_FUNCTION_ARGS)
+pg_get_functiondef_internal(PG_FUNCTION_ARGS)
+
 {
 	Oid			funcid = PG_GETARG_OID(0);
 	StringInfoData buf;
@@ -3028,6 +3077,274 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(string_to_text(buf.data));
 }
+
+
+/*
+ * ivy_get_plisql_functiondef
+ *		Returns the complete "CREATE OR REPLACE FUNCTION ..." statement for
+ *		the specified plisql function.
+ *
+ * Note: if you change the output format of this function, be careful not
+ * to break psql's rules (in \ef and \sf) for identifying the start of the
+ * function body.  To wit: the function body starts on a line that begins
+ * with "AS ", and no preceding line will look like that.
+ */
+Datum
+ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
+{
+	Oid			funcid = PG_GETARG_OID(0);
+	StringInfoData buf;
+	HeapTuple	proctup;
+	Form_pg_proc proc;
+	bool		isfunction;
+	Datum		tmp;
+	bool		isnull;
+	const char *prosrc;
+	const char *name;
+	const char *nsp;
+	float4		procost;
+	int			oldlen;
+
+	initStringInfo(&buf);
+
+	/* Look up the function */
+	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(proctup))
+		PG_RETURN_NULL();
+
+	proc = (Form_pg_proc) GETSTRUCT(proctup);
+	name = NameStr(proc->proname);
+
+	/*
+	 * sanity check, only functions created by plisql language is ok.
+	 */
+	if (strcmp("plisql", get_language_name(proc->prolang, false)))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not an plisql function", name)));
+
+	if (proc->prokind == PROKIND_AGGREGATE)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is an aggregate function", name)));
+
+	isfunction = (proc->prokind != PROKIND_PROCEDURE);
+
+	/*
+	 * We always qualify the function name, to ensure the right function gets
+	 * replaced.
+	 */
+	nsp = get_namespace_name(proc->pronamespace);
+	appendStringInfo(&buf, "CREATE OR REPLACE %s %s(",
+					 isfunction ? "FUNCTION" : "PROCEDURE",
+					 quote_qualified_identifier(nsp, name));
+	(void) print_function_arguments(&buf, proctup, false, true);
+	appendStringInfoString(&buf, ")\n");
+
+	/* Oracle uses the RETURN keyword on the return sytax of function */
+	if (isfunction)
+	{
+		appendStringInfoString(&buf, " RETURN ");
+		print_function_rettype(&buf, proctup);
+		appendStringInfoChar(&buf, '\n');
+	}
+
+	/*
+	 * Deal with the opt_ora_function_source_clause_list of ora_gram.y.
+	 * DETERMINISTIC, PARALLEL_ENABLE and AUTHID parsed in here and doesn't 
+	 * need to be parsed later.
+	 */
+	if (proc->provolatile == PROVOLATILE_IMMUTABLE)
+		appendStringInfoString(&buf, " DETERMINISTIC");	/* IMMUTABLE => DETERMINISTIC */
+
+	if (proc->proparallel == PROPARALLEL_SAFE)
+		appendStringInfoString(&buf, " PARALLEL_ENABLE"); /* PARALLEL SAFE => PARALLEL_ENABLE */
+
+	/*
+	 * SECURITY DEFINER => AUTHID DEFINER
+	 * SECURITY INVOKER => AUTHID CURRENT_USER
+	 */
+	if (proc->prosecdef)
+		appendStringInfoString(&buf, " AUTHID DEFINER");
+	else
+		appendStringInfoString(&buf, " AUTHID CURRENT_USER");
+
+	appendStringInfoChar(&buf, '\n');
+	print_function_trftypes(&buf, proctup);
+
+	/*
+	 * No need LANGUAGE clause for plisql, we will automatically determine the language 
+	 * in ora_gram.y, this make the function definition looks more like Oracle. 
+	 */
+	//appendStringInfo(&buf, " LANGUAGE %s\n", "plisql");
+
+	/* Emit some miscellaneous options on one line */
+	oldlen = buf.len;
+
+	if (proc->prokind == PROKIND_WINDOW)
+		appendStringInfoString(&buf, " WINDOW");
+	switch (proc->provolatile)
+	{
+		case PROVOLATILE_IMMUTABLE:
+			/* This has been parsed before */
+			break;
+		case PROVOLATILE_STABLE:
+			appendStringInfoString(&buf, " STABLE");
+			break;
+		case PROVOLATILE_VOLATILE:
+			break;
+	}
+
+	switch (proc->proparallel)
+	{
+		case PROPARALLEL_SAFE:
+			/* This has been parsed before */
+			break;
+		case PROPARALLEL_RESTRICTED:
+			appendStringInfoString(&buf, " PARALLEL RESTRICTED");
+			break;
+		case PROPARALLEL_UNSAFE:
+			break;
+	}
+
+	if (proc->proisstrict)
+		appendStringInfoString(&buf, " STRICT");
+
+	if (proc->proleakproof)
+		appendStringInfoString(&buf, " LEAKPROOF");
+
+	/* This code for the default cost and rows should match functioncmds.c */
+	if (proc->prolang == INTERNALlanguageId ||
+		proc->prolang == ClanguageId)
+		procost = 1;
+	else
+		procost = 100;
+	if (proc->procost != procost)
+		appendStringInfo(&buf, " COST %g", proc->procost);
+
+	if (proc->prorows > 0 && proc->prorows != 1000)
+		appendStringInfo(&buf, " ROWS %g", proc->prorows);
+
+	if (proc->prosupport)
+	{
+		Oid			argtypes[1];
+
+		/*
+		 * We should qualify the support function's name if it wouldn't be
+		 * resolved by lookup in the current search path.
+		 */
+		argtypes[0] = INTERNALOID;
+		appendStringInfo(&buf, " SUPPORT %s",
+						 generate_function_name(proc->prosupport, 1,
+												NIL, argtypes,
+												false, NULL, EXPR_KIND_NONE));
+	}
+
+	if (oldlen != buf.len)
+		appendStringInfoChar(&buf, '\n');
+
+	/* Emit any proconfig options, one per line */
+	tmp = SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_proconfig, &isnull);
+	if (!isnull)
+	{
+		ArrayType  *a = DatumGetArrayTypeP(tmp);
+		int			i;
+
+		Assert(ARR_ELEMTYPE(a) == TEXTOID);
+		Assert(ARR_NDIM(a) == 1);
+		Assert(ARR_LBOUND(a)[0] == 1);
+
+		for (i = 1; i <= ARR_DIMS(a)[0]; i++)
+		{
+			Datum		d;
+
+			d = array_ref(a, 1, &i,
+						  -1 /* varlenarray */ ,
+						  -1 /* TEXT's typlen */ ,
+						  false /* TEXT's typbyval */ ,
+						  TYPALIGN_INT /* TEXT's typalign */ ,
+						  &isnull);
+			if (!isnull)
+			{
+				char	   *configitem = TextDatumGetCString(d);
+				char	   *pos;
+
+				pos = strchr(configitem, '=');
+				if (pos == NULL)
+					continue;
+				*pos++ = '\0';
+
+				appendStringInfo(&buf, " SET %s TO ",
+								 quote_identifier(configitem));
+
+				/*
+				 * Variables that are marked GUC_LIST_QUOTE were already fully
+				 * quoted by flatten_set_variable_args() before they were put
+				 * into the proconfig array.  However, because the quoting
+				 * rules used there aren't exactly like SQL's, we have to
+				 * break the list value apart and then quote the elements as
+				 * string literals.  (The elements may be double-quoted as-is,
+				 * but we can't just feed them to the SQL parser; it would do
+				 * the wrong thing with elements that are zero-length or
+				 * longer than NAMEDATALEN.)
+				 *
+				 * Variables that are not so marked should just be emitted as
+				 * simple string literals.  If the variable is not known to
+				 * guc.c, we'll do that; this makes it unsafe to use
+				 * GUC_LIST_QUOTE for extension variables.
+				 */
+				if (GetConfigOptionFlags(configitem, true) & GUC_LIST_QUOTE)
+				{
+					List	   *namelist;
+					ListCell   *lc;
+
+					/* Parse string into list of identifiers */
+					if (!SplitGUCList(pos, ',', &namelist))
+					{
+						/* this shouldn't fail really */
+						elog(ERROR, "invalid list syntax in proconfig item");
+					}
+					foreach(lc, namelist)
+					{
+						char	   *curname = (char *) lfirst(lc);
+
+						simple_quote_literal(&buf, curname);
+						if (lnext(namelist, lc))
+							appendStringInfoString(&buf, ", ");
+					}
+				}
+				else
+					simple_quote_literal(&buf, pos);
+				appendStringInfoChar(&buf, '\n');
+			}
+		}
+	}
+
+	/* And finally the function definition ... */
+	/* AS => IS */
+	appendStringInfoString(&buf, "IS ");
+	appendStringInfoChar(&buf, '\n');
+
+	tmp = SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_prosrc, &isnull);
+	if (isnull)
+		elog(ERROR, "null prosrc");
+	prosrc = TextDatumGetCString(tmp);
+
+	/*
+	 * Plisql body no need dollar quoting, append directly.
+	 */
+	appendStringInfoString(&buf, prosrc);
+
+	if (buf.data[buf.len - 1] != ';')
+		appendStringInfoChar(&buf, ';');
+
+	appendStringInfoChar(&buf, '\n');
+
+	ReleaseSysCache(proctup);
+
+	PG_RETURN_TEXT_P(string_to_text(buf.data));
+}
+
 
 /*
  * pg_get_function_arguments
@@ -4901,6 +5218,8 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	 * For a WorkTableScan, locate the parent RecursiveUnion plan node and use
 	 * that as INNER referent.
 	 *
+	 * For MERGE, make the inner tlist point to the merge source tlist, which
+	 * is same as the targetlist that the ModifyTable's source plan provides.
 	 * For ON CONFLICT .. UPDATE we just need the inner tlist to point to the
 	 * excluded expression's tlist. (Similar to the SubqueryScan we don't want
 	 * to reuse OUTER, it's used for RETURNING in some modify table cases,
@@ -4920,7 +5239,12 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 		dpns->inner_plan = innerPlan(plan);
 
 	if (IsA(plan, ModifyTable))
-		dpns->inner_tlist = ((ModifyTable *) plan)->exclRelTlist;
+	{
+		if (((ModifyTable *) plan)->operation == CMD_MERGE)
+			dpns->inner_tlist = dpns->outer_plan->targetlist;
+		else
+			dpns->inner_tlist = ((ModifyTable *) plan)->exclRelTlist;
+	}
 	else if (dpns->inner_plan)
 		dpns->inner_tlist = dpns->inner_plan->targetlist;
 	else
@@ -9779,12 +10103,18 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 		nargs++;
 	}
 
-	appendStringInfo(buf, "%s(",
+	
+	if (FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+		appendStringInfo(buf, "%s(",
 					 generate_function_name(funcoid, nargs,
 											argnames, argtypes,
 											expr->funcvariadic,
 											&use_variadic,
 											context->special_exprkind));
+	else
+		appendStringInfo(buf, "%s(",
+					 get_internal_function_name(expr));
+	
 	nargs = 0;
 	foreach(l, expr->args)
 	{
@@ -10005,6 +10335,11 @@ get_func_sql_syntax(FuncExpr *expr, deparse_context *context)
 {
 	StringInfo	buf = context->buf;
 	Oid			funcoid = expr->funcid;
+
+	
+	if (!FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+		return false;
+	
 
 	switch (funcoid)
 	{
@@ -10333,7 +10668,20 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 	getTypeOutputInfo(constval->consttype,
 					  &typoutput, &typIsVarlena);
 
-	extval = OidOutputFunctionCall(typoutput, constval->constvalue);
+	/*
+	 * Compatible oracle , pass typmod to output function
+	 */
+	if (ORA_PARSER == compatible_db &&
+		(constval->consttype == YMINTERVALOID ||
+		constval->consttype == DSINTERVALOID))
+	{
+		extval = OidOutputFunctionCallWithTypmod(typoutput, constval->constvalue, constval->consttypmod);
+	}
+	else
+	{
+		extval = OidOutputFunctionCall(typoutput, constval->constvalue);
+	}
+	
 
 	switch (constval->consttype)
 	{
@@ -11451,6 +11799,22 @@ printSubscripts(SubscriptingRef *sbsref, deparse_context *context)
 const char *
 quote_identifier(const char *ident)
 {
+	/* BEGIN - SQL PARSER */
+	char	   *result;
+
+	/* Slove the issue of using the same global variable in static lib and dynamic lib */
+	if (quote_identifier_hook && compatible_db != PG_PARSER)
+		result = (char *)(*quote_identifier_hook)(ident);
+	else
+		result = (char *)standard_quote_identifier(ident);
+
+	return result;
+}
+
+static const char *
+standard_quote_identifier(const char *ident)
+{
+	/* END - SQL PARSER */
 	/*
 	 * Can avoid quoting if ident starts with a lowercase letter or underscore
 	 * and contains only lowercase letters, digits, and underscores, *and* is

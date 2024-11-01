@@ -337,7 +337,7 @@ compute_tsvector_stats(VacAttrStats *stats,
 		}
 		Assert(track_len <= i);
 
-		/* emit some statistics for debug purposes */
+		
 		elog(DEBUG3, "tsvector_stats: target # mces = %d, bucket width = %d, "
 			 "# lexemes = %d, hashtable size = %d, usable entries = %d",
 			 num_mcelem, bucket_width, lexeme_no, i, track_len);

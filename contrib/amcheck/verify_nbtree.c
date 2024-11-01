@@ -114,7 +114,7 @@ typedef struct BtreeCheckState
 
 	/* Bloom filter fingerprints B-Tree index */
 	bloom_filter *filter;
-	/* Debug counter */
+	
 	int64		heaptuplespresent;
 } BtreeCheckState;
 

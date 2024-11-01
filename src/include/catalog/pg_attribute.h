@@ -218,6 +218,13 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, on pg_attribute
 
 #define		  ATTRIBUTE_GENERATED_STORED	's'
 
+
+/* for compatibel oracle identity column */
+#define		  ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL	'n'
+#define		  ATTRIBUTE_ORA_IDENTITY_ALWAYS	'i'
+#define		  ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT 'o'
+
+
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
 #endif							/* PG_ATTRIBUTE_H */

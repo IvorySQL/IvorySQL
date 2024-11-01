@@ -1,0 +1,11 @@
+src/oracle_test/locale/README
+
+Locales
+=======
+
+This directory contains a set of tests for locales.  I provided one C
+program test-ctype.c to test CTYPE support in libc and the installed
+locale data.  Then there are test-sort.pl and test-sort.py that test
+collating.
+
+For more detailed instructions, refer to the "README" file in the "src/test/locale" directory.

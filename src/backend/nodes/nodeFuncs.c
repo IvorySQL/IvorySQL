@@ -1526,6 +1526,14 @@ exprLocation(const Node *expr)
 								  exprLocation((Node *) fc->args));
 			}
 			break;
+		
+		case T_ColumnRefOrFuncCall:
+			{
+				const ColumnRef *c = ((const ColumnRefOrFuncCall *) expr)->cref;
+				loc = c->location;
+			}
+			break;
+		
 		case T_A_ArrayExpr:
 			/* the location points at ARRAY or [, which must be leftmost */
 			loc = ((const A_ArrayExpr *) expr)->location;
@@ -1751,7 +1759,8 @@ check_functions_in_node(Node *node, check_function_callback checker,
 			{
 				FuncExpr   *expr = (FuncExpr *) node;
 
-				if (checker(expr->funcid, context))
+				if (FUNC_EXPR_FROM_PG_PROC(expr->function_from) && 
+					checker(expr->funcid, context))
 					return true;
 			}
 			break;
@@ -2120,6 +2129,10 @@ expression_tree_walker(Node *node,
 
 					if (walker(when->expr, context))
 						return true;
+					
+					if (walker(when->orig_expr, context))
+						return true;
+					
 					if (walker(when->result, context))
 						return true;
 				}
@@ -2239,6 +2252,16 @@ expression_tree_walker(Node *node,
 				if (walker(onconflict->onConflictWhere, context))
 					return true;
 				if (walker(onconflict->exclRelTlist, context))
+					return true;
+			}
+			break;
+		case T_MergeAction:
+			{
+				MergeAction *action = (MergeAction *) node;
+
+				if (walker(action->targetList, context))
+					return true;
+				if (walker(action->qual, context))
 					return true;
 			}
 			break;
@@ -2379,6 +2402,8 @@ query_tree_walker(Query *query,
 	if (walker((Node *) query->withCheckOptions, context))
 		return true;
 	if (walker((Node *) query->onConflict, context))
+		return true;
+	if (walker((Node *) query->mergeActionList, context))
 		return true;
 	if (walker((Node *) query->returningList, context))
 		return true;
@@ -2946,6 +2971,7 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, casewhen, CaseWhen);
 				MUTATE(newnode->expr, casewhen->expr, Expr *);
+				MUTATE(newnode->orig_expr, casewhen->orig_expr, Expr *);	
 				MUTATE(newnode->result, casewhen->result, Expr *);
 				return (Node *) newnode;
 			}
@@ -3146,6 +3172,18 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_MergeAction:
+			{
+				MergeAction *action = (MergeAction *) node;
+				MergeAction *newnode;
+
+				FLATCOPY(newnode, action, MergeAction);
+				MUTATE(newnode->qual, action->qual, Node *);
+				MUTATE(newnode->targetList, action->targetList, List *);
+
+				return (Node *) newnode;
+			}
+			break;
 		case T_PartitionPruneStepOp:
 			{
 				PartitionPruneStepOp *opstep = (PartitionPruneStepOp *) node;
@@ -3323,6 +3361,7 @@ query_tree_mutator(Query *query,
 	MUTATE(query->targetList, query->targetList, List *);
 	MUTATE(query->withCheckOptions, query->withCheckOptions, List *);
 	MUTATE(query->onConflict, query->onConflict, OnConflictExpr *);
+	MUTATE(query->mergeActionList, query->mergeActionList, List *);
 	MUTATE(query->returningList, query->returningList, List *);
 	MUTATE(query->jointree, query->jointree, FromExpr *);
 	MUTATE(query->setOperations, query->setOperations, Node *);
@@ -3515,9 +3554,9 @@ query_or_expression_tree_mutator(Node *node,
  * boundaries: we descend to everything that's possibly interesting.
  *
  * Currently, the node type coverage here extends only to DML statements
- * (SELECT/INSERT/UPDATE/DELETE) and nodes that can appear in them, because
- * this is used mainly during analysis of CTEs, and only DML statements can
- * appear in CTEs.
+ * (SELECT/INSERT/UPDATE/DELETE/MERGE) and nodes that can appear in them,
+ * because this is used mainly during analysis of CTEs, and only DML
+ * statements can appear in CTEs.
  */
 bool
 raw_expression_tree_walker(Node *node,
@@ -3582,6 +3621,10 @@ raw_expression_tree_walker(Node *node,
 
 					if (walker(when->expr, context))
 						return true;
+					
+					if (walker(when->orig_expr, context))
+						return true;
+					
 					if (walker(when->result, context))
 						return true;
 				}
@@ -3697,6 +3740,34 @@ raw_expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_MergeStmt:
+			{
+				MergeStmt  *stmt = (MergeStmt *) node;
+
+				if (walker(stmt->relation, context))
+					return true;
+				if (walker(stmt->sourceRelation, context))
+					return true;
+				if (walker(stmt->joinCondition, context))
+					return true;
+				if (walker(stmt->mergeWhenClauses, context))
+					return true;
+				if (walker(stmt->withClause, context))
+					return true;
+			}
+			break;
+		case T_MergeWhenClause:
+			{
+				MergeWhenClause *mergeWhenClause = (MergeWhenClause *) node;
+
+				if (walker(mergeWhenClause->condition, context))
+					return true;
+				if (walker(mergeWhenClause->targetList, context))
+					return true;
+				if (walker(mergeWhenClause->values, context))
+					return true;
+			}
+			break;
 		case T_SelectStmt:
 			{
 				SelectStmt *stmt = (SelectStmt *) node;
@@ -3782,6 +3853,23 @@ raw_expression_tree_walker(Node *node,
 				/* function name is deemed uninteresting */
 			}
 			break;
+		
+		case T_ColumnRefOrFuncCall:
+			{
+				FuncCall   *fcall = ((ColumnRefOrFuncCall *) node)->func;
+
+				if (walker(fcall->args, context))
+					return true;
+				if (walker(fcall->agg_order, context))
+					return true;
+				if (walker(fcall->agg_filter, context))
+					return true;
+				if (walker(fcall->over, context))
+					return true;
+				/* function name is deemed uninteresting */
+			}
+			break;
+		
 		case T_NamedArgExpr:
 			return walker(((NamedArgExpr *) node)->arg, context);
 		case T_A_Indices:

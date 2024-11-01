@@ -24,7 +24,7 @@ enum slash_option_type
 
 extern char *psql_scan_slash_command(PsqlScanState state);
 
-extern char *psql_scan_slash_option(PsqlScanState state,
+extern char *pg_psql_scan_slash_option(PsqlScanState state,
 					   enum slash_option_type type,
 					   char *quote,
 					   bool semicolon);

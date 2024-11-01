@@ -55,6 +55,8 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"	 /* SQL PARSER */
+#include "utils/ora_compatible.h"	
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -3421,8 +3423,41 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
-			Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
-			result->addCatalog = true;
+			
+			if (PG_PARSER == compatible_db)
+			{
+				Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+				result->addCatalog = true;
+
+			}
+			else if (ORA_PARSER == compatible_db)
+			{
+				/*
+				 * When the search_path is specified by the user, and the pg_catalog namespace is
+				 * behind some user defined namespace, then the pg_catalog namespace isn't close to
+				 * the sys namespace. For example, "SET search_path = sch,pg_catalog", then the
+				 * schemas is the oid of sys namespace, the oid of the sch namespace, and the oid
+				 * of the pg_catalog namespace. So, before reaching the activeCreationNamespace, check
+				 * then sys namespace and the pg_catalog namespace respectively.
+	 			 */
+	 			if (!IsNormalProcessingMode())
+	 			{
+	 				Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+					result->addCatalog = true;
+	 			}
+				else
+				{
+					if (linitial_oid(schemas) == PG_SYS_NAMESPACE)
+					{
+						result->addSys = true;
+					}
+					else if (linitial_oid(schemas) == PG_CATALOG_NAMESPACE)
+					{
+						result->addCatalog = true;
+					}
+				}
+			}
+			
 		}
 		schemas = list_delete_first(schemas);
 	}
@@ -3448,6 +3483,7 @@ CopyOverrideSearchPath(OverrideSearchPath *path)
 	result->schemas = list_copy(path->schemas);
 	result->addCatalog = path->addCatalog;
 	result->addTemp = path->addTemp;
+	result->addSys = path->addSys;	
 	result->generation = path->generation;
 
 	return result;
@@ -3492,6 +3528,18 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 		else
 			return false;
 	}
+
+	
+	/* If path->addSys, next item should be sys. */
+	if (path->addSys)
+	{
+		if (lc && lfirst_oid(lc) == PG_SYS_NAMESPACE)
+			lc = lnext(activeSearchPath, lc);
+		else
+			return false;
+	}
+	
+
 	/* We should now be looking at the activeCreationNamespace. */
 	if (activeCreationNamespace != (lc ? lfirst_oid(lc) : InvalidOid))
 		return false;
@@ -3563,6 +3611,11 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	 */
 	if (newpath->addCatalog)
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+
+	
+	if (newpath->addSys)
+		oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
+	
 
 	if (newpath->addTemp && OidIsValid(myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
@@ -3805,7 +3858,7 @@ recomputeNamespacePath(void)
 	rawname = pstrdup(namespace_search_path);
 
 	/* Parse string into list of identifiers */
-	if (!SplitIdentifierString(rawname, ',', &namelist))
+	if (!SplitIdentifierStringForSearchPath(rawname, ',', &namelist))	
 	{
 		/* syntax error in name list */
 		/* this should not happen if GUC checked check_search_path */
@@ -3825,7 +3878,8 @@ recomputeNamespacePath(void)
 		char	   *curname = (char *) lfirst(l);
 		Oid			namespaceId;
 
-		if (strcmp(curname, "$user") == 0)
+		if ((compatible_db == DB_ORACLE && enable_case_switch && identifier_case_switch != NORMAL) ?	/* case sensitive indentify */
+			pg_strcasecmp(curname, "$user") == 0 : strcmp(curname, "$user") == 0)
 		{
 			/* $user --- substitute namespace matching user name, if any */
 			HeapTuple	tuple;
@@ -3892,6 +3946,14 @@ recomputeNamespacePath(void)
 	 */
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+
+	
+	if (IsNormalProcessingMode() && ORA_PARSER == compatible_db)
+	{
+		if (!list_member_oid(oidlist, PG_SYS_NAMESPACE))
+			oidlist = lcons_oid(PG_SYS_NAMESPACE, oidlist);
+	}
+	
 
 	if (OidIsValid(myTempNamespace) &&
 		!list_member_oid(oidlist, myTempNamespace))

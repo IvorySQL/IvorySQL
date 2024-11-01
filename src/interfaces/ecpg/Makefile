@@ -25,7 +25,15 @@ install-ecpglib-recurse: install-pgtypeslib-recurse
 
 clean distclean maintainer-clean:
 	$(MAKE) -C test clean
+#BEGIN - SQL PARSER
+	$(MAKE) -C oracle_test clean
+#END - SQL PARSER
 
 checktcp: | temp-install
 check checktcp installcheck:
 	$(MAKE) -C test $@
+
+#BEGIN - SQL PARSER
+oracle-check oracle-checktcp oracle-installcheck:
+	$(MAKE) -C oracle_test $@
+#END - SQL PARSER

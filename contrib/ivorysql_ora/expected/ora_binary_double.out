@@ -1,0 +1,573 @@
+--
+-- BINARY_DOUBLE
+--
+set ivorysql.enable_emptystring_to_NULL = on;
+set extra_float_digits = 0;
+CREATE TABLE BINARY_DOUBLE_TBL(f1 binary_double);
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('    0.0   ');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('1004.30  ');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('   -34.84');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('1.2345678901234e+200');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('1.2345678901234e-200');
+-- test for underflow and overflow handling
+SELECT '10e400'::binary_double;
+ binary_double 
+---------------
+ Inf
+(1 row)
+
+SELECT '-10e400'::binary_double;
+ binary_double 
+---------------
+ -Inf
+(1 row)
+
+SELECT '10e-400'::binary_double;
+ binary_double 
+---------------
+ 0
+(1 row)
+
+SELECT '-10e-400'::binary_double;
+ binary_double 
+---------------
+ 0
+(1 row)
+
+-- bad input
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('     ');
+ERROR:  invalid input syntax for type binary_double: "     "
+LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('     ');
+                                                  ^
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('xyz');
+ERROR:  invalid input syntax for type binary_double: "xyz"
+LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('xyz');
+                                                  ^
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.0.0');
+ERROR:  invalid input syntax for type binary_double: "5.0.0"
+LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.0.0');
+                                                  ^
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5 . 0');
+ERROR:  invalid input syntax for type binary_double: "5 . 0"
+LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5 . 0');
+                                                  ^
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.   0');
+ERROR:  invalid input syntax for type binary_double: "5.   0"
+LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('5.   0');
+                                                  ^
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('    - 3');
+ERROR:  invalid input syntax for type binary_double: "    - 3"
+LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('    - 3');
+                                                  ^
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('123           5');
+ERROR:  invalid input syntax for type binary_double: "123           5"
+LINE 1: INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('123           5')...
+                                                  ^
+-- special inputs
+SELECT 'NaN'::binary_double;
+ binary_double 
+---------------
+ Nan
+(1 row)
+
+SELECT 'nan'::binary_double;
+ binary_double 
+---------------
+ Nan
+(1 row)
+
+SELECT '   NAN  '::binary_double;
+ binary_double 
+---------------
+ Nan
+(1 row)
+
+SELECT 'infinity'::binary_double;
+ binary_double 
+---------------
+ Inf
+(1 row)
+
+SELECT '          -INFINiTY   '::binary_double;
+ binary_double 
+---------------
+ -Inf
+(1 row)
+
+-- bad special inputs
+SELECT 'N A N'::binary_double;
+ERROR:  invalid input syntax for type binary_double: "N A N"
+LINE 1: SELECT 'N A N'::binary_double;
+               ^
+SELECT 'NaN x'::binary_double;
+ERROR:  invalid input syntax for type binary_double: "NaN x"
+LINE 1: SELECT 'NaN x'::binary_double;
+               ^
+SELECT ' INFINITY    x'::binary_double;
+ERROR:  invalid input syntax for type binary_double: " INFINITY    x"
+LINE 1: SELECT ' INFINITY    x'::binary_double;
+               ^
+SELECT 'Infinity'::binary_double + 100.0;
+ ?column? 
+----------
+ Inf
+(1 row)
+
+SELECT 'Infinity'::binary_double / 'Infinity'::binary_double;
+ ?column? 
+----------
+ Nan
+(1 row)
+
+SELECT 'nan'::binary_double / 'nan'::binary_double;
+ ?column? 
+----------
+ Nan
+(1 row)
+
+SELECT 'nan'::number::binary_double;
+ binary_double 
+---------------
+ Nan
+(1 row)
+
+SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
+ five |          f1          
+------+----------------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.2345678901234e+200
+      | 1.2345678901234e-200
+      | 
+(6 rows)
+
+SELECT '' AS four, f.* FROM BINARY_DOUBLE_TBL f WHERE f.f1 <> '1004.3';
+ four |          f1          
+------+----------------------
+      | 0
+      | -34.84
+      | 1.2345678901234e+200
+      | 1.2345678901234e-200
+(4 rows)
+
+SELECT '' AS one, f.* FROM BINARY_DOUBLE_TBL f WHERE f.f1 = '1004.3';
+ one |   f1   
+-----+--------
+     | 1004.3
+(1 row)
+
+SELECT '' AS three, f.* FROM BINARY_DOUBLE_TBL f WHERE '1004.3' > f.f1;
+ three |          f1          
+-------+----------------------
+       | 0
+       | -34.84
+       | 1.2345678901234e-200
+(3 rows)
+
+SELECT '' AS three, f.* FROM BINARY_DOUBLE_TBL f WHERE  f.f1 < '1004.3';
+ three |          f1          
+-------+----------------------
+       | 0
+       | -34.84
+       | 1.2345678901234e-200
+(3 rows)
+
+SELECT '' AS four, f.* FROM BINARY_DOUBLE_TBL f WHERE '1004.3' >= f.f1;
+ four |          f1          
+------+----------------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.2345678901234e-200
+(4 rows)
+
+SELECT '' AS four, f.* FROM BINARY_DOUBLE_TBL f WHERE  f.f1 <= '1004.3';
+ four |          f1          
+------+----------------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.2345678901234e-200
+(4 rows)
+
+SELECT '' AS three, f.f1, f.f1 * '-10' AS x
+   FROM BINARY_DOUBLE_TBL f
+   WHERE f.f1 > '0.0';
+ three |          f1          |           x           
+-------+----------------------+-----------------------
+       | 1004.3               | -10043
+       | 1.2345678901234e+200 | -1.2345678901234e+201
+       | 1.2345678901234e-200 | -1.2345678901234e-199
+(3 rows)
+
+SELECT '' AS three, f.f1, f.f1 + '-10' AS x
+   FROM BINARY_DOUBLE_TBL f
+   WHERE f.f1 > '0.0';
+ three |          f1          |          x           
+-------+----------------------+----------------------
+       | 1004.3               | 994.3
+       | 1.2345678901234e+200 | 1.2345678901234e+200
+       | 1.2345678901234e-200 | -10
+(3 rows)
+
+SELECT '' AS three, f.f1, f.f1 / '-10' AS x
+   FROM BINARY_DOUBLE_TBL f
+   WHERE f.f1 > '0.0';
+ three |          f1          |           x           
+-------+----------------------+-----------------------
+       | 1004.3               | -100.43
+       | 1.2345678901234e+200 | -1.2345678901234e+199
+       | 1.2345678901234e-200 | -1.2345678901234e-201
+(3 rows)
+
+SELECT '' AS three, f.f1, f.f1 - '-10' AS x
+   FROM BINARY_DOUBLE_TBL f
+   WHERE f.f1 > '0.0';
+ three |          f1          |          x           
+-------+----------------------+----------------------
+       | 1004.3               | 1014.3
+       | 1.2345678901234e+200 | 1.2345678901234e+200
+       | 1.2345678901234e-200 | 10
+(3 rows)
+
+SELECT '' AS one, f.f1 ^ '2.0' AS square_f1
+   FROM BINARY_DOUBLE_TBL f where f.f1 = '1004.3';
+ one | square_f1  
+-----+------------
+     | 1008618.49
+(1 row)
+
+-- absolute value
+SELECT '' AS five, f.f1, @f.f1 AS abs_f1
+   FROM BINARY_DOUBLE_TBL f;
+ five |          f1          |        abs_f1        
+------+----------------------+----------------------
+      | 0                    |                    0
+      | 1004.3               |               1004.3
+      | -34.84               |                34.84
+      | 1.2345678901234e+200 | 1.2345678901234e+200
+      | 1.2345678901234e-200 | 1.2345678901234e-200
+      |                      |                     
+(6 rows)
+
+-- truncate
+SELECT '' AS five, f.f1, trunc(f.f1) AS trunc_f1
+   FROM BINARY_DOUBLE_TBL f;
+ five |          f1          |       trunc_f1       
+------+----------------------+----------------------
+      | 0                    |                    0
+      | 1004.3               |                 1004
+      | -34.84               |                  -34
+      | 1.2345678901234e+200 | 1.2345678901234e+200
+      | 1.2345678901234e-200 |                    0
+      |                      |                     
+(6 rows)
+
+-- round
+SELECT '' AS five, f.f1, round(f.f1) AS round_f1
+   FROM BINARY_DOUBLE_TBL f;
+ five |          f1          |       round_f1       
+------+----------------------+----------------------
+      | 0                    |                    0
+      | 1004.3               |                 1004
+      | -34.84               |                  -35
+      | 1.2345678901234e+200 | 1.2345678901234e+200
+      | 1.2345678901234e-200 |                    0
+      |                      |                     
+(6 rows)
+
+-- ceil / ceiling
+select ceil(f1) as ceil_f1 from BINARY_DOUBLE_TBL f;
+       ceil_f1        
+----------------------
+                    0
+                 1005
+                  -34
+ 1.2345678901234e+200
+                    1
+                     
+(6 rows)
+
+select ceiling(f1) as ceiling_f1 from BINARY_DOUBLE_TBL f;
+      ceiling_f1      
+----------------------
+                    0
+                 1005
+                  -34
+ 1.2345678901234e+200
+                    1
+                     
+(6 rows)
+
+-- floor
+select floor(f1) as floor_f1 from BINARY_DOUBLE_TBL f;
+       floor_f1       
+----------------------
+                    0
+                 1004
+                  -35
+ 1.2345678901234e+200
+                    0
+                     
+(6 rows)
+
+-- sign
+select sign(f1) as sign_f1 from BINARY_DOUBLE_TBL f;
+ sign_f1 
+---------
+       0
+       1
+      -1
+       1
+       1
+        
+(6 rows)
+
+-- square root
+SELECT sqrt(binary_double '64') AS eight;
+ eight 
+-------
+     8
+(1 row)
+
+SELECT |/ binary_double '64' AS eight;
+ eight 
+-------
+     8
+(1 row)
+
+SELECT '' AS three, f.f1, |/f.f1 AS sqrt_f1
+   FROM BINARY_DOUBLE_TBL f
+   WHERE f.f1 > '0.0';
+ three |          f1          |        sqrt_f1        
+-------+----------------------+-----------------------
+       | 1004.3               |      31.6906926399535
+       | 1.2345678901234e+200 | 1.11111110611109e+100
+       | 1.2345678901234e-200 | 1.11111110611109e-100
+(3 rows)
+
+-- power
+SELECT power(binary_double '144', binary_double '0.5');
+ power 
+-------
+    12
+(1 row)
+
+-- take exp of ln(f.f1)
+SELECT '' AS three, f.f1, exp(ln(f.f1)) AS exp_ln_f1
+   FROM BINARY_DOUBLE_TBL f
+   WHERE f.f1 > '0.0';
+ three |          f1          |       exp_ln_f1       
+-------+----------------------+-----------------------
+       | 1004.3               |                1004.3
+       | 1.2345678901234e+200 | 1.23456789012338e+200
+       | 1.2345678901234e-200 | 1.23456789012339e-200
+(3 rows)
+
+-- cube root
+SELECT ||/ binary_double '27' AS three;
+ three 
+-------
+     3
+(1 row)
+
+SELECT '' AS five, f.f1, ||/f.f1 AS cbrt_f1 FROM BINARY_DOUBLE_TBL f;
+ five |          f1          |       cbrt_f1        
+------+----------------------+----------------------
+      | 0                    |                    0
+      | 1004.3               |      10.014312837827
+      | -34.84               |    -3.26607421344208
+      | 1.2345678901234e+200 | 4.97933859234765e+66
+      | 1.2345678901234e-200 |  2.3112042409018e-67
+      |                      |                     
+(6 rows)
+
+SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
+ five |          f1          
+------+----------------------
+      | 0
+      | 1004.3
+      | -34.84
+      | 1.2345678901234e+200
+      | 1.2345678901234e-200
+      | 
+(6 rows)
+
+UPDATE BINARY_DOUBLE_TBL
+   SET f1 = BINARY_DOUBLE_TBL.f1 * '-1'
+   WHERE BINARY_DOUBLE_TBL.f1 > '0.0';
+SELECT '' AS bad, f.f1 * '1e200' from BINARY_DOUBLE_TBL f;
+ERROR:  value out of range: overflow
+SELECT '' AS bad, f.f1 ^ '1e200' from BINARY_DOUBLE_TBL f;
+ERROR:  value out of range: overflow
+SELECT 0 ^ 0 + 0 ^ 1 + 0 ^ 0.0 + 0 ^ 0.5;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '' AS bad, ln(f.f1) from BINARY_DOUBLE_TBL f where f.f1 = '0.0' ;
+ERROR:  cannot take logarithm of zero
+SELECT '' AS bad, ln(f.f1) from BINARY_DOUBLE_TBL f where f.f1 < '0.0' ;
+ERROR:  cannot take logarithm of a negative number
+SELECT '' AS bad, exp(f.f1) from BINARY_DOUBLE_TBL f;
+ERROR:  value out of range: underflow
+SELECT '' AS bad, f.f1 / '0.0' from BINARY_DOUBLE_TBL f;
+ERROR:  division by zero
+SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
+ five |          f1           
+------+-----------------------
+      | 0
+      | -34.84
+      | 
+      | -1004.3
+      | -1.2345678901234e+200
+      | -1.2345678901234e-200
+(6 rows)
+
+-- test for over- and underflow
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('10e400');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-10e400');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('10e-400');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-10e-400');
+-- maintain external table consistency across platforms
+-- delete all values and reinsert well-behaved ones
+DELETE FROM BINARY_DOUBLE_TBL;
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('0.0');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-34.84');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-1004.30');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-1.2345678901234e+200');
+INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('-1.2345678901234e-200');
+SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
+ five |          f1           
+------+-----------------------
+      | 0
+      | -34.84
+      | -1004.3
+      | -1.2345678901234e+200
+      | -1.2345678901234e-200
+(5 rows)
+
+-- drop table 
+DROP TABLE BINARY_DOUBLE_TBL;
+create table test_bd(a binary_double);
+insert into test_bd values(1.79769313486231E+308D);		-- ok
+insert into test_bd values(-1.79769313486231E+308D);	-- ok
+insert into test_bd values(1.79769313486231E+309D);		-- error
+ERROR:  "1.79769313486231E+309" is out of range for type binary_double
+LINE 1: insert into test_bd values(1.79769313486231E+309D);
+                                   ^
+insert into test_bd values(-1.79769313486231E+309D);	-- error
+ERROR:  "1.79769313486231E+309" is out of range for type binary_double
+LINE 1: insert into test_bd values(-1.79769313486231E+309D);
+                                   ^
+insert into test_bd values(1.79769313486231E+309);		-- inf
+insert into test_bd values(-1.79769313486231E+309);		-- inf
+insert into test_bd values('1.79769313486231E+309');	-- inf
+insert into test_bd values('-1.79769313486231E+309');	-- -inf
+select * from test_bd;
+           a            
+------------------------
+ 1.79769313486231e+308
+ -1.79769313486231e+308
+ Inf
+ -Inf
+ Inf
+ -Inf
+(6 rows)
+
+delete from test_bd;
+insert into test_bd values(2.22507485850720E-308D);		-- ok
+insert into test_bd values(-2.22507485850720E-308D);	-- ok
+insert into test_bd values(2.22507485850720E-309D);		-- ok
+insert into test_bd values(-2.22507485850720E-309D);	-- ok
+insert into test_bd values(2.22507485850720E-400D);		-- error
+ERROR:  "2.22507485850720E-400" is out of range for type binary_double
+LINE 1: insert into test_bd values(2.22507485850720E-400D);
+                                   ^
+insert into test_bd values(-2.22507485850720E-400D);	-- error
+ERROR:  "2.22507485850720E-400" is out of range for type binary_double
+LINE 1: insert into test_bd values(-2.22507485850720E-400D);
+                                   ^
+insert into test_bd values(2.22507485850720E-400);		-- 0
+insert into test_bd values(-2.22507485850720E-400);		-- 0
+insert into test_bd values('2.22507485850720E-400');	-- 0
+insert into test_bd values('-2.22507485850720E-400');	-- 0
+select * from test_bd;
+           a           
+-----------------------
+ 2.2250748585072e-308
+ -2.2250748585072e-308
+ 2.2250748585072e-309
+ -2.2250748585072e-309
+ 0
+ 0
+ 0
+ 0
+(8 rows)
+
+drop table test_bd;
+create table float_point_condition(a binary_double);
+insert into float_point_condition values(1.79769313486231E+308D);
+insert into float_point_condition values(-1.79769313486231E+308D);
+insert into float_point_condition values('inf');
+insert into float_point_condition values('+inf');
+insert into float_point_condition values('-inf');
+insert into float_point_condition values('+nan');
+insert into float_point_condition values('-nan');
+select * from float_point_condition where a is nan;
+  a  
+-----
+ Nan
+ Nan
+(2 rows)
+
+select * from float_point_condition where a is not nan;
+           a            
+------------------------
+ 1.79769313486231e+308
+ -1.79769313486231e+308
+ Inf
+ Inf
+ -Inf
+(5 rows)
+
+select * from float_point_condition where a is infinite;
+  a   
+------
+ Inf
+ Inf
+ -Inf
+(3 rows)
+
+select * from float_point_condition where a is not infinite;
+           a            
+------------------------
+ 1.79769313486231e+308
+ -1.79769313486231e+308
+ Nan
+ Nan
+(4 rows)
+
+drop table float_point_condition;
+create table binaryd_tb(binaryd_clo binary_double);
+insert into binaryd_tb values (BINARY_DOUBLE_NAN);
+insert into binaryd_tb values (binary_double_nan);
+insert into binaryd_tb values (Binary_Double_Nan);
+insert into binaryd_tb values (BINARY_DOUBLE_INFINITY);
+insert into binaryd_tb values (binary_double_infinity);
+insert into binaryd_tb values (Binary_Double_Infinity);
+select * from binaryd_tb;
+ binaryd_clo 
+-------------
+ Nan
+ Nan
+ Nan
+ Inf
+ Inf
+ Inf
+(6 rows)
+
+drop table binaryd_tb;

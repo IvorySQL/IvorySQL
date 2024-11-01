@@ -485,6 +485,7 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 		case T_FromExpr:
 		case T_OnConflictExpr:
 		case T_SortGroupClause:
+		case T_MergeAction:
 			(void) expression_tree_walker(node,
 										  assign_collations_walker,
 										  (void *) &loccontext);
@@ -660,6 +661,10 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 								 */
 								(void) assign_collations_walker((Node *) when->expr,
 																&loccontext);
+								
+								(void) assign_collations_walker((Node *) when->orig_expr,
+																&loccontext);
+								
 								(void) assign_collations_walker((Node *) when->result,
 																&loccontext);
 							}

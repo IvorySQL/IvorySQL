@@ -1,0 +1,9 @@
+Perl-based TAP tests
+====================
+
+src/oracle_test/perl/ contains shared infrastructure that's used by Perl-based tests
+across the source tree, particularly tests in src/bin and src/test. It's used
+to drive tests for backup and restore, replication, etc - anything that can't
+really be expressed using pg_regress or the isolation test framework.
+
+For more detailed instructions, refer to the "README" file in the "src/test/perl" directory.

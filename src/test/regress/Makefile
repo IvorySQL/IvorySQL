@@ -12,6 +12,6 @@
 # a single-target, empty rule to make the other targets non-default.
 all:
 
-all install clean check installcheck:
+all install clean check installcheck oracle-pg-check:
 	@echo "You must use GNU make to use Postgres.  It may be installed"
 	@echo "on your system with the name 'gmake'."

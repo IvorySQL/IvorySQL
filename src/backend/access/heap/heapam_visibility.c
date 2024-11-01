@@ -79,58 +79,6 @@
 
 
 /*
- * SetHintBits()
- *
- * Set commit/abort hint bits on a tuple, if appropriate at this time.
- *
- * It is only safe to set a transaction-committed hint bit if we know the
- * transaction's commit record is guaranteed to be flushed to disk before the
- * buffer, or if the table is temporary or unlogged and will be obliterated by
- * a crash anyway.  We cannot change the LSN of the page here, because we may
- * hold only a share lock on the buffer, so we can only use the LSN to
- * interlock this if the buffer's LSN already is newer than the commit LSN;
- * otherwise we have to just refrain from setting the hint bit until some
- * future re-examination of the tuple.
- *
- * We can always set hint bits when marking a transaction aborted.  (Some
- * code in heapam.c relies on that!)
- *
- * Also, if we are cleaning up HEAP_MOVED_IN or HEAP_MOVED_OFF entries, then
- * we can always set the hint bits, since pre-9.0 VACUUM FULL always used
- * synchronous commits and didn't move tuples that weren't previously
- * hinted.  (This is not known by this subroutine, but is applied by its
- * callers.)  Note: old-style VACUUM FULL is gone, but we have to keep this
- * module's support for MOVED_OFF/MOVED_IN flag bits for as long as we
- * support in-place update from pre-9.0 databases.
- *
- * Normal commits may be asynchronous, so for those we need to get the LSN
- * of the transaction and then check whether this is flushed.
- *
- * The caller should pass xid as the XID of the transaction to check, or
- * InvalidTransactionId if no check is needed.
- */
-static inline void
-SetHintBits(HeapTupleHeader tuple, Buffer buffer,
-			uint16 infomask, TransactionId xid)
-{
-	if (TransactionIdIsValid(xid))
-	{
-		/* NB: xid must be known committed here! */
-		XLogRecPtr	commitLSN = TransactionIdGetCommitLSN(xid);
-
-		if (BufferIsPermanent(buffer) && XLogNeedsFlush(commitLSN) &&
-			BufferGetLSNAtomic(buffer) < commitLSN)
-		{
-			/* not flushed and no LSN interlock, so don't set hint */
-			return;
-		}
-	}
-
-	tuple->t_infomask |= infomask;
-	MarkBufferDirtyHint(buffer, true);
-}
-
-/*
  * HeapTupleSetHintBits --- exported version of SetHintBits()
  *
  * This must be separate because of C99's brain-dead notions about how to

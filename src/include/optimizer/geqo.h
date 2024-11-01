@@ -26,7 +26,7 @@
 #include "optimizer/geqo_gene.h"
 
 
-/* GEQO debug flag */
+
 /*
  #define GEQO_DEBUG
  */

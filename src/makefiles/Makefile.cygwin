@@ -20,12 +20,18 @@ ifeq (,$(findstring conversion_procs,$(subdir)))
 ifeq (,$(findstring libpqwalreceiver,$(subdir)))
 ifeq (,$(findstring replication/pgoutput,$(subdir)))
 ifeq (,$(findstring snowball,$(subdir)))
+# BEGIN - SQL PARSER
+ifeq (,$(findstring oracle, $(subdir)))
+# END - SQL PARSER
 override CPPFLAGS+= -DBUILDING_DLL
 endif
 endif
 endif
 endif
 endif
+# BEGIN - SQL PARSER
+endif
+# END - SQL PARSER
 
 ifneq (,$(findstring src/common,$(subdir)))
 override CPPFLAGS+= -DBUILDING_DLL

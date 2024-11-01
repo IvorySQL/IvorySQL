@@ -1791,7 +1791,7 @@ call_subtype_diff(TypeCacheEntry *typcache, Datum val1, Datum val2)
 	value = DatumGetFloat8(FunctionCall2Coll(&typcache->rng_subdiff_finfo,
 											 typcache->rng_collation,
 											 val1, val2));
-	/* Cope with buggy subtype_diff function by returning zero */
+	
 	if (value >= 0.0)
 		return value;
 	return 0.0;
