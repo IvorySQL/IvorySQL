@@ -8,11 +8,6 @@
 # if it exists.  Postgres is shipped with a "GNUmakefile".
 
 
-# AIX make defaults to building *every* target of the first rule.  Start with
-# a single-target, empty rule to make the other targets non-default.
-# add the file for requirement "SQL PARSER"
-all:
-
 all install clean oracle-check oracle-installcheck:
 	@echo "You must use GNU make to use Postgres.  It may be installed"
 	@echo "on your system with the name 'gmake'."

@@ -2139,6 +2139,10 @@ StartTransaction(void)
 	 */
 	s->state = TRANS_INPROGRESS;
 
+	/* Schedule transaction timeout */
+	if (TransactionTimeout > 0)
+		enable_timeout_after(TRANSACTION_TIMEOUT, TransactionTimeout);
+
 	ShowTransactionState("StartTransaction");
 }
 
@@ -2257,6 +2261,10 @@ CommitTransaction(void)
 	 */
 	s->state = TRANS_COMMIT;
 	s->parallelModeLevel = 0;
+
+	/* Disable transaction timeout */
+	if (TransactionTimeout > 0)
+		disable_timeout(TRANSACTION_TIMEOUT, false);
 
 	if (!is_parallel_worker)
 	{
@@ -2531,6 +2539,10 @@ PrepareTransaction(void)
 	 */
 	s->state = TRANS_PREPARE;
 
+	/* Disable transaction timeout */
+	if (TransactionTimeout > 0)
+		disable_timeout(TRANSACTION_TIMEOUT, false);
+
 	prepared_at = GetCurrentTimestamp();
 
 	/*
@@ -2702,6 +2714,10 @@ AbortTransaction(void)
 
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
+
+	/* Disable transaction timeout */
+	if (TransactionTimeout > 0)
+		disable_timeout(TRANSACTION_TIMEOUT, false);
 
 	/* Make sure we have a valid memory context and resource owner */
 	AtAbort_Memory();

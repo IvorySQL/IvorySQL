@@ -62,7 +62,6 @@ typedef struct ModifyTableContext
  */
 typedef struct UpdateContext
 {
-	bool		updated;		/* did UPDATE actually occur? */
 	bool		crossPartUpdate;	/* was it a cross-partition update? */
 	TU_UpdateIndexes updateIndexes;	/* Which index updates are required? */
 
@@ -109,9 +108,10 @@ extern void ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
 extern bool ExecMergeMatched(ModifyTableContext *context,
 							 ResultRelInfo *resultRelInfo,
 							 ItemPointer tupleid,
+							 HeapTuple oldtuple,
 							 bool canSetTag);
 typedef bool (* exec_merge_matched_hook_type)(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-									ItemPointer tupleid, bool canSetTag);
+									ItemPointer tupleid, HeapTuple oldtuple, bool canSetTag);
 extern PGDLLIMPORT exec_merge_matched_hook_type pg_exec_merge_matched_hook;
 extern PGDLLIMPORT exec_merge_matched_hook_type ora_exec_merge_matched_hook;
 

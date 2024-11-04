@@ -1260,6 +1260,8 @@ setup_connection(Archive *AH, const char *dumpencoding,
 		ExecuteSqlStatement(AH, "SET lock_timeout = 0");
 	if (AH->remoteVersion >= 90600)
 		ExecuteSqlStatement(AH, "SET idle_in_transaction_session_timeout = 0");
+	if (AH->remoteVersion >= 170000)
+		ExecuteSqlStatement(AH, "SET transaction_timeout = 0");
 
 	/*
 	 * Quote all identifiers, if requested.
@@ -1877,7 +1879,7 @@ selectDumpableType(TypeInfo *tyinfo, Archive *fout)
 		return;
 	}
 
-	/* skip auto-generated array types */
+	/* skip auto-generated array and multirange types */
 	if (tyinfo->isArray || tyinfo->isMultirange)
 	{
 		tyinfo->dobj.objType = DO_DUMMY_TYPE;
@@ -1885,8 +1887,8 @@ selectDumpableType(TypeInfo *tyinfo, Archive *fout)
 		/*
 		 * Fall through to set the dump flag; we assume that the subsequent
 		 * rules will do the same thing as they would for the array's base
-		 * type.  (We cannot reliably look up the base type here, since
-		 * getTypes may not have processed it yet.)
+		 * type or multirange's range type.  (We cannot reliably look up the
+		 * base type here, since getTypes may not have processed it yet.)
 		 */
 	}
 
@@ -5779,7 +5781,7 @@ getTypes(Archive *fout, int *numTypes)
 		else
 			tyinfo[i].isArray = false;
 
-		if (tyinfo[i].typtype == 'm')
+		if (tyinfo[i].typtype == TYPTYPE_MULTIRANGE)
 			tyinfo[i].isMultirange = true;
 		else
 			tyinfo[i].isMultirange = false;

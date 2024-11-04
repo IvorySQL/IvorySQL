@@ -132,7 +132,11 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 		int			when_type = (mergeWhenClause->matched ? 0 : 1);
 
 		/*
-		 * Collect action types so we can check target permissions
+		 * Collect permissions to check, according to action types. We require
+		 * SELECT privileges for DO NOTHING because it'd be irregular to have
+		 * a target relation with zero privileges checked, in case DO NOTHING
+		 * is the only action.  There's no damage from that: any meaningful
+		 * MERGE command requires at least some access to the table anyway.
 		 */
 		switch (mergeWhenClause->commandType)
 		{
@@ -146,6 +150,7 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 				targetPerms |= ACL_DELETE;
 				break;
 			case CMD_NOTHING:
+				targetPerms |= ACL_SELECT;
 				break;
 			default:
 				elog(ERROR, "unknown action in MERGE WHEN clause");
@@ -164,30 +169,29 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 
 	/*
 	 * Set up the MERGE target table.  The target table is added to the
-	 * namespace below and to joinlist in transform_MERGE_to_join, so don't
-	 * do it here.
+	 * namespace below and to joinlist in transform_MERGE_to_join, so don't do
+	 * it here.
+	 *
+	 * Initially mergeTargetRelation is the same as resultRelation, so data is
+	 * read from the table being updated.  However, that might be changed by
+	 * the rewriter, if the target is a trigger-updatable view, to allow
+	 * target data to be read from the expanded view query while updating the
+	 * original view relation.
 	 */
 	qry->resultRelation = setTargetTable(pstate, stmt->relation,
 										 stmt->relation->inh,
 										 false, targetPerms);
+	qry->mergeTargetRelation = qry->resultRelation;
 
-	/*
-	 * MERGE is unsupported in various cases
-	 */
+	/* The target relation must be a table or a view */
 	if (pstate->p_target_relation->rd_rel->relkind != RELKIND_RELATION &&
-		pstate->p_target_relation->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+		pstate->p_target_relation->rd_rel->relkind != RELKIND_PARTITIONED_TABLE &&
+		pstate->p_target_relation->rd_rel->relkind != RELKIND_VIEW)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot execute MERGE on relation \"%s\"",
 						RelationGetRelationName(pstate->p_target_relation)),
 				 errdetail_relkind_not_supported(pstate->p_target_relation->rd_rel->relkind)));
-	if (pstate->p_target_relation->rd_rules != NULL &&
-		pstate->p_target_relation->rd_rules->numLocks > 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot execute MERGE on relation \"%s\"",
-						RelationGetRelationName(pstate->p_target_relation)),
-				 errdetail("MERGE is not supported for relations with rules.")));
 
 	/* Now transform the source relation to produce the source RTE. */
 	transformFromClause(pstate,

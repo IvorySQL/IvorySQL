@@ -27,6 +27,7 @@
 #include "common/blkreftable.h"
 #include "common/parse_manifest.h"
 #include "common/hashfn.h"
+#include "common/int.h"
 #include "postmaster/walsummarizer.h"
 
 #define	BLOCKS_PER_READ			512
@@ -427,7 +428,7 @@ PrepareForIncrementalBackup(IncrementalBackupInfo *ib,
 	while (1)
 	{
 		long		timeout_in_ms = 10000;
-		unsigned	elapsed_seconds;
+		long		elapsed_seconds;
 
 		/*
 		 * Align the wait time to prevent drift. This doesn't really matter,
@@ -492,7 +493,7 @@ PrepareForIncrementalBackup(IncrementalBackupInfo *ib,
 			TimestampDifferenceMilliseconds(initial_time, current_time) / 1000;
 		ereport(WARNING,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("still waiting for WAL summarization through %X/%X after %d seconds",
+				 errmsg("still waiting for WAL summarization through %X/%X after %ld seconds",
 						LSN_FORMAT_ARGS(backup_state->startpoint),
 						elapsed_seconds),
 				 errdetail("Summarization has reached %X/%X on disk and %X/%X in memory.",
@@ -994,10 +995,5 @@ compare_block_numbers(const void *a, const void *b)
 	BlockNumber aa = *(BlockNumber *) a;
 	BlockNumber bb = *(BlockNumber *) b;
 
-	if (aa > bb)
-		return 1;
-	else if (aa == bb)
-		return 0;
-	else
-		return -1;
+	return pg_cmp_u32(aa, bb);
 }

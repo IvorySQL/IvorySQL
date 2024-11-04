@@ -6,6 +6,9 @@
  * loaded as a dynamic module to avoid linking the main server binary with
  * libpq.
  *
+ * Apart from walreceiver, the libpq-specific routines are now being used by
+ * logical replication workers and slot synchronization.
+ *
  * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
  *
  *
@@ -268,7 +271,11 @@ libpqrcv_connect(const char *conninfo, bool replication, bool logical,
 				 errhint("Target server's authentication method must be changed, or set password_required=false in the subscription parameters.")));
 	}
 
-	if (logical)
+	/*
+	 * Set always-secure search path for the cases where the connection is
+	 * used to run SQL queries, so malicious users can't get control.
+	 */
+	if (!replication || logical)
 	{
 		PGresult   *res;
 

@@ -40,6 +40,7 @@
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "replication/slot.h"
+#include "replication/slotsync.h"
 #include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "storage/condition_variable.h"
@@ -59,11 +60,13 @@ int			DeadlockTimeout = 1000;
 int			StatementTimeout = 0;
 int			LockTimeout = 0;
 int			IdleInTransactionSessionTimeout = 0;
+int			TransactionTimeout = 0;
 int			IdleSessionTimeout = 0;
 bool		log_lock_waits = false;
 
 /* Pointer to this process's PGPROC struct, if any */
 PGPROC	   *MyProc = NULL;
+int			MyProcNumber = INVALID_PGPROCNO;
 
 /*
  * This spinlock protects the freelist of recycled PGPROC structures.
@@ -227,7 +230,6 @@ InitProcGlobal(void)
 			InitSharedLatch(&(proc->procLatch));
 			LWLockInitialize(&(proc->fpInfoLock), LWTRANCHE_LOCK_FASTPATH);
 		}
-		proc->pgprocno = i;
 
 		/*
 		 * Newly created PGPROCs for normal backends, autovacuum and bgworkers
@@ -352,6 +354,7 @@ InitProcess(void)
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 				 errmsg("sorry, too many clients already")));
 	}
+	MyProcNumber = GetNumberFromPGProc(MyProc);
 
 	/*
 	 * Cross-check that the PGPROC is of the type we expect; if this were not
@@ -364,8 +367,12 @@ InitProcess(void)
 	 * child; this is so that the postmaster can detect it if we exit without
 	 * cleaning up.  (XXX autovac launcher currently doesn't participate in
 	 * this; it probably should.)
+	 *
+	 * Slot sync worker also does not participate in it, see comments atop
+	 * 'struct bkend' in postmaster.c.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess())
+	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess() &&
+		!IsLogicalSlotSyncWorker())
 		MarkPostmasterChildActive();
 
 	/*
@@ -564,6 +571,8 @@ InitAuxiliaryProcess(void)
 	MyProc = auxproc;
 
 	SpinLockRelease(ProcStructLock);
+
+	MyProcNumber = GetNumberFromPGProc(MyProc);
 
 	/*
 	 * Initialize all fields of MyProc, except for those previously
@@ -906,6 +915,7 @@ ProcKill(int code, Datum arg)
 
 	proc = MyProc;
 	MyProc = NULL;
+	MyProcNumber = INVALID_PGPROCNO;
 	DisownLatch(&proc->procLatch);
 
 	procgloballist = proc->procgloballist;
@@ -934,8 +944,12 @@ ProcKill(int code, Datum arg)
 	 * This process is no longer present in shared memory in any meaningful
 	 * way, so tell the postmaster we've cleaned up acceptably well. (XXX
 	 * autovac launcher should be included here someday)
+	 *
+	 * Slot sync worker is also not a postmaster child, so skip this shared
+	 * memory related processing here.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess())
+	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess() &&
+		!IsLogicalSlotSyncWorker())
 		MarkPostmasterChildInactive();
 
 	/* wake autovac launcher if needed -- see comments in FreeWorkerInfo */
@@ -977,6 +991,7 @@ AuxiliaryProcKill(int code, Datum arg)
 
 	proc = MyProc;
 	MyProc = NULL;
+	MyProcNumber = INVALID_PGPROCNO;
 	DisownLatch(&proc->procLatch);
 
 	SpinLockAcquire(ProcStructLock);
@@ -1902,10 +1917,9 @@ BecomeLockGroupMember(PGPROC *leader, int pid)
 
 	/*
 	 * Get lock protecting the group fields.  Note LockHashPartitionLockByProc
-	 * accesses leader->pgprocno in a PGPROC that might be free.  This is safe
-	 * because all PGPROCs' pgprocno fields are set during shared memory
-	 * initialization and never change thereafter; so we will acquire the
-	 * correct lock even if the leader PGPROC is in process of being recycled.
+	 * calculates the proc number based on the PGPROC slot without looking at
+	 * its contents, so we will acquire the correct lock even if the leader
+	 * PGPROC is in process of being recycled.
 	 */
 	leader_lwlock = LockHashPartitionLockByProc(leader);
 	LWLockAcquire(leader_lwlock, LW_EXCLUSIVE);

@@ -911,9 +911,7 @@ errcode_for_file_access(void)
 			/* Wrong object type or state */
 		case ENOTDIR:			/* Not a directory */
 		case EISDIR:			/* Is a directory */
-#if defined(ENOTEMPTY) && (ENOTEMPTY != EEXIST) /* same code on AIX */
 		case ENOTEMPTY:			/* Directory not empty */
-#endif
 			edata->sqlerrcode = ERRCODE_WRONG_OBJECT_TYPE;
 			break;
 
@@ -3736,32 +3734,4 @@ write_stderr(const char *fmt,...)
 	}
 #endif
 	va_end(ap);
-}
-
-
-/*
- * Write a message to STDERR using only async-signal-safe functions.  This can
- * be used to safely emit a message from a signal handler.
- *
- * TODO: It is likely possible to safely do a limited amount of string
- * interpolation (e.g., %s and %d), but that is not presently supported.
- */
-void
-write_stderr_signal_safe(const char *str)
-{
-	int			nwritten = 0;
-	int			ntotal = strlen(str);
-
-	while (nwritten < ntotal)
-	{
-		int			rc;
-
-		rc = write(STDERR_FILENO, str + nwritten, ntotal - nwritten);
-
-		/* Just give up on error.  There isn't much else we can do. */
-		if (rc == -1)
-			return;
-
-		nwritten += rc;
-	}
 }

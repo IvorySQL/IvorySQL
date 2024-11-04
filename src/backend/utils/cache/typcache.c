@@ -57,6 +57,7 @@
 #include "catalog/pg_range.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "common/int.h"
 #include "executor/executor.h"
 #include "lib/dshash.h"
 #include "optimizer/optimizer.h"
@@ -258,6 +259,7 @@ static const dshash_parameters srtr_record_table_params = {
 	sizeof(SharedRecordTableEntry),
 	shared_record_table_compare,
 	shared_record_table_hash,
+	dshash_memcpy,
 	LWTRANCHE_PER_SESSION_RECORD_TYPE
 };
 
@@ -267,6 +269,7 @@ static const dshash_parameters srtr_typmod_table_params = {
 	sizeof(SharedTypmodTableEntry),
 	dshash_memcmp,
 	dshash_memhash,
+	dshash_memcpy,
 	LWTRANCHE_PER_SESSION_RECORD_TYPMOD
 };
 
@@ -2722,12 +2725,7 @@ enum_oid_cmp(const void *left, const void *right)
 	const EnumItem *l = (const EnumItem *) left;
 	const EnumItem *r = (const EnumItem *) right;
 
-	if (l->enum_oid < r->enum_oid)
-		return -1;
-	else if (l->enum_oid > r->enum_oid)
-		return 1;
-	else
-		return 0;
+	return pg_cmp_u32(l->enum_oid, r->enum_oid);
 }
 
 /*

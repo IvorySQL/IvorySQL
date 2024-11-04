@@ -2309,6 +2309,7 @@ regression_main(int argc, char *argv[],
 		const char *keywords[4];
 		const char *values[4];
 		PGPing		rv;
+		const char *initdb_extra_opts_env;
 
 		/*
 		 * Prepare the temp instance
@@ -2330,6 +2331,8 @@ regression_main(int argc, char *argv[],
 		if (!directory_exists(buf))
 			make_directory(buf);
 
+		initdb_extra_opts_env = getenv("PG_TEST_INITDB_EXTRA_OPTS");
+
 		initStringInfo(&cmd);
 
 		/*
@@ -2342,7 +2345,7 @@ regression_main(int argc, char *argv[],
 		 * duplicate it until we require perl at build time.
 		 */
 		initdb_template_dir = getenv("INITDB_TEMPLATE");
-		if (initdb_template_dir == NULL || nolocale || debug)
+		if (initdb_template_dir == NULL || nolocale || debug || initdb_extra_opts_env)
 		{
 			note("initializing database system by running initdb");
 
@@ -2355,6 +2358,8 @@ regression_main(int argc, char *argv[],
 				appendStringInfoString(&cmd, " --debug");
 			if (nolocale)
 				appendStringInfoString(&cmd, " --no-locale");
+			if (initdb_extra_opts_env)
+				appendStringInfo(&cmd, " %s", initdb_extra_opts_env);
 			appendStringInfo(&cmd, " > \"%s/log/initdb.log\" 2>&1", outputdir);
 			fflush(NULL);
 			if (system(cmd.data))

@@ -2985,8 +2985,6 @@ quickdie(SIGNAL_ARGS)
 void
 die(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	/* Don't joggle the elbow of proc_exit */
 	if (!proc_exit_inprogress)
 	{
@@ -3008,8 +3006,6 @@ die(SIGNAL_ARGS)
 	 */
 	if (DoingCommandRead && whereToSendOutput != DestRemote)
 		ProcessInterrupts();
-
-	errno = save_errno;
 }
 
 /*
@@ -3019,8 +3015,6 @@ die(SIGNAL_ARGS)
 void
 StatementCancelHandler(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	/*
 	 * Don't joggle the elbow of proc_exit
 	 */
@@ -3032,8 +3026,6 @@ StatementCancelHandler(SIGNAL_ARGS)
 
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
-
-	errno = save_errno;
 }
 
 /* signal handler for floating point exception */
@@ -3441,6 +3433,17 @@ ProcessInterrupts(void)
 			IdleInTransactionSessionTimeoutPending = false;
 	}
 
+	if (TransactionTimeoutPending)
+	{
+		/* As above, ignore the signal if the GUC has been reset to zero. */
+		if (TransactionTimeout > 0)
+			ereport(FATAL,
+					(errcode(ERRCODE_TRANSACTION_TIMEOUT),
+					 errmsg("terminating connection due to transaction timeout")));
+		else
+			TransactionTimeoutPending = false;
+	}
+
 	if (IdleSessionTimeoutPending)
 	{
 		/* As above, ignore the signal if the GUC has been reset to zero. */
@@ -3653,6 +3656,23 @@ check_log_stats(bool *newval, void **extra, GucSource source)
 		return false;
 	}
 	return true;
+}
+
+/* GUC assign hook for transaction_timeout */
+void
+assign_transaction_timeout(int newval, void *extra)
+{
+	if (IsTransactionState())
+	{
+		/*
+		 * If transaction_timeout GUC has changed within the transaction block
+		 * enable or disable the timer correspondingly.
+		 */
+		if (newval > 0 && !get_timeout_active(TRANSACTION_TIMEOUT))
+			enable_timeout_after(TRANSACTION_TIMEOUT, newval);
+		else if (newval <= 0 && get_timeout_active(TRANSACTION_TIMEOUT))
+			disable_timeout(TRANSACTION_TIMEOUT, false);
+	}
 }
 
 
@@ -4512,7 +4532,8 @@ PostgresMain(const char *dbname, const char *username)
 				pgstat_report_activity(STATE_IDLEINTRANSACTION_ABORTED, NULL);
 
 				/* Start the idle-in-transaction timer */
-				if (IdleInTransactionSessionTimeout > 0)
+				if (IdleInTransactionSessionTimeout > 0
+					&& (IdleInTransactionSessionTimeout < TransactionTimeout || TransactionTimeout == 0))
 				{
 					idle_in_transaction_timeout_enabled = true;
 					enable_timeout_after(IDLE_IN_TRANSACTION_SESSION_TIMEOUT,
@@ -4525,7 +4546,8 @@ PostgresMain(const char *dbname, const char *username)
 				pgstat_report_activity(STATE_IDLEINTRANSACTION, NULL);
 
 				/* Start the idle-in-transaction timer */
-				if (IdleInTransactionSessionTimeout > 0)
+				if (IdleInTransactionSessionTimeout > 0
+					&& (IdleInTransactionSessionTimeout < TransactionTimeout || TransactionTimeout == 0))
 				{
 					idle_in_transaction_timeout_enabled = true;
 					enable_timeout_after(IDLE_IN_TRANSACTION_SESSION_TIMEOUT,
@@ -5141,7 +5163,8 @@ enable_statement_timeout(void)
 	/* must be within an xact */
 	Assert(xact_started);
 
-	if (StatementTimeout > 0)
+	if (StatementTimeout > 0
+		&& (StatementTimeout < TransactionTimeout || TransactionTimeout == 0))
 	{
 		if (!get_timeout_active(STATEMENT_TIMEOUT))
 			enable_timeout_after(STATEMENT_TIMEOUT, StatementTimeout);

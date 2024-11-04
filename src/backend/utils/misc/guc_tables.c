@@ -28,6 +28,7 @@
 
 #include "access/commit_ts.h"
 #include "access/gin.h"
+#include "access/slru.h"
 #include "access/toast_compression.h"
 #include "access/twophase.h"
 #include "access/xlog_internal.h"
@@ -69,6 +70,7 @@
 #include "postmaster/walwriter.h"
 #include "replication/logicallauncher.h"
 #include "replication/slot.h"
+#include "replication/slotsync.h"
 #include "replication/syncrep.h"
 #include "storage/bufmgr.h"
 #include "storage/large_object.h"
@@ -652,13 +654,13 @@ bool		in_hot_standby_guc;
  */
 const char *const GucContext_Names[] =
 {
-	 /* PGC_INTERNAL */ "internal",
-	 /* PGC_POSTMASTER */ "postmaster",
-	 /* PGC_SIGHUP */ "sighup",
-	 /* PGC_SU_BACKEND */ "superuser-backend",
-	 /* PGC_BACKEND */ "backend",
-	 /* PGC_SUSET */ "superuser",
-	 /* PGC_USERSET */ "user"
+	[PGC_INTERNAL] = "internal",
+	[PGC_POSTMASTER] = "postmaster",
+	[PGC_SIGHUP] = "sighup",
+	[PGC_SU_BACKEND] = "superuser-backend",
+	[PGC_BACKEND] = "backend",
+	[PGC_SUSET] = "superuser",
+	[PGC_USERSET] = "user",
 };
 
 StaticAssertDecl(lengthof(GucContext_Names) == (PGC_USERSET + 1),
@@ -671,20 +673,20 @@ StaticAssertDecl(lengthof(GucContext_Names) == (PGC_USERSET + 1),
  */
 const char *const GucSource_Names[] =
 {
-	 /* PGC_S_DEFAULT */ "default",
-	 /* PGC_S_DYNAMIC_DEFAULT */ "default",
-	 /* PGC_S_ENV_VAR */ "environment variable",
-	 /* PGC_S_FILE */ "configuration file",
-	 /* PGC_S_ARGV */ "command line",
-	 /* PGC_S_GLOBAL */ "global",
-	 /* PGC_S_DATABASE */ "database",
-	 /* PGC_S_USER */ "user",
-	 /* PGC_S_DATABASE_USER */ "database user",
-	 /* PGC_S_CLIENT */ "client",
-	 /* PGC_S_OVERRIDE */ "override",
-	 /* PGC_S_INTERACTIVE */ "interactive",
-	 /* PGC_S_TEST */ "test",
-	 /* PGC_S_SESSION */ "session"
+	[PGC_S_DEFAULT] = "default",
+	[PGC_S_DYNAMIC_DEFAULT] = "default",
+	[PGC_S_ENV_VAR] = "environment variable",
+	[PGC_S_FILE] = "configuration file",
+	[PGC_S_ARGV] = "command line",
+	[PGC_S_GLOBAL] = "global",
+	[PGC_S_DATABASE] = "database",
+	[PGC_S_USER] = "user",
+	[PGC_S_DATABASE_USER] = "database user",
+	[PGC_S_CLIENT] = "client",
+	[PGC_S_OVERRIDE] = "override",
+	[PGC_S_INTERACTIVE] = "interactive",
+	[PGC_S_TEST] = "test",
+	[PGC_S_SESSION] = "session",
 };
 
 StaticAssertDecl(lengthof(GucSource_Names) == (PGC_S_SESSION + 1),
@@ -695,103 +697,55 @@ StaticAssertDecl(lengthof(GucSource_Names) == (PGC_S_SESSION + 1),
  */
 const char *const config_group_names[] =
 {
-	/* UNGROUPED */
-	gettext_noop("Ungrouped"),
-	/* FILE_LOCATIONS */
-	gettext_noop("File Locations"),
-	/* CONN_AUTH_SETTINGS */
-	gettext_noop("Connections and Authentication / Connection Settings"),
-	/* CONN_AUTH_TCP */
-	gettext_noop("Connections and Authentication / TCP Settings"),
-	/* CONN_AUTH_AUTH */
-	gettext_noop("Connections and Authentication / Authentication"),
-	/* CONN_AUTH_SSL */
-	gettext_noop("Connections and Authentication / SSL"),
-	/* RESOURCES_MEM */
-	gettext_noop("Resource Usage / Memory"),
-	/* RESOURCES_DISK */
-	gettext_noop("Resource Usage / Disk"),
-	/* RESOURCES_KERNEL */
-	gettext_noop("Resource Usage / Kernel Resources"),
-	/* RESOURCES_VACUUM_DELAY */
-	gettext_noop("Resource Usage / Cost-Based Vacuum Delay"),
-	/* RESOURCES_BGWRITER */
-	gettext_noop("Resource Usage / Background Writer"),
-	/* RESOURCES_ASYNCHRONOUS */
-	gettext_noop("Resource Usage / Asynchronous Behavior"),
-	/* WAL_SETTINGS */
-	gettext_noop("Write-Ahead Log / Settings"),
-	/* WAL_CHECKPOINTS */
-	gettext_noop("Write-Ahead Log / Checkpoints"),
-	/* WAL_ARCHIVING */
-	gettext_noop("Write-Ahead Log / Archiving"),
-	/* WAL_RECOVERY */
-	gettext_noop("Write-Ahead Log / Recovery"),
-	/* WAL_ARCHIVE_RECOVERY */
-	gettext_noop("Write-Ahead Log / Archive Recovery"),
-	/* WAL_RECOVERY_TARGET */
-	gettext_noop("Write-Ahead Log / Recovery Target"),
-	/* WAL_SUMMARIZATION */
-	gettext_noop("Write-Ahead Log / Summarization"),
-	/* REPLICATION_SENDING */
-	gettext_noop("Replication / Sending Servers"),
-	/* REPLICATION_PRIMARY */
-	gettext_noop("Replication / Primary Server"),
-	/* REPLICATION_STANDBY */
-	gettext_noop("Replication / Standby Servers"),
-	/* REPLICATION_SUBSCRIBERS */
-	gettext_noop("Replication / Subscribers"),
-	/* QUERY_TUNING_METHOD */
-	gettext_noop("Query Tuning / Planner Method Configuration"),
-	/* QUERY_TUNING_COST */
-	gettext_noop("Query Tuning / Planner Cost Constants"),
-	/* QUERY_TUNING_GEQO */
-	gettext_noop("Query Tuning / Genetic Query Optimizer"),
-	/* QUERY_TUNING_OTHER */
-	gettext_noop("Query Tuning / Other Planner Options"),
-	/* LOGGING_WHERE */
-	gettext_noop("Reporting and Logging / Where to Log"),
-	/* LOGGING_WHEN */
-	gettext_noop("Reporting and Logging / When to Log"),
-	/* LOGGING_WHAT */
-	gettext_noop("Reporting and Logging / What to Log"),
-	/* PROCESS_TITLE */
-	gettext_noop("Reporting and Logging / Process Title"),
-	/* STATS_MONITORING */
-	gettext_noop("Statistics / Monitoring"),
-	/* STATS_CUMULATIVE */
-	gettext_noop("Statistics / Cumulative Query and Index Statistics"),
-	/* AUTOVACUUM */
-	gettext_noop("Autovacuum"),
-	/* CLIENT_CONN_STATEMENT */
-	gettext_noop("Client Connection Defaults / Statement Behavior"),
-	/* CLIENT_CONN_LOCALE */
-	gettext_noop("Client Connection Defaults / Locale and Formatting"),
-	/* CLIENT_CONN_PRELOAD */
-	gettext_noop("Client Connection Defaults / Shared Library Preloading"),
-	/* CLIENT_CONN_OTHER */
-	gettext_noop("Client Connection Defaults / Other Defaults"),
-	/* LOCK_MANAGEMENT */
-	gettext_noop("Lock Management"),
-	/* COMPAT_OPTIONS_PREVIOUS */
-	gettext_noop("Version and Platform Compatibility / Previous PostgreSQL Versions"),
-	/* COMPAT_OPTIONS_CLIENT */
-	gettext_noop("Version and Platform Compatibility / Other Platforms and Clients"),
-	/* ERROR_HANDLING_OPTIONS */
-	gettext_noop("Error Handling"),
-	/* PRESET_OPTIONS */
-	gettext_noop("Preset Options"),
-	/* CUSTOM_OPTIONS */
-	gettext_noop("Customized Options"),
-	/* DEVELOPER_OPTIONS */
-	gettext_noop("Developer Options"),
-	/* COMPAT_ORACLE_OPTIONS */
-	gettext_noop("Compat Oracle Options"),
-	/* help_config wants this array to be null-terminated */
-	NULL
+	[UNGROUPED] = gettext_noop("Ungrouped"),
+	[FILE_LOCATIONS] = gettext_noop("File Locations"),
+	[CONN_AUTH_SETTINGS] = gettext_noop("Connections and Authentication / Connection Settings"),
+	[CONN_AUTH_TCP] = gettext_noop("Connections and Authentication / TCP Settings"),
+	[CONN_AUTH_AUTH] = gettext_noop("Connections and Authentication / Authentication"),
+	[CONN_AUTH_SSL] = gettext_noop("Connections and Authentication / SSL"),
+	[RESOURCES_MEM] = gettext_noop("Resource Usage / Memory"),
+	[RESOURCES_DISK] = gettext_noop("Resource Usage / Disk"),
+	[RESOURCES_KERNEL] = gettext_noop("Resource Usage / Kernel Resources"),
+	[RESOURCES_VACUUM_DELAY] = gettext_noop("Resource Usage / Cost-Based Vacuum Delay"),
+	[RESOURCES_BGWRITER] = gettext_noop("Resource Usage / Background Writer"),
+	[RESOURCES_ASYNCHRONOUS] = gettext_noop("Resource Usage / Asynchronous Behavior"),
+	[WAL_SETTINGS] = gettext_noop("Write-Ahead Log / Settings"),
+	[WAL_CHECKPOINTS] = gettext_noop("Write-Ahead Log / Checkpoints"),
+	[WAL_ARCHIVING] = gettext_noop("Write-Ahead Log / Archiving"),
+	[WAL_RECOVERY] = gettext_noop("Write-Ahead Log / Recovery"),
+	[WAL_ARCHIVE_RECOVERY] = gettext_noop("Write-Ahead Log / Archive Recovery"),
+	[WAL_RECOVERY_TARGET] = gettext_noop("Write-Ahead Log / Recovery Target"),
+	[WAL_SUMMARIZATION] = gettext_noop("Write-Ahead Log / Summarization"),
+	[REPLICATION_SENDING] = gettext_noop("Replication / Sending Servers"),
+	[REPLICATION_PRIMARY] = gettext_noop("Replication / Primary Server"),
+	[REPLICATION_STANDBY] = gettext_noop("Replication / Standby Servers"),
+	[REPLICATION_SUBSCRIBERS] = gettext_noop("Replication / Subscribers"),
+	[QUERY_TUNING_METHOD] = gettext_noop("Query Tuning / Planner Method Configuration"),
+	[QUERY_TUNING_COST] = gettext_noop("Query Tuning / Planner Cost Constants"),
+	[QUERY_TUNING_GEQO] = gettext_noop("Query Tuning / Genetic Query Optimizer"),
+	[QUERY_TUNING_OTHER] = gettext_noop("Query Tuning / Other Planner Options"),
+	[LOGGING_WHERE] = gettext_noop("Reporting and Logging / Where to Log"),
+	[LOGGING_WHEN] = gettext_noop("Reporting and Logging / When to Log"),
+	[LOGGING_WHAT] = gettext_noop("Reporting and Logging / What to Log"),
+	[PROCESS_TITLE] = gettext_noop("Reporting and Logging / Process Title"),
+	[STATS_MONITORING] = gettext_noop("Statistics / Monitoring"),
+	[STATS_CUMULATIVE] = gettext_noop("Statistics / Cumulative Query and Index Statistics"),
+	[AUTOVACUUM] = gettext_noop("Autovacuum"),
+	[CLIENT_CONN_STATEMENT] = gettext_noop("Client Connection Defaults / Statement Behavior"),
+	[CLIENT_CONN_LOCALE] = gettext_noop("Client Connection Defaults / Locale and Formatting"),
+	[CLIENT_CONN_PRELOAD] = gettext_noop("Client Connection Defaults / Shared Library Preloading"),
+	[CLIENT_CONN_OTHER] = gettext_noop("Client Connection Defaults / Other Defaults"),
+	[LOCK_MANAGEMENT] = gettext_noop("Lock Management"),
+	[COMPAT_OPTIONS_PREVIOUS] = gettext_noop("Version and Platform Compatibility / Previous PostgreSQL Versions"),
+	[COMPAT_OPTIONS_CLIENT] = gettext_noop("Version and Platform Compatibility / Other Platforms and Clients"),
+	[ERROR_HANDLING_OPTIONS] = gettext_noop("Error Handling"),
+	[PRESET_OPTIONS] = gettext_noop("Preset Options"),
+	[CUSTOM_OPTIONS] = gettext_noop("Customized Options"),
+	[DEVELOPER_OPTIONS] = gettext_noop("Developer Options"),
+	[COMPAT_ORACLE_OPTIONS] = gettext_noop("Compat Oracle Options"),
 };
 
-StaticAssertDecl(lengthof(config_group_names) == (COMPAT_ORACLE_OPTIONS + 2),
+StaticAssertDecl(lengthof(config_group_names) == (COMPAT_ORACLE_OPTIONS + 1),
 				 "array length mismatch");
 
 /*
@@ -801,11 +755,11 @@ StaticAssertDecl(lengthof(config_group_names) == (COMPAT_ORACLE_OPTIONS + 2),
  */
 const char *const config_type_names[] =
 {
-	 /* PGC_BOOL */ "bool",
-	 /* PGC_INT */ "integer",
-	 /* PGC_REAL */ "real",
-	 /* PGC_STRING */ "string",
-	 /* PGC_ENUM */ "enum"
+	[PGC_BOOL] = "bool",
+	[PGC_INT] = "integer",
+	[PGC_REAL] = "real",
+	[PGC_STRING] = "string",
+	[PGC_ENUM] = "enum",
 };
 
 StaticAssertDecl(lengthof(config_type_names) == (PGC_ENUM + 1),
@@ -2082,6 +2036,15 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"sync_replication_slots", PGC_SIGHUP, REPLICATION_STANDBY,
+			gettext_noop("Enables a physical standby to synchronize logical failover slots from the primary server."),
+		},
+		&sync_replication_slots,
+		false,
+		NULL, NULL, NULL
+	},
+
 	#define IVY_GUC_BOOL_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_BOOL_PARAMS
@@ -2353,6 +2316,83 @@ struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"commit_timestamp_buffers", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the size of the dedicated buffer pool used for the commit timestamp cache."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&commit_timestamp_buffers,
+		0, 0, SLRU_MAX_ALLOWED_BUFFERS,
+		check_commit_ts_buffers, NULL, NULL
+	},
+
+	{
+		{"multixact_member_buffers", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the size of the dedicated buffer pool used for the MultiXact member cache."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&multixact_member_buffers,
+		32, 16, SLRU_MAX_ALLOWED_BUFFERS,
+		check_multixact_member_buffers, NULL, NULL
+	},
+
+	{
+		{"multixact_offset_buffers", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the size of the dedicated buffer pool used for the MultiXact offset cache."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&multixact_offset_buffers,
+		16, 16, SLRU_MAX_ALLOWED_BUFFERS,
+		check_multixact_offset_buffers, NULL, NULL
+	},
+
+	{
+		{"notify_buffers", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the size of the dedicated buffer pool used for the LISTEN/NOTIFY message cache."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&notify_buffers,
+		16, 16, SLRU_MAX_ALLOWED_BUFFERS,
+		check_notify_buffers, NULL, NULL
+	},
+
+	{
+		{"serializable_buffers", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the size of the dedicated buffer pool used for the serializable transaction cache."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&serializable_buffers,
+		32, 16, SLRU_MAX_ALLOWED_BUFFERS,
+		check_serial_buffers, NULL, NULL
+	},
+
+	{
+		{"subtransaction_buffers", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the size of the dedicated buffer pool used for the sub-transaction cache."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&subtransaction_buffers,
+		0, 0, SLRU_MAX_ALLOWED_BUFFERS,
+		check_subtrans_buffers, NULL, NULL
+	},
+
+	{
+		{"transaction_buffers", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the size of the dedicated buffer pool used for the transaction status cache."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&transaction_buffers,
+		0, 0, SLRU_MAX_ALLOWED_BUFFERS,
+		check_transaction_buffers, NULL, NULL
+	},
+
+	{
 		{"temp_buffers", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum number of temporary buffers used by each session."),
 			NULL,
@@ -2607,6 +2647,17 @@ struct config_int ConfigureNamesInt[] =
 		&IdleInTransactionSessionTimeout,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"transaction_timeout", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum allowed duration of any transaction within a session (not a prepared transaction)."),
+			gettext_noop("A value of 0 turns off the timeout."),
+			GUC_UNIT_MS
+		},
+		&TransactionTimeout,
+		0, 0, INT_MAX,
+		NULL, assign_transaction_timeout, NULL
 	},
 
 	{

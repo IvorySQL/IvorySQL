@@ -19,6 +19,7 @@
 #include "access/htup_details.h"
 #include "access/multixact.h"
 #include "access/relation.h"
+#include "access/sequence.h"
 #include "access/table.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -219,7 +220,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	seqoid = address.objectId;
 	Assert(seqoid != InvalidOid);
 
-	rel = table_open(seqoid, AccessExclusiveLock);
+	rel = sequence_open(seqoid, AccessExclusiveLock);
 	tupDesc = RelationGetDescr(rel);
 
 	/* now initialize the sequence's data */
@@ -230,7 +231,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	if (owned_by)
 		process_owned_by(rel, owned_by, seq->for_identity);
 
-	table_close(rel, NoLock);
+	sequence_close(rel, NoLock);
 
 	/* fill in pg_sequence */
 	rel = table_open(SequenceRelationId, RowExclusiveLock);
@@ -336,7 +337,7 @@ ResetSequence(Oid seq_relid)
 	/* Note that we do not change the currval() state */
 	elm->cached = elm->last;
 
-	relation_close(seq_rel, NoLock);
+	sequence_close(seq_rel, NoLock);
 }
 
 /*
@@ -500,10 +501,6 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 				seqform, newdataform,
 				&need_seq_rewrite, &owned_by, elm);
 
-	/* Clear local cache so that we don't think we have cached numbers */
-	/* Note that we do not change the currval() state */
-	elm->cached = elm->last;
-
 	/* If needed, rewrite the sequence relation itself */
 	if (need_seq_rewrite)
 	{
@@ -531,6 +528,10 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 		fill_seq_with_data(seqrel, newdatatuple);
 	}
 
+	/* Clear local cache so that we don't think we have cached numbers */
+	/* Note that we do not change the currval() state */
+	elm->cached = elm->last;
+
 	/* process OWNED BY if given */
 	if (owned_by)
 		process_owned_by(seqrel, owned_by, stmt->for_identity);
@@ -543,7 +544,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	ObjectAddressSet(address, RelationRelationId, relid);
 
 	table_close(rel, RowExclusiveLock);
-	relation_close(seqrel, NoLock);
+	sequence_close(seqrel, NoLock);
 
 	return address;
 }
@@ -567,7 +568,7 @@ SequenceChangePersistence(Oid relid, char newrelpersistence)
 	fill_seq_with_data(seqrel, &seqdatatuple);
 	UnlockReleaseBuffer(buf);
 
-	relation_close(seqrel, NoLock);
+	sequence_close(seqrel, NoLock);
 }
 
 void
@@ -725,7 +726,7 @@ nextval_internal(Oid relid, bool check_permissions)
 		Assert(elm->last_valid);
 		Assert(elm->increment != 0);
 		elm->last += elm->increment;
-		relation_close(seqrel, NoLock);
+		sequence_close(seqrel, NoLock);
 		ReleaseSysCache(pgstuple);
 
 		if (isScale)
@@ -821,7 +822,6 @@ nextval_internal(Oid relid, bool check_permissions)
 	seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
 	page = BufferGetPage(buf);
 
-	elm->increment = incby;
 	last = next = result = seq->last_value;
 	fetch = cache;
 	log = seq->log_cnt;
@@ -921,6 +921,7 @@ nextval_internal(Oid relid, bool check_permissions)
 	Assert(log >= 0);
 
 	/* save info in local cache */
+	elm->increment = incby;
 	elm->last = result;			/* last returned number */
 	elm->cached = last;			/* last fetched number */
 	elm->last_valid = true;
@@ -990,7 +991,7 @@ nextval_internal(Oid relid, bool check_permissions)
 
 	UnlockReleaseBuffer(buf);
 
-	relation_close(seqrel, NoLock);
+	sequence_close(seqrel, NoLock);
 
 	if (isScale)
 	{
@@ -1121,7 +1122,7 @@ currval_oid(PG_FUNCTION_ARGS)
 
 	result = elm->last;
 
-	relation_close(seqrel, NoLock);
+	sequence_close(seqrel, NoLock);
 	UnlockReleaseBuffer(buf);
 
 	if (isScale && seq->is_called)
@@ -1208,7 +1209,7 @@ lastval(PG_FUNCTION_ARGS)
 						RelationGetRelationName(seqrel))));
 
 	result = last_used_seq->last;
-	relation_close(seqrel, NoLock);
+	sequence_close(seqrel, NoLock);
 
 	PG_RETURN_INT64(result);
 }
@@ -1323,7 +1324,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 
 	UnlockReleaseBuffer(buf);
 
-	relation_close(seqrel, NoLock);
+	sequence_close(seqrel, NoLock);
 }
 
 /*
@@ -1388,7 +1389,7 @@ lock_and_open_sequence(SeqTable seq)
 	}
 
 	/* We now know we have the lock, and can safely open the rel */
-	return relation_open(seq->relid, NoLock);
+	return sequence_open(seq->relid, NoLock);
 }
 
 /*
@@ -1445,12 +1446,6 @@ init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel)
 	 * Open the sequence relation.
 	 */
 	seqrel = lock_and_open_sequence(elm);
-
-	if (seqrel->rd_rel->relkind != RELKIND_SEQUENCE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not a sequence",
-						RelationGetRelationName(seqrel))));
 
 	/*
 	 * If the sequence has been transactionally replaced since we last saw it,
@@ -2605,7 +2600,7 @@ pg_sequence_last_value(PG_FUNCTION_ARGS)
 	result = seq->last_value;
 
 	UnlockReleaseBuffer(buf);
-	relation_close(seqrel, NoLock);
+	sequence_close(seqrel, NoLock);
 
 	if (is_called)
 		PG_RETURN_INT64(result);

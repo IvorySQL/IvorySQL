@@ -1099,7 +1099,7 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 	if (!WALRead(state,
 				 cur_page,
 				 targetPagePtr,
-				 XLOG_BLCKSZ,
+				 count,
 				 currTLI,		/* Pass the current TLI because only
 								 * WalSndSegmentOpen controls whether new TLI
 								 * is needed. */
@@ -3389,7 +3389,7 @@ WalSndDone(WalSndSendDataCallback send_data)
  * This should only be called when in recovery.
  *
  * This is called either by cascading walsender to find WAL postion to be sent
- * to a cascaded standby or by slot synchronization function to validate remote
+ * to a cascaded standby or by slot synchronization operation to validate remote
  * slot's lsn before syncing it locally.
  *
  * As a side-effect, *tli is updated to the TLI of the last
@@ -3476,12 +3476,8 @@ HandleWalSndInitStopping(void)
 static void
 WalSndLastCycleHandler(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	got_SIGUSR2 = true;
 	SetLatch(MyLatch);
-
-	errno = save_errno;
 }
 
 /* Set up signal handlers */

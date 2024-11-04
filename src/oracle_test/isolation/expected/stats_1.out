@@ -1806,7 +1806,6 @@ pg_stat_force_next_flush
 (1 row)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s2_func_call: SELECT test_stat_func()
 test_stat_func
 --------------
@@ -1846,7 +1845,6 @@ test_stat_func|                         5|t               |t
 (1 row)
 
 step s1_commit_prepared_a: COMMIT PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_func_stats: 
     SELECT
         tso.name,
@@ -1858,7 +1856,7 @@ step s1_func_stats:
 
 name          |pg_stat_get_function_calls|total_above_zero|self_above_zero
 --------------+--------------------------+----------------+---------------
-test_stat_func|                         5|t               |t              
+test_stat_func|                          |                |               
 (1 row)
 
 
@@ -1897,7 +1895,6 @@ pg_stat_force_next_flush
 (1 row)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s2_func_call: SELECT test_stat_func()
 test_stat_func
 --------------
@@ -1937,7 +1934,6 @@ test_stat_func|                         5|t               |t
 (1 row)
 
 step s1_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_func_stats: 
     SELECT
         tso.name,
@@ -1988,7 +1984,6 @@ pg_stat_force_next_flush
 (1 row)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s2_func_call: SELECT test_stat_func()
 test_stat_func
 --------------
@@ -2028,7 +2023,6 @@ test_stat_func|                         5|t               |t
 (1 row)
 
 step s2_commit_prepared_a: COMMIT PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_func_stats: 
     SELECT
         tso.name,
@@ -2040,7 +2034,7 @@ step s1_func_stats:
 
 name          |pg_stat_get_function_calls|total_above_zero|self_above_zero
 --------------+--------------------------+----------------+---------------
-test_stat_func|                         5|t               |t              
+test_stat_func|                          |                |               
 (1 row)
 
 
@@ -2079,7 +2073,6 @@ pg_stat_force_next_flush
 (1 row)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s2_func_call: SELECT test_stat_func()
 test_stat_func
 --------------
@@ -2119,7 +2112,6 @@ test_stat_func|                         5|t               |t
 (1 row)
 
 step s2_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_func_stats: 
     SELECT
         tso.name,
@@ -2543,7 +2535,6 @@ k3 |    1
 (3 rows)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
@@ -2551,12 +2542,13 @@ k0 |    1
 (1 row)
 
 step s1_commit_prepared_a: COMMIT PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
 k0 |    1
-(1 row)
+k2 |    4
+k3 |    1
+(3 rows)
 
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
@@ -2579,7 +2571,7 @@ step s1_table_stats:
 
 seq_scan|seq_tup_read|n_tup_ins|n_tup_upd|n_tup_del|n_live_tup|n_dead_tup|vacuum_count
 --------+------------+---------+---------+---------+----------+----------+------------
-       9|          29|        4|        5|        1|         1|         8|           0
+       9|          31|        4|        5|        1|         3|         6|           0
 (1 row)
 
 
@@ -2606,7 +2598,6 @@ k3 |    1
 (3 rows)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
@@ -2614,12 +2605,13 @@ k0 |    1
 (1 row)
 
 step s2_commit_prepared_a: COMMIT PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
 k0 |    1
-(1 row)
+k2 |    4
+k3 |    1
+(3 rows)
 
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
@@ -2648,7 +2640,7 @@ step s1_table_stats:
 
 seq_scan|seq_tup_read|n_tup_ins|n_tup_upd|n_tup_del|n_live_tup|n_dead_tup|vacuum_count
 --------+------------+---------+---------+---------+----------+----------+------------
-       9|          29|        4|        5|        1|         1|         8|           0
+       9|          31|        4|        5|        1|         3|         6|           0
 (1 row)
 
 
@@ -2675,7 +2667,6 @@ k3 |    1
 (3 rows)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
@@ -2683,7 +2674,6 @@ k0 |    1
 (1 row)
 
 step s1_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
@@ -2738,7 +2728,6 @@ k3 |    1
 (3 rows)
 
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
@@ -2746,7 +2735,6 @@ k0 |    1
 (1 row)
 
 step s2_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_table_select: SELECT * FROM test_stat_tab ORDER BY key, value;
 key|value
 ---+-----
@@ -2798,9 +2786,7 @@ step s1_table_truncate: TRUNCATE test_stat_tab;
 step s1_table_insert_k1: INSERT INTO test_stat_tab(key, value) VALUES('k1', 1);
 step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 'k1';
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_commit_prepared_a: COMMIT PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
 ------------------------
@@ -2822,7 +2808,7 @@ step s1_table_stats:
 
 seq_scan|seq_tup_read|n_tup_ins|n_tup_upd|n_tup_del|n_live_tup|n_dead_tup|vacuum_count
 --------+------------+---------+---------+---------+----------+----------+------------
-       3|           9|        4|        2|        0|         4|         2|           0
+       3|           9|        5|        1|        0|         1|         1|           0
 (1 row)
 
 
@@ -2840,7 +2826,6 @@ step s1_table_truncate: TRUNCATE test_stat_tab;
 step s1_table_insert_k1: INSERT INTO test_stat_tab(key, value) VALUES('k1', 1);
 step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 'k1';
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
 ------------------------
@@ -2848,7 +2833,6 @@ pg_stat_force_next_flush
 (1 row)
 
 step s2_commit_prepared_a: COMMIT PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s2_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
 ------------------------
@@ -2870,7 +2854,7 @@ step s1_table_stats:
 
 seq_scan|seq_tup_read|n_tup_ins|n_tup_upd|n_tup_del|n_live_tup|n_dead_tup|vacuum_count
 --------+------------+---------+---------+---------+----------+----------+------------
-       3|           9|        4|        2|        0|         4|         2|           0
+       3|           9|        5|        1|        0|         1|         1|           0
 (1 row)
 
 
@@ -2888,9 +2872,7 @@ step s1_table_truncate: TRUNCATE test_stat_tab;
 step s1_table_insert_k1: INSERT INTO test_stat_tab(key, value) VALUES('k1', 1);
 step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 'k1';
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
 ------------------------
@@ -2930,9 +2912,7 @@ step s1_table_truncate: TRUNCATE test_stat_tab;
 step s1_table_insert_k1: INSERT INTO test_stat_tab(key, value) VALUES('k1', 1);
 step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 'k1';
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s2_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
 ------------------------
@@ -2979,9 +2959,7 @@ step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 
 step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 'k1';
 step s1_table_drop: DROP TABLE test_stat_tab;
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s1_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
 ------------------------
@@ -3022,9 +3000,7 @@ step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 
 step s1_table_update_k1: UPDATE test_stat_tab SET value = value + 1 WHERE key = 'k1';
 step s1_table_drop: DROP TABLE test_stat_tab;
 step s1_prepare_a: PREPARE TRANSACTION 'a';
-ERROR:  prepared transactions are disabled
 step s2_rollback_prepared_a: ROLLBACK PREPARED 'a';
-ERROR:  prepared transaction with identifier "a" does not exist
 step s1_ff: SELECT pg_stat_force_next_flush();
 pg_stat_force_next_flush
 ------------------------
@@ -3063,8 +3039,8 @@ pg_stat_force_next_flush
 (1 row)
 
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3117,8 +3093,8 @@ pg_stat_force_next_flush
 (1 row)
 
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s2_big_notify: SELECT pg_notify('stats_test_use',
@@ -3157,8 +3133,8 @@ pg_stat_force_next_flush
 (1 row)
 
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s2_begin: BEGIN;
@@ -3200,8 +3176,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_none: SET stats_fetch_consistency = 'none';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3267,8 +3243,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_cache: SET stats_fetch_consistency = 'cache';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3334,8 +3310,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_snapshot: SET stats_fetch_consistency = 'snapshot';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3401,8 +3377,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_none: SET stats_fetch_consistency = 'none';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3474,8 +3450,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_cache: SET stats_fetch_consistency = 'cache';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3547,8 +3523,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_snapshot: SET stats_fetch_consistency = 'snapshot';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3620,8 +3596,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_snapshot: SET stats_fetch_consistency = 'snapshot';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;
@@ -3677,8 +3653,8 @@ pg_stat_force_next_flush
 
 step s1_fetch_consistency_snapshot: SET stats_fetch_consistency = 'snapshot';
 step s1_slru_save_stats: 
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 
 step s1_listen: LISTEN stats_test_nothing;
 step s1_begin: BEGIN;

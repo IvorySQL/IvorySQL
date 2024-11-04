@@ -56,6 +56,7 @@
 #include "catalog/storage.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
+#include "common/int.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -551,6 +552,9 @@ CheckAttributeType(const char *attname,
 {
 	char		att_typtype = get_typtype(atttypid);
 	Oid			att_typelem;
+
+	/* since this function recurses, it could be driven to stack overflow */
+	check_stack_depth();
 
 	if (att_typtype == TYPTYPE_PSEUDO)
 	{
@@ -2760,11 +2764,7 @@ list_cookedconstr_attnum_cmp(const ListCell *p1, const ListCell *p2)
 	AttrNumber	v1 = ((CookedConstraint *) lfirst(p1))->attnum;
 	AttrNumber	v2 = ((CookedConstraint *) lfirst(p2))->attnum;
 
-	if (v1 < v2)
-		return -1;
-	if (v1 > v2)
-		return 1;
-	return 0;
+	return pg_cmp_s16(v1, v2);
 }
 
 /*

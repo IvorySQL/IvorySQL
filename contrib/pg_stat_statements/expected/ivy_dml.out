@@ -112,9 +112,9 @@ DROP TABLE pgss_dml_tab;
 SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
  calls | rows |                                          query                                          
 -------+------+-----------------------------------------------------------------------------------------
-     1 |    6 | MERGE INTO pgss_dml_tab USING pgss_dml_tab st ON (st.a = pgss_dml_tab.a AND st.a >= $1)+
+     1 |    0 | MERGE INTO pgss_dml_tab USING pgss_dml_tab st ON (st.a = pgss_dml_tab.a AND st.a >= $1)+
        |      |  WHEN MATCHED THEN UPDATE SET b = pgss_dml_tab.b || st.a::text
-     1 |    6 | MERGE INTO pgss_dml_tab USING pgss_dml_tab st ON (st.a = pgss_dml_tab.a AND st.a >= $1)+
+     1 |    0 | MERGE INTO pgss_dml_tab USING pgss_dml_tab st ON (st.a = pgss_dml_tab.a AND st.a >= $1)+
        |      |  WHEN MATCHED THEN UPDATE SET b = st.b || st.a::text
      1 |    0 | MERGE INTO pgss_dml_tab USING pgss_dml_tab st ON (st.a = pgss_dml_tab.a)               +
        |      |  WHEN NOT MATCHED THEN INSERT (a) VALUES ($1)

@@ -242,7 +242,7 @@ PgArchiverMain(void)
 	 * Advertise our pgprocno so that backends can use our latch to wake us up
 	 * while we're sleeping.
 	 */
-	PgArch->pgprocno = MyProc->pgprocno;
+	PgArch->pgprocno = MyProcNumber;
 
 	/* Create workspace for pgarch_readyXlog() */
 	arch_files = palloc(sizeof(struct arch_files_state));
@@ -283,13 +283,9 @@ PgArchWakeup(void)
 static void
 pgarch_waken_stop(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	/* set flag to do a final cycle and shut down afterwards */
 	ready_to_stop = true;
 	SetLatch(MyLatch);
-
-	errno = save_errno;
 }
 
 /*

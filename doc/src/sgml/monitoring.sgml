@@ -4482,10 +4482,17 @@ description | Waiting for a newly initialized WAL file to reach durable storage
 
   <para>
    <productname>PostgreSQL</productname> accesses certain on-disk information
-   via <firstterm>SLRU</firstterm> (simple least-recently-used) caches.
+   via <literal>SLRU</literal> (<firstterm>simple least-recently-used</firstterm>)
+   caches.
    The <structname>pg_stat_slru</structname> view will contain
    one row for each tracked SLRU cache, showing statistics about access
    to cached pages.
+  </para>
+
+  <para>
+   For each <literal>SLRU</literal> cache that's part of the core server,
+   there is a configuration parameter that controls its size, with the suffix
+   <literal>_buffers</literal> appended.
   </para>
 
   <table id="pg-stat-slru-view" xreflabel="pg_stat_slru">
@@ -4853,13 +4860,13 @@ description | Waiting for a newly initialized WAL file to reach durable storage
         <literal>NULL</literal> or is not specified, all the counters shown in
         the <structname>pg_stat_slru</structname> view for all SLRU caches are
         reset. The argument can be one of
-        <literal>CommitTs</literal>,
-        <literal>MultiXactMember</literal>,
-        <literal>MultiXactOffset</literal>,
-        <literal>Notify</literal>,
-        <literal>Serial</literal>,
-        <literal>Subtrans</literal>, or
-        <literal>Xact</literal>
+        <literal>commit_timestamp</literal>,
+        <literal>multixact_member</literal>,
+        <literal>multixact_offset</literal>,
+        <literal>notify</literal>,
+        <literal>serializable</literal>,
+        <literal>subtransaction</literal>, or
+        <literal>transaction</literal>
         to reset the counters for only that entry.
         If the argument is <literal>other</literal> (or indeed, any
         unrecognized name), then the counters for all other SLRU caches, such

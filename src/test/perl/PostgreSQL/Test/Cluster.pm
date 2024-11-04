@@ -114,8 +114,9 @@ use Socket;
 use Test::More;
 use PostgreSQL::Test::Utils ();
 use PostgreSQL::Test::BackgroundPsql ();
-use Time::HiRes qw(usleep);
-use Scalar::Util qw(blessed);
+use Text::ParseWords                 qw(shellwords);
+use Time::HiRes                      qw(usleep);
+use Scalar::Util                     qw(blessed);
 
 our ($use_tcp, $test_localhost, $test_pghost, $last_host_assigned,
 	$last_port_assigned, @all_nodes, $died, $portdir);
@@ -501,6 +502,9 @@ parameter allows_streaming => 'logical' or 'physical' (passing 1 will also
 suffice for physical replication) depending on type of replication that
 should be enabled. This is disabled by default.
 
+force_initdb => 1 will force the initialization of the cluster with a new
+initdb rather than copying the data folder from a template.
+
 The new node is set up in a fast but unsafe configuration where fsync is
 disabled.
 
@@ -516,19 +520,29 @@ sub init
 	local %ENV = $self->_get_env();
 
 	$params{allows_streaming} = 0 unless defined $params{allows_streaming};
-	$params{has_archiving}    = 0 unless defined $params{has_archiving};
+	$params{force_initdb} = 0 unless defined $params{force_initdb};
+	$params{has_archiving} = 0 unless defined $params{has_archiving};
+
+	my $initdb_extra_opts_env = $ENV{PG_TEST_INITDB_EXTRA_OPTS};
+	if (defined $initdb_extra_opts_env)
+	{
+		push @{ $params{extra} }, shellwords($initdb_extra_opts_env);
+	}
 
 	mkdir $self->backup_dir;
 	mkdir $self->archive_dir;
 
-	# If available and if there aren't any parameters, use a previously
-	# initdb'd cluster as a template by copying it. For a lot of tests, that's
-	# substantially cheaper. Do so only if there aren't parameters, it doesn't
-	# seem worth figuring out whether they affect compatibility.
+	# If available, if there aren't any parameters and if force_initdb is
+	# disabled, use a previously initdb'd cluster as a template by copying it.
+	# For a lot of tests, that's substantially cheaper. It does not seem
+	# worth figuring out whether extra parameters affect compatibility, so
+	# initdb is forced if any are defined.
 	#
 	# There's very similar code in pg_regress.c, but we can't easily
 	# deduplicate it until we require perl at build time.
-	if (defined $params{extra} or !defined $ENV{INITDB_TEMPLATE})
+	if (   $params{force_initdb}
+		or defined $params{extra}
+		or !defined $ENV{INITDB_TEMPLATE})
 	{
 		note("initializing database system by running initdb");
 		PostgreSQL::Test::Utils::system_or_bail('initdb', '-D', $pgdata, '-A',
@@ -3180,6 +3194,36 @@ $SIG{TERM} = $SIG{INT} = sub {
 
 =pod
 
+=item $node->log_standby_snapshot(self, standby, slot_name)
+
+Log a standby snapshot on primary once the slot restart_lsn is determined on
+the standby.
+
+=cut
+
+sub log_standby_snapshot
+{
+	my ($self, $standby, $slot_name) = @_;
+
+	# Once the slot's restart_lsn is determined, the standby looks for
+	# xl_running_xacts WAL record from the restart_lsn onwards. First wait
+	# until the slot restart_lsn is determined.
+
+	$standby->poll_query_until(
+		'postgres', qq[
+		SELECT restart_lsn IS NOT NULL
+		FROM pg_catalog.pg_replication_slots WHERE slot_name = '$slot_name'
+	])
+	  or die
+	  "timed out waiting for logical slot to calculate its restart_lsn";
+
+	# Then arrange for the xl_running_xacts record for which the standby is
+	# waiting.
+	$self->safe_psql('postgres', 'SELECT pg_log_standby_snapshot()');
+}
+
+=pod
+
 =item $node->create_logical_slot_on_standby(self, primary, slot_name, dbname)
 
 Create logical replication slot on given standby
@@ -3195,19 +3239,9 @@ sub create_logical_slot_on_standby
 
 	$handle = IPC::Run::start(['pg_recvlogical', '-d', $self->connstr($dbname), '-P', 'test_decoding', '-S', $slot_name, '--create-slot'], '>', \$stdout, '2>', \$stderr);
 
-	# Once the slot's restart_lsn is determined, the standby looks for
-	# xl_running_xacts WAL record from the restart_lsn onwards. First wait
-	# until the slot restart_lsn is determined.
-
-	$self->poll_query_until(
-		'postgres', qq[
-		SELECT restart_lsn IS NOT NULL
-		FROM pg_catalog.pg_replication_slots WHERE slot_name = '$slot_name'
-	]) or die "timed out waiting for logical slot to calculate its restart_lsn";
-
-	# Then arrange for the xl_running_xacts record for which pg_recvlogical is
+	# Arrange for the xl_running_xacts record for which pg_recvlogical is
 	# waiting.
-	$primary->safe_psql('postgres', 'SELECT pg_log_standby_snapshot()');
+	$primary->log_standby_snapshot($self, $slot_name);
 
 	$handle->finish();
 

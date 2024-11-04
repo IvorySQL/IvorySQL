@@ -163,6 +163,13 @@ static const char *const BuiltinTrancheNames[] = {
 	[LWTRANCHE_LAUNCHER_HASH] = "LogicalRepLauncherHash",
 	[LWTRANCHE_DSM_REGISTRY_DSA] = "DSMRegistryDSA",
 	[LWTRANCHE_DSM_REGISTRY_HASH] = "DSMRegistryHash",
+	[LWTRANCHE_COMMITTS_SLRU] = "CommitTSSLRU",
+	[LWTRANCHE_MULTIXACTOFFSET_SLRU] = "MultixactOffsetSLRU",
+	[LWTRANCHE_MULTIXACTMEMBER_SLRU] = "MultixactMemberSLRU",
+	[LWTRANCHE_NOTIFY_SLRU] = "NotifySLRU",
+	[LWTRANCHE_SERIAL_SLRU] = "SerialSLRU",
+	[LWTRANCHE_SUBTRANS_SLRU] = "SubtransSLRU",
+	[LWTRANCHE_XACT_SLRU] = "XactSLRU",
 };
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
@@ -776,7 +783,7 @@ GetLWLockIdentifier(uint32 classId, uint16 eventId)
  * in mode.
  *
  * This function will not block waiting for a lock to become free - that's the
- * callers job.
+ * caller's job.
  *
  * Returns true if the lock isn't free and we need to wait.
  */
@@ -1056,9 +1063,9 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 
 	/* LW_WAIT_UNTIL_FREE waiters are always at the front of the queue */
 	if (mode == LW_WAIT_UNTIL_FREE)
-		proclist_push_head(&lock->waiters, MyProc->pgprocno, lwWaitLink);
+		proclist_push_head(&lock->waiters, MyProcNumber, lwWaitLink);
 	else
-		proclist_push_tail(&lock->waiters, MyProc->pgprocno, lwWaitLink);
+		proclist_push_tail(&lock->waiters, MyProcNumber, lwWaitLink);
 
 	/* Can release the mutex now */
 	LWLockWaitListUnlock(lock);
@@ -1097,7 +1104,7 @@ LWLockDequeueSelf(LWLock *lock)
 	 */
 	on_waitlist = MyProc->lwWaiting == LW_WS_WAITING;
 	if (on_waitlist)
-		proclist_delete(&lock->waiters, MyProc->pgprocno, lwWaitLink);
+		proclist_delete(&lock->waiters, MyProcNumber, lwWaitLink);
 
 	if (proclist_is_empty(&lock->waiters) &&
 		(pg_atomic_read_u32(&lock->state) & LW_FLAG_HAS_WAITERS) != 0)

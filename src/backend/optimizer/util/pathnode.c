@@ -1237,6 +1237,10 @@ create_tidrangescan_path(PlannerInfo *root, RelOptInfo *rel,
  *
  * Note that we must handle subpaths = NIL, representing a dummy access path.
  * Also, there are callers that pass root = NULL.
+ *
+ * 'rows', when passed as a non-negative number, will be used to overwrite the
+ * returned path's row estimate.  Otherwise, the row estimate is calculated
+ * by totalling the row estimates from the 'subpaths' list.
  */
 AppendPath *
 create_append_path(PlannerInfo *root,
@@ -1703,8 +1707,13 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->path.pathkeys = NIL;
 
 	pathnode->subpath = subpath;
-	pathnode->in_operators = sjinfo->semi_operators;
-	pathnode->uniq_exprs = sjinfo->semi_rhs_exprs;
+
+	/*
+	 * Under GEQO, the sjinfo might be short-lived, so we'd better make copies
+	 * of data structures we extract from it.
+	 */
+	pathnode->in_operators = copyObject(sjinfo->semi_operators);
+	pathnode->uniq_exprs = copyObject(sjinfo->semi_rhs_exprs);
 
 	/*
 	 * If the input is a relation and it has a unique index that proves the

@@ -91,6 +91,7 @@ extern PGDLLIMPORT volatile sig_atomic_t InterruptPending;
 extern PGDLLIMPORT volatile sig_atomic_t QueryCancelPending;
 extern PGDLLIMPORT volatile sig_atomic_t ProcDiePending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleInTransactionSessionTimeoutPending;
+extern PGDLLIMPORT volatile sig_atomic_t TransactionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t ProcSignalBarrierPending;
 extern PGDLLIMPORT volatile sig_atomic_t LogMemoryContextPending;
@@ -177,6 +178,14 @@ extern PGDLLIMPORT int MaxBackends;
 extern PGDLLIMPORT int MaxConnections;
 extern PGDLLIMPORT int max_worker_processes;
 extern PGDLLIMPORT int max_parallel_workers;
+
+extern PGDLLIMPORT int commit_timestamp_buffers;
+extern PGDLLIMPORT int multixact_member_buffers;
+extern PGDLLIMPORT int multixact_offset_buffers;
+extern PGDLLIMPORT int notify_buffers;
+extern PGDLLIMPORT int serializable_buffers;
+extern PGDLLIMPORT int subtransaction_buffers;
+extern PGDLLIMPORT int transaction_buffers;
 
 extern PGDLLIMPORT int MyProcPid;
 extern PGDLLIMPORT pg_time_t MyStartTime;
@@ -332,6 +341,7 @@ typedef enum BackendType
 	B_BG_WRITER,
 	B_CHECKPOINTER,
 	B_LOGGER,
+	B_SLOTSYNC_WORKER,
 	B_STANDALONE_BACKEND,
 	B_STARTUP,
 	B_WAL_RECEIVER,

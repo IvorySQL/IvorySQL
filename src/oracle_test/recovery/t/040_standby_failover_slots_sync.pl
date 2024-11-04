@@ -15,6 +15,10 @@ use Test::More;
 # Create publisher
 my $publisher = PostgreSQL::Test::Cluster->new('publisher');
 $publisher->init(allows_streaming => 'logical');
+# Disable autovacuum to avoid generating xid during stats update as otherwise
+# the new XID could then be replicated to standby at some random point making
+# slots at primary lag behind standby during slot sync.
+$publisher->append_conf('postgresql.conf', 'autovacuum = off');
 $publisher->start;
 
 $publisher->safe_psql('postgres',
@@ -130,13 +134,19 @@ $standby1->init_from_backup(
 	has_streaming => 1,
 	has_restoring => 1);
 
+# Increase the log_min_messages setting to DEBUG2 on both the standby and
+# # primary to debug test failures, if any.
 my $connstr_1 = $primary->connstr;
 $standby1->append_conf(
 	'postgresql.conf', qq(
 hot_standby_feedback = on
 primary_slot_name = 'sb1_slot'
 primary_conninfo = '$connstr_1 dbname=postgres'
+log_min_messages = 'debug2'
 ));
+
+$primary->append_conf('postgresql.conf', "log_min_messages = 'debug2'");
+$primary->reload;
 
 $primary->psql('postgres',
 	q{SELECT pg_create_logical_replication_slot('lsub2_slot', 'test_decoding', false, false, true);}
@@ -223,17 +233,14 @@ is( $standby1->safe_psql(
 $standby1->append_conf('postgresql.conf', 'max_slot_wal_keep_size = -1');
 $standby1->reload;
 
-# Enable the subscription to let it catch up to the latest wal position
-$subscriber1->safe_psql('postgres',
-	"ALTER SUBSCRIPTION regress_mysub1 ENABLE");
+# To ensure that restart_lsn has moved to a recent WAL position, we re-create
+# the subscription and the logical slot.
+$subscriber1->safe_psql(
+	'postgres', qq[
+	DROP SUBSCRIPTION regress_mysub1;
+	CREATE SUBSCRIPTION regress_mysub1 CONNECTION '$publisher_connstr' PUBLICATION regress_mypub WITH (slot_name = lsub1_slot, copy_data = false, failover = true);
+]);
 
-# This wait ensures that confirmed_flush_lsn has been moved to latest
-# position.
-$primary->wait_for_catchup('regress_mysub1');
-
-# To ensure that restart_lsn has moved to a recent WAL position, we need
-# to log XLOG_RUNNING_XACTS and make sure the same is processed as well
-$primary->psql('postgres', "CHECKPOINT");
 $primary->wait_for_catchup('regress_mysub1');
 
 # Do not allow any further advancement of the restart_lsn for the lsub1_slot.
@@ -267,6 +274,13 @@ is( $standby1->safe_psql(
 	),
 	"t",
 	'logical slot is re-synced');
+
+# Reset the log_min_messages to the default value.
+$primary->append_conf('postgresql.conf', "log_min_messages = 'warning'");
+$primary->reload;
+
+$standby1->append_conf('postgresql.conf', "log_min_messages = 'warning'");
+$standby1->reload;
 
 ##################################################
 # Test that a synchronized slot can not be decoded, altered or dropped by the
@@ -305,8 +319,12 @@ $standby1->reload;
 ($result, $stdout, $stderr) =
   $standby1->psql('postgres', "SELECT pg_sync_replication_slots();");
 ok( $stderr =~
-	  /HINT:  'dbname' must be specified in "primary_conninfo"/,
+	  /ERROR:  slot synchronization requires dbname to be specified in primary_conninfo/,
 	"cannot sync slots if dbname is not specified in primary_conninfo");
+
+# Add the dbname back to the primary_conninfo for further tests
+$standby1->append_conf('postgresql.conf', "primary_conninfo = '$connstr_1 dbname=postgres'");
+$standby1->reload;
 
 ##################################################
 # Test that we cannot synchronize slots to a cascading standby server.
@@ -340,5 +358,175 @@ $cascading_standby->start;
 ok( $stderr =~
 	  /ERROR:  cannot synchronize replication slots from a standby server/,
 	"cannot sync slots to a cascading standby server");
+
+$cascading_standby->stop;
+
+##################################################
+# Test to confirm that the slot synchronization is protected from malicious
+# users.
+##################################################
+
+$primary->psql('postgres', "CREATE DATABASE slotsync_test_db");
+$primary->wait_for_replay_catchup($standby1);
+
+$standby1->stop;
+
+# On the primary server, create '=' operator in another schema mapped to
+# inequality function and redirect the queries to use new operator by setting
+# search_path. The new '=' operator is created with leftarg as 'bigint' and
+# right arg as 'int' to redirect 'count(*) = 1' in slot sync's query to use
+# new '=' operator.
+$primary->safe_psql(
+	'slotsync_test_db', q{
+
+CREATE ROLE repl_role REPLICATION LOGIN;
+CREATE SCHEMA myschema;
+
+CREATE FUNCTION myschema.myintne(bigint, int) RETURNS bool as $$
+		BEGIN
+		  RETURN $1 <> $2;
+		END;
+	  $$ LANGUAGE plpgsql immutable;
+
+CREATE OPERATOR myschema.= (
+	  leftarg    = bigint,
+	  rightarg   = int,
+	  procedure  = myschema.myintne);
+
+ALTER DATABASE slotsync_test_db SET SEARCH_PATH TO myschema,pg_catalog;
+GRANT USAGE on SCHEMA myschema TO repl_role;
+});
+
+# Start the standby with changed primary_conninfo.
+$standby1->append_conf('postgresql.conf', "primary_conninfo = '$connstr_1 dbname=slotsync_test_db user=repl_role'");
+$standby1->start;
+
+# Run the synchronization function. If the sync flow was not prepared
+# to handle such attacks, it would have failed during the validation
+# of the primary_slot_name itself resulting in
+# ERROR:  slot synchronization requires valid primary_slot_name
+$standby1->safe_psql('slotsync_test_db', "SELECT pg_sync_replication_slots();");
+
+# Reset the dbname and user in primary_conninfo to the earlier values.
+$standby1->append_conf('postgresql.conf', "primary_conninfo = '$connstr_1 dbname=postgres'");
+$standby1->reload;
+
+# Drop the newly created database.
+$primary->psql('postgres',
+	q{DROP DATABASE slotsync_test_db;});
+
+##################################################
+# Test to confirm that the slot sync worker exits on invalid GUC(s) and
+# get started again on valid GUC(s).
+##################################################
+
+$log_offset = -s $standby1->logfile;
+
+# Enable slot sync worker.
+$standby1->append_conf('postgresql.conf', qq(sync_replication_slots = on));
+$standby1->reload;
+
+# Confirm that the slot sync worker is able to start.
+$standby1->wait_for_log(qr/slot sync worker started/,
+	$log_offset);
+
+$log_offset = -s $standby1->logfile;
+
+# Disable another GUC required for slot sync.
+$standby1->append_conf(	'postgresql.conf', qq(hot_standby_feedback = off));
+$standby1->reload;
+
+# Confirm that slot sync worker acknowledge the GUC change and logs the msg
+# about wrong configuration.
+$standby1->wait_for_log(qr/slot sync worker will restart because of a parameter change/,
+	$log_offset);
+$standby1->wait_for_log(qr/slot synchronization requires hot_standby_feedback to be enabled/,
+	$log_offset);
+
+$log_offset = -s $standby1->logfile;
+
+# Re-enable the required GUC
+$standby1->append_conf('postgresql.conf', "hot_standby_feedback = on");
+$standby1->reload;
+
+# Confirm that the slot sync worker is able to start now.
+$standby1->wait_for_log(qr/slot sync worker started/,
+	$log_offset);
+
+##################################################
+# Test to confirm that restart_lsn and confirmed_flush_lsn of the logical slot
+# on the primary is synced to the standby via the slot sync worker.
+##################################################
+
+# Insert data on the primary
+$primary->safe_psql(
+	'postgres', qq[
+	CREATE TABLE tab_int (a int PRIMARY KEY);
+	INSERT INTO tab_int SELECT generate_series(1, 10);
+]);
+
+# Subscribe to the new table data and wait for it to arrive
+$subscriber1->safe_psql(
+	'postgres', qq[
+	CREATE TABLE tab_int (a int PRIMARY KEY);
+	ALTER SUBSCRIPTION regress_mysub1 ENABLE;
+	ALTER SUBSCRIPTION regress_mysub1 REFRESH PUBLICATION;
+]);
+
+$subscriber1->wait_for_subscription_sync;
+
+# Do not allow any further advancement of the restart_lsn and
+# confirmed_flush_lsn for the lsub1_slot.
+$subscriber1->safe_psql('postgres', "ALTER SUBSCRIPTION regress_mysub1 DISABLE");
+
+# Wait for the replication slot to become inactive on the publisher
+$primary->poll_query_until(
+	'postgres',
+	"SELECT COUNT(*) FROM pg_catalog.pg_replication_slots WHERE slot_name = 'lsub1_slot' AND active='f'",
+	1);
+
+# Get the restart_lsn for the logical slot lsub1_slot on the primary
+my $primary_restart_lsn = $primary->safe_psql('postgres',
+	"SELECT restart_lsn from pg_replication_slots WHERE slot_name = 'lsub1_slot';");
+
+# Get the confirmed_flush_lsn for the logical slot lsub1_slot on the primary
+my $primary_flush_lsn = $primary->safe_psql('postgres',
+	"SELECT confirmed_flush_lsn from pg_replication_slots WHERE slot_name = 'lsub1_slot';");
+
+# Confirm that restart_lsn and confirmed_flush_lsn of lsub1_slot slot are synced
+# to the standby
+ok( $standby1->poll_query_until(
+		'postgres',
+		"SELECT '$primary_restart_lsn' = restart_lsn AND '$primary_flush_lsn' = confirmed_flush_lsn from pg_replication_slots WHERE slot_name = 'lsub1_slot' AND synced AND NOT temporary;"),
+	'restart_lsn and confirmed_flush_lsn of slot lsub1_slot synced to standby');
+
+##################################################
+# Promote the standby1 to primary. Confirm that:
+# a) the slot 'lsub1_slot' is retained on the new primary
+# b) logical replication for regress_mysub1 is resumed successfully after failover
+##################################################
+$standby1->promote;
+
+# Update subscription with the new primary's connection info
+my $standby1_conninfo = $standby1->connstr . ' dbname=postgres';
+$subscriber1->safe_psql('postgres',
+	"ALTER SUBSCRIPTION regress_mysub1 CONNECTION '$standby1_conninfo';
+	 ALTER SUBSCRIPTION regress_mysub1 ENABLE; ");
+
+# Confirm the synced slot 'lsub1_slot' is retained on the new primary
+is($standby1->safe_psql('postgres',
+	q{SELECT slot_name FROM pg_replication_slots WHERE slot_name = 'lsub1_slot' AND synced AND NOT temporary;}),
+	'lsub1_slot',
+	'synced slot retained on the new primary');
+
+# Insert data on the new primary
+$standby1->safe_psql('postgres',
+	"INSERT INTO tab_int SELECT generate_series(11, 20);");
+$standby1->wait_for_catchup('regress_mysub1');
+
+# Confirm that data in tab_int replicated on the subscriber
+is( $subscriber1->safe_psql('postgres', q{SELECT count(*) FROM tab_int;}),
+	"20",
+	'data replicated from the new primary');
 
 done_testing();
