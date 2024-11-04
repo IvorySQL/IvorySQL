@@ -266,6 +266,12 @@ drop table inaf;
 drop table xmltest;
 drop table xmlnstest;
 
+CREATE TABLE t_xml (ID int, DATA XMLType);
+INSERT INTO t_xml VALUES(1, '<value>one</value>');
+INSERT INTO t_xml VALUES(2, '<value>two</value>');
+select id, xmlisvalid(t.data) from t_xml t;
+drop table t_xml;
+
 --
 -- Fix BUG#Z202, BUG#Z203, BUG#Z204, BUG#Z205
 --
