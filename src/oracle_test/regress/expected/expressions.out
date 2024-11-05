@@ -53,7 +53,7 @@ SELECT now()::timestamp::text = localtimestamp::text;
 ERROR:  cannot cast type timestamp with time zone to timestamp
 LINE 1: SELECT now()::timestamp::text = localtimestamp::text;
                     ^
--- current_role/user/user is tested in rolnames.sql
+-- current_role/user/user is tested in rolenames.sql
 -- current database / catalog
 SELECT current_catalog = current_database();
  ?column? 
