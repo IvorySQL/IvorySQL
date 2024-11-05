@@ -1204,6 +1204,10 @@ spawn_process(const char *cmdline)
 	if (logfile)
 		fflush(logfile);
 
+#ifdef EXEC_BACKEND
+	pg_disable_aslr();
+#endif
+
 	pid = fork();
 	if (pid == -1)
 	{
