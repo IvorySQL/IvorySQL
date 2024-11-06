@@ -68,7 +68,7 @@ use Test::More;
 
 =over
 
-=item PostgreSQL::Test::BackgroundPsql->new(interactive, @psql_params, timeout)
+=item PostgreSQL::Test::BackgroundPsql->new(interactive, @psql_params, timeout, wait)
 
 Builds a new object of class C<PostgreSQL::Test::BackgroundPsql> for either
 an interactive or background session and starts it. If C<interactive> is
@@ -76,12 +76,15 @@ true then a PTY will be attached. C<psql_params> should contain the full
 command to run psql with all desired parameters and a complete connection
 string. For C<interactive> sessions, IO::Pty is required.
 
+This routine will not return until psql has started up and is ready to
+consume input. Set B<wait> to 0 to return immediately instead.
+
 =cut
 
 sub new
 {
 	my $class = shift;
-	my ($interactive, $psql_params, $timeout) = @_;
+	my ($interactive, $psql_params, $timeout, $wait) = @_;
 	my $psql = {
 		'stdin' => '',
 		'stdout' => '',
@@ -92,8 +95,7 @@ sub new
 
 	# This constructor should only be called from PostgreSQL::Test::Cluster
     my ($package, $file, $line) = caller;
-    die
-	  "Forbidden caller of constructor: package: $package, file: $file:$line"
+    die "Forbidden caller of constructor: package: $package, file: $file:$line"
 	  unless $package->isa('PostgreSQL::Test::Cluster');
 
 	$psql->{timeout} = IPC::Run::timeout(
@@ -104,8 +106,7 @@ sub new
 	if ($interactive)
 	{
 		$run = IPC::Run::start $psql_params,
-		  '<pty<', \$psql->{stdin}, '>pty>', \$psql->{stdout}, '2>',
-		  \$psql->{stderr},
+		  '<pty<', \$psql->{stdin}, '>pty>', \$psql->{stdout}, '2>', \$psql->{stderr},
 		  $psql->{timeout};
 	}
 	else
@@ -119,14 +120,25 @@ sub new
 
 	my $self = bless $psql, $class;
 
-	$self->_wait_connect();
+	$wait = 1 unless defined($wait);
+	if ($wait)
+	{
+		$self->wait_connect();
+	}
 
 	return $self;
 }
 
-# Internal routine for awaiting psql starting up and being ready to consume
-# input.
-sub _wait_connect
+=pod
+
+=item $session->wait_connect
+
+Returns once psql has started up and is ready to consume input. This is called
+automatically for clients unless requested otherwise in the constructor.
+
+=cut
+
+sub wait_connect
 {
 	my ($self) = @_;
 
@@ -136,9 +148,8 @@ sub _wait_connect
 	# errors anyway, but that might be added later.)
 	my $banner = "background_psql: ready";
 	$self->{stdin} .= "\\echo $banner\n";
-	$self->{run}->pump()
-	  until $self->{stdout} =~ /$banner/ || $self->{timeout}->is_expired;
-	$self->{stdout} = '';    # clear out banner
+	$self->{run}->pump() until $self->{stdout} =~ /$banner/ || $self->{timeout}->is_expired;
+	$self->{stdout} = ''; # clear out banner
 
 	die "psql startup timed out" if $self->{timeout}->is_expired;
 }
@@ -184,10 +195,10 @@ sub reconnect_and_clear
 
 	# restart
 	$self->{run}->run();
-	$self->{stdin} = '';
+	$self->{stdin}  = '';
 	$self->{stdout} = '';
 
-	$self->_wait_connect();
+	$self->wait_connect();
 }
 
 =pod
@@ -230,7 +241,7 @@ sub query
 
 	$ret = $self->{stderr} eq "" ? 0 : 1;
 
-	return wantarray ? ($output, $ret) : $output;
+	return wantarray ? ( $output, $ret ) : $output;
 }
 
 =pod

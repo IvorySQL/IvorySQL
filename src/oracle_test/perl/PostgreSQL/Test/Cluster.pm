@@ -452,7 +452,7 @@ sub pg_version
 
 =pod
 
-=item $node->config_data(option ...)
+=item $node->config_data( option ...)
 
 Return configuration data from pg_config, using options (if supplied).
 The options will be things like '--sharedir'.
@@ -488,7 +488,7 @@ sub config_data
 	my @map;
 	foreach my $line (@lines)
 	{
-		my ($k, $v) = split (/ = /, $line,2);
+		my ($k,$v) = split (/ = /,$line,2);
 		push(@map, $k, $v);
 	}
 	return @map;
@@ -2280,6 +2280,12 @@ connection.
 
 If given, it must be an array reference containing additional parameters to B<psql>.
 
+=item wait => 1
+
+By default, this method will not return until connection has completed (or
+failed). Set B<wait> to 0 to return immediately instead. (Clients can call the
+session's C<wait_connect> method manually when needed.)
+
 =back
 
 =cut
@@ -2310,13 +2316,15 @@ sub background_psql
 		'-XAtq', '-d', $psql_connstr, '-f', '-');
 
 	$params{on_error_stop} = 1 unless defined $params{on_error_stop};
+	$params{wait} = 1 unless defined $params{wait};
 	$timeout = $params{timeout} if defined $params{timeout};
 
 	push @psql_params, '-v', 'ON_ERROR_STOP=1' if $params{on_error_stop};
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
 
-	return PostgreSQL::Test::BackgroundPsql->new(0, \@psql_params, $timeout);
+	return PostgreSQL::Test::BackgroundPsql->new(0, \@psql_params, $timeout,
+		$params{wait});
 }
 
 =pod
