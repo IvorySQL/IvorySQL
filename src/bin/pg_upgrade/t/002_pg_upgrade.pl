@@ -425,7 +425,7 @@ SKIP:
 			$mode, '--check',
 		],
 		1,
-		[qr/invalid/],    # pg_upgrade prints errors on stdout :(
+		[qr/datconnlimit/],
 		[qr/^$/],
 		'invalid database causes failure');
 	rmtree($newnode->data_dir . "/pg_upgrade_output.d");
