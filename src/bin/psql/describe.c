@@ -28,7 +28,6 @@
 #include "fe_utils/string_utils.h"
 #include "oracle_fe_utils/ora_string_utils.h"
 #include "settings.h"
-#include "variables.h"
 #include "oracle_fe_utils/ora_string_utils.h"
 
 
