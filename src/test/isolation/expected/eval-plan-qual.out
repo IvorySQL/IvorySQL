@@ -19,7 +19,7 @@ step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
 accountid|balance|balance2
 ---------+-------+--------
-checking |    850|    1700
+checking |    850|     800
 savings  |    600|    1200
 (2 rows)
 
@@ -422,7 +422,7 @@ step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
 accountid|balance|balance2
 ---------+-------+--------
-checking |   -800|   -1600
+checking |   -800|     800
 savings  |    600|    1200
 (2 rows)
 
@@ -671,14 +671,14 @@ step c1: COMMIT;
 step updwcte: <... completed>
 accountid|balance|balance2|accountid|balance|balance2
 ---------+-------+--------+---------+-------+--------
-savings  |   1600|    3200|checking |   1500|    3000
+savings  |   1600|    3200|checking |   1500|     800
 (1 row)
 
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
 accountid|balance|balance2
 ---------+-------+--------
-checking |   1500|    3000
+checking |   1500|     800
 savings  |   1600|    3200
 (2 rows)
 
@@ -715,14 +715,14 @@ step c1: COMMIT;
 step delwcte: <... completed>
 accountid|balance|balance2|accountid|balance|balance2
 ---------+-------+--------+---------+-------+--------
-savings  |    600|    1200|checking |   1500|    3000
+savings  |    600|    1200|checking |   1500|     800
 (1 row)
 
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
 accountid|balance|balance2
 ---------+-------+--------
-checking |   1500|    3000
+checking |   1500|     800
 (1 row)
 
 
@@ -770,7 +770,7 @@ step read: SELECT * FROM accounts ORDER BY accountid;
 accountid|balance|balance2
 ---------+-------+--------
 checking |    600|    1200
-savings  |   2334|    4668
+savings  |   2334|    2200
 (2 rows)
 
 
@@ -1118,7 +1118,7 @@ step c2: COMMIT;
 step read_part: SELECT * FROM parttbl ORDER BY a;
 a| b|c| d
 -+--+-+--
-1|12|1|13
+1|12|1|12
 (1 row)
 
 
