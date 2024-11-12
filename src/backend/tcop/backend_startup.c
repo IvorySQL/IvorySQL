@@ -25,6 +25,7 @@
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "parser/scansup.h"
 #include "postmaster/postmaster.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
