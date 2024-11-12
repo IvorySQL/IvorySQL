@@ -1349,12 +1349,13 @@ dropDBs(PGconn *conn)
 		char	   *dbname = PQgetvalue(res, i, 0);
 
 		/*
-		 * Skip "postgres" and "template1"; dumpDatabases() will deal with
+		 * Skip "postgres", "ivorysql" and "template1"; dumpDatabases() will deal with
 		 * them specially.  Also, be sure to skip "template0", even if for
 		 * some reason it's not marked !datallowconn.
 		 */
 		if (strcmp(dbname, "template1") != 0 &&
 			strcmp(dbname, "template0") != 0 &&
+			strcmp(dbname, "ivorysql") != 0 &&
 			strcmp(dbname, "postgres") != 0)
 		{
 			fprintf(OPF, "DROP DATABASE %s%s;\n",
@@ -1530,14 +1531,16 @@ dumpDatabases(PGconn *conn)
 		fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", dbname);
 
 		/*
-		 * We assume that "template1" and "postgres" already exist in the
+		 * We assume that "template1", "ivorysql" and "postgres" already exist in the
 		 * target installation.  dropDBs() won't have removed them, for fear
 		 * of removing the DB the restore script is initially connected to. If
 		 * --clean was specified, tell pg_dump to drop and recreate them;
 		 * otherwise we'll merely restore their contents.  Other databases
 		 * should simply be created.
 		 */
-		if (strcmp(dbname, "template1") == 0 || strcmp(dbname, "postgres") == 0)
+		if (strcmp(dbname, "template1") == 0 ||
+			strcmp(dbname, "postgres") == 0 ||
+			strcmp(dbname, "ivorysql") == 0)
 		{
 			if (output_clean)
 				create_opts = "--clean --create";
