@@ -256,7 +256,7 @@ main(int argc, char *argv[])
 		values[3] = password;
 		keywords[4] = "dbname"; /* see do_connect() */
 		values[4] = (options.list_dbs && options.dbname == NULL) ?
-			"postgres" : options.dbname;
+			"ivorysql" : options.dbname;
 		keywords[5] = "fallback_application_name";
 		values[5] = pset.progname;
 		keywords[6] = "client_encoding";

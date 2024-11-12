@@ -144,10 +144,10 @@ CREATE TABLE cmdata2 (f1 int);
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 \d+ cmdata2
-                                              Table "public.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+-------------+--------------+-------------
- f1     | character varying |           |          |         | extended |             |              | 
+                                             Table "public.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         | extended |             |              | 
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE int USING f1::integer;
 \d+ cmdata2
@@ -161,24 +161,24 @@ ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE int USING f1::integer;
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION pglz;
 \d+ cmdata2
-                                              Table "public.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+-------------+--------------+-------------
- f1     | character varying |           |          |         | extended | pglz        |              | 
+                                             Table "public.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         | extended | pglz        |              | 
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET STORAGE plain;
 \d+ cmdata2
-                                              Table "public.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | character varying |           |          |         | plain   | pglz        |              | 
+                                            Table "public.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         | plain   | pglz        |              | 
 
 INSERT INTO cmdata2 VALUES (repeat('123456789', 800));
+ERROR:  value too long for type varchar2(4000 byte)
 SELECT pg_column_compression(f1) FROM cmdata2;
  pg_column_compression 
 -----------------------
- 
-(1 row)
+(0 rows)
 
 -- test compression with materialized view
 CREATE MATERIALIZED VIEW compressmv(x) AS SELECT * FROM cmdata1;
@@ -262,10 +262,10 @@ SELECT pg_column_compression(f1) FROM cmdata;
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION default;
 \d+ cmdata2
-                                              Table "public.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | character varying |           |          |         | plain   |             |              | 
+                                            Table "public.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         | plain   |             |              | 
 
 -- test alter compression method for materialized views
 ALTER MATERIALIZED VIEW compressmv ALTER COLUMN x SET COMPRESSION lz4;
