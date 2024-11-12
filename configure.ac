@@ -29,6 +29,9 @@ AC_CONFIG_AUX_DIR(config)
 AC_PREFIX_DEFAULT(/usr/local/pgsql)
 AC_DEFINE_UNQUOTED(CONFIGURE_ARGS, ["$ac_configure_args"], [Saved arguments from configure])
 
+# IvorySQL version
+PACKAGE_IVORYSQL_VERSION='1.8'
+
 [PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\)'`]
 [PG_MINORVERSION=`expr "$PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`]
 test -n "$PG_MINORVERSION" || PG_MINORVERSION=0
@@ -36,6 +39,7 @@ AC_SUBST(PG_MAJORVERSION)
 AC_DEFINE_UNQUOTED(PG_MAJORVERSION, "$PG_MAJORVERSION", [PostgreSQL major version as a string])
 AC_DEFINE_UNQUOTED(PG_MAJORVERSION_NUM, $PG_MAJORVERSION, [PostgreSQL major version number])
 AC_DEFINE_UNQUOTED(PG_MINORVERSION_NUM, $PG_MINORVERSION, [PostgreSQL minor version number])
+AC_DEFINE([PACKAGE_IVORYSQL_VERSION], $PACKAGE_IVORYSQL_VERSION , [IvorySQL version number])
 
 PGAC_ARG_REQ(with, extra-version, [STRING], [append STRING to version],
              [PG_VERSION="$PACKAGE_VERSION$withval"],
@@ -2432,7 +2436,7 @@ else
 fi
 
 AC_DEFINE_UNQUOTED(PG_VERSION_STR,
-                   ["PostgreSQL $PG_VERSION on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"],
+                   ["PostgreSQL $PG_VERSION (IvorySQL $PACKAGE_IVORYSQL_VERSION) on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"],
                    [A string containing the version number, platform, and C compiler])
 
 # Supply a numeric version string for use by 3rd party add-ons
