@@ -883,7 +883,6 @@ for dir in $with_includes $SRCH_INC; do
   fi
 done
 IFS=$ac_save_IFS
-AC_SUBST(INCLUDES)
 
 
 #
