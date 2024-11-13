@@ -31,7 +31,7 @@
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
 #include "utils/acl.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
@@ -812,7 +812,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 		 */
 		LockPage(index, GIN_METAPAGE_BLKNO, ExclusiveLock);
 		workMemory =
-			(IsAutoVacuumWorkerProcess() && autovacuum_work_mem != -1) ?
+			(AmAutoVacuumWorkerProcess() && autovacuum_work_mem != -1) ?
 			autovacuum_work_mem : maintenance_work_mem;
 	}
 	else

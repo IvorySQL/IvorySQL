@@ -204,8 +204,8 @@ PostgreSQL documentation
         On Linux, <literal>syncfs</literal> may be used instead to ask the
         operating system to synchronize the whole file systems that contain the
         upgraded cluster's data directory, its WAL files, and each tablespace.
-        See <xref linkend="syncfs"/> for more information about using
-        <function>syncfs()</function>.
+        See <xref linkend="guc-recovery-init-sync-method"/> for information
+        about the caveats to be aware of when using <literal>syncfs</literal>.
        </para>
        <para>
         This option has no effect when <option>--no-sync</option> is used.
@@ -259,6 +259,19 @@ PostgreSQL documentation
        <para>
         Copy files to the new cluster.  This is the default.  (See also
         <option>--link</option> and <option>--clone</option>.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--copy-file-range</option></term>
+      <listitem>
+       <para>
+        Use the <function>copy_file_range</function> system call for efficient
+        copying.  On some file systems this gives results similar to
+        <option>--clone</option>, sharing physical disk blocks, while on others
+        it may still copy blocks, but do so via an optimized path.  At present,
+        it is supported on Linux and FreeBSD.
        </para>
       </listitem>
      </varlistentry>
@@ -440,8 +453,8 @@ make prefix=/usr/local/pgsql.new install
       <para>
        All slots on the old cluster must be usable, i.e., there are no slots
        whose
-       <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>conflict_reason</structfield>
-       is not <literal>NULL</literal>.
+       <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>conflicting</structfield>
+       is not <literal>true</literal>.
       </para>
      </listitem>
      <listitem>

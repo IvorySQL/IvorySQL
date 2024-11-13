@@ -35,9 +35,6 @@ typedef struct ModifyTableContext
 	 */
 	TupleTableSlot *planSlot;
 
-	/* MERGE specific */
-	MergeActionState *relaction;	/* MERGE action in progress */
-
 	/*
 	 * Information about the changes that were made concurrently to a tuple
 	 * being updated or deleted
@@ -91,27 +88,33 @@ extern bool ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resul
 							ItemPointer tupleid, HeapTuple oldtuple,
 							TupleTableSlot **epqreturnslot, TM_Result *result);
 extern TM_Result ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-							ItemPointer tupleid, bool changingPart);
+							  ItemPointer tupleid, bool changingPart, int options,
+							  TupleTableSlot *oldSlot);
 extern void ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-							ItemPointer tupleid, HeapTuple oldtuple, bool changingPart);
+							   ItemPointer tupleid, HeapTuple oldtuple,
+							   TupleTableSlot *slot, bool changingPart);
 extern TM_Result ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-							bool canSetTag, UpdateContext *updateCxt);
+							  bool canSetTag, int options, TupleTableSlot *oldSlot,
+							  UpdateContext *updateCxt);
 extern void ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 							ResultRelInfo *resultRelInfo, ItemPointer tupleid,
-							HeapTuple oldtuple, TupleTableSlot *slot);
+							   HeapTuple oldtuple, TupleTableSlot *slot,
+							   TupleTableSlot *oldslot);
 extern bool ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
 							TM_Result *result);
 extern void ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot, EState *estate);
-extern bool ExecMergeMatched(ModifyTableContext *context,
-							 ResultRelInfo *resultRelInfo,
-							 ItemPointer tupleid,
-							 HeapTuple oldtuple,
-							 bool canSetTag);
-typedef bool (* exec_merge_matched_hook_type)(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-									ItemPointer tupleid, HeapTuple oldtuple, bool canSetTag);
+extern TupleTableSlot *ExecMergeMatched(ModifyTableContext *context,
+										ResultRelInfo *resultRelInfo,
+										ItemPointer tupleid,
+										HeapTuple oldtuple,
+										bool canSetTag,
+										bool *matched);
+typedef TupleTableSlot *(* exec_merge_matched_hook_type)(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+									ItemPointer tupleid, HeapTuple oldtuple, 
+									bool canSetTag, bool *matched);
 extern PGDLLIMPORT exec_merge_matched_hook_type pg_exec_merge_matched_hook;
 extern PGDLLIMPORT exec_merge_matched_hook_type ora_exec_merge_matched_hook;
 

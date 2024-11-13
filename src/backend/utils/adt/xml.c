@@ -100,7 +100,6 @@
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/xml.h"
@@ -2164,8 +2163,7 @@ xml_errorHandler(void *data, PgXmlErrorPtr error)
 		appendBinaryStringInfo(&xmlerrcxt->err_buf, errorBuf->data,
 							   errorBuf->len);
 
-		pfree(errorBuf->data);
-		pfree(errorBuf);
+		destroyStringInfo(errorBuf);
 		return;
 	}
 
@@ -2196,8 +2194,7 @@ xml_errorHandler(void *data, PgXmlErrorPtr error)
 				(errmsg_internal("%s", errorBuf->data)));
 	}
 
-	pfree(errorBuf->data);
-	pfree(errorBuf);
+	destroyStringInfo(errorBuf);
 }
 
 

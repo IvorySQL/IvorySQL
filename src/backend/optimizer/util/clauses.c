@@ -20,8 +20,6 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
-#include "catalog/pg_aggregate.h"
-#include "catalog/pg_class.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
@@ -41,7 +39,6 @@
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
 #include "parser/analyze.h"
-#include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_func.h"
 #include "rewrite/rewriteHandler.h"
@@ -53,6 +50,7 @@
 #include "utils/fmgroids.h"
 #include "utils/json.h"
 #include "utils/jsonb.h"
+#include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
@@ -423,6 +421,25 @@ contain_mutable_functions_walker(Node *node, void *context)
 		}
 
 		/* Check all subnodes */
+	}
+
+	if (IsA(node, JsonExpr))
+	{
+		JsonExpr   *jexpr = castNode(JsonExpr, node);
+		Const	   *cnst;
+
+		if (!IsA(jexpr->path_spec, Const))
+			return true;
+
+		cnst = castNode(Const, jexpr->path_spec);
+
+		Assert(cnst->consttype == JSONPATHOID);
+		if (cnst->constisnull)
+			return false;
+
+		if (jspIsMutable(DatumGetJsonPathP(cnst->constvalue),
+						 jexpr->passing_names, jexpr->passing_values))
+			return true;
 	}
 
 	if (IsA(node, SQLValueFunction))
@@ -4870,6 +4887,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	querytree_list = list_make1(querytree);
 	if (check_sql_fn_retval(list_make1(querytree_list),
 							result_type, rettupdesc,
+							funcform->prokind,
 							false, NULL))
 		goto fail;				/* reject whole-tuple-result cases */
 
@@ -5382,16 +5400,20 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	}
 
 	/*
-	 * Also resolve the actual function result tupdesc, if composite.  If the
-	 * function is just declared to return RECORD, dig the info out of the AS
-	 * clause.
+	 * Also resolve the actual function result tupdesc, if composite.  If we
+	 * have a coldeflist, believe that; otherwise use get_expr_result_type.
+	 * (This logic should match ExecInitFunctionScan.)
 	 */
-	functypclass = get_expr_result_type((Node *) fexpr, NULL, &rettupdesc);
-	if (functypclass == TYPEFUNC_RECORD)
+	if (rtfunc->funccolnames != NIL)
+	{
+		functypclass = TYPEFUNC_RECORD;
 		rettupdesc = BuildDescFromLists(rtfunc->funccolnames,
 										rtfunc->funccoltypes,
 										rtfunc->funccoltypmods,
 										rtfunc->funccolcollations);
+	}
+	else
+		functypclass = get_expr_result_type((Node *) fexpr, NULL, &rettupdesc);
 
 	/*
 	 * The single command must be a plain SELECT.
@@ -5415,6 +5437,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	 */
 	if (!check_sql_fn_retval(list_make1(querytree_list),
 							 fexpr->funcresulttype, rettupdesc,
+							 funcform->prokind,
 							 true, NULL) &&
 		(functypclass == TYPEFUNC_COMPOSITE ||
 		 functypclass == TYPEFUNC_COMPOSITE_DOMAIN ||

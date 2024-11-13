@@ -201,6 +201,9 @@ typedef struct ReplicationSlot
 	 * forcibly flushed or not.
 	 */
 	XLogRecPtr	last_saved_confirmed_flush;
+
+	/* The time since the slot has become inactive */
+	TimestampTz inactive_since;
 } ReplicationSlot;
 
 #define SlotIsPhysical(slot) ((slot)->data.database == InvalidOid)
@@ -226,6 +229,7 @@ extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 
 /* GUCs */
 extern PGDLLIMPORT int max_replication_slots;
+extern PGDLLIMPORT char *standby_slot_names;
 
 /* shmem initialization functions */
 extern Size ReplicationSlotsShmemSize(void);
@@ -272,6 +276,10 @@ extern void CheckPointReplicationSlots(bool is_shutdown);
 extern void CheckSlotRequirements(void);
 extern void CheckSlotPermissions(void);
 extern ReplicationSlotInvalidationCause
-			GetSlotInvalidationCause(const char *conflict_reason);
+			GetSlotInvalidationCause(const char *invalidation_reason);
+
+extern bool SlotExistsInStandbySlotNames(const char *slot_name);
+extern bool StandbySlotsHaveCaughtup(XLogRecPtr wait_for_lsn, int elevel);
+extern void WaitForStandbyConfirmation(XLogRecPtr wait_for_lsn);
 
 #endif							/* SLOT_H */

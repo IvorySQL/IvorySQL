@@ -36,7 +36,7 @@ $node->safe_psql(
 	CREATE FUNCTION ok_cmp1 (int4, int4)
 	RETURNS int LANGUAGE sql AS
 	$$
-		SELECT ok_cmp($1, $2);
+		SELECT public.ok_cmp($1, $2);
 	$$;
 
 	---
@@ -48,7 +48,7 @@ $node->safe_psql(
 		SELECT
 			CASE WHEN ($1 = 768 AND $2 = 769) OR
 					  ($1 = 769 AND $2 = 768) THEN 0
-				 ELSE ok_cmp($1, $2)
+				 ELSE public.ok_cmp($1, $2)
 			END;
 	$$;
 
@@ -58,7 +58,7 @@ $node->safe_psql(
 	CREATE FUNCTION ok_cmp2 (int4, int4)
 	RETURNS int LANGUAGE sql AS
 	$$
-		SELECT ok_cmp($1, $2);
+		SELECT public.ok_cmp($1, $2);
 	$$;
 
 	CREATE FUNCTION bad_cmp2 (int4, int4)
@@ -66,7 +66,7 @@ $node->safe_psql(
 	$$
 		SELECT
 			CASE WHEN $1 = $2 AND $1 = 400 THEN -1
-			ELSE ok_cmp($1, $2)
+			ELSE public.ok_cmp($1, $2)
 		END;
 	$$;
 
@@ -76,13 +76,13 @@ $node->safe_psql(
 	CREATE FUNCTION ok_cmp3 (int4, int4)
 	RETURNS int LANGUAGE sql AS
 	$$
-		SELECT ok_cmp($1, $2);
+		SELECT public.ok_cmp($1, $2);
 	$$;
 
 	CREATE FUNCTION bad_cmp3 (int4, int4)
 	RETURNS int LANGUAGE sql AS
 	$$
-		SELECT bad_cmp2($1, $2);
+		SELECT public.bad_cmp2($1, $2);
 	$$;
 
 	---

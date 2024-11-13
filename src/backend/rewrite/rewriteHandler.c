@@ -25,7 +25,6 @@
 #include "access/table.h"
 #include "catalog/dependency.h"
 #include "catalog/partition.h"
-#include "catalog/pg_type.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "foreign/fdwapi.h"
@@ -1158,9 +1157,9 @@ process_matched_tle(TargetEntry *src_tle,
 	 * resulting in each assignment containing a CoerceToDomain node over a
 	 * FieldStore or SubscriptingRef.  These should have matching target
 	 * domains, so we strip them and reconstitute a single CoerceToDomain over
-	 * the combined FieldStore/SubscriptingRef nodes.  (Notice that this has the
-	 * result that the domain's checks are applied only after we do all the
-	 * field or element updates, not after each one.  This is arguably desirable.)
+	 * the combined FieldStore/SubscriptingRef nodes.  (Notice that this has
+	 * the result that the domain's checks are applied only after we do all
+	 * the field or element updates, not after each one.  This is desirable.)
 	 *----------
 	 */
 	src_expr = (Node *) src_tle->expr;
@@ -3914,9 +3913,9 @@ RewriteQuery(Query *parsetree, List *rewrite_events, int orig_rt_length)
 	ListCell   *lc1;
 
 	/*
-	 * First, recursively process any insert/update/delete statements in WITH
-	 * clauses.  (We have to do this first because the WITH clauses may get
-	 * copied into rule actions below.)
+	 * First, recursively process any insert/update/delete/merge statements in
+	 * WITH clauses.  (We have to do this first because the WITH clauses may
+	 * get copied into rule actions below.)
 	 */
 	foreach(lc1, parsetree->cteList)
 	{
@@ -3941,7 +3940,8 @@ RewriteQuery(Query *parsetree, List *rewrite_events, int orig_rt_length)
 			if (!(ctequery->commandType == CMD_SELECT ||
 				  ctequery->commandType == CMD_UPDATE ||
 				  ctequery->commandType == CMD_INSERT ||
-				  ctequery->commandType == CMD_DELETE))
+				  ctequery->commandType == CMD_DELETE ||
+				  ctequery->commandType == CMD_MERGE))
 			{
 				/*
 				 * Currently it could only be NOTIFY; this error message will

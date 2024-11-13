@@ -22,7 +22,7 @@
 #include "libpq/libpq-be.h"
 #include "libpq/pqcomm.h"
 #include "miscadmin.h"
-#include "storage/backendid.h"
+#include "storage/procnumber.h"
 
 
 ProtocolVersion FrontendProtocol;
@@ -45,6 +45,7 @@ volatile uint32 CritSectionCount = 0;
 int			MyProcPid;
 pg_time_t	MyStartTime;
 TimestampTz MyStartTimestamp;
+struct ClientSocket *MyClientSocket;
 struct Port *MyProcPort;
 int32		MyCancelKey;
 int			MyPMChildSlot;
@@ -83,9 +84,9 @@ char		postgres_exec_path[MAXPGPATH];	/* full path to backend */
 /* note: currently this is not valid in backend processes */
 #endif
 
-BackendId	MyBackendId = InvalidBackendId;
+ProcNumber	MyProcNumber = INVALID_PROC_NUMBER;
 
-BackendId	ParallelLeaderBackendId = InvalidBackendId;
+ProcNumber	ParallelLeaderProcNumber = INVALID_PROC_NUMBER;
 
 Oid			MyDatabaseId = InvalidOid;
 
@@ -115,7 +116,6 @@ pid_t		PostmasterPid = 0;
 bool		IsPostmasterEnvironment = false;
 bool		IsUnderPostmaster = false;
 bool		IsBinaryUpgrade = false;
-bool		IsBackgroundWorker = false;
 
 bool		ExitOnAnyError = false;
 

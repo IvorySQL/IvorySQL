@@ -21,6 +21,7 @@
 #include "storage/lock.h"
 #include "storage/pg_sema.h"
 #include "storage/proclist_types.h"
+#include "storage/procnumber.h"
 
 /*
  * Each backend advertises up to PGPROC_MAX_CACHED_SUBXIDS TransactionIds
@@ -83,12 +84,6 @@ struct XidCache
  * manager LWLocks.  See storage/lmgr/README for additional details.
  */
 #define		FP_LOCK_SLOTS_PER_BACKEND 16
-
-/*
- * An invalid pgprocno.  Must be larger than the maximum number of PGPROC
- * structures we could possibly have.  See comments for MAX_BACKENDS.
- */
-#define INVALID_PGPROCNO		PG_INT32_MAX
 
 /*
  * Flags for PGPROC.delayChkptFlags
@@ -186,16 +181,31 @@ struct PGPROC
 								 * vacuum must not remove tuples deleted by
 								 * xid >= xmin ! */
 
-	LocalTransactionId lxid;	/* local id of top-level transaction currently
-								 * being executed by this proc, if running;
-								 * else InvalidLocalTransactionId */
 	int			pid;			/* Backend's process ID; 0 if prepared xact */
 
 	int			pgxactoff;		/* offset into various ProcGlobal->arrays with
 								 * data mirrored from this PGPROC */
 
+	/*
+	 * Currently running top-level transaction's virtual xid. Together these
+	 * form a VirtualTransactionId, but we don't use that struct because this
+	 * is not atomically assignable as whole, and we want to enforce code to
+	 * consider both parts separately.  See comments at VirtualTransactionId.
+	 */
+	struct
+	{
+		ProcNumber	procNumber; /* For regular backends, equal to
+								 * GetNumberFromPGProc(proc).  For prepared
+								 * xacts, ID of the original backend that
+								 * processed the transaction. For unused
+								 * PGPROC entries, INVALID_PROC_NUMBER. */
+		LocalTransactionId lxid;	/* local id of top-level transaction
+									 * currently * being executed by this
+									 * proc, if running; else
+									 * InvalidLocaltransactionId */
+	}			vxid;
+
 	/* These fields are zero while a backend is still starting up: */
-	BackendId	backendId;		/* This backend's backend ID (if assigned) */
 	Oid			databaseId;		/* OID of database this backend is using */
 	Oid			roleId;			/* OID of role using this backend */
 
@@ -302,7 +312,19 @@ struct PGPROC
 
 
 extern PGDLLIMPORT PGPROC *MyProc;
-extern PGDLLIMPORT int MyProcNumber;	/* same as GetNumberFromPGProc(MyProc) */
+
+/* Proc number of this backend. Equal to GetNumberFromPGProc(MyProc). */
+extern PGDLLIMPORT ProcNumber MyProcNumber;
+
+/* Our parallel session leader, or INVALID_PROC_NUMBER if none */
+extern PGDLLIMPORT ProcNumber ParallelLeaderProcNumber;
+
+/*
+ * The proc number to use for our session's temp relations is normally our own,
+ * but parallel workers should use their leader's ID.
+ */
+#define ProcNumberForTempRelations() \
+	(ParallelLeaderProcNumber == INVALID_PROC_NUMBER ? MyProcNumber : ParallelLeaderProcNumber)
 
 /*
  * There is one ProcGlobal struct for the whole database cluster.
@@ -406,7 +428,9 @@ extern PGDLLIMPORT PROC_HDR *ProcGlobal;
 
 extern PGDLLIMPORT PGPROC *PreparedXactProcs;
 
-/* Accessor for PGPROC given a pgprocno, and vice versa. */
+/*
+ * Accessors for getting PGPROC given a ProcNumber and vice versa.
+ */
 #define GetPGProcByNumber(n) (&ProcGlobal->allProcs[(n)])
 #define GetNumberFromPGProc(proc) ((proc) - &ProcGlobal->allProcs[0])
 
@@ -447,7 +471,9 @@ extern int	GetStartupBufferPinWaitBufId(void);
 extern bool HaveNFreeProcs(int n, int *nfree);
 extern void ProcReleaseLocks(bool isCommit);
 
-extern ProcWaitStatus ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable);
+extern ProcWaitStatus ProcSleep(LOCALLOCK *locallock,
+								LockMethod lockMethodTable,
+								bool dontWait);
 extern void ProcWakeup(PGPROC *proc, ProcWaitStatus waitStatus);
 extern void ProcLockWakeup(LockMethod lockMethodTable, LOCK *lock);
 extern void CheckDeadLockAlert(void);
@@ -455,7 +481,7 @@ extern bool IsWaitingForLock(void);
 extern void LockErrorCleanup(void);
 
 extern void ProcWaitForSignal(uint32 wait_event_info);
-extern void ProcSendSignal(int pgprocno);
+extern void ProcSendSignal(ProcNumber procNumber);
 
 extern PGPROC *AuxiliaryPidGetProc(int pid);
 

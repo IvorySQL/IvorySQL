@@ -37,6 +37,9 @@ transfer_all_new_tablespaces(DbInfoArr *old_db_arr, DbInfoArr *new_db_arr,
 		case TRANSFER_MODE_COPY:
 			prep_status_progress("Copying user relation files");
 			break;
+		case TRANSFER_MODE_COPY_FILE_RANGE:
+			prep_status_progress("Copying user relation files with copy_file_range");
+			break;
 		case TRANSFER_MODE_LINK:
 			prep_status_progress("Linking user relation files");
 			break;
@@ -215,9 +218,8 @@ transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_fro
 				if (errno == ENOENT)
 					return;
 				else
-					pg_fatal("error while checking for file existence \"%s.%s\" (\"%s\" to \"%s\"): %s",
-							 map->nspname, map->relname, old_file, new_file,
-							 strerror(errno));
+					pg_fatal("error while checking for file existence \"%s.%s\" (\"%s\" to \"%s\"): %m",
+							 map->nspname, map->relname, old_file, new_file);
 			}
 
 			/* If file is empty, just return */
@@ -249,6 +251,11 @@ transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_fro
 					pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\"",
 						   old_file, new_file);
 					copyFile(old_file, new_file, map->nspname, map->relname);
+					break;
+				case TRANSFER_MODE_COPY_FILE_RANGE:
+					pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\" with copy_file_range",
+						   old_file, new_file);
+					copyFileByRange(old_file, new_file, map->nspname, map->relname);
 					break;
 				case TRANSFER_MODE_LINK:
 					pg_log(PG_VERBOSE, "linking \"%s\" to \"%s\"",

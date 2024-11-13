@@ -359,6 +359,13 @@ with x as materialized (insert into tenk1 default values returning unique1)
 select count(*) from tenk1 a
   where unique1 in (select * from x);
 
+-- test that pathkeys from a materialized CTE are propagated up to the
+-- outer query
+explain (costs off)
+with x as materialized (select unique1 from tenk1 b order by unique1)
+select count(*) from tenk1 a
+  where unique1 in (select * from x);
+
 -- SEARCH clause
 
 create temp table graph0( f int, t int, label text );
@@ -1588,6 +1595,14 @@ VALUES(FALSE);
 -- no RETURNING in a referenced data-modifying WITH
 WITH t AS (
 	INSERT INTO y VALUES(0)
+)
+SELECT * FROM t;
+
+-- RETURNING tries to return its own output
+WITH RECURSIVE t(action, a) AS (
+	MERGE INTO y USING (VALUES (11)) v(a) ON y.a = v.a
+		WHEN NOT MATCHED THEN INSERT VALUES (v.a)
+		RETURNING merge_action(), (SELECT a FROM t)
 )
 SELECT * FROM t;
 

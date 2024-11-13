@@ -58,18 +58,16 @@
 #include "access/xlogarchive.h"
 #include "access/xlogrecovery.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_type.h"
-#include "common/ip.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "postmaster/auxprocess.h"
 #include "postmaster/interrupt.h"
 #include "replication/walreceiver.h"
 #include "replication/walsender.h"
 #include "storage/ipc.h"
-#include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
@@ -78,7 +76,6 @@
 #include "utils/guc.h"
 #include "utils/pg_lsn.h"
 #include "utils/ps_status.h"
-#include "utils/resowner.h"
 #include "utils/timestamp.h"
 
 
@@ -183,7 +180,7 @@ ProcessWalRcvInterrupts(void)
 
 /* Main entry point for walreceiver process */
 void
-WalReceiverMain(void)
+WalReceiverMain(char *startup_data, size_t startup_data_len)
 {
 	char		conninfo[MAXCONNINFO];
 	char	   *tmp_conninfo;
@@ -198,6 +195,11 @@ WalReceiverMain(void)
 	char	   *err;
 	char	   *sender_host = NULL;
 	int			sender_port = 0;
+
+	Assert(startup_data_len == 0);
+
+	MyBackendType = B_WAL_RECEIVER;
+	AuxiliaryProcessMainCommon();
 
 	/*
 	 * WalRcv should be set up already (if we are a backend, we inherit this

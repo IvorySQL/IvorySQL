@@ -96,15 +96,12 @@
 #include "pgstat.h"
 #include "replication/origin.h"
 #include "replication/syncrep.h"
-#include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/md.h"
 #include "storage/predicate.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
-#include "storage/sinvaladt.h"
-#include "storage/smgr.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
@@ -132,7 +129,7 @@ int			max_prepared_xacts = 0;
  *
  * 3. To begin COMMIT PREPARED or ROLLBACK PREPARED, check that the entry is
  * valid and not locked, then mark the entry as locked by storing my current
- * backend ID into locking_backend.  This prevents concurrent attempts to
+ * proc number into locking_backend.  This prevents concurrent attempts to
  * commit or rollback the same prepared xact.
  *
  * 4. On completion of COMMIT PREPARED or ROLLBACK PREPARED, remove the entry
@@ -151,7 +148,6 @@ typedef struct GlobalTransactionData
 {
 	GlobalTransaction next;		/* list link for free list */
 	int			pgprocno;		/* ID of associated dummy PGPROC */
-	BackendId	dummyBackendId; /* similar to backend id for backends */
 	TimestampTz prepared_at;	/* time of preparation */
 
 	/*
@@ -166,7 +162,7 @@ typedef struct GlobalTransactionData
 	TransactionId xid;			/* The GXACT id */
 
 	Oid			owner;			/* ID of user that executed the xact */
-	BackendId	locking_backend;	/* backend currently working on the xact */
+	ProcNumber	locking_backend;	/* backend currently working on the xact */
 	bool		valid;			/* true if PGPROC entry is in proc array */
 	bool		ondisk;			/* true if prepare state file is on disk */
 	bool		inredo;			/* true if entry was added via xlog_redo */
@@ -285,20 +281,6 @@ TwoPhaseShmemInit(void)
 
 			/* associate it with a PGPROC assigned by InitProcGlobal */
 			gxacts[i].pgprocno = GetNumberFromPGProc(&PreparedXactProcs[i]);
-
-			/*
-			 * Assign a unique ID for each dummy proc, so that the range of
-			 * dummy backend IDs immediately follows the range of normal
-			 * backend IDs. We don't dare to assign a real backend ID to dummy
-			 * procs, because prepared transactions don't take part in cache
-			 * invalidation like a real backend ID would imply, but having a
-			 * unique ID for them is nevertheless handy. This arrangement
-			 * allows you to allocate an array of size (MaxBackends +
-			 * max_prepared_xacts + 1), and have a slot for every backend and
-			 * prepared transaction. Currently multixact.c uses that
-			 * technique.
-			 */
-			gxacts[i].dummyBackendId = MaxBackends + 1 + i;
 		}
 	}
 	else
@@ -348,7 +330,7 @@ AtAbort_Twophase(void)
 	if (!MyLockedGxact->valid)
 		RemoveGXact(MyLockedGxact);
 	else
-		MyLockedGxact->locking_backend = InvalidBackendId;
+		MyLockedGxact->locking_backend = INVALID_PROC_NUMBER;
 	LWLockRelease(TwoPhaseStateLock);
 
 	MyLockedGxact = NULL;
@@ -362,7 +344,7 @@ void
 PostPrepare_Twophase(void)
 {
 	LWLockAcquire(TwoPhaseStateLock, LW_EXCLUSIVE);
-	MyLockedGxact->locking_backend = InvalidBackendId;
+	MyLockedGxact->locking_backend = INVALID_PROC_NUMBER;
 	LWLockRelease(TwoPhaseStateLock);
 
 	MyLockedGxact = NULL;
@@ -457,24 +439,24 @@ MarkAsPreparingGuts(GlobalTransaction gxact, TransactionId xid, const char *gid,
 	Assert(LWLockHeldByMeInMode(TwoPhaseStateLock, LW_EXCLUSIVE));
 
 	Assert(gxact != NULL);
-	proc = &ProcGlobal->allProcs[gxact->pgprocno];
+	proc = GetPGProcByNumber(gxact->pgprocno);
 
 	/* Initialize the PGPROC entry */
 	MemSet(proc, 0, sizeof(PGPROC));
 	dlist_node_init(&proc->links);
 	proc->waitStatus = PROC_WAIT_STATUS_OK;
-	if (LocalTransactionIdIsValid(MyProc->lxid))
+	if (LocalTransactionIdIsValid(MyProc->vxid.lxid))
 	{
 		/* clone VXID, for TwoPhaseGetXidByVirtualXID() to find */
-		proc->lxid = MyProc->lxid;
-		proc->backendId = MyBackendId;
+		proc->vxid.lxid = MyProc->vxid.lxid;
+		proc->vxid.procNumber = MyProcNumber;
 	}
 	else
 	{
 		Assert(AmStartupProcess() || !IsPostmasterEnvironment);
 		/* GetLockConflicts() uses this to specify a wait on the XID */
-		proc->lxid = xid;
-		proc->backendId = InvalidBackendId;
+		proc->vxid.lxid = xid;
+		proc->vxid.procNumber = INVALID_PROC_NUMBER;
 	}
 	proc->xid = xid;
 	Assert(proc->xmin == InvalidTransactionId);
@@ -499,7 +481,7 @@ MarkAsPreparingGuts(GlobalTransaction gxact, TransactionId xid, const char *gid,
 	gxact->prepared_at = prepared_at;
 	gxact->xid = xid;
 	gxact->owner = owner;
-	gxact->locking_backend = MyBackendId;
+	gxact->locking_backend = MyProcNumber;
 	gxact->valid = false;
 	gxact->inredo = false;
 	strcpy(gxact->gid, gid);
@@ -522,7 +504,7 @@ static void
 GXactLoadSubxactData(GlobalTransaction gxact, int nsubxacts,
 					 TransactionId *children)
 {
-	PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
+	PGPROC	   *proc = GetPGProcByNumber(gxact->pgprocno);
 
 	/* We need no extra lock since the GXACT isn't valid yet */
 	if (nsubxacts > PGPROC_MAX_CACHED_SUBXIDS)
@@ -559,7 +541,7 @@ MarkAsPrepared(GlobalTransaction gxact, bool lock_held)
 	 * Put it into the global ProcArray so TransactionIdIsInProgress considers
 	 * the XID as still running.
 	 */
-	ProcArrayAdd(&ProcGlobal->allProcs[gxact->pgprocno]);
+	ProcArrayAdd(GetPGProcByNumber(gxact->pgprocno));
 }
 
 /*
@@ -583,7 +565,7 @@ LockGXact(const char *gid, Oid user)
 	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
 	{
 		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
-		PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
+		PGPROC	   *proc = GetPGProcByNumber(gxact->pgprocno);
 
 		/* Ignore not-yet-valid GIDs */
 		if (!gxact->valid)
@@ -592,7 +574,7 @@ LockGXact(const char *gid, Oid user)
 			continue;
 
 		/* Found it, but has someone else got it locked? */
-		if (gxact->locking_backend != InvalidBackendId)
+		if (gxact->locking_backend != INVALID_PROC_NUMBER)
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("prepared transaction with identifier \"%s\" is busy",
@@ -617,7 +599,7 @@ LockGXact(const char *gid, Oid user)
 					 errhint("Connect to the database where the transaction was prepared to finish it.")));
 
 		/* OK for me to lock it */
-		gxact->locking_backend = MyBackendId;
+		gxact->locking_backend = MyProcNumber;
 		MyLockedGxact = gxact;
 
 		LWLockRelease(TwoPhaseStateLock);
@@ -864,7 +846,7 @@ TwoPhaseGetGXact(TransactionId xid, bool lock_held)
  *
  * (This won't find recovered xacts.)  If more than one matches, return any
  * and set "have_more" to true.  To witness multiple matches, a single
- * BackendId must consume 2^32 LXIDs, with no intervening database restart.
+ * proc number must consume 2^32 LXIDs, with no intervening database restart.
  */
 TransactionId
 TwoPhaseGetXidByVirtualXID(VirtualTransactionId vxid,
@@ -884,11 +866,14 @@ TwoPhaseGetXidByVirtualXID(VirtualTransactionId vxid,
 
 		if (!gxact->valid)
 			continue;
-		proc = &ProcGlobal->allProcs[gxact->pgprocno];
+		proc = GetPGProcByNumber(gxact->pgprocno);
 		GET_VXID_FROM_PGPROC(proc_vxid, *proc);
 		if (VirtualTransactionIdEquals(vxid, proc_vxid))
 		{
-			/* Startup process sets proc->backendId to InvalidBackendId. */
+			/*
+			 * Startup process sets proc->vxid.procNumber to
+			 * INVALID_PROC_NUMBER.
+			 */
 			Assert(!gxact->inredo);
 
 			if (result != InvalidTransactionId)
@@ -906,20 +891,20 @@ TwoPhaseGetXidByVirtualXID(VirtualTransactionId vxid,
 }
 
 /*
- * TwoPhaseGetDummyBackendId
- *		Get the dummy backend ID for prepared transaction specified by XID
+ * TwoPhaseGetDummyProcNumber
+ *		Get the dummy proc number for prepared transaction specified by XID
  *
- * Dummy backend IDs are similar to real backend IDs of real backends.
- * They start at MaxBackends + 1, and are unique across all currently active
- * real backends and prepared transactions.  If lock_held is set to true,
+ * Dummy proc numbers are similar to proc numbers of real backends.  They
+ * start at MaxBackends, and are unique across all currently active real
+ * backends and prepared transactions.  If lock_held is set to true,
  * TwoPhaseStateLock will not be taken, so the caller had better hold it.
  */
-BackendId
-TwoPhaseGetDummyBackendId(TransactionId xid, bool lock_held)
+ProcNumber
+TwoPhaseGetDummyProcNumber(TransactionId xid, bool lock_held)
 {
 	GlobalTransaction gxact = TwoPhaseGetGXact(xid, lock_held);
 
-	return gxact->dummyBackendId;
+	return gxact->pgprocno;
 }
 
 /*
@@ -2564,7 +2549,7 @@ PrepareRedoAdd(char *buf, XLogRecPtr start_lsn,
 	gxact->prepare_end_lsn = end_lsn;
 	gxact->xid = hdr->xid;
 	gxact->owner = hdr->owner;
-	gxact->locking_backend = InvalidBackendId;
+	gxact->locking_backend = INVALID_PROC_NUMBER;
 	gxact->valid = false;
 	gxact->ondisk = XLogRecPtrIsInvalid(start_lsn);
 	gxact->inredo = true;		/* yes, added in redo */

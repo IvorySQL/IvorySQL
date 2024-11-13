@@ -68,9 +68,8 @@ CLUSTER [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] [ <r
    <command>CLUSTER</command> without a
    <replaceable class="parameter">table_name</replaceable> reclusters all the
    previously-clustered tables in the current database that the calling user
-   owns, or all such tables if called by a superuser.  This
-   form of <command>CLUSTER</command> cannot be executed inside a transaction
-   block.
+   has privileges for.  This form of <command>CLUSTER</command> cannot be
+   executed inside a transaction block.
   </para>
 
   <para>
@@ -132,6 +131,11 @@ CLUSTER [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] [ <r
   <title>Notes</title>
 
    <para>
+    To cluster a table, one must have the <literal>MAINTAIN</literal> privilege
+    on the table.
+   </para>
+
+   <para>
     In cases where you are accessing single rows randomly
     within a table, the actual order of the data in the
     table is unimportant. However, if you tend to access some
@@ -151,6 +155,12 @@ CLUSTER [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] [ <r
     scan followed by sorting.  It will attempt to choose the method that
     will be faster, based on planner cost parameters and available statistical
     information.
+   </para>
+
+   <para>
+    While <command>CLUSTER</command> is running, the <xref
+    linkend="guc-search-path"/> is temporarily changed to <literal>pg_catalog,
+    pg_temp</literal>.
    </para>
 
    <para>

@@ -17,11 +17,8 @@
 #include "access/bufmask.h"
 #include "access/hash.h"
 #include "access/hash_xlog.h"
-#include "access/transam.h"
-#include "access/xlog.h"
 #include "access/xlogutils.h"
-#include "miscadmin.h"
-#include "storage/procarray.h"
+#include "storage/standby.h"
 
 /*
  * replay a hash index meta page
@@ -995,10 +992,11 @@ hash_xlog_vacuum_one_page(XLogReaderState *record)
 	 * Hash index records that are marked as LP_DEAD and being removed during
 	 * hash index tuple insertion can conflict with standby queries. You might
 	 * think that vacuum records would conflict as well, but we've handled
-	 * that already.  XLOG_HEAP2_PRUNE records provide the highest xid cleaned
-	 * by the vacuum of the heap and so we can resolve any conflicts just once
-	 * when that arrives.  After that we know that no conflicts exist from
-	 * individual hash index vacuum records on that index.
+	 * that already.  XLOG_HEAP2_PRUNE_VACUUM_SCAN records provide the highest
+	 * xid cleaned by the vacuum of the heap and so we can resolve any
+	 * conflicts just once when that arrives.  After that we know that no
+	 * conflicts exist from individual hash index vacuum records on that
+	 * index.
 	 */
 	if (InHotStandby)
 	{

@@ -13,7 +13,6 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
-#include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -73,15 +72,16 @@ typedef struct
  * This is currently only used in pg_lock_status, so we put it here.
  */
 static Datum
-VXIDGetDatum(BackendId bid, LocalTransactionId lxid)
+VXIDGetDatum(ProcNumber procNumber, LocalTransactionId lxid)
 {
 	/*
-	 * The representation is "<bid>/<lxid>", decimal and unsigned decimal
-	 * respectively.  Note that elog.c also knows how to format a vxid.
+	 * The representation is "<procNumber>/<lxid>", decimal and unsigned
+	 * decimal respectively.  Note that elog.c also knows how to format a
+	 * vxid.
 	 */
 	char		vxidstr[32];
 
-	snprintf(vxidstr, sizeof(vxidstr), "%d/%u", bid, lxid);
+	snprintf(vxidstr, sizeof(vxidstr), "%d/%u", procNumber, lxid);
 
 	return CStringGetTextDatum(vxidstr);
 }
@@ -353,7 +353,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				break;
 		}
 
-		values[10] = VXIDGetDatum(instance->backend, instance->lxid);
+		values[10] = VXIDGetDatum(instance->vxid.procNumber, instance->vxid.localTransactionId);
 		if (instance->pid != 0)
 			values[11] = Int32GetDatum(instance->pid);
 		else
@@ -419,7 +419,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		nulls[9] = true;		/* objsubid */
 
 		/* lock holder */
-		values[10] = VXIDGetDatum(xact->vxid.backendId,
+		values[10] = VXIDGetDatum(xact->vxid.procNumber,
 								  xact->vxid.localTransactionId);
 		if (xact->pid != 0)
 			values[11] = Int32GetDatum(xact->pid);

@@ -32,25 +32,21 @@
 #include "postgres.h"
 
 #include "access/xlog.h"
-#include "access/xlog_internal.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "postmaster/auxprocess.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/interrupt.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
 #include "storage/condition_variable.h"
 #include "storage/fd.h"
-#include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/proc.h"
 #include "storage/procsignal.h"
-#include "storage/shmem.h"
 #include "storage/smgr.h"
-#include "storage/spin.h"
 #include "storage/standby.h"
-#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
@@ -88,12 +84,17 @@ static XLogRecPtr last_snapshot_lsn = InvalidXLogRecPtr;
  * basic execution environment, but not enabled signals yet.
  */
 void
-BackgroundWriterMain(void)
+BackgroundWriterMain(char *startup_data, size_t startup_data_len)
 {
 	sigjmp_buf	local_sigjmp_buf;
 	MemoryContext bgwriter_context;
 	bool		prev_hibernate;
 	WritebackContext wb_context;
+
+	Assert(startup_data_len == 0);
+
+	MyBackendType = B_BG_WRITER;
+	AuxiliaryProcessMainCommon();
 
 	/*
 	 * Properly accept or ignore signals that might be sent to us.

@@ -16,7 +16,6 @@
 #include "postgres.h"
 
 #include "access/parallel.h"
-#include "catalog/catalog.h"
 #include "executor/instrument.h"
 #include "pgstat.h"
 #include "storage/buf_internals.h"
@@ -242,7 +241,7 @@ GetLocalVictimBuffer(void)
 		Page		localpage = (char *) LocalBufHdrGetBlock(bufHdr);
 
 		/* Find smgr relation for buffer */
-		oreln = smgropen(BufTagGetRelFileLocator(&bufHdr->tag), MyBackendId);
+		oreln = smgropen(BufTagGetRelFileLocator(&bufHdr->tag), MyProcNumber);
 
 		PageSetChecksumInplace(localpage, bufHdr->tag.blockNum);
 
@@ -509,7 +508,7 @@ DropRelationLocalBuffers(RelFileLocator rlocator, ForkNumber forkNum,
 				elog(ERROR, "block %u of %s is still referenced (local %u)",
 					 bufHdr->tag.blockNum,
 					 relpathbackend(BufTagGetRelFileLocator(&bufHdr->tag),
-									MyBackendId,
+									MyProcNumber,
 									BufTagGetForkNum(&bufHdr->tag)),
 					 LocalRefCount[i]);
 
@@ -554,7 +553,7 @@ DropRelationAllLocalBuffers(RelFileLocator rlocator)
 				elog(ERROR, "block %u of %s is still referenced (local %u)",
 					 bufHdr->tag.blockNum,
 					 relpathbackend(BufTagGetRelFileLocator(&bufHdr->tag),
-									MyBackendId,
+									MyProcNumber,
 									BufTagGetForkNum(&bufHdr->tag)),
 					 LocalRefCount[i]);
 			/* Remove entry from hashtable */

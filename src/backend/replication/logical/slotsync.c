@@ -113,9 +113,6 @@ static long sleep_ms = MIN_SLOTSYNC_WORKER_NAPTIME_MS;
 /* The restart interval for slot sync work used by postmaster */
 #define SLOTSYNC_RESTART_INTERVAL_SEC 10
 
-/* Flag to tell if we are in a slot sync worker process */
-static bool am_slotsync_worker = false;
-
 /*
  * Flag to tell if we are syncing replication slots. Unlike the 'syncing' flag
  * in SlotSyncCtxStruct, this flag is true only if the current process is
@@ -141,11 +138,6 @@ typedef struct RemoteSlot
 	/* RS_INVAL_NONE if valid, or the reason of invalidation */
 	ReplicationSlotInvalidationCause invalidated;
 } RemoteSlot;
-
-#ifdef EXEC_BACKEND
-static pid_t slotsyncworker_forkexec(void);
-#endif
-NON_EXEC_STATIC void ReplSlotSyncWorkerMain(int argc, char *argv[]) pg_attribute_noreturn();
 
 static void slotsync_failure_callback(int code, Datum arg);
 
@@ -491,7 +483,11 @@ synchronize_one_slot(RemoteSlot *remote_slot, Oid remote_dbid)
 	latestFlushPtr = GetStandbyFlushRecPtr(NULL);
 	if (remote_slot->confirmed_lsn > latestFlushPtr)
 	{
-		ereport(am_slotsync_worker ? LOG : ERROR,
+		/*
+		 * Can get here only if GUC 'standby_slot_names' on the primary server
+		 * was not configured correctly.
+		 */
+		ereport(AmLogicalSlotSyncWorkerProcess() ? LOG : ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("skipping slot synchronization as the received slot sync"
 					   " LSN %X/%X for slot \"%s\" is ahead of the standby position %X/%X",
@@ -667,7 +663,7 @@ synchronize_slots(WalReceiverConn *wrconn)
 	bool		started_tx = false;
 	const char *query = "SELECT slot_name, plugin, confirmed_flush_lsn,"
 		" restart_lsn, catalog_xmin, two_phase, failover,"
-		" database, conflict_reason"
+		" database, invalidation_reason"
 		" FROM pg_catalog.pg_replication_slots"
 		" WHERE failover and NOT temporary";
 
@@ -860,6 +856,13 @@ validate_remote_info(WalReceiverConn *wrconn)
 	remote_in_recovery = DatumGetBool(slot_getattr(tupslot, 1, &isnull));
 	Assert(!isnull);
 
+	/*
+	 * Slot sync is currently not supported on a cascading standby. This is
+	 * because if we allow it, the primary server needs to wait for all the
+	 * cascading standbys, otherwise, logical subscribers can still be ahead
+	 * of one of the cascading standbys which we plan to promote. Thus, to
+	 * avoid this additional complexity, we restrict it for the time being.
+	 */
 	if (remote_in_recovery)
 		ereport(ERROR,
 				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1105,8 +1108,8 @@ wait_for_slot_activity(bool some_slot_updated)
  * It connects to the primary server, fetches logical failover slots
  * information periodically in order to create and sync the slots.
  */
-NON_EXEC_STATIC void
-ReplSlotSyncWorkerMain(int argc, char *argv[])
+void
+ReplSlotSyncWorkerMain(char *startup_data, size_t startup_data_len)
 {
 	WalReceiverConn *wrconn = NULL;
 	char	   *dbname;
@@ -1114,7 +1117,7 @@ ReplSlotSyncWorkerMain(int argc, char *argv[])
 	sigjmp_buf	local_sigjmp_buf;
 	StringInfoData app_name;
 
-	am_slotsync_worker = true;
+	Assert(startup_data_len == 0);
 
 	MyBackendType = B_SLOTSYNC_WORKER;
 
@@ -1294,67 +1297,6 @@ ReplSlotSyncWorkerMain(int argc, char *argv[])
 }
 
 /*
- * Main entry point for slot sync worker process, to be called from the
- * postmaster.
- */
-int
-StartSlotSyncWorker(void)
-{
-	pid_t		pid;
-
-#ifdef EXEC_BACKEND
-	switch ((pid = slotsyncworker_forkexec()))
-	{
-#else
-	switch ((pid = fork_process()))
-	{
-		case 0:
-			/* in postmaster child ... */
-			InitPostmasterChild();
-
-			/* Close the postmaster's sockets */
-			ClosePostmasterPorts(false);
-
-			ReplSlotSyncWorkerMain(0, NULL);
-			break;
-#endif
-		case -1:
-			ereport(LOG,
-					(errmsg("could not fork slot sync worker process: %m")));
-			return 0;
-
-		default:
-			return (int) pid;
-	}
-
-	/* shouldn't get here */
-	return 0;
-}
-
-#ifdef EXEC_BACKEND
-/*
- * The forkexec routine for the slot sync worker process.
- *
- * Format up the arglist, then fork and exec.
- */
-static pid_t
-slotsyncworker_forkexec(void)
-{
-	char	   *av[10];
-	int			ac = 0;
-
-	av[ac++] = "postgres";
-	av[ac++] = "--forkssworker";
-	av[ac++] = NULL;			/* filled in by postmaster_forkexec */
-	av[ac] = NULL;
-
-	Assert(ac < lengthof(av));
-
-	return postmaster_forkexec(ac, av);
-}
-#endif
-
-/*
  * Shut down the slot sync worker.
  */
 void
@@ -1436,15 +1378,6 @@ bool
 IsSyncingReplicationSlots(void)
 {
 	return syncing_slots;
-}
-
-/*
- * Is current process a slot sync worker?
- */
-bool
-IsLogicalSlotSyncWorker(void)
-{
-	return am_slotsync_worker;
 }
 
 /*

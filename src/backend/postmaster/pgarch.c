@@ -36,6 +36,7 @@
 #include "lib/binaryheap.h"
 #include "libpq/pqsignal.h"
 #include "pgstat.h"
+#include "postmaster/auxprocess.h"
 #include "postmaster/interrupt.h"
 #include "postmaster/pgarch.h"
 #include "storage/fd.h"
@@ -45,7 +46,6 @@
 #include "storage/proc.h"
 #include "storage/procsignal.h"
 #include "storage/shmem.h"
-#include "storage/spin.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -80,17 +80,16 @@
 /* Shared memory area for archiver process */
 typedef struct PgArchData
 {
-	int			pgprocno;		/* pgprocno of archiver process */
+	int			pgprocno;		/* proc number of archiver process */
 
 	/*
-	 * Forces a directory scan in pgarch_readyXlog().  Protected by arch_lck.
+	 * Forces a directory scan in pgarch_readyXlog().
 	 */
-	bool		force_dir_scan;
-
-	slock_t		arch_lck;
+	pg_atomic_uint32 force_dir_scan;
 } PgArchData;
 
 char	   *XLogArchiveLibrary = "";
+char	   *arch_module_check_errdetail_string;
 
 
 /* ----------
@@ -173,8 +172,8 @@ PgArchShmemInit(void)
 	{
 		/* First time through, so initialize */
 		MemSet(PgArch, 0, PgArchShmemSize());
-		PgArch->pgprocno = INVALID_PGPROCNO;
-		SpinLockInit(&PgArch->arch_lck);
+		PgArch->pgprocno = INVALID_PROC_NUMBER;
+		pg_atomic_init_u32(&PgArch->force_dir_scan, 0);
 	}
 }
 
@@ -211,8 +210,13 @@ PgArchCanRestart(void)
 
 /* Main entry point for archiver process */
 void
-PgArchiverMain(void)
+PgArchiverMain(char *startup_data, size_t startup_data_len)
 {
+	Assert(startup_data_len == 0);
+
+	MyBackendType = B_ARCHIVER;
+	AuxiliaryProcessMainCommon();
+
 	/*
 	 * Ignore all signals usually bound to some action in the postmaster,
 	 * except for SIGHUP, SIGTERM, SIGUSR1, SIGUSR2, and SIGQUIT.
@@ -239,8 +243,8 @@ PgArchiverMain(void)
 	on_shmem_exit(pgarch_die, 0);
 
 	/*
-	 * Advertise our pgprocno so that backends can use our latch to wake us up
-	 * while we're sleeping.
+	 * Advertise our proc number so that backends can use our latch to wake us
+	 * up while we're sleeping.
 	 */
 	PgArch->pgprocno = MyProcNumber;
 
@@ -274,7 +278,7 @@ PgArchWakeup(void)
 	 * process' (or no process') latch.  Even in that case the archiver will
 	 * be relaunched shortly and will start archiving.
 	 */
-	if (arch_pgprocno != INVALID_PGPROCNO)
+	if (arch_pgprocno != INVALID_PROC_NUMBER)
 		SetLatch(&ProcGlobal->allProcs[arch_pgprocno].procLatch);
 }
 
@@ -404,12 +408,17 @@ pgarch_ArchiverCopyLoop(void)
 			 */
 			HandlePgArchInterrupts();
 
+			/* Reset variables that might be set by the callback */
+			arch_module_check_errdetail_string = NULL;
+
 			/* can't do anything if not configured ... */
 			if (ArchiveCallbacks->check_configured_cb != NULL &&
 				!ArchiveCallbacks->check_configured_cb(archive_module_state))
 			{
 				ereport(WARNING,
-						(errmsg("archive_mode enabled, yet archiving is not configured")));
+						(errmsg("archive_mode enabled, yet archiving is not configured"),
+						 arch_module_check_errdetail_string ?
+						 errdetail_internal("%s", arch_module_check_errdetail_string) : 0));
 				return;
 			}
 
@@ -545,18 +554,12 @@ pgarch_readyXlog(char *xlog)
 	char		XLogArchiveStatusDir[MAXPGPATH];
 	DIR		   *rldir;
 	struct dirent *rlde;
-	bool		force_dir_scan;
 
 	/*
 	 * If a directory scan was requested, clear the stored file names and
 	 * proceed.
 	 */
-	SpinLockAcquire(&PgArch->arch_lck);
-	force_dir_scan = PgArch->force_dir_scan;
-	PgArch->force_dir_scan = false;
-	SpinLockRelease(&PgArch->arch_lck);
-
-	if (force_dir_scan)
+	if (pg_atomic_exchange_u32(&PgArch->force_dir_scan, 0) == 1)
 		arch_files->arch_files_size = 0;
 
 	/*
@@ -707,9 +710,7 @@ ready_file_comparator(Datum a, Datum b, void *arg)
 void
 PgArchForceDirScan(void)
 {
-	SpinLockAcquire(&PgArch->arch_lck);
-	PgArch->force_dir_scan = true;
-	SpinLockRelease(&PgArch->arch_lck);
+	pg_atomic_write_membarrier_u32(&PgArch->force_dir_scan, 1);
 }
 
 /*
@@ -752,7 +753,7 @@ pgarch_archiveDone(char *xlog)
 static void
 pgarch_die(int code, Datum arg)
 {
-	PgArch->pgprocno = INVALID_PGPROCNO;
+	PgArch->pgprocno = INVALID_PROC_NUMBER;
 }
 
 /*

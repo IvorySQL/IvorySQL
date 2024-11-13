@@ -113,7 +113,6 @@
 
 <!-- contrib information -->
 <!ENTITY contrib         SYSTEM "contrib.sgml">
-<!ENTITY adminpack       SYSTEM "adminpack.sgml">
 <!ENTITY amcheck         SYSTEM "amcheck.sgml">
 <!ENTITY auth-delay      SYSTEM "auth-delay.sgml">
 <!ENTITY auto-explain    SYSTEM "auto-explain.sgml">
@@ -183,7 +182,6 @@
 <!ENTITY acronyms   SYSTEM "acronyms.sgml">
 <!ENTITY glossary   SYSTEM "glossary.sgml">
 <!ENTITY color      SYSTEM "color.sgml">
-<!ENTITY syncfs     SYSTEM "syncfs.sgml">
 
 <!ENTITY features-supported   SYSTEM "features-supported.sgml">
 <!ENTITY features-unsupported SYSTEM "features-unsupported.sgml">

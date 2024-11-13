@@ -25,6 +25,9 @@
 #include "nodes/pg_list.h"
 #include "utils/datum.h"
 
+/* State flag that determines how nodeToStringInternal() should treat location fields */
+static bool write_location_fields = false;
+
 static void outChar(StringInfo str, char c);
 static void outDouble(StringInfo str, double d);
 
@@ -88,7 +91,7 @@ static void outDouble(StringInfo str, double d);
 
 /* Write a parse location field (actually same as INT case) */
 #define WRITE_LOCATION_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %d", node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %d", write_location_fields ? node->fldname : -1)
 
 #define WRITE_VOID_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " %d", 0)
@@ -497,7 +500,6 @@ _outRangeTblEntry(StringInfo str, const RangeTblEntry *node)
 {
 	WRITE_NODE_TYPE("RANGETBLENTRY");
 
-	/* put alias + eref first to make dump more legible */
 	WRITE_NODE_FIELD(alias);
 	WRITE_NODE_FIELD(eref);
 	WRITE_ENUM_FIELD(rtekind, RTEKind);
@@ -506,16 +508,18 @@ _outRangeTblEntry(StringInfo str, const RangeTblEntry *node)
 	{
 		case RTE_RELATION:
 			WRITE_OID_FIELD(relid);
+			WRITE_BOOL_FIELD(inh);
 			WRITE_CHAR_FIELD(relkind);
 			WRITE_INT_FIELD(rellockmode);
-			WRITE_NODE_FIELD(tablesample);
 			WRITE_UINT_FIELD(perminfoindex);
+			WRITE_NODE_FIELD(tablesample);
 			break;
 		case RTE_SUBQUERY:
 			WRITE_NODE_FIELD(subquery);
 			WRITE_BOOL_FIELD(security_barrier);
 			/* we re-use these RELATION fields, too: */
 			WRITE_OID_FIELD(relid);
+			WRITE_BOOL_FIELD(inh);
 			WRITE_CHAR_FIELD(relkind);
 			WRITE_INT_FIELD(rellockmode);
 			WRITE_UINT_FIELD(perminfoindex);
@@ -567,7 +571,6 @@ _outRangeTblEntry(StringInfo str, const RangeTblEntry *node)
 	}
 
 	WRITE_BOOL_FIELD(lateral);
-	WRITE_BOOL_FIELD(inh);
 	WRITE_BOOL_FIELD(inFromCl);
 	WRITE_NODE_FIELD(securityQuals);
 }
@@ -760,17 +763,45 @@ outNode(StringInfo str, const void *obj)
 /*
  * nodeToString -
  *	   returns the ascii representation of the Node as a palloc'd string
+ *
+ * write_loc_fields determines whether location fields are output with their
+ * actual value rather than -1.  The actual value can be useful for debugging,
+ * but for most uses, the actual value is not useful, since the original query
+ * string is no longer available.
  */
-char *
-nodeToString(const void *obj)
+static char *
+nodeToStringInternal(const void *obj, bool write_loc_fields)
 {
 	StringInfoData str;
+	bool		save_write_location_fields;
+
+	save_write_location_fields = write_location_fields;
+	write_location_fields = write_loc_fields;
 
 	/* see stringinfo.h for an explanation of this maneuver */
 	initStringInfo(&str);
 	outNode(&str, obj);
+
+	write_location_fields = save_write_location_fields;
+
 	return str.data;
 }
+
+/*
+ * Externally visible entry points
+ */
+char *
+nodeToString(const void *obj)
+{
+	return nodeToStringInternal(obj, false);
+}
+
+char *
+nodeToStringWithLocations(const void *obj)
+{
+	return nodeToStringInternal(obj, true);
+}
+
 
 /*
  * bmsToString -

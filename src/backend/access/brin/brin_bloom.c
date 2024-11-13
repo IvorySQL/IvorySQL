@@ -114,24 +114,21 @@
  */
 #include "postgres.h"
 
-#include "access/genam.h"
+#include <math.h>
+
 #include "access/brin.h"
 #include "access/brin_internal.h"
 #include "access/brin_page.h"
 #include "access/brin_tuple.h"
-#include "access/hash.h"
+#include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/reloptions.h"
-#include "access/stratnum.h"
-#include "catalog/pg_type.h"
+#include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
-#include "utils/builtins.h"
-#include "utils/datum.h"
-#include "utils/lsyscache.h"
+#include "catalog/pg_type.h"
+#include "common/hashfn.h"
+#include "utils/fmgrprotos.h"
 #include "utils/rel.h"
-#include "utils/syscache.h"
-
-#include <math.h>
 
 #define BloomEqualStrategyNumber	1
 

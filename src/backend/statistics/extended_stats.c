@@ -21,15 +21,13 @@
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_collation.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_statistic_ext_data.h"
-#include "executor/executor.h"
 #include "commands/defrem.h"
 #include "commands/progress.h"
+#include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
 #include "parser/parsetree.h"
 #include "pgstat.h"
@@ -47,7 +45,6 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
-#include "utils/typcache.h"
 
 /*
  * To avoid consuming too much memory during analysis and/or too much space
@@ -173,7 +170,7 @@ BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 									  natts, vacattrstats);
 		if (!stats)
 		{
-			if (!IsAutoVacuumWorkerProcess())
+			if (!AmAutoVacuumWorkerProcess())
 				ereport(WARNING,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("statistics object \"%s.%s\" could not be computed for relation \"%s.%s\"",
@@ -457,12 +454,14 @@ fetch_statentries_for_relation(Relation pg_statext, Oid relid)
 		entry->statOid = staForm->oid;
 		entry->schema = get_namespace_name(staForm->stxnamespace);
 		entry->name = pstrdup(NameStr(staForm->stxname));
-		entry->stattarget = staForm->stxstattarget;
 		for (i = 0; i < staForm->stxkeys.dim1; i++)
 		{
 			entry->columns = bms_add_member(entry->columns,
 											staForm->stxkeys.values[i]);
 		}
+
+		datum = SysCacheGetAttr(STATEXTOID, htup, Anum_pg_statistic_ext_stxstattarget, &isnull);
+		entry->stattarget = isnull ? -1 : DatumGetInt16(datum);
 
 		/* decode the stxkind char array into a list of chars */
 		datum = SysCacheGetAttrNotNull(STATEXTOID, htup,
@@ -2443,7 +2442,7 @@ statext_expressions_load(Oid stxoid, bool inh, int idx)
 	if (isnull)
 		elog(ERROR,
 			 "requested statistics kind \"%c\" is not yet built for statistics object %u",
-			 STATS_EXT_DEPENDENCIES, stxoid);
+			 STATS_EXT_EXPRESSIONS, stxoid);
 
 	eah = DatumGetExpandedArray(value);
 

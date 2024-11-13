@@ -270,6 +270,14 @@ typedef struct PruneResult
 	int8		htsv[MaxHeapTuplesPerPage + 1];
 } PruneResult;
 
+/* 'reason' codes for heap_page_prune() */
+typedef enum
+{
+	PRUNE_ON_ACCESS,			/* on-access pruning */
+	PRUNE_VACUUM_SCAN,			/* VACUUM 1st heap pass */
+	PRUNE_VACUUM_CLEANUP,		/* VACUUM 2nd heap pass */
+} PruneReason;
+
 /*
  * Pruning calculates tuple visibility once and saves the results in an array
  * of int8. See PruneResult.htsv for details. This helper function is meant to
@@ -406,21 +414,24 @@ extern void heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 						int options, BulkInsertState bistate);
 extern void heap_multi_insert(Relation relation, struct TupleTableSlot **slots,
 							  int ntuples, CommandId cid, int options,
-							  BulkInsertState bistate);
+							  BulkInsertState bistate, bool *insert_indexes);
 extern TM_Result heap_delete(Relation relation, ItemPointer tid,
-							 CommandId cid, Snapshot crosscheck, bool wait,
-							 struct TM_FailureData *tmfd, bool changingPart);
+							 CommandId cid, Snapshot crosscheck, int options,
+							 struct TM_FailureData *tmfd, bool changingPart,
+							 TupleTableSlot *oldSlot);
 extern void heap_finish_speculative(Relation relation, ItemPointer tid);
 extern void heap_abort_speculative(Relation relation, ItemPointer tid);
 extern TM_Result heap_update(Relation relation, ItemPointer otid,
 							 HeapTuple newtup,
-							 CommandId cid, Snapshot crosscheck, bool wait,
+							 CommandId cid, Snapshot crosscheck, int options,
 							 struct TM_FailureData *tmfd, LockTupleMode *lockmode,
-							 TU_UpdateIndexes *update_indexes);
-extern TM_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
-								 CommandId cid, LockTupleMode mode, LockWaitPolicy wait_policy,
-								 bool follow_updates,
-								 Buffer *buffer, struct TM_FailureData *tmfd);
+							 TU_UpdateIndexes *update_indexes,
+							 TupleTableSlot *oldSlot);
+extern TM_Result heap_lock_tuple(Relation relation, ItemPointer tid,
+								 TupleTableSlot *slot,
+								 CommandId cid, LockTupleMode mode,
+								 LockWaitPolicy wait_policy, bool follow_updates,
+								 struct TM_FailureData *tmfd);
 
 extern void heap_inplace_update(Relation relation, HeapTuple tuple);
 extern bool heap_prepare_freeze_tuple(HeapTupleHeader tuple,
@@ -454,12 +465,21 @@ extern void heap_page_prune(Relation relation, Buffer buffer,
 							struct GlobalVisState *vistest,
 							bool mark_unused_now,
 							PruneResult *presult,
+							PruneReason reason,
 							OffsetNumber *off_loc);
-extern void heap_page_prune_execute(Buffer buffer,
+extern void heap_page_prune_execute(Buffer buffer, bool lp_truncate_only,
 									OffsetNumber *redirected, int nredirected,
 									OffsetNumber *nowdead, int ndead,
 									OffsetNumber *nowunused, int nunused);
 extern void heap_get_root_tuples(Page page, OffsetNumber *root_offsets);
+extern void log_heap_prune_and_freeze(Relation relation, Buffer buffer,
+									  TransactionId conflict_xid,
+									  bool lp_truncate_only,
+									  PruneReason reason,
+									  HeapTupleFreeze *frozen, int nfrozen,
+									  OffsetNumber *redirected, int nredirected,
+									  OffsetNumber *dead, int ndead,
+									  OffsetNumber *unused, int nunused);
 
 /* in heap/vacuumlazy.c */
 struct VacuumParams;
@@ -498,6 +518,14 @@ extern void compute_new_xmax_infomask(TransactionId xmax, uint16 old_infomask,
 							  uint16 *result_infomask2);
 extern XLogRecPtr log_heap_new_cid(Relation relation, HeapTuple tup);
 extern uint8 compute_infobits(uint16 infomask, uint16 infomask2);
+/* in heap/heapam_handler.c*/
+extern void heapam_scan_analyze_next_block(TableScanDesc scan,
+										   BlockNumber blockno,
+										   BufferAccessStrategy bstrategy);
+extern bool heapam_scan_analyze_next_tuple(TableScanDesc scan,
+										   TransactionId OldestXmin,
+										   double *liverows, double *deadrows,
+										   TupleTableSlot *slot);
 
 /*
  * To avoid leaking too much knowledge about reorderbuffer implementation

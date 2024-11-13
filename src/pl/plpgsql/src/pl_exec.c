@@ -2211,7 +2211,7 @@ exec_stmt_call(PLpgSQL_execstate *estate, PLpgSQL_stmt_call *stmt)
 
 	paramLI = setup_param_list(estate, expr);
 
-	before_lxid = MyProc->lxid;
+	before_lxid = MyProc->vxid.lxid;
 
 	/*
 	 * If we have a procedure-lifespan resowner, use that to hold the refcount
@@ -2232,7 +2232,7 @@ exec_stmt_call(PLpgSQL_execstate *estate, PLpgSQL_stmt_call *stmt)
 		elog(ERROR, "SPI_execute_plan_extended failed executing query \"%s\": %s",
 			 expr->query, SPI_result_code_string(rc));
 
-	after_lxid = MyProc->lxid;
+	after_lxid = MyProc->vxid.lxid;
 
 	if (before_lxid != after_lxid)
 	{
@@ -4267,9 +4267,9 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	/*
 	 * If we have INTO, then we only need one row back ... but if we have INTO
 	 * STRICT or extra check too_many_rows, ask for two rows, so that we can
-	 * verify the statement returns only one.  INSERT/UPDATE/DELETE are always
-	 * treated strictly. Without INTO, just run the statement to completion
-	 * (tcount = 0).
+	 * verify the statement returns only one.  INSERT/UPDATE/DELETE/MERGE are
+	 * always treated strictly. Without INTO, just run the statement to
+	 * completion (tcount = 0).
 	 *
 	 * We could just ask for two rows always when using INTO, but there are
 	 * some cases where demanding the extra row costs significant time, eg by
@@ -4307,10 +4307,11 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 		case SPI_OK_INSERT:
 		case SPI_OK_UPDATE:
 		case SPI_OK_DELETE:
+		case SPI_OK_MERGE:
 		case SPI_OK_INSERT_RETURNING:
 		case SPI_OK_UPDATE_RETURNING:
 		case SPI_OK_DELETE_RETURNING:
-		case SPI_OK_MERGE:
+		case SPI_OK_MERGE_RETURNING:
 			Assert(stmt->mod_stmt);
 			exec_set_found(estate, (SPI_processed != 0));
 			break;
@@ -4489,10 +4490,11 @@ exec_stmt_dynexecute(PLpgSQL_execstate *estate,
 		case SPI_OK_INSERT:
 		case SPI_OK_UPDATE:
 		case SPI_OK_DELETE:
+		case SPI_OK_MERGE:
 		case SPI_OK_INSERT_RETURNING:
 		case SPI_OK_UPDATE_RETURNING:
 		case SPI_OK_DELETE_RETURNING:
-		case SPI_OK_MERGE:
+		case SPI_OK_MERGE_RETURNING:
 		case SPI_OK_UTILITY:
 		case SPI_OK_REWRITTEN:
 			break;
@@ -6037,7 +6039,7 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 					  int32 *rettypmod)
 {
 	ExprContext *econtext = estate->eval_econtext;
-	LocalTransactionId curlxid = MyProc->lxid;
+	LocalTransactionId curlxid = MyProc->vxid.lxid;
 	ParamListInfo paramLI;
 	void	   *save_setup_arg;
 	bool		need_snapshot;
@@ -7943,7 +7945,7 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 	 * functions do; DO blocks have private simple_eval_estates, and private
 	 * cast hash tables to go with them.)
 	 */
-	curlxid = MyProc->lxid;
+	curlxid = MyProc->vxid.lxid;
 	if (cast_entry->cast_lxid != curlxid || cast_entry->cast_in_use)
 	{
 		oldcontext = MemoryContextSwitchTo(estate->simple_eval_estate->es_query_cxt);
@@ -8070,7 +8072,7 @@ exec_simple_check_plan(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 		/* Remember that we have the refcount */
 		expr->expr_simple_plansource = plansource;
 		expr->expr_simple_plan = cplan;
-		expr->expr_simple_plan_lxid = MyProc->lxid;
+		expr->expr_simple_plan_lxid = MyProc->vxid.lxid;
 
 		/* Share the remaining work with the replan code path */
 		exec_save_simple_expr(expr, cplan);

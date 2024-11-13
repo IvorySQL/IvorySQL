@@ -24,6 +24,7 @@
 #include "access/xact.h"
 #include "access/xlog.h"
 #include "catalog/dependency.h"
+#include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
@@ -46,10 +47,9 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "parser/parse_func.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
-#include "storage/sinvaladt.h"
+#include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
@@ -3715,18 +3715,18 @@ TempNamespaceStatus
 checkTempNamespaceStatus(Oid namespaceId)
 {
 	PGPROC	   *proc;
-	int			backendId;
+	ProcNumber	procNumber;
 
 	Assert(OidIsValid(MyDatabaseId));
 
-	backendId = GetTempNamespaceBackendId(namespaceId);
+	procNumber = GetTempNamespaceProcNumber(namespaceId);
 
 	/* No such namespace, or its name shows it's not temp? */
-	if (backendId == InvalidBackendId)
+	if (procNumber == INVALID_PROC_NUMBER)
 		return TEMP_NAMESPACE_NOT_TEMP;
 
 	/* Is the backend alive? */
-	proc = BackendIdGetProc(backendId);
+	proc = ProcNumberGetProc(procNumber);
 	if (proc == NULL)
 		return TEMP_NAMESPACE_IDLE;
 
@@ -3743,13 +3743,13 @@ checkTempNamespaceStatus(Oid namespaceId)
 }
 
 /*
- * GetTempNamespaceBackendId - if the given namespace is a temporary-table
- * namespace (either my own, or another backend's), return the BackendId
+ * GetTempNamespaceProcNumber - if the given namespace is a temporary-table
+ * namespace (either my own, or another backend's), return the proc number
  * that owns it.  Temporary-toast-table namespaces are included, too.
- * If it isn't a temp namespace, return InvalidBackendId.
+ * If it isn't a temp namespace, return INVALID_PROC_NUMBER.
  */
-int
-GetTempNamespaceBackendId(Oid namespaceId)
+ProcNumber
+GetTempNamespaceProcNumber(Oid namespaceId)
 {
 	int			result;
 	char	   *nspname;
@@ -3757,13 +3757,13 @@ GetTempNamespaceBackendId(Oid namespaceId)
 	/* See if the namespace name starts with "pg_temp_" or "pg_toast_temp_" */
 	nspname = get_namespace_name(namespaceId);
 	if (!nspname)
-		return InvalidBackendId;	/* no such namespace? */
+		return INVALID_PROC_NUMBER; /* no such namespace? */
 	if (strncmp(nspname, "pg_temp_", 8) == 0)
 		result = atoi(nspname + 8);
 	else if (strncmp(nspname, "pg_toast_temp_", 14) == 0)
 		result = atoi(nspname + 14);
 	else
-		result = InvalidBackendId;
+		result = INVALID_PROC_NUMBER;
 	pfree(nspname);
 	return result;
 }
@@ -4450,8 +4450,8 @@ InitTempTableNamespace(void)
 	/*
 	 * Do not allow a Hot Standby session to make temp tables.  Aside from
 	 * problems with modifying the system catalogs, there is a naming
-	 * conflict: pg_temp_N belongs to the session with BackendId N on the
-	 * primary, not to a hot standby session with the same BackendId.  We
+	 * conflict: pg_temp_N belongs to the session with proc number N on the
+	 * primary, not to a hot standby session with the same proc number.  We
 	 * should not be able to get here anyway due to XactReadOnly checks, but
 	 * let's just make real sure.  Note that this also backstops various
 	 * operations that allow XactReadOnly transactions to modify temp tables;
@@ -4468,7 +4468,7 @@ InitTempTableNamespace(void)
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("cannot create temporary tables during a parallel operation")));
 
-	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
+	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyProcNumber);
 
 	namespaceId = get_namespace_oid(namespaceName, true);
 	if (!OidIsValid(namespaceId))
@@ -4501,7 +4501,7 @@ InitTempTableNamespace(void)
 	 * dropping a parent table should make its toast table go away.)
 	 */
 	snprintf(namespaceName, sizeof(namespaceName), "pg_toast_temp_%d",
-			 MyBackendId);
+			 MyProcNumber);
 
 	toastspaceId = get_namespace_oid(namespaceName, true);
 	if (!OidIsValid(toastspaceId))
@@ -4747,6 +4747,9 @@ check_search_path(char **newval, void **extra, GucSource source)
 void
 assign_search_path(const char *newval, void *extra)
 {
+	/* don't access search_path during bootstrap */
+	Assert(!IsBootstrapProcessingMode());
+
 	/*
 	 * We mark the path as needing recomputation, but don't do anything until
 	 * it's needed.  This avoids trying to do database access during GUC

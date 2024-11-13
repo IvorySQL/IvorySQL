@@ -195,6 +195,7 @@ extern void outBitmapset(struct StringInfoData *str,
 extern void outDatum(struct StringInfoData *str, uintptr_t value,
 					 int typlen, bool typbyval);
 extern char *nodeToString(const void *obj);
+extern char *nodeToStringWithLocations(const void *obj);
 extern char *bmsToString(const struct Bitmapset *bms);
 
 /*
@@ -228,6 +229,15 @@ extern void *copyObjectImpl(const void *from);
  */
 extern bool equal(const void *a, const void *b);
 
+
+/*
+ * Typedef for parse location.  This is just an int, but this way
+ * gen_node_support.pl knows which fields should get special treatment for
+ * location values.
+ *
+ * -1 is used for unknown.
+ */
+typedef int ParseLoc;
 
 /*
  * Typedefs for identifying qualifier selectivities, plan costs, and row

@@ -49,17 +49,10 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
-#include "catalog/pg_aggregate.h"
-#include "catalog/pg_am.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_cast.h"
 #include "catalog/pg_class.h"
-#include "catalog/pg_collation.h"
-#include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_default_acl.h"
-#include "catalog/pg_event_trigger.h"
-#include "catalog/pg_extension.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_init_privs.h"
@@ -67,19 +60,9 @@
 #include "catalog/pg_largeobject.h"
 #include "catalog/pg_largeobject_metadata.h"
 #include "catalog/pg_namespace.h"
-#include "catalog/pg_opclass.h"
-#include "catalog/pg_operator.h"
-#include "catalog/pg_opfamily.h"
 #include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_proc.h"
-#include "catalog/pg_statistic_ext.h"
-#include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
-#include "catalog/pg_transform.h"
-#include "catalog/pg_ts_config.h"
-#include "catalog/pg_ts_dict.h"
-#include "catalog/pg_ts_parser.h"
-#include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -2644,6 +2627,8 @@ string_to_privilege(const char *privname)
 		return ACL_SET;
 	if (strcmp(privname, "alter system") == 0)
 		return ACL_ALTER_SYSTEM;
+	if (strcmp(privname, "maintain") == 0)
+		return ACL_MAINTAIN;
 	if (strcmp(privname, "rule") == 0)
 		return 0;				/* ignore old RULE privileges */
 	ereport(ERROR,
@@ -2685,6 +2670,8 @@ privilege_to_string(AclMode privilege)
 			return "SET";
 		case ACL_ALTER_SYSTEM:
 			return "ALTER SYSTEM";
+		case ACL_MAINTAIN:
+			return "MAINTAIN";
 		default:
 			elog(ERROR, "unrecognized privilege: %d", (int) privilege);
 	}
@@ -3442,6 +3429,17 @@ pg_class_aclmask_ext(Oid table_oid, Oid roleid, AclMode mask,
 		!(result & (ACL_INSERT | ACL_UPDATE | ACL_DELETE)) &&
 		has_privs_of_role(roleid, ROLE_PG_WRITE_ALL_DATA))
 		result |= (mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE));
+
+	/*
+	 * Check if ACL_MAINTAIN is being checked and, if so, and not already set
+	 * as part of the result, then check if the user is a member of the
+	 * pg_maintain role, which allows VACUUM, ANALYZE, CLUSTER, REFRESH
+	 * MATERIALIZED VIEW, and REINDEX on all relations.
+	 */
+	if (mask & ACL_MAINTAIN &&
+		!(result & ACL_MAINTAIN) &&
+		has_privs_of_role(roleid, ROLE_PG_MAINTAIN))
+		result |= ACL_MAINTAIN;
 
 	return result;
 }

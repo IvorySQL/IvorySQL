@@ -142,6 +142,9 @@ static SimpleOidList foreign_servers_include_oids = {NULL, NULL};
 static SimpleStringList extension_include_patterns = {NULL, NULL};
 static SimpleOidList extension_include_oids = {NULL, NULL};
 
+static SimpleStringList extension_exclude_patterns = {NULL, NULL};
+static SimpleOidList extension_exclude_oids = {NULL, NULL};
+
 static const CatalogId nilCatalogId = {0, 0};
 
 /* override for standard extra_float_digits setting */
@@ -443,6 +446,7 @@ main(int argc, char **argv)
 		{"exclude-table-data-and-children", required_argument, NULL, 14},
 		{"sync-method", required_argument, NULL, 15},
 		{"filter", required_argument, NULL, 16},
+		{"exclude-extension", required_argument, NULL, 17},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -678,6 +682,11 @@ main(int argc, char **argv)
 				read_dump_filters(optarg, &dopt);
 				break;
 
+			case 17:			/* exclude extension(s) */
+				simple_string_list_append(&extension_exclude_patterns,
+										  optarg);
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -898,6 +907,10 @@ main(int argc, char **argv)
 		if (extension_include_oids.head == NULL)
 			pg_fatal("no matching extensions were found");
 	}
+	expand_extension_name_patterns(fout, &extension_exclude_patterns,
+								   &extension_exclude_oids,
+								   false);
+	/* non-matching exclusion patterns aren't an error */
 
 	/*
 	 * Dumping LOs is the default for dumps where an inclusion switch is not
@@ -1103,6 +1116,7 @@ help(const char *progname)
 	printf(_("  -c, --clean                  clean (drop) database objects before recreating\n"));
 	printf(_("  -C, --create                 include commands to create database in dump\n"));
 	printf(_("  -e, --extension=PATTERN      dump the specified extension(s) only\n"));
+	printf(_("  --exclude-extension=PATTERN  do NOT dump the specified extension(s)\n"));
 	printf(_("  -E, --encoding=ENCODING      dump the data in encoding ENCODING\n"));
 	printf(_("  -n, --schema=PATTERN         dump the specified schema(s) only\n"));
 	printf(_("  -N, --exclude-schema=PATTERN do NOT dump the specified schema(s)\n"));
@@ -2037,6 +2051,12 @@ selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt)
 			extinfo->dobj.dump = extinfo->dobj.dump_contains =
 				dopt->include_everything ?
 				DUMP_COMPONENT_ALL : DUMP_COMPONENT_NONE;
+
+		/* check that the extension is not explicitly excluded */
+		if (extinfo->dobj.dump &&
+			simple_oid_list_member(&extension_exclude_oids,
+								   extinfo->dobj.catId.oid))
+			extinfo->dobj.dump = extinfo->dobj.dump_contains = DUMP_COMPONENT_NONE;
 	}
 }
 
@@ -2993,7 +3013,7 @@ dumpDatabase(Archive *fout)
 				i_datlocprovider,
 				i_collate,
 				i_ctype,
-				i_daticulocale,
+				i_datlocale,
 				i_daticurules,
 				i_frozenxid,
 				i_minmxid,
@@ -3012,7 +3032,7 @@ dumpDatabase(Archive *fout)
 			   *datlocprovider,
 			   *collate,
 			   *ctype,
-			   *iculocale,
+			   *locale,
 			   *icurules,
 			   *datistemplate,
 			   *datconnlimit,
@@ -3036,10 +3056,12 @@ dumpDatabase(Archive *fout)
 		appendPQExpBufferStr(dbQry, "datminmxid, ");
 	else
 		appendPQExpBufferStr(dbQry, "0 AS datminmxid, ");
-	if (fout->remoteVersion >= 150000)
-		appendPQExpBufferStr(dbQry, "datlocprovider, daticulocale, datcollversion, ");
+	if (fout->remoteVersion >= 170000)
+		appendPQExpBufferStr(dbQry, "datlocprovider, datlocale, datcollversion, ");
+	else if (fout->remoteVersion >= 150000)
+		appendPQExpBufferStr(dbQry, "datlocprovider, daticulocale AS datlocale, datcollversion, ");
 	else
-		appendPQExpBufferStr(dbQry, "'c' AS datlocprovider, NULL AS daticulocale, NULL AS datcollversion, ");
+		appendPQExpBufferStr(dbQry, "'c' AS datlocprovider, NULL AS datlocale, NULL AS datcollversion, ");
 	if (fout->remoteVersion >= 160000)
 		appendPQExpBufferStr(dbQry, "daticurules, ");
 	else
@@ -3060,7 +3082,7 @@ dumpDatabase(Archive *fout)
 	i_datlocprovider = PQfnumber(res, "datlocprovider");
 	i_collate = PQfnumber(res, "datcollate");
 	i_ctype = PQfnumber(res, "datctype");
-	i_daticulocale = PQfnumber(res, "daticulocale");
+	i_datlocale = PQfnumber(res, "datlocale");
 	i_daticurules = PQfnumber(res, "daticurules");
 	i_frozenxid = PQfnumber(res, "datfrozenxid");
 	i_minmxid = PQfnumber(res, "datminmxid");
@@ -3079,10 +3101,10 @@ dumpDatabase(Archive *fout)
 	datlocprovider = PQgetvalue(res, 0, i_datlocprovider);
 	collate = PQgetvalue(res, 0, i_collate);
 	ctype = PQgetvalue(res, 0, i_ctype);
-	if (!PQgetisnull(res, 0, i_daticulocale))
-		iculocale = PQgetvalue(res, 0, i_daticulocale);
+	if (!PQgetisnull(res, 0, i_datlocale))
+		locale = PQgetvalue(res, 0, i_datlocale);
 	else
-		iculocale = NULL;
+		locale = NULL;
 	if (!PQgetisnull(res, 0, i_daticurules))
 		icurules = PQgetvalue(res, 0, i_daticurules);
 	else
@@ -3121,7 +3143,9 @@ dumpDatabase(Archive *fout)
 	}
 
 	appendPQExpBufferStr(creaQry, " LOCALE_PROVIDER = ");
-	if (datlocprovider[0] == 'c')
+	if (datlocprovider[0] == 'b')
+		appendPQExpBufferStr(creaQry, "builtin");
+	else if (datlocprovider[0] == 'c')
 		appendPQExpBufferStr(creaQry, "libc");
 	else if (datlocprovider[0] == 'i')
 		appendPQExpBufferStr(creaQry, "icu");
@@ -3147,11 +3171,16 @@ dumpDatabase(Archive *fout)
 			appendStringLiteralAH(creaQry, ctype, fout);
 		}
 	}
-	if (iculocale)
+	if (locale)
 	{
-		appendPQExpBufferStr(creaQry, " ICU_LOCALE = ");
-		appendStringLiteralAH(creaQry, iculocale, fout);
+		if (datlocprovider[0] == 'b')
+			appendPQExpBufferStr(creaQry, " BUILTIN_LOCALE = ");
+		else
+			appendPQExpBufferStr(creaQry, " ICU_LOCALE = ");
+
+		appendStringLiteralAH(creaQry, locale, fout);
 	}
+
 	if (icurules)
 	{
 		appendPQExpBufferStr(creaQry, " ICU_RULES = ");
@@ -7261,7 +7290,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 				i_conname,
 				i_condeferrable,
 				i_condeferred,
-				i_conwithoutoverlaps,
+				i_conperiod,
 				i_contableoid,
 				i_conoid,
 				i_condef,
@@ -7350,10 +7379,10 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 
 	if (fout->remoteVersion >= 170000)
 		appendPQExpBufferStr(query,
-							 "c.conwithoutoverlaps ");
+							 "c.conperiod ");
 	else
 		appendPQExpBufferStr(query,
-							 "NULL AS conwithoutoverlaps ");
+							 "NULL AS conperiod ");
 
 	/*
 	 * The point of the messy-looking outer join is to find a constraint that
@@ -7421,7 +7450,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 	i_conname = PQfnumber(res, "conname");
 	i_condeferrable = PQfnumber(res, "condeferrable");
 	i_condeferred = PQfnumber(res, "condeferred");
-	i_conwithoutoverlaps = PQfnumber(res, "conwithoutoverlaps");
+	i_conperiod = PQfnumber(res, "conperiod");
 	i_contableoid = PQfnumber(res, "contableoid");
 	i_conoid = PQfnumber(res, "conoid");
 	i_condef = PQfnumber(res, "condef");
@@ -7529,7 +7558,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 				constrinfo->conindex = indxinfo[j].dobj.dumpId;
 				constrinfo->condeferrable = *(PQgetvalue(res, j, i_condeferrable)) == 't';
 				constrinfo->condeferred = *(PQgetvalue(res, j, i_condeferred)) == 't';
-				constrinfo->conwithoutoverlaps = *(PQgetvalue(res, j, i_conwithoutoverlaps)) == 't';
+				constrinfo->conperiod = *(PQgetvalue(res, j, i_conperiod)) == 't';
 				constrinfo->conislocal = true;
 				constrinfo->separate = true;
 
@@ -7580,7 +7609,7 @@ getExtendedStatistics(Archive *fout)
 
 	if (fout->remoteVersion < 130000)
 		appendPQExpBufferStr(query, "SELECT tableoid, oid, stxname, "
-							 "stxnamespace, stxowner, stxrelid, (-1) AS stxstattarget "
+							 "stxnamespace, stxowner, stxrelid, NULL AS stxstattarget "
 							 "FROM pg_catalog.pg_statistic_ext");
 	else
 		appendPQExpBufferStr(query, "SELECT tableoid, oid, stxname, "
@@ -7613,7 +7642,10 @@ getExtendedStatistics(Archive *fout)
 		statsextinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_stxowner));
 		statsextinfo[i].stattable =
 			findTableByOid(atooid(PQgetvalue(res, i, i_stxrelid)));
-		statsextinfo[i].stattarget = atoi(PQgetvalue(res, i, i_stattarget));
+		if (PQgetisnull(res, i, i_stattarget))
+			statsextinfo[i].stattarget = -1;
+		else
+			statsextinfo[i].stattarget = atoi(PQgetvalue(res, i, i_stattarget));
 
 		/* Decide whether we want to dump it */
 		selectDumpableStatisticsObject(&(statsextinfo[i]), fout);
@@ -7842,7 +7874,7 @@ getDomainConstraints(Archive *fout, TypeInfo *tyinfo)
 							 "pg_catalog.pg_get_constraintdef(oid) AS consrc, "
 							 "convalidated "
 							 "FROM pg_catalog.pg_constraint "
-							 "WHERE contypid = $1 "
+							 "WHERE contypid = $1 AND contype = 'c' "
 							 "ORDER BY conname");
 
 		ExecuteSqlStatement(fout, query->data);
@@ -13781,12 +13813,12 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 	int			i_collisdeterministic;
 	int			i_collcollate;
 	int			i_collctype;
-	int			i_colliculocale;
+	int			i_colllocale;
 	int			i_collicurules;
 	const char *collprovider;
 	const char *collcollate;
 	const char *collctype;
-	const char *colliculocale;
+	const char *colllocale;
 	const char *collicurules;
 
 	/* Do nothing in data-only dump */
@@ -13818,12 +13850,15 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 		appendPQExpBufferStr(query,
 							 "true AS collisdeterministic, ");
 
-	if (fout->remoteVersion >= 150000)
+	if (fout->remoteVersion >= 170000)
 		appendPQExpBufferStr(query,
-							 "colliculocale, ");
+							 "colllocale, ");
+	else if (fout->remoteVersion >= 150000)
+		appendPQExpBufferStr(query,
+							 "colliculocale AS colllocale, ");
 	else
 		appendPQExpBufferStr(query,
-							 "NULL AS colliculocale, ");
+							 "NULL AS colllocale, ");
 
 	if (fout->remoteVersion >= 160000)
 		appendPQExpBufferStr(query,
@@ -13845,7 +13880,7 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 	i_collisdeterministic = PQfnumber(res, "collisdeterministic");
 	i_collcollate = PQfnumber(res, "collcollate");
 	i_collctype = PQfnumber(res, "collctype");
-	i_colliculocale = PQfnumber(res, "colliculocale");
+	i_colllocale = PQfnumber(res, "colllocale");
 	i_collicurules = PQfnumber(res, "collicurules");
 
 	collprovider = PQgetvalue(res, 0, i_collprovider);
@@ -13872,10 +13907,10 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 			collctype = NULL;
 	}
 
-	if (!PQgetisnull(res, 0, i_colliculocale))
-		colliculocale = PQgetvalue(res, 0, i_colliculocale);
+	if (!PQgetisnull(res, 0, i_colllocale))
+		colllocale = PQgetvalue(res, 0, i_colllocale);
 	else
-		colliculocale = NULL;
+		colllocale = NULL;
 
 	if (!PQgetisnull(res, 0, i_collicurules))
 		collicurules = PQgetvalue(res, 0, i_collicurules);
@@ -13889,7 +13924,9 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 					  fmtQualifiedDumpable(collinfo));
 
 	appendPQExpBufferStr(q, "provider = ");
-	if (collprovider[0] == 'c')
+	if (collprovider[0] == 'b')
+		appendPQExpBufferStr(q, "builtin");
+	else if (collprovider[0] == 'c')
 		appendPQExpBufferStr(q, "libc");
 	else if (collprovider[0] == 'i')
 		appendPQExpBufferStr(q, "icu");
@@ -13905,25 +13942,34 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 
 	if (collprovider[0] == 'd')
 	{
-		if (collcollate || collctype || colliculocale || collicurules)
+		if (collcollate || collctype || colllocale || collicurules)
 			pg_log_warning("invalid collation \"%s\"", qcollname);
 
 		/* no locale -- the default collation cannot be reloaded anyway */
+	}
+	else if (collprovider[0] == 'b')
+	{
+		if (collcollate || collctype || !colllocale || collicurules)
+			pg_log_warning("invalid collation \"%s\"", qcollname);
+
+		appendPQExpBufferStr(q, ", locale = ");
+		appendStringLiteralAH(q, colllocale ? colllocale : "",
+							  fout);
 	}
 	else if (collprovider[0] == 'i')
 	{
 		if (fout->remoteVersion >= 150000)
 		{
-			if (collcollate || collctype || !colliculocale)
+			if (collcollate || collctype || !colllocale)
 				pg_log_warning("invalid collation \"%s\"", qcollname);
 
 			appendPQExpBufferStr(q, ", locale = ");
-			appendStringLiteralAH(q, colliculocale ? colliculocale : "",
+			appendStringLiteralAH(q, colllocale ? colllocale : "",
 								  fout);
 		}
 		else
 		{
-			if (!collcollate || !collctype || colliculocale ||
+			if (!collcollate || !collctype || colllocale ||
 				strcmp(collcollate, collctype) != 0)
 				pg_log_warning("invalid collation \"%s\"", qcollname);
 
@@ -13939,7 +13985,7 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 	}
 	else if (collprovider[0] == 'c')
 	{
-		if (colliculocale || collicurules || !collcollate || !collctype)
+		if (colllocale || collicurules || !collcollate || !collctype)
 			pg_log_warning("invalid collation \"%s\"", qcollname);
 
 		if (collcollate && collctype && strcmp(collcollate, collctype) == 0)
@@ -16648,7 +16694,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		if (RELKIND_HAS_TABLESPACE(tbinfo->relkind))
 			tablespace = tbinfo->reltablespace;
 
-		if (RELKIND_HAS_TABLE_AM(tbinfo->relkind))
+		if (RELKIND_HAS_TABLE_AM(tbinfo->relkind) ||
+			tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
 			tableam = tbinfo->amname;
 
 		ArchiveEntry(fout, tbinfo->dobj.catId, tbinfo->dobj.dumpId,
@@ -17077,8 +17124,7 @@ dumpStatisticsExt(Archive *fout, const StatsExtInfo *statsextinfo)
 
 	/*
 	 * We only issue an ALTER STATISTICS statement if the stxstattarget entry
-	 * for this statistics object is non-negative (i.e. it's not the default
-	 * value).
+	 * for this statistics object is not the default value.
 	 */
 	if (statsextinfo->stattarget >= 0)
 	{
@@ -17194,7 +17240,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 								  (k == 0) ? "" : ", ",
 								  fmtId(attname));
 			}
-			if (coninfo->conwithoutoverlaps)
+			if (coninfo->conperiod)
 				appendPQExpBufferStr(q, " WITHOUT OVERLAPS");
 
 			if (indxinfo->indnkeyattrs < indxinfo->indnattrs)
@@ -18327,6 +18373,15 @@ processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 									curext->dobj.catId.oid))
 			continue;
 
+		/*
+		 * Check if this extension is listed as to exclude in the dump.  If
+		 * yes, any table data associated with it is discarded.
+		 */
+		if (extension_exclude_oids.head != NULL &&
+			simple_oid_list_member(&extension_exclude_oids,
+								   curext->dobj.catId.oid))
+			continue;
+
 		if (strlen(extconfig) != 0 || strlen(extcondition) != 0)
 		{
 			int			j;
@@ -19027,7 +19082,6 @@ read_dump_filters(const char *filename, DumpOptions *dopt)
 				case FILTER_OBJECT_TYPE_FUNCTION:
 				case FILTER_OBJECT_TYPE_INDEX:
 				case FILTER_OBJECT_TYPE_TRIGGER:
-				case FILTER_OBJECT_TYPE_EXTENSION:
 				case FILTER_OBJECT_TYPE_FOREIGN_DATA:
 					pg_log_filter_error(&fstate, _("%s filter for \"%s\" is not allowed"),
 										"exclude",
@@ -19035,6 +19089,9 @@ read_dump_filters(const char *filename, DumpOptions *dopt)
 					exit_nicely(1);
 					break;
 
+				case FILTER_OBJECT_TYPE_EXTENSION:
+					simple_string_list_append(&extension_exclude_patterns, objname);
+					break;
 				case FILTER_OBJECT_TYPE_TABLE_DATA:
 					simple_string_list_append(&tabledata_exclude_patterns,
 											  objname);

@@ -26,12 +26,11 @@
 #include "common/percentrepl.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "postmaster/startup.h"
 #include "postmaster/pgarch.h"
+#include "postmaster/startup.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
-#include "storage/lwlock.h"
 
 /*
  * Attempt to retrieve the specified file from off-line archival storage.

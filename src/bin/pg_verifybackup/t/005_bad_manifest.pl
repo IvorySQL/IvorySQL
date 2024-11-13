@@ -13,7 +13,8 @@ use Test::More;
 my $tempdir = PostgreSQL::Test::Utils::tempdir;
 
 test_bad_manifest('input string ended unexpectedly',
-	qr/could not parse backup manifest: parsing failed/, <<EOM);
+	qr/could not parse backup manifest: The input string ended unexpectedly/,
+	<<EOM);
 {
 EOM
 
@@ -29,8 +30,12 @@ test_parse_error('expected version indicator', <<EOM);
 {"not-expected": 1}
 EOM
 
-test_parse_error('unexpected manifest version', <<EOM);
+test_parse_error('manifest version not an integer', <<EOM);
 {"PostgreSQL-Backup-Manifest-Version": "phooey"}
+EOM
+
+test_parse_error('unexpected manifest version', <<EOM);
+{"PostgreSQL-Backup-Manifest-Version": 9876599}
 EOM
 
 test_parse_error('unexpected scalar', <<EOM);

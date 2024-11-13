@@ -16,7 +16,6 @@
 
 #include "access/htup_details.h"
 #include "access/relation.h"
-#include "access/sysattr.h"
 #include "access/table.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -33,6 +32,7 @@
 #include "catalog/pg_largeobject_metadata.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic_ext.h"
@@ -43,13 +43,11 @@
 #include "catalog/pg_ts_template.h"
 #include "commands/alter.h"
 #include "commands/collationcmds.h"
-#include "commands/conversioncmds.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
 #include "commands/policy.h"
-#include "commands/proclang.h"
 #include "commands/publicationcmds.h"
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
@@ -59,12 +57,10 @@
 #include "commands/typecmds.h"
 #include "commands/user.h"
 #include "miscadmin.h"
-#include "parser/parse_func.h"
 #include "replication/logicalworker.h"
 #include "rewrite/rewriteDefine.h"
-#include "tcop/utility.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -608,8 +604,7 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt,
  * so it only needs to cover object types that can be members of an
  * extension, and it doesn't have to deal with certain special cases
  * such as not wanting to process array types --- those should never
- * be direct members of an extension anyway.  Nonetheless, we insist
- * on listing all OCLASS types in the switch.
+ * be direct members of an extension anyway.
  *
  * Returns the OID of the object's previous namespace, or InvalidOid if
  * object doesn't have a schema.
@@ -619,15 +614,10 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 						 ObjectAddresses *objsMoved)
 {
 	Oid			oldNspOid = InvalidOid;
-	ObjectAddress dep;
 
-	dep.classId = classId;
-	dep.objectId = objid;
-	dep.objectSubId = 0;
-
-	switch (getObjectClass(&dep))
+	switch (classId)
 	{
-		case OCLASS_CLASS:
+		case RelationRelationId:
 			{
 				Relation	rel;
 
@@ -640,21 +630,21 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 				break;
 			}
 
-		case OCLASS_TYPE:
+		case TypeRelationId:
 			oldNspOid = AlterTypeNamespace_oid(objid, nspOid, objsMoved);
 			break;
 
-		case OCLASS_PROC:
-		case OCLASS_COLLATION:
-		case OCLASS_CONVERSION:
-		case OCLASS_OPERATOR:
-		case OCLASS_OPCLASS:
-		case OCLASS_OPFAMILY:
-		case OCLASS_STATISTIC_EXT:
-		case OCLASS_TSPARSER:
-		case OCLASS_TSDICT:
-		case OCLASS_TSTEMPLATE:
-		case OCLASS_TSCONFIG:
+		case ProcedureRelationId:
+		case CollationRelationId:
+		case ConversionRelationId:
+		case OperatorRelationId:
+		case OperatorClassRelationId:
+		case OperatorFamilyRelationId:
+		case StatisticExtRelationId:
+		case TSParserRelationId:
+		case TSDictionaryRelationId:
+		case TSTemplateRelationId:
+		case TSConfigRelationId:
 			{
 				Relation	catalog;
 
@@ -667,41 +657,9 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 			}
 			break;
 
-		case OCLASS_CAST:
-		case OCLASS_CONSTRAINT:
-		case OCLASS_DEFAULT:
-		case OCLASS_LANGUAGE:
-		case OCLASS_LARGEOBJECT:
-		case OCLASS_AM:
-		case OCLASS_AMOP:
-		case OCLASS_AMPROC:
-		case OCLASS_REWRITE:
-		case OCLASS_TRIGGER:
-		case OCLASS_SCHEMA:
-		case OCLASS_ROLE:
-		case OCLASS_ROLE_MEMBERSHIP:
-		case OCLASS_DATABASE:
-		case OCLASS_TBLSPACE:
-		case OCLASS_FDW:
-		case OCLASS_FOREIGN_SERVER:
-		case OCLASS_USER_MAPPING:
-		case OCLASS_DEFACL:
-		case OCLASS_EXTENSION:
-		case OCLASS_EVENT_TRIGGER:
-		case OCLASS_PARAMETER_ACL:
-		case OCLASS_POLICY:
-		case OCLASS_PUBLICATION:
-		case OCLASS_PUBLICATION_NAMESPACE:
-		case OCLASS_PUBLICATION_REL:
-		case OCLASS_SUBSCRIPTION:
-		case OCLASS_TRANSFORM:
+		default:
 			/* ignore object types that don't have schema-qualified names */
-			break;
-
-			/*
-			 * There's intentionally no default: case here; we want the
-			 * compiler to warn if a new OCLASS hasn't been handled above.
-			 */
+			Assert(get_object_attnum_namespace(classId) == InvalidAttrNumber);
 	}
 
 	return oldNspOid;

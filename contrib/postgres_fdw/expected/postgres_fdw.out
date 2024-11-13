@@ -893,32 +893,6 @@ SELECT * FROM ft2 WHERE c1 = ANY (ARRAY(SELECT c1 FROM ft1 WHERE c1 < 5));
   4 |  4 | 00004 | Mon Jan 05 00:00:00 1970 PST | Mon Jan 05 00:00:00 1970 | 4  | 4          | foo
 (4 rows)
 
--- we should not push order by clause with volatile expressions or unsafe
--- collations
-EXPLAIN (VERBOSE, COSTS OFF)
-	SELECT * FROM ft2 ORDER BY ft2.c1, random();
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Sort
-   Output: c1, c2, c3, c4, c5, c6, c7, c8, (random())
-   Sort Key: ft2.c1, (random())
-   ->  Foreign Scan on public.ft2
-         Output: c1, c2, c3, c4, c5, c6, c7, c8, random()
-         Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
-(6 rows)
-
-EXPLAIN (VERBOSE, COSTS OFF)
-	SELECT * FROM ft2 ORDER BY ft2.c1, ft2.c3 collate "C";
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Sort
-   Output: c1, c2, c3, c4, c5, c6, c7, c8, ((c3)::text)
-   Sort Key: ft2.c1, ft2.c3 COLLATE "C"
-   ->  Foreign Scan on public.ft2
-         Output: c1, c2, c3, c4, c5, c6, c7, c8, c3
-         Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
-(6 rows)
-
 -- user-defined operator/function
 CREATE FUNCTION postgres_fdw_abs(int) RETURNS int AS $$
 BEGIN
@@ -1205,6 +1179,73 @@ WHERE c1 = 642 AND length(to_tsvector('custom_search'::regconfig, c3)) > 0;
 -----+-------------
  642 | '00642':1
 (1 row)
+
+-- ===================================================================
+-- ORDER BY queries
+-- ===================================================================
+-- we should not push order by clause with volatile expressions or unsafe
+-- collations
+EXPLAIN (VERBOSE, COSTS OFF)
+	SELECT * FROM ft2 ORDER BY ft2.c1, random();
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Sort
+   Output: c1, c2, c3, c4, c5, c6, c7, c8, (random())
+   Sort Key: ft2.c1, (random())
+   ->  Foreign Scan on public.ft2
+         Output: c1, c2, c3, c4, c5, c6, c7, c8, random()
+         Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
+(6 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+	SELECT * FROM ft2 ORDER BY ft2.c1, ft2.c3 collate "C";
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Sort
+   Output: c1, c2, c3, c4, c5, c6, c7, c8, ((c3)::text)
+   Sort Key: ft2.c1, ft2.c3 COLLATE "C"
+   ->  Foreign Scan on public.ft2
+         Output: c1, c2, c3, c4, c5, c6, c7, c8, c3
+         Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
+(6 rows)
+
+-- Ensure we don't push ORDER BY expressions which are Consts at the UNION
+-- child level to the foreign server.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM (
+    SELECT 1 AS type,c1 FROM ft1
+    UNION ALL
+    SELECT 2 AS type,c1 FROM ft2
+) a ORDER BY type,c1;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: (1), ft1.c1
+   ->  Foreign Scan on public.ft1
+         Output: 1, ft1.c1
+         Remote SQL: SELECT "C 1" FROM "S 1"."T 1" ORDER BY "C 1" ASC NULLS LAST
+   ->  Foreign Scan on public.ft2
+         Output: 2, ft2.c1
+         Remote SQL: SELECT "C 1" FROM "S 1"."T 1" ORDER BY "C 1" ASC NULLS LAST
+(8 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM (
+    SELECT 1 AS type,c1 FROM ft1
+    UNION ALL
+    SELECT 2 AS type,c1 FROM ft2
+) a ORDER BY type;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Merge Append
+   Sort Key: (1)
+   ->  Foreign Scan on public.ft1
+         Output: 1, ft1.c1
+         Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
+   ->  Foreign Scan on public.ft2
+         Output: 2, ft2.c1
+         Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
+(8 rows)
 
 -- ===================================================================
 -- JOIN queries
@@ -2698,6 +2739,22 @@ SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c
 (10 rows)
 
 ALTER VIEW v4 OWNER TO regress_view_owner;
+-- Make sure this big CROSS JOIN query is pushed down
+EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5;
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Output: (count(*))
+   Relations: Aggregate on ((((public.ft1) INNER JOIN (public.ft2)) INNER JOIN (public.ft4)) INNER JOIN (public.ft5))
+   Remote SQL: SELECT count(*) FROM ((("S 1"."T 1" r1 INNER JOIN "S 1"."T 1" r2 ON (TRUE)) INNER JOIN "S 1"."T 3" r4 ON (TRUE)) INNER JOIN "S 1"."T 4" r6 ON (TRUE))
+(4 rows)
+
+-- Make sure query cancellation works
+BEGIN;
+SET LOCAL statement_timeout = '10ms';
+select count(*) from ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5; -- this takes very long
+ERROR:  canceling statement due to statement timeout
+COMMIT;
 -- ====================================================================
 -- Check that userid to use when querying the remote table is correctly
 -- propagated into foreign rels present in subqueries under an UNION ALL
@@ -3021,10 +3078,10 @@ select exists(select 1 from pg_enum), sum(c1) from ft1;
                     QUERY PLAN                    
 --------------------------------------------------
  Foreign Scan
-   Output: $0, (sum(ft1.c1))
+   Output: (InitPlan 1).col1, (sum(ft1.c1))
    Relations: Aggregate on (public.ft1)
    Remote SQL: SELECT sum("C 1") FROM "S 1"."T 1"
-   InitPlan 1 (returns $0)
+   InitPlan 1
      ->  Seq Scan on pg_catalog.pg_enum
 (6 rows)
 
@@ -3039,8 +3096,8 @@ select exists(select 1 from pg_enum), sum(c1) from ft1 group by 1;
                     QUERY PLAN                     
 ---------------------------------------------------
  GroupAggregate
-   Output: $0, sum(ft1.c1)
-   InitPlan 1 (returns $0)
+   Output: (InitPlan 1).col1, sum(ft1.c1)
+   InitPlan 1
      ->  Seq Scan on pg_catalog.pg_enum
    ->  Foreign Scan on public.ft1
          Output: ft1.c1
@@ -3264,10 +3321,10 @@ select sum(c1) filter (where (c1 / c1) * random() <= 1) from ft1 group by c2 ord
 
 explain (verbose, costs off)
 select sum(c2) filter (where c2 in (select c2 from ft1 where c2 < 5)) from ft1;
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Aggregate
-   Output: sum(ft1.c2) FILTER (WHERE (hashed SubPlan 1))
+   Output: sum(ft1.c2) FILTER (WHERE (ANY (ft1.c2 = (hashed SubPlan 1).col1)))
    ->  Foreign Scan on public.ft1
          Output: ft1.c2
          Remote SQL: SELECT c2 FROM "S 1"."T 1"
@@ -6130,9 +6187,9 @@ UPDATE ft2 AS target SET (c2, c7) = (
  Update on public.ft2 target
    Remote SQL: UPDATE "S 1"."T 1" SET c2 = $2, c7 = $3 WHERE ctid = $1
    ->  Foreign Scan on public.ft2 target
-         Output: $1, $2, (SubPlan 1 (returns $1,$2)), target.ctid, target.*
+         Output: (SubPlan 1).col1, (SubPlan 1).col2, (rescan SubPlan 1), target.ctid, target.*
          Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8, ctid FROM "S 1"."T 1" WHERE (("C 1" > 1100)) FOR UPDATE
-         SubPlan 1 (returns $1,$2)
+         SubPlan 1
            ->  Foreign Scan on public.ft2 src
                  Output: (src.c2 * 10), src.c7
                  Remote SQL: SELECT c2, c7 FROM "S 1"."T 1" WHERE (($1::integer = "C 1"))
@@ -11454,6 +11511,10 @@ DROP INDEX base_tbl1_idx;
 DROP INDEX base_tbl2_idx;
 DROP INDEX async_p3_idx;
 -- UNION queries
+SET enable_sort TO off;
+SET enable_incremental_sort TO off;
+-- Adjust fdw_startup_cost so that we get an unordered path in the Append.
+ALTER SERVER loopback2 OPTIONS (ADD fdw_startup_cost '0.00');
 EXPLAIN (VERBOSE, COSTS OFF)
 INSERT INTO result_tbl
 (SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
@@ -11535,6 +11596,9 @@ SELECT * FROM result_tbl ORDER BY a;
 (12 rows)
 
 DELETE FROM result_tbl;
+RESET enable_incremental_sort;
+RESET enable_sort;
+ALTER SERVER loopback2 OPTIONS (DROP fdw_startup_cost);
 -- Disable async execution if we use gating Result nodes for pseudoconstant
 -- quals
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -11644,9 +11708,9 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Nested Loop Left Join
-   Output: t1.a, t1.b, t1.c, async_pt.a, async_pt.b, async_pt.c, ($0)
+   Output: t1.a, t1.b, t1.c, async_pt.a, async_pt.b, async_pt.c, ((InitPlan 1).col1)
    Join Filter: (t1.a = async_pt.a)
-   InitPlan 1 (returns $0)
+   InitPlan 1
      ->  Aggregate
            Output: count(*)
            ->  Append
@@ -11658,10 +11722,10 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
          Output: t1.a, t1.b, t1.c
    ->  Append
          ->  Async Foreign Scan on public.async_p1 async_pt_1
-               Output: async_pt_1.a, async_pt_1.b, async_pt_1.c, $0
+               Output: async_pt_1.a, async_pt_1.b, async_pt_1.c, (InitPlan 1).col1
                Remote SQL: SELECT a, b, c FROM public.base_tbl1 WHERE ((a < 3000))
          ->  Async Foreign Scan on public.async_p2 async_pt_2
-               Output: async_pt_2.a, async_pt_2.b, async_pt_2.c, $0
+               Output: async_pt_2.a, async_pt_2.b, async_pt_2.c, (InitPlan 1).col1
                Remote SQL: SELECT a, b, c FROM public.base_tbl2 WHERE ((a < 3000))
 (20 rows)
 
@@ -11672,7 +11736,7 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
  Nested Loop Left Join (actual rows=1 loops=1)
    Join Filter: (t1.a = async_pt.a)
    Rows Removed by Join Filter: 399
-   InitPlan 1 (returns $0)
+   InitPlan 1
      ->  Aggregate (actual rows=1 loops=1)
            ->  Append (actual rows=400 loops=1)
                  ->  Async Foreign Scan on async_p1 async_pt_4 (actual rows=200 loops=1)
@@ -11895,11 +11959,11 @@ CREATE FOREIGN TABLE foreign_tbl2 () INHERITS (foreign_tbl)
   SERVER loopback OPTIONS (table_name 'base_tbl');
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT a FROM base_tbl WHERE (a, random() > 0) IN (SELECT a, random() > 0 FROM foreign_tbl);
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
  Seq Scan on public.base_tbl
    Output: base_tbl.a
-   Filter: (SubPlan 1)
+   Filter: (ANY ((base_tbl.a = (SubPlan 1).col1) AND ((random() > '0'::double precision) = (SubPlan 1).col2)))
    SubPlan 1
      ->  Result
            Output: base_tbl.a, (random() > '0'::double precision)

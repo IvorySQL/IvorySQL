@@ -25,12 +25,9 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "access/htup_details.h"
 #include "access/reloptions.h"
-#include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/xact.h"
-#include "access/xlog.h"
 #include "catalog/namespace.h"
 #include "catalog/toasting.h"
 #include "commands/createas.h"
@@ -41,9 +38,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "parser/parse_clause.h"
 #include "rewrite/rewriteHandler.h"
-#include "storage/smgr.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -583,6 +578,7 @@ static bool
 intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 {
 	DR_intorel *myState = (DR_intorel *) self;
+	bool		insertIndexes;
 
 	/* Nothing to insert if WITH NO DATA is specified. */
 	if (!myState->into->skipData)
@@ -599,7 +595,8 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 						   slot,
 						   myState->output_cid,
 						   myState->ti_options,
-						   myState->bistate);
+						   myState->bistate,
+						   &insertIndexes);
 	}
 
 	/* We know this is a newly created relation, so there are no indexes */

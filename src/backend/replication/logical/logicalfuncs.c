@@ -17,8 +17,6 @@
 
 #include <unistd.h>
 
-#include "access/xact.h"
-#include "access/xlog_internal.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "catalog/pg_type.h"
@@ -30,11 +28,9 @@
 #include "replication/decode.h"
 #include "replication/logical.h"
 #include "replication/message.h"
-#include "storage/fd.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/inval.h"
-#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_lsn.h"
 #include "utils/regproc.h"
@@ -109,6 +105,7 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
 	XLogRecPtr	end_of_wal;
+	XLogRecPtr	wait_for_wal_lsn;
 	LogicalDecodingContext *ctx;
 	ResourceOwner old_resowner = CurrentResourceOwner;
 	ArrayType  *arr;
@@ -227,6 +224,17 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 					 errmsg("logical decoding output plugin \"%s\" produces binary output, but function \"%s\" expects textual data",
 							NameStr(MyReplicationSlot->data.plugin),
 							format_procedure(fcinfo->flinfo->fn_oid))));
+
+		/*
+		 * Wait for specified streaming replication standby servers (if any)
+		 * to confirm receipt of WAL up to wait_for_wal_lsn.
+		 */
+		if (XLogRecPtrIsInvalid(upto_lsn))
+			wait_for_wal_lsn = end_of_wal;
+		else
+			wait_for_wal_lsn = Min(upto_lsn, end_of_wal);
+
+		WaitForStandbyConfirmation(wait_for_wal_lsn);
 
 		ctx->output_writer_private = p;
 

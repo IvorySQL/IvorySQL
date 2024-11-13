@@ -16,6 +16,7 @@
 
 #include "access/attmap.h"
 #include "access/genam.h"
+#include "access/gist.h"
 #include "access/heapam.h"
 #include "access/heapam_xlog.h"
 #include "access/multixact.h"
@@ -43,6 +44,8 @@
 #include "catalog/pg_largeobject.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_policy.h"
+#include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
@@ -54,7 +57,6 @@
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
-#include "commands/policy.h"
 #include "commands/sequence.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -70,11 +72,9 @@
 #include "nodes/nodeFuncs.h"
 #include "nodes/parsenodes.h"
 #include "optimizer/optimizer.h"
-#include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
@@ -186,7 +186,9 @@ typedef struct AlteredTableInfo
 	List	   *afterStmts;		/* List of utility command parsetrees */
 	bool		verify_new_notnull; /* T if we should recheck NOT NULL */
 	int			rewrite;		/* Reason for forced rewrite, if any */
-	Oid			newAccessMethod;	/* new access method; 0 means no change */
+	bool		chgAccessMethod;	/* T if SET ACCESS METHOD is used */
+	Oid			newAccessMethod;	/* new access method; 0 means no change,
+									 * if above is true */
 	Oid			newTableSpace;	/* new tablespace; 0 means no change */
 	bool		chgPersistence; /* T if SET LOGGED/UNLOGGED is used */
 	char		newrelpersistence;	/* if above is true */
@@ -212,6 +214,7 @@ typedef struct NewConstraint
 	ConstrType	contype;		/* CHECK or FOREIGN */
 	Oid			refrelid;		/* PK rel, if FOREIGN */
 	Oid			refindid;		/* OID of PK's index, if FOREIGN */
+	bool		conwithperiod;	/* Whether the new FOREIGN KEY uses PERIOD */
 	Oid			conid;			/* OID of pg_constraint entry, if FOREIGN */
 	Node	   *qual;			/* Check expr or CONSTR_FOREIGN Constraint */
 	ExprState  *qualstate;		/* Execution state for CHECK expr */
@@ -387,16 +390,17 @@ static int	transformColumnNameList(Oid relId, List *colList,
 static int	transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 									   List **attnamelist,
 									   int16 *attnums, Oid *atttypids,
-									   Oid *opclasses);
+									   Oid *opclasses, bool *pk_has_without_overlaps);
 static Oid	transformFkeyCheckAttrs(Relation pkrel,
 									int numattrs, int16 *attnums,
-									Oid *opclasses);
+									bool with_period, Oid *opclasses,
+									bool *pk_has_without_overlaps);
 static void checkFkeyPermissions(Relation rel, int16 *attnums, int natts);
 static CoercionPathType findFkeyCast(Oid targetTypeId, Oid sourceTypeId,
 									 Oid *funcid);
 static void validateForeignKeyConstraint(char *conname,
 										 Relation rel, Relation pkrel,
-										 Oid pkindOid, Oid constraintOid);
+										 Oid pkindOid, Oid constraintOid, bool hasperiod);
 static void ATController(AlterTableStmt *parsetree,
 						 Relation rel, List *cmds, bool recurse, LOCKMODE lockmode,
 						 AlterTableUtilityContext *context);
@@ -509,7 +513,8 @@ static ObjectAddress addFkRecurseReferenced(List **wqueue, Constraint *fkconstra
 											Oid *pfeqoperators, Oid *ppeqoperators, Oid *ffeqoperators,
 											int numfkdelsetcols, int16 *fkdelsetcols,
 											bool old_check_ok,
-											Oid parentDelTrigger, Oid parentUpdTrigger);
+											Oid parentDelTrigger, Oid parentUpdTrigger,
+											bool with_period);
 static void validateFkOnDeleteSetColumns(int numfks, const int16 *fkattnums,
 										 int numfksetcols, const int16 *fksetcolsattnums,
 										 List *fksetcols);
@@ -519,7 +524,9 @@ static void addFkRecurseReferencing(List **wqueue, Constraint *fkconstraint,
 									Oid *pfeqoperators, Oid *ppeqoperators, Oid *ffeqoperators,
 									int numfkdelsetcols, int16 *fkdelsetcols,
 									bool old_check_ok, LOCKMODE lockmode,
-									Oid parentInsTrigger, Oid parentUpdTrigger);
+									Oid parentInsTrigger, Oid parentUpdTrigger,
+									bool with_period);
+
 static void CloneForeignKeyConstraints(List **wqueue, Relation parentRel,
 									   Relation partitionRel);
 static void CloneFkReferenced(Relation parentRel, Relation partitionRel);
@@ -592,6 +599,7 @@ static ObjectAddress ATExecClusterOn(Relation rel, const char *indexName,
 									 LOCKMODE lockmode);
 static void ATExecDropCluster(Relation rel, LOCKMODE lockmode);
 static void ATPrepSetAccessMethod(AlteredTableInfo *tab, Relation rel, const char *amname);
+static void ATExecSetAccessMethodNoStorage(Relation rel, Oid newAccessMethod);
 static bool ATPrepChangePersistence(Relation rel, bool toLogged);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 								const char *tablespacename, LOCKMODE lockmode);
@@ -710,9 +718,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	Oid			ofTypeId;
 	ObjectAddress address;
 	LOCKMODE	parentLockmode;
-	const char *accessMethod = NULL;
 	Oid			accessMethodId = InvalidOid;
 	bool	   has_visible_col = false;
+	const TableAmRoutine *tableam = NULL;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -815,10 +823,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	}
 	else if (stmt->partbound)
 	{
-		/*
-		 * For partitions, when no other tablespace is specified, we default
-		 * the tablespace to the parent partitioned table's.
-		 */
 		Assert(list_length(inheritOids) == 1);
 		tablespaceId = get_rel_tablespace(linitial_oid(inheritOids));
 	}
@@ -853,6 +857,28 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		ownerId = GetUserId();
 
 	/*
+	 * For relations with table AM and partitioned tables, select access
+	 * method to use: an explicitly indicated one, or (in the case of a
+	 * partitioned table) the parent's, if it has one.
+	 */
+	if (stmt->accessMethod != NULL)
+	{
+		Assert(RELKIND_HAS_TABLE_AM(relkind) || relkind == RELKIND_PARTITIONED_TABLE);
+		accessMethodId = get_table_am_oid(stmt->accessMethod, false);
+	}
+	else if (RELKIND_HAS_TABLE_AM(relkind) || relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		if (stmt->partbound)
+		{
+			Assert(list_length(inheritOids) == 1);
+			accessMethodId = get_rel_relam(linitial_oid(inheritOids));
+		}
+
+		if (RELKIND_HAS_TABLE_AM(relkind) && !OidIsValid(accessMethodId))
+			accessMethodId = get_table_am_oid(default_table_access_method, false);
+	}
+
+	/*
 	 * Parse and validate reloptions, if any.
 	 */
 	reloptions = transformRelOptions((Datum) 0, stmt->options, NULL, validnsps,
@@ -860,6 +886,12 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	switch (relkind)
 	{
+		case RELKIND_RELATION:
+		case RELKIND_TOASTVALUE:
+		case RELKIND_MATVIEW:
+			tableam = GetTableAmRoutineByAmOid(accessMethodId);
+			(void) tableam_reloptions(tableam, relkind, reloptions, true);
+			break;
 		case RELKIND_VIEW:
 			(void) view_reloptions(reloptions, true);
 			break;
@@ -868,6 +900,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			break;
 		default:
 			(void) heap_reloptions(relkind, reloptions, true);
+			break;
 	}
 
 	if (stmt->ofTypename)
@@ -974,26 +1007,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 
 	}
-
-	/*
-	 * If the statement hasn't specified an access method, but we're defining
-	 * a type of relation that needs one, use the default.
-	 */
-	if (stmt->accessMethod != NULL)
-	{
-		accessMethod = stmt->accessMethod;
-
-		if (partitioned)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("specifying a table access method is not supported on a partitioned table")));
-	}
-	else if (RELKIND_HAS_TABLE_AM(relkind))
-		accessMethod = default_table_access_method;
-
-	/* look up the access method, verify it is for a table */
-	if (accessMethod != NULL)
-		accessMethodId = get_table_am_oid(accessMethod, false);
 
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
@@ -5096,14 +5109,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_SetAccessMethod:	/* SET ACCESS METHOD */
 			ATSimplePermissions(cmd->subtype, rel, ATT_TABLE | ATT_MATVIEW);
 
-			/* partitioned tables don't have an access method */
-			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("cannot change access method of a partitioned table")));
-
 			/* check if another access method change was already requested */
-			if (OidIsValid(tab->newAccessMethod))
+			if (tab->chgAccessMethod)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot have multiple SET ACCESS METHOD subcommands")));
@@ -5463,7 +5470,14 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 			/* nothing to do here, oid columns don't exist anymore */
 			break;
 		case AT_SetAccessMethod:	/* SET ACCESS METHOD */
-			/* handled specially in Phase 3 */
+
+			/*
+			 * Only do this for partitioned tables, for which this is just a
+			 * catalog change.  Tables with storage are handled by Phase 3.
+			 */
+			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
+				tab->chgAccessMethod)
+				ATExecSetAccessMethodNoStorage(rel, tab->newAccessMethod);
 			break;
 		case AT_SetTableSpace:	/* SET TABLESPACE */
 
@@ -5869,7 +5883,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			 * Select destination access method (same as original unless user
 			 * requested a change)
 			 */
-			if (OidIsValid(tab->newAccessMethod))
+			if (tab->chgAccessMethod)
 				NewAccessMethod = tab->newAccessMethod;
 			else
 				NewAccessMethod = OldHeap->rd_rel->relam;
@@ -6019,7 +6033,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 
 				validateForeignKeyConstraint(fkconstraint->conname, rel, refrel,
 											 con->refindid,
-											 con->conid);
+											 con->conid,
+											 con->conwithperiod);
 
 				/*
 				 * No need to mark the constraint row as validated, we did
@@ -6399,8 +6414,12 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 			/* Write the tuple out to the new relation */
 			if (newrel)
+			{
+				bool		insertIndexes;
+
 				table_tuple_insert(newrel, insertslot, mycid,
-								   ti_options, bistate);
+								   ti_options, bistate, &insertIndexes);
+			}
 
 			ResetExprContext(econtext);
 
@@ -6456,6 +6475,7 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 	tab->relkind = rel->rd_rel->relkind;
 	tab->oldDesc = CreateTupleDescCopyConstr(RelationGetDescr(rel));
 	tab->newAccessMethod = InvalidOid;
+	tab->chgAccessMethod = false;
 	tab->newTableSpace = InvalidOid;
 	tab->newrelpersistence = RELPERSISTENCE_PERMANENT;
 	tab->chgPersistence = false;
@@ -8956,7 +8976,8 @@ ATExecDropExpression(Relation rel, const char *colName, bool missing_ok, LOCKMOD
 static ObjectAddress
 ATExecSetStatistics(Relation rel, const char *colName, int16 colNum, Node *newValue, LOCKMODE lockmode)
 {
-	int			newtarget;
+	int			newtarget = 0;
+	bool		newtarget_default;
 	Relation	attrelation;
 	HeapTuple	tuple,
 				newtuple;
@@ -8978,35 +8999,35 @@ ATExecSetStatistics(Relation rel, const char *colName, int16 colNum, Node *newVa
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot refer to non-index column by number")));
 
-	if (newValue)
+	/* -1 was used in previous versions for the default setting */
+	if (newValue && intVal(newValue) != -1)
 	{
 		newtarget = intVal(newValue);
+		newtarget_default = false;
 	}
 	else
+		newtarget_default = true;
+
+	if (!newtarget_default)
 	{
 		/*
-		 * -1 was used in previous versions to represent the default setting
+		 * Limit target to a sane range
 		 */
-		newtarget = -1;
-	}
-
-	/*
-	 * Limit target to a sane range
-	 */
-	if (newtarget < -1)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("statistics target %d is too low",
-						newtarget)));
-	}
-	else if (newtarget > MAX_STATISTICS_TARGET)
-	{
-		newtarget = MAX_STATISTICS_TARGET;
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("lowering statistics target to %d",
-						newtarget)));
+		if (newtarget < 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("statistics target %d is too low",
+							newtarget)));
+		}
+		else if (newtarget > MAX_STATISTICS_TARGET)
+		{
+			newtarget = MAX_STATISTICS_TARGET;
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("lowering statistics target to %d",
+							newtarget)));
+		}
 	}
 
 	attrelation = table_open(AttributeRelationId, RowExclusiveLock);
@@ -9060,7 +9081,7 @@ ATExecSetStatistics(Relation rel, const char *colName, int16 colNum, Node *newVa
 	/* Build new tuple. */
 	memset(repl_null, false, sizeof(repl_null));
 	memset(repl_repl, false, sizeof(repl_repl));
-	if (newtarget != -1)
+	if (!newtarget_default)
 		repl_val[Anum_pg_attribute_attstattarget - 1] = newtarget;
 	else
 		repl_null[Anum_pg_attribute_attstattarget - 1] = true;
@@ -10057,6 +10078,8 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	Oid			ppeqoperators[INDEX_MAX_KEYS] = {0};
 	Oid			ffeqoperators[INDEX_MAX_KEYS] = {0};
 	int16		fkdelsetcols[INDEX_MAX_KEYS] = {0};
+	bool		with_period;
+	bool		pk_has_without_overlaps;
 	int			i;
 	int			numfks,
 				numpks,
@@ -10151,6 +10174,11 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	numfks = transformColumnNameList(RelationGetRelid(rel),
 									 fkconstraint->fk_attrs,
 									 fkattnum, fktypoid);
+	with_period = fkconstraint->fk_with_period || fkconstraint->pk_with_period;
+	if (with_period && !fkconstraint->fk_with_period)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_FOREIGN_KEY),
+				errmsg("foreign key uses PERIOD on the referenced table but not the referencing table"));
 
 	numfkdelsetcols = transformColumnNameList(RelationGetRelid(rel),
 											  fkconstraint->fk_del_set_cols,
@@ -10170,17 +10198,39 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		numpks = transformFkeyGetPrimaryKey(pkrel, &indexOid,
 											&fkconstraint->pk_attrs,
 											pkattnum, pktypoid,
-											opclasses);
+											opclasses, &pk_has_without_overlaps);
+
+		/* If the primary key uses WITHOUT OVERLAPS, the fk must use PERIOD */
+		if (pk_has_without_overlaps && !fkconstraint->fk_with_period)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_FOREIGN_KEY),
+					errmsg("foreign key uses PERIOD on the referenced table but not the referencing table"));
 	}
 	else
 	{
 		numpks = transformColumnNameList(RelationGetRelid(pkrel),
 										 fkconstraint->pk_attrs,
 										 pkattnum, pktypoid);
+
+		/* Since we got pk_attrs, one should be a period. */
+		if (with_period && !fkconstraint->pk_with_period)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_FOREIGN_KEY),
+					errmsg("foreign key uses PERIOD on the referencing table but not the referenced table"));
+
 		/* Look for an index matching the column list */
 		indexOid = transformFkeyCheckAttrs(pkrel, numpks, pkattnum,
-										   opclasses);
+										   with_period, opclasses, &pk_has_without_overlaps);
 	}
+
+	/*
+	 * If the referenced primary key has WITHOUT OVERLAPS, the foreign key
+	 * must use PERIOD.
+	 */
+	if (pk_has_without_overlaps && !with_period)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_FOREIGN_KEY),
+				errmsg("foreign key must use PERIOD when referencing a primary using WITHOUT OVERLAPS"));
 
 	/*
 	 * Now we can check permissions.
@@ -10213,6 +10263,28 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 						 errmsg("invalid %s action for foreign key constraint containing generated column",
 								"ON DELETE")));
 		}
+	}
+
+	/*
+	 * Some actions are currently unsupported for foreign keys using PERIOD.
+	 */
+	if (fkconstraint->fk_with_period)
+	{
+		if (fkconstraint->fk_upd_action == FKCONSTR_ACTION_CASCADE ||
+			fkconstraint->fk_upd_action == FKCONSTR_ACTION_SETNULL ||
+			fkconstraint->fk_upd_action == FKCONSTR_ACTION_SETDEFAULT)
+			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("unsupported %s action for foreign key constraint using PERIOD",
+						   "ON UPDATE"));
+
+		if (fkconstraint->fk_del_action == FKCONSTR_ACTION_CASCADE ||
+			fkconstraint->fk_del_action == FKCONSTR_ACTION_SETNULL ||
+			fkconstraint->fk_del_action == FKCONSTR_ACTION_SETDEFAULT)
+			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("unsupported %s action for foreign key constraint using PERIOD",
+						   "ON DELETE"));
 	}
 
 	/*
@@ -10261,16 +10333,56 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		opcintype = cla_tup->opcintype;
 		ReleaseSysCache(cla_ht);
 
-		/*
-		 * Check it's a btree; currently this can never fail since no other
-		 * index AMs support unique indexes.  If we ever did have other types
-		 * of unique indexes, we'd need a way to determine which operator
-		 * strategy number is equality.  (Is it reasonable to insist that
-		 * every such index AM use btree's number for equality?)
-		 */
-		if (amid != BTREE_AM_OID)
-			elog(ERROR, "only b-tree indexes are supported for foreign keys");
-		eqstrategy = BTEqualStrategyNumber;
+		if (with_period)
+		{
+			StrategyNumber rtstrategy;
+			bool		for_overlaps = with_period && i == numpks - 1;
+
+			/*
+			 * GiST indexes are required to support temporal foreign keys
+			 * because they combine equals and overlaps.
+			 */
+			if (amid != GIST_AM_OID)
+				elog(ERROR, "only GiST indexes are supported for temporal foreign keys");
+
+			rtstrategy = for_overlaps ? RTOverlapStrategyNumber : RTEqualStrategyNumber;
+
+			/*
+			 * An opclass can use whatever strategy numbers it wants, so we
+			 * ask the opclass what number it actually uses instead of our RT*
+			 * constants.
+			 */
+			eqstrategy = GistTranslateStratnum(opclasses[i], rtstrategy);
+			if (eqstrategy == InvalidStrategy)
+			{
+				HeapTuple	tuple;
+
+				tuple = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclasses[i]));
+				if (!HeapTupleIsValid(tuple))
+					elog(ERROR, "cache lookup failed for operator class %u", opclasses[i]);
+
+				ereport(ERROR,
+						errcode(ERRCODE_UNDEFINED_OBJECT),
+						for_overlaps
+						? errmsg("could not identify an overlaps operator for foreign key")
+						: errmsg("could not identify an equality operator for foreign key"),
+						errdetail("Could not translate strategy number %d for operator class \"%s\" for access method \"%s\".",
+								  rtstrategy, NameStr(((Form_pg_opclass) GETSTRUCT(tuple))->opcname), "gist"));
+			}
+		}
+		else
+		{
+			/*
+			 * Check it's a btree; currently this can never fail since no
+			 * other index AMs support unique indexes.  If we ever did have
+			 * other types of unique indexes, we'd need a way to determine
+			 * which operator strategy number is equality.  (We could use
+			 * something like GistTranslateStratnum.)
+			 */
+			if (amid != BTREE_AM_OID)
+				elog(ERROR, "only b-tree indexes are supported for foreign keys");
+			eqstrategy = BTEqualStrategyNumber;
+		}
 
 		/*
 		 * There had better be a primary equality operator for the index.
@@ -10421,6 +10533,22 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	}
 
 	/*
+	 * For FKs with PERIOD we need additional operators to check whether the
+	 * referencing row's range is contained by the aggregated ranges of the
+	 * referenced row(s). For rangetypes and multirangetypes this is
+	 * fk.periodatt <@ range_agg(pk.periodatt). Those are the only types we
+	 * support for now. FKs will look these up at "runtime", but we should
+	 * make sure the lookup works here, even if we don't use the values.
+	 */
+	if (with_period)
+	{
+		Oid			periodoperoid;
+		Oid			aggedperiodoperoid;
+
+		FindFKPeriodOpers(opclasses[numpks - 1], &periodoperoid, &aggedperiodoperoid);
+	}
+
+	/*
 	 * Create all the constraint and trigger objects, recursing to partitions
 	 * as necessary.  First handle the referenced side.
 	 */
@@ -10436,7 +10564,8 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 numfkdelsetcols,
 									 fkdelsetcols,
 									 old_check_ok,
-									 InvalidOid, InvalidOid);
+									 InvalidOid, InvalidOid,
+									 with_period);
 
 	/* Now handle the referencing side. */
 	addFkRecurseReferencing(wqueue, fkconstraint, rel, pkrel,
@@ -10452,7 +10581,8 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 							fkdelsetcols,
 							old_check_ok,
 							lockmode,
-							InvalidOid, InvalidOid);
+							InvalidOid, InvalidOid,
+							with_period);
 
 	/*
 	 * Done.  Close pk table, but keep lock until we've committed.
@@ -10537,7 +10667,8 @@ addFkRecurseReferenced(List **wqueue, Constraint *fkconstraint, Relation rel,
 					   Oid *ppeqoperators, Oid *ffeqoperators,
 					   int numfkdelsetcols, int16 *fkdelsetcols,
 					   bool old_check_ok,
-					   Oid parentDelTrigger, Oid parentUpdTrigger)
+					   Oid parentDelTrigger, Oid parentUpdTrigger,
+					   bool with_period)
 {
 	ObjectAddress address;
 	Oid			constrOid;
@@ -10623,7 +10754,7 @@ addFkRecurseReferenced(List **wqueue, Constraint *fkconstraint, Relation rel,
 									  conislocal,	/* islocal */
 									  coninhcount,	/* inhcount */
 									  connoinherit, /* conNoInherit */
-									  false,	/* conWithoutOverlaps */
+									  with_period,	/* conPeriod */
 									  false);	/* is_internal */
 
 	ObjectAddressSet(address, ConstraintRelationId, constrOid);
@@ -10699,7 +10830,8 @@ addFkRecurseReferenced(List **wqueue, Constraint *fkconstraint, Relation rel,
 								   pfeqoperators, ppeqoperators, ffeqoperators,
 								   numfkdelsetcols, fkdelsetcols,
 								   old_check_ok,
-								   deleteTriggerOid, updateTriggerOid);
+								   deleteTriggerOid, updateTriggerOid,
+								   with_period);
 
 			/* Done -- clean up (but keep the lock) */
 			table_close(partRel, NoLock);
@@ -10757,7 +10889,8 @@ addFkRecurseReferencing(List **wqueue, Constraint *fkconstraint, Relation rel,
 						Oid *pfeqoperators, Oid *ppeqoperators, Oid *ffeqoperators,
 						int numfkdelsetcols, int16 *fkdelsetcols,
 						bool old_check_ok, LOCKMODE lockmode,
-						Oid parentInsTrigger, Oid parentUpdTrigger)
+						Oid parentInsTrigger, Oid parentUpdTrigger,
+						bool with_period)
 {
 	Oid			insertTriggerOid,
 				updateTriggerOid;
@@ -10805,6 +10938,7 @@ addFkRecurseReferencing(List **wqueue, Constraint *fkconstraint, Relation rel,
 			newcon->refrelid = RelationGetRelid(pkrel);
 			newcon->refindid = indexOid;
 			newcon->conid = parentConstr;
+			newcon->conwithperiod = fkconstraint->fk_with_period;
 			newcon->qual = (Node *) fkconstraint;
 
 			tab->constraints = lappend(tab->constraints, newcon);
@@ -10922,7 +11056,7 @@ addFkRecurseReferencing(List **wqueue, Constraint *fkconstraint, Relation rel,
 									  false,
 									  1,
 									  false,
-									  false,	/* conWithoutOverlaps */
+									  with_period,	/* conPeriod */
 									  false);
 
 			/*
@@ -10953,7 +11087,8 @@ addFkRecurseReferencing(List **wqueue, Constraint *fkconstraint, Relation rel,
 									old_check_ok,
 									lockmode,
 									insertTriggerOid,
-									updateTriggerOid);
+									updateTriggerOid,
+									with_period);
 
 			table_close(partition, NoLock);
 		}
@@ -11189,7 +11324,8 @@ CloneFkReferenced(Relation parentRel, Relation partitionRel)
 							   confdelsetcols,
 							   true,
 							   deleteTriggerOid,
-							   updateTriggerOid);
+							   updateTriggerOid,
+							   constrForm->conperiod);
 
 		table_close(fkRel, NoLock);
 		ReleaseSysCache(tuple);
@@ -11282,6 +11418,7 @@ CloneFkReferencing(List **wqueue, Relation parentRel, Relation partRel)
 		ListCell   *lc;
 		Oid			insertTriggerOid,
 					updateTriggerOid;
+		bool		with_period;
 
 		tuple = SearchSysCache1(CONSTROID, ObjectIdGetDatum(parentConstrOid));
 		if (!HeapTupleIsValid(tuple))
@@ -11397,6 +11534,7 @@ CloneFkReferencing(List **wqueue, Relation parentRel, Relation partRel)
 			fkconstraint->conname = pstrdup(NameStr(constrForm->conname));
 
 		indexOid = constrForm->conindid;
+		with_period = constrForm->conperiod;
 		constrOid =
 			CreateConstraintEntry(fkconstraint->conname,
 								  constrForm->connamespace,
@@ -11428,7 +11566,7 @@ CloneFkReferencing(List **wqueue, Relation parentRel, Relation partRel)
 								  false,	/* islocal */
 								  1,	/* inhcount */
 								  false,	/* conNoInherit */
-								  false,	/* conWithoutOverlaps */
+								  with_period,	/* conPeriod */
 								  true);
 
 		/* Set up partition dependencies for the new constraint */
@@ -11462,7 +11600,8 @@ CloneFkReferencing(List **wqueue, Relation parentRel, Relation partRel)
 								false,	/* no old check exists */
 								AccessExclusiveLock,
 								insertTriggerOid,
-								updateTriggerOid);
+								updateTriggerOid,
+								with_period);
 		table_close(pkrel, NoLock);
 	}
 
@@ -12272,7 +12411,8 @@ transformColumnNameList(Oid relId, List *colList,
  *
  *	Look up the names, attnums, and types of the primary key attributes
  *	for the pkrel.  Also return the index OID and index opclasses of the
- *	index supporting the primary key.
+ *	index supporting the primary key.  Also return whether the index has
+ *	WITHOUT OVERLAPS.
  *
  *	All parameters except pkrel are output parameters.  Also, the function
  *	return value is the number of attributes in the primary key.
@@ -12283,7 +12423,7 @@ static int
 transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 						   List **attnamelist,
 						   int16 *attnums, Oid *atttypids,
-						   Oid *opclasses)
+						   Oid *opclasses, bool *pk_has_without_overlaps)
 {
 	List	   *indexoidlist;
 	ListCell   *indexoidscan;
@@ -12361,6 +12501,8 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 							   makeString(pstrdup(NameStr(*attnumAttName(pkrel, pkattno)))));
 	}
 
+	*pk_has_without_overlaps = indexStruct->indisexclusion;
+
 	ReleaseSysCache(indexTuple);
 
 	return i;
@@ -12374,14 +12516,16 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
  *
  *	Returns the OID of the unique index supporting the constraint and
  *	populates the caller-provided 'opclasses' array with the opclasses
- *	associated with the index columns.
+ *	associated with the index columns.  Also sets whether the index
+ *	uses WITHOUT OVERLAPS.
  *
  *	Raises an ERROR on validation failure.
  */
 static Oid
 transformFkeyCheckAttrs(Relation pkrel,
 						int numattrs, int16 *attnums,
-						Oid *opclasses)
+						bool with_period, Oid *opclasses,
+						bool *pk_has_without_overlaps)
 {
 	Oid			indexoid = InvalidOid;
 	bool		found = false;
@@ -12428,12 +12572,12 @@ transformFkeyCheckAttrs(Relation pkrel,
 		indexStruct = (Form_pg_index) GETSTRUCT(indexTuple);
 
 		/*
-		 * Must have the right number of columns; must be unique and not a
-		 * partial index; forget it if there are any expressions, too. Invalid
-		 * indexes are out as well.
+		 * Must have the right number of columns; must be unique (or if
+		 * temporal then exclusion instead) and not a partial index; forget it
+		 * if there are any expressions, too. Invalid indexes are out as well.
 		 */
 		if (indexStruct->indnkeyatts == numattrs &&
-			indexStruct->indisunique &&
+			(with_period ? indexStruct->indisexclusion : indexStruct->indisunique) &&
 			indexStruct->indisvalid &&
 			heap_attisnull(indexTuple, Anum_pg_index_indpred, NULL) &&
 			heap_attisnull(indexTuple, Anum_pg_index_indexprs, NULL))
@@ -12471,6 +12615,13 @@ transformFkeyCheckAttrs(Relation pkrel,
 				if (!found)
 					break;
 			}
+			/* The last attribute in the index must be the PERIOD FK part */
+			if (found && with_period)
+			{
+				int16		periodattnum = attnums[numattrs - 1];
+
+				found = (periodattnum == indexStruct->indkey.values[numattrs - 1]);
+			}
 
 			/*
 			 * Refuse to use a deferrable unique/primary key.  This is per SQL
@@ -12486,6 +12637,10 @@ transformFkeyCheckAttrs(Relation pkrel,
 				found_deferrable = true;
 				found = false;
 			}
+
+			/* We need to know whether the index has WITHOUT OVERLAPS */
+			if (found)
+				*pk_has_without_overlaps = indexStruct->indisexclusion;
 		}
 		ReleaseSysCache(indexTuple);
 		if (found)
@@ -12580,7 +12735,8 @@ validateForeignKeyConstraint(char *conname,
 							 Relation rel,
 							 Relation pkrel,
 							 Oid pkindOid,
-							 Oid constraintOid)
+							 Oid constraintOid,
+							 bool hasperiod)
 {
 	TupleTableSlot *slot;
 	TableScanDesc scan;
@@ -12608,9 +12764,11 @@ validateForeignKeyConstraint(char *conname,
 
 	/*
 	 * See if we can do it with a single LEFT JOIN query.  A false result
-	 * indicates we must proceed with the fire-the-trigger method.
+	 * indicates we must proceed with the fire-the-trigger method. We can't do
+	 * a LEFT JOIN for temporal FKs yet, but we can once we support temporal
+	 * left joins.
 	 */
-	if (RI_Initial_Check(&trig, rel, pkrel))
+	if (!hasperiod && RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
 	/*
@@ -12761,6 +12919,7 @@ createForeignKeyActionTriggers(Relation rel, Oid refRelOid, Constraint *fkconstr
 	fk_trigger->whenClause = NULL;
 	fk_trigger->transitionRels = NIL;
 	fk_trigger->constrrel = NULL;
+
 	switch (fkconstraint->fk_del_action)
 	{
 		case FKCONSTR_ACTION_NOACTION:
@@ -12821,6 +12980,7 @@ createForeignKeyActionTriggers(Relation rel, Oid refRelOid, Constraint *fkconstr
 	fk_trigger->whenClause = NULL;
 	fk_trigger->transitionRels = NIL;
 	fk_trigger->constrrel = NULL;
+
 	switch (fkconstraint->fk_upd_action)
 	{
 		case FKCONSTR_ACTION_NOACTION:
@@ -14080,9 +14240,9 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 		foundObject.objectId = foundDep->objid;
 		foundObject.objectSubId = foundDep->objsubid;
 
-		switch (getObjectClass(&foundObject))
+		switch (foundObject.classId)
 		{
-			case OCLASS_CLASS:
+			case RelationRelationId:
 				{
 					char		relKind = get_rel_relkind(foundObject.objectId);
 
@@ -14109,12 +14269,12 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 					break;
 				}
 
-			case OCLASS_CONSTRAINT:
+			case ConstraintRelationId:
 				Assert(foundObject.objectSubId == 0);
 				RememberConstraintForRebuilding(foundObject.objectId, tab);
 				break;
 
-			case OCLASS_REWRITE:
+			case RewriteRelationId:
 				/* XXX someday see if we can cope with revising views */
 				if (subtype == AT_AlterColumnType)
 					ereport(ERROR,
@@ -14125,7 +14285,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 									   colName)));
 				break;
 
-			case OCLASS_TRIGGER:
+			case TriggerRelationId:
 
 				/*
 				 * A trigger can depend on a column because the column is
@@ -14145,7 +14305,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 									   colName)));
 				break;
 
-			case OCLASS_POLICY:
+			case PolicyRelationId:
 
 				/*
 				 * A policy can depend on a column because the column is
@@ -14164,7 +14324,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 									   colName)));
 				break;
 
-			case OCLASS_DEFAULT:
+			case AttrDefaultRelationId:
 				{
 					ObjectAddress col = GetAttrDefaultColumnAddress(foundObject.objectId);
 
@@ -14199,7 +14359,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 					break;
 				}
 
-			case OCLASS_STATISTIC_EXT:
+			case StatisticExtRelationId:
 
 				/*
 				 * Give the extended-stats machinery a chance to fix anything
@@ -14208,53 +14368,15 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				RememberStatisticsForRebuilding(foundObject.objectId, tab);
 				break;
 
-			case OCLASS_PROC:
-			case OCLASS_TYPE:
-			case OCLASS_CAST:
-			case OCLASS_COLLATION:
-			case OCLASS_CONVERSION:
-			case OCLASS_LANGUAGE:
-			case OCLASS_LARGEOBJECT:
-			case OCLASS_OPERATOR:
-			case OCLASS_OPCLASS:
-			case OCLASS_OPFAMILY:
-			case OCLASS_AM:
-			case OCLASS_AMOP:
-			case OCLASS_AMPROC:
-			case OCLASS_SCHEMA:
-			case OCLASS_TSPARSER:
-			case OCLASS_TSDICT:
-			case OCLASS_TSTEMPLATE:
-			case OCLASS_TSCONFIG:
-			case OCLASS_ROLE:
-			case OCLASS_ROLE_MEMBERSHIP:
-			case OCLASS_DATABASE:
-			case OCLASS_TBLSPACE:
-			case OCLASS_FDW:
-			case OCLASS_FOREIGN_SERVER:
-			case OCLASS_USER_MAPPING:
-			case OCLASS_DEFACL:
-			case OCLASS_EXTENSION:
-			case OCLASS_EVENT_TRIGGER:
-			case OCLASS_PARAMETER_ACL:
-			case OCLASS_PUBLICATION:
-			case OCLASS_PUBLICATION_NAMESPACE:
-			case OCLASS_PUBLICATION_REL:
-			case OCLASS_SUBSCRIPTION:
-			case OCLASS_TRANSFORM:
+			default:
 
 				/*
-				 * We don't expect any of these sorts of objects to depend on
-				 * a column.
+				 * We don't expect any other sorts of objects to depend on a
+				 * column.
 				 */
 				elog(ERROR, "unexpected object depending on column: %s",
 					 getObjectDescription(&foundObject, false));
 				break;
-
-				/*
-				 * There's intentionally no default: case here; we want the
-				 * compiler to warn if a new OCLASS hasn't been handled above.
-				 */
 		}
 	}
 
@@ -15448,23 +15570,128 @@ ATExecDropCluster(Relation rel, LOCKMODE lockmode)
 /*
  * Preparation phase for SET ACCESS METHOD
  *
- * Check that access method exists.  If it is the same as the table's current
- * access method, it is a no-op.  Otherwise, a table rewrite is necessary.
+ * Check that the access method exists and determine whether a change is
+ * actually needed.
  */
 static void
 ATPrepSetAccessMethod(AlteredTableInfo *tab, Relation rel, const char *amname)
 {
 	Oid			amoid;
 
-	/* Check that the table access method exists */
-	amoid = get_table_am_oid(amname, false);
+	/*
+	 * Look up the access method name and check that it differs from the
+	 * table's current AM.  If DEFAULT was specified for a partitioned table
+	 * (amname is NULL), set it to InvalidOid to reset the catalogued AM.
+	 */
+	if (amname != NULL)
+		amoid = get_table_am_oid(amname, false);
+	else if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		amoid = InvalidOid;
+	else
+		amoid = get_table_am_oid(default_table_access_method, false);
 
+	/* if it's a match, phase 3 doesn't need to do anything */
 	if (rel->rd_rel->relam == amoid)
 		return;
 
 	/* Save info for Phase 3 to do the real work */
 	tab->rewrite |= AT_REWRITE_ACCESS_METHOD;
 	tab->newAccessMethod = amoid;
+	tab->chgAccessMethod = true;
+}
+
+/*
+ * Special handling of ALTER TABLE SET ACCESS METHOD for relations with no
+ * storage that have an interest in preserving AM.
+ *
+ * Since these have no storage, setting the access method is a catalog only
+ * operation.
+ */
+static void
+ATExecSetAccessMethodNoStorage(Relation rel, Oid newAccessMethodId)
+{
+	Relation	pg_class;
+	Oid			oldAccessMethodId;
+	HeapTuple	tuple;
+	Form_pg_class rd_rel;
+	Oid			reloid = RelationGetRelid(rel);
+
+	/*
+	 * Shouldn't be called on relations having storage; these are processed in
+	 * phase 3.
+	 */
+	Assert(!RELKIND_HAS_STORAGE(rel->rd_rel->relkind));
+
+	/* Get a modifiable copy of the relation's pg_class row. */
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(reloid));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u", reloid);
+	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
+
+	/* Update the pg_class row. */
+	oldAccessMethodId = rd_rel->relam;
+	rd_rel->relam = newAccessMethodId;
+
+	/* Leave if no update required */
+	if (rd_rel->relam == oldAccessMethodId)
+	{
+		heap_freetuple(tuple);
+		table_close(pg_class, RowExclusiveLock);
+		return;
+	}
+
+	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+
+	/*
+	 * Update the dependency on the new access method.  No dependency is added
+	 * if the new access method is InvalidOid (default case).  Be very careful
+	 * that this has to compare the previous value stored in pg_class with the
+	 * new one.
+	 */
+	if (!OidIsValid(oldAccessMethodId) && OidIsValid(rd_rel->relam))
+	{
+		ObjectAddress relobj,
+					referenced;
+
+		/*
+		 * New access method is defined and there was no dependency
+		 * previously, so record a new one.
+		 */
+		ObjectAddressSet(relobj, RelationRelationId, reloid);
+		ObjectAddressSet(referenced, AccessMethodRelationId, rd_rel->relam);
+		recordDependencyOn(&relobj, &referenced, DEPENDENCY_NORMAL);
+	}
+	else if (OidIsValid(oldAccessMethodId) &&
+			 !OidIsValid(rd_rel->relam))
+	{
+		/*
+		 * There was an access method defined, and no new one, so just remove
+		 * the existing dependency.
+		 */
+		deleteDependencyRecordsForClass(RelationRelationId, reloid,
+										AccessMethodRelationId,
+										DEPENDENCY_NORMAL);
+	}
+	else
+	{
+		Assert(OidIsValid(oldAccessMethodId) &&
+			   OidIsValid(rd_rel->relam));
+
+		/* Both are valid, so update the dependency */
+		changeDependencyFor(RelationRelationId, reloid,
+							AccessMethodRelationId,
+							oldAccessMethodId, rd_rel->relam);
+	}
+
+	/* make the relam and dependency changes visible */
+	CommandCounterIncrement();
+
+	InvokeObjectPostAlterHook(RelationRelationId, RelationGetRelid(rel), 0);
+
+	heap_freetuple(tuple);
+	table_close(pg_class, RowExclusiveLock);
 }
 
 /*
@@ -15554,7 +15781,8 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 		case RELKIND_RELATION:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_MATVIEW:
-			(void) heap_reloptions(rel->rd_rel->relkind, newOptions, true);
+			(void) table_reloptions(rel, rel->rd_rel->relkind,
+									newOptions, true);
 			break;
 		case RELKIND_PARTITIONED_TABLE:
 			(void) partitioned_table_reloptions(newOptions, true);
@@ -17894,16 +18122,11 @@ AlterTableNamespaceInternal(Relation rel, Oid oldNspOid, Oid nspOid,
 								   nspOid, false, false, objsMoved);
 
 	/* Fix other dependent stuff */
-	if (rel->rd_rel->relkind == RELKIND_RELATION ||
-		rel->rd_rel->relkind == RELKIND_MATVIEW ||
-		rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-	{
-		AlterIndexNamespaces(classRel, rel, oldNspOid, nspOid, objsMoved);
-		AlterSeqNamespaces(classRel, rel, oldNspOid, nspOid,
-						   objsMoved, AccessExclusiveLock);
-		AlterConstraintNamespaces(RelationGetRelid(rel), oldNspOid, nspOid,
-								  false, objsMoved);
-	}
+	AlterIndexNamespaces(classRel, rel, oldNspOid, nspOid, objsMoved);
+	AlterSeqNamespaces(classRel, rel, oldNspOid, nspOid,
+					   objsMoved, AccessExclusiveLock);
+	AlterConstraintNamespaces(RelationGetRelid(rel), oldNspOid, nspOid,
+							  false, objsMoved);
 
 	table_close(classRel, RowExclusiveLock);
 }
@@ -18342,15 +18565,16 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
  * This is intended as a callback for RangeVarGetRelidExtended().  It allows
  * the relation to be locked only if (1) it's a plain or partitioned table,
  * materialized view, or TOAST table and (2) the current user is the owner (or
- * the superuser).  This meets the permission-checking needs of CLUSTER,
- * REINDEX TABLE, and REFRESH MATERIALIZED VIEW; we expose it here so that it
- * can be used by all.
+ * the superuser) or has been granted MAINTAIN.  This meets the
+ * permission-checking needs of CLUSTER, REINDEX TABLE, and REFRESH
+ * MATERIALIZED VIEW; we expose it here so that it can be used by all.
  */
 void
-RangeVarCallbackOwnsTable(const RangeVar *relation,
-						  Oid relId, Oid oldRelId, void *arg)
+RangeVarCallbackMaintainsTable(const RangeVar *relation,
+							   Oid relId, Oid oldRelId, void *arg)
 {
 	char		relkind;
+	AclResult	aclresult;
 
 	/* Nothing to do if the relation was not found. */
 	if (!OidIsValid(relId))
@@ -18371,8 +18595,11 @@ RangeVarCallbackOwnsTable(const RangeVar *relation,
 				 errmsg("\"%s\" is not a table or materialized view", relation->relname)));
 
 	/* Check permissions */
-	if (!object_ownercheck(RelationRelationId, relId, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relId)), relation->relname);
+	aclresult = pg_class_aclcheck(relId, GetUserId(), ACL_MAINTAIN);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult,
+					   get_relkind_objtype(get_rel_relkind(relId)),
+					   relation->relname);
 }
 
 /*

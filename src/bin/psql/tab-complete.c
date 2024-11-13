@@ -76,7 +76,7 @@
 #endif
 
 /* word break characters */
-#define WORD_BREAKS		"\t\n@><=;|&{() "
+#define WORD_BREAKS		"\t\n@><=;|&() "
 
 /*
  * Since readline doesn't let us pass any state through to the tab completion
@@ -1152,7 +1152,7 @@ Keywords_for_list_of_owner_roles, "PUBLIC"
 #define Privilege_options_of_grant_and_revoke \
 "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", \
 "CREATE", "CONNECT", "TEMPORARY", "EXECUTE", "USAGE", "SET", "ALTER SYSTEM", \
-"ALL"
+"MAINTAIN", "ALL"
 
 /* ALTER PROCEDURE options */
 #define Alter_procedure_options \
@@ -1786,6 +1786,8 @@ psql_completion(const char *text, int start, int end)
 			matches = complete_from_variables(text, ":'", "'", true);
 		else if (text[1] == '"')
 			matches = complete_from_variables(text, ":\"", "\"", true);
+		else if (text[1] == '{' && text[2] == '?')
+			matches = complete_from_variables(text, ":{?", "}", true);
 		else
 			matches = complete_from_variables(text, ":", "", true);
 	}
@@ -2515,7 +2517,7 @@ psql_completion(const char *text, int start, int end)
 	/* ALTER TABLE ALTER [COLUMN] <foo> SET */
 	else if (Matches("ALTER", "TABLE", MatchAny, "ALTER", "COLUMN", MatchAny, "SET") ||
 			 Matches("ALTER", "TABLE", MatchAny, "ALTER", MatchAny, "SET"))
-		COMPLETE_WITH("(", "COMPRESSION", "DEFAULT", "EXPRESSION", "GENERATED", "NOT NULL", "STATISTICS", "STORAGE", "INVISIBLE"
+		COMPLETE_WITH("(", "COMPRESSION", "DATA TYPE", "DEFAULT", "EXPRESSION", "GENERATED", "NOT NULL", "STATISTICS", "STORAGE", "INVISIBLE"
 		/* a subset of ALTER SEQUENCE options */
 					  "INCREMENT", "MINVALUE", "MAXVALUE", "START", "NO", "CACHE", "CYCLE");
 	/* ALTER TABLE ALTER [COLUMN] <foo> SET ( */
@@ -2573,7 +2575,8 @@ psql_completion(const char *text, int start, int end)
 	 * AMs.
 	 */
 	else if (Matches("ALTER", "TABLE", MatchAny, "SET", "ACCESS", "METHOD"))
-		COMPLETE_WITH_QUERY(Query_for_list_of_table_access_methods);
+		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_table_access_methods,
+								 "DEFAULT");
 
 	/*
 	 * If we have ALTER TABLE <sth> SET TABLESPACE provide a list of
@@ -3953,7 +3956,7 @@ psql_completion(const char *text, int start, int end)
 		if (HeadMatches("ALTER", "DEFAULT", "PRIVILEGES"))
 			COMPLETE_WITH("SELECT", "INSERT", "UPDATE",
 						  "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER",
-						  "CREATE", "EXECUTE", "USAGE", "ALL");
+						  "CREATE", "EXECUTE", "USAGE", "MAINTAIN", "ALL");
 		else if (TailMatches("GRANT"))
 			COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_roles,
 									 Privilege_options_of_grant_and_revoke);
@@ -4005,7 +4008,7 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatches("GRANT|REVOKE", MatchAny) ||
 			 TailMatches("REVOKE", "GRANT", "OPTION", "FOR", MatchAny))
 	{
-		if (TailMatches("SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|CREATE|CONNECT|TEMPORARY|TEMP|EXECUTE|USAGE|ALL"))
+		if (TailMatches("SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|CREATE|CONNECT|TEMPORARY|TEMP|EXECUTE|USAGE|MAINTAIN|ALL"))
 			COMPLETE_WITH("ON");
 		else if (TailMatches("GRANT", MatchAny))
 			COMPLETE_WITH("TO");
@@ -4342,17 +4345,35 @@ psql_completion(const char *text, int start, int end)
 			 TailMatches("USING", MatchAny, MatchAny, "ON", MatchAny, MatchAny, MatchAny, "WHEN"))
 		COMPLETE_WITH("MATCHED", "NOT MATCHED");
 
-	/* Complete ... WHEN [NOT] MATCHED with THEN/AND */
+	/*
+	 * Complete ... WHEN MATCHED and WHEN NOT MATCHED BY SOURCE|TARGET with
+	 * THEN/AND
+	 */
 	else if (TailMatches("WHEN", "MATCHED") ||
-			 TailMatches("WHEN", "NOT", "MATCHED"))
+			 TailMatches("WHEN", "NOT", "MATCHED", "BY", "SOURCE|TARGET"))
 		COMPLETE_WITH("THEN", "AND");
 
-	/* Complete ... WHEN MATCHED THEN with UPDATE SET/DELETE/DO NOTHING */
-	else if (TailMatches("WHEN", "MATCHED", "THEN"))
+	/* Complete ... WHEN NOT MATCHED with BY/THEN/AND */
+	else if (TailMatches("WHEN", "NOT", "MATCHED"))
+		COMPLETE_WITH("BY", "THEN", "AND");
+
+	/* Complete ... WHEN NOT MATCHED BY with SOURCE/TARGET */
+	else if (TailMatches("WHEN", "NOT", "MATCHED", "BY"))
+		COMPLETE_WITH("SOURCE", "TARGET");
+
+	/*
+	 * Complete ... WHEN MATCHED THEN and WHEN NOT MATCHED BY SOURCE THEN with
+	 * UPDATE SET/DELETE/DO NOTHING
+	 */
+	else if (TailMatches("WHEN", "MATCHED", "THEN") ||
+			 TailMatches("WHEN", "NOT", "MATCHED", "BY", "SOURCE", "THEN"))
 		COMPLETE_WITH("UPDATE SET", "DELETE", "DO NOTHING");
 
-	/* Complete ... WHEN NOT MATCHED THEN with INSERT/DO NOTHING */
-	else if (TailMatches("WHEN", "NOT", "MATCHED", "THEN"))
+	/*
+	 * Complete ... WHEN NOT MATCHED [BY TARGET] THEN with INSERT/DO NOTHING
+	 */
+	else if (TailMatches("WHEN", "NOT", "MATCHED", "THEN") ||
+			 TailMatches("WHEN", "NOT", "MATCHED", "BY", "TARGET", "THEN"))
 		COMPLETE_WITH("INSERT", "DO NOTHING");
 
 /* NOTIFY --- can be inside EXPLAIN, RULE, etc */

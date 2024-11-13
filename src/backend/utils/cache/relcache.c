@@ -32,15 +32,14 @@
 
 #include "access/htup_details.h"
 #include "access/multixact.h"
-#include "access/nbtree.h"
 #include "access/parallel.h"
+#include "access/relation.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/tableam.h"
 #include "access/tupdesc_details.h"
 #include "access/xact.h"
-#include "access/xlog.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
@@ -466,6 +465,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 {
 	bytea	   *options;
 	amoptions_function amoptsfn;
+	const TableAmRoutine *tableam = NULL;
 
 	relation->rd_options = NULL;
 
@@ -480,6 +480,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 		case RELKIND_VIEW:
 		case RELKIND_MATVIEW:
 		case RELKIND_PARTITIONED_TABLE:
+			tableam = relation->rd_tableam;
 			amoptsfn = NULL;
 			break;
 		case RELKIND_INDEX:
@@ -495,7 +496,8 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 	 * we might not have any other for pg_class yet (consider executing this
 	 * code for pg_class itself)
 	 */
-	options = extractRelOptions(tuple, GetPgClassDescriptor(), amoptsfn);
+	options = extractRelOptions(tuple, GetPgClassDescriptor(),
+								tableam, amoptsfn);
 
 	/*
 	 * Copy parsed data into CacheMemoryContext.  To guard against the
@@ -1144,13 +1146,13 @@ retry:
 	{
 		case RELPERSISTENCE_UNLOGGED:
 		case RELPERSISTENCE_PERMANENT:
-			relation->rd_backend = InvalidBackendId;
+			relation->rd_backend = INVALID_PROC_NUMBER;
 			relation->rd_islocaltemp = false;
 			break;
 		case RELPERSISTENCE_TEMP:
 			if (isTempOrTempToastNamespace(relation->rd_rel->relnamespace))
 			{
-				relation->rd_backend = BackendIdForTempRelations();
+				relation->rd_backend = ProcNumberForTempRelations();
 				relation->rd_islocaltemp = true;
 			}
 			else
@@ -1159,18 +1161,18 @@ retry:
 				 * If it's a temp table, but not one of ours, we have to use
 				 * the slow, grotty method to figure out the owning backend.
 				 *
-				 * Note: it's possible that rd_backend gets set to MyBackendId
-				 * here, in case we are looking at a pg_class entry left over
-				 * from a crashed backend that coincidentally had the same
-				 * BackendId we're using.  We should *not* consider such a
-				 * table to be "ours"; this is why we need the separate
-				 * rd_islocaltemp flag.  The pg_class entry will get flushed
-				 * if/when we clean out the corresponding temp table namespace
-				 * in preparation for using it.
+				 * Note: it's possible that rd_backend gets set to
+				 * MyProcNumber here, in case we are looking at a pg_class
+				 * entry left over from a crashed backend that coincidentally
+				 * had the same ProcNumber we're using.  We should *not*
+				 * consider such a table to be "ours"; this is why we need the
+				 * separate rd_islocaltemp flag.  The pg_class entry will get
+				 * flushed if/when we clean out the corresponding temp table
+				 * namespace in preparation for using it.
 				 */
 				relation->rd_backend =
-					GetTempNamespaceBackendId(relation->rd_rel->relnamespace);
-				Assert(relation->rd_backend != InvalidBackendId);
+					GetTempNamespaceProcNumber(relation->rd_rel->relnamespace);
+				Assert(relation->rd_backend != INVALID_PROC_NUMBER);
 				relation->rd_islocaltemp = false;
 			}
 			break;
@@ -1210,6 +1212,13 @@ retry:
 	else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
 			 relation->rd_rel->relkind == RELKIND_SEQUENCE)
 		RelationInitTableAccessMethod(relation);
+	else if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		/*
+		 * Do nothing: access methods are a setting that partitions can
+		 * inherit.
+		 */
+	}
 	else
 		Assert(relation->rd_rel->relam == InvalidOid);
 
@@ -1896,7 +1905,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_newRelfilelocatorSubid = InvalidSubTransactionId;
 	relation->rd_firstRelfilelocatorSubid = InvalidSubTransactionId;
 	relation->rd_droppedSubid = InvalidSubTransactionId;
-	relation->rd_backend = InvalidBackendId;
+	relation->rd_backend = INVALID_PROC_NUMBER;
 	relation->rd_islocaltemp = false;
 
 	/*
@@ -2264,9 +2273,7 @@ RelationReloadIndexInfo(Relation relation)
 	RelationCloseSmgr(relation);
 
 	/* Must free any AM cached data upon relcache flush */
-	if (relation->rd_amcache)
-		pfree(relation->rd_amcache);
-	relation->rd_amcache = NULL;
+	table_free_rd_amcache(relation);
 
 	/*
 	 * If it's a shared index, we might be called before backend startup has
@@ -2486,8 +2493,7 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_options);
 	if (relation->rd_indextuple)
 		pfree(relation->rd_indextuple);
-	if (relation->rd_amcache)
-		pfree(relation->rd_amcache);
+	table_free_rd_amcache(relation);
 	if (relation->rd_fdwroutine)
 		pfree(relation->rd_fdwroutine);
 	if (relation->rd_indexcxt)
@@ -2549,9 +2555,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 	RelationCloseSmgr(relation);
 
 	/* Free AM cached data, if any */
-	if (relation->rd_amcache)
-		pfree(relation->rd_amcache);
-	relation->rd_amcache = NULL;
+	table_free_rd_amcache(relation);
 
 	/*
 	 * Treat nailed-in system relations separately, they always need to be
@@ -2987,9 +2991,6 @@ RelationCacheInvalidate(bool debug_discard)
 	{
 		relation = idhentry->reldesc;
 
-		/* Must close all smgr references to avoid leaving dangling ptrs */
-		RelationCloseSmgr(relation);
-
 		/*
 		 * Ignore new relations; no other backend will manipulate them before
 		 * we commit.  Likewise, before replacing a relation's relfilelocator,
@@ -3041,11 +3042,10 @@ RelationCacheInvalidate(bool debug_discard)
 	}
 
 	/*
-	 * Now zap any remaining smgr cache entries.  This must happen before we
-	 * start to rebuild entries, since that may involve catalog fetches which
-	 * will re-open catalog files.
+	 * We cannot destroy the SMgrRelations as there might still be references
+	 * to them, but close the underlying file descriptors.
 	 */
-	smgrdestroyall();
+	smgrreleaseall();
 
 	/* Phase 2: rebuild the items found to need rebuild in phase 1 */
 	foreach(l, rebuildFirstList)
@@ -3612,12 +3612,12 @@ RelationBuildLocalRelation(const char *relname,
 	{
 		case RELPERSISTENCE_UNLOGGED:
 		case RELPERSISTENCE_PERMANENT:
-			rel->rd_backend = InvalidBackendId;
+			rel->rd_backend = INVALID_PROC_NUMBER;
 			rel->rd_islocaltemp = false;
 			break;
 		case RELPERSISTENCE_TEMP:
 			Assert(isTempOrTempToastNamespace(relnamespace));
-			rel->rd_backend = BackendIdForTempRelations();
+			rel->rd_backend = ProcNumberForTempRelations();
 			rel->rd_islocaltemp = true;
 			break;
 		default:
@@ -4764,6 +4764,7 @@ RelationGetIndexList(Relation relation)
 	char		replident = relation->rd_rel->relreplident;
 	Oid			pkeyIndex = InvalidOid;
 	Oid			candidateIndex = InvalidOid;
+	bool		pkdeferrable = false;
 	MemoryContext oldcxt;
 
 	/* Quick exit if we already computed the list. */
@@ -4805,12 +4806,12 @@ RelationGetIndexList(Relation relation)
 		result = lappend_oid(result, index->indexrelid);
 
 		/*
-		 * Non-unique, non-immediate or predicate indexes aren't interesting
-		 * for either oid indexes or replication identity indexes, so don't
-		 * check them.
+		 * Non-unique or predicate indexes aren't interesting for either oid
+		 * indexes or replication identity indexes, so don't check them.
+		 * Deferred ones are not useful for replication identity either; but
+		 * we do include them if they are PKs.
 		 */
 		if (!index->indisunique ||
-			!index->indimmediate ||
 			!heap_attisnull(htup, Anum_pg_index_indpred, NULL))
 			continue;
 
@@ -4835,7 +4836,13 @@ RelationGetIndexList(Relation relation)
 		if (index->indisprimary &&
 			(index->indisvalid ||
 			 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
+		{
 			pkeyIndex = index->indexrelid;
+			pkdeferrable = !index->indimmediate;
+		}
+
+		if (!index->indimmediate)
+			continue;
 
 		if (!index->indisvalid)
 			continue;
@@ -4857,7 +4864,8 @@ RelationGetIndexList(Relation relation)
 	oldlist = relation->rd_indexlist;
 	relation->rd_indexlist = list_copy(result);
 	relation->rd_pkindex = pkeyIndex;
-	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
+	relation->rd_ispkdeferrable = pkdeferrable;
+	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex) && !pkdeferrable)
 		relation->rd_replidindex = pkeyIndex;
 	else if (replident == REPLICA_IDENTITY_INDEX && OidIsValid(candidateIndex))
 		relation->rd_replidindex = candidateIndex;
@@ -4960,7 +4968,8 @@ RelationGetStatExtList(Relation relation)
 /*
  * RelationGetPrimaryKeyIndex -- get OID of the relation's primary key index
  *
- * Returns InvalidOid if there is no such index.
+ * Returns InvalidOid if there is no such index, or if the primary key is
+ * DEFERRABLE.
  */
 Oid
 RelationGetPrimaryKeyIndex(Relation relation)
@@ -4975,7 +4984,7 @@ RelationGetPrimaryKeyIndex(Relation relation)
 		Assert(relation->rd_indexvalid);
 	}
 
-	return relation->rd_pkindex;
+	return relation->rd_ispkdeferrable ? InvalidOid : relation->rd_pkindex;
 }
 
 /*
@@ -5193,6 +5202,7 @@ RelationGetIndexPredicate(Relation relation)
  *	INDEX_ATTR_BITMAP_KEY			Columns in non-partial unique indexes not
  *									in expressions (i.e., usable for FKs)
  *	INDEX_ATTR_BITMAP_PRIMARY_KEY	Columns in the table's primary key
+ *									(beware: even if PK is deferrable!)
  *	INDEX_ATTR_BITMAP_IDENTITY_KEY	Columns in the table's replica identity
  *									index (empty if FULL)
  *	INDEX_ATTR_BITMAP_HOT_BLOCKING	Columns that block updates from being HOT
@@ -5200,6 +5210,9 @@ RelationGetIndexPredicate(Relation relation)
  *
  * Attribute numbers are offset by FirstLowInvalidHeapAttributeNumber so that
  * we can include system attributes (e.g., OID) in the bitmap representation.
+ *
+ * Deferred indexes are considered for the primary key, but not for replica
+ * identity.
  *
  * Caller had better hold at least RowExclusiveLock on the target relation
  * to ensure it is safe (deadlock-free) for us to take locks on the relation's
@@ -5623,9 +5636,9 @@ RelationGetExclusionInfo(Relation indexRelation,
 
 		/* We want the exclusion constraint owning the index */
 		if ((conform->contype != CONSTRAINT_EXCLUSION &&
-			 !(conform->conwithoutoverlaps && (
-											   conform->contype == CONSTRAINT_PRIMARY
-											   || conform->contype == CONSTRAINT_UNIQUE))) ||
+			 !(conform->conperiod && (
+									  conform->contype == CONSTRAINT_PRIMARY
+									  || conform->contype == CONSTRAINT_UNIQUE))) ||
 			conform->conindid != RelationGetRelid(indexRelation))
 			continue;
 

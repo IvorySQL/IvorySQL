@@ -63,7 +63,33 @@ NOTICE:  checking pg_type {typsubscript} => pg_proc {oid}
 NOTICE:  checking pg_type {typelem} => pg_type {oid}
 NOTICE:  checking pg_type {typarray} => pg_type {oid}
 NOTICE:  checking pg_type {typinput} => pg_proc {oid}
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,27)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,28)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,29)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,30)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,31)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,32)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,33)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,34)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,35)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,36)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,37)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,38)",-)
+WARNING:  FK VIOLATION IN pg_type({typinput}): ("(2,39)",-)
 NOTICE:  checking pg_type {typoutput} => pg_proc {oid}
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,27)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,28)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,29)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,30)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,31)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,32)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,33)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,34)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,35)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,36)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,37)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,38)",-)
+WARNING:  FK VIOLATION IN pg_type({typoutput}): ("(2,39)",-)
 NOTICE:  checking pg_type {typreceive} => pg_proc {oid}
 NOTICE:  checking pg_type {typsend} => pg_proc {oid}
 NOTICE:  checking pg_type {typmodin} => pg_proc {oid}

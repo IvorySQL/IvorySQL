@@ -13,6 +13,8 @@
 #ifndef _POSTMASTER_H
 #define _POSTMASTER_H
 
+#include "miscadmin.h"
+
 /* GUC options */
 extern PGDLLIMPORT bool EnableSSL;
 extern PGDLLIMPORT int SuperuserReservedConnections;
@@ -54,6 +56,8 @@ extern PGDLLIMPORT int postmaster_alive_fds[2];
 
 extern PGDLLIMPORT const char *progname;
 
+extern bool LoadedSSL;
+
 extern void PostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
 extern void ClosePostmasterPorts(bool am_syslogger);
 extern void InitProcessGlobals(void);
@@ -62,12 +66,25 @@ extern int	MaxLivePostmasterChildren(void);
 
 extern bool PostmasterMarkPIDForWorkerNotify(int);
 
-#ifdef EXEC_BACKEND
-extern pid_t postmaster_forkexec(int argc, char *argv[]);
-extern void SubPostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
+extern void processCancelRequest(int backendPID, int32 cancelAuthCode);
 
+#ifdef EXEC_BACKEND
 extern Size ShmemBackendArraySize(void);
 extern void ShmemBackendArrayAllocation(void);
+
+#ifdef WIN32
+extern void pgwin32_register_deadchild_callback(HANDLE procHandle, DWORD procId);
+#endif
+#endif
+
+/* defined in globals.c */
+extern struct ClientSocket *MyClientSocket;
+
+/* prototypes for functions in launch_backend.c */
+extern pid_t postmaster_child_launch(BackendType child_type, char *startup_data, size_t startup_data_len, struct ClientSocket *sock);
+const char *PostmasterChildName(BackendType child_type);
+#ifdef EXEC_BACKEND
+extern void SubPostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
 #endif
 
 /*
@@ -76,7 +93,7 @@ extern void ShmemBackendArrayAllocation(void);
  * by using a 64bit state; but it's unlikely to be worthwhile as 2^18-1
  * backends exceed currently realistic configurations. Even if that limitation
  * were removed, we still could not a) exceed 2^23-1 because inval.c stores
- * the backend ID as a 3-byte signed integer, b) INT_MAX/4 because some places
+ * the ProcNumber as a 3-byte signed integer, b) INT_MAX/4 because some places
  * compute 4*MaxBackends without any overflow check.  This is rechecked in the
  * relevant GUC check hooks and in RegisterBackgroundWorker().
  */

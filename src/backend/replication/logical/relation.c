@@ -23,7 +23,6 @@
 #include "access/genam.h"
 #include "access/table.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_am_d.h"
 #include "catalog/pg_subscription_rel.h"
 #include "executor/executor.h"
 #include "nodes/makefuncs.h"
@@ -844,9 +843,9 @@ IsIndexUsableForReplicaIdentityFull(IndexInfo *indexInfo, AttrMap *attrmap)
 }
 
 /*
- * Get replica identity index or if it is not defined a primary key.
- *
- * If neither is defined, returns InvalidOid
+ * Return the OID of the replica identity index if one is defined;
+ * the OID of the PK if one exists and is not deferrable;
+ * otherwise, InvalidOid.
  */
 Oid
 GetRelationIdentityOrPK(Relation rel)

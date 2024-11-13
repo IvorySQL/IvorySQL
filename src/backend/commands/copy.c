@@ -33,11 +33,9 @@
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
-#include "rewrite/rewriteHandler.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/rls.h"
 
@@ -282,12 +280,6 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 	else
 	{
 		Assert(stmt->query);
-
-		/* MERGE is allowed by parser, but unimplemented. Reject for now */
-		if (IsA(stmt->query, MergeStmt))
-			ereport(ERROR,
-					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("MERGE not supported in COPY"));
 
 		query = makeNode(RawStmt);
 		query->stmt = stmt->query;

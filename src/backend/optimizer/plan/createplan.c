@@ -29,6 +29,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/paramassign.h"
+#include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/placeholder.h"
 #include "optimizer/plancat.h"
@@ -311,7 +312,8 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 									 List *updateColnosLists,
 									 List *withCheckOptionLists, List *returningLists,
 									 List *rowMarks, OnConflictExpr *onconflict,
-									 List *mergeActionLists, int epqParam);
+									 List *mergeActionLists, List *mergeJoinConditions,
+									 int epqParam);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
 
@@ -2835,6 +2837,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->rowMarks,
 							best_path->onconflict,
 							best_path->mergeActionLists,
+							best_path->mergeJoinConditions,
 							best_path->epqParam);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
@@ -4354,6 +4357,22 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids		outerrelids;
 	List	   *nestParams;
 	Relids		saveOuterRels = root->curOuterRels;
+
+	/*
+	 * If the inner path is parameterized by the topmost parent of the outer
+	 * rel rather than the outer rel itself, fix that.  (Nothing happens here
+	 * if it is not so parameterized.)
+	 */
+	best_path->jpath.innerjoinpath =
+		reparameterize_path_by_child(root,
+									 best_path->jpath.innerjoinpath,
+									 best_path->jpath.outerjoinpath->parent);
+
+	/*
+	 * Failure here probably means that reparameterize_path_by_child() is not
+	 * in sync with path_is_reparameterizable_by_child().
+	 */
+	Assert(best_path->jpath.innerjoinpath != NULL);
 
 	/* NestLoop can project, so no need to be picky about child tlists */
 	outer_plan = create_plan_recurse(root, best_path->jpath.outerjoinpath, 0);
@@ -7014,7 +7033,8 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 				 List *updateColnosLists,
 				 List *withCheckOptionLists, List *returningLists,
 				 List *rowMarks, OnConflictExpr *onconflict,
-				 List *mergeActionLists, int epqParam)
+				 List *mergeActionLists, List *mergeJoinConditions,
+				 int epqParam)
 {
 	ModifyTable *node = makeNode(ModifyTable);
 	List	   *fdw_private_list;
@@ -7084,6 +7104,7 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	node->returningLists = returningLists;
 	node->rowMarks = rowMarks;
 	node->mergeActionLists = mergeActionLists;
+	node->mergeJoinConditions = mergeJoinConditions;
 	node->epqParam = epqParam;
 
 	/*

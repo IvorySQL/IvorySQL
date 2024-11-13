@@ -22,7 +22,6 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
-#include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/partition.h"
@@ -32,10 +31,8 @@
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
-#include "commands/defrem.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
-#include "executor/execPartition.h"
 #include "miscadmin.h"
 #include "nodes/bitmapset.h"
 #include "nodes/makefuncs.h"
@@ -44,16 +41,12 @@
 #include "parser/parse_collate.h"
 #include "parser/parse_func.h"
 #include "parser/parse_relation.h"
-#include "parser/parsetree.h"
 #include "partitioning/partdesc.h"
 #include "pgstat.h"
 #include "rewrite/rewriteManip.h"
-#include "storage/bufmgr.h"
 #include "storage/lmgr.h"
-#include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/bytea.h"
 #include "utils/fmgroids.h"
 #include "utils/guc_hooks.h"
 #include "utils/inval.h"
@@ -841,7 +834,7 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 											  true, /* islocal */
 											  0,	/* inhcount */
 											  true, /* noinherit */
-											  false,	/* conwithoutoverlaps */
+											  false,	/* conperiod */
 											  isInternal);	/* is_internal */
 	}
 
@@ -2780,8 +2773,8 @@ ExecBRDeleteTriggers(EState *estate, EPQState *epqstate,
 void
 ExecARDeleteTriggers(EState *estate,
 					 ResultRelInfo *relinfo,
-					 ItemPointer tupleid,
 					 HeapTuple fdw_trigtuple,
+					 TupleTableSlot *slot,
 					 TransitionCaptureState *transition_capture,
 					 bool is_crosspart_update)
 {
@@ -2790,20 +2783,11 @@ ExecARDeleteTriggers(EState *estate,
 	if ((trigdesc && trigdesc->trig_delete_after_row) ||
 		(transition_capture && transition_capture->tcs_delete_old_table))
 	{
-		TupleTableSlot *slot = ExecGetTriggerOldSlot(estate, relinfo);
-
-		Assert(HeapTupleIsValid(fdw_trigtuple) ^ ItemPointerIsValid(tupleid));
-		if (fdw_trigtuple == NULL)
-			GetTupleForTrigger(estate,
-							   NULL,
-							   relinfo,
-							   tupleid,
-							   LockTupleExclusive,
-							   slot,
-							   NULL,
-							   NULL,
-							   NULL);
-		else
+		/*
+		 * Put the FDW old tuple to the slot.  Otherwise, the caller is
+		 * expected to have an old tuple already fetched to the slot.
+		 */
+		if (fdw_trigtuple != NULL)
 			ExecForceStoreHeapTuple(fdw_trigtuple, slot, false);
 
 		AfterTriggerSaveEvent(estate, relinfo, NULL, NULL,
@@ -3094,18 +3078,17 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
  * Note: 'src_partinfo' and 'dst_partinfo', when non-NULL, refer to the source
  * and destination partitions, respectively, of a cross-partition update of
  * the root partitioned table mentioned in the query, given by 'relinfo'.
- * 'tupleid' in that case refers to the ctid of the "old" tuple in the source
- * partition, and 'newslot' contains the "new" tuple in the destination
- * partition.  This interface allows to support the requirements of
- * ExecCrossPartitionUpdateForeignKey(); is_crosspart_update must be true in
- * that case.
+ * 'oldslot' contains the "old" tuple in the source partition, and 'newslot'
+ * contains the "new" tuple in the destination partition.  This interface
+ * allows to support the requirements of ExecCrossPartitionUpdateForeignKey();
+ * is_crosspart_update must be true in that case.
  */
 void
 ExecARUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 					 ResultRelInfo *src_partinfo,
 					 ResultRelInfo *dst_partinfo,
-					 ItemPointer tupleid,
 					 HeapTuple fdw_trigtuple,
+					 TupleTableSlot *oldslot,
 					 TupleTableSlot *newslot,
 					 List *recheckIndexes,
 					 TransitionCaptureState *transition_capture,
@@ -3124,29 +3107,14 @@ ExecARUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 		 * separately for DELETE and INSERT to capture transition table rows.
 		 * In such case, either old tuple or new tuple can be NULL.
 		 */
-		TupleTableSlot *oldslot;
-		ResultRelInfo *tupsrc;
-
 		Assert((src_partinfo != NULL && dst_partinfo != NULL) ||
 			   !is_crosspart_update);
 
-		tupsrc = src_partinfo ? src_partinfo : relinfo;
-		oldslot = ExecGetTriggerOldSlot(estate, tupsrc);
-
-		if (fdw_trigtuple == NULL && ItemPointerIsValid(tupleid))
-			GetTupleForTrigger(estate,
-							   NULL,
-							   tupsrc,
-							   tupleid,
-							   LockTupleExclusive,
-							   oldslot,
-							   NULL,
-							   NULL,
-							   NULL);
-		else if (fdw_trigtuple != NULL)
+		if (fdw_trigtuple != NULL)
+		{
+			Assert(oldslot);
 			ExecForceStoreHeapTuple(fdw_trigtuple, oldslot, false);
-		else
-			ExecClearTuple(oldslot);
+		}
 
 		AfterTriggerSaveEvent(estate, relinfo,
 							  src_partinfo, dst_partinfo,

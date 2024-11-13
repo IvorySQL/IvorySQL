@@ -35,12 +35,10 @@
 #include "access/transam.h"
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
-#include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xlogutils.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
-#include "pgstat.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/sinvaladt.h"
@@ -362,7 +360,8 @@ static PROCLOCK *SetupLockInTable(LockMethod lockMethodTable, PGPROC *proc,
 static void GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
 static void BeginStrongLockAcquire(LOCALLOCK *locallock, uint32 fasthashcode);
 static void FinishStrongLockAcquire(void);
-static void WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner);
+static void WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner,
+					   bool dontWait);
 static void ReleaseLockIfHeld(LOCALLOCK *locallock, bool sessionLock);
 static void LockReassignOwner(LOCALLOCK *locallock, ResourceOwner parent);
 static bool UnGrantLock(LOCK *lock, LOCKMODE lockmode,
@@ -1027,49 +1026,14 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	else
 	{
 		/*
-		 * We can't acquire the lock immediately.  If caller specified no
-		 * blocking, remove useless table entries and return
-		 * LOCKACQUIRE_NOT_AVAIL without waiting.
-		 */
-		if (dontWait)
-		{
-			AbortStrongLockAcquire();
-			if (proclock->holdMask == 0)
-			{
-				uint32		proclock_hashcode;
-
-				proclock_hashcode = ProcLockHashCode(&proclock->tag, hashcode);
-				dlist_delete(&proclock->lockLink);
-				dlist_delete(&proclock->procLink);
-				if (!hash_search_with_hash_value(LockMethodProcLockHash,
-												 &(proclock->tag),
-												 proclock_hashcode,
-												 HASH_REMOVE,
-												 NULL))
-					elog(PANIC, "proclock table corrupted");
-			}
-			else
-				PROCLOCK_PRINT("LockAcquire: NOWAIT", proclock);
-			lock->nRequested--;
-			lock->requested[lockmode]--;
-			LOCK_PRINT("LockAcquire: conditional lock failed", lock, lockmode);
-			Assert((lock->nRequested > 0) && (lock->requested[lockmode] >= 0));
-			Assert(lock->nGranted <= lock->nRequested);
-			LWLockRelease(partitionLock);
-			if (locallock->nLocks == 0)
-				RemoveLocalLock(locallock);
-			if (locallockp)
-				*locallockp = NULL;
-			return LOCKACQUIRE_NOT_AVAIL;
-		}
-
-		/*
 		 * Set bitmask of locks this process already holds on this object.
 		 */
 		MyProc->heldLocks = proclock->holdMask;
 
 		/*
-		 * Sleep till someone wakes me up.
+		 * Sleep till someone wakes me up. We do this even in the dontWait
+		 * case, beause while trying to go to sleep, we may discover that we
+		 * can acquire the lock immediately after all.
 		 */
 
 		TRACE_POSTGRESQL_LOCK_WAIT_START(locktag->locktag_field1,
@@ -1079,7 +1043,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 										 locktag->locktag_type,
 										 lockmode);
 
-		WaitOnLock(locallock, owner);
+		WaitOnLock(locallock, owner, dontWait);
 
 		TRACE_POSTGRESQL_LOCK_WAIT_DONE(locktag->locktag_field1,
 										locktag->locktag_field2,
@@ -1095,17 +1059,63 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		 */
 
 		/*
-		 * Check the proclock entry status, in case something in the ipc
-		 * communication doesn't work correctly.
+		 * Check the proclock entry status. If dontWait = true, this is an
+		 * expected case; otherwise, it will open happen if something in the
+		 * ipc communication doesn't work correctly.
 		 */
 		if (!(proclock->holdMask & LOCKBIT_ON(lockmode)))
 		{
 			AbortStrongLockAcquire();
-			PROCLOCK_PRINT("LockAcquire: INCONSISTENT", proclock);
-			LOCK_PRINT("LockAcquire: INCONSISTENT", lock, lockmode);
-			/* Should we retry ? */
-			LWLockRelease(partitionLock);
-			elog(ERROR, "LockAcquire failed");
+
+			if (dontWait)
+			{
+				/*
+				 * We can't acquire the lock immediately.  If caller specified
+				 * no blocking, remove useless table entries and return
+				 * LOCKACQUIRE_NOT_AVAIL without waiting.
+				 */
+				if (proclock->holdMask == 0)
+				{
+					uint32		proclock_hashcode;
+
+					proclock_hashcode = ProcLockHashCode(&proclock->tag,
+														 hashcode);
+					dlist_delete(&proclock->lockLink);
+					dlist_delete(&proclock->procLink);
+					if (!hash_search_with_hash_value(LockMethodProcLockHash,
+													 &(proclock->tag),
+													 proclock_hashcode,
+													 HASH_REMOVE,
+													 NULL))
+						elog(PANIC, "proclock table corrupted");
+				}
+				else
+					PROCLOCK_PRINT("LockAcquire: NOWAIT", proclock);
+				lock->nRequested--;
+				lock->requested[lockmode]--;
+				LOCK_PRINT("LockAcquire: conditional lock failed",
+						   lock, lockmode);
+				Assert((lock->nRequested > 0) &&
+					   (lock->requested[lockmode] >= 0));
+				Assert(lock->nGranted <= lock->nRequested);
+				LWLockRelease(partitionLock);
+				if (locallock->nLocks == 0)
+					RemoveLocalLock(locallock);
+				if (locallockp)
+					*locallockp = NULL;
+				return LOCKACQUIRE_NOT_AVAIL;
+			}
+			else
+			{
+				/*
+				 * We should have gotten the lock, but somehow that didn't
+				 * happen. If we get here, it's a bug.
+				 */
+				PROCLOCK_PRINT("LockAcquire: INCONSISTENT", proclock);
+				LOCK_PRINT("LockAcquire: INCONSISTENT", lock, lockmode);
+				LWLockRelease(partitionLock);
+				elog(ERROR, "LockAcquire failed");
+			}
 		}
 		PROCLOCK_PRINT("LockAcquire: granted", proclock);
 		LOCK_PRINT("LockAcquire: granted", lock, lockmode);
@@ -1779,10 +1789,11 @@ MarkLockClear(LOCALLOCK *locallock)
  * Caller must have set MyProc->heldLocks to reflect locks already held
  * on the lockable object by this process.
  *
- * The appropriate partition lock must be held at entry.
+ * The appropriate partition lock must be held at entry, and will still be
+ * held at exit.
  */
 static void
-WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner)
+WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner, bool dontWait)
 {
 	LOCKMETHODID lockmethodid = LOCALLOCK_LOCKMETHOD(*locallock);
 	LockMethod	lockMethodTable = LockMethods[lockmethodid];
@@ -1815,8 +1826,14 @@ WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner)
 	 */
 	PG_TRY();
 	{
-		if (ProcSleep(locallock, lockMethodTable) != PROC_WAIT_STATUS_OK)
+		/*
+		 * If dontWait = true, we handle success and failure in the same way
+		 * here. The caller will be able to sort out what has happened.
+		 */
+		if (ProcSleep(locallock, lockMethodTable, dontWait) != PROC_WAIT_STATUS_OK
+			&& !dontWait)
 		{
+
 			/*
 			 * We failed as a result of a deadlock, see CheckDeadLock(). Quit
 			 * now.
@@ -2995,7 +3012,7 @@ GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode, int *countp)
 		 * on this lockable object.
 		 */
 		LWLockRelease(partitionLock);
-		vxids[count].backendId = InvalidBackendId;
+		vxids[count].procNumber = INVALID_PROC_NUMBER;
 		vxids[count].localTransactionId = InvalidLocalTransactionId;
 		if (countp)
 			*countp = count;
@@ -3041,7 +3058,7 @@ GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode, int *countp)
 	if (count > MaxBackends + max_prepared_xacts)	/* should never happen */
 		elog(PANIC, "too many conflicting locks found");
 
-	vxids[count].backendId = InvalidBackendId;
+	vxids[count].procNumber = INVALID_PROC_NUMBER;
 	vxids[count].localTransactionId = InvalidLocalTransactionId;
 	if (countp)
 		*countp = count;
@@ -3625,8 +3642,8 @@ GetLockStatusData(void)
 								 proc->fpRelId[f]);
 			instance->holdMask = lockbits << FAST_PATH_LOCKNUMBER_OFFSET;
 			instance->waitLockMode = NoLock;
-			instance->backend = proc->backendId;
-			instance->lxid = proc->lxid;
+			instance->vxid.procNumber = proc->vxid.procNumber;
+			instance->vxid.localTransactionId = proc->vxid.lxid;
 			instance->pid = proc->pid;
 			instance->leaderPid = proc->pid;
 			instance->fastpath = true;
@@ -3652,15 +3669,15 @@ GetLockStatusData(void)
 					repalloc(data->locks, sizeof(LockInstanceData) * els);
 			}
 
-			vxid.backendId = proc->backendId;
+			vxid.procNumber = proc->vxid.procNumber;
 			vxid.localTransactionId = proc->fpLocalTransactionId;
 
 			instance = &data->locks[el];
 			SET_LOCKTAG_VIRTUALTRANSACTION(instance->locktag, vxid);
 			instance->holdMask = LOCKBIT_ON(ExclusiveLock);
 			instance->waitLockMode = NoLock;
-			instance->backend = proc->backendId;
-			instance->lxid = proc->lxid;
+			instance->vxid.procNumber = proc->vxid.procNumber;
+			instance->vxid.localTransactionId = proc->vxid.lxid;
 			instance->pid = proc->pid;
 			instance->leaderPid = proc->pid;
 			instance->fastpath = true;
@@ -3712,8 +3729,8 @@ GetLockStatusData(void)
 			instance->waitLockMode = proc->waitLockMode;
 		else
 			instance->waitLockMode = NoLock;
-		instance->backend = proc->backendId;
-		instance->lxid = proc->lxid;
+		instance->vxid.procNumber = proc->vxid.procNumber;
+		instance->vxid.localTransactionId = proc->vxid.lxid;
 		instance->pid = proc->pid;
 		instance->leaderPid = proclock->groupLeader->pid;
 		instance->fastpath = false;
@@ -3888,8 +3905,8 @@ GetSingleProcBlockerStatusData(PGPROC *blocked_proc, BlockedProcsData *data)
 			instance->waitLockMode = proc->waitLockMode;
 		else
 			instance->waitLockMode = NoLock;
-		instance->backend = proc->backendId;
-		instance->lxid = proc->lxid;
+		instance->vxid.procNumber = proc->vxid.procNumber;
+		instance->vxid.localTransactionId = proc->vxid.lxid;
 		instance->pid = proc->pid;
 		instance->leaderPid = proclock->groupLeader->pid;
 		instance->fastpath = false;
@@ -4373,8 +4390,8 @@ lock_twophase_postabort(TransactionId xid, uint16 info,
  *		lockers, as we haven't advertised this vxid via the ProcArray yet.
  *
  *		Since MyProc->fpLocalTransactionId will normally contain the same data
- *		as MyProc->lxid, you might wonder if we really need both.  The
- *		difference is that MyProc->lxid is set and cleared unlocked, and
+ *		as MyProc->vxid.lxid, you might wonder if we really need both.  The
+ *		difference is that MyProc->vxid.lxid is set and cleared unlocked, and
  *		examined by procarray.c, while fpLocalTransactionId is protected by
  *		fpInfoLock and is used only by the locking subsystem.  Doing it this
  *		way makes it easier to verify that there are no funny race conditions.
@@ -4390,7 +4407,7 @@ VirtualXactLockTableInsert(VirtualTransactionId vxid)
 
 	LWLockAcquire(&MyProc->fpInfoLock, LW_EXCLUSIVE);
 
-	Assert(MyProc->backendId == vxid.backendId);
+	Assert(MyProc->vxid.procNumber == vxid.procNumber);
 	Assert(MyProc->fpLocalTransactionId == InvalidLocalTransactionId);
 	Assert(MyProc->fpVXIDLock == false);
 
@@ -4412,7 +4429,7 @@ VirtualXactLockTableCleanup(void)
 	bool		fastpath;
 	LocalTransactionId lxid;
 
-	Assert(MyProc->backendId != InvalidBackendId);
+	Assert(MyProc->vxid.procNumber != INVALID_PROC_NUMBER);
 
 	/*
 	 * Clean up shared memory state.
@@ -4435,7 +4452,7 @@ VirtualXactLockTableCleanup(void)
 		VirtualTransactionId vxid;
 		LOCKTAG		locktag;
 
-		vxid.backendId = MyBackendId;
+		vxid.procNumber = MyProcNumber;
 		vxid.localTransactionId = lxid;
 		SET_LOCKTAG_VIRTUALTRANSACTION(locktag, vxid);
 
@@ -4529,18 +4546,18 @@ VirtualXactLock(VirtualTransactionId vxid, bool wait)
 	 * relevant lxid is no longer running here, that's enough to prove that
 	 * it's no longer running anywhere.
 	 */
-	proc = BackendIdGetProc(vxid.backendId);
+	proc = ProcNumberGetProc(vxid.procNumber);
 	if (proc == NULL)
 		return XactLockForVirtualXact(vxid, InvalidTransactionId, wait);
 
 	/*
-	 * We must acquire this lock before checking the backendId and lxid
+	 * We must acquire this lock before checking the procNumber and lxid
 	 * against the ones we're waiting for.  The target backend will only set
 	 * or clear lxid while holding this lock.
 	 */
 	LWLockAcquire(&proc->fpInfoLock, LW_EXCLUSIVE);
 
-	if (proc->backendId != vxid.backendId
+	if (proc->vxid.procNumber != vxid.procNumber
 		|| proc->fpLocalTransactionId != vxid.localTransactionId)
 	{
 		/* VXID ended */

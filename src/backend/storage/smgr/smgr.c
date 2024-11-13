@@ -54,7 +54,6 @@
 #include "access/xlogutils.h"
 #include "lib/ilist.h"
 #include "storage/bufmgr.h"
-#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/md.h"
 #include "storage/smgr.h"
@@ -196,7 +195,7 @@ smgrshutdown(int code, Datum arg)
  * This does not attempt to actually open the underlying files.
  */
 SMgrRelation
-smgropen(RelFileLocator rlocator, BackendId backend)
+smgropen(RelFileLocator rlocator, ProcNumber backend)
 {
 	RelFileLocatorBackend brlocator;
 	SMgrRelation reln;
@@ -349,8 +348,6 @@ smgrdestroyall(void)
 
 /*
  * smgrreleaseall() -- Release resources used by all objects.
- *
- * This is called for PROCSIGNAL_BARRIER_SMGRRELEASE.
  */
 void
 smgrreleaseall(void)

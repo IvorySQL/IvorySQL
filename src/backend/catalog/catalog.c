@@ -22,7 +22,6 @@
 
 #include "access/genam.h"
 #include "access/htup_details.h"
-#include "access/sysattr.h"
 #include "access/table.h"
 #include "access/transam.h"
 #include "catalog/catalog.h"
@@ -42,7 +41,6 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
-#include "storage/fd.h"
 #include "utils/fmgroids.h"
 #include "utils/fmgrprotos.h"
 #include "utils/rel.h"
@@ -504,7 +502,7 @@ GetNewRelFileNumber(Oid reltablespace, Relation pg_class, char relpersistence)
 	RelFileLocatorBackend rlocator;
 	char	   *rpath;
 	bool		collides;
-	BackendId	backend;
+	ProcNumber	procNumber;
 
 	/*
 	 * If we ever get here during pg_upgrade, there's something wrong; all
@@ -516,11 +514,11 @@ GetNewRelFileNumber(Oid reltablespace, Relation pg_class, char relpersistence)
 	switch (relpersistence)
 	{
 		case RELPERSISTENCE_TEMP:
-			backend = BackendIdForTempRelations();
+			procNumber = ProcNumberForTempRelations();
 			break;
 		case RELPERSISTENCE_UNLOGGED:
 		case RELPERSISTENCE_PERMANENT:
-			backend = InvalidBackendId;
+			procNumber = INVALID_PROC_NUMBER;
 			break;
 		default:
 			elog(ERROR, "invalid relpersistence: %c", relpersistence);
@@ -534,11 +532,11 @@ GetNewRelFileNumber(Oid reltablespace, Relation pg_class, char relpersistence)
 		InvalidOid : MyDatabaseId;
 
 	/*
-	 * The relpath will vary based on the backend ID, so we must initialize
-	 * that properly here to make sure that any collisions based on filename
-	 * are properly detected.
+	 * The relpath will vary based on the backend number, so we must
+	 * initialize that properly here to make sure that any collisions based on
+	 * filename are properly detected.
 	 */
-	rlocator.backend = backend;
+	rlocator.backend = procNumber;
 
 	do
 	{

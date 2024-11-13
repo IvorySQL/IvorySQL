@@ -27,25 +27,21 @@
 
 #include "postgres.h"
 
-#include "access/xlog.h"
 #include "access/xlogprefetcher.h"
 #include "access/xlogreader.h"
-#include "access/xlogutils.h"
-#include "catalog/pg_class.h"
 #include "catalog/pg_control.h"
 #include "catalog/storage_xlog.h"
 #include "commands/dbcommands_xlog.h"
-#include "utils/fmgrprotos.h"
-#include "utils/timestamp.h"
 #include "funcapi.h"
-#include "pgstat.h"
 #include "miscadmin.h"
 #include "port/atomics.h"
 #include "storage/bufmgr.h"
 #include "storage/shmem.h"
 #include "storage/smgr.h"
+#include "utils/fmgrprotos.h"
 #include "utils/guc_hooks.h"
 #include "utils/hsearch.h"
+#include "utils/timestamp.h"
 
 /*
  * Every time we process this much WAL, we'll update the values in
@@ -722,7 +718,7 @@ XLogPrefetcherNextBlock(uintptr_t pgsr_private, XLogRecPtr *lsn)
 			 * same relation (with some scheme to handle invalidations
 			 * safely), but for now we'll call smgropen() every time.
 			 */
-			reln = smgropen(block->rlocator, InvalidBackendId);
+			reln = smgropen(block->rlocator, INVALID_PROC_NUMBER);
 
 			/*
 			 * If the relation file doesn't exist on disk, for example because

@@ -479,7 +479,15 @@ MERGE INTO rw_view1 t
                 (2, 'ROW 2'), (3, 'ROW 3')) AS v(a,b) ON t.a = v.a
   WHEN MATCHED AND t.a <= 1 THEN UPDATE SET b = v.b
   WHEN MATCHED THEN DELETE
-  WHEN NOT MATCHED AND a > 0 THEN INSERT (a) VALUES (v.a);
+  WHEN NOT MATCHED AND a > 0 THEN INSERT (a) VALUES (v.a)
+  RETURNING merge_action(), v.*, t.*;
+ merge_action | a |   b   | a |      b      
+--------------+---+-------+---+-------------
+ UPDATE       | 1 | ROW 1 | 1 | ROW 1
+ DELETE       | 3 | ROW 3 | 3 | Row 3
+ INSERT       | 2 | ROW 2 | 2 | Unspecified
+(3 rows)
+
 SELECT * FROM base_tbl ORDER BY a;
  a  |      b      
 ----+-------------
@@ -490,6 +498,32 @@ SELECT * FROM base_tbl ORDER BY a;
   2 | Unspecified
   5 | Unspecified
 (6 rows)
+
+MERGE INTO rw_view1 t
+  USING (VALUES (0, 'R0'), (1, 'R1'),
+                (2, 'R2'), (3, 'R3')) AS v(a,b) ON t.a = v.a
+  WHEN MATCHED AND t.a <= 1 THEN UPDATE SET b = v.b
+  WHEN MATCHED THEN DELETE
+  WHEN NOT MATCHED BY SOURCE THEN DELETE
+  WHEN NOT MATCHED AND a > 0 THEN INSERT (a) VALUES (v.a)
+  RETURNING merge_action(), v.*, t.*;
+ merge_action | a | b  | a |      b      
+--------------+---+----+---+-------------
+ UPDATE       | 1 | R1 | 1 | R1
+ DELETE       |   |    | 5 | Unspecified
+ DELETE       | 2 | R2 | 2 | Unspecified
+ INSERT       | 3 | R3 | 3 | Unspecified
+(4 rows)
+
+SELECT * FROM base_tbl ORDER BY a;
+ a  |      b      
+----+-------------
+ -2 | Row -2
+ -1 | Row -1
+  0 | Row 0
+  1 | R1
+  3 | Unspecified
+(5 rows)
 
 EXPLAIN (costs off) UPDATE rw_view1 SET a=6 WHERE a=5;
                     QUERY PLAN                    
@@ -525,6 +559,23 @@ MERGE INTO rw_view1 t
 -------------------------------------------------------------------
  Merge on base_tbl
    ->  Hash Join
+         Hash Cond: (base_tbl.a = generate_series.generate_series)
+         ->  Bitmap Heap Scan on base_tbl
+               Recheck Cond: (a > 0)
+               ->  Bitmap Index Scan on base_tbl_pkey
+                     Index Cond: (a > 0)
+         ->  Hash
+               ->  Function Scan on generate_series
+(9 rows)
+
+EXPLAIN (costs off)
+MERGE INTO rw_view1 t
+  USING (SELECT * FROM generate_series(1,5)) AS s(a) ON t.a = s.a
+  WHEN NOT MATCHED BY SOURCE THEN DELETE;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Merge on base_tbl
+   ->  Hash Left Join
          Hash Cond: (base_tbl.a = generate_series.generate_series)
          ->  Bitmap Heap Scan on base_tbl
                Recheck Cond: (a > 0)
@@ -631,13 +682,44 @@ MERGE INTO rw_view2 t
   USING (VALUES (3, 'R3'), (4, 'R4'), (5, 'R5')) AS v(a,b) ON aaa = v.a
   WHEN MATCHED AND aaa = 3 THEN DELETE
   WHEN MATCHED THEN UPDATE SET bbb = v.b
-  WHEN NOT MATCHED THEN INSERT (aaa) VALUES (v.a);
+  WHEN NOT MATCHED THEN INSERT (aaa) VALUES (v.a)
+  RETURNING merge_action(), v.*, t.*;
+ merge_action | a | b  | aaa |     bbb     
+--------------+---+----+-----+-------------
+ DELETE       | 3 | R3 |   3 | Row 3
+ UPDATE       | 4 | R4 |   4 | R4
+ INSERT       | 5 | R5 |   5 | Unspecified
+(3 rows)
+
 SELECT * FROM rw_view2 ORDER BY aaa;
  aaa |     bbb     
 -----+-------------
    1 | Row 1
    4 | R4
    5 | Unspecified
+(3 rows)
+
+MERGE INTO rw_view2 t
+  USING (VALUES (4, 'r4'), (5, 'r5'), (6, 'r6')) AS v(a,b) ON aaa = v.a
+  WHEN MATCHED AND aaa = 4 THEN DELETE
+  WHEN MATCHED THEN UPDATE SET bbb = v.b
+  WHEN NOT MATCHED THEN INSERT (aaa) VALUES (v.a)
+  WHEN NOT MATCHED BY SOURCE THEN UPDATE SET bbb = 'Not matched by source'
+  RETURNING merge_action(), v.*, t.*;
+ merge_action | a | b  | aaa |          bbb          
+--------------+---+----+-----+-----------------------
+ UPDATE       |   |    |   1 | Not matched by source
+ DELETE       | 4 | r4 |   4 | R4
+ UPDATE       | 5 | r5 |   5 | r5
+ INSERT       | 6 | r6 |   6 | Unspecified
+(4 rows)
+
+SELECT * FROM rw_view2 ORDER BY aaa;
+ aaa |          bbb          
+-----+-----------------------
+   1 | Not matched by source
+   5 | r5
+   6 | Unspecified
 (3 rows)
 
 EXPLAIN (costs off) UPDATE rw_view2 SET aaa=5 WHERE aaa=4;
@@ -1071,7 +1153,15 @@ MERGE INTO rw_view2 t
   USING (SELECT x, 'R'||x FROM generate_series(0,3) x) AS s(a,b) ON t.a = s.a
   WHEN MATCHED AND t.a <= 1 THEN DELETE
   WHEN MATCHED THEN UPDATE SET b = s.b
-  WHEN NOT MATCHED AND s.a > 0 THEN INSERT VALUES (s.a, s.b);
+  WHEN NOT MATCHED AND s.a > 0 THEN INSERT VALUES (s.a, s.b)
+  RETURNING merge_action(), s.*, t.*;
+ merge_action | a | b  | a |   b   
+--------------+---+----+---+-------
+ DELETE       | 1 | R1 | 1 | Row 1
+ UPDATE       | 2 | R2 | 2 | R2
+ INSERT       | 3 | R3 | 3 | R3
+(3 rows)
+
 SELECT * FROM base_tbl ORDER BY a;
  a  |   b    
 ----+--------
@@ -1081,6 +1171,30 @@ SELECT * FROM base_tbl ORDER BY a;
   2 | R2
   3 | R3
 (5 rows)
+
+MERGE INTO rw_view2 t
+  USING (SELECT x, 'r'||x FROM generate_series(0,2) x) AS s(a,b) ON t.a = s.a
+  WHEN MATCHED THEN UPDATE SET b = s.b
+  WHEN NOT MATCHED AND s.a > 0 THEN INSERT VALUES (s.a, s.b)
+  WHEN NOT MATCHED BY SOURCE THEN UPDATE SET b = 'Not matched by source'
+  RETURNING merge_action(), s.*, t.*;
+ merge_action | a | b  | a |           b           
+--------------+---+----+---+-----------------------
+ UPDATE       | 2 | r2 | 2 | r2
+ UPDATE       |   |    | 3 | Not matched by source
+ INSERT       | 1 | r1 | 1 | r1
+(3 rows)
+
+SELECT * FROM base_tbl ORDER BY a;
+ a  |           b           
+----+-----------------------
+ -2 | Row -2
+ -1 | Row -1
+  0 | Row 0
+  1 | r1
+  2 | r2
+  3 | Not matched by source
+(6 rows)
 
 EXPLAIN (costs off) UPDATE rw_view2 SET a=3 WHERE a=2;
                         QUERY PLAN                        
@@ -3014,18 +3128,18 @@ EXPLAIN (costs off) INSERT INTO rw_view1 VALUES (2, 'New row 2');
                         QUERY PLAN                         
 -----------------------------------------------------------
  Insert on base_tbl
-   InitPlan 1 (returns $0)
+   InitPlan 1
      ->  Index Only Scan using base_tbl_pkey on base_tbl t
            Index Cond: (id = 2)
    ->  Result
-         One-Time Filter: ($0 IS NOT TRUE)
+         One-Time Filter: ((InitPlan 1).col1 IS NOT TRUE)
  
  Update on base_tbl
-   InitPlan 1 (returns $0)
+   InitPlan 1
      ->  Index Only Scan using base_tbl_pkey on base_tbl t
            Index Cond: (id = 2)
    ->  Result
-         One-Time Filter: $0
+         One-Time Filter: (InitPlan 1).col1
          ->  Index Scan using base_tbl_pkey on base_tbl
                Index Cond: (id = 2)
 (15 rows)
@@ -3084,8 +3198,8 @@ SELECT * FROM v1 WHERE a=8;
 
 EXPLAIN (VERBOSE, COSTS OFF)
 UPDATE v1 SET a=100 WHERE snoop(a) AND leakproof(a) AND a < 7 AND a != 6;
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
  Update on public.t1
    Update on public.t1 t1_1
    Update on public.t11 t1_2
@@ -3097,7 +3211,7 @@ UPDATE v1 SET a=100 WHERE snoop(a) AND leakproof(a) AND a < 7 AND a != 6;
                ->  Index Scan using t1_a_idx on public.t1 t1_1
                      Output: t1_1.tableoid, t1_1.ctid
                      Index Cond: ((t1_1.a > 5) AND (t1_1.a < 7))
-                     Filter: ((t1_1.a <> 6) AND (SubPlan 1) AND snoop(t1_1.a) AND leakproof(t1_1.a))
+                     Filter: ((t1_1.a <> 6) AND EXISTS(SubPlan 1) AND snoop(t1_1.a) AND leakproof(t1_1.a))
                      SubPlan 1
                        ->  Append
                              ->  Seq Scan on public.t12 t12_1
@@ -3107,15 +3221,15 @@ UPDATE v1 SET a=100 WHERE snoop(a) AND leakproof(a) AND a < 7 AND a != 6;
                ->  Index Scan using t11_a_idx on public.t11 t1_2
                      Output: t1_2.tableoid, t1_2.ctid
                      Index Cond: ((t1_2.a > 5) AND (t1_2.a < 7))
-                     Filter: ((t1_2.a <> 6) AND (SubPlan 1) AND snoop(t1_2.a) AND leakproof(t1_2.a))
+                     Filter: ((t1_2.a <> 6) AND EXISTS(SubPlan 1) AND snoop(t1_2.a) AND leakproof(t1_2.a))
                ->  Index Scan using t12_a_idx on public.t12 t1_3
                      Output: t1_3.tableoid, t1_3.ctid
                      Index Cond: ((t1_3.a > 5) AND (t1_3.a < 7))
-                     Filter: ((t1_3.a <> 6) AND (SubPlan 1) AND snoop(t1_3.a) AND leakproof(t1_3.a))
+                     Filter: ((t1_3.a <> 6) AND EXISTS(SubPlan 1) AND snoop(t1_3.a) AND leakproof(t1_3.a))
                ->  Index Scan using t111_a_idx on public.t111 t1_4
                      Output: t1_4.tableoid, t1_4.ctid
                      Index Cond: ((t1_4.a > 5) AND (t1_4.a < 7))
-                     Filter: ((t1_4.a <> 6) AND (SubPlan 1) AND snoop(t1_4.a) AND leakproof(t1_4.a))
+                     Filter: ((t1_4.a <> 6) AND EXISTS(SubPlan 1) AND snoop(t1_4.a) AND leakproof(t1_4.a))
 (30 rows)
 
 UPDATE v1 SET a=100 WHERE snoop(a) AND leakproof(a) AND a < 7 AND a != 6;
@@ -3131,8 +3245,8 @@ SELECT * FROM t1 WHERE a=100; -- Nothing should have been changed to 100
 
 EXPLAIN (VERBOSE, COSTS OFF)
 UPDATE v1 SET a=a+1 WHERE snoop(a) AND leakproof(a) AND a = 8;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
  Update on public.t1
    Update on public.t1 t1_1
    Update on public.t11 t1_2
@@ -3144,7 +3258,7 @@ UPDATE v1 SET a=a+1 WHERE snoop(a) AND leakproof(a) AND a = 8;
                ->  Index Scan using t1_a_idx on public.t1 t1_1
                      Output: t1_1.a, t1_1.tableoid, t1_1.ctid
                      Index Cond: ((t1_1.a > 5) AND (t1_1.a = 8))
-                     Filter: ((SubPlan 1) AND snoop(t1_1.a) AND leakproof(t1_1.a))
+                     Filter: (EXISTS(SubPlan 1) AND snoop(t1_1.a) AND leakproof(t1_1.a))
                      SubPlan 1
                        ->  Append
                              ->  Seq Scan on public.t12 t12_1
@@ -3154,15 +3268,15 @@ UPDATE v1 SET a=a+1 WHERE snoop(a) AND leakproof(a) AND a = 8;
                ->  Index Scan using t11_a_idx on public.t11 t1_2
                      Output: t1_2.a, t1_2.tableoid, t1_2.ctid
                      Index Cond: ((t1_2.a > 5) AND (t1_2.a = 8))
-                     Filter: ((SubPlan 1) AND snoop(t1_2.a) AND leakproof(t1_2.a))
+                     Filter: (EXISTS(SubPlan 1) AND snoop(t1_2.a) AND leakproof(t1_2.a))
                ->  Index Scan using t12_a_idx on public.t12 t1_3
                      Output: t1_3.a, t1_3.tableoid, t1_3.ctid
                      Index Cond: ((t1_3.a > 5) AND (t1_3.a = 8))
-                     Filter: ((SubPlan 1) AND snoop(t1_3.a) AND leakproof(t1_3.a))
+                     Filter: (EXISTS(SubPlan 1) AND snoop(t1_3.a) AND leakproof(t1_3.a))
                ->  Index Scan using t111_a_idx on public.t111 t1_4
                      Output: t1_4.a, t1_4.tableoid, t1_4.ctid
                      Index Cond: ((t1_4.a > 5) AND (t1_4.a = 8))
-                     Filter: ((SubPlan 1) AND snoop(t1_4.a) AND leakproof(t1_4.a))
+                     Filter: (EXISTS(SubPlan 1) AND snoop(t1_4.a) AND leakproof(t1_4.a))
 (30 rows)
 
 UPDATE v1 SET a=a+1 WHERE snoop(a) AND leakproof(a) AND a = 8;
@@ -3346,10 +3460,10 @@ CREATE RULE v1_upd_rule AS ON UPDATE TO v1 DO INSTEAD
 CREATE VIEW v2 WITH (security_barrier = true) AS
   SELECT * FROM v1 WHERE EXISTS (SELECT 1);
 EXPLAIN (COSTS OFF) UPDATE v2 SET a = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                          QUERY PLAN                          
+--------------------------------------------------------------
  Update on t1
-   InitPlan 1 (returns $0)
+   InitPlan 1
      ->  Result
    ->  Merge Join
          Merge Cond: (t1.a = v1.a)
@@ -3360,7 +3474,7 @@ EXPLAIN (COSTS OFF) UPDATE v2 SET a = 1;
                Sort Key: v1.a
                ->  Subquery Scan on v1
                      ->  Result
-                           One-Time Filter: $0
+                           One-Time Filter: (InitPlan 1).col1
                            ->  Seq Scan on t1 t1_1
 (14 rows)
 

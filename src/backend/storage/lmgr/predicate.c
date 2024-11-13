@@ -199,7 +199,6 @@
 
 #include "access/parallel.h"
 #include "access/slru.h"
-#include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
@@ -208,7 +207,6 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "port/pg_lfind.h"
-#include "storage/bufmgr.h"
 #include "storage/predicate.h"
 #include "storage/predicate_internals.h"
 #include "storage/proc.h"
@@ -1260,7 +1258,7 @@ InitPredicateLocks(void)
 		PredXact->OldCommittedSxact->xmin = InvalidTransactionId;
 		PredXact->OldCommittedSxact->flags = SXACT_FLAG_COMMITTED;
 		PredXact->OldCommittedSxact->pid = 0;
-		PredXact->OldCommittedSxact->pgprocno = INVALID_PGPROCNO;
+		PredXact->OldCommittedSxact->pgprocno = INVALID_PROC_NUMBER;
 	}
 	/* This never changes, so let's keep a local copy. */
 	OldCommittedSxact = PredXact->OldCommittedSxact;
@@ -4846,7 +4844,7 @@ PostPrepare_PredicateLocks(TransactionId xid)
 	Assert(SxactIsPrepared(MySerializableXact));
 
 	MySerializableXact->pid = 0;
-	MySerializableXact->pgprocno = INVALID_PGPROCNO;
+	MySerializableXact->pgprocno = INVALID_PROC_NUMBER;
 
 	hash_destroy(LocalPredicateLockHash);
 	LocalPredicateLockHash = NULL;
@@ -4918,11 +4916,11 @@ predicatelock_twophase_recover(TransactionId xid, uint16 info,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory")));
 
-		/* vxid for a prepared xact is InvalidBackendId/xid; no pid */
-		sxact->vxid.backendId = InvalidBackendId;
+		/* vxid for a prepared xact is INVALID_PROC_NUMBER/xid; no pid */
+		sxact->vxid.procNumber = INVALID_PROC_NUMBER;
 		sxact->vxid.localTransactionId = (LocalTransactionId) xid;
 		sxact->pid = 0;
-		sxact->pgprocno = INVALID_PGPROCNO;
+		sxact->pgprocno = INVALID_PROC_NUMBER;
 
 		/* a prepared xact hasn't committed yet */
 		sxact->prepareSeqNo = RecoverySerCommitSeqNo;

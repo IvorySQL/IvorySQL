@@ -20,13 +20,10 @@
 #include "access/multixact.h"
 #include "access/tableam.h"
 #include "access/xact.h"
-#include "access/xlog.h"
-#include "catalog/catalog.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_opclass.h"
-#include "catalog/pg_operator.h"
 #include "commands/cluster.h"
 #include "commands/matview.h"
 #include "commands/tablecmds.h"
@@ -34,11 +31,9 @@
 #include "executor/executor.h"
 #include "executor/spi.h"
 #include "miscadmin.h"
-#include "parser/parse_relation.h"
 #include "pgstat.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/lmgr.h"
-#include "storage/smgr.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -165,7 +160,8 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 */
 	matviewOid = RangeVarGetRelidExtended(stmt->relation,
 										  lockmode, 0,
-										  RangeVarCallbackOwnsTable, NULL);
+										  RangeVarCallbackMaintainsTable,
+										  NULL);
 	matviewRel = table_open(matviewOid, NoLock);
 	relowner = matviewRel->rd_rel->relowner;
 
@@ -178,6 +174,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	SetUserIdAndSecContext(relowner,
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
+	RestrictSearchPath();
 
 	/* Make sure it is a materialized view. */
 	if (matviewRel->rd_rel->relkind != RELKIND_MATVIEW)
@@ -479,6 +476,7 @@ static bool
 transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 {
 	DR_transientrel *myState = (DR_transientrel *) self;
+	bool		insertIndexes;
 
 	/*
 	 * Note that the input slot might not be of the type of the target
@@ -493,7 +491,8 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 					   slot,
 					   myState->output_cid,
 					   myState->ti_options,
-					   myState->bistate);
+					   myState->bistate,
+					   &insertIndexes);
 
 	/* We know this is a newly created relation, so there are no indexes */
 

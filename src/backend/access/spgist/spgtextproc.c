@@ -40,11 +40,11 @@
 #include "postgres.h"
 
 #include "access/spgist.h"
-#include "common/int.h"
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "mb/pg_wchar.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgrprotos.h"
 #include "utils/pg_locale.h"
 #include "utils/varlena.h"
 #include "varatt.h"

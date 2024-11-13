@@ -115,7 +115,7 @@ extern Path *create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel,
 extern Path *create_tablefuncscan_path(PlannerInfo *root, RelOptInfo *rel,
 									   Relids required_outer);
 extern Path *create_ctescan_path(PlannerInfo *root, RelOptInfo *rel,
-								 Relids required_outer);
+								 List *pathkeys, Relids required_outer);
 extern Path *create_namedtuplestorescan_path(PlannerInfo *root, RelOptInfo *rel,
 											 Relids required_outer);
 extern Path *create_resultscan_path(PlannerInfo *root, RelOptInfo *rel,
@@ -283,7 +283,8 @@ extern ModifyTablePath *create_modifytable_path(PlannerInfo *root,
 												List *updateColnosLists,
 												List *withCheckOptionLists, List *returningLists,
 												List *rowMarks, OnConflictExpr *onconflict,
-												List *mergeActionLists, int epqParam);
+												List *mergeActionLists, List *mergeJoinConditions,
+												int epqParam);
 extern LimitPath *create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 									Path *subpath,
 									Node *limitOffset, Node *limitCount,
@@ -298,6 +299,8 @@ extern Path *reparameterize_path(PlannerInfo *root, Path *path,
 								 double loop_count);
 extern Path *reparameterize_path_by_child(PlannerInfo *root, Path *path,
 										  RelOptInfo *child_rel);
+extern bool path_is_reparameterizable_by_child(Path *path,
+											   RelOptInfo *child_rel);
 
 /*
  * prototypes for relnode.c

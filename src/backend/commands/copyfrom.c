@@ -25,10 +25,8 @@
 #include <sys/stat.h>
 
 #include "access/heapam.h"
-#include "access/htup_details.h"
 #include "access/tableam.h"
 #include "access/xact.h"
-#include "access/xlog.h"
 #include "catalog/namespace.h"
 #include "commands/copy.h"
 #include "commands/copyfrom_internal.h"
@@ -39,8 +37,7 @@
 #include "executor/nodeModifyTable.h"
 #include "executor/tuptable.h"
 #include "foreign/fdwapi.h"
-#include "libpq/libpq.h"
-#include "libpq/pqformat.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/miscnodes.h"
 #include "optimizer/optimizer.h"
@@ -400,6 +397,7 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 		bool		line_buf_valid = cstate->line_buf_valid;
 		uint64		save_cur_lineno = cstate->cur_lineno;
 		MemoryContext oldcontext;
+		bool		insertIndexes;
 
 		Assert(buffer->bistate != NULL);
 
@@ -419,7 +417,8 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 						   nused,
 						   mycid,
 						   ti_options,
-						   buffer->bistate);
+						   buffer->bistate,
+						   &insertIndexes);
 		MemoryContextSwitchTo(oldcontext);
 
 		for (i = 0; i < nused; i++)
@@ -428,7 +427,7 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 			 * If there are any indexes, update them for all the inserted
 			 * tuples, and run AFTER ROW INSERT triggers.
 			 */
-			if (resultRelInfo->ri_NumIndices > 0)
+			if (insertIndexes && resultRelInfo->ri_NumIndices > 0)
 			{
 				List	   *recheckIndexes;
 
@@ -1268,11 +1267,14 @@ CopyFrom(CopyFromState cstate)
 					}
 					else
 					{
+						bool		insertIndexes;
+
 						/* OK, store the tuple and create index entries for it */
 						table_tuple_insert(resultRelInfo->ri_RelationDesc,
-										   myslot, mycid, ti_options, bistate);
+										   myslot, mycid, ti_options, bistate,
+										   &insertIndexes);
 
-						if (resultRelInfo->ri_NumIndices > 0)
+						if (insertIndexes && resultRelInfo->ri_NumIndices > 0)
 							recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
 																   myslot,
 																   estate,

@@ -25,21 +25,18 @@
 #include <fcntl.h>
 #include <sys/file.h>
 
-#include "access/xlog.h"
 #include "access/xlogutils.h"
 #include "commands/tablespace.h"
 #include "common/file_utils.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
 #include "pgstat.h"
-#include "postmaster/bgwriter.h"
 #include "storage/bufmgr.h"
 #include "storage/fd.h"
 #include "storage/md.h"
 #include "storage/relfilelocator.h"
 #include "storage/smgr.h"
 #include "storage/sync.h"
-#include "utils/hsearch.h"
 #include "utils/memutils.h"
 
 /*
@@ -1454,7 +1451,7 @@ DropRelationFiles(RelFileLocator *delrels, int ndelrels, bool isRedo)
 	srels = palloc(sizeof(SMgrRelation) * ndelrels);
 	for (i = 0; i < ndelrels; i++)
 	{
-		SMgrRelation srel = smgropen(delrels[i], InvalidBackendId);
+		SMgrRelation srel = smgropen(delrels[i], INVALID_PROC_NUMBER);
 
 		if (isRedo)
 		{
@@ -1738,7 +1735,7 @@ _mdnblocks(SMgrRelation reln, ForkNumber forknum, MdfdVec *seg)
 int
 mdsyncfiletag(const FileTag *ftag, char *path)
 {
-	SMgrRelation reln = smgropen(ftag->rlocator, InvalidBackendId);
+	SMgrRelation reln = smgropen(ftag->rlocator, INVALID_PROC_NUMBER);
 	File		file;
 	instr_time	io_start;
 	bool		need_to_close;

@@ -18,7 +18,6 @@
 #include "commands/createas.h"
 #include "commands/defrem.h"
 #include "commands/prepare.h"
-#include "executor/nodeHash.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"
@@ -118,7 +117,6 @@ static void show_tidbitmap_info(BitmapHeapScanState *planstate,
 static void show_instrumentation_count(const char *qlabel, int which,
 									   PlanState *planstate, ExplainState *es);
 static void show_foreignscan_info(ForeignScanState *fsstate, ExplainState *es);
-static void show_eval_params(Bitmapset *bms_params, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
 static bool peek_buffer_usage(ExplainState *es, const BufferUsage *usage);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
@@ -396,60 +394,72 @@ ExplainOneQuery(Query *query, int cursorOptions,
 		(*ExplainOneQuery_hook) (query, cursorOptions, into, es,
 								 queryString, params, queryEnv);
 	else
+		standard_ExplainOneQuery(query, cursorOptions, into, es,
+								 queryString, params, queryEnv);
+}
+
+/*
+ * standard_ExplainOneQuery -
+ *	  print out the execution plan for one Query, without calling a hook.
+ */
+void
+standard_ExplainOneQuery(Query *query, int cursorOptions,
+						 IntoClause *into, ExplainState *es,
+						 const char *queryString, ParamListInfo params,
+						 QueryEnvironment *queryEnv)
+{
+	PlannedStmt *plan;
+	instr_time	planstart,
+				planduration;
+	BufferUsage bufusage_start,
+				bufusage;
+	MemoryContextCounters mem_counters;
+	MemoryContext planner_ctx = NULL;
+	MemoryContext saved_ctx = NULL;
+
+	if (es->memory)
 	{
-		PlannedStmt *plan;
-		instr_time	planstart,
-					planduration;
-		BufferUsage bufusage_start,
-					bufusage;
-		MemoryContextCounters mem_counters;
-		MemoryContext planner_ctx = NULL;
-		MemoryContext saved_ctx = NULL;
-
-		if (es->memory)
-		{
-			/*
-			 * Create a new memory context to measure planner's memory
-			 * consumption accurately.  Note that if the planner were to be
-			 * modified to use a different memory context type, here we would
-			 * be changing that to AllocSet, which might be undesirable.
-			 * However, we don't have a way to create a context of the same
-			 * type as another, so we pray and hope that this is OK.
-			 */
-			planner_ctx = AllocSetContextCreate(CurrentMemoryContext,
-												"explain analyze planner context",
-												ALLOCSET_DEFAULT_SIZES);
-			saved_ctx = MemoryContextSwitchTo(planner_ctx);
-		}
-
-		if (es->buffers)
-			bufusage_start = pgBufferUsage;
-		INSTR_TIME_SET_CURRENT(planstart);
-
-		/* plan the query */
-		plan = pg_plan_query(query, queryString, cursorOptions, params);
-
-		INSTR_TIME_SET_CURRENT(planduration);
-		INSTR_TIME_SUBTRACT(planduration, planstart);
-
-		if (es->memory)
-		{
-			MemoryContextSwitchTo(saved_ctx);
-			MemoryContextMemConsumed(planner_ctx, &mem_counters);
-		}
-
-		/* calc differences of buffer counters. */
-		if (es->buffers)
-		{
-			memset(&bufusage, 0, sizeof(BufferUsage));
-			BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
-		}
-
-		/* run it (if needed) and produce output */
-		ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
-					   &planduration, (es->buffers ? &bufusage : NULL),
-					   es->memory ? &mem_counters : NULL);
+		/*
+		 * Create a new memory context to measure planner's memory consumption
+		 * accurately.  Note that if the planner were to be modified to use a
+		 * different memory context type, here we would be changing that to
+		 * AllocSet, which might be undesirable.  However, we don't have a way
+		 * to create a context of the same type as another, so we pray and
+		 * hope that this is OK.
+		 */
+		planner_ctx = AllocSetContextCreate(CurrentMemoryContext,
+											"explain analyze planner context",
+											ALLOCSET_DEFAULT_SIZES);
+		saved_ctx = MemoryContextSwitchTo(planner_ctx);
 	}
+
+	if (es->buffers)
+		bufusage_start = pgBufferUsage;
+	INSTR_TIME_SET_CURRENT(planstart);
+
+	/* plan the query */
+	plan = pg_plan_query(query, queryString, cursorOptions, params);
+
+	INSTR_TIME_SET_CURRENT(planduration);
+	INSTR_TIME_SUBTRACT(planduration, planstart);
+
+	if (es->memory)
+	{
+		MemoryContextSwitchTo(saved_ctx);
+		MemoryContextMemConsumed(planner_ctx, &mem_counters);
+	}
+
+	/* calc differences of buffer counters. */
+	if (es->buffers)
+	{
+		memset(&bufusage, 0, sizeof(BufferUsage));
+		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
+	}
+
+	/* run it (if needed) and produce output */
+	ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
+				   &planduration, (es->buffers ? &bufusage : NULL),
+				   es->memory ? &mem_counters : NULL);
 }
 
 /*
@@ -1904,10 +1914,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyInteger("Workers Planned", NULL,
 									   gather->num_workers, es);
 
-				/* Show params evaluated at gather node */
-				if (gather->initParam)
-					show_eval_params(gather->initParam, es);
-
 				if (es->analyze)
 				{
 					int			nworkers;
@@ -1931,10 +1937,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 											   planstate, es);
 				ExplainPropertyInteger("Workers Planned", NULL,
 									   gm->num_workers, es);
-
-				/* Show params evaluated at gather-merge node */
-				if (gm->initParam)
-					show_eval_params(gm->initParam, es);
 
 				if (es->analyze)
 				{
@@ -3538,29 +3540,6 @@ show_foreignscan_info(ForeignScanState *fsstate, ExplainState *es)
 		if (fdwroutine->ExplainForeignScan != NULL)
 			fdwroutine->ExplainForeignScan(fsstate, es);
 	}
-}
-
-/*
- * Show initplan params evaluated at Gather or Gather Merge node.
- */
-static void
-show_eval_params(Bitmapset *bms_params, ExplainState *es)
-{
-	int			paramid = -1;
-	List	   *params = NIL;
-
-	Assert(bms_params);
-
-	while ((paramid = bms_next_member(bms_params, paramid)) >= 0)
-	{
-		char		param[32];
-
-		snprintf(param, sizeof(param), "$%d", paramid);
-		params = lappend(params, pstrdup(param));
-	}
-
-	if (params)
-		ExplainPropertyList("Params Evaluated", params, es);
 }
 
 /*

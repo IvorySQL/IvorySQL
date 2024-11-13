@@ -672,6 +672,23 @@ select count(*) from tenk1 a
                Index Cond: (unique1 = x.unique1)
 (10 rows)
 
+-- test that pathkeys from a materialized CTE are propagated up to the
+-- outer query
+explain (costs off)
+with x as materialized (select unique1 from tenk1 b order by unique1)
+select count(*) from tenk1 a
+  where unique1 in (select * from x);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   CTE x
+     ->  Index Only Scan using tenk1_unique1 on tenk1 b
+   ->  Merge Semi Join
+         Merge Cond: (a.unique1 = x.unique1)
+         ->  Index Only Scan using tenk1_unique1 on tenk1 a
+         ->  CTE Scan on x
+(7 rows)
+
 -- SEARCH clause
 create temp table graph0( f int, t int, label text );
 insert into graph0 values
@@ -3100,7 +3117,7 @@ WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v);
    CTE cte_init
      ->  Result
            Output: 1, 'cte_init val'::text
-   InitPlan 2 (returns $1)
+   InitPlan 2
      ->  Limit
            Output: ((cte_init.b || ' merge update'::text))
            ->  CTE Scan on cte_init
@@ -3143,11 +3160,11 @@ WHEN NOT MATCHED THEN INSERT VALUES(o.a, o.b || (SELECT merge_source_cte.*::text
    CTE merge_source_cte
      ->  Result
            Output: 15, 'merge_source_cte val'::text
-   InitPlan 2 (returns $1)
+   InitPlan 2
      ->  CTE Scan on merge_source_cte merge_source_cte_1
            Output: ((merge_source_cte_1.b || (merge_source_cte_1.*)::text) || ' merge update'::text)
            Filter: (merge_source_cte_1.a = 15)
-   InitPlan 3 (returns $2)
+   InitPlan 3
      ->  CTE Scan on merge_source_cte merge_source_cte_2
            Output: ((merge_source_cte_2.*)::text || ' merge insert'::text)
    ->  Hash Right Join
@@ -3493,6 +3510,16 @@ SELECT * FROM t;
 ERROR:  WITH query "t" does not have a RETURNING clause
 LINE 4: SELECT * FROM t;
                       ^
+-- RETURNING tries to return its own output
+WITH RECURSIVE t(action, a) AS (
+	MERGE INTO y USING (VALUES (11)) v(a) ON y.a = v.a
+		WHEN NOT MATCHED THEN INSERT VALUES (v.a)
+		RETURNING merge_action(), (SELECT a FROM t)
+)
+SELECT * FROM t;
+ERROR:  recursive query "t" must not contain data-modifying statements
+LINE 1: WITH RECURSIVE t(action, a) AS (
+                       ^
 -- data-modifying WITH allowed only at the top level
 SELECT * FROM (
 	WITH t AS (UPDATE y SET a=a+1 RETURNING *)

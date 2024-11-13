@@ -23,7 +23,6 @@
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi_priv.h"
-#include "miscadmin.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -2052,6 +2051,8 @@ SPI_result_code_string(int code)
 			return "SPI_OK_TD_REGISTER";
 		case SPI_OK_MERGE:
 			return "SPI_OK_MERGE";
+		case SPI_OK_MERGE_RETURNING:
+			return "SPI_OK_MERGE_RETURNING";
 	}
 	/* Unrecognized code ... return something useful ... */
 	sprintf(buf, "Unrecognized SPI code %d", code);
@@ -2905,7 +2906,10 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 				res = SPI_OK_UPDATE;
 			break;
 		case CMD_MERGE:
-			res = SPI_OK_MERGE;
+			if (queryDesc->plannedstmt->hasReturning)
+				res = SPI_OK_MERGE_RETURNING;
+			else
+				res = SPI_OK_MERGE;
 			break;
 		default:
 			return SPI_ERROR_OPUNKNOWN;

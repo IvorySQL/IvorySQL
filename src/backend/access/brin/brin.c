@@ -35,8 +35,8 @@
 #include "storage/freespace.h"
 #include "tcop/tcopprot.h"		/* pgrminclude ignore */
 #include "utils/acl.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgrprotos.h"
 #include "utils/guc.h"
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
@@ -1412,6 +1412,7 @@ brin_summarize_range(PG_FUNCTION_ARGS)
 		SetUserIdAndSecContext(heapRel->rd_rel->relowner,
 							   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 		save_nestlevel = NewGUCNestLevel();
+		RestrictSearchPath();
 	}
 	else
 	{

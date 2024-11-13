@@ -544,9 +544,11 @@ typedef struct ResultRelInfo
 	/* ON CONFLICT evaluation state */
 	OnConflictSetState *ri_onConflict;
 
-	/* for MERGE, lists of MergeActionState */
-	List	   *ri_matchedMergeAction;
-	List	   *ri_notMatchedMergeAction;
+	/* for MERGE, lists of MergeActionState (one per MergeMatchKind) */
+	List	   *ri_MergeActions[3];
+
+	/* for MERGE, expr state for checking the join condition */
+	ExprState  *ri_MergeJoinCondition;
 
 	/* partition check expression state (NULL if not set up yet) */
 	ExprState  *ri_PartitionCheckExpr;
@@ -1008,6 +1010,79 @@ typedef struct DomainConstraintState
 	ExprState  *check_exprstate;	/* check_expr's eval state, or NULL */
 } DomainConstraintState;
 
+/*
+ * State for JsonExpr evaluation, too big to inline.
+ *
+ * This contains the information going into and coming out of the
+ * EEOP_JSONEXPR_PATH eval step.
+ */
+typedef struct JsonExprState
+{
+	/* original expression node */
+	JsonExpr   *jsexpr;
+
+	/* value/isnull for formatted_expr */
+	NullableDatum formatted_expr;
+
+	/* value/isnull for pathspec */
+	NullableDatum pathspec;
+
+	/* JsonPathVariable entries for passing_values */
+	List	   *args;
+
+	/*
+	 * Output variables that drive the EEOP_JUMP_IF_NOT_TRUE steps that are
+	 * added for ON ERROR and ON EMPTY expressions, if any.
+	 *
+	 * Reset for each evaluation of EEOP_JSONEXPR_PATH.
+	 */
+
+	/* Set to true if jsonpath evaluation cause an error.  */
+	NullableDatum error;
+
+	/* Set to true if the jsonpath evaluation returned 0 items. */
+	NullableDatum empty;
+
+	/*
+	 * Addresses of steps that implement the non-ERROR variant of ON EMPTY and
+	 * ON ERROR behaviors, respectively.
+	 */
+	int			jump_empty;
+	int			jump_error;
+
+	/*
+	 * Address of the step to coerce the result value of jsonpath evaluation
+	 * to the RETURNING type using JsonExpr.coercion_expr.  -1 if no coercion
+	 * is necessary or if either JsonExpr.use_io_coercion or
+	 * JsonExpr.use_json_coercion is true.
+	 */
+	int			jump_eval_coercion;
+
+	/*
+	 * Address to jump to when skipping all the steps after performing
+	 * ExecEvalJsonExprPath() so as to return whatever the JsonPath* function
+	 * returned as is, that is, in the cases where there's no error and no
+	 * coercion is necessary.
+	 */
+	int			jump_end;
+
+	/*
+	 * RETURNING type input function invocation info when
+	 * JsonExpr.use_io_coercion is true.
+	 */
+	FmgrInfo   *input_finfo;
+	FunctionCallInfo input_fcinfo;
+
+	/*
+	 * For error-safe evaluation of coercions.  When the ON ERROR behavior is
+	 * not ERROR, a pointer to this is passed to ExecInitExprRec() when
+	 * initializing the coercion expressions or to ExecInitJsonCoercion().
+	 *
+	 * Reset for each evaluation of EEOP_JSONEXPR_PATH.
+	 */
+	ErrorSaveContext escontext;
+} JsonExprState;
+
 
 /* ----------------------------------------------------------------
  *				 Executor State Trees
@@ -1324,6 +1399,16 @@ typedef struct ModifyTableState
 
 	/* Flags showing which subcommands are present INS/UPD/DEL/DO NOTHING */
 	int			mt_merge_subcommands;
+
+	/* For MERGE, the action currently being executed */
+	MergeActionState *mt_merge_action;
+
+	/*
+	 * For MERGE, if there is a pending NOT MATCHED [BY TARGET] action to be
+	 * performed, this will be the last tuple read from the subplan; otherwise
+	 * it will be NULL --- see the comments in ExecMerge().
+	 */
+	TupleTableSlot *mt_merge_pending_not_matched;
 
 	/* tuple counters for MERGE */
 	double		mt_merge_inserted;
@@ -1689,7 +1774,6 @@ typedef enum
  *		prefetch_target			current target prefetch distance
  *		state					current state of the TIDBitmap
  *		cv						conditional wait variable
- *		phs_snapshot_data		snapshot data shared to workers
  * ----------------
  */
 typedef struct ParallelBitmapHeapState
@@ -1701,7 +1785,6 @@ typedef struct ParallelBitmapHeapState
 	int			prefetch_target;
 	SharedBitmapState state;
 	ConditionVariable cv;
-	char		phs_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
 } ParallelBitmapHeapState;
 
 /* ----------------
@@ -1721,7 +1804,6 @@ typedef struct ParallelBitmapHeapState
  *		prefetch_pages	   # pages prefetch iterator is ahead of current
  *		prefetch_target    current target prefetch distance
  *		prefetch_maximum   maximum value for prefetch_target
- *		pscan_len		   size of the shared memory for parallel bitmap
  *		initialized		   is node is ready to iterate
  *		shared_tbmiterator	   shared iterator
  *		shared_prefetch_iterator shared iterator for prefetching
@@ -1745,7 +1827,6 @@ typedef struct BitmapHeapScanState
 	int			prefetch_pages;
 	int			prefetch_target;
 	int			prefetch_maximum;
-	Size		pscan_len;
 	bool		initialized;
 	TBMSharedIterator *shared_tbmiterator;
 	TBMSharedIterator *shared_prefetch_iterator;

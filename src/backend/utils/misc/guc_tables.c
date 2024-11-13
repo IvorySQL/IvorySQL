@@ -84,11 +84,11 @@
 #include "utils/float.h"
 #include "utils/guc_hooks.h"
 #include "utils/guc_tables.h"
+#include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
-#include "utils/portal.h"
+#include "utils/plancache.h"
 #include "utils/ps_status.h"
-#include "utils/inval.h"
 #include "utils/xml.h"
 #include "utils/ora_compatible.h"
 
@@ -511,6 +511,7 @@ extern const struct config_enum_entry dynamic_shared_memory_options[];
 /*
  * GUC option variables that are exported from this module
  */
+bool		AllowAlterSystem = true;
 bool		log_duration = false;
 bool		Debug_print_plan = false;
 bool		Debug_print_parse = false;
@@ -737,7 +738,7 @@ const char *const config_group_names[] =
 	[CLIENT_CONN_OTHER] = gettext_noop("Client Connection Defaults / Other Defaults"),
 	[LOCK_MANAGEMENT] = gettext_noop("Lock Management"),
 	[COMPAT_OPTIONS_PREVIOUS] = gettext_noop("Version and Platform Compatibility / Previous PostgreSQL Versions"),
-	[COMPAT_OPTIONS_CLIENT] = gettext_noop("Version and Platform Compatibility / Other Platforms and Clients"),
+	[COMPAT_OPTIONS_OTHER] = gettext_noop("Version and Platform Compatibility / Other Platforms and Clients"),
 	[ERROR_HANDLING_OPTIONS] = gettext_noop("Error Handling"),
 	[PRESET_OPTIONS] = gettext_noop("Preset Options"),
 	[CUSTOM_OPTIONS] = gettext_noop("Customized Options"),
@@ -1065,6 +1066,22 @@ struct config_bool ConfigureNamesBool[] =
 		},
 		&current_role_is_superuser,
 		false,
+		NULL, NULL, NULL
+	},
+	{
+		/*
+		 * This setting itself cannot be set by ALTER SYSTEM to avoid an
+		 * operator turning this setting off by using ALTER SYSTEM, without a
+		 * way to turn it back on.
+		 */
+		{"allow_alter_system", PGC_SIGHUP, COMPAT_OPTIONS_OTHER,
+			gettext_noop("Allows running the ALTER SYSTEM command."),
+			gettext_noop("Can be set to off for environments where global configuration "
+						 "changes should be made using a different method."),
+			GUC_DISALLOW_IN_AUTO_FILE
+		},
+		&AllowAlterSystem,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -1550,7 +1567,7 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
-		{"transform_null_equals", PGC_USERSET, COMPAT_OPTIONS_CLIENT,
+		{"transform_null_equals", PGC_USERSET, COMPAT_OPTIONS_OTHER,
 			gettext_noop("Treats \"expr=NULL\" as \"expr IS NULL\"."),
 			gettext_noop("When turned on, expressions of the form expr = NULL "
 						 "(or NULL = expr) are treated as expr IS NULL, that is, they "
@@ -2318,7 +2335,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"commit_timestamp_buffers", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the size of the dedicated buffer pool used for the commit timestamp cache."),
-			NULL,
+			gettext_noop("Specify 0 to have this value determined as a fraction of shared_buffers."),
 			GUC_UNIT_BLOCKS
 		},
 		&commit_timestamp_buffers,
@@ -2373,7 +2390,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"subtransaction_buffers", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the size of the dedicated buffer pool used for the sub-transaction cache."),
-			NULL,
+			gettext_noop("Specify 0 to have this value determined as a fraction of shared_buffers."),
 			GUC_UNIT_BLOCKS
 		},
 		&subtransaction_buffers,
@@ -2384,7 +2401,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"transaction_buffers", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the size of the dedicated buffer pool used for the transaction status cache."),
-			NULL,
+			gettext_noop("Specify 0 to have this value determined as a fraction of shared_buffers."),
 			GUC_UNIT_BLOCKS
 		},
 		&transaction_buffers,
@@ -2899,7 +2916,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"wal_buffers", PGC_POSTMASTER, WAL_SETTINGS,
 			gettext_noop("Sets the number of disk-page buffers in shared memory for WAL."),
-			NULL,
+			gettext_noop("Specify -1 to have this value determined as a fraction of shared_buffers."),
 			GUC_UNIT_XBLOCKS
 		},
 		&XLOGbuffers,
@@ -3324,9 +3341,9 @@ struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MIN,
 		},
 		&wal_summary_keep_time,
-		10 * 24 * 60,			/* 10 days */
+		10 * HOURS_PER_DAY * MINS_PER_HOUR, /* 10 days */
 		0,
-		INT_MAX,
+		INT_MAX / SECS_PER_MINUTE,
 		NULL, NULL, NULL
 	},
 
@@ -4710,10 +4727,23 @@ struct config_string ConfigureNamesString[] =
 		check_debug_io_direct, assign_debug_io_direct, NULL
 	},
 
+	{
+		{"standby_slot_names", PGC_SIGHUP, REPLICATION_PRIMARY,
+			gettext_noop("Lists streaming replication standby server slot "
+						 "names that logical WAL sender processes will wait for."),
+			gettext_noop("Logical WAL sender processes will send decoded "
+						 "changes to plugins only after the specified  "
+						 "replication slots confirm receiving WAL."),
+			GUC_LIST_INPUT
+		},
+		&standby_slot_names,
+		"",
+		check_standby_slot_names, assign_standby_slot_names, NULL
+	},
+
 	#define IVY_GUC_STRING_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_STRING_PARAMS
-
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL

@@ -26,13 +26,11 @@
 #include "pgstat.h"
 #include "replication/slot.h"
 #include "storage/bufmgr.h"
-#include "storage/lmgr.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/sinvaladt.h"
 #include "storage/standby.h"
 #include "utils/hsearch.h"
-#include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
@@ -137,7 +135,8 @@ InitRecoveryTransactionEnvironment(void)
 	 * are held by vxids and row level locks are held by xids. All queries
 	 * hold AccessShareLocks so never block while we write or lock new rows.
 	 */
-	vxid.backendId = MyBackendId;
+	MyProc->vxid.procNumber = MyProcNumber;
+	vxid.procNumber = MyProcNumber;
 	vxid.localTransactionId = GetNextLocalTransactionId();
 	VirtualXactLockTableInsert(vxid);
 
@@ -299,7 +298,7 @@ LogRecoveryConflict(ProcSignalReason reason, TimestampTz wait_start,
 		vxids = wait_list;
 		while (VirtualTransactionIdIsValid(*vxids))
 		{
-			PGPROC	   *proc = BackendIdGetProc(vxids->backendId);
+			PGPROC	   *proc = ProcNumberGetProc(vxids->procNumber);
 
 			/* proc can be NULL if the target backend is not active */
 			if (proc)

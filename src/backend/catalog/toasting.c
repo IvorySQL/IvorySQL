@@ -26,12 +26,9 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
-#include "catalog/pg_type.h"
 #include "catalog/toasting.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "storage/lock.h"
-#include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
@@ -326,7 +323,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 				 list_make2("chunk_id", "chunk_seq"),
 				 BTREE_AM_OID,
 				 rel->rd_rel->reltablespace,
-				 collationIds, opclassIds, NULL, coloptions, (Datum) 0,
+				 collationIds, opclassIds, NULL, coloptions, NULL, (Datum) 0,
 				 INDEX_CREATE_IS_PRIMARY, 0, true, true, NULL);
 
 	table_close(toast_rel, NoLock);

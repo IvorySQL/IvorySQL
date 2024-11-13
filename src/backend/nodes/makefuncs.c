@@ -19,7 +19,6 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "utils/errcodes.h"
 #include "utils/lsyscache.h"
 
 
@@ -858,6 +857,22 @@ makeJsonValueExpr(Expr *raw_expr, Expr *formatted_expr,
 	jve->format = format;
 
 	return jve;
+}
+
+/*
+ * makeJsonBehavior -
+ *	  creates a JsonBehavior node
+ */
+JsonBehavior *
+makeJsonBehavior(JsonBehaviorType btype, Node *expr, int location)
+{
+	JsonBehavior *behavior = makeNode(JsonBehavior);
+
+	behavior->btype = btype;
+	behavior->expr = expr;
+	behavior->location = location;
+
+	return behavior;
 }
 
 /*

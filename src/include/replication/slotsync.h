@@ -26,15 +26,12 @@ extern PGDLLIMPORT char *PrimarySlotName;
 extern char *CheckAndGetDbnameFromConninfo(void);
 extern bool ValidateSlotSyncParams(int elevel);
 
-#ifdef EXEC_BACKEND
-extern void ReplSlotSyncWorkerMain(int argc, char *argv[]) pg_attribute_noreturn();
-#endif
+extern void ReplSlotSyncWorkerMain(char *startup_data, size_t startup_data_len) pg_attribute_noreturn();
 extern int	StartSlotSyncWorker(void);
 
 extern void ShutDownSlotSync(void);
 extern bool SlotSyncWorkerCanRestart(void);
 extern bool IsSyncingReplicationSlots(void);
-extern bool IsLogicalSlotSyncWorker(void);
 extern Size SlotSyncShmemSize(void);
 extern void SlotSyncShmemInit(void);
 extern void SyncReplicationSlots(WalReceiverConn *wrconn);

@@ -1177,8 +1177,7 @@ psql_end_command(StringInfo buf, const char *database)
 	}
 
 	/* Clean up */
-	pfree(buf->data);
-	pfree(buf);
+	destroyStringInfo(buf);
 }
 
 /*
