@@ -2172,15 +2172,8 @@ INFO:  pkg1.var1=(23,"a change value")
 drop package pkg;
 --call function and report error
 select test_rely(23) FROM dual;
-ERROR:  syntax error at or near "%"
-LINE 2:  var2 pkg.var1%type;
-                      ^
-QUERY:  var1 mds%rowtype;
- var2 pkg.var1%type;
- function test(id integer, var3  mds%rowtype) return mds%rowtype;
-end
-CONTEXT:  invalid type name "pkg.var1%type"
-compilation of PL/iSQL package "pkg1" near line 2
+ERROR:  relation "pkg" does not exist
+CONTEXT:  compilation of PL/iSQL package "pkg1" near line 2
 compilation of PL/iSQL function "pkg1" near line 2
 drop package pkg1;
 drop function test_rely(integer);
@@ -3335,7 +3328,6 @@ SELECT * FROM test_view_p;
 
 --clean data
 DROP package pkg cascade;
-NOTICE:  drop cascades to view test_view_p
 --failed
 SELECT test_f(1.45) FROM dual;
 ERROR:  function test_f(pg_catalog.numeric) does not exist
