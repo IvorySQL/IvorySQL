@@ -3328,6 +3328,7 @@ SELECT * FROM test_view_p;
 
 --clean data
 DROP package pkg cascade;
+NOTICE:  drop cascades to view test_view_p
 --failed
 SELECT test_f(1.45) FROM dual;
 ERROR:  function test_f(pg_catalog.numeric) does not exist

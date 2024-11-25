@@ -201,12 +201,6 @@ static const Oid object_classes[] = {
 	PackageBodyRelationId		/* OCLASS_PACKAGE_BODY */
 };
 
-/*
- * Make sure object_classes is kept up to date with the ObjectClass enum.
- */
-StaticAssertDecl(lengthof(object_classes) == LAST_OCLASS + 1,
-				 "object_classes[] must cover all ObjectClasses");
-
 static void findDependentObjects(const ObjectAddress *object,
 								 int objflags,
 								 int flags,
@@ -1956,10 +1950,10 @@ find_expr_references_walker(Node *node,
 			if (OidIsValid(funcoid))
 			{
 				if (is_package)
-					add_object_address(OCLASS_PACKAGE, funcoid, 0,
+					add_object_address(PackageRelationId, funcoid, 0,
 							context->addrs);
 				else
-					add_object_address(OCLASS_PROC, funcoid, 0,
+					add_object_address(ProcedureRelationId, funcoid, 0,
 						   context->addrs);
 			}
 		}
