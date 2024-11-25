@@ -2390,7 +2390,6 @@ header_checks = [
   'getopt.h',
   'ifaddrs.h',
   'mbarrier.h',
-  'stdbool.h',
   'strings.h',
   'sys/epoll.h',
   'sys/event.h',
