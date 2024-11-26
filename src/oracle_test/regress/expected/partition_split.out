@@ -809,7 +809,7 @@ ALTER TABLE salesmans SPLIT PARTITION salesmans2_5 INTO
   (PARTITION salesmans2_3 FOR VALUES FROM (2) TO (3),
    PARTITION salesmans3_4 FOR VALUES FROM (3) TO (4),
    PARTITION salesmans4_5 FOR VALUES FROM (4) TO (5));
-ERROR:  partition bound for relation "salesmans2_5" is null
+ERROR:  "salesmans2_5" is not a partition
 INSERT INTO salesmans (salesman_name) VALUES ('May');
 ERROR:  no partition of relation "salesmans" found for row
 DETAIL:  Partition key of the failing row contains (salesman_id) = (3).
@@ -1413,6 +1413,19 @@ SELECT * FROM sales_others;
 (4 rows)
 
 DROP TABLE sales_range;
+--
+-- Try to SPLIT partition of another table.
+--
+CREATE TABLE t1(i int, t text) PARTITION BY LIST (t);
+CREATE TABLE t1pa PARTITION OF t1 FOR VALUES IN ('A');
+CREATE TABLE t2 (i int, t text) PARTITION BY RANGE (t);
+-- ERROR:  relation "t1pa" is not a partition of relation "t2"
+ALTER TABLE t2 SPLIT PARTITION t1pa INTO
+   (PARTITION t2a FOR VALUES FROM ('A') TO ('B'),
+    PARTITION t2b FOR VALUES FROM ('B') TO ('C'));
+ERROR:  relation "t1pa" is not a partition of relation "t2"
+DROP TABLE t2;
+DROP TABLE t1;
 --
 DROP SCHEMA partition_split_schema;
 ERROR:  cannot drop schema partition_split_schema because other objects depend on it
