@@ -333,27 +333,27 @@ ERROR:  column "a" of relation "atacc3" contains null values
 DELETE FROM ATACC3;
 ALTER TABLE ATACC1 ADD CONSTRAINT ditto NOT NULL a;
 \d+ ATACC[123]
-                                  Table "public.atacc1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           | not null |         | plain   |              | 
+                                            Table "public.atacc1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "ditto" NOT NULL "a"
 Child tables: atacc2
 
-                                  Table "public.atacc2"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           | not null |         | plain   |              | 
+                                            Table "public.atacc2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "a_is_not_null" NOT NULL "a" (local, inherited)
 Inherits: atacc1
 Child tables: atacc3
 
-                                  Table "public.atacc3"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           | not null |         | plain   |              | 
+                                            Table "public.atacc3"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Not-null constraints:
     "ditto" NOT NULL "a" (inherited)
 Inherits: atacc2
@@ -361,10 +361,10 @@ Inherits: atacc2
 ALTER TABLE ATACC2 DROP CONSTRAINT a_is_not_null;
 ALTER TABLE ATACC1 DROP CONSTRAINT ditto;
 \d+ ATACC3
-                                  Table "public.atacc3"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              | 
+                                            Table "public.atacc3"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Inherits: atacc2
 
 DROP TABLE ATACC1, ATACC2, ATACC3;
@@ -936,10 +936,10 @@ DROP TABLE notnull_tbl2;
 CREATE TABLE notnull_tbl1 (c0 int, c1 int, PRIMARY KEY (c0, c1));
 ALTER TABLE  notnull_tbl1 DROP c1;
 \d+ notnull_tbl1
-                               Table "public.notnull_tbl1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- c0     | integer |           |          |         | plain   |              | 
+                                         Table "public.notnull_tbl1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ c0     | pg_catalog.int4 |           |          |         |           | plain   |              | 
 
 DROP TABLE notnull_tbl1;
 -- same, via dropping a domain
@@ -948,10 +948,10 @@ CREATE TABLE notnull_tbl1 (c0 notnull_dom1, c1 int, PRIMARY KEY (c0, c1));
 DROP DOMAIN notnull_dom1 CASCADE;
 NOTICE:  drop cascades to column c0 of table notnull_tbl1
 \d+ notnull_tbl1
-                               Table "public.notnull_tbl1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- c1     | integer |           |          |         | plain   |              | 
+                                         Table "public.notnull_tbl1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ c1     | pg_catalog.int4 |           |          |         |           | plain   |              | 
 
 DROP TABLE notnull_tbl1;
 -- with a REPLICA IDENTITY column.  Here the not-nulls must be kept
@@ -965,11 +965,11 @@ ALTER TABLE  notnull_tbl1 ALTER c1 DROP NOT NULL;    -- can't be dropped
 ERROR:  column "c1" is in index used as replica identity
 ALTER TABLE  notnull_tbl1 ALTER c1 SET NOT NULL;    -- can be set right
 \d+ notnull_tbl1
-                                            Table "public.notnull_tbl1"
- Column |  Type   | Collation | Nullable |             Default              | Storage | Stats target | Description 
---------+---------+-----------+----------+----------------------------------+---------+--------------+-------------
- c1     | integer |           | not null |                                  | plain   |              | 
- c2     | integer |           | not null | generated by default as identity | plain   |              | 
+                                                      Table "public.notnull_tbl1"
+ Column |      Type       | Collation | Nullable |             Default              | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+----------------------------------+-----------+---------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |                                  |           | plain   |              | 
+ c2     | pg_catalog.int8 |           | not null | generated by default as identity |           | plain   |              | 
 Indexes:
     "notnull_tbl1_c1_key" UNIQUE CONSTRAINT, btree (c1) REPLICA IDENTITY
 Not-null constraints:
@@ -983,11 +983,11 @@ ALTER TABLE notnull_tbl2 REPLICA IDENTITY USING INDEX notnull_tbl2_c1_key;
 DROP DOMAIN notnull_dom2 CASCADE;
 NOTICE:  drop cascades to column c0 of table notnull_tbl2
 \d+ notnull_tbl2
-                                            Table "public.notnull_tbl2"
- Column |  Type   | Collation | Nullable |             Default              | Storage | Stats target | Description 
---------+---------+-----------+----------+----------------------------------+---------+--------------+-------------
- c1     | integer |           | not null |                                  | plain   |              | 
- c2     | integer |           | not null | generated by default as identity | plain   |              | 
+                                                      Table "public.notnull_tbl2"
+ Column |      Type       | Collation | Nullable |             Default              | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+----------------------------------+-----------+---------+--------------+-------------
+ c1     | pg_catalog.int4 |           | not null |                                  |           | plain   |              | 
+ c2     | pg_catalog.int8 |           | not null | generated by default as identity |           | plain   |              | 
 Indexes:
     "notnull_tbl2_c1_key" UNIQUE CONSTRAINT, btree (c1) REPLICA IDENTITY
 
@@ -996,11 +996,11 @@ BEGIN;
 ALTER TABLE notnull_tbl2 REPLICA IDENTITY FULL, ALTER c2 DROP IDENTITY;
 ALTER TABLE notnull_tbl2 ALTER c1 DROP NOT NULL, ALTER c2 DROP NOT NULL;
 \d+ notnull_tbl2
-                               Table "public.notnull_tbl2"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- c1     | integer |           |          |         | plain   |              | 
- c2     | integer |           |          |         | plain   |              | 
+                                         Table "public.notnull_tbl2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ c1     | pg_catalog.int4 |           |          |         |           | plain   |              | 
+ c2     | pg_catalog.int8 |           |          |         |           | plain   |              | 
 Indexes:
     "notnull_tbl2_c1_key" UNIQUE CONSTRAINT, btree (c1)
 Replica Identity: FULL
@@ -1145,10 +1145,10 @@ create table cnn2_parted (a int primary key) partition by list (a);
 create table cnn2_part1 (a int unique);
 alter table cnn2_parted attach partition cnn2_part1 for values in (1);
 \d+ cnn2_part1
-                                Table "public.cnn2_part1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
---------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           | not null |         | plain   |              | 
+                                          Table "public.cnn2_part1"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+--------------+-------------
+ a      | pg_catalog.int4 |           | not null |         |           | plain   |              | 
 Partition of: cnn2_parted FOR VALUES IN (1)
 Partition constraint: ((a IS NOT NULL) AND (a = 1))
 Indexes:

@@ -785,10 +785,10 @@ ERROR:  column "col1" of table "domcontest" contains values that violate the new
 alter domain con add constraint t check (VALUE < 34);
 alter domain con add check (VALUE > 0);
 \dD con
-                                         List of domains
- Schema | Name |  Type   | Collation | Nullable | Default |                Check                 
---------+------+---------+-----------+----------+---------+--------------------------------------
- public | con  | integer |           |          |         | CHECK (VALUE > 0) CHECK (VALUE < 34)
+                                             List of domains
+ Schema | Name |      Type       | Collation | Nullable | Default |                Check                 
+--------+------+-----------------+-----------+----------+---------+--------------------------------------
+ public | con  | pg_catalog.int4 |           |          |         | CHECK (VALUE > 0) CHECK (VALUE < 34)
 (1 row)
 
 insert into domcontest values (-5); -- fails
@@ -832,10 +832,10 @@ select count(*) from pg_constraint where contypid = 'connotnull'::regtype and co
 (1 row)
 
 \dD connotnull
-                            List of domains
- Schema |    Name    |  Type   | Collation | Nullable | Default | Check 
---------+------------+---------+-----------+----------+---------+-------
- public | connotnull | integer |           | not null |         | 
+                                List of domains
+ Schema |    Name    |      Type       | Collation | Nullable | Default | Check 
+--------+------------+-----------------+-----------+----------+---------+-------
+ public | connotnull | pg_catalog.int4 |           | not null |         | 
 (1 row)
 
 update domconnotnulltest set col1 = null; -- fails

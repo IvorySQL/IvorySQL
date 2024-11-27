@@ -564,7 +564,6 @@ ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
 DROP TABLE sales_range;
 CREATE TABLE sales_range (salesman_id INT, salesman_name VARCHAR(30), sales_amount INT, sales_date INT) PARTITION BY RANGE (sales_date);
 CREATE TABLE sales_others PARTITION OF sales_range DEFAULT;
--- no error: bounds of sales_noerror equals to lower and upper bounds of sales_dec2022 and sales_feb2022
 -- no error: bounds of sales_noerror are equal to lower and upper bounds of sales_dec2022 and sales_feb2022
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2022 FOR VALUES FROM (20211201) TO (20220101),

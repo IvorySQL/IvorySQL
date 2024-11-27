@@ -212,8 +212,8 @@ if (sqlca.sqlcode < 0) sqlprint ( );}
 
    /* test handling of a macro defined on the command line */
    { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select 123", ECPGt_EOIT, 
-    ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
-    ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
+	ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
+	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
 #line 57 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint ( );}
@@ -224,8 +224,8 @@ if (sqlca.sqlcode < 0) sqlprint ( );}
    
 
    { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select 42", ECPGt_EOIT, 
-    ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
-    ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
+	ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
+	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
 #line 62 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint ( );}
@@ -236,8 +236,8 @@ if (sqlca.sqlcode < 0) sqlprint ( );}
    
 
    { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select 43", ECPGt_EOIT, 
-    ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
-    ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
+	ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
+	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
 #line 67 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint ( );}
