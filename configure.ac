@@ -1903,7 +1903,6 @@ fi
 
 # Win32 (really MinGW) support
 if test "$PORTNAME" = "win32"; then
-  AC_CHECK_FUNCS(_configthreadlocale)
   AC_LIBOBJ(dirmod)
   AC_LIBOBJ(kill)
   AC_LIBOBJ(open)
