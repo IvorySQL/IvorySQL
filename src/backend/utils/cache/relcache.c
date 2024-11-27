@@ -1999,7 +1999,6 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_rel->relkind = RELKIND_RELATION;
 	relation->rd_rel->relhasrowid = hasrowid;
 	relation->rd_rel->relnatts = (int16) natts;
-	relation->rd_rel->relam = HEAP_TABLE_AM_OID;
 
 	/*
 	 * initialize attribute tuple form
