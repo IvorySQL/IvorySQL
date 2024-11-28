@@ -404,7 +404,7 @@ main(int argc, char *argv[])
 									cell->val, strlen(cell->val),
 									pset.encoding, standard_strings());
 					cond_stack = conditional_stack_create();
-					psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+					psql_scan_set_passthrough(scan_state, cond_stack);
 				}
 				else if (db_mode == DB_ORACLE)
 				{
@@ -413,7 +413,7 @@ main(int argc, char *argv[])
 									cell->val, strlen(cell->val),
 									pset.encoding, standard_strings());
 					cond_stack = conditional_stack_create();
-					ora_psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+					ora_psql_scan_set_passthrough(scan_state, cond_stack);
 				}
 
 				Assert(scan_state != NULL);
