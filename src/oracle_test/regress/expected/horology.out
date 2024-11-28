@@ -347,6 +347,10 @@ SELECT timestamp without time zone '2000-01-01' - interval '2483590 days' AS "ou
 ERROR:  syntax error at or near "without"
 LINE 1: SELECT timestamp without time zone '2000-01-01' - interval '...
                          ^
+SELECT timestamp without time zone '294276-12-31 23:59:59' + interval '9223372036854775807 microseconds' AS "out of range";
+ERROR:  syntax error at or near "without"
+LINE 1: SELECT timestamp without time zone '294276-12-31 23:59:59' +...
+                         ^
 SELECT timestamp without time zone '12/31/294276' - timestamp without time zone '12/23/1999' AS "106751991 Days";
 ERROR:  syntax error at or near "without"
 LINE 1: SELECT timestamp without time zone '12/31/294276' - timestam...
@@ -446,6 +450,10 @@ LINE 1: SELECT timestamp with time zone '1999-12-01' + interval '1 m...
 SELECT timestamp with time zone '2000-01-01' - interval '2483590 days' AS "out of range";
 ERROR:  syntax error at or near "with"
 LINE 1: SELECT timestamp with time zone '2000-01-01' - interval '248...
+                         ^
+SELECT timestamp with time zone '294276-12-31 23:59:59 UTC' + interval '9223372036854775807 microseconds' AS "out of range";
+ERROR:  syntax error at or near "with"
+LINE 1: SELECT timestamp with time zone '294276-12-31 23:59:59 UTC' ...
                          ^
 SELECT (timestamp with time zone 'today' = (timestamp with time zone 'yesterday' + interval '1 day')) as "True";
 ERROR:  syntax error at or near "with"
