@@ -43,7 +43,7 @@ ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
 ERROR:  empty range bound specified for partition "sales_mar2022"
 LINE 3:    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO...
                                                     ^
-DETAIL:  Specified lower bound ('03-01-2022') is greater than or equal to upper bound ('02-01-2022').
+DETAIL:  Specified lower bound ('2022-03-01') is greater than or equal to upper bound ('2022-02-01').
 --ERROR:  list of split partitions should contain at least two items
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-10-01'));
@@ -114,18 +114,18 @@ SPLIT PARTITION partition_split_schema.sales_feb_mar_apr2022 INTO
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 SET search_path = partition_split_schema, public;
 \d+ sales_range
-                              Partitioned table "partition_split_schema.sales_range"
-      Column      |         Type          | Collation | Nullable | Default | Storage  | Stats target | Description 
-------------------+-----------------------+-----------+----------+---------+----------+--------------+-------------
- salesperson_id   | integer               |           |          |         | plain    |              | 
- salesperson_name | character varying(30) |           |          |         | extended |              | 
- sales_amount     | integer               |           |          |         | plain    |              | 
- sales_date       | date                  |           |          |         | plain    |              | 
+                                 Partitioned table "partition_split_schema.sales_range"
+      Column      |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+------------------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ salesperson_id   | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ salesperson_name | varchar2(30)    |           |          |         |           | extended |              | 
+ sales_amount     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ sales_date       | date            |           |          |         |           | plain    |              | 
 Partition key: RANGE (sales_date)
-Partitions: partition_split_schema2.sales_apr2022 FOR VALUES FROM ('04-01-2022') TO ('05-01-2022'),
-            partition_split_schema2.sales_feb2022 FOR VALUES FROM ('02-01-2022') TO ('03-01-2022'),
-            partition_split_schema2.sales_mar2022 FOR VALUES FROM ('03-01-2022') TO ('04-01-2022'),
-            sales_jan2022 FOR VALUES FROM ('01-01-2022') TO ('02-01-2022')
+Partitions: partition_split_schema2.sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'),
+            partition_split_schema2.sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
+            partition_split_schema2.sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
+            sales_jan2022 FOR VALUES FROM ('2022-01-01') TO ('2022-02-01')
 
 DROP TABLE sales_range;
 DROP TABLE sales_others;
@@ -157,59 +157,59 @@ ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
 SELECT * FROM sales_range;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
-             14 | Smith            |          510 | 05-04-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
+             14 | Smith            |          510 | 2022-05-04
 (14 rows)
 
 SELECT * FROM sales_jan2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
 (3 rows)
 
 SELECT * FROM sales_feb2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
 (3 rows)
 
 SELECT * FROM sales_mar2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
 (3 rows)
 
 SELECT * FROM sales_apr2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
 (4 rows)
 
 SELECT * FROM sales_others;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-             14 | Smith            |          510 | 05-04-2022
+             14 | Smith            |          510 | 2022-05-04
 (1 row)
 
 DROP TABLE sales_range CASCADE;
@@ -226,18 +226,18 @@ ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
    PARTITION partition_split_schema2.sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 \d+ sales_range
-                              Partitioned table "partition_split_schema.sales_range"
-      Column      |         Type          | Collation | Nullable | Default | Storage  | Stats target | Description 
-------------------+-----------------------+-----------+----------+---------+----------+--------------+-------------
- salesperson_id   | integer               |           |          |         | plain    |              | 
- salesperson_name | character varying(30) |           |          |         | extended |              | 
- sales_amount     | integer               |           |          |         | plain    |              | 
- sales_date       | date                  |           |          |         | plain    |              | 
+                                 Partitioned table "partition_split_schema.sales_range"
+      Column      |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+------------------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ salesperson_id   | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ salesperson_name | varchar2(30)    |           |          |         |           | extended |              | 
+ sales_amount     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ sales_date       | date            |           |          |         |           | plain    |              | 
 Partition key: RANGE (sales_date)
-Partitions: partition_split_schema2.sales_mar2022 FOR VALUES FROM ('03-01-2022') TO ('04-01-2022'),
-            sales_apr2022 FOR VALUES FROM ('04-01-2022') TO ('05-01-2022'),
-            sales_feb2022 FOR VALUES FROM ('02-01-2022') TO ('03-01-2022'),
-            sales_jan2022 FOR VALUES FROM ('01-01-2022') TO ('02-01-2022'),
+Partitions: partition_split_schema2.sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
+            sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'),
+            sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
+            sales_jan2022 FOR VALUES FROM ('2022-01-01') TO ('2022-02-01'),
             sales_others DEFAULT
 
 INSERT INTO sales_range VALUES (1,  'May',      1000, '2022-01-31');
@@ -257,59 +257,59 @@ INSERT INTO sales_range VALUES (14, 'Smith',    510,  '2022-05-04');
 SELECT * FROM sales_range;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
-             14 | Smith            |          510 | 05-04-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
+             14 | Smith            |          510 | 2022-05-04
 (14 rows)
 
 SELECT * FROM sales_jan2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
 (3 rows)
 
 SELECT * FROM sales_feb2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
 (3 rows)
 
 SELECT * FROM partition_split_schema2.sales_mar2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
 (3 rows)
 
 SELECT * FROM sales_apr2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
 (4 rows)
 
 SELECT * FROM sales_others;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-             14 | Smith            |          510 | 05-04-2022
+             14 | Smith            |          510 | 2022-05-04
 (1 row)
 
 DROP TABLE sales_range CASCADE;
@@ -456,17 +456,17 @@ INSERT INTO sales_range VALUES (14, 'Smith',    510,  '2022-05-04');
 SELECT * FROM sales_others;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              2 | Smirnoff         |          500 | 02-10-2022
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-              6 | Poirot           |          150 | 02-11-2022
-              7 | Li               |          175 | 03-08-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              9 | Muller           |          250 | 03-11-2022
-             11 | Trump            |          380 | 04-06-2022
-             12 | Plato            |          350 | 03-19-2022
-             14 | Smith            |          510 | 05-04-2022
+              2 | Smirnoff         |          500 | 2022-02-10
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+              6 | Poirot           |          150 | 2022-02-11
+              7 | Li               |          175 | 2022-03-08
+              8 | Ericsson         |          185 | 2022-02-23
+              9 | Muller           |          250 | 2022-03-11
+             11 | Trump            |          380 | 2022-04-06
+             12 | Plato            |          350 | 2022-03-19
+             14 | Smith            |          510 | 2022-05-04
 (11 rows)
 
 SELECT * FROM pg_indexes WHERE tablename = 'sales_others' and schemaname = 'partition_split_schema';
@@ -486,32 +486,32 @@ SET enable_seqscan = OFF;
 SELECT * FROM sales_feb2022 where sales_date > '2022-01-01';
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
 (3 rows)
 
 SELECT * FROM sales_mar2022 where sales_date > '2022-01-01';
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
 (3 rows)
 
 SELECT * FROM sales_apr2022 where sales_date > '2022-01-01';
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-             11 | Trump            |          380 | 04-06-2022
-              5 | Deev             |          250 | 04-07-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              3 | Ford             |         2000 | 04-30-2022
+             11 | Trump            |          380 | 2022-04-06
+              5 | Deev             |          250 | 2022-04-07
+              4 | Ivanov           |          750 | 2022-04-13
+              3 | Ford             |         2000 | 2022-04-30
 (4 rows)
 
 SELECT * FROM sales_others where sales_date > '2022-01-01';
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-             14 | Smith            |          510 | 05-04-2022
+             14 | Smith            |          510 | 2022-05-04
 (1 row)
 
 SET enable_indexscan = ON;
@@ -658,7 +658,7 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 -- ERROR:  new row for relation "sales_mar2022" violates check constraint "sales_range_sales_amount_check"
 INSERT INTO sales_range VALUES (1, 0, '2022-03-11');
 ERROR:  new row for relation "sales_mar2022" violates check constraint "sales_range_sales_amount_check"
-DETAIL:  Failing row contains (1, 0, 03-11-2022).
+DETAIL:  Failing row contains (1, 0, 2022-03-11).
 -- ERROR:  insert or update on table "sales_mar2022" violates foreign key constraint "sales_range_salesperson_id_fkey"
 INSERT INTO sales_range VALUES (-1, 10, '2022-03-11');
 ERROR:  insert or update on table "sales_mar2022" violates foreign key constraint "sales_range_salesperson_id_fkey"
@@ -817,19 +817,22 @@ CREATE TABLE salespeople1_2 PARTITION OF salespeople FOR VALUES FROM (1) TO (2);
 -- Create new partition with identity column:
 CREATE TABLE salespeople2_5(salesperson_id INT NOT NULL, salesperson_name VARCHAR(30));
 ALTER TABLE salespeople ATTACH PARTITION salespeople2_5 FOR VALUES FROM (2) TO (5);
+ERROR:  child table "salespeople2_5" has different type for column "salesperson_id"
 INSERT INTO salespeople (salesperson_name) VALUES ('Poirot');
 INSERT INTO salespeople (salesperson_name) VALUES ('Ivanov');
+ERROR:  no partition of relation "salespeople" found for row
+DETAIL:  Partition key of the failing row contains (salesperson_id) = (2).
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople'::regclass::oid;
      attname      | attidentity | attgenerated 
 ------------------+-------------+--------------
- salesperson_id   | a           | 
+ salesperson_id   | i           | 
  salesperson_name |             | 
 (2 rows)
 
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople1_2'::regclass::oid;
      attname      | attidentity | attgenerated 
 ------------------+-------------+--------------
- salesperson_id   | a           | 
+ salesperson_id   | i           | 
  salesperson_name |             | 
 (2 rows)
 
@@ -837,7 +840,7 @@ SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople2_5'::regclass::oid;
      attname      | attidentity | attgenerated 
 ------------------+-------------+--------------
- salesperson_id   | a           | 
+ salesperson_id   |             | 
  salesperson_name |             | 
 (2 rows)
 
@@ -845,8 +848,13 @@ ALTER TABLE salespeople SPLIT PARTITION salespeople2_5 INTO
   (PARTITION salespeople2_3 FOR VALUES FROM (2) TO (3),
    PARTITION salespeople3_4 FOR VALUES FROM (3) TO (4),
    PARTITION salespeople4_5 FOR VALUES FROM (4) TO (5));
+ERROR:  "salespeople2_5" is not a partition
 INSERT INTO salespeople (salesperson_name) VALUES ('May');
+ERROR:  no partition of relation "salespeople" found for row
+DETAIL:  Partition key of the failing row contains (salesperson_id) = (3).
 INSERT INTO salespeople (salesperson_name) VALUES ('Ford');
+ERROR:  no partition of relation "salespeople" found for row
+DETAIL:  Partition key of the failing row contains (salesperson_id) = (4).
 SELECT * FROM salespeople1_2;
  salesperson_id | salesperson_name 
 ----------------+------------------
@@ -854,59 +862,44 @@ SELECT * FROM salespeople1_2;
 (1 row)
 
 SELECT * FROM salespeople2_3;
- salesperson_id | salesperson_name 
-----------------+------------------
-              2 | Ivanov
-(1 row)
-
+ERROR:  relation "salespeople2_3" does not exist
+LINE 1: SELECT * FROM salespeople2_3;
+                      ^
 SELECT * FROM salespeople3_4;
- salesperson_id | salesperson_name 
-----------------+------------------
-              3 | May
-(1 row)
-
+ERROR:  relation "salespeople3_4" does not exist
+LINE 1: SELECT * FROM salespeople3_4;
+                      ^
 SELECT * FROM salespeople4_5;
- salesperson_id | salesperson_name 
-----------------+------------------
-              4 | Ford
-(1 row)
-
+ERROR:  relation "salespeople4_5" does not exist
+LINE 1: SELECT * FROM salespeople4_5;
+                      ^
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople'::regclass::oid;
      attname      | attidentity | attgenerated 
 ------------------+-------------+--------------
- salesperson_id   | a           | 
+ salesperson_id   | i           | 
  salesperson_name |             | 
 (2 rows)
 
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople1_2'::regclass::oid;
      attname      | attidentity | attgenerated 
 ------------------+-------------+--------------
- salesperson_id   | a           | 
+ salesperson_id   | i           | 
  salesperson_name |             | 
 (2 rows)
 
 -- New partitions have identity-columns:
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople2_3'::regclass::oid;
-     attname      | attidentity | attgenerated 
-------------------+-------------+--------------
- salesperson_id   | a           | 
- salesperson_name |             | 
-(2 rows)
-
+ERROR:  relation "salespeople2_3" does not exist
+LINE 1: ...FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeop...
+                                                             ^
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople3_4'::regclass::oid;
-     attname      | attidentity | attgenerated 
-------------------+-------------+--------------
- salesperson_id   | a           | 
- salesperson_name |             | 
-(2 rows)
-
+ERROR:  relation "salespeople3_4" does not exist
+LINE 1: ...FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeop...
+                                                             ^
 SELECT attname, attidentity, attgenerated FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeople4_5'::regclass::oid;
-     attname      | attidentity | attgenerated 
-------------------+-------------+--------------
- salesperson_id   | a           | 
- salesperson_name |             | 
-(2 rows)
-
+ERROR:  relation "salespeople4_5" does not exist
+LINE 1: ...FROM pg_attribute WHERE attnum > 0 AND attrelid = 'salespeop...
+                                                             ^
 DROP TABLE salespeople CASCADE;
 --
 -- Test: split partition with deleted columns
@@ -916,7 +909,15 @@ CREATE TABLE salespeople01_10 PARTITION OF salespeople FOR VALUES FROM (1) TO (1
 -- Create new partition with some deleted columns:
 CREATE TABLE salespeople10_40(d1 VARCHAR(30), salesperson_id INT PRIMARY KEY, d2 INT, d3 DATE, salesperson_name VARCHAR(30));
 INSERT INTO salespeople10_40 VALUES ('dummy value 1', 19, 100, now(), 'Ivanov');
+ERROR:  column "d3" is of type date but expression is of type pg_catalog.timestamptz
+LINE 1: ...alespeople10_40 VALUES ('dummy value 1', 19, 100, now(), 'Iv...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
 INSERT INTO salespeople10_40 VALUES ('dummy value 2', 20, 101, now(), 'Smirnoff');
+ERROR:  column "d3" is of type date but expression is of type pg_catalog.timestamptz
+LINE 1: ...alespeople10_40 VALUES ('dummy value 2', 20, 101, now(), 'Sm...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
 ALTER TABLE salespeople10_40 DROP COLUMN d1;
 ALTER TABLE salespeople10_40 DROP COLUMN d2;
 ALTER TABLE salespeople10_40 DROP COLUMN d3;
@@ -937,15 +938,13 @@ select * from salespeople01_10;
 select * from salespeople10_20;
  salesperson_id | salesperson_name 
 ----------------+------------------
-             19 | Ivanov
              10 | May
-(2 rows)
+(1 row)
 
 select * from salespeople20_30;
  salesperson_id | salesperson_name 
 ----------------+------------------
-             20 | Smirnoff
-(1 row)
+(0 rows)
 
 select * from salespeople30_40;
  salesperson_id | salesperson_name 
@@ -983,29 +982,29 @@ INSERT INTO sales_range VALUES (14, 'Smith',    510,  '2022-05-04');
 SELECT * FROM sales_range;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
-             14 | Smith            |          510 | 05-04-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
+             14 | Smith            |          510 | 2022-05-04
 (14 rows)
 
 SELECT * FROM sales_apr2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
 (4 rows)
 
 ALTER TABLE sales_apr2022 SPLIT PARTITION sales_apr_all INTO
@@ -1015,48 +1014,48 @@ ALTER TABLE sales_apr2022 SPLIT PARTITION sales_apr_all INTO
 SELECT * FROM sales_range;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              3 | Ford             |         2000 | 04-30-2022
-             14 | Smith            |          510 | 05-04-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
+              4 | Ivanov           |          750 | 2022-04-13
+              3 | Ford             |         2000 | 2022-04-30
+             14 | Smith            |          510 | 2022-05-04
 (14 rows)
 
 SELECT * FROM sales_apr2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              3 | Ford             |         2000 | 04-30-2022
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
+              4 | Ivanov           |          750 | 2022-04-13
+              3 | Ford             |         2000 | 2022-04-30
 (4 rows)
 
 SELECT * FROM sales_apr2022_01_10;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
 (2 rows)
 
 SELECT * FROM sales_apr2022_10_20;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              4 | Ivanov           |          750 | 04-13-2022
+              4 | Ivanov           |          750 | 2022-04-13
 (1 row)
 
 SELECT * FROM sales_apr2022_20_30;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              3 | Ford             |         2000 | 04-30-2022
+              3 | Ford             |         2000 | 2022-04-30
 (1 row)
 
 DROP TABLE sales_range;
@@ -1164,54 +1163,54 @@ ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
 SELECT * FROM sales_list;
  salesperson_id | salesperson_name |  sales_state   | sales_amount | sales_date 
 ----------------+------------------+----------------+--------------+------------
-              1 | Trump            | Bejing         |         1000 | 03-01-2022
-              8 | Li               | Vladivostok    |         1150 | 03-09-2022
-              4 | Ivanov           | Warsaw         |          750 | 03-04-2022
-              6 | Poirot           | Berlin         |         1000 | 03-01-2022
-             12 | Smith            | Kyiv           |          350 | 03-10-2022
-             13 | Gandi            | Warsaw         |          150 | 03-08-2022
-              3 | Ford             | St. Petersburg |         2000 | 03-05-2022
-              7 | May              | Oslo           |         1200 | 03-06-2022
-              9 | May              | Oslo           |         1200 | 03-11-2022
-             10 | Halder           | Helsinki       |          800 | 03-02-2022
-              2 | Smirnoff         | New York       |          500 | 03-03-2022
-              5 | Deev             | Lisbon         |          250 | 03-07-2022
-             11 | Muller           | Madrid         |          650 | 03-05-2022
-             14 | Plato            | Lisbon         |          950 | 03-05-2022
+              1 | Trump            | Bejing         |         1000 | 2022-03-01
+              8 | Li               | Vladivostok    |         1150 | 2022-03-09
+              4 | Ivanov           | Warsaw         |          750 | 2022-03-04
+              6 | Poirot           | Berlin         |         1000 | 2022-03-01
+             12 | Smith            | Kyiv           |          350 | 2022-03-10
+             13 | Gandi            | Warsaw         |          150 | 2022-03-08
+              3 | Ford             | St. Petersburg |         2000 | 2022-03-05
+              7 | May              | Oslo           |         1200 | 2022-03-06
+              9 | May              | Oslo           |         1200 | 2022-03-11
+             10 | Halder           | Helsinki       |          800 | 2022-03-02
+              2 | Smirnoff         | New York       |          500 | 2022-03-03
+              5 | Deev             | Lisbon         |          250 | 2022-03-07
+             11 | Muller           | Madrid         |          650 | 2022-03-05
+             14 | Plato            | Lisbon         |          950 | 2022-03-05
 (14 rows)
 
 SELECT * FROM sales_west;
  salesperson_id | salesperson_name | sales_state | sales_amount | sales_date 
 ----------------+------------------+-------------+--------------+------------
-              2 | Smirnoff         | New York    |          500 | 03-03-2022
-              5 | Deev             | Lisbon      |          250 | 03-07-2022
-             11 | Muller           | Madrid      |          650 | 03-05-2022
-             14 | Plato            | Lisbon      |          950 | 03-05-2022
+              2 | Smirnoff         | New York    |          500 | 2022-03-03
+              5 | Deev             | Lisbon      |          250 | 2022-03-07
+             11 | Muller           | Madrid      |          650 | 2022-03-05
+             14 | Plato            | Lisbon      |          950 | 2022-03-05
 (4 rows)
 
 SELECT * FROM sales_east;
  salesperson_id | salesperson_name | sales_state | sales_amount | sales_date 
 ----------------+------------------+-------------+--------------+------------
-              1 | Trump            | Bejing      |         1000 | 03-01-2022
-              8 | Li               | Vladivostok |         1150 | 03-09-2022
+              1 | Trump            | Bejing      |         1000 | 2022-03-01
+              8 | Li               | Vladivostok |         1150 | 2022-03-09
 (2 rows)
 
 SELECT * FROM sales_nord;
  salesperson_id | salesperson_name |  sales_state   | sales_amount | sales_date 
 ----------------+------------------+----------------+--------------+------------
-              3 | Ford             | St. Petersburg |         2000 | 03-05-2022
-              7 | May              | Oslo           |         1200 | 03-06-2022
-              9 | May              | Oslo           |         1200 | 03-11-2022
-             10 | Halder           | Helsinki       |          800 | 03-02-2022
+              3 | Ford             | St. Petersburg |         2000 | 2022-03-05
+              7 | May              | Oslo           |         1200 | 2022-03-06
+              9 | May              | Oslo           |         1200 | 2022-03-11
+             10 | Halder           | Helsinki       |          800 | 2022-03-02
 (4 rows)
 
 SELECT * FROM sales_central;
  salesperson_id | salesperson_name | sales_state | sales_amount | sales_date 
 ----------------+------------------+-------------+--------------+------------
-              4 | Ivanov           | Warsaw      |          750 | 03-04-2022
-              6 | Poirot           | Berlin      |         1000 | 03-01-2022
-             12 | Smith            | Kyiv        |          350 | 03-10-2022
-             13 | Gandi            | Warsaw      |          150 | 03-08-2022
+              4 | Ivanov           | Warsaw      |          750 | 2022-03-04
+              6 | Poirot           | Berlin      |         1000 | 2022-03-01
+             12 | Smith            | Kyiv        |          350 | 2022-03-10
+             13 | Gandi            | Warsaw      |          150 | 2022-03-08
 (4 rows)
 
 -- Use indexscan for testing indexes after splitting partition
@@ -1220,21 +1219,21 @@ SET enable_seqscan = OFF;
 SELECT * FROM sales_central WHERE sales_state = 'Warsaw';
  salesperson_id | salesperson_name | sales_state | sales_amount | sales_date 
 ----------------+------------------+-------------+--------------+------------
-              4 | Ivanov           | Warsaw      |          750 | 03-04-2022
-             13 | Gandi            | Warsaw      |          150 | 03-08-2022
+              4 | Ivanov           | Warsaw      |          750 | 2022-03-04
+             13 | Gandi            | Warsaw      |          150 | 2022-03-08
 (2 rows)
 
 SELECT * FROM sales_list WHERE sales_state = 'Warsaw';
  salesperson_id | salesperson_name | sales_state | sales_amount | sales_date 
 ----------------+------------------+-------------+--------------+------------
-              4 | Ivanov           | Warsaw      |          750 | 03-04-2022
-             13 | Gandi            | Warsaw      |          150 | 03-08-2022
+              4 | Ivanov           | Warsaw      |          750 | 2022-03-04
+             13 | Gandi            | Warsaw      |          150 | 2022-03-08
 (2 rows)
 
 SELECT * FROM sales_list WHERE salesperson_name = 'Ivanov';
  salesperson_id | salesperson_name | sales_state | sales_amount | sales_date 
 ----------------+------------------+-------------+--------------+------------
-              4 | Ivanov           | Warsaw      |          750 | 03-04-2022
+              4 | Ivanov           | Warsaw      |          750 | 2022-03-04
 (1 row)
 
 SET enable_indexscan = ON;
@@ -1270,40 +1269,40 @@ ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
 SELECT * FROM sales_jan2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-             13 | Gandi            |          377 | 01-09-2022
+             13 | Gandi            |          377 | 2022-01-09
 (1 row)
 
 SELECT * FROM sales_feb2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              2 | Smirnoff         |          500 | 02-09-2022
-              6 | Poirot           |          150 | 02-07-2022
+              2 | Smirnoff         |          500 | 2022-02-09
+              6 | Poirot           |          150 | 2022-02-07
 (2 rows)
 
 SELECT * FROM sales_mar2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              7 | Li               |          175 | 03-08-2022
+              7 | Li               |          175 | 2022-03-08
 (1 row)
 
 SELECT * FROM sales_apr2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
 (2 rows)
 
 SELECT * FROM sales_others;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              9 | Muller           |          250 | 03-11-2022
-             10 | Halder           |          350 | 01-28-2022
-             12 | Plato            |          350 | 03-19-2022
-             14 | Smith            |          510 | 05-04-2022
+              1 | May              |         1000 | 2022-01-31
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              8 | Ericsson         |          185 | 2022-02-23
+              9 | Muller           |          250 | 2022-03-11
+             10 | Halder           |          350 | 2022-01-28
+             12 | Plato            |          350 | 2022-03-19
+             14 | Smith            |          510 | 2022-05-04
 (8 rows)
 
 DROP TABLE sales_range;
@@ -1337,40 +1336,40 @@ ALTER TABLE sales_range SPLIT PARTITION sales_all INTO
 SELECT * FROM sales_jan2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-             13 | Gandi            |          377 | 01-09-2022
+             13 | Gandi            |          377 | 2022-01-09
 (1 row)
 
 SELECT * FROM sales_feb2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              2 | Smirnoff         |          500 | 02-09-2022
-              6 | Poirot           |          150 | 02-07-2022
+              2 | Smirnoff         |          500 | 2022-02-09
+              6 | Poirot           |          150 | 2022-02-07
 (2 rows)
 
 SELECT * FROM sales_mar2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              7 | Li               |          175 | 03-08-2022
+              7 | Li               |          175 | 2022-03-08
 (1 row)
 
 SELECT * FROM sales_apr2022_1decade;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
 (2 rows)
 
 SELECT * FROM sales_others;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-             14 | Smith            |          510 | 05-04-2022
-              1 | May              |         1000 | 01-31-2022
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              9 | Muller           |          250 | 03-11-2022
-             10 | Halder           |          350 | 01-28-2022
-             12 | Plato            |          350 | 03-19-2022
+             14 | Smith            |          510 | 2022-05-04
+              1 | May              |         1000 | 2022-01-31
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              8 | Ericsson         |          185 | 2022-02-23
+              9 | Muller           |          250 | 2022-03-11
+             10 | Halder           |          350 | 2022-01-28
+             12 | Plato            |          350 | 2022-03-19
 (8 rows)
 
 DROP TABLE sales_range;
@@ -1402,54 +1401,54 @@ INSERT INTO sales_range VALUES (14, 'Smith',    510,  '2022-05-04');
 SELECT * FROM sales_range;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
-             14 | Smith            |          510 | 05-04-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
+             14 | Smith            |          510 | 2022-05-04
 (14 rows)
 
 SELECT * FROM sales_jan2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              1 | May              |         1000 | 01-31-2022
-             10 | Halder           |          350 | 01-28-2022
-             13 | Gandi            |          377 | 01-09-2022
+              1 | May              |         1000 | 2022-01-31
+             10 | Halder           |          350 | 2022-01-28
+             13 | Gandi            |          377 | 2022-01-09
 (3 rows)
 
 SELECT * FROM sales_feb2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              2 | Smirnoff         |          500 | 02-10-2022
-              6 | Poirot           |          150 | 02-11-2022
-              8 | Ericsson         |          185 | 02-23-2022
+              2 | Smirnoff         |          500 | 2022-02-10
+              6 | Poirot           |          150 | 2022-02-11
+              8 | Ericsson         |          185 | 2022-02-23
 (3 rows)
 
 SELECT * FROM sales_apr2022;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              3 | Ford             |         2000 | 04-30-2022
-              4 | Ivanov           |          750 | 04-13-2022
-              5 | Deev             |          250 | 04-07-2022
-             11 | Trump            |          380 | 04-06-2022
+              3 | Ford             |         2000 | 2022-04-30
+              4 | Ivanov           |          750 | 2022-04-13
+              5 | Deev             |          250 | 2022-04-07
+             11 | Trump            |          380 | 2022-04-06
 (4 rows)
 
 SELECT * FROM sales_others;
  salesperson_id | salesperson_name | sales_amount | sales_date 
 ----------------+------------------+--------------+------------
-              7 | Li               |          175 | 03-08-2022
-              9 | Muller           |          250 | 03-11-2022
-             12 | Plato            |          350 | 03-19-2022
-             14 | Smith            |          510 | 05-04-2022
+              7 | Li               |          175 | 2022-03-08
+              9 | Muller           |          250 | 2022-03-11
+             12 | Plato            |          350 | 2022-03-19
+             14 | Smith            |          510 | 2022-05-04
 (4 rows)
 
 DROP TABLE sales_range;
@@ -1517,4 +1516,7 @@ DROP TABLE t;
 DROP ACCESS METHOD partition_split_heap;
 --
 DROP SCHEMA partition_split_schema;
+ERROR:  cannot drop schema partition_split_schema because other objects depend on it
+DETAIL:  table salespeople2_5 depends on schema partition_split_schema
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP SCHEMA partition_split_schema2;
