@@ -236,3 +236,4 @@ SELECT c2, c1, c3 FROM nametbl WHERE c2 = 'two' AND c1 = 1;
 RESET enable_seqscan;
 
 DROP TABLE nametbl;
+
