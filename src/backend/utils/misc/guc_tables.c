@@ -2115,6 +2115,14 @@ struct config_bool ConfigureNamesBool[] =
 	#define IVY_GUC_BOOL_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_BOOL_PARAMS
+	{
+		{"md5_password_warnings", PGC_USERSET, CONN_AUTH_AUTH,
+			gettext_noop("Enables deprecation warnings for MD5 passwords."),
+		},
+		&md5_password_warnings,
+		true,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
