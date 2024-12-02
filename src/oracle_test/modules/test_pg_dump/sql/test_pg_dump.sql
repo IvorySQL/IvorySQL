@@ -149,3 +149,8 @@ SELECT pg_describe_object(classid,objid,objsubid) AS obj,
   ORDER BY 1, 3;
 
 DROP ROLE regress_dump_test_role;
+
+DROP EXTENSION test_pg_dump;
+
+-- shouldn't be anything left in pg_init_privs
+SELECT * FROM pg_init_privs WHERE privtype = 'e';
