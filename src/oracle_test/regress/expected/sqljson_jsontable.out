@@ -219,17 +219,17 @@ FROM json_table_test vals
 
 -- Test using casts in DEFAULT .. ON ERROR expression
 SELECT * FROM JSON_TABLE(jsonb '{"d1": "H"}', '$'
-    COLUMNS (js1 jsonb_test_domain PATH '$.a2' DEFAULT '"foo1"'::jsonb::text ON ERROR));
+    COLUMNS (js1 jsonb_test_domain PATH '$.a2' DEFAULT '"foo1"'::jsonb::text ON EMPTY));
   js1   
 --------
  "foo1"
 (1 row)
 
 SELECT * FROM JSON_TABLE(jsonb '{"d1": "H"}', '$'
-    COLUMNS (js1 jsonb_test_domain PATH '$.a2' DEFAULT 'foo'::jsonb_test_domain ON ERROR));
+    COLUMNS (js1 jsonb_test_domain PATH '$.a2' DEFAULT 'foo'::jsonb_test_domain ON EMPTY));
 ERROR:  value for domain jsonb_test_domain violates check constraint "jsonb_test_domain_check"
 SELECT * FROM JSON_TABLE(jsonb '{"d1": "H"}', '$'
-    COLUMNS (js1 jsonb_test_domain PATH '$.a2' DEFAULT 'foo1'::jsonb_test_domain ON ERROR));
+    COLUMNS (js1 jsonb_test_domain PATH '$.a2' DEFAULT 'foo1'::jsonb_test_domain ON EMPTY));
  js1  
 ------
  foo1
@@ -243,7 +243,7 @@ SELECT * FROM JSON_TABLE(jsonb '{"d1": "foo"}', '$'
 (1 row)
 
 SELECT * FROM JSON_TABLE(jsonb '{"d1": "foo"}', '$'
-    COLUMNS (js1 oid[] PATH '$.d2' DEFAULT '{1}'::int[]::oid[] ON ERROR));
+    COLUMNS (js1 oid[] PATH '$.d2' DEFAULT '{1}'::int[]::oid[] ON EMPTY));
  js1 
 -----
  {1}
