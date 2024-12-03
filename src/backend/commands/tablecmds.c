@@ -998,8 +998,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			attr->atthasdef = true;
 		}
 		
-		populate_compact_attribute(descriptor, attnum - 1);
-
 		if (colDef->is_invisible)
 			attr->attisinvisible = true;
 		else
@@ -1467,8 +1465,6 @@ BuildDescForRelation(const List *columns)
 			att->attstorage = entry->storage;
 		else if (entry->storage_name)
 			att->attstorage = GetAttributeStorage(att->atttypid, entry->storage_name);
-
-		populate_compact_attribute(desc, attnum - 1);
 	}
 
 	return desc;
