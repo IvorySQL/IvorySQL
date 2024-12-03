@@ -1790,7 +1790,12 @@ str_tolower(const char *buff, size_t nbytes, Oid collid)
 				 * collations you get exactly what the collation says.
 				 */
 				for (p = result; *p; p++)
-					*p = tolower_l((unsigned char) *p, mylocale->info.lt);
+				{
+					if (mylocale->is_default)
+						*p = pg_tolower((unsigned char) *p);
+					else
+						*p = tolower_l((unsigned char) *p, mylocale->info.lt);
+				}
 			}
 		}
 	}
@@ -1927,7 +1932,12 @@ str_toupper(const char *buff, size_t nbytes, Oid collid)
 				 * collations you get exactly what the collation says.
 				 */
 				for (p = result; *p; p++)
-					*p = toupper_l((unsigned char) *p, mylocale->info.lt);
+				{
+					if (mylocale->is_default)
+						*p = pg_toupper((unsigned char) *p);
+					else
+						*p = toupper_l((unsigned char) *p, mylocale->info.lt);
+				}
 			}
 		}
 	}
@@ -2125,10 +2135,20 @@ str_initcap(const char *buff, size_t nbytes, Oid collid)
 				 */
 				for (p = result; *p; p++)
 				{
-					if (wasalnum)
-						*p = tolower_l((unsigned char) *p, mylocale->info.lt);
+					if (mylocale->is_default)
+					{
+						if (wasalnum)
+							*p = pg_tolower((unsigned char) *p);
+						else
+							*p = pg_toupper((unsigned char) *p);
+					}
 					else
-						*p = toupper_l((unsigned char) *p, mylocale->info.lt);
+					{
+						if (wasalnum)
+							*p = tolower_l((unsigned char) *p, mylocale->info.lt);
+						else
+							*p = toupper_l((unsigned char) *p, mylocale->info.lt);
+					}
 					wasalnum = isalnum_l((unsigned char) *p, mylocale->info.lt);
 				}
 			}
