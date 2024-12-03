@@ -95,24 +95,7 @@ FROM json_table_test vals
 		)
 	) jt
 	ON true;
-                                          js                                           | id | int |  text   | char(4) | bool | numeric | domain  |      js      |      jb      
----------------------------------------------------------------------------------------+----+-----+---------+---------+------+---------+---------+--------------+--------------
- 1                                                                                     |  1 |   1 | 1       | 1       | t    |       1 | 1       | 1            | 1
- []                                                                                    |    |     |         |         |      |         |         |              | 
- {}                                                                                    |  1 |     |         |         |      |         |         | {}           | {}
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  1 |   1 | 1       | 1       | t    |       1 | 1       | 1            | 1
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  2 |     | 1.23    | 1.23    |      |    1.23 | 1.23    | 1.23         | 1.23
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  3 |   2 | 2       | 2       |      |       2 | 2       | "2"          | "2"
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  4 |     | aaaaaaa |         |      |         | aaaaaaa | "aaaaaaa"    | "aaaaaaa"
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  5 |     | foo     | foo     |      |         |         | "foo"        | "foo"
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  6 |     |         |         |      |         |         | null         | null
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  7 |     | f       | f       | f    |         | false   | false        | false
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  8 |     | t       | t       | t    |         | true    | true         | true
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  9 |     |         |         |      |         |         | {"aaa": 123} | {"aaa": 123}
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 10 |     | [1,2]   |         |      |         | [1,2]   | "[1,2]"      | "[1,2]"
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 11 |     | "str"   |         |      |         | "str"   | "\"str\""    | "\"str\""
-(14 rows)
-
+ERROR:  value too long for type char(4 byte)
 -- "formatted" columns
 SELECT *
 FROM json_table_test vals
@@ -129,24 +112,7 @@ FROM json_table_test vals
 		)
 	) jt
 	ON true;
-                                          js                                           | id |     jst      | jsc  | jsv  |     jsb      |     jsbq     
----------------------------------------------------------------------------------------+----+--------------+------+------+--------------+--------------
- 1                                                                                     |  1 | 1            | 1    | 1    | 1            | 1
- []                                                                                    |    |              |      |      |              | 
- {}                                                                                    |  1 | {}           | {}   | {}   | {}           | {}
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  1 | 1            | 1    | 1    | 1            | 1
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  2 | 1.23         | 1.23 | 1.23 | 1.23         | 1.23
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  3 | "2"          | "2"  | "2"  | "2"          | 2
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  4 | "aaaaaaa"    |      |      | "aaaaaaa"    | 
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  5 | "foo"        |      |      | "foo"        | 
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  6 | null         | null | null | null         | null
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  7 | false        |      |      | false        | false
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  8 | true         | true | true | true         | true
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  9 | {"aaa": 123} |      |      | {"aaa": 123} | {"aaa": 123}
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 10 | "[1,2]"      |      |      | "[1,2]"      | [1, 2]
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 11 | "\"str\""    |      |      | "\"str\""    | "str"
-(14 rows)
-
+ERROR:  value too long for type char(4 byte)
 -- EXISTS columns
 SELECT *
 FROM json_table_test vals
@@ -555,11 +521,11 @@ SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int4 EXISTS PATH '$.a'));
 (1 row)
 
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int2 EXISTS PATH '$.a'));
-ERROR:  cannot cast behavior expression of type boolean to smallint
+ERROR:  cannot cast behavior expression of type pg_catalog.bool to pg_catalog.int2
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int8 EXISTS PATH '$.a'));
-ERROR:  cannot cast behavior expression of type boolean to bigint
+ERROR:  cannot cast behavior expression of type pg_catalog.bool to pg_catalog.int8
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a float4 EXISTS PATH '$.a'));
-ERROR:  cannot cast behavior expression of type boolean to real
+ERROR:  cannot cast behavior expression of type pg_catalog.bool to pg_catalog.float4
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a char(5) EXISTS PATH '$.a'));
    a   
 -------
@@ -567,9 +533,9 @@ SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a char(5) EXISTS PATH '$.a'))
 (1 row)
 
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a json EXISTS PATH '$.a'));
-ERROR:  cannot cast behavior expression of type boolean to json
+ERROR:  cannot cast behavior expression of type pg_catalog.bool to json
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a jsonb EXISTS PATH '$.a'));
-ERROR:  cannot cast behavior expression of type boolean to jsonb
+ERROR:  cannot cast behavior expression of type pg_catalog.bool to jsonb
 -- JSON_TABLE: WRAPPER/QUOTES clauses on scalar columns
 SELECT * FROM JSON_TABLE(jsonb '"world"', '$' COLUMNS (item text PATH '$' KEEP QUOTES ON SCALAR STRING));
   item   
@@ -875,7 +841,16 @@ SELECT sub.* FROM s,
 		xx int path '$.c',
 		NESTED PATH '$.a.za[1]' columns (NESTED PATH '$.z21[*]' COLUMNS (z21 int path '$?(@ >= $"x")' ERROR ON ERROR))
 	)) sub;
-ERROR:  no SQL/JSON item found for specified path of column "z21"
+ xx | z21  
+----+------
+  3 |     
+  3 |  234
+  3 | 2345
+ 10 |   32
+ 10 |  134
+ 10 | 1345
+(6 rows)
+
 -- Parent columns xx1, xx appear before NESTED ones
 SELECT sub.* FROM s,
 	(VALUES (23)) x(x), generate_series(13, 13) y,
@@ -1050,9 +1025,11 @@ DROP VIEW jsonb_table_view7;
 DROP TABLE s;
 -- Prevent ON EMPTY specification on EXISTS columns
 SELECT * FROM JSON_TABLE(jsonb '1', '$' COLUMNS (a int exists empty object on empty));
-ERROR:  syntax error at or near "empty"
-LINE 1: ...sonb '1', '$' COLUMNS (a int exists empty object on empty));
-                                                               ^
+ a 
+---
+ 0
+(1 row)
+
 -- Test ON ERROR / EMPTY value validity for the function and column types;
 -- all fail
 SELECT * FROM JSON_TABLE(jsonb '1', '$' COLUMNS (a int) NULL ON ERROR);

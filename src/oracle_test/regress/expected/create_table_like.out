@@ -220,11 +220,11 @@ CREATE STATISTICS ext_stat ON (a || b) FROM test_like_6;
 ALTER TABLE test_like_6 DROP COLUMN c;
 CREATE TABLE test_like_6c (LIKE test_like_6 INCLUDING ALL);
 \d+ test_like_6c
-                                Table "public.test_like_6c"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | integer |           |          |         | plain    |              | 
- b      | text    |           |          |         | extended |              | 
+                                          Table "public.test_like_6c"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ a      | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ b      | text            |           |          |         |           | extended |              | 
 Statistics objects:
     "public.test_like_6c_expr_stat" ON (a || b) FROM test_like_6c
 

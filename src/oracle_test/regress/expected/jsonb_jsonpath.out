@@ -2579,6 +2579,13 @@ select jsonb_path_query('1234', '$.string().type()');
  "string"
 (1 row)
 
+select jsonb_path_query('[2, true]', '$.string()');
+ jsonb_path_query 
+------------------
+ "2"
+ "true"
+(2 rows)
+
 select jsonb_path_query('"2023-08-15 12:34:56 +5:30"', '$.timestamp().string()');
 ERROR:  cannot convert value from timestamptz to timestamp without time zone usage
 HINT:  Use *_tz() function for time zone support.

@@ -858,6 +858,7 @@ alter table atacc1 add constraint "atacc1_pkey" primary key (test);
 \d atacc1
 alter table atacc1 alter column test drop not null;
 \d atacc1
+alter table atacc1 drop constraint "atacc1_pkey";
 alter table atacc1 alter column test drop not null;
 \d atacc1
 insert into atacc1 values (null);

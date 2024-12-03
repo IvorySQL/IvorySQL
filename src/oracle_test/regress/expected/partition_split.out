@@ -1559,6 +1559,6 @@ RESET search_path;
 --
 DROP SCHEMA partition_split_schema;
 ERROR:  cannot drop schema partition_split_schema because other objects depend on it
-DETAIL:  table salespeople2_5 depends on schema partition_split_schema
+DETAIL:  table partition_split_schema.salespeople2_5 depends on schema partition_split_schema
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP SCHEMA partition_split_schema2;
