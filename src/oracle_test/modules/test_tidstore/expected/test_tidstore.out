@@ -1,7 +1,3 @@
--- Note: The test code use an array of TIDs for verification similar
--- to vacuum's dead item array pre-PG17. To avoid adding duplicates,
--- each call to do_set_block_offsets() should use different block
--- numbers.
 CREATE EXTENSION test_tidstore;
 -- To hide the output of do_set_block_offsets()
 CREATE TEMP TABLE hideblocks(blockno bigint);
@@ -36,6 +32,20 @@ SELECT do_set_block_offsets(blk, array_agg(off)::int2[])
     (VALUES (0), (1), (:maxblkno / 2), (:maxblkno - 1), (:maxblkno)) AS blocks(blk),
     (VALUES (1), (2), (:maxoffset / 2), (:maxoffset - 1), (:maxoffset)) AS offsets(off)
   GROUP BY blk;
+-- Test offsets embedded in the bitmap header.
+SELECT do_set_block_offsets(501, array[greatest((random() * :maxoffset)::int, 1)]::int2[]);
+ do_set_block_offsets 
+----------------------
+                  501
+(1 row)
+
+SELECT do_set_block_offsets(502, array_agg(DISTINCT greatest((random() * :maxoffset)::int, 1))::int2[])
+  FROM generate_series(1, 3);
+ do_set_block_offsets 
+----------------------
+                  502
+(1 row)
+
 -- Add enough TIDs to cause the store to appear "full", compared
 -- to the allocated memory it started out with. This is easier
 -- with memory contexts in local memory.
@@ -65,12 +75,138 @@ SELECT test_destroy();
  
 (1 row)
 
+-- Test replacements crossing RT_CHILDPTR_IS_VALUE in both directions
+SELECT test_create(false);
+ test_create 
+-------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1,2]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1,2,3]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1,2,3,4]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1,2,3,4,100]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1,2,3,4]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1,2,3]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1,2]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT do_set_block_offsets(1, array[1]::int2[]); SELECT check_set_block_offsets();
+ do_set_block_offsets 
+----------------------
+                    1
+(1 row)
+
+ check_set_block_offsets 
+-------------------------
+ 
+(1 row)
+
+SELECT test_destroy();
+ test_destroy 
+--------------
+ 
+(1 row)
+
 -- Use shared memory this time. We can't do that in test_radixtree.sql,
 -- because unused static functions would raise warnings there.
 SELECT test_create(true);
  test_create 
 -------------
  
+(1 row)
+
+-- Test offsets embedded in the bitmap header.
+SELECT do_set_block_offsets(501, array[greatest((random() * :maxoffset)::int, 1)]::int2[]);
+ do_set_block_offsets 
+----------------------
+                  501
+(1 row)
+
+SELECT do_set_block_offsets(502, array_agg(DISTINCT greatest((random() * :maxoffset)::int, 1))::int2[])
+  FROM generate_series(1, 3);
+ do_set_block_offsets 
+----------------------
+                  502
 (1 row)
 
 -- Random TIDs test. The offset numbers are randomized and must be

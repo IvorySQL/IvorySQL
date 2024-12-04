@@ -114,7 +114,8 @@ typedef bool (*aminsert_function) (Relation indexRelation,
 								   struct IndexInfo *indexInfo);
 
 /* cleanup after insert */
-typedef void (*aminsertcleanup_function) (struct IndexInfo *indexInfo);
+typedef void (*aminsertcleanup_function) (Relation indexRelation,
+										  struct IndexInfo *indexInfo);
 
 /* bulk delete */
 typedef IndexBulkDeleteResult *(*ambulkdelete_function) (IndexVacuumInfo *info,
@@ -194,7 +195,7 @@ typedef void (*amrestrpos_function) (IndexScanDesc scan);
  */
 
 /* estimate size of parallel scan descriptor */
-typedef Size (*amestimateparallelscan_function) (void);
+typedef Size (*amestimateparallelscan_function) (int nkeys, int norderbys);
 
 /* prepare for parallel index scan */
 typedef void (*aminitparallelscan_function) (void *target);

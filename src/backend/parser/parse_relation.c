@@ -2081,8 +2081,6 @@ addRangeTableEntryForTableFunc(ParseState *pstate,
 	Assert(list_length(tf->coltypmods) == list_length(tf->colnames));
 	Assert(list_length(tf->colcollations) == list_length(tf->colnames));
 
-	refname = alias ? alias->aliasname : pstrdup("xmltable");
-
 	rte->rtekind = RTE_TABLEFUNC;
 	rte->relid = InvalidOid;
 	rte->subquery = NULL;
@@ -2092,6 +2090,8 @@ addRangeTableEntryForTableFunc(ParseState *pstate,
 	rte->colcollations = tf->colcollations;
 	rte->alias = alias;
 
+	refname = alias ? alias->aliasname :
+		pstrdup(tf->functype == TFT_XMLTABLE ? "xmltable" : "json_table");
 	eref = alias ? copyObject(alias) : makeAlias(refname, NIL);
 	numaliases = list_length(eref->colnames);
 
@@ -2104,7 +2104,7 @@ addRangeTableEntryForTableFunc(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 				 errmsg("%s function has %d columns available but %d columns specified",
-						"XMLTABLE",
+						tf->functype == TFT_XMLTABLE ? "XMLTABLE" : "JSON_TABLE",
 						list_length(tf->colnames), numaliases)));
 
 	rte->eref = eref;
@@ -2748,12 +2748,17 @@ expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
 				{
 					RangeTblFunction *rtfunc = (RangeTblFunction *) lfirst(lc);
 					TypeFuncClass functypclass;
-					Oid			funcrettype;
-					TupleDesc	tupdesc;
+					Oid			funcrettype = InvalidOid;
+					TupleDesc	tupdesc = NULL;
 
-					functypclass = get_expr_result_type(rtfunc->funcexpr,
-														&funcrettype,
-														&tupdesc);
+					/* If it has a coldeflist, it returns RECORD */
+					if (rtfunc->funccolnames != NIL)
+						functypclass = TYPEFUNC_RECORD;
+					else
+						functypclass = get_expr_result_type(rtfunc->funcexpr,
+															&funcrettype,
+															&tupdesc);
+
 					if (functypclass == TYPEFUNC_COMPOSITE ||
 						functypclass == TYPEFUNC_COMPOSITE_DOMAIN)
 					{
@@ -3378,6 +3383,10 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 						attnum <= atts_done + rtfunc->funccolcount)
 					{
 						TupleDesc	tupdesc;
+
+						/* If it has a coldeflist, it returns RECORD */
+						if (rtfunc->funccolnames != NIL)
+							return false;	/* can't have any dropped columns */
 
 						tupdesc = get_expr_result_tupdesc(rtfunc->funcexpr,
 														  true);

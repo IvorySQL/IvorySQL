@@ -780,7 +780,7 @@ sub backup_fs_cold
 
 =pod
 
-=item $node->init_from_backup(root_node, backup_name)
+=item $node->init_from_backup(root_node, backup_name, %params)
 
 Initialize a node from a backup, which may come from this node or a different
 node. root_node must be a PostgreSQL::Test::Cluster reference, backup_name the string name
@@ -790,8 +790,13 @@ Does not start the node after initializing it.
 
 By default, the backup is assumed to be plain format.  To restore from
 a tar-format backup, pass the name of the tar program to use in the
-keyword parameter tar_program.  Note that tablespace tar files aren't
-handled here.
+keyword parameter tar_program.
+
+If there are tablespace present in the backup, include tablespace_map as
+a keyword parameter whose values is a hash. When combine_with_prior is used,
+the hash keys are the tablespace pathnames used in the backup; otherwise,
+they are tablespace OIDs.  In either case, the values are the tablespace
+pathnames that should be used for the target cluster.
 
 To restore from an incremental backup, pass the parameter combine_with_prior
 as a reference to an array of prior backup names with which this backup
@@ -836,22 +841,35 @@ sub init_from_backup
 	my $data_path = $self->data_dir;
 	if (defined $params{combine_with_prior})
 	{
-		my @prior_backups = @{$params{combine_with_prior}};
+		my @prior_backups = @{ $params{combine_with_prior} };
 		my @prior_backup_path;
 
 		for my $prior_backup_name (@prior_backups)
 		{
 			push @prior_backup_path,
-				$root_node->backup_dir . '/' . $prior_backup_name;
+			  $root_node->backup_dir . '/' . $prior_backup_name;
 		}
 
 		local %ENV = $self->_get_env();
-		PostgreSQL::Test::Utils::system_or_bail('pg_combinebackup', '-d',
-			@prior_backup_path, $backup_path, '-o', $data_path);
+		my @combineargs = ('pg_combinebackup', '-d');
+		if (exists $params{tablespace_map})
+		{
+			while (my ($olddir, $newdir) = each %{ $params{tablespace_map} })
+			{
+				push @combineargs, "-T$olddir=$newdir";
+			}
+		}
+		# use the combine mode (clone/copy-file-range) if specified
+		if (defined $params{combine_mode})
+		{
+			push @combineargs, $params{combine_mode};
+		}
+		push @combineargs, @prior_backup_path, $backup_path, '-o', $data_path;
+		PostgreSQL::Test::Utils::system_or_bail(@combineargs);
 	}
 	elsif (defined $params{tar_program})
 	{
-		mkdir($data_path);
+		mkdir($data_path) || die "mkdir $data_path: $!";
 		PostgreSQL::Test::Utils::system_or_bail($params{tar_program}, 'xf',
 			$backup_path . '/base.tar',
 			'-C', $data_path);
@@ -859,11 +877,83 @@ sub init_from_backup
 			$params{tar_program},         'xf',
 			$backup_path . '/pg_wal.tar', '-C',
 			$data_path . '/pg_wal');
+
+		# We need to generate a tablespace_map file.
+		open(my $tsmap, ">", "$data_path/tablespace_map")
+		  || die "$data_path/tablespace_map: $!";
+
+		# Extract tarfiles and add tablespace_map entries
+		my @tstars = grep { /^\d+.tar/ }
+		  PostgreSQL::Test::Utils::slurp_dir($backup_path);
+		for my $tstar (@tstars)
+		{
+			my $tsoid = $tstar;
+			$tsoid =~ s/\.tar$//;
+
+			die "no tablespace mapping for $tstar"
+			  if !exists $params{tablespace_map}
+			  || !exists $params{tablespace_map}{$tsoid};
+			my $newdir = $params{tablespace_map}{$tsoid};
+
+			mkdir($newdir) || die "mkdir $newdir: $!";
+			PostgreSQL::Test::Utils::system_or_bail($params{tar_program},
+				'xf', $backup_path . '/' . $tstar,
+				'-C', $newdir);
+
+			my $escaped_newdir = $newdir;
+			$escaped_newdir =~ s/\\/\\\\/g;
+			print $tsmap "$tsoid $escaped_newdir\n";
+		}
+
+		# Close tablespace_map.
+		close($tsmap);
 	}
 	else
 	{
+		my @tsoids;
 		rmdir($data_path);
-		PostgreSQL::Test::RecursiveCopy::copypath($backup_path, $data_path);
+
+		# Copy the main backup. If we see a tablespace directory for which we
+		# have a tablespace mapping, skip it, but remember that we saw it.
+		PostgreSQL::Test::RecursiveCopy::copypath(
+			$backup_path,
+			$data_path,
+			'filterfn' => sub {
+				my ($path) = @_;
+				if ($path =~ /^pg_tblspc\/(\d+)$/
+					&& exists $params{tablespace_map}{$1})
+				{
+					push @tsoids, $1;
+					return 0;
+				}
+				return 1;
+			});
+
+		if (@tsoids > 0)
+		{
+			# We need to generate a tablespace_map file.
+			open(my $tsmap, ">", "$data_path/tablespace_map")
+			  || die "$data_path/tablespace_map: $!";
+
+			# Now use the list of tablespace links to copy each tablespace.
+			for my $tsoid (@tsoids)
+			{
+				die "no tablespace mapping for $tsoid"
+				  if !exists $params{tablespace_map}
+				  || !exists $params{tablespace_map}{$tsoid};
+
+				my $olddir = $backup_path . '/pg_tblspc/' . $tsoid;
+				my $newdir = $params{tablespace_map}{$tsoid};
+				PostgreSQL::Test::RecursiveCopy::copypath($olddir, $newdir);
+
+				my $escaped_newdir = $newdir;
+				$escaped_newdir =~ s/\\/\\\\/g;
+				print $tsmap "$tsoid $escaped_newdir\n";
+			}
+
+			# Close tablespace_map.
+			close($tsmap);
+		}
 	}
 	chmod(0700, $data_path) or die $!;
 
@@ -957,8 +1047,8 @@ sub start
 
 	if ($ret != 0)
 	{
-		print "# pg_ctl start failed; logfile:\n";
-		print PostgreSQL::Test::Utils::slurp_file($self->logfile);
+		print "# pg_ctl start failed; see logfile for details: "
+		  . $self->logfile . "\n";
 
 		# pg_ctl could have timed out, so check to see if there's a pid file;
 		# otherwise our END block will fail to shut down the new postmaster.
@@ -1090,14 +1180,13 @@ sub restart
 
 	# -w is now the default but having it here does no harm and helps
 	# compatibility with older versions.
-	$ret = PostgreSQL::Test::Utils::system_log(
-		'pg_ctl', '-w', '-D', $self->data_dir,
-		'-l', $self->logfile, 'restart');
+	$ret = PostgreSQL::Test::Utils::system_log('pg_ctl', '-w', '-D',
+		$self->data_dir, '-l', $self->logfile, 'restart');
 
 	if ($ret != 0)
 	{
-		print "# pg_ctl restart failed; logfile:\n";
-		print PostgreSQL::Test::Utils::slurp_file($self->logfile);
+		print "# pg_ctl restart failed; see logfile for details: "
+		  . $self->logfile . "\n";
 
 		# pg_ctl could have timed out, so check to see if there's a pid file;
 		# otherwise our END block will fail to shut down the new postmaster.
@@ -3267,6 +3356,39 @@ sub create_logical_slot_on_standby
 
 	is($self->slot($slot_name)->{'slot_type'}, 'logical', $slot_name . ' on standby created')
 		or die "could not create slot" . $slot_name;
+}
+
+=pod
+
+=item $node->validate_slot_inactive_since(self, slot_name, reference_time)
+
+Validate inactive_since value of a given replication slot against the reference
+time and return it.
+
+=cut
+
+sub validate_slot_inactive_since
+{
+	my ($self, $slot_name, $reference_time) = @_;
+	my $name = $self->name;
+
+	my $inactive_since = $self->safe_psql(
+		'postgres',
+		qq(SELECT inactive_since FROM pg_replication_slots
+			WHERE slot_name = '$slot_name' AND inactive_since IS NOT NULL;)
+	);
+
+	# Check that the inactive_since is sane
+	is( $self->safe_psql(
+			'postgres',
+			qq[SELECT '$inactive_since'::timestamptz > to_timestamp(0) AND
+				'$inactive_since'::timestamptz > '$reference_time'::timestamptz;]
+		),
+		't',
+		"last inactive time for slot $slot_name is valid on node $name")
+	  or die "could not validate captured inactive_since for slot $slot_name";
+
+	return $inactive_since;
 }
 
 =pod

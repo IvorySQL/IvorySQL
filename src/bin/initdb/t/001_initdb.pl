@@ -98,7 +98,7 @@ else
 SKIP:
 {
 	skip "unix-style permissions not supported on Windows", 2
-	  if ($windows_os);
+	  if ($windows_os || $Config::Config{osname} eq 'cygwin');
 
 	# Init a new db with group access
 	my $datadir_group = "$tempdir/data_group";
@@ -200,6 +200,7 @@ command_ok(
 	[
 		'initdb', '--no-sync',
 		'--locale-provider=builtin', '-E UTF-8',
+		'--lc-collate=C', '--lc-ctype=C',
 		'--builtin-locale=C.UTF-8', "$tempdir/data8"
 	],
 	'locale provider builtin with -E UTF-8 --builtin-locale=C.UTF-8');
@@ -208,6 +209,7 @@ command_fails(
 	[
 		'initdb', '--no-sync',
 		'--locale-provider=builtin', '-E SQL_ASCII',
+		'--lc-collate=C', '--lc-ctype=C',
 		'--builtin-locale=C.UTF-8', "$tempdir/data9"
 	],
 	'locale provider builtin with --builtin-locale=C.UTF-8 fails for SQL_ASCII'

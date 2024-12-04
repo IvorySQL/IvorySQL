@@ -64,7 +64,7 @@
  * small enough.
  *
  * There are two other techniques described in the paper that are not
- * impemented here:
+ * implemented here:
  * - path compression "...removes all inner nodes that have only a single child."
  * - lazy path expansion "...inner nodes are only created if they are required
  *   to distinguish at least two leaf nodes."
@@ -105,6 +105,10 @@
  *   involving a pointer to the value type, to calculate size.
  *     NOTE: implies that the value is in fact variable-length,
  *     so do not set for fixed-length values.
+ * - RT_RUNTIME_EMBEDDABLE_VALUE - for variable length values, allows
+ *   storing the value in a child pointer slot, rather than as a single-
+ *   value leaf, if small enough. This requires that the value, when
+ *   read as a child pointer, can be tagged in the lowest bit.
  *
  * Optional parameters:
  * - RT_SHMEM - if defined, the radix tree is created in the DSA area
@@ -381,7 +385,7 @@ typedef struct RT_NODE
 
 	/*
 	 * Number of children. uint8 is sufficient for all node kinds, because
-	 * nodes shrink when this number gets lower than some thresold. Since
+	 * nodes shrink when this number gets lower than some threshold. Since
 	 * node256 cannot possibly have zero children, we let the counter overflow
 	 * and we interpret zero as "256" for this node kind.
 	 */
@@ -437,7 +441,13 @@ static inline bool
 RT_VALUE_IS_EMBEDDABLE(RT_VALUE_TYPE * value_p)
 {
 #ifdef RT_VARLEN_VALUE_SIZE
+
+#ifdef RT_RUNTIME_EMBEDDABLE_VALUE
+	return RT_GET_VALUE_SIZE(value_p) <= sizeof(RT_PTR_ALLOC);
+#else
 	return false;
+#endif
+
 #else
 	return RT_GET_VALUE_SIZE(value_p) <= sizeof(RT_PTR_ALLOC);
 #endif
@@ -451,7 +461,19 @@ static inline bool
 RT_CHILDPTR_IS_VALUE(RT_PTR_ALLOC child)
 {
 #ifdef RT_VARLEN_VALUE_SIZE
+
+#ifdef RT_RUNTIME_EMBEDDABLE_VALUE
+	/* check for pointer tag */
+#ifdef RT_SHMEM
+	return child & 1;
+#else
+	return ((uintptr_t) child) & 1;
+#endif
+
+#else
 	return false;
+#endif
+
 #else
 	return sizeof(RT_VALUE_TYPE) <= sizeof(RT_PTR_ALLOC);
 #endif
@@ -519,14 +541,18 @@ typedef struct RT_NODE_48
 {
 	RT_NODE		base;
 
-	/* The index of slots for each fanout */
+	/* bitmap to track which slots are in use */
+	bitmapword	isset[RT_BM_IDX(RT_FANOUT_48_MAX)];
+
+	/*
+	 * Lookup table for indexes into the children[] array. We make this the
+	 * last fixed-size member so that it's convenient to memset separately
+	 * from the previous members.
+	 */
 	uint8		slot_idxs[RT_NODE_MAX_SLOTS];
 
 /* Invalid index */
 #define RT_INVALID_SLOT_IDX	0xFF
-
-	/* bitmap to track which slots are in use */
-	bitmapword	isset[RT_BM_IDX(RT_FANOUT_48_MAX)];
 
 	/* number of children depends on size class */
 	RT_PTR_ALLOC children[FLEXIBLE_ARRAY_MEMBER];
@@ -621,27 +647,27 @@ typedef struct RT_SIZE_CLASS_ELEM
 
 static const RT_SIZE_CLASS_ELEM RT_SIZE_CLASS_INFO[] = {
 	[RT_CLASS_4] = {
-		.name = RT_STR(RT_PREFIX) "radix_tree node4",
+		.name = RT_STR(RT_PREFIX) "_radix_tree node4",
 		.fanout = RT_FANOUT_4,
 		.allocsize = sizeof(RT_NODE_4) + RT_FANOUT_4 * sizeof(RT_PTR_ALLOC),
 	},
 	[RT_CLASS_16_LO] = {
-		.name = RT_STR(RT_PREFIX) "radix_tree node16_lo",
+		.name = RT_STR(RT_PREFIX) "_radix_tree node16_lo",
 		.fanout = RT_FANOUT_16_LO,
 		.allocsize = sizeof(RT_NODE_16) + RT_FANOUT_16_LO * sizeof(RT_PTR_ALLOC),
 	},
 	[RT_CLASS_16_HI] = {
-		.name = RT_STR(RT_PREFIX) "radix_tree node16_hi",
+		.name = RT_STR(RT_PREFIX) "_radix_tree node16_hi",
 		.fanout = RT_FANOUT_16_HI,
 		.allocsize = sizeof(RT_NODE_16) + RT_FANOUT_16_HI * sizeof(RT_PTR_ALLOC),
 	},
 	[RT_CLASS_48] = {
-		.name = RT_STR(RT_PREFIX) "radix_tree node48",
+		.name = RT_STR(RT_PREFIX) "_radix_tree node48",
 		.fanout = RT_FANOUT_48,
 		.allocsize = sizeof(RT_NODE_48) + RT_FANOUT_48 * sizeof(RT_PTR_ALLOC),
 	},
 	[RT_CLASS_256] = {
-		.name = RT_STR(RT_PREFIX) "radix_tree node256",
+		.name = RT_STR(RT_PREFIX) "_radix_tree node256",
 		.fanout = RT_FANOUT_256,
 		.allocsize = sizeof(RT_NODE_256),
 	},
@@ -691,6 +717,7 @@ struct RT_RADIX_TREE
 	/* leaf_context is used only for single-value leaves */
 	MemoryContextData *leaf_context;
 #endif
+	MemoryContextData *iter_context;
 };
 
 /*
@@ -822,27 +849,25 @@ RT_ALLOC_NODE(RT_RADIX_TREE * tree, const uint8 kind, const RT_SIZE_CLASS size_c
 
 	/* initialize contents */
 
-	memset(node, 0, sizeof(RT_NODE));
 	switch (kind)
 	{
 		case RT_NODE_KIND_4:
+			memset(node, 0, offsetof(RT_NODE_4, children));
+			break;
 		case RT_NODE_KIND_16:
+			memset(node, 0, offsetof(RT_NODE_16, children));
 			break;
 		case RT_NODE_KIND_48:
 			{
 				RT_NODE_48 *n48 = (RT_NODE_48 *) node;
 
-				memset(n48->isset, 0, sizeof(n48->isset));
+				memset(n48, 0, offsetof(RT_NODE_48, slot_idxs));
 				memset(n48->slot_idxs, RT_INVALID_SLOT_IDX, sizeof(n48->slot_idxs));
 				break;
 			}
 		case RT_NODE_KIND_256:
-			{
-				RT_NODE_256 *n256 = (RT_NODE_256 *) node;
-
-				memset(n256->isset, 0, sizeof(n256->isset));
-				break;
-			}
+			memset(node, 0, offsetof(RT_NODE_256, children));
+			break;
 		default:
 			pg_unreachable();
 	}
@@ -1558,7 +1583,7 @@ RT_EXTEND_UP(RT_RADIX_TREE * tree, uint64 key)
 
 	Assert(shift < target_shift);
 
-	/* Grow tree upwards until start shift can accomodate the key */
+	/* Grow tree upwards until start shift can accommodate the key */
 	while (shift < target_shift)
 	{
 		RT_CHILD_PTR node;
@@ -1726,14 +1751,27 @@ have_slot:
 
 	if (RT_VALUE_IS_EMBEDDABLE(value_p))
 	{
+		/* free the existing leaf */
+		if (found && !RT_CHILDPTR_IS_VALUE(*slot))
+			RT_FREE_LEAF(tree, *slot);
+
 		/* store value directly in child pointer slot */
 		memcpy(slot, value_p, value_sz);
+
+#ifdef RT_RUNTIME_EMBEDDABLE_VALUE
+		/* tag child pointer */
+#ifdef RT_SHMEM
+		*slot |= 1;
+#else
+		*((uintptr_t *) slot) |= 1;
+#endif
+#endif
 	}
 	else
 	{
 		RT_CHILD_PTR leaf;
 
-		if (found)
+		if (found && !RT_CHILDPTR_IS_VALUE(*slot))
 		{
 			Assert(RT_PTR_ALLOC_IS_VALID(*slot));
 			leaf.alloc = *slot;
@@ -1796,6 +1834,14 @@ RT_CREATE(MemoryContext ctx)
 	tree = (RT_RADIX_TREE *) palloc0(sizeof(RT_RADIX_TREE));
 	tree->context = ctx;
 
+	/*
+	 * Separate context for iteration in case the tree context doesn't support
+	 * pfree
+	 */
+	tree->iter_context = AllocSetContextCreate(ctx,
+											   RT_STR(RT_PREFIX) "_radix_tree iter context",
+											   ALLOCSET_SMALL_SIZES);
+
 #ifdef RT_SHMEM
 	tree->dsa = dsa;
 	dp = dsa_allocate0(dsa, sizeof(RT_RADIX_TREE_CONTROL));
@@ -1829,7 +1875,7 @@ RT_CREATE(MemoryContext ctx)
 	 */
 	if (sizeof(RT_VALUE_TYPE) > sizeof(RT_PTR_ALLOC))
 		tree->leaf_context = SlabContextCreate(ctx,
-											   RT_STR(RT_PREFIX) "radix_tree leaf contex",
+											   RT_STR(RT_PREFIX) "_radix_tree leaf context",
 											   RT_SLAB_BLOCK_SIZE(sizeof(RT_VALUE_TYPE)),
 											   sizeof(RT_VALUE_TYPE));
 #endif							/* !RT_VARLEN_VALUE_SIZE */
@@ -2038,7 +2084,7 @@ RT_BEGIN_ITERATE(RT_RADIX_TREE * tree)
 	RT_ITER    *iter;
 	RT_CHILD_PTR root;
 
-	iter = (RT_ITER *) MemoryContextAllocZero(tree->context,
+	iter = (RT_ITER *) MemoryContextAllocZero(tree->iter_context,
 											  sizeof(RT_ITER));
 	iter->tree = tree;
 
@@ -2261,7 +2307,7 @@ RT_COPY_ARRAYS_AND_DELETE(uint8 *dst_chunks, RT_PTR_ALLOC * dst_children,
 /*
  * Note: While all node-growing functions are called to perform an insertion
  * when no more space is available, shrinking is not a hard-and-fast requirement.
- * When shrinking nodes, we generally wait until the count is about 3/4* of
+ * When shrinking nodes, we generally wait until the count is about 3/4 of
  * the next lower node's fanout. This prevents ping-ponging between different
  * node sizes.
  *
@@ -2512,9 +2558,7 @@ RT_REMOVE_CHILD_4(RT_RADIX_TREE * tree, RT_PTR_ALLOC * parent_slot, RT_CHILD_PTR
 }
 
 /*
- * Search for the child pointer corresponding to "key" in the given node.
- *
- * Delete the node and return true if the key is found, otherwise return false.
+ * Delete the child pointer corresponding to "key" in the given node.
  */
 static inline void
 RT_NODE_DELETE(RT_RADIX_TREE * tree, RT_PTR_ALLOC * parent_slot, RT_CHILD_PTR node, uint8 chunk, RT_PTR_ALLOC * slot)
@@ -2618,7 +2662,7 @@ RT_DELETE(RT_RADIX_TREE * tree, uint64 key)
 	return deleted;
 }
 
-#endif							/* USE_RT_DELETE */
+#endif							/* RT_USE_DELETE */
 
 /***************** UTILITY FUNCTIONS *****************/
 
@@ -2879,6 +2923,7 @@ RT_DUMP_NODE(RT_NODE * node)
 #undef RT_DEFINE
 #undef RT_VALUE_TYPE
 #undef RT_VARLEN_VALUE_SIZE
+#undef RT_RUNTIME_EMBEDDABLE_VALUE
 #undef RT_SHMEM
 #undef RT_USE_DELETE
 #undef RT_DEBUG
@@ -2954,7 +2999,6 @@ RT_DUMP_NODE(RT_NODE * node)
 #undef RT_BEGIN_ITERATE
 #undef RT_ITERATE_NEXT
 #undef RT_END_ITERATE
-#undef RT_USE_DELETE
 #undef RT_DELETE
 #undef RT_MEMORY_USAGE
 #undef RT_DUMP_NODE

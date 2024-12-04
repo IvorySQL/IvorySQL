@@ -116,7 +116,8 @@ test_create(PG_FUNCTION_ARGS)
 		dsa_pin_mapping(TidStoreGetDSA(tidstore));
 	}
 	else
-		tidstore = TidStoreCreateLocal(tidstore_max_size);
+		/* VACUUM uses insert only, so we test the other option. */
+		tidstore = TidStoreCreateLocal(tidstore_max_size, false);
 
 	tidstore_empty_size = TidStoreMemoryUsage(tidstore);
 
@@ -145,6 +146,25 @@ sanity_check_array(ArrayType *ta)
 				 errmsg("argument must be empty or one-dimensional array")));
 }
 
+static void
+check_tidstore_available(void)
+{
+	if (tidstore == NULL)
+		elog(ERROR, "tidstore is not created");
+}
+
+static void
+purge_from_verification_array(BlockNumber blkno)
+{
+	int			dst = 0;
+
+	for (int src = 0; src < items.num_tids; src++)
+		if (ItemPointerGetBlockNumber(&items.insert_tids[src]) != blkno)
+			items.insert_tids[dst++] = items.insert_tids[src];
+	items.num_tids = dst;
+}
+
+
 /* Set the given block and offsets pairs */
 Datum
 do_set_block_offsets(PG_FUNCTION_ARGS)
@@ -154,6 +174,7 @@ do_set_block_offsets(PG_FUNCTION_ARGS)
 	OffsetNumber *offs;
 	int			noffs;
 
+	check_tidstore_available();
 	sanity_check_array(ta);
 
 	noffs = ArrayGetNItems(ARR_NDIM(ta), ARR_DIMS(ta));
@@ -163,6 +184,9 @@ do_set_block_offsets(PG_FUNCTION_ARGS)
 	TidStoreLockExclusive(tidstore);
 	TidStoreSetBlockOffsets(tidstore, blkno, offs, noffs);
 	TidStoreUnlock(tidstore);
+
+	/* Remove the existing items of blkno from the verification array */
+	purge_from_verification_array(blkno);
 
 	/* Set TIDs in verification array */
 	for (int i = 0; i < noffs; i++)
@@ -200,6 +224,8 @@ check_set_block_offsets(PG_FUNCTION_ARGS)
 	int			num_iter_tids = 0;
 	int			num_lookup_tids = 0;
 	BlockNumber prevblkno = 0;
+
+	check_tidstore_available();
 
 	/* lookup each member in the verification array */
 	for (int i = 0; i < items.num_tids; i++)
@@ -289,6 +315,8 @@ test_is_full(PG_FUNCTION_ARGS)
 {
 	bool		is_full;
 
+	check_tidstore_available();
+
 	is_full = (TidStoreMemoryUsage(tidstore) > tidstore_empty_size);
 
 	PG_RETURN_BOOL(is_full);
@@ -298,6 +326,8 @@ test_is_full(PG_FUNCTION_ARGS)
 Datum
 test_destroy(PG_FUNCTION_ARGS)
 {
+	check_tidstore_available();
+
 	TidStoreDestroy(tidstore);
 	tidstore = NULL;
 	items.num_tids = 0;

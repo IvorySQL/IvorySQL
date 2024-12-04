@@ -276,6 +276,10 @@ extern void aclcheck_error_type(AclResult aclerr, Oid typeOid);
 
 extern void recordExtObjInitPriv(Oid objoid, Oid classoid);
 extern void removeExtObjInitPriv(Oid objoid, Oid classoid);
+extern void ReplaceRoleInInitPriv(Oid oldroleid, Oid newroleid,
+								  Oid classid, Oid objid, int32 objsubid);
+extern void RemoveRoleFromInitPriv(Oid roleid,
+								   Oid classid, Oid objid, int32 objsubid);
 
 
 /* ownercheck routines just return true (owner) or false (not) */

@@ -67,6 +67,12 @@ static int	ssl_external_passwd_cb(char *buf, int size, int rwflag, void *userdat
 static int	dummy_ssl_passwd_cb(char *buf, int size, int rwflag, void *userdata);
 static int	verify_cb(int ok, X509_STORE_CTX *ctx);
 static void info_cb(const SSL *ssl, int type, int args);
+static int	alpn_cb(SSL *ssl,
+					const unsigned char **out,
+					unsigned char *outlen,
+					const unsigned char *in,
+					unsigned int inlen,
+					void *userdata);
 static bool initialize_dh(SSL_CTX *context, bool isServerStart);
 static bool initialize_ecdh(SSL_CTX *context, bool isServerStart);
 static const char *SSLerrmessage(unsigned long ecode);
@@ -195,7 +201,7 @@ be_tls_init(bool isServerStart)
 		{
 			ereport(isServerStart ? FATAL : LOG,
 			/*- translator: first %s is a GUC option name, second %s is its value */
-					(errmsg("%s setting \"%s\" not supported by this build",
+					(errmsg("\"%s\" setting \"%s\" not supported by this build",
 							"ssl_min_protocol_version",
 							GetConfigOption("ssl_min_protocol_version",
 											false, false))));
@@ -218,7 +224,7 @@ be_tls_init(bool isServerStart)
 		{
 			ereport(isServerStart ? FATAL : LOG,
 			/*- translator: first %s is a GUC option name, second %s is its value */
-					(errmsg("%s setting \"%s\" not supported by this build",
+					(errmsg("\"%s\" setting \"%s\" not supported by this build",
 							"ssl_max_protocol_version",
 							GetConfigOption("ssl_max_protocol_version",
 											false, false))));
@@ -245,7 +251,7 @@ be_tls_init(bool isServerStart)
 		{
 			ereport(isServerStart ? FATAL : LOG,
 					(errmsg("could not set SSL protocol version range"),
-					 errdetail("%s cannot be higher than %s",
+					 errdetail("\"%s\" cannot be higher than \"%s\"",
 							   "ssl_min_protocol_version",
 							   "ssl_max_protocol_version")));
 			goto error;
@@ -261,14 +267,19 @@ be_tls_init(bool isServerStart)
 	/* disallow SSL compression */
 	SSL_CTX_set_options(context, SSL_OP_NO_COMPRESSION);
 
-#ifdef SSL_OP_NO_RENEGOTIATION
-
 	/*
-	 * Disallow SSL renegotiation, option available since 1.1.0h.  This
-	 * concerns only TLSv1.2 and older protocol versions, as TLSv1.3 has no
-	 * support for renegotiation.
+	 * Disallow SSL renegotiation.  This concerns only TLSv1.2 and older
+	 * protocol versions, as TLSv1.3 has no support for renegotiation.
+	 * SSL_OP_NO_RENEGOTIATION is available in OpenSSL since 1.1.0h (via a
+	 * backport from 1.1.1). SSL_OP_NO_CLIENT_RENEGOTIATION is available in
+	 * LibreSSL since 2.5.1 disallowing all client-initiated renegotiation
+	 * (this is usually on by default).
 	 */
+#ifdef SSL_OP_NO_RENEGOTIATION
 	SSL_CTX_set_options(context, SSL_OP_NO_RENEGOTIATION);
+#endif
+#ifdef SSL_OP_NO_CLIENT_RENEGOTIATION
+	SSL_CTX_set_options(context, SSL_OP_NO_CLIENT_RENEGOTIATION);
 #endif
 
 	/* set up ephemeral DH and ECDH keys */
@@ -432,6 +443,9 @@ be_tls_open_server(Port *port)
 	/* set up debugging/info callback */
 	SSL_CTX_set_info_callback(SSL_context, info_cb);
 
+	/* enable ALPN */
+	SSL_CTX_set_alpn_select_cb(SSL_context, alpn_cb, port);
+
 	if (!(port->ssl = SSL_new(SSL_context)))
 	{
 		ereport(COMMERROR,
@@ -533,6 +547,8 @@ aloop:
 					case SSL_R_TLSV1_ALERT_PROTOCOL_VERSION:
 #ifdef SSL_R_VERSION_TOO_HIGH
 					case SSL_R_VERSION_TOO_HIGH:
+#endif
+#ifdef SSL_R_VERSION_TOO_LOW
 					case SSL_R_VERSION_TOO_LOW:
 #endif
 						give_proto_hint = true;
@@ -569,6 +585,32 @@ aloop:
 				break;
 		}
 		return -1;
+	}
+
+	/* Get the protocol selected by ALPN */
+	port->alpn_used = false;
+	{
+		const unsigned char *selected;
+		unsigned int len;
+
+		SSL_get0_alpn_selected(port->ssl, &selected, &len);
+
+		/* If ALPN is used, check that we negotiated the expected protocol */
+		if (selected != NULL)
+		{
+			if (len == strlen(PG_ALPN_PROTOCOL) &&
+				memcmp(selected, PG_ALPN_PROTOCOL, strlen(PG_ALPN_PROTOCOL)) == 0)
+			{
+				port->alpn_used = true;
+			}
+			else
+			{
+				/* shouldn't happen */
+				ereport(COMMERROR,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("received SSL connection request with unexpected ALPN protocol")));
+			}
+		}
 	}
 
 	/* Get client certificate, if available. */
@@ -1258,6 +1300,52 @@ info_cb(const SSL *ssl, int type, int args)
 			break;
 	}
 }
+
+/* See pqcomm.h comments on OpenSSL implementation of ALPN (RFC 7301) */
+static const unsigned char alpn_protos[] = PG_ALPN_PROTOCOL_VECTOR;
+
+/*
+ * Server callback for ALPN negotiation. We use the standard "helper" function
+ * even though currently we only accept one value.
+ */
+static int
+alpn_cb(SSL *ssl,
+		const unsigned char **out,
+		unsigned char *outlen,
+		const unsigned char *in,
+		unsigned int inlen,
+		void *userdata)
+{
+	/*
+	 * Why does OpenSSL provide a helper function that requires a nonconst
+	 * vector when the callback is declared to take a const vector? What are
+	 * we to do with that?
+	 */
+	int			retval;
+
+	Assert(userdata != NULL);
+	Assert(out != NULL);
+	Assert(outlen != NULL);
+	Assert(in != NULL);
+
+	retval = SSL_select_next_proto((unsigned char **) out, outlen,
+								   alpn_protos, sizeof(alpn_protos),
+								   in, inlen);
+	if (*out == NULL || *outlen > sizeof(alpn_protos) || *outlen <= 0)
+		return SSL_TLSEXT_ERR_NOACK;	/* can't happen */
+
+	if (retval == OPENSSL_NPN_NEGOTIATED)
+		return SSL_TLSEXT_ERR_OK;
+	else
+	{
+		/*
+		 * The client doesn't support our protocol.  Reject the connection
+		 * with TLS "no_application_protocol" alert, per RFC 7301.
+		 */
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
+	}
+}
+
 
 /*
  * Set DH parameters for generating ephemeral DH keys.  The

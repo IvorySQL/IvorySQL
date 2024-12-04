@@ -11,6 +11,7 @@
 
 #include "access/htup_details.h"
 #include "lib/ilist.h"
+#include "lib/pairingheap.h"
 #include "storage/sinval.h"
 #include "utils/hsearch.h"
 #include "utils/relcache.h"
@@ -402,6 +403,11 @@ typedef struct ReorderBufferTXN
 	dlist_node	catchange_node;
 
 	/*
+	 * A node in txn_heap
+	 */
+	pairingheap_node txn_node;
+
+	/*
 	 * Size of this transaction (changes currently in memory, in bytes).
 	 */
 	Size		size;
@@ -630,6 +636,9 @@ struct ReorderBuffer
 
 	/* memory accounting */
 	Size		size;
+
+	/* Max-heap for sizes of all top-level and sub transactions */
+	pairingheap *txn_heap;
 
 	/*
 	 * Statistics about transactions spilled to disk.

@@ -106,19 +106,23 @@ const uint8 pg_number_of_ones[256] = {
 static inline int pg_popcount32_slow(uint32 word);
 static inline int pg_popcount64_slow(uint64 word);
 static uint64 pg_popcount_slow(const char *buf, int bytes);
+static uint64 pg_popcount_masked_slow(const char *buf, int bytes, bits8 mask);
 
 #ifdef TRY_POPCNT_FAST
 static bool pg_popcount_available(void);
 static int	pg_popcount32_choose(uint32 word);
 static int	pg_popcount64_choose(uint64 word);
 static uint64 pg_popcount_choose(const char *buf, int bytes);
+static uint64 pg_popcount_masked_choose(const char *buf, int bytes, bits8 mask);
 static inline int pg_popcount32_fast(uint32 word);
 static inline int pg_popcount64_fast(uint64 word);
 static uint64 pg_popcount_fast(const char *buf, int bytes);
+static uint64 pg_popcount_masked_fast(const char *buf, int bytes, bits8 mask);
 
 int			(*pg_popcount32) (uint32 word) = pg_popcount32_choose;
 int			(*pg_popcount64) (uint64 word) = pg_popcount64_choose;
-uint64		(*pg_popcount) (const char *buf, int bytes) = pg_popcount_choose;
+uint64		(*pg_popcount_optimized) (const char *buf, int bytes) = pg_popcount_choose;
+uint64		(*pg_popcount_masked_optimized) (const char *buf, int bytes, bits8 mask) = pg_popcount_masked_choose;
 #endif							/* TRY_POPCNT_FAST */
 
 #ifdef TRY_POPCNT_FAST
@@ -148,61 +152,59 @@ pg_popcount_available(void)
  * the function pointers so that subsequent calls are routed directly to
  * the chosen implementation.
  */
-static int
-pg_popcount32_choose(uint32 word)
+static inline void
+choose_popcount_functions(void)
 {
 	if (pg_popcount_available())
 	{
 		pg_popcount32 = pg_popcount32_fast;
 		pg_popcount64 = pg_popcount64_fast;
-		pg_popcount = pg_popcount_fast;
+		pg_popcount_optimized = pg_popcount_fast;
+		pg_popcount_masked_optimized = pg_popcount_masked_fast;
 	}
 	else
 	{
 		pg_popcount32 = pg_popcount32_slow;
 		pg_popcount64 = pg_popcount64_slow;
-		pg_popcount = pg_popcount_slow;
+		pg_popcount_optimized = pg_popcount_slow;
+		pg_popcount_masked_optimized = pg_popcount_masked_slow;
 	}
 
+#ifdef USE_AVX512_POPCNT_WITH_RUNTIME_CHECK
+	if (pg_popcount_avx512_available())
+	{
+		pg_popcount_optimized = pg_popcount_avx512;
+		pg_popcount_masked_optimized = pg_popcount_masked_avx512;
+	}
+#endif
+}
+
+static int
+pg_popcount32_choose(uint32 word)
+{
+	choose_popcount_functions();
 	return pg_popcount32(word);
 }
 
 static int
 pg_popcount64_choose(uint64 word)
 {
-	if (pg_popcount_available())
-	{
-		pg_popcount32 = pg_popcount32_fast;
-		pg_popcount64 = pg_popcount64_fast;
-		pg_popcount = pg_popcount_fast;
-	}
-	else
-	{
-		pg_popcount32 = pg_popcount32_slow;
-		pg_popcount64 = pg_popcount64_slow;
-		pg_popcount = pg_popcount_slow;
-	}
-
+	choose_popcount_functions();
 	return pg_popcount64(word);
 }
 
 static uint64
 pg_popcount_choose(const char *buf, int bytes)
 {
-	if (pg_popcount_available())
-	{
-		pg_popcount32 = pg_popcount32_fast;
-		pg_popcount64 = pg_popcount64_fast;
-		pg_popcount = pg_popcount_fast;
-	}
-	else
-	{
-		pg_popcount32 = pg_popcount32_slow;
-		pg_popcount64 = pg_popcount64_slow;
-		pg_popcount = pg_popcount_slow;
-	}
+	choose_popcount_functions();
+	return pg_popcount_optimized(buf, bytes);
+}
 
-	return pg_popcount(buf, bytes);
+static uint64
+pg_popcount_masked_choose(const char *buf, int bytes, bits8 mask)
+{
+	choose_popcount_functions();
+	return pg_popcount_masked(buf, bytes, mask);
 }
 
 /*
@@ -281,6 +283,56 @@ pg_popcount_fast(const char *buf, int bytes)
 	/* Process any remaining bytes */
 	while (bytes--)
 		popcnt += pg_number_of_ones[(unsigned char) *buf++];
+
+	return popcnt;
+}
+
+/*
+ * pg_popcount_masked_fast
+ *		Returns the number of 1-bits in buf after applying the mask to each byte
+ */
+static uint64
+pg_popcount_masked_fast(const char *buf, int bytes, bits8 mask)
+{
+	uint64		popcnt = 0;
+
+#if SIZEOF_VOID_P >= 8
+	/* Process in 64-bit chunks if the buffer is aligned */
+	uint64		maskv = ~UINT64CONST(0) / 0xFF * mask;
+
+	if (buf == (const char *) TYPEALIGN(8, buf))
+	{
+		const uint64 *words = (const uint64 *) buf;
+
+		while (bytes >= 8)
+		{
+			popcnt += pg_popcount64_fast(*words++ & maskv);
+			bytes -= 8;
+		}
+
+		buf = (const char *) words;
+	}
+#else
+	/* Process in 32-bit chunks if the buffer is aligned. */
+	uint32		maskv = ~((uint32) 0) / 0xFF * mask;
+
+	if (buf == (const char *) TYPEALIGN(4, buf))
+	{
+		const uint32 *words = (const uint32 *) buf;
+
+		while (bytes >= 4)
+		{
+			popcnt += pg_popcount32_fast(*words++ & maskv);
+			bytes -= 4;
+		}
+
+		buf = (const char *) words;
+	}
+#endif
+
+	/* Process any remaining bytes */
+	while (bytes--)
+		popcnt += pg_number_of_ones[(unsigned char) *buf++ & mask];
 
 	return popcnt;
 }
@@ -384,6 +436,56 @@ pg_popcount_slow(const char *buf, int bytes)
 	return popcnt;
 }
 
+/*
+ * pg_popcount_masked_slow
+ *		Returns the number of 1-bits in buf after applying the mask to each byte
+ */
+static uint64
+pg_popcount_masked_slow(const char *buf, int bytes, bits8 mask)
+{
+	uint64		popcnt = 0;
+
+#if SIZEOF_VOID_P >= 8
+	/* Process in 64-bit chunks if the buffer is aligned */
+	uint64		maskv = ~UINT64CONST(0) / 0xFF * mask;
+
+	if (buf == (const char *) TYPEALIGN(8, buf))
+	{
+		const uint64 *words = (const uint64 *) buf;
+
+		while (bytes >= 8)
+		{
+			popcnt += pg_popcount64_slow(*words++ & maskv);
+			bytes -= 8;
+		}
+
+		buf = (const char *) words;
+	}
+#else
+	/* Process in 32-bit chunks if the buffer is aligned. */
+	uint32		maskv = ~((uint32) 0) / 0xFF * mask;
+
+	if (buf == (const char *) TYPEALIGN(4, buf))
+	{
+		const uint32 *words = (const uint32 *) buf;
+
+		while (bytes >= 4)
+		{
+			popcnt += pg_popcount32_slow(*words++ & maskv);
+			bytes -= 4;
+		}
+
+		buf = (const char *) words;
+	}
+#endif
+
+	/* Process any remaining bytes */
+	while (bytes--)
+		popcnt += pg_number_of_ones[(unsigned char) *buf++ & mask];
+
+	return popcnt;
+}
+
 #ifndef TRY_POPCNT_FAST
 
 /*
@@ -406,13 +508,23 @@ pg_popcount64(uint64 word)
 }
 
 /*
- * pg_popcount
+ * pg_popcount_optimized
  *		Returns the number of 1-bits in buf
  */
 uint64
-pg_popcount(const char *buf, int bytes)
+pg_popcount_optimized(const char *buf, int bytes)
 {
 	return pg_popcount_slow(buf, bytes);
+}
+
+/*
+ * pg_popcount_masked_optimized
+ *		Returns the number of 1-bits in buf after applying the mask to each byte
+ */
+uint64
+pg_popcount_masked_optimized(const char *buf, int bytes, bits8 mask)
+{
+	return pg_popcount_masked_slow(buf, bytes, mask);
 }
 
 #endif							/* !TRY_POPCNT_FAST */

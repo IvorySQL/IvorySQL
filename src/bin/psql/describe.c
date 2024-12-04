@@ -2417,10 +2417,6 @@ describeOneTableDetails(const char *schemaname,
 			else
 				appendPQExpBufferStr(&buf, ", false AS indisreplident");
 			appendPQExpBufferStr(&buf, ", c2.reltablespace");
-			if (pset.sversion >= 170000)
-				appendPQExpBufferStr(&buf, ", con.conperiod");
-			else
-				appendPQExpBufferStr(&buf, ", false AS conperiod");
 			appendPQExpBuffer(&buf,
 							  "\nFROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i\n"
 							  "  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))\n"
@@ -2442,12 +2438,8 @@ describeOneTableDetails(const char *schemaname,
 					printfPQExpBuffer(&buf, "    \"%s\"",
 									  PQgetvalue(result, i, 0));
 
-					/*
-					 * If exclusion constraint or PK/UNIQUE constraint WITHOUT
-					 * OVERLAPS, print the constraintdef
-					 */
-					if (strcmp(PQgetvalue(result, i, 7), "x") == 0 ||
-						strcmp(PQgetvalue(result, i, 12), "t") == 0)
+					/* If exclusion constraint, print the constraintdef */
+					if (strcmp(PQgetvalue(result, i, 7), "x") == 0)
 					{
 						appendPQExpBuffer(&buf, " %s",
 										  PQgetvalue(result, i, 6));
@@ -3087,50 +3079,6 @@ describeOneTableDetails(const char *schemaname,
 				if (!PQgetisnull(result, i, 1))
 					appendPQExpBuffer(&buf, " WHERE %s",
 									  PQgetvalue(result, i, 1));
-
-				printTableAddFooter(&cont, buf.data);
-			}
-			PQclear(result);
-		}
-
-		/* If verbose, print NOT NULL constraints */
-		if (verbose)
-		{
-			printfPQExpBuffer(&buf,
-							  "SELECT co.conname, at.attname, co.connoinherit, co.conislocal,\n"
-							  "co.coninhcount <> 0\n"
-							  "FROM pg_catalog.pg_constraint co JOIN\n"
-							  "pg_catalog.pg_attribute at ON\n"
-							  "(at.attnum = co.conkey[1])\n"
-							  "WHERE co.contype = 'n' AND\n"
-							  "co.conrelid = '%s'::pg_catalog.regclass AND\n"
-							  "at.attrelid = '%s'::pg_catalog.regclass\n"
-							  "ORDER BY at.attnum",
-							  oid,
-							  oid);
-
-			result = PSQLexec(buf.data);
-			if (!result)
-				goto error_return;
-			else
-				tuples = PQntuples(result);
-
-			if (tuples > 0)
-				printTableAddFooter(&cont, _("Not-null constraints:"));
-
-			/* Might be an empty set - that's ok */
-			for (i = 0; i < tuples; i++)
-			{
-				bool		islocal = PQgetvalue(result, i, 3)[0] == 't';
-				bool		inherited = PQgetvalue(result, i, 4)[0] == 't';
-
-				printfPQExpBuffer(&buf, "    \"%s\" NOT NULL \"%s\"%s",
-								  PQgetvalue(result, i, 0),
-								  PQgetvalue(result, i, 1),
-								  PQgetvalue(result, i, 2)[0] == 't' ?
-								  " NO INHERIT" :
-								  islocal && inherited ? _(" (local, inherited)") :
-								  inherited ? _(" (inherited)") : "");
 
 				printTableAddFooter(&cont, buf.data);
 			}
@@ -4485,7 +4433,7 @@ listDomains(const char *pattern, bool verbose, bool showSystem)
 					  "       CASE WHEN t.typnotnull THEN 'not null' END as \"%s\",\n"
 					  "       t.typdefault as \"%s\",\n"
 					  "       pg_catalog.array_to_string(ARRAY(\n"
-					  "         SELECT pg_catalog.pg_get_constraintdef(r.oid, true) FROM pg_catalog.pg_constraint r WHERE t.oid = r.contypid\n"
+					  "         SELECT pg_catalog.pg_get_constraintdef(r.oid, true) FROM pg_catalog.pg_constraint r WHERE t.oid = r.contypid AND r.contype = 'c' ORDER BY r.conname\n"
 					  "       ), ' ') as \"%s\"",
 					  gettext_noop("Schema"),
 					  gettext_noop("Name"),

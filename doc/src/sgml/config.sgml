@@ -334,9 +334,10 @@ UPDATE pg_settings SET setting = reset_val WHERE name = 'configuration_parameter
       <para>
        During server startup, parameter settings can be
        passed to the <command>postgres</command> command via the
-       <option>-c</option> command-line parameter.  For example,
+       <option>-c name=value</option> command-line parameter, or its equivalent
+       <option>--name=value</option> variation.  For example,
 <programlisting>
-postgres -c log_connections=yes -c log_destination='syslog'
+postgres -c log_connections=yes --log-destination='syslog'
 </programlisting>
        Settings provided in this way override those set via
        <filename>postgresql.conf</filename> or <command>ALTER SYSTEM</command>,
@@ -353,10 +354,10 @@ postgres -c log_connections=yes -c log_destination='syslog'
       of the session, but do not affect other sessions.
       For historical reasons, the format of <envar>PGOPTIONS</envar> is
       similar to that used when launching the <command>postgres</command>
-      command; specifically, the <option>-c</option> flag must be specified.
-      For example,
+      command; specifically, the <option>-c</option>, or prepended
+      <literal>--</literal>, before the name must be specified. For example,
 <programlisting>
-env PGOPTIONS="-c geqo=off -c statement_timeout=5min" psql
+env PGOPTIONS="-c geqo=off --statement-timeout=5min" psql
 </programlisting>
      </para>
 
@@ -704,6 +705,12 @@ include_dir 'conf.d'
         might be less if your kernel settings will not support it (as
         determined during <application>initdb</application>).  This parameter can
         only be set at server start.
+       </para>
+
+       <para>
+        PostgreSQL sizes certain resources based directly on the value of
+        <varname>max_connections</varname>. Increasing its value leads to
+        higher allocation of those resources, including shared memory.
        </para>
 
        <para>
@@ -1919,11 +1926,6 @@ include_dir 'conf.d'
         too high.  It may be useful to control for this by separately
         setting <xref linkend="guc-autovacuum-work-mem"/>.
        </para>
-       <para>
-        Note that for the collection of dead tuple identifiers,
-        <command>VACUUM</command> is only able to utilize up to a maximum of
-        <literal>1GB</literal> of memory.
-       </para>
       </listitem>
      </varlistentry>
 
@@ -1946,13 +1948,6 @@ include_dir 'conf.d'
         <filename>postgresql.conf</filename> file or on the server command
         line.
        </para>
-       <para>
-        For the collection of dead tuple identifiers, autovacuum is only able
-        to utilize up to a maximum of <literal>1GB</literal> of memory, so
-        setting <varname>autovacuum_work_mem</varname> to a value higher than
-        that has no effect on the number of dead tuples that autovacuum can
-        collect while scanning a table.
-       </para>
       </listitem>
      </varlistentry>
 
@@ -1973,7 +1968,7 @@ include_dir 'conf.d'
         valid sizes range from <literal>128 kB</literal> to
         <literal>16 GB</literal>.  If the specified size would exceed 1/8 the
         size of <varname>shared_buffers</varname>, the size is silently capped
-        to that value.  The default value is <literal>256 kB</literal>.  If
+        to that value.  The default value is <literal>2MB</literal>.  If
         this value is specified without units, it is taken as kilobytes.  This
         parameter can be set at any time.  It can be overridden for
         <xref linkend="sql-vacuum"/> and <xref linkend="sql-analyze"/>
@@ -2716,6 +2711,20 @@ include_dir 'conf.d'
          be overridden for tables in a particular tablespace by setting the
          tablespace parameter of the same name (see
          <xref linkend="sql-altertablespace"/>).
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-io-combine-limit" xreflabel="io_combine_limit">
+       <term><varname>io_combine_limit</varname> (<type>integer</type>)
+       <indexterm>
+        <primary><varname>io_combine_limit</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Controls the largest I/O size in operations that combine I/O.
+         The default is 128kB.
         </para>
        </listitem>
       </varlistentry>
@@ -5332,6 +5341,25 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-enable-groupby-reordering" xreflabel="enable_group_by_reordering">
+      <term><varname>enable_group_by_reordering</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>enable_group_by_reordering</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Controls if the query planner will produce a plan which will provide
+        <literal>GROUP BY</literal> keys sorted in the order of keys of
+        a child node of the plan, such as an index scan.  When disabled, the
+        query planner will produce a plan with <literal>GROUP BY</literal>
+        keys only sorted to match the <literal>ORDER BY</literal> clause,
+        if any. When enabled, the planner will try to produce a more
+        efficient plan. The default value is <literal>on</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-enable-hashagg" xreflabel="enable_hashagg">
       <term><varname>enable_hashagg</varname> (<type>boolean</type>)
       <indexterm>
@@ -5580,22 +5608,6 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         which provides input to the aggregate functions which is presorted in
         the order they require for aggregation.  The default value is
         <literal>on</literal>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-enable_self_join_removal" xreflabel="enable_self_join_removal">
-      <term><varname>enable_self_join_removal</varname> (<type>boolean</type>)
-      <indexterm>
-       <primary><varname>enable_self_join_removal</varname> configuration parameter</primary>
-      </indexterm>
-      </term>
-      <listitem>
-       <para>
-        Enables or disables the query planner's optimization which analyses
-        the query tree and replaces self joins with semantically equivalent
-        single scans.  Takes into consideration only plain tables.
-        The default is <literal>on</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -11365,33 +11377,6 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         the error happens matches a value in the list, then a backtrace is
         written to the server log together with the error message.  This can
         be used to debug specific areas of the source code.
-       </para>
-
-       <para>
-        Backtrace support is not available on all platforms, and the quality
-        of the backtraces depends on compilation options.
-       </para>
-
-       <para>
-        Only superusers and users with the appropriate <literal>SET</literal>
-        privilege can change this setting.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-backtrace-on-internal-error" xreflabel="backtrace_on_internal_error">
-      <term><varname>backtrace_on_internal_error</varname> (<type>boolean</type>)
-      <indexterm>
-        <primary><varname>backtrace_on_internal_error</varname> configuration parameter</primary>
-      </indexterm>
-      </term>
-      <listitem>
-       <para>
-        If this parameter is on and an error with error code XX000 (internal
-        error; see also <xref linkend="errcodes-appendix"/>) is raised, then a
-        backtrace is written to the server log together with the error
-        message.  This can be used to debug such internal errors (which should
-        normally not happen in production).  The default is off.
        </para>
 
        <para>

@@ -885,7 +885,7 @@ RegisterBackgroundWorker(BackgroundWorker *worker)
 			return;
 		ereport(LOG,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("background worker \"%s\": must be registered in shared_preload_libraries",
+				 errmsg("background worker \"%s\": must be registered in \"shared_preload_libraries\"",
 						worker->bgw_name)));
 		return;
 	}
@@ -928,7 +928,7 @@ RegisterBackgroundWorker(BackgroundWorker *worker)
 								  "Up to %d background workers can be registered with the current settings.",
 								  max_worker_processes,
 								  max_worker_processes),
-				 errhint("Consider increasing the configuration parameter max_worker_processes.")));
+				 errhint("Consider increasing the configuration parameter \"%s\".", "max_worker_processes")));
 		return;
 	}
 

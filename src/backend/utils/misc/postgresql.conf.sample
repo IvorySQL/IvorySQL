@@ -50,15 +50,6 @@
 #external_pid_file = ''			# write an extra PID file
 					# (change requires restart)
 
-# - SLRU Buffers (change requires restart) -
-
-#commit_timestamp_buffers = 0			# memory for pg_commit_ts (0 = auto)
-#multixact_offset_buffers = 16			# memory for pg_multixact/offsets
-#multixact_member_buffers = 32			# memory for pg_multixact/members
-#notify_buffers = 16					# memory for pg_notify
-#serializable_buffers = 32				# memory for pg_serial
-#subtransaction_buffers = 0 			# memory for pg_subtrans (0 = auto)
-#transaction_buffers = 0				# memory for pg_xact (0 = auto)
 
 #------------------------------------------------------------------------------
 # CONNECTIONS AND AUTHENTICATION
@@ -166,9 +157,18 @@
 					#   mmap
 					# (change requires restart)
 #min_dynamic_shared_memory = 0MB	# (change requires restart)
-#vacuum_buffer_usage_limit = 256kB	# size of vacuum and analyze buffer access strategy ring;
+#vacuum_buffer_usage_limit = 2MB	# size of vacuum and analyze buffer access strategy ring;
 					# 0 to disable vacuum buffer access strategy;
 					# range 128kB to 16GB
+
+# SLRU buffers (change requires restart)
+#commit_timestamp_buffers = 0		# memory for pg_commit_ts (0 = auto)
+#multixact_offset_buffers = 16		# memory for pg_multixact/offsets
+#multixact_member_buffers = 32		# memory for pg_multixact/members
+#notify_buffers = 16			# memory for pg_notify
+#serializable_buffers = 32		# memory for pg_serial
+#subtransaction_buffers = 0		# memory for pg_subtrans (0 = auto)
+#transaction_buffers = 0		# memory for pg_xact (0 = auto)
 
 # - Disk -
 
@@ -176,7 +176,7 @@
 					# in kilobytes, or -1 for no limit
 
 #max_notify_queue_pages = 1048576	# limits the number of SLRU pages allocated
-									# for NOTIFY / LISTEN queue
+					# for NOTIFY / LISTEN queue
 
 # - Kernel Resources -
 
@@ -203,6 +203,7 @@
 #backend_flush_after = 0		# measured in pages, 0 disables
 #effective_io_concurrency = 1		# 1-1000; 0 disables prefetching
 #maintenance_io_concurrency = 10	# 1-1000; 0 disables prefetching
+#io_combine_limit = 128kB		# usually 1-32 blocks (depends on OS)
 #max_worker_processes = 8		# (change requires restart)
 #max_parallel_workers_per_gather = 2	# limited by max_parallel_workers
 #max_parallel_maintenance_workers = 2	# limited by max_parallel_workers
@@ -313,8 +314,8 @@
 
 # - WAL Summarization -
 
-#summarize_wal = off			 # run WAL summarizer process?
-#wal_summary_keep_time = '10d' # when to remove old summary files, 0 = never
+#summarize_wal = off		# run WAL summarizer process?
+#wal_summary_keep_time = '10d'	# when to remove old summary files, 0 = never
 
 
 #------------------------------------------------------------------------------
@@ -343,7 +344,7 @@
 				# method to choose sync standbys, number of sync standbys,
 				# and comma-separated list of application_name
 				# from standby(s); '*' = all
-#standby_slot_names = '' # streaming replication standby server slot names that
+#standby_slot_names = ''	# streaming replication standby server slot names that
 				# logical walsender processes will wait for
 
 # - Standby Servers -
@@ -372,7 +373,7 @@
 #wal_retrieve_retry_interval = 5s	# time to wait before retrying to
 					# retrieve WAL after a failed attempt
 #recovery_min_apply_delay = 0		# minimum delay for applying changes during recovery
-#sync_replication_slots = off			# enables slot synchronization on the physical standby from the primary
+#sync_replication_slots = off		# enables slot synchronization on the physical standby from the primary
 
 # - Subscribers -
 

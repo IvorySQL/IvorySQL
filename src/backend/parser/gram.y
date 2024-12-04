@@ -170,7 +170,6 @@ static void updateRawStmtEnd(RawStmt *rs, int end_location);
 static Node *makeColumnRef(char *colname, List *indirection,
 						   int location, core_yyscan_t yyscanner);
 static Node *makeTypeCast(Node *arg, TypeName *typename, int location);
-static Node *makeStringConst(char *str, int location);
 static Node *makeStringConstCast(char *str, int location, TypeName *typename);
 static Node *makeIntConst(int val, int location);
 static Node *makeFloatConst(char *str, int location);
@@ -270,6 +269,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionElem *partelem;
 	PartitionSpec *partspec;
 	PartitionBoundSpec *partboundspec;
+	SinglePartitionSpec *singlepartspec;
 	RoleSpec   *rolespec;
 	PublicationObjSpec *publicationobjectspec;
 	struct SelectLimit *selectlimit;
@@ -524,16 +524,15 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <vsetstmt> generic_set set_rest set_rest_more generic_reset reset_rest
 				 SetResetClause FunctionSetResetClause
 
-%type <node>	TableElement TypedTableElement ConstraintElem TableFuncElement
-%type <node>	columnDef columnOptions optionalPeriodName
+%type <node>	TableElement TypedTableElement ConstraintElem DomainConstraintElem TableFuncElement
+%type <node>	columnDef columnOptions
 %type <defelt>	def_elem reloption_elem old_aggr_elem operator_def_elem
 %type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr AexprConst indirection_el opt_slice_bound
 				columnref in_expr having_clause func_table xmltable array_expr
 				OptWhereClause operator_def_arg
-%type <list>	opt_column_and_period_list
 %type <list>	rowsfrom_item rowsfrom_list opt_col_def_list
-%type <boolean> opt_ordinality opt_without_overlaps
+%type <boolean> opt_ordinality
 %type <list>	ExclusionConstraintList ExclusionConstraintElem
 %type <list>	func_arg_list func_arg_list_opt
 %type <node>	func_arg_expr
@@ -596,7 +595,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <keyword> col_name_keyword reserved_keyword
 %type <keyword> bare_label_keyword
 
-%type <node>	TableConstraint TableLikeClause
+%type <node>	DomainConstraint TableConstraint TableLikeClause
 %type <ival>	TableLikeOptionList TableLikeOption
 %type <str>		column_compression opt_column_compression column_storage opt_column_storage
 %type <list>	ColQualList
@@ -647,6 +646,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <partelem>	part_elem
 %type <list>		part_params
 %type <partboundspec> PartitionBoundSpec
+%type <singlepartspec>	SinglePartitionSpec
+%type <list>		partitions_list
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
@@ -659,12 +660,17 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				json_argument
 				json_behavior
 				json_on_error_clause_opt
+				json_table
+				json_table_column_definition
+				json_table_column_path_clause_opt
 %type <list>	json_name_and_value_list
 				json_value_expr_list
 				json_array_aggregate_order_by_clause_opt
 				json_arguments
 				json_behavior_clause_opt
 				json_passing_clause_opt
+				json_table_column_definition_list
+%type <str>		json_table_path_name_opt
 %type <ival>	json_behavior_type
 				json_predicate_type_constraint
 				json_quotes_clause_opt
@@ -737,7 +743,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_EXISTS JSON_OBJECT JSON_OBJECTAGG
-	JSON_QUERY JSON_SCALAR JSON_SERIALIZE JSON_VALUE
+	JSON_QUERY JSON_SCALAR JSON_SERIALIZE JSON_TABLE JSON_VALUE
 
 	KEEP KEY KEYS
 
@@ -748,8 +754,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE MERGE_ACTION METHOD
 	MINUTE_P MINVALUE MODE MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONE
-	NORMALIZE NORMALIZED
+	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO
+	NONE NORMALIZE NORMALIZED
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMERIC
 
@@ -757,8 +763,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER
 
-	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD
-	PERIOD PLACING PLANS POLICY
+	PARALLEL PARAMETER PARSER PARTIAL PARTITION PARTITIONS PASSING PASSWORD PATH
+	PLACING PLAN PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
@@ -772,7 +778,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	SAVEPOINT SCALAR SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
-	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SQL_P STABLE STANDALONE_P
+	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SPLIT SOURCE SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSID SYSTEM_P SYSTEM_USER
 
@@ -876,10 +882,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  * the same precedence as IDENT.  This allows resolving conflicts in the
  * json_predicate_type_constraint and json_key_uniqueness_constraint_opt
  * productions (see comments there).
+ *
+ * Like the UNBOUNDED PRECEDING/FOLLOWING case, NESTED is assigned a lower
+ * precedence than PATH to fix ambiguity in the json_table production.
  */
-%nonassoc	UNBOUNDED		/* ideally would have same precedence as IDENT */
+%nonassoc	UNBOUNDED NESTED /* ideally would have same precedence as IDENT */
 %nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
-			SET KEYS OBJECT_P SCALAR VALUE_P WITH WITHOUT
+			SET KEYS OBJECT_P SCALAR VALUE_P WITH WITHOUT PATH
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -2302,6 +2311,23 @@ alter_table_cmds:
 			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
 		;
 
+partitions_list:
+			SinglePartitionSpec							{ $$ = list_make1($1); }
+			| partitions_list ',' SinglePartitionSpec	{ $$ = lappend($1, $3); }
+		;
+
+SinglePartitionSpec:
+			PARTITION qualified_name PartitionBoundSpec
+				{
+					SinglePartitionSpec *n = makeNode(SinglePartitionSpec);
+
+					n->name = $2;
+					n->bound = $3;
+
+					$$ = n;
+				}
+		;
+
 partition_cmd:
 			/* ALTER TABLE <name> ATTACH PARTITION <table_name> FOR VALUES */
 			ATTACH PARTITION qualified_name PartitionBoundSpec
@@ -2312,6 +2338,7 @@ partition_cmd:
 					n->subtype = AT_AttachPartition;
 					cmd->name = $3;
 					cmd->bound = $4;
+					cmd->partlist = NULL;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 
@@ -2326,6 +2353,7 @@ partition_cmd:
 					n->subtype = AT_DetachPartition;
 					cmd->name = $3;
 					cmd->bound = NULL;
+					cmd->partlist = NULL;
 					cmd->concurrent = $4;
 					n->def = (Node *) cmd;
 
@@ -2339,6 +2367,35 @@ partition_cmd:
 					n->subtype = AT_DetachPartitionFinalize;
 					cmd->name = $3;
 					cmd->bound = NULL;
+					cmd->partlist = NULL;
+					cmd->concurrent = false;
+					n->def = (Node *) cmd;
+					$$ = (Node *) n;
+				}
+			/* ALTER TABLE <name> SPLIT PARTITION <partition_name> INTO () */
+			| SPLIT PARTITION qualified_name INTO '(' partitions_list ')'
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					PartitionCmd *cmd = makeNode(PartitionCmd);
+
+					n->subtype = AT_SplitPartition;
+					cmd->name = $3;
+					cmd->bound = NULL;
+					cmd->partlist = $6;
+					cmd->concurrent = false;
+					n->def = (Node *) cmd;
+					$$ = (Node *) n;
+				}
+			/* ALTER TABLE <name> MERGE PARTITIONS () INTO <partition_name> */
+			| MERGE PARTITIONS '(' qualified_name_list ')' INTO qualified_name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					PartitionCmd *cmd = makeNode(PartitionCmd);
+
+					n->subtype = AT_MergePartitions;
+					cmd->name = $7;
+					cmd->bound = NULL;
+					cmd->partlist = $4;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 					$$ = (Node *) n;
@@ -2355,6 +2412,7 @@ index_partition_cmd:
 					n->subtype = AT_AttachPartition;
 					cmd->name = $3;
 					cmd->bound = NULL;
+					cmd->partlist = NULL;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 
@@ -3530,6 +3588,7 @@ copy_generic_opt_arg:
 			opt_boolean_or_string			{ $$ = (Node *) makeString($1); }
 			| NumericOnly					{ $$ = (Node *) $1; }
 			| '*'							{ $$ = (Node *) makeNode(A_Star); }
+			| DEFAULT                       { $$ = (Node *) makeString("default"); }
 			| '(' copy_generic_opt_arg_list ')'		{ $$ = (Node *) $2; }
 			| /* EMPTY */					{ $$ = NULL; }
 		;
@@ -3892,15 +3951,12 @@ ColConstraint:
  * or be part of a_expr NOT LIKE or similar constructs).
  */
 ColConstraintElem:
-			NOT NULL_P opt_no_inherit
+			NOT NULL_P
 				{
 					Constraint *n = makeNode(Constraint);
 
 					n->contype = CONSTR_NOTNULL;
 					n->location = @1;
-					n->is_no_inherit = $3;
-					n->skip_validation = false;
-					n->initially_valid = true;
 					$$ = (Node *) n;
 				}
 			| NULL_P
@@ -4137,21 +4193,7 @@ ConstraintElem:
 					n->initially_valid = !n->skip_validation;
 					$$ = (Node *) n;
 				}
-			| NOT NULL_P ColId ConstraintAttributeSpec
-				{
-					Constraint *n = makeNode(Constraint);
-
-					n->contype = CONSTR_NOTNULL;
-					n->location = @1;
-					n->keys = list_make1(makeString($3));
-					/* no NOT VALID support yet */
-					processCASbits($4, @4, "NOT NULL",
-								   NULL, NULL, NULL,
-								   &n->is_no_inherit, yyscanner);
-					n->initially_valid = true;
-					$$ = (Node *) n;
-				}
-			| UNIQUE opt_unique_null_treatment '(' columnList opt_without_overlaps ')' opt_c_include opt_definition OptConsTableSpace
+			| UNIQUE opt_unique_null_treatment '(' columnList ')' opt_c_include opt_definition OptConsTableSpace
 				ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
@@ -4160,12 +4202,11 @@ ConstraintElem:
 					n->location = @1;
 					n->nulls_not_distinct = !$2;
 					n->keys = $4;
-					n->without_overlaps = $5;
-					n->including = $7;
-					n->options = $8;
+					n->including = $6;
+					n->options = $7;
 					n->indexname = NULL;
-					n->indexspace = $9;
-					processCASbits($10, @10, "UNIQUE",
+					n->indexspace = $8;
+					processCASbits($9, @9, "UNIQUE",
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
 					$$ = (Node *) n;
@@ -4186,7 +4227,7 @@ ConstraintElem:
 								   NULL, yyscanner);
 					$$ = (Node *) n;
 				}
-			| PRIMARY KEY '(' columnList opt_without_overlaps ')' opt_c_include opt_definition OptConsTableSpace
+			| PRIMARY KEY '(' columnList ')' opt_c_include opt_definition OptConsTableSpace
 				ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
@@ -4194,12 +4235,11 @@ ConstraintElem:
 					n->contype = CONSTR_PRIMARY;
 					n->location = @1;
 					n->keys = $4;
-					n->without_overlaps = $5;
-					n->including = $7;
-					n->options = $8;
+					n->including = $6;
+					n->options = $7;
 					n->indexname = NULL;
-					n->indexspace = $9;
-					processCASbits($10, @10, "PRIMARY KEY",
+					n->indexspace = $8;
+					processCASbits($9, @9, "PRIMARY KEY",
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
 					$$ = (Node *) n;
@@ -4240,31 +4280,21 @@ ConstraintElem:
 								   NULL, yyscanner);
 					$$ = (Node *) n;
 				}
-			| FOREIGN KEY '(' columnList optionalPeriodName ')' REFERENCES qualified_name
-				opt_column_and_period_list key_match key_actions ConstraintAttributeSpec
+			| FOREIGN KEY '(' columnList ')' REFERENCES qualified_name
+				opt_column_list key_match key_actions ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
 
 					n->contype = CONSTR_FOREIGN;
 					n->location = @1;
-					n->pktable = $8;
+					n->pktable = $7;
 					n->fk_attrs = $4;
-					if ($5)
-					{
-						n->fk_attrs = lappend(n->fk_attrs, $5);
-						n->fk_with_period = true;
-					}
-					n->pk_attrs = linitial($9);
-					if (lsecond($9))
-					{
-						n->pk_attrs = lappend(n->pk_attrs, lsecond($9));
-						n->pk_with_period = true;
-					}
-					n->fk_matchtype = $10;
-					n->fk_upd_action = ($11)->updateAction->action;
-					n->fk_del_action = ($11)->deleteAction->action;
-					n->fk_del_set_cols = ($11)->deleteAction->cols;
-					processCASbits($12, @12, "FOREIGN KEY",
+					n->pk_attrs = $8;
+					n->fk_matchtype = $9;
+					n->fk_upd_action = ($10)->updateAction->action;
+					n->fk_del_action = ($10)->deleteAction->action;
+					n->fk_del_set_cols = ($10)->deleteAction->cols;
+					processCASbits($11, @11, "FOREIGN KEY",
 								   &n->deferrable, &n->initdeferred,
 								   &n->skip_validation, NULL,
 								   yyscanner);
@@ -4273,14 +4303,63 @@ ConstraintElem:
 				}
 		;
 
+/*
+ * DomainConstraint is separate from TableConstraint because the syntax for
+ * NOT NULL constraints is different.  For table constraints, we need to
+ * accept a column name, but for domain constraints, we don't.  (We could
+ * accept something like NOT NULL VALUE, but that seems weird.)  CREATE DOMAIN
+ * (which uses ColQualList) has for a long time accepted NOT NULL without a
+ * column name, so it makes sense that ALTER DOMAIN (which uses
+ * DomainConstraint) does as well.  None of these syntaxes are per SQL
+ * standard; we are just living with the bits of inconsistency that have built
+ * up over time.
+ */
+DomainConstraint:
+			CONSTRAINT name DomainConstraintElem
+				{
+					Constraint *n = castNode(Constraint, $3);
+
+					n->conname = $2;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| DomainConstraintElem					{ $$ = $1; }
+		;
+
+DomainConstraintElem:
+			CHECK '(' a_expr ')' ConstraintAttributeSpec
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_CHECK;
+					n->location = @1;
+					n->raw_expr = $3;
+					n->cooked_expr = NULL;
+					processCASbits($5, @5, "CHECK",
+								   NULL, NULL, &n->skip_validation,
+								   &n->is_no_inherit, yyscanner);
+					n->initially_valid = !n->skip_validation;
+					$$ = (Node *) n;
+				}
+			| NOT NULL_P ConstraintAttributeSpec
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_NOTNULL;
+					n->location = @1;
+					n->keys = list_make1(makeString("value"));
+					/* no NOT VALID support yet */
+					processCASbits($3, @3, "NOT NULL",
+								   NULL, NULL, NULL,
+								   &n->is_no_inherit, yyscanner);
+					n->initially_valid = true;
+					$$ = (Node *) n;
+				}
+		;
+
 opt_no_inherit:	NO INHERIT							{  $$ = true; }
 			| /* EMPTY */							{  $$ = false; }
 		;
-
-opt_without_overlaps:
-			WITHOUT OVERLAPS						{ $$ = true; }
-			| /*EMPTY*/								{ $$ = false; }
-	;
 
 opt_column_list:
 			'(' columnList ')'						{ $$ = $2; }
@@ -4290,16 +4369,6 @@ opt_column_list:
 columnList:
 			columnElem								{ $$ = list_make1($1); }
 			| columnList ',' columnElem				{ $$ = lappend($1, $3); }
-		;
-
-optionalPeriodName:
-			',' PERIOD columnElem { $$ = $3; }
-			| /*EMPTY*/               { $$ = NULL; }
-	;
-
-opt_column_and_period_list:
-			'(' columnList optionalPeriodName ')'			{ $$ = list_make2($2, $3); }
-			| /*EMPTY*/								{ $$ = list_make2(NIL, NULL); }
 		;
 
 columnElem: ColId
@@ -11525,7 +11594,7 @@ AlterDomainStmt:
 					$$ = (Node *) n;
 				}
 			/* ALTER DOMAIN <domain> ADD CONSTRAINT ... */
-			| ALTER DOMAIN_P any_name ADD_P TableConstraint
+			| ALTER DOMAIN_P any_name ADD_P DomainConstraint
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
@@ -13492,6 +13561,21 @@ table_ref:	relation_expr opt_alias_clause
 					$2->alias = $4;
 					$$ = (Node *) $2;
 				}
+			| json_table opt_alias_clause
+				{
+					JsonTable  *jt = castNode(JsonTable, $1);
+
+					jt->alias = $2;
+					$$ = (Node *) jt;
+				}
+			| LATERAL_P json_table opt_alias_clause
+				{
+					JsonTable  *jt = castNode(JsonTable, $2);
+
+					jt->alias = $3;
+					jt->lateral = true;
+					$$ = (Node *) jt;
+				}
 		;
 
 
@@ -14059,6 +14143,8 @@ xmltable_column_option_el:
 				{ $$ = makeDefElem("is_not_null", (Node *) makeBoolean(true), @1); }
 			| NULL_P
 				{ $$ = makeDefElem("is_not_null", (Node *) makeBoolean(false), @1); }
+			| PATH b_expr
+				{ $$ = makeDefElem("path", $2, @1); }
 		;
 
 xml_namespace_list:
@@ -14085,6 +14171,152 @@ xml_namespace_el:
 					$$->val = $2;
 					$$->location = @1;
 				}
+		;
+
+json_table:
+			JSON_TABLE '('
+				json_value_expr ',' a_expr json_table_path_name_opt
+				json_passing_clause_opt
+				COLUMNS '(' json_table_column_definition_list ')'
+				json_on_error_clause_opt
+			')'
+				{
+					JsonTable *n = makeNode(JsonTable);
+					char	  *pathstring;
+
+					n->context_item = (JsonValueExpr *) $3;
+					if (!IsA($5, A_Const) ||
+						castNode(A_Const, $5)->val.node.type != T_String)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("only string constants are supported in JSON_TABLE path specification"),
+								parser_errposition(@5));
+					pathstring = castNode(A_Const, $5)->val.sval.sval;
+					n->pathspec = makeJsonTablePathSpec(pathstring, $6, @5, @6);
+					n->passing = $7;
+					n->columns = $10;
+					n->on_error = (JsonBehavior *) $12;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+json_table_path_name_opt:
+			AS name			{ $$ = $2; }
+			| /* empty */	{ $$ = NULL; }
+		;
+
+json_table_column_definition_list:
+			json_table_column_definition
+				{ $$ = list_make1($1); }
+			| json_table_column_definition_list ',' json_table_column_definition
+				{ $$ = lappend($1, $3); }
+		;
+
+json_table_column_definition:
+			ColId FOR ORDINALITY
+				{
+					JsonTableColumn *n = makeNode(JsonTableColumn);
+
+					n->coltype = JTC_FOR_ORDINALITY;
+					n->name = $1;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ColId Typename
+				json_table_column_path_clause_opt
+				json_wrapper_behavior
+				json_quotes_clause_opt
+				json_behavior_clause_opt
+				{
+					JsonTableColumn *n = makeNode(JsonTableColumn);
+
+					n->coltype = JTC_REGULAR;
+					n->name = $1;
+					n->typeName = $2;
+					n->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
+					n->pathspec = (JsonTablePathSpec *) $3;
+					n->wrapper = $4;
+					n->quotes = $5;
+					n->on_empty = (JsonBehavior *) linitial($6);
+					n->on_error = (JsonBehavior *) lsecond($6);
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ColId Typename json_format_clause
+				json_table_column_path_clause_opt
+				json_wrapper_behavior
+				json_quotes_clause_opt
+				json_behavior_clause_opt
+				{
+					JsonTableColumn *n = makeNode(JsonTableColumn);
+
+					n->coltype = JTC_FORMATTED;
+					n->name = $1;
+					n->typeName = $2;
+					n->format = (JsonFormat *) $3;
+					n->pathspec = (JsonTablePathSpec *) $4;
+					n->wrapper = $5;
+					n->quotes = $6;
+					n->on_empty = (JsonBehavior *) linitial($7);
+					n->on_error = (JsonBehavior *) lsecond($7);
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ColId Typename
+				EXISTS json_table_column_path_clause_opt
+				json_on_error_clause_opt
+				{
+					JsonTableColumn *n = makeNode(JsonTableColumn);
+
+					n->coltype = JTC_EXISTS;
+					n->name = $1;
+					n->typeName = $2;
+					n->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
+					n->wrapper = JSW_NONE;
+					n->quotes = JS_QUOTES_UNSPEC;
+					n->pathspec = (JsonTablePathSpec *) $4;
+					n->on_empty = NULL;
+					n->on_error = (JsonBehavior *) $5;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| NESTED path_opt Sconst
+				COLUMNS '(' json_table_column_definition_list ')'
+				{
+					JsonTableColumn *n = makeNode(JsonTableColumn);
+
+					n->coltype = JTC_NESTED;
+					n->pathspec = (JsonTablePathSpec *)
+						makeJsonTablePathSpec($3, NULL, @3, -1);
+					n->columns = $6;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| NESTED path_opt Sconst AS name
+				COLUMNS '(' json_table_column_definition_list ')'
+				{
+					JsonTableColumn *n = makeNode(JsonTableColumn);
+
+					n->coltype = JTC_NESTED;
+					n->pathspec = (JsonTablePathSpec *)
+						makeJsonTablePathSpec($3, $5, @3, @5);
+					n->columns = $8;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+path_opt:
+			PATH
+			| /* EMPTY */
+		;
+
+json_table_column_path_clause_opt:
+			PATH Sconst
+				{ $$ = (Node *) makeJsonTablePathSpec($2, NULL, @2, -1); }
+			| /* EMPTY */
+				{ $$ = NULL; }
 		;
 
 /*****************************************************************************
@@ -15435,7 +15667,7 @@ func_expr: func_application within_group_clause filter_clause over_clause
 		;
 
 /*
- * As func_expr but does not accept WINDOW functions directly
+ * Like func_expr but does not accept WINDOW functions directly
  * (but they can still be contained in arguments for functions etc).
  * Use this when window expressions are not allowed, where needed to
  * disambiguate the grammar (e.g. in CREATE INDEX).
@@ -17496,6 +17728,7 @@ unreserved_keyword:
 			| MOVE
 			| NAME_P
 			| NAMES
+			| NESTED
 			| NEW
 			| NEXT
 			| NFC
@@ -17528,9 +17761,11 @@ unreserved_keyword:
 			| PARSER
 			| PARTIAL
 			| PARTITION
+			| PARTITIONS
 			| PASSING
 			| PASSWORD
-			| PERIOD
+			| PATH
+			| PLAN
 			| PLANS
 			| POLICY
 			| PRECEDING
@@ -17595,6 +17830,7 @@ unreserved_keyword:
 			| SKIP
 			| SNAPSHOT
 			| SOURCE
+			| SPLIT
 			| SQL_P
 			| STABLE
 			| STANDALONE_P
@@ -17697,6 +17933,7 @@ col_name_keyword:
 			| JSON_QUERY
 			| JSON_SCALAR
 			| JSON_SERIALIZE
+			| JSON_TABLE
 			| JSON_VALUE
 			| LEAST
 			| MERGE_ACTION
@@ -18066,6 +18303,7 @@ bare_label_keyword:
 			| JSON_QUERY
 			| JSON_SCALAR
 			| JSON_SERIALIZE
+			| JSON_TABLE
 			| JSON_VALUE
 			| KEEP
 			| KEY
@@ -18106,6 +18344,7 @@ bare_label_keyword:
 			| NATIONAL
 			| NATURAL
 			| NCHAR
+			| NESTED
 			| NEW
 			| NEXT
 			| NFC
@@ -18148,10 +18387,12 @@ bare_label_keyword:
 			| PARSER
 			| PARTIAL
 			| PARTITION
+			| PARTITIONS
 			| PASSING
 			| PASSWORD
-			| PERIOD
+			| PATH
 			| PLACING
+			| PLAN
 			| PLANS
 			| POLICY
 			| POSITION
@@ -18227,6 +18468,7 @@ bare_label_keyword:
 			| SNAPSHOT
 			| SOME
 			| SOURCE
+			| SPLIT
 			| SQL_P
 			| STABLE
 			| STANDALONE_P
@@ -18419,18 +18661,6 @@ makeTypeCast(Node *arg, TypeName *typename, int location)
 	n->typeName = typename;
 	n->location = location;
 	return (Node *) n;
-}
-
-static Node *
-makeStringConst(char *str, int location)
-{
-	A_Const	   *n = makeNode(A_Const);
-
-	n->val.sval.type = T_String;
-	n->val.sval.sval = str;
-	n->location = location;
-
-   return (Node *) n;
 }
 
 static Node *

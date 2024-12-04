@@ -3624,12 +3624,16 @@ INJECTION_POINT(name);
 <programlisting>
 extern void InjectionPointAttach(const char *name,
                                  const char *library,
-                                 const char *function);
+                                 const char *function,
+                                 const void *private_data,
+                                 int private_data_size);
 </programlisting>
 
      <literal>name</literal> is the name of the injection point, which when
      reached during execution will execute the <literal>function</literal>
-     loaded from <literal>library</literal>.
+     loaded from <literal>library</literal>. <literal>private_data</literal>
+     is a private area of data of size <literal>private_data_size</literal>
+     given as argument to the callback when executed.
     </para>
 
     <para>
@@ -3637,9 +3641,13 @@ extern void InjectionPointAttach(const char *name,
      <literal>InjectionPointCallback</literal>:
 <programlisting>
 static void
-custom_injection_callback(const char *name)
+custom_injection_callback(const char *name, const void *private_data)
 {
+    uint32 wait_event_info = WaitEventInjectionPointNew(name);
+
+    pgstat_report_wait_start(wait_event_info);
     elog(NOTICE, "%s: executed custom callback", name);
+    pgstat_report_wait_end();
 }
 </programlisting>
      This callback prints a message to server error log with severity
@@ -3650,8 +3658,10 @@ custom_injection_callback(const char *name)
     <para>
      Optionally, it is possible to detach an injection point by calling:
 <programlisting>
-extern void InjectionPointDetach(const char *name);
+extern bool InjectionPointDetach(const char *name);
 </programlisting>
+     On success, <literal>true</literal> is returned, <literal>false</literal>
+     otherwise.
     </para>
 
     <para>
@@ -3660,6 +3670,12 @@ extern void InjectionPointDetach(const char *name);
      <literal>InjectionPointAttach</literal> is called. It remains attached
      while the server is running or until the injection point is detached
      using <literal>InjectionPointDetach</literal>.
+    </para>
+
+    <para>
+     An example can be found in
+     <filename>src/test/modules/injection_points</filename> in the PostgreSQL
+     source tree.
     </para>
 
     <para>

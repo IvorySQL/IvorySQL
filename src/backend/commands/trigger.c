@@ -834,7 +834,6 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 											  true, /* islocal */
 											  0,	/* inhcount */
 											  true, /* noinherit */
-											  false,	/* conperiod */
 											  isInternal);	/* is_internal */
 	}
 
@@ -2773,8 +2772,8 @@ ExecBRDeleteTriggers(EState *estate, EPQState *epqstate,
 void
 ExecARDeleteTriggers(EState *estate,
 					 ResultRelInfo *relinfo,
+					 ItemPointer tupleid,
 					 HeapTuple fdw_trigtuple,
-					 TupleTableSlot *slot,
 					 TransitionCaptureState *transition_capture,
 					 bool is_crosspart_update)
 {
@@ -2783,11 +2782,20 @@ ExecARDeleteTriggers(EState *estate,
 	if ((trigdesc && trigdesc->trig_delete_after_row) ||
 		(transition_capture && transition_capture->tcs_delete_old_table))
 	{
-		/*
-		 * Put the FDW old tuple to the slot.  Otherwise, the caller is
-		 * expected to have an old tuple already fetched to the slot.
-		 */
-		if (fdw_trigtuple != NULL)
+		TupleTableSlot *slot = ExecGetTriggerOldSlot(estate, relinfo);
+
+		Assert(HeapTupleIsValid(fdw_trigtuple) ^ ItemPointerIsValid(tupleid));
+		if (fdw_trigtuple == NULL)
+			GetTupleForTrigger(estate,
+							   NULL,
+							   relinfo,
+							   tupleid,
+							   LockTupleExclusive,
+							   slot,
+							   NULL,
+							   NULL,
+							   NULL);
+		else
 			ExecForceStoreHeapTuple(fdw_trigtuple, slot, false);
 
 		AfterTriggerSaveEvent(estate, relinfo, NULL, NULL,
@@ -3078,17 +3086,18 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
  * Note: 'src_partinfo' and 'dst_partinfo', when non-NULL, refer to the source
  * and destination partitions, respectively, of a cross-partition update of
  * the root partitioned table mentioned in the query, given by 'relinfo'.
- * 'oldslot' contains the "old" tuple in the source partition, and 'newslot'
- * contains the "new" tuple in the destination partition.  This interface
- * allows to support the requirements of ExecCrossPartitionUpdateForeignKey();
- * is_crosspart_update must be true in that case.
+ * 'tupleid' in that case refers to the ctid of the "old" tuple in the source
+ * partition, and 'newslot' contains the "new" tuple in the destination
+ * partition.  This interface allows to support the requirements of
+ * ExecCrossPartitionUpdateForeignKey(); is_crosspart_update must be true in
+ * that case.
  */
 void
 ExecARUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 					 ResultRelInfo *src_partinfo,
 					 ResultRelInfo *dst_partinfo,
+					 ItemPointer tupleid,
 					 HeapTuple fdw_trigtuple,
-					 TupleTableSlot *oldslot,
 					 TupleTableSlot *newslot,
 					 List *recheckIndexes,
 					 TransitionCaptureState *transition_capture,
@@ -3107,14 +3116,29 @@ ExecARUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 		 * separately for DELETE and INSERT to capture transition table rows.
 		 * In such case, either old tuple or new tuple can be NULL.
 		 */
+		TupleTableSlot *oldslot;
+		ResultRelInfo *tupsrc;
+
 		Assert((src_partinfo != NULL && dst_partinfo != NULL) ||
 			   !is_crosspart_update);
 
-		if (fdw_trigtuple != NULL)
-		{
-			Assert(oldslot);
+		tupsrc = src_partinfo ? src_partinfo : relinfo;
+		oldslot = ExecGetTriggerOldSlot(estate, tupsrc);
+
+		if (fdw_trigtuple == NULL && ItemPointerIsValid(tupleid))
+			GetTupleForTrigger(estate,
+							   NULL,
+							   tupsrc,
+							   tupleid,
+							   LockTupleExclusive,
+							   oldslot,
+							   NULL,
+							   NULL,
+							   NULL);
+		else if (fdw_trigtuple != NULL)
 			ExecForceStoreHeapTuple(fdw_trigtuple, oldslot, false);
-		}
+		else
+			ExecClearTuple(oldslot);
 
 		AfterTriggerSaveEvent(estate, relinfo,
 							  src_partinfo, dst_partinfo,
@@ -4265,8 +4289,12 @@ AfterTriggerExecute(EState *estate,
 	bool		should_free_new = false;
 
 	/*
-	 * Locate trigger in trigdesc.
+	 * Locate trigger in trigdesc.  It might not be present, and in fact the
+	 * trigdesc could be NULL, if the trigger was dropped since the event was
+	 * queued.  In that case, silently do nothing.
 	 */
+	if (trigdesc == NULL)
+		return;
 	for (tgindx = 0; tgindx < trigdesc->numtriggers; tgindx++)
 	{
 		if (trigdesc->triggers[tgindx].tgoid == tgoid)
@@ -4276,7 +4304,7 @@ AfterTriggerExecute(EState *estate,
 		}
 	}
 	if (LocTriggerData.tg_trigger == NULL)
-		elog(ERROR, "could not find trigger %u", tgoid);
+		return;
 
 	/*
 	 * If doing EXPLAIN ANALYZE, start charging time to this trigger. We want
@@ -4657,6 +4685,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 					/* Catch calls with insufficient relcache refcounting */
 					Assert(!RelationHasReferenceCountZero(rel));
 					trigdesc = rInfo->ri_TrigDesc;
+					/* caution: trigdesc could be NULL here */
 					finfo = rInfo->ri_TrigFunctions;
 					instr = rInfo->ri_TrigInstrument;
 					if (slot1 != NULL)
@@ -4672,9 +4701,6 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 						slot2 = MakeSingleTupleTableSlot(rel->rd_att,
 														 &TTSOpsMinimalTuple);
 					}
-					if (trigdesc == NULL)	/* should not happen */
-						elog(ERROR, "relation %u has no triggers",
-							 evtshared->ats_relid);
 				}
 
 				/*

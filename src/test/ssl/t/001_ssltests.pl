@@ -85,7 +85,8 @@ switch_server_cert(
 	restart        => 'no');
 
 $result = $node->restart(fail_ok => 1);
-is($result, 0, 'restart fails with password-protected key file with wrong password');
+is($result, 0,
+	'restart fails with password-protected key file with wrong password');
 
 switch_server_cert(
 	$node,
@@ -547,11 +548,11 @@ $node->connect_fails(
 $node->connect_fails(
 	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require ssl_min_protocol_version=incorrect_tls",
 	"connection failure with an incorrect SSL protocol minimum bound",
-	expected_stderr => qr/invalid ssl_min_protocol_version value/);
+	expected_stderr => qr/invalid "ssl_min_protocol_version" value/);
 $node->connect_fails(
 	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require ssl_max_protocol_version=incorrect_tls",
 	"connection failure with an incorrect SSL protocol maximum bound",
-	expected_stderr => qr/invalid ssl_max_protocol_version value/);
+	expected_stderr => qr/invalid "ssl_max_protocol_version" value/);
 
 ### Server-side tests.
 ###

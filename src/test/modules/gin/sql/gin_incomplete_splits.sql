@@ -14,6 +14,9 @@
 -- splits in "incomplete" state
 create extension injection_points;
 
+-- Make all injection points local to this process, for concurrency.
+SELECT injection_points_set_local();
+
 -- Use the index for all the queries
 set enable_seqscan=off;
 
@@ -143,3 +146,5 @@ select insert_n(:next_i, 10) as next_i
 \gset
 -- Verify that a scan still works
 select verify(:next_i);
+
+SELECT injection_points_detach('gin-finish-incomplete-split');

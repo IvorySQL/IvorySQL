@@ -273,11 +273,9 @@ table_tuple_get_latest_tid(TableScanDesc scan, ItemPointer tid)
  * default command ID and not allowing access to the speedup options.
  */
 void
-simple_table_tuple_insert(Relation rel, TupleTableSlot *slot,
-						  bool *insert_indexes)
+simple_table_tuple_insert(Relation rel, TupleTableSlot *slot)
 {
-	table_tuple_insert(rel, slot, GetCurrentCommandId(true), 0, NULL,
-					   insert_indexes);
+	table_tuple_insert(rel, slot, GetCurrentCommandId(true), 0, NULL);
 }
 
 /*
@@ -289,23 +287,16 @@ simple_table_tuple_insert(Relation rel, TupleTableSlot *slot,
  * via ereport().
  */
 void
-simple_table_tuple_delete(Relation rel, ItemPointer tid, Snapshot snapshot,
-						  TupleTableSlot *oldSlot)
+simple_table_tuple_delete(Relation rel, ItemPointer tid, Snapshot snapshot)
 {
 	TM_Result	result;
 	TM_FailureData tmfd;
-	int			options = TABLE_MODIFY_WAIT;	/* wait for commit */
-
-	/* Fetch old tuple if the relevant slot is provided */
-	if (oldSlot)
-		options |= TABLE_MODIFY_FETCH_OLD_TUPLE;
 
 	result = table_tuple_delete(rel, tid,
 								GetCurrentCommandId(true),
 								snapshot, InvalidSnapshot,
-								options,
-								&tmfd, false /* changingPart */ ,
-								oldSlot);
+								true /* wait for commit */ ,
+								&tmfd, false /* changingPart */ );
 
 	switch (result)
 	{
@@ -344,24 +335,17 @@ void
 simple_table_tuple_update(Relation rel, ItemPointer otid,
 						  TupleTableSlot *slot,
 						  Snapshot snapshot,
-						  TU_UpdateIndexes *update_indexes,
-						  TupleTableSlot *oldSlot)
+						  TU_UpdateIndexes *update_indexes)
 {
 	TM_Result	result;
 	TM_FailureData tmfd;
 	LockTupleMode lockmode;
-	int			options = TABLE_MODIFY_WAIT;	/* wait for commit */
-
-	/* Fetch old tuple if the relevant slot is provided */
-	if (oldSlot)
-		options |= TABLE_MODIFY_FETCH_OLD_TUPLE;
 
 	result = table_tuple_update(rel, otid, slot,
 								GetCurrentCommandId(true),
 								snapshot, InvalidSnapshot,
-								options,
-								&tmfd, &lockmode, update_indexes,
-								oldSlot);
+								true /* wait for commit */ ,
+								&tmfd, &lockmode, update_indexes);
 
 	switch (result)
 	{

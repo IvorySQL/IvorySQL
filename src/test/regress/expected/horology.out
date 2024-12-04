@@ -274,6 +274,161 @@ SELECT time with time zone 'J2452271 T040506.789 America/Los_Angeles';
  04:05:06.789-08
 (1 row)
 
+-- Check time formats required by ISO 8601
+SELECT time without time zone '040506.07';
+    time     
+-------------
+ 04:05:06.07
+(1 row)
+
+SELECT time without time zone '04:05:06.07';
+    time     
+-------------
+ 04:05:06.07
+(1 row)
+
+SELECT time without time zone '040506';
+   time   
+----------
+ 04:05:06
+(1 row)
+
+SELECT time without time zone '04:05:06';
+   time   
+----------
+ 04:05:06
+(1 row)
+
+SELECT time without time zone '0405';
+   time   
+----------
+ 04:05:00
+(1 row)
+
+SELECT time without time zone '04:05';
+   time   
+----------
+ 04:05:00
+(1 row)
+
+SELECT time without time zone 'T040506.07';
+    time     
+-------------
+ 04:05:06.07
+(1 row)
+
+SELECT time without time zone 'T04:05:06.07';
+    time     
+-------------
+ 04:05:06.07
+(1 row)
+
+SELECT time without time zone 'T040506';
+   time   
+----------
+ 04:05:06
+(1 row)
+
+SELECT time without time zone 'T04:05:06';
+   time   
+----------
+ 04:05:06
+(1 row)
+
+SELECT time without time zone 'T0405';
+   time   
+----------
+ 04:05:00
+(1 row)
+
+SELECT time without time zone 'T04:05';
+   time   
+----------
+ 04:05:00
+(1 row)
+
+-- 8601 says "Thh" is allowed, but we intentionally reject it as too vague
+SELECT time without time zone 'T04';
+ERROR:  invalid input syntax for type time: "T04"
+LINE 1: SELECT time without time zone 'T04';
+                                      ^
+SELECT time with time zone '040506.07+08';
+     timetz     
+----------------
+ 04:05:06.07+08
+(1 row)
+
+SELECT time with time zone '04:05:06.07+08';
+     timetz     
+----------------
+ 04:05:06.07+08
+(1 row)
+
+SELECT time with time zone '040506+08';
+   timetz    
+-------------
+ 04:05:06+08
+(1 row)
+
+SELECT time with time zone '04:05:06+08';
+   timetz    
+-------------
+ 04:05:06+08
+(1 row)
+
+SELECT time with time zone '0405+08';
+   timetz    
+-------------
+ 04:05:00+08
+(1 row)
+
+SELECT time with time zone '04:05+08';
+   timetz    
+-------------
+ 04:05:00+08
+(1 row)
+
+SELECT time with time zone 'T040506.07+08';
+     timetz     
+----------------
+ 04:05:06.07+08
+(1 row)
+
+SELECT time with time zone 'T04:05:06.07+08';
+     timetz     
+----------------
+ 04:05:06.07+08
+(1 row)
+
+SELECT time with time zone 'T040506+08';
+   timetz    
+-------------
+ 04:05:06+08
+(1 row)
+
+SELECT time with time zone 'T04:05:06+08';
+   timetz    
+-------------
+ 04:05:06+08
+(1 row)
+
+SELECT time with time zone 'T0405+08';
+   timetz    
+-------------
+ 04:05:00+08
+(1 row)
+
+SELECT time with time zone 'T04:05+08';
+   timetz    
+-------------
+ 04:05:00+08
+(1 row)
+
+-- 8601 says "Thh" is allowed, but we intentionally reject it as too vague
+SELECT time with time zone 'T04+08';
+ERROR:  invalid input syntax for type time with time zone: "T04+08"
+LINE 1: SELECT time with time zone 'T04+08';
+                                   ^
 SET DateStyle = 'Postgres, MDY';
 -- Check Julian dates BC
 SELECT date 'J1520447' AS "Confucius' Birthday";
@@ -483,6 +638,8 @@ SELECT timestamp without time zone 'Jan 1, 4713 BC' + interval '109203489 days' 
 (1 row)
 
 SELECT timestamp without time zone '2000-01-01' - interval '2483590 days' AS "out of range";
+ERROR:  timestamp out of range
+SELECT timestamp without time zone '294276-12-31 23:59:59' + interval '9223372036854775807 microseconds' AS "out of range";
 ERROR:  timestamp out of range
 SELECT timestamp without time zone '12/31/294276' - timestamp without time zone '12/23/1999' AS "106751991 Days";
   106751991 Days  
@@ -745,6 +902,8 @@ SELECT timestamp with time zone '1999-12-01' + interval '1 month - 1 second' AS 
 (1 row)
 
 SELECT timestamp with time zone '2000-01-01' - interval '2483590 days' AS "out of range";
+ERROR:  timestamp out of range
+SELECT timestamp with time zone '294276-12-31 23:59:59 UTC' + interval '9223372036854775807 microseconds' AS "out of range";
 ERROR:  timestamp out of range
 SELECT (timestamp with time zone 'today' = (timestamp with time zone 'yesterday' + interval '1 day')) as "True";
  True 

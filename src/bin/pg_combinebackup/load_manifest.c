@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "common/hashfn.h"
+#include "common/hashfn_unstable.h"
 #include "common/logging.h"
 #include "common/parse_manifest.h"
 #include "load_manifest.h"
@@ -35,15 +35,20 @@
 #define ESTIMATED_BYTES_PER_MANIFEST_LINE	100
 
 /*
+ * size of json chunk to be read in
+ *
+ */
+#define READ_CHUNK_SIZE (128  * 1024)
+
+/*
  * Define a hash table which we can use to store information about the files
  * mentioned in the backup manifest.
  */
-static uint32 hash_string_pointer(char *s);
 #define SH_PREFIX		manifest_files
 #define SH_ELEMENT_TYPE	manifest_file
-#define SH_KEY_TYPE		char *
+#define SH_KEY_TYPE		const char *
 #define	SH_KEY			pathname
-#define SH_HASH_KEY(tb, key)	hash_string_pointer(key)
+#define SH_HASH_KEY(tb, key)	hash_string(key)
 #define SH_EQUAL(tb, a, b)		(strcmp(a, b) == 0)
 #define	SH_SCOPE		extern
 #define SH_RAW_ALLOCATOR	pg_malloc0
@@ -55,7 +60,7 @@ static void combinebackup_version_cb(JsonManifestParseContext *context,
 static void combinebackup_system_identifier_cb(JsonManifestParseContext *context,
 											   uint64 manifest_system_identifier);
 static void combinebackup_per_file_cb(JsonManifestParseContext *context,
-									  char *pathname, size_t size,
+									  const char *pathname, size_t size,
 									  pg_checksum_type checksum_type,
 									  int checksum_length,
 									  uint8 *checksum_payload);
@@ -109,6 +114,7 @@ load_backup_manifest(char *backup_directory)
 	int			rc;
 	JsonManifestParseContext context;
 	manifest_data *result;
+	int			chunk_size = READ_CHUNK_SIZE;
 
 	/* Open the manifest file. */
 	snprintf(pathname, MAXPGPATH, "%s/backup_manifest", backup_directory);
@@ -116,7 +122,7 @@ load_backup_manifest(char *backup_directory)
 	{
 		if (errno == ENOENT)
 		{
-			pg_log_warning("\"%s\" does not exist", pathname);
+			pg_log_warning("file \"%s\" does not exist", pathname);
 			return NULL;
 		}
 		pg_fatal("could not open file \"%s\": %m", pathname);
@@ -133,27 +139,6 @@ load_backup_manifest(char *backup_directory)
 	/* Create the hash table. */
 	ht = manifest_files_create(initial_size, NULL);
 
-	/*
-	 * Slurp in the whole file.
-	 *
-	 * This is not ideal, but there's currently no way to get pg_parse_json()
-	 * to perform incremental parsing.
-	 */
-	buffer = pg_malloc(statbuf.st_size);
-	rc = read(fd, buffer, statbuf.st_size);
-	if (rc != statbuf.st_size)
-	{
-		if (rc < 0)
-			pg_fatal("could not read file \"%s\": %m", pathname);
-		else
-			pg_fatal("could not read file \"%s\": read %d of %lld",
-					 pathname, rc, (long long int) statbuf.st_size);
-	}
-
-	/* Close the manifest file. */
-	close(fd);
-
-	/* Parse the manifest. */
 	result = pg_malloc0(sizeof(manifest_data));
 	result->files = ht;
 	context.private_data = result;
@@ -162,7 +147,72 @@ load_backup_manifest(char *backup_directory)
 	context.per_file_cb = combinebackup_per_file_cb;
 	context.per_wal_range_cb = combinebackup_per_wal_range_cb;
 	context.error_cb = report_manifest_error;
-	json_parse_manifest(&context, buffer, statbuf.st_size);
+
+	/*
+	 * Parse the file, in chunks if necessary.
+	 */
+	if (statbuf.st_size <= chunk_size)
+	{
+		buffer = pg_malloc(statbuf.st_size);
+		rc = read(fd, buffer, statbuf.st_size);
+		if (rc != statbuf.st_size)
+		{
+			if (rc < 0)
+				pg_fatal("could not read file \"%s\": %m", pathname);
+			else
+				pg_fatal("could not read file \"%s\": read %d of %lld",
+						 pathname, rc, (long long int) statbuf.st_size);
+		}
+
+		/* Close the manifest file. */
+		close(fd);
+
+		/* Parse the manifest. */
+		json_parse_manifest(&context, buffer, statbuf.st_size);
+	}
+	else
+	{
+		int			bytes_left = statbuf.st_size;
+		JsonManifestParseIncrementalState *inc_state;
+
+		inc_state = json_parse_manifest_incremental_init(&context);
+
+		buffer = pg_malloc(chunk_size + 1);
+
+		while (bytes_left > 0)
+		{
+			int			bytes_to_read = chunk_size;
+
+			/*
+			 * Make sure that the last chunk is sufficiently large. (i.e. at
+			 * least half the chunk size) so that it will contain fully the
+			 * piece at the end with the checksum.
+			 */
+			if (bytes_left < chunk_size)
+				bytes_to_read = bytes_left;
+			else if (bytes_left < 2 * chunk_size)
+				bytes_to_read = bytes_left / 2;
+			rc = read(fd, buffer, bytes_to_read);
+			if (rc != bytes_to_read)
+			{
+				if (rc < 0)
+					pg_fatal("could not read file \"%s\": %m", pathname);
+				else
+					pg_fatal("could not read file \"%s\": read %lld of %lld",
+							 pathname,
+							 (long long int) (statbuf.st_size + rc - bytes_left),
+							 (long long int) statbuf.st_size);
+			}
+			bytes_left -= rc;
+			json_parse_manifest_incremental_chunk(
+												  inc_state, buffer, rc, bytes_left == 0);
+		}
+
+		/* Release the incremental state memory */
+		json_parse_manifest_incremental_shutdown(inc_state);
+
+		close(fd);
+	}
 
 	/* All done. */
 	pfree(buffer);
@@ -217,7 +267,7 @@ combinebackup_system_identifier_cb(JsonManifestParseContext *context,
  */
 static void
 combinebackup_per_file_cb(JsonManifestParseContext *context,
-						  char *pathname, size_t size,
+						  const char *pathname, size_t size,
 						  pg_checksum_type checksum_type,
 						  int checksum_length, uint8 *checksum_payload)
 {
@@ -262,15 +312,4 @@ combinebackup_per_wal_range_cb(JsonManifestParseContext *context,
 	else
 		manifest->last_wal_range->next = range;
 	manifest->last_wal_range = range;
-}
-
-/*
- * Helper function for manifest_files hash table.
- */
-static uint32
-hash_string_pointer(char *s)
-{
-	unsigned char *ss = (unsigned char *) s;
-
-	return hash_bytes(ss, strlen(s));
 }

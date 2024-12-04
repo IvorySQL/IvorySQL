@@ -231,6 +231,12 @@ typedef enum
 	PGASYNC_PIPELINE_IDLE,		/* "Idle" between commands in pipeline mode */
 } PGAsyncStatusType;
 
+/* Bitmasks for allowed_enc_methods and failed_enc_methods */
+#define ENC_ERROR			0
+#define ENC_PLAINTEXT		0x01
+#define ENC_GSSAPI			0x02
+#define ENC_SSL				0x04
+
 /* Target server type (decoded value of target_session_attrs) */
 typedef enum
 {
@@ -390,6 +396,7 @@ struct pg_conn
 	char	   *keepalives_count;	/* maximum number of TCP keepalive
 									 * retransmits */
 	char	   *sslmode;		/* SSL mode (require,prefer,allow,disable) */
+	char	   *sslnegotiation; /* SSL initiation style (postgres,direct) */
 	char	   *sslcompression; /* SSL compression (0 or 1) */
 	char	   *sslkey;			/* client key filename */
 	char	   *sslcert;		/* client certificate filename */
@@ -436,7 +443,10 @@ struct pg_conn
 	bool		nonblocking;	/* whether this connection is using nonblock
 								 * sending semantics */
 	PGpipelineStatus pipelineStatus;	/* status of pipeline mode */
+	bool		partialResMode; /* true if single-row or chunked mode */
 	bool		singleRowMode;	/* return current query result row-by-row? */
+	int			maxChunkSize;	/* return query result in chunks not exceeding
+								 * this number of rows */
 	char		copy_is_binary; /* 1 = copy binary, 0 = copy text */
 	int			copy_already_done;	/* # bytes already returned in COPY OUT */
 	PGnotify   *notifyHead;		/* oldest unreported Notify msg */
@@ -537,27 +547,30 @@ struct pg_conn
 	 * and error_result is true, then we need to return a PGRES_FATAL_ERROR
 	 * result, but haven't yet constructed it; text for the error has been
 	 * appended to conn->errorMessage.  (Delaying construction simplifies
-	 * dealing with out-of-memory cases.)  If next_result isn't NULL, it is a
-	 * PGresult that will replace "result" after we return that one.
+	 * dealing with out-of-memory cases.)  If saved_result isn't NULL, it is a
+	 * PGresult that will replace "result" after we return that one; we use
+	 * that in partial-result mode to remember the query's tuple metadata.
 	 */
 	PGresult   *result;			/* result being constructed */
 	bool		error_result;	/* do we need to make an ERROR result? */
-	PGresult   *next_result;	/* next result (used in single-row mode) */
+	PGresult   *saved_result;	/* original, empty result in partialResMode */
 
 	/* Assorted state for SASL, SSL, GSS, etc */
 	const pg_fe_sasl_mech *sasl;
 	void	   *sasl_state;
 	int			scram_sha_256_iterations;
 
+	uint8		allowed_enc_methods;
+	uint8		failed_enc_methods;
+	uint8		current_enc_method;
+
 	/* SSL structures */
 	bool		ssl_in_use;
+	bool		ssl_handshake_started;
 	bool		ssl_cert_requested; /* Did the server ask us for a cert? */
 	bool		ssl_cert_sent;	/* Did we send one in reply? */
 
 #ifdef USE_SSL
-	bool		allow_ssl_try;	/* Allowed to try SSL negotiation */
-	bool		wait_ssl_try;	/* Delay SSL negotiation until after
-								 * attempting normal connection */
 #ifdef USE_OPENSSL
 	SSL		   *ssl;			/* SSL status, if have SSL connection */
 	X509	   *peer;			/* X509 cert of server */
@@ -580,7 +593,6 @@ struct pg_conn
 	gss_name_t	gtarg_nam;		/* GSS target name */
 
 	/* The following are encryption-only */
-	bool		try_gss;		/* GSS attempting permitted */
 	bool		gssenc;			/* GSS encryption is usable */
 	gss_cred_id_t gcred;		/* GSS credential temp storage. */
 
@@ -745,7 +757,7 @@ extern int	pqReadData(PGconn *conn);
 extern int	pqFlush(PGconn *conn);
 extern int	pqWait(int forRead, int forWrite, PGconn *conn);
 extern int	pqWaitTimed(int forRead, int forWrite, PGconn *conn,
-						time_t finish_time);
+						pg_usec_time_t end_time);
 extern int	pqReadReady(PGconn *conn);
 extern int	pqWriteReady(PGconn *conn);
 

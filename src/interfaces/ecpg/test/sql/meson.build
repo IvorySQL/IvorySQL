@@ -26,10 +26,12 @@ pgc_files = [
   'show',
   'sqlda',
   'sqljson',
+  'sqljson_jsontable',
   'twophase',
 ]
 
 pgc_extra_flags = {
+  'define': ['-DCMDLINESYM=123', files('define_prelim.pgc')],
   'oldexec': ['-r', 'questionmarks'],
 }
 

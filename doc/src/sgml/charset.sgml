@@ -1320,7 +1320,9 @@ SELECT 'w;x*y-z' = 'wxyz' COLLATE num_ignore_punct; -- true
         </row>
         <row>
          <entry>level4</entry>
-         <entry>Punctuation</entry>
+         <entry>Punctuation<footnote><para>only with
+         <literal>ka-shifted</literal>; see <xref
+         linkend="icu-collation-settings-table"/></para></footnote></entry>
          <entry><literal>true</literal></entry>
          <entry><literal>true</literal></entry>
          <entry><literal>false</literal></entry>
@@ -1702,7 +1704,7 @@ ORDER BY c COLLATE ebcdic;
      </listitem>
      <listitem>
       <para>
-       <ulink url="https://tools.ietf.org/html/bcp47">BCP 47</ulink>
+       <ulink url="https://www.rfc-editor.org/info/bcp47">BCP 47</ulink>
       </para>
      </listitem>
      <listitem>
@@ -3399,7 +3401,7 @@ RESET client_encoding;
       </varlistentry>
 
       <varlistentry>
-       <term><ulink url="https://tools.ietf.org/html/rfc3629">RFC 3629</ulink></term>
+       <term><ulink url="https://datatracker.ietf.org/doc/html/rfc3629">RFC 3629</ulink></term>
 
        <listitem>
         <para>

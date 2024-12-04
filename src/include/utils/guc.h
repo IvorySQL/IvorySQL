@@ -268,7 +268,6 @@ extern PGDLLIMPORT int log_temp_files;
 extern PGDLLIMPORT double log_statement_sample_rate;
 extern PGDLLIMPORT double log_xact_sample_rate;
 extern PGDLLIMPORT char *backtrace_functions;
-extern PGDLLIMPORT bool backtrace_on_internal_error;
 
 extern PGDLLIMPORT int temp_file_limit;
 
@@ -428,8 +427,8 @@ extern void AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt);
 extern char *GetConfigOptionByName(const char *name, const char **varname,
 								   bool missing_ok);
 
-extern void TransformGUCArray(ArrayType *array, List **configNames,
-							  List **configValues);
+extern void TransformGUCArray(ArrayType *array, List **names,
+							  List **values);
 extern void ProcessGUCArray(ArrayType *array,
 							GucContext context, GucSource source, GucAction action);
 extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *value);

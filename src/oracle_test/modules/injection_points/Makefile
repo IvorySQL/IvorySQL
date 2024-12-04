@@ -7,6 +7,9 @@ DATA = injection_points--1.0.sql
 PGFILEDESC = "injection_points - facility for injection points"
 
 REGRESS = injection_points
+REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
+
+ISOLATION = inplace
 
 # The injection points are cluster-wide, so disable installcheck
 NO_INSTALLCHECK = 1

@@ -154,7 +154,7 @@ typedef struct Query
 	bool		hasDistinctOn pg_node_attr(query_jumble_ignore);
 	/* WITH RECURSIVE was specified */
 	bool		hasRecursive pg_node_attr(query_jumble_ignore);
-	/* has INSERT/UPDATE/DELETE in WITH */
+	/* has INSERT/UPDATE/DELETE/MERGE in WITH */
 	bool		hasModifyingCTE pg_node_attr(query_jumble_ignore);
 	/* FOR [KEY] UPDATE/SHARE was specified */
 	bool		hasForUpdate pg_node_attr(query_jumble_ignore);
@@ -648,6 +648,9 @@ typedef struct RangeFunction
 
 /*
  * RangeTableFunc - raw form of "table functions" such as XMLTABLE
+ *
+ * Note: JSON_TABLE is also a "table function", but it uses JsonTable node,
+ * not RangeTableFunc.
  */
 typedef struct RangeTableFunc
 {
@@ -938,6 +941,17 @@ typedef struct PartitionRangeDatum
 } PartitionRangeDatum;
 
 /*
+ * PartitionDesc - info about single partition for ALTER TABLE SPLIT PARTITION command
+ */
+typedef struct SinglePartitionSpec
+{
+	NodeTag		type;
+
+	RangeVar   *name;			/* name of partition */
+	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
+} SinglePartitionSpec;
+
+/*
  * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION commands
  */
 typedef struct PartitionCmd
@@ -945,6 +959,8 @@ typedef struct PartitionCmd
 	NodeTag		type;
 	RangeVar   *name;			/* name of partition to attach/detach */
 	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
+	List	   *partlist;		/* list of partitions, for MERGE/SPLIT
+								 * PARTITION command */
 	bool		concurrent;
 } PartitionCmd;
 
@@ -1536,8 +1552,6 @@ typedef struct WindowClause
 	int			frameOptions;	/* frame_clause options, see WindowDef */
 	Node	   *startOffset;	/* expression for starting bound, if any */
 	Node	   *endOffset;		/* expression for ending bound, if any */
-	/* qual to help short-circuit execution */
-	List	   *runCondition pg_node_attr(query_jumble_ignore);
 	/* in_range function for startOffset */
 	Oid			startInRangeFunc pg_node_attr(query_jumble_ignore);
 	/* in_range function for endOffset */
@@ -1779,6 +1793,8 @@ typedef struct JsonFuncExpr
 {
 	NodeTag		type;
 	JsonExprOp	op;				/* expression type */
+	char	   *column_name;	/* JSON_TABLE() column name or NULL if this is
+								 * not for a JSON_TABLE() */
 	JsonValueExpr *context_item;	/* context item expression */
 	Node	   *pathspec;		/* JSON path specification expression */
 	List	   *passing;		/* list of PASSING clause arguments, if any */
@@ -1787,8 +1803,73 @@ typedef struct JsonFuncExpr
 	JsonBehavior *on_error;		/* ON ERROR behavior */
 	JsonWrapper wrapper;		/* array wrapper behavior (JSON_QUERY only) */
 	JsonQuotes	quotes;			/* omit or keep quotes? (JSON_QUERY only) */
-	int			location;		/* token location, or -1 if unknown */
+	ParseLoc	location;		/* token location, or -1 if unknown */
 } JsonFuncExpr;
+
+/*
+ * JsonTablePathSpec
+ *		untransformed specification of JSON path expression with an optional
+ *		name
+ */
+typedef struct JsonTablePathSpec
+{
+	NodeTag		type;
+
+	Node	   *string;
+	char	   *name;
+	ParseLoc	name_location;
+	ParseLoc	location;		/* location of 'string' */
+} JsonTablePathSpec;
+
+/*
+ * JsonTable -
+ *		untransformed representation of JSON_TABLE
+ */
+typedef struct JsonTable
+{
+	NodeTag		type;
+	JsonValueExpr *context_item;	/* context item expression */
+	JsonTablePathSpec *pathspec;	/* JSON path specification */
+	List	   *passing;		/* list of PASSING clause arguments, if any */
+	List	   *columns;		/* list of JsonTableColumn */
+	JsonBehavior *on_error;		/* ON ERROR behavior */
+	Alias	   *alias;			/* table alias in FROM clause */
+	bool		lateral;		/* does it have LATERAL prefix? */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} JsonTable;
+
+/*
+ * JsonTableColumnType -
+ *		enumeration of JSON_TABLE column types
+ */
+typedef enum JsonTableColumnType
+{
+	JTC_FOR_ORDINALITY,
+	JTC_REGULAR,
+	JTC_EXISTS,
+	JTC_FORMATTED,
+	JTC_NESTED,
+} JsonTableColumnType;
+
+/*
+ * JsonTableColumn -
+ *		untransformed representation of JSON_TABLE column
+ */
+typedef struct JsonTableColumn
+{
+	NodeTag		type;
+	JsonTableColumnType coltype;	/* column type */
+	char	   *name;			/* column name */
+	TypeName   *typeName;		/* column type name */
+	JsonTablePathSpec *pathspec;	/* JSON path specification */
+	JsonFormat *format;			/* JSON format clause, if specified */
+	JsonWrapper wrapper;		/* WRAPPER behavior for formatted columns */
+	JsonQuotes	quotes;			/* omit or keep quotes on scalar strings? */
+	List	   *columns;		/* nested columns */
+	JsonBehavior *on_empty;		/* ON EMPTY behavior */
+	JsonBehavior *on_error;		/* ON ERROR behavior */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} JsonTableColumn;
 
 /*
  * JsonKeyValue -
@@ -2279,9 +2360,9 @@ typedef enum AlterTableType
 	AT_CookedColumnDefault,		/* add a pre-cooked column default */
 	AT_DropNotNull,				/* alter column drop not null */
 	AT_SetNotNull,				/* alter column set not null */
-	AT_SetAttNotNull,			/* set attnotnull w/o a constraint */
 	AT_SetExpression,			/* alter column set expression */
 	AT_DropExpression,			/* alter column drop expression */
+	AT_CheckNotNull,			/* check column is already marked not null */
 	AT_SetStatistics,			/* alter column set statistics */
 	AT_SetOptions,				/* alter column set ( options ) */
 	AT_ResetOptions,			/* alter column reset ( options ) */
@@ -2336,6 +2417,8 @@ typedef enum AlterTableType
 	AT_AttachPartition,			/* ATTACH PARTITION */
 	AT_DetachPartition,			/* DETACH PARTITION */
 	AT_DetachPartitionFinalize, /* DETACH PARTITION FINALIZE */
+	AT_SplitPartition,			/* SPLIT PARTITION */
+	AT_MergePartitions,			/* MERGE PARTITIONS */
 	AT_AddIdentity,				/* ADD IDENTITY */
 	AT_SetIdentity,				/* SET identity column options */
 	AT_DropIdentity,			/* DROP IDENTITY */
@@ -2566,10 +2649,10 @@ typedef struct VariableShowStmt
  *		Create Table Statement
  *
  * NOTE: in the raw gram.y output, ColumnDef and Constraint nodes are
- * intermixed in tableElts, and constraints and nnconstraints are NIL.  After
- * parse analysis, tableElts contains just ColumnDefs, nnconstraints contains
- * Constraint nodes of CONSTR_NOTNULL type from various sources, and
- * constraints contains just CONSTR_CHECK Constraint nodes.
+ * intermixed in tableElts, and constraints is NIL.  After parse analysis,
+ * tableElts contains just ColumnDefs, and constraints contains just
+ * Constraint nodes (in fact, only CONSTR_CHECK nodes, in the present
+ * implementation).
  * ----------------------
  */
 
@@ -2584,7 +2667,6 @@ typedef struct CreateStmt
 	PartitionSpec *partspec;	/* PARTITION BY clause */
 	TypeName   *ofTypename;		/* OF typename */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
-	List	   *nnconstraints;	/* NOT NULL constraints (ditto) */
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
@@ -2674,7 +2756,6 @@ typedef struct Constraint
 	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	List	   *keys;			/* String nodes naming referenced key
 								 * column(s); for UNIQUE/PK/NOT NULL */
-	bool		without_overlaps;	/* WITHOUT OVERLAPS specified */
 	List	   *including;		/* String nodes naming referenced nonkey
 								 * column(s); for UNIQUE/PK */
 	List	   *exclusions;		/* list of (IndexElem, operator name) pairs;
@@ -2691,8 +2772,6 @@ typedef struct Constraint
 	RangeVar   *pktable;		/* Primary key table */
 	List	   *fk_attrs;		/* Attributes of foreign key */
 	List	   *pk_attrs;		/* Corresponding attrs in PK table */
-	bool		fk_with_period; /* Last attribute of FK uses PERIOD */
-	bool		pk_with_period; /* Last attribute of PK uses PERIOD */
 	char		fk_matchtype;	/* FULL, PARTIAL, SIMPLE */
 	char		fk_upd_action;	/* ON UPDATE action */
 	char		fk_del_action;	/* ON DELETE action */
@@ -3301,7 +3380,6 @@ typedef struct IndexStmt
 	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	bool		primary;		/* is index a primary key? */
 	bool		isconstraint;	/* is it for a pkey/unique constraint? */
-	bool		iswithoutoverlaps;	/* is the constraint WITHOUT OVERLAPS? */
 	bool		deferrable;		/* is the constraint DEFERRABLE? */
 	bool		initdeferred;	/* is the constraint INITIALLY DEFERRED? */
 	bool		transformed;	/* true when transformIndexStmt is finished */
@@ -3992,7 +4070,12 @@ typedef struct DeallocateStmt
 	NodeTag		type;
 	/* The name of the plan to remove, NULL if DEALLOCATE ALL */
 	char	   *name pg_node_attr(query_jumble_ignore);
-	/* true if DEALLOCATE ALL */
+
+	/*
+	 * True if DEALLOCATE ALL.  This is redundant with "name == NULL", but we
+	 * make it a separate field so that exactly this condition (and not the
+	 * precise name) will be accounted for in query jumbling.
+	 */
 	bool		isall;
 	/* token location, or -1 if unknown */
 	ParseLoc	location pg_node_attr(query_jumble_location);

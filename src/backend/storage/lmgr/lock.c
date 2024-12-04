@@ -578,11 +578,17 @@ DoLockModesConflict(LOCKMODE mode1, LOCKMODE mode2)
 }
 
 /*
- * LockHeldByMe -- test whether lock 'locktag' is held with mode 'lockmode'
- *		by the current transaction
+ * LockHeldByMe -- test whether lock 'locktag' is held by the current
+ *		transaction
+ *
+ * Returns true if current transaction holds a lock on 'tag' of mode
+ * 'lockmode'.  If 'orstronger' is true, a stronger lockmode is also OK.
+ * ("Stronger" is defined as "numerically higher", which is a bit
+ * semantically dubious but is OK for the purposes we use this for.)
  */
 bool
-LockHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode)
+LockHeldByMe(const LOCKTAG *locktag,
+			 LOCKMODE lockmode, bool orstronger)
 {
 	LOCALLOCKTAG localtag;
 	LOCALLOCK  *locallock;
@@ -598,7 +604,23 @@ LockHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode)
 										  &localtag,
 										  HASH_FIND, NULL);
 
-	return (locallock && locallock->nLocks > 0);
+	if (locallock && locallock->nLocks > 0)
+		return true;
+
+	if (orstronger)
+	{
+		LOCKMODE	slockmode;
+
+		for (slockmode = lockmode + 1;
+			 slockmode <= MaxLockMode;
+			 slockmode++)
+		{
+			if (LockHeldByMe(locktag, slockmode, false))
+				return true;
+		}
+	}
+
+	return false;
 }
 
 #ifdef USE_ASSERT_CHECKING
@@ -960,7 +982,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
 						 errmsg("out of shared memory"),
-						 errhint("You might need to increase %s.", "max_locks_per_transaction")));
+						 errhint("You might need to increase \"%s\".", "max_locks_per_transaction")));
 			else
 				return LOCKACQUIRE_NOT_AVAIL;
 		}
@@ -998,7 +1020,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory"),
-					 errhint("You might need to increase %s.", "max_locks_per_transaction")));
+					 errhint("You might need to increase \"%s\".", "max_locks_per_transaction")));
 		else
 			return LOCKACQUIRE_NOT_AVAIL;
 	}
@@ -1032,7 +1054,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 
 		/*
 		 * Sleep till someone wakes me up. We do this even in the dontWait
-		 * case, beause while trying to go to sleep, we may discover that we
+		 * case, because while trying to go to sleep, we may discover that we
 		 * can acquire the lock immediately after all.
 		 */
 
@@ -1060,7 +1082,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 
 		/*
 		 * Check the proclock entry status. If dontWait = true, this is an
-		 * expected case; otherwise, it will open happen if something in the
+		 * expected case; otherwise, it will only happen if something in the
 		 * ipc communication doesn't work correctly.
 		 */
 		if (!(proclock->holdMask & LOCKBIT_ON(lockmode)))
@@ -2801,7 +2823,7 @@ FastPathGetRelationLockEntry(LOCALLOCK *locallock)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory"),
-					 errhint("You might need to increase %s.", "max_locks_per_transaction")));
+					 errhint("You might need to increase \"%s\".", "max_locks_per_transaction")));
 		}
 		GrantLock(proclock->tag.myLock, proclock, lockmode);
 		FAST_PATH_CLEAR_LOCKMODE(MyProc, f, lockmode);
@@ -4185,7 +4207,7 @@ lock_twophase_recover(TransactionId xid, uint16 info,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-				 errhint("You might need to increase %s.", "max_locks_per_transaction")));
+				 errhint("You might need to increase \"%s\".", "max_locks_per_transaction")));
 	}
 
 	/*
@@ -4250,7 +4272,7 @@ lock_twophase_recover(TransactionId xid, uint16 info,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-				 errhint("You might need to increase %s.", "max_locks_per_transaction")));
+				 errhint("You might need to increase \"%s\".", "max_locks_per_transaction")));
 	}
 
 	/*
@@ -4600,7 +4622,7 @@ VirtualXactLock(VirtualTransactionId vxid, bool wait)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory"),
-					 errhint("You might need to increase %s.", "max_locks_per_transaction")));
+					 errhint("You might need to increase \"%s\".", "max_locks_per_transaction")));
 		}
 		GrantLock(proclock->tag.myLock, proclock, ExclusiveLock);
 

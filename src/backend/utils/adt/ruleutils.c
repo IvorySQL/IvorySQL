@@ -341,7 +341,7 @@ static char *pg_get_viewdef_worker(Oid viewoid,
 								   int prettyFlags, int wrapColumn);
 static char *pg_get_triggerdef_worker(Oid trigid, bool pretty);
 static int	decompile_column_index_array(Datum column_index_array, Oid relId,
-										 bool withPeriod, StringInfo buf);
+										 StringInfo buf);
 static char *pg_get_ruledef_worker(Oid ruleoid, int prettyFlags);
 static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 									const Oid *excludeOps,
@@ -529,6 +529,13 @@ static const char *standard_quote_identifier(const char *ident);
 Datum pg_get_functiondef_internal(PG_FUNCTION_ARGS);
 static void get_json_path_spec(Node *path_spec, deparse_context *context,
 							   bool showimplicit);
+static void get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
+								   deparse_context *context,
+								   bool showimplicit);
+static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
+										  deparse_context *context,
+										  bool showimplicit,
+										  bool needcomma);
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -2258,8 +2265,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				val = SysCacheGetAttrNotNull(CONSTROID, tup,
 											 Anum_pg_constraint_conkey);
 
-				/* If it is a temporal foreign key then it uses PERIOD. */
-				decompile_column_index_array(val, conForm->conrelid, conForm->conperiod, &buf);
+				decompile_column_index_array(val, conForm->conrelid, &buf);
 
 				/* add foreign relation name */
 				appendStringInfo(&buf, ") REFERENCES %s(",
@@ -2270,7 +2276,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				val = SysCacheGetAttrNotNull(CONSTROID, tup,
 											 Anum_pg_constraint_confkey);
 
-				decompile_column_index_array(val, conForm->confrelid, conForm->conperiod, &buf);
+				decompile_column_index_array(val, conForm->confrelid, &buf);
 
 				appendStringInfoChar(&buf, ')');
 
@@ -2356,7 +2362,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				if (!isnull)
 				{
 					appendStringInfoString(&buf, " (");
-					decompile_column_index_array(val, conForm->conrelid, false, &buf);
+					decompile_column_index_array(val, conForm->conrelid, &buf);
 					appendStringInfoChar(&buf, ')');
 				}
 
@@ -2391,9 +2397,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				val = SysCacheGetAttrNotNull(CONSTROID, tup,
 											 Anum_pg_constraint_conkey);
 
-				keyatts = decompile_column_index_array(val, conForm->conrelid, false, &buf);
-				if (conForm->conperiod)
-					appendStringInfoString(&buf, " WITHOUT OVERLAPS");
+				keyatts = decompile_column_index_array(val, conForm->conrelid, &buf);
 
 				appendStringInfoChar(&buf, ')');
 
@@ -2504,28 +2508,6 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 								 conForm->connoinherit ? " NO INHERIT" : "");
 				break;
 			}
-		case CONSTRAINT_NOTNULL:
-			{
-				if (conForm->conrelid)
-				{
-					AttrNumber	attnum;
-
-					attnum = extractNotNullColumn(tup);
-
-					appendStringInfo(&buf, "NOT NULL %s",
-									 quote_identifier(get_attname(conForm->conrelid,
-																  attnum, false)));
-					if (((Form_pg_constraint) GETSTRUCT(tup))->connoinherit)
-						appendStringInfoString(&buf, " NO INHERIT");
-				}
-				else if (conForm->contypid)
-				{
-					/* conkey is null for domain not-null constraints */
-					appendStringInfoString(&buf, "NOT NULL VALUE");
-				}
-				break;
-			}
-
 		case CONSTRAINT_TRIGGER:
 
 			/*
@@ -2597,7 +2579,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
  */
 static int
 decompile_column_index_array(Datum column_index_array, Oid relId,
-							 bool withPeriod, StringInfo buf)
+							 StringInfo buf)
 {
 	Datum	   *keys;
 	int			nKeys;
@@ -2616,9 +2598,7 @@ decompile_column_index_array(Datum column_index_array, Oid relId,
 		if (j == 0)
 			appendStringInfoString(buf, quote_identifier(colName));
 		else
-			appendStringInfo(buf, ", %s%s",
-							 (withPeriod && j == nKeys - 1) ? "PERIOD " : "",
-							 quote_identifier(colName));
+			appendStringInfo(buf, ", %s", quote_identifier(colName));
 	}
 
 	return nKeys;
@@ -6338,7 +6318,7 @@ get_basic_select_query(Query *query, deparse_context *context,
 /* ----------
  * get_target_list			- Parse back a SELECT target list
  *
- * This is also used for RETURNING lists in INSERT/UPDATE/DELETE.
+ * This is also used for RETURNING lists in INSERT/UPDATE/DELETE/MERGE.
  *
  * resultDesc and colNamesVisible are as for get_query_def()
  * ----------
@@ -7471,16 +7451,16 @@ get_merge_query_def(Query *query, deparse_context *context,
 		switch (action->matchKind)
 		{
 			case MERGE_WHEN_MATCHED:
-				appendStringInfo(buf, "MATCHED");
+				appendStringInfoString(buf, "MATCHED");
 				break;
 			case MERGE_WHEN_NOT_MATCHED_BY_SOURCE:
-				appendStringInfo(buf, "NOT MATCHED BY SOURCE");
+				appendStringInfoString(buf, "NOT MATCHED BY SOURCE");
 				break;
 			case MERGE_WHEN_NOT_MATCHED_BY_TARGET:
 				if (haveNotMatchedBySource)
-					appendStringInfo(buf, "NOT MATCHED BY TARGET");
+					appendStringInfoString(buf, "NOT MATCHED BY TARGET");
 				else
-					appendStringInfo(buf, "NOT MATCHED");
+					appendStringInfoString(buf, "NOT MATCHED");
 				break;
 			default:
 				elog(ERROR, "unrecognized matchKind: %d",
@@ -9135,7 +9115,8 @@ get_json_behavior(JsonBehavior *behavior, deparse_context *context,
 /*
  * get_json_expr_options
  *
- * Parse back common options for JSON_QUERY, JSON_VALUE, JSON_EXISTS.
+ * Parse back common options for JSON_QUERY, JSON_VALUE, JSON_EXISTS and
+ * JSON_TABLE columns.
  */
 static void
 get_json_expr_options(JsonExpr *jsexpr, deparse_context *context,
@@ -9144,12 +9125,18 @@ get_json_expr_options(JsonExpr *jsexpr, deparse_context *context,
 	if (jsexpr->op == JSON_QUERY_OP)
 	{
 		if (jsexpr->wrapper == JSW_CONDITIONAL)
-			appendStringInfo(context->buf, " WITH CONDITIONAL WRAPPER");
+			appendStringInfoString(context->buf, " WITH CONDITIONAL WRAPPER");
 		else if (jsexpr->wrapper == JSW_UNCONDITIONAL)
-			appendStringInfo(context->buf, " WITH UNCONDITIONAL WRAPPER");
+			appendStringInfoString(context->buf, " WITH UNCONDITIONAL WRAPPER");
+		/* The default */
+		else if (jsexpr->wrapper == JSW_NONE || jsexpr->wrapper == JSW_UNSPEC)
+			appendStringInfoString(context->buf, " WITHOUT WRAPPER");
 
 		if (jsexpr->omit_quotes)
-			appendStringInfo(context->buf, " OMIT QUOTES");
+			appendStringInfoString(context->buf, " OMIT QUOTES");
+		/* The default */
+		else
+			appendStringInfoString(context->buf, " KEEP QUOTES");
 	}
 
 	if (jsexpr->on_empty && jsexpr->on_empty->btype != default_behavior)
@@ -10494,7 +10481,7 @@ get_rule_expr(Node *node, deparse_context *context,
 									  JSON_BEHAVIOR_NULL :
 									  JSON_BEHAVIOR_FALSE);
 
-				appendStringInfoString(buf, ")");
+				appendStringInfoChar(buf, ')');
 			}
 			break;
 
@@ -11841,15 +11828,13 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 
 
 /* ----------
- * get_tablefunc			- Parse back a table function
+ * get_xmltable			- Parse back a XMLTABLE function
  * ----------
  */
 static void
-get_tablefunc(TableFunc *tf, deparse_context *context, bool showimplicit)
+get_xmltable(TableFunc *tf, deparse_context *context, bool showimplicit)
 {
 	StringInfo	buf = context->buf;
-
-	/* XMLTABLE is the only existing implementation.  */
 
 	appendStringInfoString(buf, "XMLTABLE(");
 
@@ -11939,6 +11924,227 @@ get_tablefunc(TableFunc *tf, deparse_context *context, bool showimplicit)
 	}
 
 	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * get_json_table_nested_columns - Parse back nested JSON_TABLE columns
+ */
+static void
+get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
+							  deparse_context *context, bool showimplicit,
+							  bool needcomma)
+{
+	if (IsA(plan, JsonTablePathScan))
+	{
+		JsonTablePathScan *scan = castNode(JsonTablePathScan, plan);
+
+		if (needcomma)
+			appendStringInfoChar(context->buf, ',');
+
+		appendStringInfoChar(context->buf, ' ');
+		appendContextKeyword(context, "NESTED PATH ", 0, 0, 0);
+		get_const_expr(scan->path->value, context, -1);
+		appendStringInfo(context->buf, " AS %s", quote_identifier(scan->path->name));
+		get_json_table_columns(tf, scan, context, showimplicit);
+	}
+	else if (IsA(plan, JsonTableSiblingJoin))
+	{
+		JsonTableSiblingJoin *join = (JsonTableSiblingJoin *) plan;
+
+		get_json_table_nested_columns(tf, join->lplan, context, showimplicit,
+									  needcomma);
+		get_json_table_nested_columns(tf, join->rplan, context, showimplicit,
+									  true);
+	}
+}
+
+/*
+ * get_json_table_columns - Parse back JSON_TABLE columns
+ */
+static void
+get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
+					   deparse_context *context,
+					   bool showimplicit)
+{
+	StringInfo	buf = context->buf;
+	JsonExpr   *jexpr = castNode(JsonExpr, tf->docexpr);
+	ListCell   *lc_colname;
+	ListCell   *lc_coltype;
+	ListCell   *lc_coltypmod;
+	ListCell   *lc_colvalexpr;
+	int			colnum = 0;
+
+	appendStringInfoChar(buf, ' ');
+	appendContextKeyword(context, "COLUMNS (", 0, 0, 0);
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel += PRETTYINDENT_VAR;
+
+	forfour(lc_colname, tf->colnames,
+			lc_coltype, tf->coltypes,
+			lc_coltypmod, tf->coltypmods,
+			lc_colvalexpr, tf->colvalexprs)
+	{
+		char	   *colname = strVal(lfirst(lc_colname));
+		JsonExpr   *colexpr;
+		Oid			typid;
+		int32		typmod;
+		bool		ordinality;
+		JsonBehaviorType default_behavior;
+
+		typid = lfirst_oid(lc_coltype);
+		typmod = lfirst_int(lc_coltypmod);
+		colexpr = castNode(JsonExpr, lfirst(lc_colvalexpr));
+
+		/* Skip columns that don't belong to this scan. */
+		if (scan->colMin < 0 || colnum < scan->colMin)
+		{
+			colnum++;
+			continue;
+		}
+		if (colnum > scan->colMax)
+			break;
+
+		if (colnum > scan->colMin)
+			appendStringInfoString(buf, ", ");
+
+		colnum++;
+
+		ordinality = !colexpr;
+
+		appendContextKeyword(context, "", 0, 0, 0);
+
+		appendStringInfo(buf, "%s %s", quote_identifier(colname),
+						 ordinality ? "FOR ORDINALITY" :
+						 format_type_with_typemod(typid, typmod));
+		if (ordinality)
+			continue;
+
+		if (colexpr->op == JSON_EXISTS_OP)
+		{
+			appendStringInfoString(buf, " EXISTS");
+			default_behavior = JSON_BEHAVIOR_FALSE;
+		}
+		else
+		{
+			if (colexpr->op == JSON_QUERY_OP)
+			{
+				char		typcategory;
+				bool		typispreferred;
+
+				get_type_category_preferred(typid, &typcategory, &typispreferred);
+
+				if (typcategory == TYPCATEGORY_STRING)
+					appendStringInfoString(buf,
+										   colexpr->format->format_type == JS_FORMAT_JSONB ?
+										   " FORMAT JSONB" : " FORMAT JSON");
+			}
+
+			default_behavior = JSON_BEHAVIOR_NULL;
+		}
+
+		if (jexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
+			default_behavior = JSON_BEHAVIOR_ERROR;
+
+		appendStringInfoString(buf, " PATH ");
+
+		get_json_path_spec(colexpr->path_spec, context, showimplicit);
+
+		get_json_expr_options(colexpr, context, default_behavior);
+	}
+
+	if (scan->child)
+		get_json_table_nested_columns(tf, scan->child, context, showimplicit,
+									  scan->colMin >= 0);
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel -= PRETTYINDENT_VAR;
+
+	appendContextKeyword(context, ")", 0, 0, 0);
+}
+
+/* ----------
+ * get_json_table			- Parse back a JSON_TABLE function
+ * ----------
+ */
+static void
+get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
+{
+	StringInfo	buf = context->buf;
+	JsonExpr   *jexpr = castNode(JsonExpr, tf->docexpr);
+	JsonTablePathScan *root = castNode(JsonTablePathScan, tf->plan);
+
+	appendStringInfoString(buf, "JSON_TABLE(");
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel += PRETTYINDENT_VAR;
+
+	appendContextKeyword(context, "", 0, 0, 0);
+
+	get_rule_expr(jexpr->formatted_expr, context, showimplicit);
+
+	appendStringInfoString(buf, ", ");
+
+	get_const_expr(root->path->value, context, -1);
+
+	appendStringInfo(buf, " AS %s", quote_identifier(root->path->name));
+
+	if (jexpr->passing_values)
+	{
+		ListCell   *lc1,
+				   *lc2;
+		bool		needcomma = false;
+
+		appendStringInfoChar(buf, ' ');
+		appendContextKeyword(context, "PASSING ", 0, 0, 0);
+
+		if (PRETTY_INDENT(context))
+			context->indentLevel += PRETTYINDENT_VAR;
+
+		forboth(lc1, jexpr->passing_names,
+				lc2, jexpr->passing_values)
+		{
+			if (needcomma)
+				appendStringInfoString(buf, ", ");
+			needcomma = true;
+
+			appendContextKeyword(context, "", 0, 0, 0);
+
+			get_rule_expr((Node *) lfirst(lc2), context, false);
+			appendStringInfo(buf, " AS %s",
+							 quote_identifier((lfirst_node(String, lc1))->sval)
+				);
+		}
+
+		if (PRETTY_INDENT(context))
+			context->indentLevel -= PRETTYINDENT_VAR;
+	}
+
+	get_json_table_columns(tf, castNode(JsonTablePathScan, tf->plan), context,
+						   showimplicit);
+
+	if (jexpr->on_error->btype != JSON_BEHAVIOR_EMPTY)
+		get_json_behavior(jexpr->on_error, context, "ERROR");
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel -= PRETTYINDENT_VAR;
+
+	appendContextKeyword(context, ")", 0, 0, 0);
+}
+
+/* ----------
+ * get_tablefunc			- Parse back a table function
+ * ----------
+ */
+static void
+get_tablefunc(TableFunc *tf, deparse_context *context, bool showimplicit)
+{
+	/* XMLTABLE and JSON_TABLE are the only existing implementations.  */
+
+	if (tf->functype == TFT_XMLTABLE)
+		get_xmltable(tf, context, showimplicit);
+	else if (tf->functype == TFT_JSON_TABLE)
+		get_json_table(tf, context, showimplicit);
 }
 
 /* ----------
@@ -13399,6 +13605,24 @@ get_range_partbound_string(List *bound_datums)
 		sep = ", ";
 	}
 	appendStringInfoChar(buf, ')');
+
+	return buf->data;
+}
+
+/*
+ * get_list_partvalue_string
+ *		A C string representation of one list partition value
+ */
+char *
+get_list_partvalue_string(Const *val)
+{
+	deparse_context context;
+	StringInfo	buf = makeStringInfo();
+
+	memset(&context, 0, sizeof(deparse_context));
+	context.buf = buf;
+
+	get_const_expr(val, &context, -1);
 
 	return buf->data;
 }

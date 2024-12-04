@@ -137,7 +137,7 @@
  *	SerialControlLock
  *		- Protects SerialControlData members
  *
- *	SerialSLRULock
+ *	SLRU per-bank locks
  *		- Protects SerialSlruCtl
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
@@ -651,7 +651,7 @@ SetRWConflict(SERIALIZABLEXACT *reader, SERIALIZABLEXACT *writer)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("not enough elements in RWConflictPool to record a read/write conflict"),
-				 errhint("You might need to run fewer transactions at a time or increase max_connections.")));
+				 errhint("You might need to run fewer transactions at a time or increase \"max_connections\".")));
 
 	conflict = dlist_head_element(RWConflictData, outLink, &RWConflictPool->availableList);
 	dlist_delete(&conflict->outLink);
@@ -676,7 +676,7 @@ SetPossibleUnsafeConflict(SERIALIZABLEXACT *roXact,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("not enough elements in RWConflictPool to record a potential read/write conflict"),
-				 errhint("You might need to run fewer transactions at a time or increase max_connections.")));
+				 errhint("You might need to run fewer transactions at a time or increase \"max_connections\".")));
 
 	conflict = dlist_head_element(RWConflictData, outLink, &RWConflictPool->availableList);
 	dlist_delete(&conflict->outLink);
@@ -908,20 +908,25 @@ SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo)
 	if (isNewPage)
 		serialControl->headPage = targetPage;
 
-	LWLockAcquire(lock, LW_EXCLUSIVE);
-
 	if (isNewPage)
 	{
-		/* Initialize intervening pages. */
-		while (firstZeroPage != targetPage)
+		/* Initialize intervening pages; might involve trading locks */
+		for (;;)
 		{
-			(void) SimpleLruZeroPage(SerialSlruCtl, firstZeroPage);
+			lock = SimpleLruGetBankLock(SerialSlruCtl, firstZeroPage);
+			LWLockAcquire(lock, LW_EXCLUSIVE);
+			slotno = SimpleLruZeroPage(SerialSlruCtl, firstZeroPage);
+			if (firstZeroPage == targetPage)
+				break;
 			firstZeroPage = SerialNextPage(firstZeroPage);
+			LWLockRelease(lock);
 		}
-		slotno = SimpleLruZeroPage(SerialSlruCtl, targetPage);
 	}
 	else
+	{
+		LWLockAcquire(lock, LW_EXCLUSIVE);
 		slotno = SimpleLruReadPage(SerialSlruCtl, targetPage, true, xid);
+	}
 
 	SerialValue(slotno, xid) = minConflictCommitSeqNo;
 	SerialSlruCtl->shared->page_dirty[slotno] = true;
@@ -1673,7 +1678,7 @@ GetSerializableTransactionSnapshot(Snapshot snapshot)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot use serializable mode in a hot standby"),
-				 errdetail("default_transaction_isolation is set to \"serializable\"."),
+				 errdetail("\"default_transaction_isolation\" is set to \"serializable\"."),
 				 errhint("You can use \"SET default_transaction_isolation = 'repeatable read'\" to change the default.")));
 
 	/*
@@ -2456,7 +2461,7 @@ CreatePredicateLock(const PREDICATELOCKTARGETTAG *targettag,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-				 errhint("You might need to increase %s.", "max_pred_locks_per_transaction")));
+				 errhint("You might need to increase \"%s\".", "max_pred_locks_per_transaction")));
 	if (!found)
 		dlist_init(&target->predicateLocks);
 
@@ -2471,7 +2476,7 @@ CreatePredicateLock(const PREDICATELOCKTARGETTAG *targettag,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-				 errhint("You might need to increase %s.", "max_pred_locks_per_transaction")));
+				 errhint("You might need to increase \"%s\".", "max_pred_locks_per_transaction")));
 
 	if (!found)
 	{
@@ -3868,7 +3873,7 @@ ReleaseOneSerializableXact(SERIALIZABLEXACT *sxact, bool partial,
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
 						 errmsg("out of shared memory"),
-						 errhint("You might need to increase %s.", "max_pred_locks_per_transaction")));
+						 errhint("You might need to increase \"%s\".", "max_pred_locks_per_transaction")));
 			if (found)
 			{
 				Assert(predlock->commitSeqNo != 0);

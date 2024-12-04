@@ -132,6 +132,7 @@ $node->command_ok(
 	[
 		'createdb', '-T',
 		'template0', '--locale-provider=builtin',
+		'--lc-collate=C', '--lc-ctype=C',
 		'-E UTF-8', '--builtin-locale=C.UTF8',
 		'tbuiltin5'
 	],
@@ -141,6 +142,7 @@ $node->command_fails(
 	[
 		'createdb', '-T',
 		'template0', '--locale-provider=builtin',
+		'--lc-collate=C', '--lc-ctype=C',
 		'-E LATIN1', '--builtin-locale=C.UTF-8',
 		'tbuiltin6'
 	],
@@ -243,8 +245,18 @@ $node->issues_sql_like(
 	'create database with WAL_LOG strategy');
 
 $node->issues_sql_like(
+	[ 'createdb', '-T', 'foobar2', '-S', 'WAL_LOG', 'foobar6s' ],
+	qr/statement: CREATE DATABASE foobar6s STRATEGY "WAL_LOG" TEMPLATE foobar2/,
+	'create database with WAL_LOG strategy');
+
+$node->issues_sql_like(
 	[ 'createdb', '-T', 'foobar2', '-S', 'file_copy', 'foobar7' ],
 	qr/statement: CREATE DATABASE foobar7 STRATEGY file_copy TEMPLATE foobar2/,
+	'create database with FILE_COPY strategy');
+
+$node->issues_sql_like(
+	[ 'createdb', '-T', 'foobar2', '-S', 'FILE_COPY', 'foobar7s' ],
+	qr/statement: CREATE DATABASE foobar7s STRATEGY "FILE_COPY" TEMPLATE foobar2/,
 	'create database with FILE_COPY strategy');
 
 # Create database owned by role_foobar.

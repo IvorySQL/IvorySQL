@@ -1161,20 +1161,23 @@ SELECT 4 AS \gdesc
 \echo 'last error message:' :LAST_ERROR_MESSAGE
 \echo 'last error code:' :LAST_ERROR_SQLSTATE
 
--- check row count for a cursor-fetched query
+-- check row count for a query with chunked results
 \set FETCH_COUNT 10
 select unique2 from tenk1 order by unique2 limit 19;
 \echo 'error:' :ERROR
 \echo 'error code:' :SQLSTATE
 \echo 'number of rows:' :ROW_COUNT
 
--- cursor-fetched query with an error after the first group
+-- chunked results with an error after the first chunk
+-- (we must disable parallel query here, else the behavior is timing-dependent)
+set debug_parallel_query = off;
 select 1/(15-unique2) from tenk1 order by unique2 limit 19;
 \echo 'error:' :ERROR
 \echo 'error code:' :SQLSTATE
 \echo 'number of rows:' :ROW_COUNT
 \echo 'last error message:' :LAST_ERROR_MESSAGE
 \echo 'last error code:' :LAST_ERROR_SQLSTATE
+reset debug_parallel_query;
 
 \unset FETCH_COUNT
 

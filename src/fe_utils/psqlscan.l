@@ -343,7 +343,7 @@ octfail			0[oO]_?
 binfail			0[bB]_?
 
 numeric			(({decinteger}\.{decinteger}?)|(\.{decinteger}))
-numericfail		{decdigit}+\.\.
+numericfail		{decinteger}\.\.
 
 real			({decinteger}|{numeric})[Ee][-+]?{decinteger}
 realfail		({decinteger}|{numeric})[Ee][-+]
@@ -355,8 +355,9 @@ bininteger_junk	{bininteger}{ident_start}
 numeric_junk	{numeric}{ident_start}
 real_junk		{real}{ident_start}
 
-param			\${decinteger}
-param_junk		\${decinteger}{ident_start}
+/* Positional parameters don't accept underscores. */
+param			\${decdigit}+
+param_junk		\${decdigit}+{ident_start}
 
 /* psql-specific: characters allowed in variable names */
 variable_char	[A-Za-z\200-\377_0-9]

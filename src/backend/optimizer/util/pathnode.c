@@ -1618,7 +1618,7 @@ create_memoize_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->param_exprs = param_exprs;
 	pathnode->singlerow = singlerow;
 	pathnode->binary_mode = binary_mode;
-	pathnode->calls = calls;
+	pathnode->calls = clamp_row_est(calls);
 
 	/*
 	 * For now we set est_entries to 0.  cost_memoize_rescan() does all the
@@ -3471,6 +3471,7 @@ create_minmaxagg_path(PlannerInfo *root,
  * 'subpath' is the path representing the source of data
  * 'target' is the PathTarget to be computed
  * 'windowFuncs' is a list of WindowFunc structs
+ * 'runCondition' is a list of OpExprs to short-circuit WindowAgg execution
  * 'winclause' is a WindowClause that is common to all the WindowFuncs
  * 'qual' WindowClause.runconditions from lower-level WindowAggPaths.
  *		Must always be NIL when topwindow == false
@@ -3486,6 +3487,7 @@ create_windowagg_path(PlannerInfo *root,
 					  Path *subpath,
 					  PathTarget *target,
 					  List *windowFuncs,
+					  List *runCondition,
 					  WindowClause *winclause,
 					  List *qual,
 					  bool topwindow)
@@ -3510,6 +3512,7 @@ create_windowagg_path(PlannerInfo *root,
 	pathnode->subpath = subpath;
 	pathnode->winclause = winclause;
 	pathnode->qual = qual;
+	pathnode->runCondition = runCondition;
 	pathnode->topwindow = topwindow;
 
 	/*

@@ -59,8 +59,6 @@ SELECT attrelid::regclass, attname, attisinvisible FROM pg_attribute WHERE attis
  b      | text            |           |          |                                   |           | extended |              | 
 Indexes:
     "htest1_pkey" PRIMARY KEY, btree (a)
-Not-null constraints:
-    "htest1_a_not_null" NOT NULL "a"
 
 -- DROP/SET invisible attribute
 ALTER TABLE htest0 MODIFY b VISIBLE;
@@ -72,8 +70,6 @@ ALTER TABLE htest0 MODIFY b VISIBLE;
  b      | text            |           | not null |         |           | extended |              | 
 Indexes:
     "htest0_pkey" PRIMARY KEY, btree (a)
-Not-null constraints:
-    "htest0_b_not_null" NOT NULL "b"
 
 ALTER TABLE htest0 MODIFY b INVISIBLE;
 -- Hidden column are not expandable and must not be returned
@@ -176,8 +172,6 @@ CREATE TABLE htest_like1 (LIKE htest1);
 --------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
  a      | pg_catalog.int8 |           | not null |         |           | plain    |              | 
  b      | text            |           |          |         |           | extended |              | 
-Not-null constraints:
-    "htest1_a_not_null" NOT NULL "a"
 
 -- CREATE TABLE ... LIKE includes invisible columns, and they are invisible if requested
 CREATE TABLE htest_like2 (LIKE htest1 INCLUDING INVISIBLE);
@@ -187,8 +181,6 @@ CREATE TABLE htest_like2 (LIKE htest1 INCLUDING INVISIBLE);
 --------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
  a      | pg_catalog.int8 |           | not null |         | invisible | plain    |              | 
  b      | text            |           |          |         |           | extended |              | 
-Not-null constraints:
-    "htest1_a_not_null" NOT NULL "a"
 
 CREATE TABLE htest_like3 (LIKE htest1 INCLUDING ALL);
 \d+ htest_like3
@@ -199,8 +191,6 @@ CREATE TABLE htest_like3 (LIKE htest1 INCLUDING ALL);
  b      | text            |           |          |                                   |           | extended |              | 
 Indexes:
     "htest_like3_pkey" PRIMARY KEY, btree (a)
-Not-null constraints:
-    "htest1_a_not_null" NOT NULL "a"
 
 DROP TABLE htest_like1, htest_like2, htest_like3;
 -- Insert without named column with and a not null invisible column must have a default value
@@ -285,8 +275,6 @@ SELECT * FROM htest3_1;
  a      | pg_catalog.int4 |           | not null | nextval('htest3_a_seq'::regclass) | invisible | plain   |              | 
  b      | pg_catalog.int4 |           |          |                                   |           | plain   |              | 
  c      | pg_catalog.int4 |           |          |                                   | invisible | plain   |              | 
-Not-null constraints:
-    "htest3_a_not_null" NOT NULL "a" (inherited)
 Inherits: htest3
 
 DROP TABLE htest3_1, htest3;
@@ -452,8 +440,6 @@ Indexes:
     "t1_col1_idx" btree (col1)
 Check constraints:
     "t1_col1_check" CHECK (col1 > 2)
-Not-null constraints:
-    "t1_col2_not_null" NOT NULL "col2"
 
 DROP TABLE t1;
 -- View must not include the invisible column when not explicitly listed

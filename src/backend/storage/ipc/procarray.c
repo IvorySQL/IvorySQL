@@ -1106,7 +1106,7 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 		 * If the snapshot isn't overflowed or if its empty we can reset our
 		 * pending state and use this snapshot instead.
 		 */
-		if (!running->subxid_overflow || running->xcnt == 0)
+		if (running->subxid_status != SUBXIDS_MISSING || running->xcnt == 0)
 		{
 			/*
 			 * If we have already collected known assigned xids, we need to
@@ -1258,7 +1258,7 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 	 * missing, so conservatively assume the last one is latestObservedXid.
 	 * ----------
 	 */
-	if (running->subxid_overflow)
+	if (running->subxid_status == SUBXIDS_MISSING)
 	{
 		standbyState = STANDBY_SNAPSHOT_PENDING;
 
@@ -1270,6 +1270,18 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 		standbyState = STANDBY_SNAPSHOT_READY;
 
 		standbySnapshotPendingXmin = InvalidTransactionId;
+
+		/*
+		 * If the 'xids' array didn't include all subtransactions, we have to
+		 * mark any snapshots taken as overflowed.
+		 */
+		if (running->subxid_status == SUBXIDS_IN_SUBTRANS)
+			procArray->lastOverflowedXid = latestObservedXid;
+		else
+		{
+			Assert(running->subxid_status == SUBXIDS_IN_ARRAY);
+			procArray->lastOverflowedXid = InvalidTransactionId;
+		}
 	}
 
 	/*
@@ -1715,9 +1727,9 @@ TransactionIdIsActive(TransactionId xid)
  * Note: the approximate horizons (see definition of GlobalVisState) are
  * updated by the computations done here. That's currently required for
  * correctness and a small optimization. Without doing so it's possible that
- * heap vacuum's call to heap_page_prune() uses a more conservative horizon
- * than later when deciding which tuples can be removed - which the code
- * doesn't expect (breaking HOT).
+ * heap vacuum's call to heap_page_prune_and_freeze() uses a more conservative
+ * horizon than later when deciding which tuples can be removed - which the
+ * code doesn't expect (breaking HOT).
  */
 static void
 ComputeXidHorizons(ComputeXidHorizonsResult *h)
@@ -2833,7 +2845,7 @@ GetRunningTransactionData(void)
 
 	CurrentRunningXacts->xcnt = count - subcount;
 	CurrentRunningXacts->subxcnt = subcount;
-	CurrentRunningXacts->subxid_overflow = suboverflowed;
+	CurrentRunningXacts->subxid_status = suboverflowed ? SUBXIDS_IN_SUBTRANS : SUBXIDS_IN_ARRAY;
 	CurrentRunningXacts->nextXid = XidFromFullTransactionId(TransamVariables->nextXid);
 	CurrentRunningXacts->oldestRunningXid = oldestRunningXid;
 	CurrentRunningXacts->oldestDatabaseRunningXid = oldestDatabaseRunningXid;
@@ -3808,8 +3820,8 @@ CountOtherDBBackends(Oid databaseId, int *nbackends, int *nprepared)
  * The current backend is always ignored; it is caller's responsibility to
  * check whether the current backend uses the given DB, if it's important.
  *
- * It doesn't allow to terminate the connections even if there is a one
- * backend with the prepared transaction in the target database.
+ * If the target database has a prepared transaction or permissions checks
+ * fail for a connection, this fails without terminating anything.
  */
 void
 TerminateOtherDBBackends(Oid databaseId)
@@ -3854,14 +3866,19 @@ TerminateOtherDBBackends(Oid databaseId)
 		ListCell   *lc;
 
 		/*
-		 * Check whether we have the necessary rights to terminate other
-		 * sessions.  We don't terminate any session until we ensure that we
-		 * have rights on all the sessions to be terminated.  These checks are
-		 * the same as we do in pg_terminate_backend.
+		 * Permissions checks relax the pg_terminate_backend checks in two
+		 * ways, both by omitting the !OidIsValid(proc->roleId) check:
 		 *
-		 * In this case we don't raise some warnings - like "PID %d is not a
-		 * PostgreSQL server process", because for us already finished session
-		 * is not a problem.
+		 * - Accept terminating autovacuum workers, since DROP DATABASE
+		 * without FORCE terminates them.
+		 *
+		 * - Accept terminating bgworkers.  For bgworker authors, it's
+		 * convenient to be able to recommend FORCE if a worker is blocking
+		 * DROP DATABASE unexpectedly.
+		 *
+		 * Unlike pg_terminate_backend, we don't raise some warnings - like
+		 * "PID %d is not a PostgreSQL server process", because for us already
+		 * finished session is not a problem.
 		 */
 		foreach(lc, pids)
 		{
@@ -3870,7 +3887,6 @@ TerminateOtherDBBackends(Oid databaseId)
 
 			if (proc != NULL)
 			{
-				/* Only allow superusers to signal superuser-owned backends. */
 				if (superuser_arg(proc->roleId) && !superuser())
 					ereport(ERROR,
 							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -3878,7 +3894,6 @@ TerminateOtherDBBackends(Oid databaseId)
 							 errdetail("Only roles with the %s attribute may terminate processes of roles with the %s attribute.",
 									   "SUPERUSER", "SUPERUSER")));
 
-				/* Users can signal backends they have role membership in. */
 				if (!has_privs_of_role(GetUserId(), proc->roleId) &&
 					!has_privs_of_role(GetUserId(), ROLE_PG_SIGNAL_BACKEND))
 					ereport(ERROR,
@@ -4260,36 +4275,6 @@ GlobalVisTestIsRemovableXid(GlobalVisState *state, TransactionId xid)
 	fxid = FullXidRelativeTo(state->definitely_needed, xid);
 
 	return GlobalVisTestIsRemovableFullXid(state, fxid);
-}
-
-/*
- * Return FullTransactionId below which all transactions are not considered
- * running anymore.
- *
- * Note: This is less efficient than testing with
- * GlobalVisTestIsRemovableFullXid as it likely requires building an accurate
- * cutoff, even in the case all the XIDs compared with the cutoff are outside
- * [maybe_needed, definitely_needed).
- */
-FullTransactionId
-GlobalVisTestNonRemovableFullHorizon(GlobalVisState *state)
-{
-	/* acquire accurate horizon if not already done */
-	if (GlobalVisTestShouldUpdate(state))
-		GlobalVisUpdate();
-
-	return state->maybe_needed;
-}
-
-/* Convenience wrapper around GlobalVisTestNonRemovableFullHorizon */
-TransactionId
-GlobalVisTestNonRemovableHorizon(GlobalVisState *state)
-{
-	FullTransactionId cutoff;
-
-	cutoff = GlobalVisTestNonRemovableFullHorizon(state);
-
-	return XidFromFullTransactionId(cutoff);
 }
 
 /*

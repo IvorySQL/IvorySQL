@@ -34,6 +34,14 @@
 #define	BLOCKS_PER_READ			512
 
 /*
+ * We expect to find the last lines of the manifest, including the checksum,
+ * in the last MIN_CHUNK bytes of the manifest. We trigger an incremental
+ * parse step if we are about to overflow MAX_CHUNK bytes.
+ */
+#define MIN_CHUNK  1024
+#define MAX_CHUNK (128 *  1024)
+
+/*
  * Details extracted from the WAL ranges present in the supplied backup manifest.
  */
 typedef struct
@@ -80,8 +88,8 @@ struct IncrementalBackupInfo
 	 * Files extracted from the backup manifest.
 	 *
 	 * We don't really need this information, because we use WAL summaries to
-	 * figure what's changed. It would be unsafe to just rely on the list of
-	 * files that existed before, because it's possible for a file to be
+	 * figure out what's changed. It would be unsafe to just rely on the list
+	 * of files that existed before, because it's possible for a file to be
 	 * removed and a new one created with the same name and different
 	 * contents. In such cases, the whole file must still be sent. We can tell
 	 * from the WAL summaries whether that happened, but not from the file
@@ -112,6 +120,11 @@ struct IncrementalBackupInfo
 	 * turns out to be a problem in practice, we'll need to be more clever.
 	 */
 	BlockRefTable *brtab;
+
+	/*
+	 * State object for incremental JSON parsing
+	 */
+	JsonManifestParseIncrementalState *inc_state;
 };
 
 static void manifest_process_version(JsonManifestParseContext *context,
@@ -119,7 +132,7 @@ static void manifest_process_version(JsonManifestParseContext *context,
 static void manifest_process_system_identifier(JsonManifestParseContext *context,
 											   uint64 manifest_system_identifier);
 static void manifest_process_file(JsonManifestParseContext *context,
-								  char *pathname,
+								  const char *pathname,
 								  size_t size,
 								  pg_checksum_type checksum_type,
 								  int checksum_length,
@@ -128,7 +141,7 @@ static void manifest_process_wal_range(JsonManifestParseContext *context,
 									   TimeLineID tli,
 									   XLogRecPtr start_lsn,
 									   XLogRecPtr end_lsn);
-static void manifest_report_error(JsonManifestParseContext *ib,
+static void manifest_report_error(JsonManifestParseContext *context,
 								  const char *fmt,...)
 			pg_attribute_printf(2, 3) pg_attribute_noreturn();
 static int	compare_block_numbers(const void *a, const void *b);
@@ -142,6 +155,7 @@ CreateIncrementalBackupInfo(MemoryContext mcxt)
 {
 	IncrementalBackupInfo *ib;
 	MemoryContext oldcontext;
+	JsonManifestParseContext *context;
 
 	oldcontext = MemoryContextSwitchTo(mcxt);
 
@@ -156,6 +170,17 @@ CreateIncrementalBackupInfo(MemoryContext mcxt)
 	 * substantially higher.
 	 */
 	ib->manifest_files = backup_file_create(mcxt, 10000, NULL);
+
+	context = palloc0(sizeof(JsonManifestParseContext));
+	/* Parse the manifest. */
+	context->private_data = ib;
+	context->version_cb = manifest_process_version;
+	context->system_identifier_cb = manifest_process_system_identifier;
+	context->per_file_cb = manifest_process_file;
+	context->per_wal_range_cb = manifest_process_wal_range;
+	context->error_cb = manifest_report_error;
+
+	ib->inc_state = json_parse_manifest_incremental_init(context);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -176,13 +201,20 @@ AppendIncrementalManifestData(IncrementalBackupInfo *ib, const char *data,
 	/* Switch to our memory context. */
 	oldcontext = MemoryContextSwitchTo(ib->mcxt);
 
-	/*
-	 * XXX. Our json parser is at present incapable of parsing json blobs
-	 * incrementally, so we have to accumulate the entire backup manifest
-	 * before we can do anything with it. This should really be fixed, since
-	 * some users might have very large numbers of files in the data
-	 * directory.
-	 */
+	if (ib->buf.len > MIN_CHUNK && ib->buf.len + len > MAX_CHUNK)
+	{
+		/*
+		 * time for an incremental parse. We'll do all but the last MIN_CHUNK
+		 * so that we have enough left for the final piece.
+		 */
+		json_parse_manifest_incremental_chunk(
+											  ib->inc_state, ib->buf.data, ib->buf.len - MIN_CHUNK, false);
+		/* now remove what we just parsed  */
+		memmove(ib->buf.data, ib->buf.data + (ib->buf.len - MIN_CHUNK),
+				MIN_CHUNK + 1);
+		ib->buf.len = MIN_CHUNK;
+	}
+
 	appendBinaryStringInfo(&ib->buf, data, len);
 
 	/* Switch back to previous memory context. */
@@ -196,24 +228,21 @@ AppendIncrementalManifestData(IncrementalBackupInfo *ib, const char *data,
 void
 FinalizeIncrementalManifest(IncrementalBackupInfo *ib)
 {
-	JsonManifestParseContext context;
 	MemoryContext oldcontext;
 
 	/* Switch to our memory context. */
 	oldcontext = MemoryContextSwitchTo(ib->mcxt);
 
-	/* Parse the manifest. */
-	context.private_data = ib;
-	context.version_cb = manifest_process_version;
-	context.system_identifier_cb = manifest_process_system_identifier;
-	context.per_file_cb = manifest_process_file;
-	context.per_wal_range_cb = manifest_process_wal_range;
-	context.error_cb = manifest_report_error;
-	json_parse_manifest(&context, ib->buf.data, ib->buf.len);
+	/* Parse the last chunk of the manifest */
+	json_parse_manifest_incremental_chunk(
+										  ib->inc_state, ib->buf.data, ib->buf.len, true);
 
 	/* Done with the buffer, so release memory. */
 	pfree(ib->buf.data);
 	ib->buf.data = NULL;
+
+	/* Done with inc_state, so release that memory too */
+	json_parse_manifest_incremental_shutdown(ib->inc_state);
 
 	/* Switch back to previous memory context. */
 	MemoryContextSwitchTo(oldcontext);
@@ -700,7 +729,8 @@ GetIncrementalFilePath(Oid dboid, Oid spcoid, RelFileNumber relfilenumber,
  * How should we back up a particular file as part of an incremental backup?
  *
  * If the return value is BACK_UP_FILE_FULLY, caller should back up the whole
- * file just as if this were not an incremental backup.
+ * file just as if this were not an incremental backup.  The contents of the
+ * relative_block_numbers array are unspecified in this case.
  *
  * If the return value is BACK_UP_FILE_INCREMENTALLY, caller should include
  * an incremental file in the backup instead of the entire file. On return,
@@ -719,7 +749,6 @@ GetFileBackupMethod(IncrementalBackupInfo *ib, const char *path,
 					BlockNumber *relative_block_numbers,
 					unsigned *truncation_block_length)
 {
-	BlockNumber absolute_block_numbers[RELSEG_SIZE];
 	BlockNumber limit_block;
 	BlockNumber start_blkno;
 	BlockNumber stop_blkno;
@@ -846,8 +875,13 @@ GetFileBackupMethod(IncrementalBackupInfo *ib, const char *path,
 				errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg_internal("overflow computing block number bounds for segment %u with size %zu",
 								segno, size));
+
+	/*
+	 * This will write *absolute* block numbers into the output array, but
+	 * we'll transpose them below.
+	 */
 	nblocks = BlockRefTableEntryGetBlocks(brtentry, start_blkno, stop_blkno,
-										  absolute_block_numbers, RELSEG_SIZE);
+										  relative_block_numbers, RELSEG_SIZE);
 	Assert(nblocks <= RELSEG_SIZE);
 
 	/*
@@ -866,19 +900,22 @@ GetFileBackupMethod(IncrementalBackupInfo *ib, const char *path,
 		return BACK_UP_FILE_FULLY;
 
 	/*
-	 * Looks like we can send an incremental file, so sort the absolute the
-	 * block numbers and then transpose absolute block numbers to relative
-	 * block numbers.
+	 * Looks like we can send an incremental file, so sort the block numbers
+	 * and then transpose them from absolute block numbers to relative block
+	 * numbers if necessary.
 	 *
 	 * NB: If the block reference table was using the bitmap representation
 	 * for a given chunk, the block numbers in that chunk will already be
 	 * sorted, but when the array-of-offsets representation is used, we can
 	 * receive block numbers here out of order.
 	 */
-	qsort(absolute_block_numbers, nblocks, sizeof(BlockNumber),
+	qsort(relative_block_numbers, nblocks, sizeof(BlockNumber),
 		  compare_block_numbers);
-	for (i = 0; i < nblocks; ++i)
-		relative_block_numbers[i] = absolute_block_numbers[i] - start_blkno;
+	if (start_blkno != 0)
+	{
+		for (i = 0; i < nblocks; ++i)
+			relative_block_numbers[i] -= start_blkno;
+	}
 	*num_blocks_required = nblocks;
 
 	/*
@@ -903,6 +940,36 @@ GetFileBackupMethod(IncrementalBackupInfo *ib, const char *path,
 }
 
 /*
+ * Compute the size for a header of an incremental file containing a given
+ * number of blocks. The header is rounded to a multiple of BLCKSZ, but
+ * only if the file will store some block data.
+ */
+extern size_t
+GetIncrementalHeaderSize(unsigned num_blocks_required)
+{
+	size_t		result;
+
+	/* Make sure we're not going to overflow. */
+	Assert(num_blocks_required <= RELSEG_SIZE);
+
+	/*
+	 * Three four byte quantities (magic number, truncation block length,
+	 * block count) followed by block numbers.
+	 */
+	result = 3 * sizeof(uint32) + (sizeof(BlockNumber) * num_blocks_required);
+
+	/*
+	 * Round the header size to a multiple of BLCKSZ - when not a multiple of
+	 * BLCKSZ, add the missing fraction of a block. But do this only if the
+	 * file will store data for some blocks, otherwise keep it small.
+	 */
+	if ((num_blocks_required > 0) && (result % BLCKSZ != 0))
+		result += BLCKSZ - (result % BLCKSZ);
+
+	return result;
+}
+
+/*
  * Compute the size for an incremental file containing a given number of blocks.
  */
 extern size_t
@@ -914,11 +981,12 @@ GetIncrementalFileSize(unsigned num_blocks_required)
 	Assert(num_blocks_required <= RELSEG_SIZE);
 
 	/*
-	 * Three four byte quantities (magic number, truncation block length,
-	 * block count) followed by block numbers followed by block contents.
+	 * Header with three four byte quantities (magic number, truncation block
+	 * length, block count) followed by block numbers, rounded to a multiple
+	 * of BLCKSZ (for files with block data), followed by block contents.
 	 */
-	result = 3 * sizeof(uint32);
-	result += (BLCKSZ + sizeof(BlockNumber)) * num_blocks_required;
+	result = GetIncrementalHeaderSize(num_blocks_required);
+	result += BLCKSZ * num_blocks_required;
 
 	return result;
 }
@@ -975,7 +1043,7 @@ manifest_process_system_identifier(JsonManifestParseContext *context,
  */
 static void
 manifest_process_file(JsonManifestParseContext *context,
-					  char *pathname, size_t size,
+					  const char *pathname, size_t size,
 					  pg_checksum_type checksum_type,
 					  int checksum_length,
 					  uint8 *checksum_payload)

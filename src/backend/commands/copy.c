@@ -392,7 +392,7 @@ defGetCopyHeaderChoice(DefElem *def, bool is_from)
 static CopyOnErrorChoice
 defGetCopyOnErrorChoice(DefElem *def, ParseState *pstate, bool is_from)
 {
-	char	   *sval;
+	char	   *sval = defGetString(def);
 
 	if (!is_from)
 		ereport(ERROR,
@@ -401,15 +401,8 @@ defGetCopyOnErrorChoice(DefElem *def, ParseState *pstate, bool is_from)
 				 parser_errposition(pstate, def->location)));
 
 	/*
-	 * If no parameter value given, assume the default value.
-	 */
-	if (def->arg == NULL)
-		return COPY_ON_ERROR_STOP;
-
-	/*
 	 * Allow "stop", or "ignore" values.
 	 */
-	sval = defGetString(def);
 	if (pg_strcasecmp(sval, "stop") == 0)
 		return COPY_ON_ERROR_STOP;
 	if (pg_strcasecmp(sval, "ignore") == 0)
@@ -420,6 +413,30 @@ defGetCopyOnErrorChoice(DefElem *def, ParseState *pstate, bool is_from)
 			 errmsg("COPY ON_ERROR \"%s\" not recognized", sval),
 			 parser_errposition(pstate, def->location)));
 	return COPY_ON_ERROR_STOP;	/* keep compiler quiet */
+}
+
+/*
+ * Extract a CopyLogVerbosityChoice value from a DefElem.
+ */
+static CopyLogVerbosityChoice
+defGetCopyLogVerbosityChoice(DefElem *def, ParseState *pstate)
+{
+	char	   *sval;
+
+	/*
+	 * Allow "default", or "verbose" values.
+	 */
+	sval = defGetString(def);
+	if (pg_strcasecmp(sval, "default") == 0)
+		return COPY_LOG_VERBOSITY_DEFAULT;
+	if (pg_strcasecmp(sval, "verbose") == 0)
+		return COPY_LOG_VERBOSITY_VERBOSE;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("COPY LOG_VERBOSITY \"%s\" not recognized", sval),
+			 parser_errposition(pstate, def->location)));
+	return COPY_LOG_VERBOSITY_DEFAULT;	/* keep compiler quiet */
 }
 
 /*
@@ -448,6 +465,7 @@ ProcessCopyOptions(ParseState *pstate,
 	bool		freeze_specified = false;
 	bool		header_specified = false;
 	bool		on_error_specified = false;
+	bool		log_verbosity_specified = false;
 	ListCell   *option;
 
 	/* Support external use for option sanity checking */
@@ -606,6 +624,13 @@ ProcessCopyOptions(ParseState *pstate,
 				errorConflictingDefElem(defel, pstate);
 			on_error_specified = true;
 			opts_out->on_error = defGetCopyOnErrorChoice(defel, pstate, is_from);
+		}
+		else if (strcmp(defel->defname, "log_verbosity") == 0)
+		{
+			if (log_verbosity_specified)
+				errorConflictingDefElem(defel, pstate);
+			log_verbosity_specified = true;
+			opts_out->log_verbosity = defGetCopyLogVerbosityChoice(defel, pstate);
 		}
 		else
 			ereport(ERROR,

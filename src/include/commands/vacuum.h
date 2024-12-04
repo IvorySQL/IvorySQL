@@ -17,6 +17,7 @@
 #include "access/htup.h"
 #include "access/genam.h"
 #include "access/parallel.h"
+#include "access/tidstore.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
@@ -175,21 +176,6 @@ typedef struct VacAttrStats
 	int			rowstride;
 } VacAttrStats;
 
-/*
- * AcquireSampleRowsFunc - a function for the sampling statistics collection.
- *
- * A random sample of up to `targrows` rows should be collected from the
- * table and stored into the caller-provided `rows` array.  The actual number
- * of rows collected must be returned.  In addition, a function should store
- * estimates of the total numbers of live and dead rows in the table into the
- * output parameters `*totalrows` and `*totaldeadrows1.  (Set `*totaldeadrows`
- * to zero if the storage does not have any concept of dead rows.)
- */
-typedef int (*AcquireSampleRowsFunc) (Relation relation, int elevel,
-									  HeapTuple *rows, int targrows,
-									  double *totalrows,
-									  double *totaldeadrows);
-
 /* flag bits for VacuumParams->options */
 #define VACOPT_VACUUM 0x01		/* do VACUUM */
 #define VACOPT_ANALYZE 0x02		/* do ANALYZE */
@@ -293,19 +279,14 @@ struct VacuumCutoffs
 };
 
 /*
- * VacDeadItems stores TIDs whose index tuples are deleted by index vacuuming.
+ * VacDeadItemsInfo stores supplemental information for dead tuple TID
+ * storage (i.e. TidStore).
  */
-typedef struct VacDeadItems
+typedef struct VacDeadItemsInfo
 {
-	int			max_items;		/* # slots allocated in array */
-	int			num_items;		/* current # of entries */
-
-	/* Sorted array of TIDs to delete from indexes */
-	ItemPointerData items[FLEXIBLE_ARRAY_MEMBER];
-} VacDeadItems;
-
-#define MAXDEADITEMS(avail_mem) \
-	(((avail_mem) - offsetof(VacDeadItems, items)) / sizeof(ItemPointerData))
+	size_t		max_bytes;		/* the maximum bytes TidStore can use */
+	int64		num_items;		/* current # of entries */
+} VacDeadItemsInfo;
 
 /* GUC parameters */
 extern PGDLLIMPORT int default_statistics_target;	/* PGDLLIMPORT for PostGIS */
@@ -366,10 +347,10 @@ extern Relation vacuum_open_relation(Oid relid, RangeVar *relation,
 									 LOCKMODE lmode);
 extern IndexBulkDeleteResult *vac_bulkdel_one_index(IndexVacuumInfo *ivinfo,
 													IndexBulkDeleteResult *istat,
-													VacDeadItems *dead_items);
+													TidStore *dead_items,
+													VacDeadItemsInfo *dead_items_info);
 extern IndexBulkDeleteResult *vac_cleanup_one_index(IndexVacuumInfo *ivinfo,
 													IndexBulkDeleteResult *istat);
-extern Size vac_max_items_to_alloc_size(int max_items);
 
 /* In postmaster/autovacuum.c */
 extern void AutoVacuumUpdateCostLimit(void);
@@ -378,10 +359,12 @@ extern void VacuumUpdateCosts(void);
 /* in commands/vacuumparallel.c */
 extern ParallelVacuumState *parallel_vacuum_init(Relation rel, Relation *indrels,
 												 int nindexes, int nrequested_workers,
-												 int max_items, int elevel,
+												 int vac_work_mem, int elevel,
 												 BufferAccessStrategy bstrategy);
 extern void parallel_vacuum_end(ParallelVacuumState *pvs, IndexBulkDeleteResult **istats);
-extern VacDeadItems *parallel_vacuum_get_dead_items(ParallelVacuumState *pvs);
+extern TidStore *parallel_vacuum_get_dead_items(ParallelVacuumState *pvs,
+												VacDeadItemsInfo **dead_items_info_p);
+extern void parallel_vacuum_reset_dead_items(ParallelVacuumState *pvs);
 extern void parallel_vacuum_bulkdel_all_indexes(ParallelVacuumState *pvs,
 												long num_table_tuples,
 												int num_index_scans);
@@ -395,10 +378,6 @@ extern void parallel_vacuum_main(dsm_segment *seg, shm_toc *toc);
 extern void analyze_rel(Oid relid, RangeVar *relation,
 						VacuumParams *params, List *va_cols, bool in_outer_xact,
 						BufferAccessStrategy bstrategy);
-extern void heapam_analyze(Relation relation, AcquireSampleRowsFunc *func,
-						   BlockNumber *totalpages,
-						   BufferAccessStrategy bstrategy);
-
 extern bool std_typanalyze(VacAttrStats *stats);
 
 /* in utils/misc/sampling.c --- duplicate of declarations in utils/sampling.h */

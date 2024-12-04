@@ -67,6 +67,7 @@ main(int argc, char *argv[])
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_walsummary"));
 	handle_help_version_opts(argc, argv, progname, help);
 
 	/* process command-line options */
@@ -90,7 +91,7 @@ main(int argc, char *argv[])
 
 	if (optind >= argc)
 	{
-		pg_log_error("%s: no input files specified", progname);
+		pg_log_error("no input files specified");
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
@@ -269,6 +270,7 @@ help(const char *progname)
 	printf(_("\nOptions:\n"));
 	printf(_("  -i, --individual          list block numbers individually, not as ranges\n"));
 	printf(_("  -q, --quiet               don't print anything, just parse the files\n"));
+	printf(_("  -V, --version             output version information, then exit\n"));
 	printf(_("  -?, --help                show this help, then exit\n"));
 
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);

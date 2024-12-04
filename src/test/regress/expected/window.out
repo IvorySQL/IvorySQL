@@ -4207,6 +4207,24 @@ WHERE s.c = 1;
                            ->  Seq Scan on empsalary e2
 (14 rows)
 
+-- Ensure the run condition optimization is used in cases where the WindowFunc
+-- has a Var from another query level
+EXPLAIN (COSTS OFF)
+SELECT 1 FROM
+  (SELECT ntile(s1.x) OVER () AS c
+   FROM (SELECT (SELECT 1) AS x) AS s1) s
+WHERE s.c = 1;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Subquery Scan on s
+   Filter: (s.c = 1)
+   ->  WindowAgg
+         Run Condition: (ntile((InitPlan 1).col1) OVER (?) <= 1)
+         InitPlan 1
+           ->  Result
+         ->  Result
+(7 rows)
+
 -- Tests to ensure we don't push down the run condition when it's not valid to
 -- do so.
 -- Ensure we don't push down when the frame options show that the window
@@ -4815,7 +4833,7 @@ FROM (VALUES (NULL::interval),
                ('infinity'::timestamptz - now()),
                ('6 days'::interval),
                ('-infinity'::interval)) v(x);
-ERROR:  interval out of range.
+ERROR:  interval out of range
 --should fail.
 SELECT x, sum(x) OVER(ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING)
 FROM (VALUES (NULL::interval),
@@ -4823,7 +4841,7 @@ FROM (VALUES (NULL::interval),
                ('infinity'::timestamptz - now()),
                ('6 days'::interval),
                ('-infinity'::interval)) v(x);
-ERROR:  interval out of range.
+ERROR:  interval out of range
 SELECT i,SUM(v::smallint) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,1),(2,2),(3,NULL),(4,NULL)) t(i,v);
  i | sum 

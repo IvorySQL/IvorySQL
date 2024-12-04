@@ -1006,10 +1006,7 @@ exprCollation(const Node *expr)
 			{
 				const JsonExpr *jsexpr = (JsonExpr *) expr;
 
-				if (jsexpr->coercion_expr)
-					coll = exprCollation(jsexpr->coercion_expr);
-				else
-					coll = jsexpr->collation;
+				coll = jsexpr->collation;
 			}
 			break;
 		case T_JsonBehavior:
@@ -1265,10 +1262,7 @@ exprSetCollation(Node *expr, Oid collation)
 			{
 				JsonExpr   *jexpr = (JsonExpr *) expr;
 
-				if (jexpr->coercion_expr)
-					exprSetCollation((Node *) jexpr->coercion_expr, collation);
-				else
-					jexpr->collation = collation;
+				jexpr->collation = collation;
 			}
 			break;
 		case T_JsonBehavior:
@@ -2170,6 +2164,16 @@ expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(expr->aggfilter))
 					return true;
+				if (WALK(expr->runCondition))
+					return true;
+			}
+			break;
+		case T_WindowFuncRunCondition:
+			{
+				WindowFuncRunCondition *expr = (WindowFuncRunCondition *) node;
+
+				if (WALK(expr->arg))
+					return true;
 			}
 			break;
 		case T_SubscriptingRef:
@@ -2367,8 +2371,6 @@ expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(jexpr->path_spec))
 					return true;
-				if (WALK(jexpr->coercion_expr))
-					return true;
 				if (WALK(jexpr->passing_values))
 					return true;
 				/* we assume walker doesn't care about passing_names */
@@ -2408,8 +2410,6 @@ expression_tree_walker_impl(Node *node,
 				if (WALK(wc->startOffset))
 					return true;
 				if (WALK(wc->endOffset))
-					return true;
-				if (WALK(wc->runCondition))
 					return true;
 			}
 			break;
@@ -2659,6 +2659,10 @@ expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(tf->coldefexprs))
 					return true;
+				if (WALK(tf->colvalexprs))
+					return true;
+				if (WALK(tf->passingvalexprs))
+					return true;
 			}
 			break;
 		default:
@@ -2756,8 +2760,6 @@ query_tree_walker_impl(Query *query,
 			if (WALK(wc->startOffset))
 				return true;
 			if (WALK(wc->endOffset))
-				return true;
-			if (WALK(wc->runCondition))
 				return true;
 		}
 	}
@@ -3055,6 +3057,16 @@ expression_tree_mutator_impl(Node *node,
 				FLATCOPY(newnode, wfunc, WindowFunc);
 				MUTATE(newnode->args, wfunc->args, List *);
 				MUTATE(newnode->aggfilter, wfunc->aggfilter, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowFuncRunCondition:
+			{
+				WindowFuncRunCondition *wfuncrc = (WindowFuncRunCondition *) node;
+				WindowFuncRunCondition *newnode;
+
+				FLATCOPY(newnode, wfuncrc, WindowFuncRunCondition);
+				MUTATE(newnode->arg, wfuncrc->arg, Expr *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3401,7 +3413,6 @@ expression_tree_mutator_impl(Node *node,
 				FLATCOPY(newnode, jexpr, JsonExpr);
 				MUTATE(newnode->formatted_expr, jexpr->formatted_expr, Node *);
 				MUTATE(newnode->path_spec, jexpr->path_spec, Node *);
-				MUTATE(newnode->coercion_expr, jexpr->coercion_expr, Node *);
 				MUTATE(newnode->passing_values, jexpr->passing_values, List *);
 				/* assume mutator does not care about passing_names */
 				MUTATE(newnode->on_empty, jexpr->on_empty, JsonBehavior *);
@@ -3472,7 +3483,6 @@ expression_tree_mutator_impl(Node *node,
 				MUTATE(newnode->orderClause, wc->orderClause, List *);
 				MUTATE(newnode->startOffset, wc->startOffset, Node *);
 				MUTATE(newnode->endOffset, wc->endOffset, Node *);
-				MUTATE(newnode->runCondition, wc->runCondition, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3712,6 +3722,8 @@ expression_tree_mutator_impl(Node *node,
 				MUTATE(newnode->rowexpr, tf->rowexpr, Node *);
 				MUTATE(newnode->colexprs, tf->colexprs, List *);
 				MUTATE(newnode->coldefexprs, tf->coldefexprs, List *);
+				MUTATE(newnode->colvalexprs, tf->colvalexprs, List *);
+				MUTATE(newnode->passingvalexprs, tf->passingvalexprs, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3803,7 +3815,6 @@ query_tree_mutator_impl(Query *query,
 			FLATCOPY(newnode, wc, WindowClause);
 			MUTATE(newnode->startOffset, wc->startOffset, Node *);
 			MUTATE(newnode->endOffset, wc->endOffset, Node *);
-			MUTATE(newnode->runCondition, wc->runCondition, List *);
 
 			resultlist = lappend(resultlist, (Node *) newnode);
 		}
@@ -4139,6 +4150,38 @@ raw_expression_tree_walker_impl(Node *node,
 					return true;
 			}
 			break;
+		case T_JsonTable:
+			{
+				JsonTable  *jt = (JsonTable *) node;
+
+				if (WALK(jt->context_item))
+					return true;
+				if (WALK(jt->pathspec))
+					return true;
+				if (WALK(jt->passing))
+					return true;
+				if (WALK(jt->columns))
+					return true;
+				if (WALK(jt->on_error))
+					return true;
+			}
+			break;
+		case T_JsonTableColumn:
+			{
+				JsonTableColumn *jtc = (JsonTableColumn *) node;
+
+				if (WALK(jtc->typeName))
+					return true;
+				if (WALK(jtc->on_empty))
+					return true;
+				if (WALK(jtc->on_error))
+					return true;
+				if (WALK(jtc->columns))
+					return true;
+			}
+			break;
+		case T_JsonTablePathSpec:
+			return WALK(((JsonTablePathSpec *) node)->string);
 		case T_NullTest:
 			return WALK(((NullTest *) node)->arg);
 		case T_BooleanTest:

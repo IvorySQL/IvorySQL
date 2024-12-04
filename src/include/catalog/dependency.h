@@ -56,11 +56,17 @@ typedef enum DependencyType
  * created for the owner of an object; hence two objects may be linked by
  * one or the other, but not both, of these dependency types.)
  *
- * (c) a SHARED_DEPENDENCY_POLICY entry means that the referenced object is
+ * (c) a SHARED_DEPENDENCY_INITACL entry means that the referenced object is
+ * a role mentioned in a pg_init_privs entry for the dependent object.
+ * The referenced object must be a pg_authid entry.  (Unlike the case for
+ * SHARED_DEPENDENCY_ACL, we make an entry for such a role whether or not
+ * it is the object's owner.)
+ *
+ * (d) a SHARED_DEPENDENCY_POLICY entry means that the referenced object is
  * a role mentioned in a policy object.  The referenced object must be a
  * pg_authid entry.
  *
- * (d) a SHARED_DEPENDENCY_TABLESPACE entry means that the referenced
+ * (e) a SHARED_DEPENDENCY_TABLESPACE entry means that the referenced
  * object is a tablespace mentioned in a relation without storage.  The
  * referenced object must be a pg_tablespace entry.  (Relations that have
  * storage don't need this: they are protected by the existence of a physical
@@ -73,6 +79,7 @@ typedef enum SharedDependencyType
 {
 	SHARED_DEPENDENCY_OWNER = 'o',
 	SHARED_DEPENDENCY_ACL = 'a',
+	SHARED_DEPENDENCY_INITACL = 'i',
 	SHARED_DEPENDENCY_POLICY = 'r',
 	SHARED_DEPENDENCY_TABLESPACE = 't',
 	SHARED_DEPENDENCY_INVALID = 0,
@@ -170,7 +177,7 @@ extern List *getAutoExtensionsOfObject(Oid classId, Oid objectId);
 
 extern bool sequenceIsOwned(Oid seqId, char deptype, Oid *tableId, int32 *colId);
 extern List *getOwnedSequences(Oid relid);
-extern Oid	getIdentitySequence(Oid relid, AttrNumber attnum, bool missing_ok);
+extern Oid	getIdentitySequence(Relation rel, AttrNumber attnum, bool missing_ok);
 
 extern Oid	get_index_constraint(Oid indexId);
 
@@ -200,6 +207,10 @@ extern void updateAclDependencies(Oid classId, Oid objectId, int32 objsubId,
 								  Oid ownerId,
 								  int noldmembers, Oid *oldmembers,
 								  int nnewmembers, Oid *newmembers);
+
+extern void updateInitAclDependencies(Oid classId, Oid objectId, int32 objsubId,
+									  int noldmembers, Oid *oldmembers,
+									  int nnewmembers, Oid *newmembers);
 
 extern bool checkSharedDependencies(Oid classId, Oid objectId,
 									char **detail_msg, char **detail_log_msg);

@@ -1018,15 +1018,15 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		char	   *strategy;
 
 		strategy = defGetString(dstrategy);
-		if (strcmp(strategy, "wal_log") == 0)
+		if (pg_strcasecmp(strategy, "wal_log") == 0)
 			dbstrategy = CREATEDB_WAL_LOG;
-		else if (strcmp(strategy, "file_copy") == 0)
+		else if (pg_strcasecmp(strategy, "file_copy") == 0)
 			dbstrategy = CREATEDB_FILE_COPY;
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid create database strategy \"%s\"", strategy),
-					 errhint("Valid strategies are \"wal_log\", and \"file_copy\".")));
+					 errhint("Valid strategies are \"wal_log\" and \"file_copy\".")));
 	}
 
 	/* If encoding or locales are defaulted, use source's setting */
@@ -1073,7 +1073,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("BUILTIN_LOCALE cannot be specified unless locale provider is builtin")));
 	}
-	else if (dblocprovider != COLLPROVIDER_ICU)
+
+	if (dblocprovider != COLLPROVIDER_ICU)
 	{
 		if (diculocale)
 			ereport(ERROR,
@@ -3312,7 +3313,7 @@ dbase_redo(XLogReaderState *record)
 		 */
 		FlushDatabaseBuffers(xlrec->src_db_id);
 
-		/* Close all sgmr fds in all backends. */
+		/* Close all smgr fds in all backends. */
 		WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
 
 		/*
@@ -3378,7 +3379,7 @@ dbase_redo(XLogReaderState *record)
 		/* Clean out the xlog relcache too */
 		XLogDropDatabase(xlrec->db_id);
 
-		/* Close all sgmr fds in all backends. */
+		/* Close all smgr fds in all backends. */
 		WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
 
 		for (i = 0; i < xlrec->ntablespaces; i++)

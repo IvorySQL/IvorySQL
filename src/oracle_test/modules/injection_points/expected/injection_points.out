@@ -1,4 +1,11 @@
 CREATE EXTENSION injection_points;
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+CREATE FUNCTION wait_pid(int)
+  RETURNS void
+  AS :'regresslib'
+  LANGUAGE C STRICT;
 SELECT injection_points_attach('TestInjectionBooh', 'booh');
 ERROR:  incorrect action "booh" for injection point creation
 SELECT injection_points_attach('TestInjectionError', 'error');
@@ -107,7 +114,7 @@ NOTICE:  notice triggered for injection point TestInjectionLog2
 (1 row)
 
 SELECT injection_points_detach('TestInjectionLog'); -- fails
-ERROR:  injection point "TestInjectionLog" not found
+ERROR:  could not detach injection point "TestInjectionLog"
 SELECT injection_points_run('TestInjectionLog2'); -- notice
 NOTICE:  notice triggered for injection point TestInjectionLog2
  injection_points_run 
@@ -115,4 +122,91 @@ NOTICE:  notice triggered for injection point TestInjectionLog2
  
 (1 row)
 
+SELECT injection_points_detach('TestInjectionLog2');
+ injection_points_detach 
+-------------------------
+ 
+(1 row)
+
+-- Runtime conditions
+SELECT injection_points_attach('TestConditionError', 'error');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+-- Any follow-up injection point attached will be local to this process.
+SELECT injection_points_set_local();
+ injection_points_set_local 
+----------------------------
+ 
+(1 row)
+
+SELECT injection_points_attach('TestConditionLocal1', 'error');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+SELECT injection_points_attach('TestConditionLocal2', 'notice');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+SELECT injection_points_run('TestConditionLocal1'); -- error
+ERROR:  error triggered for injection point TestConditionLocal1
+SELECT injection_points_run('TestConditionLocal2'); -- notice
+NOTICE:  notice triggered for injection point TestConditionLocal2
+ injection_points_run 
+----------------------
+ 
+(1 row)
+
+SELECT pg_backend_pid() AS oldpid \gset
+-- reload, local injection points should be gone.
+\c
+-- Wait for the previous backend process to exit, ensuring that its local
+-- injection points are cleaned up.
+SELECT wait_pid(:'oldpid');
+ wait_pid 
+----------
+ 
+(1 row)
+
+SELECT injection_points_run('TestConditionLocal1'); -- nothing
+ injection_points_run 
+----------------------
+ 
+(1 row)
+
+SELECT injection_points_run('TestConditionLocal2'); -- nothing
+ injection_points_run 
+----------------------
+ 
+(1 row)
+
+SELECT injection_points_run('TestConditionError'); -- error
+ERROR:  error triggered for injection point TestConditionError
+SELECT injection_points_detach('TestConditionError');
+ injection_points_detach 
+-------------------------
+ 
+(1 row)
+
+-- Attaching injection points that use the same name as one defined locally
+-- previously should work.
+SELECT injection_points_attach('TestConditionLocal1', 'error');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+SELECT injection_points_detach('TestConditionLocal1');
+ injection_points_detach 
+-------------------------
+ 
+(1 row)
+
 DROP EXTENSION injection_points;
+DROP FUNCTION wait_pid;

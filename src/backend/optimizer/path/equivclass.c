@@ -652,18 +652,7 @@ get_eclass_for_sort_expr(PlannerInfo *root,
 
 			if (opcintype == cur_em->em_datatype &&
 				equal(expr, cur_em->em_expr))
-			{
-				/*
-				 * Match!
-				 *
-				 * Copy the sortref if it wasn't set yet.  That may happen if
-				 * the ec was constructed from a WHERE clause, i.e. it doesn't
-				 * have a target reference at all.
-				 */
-				if (cur_ec->ec_sortref == 0 && sortref > 0)
-					cur_ec->ec_sortref = sortref;
-				return cur_ec;
-			}
+				return cur_ec;	/* Match! */
 		}
 	}
 
@@ -1896,6 +1885,21 @@ create_join_clause(PlannerInfo *root,
 												  rightem->em_relids),
 										ec->ec_min_security);
 
+	/*
+	 * If either EM is a child, force the clause's clause_relids to include
+	 * the relid(s) of the child rel.  In normal cases it would already, but
+	 * not if we are considering appendrel child relations with pseudoconstant
+	 * translated variables (i.e., UNION ALL sub-selects with constant output
+	 * items).  We must do this so that join_clause_is_movable_into() will
+	 * think that the clause should be evaluated at the correct place.
+	 */
+	if (leftem->em_is_child)
+		rinfo->clause_relids = bms_add_members(rinfo->clause_relids,
+											   leftem->em_relids);
+	if (rightem->em_is_child)
+		rinfo->clause_relids = bms_add_members(rinfo->clause_relids,
+											   rightem->em_relids);
+
 	/* If it's a child clause, copy the parent's rinfo_serial */
 	if (parent_rinfo)
 		rinfo->rinfo_serial = parent_rinfo->rinfo_serial;
@@ -2870,7 +2874,7 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 /*
  * add_setop_child_rel_equivalences
  *		Add equivalence members for each non-resjunk target in 'child_tlist'
- *		to the EquivalenceClass in the corresponding setop_pathkey's pk_class.
+ *		to the EquivalenceClass in the corresponding setop_pathkey's pk_eclass.
  *
  * 'root' is the PlannerInfo belonging to the top-level set operation.
  * 'child_rel' is the RelOptInfo of the child relation we're adding

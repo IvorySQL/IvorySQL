@@ -108,6 +108,7 @@
 
 /* XXX these should appear in other modules' header files */
 extern bool Log_disconnections;
+extern bool Trace_connection_negotiation;
 extern int	CommitDelay;
 extern int	CommitSiblings;
 extern char *default_tablespace;
@@ -547,7 +548,6 @@ int			log_temp_files = -1;
 double		log_statement_sample_rate = 1.0;
 double		log_xact_sample_rate = 0;
 char	   *backtrace_functions;
-bool		backtrace_on_internal_error = false;
 
 int			temp_file_limit = -1;
 
@@ -797,16 +797,6 @@ StaticAssertDecl(lengthof(config_type_names) == (PGC_ENUM + 1),
 struct config_bool ConfigureNamesBool[] =
 {
 	{
-		{"backtrace_on_internal_error", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Log backtrace for any error with error code XX000 (internal error)."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&backtrace_on_internal_error,
-		false,
-		NULL, NULL, NULL
-	},
-	{
 		{"enable_seqscan", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of sequential-scan plans."),
 			NULL,
@@ -1024,16 +1014,6 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
-		{"enable_self_join_removal", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable removal of unique self-joins."),
-			NULL,
-			GUC_EXPLAIN | GUC_NOT_IN_SAMPLE
-		},
-		&enable_self_join_removal,
-		true,
-		NULL, NULL, NULL
-	},
-	{
 		{"enable_group_by_reordering", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables reordering of GROUP BY keys."),
 			NULL,
@@ -1113,7 +1093,7 @@ struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"ssl_passphrase_command_supports_reload", PGC_SIGHUP, CONN_AUTH_SSL,
-			gettext_noop("Controls whether ssl_passphrase_command is called during server reload."),
+			gettext_noop("Controls whether \"ssl_passphrase_command\" is called during server reload."),
 			NULL
 		},
 		&ssl_passphrase_command_supports_reload,
@@ -1161,7 +1141,7 @@ struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Continues processing past damaged page headers."),
 			gettext_noop("Detection of a damaged page header normally causes PostgreSQL to "
 						 "report an error, aborting the current transaction. Setting "
-						 "zero_damaged_pages to true causes the system to instead report a "
+						 "\"zero_damaged_pages\" to true causes the system to instead report a "
 						 "warning, zero out the damaged page, and continue processing. This "
 						 "behavior will destroy data, namely all the rows on the damaged page."),
 			GUC_NOT_IN_SAMPLE
@@ -1176,7 +1156,7 @@ struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Detection of WAL records having references to "
 						 "invalid pages during recovery causes PostgreSQL to "
 						 "raise a PANIC-level error, aborting the recovery. "
-						 "Setting ignore_invalid_pages to true causes "
+						 "Setting \"ignore_invalid_pages\" to true causes "
 						 "the system to ignore invalid page references "
 						 "in WAL records (but still report a warning), "
 						 "and continue recovery. This behavior may cause "
@@ -1248,6 +1228,16 @@ struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&Log_connections,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"trace_connection_negotiation", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Logs details of pre-authentication connection handshake."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&Trace_connection_negotiation,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2306,7 +2296,7 @@ struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&VacuumBufferUsageLimit,
-		256, 0, MAX_BAS_VAC_RING_SIZE_KB,
+		2048, 0, MAX_BAS_VAC_RING_SIZE_KB,
 		check_vacuum_buffer_usage_limit, NULL, NULL
 	},
 
@@ -2754,7 +2744,7 @@ struct config_int ConfigureNamesInt[] =
 		{"max_locks_per_transaction", PGC_POSTMASTER, LOCK_MANAGEMENT,
 			gettext_noop("Sets the maximum number of locks per transaction."),
 			gettext_noop("The shared lock table is sized on the assumption that at most "
-						 "max_locks_per_transaction objects per server process or prepared "
+						 "\"max_locks_per_transaction\" objects per server process or prepared "
 						 "transaction will need to be locked at any one time.")
 		},
 		&max_locks_per_xact,
@@ -2766,7 +2756,7 @@ struct config_int ConfigureNamesInt[] =
 		{"max_pred_locks_per_transaction", PGC_POSTMASTER, LOCK_MANAGEMENT,
 			gettext_noop("Sets the maximum number of predicate locks per transaction."),
 			gettext_noop("The shared predicate lock table is sized on the assumption that "
-						 "at most max_pred_locks_per_transaction objects per server process "
+						 "at most \"max_pred_locks_per_transaction\" objects per server process "
 						 "or prepared transaction will need to be locked at any one time.")
 		},
 		&max_predicate_locks_per_xact,
@@ -3017,7 +3007,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"commit_siblings", PGC_USERSET, WAL_SETTINGS,
 			gettext_noop("Sets the minimum number of concurrent open transactions "
-						 "required before performing commit_delay."),
+						 "required before performing \"commit_delay\"."),
 			NULL
 		},
 		&CommitSiblings,
@@ -3149,7 +3139,7 @@ struct config_int ConfigureNamesInt[] =
 		{"maintenance_io_concurrency",
 			PGC_USERSET,
 			RESOURCES_ASYNCHRONOUS,
-			gettext_noop("A variant of effective_io_concurrency that is used for maintenance work."),
+			gettext_noop("A variant of \"effective_io_concurrency\" that is used for maintenance work."),
 			NULL,
 			GUC_EXPLAIN
 		},
@@ -3158,6 +3148,20 @@ struct config_int ConfigureNamesInt[] =
 		0, MAX_IO_CONCURRENCY,
 		check_maintenance_io_concurrency, assign_maintenance_io_concurrency,
 		NULL
+	},
+
+	{
+		{"io_combine_limit",
+			PGC_USERSET,
+			RESOURCES_ASYNCHRONOUS,
+			gettext_noop("Limit on the size of data reads and writes."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&io_combine_limit,
+		DEFAULT_IO_COMBINE_LIMIT,
+		1, MAX_IO_COMBINE_LIMIT,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3674,7 +3678,6 @@ struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-
 	#define IVY_GUC_INT_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_INT_PARAMS
@@ -3847,7 +3850,7 @@ struct config_real ConfigureNamesReal[] =
 
 	{
 		{"hash_mem_multiplier", PGC_USERSET, RESOURCES_MEM,
-			gettext_noop("Multiple of work_mem to use for hash tables."),
+			gettext_noop("Multiple of \"work_mem\" to use for hash tables."),
 			NULL,
 			GUC_EXPLAIN
 		},
@@ -3941,7 +3944,7 @@ struct config_real ConfigureNamesReal[] =
 
 	{
 		{"log_statement_sample_rate", PGC_SUSET, LOGGING_WHEN,
-			gettext_noop("Fraction of statements exceeding log_min_duration_sample to be logged."),
+			gettext_noop("Fraction of statements exceeding \"log_min_duration_sample\" to be logged."),
 			gettext_noop("Use a value between 0.0 (never log) and 1.0 (always log).")
 		},
 		&log_statement_sample_rate,
@@ -3976,7 +3979,7 @@ struct config_string ConfigureNamesString[] =
 	{
 		{"archive_command", PGC_SIGHUP, WAL_ARCHIVING,
 			gettext_noop("Sets the shell command that will be called to archive a WAL file."),
-			gettext_noop("This is used only if archive_library is not set.")
+			gettext_noop("This is used only if \"archive_library\" is not set.")
 		},
 		&XLogArchiveCommand,
 		"",
@@ -3986,7 +3989,7 @@ struct config_string ConfigureNamesString[] =
 	{
 		{"archive_library", PGC_SIGHUP, WAL_ARCHIVING,
 			gettext_noop("Sets the library that will be called to archive a WAL file."),
-			gettext_noop("An empty string indicates that archive_command should be used.")
+			gettext_noop("An empty string indicates that \"archive_command\" should be used.")
 		},
 		&XLogArchiveLibrary,
 		"",
@@ -4934,7 +4937,7 @@ struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"archive_mode", PGC_POSTMASTER, WAL_ARCHIVING,
-			gettext_noop("Allows archiving of WAL files using archive_command."),
+			gettext_noop("Allows archiving of WAL files using \"archive_command\"."),
 			NULL
 		},
 		&XLogArchiveMode,

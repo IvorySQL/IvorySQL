@@ -244,7 +244,7 @@ smgropen(RelFileLocator rlocator, ProcNumber backend)
 
 /*
  * smgrpin() -- Prevent an SMgrRelation object from being destroyed at end of
- *				of transaction
+ *				transaction
  */
 void
 smgrpin(SMgrRelation reln)
@@ -679,8 +679,9 @@ BlockNumber
 smgrnblocks_cached(SMgrRelation reln, ForkNumber forknum)
 {
 	/*
-	 * For now, we only use cached values in recovery due to lack of a shared
-	 * invalidation mechanism for changes in file size.
+	 * For now, this function uses cached values only in recovery due to lack
+	 * of a shared invalidation mechanism for changes in file size.  Code
+	 * elsewhere reads smgr_cached_nblocks and copes with stale data.
 	 */
 	if (InRecovery && reln->smgr_cached_nblocks[forknum] != InvalidBlockNumber)
 		return reln->smgr_cached_nblocks[forknum];

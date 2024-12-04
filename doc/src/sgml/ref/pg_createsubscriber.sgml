@@ -69,8 +69,8 @@ PostgreSQL documentation
    spent synchronizing data is usually a large amount of changes to be applied
    (that were produced during the initial data copy), which increases even
    more the time when the logical replica will be available. For smaller
-   databases, <link linkend="logical-replication">initial data
-   synchronization</link> is recommended.
+   databases, <link linkend="logical-replication-row-filter-initial-data-sync">
+   initial data synchronization</link> is recommended.
   </para>
  </refsect1>
 
@@ -214,21 +214,6 @@ PostgreSQL documentation
     </varlistentry>
 
     <varlistentry>
-     <term><option>--subscription=<replaceable class="parameter">name</replaceable></option></term>
-     <listitem>
-      <para>
-       The subscription name to set up the logical replication.  Multiple
-       subscriptions can be specified by writing multiple
-       <option>--subscription</option> switches.  The number of subscription
-       names must match the number of specified databases, otherwise an error
-       is reported.  The order of the multiple subscription name switches must
-       match the order of database switches.  If this option is not specified,
-       a generated name is assigned to the subscription name.
-      </para>
-     </listitem>
-    </varlistentry>
-
-    <varlistentry>
      <term><option>--replication-slot=<replaceable class="parameter">name</replaceable></option></term>
      <listitem>
       <para>
@@ -245,12 +230,16 @@ PostgreSQL documentation
     </varlistentry>
 
     <varlistentry>
-     <term><option>-?</option></term>
-     <term><option>--help</option></term>
+     <term><option>--subscription=<replaceable class="parameter">name</replaceable></option></term>
      <listitem>
       <para>
-       Show help about <application>pg_createsubscriber</application> command
-       line arguments, and exit.
+       The subscription name to set up the logical replication.  Multiple
+       subscriptions can be specified by writing multiple
+       <option>--subscription</option> switches.  The number of subscription
+       names must match the number of specified databases, otherwise an error
+       is reported.  The order of the multiple subscription name switches must
+       match the order of database switches.  If this option is not specified,
+       a generated name is assigned to the subscription name.
       </para>
      </listitem>
     </varlistentry>
@@ -261,6 +250,17 @@ PostgreSQL documentation
      <listitem>
       <para>
        Print the <application>pg_createsubscriber</application> version and exit.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-?</option></term>
+     <term><option>--help</option></term>
+     <listitem>
+      <para>
+       Show help about <application>pg_createsubscriber</application> command
+       line arguments, and exit.
       </para>
      </listitem>
     </varlistentry>
@@ -326,13 +326,6 @@ PostgreSQL documentation
    </para>
 
    <para>
-    During the recovery process, if the target server disconnects from the
-    source server, <application>pg_createsubscriber</application> will check a
-    few times if the connection has been reestablished to stream the required
-    WAL.  After a few attempts, it terminates with an error.
-   </para>
-
-   <para>
     Since DDL commands are not replicated by logical replication, avoid
     executing DDL commands that change the database schema while running
     <application>pg_createsubscriber</application>.  If the target server has
@@ -358,6 +351,17 @@ PostgreSQL documentation
     If the target server is a synchronous replica, transaction commits on the
     primary might wait for replication while running
     <application>pg_createsubscriber</application>.
+   </para>
+
+   <para>
+    <application>pg_createsubscriber</application> sets up logical
+    replication with two-phase commit disabled.  This means that any
+    prepared transactions will be replicated at the time
+    of <command>COMMIT PREPARED</command>, without advance preparation.
+    Once setup is complete, you can manually drop and re-create the
+    subscription(s) with
+    the <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>
+    option enabled.
    </para>
 
    <para>
@@ -486,6 +490,15 @@ PostgreSQL documentation
      <para>
       If the standby server was using <xref linkend="guc-primary-slot-name"/>,
       it has no use from now on so drop it.
+     </para>
+    </step>
+
+    <step>
+     <para>
+      If the standby server contains <link
+      linkend="logicaldecoding-replication-slots-synchronization">failover
+      replication slots</link>, they cannot be synchronized anymore, so drop
+      them.
      </para>
     </step>
 

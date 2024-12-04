@@ -88,3 +88,27 @@ as $$select 2 + 2$$;
 /
 
 select simplecaller();
+
+
+-- Check case where called function changes from non-SRF to SRF (bug #18497)
+
+create or replace function simplecaller() returns int language plpgsql
+as $$
+declare x int;
+begin
+  x := simplesql();
+  return x;
+end$$;
+/
+
+select simplecaller();
+
+drop function simplesql();
+
+create function simplesql() returns setof int language sql
+as $$select 22 + 22$$;
+/
+
+select simplecaller();
+
+select simplecaller();

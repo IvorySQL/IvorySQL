@@ -4312,8 +4312,14 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 
 				if (!error)
 				{
-					*op->resvalue = BoolGetDatum(exists);
 					*op->resnull = false;
+					if (jsexpr->use_json_coercion)
+						*op->resvalue = DirectFunctionCall1(jsonb_in,
+															BoolGetDatum(exists) ?
+															CStringGetDatum("true") :
+															CStringGetDatum("false"));
+					else
+						*op->resvalue = BoolGetDatum(exists);
 				}
 			}
 			break;
@@ -4321,36 +4327,22 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 		case JSON_QUERY_OP:
 			*op->resvalue = JsonPathQuery(item, path, jsexpr->wrapper, &empty,
 										  !throw_error ? &error : NULL,
-										  jsestate->args);
+										  jsestate->args,
+										  jsexpr->column_name);
 
 			*op->resnull = (DatumGetPointer(*op->resvalue) == NULL);
-
-			/* Handle OMIT QUOTES. */
-			if (!*op->resnull && jsexpr->omit_quotes)
-			{
-				val_string = JsonbUnquote(DatumGetJsonbP(*op->resvalue));
-
-				/*
-				 * Pass the string as a text value to the cast expression if
-				 * one present.  If not, use the input function call below to
-				 * do the coercion.
-				 */
-				if (jump_eval_coercion >= 0)
-					*op->resvalue =
-						DirectFunctionCall1(textin,
-											PointerGetDatum(val_string));
-			}
 			break;
 
 		case JSON_VALUE_OP:
 			{
 				JsonbValue *jbv = JsonPathValue(item, path, &empty,
 												!throw_error ? &error : NULL,
-												jsestate->args);
+												jsestate->args,
+												jsexpr->column_name);
 
 				if (jbv == NULL)
 				{
-					/* Will be coerced with coercion_expr, if any. */
+					/* Will be coerced with json_populate_type(), if needed. */
 					*op->resvalue = (Datum) 0;
 					*op->resnull = true;
 				}
@@ -4362,22 +4354,28 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 						val_string = DatumGetCString(DirectFunctionCall1(jsonb_out,
 																		 JsonbPGetDatum(JsonbValueToJsonb(jbv))));
 					}
+					else if (jsexpr->use_json_coercion)
+					{
+						*op->resvalue = JsonbPGetDatum(JsonbValueToJsonb(jbv));
+						*op->resnull = false;
+					}
 					else
 					{
 						val_string = ExecGetJsonValueItemString(jbv, op->resnull);
 
 						/*
-						 * Pass the string as a text value to the cast
-						 * expression if one present.  If not, use the input
-						 * function call below to do the coercion.
+						 * Simply convert to the default RETURNING type (text)
+						 * if no coercion needed.
 						 */
-						*op->resvalue = PointerGetDatum(val_string);
-						if (jump_eval_coercion >= 0)
-							*op->resvalue = DirectFunctionCall1(textin, *op->resvalue);
+						if (!jsexpr->use_io_coercion)
+							*op->resvalue = DirectFunctionCall1(textin,
+																CStringGetDatum(val_string));
 					}
 				}
 				break;
 			}
+
+			/* JSON_TABLE_OP can't happen here */
 
 		default:
 			elog(ERROR, "unrecognized SQL/JSON expression op %d",
@@ -4414,30 +4412,33 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 	/* Handle ON EMPTY. */
 	if (empty)
 	{
-		if (jsexpr->on_empty)
-		{
-			if (jsexpr->on_empty->btype == JSON_BEHAVIOR_ERROR)
-				ereport(ERROR,
-						errcode(ERRCODE_NO_SQL_JSON_ITEM),
-						errmsg("no SQL/JSON item"));
-			else
-				jsestate->empty.value = BoolGetDatum(true);
-
-			Assert(jsestate->jump_empty >= 0);
-			return jsestate->jump_empty;
-		}
-		else if (jsexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
-			ereport(ERROR,
-					errcode(ERRCODE_NO_SQL_JSON_ITEM),
-					errmsg("no SQL/JSON item"));
-		else
-			jsestate->error.value = BoolGetDatum(true);
-
 		*op->resvalue = (Datum) 0;
 		*op->resnull = true;
+		if (jsexpr->on_empty)
+		{
+			if (jsexpr->on_empty->btype != JSON_BEHAVIOR_ERROR)
+			{
+				jsestate->empty.value = BoolGetDatum(true);
+				Assert(jsestate->jump_empty >= 0);
+				return jsestate->jump_empty;
+			}
+		}
+		else if (jsexpr->on_error->btype != JSON_BEHAVIOR_ERROR)
+		{
+			jsestate->error.value = BoolGetDatum(true);
+			Assert(!throw_error && jsestate->jump_error >= 0);
+			return jsestate->jump_error;
+		}
 
-		Assert(!throw_error && jsestate->jump_error >= 0);
-		return jsestate->jump_error;
+		if (jsexpr->column_name)
+			ereport(ERROR,
+					errcode(ERRCODE_NO_SQL_JSON_ITEM),
+					errmsg("no SQL/JSON item found for specified path of column \"%s\"",
+						   jsexpr->column_name));
+		else
+			ereport(ERROR,
+					errcode(ERRCODE_NO_SQL_JSON_ITEM),
+					errmsg("no SQL/JSON item found for specified path"));
 	}
 
 	/*
@@ -4547,13 +4548,14 @@ ExecEvalJsonCoercion(ExprState *state, ExprEvalStep *op,
 									   op->d.jsonexpr_coercion.targettypmod,
 									   &op->d.jsonexpr_coercion.json_populate_type_cache,
 									   econtext->ecxt_per_query_memory,
-									   op->resnull, (Node *) escontext);
+									   op->resnull,
+									   op->d.jsonexpr_coercion.omit_quotes,
+									   (Node *) escontext);
 }
 
 /*
- * Checks if an error occurred either when evaluating JsonExpr.coercion_expr or
- * in ExecEvalJsonCoercion().  If so, this sets JsonExprState.error to trigger
- * the ON ERROR handling steps.
+ * Checks if an error occurred in ExecEvalJsonCoercion().  If so, this sets
+ * JsonExprState.error to trigger the ON ERROR handling steps.
  */
 void
 ExecEvalJsonCoercionFinish(ExprState *state, ExprEvalStep *op)

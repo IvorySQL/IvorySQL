@@ -408,25 +408,14 @@ SKIP:
 
 	my $node2 = PostgreSQL::Test::Cluster->new('replica');
 
-	# Recover main data directory
-	$node2->init_from_backup($node, 'tarbackup2', tar_program => $tar);
-
-	# Recover tablespace into a new directory (not where it was!)
-	my $repTsDir     = "$tempdir/tblspc1replica";
-	my $realRepTsDir = "$real_sys_tempdir/tblspc1replica";
-	mkdir $repTsDir;
-	PostgreSQL::Test::Utils::system_or_bail($tar, 'xf', $tblspc_tars[0],
-		'-C', $repTsDir);
-
-	# Update tablespace map to point to new directory.
-	# XXX Ideally pg_basebackup would handle this.
+	# Recover the backup
 	$tblspc_tars[0] =~ m|/([0-9]*)\.tar$|;
-	my $tblspcoid       = $1;
-	my $escapedRepTsDir = $realRepTsDir;
-	$escapedRepTsDir =~ s/\\/\\\\/g;
-	open my $mapfile, '>', $node2->data_dir . '/tablespace_map' or die $!;
-	print $mapfile "$tblspcoid $escapedRepTsDir\n";
-	close $mapfile;
+	my $tblspcoid = $1;
+	my $realRepTsDir = "$real_sys_tempdir/tblspc1replica";
+	$node2->init_from_backup(
+		$node, 'tarbackup2',
+		tar_program => $tar,
+		'tablespace_map' => { $tblspcoid => $realRepTsDir });
 
 	$node2->start;
 	my $result = $node2->safe_psql('postgres', 'SELECT * FROM test1');
@@ -495,7 +484,7 @@ SKIP:
 SKIP:
 {
 	skip "unix-style permissions not supported on Windows", 1
-	  if ($windows_os);
+	  if ($windows_os || $Config::Config{osname} eq 'cygwin');
 
 	ok(check_mode_recursive("$tempdir/backup1", 0750, 0640),
 		"check backup dir permissions");
@@ -790,10 +779,8 @@ $node->command_ok(
 		'stream', '-d', "dbname=db1", '-R',
 	],
 	'pg_basebackup with dbname and -R runs');
-like(
-	slurp_file("$tempdir/backup_dbname_R/postgresql.auto.conf"),
-	qr/dbname=db1/m,
-	'recovery conf file sets dbname');
+like(slurp_file("$tempdir/backup_dbname_R/postgresql.auto.conf"),
+	qr/dbname=db1/m, 'recovery conf file sets dbname');
 
 rmtree("$tempdir/backup_dbname_R");
 
@@ -989,8 +976,11 @@ $node2->append_conf('postgresql.conf', 'summarize_wal = on');
 $node2->start;
 
 $node2->command_fails_like(
-	[ @pg_basebackup_defs, '-D', "$tempdir" . '/diff_sysid',
-		'--incremental', "$backupdir" . '/backup_manifest' ],
+	[
+		@pg_basebackup_defs, '-D',
+		"$tempdir" . '/diff_sysid', '--incremental',
+		"$backupdir" . '/backup_manifest'
+	],
 	qr/manifest system identifier is .*, but database system identifier is/,
 	"pg_basebackup fails with different database system manifest");
 

@@ -23,7 +23,7 @@
 /*
  * Create bitmasks from pg_unicode_category values for efficient comparison of
  * multiple categories. For instance, PG_U_MN_MASK is a bitmask representing
- * the general cateogry Mn; and PG_U_M_MASK represents general categories Mn,
+ * the general category Mn; and PG_U_M_MASK represents general categories Mn,
  * Me, and Mc.
  *
  * The number of Unicode General Categories should never grow, so a 32-bit
@@ -75,7 +75,7 @@
 
 #define PG_U_CHARACTER_TAB	0x09
 
-static bool range_search(const pg_unicode_range * tbl, size_t size,
+static bool range_search(const pg_unicode_range *tbl, size_t size,
 						 pg_wchar code);
 
 /*
@@ -478,7 +478,7 @@ unicode_category_abbrev(pg_unicode_category category)
  * given table.
  */
 static bool
-range_search(const pg_unicode_range * tbl, size_t size, pg_wchar code)
+range_search(const pg_unicode_range *tbl, size_t size, pg_wchar code)
 {
 	int			min = 0;
 	int			mid;

@@ -94,8 +94,14 @@ typedef struct RangeVar
 	ParseLoc	location;
 } RangeVar;
 
+typedef enum TableFuncType
+{
+	TFT_XMLTABLE,
+	TFT_JSON_TABLE,
+} TableFuncType;
+
 /*
- * TableFunc - node for a table function, such as XMLTABLE.
+ * TableFunc - node for a table function, such as XMLTABLE and JSON_TABLE.
  *
  * Entries in the ns_names list are either String nodes containing
  * literal namespace names, or NULL pointers to represent DEFAULT.
@@ -103,6 +109,8 @@ typedef struct RangeVar
 typedef struct TableFunc
 {
 	NodeTag		type;
+	/* XMLTABLE or JSON_TABLE */
+	TableFuncType functype;
 	/* list of namespace URI expressions */
 	List	   *ns_uris pg_node_attr(query_jumble_ignore);
 	/* list of namespace names or NULL */
@@ -123,8 +131,14 @@ typedef struct TableFunc
 	List	   *colexprs;
 	/* list of column default expressions */
 	List	   *coldefexprs pg_node_attr(query_jumble_ignore);
+	/* JSON_TABLE: list of column value expressions */
+	List	   *colvalexprs pg_node_attr(query_jumble_ignore);
+	/* JSON_TABLE: list of PASSING argument expressions */
+	List	   *passingvalexprs pg_node_attr(query_jumble_ignore);
 	/* nullability flag for each output column */
 	Bitmapset  *notnulls pg_node_attr(query_jumble_ignore);
+	/* JSON_TABLE plan */
+	Node	   *plan pg_node_attr(query_jumble_ignore);
 	/* counts from 0; -1 if none specified */
 	int			ordinalitycol pg_node_attr(query_jumble_ignore);
 	/* token location, or -1 if unknown */
@@ -561,6 +575,8 @@ typedef struct WindowFunc
 	List	   *args;
 	/* FILTER expression, if any */
 	Expr	   *aggfilter;
+	/* List of WindowFuncRunConditions to help short-circuit execution */
+	List	   *runCondition pg_node_attr(query_jumble_ignore);
 	/* index of associated WindowClause */
 	Index		winref;
 	/* true if argument list was really '*' */
@@ -570,6 +586,34 @@ typedef struct WindowFunc
 	/* token location, or -1 if unknown */
 	ParseLoc	location;
 } WindowFunc;
+
+/*
+ * WindowFuncRunCondition
+ *
+ * Represents intermediate OpExprs which will be used by WindowAgg to
+ * short-circuit execution.
+ */
+typedef struct WindowFuncRunCondition
+{
+	Expr		xpr;
+
+	/* PG_OPERATOR OID of the operator */
+	Oid			opno;
+	/* OID of collation that operator should use */
+	Oid			inputcollid pg_node_attr(query_jumble_ignore);
+
+	/*
+	 * true of WindowFunc belongs on the left of the resulting OpExpr or false
+	 * if the WindowFunc is on the right.
+	 */
+	bool		wfunc_left;
+
+	/*
+	 * The Expr being compared to the WindowFunc to use in the OpExpr in the
+	 * WindowAgg's runCondition
+	 */
+	Expr	   *arg;
+} WindowFuncRunCondition;
 
 /*
  * MergeSupportFunc
@@ -1636,7 +1680,7 @@ typedef struct JsonReturning
  *
  * The actual value is obtained by evaluating formatted_expr.  raw_expr is
  * only there for displaying the original user-written expression and is not
- * evaluated by ExecInterpExpr() and eval_const_exprs_mutator().
+ * evaluated by ExecInterpExpr() and eval_const_expressions_mutator().
  */
 typedef struct JsonValueExpr
 {
@@ -1751,7 +1795,7 @@ typedef struct JsonBehavior
 	JsonBehaviorType btype;
 	Node	   *expr;
 	bool		coerce;
-	int			location;		/* token location, or -1 if unknown */
+	ParseLoc	location;		/* token location, or -1 if unknown */
 } JsonBehavior;
 
 /*
@@ -1763,6 +1807,7 @@ typedef enum JsonExprOp
 	JSON_EXISTS_OP,				/* JSON_EXISTS() */
 	JSON_QUERY_OP,				/* JSON_QUERY() */
 	JSON_VALUE_OP,				/* JSON_VALUE() */
+	JSON_TABLE_OP,				/* JSON_TABLE() */
 } JsonExprOp;
 
 /*
@@ -1776,13 +1821,16 @@ typedef struct JsonExpr
 
 	JsonExprOp	op;
 
+	char	   *column_name;	/* JSON_TABLE() column name or NULL if this is
+								 * not for a JSON_TABLE() */
+
 	/* jsonb-valued expression to query */
 	Node	   *formatted_expr;
 
 	/* Format of the above expression needed by ruleutils.c */
 	JsonFormat *format;
 
-	/* jsopath-valued expression containing the query pattern */
+	/* jsonpath-valued expression containing the query pattern */
 	Node	   *path_spec;
 
 	/* Expected type/format of the output. */
@@ -1799,13 +1847,7 @@ typedef struct JsonExpr
 	/*
 	 * Information about converting the result of jsonpath functions
 	 * JsonPathQuery() and JsonPathValue() to the RETURNING type.
-	 *
-	 * coercion_expr is a cast expression if the parser can find it for the
-	 * source and the target type.  If not, either use_io_coercion or
-	 * use_json_coercion is set to determine the coercion method to use at
-	 * runtime; see coerceJsonExprOutput() and ExecInitJsonExpr().
 	 */
-	Node	   *coercion_expr;
 	bool		use_io_coercion;
 	bool		use_json_coercion;
 
@@ -1815,12 +1857,81 @@ typedef struct JsonExpr
 	/* KEEP or OMIT QUOTES for singleton scalars returned by JSON_QUERY() */
 	bool		omit_quotes;
 
-	/* JsonExpr's collation, if coercion_expr is NULL. */
+	/* JsonExpr's collation. */
 	Oid			collation;
 
 	/* Original JsonFuncExpr's location */
-	int			location;
+	ParseLoc	location;
 } JsonExpr;
+
+/*
+ * JsonTablePath
+ *		A JSON path expression to be computed as part of evaluating
+ *		a JSON_TABLE plan node
+ */
+typedef struct JsonTablePath
+{
+	NodeTag		type;
+
+	Const	   *value;
+	char	   *name;
+} JsonTablePath;
+
+/*
+ * JsonTablePlan -
+ *		Abstract class to represent different types of JSON_TABLE "plans".
+ *		A plan is used to generate a "row pattern" value by evaluating a JSON
+ *		path expression against an input JSON document, which is then used for
+ *		populating JSON_TABLE() columns
+ */
+typedef struct JsonTablePlan
+{
+	pg_node_attr(abstract)
+
+	NodeTag		type;
+} JsonTablePlan;
+
+/*
+ * JSON_TABLE plan to evaluate a JSON path expression and NESTED paths, if
+ * any.
+ */
+typedef struct JsonTablePathScan
+{
+	JsonTablePlan plan;
+
+	/* JSON path to evaluate */
+	JsonTablePath *path;
+
+	/*
+	 * ERROR/EMPTY ON ERROR behavior; only significant in the plan for the
+	 * top-level path.
+	 */
+	bool		errorOnError;
+
+	/* Plan(s) for nested columns, if any. */
+	JsonTablePlan *child;
+
+	/*
+	 * 0-based index in TableFunc.colvalexprs of the 1st and the last column
+	 * covered by this plan.  Both are -1 if all columns are nested and thus
+	 * computed by the child plan(s).
+	 */
+	int			colMin;
+	int			colMax;
+} JsonTablePathScan;
+
+/*
+ * JsonTableSiblingJoin -
+ *		Plan to join rows of sibling NESTED COLUMNS clauses in the same parent
+ *		COLUMNS clause
+ */
+typedef struct JsonTableSiblingJoin
+{
+	JsonTablePlan plan;
+
+	JsonTablePlan *lplan;
+	JsonTablePlan *rplan;
+} JsonTableSiblingJoin;
 
 /* ----------------
  * NullTest
@@ -1891,6 +2002,8 @@ typedef enum MergeMatchKind
 	MERGE_WHEN_NOT_MATCHED_BY_SOURCE,
 	MERGE_WHEN_NOT_MATCHED_BY_TARGET
 } MergeMatchKind;
+
+#define NUM_MERGE_MATCH_KINDS (MERGE_WHEN_NOT_MATCHED_BY_TARGET + 1)
 
 typedef struct MergeAction
 {

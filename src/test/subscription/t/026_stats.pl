@@ -271,7 +271,7 @@ is( $node_subscriber->safe_psql(
 my $sub2_oid = $node_subscriber->safe_psql($db,
 	qq(SELECT oid FROM pg_subscription WHERE subname = '$sub2_name'));
 
-# Diassociate the subscription 2 from its replication slot and drop it
+# Disassociate the subscription 2 from its replication slot and drop it
 $node_subscriber->safe_psql(
 	$db,
 	qq(
@@ -288,8 +288,7 @@ is( $node_subscriber->safe_psql(
 
 # Since disabling subscription doesn't wait for walsender to release the replication
 # slot and exit, wait for the slot to become inactive.
-$node_publisher->poll_query_until(
-	$db,
+$node_publisher->poll_query_until($db,
 	qq(SELECT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '$sub2_name' AND active_pid IS NULL))
 ) or die "slot never became inactive";
 

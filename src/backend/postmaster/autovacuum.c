@@ -76,6 +76,7 @@
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_namespace.h"
 #include "commands/dbcommands.h"
 #include "commands/vacuum.h"
 #include "common/int.h"
@@ -2175,6 +2176,24 @@ do_autovacuum(void)
 			continue;
 		}
 
+		/*
+		 * Try to lock the temp namespace, too.  Even though we have lock on
+		 * the table itself, there's a risk of deadlock against an incoming
+		 * backend trying to clean out the temp namespace, in case this table
+		 * has dependencies (such as sequences) that the backend's
+		 * performDeletion call might visit in a different order.  If we can
+		 * get AccessShareLock on the namespace, that's sufficient to ensure
+		 * we're not running concurrently with RemoveTempRelations.  If we
+		 * can't, back off and let RemoveTempRelations do its thing.
+		 */
+		if (!ConditionalLockDatabaseObject(NamespaceRelationId,
+										   classForm->relnamespace, 0,
+										   AccessShareLock))
+		{
+			UnlockRelationOid(relid, AccessExclusiveLock);
+			continue;
+		}
+
 		/* OK, let's delete it */
 		ereport(LOG,
 				(errmsg("autovacuum: dropping orphan temp table \"%s.%s.%s\"",
@@ -2192,7 +2211,7 @@ do_autovacuum(void)
 
 		/*
 		 * To commit the deletion, end current transaction and start a new
-		 * one.  Note this also releases the lock we took.
+		 * one.  Note this also releases the locks we took.
 		 */
 		CommitTransactionCommand();
 		StartTransactionCommand();
@@ -2661,9 +2680,7 @@ extract_autovac_opts(HeapTuple tup, TupleDesc pg_class_desc)
 		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_MATVIEW ||
 		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_TOASTVALUE);
 
-	relopts = extractRelOptions(tup, pg_class_desc,
-								GetTableAmRoutineByAmOid(((Form_pg_class) GETSTRUCT(tup))->relam),
-								NULL);
+	relopts = extractRelOptions(tup, pg_class_desc, NULL);
 	if (relopts == NULL)
 		return NULL;
 
@@ -2921,6 +2938,7 @@ relation_needs_vacanalyze(Oid relid,
 	int			freeze_max_age;
 	int			multixact_freeze_max_age;
 	TransactionId xidForceLimit;
+	TransactionId relfrozenxid;
 	MultiXactId multiForceLimit;
 
 	Assert(classForm != NULL);
@@ -2972,16 +2990,18 @@ relation_needs_vacanalyze(Oid relid,
 	xidForceLimit = recentXid - freeze_max_age;
 	if (xidForceLimit < FirstNormalTransactionId)
 		xidForceLimit -= FirstNormalTransactionId;
-	force_vacuum = (TransactionIdIsNormal(classForm->relfrozenxid) &&
-					TransactionIdPrecedes(classForm->relfrozenxid,
-										  xidForceLimit));
+	relfrozenxid = classForm->relfrozenxid;
+	force_vacuum = (TransactionIdIsNormal(relfrozenxid) &&
+					TransactionIdPrecedes(relfrozenxid, xidForceLimit));
 	if (!force_vacuum)
 	{
+		MultiXactId relminmxid = classForm->relminmxid;
+
 		multiForceLimit = recentMulti - multixact_freeze_max_age;
 		if (multiForceLimit < FirstMultiXactId)
 			multiForceLimit -= FirstMultiXactId;
-		force_vacuum = MultiXactIdIsValid(classForm->relminmxid) &&
-			MultiXactIdPrecedes(classForm->relminmxid, multiForceLimit);
+		force_vacuum = MultiXactIdIsValid(relminmxid) &&
+			MultiXactIdPrecedes(relminmxid, multiForceLimit);
 	}
 	*wraparound = force_vacuum;
 

@@ -298,6 +298,17 @@ SELECT 1_000.5e0_1;
     10005
 (1 row)
 
+DO $$
+DECLARE
+  i int;
+BEGIN
+  FOR i IN 1_001..1_003 LOOP
+    RAISE NOTICE 'i = %', i;
+  END LOOP;
+END $$;
+ERROR:  syntax error at or near "1_001."
+LINE 5:   FOR i IN 1_001..1_003 LOOP
+                   ^
 -- error cases
 SELECT _100;
 ERROR:  "_100": invalid identifier
@@ -331,6 +342,10 @@ SELECT 1_000.5e_1;
 ERROR:  trailing junk after numeric literal at or near "1_000.5e"
 LINE 1: SELECT 1_000.5e_1;
                ^
+PREPARE p1 AS SELECT $0_1;
+ERROR:  there is no parameter $0
+LINE 1: PREPARE p1 AS SELECT $0_1;
+                             ^
 --
 -- Test implicit type conversions
 -- This fails for Postgres v6.1 (and earlier?)

@@ -203,6 +203,7 @@ typedef struct Port
 	char	   *peer_cn;
 	char	   *peer_dn;
 	bool		peer_cert_valid;
+	bool		alpn_used;
 
 	/*
 	 * OpenSSL structures. (Keep these last so that the locations of other
@@ -224,6 +225,18 @@ typedef struct Port
 	 */
 	char	connmode;
 
+	/*
+	 * This is a bit of a hack. raw_buf is data that was previously read and
+	 * buffered in a higher layer but then "unread" and needs to be read again
+	 * while establishing an SSL connection via the SSL library layer.
+	 *
+	 * There's no API to "unread", the upper layer just places the data in the
+	 * Port structure in raw_buf and sets raw_buf_remaining to the amount of
+	 * bytes unread and raw_buf_consumed to 0.
+	 */
+	char	   *raw_buf;
+	ssize_t		raw_buf_consumed,
+				raw_buf_remaining;
 } Port;
 
 /*

@@ -345,6 +345,14 @@ emit_tap_output_v(TAPtype type, const char *fmt, va_list argp)
 {
 	va_list		argp_logfile;
 	FILE	   *fp;
+	int			save_errno;
+
+	/*
+	 * The fprintf() calls used to output TAP-protocol elements might clobber
+	 * errno, so save it here and restore it before vfprintf()-ing the user's
+	 * format string, in case it contains %m placeholders.
+	 */
+	save_errno = errno;
 
 	/*
 	 * Diagnostic output will be hidden by prove unless printed to stderr. The
@@ -383,9 +391,13 @@ emit_tap_output_v(TAPtype type, const char *fmt, va_list argp)
 		if (logfile)
 			fprintf(logfile, "# ");
 	}
+	errno = save_errno;
 	vfprintf(fp, fmt, argp);
 	if (logfile)
+	{
+		errno = save_errno;
 		vfprintf(logfile, fmt, argp_logfile);
+	}
 
 	/*
 	 * If we are entering into a note with more details to follow, register
@@ -496,10 +508,7 @@ make_temp_sockdir(void)
 
 	temp_sockdir = mkdtemp(template);
 	if (temp_sockdir == NULL)
-	{
-		bail("could not create directory \"%s\": %s",
-			 template, strerror(errno));
-	}
+		bail("could not create directory \"%s\": %m", template);
 
 	/* Stage file names for remove_temp().  Unsafe in a signal handler. */
 	UNIXSOCK_PATH(sockself, port, temp_sockdir);
@@ -620,8 +629,7 @@ load_resultmap(void)
 		/* OK if it doesn't exist, else complain */
 		if (errno == ENOENT)
 			return;
-		bail("could not open file \"%s\" for reading: %s",
-			 buf, strerror(errno));
+		bail("could not open file \"%s\" for reading: %m", buf);
 	}
 
 	while (fgets(buf, sizeof(buf), f))
@@ -1049,10 +1057,7 @@ config_sspi_auth(const char *pgdata, const char *superuser_name)
 #define CW(cond)	\
 	do { \
 		if (!(cond)) \
-		{ \
-			bail("could not write to file \"%s\": %s", \
-				 fname, strerror(errno)); \
-		} \
+			bail("could not write to file \"%s\": %m", fname); \
 	} while (0)
 
 	res = snprintf(fname, sizeof(fname), "%s/pg_hba.conf", pgdata);
@@ -1067,8 +1072,7 @@ config_sspi_auth(const char *pgdata, const char *superuser_name)
 	hba = fopen(fname, "w");
 	if (hba == NULL)
 	{
-		bail("could not open file \"%s\" for writing: %s",
-			 fname, strerror(errno));
+		bail("could not open file \"%s\" for writing: %m", fname);
 	}
 	CW(fputs("# Configuration written by config_sspi_auth()\n", hba) >= 0);
 	CW(fputs("host all all 127.0.0.1/32  sspi include_realm=1 map=regress\n",
@@ -1082,8 +1086,7 @@ config_sspi_auth(const char *pgdata, const char *superuser_name)
 	ident = fopen(fname, "w");
 	if (ident == NULL)
 	{
-		bail("could not open file \"%s\" for writing: %s",
-			 fname, strerror(errno));
+		bail("could not open file \"%s\" for writing: %m", fname);
 	}
 	CW(fputs("# Configuration written by config_sspi_auth()\n", ident) >= 0);
 
@@ -1213,7 +1216,7 @@ spawn_process(const char *cmdline)
 	pid = fork();
 	if (pid == -1)
 	{
-		bail("could not fork: %s", strerror(errno));
+		bail("could not fork: %m");
 	}
 	if (pid == 0)
 	{
@@ -1229,7 +1232,7 @@ spawn_process(const char *cmdline)
 		cmdline2 = psprintf("exec %s", cmdline);
 		execl(shellprog, shellprog, "-c", cmdline2, (char *) NULL);
 		/* Not using the normal bail() here as we want _exit */
-		bail_noatexit("could not exec \"%s\": %s", shellprog, strerror(errno));
+		bail_noatexit("could not exec \"%s\": %m", shellprog);
 	}
 	/* in parent */
 	return pid;
@@ -1265,8 +1268,7 @@ file_size(const char *file)
 
 	if (!f)
 	{
-		diag("could not open file \"%s\" for reading: %s",
-			 file, strerror(errno));
+		diag("could not open file \"%s\" for reading: %m", file);
 		return -1;
 	}
 	fseek(f, 0, SEEK_END);
@@ -1287,8 +1289,7 @@ file_line_count(const char *file)
 
 	if (!f)
 	{
-		diag("could not open file \"%s\" for reading: %s",
-			 file, strerror(errno));
+		diag("could not open file \"%s\" for reading: %m", file);
 		return -1;
 	}
 	while ((c = fgetc(f)) != EOF)
@@ -1328,9 +1329,7 @@ static void
 make_directory(const char *dir)
 {
 	if (mkdir(dir, S_IRWXU | S_IRWXG | S_IRWXO) < 0)
-	{
-		bail("could not create directory \"%s\": %s", dir, strerror(errno));
-	}
+		bail("could not create directory \"%s\": %m", dir);
 }
 
 /*
@@ -1459,10 +1458,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 
 		alt_expectfile = get_alternative_expectfile(expectfile, i);
 		if (!alt_expectfile)
-		{
-			bail("Unable to check secondary comparison files: %s",
-				 strerror(errno));
-		}
+			bail("Unable to check secondary comparison files: %m");
 
 		if (!file_exists(alt_expectfile))
 		{
@@ -1575,9 +1571,7 @@ wait_for_tests(PID_TYPE * pids, int *statuses, instr_time *stoptimes,
 		p = wait(&exit_status);
 
 		if (p == INVALID_PID)
-		{
-			bail("failed to wait for subprocesses: %s", strerror(errno));
-		}
+			bail("failed to wait for subprocesses: %m");
 #else
 		DWORD		exit_status;
 		int			r;
@@ -1667,10 +1661,7 @@ run_schedule(const char *schedule, test_start_function startfunc,
 
 	scf = fopen(schedule, "r");
 	if (!scf)
-	{
-		bail("could not open file \"%s\" for reading: %s",
-			 schedule, strerror(errno));
-	}
+		bail("could not open file \"%s\" for reading: %m", schedule);
 
 	while (fgets(scbuf, sizeof(scbuf), scf))
 	{
@@ -1934,20 +1925,15 @@ open_result_files(void)
 	logfilename = pg_strdup(file);
 	logfile = fopen(logfilename, "w");
 	if (!logfile)
-	{
-		bail("could not open file \"%s\" for writing: %s",
-			 logfilename, strerror(errno));
-	}
+		bail("could not open file \"%s\" for writing: %m", logfilename);
 
 	/* create the diffs file as empty */
 	snprintf(file, sizeof(file), "%s/regression.diffs", outputdir);
 	difffilename = pg_strdup(file);
 	difffile = fopen(difffilename, "w");
 	if (!difffile)
-	{
-		bail("could not open file \"%s\" for writing: %s",
-			 difffilename, strerror(errno));
-	}
+		bail("could not open file \"%s\" for writing: %m", difffilename);
+
 	/* we don't keep the diffs file open continuously */
 	fclose(difffile);
 
@@ -2409,10 +2395,8 @@ regression_main(int argc, char *argv[],
 		snprintf(buf, sizeof(buf), "%s/data/postgresql.conf", temp_instance);
 		pg_conf = fopen(buf, "a");
 		if (pg_conf == NULL)
-		{
-			bail("could not open \"%s\" for adding extra config: %s",
-				 buf, strerror(errno));
-		}
+			bail("could not open \"%s\" for adding extra config: %m", buf);
+
 		fputs("\n# Configuration added by pg_regress\n\n", pg_conf);
 		fputs("log_autovacuum_min_duration = 0\n", pg_conf);
 		fputs("log_checkpoints = on\n", pg_conf);
@@ -2430,8 +2414,8 @@ regression_main(int argc, char *argv[],
 			extra_conf = fopen(temp_config, "r");
 			if (extra_conf == NULL)
 			{
-				bail("could not open \"%s\" to read extra config: %s",
-					 temp_config, strerror(errno));
+				bail("could not open \"%s\" to read extra config: %m",
+					 temp_config);
 			}
 			while (fgets(line_buf, sizeof(line_buf), extra_conf) != NULL)
 				fputs(line_buf, pg_conf);
@@ -2540,7 +2524,7 @@ regression_main(int argc, char *argv[],
 				 outputdir);
 		postmaster_pid = spawn_process(buf);
 		if (postmaster_pid == INVALID_PID)
-			bail("could not spawn postmaster: %s", strerror(errno));
+			bail("could not spawn postmaster: %m");
 
 		/*
 		 * Wait till postmaster is able to accept connections; normally takes
@@ -2603,7 +2587,7 @@ regression_main(int argc, char *argv[],
 			 */
 #ifndef WIN32
 			if (kill(postmaster_pid, SIGKILL) != 0 && errno != ESRCH)
-				bail("could not kill failed postmaster: %s", strerror(errno));
+				bail("could not kill failed postmaster: %m");
 #else
 			if (TerminateProcess(postmaster_pid, 255) == 0)
 				bail("could not kill failed postmaster: error code %lu",

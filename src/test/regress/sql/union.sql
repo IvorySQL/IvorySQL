@@ -244,6 +244,12 @@ explain (costs off)
 select x from (values (row(1, 2)), (row(1, 3))) _(x) except select x from (values (row(1, 2)), (row(1, 4))) _(x);
 select x from (values (row(1, 2)), (row(1, 3))) _(x) except select x from (values (row(1, 2)), (row(1, 4))) _(x);
 
+-- non-sortable type
+
+-- Ensure we get a HashAggregate plan.  Keep enable_hashagg=off to ensure
+-- there's no chance of a sort.
+explain (costs off) select '123'::xid union select '123'::xid;
+
 reset enable_hashagg;
 
 --
@@ -329,6 +335,17 @@ select from generate_series(1,5) intersect select from generate_series(1,3);
 select from generate_series(1,5) intersect all select from generate_series(1,3);
 select from generate_series(1,5) except select from generate_series(1,3);
 select from generate_series(1,5) except all select from generate_series(1,3);
+
+-- Try a variation of the above but with a CTE which contains a column, again
+-- with an empty final select list.
+
+-- Ensure we get the expected 1 row with 0 columns
+with cte as materialized (select s from generate_series(1,5) s)
+select from cte union select from cte;
+
+-- Ensure we get the same result as the above.
+with cte as not materialized (select s from generate_series(1,5) s)
+select from cte union select from cte;
 
 reset enable_hashagg;
 reset enable_sort;

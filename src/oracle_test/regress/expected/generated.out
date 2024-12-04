@@ -315,8 +315,6 @@ NOTICE:  merging column "b" with inherited definition
  a      | pg_catalog.int4 |           | not null |                                     |           | plain   |              | 
  b      | pg_catalog.int4 |           |          | generated always as (a * 22) stored |           | plain   |              | 
  x      | pg_catalog.int4 |           |          |                                     |           | plain   |              | 
-Not-null constraints:
-    "gtestx_a_not_null" NOT NULL "a" (inherited)
 Inherits: gtest1
 
 CREATE TABLE gtestxx_1 (a int NOT NULL, b int);

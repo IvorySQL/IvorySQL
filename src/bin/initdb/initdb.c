@@ -103,7 +103,7 @@ static const char *const auth_methods_host[] = {
 	"sspi",
 #endif
 #ifdef USE_PAM
-	"pam", "pam ",
+	"pam",
 #endif
 #ifdef USE_BSD_AUTH
 	"bsd",
@@ -119,7 +119,7 @@ static const char *const auth_methods_host[] = {
 static const char *const auth_methods_local[] = {
 	"trust", "reject", "scram-sha-256", "md5", "password", "peer", "radius",
 #ifdef USE_PAM
-	"pam", "pam ",
+	"pam",
 #endif
 #ifdef USE_BSD_AUTH
 	"bsd",
@@ -1121,7 +1121,7 @@ test_config_settings(void)
 	 * Probe for max_connections before shared_buffers, since it is subject to
 	 * more constraints than shared_buffers.
 	 */
-	printf(_("selecting default max_connections ... "));
+	printf(_("selecting default \"max_connections\" ... "));
 	fflush(stdout);
 
 	for (i = 0; i < connslen; i++)
@@ -1141,7 +1141,7 @@ test_config_settings(void)
 
 	printf("%d\n", n_connections);
 
-	printf(_("selecting default shared_buffers ... "));
+	printf(_("selecting default \"shared_buffers\" ... "));
 	fflush(stdout);
 
 	for (i = 0; i < bufslen; i++)
@@ -2578,7 +2578,7 @@ usage(const char *progname)
 	printf(_("  -n, --no-clean            do not clean up after errors\n"));
 	printf(_("  -N, --no-sync             do not wait for changes to be written safely to disk\n"));
 	printf(_("      --no-instructions     do not print instructions for next steps\n"));
-	printf(_("  -s, --show                show internal settings\n"));
+	printf(_("  -s, --show                show internal settings, then exit\n"));
 	printf(_("      --sync-method=METHOD  set method for syncing files to disk\n"));
 	printf(_("  -S, --sync-only           only sync database files to disk, then exit\n"));
 	printf(_("\nOther options:\n"));
@@ -2609,10 +2609,6 @@ check_authmethod_valid(const char *authmethod, const char *const *valid_methods,
 	{
 		if (strcmp(authmethod, *p) == 0)
 			return;
-		/* with space = param */
-		if (strchr(authmethod, ' '))
-			if (strncmp(authmethod, *p, (authmethod - strchr(authmethod, ' '))) == 0)
-				return;
 	}
 
 	pg_fatal("invalid authentication method \"%s\" for \"%s\" connections",

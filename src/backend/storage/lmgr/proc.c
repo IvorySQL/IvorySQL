@@ -345,7 +345,7 @@ InitProcess(void)
 		if (AmWalSenderProcess())
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
-					 errmsg("number of requested standby connections exceeds max_wal_senders (currently %d)",
+					 errmsg("number of requested standby connections exceeds \"max_wal_senders\" (currently %d)",
 							max_wal_senders)));
 		ereport(FATAL,
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -1047,15 +1047,15 @@ AuxiliaryPidGetProc(int pid)
  * called, because it could be that when we try to find a position at which
  * to insert ourself into the wait queue, we discover that we must be inserted
  * ahead of everyone who wants a lock that conflict with ours. In that case,
- * we get the lock immediately. Beause of this, it's sensible for this function
+ * we get the lock immediately. Because of this, it's sensible for this function
  * to have a dontWait argument, despite the name.
  *
  * The lock table's partition lock must be held at entry, and will be held
  * at exit.
  *
  * Result: PROC_WAIT_STATUS_OK if we acquired the lock, PROC_WAIT_STATUS_ERROR
- * if not (if dontWait = true, this is a deadlock; if dontWait = false, we
- * would have had to wait).
+ * if not (if dontWait = true, we would have had to wait; if dontWait = false,
+ * this is a deadlock).
  *
  * ASSUME: that no one will fiddle with the queue until after
  *		we release the partition lock.

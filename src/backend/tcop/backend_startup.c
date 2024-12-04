@@ -3,7 +3,7 @@
  * backend_startup.c
  *	  Backend startup code
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -39,7 +39,11 @@
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
 
+/* GUCs */
+bool		Trace_connection_negotiation = false;
+
 static void BackendInitialize(ClientSocket *client_sock, CAC_state cac);
+static int	ProcessSSLStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done);
 static void SendNegotiateProtocolVersion(List *unrecognized_protocol_options);
 static void process_startup_packet_die(SIGNAL_ARGS);
@@ -299,11 +303,15 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	RegisterTimeout(STARTUP_PACKET_TIMEOUT, StartupPacketTimeoutHandler);
 	enable_timeout_after(STARTUP_PACKET_TIMEOUT, AuthenticationTimeout * 1000);
 
+	/* Handle direct SSL handshake */
+	status = ProcessSSLStartup(port);
+
 	/*
 	 * Receive the startup packet (which might turn out to be a cancel request
 	 * packet).
 	 */
-	status = ProcessStartupPacket(port, false, false);
+	if (status == STATUS_OK)
+		status = ProcessStartupPacket(port, false, false);
 
 	/*
 	 * If we're going to reject the connection due to database state, say so
@@ -393,6 +401,85 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	pfree(ps_data.data);
 
 	set_ps_display("initializing");
+}
+
+/*
+ * Check for a direct SSL connection.
+ *
+ * This happens before the startup packet so we are careful not to actually
+ * read any bytes from the stream if it's not a direct SSL connection.
+ */
+static int
+ProcessSSLStartup(Port *port)
+{
+	int			firstbyte;
+
+	Assert(!port->ssl_in_use);
+
+	pq_startmsgread();
+	firstbyte = pq_peekbyte();
+	pq_endmsgread();
+	if (firstbyte == EOF)
+	{
+		/*
+		 * Like in ProcessStartupPacket, if we get no data at all, don't
+		 * clutter the log with a complaint.
+		 */
+		return STATUS_ERROR;
+	}
+
+	if (firstbyte != 0x16)
+	{
+		/* Not an SSL handshake message */
+		return STATUS_OK;
+	}
+
+	/*
+	 * First byte indicates standard SSL handshake message
+	 *
+	 * (It can't be a Postgres startup length because in network byte order
+	 * that would be a startup packet hundreds of megabytes long)
+	 */
+
+#ifdef USE_SSL
+	if (!LoadedSSL || port->laddr.addr.ss_family == AF_UNIX)
+	{
+		/* SSL not supported */
+		goto reject;
+	}
+
+	if (secure_open_server(port) == -1)
+	{
+		/*
+		 * we assume secure_open_server() sent an appropriate TLS alert
+		 * already
+		 */
+		goto reject;
+	}
+	Assert(port->ssl_in_use);
+
+	if (!port->alpn_used)
+	{
+		ereport(COMMERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("received direct SSL connection request without ALPN protocol negotiation extension")));
+		goto reject;
+	}
+
+	if (Trace_connection_negotiation)
+		ereport(LOG,
+				(errmsg("direct SSL connection accepted")));
+	return STATUS_OK;
+#else
+	/* SSL not supported by this build */
+	goto reject;
+#endif
+
+reject:
+	if (Trace_connection_negotiation)
+		ereport(LOG,
+				(errmsg("direct SSL connection rejected")));
+	return STATUS_ERROR;
 }
 
 /*
@@ -516,8 +603,13 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 		char		SSLok;
 
 #ifdef USE_SSL
-		/* No SSL when disabled or on Unix sockets */
-		if (!LoadedSSL || port->laddr.addr.ss_family == AF_UNIX)
+
+		/*
+		 * No SSL when disabled or on Unix sockets.
+		 *
+		 * Also no SSL negotiation if we already have a direct SSL connection
+		 */
+		if (!LoadedSSL || port->laddr.addr.ss_family == AF_UNIX || port->ssl_in_use)
 			SSLok = 'N';
 		else
 			SSLok = 'S';		/* Support for SSL */
@@ -525,11 +617,20 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 		SSLok = 'N';			/* No support for SSL */
 #endif
 
-retry1:
-		if (send(port->sock, &SSLok, 1, 0) != 1)
+		if (Trace_connection_negotiation)
+		{
+			if (SSLok == 'S')
+				ereport(LOG,
+						(errmsg("SSLRequest accepted")));
+			else
+				ereport(LOG,
+						(errmsg("SSLRequest rejected")));
+		}
+
+		while (secure_write(port, &SSLok, 1) != 1)
 		{
 			if (errno == EINTR)
-				goto retry1;	/* if interrupted, just retry */
+				continue;		/* if interrupted, just retry */
 			ereport(COMMERROR,
 					(errcode_for_socket_access(),
 					 errmsg("failed to send SSL negotiation response: %m")));
@@ -547,7 +648,7 @@ retry1:
 		 * encrypted and indeed may have been injected by a man-in-the-middle.
 		 * We report this case to the client.
 		 */
-		if (pq_buffer_has_data())
+		if (pq_buffer_remaining_data() > 0)
 			ereport(FATAL,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
 					 errmsg("received unencrypted data after SSL request"),
@@ -570,7 +671,17 @@ retry1:
 			GSSok = 'G';
 #endif
 
-		while (send(port->sock, &GSSok, 1, 0) != 1)
+		if (Trace_connection_negotiation)
+		{
+			if (GSSok == 'G')
+				ereport(LOG,
+						(errmsg("GSSENCRequest accepted")));
+			else
+				ereport(LOG,
+						(errmsg("GSSENCRequest rejected")));
+		}
+
+		while (secure_write(port, &GSSok, 1) != 1)
 		{
 			if (errno == EINTR)
 				continue;
@@ -591,7 +702,7 @@ retry1:
 		 * encrypted and indeed may have been injected by a man-in-the-middle.
 		 * We report this case to the client.
 		 */
-		if (pq_buffer_has_data())
+		if (pq_buffer_remaining_data() > 0)
 			ereport(FATAL,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
 					 errmsg("received unencrypted data after GSSAPI encryption request"),

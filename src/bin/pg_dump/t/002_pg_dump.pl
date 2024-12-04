@@ -109,11 +109,11 @@ my %pgdump_runs = (
 			'--format=directory',                   '--compress=gzip:1',
 			"--file=$tempdir/compression_gzip_dir", 'postgres',
 		],
-		# Give coverage for manually compressed blob.toc files during
+		# Give coverage for manually compressed blobs.toc files during
 		# restore.
 		compress_cmd => {
 			program => $ENV{'GZIP_PROGRAM'},
-			args    => [ '-f', "$tempdir/compression_gzip_dir/blobs.toc", ],
+			args => [ '-f', "$tempdir/compression_gzip_dir/blobs_*.toc", ],
 		},
 		# Verify that only data files were compressed
 		glob_patterns => [
@@ -174,16 +174,6 @@ my %pgdump_runs = (
 			'--format=directory',                   '--compress=lz4:1',
 			"--file=$tempdir/compression_lz4_dir", 'postgres',
 		],
-		# Give coverage for manually compressed blob.toc files during
-		# restore.
-		compress_cmd => {
-			program => $ENV{'LZ4'},
-			args    => [
-				'-z', '-f', '--rm',
-				"$tempdir/compression_lz4_dir/blobs.toc",
-				"$tempdir/compression_lz4_dir/blobs.toc.lz4",
-			],
-		},
 		# Verify that data files were compressed
 		glob_patterns => [
 			"$tempdir/compression_lz4_dir/toc.dat",
@@ -245,14 +235,13 @@ my %pgdump_runs = (
 			'--format=directory',                   '--compress=zstd:1',
 			"--file=$tempdir/compression_zstd_dir", 'postgres',
 		],
-		# Give coverage for manually compressed blob.toc files during
+		# Give coverage for manually compressed blobs.toc files during
 		# restore.
 		compress_cmd => {
 			program => $ENV{'ZSTD'},
-			args    => [
-				'-z', '-f', '--rm',
-				"$tempdir/compression_zstd_dir/blobs.toc",
-				"-o", "$tempdir/compression_zstd_dir/blobs.toc.zst",
+			args => [
+				'-z', '-f',
+				'--rm', "$tempdir/compression_zstd_dir/blobs_*.toc",
 			],
 		},
 		# Verify that data files were compressed
@@ -417,10 +406,9 @@ my %pgdump_runs = (
 		},
 		glob_patterns => [
 			"$tempdir/defaults_dir_format/toc.dat",
-			"$tempdir/defaults_dir_format/blobs.toc",
-			$supports_gzip ?
-			"$tempdir/defaults_dir_format/*.dat.gz" :
-			"$tempdir/defaults_dir_format/*.dat",
+			"$tempdir/defaults_dir_format/blobs_*.toc",
+			$supports_gzip ? "$tempdir/defaults_dir_format/*.dat.gz"
+			: "$tempdir/defaults_dir_format/*.dat",
 		],
 	},
 
@@ -925,10 +913,10 @@ my %tests = (
 		regexp => qr/^ALTER LARGE OBJECT \d+ OWNER TO .+;/m,
 		like   => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
@@ -1017,42 +1005,6 @@ my %tests = (
 			exclude_dump_test_schema => 1,
 			exclude_test_table       => 1,
 			only_dump_measurement    => 1,
-		},
-	},
-
-	'CONSTRAINT PRIMARY KEY / WITHOUT OVERLAPS' => {
-		create_sql => 'CREATE TABLE dump_test.test_table_tpk (
-							col1 int4range,
-							col2 tstzrange,
-							CONSTRAINT test_table_tpk_pkey PRIMARY KEY (col1, col2 WITHOUT OVERLAPS));',
-		regexp => qr/^
-			\QALTER TABLE ONLY dump_test.test_table_tpk\E \n^\s+
-			\QADD CONSTRAINT test_table_tpk_pkey PRIMARY KEY (col1, col2 WITHOUT OVERLAPS);\E
-			/xm,
-		like => {
-			%full_runs, %dump_test_schema_runs, section_post_data => 1,
-		},
-		unlike => {
-			exclude_dump_test_schema => 1,
-			only_dump_measurement => 1,
-		},
-	},
-
-	'CONSTRAINT UNIQUE / WITHOUT OVERLAPS' => {
-		create_sql => 'CREATE TABLE dump_test.test_table_tuq (
-							col1 int4range,
-							col2 tstzrange,
-							CONSTRAINT test_table_tuq_uq UNIQUE (col1, col2 WITHOUT OVERLAPS));',
-		regexp => qr/^
-			\QALTER TABLE ONLY dump_test.test_table_tuq\E \n^\s+
-			\QADD CONSTRAINT test_table_tuq_uq UNIQUE (col1, col2 WITHOUT OVERLAPS);\E
-			/xm,
-		like => {
-			%full_runs, %dump_test_schema_runs, section_post_data => 1,
-		},
-		unlike => {
-			exclude_dump_test_schema => 1,
-			only_dump_measurement => 1,
 		},
 	},
 
@@ -1338,10 +1290,10 @@ my %tests = (
 		regexp => qr/^SELECT pg_catalog\.lo_create\('\d+'\);/m,
 		like   => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
@@ -1547,10 +1499,10 @@ my %tests = (
 			/xm,
 		like => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
@@ -3241,7 +3193,7 @@ my %tests = (
 					   );',
 		regexp => qr/^
 			\QCREATE TABLE dump_test.fk_reference_test_table (\E
-			\n\s+\Qcol1 integer CONSTRAINT \E[a-z0-9_]*\Q NOT NULL NO INHERIT\E
+			\n\s+\Qcol1 integer NOT NULL\E
 			\n\);
 			/xm,
 		like =>
@@ -3339,8 +3291,8 @@ my %tests = (
 						FOR VALUES FROM (\'2006-02-01\') TO (\'2006-03-01\');',
 		regexp => qr/^
 			\QCREATE TABLE dump_test_second_schema.measurement_y2006m2 (\E\n
-			\s+\Qcity_id integer DEFAULT nextval('dump_test.measurement_city_id_seq'::regclass) CONSTRAINT measurement_city_id_not_null NOT NULL,\E\n
-			\s+\Qlogdate date CONSTRAINT measurement_logdate_not_null NOT NULL,\E\n
+			\s+\Qcity_id integer DEFAULT nextval('dump_test.measurement_city_id_seq'::regclass) NOT NULL,\E\n
+			\s+\Qlogdate date NOT NULL,\E\n
 			\s+\Qpeaktemp integer,\E\n
 			\s+\Qunitsales integer DEFAULT 0,\E\n
 			\s+\QCONSTRAINT measurement_peaktemp_check CHECK ((peaktemp >= '-460'::integer)),\E\n
@@ -3632,7 +3584,7 @@ my %tests = (
 					   );',
 		regexp => qr/^
 			\QCREATE TABLE dump_test.test_table_generated (\E\n
-			\s+\Qcol1 integer CONSTRAINT \E[a-z0-9_]*\Q NOT NULL NO INHERIT,\E\n
+			\s+\Qcol1 integer NOT NULL,\E\n
 			\s+\Qcol2 integer GENERATED ALWAYS AS ((col1 * 2)) STORED\E\n
 			\);
 			/xms,
@@ -3746,7 +3698,7 @@ my %tests = (
 						) INHERITS (dump_test.test_inheritance_parent);',
 		regexp => qr/^
 		\QCREATE TABLE dump_test.test_inheritance_child (\E\n
-		\s+\Qcol1 integer NOT NULL,\E\n
+		\s+\Qcol1 integer,\E\n
 		\s+\QCONSTRAINT test_inheritance_child CHECK ((col2 >= 142857))\E\n
 		\)\n
 		\QINHERITS (dump_test.test_inheritance_parent);\E\n
@@ -3852,9 +3804,7 @@ my %tests = (
 		\QCREATE INDEX measurement_city_id_logdate_idx ON ONLY dump_test.measurement USING\E
 		/xm,
 		like => {
-			%full_runs,
-			%dump_test_schema_runs,
-			section_post_data => 1,
+			%full_runs, %dump_test_schema_runs, section_post_data => 1,
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
@@ -4272,10 +4222,10 @@ my %tests = (
 			/xm,
 		like => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_pre_data       => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 			binary_upgrade         => 1,
 		},
@@ -4584,19 +4534,19 @@ my %tests = (
 			CREATE TABLE dump_test.regress_pg_dump_table_am_parent (id int) PARTITION BY LIST (id);
 			ALTER TABLE dump_test.regress_pg_dump_table_am_parent SET ACCESS METHOD regress_table_am;
 			CREATE TABLE dump_test.regress_pg_dump_table_am_child_1
-			  PARTITION OF dump_test.regress_pg_dump_table_am_parent FOR VALUES IN (1) USING heap;
+			  PARTITION OF dump_test.regress_pg_dump_table_am_parent FOR VALUES IN (1);
 			CREATE TABLE dump_test.regress_pg_dump_table_am_child_2
-			  PARTITION OF dump_test.regress_pg_dump_table_am_parent FOR VALUES IN (2);',
+			  PARTITION OF dump_test.regress_pg_dump_table_am_parent FOR VALUES IN (2) USING heap;',
 		regexp => qr/^
-			\QSET default_table_access_method = regress_table_am;\E
-			(\n(?!SET[^;]+;)[^\n]*)*
 			\n\QCREATE TABLE dump_test.regress_pg_dump_table_am_parent (\E
+			(\n(?!SET[^;]+;)[^\n]*)*
+			\QALTER TABLE dump_test.regress_pg_dump_table_am_parent SET ACCESS METHOD regress_table_am;\E
 			(.*\n)*
-			\QSET default_table_access_method = heap;\E
+			\QSET default_table_access_method = regress_table_am;\E
 			(\n(?!SET[^;]+;)[^\n]*)*
 			\n\QCREATE TABLE dump_test.regress_pg_dump_table_am_child_1 (\E
 			(.*\n)*
-			\QSET default_table_access_method = regress_table_am;\E
+			\QSET default_table_access_method = heap;\E
 			(\n(?!SET[^;]+;)[^\n]*)*
 			\n\QCREATE TABLE dump_test.regress_pg_dump_table_am_child_2 (\E
 			(.*\n)*/xm,
@@ -4780,10 +4730,8 @@ $node->command_fails_like(
 ##############################################################
 # Test dumping pg_catalog (for research -- cannot be reloaded)
 
-$node->command_ok(
-	[ 'pg_dump', '-p', "$port", '-n', 'pg_catalog' ],
-	'pg_dump: option -n pg_catalog'
-);
+$node->command_ok([ 'pg_dump', '-p', "$port", '-n', 'pg_catalog' ],
+	'pg_dump: option -n pg_catalog');
 
 #########################################
 # Test valid database exclusion patterns
@@ -4875,8 +4823,13 @@ foreach my $run (sort keys %pgdump_runs)
 		# not defined.
 		next if (!defined($compress_program) || $compress_program eq '');
 
-		my @full_compress_cmd =
-		  ($compress_cmd->{program}, @{ $compress_cmd->{args} });
+		# Arguments may require globbing.
+		my @full_compress_cmd = ($compress_program);
+		foreach my $arg (@{ $compress_cmd->{args} })
+		{
+			push @full_compress_cmd, glob($arg);
+		}
+
 		command_ok(\@full_compress_cmd, "$run: compression commands");
 	}
 
@@ -4939,8 +4892,8 @@ foreach my $run (sort keys %pgdump_runs)
 		}
 		# Check for useless entries in "unlike" list.  Runs that are
 		# not listed in "like" don't need to be excluded in "unlike".
-		if ($tests{$test}->{unlike}->{$test_key} &&
-			!defined($tests{$test}->{like}->{$test_key}))
+		if ($tests{$test}->{unlike}->{$test_key}
+			&& !defined($tests{$test}->{like}->{$test_key}))
 		{
 			die "useless \"unlike\" entry \"$test_key\" in test \"$test\"";
 		}

@@ -3,7 +3,7 @@
  * unicode_case_table.h
  *	  Case mapping and information table.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/unicode_case_table.h
@@ -26,13 +26,13 @@ typedef enum
 	CaseTitle = 1,
 	CaseUpper = 2,
 	NCaseKind
-}			CaseKind;
+} CaseKind;
 
 typedef struct
 {
 	pg_wchar	codepoint;		/* Unicode codepoint */
 	pg_wchar	simplemap[NCaseKind];
-}			pg_case_map;
+} pg_case_map;
 
 /*
  * Case mapping table. Dense for codepoints < 0x80 (enabling fast lookup),

@@ -259,7 +259,7 @@ make check-world -j8 >/dev/null
    variable <varname>PG_TEST_EXTRA</varname> to a whitespace-separated list,
    for example:
 <programlisting>
-make check-world PG_TEST_EXTRA='kerberos ldap ssl load_balance'
+make check-world PG_TEST_EXTRA='kerberos ldap ssl load_balance libpq_encryption'
 </programlisting>
    The following values are currently supported:
    <variablelist>
@@ -305,6 +305,18 @@ make check-world PG_TEST_EXTRA='kerberos ldap ssl load_balance'
     </varlistentry>
 
     <varlistentry>
+     <term><literal>libpq_encryption</literal></term>
+     <listitem>
+      <para>
+       Runs the test <filename>src/interfaces/libpq/t/005_negotiate_encryption.pl</filename>.
+       This opens TCP/IP listen sockets. If <varname>PG_TEST_EXTRA</varname>
+       also includes <literal>kerberos</literal>, additional tests that require
+       an MIT Kerberos installation are enabled.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
      <term><literal>wal_consistency_checking</literal></term>
      <listitem>
       <para>
@@ -319,7 +331,7 @@ make check-world PG_TEST_EXTRA='kerberos ldap ssl load_balance'
      <term><literal>xid_wraparound</literal></term>
      <listitem>
       <para>
-       Runs the test suite under <filename>src/test/module/xid_wrapround</filename>.
+       Runs the test suite under <filename>src/test/modules/xid_wraparound</filename>.
        Not enabled by default because it is resource intensive.
       </para>
      </listitem>

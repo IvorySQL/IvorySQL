@@ -1358,6 +1358,7 @@ extern void plisql_dumptree(PLiSQL_function *func);
  */
 extern int	plisql_base_yylex(void);
 extern int	plisql_yylex(void);
+extern int	plisql_token_length(void);
 extern void plisql_push_back_token(int token);
 extern bool plisql_token_is_unreserved_keyword(int token);
 extern void plisql_append_source_text(StringInfo buf,

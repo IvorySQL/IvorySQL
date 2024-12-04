@@ -671,10 +671,12 @@ configure_remote_session(PGconn *conn)
 	 * anyway.  However it makes the regression test outputs more predictable.
 	 *
 	 * We don't risk setting remote zone equal to ours, since the remote
-	 * server might use a different timezone database.  Instead, use UTC
-	 * (quoted, because very old servers are picky about case).
+	 * server might use a different timezone database.  Instead, use GMT
+	 * (quoted, because very old servers are picky about case).  That's
+	 * guaranteed to work regardless of the remote's timezone database,
+	 * because pg_tzset() hard-wires it (at least in PG 9.2 and later).
 	 */
-	do_sql_command(conn, "SET timezone = 'UTC'");
+	do_sql_command(conn, "SET timezone = 'GMT'");
 
 	/*
 	 * Set values needed to ensure unambiguous data output from remote.  (This
@@ -1332,7 +1334,7 @@ pgfdw_cancel_query(PGconn *conn)
 static bool
 pgfdw_cancel_query_begin(PGconn *conn, TimestampTz endtime)
 {
-	char	   *errormsg = libpqsrv_cancel(conn, endtime);
+	const char *errormsg = libpqsrv_cancel(conn, endtime);
 
 	if (errormsg != NULL)
 		ereport(WARNING,
@@ -1417,6 +1419,8 @@ pgfdw_exec_cleanup_query(PGconn *conn, const char *query, bool ignore_errors)
 static bool
 pgfdw_exec_cleanup_query_begin(PGconn *conn, const char *query)
 {
+	Assert(query != NULL);
+
 	/*
 	 * Submit a query.  Since we don't use non-blocking mode, this also can
 	 * block.  But its risk is relatively small, so we ignore that for now.
@@ -1438,6 +1442,8 @@ pgfdw_exec_cleanup_query_end(PGconn *conn, const char *query,
 	PGresult   *result = NULL;
 	bool		timed_out;
 
+	Assert(query != NULL);
+
 	/*
 	 * If requested, consume whatever data is available from the socket. (Note
 	 * that if all data is available, this allows pgfdw_get_cleanup_result to
@@ -1456,7 +1462,7 @@ pgfdw_exec_cleanup_query_end(PGconn *conn, const char *query,
 		if (timed_out)
 			ereport(WARNING,
 					(errmsg("could not get query result due to timeout"),
-					 query ? errcontext("remote SQL command: %s", query) : 0));
+					 errcontext("remote SQL command: %s", query)));
 		else
 			pgfdw_report_error(WARNING, NULL, conn, false, query);
 

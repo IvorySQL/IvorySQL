@@ -218,9 +218,8 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 	Assert(root->plan_params == NIL);
 
 	/* Generate Paths for the subquery */
-	subroot = subquery_planner(root->glob, subquery,
-							   root,
-							   false, tuple_fraction);
+	subroot = subquery_planner(root->glob, subquery, root, false,
+							   tuple_fraction, NULL);
 
 	/* Isolate the params needed by this specific subplan */
 	plan_params = root->plan_params;
@@ -266,9 +265,8 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 		if (subquery)
 		{
 			/* Generate Paths for the ANY subquery; we'll need all rows */
-			subroot = subquery_planner(root->glob, subquery,
-									   root,
-									   false, 0.0);
+			subroot = subquery_planner(root->glob, subquery, root, false, 0.0,
+									   NULL);
 
 			/* Isolate the params needed by this specific subplan */
 			plan_params = root->plan_params;
@@ -967,9 +965,8 @@ SS_process_ctes(PlannerInfo *root)
 		 * Generate Paths for the CTE query.  Always plan for full retrieval
 		 * --- we don't have enough info to predict otherwise.
 		 */
-		subroot = subquery_planner(root->glob, subquery,
-								   root,
-								   cte->cterecursive, 0.0);
+		subroot = subquery_planner(root->glob, subquery, root,
+								   cte->cterecursive, 0.0, NULL);
 
 		/*
 		 * Since the current query level doesn't yet contain any RTEs, it
@@ -1274,15 +1271,15 @@ convert_ANY_sublink_to_join(PlannerInfo *root, SubLink *sublink,
 	Assert(sublink->subLinkType == ANY_SUBLINK);
 
 	/*
-	 * If the sub-select refers to any Vars of the parent query, we so let's
-	 * considering it as LATERAL.  (Vars of higher levels don't matter here.)
+	 * If the sub-select contains any Vars of the parent query, we treat it as
+	 * LATERAL.  (Vars from higher levels don't matter here.)
 	 */
 	sub_ref_outer_relids = pull_varnos_of_level(NULL, (Node *) subselect, 1);
 	use_lateral = !bms_is_empty(sub_ref_outer_relids);
 
 	/*
-	 * Check that sub-select refers nothing outside of available_rels of the
-	 * parent query.
+	 * Can't convert if the sub-select contains parent-level Vars of relations
+	 * not in available_rels.
 	 */
 	if (!bms_is_subset(sub_ref_outer_relids, available_rels))
 		return NULL;

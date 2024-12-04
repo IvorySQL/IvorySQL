@@ -33,7 +33,6 @@
 #include "access/htup_details.h"
 #include "access/multixact.h"
 #include "access/parallel.h"
-#include "access/relation.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/table.h"
@@ -276,6 +275,7 @@ static HTAB *OpClassCache = NULL;
 
 static void RelationCloseCleanup(Relation relation);
 static void RelationDestroyRelation(Relation relation, bool remember_tupdesc);
+static void RelationInvalidateRelation(Relation relation);
 static void RelationClearRelation(Relation relation, bool rebuild);
 
 static void RelationReloadIndexInfo(Relation relation);
@@ -465,7 +465,6 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 {
 	bytea	   *options;
 	amoptions_function amoptsfn;
-	const TableAmRoutine *tableam = NULL;
 
 	relation->rd_options = NULL;
 
@@ -480,7 +479,6 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 		case RELKIND_VIEW:
 		case RELKIND_MATVIEW:
 		case RELKIND_PARTITIONED_TABLE:
-			tableam = relation->rd_tableam;
 			amoptsfn = NULL;
 			break;
 		case RELKIND_INDEX:
@@ -496,8 +494,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 	 * we might not have any other for pg_class yet (consider executing this
 	 * code for pg_class itself)
 	 */
-	options = extractRelOptions(tuple, GetPgClassDescriptor(),
-								tableam, amoptsfn);
+	options = extractRelOptions(tuple, GetPgClassDescriptor(), amoptsfn);
 
 	/*
 	 * Copy parsed data into CacheMemoryContext.  To guard against the
@@ -2273,7 +2270,9 @@ RelationReloadIndexInfo(Relation relation)
 	RelationCloseSmgr(relation);
 
 	/* Must free any AM cached data upon relcache flush */
-	table_free_rd_amcache(relation);
+	if (relation->rd_amcache)
+		pfree(relation->rd_amcache);
+	relation->rd_amcache = NULL;
 
 	/*
 	 * If it's a shared index, we might be called before backend startup has
@@ -2493,7 +2492,8 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_options);
 	if (relation->rd_indextuple)
 		pfree(relation->rd_indextuple);
-	table_free_rd_amcache(relation);
+	if (relation->rd_amcache)
+		pfree(relation->rd_amcache);
 	if (relation->rd_fdwroutine)
 		pfree(relation->rd_fdwroutine);
 	if (relation->rd_indexcxt)
@@ -2511,6 +2511,31 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 	if (relation->rd_partcheckcxt)
 		MemoryContextDelete(relation->rd_partcheckcxt);
 	pfree(relation);
+}
+
+/*
+ * RelationInvalidateRelation - mark a relation cache entry as invalid
+ *
+ * An entry that's marked as invalid will be reloaded on next access.
+ */
+static void
+RelationInvalidateRelation(Relation relation)
+{
+	/*
+	 * Make sure smgr and lower levels close the relation's files, if they
+	 * weren't closed already.  If the relation is not getting deleted, the
+	 * next smgr access should reopen the files automatically.  This ensures
+	 * that the low-level file access state is updated after, say, a vacuum
+	 * truncation.
+	 */
+	RelationCloseSmgr(relation);
+
+	/* Free AM cached data, if any */
+	if (relation->rd_amcache)
+		pfree(relation->rd_amcache);
+	relation->rd_amcache = NULL;
+
+	relation->rd_isvalid = false;
 }
 
 /*
@@ -2555,7 +2580,9 @@ RelationClearRelation(Relation relation, bool rebuild)
 	RelationCloseSmgr(relation);
 
 	/* Free AM cached data, if any */
-	table_free_rd_amcache(relation);
+	if (relation->rd_amcache)
+		pfree(relation->rd_amcache);
+	relation->rd_amcache = NULL;
 
 	/*
 	 * Treat nailed-in system relations separately, they always need to be
@@ -2845,14 +2872,28 @@ RelationFlushRelation(Relation relation)
 		 * New relcache entries are always rebuilt, not flushed; else we'd
 		 * forget the "new" status of the relation.  Ditto for the
 		 * new-relfilenumber status.
-		 *
-		 * The rel could have zero refcnt here, so temporarily increment the
-		 * refcnt to ensure it's safe to rebuild it.  We can assume that the
-		 * current transaction has some lock on the rel already.
 		 */
-		RelationIncrementReferenceCount(relation);
-		RelationClearRelation(relation, true);
-		RelationDecrementReferenceCount(relation);
+		if (IsTransactionState() && relation->rd_droppedSubid == InvalidSubTransactionId)
+		{
+			/*
+			 * The rel could have zero refcnt here, so temporarily increment
+			 * the refcnt to ensure it's safe to rebuild it.  We can assume
+			 * that the current transaction has some lock on the rel already.
+			 */
+			RelationIncrementReferenceCount(relation);
+			RelationClearRelation(relation, true);
+			RelationDecrementReferenceCount(relation);
+		}
+		else
+		{
+			/*
+			 * During abort processing, the current resource owner is not
+			 * valid and we cannot hold a refcnt.  Without a valid
+			 * transaction, RelationClearRelation() would just mark the rel as
+			 * invalid anyway, so we can do the same directly.
+			 */
+			RelationInvalidateRelation(relation);
+		}
 	}
 	else
 	{
@@ -3019,7 +3060,10 @@ RelationCacheInvalidate(bool debug_discard)
 			 * map doesn't involve any access to relcache entries.
 			 */
 			if (RelationIsMapped(relation))
+			{
+				RelationCloseSmgr(relation);
 				RelationInitPhysicalAddr(relation);
+			}
 
 			/*
 			 * Add this entry to list of stuff to rebuild in second pass.
@@ -4216,8 +4260,10 @@ RelationCacheInitializePhase3(void)
 			htup = SearchSysCache1(RELOID,
 								   ObjectIdGetDatum(RelationGetRelid(relation)));
 			if (!HeapTupleIsValid(htup))
-				elog(FATAL, "cache lookup failed for relation %u",
-					 RelationGetRelid(relation));
+				ereport(FATAL,
+						errcode(ERRCODE_UNDEFINED_OBJECT),
+						errmsg_internal("cache lookup failed for relation %u",
+										RelationGetRelid(relation)));
 			relp = (Form_pg_class) GETSTRUCT(htup);
 
 			/*
@@ -4350,7 +4396,9 @@ load_critical_index(Oid indexoid, Oid heapoid)
 	LockRelationOid(indexoid, AccessShareLock);
 	ird = RelationBuildDesc(indexoid, true);
 	if (ird == NULL)
-		elog(PANIC, "could not open critical system index %u", indexoid);
+		ereport(PANIC,
+				errcode(ERRCODE_DATA_CORRUPTED),
+				errmsg_internal("could not open critical system index %u", indexoid));
 	ird->rd_isnailed = true;
 	ird->rd_refcnt = 1;
 	UnlockRelationOid(indexoid, AccessShareLock);
@@ -4806,46 +4854,18 @@ RelationGetIndexList(Relation relation)
 		result = lappend_oid(result, index->indexrelid);
 
 		/*
-		 * Non-unique or predicate indexes aren't interesting for either oid
-		 * indexes or replication identity indexes, so don't check them.
-		 * Deferred ones are not useful for replication identity either; but
-		 * we do include them if they are PKs.
+		 * Invalid, non-unique, non-immediate or predicate indexes aren't
+		 * interesting for either oid indexes or replication identity indexes,
+		 * so don't check them.
 		 */
-		if (!index->indisunique ||
+		if (!index->indisvalid || !index->indisunique ||
+			!index->indimmediate ||
 			!heap_attisnull(htup, Anum_pg_index_indpred, NULL))
 			continue;
 
-		/*
-		 * Remember primary key index, if any.  We do this only if the index
-		 * is valid; but if the table is partitioned, then we do it even if
-		 * it's invalid.
-		 *
-		 * The reason for returning invalid primary keys for foreign tables is
-		 * because of pg_dump of NOT NULL constraints, and the fact that PKs
-		 * remain marked invalid until the partitions' PKs are attached to it.
-		 * If we make rd_pkindex invalid, then the attnotnull flag is reset
-		 * after the PK is created, which causes the ALTER INDEX ATTACH
-		 * PARTITION to fail with 'column ... is not marked NOT NULL'.  With
-		 * this, dropconstraint_internal() will believe that the columns must
-		 * not have attnotnull reset, so the PKs-on-partitions can be attached
-		 * correctly, until finally the PK-on-parent is marked valid.
-		 *
-		 * Also, this doesn't harm anything, because rd_pkindex is not a
-		 * "real" index anyway, but a RELKIND_PARTITIONED_INDEX.
-		 */
-		if (index->indisprimary &&
-			(index->indisvalid ||
-			 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
-		{
+		/* remember primary key index if any */
+		if (index->indisprimary)
 			pkeyIndex = index->indexrelid;
-			pkdeferrable = !index->indimmediate;
-		}
-
-		if (!index->indimmediate)
-			continue;
-
-		if (!index->indisvalid)
-			continue;
 
 		/* remember explicitly chosen replica index */
 		if (index->indisreplident)
@@ -5564,14 +5584,11 @@ RelationGetIdentityKeyBitmap(Relation relation)
 /*
  * RelationGetExclusionInfo -- get info about index's exclusion constraint
  *
- * This should be called only for an index that is known to have an associated
- * exclusion constraint or primary key/unique constraint using WITHOUT
- * OVERLAPS.
-
- * It returns arrays (palloc'd in caller's context) of the exclusion operator
- * OIDs, their underlying functions' OIDs, and their strategy numbers in the
- * index's opclasses.  We cache all this information since it requires a fair
- * amount of work to get.
+ * This should be called only for an index that is known to have an
+ * associated exclusion constraint.  It returns arrays (palloc'd in caller's
+ * context) of the exclusion operator OIDs, their underlying functions'
+ * OIDs, and their strategy numbers in the index's opclasses.  We cache
+ * all this information since it requires a fair amount of work to get.
  */
 void
 RelationGetExclusionInfo(Relation indexRelation,
@@ -5635,10 +5652,7 @@ RelationGetExclusionInfo(Relation indexRelation,
 		int			nelem;
 
 		/* We want the exclusion constraint owning the index */
-		if ((conform->contype != CONSTRAINT_EXCLUSION &&
-			 !(conform->conperiod && (
-									  conform->contype == CONSTRAINT_PRIMARY
-									  || conform->contype == CONSTRAINT_UNIQUE))) ||
+		if (conform->contype != CONSTRAINT_EXCLUSION ||
 			conform->conindid != RelationGetRelid(indexRelation))
 			continue;
 
@@ -6532,7 +6546,9 @@ write_relcache_init_file(bool shared)
 	 */
 	magic = RELCACHE_INIT_FILEMAGIC;
 	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
-		elog(FATAL, "could not write init file");
+		ereport(FATAL,
+				errcode_for_file_access(),
+				errmsg_internal("could not write init file: %m"));
 
 	/*
 	 * Write all the appropriate reldescs (in no particular order).
@@ -6633,7 +6649,9 @@ write_relcache_init_file(bool shared)
 	}
 
 	if (FreeFile(fp))
-		elog(FATAL, "could not write init file");
+		ereport(FATAL,
+				errcode_for_file_access(),
+				errmsg_internal("could not write init file: %m"));
 
 	/*
 	 * Now we have to check whether the data we've so painstakingly
@@ -6683,9 +6701,13 @@ static void
 write_item(const void *data, Size len, FILE *fp)
 {
 	if (fwrite(&len, 1, sizeof(len), fp) != sizeof(len))
-		elog(FATAL, "could not write init file");
+		ereport(FATAL,
+				errcode_for_file_access(),
+				errmsg_internal("could not write init file: %m"));
 	if (len > 0 && fwrite(data, 1, len, fp) != len)
-		elog(FATAL, "could not write init file");
+		ereport(FATAL,
+				errcode_for_file_access(),
+				errmsg_internal("could not write init file: %m"));
 }
 
 /*
