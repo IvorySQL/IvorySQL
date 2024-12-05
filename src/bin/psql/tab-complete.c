@@ -643,7 +643,6 @@ static const SchemaQuery Query_for_list_of_procedures[] = {
 	}
 };
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 static const SchemaQuery Query_for_list_of_packages[] = {
 	{
 		.min_server_version = 140000,
@@ -657,7 +656,6 @@ static const SchemaQuery Query_for_list_of_packages[] = {
 		.catname = NULL,
 	}
 };
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 static const SchemaQuery Query_for_list_of_routines = {
 	.catname = "pg_catalog.pg_proc p",
@@ -1255,9 +1253,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"DEFAULT PRIVILEGES", NULL, NULL, NULL, NULL, THING_NO_CREATE | THING_NO_DROP},
 	{"DICTIONARY", NULL, NULL, &Query_for_list_of_ts_dictionaries, NULL, THING_NO_SHOW},
 	{"DOMAIN", NULL, NULL, &Query_for_list_of_domains},
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	{"EDITIONABLE", NULL, NULL, NULL, NULL, THING_NO_DROP | THING_NO_ALTER},
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	{"EVENT TRIGGER", NULL, NULL, NULL},
 	{"EXTENSION", Query_for_list_of_extensions},
 	{"FOREIGN DATA WRAPPER", NULL, NULL, NULL},
@@ -1268,16 +1264,12 @@ static const pgsql_thing_t words_after_create[] = {
 	{"LANGUAGE", Query_for_list_of_languages},
 	{"LARGE OBJECT", NULL, NULL, NULL, NULL, THING_NO_CREATE | THING_NO_DROP},
 	{"MATERIALIZED VIEW", NULL, NULL, &Query_for_list_of_matviews},
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	{"NONEDITIONABLE", NULL, NULL, NULL, NULL, THING_NO_DROP | THING_NO_ALTER},
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	{"OPERATOR", NULL, NULL, NULL}, /* Querying for this is probably not such
 									 * a good idea. */
 	{"OR REPLACE", NULL, NULL, NULL, NULL, THING_NO_DROP | THING_NO_ALTER},
 	{"OWNED", NULL, NULL, NULL, NULL, THING_NO_CREATE | THING_NO_ALTER},	/* for DROP OWNED BY ... */
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	{"PACKAGE", NULL, NULL, NULL},
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	{"PARSER", NULL, NULL, &Query_for_list_of_ts_parsers, NULL, THING_NO_SHOW},
 	{"POLICY", NULL, NULL, NULL},
 	{"PROCEDURE", NULL, NULL, Query_for_list_of_procedures},
@@ -1741,7 +1733,7 @@ psql_completion(const char *text, int start, int end)
 		"\\bind",
 		"\\connect", "\\conninfo", "\\C", "\\cd", "\\copy",
 		"\\copyright", "\\crosstabview",
-		"\\d", "\\da", "\\dA", "\\dAc", "\\dAf", "\\dk" /* ReqID:SRS-SQL-PACKAGE */, "\\dAo", "\\dAp",
+		"\\d", "\\da", "\\dA", "\\dAc", "\\dAf", "\\dk" , "\\dAo", "\\dAp",
 		"\\db", "\\dc", "\\dconfig", "\\dC", "\\dd", "\\ddp", "\\dD",
 		"\\des", "\\det", "\\deu", "\\dew", "\\dE", "\\df",
 		"\\dF", "\\dFd", "\\dFp", "\\dFt", "\\dg", "\\di", "\\dl", "\\dL",
@@ -1836,7 +1828,7 @@ psql_completion(const char *text, int start, int end)
 	/* complete with something you can create or replace */
 	else if (TailMatches("CREATE", "OR", "REPLACE"))
 		COMPLETE_WITH("FUNCTION", "PROCEDURE", "LANGUAGE", "RULE", "VIEW",
-					  "AGGREGATE", "TRANSFORM", "TRIGGER", "PACKAGE" /* ReqID:SRS-SQL-PACKAGE */);
+					  "AGGREGATE", "TRANSFORM", "TRIGGER", "PACKAGE");
 
 /* DROP, but not DROP embedded in other commands */
 	/* complete with something you can drop */
@@ -2833,7 +2825,7 @@ psql_completion(const char *text, int start, int end)
 					  "DOMAIN", "EXTENSION", "EVENT TRIGGER",
 					  "FOREIGN DATA WRAPPER", "FOREIGN TABLE",
 					  "FUNCTION", "INDEX", "LANGUAGE", "LARGE OBJECT",
-					  "MATERIALIZED VIEW", "OPERATOR", "PACKAGE",/* ReqID:SRS-SQL-PACKAGE */ "POLICY",
+					  "MATERIALIZED VIEW", "OPERATOR", "PACKAGE", "POLICY",
 					  "PROCEDURE", "PROCEDURAL LANGUAGE", "PUBLICATION", "ROLE",
 					  "ROUTINE", "RULE", "SCHEMA", "SEQUENCE", "SERVER",
 					  "STATISTICS", "SUBSCRIPTION", "TABLE",
@@ -3756,7 +3748,7 @@ psql_completion(const char *text, int start, int end)
 
 /* DISCARD */
 	else if (Matches("DISCARD"))
-		COMPLETE_WITH("ALL", "PACKAGES", /* ReqID:SRS-SQL-PACKAGE */ "PLANS", "SEQUENCES", "TEMP");
+		COMPLETE_WITH("ALL", "PACKAGES", "PLANS", "SEQUENCES", "TEMP");
 
 /* DO */
 	else if (Matches("DO"))
@@ -3765,7 +3757,7 @@ psql_completion(const char *text, int start, int end)
 /* DROP */
 	/* Complete DROP object with CASCADE / RESTRICT */
 	else if (Matches("DROP",
-					 "COLLATION|CONVERSION|DOMAIN|EXTENSION|LANGUAGE|PACKAGE|PUBLICATION|SCHEMA|SEQUENCE|SERVER|SUBSCRIPTION|STATISTICS|TABLE|TYPE|VIEW", /*ReqID:SRS-SQL-PACKAGE */
+					 "COLLATION|CONVERSION|DOMAIN|EXTENSION|LANGUAGE|PACKAGE|PUBLICATION|SCHEMA|SEQUENCE|SERVER|SUBSCRIPTION|STATISTICS|TABLE|TYPE|VIEW", 
 					 MatchAny) ||
 			 Matches("DROP", "ACCESS", "METHOD", MatchAny) ||
 			 (Matches("DROP", "AGGREGATE|FUNCTION|PROCEDURE|ROUTINE", MatchAny, MatchAny) &&
@@ -4086,7 +4078,7 @@ psql_completion(const char *text, int start, int end)
 		 * objects supported.
 		 */
 		if (HeadMatches("ALTER", "DEFAULT", "PRIVILEGES"))
-			COMPLETE_WITH("TABLES", "SEQUENCES", "FUNCTIONS", "PACKAGES", "PROCEDURES", "ROUTINES", "TYPES", "SCHEMAS"); /* ReqID:SRS-SQL-PACKAGE */
+			COMPLETE_WITH("TABLES", "SEQUENCES", "FUNCTIONS", "PACKAGES", "PROCEDURES", "ROUTINES", "TYPES", "SCHEMAS"); 
 		else
 			COMPLETE_WITH_SCHEMA_QUERY_PLUS(Query_for_list_of_grantables,
 											"ALL FUNCTIONS IN SCHEMA",
@@ -4140,10 +4132,8 @@ psql_completion(const char *text, int start, int end)
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_functions);
 		else if (TailMatches("LANGUAGE"))
 			COMPLETE_WITH_QUERY(Query_for_list_of_languages);
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		else if (TailMatches("PACKAGE"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_packages);
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		else if (TailMatches("PROCEDURE"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_procedures);
 		else if (TailMatches("ROUTINE"))

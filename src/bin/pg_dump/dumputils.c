@@ -472,10 +472,8 @@ do { \
 	}
 	else if (strcmp(type, "FUNCTION") == 0 ||
 			strcmp(type, "FUNCTIONS") == 0 ||
-			 /* Begin - ReqID:SRS-SQL-PACKAGE */
 			 strcmp(type, "PACKAGE") == 0 ||
 			 strcmp(type, "PACKAGES") == 0)
-			/* End - ReqID:SRS-SQL-PACKAGE */
 		CONVERT_PRIV('X', "EXECUTE");
 	else if (strcmp(type, "PROCEDURE") == 0 ||
 			 strcmp(type, "PROCEDURES") == 0)

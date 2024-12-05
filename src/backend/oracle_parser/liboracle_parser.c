@@ -563,7 +563,6 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		cur_token = SCONST;
 	}
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	else if ((yyextra->body_style == OraBody_PACKAGE ||
 		yyextra->body_style == OraBody_PACKAGEBODY) &&
 			cur_token != SCONST)
@@ -669,7 +668,6 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		*llocp = beginpos;
 		cur_token = SCONST;
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
 
@@ -703,11 +701,9 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		case LONG_P:
 			cur_token_length = 4;
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case PACKAGE:
 			cur_token_length = 7;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			return cur_token;
 	}
@@ -780,13 +776,11 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			}
 			break;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case PACKAGE:
 			/* Replace PACKAGE by PACKAGE_BODY if it's followed by BODY */
 			if (next_token == BODY)
 				cur_token = PACKAGE_BODY;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		case WITH:
 			/* Replace WITH by WITH_LA if it's followed by TIME or ORDINALITY */

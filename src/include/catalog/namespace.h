@@ -92,10 +92,8 @@ extern Oid	RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 												 Oid *existing_relation_id);
 extern void RangeVarAdjustRelationPersistence(RangeVar *newRelation, Oid nspid);
 extern Oid	RelnameGetRelid(const char *relname);
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern Oid PkgnameGetPkgid(const char *pkgname);
 extern bool PackageIsVisible(Oid pkgoid);
-/* End - ReqID:SRS-SQL-PACKAGE */
 extern bool RelationIsVisible(Oid relid);
 
 extern Oid	TypenameGetTypid(const char *typname);

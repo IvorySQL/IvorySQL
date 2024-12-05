@@ -130,7 +130,6 @@ static const char *cur_line_start;
 static const char *cur_line_end;
 static int	cur_line_num;
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * yylex used global variable in pl_scanner.c
  */
@@ -161,7 +160,6 @@ typedef struct PLiSQL_yylex_global_proper
 	const char *cur_line_end;
 	int	cur_line_num;
 } PLiSQL_yylex_global_proper;
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /* Internal functions */
 static int	internal_yylex(TokenAuxData *auxdata);
@@ -674,7 +672,6 @@ plisql_scanner_finish(void)
 	scanorig = NULL;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * saved yylex global variable
  */
@@ -742,5 +739,4 @@ plisql_recover_yylex_global_proper(void *value)
 
 	return;
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 

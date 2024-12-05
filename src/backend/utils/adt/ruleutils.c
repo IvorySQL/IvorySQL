@@ -37,9 +37,7 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "catalog/pg_package.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "commands/defrem.h"
 #include "commands/tablespace.h"
 #include "common/keywords.h"
@@ -58,9 +56,7 @@
 #include "parser/parse_relation.h"
 #include "parser/parser.h"
 #include "parser/parsetree.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "parser/parse_type.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteSupport.h"
@@ -3430,7 +3426,6 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(string_to_text(buf.data));
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * like pg_get_functiondef
  * we use this function to return the head of package like
@@ -3529,7 +3524,6 @@ pg_get_package_head(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(string_to_text(buf.data));
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * pg_get_function_arguments
@@ -3624,15 +3618,11 @@ print_function_rettype(StringInfo buf, HeapTuple proctup)
 	Form_pg_proc proc = (Form_pg_proc) GETSTRUCT(proctup);
 	int			ntabargs = 0;
 	StringInfoData rbuf;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	char		*rettypename;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	initStringInfo(&rbuf);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	get_func_typename_info(proctup, NULL, &rettypename);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	if (proc->proretset)
 	{
@@ -3650,7 +3640,6 @@ print_function_rettype(StringInfo buf, HeapTuple proctup)
 		/* Not a table function, so do the normal thing */
 		if (proc->proretset)
 			appendStringInfoString(&rbuf, "SETOF ");
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		/*
 		 * if type comes from a package, we use rettypename
 		 */
@@ -3666,7 +3655,6 @@ print_function_rettype(StringInfo buf, HeapTuple proctup)
 		}
 		else
 			appendStringInfoString(&rbuf, format_type_be(proc->prorettype));
-		/* End - ReqID:SRS-SQL-PACKAGE */
 	}
 
 	appendBinaryStringInfo(buf, rbuf.data, rbuf.len);
@@ -3695,16 +3683,12 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 	List	   *argdefaults = NIL;
 	ListCell   *nextargdefault = NULL;
 	int			i;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	char		**argtypenames;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	numargs = get_func_arg_info(proctup,
 								&argtypes, &argnames, &argmodes);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	get_func_typename_info(proctup, &argtypenames, NULL);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	nlackdefaults = numargs;
 	if (print_defaults && proc->pronargdefaults > 0)
@@ -3808,7 +3792,6 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 		appendStringInfoString(buf, modename);
 		if (argname && argname[0])
 			appendStringInfo(buf, "%s ", quote_identifier(argname));
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		/*
 		 * construct argtypname, if it comes from a
 		 * package, we use argtypenames
@@ -3824,7 +3807,6 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 		}
 		else
 			appendStringInfoString(buf, format_type_be(argtype));
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		if (print_defaults && isinput && inputargno > nlackdefaults)
 		{
 			Node	   *expr;
@@ -3847,14 +3829,12 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 		}
 	}
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (argtypenames != NULL)
 	{
 		for (i = 0; i < numargs; i++)
 			pfree(argtypenames[i]);
 		pfree(argtypenames);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	return argsprinted;
 }

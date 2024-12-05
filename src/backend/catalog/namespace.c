@@ -891,7 +891,6 @@ RelnameGetRelid(const char *relname)
 	return InvalidOid;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * like RelnameGetRelid
  * we get package oid according to its name
@@ -979,7 +978,6 @@ PackageIsVisible(Oid pkgoid)
 
 	return visible;
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * RelationIsVisible
@@ -1315,9 +1313,7 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		Oid			va_elem_type;
 		int		   *argnumbers = NULL;
 		FuncCandidateList newResult;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		char		**argtypenames = NULL;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		if (OidIsValid(namespaceId))
 		{
@@ -1471,7 +1467,6 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		newResult->nargs = effective_nargs;
 		newResult->argnumbers = argnumbers;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		/* maybe argtype from a package */
 		if (ORA_PARSER == compatible_db)
 		{
@@ -1493,7 +1488,6 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 					argtypenames[i] = TextDatumGetCString(elems[i]);
 			}
 		}
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		if (argnumbers)
 		{
@@ -1502,7 +1496,6 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			{
 				newResult->args[j] = proargtypes[argnumbers[j]];
 
-				/* Begin - ReqID:SRS-SQL-PACKAGE */
 				if (argtypenames != NULL && strcmp(argtypenames[argnumbers[i]], "") != 0)
 				{
 					TypeName	*tname;
@@ -1518,13 +1511,11 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 					}
 					pfree(tname);
 				}
-				/* End - ReqID:SRS-SQL-PACKAGE */
 			}
 		}
 		else
 		{
 			/* Simple positional case, just copy proargtypes as-is */
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			if (argtypenames != NULL)
 			{
 				int i;
@@ -1552,12 +1543,9 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			}
 			else
 				memcpy(newResult->args, proargtypes, pronargs * sizeof(Oid));
-			/* End - ReqID:SRS-SQL-PACKAGE */
 		}
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		if (argtypenames != NULL)
 			pfree(argtypenames);
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		if (variadic)
 		{
@@ -5103,7 +5091,6 @@ pg_table_is_visible(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(result);
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 Datum
 pg_package_is_visible(PG_FUNCTION_ARGS)
 {
@@ -5114,7 +5101,6 @@ pg_package_is_visible(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(PackageIsVisible(oid));
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 Datum
 pg_type_is_visible(PG_FUNCTION_ARGS)

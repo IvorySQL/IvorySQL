@@ -19,9 +19,7 @@
 
 #include "plisql.h"
 #include "pl_subproc_function.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "pl_package.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "utils/memutils.h"
 
 /* ----------
@@ -744,9 +742,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 	/* Better not call this on an in-use function */
 	Assert(func->use_count == 0);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	plisql_remove_function_relations(func);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* Release plans associated with variable declarations */
 	for (i = start_datum; i < func->ndatums; i++)
@@ -762,13 +758,11 @@ plisql_free_function_memory(PLiSQL_function *func,
 
 					free_expr(var->default_val);
 					free_expr(var->cursor_explicit_expr);
-					/* Begin - ReqID:SRS-SQL-PACKAGE */
 					/* we should close package explicit cursor */
 					if (OidIsValid(var->pkgoid) &&
 						var->datatype->typoid == REFCURSOROID &&
 						plisql_cursor_is_open(var))
 						plisql_close_package_cursorvar(var);
-					/* End - ReqID:SRS-SQL-PACKAGE */
 				}
 				break;
 			case PLISQL_DTYPE_ROW:
@@ -782,10 +776,8 @@ plisql_free_function_memory(PLiSQL_function *func,
 				break;
 			case PLISQL_DTYPE_RECFIELD:
 				break;
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			case PLISQL_DTYPE_PACKAGE_DATUM:
 				break;
-			/* End - ReqID:SRS-SQL-PACKAGE */
 			default:
 				elog(ERROR, "unrecognized data type: %d", d->dtype);
 		}
@@ -1676,7 +1668,7 @@ dump_expr(PLiSQL_expr *expr)
 }
 
 void
-plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc) /* ReqID:SRS-SQL-PACKAGE */
+plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc) 
 {
 	int			i;
 	PLiSQL_datum *d;
@@ -1759,7 +1751,6 @@ plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc) /
 					   ((PLiSQL_recfield *) d)->fieldname,
 					   ((PLiSQL_recfield *) d)->recparentno);
 				break;
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			case PLISQL_DTYPE_PACKAGE_DATUM:
 				{
 					PLiSQL_pkg_datum *pkg_datum = (PLiSQL_pkg_datum *) d;
@@ -1767,13 +1758,11 @@ plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc) /
 					printf("PACKAGE VAR :%s\n", pkg_datum->refname);
 				}
 				break;
-			/* End - ReqID:SRS-SQL-PACKAGE */
 			default:
 				printf("??? unknown data type %d\n", d->dtype);
 		}
 	}
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	printf("\nSubprocFuncs:\n");
 	for (i = start_subprocfunc; i < func->nsubprocfuncs; i++)
 	{
@@ -1814,7 +1803,6 @@ plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc) /
 		printf("%3d:", func->action->lineno);
 		dump_block(func->action);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	printf("\nEnd of execution tree of function %s\n\n", func->fn_signature);
 	fflush(stdout);

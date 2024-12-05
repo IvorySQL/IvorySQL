@@ -6,9 +6,6 @@
  *		Definitions for the PLISQL Package cache
  *
  *
- * ReqID:SRS-SQL-PACKAGE
- *
- *
  * Copyright:
  * Copyright (c) 2024, HighGo Software Co.,Ltd. 
  *

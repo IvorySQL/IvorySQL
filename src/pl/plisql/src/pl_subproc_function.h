@@ -142,9 +142,7 @@ typedef struct PLiSQL_subproc_function
 	int			lastoutsubprocfno;	/* the last out subproc fno, which function can use */
 	PLiSQL_nsitem *global_cur;		/* the namespace which the function to search global var */
 	HTAB		*poly_tab;			/* hash table for polymorphic argtype function or procedure */
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	int			location;			/* nice errors position */
-	/* End - ReqID:SRS-SQL-PACKAGE */
 } PLiSQL_subproc_function;
 
 
@@ -166,12 +164,10 @@ extern int subprocFuncs_alloc;
 extern int cur_compile_func_level;
 extern PLiSQL_function *plisql_saved_compile[];
 extern int plisql_saved_datums_last[];
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern char *plisql_saved_error_funcname[];
 extern int plisql_saved_nsubprocfuncs[];
 extern int plisql_saved_subprocfunc_alloc[];
 extern PLiSQL_subproc_function **plisql_saved_subprocfuncs[];
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /* some userfull funcs */
@@ -188,7 +184,7 @@ extern void plisql_set_subprocfunc_action(PLiSQL_subproc_function *inlinefunc,
 extern void plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
 													List *properties, bool isdeclare);
 extern PLiSQL_subproc_function *plisql_build_subproc_function(char *funcname, List *args,
-													PLiSQL_type *rettype, int location); /* ReqID:SRS-SQL-PACKAGE */
+													PLiSQL_type *rettype, int location); 
 extern void plisql_add_subproc_function(PLiSQL_subproc_function *inlinefunc);
 extern void plisql_register_internal_func(void);
 extern void plisql_unregister_internal_func(void);
@@ -230,7 +226,6 @@ extern int plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
 				List **argdefaults,	/* return value */
 				void **pfunc);	/* return value */
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern FuncDetailCode plisql_get_subprocfunc_detail(ParseState *pstate,
 											PLiSQL_function *pfunc,
 											PLiSQL_nsitem *nse,
@@ -253,7 +248,6 @@ extern PLiSQL_function *plisql_subprocfunc_HashTableLookup(HTAB *hashp,
 extern PLiSQL_function* plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 													PLiSQL_subproc_function *subprocfunc,
 													bool forValidator);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 #endif   /* PL_SUBPROC_FUNCTION_H */
 

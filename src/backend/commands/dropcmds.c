@@ -334,7 +334,6 @@ does_not_exist_skipping(ObjectType objtype, Node *object)
 				}
 				break;
 			}
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 		case OBJECT_PACKAGE_BODY:
 			{
@@ -350,7 +349,6 @@ does_not_exist_skipping(ObjectType objtype, Node *object)
 				}
 				break;
 			}
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PROCEDURE:
 			{
 				ObjectWithArgs *owa = castNode(ObjectWithArgs, object);

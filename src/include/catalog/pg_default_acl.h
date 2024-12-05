@@ -68,9 +68,7 @@ MAKE_SYSCACHE(DEFACLROLENSPOBJ, pg_default_acl_role_nsp_obj_index, 8);
 #define DEFACLOBJ_FUNCTION		'f' /* function */
 #define DEFACLOBJ_TYPE			'T' /* type */
 #define DEFACLOBJ_NAMESPACE		'n' /* namespace */
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #define DEFACLOBJ_PACKAGE		'P' /* pakcage */
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */

@@ -24,9 +24,7 @@
 #include "executor/spi.h"
 #include "utils/expandedrecord.h"
 #include "utils/typcache.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "utils/packagecache.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /**********************************************************************
@@ -72,9 +70,7 @@ typedef enum PLiSQL_datum_type
 	PLISQL_DTYPE_REC,
 	PLISQL_DTYPE_RECFIELD,
 	PLISQL_DTYPE_PROMISE,
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	PLISQL_DTYPE_PACKAGE_DATUM,
-	/* End - ReqID:SRS-SQL-PACKAGE */
 } PLiSQL_datum_type;
 
 /*
@@ -286,9 +282,7 @@ typedef struct PLiSQL_datum
 {
 	PLiSQL_datum_type dtype;
 	int			dno;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid			pkgoid;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 } PLiSQL_datum;
 
 /*
@@ -301,9 +295,7 @@ typedef struct PLiSQL_variable
 {
 	PLiSQL_datum_type dtype;
 	int			dno;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid			pkgoid;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	char	   *refname;
 	int			lineno;
 	bool		isconst;
@@ -326,9 +318,7 @@ typedef struct PLiSQL_var
 {
 	PLiSQL_datum_type dtype;
 	int			dno;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid			pkgoid;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	char	   *refname;
 	int			lineno;
 	bool		isconst;
@@ -383,9 +373,7 @@ typedef struct PLiSQL_row
 {
 	PLiSQL_datum_type dtype;
 	int			dno;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid			pkgoid;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	char	   *refname;
 	int			lineno;
 	bool		isconst;
@@ -412,9 +400,7 @@ typedef struct PLiSQL_rec
 {
 	PLiSQL_datum_type dtype;
 	int			dno;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid			pkgoid;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	char	   *refname;
 	int			lineno;
 	bool		isconst;
@@ -448,9 +434,7 @@ typedef struct PLiSQL_recfield
 	int			dno;
 	/* end of PLiSQL_datum fields */
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid			pkgoid;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	char	   *fieldname;		/* name of field */
 	int			recparentno;	/* dno of parent record */
@@ -1036,12 +1020,10 @@ typedef struct PLiSQL_function
 	int			nsubprocfuncs;
 	struct PLiSQL_subproc_function **subprocfuncs;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	PackageCacheItem	*item;	/* if this function comes from a package */
 	List				*funclist;	/* functions list which references to package */
 	List				*pkgcachelist;	/* references to package'cache list */
 	char				*namelabel;		/* for label */
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* function body parsetree */
 	PLiSQL_stmt_block *action;
@@ -1074,9 +1056,7 @@ typedef struct PLiSQL_execstate
 	Datum		retval;
 	bool		retisnull;
 	Oid			rettype;		/* type of current retval */
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	bool		retpkgvar;		/* ret comes from a package'var */
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	Oid			fn_rettype;		/* info about declared function rettype */
 	bool		retistuple;
@@ -1229,9 +1209,7 @@ typedef struct PLwdatum
 	char	   *ident;			/* valid if simple name */
 	bool		quoted;
 	List	   *idents;			/* valid if composite name */
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	int			nname_used;		/* to find datum, we match idents n names */
-	/* End - ReqID:SRS-SQL-PACKAGE */
 } PLwdatum;
 
 /**********************************************************************
@@ -1273,9 +1251,7 @@ extern PLiSQL_datum **plisql_Datums;
 
 extern int datums_last;
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern int datums_alloc;
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 extern char *plisql_error_funcname;
 
@@ -1337,9 +1313,7 @@ extern void plisql_start_datums(void);
 extern void plisql_compile_error_callback(void *arg);
 extern void plisql_finish_datums(PLiSQL_function *function);
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern void delete_function(PLiSQL_function *func);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * Functions in pl_exec.c
@@ -1397,7 +1371,7 @@ extern PGDLLEXPORT const char *plisql_stmt_typename(PLiSQL_stmt *stmt);
 extern const char *plisql_getdiag_kindname(PLiSQL_getdiag_kind kind);
 extern void plisql_free_function_memory(PLiSQL_function *func,
 							int start_datum, int start_inlinefunc);
-extern void plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc); /* ReqID:SRS-SQL-PACKAGE */
+extern void plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc); 
 
 /*
  * Scanner functions in pl_scanner.c
@@ -1418,10 +1392,8 @@ extern int	plisql_location_to_lineno(int location);
 extern int	plisql_latest_lineno(void);
 extern void plisql_scanner_init(const char *str);
 extern void plisql_scanner_finish(void);
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern void *plisql_get_yylex_global_proper(void);
 extern void plisql_recover_yylex_global_proper(void *yylex_data);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /*

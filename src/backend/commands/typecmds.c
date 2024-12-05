@@ -1788,8 +1788,8 @@ makeRangeConstructors(const char *name, Oid namespace,
 								 InvalidOid,	/* prosupport */
 								 1.0,	/* procost */
 								 0.0,	/* prorows */
-								 PointerGetDatum(NULL), /* ReqID:SRS-SQL-PACKAGE */
-								 NULL); /* ReqID:SRS-SQL-PACKAGE */
+								 PointerGetDatum(NULL), 
+								 NULL); 
 
 
 		/*
@@ -1856,10 +1856,8 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 							 InvalidOid,	/* prosupport */
 							 1.0,	/* procost */
 							 0.0,	/* prorows */
-							 /* Begin - ReqID:SRS-SQL-PACKAGE */
 							 PointerGetDatum(NULL),
 							 NULL);
-							 /* End - ReqID:SRS-SQL-PACKAGE */
 
 	/*
 	 * Make the constructor internally-dependent on the multirange type so
@@ -1904,10 +1902,8 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 							 InvalidOid,	/* prosupport */
 							 1.0,	/* procost */
 							 0.0,	/* prorows */
-							 /* Begin - ReqID:SRS-SQL-PACKAGE */
 							 PointerGetDatum(NULL),
 							 NULL);
-							 /* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* ditto */
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL);
@@ -1947,10 +1943,8 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 							 InvalidOid,	/* prosupport */
 							 1.0,	/* procost */
 							 0.0,	/* prorows */
-							 /* Begin - ReqID:SRS-SQL-PACKAGE */
 							 PointerGetDatum(NULL),
 							 NULL);
-							 /* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* ditto */
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL);

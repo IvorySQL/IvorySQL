@@ -3193,7 +3193,6 @@ $as_echo "$enable_nls" >&6; }
 
 
 #
-# ReqID:SRS-SQL-PACKAGE
 # CURSOR_UNNAME
 #
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether CURSOR_UNNAME is wanted" >&5

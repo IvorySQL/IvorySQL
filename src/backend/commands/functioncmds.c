@@ -61,9 +61,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "parser/parse_package.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "pgstat.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -92,18 +90,13 @@
 static void
 compute_return_type(TypeName *returnType, Oid languageOid,
 					Oid *prorettype_p, bool *returnsSet_p,
-					/* Begin - ReqID:SRS-SQL-PACKAGE */
 					char **rettypename)
-					/* End - ReqID:SRS-SQL-PACKAGE */
 {
 	Oid			rettype;
 	Type		typtup;
 	AclResult	aclresult;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	PkgType *pkgtype;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/*
 	 * we first find it from a package
 	 * this is ok, because oracle doesn't
@@ -133,7 +126,6 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		pfree(pkgtype);
 		return;
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	typtup = LookupTypeName(NULL, returnType, NULL, false);
 
@@ -236,9 +228,7 @@ interpret_function_parameter_list(ParseState *pstate,
 								  List **parameterDefaults,
 								  Oid *variadicArgType,
 								  Oid *requiredResultType, 
-								   /* Begin - ReqID:SRS-SQL-PACKAGE */
 								  ArrayType **parametertypeNames)
-								  /* End - ReqID:SRS-SQL-PACKAGE */
 {
 	int			parameterCount = list_length(parameters);
 	Oid		   *inTypes;
@@ -252,11 +242,9 @@ interpret_function_parameter_list(ParseState *pstate,
 	bool		have_defaults = false;
 	ListCell   *x;
 	int			i;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Datum		*typeNames = NULL;
 	bool		has_pkg_type = false;
 	bool isplisql = false;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	*variadicArgType = InvalidOid;	/* default result */
 	*requiredResultType = InvalidOid;	/* default result */
@@ -267,7 +255,6 @@ interpret_function_parameter_list(ParseState *pstate,
 	paramNames = (Datum *) palloc0(parameterCount * sizeof(Datum));
 	*parameterDefaults = NIL;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/*
 	 * only plisql language support package
 	 * type
@@ -277,7 +264,6 @@ interpret_function_parameter_list(ParseState *pstate,
 		isplisql = true;
 		typeNames = (Datum *) palloc0(parameterCount * sizeof(Datum));
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* Scan the list and extract data into work arrays */
 	i = 0;
@@ -290,15 +276,12 @@ interpret_function_parameter_list(ParseState *pstate,
 		Oid			toid;
 		Type		typtup;
 		AclResult	aclresult;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		PkgType *pkgtype;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		/* For our purposes here, a defaulted mode spec is identical to IN */
 		if (fpmode == FUNC_PARAM_DEFAULT)
 			fpmode = FUNC_PARAM_IN;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		/*
 		 * we first find it from a package
 		 * this is ok, because oracle doesn't
@@ -366,7 +349,6 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error_type(aclresult, toid);
 		}
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		if (t->setof)
 		{
@@ -583,7 +565,6 @@ interpret_function_parameter_list(ParseState *pstate,
 	else
 		*parameterNames = NULL;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (has_pkg_type)
 	{
 		for (i = 0; i < parameterCount; i++)
@@ -600,7 +581,6 @@ interpret_function_parameter_list(ParseState *pstate,
 		if (typeNames != NULL)
 			pfree(typeNames);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 }
 
 
@@ -1233,10 +1213,8 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	Form_pg_language languageStruct;
 	List	   *as_clause;
 	char		parallel;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	ArrayType	*parametertypeNames = NULL;
 	char		*rettypeName = NULL;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* Convert list of names to a name and namespace */
 	namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
@@ -1358,9 +1336,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 									  &parameterDefaults,
 									  &variadicArgType,
 									  &requiredResultType,
-									  /* Begin - ReqID:SRS-SQL-PACKAGE */
 									  &parametertypeNames
-									  /* End - ReqID:SRS-SQL-PACKAGE */
 									  );
 
 	if (stmt->is_procedure)
@@ -1373,7 +1349,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	{
 		/* explicit RETURNS clause */
 		compute_return_type(stmt->returnType, languageOid,
-							&prorettype, &returnsSet, &rettypeName); /* ReqID:SRS-SQL-PACKAGE */
+							&prorettype, &returnsSet, &rettypeName); 
 		if (OidIsValid(requiredResultType) && prorettype != requiredResultType)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -1476,10 +1452,8 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 						   prosupport,
 						   procost,
 						   prorows,
-						   /* Begin - ReqID:SRS-SQL-PACKAGE */
 						   PointerGetDatum(parametertypeNames),
 						   rettypeName);
-						   /* End - ReqID:SRS-SQL-PACKAGE */
 }
 
 /*
@@ -1500,13 +1474,11 @@ CompileFunction(CompileFunctionStmt *stmt)
 	HeapTuple	languageTuple;
 	Form_pg_language langForm;
 	Oid			lanvalidator;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid relrettypoid = InvalidOid;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	bool		argtypes_change = false;
 	ArrayType	*all_argtypes;
 	bool		alltype_change = false;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	rel = table_open(ProcedureRelationId, RowExclusiveLock);
 	funcOid = LookupFuncWithArgs(stmt->objtype, stmt->func, false);
@@ -1543,7 +1515,6 @@ CompileFunction(CompileFunctionStmt *stmt)
 		return address;
 	}
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/*
 	 * there, if function argtypes or rettype come from
 	 * a package, we should change its pg_proc tuple if
@@ -1631,7 +1602,6 @@ CompileFunction(CompileFunctionStmt *stmt)
 		ObjectAddressSet(myself, ProcedureRelationId, funcOid);
 		recordDependencyOnCurrentExtension(&myself, true);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	if (OidIsValid(lanvalidator))
 	{
@@ -2029,7 +1999,7 @@ CreateCast(CreateCastStmt *stmt)
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("third argument of cast function must be type %s",
 							"boolean")));
-		if (!IsBinaryCoercibleWithCast(get_func_real_rettype(tuple), /* ReqID:SRS-SQL-PACKAGE */
+		if (!IsBinaryCoercibleWithCast(get_func_real_rettype(tuple), 
 									   targettypeid,
 									   &outcastid))
 			ereport(ERROR,
@@ -2280,7 +2250,7 @@ CreateTransform(CreateTransformStmt *stmt)
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", fromsqlfuncid);
 		procstruct = (Form_pg_proc) GETSTRUCT(tuple);
-		if (get_func_real_rettype(tuple) != INTERNALOID) /* ReqID:SRS-SQL-PACKAGE */
+		if (get_func_real_rettype(tuple) != INTERNALOID) 
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("return data type of FROM SQL function must be %s",

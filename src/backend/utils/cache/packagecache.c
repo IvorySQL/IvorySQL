@@ -6,8 +6,6 @@
  *		Definitions for the PLISQL Package cache
  *
  *
- * ReqID:SRS-SQL-PACKAGE
- *
  * Authored by dwdai@highgo.com,20220929.
  *
  * Copyright:
@@ -431,9 +429,7 @@ set_pkginfo_from_funcexpr(FuncExpr *expr)
 		expr->funcid = funcexpr->funcid;
 		expr->funcresulttype = funcexpr->funcresulttype;
 		expr->funcvariadic = funcexpr->funcvariadic;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		expr->pkgoid = funcexpr->pkgoid;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		list_free(fn->funcname);
 		pfree(fn);
 		pfree(pstate);

@@ -27,9 +27,7 @@
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "commands/packagecmds.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -97,10 +95,8 @@ ProcedureCreate(const char *procedureName,
 				Oid prosupport,
 				float4 procost,
 				float4 prorows,
-				/* Begin - ReqID:SRS-SQL-PACKAGE */
 				Datum parametertypeNames,
 				char *rettypeName)
-				/* End - ReqID:SRS-SQL-PACKAGE */
 {
 	Oid			retval;
 	int			parameterCount;
@@ -124,9 +120,7 @@ ProcedureCreate(const char *procedureName,
 	int			i;
 	Oid			trfid;
 	ObjectAddresses *addrs;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	bool	package_update_rettype = false;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 	/*
@@ -362,7 +356,6 @@ ProcedureCreate(const char *procedureName,
 		nulls[Anum_pg_proc_proconfig - 1] = true;
 	/* proacl will be determined later */
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (parametertypeNames != PointerGetDatum(NULL))
 		values[Anum_pg_proc_protypenames - 1] = parametertypeNames;
 	else
@@ -372,7 +365,6 @@ ProcedureCreate(const char *procedureName,
 		values[Anum_pg_proc_rettypename - 1] = CStringGetTextDatum(rettypeName);
 	else
 		nulls[Anum_pg_proc_rettypename - 1] = true;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 	rel = table_open(ProcedureRelationId, RowExclusiveLock);
@@ -383,7 +375,6 @@ ProcedureCreate(const char *procedureName,
 							 PointerGetDatum(procedureName),
 							 PointerGetDatum(parameterTypes),
 							 ObjectIdGetDatum(procNamespace));
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (parametertypeNames != PointerGetDatum(NULL) &&
 		!HeapTupleIsValid(oldtup))
 	{
@@ -401,7 +392,6 @@ ProcedureCreate(const char *procedureName,
 				package_update_rettype = true;
 		}
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	if (HeapTupleIsValid(oldtup))
 	{
@@ -448,7 +438,7 @@ ProcedureCreate(const char *procedureName,
 		 * user visible return type, we produce a more specific error message.
 		 */
 		if ((returnType != oldproc->prorettype &&
-			!package_update_rettype) || /* ReqID:SRS-SQL-PACKAGE */
+			!package_update_rettype) || 
 			returnsSet != oldproc->proretset)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -478,7 +468,7 @@ ProcedureCreate(const char *procedureName,
 													  allParameterTypes,
 													  parameterModes,
 													  parameterNames,
-													  parametertypeNames); /* ReqID:SRS-SQL-PACKAGE */
+													  parametertypeNames); 
 			if (olddesc == NULL && newdesc == NULL)
 				 /* ok, both are runtime-defined RECORDs */ ;
 			else if (olddesc == NULL || newdesc == NULL ||

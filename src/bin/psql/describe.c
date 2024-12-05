@@ -3787,7 +3787,6 @@ describeRoles(const char *pattern, bool verbose, bool showSystem)
  * Describes package.
  */
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 bool
 describePackages(const char *pattern, bool verbose, bool showSystem)
 {

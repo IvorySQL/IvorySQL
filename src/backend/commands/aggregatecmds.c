@@ -297,9 +297,7 @@ DefineAggregate(ParseState *pstate,
 		 * 'em).  We share functioncmds.c's code for processing them.
 		 */
 		Oid			requiredResultType;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		ArrayType	*parametertypeNames;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 		if (baseType != NULL)
@@ -321,11 +319,9 @@ DefineAggregate(ParseState *pstate,
 										  &parameterDefaults,
 										  &variadicArgType,
 										  &requiredResultType,
-										  &parametertypeNames); /* ReqID:SRS-SQL-PACKAGE */
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
+										  &parametertypeNames); 
 		if (parametertypeNames != NULL)
 			elog(ERROR, "aggreate function doesn't support package'type as argtype");
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		/* Parameter defaults are not currently allowed by the grammar */
 		Assert(parameterDefaults == NIL);

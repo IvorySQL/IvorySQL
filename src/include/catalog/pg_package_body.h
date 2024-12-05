@@ -6,9 +6,6 @@
  *		Definitions for the PLISQL Package Body
  *
  *
- * ReqID:SRS-SQL-PACKAGE
- *
- *
  * Copyright:
  * Copyright (c) 2024, HighGo Software Co.,Ltd. 
  *

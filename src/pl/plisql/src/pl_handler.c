@@ -24,17 +24,13 @@
 #include "miscadmin.h"
 #include "plisql.h"
 #include "pl_subproc_function.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "pl_package.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "commands/packagecmds.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 static bool plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
@@ -264,12 +260,10 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	/* Find or compile the function */
 	if (function_from == FUNC_FROM_SUBPROCFUNC)
 		func = plisql_get_subproc_func(fcinfo, false);
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	else if (function_from == FUNC_FROM_PACKAGE)
 	{
 		func = plisql_get_package_func(fcinfo, false);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	else
 		func = plisql_compile(fcinfo, false);
 	/* End - nSRS-PLSQL-SUBPROC */
@@ -321,12 +315,10 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 		func->use_count--;
 		func->cur_estate = save_cur_estate;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		if (function_from == FUNC_FROM_PACKAGE)
 		{
 			release_package_func_usecount(fcinfo);
 		}
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		/* Be sure to release the procedure resowner if any */
 		if (procedure_resowner)

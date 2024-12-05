@@ -62,11 +62,9 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
 #include "commands/packagecmds.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -641,7 +639,6 @@ static const ObjectPropertyType ObjectProperty[] =
 		OBJECT_USER_MAPPING,
 		false
 	},
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	{
 		"package",
 		PackageRelationId,
@@ -670,7 +667,6 @@ static const ObjectPropertyType ObjectProperty[] =
 		OBJECT_PACKAGE_BODY,
 		false
 	},
-	/* End - ReqID:SRS-SQL-PACKAGE */
 };
 
 /*
@@ -867,7 +863,6 @@ static const struct object_type_map
 	{
 		"statistics object", OBJECT_STATISTIC_EXT
 	},
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/* OCLASS_PACKAGE */
 	{
 		"package", OBJECT_PACKAGE
@@ -876,7 +871,6 @@ static const struct object_type_map
 	{
 		"package body", OBJECT_PACKAGE_BODY
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 };
 
 const ObjectAddress InvalidObjectAddress =
@@ -1171,7 +1165,6 @@ get_object_address(ObjectType objtype, Node *object,
 															 missing_ok);
 				address.objectSubId = 0;
 				break;
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			case OBJECT_PACKAGE:
 				address.classId = PackageRelationId;
 				address.objectId = LookupPackageByNames(castNode(List, object), missing_ok);
@@ -1182,7 +1175,6 @@ get_object_address(ObjectType objtype, Node *object,
 				address.objectId = LookupPackageBodyByNames(castNode(List, object), missing_ok);
 				address.objectSubId = 0;
 				break;
-			/* End - ReqID:SRS-SQL-PACKAGE */
 				/* no default, to let compiler warn about missing case */
 		}
 
@@ -2404,12 +2396,10 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_LARGEOBJECT:
 			/* already handled above */
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 		case OBJECT_PACKAGE_BODY:
 			objnode = (Node *) name;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 			/* no default, to let compiler warn about missing case */
 	}
 
@@ -2614,7 +2604,6 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 			/* These are currently not supported or don't make sense here. */
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			if (!pg_package_ownercheck(address.objectId, roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
@@ -2625,7 +2614,6 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
 							   NameListToString(castNode(List, object)));
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			elog(ERROR, "unrecognized object type: %d",
 				 (int) objtype);

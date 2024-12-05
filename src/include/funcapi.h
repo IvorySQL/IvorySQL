@@ -20,10 +20,8 @@
 #include "access/tupdesc.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "utils/packagecache.h"
 #include "parser/parse_node.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "fmgr.h"
 
 /*-------------------------------------------------------------------------
@@ -172,7 +170,6 @@ typedef struct
 						 TupleDesc *resultTupleDesc);
 	List* (*get_internal_func_outargs) (FuncExpr *fexpr);
 	char *(*get_inernal_func_result_name) (FuncExpr *fexpr);
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	void (*package_validator) (Oid objectId, bool is_body);
 	PackageCacheItem*  (*package_handle) (Oid objectId, bool is_body);
 	void* (*package_parse) (ParseState *pstate,
@@ -202,7 +199,6 @@ typedef struct
 	Oid (*get_top_function_id) (void *function, bool *is_package);
 	void (*get_subprocs_from_package) (Oid pkgoid, TupleDesc tupdesc,
 									Tuplestorestate *tupstore);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	bool isload;
 } PLiSQL_funcs_call;
 
@@ -238,7 +234,7 @@ extern TupleDesc build_function_result_tupdesc_d(char prokind,
 												 Datum proallargtypes,
 												 Datum proargmodes,
 												 Datum proargnames,
-												 Datum proargtypenames); /* ReqID:SRS-SQL-PACKAGE */
+												 Datum proargtypenames); 
 extern TupleDesc build_function_result_tupdesc_t(HeapTuple procTuple);
 
 extern bool resolve_polymorphic_tupdesc(TupleDesc tupdesc,
@@ -255,11 +251,9 @@ extern TypeFuncClass external_get_type_func_class(Oid typid, Oid *base_typeid);
 extern List *get_internal_function_outargs(FuncExpr *fexpr);
 extern char *get_internal_function_result_name(FuncExpr *fexpr);
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern void get_func_typename_info(HeapTuple procTup,
 					char ***p_argtypeNames,
 					char **rettypeName);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*----------
  *	Support to ease writing functions returning composite types

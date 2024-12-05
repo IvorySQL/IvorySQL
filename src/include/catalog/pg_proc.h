@@ -111,12 +111,10 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	/* types for which to apply transforms */
 	Oid			protrftypes[1] BKI_DEFAULT(_null_) BKI_LOOKUP(pg_type);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/* function return type'name (NOT NULL for package types) */
 	text		rettypename BKI_DEFAULT(_null_);
 	/* parameter type names (NOT NULL for package types) */
 	text		protypenames[1] BKI_DEFAULT(_null_);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* procedure source text */
 	text		prosrc BKI_FORCE_NOT_NULL;
@@ -222,10 +220,8 @@ extern ObjectAddress ProcedureCreate(const char *procedureName,
 									 Oid prosupport,
 									 float4 procost,
 									 float4 prorows,
-									 /* Begin - ReqID:SRS-SQL-PACKAGE */
 									 Datum parametertypeNames,
 									 char *rettypeName);
-									/* End - ReqID:SRS-SQL-PACKAGE */
 
 extern bool function_parse_error_transpose(const char *prosrc);
 

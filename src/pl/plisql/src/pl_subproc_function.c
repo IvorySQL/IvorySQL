@@ -18,9 +18,7 @@
 #include "postgres.h"
 #include "plisql.h"
 #include "pl_subproc_function.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "pl_package.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "parser/parse_coerce.h"
 #include "parser/parse_target.h"
 #include "parser/parse_expr.h"
@@ -30,11 +28,9 @@
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "commands/packagecmds.h"
 #include "catalog/pg_package.h"
 #include "miscadmin.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 typedef struct _subprocFuncCandidateList
@@ -84,7 +80,7 @@ static PLiSQL_subproc_function * plisql_build_subproc_function_internal(char *fu
 																	List *args,
 																	PLiSQL_type *retype,
 																	bool add2namespace,
-																	int location); /* ReqID:SRS-SQL-PACKAGE */
+																	int location); 
 static bool plisql_match_function_argnames(List *funcargs, int nargs,
 													List *argnames, int **argnumber);
 static subprocFuncCandidateList plisql_getFuncCandidateListFromFunname(char *funcname,
@@ -163,16 +159,13 @@ void
 plisql_finish_subproc_func(PLiSQL_function *function)
 {
 	int			i;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	int			start_subproc = function->nsubprocfuncs;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	function->nsubprocfuncs = plisql_nsubprocFuncs;
 
 	if (plisql_nsubprocFuncs <= 0)
 		return;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/*
 	 * except package specification subproc
 	 */
@@ -186,7 +179,6 @@ plisql_finish_subproc_func(PLiSQL_function *function)
 		function->subprocfuncs = palloc(sizeof(PLiSQL_subproc_function *) * plisql_nsubprocFuncs);
 	for (i = start_subproc; i < plisql_nsubprocFuncs; i++)
 		function->subprocfuncs[i] = plisql_subprocFuncs[i];
-	/* End - ReqID:SRS-SQL-PACKAGE */
 }
 
 
@@ -732,7 +724,7 @@ plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
  */
 PLiSQL_subproc_function *
 plisql_build_subproc_function(char *funcname, List *args,
-										PLiSQL_type *rettype, int location) /* ReqID:SRS-SQL-PACKAGE */
+										PLiSQL_type *rettype, int location) 
 {
 	PLiSQL_subproc_function *funcs;
 	PLiSQL_nsitem	*nse;
@@ -759,13 +751,13 @@ plisql_build_subproc_function(char *funcname, List *args,
 		else
 		{
 			/* define new function */
-			funcs = plisql_build_subproc_function_internal(funcname, args, rettype, false, location); /* ReqID:SRS-SQL-PACKAGE */
+			funcs = plisql_build_subproc_function_internal(funcname, args, rettype, false, location); 
 			nse->subprocfunc = lappend_int(nse->subprocfunc, funcs->fno);
 		}
 	}
 	else
 	{
-		funcs = plisql_build_subproc_function_internal(funcname, args, rettype, true, location); /* ReqID:SRS-SQL-PACKAGE */
+		funcs = plisql_build_subproc_function_internal(funcname, args, rettype, true, location); 
 		/* init subproc func hash tab */
 		nse = plisql_ns_top();
 		Assert(nse->itemno == funcs->fno);
@@ -807,7 +799,6 @@ plisql_register_internal_func(void)
 	plisql_internal_funcs.get_internal_func_result_type = plisql_get_subprocfunc_result_type;
 	plisql_internal_funcs.get_internal_func_outargs = plisql_get_subprocfunc_outargs;
 	plisql_internal_funcs.get_inernal_func_result_name = plisql_get_subprocfunc_result_name;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	plisql_internal_funcs.package_validator = plisql_package_validator;
 	plisql_internal_funcs.package_handle = plisql_package_handle;
 	plisql_internal_funcs.package_parse = plisql_package_parse;
@@ -815,7 +806,6 @@ plisql_register_internal_func(void)
 	plisql_internal_funcs.get_top_function_id = plisql_top_functin_oid;
 	plisql_internal_funcs.package_free = plisql_free_package_function;
 	plisql_internal_funcs.get_subprocs_from_package = plisql_get_subprocs_from_package;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	plisql_internal_funcs.isload = true;
 }
@@ -1067,10 +1057,8 @@ plisql_get_subproc_func(FunctionCallInfo fcinfo, bool forValidator)
 
 	pfunc = (PLiSQL_function *) funcexpr->parent_func;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (pfunc == NULL)
 		elog(ERROR, "subproc funcexpr has no init");
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	estate = pfunc->cur_estate;
 	fno = (int) funcexpr->funcid;
@@ -1095,7 +1083,7 @@ plisql_get_subproc_func(FunctionCallInfo fcinfo, bool forValidator)
 		/* origin has no define */
 		if (subprocfunc->function->action == NULL)
 			elog(ERROR, "subproc function \"%s\" doesn't define",
-				subprocfunc->func_name); /* ReqID:SRS-SQL-PACKAGE */
+				subprocfunc->func_name); 
 
 
 		Assert(subprocfunc->poly_tab != NULL);
@@ -1135,7 +1123,7 @@ plisql_get_subproc_func(FunctionCallInfo fcinfo, bool forValidator)
 
 	if (func->action == NULL)
 		elog(ERROR, "subproc function \"%s\" doesn't define",
-			func->fn_signature); /* ReqID:SRS-SQL-PACKAGE */
+			func->fn_signature); 
 
 	return func;
 }
@@ -1168,7 +1156,6 @@ plisql_init_subprocfunc_globalvar(PLiSQL_execstate *estate, FunctionCallInfo fci
 
 	for (i = 0; i < subprocfunc->lastassignvardno; i++)
 	{
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		/* ignore package datum*/
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_PACKAGE_DATUM ||
 			OidIsValid(estate->datums[i]->pkgoid))
@@ -1176,7 +1163,6 @@ plisql_init_subprocfunc_globalvar(PLiSQL_execstate *estate, FunctionCallInfo fci
 
 		if (is_const_datum(estate, estate->datums[i]))
 			continue;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		/* ignore row variable which is internal */
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_ROW)
@@ -1232,7 +1218,6 @@ plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate *estate,
 
 	for (i = 0; i < subprocfunc->lastassignvardno; i++)
 	{
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		/* ignore package datum*/
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_PACKAGE_DATUM ||
 			OidIsValid(estate->datums[i]->pkgoid))
@@ -1240,7 +1225,6 @@ plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate *estate,
 
 		if (is_const_datum(estate, estate->datums[i]))
 			continue;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		/* ignore row variable which is internal */
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_ROW)
@@ -1537,7 +1521,7 @@ static PLiSQL_subproc_function *
 plisql_build_subproc_function_internal(char *funcname, List *args,
 													PLiSQL_type *rettype,
 													bool add2namespace,
-													int location) /* ReqID:SRS-SQL-PACKAGE */
+													int location) 
 {
 	PLiSQL_subproc_function *funcs;
 	bool is_proc = (rettype == NULL ? true : false);
@@ -1623,13 +1607,11 @@ plisql_build_subproc_function_internal(char *funcname, List *args,
 	}
 	funcs->has_poly_argument = has_poly_argument;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/* if it comes from a package, record its PackageCacheItem */
 	funcs->function->item = plisql_curr_compile->item;
 	funcs->function->fn_oid = plisql_curr_compile->fn_oid;
 	funcs->function->namelabel = pstrdup(funcname);
 	funcs->location = location;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	return funcs;
 }
@@ -2707,12 +2689,10 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	PLiSQL_function *function;
 	int	parse_rc;
 	int found_varno = subprocfunc->function->found_varno;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid 		define_useid = InvalidOid;
 	Oid 		save_userid;
 	int 		save_sec_context;
 	Oid			current_user = GetUserId();
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	plisql_scanner_init(subprocfunc->src);
 
@@ -2726,7 +2706,6 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/* append package namespace */
 	if (subprocfunc->function->item != NULL)
 	{
@@ -2753,7 +2732,6 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 
 		plerrcontext.callback = plisql_compile_package_error_callback;
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/*
 	 * Do extra syntax checks when validating the function definition. We skip
@@ -2789,7 +2767,6 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 
 	cur_compile_func_level = 0;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	function->item = subprocfunc->function->item;
 	function->fn_oid = subprocfunc->function->fn_oid;
 	plisql_saved_compile[cur_compile_func_level] = function;
@@ -2798,7 +2775,6 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	else
 		plisql_compile_packageitem = NULL;
 	function->namelabel = pstrdup(subprocfunc->func_name);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* init subprocfunc */
 	plisql_init_subprocfunc_compile(subprocfunc);
@@ -2836,10 +2812,8 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (OidIsValid(define_useid))
 		SetUserIdAndSecContext(save_userid, save_sec_context);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	plisql_compile_tmp_cxt = NULL;
 

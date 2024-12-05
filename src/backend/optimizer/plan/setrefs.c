@@ -28,9 +28,7 @@
 #include "parser/parse_relation.h"
 #include "tcop/utility.h"
 #include "utils/syscache.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "utils/packagecache.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 typedef enum
@@ -212,10 +210,8 @@ static List *set_returning_clause_references(PlannerInfo *root,
 static List *set_windowagg_runcondition_references(PlannerInfo *root,
 												   List *runcondition,
 												   Plan *plan);
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 static void record_plan_internel_function_dependency(PlannerInfo *root,
 											FuncExpr *funcexpr);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 
@@ -1986,14 +1982,12 @@ fix_expr_common(PlannerInfo *root, Node *node)
 	}
 	else if (IsA(node, FuncExpr))
 	{
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		if (FUNC_EXPR_FROM_PG_PROC(((FuncExpr *) node)->function_from))
 			record_plan_function_dependency(root,
 										((FuncExpr *) node)->funcid);
 		else
 			record_plan_internel_function_dependency(root,
 										(FuncExpr *) node);
-		/* End - ReqID:SRS-SQL-PACKAGE */
 	}
 	else if (IsA(node, OpExpr))
 	{
@@ -3458,7 +3452,6 @@ find_minmax_agg_replacement_param(PlannerInfo *root, Aggref *aggref)
 	return NULL;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * record package or subproc function
  * dependency
@@ -3501,7 +3494,6 @@ record_plan_internel_function_dependency(PlannerInfo *root,
 		}
 	}
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /*****************************************************************************

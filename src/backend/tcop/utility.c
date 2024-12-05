@@ -56,9 +56,7 @@
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/view.h"
-/* Begin - SRS-SQL-PACKAGE */
 #include "commands/packagecmds.h"
-/* End - SRS-SQL-PACKAGE */
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -178,11 +176,9 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateForeignServerStmt:
 		case T_CreateForeignTableStmt:
 		case T_CreateFunctionStmt:
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case T_CreatePackageStmt:
 		case T_CreatePackageBodyStmt:
 		case T_AlterPackageStmt:
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case T_CreateOpClassStmt:
 		case T_CreateOpFamilyStmt:
 		case T_CreatePLangStmt:
@@ -1923,7 +1919,6 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = AlterCollation((AlterCollationStmt *) parsetree);
 				break;
 
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			case T_CreatePackageStmt:
 				address = CreatePackage((CreatePackageStmt *) parsetree);
 				break;
@@ -1933,7 +1928,6 @@ ProcessUtilitySlow(ParseState *pstate,
 			case T_AlterPackageStmt:
 				address = AlterPackage((AlterPackageStmt *) parsetree);
 				break;
-			/* End - ReqID:SRS-SQL-PACKAGE */
 
 			default:
 				elog(ERROR, "unrecognized node type: %d",
@@ -2363,11 +2357,9 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 			tag = CMDTAG_ALTER_STATISTICS;
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			tag = CMDTAG_ALTER_PACKAGE;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			tag = CMDTAG_UNKNOWN;
 			break;
@@ -2676,14 +2668,12 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_STATISTIC_EXT:
 					tag = CMDTAG_DROP_STATISTICS;
 					break;
-				/* Begin - ReqID:SRS-SQL-PACKAGE */
 				case OBJECT_PACKAGE:
 					tag = CMDTAG_DROP_PACKAGE;
 					break;
 				case OBJECT_PACKAGE_BODY:
 					tag = CMDTAG_DROP_PACKAGE_BODY;
 					break;
-				/* End - ReqID:SRS-SQL-PACKAGE */
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
@@ -2977,11 +2967,9 @@ CreateCommandTag(Node *parsetree)
 				case DISCARD_SEQUENCES:
 					tag = CMDTAG_DISCARD_SEQUENCES;
 					break;
-				/* Begin - ReqID:SRS-SQL-PACKAGE */
 				case DISCARD_PACKAGES:
 					tag = CMDTAG_DISCARD_PACKAGES;
 					break;
-				/* End - ReqID:SRS-SQL-PACKAGE */
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
@@ -3272,7 +3260,6 @@ CreateCommandTag(Node *parsetree)
 			}
 			break;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case T_CreatePackageStmt:
 			tag = CMDTAG_CREATE_PACKAGE;
 			break;
@@ -3282,7 +3269,6 @@ CreateCommandTag(Node *parsetree)
 		case T_AlterPackageStmt:
 			tag = CMDTAG_ALTER_PACKAGE;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		default:
 			elog(WARNING, "unrecognized node type: %d",
@@ -3818,13 +3804,11 @@ GetCommandLogLevel(Node *parsetree)
 			}
 			break;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case T_CreatePackageStmt:
 		case T_CreatePackageBodyStmt:
 		case T_AlterPackageStmt:
 			lev = LOGSTMT_DDL;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		default:
 			elog(WARNING, "unrecognized node type: %d",

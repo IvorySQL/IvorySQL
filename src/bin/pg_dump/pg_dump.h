@@ -41,9 +41,7 @@ typedef enum
 	DO_EXTENSION,
 	DO_TYPE,
 	DO_SHELL_TYPE,
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	DO_PACKAGE,
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	DO_FUNC,
 	DO_AGG,
 	DO_OPERATOR,
@@ -222,7 +220,6 @@ typedef struct _shellTypeInfo
 	TypeInfo   *baseType;		/* back link to associated base type */
 } ShellTypeInfo;
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 typedef struct _pkgInfo
 {
 	DumpableObject dobj;
@@ -233,7 +230,6 @@ typedef struct _pkgInfo
 	char		*initrpkgacl;
 	DumpableAcl	dacl;
 } PkgInfo;
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 typedef struct _funcInfo
 {
@@ -752,9 +748,7 @@ extern NamespaceInfo *getNamespaces(Archive *fout, int *numNamespaces);
 extern ExtensionInfo *getExtensions(Archive *fout, int *numExtensions);
 extern TypeInfo *getTypes(Archive *fout, int *numTypes);
 extern FuncInfo *getFuncs(Archive *fout, int *numFuncs);
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern PkgInfo *getPackages(Archive *fout, int *numPkgs);
-/* End - ReqID:SRS-SQL-PACKAGE */
 extern AggInfo *getAggregates(Archive *fout, int *numAggs);
 extern OprInfo *getOperators(Archive *fout, int *numOprs);
 extern AccessMethodInfo *getAccessMethods(Archive *fout, int *numAccessMethods);

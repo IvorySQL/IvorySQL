@@ -20,9 +20,7 @@
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "parser/parse_package.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "parser/parser.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -237,7 +235,6 @@ LookupTypeNameOid(ParseState *pstate, const TypeName *typeName, bool missing_ok)
 	Oid			typoid;
 	Type		tup;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/* maybe comes from a package */
 	PkgType		*pkgtype = LookupPkgTypeByTypename(typeName->names, missing_ok);
 	if (pkgtype != NULL)
@@ -246,7 +243,6 @@ LookupTypeNameOid(ParseState *pstate, const TypeName *typeName, bool missing_ok)
 		pfree(pkgtype);
 		return typoid;
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	tup = LookupTypeName(pstate, typeName, NULL, missing_ok);
 	if (tup == NULL)
@@ -498,7 +494,6 @@ TypeNameToString(const TypeName *typeName)
 	return string.data;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * like appendTypeNameToBuffer, but quote TypeName
@@ -548,7 +543,6 @@ TypeNameToQuoteString(const TypeName *typeName)
 	appendQuoteTypeNameToBuffer(typeName, &string);
 	return string.data;
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * TypeNameListToString

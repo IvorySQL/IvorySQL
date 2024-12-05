@@ -34,10 +34,8 @@ extern bool describeOperators(const char *oper_pattern,
 /* \du, \dg */
 extern bool describeRoles(const char *pattern, bool verbose, bool showSystem);
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /* \dk */
 extern bool describePackages(const char *pattern, bool verbose, bool showSystem);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /* \drds */
 extern bool listDbRoleSettings(const char *pattern, const char *pattern2);

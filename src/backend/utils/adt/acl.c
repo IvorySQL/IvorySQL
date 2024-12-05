@@ -850,12 +850,10 @@ acldefault(ObjectType objtype, Oid ownerId)
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_PARAMETER_ACL;
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_PACKAGE;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			elog(ERROR, "unrecognized object type: %d", (int) objtype);
 			world_default = ACL_NO_RIGHTS;	/* keep compiler quiet */
@@ -953,11 +951,9 @@ acldefault_sql(PG_FUNCTION_ARGS)
 		case 'T':
 			objtype = OBJECT_TYPE;
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case 'P':
 			objtype = OBJECT_PACKAGE;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			elog(ERROR, "unrecognized object type abbreviation: %c", objtypec);
 	}
@@ -3489,7 +3485,6 @@ has_function_privilege_id(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * has_package_privilege_id
  *		Check user privileges on a pakcage given
@@ -3521,7 +3516,6 @@ has_package_privilege_id(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * has_function_privilege_id_name

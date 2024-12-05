@@ -64,11 +64,9 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
 #include "commands/packagecmds.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -88,9 +86,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "utils/packagecache.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /*
@@ -121,9 +117,7 @@ static void ExecGrantStmt_oids(InternalGrant *istmt);
 static void ExecGrant_Relation(InternalGrant *istmt);
 static void ExecGrant_common(InternalGrant *istmt, Oid classid, AclMode default_privs,
 							 void (*object_check) (InternalGrant *istmt, HeapTuple tuple));
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 static void ExecGrant_Package(InternalGrant *grantStmt);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 static void ExecGrant_Language_check(InternalGrant *istmt, HeapTuple tuple);
 static void ExecGrant_Largeobject(InternalGrant *istmt);
@@ -275,11 +269,9 @@ restrict_and_check_grant(bool is_grant, AclMode avail_goptions, bool all_privs,
 		case OBJECT_FUNCTION:
 			whole_mask = ACL_ALL_RIGHTS_FUNCTION;
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			whole_mask = ACL_ALL_RIGHTS_PACKAGE;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_LANGUAGE:
 			whole_mask = ACL_ALL_RIGHTS_LANGUAGE;
 			break;
@@ -512,12 +504,10 @@ ExecuteGrantStmt(GrantStmt *stmt)
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for function");
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			all_privileges = ACL_ALL_RIGHTS_PACKAGE;
 			errormsg = gettext_noop("invalid privilege type %s for package");
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_LANGUAGE:
 			all_privileges = ACL_ALL_RIGHTS_LANGUAGE;
 			errormsg = gettext_noop("invalid privilege type %s for language");
@@ -648,11 +638,9 @@ ExecGrantStmt_oids(InternalGrant *istmt)
 		case OBJECT_ROUTINE:
 			ExecGrant_common(istmt, ProcedureRelationId, ACL_ALL_RIGHTS_FUNCTION, NULL);
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			ExecGrant_Package(istmt);
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_LANGUAGE:
 			ExecGrant_common(istmt, LanguageRelationId, ACL_ALL_RIGHTS_LANGUAGE, ExecGrant_Language_check);
 			break;
@@ -745,7 +733,6 @@ objectNamesToOids(ObjectType objtype, List *objnames, bool is_grant)
 				objects = lappend_oid(objects, funcid);
 			}
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			foreach(cell, objnames)
 			{
@@ -766,7 +753,6 @@ objectNamesToOids(ObjectType objtype, List *objnames, bool is_grant)
 				objects = lappend_oid(objects, relOid);
 			}
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_LANGUAGE:
 			foreach(cell, objnames)
 			{
@@ -969,7 +955,6 @@ objectsInSchemaToOids(ObjectType objtype, List *nspnames)
 					table_close(rel, AccessShareLock);
 				}
 				break;
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			case OBJECT_PACKAGE:
 				{
 					ScanKeyData key[1];
@@ -996,7 +981,6 @@ objectsInSchemaToOids(ObjectType objtype, List *nspnames)
 					table_close(rel, AccessShareLock);
 				}
 				break;
-			/* End - ReqID:SRS-SQL-PACKAGE */
 			default:
 				/* should not happen */
 				elog(ERROR, "unrecognized GrantStmt.objtype: %d",
@@ -1140,12 +1124,10 @@ ExecAlterDefaultPrivilegesStmt(ParseState *pstate, AlterDefaultPrivilegesStmt *s
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for function");
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			all_privileges = ACL_ALL_RIGHTS_PACKAGE;
 			errormsg = gettext_noop("invalid privilege type %s for package");
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PROCEDURE:
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for procedure");
@@ -1337,13 +1319,11 @@ SetDefaultACL(InternalDefaultACL *iacls)
 				this_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			break;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			objtype = DEFACLOBJ_PACKAGE;
 			if (iacls->all_privs && this_privileges == ACL_NO_RIGHTS)
 				this_privileges = ACL_ALL_RIGHTS_PACKAGE;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		case OBJECT_TYPE:
 			objtype = DEFACLOBJ_TYPE;
@@ -1598,11 +1578,9 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 			case DEFACLOBJ_FUNCTION:
 				iacls.objtype = OBJECT_FUNCTION;
 				break;
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			case DEFACLOBJ_PACKAGE:
 				iacls.objtype = OBJECT_PACKAGE;
 				break;
-			/* End - ReqID:SRS-SQL-PACKAGE */
 			case DEFACLOBJ_TYPE:
 				iacls.objtype = OBJECT_TYPE;
 				break;
@@ -2246,7 +2224,6 @@ ExecGrant_Relation(InternalGrant *istmt)
 	table_close(relation, RowExclusiveLock);
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * grant package
  */
@@ -2375,7 +2352,6 @@ ExecGrant_Package(InternalGrant *istmt)
 	table_close(relation, RowExclusiveLock);
 
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 static void
@@ -3043,14 +3019,12 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_VIEW:
 						msg = gettext_noop("permission denied for view %s");
 						break;
-					/* Begin - ReqID:SRS-SQL-PACKAGE */
 					case OBJECT_PACKAGE:
 						msg = gettext_noop("permission denied for package %s");
 						break;
 					case OBJECT_PACKAGE_BODY:
 						msg = gettext_noop("permission denied for package body %s");
 						break;
-					/* End - ReqID:SRS-SQL-PACKAGE */
 
 						/* these currently aren't used */
 					case OBJECT_ACCESS_METHOD:
@@ -3192,14 +3166,12 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TRIGGER:
 						msg = gettext_noop("must be owner of relation %s");
 						break;
-					/* Begin - ReqID:SRS-SQL-PACKAGE */
 					case OBJECT_PACKAGE:
 						msg = gettext_noop("must be owner of package %s");
 						break;
 					case OBJECT_PACKAGE_BODY:
 						msg = gettext_noop("must be owner of package body %s");
 						break;
-					/* End - ReqID:SRS-SQL-PACKAGE */
 
 						/* these currently aren't used */
 					case OBJECT_ACCESS_METHOD:
@@ -3292,10 +3264,8 @@ pg_aclmask(ObjectType objtype, Oid object_oid, AttrNumber attnum, Oid roleid,
 			return object_aclmask(DatabaseRelationId, object_oid, roleid, mask, how);
 		case OBJECT_FUNCTION:
 			return object_aclmask(ProcedureRelationId, object_oid, roleid, mask, how);
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			return pg_package_aclmask(object_oid, roleid, mask, how);
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_LANGUAGE:
 			return object_aclmask(LanguageRelationId, object_oid, roleid, mask, how);
 		case OBJECT_LARGEOBJECT:
@@ -3329,7 +3299,6 @@ pg_aclmask(ObjectType objtype, Oid object_oid, AttrNumber attnum, Oid roleid,
 	}
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * Exported routine for examining a user's privileges for a package
  */
@@ -3389,7 +3358,6 @@ pg_package_aclmask(Oid pkg_oid, Oid roleid, AclMode mask, AclMaskHow how)
 
 	return result;
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /* ****************************************************************
@@ -4422,7 +4390,6 @@ pg_class_aclcheck_ext(Oid table_oid, Oid roleid,
 		return ACLCHECK_NO_PRIV;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * Exported routine for checking a user's access privileges to a package
  */
@@ -4434,7 +4401,6 @@ pg_package_aclcheck(Oid pkgoid,Oid roleid,AclMode mode)
 	else
 		return ACLCHECK_NO_PRIV;
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /*
@@ -4665,11 +4631,9 @@ get_user_default_acl(ObjectType objtype, Oid ownerId, Oid nsp_oid)
 			defaclobjtype = DEFACLOBJ_NAMESPACE;
 			break;
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case OBJECT_PACKAGE:
 			defaclobjtype = DEFACLOBJ_PACKAGE;
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		default:
 			return NULL;
@@ -4868,7 +4832,6 @@ recordExtObjInitPriv(Oid objoid, Oid classoid)
 
 		systable_endscan(scan);
 	}
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	else if (classoid == PackageRelationId)
 	{
 		Datum		aclDatum;
@@ -4889,7 +4852,6 @@ recordExtObjInitPriv(Oid objoid, Oid classoid)
 
 		ReleaseSysCache(tuple);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	/* This will error on unsupported classoid. */
 	else if (get_object_attnum_acl(classoid) != InvalidAttrNumber)
 	{

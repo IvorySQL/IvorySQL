@@ -235,8 +235,6 @@ extern bool CachedPlanIsSimplyValid(CachedPlanSource *plansource,
 extern CachedExpression *GetCachedExpression(Node *expr);
 extern void FreeCachedExpression(CachedExpression *cexpr);
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 extern void setPlanCacheInvalidForPackage(Oid pkgoid);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 #endif							/* PLANCACHE_H */

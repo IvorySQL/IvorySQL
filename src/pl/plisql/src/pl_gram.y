@@ -30,10 +30,8 @@
 
 #include "pl_subproc_function.h"
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "pl_package.h"
 #include "pg_config.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 #include "utils/ora_compatible.h"
 
@@ -96,10 +94,8 @@ static  PLiSQL_stmt	*make_case(int location, PLiSQL_expr *t_expr,
 								   List *case_when_list, List *else_stmts);
 static	char			*NameOfDatum(PLwdatum *wdatum);
 static	void			 check_assignable(PLiSQL_datum *datum, int location);
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 static void check_packagedatum_assignable(PLiSQL_pkg_datum *datum,
 											int location);
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 static	void			 read_into_target(PLiSQL_variable **target,
 										  bool *strict);
@@ -157,9 +153,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 			char *label;
 			int  n_initvars;
 			int  *initvarnos;
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			bool popname;
-			/* End - ReqID:SRS-SQL-PACKAGE */
 		}						declhdr;
 		struct
 		{
@@ -261,11 +255,9 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 %type <declhdr> ora_decl_sect
 %type <boolean> opt_ora_decl_stmts
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 %type <stmt> ora_pl_package
 %type <str> ora_first_opt_block_label
 %type <boolean> opt_ora_decl_start
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * Basic non-keyword token types.  These are hard-wired into the core lexer.
@@ -424,12 +416,10 @@ pl_function		: comp_options ora_outermost_pl_block opt_semi
 					{
 						plisql_parse_result = (PLiSQL_stmt_block *) $2;
 					}
-				/* Begin - ReqID:SRS-SQL-PACKAGE */
 				| comp_options ora_pl_package opt_semi
 					{
 						plisql_parse_result = (PLiSQL_stmt_block *) $2;
 					}
-				/* End - ReqID:SRS-SQL-PACKAGE */
 				;
 
 comp_options	:
@@ -480,7 +470,6 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 		{
 			PLiSQL_stmt_block *new;
 
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			/* package specification doesn't be allowed to include begin */
 			if (plisql_compile_packageitem != NULL &&
 				!plisql_compile_packageitem->finish_compile_special)
@@ -495,7 +484,6 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 							plisql_get_package_last_globaldno($4 == NULL ? -1 : $4->sqlstate_varno,
 											$4 == NULL ? -1 : $4->sqlerrm_varno);
 			}
-			/* End - ReqID:SRS-SQL-PACKAGE */
 
 			new = palloc0(sizeof(PLiSQL_stmt_block));
 
@@ -509,19 +497,16 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 			new->exceptions = $4;
 
 			check_labels($1.label, $6, @6);
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			/*
 			 * no decalre keyword, we don't add lable block namespace
 			 */
 			if ($1.popname)
 				plisql_ns_pop();
-			/* End - ReqID:SRS-SQL-PACKAGE */
 
 			$$ = (PLiSQL_stmt *)new;
 		}
 	;
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * package and its body define for which
  * has no init block
@@ -560,10 +545,8 @@ ora_pl_package: ora_decl_sect K_END opt_label
 
 				$$ = (PLiSQL_stmt *)new;
 			}
-/* End - ReqID:SRS-SQL-PACKAGE */
 ;
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 ora_decl_sect: ora_first_opt_block_label opt_ora_decl_start
 				{
 					if ($2)
@@ -611,7 +594,6 @@ ora_first_opt_block_label:
 						$$ = $2;
 					}
 				;
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 opt_ora_decl_start: K_DECLARE
 					{
@@ -622,9 +604,7 @@ opt_ora_decl_start: K_DECLARE
 						 * we process the decl_stmts
 						 */
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
-						/* Begin - ReqID:SRS-SQL-PACKAGE */
 						$$ = true;
-						/* End - ReqID:SRS-SQL-PACKAGE */
 					}
 				| /*EMPTY*/
 					{
@@ -635,9 +615,7 @@ opt_ora_decl_start: K_DECLARE
 						 * we process the decl_stmts
 						 */
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
-						/* Begin - ReqID:SRS-SQL-PACKAGE */
 						$$ = false;
-						/* End - ReqID:SRS-SQL-PACKAGE */
 					}
 				;
 
@@ -1148,7 +1126,7 @@ function_heading	: K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 						{
 							PLiSQL_subproc_function *subprocfunc;
 
-							subprocfunc = plisql_build_subproc_function($2, $3, $5, @2); /* ReqID:SRS-SQL-PACKAGE */
+							subprocfunc = plisql_build_subproc_function($2, $3, $5, @2); 
 
 							$$ = subprocfunc;
 						}
@@ -1229,7 +1207,7 @@ procedure_heading : K_PROCEDURE ora_function_name func_args
 						{
 							PLiSQL_subproc_function *subprocfunc;
 
-							subprocfunc = plisql_build_subproc_function($2, $3, NULL, @2); /* ReqID:SRS-SQL-PACKAGE */
+							subprocfunc = plisql_build_subproc_function($2, $3, NULL, @2); 
 
 							$$ = subprocfunc;
 						}
@@ -1807,7 +1785,7 @@ getdiag_target	: T_DATUM
 						 * that is an array element, but for now we don't, so
 						 * just throw an error if next token is '['.
 						 */
-						if (is_row_record_datum($1.datum) || /* ReqID:SRS-SQL-PACKAGE */
+						if (is_row_record_datum($1.datum) || 
 							plisql_peek() == '[')
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
@@ -2267,7 +2245,7 @@ for_variable	: T_DATUM
 					{
 						$$.name = NameOfDatum(&($1));
 						$$.lineno = plisql_location_to_lineno(@1);
-						if (is_row_record_datum($1.datum)) /* ReqID:SRS-SQL-PACKAGE */
+						if (is_row_record_datum($1.datum)) 
 						{
 							$$.scalar = NULL;
 							$$.row = $1.datum;
@@ -2769,9 +2747,7 @@ stmt_open		: K_OPEN cursor_variable
 					{
 						PLiSQL_stmt_open *new;
 						int				  tok;
-						/* Begin - ReqID:SRS-SQL-PACKAGE */
 						PLiSQL_var *cursorvar;
-						/* End - ReqID:SRS-SQL-PACKAGE */
 
 						new = palloc0(sizeof(PLiSQL_stmt_open));
 						new->cmd_type = PLISQL_STMT_OPEN;
@@ -2780,14 +2756,12 @@ stmt_open		: K_OPEN cursor_variable
 						new->curvar = $2->dno;
 						new->cursor_options = CURSOR_OPT_FAST_PLAN;
 
-						/* Begin - ReqID:SRS-SQL-PACKAGE */
 						if ($2->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
 							cursorvar = (PLiSQL_var *) ((PLiSQL_pkg_datum *) $2)->pkgvar;
 						else
 							cursorvar = $2;
-						/* End - ReqID:SRS-SQL-PACKAGE */
 
-						if (cursorvar->cursor_explicit_expr == NULL) /* ReqID:SRS-SQL-PACKAGE */
+						if (cursorvar->cursor_explicit_expr == NULL) 
 						{
 							/* be nice if we could use opt_scrollable here */
 							tok = yylex();
@@ -2964,7 +2938,7 @@ cursor_variable	: T_DATUM
 						 * that is an array element, but for now we don't, so
 						 * just throw an error if next token is '['.
 						 *
-						 * ReqID:SRS-SQL-PACKAGE: maybe a package variable
+						 * maybe a package variable
 						 */
 						if (($1.datum->dtype != PLISQL_DTYPE_VAR &&
 							$1.datum->dtype != PLISQL_DTYPE_PACKAGE_DATUM) ||
@@ -2974,7 +2948,6 @@ cursor_variable	: T_DATUM
 									 errmsg("cursor variable must be a simple variable"),
 									 parser_errposition(@1)));
 
-							/* Begin - ReqID:SRS-SQL-PACKAGE */
 						if ($1.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
 						{
 							PLiSQL_pkg_datum *pkg_datum = (PLiSQL_pkg_datum *) $1.datum;
@@ -2998,7 +2971,6 @@ cursor_variable	: T_DATUM
 									 errmsg("variable \"%s\" must be of type cursor or refcursor",
 											((PLiSQL_var *) $1.datum)->refname),
 									 parser_errposition(@1)));
-						/* End - ReqID:SRS-SQL-PACKAGE */
 						$$ = (PLiSQL_var *) $1.datum;
 					}
 				| T_WORD
@@ -4181,7 +4153,7 @@ make_return_stmt(int location)
 
 		if (tok == T_DATUM && plisql_peek() == ';' &&
 			(yylval.wdatum.datum->dtype == PLISQL_DTYPE_VAR ||
-			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM || /* ReqID:SRS-SQL-PACKAGE */
+			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM || 
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PROMISE ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_ROW ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_REC))
@@ -4245,7 +4217,7 @@ make_return_next_stmt(int location)
 
 		if (tok == T_DATUM && plisql_peek() == ';' &&
 			(yylval.wdatum.datum->dtype == PLISQL_DTYPE_VAR ||
-			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM || /* ReqID:SRS-SQL-PACKAGE */
+			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM || 
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PROMISE ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_ROW ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_REC))
@@ -4352,18 +4324,15 @@ check_assignable(PLiSQL_datum *datum, int location)
 			check_assignable(plisql_Datums[((PLiSQL_recfield *) datum)->recparentno],
 							 location);
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case PLISQL_DTYPE_PACKAGE_DATUM:
 			check_packagedatum_assignable((PLiSQL_pkg_datum *) datum, location);
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
 	}
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * check package datum can be assigned
  */
@@ -4407,7 +4376,6 @@ check_packagedatum_assignable(PLiSQL_pkg_datum *pkg_datum, int location)
 			break;
 	}
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * Read the argument of an INTO clause.  On entry, we have just read the
@@ -4440,7 +4408,7 @@ read_into_target(PLiSQL_variable **target, bool *strict)
 	switch (tok)
 	{
 		case T_DATUM:
-			if (is_row_record_datum(yylval.wdatum.datum)) /* ReqID:SRS-SQL-PACKAGE */
+			if (is_row_record_datum(yylval.wdatum.datum)) 
 			{
 				check_assignable(yylval.wdatum.datum, yylloc);
 				*target = (PLiSQL_variable *) yylval.wdatum.datum;
@@ -4502,7 +4470,7 @@ read_into_scalar_list(char *initial_name,
 		{
 			case T_DATUM:
 				check_assignable(yylval.wdatum.datum, yylloc);
-				if (is_row_record_datum(yylval.wdatum.datum)) /* ReqID:SRS-SQL-PACKAGE */
+				if (is_row_record_datum(yylval.wdatum.datum)) 
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("\"%s\" is not a scalar variable",
@@ -4669,9 +4637,7 @@ parse_datatype(const char *string, int location)
 	int32		typmod;
 	sql_error_callback_arg cbarg;
 	ErrorContextCallback  syntax_errcontext;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	PLiSQL_type *result = NULL;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	cbarg.location = location;
 
@@ -4683,7 +4649,6 @@ parse_datatype(const char *string, int location)
 	/* Let the main parser try to parse it under standard SQL rules */
 	typeName = typeStringToTypeName(string, NULL);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (list_length(typeName->names) < 2 &&
 		!is_compile_standard_package())
 	{
@@ -4705,7 +4670,6 @@ parse_datatype(const char *string, int location)
 		error_context_stack = syntax_errcontext.previous;
 		return result;
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	typenameTypeIdAndMod(NULL, typeName, &type_id, &typmod);
 
@@ -4762,13 +4726,10 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	char	  **argv;
 	StringInfoData ds;
 	bool		any_named = false;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	PLiSQL_var	*real_cursor = NULL;
 	bool		is_packagevar = false;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	tok = yylex();
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (cursor->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
 	{
 		real_cursor = (PLiSQL_var *) ((PLiSQL_pkg_datum *) cursor)->pkgvar;
@@ -4776,7 +4737,6 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	}
 	else
 		real_cursor = cursor;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	if (real_cursor->cursor_explicit_argrow < 0)
 	{
 		/* No arguments expected */
@@ -4804,7 +4764,6 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	/*
 	 * Read the arguments, one by one.
 	 */
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (is_packagevar)
 	{
 		PLiSQL_pkg_datum *pkg_datum = (PLiSQL_pkg_datum *) cursor;
@@ -4814,7 +4773,6 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	}
 	else
 		row = (PLiSQL_row *) plisql_Datums[cursor->cursor_explicit_argrow];
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	argv = (char **) palloc0(row->nfields * sizeof(char *));
 

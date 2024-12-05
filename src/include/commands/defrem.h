@@ -75,9 +75,7 @@ extern void interpret_function_parameter_list(ParseState *pstate,
 											  List **parameterDefaults,
 											  Oid *variadicArgType,
 											  Oid *requiredResultType,
-											  /* Begin - ReqID:SRS-SQL-PACKAGE */
 											  ArrayType **paramtertypeNames);
-											  /* End - ReqID:SRS-SQL-PACKAGE */
 
 /* commands/operatorcmds.c */
 extern ObjectAddress DefineOperator(List *names, List *parameters);

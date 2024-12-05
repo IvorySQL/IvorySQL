@@ -301,7 +301,7 @@ check_hash_func_signature(Oid funcid, int16 amprocnum, Oid argtype)
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(tp);
 
-	if (get_func_real_rettype(tp) != restype || /* ReqID:SRS-SQL-PACKAGE */
+	if (get_func_real_rettype(tp) != restype || 
 		procform->proretset || 
 		procform->pronargs != nargs)
 		result = false;

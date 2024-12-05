@@ -5,9 +5,6 @@
  * Abstract:
  * 	 Executor for the PLiSQL package
  *
- * ReqID:SRS-SQL-PACKAGE
- *
- *
  * Copyright:
  * Copyright (c) 2024, HighGo Software Co.,Ltd. 
  *
@@ -29,10 +26,8 @@
 #include "utils/syscache.h"
 #include "utils/builtins.h"
 #include "commands/packagecmds.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "miscadmin.h"
 #include "utils/array.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 PLiSQL_package *plisql_compile_packageitem;
@@ -801,14 +796,12 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 	PLiSQL_function *function;
 	int			parse_rc;
 	PLiSQL_package *psource;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid 		define_useid = InvalidOid;
 	Oid 		save_userid;
 	int 		save_sec_context;
 	Oid		current_user = GetUserId();
 	HeapTuple	pkgTup;
 	Form_pg_package pkgStruct;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 	/*
@@ -829,7 +822,6 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 	function = &psource->source;
 
 	/* append package namespace */
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	pkgTup = SearchSysCache1(PKGOID, ObjectIdGetDatum(item->pkey));
 	if (!HeapTupleIsValid(pkgTup))
 		elog(ERROR, "cache lookup failed for package %u", item->pkey);
@@ -845,7 +837,6 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 					save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
 	}
 	ReleaseSysCache(pkgTup);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	plisql_error_funcname = pstrdup(function->fn_signature);
 
@@ -955,12 +946,10 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	PackageCacheKey pkey;
 	PLiSQL_variable	*var;
 	PLiSQL_function *function;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid 		define_useid = InvalidOid;
 	Oid 		save_userid;
 	int 		save_sec_context;
 	Oid			current_user = GetUserId();
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/*
 	 * Setup the scanner input and error info.  We assume that this package
@@ -974,7 +963,6 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	pkg_source = TextDatumGetCString(pkgdatum);
 	plisql_scanner_init(pkg_source);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/*
 	 * invoke as define in compiling, we should
 	 * switch current user for plsql
@@ -987,7 +975,6 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 		SetUserIdAndSecContext(define_useid,
 					save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	plisql_error_funcname = pstrdup(NameStr(pkgStruct->pkgname));
 
@@ -1129,10 +1116,8 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	/* set package status */
 	item->cachestatus = 0;
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (OidIsValid(define_useid))
 		SetUserIdAndSecContext(save_userid, save_sec_context);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/*
 	 * create package, we doesn't push it
@@ -1352,14 +1337,12 @@ plisql_exec_package_init(FunctionCallInfo fcinfo, PLiSQL_function *func)
 	PLiSQL_execstate *save_cur_estate;
 	ResourceOwner procedure_resowner;
 	int			rc;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	Oid 		define_useid = InvalidOid;
 	Oid 		save_userid;
 	int 		save_sec_context;
 	HeapTuple	pkgTup;
 	Form_pg_package pkgStruct;
 	Oid			current_user = GetUserId();
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	nonatomic = fcinfo->context &&
 		IsA(fcinfo->context, CallContext) &&
@@ -1377,7 +1360,6 @@ plisql_exec_package_init(FunctionCallInfo fcinfo, PLiSQL_function *func)
 	SPI_remember_func(func);
 	/* End - SRS-PLSQL-SUBPROC */
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	/*
 	 * check wether invoke define, we should
 	 * switch current user for package init
@@ -1399,7 +1381,6 @@ plisql_exec_package_init(FunctionCallInfo fcinfo, PLiSQL_function *func)
 		SetUserIdAndSecContext(define_useid,
 							save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
 	}
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	/* Must save and restore prior value of cur_estate */
 	save_cur_estate = func->cur_estate;
@@ -1438,10 +1419,8 @@ plisql_exec_package_init(FunctionCallInfo fcinfo, PLiSQL_function *func)
 			ResourceOwnerDelete(procedure_resowner);
 		}
 
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		if (OidIsValid(define_useid))
 			SetUserIdAndSecContext(save_userid, save_sec_context);
-		/* End - ReqID:SRS-SQL-PACKAGE */
 	}
 	PG_END_TRY();
 
@@ -2133,15 +2112,12 @@ plisql_get_package_func(FunctionCallInfo fcinfo, bool forValidator)
 	int	fno;
 	PLiSQL_function *func;
 	PLiSQL_package *psource;
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	PackageCacheItem *item = NULL;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	funcexpr = (FuncExpr *) fcinfo->flinfo->fn_expr;
 
 	Assert(funcexpr->function_from == FUNC_FROM_PACKAGE);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	if (!OidIsValid(funcexpr->pkgoid))
 		elog(ERROR, "funcexpr include invalid pkgoid");
 	item = PackageCacheLookup(&(funcexpr->pkgoid));
@@ -2157,7 +2133,6 @@ plisql_get_package_func(FunctionCallInfo fcinfo, bool forValidator)
 		elog(ERROR, "existing state of packages has been discarded");
 	}
 	pfunc = &psource->source;
-	/* End - ReqID:SRS-SQL-PACKAGE */
 
 	pfunc = (PLiSQL_function *) funcexpr->parent_func;
 	fno = (int) funcexpr->funcid;
@@ -3145,7 +3120,6 @@ is_row_record_datum(PLiSQL_datum * datum)
 		return false;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE, M000088 */
 /*
  * release package function use_count
  */
@@ -3172,4 +3146,3 @@ release_package_func_usecount(FunctionCallInfo fcinfo)
 	return;
 }
 
-/* End - ReqID:SRS-SQL-PACKAGE, M000088 */

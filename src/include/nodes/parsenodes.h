@@ -2314,10 +2314,8 @@ typedef enum ObjectType
 	OBJECT_TYPE,
 	OBJECT_USER_MAPPING,
 	OBJECT_VIEW,
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	OBJECT_PACKAGE,
 	OBJECT_PACKAGE_BODY,
-	/* End - ReqID:SRS-SQL-PACKAGE */
 } ObjectType;
 
 /* ----------------------
@@ -3943,9 +3941,7 @@ typedef enum DiscardMode
 	DISCARD_PLANS,
 	DISCARD_SEQUENCES,
 	DISCARD_TEMP,
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	DISCARD_PACKAGES,
-	/* End - ReqID:SRS-SQL-PACKAGE */
 } DiscardMode;
 
 typedef struct DiscardStmt
@@ -4299,7 +4295,6 @@ typedef struct ColumnRefOrFuncCall
 	FuncCall	*func;
 } ColumnRefOrFuncCall;
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /* ----------------------
  *		Create Package Statement
  * ----------------------
@@ -4342,6 +4337,5 @@ typedef struct AlterPackageStmt
 	bool					editable;
 	List					*parameters;
 } AlterPackageStmt;
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 #endif							/* PARSENODES_H */

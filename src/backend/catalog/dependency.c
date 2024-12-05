@@ -65,11 +65,9 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
 #include "commands/packagecmds.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -89,9 +87,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "utils/packagecache.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 
@@ -1940,7 +1936,6 @@ find_expr_references_walker(Node *node,
 		if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			add_object_address(ProcedureRelationId, funcexpr->funcid, 0,
 						   context->addrs);
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		else
 		{
 			Oid			funcoid = InvalidOid;
@@ -1957,7 +1952,6 @@ find_expr_references_walker(Node *node,
 						   context->addrs);
 			}
 		}
-		/* End - ReqID:SRS-SQL-PACKAGE */
 
 		/* fall through to examine arguments */
 	}

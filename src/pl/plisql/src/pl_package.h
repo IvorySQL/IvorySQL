@@ -6,7 +6,6 @@
  *		Definitions for the PLISQL
  *			  procedural language package
  *
- * ReqID:SRS-SQL-PACKAGE
  *
  *
  * Copyright:
@@ -196,8 +195,6 @@ extern bool is_compile_standard_package(void);
 extern void plisql_get_subprocs_from_package(Oid pkgoid, TupleDesc tupdesc,
 											Tuplestorestate *tupstore);
 extern bool is_row_record_datum(PLiSQL_datum *datum);
-/* Begin - ReqID:SRS-SQL-PACKAGE, M000088 */
 extern void release_package_func_usecount(FunctionCallInfo fcinfo);
-/* End - ReqID:SRS-SQL-PACKAGE, M000088 */
 #endif
 

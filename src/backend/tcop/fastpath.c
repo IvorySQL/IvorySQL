@@ -157,10 +157,8 @@ fetch_fp_info(Oid func_id, struct fp_info *fip)
 	fip->namespace = pp->pronamespace;
 	fip->rettype = pp->prorettype;
 	memcpy(fip->argtypes, pp->proargtypes.values, pp->pronargs * sizeof(Oid));
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	repl_func_real_argtype(func_htp, fip->argtypes, pp->pronargs);
 	fip->rettype = get_func_real_rettype(func_htp);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	strlcpy(fip->fname, NameStr(pp->proname), NAMEDATALEN);
 
 	ReleaseSysCache(func_htp);

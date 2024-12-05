@@ -50,10 +50,8 @@
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 #include "funcapi.h"
 #include "parser/parse_package.h"
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
@@ -1667,14 +1665,11 @@ get_func_rettype(Oid funcid)
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	result = get_func_real_rettype(tp);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	ReleaseSysCache(tp);
 	return result;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * maybe a function return a package'var
  * which is changed with package. so, we should
@@ -1868,7 +1863,6 @@ get_func_real_allargtype(HeapTuple proc_tup)
 	}
 	return NULL;
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /*
@@ -1910,17 +1904,13 @@ get_func_signature(Oid funcid, Oid **argtypes, int *nargs)
 
 	procstruct = (Form_pg_proc) GETSTRUCT(tp);
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	result = get_func_real_rettype(tp);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	*nargs = (int) procstruct->pronargs;
 	Assert(*nargs == procstruct->proargtypes.dim1);
 	*argtypes = (Oid *) palloc(*nargs * sizeof(Oid));
 	memcpy(*argtypes, procstruct->proargtypes.values, *nargs * sizeof(Oid));
 
-	/* Begin - ReqID:SRS-SQL-PACKAGE */
 	repl_func_real_argtype(tp, *argtypes, *nargs);
-	/* End - ReqID:SRS-SQL-PACKAGE */
 	ReleaseSysCache(tp);
 	return result;
 }

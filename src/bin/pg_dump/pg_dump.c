@@ -244,9 +244,7 @@ static void dumpCompositeTypeColComments(Archive *fout, const TypeInfo *tyinfo,
 static void dumpShellType(Archive *fout, const ShellTypeInfo *stinfo);
 static void dumpProcLang(Archive *fout, const ProcLangInfo *plang);
 static void dumpFunc(Archive *fout, const FuncInfo *finfo);
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 static void dumpPackage(Archive *fout, const PkgInfo *pkginfo);
-/* End - ReqID:SRS-SQL-PACKAGE */
 static void dumpCast(Archive *fout, const CastInfo *cast);
 static void dumpTransform(Archive *fout, const TransformInfo *transform);
 static void dumpOpr(Archive *fout, const OprInfo *oprinfo);
@@ -6699,7 +6697,6 @@ getFuncs(Archive *fout, int *numFuncs)
 	return finfo;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * getPackages:
  *	  read all the user-defined package in the system catalogs and
@@ -6776,7 +6773,6 @@ getPackages(Archive *fout, int *numPkgs)
 	destroyPQExpBuffer(query);
 	return pkginfo;
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 
 /*
@@ -10518,11 +10514,9 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 		case DO_SHELL_TYPE:
 			dumpShellType(fout, (const ShellTypeInfo *) dobj);
 			break;
-		/* Begin - ReqID:SRS-SQL-PACKAGE */
 		case DO_PACKAGE:
 			dumpPackage(fout, (const PkgInfo *) dobj);
 			break;
-		/* End - ReqID:SRS-SQL-PACKAGE */
 		case DO_FUNC:
 			dumpFunc(fout, (const FuncInfo *) dobj);
 			break;
@@ -12228,7 +12222,6 @@ format_function_signature(Archive *fout, const FuncInfo *finfo, bool honor_quote
 	return fn.data;
 }
 
-/* Begin - ReqID:SRS-SQL-PACKAGE */
 /*
  * dump a package
  */
@@ -12350,7 +12343,6 @@ dumpPackage(Archive *fout, const PkgInfo *pkginfo)
 	destroyPQExpBuffer(asPart);
 	destroyPQExpBuffer(package_identifier);
 }
-/* End - ReqID:SRS-SQL-PACKAGE */
 
 /*
  * dumpFunc:
@@ -18750,9 +18742,7 @@ addBoundaryDependencies(DumpableObject **dobjs, int numObjs,
 			case DO_EXTENSION:
 			case DO_TYPE:
 			case DO_SHELL_TYPE:
-			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			case DO_PACKAGE:
-			/* End - ReqID:SRS-SQL-PACKAGE */
 			case DO_FUNC:
 			case DO_AGG:
 			case DO_OPERATOR:
