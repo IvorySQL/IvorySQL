@@ -15,4 +15,5 @@ backend_sources += files(
   'syscache.c',
   'ts_cache.c',
   'typcache.c',
+  'packagecache.c',
 )
