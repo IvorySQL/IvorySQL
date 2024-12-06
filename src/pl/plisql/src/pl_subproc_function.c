@@ -18,6 +18,7 @@
 #include "postgres.h"
 #include "plisql.h"
 #include "pl_subproc_function.h"
+#include "pl_package.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_target.h"
 #include "parser/parse_expr.h"
@@ -27,6 +28,9 @@
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
+#include "commands/packagecmds.h"
+#include "catalog/pg_package.h"
+#include "miscadmin.h"
 
 
 typedef struct _subprocFuncCandidateList
@@ -69,28 +73,14 @@ PLiSQL_subproc_function **plisql_saved_subprocfuncs[FUNC_MAX_NEST_LEVEL];
 
 /* user full functions */
 static HTAB *plisql_subprocfunc_HashTableInit(void);
-static FuncDetailCode plisql_get_subprocfunc_detail(ParseState *pstate,
-											PLiSQL_function *pfunc,
-											PLiSQL_nsitem *nse,
-											char *funcname, List **fargs,
-											bool proc_call,
-											List *fargnames,
-											int nargs,
-											Oid *argtypes,
-											Oid *funcid,	/* return value */
-											Oid *rettype,	/* return value */
-											bool *retset,	/* return value */
-											int *nvargs,	/* return value */
-											Oid *vatype,	/* return value */
-											Oid **true_typeids, /* return value */
-											List **argdefaults);
 
 static int plisql_check_function_canreload(List *args,
 						List *fnos, PLiSQL_type *rettype);
 static PLiSQL_subproc_function * plisql_build_subproc_function_internal(char *funcname,
 																	List *args,
 																	PLiSQL_type *retype,
-																	bool add2namespace);
+																	bool add2namespace,
+																	int location); 
 static bool plisql_match_function_argnames(List *funcargs, int nargs,
 													List *argnames, int **argnumber);
 static subprocFuncCandidateList plisql_getFuncCandidateListFromFunname(char *funcname,
@@ -115,19 +105,13 @@ static TypeFuncClass internal_get_subprocfunc_result_type(PLiSQL_subproc_functio
 																		TupleDesc *resultTupleDesc);
 static TupleDesc build_subprocfunction_result_tupdesc_t(PLiSQL_subproc_function *subprocfunc);
 
-static int get_subprocfunc_arg_info_from_arguments(List *args, Oid **p_argtypes,
-								char ***p_argnames, char **p_argmodes);
-static PLiSQL_function *plisql_subprocfunc_HashTableLookup(HTAB *hashp,
-							PLiSQL_func_hashkey *func_key);
 static void plisql_subprocfunc_HashTableInsert(HTAB *hashp,
 						PLiSQL_function *function,
 						PLiSQL_func_hashkey *func_key);
 static Node *plisql_get_subprocfunc_argdefaults(ParseState *pstate,
 											PLiSQL_subproc_function *subprocfunc, int argno);
 static void plisql_init_subprocfunc_compile(PLiSQL_subproc_function *subprocfunc);
-static PLiSQL_function* plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
-													PLiSQL_subproc_function *subprocfunc,
-													bool forValidator);
+
 static void plsql_init_glovalvar_from_stack(PLiSQL_execstate *estate, int dno,
 														int *start_level);
 static void plsql_assign_out_glovalvar_from_stack(PLiSQL_execstate *estate,
@@ -175,14 +159,25 @@ void
 plisql_finish_subproc_func(PLiSQL_function *function)
 {
 	int			i;
+	int			start_subproc = function->nsubprocfuncs;
 
 	function->nsubprocfuncs = plisql_nsubprocFuncs;
 
 	if (plisql_nsubprocFuncs <= 0)
 		return;
 
-	function->subprocfuncs = palloc(sizeof(PLiSQL_subproc_function *) * plisql_nsubprocFuncs);
-	for (i = 0; i < plisql_nsubprocFuncs; i++)
+	/*
+	 * except package specification subproc
+	 */
+	Assert(start_subproc <= plisql_nsubprocFuncs);
+	if (start_subproc == plisql_nsubprocFuncs)
+		return;
+	if (start_subproc != 0)
+		function->subprocfuncs = repalloc(function->subprocfuncs,
+									sizeof(PLiSQL_subproc_function *) * plisql_nsubprocFuncs);
+	else
+		function->subprocfuncs = palloc(sizeof(PLiSQL_subproc_function *) * plisql_nsubprocFuncs);
+	for (i = start_subproc; i < plisql_nsubprocFuncs; i++)
 		function->subprocfuncs[i] = plisql_subprocFuncs[i];
 }
 
@@ -729,7 +724,7 @@ plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
  */
 PLiSQL_subproc_function *
 plisql_build_subproc_function(char *funcname, List *args,
-										PLiSQL_type *rettype)
+										PLiSQL_type *rettype, int location) 
 {
 	PLiSQL_subproc_function *funcs;
 	PLiSQL_nsitem	*nse;
@@ -756,13 +751,13 @@ plisql_build_subproc_function(char *funcname, List *args,
 		else
 		{
 			/* define new function */
-			funcs = plisql_build_subproc_function_internal(funcname, args, rettype, false);
+			funcs = plisql_build_subproc_function_internal(funcname, args, rettype, false, location); 
 			nse->subprocfunc = lappend_int(nse->subprocfunc, funcs->fno);
 		}
 	}
 	else
 	{
-		funcs = plisql_build_subproc_function_internal(funcname, args, rettype, true);
+		funcs = plisql_build_subproc_function_internal(funcname, args, rettype, true, location); 
 		/* init subproc func hash tab */
 		nse = plisql_ns_top();
 		Assert(nse->itemno == funcs->fno);
@@ -804,6 +799,14 @@ plisql_register_internal_func(void)
 	plisql_internal_funcs.get_internal_func_result_type = plisql_get_subprocfunc_result_type;
 	plisql_internal_funcs.get_internal_func_outargs = plisql_get_subprocfunc_outargs;
 	plisql_internal_funcs.get_inernal_func_result_name = plisql_get_subprocfunc_result_name;
+	plisql_internal_funcs.package_validator = plisql_package_validator;
+	plisql_internal_funcs.package_handle = plisql_package_handle;
+	plisql_internal_funcs.package_parse = plisql_package_parse;
+	plisql_internal_funcs.package_free_list = plisql_free_packagelist;
+	plisql_internal_funcs.get_top_function_id = plisql_top_functin_oid;
+	plisql_internal_funcs.package_free = plisql_free_package_function;
+	plisql_internal_funcs.get_subprocs_from_package = plisql_get_subprocs_from_package;
+
 	plisql_internal_funcs.isload = true;
 }
 
@@ -885,7 +888,7 @@ plisql_get_func_name(FuncExpr *fexpr)
 		elog(ERROR, "FuncExpr is not a internal function");
 
 	if (fexpr->parent_func == NULL)
-		elog(ERROR, "parent_func has not set");
+		return NULL;
 
 	function = (PLiSQL_function *) fexpr->parent_func;
 
@@ -1053,6 +1056,10 @@ plisql_get_subproc_func(FunctionCallInfo fcinfo, bool forValidator)
 
 
 	pfunc = (PLiSQL_function *) funcexpr->parent_func;
+
+	if (pfunc == NULL)
+		elog(ERROR, "subproc funcexpr has no init");
+
 	estate = pfunc->cur_estate;
 	fno = (int) funcexpr->funcid;
 
@@ -1075,7 +1082,9 @@ plisql_get_subproc_func(FunctionCallInfo fcinfo, bool forValidator)
 
 		/* origin has no define */
 		if (subprocfunc->function->action == NULL)
-			elog(ERROR, "subproc function doesn't define");
+			elog(ERROR, "subproc function \"%s\" doesn't define",
+				subprocfunc->func_name); 
+
 
 		Assert(subprocfunc->poly_tab != NULL);
 
@@ -1113,7 +1122,8 @@ plisql_get_subproc_func(FunctionCallInfo fcinfo, bool forValidator)
 		func = subprocfunc->function;
 
 	if (func->action == NULL)
-		elog(ERROR, "subproc function doesn't define");
+		elog(ERROR, "subproc function \"%s\" doesn't define",
+			func->fn_signature); 
 
 	return func;
 }
@@ -1146,6 +1156,14 @@ plisql_init_subprocfunc_globalvar(PLiSQL_execstate *estate, FunctionCallInfo fci
 
 	for (i = 0; i < subprocfunc->lastassignvardno; i++)
 	{
+		/* ignore package datum*/
+		if (estate->datums[i]->dtype == PLISQL_DTYPE_PACKAGE_DATUM ||
+			OidIsValid(estate->datums[i]->pkgoid))
+			continue;
+
+		if (is_const_datum(estate, estate->datums[i]))
+			continue;
+
 		/* ignore row variable which is internal */
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_ROW)
 			continue;
@@ -1200,6 +1218,14 @@ plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate *estate,
 
 	for (i = 0; i < subprocfunc->lastassignvardno; i++)
 	{
+		/* ignore package datum*/
+		if (estate->datums[i]->dtype == PLISQL_DTYPE_PACKAGE_DATUM ||
+			OidIsValid(estate->datums[i]->pkgoid))
+			continue;
+
+		if (is_const_datum(estate, estate->datums[i]))
+			continue;
+
 		/* ignore row variable which is internal */
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_ROW)
 			continue;
@@ -1249,7 +1275,7 @@ plisql_subprocfunc_HashTableInit(void)
  * plsql_get_subprocfunc_detail like func_get_detail
  * but we get function details from subprocfunc
  */
-static FuncDetailCode
+FuncDetailCode
 plisql_get_subprocfunc_detail(ParseState *pstate,
 											PLiSQL_function *pfunc, PLiSQL_nsitem *nse,
 											char *funcname, List **fargs, /* return value */
@@ -1494,7 +1520,8 @@ plisql_check_function_canreload(List *args,
 static PLiSQL_subproc_function *
 plisql_build_subproc_function_internal(char *funcname, List *args,
 													PLiSQL_type *rettype,
-													bool add2namespace)
+													bool add2namespace,
+													int location) 
 {
 	PLiSQL_subproc_function *funcs;
 	bool is_proc = (rettype == NULL ? true : false);
@@ -1579,6 +1606,12 @@ plisql_build_subproc_function_internal(char *funcname, List *args,
 							funcname);
 	}
 	funcs->has_poly_argument = has_poly_argument;
+
+	/* if it comes from a package, record its PackageCacheItem */
+	funcs->function->item = plisql_curr_compile->item;
+	funcs->function->fn_oid = plisql_curr_compile->fn_oid;
+	funcs->function->namelabel = pstrdup(funcname);
+	funcs->location = location;
 
 	return funcs;
 }
@@ -2481,7 +2514,7 @@ build_subprocfunction_result_tupdesc_t(PLiSQL_subproc_function *subprocfunc)
  * we get function argtypes from arguments
  * this is special for poly argument type
  */
-static int
+int
 get_subprocfunc_arg_info_from_arguments(List *args, Oid **p_argtypes,
 								char ***p_argnames, char **p_argmodes)
 {
@@ -2523,7 +2556,7 @@ get_subprocfunc_arg_info_from_arguments(List *args, Oid **p_argtypes,
 /*
  * look up for a subproc function
  */
-static PLiSQL_function *
+PLiSQL_function *
 plisql_subprocfunc_HashTableLookup(HTAB *hashp,
 							PLiSQL_func_hashkey *func_key)
 {
@@ -2646,7 +2679,7 @@ plisql_init_subprocfunc_compile(PLiSQL_subproc_function *subprocfunc)
  * like do_compile but only
  * compile a subproc function
  */
-static PLiSQL_function*
+PLiSQL_function*
 plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 										PLiSQL_subproc_function *subprocfunc,
 										bool forValidator)
@@ -2656,6 +2689,10 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	PLiSQL_function *function;
 	int	parse_rc;
 	int found_varno = subprocfunc->function->found_varno;
+	Oid 		define_useid = InvalidOid;
+	Oid 		save_userid;
+	int 		save_sec_context;
+	Oid			current_user = GetUserId();
 
 	plisql_scanner_init(subprocfunc->src);
 
@@ -2668,6 +2705,33 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	plerrcontext.arg = NULL;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
+
+	/* append package namespace */
+	if (subprocfunc->function->item != NULL)
+	{
+		HeapTuple	pkgTup;
+		Form_pg_package pkgStruct;
+
+		pkgTup = SearchSysCache1(PKGOID,
+				ObjectIdGetDatum(subprocfunc->function->item->pkey));
+		if (!HeapTupleIsValid(pkgTup))
+			elog(ERROR, "cache lookup failed for package %u",
+			subprocfunc->function->item->pkey);
+
+		pkgStruct = (Form_pg_package) GETSTRUCT(pkgTup);
+
+		if (current_user != pkgStruct->pkgowner)
+		{
+			define_useid = pkgStruct->pkgowner;
+			GetUserIdAndSecContext(&save_userid, &save_sec_context);
+
+			SetUserIdAndSecContext(define_useid,
+						save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
+		}
+		ReleaseSysCache(pkgTup);
+
+		plerrcontext.callback = plisql_compile_package_error_callback;
+	}
 
 	/*
 	 * Do extra syntax checks when validating the function definition. We skip
@@ -2703,6 +2767,15 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 
 	cur_compile_func_level = 0;
 
+	function->item = subprocfunc->function->item;
+	function->fn_oid = subprocfunc->function->fn_oid;
+	plisql_saved_compile[cur_compile_func_level] = function;
+	if (function->item != NULL)
+		plisql_compile_packageitem = (PLiSQL_package *) function->item->source;
+	else
+		plisql_compile_packageitem = NULL;
+	function->namelabel = pstrdup(subprocfunc->func_name);
+
 	/* init subprocfunc */
 	plisql_init_subprocfunc_compile(subprocfunc);
 	plisql_DumpExecTree = false;
@@ -2721,17 +2794,13 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 
-	plisql_scanner_finish();
-
 	plisql_set_subprocfunc_action(subprocfunc, plisql_parse_result);
 
 	plisql_finish_datums(function);
 
 	plisql_finish_subproc_func(function);
 
-	/* Debug dump for completed functions */
-	if (plisql_DumpExecTree)
-		plisql_dumptree(function);
+	plisql_scanner_finish();
 
 	/*
 	 * Pop the error context stack
@@ -2742,7 +2811,12 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	plisql_check_syntax = false;
 
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
+
+	if (OidIsValid(define_useid))
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+
 	plisql_compile_tmp_cxt = NULL;
+
 	return function;
 }
 

@@ -449,9 +449,8 @@ BEGIN
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
-ERROR:  syntax error at or near "CALL"
-LINE 5:   CALL test_proc12(_a, _b, _c);
-          ^
+NOTICE:  a: 10
+NOTICE:  _a: 10, _b: 10, _c: {10}
 DO $$
 DECLARE _a int; _b int; _c text[];
 BEGIN
@@ -460,9 +459,12 @@ BEGIN
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
-ERROR:  syntax error at or near "CALL"
-LINE 5:   CALL test_proc12(_a, _b, _c);  -- error
-          ^
+ERROR:  procedure test_proc12(pg_catalog.int4, pg_catalog.int4, text[]) does not exist
+LINE 1: CALL test_proc12(_a, _b, _c)
+             ^
+HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+QUERY:  CALL test_proc12(_a, _b, _c)
+CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 -- transition variable assignment
 TRUNCATE test1;
 CREATE FUNCTION triggerfunc1() RETURNS trigger

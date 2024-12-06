@@ -130,6 +130,37 @@ static const char *cur_line_start;
 static const char *cur_line_end;
 static int	cur_line_num;
 
+/*
+ * yylex used global variable in pl_scanner.c
+ */
+typedef struct PLiSQL_yylex_global_proper
+{
+	ora_core_yyscan_t yyscanner;
+	ora_core_yy_extra_type core_yy;
+
+	/* The original input string */
+	const char *scanorig;
+
+	/* Current token's length (corresponds to plsql_yylval and plsql_yylloc) */
+	int	plisql_yyleng;
+
+	/* Current token's code (corresponds to plsql_yylval and plsql_yylloc) */
+	int	plisql_yytoken;
+
+	int	num_pushbacks;
+	int	pushback_token[MAX_PUSHBACKS];
+	TokenAuxData pushback_auxdata[MAX_PUSHBACKS];
+
+	/* from pl_gram.y */
+	YYSTYPE	plisql_yylval;
+	YYLTYPE	plisql_yylloc;
+
+	/* State for plsql_location_to_lineno() */
+	const char *cur_line_start;
+	const char *cur_line_end;
+	int	cur_line_num;
+} PLiSQL_yylex_global_proper;
+
 /* Internal functions */
 static int	internal_yylex(TokenAuxData *auxdata);
 static void push_back_token(int token, TokenAuxData *auxdata);
@@ -640,3 +671,72 @@ plisql_scanner_finish(void)
 	yyscanner = NULL;
 	scanorig = NULL;
 }
+
+/*
+ * saved yylex global variable
+ */
+void *
+plisql_get_yylex_global_proper(void)
+{
+	PLiSQL_yylex_global_proper *yylex_data;
+	int i;
+
+	yylex_data = (PLiSQL_yylex_global_proper *) palloc0(sizeof(PLiSQL_yylex_global_proper));
+
+	yylex_data->core_yy = core_yy;
+	yylex_data->cur_line_end = cur_line_end;
+	yylex_data->cur_line_num = cur_line_num;
+	yylex_data->cur_line_start = cur_line_start;
+	yylex_data->plisql_yyleng = plisql_yyleng;
+	yylex_data->plisql_yytoken = plisql_yytoken;
+
+	yylex_data->num_pushbacks = num_pushbacks;
+	for (i = 0; i < num_pushbacks; i++)
+	{
+		yylex_data->pushback_auxdata[i] = pushback_auxdata[i];
+		yylex_data->pushback_token[i] = pushback_token[i];
+	}
+
+	yylex_data->scanorig = scanorig;
+	yylex_data->yyscanner = yyscanner;
+	yylex_data->plisql_yylval = plisql_yylval;
+	yylex_data->plisql_yylloc = plisql_yylloc;
+
+	return (void *) yylex_data;
+}
+
+/*
+ * recover yylex data
+ */
+void
+plisql_recover_yylex_global_proper(void *value)
+{
+	PLiSQL_yylex_global_proper *yylex_data;
+	int i;
+
+	Assert(value != NULL);
+
+	yylex_data = (PLiSQL_yylex_global_proper *) value;
+
+	core_yy = yylex_data->core_yy;
+	cur_line_end = yylex_data->cur_line_end;
+	cur_line_num = yylex_data->cur_line_num;
+	cur_line_start = yylex_data->cur_line_start;
+	plisql_yyleng = yylex_data->plisql_yyleng;
+	plisql_yytoken = yylex_data->plisql_yytoken;
+
+	num_pushbacks = yylex_data->num_pushbacks;
+	for (i = 0;i < num_pushbacks; i++)
+	{
+		pushback_auxdata[i] = yylex_data->pushback_auxdata[i];
+		pushback_token[i] = yylex_data->pushback_token[i];
+	}
+
+	scanorig = yylex_data->scanorig;
+	yyscanner = yylex_data->yyscanner;
+	plisql_yylval = yylex_data->plisql_yylval;
+	plisql_yylloc = yylex_data->plisql_yylloc;
+
+	return;
+}
+

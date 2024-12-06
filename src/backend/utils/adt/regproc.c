@@ -42,6 +42,9 @@
 #include "utils/regproc.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include "funcapi.h"
+#include "utils/ora_compatible.h"
+#include "utils/guc.h"
 
 static bool parseNumericOid(char *string, Oid *result, Node *escontext);
 static bool parseDashOrOid(char *string, Oid *result, Node *escontext);
@@ -338,6 +341,7 @@ format_procedure_extended(Oid procedure_oid, bits16 flags)
 		int			i;
 		char	   *nspname;
 		StringInfoData buf;
+		char		**p_argtypeNames = NULL;
 
 		/* XXX no support here for bootstrap mode */
 		Assert(!IsBootstrapProcessingMode());
@@ -356,13 +360,29 @@ format_procedure_extended(Oid procedure_oid, bits16 flags)
 
 		appendStringInfo(&buf, "%s(",
 						 quote_qualified_identifier(nspname, proname));
+		if (ORA_PARSER == compatible_db)
+			get_func_typename_info(proctup,
+						&p_argtypeNames, NULL);
+
 		for (i = 0; i < nargs; i++)
 		{
 			Oid			thisargtype = procform->proargtypes.values[i];
 
 			if (i > 0)
 				appendStringInfoChar(&buf, ',');
-			appendStringInfoString(&buf,
+			if (p_argtypeNames != NULL && strcmp(p_argtypeNames[i], "") != 0)
+			{
+				TypeName *tname = stringToNode(p_argtypeNames[i]);
+
+				appendStringInfoString(&buf,
+								   (flags & FORMAT_PROC_FORCE_QUALIFY) != 0 ?
+								   TypeNameToQuoteString(tname):
+								   TypeNameToString(tname));
+				pfree(tname);
+			}
+			else
+				appendStringInfoString(&buf,
+
 								   (flags & FORMAT_PROC_FORCE_QUALIFY) != 0 ?
 								   format_type_be_qualified(thisargtype) :
 								   format_type_be(thisargtype));
@@ -402,6 +422,7 @@ format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs,
 	Form_pg_proc procform;
 	int			nargs;
 	int			i;
+	char		**p_argtypeNames = NULL;
 
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(procedure_oid));
 
@@ -418,11 +439,23 @@ format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs,
 	*objnames = list_make2(get_namespace_name_or_temp(procform->pronamespace),
 						   pstrdup(NameStr(procform->proname)));
 	*objargs = NIL;
+	if (ORA_PARSER == compatible_db)
+		get_func_typename_info(proctup,
+						&p_argtypeNames, NULL);
 	for (i = 0; i < nargs; i++)
 	{
 		Oid			thisargtype = procform->proargtypes.values[i];
 
-		*objargs = lappend(*objargs, format_type_be_qualified(thisargtype));
+		if (p_argtypeNames != NULL && strcmp(p_argtypeNames[i], "") != 0)
+		{
+			TypeName	*tname;
+
+			tname = (TypeName *) stringToNode(p_argtypeNames[i]);
+			*objargs = lappend(*objargs, TypeNameToQuoteString(tname));
+			pfree(tname);
+		}
+		else
+			*objargs = lappend(*objargs, format_type_be_qualified(thisargtype));
 	}
 
 	ReleaseSysCache(proctup);

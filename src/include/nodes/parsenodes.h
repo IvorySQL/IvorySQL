@@ -2314,6 +2314,8 @@ typedef enum ObjectType
 	OBJECT_TYPE,
 	OBJECT_USER_MAPPING,
 	OBJECT_VIEW,
+	OBJECT_PACKAGE,
+	OBJECT_PACKAGE_BODY,
 } ObjectType;
 
 /* ----------------------
@@ -3939,6 +3941,7 @@ typedef enum DiscardMode
 	DISCARD_PLANS,
 	DISCARD_SEQUENCES,
 	DISCARD_TEMP,
+	DISCARD_PACKAGES,
 } DiscardMode;
 
 typedef struct DiscardStmt
@@ -4291,5 +4294,48 @@ typedef struct ColumnRefOrFuncCall
 	ColumnRef	*cref;
 	FuncCall	*func;
 } ColumnRefOrFuncCall;
+
+/* ----------------------
+ *		Create Package Statement
+ * ----------------------
+ */
+typedef struct CreatePackageStmt
+{
+	NodeTag		type;
+	bool		replace;		/* T => replace if already exists */
+	List		*pkgname;
+	List		*propers;		/* invok rigth or access by or default collation */
+	bool		editable;		/* EDITIONABLE */
+	char		*pkgsrc;
+} CreatePackageStmt;
+
+
+typedef struct CreatePackageBodyStmt
+{
+	NodeTag		type;
+	bool		replace;
+	List		*pkgname;
+	bool		editable;
+	char		*bodysrc;
+} CreatePackageBodyStmt;
+
+typedef enum package_alter_flag
+{
+	alter_editable_flag = 0,
+	alter_compile_all,
+	alter_compile_body,
+	alter_compile_package,
+	alter_compile_specification,
+	alter_compile_parameter
+} package_alter_flag;
+
+typedef struct AlterPackageStmt
+{
+	NodeTag					type;
+	List					*pkgname;
+	package_alter_flag		alter_flag;
+	bool					editable;
+	List					*parameters;
+} AlterPackageStmt;
 
 #endif							/* PARSENODES_H */

@@ -740,8 +740,16 @@ typedef enum CoercionForm
 #define FUNC_FROM_SUBPROCFUNC	'i'
 #define FUNC_FROM_PG_PROC		's'
 
+#define FUNC_FROM_PACKAGE		'p'
+#define FUNC_FROM_PACKGE_INITBODY 'b'
+
 #define FUNC_EXPR_FROM_PG_PROC(function_from) \
-	(function_from != FUNC_FROM_SUBPROCFUNC)
+	(function_from != FUNC_FROM_SUBPROCFUNC && function_from != FUNC_FROM_PACKAGE \
+	&& function_from != FUNC_FROM_PACKGE_INITBODY)
+
+#define FUNC_EXPR_FROM_PACKAGE(function_from) \
+	(function_from == FUNC_FROM_PACKAGE)
+
 
 /*
  * FuncExpr - expression node for a function call
@@ -774,6 +782,9 @@ typedef struct FuncExpr
 	List	   *args;
 	char		function_from;	/* proc func, subproc func, package func */
 	void 		*parent_func;	/* subproc funcs'parent func address */
+	char		*function_name;	/* package'func used in view */
+	bool		ref_pkgtype;	/* common'func has reference a package'type */
+	Oid			pkgoid;			/* package'oid */
 	/* token location, or -1 if unknown */
 	ParseLoc	location;
 } FuncExpr;

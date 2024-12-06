@@ -334,6 +334,21 @@ does_not_exist_skipping(ObjectType objtype, Node *object)
 				}
 				break;
 			}
+		case OBJECT_PACKAGE:
+		case OBJECT_PACKAGE_BODY:
+			{
+				List *pkgname = castNode(List, object);
+
+				if (!schema_does_not_exist_skipping(pkgname, &msg, &name))
+				{
+					if (objtype == OBJECT_PACKAGE)
+						msg = gettext_noop("package %s does not exist, skipping");
+					else
+						msg = gettext_noop("package body %s does not exist, skipping");
+					name = NameListToString(pkgname);
+				}
+				break;
+			}
 		case OBJECT_PROCEDURE:
 			{
 				ObjectWithArgs *owa = castNode(ObjectWithArgs, object);

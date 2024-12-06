@@ -136,6 +136,8 @@ pg_namespace|t
 pg_opclass|t
 pg_operator|t
 pg_opfamily|t
+pg_package|t
+pg_package_body|t
 pg_partitioned_table|t
 pg_policy|t
 pg_proc|t

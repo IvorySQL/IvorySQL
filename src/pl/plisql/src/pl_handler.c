@@ -24,11 +24,14 @@
 #include "miscadmin.h"
 #include "plisql.h"
 #include "pl_subproc_function.h"
+#include "pl_package.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include "commands/packagecmds.h"
+
 
 static bool plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plisql_extra_warnings_assign_hook(const char *newvalue, void *extra);
@@ -257,6 +260,10 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	/* Find or compile the function */
 	if (function_from == FUNC_FROM_SUBPROCFUNC)
 		func = plisql_get_subproc_func(fcinfo, false);
+	else if (function_from == FUNC_FROM_PACKAGE)
+	{
+		func = plisql_get_package_func(fcinfo, false);
+	}
 	else
 		func = plisql_compile(fcinfo, false);
 	/* End - nSRS-PLSQL-SUBPROC */
@@ -307,6 +314,11 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 		/* Decrement use-count, restore cur_estate */
 		func->use_count--;
 		func->cur_estate = save_cur_estate;
+
+		if (function_from == FUNC_FROM_PACKAGE)
+		{
+			release_package_func_usecount(fcinfo);
+		}
 
 		/* Be sure to release the procedure resowner if any */
 		if (procedure_resowner)

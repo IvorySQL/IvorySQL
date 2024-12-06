@@ -1966,7 +1966,7 @@ end; $$ language plisql;
 ERROR:  duplicate declaration at or near ";"
 LINE 4:   procedure mds(id integer);
                                    ^
---only declare but no define and no use ok
+--only declare but no define raise error
 do $$
 DECLARE
   var1 integer;
@@ -1974,16 +1974,9 @@ DECLARE
 begin
   var1 := 23;
 end; $$ language plisql;
---no define but use failed
-do $$
-DECLARE
-  var1 integer;
-  function mds(id integer) return integer;
-begin
-  var1 := mds(23);
-end; $$ language plisql;
-ERROR:  subproc function doesn't define
-CONTEXT:  PL/iSQL function inline_code_block line 6 at assignment
+ERROR:  A subprogram body must be defined for the forward declaration of mds
+LINE 4:   function mds(id integer) return integer;
+                   ^
 --again
 do $$
 DECLARE
@@ -1992,8 +1985,9 @@ DECLARE
 begin
   var1 := mds(23);
 end; $$ language plisql;
-ERROR:  subproc function doesn't define
-CONTEXT:  PL/iSQL function inline_code_block line 6 at assignment
+ERROR:  A subprogram body must be defined for the forward declaration of mds
+LINE 4:   function mds(id integer) return integer;
+                   ^
 --define before declare faield
 do $$
 declare
@@ -2032,7 +2026,7 @@ begin
 end; $$ language plisql;
 ERROR:  function or procedure "mds" has already define
 CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 6
---test ok
+--test failed
 create or replace function test(id integer) returns integer
 AS
 $$
@@ -2042,14 +2036,9 @@ begin
   return 23;
 end; $$ language plisql;
 /
---ok
-SELECT test(23) FROM dual;
- test 
-------
-   23
-(1 row)
-
-DROP FUNCTION test(integer);
+ERROR:  A subprogram body must be defined for the forward declaration of mds
+LINE 5:   function mds(id integer) return integer;
+                   ^
 do $$
 DECLARE
   -- Declare proc1 (forward declaration):

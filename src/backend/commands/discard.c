@@ -21,6 +21,8 @@
 #include "commands/sequence.h"
 #include "utils/guc.h"
 #include "utils/portal.h"
+#include "utils/packagecache.h"
+
 
 static void DiscardAll(bool isTopLevel);
 
@@ -42,6 +44,10 @@ DiscardCommand(DiscardStmt *stmt, bool isTopLevel)
 
 		case DISCARD_SEQUENCES:
 			ResetSequenceCaches();
+			break;
+
+		case DISCARD_PACKAGES:
+			ResetPackageCaches();
 			break;
 
 		case DISCARD_TEMP:
@@ -75,4 +81,5 @@ DiscardAll(bool isTopLevel)
 	ResetPlanCache();
 	ResetTempTableNamespace();
 	ResetSequenceCaches();
+	ResetPackageCaches();
 }

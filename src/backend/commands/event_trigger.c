@@ -2140,6 +2140,10 @@ stringify_grant_objtype(ObjectType objtype)
 			return "FOREIGN SERVER";
 		case OBJECT_FUNCTION:
 			return "FUNCTION";
+		case OBJECT_PACKAGE:
+			return "PACKAGE";
+		case OBJECT_PACKAGE_BODY:
+			return "PACKAGE BODY";
 		case OBJECT_LANGUAGE:
 			return "LANGUAGE";
 		case OBJECT_LARGEOBJECT:
@@ -2225,6 +2229,10 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "FOREIGN SERVERS";
 		case OBJECT_FUNCTION:
 			return "FUNCTIONS";
+		case OBJECT_PACKAGE:
+			return "PACKAGE";
+		case OBJECT_PACKAGE_BODY:
+			return "PACKAGE BODY";
 		case OBJECT_LANGUAGE:
 			return "LANGUAGES";
 		case OBJECT_LARGEOBJECT:

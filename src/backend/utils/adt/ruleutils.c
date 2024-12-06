@@ -37,6 +37,7 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_package.h"
 #include "commands/defrem.h"
 #include "commands/tablespace.h"
 #include "common/keywords.h"
@@ -55,6 +56,7 @@
 #include "parser/parse_relation.h"
 #include "parser/parser.h"
 #include "parser/parsetree.h"
+#include "parser/parse_type.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteSupport.h"
@@ -3425,6 +3427,105 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 }
 
 /*
+ * like pg_get_functiondef
+ * we use this function to return the head of package like
+ * "CREATE OR REPLACE PACKAGE xxx is"
+ */
+Datum
+pg_get_package_head(PG_FUNCTION_ARGS)
+{
+	Oid 		pkgid = PG_GETARG_OID(0);
+	StringInfoData buf;
+	HeapTuple	pkgtup;
+	Form_pg_package pkg_form;
+	Datum		accesssource;
+	bool		isnull;
+	const char *name;
+	const char *nsp;
+
+	initStringInfo(&buf);
+
+	pkgtup = SearchSysCache1(PKGOID, ObjectIdGetDatum(pkgid));
+	if (!HeapTupleIsValid(pkgtup))
+		elog(ERROR, "cache lookup failed for package %u", pkgid);
+	pkg_form = (Form_pg_package) GETSTRUCT(pkgtup);
+	name = NameStr(pkg_form->pkgname);
+	nsp = get_namespace_name(pkg_form->pkgnamespace);
+
+	appendStringInfo(&buf, "CREATE %s PACKAGE %s",
+					pkg_form->editable ? "EDITIONABLE" : "NONEDITIONABLE",
+					quote_qualified_identifier(nsp, name));
+
+	appendStringInfo(&buf, " AUTHID %s",
+					pkg_form->define_invok ? "DEFINER" : "CURRENT_USER");
+
+	if (pkg_form->use_collation)
+		appendStringInfo(&buf, " DEFAULT COLLATION %s",
+					"USING_NLS_COMP");
+
+	accesssource = SysCacheGetAttr(PKGOID, pkgtup,
+										 Anum_pg_package_accesssource,
+										 &isnull);
+	if (!isnull)
+	{
+			char	   *str;
+			List	   *sourcelist;
+			ListCell	*lc;
+			char		*access_tag;
+
+			appendStringInfo(&buf, " ACCESSIBLE BY (");
+
+			str = TextDatumGetCString(accesssource);
+			sourcelist = (List *) stringToNode(str);
+
+			foreach (lc, sourcelist)
+			{
+				AccessorItem *access = (AccessorItem *) lfirst(lc);
+				char *unitname;
+
+				Assert(access->type == T_AccessorItem);
+
+				switch (access->unitkind)
+				{
+					case ACCESSOR_FUNCTION:
+						access_tag = "FUNCTION";
+						break;
+					case ACCESSOR_PROCEDURE:
+						access_tag = "PROCEDURE";
+						break;
+					case ACCESSOR_PACKAGE:
+						access_tag = "PACKAGE";
+						break;
+					case ACCESSOR_TRIGGER:
+						access_tag = "TRIGGER";
+						break;
+					case ACCESSOR_TYPE:
+						access_tag = "TYPE";
+						break;
+					case ACCESSOR_UNKNOW:
+						access_tag = " ";
+						break;
+					default:
+						elog(ERROR, "unknown proper type %u", access->unitkind);
+						break;
+				}
+
+				unitname = NameListToString(access->unitname);
+				appendStringInfo(&buf, "%s %s,",
+									access_tag,
+									unitname);
+				pfree(unitname);
+			}
+			/* replace last ',' to )' */
+			buf.data[buf.len] = ')';
+	}
+
+	ReleaseSysCache(pkgtup);
+
+	PG_RETURN_TEXT_P(string_to_text(buf.data));
+}
+
+/*
  * pg_get_function_arguments
  *		Get a nicely-formatted list of arguments for a function.
  *		This is everything that would go between the parentheses in
@@ -3517,8 +3618,11 @@ print_function_rettype(StringInfo buf, HeapTuple proctup)
 	Form_pg_proc proc = (Form_pg_proc) GETSTRUCT(proctup);
 	int			ntabargs = 0;
 	StringInfoData rbuf;
+	char		*rettypename;
 
 	initStringInfo(&rbuf);
+
+	get_func_typename_info(proctup, NULL, &rettypename);
 
 	if (proc->proretset)
 	{
@@ -3536,7 +3640,21 @@ print_function_rettype(StringInfo buf, HeapTuple proctup)
 		/* Not a table function, so do the normal thing */
 		if (proc->proretset)
 			appendStringInfoString(&rbuf, "SETOF ");
-		appendStringInfoString(&rbuf, format_type_be(proc->prorettype));
+		/*
+		 * if type comes from a package, we use rettypename
+		 */
+		if (rettypename != NULL)
+		{
+			TypeName *t = (TypeName *) stringToNode(rettypename);
+			char	*tname = TypeNameToQuoteString(t);
+
+			appendStringInfoString(&rbuf, tname);
+			pfree(tname);
+			pfree(t);
+			pfree(rettypename);
+		}
+		else
+			appendStringInfoString(&rbuf, format_type_be(proc->prorettype));
 	}
 
 	appendBinaryStringInfo(buf, rbuf.data, rbuf.len);
@@ -3565,9 +3683,12 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 	List	   *argdefaults = NIL;
 	ListCell   *nextargdefault = NULL;
 	int			i;
+	char		**argtypenames;
 
 	numargs = get_func_arg_info(proctup,
 								&argtypes, &argnames, &argmodes);
+
+	get_func_typename_info(proctup, &argtypenames, NULL);
 
 	nlackdefaults = numargs;
 	if (print_defaults && proc->pronargdefaults > 0)
@@ -3671,7 +3792,21 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 		appendStringInfoString(buf, modename);
 		if (argname && argname[0])
 			appendStringInfo(buf, "%s ", quote_identifier(argname));
-		appendStringInfoString(buf, format_type_be(argtype));
+		/*
+		 * construct argtypname, if it comes from a
+		 * package, we use argtypenames
+		 */
+		if (argtypenames != NULL && strcmp(argtypenames[i], "") != 0)
+		{
+			TypeName	*t = (TypeName *) stringToNode(argtypenames[i]);
+			char		*tname = TypeNameToQuoteString(t);
+
+			appendStringInfoString(buf, tname);
+			pfree(t);
+			pfree(tname);
+		}
+		else
+			appendStringInfoString(buf, format_type_be(argtype));
 		if (print_defaults && isinput && inputargno > nlackdefaults)
 		{
 			Node	   *expr;
@@ -3692,6 +3827,13 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 			/* aggs shouldn't have defaults anyway, but just to be sure ... */
 			print_defaults = false;
 		}
+	}
+
+	if (argtypenames != NULL)
+	{
+		for (i = 0; i < numargs; i++)
+			pfree(argtypenames[i]);
+		pfree(argtypenames);
 	}
 
 	return argsprinted;

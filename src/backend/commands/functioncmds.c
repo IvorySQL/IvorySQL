@@ -48,6 +48,7 @@
 #include "commands/defrem.h"
 #include "commands/extension.h"
 #include "commands/proclang.h"
+#include "commands/packagecmds.h"
 #include "executor/executor.h"
 #include "executor/functions.h"
 #include "funcapi.h"
@@ -60,6 +61,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
+#include "parser/parse_package.h"
 #include "pgstat.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -87,11 +89,43 @@
  */
 static void
 compute_return_type(TypeName *returnType, Oid languageOid,
-					Oid *prorettype_p, bool *returnsSet_p)
+					Oid *prorettype_p, bool *returnsSet_p,
+					char **rettypename)
 {
 	Oid			rettype;
 	Type		typtup;
 	AclResult	aclresult;
+	PkgType *pkgtype;
+
+	/*
+	 * we first find it from a package
+	 * this is ok, because oracle doesn't
+	 * support table,type,package in the same
+	 * scheam share the same name
+	 */
+	*rettypename = NULL;
+
+	if (languageOid == get_language_oid("plisql", true) &&
+		(pkgtype = LookupPkgTypeByTypename(returnType->names, false)) != NULL)
+	{
+		*prorettype_p = pkgtype->basetypid;
+		*returnsSet_p = returnType->setof;
+		if (pkgtype->pkgname_startloc == 1)
+		{
+			/* append pkgname schema */
+			List *saved_names = returnType->names;
+			char *pkgschema = get_namespace_name(get_package_namespace(pkgtype->pkgoid));
+
+			returnType->names = lcons(makeString(pkgschema), (List *) copyObject(returnType->names));
+			*rettypename = nodeToString(returnType);
+			pfree(returnType->names);
+			returnType->names = saved_names;
+		}
+		else
+			*rettypename = nodeToString(returnType);
+		pfree(pkgtype);
+		return;
+	}
 
 	typtup = LookupTypeName(NULL, returnType, NULL, false);
 
@@ -193,7 +227,8 @@ interpret_function_parameter_list(ParseState *pstate,
 								  List **inParameterNames_list,
 								  List **parameterDefaults,
 								  Oid *variadicArgType,
-								  Oid *requiredResultType)
+								  Oid *requiredResultType, 
+								  ArrayType **parametertypeNames)
 {
 	int			parameterCount = list_length(parameters);
 	Oid		   *inTypes;
@@ -207,6 +242,9 @@ interpret_function_parameter_list(ParseState *pstate,
 	bool		have_defaults = false;
 	ListCell   *x;
 	int			i;
+	Datum		*typeNames = NULL;
+	bool		has_pkg_type = false;
+	bool isplisql = false;
 
 	*variadicArgType = InvalidOid;	/* default result */
 	*requiredResultType = InvalidOid;	/* default result */
@@ -216,6 +254,16 @@ interpret_function_parameter_list(ParseState *pstate,
 	paramModes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramNames = (Datum *) palloc0(parameterCount * sizeof(Datum));
 	*parameterDefaults = NIL;
+
+	/*
+	 * only plisql language support package
+	 * type
+	 */
+	if (languageOid == get_language_oid("plisql", true))
+	{
+		isplisql = true;
+		typeNames = (Datum *) palloc0(parameterCount * sizeof(Datum));
+	}
 
 	/* Scan the list and extract data into work arrays */
 	i = 0;
@@ -228,49 +276,79 @@ interpret_function_parameter_list(ParseState *pstate,
 		Oid			toid;
 		Type		typtup;
 		AclResult	aclresult;
+		PkgType *pkgtype;
 
 		/* For our purposes here, a defaulted mode spec is identical to IN */
 		if (fpmode == FUNC_PARAM_DEFAULT)
 			fpmode = FUNC_PARAM_IN;
 
-		typtup = LookupTypeName(NULL, t, NULL, false);
-		if (typtup)
+		/*
+		 * we first find it from a package
+		 * this is ok, because oracle doesn't
+		 * support table,type,package in the same
+		 * scheam share the same name.
+		 */
+
+		if (isplisql &&
+			(pkgtype = LookupPkgTypeByTypename(t->names, false)) != NULL)
 		{
-			if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+			toid = pkgtype->basetypid;
+			if (pkgtype->pkgname_startloc == 1)
 			{
-				/* As above, hard error if language is SQL */
-				if (languageOid == SQLlanguageId)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-							 errmsg("SQL function cannot accept shell type %s",
-									TypeNameToString(t))));
-				/* We don't allow creating aggregates on shell types either */
-				else if (objtype == OBJECT_AGGREGATE)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-							 errmsg("aggregate cannot accept shell type %s",
-									TypeNameToString(t))));
-				else
-					ereport(NOTICE,
-							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-							 errmsg("argument type %s is only a shell",
-									TypeNameToString(t))));
+				char *pkgschema = get_namespace_name(get_package_namespace(pkgtype->pkgoid));
+				List *saved_names = t->names;
+
+				t->names = lcons(makeString(pkgschema), (List *) copyObject(t->names));
+				typeNames[i] = CStringGetTextDatum(nodeToString(t));
+				pfree(t->names);
+				t->names = saved_names;
 			}
-			toid = typeTypeId(typtup);
-			ReleaseSysCache(typtup);
+			else
+				typeNames[i] = CStringGetTextDatum(nodeToString(t));
+			pfree(pkgtype);
+			has_pkg_type = true;
 		}
 		else
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("type %s does not exist",
-							TypeNameToString(t))));
-			toid = InvalidOid;	/* keep compiler quiet */
-		}
+			typtup = LookupTypeName(NULL, t, NULL, false);
+			if (typtup)
+			{
+				if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+				{
+					/* As above, hard error if language is SQL */
+					if (languageOid == SQLlanguageId)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+								 errmsg("SQL function cannot accept shell type %s",
+										TypeNameToString(t))));
+					/* We don't allow creating aggregates on shell types either */
+					else if (objtype == OBJECT_AGGREGATE)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+								 errmsg("aggregate cannot accept shell type %s",
+										TypeNameToString(t))));
+					else
+						ereport(NOTICE,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								 errmsg("argument type %s is only a shell",
+										TypeNameToString(t))));
+				}
+				toid = typeTypeId(typtup);
+				ReleaseSysCache(typtup);
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("type %s does not exist",
+								TypeNameToString(t))));
+				toid = InvalidOid;	/* keep compiler quiet */
+			}
 
-		aclresult = object_aclcheck(TypeRelationId, toid, GetUserId(), ACL_USAGE);
-		if (aclresult != ACLCHECK_OK)
-			aclcheck_error_type(aclresult, toid);
+			aclresult = object_aclcheck(TypeRelationId, toid, GetUserId(), ACL_USAGE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error_type(aclresult, toid);
+		}
 
 		if (t->setof)
 		{
@@ -486,6 +564,23 @@ interpret_function_parameter_list(ParseState *pstate,
 	}
 	else
 		*parameterNames = NULL;
+
+	if (has_pkg_type)
+	{
+		for (i = 0; i < parameterCount; i++)
+		{
+			if (typeNames[i] == PointerGetDatum(NULL))
+				typeNames[i] = CStringGetTextDatum("");
+		}
+		*parametertypeNames = construct_array(typeNames, parameterCount, TEXTOID,
+											-1, false, 'i');
+	}
+	else
+	{
+		*parametertypeNames = NULL;
+		if (typeNames != NULL)
+			pfree(typeNames);
+	}
 }
 
 
@@ -1118,6 +1213,8 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	Form_pg_language languageStruct;
 	List	   *as_clause;
 	char		parallel;
+	ArrayType	*parametertypeNames = NULL;
+	char		*rettypeName = NULL;
 
 	/* Convert list of names to a name and namespace */
 	namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
@@ -1238,7 +1335,9 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 									  &inParameterNames_list,
 									  &parameterDefaults,
 									  &variadicArgType,
-									  &requiredResultType);
+									  &requiredResultType,
+									  &parametertypeNames
+									  );
 
 	if (stmt->is_procedure)
 	{
@@ -1250,7 +1349,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	{
 		/* explicit RETURNS clause */
 		compute_return_type(stmt->returnType, languageOid,
-							&prorettype, &returnsSet);
+							&prorettype, &returnsSet, &rettypeName); 
 		if (OidIsValid(requiredResultType) && prorettype != requiredResultType)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -1352,7 +1451,9 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 						   PointerGetDatum(proconfig),
 						   prosupport,
 						   procost,
-						   prorows);
+						   prorows,
+						   PointerGetDatum(parametertypeNames),
+						   rettypeName);
 }
 
 /*
@@ -1373,6 +1474,11 @@ CompileFunction(CompileFunctionStmt *stmt)
 	HeapTuple	languageTuple;
 	Form_pg_language langForm;
 	Oid			lanvalidator;
+	Oid relrettypoid = InvalidOid;
+	Oid			argtypes[FUNC_MAX_ARGS];
+	bool		argtypes_change = false;
+	ArrayType	*all_argtypes;
+	bool		alltype_change = false;
 
 	rel = table_open(ProcedureRelationId, RowExclusiveLock);
 	funcOid = LookupFuncWithArgs(stmt->objtype, stmt->func, false);
@@ -1407,6 +1513,94 @@ CompileFunction(CompileFunctionStmt *stmt)
 		heap_freetuple(tup);
 		ReleaseSysCache(languageTuple);
 		return address;
+	}
+
+	/*
+	 * there, if function argtypes or rettype come from
+	 * a package, we should change its pg_proc tuple if
+	 * its argumentstype or rettype is changed
+	 */
+	relrettypoid = get_func_real_rettype(tup);
+	if (procForm->pronargs != 0)
+	{
+		memcpy(argtypes, procForm->proargtypes.values,
+			procForm->pronargs * sizeof(Oid));
+		repl_func_real_argtype(tup, argtypes, procForm->pronargs);
+		argtypes_change = (procForm->pronargs != 0 &&
+			memcmp(argtypes, procForm->proargtypes.values,
+			procForm->pronargs * sizeof(Oid)) != 0);
+	}
+	all_argtypes = get_func_real_allargtype(tup);
+	if (all_argtypes != NULL)
+	{
+		Datum proallargtypes;
+		bool	isNull;
+		ArrayType *arr;
+		int		numargs;
+
+		/* First discover the total number of parameters and get their types */
+		proallargtypes = SysCacheGetAttr(PROCOID, tup,
+									 Anum_pg_proc_proallargtypes,
+									 &isNull);
+		Assert(!isNull);
+		/*
+		 * We expect the arrays to be 1-D arrays of the right types; verify
+		 * that.  For the OID and char arrays, we don't need to use
+		 * deconstruct_array() since the array data is just going to look like
+		 * a C array of values.
+		 */
+		arr = DatumGetArrayTypeP(proallargtypes);	/* ensure not toasted */
+		numargs = ARR_DIMS(arr)[0];
+		if (ARR_NDIM(arr) != 1 ||
+			numargs < 0 ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != OIDOID)
+			elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
+		alltype_change = (memcmp(ARR_DATA_PTR(arr),
+							ARR_DATA_PTR(all_argtypes), sizeof(Oid) * numargs) != 0);
+	}
+	if (relrettypoid != procForm->prorettype ||
+		argtypes_change ||
+		alltype_change)
+	{
+		/* replace pg_proc with new arguments */
+		bool		nulls[Natts_pg_proc];
+		Datum		values[Natts_pg_proc];
+		bool		replaces[Natts_pg_proc];
+		int			i;
+		HeapTuple newtuple;
+		ObjectAddress myself;
+
+		for (i = 0; i < Natts_pg_proc; ++i)
+		{
+			nulls[i] = true;
+			values[i] = (Datum) 0;
+			replaces[i] = false;
+		}
+		if (relrettypoid != procForm->prorettype)
+		{
+			nulls[Anum_pg_proc_prorettype - 1] = false;
+			values[Anum_pg_proc_prorettype - 1] = ObjectIdGetDatum(relrettypoid);
+			replaces[Anum_pg_proc_prorettype - 1] = true;
+		}
+		if (argtypes_change)
+		{
+			nulls[Anum_pg_proc_proargtypes - 1] = false;
+			values[Anum_pg_proc_proargtypes - 1] = PointerGetDatum(buildoidvector(argtypes,
+												procForm->pronargs));
+			replaces[Anum_pg_proc_proargtypes - 1] = true;
+		}
+		if (alltype_change)
+		{
+			nulls[Anum_pg_proc_proallargtypes - 1] = false;
+			values[Anum_pg_proc_proallargtypes - 1] = PointerGetDatum(all_argtypes);
+			replaces[Anum_pg_proc_proallargtypes - 1] = true;
+		}
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls, replaces);
+		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+		/* dependency on extension */
+		ObjectAddressSet(myself, ProcedureRelationId, funcOid);
+		recordDependencyOnCurrentExtension(&myself, true);
 	}
 
 	if (OidIsValid(lanvalidator))
@@ -1805,7 +1999,7 @@ CreateCast(CreateCastStmt *stmt)
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("third argument of cast function must be type %s",
 							"boolean")));
-		if (!IsBinaryCoercibleWithCast(procstruct->prorettype,
+		if (!IsBinaryCoercibleWithCast(get_func_real_rettype(tuple), 
 									   targettypeid,
 									   &outcastid))
 			ereport(ERROR,
@@ -2056,7 +2250,7 @@ CreateTransform(CreateTransformStmt *stmt)
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", fromsqlfuncid);
 		procstruct = (Form_pg_proc) GETSTRUCT(tuple);
-		if (procstruct->prorettype != INTERNALOID)
+		if (get_func_real_rettype(tuple) != INTERNALOID) 
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("return data type of FROM SQL function must be %s",

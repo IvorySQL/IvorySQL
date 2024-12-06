@@ -398,6 +398,7 @@ typedef struct ExprEvalStep
 			void	   *paramarg;	/* private data for same */
 			int			paramid;	/* numeric ID for parameter */
 			Oid			paramtype;	/* OID of parameter's datatype */
+			Oid			pkgoid; 	/* param comes from a package'var */
 		}			cparam;
 
 		/* for EEOP_CASE_TESTVAL/DOMAIN_TESTVAL */

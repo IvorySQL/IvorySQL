@@ -111,6 +111,11 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	/* types for which to apply transforms */
 	Oid			protrftypes[1] BKI_DEFAULT(_null_) BKI_LOOKUP(pg_type);
 
+	/* function return type'name (NOT NULL for package types) */
+	text		rettypename BKI_DEFAULT(_null_);
+	/* parameter type names (NOT NULL for package types) */
+	text		protypenames[1] BKI_DEFAULT(_null_);
+
 	/* procedure source text */
 	text		prosrc BKI_FORCE_NOT_NULL;
 
@@ -214,7 +219,9 @@ extern ObjectAddress ProcedureCreate(const char *procedureName,
 									 Datum proconfig,
 									 Oid prosupport,
 									 float4 procost,
-									 float4 prorows);
+									 float4 prorows,
+									 Datum parametertypeNames,
+									 char *rettypeName);
 
 extern bool function_parse_error_transpose(const char *prosrc);
 
