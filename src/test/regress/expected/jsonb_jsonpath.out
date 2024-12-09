@@ -2637,7 +2637,7 @@ select jsonb_path_query('"12:34:56 +5:30"', '$.time_tz().string()');
 select jsonb_path_query_tz('"12:34:56"', '$.time_tz().string()');
  jsonb_path_query_tz 
 ---------------------
- "12:34:56-07:00"
+ "12:34:56-08:00"
 (1 row)
 
 select jsonb_path_query('"12:34:56"', '$.time().string()');
