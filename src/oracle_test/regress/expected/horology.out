@@ -2,9 +2,9 @@
 -- HOROLOGY
 --
 SHOW TimeZone;  -- Many of these tests depend on the prevailing settings
- TimeZone 
-----------
- PST8PDT
+      TimeZone       
+---------------------
+ America/Los_Angeles
 (1 row)
 
 SHOW DateStyle;
