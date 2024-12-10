@@ -61,6 +61,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -1230,6 +1231,7 @@ DefineIndex(Oid tableId,
 	 */
 	AtEOXact_GUC(false, root_save_nestlevel);
 	root_save_nestlevel = NewGUCNestLevel();
+	RestrictSearchPath();
 
 	/* Add any requested comment */
 	if (stmt->idxcomment != NULL)
@@ -2027,6 +2029,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			{
 				SetUserIdAndSecContext(save_userid, save_sec_context);
 				*ddl_save_nestlevel = NewGUCNestLevel();
+				RestrictSearchPath();
 			}
 		}
 
@@ -2074,6 +2077,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		{
 			SetUserIdAndSecContext(save_userid, save_sec_context);
 			*ddl_save_nestlevel = NewGUCNestLevel();
+			RestrictSearchPath();
 		}
 
 		/*
@@ -2104,6 +2108,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			{
 				SetUserIdAndSecContext(save_userid, save_sec_context);
 				*ddl_save_nestlevel = NewGUCNestLevel();
+				RestrictSearchPath();
 			}
 
 			/*
@@ -3778,8 +3783,16 @@ ReindexRelationConcurrently(const ReindexStmt *stmt, Oid relationOid, const Rein
 		RestrictSearchPath();
 
 		/* determine safety of this index for set_indexsafe_procflags */
-		idx->safe = (indexRel->rd_indexprs == NIL &&
-					 indexRel->rd_indpred == NIL);
+		idx->safe = (RelationGetIndexExpressions(indexRel) == NIL &&
+					 RelationGetIndexPredicate(indexRel) == NIL);
+
+#ifdef USE_INJECTION_POINTS
+		if (idx->safe)
+			INJECTION_POINT("reindex-conc-index-safe");
+		else
+			INJECTION_POINT("reindex-conc-index-not-safe");
+#endif
+
 		idx->tableId = RelationGetRelid(heapRel);
 		idx->amId = indexRel->rd_rel->relam;
 

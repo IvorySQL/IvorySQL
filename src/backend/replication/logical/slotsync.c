@@ -212,9 +212,9 @@ update_local_synced_slot(RemoteSlot *remote_slot, Oid remote_dbid,
 		 * impact the users, so we used DEBUG1 level to log the message.
 		 */
 		ereport(slot->data.persistency == RS_TEMPORARY ? LOG : DEBUG1,
-				errmsg("could not sync slot \"%s\" as remote slot precedes local slot",
+				errmsg("could not synchronize replication slot \"%s\" because remote slot precedes local slot",
 					   remote_slot->name),
-				errdetail("Remote slot has LSN %X/%X and catalog xmin %u, but local slot has LSN %X/%X and catalog xmin %u.",
+				errdetail("The remote slot has LSN %X/%X and catalog xmin %u, but the local slot has LSN %X/%X and catalog xmin %u.",
 						  LSN_FORMAT_ARGS(remote_slot->restart_lsn),
 						  remote_slot->catalog_xmin,
 						  LSN_FORMAT_ARGS(slot->data.restart_lsn),
@@ -456,7 +456,7 @@ drop_local_obsolete_slots(List *remote_slot_list)
 							   0, AccessShareLock);
 
 			ereport(LOG,
-					errmsg("dropped replication slot \"%s\" of dbid %u",
+					errmsg("dropped replication slot \"%s\" of database with OID %u",
 						   NameStr(local_slot->data.name),
 						   local_slot->data.database));
 		}
@@ -576,8 +576,8 @@ update_and_persist_local_synced_slot(RemoteSlot *remote_slot, Oid remote_dbid)
 	if (!found_consistent_snapshot)
 	{
 		ereport(LOG,
-				errmsg("could not sync slot \"%s\"", remote_slot->name),
-				errdetail("Logical decoding cannot find consistent point from local slot's LSN %X/%X.",
+				errmsg("could not synchronize replication slot \"%s\"", remote_slot->name),
+				errdetail("Logical decoding could not find consistent point from local slot's LSN %X/%X.",
 						  LSN_FORMAT_ARGS(slot->data.restart_lsn)));
 
 		return false;
@@ -586,7 +586,7 @@ update_and_persist_local_synced_slot(RemoteSlot *remote_slot, Oid remote_dbid)
 	ReplicationSlotPersist();
 
 	ereport(LOG,
-			errmsg("newly created slot \"%s\" is sync-ready now",
+			errmsg("newly created replication slot \"%s\" is sync-ready now",
 				   remote_slot->name));
 
 	return true;
@@ -620,12 +620,12 @@ synchronize_one_slot(RemoteSlot *remote_slot, Oid remote_dbid)
 	if (remote_slot->confirmed_lsn > latestFlushPtr)
 	{
 		/*
-		 * Can get here only if GUC 'standby_slot_names' on the primary server
-		 * was not configured correctly.
+		 * Can get here only if GUC 'synchronized_standby_slots' on the
+		 * primary server was not configured correctly.
 		 */
 		ereport(AmLogicalSlotSyncWorkerProcess() ? LOG : ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				errmsg("skipping slot synchronization as the received slot sync"
+				errmsg("skipping slot synchronization because the received slot sync"
 					   " LSN %X/%X for slot \"%s\" is ahead of the standby position %X/%X",
 					   LSN_FORMAT_ARGS(remote_slot->confirmed_lsn),
 					   remote_slot->name,
@@ -992,10 +992,9 @@ validate_remote_info(WalReceiverConn *wrconn)
 	if (!primary_slot_valid)
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("slot synchronization requires valid primary_slot_name"),
 		/* translator: second %s is a GUC variable name */
-				errdetail("The replication slot \"%s\" specified by %s does not exist on the primary server.",
-						  PrimarySlotName, "primary_slot_name"));
+				errmsg("replication slot \"%s\" specified by \"%s\" does not exist on primary server",
+					   PrimarySlotName, "primary_slot_name"));
 
 	ExecClearTuple(tupslot);
 	walrcv_clear_result(res);
@@ -1021,13 +1020,14 @@ CheckAndGetDbnameFromConninfo(void)
 	dbname = walrcv_get_dbname_from_conninfo(PrimaryConnInfo);
 	if (dbname == NULL)
 		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 
 		/*
-		 * translator: dbname is a specific option; %s is a GUC variable name
+		 * translator: first %s is a connection option; second %s is a GUC
+		 * variable name
 		 */
-				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("slot synchronization requires dbname to be specified in %s",
-					   "primary_conninfo"));
+				errmsg("replication slot synchronization requires \"%s\" to be specified in \"%s\"",
+					   "dbname", "primary_conninfo"));
 	return dbname;
 }
 
@@ -1047,7 +1047,7 @@ ValidateSlotSyncParams(int elevel)
 	if (wal_level < WAL_LEVEL_LOGICAL)
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("slot synchronization requires \"wal_level\" >= \"logical\""));
+				errmsg("replication slot synchronization requires \"wal_level\" >= \"logical\""));
 
 	/*
 	 * A physical replication slot(primary_slot_name) is required on the
@@ -1058,9 +1058,9 @@ ValidateSlotSyncParams(int elevel)
 	if (PrimarySlotName == NULL || *PrimarySlotName == '\0')
 	{
 		ereport(elevel,
-		/* translator: %s is a GUC variable name */
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("slot synchronization requires %s to be defined", "primary_slot_name"));
+		/* translator: %s is a GUC variable name */
+				errmsg("replication slot synchronization requires \"%s\" to be set", "primary_slot_name"));
 		return false;
 	}
 
@@ -1072,9 +1072,9 @@ ValidateSlotSyncParams(int elevel)
 	if (!hot_standby_feedback)
 	{
 		ereport(elevel,
-		/* translator: %s is a GUC variable name */
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("slot synchronization requires %s to be enabled",
+		/* translator: %s is a GUC variable name */
+				errmsg("replication slot synchronization requires \"%s\" to be enabled",
 					   "hot_standby_feedback"));
 		return false;
 	}
@@ -1086,9 +1086,9 @@ ValidateSlotSyncParams(int elevel)
 	if (PrimaryConnInfo == NULL || *PrimaryConnInfo == '\0')
 	{
 		ereport(elevel,
-		/* translator: %s is a GUC variable name */
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("slot synchronization requires %s to be defined",
+		/* translator: %s is a GUC variable name */
+				errmsg("replication slot synchronization requires \"%s\" to be set",
 					   "primary_conninfo"));
 		return false;
 	}
@@ -1126,7 +1126,7 @@ slotsync_reread_config(void)
 	{
 		ereport(LOG,
 		/* translator: %s is a GUC variable name */
-				errmsg("slot sync worker will shutdown because %s is disabled", "sync_replication_slots"));
+				errmsg("replication slot synchronization worker will shut down because \"%s\" is disabled", "sync_replication_slots"));
 		proc_exit(0);
 	}
 
@@ -1135,7 +1135,7 @@ slotsync_reread_config(void)
 		(old_hot_standby_feedback != hot_standby_feedback))
 	{
 		ereport(LOG,
-				errmsg("slot sync worker will restart because of a parameter change"));
+				errmsg("replication slot synchronization worker will restart because of a parameter change"));
 
 		/*
 		 * Reset the last-start time for this worker so that the postmaster
@@ -1159,7 +1159,7 @@ ProcessSlotSyncInterrupts(WalReceiverConn *wrconn)
 	if (ShutdownRequestPending)
 	{
 		ereport(LOG,
-				errmsg("slot sync worker is shutting down on receiving SIGINT"));
+				errmsg("replication slot synchronization worker is shutting down on receiving SIGINT"));
 
 		proc_exit(0);
 	}

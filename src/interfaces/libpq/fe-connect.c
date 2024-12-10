@@ -3522,6 +3522,12 @@ keep_going:						/* We will come back to here until there is
 						 * byte here.
 						 */
 						conn->status = CONNECTION_AWAITING_RESPONSE;
+
+						/*
+						 * Don't fall back to a plaintext connection after
+						 * reading the error.
+						 */
+						conn->failed_enc_methods |= conn->allowed_enc_methods & (~conn->current_enc_method);
 						goto keep_going;
 					}
 					else
@@ -3565,8 +3571,8 @@ keep_going:						/* We will come back to here until there is
 				if (pollres == PGRES_POLLING_FAILED)
 				{
 					/*
-					 * Failed direct ssl connection, possibly try a new
-					 * connection with postgres negotiation
+					 * SSL handshake failed.  We will retry with a plaintext
+					 * connection, if permitted by sslmode.
 					 */
 					CONNECTION_FAILED();
 				}
@@ -3613,6 +3619,13 @@ keep_going:						/* We will come back to here until there is
 						 * into AWAITING_RESPONSE state and let the code there
 						 * deal with it.  Note we have *not* consumed the "E"
 						 * byte here.
+						 *
+						 * Note that unlike on an error response to
+						 * SSLRequest, we allow falling back to SSL or
+						 * plaintext connection here.  GSS support was
+						 * introduced in PostgreSQL version 12, so an error
+						 * response might mean that we are connecting to a
+						 * pre-v12 server.
 						 */
 						conn->status = CONNECTION_AWAITING_RESPONSE;
 						goto keep_going;
@@ -3660,6 +3673,10 @@ keep_going:						/* We will come back to here until there is
 				}
 				else if (pollres == PGRES_POLLING_FAILED)
 				{
+					/*
+					 * GSS handshake failed.  We will retry with an SSL or
+					 * plaintext connection, if permitted by the options.
+					 */
 					CONNECTION_FAILED();
 				}
 				/* Else, return POLLING_READING or POLLING_WRITING status */

@@ -120,7 +120,7 @@ MultiXactIdToOffsetEntry(MultiXactId multi)
 	return multi % MULTIXACT_OFFSETS_PER_PAGE;
 }
 
-static inline int
+static inline int64
 MultiXactIdToOffsetSegment(MultiXactId multi)
 {
 	return MultiXactIdToOffsetPage(multi) / SLRU_PAGES_PER_SEGMENT;
@@ -174,7 +174,7 @@ MXOffsetToMemberPage(MultiXactOffset offset)
 	return offset / MULTIXACT_MEMBERS_PER_PAGE;
 }
 
-static inline int
+static inline int64
 MXOffsetToMemberSegment(MultiXactOffset offset)
 {
 	return MXOffsetToMemberPage(offset) / SLRU_PAGES_PER_SEGMENT;
@@ -3039,10 +3039,10 @@ SlruScanDirCbFindEarliest(SlruCtl ctl, char *filename, int64 segpage, void *data
 static void
 PerformMembersTruncation(MultiXactOffset oldestOffset, MultiXactOffset newOldestOffset)
 {
-	const int	maxsegment = MXOffsetToMemberSegment(MaxMultiXactOffset);
-	int			startsegment = MXOffsetToMemberSegment(oldestOffset);
-	int			endsegment = MXOffsetToMemberSegment(newOldestOffset);
-	int			segment = startsegment;
+	const int64 maxsegment = MXOffsetToMemberSegment(MaxMultiXactOffset);
+	int64		startsegment = MXOffsetToMemberSegment(oldestOffset);
+	int64		endsegment = MXOffsetToMemberSegment(newOldestOffset);
+	int64		segment = startsegment;
 
 	/*
 	 * Delete all the segments but the last one. The last segment can still
@@ -3050,7 +3050,8 @@ PerformMembersTruncation(MultiXactOffset oldestOffset, MultiXactOffset newOldest
 	 */
 	while (segment != endsegment)
 	{
-		elog(DEBUG2, "truncating multixact members segment %x", segment);
+		elog(DEBUG2, "truncating multixact members segment %llx",
+			 (unsigned long long) segment);
 		SlruDeleteSegment(MultiXactMemberCtl, segment);
 
 		/* move to next segment, handling wraparound correctly */
@@ -3201,14 +3202,14 @@ TruncateMultiXact(MultiXactId newOldestMulti, Oid newOldestMultiDB)
 	}
 
 	elog(DEBUG1, "performing multixact truncation: "
-		 "offsets [%u, %u), offsets segments [%x, %x), "
-		 "members [%u, %u), members segments [%x, %x)",
+		 "offsets [%u, %u), offsets segments [%llx, %llx), "
+		 "members [%u, %u), members segments [%llx, %llx)",
 		 oldestMulti, newOldestMulti,
-		 MultiXactIdToOffsetSegment(oldestMulti),
-		 MultiXactIdToOffsetSegment(newOldestMulti),
+		 (unsigned long long) MultiXactIdToOffsetSegment(oldestMulti),
+		 (unsigned long long) MultiXactIdToOffsetSegment(newOldestMulti),
 		 oldestOffset, newOldestOffset,
-		 MXOffsetToMemberSegment(oldestOffset),
-		 MXOffsetToMemberSegment(newOldestOffset));
+		 (unsigned long long) MXOffsetToMemberSegment(oldestOffset),
+		 (unsigned long long) MXOffsetToMemberSegment(newOldestOffset));
 
 	/*
 	 * Do truncation, and the WAL logging of the truncation, in a critical
@@ -3461,14 +3462,14 @@ multixact_redo(XLogReaderState *record)
 			   SizeOfMultiXactTruncate);
 
 		elog(DEBUG1, "replaying multixact truncation: "
-			 "offsets [%u, %u), offsets segments [%x, %x), "
-			 "members [%u, %u), members segments [%x, %x)",
+			 "offsets [%u, %u), offsets segments [%llx, %llx), "
+			 "members [%u, %u), members segments [%llx, %llx)",
 			 xlrec.startTruncOff, xlrec.endTruncOff,
-			 MultiXactIdToOffsetSegment(xlrec.startTruncOff),
-			 MultiXactIdToOffsetSegment(xlrec.endTruncOff),
+			 (unsigned long long) MultiXactIdToOffsetSegment(xlrec.startTruncOff),
+			 (unsigned long long) MultiXactIdToOffsetSegment(xlrec.endTruncOff),
 			 xlrec.startTruncMemb, xlrec.endTruncMemb,
-			 MXOffsetToMemberSegment(xlrec.startTruncMemb),
-			 MXOffsetToMemberSegment(xlrec.endTruncMemb));
+			 (unsigned long long) MXOffsetToMemberSegment(xlrec.startTruncMemb),
+			 (unsigned long long) MXOffsetToMemberSegment(xlrec.endTruncMemb));
 
 		/* should not be required, but more than cheap enough */
 		LWLockAcquire(MultiXactTruncationLock, LW_EXCLUSIVE);

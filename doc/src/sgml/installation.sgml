@@ -941,12 +941,10 @@ build-postgresql:
         <para>
          <command>llvm-config</command><indexterm><primary>llvm-config</primary></indexterm>
          will be used to find the required compilation options.
-         <command>llvm-config</command>, and then
-         <command>llvm-config-$major-$minor</command> for all supported
-         versions, will be searched for in your <envar>PATH</envar>.  If
-         that would not yield the desired program,
-         use <envar>LLVM_CONFIG</envar> to specify a path to the
-         correct <command>llvm-config</command>. For example
+         <command>llvm-config</command> will be searched for in your
+         <envar>PATH</envar>.  If that would not yield the desired program,
+         use <envar>LLVM_CONFIG</envar> to specify a path to the correct
+         <command>llvm-config</command>. For example
 <programlisting>
 ./configure ... --with-llvm LLVM_CONFIG='/path/to/llvm/bin/llvm-config'
 </programlisting>
@@ -3781,11 +3779,11 @@ make: *** [postgres] Error 1
    </sect3>
   </sect2>
 
-  <sect2 id="installation-notes-visual">
-   <title>Visual</title>
+  <sect2 id="installation-notes-visual-studio">
+   <title>Visual Studio</title>
 
-   <indexterm zone="installation-notes-visual">
-    <primary>Visual</primary>
+   <indexterm zone="installation-notes-visual-studio">
+    <primary>Visual Studio</primary>
     <secondary>installation on</secondary>
    </indexterm>
 
@@ -3799,8 +3797,8 @@ make: *** [postgres] Error 1
    </para>
 
    <para>
-    PostgreSQL for Windows with Visual can be built using meson, as described
-    in <xref linkend="install-meson"/>.
+    PostgreSQL for Windows with Visual Studio can be built using Meson, as
+    described in <xref linkend="install-meson"/>.
     The native Windows port requires a 32 or 64-bit version of Windows
     10 or later.
    </para>

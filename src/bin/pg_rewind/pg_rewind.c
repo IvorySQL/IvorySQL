@@ -882,6 +882,7 @@ getTimelineHistory(TimeLineID tli, bool is_source, int *nentries)
 		pg_free(histfile);
 	}
 
+	/* In debugging mode, print what we read */
 	if (debug)
 	{
 		int			i;
@@ -891,10 +892,7 @@ getTimelineHistory(TimeLineID tli, bool is_source, int *nentries)
 		else
 			pg_log_debug("Target timeline history:");
 
-		/*
-		 * Print the target timeline history.
-		 */
-		for (i = 0; i < targetNentries; i++)
+		for (i = 0; i < *nentries; i++)
 		{
 			TimeLineHistoryEntry *entry;
 
@@ -1106,7 +1104,7 @@ getRestoreCommand(const char *argv0)
 
 	restore_command = pipe_read_line(postgres_cmd->data);
 	if (restore_command == NULL)
-		pg_fatal("unable to read restore_command from target cluster");
+		pg_fatal("could not read restore_command from target cluster");
 
 	(void) pg_strip_crlf(restore_command);
 

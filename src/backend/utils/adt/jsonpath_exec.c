@@ -72,6 +72,7 @@
 #include "utils/datetime.h"
 #include "utils/float.h"
 #include "utils/formatting.h"
+#include "utils/json.h"
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -1382,7 +1383,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				if (res == jperNotFound)
 					RETURN_ERROR(ereport(ERROR,
 										 (errcode(ERRCODE_NON_NUMERIC_SQL_JSON_ITEM),
-										  errmsg("jsonpath item method .%s() can only be applied to a bool, string, or numeric value",
+										  errmsg("jsonpath item method .%s() can only be applied to a boolean, string, or numeric value",
 												 jspOperationName(jsp->type)))));
 
 				jb = &jbv;
@@ -1629,32 +1630,13 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						break;
 					case jbvDatetime:
 						{
-							switch (jb->val.datetime.typid)
-							{
-								case DATEOID:
-									tmp = DatumGetCString(DirectFunctionCall1(date_out,
-																			  jb->val.datetime.value));
-									break;
-								case TIMEOID:
-									tmp = DatumGetCString(DirectFunctionCall1(time_out,
-																			  jb->val.datetime.value));
-									break;
-								case TIMETZOID:
-									tmp = DatumGetCString(DirectFunctionCall1(timetz_out,
-																			  jb->val.datetime.value));
-									break;
-								case TIMESTAMPOID:
-									tmp = DatumGetCString(DirectFunctionCall1(timestamp_out,
-																			  jb->val.datetime.value));
-									break;
-								case TIMESTAMPTZOID:
-									tmp = DatumGetCString(DirectFunctionCall1(timestamptz_out,
-																			  jb->val.datetime.value));
-									break;
-								default:
-									elog(ERROR, "unrecognized SQL/JSON datetime type oid: %u",
-										 jb->val.datetime.typid);
-							}
+							char		buf[MAXDATELEN + 1];
+
+							JsonEncodeDateTime(buf,
+											   jb->val.datetime.value,
+											   jb->val.datetime.typid,
+											   &jb->val.datetime.tz);
+							tmp = pstrdup(buf);
 						}
 						break;
 					case jbvNull:
@@ -1663,7 +1645,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					case jbvBinary:
 						RETURN_ERROR(ereport(ERROR,
 											 (errcode(ERRCODE_NON_NUMERIC_SQL_JSON_ITEM),
-											  errmsg("jsonpath item method .%s() can only be applied to a bool, string, numeric, or datetime value",
+											  errmsg("jsonpath item method .%s() can only be applied to a boolean, string, numeric, or datetime value",
 													 jspOperationName(jsp->type)))));
 						break;
 				}
@@ -2707,12 +2689,27 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			break;
 		case jpiTimestampTz:
 			{
+				struct pg_tm tm;
+				fsec_t		fsec;
+
 				/* Convert result type to timestamp with time zone */
 				switch (typid)
 				{
 					case DATEOID:
 						checkTimezoneIsUsedForCast(cxt->useTz,
 												   "date", "timestamptz");
+
+						/*
+						 * Get the timezone value explicitly since JsonbValue
+						 * keeps that separate.
+						 */
+						j2date(DatumGetDateADT(value) + POSTGRES_EPOCH_JDATE,
+							   &(tm.tm_year), &(tm.tm_mon), &(tm.tm_mday));
+						tm.tm_hour = 0;
+						tm.tm_min = 0;
+						tm.tm_sec = 0;
+						tz = DetermineTimeZoneOffset(&tm, session_timezone);
+
 						value = DirectFunctionCall1(date_timestamptz,
 													value);
 						break;
@@ -2726,6 +2723,16 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					case TIMESTAMPOID:
 						checkTimezoneIsUsedForCast(cxt->useTz,
 												   "timestamp", "timestamptz");
+
+						/*
+						 * Get the timezone value explicitly since JsonbValue
+						 * keeps that separate.
+						 */
+						if (timestamp2tm(DatumGetTimestamp(value), NULL, &tm,
+										 &fsec, NULL, NULL) == 0)
+							tz = DetermineTimeZoneOffset(&tm,
+														 session_timezone);
+
 						value = DirectFunctionCall1(timestamp_timestamptz,
 													value);
 						break;
@@ -3959,12 +3966,12 @@ JsonPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper, bool *empty,
 					(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
 					 errmsg("JSON path expression for column \"%s\" should return single item without wrapper",
 							column_name),
-					 errhint("Use WITH WRAPPER clause to wrap SQL/JSON items into array.")));
+					 errhint("Use the WITH WRAPPER clause to wrap SQL/JSON items into an array.")));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
 					 errmsg("JSON path expression in JSON_QUERY should return single item without wrapper"),
-					 errhint("Use WITH WRAPPER clause to wrap SQL/JSON items into array.")));
+					 errhint("Use the WITH WRAPPER clause to wrap SQL/JSON items into an array.")));
 	}
 
 	if (singleton)

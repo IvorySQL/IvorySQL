@@ -501,6 +501,11 @@ typedef struct XLogCtlData
 	 * If we create a new timeline when the system was started up,
 	 * PrevTimeLineID is the old timeline's ID that we forked off from.
 	 * Otherwise it's equal to InsertTimeLineID.
+	 *
+	 * We set these fields while holding info_lck. Most that reads these
+	 * values knows that recovery is no longer in progress and so can safely
+	 * read the value without a lock, but code that could be run either during
+	 * or after recovery can take info_lck while reading these values.
 	 */
 	TimeLineID	InsertTimeLineID;
 	TimeLineID	PrevTimeLineID;
@@ -5051,6 +5056,7 @@ BootStrapXLOG(void)
 	checkPoint.ThisTimeLineID = BootstrapTimeLineID;
 	checkPoint.PrevTimeLineID = BootstrapTimeLineID;
 	checkPoint.fullPageWrites = fullPageWrites;
+	checkPoint.wal_level = wal_level;
 	checkPoint.nextXid =
 		FullTransactionIdFromEpochAndXid(0, FirstNormalTransactionId);
 	checkPoint.nextOid = FirstGenbkiObjectId;
@@ -5327,6 +5333,13 @@ CleanupAfterArchiveRecovery(TimeLineID EndOfLogTLI, XLogRecPtr EndOfLog,
 			char		origpath[MAXPGPATH];
 			char		partialfname[MAXFNAMELEN];
 			char		partialpath[MAXPGPATH];
+
+			/*
+			 * If we're summarizing WAL, we can't rename the partial file
+			 * until the summarizer finishes with it, else it will fail.
+			 */
+			if (summarize_wal)
+				WaitForWalSummarization(EndOfLog);
 
 			XLogFilePath(origpath, EndOfLogTLI, endLogSegNo, wal_segment_size);
 			snprintf(partialfname, MAXFNAMELEN, "%s.partial", origfname);
@@ -6079,8 +6092,10 @@ StartupXLOG(void)
 	}
 
 	/* Save the selected TimeLineID in shared memory, too */
+	SpinLockAcquire(&XLogCtl->info_lck);
 	XLogCtl->InsertTimeLineID = newTLI;
 	XLogCtl->PrevTimeLineID = endOfRecoveryInfo->lastRecTLI;
+	SpinLockRelease(&XLogCtl->info_lck);
 
 	/*
 	 * Actually, if WAL ended in an incomplete record, skip the parts that
@@ -6616,6 +6631,25 @@ GetWALInsertionTimeLine(void)
 }
 
 /*
+ * GetWALInsertionTimeLineIfSet -- If the system is not in recovery, returns
+ * the WAL insertion timeline; else, returns 0. Wherever possible, use
+ * GetWALInsertionTimeLine() instead, since it's cheaper. Note that this
+ * function decides recovery has ended as soon as the insert TLI is set, which
+ * happens before we set XLogCtl->SharedRecoveryState to RECOVERY_STATE_DONE.
+ */
+TimeLineID
+GetWALInsertionTimeLineIfSet(void)
+{
+	TimeLineID	insertTLI;
+
+	SpinLockAcquire(&XLogCtl->info_lck);
+	insertTLI = XLogCtl->InsertTimeLineID;
+	SpinLockRelease(&XLogCtl->info_lck);
+
+	return insertTLI;
+}
+
+/*
  * GetLastImportantRecPtr -- Returns the LSN of the last important record
  * inserted. All records not explicitly marked as unimportant are considered
  * important.
@@ -7067,6 +7101,7 @@ CreateCheckPoint(int flags)
 	WALInsertLockAcquireExclusive();
 
 	checkPoint.fullPageWrites = Insert->fullPageWrites;
+	checkPoint.wal_level = wal_level;
 
 	if (shutdown)
 	{
@@ -7120,11 +7155,9 @@ CreateCheckPoint(int flags)
 	 */
 	if (!shutdown)
 	{
-		int			dummy = 0;
-
-		/* Record must have payload to avoid assertion failure. */
+		/* Include WAL level in record for WAL summarizer's benefit. */
 		XLogBeginInsert();
-		XLogRegisterData((char *) &dummy, sizeof(dummy));
+		XLogRegisterData((char *) &wal_level, sizeof(wal_level));
 		(void) XLogInsert(RM_XLOG_ID, XLOG_CHECKPOINT_REDO);
 
 		/*
@@ -7447,6 +7480,7 @@ CreateEndOfRecoveryRecord(void)
 		elog(ERROR, "can only be used to end recovery");
 
 	xlrec.end_time = GetCurrentTimestamp();
+	xlrec.wal_level = wal_level;
 
 	WALInsertLockAcquireExclusive();
 	xlrec.ThisTimeLineID = XLogCtl->InsertTimeLineID;

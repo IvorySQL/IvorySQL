@@ -637,6 +637,17 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft_empty ORDER BY c1;
    Remote SQL: SELECT c1, c2 FROM public.loct_empty ORDER BY c1 ASC NULLS LAST
 (3 rows)
 
+-- test restriction on non-system foreign tables.
+SET restrict_nonsystem_relation_kind TO 'foreign-table';
+SELECT * from ft1 where c1 < 1; -- ERROR
+ERROR:  access to non-system foreign table is restricted
+INSERT INTO ft1 (c1) VALUES (1); -- ERROR
+ERROR:  access to non-system foreign table is restricted
+DELETE FROM ft1 WHERE c1 = 1; -- ERROR
+ERROR:  access to non-system foreign table is restricted
+TRUNCATE ft1; -- ERROR
+ERROR:  access to non-system foreign table is restricted
+RESET restrict_nonsystem_relation_kind;
 -- ===================================================================
 -- WHERE with remotely-executable conditions
 -- ===================================================================
@@ -2760,22 +2771,6 @@ SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c
 (10 rows)
 
 ALTER VIEW v4 OWNER TO regress_view_owner;
--- Make sure this big CROSS JOIN query is pushed down
-EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5;
-                                                                             QUERY PLAN                                                                              
----------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Foreign Scan
-   Output: (count(*))
-   Relations: Aggregate on ((((public.ft1) INNER JOIN (public.ft2)) INNER JOIN (public.ft4)) INNER JOIN (public.ft5))
-   Remote SQL: SELECT count(*) FROM ((("S 1"."T 1" r1 INNER JOIN "S 1"."T 1" r2 ON (TRUE)) INNER JOIN "S 1"."T 3" r4 ON (TRUE)) INNER JOIN "S 1"."T 4" r6 ON (TRUE))
-(4 rows)
-
--- Make sure query cancellation works
-BEGIN;
-SET LOCAL statement_timeout = '10ms';
-select count(*) from ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5; -- this takes very long
-ERROR:  canceling statement due to statement timeout
-COMMIT;
 -- ====================================================================
 -- Check that userid to use when querying the remote table is correctly
 -- propagated into foreign rels present in subqueries under an UNION ALL
@@ -6846,6 +6841,51 @@ SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
    40 |  42 | 00040_trig_update | Tue Feb 10 00:00:00 1970 PST | Tue Feb 10 00:00:00 1970 | 0    | 0          | foo
 (10 rows)
 
+-- Test ReScan code path that recreates the cursor even when no parameters
+-- change (bug #17889)
+CREATE TABLE loct1 (c1 int);
+CREATE TABLE loct2 (c1 int, c2 text);
+INSERT INTO loct1 VALUES (1001);
+INSERT INTO loct1 VALUES (1002);
+INSERT INTO loct2 SELECT id, to_char(id, 'FM0000') FROM generate_series(1, 1000) id;
+INSERT INTO loct2 VALUES (1001, 'foo');
+INSERT INTO loct2 VALUES (1002, 'bar');
+CREATE FOREIGN TABLE remt2 (c1 int, c2 text) SERVER loopback OPTIONS (table_name 'loct2');
+ANALYZE loct1;
+ANALYZE remt2;
+SET enable_mergejoin TO false;
+SET enable_hashjoin TO false;
+SET enable_material TO false;
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE remt2 SET c2 = remt2.c2 || remt2.c2 FROM loct1 WHERE loct1.c1 = remt2.c1 RETURNING remt2.*;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Update on public.remt2
+   Output: remt2.c1, remt2.c2
+   Remote SQL: UPDATE public.loct2 SET c2 = $2 WHERE ctid = $1 RETURNING c1, c2
+   ->  Nested Loop
+         Output: (remt2.c2 || remt2.c2), remt2.ctid, remt2.*, loct1.ctid
+         Join Filter: (remt2.c1 = loct1.c1)
+         ->  Seq Scan on public.loct1
+               Output: loct1.ctid, loct1.c1
+         ->  Foreign Scan on public.remt2
+               Output: remt2.c2, remt2.ctid, remt2.*, remt2.c1
+               Remote SQL: SELECT c1, c2, ctid FROM public.loct2 FOR UPDATE
+(11 rows)
+
+UPDATE remt2 SET c2 = remt2.c2 || remt2.c2 FROM loct1 WHERE loct1.c1 = remt2.c1 RETURNING remt2.*;
+  c1  |   c2   
+------+--------
+ 1001 | foofoo
+ 1002 | barbar
+(2 rows)
+
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+RESET enable_material;
+DROP FOREIGN TABLE remt2;
+DROP TABLE loct1;
+DROP TABLE loct2;
 -- ===================================================================
 -- test check constraints
 -- ===================================================================

@@ -342,7 +342,7 @@ check_for_data_types_usage(ClusterInfo *cluster, DataTypesUsageChecks *checks)
 	DataTypesUsageChecks *tmp = checks;
 	int			n_data_types_usage_checks = 0;
 
-	prep_status("Checking for data type usage");
+	prep_status("Checking data type usage");
 
 	/* Gather number of checks to perform */
 	while (tmp->status != NULL)
@@ -609,8 +609,10 @@ check_and_dump_old_cluster(bool live_check)
 
 		/*
 		 * Subscriptions and their dependencies can be migrated since PG17.
-		 * See comments atop get_db_subscription_count().
+		 * Before that the logical slots are not upgraded, so we will not be
+		 * able to upgrade the logical replication clusters completely.
 		 */
+		get_subscription_count(&old_cluster);
 		check_old_cluster_subscription_state();
 	}
 
@@ -1754,7 +1756,7 @@ check_new_cluster_logical_replication_slots(void)
 	nslots_on_new = atoi(PQgetvalue(res, 0, 0));
 
 	if (nslots_on_new)
-		pg_fatal("Expected 0 logical replication slots but found %d.",
+		pg_fatal("expected 0 logical replication slots but found %d",
 				 nslots_on_new);
 
 	PQclear(res);
@@ -1769,7 +1771,7 @@ check_new_cluster_logical_replication_slots(void)
 	wal_level = PQgetvalue(res, 0, 0);
 
 	if (strcmp(wal_level, "logical") != 0)
-		pg_fatal("\"wal_level\" must be \"logical\", but is set to \"%s\"",
+		pg_fatal("\"wal_level\" must be \"logical\" but is set to \"%s\"",
 				 wal_level);
 
 	max_replication_slots = atoi(PQgetvalue(res, 1, 0));
@@ -1797,17 +1799,14 @@ check_new_cluster_subscription_configuration(void)
 {
 	PGresult   *res;
 	PGconn	   *conn;
-	int			nsubs_on_old;
 	int			max_replication_slots;
 
 	/* Subscriptions and their dependencies can be migrated since PG17. */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) < 1700)
 		return;
 
-	nsubs_on_old = count_old_cluster_subscriptions();
-
 	/* Quick return if there are no subscriptions to be migrated. */
-	if (nsubs_on_old == 0)
+	if (old_cluster.nsubs == 0)
 		return;
 
 	prep_status("Checking for new cluster configuration for subscriptions");
@@ -1821,10 +1820,10 @@ check_new_cluster_subscription_configuration(void)
 		pg_fatal("could not determine parameter settings on new cluster");
 
 	max_replication_slots = atoi(PQgetvalue(res, 0, 0));
-	if (nsubs_on_old > max_replication_slots)
+	if (old_cluster.nsubs > max_replication_slots)
 		pg_fatal("\"max_replication_slots\" (%d) must be greater than or equal to the number of "
 				 "subscriptions (%d) on the old cluster",
-				 max_replication_slots, nsubs_on_old);
+				 max_replication_slots, old_cluster.nsubs);
 
 	PQclear(res);
 	PQfinish(conn);
@@ -1896,7 +1895,7 @@ check_old_cluster_for_valid_slots(bool live_check)
 		fclose(script);
 
 		pg_log(PG_REPORT, "fatal");
-		pg_fatal("Your installation contains logical replication slots that can't be upgraded.\n"
+		pg_fatal("Your installation contains logical replication slots that cannot be upgraded.\n"
 				 "You can remove invalid slots and/or consume the pending WAL for other slots,\n"
 				 "and then restart the upgrade.\n"
 				 "A list of the problematic slots is in the file:\n"

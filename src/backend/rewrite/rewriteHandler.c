@@ -40,6 +40,7 @@
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rewriteSearchCycle.h"
 #include "rewrite/rowsecurity.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -1809,6 +1810,14 @@ ApplyRetrieveRule(Query *parsetree,
 	if (rule->qual != NULL)
 		elog(ERROR, "cannot handle qualified ON SELECT rule");
 
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(relation) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(relation))));
+
 	if (rt_index == parsetree->resultRelation)
 	{
 		/*
@@ -3066,7 +3075,7 @@ relation_is_updatable(Oid reloid,
  *
  * This is used with simply-updatable views to map column-permissions sets for
  * the view columns onto the matching columns in the underlying base relation.
- * The targetlist is expected to be a list of plain Vars of the underlying
+ * Relevant entries in the targetlist must be plain Vars of the underlying
  * relation (as per the checks above in view_query_is_auto_updatable).
  */
 static Bitmapset *
@@ -3266,6 +3275,10 @@ rewriteTargetView(Query *parsetree, Relation view)
 	 */
 	viewquery = copyObject(get_view_query(view));
 
+	/* Locate RTE and perminfo describing the view in the outer query */
+	view_rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+	view_perminfo = getRTEPermissionInfo(parsetree->rteperminfos, view_rte);
+
 	/*
 	 * Are we doing INSERT/UPDATE, or MERGE containing INSERT/UPDATE?  If so,
 	 * various additional checks on the view columns need to be applied, and
@@ -3288,6 +3301,14 @@ rewriteTargetView(Query *parsetree, Relation view)
 		}
 	}
 
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(view) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(view))));
+
 	/*
 	 * The view must be updatable, else fail.
 	 *
@@ -3305,16 +3326,25 @@ rewriteTargetView(Query *parsetree, Relation view)
 
 	/*
 	 * For INSERT/UPDATE (or MERGE containing INSERT/UPDATE) the modified
-	 * columns must all be updatable. Note that we get the modified columns
-	 * from the query's targetlist, not from the result RTE's insertedCols
-	 * and/or updatedCols set, since rewriteTargetListIU may have added
-	 * additional targetlist entries for view defaults, and these must also be
-	 * updatable.
+	 * columns must all be updatable.
 	 */
 	if (insert_or_update)
 	{
-		Bitmapset  *modified_cols = NULL;
+		Bitmapset  *modified_cols;
 		char	   *non_updatable_col;
+
+		/*
+		 * Compute the set of modified columns as those listed in the result
+		 * RTE's insertedCols and/or updatedCols sets plus those that are
+		 * targets of the query's targetlist(s).  We must consider the query's
+		 * targetlist because rewriteTargetListIU may have added additional
+		 * targetlist entries for view defaults, and these must also be
+		 * updatable.  But rewriteTargetListIU can also remove entries if they
+		 * are DEFAULT markers and the column's default is NULL, so
+		 * considering only the targetlist would also be wrong.
+		 */
+		modified_cols = bms_union(view_perminfo->insertedCols,
+								  view_perminfo->updatedCols);
 
 		foreach(lc, parsetree->targetList)
 		{
@@ -3412,13 +3442,10 @@ rewriteTargetView(Query *parsetree, Relation view)
 						errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("cannot merge into view \"%s\"",
 							   RelationGetRelationName(view)),
-						errdetail("MERGE is not supported for views with INSTEAD OF triggers for some actions, but not others."),
+						errdetail("MERGE is not supported for views with INSTEAD OF triggers for some actions but not all."),
 						errhint("To enable merging into the view, either provide a full set of INSTEAD OF triggers or drop the existing INSTEAD OF triggers."));
 		}
 	}
-
-	/* Locate RTE describing the view in the outer query */
-	view_rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
 
 	/*
 	 * If we get here, view_query_is_auto_updatable() has verified that the
@@ -3514,10 +3541,7 @@ rewriteTargetView(Query *parsetree, Relation view)
 	 * Note: the original view's RTEPermissionInfo remains in the query's
 	 * rteperminfos so that the executor still performs appropriate
 	 * permissions checks for the query caller's use of the view.
-	 */
-	view_perminfo = getRTEPermissionInfo(parsetree->rteperminfos, view_rte);
-
-	/*
+	 *
 	 * Disregard the perminfo in viewquery->rteperminfos that the base_rte
 	 * would currently be pointing at, because we'd like it to point now to a
 	 * new one that will be filled below.  Must set perminfoindex to 0 to not

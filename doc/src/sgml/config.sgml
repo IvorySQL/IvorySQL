@@ -1443,11 +1443,11 @@ include_dir 'conf.d'
        </para>
 
        <para>
-        Older PostgreSQL versions do not have this setting and always use the
-        client's preferences.  This setting is mainly for backward
-        compatibility with those versions.  Using the server's preferences is
-        usually better because it is more likely that the server is appropriately
-        configured.
+        <productname>PostgreSQL</productname> versions before 9.4 do not have
+        this setting and always use the client's preferences.  This setting is
+        mainly for backward compatibility with those versions.  Using the
+        server's preferences is usually better because it is more likely that
+        the server is appropriately configured.
        </para>
       </listitem>
      </varlistentry>
@@ -4318,11 +4318,17 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
      <listitem>
       <para>
        Enables the WAL summarizer process. Note that WAL summarization can
-       be enabled either on a primary or on a standby. WAL summarization
-       cannot be enabled when <varname>wal_level</varname> is set to
-       <literal>minimal</literal>.  This parameter can only be set in the
-       <filename>postgresql.conf</filename> file or on the server command line.
-       The default is <literal>off</literal>.
+       be enabled either on a primary or on a standby.  This parameter can only
+       be set in the <filename>postgresql.conf</filename> file or on the server
+       command line.  The default is <literal>off</literal>.
+      </para>
+      <para>
+       The server cannot be started with <literal>summarize_wal=on</literal>
+       if <literal>wal_level</literal> is set to <literal>minimal</literal>. If
+       <literal>summarize_wal=on</literal> is configured after server startup
+       while <literal>wal_level=minimal</literal>, the summarizer will run
+       but refuse to generate summary files for any WAL generated with
+       <literal>wal_level=minimal</literal>.
       </para>
       </listitem>
      </varlistentry>
@@ -4569,10 +4575,10 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-standby-slot-names" xreflabel="standby_slot_names">
-      <term><varname>standby_slot_names</varname> (<type>string</type>)
+     <varlistentry id="guc-synchronized-standby-slots" xreflabel="synchronized_standby_slots">
+      <term><varname>synchronized_standby_slots</varname> (<type>string</type>)
       <indexterm>
-       <primary><varname>standby_slot_names</varname> configuration parameter</primary>
+       <primary><varname>synchronized_standby_slots</varname> configuration parameter</primary>
       </indexterm>
       </term>
       <listitem>
@@ -4587,7 +4593,7 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         after the standby is promoted, the physical replication slot for the
         standby should be listed here. Note that logical replication will not
         proceed if the slots specified in the
-        <varname>standby_slot_names</varname> do not exist or are invalidated.
+        <varname>synchronized_standby_slots</varname> do not exist or are invalidated.
         Additionally, the replication management functions
         <link linkend="pg-replication-slot-advance">
         <function>pg_replication_slot_advance</function></link>,
@@ -4596,12 +4602,12 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         <link linkend="pg-logical-slot-peek-changes">
         <function>pg_logical_slot_peek_changes</function></link>,
         when used with logical failover slots, will block until all
-        physical slots specified in <varname>standby_slot_names</varname> have
+        physical slots specified in <varname>synchronized_standby_slots</varname> have
         confirmed WAL receipt.
        </para>
        <para>
         The standbys corresponding to the physical replication slots in
-        <varname>standby_slot_names</varname> must configure
+        <varname>synchronized_standby_slots</varname> must configure
         <literal>sync_replication_slots = true</literal> so they can receive
         logical failover slot changes from the primary.
        </para>
@@ -5561,9 +5567,13 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         joining the matching partitions.  Partitionwise join currently applies
         only when the join conditions include all the partition keys, which
         must be of the same data type and have one-to-one matching sets of
-        child partitions.  Because partitionwise join planning can use
-        significantly more CPU time and memory during planning, the default is
-        <literal>off</literal>.
+        child partitions.  With this setting enabled, the number of nodes
+        whose memory usage is restricted by <varname>work_mem</varname>
+        appearing in the final plan can increase linearly according to the
+        number of partitions being scanned.  This can result in a large
+        increase in overall memory consumption during the execution of the
+        query.  Query planning also becomes significantly more expensive in
+        terms of memory and CPU.  The default value is <literal>off</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -5581,9 +5591,13 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         tables to be performed separately for each partition.  If the
         <literal>GROUP BY</literal> clause does not include the partition
         keys, only partial aggregation can be performed on a per-partition
-        basis, and finalization must be performed later.  Because
-        partitionwise grouping or aggregation can use significantly more CPU
-        time and memory during planning, the default is
+        basis, and finalization must be performed later.  With this setting
+        enabled, the number of nodes whose memory usage is restricted by
+        <varname>work_mem</varname> appearing in the final plan can increase
+        linearly according to the number of partitions being scanned.  This
+        can result in a large increase in overall memory consumption during
+        the execution of the query.  Query planning also becomes significantly
+        more expensive in terms of memory and CPU.  The default value is
         <literal>off</literal>.
        </para>
       </listitem>
@@ -8319,7 +8333,9 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
         measure the overhead of timing on your system.
         I/O timing information is
         displayed in <link linkend="monitoring-pg-stat-database-view">
-        <structname>pg_stat_database</structname></link>, in the output of
+        <structname>pg_stat_database</structname></link>,
+        <link linkend="monitoring-pg-stat-io-view">
+        <structname>pg_stat_io</structname></link>, in the output of
         <xref linkend="sql-explain"/> when the <literal>BUFFERS</literal> option
         is used, in the output of <xref linkend="sql-vacuum"/> when
         the <literal>VERBOSE</literal> option is used, by autovacuum
@@ -9793,6 +9809,23 @@ SET XML OPTION { DOCUMENT | CONTENT };
        to <literal>true</literal> allows all event triggers to fire, this
        is the default value. Only superusers and users with the appropriate
        <literal>SET</literal> privilege can change this setting.
+      </para>
+     </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-restrict-nonsystem-relation-kind" xreflabel="restrict_nonsystem_relation_kind">
+      <term><varname>restrict_nonsystem_relation_kind</varname> (<type>string</type>)
+      <indexterm>
+       <primary><varname>restrict_nonsystem_relation_kind</varname></primary>
+       <secondary>configuration parameter</secondary>
+     </indexterm>
+     </term>
+     <listitem>
+      <para>
+       Set relation kinds for which access to non-system relations is prohibited.
+       The value takes the form of a comma-separated list of relation kinds.
+       Currently, the supported relation kinds are <literal>view</literal> and
+       <literal>foreign-table</literal>.
       </para>
      </listitem>
      </varlistentry>

@@ -1237,6 +1237,7 @@ InjectionPointCallback
 InjectionPointCondition
 InjectionPointConditionType
 InjectionPointEntry
+InjectionPointsCtl
 InjectionPointSharedState
 InlineCodeBlock
 InsertStmt
@@ -2647,7 +2648,6 @@ SimpleStats
 SimpleStringList
 SimpleStringListCell
 SingleBoundSortItem
-SinglePartitionSpec
 Size
 SkipPages
 SlabBlock
@@ -2712,12 +2712,10 @@ SpinDelayStatus
 SplitInterval
 SplitLR
 SplitPageLayout
-SplitPartitionContext
 SplitPoint
 SplitTextOutputData
 SplitVar
 StackElem
-StandbySlotNamesConfigData
 StartDataPtrType
 StartLOPtrType
 StartLOsPtrType
@@ -2782,6 +2780,7 @@ SyncRepConfigData
 SyncRepStandbyData
 SyncRequestHandler
 SyncRequestType
+SyncStandbySlotsConfigData
 SyncingTablesState
 SysFKRelationship
 SysScanDesc
@@ -3696,6 +3695,9 @@ pg_md5_ctx
 pg_on_exit_callback
 pg_prng_state
 pg_re_flags
+pg_regex_t
+pg_regmatch_t
+pg_regoff_t
 pg_saslprep_rc
 pg_sha1_ctx
 pg_sha224_ctx

@@ -206,4 +206,13 @@ DROP TABLE other_max1;
 
 create table cache_max1(userid number generated always as identity  increment by 1 cache 999999999999999999999,uname varchar2(20));
 DROP TABLE cache_max1;
+
+-- For testing of pg_dump and pg_upgrade, leave behind some identity
+-- sequences whose logged-ness doesn't match their owning table's.
+CREATE TABLE identity_dump_logged (a INT GENERATED ALWAYS AS IDENTITY);
+ALTER SEQUENCE identity_dump_logged_a_seq SET UNLOGGED;
+CREATE UNLOGGED TABLE identity_dump_unlogged (a INT GENERATED ALWAYS AS IDENTITY);
+ALTER SEQUENCE identity_dump_unlogged_a_seq SET LOGGED;
+SELECT relname, relpersistence FROM pg_class
+  WHERE relname ~ '^identity_dump_' ORDER BY 1;
 SET ivorysql.enable_seq_scale_fixed = FALSE;

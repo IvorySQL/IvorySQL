@@ -65,7 +65,7 @@ task:
     CPUS: 4
     BUILD_JOBS: 8
     TEST_JOBS: 8
-    IMAGE_FAMILY: pg-ci-bullseye
+    IMAGE_FAMILY: pg-ci-bookworm
     CCACHE_DIR: ${CIRRUS_WORKING_DIR}/ccache_dir
     # no options enabled, should be small
     CCACHE_MAXSIZE: "150M"
@@ -243,7 +243,7 @@ task:
     CPUS: 4
     BUILD_JOBS: 4
     TEST_JOBS: 8 # experimentally derived to be a decent choice
-    IMAGE_FAMILY: pg-ci-bullseye
+    IMAGE_FAMILY: pg-ci-bookworm
 
     CCACHE_DIR: /tmp/ccache_dir
     DEBUGINFOD_URLS: "https://debuginfod.debian.net"
@@ -314,7 +314,7 @@ task:
     #DEBIAN_FRONTEND=noninteractive apt-get -y install ...
 
   matrix:
-    - name: Linux - Debian Bullseye - Autoconf
+    - name: Linux - Debian Bookworm - Autoconf
 
       env:
         SANITIZER_FLAGS: -fsanitize=address
@@ -348,7 +348,7 @@ task:
       on_failure:
         <<: *on_failure_ac
 
-    - name: Linux - Debian Bullseye - Meson
+    - name: Linux - Debian Bookworm - Meson
 
       env:
         CCACHE_MAXSIZE: "400M" # tests two different builds
@@ -375,7 +375,7 @@ task:
             ${LINUX_MESON_FEATURES} \
             -Dllvm=disabled \
             --pkg-config-path /usr/lib/i386-linux-gnu/pkgconfig/ \
-            -DPERL=perl5.32-i386-linux-gnu \
+            -DPERL=perl5.36-i386-linux-gnu \
             -DPG_TEST_EXTRA="$PG_TEST_EXTRA" \
             build-32
         EOF
@@ -411,7 +411,7 @@ task:
 
 
 task:
-  name: macOS - Ventura - Meson
+  name: macOS - Sonoma - Meson
 
   env:
     CPUS: 4 # always get that much for cirrusci macOS instances
@@ -420,7 +420,7 @@ task:
     # work OK. See
     # https://postgr.es/m/20220927040208.l3shfcidovpzqxfh%40awork3.anarazel.de
     TEST_JOBS: 8
-    IMAGE: ghcr.io/cirruslabs/macos-ventura-base:latest
+    IMAGE: ghcr.io/cirruslabs/macos-runner:sonoma
 
     CIRRUS_WORKING_DIR: ${HOME}/pgsql/
     CCACHE_DIR: ${HOME}/ccache
@@ -460,6 +460,13 @@ task:
   # updates macports every time.
   macports_cache:
     folder: ${MACPORTS_CACHE}
+    fingerprint_script: |
+      # Include the OS major version in the cache key.  If the OS image changes
+      # to a different major version, we need to reinstall.
+      sw_vers -productVersion | sed 's/\..*//'
+      # Also start afresh if we change our MacPorts install script.
+      md5 src/tools/ci/ci_macports_packages.sh
+    reupload_on_changes: true
   setup_additional_packages_script: |
     sh src/tools/ci/ci_macports_packages.sh \
       ccache \
@@ -651,7 +658,7 @@ task:
   env:
     CPUS: 4
     BUILD_JOBS: 4
-    IMAGE_FAMILY: pg-ci-bullseye
+    IMAGE_FAMILY: pg-ci-bookworm
 
     # Use larger ccache cache, as this task compiles with multiple compilers /
     # flag combinations

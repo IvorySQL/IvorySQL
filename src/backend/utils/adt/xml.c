@@ -677,8 +677,14 @@ xmltotext_with_options(xmltype *data, XmlOptionType xmloption_arg, bool indent)
 	}
 
 #ifdef USE_LIBXML
-	/* Parse the input according to the xmloption */
-	doc = xml_parse(data, xmloption_arg, true, GetDatabaseEncoding(),
+
+	/*
+	 * Parse the input according to the xmloption.
+	 *
+	 * preserve_whitespace is set to false in case we are indenting, otherwise
+	 * libxml2 will fail to indent elements that have whitespace between them.
+	 */
+	doc = xml_parse(data, xmloption_arg, !indent, GetDatabaseEncoding(),
 					&parsed_xmloptiontype, &content_nodes,
 					(Node *) &escontext);
 	if (doc == NULL || escontext.error_occurred)
@@ -757,7 +763,7 @@ xmltotext_with_options(xmltype *data, XmlOptionType xmloption_arg, bool indent)
 
 			/* This attaches root to doc, so we need not free it separately. */
 			xmlDocSetRootElement(doc, root);
-			xmlAddChild(root, content_nodes);
+			xmlAddChildList(root, content_nodes);
 
 			/*
 			 * We use this node to insert newlines in the dump.  Note: in at
@@ -802,7 +808,22 @@ xmltotext_with_options(xmltype *data, XmlOptionType xmloption_arg, bool indent)
 						"could not close xmlSaveCtxtPtr");
 		}
 
-		result = (text *) xmlBuffer_to_xmltype(buf);
+		/*
+		 * xmlDocContentDumpOutput may add a trailing newline, so remove that.
+		 */
+		if (xmloption_arg == XMLOPTION_DOCUMENT)
+		{
+			const char *str = (const char *) xmlBufferContent(buf);
+			int			len = xmlBufferLength(buf);
+
+			while (len > 0 && (str[len - 1] == '\n' ||
+							   str[len - 1] == '\r'))
+				len--;
+
+			result = cstring_to_text_with_len(str, len);
+		}
+		else
+			result = (text *) xmlBuffer_to_xmltype(buf);
 	}
 	PG_CATCH();
 	{
@@ -1696,9 +1717,9 @@ xml_doctype_in_content(const xmlChar *str)
  * XmlOptionType actually used to parse the input (typically the same as
  * xmloption_arg, but a DOCTYPE node in the input can force DOCUMENT mode).
  *
- * If parsed_nodes isn't NULL and the input is not an XML document, the list
- * of parsed nodes from the xmlParseBalancedChunkMemory call will be returned
- * to *parsed_nodes.
+ * If parsed_nodes isn't NULL and we parse in CONTENT mode, the list
+ * of parsed nodes from the xmlParseInNodeContext call will be returned
+ * to *parsed_nodes.  (It is caller's responsibility to free that.)
  *
  * Errors normally result in ereport(ERROR), but if escontext is an
  * ErrorSaveContext, then "safe" errors are reported there instead, and the
@@ -1750,6 +1771,7 @@ xml_parse(text *data, XmlOptionType xmloption_arg,
 	PG_TRY();
 	{
 		bool		parse_as_document = false;
+		int			options;
 		int			res_code;
 		size_t		count = 0;
 		xmlChar    *version = NULL;
@@ -1757,11 +1779,6 @@ xml_parse(text *data, XmlOptionType xmloption_arg,
 
 		/* Any errors here are reported as hard ereport's */
 		xmlInitParser();
-
-		ctxt = xmlNewParserCtxt();
-		if (ctxt == NULL || xmlerrcxt->err_occurred)
-			xml_ereport(xmlerrcxt, ERROR, ERRCODE_OUT_OF_MEMORY,
-						"could not allocate parser context");
 
 		/* Decide whether to parse as document or content */
 		if (xmloption_arg == XMLOPTION_DOCUMENT)
@@ -1785,6 +1802,18 @@ xml_parse(text *data, XmlOptionType xmloption_arg,
 				parse_as_document = true;
 		}
 
+		/*
+		 * Select parse options.
+		 *
+		 * Note that here we try to apply DTD defaults (XML_PARSE_DTDATTR)
+		 * according to SQL/XML:2008 GR 10.16.7.d: 'Default values defined by
+		 * internal DTD are applied'.  As for external DTDs, we try to support
+		 * them too (see SQL/XML:2008 GR 10.16.7.e), but that doesn't really
+		 * happen because xmlPgEntityLoader prevents it.
+		 */
+		options = XML_PARSE_NOENT | XML_PARSE_DTDATTR
+			| (preserve_whitespace ? 0 : XML_PARSE_NOBLANKS);
+
 		/* initialize output parameters */
 		if (parsed_xmloptiontype != NULL)
 			*parsed_xmloptiontype = parse_as_document ? XMLOPTION_DOCUMENT :
@@ -1794,18 +1823,16 @@ xml_parse(text *data, XmlOptionType xmloption_arg,
 
 		if (parse_as_document)
 		{
-			/*
-			 * Note, that here we try to apply DTD defaults
-			 * (XML_PARSE_DTDATTR) according to SQL/XML:2008 GR 10.16.7.d:
-			 * 'Default values defined by internal DTD are applied'. As for
-			 * external DTDs, we try to support them too, (see SQL/XML:2008 GR
-			 * 10.16.7.e)
-			 */
+			ctxt = xmlNewParserCtxt();
+			if (ctxt == NULL || xmlerrcxt->err_occurred)
+				xml_ereport(xmlerrcxt, ERROR, ERRCODE_OUT_OF_MEMORY,
+							"could not allocate parser context");
+
 			doc = xmlCtxtReadDoc(ctxt, utf8string,
-								 NULL,
+								 NULL,	/* no URL */
 								 "UTF-8",
-								 XML_PARSE_NOENT | XML_PARSE_DTDATTR
-								 | (preserve_whitespace ? 0 : XML_PARSE_NOBLANKS));
+								 options);
+
 			if (doc == NULL || xmlerrcxt->err_occurred)
 			{
 				/* Use original option to decide which error code to report */
@@ -1822,6 +1849,9 @@ xml_parse(text *data, XmlOptionType xmloption_arg,
 		}
 		else
 		{
+			xmlNodePtr	root;
+
+			/* set up document with empty root node to be the context node */
 			doc = xmlNewDoc(version);
 			if (doc == NULL || xmlerrcxt->err_occurred)
 				xml_ereport(xmlerrcxt, ERROR, ERRCODE_OUT_OF_MEMORY,
@@ -1834,19 +1864,38 @@ xml_parse(text *data, XmlOptionType xmloption_arg,
 							"could not allocate XML document");
 			doc->standalone = standalone;
 
+			root = xmlNewNode(NULL, (const xmlChar *) "content-root");
+			if (root == NULL || xmlerrcxt->err_occurred)
+				xml_ereport(xmlerrcxt, ERROR, ERRCODE_OUT_OF_MEMORY,
+							"could not allocate xml node");
+			/* This attaches root to doc, so we need not free it separately. */
+			xmlDocSetRootElement(doc, root);
+
 			/* allow empty content */
 			if (*(utf8string + count))
 			{
-				res_code = xmlParseBalancedChunkMemory(doc, NULL, NULL, 0,
-													   utf8string + count,
-													   parsed_nodes);
-				if (res_code != 0 || xmlerrcxt->err_occurred)
+				xmlNodePtr	node_list = NULL;
+				xmlParserErrors res;
+
+				res = xmlParseInNodeContext(root,
+											(char *) utf8string + count,
+											strlen((char *) utf8string + count),
+											options,
+											&node_list);
+
+				if (res != XML_ERR_OK || xmlerrcxt->err_occurred)
 				{
+					xmlFreeNodeList(node_list);
 					xml_errsave(escontext, xmlerrcxt,
 								ERRCODE_INVALID_XML_CONTENT,
 								"invalid XML content");
 					goto fail;
 				}
+
+				if (parsed_nodes != NULL)
+					*parsed_nodes = node_list;
+				else
+					xmlFreeNodeList(node_list);
 			}
 		}
 
@@ -1866,7 +1915,8 @@ fail:
 	}
 	PG_END_TRY();
 
-	xmlFreeParserCtxt(ctxt);
+	if (ctxt != NULL)
+		xmlFreeParserCtxt(ctxt);
 
 	pg_xml_done(xmlerrcxt, false);
 
@@ -2085,6 +2135,19 @@ xml_errorHandler(void *data, PgXmlErrorPtr error)
 	switch (domain)
 	{
 		case XML_FROM_PARSER:
+
+			/*
+			 * XML_ERR_NOT_WELL_BALANCED is typically reported after some
+			 * other, more on-point error.  Furthermore, libxml2 2.13 reports
+			 * it under a completely different set of rules than prior
+			 * versions.  To avoid cross-version behavioral differences,
+			 * suppress it so long as we already logged some error.
+			 */
+			if (error->code == XML_ERR_NOT_WELL_BALANCED &&
+				xmlerrcxt->err_occurred)
+				return;
+			/* fall through */
+
 		case XML_FROM_NONE:
 		case XML_FROM_MEMORY:
 		case XML_FROM_IO:
@@ -4385,7 +4448,13 @@ xpath_internal(text *xpath_expr_text, xmltype *data, ArrayType *namespaces,
 			}
 		}
 
-		xpathcomp = xmlXPathCompile(xpath_expr);
+		/*
+		 * Note: here and elsewhere, be careful to use xmlXPathCtxtCompile not
+		 * xmlXPathCompile.  In libxml2 2.13.3 and older, the latter function
+		 * fails to defend itself against recursion-to-stack-overflow.  See
+		 * https://gitlab.gnome.org/GNOME/libxml2/-/issues/799
+		 */
+		xpathcomp = xmlXPathCtxtCompile(xpathctx, xpath_expr);
 		if (xpathcomp == NULL || xmlerrcxt->err_occurred)
 			xml_ereport(xmlerrcxt, ERROR, ERRCODE_INTERNAL_ERROR,
 						"invalid XPath expression");
@@ -4756,7 +4825,10 @@ XmlTableSetRowFilter(TableFuncScanState *state, const char *path)
 
 	xstr = pg_xmlCharStrndup(path, strlen(path));
 
-	xtCxt->xpathcomp = xmlXPathCompile(xstr);
+	/* We require XmlTableSetDocument to have been done already */
+	Assert(xtCxt->xpathcxt != NULL);
+
+	xtCxt->xpathcomp = xmlXPathCtxtCompile(xtCxt->xpathcxt, xstr);
 	if (xtCxt->xpathcomp == NULL || xtCxt->xmlerrcxt->err_occurred)
 		xml_ereport(xtCxt->xmlerrcxt, ERROR, ERRCODE_SYNTAX_ERROR,
 					"invalid XPath expression");
@@ -4787,7 +4859,10 @@ XmlTableSetColumnFilter(TableFuncScanState *state, const char *path, int colnum)
 
 	xstr = pg_xmlCharStrndup(path, strlen(path));
 
-	xtCxt->xpathscomp[colnum] = xmlXPathCompile(xstr);
+	/* We require XmlTableSetDocument to have been done already */
+	Assert(xtCxt->xpathcxt != NULL);
+
+	xtCxt->xpathscomp[colnum] = xmlXPathCtxtCompile(xtCxt->xpathcxt, xstr);
 	if (xtCxt->xpathscomp[colnum] == NULL || xtCxt->xmlerrcxt->err_occurred)
 		xml_ereport(xtCxt->xmlerrcxt, ERROR, ERRCODE_DATA_EXCEPTION,
 					"invalid XPath expression");
