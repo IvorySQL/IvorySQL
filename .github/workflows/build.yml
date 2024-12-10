@@ -2,9 +2,9 @@ name: build
 
 on:
   push:
-    branches: [ master , IVORY_REL_3_STABLE ]
+    branches: [ master , IVORY_REL_4_STABLE ]
   pull_request:
-    branches: [ master , IVORY_REL_3_STABLE ]
+    branches: [ master , IVORY_REL_4_STABLE ]
 
 jobs:
   build:
