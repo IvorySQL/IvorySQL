@@ -27,6 +27,7 @@
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "commands/packagecmds.h"
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -93,7 +94,9 @@ ProcedureCreate(const char *procedureName,
 				Datum proconfig,
 				Oid prosupport,
 				float4 procost,
-				float4 prorows)
+				float4 prorows,
+				Datum parametertypeNames,
+				char *rettypeName)
 {
 	Oid			retval;
 	int			parameterCount;
@@ -117,6 +120,8 @@ ProcedureCreate(const char *procedureName,
 	int			i;
 	Oid			trfid;
 	ObjectAddresses *addrs;
+	bool	package_update_rettype = false;
+
 
 	/*
 	 * sanity checks
@@ -351,6 +356,17 @@ ProcedureCreate(const char *procedureName,
 		nulls[Anum_pg_proc_proconfig - 1] = true;
 	/* proacl will be determined later */
 
+	if (parametertypeNames != PointerGetDatum(NULL))
+		values[Anum_pg_proc_protypenames - 1] = parametertypeNames;
+	else
+		nulls[Anum_pg_proc_protypenames - 1] = true;
+
+	if (rettypeName != NULL)
+		values[Anum_pg_proc_rettypename - 1] = CStringGetTextDatum(rettypeName);
+	else
+		nulls[Anum_pg_proc_rettypename - 1] = true;
+
+
 	rel = table_open(ProcedureRelationId, RowExclusiveLock);
 	tupDesc = RelationGetDescr(rel);
 
@@ -359,6 +375,23 @@ ProcedureCreate(const char *procedureName,
 							 PointerGetDatum(procedureName),
 							 PointerGetDatum(parameterTypes),
 							 ObjectIdGetDatum(procNamespace));
+	if (parametertypeNames != PointerGetDatum(NULL) &&
+		!HeapTupleIsValid(oldtup))
+	{
+		oldtup = get_functup_bytypenames(procNamespace, procedureName,
+						parametertypeNames, parameterTypes, allParameterTypes);
+		if (rettypeName != NULL &&
+			HeapTupleIsValid(oldtup))
+		{
+			char *old_rettypename;
+
+			get_func_typename_info(oldtup,
+									NULL, &old_rettypename);
+			/* new and old always reference a package'type */
+			if (old_rettypename != NULL)
+				package_update_rettype = true;
+		}
+	}
 
 	if (HeapTupleIsValid(oldtup))
 	{
@@ -404,7 +437,8 @@ ProcedureCreate(const char *procedureName,
 		 * the procedure has output parameters was changed.  Since there is no
 		 * user visible return type, we produce a more specific error message.
 		 */
-		if (returnType != oldproc->prorettype ||
+		if ((returnType != oldproc->prorettype &&
+			!package_update_rettype) || 
 			returnsSet != oldproc->proretset)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -433,7 +467,8 @@ ProcedureCreate(const char *procedureName,
 			newdesc = build_function_result_tupdesc_d(prokind,
 													  allParameterTypes,
 													  parameterModes,
-													  parameterNames);
+													  parameterNames,
+													  parametertypeNames); 
 			if (olddesc == NULL && newdesc == NULL)
 				 /* ok, both are runtime-defined RECORDs */ ;
 			else if (olddesc == NULL || newdesc == NULL ||

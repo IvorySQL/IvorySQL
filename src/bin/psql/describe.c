@@ -3779,6 +3779,116 @@ describeRoles(const char *pattern, bool verbose, bool showSystem)
 	return true;
 }
 
+/*
+ * like ListTables
+ *
+ *  handler for \dk
+ *
+ * Describes package.
+ */
+
+bool
+describePackages(const char *pattern, bool verbose, bool showSystem)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	printQueryOpt myopt = pset.popt;
+	bool have_where = false;
+
+	initPQExpBuffer(&buf);
+
+	/*
+	 * construct sql query
+	 */
+	printfPQExpBuffer(&buf,
+					  "SELECT n.nspname as \"%s\",\n"
+					  "  p.pkgname as \"%s\",\n"
+					  "  pg_catalog.pg_get_userbyid(p.pkgowner) as \"%s\"",
+					  gettext_noop("Schema"),
+					  gettext_noop("Name"),
+					  gettext_noop("Owner"));
+
+	if (verbose)
+	{
+		appendPQExpBuffer(&buf,
+						  ",\n CASE WHEN p.define_invok  THEN '%s' ELSE '%s' END as \"%s\", \n"
+						  " CASE WHEN p.editable THEN '%s' ELSE '%s' END as \"%s\", \n"
+						  " CASE WHEN p.use_collation THEN '%s' ELSE '%s' END as \"%s\", \n"
+						  " p.pkgsrc as \"%s\",\n"
+						  " body.bodysrc as \"%s\"",
+						  gettext_noop("definer"),
+						  gettext_noop("invoker"),
+						  gettext_noop("Security"),
+						  gettext_noop("Editionable"),
+						  gettext_noop("Noneditionable"),
+						  gettext_noop("Editionable"),
+						  gettext_noop("USING_NLS_COMP"),
+						  gettext_noop("default"),
+						  gettext_noop("Use Collation"),
+						  gettext_noop("Specification"),
+						  gettext_noop("Package Body"));
+	}
+
+	appendPQExpBufferStr(&buf,
+						 "\nFROM pg_catalog.pg_package p"
+						 "\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pkgnamespace ");
+
+	/* append pg_package_body */
+	if (verbose)
+	{
+		appendPQExpBufferStr(&buf,
+						 "\n LEFT JOIN  pg_catalog.pg_package_body body ON p.oid = body.pkgoid ");
+	}
+
+	if (!showSystem && !pattern)
+	{
+		appendPQExpBuffer(&buf, "WHERE n.nspname <> 'pg_catalog'\n"
+							 "      AND n.nspname <> 'information_schema'\n"
+							 "      AND n.nspname <> '%s'\n", ORA_SCHEMA);
+		have_where = true;
+	}
+
+	if (!validateSQLNamePattern(&buf, pattern, have_where, false,
+								"n.nspname", "p.pkgname", NULL,
+								"pg_catalog.pg_package_is_visible(p.oid)",
+								NULL, 3))
+		return false;
+
+	appendPQExpBufferStr(&buf, "ORDER BY 1,2;");
+
+	res = PSQLexec(buf.data);
+	termPQExpBuffer(&buf);
+	if (!res)
+		return false;
+
+	/*
+	 * Most packages in this file are content to print an empty table when
+	 * there are no matching objects.  We intentionally deviate from that
+	 * here, but only in !quiet mode, for historical reasons.
+	 */
+	if (PQntuples(res) == 0 && !pset.quiet)
+	{
+		if (pattern)
+			pg_log_error("Did not find any package named \"%s\".",
+						 pattern);
+		else
+			pg_log_error("Did not find any packages.");
+	}
+	else
+	{
+		myopt.nullPrint = NULL;
+		myopt.title = _("List of packages");
+		myopt.translate_header = true;
+		myopt.translate_columns = NULL;
+
+		printQuery(res, &myopt, pset.queryFout, false, pset.logfile);
+	}
+
+	PQclear(res);
+	return true;
+}
+
+
 static void
 add_role_attribute(PQExpBuffer buf, const char *const str)
 {

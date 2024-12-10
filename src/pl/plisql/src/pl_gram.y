@@ -30,6 +30,9 @@
 
 #include "pl_subproc_function.h"
 
+#include "pl_package.h"
+#include "pg_config.h"
+
 #include "utils/ora_compatible.h"
 
 /* Location tracking support --- simpler than bison's default */
@@ -91,6 +94,9 @@ static  PLiSQL_stmt	*make_case(int location, PLiSQL_expr *t_expr,
 								   List *case_when_list, List *else_stmts);
 static	char			*NameOfDatum(PLwdatum *wdatum);
 static	void			 check_assignable(PLiSQL_datum *datum, int location);
+static void check_packagedatum_assignable(PLiSQL_pkg_datum *datum,
+											int location);
+
 static	void			 read_into_target(PLiSQL_variable **target,
 										  bool *strict);
 static	PLiSQL_row		*read_into_scalar_list(char *initial_name,
@@ -147,6 +153,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 			char *label;
 			int  n_initvars;
 			int  *initvarnos;
+			bool popname;
 		}						declhdr;
 		struct
 		{
@@ -247,6 +254,10 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 %type <stmt> ora_outermost_pl_block
 %type <declhdr> ora_decl_sect
 %type <boolean> opt_ora_decl_stmts
+
+%type <stmt> ora_pl_package
+%type <str> ora_first_opt_block_label
+%type <boolean> opt_ora_decl_start
 
 /*
  * Basic non-keyword token types.  These are hard-wired into the core lexer.
@@ -405,6 +416,10 @@ pl_function		: comp_options ora_outermost_pl_block opt_semi
 					{
 						plisql_parse_result = (PLiSQL_stmt_block *) $2;
 					}
+				| comp_options ora_pl_package opt_semi
+					{
+						plisql_parse_result = (PLiSQL_stmt_block *) $2;
+					}
 				;
 
 comp_options	:
@@ -455,6 +470,21 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 		{
 			PLiSQL_stmt_block *new;
 
+			/* package specification doesn't be allowed to include begin */
+			if (plisql_compile_packageitem != NULL &&
+				!plisql_compile_packageitem->finish_compile_special)
+				yyerror("syntax error for package specificaion have a body");
+
+			/* we only consider package body level */
+			if (plisql_compile_packageitem != NULL &&
+				cur_compile_func_level == 0)
+			{
+				plisql_check_package_refcursor_var(-1);
+				plisql_compile_packageitem->last_globaldno =
+							plisql_get_package_last_globaldno($4 == NULL ? -1 : $4->sqlstate_varno,
+											$4 == NULL ? -1 : $4->sqlerrm_varno);
+			}
+
 			new = palloc0(sizeof(PLiSQL_stmt_block));
 
 			new->cmd_type = PLISQL_STMT_BLOCK;
@@ -467,28 +497,101 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 			new->exceptions = $4;
 
 			check_labels($1.label, $6, @6);
-			plisql_ns_pop();
+			/*
+			 * no decalre keyword, we don't add lable block namespace
+			 */
+			if ($1.popname)
+				plisql_ns_pop();
 
 			$$ = (PLiSQL_stmt *)new;
 		}
 	;
 
-ora_decl_sect		: opt_block_label opt_ora_decl_start opt_ora_decl_stmts
+/*
+ * package and its body define for which
+ * has no init block
+ */
+ora_pl_package: ora_decl_sect K_END opt_label
+			{
+				PLiSQL_stmt_block *new;
+
+				if (plisql_compile_packageitem == NULL)
+					yyerror("syntax error");
+
+				new = palloc0(sizeof(PLiSQL_stmt_block));
+
+				new->cmd_type	= PLISQL_STMT_BLOCK;
+				new->lineno		= plisql_location_to_lineno(@2);
+				new->stmtid		= ++plisql_curr_compile->nstatements;
+				new->label	= $1.label;
+				new->n_initvars = $1.n_initvars;
+				new->initvarnos = $1.initvarnos;
+
+				plisql_compile_packageitem->special_cur = plisql_ns_top();
+				plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+				/* Remember variables declared in decl_stmts */
+				check_labels($1.label, $3, @3);
+				plisql_check_package_refcursor_var(-1);
+				plisql_compile_packageitem->last_globaldno =
+										plisql_get_package_last_globaldno(-1, -1);
+				if (!plisql_compile_packageitem->finish_compile_special)
+					plisql_compile_packageitem->status =
+								plisql_set_package_compile_status();
+				/*
+				 * no decalre keyword, we don't add lable block namespace
+				 */
+				if ($1.popname)
+					plisql_ns_pop();
+
+				$$ = (PLiSQL_stmt *)new;
+			}
+;
+
+ora_decl_sect: ora_first_opt_block_label opt_ora_decl_start
+				{
+					if ($2)
 					{
-						if ($3)
+						if ($1 == NULL)
 						{
-							plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
-							$$.label	  = $1;
-							/* Remember variables declared in decl_stmts */
-							$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
+							plisql_ns_push(NULL, PLISQL_LABEL_BLOCK);
 						}
+					}
+				}
+				opt_ora_decl_stmts
+				{
+					if ($4)
+					{
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+						$$.label	  = ($1 == NULL ?  plisql_curr_compile->namelabel : $1);
+						if ($2 && $1 == NULL)
+							$$.popname = true;
 						else
-						{
-							plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
-							$$.label	  = $1;
-							$$.n_initvars = 0;
-							$$.initvarnos = NULL;
-						}
+							$$.popname = false;
+						/* Remember variables declared in decl_stmts */
+						$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
+					}
+					else
+					{
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+						$$.label	  = ($1 == NULL ?  plisql_curr_compile->namelabel : $1);
+						$$.n_initvars = 0;
+						if ($2 && $1 == NULL)
+							$$.popname = true;
+						else
+							$$.popname = false;
+						$$.initvarnos = NULL;
+					}
+				}
+		;
+
+ora_first_opt_block_label:
+					{
+						$$ = NULL;
+					}
+				| LESS_LESS any_identifier GREATER_GREATER
+					{
+						plisql_ns_push($2, PLISQL_LABEL_BLOCK);
+						$$ = $2;
 					}
 				;
 
@@ -501,6 +604,7 @@ opt_ora_decl_start: K_DECLARE
 						 * we process the decl_stmts
 						 */
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
+						$$ = true;
 					}
 				| /*EMPTY*/
 					{
@@ -511,6 +615,7 @@ opt_ora_decl_start: K_DECLARE
 						 * we process the decl_stmts
 						 */
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
+						$$ = false;
 					}
 				;
 
@@ -1021,7 +1126,7 @@ function_heading	: K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 						{
 							PLiSQL_subproc_function *subprocfunc;
 
-							subprocfunc = plisql_build_subproc_function($2, $3, $5);
+							subprocfunc = plisql_build_subproc_function($2, $3, $5, @2); 
 
 							$$ = subprocfunc;
 						}
@@ -1102,7 +1207,7 @@ procedure_heading : K_PROCEDURE ora_function_name func_args
 						{
 							PLiSQL_subproc_function *subprocfunc;
 
-							subprocfunc = plisql_build_subproc_function($2, $3, NULL);
+							subprocfunc = plisql_build_subproc_function($2, $3, NULL, @2); 
 
 							$$ = subprocfunc;
 						}
@@ -1468,6 +1573,23 @@ stmt_call		: K_DO
 						$$ = (PLiSQL_stmt *)new;
 
 					}
+			| K_CALL
+					{
+						PLiSQL_stmt_call *new;
+
+                                                new = palloc0(sizeof(PLiSQL_stmt_call));
+                                                new->cmd_type = PLISQL_STMT_CALL;
+                                                new->lineno = plisql_location_to_lineno(@1);
+                                                new->stmtid = ++plisql_curr_compile->nstatements;
+                                                plisql_push_back_token(K_CALL);
+                                                new->expr = read_sql_stmt();
+                                                new->is_call = true;
+
+                                                /* Remember we may need a procedure resource owner */
+                                                plisql_curr_compile->requires_procedure_resowner = true;
+
+                                                $$ = (PLiSQL_stmt *)new;
+					}
 				;
 
 stmt_assign		: T_DATUM
@@ -1663,8 +1785,7 @@ getdiag_target	: T_DATUM
 						 * that is an array element, but for now we don't, so
 						 * just throw an error if next token is '['.
 						 */
-						if ($1.datum->dtype == PLISQL_DTYPE_ROW ||
-							$1.datum->dtype == PLISQL_DTYPE_REC ||
+						if (is_row_record_datum($1.datum) || 
 							plisql_peek() == '[')
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
@@ -2124,8 +2245,7 @@ for_variable	: T_DATUM
 					{
 						$$.name = NameOfDatum(&($1));
 						$$.lineno = plisql_location_to_lineno(@1);
-						if ($1.datum->dtype == PLISQL_DTYPE_ROW ||
-							$1.datum->dtype == PLISQL_DTYPE_REC)
+						if (is_row_record_datum($1.datum)) 
 						{
 							$$.scalar = NULL;
 							$$.row = $1.datum;
@@ -2627,6 +2747,7 @@ stmt_open		: K_OPEN cursor_variable
 					{
 						PLiSQL_stmt_open *new;
 						int				  tok;
+						PLiSQL_var *cursorvar;
 
 						new = palloc0(sizeof(PLiSQL_stmt_open));
 						new->cmd_type = PLISQL_STMT_OPEN;
@@ -2635,7 +2756,12 @@ stmt_open		: K_OPEN cursor_variable
 						new->curvar = $2->dno;
 						new->cursor_options = CURSOR_OPT_FAST_PLAN;
 
-						if ($2->cursor_explicit_expr == NULL)
+						if ($2->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+							cursorvar = (PLiSQL_var *) ((PLiSQL_pkg_datum *) $2)->pkgvar;
+						else
+							cursorvar = $2;
+
+						if (cursorvar->cursor_explicit_expr == NULL) 
 						{
 							/* be nice if we could use opt_scrollable here */
 							tok = yylex();
@@ -2811,15 +2937,35 @@ cursor_variable	: T_DATUM
 						 * In principle we should support a cursor_variable
 						 * that is an array element, but for now we don't, so
 						 * just throw an error if next token is '['.
+						 *
+						 * maybe a package variable
 						 */
-						if ($1.datum->dtype != PLISQL_DTYPE_VAR ||
+						if (($1.datum->dtype != PLISQL_DTYPE_VAR &&
+							$1.datum->dtype != PLISQL_DTYPE_PACKAGE_DATUM) ||
 							plisql_peek() == '[')
 							ereport(ERROR,
 									(errcode(ERRCODE_DATATYPE_MISMATCH),
 									 errmsg("cursor variable must be a simple variable"),
 									 parser_errposition(@1)));
 
-						if (((PLiSQL_var *) $1.datum)->datatype->typoid != REFCURSOROID)
+						if ($1.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+						{
+							PLiSQL_pkg_datum *pkg_datum = (PLiSQL_pkg_datum *) $1.datum;
+							PLiSQL_var *pkg_var = (PLiSQL_var *) pkg_datum->pkgvar;
+
+							if (pkg_var->dtype != PLISQL_DTYPE_VAR)
+								ereport(ERROR,
+									(errcode(ERRCODE_DATATYPE_MISMATCH),
+									 errmsg("cursor variable must be a simple variable"),
+									 parser_errposition(@1)));
+							if (pkg_var->datatype->typoid != REFCURSOROID)
+								ereport(ERROR,
+									(errcode(ERRCODE_DATATYPE_MISMATCH),
+									 errmsg("variable \"%s\" must be of type cursor or refcursor",
+											pkg_var->refname),
+									 parser_errposition(@1)));
+						}
+						else if (((PLiSQL_var *) $1.datum)->datatype->typoid != REFCURSOROID)
 							ereport(ERROR,
 									(errcode(ERRCODE_DATATYPE_MISMATCH),
 									 errmsg("variable \"%s\" must be of type cursor or refcursor",
@@ -4007,6 +4153,7 @@ make_return_stmt(int location)
 
 		if (tok == T_DATUM && plisql_peek() == ';' &&
 			(yylval.wdatum.datum->dtype == PLISQL_DTYPE_VAR ||
+			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM || 
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PROMISE ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_ROW ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_REC))
@@ -4070,6 +4217,7 @@ make_return_next_stmt(int location)
 
 		if (tok == T_DATUM && plisql_peek() == ';' &&
 			(yylval.wdatum.datum->dtype == PLISQL_DTYPE_VAR ||
+			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM || 
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_PROMISE ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_ROW ||
 			 yylval.wdatum.datum->dtype == PLISQL_DTYPE_REC))
@@ -4176,6 +4324,53 @@ check_assignable(PLiSQL_datum *datum, int location)
 			check_assignable(plisql_Datums[((PLiSQL_recfield *) datum)->recparentno],
 							 location);
 			break;
+		case PLISQL_DTYPE_PACKAGE_DATUM:
+			check_packagedatum_assignable((PLiSQL_pkg_datum *) datum, location);
+			break;
+		default:
+			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
+			break;
+	}
+}
+
+/*
+ * check package datum can be assigned
+ */
+static void
+check_packagedatum_assignable(PLiSQL_pkg_datum *pkg_datum, int location)
+{
+	PLiSQL_datum *datum = pkg_datum->pkgvar;
+	PackageCacheItem *item = pkg_datum->item;
+	PLiSQL_package *psource = (PLiSQL_package *) item->source;
+	PLiSQL_function *func = (PLiSQL_function *) &psource->source;
+
+	switch (datum->dtype)
+	{
+		case PLISQL_DTYPE_PACKAGE_DATUM:
+			{
+				PLiSQL_pkg_datum *pkg1_datum = (PLiSQL_pkg_datum *) datum;
+
+				check_packagedatum_assignable(pkg1_datum, location);
+			}
+			break;
+		case PLISQL_DTYPE_VAR:
+		case PLISQL_DTYPE_PROMISE:
+		case PLISQL_DTYPE_REC:
+			if (((PLiSQL_variable *) datum)->isconst)
+				ereport(ERROR,
+						(errcode(ERRCODE_ERROR_IN_ASSIGNMENT),
+						 errmsg("variable \"%s\" is declared CONSTANT",
+								((PLiSQL_variable *) datum)->refname),
+						 parser_errposition(location)));
+			break;
+		case PLISQL_DTYPE_ROW:
+			/* always assignable; member vars were checked at compile time */
+			break;
+		case PLISQL_DTYPE_RECFIELD:
+			/* assignable if parent record is */
+			check_assignable(func->datums[((PLiSQL_recfield *) datum)->recparentno],
+							 location);
+			break;
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
@@ -4213,8 +4408,7 @@ read_into_target(PLiSQL_variable **target, bool *strict)
 	switch (tok)
 	{
 		case T_DATUM:
-			if (yylval.wdatum.datum->dtype == PLISQL_DTYPE_ROW ||
-				yylval.wdatum.datum->dtype == PLISQL_DTYPE_REC)
+			if (is_row_record_datum(yylval.wdatum.datum)) 
 			{
 				check_assignable(yylval.wdatum.datum, yylloc);
 				*target = (PLiSQL_variable *) yylval.wdatum.datum;
@@ -4276,8 +4470,7 @@ read_into_scalar_list(char *initial_name,
 		{
 			case T_DATUM:
 				check_assignable(yylval.wdatum.datum, yylloc);
-				if (yylval.wdatum.datum->dtype == PLISQL_DTYPE_ROW ||
-					yylval.wdatum.datum->dtype == PLISQL_DTYPE_REC)
+				if (is_row_record_datum(yylval.wdatum.datum)) 
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("\"%s\" is not a scalar variable",
@@ -4444,6 +4637,7 @@ parse_datatype(const char *string, int location)
 	int32		typmod;
 	sql_error_callback_arg cbarg;
 	ErrorContextCallback  syntax_errcontext;
+	PLiSQL_type *result = NULL;
 
 	cbarg.location = location;
 
@@ -4454,6 +4648,29 @@ parse_datatype(const char *string, int location)
 
 	/* Let the main parser try to parse it under standard SQL rules */
 	typeName = typeStringToTypeName(string, NULL);
+
+	if (list_length(typeName->names) < 2 &&
+		!is_compile_standard_package())
+	{
+		/* may be a standard.type */
+		size_t len = 8 + strlen(string) + 2;
+		char *refname = (char *) palloc0(len);
+		TypeName *newtypName;
+
+		snprintf(refname, len, "standard.%s", string);
+		newtypName = typeStringToTypeName(refname, NULL);
+		pfree(refname);
+		result = plisql_parse_package_type(newtypName, parse_by_pkg_type, true);
+		pfree(newtypName);
+	}
+	else
+		result = plisql_parse_package_type(typeName, parse_by_pkg_type, false);
+	if (result != NULL)
+	{
+		error_context_stack = syntax_errcontext.previous;
+		return result;
+	}
+
 	typenameTypeIdAndMod(NULL, typeName, &type_id, &typmod);
 
 	/* Restore former ereport callback */
@@ -4509,9 +4726,18 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	char	  **argv;
 	StringInfoData ds;
 	bool		any_named = false;
+	PLiSQL_var	*real_cursor = NULL;
+	bool		is_packagevar = false;
 
 	tok = yylex();
-	if (cursor->cursor_explicit_argrow < 0)
+	if (cursor->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+	{
+		real_cursor = (PLiSQL_var *) ((PLiSQL_pkg_datum *) cursor)->pkgvar;
+		is_packagevar = true;
+	}
+	else
+		real_cursor = cursor;
+	if (real_cursor->cursor_explicit_argrow < 0)
 	{
 		/* No arguments expected */
 		if (tok == '(')
@@ -4538,7 +4764,16 @@ read_cursor_args(PLiSQL_var *cursor, int until)
 	/*
 	 * Read the arguments, one by one.
 	 */
-	row = (PLiSQL_row *) plisql_Datums[cursor->cursor_explicit_argrow];
+	if (is_packagevar)
+	{
+		PLiSQL_pkg_datum *pkg_datum = (PLiSQL_pkg_datum *) cursor;
+		PLiSQL_package *psource = (PLiSQL_package *) pkg_datum->item->source;
+
+		row = (PLiSQL_row *) psource->source.datums[real_cursor->cursor_explicit_argrow];
+	}
+	else
+		row = (PLiSQL_row *) plisql_Datums[cursor->cursor_explicit_argrow];
+
 	argv = (char **) palloc0(row->nfields * sizeof(char *));
 
 	for (argc = 0; argc < row->nfields; argc++)

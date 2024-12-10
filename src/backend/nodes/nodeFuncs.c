@@ -22,6 +22,7 @@
 #include "nodes/pathnodes.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/packagecache.h"
 
 static bool expression_returns_set_walker(Node *node, void *context);
 static int	leftmostLoc(int loc1, int loc2);
@@ -73,7 +74,17 @@ exprType(const Node *expr)
 			type = ((const SubscriptingRef *) expr)->refrestype;
 			break;
 		case T_FuncExpr:
-			type = ((const FuncExpr *) expr)->funcresulttype;
+			{
+				FuncExpr *funcexpr = (FuncExpr *) expr;
+
+				if (FUNC_EXPR_FROM_PACKAGE(funcexpr->function_from))
+					set_pkginfo_from_funcexpr(funcexpr);
+				if (funcexpr->ref_pkgtype &&
+					FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+					set_pkgtype_from_funcexpr(funcexpr);
+
+				type = funcexpr->funcresulttype;
+			}
 			break;
 		case T_NamedArgExpr:
 			type = exprType((Node *) ((const NamedArgExpr *) expr)->arg);

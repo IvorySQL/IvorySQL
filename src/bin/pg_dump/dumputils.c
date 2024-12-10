@@ -471,7 +471,9 @@ do { \
 		CONVERT_PRIV('w', "UPDATE");
 	}
 	else if (strcmp(type, "FUNCTION") == 0 ||
-			 strcmp(type, "FUNCTIONS") == 0)
+			strcmp(type, "FUNCTIONS") == 0 ||
+			 strcmp(type, "PACKAGE") == 0 ||
+			 strcmp(type, "PACKAGES") == 0)
 		CONVERT_PRIV('X', "EXECUTE");
 	else if (strcmp(type, "PROCEDURE") == 0 ||
 			 strcmp(type, "PROCEDURES") == 0)

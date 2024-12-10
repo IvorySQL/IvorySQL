@@ -36,6 +36,8 @@ typedef enum OraBodyStyle
 	OraBody_UNKOWN,
 	OraBody_FUNC,
 	OraBody_ANONYMOUS_BLOCK,
+	OraBody_PACKAGE,
+	OraBody_PACKAGEBODY,
 	OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN,
 	OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE
 }OraBodyStyle;

@@ -25,6 +25,8 @@
 #include "catalog/pg_type.h"
 #include "parser/parse_coerce.h"
 #include "utils/syscache.h"
+#include "utils/lsyscache.h"
+
 
 
 /*
@@ -163,7 +165,8 @@ check_amproc_signature(Oid funcid, Oid restype, bool exact,
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(tp);
 
-	if (procform->prorettype != restype || procform->proretset ||
+	if (get_func_real_rettype(tp) != restype || 
+		procform->proretset || 
 		procform->pronargs < minargs || procform->pronargs > maxargs)
 		result = false;
 

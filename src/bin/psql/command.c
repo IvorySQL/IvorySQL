@@ -884,6 +884,9 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 				/* no longer distinct from \du */
 				success = describeRoles(pattern, show_verbose, show_system);
 				break;
+			case 'k':
+				success = describePackages(pattern, show_verbose, show_system);
+				break;
 			case 'l':
 				success = listLargeObjects(show_verbose);
 				break;

@@ -170,7 +170,7 @@ plsample_func_handler(PG_FUNCTION_ARGS)
 	}
 
 	/* Type of the result */
-	prorettype = pl_struct->prorettype;
+	prorettype = get_func_real_rettype(pl_tuple);
 	ReleaseSysCache(pl_tuple);
 
 	/*

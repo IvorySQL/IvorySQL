@@ -1883,7 +1883,7 @@ begin
   NULL;
 end; $$ language plisql;
 
---only declare but no define and no use ok
+--only declare but no define raise error
 do $$
 DECLARE
   var1 integer;
@@ -1892,14 +1892,6 @@ begin
   var1 := 23;
 end; $$ language plisql;
 
---no define but use failed
-do $$
-DECLARE
-  var1 integer;
-  function mds(id integer) return integer;
-begin
-  var1 := mds(23);
-end; $$ language plisql;
 
 --again
 do $$
@@ -1946,7 +1938,7 @@ begin
    NULL;
 end; $$ language plisql;
 
---test ok
+--test failed
 create or replace function test(id integer) returns integer
 AS
 $$
@@ -1957,10 +1949,6 @@ begin
 end; $$ language plisql;
 /
 
---ok
-SELECT test(23) FROM dual;
-
-DROP FUNCTION test(integer);
 
 do $$
 DECLARE

@@ -41,6 +41,7 @@ typedef enum
 	DO_EXTENSION,
 	DO_TYPE,
 	DO_SHELL_TYPE,
+	DO_PACKAGE,
 	DO_FUNC,
 	DO_AGG,
 	DO_OPERATOR,
@@ -218,6 +219,17 @@ typedef struct _shellTypeInfo
 
 	TypeInfo   *baseType;		/* back link to associated base type */
 } ShellTypeInfo;
+
+typedef struct _pkgInfo
+{
+	DumpableObject dobj;
+	char		*rolname;		/* name of owner, or empty string */
+	char		*pkgacl;
+	char		*rpkgacl;
+	char		*initpkgacl;
+	char		*initrpkgacl;
+	DumpableAcl	dacl;
+} PkgInfo;
 
 typedef struct _funcInfo
 {
@@ -736,6 +748,7 @@ extern NamespaceInfo *getNamespaces(Archive *fout, int *numNamespaces);
 extern ExtensionInfo *getExtensions(Archive *fout, int *numExtensions);
 extern TypeInfo *getTypes(Archive *fout, int *numTypes);
 extern FuncInfo *getFuncs(Archive *fout, int *numFuncs);
+extern PkgInfo *getPackages(Archive *fout, int *numPkgs);
 extern AggInfo *getAggregates(Archive *fout, int *numAggs);
 extern OprInfo *getOperators(Archive *fout, int *numOprs);
 extern AccessMethodInfo *getAccessMethods(Archive *fout, int *numAccessMethods);

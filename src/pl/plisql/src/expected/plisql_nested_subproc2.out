@@ -1916,7 +1916,7 @@ QUERY:  declare
 begin
   NULL;
 end
---only declare but no define and no use ok
+--only declare but no define error
 DECLARE
   var1 integer;
   function mds(id integer) return integer;
@@ -1924,16 +1924,15 @@ begin
   var1 := 23;
 end;
 /
---no define but use failed
-DECLARE
+ERROR:  A subprogram body must be defined for the forward declaration of mds
+LINE 3:   function mds(id integer) return integer;
+                   ^
+QUERY:  DECLARE
   var1 integer;
   function mds(id integer) return integer;
 begin
-  var1 := mds(23);
-end;
-/
-ERROR:  subproc function doesn't define
-CONTEXT:  PL/iSQL function inline_code_block line 5 at assignment
+  var1 := 23;
+end
 --again
 DECLARE
   var1 integer;
@@ -1942,8 +1941,15 @@ begin
   var1 := mds(23);
 end;
 /
-ERROR:  subproc function doesn't define
-CONTEXT:  PL/iSQL function inline_code_block line 5 at assignment
+ERROR:  A subprogram body must be defined for the forward declaration of mds
+LINE 3:   function mds(id integer) return integer;
+                   ^
+QUERY:  DECLARE
+  var1 integer;
+  function mds(id integer) return integer;
+begin
+  var1 := mds(23);
+end
 --define before declare faield
 declare
    function mds(id integer) return integer IS
@@ -1979,7 +1985,7 @@ end;
 /
 ERROR:  function or procedure "mds" has already define
 CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 4
---test ok
+--test failed
 create or replace function test(id integer) return integer
 AS
   function mds(id integer) return integer;
@@ -1987,14 +1993,13 @@ begin
   return 23;
 end;
 /
---ok
-SELECT test(23) FROM dual;
- test 
-------
-   23
-(1 row)
-
-DROP FUNCTION test(integer);
+ERROR:  A subprogram body must be defined for the forward declaration of mds
+LINE 1: function mds(id integer) return integer;
+                 ^
+QUERY:  function mds(id integer) return integer;
+begin
+  return 23;
+end
 DECLARE
   -- Declare proc1 (forward declaration):
   PROCEDURE proc1(number1 NUMBER);
@@ -3997,7 +4002,7 @@ create or replace function test.test_f(id integer) return integer is
        var3 integer;
      begin
         var3 := 4;
-	return 1;
+	    return 1;
      end;
      function test_f1(id integer) return integer is
        var4 integer;
@@ -4008,7 +4013,11 @@ create or replace function test.test_f(id integer) return integer is
          raise info 'welcome';
        end if;
        return var4;
-      end;
+     end;
+     procedure test_p2(id integer) IS
+     BEGIN
+         raise info 'test_p2';
+	 end;
    begin
       var3 := 1;
       raise info 'subproc level 1 test_f';

@@ -3677,6 +3677,7 @@ _getObjectDescription(PQExpBuffer buf, const TocEntry *te)
 	 */
 	else if (strcmp(type, "AGGREGATE") == 0 ||
 			 strcmp(type, "FUNCTION") == 0 ||
+			 strcmp(type, "PACKAGE") == 0 || 
 			 strcmp(type, "OPERATOR") == 0 ||
 			 strcmp(type, "OPERATOR CLASS") == 0 ||
 			 strcmp(type, "OPERATOR FAMILY") == 0 ||

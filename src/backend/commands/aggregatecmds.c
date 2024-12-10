@@ -297,6 +297,8 @@ DefineAggregate(ParseState *pstate,
 		 * 'em).  We share functioncmds.c's code for processing them.
 		 */
 		Oid			requiredResultType;
+		ArrayType	*parametertypeNames;
+
 
 		if (baseType != NULL)
 			ereport(ERROR,
@@ -316,7 +318,11 @@ DefineAggregate(ParseState *pstate,
 										  NULL,
 										  &parameterDefaults,
 										  &variadicArgType,
-										  &requiredResultType);
+										  &requiredResultType,
+										  &parametertypeNames); 
+		if (parametertypeNames != NULL)
+			elog(ERROR, "aggreate function doesn't support package'type as argtype");
+
 		/* Parameter defaults are not currently allowed by the grammar */
 		Assert(parameterDefaults == NIL);
 		/* There shouldn't have been any OUT parameters, either */

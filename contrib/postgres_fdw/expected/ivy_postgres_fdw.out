@@ -13291,12 +13291,13 @@ UPDATE async_pt SET c = c || c WHERE b = 0 RETURNING *;
                Filter: (async_pt_3.b = '0'::number)
 (19 rows)
 
-UPDATE async_pt SET c = c || c WHERE b = 0 RETURNING *;
+UPDATE async_pt SET c = c || c WHERE b = 0;
+SELECT * FROM async_pt WHERE b = 0 ORDER BY a DESC;
   a   | b |    c     
 ------+---+----------
  3000 | 0 | 00000000
- 1000 | 0 | 00000000
  2000 | 0 | 00000000
+ 1000 | 0 | 00000000
 (3 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF)

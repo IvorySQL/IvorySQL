@@ -50,6 +50,8 @@
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "funcapi.h"
+#include "parser/parse_package.h"
 
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
@@ -1663,10 +1665,205 @@ get_func_rettype(Oid funcid)
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
-	result = ((Form_pg_proc) GETSTRUCT(tp))->prorettype;
+	result = get_func_real_rettype(tp);
 	ReleaseSysCache(tp);
 	return result;
 }
+
+/*
+ * maybe a function return a package'var
+ * which is changed with package. so, we should
+ * use this function to get its realy type
+ */
+Oid
+get_func_real_rettype(HeapTuple proc_tup)
+{
+	Oid retoid;
+	Form_pg_proc form_proc = ((Form_pg_proc) GETSTRUCT(proc_tup));
+
+	retoid = form_proc->prorettype;
+
+	if (ORA_PARSER == compatible_db)
+	{
+		char *rettypename = NULL;
+
+		get_func_typename_info(proc_tup, NULL, &rettypename);
+		if (rettypename != NULL)
+		{
+			TypeName	*tname;
+			PkgType *pkgtype;
+
+			tname = (TypeName *) stringToNode(rettypename);
+			pkgtype = LookupPkgTypeByTypename(tname->names, false);
+			if (pkgtype == NULL)
+				elog(ERROR, "package doesn't exist");
+			retoid = pkgtype->basetypid;
+			pfree(pkgtype);
+			pfree(tname);
+		}
+	}
+	return retoid;
+}
+
+/*
+ * function'argments maybe comes from package'var
+ * which is dynamic changed with package
+ */
+void
+repl_func_real_argtype(HeapTuple proc_tup, Oid *args, int nargs)
+{
+	if (ORA_PARSER == compatible_db)
+	{
+		char **p_argtypeNames = NULL;
+		bool isNull;
+		Datum proallargtypes;
+		ArrayType *arr;
+		Datum proargmodes;
+		char *promodes = NULL;
+		int numargs = -1;
+		int j = 0;
+
+		get_func_typename_info(proc_tup, &p_argtypeNames, NULL);
+
+		/* First discover the total number of parameters and get their types */
+		proallargtypes = SysCacheGetAttr(PROCOID, proc_tup,
+									 Anum_pg_proc_proallargtypes,
+									 &isNull);
+		if (!isNull)
+		{
+			/*
+			 * We expect the arrays to be 1-D arrays of the right types; verify
+			 * that.  For the OID and char arrays, we don't need to use
+			 * deconstruct_array() since the array data is just going to look like
+			 * a C array of values.
+			 */
+			arr = DatumGetArrayTypeP(proallargtypes);	/* ensure not toasted */
+			numargs = ARR_DIMS(arr)[0];
+			if (ARR_NDIM(arr) != 1 ||
+				numargs < 0 ||
+				ARR_HASNULL(arr) ||
+				ARR_ELEMTYPE(arr) != OIDOID)
+				elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
+		}
+		else
+			numargs = nargs;
+
+		proargmodes = SysCacheGetAttr(PROCOID, proc_tup,
+									  Anum_pg_proc_proargmodes,
+									  &isNull);
+		if (!isNull)
+		{
+			arr = DatumGetArrayTypeP(proargmodes);	/* ensure not toasted */
+			promodes = (char *) ARR_DATA_PTR(arr);
+		}
+
+		if (numargs != nargs)
+			Assert(promodes != NULL);
+
+		if (p_argtypeNames != NULL)
+		{
+			int i;
+			for (i = 0; i < numargs; i++)
+			{
+				/*
+				 * not all arguments, we should ignore out parameter
+				 */
+				if (numargs != nargs &&
+					promodes != NULL &&
+					(promodes[i] == FUNC_PARAM_OUT ||
+					promodes[i] == FUNC_PARAM_TABLE))
+					continue;
+				if (strcmp(p_argtypeNames[i], "") != 0)
+				{
+					TypeName *tname = stringToNode(p_argtypeNames[i]);
+					PkgType *pkgtype = LookupPkgTypeByTypename(tname->names, false);
+
+					if (pkgtype == NULL)
+						elog(ERROR, "package doesn't exist");
+					args[j] = pkgtype->basetypid;
+					pfree(pkgtype);
+					pfree(tname);
+				}
+				j++;
+			}
+			pfree(p_argtypeNames);
+		}
+	}
+	return;
+}
+
+/*
+ * get func real all argtype
+ */
+ArrayType *
+get_func_real_allargtype(HeapTuple proc_tup)
+
+{
+	if (ORA_PARSER == compatible_db)
+	{
+		Datum proallargtypes;
+		bool isNull;
+		int numargs;
+		ArrayType *arr;
+		Oid *proargtypes = NULL;
+		char **p_argtypeNames = NULL;
+		int i;
+		Datum *rel_types;
+		ArrayType *rel_arr_type;
+
+		/* First discover the total number of parameters and get their types */
+		proallargtypes = SysCacheGetAttr(PROCOID, proc_tup,
+									 Anum_pg_proc_proallargtypes,
+									 &isNull);
+		if (!isNull)
+		{
+			/*
+			 * We expect the arrays to be 1-D arrays of the right types; verify
+			 * that.  For the OID and char arrays, we don't need to use
+			 * deconstruct_array() since the array data is just going to look like
+			 * a C array of values.
+			 */
+			arr = DatumGetArrayTypeP(proallargtypes);	/* ensure not toasted */
+			numargs = ARR_DIMS(arr)[0];
+			if (ARR_NDIM(arr) != 1 ||
+				numargs < 0 ||
+				ARR_HASNULL(arr) ||
+				ARR_ELEMTYPE(arr) != OIDOID)
+				elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
+			proargtypes = palloc(sizeof(Oid) * numargs);
+			memcpy(proargtypes, ARR_DATA_PTR(arr), numargs * sizeof(Oid));
+		}
+		if (proargtypes == NULL)
+			return NULL;
+		get_func_typename_info(proc_tup, &p_argtypeNames, NULL);
+		if (p_argtypeNames != NULL)
+		{
+			for (i = 0; i < numargs; i++)
+			{
+				if (strcmp(p_argtypeNames[i], "") != 0)
+				{
+					TypeName *tname = stringToNode(p_argtypeNames[i]);
+					PkgType *pkgtype = LookupPkgTypeByTypename(tname->names, false);
+
+					if (pkgtype == NULL)
+						elog(ERROR, "package doesn't exist");
+					proargtypes[i] = pkgtype->basetypid;
+					pfree(pkgtype);
+					pfree(tname);
+				}
+			}
+			pfree(p_argtypeNames);
+		}
+		rel_types = palloc(sizeof(Datum) * numargs);
+		for (i = 0; i < numargs; i++)
+			rel_types[i] = ObjectIdGetDatum(proargtypes[i]);
+		rel_arr_type = construct_array(rel_types, numargs, OIDOID,
+										sizeof(Oid), true, TYPALIGN_INT);
+		return rel_arr_type;
+	}
+	return NULL;
+}
+
 
 /*
  * get_func_nargs
@@ -1707,12 +1904,13 @@ get_func_signature(Oid funcid, Oid **argtypes, int *nargs)
 
 	procstruct = (Form_pg_proc) GETSTRUCT(tp);
 
-	result = procstruct->prorettype;
+	result = get_func_real_rettype(tp);
 	*nargs = (int) procstruct->pronargs;
 	Assert(*nargs == procstruct->proargtypes.dim1);
 	*argtypes = (Oid *) palloc(*nargs * sizeof(Oid));
 	memcpy(*argtypes, procstruct->proargtypes.values, *nargs * sizeof(Oid));
 
+	repl_func_real_argtype(tp, *argtypes, *nargs);
 	ReleaseSysCache(tp);
 	return result;
 }

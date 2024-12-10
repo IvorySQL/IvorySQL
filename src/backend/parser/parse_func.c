@@ -30,11 +30,13 @@
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
+#include "parser/parse_package.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
+#include "commands/packagecmds.h"
 
 
 /* Possible error codes from LookupFuncNameInternal */
@@ -122,6 +124,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 	char function_from = FUNC_FROM_PG_PROC;
 	void *pfunc = NULL;
+	Oid pkgoid = InvalidOid;
+
 
 	/*
 	 * If there's an aggregate filter, transform it using transformWhereClause
@@ -278,7 +282,38 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											&declared_arg_types, &argdefaults, &pfunc);
 		if (fdresult != FUNCDETAIL_NOTFOUND)
 			function_from = FUNC_FROM_SUBPROCFUNC;
+		else if (list_length(funcname) == 1)
+		{
+			/* lookup standard package func */
+			List *new_funcname = lcons(makeString("standard"), copyObject(funcname));
+
+			fdresult = LookupPkgFunc(pstate, new_funcname, &fargs, argnames, nargs,
+											actual_arg_types,
+											!func_variadic, true, proc_call,
+											&funcid, &rettype, &retset,
+											&nvargs, &vatype,
+											&declared_arg_types, &argdefaults,
+											&pfunc, &pkgoid,
+											true);
+			list_free(new_funcname);
+			if (fdresult != FUNCDETAIL_NOTFOUND)
+				function_from = FUNC_FROM_PACKAGE;
+		}
 	}
+	if (fdresult == FUNCDETAIL_NOTFOUND)
+	{
+		fdresult = LookupPkgFunc(pstate, funcname, &fargs, argnames, nargs,
+											actual_arg_types,
+											!func_variadic, true, proc_call,
+											&funcid, &rettype, &retset,
+											&nvargs, &vatype,
+											&declared_arg_types, &argdefaults,
+											&pfunc, &pkgoid,
+											false);
+		if (fdresult != FUNCDETAIL_NOTFOUND)
+			function_from = FUNC_FROM_PACKAGE;
+	}
+
 	if (fdresult == FUNCDETAIL_NOTFOUND)
 		fdresult = func_get_detail(funcname, fargs, argnames, nargs,
 							   actual_arg_types,
@@ -774,6 +809,42 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		funcexpr->location = location;
 		funcexpr->parent_func = pfunc;
 		funcexpr->function_from = function_from;
+		funcexpr->pkgoid = pkgoid;
+		if (function_from == FUNC_FROM_PACKAGE)
+		{
+			if (list_length(funcname) == 2)
+			{
+				/* add pkg namespace */
+				List *pkg_funcname = (List *) copyObject(funcname);
+				char *pkgschema = get_namespace_name(get_package_namespace(pkgoid));
+
+				pkg_funcname = lcons(makeString(pkgschema), pkg_funcname);
+				funcexpr->function_name = nodeToString(pkg_funcname);
+				pfree(pkg_funcname);
+			}
+			else
+				funcexpr->function_name = nodeToString(funcname);
+		}
+		else if (function_from == FUNC_FROM_PG_PROC)
+		{
+			char **p_argtypeNames = NULL;
+			char *rettypeName = NULL;
+			HeapTuple procTup;
+
+			procTup = SearchSysCache1(PROCOID,
+							   ObjectIdGetDatum(funcid));
+			if (!HeapTupleIsValid(procTup))	/* should not happen */
+				elog(ERROR, "cache lookup failed for function %u", funcid);
+
+			get_func_typename_info(procTup, &p_argtypeNames, &rettypeName);
+			if (p_argtypeNames != NULL || rettypeName != NULL)
+				funcexpr->ref_pkgtype = true;
+			ReleaseSysCache(procTup);
+			if (p_argtypeNames)
+				pfree(p_argtypeNames);
+			if (rettypeName)
+				pfree(rettypeName);
+		}
 
 		retval = (Node *) funcexpr;
 	}
@@ -1700,7 +1771,14 @@ func_get_detail(List *funcname,
 			elog(ERROR, "cache lookup failed for function %u",
 				 best_candidate->oid);
 		pform = (Form_pg_proc) GETSTRUCT(ftup);
+
 		*rettype = pform->prorettype;
+		/* return a package.xxx */
+		if (ORA_PARSER == compatible_db)
+		{
+			*rettype = get_func_real_rettype(ftup);
+		}
+
 		*retset = pform->proretset;
 		*vatype = pform->provariadic;
 		/* fetch default args if caller wants 'em */

@@ -28,6 +28,7 @@
 #include "parser/parse_type.h"
 #include "plisql.h"
 #include "pl_subproc_function.h"
+#include "pl_package.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -44,7 +45,7 @@
  */
 PLiSQL_stmt_block *plisql_parse_result;
 
-static int	datums_alloc;
+int	datums_alloc; 
 int			plisql_nDatums;
 PLiSQL_datum **plisql_Datums;
 int	datums_last;
@@ -102,12 +103,13 @@ static PLiSQL_type *build_datatype(HeapTuple typeTup, int32 typmod,
 static void compute_function_hashkey(FunctionCallInfo fcinfo,
 									 Form_pg_proc procStruct,
 									 PLiSQL_func_hashkey *hashkey,
-									 bool forValidator);
+									 bool forValidator,
+									 HeapTuple procTup); 
 static PLiSQL_function *plisql_HashTableLookup(PLiSQL_func_hashkey *func_key);
 static void plisql_HashTableInsert(PLiSQL_function *function,
 									PLiSQL_func_hashkey *func_key);
 static void plisql_HashTableDelete(PLiSQL_function *function);
-static void delete_function(PLiSQL_function *func);
+void delete_function(PLiSQL_function *func);
 
 /* ----------
  * plisql_compile		Make an execution tree for a PL/iSQL function.
@@ -129,6 +131,7 @@ plisql_compile(FunctionCallInfo fcinfo, bool forValidator)
 	PLiSQL_func_hashkey hashkey;
 	bool		function_valid = false;
 	bool		hashkey_valid = false;
+	Oid rettypeoid = InvalidOid;
 
 	/*
 	 * Lookup the pg_proc tuple by Oid; we'll need it in any case
@@ -137,6 +140,8 @@ plisql_compile(FunctionCallInfo fcinfo, bool forValidator)
 	if (!HeapTupleIsValid(procTup))
 		elog(ERROR, "cache lookup failed for function %u", funcOid);
 	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
+
+	rettypeoid = get_func_real_rettype(procTup);
 
 	/*
 	 * See if there's already a cache entry for the current FmgrInfo. If not,
@@ -148,7 +153,7 @@ recheck:
 	if (!function)
 	{
 		/* Compute hashkey using function signature and actual arg types */
-		compute_function_hashkey(fcinfo, procStruct, &hashkey, forValidator);
+		compute_function_hashkey(fcinfo, procStruct, &hashkey, forValidator, procTup); 
 		hashkey_valid = true;
 
 		/* And do the lookup */
@@ -159,7 +164,8 @@ recheck:
 	{
 		/* We have a compiled function, but is it still valid? */
 		if (function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
-			ItemPointerEquals(&function->fn_tid, &procTup->t_self))
+			ItemPointerEquals(&function->fn_tid, &procTup->t_self) &&
+			(!OidIsValid(rettypeoid) || rettypeoid == function->fn_rettype)) 
 			function_valid = true;
 		else
 		{
@@ -203,7 +209,7 @@ recheck:
 		 */
 		if (!hashkey_valid)
 			compute_function_hashkey(fcinfo, procStruct, &hashkey,
-									 forValidator);
+									 forValidator, procTup); 
 
 		/*
 		 * Do the hard part.
@@ -276,6 +282,10 @@ do_compile(FunctionCallInfo fcinfo,
 	int		   *in_arg_varnos = NULL;
 	PLiSQL_variable **out_arg_variables;
 	MemoryContext func_cxt;
+
+	char		**argtypenames = NULL;
+	char		*rettypename = NULL;
+	PLiSQL_type	*rettype = NULL;
 
 	/*
 	 * Setup the scanner input and error info.  We assume that this function
@@ -354,6 +364,8 @@ do_compile(FunctionCallInfo fcinfo,
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
 
+	function->namelabel = pstrdup(NameStr(procStruct->proname));
+
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The
 	 * outermost namespace contains function parameters and other special
@@ -365,6 +377,10 @@ do_compile(FunctionCallInfo fcinfo,
 	plisql_start_datums();
 	cur_compile_func_level = 0;
 	plisql_start_subproc_func();
+	plisql_compile_packageitem = NULL;
+	plisql_saved_compile[cur_compile_func_level] = function;
+	Assert(plisql_curr_global_proper_level == 0);
+	plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
 
 	switch (function->fn_is_trigger)
 	{
@@ -382,6 +398,9 @@ do_compile(FunctionCallInfo fcinfo,
 
 			numargs = get_func_arg_info(procTup,
 										&argtypes, &argnames, &argmodes);
+
+			get_func_typename_info(procTup,
+									&argtypenames, &rettypename);
 
 			plisql_resolve_polymorphic_argtypes(numargs, argtypes, argmodes,
 												 fcinfo->flinfo->fn_expr,
@@ -409,10 +428,31 @@ do_compile(FunctionCallInfo fcinfo,
 				snprintf(buf, sizeof(buf), "$%d", i + 1);
 
 				/* Create datatype info */
-				argdtype = plisql_build_datatype(argtypeid,
-												  -1,
-												  function->fn_input_collation,
-												  NULL);
+				/* consider the argument type comes from a package */
+				if (argtypenames != NULL && strcmp(argtypenames[i], "") != 0)
+				{
+					TypeName	*tname;
+
+					tname = (TypeName *) stringToNode(argtypenames[i]);
+
+					if (tname->pct_type)
+						argdtype = plisql_parse_package_type(tname, parse_by_var_type, false);
+					else
+						argdtype = plisql_parse_package_type(tname, parse_by_pkg_type, false);
+					if (argdtype == NULL)
+					{
+						elog(ERROR, "doesn't recognise package type %s", TypeNameToString(tname));
+					}
+					pfree(tname);
+				}
+				else
+				{
+					argdtype = plisql_build_datatype(argtypeid,
+									  -1,
+									  function->fn_input_collation,
+									  NULL);
+				}
+
 
 				/* Disallow pseudotype argument */
 				/* (note we already replaced polymorphic types) */
@@ -461,6 +501,26 @@ do_compile(FunctionCallInfo fcinfo,
 									   argnames[i]);
 			}
 
+			if (rettypename != NULL)
+			{
+				TypeName		*tname;
+
+				tname = (TypeName *) stringToNode(rettypename);
+				if (tname->pct_type)
+					rettype = plisql_parse_package_type(tname, parse_by_var_type, false);
+				else
+					rettype = plisql_parse_package_type(tname, parse_by_pkg_type, false);
+
+				if (rettype == NULL)
+				{
+					elog(ERROR, "doesn't recognise package type %s", TypeNameToString(tname));
+				}
+				pfree(tname);
+				rettypeid = rettype->typoid;
+			}
+			else
+				rettypeid = procStruct->prorettype;
+
 			/*
 			 * If there's just one OUT parameter, out_param_varno points
 			 * directly to it.  If there's more than one, build a row that
@@ -489,7 +549,6 @@ do_compile(FunctionCallInfo fcinfo,
 			 * work; if it doesn't we're in some context that fails to make
 			 * the info available.
 			 */
-			rettypeid = procStruct->prorettype;
 			if (IsPolymorphicType(rettypeid))
 			{
 				if (forValidator)
@@ -774,9 +833,6 @@ do_compile(FunctionCallInfo fcinfo,
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 	function->action = plisql_parse_result;
 
-	plisql_scanner_finish();
-	pfree(proc_source);
-
 	/*
 	 * If it has OUT parameters or returns VOID or returns a set, we allow
 	 * control to fall off the end without an explicit RETURN statement. The
@@ -798,9 +854,17 @@ do_compile(FunctionCallInfo fcinfo,
 
 	plisql_finish_subproc_func(function);
 
+	plisql_check_subproc_define(function);
+
+	/*
+	 * after plisql_check_subproc_define for nice error message
+	 */
+	plisql_scanner_finish();
+	pfree(proc_source);
+
 	/* Debug dump for completed functions */
 	if (plisql_DumpExecTree)
-		plisql_dumptree(function);
+		plisql_dumptree(function, 0, 0); 
 
 	/*
 	 * add it to the hash table
@@ -892,12 +956,17 @@ plisql_compile_inline(char *proc_source)
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
 
+	function->namelabel = NULL;
+
 	plisql_ns_init();
 	plisql_ns_push(func_name, PLISQL_LABEL_BLOCK);
 	plisql_DumpExecTree = false;
 	plisql_start_datums();
 	cur_compile_func_level = 0;
 	plisql_start_subproc_func();
+	plisql_compile_packageitem = NULL;
+	Assert(plisql_curr_global_proper_level == 0);
+	plisql_saved_compile[cur_compile_func_level] = function;
 
 	/* Set up as though in a function returning VOID */
 	function->fn_rettype = VOIDOID;
@@ -934,8 +1003,6 @@ plisql_compile_inline(char *proc_source)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 	function->action = plisql_parse_result;
 
-	plisql_scanner_finish();
-
 	/*
 	 * If it returns VOID (always true at the moment), we allow control to
 	 * fall off the end without an explicit RETURN statement.
@@ -951,6 +1018,13 @@ plisql_compile_inline(char *proc_source)
 	plisql_finish_datums(function);
 
 	plisql_finish_subproc_func(function);
+
+	plisql_check_subproc_define(function);
+
+	/*
+	 * after plisql_check_subproc_define for nice error message
+	 */
+	plisql_scanner_finish();
 
 	/*
 	 * Pop the error context stack
@@ -1264,6 +1338,23 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 	nse = plisql_ns_lookup(expr->ns, false,
 							name1, name2, name3,
 							&nnames);
+	/* maybe a package var */
+	if (nse == NULL)
+	{
+		char		*refname;
+
+		refname = NameListToString(cref->fields);
+
+		nse = plisql_ns_lookup(expr->ns, false,
+							refname, NULL, NULL,
+							&nnames);
+		pfree(refname);
+		if (nse != NULL)
+		{
+			Assert(nse->itemtype == PLISQL_NSTYPE_VAR);
+			return make_datum_param(expr, nse->itemno, cref->location);
+		}
+	}
 
 	if (nse == NULL)
 		return NULL;			/* name not known to plisql */
@@ -1410,6 +1501,7 @@ plisql_parse_word(char *word1, const char *yytxt, bool lookup,
 					wdatum->datum = plisql_Datums[ns->itemno];
 					wdatum->ident = word1;
 					wdatum->quoted = (yytxt[0] == '"');
+					wdatum->nname_used = 1;
 					wdatum->idents = NIL;
 					return true;
 
@@ -1422,6 +1514,99 @@ plisql_parse_word(char *word1, const char *yytxt, bool lookup,
 					elog(ERROR, "unrecognized plisql itemtype: %d",
 						 ns->itemtype);
 			}
+		}
+		else if (!is_compile_standard_package())
+		{
+			/*
+			 * handle var come from standard.xxx
+			 * maybe a udt type construct func like udt_type(xx)
+			 * so we should parse package entry
+			 */
+			PkgEntry *entry;
+			size_t len = 8 + strlen(word1) + 2;
+			char *refname = (char *) palloc0(len);
+			List *idents =  list_make2(makeString("standard"),
+						makeString(word1));
+
+			snprintf(refname, len, "standard.%s", word1);
+
+			entry = plisql_parse_package_entry(refname, -1, idents, true, true);
+			pfree(refname);
+			if (entry != NULL)
+			{
+				switch (entry->type)
+				{
+					case PKG_VAR:
+						wdatum->datum = (PLiSQL_datum *) entry->value;
+						wdatum->ident = word1;
+						wdatum->quoted = false;
+						wdatum->idents = NIL;
+						wdatum->nname_used = 1;
+						/* add namespace */
+						if (plisql_ns_lookup(plisql_ns_top(), true,
+							word1, NULL, NULL,
+							NULL) == NULL)
+							add_parameter_name(PLISQL_NSTYPE_VAR, wdatum->datum->dno, word1);
+						return true;
+						break;
+					case PKG_TYPE:
+						break;
+					default:
+						break;
+				}
+				pfree(entry);
+			}
+		}
+	}
+	/*
+	 * there, make sure the local namespace has not found or
+	 * we lookup standard'package first than local, which will
+	 * result mistake.
+	 * for example: exit when not found which then found, we
+	 * mustn't use standard'found
+	 */
+	if (lookup &&
+		plisql_IdentifierLookup != IDENTIFIER_LOOKUP_DECLARE &&
+		!is_compile_standard_package() &&
+		plisql_ns_lookup(plisql_ns_top(), false,
+							   word1, NULL, NULL,
+							   NULL) == NULL)
+	{
+		PkgEntry *entry;
+		size_t len = 8 + strlen(word1) + 2;
+		char *refname = (char *) palloc0(len);
+		List *idents =  list_make2(makeString("standard"),
+					makeString(word1));
+
+		snprintf(refname, len, "standard.%s", word1);
+
+		entry = plisql_parse_package_entry(refname, -1, idents, true, true);
+		pfree(refname);
+		if (entry != NULL)
+		{
+			switch (entry->type)
+			{
+				case PKG_VAR:
+					wdatum->datum = (PLiSQL_datum *) entry->value;
+					wdatum->ident = word1;
+					wdatum->quoted = false;
+					wdatum->idents = NIL;
+					wdatum->nname_used = 1;
+					/* add namespace */
+					if (plisql_ns_lookup(plisql_ns_top(), true,
+						word1, NULL, NULL,
+						NULL) == NULL)
+						add_parameter_name(PLISQL_NSTYPE_VAR,
+										wdatum->datum->dno,
+										word1);
+					return true;
+					break;
+				case PKG_TYPE:
+					break;
+				default:
+					break;
+			}
+			pfree(entry);
 		}
 	}
 
@@ -1475,6 +1660,7 @@ plisql_parse_dblword(char *word1, char *word2,
 					wdatum->ident = NULL;
 					wdatum->quoted = false; /* not used */
 					wdatum->idents = idents;
+					wdatum->nname_used = nnames;
 					return true;
 
 				case PLISQL_NSTYPE_REC:
@@ -1502,10 +1688,46 @@ plisql_parse_dblword(char *word1, char *word2,
 					wdatum->ident = NULL;
 					wdatum->quoted = false; /* not used */
 					wdatum->idents = idents;
+					wdatum->nname_used = nnames;
 					return true;
 
 				default:
 					break;
+			}
+		}
+		else
+		{
+			/*
+			 * handle var come from package
+			 * maybe a udt type construct func like udt_type(xx)
+			 * so we should parse package entry
+			 */
+			PkgEntry *entry;
+			size_t len = strlen(word1) + strlen(word2) + 2;
+			char *refname = (char *) palloc0(len);
+
+			snprintf(refname, len, "%s.%s", word1, word2);
+
+			entry = plisql_parse_package_entry(refname, -1, idents, true, false);
+			pfree(refname);
+			if (entry != NULL)
+			{
+				switch (entry->type)
+				{
+					case PKG_VAR:
+						wdatum->datum = (PLiSQL_datum *) entry->value;
+						wdatum->ident = NULL;
+						wdatum->quoted = false;
+						wdatum->idents = idents;
+						wdatum->nname_used = 2;
+						return true;
+						break;
+					case PKG_TYPE:
+						break;
+					default:
+						break;
+				}
+				pfree(entry);
 			}
 		}
 	}
@@ -1580,11 +1802,49 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 						wdatum->ident = NULL;
 						wdatum->quoted = false; /* not used */
 						wdatum->idents = idents;
+						wdatum->nname_used = nnames;
 						return true;
 					}
 
 				default:
 					break;
+			}
+		}
+		else
+		{
+			/*
+			 * handle var come from package
+			 * it maybe is udt_type constructor func
+			 * so we should parse package entry
+			 */
+			PkgEntry *entry;
+			size_t len = strlen(word1) + strlen(word2) + strlen(word3) + 3;
+			char *refname = (char *) palloc0(len);
+
+			snprintf(refname, len, "%s.%s.%s", word1, word2, word3);
+			idents = list_make3(makeString(word1),
+								makeString(word2),
+								makeString(word3));
+			entry = plisql_parse_package_entry(refname, -1, idents, true, false);
+			pfree(refname);
+			if (entry != NULL)
+			{
+				switch (entry->type)
+				{
+					case PKG_VAR:
+						wdatum->datum = (PLiSQL_datum *) entry->value;
+						wdatum->ident = NULL;
+						wdatum->quoted = false; /* not used */
+						wdatum->idents = idents;
+						wdatum->nname_used = 3;
+						break;
+					case PKG_TYPE:
+						break;
+					default:
+						break;
+				}
+				pfree(entry);
+				return true;
 			}
 		}
 	}
@@ -1609,6 +1869,8 @@ PLiSQL_type *
 plisql_parse_wordtype(char *ident)
 {
 	PLiSQL_nsitem *nse;
+	List		*idents;
+	PLiSQL_type 	*dtype;
 
 	/*
 	 * Do a lookup in the current namespace stack
@@ -1627,6 +1889,21 @@ plisql_parse_wordtype(char *ident)
 				return ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
 			default:
 				break;
+		}
+	}
+	else
+	{
+		/* maybe type comes from standard package */
+		if (!is_compile_standard_package())
+		{
+			idents = list_make2(makeString("standard"), makeString(ident));
+			if ((dtype = plisql_parse_package_type(makeTypeNameFromNameList(idents),
+					parse_by_var_type, true)) != NULL)
+			{
+				list_free(idents);
+				return dtype;
+			}
+			list_free(idents);
 		}
 	}
 
@@ -1688,6 +1965,13 @@ plisql_parse_cwordtype(List *idents)
 			goto done;
 		}
 
+		/* maybe type comes from package */
+		if ((dtype = plisql_parse_package_type(makeTypeNameFromNameList(idents),
+				parse_by_var_type, false)) != NULL)
+		{
+			goto done;
+		}
+
 		/*
 		 * First word could also be a table name
 		 */
@@ -1707,6 +1991,16 @@ plisql_parse_cwordtype(List *idents)
 		List	   *rvnames;
 
 		Assert(list_length(idents) > 2);
+
+		if (list_length(idents) == 3)
+		{
+			if ((dtype = plisql_parse_package_type(makeTypeNameFromNameList(idents),
+							parse_by_var_type, false)) != NULL)
+			{
+				goto done;
+			}
+		}
+
 		rvnames = list_delete_last(list_copy(idents));
 		relvar = makeRangeVarFromNameList(rvnames);
 		fldname = strVal(llast(idents));
@@ -1763,6 +2057,30 @@ plisql_parse_wordrowtype(char *ident)
 {
 	Oid			classOid;
 	Oid			typOid;
+	PLiSQL_type	*result;
+	TypeName	*typname;
+	bool		missing_ok = false;
+
+	typname = typeStringToTypeName(ident, NULL);
+	if (list_length(typname->names) < 2 &&
+		!is_compile_standard_package())
+	{
+		/* may be a standard.type */
+		size_t len = 8 + strlen(ident) + 2;
+		char *refname = (char *) palloc0(len);
+
+		snprintf(refname, len, "standard.%s", ident);
+		pfree(typname);
+		typname = typeStringToTypeName(refname, NULL);
+		pfree(refname);
+		missing_ok = true;
+	}
+	result = plisql_parse_package_type(typname, parse_by_var_rowtype, missing_ok);
+	if (result != NULL)
+	{	pfree(typname);
+		return result;
+	}
+	pfree(typname);
 
 	/*
 	 * Look up the relation.  Note that because relation rowtypes have the
@@ -1802,6 +2120,12 @@ plisql_parse_cwordrowtype(List *idents)
 	Oid			typOid;
 	RangeVar   *relvar;
 	MemoryContext oldCxt;
+	PLiSQL_type	*result;
+
+	result = plisql_parse_package_type(makeTypeNameFromNameList(idents),
+							parse_by_var_rowtype, false);
+	if (result != NULL)
+		return result;
 
 	/*
 	 * As above, this is a relation lookup but could be a type lookup if we
@@ -1863,6 +2187,7 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
 				var->value = 0;
 				var->isnull = true;
 				var->freeval = false;
+				var->pkgoid = (plisql_compile_packageitem == NULL ? InvalidOid : plisql_compile_packageitem->source.fn_oid);
 
 				plisql_adddatum((PLiSQL_datum *) var);
 				if (add2namespace)
@@ -1921,6 +2246,18 @@ plisql_build_record(const char *refname, int lineno,
 	plisql_adddatum((PLiSQL_datum *) rec);
 	if (add2namespace)
 		plisql_ns_additem(PLISQL_NSTYPE_REC, rec->dno, rec->refname);
+
+	rec->pkgoid = (plisql_compile_packageitem == NULL ? InvalidOid : plisql_compile_packageitem->source.fn_oid);
+	/*
+	 * there, if we compile package, and build a rec like table%rowtype
+	 * but others function or package first reference it first filed and then
+	 * lookup it in package, but its doesn't find, because compile package
+	 * doesn't references it, should we add datum during exec?
+	 * this is not fine, so we add all recfiled in compile
+	 * maybe it can expand out of package
+	 */
+	if (OidIsValid(rec->pkgoid))
+		plisql_expand_rec_field(rec);
 
 	return rec;
 }
@@ -2021,6 +2358,7 @@ plisql_build_recfield(PLiSQL_rec *rec, const char *fldname)
 	recfield->fieldname = pstrdup(fldname);
 	recfield->recparentno = rec->dno;
 	recfield->rectupledescid = INVALID_TUPLEDESC_IDENTIFIER;
+	recfield->pkgoid = (plisql_compile_packageitem == NULL ? InvalidOid : plisql_compile_packageitem->source.fn_oid);
 
 	plisql_adddatum((PLiSQL_datum *) recfield);
 
@@ -2335,8 +2673,27 @@ plisql_finish_datums(PLiSQL_function *function)
 	Size		copiable_size = 0;
 	int			i;
 
-	function->ndatums = plisql_nDatums;
-	function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
+	/*
+	 * maybe compile a package body which function->ndatums not null
+	 */
+	if (function->item != NULL)
+	{
+		Assert(function->ndatums <= plisql_nDatums);
+
+		if (function->ndatums == plisql_nDatums)
+			return;
+		if (function->ndatums != 0)
+			function->datums = repalloc(function->datums,
+									sizeof(PLiSQL_datum *) * plisql_nDatums);
+		else
+			function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
+		function->ndatums = plisql_nDatums;
+	}
+	else
+	{
+		function->ndatums = plisql_nDatums;
+		function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
+	}
 	for (i = 0; i < plisql_nDatums; i++)
 	{
 		function->datums[i] = plisql_Datums[i];
@@ -2435,7 +2792,8 @@ static void
 compute_function_hashkey(FunctionCallInfo fcinfo,
 						 Form_pg_proc procStruct,
 						 PLiSQL_func_hashkey *hashkey,
-						 bool forValidator)
+						 bool forValidator, 
+						 HeapTuple procTup) 
 {
 	/* Make sure any unused bytes of the struct are zero */
 	MemSet(hashkey, 0, sizeof(PLiSQL_func_hashkey));
@@ -2472,8 +2830,49 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	if (procStruct->pronargs > 0)
 	{
 		/* get the argument types */
-		memcpy(hashkey->argtypes, procStruct->proargtypes.values,
-			   procStruct->pronargs * sizeof(Oid));
+		Datum protypenames;
+		bool	isNull;
+		Datum	   *elems;
+		int			nelems;
+		char **argtypenames = NULL;
+		int i;
+
+		protypenames = SysCacheGetAttr(PROCOID, procTup,
+									Anum_pg_proc_protypenames,
+									&isNull);
+		if (!isNull)
+		{
+			deconstruct_array(DatumGetArrayTypeP(protypenames),
+								TEXTOID, -1, false, 'i',
+								&elems, NULL, &nelems);
+			argtypenames = (char **) palloc(sizeof(char *) * nelems);
+			for (i = 0; i < nelems; i++)
+				argtypenames[i] = TextDatumGetCString(elems[i]);
+		}
+		if (argtypenames != NULL)
+		{
+			for (i = 0; i < procStruct->pronargs; i++)
+			{
+				hashkey->argtypes[i] = procStruct->proargtypes.values[i];
+				if (strcmp(argtypenames[i], "") != 0)
+				{
+					TypeName	*tname;
+					PkgType *pkgtype;
+
+					tname = (TypeName *) stringToNode(argtypenames[i]);
+
+					pkgtype = LookupPkgTypeByTypename(tname->names, false);
+					if (pkgtype == NULL)
+						elog(ERROR, "package doesn't exist");
+					hashkey->argtypes[i] = pkgtype->basetypid;
+					pfree(tname);
+					pfree(pkgtype);
+				}
+			}
+		}
+		else
+			memcpy(hashkey->argtypes, procStruct->proargtypes.values,
+				procStruct->pronargs * sizeof(Oid));
 
 		/* resolve any polymorphic argument types */
 		plisql_resolve_polymorphic_argtypes(procStruct->pronargs,
@@ -2582,7 +2981,7 @@ plisql_resolve_polymorphic_argtypes(int numargs,
  * pointers to the same function cache.  Hence be careful not to do things
  * twice.
  */
-static void
+void
 delete_function(PLiSQL_function *func)
 {
 	/* remove function from hash table (might be done already) */

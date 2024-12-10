@@ -2,16 +2,16 @@ name: build
 
 on:
   push:
-    branches: [ master , IVORY_REL_3_STABLE ]
+    branches: [ master , IVORY_REL_4_STABLE ]
   pull_request:
-    branches: [ master , IVORY_REL_3_STABLE ]
+    branches: [ master , IVORY_REL_4_STABLE ]
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
 
     steps:
     - uses: actions/checkout@v3
@@ -33,16 +33,6 @@ jobs:
             --with-python --with-gssapi --with-pam --with-ldap \
             --with-openssl --with-libedit-preferred --with-uuid=e2fs \
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
-            --with-icu
-    - name: configure - macos
-      if: ${{ matrix.os == 'macos-latest' }}
-      run: |
-        brew install icu4c
-        export PKG_CONFIG_PATH=$(brew --prefix)/opt/icu4c/lib/pkgconfig
-        ./configure \
-            --enable-cassert --enable-debug --enable-rpath --with-tcl \
-            --with-python --with-pam --with-ldap --with-libedit-preferred \
-            --with-uuid=e2fs --with-libxml --with-libxslt --with-perl \
             --with-icu
     - name: compile
       run: make

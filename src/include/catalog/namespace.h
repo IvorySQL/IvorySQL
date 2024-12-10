@@ -92,6 +92,8 @@ extern Oid	RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 												 Oid *existing_relation_id);
 extern void RangeVarAdjustRelationPersistence(RangeVar *newRelation, Oid nspid);
 extern Oid	RelnameGetRelid(const char *relname);
+extern Oid PkgnameGetPkgid(const char *pkgname);
+extern bool PackageIsVisible(Oid pkgoid);
 extern bool RelationIsVisible(Oid relid);
 
 extern Oid	TypenameGetTypid(const char *typname);

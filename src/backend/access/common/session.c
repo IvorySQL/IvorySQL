@@ -25,6 +25,7 @@
 #include "storage/shm_toc.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
+#include "utils/dsa.h"
 
 /* Magic number for per-session DSM TOC. */
 #define SESSION_MAGIC						0xabb0fbc9

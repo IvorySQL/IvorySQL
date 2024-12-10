@@ -118,6 +118,9 @@ static void PlanCacheRelCallback(Datum arg, Oid relid);
 static void PlanCacheObjectCallback(Datum arg, int cacheid, uint32 hashvalue);
 static void PlanCacheSysCallback(Datum arg, int cacheid, uint32 hashvalue);
 
+static void PlanCachePackageBodyCallback(Datum arg, int cacheid, uint32 hashvalue);
+
+
 /* ResourceOwner callbacks to track plancache references */
 static void ResOwnerReleaseCachedPlan(Datum res);
 
@@ -162,6 +165,8 @@ InitPlanCache(void)
 	CacheRegisterSyscacheCallback(AMOPOPID, PlanCacheSysCallback, (Datum) 0);
 	CacheRegisterSyscacheCallback(FOREIGNSERVEROID, PlanCacheSysCallback, (Datum) 0);
 	CacheRegisterSyscacheCallback(FOREIGNDATAWRAPPEROID, PlanCacheSysCallback, (Datum) 0);
+	CacheRegisterSyscacheCallback(PKGOID, PlanCacheObjectCallback, (Datum) 0);
+	CacheRegisterSyscacheCallback(PKGBODYPKGOID, PlanCachePackageBodyCallback, (Datum) 0);
 }
 
 /*
@@ -1740,6 +1745,31 @@ FreeCachedExpression(CachedExpression *cexpr)
 	/* Free all storage associated with CachedExpression */
 	MemoryContextDelete(cexpr->context);
 }
+
+/*
+ * invalid some plans which rely on
+ * package
+ */
+void
+setPlanCacheInvalidForPackage(Oid pkgoid)
+{
+	uint32 hashvalue;
+
+	hashvalue = GetSysCacheHashValue1(PKGOID,
+									ObjectIdGetDatum(pkgoid));
+	PlanCacheObjectCallback(0, PKGOID, hashvalue);
+}
+
+/*
+ * package body has change, we has no way to match its hashvalue
+ * so we should invalid all plans which reference a package
+ */
+static void
+PlanCachePackageBodyCallback(Datum arg, int cacheid, uint32 hashvalue)
+{
+	PlanCacheObjectCallback(arg, PKGOID, 0);
+}
+
 
 /*
  * QueryListGetPrimaryStmt

@@ -1204,12 +1204,14 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 {
 	HeapTuple	proctup;
 	Form_pg_proc procform;
+	Oid		rettypeoid;
 
 	/* Fetch the procedure definition */
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(member->object));
 	if (!HeapTupleIsValid(proctup))
 		elog(ERROR, "cache lookup failed for function %u", member->object);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
+	rettypeoid = get_func_real_rettype(proctup);
 
 	/* Check the signature of the opclass options parsing function */
 	if (member->number == opclassOptsProcNum)
@@ -1230,7 +1232,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 						 errmsg("left and right associated data types for operator class options parsing functions must match")));
 		}
 
-		if (procform->prorettype != VOIDOID ||
+		if (rettypeoid != VOIDOID || 
 			procform->pronargs != 1 ||
 			procform->proargtypes.values[0] != INTERNALOID)
 			ereport(ERROR,
@@ -1256,7 +1258,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree comparison functions must have two arguments")));
-			if (procform->prorettype != INT4OID)
+			if (rettypeoid != INT4OID) 
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree comparison functions must return integer")));
@@ -1277,7 +1279,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree sort support functions must accept type \"internal\"")));
-			if (procform->prorettype != VOIDOID)
+			if (rettypeoid != VOIDOID) 
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree sort support functions must return void")));
@@ -1292,7 +1294,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree in_range functions must have five arguments")));
-			if (procform->prorettype != BOOLOID)
+			if (rettypeoid != BOOLOID) 
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree in_range functions must return boolean")));
@@ -1312,7 +1314,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree equal image functions must have one argument")));
-			if (procform->prorettype != BOOLOID)
+			if (rettypeoid != BOOLOID) 
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("btree equal image functions must return boolean")));
@@ -1339,7 +1341,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("hash function 1 must have one argument")));
-			if (procform->prorettype != INT4OID)
+			if (rettypeoid != INT4OID) 
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("hash function 1 must return integer")));
@@ -1350,7 +1352,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("hash function 2 must have two arguments")));
-			if (procform->prorettype != INT8OID)
+			if (rettypeoid != INT8OID) 
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("hash function 2 must return bigint")));

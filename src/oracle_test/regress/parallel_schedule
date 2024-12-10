@@ -150,3 +150,6 @@ test: qsyntax
 # compatible oracle emptystring_to_null feature
 # ----------
 test: emptystring_to_null
+
+test: ora_package
+

@@ -56,6 +56,7 @@
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/view.h"
+#include "commands/packagecmds.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -175,6 +176,9 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateForeignServerStmt:
 		case T_CreateForeignTableStmt:
 		case T_CreateFunctionStmt:
+		case T_CreatePackageStmt:
+		case T_CreatePackageBodyStmt:
+		case T_AlterPackageStmt:
 		case T_CreateOpClassStmt:
 		case T_CreateOpFamilyStmt:
 		case T_CreatePLangStmt:
@@ -1915,6 +1919,16 @@ ProcessUtilitySlow(ParseState *pstate,
 				address = AlterCollation((AlterCollationStmt *) parsetree);
 				break;
 
+			case T_CreatePackageStmt:
+				address = CreatePackage((CreatePackageStmt *) parsetree);
+				break;
+			case T_CreatePackageBodyStmt:
+				address = CreatePackageBody((CreatePackageBodyStmt *) parsetree);
+				break;
+			case T_AlterPackageStmt:
+				address = AlterPackage((AlterPackageStmt *) parsetree);
+				break;
+
 			default:
 				elog(ERROR, "unrecognized node type: %d",
 					 (int) nodeTag(parsetree));
@@ -2343,6 +2357,9 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_STATISTIC_EXT:
 			tag = CMDTAG_ALTER_STATISTICS;
 			break;
+		case OBJECT_PACKAGE:
+			tag = CMDTAG_ALTER_PACKAGE;
+			break;
 		default:
 			tag = CMDTAG_UNKNOWN;
 			break;
@@ -2651,6 +2668,12 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_STATISTIC_EXT:
 					tag = CMDTAG_DROP_STATISTICS;
 					break;
+				case OBJECT_PACKAGE:
+					tag = CMDTAG_DROP_PACKAGE;
+					break;
+				case OBJECT_PACKAGE_BODY:
+					tag = CMDTAG_DROP_PACKAGE_BODY;
+					break;
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
@@ -2944,6 +2967,9 @@ CreateCommandTag(Node *parsetree)
 				case DISCARD_SEQUENCES:
 					tag = CMDTAG_DISCARD_SEQUENCES;
 					break;
+				case DISCARD_PACKAGES:
+					tag = CMDTAG_DISCARD_PACKAGES;
+					break;
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
@@ -3232,6 +3258,16 @@ CreateCommandTag(Node *parsetree)
 						break;
 				}
 			}
+			break;
+
+		case T_CreatePackageStmt:
+			tag = CMDTAG_CREATE_PACKAGE;
+			break;
+		case T_CreatePackageBodyStmt:
+			tag = CMDTAG_CREATE_PACKAGE_BODY;
+			break;
+		case T_AlterPackageStmt:
+			tag = CMDTAG_ALTER_PACKAGE;
 			break;
 
 		default:
@@ -3766,6 +3802,12 @@ GetCommandLogLevel(Node *parsetree)
 						break;
 				}
 			}
+			break;
+
+		case T_CreatePackageStmt:
+		case T_CreatePackageBodyStmt:
+		case T_AlterPackageStmt:
+			lev = LOGSTMT_DDL;
 			break;
 
 		default:

@@ -74,7 +74,8 @@ extern void interpret_function_parameter_list(ParseState *pstate,
 											  List **inParameterNames_list,
 											  List **parameterDefaults,
 											  Oid *variadicArgType,
-											  Oid *requiredResultType);
+											  Oid *requiredResultType,
+											  ArrayType **paramtertypeNames);
 
 /* commands/operatorcmds.c */
 extern ObjectAddress DefineOperator(List *names, List *parameters);

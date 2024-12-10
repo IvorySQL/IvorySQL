@@ -41,6 +41,7 @@
 #include "catalog/pg_ts_dict.h"
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
+#include "catalog/pg_package.h"
 #include "commands/alter.h"
 #include "commands/collationcmds.h"
 #include "commands/dbcommands.h"
@@ -56,6 +57,7 @@
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "commands/user.h"
+#include "commands/packagecmds.h"
 #include "miscadmin.h"
 #include "replication/logicalworker.h"
 #include "rewrite/rewriteDefine.h"
@@ -269,6 +271,13 @@ AlterObjectRename_internal(Relation rel, Oid objectId, const char *new_name)
 		IsThereFunctionInNamespace(new_name, proc->pronargs,
 								   &proc->proargtypes, proc->pronamespace);
 	}
+	else if (classId == PackageRelationId)
+	{
+		Form_pg_package package = (Form_pg_package) GETSTRUCT(oldtup);
+
+		check_package_name(package->pkgnamespace, (char *) new_name, old_name);
+		IsTherePackageInNamespace((char *) new_name, package->pkgnamespace);
+	}
 	else if (classId == CollationRelationId)
 	{
 		Form_pg_collation coll = (Form_pg_collation) GETSTRUCT(oldtup);
@@ -406,6 +415,7 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_FDW:
 		case OBJECT_FOREIGN_SERVER:
 		case OBJECT_FUNCTION:
+		case OBJECT_PACKAGE:
 		case OBJECT_OPCLASS:
 		case OBJECT_OPFAMILY:
 		case OBJECT_LANGUAGE:
@@ -551,6 +561,7 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt,
 		case OBJECT_COLLATION:
 		case OBJECT_CONVERSION:
 		case OBJECT_FUNCTION:
+		case OBJECT_PACKAGE:
 		case OBJECT_OPERATOR:
 		case OBJECT_OPCLASS:
 		case OBJECT_OPFAMILY:
@@ -645,6 +656,7 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 		case TSDictionaryRelationId:
 		case TSTemplateRelationId:
 		case TSConfigRelationId:
+		case PackageRelationId:
 			{
 				Relation	catalog;
 
@@ -762,6 +774,13 @@ AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid)
 		IsThereFunctionInNamespace(NameStr(proc->proname), proc->pronargs,
 								   &proc->proargtypes, nspOid);
 	}
+	else if (classId == PackageRelationId)
+	{
+		Form_pg_package package = (Form_pg_package) GETSTRUCT(tup);
+
+		check_package_name(nspOid, NameStr(package->pkgname), NameStr(package->pkgname));
+		IsTherePackageInNamespace(NameStr(package->pkgname), nspOid);
+	}
 	else if (classId == CollationRelationId)
 	{
 		Form_pg_collation coll = (Form_pg_collation) GETSTRUCT(tup);
@@ -864,6 +883,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		case OBJECT_COLLATION:
 		case OBJECT_CONVERSION:
 		case OBJECT_FUNCTION:
+		case OBJECT_PACKAGE:
 		case OBJECT_LANGUAGE:
 		case OBJECT_LARGEOBJECT:
 		case OBJECT_OPERATOR:

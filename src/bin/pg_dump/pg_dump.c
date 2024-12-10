@@ -244,6 +244,7 @@ static void dumpCompositeTypeColComments(Archive *fout, const TypeInfo *tyinfo,
 static void dumpShellType(Archive *fout, const ShellTypeInfo *stinfo);
 static void dumpProcLang(Archive *fout, const ProcLangInfo *plang);
 static void dumpFunc(Archive *fout, const FuncInfo *finfo);
+static void dumpPackage(Archive *fout, const PkgInfo *pkginfo);
 static void dumpCast(Archive *fout, const CastInfo *cast);
 static void dumpTransform(Archive *fout, const TransformInfo *transform);
 static void dumpOpr(Archive *fout, const OprInfo *oprinfo);
@@ -6744,6 +6745,84 @@ getFuncs(Archive *fout, int *numFuncs)
 }
 
 /*
+ * getPackages:
+ *	  read all the user-defined package in the system catalogs and
+ * return them in the PkgInfo* structure
+ *
+ * numPkgs is set to the number of packages read in
+ */
+PkgInfo *
+getPackages(Archive *fout, int *numPkgs)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i;
+	PQExpBuffer query = createPQExpBuffer();
+	PkgInfo   *pkginfo;
+	int			i_tableoid;
+	int			i_pkgname;
+	int			i_oid;
+	int			i_pkgnamespace;
+	int			i_rolname;
+	int			i_pkgacl;
+	int			i_acldefault;
+	appendPQExpBuffer(query,
+					"SELECT p.tableoid, p.pkgname, p.oid, p.pkgnamespace,"
+					"p.pkgowner,"
+					"p.pkgacl,"
+					"acldefault('P', p.pkgowner) AS acldefault "
+					"FROM pg_package p "
+					"LEFT JOIN pg_init_privs pip ON "
+					"(p.oid = pip.objoid "
+					"AND pip.classoid = 'pg_package'::regclass "
+					"AND pip.objsubid = 0) "
+					" where  p.pkgnamespace != "
+					"(SELECT oid FROM pg_namespace "
+					"WHERE nspname = 'pg_catalog')"
+					);
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+	ntups = PQntuples(res);
+	*numPkgs = ntups;
+	pkginfo = (PkgInfo *) pg_malloc0(ntups * sizeof(PkgInfo));
+	i_tableoid = PQfnumber(res, "tableoid");
+	i_pkgname = PQfnumber(res, "pkgname");
+	i_oid = PQfnumber(res, "oid");
+	i_pkgnamespace = PQfnumber(res, "pkgnamespace");
+	i_rolname = PQfnumber(res, "rolname");
+	i_pkgacl = PQfnumber(res, "pkgacl");
+	i_acldefault = PQfnumber(res, "acldefault");
+
+	for (i = 0; i < ntups; i++)
+	{
+		pkginfo[i].dobj.objType = DO_PACKAGE;
+		pkginfo[i].dobj.catId.tableoid = atooid(PQgetvalue(res, i, i_tableoid));
+		pkginfo[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_oid));
+		AssignDumpId(&pkginfo[i].dobj);
+		pkginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_pkgname));
+		pkginfo[i].dobj.namespace =
+			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
+		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
+		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
+		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
+		pkginfo[i].dacl.privtype = 0;
+		pkginfo[i].dacl.initprivs = NULL;
+
+		/* Decide whether we want to dump it */
+		selectDumpableObject(&(pkginfo[i].dobj), fout);
+		/* Do not try to dump ACL if no ACL exists. */
+		if (!PQgetisnull(res, i, i_pkgacl))
+			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
+		if (strlen(pkginfo[i].rolname) == 0)
+			pg_log_warning("WARNING: owner of package \"%s\" appears to be invalid\n",
+					  pkginfo[i].dobj.name);
+	}
+	PQclear(res);
+	destroyPQExpBuffer(query);
+	return pkginfo;
+}
+
+
+/*
  * getTables
  *	  read all the tables (no indexes) in the system catalogs,
  *	  and return them as an array of TableInfo structures
@@ -10482,6 +10561,9 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 		case DO_SHELL_TYPE:
 			dumpShellType(fout, (const ShellTypeInfo *) dobj);
 			break;
+		case DO_PACKAGE:
+			dumpPackage(fout, (const PkgInfo *) dobj);
+			break;
 		case DO_FUNC:
 			dumpFunc(fout, (const FuncInfo *) dobj);
 			break;
@@ -12187,6 +12269,127 @@ format_function_signature(Archive *fout, const FuncInfo *finfo, bool honor_quote
 	return fn.data;
 }
 
+/*
+ * dump a package
+ */
+static void
+dumpPackage(Archive *fout, const PkgInfo *pkginfo)
+{
+	DumpOptions *dopt = fout->dopt;
+	PQExpBuffer query;
+	PQExpBuffer q;
+	PQExpBuffer delqry;
+	PQExpBuffer pkgname;
+	PQExpBuffer asPart;
+	PGresult   *res;
+	char		*package_head;
+	char		*body_src;
+	char		*pkgsrc;
+	PQExpBuffer package_identifier;
+	/* Skip if not to be dumped */
+	if (!pkginfo->dobj.dump || dopt->dataOnly)
+		return;
+	query = createPQExpBuffer();
+	q = createPQExpBuffer();
+	delqry = createPQExpBuffer();
+	pkgname = createPQExpBuffer();
+	asPart = createPQExpBuffer();
+	package_identifier = createPQExpBuffer();
+	appendPQExpBuffer(query,
+			"SELECT pkgsrc,"
+			"pg_catalog.pg_get_package_head(p.oid) AS package_head, "
+			" (select bodysrc from pg_package_body WHERE pkgoid = p.oid) as bodysrc "
+			"FROM pg_package p "
+			"WHERE p.oid = '%u'::pg_catalog.oid",
+			pkginfo->dobj.catId.oid);
+	res = ExecuteSqlQueryForSingleRow(fout, query->data);
+	package_head = PQgetvalue(res, 0, PQfnumber(res, "package_head"));
+	body_src = PQgetvalue(res, 0, PQfnumber(res, "bodysrc"));
+	pkgsrc = PQgetvalue(res, 0, PQfnumber(res, "pkgsrc"));
+	appendPQExpBuffer(package_identifier, "%s.",
+					fmtId(pkginfo->dobj.namespace->dobj.name));
+	/* add quote */
+	appendPQExpBuffer(pkgname, "%s",
+							fmtId(pkginfo->dobj.name));
+	appendPQExpBuffer(package_identifier, "%s",
+					pkgname->data);
+	appendPQExpBuffer(delqry, "DROP PACKAGE %s;\n",
+					  package_identifier->data);
+	appendPQExpBuffer(asPart, " AS\n");
+	if (dopt->disable_dollar_quoting)
+		appendStringLiteralAH(asPart, pkgsrc, fout);
+	else
+		appendStringLiteralDQ(asPart, pkgsrc, NULL);
+	/* append create or replace package */
+	appendPQExpBuffer(q, "%s %s;\n",
+					package_head,
+					asPart->data);
+	/* add slash to terminate */
+	if (((ArchiveHandle *) fout)->format == archNull &&
+		db_mode == DB_ORACLE)
+		appendPQExpBufferStr(q, "/\n");
+	if (body_src != NULL && body_src[0] != '\0')
+	{
+		PQExpBuffer bodyasPart;
+		bodyasPart = createPQExpBuffer();
+		appendPQExpBuffer(bodyasPart, " AS ");
+		if (dopt->disable_dollar_quoting)
+			appendStringLiteralAH(bodyasPart, body_src, fout);
+		else
+			appendStringLiteralDQ(bodyasPart, body_src, NULL);
+		/*
+		 * pakcage name and schema name should add quote
+		 */
+		appendPQExpBuffer(q, "CREATE PACKAGE BODY %s %s;\n",
+						package_identifier->data,
+						bodyasPart->data);
+		/* add slash to terminate */
+		if (((ArchiveHandle *) fout)->format == archNull &&
+			db_mode == DB_ORACLE)
+			appendPQExpBufferStr(q, "/\n");
+		destroyPQExpBuffer(bodyasPart);
+	}
+	append_depends_on_extension(fout, q, &pkginfo->dobj,
+								"pg_catalog.pg_package", "PACKAGE",
+								package_identifier->data);
+	if (dopt->binary_upgrade)
+		binary_upgrade_extension_member(q, &pkginfo->dobj,
+										"PACKAGE", pkgname->data,
+										pkginfo->dobj.namespace->dobj.name);
+	if (pkginfo->dobj.dump & DUMP_COMPONENT_DEFINITION)
+		ArchiveEntry(fout, pkginfo->dobj.catId, pkginfo->dobj.dumpId,
+				 ARCHIVE_OPTS(.tag = pkgname->data,
+								  .namespace = pkginfo->dobj.namespace->dobj.name,
+								  .owner = pkginfo->rolname,
+								  .description = "PACKAGE",
+								  .section = SECTION_PRE_DATA,
+								  .createStmt = q->data,
+								  .dropStmt = delqry->data));
+	/*
+	 * we only dump package comment, because oracle doesn't
+	 * support comment statment on package and its body
+	 */
+	if (pkginfo->dobj.dump & DUMP_COMPONENT_COMMENT)
+		dumpComment(fout, "PACKAGE", pkgname->data,
+				pkginfo->dobj.namespace->dobj.name, pkginfo->rolname,
+				pkginfo->dobj.catId, 0, pkginfo->dobj.dumpId);
+	if (pkginfo->dobj.dump & DUMP_COMPONENT_SECLABEL)
+		dumpSecLabel(fout, "PACKAGE", pkgname->data,
+				 pkginfo->dobj.namespace->dobj.name, pkginfo->rolname,
+				 pkginfo->dobj.catId, 0, pkginfo->dobj.dumpId);
+	if (pkginfo->dobj.dump & DUMP_COMPONENT_ACL)
+		dumpACL(fout, pkginfo->dobj.dumpId, InvalidDumpId, "PACKAGE",
+				pkgname->data, NULL,
+				pkginfo->dobj.namespace->dobj.name,
+				NULL, pkginfo->rolname, &(pkginfo->dacl));
+	PQclear(res);
+	destroyPQExpBuffer(query);
+	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(delqry);
+	destroyPQExpBuffer(pkgname);
+	destroyPQExpBuffer(asPart);
+	destroyPQExpBuffer(package_identifier);
+}
 
 /*
  * dumpFunc:
@@ -18648,6 +18851,7 @@ addBoundaryDependencies(DumpableObject **dobjs, int numObjs,
 			case DO_EXTENSION:
 			case DO_TYPE:
 			case DO_SHELL_TYPE:
+			case DO_PACKAGE:
 			case DO_FUNC:
 			case DO_AGG:
 			case DO_OPERATOR:
