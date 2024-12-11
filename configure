@@ -2838,6 +2838,8 @@ cat >>confdefs.h <<_ACEOF
 #define CONFIGURE_ARGS "$ac_configure_args"
 _ACEOF
 
+# IvorySQL version
+PACKAGE_IVORYSQL_VERSION='4.0'
 
 PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\)'`
 PG_MINORVERSION=`expr "$PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`
@@ -19335,7 +19337,7 @@ fi
 
 
 cat >>confdefs.h <<_ACEOF
-#define PG_VERSION_STR "PostgreSQL $PG_VERSION on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"
+#define PG_VERSION_STR "PostgreSQL $PG_VERSION (IvorySQL $PACKAGE_IVORYSQL_VERSION) on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"
 _ACEOF
 
 
