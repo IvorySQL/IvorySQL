@@ -5210,6 +5210,10 @@ match_previous_words(int pattern_id,
 			 TailMatches("JOIN", MatchAny, MatchAny, "USING") ||
 			 TailMatches("JOIN", "LATERAL", MatchAny, MatchAny, "USING"))
 		COMPLETE_WITH("(");
+	else if (TailMatches("JOIN", MatchAny, "USING", "("))
+		COMPLETE_WITH_ATTR(prev3_wd);
+	else if (TailMatches("JOIN", MatchAny, MatchAny, "USING", "("))
+		COMPLETE_WITH_ATTR(prev4_wd);
 
 /* ... AT [ LOCAL | TIME ZONE ] ... */
 	else if (TailMatches("AT"))
