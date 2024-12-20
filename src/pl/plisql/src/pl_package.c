@@ -2873,7 +2873,7 @@ plisql_expand_rec_field(PLiSQL_rec *rec)
 		Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
 
 		if (!attr->attisdropped)
-			plisql_build_recfield(rec, NameStr(tupdesc->attrs[i].attname));
+			plisql_build_recfield(rec, NameStr(attr->attname));
 	}
 }
 

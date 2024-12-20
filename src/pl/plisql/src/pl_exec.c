@@ -7450,7 +7450,7 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 
 			for (int i = 0; i < tupdesc->natts; i++)
 			{
-				if (strcmp(NameStr(tupdesc->attrs[i].attname), "rowid") == 0)
+				if (strcmp(NameStr(TupleDescAttr(tupdesc, i)->attname), "rowid") == 0)
 					tuphd = DatumGetHeapTupleHeader(values[i]);
 			}
 
