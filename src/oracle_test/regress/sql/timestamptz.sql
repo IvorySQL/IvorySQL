@@ -301,18 +301,18 @@ SELECT d1 as timestamptz,
 -- extract implementation is mostly the same as date_part, so only
 -- test a few cases for additional coverage.
 SELECT d1 as "timestamp",
-   extract(microseconds from d1) AS microseconds,
-   extract(milliseconds from d1) AS milliseconds,
-   extract(seconds from d1) AS seconds,
-   round(extract(julian from d1)) AS julian,
-   extract(epoch from d1) AS epoch
+   PGEXTRACT(microseconds from d1) AS microseconds,
+   PGEXTRACT(milliseconds from d1) AS milliseconds,
+   PGEXTRACT(seconds from d1) AS seconds,
+   round(PGEXTRACT(julian from d1)) AS julian,
+   PGEXTRACT(epoch from d1) AS epoch
    FROM TIMESTAMPTZ_TBL;
 
 -- value near upper bound uses special case in code
 SELECT date_part('epoch', '294270-01-01 00:00:00+00'::timestamptz);
-SELECT extract(epoch from '294270-01-01 00:00:00+00'::timestamptz);
+SELECT PGEXTRACT(epoch from '294270-01-01 00:00:00+00'::timestamptz);
 -- another internal overflow test case
-SELECT extract(epoch from '5000-01-01 00:00:00+00'::timestamptz);
+SELECT PGEXTRACT(epoch from '5000-01-01 00:00:00+00'::timestamptz);
 
 -- test edge-case overflow in timestamp subtraction
 SELECT timestamptz '294276-12-31 23:59:59 UTC' - timestamptz '1999-12-23 19:59:04.224193 UTC' AS ok;

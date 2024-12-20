@@ -13427,7 +13427,7 @@ ALTER SERVER loopback2 OPTIONS (SET application_name 'fdw_%C%c');
 SELECT count(*) FROM remote_application_name
   WHERE application_name =
     substring('fdw_' || current_setting('cluster_name') ||
-      to_hex(trunc(EXTRACT(EPOCH FROM (SELECT backend_start FROM
+      to_hex(trunc(PGEXTRACT(EPOCH FROM (SELECT backend_start FROM
       pg_stat_get_activity(pg_backend_pid()))))::integer) || '.' ||
       to_hex(pg_backend_pid())
       for current_setting('max_identifier_length')::int);

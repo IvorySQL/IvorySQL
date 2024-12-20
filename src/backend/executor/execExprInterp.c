@@ -80,6 +80,12 @@
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
+/* Begin - ReqID:SRS-SQL-XML */
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+/* End - ReqID:SRS-SQL-XML */
+
+
 /*
  * Use computed-goto-based opcode dispatch when computed gotos are available.
  * But use a separate symbol so that it's easy to adjust locally in this file
@@ -228,6 +234,10 @@ typedef struct ScalarArrayOpExprHashTable
 #define SH_GET_HASH(tb, a) a->hash
 #define SH_DEFINE
 #include "lib/simplehash.h"
+
+/* Begin - ReqID:SRS-SQL-XML */
+ora_updatexml_hook_type ora_updatexml_hook = NULL;
+/* End - ReqID:SRS-SQL-XML */
 
 /*
  * Prepare ExprState for interpreted execution.
@@ -4084,6 +4094,34 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 				*op->resnull = false;
 			}
 			break;
+
+		/* Begin - ReqID:SRS-SQL-XML */
+		case IS_UPDATEXML:
+		{
+			Datum	   *argvalue = op->d.xmlexpr.argvalue;
+			bool	   *argnull = op->d.xmlexpr.argnull;
+			List	   *values = NIL;
+
+			if (list_length(xexpr->args) < 3)
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg("invalid number of arguments")));
+
+			for (int i = 0; i < list_length(xexpr->args); i++)
+			{
+				values = lappend(values, DatumGetPointer(argvalue[i]));
+			}
+
+			if (values != NIL)
+			{
+				if (ora_updatexml_hook && compatible_db == DB_ORACLE)
+					*op->resvalue = PointerGetDatum((*ora_updatexml_hook)(values));
+				else
+					*op->resvalue = (Datum) 0;
+				*op->resnull = false;
+			}
+		}
+		break;
+		/* End - ReqID:SRS-SQL-XML */
 
 		default:
 			elog(ERROR, "unrecognized XML operation");

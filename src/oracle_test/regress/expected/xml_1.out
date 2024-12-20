@@ -4,85 +4,111 @@ CREATE TABLE xmltest (
     data xml
 );
 INSERT INTO xmltest VALUES (1, '<value>one</value>');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest VALUES (1, '<value>one</value>');
-                                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest VALUES (2, '<value>two</value>');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest VALUES (2, '<value>two</value>');
-                                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest VALUES (3, '<wrong');
-ERROR:  unsupported XML feature
+ERROR:  invalid XML content
 LINE 1: INSERT INTO xmltest VALUES (3, '<wrong');
                                        ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+DETAIL:  line 1: Couldn't find end of Start Tag wrong line 1
+<wrong
+      ^
 SELECT * FROM xmltest;
- id | data 
-----+------
-(0 rows)
+ id |        data        
+----+--------------------
+  1 | <value>one</value>
+  2 | <value>two</value>
+(2 rows)
 
 -- test non-throwing API, too
 SELECT pg_input_is_valid('<value>one</value>', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ pg_input_is_valid 
+-------------------
+ t
+(1 row)
+
 SELECT pg_input_is_valid('<value>one</', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
 SELECT message FROM pg_input_error_info('<value>one</', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+       message       
+---------------------
+ invalid XML content
+(1 row)
+
 SELECT pg_input_is_valid('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
 SELECT message FROM pg_input_error_info('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                   message                    
+----------------------------------------------
+ invalid XML content: invalid XML declaration
+(1 row)
+
 SELECT xmlcomment('test');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlcomment  
+-------------
+ <!--test-->
+(1 row)
+
 SELECT xmlcomment('-test');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+  xmlcomment  
+--------------
+ <!---test-->
+(1 row)
+
 SELECT xmlcomment('test-');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML comment
 SELECT xmlcomment('--test');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML comment
 SELECT xmlcomment('te st');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+  xmlcomment  
+--------------
+ <!--te st-->
+(1 row)
+
 SELECT xmlconcat(xmlcomment('hello'),
                  xmlelement(NAME qux, 'foo'),
                  xmlcomment('world'));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+               xmlconcat                
+----------------------------------------
+ <!--hello--><qux>foo</qux><!--world-->
+(1 row)
+
 SELECT xmlconcat('hello', 'you');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlconcat('hello', 'you');
-                         ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlconcat 
+-----------
+ helloyou
+(1 row)
+
 SELECT xmlconcat(1, 2);
-ERROR:  argument of XMLCONCAT must be type xml, not type integer
+ERROR:  argument of XMLCONCAT must be type xml, not type pg_catalog.int4
 LINE 1: SELECT xmlconcat(1, 2);
                          ^
 SELECT xmlconcat('bad', '<syntax');
-ERROR:  unsupported XML feature
+ERROR:  invalid XML content
 LINE 1: SELECT xmlconcat('bad', '<syntax');
-                         ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                                ^
+DETAIL:  line 1: Couldn't find end of Start Tag syntax line 1
+<syntax
+       ^
 SELECT xmlconcat('<foo/>', NULL, '<?xml version="1.1" standalone="no"?><bar/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlconcat('<foo/>', NULL, '<?xml version="1.1" standa...
-                         ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+  xmlconcat   
+--------------
+ <foo/><bar/>
+(1 row)
+
 SELECT xmlconcat('<?xml version="1.1"?><foo/>', NULL, '<?xml version="1.1" standalone="no"?><bar/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlconcat('<?xml version="1.1"?><foo/>', NULL, '<?xml...
-                         ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+             xmlconcat             
+-----------------------------------
+ <?xml version="1.1"?><foo/><bar/>
+(1 row)
+
 SELECT xmlconcat(NULL);
  xmlconcat 
 -----------
@@ -98,186 +124,359 @@ SELECT xmlconcat(NULL, NULL);
 SELECT xmlelement(name element,
                   xmlattributes (1 as one, 'deuce' as two),
                   'content');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                   xmlelement                   
+------------------------------------------------
+ <element one="1" two="deuce">content</element>
+(1 row)
+
 SELECT xmlelement(name element,
                   xmlattributes ('unnamed and wrong'));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  unnamed XML attribute value must be a column reference
+LINE 2:                   xmlattributes ('unnamed and wrong'));
+                                         ^
 SELECT xmlelement(name element, xmlelement(name nested, 'stuff'));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                xmlelement                 
+-------------------------------------------
+ <element><nested>stuff</nested></element>
+(1 row)
+
 SELECT xmlelement(name employee, xmlforest(name, age, salary as pay)) FROM emp;
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                              xmlelement                              
+----------------------------------------------------------------------
+ <employee><name>sharon</name><age>25</age><pay>1000</pay></employee>
+ <employee><name>sam</name><age>30</age><pay>2000</pay></employee>
+ <employee><name>bill</name><age>20</age><pay>1000</pay></employee>
+ <employee><name>jeff</name><age>23</age><pay>600</pay></employee>
+ <employee><name>cim</name><age>30</age><pay>400</pay></employee>
+ <employee><name>linda</name><age>19</age><pay>100</pay></employee>
+(6 rows)
+
 SELECT xmlelement(name duplicate, xmlattributes(1 as a, 2 as b, 3 as a));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  XML attribute name "a" appears more than once
+LINE 1: ...ment(name duplicate, xmlattributes(1 as a, 2 as b, 3 as a));
+                                                              ^
 SELECT xmlelement(name num, 37);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+  xmlelement   
+---------------
+ <num>37</num>
+(1 row)
+
 SELECT xmlelement(name foo, text 'bar');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+   xmlelement   
+----------------
+ <foo>bar</foo>
+(1 row)
+
 SELECT xmlelement(name foo, xml 'bar');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+   xmlelement   
+----------------
+ <foo>bar</foo>
+(1 row)
+
 SELECT xmlelement(name foo, text 'b<a/>r');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+       xmlelement        
+-------------------------
+ <foo>b&lt;a/&gt;r</foo>
+(1 row)
+
 SELECT xmlelement(name foo, xml 'b<a/>r');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+    xmlelement     
+-------------------
+ <foo>b<a/>r</foo>
+(1 row)
+
 SELECT xmlelement(name foo, array[1, 2, 3]);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                               xmlelement                                
+-------------------------------------------------------------------------
+ <foo><element>1</element><element>2</element><element>3</element></foo>
+(1 row)
+
 SET xmlbinary TO base64;
 SELECT xmlelement(name foo, bytea 'bar');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+   xmlelement    
+-----------------
+ <foo>YmFy</foo>
+(1 row)
+
 SET xmlbinary TO hex;
 SELECT xmlelement(name foo, bytea 'bar');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+    xmlelement     
+-------------------
+ <foo>626172</foo>
+(1 row)
+
 SELECT xmlelement(name foo, xmlattributes(true as bar));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+    xmlelement     
+-------------------
+ <foo bar="true"/>
+(1 row)
+
 SELECT xmlelement(name foo, xmlattributes('2009-04-09 00:24:37'::timestamp as bar));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+               xmlelement                
+-----------------------------------------
+ <foo bar="2009-04-09 00:24:37.000000"/>
+(1 row)
+
 SELECT xmlelement(name foo, xmlattributes('infinity'::timestamp as bar));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid value "infi" for "YYYY"
+LINE 1: SELECT xmlelement(name foo, xmlattributes('infinity'::timest...
+                                                  ^
+DETAIL:  Value must be an integer.
 SELECT xmlelement(name foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                         xmlelement                         
+------------------------------------------------------------
+ <foo funny="&lt;&gt;&amp;&quot;'" funnier="b&lt;a/&gt;r"/>
+(1 row)
+
+SELECT xmlelement(foo, xmlattributes(true as bar));
+    xmlelement     
+-------------------
+ <foo bar="true"/>
+(1 row)
+
+SELECT xmlelement(foo, xmlattributes('2009-04-09 00:24:37'::timestamp as bar));
+               xmlelement                
+-----------------------------------------
+ <foo bar="2009-04-09 00:24:37.000000"/>
+(1 row)
+
+SELECT xmlelement(foo, xmlattributes('infinity'::timestamp as bar));
+ERROR:  invalid value "infi" for "YYYY"
+LINE 1: SELECT xmlelement(foo, xmlattributes('infinity'::timestamp a...
+                                             ^
+DETAIL:  Value must be an integer.
+SELECT xmlelement(foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
+                         xmlelement                         
+------------------------------------------------------------
+ <foo funny="&lt;&gt;&amp;&quot;'" funnier="b&lt;a/&gt;r"/>
+(1 row)
+
 SELECT xmlparse(content '');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlparse 
+----------
+ 
+(1 row)
+
 SELECT xmlparse(content '  ');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlparse 
+----------
+   
+(1 row)
+
 SELECT xmlparse(content 'abc');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlparse 
+----------
+ abc
+(1 row)
+
 SELECT xmlparse(content '<abc>x</abc>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+   xmlparse   
+--------------
+ <abc>x</abc>
+(1 row)
+
 SELECT xmlparse(content '<invalidentity>&</invalidentity>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML content
+DETAIL:  line 1: xmlParseEntityRef: no name
+<invalidentity>&</invalidentity>
+                ^
+line 1: chunk is not well balanced
+<invalidentity>&</invalidentity>
+                                ^
 SELECT xmlparse(content '<undefinedentity>&idontexist;</undefinedentity>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML content
+DETAIL:  line 1: Entity 'idontexist' not defined
+<undefinedentity>&idontexist;</undefinedentity>
+                             ^
+line 1: chunk is not well balanced
+<undefinedentity>&idontexist;</undefinedentity>
+                                               ^
 SELECT xmlparse(content '<invalidns xmlns=''&lt;''/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+         xmlparse          
+---------------------------
+ <invalidns xmlns='&lt;'/>
+(1 row)
+
 SELECT xmlparse(content '<relativens xmlns=''relative''/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+            xmlparse            
+--------------------------------
+ <relativens xmlns='relative'/>
+(1 row)
+
 SELECT xmlparse(content '<twoerrors>&idontexist;</unbalanced>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML content
+DETAIL:  line 1: Entity 'idontexist' not defined
+<twoerrors>&idontexist;</unbalanced>
+                       ^
+line 1: Opening and ending tag mismatch: twoerrors line 1 and unbalanced
+<twoerrors>&idontexist;</unbalanced>
+                                    ^
+line 1: chunk is not well balanced
+<twoerrors>&idontexist;</unbalanced>
+                                    ^
 SELECT xmlparse(content '<nosuchprefix:tag/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+      xmlparse       
+---------------------
+ <nosuchprefix:tag/>
+(1 row)
+
 SELECT xmlparse(document '   ');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML document
+DETAIL:  line 1: Start tag expected, '<' not found
+   
+   ^
 SELECT xmlparse(document 'abc');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML document
+DETAIL:  line 1: Start tag expected, '<' not found
+abc
+^
 SELECT xmlparse(document '<abc>x</abc>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+   xmlparse   
+--------------
+ <abc>x</abc>
+(1 row)
+
 SELECT xmlparse(document '<invalidentity>&</abc>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  invalid XML document
+DETAIL:  line 1: xmlParseEntityRef: no name
+<invalidentity>&</abc>
+                ^
+line 1: Opening and ending tag mismatch: invalidentity line 1 and abc
+<invalidentity>&</abc>
+                      ^
 SELECT xmlparse(document '<undefinedentity>&idontexist;</abc>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlparse(document '<invalidns xmlns=''&lt;''/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlparse(document '<relativens xmlns=''relative''/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlparse(document '<twoerrors>&idontexist;</unbalanced>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlparse(document '<nosuchprefix:tag/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name foo);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name xml);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name xmlstuff);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name foo, 'bar');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name foo, 'in?>valid');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name foo, null);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name xml, null);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name xmlstuff, null);
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name "xml-stylesheet", 'href="mystyle.css" type="text/css"');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlpi(name foo, '   bar');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlroot(xml '<foo/>', version no value, standalone no value);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot(xml '<foo/>', version no value, standalone no...
-                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlroot(xml '<foo/>', version '2.0');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot(xml '<foo/>', version '2.0');
-                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlroot(xml '<foo/>', version no value, standalone yes);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot(xml '<foo/>', version no value, standalone ye...
-                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlroot(xml '<?xml version="1.1"?><foo/>', version no value, standalone yes);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot(xml '<?xml version="1.1"?><foo/>', version no...
-                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
-SELECT xmlroot(xmlroot(xml '<foo/>', version '1.0'), version '1.1', standalone no);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot(xmlroot(xml '<foo/>', version '1.0'), version...
+ERROR:  invalid XML document
+DETAIL:  line 1: Entity 'idontexist' not defined
+<undefinedentity>&idontexist;</abc>
+                             ^
+line 1: Opening and ending tag mismatch: undefinedentity line 1 and abc
+<undefinedentity>&idontexist;</abc>
                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlparse(document '<invalidns xmlns=''&lt;''/>');
+         xmlparse          
+---------------------------
+ <invalidns xmlns='&lt;'/>
+(1 row)
+
+SELECT xmlparse(document '<relativens xmlns=''relative''/>');
+            xmlparse            
+--------------------------------
+ <relativens xmlns='relative'/>
+(1 row)
+
+SELECT xmlparse(document '<twoerrors>&idontexist;</unbalanced>');
+ERROR:  invalid XML document
+DETAIL:  line 1: Entity 'idontexist' not defined
+<twoerrors>&idontexist;</unbalanced>
+                       ^
+line 1: Opening and ending tag mismatch: twoerrors line 1 and unbalanced
+<twoerrors>&idontexist;</unbalanced>
+                                    ^
+SELECT xmlparse(document '<nosuchprefix:tag/>');
+      xmlparse       
+---------------------
+ <nosuchprefix:tag/>
+(1 row)
+
+SELECT xmlpi(name foo);
+  xmlpi  
+---------
+ <?foo?>
+(1 row)
+
+SELECT xmlpi(name xml);
+ERROR:  invalid XML processing instruction
+DETAIL:  XML processing instruction target name cannot be "xml".
+SELECT xmlpi(name xmlstuff);
+    xmlpi     
+--------------
+ <?xmlstuff?>
+(1 row)
+
+SELECT xmlpi(name foo, 'bar');
+    xmlpi    
+-------------
+ <?foo bar?>
+(1 row)
+
+SELECT xmlpi(name foo, 'in?>valid');
+ERROR:  invalid XML processing instruction
+DETAIL:  XML processing instruction cannot contain "?>".
+SELECT xmlpi(name foo, null);
+ xmlpi 
+-------
+ 
+(1 row)
+
+SELECT xmlpi(name xml, null);
+ERROR:  invalid XML processing instruction
+DETAIL:  XML processing instruction target name cannot be "xml".
+SELECT xmlpi(name xmlstuff, null);
+ xmlpi 
+-------
+ 
+(1 row)
+
+SELECT xmlpi(name "xml-stylesheet", 'href="mystyle.css" type="text/css"');
+                         xmlpi                         
+-------------------------------------------------------
+ <?xml-stylesheet href="mystyle.css" type="text/css"?>
+(1 row)
+
+SELECT xmlpi(name foo, '   bar');
+    xmlpi    
+-------------
+ <?foo bar?>
+(1 row)
+
+SELECT xmlroot(xml '<foo/>', version no value, standalone no value);
+ xmlroot 
+---------
+ <foo/>
+(1 row)
+
+SELECT xmlroot(xml '<foo/>', version '2.0');
+           xmlroot           
+-----------------------------
+ <?xml version="2.0"?><foo/>
+(1 row)
+
+SELECT xmlroot(xml '<foo/>', version no value, standalone yes);
+                   xmlroot                    
+----------------------------------------------
+ <?xml version="1.0" standalone="yes"?><foo/>
+(1 row)
+
+SELECT xmlroot(xml '<?xml version="1.1"?><foo/>', version no value, standalone yes);
+                   xmlroot                    
+----------------------------------------------
+ <?xml version="1.0" standalone="yes"?><foo/>
+(1 row)
+
+SELECT xmlroot(xmlroot(xml '<foo/>', version '1.0'), version '1.1', standalone no);
+                   xmlroot                   
+---------------------------------------------
+ <?xml version="1.1" standalone="no"?><foo/>
+(1 row)
+
 SELECT xmlroot('<?xml version="1.1" standalone="yes"?><foo/>', version no value, standalone no);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot('<?xml version="1.1" standalone="yes"?><foo/>...
-                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                   xmlroot                   
+---------------------------------------------
+ <?xml version="1.0" standalone="no"?><foo/>
+(1 row)
+
 SELECT xmlroot('<?xml version="1.1" standalone="yes"?><foo/>', version no value, standalone no value);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot('<?xml version="1.1" standalone="yes"?><foo/>...
-                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlroot 
+---------
+ <foo/>
+(1 row)
+
 SELECT xmlroot('<?xml version="1.1" standalone="yes"?><foo/>', version no value);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlroot('<?xml version="1.1" standalone="yes"?><foo/>...
-                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                   xmlroot                    
+----------------------------------------------
+ <?xml version="1.0" standalone="yes"?><foo/>
+(1 row)
+
 SELECT xmlroot (
   xmlelement (
     name gazonk,
@@ -293,100 +492,128 @@ SELECT xmlroot (
   version '1.0',
   standalone yes
 );
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                                         xmlroot                                          
+------------------------------------------------------------------------------------------
+ <?xml version="1.0" standalone="yes"?><gazonk name="val" num="2"><qux>foo</qux></gazonk>
+(1 row)
+
 SELECT xmlserialize(content data as character varying(20)) FROM xmltest;
- xmlserialize 
---------------
-(0 rows)
+    xmlserialize    
+--------------------
+ <value>one</value>
+ <value>two</value>
+(2 rows)
 
 SELECT xmlserialize(content 'good' as char(10));
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(content 'good' as char(10));
-                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlserialize 
+--------------
+ good      
+(1 row)
+
 SELECT xmlserialize(document 'bad' as text);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(document 'bad' as text);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  not an XML document
 -- indent
 SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+      xmlserialize       
+-------------------------
+ <foo>                  +
+   <bar>                +
+     <val x="y">42</val>+
+   </bar>               +
+ </foo>                 +
+ 
+(1 row)
+
 SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+      xmlserialize       
+-------------------------
+ <foo>                  +
+   <bar>                +
+     <val x="y">42</val>+
+   </bar>               +
+ </foo>
+(1 row)
+
 -- no indent
 SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+               xmlserialize                
+-------------------------------------------
+ <foo><bar><val x="y">42</val></bar></foo>
+(1 row)
+
 SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+               xmlserialize                
+-------------------------------------------
+ <foo><bar><val x="y">42</val></bar></foo>
+(1 row)
+
 -- indent non singly-rooted xml
 SELECT xmlserialize(DOCUMENT '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo>73</foo><bar><val x="y">4...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  not an XML document
 SELECT xmlserialize(CONTENT  '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo>73</foo><bar><val x="y">4...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+     xmlserialize      
+-----------------------
+ <foo>73</foo>        +
+ <bar>                +
+   <val x="y">42</val>+
+ </bar>
+(1 row)
+
 -- indent non singly-rooted xml with mixed contents
 SELECT xmlserialize(DOCUMENT 'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT 'text node<foo>73</foo>text nod...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  not an XML document
 SELECT xmlserialize(CONTENT  'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  'text node<foo>73</foo>text nod...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+      xmlserialize      
+------------------------
+ text node             +
+ <foo>73</foo>text node+
+ <bar>                 +
+   <val x="y">42</val> +
+ </bar>
+(1 row)
+
 -- indent singly-rooted xml with mixed contents
 SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                xmlserialize                 
+---------------------------------------------
+ <foo>                                      +
+   <bar>                                    +
+     <val x="y">42</val>                    +
+     <val x="y">text node<val>73</val></val>+
+   </bar>                                   +
+ </foo>                                     +
+ 
+(1 row)
+
 SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                xmlserialize                 
+---------------------------------------------
+ <foo>                                      +
+   <bar>                                    +
+     <val x="y">42</val>                    +
+     <val x="y">text node<val>73</val></val>+
+   </bar>                                   +
+ </foo>
+(1 row)
+
 -- indent empty string
 SELECT xmlserialize(DOCUMENT '' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  not an XML document
 SELECT xmlserialize(CONTENT  '' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlserialize 
+--------------
+ 
+(1 row)
+
 -- whitespaces
 SELECT xmlserialize(DOCUMENT '  ' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '  ' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  not an XML document
 SELECT xmlserialize(CONTENT  '  ' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '  ' AS text INDENT);
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlserialize 
+--------------
+   
+(1 row)
+
 -- indent null
 SELECT xmlserialize(DOCUMENT NULL AS text INDENT);
  xmlserialize 
@@ -402,77 +629,110 @@ SELECT xmlserialize(CONTENT  NULL AS text INDENT);
 
 -- indent with XML declaration
 SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+              xmlserialize              
+----------------------------------------
+ <?xml version="1.0" encoding="UTF-8"?>+
+ <foo>                                 +
+   <bar>                               +
+     <val>73</val>                     +
+   </bar>                              +
+ </foo>                                +
+ 
+(1 row)
+
 SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+   xmlserialize    
+-------------------
+ <foo>            +
+   <bar>          +
+     <val>73</val>+
+   </bar>         +
+ </foo>
+(1 row)
+
 -- indent containing DOCTYPE declaration
 SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDE...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlserialize 
+--------------
+ <!DOCTYPE a>+
+ <a/>        +
+ 
+(1 row)
+
 SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDE...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlserialize 
+--------------
+ <!DOCTYPE a>+
+ <a/>        +
+ 
+(1 row)
+
 -- indent xml with empty element
 SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS tex...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlserialize 
+--------------
+ <foo>       +
+   <bar/>    +
+ </foo>      +
+ 
+(1 row)
+
 SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS text INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS tex...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlserialize 
+--------------
+ <foo>       +
+   <bar/>    +
+ </foo>
+(1 row)
+
 -- 'no indent' = not using 'no indent'
 SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(CONTENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT xml '<foo>bar</foo>' IS DOCUMENT;
-ERROR:  unsupported XML feature
-LINE 1: SELECT xml '<foo>bar</foo>' IS DOCUMENT;
-                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT xml '<foo>bar</foo><bar>foo</bar>' IS DOCUMENT;
-ERROR:  unsupported XML feature
-LINE 1: SELECT xml '<foo>bar</foo><bar>foo</bar>' IS DOCUMENT;
-                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ ?column? 
+----------
+ f
+(1 row)
+
 SELECT xml '<abc/>' IS NOT DOCUMENT;
-ERROR:  unsupported XML feature
-LINE 1: SELECT xml '<abc/>' IS NOT DOCUMENT;
-                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ ?column? 
+----------
+ f
+(1 row)
+
 SELECT xml 'abc' IS NOT DOCUMENT;
-ERROR:  unsupported XML feature
-LINE 1: SELECT xml 'abc' IS NOT DOCUMENT;
-                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT '<>' IS NOT DOCUMENT;
-ERROR:  unsupported XML feature
+ERROR:  invalid XML content
 LINE 1: SELECT '<>' IS NOT DOCUMENT;
                ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+DETAIL:  line 1: StartTag: invalid element name
+<>
+ ^
 SELECT xmlagg(data) FROM xmltest;
- xmlagg 
---------
- 
+                xmlagg                
+--------------------------------------
+ <value>one</value><value>two</value>
 (1 row)
 
 SELECT xmlagg(data) FROM xmltest WHERE id > 10;
@@ -482,191 +742,226 @@ SELECT xmlagg(data) FROM xmltest WHERE id > 10;
 (1 row)
 
 SELECT xmlelement(name employees, xmlagg(xmlelement(name name, name))) FROM emp;
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                                                           xmlelement                                                           
+--------------------------------------------------------------------------------------------------------------------------------
+ <employees><name>sharon</name><name>sam</name><name>bill</name><name>jeff</name><name>cim</name><name>linda</name></employees>
+(1 row)
+
 -- Check mapping SQL identifier to XML name
 SELECT xmlpi(name ":::_xml_abc135.%-&_");
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                      xmlpi                      
+-------------------------------------------------
+ <?_x003A_::_x005F_xml_abc135._x0025_-_x0026__?>
+(1 row)
+
 SELECT xmlpi(name "123");
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+     xmlpi     
+---------------
+ <?_x0031_23?>
+(1 row)
+
 PREPARE foo (xml) AS SELECT xmlconcat('<foo/>', $1);
-ERROR:  unsupported XML feature
-LINE 1: PREPARE foo (xml) AS SELECT xmlconcat('<foo/>', $1);
-                                              ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 SET XML OPTION DOCUMENT;
 EXECUTE foo ('<bar/>');
-ERROR:  prepared statement "foo" does not exist
+  xmlconcat   
+--------------
+ <foo/><bar/>
+(1 row)
+
 EXECUTE foo ('bad');
-ERROR:  prepared statement "foo" does not exist
+ERROR:  invalid XML document
+LINE 1: EXECUTE foo ('bad');
+                     ^
+DETAIL:  line 1: Start tag expected, '<' not found
+bad
+^
 SELECT xml '<!DOCTYPE a><a/><b/>';
-ERROR:  unsupported XML feature
+ERROR:  invalid XML document
 LINE 1: SELECT xml '<!DOCTYPE a><a/><b/>';
                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+DETAIL:  line 1: Extra content at the end of the document
+<!DOCTYPE a><a/><b/>
+                ^
 SET XML OPTION CONTENT;
 EXECUTE foo ('<bar/>');
-ERROR:  prepared statement "foo" does not exist
+  xmlconcat   
+--------------
+ <foo/><bar/>
+(1 row)
+
 EXECUTE foo ('good');
-ERROR:  prepared statement "foo" does not exist
+ xmlconcat  
+------------
+ <foo/>good
+(1 row)
+
 SELECT xml '<!-- in SQL:2006+ a doc is content too--> <?y z?> <!DOCTYPE a><a/>';
-ERROR:  unsupported XML feature
-LINE 1: SELECT xml '<!-- in SQL:2006+ a doc is content too--> <?y z?...
-                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                                xml                                 
+--------------------------------------------------------------------
+ <!-- in SQL:2006+ a doc is content too--> <?y z?> <!DOCTYPE a><a/>
+(1 row)
+
 SELECT xml '<?xml version="1.0"?> <!-- hi--> <!DOCTYPE a><a/>';
-ERROR:  unsupported XML feature
-LINE 1: SELECT xml '<?xml version="1.0"?> <!-- hi--> <!DOCTYPE a><a/...
-                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+             xml              
+------------------------------
+  <!-- hi--> <!DOCTYPE a><a/>
+(1 row)
+
 SELECT xml '<!DOCTYPE a><a/>';
-ERROR:  unsupported XML feature
-LINE 1: SELECT xml '<!DOCTYPE a><a/>';
-                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+       xml        
+------------------
+ <!DOCTYPE a><a/>
+(1 row)
+
 SELECT xml '<!-- hi--> oops <!DOCTYPE a><a/>';
-ERROR:  unsupported XML feature
+ERROR:  invalid XML content
 LINE 1: SELECT xml '<!-- hi--> oops <!DOCTYPE a><a/>';
                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+DETAIL:  line 1: StartTag: invalid element name
+<!-- hi--> oops <!DOCTYPE a><a/>
+                 ^
 SELECT xml '<!-- hi--> <oops/> <!DOCTYPE a><a/>';
-ERROR:  unsupported XML feature
+ERROR:  invalid XML content
 LINE 1: SELECT xml '<!-- hi--> <oops/> <!DOCTYPE a><a/>';
                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+DETAIL:  line 1: StartTag: invalid element name
+<!-- hi--> <oops/> <!DOCTYPE a><a/>
+                    ^
 SELECT xml '<!DOCTYPE a><a/><b/>';
-ERROR:  unsupported XML feature
+ERROR:  invalid XML content
 LINE 1: SELECT xml '<!DOCTYPE a><a/><b/>';
                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+DETAIL:  line 1: Extra content at the end of the document
+<!DOCTYPE a><a/><b/>
+                ^
 -- Test backwards parsing
 CREATE VIEW xmlview1 AS SELECT xmlcomment('test');
 CREATE VIEW xmlview2 AS SELECT xmlconcat('hello', 'you');
-ERROR:  unsupported XML feature
-LINE 1: CREATE VIEW xmlview2 AS SELECT xmlconcat('hello', 'you');
-                                                 ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 CREATE VIEW xmlview3 AS SELECT xmlelement(name element, xmlattributes (1 as ":one:", 'deuce' as two), 'content&');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
 CREATE VIEW xmlview4 AS SELECT xmlelement(name employee, xmlforest(name, age, salary as pay)) FROM emp;
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
 CREATE VIEW xmlview5 AS SELECT xmlparse(content '<abc>x</abc>');
 CREATE VIEW xmlview6 AS SELECT xmlpi(name foo, 'bar');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
 CREATE VIEW xmlview7 AS SELECT xmlroot(xml '<foo/>', version no value, standalone yes);
-ERROR:  unsupported XML feature
-LINE 1: CREATE VIEW xmlview7 AS SELECT xmlroot(xml '<foo/>', version...
-                                                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 CREATE VIEW xmlview8 AS SELECT xmlserialize(content 'good' as char(10));
-ERROR:  unsupported XML feature
-LINE 1: ...EATE VIEW xmlview8 AS SELECT xmlserialize(content 'good' as ...
-                                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 CREATE VIEW xmlview9 AS SELECT xmlserialize(content 'good' as text);
-ERROR:  unsupported XML feature
-LINE 1: ...EATE VIEW xmlview9 AS SELECT xmlserialize(content 'good' as ...
-                                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT table_name, view_definition FROM information_schema.views
   WHERE table_name LIKE 'xmlview%' ORDER BY 1;
- table_name |                                view_definition                                 
-------------+--------------------------------------------------------------------------------
+ table_name |                                              view_definition                                               
+------------+------------------------------------------------------------------------------------------------------------
  xmlview1   |  SELECT xmlcomment('test'::text) AS xmlcomment;
+ xmlview2   |  SELECT XMLCONCAT('hello'::xml, 'you'::xml) AS "xmlconcat";
+ xmlview3   |  SELECT XMLELEMENT(NAME element, XMLATTRIBUTES(1 AS ":one:", 'deuce' AS two), 'content&') AS "xmlelement";
+ xmlview4   |  SELECT XMLELEMENT(NAME employee, XMLFOREST(name AS name, age AS age, salary AS pay)) AS "xmlelement"     +
+            |    FROM emp;
  xmlview5   |  SELECT XMLPARSE(CONTENT '<abc>x</abc>'::text STRIP WHITESPACE) AS "xmlparse";
-(2 rows)
+ xmlview6   |  SELECT XMLPI(NAME foo, 'bar'::text) AS "xmlpi";
+ xmlview7   |  SELECT XMLROOT('<foo/>'::xml, VERSION NO VALUE, STANDALONE YES) AS "xmlroot";
+ xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10)))::char(10) AS "xmlserialize";
+ xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text) AS "xmlserialize";
+(9 rows)
 
 -- Text XPath expressions evaluation
 SELECT xpath('/value', data) FROM xmltest;
- xpath 
--------
-(0 rows)
+        xpath         
+----------------------
+ {<value>one</value>}
+ {<value>two</value>}
+(2 rows)
 
 SELECT xpath(NULL, NULL) IS NULL FROM xmltest;
  ?column? 
 ----------
-(0 rows)
+ t
+ t
+(2 rows)
 
 SELECT xpath('', '<!-- error -->');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('', '<!-- error -->');
-                         ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  empty XPath expression
+CONTEXT:  SQL function "xpath" statement 1
 SELECT xpath('//text()', '<local:data xmlns:local="http://127.0.0.1"><local:piece id="1">number one</local:piece><local:piece id="2" /></local:data>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('//text()', '<local:data xmlns:local="http://12...
-                                 ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+     xpath      
+----------------
+ {"number one"}
+(1 row)
+
 SELECT xpath('//loc:piece/@id', '<local:data xmlns:local="http://127.0.0.1"><local:piece id="1">number one</local:piece><local:piece id="2" /></local:data>', ARRAY[ARRAY['loc', 'http://127.0.0.1']]);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('//loc:piece/@id', '<local:data xmlns:local="ht...
-                                        ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath 
+-------
+ {1,2}
+(1 row)
+
 SELECT xpath('//loc:piece', '<local:data xmlns:local="http://127.0.0.1"><local:piece id="1">number one</local:piece><local:piece id="2" /></local:data>', ARRAY[ARRAY['loc', 'http://127.0.0.1']]);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('//loc:piece', '<local:data xmlns:local="http:/...
-                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                                                                     xpath                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------
+ {"<local:piece xmlns:local=\"http://127.0.0.1\" id=\"1\">number one</local:piece>","<local:piece xmlns:local=\"http://127.0.0.1\" id=\"2\"/>"}
+(1 row)
+
 SELECT xpath('//loc:piece', '<local:data xmlns:local="http://127.0.0.1" xmlns="http://127.0.0.2"><local:piece id="1"><internal>number one</internal><internal2/></local:piece><local:piece id="2" /></local:data>', ARRAY[ARRAY['loc', 'http://127.0.0.1']]);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('//loc:piece', '<local:data xmlns:local="http:/...
-                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                                                                                                   xpath                                                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"<local:piece xmlns:local=\"http://127.0.0.1\" xmlns=\"http://127.0.0.2\" id=\"1\"><internal>number one</internal><internal2/></local:piece>","<local:piece xmlns:local=\"http://127.0.0.1\" id=\"2\"/>"}
+(1 row)
+
 SELECT xpath('//b', '<a>one <b>two</b> three <b>etc</b></a>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('//b', '<a>one <b>two</b> three <b>etc</b></a>'...
-                            ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+          xpath          
+-------------------------
+ {<b>two</b>,<b>etc</b>}
+(1 row)
+
 SELECT xpath('//text()', '<root>&lt;</root>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('//text()', '<root>&lt;</root>');
-                                 ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath  
+--------
+ {&lt;}
+(1 row)
+
 SELECT xpath('//@value', '<root value="&lt;"/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('//@value', '<root value="&lt;"/>');
-                                 ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath  
+--------
+ {&lt;}
+(1 row)
+
 SELECT xpath('''<<invalid>>''', '<root/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('''<<invalid>>''', '<root/>');
-                                        ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+           xpath           
+---------------------------
+ {&lt;&lt;invalid&gt;&gt;}
+(1 row)
+
 SELECT xpath('count(//*)', '<root><sub/><sub/></root>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('count(//*)', '<root><sub/><sub/></root>');
-                                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath 
+-------
+ {3}
+(1 row)
+
 SELECT xpath('count(//*)=0', '<root><sub/><sub/></root>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('count(//*)=0', '<root><sub/><sub/></root>');
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+  xpath  
+---------
+ {false}
+(1 row)
+
 SELECT xpath('count(//*)=3', '<root><sub/><sub/></root>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('count(//*)=3', '<root><sub/><sub/></root>');
-                                     ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath  
+--------
+ {true}
+(1 row)
+
 SELECT xpath('name(/*)', '<root><sub/><sub/></root>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('name(/*)', '<root><sub/><sub/></root>');
-                                 ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath  
+--------
+ {root}
+(1 row)
+
 SELECT xpath('/nosuchtag', '<root/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('/nosuchtag', '<root/>');
-                                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath 
+-------
+ {}
+(1 row)
+
 SELECT xpath('root', '<root/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('root', '<root/>');
-                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+   xpath   
+-----------
+ {<root/>}
+(1 row)
+
 -- Round-trip non-ASCII data through xpath().
 DO $$
 DECLARE
@@ -704,55 +999,45 @@ END
 $$;
 -- Test xmlexists and xpath_exists
 SELECT xmlexists('//town[text() = ''Toronto'']' PASSING BY REF '<towns><town>Bidford-on-Avon</town><town>Cwmbran</town><town>Bristol</town></towns>');
-ERROR:  unsupported XML feature
-LINE 1: ...sts('//town[text() = ''Toronto'']' PASSING BY REF '<towns><t...
-                                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlexists 
+-----------
+ f
+(1 row)
+
 SELECT xmlexists('//town[text() = ''Cwmbran'']' PASSING BY REF '<towns><town>Bidford-on-Avon</town><town>Cwmbran</town><town>Bristol</town></towns>');
-ERROR:  unsupported XML feature
-LINE 1: ...sts('//town[text() = ''Cwmbran'']' PASSING BY REF '<towns><t...
-                                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlexists 
+-----------
+ t
+(1 row)
+
 SELECT xmlexists('count(/nosuchtag)' PASSING BY REF '<root/>');
-ERROR:  unsupported XML feature
-LINE 1: ...LECT xmlexists('count(/nosuchtag)' PASSING BY REF '<root/>')...
-                                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmlexists 
+-----------
+ t
+(1 row)
+
 SELECT xpath_exists('//town[text() = ''Toronto'']','<towns><town>Bidford-on-Avon</town><town>Cwmbran</town><town>Bristol</town></towns>'::xml);
-ERROR:  unsupported XML feature
-LINE 1: ...ELECT xpath_exists('//town[text() = ''Toronto'']','<towns><t...
-                                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath_exists 
+--------------
+ f
+(1 row)
+
 SELECT xpath_exists('//town[text() = ''Cwmbran'']','<towns><town>Bidford-on-Avon</town><town>Cwmbran</town><town>Bristol</town></towns>'::xml);
-ERROR:  unsupported XML feature
-LINE 1: ...ELECT xpath_exists('//town[text() = ''Cwmbran'']','<towns><t...
-                                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath_exists 
+--------------
+ t
+(1 row)
+
 SELECT xpath_exists('count(/nosuchtag)', '<root/>'::xml);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath_exists('count(/nosuchtag)', '<root/>'::xml);
-                                                 ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xpath_exists 
+--------------
+ t
+(1 row)
+
 INSERT INTO xmltest VALUES (4, '<menu><beers><name>Budvar</name><cost>free</cost><name>Carling</name><cost>lots</cost></beers></menu>'::xml);
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest VALUES (4, '<menu><beers><name>Budvar</n...
-                                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest VALUES (5, '<menu><beers><name>Molson</name><cost>free</cost><name>Carling</name><cost>lots</cost></beers></menu>'::xml);
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest VALUES (5, '<menu><beers><name>Molson</n...
-                                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest VALUES (6, '<myns:menu xmlns:myns="http://myns.com"><myns:beers><myns:name>Budvar</myns:name><myns:cost>free</myns:cost><myns:name>Carling</myns:name><myns:cost>lots</myns:cost></myns:beers></myns:menu>'::xml);
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest VALUES (6, '<myns:menu xmlns:myns="http:...
-                                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest VALUES (7, '<myns:menu xmlns:myns="http://myns.com"><myns:beers><myns:name>Molson</myns:name><myns:cost>free</myns:cost><myns:name>Carling</myns:name><myns:cost>lots</myns:cost></myns:beers></myns:menu>'::xml);
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest VALUES (7, '<myns:menu xmlns:myns="http:...
-                                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT COUNT(id) FROM xmltest WHERE xmlexists('/menu/beer' PASSING data);
  count 
 -------
@@ -768,13 +1053,13 @@ SELECT COUNT(id) FROM xmltest WHERE xmlexists('/menu/beer' PASSING BY REF data B
 SELECT COUNT(id) FROM xmltest WHERE xmlexists('/menu/beers' PASSING BY REF data);
  count 
 -------
-     0
+     2
 (1 row)
 
 SELECT COUNT(id) FROM xmltest WHERE xmlexists('/menu/beers/name[text() = ''Molson'']' PASSING BY REF data);
  count 
 -------
-     0
+     1
 (1 row)
 
 SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/menu/beer',data);
@@ -786,13 +1071,13 @@ SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/menu/beer',data);
 SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/menu/beers',data);
  count 
 -------
-     0
+     2
 (1 row)
 
 SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/menu/beers/name[text() = ''Molson'']',data);
  count 
 -------
-     0
+     1
 (1 row)
 
 SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/myns:menu/myns:beer',data,ARRAY[ARRAY['myns','http://myns.com']]);
@@ -804,13 +1089,13 @@ SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/myns:menu/myns:beer',data,ARR
 SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/myns:menu/myns:beers',data,ARRAY[ARRAY['myns','http://myns.com']]);
  count 
 -------
-     0
+     2
 (1 row)
 
 SELECT COUNT(id) FROM xmltest WHERE xpath_exists('/myns:menu/myns:beers/myns:name[text() = ''Molson'']',data,ARRAY[ARRAY['myns','http://myns.com']]);
  count 
 -------
-     0
+     1
 (1 row)
 
 CREATE TABLE query ( expr TEXT );
@@ -818,69 +1103,126 @@ INSERT INTO query VALUES ('/menu/beers/cost[text() = ''lots'']');
 SELECT COUNT(id) FROM xmltest, query WHERE xmlexists(expr PASSING BY REF data);
  count 
 -------
-     0
+     2
 (1 row)
 
 -- Test xml_is_well_formed and variants
 SELECT xml_is_well_formed_document('<foo>bar</foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed_document 
+-----------------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed_document('abc');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed_document 
+-----------------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed_content('<foo>bar</foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed_content 
+----------------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed_content('abc');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed_content 
+----------------------------
+ t
+(1 row)
+
 SET xmloption TO DOCUMENT;
 SELECT xml_is_well_formed('abc');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed('<>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed('<abc/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed('<foo>bar</foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed('<foo>bar</foo');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed('<foo><bar>baz</foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed('<local:data xmlns:local="http://127.0.0.1"><local:piece id="1">number one</local:piece><local:piece id="2" /></local:data>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed('<pg:foo xmlns:pg="http://postgresql.org/stuff">bar</my:foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed('<pg:foo xmlns:pg="http://postgresql.org/stuff">bar</pg:foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed('<invalidentity>&</abc>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed('<undefinedentity>&idontexist;</abc>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SELECT xml_is_well_formed('<invalidns xmlns=''&lt;''/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed('<relativens xmlns=''relative''/>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ t
+(1 row)
+
 SELECT xml_is_well_formed('<twoerrors>&idontexist;</unbalanced>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ f
+(1 row)
+
 SET xmloption TO CONTENT;
 SELECT xml_is_well_formed('abc');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xml_is_well_formed 
+--------------------
+ t
+(1 row)
+
 -- Since xpath() deals with namespaces, it's a bit stricter about
 -- what's well-formed and what's not. If we don't obey these rules
 -- (i.e. ignore namespace-related errors from libxml), xpath()
@@ -893,32 +1235,46 @@ DETAIL:  This functionality requires the server to be built with libxml support.
 -- error messages, we suppress the DETAIL in this test.
 \set VERBOSITY terse
 SELECT xpath('/*', '<invalidns xmlns=''&lt;''/>');
-ERROR:  unsupported XML feature at character 20
+ERROR:  could not parse XML document
 \set VERBOSITY default
 -- Again, the XML isn't well-formed for namespace purposes
 SELECT xpath('/*', '<nosuchprefix:tag/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('/*', '<nosuchprefix:tag/>');
-                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  could not parse XML document
+DETAIL:  line 1: Namespace prefix nosuchprefix on tag is not defined
+<nosuchprefix:tag/>
+                 ^
+CONTEXT:  SQL function "xpath" statement 1
 -- XPath deprecates relative namespaces, but they're not supposed to
 -- throw an error, only a warning.
 SELECT xpath('/*', '<relativens xmlns=''relative''/>');
-ERROR:  unsupported XML feature
-LINE 1: SELECT xpath('/*', '<relativens xmlns=''relative''/>');
-                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+WARNING:  line 1: xmlns: URI relative is not absolute
+<relativens xmlns='relative'/>
+                            ^
+                xpath                 
+--------------------------------------
+ {"<relativens xmlns=\"relative\"/>"}
+(1 row)
+
 -- External entity references should not leak filesystem information.
 SELECT XMLPARSE(DOCUMENT '<!DOCTYPE foo [<!ENTITY c SYSTEM "/etc/passwd">]><foo>&c;</foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                            xmlparse                             
+-----------------------------------------------------------------
+ <!DOCTYPE foo [<!ENTITY c SYSTEM "/etc/passwd">]><foo>&c;</foo>
+(1 row)
+
 SELECT XMLPARSE(DOCUMENT '<!DOCTYPE foo [<!ENTITY c SYSTEM "/etc/no.such.file">]><foo>&c;</foo>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                               xmlparse                                
+-----------------------------------------------------------------------
+ <!DOCTYPE foo [<!ENTITY c SYSTEM "/etc/no.such.file">]><foo>&c;</foo>
+(1 row)
+
 -- This might or might not load the requested DTD, but it mustn't throw error.
 SELECT XMLPARSE(DOCUMENT '<!DOCTYPE chapter PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN" "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd"><chapter>&nbsp;</chapter>');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+                                                                       xmlparse                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ <!DOCTYPE chapter PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN" "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd"><chapter>&nbsp;</chapter>
+(1 row)
+
 -- XMLPATH tests
 CREATE TABLE xmldata(data xml);
 INSERT INTO xmldata VALUES('<ROWS>
@@ -953,10 +1309,6 @@ INSERT INTO xmldata VALUES('<ROWS>
   <REGION_ID>3</REGION_ID><SIZE unit="km">791</SIZE>
 </ROW>
 </ROWS>');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmldata VALUES('<ROWS>
-                                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 -- XMLTABLE with columns
 SELECT  xmltable.*
    FROM (SELECT data FROM xmldata) x,
@@ -970,9 +1322,15 @@ SELECT  xmltable.*
                                   size float PATH 'SIZE',
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
- id | _id | country_name | country_id | region_id | size | unit | premier_name 
-----+-----+--------------+------------+-----------+------+------+--------------
-(0 rows)
+ id | _id | country_name | country_id | region_id | size | unit | premier_name  
+----+-----+--------------+------------+-----------+------+------+---------------
+  1 |   1 | Australia    | AU         |         3 |      |      | not specified
+  2 |   2 | China        | CN         |         3 |      |      | not specified
+  3 |   3 | HongKong     | HK         |         3 |      |      | not specified
+  4 |   4 | India        | IN         |         3 |      |      | not specified
+  5 |   5 | Japan        | JP         |         3 |      |      | Sinzo Abe
+  6 |   6 | Singapore    | SG         |         3 |  791 | km   | not specified
+(6 rows)
 
 CREATE VIEW xmltableview1 AS SELECT  xmltable.*
    FROM (SELECT data FROM xmldata) x,
@@ -987,9 +1345,15 @@ CREATE VIEW xmltableview1 AS SELECT  xmltable.*
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
 SELECT * FROM xmltableview1;
- id | _id | country_name | country_id | region_id | size | unit | premier_name 
-----+-----+--------------+------------+-----------+------+------+--------------
-(0 rows)
+ id | _id | country_name | country_id | region_id | size | unit | premier_name  
+----+-----+--------------+------------+-----------+------+------+---------------
+  1 |   1 | Australia    | AU         |         3 |      |      | not specified
+  2 |   2 | China        | CN         |         3 |      |      | not specified
+  3 |   3 | HongKong     | HK         |         3 |      |      | not specified
+  4 |   4 | India        | IN         |         3 |      |      | not specified
+  5 |   5 | Japan        | JP         |         3 |      |      | Sinzo Abe
+  6 |   6 | Singapore    | SG         |         3 |  791 | km   | not specified
+(6 rows)
 
 \sv xmltableview1
 CREATE OR REPLACE VIEW public.xmltableview1 AS
@@ -1013,7 +1377,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM xmltableview1;
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE) SELECT * FROM xmltableview1;
-                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
@@ -1032,37 +1396,34 @@ SELECT * FROM XMLTABLE(XMLNAMESPACES('http://x.y' AS zz),
                       '/zz:rows/zz:row'
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
                       COLUMNS a int PATH 'zz:a');
-ERROR:  unsupported XML feature
-LINE 3:                       PASSING '<rows xmlns="http://x.y"><row...
-                                      ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ a  
+----
+ 10
+(1 row)
+
 CREATE VIEW xmltableview2 AS SELECT * FROM XMLTABLE(XMLNAMESPACES('http://x.y' AS zz),
                       '/zz:rows/zz:row'
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
                       COLUMNS a int PATH 'zz:a');
-ERROR:  unsupported XML feature
-LINE 3:                       PASSING '<rows xmlns="http://x.y"><row...
-                                      ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT * FROM xmltableview2;
-ERROR:  relation "xmltableview2" does not exist
-LINE 1: SELECT * FROM xmltableview2;
-                      ^
+ a  
+----
+ 10
+(1 row)
+
 SELECT * FROM XMLTABLE(XMLNAMESPACES(DEFAULT 'http://x.y'),
                       '/rows/row'
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
                       COLUMNS a int PATH 'a');
-ERROR:  unsupported XML feature
-LINE 3:                       PASSING '<rows xmlns="http://x.y"><row...
-                                      ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  DEFAULT namespace is not supported
 SELECT * FROM XMLTABLE('.'
                        PASSING '<foo/>'
                        COLUMNS a text PATH 'foo/namespace::node()');
-ERROR:  unsupported XML feature
-LINE 2:                        PASSING '<foo/>'
-                                       ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+                  a                   
+--------------------------------------
+ http://www.w3.org/XML/1998/namespace
+(1 row)
+
 -- used in prepare statements
 PREPARE pp AS
 SELECT  xmltable.*
@@ -1078,72 +1439,110 @@ SELECT  xmltable.*
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
 EXECUTE pp;
- id | _id | country_name | country_id | region_id | size | unit | premier_name 
-----+-----+--------------+------------+-----------+------+------+--------------
-(0 rows)
+ id | _id | country_name | country_id | region_id | size | unit | premier_name  
+----+-----+--------------+------------+-----------+------+------+---------------
+  1 |   1 | Australia    | AU         |         3 |      |      | not specified
+  2 |   2 | China        | CN         |         3 |      |      | not specified
+  3 |   3 | HongKong     | HK         |         3 |      |      | not specified
+  4 |   4 | India        | IN         |         3 |      |      | not specified
+  5 |   5 | Japan        | JP         |         3 |      |      | Sinzo Abe
+  6 |   6 | Singapore    | SG         |         3 |  791 | km   | not specified
+(6 rows)
 
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int);
  COUNTRY_NAME | REGION_ID 
 --------------+-----------
-(0 rows)
+ India        |         3
+ Japan        |         3
+(2 rows)
 
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS id FOR ORDINALITY, "COUNTRY_NAME" text, "REGION_ID" int);
  id | COUNTRY_NAME | REGION_ID 
 ----+--------------+-----------
-(0 rows)
+  1 | India        |         3
+  2 | Japan        |         3
+(2 rows)
 
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS id int PATH '@id', "COUNTRY_NAME" text, "REGION_ID" int);
  id | COUNTRY_NAME | REGION_ID 
 ----+--------------+-----------
-(0 rows)
+  4 | India        |         3
+  5 | Japan        |         3
+(2 rows)
 
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS id int PATH '@id');
  id 
 ----
-(0 rows)
+  4
+  5
+(2 rows)
 
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS id FOR ORDINALITY);
  id 
 ----
-(0 rows)
+  1
+  2
+(2 rows)
 
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS id int PATH '@id', "COUNTRY_NAME" text, "REGION_ID" int, rawdata xml PATH '.');
- id | COUNTRY_NAME | REGION_ID | rawdata 
-----+--------------+-----------+---------
-(0 rows)
+ id | COUNTRY_NAME | REGION_ID |                             rawdata                              
+----+--------------+-----------+------------------------------------------------------------------
+  4 | India        |         3 | <ROW id="4">                                                    +
+    |              |           |   <COUNTRY_ID>IN</COUNTRY_ID>                                   +
+    |              |           |   <COUNTRY_NAME>India</COUNTRY_NAME>                            +
+    |              |           |   <REGION_ID>3</REGION_ID>                                      +
+    |              |           | </ROW>
+  5 | Japan        |         3 | <ROW id="5">                                                    +
+    |              |           |   <COUNTRY_ID>JP</COUNTRY_ID>                                   +
+    |              |           |   <COUNTRY_NAME>Japan</COUNTRY_NAME>                            +
+    |              |           |   <REGION_ID>3</REGION_ID><PREMIER_NAME>Sinzo Abe</PREMIER_NAME>+
+    |              |           | </ROW>
+(2 rows)
 
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS id int PATH '@id', "COUNTRY_NAME" text, "REGION_ID" int, rawdata xml PATH './*');
- id | COUNTRY_NAME | REGION_ID | rawdata 
-----+--------------+-----------+---------
-(0 rows)
+ id | COUNTRY_NAME | REGION_ID |                                                           rawdata                                                           
+----+--------------+-----------+-----------------------------------------------------------------------------------------------------------------------------
+  4 | India        |         3 | <COUNTRY_ID>IN</COUNTRY_ID><COUNTRY_NAME>India</COUNTRY_NAME><REGION_ID>3</REGION_ID>
+  5 | Japan        |         3 | <COUNTRY_ID>JP</COUNTRY_ID><COUNTRY_NAME>Japan</COUNTRY_NAME><REGION_ID>3</REGION_ID><PREMIER_NAME>Sinzo Abe</PREMIER_NAME>
+(2 rows)
 
 SELECT * FROM xmltable('/root' passing '<root><element>a1a<!-- aaaa -->a2a<?aaaaa?> <!--z-->  bbbb<x>xxx</x>cccc</element></root>' COLUMNS element text);
-ERROR:  unsupported XML feature
-LINE 1: SELECT * FROM xmltable('/root' passing '<root><element>a1a<!...
-                                               ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+       element        
+----------------------
+ a1aa2a   bbbbxxxcccc
+(1 row)
+
 SELECT * FROM xmltable('/root' passing '<root><element>a1a<!-- aaaa -->a2a<?aaaaa?> <!--z-->  bbbb<x>xxx</x>cccc</element></root>' COLUMNS element text PATH 'element/text()'); -- should fail
-ERROR:  unsupported XML feature
-LINE 1: SELECT * FROM xmltable('/root' passing '<root><element>a1a<!...
-                                               ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ERROR:  more than one value returned by column XPath expression
 -- CDATA test
 select * from xmltable('d/r' passing '<d><r><c><![CDATA[<hello> &"<>!<a>foo</a>]]></c></r><r><c>2</c></r></d>' columns c text);
-ERROR:  unsupported XML feature
-LINE 1: select * from xmltable('d/r' passing '<d><r><c><![CDATA[<hel...
-                                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+            c            
+-------------------------
+ <hello> &"<>!<a>foo</a>
+ 2
+(2 rows)
+
 -- XML builtin entities
 SELECT * FROM xmltable('/x/a' PASSING '<x><a><ent>&apos;</ent></a><a><ent>&quot;</ent></a><a><ent>&amp;</ent></a><a><ent>&lt;</ent></a><a><ent>&gt;</ent></a></x>' COLUMNS ent text);
-ERROR:  unsupported XML feature
-LINE 1: SELECT * FROM xmltable('/x/a' PASSING '<x><a><ent>&apos;</en...
-                                              ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+ ent 
+-----
+ '
+ "
+ &
+ <
+ >
+(5 rows)
+
 SELECT * FROM xmltable('/x/a' PASSING '<x><a><ent>&apos;</ent></a><a><ent>&quot;</ent></a><a><ent>&amp;</ent></a><a><ent>&lt;</ent></a><a><ent>&gt;</ent></a></x>' COLUMNS ent xml);
-ERROR:  unsupported XML feature
-LINE 1: SELECT * FROM xmltable('/x/a' PASSING '<x><a><ent>&apos;</en...
-                                              ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+       ent        
+------------------
+ <ent>'</ent>
+ <ent>"</ent>
+ <ent>&amp;</ent>
+ <ent>&lt;</ent>
+ <ent>&gt;</ent>
+(5 rows)
+
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT  xmltable.*
    FROM (SELECT data FROM xmldata) x,
@@ -1157,26 +1556,27 @@ SELECT  xmltable.*
                                   size float PATH 'SIZE',
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
-                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                         
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
    ->  Seq Scan on public.xmldata
          Output: xmldata.data
    ->  Table Function Scan on "xmltable"
          Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
-         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id integer PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id integer PATH ('REGION_ID'::text), size double precision PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
+         Table Function Call: XMLTABLE(('/ROWS/ROW'::text) PASSING (xmldata.data) COLUMNS id pg_catalog.int4 PATH ('@id'::text), _id FOR ORDINALITY, country_name text PATH ('COUNTRY_NAME'::text) NOT NULL, country_id text PATH ('COUNTRY_ID'::text), region_id pg_catalog.int4 PATH ('REGION_ID'::text), size pg_catalog.float8 PATH ('SIZE'::text), unit text PATH ('SIZE/@unit'::text), premier_name text DEFAULT ('not specified'::text) PATH ('PREMIER_NAME'::text))
 (7 rows)
 
 -- test qual
 SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int) WHERE "COUNTRY_NAME" = 'Japan';
  COUNTRY_NAME | REGION_ID 
 --------------+-----------
-(0 rows)
+ Japan        |         3
+(1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int) AS f WHERE "COUNTRY_NAME" = 'Japan';
-                                                                                    QUERY PLAN                                                                                    
+                                                                                        QUERY PLAN                                                                                        
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: f."COUNTRY_NAME", f."REGION_ID"
@@ -1190,7 +1590,7 @@ SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COU
 
 EXPLAIN (VERBOSE, FORMAT JSON, COSTS OFF)
 SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int) AS f WHERE "COUNTRY_NAME" = 'Japan';
-                                                                                               QUERY PLAN
+                                                                                               QUERY PLAN                                                                                                
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  [                                                                                                                                                                                                      +
    {                                                                                                                                                                                                    +
@@ -1247,10 +1647,6 @@ INSERT INTO xmldata VALUES('<ROWS>
   <REGION_ID>2</REGION_ID>
 </ROW>
 </ROWS>');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmldata VALUES('<ROWS>
-                                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmldata VALUES('<ROWS>
 <ROW id="20">
   <COUNTRY_ID>EG</COUNTRY_ID>
@@ -1263,10 +1659,6 @@ INSERT INTO xmldata VALUES('<ROWS>
   <REGION_ID>1</REGION_ID>
 </ROW>
 </ROWS>');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmldata VALUES('<ROWS>
-                                   ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT  xmltable.*
    FROM (SELECT data FROM xmldata) x,
         LATERAL XMLTABLE('/ROWS/ROW'
@@ -1279,9 +1671,20 @@ SELECT  xmltable.*
                                   size float PATH 'SIZE',
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
- id | _id | country_name | country_id | region_id | size | unit | premier_name 
-----+-----+--------------+------------+-----------+------+------+--------------
-(0 rows)
+ id | _id |  country_name  | country_id | region_id | size | unit | premier_name  
+----+-----+----------------+------------+-----------+------+------+---------------
+  1 |   1 | Australia      | AU         |         3 |      |      | not specified
+  2 |   2 | China          | CN         |         3 |      |      | not specified
+  3 |   3 | HongKong       | HK         |         3 |      |      | not specified
+  4 |   4 | India          | IN         |         3 |      |      | not specified
+  5 |   5 | Japan          | JP         |         3 |      |      | Sinzo Abe
+  6 |   6 | Singapore      | SG         |         3 |  791 | km   | not specified
+ 10 |   1 | Czech Republic | CZ         |         2 |      |      | Milos Zeman
+ 11 |   2 | Germany        | DE         |         2 |      |      | not specified
+ 12 |   3 | France         | FR         |         2 |      |      | not specified
+ 20 |   1 | Egypt          | EG         |         1 |      |      | not specified
+ 21 |   2 | Sudan          | SD         |         1 |      |      | not specified
+(11 rows)
 
 SELECT  xmltable.*
    FROM (SELECT data FROM xmldata) x,
@@ -1296,9 +1699,12 @@ SELECT  xmltable.*
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified')
   WHERE region_id = 2;
- id | _id | country_name | country_id | region_id | size | unit | premier_name 
-----+-----+--------------+------------+-----------+------+------+--------------
-(0 rows)
+ id | _id |  country_name  | country_id | region_id | size | unit | premier_name  
+----+-----+----------------+------------+-----------+------+------+---------------
+ 10 |   1 | Czech Republic | CZ         |         2 |      |      | Milos Zeman
+ 11 |   2 | Germany        | DE         |         2 |      |      | not specified
+ 12 |   3 | France         | FR         |         2 |      |      | not specified
+(3 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT  xmltable.*
@@ -1314,7 +1720,7 @@ SELECT  xmltable.*
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified')
   WHERE region_id = 2;
-                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                         
+                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: "xmltable".id, "xmltable"._id, "xmltable".country_name, "xmltable".country_id, "xmltable".region_id, "xmltable".size, "xmltable".unit, "xmltable".premier_name
@@ -1339,10 +1745,7 @@ SELECT  xmltable.*
                                   size float PATH 'SIZE' NOT NULL,
                                   unit text PATH 'SIZE/@unit',
                                   premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
- id | _id | country_name | country_id | region_id | size | unit | premier_name 
-----+-----+--------------+------------+-----------+------+------+--------------
-(0 rows)
-
+ERROR:  null is not allowed in column "size"
 -- if all is ok, then result is empty
 -- one line xml test
 WITH
@@ -1366,8 +1769,10 @@ WITH
                                          proargtypes text))
    SELECT * FROM z
    EXCEPT SELECT * FROM x;
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ proname | proowner | procost | pronargs | proargnames | proargtypes 
+---------+----------+---------+----------+-------------+-------------
+(0 rows)
+
 -- multi line xml test, result should be empty too
 WITH
    x AS (SELECT proname, proowner, procost::numeric, pronargs,
@@ -1390,60 +1795,63 @@ WITH
                                          proargtypes text))
    SELECT * FROM z
    EXCEPT SELECT * FROM x;
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ proname | proowner | procost | pronargs | proargnames | proargtypes 
+---------+----------+---------+----------+-------------+-------------
+(0 rows)
+
 CREATE TABLE xmltest2(x xml, _path text);
 INSERT INTO xmltest2 VALUES('<d><r><ac>1</ac></r></d>', 'A');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest2 VALUES('<d><r><ac>1</ac></r></d>', 'A')...
-                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest2 VALUES('<d><r><bc>2</bc></r></d>', 'B');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest2 VALUES('<d><r><bc>2</bc></r></d>', 'B')...
-                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest2 VALUES('<d><r><cc>3</cc></r></d>', 'C');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest2 VALUES('<d><r><cc>3</cc></r></d>', 'C')...
-                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 INSERT INTO xmltest2 VALUES('<d><r><dc>2</dc></r></d>', 'D');
-ERROR:  unsupported XML feature
-LINE 1: INSERT INTO xmltest2 VALUES('<d><r><dc>2</dc></r></d>', 'D')...
-                                    ^
-DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT xmltable.* FROM xmltest2, LATERAL xmltable('/d/r' PASSING x COLUMNS a int PATH '' || lower(_path) || 'c');
  a 
 ---
-(0 rows)
+ 1
+ 2
+ 3
+ 2
+(4 rows)
 
 SELECT xmltable.* FROM xmltest2, LATERAL xmltable(('/d/r/' || lower(_path) || 'c') PASSING x COLUMNS a int PATH '.');
  a 
 ---
-(0 rows)
+ 1
+ 2
+ 3
+ 2
+(4 rows)
 
 SELECT xmltable.* FROM xmltest2, LATERAL xmltable(('/d/r/' || lower(_path) || 'c') PASSING x COLUMNS a int PATH 'x' DEFAULT ascii(_path) - 54);
- a 
----
-(0 rows)
+ a  
+----
+ 11
+ 12
+ 13
+ 14
+(4 rows)
 
 -- XPath result can be boolean or number too
 SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml PATH '.', b text PATH '.', c text PATH '"hi"', d boolean PATH '. = "a"', e integer PATH 'string-length(.)');
-ERROR:  unsupported XML feature
-LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml ...
-                                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+    a     | b | c  | d | e 
+----------+---+----+---+---
+ <a>a</a> | a | hi | t | 1
+(1 row)
+
 \x
 SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH '/e/n2', y xml PATH '/');
-ERROR:  unsupported XML feature
-LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?...
-                                           ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+-[ RECORD 1 ]-----------------------------------------------------------
+x | <n2>&amp;deep</n2>
+y | <e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>+
+  | 
+
 \x
 SELECT * FROM XMLTABLE('.' PASSING XMLELEMENT(NAME a) columns a varchar(20) PATH '"<foo/>"', b xml PATH '"<foo/>"');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+   a    |      b       
+--------+--------------
+ <foo/> | &lt;foo/&gt;
+(1 row)
+
 SELECT xmltext(NULL);
  xmltext 
 ---------
@@ -1451,20 +1859,33 @@ SELECT xmltext(NULL);
 (1 row)
 
 SELECT xmltext('');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmltext 
+---------
+ 
+(1 row)
+
 SELECT xmltext('  ');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+ xmltext 
+---------
+   
+(1 row)
+
 SELECT xmltext('foo `$_-+?=*^%!|/\()[]{}');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+         xmltext          
+--------------------------
+ foo `$_-+?=*^%!|/\()[]{}
+(1 row)
+
 SELECT xmltext('foo & <"bar">');
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
+              xmltext              
+-----------------------------------
+ foo &amp; &lt;&quot;bar&quot;&gt;
+(1 row)
+
 SELECT xmltext('x'|| '<P>73</P>'::xml || .42 || true || 'j'::char);
-ERROR:  unsupported XML feature
-LINE 1: SELECT xmltext('x'|| '<P>73</P>'::xml || .42 || true || 'j':...
-                             ^
-DETAIL:  This functionality requires the server to be built with libxml support.
+             xmltext             
+---------------------------------
+ x&lt;P&gt;73&lt;/P&gt;0.42truej
+(1 row)
+
 reset ivorysql.enable_emptystring_to_null;

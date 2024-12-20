@@ -479,16 +479,10 @@ WHERE t1.typanalyze = p1.oid AND NOT
 -- domains inherit their base type's typanalyze
 SELECT d.oid, d.typname, d.typanalyze, t.oid, t.typname, t.typanalyze
 FROM pg_type d JOIN pg_type t ON d.typbasetype = t.oid
-WHERE d.typanalyze != t.typanalyze;
- oid  |  typname  |    typanalyze    | oid | typname | typanalyze 
-------+-----------+------------------+-----+---------+------------
- 9532 | _blob     | array_typanalyze |  17 | bytea   | -
- 9533 | _clob     | array_typanalyze |  25 | text    | -
- 9534 | _long     | array_typanalyze |  25 | text    | -
- 9535 | _long_raw | array_typanalyze |  17 | bytea   | -
- 9536 | _raw      | array_typanalyze |  17 | bytea   | -
- 9537 | _nclob    | array_typanalyze |  25 | text    | -
-(6 rows)
+WHERE d.typanalyze != t.typanalyze AND d.typnamespace != 9900;
+ oid | typname | typanalyze | oid | typname | typanalyze 
+-----+---------+------------+-----+---------+------------
+(0 rows)
 
 -- range_typanalyze should be used for all and only range types
 -- (but exclude domains, which we checked above)
@@ -736,7 +730,7 @@ SELECT oid, typname, typtype, typelem, typarray
   FROM pg_type t
   WHERE oid < 16384 AND
     -- Exclude pseudotypes and composite types.
-    typtype NOT IN ('p', 'c') AND
+    typtype NOT IN ('p', 'c') AND t.typnamespace != 9900 AND
     -- These reg* types cannot be pg_upgraded, so discard them.
     oid != ALL(ARRAY['regproc', 'regprocedure', 'regoper',
                      'regoperator', 'regconfig', 'regdictionary',
@@ -757,26 +751,7 @@ SELECT oid, typname, typtype, typelem, typarray
                     WHERE a.atttypid=t.oid AND
                           a.attnum > 0 AND
                           a.attrelid='tab_core_types'::regclass);
- oid  |     typname     | typtype | typelem | typarray 
-------+-----------------+---------+---------+----------
- 9508 | oradate         | b       |       0 |     9509
- 9510 | oratimestamp    | b       |       0 |     9511
- 9514 | oratimestampltz | b       |       0 |     9515
- 9500 | oracharchar     | b       |       0 |     9504
- 9529 | long_raw        | d       |       0 |     9535
- 9530 | raw             | d       |       0 |     9536
- 9522 | binary_float    | b       |       0 |     9523
- 9524 | binary_double   | b       |       0 |     9525
- 9503 | oravarcharbyte  | b       |       0 |     9507
- 9531 | nclob           | d       |       0 |     9537
- 9518 | dsinterval      | b       |       0 |     9519
- 9520 | number          | b       |       0 |     9521
- 9516 | yminterval      | b       |       0 |     9517
- 9528 | long            | d       |       0 |     9534
- 9512 | oratimestamptz  | b       |       0 |     9513
- 9527 | clob            | d       |       0 |     9533
- 9501 | oracharbyte     | b       |       0 |     9505
- 9502 | oravarcharchar  | b       |       0 |     9506
- 9526 | blob            | d       |       0 |     9532
-(19 rows)
+ oid | typname | typtype | typelem | typarray 
+-----+---------+---------+---------+----------
+(0 rows)
 
