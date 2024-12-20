@@ -2996,6 +2996,12 @@ transformXmlExpr(ParseState *pstate, XmlExpr *x)
 				newe = coerce_to_specific_type(pstate, newe, XMLOID,
 											   "IS DOCUMENT");
 				break;
+			/* Begin - ReqID:SRS-SQL-XML */
+			case IS_UPDATEXML:
+				newe = coerce_to_specific_type(pstate, newe, TEXTOID,
+												"UPDATEXML");
+				break;
+			/* End - ReqID:SRS-SQL-XML */
 		}
 		newx->args = lappend(newx->args, newe);
 		i++;

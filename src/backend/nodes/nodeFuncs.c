@@ -23,6 +23,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/packagecache.h"
+#include "parser/parse_type.h"
 
 static bool expression_returns_set_walker(Node *node, void *context);
 static int	leftmostLoc(int loc1, int loc2);
@@ -231,6 +232,13 @@ exprType(const Node *expr)
 				type = BOOLOID;
 			else if (((const XmlExpr *) expr)->op == IS_XMLSERIALIZE)
 				type = TEXTOID;
+			else if (((const XmlExpr *) expr)->op == IS_UPDATEXML)
+			{
+				int32	typmod;
+
+				type = XMLOID;
+				(void) parseTypeString("XMLTYPE", &type, &typmod, NULL);
+			}
 			else
 				type = XMLOID;
 			break;

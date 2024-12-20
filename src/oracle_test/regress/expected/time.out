@@ -161,23 +161,23 @@ HINT:  Could not choose a best candidate operator. You might need to add explici
 --
 -- test EXTRACT
 --
-SELECT EXTRACT(MICROSECOND FROM TIME '2020-05-26 13:30:25.575401');
+SELECT PGEXTRACT(MICROSECOND FROM TIME '2020-05-26 13:30:25.575401');
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(MILLISECOND FROM TIME '2020-05-26 13:30:25.575401');
+SELECT PGEXTRACT(MILLISECOND FROM TIME '2020-05-26 13:30:25.575401');
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(SECOND      FROM TIME '2020-05-26 13:30:25.575401');
+SELECT PGEXTRACT(SECOND      FROM TIME '2020-05-26 13:30:25.575401');
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(MINUTE      FROM TIME '2020-05-26 13:30:25.575401');
+SELECT PGEXTRACT(MINUTE      FROM TIME '2020-05-26 13:30:25.575401');
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(HOUR        FROM TIME '2020-05-26 13:30:25.575401');
+SELECT PGEXTRACT(HOUR        FROM TIME '2020-05-26 13:30:25.575401');
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(DAY         FROM TIME '2020-05-26 13:30:25.575401');  -- error
+SELECT PGEXTRACT(DAY         FROM TIME '2020-05-26 13:30:25.575401');  -- error
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(FORTNIGHT   FROM TIME '2020-05-26 13:30:25.575401');  -- error
+SELECT PGEXTRACT(FORTNIGHT   FROM TIME '2020-05-26 13:30:25.575401');  -- error
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(TIMEZONE    FROM TIME '2020-05-26 13:30:25.575401');  -- error
+SELECT PGEXTRACT(TIMEZONE    FROM TIME '2020-05-26 13:30:25.575401');  -- error
 ERROR:  datetime string and format model does not match
-SELECT EXTRACT(EPOCH       FROM TIME '2020-05-26 13:30:25.575401');
+SELECT PGEXTRACT(EPOCH       FROM TIME '2020-05-26 13:30:25.575401');
 ERROR:  datetime string and format model does not match
 -- date_part implementation is mostly the same as extract, so only
 -- test a few cases for additional coverage.

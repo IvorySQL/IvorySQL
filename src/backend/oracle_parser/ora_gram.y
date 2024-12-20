@@ -441,7 +441,7 @@ static void determineLanguage(List *options);
 				opt_include opt_c_include index_including_params
 				name_list role_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list type_name_list
-				any_operator expr_list attrs
+				any_operator expr_list xmlf_expr_list attrs
 				distinct_clause opt_distinct_clause
 				target_list opt_target_list insert_column_list set_target_list
 				merge_values_clause
@@ -740,7 +740,7 @@ static void determineLanguage(List *options);
 
 	EACH ELSE EMPTY_P ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERROR_P ESCAPE
 	EVENT EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXEC EXECUTE EXISTS EXPLAIN EXPRESSION EXTEND
-	EXTENSION EXTERNAL EXTRACT
+	EXTENSION EXTERNAL
 
 	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
 	FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
@@ -777,7 +777,7 @@ static void determineLanguage(List *options);
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES 
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
-	PLACING PLAN PLANS POLICY
+	PGEXTRACT PLACING PLAN PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
@@ -802,7 +802,7 @@ static void determineLanguage(List *options);
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
 	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
-	UNLISTEN UNLOGGED UNTIL UPDATE USER USERENV USING
+	UNLISTEN UNLOGGED UNTIL UPDATE UPDATEXML USER USERENV USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VISIBLE VOLATILE
@@ -17651,13 +17651,15 @@ func_expr_common_subexpr:
 				}
 			| CAST '(' a_expr AS Typename ')'
 				{ $$ = makeTypeCast($3, $5, @1); }
-			| EXTRACT '(' extract_list ')'
+			/* Begin - ReqID:SRS-SQL-XML */
+			| PGEXTRACT '(' extract_list ')'
 				{
 					$$ = (Node *) makeFuncCall(SystemFuncName("extract"),
 											   $3,
 											   COERCE_SQL_SYNTAX,
 											   @1);
 				}
+			/* End - ReqID:SRS-SQL-XML */
 			| NORMALIZE '(' a_expr ')'
 				{
 					$$ = (Node *) makeFuncCall(SystemFuncName("normalize"),
@@ -17822,6 +17824,22 @@ func_expr_common_subexpr:
 				{
 					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, $8, @1);
 				}
+			| XMLELEMENT '(' ColLabel ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $3, NIL, NIL, @1);
+				}
+			| XMLELEMENT '(' ColLabel ',' xml_attributes ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $3, $5, NIL, @1);
+				}
+			| XMLELEMENT '(' ColLabel ',' expr_list ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $3, NIL, $5, @1);
+				}
+			| XMLELEMENT '(' ColLabel ',' xml_attributes ',' expr_list ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $3, $5, $7, @1);
+				}
 			| XMLEXISTS '(' c_expr xmlexists_argument ')'
 				{
 					/* xmlexists(A PASSING [BY REF] B [BY REF]) is
@@ -17869,6 +17887,12 @@ func_expr_common_subexpr:
 					n->location = @1;
 					$$ = (Node *) n;
 				}
+			/* Begin - ReqID:SRS-SQL-XML */
+			| UPDATEXML '(' xmlf_expr_list ')'
+				{
+					$$ = makeXmlExpr(IS_UPDATEXML, NULL, NIL, $3, @1);
+				}
+			/* End - ReqID:SRS-SQL-XML */
 			| USERENV '(' Sconst ')'
 				{
 					if (strcmp(downcase_identifier($3, strlen($3), true, true), "client_info") == 0)
@@ -18058,6 +18082,27 @@ func_expr_common_subexpr:
 					$$ = (Node *) n;
 				}
 			;
+
+
+/* Begin - ReqID:SRS-SQL-XML */
+xmlf_expr_list:	a_expr
+				{
+					$$ = list_make1($1);
+				}
+			| xmlf_expr_list ',' a_expr
+				{
+					$$ = lappend($1, $3);
+				}
+			| IDENT EQUALS_GREATER a_expr
+				{
+					$$ = list_make1($3);
+				}
+			| xmlf_expr_list ',' IDENT EQUALS_GREATER a_expr
+				{
+					$$ = lappend($1, $5);
+				}
+		;
+/* End - ReqID:SRS-SQL-XML */
 
 
 /*
@@ -20106,7 +20151,6 @@ col_name_keyword:
 			| DECIMAL_P
 			| DECODE
 			| EXISTS
-			| EXTRACT
 			| FLOAT_P
 			| GREATEST
 			| GROUPING
@@ -20138,6 +20182,7 @@ col_name_keyword:
 			| NVL2
 			| OUT_P
 			| OVERLAY
+			| PGEXTRACT		/* ReqID:SRS-SQL-XML */
 			| POSITION
 			| PRECISION
 			| REAL
@@ -20149,6 +20194,7 @@ col_name_keyword:
 			| TIMESTAMP
 			| TREAT
 			| TRIM
+			| UPDATEXML /* ReqID:SRS-SQL-XML */
 			| USERENV
 			| VALUES
 			| VARCHAR
@@ -20462,7 +20508,6 @@ bare_label_keyword:
 			| EXTEND
 			| EXTENSION
 			| EXTERNAL
-			| EXTRACT
 			| FALSE_P
 			| FAMILY
 			| FINALIZE
@@ -20638,6 +20683,7 @@ bare_label_keyword:
 			| PASSING
 			| PASSWORD
 			| PATH
+			| PGEXTRACT
 			| PIPELINED
 			| PLACING
 			| PLAN
@@ -20785,6 +20831,7 @@ bare_label_keyword:
 			| UNLOGGED
 			| UNTIL
 			| UPDATE
+			| UPDATEXML /* ReqID:SRS-SQL-XML */
 			| USER
 			| USERENV
 			| USING

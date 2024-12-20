@@ -16,7 +16,7 @@ VALUES
 ANALYZE ctv_data;
 
 -- running \crosstabview after query uses query in buffer
-SELECT v, EXTRACT(year FROM d), count(*)
+SELECT v, PGEXTRACT(year FROM d), count(*)
  FROM ctv_data
  GROUP BY 1, 2
  ORDER BY 1, 2;
@@ -24,16 +24,16 @@ SELECT v, EXTRACT(year FROM d), count(*)
  \crosstabview
 
 -- ordered months in horizontal header, quoted column name
-SELECT v, to_char(d, 'Mon') AS "month name", EXTRACT(month FROM d) AS num,
+SELECT v, to_char(d, 'Mon') AS "month name", PGEXTRACT(month FROM d) AS num,
  count(*) FROM ctv_data  GROUP BY 1,2,3 ORDER BY 1
  \crosstabview v "month name" 4 num
 
 -- ordered months in vertical header, ordered years in horizontal header
-SELECT EXTRACT(year FROM d) AS year, to_char(d,'Mon') AS """month"" name",
-  EXTRACT(month FROM d) AS month,
+SELECT PGEXTRACT(year FROM d) AS year, to_char(d,'Mon') AS """month"" name",
+  PGEXTRACT(month FROM d) AS month,
   format('sum=%s avg=%s', sum(i), avg(i)::numeric(2,1))
   FROM ctv_data
-  GROUP BY EXTRACT(year FROM d), to_char(d,'Mon'), EXTRACT(month FROM d)
+  GROUP BY PGEXTRACT(year FROM d), to_char(d,'Mon'), PGEXTRACT(month FROM d)
 ORDER BY month
 \crosstabview """month"" name" year format year
 

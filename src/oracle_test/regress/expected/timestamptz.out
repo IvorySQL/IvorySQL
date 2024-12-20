@@ -743,11 +743,11 @@ SELECT d1 as timestamptz,
 -- extract implementation is mostly the same as date_part, so only
 -- test a few cases for additional coverage.
 SELECT d1 as "timestamp",
-   extract(microseconds from d1) AS microseconds,
-   extract(milliseconds from d1) AS milliseconds,
-   extract(seconds from d1) AS seconds,
-   round(extract(julian from d1)) AS julian,
-   extract(epoch from d1) AS epoch
+   PGEXTRACT(microseconds from d1) AS microseconds,
+   PGEXTRACT(milliseconds from d1) AS milliseconds,
+   PGEXTRACT(seconds from d1) AS seconds,
+   round(PGEXTRACT(julian from d1)) AS julian,
+   PGEXTRACT(epoch from d1) AS epoch
    FROM TIMESTAMPTZ_TBL;
              timestamp             | microseconds | milliseconds | seconds  | julian  |      epoch       
 -----------------------------------+--------------+--------------+----------+---------+------------------
@@ -766,12 +766,12 @@ SELECT date_part('epoch', '294270-01-01 00:00:00+00'::timestamptz);
 ERROR:  The value of month is invalid.
 LINE 1: SELECT date_part('epoch', '294270-01-01 00:00:00+00'::timest...
                                   ^
-SELECT extract(epoch from '294270-01-01 00:00:00+00'::timestamptz);
+SELECT PGEXTRACT(epoch from '294270-01-01 00:00:00+00'::timestamptz);
 ERROR:  The value of month is invalid.
-LINE 1: SELECT extract(epoch from '294270-01-01 00:00:00+00'::timest...
-                                  ^
+LINE 1: SELECT PGEXTRACT(epoch from '294270-01-01 00:00:00+00'::time...
+                                    ^
 -- another internal overflow test case
-SELECT extract(epoch from '5000-01-01 00:00:00+00'::timestamptz);
+SELECT PGEXTRACT(epoch from '5000-01-01 00:00:00+00'::timestamptz);
       extract       
 --------------------
  95617584000.000000
