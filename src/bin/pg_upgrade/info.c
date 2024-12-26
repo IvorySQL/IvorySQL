@@ -497,7 +497,7 @@ get_rel_infos(ClusterInfo *cluster, DbInfo *dbinfo)
 			 "    ((n.nspname !~ '^pg_temp_' AND "
 			 "      n.nspname !~ '^pg_toast_temp_' AND "
 			 "      n.nspname NOT IN ('pg_catalog', 'information_schema', "
-			 "                        'binary_upgrade', 'pg_toast') AND "
+			 "                        'binary_upgrade', 'pg_toast', 'sys') AND "
 			 "      c.oid >= %u::pg_catalog.oid) OR "
 			 "     (n.nspname = 'pg_catalog' AND "
 			 "      relname IN ('pg_largeobject') ))), ",
