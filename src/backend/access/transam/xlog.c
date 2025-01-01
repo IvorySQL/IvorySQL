@@ -556,7 +556,7 @@ typedef struct XLogCtlData
 } XLogCtlData;
 
 /*
- * Classification of XLogRecordInsert operations.
+ * Classification of XLogInsertRecord operations.
  */
 typedef enum
 {
