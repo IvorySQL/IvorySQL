@@ -25,12 +25,12 @@ create index pti3 on pt (tdata collate mycollation);
 create table pt34 partition of pt for values in (3,4);
 insert into pt values(4, '-1 .. 1'::seg, 'foo');
 \d+ pt
-                                Partitioned table "public.pt"
-  Column  |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
-----------+---------+-----------+----------+---------+----------+--------------+-------------
- category | integer |           |          |         | plain    |              | 
- sdata    | seg     |           |          |         | plain    |              | 
- tdata    | text    |           |          |         | extended |              | 
+                                          Partitioned table "public.pt"
+  Column  |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+----------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ category | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ sdata    | seg             |           |          |         |           | plain    |              | 
+ tdata    | text            |           |          |         |           | extended |              | 
 Partition key: LIST (category)
 Indexes:
     "pti1" btree ((mydouble(category) + 1))
@@ -40,12 +40,12 @@ Partitions: pt12 FOR VALUES IN (1, 2),
             pt34 FOR VALUES IN (3, 4)
 
 \d+ pt12
-                                     Table "public.pt12"
-  Column  |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
-----------+---------+-----------+----------+---------+----------+--------------+-------------
- category | integer |           |          |         | plain    |              | 
- sdata    | seg     |           |          |         | plain    |              | 
- tdata    | text    |           |          |         | extended |              | 
+                                               Table "public.pt12"
+  Column  |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+----------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ category | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ sdata    | seg             |           |          |         |           | plain    |              | 
+ tdata    | text            |           |          |         |           | extended |              | 
 Partition of: pt FOR VALUES IN (1, 2)
 Partition constraint: ((category IS NOT NULL) AND (category = ANY (ARRAY[1, 2])))
 Indexes:
