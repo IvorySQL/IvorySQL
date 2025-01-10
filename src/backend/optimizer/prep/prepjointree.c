@@ -158,6 +158,9 @@ transform_MERGE_to_join(Query *parse)
 	int			joinrti;
 	List	   *vars;
 	RangeTblRef *rtr;
+	FromExpr   *target;
+	Node	   *source;
+	int			sourcerti;
 
 	if (parse->commandType != CMD_MERGE)
 		return;
@@ -226,13 +229,36 @@ transform_MERGE_to_join(Query *parse)
 	 * parse->jointree->quals are restrictions on the target relation (if the
 	 * target relation is an auto-updatable view).
 	 */
+	/* target rel, with any quals */
 	rtr = makeNode(RangeTblRef);
 	rtr->rtindex = parse->mergeTargetRelation;
+	target = makeFromExpr(list_make1(rtr), parse->jointree->quals);
+
+	/* source rel (expect exactly one -- see transformMergeStmt()) */
+	Assert(list_length(parse->jointree->fromlist) == 1);
+	source = linitial(parse->jointree->fromlist);
+
+	/*
+	 * index of source rel (expect either a RangeTblRef or a JoinExpr -- see
+	 * transformFromClauseItem()).
+	 */
+	if (IsA(source, RangeTblRef))
+		sourcerti = ((RangeTblRef *) source)->rtindex;
+	else if (IsA(source, JoinExpr))
+		sourcerti = ((JoinExpr *) source)->rtindex;
+	else
+	{
+		elog(ERROR, "unrecognized source node type: %d",
+			 (int) nodeTag(source));
+		sourcerti = 0;			/* keep compiler quiet */
+	}
+
+	/* Join the source and target */
 	joinexpr = makeNode(JoinExpr);
 	joinexpr->jointype = jointype;
 	joinexpr->isNatural = false;
-	joinexpr->larg = (Node *) makeFromExpr(list_make1(rtr), parse->jointree->quals);
-	joinexpr->rarg = linitial(parse->jointree->fromlist);	/* source rel */
+	joinexpr->larg = (Node *) target;
+	joinexpr->rarg = source;
 	joinexpr->usingClause = NIL;
 	joinexpr->join_using_alias = NULL;
 	joinexpr->quals = parse->mergeJoinCondition;
@@ -257,13 +283,82 @@ transform_MERGE_to_join(Query *parse)
 							   bms_make_singleton(joinrti));
 
 	/*
+	 * If the source relation is on the outer side of the join, mark any
+	 * source relation Vars in the join condition, actions, and RETURNING list
+	 * as nullable by the join.  These Vars will be added to the targetlist by
+	 * preprocess_targetlist(), so it's important to mark them correctly here.
+	 *
+	 * It might seem that this is not necessary for Vars in the join
+	 * condition, since it is inside the join, but it is also needed above the
+	 * join (in the ModifyTable node) to distinguish between the MATCHED and
+	 * NOT MATCHED BY SOURCE cases -- see ExecMergeMatched().  Note that this
+	 * creates a modified copy of the join condition, for use above the join,
+	 * without modifying the the original join condition, inside the join.
+	 */
+	if (jointype == JOIN_LEFT || jointype == JOIN_FULL)
+	{
+		parse->mergeJoinCondition =
+			add_nulling_relids(parse->mergeJoinCondition,
+							   bms_make_singleton(sourcerti),
+							   bms_make_singleton(joinrti));
+
+		foreach_node(MergeAction, action, parse->mergeActionList)
+		{
+			action->qual =
+				add_nulling_relids(action->qual,
+								   bms_make_singleton(sourcerti),
+								   bms_make_singleton(joinrti));
+
+			action->targetList = (List *)
+				add_nulling_relids((Node *) action->targetList,
+								   bms_make_singleton(sourcerti),
+								   bms_make_singleton(joinrti));
+		}
+
+		parse->returningList = (List *)
+			add_nulling_relids((Node *) parse->returningList,
+							   bms_make_singleton(sourcerti),
+							   bms_make_singleton(joinrti));
+	}
+
+	/*
 	 * If there are any WHEN NOT MATCHED BY SOURCE actions, the executor will
 	 * use the join condition to distinguish between MATCHED and NOT MATCHED
 	 * BY SOURCE cases.  Otherwise, it's no longer needed, and we set it to
 	 * NULL, saving cycles during planning and execution.
+	 *
+	 * We need to be careful though: the executor evaluates this condition
+	 * using the output of the join subplan node, which nulls the output from
+	 * the source relation when the join condition doesn't match.  That risks
+	 * producing incorrect results when rechecking using a "non-strict" join
+	 * condition, such as "src.col IS NOT DISTINCT FROM tgt.col".  To guard
+	 * against that, we add an additional "src IS NOT NULL" check to the join
+	 * condition, so that it does the right thing when performing a recheck
+	 * based on the output of the join subplan.
 	 */
-	if (!have_action[MERGE_WHEN_NOT_MATCHED_BY_SOURCE])
-		parse->mergeJoinCondition = NULL;
+	if (have_action[MERGE_WHEN_NOT_MATCHED_BY_SOURCE])
+	{
+		Var		   *var;
+		NullTest   *ntest;
+
+		/* source wholerow Var (nullable by the new join) */
+		var = makeWholeRowVar(rt_fetch(sourcerti, parse->rtable),
+							  sourcerti, 0, false);
+		var->varnullingrels = bms_make_singleton(joinrti);
+
+		/* "src IS NOT NULL" check */
+		ntest = makeNode(NullTest);
+		ntest->arg = (Expr *) var;
+		ntest->nulltesttype = IS_NOT_NULL;
+		ntest->argisrow = false;
+		ntest->location = -1;
+
+		/* combine it with the original join condition */
+		parse->mergeJoinCondition =
+			(Node *) make_and_qual((Node *) ntest, parse->mergeJoinCondition);
+	}
+	else
+		parse->mergeJoinCondition = NULL;	/* join condition not needed */
 }
 
 /*

@@ -1710,6 +1710,45 @@ SELECT * FROM new_measurement ORDER BY city_id, logdate;
 DROP TABLE measurement, new_measurement CASCADE;
 DROP FUNCTION measurement_insert_trigger();
 
+--
+-- test non-strict join clause
+--
+CREATE TABLE src (a int, b text);
+INSERT INTO src VALUES (1, 'src row');
+
+CREATE TABLE tgt (a int, b text);
+INSERT INTO tgt VALUES (NULL, 'tgt row');
+
+MERGE INTO tgt USING src ON tgt.a IS NOT DISTINCT FROM src.a
+  WHEN MATCHED THEN UPDATE SET a = src.a, b = src.b
+  WHEN NOT MATCHED BY SOURCE THEN DELETE
+  RETURNING merge_action(), src.*, tgt.*;
+
+SELECT * FROM tgt;
+
+DROP TABLE src, tgt;
+
+--
+-- test for bug #18634 (wrong varnullingrels error)
+--
+CREATE TABLE bug18634t (a int, b int, c text);
+INSERT INTO bug18634t VALUES(1, 10, 'tgt1'), (2, 20, 'tgt2');
+CREATE VIEW bug18634v AS
+  SELECT * FROM bug18634t WHERE EXISTS (SELECT 1 FROM bug18634t);
+
+CREATE TABLE bug18634s (a int, b int, c text);
+INSERT INTO bug18634s VALUES (1, 2, 'src1');
+
+MERGE INTO bug18634v t USING bug18634s s ON s.a = t.a
+  WHEN MATCHED THEN UPDATE SET b = s.b
+  WHEN NOT MATCHED BY SOURCE THEN DELETE
+  RETURNING merge_action(), s.c, t.*;
+
+SELECT * FROM bug18634t;
+
+DROP TABLE bug18634t CASCADE;
+DROP TABLE bug18634s;
+
 -- prepare
 
 RESET SESSION AUTHORIZATION;

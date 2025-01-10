@@ -29,6 +29,7 @@
 #include <utime.h>
 
 #include "access/htup_details.h"
+#include "access/parallel.h"
 #include "catalog/pg_authid.h"
 #include "common/file_perm.h"
 #include "libpq/libpq.h"
@@ -530,7 +531,7 @@ GetOuterUserId(void)
 
 
 static void
-SetOuterUserId(Oid userid)
+SetOuterUserId(Oid userid, bool is_superuser)
 {
 	Assert(SecurityRestrictionContext == 0);
 	Assert(OidIsValid(userid));
@@ -538,6 +539,11 @@ SetOuterUserId(Oid userid)
 
 	/* We force the effective user ID to match, too */
 	CurrentUserId = userid;
+
+	/* Also update the is_superuser GUC to match OuterUserId's property */
+	SetConfigOption("is_superuser",
+					is_superuser ? "on" : "off",
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 }
 
 
@@ -551,6 +557,12 @@ GetSessionUserId(void)
 	return SessionUserId;
 }
 
+bool
+GetSessionUserIsSuperuser(void)
+{
+	Assert(OidIsValid(SessionUserId));
+	return SessionUserIsSuperuser;
+}
 
 static void
 SetSessionUserId(Oid userid, bool is_superuser)
@@ -559,11 +571,6 @@ SetSessionUserId(Oid userid, bool is_superuser)
 	Assert(OidIsValid(userid));
 	SessionUserId = userid;
 	SessionUserIsSuperuser = is_superuser;
-	SetRoleIsActive = false;
-
-	/* We force the effective user IDs to match, too */
-	OuterUserId = userid;
-	CurrentUserId = userid;
 }
 
 /*
@@ -577,13 +584,29 @@ GetSystemUser(void)
 }
 
 /*
- * GetAuthenticatedUserId - get the authenticated user ID
+ * GetAuthenticatedUserId/SetAuthenticatedUserId - get/set the authenticated
+ * user ID
  */
 Oid
 GetAuthenticatedUserId(void)
 {
 	Assert(OidIsValid(AuthenticatedUserId));
 	return AuthenticatedUserId;
+}
+
+void
+SetAuthenticatedUserId(Oid userid)
+{
+	Assert(OidIsValid(userid));
+
+	/* call only once */
+	Assert(!OidIsValid(AuthenticatedUserId));
+
+	AuthenticatedUserId = userid;
+
+	/* Also mark our PGPROC entry with the authenticated user id */
+	/* (We assume this is an atomic store so no lock is needed) */
+	MyProc->roleId = userid;
 }
 
 
@@ -743,9 +766,6 @@ InitializeSessionUserId(const char *rolename, Oid roleid, bool bypass_login_chec
 	 */
 	Assert(!IsBootstrapProcessingMode());
 
-	/* call only once */
-	Assert(!OidIsValid(AuthenticatedUserId));
-
 	/*
 	 * Make sure syscache entries are flushed for recent catalog changes. This
 	 * allows us to find roles that were created on-the-fly during
@@ -753,36 +773,70 @@ InitializeSessionUserId(const char *rolename, Oid roleid, bool bypass_login_chec
 	 */
 	AcceptInvalidationMessages();
 
+	/*
+	 * Look up the role, either by name if that's given or by OID if not.
+	 * Normally we have to fail if we don't find it, but in parallel workers
+	 * just return without doing anything: all the critical work has been done
+	 * already.  The upshot of that is that if the role has been deleted, we
+	 * will not enforce its rolconnlimit against parallel workers anymore.
+	 */
 	if (rolename != NULL)
 	{
 		roleTup = SearchSysCache1(AUTHNAME, PointerGetDatum(rolename));
 		if (!HeapTupleIsValid(roleTup))
+		{
+			if (InitializingParallelWorker)
+				return;
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("role \"%s\" does not exist", rolename)));
+		}
 	}
 	else
 	{
 		roleTup = SearchSysCache1(AUTHOID, ObjectIdGetDatum(roleid));
 		if (!HeapTupleIsValid(roleTup))
+		{
+			if (InitializingParallelWorker)
+				return;
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("role with OID %u does not exist", roleid)));
+		}
 	}
 
 	rform = (Form_pg_authid) GETSTRUCT(roleTup);
 	roleid = rform->oid;
 	rname = NameStr(rform->rolname);
-
-	AuthenticatedUserId = roleid;
 	is_superuser = rform->rolsuper;
 
-	/* This sets OuterUserId/CurrentUserId too */
-	SetSessionUserId(roleid, is_superuser);
+	/* In a parallel worker, ParallelWorkerMain already set these variables */
+	if (!InitializingParallelWorker)
+	{
+		SetAuthenticatedUserId(roleid);
 
-	/* Also mark our PGPROC entry with the authenticated user id */
-	/* (We assume this is an atomic store so no lock is needed) */
-	MyProc->roleId = roleid;
+		/*
+		 * Set SessionUserId and related variables, including "role", via the
+		 * GUC mechanisms.
+		 *
+		 * Note: ideally we would use PGC_S_DYNAMIC_DEFAULT here, so that
+		 * session_authorization could subsequently be changed from
+		 * pg_db_role_setting entries.  Instead, session_authorization in
+		 * pg_db_role_setting has no effect.  Changing that would require
+		 * solving two problems:
+		 *
+		 * 1. If pg_db_role_setting has values for both session_authorization
+		 * and role, we could not be sure which order those would be applied
+		 * in, and it would matter.
+		 *
+		 * 2. Sites may have years-old session_authorization entries.  There's
+		 * not been any particular reason to remove them.  Ending the dormancy
+		 * of those entries could seriously change application behavior, so
+		 * only a major release should do that.
+		 */
+		SetConfigOption("session_authorization", rname,
+						PGC_BACKEND, PGC_S_OVERRIDE);
+	}
 
 	/*
 	 * These next checks are not enforced when in standalone mode, so that
@@ -819,13 +873,6 @@ InitializeSessionUserId(const char *rolename, Oid roleid, bool bypass_login_chec
 							rname)));
 	}
 
-	/* Record username and superuser status as GUC settings too */
-	SetConfigOption("session_authorization", rname,
-					PGC_BACKEND, PGC_S_OVERRIDE);
-	SetConfigOption("is_superuser",
-					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
-
 	ReleaseSysCache(roleTup);
 }
 
@@ -847,15 +894,19 @@ InitializeSessionUserIdStandalone(void)
 	Assert(!OidIsValid(AuthenticatedUserId));
 
 	AuthenticatedUserId = BOOTSTRAP_SUPERUSERID;
-	SetSessionUserId(BOOTSTRAP_SUPERUSERID, true);
 
 	/*
-	 * XXX This should set SetConfigOption("session_authorization"), too.
-	 * Since we don't, C code will get NULL, and current_setting() will get an
-	 * empty string.
+	 * XXX Ideally we'd do this via SetConfigOption("session_authorization"),
+	 * but we lack the role name needed to do that, and we can't fetch it
+	 * because one reason for this special case is to be able to start up even
+	 * if something's happened to the BOOTSTRAP_SUPERUSERID's pg_authid row.
+	 * Since we don't set the GUC itself, C code will see the value as NULL,
+	 * and current_setting() will report an empty string within this session.
 	 */
-	SetConfigOption("is_superuser", "on",
-					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	SetSessionAuthorization(BOOTSTRAP_SUPERUSERID, true);
+
+	/* We could do SetConfigOption("role"), but let's be consistent */
+	SetCurrentRoleId(InvalidOid, false);
 }
 
 /*
@@ -901,17 +952,21 @@ system_user(PG_FUNCTION_ARGS)
 /*
  * Change session auth ID while running
  *
- * Note that we set the GUC variable is_superuser to indicate whether the
- * current role is a superuser.
+ * The SQL standard says that SET SESSION AUTHORIZATION implies SET ROLE NONE.
+ * We mechanize that at higher levels not here, because this is the GUC
+ * assign hook for "session_authorization", and it must be commutative with
+ * SetCurrentRoleId (the hook for "role") because guc.c provides no guarantees
+ * which will run first during cases such as transaction rollback.  Therefore,
+ * we update derived state (OuterUserId/CurrentUserId/is_superuser) only if
+ * !SetRoleIsActive.
  */
 void
 SetSessionAuthorization(Oid userid, bool is_superuser)
 {
 	SetSessionUserId(userid, is_superuser);
 
-	SetConfigOption("is_superuser",
-					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	if (!SetRoleIsActive)
+		SetOuterUserId(userid, is_superuser);
 }
 
 /*
@@ -947,28 +1002,25 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 	/*
 	 * Get correct info if it's SET ROLE NONE
 	 *
-	 * If SessionUserId hasn't been set yet, just do nothing --- the eventual
-	 * SetSessionUserId call will fix everything.  This is needed since we
-	 * will get called during GUC initialization.
+	 * If SessionUserId hasn't been set yet, do nothing beyond updating
+	 * SetRoleIsActive --- the eventual SetSessionAuthorization call will
+	 * update the derived state.  This is needed since we will get called
+	 * during GUC initialization.
 	 */
 	if (!OidIsValid(roleid))
 	{
+		SetRoleIsActive = false;
+
 		if (!OidIsValid(SessionUserId))
 			return;
 
 		roleid = SessionUserId;
 		is_superuser = SessionUserIsSuperuser;
-
-		SetRoleIsActive = false;
 	}
 	else
 		SetRoleIsActive = true;
 
-	SetOuterUserId(roleid);
-
-	SetConfigOption("is_superuser",
-					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	SetOuterUserId(roleid, is_superuser);
 }
 
 
@@ -1372,10 +1424,10 @@ CreateLockFile(const char *filename, bool amPostmaster,
 	 * both datadir and socket lockfiles; although more stuff may get added to
 	 * the datadir lockfile later.
 	 */
-	snprintf(buffer, sizeof(buffer), "%d\n%s\n%ld\n%d\n%s\n",
+	snprintf(buffer, sizeof(buffer), "%d\n%s\n" INT64_FORMAT "\n%d\n%s\n",
 			 amPostmaster ? (int) my_pid : -((int) my_pid),
 			 DataDir,
-			 (long) MyStartTime,
+			 MyStartTime,
 			 PostPortNumber,
 			 socketDir);
 

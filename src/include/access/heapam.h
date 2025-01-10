@@ -57,6 +57,8 @@ struct VacuumCutoffs;
  * heavyweight lock mode and MultiXactStatus values to use for any particular
  * tuple lock strength.
  *
+ * These interact with InplaceUpdateTupleLock, an alias for ExclusiveLock.
+ *
  * Don't look at lockstatus/updstatus directly!  Use get_mxact_status_for_lock
  * instead.
  */
@@ -468,6 +470,14 @@ extern TM_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
 								 bool follow_updates,
 								 Buffer *buffer, struct TM_FailureData *tmfd);
 
+extern bool heap_inplace_lock(Relation relation,
+							  HeapTuple oldtup_ptr, Buffer buffer,
+							  void (*release_callback) (void *), void *arg);
+extern void heap_inplace_update_and_unlock(Relation relation,
+										   HeapTuple oldtup, HeapTuple tuple,
+										   Buffer buffer);
+extern void heap_inplace_unlock(Relation relation,
+								HeapTuple oldtup, Buffer buffer);
 extern void heap_inplace_update(Relation relation, HeapTuple tuple);
 extern bool heap_prepare_freeze_tuple(HeapTupleHeader tuple,
 									  const struct VacuumCutoffs *cutoffs,
