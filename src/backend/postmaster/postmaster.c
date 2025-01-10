@@ -421,6 +421,7 @@ static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
 						 int pid, int exitstatus);
 static void PostmasterStateMachine(void);
+static void UpdatePMState(PMState newState);
 
 static void ExitPostmaster(int status) pg_attribute_noreturn();
 static int	ServerLoop(void);
@@ -1475,7 +1476,7 @@ PostmasterMain(int argc, char *argv[])
 	StartupPMChild = StartChildProcess(B_STARTUP);
 	Assert(StartupPMChild != NULL);
 	StartupStatus = STARTUP_RUNNING;
-	pmState = PM_STARTUP;
+	UpdatePMState(PM_STARTUP);
 
 	/* Some workers may be scheduled to start now */
 	maybe_start_bgworkers();
@@ -2211,7 +2212,7 @@ process_pm_shutdown_request(void)
 			else if (pmState == PM_STARTUP || pmState == PM_RECOVERY)
 			{
 				/* There should be no clients, so proceed to stop children */
-				pmState = PM_STOP_BACKENDS;
+				UpdatePMState(PM_STOP_BACKENDS);
 			}
 
 			/*
@@ -2245,7 +2246,7 @@ process_pm_shutdown_request(void)
 			if (pmState == PM_STARTUP || pmState == PM_RECOVERY)
 			{
 				/* Just shut down background processes silently */
-				pmState = PM_STOP_BACKENDS;
+				UpdatePMState(PM_STOP_BACKENDS);
 			}
 			else if (pmState == PM_RUN ||
 					 pmState == PM_HOT_STANDBY)
@@ -2253,7 +2254,7 @@ process_pm_shutdown_request(void)
 				/* Report that we're about to zap live client sessions */
 				ereport(LOG,
 						(errmsg("aborting any active transactions")));
-				pmState = PM_STOP_BACKENDS;
+				UpdatePMState(PM_STOP_BACKENDS);
 			}
 
 			/*
@@ -2288,7 +2289,7 @@ process_pm_shutdown_request(void)
 			/* (note we don't apply send_abort_for_crash here) */
 			SetQuitSignalReason(PMQUIT_FOR_STOP);
 			TerminateChildren(SIGQUIT);
-			pmState = PM_WAIT_BACKENDS;
+			UpdatePMState(PM_WAIT_BACKENDS);
 
 			/* set stopwatch for them to die */
 			AbortStartTime = time(NULL);
@@ -2343,7 +2344,7 @@ process_pm_child_exit(void)
 				(EXIT_STATUS_0(exitstatus) || EXIT_STATUS_1(exitstatus)))
 			{
 				StartupStatus = STARTUP_NOT_RUNNING;
-				pmState = PM_WAIT_BACKENDS;
+				UpdatePMState(PM_WAIT_BACKENDS);
 				/* PostmasterStateMachine logic does the rest */
 				continue;
 			}
@@ -2355,7 +2356,7 @@ process_pm_child_exit(void)
 				StartupStatus = STARTUP_NOT_RUNNING;
 				Shutdown = Max(Shutdown, SmartShutdown);
 				TerminateChildren(SIGTERM);
-				pmState = PM_WAIT_BACKENDS;
+				UpdatePMState(PM_WAIT_BACKENDS);
 				/* PostmasterStateMachine logic does the rest */
 				continue;
 			}
@@ -2400,7 +2401,7 @@ process_pm_child_exit(void)
 				{
 					StartupStatus = STARTUP_NOT_RUNNING;
 					if (pmState == PM_STARTUP)
-						pmState = PM_WAIT_BACKENDS;
+						UpdatePMState(PM_WAIT_BACKENDS);
 				}
 				else
 					StartupStatus = STARTUP_CRASHED;
@@ -2416,7 +2417,7 @@ process_pm_child_exit(void)
 			FatalError = false;
 			AbortStartTime = 0;
 			ReachedNormalRunning = true;
-			pmState = PM_RUN;
+			UpdatePMState(PM_RUN);
 			connsAllowed = true;
 
 			/*
@@ -2489,7 +2490,7 @@ process_pm_child_exit(void)
 				 */
 				SignalChildren(SIGUSR2, btmask(B_WAL_SENDER));
 
-				pmState = PM_SHUTDOWN_2;
+				UpdatePMState(PM_SHUTDOWN_2);
 			}
 			else
 			{
@@ -2841,7 +2842,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		pmState == PM_RUN ||
 		pmState == PM_STOP_BACKENDS ||
 		pmState == PM_SHUTDOWN)
-		pmState = PM_WAIT_BACKENDS;
+		UpdatePMState(PM_WAIT_BACKENDS);
 
 	/*
 	 * .. and if this doesn't happen quickly enough, now the clock is ticking
@@ -2933,7 +2934,7 @@ PostmasterStateMachine(void)
 			 * Then we're ready to stop other children.
 			 */
 			if (CountChildren(btmask(B_BACKEND)) == 0)
-				pmState = PM_STOP_BACKENDS;
+				UpdatePMState(PM_STOP_BACKENDS);
 		}
 	}
 
@@ -3021,7 +3022,7 @@ PostmasterStateMachine(void)
 
 			SignalChildren(SIGTERM, targetMask);
 
-			pmState = PM_WAIT_BACKENDS;
+			UpdatePMState(PM_WAIT_BACKENDS);
 		}
 
 		/* Are any of the target processes still running? */
@@ -3032,7 +3033,7 @@ PostmasterStateMachine(void)
 				/*
 				 * Stop any dead-end children and stop creating new ones.
 				 */
-				pmState = PM_WAIT_DEAD_END;
+				UpdatePMState(PM_WAIT_DEAD_END);
 				ConfigurePostmasterWaitSet(false);
 				SignalChildren(SIGQUIT, btmask(B_DEAD_END_BACKEND));
 
@@ -3057,7 +3058,7 @@ PostmasterStateMachine(void)
 				if (CheckpointerPMChild != NULL)
 				{
 					signal_child(CheckpointerPMChild, SIGUSR2);
-					pmState = PM_SHUTDOWN;
+					UpdatePMState(PM_SHUTDOWN);
 				}
 				else
 				{
@@ -3072,7 +3073,7 @@ PostmasterStateMachine(void)
 					 * for checkpointer fork failure.
 					 */
 					FatalError = true;
-					pmState = PM_WAIT_DEAD_END;
+					UpdatePMState(PM_WAIT_DEAD_END);
 					ConfigurePostmasterWaitSet(false);
 
 					/* Kill the walsenders and archiver too */
@@ -3092,7 +3093,7 @@ PostmasterStateMachine(void)
 		 */
 		if (CountChildren(btmask_all_except2(B_LOGGER, B_DEAD_END_BACKEND)) == 0)
 		{
-			pmState = PM_WAIT_DEAD_END;
+			UpdatePMState(PM_WAIT_DEAD_END);
 			ConfigurePostmasterWaitSet(false);
 			SignalChildren(SIGTERM, btmask_all_except(B_LOGGER));
 		}
@@ -3125,7 +3126,7 @@ PostmasterStateMachine(void)
 			Assert(AutoVacLauncherPMChild == NULL);
 			Assert(SlotSyncWorkerPMChild == NULL);
 			/* syslogger is not considered here */
-			pmState = PM_NO_CHILDREN;
+			UpdatePMState(PM_NO_CHILDREN);
 		}
 	}
 
@@ -3209,13 +3210,49 @@ PostmasterStateMachine(void)
 		StartupPMChild = StartChildProcess(B_STARTUP);
 		Assert(StartupPMChild != NULL);
 		StartupStatus = STARTUP_RUNNING;
-		pmState = PM_STARTUP;
+		UpdatePMState(PM_STARTUP);
 		/* crash recovery started, reset SIGKILL flag */
 		AbortStartTime = 0;
 
 		/* start accepting server socket connection events again */
 		ConfigurePostmasterWaitSet(true);
 	}
+}
+
+static const char *
+pmstate_name(PMState state)
+{
+#define PM_TOSTR_CASE(sym) case sym: return #sym
+	switch (state)
+	{
+			PM_TOSTR_CASE(PM_INIT);
+			PM_TOSTR_CASE(PM_STARTUP);
+			PM_TOSTR_CASE(PM_RECOVERY);
+			PM_TOSTR_CASE(PM_HOT_STANDBY);
+			PM_TOSTR_CASE(PM_RUN);
+			PM_TOSTR_CASE(PM_STOP_BACKENDS);
+			PM_TOSTR_CASE(PM_WAIT_BACKENDS);
+			PM_TOSTR_CASE(PM_SHUTDOWN);
+			PM_TOSTR_CASE(PM_SHUTDOWN_2);
+			PM_TOSTR_CASE(PM_WAIT_DEAD_END);
+			PM_TOSTR_CASE(PM_NO_CHILDREN);
+	}
+#undef PM_TOSTR_CASE
+
+	pg_unreachable();
+	return "";					/* silence compiler */
+}
+
+/*
+ * Simple wrapper for updating pmState. The main reason to have this wrapper
+ * is that it makes it easy to log all state transitions.
+ */
+static void
+UpdatePMState(PMState newState)
+{
+	elog(DEBUG1, "updating PMState from %s to %s",
+		 pmstate_name(pmState), pmstate_name(newState));
+	pmState = newState;
 }
 
 /*
@@ -3636,7 +3673,7 @@ process_pm_pmsignal(void)
 #endif
 		}
 
-		pmState = PM_RECOVERY;
+		UpdatePMState(PM_RECOVERY);
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_BEGIN_HOT_STANDBY) &&
@@ -3651,7 +3688,7 @@ process_pm_pmsignal(void)
 		sd_notify(0, "READY=1");
 #endif
 
-		pmState = PM_HOT_STANDBY;
+		UpdatePMState(PM_HOT_STANDBY);
 		connsAllowed = true;
 
 		/* Some workers may be scheduled to start now */
