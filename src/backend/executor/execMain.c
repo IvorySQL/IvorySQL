@@ -1787,10 +1787,14 @@ ExecRelCheck(ResultRelInfo *resultRelInfo,
 	{
 		oldContext = MemoryContextSwitchTo(estate->es_query_cxt);
 		resultRelInfo->ri_ConstraintExprs =
-			(ExprState **) palloc(ncheck * sizeof(ExprState *));
+			(ExprState **) palloc0(ncheck * sizeof(ExprState *));
 		for (i = 0; i < ncheck; i++)
 		{
 			Expr	   *checkconstr;
+
+			/* Skip not enforced constraint */
+			if (!check[i].ccenforced)
+				continue;
 
 			checkconstr = stringToNode(check[i].ccbin);
 			resultRelInfo->ri_ConstraintExprs[i] =
@@ -1818,7 +1822,7 @@ ExecRelCheck(ResultRelInfo *resultRelInfo,
 		 * is not to be treated as a failure.  Therefore, use ExecCheck not
 		 * ExecQual.
 		 */
-		if (!ExecCheck(checkconstr, econtext))
+		if (checkconstr && !ExecCheck(checkconstr, econtext))
 			return check[i].ccname;
 	}
 
