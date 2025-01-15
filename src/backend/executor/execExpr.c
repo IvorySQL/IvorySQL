@@ -2115,7 +2115,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 				/* Finally, examine the last comparison result */
 				scratch.opcode = EEOP_ROWCOMPARE_FINAL;
-				scratch.d.rowcompare_final.rctype = rcexpr->rctype;
+				scratch.d.rowcompare_final.cmptype = rcexpr->cmptype;
 				ExprEvalPushStep(state, &scratch);
 
 				/* adjust jump targets */
