@@ -45,6 +45,7 @@
 #include "fe-auth-sasl.h"
 #include "pqexpbuffer.h"
 
+/* IWYU pragma: begin_exports */
 #ifdef ENABLE_GSS
 #if defined(HAVE_GSSAPI_H)
 #include <gssapi.h>
@@ -52,6 +53,7 @@
 #include <gssapi/gssapi.h>
 #endif
 #endif
+/* IWYU pragma: end_exports */
 
 #ifdef ENABLE_SSPI
 #define SECURITY_WIN32
