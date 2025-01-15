@@ -1468,7 +1468,7 @@ typedef struct RowExpr
  * (some of) the operators without needing hardcoded knowledge of index AM's
  * strategy numbering.
  *
- * XXX Currently, this mapping is not fully developed and the values are
+ * XXX Currently, this mapping is not fully developed and most values are
  * chosen to match btree strategy numbers, which is not going to work very
  * well for other access methods.
  */
@@ -1480,6 +1480,8 @@ typedef enum CompareType
 	COMPARE_GE = 4,				/* BTGreaterEqualStrategyNumber */
 	COMPARE_GT = 5,				/* BTGreaterStrategyNumber */
 	COMPARE_NE = 6,				/* no such btree strategy */
+	COMPARE_OVERLAP,
+	COMPARE_CONTAINED_BY,
 } CompareType;
 
 /*
