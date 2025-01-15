@@ -75,7 +75,6 @@ sql_help.h: create_help.pl $(wildcard $(REFDOCDIR)/*.sgml)
 
 psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 psqlscanslash.c: FLEX_NO_BACKUP=yes
-psqlscanslash.c: FLEX_FIX_WARNING=yes
 
 ora_psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 ora_psqlscanslash.c: FLEX_NO_BACKUP=yes
