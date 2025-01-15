@@ -60,7 +60,6 @@ libpgfeutils.a: $(OBJS)
 
 psqlscan.c: FLEXFLAGS = -Cfe -p -p
 psqlscan.c: FLEX_NO_BACKUP=yes
-psqlscan.c: FLEX_FIX_WARNING=yes
 
 # generate SQL keyword lookup table to be included into ora_keywords*.o.
 ora_kwlist_d.h: $(top_srcdir)/src/include/oracle_parser/ora_kwlist.h $(GEN_KEYWORDLIST_DEPS)
