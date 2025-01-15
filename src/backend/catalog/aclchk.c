@@ -4380,9 +4380,8 @@ object_ownercheck(Oid classid, Oid objectid, Oid roleid)
 
 		tuple = SearchSysCache1(cacheid, ObjectIdGetDatum(objectid));
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("%s with OID %u does not exist", get_object_class_descr(classid), objectid)));
+			elog(ERROR, "cache lookup failed for %s %u",
+				 get_object_class_descr(classid), objectid);
 
 		ownerId = DatumGetObjectId(SysCacheGetAttrNotNull(cacheid,
 														  tuple,
@@ -4411,9 +4410,8 @@ object_ownercheck(Oid classid, Oid objectid, Oid roleid)
 
 		tuple = systable_getnext(scan);
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("%s with OID %u does not exist", get_object_class_descr(classid), objectid)));
+			elog(ERROR, "could not find tuple for %s %u",
+				 get_object_class_descr(classid), objectid);
 
 		ownerId = DatumGetObjectId(heap_getattr(tuple,
 												get_object_attnum_owner(classid),
