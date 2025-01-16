@@ -31,9 +31,9 @@ struct JsonConstructorExprState;
 
 /* Bits in ExprState->flags (see also execnodes.h for public flag bits): */
 /* expression's interpreter has been initialized */
-#define EEO_FLAG_INTERPRETER_INITIALIZED	(1 << 1)
+#define EEO_FLAG_INTERPRETER_INITIALIZED	(1 << 5)
 /* jump-threading is in use */
-#define EEO_FLAG_DIRECT_THREADED			(1 << 2)
+#define EEO_FLAG_DIRECT_THREADED			(1 << 6)
 
 /* Typical API for out-of-line evaluation subroutines */
 typedef void (*ExecEvalSubroutine) (ExprState *state,
@@ -80,16 +80,22 @@ typedef enum ExprEvalOp
 	EEOP_INNER_FETCHSOME,
 	EEOP_OUTER_FETCHSOME,
 	EEOP_SCAN_FETCHSOME,
+	EEOP_OLD_FETCHSOME,
+	EEOP_NEW_FETCHSOME,
 
 	/* compute non-system Var value */
 	EEOP_INNER_VAR,
 	EEOP_OUTER_VAR,
 	EEOP_SCAN_VAR,
+	EEOP_OLD_VAR,
+	EEOP_NEW_VAR,
 
 	/* compute system Var value */
 	EEOP_INNER_SYSVAR,
 	EEOP_OUTER_SYSVAR,
 	EEOP_SCAN_SYSVAR,
+	EEOP_OLD_SYSVAR,
+	EEOP_NEW_SYSVAR,
 
 	/* compute wholerow Var */
 	EEOP_WHOLEROW,
@@ -102,6 +108,8 @@ typedef enum ExprEvalOp
 	EEOP_ASSIGN_INNER_VAR,
 	EEOP_ASSIGN_OUTER_VAR,
 	EEOP_ASSIGN_SCAN_VAR,
+	EEOP_ASSIGN_OLD_VAR,
+	EEOP_ASSIGN_NEW_VAR,
 
 	/* assign ExprState's resvalue/resnull to a column of its resultslot */
 	EEOP_ASSIGN_TMP,
@@ -186,6 +194,7 @@ typedef enum ExprEvalOp
 	EEOP_SQLVALUEFUNCTION,
 	EEOP_CURRENTOFEXPR,
 	EEOP_NEXTVALUEEXPR,
+	EEOP_RETURNINGEXPR,
 	EEOP_ARRAYEXPR,
 	EEOP_ARRAYCOERCE,
 	EEOP_ROW,
@@ -311,7 +320,7 @@ typedef struct ExprEvalStep
 	 */
 	union
 	{
-		/* for EEOP_INNER/OUTER/SCAN_FETCHSOME */
+		/* for EEOP_INNER/OUTER/SCAN/OLD/NEW_FETCHSOME */
 		struct
 		{
 			/* attribute number up to which to fetch (inclusive) */
@@ -324,13 +333,14 @@ typedef struct ExprEvalStep
 			const TupleTableSlotOps *kind;
 		}			fetch;
 
-		/* for EEOP_INNER/OUTER/SCAN_[SYS]VAR[_FIRST] */
+		/* for EEOP_INNER/OUTER/SCAN/OLD/NEW_[SYS]VAR */
 		struct
 		{
 			/* attnum is attr number - 1 for regular VAR ... */
 			/* but it's just the normal (negative) attr number for SYSVAR */
 			int			attnum;
 			Oid			vartype;	/* type OID of variable */
+			VarReturningType varreturningtype;	/* return old/new/default */
 		}			var;
 
 		/* for EEOP_WHOLEROW */
@@ -358,6 +368,13 @@ typedef struct ExprEvalStep
 			/* target index in ExprState->resultslot->tts_values/nulls */
 			int			resultnum;
 		}			assign_tmp;
+
+		/* for EEOP_RETURNINGEXPR */
+		struct
+		{
+			uint8		nullflag;	/* flag to test if OLD/NEW row is NULL */
+			int			jumpdone;	/* jump here if OLD/NEW row is NULL */
+		}			returningexpr;
 
 		/* for EEOP_CONST */
 		struct

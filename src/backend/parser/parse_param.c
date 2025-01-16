@@ -849,7 +849,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 				return true;
 			if (walker(stmt->whereClause, context))
 				return true;
-			if (walker(stmt->returningList, context))
+			if (walker(stmt->returningClause, context))
 				return true;		
 			if (walker(stmt->withClause, context))
 				return true;		
@@ -866,7 +866,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 				return true;
 			if (walker(stmt->whereClause, context))
 				return true;		
-			if (walker(stmt->returningList, context))
+			if (walker(stmt->returningClause, context))
 				return true;		
 			if (walker(stmt->withClause, context))
 				return true;		
@@ -952,7 +952,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 				 return true;
 			 if (walker(stmt->onConflictClause, context))
 				 return true;
-			 if (walker(stmt->returningList, context))
+			 if (walker(stmt->returningClause, context))
 				 return true;
 			 if (walker(stmt->withClause, context))
 				 return true;

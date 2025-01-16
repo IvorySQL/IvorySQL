@@ -1318,6 +1318,7 @@ contain_leaked_vars_walker(Node *node, void *context)
 		case T_NullTest:
 		case T_BooleanTest:
 		case T_NextValueExpr:
+		case T_ReturningExpr:
 		case T_List:
 
 			/*
@@ -3588,6 +3589,8 @@ eval_whenexpr2:
 										 fselect->resulttypmod,
 										 fselect->resultcollid,
 										 ((Var *) arg)->varlevelsup);
+						/* New Var has same OLD/NEW returning as old one */
+						newvar->varreturningtype = ((Var *) arg)->varreturningtype;
 						/* New Var is nullable by same rels as the old one */
 						newvar->varnullingrels = ((Var *) arg)->varnullingrels;
 						return (Node *) newvar;
