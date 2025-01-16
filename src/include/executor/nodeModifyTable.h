@@ -43,10 +43,11 @@ typedef struct IvyModifyTableContext
 	TM_FailureData tmfd;
 
 	/*
-	 * The tuple produced by EvalPlanQual to retry from, if a cross-partition
-	 * UPDATE requires it
+	 * The tuple deleted when doing a cross-partition UPDATE with a RETURNING
+	 * clause that refers to OLD columns (converted to the root's tuple
+	 * descriptor).
 	 */
-	TupleTableSlot *cpUpdateRetrySlot;
+	TupleTableSlot *cpDeletedSlot;
 
 	/*
 	 * The tuple projected by the INSERT's RETURNING clause, when doing a

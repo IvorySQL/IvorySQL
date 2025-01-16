@@ -88,38 +88,86 @@ static TM_Result heapTupleSatisfiesUpdate4Merge(HeapTuple htup, CommandId curcid
 /*
  * ExecProcessReturning --- evaluate a RETURNING list
  *
+ * context: context for the ModifyTable operation
  * resultRelInfo: current result rel
- * tupleSlot: slot holding tuple actually inserted/updated/deleted
+ * cmdType: operation/merge action performed (INSERT, UPDATE, or DELETE)
+ * oldSlot: slot holding old tuple deleted or updated
+ * newSlot: slot holding new tuple inserted or updated
  * planSlot: slot holding tuple returned by top subplan node
  *
- * Note: If tupleSlot is NULL, the FDW should have already provided econtext's
- * scan tuple.
+ * Note: If oldSlot and newSlot are NULL, the FDW should have already provided
+ * econtext's scan tuple and its old & new tuples are not needed (FDW direct-
+ * modify is disabled if the RETURNING list refers to any OLD/NEW values).
  *
  * Returns a slot holding the result tuple
  */
 static TupleTableSlot *
-IvyExecProcessReturning(ResultRelInfo *resultRelInfo,
-					 TupleTableSlot *tupleSlot,
+IvyExecProcessReturning(IvyModifyTableContext *context,
+					 ResultRelInfo *resultRelInfo,
+					 CmdType cmdType,
+					 TupleTableSlot *oldSlot,
+					 TupleTableSlot *newSlot,
 					 TupleTableSlot *planSlot)
 {
+	EState	   *estate = context->estate;
 	ProjectionInfo *projectReturning = resultRelInfo->ri_projectReturning;
 	ExprContext *econtext = projectReturning->pi_exprContext;
 
 	/* Make tuple and any needed join variables available to ExecProject */
-	if (tupleSlot)
-		econtext->ecxt_scantuple = tupleSlot;
+	switch (cmdType)
+	{
+		case CMD_INSERT:
+		case CMD_UPDATE:
+			/* return new tuple by default */
+			if (newSlot)
+				econtext->ecxt_scantuple = newSlot;
+			break;
+
+		case CMD_DELETE:
+			/* return old tuple by default */
+			if (oldSlot)
+				econtext->ecxt_scantuple = oldSlot;
+			break;
+
+		default:
+			elog(ERROR, "unrecognized commandType: %d", (int) cmdType);
+	}
 	econtext->ecxt_outertuple = planSlot;
 
+	/* Make old/new tuples available to ExecProject, if required */
+	if (oldSlot)
+		econtext->ecxt_oldtuple = oldSlot;
+	else if (projectReturning->pi_state.flags & EEO_FLAG_HAS_OLD)
+		econtext->ecxt_oldtuple = ExecGetAllNullSlot(estate, resultRelInfo);
+	else
+		econtext->ecxt_oldtuple = NULL; /* No references to OLD columns */
+
+	if (newSlot)
+		econtext->ecxt_newtuple = newSlot;
+	else if (projectReturning->pi_state.flags & EEO_FLAG_HAS_NEW)
+		econtext->ecxt_newtuple = ExecGetAllNullSlot(estate, resultRelInfo);
+	else
+		econtext->ecxt_newtuple = NULL; /* No references to NEW columns */
+
 	/*
-	 * RETURNING expressions might reference the tableoid column, so
-	 * reinitialize tts_tableOid before evaluating them.
+	 * Tell ExecProject whether or not the OLD/NEW rows actually exist.  This
+	 * information is required to evaluate ReturningExpr nodes and also in
+	 * ExecEvalSysVar() and ExecEvalWholeRowVar().
 	 */
-	econtext->ecxt_scantuple->tts_tableOid =
-		RelationGetRelid(resultRelInfo->ri_RelationDesc);
+	if (oldSlot == NULL)
+		projectReturning->pi_state.flags |= EEO_FLAG_OLD_IS_NULL;
+	else
+		projectReturning->pi_state.flags &= ~EEO_FLAG_OLD_IS_NULL;
+
+	if (newSlot == NULL)
+		projectReturning->pi_state.flags |= EEO_FLAG_NEW_IS_NULL;
+	else
+		projectReturning->pi_state.flags &= ~EEO_FLAG_NEW_IS_NULL;
 
 	/* Compute the RETURNING expressions */
 	return ExecProject(projectReturning);
 }
+
 
 /*
  * IvyExecMergeMatched:
@@ -266,7 +314,7 @@ lmerge_matched:
 				newslot = ExecProject(relaction->mas_proj);
 
 				mtstate->mt_merge_action = relaction;
-				context->cpUpdateRetrySlot = NULL;
+				context->cpDeletedSlot = NULL;
 
 				/* Fire row-level before update trigger */
 				if (!ExecUpdatePrologue(context, resultRelInfo,
@@ -571,14 +619,23 @@ lmerge_matched:
 			switch (commandType)
 			{
 				case CMD_UPDATE:
-					rslot = IvyExecProcessReturning(resultRelInfo, newslot,
-												 context->planSlot);
+					rslot = IvyExecProcessReturning(context,
+													resultRelInfo,
+													CMD_UPDATE,
+													resultRelInfo->ri_oldTupleSlot,
+													newslot,
+													context->planSlot);
+
 					break;
 
 				case CMD_DELETE:
-					rslot = IvyExecProcessReturning(resultRelInfo,
-												 resultRelInfo->ri_oldTupleSlot,
-												 context->planSlot);
+					rslot = IvyExecProcessReturning(context,
+													resultRelInfo,
+													CMD_DELETE,
+													resultRelInfo->ri_oldTupleSlot,
+													NULL,
+													context->planSlot);
+
 					break;
 
 				case CMD_NOTHING:
@@ -774,9 +831,8 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	/* Transform the RETURNING list, if any */
-	qry->returningList = transformReturningList(pstate, stmt->returningList,
+	transformReturningClause(pstate, qry, stmt->returningClause,
 												EXPR_KIND_MERGE_RETURNING);
-
 	/*
 	 * We now have a good query shape, so now look at the WHEN conditions and
 	 * action targetlists.
