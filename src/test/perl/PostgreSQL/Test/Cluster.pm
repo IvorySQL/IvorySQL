@@ -1221,7 +1221,8 @@ sub stop
 
 	print "### Stopping node \"$name\" using mode $mode\n";
 	my @cmd = ('pg_ctl', '-D', $pgdata, '-m', $mode, 'stop');
-	if ($params{timeout}) {
+	if ($params{timeout})
+	{
 		push(@cmd, ('--timeout', $params{timeout}));
 	}
 	$ret = PostgreSQL::Test::Utils::system_log(@cmd);
