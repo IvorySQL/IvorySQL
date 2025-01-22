@@ -105,9 +105,9 @@ sub run_test
 		# step.
 		command_fails(
 			[
-				'pg_rewind',       '--debug',
-				'--source-pgdata', $standby_pgdata,
-				'--target-pgdata', $primary_pgdata,
+				'pg_rewind', '--debug',
+				'--source-pgdata' => $standby_pgdata,
+				'--target-pgdata' => $primary_pgdata,
 				'--no-sync'
 			],
 			'pg_rewind with running target');
@@ -117,10 +117,10 @@ sub run_test
 		# recovery once.
 		command_fails(
 			[
-				'pg_rewind',       '--debug',
-				'--source-pgdata', $standby_pgdata,
-				'--target-pgdata', $primary_pgdata,
-				'--no-sync',       '--no-ensure-shutdown'
+				'pg_rewind', '--debug',
+				'--source-pgdata' => $standby_pgdata,
+				'--target-pgdata' => $primary_pgdata,
+				'--no-sync', '--no-ensure-shutdown'
 			],
 			'pg_rewind --no-ensure-shutdown with running target');
 
@@ -130,10 +130,10 @@ sub run_test
 		$node_primary->stop;
 		command_fails(
 			[
-				'pg_rewind',       '--debug',
-				'--source-pgdata', $standby_pgdata,
-				'--target-pgdata', $primary_pgdata,
-				'--no-sync',       '--no-ensure-shutdown'
+				'pg_rewind', '--debug',
+				'--source-pgdata' => $standby_pgdata,
+				'--target-pgdata' => $primary_pgdata,
+				'--no-sync', '--no-ensure-shutdown'
 			],
 			'pg_rewind with unexpected running source');
 
@@ -144,10 +144,10 @@ sub run_test
 		$node_standby->stop;
 		command_ok(
 			[
-				'pg_rewind',       '--debug',
-				'--source-pgdata', $standby_pgdata,
-				'--target-pgdata', $primary_pgdata,
-				'--no-sync',       '--dry-run'
+				'pg_rewind', '--debug',
+				'--source-pgdata' => $standby_pgdata,
+				'--target-pgdata' => $primary_pgdata,
+				'--no-sync', '--dry-run'
 			],
 			'pg_rewind --dry-run');
 
