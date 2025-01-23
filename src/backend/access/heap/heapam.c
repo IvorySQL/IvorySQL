@@ -7366,10 +7366,10 @@ MultiXactIdGetUpdateXid(TransactionId xmax, uint16 t_infomask)
  * checking the hint bits.
  */
 TransactionId
-HeapTupleGetUpdateXid(HeapTupleHeader tuple)
+HeapTupleGetUpdateXid(const HeapTupleHeaderData *tup)
 {
-	return MultiXactIdGetUpdateXid(HeapTupleHeaderGetRawXmax(tuple),
-								   tuple->t_infomask);
+	return MultiXactIdGetUpdateXid(HeapTupleHeaderGetRawXmax(tup),
+								   tup->t_infomask);
 }
 
 /*
