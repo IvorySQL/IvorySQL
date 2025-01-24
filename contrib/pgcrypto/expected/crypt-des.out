@@ -29,5 +29,12 @@ FROM ctest;
  t
 (1 row)
 
-RESET ivorysql.enable_emptystring_to_null;
+-- check disabling of built in crypto functions
+SET pgcrypto.builtin_crypto_enabled = off;
+UPDATE ctest SET salt = gen_salt('des');
+ERROR:  use of built-in crypto functions is disabled
+UPDATE ctest SET res = crypt(data, salt);
+ERROR:  use of built-in crypto functions is disabled
+RESET pgcrypto.builtin_crypto_enabled;
 DROP TABLE ctest;
+RESET ivorysql.enable_emptystring_to_null;
