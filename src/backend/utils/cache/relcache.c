@@ -5888,7 +5888,7 @@ RelationBuildPublicationDesc(Relation relation, PublicationDesc *pubdesc)
 		if ((pubform->pubupdate || pubform->pubdelete) &&
 			pub_contains_invalid_column(pubid, relation, ancestors,
 										pubform->pubviaroot,
-										pubform->pubgencols_type,
+										pubform->pubgencols,
 										&invalid_column_list,
 										&invalid_gen_col))
 		{
