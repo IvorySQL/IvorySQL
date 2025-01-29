@@ -776,7 +776,7 @@ $handle = make_slot_active($node_standby, 'wal_level_', 0, \$stdout, \$stderr);
 check_pg_recvlogical_stderr($handle, "can no longer get changes from replication slot \"wal_level_activeslot\"");
 
 ##################################################
-# DROP DATABASE should drops it's slots, including active slots.
+# DROP DATABASE should drop its slots, including active slots.
 ##################################################
 
 # drop the logical slots
