@@ -2456,7 +2456,7 @@ GetOperatorFromCompareType(Oid opclass, Oid rhstype, CompareType cmptype,
 		 * For now we only need GiST support, but this could support other
 		 * indexams if we wanted.
 		 */
-		*strat = GistTranslateStratnum(opclass, cmptype);
+		*strat = GistTranslateCompareType(opclass, cmptype);
 		if (*strat == InvalidStrategy)
 		{
 			HeapTuple	tuple;
