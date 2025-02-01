@@ -438,7 +438,7 @@ lmerge_matched:
 				 * let caller handle it under NOT MATCHED [BY TARGET] clauses.
 				 */
 				*matched = false;
-				return NULL;
+				goto out;
 
 			case TM_Updated:
 				{
