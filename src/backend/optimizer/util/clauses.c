@@ -4564,7 +4564,6 @@ recheck_cast_function_args(List *args, Oid result_type,
 						   Oid *proargtypes, int pronargs,
 						   HeapTuple func_tuple)
 {
-	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
 	int			nargs;
 	Oid			actual_arg_types[FUNC_MAX_ARGS];
 	Oid			declared_arg_types[FUNC_MAX_ARGS];

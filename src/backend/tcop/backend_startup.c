@@ -784,22 +784,22 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 						if (database_name[0] == '"')
 						{
 							const char *cp;
-							int   len;
+							int   length;
 							char  *result;
 							char  *casename;
 
 							/* delete the double quote */
 							casename = identifier_case_transform(database_name, strlen(database_name));
 							result = (char *) palloc(strlen(database_name) + 1);
-							len = 0;
+							length = 0;
 							for (cp = casename; *cp != '\0'; cp++)
 							{
 								if (!(*cp == '"'))
 								{
-									result[len++] = *cp;
+									result[length++] = *cp;
 								}
 							}
-							result[len] = '\0';
+							result[length] = '\0';
 
 							port->database_name = result;
 							pfree(database_name);
@@ -838,21 +838,21 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 						{
 							char  *casename;
 							const char *cp;
-							int	  len;
+							int	  length;
 							char  *result;
 
 							/* delete the double quote */
 							casename = identifier_case_transform(user_name, strlen(user_name));
 							result = (char *) palloc(strlen(user_name) + 1);
-							len = 0;
+							length = 0;
 							for (cp = casename; *cp != '\0'; cp++)
 							{
 								if (!(*cp == '"'))
 								{
-									result[len++] = *cp;
+									result[length++] = *cp;
 								}
 							}
-							result[len] = '\0';
+							result[length] = '\0';
 
 							port->user_name = result;
 							pfree(user_name);
