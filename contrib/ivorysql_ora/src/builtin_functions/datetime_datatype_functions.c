@@ -1953,14 +1953,28 @@ tm_trunc(struct pg_tm *tm, text *fmt)
 		break;
 	CASE_fmt_YYYY
 		tm->tm_mon = 1;
+				tm->tm_mday = 1;
+		tm->tm_hour = 0;
+		tm->tm_min = 0;
+		break;
 	CASE_fmt_Q
 		tm->tm_mon = (3*((tm->tm_mon - 1)/3)) + 1;
+				tm->tm_mday = 1;
+		tm->tm_hour = 0;
+		tm->tm_min = 0;
+		break;
 	CASE_fmt_MON
 		tm->tm_mday = 1;
+		tm->tm_hour = 0;
+		tm->tm_min = 0;
+		break;
 	CASE_fmt_DDD
 		tm->tm_hour = 0;
+		tm->tm_min = 0;
+		break;
 	CASE_fmt_HH
 		tm->tm_min = 0;
+		break;
 	}
 }
 

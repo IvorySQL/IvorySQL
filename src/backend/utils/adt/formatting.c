@@ -3920,6 +3920,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_FF8:
 			case DCH_FF9:
 				out->ff = n->key->id - DCH_FF1 + 1;
+				/* FALLTHROUGH */
 			case DCH_FF:
 				if (n->key->id == DCH_FF)
 					out->ff = 6;	/* FF default precision */

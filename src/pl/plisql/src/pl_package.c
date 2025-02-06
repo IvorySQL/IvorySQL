@@ -343,9 +343,9 @@ plisql_get_package_datum_rowtype(const char *typename, PLiSQL_function *func,
 			{
 				PLiSQL_pkg_datum *pkgdatum = (PLiSQL_pkg_datum *) datum;
 				PLiSQL_package *psource = (PLiSQL_package *) pkgdatum->item->source;
-				PLiSQL_function *func = (PLiSQL_function *) &psource->source;
+				PLiSQL_function *function = (PLiSQL_function *) &psource->source;
 
-				return plisql_get_package_datum_rowtype(typename, func,
+				return plisql_get_package_datum_rowtype(typename, function,
 												pkgdatum->pkgvar,
 												localvarno, flag);
 			}
@@ -394,21 +394,21 @@ plisql_get_package_datum_rowtype(const char *typename, PLiSQL_function *func,
  * function to free its package_function
  */
 void
-plisql_free_package_function(PackageCacheItem *item)
+plisql_free_package_function(PackageCacheItem *items)
 {
-	PLiSQL_package *psource = (PLiSQL_package *) item->source;
+	PLiSQL_package *psources = (PLiSQL_package *) items->source;
 	List *funclist = NIL;
 	ListCell *lc;
-	List	*itemlist = list_make1(item);
+	List	*itemlist = list_make1(items);
 
-	Assert(psource->source.use_count >= 0);
+	Assert(psources->source.use_count >= 0);
 
 	/*
 	 * when a function or package references this package
 	 *
 	 * we get its PLQL_function address
 	 */
-	plisql_get_package_depends(&psource->source, &funclist, &itemlist);
+	plisql_get_package_depends(&psources->source, &funclist, &itemlist);
 
 	itemlist = plisql_package_sort(itemlist);
 	foreach (lc, itemlist)
@@ -520,11 +520,11 @@ plisql_free_packagelist(List *pkglist)
 
 	foreach (lc, pkglist)
 	{
-		PackageCacheItem *item = (PackageCacheItem *) lfirst(lc);
+		PackageCacheItem *my_item = (PackageCacheItem *) lfirst(lc);
 
-		PackageCacheDelete(&item->pkey);
+		PackageCacheDelete(&my_item->pkey);
 		/* set to true, so that not reference free */
-		item->intable = true;
+		my_item->intable = true;
 	}
 
 	/* first delete functions */
@@ -1541,12 +1541,12 @@ plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_ch
 		{
 			if (subproc->function->item != NULL)
 			{
-				int i;
+				int j;
 				PLiSQL_package *psource = (PLiSQL_package *) subproc->function->item->source;
 
-				for (i = 0; i < psource->last_specialfno; i++)
+				for (j = 0; j < psource->last_specialfno; j++)
 				{
-					if (subproc == psource->source.subprocfuncs[i])
+					if (subproc == psource->source.subprocfuncs[j])
 						ereport(ERROR,
 							(errcode(ERRCODE_DATA_EXCEPTION),
 							 errmsg("subprogram or cursor '%s', is declared in a package "
@@ -2963,7 +2963,7 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 {
 	PackageCacheItem *item;
 	PLiSQL_package *psource;
-	int i;
+	int j;
 	Oid namespaceid;
 	Oid owner;
 	Oid *oids;
@@ -2989,11 +2989,11 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 	define_invok = pkg_Form->define_invok;
 	psource = (PLiSQL_package *) item->source;
 
-	for (i = 0; i < psource->last_specialfno; i++)
+	for (j = 0; j < psource->last_specialfno; j++)
 	{
 		Datum		values[17];
 		bool		nulls[17];
-		PLiSQL_subproc_function *subproc = psource->source.subprocfuncs[i];
+		PLiSQL_subproc_function *subproc = psource->source.subprocfuncs[j];
 		oidvector *parameterTypes;
 		Datum	*paramModes;
 		Datum	*paramNames;
