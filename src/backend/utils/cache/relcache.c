@@ -596,6 +596,8 @@ RelationBuildTupleDesc(Relation relation)
 			constr->has_not_null = true;
 		if (attp->attgenerated == ATTRIBUTE_GENERATED_STORED)
 			constr->has_generated_stored = true;
+		if (attp->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
+			constr->has_generated_virtual = true;
 		if (attp->atthasdef)
 			ndef++;
 
@@ -678,6 +680,7 @@ RelationBuildTupleDesc(Relation relation)
 	 */
 	if (constr->has_not_null ||
 		constr->has_generated_stored ||
+		constr->has_generated_virtual ||
 		ndef > 0 ||
 		attrmiss ||
 		relation->rd_rel->relchecks > 0)

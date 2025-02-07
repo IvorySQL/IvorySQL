@@ -71,9 +71,9 @@ typedef struct IvyUpdateContext
 	LockTupleMode lockmode;
 } IvyUpdateContext;
 
-extern void ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
-									EState *estate,
-									CmdType cmdtype);
+extern void ExecInitGenerated(ResultRelInfo *resultRelInfo,
+							  EState *estate,
+							  CmdType cmdtype);
 
 extern void ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
 									   EState *estate, TupleTableSlot *slot,
