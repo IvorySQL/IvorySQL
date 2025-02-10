@@ -201,6 +201,7 @@ main(int argc, char *argv[])
 	conn = connectMaintenanceDatabase(&cparams, progname, echo);
 
 	getDbCompatibleMode(conn);
+	setFmtEncoding(PQclientEncoding(conn));
 
 	initPQExpBuffer(&sql);
 
