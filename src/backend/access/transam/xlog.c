@@ -7212,7 +7212,7 @@ CreateCheckPoint(int flags)
 	{
 		/* Include WAL level in record for WAL summarizer's benefit. */
 		XLogBeginInsert();
-		XLogRegisterData((char *) &wal_level, sizeof(wal_level));
+		XLogRegisterData(&wal_level, sizeof(wal_level));
 		(void) XLogInsert(RM_XLOG_ID, XLOG_CHECKPOINT_REDO);
 
 		/*
@@ -7365,7 +7365,7 @@ CreateCheckPoint(int flags)
 	 * Now insert the checkpoint record into XLOG.
 	 */
 	XLogBeginInsert();
-	XLogRegisterData((char *) (&checkPoint), sizeof(checkPoint));
+	XLogRegisterData(&checkPoint, sizeof(checkPoint));
 	recptr = XLogInsert(RM_XLOG_ID,
 						shutdown ? XLOG_CHECKPOINT_SHUTDOWN :
 						XLOG_CHECKPOINT_ONLINE);
@@ -7547,7 +7547,7 @@ CreateEndOfRecoveryRecord(void)
 	START_CRIT_SECTION();
 
 	XLogBeginInsert();
-	XLogRegisterData((char *) &xlrec, sizeof(xl_end_of_recovery));
+	XLogRegisterData(&xlrec, sizeof(xl_end_of_recovery));
 	recptr = XLogInsert(RM_XLOG_ID, XLOG_END_OF_RECOVERY);
 
 	XLogFlush(recptr);
@@ -7640,7 +7640,7 @@ CreateOverwriteContrecordRecord(XLogRecPtr aborted_lsn, XLogRecPtr pagePtr,
 	XLogBeginInsert();
 	xlrec.overwritten_lsn = aborted_lsn;
 	xlrec.overwrite_time = GetCurrentTimestamp();
-	XLogRegisterData((char *) &xlrec, sizeof(xl_overwrite_contrecord));
+	XLogRegisterData(&xlrec, sizeof(xl_overwrite_contrecord));
 	recptr = XLogInsert(RM_XLOG_ID, XLOG_OVERWRITE_CONTRECORD);
 
 	/* check that the record was inserted to the right place */
@@ -8178,7 +8178,7 @@ void
 XLogPutNextOid(Oid nextOid)
 {
 	XLogBeginInsert();
-	XLogRegisterData((char *) (&nextOid), sizeof(Oid));
+	XLogRegisterData(&nextOid, sizeof(Oid));
 	(void) XLogInsert(RM_XLOG_ID, XLOG_NEXTOID);
 
 	/*
@@ -8239,7 +8239,7 @@ XLogRestorePoint(const char *rpName)
 	strlcpy(xlrec.rp_name, rpName, MAXFNAMELEN);
 
 	XLogBeginInsert();
-	XLogRegisterData((char *) &xlrec, sizeof(xl_restore_point));
+	XLogRegisterData(&xlrec, sizeof(xl_restore_point));
 
 	RecPtr = XLogInsert(RM_XLOG_ID, XLOG_RESTORE_POINT);
 
@@ -8288,7 +8288,7 @@ XLogReportParameters(void)
 			xlrec.track_commit_timestamp = track_commit_timestamp;
 
 			XLogBeginInsert();
-			XLogRegisterData((char *) &xlrec, sizeof(xlrec));
+			XLogRegisterData(&xlrec, sizeof(xlrec));
 
 			recptr = XLogInsert(RM_XLOG_ID, XLOG_PARAMETER_CHANGE);
 			XLogFlush(recptr);
@@ -8363,7 +8363,7 @@ UpdateFullPageWrites(void)
 	if (XLogStandbyInfoActive() && !recoveryInProgress)
 	{
 		XLogBeginInsert();
-		XLogRegisterData((char *) (&fullPageWrites), sizeof(bool));
+		XLogRegisterData(&fullPageWrites, sizeof(bool));
 
 		XLogInsert(RM_XLOG_ID, XLOG_FPW_CHANGE);
 	}
@@ -9406,7 +9406,7 @@ do_pg_backup_stop(BackupState *state, bool waitforarchive)
 		 * Write the backup-end xlog record
 		 */
 		XLogBeginInsert();
-		XLogRegisterData((char *) (&state->startpoint),
+		XLogRegisterData(&state->startpoint,
 						 sizeof(state->startpoint));
 		state->stoppoint = XLogInsert(RM_XLOG_ID, XLOG_BACKUP_END);
 
