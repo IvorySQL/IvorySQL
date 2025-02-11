@@ -709,6 +709,7 @@ const char *const config_group_names[] =
 	[RESOURCES_KERNEL] = gettext_noop("Resource Usage / Kernel Resources"),
 	[RESOURCES_BGWRITER] = gettext_noop("Resource Usage / Background Writer"),
 	[RESOURCES_ASYNCHRONOUS] = gettext_noop("Resource Usage / Asynchronous Behavior"),
+	[RESOURCES_WORKER_PROCESSES] = gettext_noop("Resource Usage / Worker Processes"),
 	[WAL_SETTINGS] = gettext_noop("Write-Ahead Log / Settings"),
 	[WAL_CHECKPOINTS] = gettext_noop("Write-Ahead Log / Checkpoints"),
 	[WAL_ARCHIVING] = gettext_noop("Write-Ahead Log / Archiving"),
@@ -1989,7 +1990,7 @@ struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"parallel_leader_participation", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
+		{"parallel_leader_participation", PGC_USERSET, RESOURCES_WORKER_PROCESSES,
 			gettext_noop("Controls whether Gather and Gather Merge also run subplans."),
 			gettext_noop("Should gather nodes also run subplans or just gather tuples?"),
 			GUC_EXPLAIN
@@ -3264,7 +3265,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"max_worker_processes",
 			PGC_POSTMASTER,
-			RESOURCES_ASYNCHRONOUS,
+			RESOURCES_WORKER_PROCESSES,
 			gettext_noop("Maximum number of concurrent worker processes."),
 			NULL,
 		},
@@ -3526,7 +3527,7 @@ struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"max_parallel_maintenance_workers", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
+		{"max_parallel_maintenance_workers", PGC_USERSET, RESOURCES_WORKER_PROCESSES,
 			gettext_noop("Sets the maximum number of parallel processes per maintenance operation."),
 			NULL
 		},
@@ -3536,7 +3537,7 @@ struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"max_parallel_workers_per_gather", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
+		{"max_parallel_workers_per_gather", PGC_USERSET, RESOURCES_WORKER_PROCESSES,
 			gettext_noop("Sets the maximum number of parallel processes per executor node."),
 			NULL,
 			GUC_EXPLAIN
@@ -3547,7 +3548,7 @@ struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"max_parallel_workers", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
+		{"max_parallel_workers", PGC_USERSET, RESOURCES_WORKER_PROCESSES,
 			gettext_noop("Sets the maximum number of parallel workers that can be active at one time."),
 			NULL,
 			GUC_EXPLAIN
