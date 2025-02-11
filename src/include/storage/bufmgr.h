@@ -385,7 +385,7 @@ BufferGetBlock(Buffer buffer)
 static inline Size
 BufferGetPageSize(Buffer buffer)
 {
-	AssertMacro(BufferIsValid(buffer));
+	Assert(BufferIsValid(buffer));
 	return (Size) BLCKSZ;
 }
 
