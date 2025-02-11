@@ -5200,13 +5200,13 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 
 PREPARE st7 AS INSERT INTO ft1 (c1,c2,c3) VALUES (1001,101,'foo');
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                                    QUERY PLAN                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
+         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft1       '::char(10), NULL::user_enum
 (5 rows)
 
 ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
@@ -5235,13 +5235,13 @@ EXECUTE st6;
 (9 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                                    QUERY PLAN                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 0"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
+         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft1       '::char(10), NULL::user_enum
 (5 rows)
 
 ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
@@ -5979,13 +5979,13 @@ SELECT ft1.c1 FROM ft1 JOIN ft2 on ft1.c1 = ft2.c1 WHERE
 -- ===================================================================
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
-                                                                                                        QUERY PLAN                                                                                                        
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                           QUERY PLAN                                                                                                            
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Subquery Scan on "*SELECT*"
-         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::pg_catalog.int4, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
+         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::pg_catalog.int4, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft2       '::char(10), NULL::user_enum
          ->  Foreign Scan on public.ft2 ft2_1
                Output: (ft2_1.c1 + '1000'::number), (ft2_1.c2 + '100'::number), ((ft2_1.c3)::text || (ft2_1.c3)::text)
                Remote SQL: SELECT "C 1", c2, c3 FROM "S 1"."T 1" LIMIT 20::pg_catalog.int8
@@ -7126,14 +7126,14 @@ SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
 
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
-                                                                                                    QUERY PLAN                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Output: (ft2.tableoid)::regclass
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: '1200'::number(38,0), '999'::number(38,0), NULL::pg_catalog.int4, 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
+         Output: '1200'::number(38,0), '999'::number(38,0), NULL::pg_catalog.int4, 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft2       '::char(10), NULL::user_enum
 (6 rows)
 
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
@@ -8397,7 +8397,7 @@ insert into grem1 (a) values (1), (2);
    Remote SQL: INSERT INTO public.gloc1(a, b) VALUES ($1, DEFAULT)
    Batch Size: 1
    ->  Values Scan on "*VALUES*"
-         Output: "*VALUES*".column1, NULL::number
+         Output: "*VALUES*".column1, NULL::number(38,0)
 (5 rows)
 
 insert into grem1 (a) values (1), (2);
@@ -8456,7 +8456,7 @@ insert into grem1 (a) values (1), (2);
    Remote SQL: INSERT INTO public.gloc1(a, b) VALUES ($1, DEFAULT)
    Batch Size: 10
    ->  Values Scan on "*VALUES*"
-         Output: "*VALUES*".column1, NULL::number
+         Output: "*VALUES*".column1, NULL::number(38,0)
 (5 rows)
 
 insert into grem1 (a) values (1), (2);
