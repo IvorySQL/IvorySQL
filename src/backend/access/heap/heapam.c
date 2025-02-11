@@ -2060,7 +2060,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 		}
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, SizeOfHeapInsert);
+		XLogRegisterData(&xlrec, SizeOfHeapInsert);
 
 		xlhdr.t_infomask2 = heaptup->t_data->t_infomask2;
 		xlhdr.t_infomask = heaptup->t_data->t_infomask;
@@ -2072,7 +2072,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 		 * xl_heap_header in the xlog.
 		 */
 		XLogRegisterBuffer(0, buffer, REGBUF_STANDARD | bufflags);
-		XLogRegisterBufData(0, (char *) &xlhdr, SizeOfHeapHeader);
+		XLogRegisterBufData(0, &xlhdr, SizeOfHeapHeader);
 		/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
 		XLogRegisterBufData(0,
 							(char *) heaptup->t_data + SizeofHeapTupleHeader,
@@ -2483,7 +2483,7 @@ heap_multi_insert(Relation relation, TupleTableSlot **slots, int ntuples,
 				bufflags |= REGBUF_KEEP_DATA;
 
 			XLogBeginInsert();
-			XLogRegisterData((char *) xlrec, tupledata - scratch.data);
+			XLogRegisterData(xlrec, tupledata - scratch.data);
 			XLogRegisterBuffer(0, buffer, REGBUF_STANDARD | bufflags);
 
 			XLogRegisterBufData(0, tupledata, totaldatalen);
@@ -2952,7 +2952,7 @@ l1:
 		}
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, SizeOfHeapDelete);
+		XLogRegisterData(&xlrec, SizeOfHeapDelete);
 
 		XLogRegisterBuffer(0, buffer, REGBUF_STANDARD);
 
@@ -2965,7 +2965,7 @@ l1:
 			xlhdr.t_infomask = old_key_tuple->t_data->t_infomask;
 			xlhdr.t_hoff = old_key_tuple->t_data->t_hoff;
 
-			XLogRegisterData((char *) &xlhdr, SizeOfHeapHeader);
+			XLogRegisterData(&xlhdr, SizeOfHeapHeader);
 			XLogRegisterData((char *) old_key_tuple->t_data
 							 + SizeofHeapTupleHeader,
 							 old_key_tuple->t_len
@@ -3741,7 +3741,7 @@ l2:
 												  oldtup.t_data->t_infomask2);
 			xlrec.flags =
 				cleared_all_frozen ? XLH_LOCK_ALL_FROZEN_CLEARED : 0;
-			XLogRegisterData((char *) &xlrec, SizeOfHeapLock);
+			XLogRegisterData(&xlrec, SizeOfHeapLock);
 			recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_LOCK);
 			PageSetLSN(page, recptr);
 		}
@@ -5072,7 +5072,7 @@ failed:
 		xlrec.infobits_set = compute_infobits(new_infomask,
 											  tuple->t_data->t_infomask2);
 		xlrec.flags = cleared_all_frozen ? XLH_LOCK_ALL_FROZEN_CLEARED : 0;
-		XLogRegisterData((char *) &xlrec, SizeOfHeapLock);
+		XLogRegisterData(&xlrec, SizeOfHeapLock);
 
 		/* we don't decode row locks atm, so no need to log the origin */
 
@@ -5825,7 +5825,7 @@ l4:
 			xlrec.flags =
 				cleared_all_frozen ? XLH_LOCK_ALL_FROZEN_CLEARED : 0;
 
-			XLogRegisterData((char *) &xlrec, SizeOfHeapLockUpdated);
+			XLogRegisterData(&xlrec, SizeOfHeapLockUpdated);
 
 			recptr = XLogInsert(RM_HEAP2_ID, XLOG_HEAP2_LOCK_UPDATED);
 
@@ -5978,7 +5978,7 @@ heap_finish_speculative(Relation relation, ItemPointer tid)
 		/* We want the same filtering on this as on a plain insert */
 		XLogSetRecordFlags(XLOG_INCLUDE_ORIGIN);
 
-		XLogRegisterData((char *) &xlrec, SizeOfHeapConfirm);
+		XLogRegisterData(&xlrec, SizeOfHeapConfirm);
 		XLogRegisterBuffer(0, buffer, REGBUF_STANDARD);
 
 		recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_CONFIRM);
@@ -6123,7 +6123,7 @@ heap_abort_speculative(Relation relation, ItemPointer tid)
 		xlrec.xmax = xid;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, SizeOfHeapDelete);
+		XLogRegisterData(&xlrec, SizeOfHeapDelete);
 		XLogRegisterBuffer(0, buffer, REGBUF_STANDARD);
 
 		/* No replica identity & replication origin logged */
@@ -6419,9 +6419,9 @@ heap_inplace_update_and_unlock(Relation relation,
 		xlrec.nmsgs = nmsgs;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, MinSizeOfHeapInplace);
+		XLogRegisterData(&xlrec, MinSizeOfHeapInplace);
 		if (nmsgs != 0)
-			XLogRegisterData((char *) invalMessages,
+			XLogRegisterData(invalMessages,
 							 nmsgs * sizeof(SharedInvalidationMessage));
 
 		/* register block matching what buffer will look like after changes */
@@ -8652,7 +8652,7 @@ log_heap_visible(Relation rel, Buffer heap_buffer, Buffer vm_buffer,
 	if (RelationIsAccessibleInLogicalDecoding(rel))
 		xlrec.flags |= VISIBILITYMAP_XLOG_CATALOG_REL;
 	XLogBeginInsert();
-	XLogRegisterData((char *) &xlrec, SizeOfHeapVisible);
+	XLogRegisterData(&xlrec, SizeOfHeapVisible);
 
 	XLogRegisterBuffer(0, vm_buffer, 0);
 
@@ -8803,7 +8803,7 @@ log_heap_update(Relation reln, Buffer oldbuf,
 	if (oldbuf != newbuf)
 		XLogRegisterBuffer(1, oldbuf, REGBUF_STANDARD);
 
-	XLogRegisterData((char *) &xlrec, SizeOfHeapUpdate);
+	XLogRegisterData(&xlrec, SizeOfHeapUpdate);
 
 	/*
 	 * Prepare WAL data for the new tuple.
@@ -8814,15 +8814,15 @@ log_heap_update(Relation reln, Buffer oldbuf,
 		{
 			prefix_suffix[0] = prefixlen;
 			prefix_suffix[1] = suffixlen;
-			XLogRegisterBufData(0, (char *) &prefix_suffix, sizeof(uint16) * 2);
+			XLogRegisterBufData(0, &prefix_suffix, sizeof(uint16) * 2);
 		}
 		else if (prefixlen > 0)
 		{
-			XLogRegisterBufData(0, (char *) &prefixlen, sizeof(uint16));
+			XLogRegisterBufData(0, &prefixlen, sizeof(uint16));
 		}
 		else
 		{
-			XLogRegisterBufData(0, (char *) &suffixlen, sizeof(uint16));
+			XLogRegisterBufData(0, &suffixlen, sizeof(uint16));
 		}
 	}
 
@@ -8836,11 +8836,11 @@ log_heap_update(Relation reln, Buffer oldbuf,
 	 *
 	 * The 'data' doesn't include the common prefix or suffix.
 	 */
-	XLogRegisterBufData(0, (char *) &xlhdr, SizeOfHeapHeader);
+	XLogRegisterBufData(0, &xlhdr, SizeOfHeapHeader);
 	if (prefixlen == 0)
 	{
 		XLogRegisterBufData(0,
-							((char *) newtup->t_data) + SizeofHeapTupleHeader,
+							(char *) newtup->t_data + SizeofHeapTupleHeader,
 							newtup->t_len - SizeofHeapTupleHeader - suffixlen);
 	}
 	else
@@ -8853,13 +8853,13 @@ log_heap_update(Relation reln, Buffer oldbuf,
 		if (newtup->t_data->t_hoff - SizeofHeapTupleHeader > 0)
 		{
 			XLogRegisterBufData(0,
-								((char *) newtup->t_data) + SizeofHeapTupleHeader,
+								(char *) newtup->t_data + SizeofHeapTupleHeader,
 								newtup->t_data->t_hoff - SizeofHeapTupleHeader);
 		}
 
 		/* data after common prefix */
 		XLogRegisterBufData(0,
-							((char *) newtup->t_data) + newtup->t_data->t_hoff + prefixlen,
+							(char *) newtup->t_data + newtup->t_data->t_hoff + prefixlen,
 							newtup->t_len - newtup->t_data->t_hoff - prefixlen - suffixlen);
 	}
 
@@ -8871,7 +8871,7 @@ log_heap_update(Relation reln, Buffer oldbuf,
 		xlhdr_idx.t_infomask = old_key_tuple->t_data->t_infomask;
 		xlhdr_idx.t_hoff = old_key_tuple->t_data->t_hoff;
 
-		XLogRegisterData((char *) &xlhdr_idx, SizeOfHeapHeader);
+		XLogRegisterData(&xlhdr_idx, SizeOfHeapHeader);
 
 		/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
 		XLogRegisterData((char *) old_key_tuple->t_data + SizeofHeapTupleHeader,
@@ -8951,7 +8951,7 @@ log_heap_new_cid(Relation relation, HeapTuple tup)
 	 * called us certainly did, but that's WAL-logged separately.
 	 */
 	XLogBeginInsert();
-	XLogRegisterData((char *) &xlrec, SizeOfHeapNewCid);
+	XLogRegisterData(&xlrec, SizeOfHeapNewCid);
 
 	/* will be looked at irrespective of origin */
 
