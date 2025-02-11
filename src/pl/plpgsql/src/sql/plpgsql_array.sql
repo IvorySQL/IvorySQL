@@ -87,6 +87,15 @@ begin a := array_agg(x) from (values(1),(2),(3)) v(x); raise notice 'a = %', a; 
 do $$ declare a int[];
 begin a := array_agg(x) from (values(1),(2),(3)) v(x); raise notice 'a = %', a; end$$ language plisql;
 
+do $$ declare a int[] := array[1,2,3];
+begin
+  -- test scenarios for optimization of updates of R/W expanded objects
+  a := array_append(a, 42);  -- optimizable using "transfer" method
+  a := a || a[3];  -- optimizable using "inplace" method
+  a := a || a;     -- not optimizable
+  raise notice 'a = %', a;
+end$$;
+
 create temp table onecol as select array[1,2] as f1;
 
 do $$ declare a int[];
