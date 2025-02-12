@@ -24,6 +24,8 @@
 
 #include "oracle_parser/ora_keywords.h"
 
+#include "mb/pg_wchar.h"
+
 
 static PQExpBuffer oraDefaultGetLocalPQExpBuffer(void);
 
@@ -64,12 +66,13 @@ oraDefaultGetLocalPQExpBuffer(void)
  *	since we re-use the same return buffer each time.
  */
 const char *
-ora_fmtId(const char *rawid)
+ora_fmtId(const char *rawid, int encoding)
 {
 	PQExpBuffer id_return = oraDefaultGetLocalPQExpBuffer();
 
 	const char *cp;
 	bool		need_quotes = false;
+	size_t		remaining = strlen(rawid);
 
 	/*
 	 * These checks need to match the identifier production in scan.l. Don't
@@ -85,7 +88,8 @@ ora_fmtId(const char *rawid)
 	else if (rawid[0] != '"')
 	{
 		/* otherwise check the entire string */
-		for (cp = rawid; *cp; cp++)
+		cp = rawid;
+		for (size_t i = 0; i < remaining; i++, cp++)
 		{
 			if (!((*cp >= 'a' && *cp <= 'z')
 				  || (*cp >= '0' && *cp <= '9')
@@ -121,16 +125,88 @@ ora_fmtId(const char *rawid)
 	else
 	{
 		appendPQExpBufferChar(id_return, '"');
-		for (cp = rawid; *cp; cp++)
+
+		cp = &rawid[0];
+		while (remaining > 0)
 		{
-			/*
-			 * Did we find a double-quote in the string? Then make this a
-			 * double double-quote per SQL99. Before, we put in a
-			 * backslash/double-quote pair. - thomas 2000-08-05
-			 */
-			if (*cp == '"')
-				appendPQExpBufferChar(id_return, '"');
-			appendPQExpBufferChar(id_return, *cp);
+			int			charlen;
+
+			/* Fast path for plain ASCII */
+			if (!IS_HIGHBIT_SET(*cp))
+			{
+				/*
+				 * Did we find a double-quote in the string? Then make this a
+				 * double double-quote per SQL99. Before, we put in a
+				 * backslash/double-quote pair. - thomas 2000-08-05
+				 */
+				if (*cp == '"')
+					appendPQExpBufferChar(id_return, '"');
+				appendPQExpBufferChar(id_return, *cp);
+				remaining--;
+				cp++;
+				continue;
+			}
+
+			/* Slow path for possible multibyte characters */
+			charlen = pg_encoding_mblen(encoding, cp);
+
+			if (remaining < charlen)
+			{
+				/*
+				 * If the character is longer than the available input,
+				 * replace the string with an invalid sequence. The invalid
+				 * sequence ensures that the escaped string will trigger an
+				 * error on the server-side, even if we can't directly report
+				 * an error here.
+				 */
+				enlargePQExpBuffer(id_return, 2);
+				pg_encoding_set_invalid(encoding,
+										id_return->data + id_return->len);
+				id_return->len += 2;
+				id_return->data[id_return->len] = '\0';
+
+				/* there's no more input data, so we can stop */
+				break;
+			}
+			else if (pg_encoding_verifymbchar(encoding, cp, charlen) == -1)
+			{
+				/*
+				 * Multibyte character is invalid.  It's important to verify
+				 * that as invalid multi-byte characters could e.g. be used to
+				 * "skip" over quote characters, e.g. when parsing
+				 * character-by-character.
+				 *
+				 * Replace the bytes corresponding to the invalid character
+				 * with an invalid sequence, for the same reason as above.
+				 *
+				 * It would be a bit faster to verify the whole string the
+				 * first time we encounter a set highbit, but this way we can
+				 * replace just the invalid characters, which probably makes
+				 * it easier for users to find the invalidly encoded portion
+				 * of a larger string.
+				 */
+				enlargePQExpBuffer(id_return, 2);
+				pg_encoding_set_invalid(encoding,
+										id_return->data + id_return->len);
+				id_return->len += 2;
+				id_return->data[id_return->len] = '\0';
+
+				/*
+				 * Copy the rest of the string after the invalid multi-byte
+				 * character.
+				 */
+				remaining -= charlen;
+				cp += charlen;
+			}
+			else
+			{
+				for (int i = 0; i < charlen; i++)
+				{
+					appendPQExpBufferChar(id_return, *cp);
+					remaining--;
+					cp++;
+				}
+			}
 		}
 		appendPQExpBufferChar(id_return, '"');
 	}

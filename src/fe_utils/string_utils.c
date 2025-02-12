@@ -30,7 +30,7 @@ static PQExpBuffer defaultGetLocalPQExpBuffer(void);
 int			quote_all_identifiers = 0;
 PQExpBuffer (*getLocalPQExpBuffer) (void) = defaultGetLocalPQExpBuffer;
 
-static const char * stardand_fmtId(const char *rawid);
+static const char * stardand_fmtId(const char *rawid, int encoding);
 static int	fmtIdEncoding = -1;
 
 
@@ -105,13 +105,13 @@ const char *
 fmtIdEnc(const char *rawid, int encoding)
 {
 	if (DB_ORACLE == db_mode)
-		return ora_fmtId(rawid);
+		return ora_fmtId(rawid, encoding);
 	else
-		return stardand_fmtId(rawid);
+		return stardand_fmtId(rawid, encoding);
 }
 
 static const char *
-stardand_fmtId(const char *rawid)
+stardand_fmtId(const char *rawid, int encoding)
 {
 
 	PQExpBuffer id_return = getLocalPQExpBuffer();
