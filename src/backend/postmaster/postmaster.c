@@ -1444,6 +1444,8 @@ PostmasterMain(int argc, char *argv[])
 	 * calls fork() without an immediate exec(), both of which have undefined
 	 * behavior in a multithreaded program.  A multithreaded postmaster is the
 	 * normal case on Windows, which offers neither fork() nor sigprocmask().
+	 * Currently, macOS is the only platform having pthread_is_threaded_np(),
+	 * so we need not worry whether this HINT is appropriate elsewhere.
 	 */
 	if (pthread_is_threaded_np() != 0)
 		ereport(FATAL,
@@ -2135,14 +2137,13 @@ ClosePostmasterPorts(bool am_syslogger)
 
 
 /*
- * InitProcessGlobals -- set MyProcPid, MyStartTime[stamp], random seeds
+ * InitProcessGlobals -- set MyStartTime[stamp], random seeds
  *
  * Called early in the postmaster and every backend.
  */
 void
 InitProcessGlobals(void)
 {
-	MyProcPid = getpid();
 	MyStartTimestamp = GetCurrentTimestamp();
 	MyStartTime = timestamptz_to_time_t(MyStartTimestamp);
 
@@ -3782,15 +3783,16 @@ ExitPostmaster(int status)
 
 	/*
 	 * There is no known cause for a postmaster to become multithreaded after
-	 * startup.  Recheck to account for the possibility of unknown causes.
+	 * startup.  However, we might reach here via an error exit before
+	 * reaching the test in PostmasterMain, so provide the same hint as there.
 	 * This message uses LOG level, because an unclean shutdown at this point
 	 * would usually not look much different from a clean shutdown.
 	 */
 	if (pthread_is_threaded_np() != 0)
 		ereport(LOG,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg_internal("postmaster became multithreaded"),
-				 errdetail("Please report this to <%s>.", PACKAGE_BUGREPORT)));
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("postmaster became multithreaded"),
+				 errhint("Set the LC_ALL environment variable to a valid locale.")));
 #endif
 
 	/* should cleanup shared memory and kill all backends */
@@ -4268,7 +4270,7 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 	BackgroundWorker *worker = MyBgworkerEntry;
 	bits32		init_flags = 0; /* never honor session_preload_libraries */
 
-	/* ignore datallowconn? */
+	/* ignore datallowconn and ACL_CONNECT? */
 	if (flags & BGWORKER_BYPASS_ALLOWCONN)
 		init_flags |= INIT_PG_OVERRIDE_ALLOW_CONNS;
 	/* ignore rolcanlogin? */
@@ -4302,7 +4304,7 @@ BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
 	BackgroundWorker *worker = MyBgworkerEntry;
 	bits32		init_flags = 0; /* never honor session_preload_libraries */
 
-	/* ignore datallowconn? */
+	/* ignore datallowconn and ACL_CONNECT? */
 	if (flags & BGWORKER_BYPASS_ALLOWCONN)
 		init_flags |= INIT_PG_OVERRIDE_ALLOW_CONNS;
 	/* ignore rolcanlogin? */

@@ -8,7 +8,7 @@
 
 project('postgresql',
   ['c'],
-  version: '17.2',
+  version: '17.3',
   license: 'PostgreSQL',
 
   # We want < 0.56 for python 3.5 compatibility on old platforms. EPEL for
@@ -1336,14 +1336,37 @@ if sslopt in ['auto', 'openssl']
 
   # via library + headers
   if not ssl.found()
+    is_windows = host_system == 'windows'
+
+    ssl_lib_common_params = {
+      'dirs': test_lib_d,
+      'header_include_directories': postgres_inc,
+      'has_headers': ['openssl/ssl.h', 'openssl/err.h'],
+    }
     ssl_lib = cc.find_library('ssl',
-      dirs: test_lib_d,
-      header_include_directories: postgres_inc,
-      has_headers: ['openssl/ssl.h', 'openssl/err.h'],
-      required: openssl_required)
+      kwargs: ssl_lib_common_params,
+      required: openssl_required and not is_windows
+    )
+    # Before OpenSSL 1.1.0, there was a different naming convention for
+    # libraries on Windows, so try the alternative name if ssl wasn't found
+    if not ssl_lib.found() and is_windows
+      ssl_lib = cc.find_library('ssleay32',
+        kwargs: ssl_lib_common_params,
+        required: openssl_required
+      )
+    endif
+
     crypto_lib = cc.find_library('crypto',
       dirs: test_lib_d,
-      required: openssl_required)
+      required: openssl_required and not is_windows)
+    # Before OpenSSL 1.1.0, there was a different naming convention for
+    # libraries on Windows, so try the alternatve name if crypto wasn't found
+    if not crypto_lib.found() and is_windows
+      crypto_lib = cc.find_library('libeay32',
+        dirs: test_lib_d,
+        required: openssl_required)
+    endif
+
     if ssl_lib.found() and crypto_lib.found()
       ssl_int = [ssl_lib, crypto_lib]
       ssl = declare_dependency(dependencies: ssl_int, include_directories: postgres_inc)
@@ -1767,12 +1790,9 @@ if cc.compiles('''
 endif
 
 
-# We use <stdbool.h> if we have it and it declares type bool as having
-# size 1.  Otherwise, c.h will fall back to declaring bool as unsigned char.
-if cc.has_type('_Bool', args: test_c_args) \
-    and cc.has_type('bool', prefix: '#include <stdbool.h>', args: test_c_args) \
-    and cc.sizeof('bool', prefix: '#include <stdbool.h>', args: test_c_args) == 1
-  cdata.set('HAVE__BOOL', 1)
+# We use <stdbool.h> if bool has size 1 after including it.  Otherwise, c.h
+# will fall back to declaring bool as unsigned char.
+if cc.sizeof('bool', prefix: '#include <stdbool.h>', args: test_c_args) == 1
   cdata.set('PG_USE_STDBOOL', 1)
 endif
 
@@ -2309,6 +2329,13 @@ int main(void)
     # Use ARM CRC Extension unconditionally
     cdata.set('USE_ARMV8_CRC32C', 1)
     have_optimized_crc = true
+  elif cc.links(prog, name: '__crc32cb, __crc32ch, __crc32cw, and __crc32cd with -march=armv8-a+crc+simd',
+      args: test_c_args + ['-march=armv8-a+crc+simd'])
+    # Use ARM CRC Extension, with runtime check
+    cflags_crc += '-march=armv8-a+crc+simd'
+    cdata.set('USE_ARMV8_CRC32C', false)
+    cdata.set('USE_ARMV8_CRC32C_WITH_RUNTIME_CHECK', 1)
+    have_optimized_crc = true
   elif cc.links(prog, name: '__crc32cb, __crc32ch, __crc32cw, and __crc32cd with -march=armv8-a+crc',
       args: test_c_args + ['-march=armv8-a+crc'])
     # Use ARM CRC Extension, with runtime check
@@ -2406,7 +2433,6 @@ header_checks = [
   'ifaddrs.h',
   'langinfo.h',
   'mbarrier.h',
-  'stdbool.h',
   'strings.h',
   'sys/epoll.h',
   'sys/event.h',
@@ -3078,6 +3104,16 @@ frontend_shlib_code = declare_dependency(
   dependencies: [shlib_code, os_deps, libintl],
 )
 
+# For frontend code that doesn't use fe_utils - this mainly exists for libpq's
+# tests, which are defined before fe_utils is defined, as fe_utils depends on
+# libpq.
+frontend_no_fe_utils_code = declare_dependency(
+  include_directories: [postgres_inc],
+  link_with: [common_static, pgport_static],
+  sources: generated_headers,
+  dependencies: [os_deps, libintl],
+)
+
 # Dependencies both for static and shared libpq
 libpq_deps += [
   thread_dep,
@@ -3146,7 +3182,6 @@ subdir('src')
 subdir('contrib')
 
 subdir('src/test')
-subdir('src/interfaces/libpq/test')
 subdir('src/interfaces/ecpg/test')
 
 subdir('doc/src/sgml')
@@ -3240,15 +3275,21 @@ if libintl.found() and meson.version().version_compare('>=0.60')
 endif
 
 
-all_built = [
+# all targets that 'meson install' needs
+installed_targets = [
   backend_targets,
   bin_targets,
   libpq_st,
   pl_targets,
   contrib_targets,
   nls_mo_targets,
-  testprep_targets,
   ecpg_targets,
+]
+
+# all targets that require building code
+all_built = [
+  installed_targets,
+  testprep_targets,
 ]
 
 # Meson's default install target is quite verbose. Provide one that is quiet.
@@ -3257,7 +3298,7 @@ install_quiet = custom_target('install-quiet',
   build_always_stale: true,
   build_by_default: false,
   command: [meson_bin, meson_args, 'install', '--quiet', '--no-rebuild'],
-  depends: all_built,
+  depends: installed_targets,
 )
 
 # Target to install files used for tests, which aren't installed by default
@@ -3312,6 +3353,7 @@ test('tmp_install',
     priority: setup_tests_priority,
     timeout: 300,
     is_parallel: false,
+    depends: installed_targets,
     suite: ['setup'])
 
 test('install_test_files',

@@ -74,8 +74,7 @@ static volatile pqsigfunc pqsignal_handlers[PG_NSIG];
 /*
  * Except when called with SIG_IGN or SIG_DFL, pqsignal() sets up this function
  * as the handler for all signals.  This wrapper handler function checks that
- * it is called within a process that the server knows about (i.e., any process
- * that has called InitProcessGlobals(), such as a client backend), and not a
+ * it is called within a process that knew to maintain MyProcPid, and not a
  * child process forked by system(3), etc.  This check ensures that such child
  * processes do not modify shared memory, which is often detrimental.  If the
  * check succeeds, the function originally provided to pqsignal() is called.
@@ -124,6 +123,10 @@ wrapper_handler(SIGNAL_ARGS)
  * function instead of providing potentially-bogus return values.
  * Unfortunately, that requires modifying the pqsignal() in legacy-pqsignal.c,
  * which in turn requires an SONAME bump, which is probably not worth it.
+ *
+ * Note: the actual name of this function is either pqsignal_fe when
+ * compiled with -DFRONTEND, or pqsignal when compiled without that.
+ * This is to avoid a name collision with libpq's legacy-pqsignal.c.
  */
 pqsigfunc
 pqsignal(int signo, pqsigfunc func)

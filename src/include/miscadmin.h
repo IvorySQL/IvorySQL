@@ -346,8 +346,9 @@ typedef enum BackendType
 
 	/*
 	 * Auxiliary processes. These have PGPROC entries, but they are not
-	 * attached to any particular database. There can be only one of each of
-	 * these running at a time.
+	 * attached to any particular database, and cannot run transactions or
+	 * even take heavyweight locks. There can be only one of each of these
+	 * running at a time.
 	 *
 	 * If you modify these, make sure to update NUM_AUXILIARY_PROCS and the
 	 * glossary in the docs.
@@ -371,6 +372,7 @@ typedef enum BackendType
 
 extern PGDLLIMPORT BackendType MyBackendType;
 
+#define AmRegularBackendProcess()	(MyBackendType == B_BACKEND)
 #define AmAutoVacuumLauncherProcess() (MyBackendType == B_AUTOVAC_LAUNCHER)
 #define AmAutoVacuumWorkerProcess()	(MyBackendType == B_AUTOVAC_WORKER)
 #define AmBackgroundWorkerProcess() (MyBackendType == B_BG_WORKER)
@@ -383,6 +385,10 @@ extern PGDLLIMPORT BackendType MyBackendType;
 #define AmWalReceiverProcess()		(MyBackendType == B_WAL_RECEIVER)
 #define AmWalSummarizerProcess()	(MyBackendType == B_WAL_SUMMARIZER)
 #define AmWalWriterProcess()		(MyBackendType == B_WAL_WRITER)
+
+#define AmSpecialWorkerProcess() \
+	(AmAutoVacuumLauncherProcess() || \
+	 AmLogicalSlotSyncWorkerProcess())
 
 extern const char *GetBackendTypeDesc(BackendType backendType);
 

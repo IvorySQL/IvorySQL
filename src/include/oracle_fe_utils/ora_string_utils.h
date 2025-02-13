@@ -27,6 +27,6 @@ extern DBMode db_mode;
 extern void getDbCompatibleMode(PGconn *conn);
 
 /* Functions */
-extern const char *ora_fmtId(const char *identifier);
+extern const char *ora_fmtId(const char *identifier, int encoding);
 
 #endif							/* ORA_STRING_UTILS_H */

@@ -6,6 +6,7 @@ endif
 
 injection_points_sources = files(
   'injection_points.c',
+  'regress_injection.c',
 )
 
 if host_system == 'windows'
@@ -41,6 +42,8 @@ tests += {
   'isolation': {
     'specs': [
       'inplace',
+      'syscache-update-pruned',
     ],
+    'runningcheck': false, # see syscache-update-pruned
   },
 }

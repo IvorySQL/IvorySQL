@@ -6768,7 +6768,8 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
  *		CREATE INDEX should request for use
  *
  * tableOid is the table on which the index is to be built.  indexOid is the
- * OID of an index to be created or reindexed (which must be a btree index).
+ * OID of an index to be created or reindexed (which must be an index with
+ * support for parallel builds - currently btree or BRIN).
  *
  * Return value is the number of parallel worker processes to request.  It
  * may be unsafe to proceed if this is 0.  Note that this does not include the
@@ -8085,7 +8086,10 @@ group_by_has_partkey(RelOptInfo *input_rel,
  * child query's targetlist entries may already have a tleSortGroupRef
  * assigned for other purposes, such as GROUP BYs.  Here we keep the
  * SortGroupClause list in the same order as 'op' groupClauses and just adjust
- * the tleSortGroupRef to reference the TargetEntry's 'ressortgroupref'.
+ * the tleSortGroupRef to reference the TargetEntry's 'ressortgroupref'.  If
+ * any of the columns in the targetlist don't match to the setop's colTypes
+ * then we return an empty list.  This may leave some TLEs with unreferenced
+ * ressortgroupref markings, but that's harmless.
  */
 static List *
 generate_setop_child_grouplist(SetOperationStmt *op, List *targetlist)
@@ -8093,25 +8097,42 @@ generate_setop_child_grouplist(SetOperationStmt *op, List *targetlist)
 	List	   *grouplist = copyObject(op->groupClauses);
 	ListCell   *lg;
 	ListCell   *lt;
+	ListCell   *ct;
 
 	lg = list_head(grouplist);
+	ct = list_head(op->colTypes);
 	foreach(lt, targetlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lt);
 		SortGroupClause *sgc;
+		Oid			coltype;
 
 		/* resjunk columns could have sortgrouprefs.  Leave these alone */
 		if (tle->resjunk)
 			continue;
 
-		/* we expect every non-resjunk target to have a SortGroupClause */
+		/*
+		 * We expect every non-resjunk target to have a SortGroupClause and
+		 * colTypes.
+		 */
 		Assert(lg != NULL);
+		Assert(ct != NULL);
 		sgc = (SortGroupClause *) lfirst(lg);
+		coltype = lfirst_oid(ct);
+
+		/* reject if target type isn't the same as the setop target type */
+		if (coltype != exprType((Node *) tle->expr))
+			return NIL;
+
 		lg = lnext(grouplist, lg);
+		ct = lnext(op->colTypes, ct);
 
 		/* assign a tleSortGroupRef, or reuse the existing one */
 		sgc->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
 	}
+
 	Assert(lg == NULL);
+	Assert(ct == NULL);
+
 	return grouplist;
 }
