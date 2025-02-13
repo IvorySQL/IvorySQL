@@ -147,56 +147,6 @@ typedef struct
 	List	   *rtables;		/* list of rangetables to resolve Vars */
 } find_expr_references_context;
 
-/*
- * This constant table maps ObjectClasses to the corresponding catalog OIDs.
- * See also getObjectClass().
- */
-static const Oid object_classes[] = {
-	RelationRelationId,			/* OCLASS_CLASS */
-	ProcedureRelationId,		/* OCLASS_PROC */
-	TypeRelationId,				/* OCLASS_TYPE */
-	CastRelationId,				/* OCLASS_CAST */
-	CollationRelationId,		/* OCLASS_COLLATION */
-	ConstraintRelationId,		/* OCLASS_CONSTRAINT */
-	ConversionRelationId,		/* OCLASS_CONVERSION */
-	AttrDefaultRelationId,		/* OCLASS_DEFAULT */
-	LanguageRelationId,			/* OCLASS_LANGUAGE */
-	LargeObjectRelationId,		/* OCLASS_LARGEOBJECT */
-	OperatorRelationId,			/* OCLASS_OPERATOR */
-	OperatorClassRelationId,	/* OCLASS_OPCLASS */
-	OperatorFamilyRelationId,	/* OCLASS_OPFAMILY */
-	AccessMethodRelationId,		/* OCLASS_AM */
-	AccessMethodOperatorRelationId, /* OCLASS_AMOP */
-	AccessMethodProcedureRelationId,	/* OCLASS_AMPROC */
-	RewriteRelationId,			/* OCLASS_REWRITE */
-	TriggerRelationId,			/* OCLASS_TRIGGER */
-	NamespaceRelationId,		/* OCLASS_SCHEMA */
-	StatisticExtRelationId,		/* OCLASS_STATISTIC_EXT */
-	TSParserRelationId,			/* OCLASS_TSPARSER */
-	TSDictionaryRelationId,		/* OCLASS_TSDICT */
-	TSTemplateRelationId,		/* OCLASS_TSTEMPLATE */
-	TSConfigRelationId,			/* OCLASS_TSCONFIG */
-	AuthIdRelationId,			/* OCLASS_ROLE */
-	AuthMemRelationId,			/* OCLASS_ROLE_MEMBERSHIP */
-	DatabaseRelationId,			/* OCLASS_DATABASE */
-	TableSpaceRelationId,		/* OCLASS_TBLSPACE */
-	ForeignDataWrapperRelationId,	/* OCLASS_FDW */
-	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
-	UserMappingRelationId,		/* OCLASS_USER_MAPPING */
-	DefaultAclRelationId,		/* OCLASS_DEFACL */
-	ExtensionRelationId,		/* OCLASS_EXTENSION */
-	EventTriggerRelationId,		/* OCLASS_EVENT_TRIGGER */
-	ParameterAclRelationId,		/* OCLASS_PARAMETER_ACL */
-	PolicyRelationId,			/* OCLASS_POLICY */
-	PublicationNamespaceRelationId, /* OCLASS_PUBLICATION_NAMESPACE */
-	PublicationRelationId,		/* OCLASS_PUBLICATION */
-	PublicationRelRelationId,	/* OCLASS_PUBLICATION_REL */
-	SubscriptionRelationId,		/* OCLASS_SUBSCRIPTION */
-	TransformRelationId,			/* OCLASS_TRANSFORM */
-	PackageRelationId,			/* OCLASS_PACKAGE */
-	PackageBodyRelationId		/* OCLASS_PACKAGE_BODY */
-};
-
 static void findDependentObjects(const ObjectAddress *object,
 								 int objflags,
 								 int flags,

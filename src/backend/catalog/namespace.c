@@ -1533,23 +1533,23 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			/* Simple positional case, just copy proargtypes as-is */
 			if (argtypenames != NULL)
 			{
-				int i;
+				int j;
 
-				for (i = 0; i < pronargs; i++)
+				for (j = 0; j < pronargs; j++)
 				{
-					newResult->args[i] = proargtypes[i];
+					newResult->args[j] = proargtypes[j];
 
-					if (strcmp(argtypenames[i], "") != 0)
+					if (strcmp(argtypenames[j], "") != 0)
 					{
 						TypeName	*tname;
 						PkgType *pkgtype;
 
-						tname = (TypeName *) stringToNode(argtypenames[i]);
+						tname = (TypeName *) stringToNode(argtypenames[j]);
 
 						pkgtype = LookupPkgTypeByTypename(tname->names, false);
 						if (pkgtype != NULL)
 						{
-							newResult->args[i] = pkgtype->basetypid;
+							newResult->args[j] = pkgtype->basetypid;
 							pfree(pkgtype);
 						}
 						pfree(tname);
