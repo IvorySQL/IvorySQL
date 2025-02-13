@@ -2282,6 +2282,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 	/* Get number of bytes, ignoring trailing spaces */
 	if (sss->typid == BPCHAROID ||
 		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))	
+		len = bpchartruelen(authoritative_data, len);
 
 	/*
 	 * If we're using the C collation, use memcpy(), rather than strxfrm(), to

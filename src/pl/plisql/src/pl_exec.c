@@ -8696,9 +8696,6 @@ static void
 exec_check_packagedatum_assignable(PLiSQL_pkg_datum *pkg_datum, PLiSQL_execstate *estate)
 {
         PLiSQL_datum *datum = pkg_datum->pkgvar;
-        PackageCacheItem *item = pkg_datum->item;
-        PLiSQL_package *psource = (PLiSQL_package *) item->source;
-        PLiSQL_function *func = (PLiSQL_function *) &psource->source;
 
         switch (datum->dtype)
         {

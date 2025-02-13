@@ -322,6 +322,12 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_ReAddStatistics:
 				strtype = "(re) ADD STATS";
 				break;
+			case AT_DropInvisible:
+				strtype = "DROP INVISIBLE";
+				break;
+			case AT_SetInvisible:
+				strtype = "SET INVISIBLE";
+				break;
 		}
 
 		if (subcmd->recurse)
