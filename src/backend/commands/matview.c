@@ -438,12 +438,13 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 	UpdateActiveSnapshotCommandId();
 
 	/* Create a QueryDesc, redirecting output to our tuple receiver */
-	queryDesc = CreateQueryDesc(plan, queryString,
+	queryDesc = CreateQueryDesc(plan, NULL, queryString,
 								GetActiveSnapshot(), InvalidSnapshot,
 								dest, NULL, NULL, 0);
 
 	/* call ExecutorStart to prepare the plan for execution */
-	ExecutorStart(queryDesc, EXEC_FLAG_WITHOUT_ROWID);
+	if (!ExecutorStart(queryDesc, EXEC_FLAG_WITHOUT_ROWID))
+		elog(ERROR, "ExecutorStart() failed unexpectedly");
 
 	/* run the plan */
 	ExecutorRun(queryDesc, ForwardScanDirection, 0);
