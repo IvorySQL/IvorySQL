@@ -238,6 +238,9 @@
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
 #undef HAVE_LIBCRYPTO
 
+/* Define to 1 if you have the `curl' library (-lcurl). */
+#undef HAVE_LIBCURL
+
 /* Define to 1 if you have the `ldap' library (-lldap). */
 #undef HAVE_LIBLDAP
 
@@ -450,6 +453,9 @@
 
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
+
+/* Define to 1 if curl_global_init() is guaranteed to be thread-safe. */
+#undef HAVE_THREADSAFE_CURL_GLOBAL_INIT
 
 /* Define to 1 if your compiler understands `typeof' or something similar. */
 #undef HAVE_TYPEOF
@@ -674,6 +680,9 @@
 
 /* Define to 1 to build with LDAP support. (--with-ldap) */
 #undef USE_LDAP
+
+/* Define to 1 to build with libcurl support. (--with-libcurl) */
+#undef USE_LIBCURL
 
 /* Define to 1 to build with XML support. (--with-libxml) */
 #undef USE_LIBXML
