@@ -3075,6 +3075,10 @@ my %tests = (
 		like => { %full_runs, section_post_data => 1, },
 	},
 
+
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_table' => {
 		create_order => 51,
 		create_sql =>
@@ -3082,13 +3086,12 @@ my %tests = (
 		regexp => qr/^
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_table;\E
 			/xm,
-		like   => { %full_runs, section_post_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-		},
+		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_second_table' => {
 		create_order => 52,
 		create_sql =>
@@ -3097,9 +3100,11 @@ my %tests = (
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_second_table;\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_sixth_table (col3, col2)' => {
 		create_order => 52,
 		create_sql =>
@@ -3108,9 +3113,11 @@ my %tests = (
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_sixth_table (col2, col3);\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_seventh_table (col3, col2) WHERE (col1 = 1)'
 	  => {
 		create_order => 52,
@@ -3120,9 +3127,11 @@ my %tests = (
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_seventh_table (col2, col3) WHERE ((col1 = 1));\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	  },
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub3 ADD TABLES IN SCHEMA dump_test' => {
 		create_order => 51,
 		create_sql =>
@@ -3131,9 +3140,11 @@ my %tests = (
 			\QALTER PUBLICATION pub3 ADD TABLES IN SCHEMA dump_test;\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub3 ADD TABLES IN SCHEMA public' => {
 		create_order => 52,
 		create_sql   => 'ALTER PUBLICATION pub3 ADD TABLES IN SCHEMA public;',
@@ -3143,6 +3154,9 @@ my %tests = (
 		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub3 ADD TABLE test_table' => {
 		create_order => 51,
 		create_sql =>
@@ -3150,13 +3164,12 @@ my %tests = (
 		regexp => qr/^
 			\QALTER PUBLICATION pub3 ADD TABLE ONLY dump_test.test_table;\E
 			/xm,
-		like   => { %full_runs, section_post_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-		},
+		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub4 ADD TABLE test_table WHERE (col1 > 0);' => {
 		create_order => 51,
 		create_sql =>
@@ -3164,13 +3177,12 @@ my %tests = (
 		regexp => qr/^
 			\QALTER PUBLICATION pub4 ADD TABLE ONLY dump_test.test_table WHERE ((col1 > 0));\E
 			/xm,
-		like   => { %full_runs, section_post_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-		},
+		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub4 ADD TABLE test_second_table WHERE (col2 = \'test\');'
 	  => {
 		create_order => 52,
@@ -3180,7 +3192,6 @@ my %tests = (
 			\QALTER PUBLICATION pub4 ADD TABLE ONLY dump_test.test_second_table WHERE ((col2 = 'test'::text));\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	  },
 
 	'CREATE SCHEMA public' => {
