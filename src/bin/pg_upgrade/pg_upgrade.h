@@ -129,6 +129,11 @@ extern bool pg_cluster_within_oracle_mode;
  */
 #define JSONB_FORMAT_CHANGE_CAT_VER 201409291
 
+/*
+ * The control file was changed to have the default char signedness,
+ * commit 44fe30fdab6746a287163e7cc093fd36cda8eb92
+ */
+#define DEFAULT_CHAR_SIGNEDNESS_CAT_VER 202502212
 
 /*
  * Each relation is represented by a relinfo structure.
@@ -250,6 +255,7 @@ typedef struct
 	bool		float8_pass_by_value;
 	uint32		data_checksum_version;
 	bool		database_mode_is_oracle;
+	bool		default_char_signedness;
 } ControlData;
 
 /*
