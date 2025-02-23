@@ -23,7 +23,7 @@ include $(top_builddir)/src/Makefile.global
 export enable_injection_points
 
 # required for 017_shm.pl and 027_stream_regress.pl
-REGRESS_SHLIB=$(abs_top_builddir)/src/oracle_test/regress/regress$(DLSUFFIX)
+REGRESS_SHLIB=$(abs_top_builddir)/src/oracle_test/regress/oraregress$(DLSUFFIX)
 export REGRESS_SHLIB
 
 oracle-check:
