@@ -9021,7 +9021,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 			tbinfo->attoptions[j] = pg_strdup(PQgetvalue(res, r, i_attoptions));
 			tbinfo->attcollation[j] = atooid(PQgetvalue(res, r, i_attcollation));
 			tbinfo->attcompression[j] = *(PQgetvalue(res, r, i_attcompression));
-			tbinfo->attisinvisible[j] = (PQgetvalue(res, j, i_attisinvisible)[0] == 't');
+			tbinfo->attisinvisible[j] = (PQgetvalue(res, r, i_attisinvisible)[0] == 't');
 			tbinfo->attfdwoptions[j] = pg_strdup(PQgetvalue(res, r, i_attfdwoptions));
 			tbinfo->attmissingval[j] = pg_strdup(PQgetvalue(res, r, i_attmissingval));
 			tbinfo->attrdefs[j] = NULL; /* fix below */
@@ -16255,6 +16255,10 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 							appendPQExpBuffer(q, " COLLATE %s",
 											  fmtQualifiedDumpable(coll));
 					}
+
+					if (tbinfo->attisinvisible[j])
+						appendPQExpBufferStr(q, " INVISIBLE");
+
 					is_ora_identity = false;
 				}
 			}
@@ -16583,12 +16587,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  "ALTER %sTABLE ONLY %s ALTER COLUMN %s SET NOT NULL;\n",
 								  foreign, qualrelname,
 								  fmtId(tbinfo->attnames[j]));
-
-			/*
-			 * Dump per-column invisible information.
-			 */
-			if (tbinfo->attisinvisible[j])
-				appendPQExpBufferStr(q, " INVISIBLE");
 
 			/*
 			 * Dump per-column statistics information. We only issue an ALTER
