@@ -209,7 +209,7 @@ PQservice                 206
 PQsetAuthDataHook         207
 PQgetAuthDataHook         208
 PQdefaultAuthDataHook     209
-IvyFreePreparedStatement   210
+PQfullProtocolVersion     210
 Ivyclear                   211
 Ivyfinish                  212
 Ivystatus                  213
@@ -232,3 +232,4 @@ Ivyconnectdb               229
 IvyCreatePreparedStatement 230
 IvybindOutParameterByPos   231
 IvyexecPreparedStatement   232
+IvyFreePreparedStatement   233
