@@ -758,11 +758,11 @@ typedef struct _PGpromptOAuthDevice
 #define SOCKTYPE int
 #endif
 
-typedef struct _PGoauthBearerRequest
+typedef struct PGoauthBearerRequest
 {
 	/* Hook inputs (constant across all calls) */
-	const char *const openid_configuration; /* OIDC discovery URI */
-	const char *const scope;	/* required scope(s), or NULL */
+	const char *openid_configuration;	/* OIDC discovery URI */
+	const char *scope;			/* required scope(s), or NULL */
 
 	/* Hook outputs */
 
@@ -783,7 +783,7 @@ typedef struct _PGoauthBearerRequest
 	 * request->token must be set by the hook.
 	 */
 	PostgresPollingStatusType (*async) (PGconn *conn,
-										struct _PGoauthBearerRequest *request,
+										struct PGoauthBearerRequest *request,
 										SOCKTYPE * altsock);
 
 	/*
@@ -793,7 +793,7 @@ typedef struct _PGoauthBearerRequest
 	 * This is technically optional, but highly recommended, because there is
 	 * no other indication as to when it is safe to free the token.
 	 */
-	void		(*cleanup) (PGconn *conn, struct _PGoauthBearerRequest *request);
+	void		(*cleanup) (PGconn *conn, struct PGoauthBearerRequest *request);
 
 	/*
 	 * The hook should set this to the Bearer token contents for the
