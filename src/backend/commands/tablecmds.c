@@ -985,7 +985,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
 			rawEnt->attnum = attnum;
 			rawEnt->raw_default = colDef->raw_default;
-			rawEnt->missingMode = false;
 			rawEnt->generated = colDef->generated;
 			rawDefaults = lappend(rawDefaults, rawEnt);
 			attr->atthasdef = true;
@@ -7536,7 +7535,6 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
 		rawEnt->attnum = attribute->attnum;
 		rawEnt->raw_default = copyObject(colDef->raw_default);
-		rawEnt->missingMode = false;	/* XXX vestigial */
 		rawEnt->generated = colDef->generated;
 
 		/*
@@ -8482,7 +8480,6 @@ ATExecColumnDefault(Relation rel, const char *colName,
 		rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
 		rawEnt->attnum = attnum;
 		rawEnt->raw_default = newDefault;
-		rawEnt->missingMode = false;
 		rawEnt->generated = '\0';
 
 		/*
@@ -8520,7 +8517,7 @@ ATExecCookedColumnDefault(Relation rel, AttrNumber attnum,
 	RemoveAttrDefault(RelationGetRelid(rel), attnum, DROP_RESTRICT, false,
 					  true);
 
-	(void) StoreAttrDefault(rel, attnum, newDefault, true, false);
+	(void) StoreAttrDefault(rel, attnum, newDefault, true);
 
 	ObjectAddressSubSet(address, RelationRelationId,
 						RelationGetRelid(rel), attnum);
@@ -8988,7 +8985,6 @@ ATExecSetExpression(AlteredTableInfo *tab, Relation rel, const char *colName,
 	rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
 	rawEnt->attnum = attnum;
 	rawEnt->raw_default = newExpr;
-	rawEnt->missingMode = false;
 	rawEnt->generated = attgenerated;
 
 	/* Store the generated expression */
@@ -14613,7 +14609,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 		RemoveAttrDefault(RelationGetRelid(rel), attnum, DROP_RESTRICT, true,
 						  true);
 
-		StoreAttrDefault(rel, attnum, defaultexpr, true, false);
+		(void) StoreAttrDefault(rel, attnum, defaultexpr, true);
 	}
 
 	ObjectAddressSubSet(address, RelationRelationId,
