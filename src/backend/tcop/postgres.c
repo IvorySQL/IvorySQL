@@ -3663,13 +3663,13 @@ ProcessInterrupts(void)
 		ProcessProcSignalBarrier();
 
 	if (ParallelMessagePending)
-		HandleParallelMessages();
+		ProcessParallelMessages();
 
 	if (LogMemoryContextPending)
 		ProcessLogMemoryContextInterrupt();
 
 	if (ParallelApplyMessagePending)
-		HandleParallelApplyMessages();
+		ProcessParallelApplyMessages();
 }
 
 /*
