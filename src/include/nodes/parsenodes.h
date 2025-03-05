@@ -2518,6 +2518,8 @@ typedef struct ATAlterConstraint
 	bool		alterDeferrability; /* changing deferrability properties? */
 	bool		deferrable;		/* DEFERRABLE? */
 	bool		initdeferred;	/* INITIALLY DEFERRED? */
+	bool		alterInheritability;	/* changing inheritability properties */
+	bool		noinherit;
 } ATAlterConstraint;
 
 /* Ad-hoc node for AT_ReplicaIdentity */
