@@ -344,7 +344,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 
 				/* Bail out if nothing to process */
 				if (process_list == NULL)
+				{
+					PQfinish(conn);
 					return;
+				}
 				break;
 
 			case REINDEX_SCHEMA:
@@ -357,7 +360,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 
 				/* Bail out if nothing to process */
 				if (process_list == NULL)
+				{
+					PQfinish(conn);
 					return;
+				}
 				break;
 
 			case REINDEX_INDEX:
@@ -375,7 +381,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 				 * in-place, so check if it has at least one cell.
 				 */
 				if (user_list->head == NULL)
+				{
+					PQfinish(conn);
 					return;
+				}
 
 				/*
 				 * Assuming 'user_list' is not empty, 'indices_tables_list'
@@ -421,6 +430,7 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 
 	sa = ParallelSlotsSetup(concurrentCons, cparams, progname, echo, NULL);
 	ParallelSlotsAdoptConn(sa, conn);
+	conn = NULL;
 
 	cell = process_list->head;
 	do
@@ -770,7 +780,6 @@ get_parallel_object_list(PGconn *conn, ReindexType type,
 	if (ntups == 0)
 	{
 		PQclear(res);
-		PQfinish(conn);
 		return NULL;
 	}
 
