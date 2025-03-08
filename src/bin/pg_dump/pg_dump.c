@@ -534,9 +534,6 @@ main(int argc, char **argv)
 	pg_logging_set_level(PG_LOG_WARNING);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_dump"));
 
-	/* ensure that locale does not affect floating point interpretation */
-	setlocale(LC_NUMERIC, "C");
-
 	/*
 	 * Initialize what we need for parallel execution, especially for thread
 	 * support on Windows.
@@ -6904,10 +6901,12 @@ getPackages(Archive *fout, int *numPkgs)
  /* getRelationStatistics
  *    register the statistics object as a dependent of the relation.
  *
+ * reltuples is passed as a string to avoid complexities in converting from/to
+ * floating point.
  */
 static RelStatsInfo *
 getRelationStatistics(Archive *fout, DumpableObject *rel, int32 relpages,
-					  float reltuples, int32 relallvisible, char relkind,
+					  char *reltuples, int32 relallvisible, char relkind,
 					  char **indAttNames, int nindAttNames)
 {
 	if (!fout->dopt->dumpStatistics)
@@ -6934,7 +6933,7 @@ getRelationStatistics(Archive *fout, DumpableObject *rel, int32 relpages,
 		dobj->name = pg_strdup(rel->name);
 		dobj->namespace = rel->namespace;
 		info->relpages = relpages;
-		info->reltuples = reltuples;
+		info->reltuples = pstrdup(reltuples);
 		info->relallvisible = relallvisible;
 		info->relkind = relkind;
 		info->indAttNames = indAttNames;
@@ -7246,7 +7245,6 @@ getTables(Archive *fout, int *numTables)
 
 	for (i = 0; i < ntups; i++)
 	{
-		float		reltuples = strtof(PQgetvalue(res, i, i_reltuples), NULL);
 		int32		relallvisible = atoi(PQgetvalue(res, i, i_relallvisible));
 
 		tblinfo[i].dobj.objType = DO_TABLE;
@@ -7350,8 +7348,8 @@ getTables(Archive *fout, int *numTables)
 		/* Add statistics */
 		if (tblinfo[i].interesting)
 			getRelationStatistics(fout, &tblinfo[i].dobj, tblinfo[i].relpages,
-								  reltuples, relallvisible, tblinfo[i].relkind,
-								  NULL, 0);
+								  PQgetvalue(res, i, i_reltuples),
+								  relallvisible, tblinfo[i].relkind, NULL, 0);
 
 		/*
 		 * Read-lock target tables to make sure they aren't DROPPED or altered
@@ -7860,7 +7858,6 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			char		indexkind;
 			RelStatsInfo *relstats;
 			int32		relpages = atoi(PQgetvalue(res, j, i_relpages));
-			float		reltuples = strtof(PQgetvalue(res, j, i_reltuples), NULL);
 			int32		relallvisible = atoi(PQgetvalue(res, j, i_relallvisible));
 
 			indxinfo[j].dobj.objType = DO_INDEX;
@@ -7903,7 +7900,8 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			}
 
 			relstats = getRelationStatistics(fout, &indxinfo[j].dobj, relpages,
-											 reltuples, relallvisible, indexkind,
+											 PQgetvalue(res, j, i_reltuples),
+											 relallvisible, indexkind,
 											 indAttNames, nindAttNames);
 
 			contype = *(PQgetvalue(res, j, i_contype));
@@ -10603,7 +10601,6 @@ dumpRelationStats(Archive *fout, const RelStatsInfo *rsinfo)
 	DumpId	   *deps = NULL;
 	int			ndeps = 0;
 	char	   *qualified_name;
-	char		reltuples_str[FLOAT_SHORTEST_DECIMAL_LEN];
 	int			i_attname;
 	int			i_inherited;
 	int			i_null_frac;
@@ -10678,8 +10675,7 @@ dumpRelationStats(Archive *fout, const RelStatsInfo *rsinfo)
 	appendStringLiteralAH(out, qualified_name, fout);
 	appendPQExpBufferStr(out, "::regclass,\n");
 	appendPQExpBuffer(out, "\t'relpages', '%d'::integer,\n", rsinfo->relpages);
-	float_to_shortest_decimal_buf(rsinfo->reltuples, reltuples_str);
-	appendPQExpBuffer(out, "\t'reltuples', '%s'::real,\n", reltuples_str);
+	appendPQExpBuffer(out, "\t'reltuples', '%s'::real,\n", rsinfo->reltuples);
 	appendPQExpBuffer(out, "\t'relallvisible', '%d'::integer\n);\n",
 					  rsinfo->relallvisible);
 
