@@ -696,7 +696,7 @@
   typsend => 'brin_minmax_multi_summary_send', typalign => 'i',
   typstorage => 'x', typcollation => 'default' },
 
-# BEGIN Oracle Compatibility Metadatas
+/*BEGIN Oracle Compatibility Metadatas*/
 { oid => '9500', array_type_oid => '9504',
   descr => 'Oracle CHAR datatype, blank-padded string, fixed storage length',
   typname => 'oracharchar', typnamespace => 'sys', typlen => '-1', typbyval => 'f',
@@ -833,6 +833,6 @@
   typanalyze => '-', typalign => 'i', typstorage => 'p',  typnotnull => 'f', typbasetype => '0',
   typtypmod => '-1', typndims => '0', typcollation => '0'},
 
-# END Oracle Compatibility Metadatas
+/*END Oracle Compatibility Metadatas*/
 
 ]
