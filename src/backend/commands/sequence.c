@@ -215,6 +215,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	stmt->oncommit = ONCOMMIT_NOOP;
 	stmt->tablespacename = NULL;
 	stmt->if_not_exists = seq->if_not_exists;
+	stmt->with_rowid_seq = seq->with_rowid;
 
 	address = DefineRelation(stmt, RELKIND_SEQUENCE, seq->ownerId, NULL, NULL);
 	seqoid = address.objectId;
@@ -2395,10 +2396,14 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 	int			nnames;
 	Relation	tablerel;
 	AttrNumber	attnum;
+	char		*seqname;
 
 	deptype = for_identity ? DEPENDENCY_INTERNAL : DEPENDENCY_AUTO;
 
 	nnames = list_length(owned_by);
+
+	seqname = RelationGetRelationName(seqrel);
+
 	Assert(nnames > 0);
 	if (nnames == 1)
 	{
@@ -2447,12 +2452,24 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 					 errmsg("sequence must be in same schema as table it is linked to")));
 
 		/* Now, fetch the attribute number from the system cache */
-		attnum = get_attnum(RelationGetRelid(tablerel), attrname);
-		if (attnum == InvalidAttrNumber)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							attrname, RelationGetRelationName(tablerel))));
+		if (compatible_db == DB_ORACLE && strcmp(seqname, attrname) != 0)
+		{
+			attnum = get_attnum(RelationGetRelid(tablerel), attrname);
+			if (attnum == InvalidAttrNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								attrname, RelationGetRelationName(tablerel))));
+		}
+		else if (compatible_db == DB_PG)
+		{
+			attnum = get_attnum(RelationGetRelid(tablerel), attrname);
+			if (attnum == InvalidAttrNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								attrname, RelationGetRelationName(tablerel))));
+		}
 	}
 
 	/*

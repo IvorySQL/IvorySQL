@@ -7410,6 +7410,15 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 	int			anum;
 	int			strict_multiassignment_level = 0;
 
+	HeapTupleHeader tuphd;
+	Oid 		tupType;
+	int32		tupTypmod;
+	TupleDesc	rowidtupdesc;
+	HeapTupleData tuple;
+	Datum	   *r_values = NULL;
+	bool	   *r_nulls = NULL;
+	bool		is_rowid_var = false;
+
 	/*
 	 * The extra check strict strict_multi_assignment can be active, only when
 	 * input tupdesc is specified.
@@ -7433,6 +7442,36 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 		Assert(newerh != NULL); /* caller must have built new object */
 
 		var_tupdesc = expanded_record_get_tupdesc(newerh);
+
+		if (compatible_db == DB_ORACLE && (rec->datatype->typoid == ROWIDOID ||
+			rec->datatype->typoid == UROWIDOID))
+		{
+			is_rowid_var = true;
+
+			for (int i = 0; i < tupdesc->natts; i++)
+			{
+				if (strcmp(pstrdup(NameStr(tupdesc->attrs[i].attname)), "rowid") == 0)
+					tuphd = DatumGetHeapTupleHeader(values[i]);
+			}
+
+			if (tuphd)
+			{
+				tupType = HeapTupleHeaderGetTypeId(tuphd);
+				tupTypmod = HeapTupleHeaderGetTypMod(tuphd);
+				rowidtupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+
+				tuple.t_len = HeapTupleHeaderGetDatumLength(tuphd);
+				ItemPointerSetInvalid(&(tuple.t_self));
+				tuple.t_tableOid = InvalidOid;
+				tuple.t_data = tuphd;
+
+				r_values = (Datum *) palloc(rowidtupdesc->natts * sizeof(Datum));
+				r_nulls = (bool *) palloc(rowidtupdesc->natts * sizeof(bool));
+
+				heap_deform_tuple(&tuple, rowidtupdesc, r_values, r_nulls);
+				ReleaseTupleDesc(rowidtupdesc);
+			}
+		}
 
 		/*
 		 * Coerce field values if needed.  This might involve dealing with
@@ -7489,12 +7528,23 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 					   TupleDescAttr(tupdesc, anum)->attisdropped)
 					anum++;		/* skip dropped column in tuple */
 
-				if (anum < td_natts)
+				if (is_rowid_var && anum < var_tupdesc->natts)
+				{
+					value = r_values[anum];
+					isnull = r_nulls[anum];
+					valtype = attr->atttypid;
+					valtypmod = attr->atttypmod;
+
+					anum++;
+				}
+				else if (anum < td_natts)
 				{
 					value = values[anum];
 					isnull = nulls[anum];
+
 					valtype = TupleDescAttr(tupdesc, anum)->atttypid;
 					valtypmod = TupleDescAttr(tupdesc, anum)->atttypmod;
+
 					anum++;
 				}
 				else
@@ -7554,6 +7604,11 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 
 			values = newvalues;
 			nulls = newnulls;
+
+			if (r_values)
+				pfree(r_values);
+			if (r_nulls)
+				pfree(r_nulls);
 		}
 
 		/* Insert the coerced field values into the new expanded record */

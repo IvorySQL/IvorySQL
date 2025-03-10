@@ -66,6 +66,8 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
+#include "utils/typcache.h"
+#include "funcapi.h"
 
 /*
  * Does att's datatype allow packing into the 1-byte-header varlena format?
@@ -482,6 +484,7 @@ heap_attisnull(HeapTuple tup, int attnum, TupleDesc tupleDesc)
 		case MinCommandIdAttributeNumber:
 		case MaxTransactionIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
+		case RowIdAttributeNumber:
 			/* these are never null */
 			break;
 
@@ -754,6 +757,36 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 			break;
 		case TableOidAttributeNumber:
 			result = ObjectIdGetDatum(tup->t_tableOid);
+			break;
+		case RowIdAttributeNumber:
+			{
+				HeapTupleHeader ret;
+				TupleDesc	rd_tupdesc;
+				HeapTuple	rd_tuple;
+				Datum	   *values;
+				bool	   *nulls;
+
+				rd_tupdesc = lookup_rowtype_tupdesc(ROWIDOID, -1);
+				values = (Datum *) palloc(rd_tupdesc->natts * sizeof(Datum));
+				nulls = (bool *) palloc(rd_tupdesc->natts * sizeof(bool));
+
+				values[0] = tup->t_tableOid;
+				values[1] = DatumGetUInt64(HeapTupleGetRowId(tup));
+				nulls[0] = false;
+				nulls[1] = false;
+
+				rd_tuple = heap_form_tuple(rd_tupdesc, values, nulls);
+
+				ret = (HeapTupleHeader) palloc(rd_tuple->t_len);
+				memcpy(ret, rd_tuple->t_data, rd_tuple->t_len);
+
+				heap_freetuple(rd_tuple);
+				pfree(values);
+				pfree(nulls);
+				ReleaseTupleDesc(rd_tupdesc);
+
+				result = HeapTupleHeaderGetDatum(ret);
+			}
 			break;
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);
@@ -1152,6 +1185,9 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	if (hasnull)
 		len += BITMAPLEN(numberOfAttributes);
 
+	if (tupleDescriptor->tdhasrowid)
+		len += sizeof(int64);
+
 	hoff = len = MAXALIGN(len); /* align user data safely */
 
 	data_len = heap_compute_data_size(tupleDescriptor, values, isnull);
@@ -1182,6 +1218,9 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 
 	HeapTupleHeaderSetNatts(td, numberOfAttributes);
 	td->t_hoff = hoff;
+
+	if (tupleDescriptor->tdhasrowid)
+		td->t_infomask = HEAP_HASROWID;
 
 	heap_fill_tuple(tupleDescriptor,
 					values,
@@ -1487,6 +1526,9 @@ heap_form_minimal_tuple(TupleDesc tupleDescriptor,
 	if (hasnull)
 		len += BITMAPLEN(numberOfAttributes);
 
+	if (tupleDescriptor->tdhasrowid)
+		len += sizeof(int64);
+
 	hoff = len = MAXALIGN(len); /* align user data safely */
 
 	data_len = heap_compute_data_size(tupleDescriptor, values, isnull);
@@ -1504,6 +1546,9 @@ heap_form_minimal_tuple(TupleDesc tupleDescriptor,
 	tuple->t_len = len;
 	HeapTupleHeaderSetNatts(tuple, numberOfAttributes);
 	tuple->t_hoff = hoff + MINIMAL_TUPLE_OFFSET;
+
+	if (tupleDescriptor->tdhasrowid)
+		tuple->t_infomask = HEAP_HASROWID;
 
 	heap_fill_tuple(tupleDescriptor,
 					values,

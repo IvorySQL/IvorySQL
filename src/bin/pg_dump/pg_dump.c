@@ -6807,6 +6807,7 @@ getTables(Archive *fout, int *numTables)
 	int			i_owning_col;
 	int			i_reltablespace;
 	int			i_relhasoids;
+	int			i_relhasrowid;
 	int			i_relhastriggers;
 	int			i_relpersistence;
 	int			i_relispopulated;
@@ -6868,6 +6869,13 @@ getTables(Archive *fout, int *numTables)
 						 "d.refobjid AS owning_tab, "
 						 "d.refobjsubid AS owning_col, "
 						 "tsp.spcname AS reltablespace, ");
+
+	if (fout->remoteVersion < 170000)
+		appendPQExpBufferStr(query,
+							 "false AS relhasrowid, ");
+	else
+		appendPQExpBufferStr(query,
+							 "c.relhasrowid, ");
 
 	if (fout->remoteVersion >= 120000)
 		appendPQExpBufferStr(query,
@@ -7021,6 +7029,7 @@ getTables(Archive *fout, int *numTables)
 	i_owning_col = PQfnumber(res, "owning_col");
 	i_reltablespace = PQfnumber(res, "reltablespace");
 	i_relhasoids = PQfnumber(res, "relhasoids");
+	i_relhasrowid = PQfnumber(res, "relhasrowid");
 	i_relhastriggers = PQfnumber(res, "relhastriggers");
 	i_relpersistence = PQfnumber(res, "relpersistence");
 	i_relispopulated = PQfnumber(res, "relispopulated");
@@ -7078,6 +7087,7 @@ getTables(Archive *fout, int *numTables)
 		tblinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_relowner));
 		tblinfo[i].ncheck = atoi(PQgetvalue(res, i, i_relchecks));
 		tblinfo[i].hasindex = (strcmp(PQgetvalue(res, i, i_relhasindex), "t") == 0);
+		tblinfo[i].relhasrowid = (strcmp(PQgetvalue(res, i, i_relhasrowid), "t") == 0);
 		tblinfo[i].hasrules = (strcmp(PQgetvalue(res, i, i_relhasrules), "t") == 0);
 		tblinfo[i].relpages = atoi(PQgetvalue(res, i, i_relpages));
 		if (PQgetisnull(res, i, i_toastpages))
@@ -16324,6 +16334,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nSERVER %s", fmtId(srvname));
 		}
 
+		if (tbinfo->relhasrowid)
+			appendPQExpBuffer(q, " WITH ROWID");
+
 		if (nonemptyReloptions(tbinfo->reloptions) ||
 			nonemptyReloptions(tbinfo->toast_reloptions))
 		{
@@ -17551,6 +17564,8 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 	bool		is_session = false;
 	int16		flags = 0;
 
+	if (tbinfo->relhasrowid)
+		return;
 
 	qseqname = pg_strdup(fmtId(tbinfo->dobj.name));
 

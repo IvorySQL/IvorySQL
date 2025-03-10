@@ -2389,6 +2389,9 @@ typedef enum AlterTableType
 	AT_SetLogged,				/* SET LOGGED */
 	AT_SetUnLogged,				/* SET UNLOGGED */
 	AT_DropOids,				/* SET WITHOUT OIDS */
+	AT_AddRowids,				/* SET WITH ROWID */
+	AT_AddRowidsRecurse,		/* internal to commands/tablecmds.c */
+	AT_DropRowids,				/* SET WITHOUT ROWID */
 	AT_SetAccessMethod,			/* SET ACCESS METHOD */
 	AT_SetTableSpace,			/* SET TABLESPACE */
 	AT_SetRelOptions,			/* SET (...) -- AM specific parameters */
@@ -2450,6 +2453,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
 	bool		missing_ok;		/* skip error if missing? */
 	bool		recurse;		/* exec-time recursion */
+	bool        is_rowid;
 } AlterTableCmd;
 
 
@@ -2674,6 +2678,7 @@ typedef struct CreateStmt
 	char	   *tablespacename; /* table space to use, or NULL */
 	char	   *accessMethod;	/* table access method */
 	bool		if_not_exists;	/* just do nothing if it already exists? */
+	bool		with_rowid_seq;
 } CreateStmt;
 
 /* ----------
@@ -3135,6 +3140,7 @@ typedef struct CreateSeqStmt
 	Oid			ownerId;		/* ID of owner, or InvalidOid for default */
 	bool		for_identity;
 	bool		if_not_exists;	/* just do nothing if it already exists? */
+	bool		with_rowid;		/* created by create table ... with rowid */
 	char		seq_type;	/* is oracle compatible type or original type */
 } CreateSeqStmt;
 

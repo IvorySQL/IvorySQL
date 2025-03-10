@@ -38,19 +38,6 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 
-/*
- * It's not supported to create tuples with oids anymore, but when pg_upgrade
- * was used to upgrade from an older version, tuples might still have an
- * oid. Seems worthwhile to display that.
- */
-#define HeapTupleHeaderGetOidOld(tup) \
-( \
-	((tup)->t_infomask & HEAP_HASOID_OLD) ? \
-	   *((Oid *) ((char *)(tup) + (tup)->t_hoff - sizeof(Oid))) \
-	: \
-		InvalidOid \
-)
-
 
 /*
  * bits_to_text
@@ -257,10 +244,7 @@ heap_page_items(PG_FUNCTION_ARGS)
 				else
 					nulls[11] = true;
 
-				if (tuphdr->t_infomask & HEAP_HASOID_OLD)
-					values[12] = HeapTupleHeaderGetOidOld(tuphdr);
-				else
-					nulls[12] = true;
+				nulls[12] = true;
 			}
 			else
 			{
@@ -549,8 +533,6 @@ heap_tuple_infomask_flags(PG_FUNCTION_ARGS)
 		flags[cnt++] = CStringGetTextDatum("HEAP_HASVARWIDTH");
 	if ((t_infomask & HEAP_HASEXTERNAL) != 0)
 		flags[cnt++] = CStringGetTextDatum("HEAP_HASEXTERNAL");
-	if ((t_infomask & HEAP_HASOID_OLD) != 0)
-		flags[cnt++] = CStringGetTextDatum("HEAP_HASOID_OLD");
 	if ((t_infomask & HEAP_XMAX_KEYSHR_LOCK) != 0)
 		flags[cnt++] = CStringGetTextDatum("HEAP_XMAX_KEYSHR_LOCK");
 	if ((t_infomask & HEAP_COMBOCID) != 0)

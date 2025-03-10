@@ -70,7 +70,7 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-static TupleDesc ExecTypeFromTLInternal(List *targetList,
+static TupleDesc ExecTypeFromTLInternal(List *targetList, bool hasrowid, 
 										bool skipjunk);
 static pg_attribute_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 															  int natts);
@@ -1841,7 +1841,19 @@ ExecFetchSlotHeapTupleDatum(TupleTableSlot *slot)
 void
 ExecInitResultTypeTL(PlanState *planstate)
 {
-	TupleDesc	tupDesc = ExecTypeFromTL(planstate->plan->targetlist);
+	bool		hasrowid;
+	TupleDesc	tupDesc;
+
+	if (ExecContextForcesRowId(planstate, &hasrowid))
+	{
+		/* context forces ROWID choice; hasrowid is now set correctly */
+	}
+	else
+	{
+		hasrowid = false;
+	}
+
+	tupDesc = ExecTypeFromTL(planstate->plan->targetlist, hasrowid);
 
 	planstate->ps_ResultTupleDesc = tupDesc;
 }
@@ -2022,9 +2034,9 @@ slot_getsomeattrs_int(TupleTableSlot *slot, int attnum)
  * ----------------------------------------------------------------
  */
 TupleDesc
-ExecTypeFromTL(List *targetList)
+ExecTypeFromTL(List *targetList, bool hasrowid)
 {
-	return ExecTypeFromTLInternal(targetList, false);
+	return ExecTypeFromTLInternal(targetList, hasrowid, false);
 }
 
 /* ----------------------------------------------------------------
@@ -2034,13 +2046,13 @@ ExecTypeFromTL(List *targetList)
  * ----------------------------------------------------------------
  */
 TupleDesc
-ExecCleanTypeFromTL(List *targetList)
+ExecCleanTypeFromTL(List *targetList, bool hasrowid)
 {
-	return ExecTypeFromTLInternal(targetList, true);
+	return ExecTypeFromTLInternal(targetList, hasrowid, true);
 }
 
 static TupleDesc
-ExecTypeFromTLInternal(List *targetList, bool skipjunk)
+ExecTypeFromTLInternal(List *targetList, bool hasrowid, bool skipjunk)
 {
 	TupleDesc	typeInfo;
 	ListCell   *l;
@@ -2052,6 +2064,7 @@ ExecTypeFromTLInternal(List *targetList, bool skipjunk)
 	else
 		len = ExecTargetListLength(targetList);
 	typeInfo = CreateTemplateTupleDesc(len);
+	typeInfo->tdhasrowid = hasrowid;
 
 	foreach(l, targetList)
 	{

@@ -48,6 +48,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/ora_compatible.h"
 
 
 static int	extractRemainingColumns(ParseState *pstate,
@@ -3888,3 +3889,40 @@ transformFrameOffset(ParseState *pstate, int frameOptions,
 
 	return node;
 }
+
+bool
+interpretRowidOption(List *defList, bool allowRowid)
+{
+	ListCell	*cell;
+
+	/* Scan list to see if ROWID was included */
+	foreach(cell, defList)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+
+		if (def->defnamespace == NULL &&
+			strcmp(def->defname, "rowid") == 0)
+		{
+			if (!allowRowid)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("unrecognized parameter \"%s\"",
+								def->defname)));
+			return defGetBoolean(def);
+		}
+	}
+
+	/* Force no-ROWID result if caller disallows ROWID */
+	if (!allowRowid)
+		return false;
+
+	/*
+	 * ROWID option was not specified, so use default GUC value,
+	 * but this GUC only valid in DB_ORACLE model
+	 */
+	if (compatible_db == DB_ORACLE)
+		return default_with_rowids;
+	else
+		return false;
+}
+

@@ -190,7 +190,7 @@ struct HeapTupleHeaderData
 #define HEAP_HASNULL			0x0001	/* has null attribute(s) */
 #define HEAP_HASVARWIDTH		0x0002	/* has variable-width attribute(s) */
 #define HEAP_HASEXTERNAL		0x0004	/* has external stored attribute(s) */
-#define HEAP_HASOID_OLD			0x0008	/* has an object-id field */
+#define HEAP_HASROWID			0x0008	/* has an ROWID field */
 #define HEAP_XMAX_KEYSHR_LOCK	0x0010	/* xmax is a key-shared locker */
 #define HEAP_COMBOCID			0x0020	/* t_cid is a combo CID */
 #define HEAP_XMAX_EXCL_LOCK		0x0040	/* xmax is exclusive locker */
@@ -542,6 +542,25 @@ StaticAssertDecl(MaxOffsetNumber < SpecTokenOffsetNumber,
 #define HeapTupleHeaderHasExternal(tup) \
 		(((tup)->t_infomask & HEAP_HASEXTERNAL) != 0)
 
+#define HeapTupleHeaderGetRowId(tup) \
+( \
+	((tup)->t_infomask & HEAP_HASROWID) ? \
+		*((int64 *) ((char *)(tup) + (tup)->t_hoff - sizeof(int64))) \
+	: \
+		-1	\
+)
+
+#define HeapTupleHeaderSetRowId(tup, seq)	\
+do { \
+	Assert((tup)->t_infomask & HEAP_HASROWID); \
+	*((int64 *) ((char *)(tup) + (tup)->t_hoff - sizeof(int64))) = (seq); \
+} while (0)
+
+#define HeapTupleGetRowId(tuple) \
+		HeapTupleHeaderGetRowId((tuple)->t_data)
+
+#define	HeapTupleSetRowId(tuple, seq) \
+		HeapTupleHeaderSetRowId((tuple)->t_data, (seq))
 
 /*
  * BITMAPLEN(NATTS) -

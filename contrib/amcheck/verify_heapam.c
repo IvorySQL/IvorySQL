@@ -956,6 +956,10 @@ check_tuple_header(HeapCheckContext *ctx)
 		expected_hoff = MAXALIGN(SizeofHeapTupleHeader + BITMAPLEN(ctx->natts));
 	else
 		expected_hoff = MAXALIGN(SizeofHeapTupleHeader);
+
+	if (infomask & HEAP_HASROWID)
+		expected_hoff = expected_hoff + sizeof(int64);
+
 	if (ctx->tuphdr->t_hoff != expected_hoff)
 	{
 		if ((infomask & HEAP_HASNULL) && ctx->natts == 1)

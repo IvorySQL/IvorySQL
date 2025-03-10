@@ -134,7 +134,6 @@ SELECT unnest(raw_flags)
  HEAP_COMBOCID
  HEAP_HASEXTERNAL
  HEAP_HASNULL
- HEAP_HASOID_OLD
  HEAP_HASVARWIDTH
  HEAP_HOT_UPDATED
  HEAP_KEYS_UPDATED
@@ -150,7 +149,7 @@ SELECT unnest(raw_flags)
  HEAP_XMAX_LOCK_ONLY
  HEAP_XMIN_COMMITTED
  HEAP_XMIN_INVALID
-(19 rows)
+(18 rows)
 
 SELECT unnest(combined_flags)
   FROM heap_tuple_infomask_flags(x'FFFF'::int, x'FFFF'::int) ORDER BY 1;
