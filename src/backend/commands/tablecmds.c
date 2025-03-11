@@ -80,6 +80,7 @@
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 #include "parser/parser.h"
+#include "parser/parse_clause.h"
 #include "partitioning/partbounds.h"
 #include "partitioning/partdesc.h"
 #include "pgstat.h"
@@ -6736,6 +6737,11 @@ alter_table_type_to_string(AlterTableType cmdtype)
 			return "ALTER COLUMN ... DROP INVISIBLE";
 		case AT_SetInvisible:
 			return "ALTER COLUMN ... SET INVISIBLE";
+		case AT_AddRowids:
+		case AT_AddRowidsRecurse:
+			return "ALTER TABLE ... SET WITH ROWID";
+		case AT_DropRowids:
+			return "ALTER TABLE ... SET WITHOUT ROWID";
 	}
 
 	return NULL;

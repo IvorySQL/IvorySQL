@@ -45,6 +45,7 @@
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
+#include "parser/parse_clause.h"
 
 typedef struct
 {
