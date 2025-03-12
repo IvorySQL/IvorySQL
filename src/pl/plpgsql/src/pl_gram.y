@@ -2004,7 +2004,7 @@ stmt_execsql	: K_IMPORT
 					}
 				| K_MERGE
 					{
-						$$ = make_execsql_stmt(K_MERGE, @1);
+						$$ = make_execsql_stmt(K_MERGE, @1, NULL);
 					}
 				| T_WORD
 					{
