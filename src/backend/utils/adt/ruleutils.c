@@ -1205,6 +1205,22 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 								  prettyFlags, false);
 }
 
+/* Internal version, extensible with flags to control its behavior */
+char *
+pg_get_indexdef_columns_extended(Oid indexrelid, bits16 flags)
+{
+	bool		pretty = ((flags & RULE_INDEXDEF_PRETTY) != 0);
+	bool		keys_only = ((flags & RULE_INDEXDEF_KEYS_ONLY) != 0);
+	int			prettyFlags;
+
+	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+
+	return pg_get_indexdef_worker(indexrelid, 0, NULL,
+								  true, keys_only,
+								  false, false,
+								  prettyFlags, false);
+}
+
 /*
  * Internal workhorse to decompile an index definition.
  *
@@ -7924,22 +7940,28 @@ get_name_for_var_field(Var *var, int fieldno,
 						 * Recurse into the sub-select to see what its Var
 						 * refers to. We have to build an additional level of
 						 * namespace to keep in step with varlevelsup in the
-						 * subselect.
+						 * subselect; furthermore, the subquery RTE might be
+						 * from an outer query level, in which case the
+						 * namespace for the subselect must have that outer
+						 * level as parent namespace.
 						 */
+						List	   *save_nslist = context->namespaces;
+						List	   *parent_namespaces;
 						deparse_namespace mydpns;
 						const char *result;
 
-						set_deparse_for_query(&mydpns, rte->subquery,
-											  context->namespaces);
+						parent_namespaces = list_copy_tail(context->namespaces,
+														   netlevelsup);
 
-						context->namespaces = lcons(&mydpns,
-													context->namespaces);
+						set_deparse_for_query(&mydpns, rte->subquery,
+											  parent_namespaces);
+
+						context->namespaces = lcons(&mydpns, parent_namespaces);
 
 						result = get_name_for_var_field((Var *) expr, fieldno,
 														0, context);
 
-						context->namespaces =
-							list_delete_first(context->namespaces);
+						context->namespaces = save_nslist;
 
 						return result;
 					}
@@ -8031,7 +8053,7 @@ get_name_for_var_field(Var *var, int fieldno,
 														attnum);
 
 					if (ste == NULL || ste->resjunk)
-						elog(ERROR, "subquery %s does not have attribute %d",
+						elog(ERROR, "CTE %s does not have attribute %d",
 							 rte->eref->aliasname, attnum);
 					expr = (Node *) ste->expr;
 					if (IsA(expr, Var))
@@ -8039,21 +8061,22 @@ get_name_for_var_field(Var *var, int fieldno,
 						/*
 						 * Recurse into the CTE to see what its Var refers to.
 						 * We have to build an additional level of namespace
-						 * to keep in step with varlevelsup in the CTE.
-						 * Furthermore it could be an outer CTE, so we may
-						 * have to delete some levels of namespace.
+						 * to keep in step with varlevelsup in the CTE;
+						 * furthermore it could be an outer CTE (compare
+						 * SUBQUERY case above).
 						 */
 						List	   *save_nslist = context->namespaces;
-						List	   *new_nslist;
+						List	   *parent_namespaces;
 						deparse_namespace mydpns;
 						const char *result;
 
-						set_deparse_for_query(&mydpns, ctequery,
-											  context->namespaces);
+						parent_namespaces = list_copy_tail(context->namespaces,
+														   ctelevelsup);
 
-						new_nslist = list_copy_tail(context->namespaces,
-													ctelevelsup);
-						context->namespaces = lcons(&mydpns, new_nslist);
+						set_deparse_for_query(&mydpns, ctequery,
+											  parent_namespaces);
+
+						context->namespaces = lcons(&mydpns, parent_namespaces);
 
 						result = get_name_for_var_field((Var *) expr, fieldno,
 														0, context);
