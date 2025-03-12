@@ -68,7 +68,6 @@ extern PGDLLIMPORT char *OraListenAddresses;
 extern PGDLLIMPORT bool ClientAuthInProgress;
 extern PGDLLIMPORT int PreAuthDelay;
 extern PGDLLIMPORT int AuthenticationTimeout;
-extern PGDLLIMPORT bool Log_connections;
 extern PGDLLIMPORT bool log_hostname;
 extern PGDLLIMPORT bool enable_bonjour;
 extern PGDLLIMPORT char *bonjour_name;
