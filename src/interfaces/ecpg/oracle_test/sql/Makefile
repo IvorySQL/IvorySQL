@@ -1,4 +1,4 @@
-subdir = src/interfaces/ecpg/oracle_test/sql
+subdir = src/interfaces/ecpg/test/sql
 top_builddir = ../../../../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/$(subdir)/../Makefile.regress
@@ -31,6 +31,9 @@ TESTS = array array.c \
 		prepareas prepareas.c
 
 all: $(TESTS)
+
+define.c: define.pgc define_prelim.pgc $(ECPG_TEST_DEPENDENCIES)
+	$(ECPG) -DCMDLINESYM=123 -o $@ $(srcdir)/define_prelim.pgc $<
 
 oldexec.c: oldexec.pgc $(ECPG_TEST_DEPENDENCIES)
 	$(ECPG) -r questionmarks -o $@ $<
