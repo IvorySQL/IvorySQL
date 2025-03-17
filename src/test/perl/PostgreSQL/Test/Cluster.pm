@@ -846,19 +846,11 @@ sub backup
 
 	print "# Taking pg_basebackup $backup_name from node \"$name\"\n";
 	PostgreSQL::Test::Utils::system_or_bail(
-<<<<<<< HEAD
-		'pg_basebackup', '-D',
-		$backup_path,    '-h',
-		$self->host,     '-p',
-		$self->port,     '--checkpoint',
-		'fast',          '--no-sync',
-=======
 		'pg_basebackup', '--no-sync',
 		'--pgdata' => $backup_path,
 		'--host' => $self->host,
 		'--port' => $self->port,
 		'--checkpoint' => 'fast',
->>>>>>> 19c6e92b13b (Apply more consistent style for command options in TAP tests)
 		@{ $params{backup_options} });
 	print "# Backup finished\n";
 	return;
@@ -983,11 +975,6 @@ sub init_from_backup
 	{
 		mkdir($data_path) || die "mkdir $data_path: $!";
 		PostgreSQL::Test::Utils::system_or_bail(
-<<<<<<< HEAD
-			$params{tar_program},         'xf',
-			$backup_path . '/pg_wal.tar', '-C',
-			$data_path . '/pg_wal');
-=======
 			$params{tar_program},
 			'xf' => $backup_path . '/base.tar',
 			'-C' => $data_path);
@@ -995,7 +982,6 @@ sub init_from_backup
 			$params{tar_program},
 			'xf' => $backup_path . '/pg_wal.tar',
 			'-C' => $data_path . '/pg_wal');
->>>>>>> 19c6e92b13b (Apply more consistent style for command options in TAP tests)
 
 		# We need to generate a tablespace_map file.
 		open(my $tsmap, ">", "$data_path/tablespace_map")
@@ -1161,15 +1147,10 @@ sub start
 	# -w is now the default but having it here does no harm and helps
 	# compatibility with older versions.
 	$ret = PostgreSQL::Test::Utils::system_log(
-<<<<<<< HEAD
-		'pg_ctl', '-w',           '-D', $self->data_dir,
-		'-l',     $self->logfile, '-o', "--cluster-name=$name",
-=======
 		'pg_ctl', '--wait',
 		'--pgdata' => $self->data_dir,
 		'--log' => $self->logfile,
 		'--options' => "--cluster-name=$name",
->>>>>>> 19c6e92b13b (Apply more consistent style for command options in TAP tests)
 		'start');
 
 	if ($ret != 0)
@@ -2217,15 +2198,9 @@ sub psql
 	{
 		local $@;
 		eval {
-<<<<<<< HEAD
-			my @ipcrun_opts = (\@psql_params, '<', \$sql);
-			push @ipcrun_opts, '>',  $stdout if defined $stdout;
-			push @ipcrun_opts, '2>', $stderr if defined $stderr;
-=======
 			my @ipcrun_opts = (\@psql_params, '<' => \$sql);
 			push @ipcrun_opts, '>' => $stdout if defined $stdout;
 			push @ipcrun_opts, '2>' => $stderr if defined $stderr;
->>>>>>> 19c6e92b13b (Apply more consistent style for command options in TAP tests)
 			push @ipcrun_opts, $timeout if defined $timeout;
 
 			IPC::Run::run @ipcrun_opts;
@@ -2709,14 +2684,9 @@ sub poll_query_until
 	$expected = 't' unless defined($expected);    # default value
 
 	my $cmd = [
-<<<<<<< HEAD
-		$self->installed_command('psql'), '-XAt',
-		'-d',                             $self->connstr($dbname)
-=======
 		$self->installed_command('psql'), '--no-psqlrc',
 		'--no-align', '--tuples-only',
 		'--dbname' => $self->connstr($dbname)
->>>>>>> 19c6e92b13b (Apply more consistent style for command options in TAP tests)
 	];
 	my ($stdout, $stderr);
 	my $max_attempts = 10 * $PostgreSQL::Test::Utils::timeout_default;
@@ -3736,9 +3706,6 @@ sub create_logical_slot_on_standby
 
 	my $handle;
 
-<<<<<<< HEAD
-	$handle = IPC::Run::start(['pg_recvlogical', '-d', $self->connstr($dbname), '-P', 'test_decoding', '-S', $slot_name, '--create-slot'], '>', \$stdout, '2>', \$stderr);
-=======
 	$handle = IPC::Run::start(
 		[
 			'pg_recvlogical',
@@ -3749,7 +3716,6 @@ sub create_logical_slot_on_standby
 		],
 		'>' => \$stdout,
 		'2>' => \$stderr);
->>>>>>> 19c6e92b13b (Apply more consistent style for command options in TAP tests)
 
 	# Arrange for the xl_running_xacts record for which pg_recvlogical is
 	# waiting.
