@@ -586,7 +586,6 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, int varno, TupleDesc tupdesc)
 {
 	int			numattrs = tupdesc->natts;
 	int			attrno;
-	bool			hasrowid;
 	ListCell   *tlist_item = list_head(tlist);
 
 	/* Check the tlist attributes */
@@ -630,14 +629,6 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, int varno, TupleDesc tupdesc)
 
 	if (tlist_item)
 		return false;			/* tlist too long */
-
-	/*
-	 * If the plan context requires a particular hasrowid setting, then that
-	 * has to match, too.
-	 */
-	if (ExecContextForcesRowId(ps, &hasrowid) &&
-		hasrowid != tupdesc->tdhasrowid)
-		return false;
 
 	return true;
 }

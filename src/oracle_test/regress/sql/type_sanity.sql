@@ -420,7 +420,7 @@ WHERE c1.relnatts != (SELECT count(*) FROM pg_attribute AS a1
 
 SELECT a1.attrelid, a1.attname, t1.oid, t1.typname
 FROM pg_attribute AS a1, pg_type AS t1
-WHERE a1.atttypid = t1.oid AND t1.typname != 'rowid' AND
+WHERE a1.atttypid = t1.oid AND
     (a1.attlen != t1.typlen OR
      a1.attalign != t1.typalign OR
      a1.attbyval != t1.typbyval OR

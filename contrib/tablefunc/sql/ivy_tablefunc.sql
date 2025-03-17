@@ -11,28 +11,28 @@ SELECT avg(normal_rand)::int, count(*) FROM normal_rand(-1, 250, 0.2);
 --
 -- crosstab()
 --
-CREATE TABLE ct(id int, rowclass text, orarowid text, attribute text, val text);
+CREATE TABLE ct(id int, rowclass text, rowid text, attribute text, val text);
 \copy ct from 'data/ct.data'
 
-SELECT * FROM crosstab2('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
-SELECT * FROM crosstab3('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
-SELECT * FROM crosstab4('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
+SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
+SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
+SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;');
 
-SELECT * FROM crosstab2('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
-SELECT * FROM crosstab3('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
-SELECT * FROM crosstab4('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
+SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
+SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
+SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
 
-SELECT * FROM crosstab2('SELECT orarowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
-SELECT * FROM crosstab3('SELECT orarowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
-SELECT * FROM crosstab4('SELECT orarowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
+SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
+SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
+SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' and (attribute = ''att1'' or attribute = ''att2'') ORDER BY 1,2;');
 
-SELECT * FROM crosstab2('SELECT orarowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
-SELECT * FROM crosstab3('SELECT orarowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
-SELECT * FROM crosstab4('SELECT orarowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
+SELECT * FROM crosstab2('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
+SELECT * FROM crosstab3('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
+SELECT * FROM crosstab4('SELECT rowid, attribute, val FROM ct where rowclass = ''group2'' ORDER BY 1,2;');
 
-SELECT * FROM crosstab('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text);
-SELECT * FROM crosstab('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text, att3 text);
-SELECT * FROM crosstab('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text, att3 text, att4 text);
+SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text);
+SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text, att3 text);
+SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;') AS c(rowid text, att1 text, att2 text, att3 text, att4 text);
 
 -- check it works with OUT parameters, too
 
@@ -43,23 +43,23 @@ AS '$libdir/tablefunc','crosstab'
 LANGUAGE C STABLE STRICT;
 /
 
-SELECT * FROM crosstab_out('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
+SELECT * FROM crosstab_out('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' ORDER BY 1,2;');
 
 -- check error reporting
-SELECT * FROM crosstab('SELECT orarowid, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
+SELECT * FROM crosstab('SELECT rowid, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
   AS ct(row_name text, category_1 text, category_2 text);
-SELECT * FROM crosstab('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
+SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
   AS ct(row_name text);
-SELECT * FROM crosstab('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
+SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
   AS ct(row_name int, category_1 text, category_2 text);
-SELECT * FROM crosstab('SELECT orarowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
+SELECT * FROM crosstab('SELECT rowid, attribute, val FROM ct where rowclass = ''group1'' and (attribute = ''att2'' or attribute = ''att3'') ORDER BY 1,2;')
   AS ct(row_name text, category_1 text, category_2 int);
 
 --
 -- hash based crosstab
 --
 
-create table cth(id serial, orarowid text, rowdt pg_catalog.timestamp, attribute text, val text);
+create table cth(id serial, rowid text, rowdt pg_catalog.timestamp, attribute text, val text);
 insert into cth values(DEFAULT,'test1','01 Mar 2003','temperature','42');
 insert into cth values(DEFAULT,'test1','01 Mar 2003','test_result','PASS');
 -- the next line is intentionally left commented and is therefore a "missing" attribute
@@ -77,71 +77,71 @@ insert into cth values(DEFAULT,NULL,'25 Oct 2007','volts','1.41234');
 
 -- return attributes as plain text
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, rowdt pg_catalog.timestamp, temperature text, test_result text, test_startdate text, volts text);
 
 -- this time without rowdt
 SELECT * FROM crosstab(
-  'SELECT orarowid, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, temperature text, test_result text, test_startdate text, volts text);
 
 -- convert attributes to specific datatypes
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, rowdt pg_catalog.timestamp, temperature int4, test_result text, test_startdate pg_catalog.timestamp, volts float8);
 
 -- source query and category query out of sync
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth WHERE attribute IN (''temperature'',''test_result'',''test_startdate'') ORDER BY 1')
 AS c(rowid text, rowdt pg_catalog.timestamp, temperature int4, test_result text, test_startdate pg_catalog.timestamp);
 
 -- if category query generates no rows, get expected error
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth WHERE attribute = ''a'' ORDER BY 1')
 AS c(rowid text, rowdt pg_catalog.timestamp, temperature int4, test_result text, test_startdate pg_catalog.timestamp, volts float8);
 
 -- if category query generates more than one column, get expected error
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT rowdt, attribute FROM cth ORDER BY 2')
 AS c(rowid text, rowdt pg_catalog.timestamp, temperature int4, test_result text, test_startdate pg_catalog.timestamp, volts float8);
 
 -- if category query generates a NULL value, get expected error
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT NULL::text')
 AS c(rowid text, rowdt timestamp, temperature int4, test_result text, test_startdate timestamp, volts float8);
 
 -- if source query returns zero rows, get zero rows returned
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth WHERE false ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth WHERE false ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature text, test_result text, test_startdate text, volts text);
 
 -- if source query returns zero rows, get zero rows returned even if category query generates no rows
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, attribute, val FROM cth WHERE false ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth WHERE false ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth WHERE false ORDER BY 1')
 AS c(rowid text, rowdt pg_catalog.timestamp, temperature text, test_result text, test_startdate text, volts text);
 
 -- check errors with inappropriate input rowtype
 SELECT * FROM crosstab(
-  'SELECT orarowid, attribute FROM cth ORDER BY 1',
+  'SELECT rowid, attribute FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, temperature text, test_result text, test_startdate text, volts text);
 SELECT * FROM crosstab(
-  'SELECT orarowid, rowdt, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text, rowdt timestamp, temperature int4, test_result text, test_startdate timestamp, volts float8);
 
 -- check errors with inappropriate result rowtype
 SELECT * FROM crosstab(
-  'SELECT orarowid, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1')
 AS c(rowid text);
 
@@ -158,13 +158,13 @@ LANGUAGE C STABLE STRICT;
 /
 
 SELECT * FROM crosstab_named(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1');
 
 -- check it works with OUT parameters
 
 CREATE FUNCTION crosstab_out(text, text,
-  OUT orarowid text, OUT rowdt pg_catalog.timestamp,
+  OUT rowid text, OUT rowdt pg_catalog.timestamp,
   OUT temperature int4, OUT test_result text,
   OUT test_startdate pg_catalog.timestamp, OUT volts float8)
 RETURNS setof record
@@ -173,7 +173,7 @@ LANGUAGE C STABLE STRICT;
 /
 
 SELECT * FROM crosstab_out(
-  'SELECT orarowid, rowdt, attribute, val FROM cth ORDER BY 1',
+  'SELECT rowid, rowdt, attribute, val FROM cth ORDER BY 1',
   'SELECT DISTINCT attribute FROM cth ORDER BY 1');
 
 --

@@ -214,7 +214,7 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 			 * Get a tupledesc corresponding to the aggregated inputs
 			 * (including sort expressions) of the agg.
 			 */
-			qstate->tupdesc = ExecTypeFromTL(aggref->args, false);
+			qstate->tupdesc = ExecTypeFromTL(aggref->args);
 
 			/* If we need a flag column, hack the tupledesc to include that */
 			if (ishypothetical)

@@ -45,7 +45,6 @@
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
-#include "parser/parse_clause.h"
 
 typedef struct
 {
@@ -371,12 +370,6 @@ int
 GetIntoRelEFlags(IntoClause *intoClause)
 {
 	int			flags = 0;
-
-	if (interpretRowidOption(intoClause->options,
-					 (intoClause->viewQuery == NULL)))
-		flags = EXEC_FLAG_WITH_ROWID;
-	else
-		flags = EXEC_FLAG_WITHOUT_ROWID;
 
 	if (intoClause->skipData)
 		flags |= EXEC_FLAG_WITH_NO_DATA;

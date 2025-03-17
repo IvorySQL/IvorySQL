@@ -312,7 +312,6 @@ typedef struct _tableInfo
 	bool		rowsec;			/* is row security enabled? */
 	bool		forcerowsec;	/* is row security forced? */
 	bool		hasoids;		/* does it have OIDs? */
-	bool		relhasrowid;
 	uint32		frozenxid;		/* table's relfrozenxid */
 	uint32		minmxid;		/* table's relminmxid */
 	Oid			toast_oid;		/* toast table's OID, or 0 if none */

@@ -36,8 +36,6 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-#include "utils/guc.h"
-#include "utils/ora_compatible.h"
 
 
 /*

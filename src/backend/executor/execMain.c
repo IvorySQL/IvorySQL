@@ -998,7 +998,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			TupleTableSlot *slot;
 
 			slot = ExecInitExtraTupleSlot(estate, NULL, &TTSOpsVirtual);
-			j = ExecInitJunkFilter(planstate->plan->targetlist, tupType->tdhasrowid,
+			j = ExecInitJunkFilter(planstate->plan->targetlist,
 								   slot);
 			estate->es_junkFilter = j;
 
@@ -1359,39 +1359,6 @@ ExecGetTriggerResultRel(EState *estate, Oid relid,
 	 */
 
 	return rInfo;
-}
-
-bool
-ExecContextForcesRowId(PlanState *planstate, bool *hasrowid)
-{
-	ResultRelInfo *info = NULL;
-	Relation	rel;
-	ResultRelInfo **ri = planstate->state->es_result_relations;
-
-	if (ri)
-	{
-		info = *ri;
-		if (info)
-		{
-			rel = info->ri_RelationDesc;
-			*hasrowid = rel->rd_rel->relhasrowid;
-			return true;
-		}
-	}
-
-	if (planstate->state->es_top_eflags & EXEC_FLAG_WITH_ROWID)
-	{
-		*hasrowid = true;
-		return true;
-	}
-
-	if (planstate->state->es_top_eflags & EXEC_FLAG_WITHOUT_ROWID)
-	{
-		*hasrowid = false;
-		return true;
-	}
-
-	return false;
 }
 
 /*

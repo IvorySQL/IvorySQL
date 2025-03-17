@@ -83,7 +83,6 @@ typedef struct TupleDescData
 	int32		tdtypmod;		/* typmod for tuple type */
 	int			tdrefcount;		/* reference count, or -1 if not counting */
 	TupleConstr *constr;		/* constraints, or NULL if none */
-	bool		tdhasrowid;		/* tuples has rowid attribute in its header */
 	/* attrs[N] is the description of Attribute Number N+1 */
 	FormData_pg_attribute attrs[FLEXIBLE_ARRAY_MEMBER];
 }			TupleDescData;
@@ -94,7 +93,7 @@ typedef struct TupleDescData *TupleDesc;
 
 extern TupleDesc CreateTemplateTupleDesc(int natts);
 
-extern TupleDesc CreateTupleDesc(int natts, Form_pg_attribute *attrs, bool tdhasrowid, bool is_sysattr);
+extern TupleDesc CreateTupleDesc(int natts, Form_pg_attribute *attrs);
 
 extern TupleDesc CreateTupleDescCopy(TupleDesc tupdesc);
 

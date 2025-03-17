@@ -95,9 +95,6 @@ CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,Relat
 	/* # of CHECK constraints for class */
 	int16		relchecks BKI_DEFAULT(0);
 
-	/* T if we generate ROWIDs for rows of rel */
-	bool		relhasrowid BKI_DEFAULT(f); 
-
 	/* has (or has had) any rules */
 	bool		relhasrules BKI_DEFAULT(f);
 

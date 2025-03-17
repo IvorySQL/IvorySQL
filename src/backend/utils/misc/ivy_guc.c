@@ -36,10 +36,6 @@ int	compatible_db = PG_PARSER;
 
 bool	seq_scale_fixed = false;
 bool	internal_warning = false;
-
-bool   default_with_rowids = false;
-int    rowid_seq_cache = 20;
-
 #endif
 
 #ifdef IVY_GUC_VAR_STRUCT
@@ -141,17 +137,6 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	},
 
 	{
-		{"ivorysql.default_with_rowids", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Auto add rowid column for create new table."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&default_with_rowids,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"ivorysql.enable_internal_warning", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Whether to print internal warning information."),
 			NULL,
@@ -198,17 +183,6 @@ static struct config_int Ivy_ConfigureNamesInt[] =
 		},
 		&datetime_ignore_nls_mask,
 		0, 0, 15,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"ivorysql.rowid_seq_cache", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Sets rowid Sequence cache number."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&rowid_seq_cache,
-		20, 1, 60000,
 		NULL, NULL, NULL
 	},
 

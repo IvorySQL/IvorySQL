@@ -1454,9 +1454,9 @@ ERROR:  column "bar" of relation "atacc1" does not exist
 alter table atacc1 SET WITHOUT OIDS;
 -- try adding an oid column, should fail (not supported)
 alter table atacc1 SET WITH OIDS;
-ERROR:  syntax error at or near "OIDS"
+ERROR:  syntax error at or near "WITH"
 LINE 1: alter table atacc1 SET WITH OIDS;
-                                    ^
+                               ^
 -- try dropping the xmin column, should fail
 alter table atacc1 drop xmin;
 ERROR:  cannot drop system column "xmin"

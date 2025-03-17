@@ -620,7 +620,7 @@ InsertOneTuple(void)
 
 	elog(DEBUG4, "inserting row with %d columns", numattr);
 
-	tupDesc = CreateTupleDesc(numattr, attrtypes, false, false);
+	tupDesc = CreateTupleDesc(numattr, attrtypes);
 	tuple = heap_form_tuple(tupDesc, values, Nulls);
 	pfree(tupDesc);				/* just free's tupDesc, not the attrtypes */
 

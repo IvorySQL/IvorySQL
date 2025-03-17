@@ -1264,9 +1264,6 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 									def->defnamespace)));
 			}
 
-			if (strcmp(def->defname, "rowid") == 0)
-				continue;
-
 			/* ignore if not in the same namespace */
 			if (namspace == NULL)
 			{

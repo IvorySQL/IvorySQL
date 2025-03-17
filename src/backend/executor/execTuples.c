@@ -70,7 +70,7 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-static TupleDesc ExecTypeFromTLInternal(List *targetList, bool hasrowid, 
+static TupleDesc ExecTypeFromTLInternal(List *targetList,
 										bool skipjunk);
 static pg_attribute_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 															  int natts);
@@ -1841,19 +1841,7 @@ ExecFetchSlotHeapTupleDatum(TupleTableSlot *slot)
 void
 ExecInitResultTypeTL(PlanState *planstate)
 {
-	bool		hasrowid;
-	TupleDesc	tupDesc;
-
-	if (ExecContextForcesRowId(planstate, &hasrowid))
-	{
-		/* context forces ROWID choice; hasrowid is now set correctly */
-	}
-	else
-	{
-		hasrowid = false;
-	}
-
-	tupDesc = ExecTypeFromTL(planstate->plan->targetlist, hasrowid);
+	TupleDesc	tupDesc = ExecTypeFromTL(planstate->plan->targetlist);
 
 	planstate->ps_ResultTupleDesc = tupDesc;
 }
@@ -2034,9 +2022,9 @@ slot_getsomeattrs_int(TupleTableSlot *slot, int attnum)
  * ----------------------------------------------------------------
  */
 TupleDesc
-ExecTypeFromTL(List *targetList, bool hasrowid)
+ExecTypeFromTL(List *targetList)
 {
-	return ExecTypeFromTLInternal(targetList, hasrowid, false);
+	return ExecTypeFromTLInternal(targetList, false);
 }
 
 /* ----------------------------------------------------------------
@@ -2046,13 +2034,13 @@ ExecTypeFromTL(List *targetList, bool hasrowid)
  * ----------------------------------------------------------------
  */
 TupleDesc
-ExecCleanTypeFromTL(List *targetList, bool hasrowid)
+ExecCleanTypeFromTL(List *targetList)
 {
-	return ExecTypeFromTLInternal(targetList, hasrowid, true);
+	return ExecTypeFromTLInternal(targetList, true);
 }
 
 static TupleDesc
-ExecTypeFromTLInternal(List *targetList, bool hasrowid, bool skipjunk)
+ExecTypeFromTLInternal(List *targetList, bool skipjunk)
 {
 	TupleDesc	typeInfo;
 	ListCell   *l;
@@ -2064,7 +2052,6 @@ ExecTypeFromTLInternal(List *targetList, bool hasrowid, bool skipjunk)
 	else
 		len = ExecTargetListLength(targetList);
 	typeInfo = CreateTemplateTupleDesc(len);
-	typeInfo->tdhasrowid = hasrowid;
 
 	foreach(l, targetList)
 	{

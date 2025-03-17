@@ -1102,22 +1102,9 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 	{
 		/* Ordinary scalar operator */
 		Node	   *last_srf = pstate->p_last_srf;
-		Oid 	   ltypeId = InvalidOid;
 
 		lexpr = transformExprRecurse(pstate, lexpr);
-		ltypeId = exprType(lexpr);
-
-		if (compatible_db == DB_ORACLE && ltypeId == ROWIDOID && nodeTag(rexpr) != T_TypeCast)
-		{
-			TypeCast   *castnode = makeNode(TypeCast);
-			castnode->typeName = makeTypeNameFromNameList(list_make2(makeString("sys"), makeString("rowid")));
-			castnode->arg = rexpr;
-			castnode->location = -1;
-
-			rexpr = transformExprRecurse(pstate, (Node *)castnode);
-		}
-		else
-			rexpr = transformExprRecurse(pstate, rexpr);
+		rexpr = transformExprRecurse(pstate, rexpr);
 
 		result = (Node *) make_op(pstate,
 								  a->name,

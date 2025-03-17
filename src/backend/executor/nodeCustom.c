@@ -78,7 +78,7 @@ ExecInitCustomScan(CustomScan *cscan, EState *estate, int eflags)
 	{
 		TupleDesc	scan_tupdesc;
 
-		scan_tupdesc = ExecTypeFromTL(cscan->custom_scan_tlist, false);
+		scan_tupdesc = ExecTypeFromTL(cscan->custom_scan_tlist);
 		ExecInitScanTupleSlot(estate, &css->ss, scan_tupdesc, slotOps);
 		/* Node's targetlist will contain Vars with varno = INDEX_VAR */
 		tlistvarno = INDEX_VAR;

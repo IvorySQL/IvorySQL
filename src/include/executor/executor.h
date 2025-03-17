@@ -68,9 +68,7 @@
 #define EXEC_FLAG_BACKWARD			0x0008	/* need backward scan */
 #define EXEC_FLAG_MARK				0x0010	/* need mark/restore */
 #define EXEC_FLAG_SKIP_TRIGGERS		0x0020	/* skip AfterTrigger setup */
-#define EXEC_FLAG_WITH_ROWID		0x0040	/* force ROWID in returned tuples */
-#define EXEC_FLAG_WITHOUT_ROWID		0x0080	/* force no ROWID in returned tuples */
-#define EXEC_FLAG_WITH_NO_DATA		0x0100	/* REFRESH ... WITH NO DATA */
+#define EXEC_FLAG_WITH_NO_DATA		0x0040	/* REFRESH ... WITH NO DATA */
 
 
 /* Hook for plugins to get control in ExecutorStart() */
@@ -168,7 +166,7 @@ extern void ResetTupleHashTable(TupleHashTable hashtable);
 /*
  * prototypes from functions in execJunk.c
  */
-extern JunkFilter *ExecInitJunkFilter(List *targetList, bool hasrowid, 
+extern JunkFilter *ExecInitJunkFilter(List *targetList,
 									  TupleTableSlot *slot);
 extern JunkFilter *ExecInitJunkFilterConversion(List *targetList,
 												TupleDesc cleanTupType,
@@ -221,7 +219,6 @@ extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 							  int instrument_options);
 extern ResultRelInfo *ExecGetTriggerResultRel(EState *estate, Oid relid,
 											  ResultRelInfo *rootRelInfo);
-extern bool ExecContextForcesRowId(PlanState *planstate, bool *hasrowid);
 extern List *ExecGetAncestorResultRels(EState *estate, ResultRelInfo *resultRelInfo);
 extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot, EState *estate);
@@ -498,8 +495,8 @@ extern TupleTableSlot *ExecInitExtraTupleSlot(EState *estate,
 											  const TupleTableSlotOps *tts_ops);
 extern TupleTableSlot *ExecInitNullTupleSlot(EState *estate, TupleDesc tupType,
 											 const TupleTableSlotOps *tts_ops);
-extern TupleDesc ExecTypeFromTL(List *targetList, bool hasrowid);
-extern TupleDesc ExecCleanTypeFromTL(List *targetList, bool hasrowid);
+extern TupleDesc ExecTypeFromTL(List *targetList);
+extern TupleDesc ExecCleanTypeFromTL(List *targetList);
 extern TupleDesc ExecTypeFromExprList(List *exprList);
 extern void ExecTypeSetColNames(TupleDesc typeInfo, List *namesList);
 extern void UpdateChangedParamSet(PlanState *node, Bitmapset *newchg);

@@ -548,7 +548,7 @@ PortalStart(Portal portal, ParamListInfo params,
 
 					pstmt = PortalGetPrimaryStmt(portal);
 					portal->tupDesc =
-						ExecCleanTypeFromTL(pstmt->planTree->targetlist, false);
+						ExecCleanTypeFromTL(pstmt->planTree->targetlist);
 				}
 
 				/*

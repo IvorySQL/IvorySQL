@@ -1032,7 +1032,7 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 		 * (hack alert!).  The righthand expressions will be evaluated in our
 		 * own innerecontext.
 		 */
-		tupDescLeft = ExecTypeFromTL(lefttlist, false);
+		tupDescLeft = ExecTypeFromTL(lefttlist);
 		slot = ExecInitExtraTupleSlot(estate, tupDescLeft, &TTSOpsVirtual);
 		sstate->projLeft = ExecBuildProjectionInfo(lefttlist,
 												   NULL,
@@ -1040,7 +1040,7 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 												   parent,
 												   NULL);
 
-		sstate->descRight = tupDescRight = ExecTypeFromTL(righttlist, false);
+		sstate->descRight = tupDescRight = ExecTypeFromTL(righttlist);
 		slot = ExecInitExtraTupleSlot(estate, tupDescRight, &TTSOpsVirtual);
 		sstate->projRight = ExecBuildProjectionInfo(righttlist,
 													sstate->innerecontext,
