@@ -7410,7 +7410,7 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 	int			anum;
 	int			strict_multiassignment_level = 0;
 
-	HeapTupleHeader tuphd;
+	HeapTupleHeader tuphd = NULL;
 	Oid 		tupType;
 	int32		tupTypmod;
 	TupleDesc	rowidtupdesc;
@@ -7450,7 +7450,7 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 
 			for (int i = 0; i < tupdesc->natts; i++)
 			{
-				if (strcmp(pstrdup(NameStr(tupdesc->attrs[i].attname)), "rowid") == 0)
+				if (strcmp(NameStr(tupdesc->attrs[i].attname), "rowid") == 0)
 					tuphd = DatumGetHeapTupleHeader(values[i]);
 			}
 

@@ -285,7 +285,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 			RangeVar   *inh = lfirst_node(RangeVar, inher);
 			Relation	prel;
 			prel = table_openrv(inh, AccessShareLock);
-			cxt.hasrowid = prel->rd_rel->relhasrowid;
+			cxt.hasrowid = cxt.hasrowid || prel->rd_rel->relhasrowid;
 			table_close(prel, NoLock);
 		}
 	}

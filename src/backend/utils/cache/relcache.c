@@ -910,7 +910,7 @@ RelationGetRowIdSeqId(Relation relation)
 	TableScanDesc scan;
 	Relation  class_rel;
 	StringInfoData rowid_seq;
-	Oid 		seqoid;
+	Oid 		seqoid = InvalidOid;
 
 	initStringInfo(&rowid_seq);
 	appendStringInfo(&rowid_seq, "%s", RelationGetRelationName(relation));
