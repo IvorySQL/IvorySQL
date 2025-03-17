@@ -69,7 +69,7 @@
 #include "utils/snapmgr.h"
 #include "utils/spccache.h"
 #include "utils/ora_compatible.h"
-
+#include "commands/sequence.h"
 
 static HeapTuple heap_prepare_insert(Relation relation, HeapTuple tup,
 									 TransactionId xid, CommandId cid, int options);
@@ -2110,6 +2110,8 @@ static HeapTuple
 heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 					CommandId cid, int options)
 {
+	int	seqnum;
+
 	/*
 	 * To allow parallel inserts, we need to ensure that they are safe to be
 	 * performed in workers. We have the infrastructure to allow parallel
@@ -2120,6 +2122,18 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
 				 errmsg("cannot insert tuples in a parallel worker")));
+
+	if (relation->rd_rel->relhasrowid && OidIsValid(relation->rd_rowdSeqid))
+	{
+#ifdef	NOT_USED
+		/* this is redundant with an Assert in HeapTupleSetRowId */
+		Assert(tup->t_data->t_infomask & HEAP_HASROWID);
+#endif
+		/* Get the sequence next value */
+		seqnum = nextval_internal(relation->rd_rowdSeqid, true);
+		/* Set the HeapTupleHeader */
+		HeapTupleSetRowId(tup, seqnum);
+	}
 
 	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
 	tup->t_data->t_infomask2 &= ~(HEAP2_XACT_MASK);
@@ -3172,6 +3186,16 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 
 	/* the new tuple is ready, except for this: */
 	newtup->t_tableOid = RelationGetRelid(relation);
+
+	/* Fill in ROWID for newtup */
+	if (relation->rd_rel->relhasrowid)
+	{
+#ifdef NOT_USED
+		/* this is redundant with an Assert in HeapTupleSetRowId */
+		Assert(newtup->t_data->t_infomask & HEAP_HASROWID);
+#endif
+		HeapTupleSetRowId(newtup, HeapTupleGetRowId(&oldtup));
+	}
 
 	/*
 	 * Determine columns modified by the update.  Additionally, identify
@@ -8632,6 +8656,14 @@ ExtractReplicaIdentity(Relation relation, HeapTuple tp, bool key_required,
 	*copy = true;
 
 	bms_free(idattrs);
+
+	/*
+	 * Always copy rowid if the table has them, even if not included in the
+	 * index. The space in the logged tuple is used anyway, so there's little
+	 * point in not including the information.
+	 */
+	if (relation->rd_rel->relhasrowid)
+		HeapTupleSetRowId(key_tuple, HeapTupleGetRowId(tp));
 
 	/*
 	 * If the tuple, which by here only contains indexed columns, still has

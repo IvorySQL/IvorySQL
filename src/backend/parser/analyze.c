@@ -2462,6 +2462,19 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	qry->returningList = transformReturningList(pstate, stmt->returningList,
 												EXPR_KIND_RETURNING);
 
+	if (DB_ORACLE == compatible_db)
+	{
+		ListCell   *o_target;
+
+		foreach(o_target, stmt->targetList)
+		{
+			ResTarget  *origTarget = (ResTarget *) lfirst(o_target);
+	
+			if (strcmp(origTarget->name, "rowid") == 0)
+				elog(ERROR, "cannot specify system column name \"%s\"", origTarget->name);
+		}
+	}
+
 	/*
 	 * Now we are done with SELECT-like processing, and can get on with
 	 * transforming the target list to match the UPDATE target columns.

@@ -328,6 +328,13 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_SetInvisible:
 				strtype = "SET INVISIBLE";
 				break;
+			case AT_AddRowids:
+			case AT_AddRowidsRecurse:
+				strtype = "ALTER COLUMN SET WITH RWOID";
+				break;
+			case AT_DropRowids:
+				strtype = "ALTER COLUMN SET WITHOUT RWOID";
+				break;
 		}
 
 		if (subcmd->recurse)

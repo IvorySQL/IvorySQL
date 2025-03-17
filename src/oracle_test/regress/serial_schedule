@@ -1,0 +1,3 @@
+# src/oracle_test/regress/serial_schedule
+# This should probably be in an order similar to parallel_schedule.
+test: ora_rowid

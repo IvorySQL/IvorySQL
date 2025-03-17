@@ -410,7 +410,7 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 								dest, NULL, NULL, 0);
 
 	/* call ExecutorStart to prepare the plan for execution */
-	ExecutorStart(queryDesc, 0);
+	ExecutorStart(queryDesc, EXEC_FLAG_WITHOUT_ROWID);
 
 	/* run the plan */
 	ExecutorRun(queryDesc, ForwardScanDirection, 0, true);

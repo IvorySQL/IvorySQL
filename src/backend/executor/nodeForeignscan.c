@@ -189,7 +189,7 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 	{
 		TupleDesc	scan_tupdesc;
 
-		scan_tupdesc = ExecTypeFromTL(node->fdw_scan_tlist);
+		scan_tupdesc = ExecTypeFromTL(node->fdw_scan_tlist, false);
 		ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc,
 							  &TTSOpsHeapTuple);
 		/* Node's targetlist will contain Vars with varno = INDEX_VAR */

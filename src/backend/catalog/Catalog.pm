@@ -337,7 +337,7 @@ sub ParseData
 			next;
 		}
 
-		if ($match_oracle_regex_begin == 1)
+		if ($match_oracle_regex_begin == 1 && $match_oracle_regex_end < 1)
 		{
 			if ($compatible_type eq 'pg')
 			{

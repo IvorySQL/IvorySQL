@@ -96,6 +96,7 @@ CreateTemplateTupleDesc(int natts)
 	desc->tdtypeid = RECORDOID;
 	desc->tdtypmod = -1;
 	desc->tdrefcount = -1;		/* assume not reference-counted */
+	desc->tdhasrowid = false;
 
 	return desc;
 }
@@ -109,10 +110,13 @@ CreateTemplateTupleDesc(int natts)
  * caller can overwrite this if needed.
  */
 TupleDesc
-CreateTupleDesc(int natts, Form_pg_attribute *attrs)
+CreateTupleDesc(int natts, Form_pg_attribute *attrs, bool tdhasrowid, bool is_sysattr)
 {
 	TupleDesc	desc;
 	int			i;
+
+	if (!tdhasrowid && is_sysattr)
+		natts = natts - 1;
 
 	desc = CreateTemplateTupleDesc(natts);
 
@@ -136,6 +140,7 @@ CreateTupleDescCopy(TupleDesc tupdesc)
 	int			i;
 
 	desc = CreateTemplateTupleDesc(tupdesc->natts);
+	desc->tdhasrowid = tupdesc->tdhasrowid;
 
 	/* Flat-copy the attribute array */
 	memcpy(TupleDescAttr(desc, 0),
@@ -178,6 +183,7 @@ CreateTupleDescCopyConstr(TupleDesc tupdesc)
 	int			i;
 
 	desc = CreateTemplateTupleDesc(tupdesc->natts);
+	desc->tdhasrowid = tupdesc->tdhasrowid;
 
 	/* Flat-copy the attribute array */
 	memcpy(TupleDescAttr(desc, 0),

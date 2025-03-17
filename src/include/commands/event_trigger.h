@@ -35,6 +35,7 @@ extern PGDLLIMPORT bool event_triggers;
 #define AT_REWRITE_DEFAULT_VAL			0x02
 #define AT_REWRITE_COLUMN_REWRITE		0x04
 #define AT_REWRITE_ACCESS_METHOD		0x08
+#define AT_REWRITE_ALTER_ROWID			0x10
 
 /*
  * EventTriggerData is the node type that is passed as fmgr "context" info

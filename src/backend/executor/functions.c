@@ -775,7 +775,7 @@ init_sql_fcache(FunctionCallInfo fcinfo, Oid collation, bool lazyEvalOK)
 															  rettupdesc,
 															  slot);
 		else
-			fcache->junkFilter = ExecInitJunkFilter(resulttlist, slot);
+			fcache->junkFilter = ExecInitJunkFilter(resulttlist, false, slot);
 	}
 
 	if (fcache->returnsTuple)

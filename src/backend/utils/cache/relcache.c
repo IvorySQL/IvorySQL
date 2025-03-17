@@ -89,6 +89,7 @@
 #include "utils/resowner.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "access/heapam.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -293,7 +294,7 @@ static void write_relcache_init_file(bool shared);
 static void write_item(const void *data, Size len, FILE *fp);
 
 static void formrdesc(const char *relationName, Oid relationReltype,
-					  bool isshared, int natts, const FormData_pg_attribute *attrs);
+					  bool isshared, bool hasrowid, int natts, const FormData_pg_attribute *attrs);
 
 static HeapTuple ScanPgRelation(Oid targetRelId, bool indexOK, bool force_non_historic);
 static Relation AllocateRelationDesc(Form_pg_class relp);
@@ -444,6 +445,8 @@ AllocateRelationDesc(Form_pg_class relp)
 
 	/* and allocate attribute tuple form storage */
 	relation->rd_att = CreateTemplateTupleDesc(relationForm->relnatts);
+	relation->rd_att->tdhasrowid = relationForm->relhasrowid;
+
 	/* which we mark as a reference-counted tupdesc */
 	relation->rd_att->tdrefcount = 1;
 
@@ -533,6 +536,7 @@ RelationBuildTupleDesc(Relation relation)
 	relation->rd_att->tdtypeid =
 		relation->rd_rel->reltype ? relation->rd_rel->reltype : RECORDOID;
 	relation->rd_att->tdtypmod = -1;	/* just to be sure */
+	relation->rd_att->tdhasrowid = relation->rd_rel->relhasrowid;
 
 	constr = (TupleConstr *) MemoryContextAllocZero(CacheMemoryContext,
 													sizeof(TupleConstr));
@@ -897,6 +901,54 @@ RelationBuildRuleLock(Relation relation)
 	relation->rd_rules = rulelock;
 }
 
+static void
+RelationGetRowIdSeqId(Relation relation)
+{
+	ScanKeyData key[3];
+	int 	keycount;
+	HeapTuple		tuple;
+	TableScanDesc scan;
+	Relation  class_rel;
+	StringInfoData rowid_seq;
+	Oid 		seqoid = InvalidOid;
+
+	initStringInfo(&rowid_seq);
+	appendStringInfo(&rowid_seq, "%s", RelationGetRelationName(relation));
+	appendStringInfoChar(&rowid_seq, '_');
+	appendStringInfo(&rowid_seq, "rowid");
+	appendStringInfoChar(&rowid_seq, '_');
+	appendStringInfo(&rowid_seq, "seq");
+
+	keycount = 0;
+	ScanKeyInit(&key[keycount++],
+			Anum_pg_class_relname,
+			BTEqualStrategyNumber, F_NAMEEQ,
+			CStringGetDatum(rowid_seq.data));
+
+	ScanKeyInit(&key[keycount++],
+			Anum_pg_class_relnamespace,
+			BTEqualStrategyNumber, F_OIDEQ,
+			ObjectIdGetDatum(relation->rd_rel->relnamespace));
+
+	ScanKeyInit(&key[keycount++],
+			Anum_pg_class_relowner,
+			BTEqualStrategyNumber, F_OIDEQ,
+			ObjectIdGetDatum(relation->rd_rel->relowner));
+
+	class_rel = table_open(RelationRelationId, AccessShareLock);
+	scan = table_beginscan_catalog(class_rel, keycount, key);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		seqoid = ((Form_pg_class) GETSTRUCT(tuple))->oid;
+	}
+
+	relation->rd_rowdSeqid = seqoid;
+
+	pfree(rowid_seq.data);
+	table_endscan(scan);
+	table_close(class_rel, AccessShareLock);
+}
+
 /*
  *		equalRuleLocks
  *
@@ -1183,6 +1235,13 @@ retry:
 	 * initialize the tuple descriptor (relation->rd_att).
 	 */
 	RelationBuildTupleDesc(relation);
+
+	if (relation->rd_rel->relhasrowid &&
+		(relation->rd_rel->relkind == RELKIND_RELATION ||
+		relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
+		RelationGetRowIdSeqId(relation);
+	else
+		relation->rd_rowdSeqid = InvalidOid;
 
 	/* foreign key data is not loaded till asked for */
 	relation->rd_fkeylist = NIL;
@@ -1873,7 +1932,7 @@ RelationInitTableAccessMethod(Relation relation)
  */
 static void
 formrdesc(const char *relationName, Oid relationReltype,
-		  bool isshared,
+		  bool isshared, bool hasrowid, 
 		  int natts, const FormData_pg_attribute *attrs)
 {
 	Relation	relation;
@@ -1939,6 +1998,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_rel->reltuples = -1;
 	relation->rd_rel->relallvisible = 0;
 	relation->rd_rel->relkind = RELKIND_RELATION;
+	relation->rd_rel->relhasrowid = hasrowid;
 	relation->rd_rel->relnatts = (int16) natts;
 	relation->rd_rel->relam = HEAP_TABLE_AM_OID;
 
@@ -1950,6 +2010,8 @@ formrdesc(const char *relationName, Oid relationReltype,
 	 * src/include/catalog/ headers via genbki.pl.
 	 */
 	relation->rd_att = CreateTemplateTupleDesc(natts);
+	relation->rd_att->tdhasrowid = hasrowid;
+
 	relation->rd_att->tdrefcount = 1;	/* mark as refcounted */
 
 	relation->rd_att->tdtypeid = relationReltype;
@@ -3645,6 +3707,7 @@ RelationBuildLocalRelation(const char *relname,
 	rel->rd_rel->relnamespace = relnamespace;
 
 	rel->rd_rel->relkind = relkind;
+	rel->rd_rel->relhasrowid = rel->rd_att->tdhasrowid;
 	rel->rd_rel->relnatts = natts;
 	rel->rd_rel->reltype = InvalidOid;
 	/* needed when bootstrapping: */
@@ -4066,15 +4129,15 @@ RelationCacheInitializePhase2(void)
 	if (!load_relcache_init_file(true))
 	{
 		formrdesc("pg_database", DatabaseRelation_Rowtype_Id, true,
-				  Natts_pg_database, Desc_pg_database);
+				  true, Natts_pg_database, Desc_pg_database);
 		formrdesc("pg_authid", AuthIdRelation_Rowtype_Id, true,
-				  Natts_pg_authid, Desc_pg_authid);
+				  true, Natts_pg_authid, Desc_pg_authid);
 		formrdesc("pg_auth_members", AuthMemRelation_Rowtype_Id, true,
-				  Natts_pg_auth_members, Desc_pg_auth_members);
+				  false, Natts_pg_auth_members, Desc_pg_auth_members);
 		formrdesc("pg_shseclabel", SharedSecLabelRelation_Rowtype_Id, true,
-				  Natts_pg_shseclabel, Desc_pg_shseclabel);
+				  false, Natts_pg_shseclabel, Desc_pg_shseclabel);
 		formrdesc("pg_subscription", SubscriptionRelation_Rowtype_Id, true,
-				  Natts_pg_subscription, Desc_pg_subscription);
+				  false, Natts_pg_subscription, Desc_pg_subscription);
 
 #define NUM_CRITICAL_SHARED_RELS	5	/* fix if you change list above */
 	}
@@ -4124,13 +4187,13 @@ RelationCacheInitializePhase3(void)
 	{
 		needNewCacheFile = true;
 
-		formrdesc("pg_class", RelationRelation_Rowtype_Id, false,
+		formrdesc("pg_class", RelationRelation_Rowtype_Id, false, true, 
 				  Natts_pg_class, Desc_pg_class);
-		formrdesc("pg_attribute", AttributeRelation_Rowtype_Id, false,
+		formrdesc("pg_attribute", AttributeRelation_Rowtype_Id, false, false, 
 				  Natts_pg_attribute, Desc_pg_attribute);
-		formrdesc("pg_proc", ProcedureRelation_Rowtype_Id, false,
+		formrdesc("pg_proc", ProcedureRelation_Rowtype_Id, false, true, 
 				  Natts_pg_proc, Desc_pg_proc);
-		formrdesc("pg_type", TypeRelation_Rowtype_Id, false,
+		formrdesc("pg_type", TypeRelation_Rowtype_Id, false, true, 
 				  Natts_pg_type, Desc_pg_type);
 
 #define NUM_CRITICAL_LOCAL_RELS 4	/* fix if you change list above */
@@ -4420,7 +4483,7 @@ load_critical_index(Oid indexoid, Oid heapoid)
  * extracting fields.
  */
 static TupleDesc
-BuildHardcodedDescriptor(int natts, const FormData_pg_attribute *attrs)
+BuildHardcodedDescriptor(int natts, const FormData_pg_attribute *attrs, bool hasrowid)
 {
 	TupleDesc	result;
 	MemoryContext oldcxt;
@@ -4429,6 +4492,8 @@ BuildHardcodedDescriptor(int natts, const FormData_pg_attribute *attrs)
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 
 	result = CreateTemplateTupleDesc(natts);
+	result->tdhasrowid = hasrowid;
+
 	result->tdtypeid = RECORDOID;	/* not right, but we don't care */
 	result->tdtypmod = -1;
 
@@ -4457,7 +4522,8 @@ GetPgClassDescriptor(void)
 	/* Already done? */
 	if (pgclassdesc == NULL)
 		pgclassdesc = BuildHardcodedDescriptor(Natts_pg_class,
-											   Desc_pg_class);
+							Desc_pg_class,
+							true);
 
 	return pgclassdesc;
 }
@@ -4470,7 +4536,8 @@ GetPgIndexDescriptor(void)
 	/* Already done? */
 	if (pgindexdesc == NULL)
 		pgindexdesc = BuildHardcodedDescriptor(Natts_pg_index,
-											   Desc_pg_index);
+							Desc_pg_index, 
+							false);
 
 	return pgindexdesc;
 }
@@ -6156,6 +6223,8 @@ load_relcache_init_file(bool shared)
 
 		/* initialize attribute tuple forms */
 		rel->rd_att = CreateTemplateTupleDesc(relform->relnatts);
+		rel->rd_att->tdhasrowid = relform->relhasrowid;
+
 		rel->rd_att->tdrefcount = 1;	/* mark as refcounted */
 
 		rel->rd_att->tdtypeid = relform->reltype ? relform->reltype : RECORDOID;

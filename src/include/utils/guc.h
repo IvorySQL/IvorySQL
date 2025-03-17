@@ -308,6 +308,9 @@ extern PGDLLIMPORT int	datetime_ignore_nls_mask;
 extern PGDLLIMPORT bool	seq_scale_fixed;
 extern PGDLLIMPORT bool internal_warning; 
 
+extern PGDLLIMPORT bool default_with_rowids;
+extern PGDLLIMPORT int rowid_seq_cache;
+
 #define ORADATE_MASK			0x01
 #define ORATIMESTAMP_MASK		0x02
 #define ORATIMESTAMPTZ_MASK		0x04

@@ -85,6 +85,7 @@ typedef struct
 	List	   *inhRelations;	/* relations to inherit from */
 	bool		isforeign;		/* true if CREATE/ALTER FOREIGN TABLE */
 	bool		isalter;		/* true if altering existing table */
+	bool		hasrowid;		/* does relation have an ROWID column */
 	List	   *columns;		/* ColumnDef items */
 	List	   *ckconstraints;	/* CHECK constraints */
 	List	   *fkconstraints;	/* FOREIGN KEY constraints */
@@ -178,6 +179,11 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	int			ora_identity_cnt = 0;
 	ParseCallbackState pcbstate;
 
+	bool		like_found = false;
+	CreateSeqStmt *seqstmt;
+	AlterSeqStmt *altseqstmt;
+	List	   *relnamelist;
+
 	/* Set up pstate */
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
@@ -256,6 +262,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.ispartitioned = stmt->partspec != NULL;
 	cxt.partbound = stmt->partbound;
 	cxt.ofType = (stmt->ofTypename != NULL);
+	cxt.hasrowid = interpretRowidOption(stmt->options, !cxt.isforeign);
 
 	Assert(!stmt->ofTypename || !stmt->inhRelations);	/* grammar enforces */
 
@@ -270,6 +277,19 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 					 errmsg("cannot create partitioned table as inheritance child")));
 	}
 
+	if (cxt.inhRelations)
+	{
+		ListCell   *inher;
+		foreach(inher, cxt.inhRelations)
+		{
+			RangeVar   *inh = lfirst_node(RangeVar, inher);
+			Relation	prel;
+			prel = table_openrv(inh, AccessShareLock);
+			cxt.hasrowid = cxt.hasrowid || prel->rd_rel->relhasrowid;
+			table_close(prel, NoLock);
+		}
+	}
+
 	/*
 	 * Run through each primary element in the table creation clause. Separate
 	 * column defs from constraints, and do preliminary analysis.
@@ -281,7 +301,13 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		switch (nodeTag(element))
 		{
 			case T_ColumnDef:
-				transformColumnDefinition(&cxt, (ColumnDef *) element);
+				{
+					ColumnDef *col = (ColumnDef *) element;
+					if (compatible_db == DB_ORACLE && strcmp(col->colname, "rowid") == 0)
+						elog(ERROR, "column name \"%s\" conflicts with a system column name", col->colname);
+					else
+						transformColumnDefinition(&cxt, (ColumnDef *) element);
+				}
 				break;
 
 			case T_Constraint:
@@ -289,6 +315,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				break;
 
 			case T_TableLikeClause:
+				like_found = true;
 				transformTableLikeClause(&cxt, (TableLikeClause *) element);
 				break;
 
@@ -312,6 +339,78 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	}
 	if(ora_identity_cnt > 1)
 		elog(ERROR, "table can have only one identity column");
+
+	if (like_found && cxt.hasrowid)
+		stmt->options = lcons(makeDefElem("rowid",
+										  (Node *) makeInteger(true),
+										  -1),
+							  stmt->options);
+
+	if (cxt.hasrowid)
+	{
+		Oid	   snamespaceid;
+		char	   *snamespace;
+		char	   *sname;
+
+		if (cxt.rel)
+			snamespaceid = RelationGetNamespace(cxt.rel);
+		else
+		{
+			snamespaceid = RangeVarGetCreationNamespace(cxt.relation);
+			RangeVarAdjustRelationPersistence(cxt.relation, snamespaceid);
+		}
+
+		snamespace = get_namespace_name(snamespaceid);
+		sname = ChooseRelationName(cxt.relation->relname,
+								   "rowid",
+								   "seq",
+								   snamespaceid,
+								   false);
+
+		/*
+		 * Build a CREATE SEQUENCE command to create the sequence object,
+		 * and add it to the list of things to be done before this CREATE/ALTER TABLE
+		 */
+		seqstmt = makeNode(CreateSeqStmt);
+		seqstmt->with_rowid = true;
+		seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
+		seqstmt->options = lcons(makeDefElem("as",
+					 	(Node *) makeTypeNameFromOid(INT8OID, -1),
+						 -1),
+					 seqstmt->options);
+		if (rowid_seq_cache > 1)
+		{
+			seqstmt->options = lcons(makeDefElem("cache",
+							 (Node *) makeInteger(rowid_seq_cache),
+							 -1),
+						 seqstmt->options);
+		}
+		else
+			seqstmt->options = lcons(makeDefElem("nocache",
+								 NULL,
+							 -1),
+						seqstmt->options);
+
+		if (cxt.rel)
+			seqstmt->ownerId = cxt.rel->rd_rel->relowner;
+
+		cxt.blist = lappend(cxt.blist, seqstmt);
+
+		/*
+		 * Build an ALTER SEQUENCE ... OWNED BY command to mark the sequence as owned
+		 * by this table.
+		 */
+		altseqstmt = makeNode(AlterSeqStmt);
+		altseqstmt->sequence = makeRangeVar(snamespace, sname, -1);
+
+		relnamelist = list_make3(makeString(snamespace),
+					 makeString(cxt.relation->relname),
+					 makeString(sname));
+
+		altseqstmt->options = list_make1(makeDefElem("owned_by",
+								 (Node *) relnamelist, -1));
+		cxt.alist = lappend(cxt.alist, altseqstmt);
+	}
 
 	/*
 	 * Transfer anything we already have in cxt.alist into save_alist, to keep
@@ -1145,6 +1244,9 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 			cxt->alist = lappend(cxt->alist, stmt);
 		}
 	}
+
+	/* We use ROWID if at least on LIKE'ed table has ROWID */
+	cxt->hasrowid |= relation->rd_rel->relhasrowid;
 
 	/*
 	 * We cannot yet deal with defaults, CHECK constraints, indexes, or
@@ -3533,6 +3635,78 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 					break;
 				}
 
+			case AT_AddRowidsRecurse:
+				{
+					Oid 			snamespaceid;
+					char	 		*snamespace;
+					char	 		*sname;
+					List 	 		*relnamelist;
+					CreateSeqStmt 	*seqstmt;
+					AlterSeqStmt 	*altseqstmt;
+
+					if (cmd->is_rowid)
+					{
+						if (cxt.rel)
+							snamespaceid = RelationGetNamespace(cxt.rel);
+						else
+						{
+							snamespaceid = RangeVarGetCreationNamespace(cxt.relation);
+							RangeVarAdjustRelationPersistence(cxt.relation, snamespaceid);
+						}
+
+						snamespace = get_namespace_name(snamespaceid);
+						sname = ChooseRelationName(cxt.relation->relname,
+												   "rowid",
+												   "seq",
+												   snamespaceid,
+												   false);
+
+						/*
+						 * Build a CREATE SEQUENCE command to create the sequence object,
+						 * and add it to the list of things to be done before this CREATE/ALTER TABLE
+						 */
+						seqstmt = makeNode(CreateSeqStmt);
+						seqstmt->with_rowid = true;
+						seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
+						seqstmt->options = lcons(makeDefElem("as",
+									 (Node *) makeTypeNameFromOid(INT8OID, -1),
+										 -1), seqstmt->options);
+						if (rowid_seq_cache > 1)
+						{
+							seqstmt->options = lcons(makeDefElem("cache",
+									 (Node *) makeInteger(rowid_seq_cache),
+										 -1), seqstmt->options);
+						}
+						else
+							seqstmt->options = lcons(makeDefElem("nocache",
+										 NULL,
+										 -1),
+										seqstmt->options);
+
+						if (cxt.rel)
+							seqstmt->ownerId = cxt.rel->rd_rel->relowner;
+
+						cxt.blist = lappend(cxt.blist, seqstmt);
+
+						/*
+						 * Build an ALTER SEQUENCE ... OWNED BY command to mark the sequence as owned
+						 * by this table.
+						 */
+						altseqstmt = makeNode(AlterSeqStmt);
+						altseqstmt->sequence = makeRangeVar(snamespace, sname, -1);
+
+						relnamelist = list_make3(makeString(snamespace),
+									 makeString(cxt.relation->relname),
+									 makeString(sname));
+
+						altseqstmt->options = list_make1(makeDefElem("owned_by",
+										 (Node *) relnamelist, -1));
+						cxt.alist = lappend(cxt.alist, altseqstmt);
+
+						newcmds = lappend(newcmds, cmd);
+					}
+				}
+				break;
 			case AT_AddConstraint:
 
 				/*

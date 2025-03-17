@@ -543,7 +543,7 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * types of the original datums.  (It's the AM's responsibility to return
 	 * suitable data anyway.)
 	 */
-	tupDesc = ExecTypeFromTL(node->indextlist);
+	tupDesc = ExecTypeFromTL(node->indextlist, false);
 	ExecInitScanTupleSlot(estate, &indexstate->ss, tupDesc,
 						  &TTSOpsVirtual);
 
