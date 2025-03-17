@@ -172,6 +172,19 @@ my %pgdump_runs = (
 			'postgres',
 		],
 	},
+
+	# regress_dump_login_role shouldn't need SELECT rights on internal
+	# (undumped) extension tables
+	privileged_internals => {
+		dump_cmd => [
+			'pg_dump', '--no-sync', "--file=$tempdir/privileged_internals.sql",
+			# these two tables are irrelevant to the test case
+			'--exclude-table=regress_pg_dump_schema.external_tab',
+			'--exclude-table=regress_pg_dump_schema.extdependtab',
+			'--username=regress_dump_login_role', 'postgres',
+		],
+	},
+
 	schema_only => {
 		dump_cmd => [
 			'pg_dump', '--no-sync', "--file=$tempdir/schema_only.sql",
@@ -706,7 +719,7 @@ my %tests = (
 # Create a PG instance to test actually dumping from
 
 my $node = get_new_node('main');
-$node->init;
+$node->init('auth_extra' => [ '--create-role', 'regress_dump_login_role' ]);
 $node->start;
 
 my $port = $node->port;

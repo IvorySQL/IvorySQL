@@ -36,8 +36,9 @@ DATA = plisql.control plisql--1.0.sql
 
 ORACLE_REGRESS_OPTS = --dbname=$(PL_TESTDB)
 
-REGRESS = plisql_array plisql_call plisql_control plisql_copy plisql_domain \
-	plisql_record plisql_cache plisql_simple plisql_transaction \
+REGRESS = plisql_array plisql_cache plisql_call plisql_control \
+	plisql_copy plisql_domain plisql_misc \
+	plisql_record plisql_simple plisql_transaction \
 	plisql_trap plisql_trigger plisql_varprops plisql_nested_subproc \
 	plisql_nested_subproc2
 
