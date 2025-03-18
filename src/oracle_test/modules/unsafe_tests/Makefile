@@ -1,7 +1,10 @@
 # src/oracle_test/modules/unsafe_tests/Makefile
 # add the file for requirement "SQL PARSER"
 
-REGRESS = rolenames alter_system_table
+REGRESS = rolenames setconfig alter_system_table
+ORACLE_REGRESS_OPTS = \
+	--create-role=regress_authenticated_user_sr \
+	--create-role=regress_authenticated_user_ssa
 
 # the whole point of these tests is to not run installcheck
 NO_INSTALLCHECK = 1
