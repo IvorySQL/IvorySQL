@@ -154,7 +154,7 @@ preprocess_targetlist(PlannerInfo *root)
 			MergeAction *action = (MergeAction *) lfirst(l);
 
 			if (action->commandType == CMD_INSERT)
-				action->targetList = expand_insert_targetlist(action->targetList,
+				action->targetList = expand_insert_targetlist(root, action->targetList,
 															  target_relation);
 			else if (action->commandType == CMD_UPDATE)
 				action->updateColnos =
