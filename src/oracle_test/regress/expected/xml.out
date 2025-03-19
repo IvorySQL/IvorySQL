@@ -1137,15 +1137,19 @@ EXPLAIN (COSTS OFF, VERBOSE) SELECT * FROM xmltableview1;
 (7 rows)
 
 -- XMLNAMESPACES tests
-SELECT * FROM XMLTABLE(XMLNAMESPACES('http://x.y' AS zz),
-                      '/zz:rows/zz:row'
+CREATE VIEW xmltableview2 AS SELECT * FROM XMLTABLE(XMLNAMESPACES('http://x.y' AS "Zz"),
+                      '/Zz:rows/Zz:row'
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
-                      COLUMNS a int PATH 'zz:a');
+                      COLUMNS a int PATH 'Zz:a');
  a  
 ----
  10
 (1 row)
 
+\sv xmltableview2
+CREATE OR REPLACE VIEW public.xmltableview2 AS
+ SELECT "xmltable".a
+   FROM XMLTABLE(XMLNAMESPACES ('http://x.y'::text AS "Zz"), ('/Zz:rows/Zz:row'::text) PASSING ('<rows xmlns="http://x.y"><row><a>10</a></row></rows>'::xml) COLUMNS a integer PATH ('Zz:a'::text))
 CREATE VIEW xmltableview2 AS SELECT * FROM XMLTABLE(XMLNAMESPACES('http://x.y' AS zz),
                       '/zz:rows/zz:row'
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
