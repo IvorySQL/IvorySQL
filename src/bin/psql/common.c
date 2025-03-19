@@ -1755,7 +1755,15 @@ ExecQueryAndProcessResults(const char *query,
 			}
 			break;
 		case PSQL_SEND_QUERY:
-			success = PQsendQuery(pset.db, query);
+			if (PQpipelineStatus(pset.db) != PQ_PIPELINE_OFF)
+			{
+				success = PQsendQueryParams(pset.db, query,
+											0, NULL, NULL, NULL, NULL, 0);
+				if (success)
+					pset.piped_commands++;
+			}
+			else
+				success = PQsendQuery(pset.db, query);
 			break;
 	}
 
