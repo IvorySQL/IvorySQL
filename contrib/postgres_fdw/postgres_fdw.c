@@ -3334,7 +3334,7 @@ estimate_path_cost_size(PlannerInfo *root,
 		{
 			RelOptInfo *outerrel = fpinfo->outerrel;
 			PgFdwRelationInfo *ofpinfo;
-			AggClauseCosts aggcosts;
+			AggClauseCosts aggcosts = {0};
 			double		input_rows;
 			int			numGroupCols;
 			double		numGroups = 1;
@@ -3358,7 +3358,6 @@ estimate_path_cost_size(PlannerInfo *root,
 			input_rows = ofpinfo->rows;
 
 			/* Collect statistics about aggregates for estimating costs. */
-			MemSet(&aggcosts, 0, sizeof(AggClauseCosts));
 			if (root->parse->hasAggs)
 			{
 				get_agg_clause_costs(root, AGGSPLIT_SIMPLE, &aggcosts);
