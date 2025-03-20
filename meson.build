@@ -1090,6 +1090,7 @@ endif
 
 perlopt = get_option('plperl')
 perl_dep = not_found_dep
+perlversion = ''
 if not perlopt.disabled()
   perl_may_work = true
 
@@ -1107,7 +1108,7 @@ if not perlopt.disabled()
   # Then inquire perl about its configuration
   if perl_may_work
     perl_conf_cmd = [perl, '-MConfig', '-e', 'print $Config{$ARGV[0]}']
-    perlversion = run_command(perl_conf_cmd, 'api_versionstring', check: true).stdout()
+    perlversion = run_command(perl_conf_cmd, 'version', check: true).stdout()
     archlibexp = run_command(perl_conf_cmd, 'archlibexp', check: true).stdout()
     privlibexp = run_command(perl_conf_cmd, 'privlibexp', check: true).stdout()
     useshrplib = run_command(perl_conf_cmd, 'useshrplib', check: true).stdout()
@@ -3830,7 +3831,7 @@ if meson.version().version_compare('>=0.57')
       'nls': libintl,
       'openssl': ssl,
       'pam': pam,
-      'plperl': perl_dep,
+      'plperl': [perl_dep, perlversion],
       'plpython': python3_dep,
       'pltcl': tcl_dep,
       'readline': readline,
@@ -3841,6 +3842,7 @@ if meson.version().version_compare('>=0.57')
       'zstd': zstd,
     },
     section: 'External libraries',
+    list_sep: ' ',
   )
 
 endif
