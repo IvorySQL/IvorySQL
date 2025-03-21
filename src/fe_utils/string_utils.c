@@ -28,7 +28,7 @@
 
 static PQExpBuffer defaultGetLocalPQExpBuffer(void);
 /* Begin - SQL PARSER */
-static const char * stardand_fmtId(const char *rawid);
+static const char * stardand_fmtId(const char *rawid, int encoding);
 /* END - SQL PARSER */
 
 /* Globals exported by this file */
@@ -112,11 +112,11 @@ fmtIdEnc(const char *rawid, int encoding)
 	if (DB_ORACLE == db_mode)
 		return ora_fmtId(rawid);
 	else
-		return stardand_fmtId(rawid);
+		return stardand_fmtId(rawid, encoding);
 }
 
 static const char *
-stardand_fmtId(const char *rawid)
+stardand_fmtId(const char *rawid, int encoding)
 {
 	/* END - SQL PARSER */
 	PQExpBuffer id_return = getLocalPQExpBuffer();
