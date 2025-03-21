@@ -234,8 +234,8 @@ MAKE_SYSCACHE(RELNAMENSP, pg_class_relname_nsp_index, 128);
 	 (relkind) == RELKIND_TOASTVALUE || \
 	 (relkind) == RELKIND_MATVIEW)
 
-extern int	errdetail_relkind_not_supported(char relkind);
-
 #endif							/* EXPOSE_TO_CLIENT_CODE */
+
+extern int	errdetail_relkind_not_supported(char relkind);
 
 #endif							/* PG_CLASS_H */
