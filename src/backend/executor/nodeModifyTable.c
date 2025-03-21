@@ -24,6 +24,14 @@
  *		values plus row-locating info for UPDATE cases, or just the
  *		row-locating info for DELETE cases.
  *
+ *		The relation to modify can be an ordinary table, a view having an
+ *		INSTEAD OF trigger, or a foreign table.  Earlier processing already
+ *		pointed ModifyTable to the underlying relations of any automatically
+ *		updatable view not using an INSTEAD OF trigger, so code here can
+ *		assume it won't have one as a modification target.  This node does
+ *		process ri_WithCheckOptions, which may have expressions from those
+ *		automatically updatable views.
+ *
  *		If the query specifies RETURNING, then the ModifyTable returns a
  *		RETURNING tuple after completing each row insert, update, or delete.
  *		It must be called again to continue the operation.  Without RETURNING,
@@ -1307,8 +1315,8 @@ ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  *		index modifications are needed.
  *
  *		When deleting from a table, tupleid identifies the tuple to
- *		delete and oldtuple is NULL.  When deleting from a view,
- *		oldtuple is passed to the INSTEAD OF triggers and identifies
+ *		delete and oldtuple is NULL.  When deleting through a view
+ *		INSTEAD OF trigger, oldtuple is passed to the triggers and identifies
  *		what to delete, and tupleid is invalid.  When deleting from a
  *		foreign table, tupleid is invalid; the FDW has to figure out
  *		which row to delete using data from the planSlot.  oldtuple is
@@ -2168,8 +2176,8 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
  *		which corrupts your database..
  *
  *		When updating a table, tupleid identifies the tuple to
- *		update and oldtuple is NULL.  When updating a view, oldtuple
- *		is passed to the INSTEAD OF triggers and identifies what to
+ *		update and oldtuple is NULL.  When updating through a view INSTEAD OF
+ *		trigger, oldtuple is passed to the triggers and identifies what to
  *		update, and tupleid is invalid.  When updating a foreign table,
  *		tupleid is invalid; the FDW has to figure out which row to
  *		update using data from the planSlot.  oldtuple is passed to
@@ -2181,7 +2189,9 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
  *		to access values from other input tables (for RETURNING),
  *		row-ID junk columns, etc.
  *
- *		Returns RETURNING result if any, otherwise NULL.
+ *		Returns RETURNING result if any, otherwise NULL.  On exit, if tupleid
+ *		had identified the tuple to update, it will identify the tuple
+ *		actually updated after EvalPlanQual.
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
@@ -2245,6 +2255,7 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 redo_act:;
 		result = ExecUpdateAct(context, resultRelInfo, tupleid, oldtuple, slot,
 							   canSetTag, &updateCxt);
+		ItemPointerData lockedtid;
 		/*
 		 * If ExecUpdateAct reports that a cross-partition update was done,
 		 * then the RETURNING tuple (if any) has been projected and there's
@@ -2252,6 +2263,8 @@ redo_act:;
 		 */
 		if (updateCxt.crossPartUpdate)
 			return context->cpUpdateReturningSlot;
+
+		lockedtid = *tupleid;
 
 		switch (result)
 		{
@@ -2334,6 +2347,14 @@ redo_act:;
 							if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
 								ExecInitUpdateProjection(context->mtstate,
 														 resultRelInfo);
+
+							if (resultRelInfo->ri_needLockTagTuple)
+							{
+								UnlockTuple(resultRelationDesc,
+											&lockedtid, InplaceUpdateTupleLock);
+								LockTuple(resultRelationDesc,
+										  tupleid, InplaceUpdateTupleLock);
+							}
 
 							/* Fetch the most recent version of old tuple. */
 							oldSlot = resultRelInfo->ri_oldTupleSlot;
@@ -2441,6 +2462,14 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	Datum		xminDatum;
 	TransactionId xmin;
 	bool		isnull;
+
+	/*
+	 * Parse analysis should have blocked ON CONFLICT for all system
+	 * relations, which includes these.  There's no fundamental obstacle to
+	 * supporting this; we'd just need to handle LOCKTAG_TUPLE like the other
+	 * ExecUpdate() caller.
+	 */
+	Assert(!resultRelInfo->ri_needLockTagTuple);
 
 	/* Determine lock mode to use */
 	lockmode = ExecUpdateLockMode(context->estate, resultRelInfo);
@@ -3536,6 +3565,7 @@ ExecModifyTable(PlanState *pstate)
 	ItemPointerData tuple_ctid;
 	HeapTupleData oldtupdata;
 	HeapTuple	oldtuple;
+	bool		tuplock;
 
 	CHECK_FOR_INTERRUPTS();
 
@@ -3742,8 +3772,8 @@ ExecModifyTable(PlanState *pstate)
 			 * know enough here to set t_tableOid.  Quite separately from
 			 * this, the FDW may fetch its own junk attrs to identify the row.
 			 *
-			 * Other relevant relkinds, currently limited to views, always
-			 * have a wholerow attribute.
+			 * Other relevant relkinds, currently limited to views having
+			 * INSTEAD OF triggers, always have a wholerow attribute.
 			 */
 			else if (AttributeNumberIsValid(resultRelInfo->ri_RowIdAttNo))
 			{
@@ -3787,6 +3817,8 @@ ExecModifyTable(PlanState *pstate)
 								  node->canSetTag, NULL, NULL);
 				break;
 			case CMD_UPDATE:
+				tuplock = false;
+
 				/* Initialize projection info if first time for this table */
 				if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
 					ExecInitUpdateProjection(node, resultRelInfo);
@@ -3798,6 +3830,7 @@ ExecModifyTable(PlanState *pstate)
 				oldSlot = resultRelInfo->ri_oldTupleSlot;
 				if (oldtuple != NULL)
 				{
+					Assert(!resultRelInfo->ri_needLockTagTuple);
 					/* Use the wholerow junk attr as the old tuple. */
 					ExecForceStoreHeapTuple(oldtuple, oldSlot, false);
 				}
@@ -3806,6 +3839,12 @@ ExecModifyTable(PlanState *pstate)
 					/* Fetch the most recent version of old tuple. */
 					Relation	relation = resultRelInfo->ri_RelationDesc;
 
+					Assert(tupleid != NULL);
+					if (resultRelInfo->ri_needLockTagTuple)
+					{
+						LockTuple(relation, tupleid, InplaceUpdateTupleLock);
+						tuplock = true;
+					}
 					if (!table_tuple_fetch_row_version(relation, tupleid,
 													   SnapshotAny,
 													   oldSlot))
@@ -3818,6 +3857,9 @@ ExecModifyTable(PlanState *pstate)
 
 				slot = ExecUpdate(&context, resultRelInfo, tupleid, oldtuple,
 								  slot, node->canSetTag);
+				if (tuplock)
+					UnlockTuple(resultRelInfo->ri_RelationDesc, tupleid,
+								InplaceUpdateTupleLock);
 				break;
 			case CMD_DELETE:
 				slot = ExecDelete(&context, resultRelInfo, tupleid, oldtuple,

@@ -688,6 +688,7 @@ static char *recovery_target_string;
 static char *recovery_target_xid_string;
 static char *recovery_target_name_string;
 static char *recovery_target_lsn_string;
+static char *restrict_nonsystem_relation_kind_string;
 
 
 /* should be static, but commands/variable.c needs to get at this */
@@ -1198,7 +1199,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"is_superuser", PGC_INTERNAL, UNGROUPED,
 			gettext_noop("Shows whether the current user is a superuser."),
 			NULL,
-			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_ALLOW_IN_PARALLEL
 		},
 		&session_auth_is_superuser,
 		false,
@@ -4639,7 +4640,18 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		check_backtrace_functions, assign_backtrace_functions, NULL
 	},
-	
+
+	{
+		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Prohibits access to non-system relations of specified kinds."),
+			NULL,
+			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
+		},
+		&restrict_nonsystem_relation_kind_string,
+		"",
+		check_restrict_nonsystem_relation_kind, assign_restrict_nonsystem_relation_kind, NULL
+	},
+
 	#define IVY_GUC_STRING_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_STRING_PARAMS
@@ -5599,10 +5611,10 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 static int
 guc_var_compare(const void *a, const void *b)
 {
-	const struct config_generic *confa = *(struct config_generic *const *) a;
-	const struct config_generic *confb = *(struct config_generic *const *) b;
+	const char *namea = **(const char **const *) a;
+	const char *nameb = **(const char **const *) b;
 
-	return guc_name_compare(confa->name, confb->name);
+	return guc_name_compare(namea, nameb);
 }
 
 /*
@@ -7323,10 +7335,12 @@ parse_and_validate_value(struct config_generic *record,
  *
  * Return value:
  *	+1: the value is valid and was successfully applied.
- *	0:	the name or value is invalid (but see below).
- *	-1: the value was not applied because of context, priority, or changeVal.
+ *	0:	the name or value is invalid, or it's invalid to try to set
+ *		this GUC now; but elevel was less than ERROR (see below).
+ *	-1: no error detected, but the value was not applied, either
+ *		because changeVal is false or there is some overriding setting.
  *
- * If there is an error (non-existing option, invalid value) then an
+ * If there is an error (non-existing option, invalid value, etc) then an
  * ereport(ERROR) is thrown *unless* this is called for a source for which
  * we don't want an ERROR (currently, those are defaults, the config file,
  * and per-database or per-user settings, as well as callers who specify
@@ -7366,6 +7380,10 @@ set_config_option(const char *name, const char *value,
 			elevel = ERROR;
 	}
 
+	record = find_option(name, true, false, elevel);
+	if (record == NULL)
+		return 0;
+
 	/*
 	 * GUC_ACTION_SAVE changes are acceptable during a parallel operation,
 	 * because the current worker will also pop the change.  We're probably
@@ -7373,19 +7391,19 @@ set_config_option(const char *name, const char *value,
 	 * body should observe the change, and peer workers do not share in the
 	 * execution of a function call started by this worker.
 	 *
+	 * Also allow normal setting if the GUC is marked GUC_ALLOW_IN_PARALLEL.
+	 *
 	 * Other changes might need to affect other workers, so forbid them.
 	 */
-	if (IsInParallelMode() && changeVal && action != GUC_ACTION_SAVE)
+	if (IsInParallelMode() && changeVal && action != GUC_ACTION_SAVE &&
+		(record->flags & GUC_ALLOW_IN_PARALLEL) == 0)
 	{
 		ereport(elevel,
 				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
-				 errmsg("cannot set parameters during a parallel operation")));
-		return -1;
-	}
-
-	record = find_option(name, true, false, elevel);
-	if (record == NULL)
+				 errmsg("parameter \"%s\" cannot be set during a parallel operation",
+						name)));
 		return 0;
+	}
 
 	/*
 	 * Check if the option can be set at this time. See guc.h for the precise
@@ -7869,6 +7887,8 @@ set_config_option(const char *name, const char *value,
 		case PGC_STRING:
 			{
 				struct config_string *conf = (struct config_string *) record;
+				GucContext	orig_context = context;
+				GucSource	orig_source = source;
 
 #define newval (newval_union.stringval)
 
@@ -7952,6 +7972,35 @@ set_config_option(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+
+					/*
+					 * Ugly hack: during SET session_authorization, forcibly
+					 * do SET ROLE NONE with the same context/source/etc, so
+					 * that the effects will have identical lifespan.  This is
+					 * required by the SQL spec, and it's not possible to do
+					 * it within the variable's check hook or assign hook
+					 * because our APIs for those don't pass enough info.
+					 * However, don't do it if is_reload: in that case we
+					 * expect that if "role" isn't supposed to be default, it
+					 * has been or will be set by a separate reload action.
+					 *
+					 * A fine point: for RESET session_authorization, we do
+					 * "RESET role" not "SET ROLE NONE" (by passing down NULL
+					 * rather than "none" for the value).  This would have the
+					 * same effects in typical cases, but if the reset value
+					 * of "role" is not "none" it seems better to revert to
+					 * that.
+					 */
+					if (!is_reload &&
+						strcmp(conf->gen.name, "session_authorization") == 0)
+						(void) set_config_option("role",
+												 value ? "none" : NULL,
+												 orig_context,
+												 orig_source,
+												 action,
+												 true,
+												 elevel,
+												 false);
 				}
 
 				if (makeDefault)
@@ -10528,12 +10577,6 @@ can_skip_gucvar(struct config_generic *gconf)
 	 * mechanisms (if indeed they aren't compile-time constants).  So we may
 	 * always skip these.
 	 *
-	 * Role must be handled specially because its current value can be an
-	 * invalid value (for instance, if someone dropped the role since we set
-	 * it).  So if we tried to serialize it normally, we might get a failure.
-	 * We skip it here, and use another mechanism to ensure the worker has the
-	 * right value.
-	 *
 	 * For all other GUCs, we skip if the GUC has its compiled-in default
 	 * value (i.e., source == PGC_S_DEFAULT).  On the leader side, this means
 	 * we don't send GUCs that have their default values, which typically
@@ -10542,8 +10585,8 @@ can_skip_gucvar(struct config_generic *gconf)
 	 * comments in RestoreGUCState for more info.
 	 */
 	return gconf->context == PGC_POSTMASTER ||
-		gconf->context == PGC_INTERNAL || gconf->source == PGC_S_DEFAULT ||
-		strcmp(gconf->name, "role") == 0;
+		gconf->context == PGC_INTERNAL ||
+		gconf->source == PGC_S_DEFAULT;
 }
 
 /*

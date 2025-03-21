@@ -551,6 +551,7 @@ typedef struct ResultRelInfo
 	 */
 	List	   *ri_ancestorResultRels;
 
+	bool		ri_needLockTagTuple;
 } ResultRelInfo;
 
 /*
