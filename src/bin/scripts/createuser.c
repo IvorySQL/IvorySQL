@@ -270,6 +270,8 @@ main(int argc, char *argv[])
 	getDbCompatibleMode(conn);
 	/* END - SQL PARSER */
 
+	setFmtEncoding(PQclientEncoding(conn));
+
 	initPQExpBuffer(&sql);
 
 	printfPQExpBuffer(&sql, "CREATE ROLE %s", fmtId(newuser));

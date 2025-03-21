@@ -339,6 +339,7 @@ CaseTestExpr
 CaseWhen
 Cash
 CastInfo
+CatCInProgress
 CatCList
 CatCTup
 CatCache
@@ -3236,6 +3237,8 @@ json_manifest_perwalrange_callback
 json_ofield_action
 json_scalar_action
 json_struct_action
+keepwal_entry
+keepwal_hash
 keyEntryData
 key_t
 lclContext
@@ -3324,6 +3327,9 @@ parallel_worker_main_type
 parse_error_callback_arg
 parser_context
 partition_method_t
+pe_test_config
+pe_test_escape_func
+pe_test_vector
 pendingPosition
 pgParameterStatus
 pg_atomic_flag

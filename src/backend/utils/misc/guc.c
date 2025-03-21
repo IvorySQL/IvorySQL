@@ -1793,7 +1793,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"logging_collector", PGC_POSTMASTER, LOGGING_WHERE,
-			gettext_noop("Start a subprocess to capture stderr output and/or csvlogs into log files."),
+			gettext_noop("Start a subprocess to capture stderr, csvlog and/or jsonlog into log files."),
 			NULL
 		},
 		&Logging_collector,
@@ -7984,6 +7984,12 @@ set_config_option(const char *name, const char *value,
 					 * expect that if "role" isn't supposed to be default, it
 					 * has been or will be set by a separate reload action.
 					 *
+					 * Also, for the call from InitializeSessionUserId with
+					 * source == PGC_S_OVERRIDE, use PGC_S_DYNAMIC_DEFAULT for
+					 * "role"'s source, so that it's still possible to set
+					 * "role" from pg_db_role_setting entries.  (See notes in
+					 * InitializeSessionUserId before changing this.)
+					 *
 					 * A fine point: for RESET session_authorization, we do
 					 * "RESET role" not "SET ROLE NONE" (by passing down NULL
 					 * rather than "none" for the value).  This would have the
@@ -7996,7 +8002,9 @@ set_config_option(const char *name, const char *value,
 						(void) set_config_option("role",
 												 value ? "none" : NULL,
 												 orig_context,
-												 orig_source,
+												 (orig_source == PGC_S_OVERRIDE)
+												 ? PGC_S_DYNAMIC_DEFAULT
+												 : orig_source,
 												 action,
 												 true,
 												 elevel,
