@@ -17,7 +17,7 @@ include $(top_builddir)/src/Makefile.global
 ifeq ($(enable_tap_tests),yes)
 
 installdirs:
-	$(MKDIR_P) '$(DESTDIR)$(pgxsdir)/$(subdir)'
+	$(MKDIR_P) '$(DESTDIR)$(pgxsdir)/$(subdir)/PostgreSQL/Test'
 
 install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/TestLib.pm '$(DESTDIR)$(pgxsdir)/$(subdir)/TestLib.pm'
