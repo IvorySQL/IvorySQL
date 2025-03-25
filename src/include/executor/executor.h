@@ -190,7 +190,10 @@ TupleHashEntryGetTuple(TupleHashEntry entry)
 static inline void *
 TupleHashEntryGetAdditional(TupleHashTable hashtable, TupleHashEntry entry)
 {
-	return entry->additional;
+	if (hashtable->additionalsize > 0)
+		return (char *) entry->firstTuple - hashtable->additionalsize;
+	else
+		return NULL;
 }
 #endif
 
