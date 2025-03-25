@@ -491,7 +491,7 @@ get_rel_infos_query(void)
 					  "  FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n "
 					  "         ON c.relnamespace = n.oid "
 					  "  WHERE relkind IN (" CppAsString2(RELKIND_RELATION) ", "
-					  CppAsString2(RELKIND_MATVIEW) ") AND "
+					  CppAsString2(RELKIND_MATVIEW) "%s) AND "
 	/* exclude possible orphaned temp tables */
 					  "    ((n.nspname !~ '^pg_temp_' AND "
 					  "      n.nspname !~ '^pg_toast_temp_' AND "
@@ -500,6 +500,8 @@ get_rel_infos_query(void)
 					  "      c.oid >= %u::pg_catalog.oid) OR "
 					  "     (n.nspname = 'pg_catalog' AND "
 					  "      relname IN ('pg_largeobject') ))), ",
+					  (user_opts.transfer_mode == TRANSFER_MODE_SWAP) ?
+					  ", " CppAsString2(RELKIND_SEQUENCE) : "",
 					  FirstNormalObjectId);
 
 	/*

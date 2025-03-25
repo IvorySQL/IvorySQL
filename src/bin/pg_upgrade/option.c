@@ -65,6 +65,7 @@ parseCommandLine(int argc, char *argv[])
 		{"sync-method", required_argument, NULL, 4},
 		{"no-statistics", no_argument, NULL, 5},
 		{"set-char-signedness", required_argument, NULL, 6},
+		{"swap", no_argument, NULL, 7},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -247,6 +248,11 @@ parseCommandLine(int argc, char *argv[])
 				else
 					pg_fatal("invalid argument for option %s", "--set-char-signedness");
 				break;
+
+			case 7:
+				user_opts.transfer_mode = TRANSFER_MODE_SWAP;
+				break;
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 						os_info.progname);
@@ -347,6 +353,7 @@ usage(void)
 	printf(_("  --no-statistics               do not import statistics from old cluster\n"));
 	printf(_("  --set-char-signedness=OPTION  set new cluster char signedness to \"signed\" or\n"
 			 "                                \"unsigned\"\n"));
+	printf(_("  --swap                        move data directories to new cluster\n"));
 	printf(_("  --sync-method=METHOD          set method for syncing files to disk\n"));
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
