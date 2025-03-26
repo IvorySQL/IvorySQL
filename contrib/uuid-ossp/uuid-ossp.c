@@ -105,7 +105,10 @@ do { \
 /** The byte length of the value returned by ora_sys_guid **/
 #define SYS_GUID_LENGTH 16
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "uuid-ossp",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(uuid_nil);
 PG_FUNCTION_INFO_V1(uuid_ns_dns);
