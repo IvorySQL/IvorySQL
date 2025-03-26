@@ -13,6 +13,7 @@ PGFILEDESC = "dblink - connect to other PostgreSQL databases"
 
 REGRESS = dblink
 REGRESS_OPTS = --dlpath=$(top_builddir)/src/test/regress
+TAP_TESTS = 1
 
 # BEGIN - SQL oracle_test
 ORACLE_REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
