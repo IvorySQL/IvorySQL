@@ -10,18 +10,18 @@
 
 [English](README.md) | 中文版
 
-IvorySQL 是一款先进、功能全面的开源 Oracle 兼容 PostgreSQL，始终承诺100% 兼容最新版本的 PostgreSQL，并可作为其无缝替代方案。IvorySQL 增加了一个 “compatible_db” 开关，支持在 Oracle 和 PostgreSQL 兼容模式 之间自由切换。IvorySQL 的一大亮点是 PL/iSQL 过程式语言，它兼容 Oracle 的 PL/SQL 语法 并支持 Oracle 风格的 Package。
+IvorySQL 是一款先进、功能全面的开源 Oracle 兼容 PostgreSQL，始终承诺100% 兼容最新版本的 PostgreSQL，并可作为其无缝替代方案。IvorySQL 增加了一个 “compatible_db” 开关，支持在 Oracle 和 PostgreSQL 兼容模式之间自由切换。IvorySQL 的一大亮点是 PL/iSQL 过程式语言，它兼容 Oracle 的 PL/SQL 语法并支持 Oracle 风格的 Package。
 
-IvorySQL 项目采用 Apache 2.0 许可协议 发布，并鼓励各种形式的社区贡献。在 IvorySQL 社区中，每一份贡献都至关重要，我们由衷感谢所有社区贡献者的支持！
+IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的社区贡献。在 IvorySQL 社区中，每一份贡献都至关重要，我们由衷感谢所有社区贡献者的支持！
 
 </br>
 
 ## 我们致力于遵循开源理念的原则
-我们致力于遵循[开源之道](https://opensource.com/open-source-way)的原则，并坚定地相信构建一个健康且包容的社区至关重要。我们始终坚信，优秀的想法可以来源于任何地方，而最优的想法应当脱颖而出。只有在多元观点的碰撞下，我们才能做出最明智的决策。尽管 IvorySQL 的首个版本主要聚焦于 Oracle 兼容性功能，但未来的路线图和功能集将由社区以开源的方式共同决定。
+我们致力于遵循[开源之道](https://opensource.com/open-source-way)的原则，并坚定地相信构建一个健康且包容的社区至关重要。我们始终坚信，优秀的想法可以来源于任何地方，而最优的想法应当脱颖而出。只有在多元观点的碰撞下，才能做出最明智的决策。尽管 IvorySQL 的首个版本主要聚焦于 Oracle 兼容性功能，但未来的路线图和功能集将由社区以开源的方式共同决定。
 </br>
 
 ## 安装
-我们建议参考我们的[快速入门](https://docs.ivorysql.org/cn/ivorysql-doc/v4.4/v4.4/3#quick-installation)了解如何安装和运行IvorySQL。
+建议参考[快速入门](https://docs.ivorysql.org/cn/ivorysql-doc/v4.4/v4.4/3#quick-installation)了解如何安装和运行IvorySQL。
 
 此外，关于更详细的安装说明，请参阅[安装文档](https://docs.ivorysql.org/cn/ivorysql-doc/v4.4/v4.4/6#introduction)。我们提供以下四种 IvorySQL 的安装方法：
 - [Yum 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v4.4/v4.4/6#Yum-installation)
