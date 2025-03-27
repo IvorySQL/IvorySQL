@@ -12683,7 +12683,7 @@ ATExecAlterConstrInheritability(List **wqueue, ATAlterConstraint *cmdcon,
 	colName = get_attname(currcon->conrelid, colNum, false);
 
 	/*
-	 * Propagate the change to children.  For SET NO INHERIT, we don't
+	 * Propagate the change to children.  For this subcommand type we don't
 	 * recursively affect children, just the immediate level.
 	 */
 	children = find_inheritance_children(RelationGetRelid(rel),
