@@ -815,6 +815,8 @@ LockErrorCleanup(void)
 			GrantAwaitedLock();
 	}
 
+	ResetAwaitedLock();
+
 	LWLockRelease(partitionLock);
 
 	RESUME_INTERRUPTS();
