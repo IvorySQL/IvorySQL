@@ -1891,7 +1891,6 @@ ExecRelCheck(ResultRelInfo *resultRelInfo,
 	ConstrCheck *check = rel->rd_att->constr->check;
 	ExprContext *econtext;
 	MemoryContext oldContext;
-	int			i;
 
 	/*
 	 * CheckConstraintFetch let this pass with only a warning, but now we
@@ -1910,9 +1909,8 @@ ExecRelCheck(ResultRelInfo *resultRelInfo,
 	if (resultRelInfo->ri_CheckConstraintExprs == NULL)
 	{
 		oldContext = MemoryContextSwitchTo(estate->es_query_cxt);
-		resultRelInfo->ri_CheckConstraintExprs =
-			(ExprState **) palloc0(ncheck * sizeof(ExprState *));
-		for (i = 0; i < ncheck; i++)
+		resultRelInfo->ri_CheckConstraintExprs = palloc0_array(ExprState *, ncheck);
+		for (int i = 0; i < ncheck; i++)
 		{
 			Expr	   *checkconstr;
 
@@ -1938,7 +1936,7 @@ ExecRelCheck(ResultRelInfo *resultRelInfo,
 	econtext->ecxt_scantuple = slot;
 
 	/* And evaluate the constraints */
-	for (i = 0; i < ncheck; i++)
+	for (int i = 0; i < ncheck; i++)
 	{
 		ExprState  *checkconstr = resultRelInfo->ri_CheckConstraintExprs[i];
 
@@ -2097,16 +2095,16 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 
 	Assert(constr);				/* we should not be called otherwise */
 
+	/*
+	 * Verify not-null constraints.
+	 */
 	if (constr->has_not_null)
 	{
-		int			natts = tupdesc->natts;
-		int			attrChk;
-
-		for (attrChk = 1; attrChk <= natts; attrChk++)
+		for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
-			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
+			Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
 
-			if (att->attnotnull && slot_attisnull(slot, attrChk))
+			if (att->attnotnull && slot_attisnull(slot, attnum))
 			{
 				char	   *val_desc;
 				Relation	orig_rel = rel;
@@ -2151,16 +2149,19 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 														 64);
 
 				ereport(ERROR,
-						(errcode(ERRCODE_NOT_NULL_VIOLATION),
-						 errmsg("null value in column \"%s\" of relation \"%s\" violates not-null constraint",
-								NameStr(att->attname),
-								RelationGetRelationName(orig_rel)),
-						 val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
-						 errtablecol(orig_rel, attrChk)));
+						errcode(ERRCODE_NOT_NULL_VIOLATION),
+						errmsg("null value in column \"%s\" of relation \"%s\" violates not-null constraint",
+							   NameStr(att->attname),
+							   RelationGetRelationName(orig_rel)),
+						val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
+						errtablecol(orig_rel, attnum));
 			}
 		}
 	}
 
+	/*
+	 * Verify check constraints.
+	 */
 	if (rel->rd_rel->relchecks > 0)
 	{
 		const char *failed;
