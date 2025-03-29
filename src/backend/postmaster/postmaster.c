@@ -4513,7 +4513,7 @@ maybe_adjust_io_workers(void)
 			++io_worker_count;
 		}
 		else
-			break;				/* XXX try again soon? */
+			break;				/* try again next time */
 	}
 
 	/* Too many running? */
