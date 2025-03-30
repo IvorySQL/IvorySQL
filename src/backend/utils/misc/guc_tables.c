@@ -3265,7 +3265,7 @@ struct config_int ConfigureNamesInt[] =
 		&effective_io_concurrency,
 		DEFAULT_EFFECTIVE_IO_CONCURRENCY,
 		0, MAX_IO_CONCURRENCY,
-		check_effective_io_concurrency, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3279,7 +3279,7 @@ struct config_int ConfigureNamesInt[] =
 		&maintenance_io_concurrency,
 		DEFAULT_MAINTENANCE_IO_CONCURRENCY,
 		0, MAX_IO_CONCURRENCY,
-		check_maintenance_io_concurrency, assign_maintenance_io_concurrency,
+		NULL, assign_maintenance_io_concurrency,
 		NULL
 	},
 

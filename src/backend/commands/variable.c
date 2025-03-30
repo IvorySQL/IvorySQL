@@ -1147,7 +1147,6 @@ check_cluster_name(char **newval, void **extra, GucSource source)
 void
 assign_maintenance_io_concurrency(int newval, void *extra)
 {
-#ifdef USE_PREFETCH
 	/*
 	 * Reconfigure recovery prefetching, because a setting it depends on
 	 * changed.
@@ -1155,7 +1154,6 @@ assign_maintenance_io_concurrency(int newval, void *extra)
 	maintenance_io_concurrency = newval;
 	if (AmStartupProcess())
 		XLogPrefetchReconfigure();
-#endif
 }
 
 /*
@@ -1248,34 +1246,6 @@ check_default_with_oids(bool *newval, void **extra, GucSource source)
 		return false;
 	}
 
-	return true;
-}
-
-bool
-check_effective_io_concurrency(int *newval, void **extra, GucSource source)
-{
-#ifndef USE_PREFETCH
-	if (*newval != 0)
-	{
-		GUC_check_errdetail("\"%s\" must be set to 0 on platforms that lack support for issuing read-ahead advice.",
-							"effective_io_concurrency");
-		return false;
-	}
-#endif							/* USE_PREFETCH */
-	return true;
-}
-
-bool
-check_maintenance_io_concurrency(int *newval, void **extra, GucSource source)
-{
-#ifndef USE_PREFETCH
-	if (*newval != 0)
-	{
-		GUC_check_errdetail("\"%s\" must be set to 0 on platforms that lack support for issuing read-ahead advice.",
-							"maintenance_io_concurrency");
-		return false;
-	}
-#endif							/* USE_PREFETCH */
 	return true;
 }
 
