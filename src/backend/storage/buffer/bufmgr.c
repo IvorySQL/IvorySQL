@@ -1570,6 +1570,7 @@ WaitReadBuffers(ReadBuffersOperation *operation)
 		{
 			BufferDesc *bufHdr;
 			Block		bufBlock;
+			int			piv_flags;
 			bool		verified;
 			bool		checksum_failure;
 
@@ -1585,8 +1586,11 @@ WaitReadBuffers(ReadBuffersOperation *operation)
 			}
 
 			/* check for garbage data */
+			piv_flags = PIV_LOG_WARNING;
+			if (ignore_checksum_failure)
+				piv_flags |= PIV_IGNORE_CHECKSUM_FAILURE;
 			verified = PageIsVerified((Page) bufBlock, io_first_block + j,
-									  PIV_LOG_WARNING, &checksum_failure);
+									  piv_flags, &checksum_failure);
 			if (checksum_failure)
 			{
 				RelFileLocatorBackend rloc = operation->smgr->smgr_rlocator;
