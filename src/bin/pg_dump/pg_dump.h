@@ -457,6 +457,7 @@ typedef struct _relStatsInfo
 	int32		relpages;
 	char	   *reltuples;
 	int32		relallvisible;
+	int32		relallfrozen;
 	char		relkind;		/* 'r', 'm', 'i', etc */
 
 	/*
