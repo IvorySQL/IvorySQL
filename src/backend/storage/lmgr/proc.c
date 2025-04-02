@@ -92,25 +92,34 @@ static void CheckDeadLock(void);
 
 
 /*
- * Report shared-memory space needed by InitProcGlobal.
+ * Report shared-memory space needed by PGPROC.
  */
-Size
-ProcGlobalShmemSize(void)
+static Size
+PGProcShmemSize(void)
+{
+	Size		size = 0;
+	Size		TotalProcs =
+		add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
+
+	size = add_size(size, mul_size(TotalProcs, sizeof(PGPROC)));
+	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->xids)));
+	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->subxidStates)));
+	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->statusFlags)));
+
+	return size;
+}
+
+/*
+ * Report shared-memory space needed by Fast-Path locks.
+ */
+static Size
+FastPathLockShmemSize(void)
 {
 	Size		size = 0;
 	Size		TotalProcs =
 		add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
 	Size		fpLockBitsSize,
 				fpRelIdSize;
-
-	/* ProcGlobal */
-	size = add_size(size, sizeof(PROC_HDR));
-	size = add_size(size, mul_size(TotalProcs, sizeof(PGPROC)));
-	size = add_size(size, sizeof(slock_t));
-
-	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->xids)));
-	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->subxidStates)));
-	size = add_size(size, mul_size(TotalProcs, sizeof(*ProcGlobal->statusFlags)));
 
 	/*
 	 * Memory needed for PGPROC fast-path lock arrays. Make sure the sizes are
@@ -120,6 +129,24 @@ ProcGlobalShmemSize(void)
 	fpRelIdSize = MAXALIGN(FastPathLockSlotsPerBackend() * sizeof(Oid));
 
 	size = add_size(size, mul_size(TotalProcs, (fpLockBitsSize + fpRelIdSize)));
+
+	return size;
+}
+
+/*
+ * Report shared-memory space needed by InitProcGlobal.
+ */
+Size
+ProcGlobalShmemSize(void)
+{
+	Size		size = 0;
+
+	/* ProcGlobal */
+	size = add_size(size, sizeof(PROC_HDR));
+	size = add_size(size, sizeof(slock_t));
+
+	size = add_size(size, PGProcShmemSize());
+	size = add_size(size, FastPathLockShmemSize());
 
 	return size;
 }
@@ -176,6 +203,8 @@ InitProcGlobal(void)
 			   *fpEndPtr PG_USED_FOR_ASSERTS_ONLY;
 	Size		fpLockBitsSize,
 				fpRelIdSize;
+	Size		requestSize;
+	char	   *ptr;
 
 	/* Create the ProcGlobal shared structure */
 	ProcGlobal = (PROC_HDR *)
@@ -205,8 +234,17 @@ InitProcGlobal(void)
 	 * with a single freelist.)  Each PGPROC structure is dedicated to exactly
 	 * one of these purposes, and they do not move between groups.
 	 */
-	procs = (PGPROC *) ShmemAlloc(TotalProcs * sizeof(PGPROC));
-	MemSet(procs, 0, TotalProcs * sizeof(PGPROC));
+	requestSize = PGProcShmemSize();
+
+	ptr = ShmemInitStruct("PGPROC structures",
+						  requestSize,
+						  &found);
+
+	MemSet(ptr, 0, requestSize);
+
+	procs = (PGPROC *) ptr;
+	ptr = (char *) ptr + TotalProcs * sizeof(PGPROC);
+
 	ProcGlobal->allProcs = procs;
 	/* XXX allProcCount isn't really all of them; it excludes prepared xacts */
 	ProcGlobal->allProcCount = MaxBackends + NUM_AUXILIARY_PROCS;
@@ -218,13 +256,17 @@ InitProcGlobal(void)
 	 * XXX: It might make sense to increase padding for these arrays, given
 	 * how hotly they are accessed.
 	 */
-	ProcGlobal->xids =
-		(TransactionId *) ShmemAlloc(TotalProcs * sizeof(*ProcGlobal->xids));
-	MemSet(ProcGlobal->xids, 0, TotalProcs * sizeof(*ProcGlobal->xids));
-	ProcGlobal->subxidStates = (XidCacheStatus *) ShmemAlloc(TotalProcs * sizeof(*ProcGlobal->subxidStates));
-	MemSet(ProcGlobal->subxidStates, 0, TotalProcs * sizeof(*ProcGlobal->subxidStates));
-	ProcGlobal->statusFlags = (uint8 *) ShmemAlloc(TotalProcs * sizeof(*ProcGlobal->statusFlags));
-	MemSet(ProcGlobal->statusFlags, 0, TotalProcs * sizeof(*ProcGlobal->statusFlags));
+	ProcGlobal->xids = (TransactionId *) ptr;
+	ptr = (char *) ptr + (TotalProcs * sizeof(*ProcGlobal->xids));
+
+	ProcGlobal->subxidStates = (XidCacheStatus *) ptr;
+	ptr = (char *) ptr + (TotalProcs * sizeof(*ProcGlobal->subxidStates));
+
+	ProcGlobal->statusFlags = (uint8 *) ptr;
+	ptr = (char *) ptr + (TotalProcs * sizeof(*ProcGlobal->statusFlags));
+
+	/* make sure wer didn't overflow */
+	Assert((ptr > (char *) procs) && (ptr <= (char *) procs + requestSize));
 
 	/*
 	 * Allocate arrays for fast-path locks. Those are variable-length, so
@@ -234,11 +276,16 @@ InitProcGlobal(void)
 	fpLockBitsSize = MAXALIGN(FastPathLockGroupsPerBackend * sizeof(uint64));
 	fpRelIdSize = MAXALIGN(FastPathLockSlotsPerBackend() * sizeof(Oid));
 
-	fpPtr = ShmemAlloc(TotalProcs * (fpLockBitsSize + fpRelIdSize));
-	MemSet(fpPtr, 0, TotalProcs * (fpLockBitsSize + fpRelIdSize));
+	requestSize = FastPathLockShmemSize();
+
+	fpPtr = ShmemInitStruct("Fast-Path Lock Array",
+							requestSize,
+							&found);
+
+	MemSet(fpPtr, 0, requestSize);
 
 	/* For asserts checking we did not overflow. */
-	fpEndPtr = fpPtr + (TotalProcs * (fpLockBitsSize + fpRelIdSize));
+	fpEndPtr = fpPtr + requestSize;
 
 	for (i = 0; i < TotalProcs; i++)
 	{
@@ -331,7 +378,9 @@ InitProcGlobal(void)
 	PreparedXactProcs = &procs[MaxBackends + NUM_AUXILIARY_PROCS];
 
 	/* Create ProcStructLock spinlock, too */
-	ProcStructLock = (slock_t *) ShmemAlloc(sizeof(slock_t));
+	ProcStructLock = (slock_t *) ShmemInitStruct("ProcStructLock spinlock",
+												 sizeof(slock_t),
+												 &found);
 	SpinLockInit(ProcStructLock);
 }
 
