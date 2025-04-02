@@ -3107,8 +3107,10 @@ transformFKConstraints(CreateStmtContext *cxt,
 
 	/*
 	 * If CREATE TABLE or adding a column with NULL default, we can safely
-	 * skip validation of FK constraints, and nonetheless mark them valid.
-	 * (This will override any user-supplied NOT VALID flag.)
+	 * skip validation of FK constraints, and mark them as valid based on the
+	 * constraint enforcement flag, since NOT ENFORCED constraints must always
+	 * be marked as NOT VALID. (This will override any user-supplied NOT VALID
+	 * flag.)
 	 */
 	if (skipValidation)
 	{
@@ -3117,7 +3119,7 @@ transformFKConstraints(CreateStmtContext *cxt,
 			Constraint *constraint = (Constraint *) lfirst(fkclist);
 
 			constraint->skip_validation = true;
-			constraint->initially_valid = true;
+			constraint->initially_valid = constraint->is_enforced;
 		}
 	}
 
@@ -4184,7 +4186,8 @@ transformConstraintAttrs(CreateStmtContext *cxt, List *constraintList)
 
 			case CONSTR_ATTR_ENFORCED:
 				if (lastprimarycon == NULL ||
-					lastprimarycon->contype != CONSTR_CHECK)
+					(lastprimarycon->contype != CONSTR_CHECK &&
+					 lastprimarycon->contype != CONSTR_FOREIGN))
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("misplaced ENFORCED clause"),
@@ -4200,7 +4203,8 @@ transformConstraintAttrs(CreateStmtContext *cxt, List *constraintList)
 
 			case CONSTR_ATTR_NOT_ENFORCED:
 				if (lastprimarycon == NULL ||
-					lastprimarycon->contype != CONSTR_CHECK)
+					(lastprimarycon->contype != CONSTR_CHECK &&
+					 lastprimarycon->contype != CONSTR_FOREIGN))
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("misplaced NOT ENFORCED clause"),

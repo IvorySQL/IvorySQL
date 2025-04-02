@@ -285,6 +285,9 @@ typedef struct ForeignKeyCacheInfo
 	/* number of columns in the foreign key */
 	int			nkeys;
 
+	/* Is enforced ? */
+	bool		conenforced;
+
 	/*
 	 * these arrays each have nkeys valid entries:
 	 */

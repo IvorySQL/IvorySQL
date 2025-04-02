@@ -2520,6 +2520,8 @@ typedef struct ATAlterConstraint
 {
 	NodeTag		type;
 	char	   *conname;		/* Constraint name */
+	bool		alterEnforceability;	/* changing enforceability properties? */
+	bool		is_enforced;	/* ENFORCED? */
 	bool		alterDeferrability; /* changing deferrability properties? */
 	bool		deferrable;		/* DEFERRABLE? */
 	bool		initdeferred;	/* INITIALLY DEFERRED? */
