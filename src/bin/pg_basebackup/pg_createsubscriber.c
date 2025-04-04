@@ -2132,10 +2132,7 @@ main(int argc, char **argv)
 					num_dbs++;
 				}
 				else
-				{
-					pg_log_error("database \"%s\" specified more than once", optarg);
-					exit(1);
-				}
+					pg_fatal("database \"%s\" specified more than once for -d/--database", optarg);
 				break;
 			case 'D':
 				subscriber_dir = pg_strdup(optarg);
@@ -2154,7 +2151,7 @@ main(int argc, char **argv)
 				if (!simple_string_list_member(&opt.objecttypes_to_remove, optarg))
 					simple_string_list_append(&opt.objecttypes_to_remove, optarg);
 				else
-					pg_fatal("object type \"%s\" is specified more than once for --remove", optarg);
+					pg_fatal("object type \"%s\" is specified more than once for -R/--remove", optarg);
 				break;
 			case 's':
 				opt.socket_dir = pg_strdup(optarg);
@@ -2182,10 +2179,7 @@ main(int argc, char **argv)
 					num_pubs++;
 				}
 				else
-				{
-					pg_log_error("publication \"%s\" specified more than once", optarg);
-					exit(1);
-				}
+					pg_fatal("publication \"%s\" specified more than once for --publication", optarg);
 				break;
 			case 3:
 				if (!simple_string_list_member(&opt.replslot_names, optarg))
@@ -2194,10 +2188,7 @@ main(int argc, char **argv)
 					num_replslots++;
 				}
 				else
-				{
-					pg_log_error("replication slot \"%s\" specified more than once", optarg);
-					exit(1);
-				}
+					pg_fatal("replication slot \"%s\" specified more than once for --replication-slot", optarg);
 				break;
 			case 4:
 				if (!simple_string_list_member(&opt.sub_names, optarg))
@@ -2206,10 +2197,7 @@ main(int argc, char **argv)
 					num_subs++;
 				}
 				else
-				{
-					pg_log_error("subscription \"%s\" specified more than once", optarg);
-					exit(1);
-				}
+					pg_fatal("subscription \"%s\" specified more than once for --subscription", optarg);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -2234,7 +2222,7 @@ main(int argc, char **argv)
 
 		if (bad_switch)
 		{
-			pg_log_error("%s cannot be used with --all", bad_switch);
+			pg_log_error("%s cannot be used with -a/--all", bad_switch);
 			pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 			exit(1);
 		}
@@ -2360,7 +2348,7 @@ main(int argc, char **argv)
 			dbinfos.objecttypes_to_remove |= OBJECTTYPE_PUBLICATIONS;
 		else
 		{
-			pg_log_error("invalid object type \"%s\" specified for --remove", cell->val);
+			pg_log_error("invalid object type \"%s\" specified for -R/--remove", cell->val);
 			pg_log_error_hint("The valid option is: \"publications\"");
 			exit(1);
 		}
