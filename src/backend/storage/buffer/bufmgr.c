@@ -6869,8 +6869,6 @@ buffer_readv_complete_one(PgAioTargetData *td, uint8 buf_off, Buffer buffer,
 	/* Check for garbage data. */
 	if (!failed)
 	{
-		PgAioResult result_one;
-
 		if (!PageIsVerified((Page) bufdata, tag.blockNum, piv_flags,
 							failed_checksum))
 		{
@@ -6905,6 +6903,8 @@ buffer_readv_complete_one(PgAioTargetData *td, uint8 buf_off, Buffer buffer,
 		 */
 		if (*buffer_invalid || *failed_checksum || *zeroed_buffer)
 		{
+			PgAioResult result_one = {0};
+
 			buffer_readv_encode_error(&result_one, is_temp,
 									  *zeroed_buffer,
 									  *ignored_checksum,
