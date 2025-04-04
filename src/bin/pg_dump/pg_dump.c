@@ -978,7 +978,7 @@ main(int argc, char **argv)
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
 	 */
-	ConnectDatabase(fout, &dopt.cparams, false);
+	ConnectDatabaseAhx(fout, &dopt.cparams, false);
 	getDbCompatibleMode(((ArchiveHandle *) fout)->connection);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
 	ExecuteSqlStatement(fout, "set ivorysql.identifier_case_switch = normal;");
