@@ -590,7 +590,7 @@ static int	ssl_renegotiation_limit;
  */
 int			huge_pages = HUGE_PAGES_TRY;
 int			huge_page_size;
-static int	huge_pages_status = HUGE_PAGES_UNKNOWN;
+int			huge_pages_status = HUGE_PAGES_UNKNOWN;
 
 
 /*
