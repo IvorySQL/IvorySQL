@@ -32,6 +32,7 @@
 #include "storage/sinvaladt.h"
 #include "storage/standby.h"
 #include "utils/hsearch.h"
+#include "utils/injection_point.h"
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
@@ -1287,6 +1288,17 @@ LogStandbySnapshot(void)
 	int			nlocks;
 
 	Assert(XLogStandbyInfoActive());
+
+#ifdef USE_INJECTION_POINTS
+	if (IS_INJECTION_POINT_ATTACHED("skip-log-running-xacts"))
+	{
+		/*
+		 * This record could move slot's xmin forward during decoding, leading
+		 * to unpredictable results, so skip it when requested by the test.
+		 */
+		return GetInsertRecPtr();
+	}
+#endif
 
 	/*
 	 * Get details of any AccessExclusiveLocks being held at the moment.
