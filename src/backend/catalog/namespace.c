@@ -4481,7 +4481,7 @@ cachedNamespacePath(const char *searchPath, Oid roleid)
 	 * checks).
 	 */
 	if (entry->finalPath == NIL || object_access_hook ||
-		entry->forceRecompute)
+		entry->forceRecompute || baseSearchPathValid == false)
 	{
 		list_free(entry->finalPath);
 		entry->finalPath = NIL;
