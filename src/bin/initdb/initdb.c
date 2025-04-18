@@ -1711,9 +1711,9 @@ bootstrap_template1(void)
 			 backend_exec, caseswitchmode, boot_options, extra_options, pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg");
 	appendPQExpBuffer(&cmd, " -X %d", wal_segment_size_mb * (1024 * 1024));
 	if (data_checksums)
-		appendPQExpBuffer(&cmd, " -k");
+		appendPQExpBufferStr(&cmd, " -k");
 	if (debug)
-		appendPQExpBuffer(&cmd, " -d 5");
+		appendPQExpBufferStr(&cmd, " -d 5");
 
 
 	PG_CMD_OPEN(cmd.data);
