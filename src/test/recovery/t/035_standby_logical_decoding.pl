@@ -769,7 +769,7 @@ $logstart = -s $node_standby->logfile;
 # on a relation marked as user_catalog_table.
 reactive_slots_change_hfs_and_wait_for_xmins('no_conflict_', 'pruning_', 0, 0);
 
-# Injection_point avoids seeing a xl_running_xacts. This is required because if
+# Injection point avoids seeing a xl_running_xacts. This is required because if
 # it is generated between the last two updates, then the catalog_xmin of the
 # active slot could be updated, and hence, the conflict won't occur. See
 # comments atop wait_until_vacuum_can_remove.
