@@ -25,7 +25,7 @@
 
 /* Hooks */
 extern bool pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_arg1, Oid *result_arg2);
-extern TupleTableSlot *IvyExecMergeMatched(ModifyTableContext *context,
+extern TupleTableSlot *IvyExecMergeMatched(IvyModifyTableContext *context,
 										ResultRelInfo *resultRelInfo,
 										ItemPointer tupleid,
 										HeapTuple oldtuple,
