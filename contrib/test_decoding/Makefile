@@ -12,7 +12,7 @@ ORA_REGRESS = ivy_ddl xact ivy_rewrite ivy_toast permissions decoding_in_xact \
 ISOLATION = mxact delayed_startup ondisk_startup concurrent_ddl_dml \
 	oldest_xmin snapshot_transfer subxact_without_top concurrent_stream \
 	twophase_snapshot slot_creation_error catalog_change_snapshot \
-	skip_snapshot_restore invalidation_distrubution
+	skip_snapshot_restore invalidation_distribution
 ORA_ISOLATION = mxact delayed_startup ondisk_startup ivy_concurrent_ddl_dml \
 	oldest_xmin snapshot_transfer subxact_without_top concurrent_stream \
 	twophase_snapshot slot_creation_error catalog_change_snapshot \
