@@ -2477,7 +2477,7 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic)
 			/* anonymous block's language default value is plsql
 			 * in oracle compatibility mode
 			 */
-			if (DB_ORACLE == compatible_db)
+			if (ORA_PARSER == compatible_db)
 				language = "plisql";
 			else
 				language = "plpgsql";

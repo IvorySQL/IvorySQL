@@ -3920,7 +3920,7 @@ interpretRowidOption(List *defList, bool allowRowid)
 	 * ROWID option was not specified, so use default GUC value,
 	 * but this GUC only valid in DB_ORACLE model
 	 */
-	if (compatible_db == DB_ORACLE)
+	if (compatible_db == ORA_PARSER)
 		return default_with_rowids;
 	else
 		return false;

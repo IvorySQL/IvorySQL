@@ -1107,7 +1107,7 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 		lexpr = transformExprRecurse(pstate, lexpr);
 		ltypeId = exprType(lexpr);
 
-		if (compatible_db == DB_ORACLE && ltypeId == ROWIDOID && nodeTag(rexpr) != T_TypeCast)
+		if (compatible_db == ORA_PARSER && ltypeId == ROWIDOID && nodeTag(rexpr) != T_TypeCast)
 		{
 			TypeCast   *castnode = makeNode(TypeCast);
 			castnode->typeName = makeTypeNameFromNameList(list_make2(makeString("sys"), makeString("rowid")));

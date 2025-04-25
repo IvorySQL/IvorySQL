@@ -7443,7 +7443,7 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 
 		var_tupdesc = expanded_record_get_tupdesc(newerh);
 
-		if (compatible_db == DB_ORACLE && (rec->datatype->typoid == ROWIDOID ||
+		if (compatible_db == ORA_PARSER && (rec->datatype->typoid == ROWIDOID ||
 			rec->datatype->typoid == UROWIDOID))
 		{
 			is_rowid_var = true;

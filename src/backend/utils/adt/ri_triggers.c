@@ -1879,7 +1879,7 @@ quoteOneName(char *buffer, const char *name)
 	/* Rather than trying to be smart, just always quote it. */
 	*buffer++ = '"';
 
-	if (compatible_db == DB_ORACLE && enable_case_switch
+	if (compatible_db == ORA_PARSER && enable_case_switch
 		 && identifier_case_switch == INTERCHANGE)
 		new_name = identifier_case_transform(name, strlen(name));
 	else

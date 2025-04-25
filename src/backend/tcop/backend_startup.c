@@ -771,7 +771,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 				/* Oracle compatibility tranfor upper to lower */
 				char *database_name = pstrdup(valptr);
 
-				if (DB_ORACLE == compatible_db && database_name != NULL)
+				if (ORA_PARSER == compatible_db && database_name != NULL)
 				{
 					if (identifier_case_switch == LOWERCASE &&
 						is_all_upper(database_name, strlen(database_name)))
@@ -824,7 +824,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 				/* Oracle compatibility tranfor upper to lower */
 				char *user_name = pstrdup(valptr);
 
-				if (DB_ORACLE == compatible_db && user_name != NULL)
+				if (ORA_PARSER == compatible_db && user_name != NULL)
 				{
 					if (identifier_case_switch == LOWERCASE &&
 						is_all_upper(user_name, strlen(user_name)))
