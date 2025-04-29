@@ -64,7 +64,7 @@
 #include "nodes/nodes.h"
 
 
-static TM_Result execDelete4Merge(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+static TM_Result execDelete4Merge(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, bool changingPart);
 static TM_Result heapDelete4Merge(Relation relation, ItemPointer tid,
 							CommandId cid, Snapshot crosscheck, bool wait,
@@ -114,7 +114,7 @@ IvyExecProcessReturning(ResultRelInfo *resultRelInfo,
  * execute oracle Merge UPDATE/UPDATE
  */
 TupleTableSlot *
-IvyExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+IvyExecMergeMatched(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				 ItemPointer tupleid, HeapTuple oldtuple, bool canSetTag,
 				 bool *matched)
 {
@@ -205,7 +205,7 @@ lmerge_matched:
 		MergeActionState *relaction = (MergeActionState *) lfirst(l);
 		CmdType	 commandType = relaction->mas_action->commandType;
 		TM_Result	 result;
-		UpdateContext updateCxt = {0};
+		IvyUpdateContext updateCxt = {0};
 
 		/*
 		 * Test condition, if any.
@@ -940,7 +940,7 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 }
 
 static TM_Result
-execDelete4Merge(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+execDelete4Merge(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			  				ItemPointer tupleid, bool changingPart)
 {
 	EState	   *estate = context->estate;

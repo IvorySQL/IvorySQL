@@ -22,7 +22,7 @@
  * state and some output variables populated by ExecUpdateAct() and
  * ExecDeleteAct() to report the result of their actions to callers.
  */
-typedef struct ModifyTableContext
+typedef struct IvyModifyTableContext
 {
 	/* Operation state */
 	ModifyTableState *mtstate;
@@ -52,12 +52,12 @@ typedef struct ModifyTableContext
 	 * cross-partition UPDATE
 	 */
 	TupleTableSlot *cpUpdateReturningSlot;
-} ModifyTableContext;
+} IvyModifyTableContext;
 
 /*
  * Context struct containing output data specific to UPDATE operations.
  */
-typedef struct UpdateContext
+typedef struct IvyUpdateContext
 {
 	bool		crossPartUpdate;	/* was it a cross-partition update? */
 	TU_UpdateIndexes updateIndexes;	/* Which index updates are required? */
@@ -67,7 +67,7 @@ typedef struct UpdateContext
 	 * EvalPlanQual on it
 	 */
 	LockTupleMode lockmode;
-} UpdateContext;
+} IvyUpdateContext;
 
 extern void ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 									EState *estate,
@@ -84,31 +84,31 @@ extern void ExecReScanModifyTable(ModifyTableState *node);
 extern void ExecInitMergeTupleSlots(ModifyTableState *mtstate,
 									ResultRelInfo *resultRelInfo);
 
-extern bool ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+extern bool ExecDeletePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple,
 							TupleTableSlot **epqreturnslot, TM_Result *result);
-extern TM_Result ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+extern TM_Result ExecDeleteAct(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, bool changingPart);
-extern void ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+extern void ExecDeleteEpilogue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple, bool changingPart);
-extern TM_Result ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+extern TM_Result ExecUpdateAct(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-							bool canSetTag, UpdateContext *updateCxt);
-extern void ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
+							bool canSetTag, IvyUpdateContext *updateCxt);
+extern void ExecUpdateEpilogue(IvyModifyTableContext *context, IvyUpdateContext *updateCxt,
 							ResultRelInfo *resultRelInfo, ItemPointer tupleid,
 							HeapTuple oldtuple, TupleTableSlot *slot);
-extern bool ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+extern bool ExecUpdatePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
 							TM_Result *result);
 extern void ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot, EState *estate);
-extern TupleTableSlot *ExecMergeMatched(ModifyTableContext *context,
+extern TupleTableSlot *ExecMergeMatched(IvyModifyTableContext *context,
 										ResultRelInfo *resultRelInfo,
 										ItemPointer tupleid,
 										HeapTuple oldtuple,
 										bool canSetTag,
 										bool *matched);
-typedef TupleTableSlot *(* exec_merge_matched_hook_type)(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+typedef TupleTableSlot *(* exec_merge_matched_hook_type)(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 									ItemPointer tupleid, HeapTuple oldtuple, 
 									bool canSetTag, bool *matched);
 extern PGDLLIMPORT exec_merge_matched_hook_type pg_exec_merge_matched_hook;

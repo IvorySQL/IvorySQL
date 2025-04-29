@@ -86,13 +86,13 @@ static void ExecBatchInsert(ModifyTableState *mtstate,
 							EState *estate,
 							bool canSetTag);
 static void ExecPendingInserts(EState *estate);
-static void ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
+static void ExecCrossPartitionUpdateForeignKey(IvyModifyTableContext *context,
 											   ResultRelInfo *sourcePartInfo,
 											   ResultRelInfo *destPartInfo,
 											   ItemPointer tupleid,
 											   TupleTableSlot *oldslot,
 											   TupleTableSlot *newslot);
-static bool ExecOnConflictUpdate(ModifyTableContext *context,
+static bool ExecOnConflictUpdate(IvyModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
 								 ItemPointer conflictTid,
 								 TupleTableSlot *excludedSlot,
@@ -105,13 +105,13 @@ static TupleTableSlot *ExecPrepareTupleRouting(ModifyTableState *mtstate,
 											   TupleTableSlot *slot,
 											   ResultRelInfo **partRelInfo);
 
-static TupleTableSlot *ExecMerge(ModifyTableContext *context,
+static TupleTableSlot *ExecMerge(IvyModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
 								 ItemPointer tupleid,
 								 HeapTuple oldtuple,
 								 bool canSetTag);
 static void ExecInitMerge(ModifyTableState *mtstate, EState *estate);
-static TupleTableSlot *ExecMergeNotMatched(ModifyTableContext *context,
+static TupleTableSlot *ExecMergeNotMatched(IvyModifyTableContext *context,
 										   ResultRelInfo *resultRelInfo,
 										   bool canSetTag);
 
@@ -705,7 +705,7 @@ ExecGetUpdateNewTuple(ResultRelInfo *relinfo,
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
-ExecInsert(ModifyTableContext *context,
+ExecInsert(IvyModifyTableContext *context,
 		   ResultRelInfo *resultRelInfo,
 		   TupleTableSlot *slot,
 		   bool canSetTag,
@@ -1263,7 +1263,7 @@ ExecPendingInserts(EState *estate)
  * the delete a no-op; otherwise, return true.
  */
 bool
-ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecDeletePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple,
 				   TupleTableSlot **epqreturnslot, TM_Result *result)
 {
@@ -1294,7 +1294,7 @@ ExecDeletePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * Caller is in charge of doing EvalPlanQual as necessary
  */
 TM_Result
-ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecDeleteAct(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			  ItemPointer tupleid, bool changingPart)
 {
 	EState	   *estate = context->estate;
@@ -1316,7 +1316,7 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * cross-partition tuple move.
  */
 void
-ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecDeleteEpilogue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple, bool changingPart)
 {
 	ModifyTableState *mtstate = context->mtstate;
@@ -1374,7 +1374,7 @@ ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
-ExecDelete(ModifyTableContext *context,
+ExecDelete(IvyModifyTableContext *context,
 		   ResultRelInfo *resultRelInfo,
 		   ItemPointer tupleid,
 		   HeapTuple oldtuple,
@@ -1688,12 +1688,12 @@ ldelete:
  * logic.
  */
 static bool
-ExecCrossPartitionUpdate(ModifyTableContext *context,
+ExecCrossPartitionUpdate(IvyModifyTableContext *context,
 						 ResultRelInfo *resultRelInfo,
 						 ItemPointer tupleid, HeapTuple oldtuple,
 						 TupleTableSlot *slot,
 						 bool canSetTag,
-						 UpdateContext *updateCxt,
+						 IvyUpdateContext *updateCxt,
 						 TM_Result *tmresult,
 						 TupleTableSlot **retry_slot,
 						 TupleTableSlot **inserted_tuple,
@@ -1849,7 +1849,7 @@ ExecCrossPartitionUpdate(ModifyTableContext *context,
  * otherwise, return true.
  */
 bool
-ExecUpdatePrologue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecUpdatePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				   ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
 				   TM_Result *result)
 {
@@ -1926,9 +1926,9 @@ ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
  * this routine does it.
  */
 TM_Result
-ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecUpdateAct(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			  ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-			  bool canSetTag, UpdateContext *updateCxt)
+			  bool canSetTag, IvyUpdateContext *updateCxt)
 {
 	EState	   *estate = context->estate;
 	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
@@ -2077,7 +2077,7 @@ lreplace:
  * returns indicating that the tuple was updated.
  */
 void
-ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
+ExecUpdateEpilogue(IvyModifyTableContext *context, IvyUpdateContext *updateCxt,
 				   ResultRelInfo *resultRelInfo, ItemPointer tupleid,
 				   HeapTuple oldtuple, TupleTableSlot *slot)
 {
@@ -2124,7 +2124,7 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
  * keys pointing into it.
  */
 static void
-ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
+ExecCrossPartitionUpdateForeignKey(IvyModifyTableContext *context,
 								   ResultRelInfo *sourcePartInfo,
 								   ResultRelInfo *destPartInfo,
 								   ItemPointer tupleid,
@@ -2216,13 +2216,13 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
-ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecUpdate(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		   ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
 		   bool canSetTag)
 {
 	EState	   *estate = context->estate;
 	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
-	UpdateContext updateCxt = {0};
+	IvyUpdateContext updateCxt = {0};
 	TM_Result	result;
 
 	/*
@@ -2468,7 +2468,7 @@ redo_act:
  * the caller must retry the INSERT from scratch.
  */
 static bool
-ExecOnConflictUpdate(ModifyTableContext *context,
+ExecOnConflictUpdate(IvyModifyTableContext *context,
 					 ResultRelInfo *resultRelInfo,
 					 ItemPointer conflictTid,
 					 TupleTableSlot *excludedSlot,
@@ -2688,7 +2688,7 @@ ExecOnConflictUpdate(ModifyTableContext *context,
  * Perform MERGE.
  */
 static TupleTableSlot *
-ExecMerge(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecMerge(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		  ItemPointer tupleid, HeapTuple oldtuple, bool canSetTag)
 {
 	TupleTableSlot *rslot = NULL;
@@ -2814,7 +2814,7 @@ ExecMerge(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * to also execute a WHEN NOT MATCHED [BY TARGET] action.
  */
 TupleTableSlot *
-ExecMergeMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecMergeMatched(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				 ItemPointer tupleid, HeapTuple oldtuple, bool canSetTag,
 				 bool *matched)
 {
@@ -2904,7 +2904,7 @@ lmerge_matched:
 		MergeActionState *relaction = (MergeActionState *) lfirst(l);
 		CmdType		commandType = relaction->mas_action->commandType;
 		TM_Result	result;
-		UpdateContext updateCxt = {0};
+		IvyUpdateContext updateCxt = {0};
 
 		/*
 		 * Test condition, if any.
@@ -3325,7 +3325,7 @@ out:
  * Execute the first qualifying NOT MATCHED [BY TARGET] action.
  */
 static TupleTableSlot *
-ExecMergeNotMatched(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
+ExecMergeNotMatched(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 					bool canSetTag)
 {
 	ModifyTableState *mtstate = context->mtstate;
@@ -3773,7 +3773,7 @@ static TupleTableSlot *
 ExecModifyTable(PlanState *pstate)
 {
 	ModifyTableState *node = castNode(ModifyTableState, pstate);
-	ModifyTableContext context;
+	IvyModifyTableContext context;
 	EState	   *estate = node->ps.state;
 	CmdType		operation = node->operation;
 	ResultRelInfo *resultRelInfo;

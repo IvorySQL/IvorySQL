@@ -1650,7 +1650,7 @@ MinimalTupleTableSlot
 MinmaxMultiOpaque
 MinmaxOpaque
 ModifyTable
-ModifyTableContext
+IvyModifyTableContext
 ModifyTablePath
 ModifyTableState
 MonotonicFunction
@@ -3027,7 +3027,7 @@ UniqueState
 UnlistenStmt
 UnresolvedTup
 UnresolvedTupData
-UpdateContext
+IvyUpdateContext
 UpdateStmt
 UploadManifestCmd
 UpperRelationKind
