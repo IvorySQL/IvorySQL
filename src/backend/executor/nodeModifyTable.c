@@ -3587,7 +3587,7 @@ fireASTriggers(ModifyTableState *node)
 								 node->mt_transition_capture);
 			break;
 		case CMD_MERGE:
-			if (compatible_db == DB_ORACLE)
+			if (compatible_db == ORA_PARSER)
 			{
 				if (node->mt_merge_subcommands & MERGE_UPDATE)
 					ExecASUpdateTriggers(node->ps.state, resultRelInfo,

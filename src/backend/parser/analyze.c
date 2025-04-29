@@ -2462,7 +2462,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	qry->returningList = transformReturningList(pstate, stmt->returningList,
 												EXPR_KIND_RETURNING);
 
-	if (DB_ORACLE == compatible_db)
+	if (ORA_PARSER == compatible_db)
 	{
 		ListCell   *o_target;
 
@@ -2542,7 +2542,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
-		if (attrno == InvalidAttrNumber && compatible_db == DB_ORACLE)
+		if (attrno == InvalidAttrNumber && compatible_db == ORA_PARSER)
 		{
 			if (origTarget->indirection)
 			{
@@ -2600,7 +2600,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 						 parser_errposition(pstate, origTarget->location)));
 			}
 		}
-		if (attrno == InvalidAttrNumber && compatible_db == DB_PG)
+		if (attrno == InvalidAttrNumber && compatible_db == PG_PARSER)
 		{
 			ereport(ERROR,
 			(errcode(ERRCODE_UNDEFINED_COLUMN),

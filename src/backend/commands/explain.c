@@ -4346,7 +4346,7 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 			update_path = mtstate->mt_merge_updated;
 			delete_path = mtstate->mt_merge_deleted;
 			skipped_path = total - insert_path - update_path - delete_path;
-			if (compatible_db != DB_ORACLE)
+			if (compatible_db != ORA_PARSER)
 				Assert(skipped_path >= 0);
 
 			if (es->format == EXPLAIN_FORMAT_TEXT)
@@ -4363,7 +4363,7 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 						appendStringInfo(es->str, " deleted=%.0f", delete_path);
 					if (skipped_path > 0)
 					{
-						if (compatible_db != DB_ORACLE)
+						if (compatible_db != ORA_PARSER)
 							appendStringInfo(es->str, " skipped=%.0f", skipped_path);
 					}
 					appendStringInfoChar(es->str, '\n');
@@ -4374,7 +4374,7 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 				ExplainPropertyFloat("Tuples Inserted", NULL, insert_path, 0, es);
 				ExplainPropertyFloat("Tuples Updated", NULL, update_path, 0, es);
 				ExplainPropertyFloat("Tuples Deleted", NULL, delete_path, 0, es);
-				if (compatible_db != DB_ORACLE)
+				if (compatible_db != ORA_PARSER)
 					ExplainPropertyFloat("Tuples Skipped", NULL, skipped_path, 0, es);
 			}
 		}

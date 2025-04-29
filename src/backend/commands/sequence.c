@@ -2452,7 +2452,7 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 					 errmsg("sequence must be in same schema as table it is linked to")));
 
 		/* Now, fetch the attribute number from the system cache */
-		if (compatible_db == DB_ORACLE && strcmp(seqname, attrname) != 0)
+		if (compatible_db == ORA_PARSER && strcmp(seqname, attrname) != 0)
 		{
 			attnum = get_attnum(RelationGetRelid(tablerel), attrname);
 			if (attnum == InvalidAttrNumber)
@@ -2461,7 +2461,7 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 						 errmsg("column \"%s\" of relation \"%s\" does not exist",
 								attrname, RelationGetRelationName(tablerel))));
 		}
-		else if (compatible_db == DB_PG)
+		else if (compatible_db == PG_PARSER)
 		{
 			attnum = get_attnum(RelationGetRelid(tablerel), attrname);
 			if (attnum == InvalidAttrNumber)

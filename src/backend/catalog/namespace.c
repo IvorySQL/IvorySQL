@@ -4325,7 +4325,7 @@ preprocessNamespacePath(const char *searchPath, Oid roleid,
 		char	   *curname = (char *) lfirst(l);
 		Oid			namespaceId;
 
-		if ((compatible_db == DB_ORACLE && enable_case_switch && identifier_case_switch != NORMAL) ?	/* IvorySQL: case sensitive indentify */
+		if ((compatible_db == ORA_PARSER && enable_case_switch && identifier_case_switch != NORMAL) ?	/* IvorySQL: case sensitive indentify */
 			pg_strcasecmp(curname, "$user") == 0 : strcmp(curname, "$user") == 0)
 		{
 			/* $user --- substitute namespace matching user name, if any */

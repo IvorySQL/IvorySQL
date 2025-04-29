@@ -4112,7 +4112,7 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 
 			if (values != NIL)
 			{
-				if (ora_updatexml_hook && compatible_db == DB_ORACLE)
+				if (ora_updatexml_hook && compatible_db == ORA_PARSER)
 					*op->resvalue = PointerGetDatum((*ora_updatexml_hook)(values));
 				else
 					*op->resvalue = (Datum) 0;

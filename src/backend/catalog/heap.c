@@ -498,7 +498,7 @@ CheckAttributeNamesTypes(TupleDesc tupdesc, char relkind,
 		{
 			Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
 
-			if (strcmp(NameStr(attr->attname), "rowid") == 0 && compatible_db != DB_ORACLE)
+			if (strcmp(NameStr(attr->attname), "rowid") == 0 && compatible_db != ORA_PARSER)
 				continue;
 
 			if (SystemAttributeByName(NameStr(attr->attname)) != NULL)

@@ -373,7 +373,7 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 {
 	int		newmode = *newval;
 
-	if (DB_PG == database_mode && newmode == DB_ORACLE)
+	if (DB_PG == database_mode && newmode == ORA_PARSER)
 			ereport(ERROR,
 				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
 				errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.")));
@@ -381,7 +381,7 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 	if(DB_ORACLE == database_mode
 		&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
-		if (newmode == DB_ORACLE)
+		if (newmode == ORA_PARSER)
 		{
 			if (ora_raw_parser == NULL)
 				ereport(ERROR,
@@ -417,7 +417,7 @@ assign_compatible_mode(int newval, void *extra)
 	if(DB_ORACLE == database_mode
 		&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
-		if (newval == DB_ORACLE)
+		if (newval == ORA_PARSER)
 		{
 			sql_raw_parser = ora_raw_parser;
 
@@ -427,7 +427,7 @@ assign_compatible_mode(int newval, void *extra)
 
 			assign_search_path(NULL, NULL);
 		}
-		else if (newval == DB_PG)
+		else if (newval == PG_PARSER)
 		{
 			sql_raw_parser = standard_raw_parser;
 
