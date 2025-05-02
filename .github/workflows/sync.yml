@@ -1,4 +1,7 @@
 name: Sync All Branches with Upstream
+  permissions:
+    contents: write
+    workflows: write  # Only add if you need to modify workflows
 on:
   schedule:
     - cron: '0 3 * * *'  # Daily at 3 AM UTC
