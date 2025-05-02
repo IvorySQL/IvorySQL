@@ -1,0 +1,44 @@
+name: Sync All Branches with Upstream
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 3 AM UTC
+  workflow_dispatch:     # Manual trigger
+
+jobs:
+  sync-all-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for branch operations
+
+      - name: Add Upstream Remote
+        run: |
+          git remote add upstream https://github.com/IvorySQL/IvorySQL.git
+          git fetch upstream --prune
+
+      - name: Get Upstream Branches
+        id: get-branches
+        run: |
+          # Get all remote branch names (exclude HEAD/refs)
+          branches=$(git ls-remote --heads upstream | awk '{print $2}' | sed 's|refs/heads/||')
+          # Store as newline-separated text (skip JSON conversion)
+          echo "branches<<EOF" >> $GITHUB_OUTPUT
+          echo "$branches" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Sync Branches
+        run: |
+          echo "Syncing branches:"
+          echo "${{ steps.get-branches.outputs.branches }}"
+          
+          # Loop through branches (handle spaces/newlines)
+          while IFS= read -r branch; do
+            [[ -z "$branch" ]] && continue  # Skip empty lines
+            echo "Syncing branch: $branch"
+            
+            # Reset local branch to match upstream
+            git checkout -B "$branch" "upstream/$branch" --force
+            git push origin "$branch" --force
+          done <<< "${{ steps.get-branches.outputs.branches }}"
