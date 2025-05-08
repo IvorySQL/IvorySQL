@@ -773,15 +773,15 @@ PostmasterMain(int argc, char *argv[])
 		ExitPostmaster(1);
 	}
 
+	/* set database_style here */
+	SetCaseGucOption(userDoption);
+
 	/*
 	 * Locate the proper configuration files and data directory, and read
 	 * postgresql.conf for the first time.
 	 */
 	if (!SelectConfigFiles(userDoption, progname))
 		ExitPostmaster(2);
-
-	/* set database_style here */
-	SetCaseGucOption(userDoption);
 
 	if (output_config_variable != NULL)
 	{
