@@ -5447,17 +5447,17 @@ void SetCaseGucOption(char* path)
 		if (casemode == NORMAL)
 		{
 			SetConfigOption("ivorysql.identifier_case_switch", "normal",
-				PGC_USERSET, PGC_S_OVERRIDE);
+				PGC_USERSET, PGC_S_DEFAULT);
 		}
 		else if (casemode == INTERCHANGE)
 		{
 			SetConfigOption("ivorysql.identifier_case_switch", "interchange",
-				PGC_USERSET, PGC_S_OVERRIDE);
+				PGC_USERSET, PGC_S_DEFAULT);
 		}
 		else if (casemode == LOWERCASE)
 		{
 			SetConfigOption("ivorysql.identifier_case_switch", "lowercase",
-				PGC_USERSET, PGC_S_OVERRIDE);
+				PGC_USERSET, PGC_S_DEFAULT);
 		}
 		else
 			ereport(FATAL,
