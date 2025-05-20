@@ -860,8 +860,8 @@ SELECT table_name, view_definition FROM information_schema.views
  xmlview5   |  SELECT XMLPARSE(CONTENT '<abc>x</abc>'::text STRIP WHITESPACE) AS "xmlparse";
  xmlview6   |  SELECT XMLPI(NAME foo, 'bar'::text) AS "xmlpi";
  xmlview7   |  SELECT XMLROOT('<foo/>'::xml, VERSION NO VALUE, STANDALONE YES) AS "xmlroot";
- xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10)))::char(10) AS "xmlserialize";
- xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text) AS "xmlserialize";
+ xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10) NO INDENT))::char(10) AS "xmlserialize";
+ xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text NO INDENT) AS "xmlserialize";
 (9 rows)
 
 -- Text XPath expressions evaluation
