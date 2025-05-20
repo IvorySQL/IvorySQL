@@ -81,7 +81,7 @@
 **社区影响**：屡次违规，包括持续的不当行为、对个人的骚扰，或对某些群体的攻击或贬低。
 **措施**：永久禁止参与社区内所有公开互动。
 
-## 免责声明
+## 致谢
 
 本行为准则改编自[贡献者公约](https://www.contributor-covenant.org), v2.0全文[https://www.contributor-covenant.org/version/2/0/code_of_conduct.html](https://www.contributor-covenant.org/version/2/0/code_of_conduct.html)。
 社区影响指南参考自[Mozilla 的行为准则执行框架](https://github.com/mozilla/diversity)。
