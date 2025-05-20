@@ -846,8 +846,8 @@ SELECT table_name, view_definition FROM information_schema.views
  xmlview5   |  SELECT XMLPARSE(CONTENT '<abc>x</abc>'::text STRIP WHITESPACE) AS "xmlparse";
  xmlview6   |  SELECT XMLPI(NAME foo, 'bar'::text) AS "xmlpi";
  xmlview7   |  SELECT XMLROOT('<foo/>'::xml, VERSION NO VALUE, STANDALONE YES) AS "xmlroot";
- xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10)))::char(10) AS "xmlserialize";
- xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text) AS "xmlserialize";
+ xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10) NO INDENT))::char(10) AS "xmlserialize";
+ xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text NO INDENT) AS "xmlserialize";
 (9 rows)
 
 -- Text XPath expressions evaluation
@@ -1404,7 +1404,7 @@ SELECT * FROM xmltableview2;
 \sv xmltableview2
 CREATE OR REPLACE VIEW public.xmltableview2 AS
  SELECT a
-   FROM XMLTABLE(XMLNAMESPACES ('http://x.y'::text AS "Zz"), ('/Zz:rows/Zz:row'::text) PASSING ('<rows xmlns="http://x.y"><row><a>10</a></row></rows>'::xml) COLUMNS a integer PATH ('Zz:a'::text))
+   FROM XMLTABLE(XMLNAMESPACES ('http://x.y'::text AS "Zz"), ('/Zz:rows/Zz:row'::text) PASSING ('<rows xmlns="http://x.y"><row><a>10</a></row></rows>'::xml) COLUMNS a pg_catalog.int4 PATH ('Zz:a'::text))
 SELECT * FROM XMLTABLE(XMLNAMESPACES(DEFAULT 'http://x.y'),
                       '/rows/row'
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
