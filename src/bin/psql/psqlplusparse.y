@@ -542,4 +542,3 @@ merge_print_list(print_list *list1, print_list *list2)
 /* ... and the yylval macro, which flex will have its own definition for */
 #undef yylval
 
-#include "psqlplusscan.c"
