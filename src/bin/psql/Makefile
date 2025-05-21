@@ -95,6 +95,7 @@ clean distclean:
 	rm -rf tmp_check
 	rm -f ora_psqlscanslash.c sql_help.h sql_help.c psqlscanslash.c
 	rm -f psqlplusscan.c psqlplusparse.c
+	rm -f psqlplusparse.h
 
 check:
 	$(prove_check)
