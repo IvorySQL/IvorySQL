@@ -17,10 +17,12 @@
  *-------------------------------------------------------------------------
  */
 
+#include "postgres_fe.h"
 #include "common/string.h"
 #include "fe_utils/psqlscan_int.h"
 #include "libpq-fe.h"
 #include "psqlplus.h"
+#include "psqlplusparse.h"
 
 /* LCOV_EXCL_START */
 

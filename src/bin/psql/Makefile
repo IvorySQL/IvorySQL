@@ -44,6 +44,7 @@ OBJS = \
 	startup.o \
 	stringutils.o \
 	tab-complete.o \
+	psqlplusscan.o \
 	variables.o
 
 
@@ -51,6 +52,13 @@ all: psql
 
 psql: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
+
+# See notes in src/backend/parser/Makefile about the following two rules
+psqlplusparse.h: psqlplusparse.c
+	touch $@
+psqlplusparse.c: BISONFLAGS += -d
+# Force these dependencies to be known even without dependency info built:
+psqlplusparse.o psqlplusscan.o: psqlplusparse.h
 
 help.o: sql_help.h
 
