@@ -1,0 +1,705 @@
+--
+-- Tests for psql features that aren't closely connected to any
+-- specific server features.
+-- The main features is compatible with Oracle SQL*PLUS client command.
+--
+--
+-- VAR[IABLE] command
+--
+-- with or without semicolons
+variable x number
+variable y number;
+-- LIST all bind variables
+variable
+variable	x
+datatype	NUMBER
+
+variable	y
+datatype	NUMBER
+-- list specified bind variables
+variable x
+variable	x
+datatype	NUMBER
+variable y;
+variable	y
+datatype	NUMBER
+-- the variable name "x" is already taken by a psql bind variable.
+\set x
+the variable name "x" is already taken by a psql bind variable.
+\set shellvar
+-- the variable name "shellvar" is already taken by a psql shell variable.
+variable shellvar number
+the variable name "shellvar" is already taken by a psql shell variable.
+-- Supported datatypes
+variable x number
+variable x binary_float
+variable x binary_double
+variable x char
+variable x char(100)
+variable x char(100 char)
+variable x char(100 byte)
+variable x nchar(100)
+variable x varchar2
+variable x varchar2(100)
+variable x varchar2(100 char)
+variable x varchar2(100 byte)
+variable x nvarchar2(100)
+-- Bind variable length cannot exceed 2000.
+variable x char(2001)
+Bind variable length cannot exceed 2000.
+variable x char(2001 char)
+Bind variable length cannot exceed 2000.
+variable x char(2001 byte)
+Bind variable length cannot exceed 2000.
+variable x nchar(2001)
+Bind variable length cannot exceed 2000.
+-- Bind variable length cannot exceed 32767.
+variable x varchar2(32768)
+Bind variable length cannot exceed 32767.
+variable x varchar2(32768 char)
+Bind variable length cannot exceed 32767.
+variable x varchar2(32768 byte)
+Bind variable length cannot exceed 32767.
+variable x nvarchar2(32768)
+Bind variable length cannot exceed 32767.
+-- Redefine will overwrite the original bind variable
+variable x number = 666
+variable x
+variable	x
+datatype	NUMBER
+print x
+  X  
+-----
+ 666
+
+variable x varchar2(20 char) = 'redefine'
+variable x
+variable	x
+datatype	VARCHAR2(20 CHAR)
+print x
+    X     
+----------
+ redefine
+
+-- Bind variable names must start with a letter
+-- SP2-0553: Illegal variable name "xxx".
+variable _abc number
+Illegal variable name "_abc"
+variable #abc number
+Illegal variable name "#abc"
+variable $abc number
+Illegal variable name "$abc"
+variable +abc number
+Illegal variable name "+abc"
+variable 1 number
+Illegal variable name "1"
+variable 2 number
+Illegal variable name "2"
+-- content can include letters, digits, and _ # $
+variable a_b number
+variable a#b number
+variable a$b number
+variable a4b number
+-- A bind variable name can be a multibyte character
+variable 中文 number = 3.14
+variable 中文
+variable	中文
+datatype	NUMBER
+print 中文
+ 中文 
+------
+ 3.14
+
+variable a中文b number = 123456
+variable a中文b
+variable	a中文b
+datatype	NUMBER
+print a中文b
+ A中文B 
+--------
+ 123456
+
+-- discard the following text when encountering "(" , ")" or ",".
+-- SP2-0553: Illegal variable name "a?".
+variable a?)xx number
+Illegal variable name "a?"
+variable a?(xx number
+Illegal variable name "a?"
+variable a?,xx number
+Illegal variable name "a?"
+-- SP2-0553: Illegal variable name "?a".
+variable ?a)xx number
+Illegal variable name "?a"
+variable ?a(xx number
+Illegal variable name "?a"
+variable ?a,xx number
+Illegal variable name "?a"
+-- character '(' means discard the following string
+variable truncate varchar2(30 char) = 'this is a ( truncate!'
+variable truncate (it look like a comment)
+variable	truncate
+datatype	VARCHAR2(30 CHAR)
+print truncate
+       TRUNCATE        
+-----------------------
+ this is a ( truncate!
+
+-- character ')' means discard the following string
+variable truncate varchar2(30 char) = 'this is a ) truncate!'
+variable truncate)ignore
+variable	truncate
+datatype	VARCHAR2(30 CHAR)
+print truncate
+       TRUNCATE        
+-----------------------
+ this is a ) truncate!
+
+-- character ',' means discard the following string
+variable truncate varchar2(30 char) = 'this is a , truncate!'
+variable truncate,ignore
+variable	truncate
+datatype	VARCHAR2(30 CHAR)
+print truncate
+       TRUNCATE        
+-----------------------
+ this is a , truncate!
+
+-- correct prompt for invalid variable names
+-- SP2-0553: Illegal variable name "a'b".
+variable a'b number
+Illegal variable name "a'b"
+-- SP2-0553: Illegal variable name "a"b".
+variable a"b number
+Illegal variable name "a"b"
+-- SP2-0553: Illegal variable name "'a'".
+variable 'a' number
+Illegal variable name "'a'"
+-- SP2-0553: Illegal variable name ""a"".
+variable "a" number
+Illegal variable name ""a""
+-- SP2-0553: Illegal variable name "a'b'".
+variable a'b' number
+Illegal variable name "a'b'"
+-- SP2-0553: Illegal variable name "a"b"".
+variable a"b" number
+Illegal variable name "a"b""
+-- error, issue a usage
+variable a ?
+Usage: VAR[IABLE] [ <variable> [ NUMBER | CHAR | CHAR (n [CHAR|BYTE]) |
+			 VARCHAR2 (n [CHAR|BYTE]) | NCHAR | NCHAR (n) |
+			 NVARCHAR2 (n) | BINARY_FLOAT | BINARY_DOUBLE ] ]
+variable a a
+Usage: VAR[IABLE] [ <variable> [ NUMBER | CHAR | CHAR (n [CHAR|BYTE]) |
+			 VARCHAR2 (n [CHAR|BYTE]) | NCHAR | NCHAR (n) |
+			 NVARCHAR2 (n) | BINARY_FLOAT | BINARY_DOUBLE ] ]
+-- allow preceding comments
+-- ok
+/*123*/variable comment number=123
+/* /* */ variable comment number=123
+-- psql keywords as variable name
+variable BINARY_DOUBLE number
+variable BINARY_FLOAT number
+variable BYTE number
+variable CHAR number
+variable NCHAR number
+variable NUMBER number
+variable NVARCHAR2 number
+variable VARCHAR2 number
+variable VARIABLE number
+variable PRINT number
+-- list all
+variable
+variable	a#b
+datatype	NUMBER
+
+variable	a$b
+datatype	NUMBER
+
+variable	a4b
+datatype	NUMBER
+
+variable	a_b
+datatype	NUMBER
+
+variable	a中文b
+datatype	NUMBER
+
+variable	binary_double
+datatype	NUMBER
+
+variable	binary_float
+datatype	NUMBER
+
+variable	byte
+datatype	NUMBER
+
+variable	char
+datatype	NUMBER
+
+variable	comment
+datatype	NUMBER
+
+variable	nchar
+datatype	NUMBER
+
+variable	number
+datatype	NUMBER
+
+variable	nvarchar2
+datatype	NUMBER
+
+variable	print
+datatype	NUMBER
+
+variable	truncate
+datatype	VARCHAR2(30 CHAR)
+
+variable	varchar2
+datatype	NUMBER
+
+variable	variable
+datatype	NUMBER
+
+variable	x
+datatype	VARCHAR2(20 CHAR)
+
+variable	y
+datatype	NUMBER
+
+variable	中文
+datatype	NUMBER
+-- nls_length_semantics
+alter session set nls_length_semantics = 'byte';
+variable a char(10)
+variable b varchar2(10)
+variable c nvarchar2(10)
+alter session set nls_length_semantics = 'char';
+variable a
+variable	a
+datatype	CHAR(10 BYTE)
+variable b
+variable	b
+datatype	VARCHAR2(10 BYTE)
+variable c
+variable	c
+datatype	VARCHAR2(10)
+variable aa char(10)
+variable bb varchar2(10)
+variable cc nvarchar2(10)
+alter session set nls_length_semantics = 'byte';
+variable aa
+variable	aa
+datatype	CHAR(10 CHAR)
+variable bb
+variable	bb
+datatype	VARCHAR2(10 CHAR)
+variable cc
+variable	cc
+datatype	VARCHAR2(10 CHAR)
+-- Initialization
+-- Both single and double quotes are supported.
+variable x varchar2(10)='123'
+print x
+  X  
+-----
+ 123
+
+variable x varchar2(10)="12345"
+print x
+   X   
+-------
+ 12345
+
+-- Initial value errors do not affect the success of bind variable creation.
+-- SP2-0425: "abc" is not a valid NUMBER
+variable fail number=abc
+"abc" is not a valid NUMBER.
+variable fail
+variable	fail
+datatype	NUMBER
+print fail
+ FAIL 
+------
+ 
+
+-- Support extended quote(i.e. double writing)
+variable x varchar2(10)=''''
+print x
+ X 
+---
+ '
+
+variable x varchar2(10)=""""
+print x
+ X 
+---
+ "
+
+variable x varchar2(10)=a b c
+print x
+ X 
+---
+ a
+
+variable x varchar2(10)= a b c
+print x
+ X 
+---
+ a
+
+variable x varchar2(10)='a b c'
+print x
+   X   
+-------
+ a b c
+
+variable x varchar2(10)=' a b c'
+print x
+   X    
+--------
+  a b c
+
+variable x varchar2(10)='a' 'b' 'c'
+print x
+ X 
+---
+ a
+
+variable x varchar2(10)='12'x'
+print x
+ X  
+----
+ 12
+
+-- string "'12''" missing terminating quote (').
+variable x varchar2(10)='12''
+string "'12''" missing terminating quote (').
+-- string "'12''345" missing terminating quote (').
+variable x number='12''345
+string "'12''345" missing terminating quote (').
+-- string ""12""345" missing terminating quote (").
+variable x number="12""345
+string ""12""345" missing terminating quote (").
+-- string "'12'' 23" missing terminating quote (').
+variable x number='12'' 23
+string "'12'' 23" missing terminating quote (').
+-- string ""12"" 23" missing terminating quote (").
+variable x number="12"" 23
+string ""12"" 23" missing terminating quote (").
+-- SP2-0425: "12'345" is not a valid NUMBER 
+variable x number='12''345'
+"12'345" is not a valid NUMBER.
+-- OK, space is separator
+variable x number='12' '345'
+print x
+ X  
+----
+ 12
+
+-- Invalid error message content for each data type
+-- SP2-0425: "abc" is not a valid NUMBER
+variable v1 number='abc'
+"abc" is not a valid NUMBER.
+-- SP2-0425: "abc" is not a valid BINARY_FLOAT
+variable v2 binary_float='abc'
+"abc" is not a valid BINARY_FLOAT.
+-- SP2-0425: "abc" is not a valid BINARY_DOUBLE
+variable v3 binary_double='abc'
+"abc" is not a valid BINARY_DOUBLE.
+-- SP2-0631: String beginning "abcd" is too long
+variable v4 varchar2(3)='abcd'
+String beginning "abcd" is too long.
+variable v4 char(3)='abcd'
+String beginning "abcd" is too long.
+-- oracle is success, but error when PRINT.
+-- well, I think it may be a flaw of Oracle, 
+-- we keep reporting errors.
+variable v4 nchar(3)='abcd'
+String beginning "abcd" is too long.
+variable v4 nvarchar2(3)='abcd'
+String beginning "abcd" is too long.
+-- SP2-0306: Invalid option.
+-- Usage: VAR[IABLE] <variable> [type][= value]
+variable aaa number=
+Invalid option.
+Usage: VAR[IABLE] <variable> [type][= value]
+--
+-- assign value
+--
+variable a number = 999
+print a
+  A  
+-----
+ 999
+
+variable a = 123
+print a
+  A  
+-----
+ 123
+
+variable a = 345
+print a
+  A  
+-----
+ 345
+
+-- SP2-0425: "abc" is not a valid NUMBER
+variable a = 'abc'
+"abc" is not a valid NUMBER.
+-- SP2-0553: Illegal variable name "a'b".
+variable a'b = 123
+Illegal variable name "a'b"
+-- SP2-0552: Bind variable "noexist" not declared.
+variable noexist = 123
+Bind variable "noexist" not declared.
+-- SP2-1657: Variable assignment requires a value following equal sign.
+-- Usage: VAR[IABLE] <variable> [type][= value]
+variable a =
+Variable assignment requires a value following equal sign.
+Usage: VAR[IABLE] <variable> [type][= value]
+-- SP2-0553: Illegal variable name "a?a".
+variable a?a =
+Illegal variable name "a?a"
+variable a?a number =   
+Illegal variable name "a?a"
+variable a varchar2(3)='qqq'
+print a
+  A  
+-----
+ qqq
+
+-- SP2-0631: String beginning "qqqqqq" is too long
+variable a = 'qqqqqq'
+String beginning "qqqqqq" is too long.
+-- string "'qqqqqq" missing terminating quote (').
+variable a = 'qqqqqq
+string "'qqqqqq" missing terminating quote (').
+-- string ""qqqqqq" missing terminating quote (").
+variable a = "qqqqqq
+string ""qqqqqq" missing terminating quote (").
+--
+-- PRINT command
+--
+variable v1 number = 3.14
+variable v2 binary_float = 3.14
+variable v3 binary_double = 3.14
+variable v4 varchar2(10) = varchar2;
+variable v5 char(10) = char
+-- ok
+print v1
+  V1  
+------
+ 3.14
+
+print v3 v5
+  V3  
+------
+ 3.14
+
+     V5     
+------------
+ char      
+
+print
+ A 
+---
+ 
+
+ A#B 
+-----
+ 
+
+ A$B 
+-----
+ 
+
+ A4B 
+-----
+ 
+
+ A_B 
+-----
+ 
+
+ AA 
+----
+ 
+
+ A中文B 
+--------
+ 123456
+
+ B 
+---
+ 
+
+ BB 
+----
+ 
+
+ BINARY_DOUBLE 
+---------------
+ 
+
+ BINARY_FLOAT 
+--------------
+ 
+
+ BYTE 
+------
+ 
+
+ C 
+---
+ 
+
+ CC 
+----
+ 
+
+ CHAR 
+------
+ 
+
+ COMMENT 
+---------
+ 123
+
+ FAIL 
+------
+ 
+
+ NCHAR 
+-------
+ 
+
+ NUMBER 
+--------
+ 
+
+ NVARCHAR2 
+-----------
+ 
+
+ PRINT 
+-------
+ 
+
+       TRUNCATE        
+-----------------------
+ this is a , truncate!
+
+  V1  
+------
+ 3.14
+
+  V2  
+------
+ 3.14
+
+  V3  
+------
+ 3.14
+
+    V4    
+----------
+ varchar2
+
+     V5     
+------------
+ char      
+
+ VARCHAR2 
+----------
+ 
+
+ VARIABLE 
+----------
+ 
+
+ X  
+----
+ 12
+
+ Y 
+---
+ 
+
+ 中文 
+------
+ 3.14
+
+-- SP2-0552: Bind variable "NOEXIST" not declared.
+-- v1 and v2 was successfully printed.
+print v1 noexist v2
+  V1  
+------
+ 3.14
+
+Bind variable "noexist" not declared.
+
+  V2  
+------
+ 3.14
+
+-- invalid host/bind variable name.
+print v1 a'b v2
+  V1  
+------
+ 3.14
+
+invalid host/bind variable name.
+
+  V2  
+------
+ 3.14
+
+-- For a'b, an error is reported when the bind variable 'a' is not exits:
+--	SP2-0552: Bind variable "A" not declared. 
+-- But when we declare the bind variable 'a' and execute it repeatedly, an error will be reported:
+--	ORA-00923: FROM keyword not found where expected
+-- Therefore, I think Oracle may parse a'b into an alias clause, 'a' is the target entry, 'b' is its alias,
+-- PRINT is just a client command, there is no alias syntax in SQL,  so I think Oracle's error message is
+-- not accurate enough, My error report here is not going to be completely consistent with Oracle, but should
+-- be consistent with the VARIABLE a'b , that is, an error is reported: invalid host/bind variable name.
+print a'b
+invalid host/bind variable name.
+
+print a"b
+invalid host/bind variable name.
+
+-- Unlike Oracle, these two syntaxes are the same
+print a'b'
+ A 
+---
+ 
+
+invalid host/bind variable name.
+
+print a 'b'
+ A 
+---
+ 
+
+invalid host/bind variable name.
+
+-- Unlike Oracle, these two syntaxes are the same
+print a "b"
+ A 
+---
+ 
+
+ B 
+---
+ 
+
+print a"b"
+ A 
+---
+ 
+
+ B 
+---
+ 
+

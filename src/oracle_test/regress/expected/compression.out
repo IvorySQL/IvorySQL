@@ -142,7 +142,7 @@ CREATE TABLE cmdata2 (f1 int);
 --------+-----------------+-----------+----------+---------+-----------+---------+-------------+--------------+-------------
  f1     | pg_catalog.int4 |           |          |         |           | plain   |             |              | 
 
-ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
+ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar(4000);
 \d+ cmdata2
                                                    Table "public.cmdata2"
  Column |      Type      | Collation | Nullable | Default | Invisible | Storage  | Compression | Stats target | Description 
@@ -158,7 +158,7 @@ ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE int USING f1::integer;
 
 --changing column storage should not impact the compression method
 --but the data should not be compressed
-ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
+ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar(4000);
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION pglz;
 \d+ cmdata2
                                                    Table "public.cmdata2"
@@ -266,10 +266,17 @@ SELECT pg_column_compression(f1) FROM cmdata;
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION default;
 \d+ cmdata2
+<<<<<<< HEAD
                                                   Table "public.cmdata2"
  Column |      Type      | Collation | Nullable | Default | Invisible | Storage | Compression | Stats target | Description 
 --------+----------------+-----------+----------+---------+-----------+---------+-------------+--------------+-------------
  f1     | varchar2(4000) |           |          |         |           | plain   |             |              | 
+=======
+                                            Table "public.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         | plain   |             |              | 
+>>>>>>> fdf0efe3a8a (Add a parser for psql, and implement the client commands VARIABLE and)
 
 -- test alter compression method for materialized views
 ALTER MATERIALIZED VIEW compressmv ALTER COLUMN x SET COMPRESSION lz4;

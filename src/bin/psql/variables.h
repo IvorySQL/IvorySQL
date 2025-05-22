@@ -13,6 +13,8 @@
 #ifndef VARIABLES_H
 #define VARIABLES_H
 
+#include "fe_utils/psqlscan_int.h"	/* ReqID:SRS-CMD-PSQL */
+
 /*
  * Variables can be given "assign hook" functions.  The assign hook can
  * prevent invalid values from being assigned, and can update internal C
@@ -53,16 +55,38 @@ typedef bool (*VariableAssignHook) (const char *newval);
  */
 typedef char *(*VariableSubstituteHook) (char *newval);
 
+/* Begin - ReqID:SRS-CMD-PSQL */
+typedef enum
+{
+	PSQL_SHELL_VAR,		/* Native Postgres shell variables */
+	PSQL_BIND_VAR,		/* Oracle SQL*PLUS bind variables */
+	PSQL_UNKNOWN_VAR	/* Currently used for the header of variable list */
+} PsqlVarKind;
+/* End - ReqID:SRS-CMD-PSQL */
+
 /*
  * Data structure representing one variable.
  *
- * Note: if value == NULL then the variable is logically unset, but we are
- * keeping the struct around so as not to forget about its hook function(s).
+ * Note:
+ *	For shell variables, if value == NULL then the variable is logically unset, but
+ *	we are keeping the struct around so as not to forget about its hook function(s).
+ *
+ * Side effect:
+ *	Shell variables and bind variables are not allowed to have the same name, otherwise
+ *	we cannot judge the type of the variable only by the name of the variable with the
+ *	same name when the variable is referenced by a colon.
  */
 struct _variable
 {
 	char	   *name;
 	char	   *value;
+	/* Begin - ReqID:SRS-CMD-PSQL */
+	PsqlVarKind	varkind;
+
+	/* fields for bind variable */
+	int			typoid;
+	int			typmod;
+	/* End - ReqID:SRS-CMD-PSQL */
 	VariableSubstituteHook substitute_hook;
 	VariableAssignHook assign_hook;
 	struct _variable *next;
@@ -93,5 +117,15 @@ void		SetVariableHooks(VariableSpace space, const char *name,
 bool		VariableHasHook(VariableSpace space, const char *name);
 
 void		PsqlVarEnumError(const char *name, const char *value, const char *suggestions);
+
+/* Begin - ReqID:SRS-CMD-PSQL */
+bool		SetBindVariable(VariableSpace space, const char *name, 
+							const int typoid, const int typmod,
+							const char *initval, bool notnull);
+void		ListBindVariables(VariableSpace space, const char *name);
+void		PrintBindVariables(VariableSpace space, print_list *bvlist);
+bool		AssignBindVariable(VariableSpace space, const char *name, const char *value);
+bool		ValidBindVariableName(const char *name);
+/* End - ReqID:SRS-CMD-PSQL */
 
 #endif							/* VARIABLES_H */

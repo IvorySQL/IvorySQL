@@ -32,6 +32,19 @@ ora_psqlscanslash = custom_target('ora_psqlscanslash',
 generated_sources += ora_psqlscanslash
 psql_sources += ora_psqlscanslash
 
+psqlplusscan = custom_target('psqlplusscan',
+  input: 'psqlplusscan.l',
+  output: 'psqlplusscan.c',
+  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
+generated_sources += psqlplusscan
+psql_sources += psqlplusscan
+psqlplusparse = custom_target('psqlplusparse',
+  input: 'psqlplusparse.y',
+  kwargs: bison_kw,
+)
+generated_sources += psqlplusparse.to_list()
+psql_sources += psqlplusparse
+
 sql_help = custom_target('psql_help',
   output: ['sql_help.c', 'sql_help.h'],
   depfile: 'sql_help.dep',

@@ -84,6 +84,85 @@ typedef enum PLSQL_endSymbolState
 } PLSQL_endSymbolState;
 
 /*
+ * Oracle SQL*PLUS client cmd node types
+ */
+typedef enum psqlplus_cmd_type
+{
+	PSQLPLUS_CMD_VARIABLE,
+	PSQLPLUS_CMD_EXECUTE,
+	PSQLPLUS_CMD_PRINT
+} psqlplus_cmd_type;
+
+typedef struct BindVarType
+{
+	char	*name;		/* name of datatype */
+	int32	oid;		/* oid of datatype */
+	int32	typmod;		/* length with header */
+} BindVarType;
+
+/*
+ * Generic command node
+ */
+typedef struct psqlplus_cmd
+{
+	psqlplus_cmd_type	cmd_type;
+} psqlplus_cmd;
+
+/*
+ * VARIABLE command node
+ */
+typedef struct psqlplus_cmd_var
+{
+	psqlplus_cmd_type	cmd_type;
+	char				*var_name;	/* bind variable name */
+	BindVarType			*vartype;	/* bind variable datatype */
+	bool				list_bind_var;
+	bool				assign_bind_var;
+
+	/*
+	 * Starting from oracle 12c, an initial value can
+	 * be specified when creating a bind variable.
+	 *
+	 * This is a syntax-specified variable value that
+	 * may not be an acceptable valid value.Therefore,
+	 * we must interact with the server and perform a
+	 * legality check of the initial value.
+	 *
+	 * If miss_termination_quote is true, we don't need
+	 * to perform an interaction with the server.
+	 *
+	 * init_value is used to save the initial value of the
+	 * bind variable or the new value in assignment statement.
+	 */
+	bool				miss_termination_quote;
+	bool				initial_nonnull_value;
+	char				*init_value;
+} psqlplus_cmd_var;
+
+/* Data fields of the PRINT list structure */
+typedef struct print_item
+{
+	char	*bv_name;			/* name of bind var */
+	bool	valid;				/* is it a legal name */
+} print_item;
+
+/* PRINT list structure */
+typedef struct print_list
+{
+	print_item	**items;	/* array of print_item* */
+	int			length;		/* # of items */
+} print_list;
+
+/*
+ * PRINT command node
+ */
+typedef struct psqlplus_cmd_print
+{
+	psqlplus_cmd_type	cmd_type;
+	print_list			*print_items;	/* if NULL print all bind variables */
+} psqlplus_cmd_print;
+
+/*
  * All working state of the lexer must be stored in PsqlScanStateData
  * between calls.  This allows us to have multiple open lexer operations,
  * which is needed for nested include files.  The lexer itself is not
@@ -165,6 +244,20 @@ typedef struct PsqlScanStateData
 
 	/* Used to handle funtion/procedure that does not end properly */
 	PLSQL_endSymbolState ora_plsql_expect_end_symbol;
+
+	/*
+	 * literalbuf is used to accumulate literal values when multiple rules are
+	 * needed to parse a single literal.  Call startlit() to reset buffer to
+	 * empty, addlit() to add text.  NOTE: the string in literalbuf is NOT
+	 * necessarily null-terminated, but there always IS room to add a trailing
+	 * null at offset literallen.  We store a null only when we need it.
+	 */
+	char	   *literalbuf;		/* palloc'd expandable buffer */
+	int			literallen;		/* actual current string length */
+	int			literalalloc;	/* current allocated buffer size */
+
+	bool			is_sqlplus_cmd;	/* T if is a psqlplus command */
+	psqlplus_cmd	*psqlpluscmd;
 } PsqlScanStateData;
 
 
