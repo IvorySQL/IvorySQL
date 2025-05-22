@@ -4050,18 +4050,15 @@ select sum(c1) filter (where c1 < 100 and c2 > 5) from ft1 group by c2 order by 
 -- DISTINCT, ORDER BY and FILTER within aggregate
 explain (verbose, costs off)
 select sum(c1%3), sum(distinct c1%3 order by c1%3) filter (where c1%3 < 2), c2 from ft1 where c2 = 6 group by c2;
-                                                                          QUERY PLAN                                                                           
----------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: sum(((c1 % '3'::number))), sum(DISTINCT ((c1 % '3'::number)) ORDER BY ((c1 % '3'::number))) FILTER (WHERE (((c1 % '3'::number)) < '2'::number)), c2
-   ->  Sort
-         Output: c1, c2, ((c1 % '3'::number))
-         Sort Key: ((ft1.c1 % '3'::number))
-         ->  Foreign Scan on public.ft1
-               Output: c1, c2, (c1 % '3'::number)
-               Filter: (ft1.c2 = '6'::number)
-               Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
-(9 rows)
+   Output: sum((c1 % '3'::number)), sum(DISTINCT (c1 % '3'::number) ORDER BY (c1 % '3'::number)) FILTER (WHERE ((c1 % '3'::number) < '2'::number)), c2
+   ->  Foreign Scan on public.ft1
+         Output: c1, c2
+         Filter: (ft1.c2 = '6'::number)
+         Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
+(6 rows)
 
 select sum(c1%3), sum(distinct c1%3 order by c1%3) filter (where c1%3 < 2), c2 from ft1 where c2 = 6 group by c2;
  sum | sum | c2 

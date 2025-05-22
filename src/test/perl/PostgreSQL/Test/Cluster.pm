@@ -167,9 +167,8 @@ INIT
 	$portdir = $ENV{PG_TEST_PORT_DIR};
 	# Otherwise, try to use a directory at the top of the build tree
 	# or as a last resort use the tmp_check directory
-	my $build_dir = $ENV{MESON_BUILD_ROOT}
-	  || $ENV{top_builddir}
-	  || $PostgreSQL::Test::Utils::tmp_check ;
+	my $build_dir = $ENV{top_builddir}
+	  || $PostgreSQL::Test::Utils::tmp_check;
 	$portdir ||= "$build_dir/portlock";
 	$portdir =~ s!\\!/!g;
 	# Make sure the directory exists
@@ -2197,6 +2196,12 @@ connection.
 
 If given, it must be an array reference containing additional parameters to B<psql>.
 
+=item wait => 1
+
+By default, this method will not return until connection has completed (or
+failed). Set B<wait> to 0 to return immediately instead. (Clients can call the
+session's C<wait_connect> method manually when needed.)
+
 =back
 
 =cut
@@ -2220,13 +2225,15 @@ sub background_psql
 		'-');
 
 	$params{on_error_stop} = 1 unless defined $params{on_error_stop};
+	$params{wait} = 1 unless defined $params{wait};
 	$timeout = $params{timeout} if defined $params{timeout};
 
 	push @psql_params, '-v', 'ON_ERROR_STOP=1' if $params{on_error_stop};
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
 
-	return PostgreSQL::Test::BackgroundPsql->new(0, \@psql_params, $timeout);
+	return PostgreSQL::Test::BackgroundPsql->new(0, \@psql_params, $timeout,
+		$params{wait});
 }
 
 =pod

@@ -105,10 +105,11 @@ SELECT * FROM pred_tab t1
    ->  Seq Scan on pred_tab t1
    ->  Materialize
          ->  Nested Loop Left Join
+               Join Filter: (t2.a IS NOT NULL)
                ->  Seq Scan on pred_tab t2
                ->  Materialize
                      ->  Seq Scan on pred_tab t3
-(7 rows)
+(8 rows)
 
 -- Ensure the IS_NOT_NULL qual is not ignored when columns are made nullable
 -- by an outer join
@@ -135,16 +136,16 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM pred_tab t1
     LEFT JOIN pred_tab t2 ON TRUE
     LEFT JOIN pred_tab t3 ON t2.a IS NULL AND t2.b = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Nested Loop Left Join
    ->  Seq Scan on pred_tab t1
    ->  Materialize
          ->  Nested Loop Left Join
-               Join Filter: (false AND (t2.b = 1))
+               Join Filter: ((t2.a IS NULL) AND (t2.b = 1))
                ->  Seq Scan on pred_tab t2
-               ->  Result
-                     One-Time Filter: false
+               ->  Materialize
+                     ->  Seq Scan on pred_tab t3
 (8 rows)
 
 -- Ensure the IS_NULL qual is not reduced to constant-FALSE when the column is
@@ -174,16 +175,17 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM pred_tab t1
     LEFT JOIN pred_tab t2 ON TRUE
     LEFT JOIN pred_tab t3 ON t2.a IS NOT NULL OR t2.b = 1;
-                   QUERY PLAN                    
--------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Nested Loop Left Join
    ->  Seq Scan on pred_tab t1
    ->  Materialize
          ->  Nested Loop Left Join
+               Join Filter: ((t2.a IS NOT NULL) OR (t2.b = 1))
                ->  Seq Scan on pred_tab t2
                ->  Materialize
                      ->  Seq Scan on pred_tab t3
-(7 rows)
+(8 rows)
 
 -- Ensure the NullTest is not ignored when the column is nullable by an outer
 -- join
@@ -210,16 +212,16 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM pred_tab t1
     LEFT JOIN pred_tab t2 ON TRUE
     LEFT JOIN pred_tab t3 ON (t2.a IS NULL OR t2.c IS NULL) AND t2.b = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Nested Loop Left Join
    ->  Seq Scan on pred_tab t1
    ->  Materialize
          ->  Nested Loop Left Join
-               Join Filter: (false AND (t2.b = 1))
+               Join Filter: (((t2.a IS NULL) OR (t2.c IS NULL)) AND (t2.b = 1))
                ->  Seq Scan on pred_tab t2
-               ->  Result
-                     One-Time Filter: false
+               ->  Materialize
+                     ->  Seq Scan on pred_tab t3
 (8 rows)
 
 -- Ensure the OR clause is not reduced to constant-FALSE when a column is

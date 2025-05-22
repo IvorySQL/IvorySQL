@@ -416,6 +416,8 @@ static inline void reset_apply_error_context_info(void);
 static TransApplyAction get_transaction_apply_action(TransactionId xid,
 													 ParallelApplyWorkerInfo **winfo);
 
+static void replorigin_reset(int code, Datum arg);
+
 /*
  * Form the origin name for the subscription.
  *
@@ -2432,8 +2434,13 @@ apply_handle_insert(StringInfo s)
 		apply_handle_tuple_routing(edata,
 								   remoteslot, NULL, CMD_INSERT);
 	else
-		apply_handle_insert_internal(edata, edata->targetRelInfo,
-									 remoteslot);
+	{
+		ResultRelInfo *relinfo = edata->targetRelInfo;
+
+		ExecOpenIndices(relinfo, false);
+		apply_handle_insert_internal(edata, relinfo, remoteslot);
+		ExecCloseIndices(relinfo);
+	}
 
 	finish_edata(edata);
 
@@ -2460,15 +2467,14 @@ apply_handle_insert_internal(ApplyExecutionData *edata,
 {
 	EState	   *estate = edata->estate;
 
-	/* We must open indexes here. */
-	ExecOpenIndices(relinfo, false);
+	/* Caller should have opened indexes already. */
+	Assert(relinfo->ri_IndexRelationDescs != NULL ||
+		   !relinfo->ri_RelationDesc->rd_rel->relhasindex ||
+		   RelationGetIndexList(relinfo->ri_RelationDesc) == NIL);
 
 	/* Do the insert. */
 	TargetPrivilegesCheck(relinfo->ri_RelationDesc, ACL_INSERT);
 	ExecSimpleRelationInsert(relinfo, estate, remoteslot);
-
-	/* Cleanup. */
-	ExecCloseIndices(relinfo);
 }
 
 /*
@@ -2767,8 +2773,14 @@ apply_handle_delete(StringInfo s)
 		apply_handle_tuple_routing(edata,
 								   remoteslot, NULL, CMD_DELETE);
 	else
-		apply_handle_delete_internal(edata, edata->targetRelInfo,
+	{
+		ResultRelInfo *relinfo = edata->targetRelInfo;
+
+		ExecOpenIndices(relinfo, false);
+		apply_handle_delete_internal(edata, relinfo,
 									 remoteslot, rel->localindexoid);
+		ExecCloseIndices(relinfo);
+	}
 
 	finish_edata(edata);
 
@@ -2802,7 +2814,11 @@ apply_handle_delete_internal(ApplyExecutionData *edata,
 	bool		found;
 
 	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1, NIL);
-	ExecOpenIndices(relinfo, false);
+
+	/* Caller should have opened indexes already. */
+	Assert(relinfo->ri_IndexRelationDescs != NULL ||
+		   !localrel->rd_rel->relhasindex ||
+		   RelationGetIndexList(localrel) == NIL);
 
 	found = FindReplTupleInLocalRel(edata, localrel, remoterel, localindexoid,
 									remoteslot, &localslot);
@@ -2831,7 +2847,6 @@ apply_handle_delete_internal(ApplyExecutionData *edata,
 	}
 
 	/* Cleanup. */
-	ExecCloseIndices(relinfo);
 	EvalPlanQualEnd(&epqstate);
 }
 
@@ -3042,14 +3057,12 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 					EPQState	epqstate;
 
 					EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1, NIL);
-					ExecOpenIndices(partrelinfo, false);
 
 					EvalPlanQualSetSlot(&epqstate, remoteslot_part);
 					TargetPrivilegesCheck(partrelinfo->ri_RelationDesc,
 										  ACL_UPDATE);
 					ExecSimpleRelationUpdate(partrelinfo, estate, &epqstate,
 											 localslot, remoteslot_part);
-					ExecCloseIndices(partrelinfo);
 					EvalPlanQualEnd(&epqstate);
 				}
 				else
@@ -4430,6 +4443,14 @@ start_apply(XLogRecPtr origin_startpos)
 	}
 	PG_CATCH();
 	{
+		/*
+		 * Reset the origin state to prevent the advancement of origin
+		 * progress if we fail to apply. Otherwise, this will result in
+		 * transaction loss as that transaction won't be sent again by the
+		 * server.
+		 */
+		replorigin_reset(0, (Datum) 0);
+
 		if (MySubscription->disableonerr)
 			DisableSubscriptionAndExit();
 		else
@@ -4917,22 +4938,11 @@ void
 apply_error_callback(void *arg)
 {
 	ApplyErrorCallbackArg *errarg = &apply_error_callback_arg;
-	int			elevel;
 
 	if (apply_error_callback_arg.command == 0)
 		return;
 
 	Assert(errarg->origin_name);
-
-	elevel = geterrlevel();
-
-	/*
-	 * Reset the origin state to prevent the advancement of origin progress if
-	 * we fail to apply. Otherwise, this will result in transaction loss as
-	 * that transaction won't be sent again by the server.
-	 */
-	if (elevel >= ERROR)
-		replorigin_reset(0, (Datum) 0);
 
 	if (errarg->rel == NULL)
 	{

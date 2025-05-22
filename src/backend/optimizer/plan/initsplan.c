@@ -2740,6 +2740,15 @@ bool
 restriction_is_always_true(PlannerInfo *root,
 						   RestrictInfo *restrictinfo)
 {
+	/*
+	 * For a clone clause, we don't have a reliable way to determine if the
+	 * input expression of a NullTest is non-nullable: nullingrel bits in
+	 * clone clauses may not reflect reality, so we dare not draw conclusions
+	 * from clones about whether Vars are guaranteed not-null.
+	 */
+	if (restrictinfo->has_clone || restrictinfo->is_clone)
+		return false;
+
 	/* Check for NullTest qual */
 	if (IsA(restrictinfo->clause, NullTest))
 	{
@@ -2747,6 +2756,13 @@ restriction_is_always_true(PlannerInfo *root,
 
 		/* is this NullTest an IS_NOT_NULL qual? */
 		if (nulltest->nulltesttype != IS_NOT_NULL)
+			return false;
+
+		/*
+		 * Empty rows can appear NULL in some contexts and NOT NULL in others,
+		 * so avoid this optimization for row expressions.
+		 */
+		if (nulltest->argisrow)
 			return false;
 
 		return expr_is_nonnullable(root, nulltest->arg);
@@ -2789,6 +2805,15 @@ bool
 restriction_is_always_false(PlannerInfo *root,
 							RestrictInfo *restrictinfo)
 {
+	/*
+	 * For a clone clause, we don't have a reliable way to determine if the
+	 * input expression of a NullTest is non-nullable: nullingrel bits in
+	 * clone clauses may not reflect reality, so we dare not draw conclusions
+	 * from clones about whether Vars are guaranteed not-null.
+	 */
+	if (restrictinfo->has_clone || restrictinfo->is_clone)
+		return false;
+
 	/* Check for NullTest qual */
 	if (IsA(restrictinfo->clause, NullTest))
 	{
@@ -2796,6 +2821,13 @@ restriction_is_always_false(PlannerInfo *root,
 
 		/* is this NullTest an IS_NULL qual? */
 		if (nulltest->nulltesttype != IS_NULL)
+			return false;
+
+		/*
+		 * Empty rows can appear NULL in some contexts and NOT NULL in others,
+		 * so avoid this optimization for row expressions.
+		 */
+		if (nulltest->argisrow)
 			return false;
 
 		return expr_is_nonnullable(root, nulltest->arg);
