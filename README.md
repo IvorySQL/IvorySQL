@@ -10,6 +10,7 @@
 
 English | [中文](README_CN.md)
 
+IvorySQL is developed based on [PostgreSQL](https://github.com/postgres/postgres). 
 IvorySQL is advanced, fully featured, open source Oracle compatible PostgreSQL with a firm commitment to always remain 100% compatible and a Drop-in replacement of the latest PostgreSQL. IvorySQL adds a “compatible_db” toggle switch to switch between Oracle and PostgreSQL compatibility modes.
 One of the highlights of IvorySQL is PL/iSQL procedural language that supports oracle’s PL/SQL syntax and Oracle style Packages.
 
