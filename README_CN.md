@@ -10,7 +10,7 @@
 
 [English](README.md) | 中文
 
-IvorySQL 是一款先进、功能全面的开源 Oracle 兼容 PostgreSQL，始终承诺100% 兼容最新版本的 PostgreSQL，并可作为其无缝替代方案。IvorySQL 增加了一个 “compatible_db” 开关，支持在 Oracle 和 PostgreSQL 兼容模式之间自由切换。IvorySQL 的一大亮点是 PL/iSQL 过程式语言，它兼容 Oracle 的 PL/SQL 语法并支持 Oracle 风格的 Package。
+IvorySQL 基于开源[PostgreSQL](https://github.com/postgres/postgres)数据库。是一款先进、功能全面的开源 Oracle 兼容 PostgreSQL，始终承诺100% 兼容最新版本的 PostgreSQL，并可作为其无缝替代方案。IvorySQL 增加了一个 “compatible_db” 开关，支持在 Oracle 和 PostgreSQL 兼容模式之间自由切换。IvorySQL 的一大亮点是 PL/iSQL 过程式语言，它兼容 Oracle 的 PL/SQL 语法并支持 Oracle 风格的 Package。
 
 IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的社区贡献。在 IvorySQL 社区中，每一份贡献都至关重要，我们由衷感谢所有社区贡献者的支持！
 
