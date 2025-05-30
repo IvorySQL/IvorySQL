@@ -35,14 +35,16 @@ OBJS = \
 	input.o \
 	large_obj.o \
 	mainloop.o \
+	ora_prompt.o \
 	ora_psqlscanslash.o \
 	prompt.o \
-	ora_prompt.o \
+	psqlplusparse.o \
 	psqlscanslash.o \
 	sql_help.o \
 	startup.o \
 	stringutils.o \
 	tab-complete.o \
+	psqlplusscan.o \
 	variables.o
 
 
@@ -51,7 +53,17 @@ all: psql
 psql: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
+# See notes in src/backend/parser/Makefile about the following two rules
+psqlplusparse.h: psqlplusparse.c
+	touch $@
+psqlplusparse.c: BISONFLAGS += -d
+# Force these dependencies to be known even without dependency info built:
+psqlplusparse.o psqlplusscan.o: psqlplusparse.h
+
 help.o: sql_help.h
+
+# ReqID:SRS-CMD-PSQL
+psqlplusparse.o: psqlplusscan.c
 
 # See notes in src/backend/parser/Makefile about the following two rules
 sql_help.c: sql_help.h
@@ -82,6 +94,8 @@ clean distclean:
 	rm -f psql$(X) $(OBJS) lex.backup ora_psqlscanslash.c
 	rm -rf tmp_check
 	rm -f ora_psqlscanslash.c sql_help.h sql_help.c psqlscanslash.c
+	rm -f psqlplusscan.c psqlplusparse.c
+	rm -f psqlplusparse.h
 
 check:
 	$(prove_check)
