@@ -4640,7 +4640,7 @@ build_generation_expression(Relation rel, int attrno)
 List *
 QueryRewrite(Query *parsetree)
 {
-	uint64		input_query_id = parsetree->queryId;
+	int64		input_query_id = parsetree->queryId;
 	List	   *querylist;
 	List	   *results;
 	ListCell   *l;
