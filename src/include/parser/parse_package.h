@@ -5,8 +5,7 @@
  * Abstract:
  *		Definitions for the PLISQL Package parser
  *
- * Copyright:
- * Copyright (c) 2024, HighGo Software Co.,Ltd. 
+ * Copyright (c) 2024-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/include/parser/parse_package.h

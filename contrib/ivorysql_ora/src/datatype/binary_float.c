@@ -4,7 +4,7 @@
  *
  * Compatible with Oracle's binary_float data type.
  *
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/datatype/binary_float.c
  *

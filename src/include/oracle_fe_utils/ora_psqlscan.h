@@ -12,7 +12,7 @@
  * Authored by lanke@highgo.com
  *
  * Copyright:
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/oracle_fe_utils/ora_psqlscan.h
  *

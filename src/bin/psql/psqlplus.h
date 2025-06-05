@@ -7,8 +7,7 @@
  *
  * Authored by zhenmingyang@highgo.com, 20221221.
  *
- * Copyright:
- * Copyright (c) 2022, HighGo Software Co.,Ltd. All rights reserved. 
+ * Copyright (c) 2022-2025, IvorySQL Global Development Team
  *
  * Identification:
  *		src/bin/psql/psqlplus.h

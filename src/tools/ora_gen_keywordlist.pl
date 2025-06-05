@@ -21,7 +21,7 @@
 # Note that case folding works correctly only for all-ASCII keywords!
 #
 #
-# Portions Copyright (c) 2023, IvorySQL
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
 # src/tools/ora_gen_keywordlist.pl
 #

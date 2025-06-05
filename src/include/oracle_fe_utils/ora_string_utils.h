@@ -6,7 +6,7 @@
  * assorted contexts.
  *
  *
- * Portions Copyright (c) 2023, IvorySQL
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/oracle_fe_utils/ora_string_utils.h
  *

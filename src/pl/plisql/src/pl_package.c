@@ -5,8 +5,7 @@
  * Abstract:
  * 	 Executor for the PLiSQL package
  *
- * Copyright:
- * Copyright (c) 2024, HighGo Software Co.,Ltd. 
+ * Copyright (c) 2024-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *    src/pl/plisql/src/pl_package.c
