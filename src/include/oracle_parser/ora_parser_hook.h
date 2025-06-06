@@ -5,7 +5,7 @@
  *	 	for the Hook function's definitions.
  *
  *
- * Portions Copyright (c) 2023, IvorySQL
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/oracle_parser/ora_parser_hook.h
  *

@@ -5,7 +5,7 @@
 #
 # Makefile for src/oracle_test/authentication
 #
-# Portions Copyright (c) 2023, Ivory SQL Global Development Team
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 # Copyright (c) 1994, Regents of the University of California
 #
 # src/oracle_test/authentication/Makefile

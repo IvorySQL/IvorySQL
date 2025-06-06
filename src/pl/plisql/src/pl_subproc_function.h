@@ -9,7 +9,7 @@
  *
  * Authored by dwdai@highgo.com,20220627.
  *
- * Portions Copyright (c) 2023, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_subproc_function.h

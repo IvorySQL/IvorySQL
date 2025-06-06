@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  * Portions Copyright (c) 2000-2024, PostgreSQL Global Development Group
  *
  * src/bin/psql/prompt.h

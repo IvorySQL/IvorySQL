@@ -4,7 +4,7 @@
  *
  * This file contains extern declarations for GUC.
  *
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/include/guc.h
  *

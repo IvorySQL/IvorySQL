@@ -7,8 +7,7 @@
  *
  * Authored by lanke@highgo.com, 20220819.
  *
- * Copyright:
- * Copyright (c) 2022, HighGo Software Co.,Ltd. All rights reserved.
+ * Copyright (c) 2022-2025, IvorySQL Global Development Team All rights reserved
  *
  * IDENTIFICATION
  *        src/backend/utils/misc/ivy_guc.c
