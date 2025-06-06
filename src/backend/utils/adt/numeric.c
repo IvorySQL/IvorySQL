@@ -12,6 +12,7 @@
  * pages 359-367.
  *
  * Copyright (c) 1998-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/numeric.c
