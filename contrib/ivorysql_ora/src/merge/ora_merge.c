@@ -2,7 +2,7 @@
  *
  * Compatible with Oracle's Merge command.
  *
- * Copyright (c) 2024, Ivory SQL Global Development Team
+ * Copyright (c) 2024-2025, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/merge/ora_merge.c
  *

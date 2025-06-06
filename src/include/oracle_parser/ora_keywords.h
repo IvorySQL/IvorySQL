@@ -4,7 +4,7 @@
  *	  IvorySQL's list of SQL keywords
  *
  *
- * Portions Copyright (c) 2023, IvorySQL
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/oracle_parser/ora_keywords.h
  *

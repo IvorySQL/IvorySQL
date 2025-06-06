@@ -8,7 +8,7 @@
 #    specified by DATA in Makefile usings SQL files specified
 #    in ivorysql_ora_merge_sqls.
 #
-# Portions Copyright (c) 2023, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
 # Identification:
 #     contrib/ivorysql_ora/gensql.pl

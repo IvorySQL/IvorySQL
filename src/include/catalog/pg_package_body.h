@@ -6,8 +6,7 @@
  *		Definitions for the PLISQL Package Body
  *
  *
- * Copyright:
- * Copyright (c) 2024, HighGo Software Co.,Ltd. 
+ * Copyright (c) 2024-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/include/catalog/pg_package_body.h

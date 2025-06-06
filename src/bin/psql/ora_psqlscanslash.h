@@ -4,7 +4,7 @@
  * Authored by lanke@highgo.com, 20220705.
  *
  * Copyright:
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/bin/psql/ora_psqlscanslash.h
  */
