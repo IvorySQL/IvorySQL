@@ -5,6 +5,7 @@
  *	  sets and/or composite types, or deal with VARIADIC inputs.
  *
  * Copyright (c) 2002-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/utils/fmgr/funcapi.c

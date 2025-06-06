@@ -1,4 +1,5 @@
 # Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 
 # Note: the order of this list determines the order in which the catalog
 # header files are assembled into postgres.bki.  BKI_BOOTSTRAP catalogs
