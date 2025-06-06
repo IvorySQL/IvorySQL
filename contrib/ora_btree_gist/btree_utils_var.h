@@ -1,4 +1,5 @@
 /*
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  * contrib/btree_gist/btree_utils_var.h
  */
 #ifndef __BTREE_UTILS_VAR_H__

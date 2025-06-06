@@ -1,4 +1,5 @@
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 
 ora_parser_sources = files(
   'liboracle_parser.c',

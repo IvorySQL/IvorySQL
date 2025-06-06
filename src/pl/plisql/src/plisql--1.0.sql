@@ -1,4 +1,5 @@
 /* src/pl/plisql/src/plisql--1.0.sql */
+/* Portions Copyright (c) 2023-2025, IvorySQL Global Development Team */
 
 CREATE FUNCTION plisql_call_handler() RETURNS language_handler
   LANGUAGE c AS 'MODULE_PATHNAME';
