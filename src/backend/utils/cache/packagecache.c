@@ -8,8 +8,7 @@
  *
  * Authored by dwdai@highgo.com,20220929.
  *
- * Copyright:
- * Copyright (c) 2022, HighGo Software Co.,Ltd. All rights reserved.
+ * Copyright (c) 2022-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/utils/cache/packagecache.c

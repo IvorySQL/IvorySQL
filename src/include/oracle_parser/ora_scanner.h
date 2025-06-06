@@ -8,7 +8,7 @@
  * higher-level API provided by parser.h.
  *
  *
- * Portions Copyright (c) 2023, IvorySQL
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/oracle-parser/ora_scanner.h
  *

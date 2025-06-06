@@ -4,7 +4,7 @@
  *
  * This file contains extern declarations for datatype common routines.
  *
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/include/common_datatypes.h
  *

@@ -6,7 +6,7 @@
  *		Definitions for the PLISQL Package
  *
  *
- * Portions Copyright (c) 2024, HighGo Software Co.,Ltd. 
+ * Portions Copyright (c) 2024-2025, IvorySQL Global Development Team 
  *
  * IDENTIFICATION
  *	  src/backend/commands/packagecmds.c

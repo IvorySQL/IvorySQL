@@ -5,7 +5,7 @@
  * This file contains the implementation of Oracle's
  * datatype-independent built-in functions.
  *
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/builtin_functions/misc_functions.c
  *

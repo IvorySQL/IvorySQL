@@ -5,7 +5,7 @@
  * This file contains the implementation of Oracle's
  * numeric data type related built-in functions.
  *
- * Portions Copyright (c) 2023, Ivory SQL Global Development Team
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/builtin_functions/numeric_datatype_functions.c
  *
