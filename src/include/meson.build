@@ -1,6 +1,15 @@
 # Copyright (c) 2022-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 
+pg_config_ext = configure_file(
+  input: 'pg_config_ext.h.meson',
+  output: 'pg_config_ext.h',
+  configuration: cdata,
+  install: true,
+  install_dir: dir_include,
+)
+configure_files += pg_config_ext
+
 pg_config_os = configure_file(
   output: 'pg_config_os.h',
   input: files('port/@0@.h'.format(portname)),
