@@ -2120,8 +2120,6 @@ typedef struct InsertStmt
 	ReturningClause *returningClause;	/* RETURNING clause */
 	WithClause *withClause;		/* WITH clause */
 	OverridingKind override;	/* OVERRIDING clause */
-	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
-	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } InsertStmt;
 
 /* ----------------------
@@ -2136,8 +2134,6 @@ typedef struct DeleteStmt
 	Node	   *whereClause;	/* qualifications */
 	ReturningClause *returningClause;	/* RETURNING clause */
 	WithClause *withClause;		/* WITH clause */
-	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
-	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } DeleteStmt;
 
 /* ----------------------
@@ -2153,8 +2149,6 @@ typedef struct UpdateStmt
 	List	   *fromClause;		/* optional from clause for more tables */
 	ReturningClause *returningClause;	/* RETURNING clause */
 	WithClause *withClause;		/* WITH clause */
-	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
-	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } UpdateStmt;
 
 /* ----------------------
@@ -2170,8 +2164,6 @@ typedef struct MergeStmt
 	List	   *mergeWhenClauses;	/* list of MergeWhenClause(es) */
 	ReturningClause *returningClause;	/* RETURNING clause */
 	WithClause *withClause;		/* WITH clause */
-	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
-	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } MergeStmt;
 
 /* ----------------------
@@ -2243,8 +2235,6 @@ typedef struct SelectStmt
 	bool		all;			/* ALL specified? */
 	struct SelectStmt *larg;	/* left child */
 	struct SelectStmt *rarg;	/* right child */
-	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
-	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 	/* Eventually add fields for CORRESPONDING spec here */
 } SelectStmt;
 
