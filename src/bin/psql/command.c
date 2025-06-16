@@ -1974,7 +1974,7 @@ exec_command_gexec(PsqlScanState scan_state, bool active_branch)
 	{
 		if (PQpipelineStatus(pset.db) != PQ_PIPELINE_OFF)
 		{
-			pg_log_error("\\gexec not allowed in pipeline mode");
+			pg_log_error("\\%s not allowed in pipeline mode", "gexec");
 			clean_extended_state();
 			return PSQL_CMD_ERROR;
 		}
@@ -2000,7 +2000,7 @@ exec_command_gset(PsqlScanState scan_state, bool active_branch)
 
 		if (PQpipelineStatus(pset.db) != PQ_PIPELINE_OFF)
 		{
-			pg_log_error("\\gset not allowed in pipeline mode");
+			pg_log_error("\\%s not allowed in pipeline mode", "gset");
 			clean_extended_state();
 			return PSQL_CMD_ERROR;
 		}
@@ -3314,7 +3314,7 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 
 		if (PQpipelineStatus(pset.db) != PQ_PIPELINE_OFF)
 		{
-			pg_log_error("\\watch not allowed in pipeline mode");
+			pg_log_error("\\%s not allowed in pipeline mode", "watch");
 			clean_extended_state();
 			success = false;
 		}
