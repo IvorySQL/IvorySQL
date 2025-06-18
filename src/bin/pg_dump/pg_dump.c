@@ -6978,7 +6978,8 @@ getRelationStatistics(Archive *fout, DumpableObject *rel, int32 relpages,
 		(relkind == RELKIND_PARTITIONED_TABLE) ||
 		(relkind == RELKIND_INDEX) ||
 		(relkind == RELKIND_PARTITIONED_INDEX) ||
-		(relkind == RELKIND_MATVIEW))
+		(relkind == RELKIND_MATVIEW ||
+		 relkind == RELKIND_FOREIGN_TABLE))
 	{
 		RelStatsInfo *info = pg_malloc0(sizeof(RelStatsInfo));
 		DumpableObject *dobj = &info->dobj;
@@ -7017,6 +7018,7 @@ getRelationStatistics(Archive *fout, DumpableObject *rel, int32 relpages,
 			case RELKIND_RELATION:
 			case RELKIND_PARTITIONED_TABLE:
 			case RELKIND_MATVIEW:
+			case RELKIND_FOREIGN_TABLE:
 				info->section = SECTION_DATA;
 				break;
 			case RELKIND_INDEX:
