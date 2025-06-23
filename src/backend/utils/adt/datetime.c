@@ -2892,23 +2892,72 @@ DecodeNumberField(int len, char *str, int fmask,
 	/* No decimal point and no complete date yet? */
 	else if ((fmask & DTK_DATE_M) != DTK_DATE_M)
 	{
-		if (len >= 6)
+		if(!support_datetime_combo)
 		{
-			*tmask = DTK_DATE_M;
+			if (len >= 6)
+			{
+				*tmask = DTK_DATE_M;
 
-			/*
-			 * Start from end and consider first 2 as Day, next 2 as Month,
-			 * and the rest as Year.
-			 */
-			tm->tm_mday = atoi(str + (len - 2));
-			*(str + (len - 2)) = '\0';
-			tm->tm_mon = atoi(str + (len - 4));
-			*(str + (len - 4)) = '\0';
-			tm->tm_year = atoi(str);
-			if ((len - 4) == 2)
+				/*
+				 * Start from end and consider first 2 as Day, next 2 as Month,
+				 * and the rest as Year.
+				 */
+				tm->tm_mday = atoi(str + (len - 2));
+				*(str + (len - 2)) = '\0';
+				tm->tm_mon = atoi(str + (len - 4));
+				*(str + (len - 4)) = '\0';
+				tm->tm_year = atoi(str);
+				if ((len - 4) == 2)
+					*is2digits = true;
+
+				return DTK_DATE;
+			}
+		}
+		else 
+		{
+			if (len >= 6 && len < 12)
+			{
+				*tmask = DTK_DATE_M;
+
+				/*
+				 * Start from end and consider first 2 as Day, next 2 as Month,
+				 * and the rest as Year.
+				 */
+				tm->tm_mday = atoi(str + (len - 2));
+				*(str + (len - 2)) = '\0';
+				tm->tm_mon = atoi(str + (len - 4));
+				*(str + (len - 4)) = '\0';
+				tm->tm_year = atoi(str);
+				if ((len - 4) == 2)
+					*is2digits = true;
+
+				return DTK_DATE;
+			}
+			else if(len >= 12 && len <= 14)
+			{
+				*tmask = DTK_TIME_M | DTK_DATE_M;
+
+				/*
+				 * Start from end and consider first 2 as Second, next 2 as Minute,
+				 * next 2 as Hour, next 2 as Day, next 2 as Month,
+				 * and the rest as Year.
+				 */
+				tm->tm_sec = atoi(str + (len - 2));
+				*(str + (len - 2)) = '\0';
+				tm->tm_min = atoi(str + (len - 4));
+				*(str + (len - 4)) = '\0';
+				tm->tm_hour = atoi(str + (len - 6));
+				*(str + (len - 6)) = '\0';
+				tm->tm_mday = atoi(str + (len - 8));
+				*(str + (len - 8)) = '\0';
+				tm->tm_mon = atoi(str + (len - 10));
+				*(str + (len - 10)) = '\0';
+				tm->tm_year = atoi(str);
+				if ((len - 10) == 2)
 				*is2digits = true;
 
-			return DTK_DATE;
+				return DTK_NUMBER;
+			}
 		}
 	}
 

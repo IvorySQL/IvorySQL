@@ -597,6 +597,8 @@ char	   *event_source;
 bool		row_security;
 bool		check_function_bodies = true;
 
+bool		support_datetime_combo = false;
+
 
 /*
  * This GUC exists solely for backward compatibility, check its definition for
@@ -2151,6 +2153,15 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	
+	{
+		{"support_datetime_combo", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("support datetime format in timestamp string, for example: yyyymmddhhmmss."),
+		},
+		&support_datetime_combo,
+		false,
+		NULL, NULL, NULL
+	},
+
 	#define IVY_GUC_BOOL_PARAMS
 	#include "ivy_guc.c"
 	#undef IVY_GUC_BOOL_PARAMS

@@ -249,6 +249,7 @@ extern PGDLLIMPORT bool check_function_bodies;
 extern bool session_auth_is_superuser;
 
 extern bool log_duration;
+extern bool support_datetime_combo;
 extern int	log_parameter_max_length;
 extern int	log_parameter_max_length_on_error;
 extern int	log_min_error_statement;
