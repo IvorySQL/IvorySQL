@@ -1893,7 +1893,7 @@ psql_completion(const char *text, int start, int end)
 	static const char *const backslash_commands[] = {
 		"\\a",
 		"\\bind", "\\bind_named",
-		"\\connect", "\\conninfo", "\\C", "\\cd", "\\close", "\\copy",
+		"\\connect", "\\conninfo", "\\C", "\\cd", "\\close_prepared", "\\copy",
 		"\\copyright", "\\crosstabview",
 		"\\d", "\\da", "\\dA", "\\dAc", "\\dAf", "\\dk" , "\\dAo", "\\dAp",
 		"\\db", "\\dc", "\\dconfig", "\\dC", "\\dd", "\\ddp", "\\dD",
