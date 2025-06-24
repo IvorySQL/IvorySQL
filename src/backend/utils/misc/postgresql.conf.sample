@@ -795,7 +795,7 @@
 
 # Add settings for extensions here
 
-#support_datetime_combo = off
+#datetime_combo = off
 
 #------------------------------------------------------------------------------
 #COMPATIBLE LEVEL

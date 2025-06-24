@@ -597,7 +597,7 @@ char	   *event_source;
 bool		row_security;
 bool		check_function_bodies = true;
 
-bool		support_datetime_combo = false;
+bool		datetime_combo = false;
 
 
 /*
@@ -2154,10 +2154,10 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	
 	{
-		{"support_datetime_combo", PGC_USERSET, CUSTOM_OPTIONS,
+		{"datetime_combo", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("support datetime format in timestamp string, for example: yyyymmddhhmmss."),
 		},
-		&support_datetime_combo,
+		&datetime_combo,
 		false,
 		NULL, NULL, NULL
 	},

@@ -2892,7 +2892,7 @@ DecodeNumberField(int len, char *str, int fmask,
 	/* No decimal point and no complete date yet? */
 	else if ((fmask & DTK_DATE_M) != DTK_DATE_M)
 	{
-		if(!support_datetime_combo)
+		if(!datetime_combo)
 		{
 			if (len >= 6)
 			{
