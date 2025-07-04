@@ -401,5 +401,10 @@
   conname => 'shift_jis_2004_to_euc_jis_2004',
   conforencoding => 'PG_SHIFT_JIS_2004', contoencoding => 'PG_EUC_JIS_2004',
   conproc => 'shift_jis_2004_to_euc_jis_2004' },
-
+{ oid => '4652', descr => 'conversion for gb18030 to gbk',
+  conname => 'gb18030_to_gbk', conforencoding => 'PG_GB18030',
+  contoencoding => 'PG_GBK', conproc => 'gb18030_to_gbk' },
+{ oid => '4653', descr => 'conversion for gbk to gb18030',
+  conname => 'gbk_to_gb18030', conforencoding => 'PG_GBK',
+  contoencoding => 'PG_GB18030', conproc => 'gbk_to_gb18030' },
 ]

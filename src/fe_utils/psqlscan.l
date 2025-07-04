@@ -1493,6 +1493,14 @@ psqlscan_prepare_buffer(PsqlScanState state, const char *txt, int len,
 		while (i < len)
 		{
 			int			thislen = PQmblen(txt + i, state->encoding);
+			int			validlen = pg_encoding_verifymbchar(state->encoding, txt + i, len - i);
+
+			/* 
+			 * If the multibyte sequence is invalid, treat it as single bytes
+			 * to avoid confusing the lexer with invalid character boundaries.
+			 */
+			if (validlen < 0)
+				thislen = 1;
 
 			/* first byte should always be okay... */
 			newtxt[i] = txt[i];

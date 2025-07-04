@@ -1,0 +1,6 @@
+comment = 'support gb18030 2022 with extension'
+default_version = '1.0'
+module_pathname = '$libdir/gb18030_2022'
+relocatable = false
+schema = pg_catalog
+trusted = true

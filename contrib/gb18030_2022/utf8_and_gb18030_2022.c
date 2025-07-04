@@ -1,30 +1,38 @@
-/*-------------------------------------------------------------------------
+/* ------------------------------------------------
  *
- *	  GB18030 <--> UTF8
+ * File: utf8_and_gb18030_2022.c
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
+ * Abstract:
+ * 		support encoding conversion between gb18030_2022 and utf8 using radix tree in ./Maps/\*.map.
  *
- * IDENTIFICATION
- *	  src/backend/utils/mb/conversion_procs/utf8_and_gb18030/utf8_and_gb18030.c
  *
- *-------------------------------------------------------------------------
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ *
+ * Identification:
+ *		contrib/gb18030_2022
+ *
+ *-------------------------------------------------
  */
 
 #include "postgres.h"
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
-#include "../../Unicode/gb18030_to_utf8.map"
-#include "../../Unicode/utf8_to_gb18030.map"
+#include "./Maps/gb18030_2022_to_utf8.map"
+#include "./Maps/utf8_to_gb18030_2022.map"
 
-PG_MODULE_MAGIC_EXT(
-					.name = "utf8_and_gb18030",
-					.version = PG_VERSION
-);
+PG_MODULE_MAGIC;
 
-PG_FUNCTION_INFO_V1(gb18030_to_utf8);
-PG_FUNCTION_INFO_V1(utf8_to_gb18030);
+gb18030_2022_to_utf8_hook_type pre_gb18030_2022_to_utf8_hook = NULL;
+utf8_to_gb18030_2022_hook_type pre_utf8_to_gb18030_2022_hook = NULL;
 
+int gb18030_2022_to_utf8(const unsigned char *iso, int len,
+								unsigned char *utf, bool noError);
+
+int utf8_to_gb18030_2022(const unsigned char *utf, int len,
+								unsigned char *iso, bool noError);
+
+extern void _PG_init(void);
+extern void _PG_fini(void);
 /*
  * Convert 4-byte GB18030 characters to and from a linear code space
  *
@@ -128,7 +136,7 @@ utf8word_to_unicode(uint32 c)
  * All are ranges of 4-byte GB18030 codes.
  */
 static uint32
-conv_18030_to_utf8(uint32 code)
+conv_18030_2022_to_utf8(uint32 code)
 {
 #define conv18030(minunicode, mincode, maxcode) \
 	if (code >= mincode && code <= maxcode) \
@@ -155,7 +163,7 @@ conv_18030_to_utf8(uint32 code)
  * Perform mapping of UTF8 ranges to GB18030
  */
 static uint32
-conv_utf8_to_18030(uint32 code)
+conv_utf8_to_18030_2022(uint32 code)
 {
 	uint32		ucs = utf8word_to_unicode(code);
 
@@ -180,6 +188,8 @@ conv_utf8_to_18030(uint32 code)
 	return 0;
 }
 
+
+
 /* ----------
  * conv_proc(
  *		INTEGER,	-- source encoding id
@@ -193,50 +203,43 @@ conv_utf8_to_18030(uint32 code)
  * Returns the number of bytes successfully converted.
  * ----------
  */
-Datum
-gb18030_to_utf8(PG_FUNCTION_ARGS)
+int gb18030_2022_to_utf8(const unsigned char *iso, int len,
+						unsigned char *utf, bool noError)
 {
-	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
-	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
-	int			len = PG_GETARG_INT32(4);
-	bool		noError = PG_GETARG_BOOL(5);
-	int			converted;
 
-	CHECK_ENCODING_CONVERSION_ARGS(PG_GB18030, PG_UTF8);
 
-	if (gb18030_2022_to_utf8_hook)
-		converted= gb18030_2022_to_utf8_hook(src,len,dest,noError);
-	else
-		converted = LocalToUtf(src, len, dest,
-							&gb18030_to_unicode_tree,
-							NULL, 0,
-							conv_18030_to_utf8,
-							PG_GB18030,
-							noError);
+	return LocalToUtf(iso, len, utf,
+						   &gb18030_2022_to_unicode_tree,
+						   NULL, 0,
+						   conv_18030_2022_to_utf8,
+						   PG_GB18030,
+						   noError);
 
-	PG_RETURN_INT32(converted);
 }
 
-Datum
-utf8_to_gb18030(PG_FUNCTION_ARGS)
+int utf8_to_gb18030_2022(const unsigned char *utf, int len,
+						 unsigned char *iso,bool noError)
 {
-	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
-	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
-	int			len = PG_GETARG_INT32(4);
-	bool		noError = PG_GETARG_BOOL(5);
-	int			converted;
+	return UtfToLocal(utf, len, iso,
+						   &gb18030_2022_from_unicode_tree,
+						   NULL, 0,
+						   conv_utf8_to_18030_2022,
+						   PG_GB18030,
+						   noError);
 
-	CHECK_ENCODING_CONVERSION_ARGS(PG_UTF8, PG_GB18030);
+}
 
-	if (utf8_to_gb18030_2022_hook)
-		return utf8_to_gb18030_2022_hook(src,len,dest,noError);
-	else
-		converted = UtfToLocal(src, len, dest,
-							&gb18030_from_unicode_tree,
-							NULL, 0,
-							conv_utf8_to_18030,
-							PG_GB18030,
-							noError);
+void _PG_init(void)
+{
+	pre_gb18030_2022_to_utf8_hook = gb18030_2022_to_utf8_hook;
+	pre_utf8_to_gb18030_2022_hook = utf8_to_gb18030_2022_hook;
+	gb18030_2022_to_utf8_hook = gb18030_2022_to_utf8;
+	utf8_to_gb18030_2022_hook = utf8_to_gb18030_2022;
 
-	PG_RETURN_INT32(converted);
+}
+
+void _PG_fini(void)
+{
+	gb18030_2022_to_utf8_hook = pre_gb18030_2022_to_utf8_hook;
+	utf8_to_gb18030_2022_hook = pre_utf8_to_gb18030_2022_hook;
 }

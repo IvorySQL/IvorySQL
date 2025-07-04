@@ -1608,6 +1608,7 @@ CopyReadAttributesText(CopyFromState cstate)
 		char	   *end_ptr;
 		int			input_len;
 		bool		saw_non_ascii = false;
+		int 		byte_count = 0;
 
 		/* Make sure there is enough space for the next value */
 		if (fieldno >= cstate->max_fields)
@@ -1640,6 +1641,39 @@ CopyReadAttributesText(CopyFromState cstate)
 			if (cur_ptr >= line_end_ptr)
 				break;
 			c = *cur_ptr++;
+			/*
+			* Special case for GB18030:
+			* We must process the entire multi-byte character in this block and
+			* copy it to the output buffer. If we were to let this fall through,
+			* the generic validation logic below would incorrectly flag the character's
+			* second byte as an invalid standalone character.
+			*/
+			if (GetDatabaseEncoding() == PG_GB18030)
+			{
+				if ((byte_count = pg_encoding_mblen(GetDatabaseEncoding(), cur_ptr - 1)) != 1)
+				{
+					switch (byte_count)
+					{
+					case 2:
+						*output_ptr++ = c;
+						*output_ptr++ = *cur_ptr++;
+						continue;
+					case 4:
+						if (cur_ptr + 3 > line_end_ptr)
+							continue;
+						else
+						{
+							*output_ptr++ = c;
+							*output_ptr++ = *cur_ptr++;
+							*output_ptr++ = *cur_ptr++;
+							*output_ptr++ = *cur_ptr++;
+						}
+						continue;
+					default:
+						continue; /* This should not happen! */
+					}
+				}
+			}
 			if (c == delimc)
 			{
 				found_delim = true;
@@ -1887,6 +1921,7 @@ CopyReadAttributesCSV(CopyFromState cstate)
 		for (;;)
 		{
 			char		c;
+			int 		byte_count = 0; 
 
 			/* Not in quote */
 			for (;;)
@@ -1895,6 +1930,39 @@ CopyReadAttributesCSV(CopyFromState cstate)
 				if (cur_ptr >= line_end_ptr)
 					goto endfield;
 				c = *cur_ptr++;
+				/*
+				* Special case for GB18030/GBK:
+				* We must process the entire multi-byte character in this block and
+				* copy it to the output buffer. If we were to let this fall through,
+				* the generic validation logic below would incorrectly flag the character's
+				* second byte as an invalid standalone character.
+				*/
+				if (GetDatabaseEncoding() == PG_GB18030)
+				{
+					if ((byte_count = pg_encoding_mblen(GetDatabaseEncoding(), cur_ptr - 1)) != 1)
+					{
+						switch (byte_count)
+						{
+						case 2:
+							*output_ptr++ = c;
+							*output_ptr++ = *cur_ptr++;
+							continue;
+						case 4:
+							if (cur_ptr + 3 > line_end_ptr)
+								goto endfield;
+							else
+							{
+								*output_ptr++ = c;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+							}
+							continue;
+						default:
+							goto endfield; /* This should not happen! */
+						}
+					}
+				}
 				/* unquoted field delimiter */
 				if (c == delimc)
 				{
@@ -1921,6 +1989,41 @@ CopyReadAttributesCSV(CopyFromState cstate)
 							 errmsg("unterminated CSV quoted field")));
 
 				c = *cur_ptr++;
+				/*
+				* Special case for GB18030/GBK:
+				* We must process the entire multi-byte character in this block and
+				* copy it to the output buffer. If we were to let this fall through,
+				* the generic validation logic below would incorrectly flag the character's
+				* second byte as an invalid standalone character.
+				*/
+				if (GetDatabaseEncoding() == PG_GB18030)
+				{
+					if ((byte_count = pg_encoding_mblen(GetDatabaseEncoding(), cur_ptr - 1)) != 1)
+					{
+						switch (byte_count)
+						{
+						case 2:
+							*output_ptr++ = c;
+							*output_ptr++ = *cur_ptr++;
+							continue;
+						case 4:
+							if (cur_ptr + 3 > line_end_ptr)
+								ereport(ERROR,
+										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+										 errmsg("unterminated CSV quoted field")));
+							else
+							{
+								*output_ptr++ = c;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+							}
+							continue;
+						default:
+							continue; /* This should not happen! */
+						}
+					}
+				}
 
 				/* escape within a quoted field */
 				if (c == escapec)

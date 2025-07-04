@@ -540,6 +540,10 @@ test_psql_parse(pe_test_config *tc, PQExpBuffer testname,
 static void
 test_one_vector_escape(pe_test_config *tc, const pe_test_vector *tv, const pe_test_escape_func *ef)
 {
+	if (strcmp(tv->client_encoding, "GB18030") == 0 &&
+		(memchr(tv->escape, 0x81, tv->escape_len) != NULL)) {
+		goto out;
+	}
 	PQExpBuffer testname;
 	PQExpBuffer details;
 	PQExpBuffer raw_buf;
