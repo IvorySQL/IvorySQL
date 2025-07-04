@@ -16,6 +16,10 @@
 #include "utils/ascii.h"
 
 
+
+gb18030_2022_to_utf8_hook_type gb18030_2022_to_utf8_hook = NULL;
+utf8_to_gb18030_2022_hook_type utf8_to_gb18030_2022_hook = NULL;
+
 /*
  * Operations on multi-byte encodings are driven by a table of helper
  * functions.
@@ -347,6 +351,79 @@ pg_euctw_dsplen(const unsigned char *s)
 }
 
 /*
+ * Convert pg_wchar to gb18030* encoding.
+ * caller must allocate enough space for "to", including a trailing zero!
+ * len: length of from.
+ * "from" not necessarily null terminated.
+ */
+static int
+pg_wchar2gb18030_with_len(const pg_wchar *from, unsigned char *to, int len)
+{
+	int			cnt = 0;
+
+	while (len > 0 && *from)
+	{
+		unsigned char c1 = *from;
+		unsigned char c2 = (*from >> 16) & 0xff;
+
+		if (!IS_HIGHBIT_SET(c1))
+		{
+			*to++ = *from;
+			cnt += 1;
+		}
+		else if (c2 >= 0x30 && c2 <= 0x39)
+		{
+			*to++ = (*from >> 24) & 0xff;
+			*to++ = (*from >> 16) & 0xff;
+			*to++ = (*from >> 8) & 0xff;
+			*to++ = *from & 0xff;
+			cnt += 4;
+		}
+		else
+		{
+			*to++ = (*from >> 8) & 0xff;
+			*to++ = *from & 0xff;
+			cnt += 2;
+		}
+		from++;
+		len--;
+	}
+	*to = 0;
+	return cnt;
+}
+/*
+ * Convert pg_wchar to GBK encoding.
+ * caller must allocate enough space for "to", including a trailing zero!
+ * len: length of from.
+ * "from" not necessarily null terminated.
+ */
+static int
+pg_wchar2gbk_with_len(const pg_wchar *from, unsigned char *to, int len)
+{
+	int cnt = 0;
+
+	while (len > 0 && *from)
+	{
+		const unsigned char *wchar = (const unsigned char *)from;
+		if (IS_HIGHBIT_SET(*wchar))
+		{ 
+			*to = *(char *)from;
+			from++;
+			to += 2;
+			len -= 2;
+		}
+		else
+		{ 	/* should be ASCII */
+			*to++ = *from++;
+			len--;
+		}
+		cnt++;
+	}
+	*to = 0;
+	return cnt;
+}
+
+/*
  * Convert pg_wchar to EUC_* encoding.
  * caller must allocate enough space for "to", including a trailing zero!
  * len: length of from.
@@ -408,6 +485,86 @@ static int
 pg_johab_dsplen(const unsigned char *s)
 {
 	return pg_euc_dsplen(s);
+}
+
+/*
+ * convert GB18030 string to pg_wchar
+ * caller must allocate enough space for "to", including a trailing zero!
+ * len: length of from.
+ * "from" not necessarily null terminated.
+ */
+static int
+pg_gb180302wchar_with_len(const unsigned char *from, pg_wchar *to, int len)
+{
+	int			cnt = 0;
+	uint32		c1,
+				c2,
+				c3,
+				c4;
+
+	while (len > 0 && *from)
+	{
+		if (!IS_HIGHBIT_SET(*from))
+		{
+			*to = *from++;
+			len--;
+		}
+		else if (*(from + 1) >= 0x30 && *(from + 1) <= 0x39)
+		{
+			if (len < 4)
+				break;			/* drop trailing incomplete char */
+			c1 = *from++;
+			c2 = *from++;
+			c3 = *from++;
+			c4 = *from++;
+			*to = (c1 << 24) | (c2 << 16) | (c3 << 8) | c4;
+			len -= 4;
+		}
+		else
+		{
+			if (len < 2)
+				break;			/* drop trailing incomplete char */
+			c1 = *from++;
+			c2 = *from++;
+			*to = (c1 << 8) | c2;
+			len -= 2;
+		}
+		to++;
+		cnt++;
+	}
+	*to = 0;
+	return cnt;
+}
+
+/*
+ * convert GBK string to pg_wchar (UCS-4)
+ * caller must allocate enough space for "to", including a trailing zero!
+ * len: length of from.
+ * "from" not necessarily null terminated.
+ */
+static int
+pg_gbk2wchar_with_len(const unsigned char *from, pg_wchar *to, int len)
+{
+	int cnt = 0;
+
+	while (len > 0 && *from)
+	{
+		if (IS_HIGHBIT_SET(*from))
+		{ 
+			*to = *(short *)from;
+			to++;
+			from += 2;
+			len -= 2;
+		}
+		else
+		{ // should be ASCII
+			*to++ = *from++;
+			len--;
+		}
+		cnt++;
+	}
+	*to = 0;
+	return cnt;
 }
 
 /*
@@ -2046,13 +2203,13 @@ const pg_wchar_tbl pg_wchar_table[] = {
 	[PG_WIN1253] = {pg_latin12wchar_with_len, pg_wchar2single_with_len, pg_latin1_mblen, pg_latin1_dsplen, pg_latin1_verifychar, pg_latin1_verifystr, 1},
 	[PG_WIN1254] = {pg_latin12wchar_with_len, pg_wchar2single_with_len, pg_latin1_mblen, pg_latin1_dsplen, pg_latin1_verifychar, pg_latin1_verifystr, 1},
 	[PG_WIN1255] = {pg_latin12wchar_with_len, pg_wchar2single_with_len, pg_latin1_mblen, pg_latin1_dsplen, pg_latin1_verifychar, pg_latin1_verifystr, 1},
+	[PG_GB18030] = {pg_gb180302wchar_with_len, pg_wchar2gb18030_with_len, pg_gb18030_mblen, pg_gb18030_dsplen, pg_gb18030_verifychar, pg_gb18030_verifystr, 4},
+	[PG_GBK] = {pg_gbk2wchar_with_len, pg_wchar2gbk_with_len, pg_gbk_mblen, pg_gbk_dsplen, pg_gbk_verifychar, pg_gbk_verifystr, 2},
 	[PG_WIN1257] = {pg_latin12wchar_with_len, pg_wchar2single_with_len, pg_latin1_mblen, pg_latin1_dsplen, pg_latin1_verifychar, pg_latin1_verifystr, 1},
 	[PG_KOI8U] = {pg_latin12wchar_with_len, pg_wchar2single_with_len, pg_latin1_mblen, pg_latin1_dsplen, pg_latin1_verifychar, pg_latin1_verifystr, 1},
 	[PG_SJIS] = {0, 0, pg_sjis_mblen, pg_sjis_dsplen, pg_sjis_verifychar, pg_sjis_verifystr, 2},
 	[PG_BIG5] = {0, 0, pg_big5_mblen, pg_big5_dsplen, pg_big5_verifychar, pg_big5_verifystr, 2},
-	[PG_GBK] = {0, 0, pg_gbk_mblen, pg_gbk_dsplen, pg_gbk_verifychar, pg_gbk_verifystr, 2},
 	[PG_UHC] = {0, 0, pg_uhc_mblen, pg_uhc_dsplen, pg_uhc_verifychar, pg_uhc_verifystr, 2},
-	[PG_GB18030] = {0, 0, pg_gb18030_mblen, pg_gb18030_dsplen, pg_gb18030_verifychar, pg_gb18030_verifystr, 4},
 	[PG_JOHAB] = {0, 0, pg_johab_mblen, pg_johab_dsplen, pg_johab_verifychar, pg_johab_verifystr, 3},
 	[PG_SHIFT_JIS_2004] = {0, 0, pg_sjis_mblen, pg_sjis_dsplen, pg_sjis_verifychar, pg_sjis_verifystr, 2},
 };

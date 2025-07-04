@@ -1581,6 +1581,7 @@ CopyReadAttributesText(CopyFromState cstate)
 		char	   *end_ptr;
 		int			input_len;
 		bool		saw_non_ascii = false;
+		int 		byte_count = 0;
 
 		/* Make sure there is enough space for the next value */
 		if (fieldno >= cstate->max_fields)
@@ -1613,6 +1614,36 @@ CopyReadAttributesText(CopyFromState cstate)
 			if (cur_ptr >= line_end_ptr)
 				break;
 			c = *cur_ptr++;
+			/* if the  server encoding was gb18030 or gbk,
+			 * we measure the mutibyte character length and append it to output_ptr here,
+			 * because the secend byte of the gb18030 and gbk encoding character will be error handling below.
+			 */
+			if (GetDatabaseEncoding() == PG_GB18030 || GetDatabaseEncoding() == PG_GBK)
+			{
+				if ((byte_count = pg_encoding_mblen(GetDatabaseEncoding(), cur_ptr - 1)) != 1)
+				{
+					switch (byte_count)
+					{
+					case 2:
+						*output_ptr++ = c;
+						*output_ptr++ = *cur_ptr++;
+						continue;
+					case 4:
+						if (cur_ptr + 3 > line_end_ptr)
+							continue;
+						else
+						{
+							*output_ptr++ = c;
+							*output_ptr++ = *cur_ptr++;
+							*output_ptr++ = *cur_ptr++;
+							*output_ptr++ = *cur_ptr++;
+						}
+						continue;
+					default:
+						continue; /* This should not happen! */
+					}
+				}
+			}
 			if (c == delimc)
 			{
 				found_delim = true;
@@ -1860,6 +1891,7 @@ CopyReadAttributesCSV(CopyFromState cstate)
 		for (;;)
 		{
 			char		c;
+			int 		byte_count = 0; 
 
 			/* Not in quote */
 			for (;;)
@@ -1868,6 +1900,36 @@ CopyReadAttributesCSV(CopyFromState cstate)
 				if (cur_ptr >= line_end_ptr)
 					goto endfield;
 				c = *cur_ptr++;
+				/* if the  server encoding was gb18030 or gbk,
+				 * we measure the mutibyte character length and append it to output_ptr here,
+				 * because the secend byte of the gb18030 and gbk encoding character will be error handling below.
+				 */
+				if (GetDatabaseEncoding() == PG_GB18030 || GetDatabaseEncoding() == PG_GBK)
+				{
+					if ((byte_count = pg_encoding_mblen(GetDatabaseEncoding(), cur_ptr - 1)) != 1)
+					{
+						switch (byte_count)
+						{
+						case 2:
+							*output_ptr++ = c;
+							*output_ptr++ = *cur_ptr++;
+							continue;
+						case 4:
+							if (cur_ptr + 3 > line_end_ptr)
+								goto endfield;
+							else
+							{
+								*output_ptr++ = c;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+							}
+							continue;
+						default:
+							goto endfield; /* This should not happen! */
+						}
+					}
+				}
 				/* unquoted field delimiter */
 				if (c == delimc)
 				{
@@ -1894,6 +1956,38 @@ CopyReadAttributesCSV(CopyFromState cstate)
 							 errmsg("unterminated CSV quoted field")));
 
 				c = *cur_ptr++;
+				/* if the  server encoding was gb18030 or gbk,
+				 * we measure the mutibyte character length and append it to output_ptr here,
+				 * because the secend byte of the gb18030 and gbk encoding character will be error handling below.
+				 */
+				if (GetDatabaseEncoding() == PG_GB18030 || GetDatabaseEncoding() == PG_GBK)
+				{
+					if ((byte_count = pg_encoding_mblen(GetDatabaseEncoding(), cur_ptr - 1)) != 1)
+					{
+						switch (byte_count)
+						{
+						case 2:
+							*output_ptr++ = c;
+							*output_ptr++ = *cur_ptr++;
+							continue;
+						case 4:
+							if (cur_ptr + 3 > line_end_ptr)
+								ereport(ERROR,
+										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+										 errmsg("unterminated CSV quoted field")));
+							else
+							{
+								*output_ptr++ = c;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+								*output_ptr++ = *cur_ptr++;
+							}
+							continue;
+						default:
+							continue; /* This should not happen! */
+						}
+					}
+				}
 
 				/* escape within a quoted field */
 				if (c == escapec)
