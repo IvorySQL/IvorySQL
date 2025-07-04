@@ -4551,11 +4551,9 @@ DropRelationBuffers(SMgrRelation smgr_reln, ForkNumber *forkNum,
 	if (RelFileLocatorBackendIsTemp(rlocator))
 	{
 		if (rlocator.backend == MyProcNumber)
-		{
-			for (j = 0; j < nforks; j++)
-				DropRelationLocalBuffers(rlocator.locator, forkNum[j],
-										 firstDelBlock[j]);
-		}
+			DropRelationLocalBuffers(rlocator.locator, forkNum, nforks,
+									 firstDelBlock);
+
 		return;
 	}
 
