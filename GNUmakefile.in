@@ -8,7 +8,7 @@ subdir =
 top_builddir = .
 include $(top_builddir)/src/Makefile.global
 
-$(call recurse,all install,src config contrib/ivorysql_ora contrib/ora_btree_gist contrib/ora_btree_gin)
+$(call recurse,all install,src config contrib/gb18030_2022 contrib/ivorysql_ora contrib/ora_btree_gist contrib/ora_btree_gin)
 
 docs:
 	$(MAKE) -C doc all
