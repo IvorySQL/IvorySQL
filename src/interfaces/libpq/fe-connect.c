@@ -7463,14 +7463,6 @@ PQdb(const PGconn *conn)
 }
 
 char *
-PQservice(const PGconn *conn)
-{
-	if (!conn)
-		return NULL;
-	return conn->pgservice;
-}
-
-char *
 PQuser(const PGconn *conn)
 {
 	if (!conn)
