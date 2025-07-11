@@ -2038,6 +2038,13 @@ CheckPointStmt:
 
 					$$ = (Node *) n;
 				}
+			| CHECKPOINT '(' utility_option_list ')'
+				{
+					CheckPointStmt *n = makeNode(CheckPointStmt);
+
+					$$ = (Node *) n;
+					n->options = $3;
+				}
 		;
 
 
