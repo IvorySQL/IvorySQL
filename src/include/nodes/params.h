@@ -87,12 +87,16 @@ struct ParseState;
 
 #define PARAM_FLAG_CONST	0x0001	/* parameter is constant */
 
+/* out parameter flags */
+#define PARAM_FLAG_OUT		0x0002	/* parameter is out parameter */
+
 typedef struct ParamExternData
 {
 	Datum		value;			/* parameter value */
 	bool		isnull;			/* is it NULL? */
 	uint16		pflags;			/* flag bits, see above */
 	Oid			ptype;			/* parameter's datatype, or 0 */
+	char 		pmode;			/* parameter's mode, IN, OUT, or INOUT */
 } ParamExternData;
 
 typedef struct ParamListInfoData *ParamListInfo;
@@ -107,6 +111,8 @@ typedef void (*ParamCompileHook) (ParamListInfo params, struct Param *param,
 
 typedef void (*ParserSetupHook) (struct ParseState *pstate, void *arg);
 
+typedef void (*OutParamSepupHook) (void *scratch);
+
 typedef struct ParamListInfoData
 {
 	ParamFetchHook paramFetch;	/* parameter fetch hook */
@@ -117,6 +123,11 @@ typedef struct ParamListInfoData
 	void	   *parserSetupArg;
 	char	   *paramValuesStr; /* params as a single string for errors */
 	int			numParams;		/* nominal/maximum # of Params represented */
+	OutParamSepupHook	outparamSepup;	/* OUT parameters hook */
+	bool 		topLevelIsCall;	/* is top level call statement ? */
+	MemoryContext	outctext;		/* save out parameter memorycontext */
+	bool		haveout;		/* parameters have out parameters */
+	char		**paramnames;
 
 	/*
 	 * params[] may be of length zero if paramFetch is supplied; otherwise it

@@ -2338,6 +2338,8 @@ find_expr_references_walker(Node *node,
 						   context->addrs);
 		/* fall through to examine arguments */
 	}
+	else if (IsA(node, NonDefValNode))
+		return false;
 
 	return expression_tree_walker(node, find_expr_references_walker,
 								  (void *) context);

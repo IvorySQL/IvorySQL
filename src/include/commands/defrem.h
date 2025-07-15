@@ -19,6 +19,7 @@
 #include "parser/parse_node.h"
 #include "tcop/dest.h"
 #include "utils/array.h"
+#include "tcop/dest.h"
 
 /* commands/dropcmds.c */
 extern void RemoveObjects(DropStmt *stmt);
@@ -58,7 +59,7 @@ extern ObjectAddress CreateCast(CreateCastStmt *stmt);
 extern ObjectAddress CreateTransform(CreateTransformStmt *stmt);
 extern void IsThereFunctionInNamespace(const char *proname, int pronargs,
 									   oidvector *proargtypes, Oid nspOid);
-extern void ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic);
+extern void ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic, ParamListInfo params, DestReceiver *dest);
 extern void ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver *dest);
 extern TupleDesc CallStmtResultDesc(CallStmt *stmt);
 extern Oid	get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok);

@@ -18309,6 +18309,7 @@ $as_echo_n "checking which semaphore API to use... " >&6; }
 $as_echo "#define USE_NAMED_POSIX_SEMAPHORES 1" >>confdefs.h
 
     SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+        LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/posix_ivysema.c"
     sematype="named POSIX"
   else
     if test x"$USE_UNNAMED_POSIX_SEMAPHORES" = x"1" ; then
@@ -18316,12 +18317,14 @@ $as_echo "#define USE_NAMED_POSIX_SEMAPHORES 1" >>confdefs.h
 $as_echo "#define USE_UNNAMED_POSIX_SEMAPHORES 1" >>confdefs.h
 
       SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+          LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/posix_ivysema.c"
       sematype="unnamed POSIX"
     else
 
 $as_echo "#define USE_SYSV_SEMAPHORES 1" >>confdefs.h
 
       SEMA_IMPLEMENTATION="src/backend/port/sysv_sema.c"
+          LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/sysv_ivysema.c"
       sematype="System V"
     fi
   fi
@@ -18332,6 +18335,7 @@ else
 $as_echo "#define USE_WIN32_SEMAPHORES 1" >>confdefs.h
 
   SEMA_IMPLEMENTATION="src/backend/port/win32_sema.c"
+  LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/win32_ivyxsema.c"
 fi
 
 
@@ -19407,7 +19411,7 @@ fi
 ac_config_files="$ac_config_files GNUmakefile src/Makefile.global"
 
 
-ac_config_links="$ac_config_links src/backend/port/pg_sema.c:${SEMA_IMPLEMENTATION} src/backend/port/pg_shmem.c:${SHMEM_IMPLEMENTATION} src/include/pg_config_os.h:src/include/port/${template}.h src/Makefile.port:src/makefiles/Makefile.${template}"
+ac_config_links="$ac_config_links src/backend/port/pg_sema.c:${SEMA_IMPLEMENTATION} src/interfaces/libpq/ivy_sema.c:${LIBPQ_SEMA_IMPLEMENTATION} src/backend/port/pg_shmem.c:${SHMEM_IMPLEMENTATION} src/include/pg_config_os.h:src/include/port/${template}.h src/Makefile.port:src/makefiles/Makefile.${template}"
 
 
 if test "$PORTNAME" = "win32"; then
@@ -20130,6 +20134,7 @@ do
     "GNUmakefile") CONFIG_FILES="$CONFIG_FILES GNUmakefile" ;;
     "src/Makefile.global") CONFIG_FILES="$CONFIG_FILES src/Makefile.global" ;;
     "src/backend/port/pg_sema.c") CONFIG_LINKS="$CONFIG_LINKS src/backend/port/pg_sema.c:${SEMA_IMPLEMENTATION}" ;;
+    "src/interfaces/libpq/ivy_sema.c") CONFIG_LINKS="$CONFIG_LINKS src/interfaces/libpq/ivy_sema.c:${LIBPQ_SEMA_IMPLEMENTATION}" ;;
     "src/backend/port/pg_shmem.c") CONFIG_LINKS="$CONFIG_LINKS src/backend/port/pg_shmem.c:${SHMEM_IMPLEMENTATION}" ;;
     "src/include/pg_config_os.h") CONFIG_LINKS="$CONFIG_LINKS src/include/pg_config_os.h:src/include/port/${template}.h" ;;
     "src/Makefile.port") CONFIG_LINKS="$CONFIG_LINKS src/Makefile.port:src/makefiles/Makefile.${template}" ;;

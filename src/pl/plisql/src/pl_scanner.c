@@ -23,6 +23,8 @@
 #include "plisql.h"
 #include "pl_subproc_function.h"
 #include "pl_gram.h"			/* must be after parser/scanner.h */
+#include "parser/parse_param.h"
+#include "catalog/pg_proc.h"
 
 
 /* Klugy flag to tell scanner how to look up identifiers */
@@ -182,12 +184,63 @@ plisql_yylex(void)
 	int			tok1;
 	TokenAuxData aux1;
 	int			kwnum;
+	char        buf[32];
+	char		*paramname;
 
 	tok1 = internal_yylex(&aux1);
-	if (tok1 == IDENT || tok1 == PARAM)
+	if (tok1 == IDENT || tok1 == PARAM || tok1 == ORAPARAM)
 	{
 		int			tok2;
 		TokenAuxData aux2;
+
+		paramname = aux1.lval.str;
+		if (tok1 == ORAPARAM)
+		{
+			int num;
+
+			/*
+			 *  Similar to the following syntax:
+			 *****************************************
+			 * do $$
+			 * begin
+			 *   :x = 23;
+			 *   :y = 'xiexie';
+			 * end; using y inout, x inout;
+			 ******************************************
+			 * the origin strings :x or :y are treated as the parame name
+			 */
+			if (plisql_curr_compile->paramnames != NULL)
+			{
+				int i;
+
+				for (i = 0; i < plisql_curr_compile->fn_nargs; i++)
+					if (plisql_curr_compile->paramnames[i] != NULL &&
+						strcmp(plisql_curr_compile->paramnames[i], aux1.lval.str) == 0)
+						break;
+				if (i != plisql_curr_compile->fn_nargs)
+				{
+					sprintf(buf, "%s", plisql_curr_compile->paramnames[i]);
+				}
+				else
+				{
+					num = calculate_oraparamnumber(aux1.lval.str);
+					sprintf(buf, "$%d", num);
+				}
+			}
+			else
+			{
+				num = calculate_oraparamnumber(aux1.lval.str);
+				sprintf(buf, "$%d", num);
+			}
+			paramname = buf;
+
+			/*
+			 * If the compiled function is PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE,
+			 * we build variables dynamically.
+			 */
+			if (plisql_curr_compile->fn_prokind == PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE)
+				dynamic_build_func_vars(&plisql_curr_compile);
+		}
 
 		tok2 = internal_yylex(&aux2);
 		if (tok2 == '.')
@@ -210,7 +263,8 @@ plisql_yylex(void)
 					tok5 = internal_yylex(&aux5);
 					if (tok5 == IDENT)
 					{
-						if (plisql_parse_tripword(aux1.lval.str,
+						if (plisql_parse_tripword(paramname,
+												   aux1.lval.str,
 												   aux3.lval.str,
 												   aux5.lval.str,
 												   &aux1.lval.wdatum,
@@ -226,7 +280,8 @@ plisql_yylex(void)
 						/* not A.B.C, so just process A.B */
 						push_back_token(tok5, &aux5);
 						push_back_token(tok4, &aux4);
-						if (plisql_parse_dblword(aux1.lval.str,
+						if (plisql_parse_dblword(paramname,
+												  aux1.lval.str,
 												  aux3.lval.str,
 												  &aux1.lval.wdatum,
 												  &aux1.lval.cword))
@@ -241,7 +296,8 @@ plisql_yylex(void)
 				{
 					/* not A.B.C, so just process A.B */
 					push_back_token(tok4, &aux4);
-					if (plisql_parse_dblword(aux1.lval.str,
+					if (plisql_parse_dblword(paramname,
+											  aux1.lval.str,
 											  aux3.lval.str,
 											  &aux1.lval.wdatum,
 											  &aux1.lval.cword))
@@ -257,7 +313,8 @@ plisql_yylex(void)
 				/* not A.B, so just process A */
 				push_back_token(tok3, &aux3);
 				push_back_token(tok2, &aux2);
-				if (plisql_parse_word(aux1.lval.str,
+				if (plisql_parse_word(paramname,
+									   aux1.lval.str,
 									   core_yy.scanbuf + aux1.lloc,
 									   true,
 									   &aux1.lval.wdatum,
@@ -297,7 +354,8 @@ plisql_yylex(void)
 			 * do variable lookup, because it sets up aux1.lval.word for the
 			 * non-variable cases.
 			 */
-			if (plisql_parse_word(aux1.lval.str,
+			if (plisql_parse_word(paramname,
+								   aux1.lval.str,
 								   core_yy.scanbuf + aux1.lloc,
 								   (!AT_STMT_START(plisql_yytoken) ||
 									(tok2 == '=' || tok2 == COLON_EQUALS ||
@@ -394,6 +452,11 @@ internal_yylex(TokenAuxData *auxdata)
 		else if (token == PARAM)
 		{
 			auxdata->lval.str = pstrdup(yytext);
+			setdynamic_haspgparam(true);
+		}
+		else if (token == ORAPARAM)
+		{
+			calculate_oraparamnumber(auxdata->lval.str);
 		}
 	}
 

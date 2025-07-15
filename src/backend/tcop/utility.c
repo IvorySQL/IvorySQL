@@ -709,7 +709,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_DoStmt:
-			ExecuteDoStmt(pstate, (DoStmt *) parsetree, isAtomicContext);
+			ExecuteDoStmt(pstate, (DoStmt *) parsetree, isAtomicContext, params, dest);
 			break;
 
 		case T_CreateTableSpaceStmt:

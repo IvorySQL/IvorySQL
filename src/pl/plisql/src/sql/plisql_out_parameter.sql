@@ -1,0 +1,1230 @@
+create table mds(id integer,name varchar(256),salary integer,location varchar(256));
+
+create or replace function test_return_out(id integer,salary out integer,name out varchar) return varchar 
+as
+begin
+  salary := 20000;
+  name := 'test a char out';
+  return 'welcome to beijing';
+end;
+/
+
+declare
+  revchar varchar(256);
+  name varchar(256);
+  id integer;
+  salary integer;
+begin
+  id := 34;
+  revchar := test_return_out(id,salary,name);
+  raise notice 'id=%',id;
+  raise notice 'salary=%',salary;
+  raise notice 'name=%',name;
+  raise notice 'retvar=%',revchar;
+end;
+/
+
+--test the length of out variable is short than the length of out-paramter actual value 
+
+declare
+  name varchar(3);
+  salary integer;
+  id integer;
+  revchar varchar(5);
+begin
+  id := 34;
+  revchar := test_return_out(id,salary,name);
+  raise notice 'id=%',id;
+  raise notice 'revchar=%',revchar;
+  raise notice 'salary=%',salary;
+  raise notice 'name=%',name;
+end;
+/
+
+--test out paramters passed by name
+declare
+  id integer;
+  name varchar(256);
+  salary integer;
+  revchar varchar(256);
+begin
+  id := 34;
+  revchar := test_return_out(id=>id,salary=>salary,name=>name);
+  raise notice 'id=%',id;
+  raise notice 'revchar=%',revchar;
+  raise notice 'salary=%',salary;
+  raise notice 'name=%',name;
+end;
+/
+
+
+--test name and position paramaters
+--if postion notation are appeared after name notation, should raise an error
+declare
+  id integer;
+  salary integer;
+  name varchar(256);
+  revchar varchar(256);
+begin
+  id := 34;
+  revchar := test_return_out(id=>id,salary=>salary,name);
+  raise notice 'id=%',id;
+  raise notice 'revchar=%',revchar;
+  raise notice 'salary=%',salary;
+  raise notice 'name=%', name;
+end;
+/
+
+--test name and position notation together
+declare
+  id integer;
+  name varchar(256);
+  salarys integer;
+  revchar varchar(256);
+begin
+  id := 34;
+  revchar := test_return_out(id,name=>name,salary=>salarys);
+  raise notice 'id=%',id;
+  raise notice 'revchar=%',revchar;
+  raise notice 'salarys=%',salarys;
+  raise notice 'name=%',name;
+end;
+/
+
+drop function test_return_out(integer,integer,varchar);
+
+
+--IN variable datatype is a varchar
+create or replace procedure test_proc_out(id integer,salary out integer,name varchar)
+as
+begin
+  salary := 2000 + id;
+end;
+/
+
+declare
+ id integer;
+ salarys integer;
+ namet varchar(256);
+begin
+ id := 200;
+ namet := 'it is a in variable should not change';
+ call test_proc_out(id,salarys,namet);
+ raise notice 'id=%',id;
+ raise notice 'salarys=%',salarys;
+ raise notice 'namet=%',namet;
+end;
+/
+
+drop procedure test_proc_out(integer,integer,varchar);
+
+--function return value 
+create or replace function test_operator(id integer,salary out integer) return integer
+as
+begin
+  salary := 1000 + id;
+  return id;
+end;
+/
+
+declare
+  id integer;
+  salarys integer;
+  ret integer;
+begin
+  id := 200;
+  ret := test_operator(id,salarys);
+  raise notice 'salarys=%',salarys;
+  raise notice 'ret=%',ret;
+end;
+/
+
+declare
+  id integer;
+  salarys integer;
+  ret integer;
+begin
+  id := 200;
+  ret := test_operator(id,salarys) + id + 4;
+  raise notice 'salarys=%',salarys;
+  raise notice 'ret=%',ret;
+end;
+/
+
+drop function test_operator(integer,integer);
+
+--can't assign value to IN mode variable value
+create or replace function test_inchange(id integer,name varchar,nameout out varchar) return integer
+as
+begin
+  id := 23;
+  name := 'xiexie a test';
+  nameout := '';
+  return 2;
+end;
+/
+
+declare
+  id integer;
+  name1 varchar(256);
+  name2 varchar(256);
+  ret integer;
+begin
+  id := 24;
+  ret = 0;
+  name1 := 'this is not change';
+  name2 := 'this is should change';
+  ret = test_inchange(id,name1,name2);
+end;
+/
+
+drop function test_inchange(integer,varchar,varchar);
+
+
+--if IN OUT paramater has default value, should reports an error
+create or replace function test_return_inout(id integer,salary in out integer default 100,name out varchar) return varchar 
+as
+begin
+  salary := 20000 + salary;
+  name := 'this is a test';
+  return 'welcome to beijing';
+end;
+/
+
+create or replace function test_return_inout(id integer,salary in out integer,name out varchar) return varchar
+as
+begin
+  salary := 20000 + salary;
+  name := 'this is a test';
+  return 'welcome to beijing';
+end;
+/
+
+declare
+  id integer;
+  name varchar(256);
+  retvar varchar(256);
+  salary integer;
+begin
+  id := 25;
+  salary := 100;
+  retvar := test_return_inout(id,salary,name);
+  raise notice 'retvar=%',retvar;
+  raise notice 'name=%',name;
+  raise notice 'salary=%',salary;
+end;
+/
+
+drop function test_return_inout(integer,integer,varchar);
+
+
+--all IN mode paramters have default value,but OUT mode paramter has not a default value
+create or replace function test_return_inout(id integer default 10,stotal out integer) return int 
+as
+begin
+  stotal := id;
+  return 11;
+end;
+/
+
+declare
+  stotal integer;
+  nret int;
+begin 
+  nret := test_return_inout(stotal); 
+end;
+/
+
+declare
+  stotal integer;
+  nret int;
+begin
+  nret := test_return_inout(stotal=>stotal); 
+  raise notice 'stotal=%',stotal;
+  raise notice 'nret=%',nret;
+end;
+/
+
+drop function test_return_inout(integer, integer);
+
+create or replace function test_return_inout(id integer default 10,salary integer default 20,stotal out integer) return varchar 
+as
+begin
+  stotal := 100 + id * salary;
+  return 'welcome to beijing';
+end;
+/
+
+declare
+  stotal integer;
+  nret varchar(256);
+begin
+  nret := test_return_inout(stotal);--error
+end;
+/
+
+declare
+  stotal integer;
+  nret varchar(256);
+begin
+  nret := test_return_inout(stotal=>stotal);  
+  raise notice 'stotal=%',stotal;
+  raise notice 'nret=%',nret;
+end;
+/
+
+declare
+  stotal integer;
+  nret varchar(256);
+  id integer;
+begin
+  id := 30;
+  nret := test_return_inout(id=>id,stotal=>stotal); 
+  raise notice 'stotal=%',stotal;--700
+end;
+/
+
+
+declare
+stotal integer;
+nret varchar(256);
+id integer;
+begin
+ id := 30;
+ nret := test_return_inout(salary=>id,stotal=>stotal); 
+ raise notice 'stotal=%',stotal;--400
+end;
+/
+
+--print 1000
+declare
+  stotal integer;
+  nret varchar(256);
+  id integer;
+begin
+  id := 30;
+  nret := test_return_inout(salary=>id,id=>id,stotal=>stotal); 
+  raise notice 'stotal=%',stotal;--1000
+end;
+/
+
+--print 1000
+declare
+  stotal integer;
+  nret varchar(256);
+  id integer;
+begin
+  id := 30;
+  nret := test_return_inout(salary=>id,id=>id,stotal=>id); 
+  raise notice 'stotal=%',id;--1000
+end;
+/
+
+--print 1000
+declare
+  stotal integer;
+  nret varchar(256);
+  id integer;
+begin
+  id := 30;
+  nret := test_return_inout(stotal=>id,salary=>id,id=>id); 
+  raise notice 'stotal=%',id;--1000
+end;
+/
+
+drop function test_return_inout(integer,integer,integer);
+
+---test varchar-out
+create or replace function test_return_inout(stotal out varchar,id varchar default 'abc',salary varchar default 'def') return varchar
+as
+begin
+  stotal = id || salary;
+  return 'welcome to beijing';
+end;
+/
+
+declare
+  id varchar(256);
+  nret varchar(256);
+begin
+  nret := test_return_inout(stotal=>id,salary=>id,id=>id);
+  raise notice 'stotal=%',id; --null
+end;
+/
+
+--print test a exchangetest a exchange
+declare
+  id varchar(256);
+  nret varchar(256);
+begin
+  id := 'test a exchange';
+  nret := test_return_inout(stotal=>id,salary=>id,id=>id);
+  raise notice 'stotal=%',id;
+end;
+/
+
+drop function test_return_inout(varchar,varchar,varchar);
+
+
+--test default value
+create or replace function test_default_var(id integer default 10,salary integer default 20) return integer
+as
+begin
+  return id*2 + salary;
+end;
+/
+
+select * from test_default_var(20,30);--70
+select test_default_var(100);--220
+
+--print 40
+declare
+  ids integer;
+begin
+  ids = test_default_var();
+  raise notice 'ids=%',ids;
+end;
+/
+
+--print 60
+declare
+ids integer;
+id integer;
+begin
+ id := 20;
+ ids := test_default_var(id);
+ raise notice 'ids=%',ids;
+end;
+/
+
+drop function test_default_var(integer,integer);
+
+--the OUT paramater passed by Const
+create or replace function test_return_out(id integer,salary out integer,name out varchar) return varchar
+as
+begin
+  salary := 20000;
+  name := 'test a char out';
+  return 'welcome to beijing';
+end;
+/
+
+---test failed
+declare
+  id integer;
+  ret varchar(256);
+begin
+  ret := test_return_out(id,12, NULL);
+  raise notice 'ret=%',ret;
+end;
+/
+
+declare
+  id integer;
+  ret varchar(256);
+begin
+  ret := test_return_out(id,12,'xiexie'::varchar);
+  raise notice 'ret=%',ret;
+end;
+/
+
+drop function test_return_out(integer,integer,varchar);
+
+
+--test IN OUT mode paramter
+create or replace function test_return_out(id integer,salary in out integer,name in out varchar) return varchar
+as
+begin
+  salary := 2 + id;
+  name := 'test a char out';
+  return 'welcome to beijing';
+end;
+/
+
+declare
+  id integer := 1;
+  ret varchar(256);
+  name varchar(20);
+  salary integer;
+begin
+  ret := test_return_out(id,salary,name);
+  raise notice 'salary=%, name=%',salary,name;
+  raise notice 'ret=%',ret;
+end;
+/
+
+drop function test_return_out(integer,integer,varchar);
+
+
+--test more than one out-paramters, function return void 
+create or replace function test_return_out(id integer,salary out integer,name out varchar) return void
+as
+begin
+  salary := 20000 + id;
+  name := 'test a char out';
+end;
+/
+
+declare
+  id integer := 1;
+  ret varchar(256);
+  name varchar(20);
+  salary integer;
+begin
+  ret := test_return_out(id,salary,name);
+  raise notice 'salary=%, name=%',salary,name;
+  raise notice 'ret=%',ret;
+end;
+/
+
+drop function test_return_out(integer,integer,varchar);
+
+--test one out-paramter, function returns void
+create or replace function test_return_out(id integer,salary out integer) return void
+as
+begin
+  salary := 20000 + id;
+end;
+/
+
+declare
+  id integer := 1;
+  ret varchar(256);
+  salary integer;
+begin
+  ret := test_return_out(id,salary);
+  raise notice 'salary=%',salary;
+  raise notice 'ret=%',ret;
+end;
+/
+
+drop function test_return_out(integer,integer);
+
+
+--test one out-paramter, function returns not void
+create or replace function test_return_out(id integer,salary out integer) return int
+as
+begin
+  salary := 20000 + id;
+  return 11;
+end;
+/
+
+declare
+  id integer := 1;
+  ret varchar(256);
+  salary integer;
+begin
+  ret := test_return_out(id,salary);
+  raise notice 'salary=%',salary;
+  raise notice 'ret=%',ret;
+end;
+/
+
+drop function test_return_out(integer,integer);
+
+--test call a procedure in another procedure
+create or replace procedure test_return_out_proc(id integer,salary out varchar,name out varchar)
+as
+declare
+begin
+  salary := 'test_return_out salary';
+  name := 'test_return_out name';
+end;
+/
+
+create or replace procedure call_return_out_proc(id integer,salary out varchar,name out varchar)
+as
+declare
+  name1 varchar(256);
+  id1 integer;
+begin
+  id1 := 256;
+  call test_return_out_proc(id,salary,name1);
+  name := 'call_return_out name';
+  raise notice 'return_out id=%',id;
+  raise notice 'return_out salary=%',salary;
+  raise notice 'return_out name1=%',name1;
+end;
+/
+
+declare
+  id integer := 1;
+  name varchar(256);
+  salary varchar(256);
+begin
+  call call_return_out_proc(id,salary, name);
+  raise notice 'salary=%',salary;
+  raise notice 'name=%',name;
+end;
+/
+
+drop procedure test_return_out_proc(integer,varchar,varchar);
+drop procedure call_return_out_proc(integer,varchar,varchar);
+
+
+--test out-paramster from  outer
+create or replace function test_return_out(id integer,salary out varchar,name out varchar) return integer
+as
+declare
+  ids integer;
+begin
+  raise notice 'xiexie';
+  ids := id + 100;
+  salary := 'xiexie' || ids;
+  name := 'welcome to beijing' || ids;
+  return ids;
+end;
+/
+
+create or replace function call_test_return_out(id integer,salary out varchar,name out varchar) return integer
+as
+declare
+  ids integer;
+begin
+  ids := 300;
+  return test_return_out(test_return_out(ids, salary,name),salary,name);
+end;
+/
+
+declare
+  salary varchar(256);
+  name varchar(256);
+  ids integer;
+begin
+  ids := call_test_return_out(23,salary,name);
+  raise notice 'salary=%',salary;
+  raise notice 'name=%',name;
+  raise notice 'ids=%',ids;
+end;
+/
+
+drop function call_test_return_out(integer,varchar,varchar);
+drop function test_return_out(integer,varchar,varchar);
+
+
+--first parameter is out parameter
+create or replace function test_return_out(salary out integer,name out varchar,id integer) return varchar
+as
+begin
+  salary := 20000;
+  name := 'test a char out';
+  return 'welcome to beijing';
+end;
+/
+
+declare
+  ret varchar(256);
+  salary integer;
+  name varchar(256);
+begin
+  ret := test_return_out(salary,name,23);
+  raise notice 'salary=%',salary;
+  raise notice 'name=%',name;
+end;
+/
+
+drop function test_return_out(integer,varchar,integer);
+
+
+--test paramater datatype cast
+create or replace function test_cast_parameter(id integer,salary out varchar) return integer
+as
+declare
+begin
+  salary := 25;
+  return 24;
+end;
+/
+
+
+declare
+  mds integer;
+  ret integer;
+begin
+  ret := test_cast_parameter(23,mds::varchar);
+  raise notice 'mds=%',mds;
+end;
+/
+
+drop function test_cast_parameter(integer,varchar);
+
+
+--test create type parameters
+create type testtype1 AS (a int, b text);
+create type testtype2 as (a varchar);
+
+create or replace function test_type_parameter(id integer, typeout out testtype1,type1out out testtype2) return testtype1 as
+begin
+  typeout.a := 3;
+  typeout.b := 'xiexie';
+  type1out.a := 'welcome to beijing';
+  return typeout;
+end;
+/
+
+declare
+  mds1 testtype2;
+  mds testtype1;
+  ret testtype1;
+begin
+  ret := test_type_parameter(23,mds,mds1);
+  raise notice 'mds=%',mds;
+  raise notice 'ret=%',ret;
+  raise notice 'mds1=%',mds1;
+end;
+/
+
+drop function test_type_parameter(integer,testtype1,testtype2);
+drop type testtype1;
+drop type testtype2;
+
+--IN/OUT actual parameters have initial values
+create or replace function test_init_out_inout(id integer,salary out integer, total in out integer) return varchar as
+begin
+  raise notice 'salary = %,total =%',salary,total;
+  salary := 1986;
+  total := 1986 * 10;
+  return 'xiexie';
+end;
+/
+
+declare
+  id integer;
+  salary integer;
+  total integer;
+  return_x varchar(256);
+begin
+  id := 23;
+  salary := 24;
+  total := 25;
+  return_x := test_init_out_inout(id,salary,total); --null, 25
+  raise notice '%,%,%', return_x, salary, total;
+end;
+/
+
+
+--test failed
+create cast(varchar as integer) with inout as implicit;
+
+declare
+  abc varchar(256);
+  return_x varchar(256);
+begin
+  abc := 'xiexie';
+  return_x := test_init_out_inout(23, abc,abc);
+  raise notice '%,%', return_x, abc;
+end;
+/
+
+--name notation
+declare
+  abc varchar(256);
+  return_x varchar(256);
+  total integer;
+begin
+  return_x := test_init_out_inout(23,total=>total,salary=>abc);
+  raise notice '%,%,%', return_x, abc,total;
+end;
+/
+
+drop cast(varchar as integer);
+drop function test_init_out_inout(integer,integer,integer);
+
+
+--return setof, create function statement failed
+create or replace function test_return_setof_out(id varchar,mds out integer) return setof integer as
+declare
+  mdss integer;
+begin
+  NULL;
+end;
+/
+
+
+create or replace function test_return_setof_inout(id varchar,mds inout integer) return setof integer as
+declare
+  mdsss integer;
+begin
+  NULL;
+end;
+/
+
+
+--function return datatype is record
+create table t1(id int, name varchar(20));
+insert into t1 values(10,'a');
+
+create or replace function f1(id integer,salary out varchar) return record as
+declare
+  r record;
+begin
+ salary := 25;
+ select * from t1 into r;
+ return r;
+end;
+/
+
+declare
+  a varchar(20);
+  ret record;
+begin
+  ret := f1(23,a);
+  raise notice 'a= %,ret=%',a, ret; --a= 25, ret=(10,a)
+end;
+/
+
+drop function f1(integer, varchar);
+drop table t1;
+
+--test year to month
+create or replace function test_interval(id integer, time1 out interval year to month, time2 out interval year to month[], time3 interval year to month) return interval year to month as
+declare
+  mds interval year to month[3];
+begin
+  mds[0] := interval '1-1' year to month;
+  mds[1] := interval '1-2' year to month;
+  mds[2] := interval '1-3' year to month;
+  time1 := interval '1-2' year to month;
+  time2 := mds;
+  return time3;
+end;
+/
+
+declare
+  id integer;
+  time1 interval year to month;
+  time2 interval year to month[3];
+  time3 interval year to month;
+  time4 interval year to month;
+begin
+  id := 23;
+  time3 := interval '1-4' year to month;
+  time4 := test_interval(id, time1,time2,time3);
+  raise info '%',time1;
+  raise info '%',time2;
+  raise info '%',time3;
+  raise info '%',time4;
+end;
+/
+
+
+--out paramater datatype is day to second
+create or replace function test_interval(id integer, time1 out interval day to second, time2 out interval day to second[], time3 interval day to second) return interval day to second as
+declare
+  mds interval day to second[3];
+begin
+  mds[0] := interval '4 13:12:12' day to second;
+  mds[1] := interval '5 13:12:12' day to second;
+  mds[2] := interval '6 13:12:12' day to second;
+  time1 := interval '4 12:12:12' day to second;
+  time2 := mds;
+  return time3;
+end;
+/
+
+declare
+  id integer;
+  time1 interval day to second;
+  time2 interval day to second[3];
+  time3 interval day to second;
+  time4 interval day to second;
+begin
+  id := 23;
+  time3 := interval '4 14:12:12' day to second;
+  time4 := test_interval(id, time1, time2, time3);
+  raise info '%',time1;
+  raise info '%',time2;
+  raise info '%',time3;
+  raise info '%',time4;
+end;
+/
+
+--out paramater datatype is number
+create or replace function test_number(id integer,number1 out number, number2 out number[],number3 number) return number as
+declare
+  mds number(4,2)[3];
+begin
+  mds[0] := 23.34;
+  mds[1] := 24.34;
+  mds[2] := 25.34;
+  number1 := 3.14;
+  number2 := mds;
+  return number3;
+end;
+/
+
+declare
+  id integer;
+  number1 number;
+  number2 number[3];
+  number3 number;
+  number4 number;
+begin
+  id := 2;
+  number3 := 24.12;
+  number4 := test_number(id, number1,number2,number3);
+  raise info '%',number1;
+  raise info '%',number2;
+  raise info '%',number3;
+  raise info '%',number4;
+end;
+/
+
+
+--out paramater datatype is binary_float
+create or replace function test_binary_float(id integer,binary1 out binary_float, binary2 out binary_float[],binary3 binary_float) return binary_float as
+declare
+  mds binary_float[3];
+begin
+  mds[0] := 3.1415926;
+  mds[1] := 4.1415926;
+  mds[2] := 5.1415926;
+  binary1 := 213.256;
+  binary2 := mds;
+  return binary3;
+end;
+/
+
+declare
+  id integer;
+  binary1 binary_float;
+  binary2 binary_float[3];
+  binary3 binary_float;
+  binary4 binary_float;
+begin
+  id := 2;
+  binary3 := 24.12;
+  binary4 := test_binary_float(id, binary1,binary2,binary3);
+  raise info '%',binary1;
+  raise info '%',binary2;
+  raise info '%',binary3;
+  raise info '%',binary4;
+end;
+/
+
+--out paramater datatype is binary_double
+create or replace function test_binary_double(id integer,binary1 out binary_double, binary2 out binary_double[],binary3 binary_double) return binary_double as
+declare
+  mds binary_double[3];
+begin
+  mds[0] := 3.1415926;
+  mds[1] := 4.1415926;
+  mds[2] := 5.1415926;
+  binary1 := 213.256;
+  binary2 := mds;
+  return binary3;
+end;
+/
+
+declare
+  id integer;
+  binary1 binary_double;
+  binary2 binary_double[3];
+  binary3 binary_double;
+  binary4 binary_double;
+begin
+  id := 2;
+  binary3 := 24.12;
+  binary4 := test_binary_double(id, binary1,binary2,binary3);
+  raise info '%',binary1;
+  raise info '%',binary2;
+  raise info '%',binary3;
+  raise info '%',binary4;
+end;
+/
+
+drop function test_interval(integer,interval year to month, interval year to month[], interval year to month);
+drop function test_interval(integer,interval day to second, interval day to second[], interval day to second);
+drop function test_number(integer,number,number[],number);
+drop function test_binary_float(integer,binary_float,binary_float[],binary_float);
+drop function test_binary_double(integer,binary_double,binary_double[],binary_double);
+
+-- the function returned datatype is table
+create table test(id integer,name varchar(23));
+
+create or replace function test(id out integer) return test as
+declare
+  var1 test%rowtype;
+begin
+  id := 1;
+  var1.id := 23;
+  var1.name := 'xiexie';
+  return var1;
+end;
+/
+
+declare
+  r test%rowtype;
+  var1 integer;
+  i int;
+begin
+  for i in 1 .. 10 LOOP
+	r := test(var1);
+	raise info 'var1=%,r=%', var1,r;
+  end loop;
+end;
+/
+
+drop function test(integer);
+drop table test;
+
+
+--domain
+create domain domain_type as int check(value < 5);
+create domain domain_domain_type as domain_type;
+
+create or replace function test_out(id out domain_domain_type) return integer as
+declare
+begin
+  id := 2;
+  return 23;
+end;
+/
+
+declare
+  id domain_domain_type;
+  ret integer;
+begin
+  ret := test_out(id);
+  raise notice 'return is %', ret;
+  raise notice 'out value is %', id;
+end;
+/
+
+drop function test_out(domain_domain_type);
+drop domain domain_domain_type;
+drop domain domain_type;
+
+
+--out paramater datatype is table
+create table t_out(d int, t text[]);
+
+create or replace function f1(i out t_out) return text as 
+declare
+begin
+  i.d := 2;
+  i.t := '{''1a'',''2b''}'::text[];
+  return 'boo';
+end;
+/
+
+drop function f1(t_out);
+drop table t_out;
+
+--procedure out
+create or replace  procedure p (
+  a    integer,  -- IN by default
+  b    in integer,
+  c    out integer,
+  d    in out BINARY_FLOAT
+)
+as
+declare
+begin
+ -- Print values of parameters:
+  raise notice 'Inside procedure p:';
+  raise notice 'IN a = %', a;
+  raise notice 'IN b = %', b;
+  raise notice 'OUT c = %', c;
+  raise notice 'IN OUT d =%', d;
+  -- Can reference IN parameters a and b,
+  -- but cannot assign values to them.
+  c := a+10;  -- Assign value to OUT parameter
+  d := 40/20;  -- Assign value to IN OUT parameter
+end;
+/
+
+declare
+  aa  CONSTANT integer := 1;
+  bb  integer  := 2;
+  ee  integer;
+  ff  binary_float := 5;
+begin
+  call p (1,
+     (bb+3)*4,
+     ee,       -- uninitialized variable
+     ff        -- initialized variable
+   );
+
+  raise notice 'after procedure p:';
+  raise notice 'IN aa = %', aa;
+  raise notice 'IN bb = %', bb;
+  raise notice 'OUT ee = %', ee;
+  raise notice 'IN OUT ff =%' ,ff;
+end;
+/
+
+drop procedure p(integer, integer, integer, BINARY_FLOAT);
+
+--function out
+--procedure out
+create or replace function f1 (
+  a    integer,  -- IN by default
+  b    in integer,
+  c    out integer,
+  d    in out BINARY_FLOAT
+) return int
+as
+declare
+begin
+ -- Print values of parameters:
+  raise notice 'Inside procedure p:';
+  raise notice 'IN a = %', a;
+  raise notice 'IN b = %', b;
+  raise notice 'OUT c = %', c;
+  raise notice 'IN OUT d =%', d;
+  -- Can reference IN parameters a and b,
+  -- but cannot assign values to them.
+  c := a+10;  -- Assign value to OUT parameter
+  d := 40/20;  -- Assign value to IN OUT parameter
+  return 1;
+end;
+/
+
+declare
+  aa  CONSTANT integer := 1;
+  bb  integer  := 2;
+  ee  integer;
+  ff  binary_float := 5;
+  ret integer;
+begin
+  ret := f1 (1,
+     (bb+3)*4,
+     ee,       -- uninitialized variable
+     ff        -- initialized variable
+   );
+
+  raise notice 'after procedure p:';
+  raise notice 'IN aa = %', aa;
+  raise notice 'IN bb = %', bb;
+  raise notice 'OUT ee = %', ee;
+  raise notice 'IN OUT ff =%' ,ff;
+end;
+/
+
+drop function f1(integer, integer, integer, BINARY_FLOAT);
+
+--function return type is not void, the function body must has RETURN statement
+--if there is not a RETURN statement, the function is created, but when call the function, raise an error
+create or replace function f2(id integer,salary out integer) return varchar 
+as
+begin
+  salary := 2;
+end;
+/
+
+declare
+  a varchar(20);
+  b int;
+begin
+  a := f2(1, b);
+end;
+/
+
+drop function f2(integer, integer);
+
+--anonymous block with out paramaters
+do $$
+declare
+  a int;
+begin
+  :x := 1;
+  :y := 2;
+end; $$ using out, out;
+
+do $$
+declare
+  id integer;
+begin
+  id := 1;
+  :x := id + 2 + 100;
+  :y := :x + 200;
+  --execute immediate 'declare mds integer; begin mds := 1000; :x := mds + 100;end;' using out id;
+  raise notice 'id=%',id;
+end; $$ using out,out;
+
+--test failed
+do $$
+declare
+  id integer;
+begin
+  id := 1;
+  :x := id + 2 + 100;
+  :y := :x + 200;
+  :z := :x + :y + 12;
+  --execute immediate 'declare mds integer; begin mds := 1000; :x := mds + 100;end;' using out id;
+raise notice 'id=%',id;
+end; $$ using out,out;
+
+--test failed
+do $$
+declare
+  id integer;
+begin
+  id := 1;
+  :x := id + 2 + 100;
+  :y := :x + 200;
+  --execute immediate 'declare mds integer; begin mds := 1000; :x := mds + 100;end;' using out id; 
+  raise notice 'id=%',id;
+end; $$ using out,out,out;
+
+--test binded by name 
+create or replace function test_out(id integer, name out varchar, salary out integer) return integer is
+begin
+  name := 'xiexie';
+  salary := id;
+  return 23;
+end;
+/
+
+set ivorysql.allow_out_parameter_const = true;
+set ivorysql.out_parameter_column_position = true;
+
+select * from test_out(23, NULL, NULL);
+
+create or replace function test_out1(id integer, name out varchar, id2 in out integer, salary out integer, id3 integer, id4 out integer)
+return integer
+is
+begin
+  name := 'xiexie';
+  salary := id;
+  id2 := id + 23;
+  id4 := id3 + 54;
+  return 23;
+end;
+/
+
+select * from test_out1(23, NULL, 24, NULL, 5, NULL);
+
+set ivorysql.allow_out_parameter_const = false;
+set ivorysql.out_parameter_column_position = false;
+drop function test_out(integer,varchar, integer);
+drop function test_out1(integer, varchar, integer, integer, integer, integer);
+
+--test get_parameter_descr function
+select * from get_parameter_descr('insert into t values(:x,:y)');
+select * from get_parameter_descr('delete from t where xxx = :xx');
+select * from get_parameter_descr('update t set t1 = :x and t2 = :y');
+select * from get_parameter_descr('BEGIN
+                          CALL RAISE_SALARY(:emp_number, :new_sal);
+                          END;');
+select * from get_parameter_descr('
+ declare
+	id integer;
+	salary integer;
+	id1 integer;
+	id2 varchar(256);
+begin
+	insert into test_mds(id,id2,name) values(:1,:2,:3);
+	id := :1;
+	:1 := id * 2 + 1;
+	:2 := :1 + 100;
+	:3 := ''this is a test ok'';
+	:4 := 23;
+	execute immediate ''declare mds integer; begin mds := 1000; :x := mds + 100;end;'' using out id;
+end;');
+
+--clean data
+drop table mds;
+

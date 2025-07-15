@@ -205,3 +205,27 @@ PQcancelFinish            202
 PQsocketPoll              203
 PQsetChunkedRowsMode      204
 PQgetCurrentTimeUSec      205
+Ivyconnectdb               206
+IvyCreatePreparedStatement 207
+IvybindOutParameterByPos   208
+IvyexecPreparedStatement   209
+IvyFreePreparedStatement   210
+Ivyclear                   211
+Ivyfinish                  212
+Ivystatus                  213
+Ivyexec                    214
+IvyresultStatus            215
+Ivynfields                 216
+Ivyfname                   217
+Ivyntuples                 218
+Ivygetvalue                219
+IvyerrorMessage            220
+IvyexecPreparedStatement2  221
+IvybindOutParameterByName  222
+IvyHandleAlloc             223
+IvyStmtPrepare             224
+IvyFreeHandle              225
+IvyBindByPos               226
+IvyBindByName              227
+IvyStmtExecute             228
+

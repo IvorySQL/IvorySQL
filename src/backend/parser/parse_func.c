@@ -37,6 +37,7 @@
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "commands/packagecmds.h"
+#include "parser/parse_param.h"
 
 
 /* Possible error codes from LookupFuncNameInternal */
@@ -165,6 +166,32 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	{
 		Node	   *arg = lfirst(l);
 		Oid			argtype = exprType(arg);
+		bool 		leftCall = false;
+		bool 		argout = false;
+		bool 		argin  = true;
+
+		/*
+		 * Oid is 32 bit, the 32nd-30nd bit is used for sepecial purpose.
+		 * 32nd bit indicates that it is '{? = call function/proc}' .
+		 * 31nd bit indicates that the function or procedure parameter mode is OUT.
+		 * 30nd bit indicates that the function or procedure parameter mode is IN.
+		 * 29nd-1nd bit used for the unction or procedure parameter type OID.
+		 */
+		if (IsA(arg, Param) &&
+			pstate->p_ref_hook_state &&
+			pstate->p_isVarParamState)
+			ParseVarParamState(pstate->p_ref_hook_state, arg,
+							&argout, &argin, &leftCall);
+
+		/*
+		 * If it is CALL by JDBC, we discard the first argument from the parameter list.
+		 * Because the first argument is the result.
+		 */
+		if (leftCall)
+		{
+			fargs = list_delete_ptr(fargs, arg);
+			continue;
+		}
 
 		if (argtype == VOIDOID && IsA(arg, Param) &&
 			!is_column && !agg_within_group)
@@ -342,6 +369,18 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											  actual_arg_types)),
 				 errhint("To call a function, use SELECT."),
 				 parser_errposition(pstate, location)));
+
+	/*  If this is a CALL func with setof by JDBC, reject it */
+	if (proc_call && retset && fdresult == FUNCDETAIL_NORMAL)
+		ereport(ERROR,
+			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+			 errmsg("can't call %s with return sets",
+					func_signature_string(funcname, nargs,
+										  argnames,
+										  actual_arg_types)),
+			 errhint("To call a function, use SELECT."),
+			 parser_errposition(pstate, location)));
+
 	/* Conversely, if not a CALL, reject procedures */
 	if (fdresult == FUNCDETAIL_PROCEDURE && !proc_call)
 		ereport(ERROR,
@@ -2364,6 +2403,10 @@ LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func, bool missing_ok)
 	ListCell   *args_item;
 	Oid			oid;
 	FuncLookupError lookupError;
+	Oid 		raw_argoids[FUNC_MAX_ARGS];
+	int 		raw_argcount = list_length(func->objargs);
+	int 		j = 0;
+
 
 	Assert(objtype == OBJECT_AGGREGATE ||
 		   objtype == OBJECT_FUNCTION ||
@@ -2398,6 +2441,25 @@ LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func, bool missing_ok)
 	{
 		TypeName   *t = lfirst_node(TypeName, args_item);
 
+		if (IsModeOut(t->typeOid))
+		{
+			argcount--;
+
+			UnSetModeOut(t->typeOid);
+			raw_argoids[j] = LookupTypeNameOid(NULL, t, missing_ok);
+
+			SetModeOut(t->typeOid);
+
+			if (!OidIsValid(raw_argoids[j]))
+				return InvalidOid;
+
+			j++;
+			
+			continue;
+		}
+		raw_argoids[j] = LookupTypeNameOid(NULL, t, missing_ok);
+		j++;
+
 		argoids[i] = LookupTypeNameOid(NULL, t, missing_ok);
 		if (!OidIsValid(argoids[i]))
 			return InvalidOid;	/* missing_ok must be true */
@@ -2423,6 +2485,15 @@ LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func, bool missing_ok)
 								 func->objname, nargs, argoids,
 								 false, missing_ok,
 								 &lookupError);
+
+	/* If not found, then search all arguments include OUT arguments */
+	if (objtype != OBJECT_AGGREGATE && !OidIsValid(oid))
+	{
+		nargs = func->args_unspecified ? -1 : raw_argcount;
+		oid = LookupFuncNameInternal(func->args_unspecified ? objtype : OBJECT_ROUTINE,
+									func->objname, nargs, raw_argoids,
+									false, missing_ok, &lookupError);
+	}
 
 	/*
 	 * If PROCEDURE or ROUTINE was specified, and we have an argument list
