@@ -638,7 +638,7 @@ main(int argc, char *argv[])
 	fprintf(OPF, "SET ivorysql.identifier_case_switch = normal;\n");
 	fprintf(OPF, "\n");
 
-	if (!data_only)
+	if (!data_only && !statistics_only && !no_schema)
 	{
 		/*
 		 * If asked to --clean, do that first.  We can avoid detailed
