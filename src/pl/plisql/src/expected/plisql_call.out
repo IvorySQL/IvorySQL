@@ -284,7 +284,7 @@ NOTICE:  a: 10, b: 30, c: 50
 NOTICE:  _a: 100, _b: 40, _c: -500
 NOTICE:  a: 100, b: 40, c: -500
 NOTICE:  _a: 1000, _b: 50, _c: 5000
-CREATE PROCEDURE test_proc8c(INOUT a int, INOUT b int, INOUT c int DEFAULT 11)
+CREATE PROCEDURE test_proc8c(INOUT a int, INOUT b int, INOUT c int)
 LANGUAGE plisql
 AS $$
 BEGIN
@@ -323,7 +323,11 @@ BEGIN
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
-ERROR:  procedure parameter "c" is an output parameter but corresponding argument is not writable
+ERROR:  procedure test_proc8c(pg_catalog.int4, pg_catalog.int4) does not exist
+LINE 1: CALL test_proc8c(_a, _b)
+             ^
+HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+QUERY:  CALL test_proc8c(_a, _b)
 CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 DO $$
 DECLARE _a int; _b int; _c int;
@@ -333,7 +337,11 @@ BEGIN
   RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
 END
 $$;
-ERROR:  procedure parameter "c" is an output parameter but corresponding argument is not writable
+ERROR:  procedure test_proc8c(pg_catalog.int4, b => pg_catalog.int4) does not exist
+LINE 1: CALL test_proc8c(_a, b => _b)
+             ^
+HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+QUERY:  CALL test_proc8c(_a, b => _b)
 CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 -- OUT parameters
 CREATE PROCEDURE test_proc9(IN a int, OUT b int)
@@ -494,7 +502,7 @@ DROP PROCEDURE test_proc3;
 DROP PROCEDURE test_proc4;
 DROP TABLE test1;
 -- more checks for named-parameter handling
-CREATE PROCEDURE p1(v_cnt int, v_Text inout text = NULL)
+CREATE PROCEDURE p1(v_cnt int, v_Text inout text)
 AS $$
 BEGIN
   v_Text := 'v_cnt = ' || v_cnt;
@@ -510,7 +518,11 @@ BEGIN
   RAISE NOTICE '%', v_Text;
 END;
 $$;
-ERROR:  procedure parameter "v_text" is an output parameter but corresponding argument is not writable
+ERROR:  procedure p1(v_cnt => pg_catalog.int4) does not exist
+LINE 1: CALL p1(v_cnt := v_cnt)
+             ^
+HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+QUERY:  CALL p1(v_cnt := v_cnt)
 CONTEXT:  PL/iSQL function inline_code_block line 6 at CALL
 DO $$
 DECLARE

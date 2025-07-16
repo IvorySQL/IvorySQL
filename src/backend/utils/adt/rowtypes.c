@@ -28,6 +28,12 @@
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
 #include "utils/typcache.h"
+#include "parser/parser.h"
+#include "parser/parse_param.h"
+#include "catalog/pg_language.h"
+#include "commands/proclang.h"
+#include "utils/syscache.h"
+#include "commands/extension.h"
 
 
 /*
@@ -68,6 +74,12 @@ typedef struct RecordCompareData
 	ColumnCompareData columns[FLEXIBLE_ARRAY_MEMBER];
 } RecordCompareData;
 
+typedef struct OraParamExtralData
+{
+	int		next_params;
+	int		total_params;
+	char	**paramnames;
+} OraParamExtralData;
 
 /*
  * record_in		- input routine for any composite type.
@@ -2046,3 +2058,164 @@ hash_record_extended(PG_FUNCTION_ARGS)
 
 	PG_RETURN_UINT64(result);
 }
+
+/*
+ * get_parameter_descr
+ * Get the name and position of the placeholdvars in the query
+ */
+Datum
+get_parameter_descr(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	OraParamExtralData *extral;
+	bool			dostmt = false;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		Datum		txt = PG_GETARG_DATUM(0);
+		char		*sql = TextDatumGetCString(txt);
+		List		*parsetree;
+		int			nparams;
+		char		**paramnames = NULL;
+		MemoryContext	oldcxt;
+		int oraparam_top_level;
+		int oraparam_cur_level;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcxt = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		push_oraparam_stack();
+		get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
+		forward_oraparam_stack();
+		setdynamic_parser(true);
+		PG_TRY();
+		{
+			parsetree = raw_parser(sql, RAW_PARSE_DEFAULT);
+		}
+		PG_CATCH();
+		{
+			backward_oraparam_stack();
+			pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+			setdynamic_parser(false);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		if (list_length(parsetree) != 1)
+			elog(ERROR, "we only support one parse tree");
+
+		if (nodeTag(linitial(parsetree)) == T_RawStmt &&
+			nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_DoStmt)
+		{
+			dostmt = true;
+
+			PG_TRY();
+			{
+				if (!plisql_internal_funcs.isload)
+				{
+					FmgrInfo	flinfo;
+					HeapTuple	languageTuple;
+					Form_pg_language languageStruct;
+					Oid 		laninline;
+
+					/* Look up the language and validate permissions */
+					languageTuple = SearchSysCache1(LANGOID, ObjectIdGetDatum(LANG_PLISQL_OID));
+					if (!HeapTupleIsValid(languageTuple))
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("language plisql does not exist"),
+								 (extension_file_exists("plisql") ?
+								  errhint("Use CREATE EXTENSION to load the language into the database.") : 0)));
+
+					languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
+
+					/* get the handler function's OID */
+					laninline = languageStruct->laninline;
+					if (!OidIsValid(laninline))
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("language \"%s\" does not support inline code execution",
+										NameStr(languageStruct->lanname))));
+
+					ReleaseSysCache(languageTuple);
+					fmgr_info(laninline, &flinfo);
+				}
+				plisql_internal_funcs.compile_inline_internal(sql);
+				nparams = calculate_oraparamname(&paramnames);
+			}
+			PG_CATCH();
+			{
+				backward_oraparam_stack();
+				pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+				setdynamic_parser(false);
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+		}
+
+		backward_oraparam_stack();
+		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+		setdynamic_parser(false);
+
+		if (!dostmt)
+			nparams = calculate_oraparamname_position(linitial(parsetree), &paramnames);
+
+		/*
+		 * build tupdesc for result tuples (matches out parameters in pg_proc
+		 * entry)
+		 */
+		tupdesc = CreateTemplateTupleDesc(2);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
+					   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "position",
+					   INT4OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+		extral = (OraParamExtralData *) palloc(sizeof(OraParamExtralData));
+		extral->next_params = 0;
+		extral->total_params = nparams;
+		extral->paramnames = paramnames;
+
+		MemoryContextSwitchTo(oldcxt);
+		funcctx->user_fctx  = (void *) extral;
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	extral = (OraParamExtralData *) funcctx->user_fctx;
+
+	if (extral->next_params <= extral->total_params)
+	{
+		Datum		result;
+		Datum		values[2];
+		bool		nulls[2];
+		HeapTuple	tuple;
+
+		/* the first tuple is constructed by stmt */
+		if (extral->next_params == 0)
+		{
+			if (dostmt)
+				values[0] = CStringGetTextDatum("true");
+			else
+				values[0] = CStringGetTextDatum("false");
+
+			values[1] = Int32GetDatum(extral->next_params);
+		}
+		else
+		{
+			values[0] = CStringGetTextDatum(extral->paramnames[extral->next_params]);
+			values[1] = Int32GetDatum(extral->next_params);
+		}
+
+		MemSet(nulls, 0, sizeof(nulls));
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+		extral->next_params++;
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
+}
+

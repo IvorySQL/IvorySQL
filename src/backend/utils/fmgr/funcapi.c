@@ -34,6 +34,8 @@
 #include "utils/guc.h"
 #include "commands/packagecmds.h"
 #include "parser/parse_package.h"
+#include "commands/proclang.h"
+#include "executor/spi.h"
 
 
 typedef struct polymorphic_actuals
@@ -44,7 +46,7 @@ typedef struct polymorphic_actuals
 	Oid			anymultirange_type; /* anymultirange mapping, if known */
 } polymorphic_actuals;
 
-PLiSQL_funcs_call plisql_internal_funcs = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,false};
+PLiSQL_funcs_call plisql_internal_funcs = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false};
 
 static void shutdown_MultiFuncCall(Datum arg);
 static TypeFuncClass internal_get_result_type(Oid funcid,
@@ -491,6 +493,15 @@ internal_get_result_type(Oid funcid,
 		}
 
 		ReleaseSysCache(tp);
+
+		/* If we change the return type of a function, we change the return type of the expr */
+		if (!type_is_rowtype(rettype) && SPI_get_connected() <= 0)
+		{
+			FuncExpr *func = (FuncExpr *) call_expr;
+
+			func->funcresulttype = RECORDOID;
+			func->funccollid = 0;
+		}
 
 		return result;
 	}
@@ -1728,7 +1739,8 @@ build_function_result_tupdesc_t(HeapTuple procTuple)
 	Oid		rettype = get_func_real_rettype(procTuple);
 
 	/* Return NULL if the function isn't declared to return RECORD */
-	if (rettype != RECORDOID) 
+	if (rettype != RECORDOID && 
+	    LANG_PLISQL_OID != procform->prolang) 
 		return NULL;
 
 	/* If there are no OUT parameters, return NULL */
@@ -1759,11 +1771,21 @@ build_function_result_tupdesc_t(HeapTuple procTuple)
 	else
 		proargtypenames = PointerGetDatum(NULL);
 
-	return build_function_result_tupdesc_d(procform->prokind,
-										   proallargtypes,
-										   proargmodes,
-										   proargnames,
-										   proargtypenames);
+	if (compatible_db == ORA_PARSER &&
+		LANG_PLISQL_OID == procform->prolang &&
+		procform->prokind == PROKIND_FUNCTION)
+		return build_plisql_function_result_tupdesc_d(procform->prokind,
+											   proallargtypes,
+											   proargmodes,
+											   proargnames,
+											   rettype,
+											   proargtypenames);
+	else
+		return build_function_result_tupdesc_d(procform->prokind,
+											   proallargtypes,
+											   proargmodes,
+											   proargnames,
+											   proargtypenames);
 }
 
 /*
@@ -2059,6 +2081,200 @@ build_function_result_tupdesc_d(char prokind,
 	return desc;
 }
 
+/*
+ * build_plisql_function_result_tupdesc_d
+ *
+ * Build a RECORD function's tupledesc from the pg_proc proallargtypes,
+ * proargmodes, proargnames arrays, and prorettype.  This is split out for the
+ * convenience of ProcedureCreate, which needs to be able to compute the
+ * tupledesc before actually creating the function.
+ *
+ * For functions (but not for procedures), returns NULL if there are not at
+ * least one OUT or INOUT arguments.
+ */
+TupleDesc
+build_plisql_function_result_tupdesc_d(char prokind,
+								Datum proallargtypes,
+								Datum proargmodes,
+								Datum proargnames,
+								Oid prorettype,
+								Datum proargtypenames)
+{
+	TupleDesc	desc;
+	ArrayType  *arr;
+	int 		numargs;
+	Oid 	   *argtypes;
+	char	   *argmodes;
+	Datum	   *argnames = NULL;
+	Oid 	   *outargtypes;
+	char	  **outargnames;
+	int 		numoutargs;
+	int 		nargnames;
+	int 		i = 0;
+	int 		j = 0;
+	char		**argtypenames = NULL;
+
+	/* Can't have output args if columns are null, plisql function call return null */
+	if (proallargtypes == PointerGetDatum(NULL) ||
+		proargmodes == PointerGetDatum(NULL))
+		return NULL;
+	/*
+	 * We expect the arrays to be 1-D arrays of the right types; verify that.
+	 * For the OID and char arrays, we don't need to use deconstruct_array()
+	 * since the array data is just going to look like a C array of values.
+	 */
+	arr = DatumGetArrayTypeP(proallargtypes);	/* ensure not toasted */
+	numargs = ARR_DIMS(arr)[0];
+	if (ARR_NDIM(arr) != 1 ||
+		numargs < 0 ||
+		ARR_HASNULL(arr) ||
+		ARR_ELEMTYPE(arr) != OIDOID)
+		elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
+	argtypes = (Oid *) ARR_DATA_PTR(arr);
+
+	arr = DatumGetArrayTypeP(proargmodes);	/* ensure not toasted */
+	if (ARR_NDIM(arr) != 1 ||
+		ARR_DIMS(arr)[0] != numargs ||
+		ARR_HASNULL(arr) ||
+		ARR_ELEMTYPE(arr) != CHAROID)
+		elog(ERROR, "proargmodes is not a 1-D char array of length %d or it contains nulls",
+			 numargs);
+	argmodes = (char *) ARR_DATA_PTR(arr);
+	if (proargnames != PointerGetDatum(NULL))
+	{
+		arr = DatumGetArrayTypeP(proargnames);	/* ensure not toasted */
+		if (ARR_NDIM(arr) != 1 ||
+			ARR_DIMS(arr)[0] != numargs ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != TEXTOID)
+			elog(ERROR, "proargnames is not a 1-D text array of length %d or it contains nulls",
+				 numargs);
+		deconstruct_array(arr, TEXTOID, -1, false, TYPALIGN_INT,
+						  &argnames, NULL, &nargnames);
+		Assert(nargnames == numargs);
+	}
+
+	if (ORA_PARSER == compatible_db &&
+		proargtypenames != PointerGetDatum(NULL))
+	{
+		Datum	   *elems;
+		int			nelems;
+
+		deconstruct_array(DatumGetArrayTypeP(proargtypenames),
+								TEXTOID, -1, false, 'i',
+								&elems, NULL, &nelems);
+		argtypenames = (char **) palloc(sizeof(char *) * nelems);
+		for (i = 0; i < nelems; i++)
+			argtypenames[i] = TextDatumGetCString(elems[i]);
+	}
+
+	/* zero elements probably shouldn't happen, but handle it gracefully */
+	if (numargs <= 0)
+		return NULL;
+
+	/* extract output-argument types and names */
+	outargtypes = (Oid *) palloc0(numargs * sizeof(Oid));
+	outargnames = (char **) palloc0(numargs * sizeof(char *));
+	numoutargs = 0;
+	for (i = 0; i < numargs; i++)
+	{
+		char	   *pname;
+
+		if (argmodes[i] == PROARGMODE_IN ||
+			argmodes[i] == PROARGMODE_VARIADIC)
+			continue;
+		Assert(argmodes[i] == PROARGMODE_OUT ||
+			   argmodes[i] == PROARGMODE_INOUT ||
+			   argmodes[i] == PROARGMODE_TABLE);
+		outargtypes[numoutargs] = argtypes[i];
+
+		if (argtypenames != NULL && strcmp(argtypenames[i], "") != 0)
+		{
+			TypeName	*tname;
+			PkgType *pkgtype;
+
+			tname = (TypeName *) stringToNode(argtypenames[i]);
+
+			pkgtype = LookupPkgTypeByTypename(tname->names, false);
+			if (pkgtype != NULL)
+			{
+				outargtypes[numoutargs] = pkgtype->basetypid;
+				pfree(pkgtype);
+			}
+			pfree(tname);
+		}
+
+		/*
+		 * If the guc pararmeter out_parameter_column_position is set to true,
+		 * make out parameter column name to special,
+		 * so we can distinguish it from the return value
+		 */
+		if (out_parameter_column_position)
+			pname = psprintf("_column_%d", i + 1);
+		else if (argnames)
+			pname = TextDatumGetCString(argnames[i]);
+		else
+			pname = NULL;
+
+		if (pname == NULL || pname[0] == '\0')
+		{
+			/* No parameter is specified, we specify the parameter name */
+			pname = psprintf("column%d", numoutargs + 1);
+		}
+
+		outargnames[numoutargs] = pname;
+		numoutargs++;
+	}
+
+	/*
+	 * If there is no output argument, does not return tuples.
+	 */
+	if (numoutargs < 1)
+	{
+		pfree(outargtypes);
+		for (i = 0; i < numargs; i++)
+			if (outargnames[i] != NULL)
+				pfree(outargnames[i]);
+		pfree(outargnames);
+		return NULL;
+	}
+
+	if (prorettype != VOIDOID)
+		desc = CreateTemplateTupleDesc(numoutargs + 1);
+	else
+		desc = CreateTemplateTupleDesc(numoutargs);
+
+	i = 0;
+
+	/* put the result value after all out parameters */
+	for (j = 0; j < numoutargs; j++)
+	{
+		TupleDescInitEntry(desc, ++i,
+						outargnames[j],
+						outargtypes[j],
+						-1,
+						0); 	
+	}
+
+	if (prorettype != VOIDOID)
+	{
+		Oid		rettype = prorettype;
+
+		TupleDescInitEntry(desc, ++i,
+							"_RETVAL_",
+							rettype,
+							-1,
+							0);
+	}
+
+	pfree(outargtypes);
+	for (i = 0; i < numargs; i++)
+		if (outargnames[i] != NULL)
+			pfree(outargnames[i]);
+	pfree(outargnames);
+
+	return desc;
+}
 
 /*
  * RelationNameGetTupleDesc
@@ -2302,3 +2518,138 @@ extract_variadic_args(FunctionCallInfo fcinfo, int variadic_start,
 
 	return nargs;
 }
+
+/*
+ * func_should_change_return_type
+ *
+ * if a func is a plisql function and it has out parameters
+ * and the return type is not a record, should change its
+ * return type during calling from SQL, so that we can return out parameters
+ * and the return value.
+ *
+ * this function gets function' informations and decides whether it should
+ * change or not.
+ */
+bool
+func_should_change_return_type(Oid functionId, Oid *rettype, int32 *typmod, Oid *collationoid)
+{
+	bool	    result = false;
+	HeapTuple	procTuple;
+	Form_pg_proc procStruct;
+	Datum		proargmodes;
+	Datum		proargtypes;
+	bool		isnull;
+	ArrayType	*arr;
+	ArrayType	*typearr;
+	char	   *argmodes;
+	Oid			*argtypes;
+	int			numargs;
+	int			nargtypes;
+	int			i;
+	int			outnargs = 0;
+	int			outdno = -1;
+	Oid			rettypeoid;
+
+	/* First fetch the function's pg_proc row */
+	procTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(functionId));
+	if (!HeapTupleIsValid(procTuple))
+		elog(ERROR, "cache lookup failed for function %u", functionId);
+
+	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
+	rettypeoid = get_func_real_rettype(procTuple);
+	if (rettypeoid == RECORDOID ||
+		LANG_PLISQL_OID != procStruct->prolang)
+	{
+		ReleaseSysCache(procTuple);
+		return false;
+	}
+
+	/* If there are no named OUT parameters, return false */
+	if (!heap_attisnull(procTuple, Anum_pg_proc_proargmodes, NULL) &&
+		!heap_attisnull(procTuple, Anum_pg_proc_proallargtypes, NULL))
+	{
+		/* Get the data out of the tuple */
+		proargmodes = SysCacheGetAttr(PROCOID, procTuple,
+									  Anum_pg_proc_proargmodes,
+									  &isnull);
+		Assert(!isnull);
+
+		/*
+		 * We expect the arrays to be 1-D arrays of the right types; verify
+		 * that.  For the char array, we don't need to use deconstruct_array()
+		 * since the array data is just going to look like a C array of
+		 * values.
+		 */
+		arr = DatumGetArrayTypeP(proargmodes);	/* ensure not toasted */
+		numargs = ARR_DIMS(arr)[0];
+		if (ARR_NDIM(arr) != 1 ||
+			numargs < 0 ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != CHAROID)
+			elog(ERROR, "proargmodes is not a 1-D char array");
+		argmodes = (char *) ARR_DATA_PTR(arr);
+
+		proargtypes = SysCacheGetAttr(PROCOID, procTuple,
+									 Anum_pg_proc_proallargtypes,
+									 &isnull);
+		/*
+		 * We expect the arrays to be 1-D arrays of the right types; verify
+		 * that.  For the OID and char arrays, we don't need to use
+		 * deconstruct_array() since the array data is just going to look like
+		 * a C array of values.
+		 */
+		typearr = DatumGetArrayTypeP(proargtypes);		/* ensure not toasted */
+		nargtypes = ARR_DIMS(typearr)[0];
+		if (ARR_NDIM(typearr) != 1 ||
+			nargtypes < 0 ||
+			ARR_HASNULL(typearr) ||
+			ARR_ELEMTYPE(typearr) != OIDOID)
+			elog(ERROR, "proallargtypes is not a 1-D Oid array");
+		Assert(nargtypes == numargs);
+		argtypes = (Oid *) ARR_DATA_PTR(typearr);
+
+		for (i = 0; i < numargs; i++)
+		{
+			if (argmodes[i] == PROARGMODE_IN ||
+				argmodes[i] == PROARGMODE_VARIADIC)
+				continue;
+			Assert(argmodes[i] == PROARGMODE_OUT ||
+				   argmodes[i] == PROARGMODE_INOUT ||
+				   argmodes[i] == PROARGMODE_TABLE);
+			outnargs++;
+			outdno = i;
+		}
+	}
+
+	/* more than one out-parameters or one out-parameter and has a return type, change to record */
+	if (outnargs >= 2 || (outnargs == 1 && rettypeoid != VOIDOID))
+	{
+		result = true;
+		*rettype = RECORDOID;
+		*typmod = -1;
+		*collationoid = 0;
+	}
+	else if (outnargs == 1 && rettypeoid == VOIDOID)
+	{
+		/* one out-parameter, change to out-parameter type */
+		HeapTuple	typeTuple;
+		Form_pg_type pt;
+
+		typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(argtypes[outdno]));
+		if (!HeapTupleIsValid(typeTuple))
+			elog(ERROR, "cache lookup failed for type %u", argtypes[outdno]);
+		pt = (Form_pg_type) GETSTRUCT(typeTuple);
+
+		result = true;
+
+		*rettype = argtypes[outdno];
+		*typmod = pt->typtypmod;
+		*collationoid = pt->typcollation;
+
+		ReleaseSysCache(typeTuple);
+	}
+	ReleaseSysCache(procTuple);
+
+	return result;
+}
+

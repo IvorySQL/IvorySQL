@@ -513,3 +513,35 @@ debugtup(TupleTableSlot *slot, DestReceiver *self)
 
 	return true;
 }
+
+/*
+ * ChangeDestSendDescription:
+ * During PBE executing a anonymous block which includes some out parameters,
+ * we should change it to send description
+ */
+void
+ChangeDestSendDescription(DestReceiver *dest)
+{
+	DR_printtup *myState = (DR_printtup *) dest;
+
+	Assert(dest->mydest == DestRemoteExecute);
+
+	myState->sendDescrip = true;
+}
+
+/*
+ * Set sendDescrip for a DestRemote (or DestRemoteExecute) receiver
+ */
+void
+SetRemoteDestReceiverSendDescr(DestReceiver *self, bool send_info)
+{
+	DR_printtup *myState = (DR_printtup *) self;
+
+	Assert(myState->pub.mydest == DestRemote ||
+		   myState->pub.mydest == DestRemoteExecute);
+
+	myState->sendDescrip = send_info;
+
+	return;
+}
+

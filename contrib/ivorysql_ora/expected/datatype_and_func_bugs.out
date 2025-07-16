@@ -51,7 +51,7 @@ begin
 return 1;
 end;
 /
-create function s1.f_alter(arg1 OUT number)
+create function s1.f_alter(arg1 OUT int)
 return number
 is
 begin
@@ -77,7 +77,7 @@ ERROR:  function name "s1.f_alter" is not unique
 HINT:  Specify the argument list to select the function unambiguously.
 alter function s1.f_alter(arg1 number) compile;
 alter function s1.f_alter(arg1 number, arg2 number) compile;
-alter function s1.f_alter(arg1 OUT number) compile;
+alter function s1.f_alter(arg1 OUT int) compile;
 alter function s1.f_alter(arg1 text) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number default 10) compile;
 ERROR:  syntax error at or near "default"
@@ -91,6 +91,6 @@ drop table char_tb;
 drop function f_noparam();
 drop function s1.f_alter(arg1 number);
 drop function s1.f_alter(arg1 number, arg2 number);
-drop function s1.f_alter(arg1 OUT number);
+drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);

@@ -64,6 +64,7 @@
 #include "utils/numeric.h"
 #include "utils/ora_compatible.h"
 #include "utils/xml.h"
+#include "parser/parse_param.h"
 
 
 /*
@@ -660,6 +661,11 @@ static void determineLanguage(List *options);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
+%type <node> param_mode_item
+%type <list> params_mode_list
+%type <str>  opt_param_name
+%type <node> param_mode
+
 %type <list>	identity_clause identity_options drop_identity
 %type <boolean>	opt_with opt_by
 
@@ -708,6 +714,7 @@ static void determineLanguage(List *options);
 %token <str>	IDENT UIDENT FCONST SCONST USCONST BCONST XCONST Op
 %token <str>	BFCONST	BDCONST
 %token <ival>	ICONST PARAM
+%token <str>	ORAPARAM
 %token			TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
 %token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS LESS_LESS GREATER_GREATER
 
@@ -10145,6 +10152,15 @@ DoStmt: DO dostmt_opt_list
 					determineLanguage(n->args);
 					$$ = (Node *)n;
 				}
+			/* executes anonymous */
+			| DO dostmt_opt_list USING params_mode_list
+				{
+					DoStmt *n = makeNode(DoStmt);
+					n->args = $2;
+					n->paramsmode = $4;
+					determineLanguage(n->args);
+					$$ = (Node *)n;
+				}
 		;
 
 ora_anonymous_begin: BEGIN_P
@@ -10185,6 +10201,30 @@ dostmt_opt_item:
 					$$ = makeDefElem("language", (Node *) makeString($2), @1);
 				}
 		;
+
+params_mode_list:
+			param_mode_item 					{ $$ = list_make1($1); }
+			| params_mode_list ',' param_mode_item	{ $$ = lappend($1, $3); }
+		;
+
+param_mode_item: opt_param_name param_mode
+				{
+					DefElem *def = makeDefElem($1, $2, @1);
+					$$ = (Node *) def;
+				}
+		;
+
+opt_param_name:	ORAPARAM		{ $$ = $1; }
+				|/* EMPTY */	{ $$ = NULL; }
+		;
+
+param_mode:
+				IN_P                    { $$ = (Node *) makeString((char *) $1); }
+				| OUT_P                 { $$ = (Node *) makeString((char *) $1); }
+				| INOUT                 { $$ = (Node *) makeString((char *) $1); }
+				| IN_P OUT_P    		{ $$ = (Node *) makeString("inout"); }
+		;
+
 
 /*****************************************************************************
  *
@@ -17340,6 +17380,22 @@ c_expr:		columnref								{ $$ = $1; }
 					else
 						$$ = (Node *) p;
 				}
+			| ORAPARAM opt_indirection
+				{
+					OraParamRef *p = makeNode(OraParamRef);
+					p->number = 0;
+					p->location = @1;					
+					p->name = $1;
+					if ($2)
+					{
+						A_Indirection *n = makeNode(A_Indirection);
+						n->arg = (Node *) p;
+						n->indirection = check_indirection($2, yyscanner);
+						$$ = (Node *) n;
+					}
+					else
+						$$ = (Node *) p;
+				}
 			| '(' a_expr ')' opt_indirection
 				{
 					if ($4)
@@ -19031,7 +19087,7 @@ indirection_el:
 					ai->uidx = $2;
 					$$ = (Node *) ai;
 				}
-			| '[' opt_slice_bound ':' opt_slice_bound ']'
+			| '[' opt_slice_bound DOT_DOT opt_slice_bound ']'
 				{
 					A_Indices *ai = makeNode(A_Indices);
 
@@ -19763,6 +19819,13 @@ PLAssignStmt: plassign_target opt_indirection plassign_equals PLpgSQL_Expr
 
 plassign_target: ColId							{ $$ = $1; }
 			| PARAM								{ $$ = psprintf("$%d", $1); }
+			| ORAPARAM
+				{
+					if (get_bindbyname())
+						$$ = psprintf("%s", $1);
+					else
+						$$ = psprintf("$%d", calculate_oraparamnumber($1));
+				}
 		;
 
 plassign_equals: COLON_EQUALS
@@ -21266,7 +21329,10 @@ extractArgTypes(List *parameters)
 	{
 		FunctionParameter *p = (FunctionParameter *) lfirst(i);
 
-		if (p->mode != FUNC_PARAM_OUT && p->mode != FUNC_PARAM_TABLE)
+		/* set the parameter Oid mask for OUT mode */
+		if (p->mode == FUNC_PARAM_OUT)
+			SetModeOut(p->argType->typeOid);
+		if (p->mode != FUNC_PARAM_TABLE)
 			result = lappend(result, p->argType);
 	}
 	return result;

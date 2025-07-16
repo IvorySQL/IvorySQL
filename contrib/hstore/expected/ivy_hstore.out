@@ -1608,7 +1608,9 @@ select f2['d'], f2['x'] is null as x_isnull from test_json_agg;
 select f2['d']['e'] from test_json_agg;  -- error
 ERROR:  hstore allows only one subscript
 select f2['d':'e'] from test_json_agg;  -- error
-ERROR:  hstore allows only one subscript
+ERROR:  syntax error at or near ":"
+LINE 1: select f2['d':'e'] from test_json_agg;
+                     ^
 update test_json_agg set f2['d'] = f2['e'], f2['x'] = 'xyzzy';
 select f2 from test_json_agg;
                                                          f2                                                          

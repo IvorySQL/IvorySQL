@@ -648,6 +648,7 @@ MainLoop(FILE *source)
 						{
 							pg_free(pl->items);
 							pg_free(pl);
+							break;
 						}
 					}
 				}

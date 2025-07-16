@@ -40,7 +40,7 @@ return 1;
 end;
 /
 
-create function s1.f_alter(arg1 OUT number)
+create function s1.f_alter(arg1 OUT int)
 return number
 is
 begin
@@ -67,7 +67,7 @@ end;
 alter function s1.f_alter compile;
 alter function s1.f_alter(arg1 number) compile;
 alter function s1.f_alter(arg1 number, arg2 number) compile;
-alter function s1.f_alter(arg1 OUT number) compile;
+alter function s1.f_alter(arg1 OUT int) compile;
 alter function s1.f_alter(arg1 text) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number default 10) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number) compile;
@@ -78,6 +78,6 @@ drop table char_tb;
 drop function f_noparam();
 drop function s1.f_alter(arg1 number);
 drop function s1.f_alter(arg1 number, arg2 number);
-drop function s1.f_alter(arg1 OUT number);
+drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);

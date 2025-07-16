@@ -35,6 +35,8 @@
 #include "utils/memutils.h"
 #include "utils/selfuncs.h"
 #include "utils/typcache.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
 
 
 /*
@@ -450,6 +452,20 @@ ReadArrayDimensions(char **srcptr, int *ndim_p, int *dim, int *lBound,
 				return false;
 			if (p == q)			/* no digits? */
 				ereturn(escontext, false,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("malformed array literal: \"%s\"", origStr),
+						 errdetail("Missing array dimension value.")));
+		}
+		else if (strncmp(p, "..", 2) == 0)
+		{
+			/* [m..n] format */
+			lBound[ndim] = i;
+			p = p + 2;
+			q = p;
+			if (!ReadDimensionInt(&p, &ub, origStr, escontext))
+				return false;
+			if (p == q)			/* no digits? */
+				return(escontext, false, 
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						 errmsg("malformed array literal: \"%s\"", origStr),
 						 errdetail("Missing array dimension value.")));
@@ -1674,7 +1690,7 @@ array_dims(PG_FUNCTION_ARGS)
 			   *lb;
 
 	/*
-	 * 33 since we assume 15 digits per number + ':' +'[]'
+	 * 33 since we assume 15 digits per number + '..' +'[]'
 	 *
 	 * +1 for trailing null
 	 */
@@ -1690,7 +1706,11 @@ array_dims(PG_FUNCTION_ARGS)
 	p = buf;
 	for (i = 0; i < AARR_NDIM(v); i++)
 	{
-		sprintf(p, "[%d:%d]", lb[i], dimv[i] + lb[i] - 1);
+		if (ORA_PARSER == compatible_db)
+			sprintf(p, "[%d..%d]", lb[i], dimv[i] + lb[i] - 1);
+		else
+			sprintf(p, "[%d:%d]", lb[i], dimv[i] + lb[i] - 1);
+
 		p += strlen(p);
 	}
 

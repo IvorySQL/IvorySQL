@@ -3815,8 +3815,9 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 			expr = (Node *) lfirst(nextargdefault);
 			nextargdefault = lnext(argdefaults, nextargdefault);
 
-			appendStringInfo(buf, " DEFAULT %s",
-							 deparse_expression(expr, NIL, false, false));
+			if (!IsA(expr, NonDefValNode))
+				appendStringInfo(buf, " DEFAULT %s",
+					 deparse_expression(expr, NIL, false, false));
 		}
 		argsprinted++;
 
@@ -10650,6 +10651,9 @@ get_rule_expr(Node *node, deparse_context *context,
 
 		case T_TableFunc:
 			get_tablefunc((TableFunc *) node, context, showimplicit);
+			break;
+
+		case T_NonDefValNode:
 			break;
 
 		default:

@@ -2336,15 +2336,18 @@ if test "$PORTNAME" != "win32"; then
   if test x"$USE_NAMED_POSIX_SEMAPHORES" = x"1" ; then
     AC_DEFINE(USE_NAMED_POSIX_SEMAPHORES, 1, [Define to select named POSIX semaphores.])
     SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+        LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/posix_ivysema.c"
     sematype="named POSIX"
   else
     if test x"$USE_UNNAMED_POSIX_SEMAPHORES" = x"1" ; then
       AC_DEFINE(USE_UNNAMED_POSIX_SEMAPHORES, 1, [Define to select unnamed POSIX semaphores.])
       SEMA_IMPLEMENTATION="src/backend/port/posix_sema.c"
+          LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/posix_ivysema.c"
       sematype="unnamed POSIX"
     else
       AC_DEFINE(USE_SYSV_SEMAPHORES, 1, [Define to select SysV-style semaphores.])
       SEMA_IMPLEMENTATION="src/backend/port/sysv_sema.c"
+          LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/sysv_ivysema.c"
       sematype="System V"
     fi
   fi
@@ -2352,6 +2355,7 @@ if test "$PORTNAME" != "win32"; then
 else
   AC_DEFINE(USE_WIN32_SEMAPHORES, 1, [Define to select Win32-style semaphores.])
   SEMA_IMPLEMENTATION="src/backend/port/win32_sema.c"
+  LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/win32_ivysema.c"
 fi
 
 
@@ -2580,6 +2584,7 @@ AC_CONFIG_FILES([GNUmakefile src/Makefile.global])
 
 AC_CONFIG_LINKS([
   src/backend/port/pg_sema.c:${SEMA_IMPLEMENTATION}
+  src/interfaces/libpq/ivy_sema.c:${LIBPQ_SEMA_IMPLEMENTATION}
   src/backend/port/pg_shmem.c:${SHMEM_IMPLEMENTATION}
   src/include/pg_config_os.h:src/include/port/${template}.h
   src/Makefile.port:src/makefiles/Makefile.${template}

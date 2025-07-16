@@ -105,7 +105,7 @@ INSERT INTO domarrtest values (NULL, '{{"a","b","c"},{"d","e","f"}}');
 INSERT INTO domarrtest values (NULL, '{{"toolong","b","c"},{"d","e","f"}}');
 INSERT INTO domarrtest (testint4arr[1], testint4arr[3]) values (11,22);
 select * from domarrtest;
-select testint4arr[1], testchar4arr[2:2] from domarrtest;
+select testint4arr[1], testchar4arr[2..2] from domarrtest;
 select array_dims(testint4arr), array_dims(testchar4arr) from domarrtest;
 
 COPY domarrtest FROM stdin;

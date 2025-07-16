@@ -163,7 +163,7 @@ select * from domarrtest;
  {11,NULL,22}  | 
 (6 rows)
 
-select testint4arr[1], testchar4arr[2:2] from domarrtest;
+select testint4arr[1], testchar4arr[2..2] from domarrtest;
  testint4arr | testchar4arr 
 -------------+--------------
            2 | {{c,d}}
@@ -175,14 +175,14 @@ select testint4arr[1], testchar4arr[2:2] from domarrtest;
 (6 rows)
 
 select array_dims(testint4arr), array_dims(testchar4arr) from domarrtest;
- array_dims | array_dims 
-------------+------------
- [1:2]      | [1:2][1:2]
- [1:2][1:2] | [1:1][1:2]
- [1:2]      | [1:3][1:2]
- [1:2]      | [1:2][1:1]
-            | [1:2][1:3]
- [1:3]      | 
+  array_dims  |  array_dims  
+--------------+--------------
+ [1..2]       | [1..2][1..2]
+ [1..2][1..2] | [1..1][1..2]
+ [1..2]       | [1..3][1..2]
+ [1..2]       | [1..2][1..1]
+              | [1..2][1..3]
+ [1..3]       | 
 (6 rows)
 
 COPY domarrtest FROM stdin;
@@ -226,7 +226,7 @@ select '{1,2,3}'::dia;
 select array_dims('{1,2,3}'::dia);
  array_dims 
 ------------
- [1:3]
+ [1..3]
 (1 row)
 
 select pg_typeof('{1,2,3}'::dia);

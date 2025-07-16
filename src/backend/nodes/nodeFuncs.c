@@ -300,6 +300,9 @@ exprType(const Node *expr)
 		case T_PlaceHolderVar:
 			type = exprType((Node *) ((const PlaceHolderVar *) expr)->phexpr);
 			break;
+		case T_NonDefValNode:
+			type = UNKNOWNOID;
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */
@@ -1680,6 +1683,9 @@ exprLocation(const Node *expr)
 			break;
 		case T_ParamRef:
 			loc = ((const ParamRef *) expr)->location;
+			break;
+		case T_OraParamRef:
+			loc = ((const OraParamRef *) expr)->location;
 			break;
 		case T_A_Const:
 			loc = ((const A_Const *) expr)->location;
@@ -4018,6 +4024,7 @@ raw_expression_tree_walker_impl(Node *node,
 		case T_String:
 		case T_BitString:
 		case T_ParamRef:
+		case T_OraParamRef:
 		case T_A_Const:
 		case T_A_Star:
 		case T_MergeSupportFunc:

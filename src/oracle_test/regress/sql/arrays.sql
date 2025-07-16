@@ -30,7 +30,7 @@ ANALYZE array_op_test;
 -- only the 'e' array is 0-based, the others are 1-based.
 --
 
-INSERT INTO arrtest (a[1:5], b[1:1][1:2][1:2], c, d, f, g)
+INSERT INTO arrtest (a[1..5], b[1..1][1..2][1..2], c, d, f, g)
    VALUES ('{1,2,3,4,5}', '{{{0,0},{1,2}}}', '{}', '{}', '{}', '{}');
 
 UPDATE arrtest SET e[0] = '1.1';
@@ -40,17 +40,17 @@ UPDATE arrtest SET e[1] = '2.2';
 INSERT INTO arrtest (f)
    VALUES ('{"too long"}');
 
-INSERT INTO arrtest (a, b[1:2][1:2], c, d, e, f, g)
+INSERT INTO arrtest (a, b[1..2][1..2], c, d, e, f, g)
    VALUES ('{11,12,23}', '{{3,4},{4,5}}', '{"foobar"}',
            '{{"elt1", "elt2"}}', '{"3.4", "6.7"}',
            '{"abc","abcde"}', '{"abc","abcde"}');
 
-INSERT INTO arrtest (a, b[1:2], c, d[1:2])
+INSERT INTO arrtest (a, b[1..2], c, d[1..2])
    VALUES ('{}', '{3,4}', '{foo,bar}', '{bar,foo}');
 
 INSERT INTO arrtest (b[2]) VALUES(now());  -- error, type mismatch
 
-INSERT INTO arrtest (b[1:2]) VALUES(now());  -- error, type mismatch
+INSERT INTO arrtest (b[1..2]) VALUES(now());  -- error, type mismatch
 
 SELECT * FROM arrtest;
 
@@ -64,10 +64,10 @@ SELECT arrtest.a[1],
 SELECT a[1], b[1][1][1], c[1], d[1][1], e[0]
    FROM arrtest;
 
-SELECT a[1:3],
-          b[1:1][1:2][1:2],
-          c[1:2],
-          d[1:1][1:2]
+SELECT a[1..3],
+          b[1..1][1..2][1..2],
+          c[1..2],
+          d[1..1][1..2]
    FROM arrtest;
 
 SELECT array_ndims(a) AS a,array_ndims(b) AS b,array_ndims(c) AS c
@@ -83,28 +83,28 @@ SELECT *
          c = '{"foobar"}'::_name;
 
 UPDATE arrtest
-  SET a[1:2] = '{16,25}'
+  SET a[1..2] = '{16,25}'
   WHERE NOT a = '{}'::_int2;
 
 UPDATE arrtest
-  SET b[1:1][1:1][1:2] = '{113, 117}',
-      b[1:1][1:2][2:2] = '{142, 147}'
-  WHERE array_dims(b) = '[1:1][1:2][1:2]';
+  SET b[1..1][1..1][1..2] = '{113, 117}',
+      b[1..1][1..2][2..2] = '{142, 147}'
+  WHERE array_dims(b) = '[1..1][1..2][1..2]';
 
 UPDATE arrtest
-  SET c[2:2] = '{"new_word"}'
+  SET c[2..2] = '{"new_word"}'
   WHERE array_dims(c) is not null;
 
 SELECT a,b,c FROM arrtest;
 
-SELECT a[1:3],
-          b[1:1][1:2][1:2],
-          c[1:2],
-          d[1:1][2:2]
+SELECT a[1..3],
+          b[1..1][1..2][1..2],
+          c[1..2],
+          d[1..1][2..2]
    FROM arrtest;
 
-SELECT b[1:1][2][2],
-       d[1:1][2]
+SELECT b[1..1][2][2],
+       d[1..1][2]
    FROM arrtest;
 
 INSERT INTO arrtest(a) VALUES('{1,null,3}');
@@ -122,9 +122,9 @@ SELECT * FROM pg_input_error_info('{1,zed}', 'integer[]');
 
 -- test mixed slice/scalar subscripting
 select '{{1,2,3},{4,5,6},{7,8,9}}'::int[];
-select ('{{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
-select '[0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}'::int[];
-select ('[0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
+select ('{{1,2,3},{4,5,6},{7,8,9}}'::int[])[1..2][2];
+select '[0..2][0..2]={{1,2,3},{4,5,6},{7,8,9}}'::int[];
+select ('[0..2][0..2]={{1,2,3},{4,5,6},{7,8,9}}'::int[])[1..2][2];
 
 --
 -- check subscription corner cases
@@ -133,17 +133,17 @@ select ('[0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
 SELECT ('{}'::int[])[1][2][3][4][5][6][7];
 -- NULL index yields NULL when selecting
 SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][NULL][1];
-SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][NULL:1][1];
-SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][1:NULL][1];
+SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][NULL..1][1];
+SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][1..NULL][1];
 -- NULL index in assignment is an error
 UPDATE arrtest
   SET c[NULL] = '{"can''t assign"}'
   WHERE array_dims(c) is not null;
 UPDATE arrtest
-  SET c[NULL:1] = '{"can''t assign"}'
+  SET c[NULL..1] = '{"can''t assign"}'
   WHERE array_dims(c) is not null;
 UPDATE arrtest
-  SET c[1:NULL] = '{"can''t assign"}'
+  SET c[1..NULL] = '{"can''t assign"}'
   WHERE array_dims(c) is not null;
 -- Un-subscriptable type
 SELECT (now())[1];
@@ -154,34 +154,34 @@ CREATE TEMP TABLE arrtest_s (
   b       int2[][]
 );
 INSERT INTO arrtest_s VALUES ('{1,2,3,4,5}', '{{1,2,3}, {4,5,6}, {7,8,9}}');
-INSERT INTO arrtest_s VALUES ('[0:4]={1,2,3,4,5}', '[0:2][0:2]={{1,2,3}, {4,5,6}, {7,8,9}}');
+INSERT INTO arrtest_s VALUES ('[0..4]={1,2,3,4,5}', '[0..2][0..2]={{1,2,3}, {4,5,6}, {7,8,9}}');
 
 SELECT * FROM arrtest_s;
-SELECT a[:3], b[:2][:2] FROM arrtest_s;
-SELECT a[2:], b[2:][2:] FROM arrtest_s;
-SELECT a[:], b[:] FROM arrtest_s;
+SELECT a[..3], b[..2][..2] FROM arrtest_s;
+SELECT a[2..], b[2..][2..] FROM arrtest_s;
+SELECT a[..], b[..] FROM arrtest_s;
 
 -- updates
-UPDATE arrtest_s SET a[:3] = '{11, 12, 13}', b[:2][:2] = '{{11,12}, {14,15}}'
+UPDATE arrtest_s SET a[..3] = '{11, 12, 13}', b[..2][..2] = '{{11,12}, {14,15}}'
   WHERE array_lower(a,1) = 1;
 SELECT * FROM arrtest_s;
-UPDATE arrtest_s SET a[3:] = '{23, 24, 25}', b[2:][2:] = '{{25,26}, {28,29}}';
+UPDATE arrtest_s SET a[3..] = '{23, 24, 25}', b[2..][2..] = '{{25,26}, {28,29}}';
 SELECT * FROM arrtest_s;
-UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';
+UPDATE arrtest_s SET a[..] = '{11, 12, 13, 14, 15}';
 SELECT * FROM arrtest_s;
-UPDATE arrtest_s SET a[:] = '{23, 24, 25}';  -- fail, too small
+UPDATE arrtest_s SET a[..] = '{23, 24, 25}';  -- fail, too small
 INSERT INTO arrtest_s VALUES(NULL, NULL);
-UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';  -- fail, no good with null
+UPDATE arrtest_s SET a[..] = '{11, 12, 13, 14, 15}';  -- fail, no good with null
 
 -- we want to work with a point_tbl that includes a null
 CREATE TEMP TABLE point_tbl AS SELECT * FROM public.point_tbl;
 INSERT INTO POINT_TBL(f1) VALUES (NULL);
 
 -- check with fixed-length-array type, such as point
-SELECT f1[0:1] FROM POINT_TBL;
-SELECT f1[0:] FROM POINT_TBL;
-SELECT f1[:1] FROM POINT_TBL;
-SELECT f1[:] FROM POINT_TBL;
+SELECT f1[0..1] FROM POINT_TBL;
+SELECT f1[0..] FROM POINT_TBL;
+SELECT f1[..1] FROM POINT_TBL;
+SELECT f1[..] FROM POINT_TBL;
 
 -- subscript assignments to fixed-width result in NULL if previous value is NULL
 UPDATE point_tbl SET f1[0] = 10 WHERE f1 IS NULL RETURNING *;
@@ -209,24 +209,24 @@ update arrtest1 set i[0] = 0, t[0] = 'zero';
 select * from arrtest1;
 update arrtest1 set i[-3] = -3, t[-3] = 'minus-three';
 select * from arrtest1;
-update arrtest1 set i[0:2] = array[10,11,12], t[0:2] = array['ten','eleven','twelve'];
+update arrtest1 set i[0..2] = array[10,11,12], t[0..2] = array['ten','eleven','twelve'];
 select * from arrtest1;
-update arrtest1 set i[8:10] = array[18,null,20], t[8:10] = array['p18',null,'p20'];
+update arrtest1 set i[8..10] = array[18,null,20], t[8..10] = array['p18',null,'p20'];
 select * from arrtest1;
-update arrtest1 set i[11:12] = array[null,22], t[11:12] = array[null,'p22'];
+update arrtest1 set i[11..12] = array[null,22], t[11..12] = array[null,'p22'];
 select * from arrtest1;
-update arrtest1 set i[15:16] = array[null,26], t[15:16] = array[null,'p26'];
+update arrtest1 set i[15..16] = array[null,26], t[15..16] = array[null,'p26'];
 select * from arrtest1;
-update arrtest1 set i[-5:-3] = array[-15,-14,-13], t[-5:-3] = array['m15','m14','m13'];
+update arrtest1 set i[-5..-3] = array[-15,-14,-13], t[-5..-3] = array['m15','m14','m13'];
 select * from arrtest1;
-update arrtest1 set i[-7:-6] = array[-17,null], t[-7:-6] = array['m17',null];
+update arrtest1 set i[-7..-6] = array[-17,null], t[-7..-6] = array['m17',null];
 select * from arrtest1;
-update arrtest1 set i[-12:-10] = array[-22,null,-20], t[-12:-10] = array['m22',null,'m20'];
+update arrtest1 set i[-12..-10] = array[-22,null,-20], t[-12..-10] = array['m22',null,'m20'];
 select * from arrtest1;
 delete from arrtest1;
 insert into arrtest1 values(array[1,2,null,4], array['one','two',null,'four']);
 select * from arrtest1;
-update arrtest1 set i[0:5] = array[0,1,2,null,4,5], t[0:5] = array['z','p1','p2',null,'p4','p5'];
+update arrtest1 set i[0..5] = array[0,1,2,null,4,5], t[0..5] = array['z','p1','p2',null,'p4','p5'];
 select * from arrtest1;
 
 --
@@ -318,8 +318,8 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-SELECT array_position('[2:4]={1,2,3}'::int[], 1);
-SELECT array_positions('[2:4]={1,2,3}'::int[], 1);
+SELECT array_position('[2..4]={1,2,3}'::int[], 1);
+SELECT array_positions('[2..4]={1,2,3}'::int[], 1);
 
 SELECT
     array_position(ids, (1, 1)),
@@ -428,7 +428,7 @@ insert into arr_pk_tbl values (1, '{1,2,3}');
 insert into arr_pk_tbl values (1, '{3,4,5}') on conflict (pk)
   do update set f1[1] = excluded.f1[1], f1[3] = excluded.f1[3]
   returning pk, f1;
-insert into arr_pk_tbl(pk, f1[1:2]) values (1, '{6,7,8}') on conflict (pk)
+insert into arr_pk_tbl(pk, f1[1..2]) values (1, '{6,7,8}') on conflict (pk)
   do update set f1[1] = excluded.f1[1],
     f1[2] = excluded.f1[2],
     f1[3] = excluded.f1[3]
@@ -445,14 +445,14 @@ reset enable_bitmapscan;
 -- so suppress it to avoid needing multiple expected-files.
 \set VERBOSITY sqlstate
 
-insert into arr_pk_tbl values(10, '[-2147483648:-2147483647]={1,2}');
+insert into arr_pk_tbl values(10, '[-2147483648..-2147483647]={1,2}');
 update arr_pk_tbl set f1[2147483647] = 42 where pk = 10;
-update arr_pk_tbl set f1[2147483646:2147483647] = array[4,2] where pk = 10;
+update arr_pk_tbl set f1[2147483646..2147483647] = array[4,2] where pk = 10;
 
 -- also exercise the expanded-array case
 do $$ declare a int[];
 begin
-  a := '[-2147483648:-2147483647]={1,2}'::int[];
+  a := '[-2147483648..-2147483647]={1,2}'::int[];
   a[2147483647] := 42;
 end $$;
 
@@ -492,19 +492,19 @@ select '{{},{{}}}'::text[];
 select '{{{}},{}}'::text[];
 select '{{1},{}}'::text[];
 select '{{},{1}}'::text[];
-select '[1:0]={}'::int[];
-select '[2147483646:2147483647]={1,2}'::int[];
-select '[1:-1]={}'::int[];
+select '[1..0]={}'::int[];
+select '[2147483646..2147483647]={1,2}'::int[];
+select '[1..-1]={}'::int[];
 select '[2]={1}'::int[];
 select '[1:]={1}'::int[];
-select '[:1]={1}'::int[];
+select '[..1]={1}'::int[];
 select array[];
 select '{{1,},{1},}'::text[];
 select '{{1,},{1}}'::text[];
 select '{{1,}}'::text[];
 select '{1,}'::text[];
-select '[21474836488:21474836489]={1,2}'::int[];
-select '[-2147483649:-2147483648]={1,2}'::int[];
+select '[21474836488..21474836489]={1,2}'::int[];
+select '[-2147483649..-2147483648]={1,2}'::int[];
 -- none of the above should be accepted
 
 -- all of the following should be accepted
@@ -522,9 +522,9 @@ select '{
          }'::interval[];
 select array[]::text[];
 select '[2]={1,7}'::int[];
-select '[0:1]={1.1,2.2}'::float8[];
-select '[2147483646:2147483646]={1}'::int[];
-select '[-2147483648:-2147483647]={1,2}'::int[];
+select '[0..1]={1.1,2.2}'::float8[];
+select '[2147483646..2147483646]={1}'::int[];
+select '[-2147483648..-2147483647]={1,2}'::int[];
 -- all of the above should be accepted
 
 -- tests for array aggregates
@@ -661,7 +661,7 @@ select array_length(array[[1,2,3], [4,5,6]], 3);
 select cardinality(NULL::int[]);
 select cardinality('{}'::int[]);
 select cardinality(array[1,2,3]);
-select cardinality('[2:4]={5,6,7}'::int[]);
+select cardinality('[2..4]={5,6,7}'::int[]);
 select cardinality('{{1,2}}'::int[]);
 select cardinality('{{1,2},{3,4},{5,6}}'::int[]);
 select cardinality('{{{1,9},{5,6}},{{2,3},{3,4}}}'::int[]);
@@ -807,8 +807,8 @@ SELECT arr, trim_array(arr, 2)
 FROM
 (VALUES ('{1,2,3,4,5,6}'::bigint[]),
         ('{1,2}'),
-        ('[10:16]={1,2,3,4,5,6,7}'),
-        ('[-15:-10]={1,2,3,4,5,6}'),
+        ('[10..16]={1,2,3,4,5,6,7}'),
+        ('[-15..-10]={1,2,3,4,5,6}'),
         ('{{1,10},{2,20},{3,30},{4,40}}')) v(arr);
 
 SELECT trim_array(ARRAY[1, 2, 3], -1); -- fail
@@ -818,13 +818,13 @@ SELECT trim_array(ARRAY[]::int[], 1); -- fail
 -- array_shuffle
 SELECT array_shuffle('{1,2,3,4,5,6}'::int[]) <@ '{1,2,3,4,5,6}';
 SELECT array_shuffle('{1,2,3,4,5,6}'::int[]) @> '{1,2,3,4,5,6}';
-SELECT array_dims(array_shuffle('[-1:2][2:3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[]));
+SELECT array_dims(array_shuffle('[-1..2][2..3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[]));
 SELECT array_dims(array_shuffle('{{{1,2},{3,NULL}},{{5,6},{7,8}},{{9,10},{11,12}}}'::int[]));
 
 -- array_sample
 SELECT array_sample('{1,2,3,4,5,6}'::int[], 3) <@ '{1,2,3,4,5,6}';
 SELECT array_length(array_sample('{1,2,3,4,5,6}'::int[], 3), 1);
-SELECT array_dims(array_sample('[-1:2][2:3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[], 3));
+SELECT array_dims(array_sample('[-1..2][2..3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[], 3));
 SELECT array_dims(array_sample('{{{1,2},{3,NULL}},{{5,6},{7,8}},{{9,10},{11,12}}}'::int[], 2));
 SELECT array_sample('{1,2,3,4,5,6}'::int[], -1); -- fail
 SELECT array_sample('{1,2,3,4,5,6}'::int[], 7); --fail

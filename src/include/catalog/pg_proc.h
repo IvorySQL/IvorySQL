@@ -157,6 +157,9 @@ MAKE_SYSCACHE(PROCNAMEARGSNSP, pg_proc_proname_args_nsp_index, 128);
 #define PROKIND_AGGREGATE 'a'
 #define PROKIND_WINDOW 'w'
 #define PROKIND_PROCEDURE 'p'
+#define PROKIND_ANONYMOUS_BLOCK 'b'
+#define PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE 'o'
+
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result

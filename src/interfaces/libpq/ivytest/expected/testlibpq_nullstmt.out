@@ -1,0 +1,3 @@
+
+name           statement      prepare_time   parameter_typesresult_types   from_sql       generic_plans  custom_plans   
+test_stmt      	               	prepare time is always change	{pg_catalog.int4,pg_catalog.int4,pg_catalog.int4,pg_catalog.varchar}	               	f              	1              	0              	

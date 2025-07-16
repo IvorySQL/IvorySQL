@@ -5050,23 +5050,23 @@ select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1
 (1 row)
 
 -- slices are not supported
-select ('{"a": 1}'::jsonb)['a':'b'];
+select ('{"a": 1}'::jsonb)['a'..'b'];
 ERROR:  jsonb subscript does not support slices
-LINE 1: select ('{"a": 1}'::jsonb)['a':'b'];
-                                       ^
-select ('[1, "2", null]'::jsonb)[1:2];
+LINE 1: select ('{"a": 1}'::jsonb)['a'..'b'];
+                                        ^
+select ('[1, "2", null]'::jsonb)[1..2];
 ERROR:  jsonb subscript does not support slices
-LINE 1: select ('[1, "2", null]'::jsonb)[1:2];
+LINE 1: select ('[1, "2", null]'::jsonb)[1..2];
+                                            ^
+select ('[1, "2", null]'::jsonb)[..2];
+ERROR:  jsonb subscript does not support slices
+LINE 1: select ('[1, "2", null]'::jsonb)[..2];
                                            ^
-select ('[1, "2", null]'::jsonb)[:2];
+select ('[1, "2", null]'::jsonb)[1..];
 ERROR:  jsonb subscript does not support slices
-LINE 1: select ('[1, "2", null]'::jsonb)[:2];
-                                          ^
-select ('[1, "2", null]'::jsonb)[1:];
-ERROR:  jsonb subscript does not support slices
-LINE 1: select ('[1, "2", null]'::jsonb)[1:];
+LINE 1: select ('[1, "2", null]'::jsonb)[1..];
                                          ^
-select ('[1, "2", null]'::jsonb)[:];
+select ('[1, "2", null]'::jsonb)[..];
 ERROR:  jsonb subscript does not support slices
 create TEMP TABLE test_jsonb_subscript (
        id int,
