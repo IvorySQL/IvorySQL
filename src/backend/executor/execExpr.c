@@ -4591,7 +4591,7 @@ ExecInitFuncOutParams(Expr *node, ExprState *state,
 					if (!allow_out_parameter_const)
 						ereport(ERROR,
 							(errcode(ERRCODE_DATA_EXCEPTION),
-							errmsg("OUT or IN OUT arguments of the funtion %s musb be variables ",
+							errmsg("OUT or IN OUT arguments of the function %s must be variables",
 									funcname)));
 					return;
 				}

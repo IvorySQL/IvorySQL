@@ -3934,7 +3934,7 @@ interpretRowidOption(List *defList, bool allowRowid)
 }
 
 /*
- * CheckRangeFunc
+ * check_funcexpr_outparams
  * If the function has out parameters,
  * can't call the function in SQL, such as 'from function(..)'
  */
@@ -3995,7 +3995,7 @@ check_funcexpr_outparams(List *funcexprs)
 						ReleaseSysCache(procTup);
 						ereport(ERROR,
 							(errcode(ERRCODE_DATA_EXCEPTION),
-							errmsg("OUT or IN OUT arguments of the funtion %s musb be variables ",
+							errmsg("OUT or IN OUT arguments of the funtion %s must be variables ",
 									proname)));
 					}
 				}

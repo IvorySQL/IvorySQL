@@ -4253,7 +4253,7 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 	estate->paramLI->parserSetup = (ParserSetupHook) plisql_parser_setup;
 	estate->paramLI->parserSetupArg = NULL; /* filled during use */
 	estate->paramLI->numParams = estate->ndatums;
-	estate->paramLI->outparamSepup = (OutParamSepupHook) plisql_out_param_setup;
+	estate->paramLI->outparamSepup = (OutParamSetupHook) plisql_out_param_setup;
 	estate->paramLI->paramnames = NULL;
 
 

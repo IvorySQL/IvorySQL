@@ -313,7 +313,7 @@ typedef struct OraParamRef
 {
 	NodeTag		type;
 	int			number;			/* the number of the parameter */
-	int			location;		/* token location, or -1 if unknown */	
+	ParseLoc		location;		/* token location, or -1 if unknown */	
 	char        *name;          /* placeholder name */	
 } OraParamRef;
 

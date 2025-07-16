@@ -111,7 +111,7 @@ typedef void (*ParamCompileHook) (ParamListInfo params, struct Param *param,
 
 typedef void (*ParserSetupHook) (struct ParseState *pstate, void *arg);
 
-typedef void (*OutParamSepupHook) (void *scratch);
+typedef void (*OutParamSetupHook) (void *scratch);
 
 typedef struct ParamListInfoData
 {
@@ -123,7 +123,7 @@ typedef struct ParamListInfoData
 	void	   *parserSetupArg;
 	char	   *paramValuesStr; /* params as a single string for errors */
 	int			numParams;		/* nominal/maximum # of Params represented */
-	OutParamSepupHook	outparamSepup;	/* OUT parameters hook */
+	OutParamSetupHook	outparamSepup;	/* OUT parameters hook */
 	bool 		topLevelIsCall;	/* is top level call statement ? */
 	MemoryContext	outctext;		/* save out parameter memorycontext */
 	bool		haveout;		/* parameters have out parameters */

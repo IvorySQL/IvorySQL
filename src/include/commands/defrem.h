@@ -19,7 +19,6 @@
 #include "parser/parse_node.h"
 #include "tcop/dest.h"
 #include "utils/array.h"
-#include "tcop/dest.h"
 
 /* commands/dropcmds.c */
 extern void RemoveObjects(DropStmt *stmt);

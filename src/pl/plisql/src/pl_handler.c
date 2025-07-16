@@ -340,8 +340,6 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	}
 	PG_END_TRY();
 
-	pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
-
 	/*
 	 * Disconnect from SPI manager
 	 */

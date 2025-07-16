@@ -13,7 +13,7 @@
  *
  * Portions Copyright (c) 2025, IvorySQL Global Development Team
  *
- * src/include/ivy_sema.h
+ * src/interfaces/libpq/ivy_sema.h
  *
  *-------------------------------------------------------------------------
  */

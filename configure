@@ -18335,7 +18335,7 @@ else
 $as_echo "#define USE_WIN32_SEMAPHORES 1" >>confdefs.h
 
   SEMA_IMPLEMENTATION="src/backend/port/win32_sema.c"
-  LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/win32_ivyxsema.c"
+  LIBPQ_SEMA_IMPLEMENTATION="src/interfaces/libpq/win32_ivysema.c"
 fi
 
 

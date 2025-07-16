@@ -41,6 +41,9 @@ typedef int IpcSemaphoreId;		/* semaphore ID returned by semget(2) */
 #define IPCProtection	(0600)	/* access/modify by user only */
 
 #define PGSemaMagic		537		/* must be less than SEMVMX */
+#ifdef SEMVMX
+StaticAssertDecl(PGSemaMagic < SEMVMX, "PGSemaMagic must be less than SEMVMX");
+#endif
 
 static IpcSemaphoreKey nextSemaKey;		/* next key to try using */
 
@@ -121,7 +124,7 @@ IpcSemaphoreInitialize(IpcSemaphoreId semId, int semNum, int value)
 		if (saved_errno == ERANGE)
 			fprintf(stderr, "You possibly need to raise your kernel's SEMVMX value to be at least %d "
 					"Look into the PostgreSQL documentation for details.", value);
-		return;
+		exit(-1);
 	}
 }
 
@@ -318,7 +321,7 @@ PGSemaphoreLock(PGSemaphore sema)
 	if (errStatus < 0)
 	{
 		fprintf(stderr, "semop(id=%d) failed: %m", sema->semId);
-		return;
+		exit(-1);
 	}
 }
 
