@@ -11,7 +11,6 @@ use Getopt::Long;
 my $output_path = '.';
 
 my $lastlockidx = -1;
-my $continue    = "\n";
 
 GetOptions(
 	'outdir:s'       => \$output_path);
@@ -104,10 +103,8 @@ while (<$lwlocklist>)
 	while ($lastlockidx < $lockidx - 1)
 	{
 		++$lastlockidx;
-		$continue = ",\n";
 	}
 	$lastlockidx = $lockidx;
-	$continue    = ",\n";
 
 	# Add a "Lock" suffix to each lock name, as the C code depends on that
 	printf $h "#define %-32s (&MainLWLockArray[$lockidx].lock)\n",
