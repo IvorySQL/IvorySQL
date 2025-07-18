@@ -21,9 +21,9 @@ int				identifier_case_switch = INTERCHANGE;
 bool  			identifier_case_from_pg_dump = false;
 bool			enable_case_switch = true;
 
-char	   *nls_territory = "";
-char	   *nls_currency = "";
-char	   *nls_iso_currency = "";
+char	   *nls_territory = "AMERICA";
+char	   *nls_currency = "$";
+char	   *nls_iso_currency = "AMERICA";
 // int	   *nls_length_semantics = NULL;
 // char	   *nls_date_format = "";
 // char	   *nls_timestamp_format = "";
@@ -278,7 +278,8 @@ static struct config_string Ivy_ConfigureNamesString[] =
 	{
 		{"nls_territory", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for NLS_TERRITORY."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE
 		},
 		&nls_territory,
 		"AMERICA",
@@ -288,7 +289,8 @@ static struct config_string Ivy_ConfigureNamesString[] =
 	{
 		{"nls_currency", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for NLS_CURRENCY."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE
 		},
 		&nls_currency,
 		"$",
@@ -298,7 +300,8 @@ static struct config_string Ivy_ConfigureNamesString[] =
 	{
 		{"nls_iso_currency", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for NLS_ISO_CURRENCY."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE
 		},
 		&nls_iso_currency,
 		"AMERICA",
