@@ -5838,17 +5838,17 @@ SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
                                  Remote SQL: SELECT c1 FROM "S 1"."T 4"
                ->  Materialize
                      Output: ft5_1.c1
-                     ->  Hash Semi Join
+                     ->  Hash Right Semi Join
                            Output: ft5_1.c1
-                           Hash Cond: (ft5_1.c1 = ft4_1.c1)
-                           ->  Foreign Scan on public.ft5 ft5_1
-                                 Output: ft5_1.c1, ft5_1.c2, ft5_1.c3
-                                 Remote SQL: SELECT c1 FROM "S 1"."T 4"
+                           Hash Cond: (ft4_1.c1 = ft5_1.c1)
+                           ->  Foreign Scan on public.ft4 ft4_1
+                                 Output: ft4_1.c1, ft4_1.c2, ft4_1.c3
+                                 Remote SQL: SELECT c1 FROM "S 1"."T 3"
                            ->  Hash
-                                 Output: ft4_1.c1
-                                 ->  Foreign Scan on public.ft4 ft4_1
-                                       Output: ft4_1.c1
-                                       Remote SQL: SELECT c1 FROM "S 1"."T 3"
+                                 Output: ft5_1.c1
+                                 ->  Foreign Scan on public.ft5 ft5_1
+                                       Output: ft5_1.c1
+                                       Remote SQL: SELECT c1 FROM "S 1"."T 4"
 (41 rows)
 
 SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
