@@ -7254,7 +7254,7 @@ CreateCheckPoint(int flags)
 	 * starting snapshot of locks and transactions.
 	 */
 	if (!shutdown && XLogStandbyInfoActive())
-		checkPoint.oldestActiveXid = GetOldestActiveTransactionId();
+		checkPoint.oldestActiveXid = GetOldestActiveTransactionId(false, true);
 	else
 		checkPoint.oldestActiveXid = InvalidTransactionId;
 
