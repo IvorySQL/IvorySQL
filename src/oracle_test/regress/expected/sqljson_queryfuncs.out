@@ -636,7 +636,11 @@ SELECT JSON_QUERY(jsonb '"aaa"', '$.a' RETURNING char(2) OMIT QUOTES DEFAULT 'bb
 (1 row)
 
 SELECT JSON_QUERY(jsonb '"aaa"', '$.a' RETURNING char(2) OMIT QUOTES DEFAULT '"bb"'::jsonb ON EMPTY);
-ERROR:  value too long for type char(2 byte)
+ json_query 
+------------
+ bb
+(1 row)
+
 -- OMIT QUOTES behavior should not be specified when WITH WRAPPER used:
 -- Should fail
 SELECT JSON_QUERY(jsonb '[1]', '$' WITH WRAPPER OMIT QUOTES);
@@ -839,13 +843,17 @@ SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING bytea FORMAT JSON);
 (1 row)
 
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea EMPTY OBJECT ON ERROR);
-ERROR:  cannot cast behavior expression of type jsonb to bytea
-LINE 1: ... JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea EMPTY OBJE...
-                                                             ^
+ json_query 
+------------
+ \x7b7d
+(1 row)
+
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea FORMAT JSON EMPTY OBJECT ON ERROR);
-ERROR:  cannot cast behavior expression of type jsonb to bytea
-LINE 1: ...jsonb '[1,2]', '$[*]' RETURNING bytea FORMAT JSON EMPTY OBJE...
-                                                             ^
+ json_query 
+------------
+ \x7b7d
+(1 row)
+
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING json EMPTY OBJECT ON ERROR);
  json_query 
 ------------
@@ -859,13 +867,11 @@ SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING jsonb EMPTY OBJECT ON ERROR);
 (1 row)
 
 SELECT JSON_QUERY(jsonb '[3,4]', '$[*]' RETURNING bigint[] EMPTY OBJECT ON ERROR);
-ERROR:  cannot cast behavior expression of type jsonb to pg_catalog.int8[]
-LINE 1: ...ON_QUERY(jsonb '[3,4]', '$[*]' RETURNING bigint[] EMPTY OBJE...
-                                                             ^
+ERROR:  could not coerce ON ERROR expression (EMPTY OBJECT) to the RETURNING type
+DETAIL:  expected JSON array
 SELECT JSON_QUERY(jsonb '"[3,4]"', '$[*]' RETURNING bigint[] EMPTY OBJECT ON ERROR);
-ERROR:  cannot cast behavior expression of type jsonb to pg_catalog.int8[]
-LINE 1: ..._QUERY(jsonb '"[3,4]"', '$[*]' RETURNING bigint[] EMPTY OBJE...
-                                                             ^
+ERROR:  could not coerce ON ERROR expression (EMPTY OBJECT) to the RETURNING type
+DETAIL:  expected JSON array
 -- Coercion fails with quotes on
 SELECT JSON_QUERY(jsonb '"123.1"', '$' RETURNING int2 error on error);
 ERROR:  invalid input syntax for type smallint: ""123.1""
