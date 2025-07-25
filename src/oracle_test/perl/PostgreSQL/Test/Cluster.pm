@@ -158,8 +158,7 @@ INIT
 	$portdir = $ENV{PG_TEST_PORT_DIR};
 	# Otherwise, try to use a directory at the top of the build tree
 	# or as a last resort use the tmp_check directory
-	my $build_dir = 
-		 $ENV{MESON_BUILD_ROOT}
+	my $build_dir = $ENV{MESON_BUILD_ROOT}
 	  || $ENV{top_builddir}
 	  || $PostgreSQL::Test::Utils::tmp_check;
 	$portdir ||= "$build_dir/portlock";
@@ -544,7 +543,7 @@ sub init
 	{
 		note("initializing database system by running initdb");
 		PostgreSQL::Test::Utils::system_or_bail('initdb', '-D', $pgdata, '-A',
-			'trust', '-N', @{ $params{extra} });
+			'trust', '-N', '-m', 'pg', '-C', 'normal', @{ $params{extra} });
 	}
 	else
 	{
@@ -892,14 +891,15 @@ sub init_from_backup
 			$tsoid =~ s/\.tar$//;
 		
 			die "no tablespace mapping for $tstar"
-				if !exists $params{tablespace_map} ||
-				!exists $params{tablespace_map}{$tsoid};
+			  if !exists $params{tablespace_map}
+			  || !exists $params{tablespace_map}{$tsoid};
 			my $newdir = $params{tablespace_map}{$tsoid};
 		
 			mkdir($newdir) || die "mkdir $newdir: $!";
-			PostgreSQL::Test::Utils::system_or_bail($params{tar_program}, 'xf',
-				$backup_path . '/' . $tstar, '-C', $newdir);
-		
+			PostgreSQL::Test::Utils::system_or_bail($params{tar_program},
+				'xf', $backup_path . '/' . $tstar,
+				'-C', $newdir);
+
 			my $escaped_newdir = $newdir;
 			$escaped_newdir =~ s/\\/\\\\/g;
 			print $tsmap "$tsoid $escaped_newdir\n";
@@ -915,11 +915,13 @@ sub init_from_backup
 
 		# Copy the main backup. If we see a tablespace directory for which we
 		# have a tablespace mapping, skip it, but remember that we saw it.
-		PostgreSQL::Test::RecursiveCopy::copypath($backup_path, $data_path,
+		PostgreSQL::Test::RecursiveCopy::copypath(
+			$backup_path,
+			$data_path,
 			'filterfn' => sub {
 				my ($path) = @_;
-				if ($path =~ /^pg_tblspc\/(\d+)$/ &&
-					exists $params{tablespace_map}{$1})
+				if ($path =~ /^pg_tblspc\/(\d+)$/
+					&& exists $params{tablespace_map}{$1})
 				{
 					push @tsoids, $1;
 					return 0;
@@ -937,9 +939,9 @@ sub init_from_backup
 			for my $tsoid (@tsoids)
 			{
 				die "no tablespace mapping for $tsoid"
-					if !exists $params{tablespace_map} ||
-					!exists $params{tablespace_map}{$tsoid};
-		
+				  if !exists $params{tablespace_map}
+				  || !exists $params{tablespace_map}{$tsoid};
+
 				my $olddir = $backup_path . '/pg_tblspc/' . $tsoid;
 				my $newdir = $params{tablespace_map}{$tsoid};
 				PostgreSQL::Test::RecursiveCopy::copypath($olddir, $newdir);
@@ -1177,9 +1179,8 @@ sub restart
 
 	# -w is now the default but having it here does no harm and helps
 	# compatibility with older versions.
-	$ret = PostgreSQL::Test::Utils::system_log(
-		'pg_ctl', '-w', '-D', $self->data_dir,
-		'-l', $self->logfile, 'restart');
+	$ret = PostgreSQL::Test::Utils::system_log('pg_ctl', '-w', '-D',
+		$self->data_dir, '-l', $self->logfile, 'restart');
 
 	if ($ret != 0)
 	{
@@ -2394,15 +2395,9 @@ If this regular expression is set, matches it with the output generated.
 
 =item log_like => [ qr/required message/ ]
 
-If given, it must be an array reference containing a list of regular
-expressions that must match against the server log, using
-C<Test::More::like()>.
-
 =item log_unlike => [ qr/prohibited message/ ]
 
-If given, it must be an array reference containing a list of regular
-expressions that must NOT match against the server log.  They will be
-passed to C<Test::More::unlike()>.
+See C<log_check(...)>.
 
 =back
 
@@ -2421,16 +2416,6 @@ sub connect_ok
 	else
 	{
 		$sql = "SELECT \$\$connected with $connstr\$\$";
-	}
-
-	my (@log_like, @log_unlike);
-	if (defined($params{log_like}))
-	{
-		@log_like = @{ $params{log_like} };
-	}
-	if (defined($params{log_unlike}))
-	{
-		@log_unlike = @{ $params{log_unlike} };
 	}
 
 	my $log_location = -s $self->logfile;
@@ -2453,20 +2438,7 @@ sub connect_ok
 
 	is($stderr, "", "$test_name: no stderr");
 
-	if (@log_like or @log_unlike)
-	{
-		my $log_contents =
-		  PostgreSQL::Test::Utils::slurp_file($self->logfile, $log_location);
-
-		while (my $regex = shift @log_like)
-		{
-			like($log_contents, $regex, "$test_name: log matches");
-		}
-		while (my $regex = shift @log_unlike)
-		{
-			unlike($log_contents, $regex, "$test_name: log does not match");
-		}
-	}
+	$self->log_check($test_name, $log_location, %params);
 }
 
 =pod
@@ -2486,7 +2458,7 @@ If this regular expression is set, matches it with the output generated.
 
 =item log_unlike => [ qr/prohibited message/ ]
 
-See C<connect_ok(...)>, above.
+See C<log_check(...)>.
 
 =back
 
@@ -2496,16 +2468,6 @@ sub connect_fails
 {
 	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($self, $connstr, $test_name, %params) = @_;
-
-	my (@log_like, @log_unlike);
-	if (defined($params{log_like}))
-	{
-		@log_like = @{ $params{log_like} };
-	}
-	if (defined($params{log_unlike}))
-	{
-		@log_unlike = @{ $params{log_unlike} };
-	}
 
 	my $log_location = -s $self->logfile;
 
@@ -2524,20 +2486,7 @@ sub connect_fails
 		like($stderr, $params{expected_stderr}, "$test_name: matches");
 	}
 
-	if (@log_like or @log_unlike)
-	{
-		my $log_contents =
-		  PostgreSQL::Test::Utils::slurp_file($self->logfile, $log_location);
-
-		while (my $regex = shift @log_like)
-		{
-			like($log_contents, $regex, "$test_name: log matches");
-		}
-		while (my $regex = shift @log_unlike)
-		{
-			unlike($log_contents, $regex, "$test_name: log does not match");
-		}
-	}
+	$self->log_check($test_name, $log_location, %params);
 }
 
 =pod
@@ -2995,6 +2944,11 @@ sub wait_for_catchup
 		}
 		else
 		{
+			# Fetch additional detail for debugging purposes
+			$query = qq[SELECT * FROM pg_catalog.pg_stat_replication];
+			my $details = $self->safe_psql('postgres', $query);
+			diag qq(Last pg_stat_replication contents:
+${details});
 			croak "timed out waiting for catchup";
 		}
 	}
@@ -3062,8 +3016,15 @@ sub wait_for_slot_catchup
 	  . $self->name . "\n";
 	my $query =
 	  qq[SELECT '$target_lsn' <= ${mode}_lsn FROM pg_catalog.pg_replication_slots WHERE slot_name = '$slot_name';];
-	$self->poll_query_until('postgres', $query)
-	  or croak "timed out waiting for catchup";
+	if (!$self->poll_query_until('postgres', $query))
+	{
+		# Fetch additional detail for debugging purposes
+		$query = qq[SELECT * FROM pg_catalog.pg_replication_slots];
+		my $details = $self->safe_psql('postgres', $query);
+		diag qq(Last pg_replication_slots contents:
+${details});
+		croak "timed out waiting for catchup";
+	}
 	print "done\n";
 	return;
 }
@@ -3097,9 +3058,16 @@ sub wait_for_subscription_sync
 	# Wait for all tables to finish initial sync.
 	print "Waiting for all subscriptions in \"$name\" to synchronize data\n";
 	my $query =
-	    qq[SELECT count(1) = 0 FROM pg_subscription_rel WHERE srsubstate NOT IN ('r', 's');];
-	$self->poll_query_until($dbname, $query)
-	  or croak "timed out waiting for subscriber to synchronize data";
+	  qq[SELECT count(1) = 0 FROM pg_subscription_rel WHERE srsubstate NOT IN ('r', 's');];
+	if (!$self->poll_query_until($dbname, $query))
+	{
+		# Fetch additional detail for debugging purposes
+		$query = qq[SELECT * FROM pg_subscription_rel];
+		my $details = $self->safe_psql($dbname, $query);
+		diag qq(Last pg_subscription_rel contents:
+${details});
+		croak "timed out waiting for subscriber to synchronize data";
+	}
 
 	# Then, wait for the replication to catchup if required.
 	if (defined($publisher))
@@ -3422,14 +3390,16 @@ sub validate_slot_inactive_since
 	my ($self, $slot_name, $reference_time) = @_;
 	my $name = $self->name;
 
-	my $inactive_since = $self->safe_psql('postgres',
+	my $inactive_since = $self->safe_psql(
+		'postgres',
 		qq(SELECT inactive_since FROM pg_replication_slots
 			WHERE slot_name = '$slot_name' AND inactive_since IS NOT NULL;)
 		);
 
 	# Check that the inactive_since is sane
-	is($self->safe_psql('postgres',
-		qq[SELECT '$inactive_since'::timestamptz > to_timestamp(0) AND
+	is( $self->safe_psql(
+			'postgres',
+			qq[SELECT '$inactive_since'::timestamptz > to_timestamp(0) AND
 				'$inactive_since'::timestamptz > '$reference_time'::timestamptz;]
 		),
 		't',
