@@ -1,5 +1,6 @@
 # Korean message translation file for plisql
 # Copyright (C) 2010 PostgreSQL Global Development Group
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 # This file is distributed under the same license as the PostgreSQL package.
 # Ioseph Kim <ioseph@uri.sarang.net>, 2010
 msgid ""

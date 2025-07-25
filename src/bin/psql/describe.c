@@ -8,6 +8,7 @@
  * against a pre-9.2 server is allowed.)
  *
  * Copyright (c) 2000-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/bin/psql/describe.c
  */

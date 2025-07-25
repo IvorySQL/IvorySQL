@@ -12,6 +12,7 @@
  *
  * Copyright (c) 2000-2024, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/utils/misc/guc_tables.c

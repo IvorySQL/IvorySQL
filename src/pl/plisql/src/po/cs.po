@@ -1,5 +1,6 @@
 # Czech message translation file for plisql
 # Copyright (C) 2012 PostgreSQL Global Development Group
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 # This file is distributed under the same license as the PostgreSQL package.
 #
 # Tomáš Vondra <tv@fuzzy.cz>, 2012, 2013.

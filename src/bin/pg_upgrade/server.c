@@ -4,6 +4,7 @@
  *	database server functions
  *
  *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *	src/bin/pg_upgrade/server.c
  */
 

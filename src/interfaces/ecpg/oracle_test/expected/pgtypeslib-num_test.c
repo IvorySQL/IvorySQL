@@ -26,6 +26,7 @@
 
 #line 1 "printf_hack.h"
 /*
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  * print_double(x) has the same effect as printf("%g", x), but is intended
  * to produce the same formatting across all platforms.
  */

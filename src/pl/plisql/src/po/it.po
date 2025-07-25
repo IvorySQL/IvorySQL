@@ -5,6 +5,7 @@
 # For development and bug report please use:
 # https://github.com/dvarrazzo/postgresql-it
 #
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 # Copyright (C) 2012-2017 PostgreSQL Global Development Group
 # Copyright (C) 2010, Associazione Culturale ITPUG
 #

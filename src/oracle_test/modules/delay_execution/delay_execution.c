@@ -11,6 +11,7 @@
  * between parsing and execution of any desired query.
  *
  * Copyright (c) 2020-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/oracle_test/modules/delay_execution/delay_execution.c
