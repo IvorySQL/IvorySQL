@@ -97,6 +97,7 @@
 #include "utils/guc_hooks.h"
 #include "utils/guc_tables.h"
 #include "utils/injection_point.h"
+#include "utils/pgstat_internal.h"
 #include "utils/ps_status.h"
 #include "utils/relmapper.h"
 #include "utils/snapmgr.h"
@@ -1093,6 +1094,9 @@ XLogInsertRecord(XLogRecData *rdata,
 		pgWalUsage.wal_bytes += rechdr->xl_tot_len;
 		pgWalUsage.wal_records++;
 		pgWalUsage.wal_fpi += num_fpi;
+
+		/* Required for the flush of pending stats WAL data */
+		pgstat_report_fixed = true;
 	}
 
 	return EndPos;
@@ -2110,6 +2114,12 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli, bool opportunistic)
 					LWLockRelease(WALWriteLock);
 					pgWalUsage.wal_buffers_full++;
 					TRACE_POSTGRESQL_WAL_BUFFER_WRITE_DIRTY_DONE();
+
+					/*
+					 * Required for the flush of pending stats WAL data, per
+					 * update of pgWalUsage.
+					 */
+					pgstat_report_fixed = true;
 				}
 			}
 		}
