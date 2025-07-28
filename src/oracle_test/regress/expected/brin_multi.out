@@ -879,8 +879,9 @@ SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
                      QUERY PLAN                     
 ----------------------------------------------------
  Seq Scan on brin_date_test (actual rows=0 loops=1)
+   Disabled Nodes: 1
    Filter: (a = '2023-01-01'::date)
-(2 rows)
+(3 rows)
 
 DROP TABLE brin_date_test;
 RESET enable_seqscan;
@@ -901,16 +902,18 @@ SELECT * FROM brin_timestamp_test WHERE a = '2023-01-01'::timestamp;
                          QUERY PLAN                         
 ------------------------------------------------------------
  Seq Scan on brin_timestamp_test (actual rows=0 loops=1)
+   Disabled Nodes: 1
    Filter: (a = '2023-01-01 00:00:00.000000'::timestamp(6))
-(2 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
 SELECT * FROM brin_timestamp_test WHERE a = '1900-01-01'::timestamp;
                          QUERY PLAN                         
 ------------------------------------------------------------
  Seq Scan on brin_timestamp_test (actual rows=0 loops=1)
+   Disabled Nodes: 1
    Filter: (a = '1900-01-01 00:00:00.000000'::timestamp(6))
-(2 rows)
+(3 rows)
 
 DROP TABLE brin_timestamp_test;
 RESET enable_seqscan;
@@ -930,18 +933,20 @@ SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
                      QUERY PLAN                     
 ----------------------------------------------------
  Seq Scan on brin_date_test (actual rows=0 loops=1)
+   Disabled Nodes: 1
    Filter: (a = '2023-01-01'::date)
    Rows Removed by Filter: 40
-(3 rows)
+(4 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF)
 SELECT * FROM brin_date_test WHERE a = '1900-01-01'::date;
                      QUERY PLAN                     
 ----------------------------------------------------
  Seq Scan on brin_date_test (actual rows=0 loops=1)
+   Disabled Nodes: 1
    Filter: (a = '1900-01-01'::date)
    Rows Removed by Filter: 40
-(3 rows)
+(4 rows)
 
 DROP TABLE brin_date_test;
 RESET enable_seqscan;
