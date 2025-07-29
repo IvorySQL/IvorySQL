@@ -1191,12 +1191,12 @@ if test "$with_libxml" = yes ; then
   # Note the user could also set XML2_CFLAGS/XML2_LIBS directly
   for pgac_option in $XML2_CFLAGS; do
     case $pgac_option in
-      -I*|-D*) CPPFLAGS="$CPPFLAGS $pgac_option";;
+      -I*|-D*) INCLUDES="$INCLUDES $pgac_option";;
     esac
   done
   for pgac_option in $XML2_LIBS; do
     case $pgac_option in
-      -L*) LDFLAGS="$LDFLAGS $pgac_option";;
+      -L*) LIBDIRS="$LIBDIRS $pgac_option";;
     esac
   done
 fi
@@ -1240,12 +1240,12 @@ if test "$with_lz4" = yes; then
   # note that -llz4 will be added by AC_CHECK_LIB below.
   for pgac_option in $LZ4_CFLAGS; do
     case $pgac_option in
-      -I*|-D*) CPPFLAGS="$CPPFLAGS $pgac_option";;
+      -I*|-D*) INCLUDES="$INCLUDES $pgac_option";;
     esac
   done
   for pgac_option in $LZ4_LIBS; do
     case $pgac_option in
-      -L*) LDFLAGS="$LDFLAGS $pgac_option";;
+      -L*) LIBDIRS="$LIBDIRS $pgac_option";;
     esac
   done
 fi
@@ -1265,12 +1265,12 @@ if test "$with_zstd" = yes; then
   # note that -lzstd will be added by AC_CHECK_LIB below.
   for pgac_option in $ZSTD_CFLAGS; do
     case $pgac_option in
-      -I*|-D*) CPPFLAGS="$CPPFLAGS $pgac_option";;
+      -I*|-D*) INCLUDES="$INCLUDES $pgac_option";;
     esac
   done
   for pgac_option in $ZSTD_LIBS; do
     case $pgac_option in
-      -L*) LDFLAGS="$LDFLAGS $pgac_option";;
+      -L*) LIBDIRS="$LIBDIRS $pgac_option";;
     esac
   done
 fi
@@ -2032,7 +2032,7 @@ fi
 
 if test "$with_icu" = yes; then
   ac_save_CPPFLAGS=$CPPFLAGS
-  CPPFLAGS="$ICU_CFLAGS $CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS $ICU_CFLAGS"
 
   # Verify we have ICU's header files
   AC_CHECK_HEADER(unicode/ucol.h, [],
@@ -2436,7 +2436,7 @@ Use --without-tcl to disable building PL/Tcl.])
     fi
     # now that we have TCL_INCLUDE_SPEC, we can check for <tcl.h>
     ac_save_CPPFLAGS=$CPPFLAGS
-    CPPFLAGS="$TCL_INCLUDE_SPEC $CPPFLAGS"
+    CPPFLAGS="$CPPFLAGS $TCL_INCLUDE_SPEC"
     AC_CHECK_HEADER(tcl.h, [], [AC_MSG_ERROR([header file <tcl.h> is required for Tcl])])
     CPPFLAGS=$ac_save_CPPFLAGS
 fi
@@ -2473,7 +2473,7 @@ fi
 # check for <Python.h>
 if test "$with_python" = yes; then
   ac_save_CPPFLAGS=$CPPFLAGS
-  CPPFLAGS="$python_includespec $CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS $python_includespec"
   AC_CHECK_HEADER(Python.h, [], [AC_MSG_ERROR([header file <Python.h> is required for Python])])
   CPPFLAGS=$ac_save_CPPFLAGS
 fi
