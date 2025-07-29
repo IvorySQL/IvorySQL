@@ -996,10 +996,6 @@ from (select oid from pg_roles where rolname = current_user) as t2;
 select has_table_privilege(t2.oid,'pg_authid','delete')
 from (select oid from pg_roles where rolname = current_user) as t2;
 
--- 'rule' privilege no longer exists, but for backwards compatibility
--- has_table_privilege still recognizes the keyword and says FALSE
-select has_table_privilege(current_user,t1.oid,'rule')
-from (select oid from pg_class where relname = 'pg_authid') as t1;
 select has_table_privilege(current_user,t1.oid,'references')
 from (select oid from pg_class where relname = 'pg_authid') as t1;
 
@@ -1327,10 +1323,49 @@ SELECT loread(lo_open(1005, x'40000'::int), 32);
 SELECT lo_truncate(lo_open(1005, x'20000'::int), 10);	-- to be denied
 SELECT lo_truncate(lo_open(2001, x'20000'::int), 10);
 
+-- has_largeobject_privilege function
+
+-- superuser
+\c -
+SELECT has_largeobject_privilege(1001, 'SELECT');
+SELECT has_largeobject_privilege(1002, 'SELECT');
+SELECT has_largeobject_privilege(1003, 'SELECT');
+SELECT has_largeobject_privilege(1004, 'SELECT');
+
+SELECT has_largeobject_privilege(1001, 'UPDATE');
+SELECT has_largeobject_privilege(1002, 'UPDATE');
+SELECT has_largeobject_privilege(1003, 'UPDATE');
+SELECT has_largeobject_privilege(1004, 'UPDATE');
+
+-- not-existing large object
+SELECT has_largeobject_privilege(9999, 'SELECT');	-- NULL
+
+-- non-superuser
+SET SESSION AUTHORIZATION regress_priv_user2;
+SELECT has_largeobject_privilege(1001, 'SELECT');
+SELECT has_largeobject_privilege(1002, 'SELECT');	-- false
+SELECT has_largeobject_privilege(1003, 'SELECT');
+SELECT has_largeobject_privilege(1004, 'SELECT');
+
+SELECT has_largeobject_privilege(1001, 'UPDATE');
+SELECT has_largeobject_privilege(1002, 'UPDATE');	-- false
+SELECT has_largeobject_privilege(1003, 'UPDATE');	-- false
+SELECT has_largeobject_privilege(1004, 'UPDATE');
+
+SELECT has_largeobject_privilege('regress_priv_user3', 1001, 'SELECT');
+SELECT has_largeobject_privilege('regress_priv_user3', 1003, 'SELECT');	-- false
+SELECT has_largeobject_privilege('regress_priv_user3', 1005, 'SELECT');
+
+SELECT has_largeobject_privilege('regress_priv_user3', 1005, 'UPDATE');	-- false
+SELECT has_largeobject_privilege('regress_priv_user3', 2001, 'UPDATE');
+
 -- compatibility mode in largeobject permission
 \c -
 SET lo_compat_privileges = false;	-- default setting
 SET SESSION AUTHORIZATION regress_priv_user4;
+
+SELECT has_largeobject_privilege(1002, 'SELECT'); -- false
+SELECT has_largeobject_privilege(1002, 'UPDATE'); -- false
 
 SELECT loread(lo_open(1002, x'40000'::int), 32);	-- to be denied
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
@@ -1344,6 +1379,9 @@ SELECT lo_import('/dev/null', 2003);			-- to be denied
 \c -
 SET lo_compat_privileges = true;	-- compatibility mode
 SET SESSION AUTHORIZATION regress_priv_user4;
+
+SELECT has_largeobject_privilege(1002, 'SELECT'); -- true
+SELECT has_largeobject_privilege(1002, 'UPDATE'); -- true
 
 SELECT loread(lo_open(1002, x'40000'::int), 32);
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');
