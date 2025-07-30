@@ -26,11 +26,12 @@ select ora_func() from dual;
 
 -- NOCOPY.
 CREATE OR REPLACE FUNCTION test_nocopy(a IN int, b OUT NOCOPY int, c IN OUT NOCOPY int) 
-RETURN record 
+RETURN int
 IS
 BEGIN 
    b := a;
    c := a; 
+   return 1;
 END;
 /
 

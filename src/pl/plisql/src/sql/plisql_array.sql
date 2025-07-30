@@ -21,16 +21,16 @@ do $$ declare a int[];
 begin a[1] := 23::text; raise notice 'a = %', a; end$$;  -- lax typing
 
 do $$ declare a int[];
-begin a := array[1,2]; a[2:3] := array[3,4]; raise notice 'a = %', a; end$$;
+begin a := array[1,2]; a[2..3] := array[3,4]; raise notice 'a = %', a; end$$;
 
 do $$ declare a int[];
 begin a := array[1,2]; a[2] := a[2] + 1; raise notice 'a = %', a; end$$;
 
 do $$ declare a int[];
-begin a[1:2] := array[3,4]; raise notice 'a = %', a; end$$;
+begin a[1..2] := array[3,4]; raise notice 'a = %', a; end$$;
 
 do $$ declare a int[];
-begin a[1:2] := 4; raise notice 'a = %', a; end$$;  -- error
+begin a[1..2] := 4; raise notice 'a = %', a; end$$;  -- error
 
 do $$ declare a complex[];
 begin a[1] := (1,2); a[1].i := 11; raise notice 'a = %', a; end$$;
@@ -40,7 +40,7 @@ begin a[1].i := 11; raise notice 'a = %, a[1].i = %', a, a[1].i; end$$;
 
 -- perhaps this ought to work, but for now it doesn't:
 do $$ declare a complex[];
-begin a[1:2].i := array[11,12]; raise notice 'a = %', a; end$$;
+begin a[1..2].i := array[11,12]; raise notice 'a = %', a; end$$;
 
 do $$ declare a quadarray;
 begin a.c1[1].i := 11; raise notice 'a = %, a.c1[1].i = %', a, a.c1[1].i; end$$;

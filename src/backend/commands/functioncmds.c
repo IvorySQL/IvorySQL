@@ -74,6 +74,8 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "parser/parse_param.h"
+#include "access/printtup.h"
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement
@@ -483,6 +485,15 @@ interpret_function_parameter_list(ParseState *pstate,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("only input parameters can have default values")));
 
+			/* IN OUT formal parameters may have no default expressions */
+			if (fp->mode == FUNC_PARAM_INOUT &&
+				LANG_PLISQL_OID == languageOid &&
+				compatible_db == ORA_PARSER)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				   errmsg("IN OUT formal parameters may have no default expressions")));
+
+
 			def = transformExpr(pstate, fp->defexpr,
 								EXPR_KIND_FUNCTION_DEFAULT);
 			def = coerce_to_specific_type(pstate, def, toid, "DEFAULT");
@@ -517,6 +528,11 @@ interpret_function_parameter_list(ParseState *pstate,
 		}
 		else
 		{
+			if (compatible_db == PG_PARSER ||
+				(compatible_db == ORA_PARSER &&
+				LANG_PLISQL_OID != languageOid))
+			{
+
 			if (isinput && have_defaults)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -531,6 +547,15 @@ interpret_function_parameter_list(ParseState *pstate,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("procedure OUT parameters cannot appear after one with a default value")));
+			}
+			else if (compatible_db == ORA_PARSER &&
+					LANG_PLISQL_OID == languageOid &&
+					have_defaults)
+			{
+				/* the parameters after default parameters are always NonDefValNode */
+				*parameterDefaults = lappend(*parameterDefaults, makeNode(NonDefValNode));
+			}
+
 		}
 
 		i++;
@@ -1350,11 +1375,41 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		/* explicit RETURNS clause */
 		compute_return_type(stmt->returnType, languageOid,
 							&prorettype, &returnsSet, &rettypeName); 
-		if (OidIsValid(requiredResultType) && prorettype != requiredResultType)
+		if (OidIsValid(requiredResultType) && prorettype != requiredResultType && 
+		    !(compatible_db == ORA_PARSER && LANG_PLISQL_OID == languageOid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("function result type must be %s because of OUT parameters",
 							format_type_be(requiredResultType))));
+
+		/*
+		 * in plisql function, there is no relationship between 
+		 * the function return datatype and out pararmeter datatype
+		 */
+		if (LANG_PLISQL_OID == languageOid)
+		{
+			/* out parameter exists,  should't return setof */
+			if (returnsSet && parameterModes != NULL)
+			{
+				char *paramModes = NULL;
+				int numparams = ARR_DIMS(parameterModes)[0];
+				int i;
+
+				if (ARR_NDIM(parameterModes) != 1 ||
+					ARR_HASNULL(parameterModes) ||
+					ARR_ELEMTYPE(parameterModes) != CHAROID)
+					elog(ERROR, "parameterModes is not 1-D char array");
+
+				paramModes = (char *) ARR_DATA_PTR(parameterModes);
+				for (i = 0; i < numparams; i++)
+				{
+					if (paramModes[i] != FUNC_PARAM_IN &&
+						paramModes[i] != FUNC_PARAM_VARIADIC)
+						elog(ERROR, "plisql function with OUT parameter shouldn't return setof");
+				}
+			}
+		}
+
 	}
 	else if (OidIsValid(requiredResultType))
 	{
@@ -2429,7 +2484,8 @@ IsThereFunctionInNamespace(const char *proname, int pronargs,
  * See at ExecuteCallStmt() about the atomic argument.
  */
 void
-ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic)
+ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic, 
+		ParamListInfo params, DestReceiver *dest)
 {
 	InlineCodeBlock *codeblock = makeNode(InlineCodeBlock);
 	ListCell   *arg;
@@ -2439,6 +2495,10 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic)
 	Oid			laninline;
 	HeapTuple	languageTuple;
 	Form_pg_language languageStruct;
+	Datum		result;
+	int         oraparam_top_level = -1;
+	int         oraparam_cur_level = -1;
+
 
 	/* Process options we got from gram.y */
 	foreach(arg, stmt->args)
@@ -2526,8 +2586,69 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic)
 
 	ReleaseSysCache(languageTuple);
 
-	/* execute the inline handler */
-	OidFunctionCall1(laninline, PointerGetDatum(codeblock));
+	codeblock->params = params;
+
+	/* push stack for check_variables_does_match to check variables match */
+	if (stmt->paramsmode != NIL)
+	{
+		push_oraparam_stack();
+		get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
+	}
+
+	PG_TRY();
+	{
+		/* execute the inline handler */
+		result = OidFunctionCall1(laninline, PointerGetDatum(codeblock));
+	}
+	PG_CATCH();
+	{
+		if (stmt->paramsmode != NIL)
+			pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (stmt->paramsmode != NIL)
+		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+
+	/* Anonymous block has OUT parameters, its return value will be not NULL */
+	if (result != 0 && dest != NULL && stmt->paramsmode != NIL)
+	{
+		HeapTupleHeader td;
+		TupleDesc		tupdesc;
+		HeapTupleData	tmptup;
+		Tuplestorestate *tupstore;
+		TupleTableSlot *scanslot;
+
+		tupstore = tuplestore_begin_heap(false, false, work_mem);
+		td = DatumGetHeapTupleHeader(result);
+		tupdesc = lookup_rowtype_tupdesc_copy(HeapTupleHeaderGetTypeId(td),
+											  HeapTupleHeaderGetTypMod(td));
+
+		scanslot = MakeSingleTupleTableSlot(tupdesc, &TTSOpsMinimalTuple);
+
+		tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
+		tmptup.t_data = td;
+
+		tuplestore_puttuple(tupstore, &tmptup);
+		tuplestore_gettupleslot(tupstore,
+								true,
+								false,
+								scanslot);
+
+		/*
+		 * if paramname exists, result description should be returned.
+		 */
+		if (params != NULL && params->paramnames != NULL)
+			ChangeRemoteDestReceiverSendDescription(dest, true);
+
+		dest->rStartup(dest, (int) CMD_UTILITY, tupdesc);
+		dest->receiveSlot(scanslot, dest);
+		dest->rShutdown(dest);
+		ExecClearTuple(scanslot);
+		tuplestore_end(tupstore);
+	}
 }
 
 /*

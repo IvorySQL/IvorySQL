@@ -1,0 +1,18 @@
+plsql_function_out result start:
+_RETVAL_       
+thanks         	
+plsql_function_out result end:
+anonymous result start:
+
+
+anonymous result end:
+plsql_function_out result start:
+_RETVAL_       
+thanks         	
+plsql_function_out result end:
+anonymous result start:
+
+
+anonymous result end:
+plsql_function_out: plsql function name1,plsql function name2,23
+anonymous: 7,107,this is a test ok,23

@@ -208,5 +208,6 @@ extern int SPI_get_connected(void);
 extern void SPI_remember_func(void *func);
 extern void *SPI_get_func(int level);
 extern MemoryContext SPI_get_proccxt(int level);
+extern MemoryContext Ora_spi_saved_memorycontext(void);
 
 #endif							/* SPI_H */

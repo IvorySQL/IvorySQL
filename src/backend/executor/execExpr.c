@@ -51,6 +51,14 @@
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
+#include "commands/proclang.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+#include "executor/spi.h"
+#include "utils/syscache.h"
+#include "catalog/pg_proc.h"
+#include "parser/parse_param.h"
+
 
 
 typedef struct ExprSetupInfo
@@ -88,6 +96,9 @@ static void ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 								  FunctionCallInfo fcinfo, AggStatePerTrans pertrans,
 								  int transno, int setno, int setoff, bool ishash,
 								  bool nullcheck);
+static void ExecInitFuncWithOutParams(Expr *node, ExprState *state,
+					Datum *resvalue, bool *resnull);
+
 static void ExecInitJsonExpr(JsonExpr *jsexpr, ExprState *state,
 							 Datum *resv, bool *resnull,
 							 ExprEvalStep *scratch);
@@ -1143,6 +1154,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 							 func->args, func->funcid, func->inputcollid,
 							 state);
 				ExprEvalPushStep(state, &scratch);
+
+				ExecInitFuncWithOutParams(node, state, resv, resnull);
 				break;
 			}
 
@@ -4501,3 +4514,162 @@ ExecInitJsonCoercion(ExprState *state, JsonReturning *returning,
 	scratch.d.jsonexpr_coercion.omit_quotes = omit_quotes;
 	ExprEvalPushStep(state, &scratch);
 }
+
+/*
+ * ExecInitFuncWithOutParams
+ * Init function that has OUT parameters
+ */
+static void
+ExecInitFuncWithOutParams(Expr *node, ExprState *state,
+					Datum *resvalue, bool *resnull)
+{
+	if (compatible_db == ORA_PARSER)
+	{
+		FuncExpr	*funcexpr = (FuncExpr *) node;
+		Oid 		funcOid = funcexpr->funcid;
+		HeapTuple	func_tuple;
+		Oid 	   *argtypes = NULL;
+		char	  **argnames = NULL;
+		char	   *argmodes = NULL;
+		int 		i = 0;
+		int 		num_out_args = 0;
+		int 		num_all_args = 0;
+		Oid 		rettype;
+		char	   *funcname = NULL;
+
+		func_tuple = SearchSysCache1(PROCOID,
+						 ObjectIdGetDatum(funcOid));
+
+		if (!HeapTupleIsValid(func_tuple))
+			return;
+
+		if (((Form_pg_proc) GETSTRUCT(func_tuple))->prokind != PROKIND_FUNCTION ||
+			LANG_PLISQL_OID != ((Form_pg_proc) GETSTRUCT(func_tuple))->prolang)
+		{
+			ReleaseSysCache(func_tuple);
+			return;
+		}
+
+		/*
+	 	 * get the argument names and modes 
+	 	 */
+		num_all_args = get_func_arg_info(func_tuple, &argtypes, &argnames, &argmodes);
+		rettype = ((Form_pg_proc) GETSTRUCT(func_tuple))->prorettype;
+		funcname = NameStr(((Form_pg_proc) GETSTRUCT(func_tuple))->proname);
+
+		num_out_args = 0;
+		for (i = 0; i < num_all_args; i++)
+		{
+			if (argmodes &&
+				(argmodes[i] == PROARGMODE_INOUT ||
+				 argmodes[i] == PROARGMODE_OUT))
+				num_out_args++;
+		}
+
+		if (num_out_args > 0)
+		{
+			ListCell	 *lc;
+
+			if (SPI_get_connected() >= 0)
+			{
+				ExprEvalStep  scratch = {0};
+				ParamListInfo params = NULL;
+				int 		  nout = 0;
+				int 		 *paramids = NULL;
+
+				if (state->ext_params &&
+					state->ext_params->outparamSetup)
+					params = state->ext_params;
+				else if (state->parent &&
+					state->parent->state)
+					params = state->parent->state->es_param_list_info;
+
+				if (!params || !params->outparamSetup)
+				{
+					if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+						ReleaseSysCache(func_tuple);
+					if (!allow_out_parameter_const)
+						ereport(ERROR,
+							(errcode(ERRCODE_DATA_EXCEPTION),
+							errmsg("OUT or IN OUT arguments of the function %s must be variables",
+									funcname)));
+					return;
+				}
+
+				paramids = palloc0(sizeof(int) * num_out_args);
+				MemSet(paramids, -1, sizeof(int) * num_out_args);
+
+				i = 0;
+				foreach(lc, funcexpr->args)
+				{
+					Node *arg = (Node *) lfirst(lc);
+
+					if (argmodes[i] == PROARGMODE_OUT ||
+						argmodes[i] == PROARGMODE_INOUT)
+					{
+						arg = ParseParamVariable(arg);
+
+						if (!IsA(arg, Param))
+						{
+							if (!allow_out_parameter_const)
+								ereport(ERROR,
+										(errcode(ERRCODE_DATA_EXCEPTION),
+										errmsg("OUT or IN OUT arguments of the function %s must be variables ",
+												funcname)));
+						}
+						else
+							paramids[nout++] = ((Param *)arg)->paramid - 1;
+					}
+
+					i++;
+				}
+
+				scratch.opcode = EEOP_OUT_PARAM_CALLBACK;
+				scratch.resvalue = resvalue;
+				scratch.resnull = resnull;
+
+				scratch.d.out_params.paramids = paramids;
+				scratch.d.out_params.nout = nout;
+				scratch.d.out_params.rettype = rettype;
+
+				scratch.d.out_params.pestate = params->paramFetchArg;
+				params->outparamSetup(&scratch);
+				ExprEvalPushStep(state, &scratch);
+			}
+			else
+			{
+				/*
+				 * a funciton in SQL, not in psql, is called.
+				 * If allow_out_parameter_const is false,
+				 * the out parameter of the function must be variable.
+				 * Else if allow_out_parameter_const is true,
+				 * the out parameter of the function can be const.
+				 */
+				i = 0;
+				foreach(lc, funcexpr->args)
+				{
+					Node *arg = (Node *) lfirst(lc);
+
+					if (argmodes[i] == PROARGMODE_OUT ||
+						argmodes[i] == PROARGMODE_INOUT)
+					{
+						arg = ParseParamVariable(arg);
+
+						if (!IsA(arg, Param) && !allow_out_parameter_const)
+							ereport(ERROR,
+									(errcode(ERRCODE_DATA_EXCEPTION),
+									errmsg("OUT or IN OUT arguments of the function %s must be variables ",
+											funcname)));
+					}
+
+					i++;
+				}
+			}
+		}
+		if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+			ReleaseSysCache(func_tuple);
+	}
+
+	return;
+}
+

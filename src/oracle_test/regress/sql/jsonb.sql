@@ -1310,11 +1310,11 @@ select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1
 select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1]['b1'][2];
 
 -- slices are not supported
-select ('{"a": 1}'::jsonb)['a':'b'];
-select ('[1, "2", null]'::jsonb)[1:2];
-select ('[1, "2", null]'::jsonb)[:2];
-select ('[1, "2", null]'::jsonb)[1:];
-select ('[1, "2", null]'::jsonb)[:];
+select ('{"a": 1}'::jsonb)['a'..'b'];
+select ('[1, "2", null]'::jsonb)[1..2];
+select ('[1, "2", null]'::jsonb)[..2];
+select ('[1, "2", null]'::jsonb)[1..];
+select ('[1, "2", null]'::jsonb)[..];
 
 create TEMP TABLE test_jsonb_subscript (
        id int,

@@ -38,6 +38,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "commands/proclang.h"
 
 /* ----------
  * Our own local and global variables
@@ -283,6 +284,9 @@ do_compile(FunctionCallInfo fcinfo,
 	PLiSQL_variable **out_arg_variables;
 	MemoryContext func_cxt;
 
+	bool		is_plisql_function = false;
+	int		*all_arg_varnos = NULL;
+
 	char		**argtypenames = NULL;
 	char		*rettypename = NULL;
 	PLiSQL_type	*rettype = NULL;
@@ -351,6 +355,7 @@ do_compile(FunctionCallInfo fcinfo,
 	/* only promote extra warnings and errors at CREATE FUNCTION time */
 	function->extra_warnings = forValidator ? plisql_extra_warnings : 0;
 	function->extra_errors = forValidator ? plisql_extra_errors : 0;
+	function->paramnames = NULL;
 
 	if (is_dml_trigger)
 		function->fn_is_trigger = PLISQL_DML_TRIGGER;
@@ -363,6 +368,13 @@ do_compile(FunctionCallInfo fcinfo,
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+
+	function->fn_ret_vardno = -1;
+	function->fn_no_return = false;
+
+	if (function->fn_prokind == PROKIND_FUNCTION &&
+		LANG_PLISQL_OID == procStruct->prolang)
+		is_plisql_function = true;
 
 	function->namelabel = pstrdup(NameStr(procStruct->proname));
 
@@ -408,7 +420,12 @@ do_compile(FunctionCallInfo fcinfo,
 												 plisql_error_funcname);
 
 			in_arg_varnos = (int *) palloc(numargs * sizeof(int));
-			out_arg_variables = (PLiSQL_variable **) palloc(numargs * sizeof(PLiSQL_variable *));
+			if (is_plisql_function)
+				out_arg_variables = (PLiSQL_variable **) palloc((numargs + 1) * sizeof(PLiSQL_variable *));
+			else
+				out_arg_variables = (PLiSQL_variable **) palloc(numargs * sizeof(PLiSQL_variable *));
+
+			all_arg_varnos = (int *) palloc(numargs * sizeof(int));
 
 			MemoryContextSwitchTo(func_cxt);
 
@@ -475,11 +492,33 @@ do_compile(FunctionCallInfo fcinfo,
 				if (argvariable->dtype == PLISQL_DTYPE_VAR)
 				{
 					argitemtype = PLISQL_NSTYPE_VAR;
+
+					/* 
+					 * remember the variable mode for IN, OUT and IN OUT,  
+					 * variable of IN mode is not allowned to have value.
+					 */
+					if (argmode == PROARGMODE_IN ||
+						argmode == PROARGMODE_OUT ||
+						argmode == PROARGMODE_INOUT)
+						((PLiSQL_var *)argvariable)->info = argmode;
+					else
+						((PLiSQL_var *)argvariable)->info = PROARGMODE_IN;
 				}
 				else
 				{
 					Assert(argvariable->dtype == PLISQL_DTYPE_REC);
 					argitemtype = PLISQL_NSTYPE_REC;
+
+					/* 
+					 * remember the variable mode for IN, OUT and IN OUT,  
+					 * variable of IN mode is not allowned to have value.
+					 */
+					if (argmode == PROARGMODE_IN ||
+						argmode == PROARGMODE_OUT ||
+						argmode == PROARGMODE_INOUT)
+						((PLiSQL_rec *)argvariable)->info = argmode;
+					else
+						((PLiSQL_rec *)argvariable)->info = PROARGMODE_IN;
 				}
 
 				/* Remember arguments in appropriate arrays */
@@ -491,6 +530,8 @@ do_compile(FunctionCallInfo fcinfo,
 					argmode == PROARGMODE_INOUT ||
 					argmode == PROARGMODE_TABLE)
 					out_arg_variables[num_out_args++] = argvariable;
+
+				all_arg_varnos[i] = argvariable->dno;
 
 				/* Add to namespace under the $n name */
 				add_parameter_name(argitemtype, argvariable->dno, buf);
@@ -521,23 +562,85 @@ do_compile(FunctionCallInfo fcinfo,
 			else
 				rettypeid = procStruct->prorettype;
 
-			/*
-			 * If there's just one OUT parameter, out_param_varno points
-			 * directly to it.  If there's more than one, build a row that
-			 * holds all of them.  Procedures return a row even for one OUT
-			 * parameter.
-			 */
-			if (num_out_args > 1 ||
-				(num_out_args == 1 && function->fn_prokind == PROKIND_PROCEDURE))
+			/* Build a '_retval_' varaible for the function return value */
+			if (num_out_args > 0 && is_plisql_function)
 			{
-				PLiSQL_row *row = build_row_from_vars(out_arg_variables,
-													   num_out_args);
+				if (procStruct->prorettype != VOIDOID)
+				{
+					char		buf[32];
+					Oid 		argtypeid = rettypeid;
+					PLiSQL_type *argdtype;
+					PLiSQL_variable *argvariable;
+					PLiSQL_nsitem_type argitemtype;
+
+					if (IsPolymorphicType(argtypeid))
+					{
+						if (forValidator)
+						{
+							if (argtypeid == ANYARRAYOID)
+								argtypeid = INT4ARRAYOID;
+							else if (argtypeid == ANYRANGEOID)
+								argtypeid = INT4RANGEOID;
+							else
+								argtypeid = INT4OID;
+						}
+						else
+						{
+							argtypeid = get_fn_expr_rettype(fcinfo->flinfo);
+
+							if (!OidIsValid(argtypeid))
+							{
+								ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										errmsg("could not know the actual return type "
+											"for polymorphic function \"%s\"",
+											plisql_error_funcname)));
+							}
+						}
+					}
+
+					snprintf(buf, sizeof(buf), "$%d", i + 1);
+
+					argdtype = plisql_build_datatype(argtypeid, -1,
+									 function->fn_input_collation,
+									 NULL);
+
+					argvariable = plisql_build_variable("_RETVAL_",
+										 0, argdtype, false);
+
+					function->fn_ret_vardno = argvariable->dno;
+
+					if (argvariable->dtype == PLISQL_DTYPE_VAR)
+						argitemtype = PLISQL_NSTYPE_VAR;
+					else
+						argitemtype = PLISQL_NSTYPE_REC;
+
+					/* the variable for function return value follows all function OUT args */
+					out_arg_variables[num_out_args] = argvariable;
+					num_out_args++;
+
+					add_parameter_name(argitemtype, argvariable->dno, buf);
+					add_parameter_name(argitemtype, argvariable->dno, "_RETVAL_");
+				}
+			}
+
+			/*
+			 * If there's at least one OUT parameter in a procedure, build a row that
+			 * holds all of them.  If there's at least one OUT parameter in a function,
+			 * and the return type is VOID, alos build a row that holds all of them.
+			 *
+			 * If the function return type is not VOID, build a row that combines all 
+			 * OUT parameters and return value.
+			 *
+			 * Procedures and functions return a row even for one OUT parameter.
+			 */
+			if (num_out_args > 0)
+			{
+				PLiSQL_row *row = build_row_from_vars(out_arg_variables, num_out_args);
 
 				plisql_adddatum((PLiSQL_datum *) row);
 				function->out_param_varno = row->dno;
 			}
-			else if (num_out_args == 1)
-				function->out_param_varno = out_arg_variables[0]->dno;
 
 			/*
 			 * Check for a polymorphic returntype. If found, use the actual
@@ -549,6 +652,15 @@ do_compile(FunctionCallInfo fcinfo,
 			 * work; if it doesn't we're in some context that fails to make
 			 * the info available.
 			 */
+
+			/* If a function has out arguments, change ts return type to RECORDOID */
+			if (num_out_args > 0 &&
+				rettypeid != RECORDOID &&
+				is_plisql_function)
+			{
+				rettypeid = RECORDOID;
+			}
+
 			if (IsPolymorphicType(rettypeid))
 			{
 				if (forValidator)
@@ -833,6 +945,12 @@ do_compile(FunctionCallInfo fcinfo,
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 	function->action = plisql_parse_result;
 
+	if (num_out_args > 0 &&
+		is_plisql_function &&
+		procStruct->prorettype != VOIDOID &&
+		((PLiSQL_stmt *) llast(function->action->body))->cmd_type != PLISQL_STMT_RETURN)
+		function->fn_no_return = true;
+
 	/*
 	 * If it has OUT parameters or returns VOID or returns a set, we allow
 	 * control to fall off the end without an explicit RETURN statement. The
@@ -847,8 +965,17 @@ do_compile(FunctionCallInfo fcinfo,
 	 * Complete the function's info
 	 */
 	function->fn_nargs = procStruct->pronargs;
-	for (i = 0; i < function->fn_nargs; i++)
-		function->fn_argvarnos[i] = in_arg_varnos[i];
+
+	if (is_plisql_function)
+	{
+		for (i = 0; i < function->fn_nargs; i++)
+			function->fn_argvarnos[i] = all_arg_varnos[i];
+	}
+	else
+	{
+		for (i = 0; i < function->fn_nargs; i++)
+			function->fn_argvarnos[i] = in_arg_varnos[i];	
+	}
 
 	plisql_finish_datums(function);
 
@@ -895,7 +1022,7 @@ do_compile(FunctionCallInfo fcinfo,
  * ----------
  */
 PLiSQL_function *
-plisql_compile_inline(char *proc_source)
+plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 {
 	char	   *func_name = "inline_code_block";
 	PLiSQL_function *function;
@@ -955,6 +1082,8 @@ plisql_compile_inline(char *proc_source)
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+	function->fn_ret_vardno = -1;
+	function->fn_no_return = false;
 
 	function->namelabel = NULL;
 
@@ -985,6 +1114,73 @@ plisql_compile_inline(char *proc_source)
 	function->fn_readonly = false;
 
 	/*
+	 * Create variables for the procedure's parameters.
+	 */
+	function->fn_nargs = 0;
+	if (inparams)
+	{
+		int	i;
+
+		function->fn_nargs = inparams->numParams;
+		function->paramnames = inparams->paramnames;
+
+		for (i = 0; i < inparams->numParams; i++)
+		{
+			PLiSQL_type *argdtype;
+			PLiSQL_variable *argvariable;
+			ParamExternData *param = &(inparams->params[i]);
+			char		buf[32];
+			Oid		argtypeid = param->ptype;
+			int		argitemtype;
+
+			/* Create $n name for variables */
+			if (inparams->paramnames != NULL &&
+				inparams->paramnames[i] != NULL)
+				snprintf(buf, sizeof(buf), "%s", inparams->paramnames[i]);
+			else
+				snprintf(buf, sizeof(buf), "$%d", i + 1);
+
+			/* Create datatype info */
+			argdtype = plisql_build_datatype(argtypeid,
+								-1,
+								function->fn_input_collation,
+								NULL);
+
+			/* Disallow pseudotype argument */
+			if (argdtype->ttype != PLISQL_TTYPE_SCALAR &&
+				argdtype->ttype != PLISQL_TTYPE_REC)
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("PLI/SQL functions cannot accept type %s",
+					format_type_be(argtypeid))));
+			}
+
+			/* Build variable and nsert into datum list */
+			argvariable = plisql_build_variable(buf, 0, argdtype, false);
+
+			if (argvariable->dtype == PLISQL_DTYPE_VAR)
+			{
+				argitemtype = PLISQL_NSTYPE_VAR;
+				((PLiSQL_var *)argvariable)->info = param->pmode;
+			}
+			else
+			{
+				Assert(argvariable->dtype == PLISQL_DTYPE_REC);
+				argitemtype = PLISQL_NSTYPE_REC;
+				((PLiSQL_rec *)argvariable)->info = param->pmode;
+			}
+
+			/* Add the $n name into namespace */
+			add_parameter_name(argitemtype, argvariable->dno, buf);
+			function->fn_argvarnos[i] = argvariable->dno;
+		}
+
+		if (inparams->numParams> 0)
+			function->fn_prokind = PROKIND_ANONYMOUS_BLOCK;
+	}
+
+	/*
 	 * Create the magic FOUND variable.
 	 */
 	var = plisql_build_variable("found", 0,
@@ -1013,8 +1209,6 @@ plisql_compile_inline(char *proc_source)
 	/*
 	 * Complete the function's info
 	 */
-	function->fn_nargs = 0;
-
 	plisql_finish_datums(function);
 
 	plisql_finish_subproc_func(function);
@@ -1118,8 +1312,10 @@ add_dummy_return(PLiSQL_function *function)
 
 		function->action = new;
 	}
-	if (function->action->body == NIL ||
-		((PLiSQL_stmt *) llast(function->action->body))->cmd_type != PLISQL_STMT_RETURN)
+	if (function->action->body == NIL || 
+		function->fn_ret_vardno != -1 ||
+		(function->fn_ret_vardno == -1 &&
+		((PLiSQL_stmt *) llast(function->action->body))->cmd_type != PLISQL_STMT_RETURN))
 	{
 		PLiSQL_stmt_return *new;
 
@@ -1220,6 +1416,21 @@ plisql_param_ref(ParseState *pstate, ParamRef *pref)
 	PLiSQL_expr *expr = (PLiSQL_expr *) pstate->p_ref_hook_state;
 	char		pname[32];
 	PLiSQL_nsitem *nse;
+
+	if (nodeTag(pref) == T_OraParamRef)
+	{
+		OraParamRef *oraref = (OraParamRef *) pref;
+
+		if (expr->func->paramnames != NULL)
+		{
+			int i;
+
+			for (i = 0; i < expr->func->fn_nargs; i++)
+				if (expr->func->paramnames[i] != NULL &&
+					strcmp(expr->func->paramnames[i], oraref->name) == 0)
+					return make_datum_param(expr, expr->func->fn_argvarnos[i], oraref->location);
+		}
+	}
 
 	snprintf(pname, sizeof(pname), "$%d", pref->number);
 
@@ -1473,7 +1684,7 @@ make_datum_param(PLiSQL_expr *expr, int dno, int location)
  * ----------
  */
 bool
-plisql_parse_word(char *word1, const char *yytxt, bool lookup,
+plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 				   PLwdatum *wdatum, PLword *word)
 {
 	PLiSQL_nsitem *ns;
@@ -1489,7 +1700,7 @@ plisql_parse_word(char *word1, const char *yytxt, bool lookup,
 		 * Do a lookup in the current namespace stack
 		 */
 		ns = plisql_ns_lookup(plisql_ns_top(), false,
-							   word1, NULL, NULL,
+							   paramname, NULL, NULL,
 							   NULL);
 
 		if (ns != NULL)
@@ -1626,7 +1837,7 @@ plisql_parse_word(char *word1, const char *yytxt, bool lookup,
  * ----------
  */
 bool
-plisql_parse_dblword(char *word1, char *word2,
+plisql_parse_dblword(char *paramname, char *word1, char *word2,
 					  PLwdatum *wdatum, PLcword *cword)
 {
 	PLiSQL_nsitem *ns;
@@ -1648,7 +1859,7 @@ plisql_parse_dblword(char *word1, char *word2,
 		 * Do a lookup in the current namespace stack
 		 */
 		ns = plisql_ns_lookup(plisql_ns_top(), false,
-							   word1, word2, NULL,
+							   paramname, word2, NULL,
 							   &nnames);
 		if (ns != NULL)
 		{
@@ -1744,7 +1955,7 @@ plisql_parse_dblword(char *word1, char *word2,
  * ----------
  */
 bool
-plisql_parse_tripword(char *word1, char *word2, char *word3,
+plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
 					   PLwdatum *wdatum, PLcword *cword)
 {
 	PLiSQL_nsitem *ns;
@@ -1765,7 +1976,7 @@ plisql_parse_tripword(char *word1, char *word2, char *word3,
 		 * reference, else ignore.
 		 */
 		ns = plisql_ns_lookup(plisql_ns_top(), false,
-							   word1, word2, word3,
+							   paramname, word2, word3,
 							   &nnames);
 		if (ns != NULL)
 		{
@@ -3062,3 +3273,189 @@ plisql_HashTableDelete(PLiSQL_function *function)
 	/* remove back link, which no longer points to allocated storage */
 	function->fn_hashkey = NULL;
 }
+
+/* ----------
+ * plisql_compile_inline_internal	
+ * Only compile the function, but not store the compiled function.
+ * ----------
+ */
+void
+plisql_compile_inline_internal(char *proc_source)
+{
+	char   *func_name = "inline_code_block";
+	PLiSQL_function *function;
+	ErrorContextCallback plerrcontext;
+	int	parse_rc;
+	MemoryContext func_cxt;
+
+	/*
+	 * Setup the scanner input and error info.  
+	 * We assume that this function cannot be invoked recursively, 
+	 * so there's no need to save and restore
+	 * the static variables used here.
+	 */
+	plisql_scanner_init(proc_source);
+
+	plisql_error_funcname = func_name;
+
+	/*
+	 * Setup error traceback support for ereport()
+	 */
+	plerrcontext.callback = plisql_compile_error_callback;
+	plerrcontext.previous = error_context_stack;
+	plerrcontext.arg = proc_source;
+	error_context_stack = &plerrcontext;
+
+	/* Do extra syntax check if check_function_bodies is on */
+	plisql_check_syntax = check_function_bodies;
+
+	/* Function struct does not live passed current statement */
+	function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
+
+	plisql_curr_compile = function;
+
+	/*
+	 * Store all the rest of the compile-time storage (e.g. parse tree) in
+	 * its own memory context, so it can be reclaimed easily.
+	 */
+	func_cxt = AllocSetContextCreate(CurrentMemoryContext,
+					 "PL/iSQL inline code context",
+					 ALLOCSET_DEFAULT_SIZES);
+
+	plisql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
+
+	function->fn_signature = pstrdup(func_name);
+	function->fn_is_trigger = PLISQL_NOT_TRIGGER;
+	function->fn_input_collation = InvalidOid;
+	function->fn_cxt = func_cxt;
+	function->out_param_varno = -1; /* set up for no OUT param */
+	function->resolve_option = plisql_variable_conflict;
+	function->print_strict_params = plisql_print_strict_params;
+
+	function->extra_warnings = 0;
+	function->extra_errors = 0;
+
+	function->nstatements = 0;
+	function->fn_ret_vardno = -1;
+	function->fn_no_return = false;
+	function->requires_procedure_resowner = false;
+
+	plisql_ns_init();
+	plisql_ns_push(func_name, PLISQL_LABEL_BLOCK);
+	plisql_DumpExecTree = false;
+	plisql_start_datums();
+	cur_compile_func_level = 0;
+	plisql_start_subproc_func();
+
+	plisql_compile_packageitem = NULL;
+	Assert(plisql_curr_global_proper_level == 0);
+	plisql_saved_compile[cur_compile_func_level] = function;
+
+	/* Set up like in a function returning VOID */
+	function->fn_retset = false;
+	function->fn_retistuple = false;
+	function->fn_retisdomain = false;
+	function->fn_rettype = VOIDOID;
+	function->fn_prokind = PROKIND_FUNCTION;
+
+	function->fn_retbyval = true;
+	function->fn_rettyplen = sizeof(int32);
+
+	/*
+	 * Remember if function is readonly.  
+	 */
+	function->fn_readonly = false;
+
+	/*
+	 * Create the variables for the function's parameters.
+	 */
+	function->fn_nargs = 0;
+
+	/*
+	 * If we only parse a anonymous, set the prokind to 
+	 * PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE,
+	 */
+	function->fn_prokind = PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE;
+
+	/*
+	 * Now parse the function's text
+	 */
+	parse_rc = plisql_yyparse();
+
+	if (parse_rc != 0)
+		elog(ERROR, "plisql parser returned %d", parse_rc);
+
+	function->action = plisql_parse_result;
+
+	/*
+	 * Complete the function's info
+	 */
+	plisql_finish_datums(function);
+	plisql_finish_subproc_func(function);
+	plisql_check_subproc_define(function);
+
+	/*
+	 * finish scanner after plisql_check_subproc_define for nice error message
+	 */
+	plisql_scanner_finish();
+
+	/*
+	 * Pop the error context stack
+	 */
+	error_context_stack = plerrcontext.previous;
+	plisql_error_funcname = NULL;
+
+	plisql_check_syntax = false;
+
+	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
+	plisql_compile_tmp_cxt = NULL;
+
+	delete_function(function);
+
+	return;
+}
+
+/*
+ * dynamic_build_func_vars  
+ * Build the variables dynamiclly.
+ * If find a ORAPARAM token, and the function is PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE,
+ * Build the variables dynamiclly.
+ * For example, :x and :y are ORAPARAM,  build two variables, $1 and $2.
+ *
+ * select * from get_parameter_description('
+ * begin
+ *	 :x := id;
+ *	 :y := 1;
+ * end;');
+ */
+void
+dynamic_build_func_vars(PLiSQL_function **function)
+{
+	char		buf[32];
+	Oid 		argtypeid = INT4OID;
+	PLiSQL_type *argdtype;
+	PLiSQL_variable *argvariable;
+	int 		argitemtype;
+	int		fn_nargs = (*function)->fn_nargs;
+
+	/* Create $n name for variable */
+	snprintf(buf, sizeof(buf), "$%d", fn_nargs + 1);
+
+	/* Create datatype info */
+	argdtype = plisql_build_datatype(argtypeid,
+						-1,
+						(*function)->fn_input_collation,
+						NULL);
+
+	/* Build variable and add to datum list */
+	argvariable = plisql_build_variable(buf, 0, argdtype, false);
+
+	(*function)->fn_argvarnos[fn_nargs++] = argvariable->dno;
+	(*function)->fn_nargs = fn_nargs;
+
+	argitemtype = PLISQL_NSTYPE_VAR;
+
+	/* Add the $n name into namespace */
+	add_parameter_name(argitemtype, argvariable->dno, buf);
+}
+

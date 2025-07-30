@@ -32,4 +32,8 @@ extern void spi_dest_startup(DestReceiver *self, int operation,
 							 TupleDesc typeinfo);
 extern bool spi_printtup(TupleTableSlot *slot, DestReceiver *self);
 
+extern void SetDestSendDescription(DestReceiver *dest);
+extern void ChangeRemoteDestReceiverSendDescription(DestReceiver *self, bool send_info);
+
+
 #endif							/* PRINTTUP_H */

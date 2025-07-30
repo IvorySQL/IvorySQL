@@ -37,6 +37,7 @@
 #include "parser/parser.h"
 #include "parser/scansup.h"
 #include "utils/ora_compatible.h"
+#include "parser/parse_param.h"
 
 PG_MODULE_MAGIC;
 
@@ -207,6 +208,8 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 
 	if (yyresult)				/* error */
 		return NIL;
+
+	calculate_oraparamnumbers(yyextra.parsetree);
 
 	return yyextra.parsetree;
 }

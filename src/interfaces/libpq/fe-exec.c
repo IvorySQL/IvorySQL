@@ -76,11 +76,8 @@ static int	PQsendQueryGuts(PGconn *conn,
 							int resultFormat);
 static void parseInput(PGconn *conn);
 static PGresult *getCopyResult(PGconn *conn, ExecStatusType copytype);
-static bool PQexecStart(PGconn *conn);
-static PGresult *PQexecFinish(PGconn *conn);
 static int	PQsendTypedCommand(PGconn *conn, char command, char type,
 							   const char *target);
-static int	check_field_number(const PGresult *res, int field_num);
 static void pqPipelineProcessQueue(PGconn *conn);
 static int	pqPipelineSyncInternal(PGconn *conn, bool immediate_flush);
 static int	pqPipelineFlush(PGconn *conn);
@@ -2341,7 +2338,7 @@ PQexecPrepared(PGconn *conn,
 /*
  * Common code for PQexec and sibling routines: prepare to send command
  */
-static bool
+bool
 PQexecStart(PGconn *conn)
 {
 	PGresult   *result;
@@ -2407,7 +2404,7 @@ PQexecStart(PGconn *conn)
 /*
  * Common code for PQexec and sibling routines: wait for command result
  */
-static PGresult *
+PGresult *
 PQexecFinish(PGconn *conn)
 {
 	PGresult   *result;
@@ -3506,7 +3503,7 @@ PQbinaryTuples(const PGresult *res)
  * Return true if OK, false if not
  */
 
-static int
+int
 check_field_number(const PGresult *res, int field_num)
 {
 	if (!res)
@@ -3521,7 +3518,7 @@ check_field_number(const PGresult *res, int field_num)
 	return true;
 }
 
-static int
+int
 check_tuple_field_number(const PGresult *res,
 						 int tup_num, int field_num)
 {

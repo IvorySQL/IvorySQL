@@ -64,6 +64,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include "commands/proclang.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+
 
 
 /*
@@ -238,6 +242,7 @@ static void NamespaceCallback(Datum arg, int cacheid, uint32 hashvalue);
 static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 						   bool include_out_arguments, int pronargs,
 						   int **argnumbers);
+static Bitmapset  *get_nodefvalargposition(HeapTuple proctup, int pronargs);
 
 /*
  * Recomputing the namespace path can be costly when done frequently, such as
@@ -1340,6 +1345,12 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 				continue;		/* proc is not in search path */
 		}
 
+		if (ORA_PARSER == compatible_db && 
+			LANG_PLISQL_OID == procform->prolang)
+		{
+			include_out_arguments = true;
+		}
+
 		/*
 		 * If we are asked to match to OUT arguments, then use the
 		 * proallargtypes array (which includes those); otherwise use
@@ -1437,9 +1448,40 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			 */
 			if (pronargs > nargs && expand_defaults)
 			{
-				/* Ignore if not enough default expressions */
-				if (nargs + procform->pronargdefaults < pronargs)
-					continue;
+				if (compatible_db == PG_PARSER)
+				{
+					/* Ignore if no enough default expressions */
+					if (nargs + procform->pronargdefaults < pronargs)
+						continue;
+				}
+				else
+				{
+					Bitmapset  *nodefvalargposition;
+					bool is_have_nondefarg = false;
+					int pp;
+
+					nodefvalargposition = get_nodefvalargposition(proctup, pronargs);
+					if (nargs + procform->pronargdefaults < pronargs)
+						is_have_nondefarg = true;
+
+					/*
+					 * For parameters that have default values, if they are not continuous 
+					 * and in the last case, check which parameter has no default value
+					 */
+					for (pp = nargs; is_have_nondefarg != true && pp < pronargs; ++pp)
+					{
+						if (bms_is_member(pp, nodefvalargposition))
+							is_have_nondefarg = true;
+					}
+
+					if (is_have_nondefarg)
+					{
+						bms_free(nodefvalargposition);
+						continue;
+					}
+
+				}
+
 				use_defaults = true;
 				any_special = true;
 			}
@@ -5283,3 +5325,50 @@ pg_is_other_temp_schema(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(isOtherTempNamespace(oid));
 }
+
+/*
+ * get_nodefvalargposition
+ * Get position of parameters that have no default value, 
+ * the result is saved in the Bitmap Set type. 
+ * The position of parameters with no default value is set to be 1. 
+ * create function f(num1 int = 5, num2 int = 10, num3 int)
+ * the position of num3 is set to 1
+*/
+static Bitmapset *
+get_nodefvalargposition(HeapTuple proctup, int pronargs)
+{
+	Form_pg_proc procform = (Form_pg_proc)GETSTRUCT(proctup);
+	Bitmapset  *nodefvalargposition;
+	Datum		proargdefaults;
+	char	   *string = NULL;
+	List	   *defaults = NULL;
+	ListCell   *lc = NULL;
+	int	i = 0;
+	bool        isnull;
+
+	proargdefaults = SysCacheGetAttr(PROCOID, proctup,
+						Anum_pg_proc_proargdefaults,
+						&isnull);
+	if (isnull)
+		return NULL;
+
+	string = TextDatumGetCString(proargdefaults);
+	defaults = (List *)stringToNode(string);
+	Assert(IsA(defaults, List));
+	pfree(string);
+
+	i = pronargs - procform->pronargdefaults;
+	nodefvalargposition = NULL;
+	foreach(lc, defaults)
+	{
+		Node *def = (Node*)lfirst(lc);
+		if (IsA(def, NonDefValNode))
+		{
+			nodefvalargposition = bms_add_member(nodefvalargposition, i);
+		}
+
+		i++;
+	}
+	return nodefvalargposition;
+}
+

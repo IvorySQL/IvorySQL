@@ -1,0 +1,14 @@
+_RETVAL_       
+32767,-32768,0,0
+0,0,-1
+               	
+name           statement      prepare_time   parameter_typesresult_types   from_sql       generic_plans  custom_plans   
+test_stmt      
+select * from short_proc($1,$2,$3);
+prepare time is always change
+{pg_catalog.int2,pg_catalog.int2,pg_catalog.int2}
+{pg_catalog.int2,pg_catalog.int2,pg_catalog.int2,pg_catalog.int4}
+f              
+0              
+1              
+

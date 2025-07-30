@@ -228,11 +228,11 @@ COMMIT;
 -- memory based
 SELECT
     -- fixed-width by-value datum
-    (array_agg(id ORDER BY id DESC NULLS FIRST))[0:5],
+    (array_agg(id ORDER BY id DESC NULLS FIRST))[0..5],
     -- fixed-width by-ref datum
-    (array_agg(abort_increasing ORDER BY abort_increasing DESC NULLS LAST))[0:5],
+    (array_agg(abort_increasing ORDER BY abort_increasing DESC NULLS LAST))[0..5],
     -- variable-width datum
-    (array_agg(id::text ORDER BY id::text DESC NULLS LAST))[0:5],
+    (array_agg(id::text ORDER BY id::text DESC NULLS LAST))[0..5],
     -- fixed width by-value datum tuplesort
     percentile_disc(0.99) WITHIN GROUP (ORDER BY id),
     -- ensure state is shared
@@ -253,9 +253,9 @@ BEGIN;
 SET LOCAL work_mem = '100kB';
 
 SELECT
-    (array_agg(id ORDER BY id DESC NULLS FIRST))[0:5],
-    (array_agg(abort_increasing ORDER BY abort_increasing DESC NULLS LAST))[0:5],
-    (array_agg(id::text ORDER BY id::text DESC NULLS LAST))[0:5],
+    (array_agg(id ORDER BY id DESC NULLS FIRST))[0..5],
+    (array_agg(abort_increasing ORDER BY abort_increasing DESC NULLS LAST))[0..5],
+    (array_agg(id::text ORDER BY id::text DESC NULLS LAST))[0..5],
     percentile_disc(0.99) WITHIN GROUP (ORDER BY id),
     percentile_disc(0.01) WITHIN GROUP (ORDER BY id),
     percentile_disc(0.8) WITHIN GROUP (ORDER BY abort_increasing),

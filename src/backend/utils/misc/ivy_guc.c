@@ -33,6 +33,9 @@ bool			enable_emptystring_to_NULL = false;
 int	database_mode = DB_PG;
 int	compatible_db = PG_PARSER;
 
+bool	allow_out_parameter_const = false;
+bool	out_parameter_column_position = false;
+
 bool	seq_scale_fixed = false;
 bool	internal_warning = false;
 
@@ -124,6 +127,32 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_emptystring_to_NULL,
+		false,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * if ivorysql.allow_out_parameter_const is false, out parameter must be a var.
+	 * if ivorysql.allow_out_parameter_const is true, out parameter can be a constant value
+	 */
+	{
+		{"ivorysql.allow_out_parameter_const", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("plisql function out parameter can be a constant value."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&allow_out_parameter_const,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ivorysql.out_parameter_column_position", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("plisql function construct out parameter column by its position."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&out_parameter_column_position,
 		false,
 		NULL, NULL, NULL
 	},

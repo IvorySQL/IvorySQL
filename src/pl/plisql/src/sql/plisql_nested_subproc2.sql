@@ -37,7 +37,6 @@ begin
     mds := 10;
     original := square(mds);
     raise info '%',original;
-    a := original + 1;
     return mds;
 end;
 /
@@ -726,14 +725,16 @@ begin
     original := square(mds);
     raise info '%', original;
     a := original + 1;
-    --return mds;
+    return mds;
 end;
 /
 
 --print mds=10 original=10 local var a =23
 --global a =21 101 102
+set ivorysql.allow_out_parameter_const = true;
 select * from test_subproc_func(21);
 drop function test_subproc_func(integer);
+set ivorysql.allow_out_parameter_const = false;
 
 --function the name as global variable
 --test failed
