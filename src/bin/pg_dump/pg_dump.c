@@ -1238,7 +1238,7 @@ main(int argc, char **argv)
 	 * right now.
 	 */
 	if (plainText)
-		RestoreArchive(fout, false);
+		RestoreArchive(fout);
 
 	CloseArchive(fout);
 
