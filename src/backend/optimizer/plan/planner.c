@@ -561,6 +561,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 
 	result->commandType = parse->commandType;
 	result->queryId = parse->queryId;
+	result->planOrigin = PLAN_STMT_STANDARD;
 	result->hasReturning = (parse->returningList != NIL);
 	result->hasModifyingCTE = parse->hasModifyingCTE;
 	result->canSetTag = parse->canSetTag;
@@ -585,7 +586,6 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->utilityStmt = parse->utilityStmt;
 	result->stmt_location = parse->stmt_location;
 	result->stmt_len = parse->stmt_len;
-	result->cached_plan_type = PLAN_CACHE_NONE;
 
 	result->jitFlags = PGJIT_NONE;
 	if (jit_enabled && jit_above_cost >= 0 &&
