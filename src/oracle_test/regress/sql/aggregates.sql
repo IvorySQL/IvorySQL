@@ -79,6 +79,12 @@ SELECT stddev_pop('inf'::numeric), stddev_samp('inf'::numeric);
 SELECT var_pop('nan'::numeric), var_samp('nan'::numeric);
 SELECT stddev_pop('nan'::numeric), stddev_samp('nan'::numeric);
 
+-- verify correct results for min(record) and max(record) aggregates
+SELECT max(row(a,b)) FROM aggtest;
+SELECT max(row(b,a)) FROM aggtest;
+SELECT min(row(a,b)) FROM aggtest;
+SELECT min(row(b,a)) FROM aggtest;
+
 -- verify correct results for null and NaN inputs
 select sum(null::int4) from generate_series(1,3);
 select sum(null::int8) from generate_series(1,3);
@@ -742,7 +748,7 @@ select string_agg(distinct f1::text, ',' order by f1) from varchar_tbl;  -- not 
 select string_agg(distinct f1, ',' order by f1::text) from varchar_tbl;  -- not ok
 select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -- ok
 
--- string_agg bytea tests
+-- string_agg, min, max bytea tests
 create table bytea_test_table(v bytea);
 
 select string_agg(v, '') from bytea_test_table;
@@ -756,6 +762,15 @@ insert into bytea_test_table values(decode('aa','hex'));
 select string_agg(v, '') from bytea_test_table;
 select string_agg(v, NULL) from bytea_test_table;
 select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
+
+select min(v) from bytea_test_table;
+select max(v) from bytea_test_table;
+
+insert into bytea_test_table values(decode('ffff','hex'));
+insert into bytea_test_table values(decode('aaaa','hex'));
+
+select min(v) from bytea_test_table;
+select max(v) from bytea_test_table;
 
 drop table bytea_test_table;
 
@@ -1224,13 +1239,13 @@ EXPLAIN (COSTS OFF) SELECT count(*)
 FROM (SELECT * FROM btg ORDER BY x, y, w, z) AS q1
 GROUP BY w, x, z, y;
 
--- Utilize the ordering of merge join to avoid a full Sort operation
+-- Utilize the ordering of merge join to avoid a Sort operation
 SET enable_hashjoin = off;
 SET enable_nestloop = off;
 EXPLAIN (COSTS OFF)
 SELECT count(*)
-  FROM btg t1 JOIN btg t2 ON t1.z = t2.z AND t1.w = t2.w AND t1.x = t2.x
-  GROUP BY t1.x, t1.y, t1.z, t1.w;
+  FROM btg t1 JOIN btg t2 ON t1.w = t2.w AND t1.x = t2.x AND t1.z = t2.z
+  GROUP BY t1.w, t1.z, t1.x;
 RESET enable_nestloop;
 RESET enable_hashjoin;
 

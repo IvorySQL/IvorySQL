@@ -270,6 +270,31 @@ SELECT stddev_pop('nan'::numeric), stddev_samp('nan'::numeric);
         NaN |            
 (1 row)
 
+-- verify correct results for min(record) and max(record) aggregates
+SELECT max(row(a,b)) FROM aggtest;
+     max      
+--------------
+ (100,99.097)
+(1 row)
+
+SELECT max(row(b,a)) FROM aggtest;
+     max     
+-------------
+ (324.78,42)
+(1 row)
+
+SELECT min(row(a,b)) FROM aggtest;
+     min     
+-------------
+ (0,0.09561)
+(1 row)
+
+SELECT min(row(b,a)) FROM aggtest;
+     min     
+-------------
+ (0.09561,0)
+(1 row)
+
 -- verify correct results for null and NaN inputs
 select sum(null::int4) from generate_series(1,3);
  sum 
@@ -1926,7 +1951,7 @@ select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -
  a,ab,abcd
 (1 row)
 
--- string_agg bytea tests
+-- string_agg, min, max bytea tests
 create table bytea_test_table(v bytea);
 select string_agg(v, '') from bytea_test_table;
  string_agg 
@@ -1958,6 +1983,32 @@ select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
  string_agg 
 ------------
  \xffeeaa
+(1 row)
+
+select min(v) from bytea_test_table;
+ min  
+------
+ \xaa
+(1 row)
+
+select max(v) from bytea_test_table;
+ max  
+------
+ \xff
+(1 row)
+
+insert into bytea_test_table values(decode('ffff','hex'));
+insert into bytea_test_table values(decode('aaaa','hex'));
+select min(v) from bytea_test_table;
+ min  
+------
+ \xaa
+(1 row)
+
+select max(v) from bytea_test_table;
+  max   
+--------
+ \xffff
 (1 row)
 
 drop table bytea_test_table;
@@ -2814,29 +2865,27 @@ GROUP BY w, x, z, y;
          ->  Index Scan using btg_x_y_idx on btg
 (6 rows)
 
--- Utilize the ordering of merge join to avoid a full Sort operation
+-- Utilize the ordering of merge join to avoid a Sort operation
 SET enable_hashjoin = off;
 SET enable_nestloop = off;
 EXPLAIN (COSTS OFF)
 SELECT count(*)
-  FROM btg t1 JOIN btg t2 ON t1.z = t2.z AND t1.w = t2.w AND t1.x = t2.x
-  GROUP BY t1.x, t1.y, t1.z, t1.w;
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
+  FROM btg t1 JOIN btg t2 ON t1.w = t2.w AND t1.x = t2.x AND t1.z = t2.z
+  GROUP BY t1.w, t1.z, t1.x;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  GroupAggregate
-   Group Key: t1.z, t1.w, t1.x, t1.y
-   ->  Incremental Sort
-         Sort Key: t1.z, t1.w, t1.x, t1.y
-         Presorted Key: t1.z, t1.w, t1.x
-         ->  Merge Join
-               Merge Cond: ((t1.z = t2.z) AND (t1.w = t2.w) AND (t1.x = t2.x))
-               ->  Sort
-                     Sort Key: t1.z, t1.w, t1.x
-                     ->  Index Scan using btg_x_y_idx on btg t1
-               ->  Sort
-                     Sort Key: t2.z, t2.w, t2.x
-                     ->  Index Scan using btg_x_y_idx on btg t2
-(13 rows)
+   Group Key: t1.x, t1.w, t1.z
+   ->  Merge Join
+         Merge Cond: ((t1.x = t2.x) AND (t1.w = t2.w) AND (t1.z = t2.z))
+         ->  Incremental Sort
+               Sort Key: t1.x, t1.w, t1.z
+               Presorted Key: t1.x
+               ->  Index Scan using btg_x_y_idx on btg t1
+         ->  Sort
+               Sort Key: t2.x, t2.w, t2.z
+               ->  Index Scan using btg_x_y_idx on btg t2
+(11 rows)
 
 RESET enable_nestloop;
 RESET enable_hashjoin;
