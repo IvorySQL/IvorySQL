@@ -1739,6 +1739,8 @@ set_rest:
 					n->kind = VAR_SET_MULTI;
 					n->name = "TRANSACTION";
 					n->args = $2;
+					n->jumble_args = true;
+					n->location = -1;
 					$$ = n;
 				}
 			| SESSION CHARACTERISTICS AS TRANSACTION transaction_mode_list
@@ -1748,6 +1750,8 @@ set_rest:
 					n->kind = VAR_SET_MULTI;
 					n->name = "SESSION CHARACTERISTICS";
 					n->args = $5;
+					n->jumble_args = true;
+					n->location = -1;
 					$$ = n;
 				}
 			| set_rest_more
@@ -1761,6 +1765,7 @@ generic_set:
 					n->kind = VAR_SET_VALUE;
 					n->name = $1;
 					n->args = $3;
+					n->location = @3;
 					$$ = n;
 				}
 			| var_name '=' var_list
@@ -1770,6 +1775,7 @@ generic_set:
 					n->kind = VAR_SET_VALUE;
 					n->name = $1;
 					n->args = $3;
+					n->location = @3;
 					$$ = n;
 				}
 			| var_name TO DEFAULT
@@ -1778,6 +1784,7 @@ generic_set:
 
 					n->kind = VAR_SET_DEFAULT;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 			| var_name '=' DEFAULT
@@ -1786,6 +1793,7 @@ generic_set:
 
 					n->kind = VAR_SET_DEFAULT;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 		;
@@ -1798,6 +1806,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_CURRENT;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 			/* Special syntaxes mandated by SQL standard: */
@@ -1807,6 +1816,8 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_VALUE;
 					n->name = "timezone";
+					n->location = -1;
+					n->jumble_args = true;
 					if ($3 != NULL)
 						n->args = list_make1($3);
 					else
@@ -1828,6 +1839,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "search_path";
 					n->args = list_make1(makeStringConst($2, @2));
+					n->location = @2;
 					$$ = n;
 				}
 			| NAMES opt_encoding
@@ -1836,6 +1848,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_VALUE;
 					n->name = "client_encoding";
+					n->location = @2;
 					if ($2 != NULL)
 						n->args = list_make1(makeStringConst($2, @2));
 					else
@@ -1849,6 +1862,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "role";
 					n->args = list_make1(makeStringConst($2, @2));
+					n->location = @2;
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION NonReservedWord_or_Sconst
@@ -1858,6 +1872,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "session_authorization";
 					n->args = list_make1(makeStringConst($3, @3));
+					n->location = @3;
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION DEFAULT
@@ -1866,6 +1881,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_DEFAULT;
 					n->name = "session_authorization";
+					n->location = -1;
 					$$ = n;
 				}
 			| XML_P OPTION document_or_content
@@ -1875,6 +1891,8 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "xmloption";
 					n->args = list_make1(makeStringConst($3 == XMLOPTION_DOCUMENT ? "DOCUMENT" : "CONTENT", @3));
+					n->jumble_args = true;
+					n->location = -1;
 					$$ = n;
 				}
 			/* Special syntaxes invented by PostgreSQL: */
@@ -1994,6 +2012,7 @@ reset_rest:
 
 					n->kind = VAR_RESET;
 					n->name = "timezone";
+					n->location = -1;
 					$$ = n;
 				}
 			| TRANSACTION ISOLATION LEVEL
@@ -2002,6 +2021,7 @@ reset_rest:
 
 					n->kind = VAR_RESET;
 					n->name = "transaction_isolation";
+					n->location = -1;
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION
@@ -2010,6 +2030,7 @@ reset_rest:
 
 					n->kind = VAR_RESET;
 					n->name = "session_authorization";
+					n->location = -1;
 					$$ = n;
 				}
 		;
@@ -2021,6 +2042,7 @@ generic_reset:
 
 					n->kind = VAR_RESET;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 			| ALL
@@ -2028,6 +2050,7 @@ generic_reset:
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 
 					n->kind = VAR_RESET_ALL;
+					n->location = -1;
 					$$ = n;
 				}
 		;

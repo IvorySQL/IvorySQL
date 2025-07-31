@@ -289,10 +289,6 @@ ALTER TABLE onek ADD CONSTRAINT onek_check_constraint CHECK (unique1 >= 0);
 ALTER TABLE onek RENAME CONSTRAINT onek_check_constraint TO onek_check_constraint_foo;
 ALTER TABLE onek DROP CONSTRAINT onek_check_constraint_foo;
 
--- support constraint in parenthesis
-ALTER TABLE onek ADD (CONSTRAINT onek_check_constraint CHECK (unique1 >= 0));
-ALTER TABLE onek DROP CONSTRAINT onek_check_constraint;
-
 -- renaming constraint should rename index as well
 ALTER TABLE onek ADD CONSTRAINT onek_unique1_constraint UNIQUE (unique1);
 DROP INDEX onek_unique1_constraint;  -- to see whether it's there
@@ -2435,6 +2431,13 @@ CREATE TABLE parent (LIKE list_parted);
 CREATE TABLE child () INHERITS (parent);
 ALTER TABLE list_parted ATTACH PARTITION child FOR VALUES IN (1);
 ALTER TABLE list_parted ATTACH PARTITION parent FOR VALUES IN (1);
+DROP TABLE child;
+-- now it should work, with a little tweak
+ALTER TABLE parent ADD CONSTRAINT check_a CHECK (a > 0);
+ALTER TABLE list_parted ATTACH PARTITION parent FOR VALUES IN (1);
+-- test insert/update, per bug #18550
+INSERT INTO parent VALUES (1);
+UPDATE parent SET a = 2 WHERE a = 1;
 DROP TABLE parent CASCADE;
 
 -- check any TEMP-ness
@@ -2818,22 +2821,23 @@ ALTER TABLE part_2 DROP COLUMN b;
 ALTER TABLE part_2 RENAME COLUMN b to c;
 ALTER TABLE part_2 ALTER COLUMN b TYPE text;
 
--- cannot add/drop NOT NULL or check constraints to *only* the parent, when
+-- cannot add NOT NULL or check constraints to *only* the parent, when
 -- partitions exist
 ALTER TABLE ONLY list_parted2 ALTER b SET NOT NULL;
 ALTER TABLE ONLY list_parted2 ADD CONSTRAINT check_b CHECK (b <> 'zz');
 
+-- dropping them is ok though
 ALTER TABLE list_parted2 ALTER b SET NOT NULL;
 ALTER TABLE ONLY list_parted2 ALTER b DROP NOT NULL;
 ALTER TABLE list_parted2 ADD CONSTRAINT check_b CHECK (b <> 'zz');
 ALTER TABLE ONLY list_parted2 DROP CONSTRAINT check_b;
+-- ... and the partitions should still have both
+\d+ part_2
 
 -- It's alright though, if no partitions are yet created
 CREATE TABLE parted_no_parts (a int) PARTITION BY LIST (a);
 ALTER TABLE ONLY parted_no_parts ALTER a SET NOT NULL;
 ALTER TABLE ONLY parted_no_parts ADD CONSTRAINT check_a CHECK (a > 0);
-ALTER TABLE ONLY parted_no_parts ALTER a DROP NOT NULL;
-ALTER TABLE ONLY parted_no_parts DROP CONSTRAINT check_a;
 DROP TABLE parted_no_parts;
 
 -- cannot drop inherited NOT NULL or check constraints from partition

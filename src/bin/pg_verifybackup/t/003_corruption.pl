@@ -84,26 +84,6 @@ my @scenario = (
 		'fails_like' => qr/manifest checksum mismatch/
 	},
 	{
-<<<<<<< HEAD
-		'name'            => 'open_file_fails',
-		'mutilate'        => \&mutilate_open_file_fails,
-		'fails_like'      => qr/could not open file/,
-		'skip_on_windows' => 1
-	},
-	{
-		'name'            => 'open_directory_fails',
-		'mutilate'        => \&mutilate_open_directory_fails,
-		'cleanup'         => \&cleanup_open_directory_fails,
-		'fails_like'      => qr/could not open directory/,
-		'skip_on_windows' => 1
-	},
-	{
-		'name'            => 'search_directory_fails',
-		'mutilate'        => \&mutilate_search_directory_fails,
-		'cleanup'         => \&cleanup_search_directory_fails,
-		'fails_like'      => qr/could not stat file or directory/,
-		'skip_on_windows' => 1
-=======
 		'name' => 'open_file_fails',
 		'mutilate' => \&mutilate_open_file_fails,
 		'fails_like' => qr/could not open file/,
@@ -122,7 +102,6 @@ my @scenario = (
 		'cleanup' => \&cleanup_search_directory_fails,
 		'fails_like' => qr/could not stat file or directory/,
 		'needs_unix_permissions' => 1
->>>>>>> 8dfd3129027 (pg_verifybackup: Verify tar-format backups.)
 	});
 
 for my $scenario (@scenario)
