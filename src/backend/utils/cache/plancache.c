@@ -1403,7 +1403,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	{
 		PlannedStmt *pstmt = (PlannedStmt *) lfirst(lc);
 
-		pstmt->cached_plan_type = customplan ? PLAN_CACHE_CUSTOM : PLAN_CACHE_GENERIC;
+		pstmt->planOrigin = customplan ? PLAN_STMT_CACHE_CUSTOM : PLAN_STMT_CACHE_GENERIC;
 	}
 
 	return plan;
