@@ -4996,7 +4996,7 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st2(10, 20);
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Sort
-   Disabled Nodes: 1
+   Disabled: true
    Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
    Sort Key: t1.c1
    ->  Nested Loop Semi Join
@@ -12837,21 +12837,16 @@ UNION
                                                 QUERY PLAN                                                 
 -----------------------------------------------------------------------------------------------------------
  Insert on public.result_tbl
-   Disabled Nodes: 1
    ->  Subquery Scan on "*SELECT*"
-         Disabled Nodes: 1
          Output: "*SELECT*".a, "*SELECT*".b, "*SELECT*"."?column?"
          ->  HashAggregate
-               Disabled Nodes: 1
                Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                Group Key: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                ->  Append
-                     Disabled Nodes: 1
                      ->  Limit
-                           Disabled Nodes: 1
                            Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                            ->  Sort
-                                 Disabled Nodes: 1
+                                 Disabled: true
                                  Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                                  Sort Key: async_p1.a
                                  ->  Foreign Scan on public.async_p1
@@ -12861,7 +12856,7 @@ UNION
                            Output: async_p2.a, async_p2.b, ('AAA'::text || (async_p2.c)::text)
                            Filter: (async_p2.b < '10'::number)
                            Remote SQL: SELECT a, b, c FROM public.base_tbl2
-(25 rows)
+(20 rows)
 
 INSERT INTO result_tbl
 (SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
@@ -12893,17 +12888,13 @@ UNION ALL
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Insert on public.result_tbl
-   Disabled Nodes: 1
    ->  Result
-         Disabled Nodes: 1
          Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
          ->  Append
-               Disabled Nodes: 1
                ->  Limit
-                     Disabled Nodes: 1
                      Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                      ->  Sort
-                           Disabled Nodes: 1
+                           Disabled: true
                            Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                            Sort Key: async_p1.a
                            ->  Foreign Scan on public.async_p1
@@ -12913,7 +12904,7 @@ UNION ALL
                      Output: async_p2.a, async_p2.b, ('AAA'::text || (async_p2.c)::text)
                      Filter: (async_p2.b < '10'::number)
                      Remote SQL: SELECT a, b, c FROM public.base_tbl2
-(21 rows)
+(17 rows)
 
 INSERT INTO result_tbl
 (SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)

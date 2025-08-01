@@ -4984,7 +4984,7 @@ explain (costs off)
              QUERY PLAN             
 ------------------------------------
  Seq Scan on test2
-   Disabled Nodes: 1
+   Disabled: true
    Filter: (t = 'abcdef'::varchar2)
 (3 rows)
 
@@ -4999,7 +4999,7 @@ explain (costs off)
              QUERY PLAN             
 ------------------------------------
  Seq Scan on test2
-   Disabled Nodes: 1
+   Disabled: true
    Filter: (t = '%line%'::varchar2)
 (3 rows)
 
@@ -5272,7 +5272,7 @@ explain (costs off)
              QUERY PLAN             
 ------------------------------------
  Seq Scan on test2
-   Disabled Nodes: 1
+   Disabled: true
    Filter: (t = 'abcdef'::varchar2)
 (3 rows)
 
@@ -5287,7 +5287,7 @@ explain (costs off)
              QUERY PLAN             
 ------------------------------------
  Seq Scan on test2
-   Disabled Nodes: 1
+   Disabled: true
    Filter: (t = '%line%'::varchar2)
 (3 rows)
 
