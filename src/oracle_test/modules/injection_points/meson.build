@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 if not get_option('injection_points')
   subdir_done()
@@ -6,6 +6,9 @@ endif
 
 injection_points_sources = files(
   'injection_points.c',
+  'injection_stats.c',
+  'injection_stats_fixed.c',
+  'regress_injection.c',
 )
 
 if host_system == 'windows'
@@ -32,14 +35,28 @@ tests += {
   'regress': {
     'sql': [
       'injection_points',
+      'hashagg',
+      'reindex_conc',
+      'vacuum',
     ],
-    'regress_args': ['--dlpath', meson.build_root() / 'src/oracle_test/regress'],
+    'regress_args': ['--dlpath', meson.project_build_root() / 'src/oracle_test/regress'],
     # The injection points are cluster-wide, so disable installcheck
     'runningcheck': false,
   },
   'isolation': {
     'specs': [
+      'basic',
       'inplace',
+      'syscache-update-pruned',
+    ],
+    'runningcheck': false, # see syscache-update-pruned
+  },
+  'tap': {
+    'env': {
+      'enable_injection_points': get_option('injection_points') ? 'yes' : 'no',
+    },
+    'tests': [
+      't/001_stats.pl',
     ],
   },
 }

@@ -353,7 +353,7 @@ sub raw_connect_works
 			return 0;
 		}
 	}
-	return 1
+	return 1;
 }
 
 =pod
@@ -606,6 +606,12 @@ sub init
 	if (defined $initdb_extra_opts_env)
 	{
 		push @{ $params{extra} }, shellwords($initdb_extra_opts_env);
+	}
+
+	# This should override user-supplied initdb options.
+	if ($params{no_data_checksums})
+	{
+		push @{ $params{extra} }, '--no-data-checksums';
 	}
 
 	mkdir $self->backup_dir;
@@ -2950,7 +2956,7 @@ sub check_extension
 
 =pod
 
-=item $node->wait_for_event(wait_event_name, backend_type)
+=item $node->wait_for_event(backend_type, wait_event_name)
 
 Poll pg_stat_activity until backend_type reaches wait_event_name.
 
