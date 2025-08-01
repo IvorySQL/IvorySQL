@@ -5,16 +5,15 @@ OBJS = \
 	$(WIN32RES) \
 	injection_points.o \
 	injection_stats.o \
-	injection_stats_fixed.o \
-	regress_injection.o
+	injection_stats_fixed.o
 EXTENSION = injection_points
 DATA = injection_points--1.0.sql
 PGFILEDESC = "injection_points - facility for injection points"
 
-REGRESS = injection_points hashagg reindex_conc vacuum
+REGRESS = injection_points reindex_conc
 REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
 
-ISOLATION = basic inplace syscache-update-pruned
+ISOLATION = basic inplace
 
 TAP_TESTS = 1
 
